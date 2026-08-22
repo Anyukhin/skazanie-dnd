@@ -1,9 +1,28 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { HEAL_THRESHOLD_RATIO, healingTargetFor, planHeroTurn } from '../server/party-tactics.mjs'
-import { normalizeCampaignState } from '../server/rules-engine.mjs'
+import {
+  HEAL_THRESHOLD_RATIO,
+  UNCANNY_DODGE_DAMAGE_PERCENT,
+  healingTargetFor,
+  planHeroReaction,
+  planHeroTurn,
+} from '../server/party-tactics.mjs'
+import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
+import { applyGameEvent, normalizeCampaignState, resolveCommand } from '../server/rules-engine.mjs'
 import { withStarterKit } from '../server/starter-kit.mjs'
+
+function dice(values = []) {
+  let id = 0
+  return new DiceService({
+    rng: new SequenceDiceRng(values),
+    idFactory: () => `party-tactics-roll-${++id}`,
+    now: () => '2026-08-18T12:00:00.000Z',
+  })
+}
+
+const applyAll = (state, events) => events.reduce(applyGameEvent, state)
+const authoritative = (values = []) => ({ diceService: dice(values), context: { serverAuthoritativeCombat: true } })
 
 const POTION = { id: 'item-potion', catalog_id: 'srd_5_2_1:potion-of-healing', name: 'Зелье лечения', quantity: 1, type: 'consumable' }
 // Форма `combat` повторяет каталог снаряжения (`server/starter-kit.mjs`):
@@ -230,4 +249,154 @@ test('план всегда завершается EndTurn — иначе авт
   for (const state of cases) {
     assert.equal(planHeroTurn(state, 'h').commands.at(-1).command_type, 'EndTurn')
   }
+})
+
+/* ------------------------------------------------------------------------ *
+ * Реакции автономной партии
+ *
+ * Окно реакции открывает движок, и все проверки — ячейка, оружие, свободная
+ * реакция — уже сделаны им. Поэтому тесты ниже намеренно не подсовывают
+ * политике выдуманные окна, а прогоняют настоящий удар и настоящий отход:
+ * иначе они проверяли бы не поведение автономного героя, а собственную
+ * фикстуру.
+ * ------------------------------------------------------------------------ */
+
+function reactionBattle({ heroOverrides = {}, enemyOverrides = {}, positions = null } = {}) {
+  const state = battle({
+    heroes: [{
+      id: 'mage',
+      character: 'Иллейна',
+      characterClass: 'wizard',
+      role: 'Волшебник · ур. 3',
+      level: 3,
+      hp: 20,
+      maxHp: 20,
+      armor: 15,
+      speed: 30,
+      proficiency: 2,
+      abilities: { str: 10, dex: 12, con: 12, int: 16, wis: 10, cha: 10 },
+      inventory: [SWORD],
+      ...heroOverrides,
+    }],
+    enemies: [enemy('goblin', { attackBonus: 4, damageDice: 6, damageBonus: 2, ...enemyOverrides })],
+    positions: positions ?? { mage: { x: 1, y: 1 }, goblin: { x: 2, y: 1 } },
+  })
+  // Бьёт и уходит противник, поэтому указатель инициативы стоит на нём.
+  state.mechanics.combat.initiative = [{ actor_id: 'goblin', total: 18 }, { actor_id: 'mage', total: 12 }]
+  state.mechanics.combat.active_index = 0
+  state.mechanics.combat.action_economy = {
+    goblin: { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 },
+    mage: { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 },
+  }
+  return normalizeCampaignState(state)
+}
+
+const enemyAttack = { command_type: 'MakeAttack', actor_id: 'goblin', target_id: 'mage', server_authoritative: true }
+
+test('автономный волшебник поднимает «Щит», и попадание перестаёт быть попаданием', () => {
+  const state = reactionBattle()
+  const attacked = applyAll(state, resolveCommand(enemyAttack, state, authoritative([14, 4])).events)
+  assert.ok(attacked.mechanics.combat.reaction_window.action_ids.includes('cast:shield'))
+  assert.ok(attacked.players[0].hp < 20, 'удар обязан пройти, иначе окно ничего не значит')
+
+  const plan = planHeroReaction(attacked)
+  assert.equal(plan.rule, 'cast:shield')
+  assert.equal(plan.commands.length, 1)
+  assert.deepEqual(plan.commands[0], {
+    command_type: 'UseCombatAction', actor_id: 'mage', action_id: 'cast:shield',
+    target_id: 'goblin', server_authoritative: true,
+  })
+
+  const shielded = applyAll(attacked, resolveCommand(plan.commands[0], attacked, authoritative()).events)
+  assert.equal(shielded.players[0].hp, 20, 'Щит обязан вернуть весь урон')
+  assert.equal(shielded.mechanics.combat.reaction_window, null)
+  assert.equal(shielded.mechanics.combat.action_economy.mage.reaction, false)
+  assert.equal(shielded.mechanics.resources.mage.spell_slots_1.current, 3)
+  assert.ok(shielded.mechanics.conditions.mage.some((condition) => condition.id === 'shielded'))
+})
+
+test('без ячейки «Щит» не предлагается вовсе и политика честно отказывается', () => {
+  const state = reactionBattle()
+  state.mechanics.resources.mage.spell_slots_1 = { current: 0, max: 4 }
+  state.mechanics.resources.mage.spell_slots_2 = { current: 0, max: 2 }
+  const attacked = applyAll(normalizeCampaignState(state), resolveCommand(enemyAttack, state, authoritative([14, 4])).events)
+
+  assert.equal(attacked.mechanics.combat.reaction_window, null, 'пустые ячейки не открывают окно «Щита» вовсе')
+  const plan = planHeroReaction(attacked)
+  assert.equal(plan.rule, 'decline-reaction')
+  assert.deepEqual(plan.commands, [{
+    command_type: 'UseCombatAction', actor_id: '', action_id: 'decline-reaction', server_authoritative: true,
+  }])
+})
+
+test('окно «Щита» без ячейки закрывается отказом, а не выдуманной ячейкой', () => {
+  const state = reactionBattle()
+  const attacked = applyAll(state, resolveCommand(enemyAttack, state, authoritative([14, 4])).events)
+  // Ячейка тратится между открытием окна и ответом — политика обязана увидеть
+  // это по самому окну, а не по собственной памяти.
+  const emptied = {
+    ...attacked,
+    mechanics: {
+      ...attacked.mechanics,
+      combat: {
+        ...attacked.mechanics.combat,
+        reaction_window: { ...attacked.mechanics.combat.reaction_window, action_ids: [], action_options: [] },
+      },
+    },
+  }
+  assert.equal(planHeroReaction(emptied).rule, 'decline-reaction')
+  assert.equal(planHeroReaction(emptied).commands[0].actor_id, 'mage')
+})
+
+test('автономный герой бьёт вдогонку уходящему противнику', () => {
+  const state = reactionBattle({
+    heroOverrides: { characterClass: 'fighter', role: 'Воин · ур. 3', abilities: { str: 16, dex: 12, con: 14, int: 10, wis: 10, cha: 10 } },
+  })
+  const moved = applyAll(state, resolveCommand({
+    command_type: 'MoveActor', actor_id: 'goblin', to: { x: 5, y: 1 }, server_authoritative: true,
+  }, state, authoritative()).events)
+
+  assert.deepEqual(moved.mechanics.combat.reaction_window.action_ids, ['opportunity-attack'])
+  const plan = planHeroReaction(moved)
+  assert.equal(plan.rule, 'opportunity-attack')
+
+  const struck = resolveCommand(plan.commands[0], moved, authoritative([18, 5]))
+  const attack = struck.events.find((event) => event.event_type === 'AttackResolved')
+  assert.equal(attack.payload.hit, true)
+  const after = applyAll(moved, struck.events)
+  assert.ok(after.enemies[0].hp < moved.enemies[0].hp, 'удар вдогонку обязан снять хиты')
+  assert.equal(after.mechanics.combat.action_economy.mage.reaction, false)
+})
+
+test('«Невероятное уклонение» тратится на крупный удар и не тратится на царапину', () => {
+  const rogue = {
+    characterClass: 'rogue', role: 'Плут · ур. 5', level: 5, proficiency: 3,
+    hp: 40, maxHp: 40, abilities: { str: 10, dex: 16, con: 14, int: 12, wis: 10, cha: 10 },
+  }
+  const claw = (damage) => ({
+    action_profiles: [{ id: 'claw', name: 'Коготь', kind: 'melee', attack_modifier: 4, damage_expression: damage, damage_type: 'slashing', range_feet: 5 }],
+  })
+  const scratch = reactionBattle({ heroOverrides: rogue, enemyOverrides: claw('1d6') })
+  const scratched = applyAll(scratch, resolveCommand(enemyAttack, scratch, authoritative([18, 1])).events)
+  assert.ok(scratched.mechanics.combat.reaction_window.action_ids.includes('uncanny-dodge'))
+  assert.equal(planHeroReaction(scratched).rule, 'decline-reaction')
+
+  const heavy = reactionBattle({ heroOverrides: rogue, enemyOverrides: claw('4d6+8') })
+  const wounded = applyAll(heavy, resolveCommand(enemyAttack, heavy, authoritative([18, 6, 6, 6, 6])).events)
+  const taken = 40 - wounded.players[0].hp
+  assert.ok(taken * 100 >= 40 * UNCANNY_DODGE_DAMAGE_PERCENT, `удар обязан быть крупным, а снял ${taken}`)
+  const plan = planHeroReaction(wounded)
+  assert.equal(plan.rule, 'uncanny-dodge')
+
+  const dodged = applyAll(wounded, resolveCommand(plan.commands[0], wounded, authoritative()).events)
+  assert.equal(dodged.players[0].hp, 40 - Math.floor(taken / 2))
+  assert.equal(dodged.mechanics.combat.action_economy.mage.reaction, false)
+})
+
+test('политика детерминирована и не трогает окно, которого нет', () => {
+  const state = reactionBattle()
+  const attacked = applyAll(state, resolveCommand(enemyAttack, state, authoritative([14, 4])).events)
+  assert.deepEqual(planHeroReaction(attacked), planHeroReaction(attacked))
+  assert.equal(planHeroReaction(state).rule, 'decline-reaction')
+  assert.equal(planHeroReaction(state, null).commands[0].action_id, 'decline-reaction')
 })

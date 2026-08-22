@@ -428,7 +428,9 @@ test('купленный лук получает runtime-профиль и пр�
       abilities: { str: 10, dex: 16 },
       x: 0,
       y: 0,
-      inventory: [bought],
+      // Колчан обязателен: с 2026-08-18 выстрел из лука снимает стрелу, и без
+      // боеприпаса сервер честно отказывает до броска.
+      inventory: [bought, { id: 'quiver', catalog_id: 'srd_5_2_1:arrows-20', name: 'Стрелы, 20 штук', type: 'other', quantity: 1 }],
     }],
     enemies: [{ id: 'goblin', hp: 10, maxHp: 10, armor: 12, alive: true, x: 4, y: 0 }],
     scene: { cells, turn: 1 },
@@ -459,6 +461,10 @@ test('купленный лук получает runtime-профиль и пр�
   const reduced = result.events.reduce(applyGameEvent, state)
   assert.deepEqual(replayEvents(state, result.events), reduced)
   assert.equal(reduced.players[0].inventory[0].equipped, true)
+  const spent = result.events.find((event) => event.event_type === 'AmmunitionSpent')
+  assert.equal(spent.payload.shots_before, 20)
+  assert.equal(spent.payload.shots_after, 19)
+  assert.equal(reduced.players[0].inventory[1].charges.current, 19)
 })
 
 test('BuyItem материализует авторитетный payload события и replay не перечитывает каталог', () => {

@@ -30,7 +30,7 @@ test('desktop hero cards show server speed, while the objective remains fully ex
       .map((path) => readFile(new URL(path, import.meta.url), 'utf8'))).then((parts) => parts.join('\n')),
     readFile(new URL('../src/styles.css', import.meta.url), 'utf8'),
   ])
-  assert.match(appSource, /player\.speed\} фт<\/b><small>СКОРОСТЬ/)
+  assert.match(appSource, /player\.speed\} фт<\/b><small>Скорость/)
   assert.doesNotMatch(appSource, /player\.x\}:\{player\.y/)
   assert.match(appSource, /className=\{`objective \$\{objectiveExpanded \? 'expanded' : ''\}`\}/)
   assert.match(appSource, /aria-expanded=\{objectiveExpanded\}/)

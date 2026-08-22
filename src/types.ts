@@ -457,6 +457,23 @@ export type InventoryItem = {
       requires_attunement: boolean
     } | null
     activated?: boolean
+    /**
+     * Боеприпасы, посчитанные сервером (`itemViewerCapabilities`).
+     * У пачки снарядов это остаток выстрелов, у дальнобойного оружия — какой
+     * снаряд оно просит. Клиент их только складывает: какой лук чем стреляет и
+     * сколько штук в пачке, знает каталог, и второй такой таблицы в браузере
+     * быть не должно — иначе счётчик разошёлся бы с серверным отказом.
+     */
+    ammunition?: {
+      role: 'ammunition'
+      shots: number
+      per_bundle: number
+      unit: string
+    } | {
+      role: 'weapon'
+      catalog_id: string
+      unit: string
+    }
     charges: { current: number; max: number } | null
     recharge: ItemRechargeProfile | null
     requires_attunement: boolean
@@ -1018,7 +1035,7 @@ export type BattleEvent = {
   id: string
   sceneTurn?: number
   round?: number
-  type: 'move' | 'attack' | 'area-attack' | 'equipment' | 'spell' | 'spell-save' | 'spell-damage' | 'healing' | 'action' | 'reaction' | 'summon' | 'summon-end' | 'turn-end' | 'combat-start' | 'combat-end' | 'encounter-created' | 'encounter-ended' | 'death-save' | 'death-save-damage' | 'hero-stabilized' | 'concentration-save' | 'concentration-end' | 'max-hp-reduction' | 'max-hp-reduction-prevented' | 'npc-item' | 'parley' | 'parley-rejected' | 'parley-settled' | 'truce' | 'truce-broken' | 'captive-taken' | 'loot-container' | 'loot-taken'
+  type: 'move' | 'attack' | 'area-attack' | 'equipment' | 'spell' | 'spell-save' | 'spell-damage' | 'healing' | 'action' | 'reaction' | 'summon' | 'summon-end' | 'turn-end' | 'combat-start' | 'combat-end' | 'encounter-created' | 'encounter-ended' | 'death-save' | 'death-save-damage' | 'hero-stabilized' | 'concentration-save' | 'concentration-end' | 'max-hp-reduction' | 'max-hp-reduction-prevented' | 'max-hp-increase' | 'beast-tamed' | 'npc-item' | 'parley' | 'parley-rejected' | 'parley-settled' | 'truce' | 'truce-broken' | 'captive-taken' | 'loot-container' | 'loot-taken'
   actorId?: string
   actorKind?: 'player' | 'enemy' | 'summon' | 'system'
   targetId?: string
@@ -1041,6 +1058,20 @@ export type BattleEvent = {
   packTactics?: boolean
   charge?: boolean
   bloodiedFrenzy?: boolean
+  /**
+   * Вид атаки: удар, выстрел или бросок. Считает его сервер — герою по
+   * выбранному режиму оружия, существу по его действию стат-блока, — и от него
+   * зависит глагол строки хроники. У боя, сыгранного до появления признака,
+   * поля нет, и строка остаётся прежней нейтральной «атакует».
+   */
+  attackKind?: 'melee' | 'ranged' | 'thrown'
+  /** Выстрел за пределы обычной дальности: он же помеха на бросок. */
+  longRange?: boolean
+  /** Насколько реакция срезала урон и было ли перебито заклинание. */
+  preventedDamage?: number
+  countered?: boolean
+  /** СЛ спасброска у областной атаки: своя вещь героя, число с её карточки. */
+  savingThrowDifficulty?: number
   damage?: number
   damageType?: string
   healing?: number
@@ -2222,6 +2253,8 @@ export type GameMechanics = Record<string, unknown> & {
     recovery_minutes_remaining?: number
   }>
   concentration?: Record<string, { effect_id?: string; source_rule_ids?: string[] }>
+  /** Временные хиты по участникам; у неопознанного врага ключа нет. */
+  temporary_hp?: Record<string, number>
   conditions?: Record<string, Array<{ id: string; duration?: string | null; source_actor?: string | null; effect_id?: string | null; repeat_save_timing?: 'turn-end' | null; repeat_save_on_damage?: boolean; damage_save_advantage?: boolean; break_on_damage_from_source_allies?: boolean; save_ability?: string | null; save_dc?: number | null; spell_id?: string | null; spell_option?: string | null; last_used_turn?: string | null }>>
   active_effects?: Array<{
     id: string

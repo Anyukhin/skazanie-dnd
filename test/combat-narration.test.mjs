@@ -92,3 +92,21 @@ test('взаимодействие со сценой попадает в лет�
   assert.equal(hasCombatNarrationEvent([event('SceneObjectKnowledgeRevealed')]), true)
   assert.equal(hasCombatNarrationEvent([event('SceneObjectLootRevealed')]), true)
 })
+
+test('поднятый максимум ОЗ получает свою строку и держит ту же границу, что и снижение', () => {
+  // «Подмога» пишет `HitPointMaximumIncreased`, а рассказчик его не знал — ход
+  // с поднятым пределом уходил в ленту без единой строки про то, что случилось.
+  assert.equal(COMBAT_NARRATION_EVENT_TYPES.has('HitPointMaximumIncreased'), true)
+  assert.equal(hasCombatNarrationEvent([event('HitPointMaximumIncreased')]), true)
+
+  const own = combatNarration([
+    event('HitPointMaximumIncreased', { spell_id: 'aid', maximum_hp_before: 24, maximum_hp_after: 29, hp_before: 24, hp_after: 29 }, ['hero']),
+  ], state)
+  assert.match(own, /Максимум ОЗ Лира поднимается: 24 → 29\./u)
+
+  const enemy = combatNarration([
+    event('HitPointMaximumIncreased', { spell_id: 'aid', maximum_hp_before: 20, maximum_hp_after: 25, hp_before: 20, hp_after: 25 }, ['wolf']),
+  ], state)
+  assert.match(enemy, /Волк/u)
+  assert.doesNotMatch(enemy, /20|25/u, 'числа чужого листа за столом не называют')
+})

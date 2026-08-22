@@ -821,6 +821,43 @@ test('ключ тайла меняется от источника света и
   const cellarScene = { ...scene, map: decoded(cellar) }
   assert.equal(cellarScene.map.terrainHash, scene.map.terrainHash, 'этажи различаются только номером')
   assert.notEqual(render.tileKey(cellarScene, tile), before, 'у подвала обязан быть свой ключ тайла')
+
+  // Свет запечён в тайл, поэтому настройка зрителя обязана обесценить кэш:
+  // без этого тумблер не менял бы уже нарисованные тайлы вовсе.
+  assert.notEqual(render.tileKey({ ...scene, lighting: false }, tile), before, 'выключенный свет — свой ключ тайла')
+  assert.equal(render.tileKey({ ...scene, lighting: true }, tile), before, 'включённый свет — умолчание, ключ прежний')
+})
+
+test('выключенный свет доски убирает тьму, тени и ореолы, но не туман войны', () => {
+  const map = createTacticalMap({ width: 16, height: 16, locationId: 'loc', seed: 'light-off', theme: 'crypt' })
+  addZone(map, { id: 'hall', kind: 'interior', material: 'stone', lightLevel: 'dim', label: 'Палата' })
+  for (let y = 0; y < 16; y += 1) {
+    for (let x = 0; x < 16; x += 1) setCell(map, x, y, { passable: true, revealed: true, material: 'stone', zone: 'hall' })
+  }
+  // Нераскрытая клетка — та самая, которую туман войны обязан закрасить и при
+  // выключенном свете: это правило видимости, а не украшение.
+  setCell(map, 15, 15, { revealed: false })
+  setEdge(map, 4, 4, 5, 4, { kind: 'wall', blocksMove: true, blocksSight: true, cover: 'three_quarters' })
+  addProp(map, { id: 'torch', assetId: 'torch_wall', x: 2.5, y: 2.5, footprint: [{ x: 2, y: 2 }] })
+
+  const palette = { ...render.DEFAULT_BOARD_PALETTE, lightShadow: '#111827', lightWarm: '#ffa500', fog: '#010203' }
+  const base = { map: decoded(map), palette, cellSize: 32 }
+  const tile = { tileX: 0, tileY: 0 }
+
+  const lit = recordingContext()
+  render.drawTerrainTile(lit, base, tile)
+  const dark = recordingContext()
+  render.drawTerrainTile(dark, { ...base, lighting: false }, tile)
+
+  const shadows = (context) => context.ops.filter((item) => item.op === 'fillRect' && item.value === '#111827').length
+  const halos = (context) => context.ops.filter((item) => item.op === 'fill' && item.value === '#ffa500').length
+  const fog = (context) => context.ops.filter((item) => item.op === 'fillRect' && item.value === '#010203').length
+
+  assert.ok(shadows(lit) > 0 && halos(lit) > 0, 'со светом слой обязан рисоваться')
+  assert.equal(shadows(dark), 0, 'ни одной заливки тьмы и тени')
+  assert.equal(halos(dark), 0, 'ни одного кольца ореола')
+  assert.equal(fog(dark), fog(lit), 'туман войны от настройки не зависит')
+  assert.equal(fog(dark), 1, 'нераскрытая клетка тайла закрашена ровно один раз')
 })
 
 /** Ровное поле одного материала: вход для проверок декалей и вариантов. */

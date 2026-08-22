@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
 import {
-  BrainCircuit, ChevronDown, ChevronRight, Dices, Ear, Globe2, HelpCircle, History, Hourglass,
-  Mail, MailOpen, MailX, MessageSquare, Moon, PawPrint, Plus, RefreshCw, ScrollText, Send, ShieldCheck, Soup, Sparkles,
+  BrainCircuit, ChevronDown, ChevronRight, Dices, Ear, Flame, Globe2, HelpCircle, History, Hourglass,
+  Mail, MailOpen, MailX, Moon, PawPrint, Plus, RefreshCw, ScrollText, Send, ShieldCheck, Soup, Sparkles,
   Swords, Target, Users, Volume2, VolumeX, X, Check, RotateCcw, SlidersHorizontal, Store, Wifi, WifiOff, Lock, Shield, Bell, BellOff, Gavel,
 } from 'lucide-react'
 
 import { fetchWithTimeout } from './ai-client'
 import {
   ABILITY_LABELS, DIFFICULTY_LABELS, PageHeader, SKILL_LABELS, UI_SCALE_MAX, UI_SCALE_MIN,
-  UI_SCALE_PRESETS, battleEventText, clampUiScale, locationsMatch,
+  UI_SCALE_PRESETS, battleEventText, clampUiScale, locationsMatch, useDialogEscape,
 } from './app-shared'
 import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
 import type { NarrationVoiceMode } from './narration-tts.mjs'
@@ -56,6 +56,7 @@ export function CampaignModal({ state, onSwitch, onAccountRefresh, onCreateHero,
   const [improvMode, setImprovMode] = useState<CampaignAiSettings['improvMode']>('story')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  useDialogEscape(onClose)
 
   const load = async () => {
     setCampaignsLoading(true)
@@ -257,7 +258,7 @@ export function OffscreenChronicleEntry({ card, timestamp }: { card: OffscreenCh
     <div className="offscreen-card">
       <header>
         <Moon size={16} />
-        <span><small>ХОД МИРА · ДЕНЬ {card.day}</small><strong>{card.title}</strong></span>
+        <span><small>Ход мира · день {card.day}</small><strong>{card.title}</strong></span>
         <time>{timestamp}</time>
       </header>
       <ul>{card.lines.map((line, index) => <li key={`${index}-${line}`}>{line}</li>)}</ul>
@@ -283,7 +284,7 @@ export function LetterChronicleEntry({ card, timestamp }: { card: LetterChronicl
     <div className="letter-card">
       <header>
         {icon}
-        <span><small>ПОЧТА ОТРЯДА</small><strong>{card.title}</strong></span>
+        <span><small>Почта отряда</small><strong>{card.title}</strong></span>
         <time>{timestamp}</time>
       </header>
       <p className="letter-route">
@@ -309,7 +310,7 @@ export function BeastChronicleEntry({ card, timestamp }: { card: BeastChronicleC
     <div className="beast-chronicle-card">
       <header>
         {icon}
-        <span><small>ЗВЕРЬ И ОТРЯД</small><strong>{card.title}</strong></span>
+        <span><small>Зверь и отряд</small><strong>{card.title}</strong></span>
         <time>{timestamp}</time>
       </header>
       <p className="beast-chronicle-who">
@@ -320,8 +321,8 @@ export function BeastChronicleEntry({ card, timestamp }: { card: BeastChronicleC
   </article>
 }
 
-export function ChatPanel({ messages, isNarrating, interaction, players, typingActorIds, currentPlayerId, canAct, combatActive, suggestedActions, sceneKey, onVote, onAbstain, onRollInteraction, onContinueInteraction, onWhy, onSpeak, open, onToggle }: {
-  messages: ReturnType<typeof useGameSession>['state']['messages']; isNarrating: boolean; interaction?: AgentInteraction | null; players: Player[]; typingActorIds: string[]; currentPlayerId: string; canAct: boolean; combatActive: boolean; suggestedActions: Array<{ id: string; text: string }>; sceneKey: string; onVote: (optionId: string) => void; onAbstain: () => void; onRollInteraction: () => void; onContinueInteraction: () => void; onWhy: () => void; onSpeak?: ((text: string) => void) | null; open: boolean; onToggle: () => void
+export function ChatPanel({ messages, isNarrating, interaction, players, typingActorIds, currentPlayerId, canAct, combatActive, suggestedActions, sceneKey, onVote, onAbstain, onRollInteraction, onContinueInteraction, onWhy, onSpeak }: {
+  messages: ReturnType<typeof useGameSession>['state']['messages']; isNarrating: boolean; interaction?: AgentInteraction | null; players: Player[]; typingActorIds: string[]; currentPlayerId: string; canAct: boolean; combatActive: boolean; suggestedActions: Array<{ id: string; text: string }>; sceneKey: string; onVote: (optionId: string) => void; onAbstain: () => void; onRollInteraction: () => void; onContinueInteraction: () => void; onWhy: () => void; onSpeak?: ((text: string) => void) | null
 }) {
   const endRef = useRef<HTMLDivElement>(null)
   const messagesRef = useRef<HTMLDivElement>(null)
@@ -376,9 +377,9 @@ export function ChatPanel({ messages, isNarrating, interaction, players, typingA
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }
 
-  if (!open) {
-    return <button className="chat-closed" onClick={onToggle}><MessageSquare size={19} /><span>История</span><b>{messages.length}</b></button>
-  }
+  /* Свёрнутого состояния у хроники больше нет: в правой колонке она и есть
+     колонка, и сворачивать её было не во что — кнопка «История N» лишь
+     освобождала место штабелю панелей, которого тоже больше нет. */
 
   return (
     <section className="chat-panel" aria-label="Что происходит в сцене">
@@ -391,7 +392,6 @@ export function ChatPanel({ messages, isNarrating, interaction, players, typingA
             <button className={filter === 'combat' ? 'active' : ''} type="button" onClick={() => chooseFilter('combat')} aria-pressed={filter === 'combat'}>Бой</button>
           </nav>
         </div>
-        <button className="icon-button" onClick={onToggle} aria-label="Свернуть историю"><ChevronDown size={20} /></button>
       </div>
       {/* Групповое решение остаётся рядом с хроникой. Проверка вынесена на карту:
           она относится к текущему действию и не должна раздувать колонку истории. */}
@@ -435,7 +435,7 @@ export function ChatPanel({ messages, isNarrating, interaction, players, typingA
               {message.roll && (
                 <div className={`roll-result ${message.roll.success ? 'success' : 'failure'}`}>
                   <Dices size={18} /><span><small>{message.roll.label}</small><b>d20: {message.roll.value} <i>+ {message.roll.modifier}</i></b></span><strong>{message.roll.total}</strong>
-                  <em>{message.roll.success ? 'УСПЕХ' : 'ОСЛОЖНЕНИЕ'}</em>
+                  <em>{message.roll.success ? 'Успех' : 'Осложнение'}</em>
                 </div>
               )}
               {/* Вне боя очереди нет и «передавать» ход некому. */}
@@ -527,7 +527,7 @@ export function JournalView({ state }: { state: GameState }) {
             <header><Swords size={15} /><strong>Боевая хроника</strong><span>{battleLog.length}</span></header>
             {battleLog.map((event) => <article className="combat-journal-entry" key={event.id}>
               <i>{event.round ?? event.sceneTurn ?? '·'}</i>
-              <div><small>{event.type === 'attack' ? 'АТАКА' : event.type === 'move' ? 'ПЕРЕМЕЩЕНИЕ' : event.type === 'turn-end' ? 'ХОД' : event.type === 'npc-item' ? 'СНАРЯЖЕНИЕ' : event.type.startsWith('death-save') || event.type === 'hero-stabilized' ? 'СУДЬБА ГЕРОЯ' : event.type.startsWith('concentration-') ? 'КОНЦЕНТРАЦИЯ' : 'БОЙ'}</small><p>{battleEventText(state, event)}</p></div>
+              <div><small>{event.type === 'attack' ? 'Атака' : event.type === 'move' ? 'Перемещение' : event.type === 'turn-end' ? 'ХОД' : event.type === 'npc-item' ? 'СНАРЯЖЕНИЕ' : event.type.startsWith('death-save') || event.type === 'hero-stabilized' ? 'Судьба героя' : event.type.startsWith('concentration-') ? 'Концентрация' : 'Бой'}</small><p>{battleEventText(state, event)}</p></div>
             </article>)}
           </section>}
         </div>
@@ -571,7 +571,7 @@ export function WorldDeedsCard({ state }: { state: GameState }) {
           <small>{campaignClockLabel(deed.at_minutes)} · {deed.location_name || 'место неизвестно'} · {DEED_SEVERITY_LABELS[deed.severity] ?? deed.severity}</small>
         </div>
         <em className={deed.secret ? 'secret' : ''}>
-          {deed.secret ? 'БЕЗ СВИДЕТЕЛЕЙ' : `СВИДЕТЕЛЕЙ: ${deed.witness_count ?? 0}`}
+          {deed.secret ? 'Без свидетелей' : `Свидетелей: ${deed.witness_count ?? 0}`}
         </em>
         <small className="deed-spread">
           {deed.secret
@@ -587,7 +587,7 @@ export function WorldDeedsCard({ state }: { state: GameState }) {
       {rumors.map((rumor) => <li key={rumor.id}>
         <b>{npcNames.get(rumor.holder_entity_id) ?? rumor.holder_entity_id}</b>
         <span>{rumor.summary || rumor.claim}</span>
-        <em className={rumor.truth_status === 'confirmed' ? 'confirmed' : ''}>{rumor.truth_status === 'confirmed' ? 'ВИДЕЛ САМ' : 'ПЕРЕСКАЗ'}</em>
+        <em className={rumor.truth_status === 'confirmed' ? 'confirmed' : ''}>{rumor.truth_status === 'confirmed' ? 'Видел сам' : 'Пересказ'}</em>
       </li>)}
       {!rumors.length && <li><em>Слухов о делах отряда пока нет.</em></li>}
     </ul>
@@ -1023,7 +1023,7 @@ export function AtmosphereRange({ label, description, value, onChange }: { label
   </label>
 }
 
-export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiError, uiScale, autoAttackRoll, scenicBackdrop, combatAnimations, atmosphereSettings, notificationPermission, voiceMode, voiceSupported, actionHintsEnabled, onCampaignAiChange, onUiScaleChange, onAutoAttackRollChange, onScenicBackdropChange, onCombatAnimationsChange, onAmbientVolumeChange, onEffectsVolumeChange, onAtmosphereMutedChange, onRequestNotifications, onVoiceModeChange, onActionHintsEnabledChange }: {
+export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiError, uiScale, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, atmosphereSettings, notificationPermission, voiceMode, voiceSupported, actionHintsEnabled, onCampaignAiChange, onUiScaleChange, onAutoAttackRollChange, onScenicBackdropChange, onBoardLightingChange, onCombatAnimationsChange, onAmbientVolumeChange, onAtmosphereMutedChange, onRequestNotifications, onVoiceModeChange, onActionHintsEnabledChange }: {
   health: AiHealth | null
   campaignAi: CampaignAiSettingsResponse | null
   campaignAiBusy: boolean
@@ -1031,6 +1031,7 @@ export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiErr
   uiScale: number
   autoAttackRoll: boolean
   scenicBackdrop: boolean
+  boardLighting: boolean
   combatAnimations: boolean
   atmosphereSettings: AtmosphereSettings
   notificationPermission: NotificationPermission | 'unsupported'
@@ -1041,9 +1042,9 @@ export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiErr
   onUiScaleChange: (value: number) => void
   onAutoAttackRollChange: (value: boolean) => void
   onScenicBackdropChange: (value: boolean) => void
+  onBoardLightingChange: (value: boolean) => void
   onCombatAnimationsChange: (value: boolean) => void
   onAmbientVolumeChange: (value: number) => void
-  onEffectsVolumeChange: (value: number) => void
   onAtmosphereMutedChange: (value: boolean) => void
   onRequestNotifications: () => void
   onVoiceModeChange: (value: NarrationVoiceMode) => void
@@ -1131,6 +1132,10 @@ export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiErr
           </label>
           <ToggleRow icon={<Sparkles size={17} />} title="Подсказки «что можно сделать»" description="Короткий список доступного в текущей сцене над лентой истории; в бою подсказок нет" value={actionHintsEnabled} onChange={() => onActionHintsEnabledChange(!actionHintsEnabled)} />
           <ToggleRow icon={<Globe2 size={17} />} title="Атмосферный фон локации" description="Включено — иллюстрация и окружение соответствуют месту; выключено — спокойный однотонный фон" value={scenicBackdrop} onChange={() => onScenicBackdropChange(!scenicBackdrop)} />
+          {/* Свет доски — только картинка. Формулировка обещает ровно это: туман
+              войны и правила видимости считает сервер, и тумблер их не трогает.
+              Иначе игрок решил бы, что выключил себе темноту в подземелье. */}
+          <ToggleRow icon={<Flame size={17} />} title="Освещение и тени доски" description="Включено — запечённые свет, тени и ореолы от факелов и костров; выключено — ровный свет по всей карте. Туман войны и правила видимости не меняются" value={boardLighting} onChange={() => onBoardLightingChange(!boardLighting)} />
           {/* Озвучка спрашивается только там, где её есть чем исполнить: без
               русского голоса в системе выбор был бы обещанием без механики. */}
           {voiceSupported && (
@@ -1144,9 +1149,8 @@ export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiErr
             </label>
           )}
           <div className="atmosphere-settings" role="group" aria-label="Звук и музыка">
-            <div className="atmosphere-settings-title"><Volume2 size={17} /><span><b>Звук и музыка</b><small>Процедурный фон и сигналы подтверждённых событий</small></span></div>
-            <AtmosphereRange label="Фоновая атмосфера" description="Музыка, ветер и гул текущего места" value={atmosphereSettings.ambientVolume} onChange={onAmbientVolumeChange} />
-            <AtmosphereRange label="Эффекты событий" description="Кости, удары, двери и важные исходы" value={atmosphereSettings.effectsVolume} onChange={onEffectsVolumeChange} />
+            <div className="atmosphere-settings-title"><Volume2 size={17} /><span><b>Звук и музыка</b><small>Записанная атмосфера места и музыка мастеров</small></span></div>
+            <AtmosphereRange label="Фоновая атмосфера" description="Записанный звук текущего места и музыка мастеров" value={atmosphereSettings.ambientVolume} onChange={onAmbientVolumeChange} />
             <ToggleRow icon={atmosphereSettings.muted ? <VolumeX size={17} /> : <Volume2 size={17} />} title="Выключить весь звук" description="Настройки громкости сохранятся на этом устройстве" value={atmosphereSettings.muted} onChange={() => onAtmosphereMutedChange(!atmosphereSettings.muted)} />
             <button
               className={`notification-permission ${notificationPermission}`}

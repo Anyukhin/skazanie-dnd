@@ -306,6 +306,14 @@ function tacticalNarrationLines(events, state) {
       meaningful.push(`Аура жизни защищает максимум ОЗ ${target} от уменьшения.`)
     } else if (event.event_type === 'HitPointMaximumReduced') {
       meaningful.push(targetIsEnemy ? `Жизненные силы ${target} ослаблены.` : `Максимум ОЗ ${target} снижается: ${Number(payload.maximum_hp_before) || 0} → ${Number(payload.maximum_hp_after) || 0}.`)
+    } else if (event.event_type === 'HitPointMaximumIncreased') {
+      // Зеркало снижения — и та же граница видимости: свой предел отряд знает
+      // числом, чужой виден только качественно. Событие приносит и текущие ОЗ,
+      // но про них рассказывать нечего: «Подмога» поднимает их ровно на ту же
+      // прибавку, и второе число повторило бы первое.
+      meaningful.push(targetIsEnemy
+        ? `${target} держится крепче прежнего.`
+        : `Максимум ОЗ ${target} поднимается: ${Number(payload.maximum_hp_before) || 0} → ${Number(payload.maximum_hp_after) || 0}.`)
     } else if (event.event_type === 'HeroDied') {
       meaningful.push(partyFailed
         ? `${target} погибает. Последний герой отряда пал, и история завершилась поражением.`
@@ -471,7 +479,7 @@ export const COMBAT_NARRATION_EVENT_TYPES = Object.freeze(new Set([
   'ConditionAdded', 'ConditionImmunityResolved', 'CreatureKnockedOut', 'DamageApplied', 'DeathSaveFailureRecorded',
   'DeathSavingThrowRolled', 'EncounterCreated', 'EncounterEnded', 'EquipmentChanged',
   'HealingApplied', 'HeroDied', 'HeroReplaced', 'HeroResurrected',
-  'HeroStabilized', 'HitPointMaximumReduced', 'HitPointMaximumReductionPrevented', 'HitPointsReducedToZero',
+  'HeroStabilized', 'HitPointMaximumIncreased', 'HitPointMaximumReduced', 'HitPointMaximumReductionPrevented', 'HitPointsReducedToZero',
   'ItemEffectIneffective', 'LegendaryActionUsed', 'LegendaryActionsReset', 'LegendaryResistanceUsed',
   'MonsterAbilityRecharged', 'NpcBlessingGranted',
   'NpcEquipmentSpent', 'NpcItemUsed',

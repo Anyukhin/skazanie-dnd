@@ -9,6 +9,7 @@ import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { FileEventStore } from '../server/event-store.mjs'
 import { GameOrchestrator } from '../server/game-orchestrator.mjs'
 import { IntentParser } from '../server/intent-parser.mjs'
+import { createItemInstance } from '../server/item-instances.mjs'
 import { buildNarrationBrief, verifyNarration } from '../server/security.mjs'
 import { RollRegistry } from '../server/roll-registry.mjs'
 import { RulesEngine, applyGameEvent, normalizeCampaignState } from '../server/rules-engine.mjs'
@@ -336,6 +337,55 @@ test('обыск тела без серверного содержимого н�
   assert.equal(result.mechanics.some((event) => event.event_type === 'DieRolled'), false)
   assert.equal(after.state_version, before.state_version)
   assert.deepEqual(after.state, before.state)
+})
+
+// Тот же вопрос, но у тела есть настоящий контейнер (волна 3). Ответ обязан
+// сойтись с панелью: содержимое названо, потому что герой стоит вплотную, — и
+// при этом ни одна вещь не переехала в сумку. Осмотр бесплатен, и хода он не
+// стоит: событий фиксация не оставляет вовсе.
+test('обыск тела вплотную называет добычу контейнера, но ничего не берёт и хода не тратит', async () => {
+  const dagger = createItemInstance({
+    instanceId: 'inst-dagger',
+    catalogId: 'srd_5_2_1:dagger',
+    owner: { kind: 'container', actor_id: 'loot:corpse:free-action' },
+    origin: { kind: 'enemy_loadout' },
+    quantity: 1,
+    lootable: true,
+  })
+  const initialState = campaign({
+    scene: { title: 'Зал', location: 'Старый трактир', location_id: 'tavern', objective: 'Осмотреть зал', cells: [] },
+    players: [{ ...hero('hero', 'Ада'), x: 1, y: 0 }, { ...hero('other', 'Бор'), x: 5, y: 0 }],
+    enemies: [{ id: 'goblin', name: 'Гоблин', hp: 0, maxHp: 7, armor: 12, alive: false, x: 1, y: 1 }],
+    mechanics: { positions: { hero: { x: 1, y: 0 }, other: { x: 5, y: 0 } } },
+    loot_containers: {
+      containers: [{
+        id: 'loot:corpse:free-action',
+        kind: 'corpse',
+        source_enemy_id: 'goblin',
+        name: 'Тело: Гоблин',
+        location_id: 'tavern',
+        x: 1,
+        y: 1,
+        status: 'available',
+        items: [dagger],
+      }],
+    },
+  })
+  const { orchestrator, eventStore } = await setup(initialState)
+  const before = await eventStore.load('FREE-ACTION')
+  const result = await orchestrator.handle(actionInput('Осматриваю и обыскиваю тело гоблина', 'free-search-container', initialState))
+  const after = await eventStore.load('FREE-ACTION')
+
+  assert.equal(result.free_action_outcome, 'clarification')
+  assert.ok(result.narration.includes('Кинжал'), result.narration)
+  assert.match(result.narration, /панель добычи/u)
+  assert.deepEqual(result.mechanics, [])
+  assert.equal(result.turn_consumed, false)
+  assert.equal(after.state_version, before.state_version)
+  assert.deepEqual(after.state, before.state)
+  // Молчаливого «взял» не случилось: вещь по-прежнему в контейнере.
+  assert.deepEqual(after.state.players.find((player) => player.id === 'hero').inventory, [])
+  assert.equal(after.state.loot_containers.containers[0].items.length, 1)
 })
 
 test('таблица сложности выбирает только серверные значения 10, 15 и 20', async () => {

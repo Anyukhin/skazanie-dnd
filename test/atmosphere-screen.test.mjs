@@ -104,12 +104,12 @@ test('новых процедурных тем не заведено, пригл
   const moods = audioSource.match(/export const ATMOSPHERE_MOODS = \[([\s\S]*?)\] as const/u)
   assert.ok(moods)
   assert.deepEqual([...moods[1].matchAll(/'([^']+)'/gu)].map((entry) => entry[1]), [
-    'building', 'temple', 'crypt', 'cave', 'forest', 'road', 'settlement', 'combat', 'finale',
+    'building', 'temple', 'crypt', 'cave', 'forest', 'road', 'settlement',
   ])
 
   // Приглушение — множитель поверх пользовательской громкости, а не её замена.
   assert.match(audioSource, /settings\.ambientVolume \* \(waiting \? 0\.62 : 1\) \* screenAttenuation/u)
   assert.match(audioSource, /setScreenAttenuation\(scale: number\): void/u)
-  // Эффекты не трогаются: кубик и удар обязаны звучать одинаково везде.
-  assert.match(audioSource, /const effects = settings\.muted \? 0 : settings\.effectsVolume/u)
+  // Синтезированных эффектов больше нет: приглушать нечего, кроме записанного фона.
+  assert.doesNotMatch(audioSource, /settings\.effectsVolume/u)
 })

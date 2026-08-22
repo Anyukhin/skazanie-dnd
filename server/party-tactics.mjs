@@ -24,6 +24,12 @@ import {
  * Сознательно **не** делается: выбор заклинаний и классовых умений. Он требует
  * знания ресурсов, времени накладывания и статуса карточки (`verified` против
  * `heuristic`), то есть отдельной политики; см. `docs/loop-immersion.md`.
+ *
+ * С 2026-08-18 здесь же живёт вторая политика — выбор реакции
+ * (`planHeroReaction`). Она отвечает на **уже открытое** сервером окно и
+ * ничего к нему не добавляет: список `action_options` собрал движок теми же
+ * проверками, какими он показывает кнопки игроку, поэтому автономный герой
+ * физически не может поднять «Щит» без ячейки или ударить вдогонку без оружия.
  */
 
 /** Доля максимума ОЗ, ниже которой союзник считается тяжело раненным. */
@@ -199,4 +205,81 @@ export function planHeroTurn(state, actorIdValue) {
     return { rule: commands.length > 1 ? 'close-and-attack' : 'attack-focus', commands: [...standing.commands, ...commands, end] }
   }
   return { rule: 'advance', commands: [...standing.commands, ...commands, end] }
+}
+
+/**
+ * Доля максимума ОЗ, начиная с которой удар считается крупным и стоит
+ * «Невероятного уклонения». Четверть максимума — не выдуманное число, а тот же
+ * порядок величины, каким уже пользуются соседи: зелье противник пьёт на 30%
+ * (`NPC_HEALING_POTION_HP_PERCENT`), тяжело раненного союзника автономный герой
+ * ищет на 35% (`HEAL_THRESHOLD_RATIO`). Сравнение целыми — чтобы ровно четверть
+ * не зависела от двоичного представления `0.25`.
+ */
+export const UNCANNY_DODGE_DAMAGE_PERCENT = 25
+
+/**
+ * Порядок предпочтений автономного героя в открытом окне реакции. Список
+ * закрыт: всё, чего в нём нет (парирование, ответный удар, «Поглощение стихий»,
+ * «Адская кара», «Несгибаемый», заготовленное действие, контрзаклинание), окно
+ * закрывает отказом. Это осознанная граница — у каждой из этих реакций своя
+ * цена и свой повод, и выбирать их вслепую значило бы тратить ресурс героя за
+ * игрока, а не играть за него.
+ */
+export const AUTONOMOUS_REACTION_PRIORITY = Object.freeze(['opportunity-attack', 'cast:shield', 'uncanny-dodge'])
+
+/** Сколько ОЗ снял удар, открывший окно: обычный урон плюс съеденный временный. */
+function reactionDamageTaken(reactionWindow) {
+  const damage = reactionWindow?.damage
+  if (!damage || typeof damage !== 'object') return 0
+  return Math.max(0, Number(damage.applied_amount) || 0) + Math.max(0, Number(damage.temporary_hp_absorbed) || 0)
+}
+
+/**
+ * Ответ автономного героя на **уже открытое** сервером окно реакции.
+ *
+ * До 2026-08-18 автономный цикл закрывал любое окно командой
+ * `decline-reaction`: иначе он вставал, дожидаясь ответа, которого в
+ * автономной игре некому дать. Плата была прямая — партия под управлением
+ * сервера никогда не била вдогонку и не поднимала «Щит», то есть играла слабее
+ * тех же героев в руках людей.
+ *
+ * Политика ниже детерминирована и модели не спрашивает. Своих проверок у неё
+ * нет вовсе, и это главное: окно уже содержит `action_options`, собранные
+ * движком теми же условиями, какими он рисует кнопки игроку. «Щит» попадает в
+ * список, только если попадание перестаёт быть попаданием с +5 к КД и у героя
+ * есть ячейка 1-го круга и выше (`reactionOptionsAfterAttack`); «Атака по
+ * возможности» — только если реакция свободна и есть чем бить
+ * (`opportunityAttackProfile`). Поэтому скрытого преимущества здесь нет по
+ * построению: политика выбирает из того же меню и теми же командами, какие
+ * отправляет клиент.
+ *
+ * Единственное собственное решение — порог «Невероятного уклонения»: тратить
+ * реакцию на царапину невыгодно, поэтому оно поднимается только на удар от
+ * четверти максимума ОЗ. Первым уклонение окажется само собой: реакция на ход
+ * одна, и второе окно движок уже не откроет.
+ *
+ * @param {Record<string, any>} state состояние кампании
+ * @param {Record<string, any> | null} [reactionWindow] окно; по умолчанию — текущее
+ * @returns {{rule: string, commands: Array<Record<string, any>>}}
+ */
+export function planHeroReaction(state, reactionWindow = null) {
+  const window = reactionWindow ?? state?.mechanics?.combat?.reaction_window ?? null
+  const actorIdValue = String(window?.actor_id ?? '')
+  const command = (actionId) => ({
+    command_type: 'UseCombatAction',
+    actor_id: actorIdValue,
+    action_id: actionId,
+    ...(actionId === 'decline-reaction' ? {} : { target_id: String(window?.source_actor_id ?? '') }),
+    server_authoritative: true,
+  })
+  const decline = { rule: 'decline-reaction', commands: [command('decline-reaction')] }
+  if (!window || !actorIdValue) return decline
+  const offered = new Set((Array.isArray(window.action_ids) ? window.action_ids : []).map(String))
+  const chosen = AUTONOMOUS_REACTION_PRIORITY.find((actionId) => {
+    if (!offered.has(actionId)) return false
+    if (actionId !== 'uncanny-dodge') return true
+    const actor = findActor(state, actorIdValue)
+    return reactionDamageTaken(window) * 100 >= maxHpOf(actor) * UNCANNY_DODGE_DAMAGE_PERCENT
+  })
+  return chosen ? { rule: chosen, commands: [command(chosen)] } : decline
 }

@@ -922,12 +922,15 @@ test('состояния кнопки обыска решает сервер: ц
   assert.equal(JSON.stringify(peaceRoom.loot_containers).includes('srd_5_2_1:bandit'), false)
 })
 
+/** Свободная фраза от лица героя: тот же путь, что у панели, без команды. */
+function searchAloud(state, actorId, text) {
+  return resolveCorpseSearch(state, actorId, text, bindFreeActionReadingToState(state, actorId, text, interpretFreeAction(text)))
+}
+
 test('свободное действие «обыскиваю тело» ведёт к контейнеру, а не к прежнему отказу', () => {
   const killed = kill(campaign({ combat: false }), 'foe-1')
   const container = containerOf(killed.state)
-  const text = 'Обыскиваю тело разбойника'
-  const reading = bindFreeActionReadingToState(killed.state, 'hero', text, interpretFreeAction(text))
-  const answer = resolveCorpseSearch(killed.state, text, reading)
+  const answer = searchAloud(killed.state, 'hero', 'Обыскиваю тело разбойника')
   assert.equal(answer.server_owned_contents, true)
   assert.equal(answer.loot_container_id, container.id)
   assert.match(answer.narration, /панель добычи/u)
@@ -939,9 +942,117 @@ test('свободное действие «обыскиваю тело» вед
     container_id: container.id,
     lines: container.items.map((item) => ({ item_instance_id: item.item_instance_id, quantity: item.quantity })),
   })
-  const afterAnswer = resolveCorpseSearch(looted.state, text, bindFreeActionReadingToState(looted.state, 'hero', text, interpretFreeAction(text)))
+  const afterAnswer = searchAloud(looted.state, 'hero', 'Обыскиваю тело разбойника')
   assert.equal(afterAnswer.server_owned_contents, false)
   assert.match(afterAnswer.narration, /уже всё сняли/u)
+})
+
+// Стоящий вплотную слышит опись — ту же самую и тем же bounded-видом, что
+// отдаёт карточка панели. Своей находки фраза при этом не создаёт: команды в
+// ответе нет вовсе, потому что осмотр бесплатен, а набор выдаёт обыск.
+test('вплотную фраза называет содержимое ровно так же, как панель', () => {
+  const killed = kill(campaign({ combat: false }), 'foe-1')
+  const container = containerOf(killed.state)
+  const answer = searchAloud(killed.state, 'hero', 'Обыскиваю тело разбойника')
+
+  assert.equal(answer.status, 'clarification')
+  assert.equal(answer.command, undefined, 'осмотр не берёт вещь и не тратит ход')
+  assert.equal(answer.distance_feet, LOOT_CONTAINER_REACH_FEET, 'герой стоит в клетке по диагонали от тела')
+  assert.deepEqual(
+    answer.loot_items,
+    container.items.map((item) => lootItemForViewer(item)),
+    'вид содержимого — тот же, что у карточки панели',
+  )
+  for (const item of answer.loot_items) assert.ok(answer.narration.includes(item.name), `в ответе нет ${item.name}`)
+
+  // Вне боя обыск не стоит ничего — и цену фраза называет тем же признаком, что
+  // и карточка: посреди боя за набор платят действием, а смотреть бесплатно.
+  assert.equal(answer.loot_action_cost, null)
+  const inFight = searchAloud(kill(campaign({ combat: true }), 'foe-1').state, 'hero', 'Обыскиваю тело разбойника')
+  assert.equal(inFight.loot_action_cost, 'action')
+  assert.match(inFight.narration, /В бою обыск стоит действия/u)
+
+  // Закрытый учёт наружу не едет ни строкой, ни ключом.
+  const serialized = JSON.stringify(answer)
+  assert.equal(serialized.includes('srd_5_2_1:bandit'), false, 'стат-блок павшего в ответе недопустим')
+  assert.equal(serialized.includes('"owner"'), false)
+  assert.equal(serialized.includes('"origin"'), false)
+})
+
+test('издали фраза зовёт подойти и содержимого не называет', () => {
+  const killed = kill(campaign({ combat: false }), 'foe-1')
+  const container = containerOf(killed.state)
+  // Борх стоит в другом конце склада — до тела ему идти, а не тянуться.
+  const answer = searchAloud(killed.state, 'mate', 'Обыскиваю тело разбойника')
+
+  assert.equal(answer.loot_container_id, container.id)
+  assert.equal(answer.server_owned_contents, true, 'содержимое есть, и отрицать его нельзя')
+  assert.ok(answer.distance_feet > LOOT_CONTAINER_REACH_FEET)
+  assert.match(answer.narration, /подойдите вплотную/u)
+  assert.equal(answer.loot_items, undefined, 'содержимое отдаётся только по защищённому чтению')
+  for (const item of container.items) {
+    assert.equal(answer.narration.includes(item.snapshot.name), false, `издали названо ${item.snapshot.name}`)
+  }
+})
+
+test('живой противник телом не становится: обыскивать нечего, и выдумывать нечего', () => {
+  const answer = searchAloud(campaign({ combat: false }), 'hero', 'Обыскиваю тело разбойника')
+  assert.equal(answer.status, 'clarification')
+  assert.equal(answer.loot_container_id, undefined)
+  assert.equal(answer.server_owned_contents, false)
+  assert.match(answer.narration, /Укажите конкретное тело/u)
+})
+
+test('два тела: под ногами — то, о котором речь; поровну — уточнение', () => {
+  // Имена различаются словом, а не цифрой: цифру отбрасывают обе стороны сверки
+  // имён (`normalizedWords`), и «разбойник 2» назвал бы обоих сразу.
+  const pair = campaign({
+    combat: false,
+    enemies: [bandit('foe-1', { x: 2, y: 1 }), { ...bandit('foe-2', { x: 8, y: 4 }), name: 'Головорез' }],
+  })
+  const first = kill(pair, 'foe-1')
+  const both = kill(first.state, 'foe-2')
+  const near = lootContainerList(both.state).find((container) => container.source_enemy_id === 'foe-1')
+  const far = lootContainerList(both.state).find((container) => container.source_enemy_id === 'foe-2')
+  assert.ok(near && far, 'оба тела обязаны лежать в реестре')
+
+  // Фраза не назвала никого: выбирает расстояние, и выбор однозначен.
+  const answer = searchAloud(both.state, 'hero', 'Обыскиваю тело')
+  assert.equal(answer.loot_container_id, near.id)
+  assert.ok(answer.narration.includes('Разбойник 1'))
+
+  // Названного по имени расстояние не перебивает: спросили про дальнего —
+  // ответ про дальнего, и он честно зовёт подойти.
+  const named = searchAloud(both.state, 'hero', 'Обыскиваю тело головореза')
+  assert.equal(named.loot_container_id, far.id)
+  assert.match(named.narration, /подойдите вплотную/u)
+
+  // Оба тела под ногами — выбирает игрок, а не алфавит.
+  const crowded = campaign({ combat: false, enemies: [bandit('foe-1', { x: 2, y: 1 }), bandit('foe-2', { x: 2, y: 3 })] })
+  const tie = kill(kill(crowded, 'foe-1').state, 'foe-2')
+  const ambiguous = searchAloud(tie.state, 'hero', 'Обыскиваю тело')
+  assert.equal(ambiguous.loot_container_id, undefined)
+  assert.match(ambiguous.narration, /Уточните/u)
+  assert.ok(ambiguous.narration.includes('Разбойник 1') && ambiguous.narration.includes('Разбойник 2'))
+})
+
+test('этажом выше фраза не дотягивается до тела внизу и не пересказывает его', () => {
+  const killed = kill(campaign({ combat: false }), 'foe-1')
+  const container = containerOf(killed.state)
+  const upstairs = normalizeCampaignState({
+    ...killed.state,
+    scene: { ...killed.state.scene, level: { index: 2, label: 'Второй ярус' } },
+  })
+  assert.deepEqual(lootContainersInScene(upstairs), [], 'проба имеет смысл только на пустом ярусе')
+
+  const answer = searchAloud(upstairs, 'hero', 'Обыскиваю тело разбойника')
+  assert.equal(answer.loot_container_id, container.id, 'о существовании тела молчать незачем — отряд сам его оставил')
+  assert.equal(answer.server_owned_contents, true)
+  assert.match(answer.narration, /на другом ярусе/u)
+  assert.equal(answer.loot_items, undefined)
+  for (const item of container.items) {
+    assert.equal(answer.narration.includes(item.snapshot.name), false, `этажом выше названо ${item.snapshot.name}`)
+  }
 })
 
 test('подсказка зовёт обыскать тело и честна про досягаемость', () => {

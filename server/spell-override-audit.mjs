@@ -39,6 +39,12 @@ const CREATURE_TYPES = new Set(['humanoid', 'undead', 'construct', 'beast', 'fie
 const ENFORCED_CONDITIONS = new Set([
   'blinded', 'charmed', 'deafened', 'frightened', 'grappled', 'incapacitated', 'invisible',
   'paralyzed', 'petrified', 'poisoned', 'prone', 'restrained', 'speed-zero', 'stunned', 'unconscious',
+  // Не состояния SRD, но следствия у них движок считает наравне с ними, и
+  // назвать их «маркером без последствий» было бы неправдой. «Тьма» двигает
+  // режим броска атаки через `CONDITION_EFFECTS`; «Свет» снимает ночную помеху
+  // Восприятию (`litByLightCantrip`) — единственную темноту, которая в движке
+  // вообще выражена числом.
+  'magical-darkness', 'light',
 ])
 
 const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value)

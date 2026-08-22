@@ -338,6 +338,16 @@ export type BoardScene = {
   artKey?: string
   /** Растровые штампы предметов. Их отсутствие — штатный путь Р6: рисуется вектор. */
   propAtlas?: PropAtlas | null
+  /**
+   * Рисовать ли запечённый свет (`src/board-lighting.ts`): тьму по сетке
+   * освещённости, мягкие тени вдоль стен и тёплые ореолы источников.
+   *
+   * Настройка зрителя, а не мира: `false` гасит только декоративный слой.
+   * Туман войны (`drawFog`) и всё, что решает механика — видимость, укрытия,
+   * дальности, — от неё не зависят ни на клиенте, ни на сервере. Умолчание —
+   * «рисовать»: свет включён, пока его не выключили.
+   */
+  lighting?: boolean
 }
 
 /**
@@ -489,7 +499,10 @@ export function tileKey(scene: BoardScene, tile: BoardTile) {
   const textures = texturesAvailableIn(scene) ? 't' : 'f'
   const stamps = scene.propAtlas?.key ?? ''
   const tiles = scene.terrain?.key ?? ''
-  return `${scene.map.terrainHash}:${scene.map.levelIndex}:${scene.cellSize}:${textures}:${art}:${stamps}:${tiles}:${tile.tileX}:${tile.tileY}:${tileRevealSignature(scene.map, tile)}`
+  // Свет запечён в тайл, поэтому его выключение обязано обесценить кэш: без
+  // этой буквы тумблер настроек не менял бы уже нарисованные тайлы вовсе.
+  const light = scene.lighting === false ? 'n' : 'l'
+  return `${scene.map.terrainHash}:${scene.map.levelIndex}:${scene.cellSize}:${textures}:${art}:${stamps}:${tiles}:${light}:${tile.tileX}:${tile.tileY}:${tileRevealSignature(scene.map, tile)}`
 }
 
 /**
@@ -3595,7 +3608,9 @@ export function drawTerrainTile(context: BoardContext2D, scene: BoardScene, tile
   drawDecals(context, scene, tile)
   drawEdgeSegments(context, scene, tile)
   drawProps(context, scene, tile)
-  drawLightShading(context, scene, tile)
+  // Слой света — единственное, что снимает настройка зрителя. Туман войны
+  // ниже по списку и рисуется всегда: он не украшение, а правило видимости.
+  if (scene.lighting !== false) drawLightShading(context, scene, tile)
   drawZoneLighting(context, scene, tile)
   drawCellFeatures(context, scene, tile)
   drawGrid(context, scene, tile)
@@ -3781,7 +3796,16 @@ export function drawBoardEffects(
  * от чего уходит этап M1, — поэтому рисуются на холсте. Точечные состояния
  * (маршрут, цель, область команды) остаются DOM-узлами вместе с доступностью.
  */
-export type BoardOverlayKind = 'command-range' | 'command-out-of-range' | 'move-unavailable'
+/*
+ * Ковровый слой «сюда не дойти» отсюда убран намеренно. Он рисовал красноватый
+ * × на каждой недостижимой клетке карты разом — то есть почти на всей карте, —
+ * и владелец справедливо назвал это «крестики загораживают обзор». Это тот же
+ * разбор, что и у решения UI-001 (`docs/manual-review-findings.md`): постоянная
+ * подсветка снята, объяснение приходит по наведению. Отказ рисуется теперь
+ * одной клеткой под курсором в разметке доски (`.board-cell.move-unavailable`
+ * в `src/TacticalBoard.tsx`) — там же, где уже посчитаны маршрут и причина.
+ */
+export type BoardOverlayKind = 'command-range' | 'command-out-of-range'
 export type BoardOverlayCell = { x: number; y: number; kind: BoardOverlayKind }
 
 export function drawBoardOverlay(context: BoardContext2D, scene: BoardScene, cells: readonly BoardOverlayCell[]) {
@@ -3795,23 +3819,9 @@ export function drawBoardOverlay(context: BoardContext2D, scene: BoardScene, cel
       context.fillRect(left, top, size, size)
       continue
     }
-    if (item.kind === 'command-range') {
-      context.strokeStyle = 'rgba(225,166,84,.34)'
-      context.lineWidth = Math.max(1, size / 26)
-      context.strokeRect(left + size / 24, top + size / 24, size - size / 12, size - size / 12)
-      continue
-    }
-    context.fillStyle = 'rgba(20,10,8,.36)'
-    context.fillRect(left, top, size, size)
-    // Крест недоступной клетки повторяет метку «×» прежней разметки.
-    context.strokeStyle = 'rgba(125,65,59,.72)'
-    context.lineWidth = Math.max(1, size / 16)
-    context.beginPath()
-    context.moveTo(left + size * 0.34, top + size * 0.34)
-    context.lineTo(left + size * 0.66, top + size * 0.66)
-    context.moveTo(left + size * 0.66, top + size * 0.34)
-    context.lineTo(left + size * 0.34, top + size * 0.66)
-    context.stroke()
+    context.strokeStyle = 'rgba(225,166,84,.34)'
+    context.lineWidth = Math.max(1, size / 26)
+    context.strokeRect(left + size / 24, top + size / 24, size - size / 12, size - size / 12)
   }
   context.restore()
 }

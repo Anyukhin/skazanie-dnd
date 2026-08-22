@@ -87,10 +87,10 @@ test('лента поступков и слухов живёт в админке
   assert.match(views, /admin-card admin-deeds/u)
   assert.match(views, /Поступки и слухи/u)
   // Секрет и молва — разные состояния карточки, и оба обязаны быть видны.
-  assert.match(views, /БЕЗ СВИДЕТЕЛЕЙ/u)
-  assert.match(views, /СВИДЕТЕЛЕЙ: \$\{deed\.witness_count \?\? 0\}/u)
-  assert.match(views, /ВИДЕЛ САМ/u)
-  assert.match(views, /ПЕРЕСКАЗ/u)
+  assert.match(views, /Без свидетелей/u)
+  assert.match(views, /Свидетелей: \$\{deed\.witness_count \?\? 0\}/u)
+  assert.match(views, /Видел сам/u)
+  assert.match(views, /'Видел сам' : 'Пересказ'/u)
   // Подписи и порядок — серверные: своей таблицы и своей сортировки у карточки
   // быть не должно, иначе источников истины снова становится два.
   assert.doesNotMatch(views, /DEED_LABELS/u)

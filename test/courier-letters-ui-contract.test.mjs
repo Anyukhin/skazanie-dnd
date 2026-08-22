@@ -279,7 +279,7 @@ test('модель зовут после отказов движка и не з�
 test('письмо в летописи — конверт, а не приглушённая служебная строка', () => {
   assert.match(views, /message\.letter \? \(/u)
   assert.match(views, /<LetterChronicleEntry key=\{message\.id\}/u)
-  assert.match(views, /ПОЧТА ОТРЯДА/u)
+  assert.match(views, /Почта отряда/u)
   assert.match(views, /letter-route/u)
   // Фильтр «Рассказ» конверт показывает, «Бой» — нет. Условие общее для всех
   // системных карточек летописи (врезка хода мира, конверт, ступень

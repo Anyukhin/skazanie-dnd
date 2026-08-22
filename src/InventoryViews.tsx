@@ -4,6 +4,7 @@ import {
   Pencil, Plus, Save, Search, Shield, Sparkles, Trash2, Upload, Weight, X, ZoomIn, ZoomOut,
 } from 'lucide-react'
 import { generateItemImage } from './ai-client'
+import { ABILITY_SHORT_LABELS, HeroFaceInitials, hasHeroPortrait, heroFaceMode, heroFaceStyle } from './app-shared'
 import { DND_CLASS_OPTIONS, classFeatureCatalogFor, playerClassKey, subclassOptionsFor } from './combat-actions'
 import { fallbackCombatSpells, spellSelectionRules } from './combat-spells'
 import { classSkillRulesFor, featureChoiceGroupsFor, normalizedSelectedFeatures } from './character-progression'
@@ -11,7 +12,9 @@ import { itemImageFor } from './item-images'
 import type { FeatureChoiceGroup } from './character-progression'
 import type { InventoryItem, ItemUseOptions, Player } from './types'
 
-const abilityNames: Record<keyof Player['abilities'], string> = { str: 'СИЛ', dex: 'ЛОВ', con: 'ТЕЛ', int: 'ИНТ', wis: 'МДР', cha: 'ХАР' }
+// Сокращения характеристик общие с боевой хроникой: словарь один, и лист героя
+// с журналом боя не разъезжаются в подписях.
+const abilityNames = ABILITY_SHORT_LABELS as Record<keyof Player['abilities'], string>
 const itemTypeNames: Record<InventoryItem['type'], string> = { weapon: 'Оружие', armor: 'Доспех', consumable: 'Расходник', tool: 'Инструмент', quest: 'Задание', treasure: 'Сокровище', document: 'Документ', other: 'Прочее' }
 
 function defaultWeaponCombat(): NonNullable<InventoryItem['combat']> {
@@ -170,7 +173,8 @@ export function CharacterEditor({ player, onClose, onSave, onImport, onLevelUp }
     <div className="sheet-overlay" onMouseDown={onClose}>
       <section className="character-editor" role="dialog" aria-modal="true" aria-label={`Лист персонажа: ${draft.character}`} onMouseDown={(event) => event.stopPropagation()}>
         <header className="editor-head">
-          <div className="editor-avatar" style={{ backgroundImage: `url(${draft.portrait})`, backgroundPosition: draft.portraitPosition }}>
+          <div className="editor-avatar" data-face={heroFaceMode(draft)} style={heroFaceStyle(draft)}>
+            {!hasHeroPortrait(draft) && <HeroFaceInitials hero={draft} />}
             <button onClick={() => avatarInput.current?.click()}><ImagePlus size={17} />Сменить фото</button>
             <input ref={avatarInput} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => uploadAvatar(event.target.files?.[0])} />
           </div>
@@ -223,7 +227,7 @@ export function CharacterEditor({ player, onClose, onSave, onImport, onLevelUp }
               <Field label="Опыт · сервер" type="number" min={0} value={draft.experience} readOnly onChange={(value) => patch('experience', Number(value))} />
               <Field label="Текущие хиты · сервер" type="number" min={0} value={draft.hp} readOnly onChange={(value) => patch('hp', Number(value))} />
               <Field label="Максимум хитов · сервер" type="number" min={1} value={draft.maxHp} readOnly onChange={(value) => patch('maxHp', Number(value))} />
-              <Field label="Класс брони · сервер" type="number" min={0} value={draft.armor} readOnly onChange={(value) => patch('armor', Number(value))} />
+              <Field label="Класс доспеха · сервер" type="number" min={0} value={draft.armor} readOnly onChange={(value) => patch('armor', Number(value))} />
               <Field label="Скорость · сервер" type="number" min={0} value={draft.speed} readOnly onChange={(value) => patch('speed', Number(value))} />
               <Field label="Бонус мастерства · сервер" type="number" min={0} value={draft.proficiency} readOnly onChange={(value) => patch('proficiency', Number(value))} />
             </div>
@@ -446,7 +450,7 @@ export function InventoryView({
 
   return <section className="section-page inventory-page">
     <div className="inventory-head"><div><span>ЛИЧНЫЕ ВЕЩИ</span><h1>Инвентарь {player.character}</h1><p>Всё, что герой несёт с собой: снаряжение, находки и то, что пока не пригодилось.</p></div>
-      <div className="inventory-owner"><div className="mini-owner-avatar" style={{ backgroundImage: `url(${player.portrait})`, backgroundPosition: player.portraitPosition }} /><span><small>ВЛАДЕЛЕЦ</small><b>{player.character}</b></span></div>
+      <div className="inventory-owner"><div className="mini-owner-avatar" data-face={heroFaceMode(player)} style={heroFaceStyle(player)}>{!hasHeroPortrait(player) && <HeroFaceInitials hero={player} />}</div><span><small>ВЛАДЕЛЕЦ</small><b>{player.character}</b></span></div>
     </div>
     <div className="inventory-summary"><div><PackageOpen size={19} /><span><b>{player.inventory.length}</b><small>предметов</small></span></div><div><Weight size={19} /><span><b>{totalWeight.toFixed(1)} / {player.inventoryLoad?.capacity ?? player.abilities.str * 15}</b><small>фунтов</small></span></div><div><Coins size={19} /><span><b>{player.currency.gold}</b><small>золотых</small></span></div></div>
     <div className="inventory-toolbar"><label><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Найти предмет…" /></label>{recipients.length > 0 && <label className="inventory-recipient"><span>Получатель</span><select value={recipientId} disabled={busy} aria-label="Получатель передачи" onChange={(event) => setRecipientId(event.target.value)}>{recipients.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.character}</option>)}</select></label>}</div>

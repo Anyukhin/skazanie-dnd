@@ -13,7 +13,7 @@ const server = readFileSync(new URL('../server/index.mjs', import.meta.url), 'ut
 
 test('зверь виден на панели отряда с меткой повадки и объявленной СЛ', () => {
   assert.match(board, /className="beast-panel"/u)
-  assert.match(board, /ЗВЕРИ · \{beastCandidates\.length \+ beastCompanions\.length\}/u)
+  assert.match(board, /Звери · \{beastCandidates\.length \+ beastCompanions\.length\}/u)
   assert.match(board, /className=\{`beast-tag\$\{candidate\.diet === 'predator' \? ' predator' : ''\}`\}/u)
   assert.match(board, /Уход за животными, СЛ \{candidate\.difficulty\}/u)
   for (const label of ['Успокоить', 'Приручить', 'Покормить', 'Отогнать']) {
@@ -24,7 +24,7 @@ test('зверь виден на панели отряда с меткой по�
 })
 
 test('спутник помечен отдельно и честно объявляет, что в бой не идёт', () => {
-  assert.match(board, /className="beast-tag companion">СПУТНИК</u)
+  assert.match(board, /className="beast-tag companion">Спутник</u)
   assert.match(board, /идёт с отрядом · в бой не вводится/u)
   assert.match(board, /Восприятие лагеря идёт с преимуществом/u)
   // Повод отказа приходит с сервера полем, а откат — числом: доска не решает

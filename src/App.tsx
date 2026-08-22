@@ -14,13 +14,13 @@ import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettin
 import { fetchWithTimeout, getAiHealth } from './ai-client'
 import type { NarrationPreview } from './ai-client'
 import {
-  ABILITY_LABELS, DIFFICULTY_LABELS, PageHeader, SKILL_LABELS, UI_SCALE_MAX, UI_SCALE_MIN,
+  ABILITY_LABELS, DIFFICULTY_LABELS, ErrorToasts, HeroFaceInitials, PageHeader, SKILL_LABELS, UI_SCALE_MAX, UI_SCALE_MIN,
   REPUTATION_TIER_LABELS, UI_SCALE_PRESETS, battleEventText, canonicalLocationKey, clampUiScale,
-  combatState, locationsMatch,
+  combatState, hasHeroPortrait, heroFaceMode, heroFaceStyle, locationsMatch, useDialogEscape,
 } from './app-shared'
 import type { BoardCombatant } from './app-shared'
 import { AdminView, AgentInteractionCard, CampaignModal, ChatPanel, JournalView, SettingsView } from './AppViews'
-import { DungeonMap } from './DungeonMap'
+import { DungeonMap, heroStatusFor, heroStatusSummary, type HeroStatus } from './DungeonMap'
 import { useAuth } from './auth-client'
 import { AuthScreen } from './AuthScreen'
 import { CharacterEditor, InventoryView } from './InventoryViews'
@@ -80,6 +80,9 @@ type View = 'room' | 'world-map' | 'journal' | 'characters' | 'inventory' | 'set
 /** Слава приходит с сервера ступенями, а не числом: показываем то же словом. */
 const UI_SCALE_KEY = 'skazanie-ui-scale-v3'
 const SCENIC_BACKDROP_KEY = 'skazanie-scenic-backdrop-v1'
+// Свет и тени доски — настройка устройства, как и фон локации: за одним столом
+// у кого-то экран поярче, у кого-то потемнее, и общий выбор навязывать нечем.
+const BOARD_LIGHTING_KEY = 'skazanie-board-lighting-v1'
 const COMBAT_ANIMATIONS_KEY = 'skazanie-combat-animations-v1'
 // Озвучка — настройка устройства, а не кампании: за одним столом кто-то слушает,
 // кто-то читает, и навязывать общий выбор нельзя.
@@ -141,26 +144,41 @@ function loadScenicBackdrop() {
   return window.localStorage.getItem(SCENIC_BACKDROP_KEY) !== 'false'
 }
 
+/** Свет доски включён, пока его не выключили: умолчание — прежняя картинка. */
+function loadBoardLighting() {
+  return window.localStorage.getItem(BOARD_LIGHTING_KEY) !== 'false'
+}
+
 function Logo() {
   return <div className="logo"><div className="logo-mark"><Dices size={21} /></div><span>СКАЗАНИЕ</span></div>
 }
 
 // Ставки приходят серверными ключами: показывать игроку `athletics · medium`
 // нельзя, а переводить их на сервере значит смешивать механику с подачей.
-function PlayerCard({ player, selected, turn, accessible, typing, deathSaves, onClick }: { player: Player; selected: boolean; turn: boolean; accessible: boolean; typing: boolean; deathSaves?: { successes: number; failures: number; stable: boolean }; onClick: () => void }) {
+function PlayerCard({ player, selected, turn, accessible, typing, deathSaves, status, onClick }: { player: Player; selected: boolean; turn: boolean; accessible: boolean; typing: boolean; deathSaves?: { successes: number; failures: number; stable: boolean }; status?: HeroStatus; onClick: () => void }) {
   // Герой на 0 ОЗ выглядел точно как здоровый: движок помечал его `unconscious`
   // и вёл спасброски от смерти, а в списке отряда об этом не было ни слова.
   const downed = player.hp <= 0
-  const downedLabel = deathSaves?.stable ? 'СТАБИЛИЗИРОВАН' : 'БЕЗ СОЗНАНИЯ'
+  const downedLabel = deathSaves?.stable ? 'Стабилизирован' : 'Без сознания'
   return (
     <button className={`player-card ${selected ? 'active' : ''} ${accessible ? '' : 'locked'} ${downed ? 'downed' : ''}`} onClick={onClick} disabled={!accessible} title={accessible ? `${player.character}: ${player.online ? 'в сети' : 'не в сети'}${typing ? ', формулирует намерение' : ''}` : `${player.character}: этот герой закреплён за другим игроком`}>
-      <div className="avatar portrait-avatar" style={{ '--avatar': player.color, backgroundImage: `url(${player.portrait})`, backgroundPosition: player.portraitPosition } as React.CSSProperties}>
+      <div className="avatar portrait-avatar" data-face={heroFaceMode(player)} style={heroFaceStyle(player, { '--avatar': player.color } as React.CSSProperties)}>
+        {!hasHeroPortrait(player) && <HeroFaceInitials hero={player} />}
         <span className={`presence ${player.online ? 'online' : ''}`} aria-label={player.online ? 'В сети' : 'Не в сети'} />
       </div>
       <div className="player-meta">
         <div className="player-name-row"><strong>{player.character}</strong>{turn && <Crown size={12} />}{!accessible && <LockKeyhole size={11} />}</div>
-        <span>{player.role} · {typing ? 'печатает…' : player.online ? 'в сети' : 'не в сети'}</span>
-        <div className="hp-line"><i style={{ width: `${Math.max(0, player.hp) / Math.max(1, player.maxHp) * 100}%` }} /><small>{player.hp}/{player.maxHp} ОЗ</small></div>
+        <span>{player.role}{typing ? ' · печатает…' : ''}</span>
+        {/* Временные хиты — голубой хвост поверх полосы и «+N» в числе: они
+            уходят первыми и не лечатся, поэтому цвет свой, а не продолжение
+            красного. Точки под полосой — состояния и концентрация словами в
+            подсказке: у соратника их достаточно заметить, решения по словам
+            принимает только владелец героя в своей полоске жизни. */}
+        <div className="hp-line"><i style={{ width: `${Math.max(0, player.hp) / Math.max(1, player.maxHp) * 100}%` }} />{status && status.temporaryHp > 0 && <i className="temp" style={{ left: `${Math.min(100, Math.max(0, player.hp) / Math.max(1, player.maxHp) * 100)}%`, width: `${Math.min(100, status.temporaryHp / Math.max(1, player.maxHp) * 100)}%` }} />}<small>{player.hp}/{player.maxHp}{status && status.temporaryHp > 0 && <em>+{status.temporaryHp}</em>} ОЗ</small></div>
+        {status && (status.concentration || status.conditions.length > 0) && <div className="player-status-dots" title={heroStatusSummary(status)} aria-label={heroStatusSummary(status)}>
+          {status.concentration && <i className="concentration" />}
+          {status.conditions.map((condition) => <i key={condition.id} className={condition.status === 'marker' ? 'marker' : 'condition'} />)}
+        </div>}
         {downed && <div className="downed-line" title={deathSaves ? `Спасброски от смерти: ${deathSaves.successes} успеха, ${deathSaves.failures} провала` : undefined}>
           <HeartCrack size={11} /><span>{downedLabel}</span>
           {deathSaves && !deathSaves.stable && <em>{deathSaves.successes}✓ · {deathSaves.failures}✕</em>}
@@ -174,8 +192,8 @@ function PlayerCard({ player, selected, turn, accessible, typing, deathSaves, on
   )
 }
 
-function Sidebar({ players, selectedPlayerId, turnPlayerId, accessibleHeroIds, typingActorIds, isAdmin, deathSavesByHero, onSelect, collapsed, onToggle, view, onNavigate, aiConnected }: {
-  players: Player[]; selectedPlayerId: string; turnPlayerId: string; accessibleHeroIds: string[]; typingActorIds: string[]; isAdmin: boolean; deathSavesByHero?: Record<string, { successes: number; failures: number; stable: boolean }>; onSelect: (id: string) => void; collapsed: boolean; onToggle: () => void; view: View; onNavigate: (view: View) => void; aiConnected: boolean
+function Sidebar({ players, selectedPlayerId, turnPlayerId, accessibleHeroIds, typingActorIds, isAdmin, deathSavesByHero, statusByHero, onSelect, collapsed, onToggle, view, onNavigate, aiConnected }: {
+  players: Player[]; selectedPlayerId: string; turnPlayerId: string; accessibleHeroIds: string[]; typingActorIds: string[]; isAdmin: boolean; deathSavesByHero?: Record<string, { successes: number; failures: number; stable: boolean }>; statusByHero?: Record<string, HeroStatus>; onSelect: (id: string) => void; collapsed: boolean; onToggle: () => void; view: View; onNavigate: (view: View) => void; aiConnected: boolean
 }) {
   return (
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
@@ -207,7 +225,7 @@ function Sidebar({ players, selectedPlayerId, turnPlayerId, accessibleHeroIds, t
       <div className="sidebar-section">
         <div className="section-label"><span>ОТРЯД · {players.filter(p => p.online).length} В СЕТИ{players.some((p) => p.hp <= 0) ? ` · ${players.filter((p) => p.hp <= 0).length} ПАЛИ` : ''}</span></div>
         <div className="players-list">
-          {players.map((player) => <PlayerCard key={player.id} player={player} selected={player.id === selectedPlayerId} turn={player.id === turnPlayerId} accessible={accessibleHeroIds.includes(player.id)} typing={typingActorIds.includes(player.id)} deathSaves={deathSavesByHero?.[player.id]} onClick={() => onSelect(player.id)} />)}
+          {players.map((player) => <PlayerCard key={player.id} player={player} selected={player.id === selectedPlayerId} turn={player.id === turnPlayerId} accessible={accessibleHeroIds.includes(player.id)} typing={typingActorIds.includes(player.id)} deathSaves={deathSavesByHero?.[player.id]} status={statusByHero?.[player.id]} onClick={() => onSelect(player.id)} />)}
         </div>
       </div>
       <div className="sidebar-bottom">
@@ -249,6 +267,7 @@ function NewbieGuide({ onDismiss }: { onDismiss: () => void }) {
   // Панель висит поверх карты и перехватывает клики по клеткам под собой:
   // игрок целится в клетку, попадает в шпаргалку — и герой «не реагирует».
   // Поэтому любой клик по панели закрывает её: прочитал — кликнул — играешь.
+  useDialogEscape(onDismiss)
   return <aside className="newbie-guide" role="dialog" aria-modal="false" aria-labelledby="newbie-guide-title" onClick={onDismiss}>
     <header>
       <HelpCircle size={21} />
@@ -288,7 +307,7 @@ function LevelUpScreen({ levelUp, canOpenSheet, onOpenSheet, onClose }: {
     <section className="level-up-screen">
       <div className="level-up-rays" aria-hidden="true" />
       <Crown size={52} aria-hidden="true" />
-      <small>ПОДТВЕРЖДЕНО СЕРВЕРОМ</small>
+      <small>Подтверждено сервером</small>
       <h1 id="level-up-title">Новый уровень!</h1>
       <p><strong>{levelUp.character}</strong> теперь {levelUp.level}-го уровня.</p>
       <div>
@@ -340,13 +359,14 @@ function SceneWeather({ weather }: { weather?: WeatherProjection }) {
   )
 }
 
-function SceneHeader({ title, location, objective, turn, chapter, round, illustration, illustrationKey, locationArtUrl, scenicBackdrop, merchants, wantedSigns, weather, onOpenMerchant, onReset }: {
+const RESET_CONFIRMATION = 'Снять бой и поднять героев только в этом окне?\n\nЭто диагностика интерфейса, а не команда миру: сервер такой правки не получит и не подтвердит её. Остальные за столом увидят прежнюю картину, а ближайший снимок состояния вернёт бой и раны и вам.'
+
+function SceneHeader({ title, location, objective, turn, chapter, illustration, illustrationKey, locationArtUrl, scenicBackdrop, merchants, wantedSigns, weather, canReset, onOpenMerchant, onReset }: {
   title: string
   location: string
   objective: string
   turn: number
   chapter: number
-  round?: number
   illustration: SceneArt
   illustrationKey: string
   /**
@@ -367,6 +387,11 @@ function SceneHeader({ title, location, objective, turn, chapter, round, illustr
    * крышей» приходят готовыми из проекции (`server/weather.mjs`).
    */
   weather?: WeatherProjection
+  /**
+   * Сброс — приборная диагностика вида, а не команда миру: сервер её не
+   * получает. Поэтому кнопка есть только у владельца кампании и у админа.
+   */
+  canReset: boolean
   onOpenMerchant: () => void
   onReset: () => void
 }) {
@@ -417,7 +442,7 @@ function SceneHeader({ title, location, objective, turn, chapter, round, illustr
           не добавляла ни тем, ни другим. */}
       {/* `turn` — номер сцены, а не ход отряда: он растёт только при переходе
           Директора. Подпись «ХОД» читалась как замерший счётчик действий. */}
-      <div className="scene-title"><span>ГЛАВА {chapter}{round != null ? ` · РАУНД ${round}` : ''} · СЦЕНА {turn}</span><h1>{title}</h1><p><Target size={13} />{location}</p></div>
+      <div className="scene-title"><span>ГЛАВА {chapter} · СЦЕНА {turn}</span><h1>{title}</h1><p><Target size={13} />{location}</p></div>
       {/* Время суток и погода стоят рядом с названием места: это часть ответа
           на вопрос «где мы», а не отдельная панель. */}
       <SceneWeather weather={weather} />
@@ -432,7 +457,16 @@ function SceneHeader({ title, location, objective, turn, chapter, round, illustr
           остальные — в подсказке. Цифры ступени в проекции нет, и выводить её
           из числа строк клиенту нечем и незачем. */}
       {wantedSigns.length > 0 && <div className="scene-wanted" role="note" aria-label="Приметы розыска" title={wantedSigns.join('\n')}><ShieldAlert size={13} /><span>{wantedSigns[0]}</span></div>}
-      <button className="icon-button reset-button" onClick={onReset} title="Снять бой и поднять павших героев"><RotateCcw size={17} /></button>
+      {/* Кнопка правит только эту вкладку: `reset` меняет локальный снимок и
+          ничего не отправляет серверу. Раньше она стояла у всех и обещала
+          «снять бой», после чего ближайший серверный снимок возвращал бой на
+          место — выглядело это как поломка. Теперь и права, и подтверждение, и
+          подпись говорят ровно то, что кнопка делает. */}
+      {canReset && <button
+        className="icon-button reset-button"
+        title="Диагностика вида: снять бой и поднять героев только в этом окне. Серверу правка не уходит — ближайший снимок состояния её отменит"
+        onClick={() => { if (window.confirm(RESET_CONFIRMATION)) onReset() }}
+      ><RotateCcw size={17} /></button>}
     </div>
   )
 }
@@ -453,7 +487,7 @@ function DiceCheckCard({ check, onRoll, onCancel }: { check: PendingCheck; onRol
   return (
     <div className={`dice-check ${rolling ? 'rolling' : ''} ${resolving ? 'resolving' : ''}`}>
       <div className="dice-copy">
-        <span>ТРЕБУЕТСЯ ПРОВЕРКА</span>
+        <span>Требуется проверка</span>
         <strong>{check.label}</strong>
         <small>Сложность {check.difficulty} · модификатор {check.modifier >= 0 ? '+' : ''}{check.modifier}{swing ? ` · ${swing}` : ''}</small>
       </div>
@@ -467,23 +501,35 @@ function DiceCheckCard({ check, onRoll, onCancel }: { check: PendingCheck; onRol
   )
 }
 
-function PlayerHud({ player, hazards = [], onCharacter, onInventory }: { player: Player; hazards?: Array<{ id: string; label?: string; severity?: string; description?: string }>; onCharacter: () => void; onInventory: () => void }) {
+/**
+ * Полоска жизни героя у низа правой колонки: ОЗ, КД, скорость и две
+ * кнопки-иконки в одну строку. Раньше это была карточка в 124px с портретом,
+ * подписью «Ваш герой» и классом — всё это уже есть в списке отряда слева, а
+ * колонке на ноутбуке достаётся 384px, и каждая лишняя строка здесь отнята у
+ * рассказа. Подписи величин живут в `title` и `aria-label`, опасность —
+ * чипом в той же строке.
+ */
+function PlayerHud({ player, hazards = [], combatActive = false, status, onCharacter, onInventory }: { player: Player; hazards?: Array<{ id: string; label?: string; severity?: string; description?: string }>; combatActive?: boolean; status?: HeroStatus; onCharacter: () => void; onInventory: () => void }) {
+  const hazardLabel = hazards.map((hazard) => hazard.label || hazard.id).join(', ')
   return (
-    <aside className="player-hud">
-      <div className="hud-identity">
-        <div className="hud-portrait" style={{ backgroundImage: `url(${player.portrait})`, backgroundPosition: player.portraitPosition }} />
-        <span><small>ВАШ ГЕРОЙ</small><strong>{player.character}</strong><em>{player.role}</em></span>
-      </div>
+    <aside className="player-hud" aria-label={`${player.character}: здоровье ${player.hp} из ${player.maxHp}, класс доспеха ${player.armor}, скорость ${player.speed} футов`}>
       <div className="hud-vitals">
-        <span><Heart size={14} /><b>{player.hp}/{player.maxHp}</b><small>ЗДОРОВЬЕ</small></span>
-        <span><Shield size={14} /><b>{player.armor}</b><small>КЛАСС БРОНИ</small></span>
-        <span><Footprints size={14} /><b>{player.speed}</b><small>СКОРОСТЬ</small></span>
+        <span title={status && status.temporaryHp > 0 ? `Здоровье · временные хиты: ${status.temporaryHp}` : 'Здоровье'} aria-label={`Здоровье ${player.hp} из ${player.maxHp}${status && status.temporaryHp > 0 ? `, временные хиты ${status.temporaryHp}` : ''}`}><Heart size={14} /><b>{player.hp}/{player.maxHp}</b>{status && status.temporaryHp > 0 && <em className="hud-temp">+{status.temporaryHp}</em>}</span>
+        <span title="Класс доспеха (КД)" aria-label={`Класс доспеха ${player.armor}`}><Shield size={14} /><b>{player.armor}</b></span>
+        {!combatActive && <span title="Скорость" aria-label={`Скорость ${player.speed} футов`}><Footprints size={14} /><b>{player.speed}</b><small>фт</small></span>}
+        {hazards.length > 0 && <em className="hud-hazard" title={`Активная опасность: ${hazardLabel}`}><Flame size={13} />{hazardLabel}</em>}
       </div>
       <div className="hud-actions">
-        <button onClick={onCharacter}><BookOpen size={14} />Лист героя</button>
-        <button onClick={onInventory}><BackpackIcon />Инвентарь <b>{player.inventory.length}</b></button>
+        <button onClick={onCharacter} title="Лист героя" aria-label="Лист героя"><BookOpen size={15} /></button>
+        <button onClick={onInventory} title={`Инвентарь · ${player.inventory.length}`} aria-label={`Инвентарь, предметов: ${player.inventory.length}`}><BackpackIcon /><b>{player.inventory.length}</b></button>
       </div>
-      {hazards.length > 0 && <div className="hud-hazards"><Flame size={13} /><span><small>АКТИВНАЯ ОПАСНОСТЬ</small><b>{hazards.map((hazard) => hazard.label || hazard.id).join(', ')}</b></span></div>}
+      {/* Вторая строка — словами, потому что по ним принимают решения: держать
+          ли концентрацию под ударом, чем лечить отравление. Рисуется только
+          когда есть что сказать; пустой строки у здорового героя нет. */}
+      {status && (status.concentration || status.conditions.length > 0) && <div className="hud-status" role="group" aria-label="Состояния героя">
+        {status.concentration && <span className="hud-chip concentration" title={`Концентрация: ${status.concentration}. Урон требует спасброска Телосложения, иначе заклинание спадёт`}><b>К</b>{status.concentration}</span>}
+        {status.conditions.map((condition) => <span key={condition.id} className={`hud-chip ${condition.status}`} title={`${condition.statusLabel}. ${condition.explanation}${condition.duration ? ` Длительность: ${condition.duration}` : ''}`}>{condition.label}{condition.duration && <small>· {condition.duration}</small>}</span>)}
+      </div>}
     </aside>
   )
 }
@@ -492,6 +538,7 @@ function InviteModal({ code, onClose }: { code: string; onClose: () => void }) {
   const [copied, setCopied] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  useDialogEscape(onClose)
   const copy = async () => {
     setBusy(true)
     setError('')
@@ -538,9 +585,9 @@ function CharactersView({ players, selectedId, turnId, accessibleHeroIds, onSele
       <div className="character-grid">
         {players.map((player) => (
           <button key={player.id} disabled={!accessibleHeroIds.includes(player.id)} className={`character-sheet ${selectedId === player.id ? 'active' : ''} ${accessibleHeroIds.includes(player.id) ? '' : 'locked'}`} onClick={() => onSelect(player.id)}>
-            <div className="character-art" style={{ backgroundImage: `url(${player.portrait})`, backgroundPosition: player.portraitPosition }}><span className={player.online ? 'online' : ''}>{player.online ? 'В СЕТИ' : 'НЕ В СЕТИ'}</span></div>
+            <div className="character-art" data-face={heroFaceMode(player)} style={heroFaceStyle(player)}>{!hasHeroPortrait(player) && <HeroFaceInitials hero={player} />}<span className={player.online ? 'online' : ''}>{player.online ? 'В СЕТИ' : 'НЕ В СЕТИ'}</span></div>
             <div className="character-info"><small>{player.name} играет за</small><h2>{player.character}</h2><p>{player.role}</p>
-              <div className="character-stats"><span><b>{player.hp}</b> / {player.maxHp}<small>ЗДОРОВЬЕ</small></span><span><b>{player.armor}</b><small>КЛАСС БРОНИ</small></span><span><b>{player.speed} фт</b><small>СКОРОСТЬ</small></span></div>
+              <div className="character-stats"><span><b>{player.hp}</b> / {player.maxHp}<small>Здоровье</small></span><span><b>{player.armor}</b><small>Класс доспеха</small></span><span><b>{player.speed} фт</b><small>Скорость</small></span></div>
             </div>
             {turnId === player.id && <em><Crown size={13} />Сейчас ходит</em>}
           </button>
@@ -571,7 +618,7 @@ function ReactionPrompt({ actorName, sourceName, window, busy, beneficiaries, on
   const [beneficiaryId, setBeneficiaryId] = useState(beneficiaries[0]?.id ?? window.actor_id)
   const needsBeneficiary = window.action_options.some((option) => option.requires_beneficiary)
   return <div className="reaction-backdrop"><section className="reaction-prompt" role="dialog" aria-modal="true" aria-label="Выбор реакции">
-    <header><div><RefreshCw size={21} /><span><small>{failedSave ? 'ПРОВАЛЕННЫЙ СПАСБРОСОК' : 'ПРЕРЫВАЮЩАЯ РЕАКЦИЯ'}</small><strong>{failedSave ? `${actorName}, использовать особенность?` : `${actorName}, реагировать?`}</strong></span></div><em>{failedSave ? 'СПАСБРОСОК' : spellCast ? 'ЗАКЛИНАНИЕ' : opportunity ? 'ДВИЖЕНИЕ' : hit ? 'ПОПАДАНИЕ' : 'ПРОМАХ'}</em></header>
+    <header><div><RefreshCw size={21} /><span><small>{failedSave ? 'ПРОВАЛЕННЫЙ СПАСБРОСОК' : 'ПРЕРЫВАЮЩАЯ РЕАКЦИЯ'}</small><strong>{failedSave ? `${actorName}, использовать особенность?` : `${actorName}, реагировать?`}</strong></span></div><em>{failedSave ? 'Спасбросок' : spellCast ? 'Заклинание' : opportunity ? 'Движение' : hit ? 'Попадание' : 'Промах'}</em></header>
     <p>{failedSave ? failedSaveText : spellCast ? `${sourceName} начинает накладывать «${window.pending_spell?.name ?? 'заклинание'}»${window.pending_spell?.slot_level ? ` ячейкой ${window.pending_spell.slot_level} уровня` : ''}.` : opportunity ? `${sourceName} покидает досягаемость героя.` : hit ? `${sourceName} попадает по герою${window.damage?.applied_amount ? ` и наносит ${window.damage.applied_amount} урона` : ''}.` : `${sourceName} промахивается в ближнем бою.`} {failedSave ? 'Выберите «Несгибаемый» или оставьте исходный провал.' : 'Выберите одну доступную реакцию или продолжите бой без неё.'}</p>
     {needsBeneficiary && <label className="reaction-beneficiary"><span>Преимущество получит</span><select value={beneficiaryId} disabled={busy} onChange={(event) => setBeneficiaryId(event.target.value)}>{beneficiaries.map((beneficiary) => <option key={beneficiary.id} value={beneficiary.id}>{beneficiary.name}</option>)}</select></label>}
     <div className="reaction-options">{window.action_options.map((option) => <button key={option.id} disabled={busy || (option.requires_beneficiary && !beneficiaryId)} onClick={() => onChoose(option.id, option.requires_beneficiary ? beneficiaryId : undefined)}><i><CombatIcon id={option.id} kind={option.id.startsWith('cast:') ? 'spell' : 'reaction'} hint={`${option.name} ${option.description}`} size={35} /></i><span><strong>{option.name}</strong><small>{option.description}</small></span>{option.resource && <em>{option.cost ?? 1}</em>}</button>)}</div>
@@ -615,7 +662,7 @@ function DeathScreen({ heroes, partyDefeated, busy, error, canResolve, onResolve
         const controllable = canResolve(hero.id)
         const replacing = replacementOpen[hero.id] === true
         return <article key={hero.id} className="fallen-hero-card">
-          <div className="fallen-hero-portrait" style={{ backgroundImage: `url(${hero.portrait})`, backgroundPosition: hero.portraitPosition }}><Skull size={22} /></div>
+          <div className="fallen-hero-portrait" data-face={heroFaceMode(hero)} style={heroFaceStyle(hero)}>{!hasHeroPortrait(hero) && <HeroFaceInitials hero={hero} />}<Skull size={22} /></div>
           <div className="fallen-hero-name"><small>ПОГИБШИЙ ГЕРОЙ</small><strong>{hero.character}</strong><span>{hero.role} · {hero.level} уровень</span></div>
           {controllable ? <div className="death-resolution-actions">
             <button className="resurrect-hero" disabled={busy} onClick={() => { setLocalError(null); onResolve(hero.id, 'resurrect') }}><Sparkles size={17} /><span><strong>Воскресить</strong><small>Вернётся с 1 ОЗ</small></span></button>
@@ -683,8 +730,19 @@ function ConnectionIndicator({ status }: { status: ConnectionState }) {
 function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; onAccountRefresh: () => Promise<Account | null>; onLogout: () => void }) {
   const { state, combatVisualBatch, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, narrationPreview, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, startRest, spendHitPointDie, completeRest, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, changeWeapon, operateDoor, operateSceneObject, captiveAction, lootContainer, beastAction, resolveGuardEncounter, proposeParley, settleParley, openTavernDiceRound, answerTavernDiceRound, leaveTavernDiceRound, orderTavernDrink, sendLetter, receiveNpcBlessing, useLevelTransition, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, attuneItem, activateItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, reset, updatePlayer, updateWorld } = useGameSession()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth <= 920)
-  const [chatOpen, setChatOpen] = useState(() => window.innerWidth > 680)
   const [inviteOpen, setInviteOpen] = useState(false)
+  // Меню «Мастер» в шапке: закрывается Escape, кликом мимо и после любого выбора.
+  const [masterMenuOpen, setMasterMenuOpen] = useState(false)
+  const masterMenuRef = useRef<HTMLDivElement>(null)
+  useDialogEscape(() => setMasterMenuOpen(false), masterMenuOpen)
+  useEffect(() => {
+    if (!masterMenuOpen) return
+    const onPointerDown = (event: PointerEvent) => {
+      if (masterMenuRef.current && event.target instanceof Node && !masterMenuRef.current.contains(event.target)) setMasterMenuOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [masterMenuOpen])
   const [merchantOpen, setMerchantOpen] = useState(false)
   const [preferredMerchantId, setPreferredMerchantId] = useState<string | null>(null)
   const requestedRoomAtEntry = useRef(new URLSearchParams(window.location.search).get('room')?.toUpperCase() ?? '')
@@ -725,6 +783,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   // По умолчанию кубик бросает игрок: автоматика включается осознанно.
   const [autoAttackRoll, setAutoAttackRoll] = useState(() => window.localStorage.getItem('skazanie-auto-attack-roll') === 'true')
   const [scenicBackdrop, setScenicBackdrop] = useState(loadScenicBackdrop)
+  const [boardLighting, setBoardLighting] = useState(loadBoardLighting)
   const [combatAnimations, setCombatAnimations] = useState(() => window.localStorage.getItem(COMBAT_ANIMATIONS_KEY) !== 'false')
   const [atmosphereSettings, setAtmosphereSettings] = useState(loadAtmosphereSettings)
   const [voiceMode, setVoiceMode] = useState<NarrationVoiceMode>(() => normalizeVoiceMode(window.localStorage.getItem(NARRATION_VOICE_KEY)))
@@ -762,12 +821,6 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     sessionCode: state.sessionCode,
     narratorMessageId: latestNarratorMessage?.id ?? '',
   })
-  const atmosphereCursor = useRef({
-    sessionCode: state.sessionCode,
-    visualBatchId: combatVisualBatch?.id ?? '',
-    dieRollId: state.lastDiceRoll?.id ?? '',
-    narratorMessageId: latestNarratorMessage?.id ?? '',
-  })
   const sceneTheme = useMemo(() => resolveSceneTheme(state), [state.scene])
   const sceneLocationKey = state.scene.location_id ?? state.scene.location
   const sceneIllustration = useMemo(
@@ -785,14 +838,18 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const locationArtUrl = locationArtId
     ? `/api/campaigns/${state.sessionCode}/locations/${encodeURIComponent(locationArtId)}/illustration`
     : ''
-  const audioCombatActive = Boolean(state.mechanics?.combat?.active)
-  const audioFinale = ['completed', 'failed', 'archived'].includes(state.mechanics?.campaign_lifecycle?.status ?? '')
   const combatWasActive = useRef(false)
   const merchantLocation = useRef(state.scene.location)
   const joinAttempted = useRef(false)
   const isAdmin = account.role === 'admin'
   const partyIdSet = new Set(state.partyMemberIds?.length ? state.partyMemberIds : state.players.map((player) => player.id))
   const partyPlayers = state.players.filter((player) => partyIdSet.has(player.id))
+  // Состояния, концентрация и временные хиты каждого героя — один расчёт на
+  // снимок, им пользуются и список отряда, и полоска жизни.
+  const heroStatusByHero = useMemo(
+    () => Object.fromEntries(partyPlayers.map((player) => [player.id, heroStatusFor(state, player.id)])) as Record<string, HeroStatus>,
+    [partyPlayers, state.mechanics?.conditions, state.mechanics?.concentration, state.mechanics?.active_effects, state.mechanics?.temporary_hp],
+  )
   const deathState = state.mechanics?.death
   const deadHeroIds = new Set(Object.entries(deathState?.heroes ?? {}).filter(([, fate]) => fate.status === 'dead').map(([id]) => id))
   const fallenHeroes = partyPlayers.filter((player) => deadHeroIds.has(player.id))
@@ -805,7 +862,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const showConclusion = ['completed', 'failed', 'archived'].includes(lifecycleStatus)
     && (fallenHeroes.length === 0 || (partyDefeated && partyDefeatReviewed))
   const pacing = state.autonomy?.pacing
-  const pacingLabels = { breather: 'ПЕРЕДЫШКА', development: 'РАЗВИТИЕ', escalation: 'НАРАСТАНИЕ', climax: 'КУЛЬМИНАЦИЯ' } as const
+  const pacingLabels = { breather: 'Передышка', development: 'Развитие', escalation: 'Нарастание', climax: 'Кульминация' } as const
   const lastTravel = state.autonomy?.travel_history?.at(-1)
   // Сервер считает заслуженный уровень, но не выдаёт его сам: выбор подкласса
   // и умений остаётся за игроком. Прогресс виден всегда — принцип 3 запрещает
@@ -987,6 +1044,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   }, [uiScale])
   useEffect(() => { window.localStorage.setItem('skazanie-auto-attack-roll', String(autoAttackRoll)) }, [autoAttackRoll])
   useEffect(() => { window.localStorage.setItem(SCENIC_BACKDROP_KEY, String(scenicBackdrop)) }, [scenicBackdrop])
+  useEffect(() => { window.localStorage.setItem(BOARD_LIGHTING_KEY, String(boardLighting)) }, [boardLighting])
   useEffect(() => { window.localStorage.setItem(COMBAT_ANIMATIONS_KEY, String(combatAnimations)) }, [combatAnimations])
   useEffect(() => { window.localStorage.setItem(NARRATION_VOICE_KEY, voiceMode) }, [voiceMode])
   useEffect(() => { window.localStorage.setItem(ACTION_HINTS_KEY, String(actionHintsEnabled)) }, [actionHintsEnabled])
@@ -1058,9 +1116,6 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     if (!document.hidden) return
 
     document.title = `⚔ Твой ход — ${alertActorName}`
-    // Web Audio мог остаться заблокированным, если игрок ещё не взаимодействовал
-    // со страницей. playEffect в таком случае просто ничего не проигрывает.
-    atmosphereAudioRef.current?.playEffect('level')
     if (!('Notification' in window) || Notification.permission !== 'granted') return
     try {
       const notification = new Notification('Твой ход в «Сказании»', {
@@ -1077,12 +1132,8 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     }
   }, [accessibleHeroIds, alertActorName, alertCombatActive, alertTurnActorId, state.sessionCode])
   useEffect(() => {
-    const mood = normalizeAtmosphereMood(sceneTheme, {
-      combat: audioCombatActive,
-      finale: audioFinale,
-    })
-    atmosphereAudioRef.current?.setMood(mood, 1.8)
-  }, [audioCombatActive, audioFinale, sceneTheme])
+    atmosphereAudioRef.current?.setMood(normalizeAtmosphereMood(sceneTheme), 1.8)
+  }, [sceneTheme])
   // Громкость фона до стола. Тема остаётся прежней — своей музыки у этих
   // экранов пока нет, — но играть её в полный голос, пока игрок выбирает
   // кампанию или лепит героя, неуместно.
@@ -1113,42 +1164,6 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     atmosphereAudioRef.current?.setWaiting(state.isNarrating)
   }, [state.isNarrating])
   useEffect(() => {
-    const cursor = atmosphereCursor.current
-    if (cursor.sessionCode !== state.sessionCode) {
-      atmosphereCursor.current = {
-        sessionCode: state.sessionCode,
-        visualBatchId: combatVisualBatch?.id ?? '',
-        dieRollId: state.lastDiceRoll?.id ?? '',
-        narratorMessageId: latestNarratorMessage?.id ?? '',
-      }
-      return
-    }
-    if (!combatVisualBatch?.id || cursor.visualBatchId === combatVisualBatch.id) return
-    cursor.visualBatchId = combatVisualBatch.id
-    // Batch уже отфильтрован сервером для зрителя; дополнительный барьер не
-    // позволяет звуком выдать GM/NPC-private событие при ошибочной проекции.
-    const visibleEvents = combatVisualBatch.events.filter((event) => (
-      event.visibility !== 'gm_only' && event.visibility !== 'npc_private'
-    ))
-    atmosphereAudioRef.current?.playEvents(visibleEvents)
-  }, [combatVisualBatch, latestNarratorMessage?.id, state.lastDiceRoll?.id, state.sessionCode])
-  useEffect(() => {
-    const cursor = atmosphereCursor.current
-    if (cursor.sessionCode !== state.sessionCode) return
-    const dieRollId = state.lastDiceRoll?.id ?? ''
-    if (!dieRollId || cursor.dieRollId === dieRollId) return
-    cursor.dieRollId = dieRollId
-    atmosphereAudioRef.current?.playEffect('dice')
-  }, [state.lastDiceRoll?.id, state.sessionCode])
-  useEffect(() => {
-    const cursor = atmosphereCursor.current
-    if (cursor.sessionCode !== state.sessionCode) return
-    const narratorMessageId = latestNarratorMessage?.id ?? ''
-    if (!narratorMessageId || cursor.narratorMessageId === narratorMessageId) return
-    cursor.narratorMessageId = narratorMessageId
-    atmosphereAudioRef.current?.playEffect('narration')
-  }, [latestNarratorMessage?.id, state.sessionCode])
-  useEffect(() => {
     const cursor = cinematicNarrationCursor.current
     if (cursor.sessionCode !== state.sessionCode) {
       cinematicNarrationCursor.current = {
@@ -1173,12 +1188,10 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   }, [latestNarratorMessage?.id, narrationPreview?.messageId, state.sessionCode])
   useEffect(() => {
     const combatActive = Boolean(state.mechanics?.combat?.active)
-    // Начавшийся бой закрывает и историю, и лавку: торговля посреди инициативы —
-    // это окно поверх боя, за которым не видно ни карты, ни своего хода.
-    if (combatActive && !combatWasActive.current) {
-      setChatOpen(false)
-      setMerchantOpen(false)
-    }
+    // Начавшийся бой закрывает лавку: торговля посреди инициативы — это окно
+    // поверх боя, за которым не видно ни карты, ни своего хода. Хронику бой
+    // больше не сворачивает: в новой колонке она и есть колонка.
+    if (combatActive && !combatWasActive.current) setMerchantOpen(false)
     combatWasActive.current = combatActive
   }, [state.mechanics?.combat?.active])
   useEffect(() => {
@@ -1240,11 +1253,6 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const changeAmbientVolume = (value: number) => {
     const next = atmosphereAudioRef.current?.setAmbientVolume(value)
       ?? saveAtmosphereSettings({ ...atmosphereSettings, ambientVolume: value })
-    setAtmosphereSettings(next)
-  }
-  const changeEffectsVolume = (value: number) => {
-    const next = atmosphereAudioRef.current?.setEffectsVolume(value)
-      ?? saveAtmosphereSettings({ ...atmosphereSettings, effectsVolume: value })
     setAtmosphereSettings(next)
   }
   const changeAtmosphereMuted = (muted: boolean) => {
@@ -1360,7 +1368,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
       '--ui-sidebar-width': `${Math.round(276 + Math.max(0, uiScale - 100) * .4)}px`,
       '--ui-hud-width': `${Math.round(246 + Math.max(0, uiScale - 100) * .25)}px`,
     } as React.CSSProperties}>
-      <Sidebar players={partyPlayers} selectedPlayerId={activePlayer.id} turnPlayerId={turnActorId} accessibleHeroIds={accessibleHeroIds} typingActorIds={visibleTypingActorIds} isAdmin={isAdmin} deathSavesByHero={state.mechanics?.death?.saving_throws} onSelect={setSelectedHeroId} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(value => !value)} view={view} onNavigate={navigate} aiConnected={Boolean(aiHealth?.configured)} />
+      <Sidebar players={partyPlayers} selectedPlayerId={activePlayer.id} turnPlayerId={turnActorId} accessibleHeroIds={accessibleHeroIds} typingActorIds={visibleTypingActorIds} isAdmin={isAdmin} deathSavesByHero={state.mechanics?.death?.saving_throws} statusByHero={heroStatusByHero} onSelect={setSelectedHeroId} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(value => !value)} view={view} onNavigate={navigate} aiConnected={Boolean(aiHealth?.configured)} />
       <main className="game-main">
         <header className="topbar">
           <button className="mobile-menu icon-button" onClick={() => setSidebarCollapsed(value => !value)} aria-label={sidebarCollapsed ? 'Открыть меню' : 'Закрыть меню'} aria-expanded={!sidebarCollapsed}><Menu size={20} /></button>
@@ -1376,32 +1384,42 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
                   className="progression-status earned"
                   onClick={() => setEditingPlayerId(ownedHeroIds[0] ?? accessibleHeroIds[0] ?? activePlayer.id)}
                   title="Отряд заслужил уровень. Откройте лист героя, чтобы выбрать умения."
-                ><Sparkles size={13} /><span>УРОВЕНЬ ГОТОВ</span></button>
+                ><Sparkles size={13} /><span>Уровень готов</span></button>
               : <div
                   className="progression-status"
                   title={`Вех до нового уровня: ${progression.milestones_since_level} из ${progression.milestones_per_level}`}
-                ><span>ВЕХИ</span><b>{progression.milestones_since_level}/{progression.milestones_per_level}</b></div>)}
+                ><span>Вехи</span><b>{progression.milestones_since_level}/{progression.milestones_per_level}</b></div>)}
             {reputationStanding.length > 0 && <div
               className="reputation-status"
               title={`Слава отряда: ${reputationStanding.map((entry) => `${entry.faction_id} — ${REPUTATION_TIER_LABELS[entry.tier]}`).join('; ')}`}
-            ><span>СЛАВА</span><b>{reputationStanding.filter((entry) => entry.tier !== 'unknown').length || '—'}</b></div>}
+            ><span>Слава</span><b>{reputationStanding.filter((entry) => entry.tier !== 'unknown').length || '—'}</b></div>}
+            {/* Мастерские инструменты: на виду остаются самое частое — пауза и
+                приглашение, — а откат, переигровка, арки и завершение лежат в
+                меню «Мастер»: семь кнопок в ряд делали шапку самой шумной
+                полосой экрана, а опасное «Завершить» стояло в одном клике. */}
             {canManageLifecycle && lifecycleStatus === 'active' && <button className="invite-button" onClick={() => { void changeLifecycle('pause') }} disabled={lifecycleBusy}>Пауза</button>}
             {canManageLifecycle && lifecycleStatus === 'paused' && <button className="invite-button" onClick={() => { void changeLifecycle('resume') }} disabled={lifecycleBusy}>Продолжить</button>}
-            {canManageLifecycle && ['active', 'paused'].includes(lifecycleStatus) && <button className="invite-button" onClick={() => { void runCampaignControl('rewind_turn') }} disabled={campaignControlBusy || lifecycleBusy} title="Вернуть состояние к началу последней серверной команды"><RotateCcw size={15} />Откатить ход</button>}
-            {canManageLifecycle && ['active', 'paused'].includes(lifecycleStatus) && <button className="invite-button" onClick={() => { void runCampaignControl('replay_scene') }} disabled={campaignControlBusy || lifecycleBusy} title="Вернуть состояние к началу текущей сцены"><History size={15} />Переиграть сцену</button>}
-            {canManageLifecycle && ['active', 'paused'].includes(lifecycleStatus) && <button className="invite-button" onClick={() => { if (window.confirm('Завершить кампанию и создать эпилог? Это действие необратимо.')) void changeLifecycle('complete') }} disabled={lifecycleBusy}>Завершить</button>}
-            {/* Выбор объявляется заранее: развязку арки сервер закрывает сам, и
-                в этот момент спрашивать стол уже поздно. */}
-            {canManageLifecycle && ['active', 'paused'].includes(lifecycleStatus) && (arcChainEnabled
-              ? <button className="invite-button" onClick={() => { void changeLifecycle('conclude_after_arc') }} disabled={lifecycleBusy} title="Развязка текущей арки закончит кампанию эпилогом">Закончить на этой арке</button>
-              : <button className="invite-button" onClick={() => { void changeLifecycle('chain_arcs') }} disabled={lifecycleBusy} title="Развязка арки откроет следующую теми же героями: снаряжение, слава и незакрытые нити переезжают">Играть дальше арками</button>)}
             {canManageLifecycle && lifecycleStatus === 'active' && <button className="invite-button" onClick={() => setInviteOpen(true)}><Users size={17} />Пригласить</button>}
+            {canManageLifecycle && ['active', 'paused'].includes(lifecycleStatus) && <div className="master-menu" ref={masterMenuRef}>
+              <button type="button" className={`invite-button master-menu-button ${masterMenuOpen ? 'open' : ''}`} aria-haspopup="menu" aria-expanded={masterMenuOpen} onClick={() => setMasterMenuOpen((value) => !value)}><Crown size={15} />Мастер<ChevronDown size={14} /></button>
+              {masterMenuOpen && <div className="master-menu-list" role="menu" aria-label="Инструменты мастера">
+                <small>Ход</small>
+                {canManageLifecycle && ['active', 'paused'].includes(lifecycleStatus) && <button type="button" role="menuitem" onClick={() => { setMasterMenuOpen(false); void runCampaignControl('rewind_turn') }} disabled={campaignControlBusy || lifecycleBusy} title="Вернуть состояние к началу последней серверной команды"><RotateCcw size={15} />Откатить ход</button>}
+                {canManageLifecycle && ['active', 'paused'].includes(lifecycleStatus) && <button type="button" role="menuitem" onClick={() => { setMasterMenuOpen(false); void runCampaignControl('replay_scene') }} disabled={campaignControlBusy || lifecycleBusy} title="Вернуть состояние к началу текущей сцены"><History size={15} />Переиграть сцену</button>}
+                <small>Кампания</small>
+                {/* Выбор объявляется заранее: развязку арки сервер закрывает сам, и
+                    в этот момент спрашивать стол уже поздно. */}
+                {arcChainEnabled
+                  ? <button type="button" role="menuitem" onClick={() => { setMasterMenuOpen(false); void changeLifecycle('conclude_after_arc') }} disabled={lifecycleBusy} title="Развязка текущей арки закончит кампанию эпилогом">Закончить на этой арке</button>
+                  : <button type="button" role="menuitem" onClick={() => { setMasterMenuOpen(false); void changeLifecycle('chain_arcs') }} disabled={lifecycleBusy} title="Развязка арки откроет следующую теми же героями: снаряжение, слава и незакрытые нити переезжают">Играть дальше арками</button>}
+                <button type="button" role="menuitem" className="danger" onClick={() => { setMasterMenuOpen(false); if (window.confirm('Завершить кампанию и создать эпилог? Это действие необратимо.')) void changeLifecycle('complete') }} disabled={lifecycleBusy}>Завершить кампанию</button>
+              </div>}
+            </div>}
             <button className="newbie-guide-button" onClick={() => setNewbieGuideOpen(true)} aria-label="Открыть шпаргалку новичка" aria-pressed={newbieGuideOpen} title="Шпаргалка новичка"><HelpCircle size={17} /></button>
             <div className="account-chip"><span>{account.name}<small>{activePlayer.character}</small></span><button onClick={onLogout} title="Выйти"><LogOut size={15} /></button></div>
           </div>
         </header>
         {view === 'room' && <div className={`game-area ${combatActive ? 'combat-active' : 'exploration-active'} ${state.isNarrating ? 'is-narrating' : ''}`}>
-          {(directorError || joinError || lifecycleError) && <div className="admin-error director-error">{directorError || joinError || lifecycleError}</div>}
           {lifecycleStatus === 'paused' && <CampaignPausedNotice
             canManage={canManageLifecycle}
             busy={lifecycleBusy}
@@ -1415,26 +1433,10 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             window.localStorage.setItem(NEWBIE_GUIDE_DISMISSED_KEY, 'true')
             setNewbieGuideOpen(false)
           }} />}
-          {cinematicNarrationId && <section key={cinematicNarrationId} className={`cinematic-narration ${visibleNarrationPreview ? `phase-${visibleNarrationPreview.phase}` : 'phase-committed'}`} role="status" aria-live="polite">
-            <header><Sparkles size={16} /><span>РАССКАЗЧИК</span><button type="button" onClick={() => {
-              if (visibleNarrationPreview) setDismissedNarrationPreviewId(visibleNarrationPreview.messageId)
-              else setCinematicNarration(null)
-            }} aria-label="Скрыть текст сцены"><X size={15} /></button></header>
-            <p>{cinematicNarrationText || 'Сцена складывается…'}</p>
-            <small><ScrollText size={13} />{visibleNarrationPreview?.phase === 'streaming' || visibleNarrationPreview?.phase === 'start' ? 'Текст приходит от Рассказчика…' : 'Сохранено в журнале кампании'}</small>
-          </section>}
           {/* Свободный бросок переехал из правой колонки в угол карты: он нужен
               в любой момент, а карточка с подписями занимала место рядом с
               состоянием героя. */}
           <DiceTray key={state.sessionCode} compact latestRoll={state.lastDiceRoll} onRoll={(sides) => rollFreeDie(activePlayer.id, sides)} />
-          {state.pendingCheck && (
-            <details key={state.pendingCheck.check_id ?? state.pendingCheck.action} className="pending-check-overlay" open aria-live="polite">
-              <summary><Dices size={15} /><span>Ожидающая проверка</span><ChevronDown size={16} /></summary>
-              {canAct
-                ? <DiceCheckCard check={state.pendingCheck} onRoll={rollPendingCheck} onCancel={cancelPendingCheck} />
-                : <div className="turn-wait"><LockKeyhole size={18} /><span><b>Бросок выполняет владелец героя</b><small>Ожидаем игрока: {turnActorName}</small></span></div>}
-            </details>
-          )}
           <DungeonMap
             state={state}
             players={partyPlayers}
@@ -1445,9 +1447,9 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             tacticalError={tacticalError}
             autoAttackRoll={autoAttackRoll}
             scenicBackdrop={scenicBackdrop}
+            boardLighting={boardLighting}
             combatAnimations={combatAnimations}
             visualBatch={combatVisualBatch}
-            onClearTacticalError={clearTacticalError}
             onStartCombat={() => startCombat(activePlayer.id)}
             onMove={movePlayer}
             onAttack={attackEnemy}
@@ -1481,11 +1483,11 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onCompleteRest={() => completeRest(activePlayer.id)}
             onTypingChange={updateTypingPresence}
             narrating={state.isNarrating}
-            statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} round={combatActive ? state.mechanics?.combat?.round ?? 1 : undefined} illustration={sceneIllustration} illustrationKey={sceneLocationKey} locationArtUrl={locationArtUrl} scenicBackdrop={scenicBackdrop} merchants={combatActive ? [] : availableMerchants} wantedSigns={state.law?.signs ?? []} weather={state.weather} onOpenMerchant={() => openMerchant()} onReset={reset} />}
+            statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} illustration={sceneIllustration} illustrationKey={sceneLocationKey} locationArtUrl={locationArtUrl} scenicBackdrop={scenicBackdrop} merchants={combatActive ? [] : availableMerchants} wantedSigns={state.law?.signs ?? []} weather={state.weather} canReset={canManageLifecycle || isAdmin} onOpenMerchant={() => openMerchant()} onReset={reset} />}
           >
-            <ChatPanel messages={state.messages} isNarrating={state.isNarrating} interaction={state.agentInteraction} players={partyPlayers} typingActorIds={visibleTypingActorIds} currentPlayerId={activePlayer.id} canAct={canAct} combatActive={combatActive} suggestedActions={actionHints} sceneKey={`${state.scene.location}|${state.scene.title}`} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={() => continueAgentInteraction(activePlayer.id)} onWhy={() => { void submitAction('/why', activePlayer.id) }} onSpeak={voiceSupported && voiceMode !== 'off' ? (text) => speakNarration(text, narrationVoice) : null} open={chatOpen} onToggle={() => setChatOpen(value => !value)} />
+            <ChatPanel messages={state.messages} isNarrating={state.isNarrating} interaction={state.agentInteraction} players={partyPlayers} typingActorIds={visibleTypingActorIds} currentPlayerId={activePlayer.id} canAct={canAct} combatActive={combatActive} suggestedActions={actionHints} sceneKey={`${state.scene.location}|${state.scene.title}`} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={() => continueAgentInteraction(activePlayer.id)} onWhy={() => { void submitAction('/why', activePlayer.id) }} onSpeak={voiceSupported && voiceMode !== 'off' ? (text) => speakNarration(text, narrationVoice) : null} />
             <div className="player-hud-stack">
-              <PlayerHud player={activePlayer} hazards={((state.mechanics as { hazards?: Record<string, Array<{ id: string; label?: string; severity?: string; description?: string }>> } | undefined)?.hazards?.[activePlayer.id] ?? [])} onCharacter={() => { setEditingPlayerId(activePlayer.id) }} onInventory={() => navigate('inventory')} />
+              <PlayerHud player={activePlayer} combatActive={combatActive} status={heroStatusByHero[activePlayer.id]} hazards={((state.mechanics as { hazards?: Record<string, Array<{ id: string; label?: string; severity?: string; description?: string }>> } | undefined)?.hazards?.[activePlayer.id] ?? [])} onCharacter={() => { setEditingPlayerId(activePlayer.id) }} onInventory={() => navigate('inventory')} />
 
             </div>
           </DungeonMap>
@@ -1508,10 +1510,43 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           onAttune={(itemId, attuned) => attuneItem(activePlayer.id, itemId, attuned)}
           onActivate={(itemId, activated) => activateItem(activePlayer.id, itemId, activated)}
         />}
-        {view === 'settings' && <SettingsView health={aiHealth} campaignAi={campaignAi} campaignAiBusy={campaignAiBusy} campaignAiError={campaignAiError} uiScale={uiScale} autoAttackRoll={autoAttackRoll} scenicBackdrop={scenicBackdrop} combatAnimations={combatAnimations} atmosphereSettings={atmosphereSettings} notificationPermission={notificationPermission} voiceMode={voiceMode} voiceSupported={voiceSupported} onVoiceModeChange={setVoiceMode} actionHintsEnabled={actionHintsEnabled} onActionHintsEnabledChange={setActionHintsEnabled} onCampaignAiChange={(patch) => { void updateCampaignAi(patch) }} onUiScaleChange={setUiScale} onAutoAttackRollChange={setAutoAttackRoll} onScenicBackdropChange={setScenicBackdrop} onCombatAnimationsChange={setCombatAnimations} onAmbientVolumeChange={changeAmbientVolume} onEffectsVolumeChange={changeEffectsVolume} onAtmosphereMutedChange={changeAtmosphereMuted} onRequestNotifications={() => { void requestTurnNotifications() }} />}
+        {view === 'settings' && <SettingsView health={aiHealth} campaignAi={campaignAi} campaignAiBusy={campaignAiBusy} campaignAiError={campaignAiError} uiScale={uiScale} autoAttackRoll={autoAttackRoll} scenicBackdrop={scenicBackdrop} boardLighting={boardLighting} combatAnimations={combatAnimations} atmosphereSettings={atmosphereSettings} notificationPermission={notificationPermission} voiceMode={voiceMode} voiceSupported={voiceSupported} onVoiceModeChange={setVoiceMode} actionHintsEnabled={actionHintsEnabled} onActionHintsEnabledChange={setActionHintsEnabled} onCampaignAiChange={(patch) => { void updateCampaignAi(patch) }} onUiScaleChange={setUiScale} onAutoAttackRollChange={setAutoAttackRoll} onScenicBackdropChange={setScenicBackdrop} onBoardLightingChange={setBoardLighting} onCombatAnimationsChange={setCombatAnimations} onAmbientVolumeChange={changeAmbientVolume} onAtmosphereMutedChange={changeAtmosphereMuted} onRequestNotifications={() => { void requestTurnNotifications() }} />}
         {view === 'admin' && isAdmin && <AdminView account={account} state={state} onUpdateWorld={updateWorld} onAssembleEncounter={assembleEncounter} onAssembleMerchant={assembleMerchant} onMoveMerchant={moveMerchant} onSetMerchantAvailability={setMerchantAvailability} onReset={reset} />}
         {view === 'agent-lab' && isAdmin && <AgentLabView state={state} />}
       </main>
+      {/* Рассказчик и требование броска стоят поверх ЛЮБОГО раздела, а не
+          только комнаты: игрок, ушедший в инвентарь или журнал, до этого не
+          видел ни стрима, ни карточки «Ожидающая проверка» — и узнавал о своём
+          броске, только вернувшись на карту. Слой прижат к рабочей области
+          (боковое меню слева, в комнате — правая колонка справа), поэтому
+          прежние отступы карточек внутри него не изменились. */}
+      <div className={`scene-overlay-layer ${view === 'room' ? 'beside-server-column' : ''}`}>
+        {cinematicNarrationId && <section key={cinematicNarrationId} className={`cinematic-narration ${visibleNarrationPreview ? `phase-${visibleNarrationPreview.phase}` : 'phase-committed'}`} role="status" aria-live="polite">
+          <header><Sparkles size={16} /><span>РАССКАЗЧИК</span><button type="button" onClick={() => {
+            if (visibleNarrationPreview) setDismissedNarrationPreviewId(visibleNarrationPreview.messageId)
+            else setCinematicNarration(null)
+          }} aria-label="Скрыть текст сцены"><X size={15} /></button></header>
+          <p>{cinematicNarrationText || 'Сцена складывается…'}</p>
+          <small><ScrollText size={13} />{visibleNarrationPreview?.phase === 'streaming' || visibleNarrationPreview?.phase === 'start' ? 'Текст приходит от Рассказчика…' : 'Сохранено в журнале кампании'}</small>
+        </section>}
+        {state.pendingCheck && (
+          <details key={state.pendingCheck.check_id ?? state.pendingCheck.action} className="pending-check-overlay" open aria-live="polite">
+            <summary><Dices size={15} /><span>Ожидающая проверка</span><ChevronDown size={16} /></summary>
+            {canAct
+              ? <DiceCheckCard check={state.pendingCheck} onRoll={rollPendingCheck} onCancel={cancelPendingCheck} />
+              : <div className="turn-wait"><LockKeyhole size={18} /><span><b>Бросок выполняет владелец героя</b><small>Ожидаем игрока: {turnActorName}</small></span></div>}
+          </details>
+        )}
+      </div>
+      {/* Одна лента на все отказы: раньше их было три в трёх углах, и вторая
+          ошибка затирала первую. Тексты не переписываются — очередь только
+          показывает их по порядку. */}
+      <ErrorToasts sources={[
+        { text: directorError },
+        { text: joinError },
+        { text: lifecycleError },
+        { text: tacticalError, onDismiss: clearTacticalError },
+      ]} />
       {merchantOpen && <MerchantScreen merchants={merchantScreenMerchants} player={activePlayer} sceneLocation={state.scene.location} stateVersion={state.state_version ?? 0} view={merchantView} narration={merchantNarration} busy={merchantBusy} error={merchantError} onLoad={loadMerchant} onBargain={bargainWithMerchant} onBuy={buyFromMerchant} onSell={sellToMerchant} onAppraise={appraiseWithMerchant} onService={purchaseMerchantService} onClose={() => setMerchantOpen(false)} />}
       {inviteOpen && <InviteModal code={state.sessionCode} onClose={() => setInviteOpen(false)} />}
       {campaignsOpen && <CampaignModal state={state} onSwitch={switchCampaign} onAccountRefresh={onAccountRefresh} onCreateHero={setCreatingPlayerId} onWizardChange={setWorldWizardOpen} onClose={() => setCampaignsOpen(false)} />}

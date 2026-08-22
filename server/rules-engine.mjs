@@ -303,7 +303,14 @@ import {
   trustedItemAppraisalFor,
   trustedStockAppraisalFor,
 } from './merchant-economy.mjs'
-import { catalogItem, materializeCatalogItem, normalizeItemOriginKind } from './item-catalog.mjs'
+import {
+  ammunitionBundleAmount,
+  ammunitionCatalogIdForWeapon,
+  ammunitionShotsLeft,
+  catalogItem,
+  materializeCatalogItem,
+  normalizeItemOriginKind,
+} from './item-catalog.mjs'
 import {
   PICKPOCKET_ABILITY,
   PICKPOCKET_POLICY_ID,
@@ -407,6 +414,7 @@ import {
 } from './scene-interactions.mjs'
 import {
   LOCKPICKING_POLICY_ID,
+  LOCKPICK_NOISE_SEVERITY,
   THIEVES_TOOLS_REQUIRED_CODE,
   THIEVES_TOOLS_REQUIRED_MESSAGE,
   hasThievesTools,
@@ -743,6 +751,9 @@ export const REST_POLICY_ID = 'srd-5.2.1-rest-v2'
 export const REST_EVENT_SCHEMA_VERSION = 2
 export const HIT_POINT_DIE_EVENT_SCHEMA_VERSION = 1
 
+/** Расход боеприпаса героя: `AmmunitionSpent`, абсолютные остатки в payload. */
+export const AMMUNITION_SPENT_EVENT_SCHEMA_VERSION = 1
+
 const REST_MINIMUM_MINUTES = Object.freeze({ short: 60, long: 480 })
 const CLASS_HIT_POINT_DIE_SIZES = Object.freeze({
   barbarian: 12,
@@ -812,12 +823,22 @@ function clone(value) {
   return structuredClone(value)
 }
 
+/**
+ * Отказ обязан называть причину. Общая формулировка честна ровно до тех пор,
+ * пока карточка сама не объяснила, чего именно движку не хватает: у
+ * «Левитации» это не «механика не проверена», а «высотного перемещения нет
+ * вовсе». Если карточка объяснила — отказ повторяет её словами, и за столом
+ * видно, ждать ли доработки или правило не ляжет никогда.
+ */
 function assertMechanicsSupported(subject, label) {
   if (subject?.mechanicsSupport === 'verified' || subject?.mechanicsSupport === 'partial') return
+  const reason = String(subject?.supportNote ?? '').trim()
   if (subject?.mechanicsSupport === 'heuristic') {
     throw new RulesValidationError(`Механика ${label} ещё не проверена для авторитетного боя`, 'MECHANICS_NOT_VERIFIED')
   }
-  throw new RulesValidationError(`Для ${label} требуется серверное решение правил`, 'RULING_REQUIRED')
+  throw new RulesValidationError(reason
+    ? `Для ${label} требуется серверное решение правил: ${reason}`
+    : `Для ${label} требуется серверное решение правил`, 'RULING_REQUIRED')
 }
 
 function safeInteger(value, fallback = 0) {
@@ -2328,12 +2349,12 @@ function lockpickCheckModifier(actor) {
  * — тот же порог, что у выломанной двери и у взятого на людях добра
  * (`recognizeDeed`, `server/world-deeds.mjs`).
  */
-function lockpickNoticeEvents(state, command, { targetKind, targetId, targetLabel, check }) {
+function lockpickNoticeEvents(state, command, { targetKind, targetId, targetLabel, check, notice: declaredNotice = null }) {
   const witnessIds = presentSceneNpcs(state).map((npc) => String(npc.id)).sort()
   if (!witnessIds.length) return []
-  const notice = check?.success === true
+  const notice = declaredNotice ?? (check?.success === true
     ? lockpickTraceNoticedFor(state, { targetId, witnessIds })
-    : lockpickNoiseFor({ success: false, natural: safeInteger(check?.kept ?? check?.die, 0) })
+    : lockpickNoiseFor({ success: false, natural: safeInteger(check?.kept ?? check?.die, 0) }))
   if (!notice) return []
   return [eventFrom(commandWithRules(command, RULE_IDS.abilityCheck), 'LockpickNoticed', {
     hero_id: command.actor_id,
@@ -2798,6 +2819,97 @@ function itemAttackProfile(state, actor, itemId, { attackMode = null, attackAbil
     weapon_group: String(catalogEntry?.weapon?.group ?? combat.weaponGroup ?? combat.weapon_group ?? '').toLowerCase(),
     two_handed: mode.twoHanded === true,
     thrown: mode.thrown === true,
+    // Свойство `ammunition` берётся у **режима**, а не у оружия целиком: у
+    // метательного копья дальний режим снарядов не просит, и спутать их значило
+    // бы требовать колчан для брошенного дротика. Каталожная запись боеприпаса
+    // известна только каталожному оружию: у самодельного лука из старого
+    // сохранения её нет, и требовать с него стрелы движок не станет.
+    ammunition: mode.ammunition === true,
+    ammunition_catalog_id: mode.ammunition === true
+      ? ammunitionCatalogIdForWeapon(catalogEntry?.catalog_id ?? '')
+      : null,
+  }
+}
+
+/**
+ * Вид атаки для боевой хроники: `melee`, `ranged` или `thrown`.
+ *
+ * Поле публичное намеренно: за столом видно, ударили ли копьём в упор, метнули
+ * его или выстрелили с тетивы, — и без этого строка журнала врала игроку. В
+ * живой партии багбир метнул копьё с 25 футов, а хроника напечатала «атакует»,
+ * и стол принял дальний бросок за удар вплотную.
+ *
+ * Герою вид называет **выбранный режим оружия** (`itemAttackProfile`): у
+ * метательного режима стоит `thrown`, и он же отличает брошенный кинжал от
+ * удара тем же кинжалом. Существу — его собственное действие стат-блока, но
+ * `kind` там знает только два значения: «Метательное копьё» багбира записано
+ * как `ranged`, хотя летит из руки. Различает их каталожная запись
+ * привязанного оружия — свойство `thrown` у самой вещи. Ни `catalog_id`, ни
+ * имя вещи из привязки при этом наружу не идут: в событие уезжает одно слово
+ * из трёх, и опознать по нему чужой инвентарь нельзя.
+ */
+function attackKindFor(selectedProfile, profile, npcBinding) {
+  if (selectedProfile) {
+    if (selectedProfile.thrown === true) return 'thrown'
+    return selectedProfile.kind === 'ranged' ? 'ranged' : 'melee'
+  }
+  const kind = profile?.kind === 'ranged' ? 'ranged' : 'melee'
+  if (kind !== 'ranged' || !npcBinding) return kind
+  const properties = catalogItem(String(npcBinding.catalog_id ?? ''))?.weapon?.properties
+  return (Array.isArray(properties) ? properties.map(String) : []).includes('thrown') ? 'thrown' : 'ranged'
+}
+
+/**
+ * Что герой тратит выстрелом из этого оружия. `null` — ничего: ближний бой,
+ * метание и оружие без каталожной записи снаряда.
+ *
+ * Зеркало `npcAttackExpenditureFor` (`server/npc-equipment.mjs`) и та же
+ * бухгалтерия: `shots_*` считает снаряды, `quantity_*` — пачки, которые с них
+ * останутся в сумке. Оба числа абсолютные и уезжают в событие целиком, поэтому
+ * редьюсер ничего не досчитывает, а повторное применение того же события даёт
+ * тот же остаток.
+ */
+function heroAmmunitionSupply(actor, profile) {
+  const catalogId = String(profile?.ammunition_catalog_id ?? '')
+  if (!profile?.ammunition || !catalogId) return null
+  const item = (Array.isArray(actor?.inventory) ? actor.inventory : [])
+    .find((candidate) => String(candidate?.catalog_id ?? candidate?.catalogId ?? '') === catalogId
+      && safeInteger(candidate?.quantity, 1) > 0) ?? null
+  const shotsLeft = ammunitionShotsLeft(item)
+  return {
+    catalog_id: catalogId,
+    item_id: item ? String(item.id) : '',
+    item_name: item ? String(item.name ?? catalogItem(catalogId)?.name ?? catalogId) : String(catalogItem(catalogId)?.name ?? catalogId),
+    quantity: item ? Math.max(0, safeInteger(item.quantity, 1)) : 0,
+    shots_left: shotsLeft,
+  }
+}
+
+/**
+ * Списание одного снаряда. Пустая пачка исчезает из сумки целиком: выпитое
+ * зелье не воскресает, и выпущенная стрела тоже.
+ *
+ * `capacity_after` — ёмкость оставшихся пачек, и она уезжает в событие вместе с
+ * остатком нарочно: по ней `ammunitionShotsLeft` потом отличает докупленный
+ * колчан от уже посчитанного. Считает её каталог здесь, один раз, а редьюсер
+ * берёт готовое число — поэтому replay старого боя не поедет от будущей правки
+ * размера пачки.
+ */
+function heroAmmunitionExpenditure(actor, profile) {
+  const supply = heroAmmunitionSupply(actor, profile)
+  if (!supply || !supply.item_id || supply.shots_left <= 0) return null
+  const bundle = ammunitionBundleAmount(supply.catalog_id)
+  const shotsAfter = supply.shots_left - 1
+  const quantityAfter = shotsAfter > 0 ? Math.max(1, Math.ceil(shotsAfter / bundle)) : 0
+  return {
+    item_id: supply.item_id,
+    catalog_id: supply.catalog_id,
+    item_name: supply.item_name,
+    quantity_before: supply.quantity,
+    quantity_after: quantityAfter,
+    shots_before: supply.shots_left,
+    shots_after: shotsAfter,
+    capacity_after: quantityAfter * bundle,
   }
 }
 
@@ -3231,6 +3343,13 @@ const CONDITION_EFFECTS = Object.freeze({
   'enhanced-cha': { checkAdvantageAbilities: ['cha'] },
   // Сфера запирает и защищает разом: изнутри не выйти, снаружи не достать.
   'resilient-sphere': { speedZero: true, incapacitated: true, immuneToAllDamage: true },
+  // Магическая тьма. Освещения движок не считает, поэтому «сильно затенён»
+  // выражается тем, чем оно оборачивается за столом: изнутри не видно никого
+  // (помеха своим атакам), снаружи не видно тебя (помеха атакам по тебе).
+  // Преимущество «невидимого нападающего» намеренно не выдаётся: в редакции
+  // оно гасится встречной помехой, и выдать его значило бы посчитать отмену
+  // дважды с разным итогом.
+  'magical-darkness': { attackDisadvantage: true, grantsAttackDisadvantage: true },
   'investiture-of-flame': { resistsDamageTypes: ['fire'] },
   'investiture-of-ice': { resistsDamageTypes: ['cold'] },
   'investiture-of-wind': { grantsAttackDisadvantage: true },
@@ -5182,6 +5301,19 @@ export function validateCommand(input, rawState, context = {}) {
         )
       }
     }
+    // Пустой колчан героя закрывает выстрел там же, где и колчан существа: до
+    // броска и до расхода хода. Отказ называет причину прямо, чтобы игрок не
+    // гадал, почему кнопка не сработала. Метательное оружие ветка не трогает —
+    // у брошенного дротика свойства `ammunition` нет вовсе.
+    if (!isEnemyActor(state, command.actor_id) && selectedItemProfile?.ammunition) {
+      const supply = heroAmmunitionSupply(actor, selectedItemProfile)
+      if (supply && supply.shots_left <= 0) {
+        throw new RulesValidationError(
+          `Колчан пуст: для этого выстрела нужен боеприпас «${supply.item_name}»`,
+          'AMMUNITION_SPENT',
+        )
+      }
+    }
     const selected = command.item_id ? combatItem(actor, command.item_id) : null
     if (selectedItemProfile?.two_handed && hasEquippedShield(actor)) {
       throw new RulesValidationError('Двуручное оружие нельзя использовать вместе с надетым щитом', 'TWO_HANDED_WITH_SHIELD')
@@ -5754,6 +5886,35 @@ function lingeringAreaDamage(state, command, effect, targetIdValue, { saved, dic
 }
 
 /**
+ * Лечение длящейся области — зеркало `lingeringAreaDamage` и намеренно та же
+ * форма. «Исцеляющий дух» стоит на клетке и лечит всякого, кто в него вошёл
+ * или закончил в нём ход; спасброска у лечения нет, поэтому и ветки успеха
+ * здесь нет.
+ */
+function lingeringAreaHealing(state, command, effect, targetIdValue, { diceService, rolls, trigger }) {
+  const expression = effect?.healing ? String(effect.healing) : null
+  if (!expression) return []
+  const target = findActor(state, targetIdValue)
+  if (!target || !isLivingActor(target)) return []
+  // Лечащая область не лечит врага. В редакции выбор «лечить или нет» делает
+  // заклинатель, у сервера такого выбора нет вовсе — а область, которая
+  // молча поднимает противника, была бы не приближением правила, а ловушкой.
+  const owner = String(effect.source_actor ?? '')
+  if (owner && isEnemyActor(state, targetIdValue) !== isEnemyActor(state, owner)) return []
+  const events = []
+  const healingRoll = diceService.roll(expression, `spell_area_healing:${effect.spell_id}`, String(effect.source_actor ?? command.actor_id), command.visibility ?? 'public')
+  rolls.push(healingRoll)
+  events.push(eventFrom(command, 'DieRolled', { ...healingRoll, spell_id: effect.spell_id }, []))
+  const healing = resolvedHealingRoll(state, targetIdValue, expression, healingRoll.total)
+  const before = actorHp(target)
+  const after = conditionIdsFor(state, targetIdValue).has('healing-blocked') ? before : Math.min(actorMaxHp(target), before + healing.amount)
+  events.push(eventFrom(commandWithRules({ ...command, actor_id: String(effect.source_actor ?? command.actor_id) }, RULE_IDS.healing), 'HealingApplied', {
+    spell_id: effect.spell_id, requested_amount: healing.amount, applied_amount: after - before, hp_before: before, hp_after: after, area_effect: true, trigger, ...healing,
+  }, [targetIdValue]))
+  return events
+}
+
+/**
  * Последствия входа в длящуюся область. Одна реализация на два случая: обычный
  * шаг и **принудительное** перемещение. Раньше проверка стояла только в
  * `MoveActor`, поэтому толчок в стену огня не поджигал: заклинание двигало цель
@@ -5778,6 +5939,7 @@ function areaEntryConsequences(state, command, movedId, from, to, { diceService,
       events.push(eventFrom(commandWithRules(command, RULE_IDS.savingThrow), 'SpellSavingThrowResolved', { ...save, spell_id: effect.spell_id, ability, difficulty: effect.save_dc, saved, trigger }, [movedId]))
     }
     events.push(...lingeringAreaDamage(state, command, effect, movedId, { saved, diceService, rolls, trigger, resolveDamage }))
+    events.push(...lingeringAreaHealing(state, command, effect, movedId, { diceService, rolls, trigger }))
     if (!saved && effect.condition) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: String(effect.condition), duration: 'until-next-turn', source_actor: effect.source_actor, effect_id: effect.effect_id }, [movedId]))
   }
   return events
@@ -7060,6 +7222,54 @@ export function exhaustionLevelOf(state, id) {
 }
 
 /**
+ * «Истощение» как цель снятия. Таблица состояний объявляет **итог** (`exhaustion:3`
+ * включает первые две ступени), поэтому снять истощение значит опустить ступень
+ * на одну, а не удалить строку. Карточка называет эту цель одним словом, чтобы
+ * не перечислять шесть вариантов выбора там, где выбор один.
+ */
+const EXHAUSTION_LADDER = 'exhaustion'
+
+/**
+ * Спуск на одну ступень истощения. Ровно то же, что делает продолжительный
+ * отдых, и намеренно теми же двумя событиями: второй способ убрать ступень
+ * разошёлся бы с первым на шестой ночи.
+ */
+function exhaustionStepDownEvents(state, command, targetIdValue, spellId = null) {
+  const level = exhaustionLevelOf(state, targetIdValue)
+  if (level <= 0) return []
+  const events = [eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', {
+    condition: `exhaustion:${level}`, reason: 'restoration', ...(spellId ? { spell_id: spellId } : {}),
+  }, [targetIdValue])]
+  if (level > 1) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
+    condition: `exhaustion:${level - 1}`,
+    exhaustion_level: level - 1,
+    duration: 'until-removed',
+    reason: 'restoration',
+    ...(spellId ? { spell_id: spellId } : {}),
+  }, [targetIdValue]))
+  return events
+}
+
+/**
+ * Маркер поднятого максимума хитов: `aid-hit-point-maximum:N`.
+ *
+ * Само число живёт в имени состояния по той же причине, что и у Доспеха
+ * Агатиса: продолжительный отдых обязан вернуть ровно столько, сколько выдало
+ * заклинание, и хранить это где-то ещё значило бы завести второй учёт.
+ */
+const HIT_POINT_MAXIMUM_BONUS_CONDITION_PREFIX = 'aid-hit-point-maximum:'
+
+/** Сколько чужой прибавки к максимуму несёт на себе участник. */
+function hitPointMaximumBonusOf(state, id) {
+  let total = 0
+  for (const condition of conditionIdsFor(state, id)) {
+    if (!condition.startsWith(HIT_POINT_MAXIMUM_BONUS_CONDITION_PREFIX)) continue
+    total += Math.max(0, safeInteger(condition.slice(HIT_POINT_MAXIMUM_BONUS_CONDITION_PREFIX.length), 0))
+  }
+  return total
+}
+
+/**
  * Every advantage and disadvantage the two creatures' conditions contribute to
  * one attack roll, plus whether a hit is automatically critical.  Distance is
  * optional: without a tactical map the engine cannot tell reach from range, so
@@ -7277,6 +7487,48 @@ function checkRollFromVerified(verified, { modifier = 0, difficulty = 10, purpos
 }
 
 /**
+ * Заговор «Свет»: единственное освещение, которое сервер вообще считает.
+ *
+ * Модели света у движка нет — ни уровня освещённости клетки, ни тёмного
+ * зрения. Зато есть ровно одна строка правил, где темнота уже стоит числом:
+ * `night-perception` в `server/weather.mjs` даёт помеху Восприятию под
+ * открытым небом ночью. Заговор снимает **её** и больше ничего: носитель и
+ * все, кто стоит в ярком свете (20 футов по карточке), ночью смотрят без
+ * помехи. Придумывать сверх этого нечего — прочих следствий освещения в
+ * движке не существует, и молча имитировать их нельзя.
+ */
+const LIGHT_CONDITION = 'light'
+const NIGHT_PERCEPTION_EFFECT_ID = 'night-perception'
+/** Радиус яркого света берётся из самой карточки: второго числа быть не должно. */
+const lightBrightRadiusFeet = () => Math.max(0, safeInteger(canonicalCombatSpellFor(LIGHT_CONDITION)?.radius, 0))
+
+/** Стоит ли актор в ярком свету зажжённого заговора. */
+function litByLightCantrip(state, actorIdValue) {
+  const id = String(actorIdValue ?? '')
+  if (!id) return false
+  if (conditionIdsFor(state, id).has(LIGHT_CONDITION)) return true
+  const radius = lightBrightRadiusFeet()
+  if (radius <= 0) return false
+  return listActors(state).some((candidate) => {
+    const bearerId = actorId(candidate)
+    if (bearerId === id || !conditionIdsFor(state, bearerId).has(LIGHT_CONDITION)) return false
+    return distanceBetweenActors(state, id, bearerId) <= radius
+  })
+}
+
+/**
+ * Небо для конкретного актора. Обёртка над `weatherCheckSwing`, и единственное,
+ * что она добавляет, — фонарь: ночную помеху Восприятию снимает «Свет».
+ * Дождю, туману и грозе заговор не мешает — это не темнота.
+ */
+function weatherCheckSwingFor(state, skill, actorIdValue) {
+  const swing = weatherCheckSwing(state, skill)
+  if (!swing) return null
+  if (swing.effect_id === NIGHT_PERCEPTION_EFFECT_ID && litByLightCantrip(state, actorIdValue)) return null
+  return swing
+}
+
+/**
  * Предпросмотр d20-проверки для ручного броска: модификатор и режим
  * преимущества считаются теми же функциями, что и исполнение команды, —
  * второго авторитетного пути у проверки не появляется. Это то, что игрок
@@ -7312,7 +7564,7 @@ export function previewD20Check(state, { actorId, kind = 'check', ability = null
   // Небо участвует в проверке наравне с состояниями, поэтому оно обязано быть
   // и в предпросмотре: карточка ручного броска показывает игроку тот же режим,
   // с которым сервер потом сложит две кости.
-  const weatherSwing = weatherCheckSwing(state, checkSkill)
+  const weatherSwing = weatherCheckSwingFor(state, checkSkill, actorId)
   // Зверь на страже лагеря — такая же поправка к Восприятию, как небо, и
   // считается той же функцией, что применит движок: карточка ручного броска
   // обязана показать тот самый режим кубиков. Актор обязателен: стража спутника
@@ -8097,8 +8349,9 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const armorStealthPenalty = skill === 'stealth' && armorStealthDisadvantage(actor)
       // Небо: дождь мешает Восприятию и Выживанию, ночь — Восприятию, гроза
       // помогает Скрытности. Всё это действует только под открытым небом и
-      // считается той же функцией, что и предпросмотр ручного броска.
-      const weatherSwing = weatherCheckSwing(state, skill)
+      // считается той же функцией, что и предпросмотр ручного броска —
+      // включая поправку на зажжённый «Свет».
+      const weatherSwing = weatherCheckSwingFor(state, skill, command.actor_id)
       const weatherPenalty = weatherSwing?.swing === 'disadvantage' ? weatherSwing.reason : null
       const weatherBoost = weatherSwing?.swing === 'advantage' ? weatherSwing.reason : null
       // Прирученный зверь держит стражу на привале: Восприятие лагеря идёт с
@@ -8427,6 +8680,11 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         item_name: selectedProfile?.item.name ?? null,
         attack_mode: selectedProfile?.mode ?? null,
         attack_ability: selectedProfile?.ability ?? null,
+        // Вид атаки одним словом — и для героя, и для существа. Рядом лежащий
+        // `thrown` описывает только режим оружия героя и у действия существа
+        // не заполняется вовсе; `attack_kind` отвечает за обоих, поэтому
+        // хроника берёт глагол отсюда, а не достраивает его сама.
+        attack_kind: attackKindFor(selectedProfile, profile, npcBinding),
         ...(selectedProfile?.two_handed ? { two_handed: true } : {}),
         ...(selectedProfile?.thrown ? { thrown: true } : {}),
         ...(sneakAttackRequested ? {
@@ -8477,6 +8735,22 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const npcExpenditure = npcBinding ? npcAttackExpenditureFor(actor, npcBinding.action_id) : null
       if (npcExpenditure) {
         events.push(npcEquipmentSpentEvent(command, { action_id: npcBinding.action_id, ...npcExpenditure }))
+      }
+      // Тот же расход у героя, и в той же фиксации, что сама атака: у колчана
+      // противника было своё событие только потому, что его инвентарь закрыт
+      // (`NpcEquipmentSpent` — `gm_only`). Карман героя открыт отряду, поэтому
+      // списание едет обычной видимостью и попадает в его лист сразу.
+      const heroExpenditure = selectedProfile && !isEnemyActor(state, command.actor_id)
+        ? heroAmmunitionExpenditure(actor, selectedProfile)
+        : null
+      if (heroExpenditure) {
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.attack), 'AmmunitionSpent', {
+          schema_version: AMMUNITION_SPENT_EVENT_SCHEMA_VERSION,
+          owner_id: String(command.actor_id),
+          weapon_item_id: String(selectedProfile.item?.id ?? ''),
+          weapon_name: String(selectedProfile.item?.name ?? ''),
+          ...heroExpenditure,
+        }, [command.actor_id]))
       }
       if (helped) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'helped' }, [command.actor_id]))
       if (hidden) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'hidden' }, [command.actor_id]))
@@ -8977,7 +9251,11 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const affectedIds = [...affected.map(actorId), ...npcAffected.map(({ npc }) => String(npc.id))]
       const areaEventId = `area-attack:${String(command.command_id).slice(0, 100)}`
       events.push({
-        ...eventFrom(command, 'AreaAttackResolved', { item_id: item.id, item_name: item.name, from, to, trajectory, radius_feet: radiusFeet, damage_expression: combat.damage, damage_type: combat.damageType, affected_ids: affectedIds }, affectedIds),
+        // СЛ и характеристика спасброска едут в событие вместе с видом урона:
+        // это числа **своей** вещи героя, они и так стоят на её карточке, а без
+        // них строка хроники про область не называла ни от чего спасаются, ни
+        // чем бьёт склянка.
+        ...eventFrom(command, 'AreaAttackResolved', { item_id: item.id, item_name: item.name, from, to, trajectory, radius_feet: radiusFeet, damage_expression: combat.damage, damage_type: combat.damageType, save_ability: combat.saveAbility || 'dex', save_dc: safeInteger(combat.saveDc, 12), affected_ids: affectedIds }, affectedIds),
         event_id: areaEventId,
       })
       const damageRoll = affectedIds.length ? diceService.roll(combat.damage, 'area_damage', command.actor_id, command.visibility ?? 'public') : null
@@ -9362,12 +9640,12 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         let resumeSpell = false
         if (action.spell.id === 'shield') {
           const restored = Math.max(0, safeInteger(reactionWindow.damage?.applied_amount, 0) + safeInteger(reactionWindow.damage?.temporary_hp_absorbed, 0))
-          events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction, RULE_IDS.damage), 'ReactionDamageReduced', { action_id: action.id, ...reducedReactionDamage(reactionWindow.damage, restored) }, [command.actor_id]))
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction, RULE_IDS.damage), 'ReactionDamageReduced', { action_id: action.id, name: action.name, ...reducedReactionDamage(reactionWindow.damage, restored) }, [command.actor_id]))
           events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: 'shielded', duration: 'until-next-turn', source_actor: command.actor_id }, [command.actor_id]))
         } else if (action.spell.id === 'absorb-elements') {
           const originalDamage = Math.max(0, safeInteger(reactionWindow.damage?.applied_amount, 0) + safeInteger(reactionWindow.damage?.temporary_hp_absorbed, 0))
           const restored = reactionWindow.damage?.resistant ? 0 : Math.ceil(originalDamage / 2)
-          events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction, RULE_IDS.damage), 'ReactionDamageReduced', { action_id: action.id, ...reducedReactionDamage(reactionWindow.damage, restored) }, [command.actor_id]))
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction, RULE_IDS.damage), 'ReactionDamageReduced', { action_id: action.id, name: action.name, ...reducedReactionDamage(reactionWindow.damage, restored) }, [command.actor_id]))
           events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: `absorbing-element:${reactionWindow.damage?.damage_type ?? 'elemental'}`, duration: 'until-next-turn', source_actor: command.actor_id }, [command.actor_id]))
         } else if (action.spell.id === 'hellish-rebuke') {
           const source = findActor(state, reactionWindow.source_actor_id)
@@ -9402,7 +9680,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           }, [String(reactionWindow.source_actor_id)]))
           if (!hitAfterReroll && reactionWindow.damage) {
             const restored = safeInteger(reactionWindow.damage.applied_amount, 0) + safeInteger(reactionWindow.damage.temporary_hp_absorbed, 0)
-            events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction, RULE_IDS.damage), 'ReactionDamageReduced', { action_id: action.id, ...reducedReactionDamage(reactionWindow.damage, restored) }, [String(reactionWindow.target_id)]))
+            events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction, RULE_IDS.damage), 'ReactionDamageReduced', { action_id: action.id, name: action.name, ...reducedReactionDamage(reactionWindow.damage, restored) }, [String(reactionWindow.target_id)]))
           }
           events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: 'silvery-fortune', duration: 'rounds:10', source_actor: command.actor_id }, [String(command.beneficiary_id ?? command.actor_id)]))
         } else if (action.spell.id === 'counterspell') {
@@ -9444,7 +9722,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         if (resumeSpell) resumePendingSpell()
       } else if (action.id === 'uncanny-dodge' && reactionWindow) {
         const originalDamage = Math.max(0, safeInteger(reactionWindow.damage?.applied_amount, 0) + safeInteger(reactionWindow.damage?.temporary_hp_absorbed, 0))
-        events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction, RULE_IDS.damage), 'ReactionDamageReduced', { action_id: action.id, ...reducedReactionDamage(reactionWindow.damage, Math.ceil(originalDamage / 2)) }, [command.actor_id]))
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction, RULE_IDS.damage), 'ReactionDamageReduced', { action_id: action.id, name: action.name, ...reducedReactionDamage(reactionWindow.damage, Math.ceil(originalDamage / 2)) }, [command.actor_id]))
         events.push(actionEvent({ reaction_window_id: reactionWindow.id }))
         events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction), 'ReactionWindowClosed', { id: reactionWindow.id, accepted: true, action_id: action.id }, [command.actor_id]))
       } else if (action.id === 'parry' && reactionWindow) {
@@ -9452,7 +9730,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         rolls.push(parryRoll)
         events.push(eventFrom(command, 'DieRolled', parryRoll, []))
         spendActionResource()
-        events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction, RULE_IDS.damage), 'ReactionDamageReduced', { action_id: action.id, ...reducedReactionDamage(reactionWindow.damage, parryRoll.total) }, [command.actor_id]))
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction, RULE_IDS.damage), 'ReactionDamageReduced', { action_id: action.id, name: action.name, ...reducedReactionDamage(reactionWindow.damage, parryRoll.total) }, [command.actor_id]))
         events.push(actionEvent({ reaction_window_id: reactionWindow.id }))
         events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction), 'ReactionWindowClosed', { id: reactionWindow.id, accepted: true, action_id: action.id }, [command.actor_id]))
       } else if (action.id === 'riposte' && reactionWindow) {
@@ -10222,6 +10500,8 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
               // Урон длящейся области: без него запись описывает только
               // труднопроходимость и спасбросок, и облако кинжалов невыразимо.
               damage: spell.createsAreaEffect.damage ?? null,
+              // Обратный знак того же поля: область бывает и лечащей.
+              healing: spell.createsAreaEffect.healing ?? null,
               damage_type: spell.createsAreaEffect.damageType ?? spell.damageType ?? null,
               half_on_save: spell.createsAreaEffect.halfOnSave === true,
               follows_source: spell.createsAreaEffect.followsSource === true,
@@ -10912,23 +11192,127 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
             }, [resolvedTargetId]))
           }
         } else if (spell.kind === 'healing') {
-          const scaledHealing = scaledSpellDice({
+          // Плоское лечение: «Полное исцеление» возвращает ровно 70 хитов.
+          // Кость тут не при чём — число в редакции фиксированное, и катить
+          // её значило бы выдумать разброс, которого в карточке нет.
+          const flatHealing = Math.max(0, safeInteger(spell.healingAmount, 0))
+          const scaledHealing = flatHealing > 0 ? null : scaledSpellDice({
             ...spell,
             damage: spell.healing,
             upcastDicePerLevel: spell.upcastHealingDicePerLevel,
           }, actor, command.slot_level) ?? spell.healing
-          const expression = spell.addAbilityModifier ? diceExpression(scaledHealing, spellModifier, 4) : scaledHealing
+          const expression = flatHealing > 0 ? null
+            : spell.addAbilityModifier ? diceExpression(scaledHealing, spellModifier, 4) : scaledHealing
           // Бросок один на всех: «Массовое лечащее слово» возвращает каждому
           // одно и то же число, а не бросает кость на каждого отдельно.
-          const healingRoll = diceService.roll(expression, `spell_healing:${spell.id}`, command.actor_id, command.visibility ?? 'public')
-          rolls.push(healingRoll)
-          events.push(eventFrom(command, 'DieRolled', healingRoll, []))
+          const healingRoll = expression ? diceService.roll(expression, `spell_healing:${spell.id}`, command.actor_id, command.visibility ?? 'public') : null
+          if (healingRoll) {
+            rolls.push(healingRoll)
+            events.push(eventFrom(command, 'DieRolled', healingRoll, []))
+          }
+          const healedTotal = healingRoll ? healingRoll.total : flatHealing
           for (const target of affected) {
             const resolvedTargetId = actorId(target)
-            const healing = resolvedHealingRoll(state, resolvedTargetId, expression, healingRoll.total)
+            const healing = resolvedHealingRoll(state, resolvedTargetId, expression, healedTotal)
             const before = actorHp(target)
             const after = conditionIdsFor(state, resolvedTargetId).has('healing-blocked') ? before : Math.min(actorMaxHp(target), before + healing.amount)
             events.push(eventFrom(commandWithRules(command, RULE_IDS.healing), 'HealingApplied', { spell_id: spell.id, requested_amount: healing.amount, applied_amount: after - before, hp_before: before, hp_after: after, ...healing }, [resolvedTargetId]))
+            // Лечение, которое заодно снимает состояния: «Полное исцеление»
+            // прекращает слепоту и глухоту. Список — тот же, что у усилений,
+            // и читается тем же полем, чтобы правило было одно на две ветки.
+            for (const condition of spell.removesConditions ?? []) {
+              if (!conditionIdsFor(state, resolvedTargetId).has(String(condition))) continue
+              events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', {
+                condition: String(condition), spell_id: spell.id, trigger: 'restoration',
+              }, [resolvedTargetId]))
+            }
+          }
+        } else if (spell.unlocksTarget === true) {
+          /**
+           * «Открывание». Замок снимается **без проверки** — в этом весь смысл
+           * заклинания: оно обходит СЛ, а не облегчает её. Дальше дверь и
+           * сундук живут обычной жизнью: незапертую дверь открывают рукой,
+           * незапертый сундук — обычным глаголом со всей его ловушкой и
+           * добычей. Второго пути к добыче здесь намеренно нет.
+           *
+           * Взамен заклинание платит шумом. По карточке стук слышен за 300
+           * футов, поэтому берётся самая громкая ступень шкалы взлома
+           * (`LOCKPICK_NOISE_SEVERITY.fumble`) — и берётся всегда, а не по
+           * броску: у грохота нет исхода «получилось тихо».
+           */
+          const map = ensureSceneTacticalMap(state)
+          const at = { x: Number(command.to?.x), y: Number(command.to?.y) }
+          const door = map ? doorsReachableFrom(map, at.x, at.y).find((entry) => String(entry.state) === 'locked') : null
+          const prop = map && !door
+            ? (map.props ?? []).find((candidate) => {
+              if (candidate.interactive !== true || sceneObjectDistance(candidate, at) > 1) return false
+              const definition = sceneInteractionDefinition({ mapSeed: map.seed, props: map.props, propId: candidate.id })
+              return Boolean(definition) && sceneObjectState(state, candidate, definition).state === 'locked'
+            })
+            : null
+          if (!door && !prop) throw new RulesValidationError('Здесь нет запертого замка', 'NO_LOCK_TO_OPEN')
+          const loudNoise = { reason: 'noise', severity: LOCKPICK_NOISE_SEVERITY.fumble, loud: true }
+          if (door) {
+            events.push(eventFrom(command, 'DoorStateChanged', {
+              door_id: door.id, state: 'closed', previous_state: 'locked', method: 'knock', spell_id: spell.id,
+            }, []))
+            events.push(...lockpickNoticeEvents(state, command, {
+              targetKind: 'door', targetId: door.id, targetLabel: 'дверь', notice: loudNoise,
+            }))
+          } else {
+            events.push(eventFrom(command, 'SceneObjectStateChanged', {
+              prop_id: prop.id, state: 'closed', previous_state: 'locked', success: true, intent: 'lockpick', method: 'knock', spell_id: spell.id,
+            }, []))
+            events.push(...lockpickNoticeEvents(state, command, {
+              targetKind: 'prop', targetId: prop.id, targetLabel: sceneObjectLabelFor(prop.assetId) || 'чужой замок', notice: loudNoise,
+            }))
+          }
+        } else if (spell.dispelsMagic === true) {
+          /**
+           * «Рассеивание магии». Движок умеет прекращать ровно две вещи —
+           * концентрацию и длящуюся область, — и рассеивается только они.
+           * Заклинание круга выше потраченной ячейки требует проверки
+           * базовой характеристики против СЛ 10 + круг; бросок серверный,
+           * как и всякий бросок за правило.
+           */
+          const at = { x: Number(command.to?.x), y: Number(command.to?.y) }
+          const slotLevel = Math.max(spell.level, safeInteger(command.slot_level, spell.level))
+          const caught = (state.mechanics.active_effects ?? []).filter((effect) => positionInEffect(state, at, effect))
+          if (!caught.length) throw new RulesValidationError('В этой точке нет магического эффекта', 'NO_MAGIC_TO_DISPEL')
+          for (const effect of caught) {
+            const effectSpell = canonicalCombatSpellFor(effect.spell_id)
+            const effectLevel = Math.max(0, safeInteger(effectSpell?.level, 0))
+            let dispelled = true
+            if (effectLevel > slotLevel) {
+              const difficulty = 10 + effectLevel
+              const check = diceService.rollCheck({
+                modifier: spellAttackModifier,
+                difficulty,
+                purpose: `spell_dispel:${effect.spell_id}`,
+                actorId: command.actor_id,
+                visibility: command.visibility,
+              })
+              rolls.push(check)
+              events.push(eventFrom(commandWithRules(command, RULE_IDS.abilityCheck), 'AbilityCheckResolved', {
+                ability: spellAbility, ...check, spell_id: spell.id, dispel_target_spell_id: effect.spell_id,
+              }, [command.actor_id]))
+              dispelled = check.success
+            }
+            if (!dispelled) continue
+            const owner = String(effect.source_actor ?? '')
+            const effectId = String(effect.effect_id ?? effect.id ?? '')
+            // Концентрация и область — одна вещь с двух сторон: пока
+            // заклинатель держит эффект, снимать надо концентрацию, иначе её
+            // редьюсер оставит на цели состояния с тем же `effect_id`.
+            if (owner && String(state.mechanics.concentration[owner]?.effect_id ?? '') === effectId) {
+              events.push(eventFrom(commandWithRules({ ...command, actor_id: owner }, RULE_IDS.concentration), 'ConcentrationEnded', {
+                reason: 'dispelled', effect_id: effectId, spell_id: spell.id,
+              }, [owner]))
+            } else {
+              events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'SpellAreaRemoved', {
+                effect_id: effectId, spell_id: effect.spell_id, reason: 'dispelled',
+              }, []))
+            }
           }
         } else if (['buff', 'utility'].includes(spell.kind)) {
           const targets = affected.length ? affected : spell.target === 'self' ? [actor] : []
@@ -10971,10 +11355,40 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
                 form: clone(spell.polymorphForm),
               }, [resolvedTargetId]))
             }
+            // Прибавка к максимуму хитов: «Подмога» поднимает и предел, и
+            // текущие хиты, и держит их до продолжительного отдыха. Возврат
+            // делает сам отдых — он снимает маркер `aid:N` и тем же событием
+            // опускает предел обратно, поэтому второго учёта здесь нет.
+            const maximumBonus = Math.max(0, safeInteger(spell.hitPointMaximumBonus, 0)
+              + Math.max(0, slotLevel - spell.level) * Math.max(0, safeInteger(spell.hitPointMaximumBonusPerSlotLevel, 0)))
+            if (maximumBonus > 0) {
+              const maximumBefore = actorMaxHp(target)
+              const hpBefore = actorHp(target)
+              events.push(eventFrom(commandWithRules(command, RULE_IDS.healing), 'HitPointMaximumIncreased', {
+                spell_id: spell.id,
+                requested_amount: maximumBonus,
+                applied_amount: maximumBonus,
+                maximum_hp_before: maximumBefore,
+                maximum_hp_after: maximumBefore + maximumBonus,
+                hp_before: hpBefore,
+                hp_after: hpBefore + maximumBonus,
+              }, [resolvedTargetId]))
+              events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
+                condition: `${HIT_POINT_MAXIMUM_BONUS_CONDITION_PREFIX}${maximumBonus}`,
+                duration: 'until-long-rest', source_actor: command.actor_id, effect_id: effectId, spell_id: spell.id,
+              }, [resolvedTargetId]))
+            }
             // Снятие состояний: заклинание может назвать их списком либо
             // выбором игрока, как «Малое восстановление» лечит что-то одно.
             const removable = spell.removesConditionsByOption?.[String(command.spell_option ?? '')] ?? spell.removesConditions ?? []
             for (const condition of removable) {
+              // Истощение снимается не целиком, а на одну ступень: таблица
+              // объявляет итог, поэтому шестая ночь превращается в пятую тем
+              // же способом, каким это делает продолжительный отдых.
+              if (String(condition) === EXHAUSTION_LADDER) {
+                events.push(...exhaustionStepDownEvents(state, command, resolvedTargetId, spell.id))
+                continue
+              }
               if (!conditionIdsFor(state, resolvedTargetId).has(String(condition))) continue
               events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', {
                 condition: String(condition), spell_id: spell.id, trigger: 'restoration',
@@ -10984,9 +11398,19 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
               const condition = configuredCondition === 'hunters-mark' ? `hunters-mark:${command.actor_id}`
                 : configuredCondition === 'hexed' ? `hexed:${command.actor_id}`
                   : configuredCondition
+              // Длительность в мировых минутах: час «Света» гаснет по часам
+              // мира, а не по раундам боя. Считает её тот же редьюсер
+              // `TimeAdvanced`, что гасит антидот.
+              const startedAtMinutes = Math.max(0, safeInteger(state.mechanics.world_time?.elapsed_minutes, 0))
+              const durationMinutes = Math.max(0, safeInteger(spell.conditionDurationMinutes, 0))
               events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
-                condition, duration: spell.concentration ? 'concentration' : spell.durationRounds ? `rounds:${spell.durationRounds}` : null,
+                condition,
+                duration: spell.conditionDuration ? String(spell.conditionDuration)
+                  : spell.concentration ? 'concentration'
+                    : durationMinutes > 0 ? `minutes:${durationMinutes}`
+                      : spell.durationRounds ? `rounds:${spell.durationRounds}` : null,
                 source_actor: command.actor_id, effect_id: effectId, spell_id: spell.id,
+                ...(durationMinutes > 0 ? { started_at_minutes: startedAtMinutes, expires_at_minutes: startedAtMinutes + durationMinutes } : {}),
                 ...(spell.temporaryHpAbilityModifier ? { temporary_hp_amount: Math.max(0, spellModifier) } : {}),
               }, [resolvedTargetId]))
               if (condition === 'heroism') events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'frightened', reason: 'fear-immunity', spell_id: spell.id }, [resolvedTargetId]))
@@ -12126,6 +12550,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           events.push(eventFrom(commandWithRules(command, RULE_IDS.savingThrow), 'SpellSavingThrowResolved', { ...save, spell_id: effect.spell_id, ability, difficulty: effect.save_dc, saved, trigger: 'turn-end' }, [command.actor_id]))
         }
         events.push(...lingeringAreaDamage(state, command, effect, command.actor_id, { saved, diceService, rolls, trigger: 'turn-end', resolveDamage: resolveDamagePayload }))
+        events.push(...lingeringAreaHealing(state, command, effect, command.actor_id, { diceService, rolls, trigger: 'turn-end' }))
         if (!saved && effect.condition) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: String(effect.condition), duration: 'until-next-turn', source_actor: effect.source_actor, effect_id: effect.effect_id }, [command.actor_id]))
       }
       for (const condition of (state.mechanics.conditions[command.actor_id] ?? []).filter((candidate) => candidate.repeat_save_timing === 'turn-end')) {
@@ -14130,6 +14555,26 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
             reason: 'long-rest',
           }, [command.actor_id]))
         }
+        // «Подмога» держится до продолжительного отдыха — значит отдых обязан
+        // её и снять. Маркер `aid-hit-point-maximum:N` убирает сам редьюсер
+        // отдыха (`until-long-rest`), а поднятый предел опускается здесь и
+        // **до** `RestCompleted`: тот выставляет хиты по максимуму, и порядок
+        // решает, проснётся герой с честным листом или с чужой прибавкой.
+        const maximumBonus = hitPointMaximumBonusOf(state, command.actor_id)
+        if (maximumBonus > 0) {
+          const restingActor = findActor(state, command.actor_id)
+          const maximumBefore = actorMaxHp(restingActor)
+          const maximumAfter = Math.max(1, maximumBefore - maximumBonus)
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'HitPointMaximumReduced', {
+            reason: 'aid-expired',
+            requested_amount: maximumBonus,
+            applied_amount: maximumBefore - maximumAfter,
+            maximum_hp_before: maximumBefore,
+            maximum_hp_after: maximumAfter,
+            hp_before: actorHp(restingActor),
+            hp_after: Math.min(actorHp(restingActor), maximumAfter),
+          }, [command.actor_id]))
+        }
       }
       events.push({
         ...eventFrom(command, 'RestCompleted', {
@@ -15308,6 +15753,34 @@ export function applyGameEvent(rawState, event) {
         maximumHpBefore: safeInteger(payload.maximum_hp_before, 0), maximumHpAfter: safeInteger(payload.maximum_hp_after, 0),
       })
       break
+    // Зеркало снижения: «Подмога» поднимает и предел, и текущие хиты на одно
+    // и то же число. Значения в событии абсолютные, поэтому повтор реплея
+    // даёт тот же лист, а не складывает прибавку дважды.
+    case 'HitPointMaximumIncreased':
+      replaceActor(state, target, (actor) => {
+        const maximumHp = Math.max(1, safeInteger(payload.maximum_hp_after, actorMaxHp(actor)))
+        const hp = Math.min(maximumHp, Math.max(0, safeInteger(payload.hp_after, actorHp(actor))))
+        return {
+          ...actor,
+          maxHp: maximumHp,
+          ...(Object.hasOwn(actor, 'max_hp') ? { max_hp: maximumHp } : {}),
+          hp,
+          ...(isEnemyActor(state, target) ? { alive: hp > 0 } : {}),
+        }
+      })
+      // Поднятый предел выводит из-за черты так же, как лечение: умирающий
+      // герой, которому «Подмога» дала хиты, перестаёт кидать спасброски от
+      // смерти. Иначе на листе были бы хиты, а в механике — агония.
+      if (safeInteger(payload.hp_after, 0) > 0) {
+        state.mechanics.conditions[target] = (state.mechanics.conditions[target] ?? []).filter((condition) => condition.id !== 'unconscious')
+        delete state.mechanics.death.saving_throws[target]
+      }
+      appendBattleLog(state, event, {
+        type: 'max-hp-increase', actorId: event.actor_id, targetId: target,
+        spellId: payload.spell_id ? String(payload.spell_id) : undefined,
+        maximumHpBefore: safeInteger(payload.maximum_hp_before, 0), maximumHpAfter: safeInteger(payload.maximum_hp_after, 0),
+      })
+      break
     case 'HitPointMaximumReductionPrevented':
       appendBattleLog(state, event, {
         type: 'max-hp-reduction-prevented', actorId: event.actor_id, targetId: target,
@@ -15717,6 +16190,13 @@ export function applyGameEvent(rawState, event) {
         attackAbility: payload.attack_ability ? String(payload.attack_ability) : undefined,
         twoHanded: payload.two_handed === true,
         thrown: payload.thrown === true,
+        // Вид атаки, расстояние и признак дальнего выстрела. Все три — то, что
+        // видно за столом своими глазами, и все три опциональны: у боя,
+        // сыгранного до этой правки, их в событии нет, и хроника печатает
+        // прежнюю нейтральную строку, а не выдумывает глагол.
+        attackKind: ['melee', 'ranged', 'thrown'].includes(String(payload.attack_kind)) ? String(payload.attack_kind) : undefined,
+        distanceFeet: Number.isFinite(Number(payload.distance_feet)) ? Math.max(0, safeInteger(payload.distance_feet, 0)) : undefined,
+        ...(payload.long_range === true ? { longRange: true } : {}),
         // Почему удар случился именно так. Признаки уже посчитал сервер и уже
         // лежат в событии; журнал боя входит в проекцию, поэтому подпись хода
         // NPC видит **вся партия**, а не только тот, чей браузер отправил
@@ -15734,7 +16214,7 @@ export function applyGameEvent(rawState, event) {
     }
     case 'AreaAttackResolved': {
       spendCombatEconomy(state, event.actor_id, 'action')
-      appendBattleLog(state, event, { sceneTurn: safeInteger(state.scene?.turn, state.mechanics.combat.round), round: state.mechanics.combat.round, type: 'area-attack', actorId: event.actor_id, actorKind: 'player', itemId: payload.item_id, itemName: payload.item_name, area: { ...payload.to, radiusFeet: safeInteger(payload.radius_feet, 5) } })
+      appendBattleLog(state, event, { sceneTurn: safeInteger(state.scene?.turn, state.mechanics.combat.round), round: state.mechanics.combat.round, type: 'area-attack', actorId: event.actor_id, actorKind: 'player', itemId: payload.item_id, itemName: payload.item_name, area: { ...payload.to, radiusFeet: safeInteger(payload.radius_feet, 5) }, damageType: payload.damage_type ? String(payload.damage_type) : undefined, ability: payload.save_ability ? String(payload.save_ability) : undefined, savingThrowDifficulty: payload.save_dc != null ? safeInteger(payload.save_dc, 12) : undefined })
       break
     }
     case 'EquipmentChanged': {
@@ -15778,6 +16258,30 @@ export function applyGameEvent(rawState, event) {
       replaceActor(state, target, (actor) => ({ ...actor, inventory: (actor.inventory ?? []).map((item) => String(item.id) === String(payload.item_id) ? { ...item, quantity: Math.max(0, safeInteger(item.quantity, 1) - safeInteger(payload.quantity, 1)) } : item).filter((item) => item.quantity > 0) }))
       refreshPlayerDerivedState(state, [target])
       break
+    // Остаток снарядов приходит готовым числом, как и у колчана существа
+    // (`npcLoadoutAfterSpend`): редьюсер ничего не вычитает, поэтому повторное
+    // применение того же события даёт тот же остаток, а не второй выстрел.
+    // Опустевшая пачка исчезает из сумки — стрела не воскресает.
+    case 'AmmunitionSpent': {
+      const ownerId = String(payload.owner_id ?? target ?? event.actor_id ?? '')
+      const quantityAfter = Math.max(0, safeInteger(payload.quantity_after, 0))
+      const shotsAfter = Math.max(0, safeInteger(payload.shots_after, 0))
+      const capacityAfter = Math.max(shotsAfter, safeInteger(payload.capacity_after, shotsAfter))
+      replaceActor(state, ownerId, (actor) => ({
+        ...actor,
+        inventory: (Array.isArray(actor.inventory) ? actor.inventory : []).flatMap((item) => {
+          if (String(item.id) !== String(payload.item_id)) return [item]
+          if (quantityAfter <= 0 || shotsAfter <= 0) return []
+          return [{
+            ...item,
+            quantity: quantityAfter,
+            charges: { current: shotsAfter, max: capacityAfter },
+          }]
+        }),
+      }))
+      refreshPlayerDerivedState(state, [ownerId])
+      break
+    }
     case 'NpcItemUsed':
       if (payload.combat_action) spendCombatEconomy(state, event.actor_id, payload.combat_action)
       appendBattleLog(state, event, {
@@ -16147,7 +16651,10 @@ export function applyGameEvent(rawState, event) {
           break
         }
       }
-      appendBattleLog(state, event, { sceneTurn: safeInteger(state.scene?.turn, state.mechanics.combat.round), round: state.mechanics.combat.round, type: 'reaction', actorId: event.actor_id, actorKind: combatActorKind(state, event.actor_id), targetId: target, actionId: payload.action_id, preventedDamage: safeInteger(payload.prevented_amount, 0) })
+      // Имя реакции едет вместе с её ключом: без него хроника печатала голый
+      // `reaction`, и «Щит» с «Невероятным уклонением» выглядели одинаково
+      // безымянно. Ключ остаётся для механики, имя — для стола.
+      appendBattleLog(state, event, { sceneTurn: safeInteger(state.scene?.turn, state.mechanics.combat.round), round: state.mechanics.combat.round, type: 'reaction', actorId: event.actor_id, actorKind: combatActorKind(state, event.actor_id), targetId: target, actionId: payload.action_id, actionName: payload.name ? String(payload.name) : undefined, preventedDamage: safeInteger(payload.prevented_amount, 0) })
       break
     case 'SpellCountered':
       appendBattleLog(state, event, { sceneTurn: safeInteger(state.scene?.turn, state.mechanics.combat.round), round: state.mechanics.combat.round, type: 'reaction', actorId: event.actor_id, actorKind: combatActorKind(state, event.actor_id), targetId: target, actionId: 'counterspell', spellId: payload.spell_id, spellName: payload.spell_name, countered: true })
@@ -17100,7 +17607,11 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'NpcEquipmentSpent': return payload.reason === 'ammunition'
       ? `Боеприпасы ${named(event.actor_id) || 'существа'}: осталось ${safeInteger(payload.shots_after, 0)}`
       : `${named(event.actor_id) || 'Существо'} расстаётся с предметом «${payload.item_name ?? payload.catalog_id}»`
+    case 'AmmunitionSpent': return safeInteger(payload.shots_after, 0) > 0
+      ? `${named(payload.owner_id ?? event.actor_id) || 'Герой'} тратит боеприпас «${payload.item_name ?? payload.catalog_id}»: осталось ${safeInteger(payload.shots_after, 0)}`
+      : `${named(payload.owner_id ?? event.actor_id) || 'Герой'} выпускает последний боеприпас «${payload.item_name ?? payload.catalog_id}»: колчан пуст`
     case 'HitPointMaximumReduced': return `Максимум HP снижен: ${payload.maximum_hp_before} → ${payload.maximum_hp_after}`
+    case 'HitPointMaximumIncreased': return `Максимум HP поднят: ${payload.maximum_hp_before} → ${payload.maximum_hp_after}`
     case 'HitPointMaximumReductionPrevented': return `Aura of Life предотвращает снижение максимума HP`
     case 'AttackResolved': return `Атака ${payload.hit ? 'попала' : 'не попала'}: ${payload.total} против КД ${payload.armor_class}${payload.critical_prevented ? '; критическое попадание стало обычным' : ''}`
     case 'AreaAttackResolved': return `${payload.item_name || 'Снаряд'} поражает область радиусом ${payload.radius_feet} фт.`

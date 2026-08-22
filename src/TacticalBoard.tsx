@@ -186,6 +186,8 @@ export type BoardCellNode = {
   interactive: boolean
   ariaLabel?: string
   title?: string
+  /** Досюда герою не дойти. Метка рисуется только под указателем — см. ниже. */
+  blocked?: boolean
   onActivate?: () => void
   onPointerEnter?: () => void
   onPointerLeave?: () => void
@@ -194,7 +196,7 @@ export type BoardCellNode = {
 }
 
 /** Подсказка клетки, у которой нет собственного узла: причина недоступности. */
-export type BoardCellHint = { title?: string; ariaLabel?: string }
+export type BoardCellHint = { title?: string; ariaLabel?: string; blocked?: boolean }
 
 export type BoardAnimationActor = {
   id: string
@@ -228,7 +230,7 @@ const cameraByLocation = new Map<string, { zoom: number; pan: { x: number; y: nu
 export function TacticalBoard({
   map, columns, rows, irregular, ariaLabel, themeKey, artUrl, cells, cellHints, overlayCells, decoration,
   effectRenderers, battleLog, visualBatch, animationActors, animationsEnabled, conditions, conditionVersion, onBackgroundActivate,
-  levelIndex = 0,
+  levelIndex = 0, lighting = true,
 }: {
   map: TacticalMap | null
   columns: number
@@ -258,6 +260,12 @@ export function TacticalBoard({
   onBackgroundActivate?: () => void
   /** Активный этаж локации: своя камера и кроссфейд при смене. */
   levelIndex?: number
+  /**
+   * Рисовать ли запечённый свет источников. Настройка зрителя из раздела
+   * «Настройки»: гаснет только декоративный слой, туман войны и механика
+   * остаются как были.
+   */
+  lighting?: boolean
 }) {
   const cameraKey = boardCameraKey(map?.locationId, levelIndex)
   const [zoom, setZoom] = useState(() => cameraByLocation.get(cameraKey)?.zoom ?? 1)
@@ -380,8 +388,9 @@ export function TacticalBoard({
       art: artUrl ? loadedArt.get(artUrl) ?? null : null,
       artKey: artUrl ?? '',
       propAtlas,
+      lighting,
     }
-  }, [map, terrain, artUrl])
+  }, [map, terrain, artUrl, lighting])
 
   /**
    * Видимое окно в координатах клеток. Холст лежит внутри трансформированного
@@ -922,6 +931,15 @@ export function TacticalBoard({
   // а собственного узла у клетки нет.
   const hoverKey = hoverCell ? `${hoverCell.x},${hoverCell.y}` : ''
   const hoverHint = hoverCell && !activeByKey.has(hoverKey) ? cellHints?.get(hoverKey) : undefined
+  /*
+   * «Сюда не дойти» рисуется ровно на одной клетке — той, что под указателем.
+   * Раньше это был сплошной слой холста по всем недостижимым клеткам, и карта
+   * скрывалась под ковром красных крестов. Признак приходит с клеткой, а
+   * выбирает клетку наведение, которое и так живёт внутри доски: поднимать его
+   * в состояние экрана нельзя — каждое движение мыши пересобирало бы весь
+   * боевой слой.
+   */
+  const blockedHoverKey = hoverCell && (hoverHint?.blocked || activeByKey.get(hoverKey)?.blocked) ? hoverKey : ''
 
   /** Клавиатура: стрелки ведут фокус по активным клеткам, а не по всем. */
   const moveFocus = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -1010,11 +1028,12 @@ export function TacticalBoard({
         >
           {cells.map((node) => {
             const CellElement: 'button' | 'div' = node.interactive ? 'button' : 'div'
+            const blockedNow = blockedHoverKey !== '' && blockedHoverKey === `${node.x},${node.y}`
             return (
               <CellElement
                 key={`${node.x}-${node.y}`}
                 type={node.interactive ? 'button' : undefined}
-                className={`board-cell ${node.interactive ? 'interactive' : ''} ${node.className}`}
+                className={`board-cell ${node.interactive ? 'interactive' : ''} ${blockedNow ? 'move-unavailable' : ''} ${node.className}`}
                 style={{ gridColumn: node.x + 1, gridRow: node.y + 1 }}
                 data-cell={`${node.x},${node.y}`}
                 aria-label={node.ariaLabel}
@@ -1034,6 +1053,7 @@ export function TacticalBoard({
                   node.onActivate?.()
                 }}
               >
+                {blockedNow && <i className="cell-block-mark" aria-hidden="true" />}
                 {node.children}
               </CellElement>
             )
@@ -1041,12 +1061,14 @@ export function TacticalBoard({
           {hoverCell && hoverHint && (
             <div
               key={`hint-${hoverKey}`}
-              className="board-cell hover-probe"
+              className={`board-cell hover-probe ${hoverHint.blocked ? 'move-unavailable' : ''}`}
               style={{ gridColumn: hoverCell.x + 1, gridRow: hoverCell.y + 1 }}
               data-cell={hoverKey}
               aria-label={hoverHint.ariaLabel}
               title={hoverHint.title}
-            />
+            >
+              {hoverHint.blocked && <i className="cell-block-mark" aria-hidden="true" />}
+            </div>
           )}
         </div>
         <div

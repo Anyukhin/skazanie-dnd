@@ -357,6 +357,32 @@ export function characterCreationCatalog() {
   }
 }
 
+/**
+ * Презентация героя по номеру места в отряде: спрайт портретов и цвет фишки.
+ *
+ * Поле чисто оформительское — механики оно не касается ни на йоту, — но пустым
+ * оставаться не имеет права: клиент красит им фишку на доске, аватар в списке
+ * отряда и ленту инициативы, и герой без портрета выглядел пустым цветным
+ * кружком. Спрайт лежит в `public/assets/party-portraits.png` сеткой 2×2,
+ * позиции перечислены в том же порядке, что и в `src/data.ts`.
+ *
+ * Назначение детерминированное — по индексу места: два героя подряд не
+ * получают одно лицо, а пересоздание того же слота даёт то же самое.
+ */
+export const PARTY_PORTRAIT_SHEET = '/assets/party-portraits.png'
+export const PARTY_PORTRAIT_POSITIONS = ['0% 0%', '100% 0%', '0% 100%', '100% 100%']
+export const PARTY_TOKEN_COLORS = ['#d79b5b', '#758f78', '#8b789e', '#9a745d']
+
+/** Портрет и цвет для места героя под номером `index`. */
+export function partyPresentationFor(index = 0) {
+  const slot = Math.max(0, Math.trunc(Number(index) || 0))
+  return {
+    color: PARTY_TOKEN_COLORS[slot % PARTY_TOKEN_COLORS.length],
+    portrait: PARTY_PORTRAIT_SHEET,
+    portraitPosition: PARTY_PORTRAIT_POSITIONS[slot % PARTY_PORTRAIT_POSITIONS.length],
+  }
+}
+
 export function createCharacterSlot({ id, index = 0 } = {}) {
   const slotId = cleanIdentifier(id ?? `hero-slot-${index + 1}`, 'character slot id')
   const baseScores = Object.fromEntries(ABILITY_IDS.map((ability, abilityIndex) => [
@@ -390,10 +416,8 @@ export function createCharacterSlot({ id, index = 0 } = {}) {
     notes: '',
     inventory: [],
     currency: { copper: 0, silver: 0, gold: 0, platinum: 0 },
-    color: ['#d79b5b', '#758f78', '#8b789e', '#9a745d'][index % 4],
+    ...partyPresentationFor(index),
     initials: String(index + 1),
-    portrait: '/assets/party-portraits.png',
-    portraitPosition: ['0% 0%', '100% 0%', '0% 100%', '100% 100%'][index % 4],
     online: false,
     characterSetupRequired: true,
   }

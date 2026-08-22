@@ -1,4 +1,7 @@
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Spectral:wght@500;600;700&display=swap');
+/* Гарнитуры лежат в репозитории (public/assets/fonts, tools/fetch-fonts.mjs):
+   импорт с Google Fonts в проде блокировал CSP сервера, и игроки видели
+   системные Segoe UI и Times вместо Manrope и Spectral. */
+@import './fonts.css';
 
 :root {
   font-family: 'Manrope', system-ui, sans-serif;
@@ -48,6 +51,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 
 .app { width: 100%; height: 100vh; min-height: 0; display: grid; grid-template-columns: 276px minmax(0, 1fr); background: #0d0c0b; transition: grid-template-columns .25s ease; }
 .app.sidebar-is-collapsed { grid-template-columns: 76px minmax(0, 1fr); }
+/* Геометрия оболочки объявлена на корне, а не на игровой области: по этим же
+   размерам выравнивается слой оверлеев (рассказчик, ожидающая проверка) —
+   он стоит рядом с `main`, чтобы быть виден из любого раздела, и обязан
+   совпадать с рабочей областью. `.game-area` берёт `--status` и
+   `--server-column` отсюда по наследованию, как и раньше. */
+.app { --shell-left: var(--ui-sidebar-width, 276px); --shell-top: 72px; --status: 60px; --server-column: var(--ui-server-column, 320px); }
+.app.sidebar-is-collapsed { --shell-left: 76px; }
 .sidebar { position: relative; z-index: 20; min-width: 0; height: 100vh; display: flex; flex-direction: column; background: linear-gradient(160deg, #1b1815 0%, #11100e 70%); border-right: 1px solid var(--line); overflow: hidden; box-shadow: 16px 0 40px rgba(0,0,0,.22); }
 .sidebar-top { height: 72px; display: flex; align-items: center; justify-content: space-between; padding: 0 17px 0 21px; border-bottom: 1px solid var(--line); flex: 0 0 auto; }
 .logo { display: flex; align-items: center; gap: 11px; white-space: nowrap; overflow: hidden; }
@@ -76,6 +86,41 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .portrait-avatar { background-size: 200% 200%; background-repeat: no-repeat; box-shadow: inset 0 0 0 2px rgba(0,0,0,.22), 0 3px 8px rgba(0,0,0,.25); }
 .presence { position: absolute; right: -1px; bottom: 0; width: 9px; height: 9px; border: 2px solid #171512; border-radius: 50%; background: #5a5550; }
 .presence.online { background: #76a37b; }
+
+/* Герой без портрета: инициалы поверх его цвета.
+   ------------------------------------------------------------------------
+   Кампания, собранная сырым bootstrap без мастера, приезжает с пустым
+   `portrait` — и всюду, где фишка, аватар или лента красились
+   `background-image: url(<пусто>)`, оставался пустой цветной кружок. Заглушка
+   рисуется одним слоем поверх оправы: она наследует её скругление и потому
+   годится и круглой фишке доски, и прямоугольной карточке героя.
+
+   Слой стоит **первым** ребёнком и без `z-index`: всё, что оправа рисует
+   поверх портрета — точка присутствия, череп павшего, метка «В СЕТИ», кнопка
+   «Сменить фото», — объявлено позже и остаётся сверху само.
+
+   `position: relative` оправе выдаётся правилом нулевого веса: у фишки доски
+   своя `position: absolute`, и обычное правило её бы сломало. */
+:where([data-face="initials"]) { position: relative; }
+/* Селектор с оправой — не украшение, а вес. Заглушка живёт внутри чужих блоков
+   («ВЛАДЕЛЕЦ» в инвентаре, ряд имени в кластере), и правила вида
+   `.inventory-owner b` или `.hero-cluster-face b` весом (0,1,1) перебивали бы
+   одноклассовое правило и навязывали заглушке свой цвет, шрифт и ширину. */
+[data-face="initials"] > .hero-face-initials { position: absolute; inset: 0; min-width: 0; display: grid; place-items: center; overflow: hidden; border-radius: inherit; background: color-mix(in srgb, var(--face-color, #6d5b45), #17130f 46%); color: #f2e5d0; font: 600 .92em/1 Spectral, Georgia, serif; letter-spacing: .05em; text-shadow: 0 1px 2px rgba(0,0,0,.55); pointer-events: none; }
+/* Кегль инициалов задаёт оправа, а не наследование: у фишки доски свой
+   контейнерный `clamp`, а у карточки отряда — кегль подписи, который на
+   46-пиксельном круге читался бы иголкой. */
+.avatar > .hero-face-initials { font-size: var(--fs-lg); }
+.hud-portrait > .hero-face-initials { font-size: var(--fs-2xl); }
+.character-art > .hero-face-initials { font-size: var(--fs-5xl); }
+.fallen-hero-portrait > .hero-face-initials { font-size: var(--fs-2xl); }
+.initiative-active-avatar > .hero-face-initials { font-size: var(--fs-md); }
+.initiative-avatar > .hero-face-initials { font-size: var(--fs-xs); }
+.hero-cluster-avatar > .hero-face-initials { font-size: var(--fs-xxs); }
+/* Оправы из `inventory.css`: правило живёт здесь вместе с остальной заглушкой,
+   вес селектора (0,2,0) не зависит от порядка подключения файлов. */
+.editor-avatar > .hero-face-initials { font-size: var(--fs-4xl); }
+.mini-owner-avatar > .hero-face-initials { font-size: var(--fs-md); }
 .player-meta { min-width: 0; }
 .player-name-row { display: flex; align-items: center; gap: 5px; }
 /* Имя героя крупнее подписи под ним. Раньше было наоборот — имя 13px, роль
@@ -86,6 +131,16 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .hp-line { position: relative; height: 5px; margin-top: 17px; background: #292521; border-radius: 3px; }
 .hp-line i { display: block; height: 100%; background: #8c554b; border-radius: inherit; }
 .hp-line small { position: absolute; right: 0; bottom: 7px; display: block; color: #a99d90; font: 600 var(--fs-sm) Manrope, sans-serif; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Временные хиты — голубой хвост поверх полосы ОЗ и «+N» у числа: уходят
+   первыми и не лечатся, поэтому цвет свой, а не продолжение красного. */
+.hp-line i.temp { position: absolute; top: 0; height: 100%; background: #6f9fc6; border-radius: inherit; }
+.hp-line small em { margin-left: 3px; color: #8bb8e0; font-style: normal; }
+/* Точки состояний соратника: концентрация — голубая, состояние — красная,
+   маркер — серая. Слова — в подсказке; свой герой читает их в полоске жизни. */
+.player-status-dots { display: flex; gap: 4px; margin-top: 5px; }
+.player-status-dots i { width: 7px; height: 7px; border-radius: 50%; background: #c35b4e; }
+.player-status-dots i.concentration { background: #8ba7bd; }
+.player-status-dots i.marker { background: #6d6459; }
 .armor-badge { align-self: center; display: grid; justify-items: center; gap: 1px; }
 .armor-icon { color: #625d57; }
 /* Множитель, а не единица: при увеличенном интерфейсе цифра в коробке высотой
@@ -156,6 +211,18 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .top-actions { gap: 8px; }
 .top-actions .invite-button { flex: 0 0 auto; padding: 0 10px; }
 .top-actions .account-chip { flex: 0 1 auto; min-width: 0; }
+/* Меню «Мастер»: список под кнопкой, заголовки групп — единственный капс
+   внутри, опасный пункт — красным. */
+.master-menu { position: relative; flex: 0 0 auto; }
+.top-actions .master-menu-button { display: inline-flex; align-items: center; gap: 6px; }
+.top-actions .master-menu-button.open { border-color: rgba(226,184,121,.6); color: #f0d3a6; }
+.master-menu-list { position: absolute; z-index: 70; right: 0; top: calc(100% + 6px); min-width: 236px; display: grid; gap: 2px; padding: 6px; border: 1px solid rgba(226,184,121,.35); border-radius: 7px; background: rgba(17,15,13,.98); box-shadow: 0 14px 40px rgba(0,0,0,.6); }
+.master-menu-list small { padding: 6px 9px 2px; color: #8b6c49; font: 700 var(--fs-xxs) Manrope, sans-serif; letter-spacing: .14em; text-transform: uppercase; }
+.master-menu-list button { width: 100%; display: flex; align-items: center; gap: 8px; margin: 0; padding: 7px 9px; border: 0; border-radius: 5px; background: none; color: #ded8ce; font: 500 var(--fs-sm) Manrope, sans-serif; text-align: left; cursor: pointer; }
+.master-menu-list button:hover:not(:disabled) { background: rgba(255,255,255,.05); color: #f0d3a6; }
+.master-menu-list button:disabled { opacity: .4; cursor: default; }
+.master-menu-list button.danger { color: #d48677; }
+.master-menu-list button svg { color: #a77c4b; }
 .top-actions .account-chip > span { min-width: 0; }
 .top-actions .account-chip > span > * { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .newbie-guide-button { width: 34px; height: 34px; flex: 0 0 auto; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 5px; background: rgba(255,255,255,.025); color: #8f867c; cursor: pointer; }
@@ -193,7 +260,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .quest-card ul { margin: 8px 0 0; padding-left: 16px; color: #b3aa9d; font-size: var(--fs-sm); line-height: 1.6; }
 .quest-card.thread { border-left-color: rgba(112,138,103,.5); }
 .quest-card.summary { border-left-color: rgba(120,110,150,.45); }
-.quest-clock { display: flex; align-items: center; gap: 8px; margin-top: 10px; color: #8aa183; font-size: var(--fs-xs); letter-spacing: .1em; text-transform: uppercase; }
+.quest-clock { display: flex; align-items: center; gap: 8px; margin-top: 10px; color: #8aa183; font-size: var(--fs-xs); letter-spacing: .1em; }
 .quest-clock i { display: flex; gap: 3px; }
 .quest-clock u { width: 9px; height: 9px; border: 1px solid rgba(190,113,66,.4); border-radius: 50%; text-decoration: none; }
 .quest-clock u.filled { background: #be7142; border-color: #be7142; }
@@ -206,8 +273,28 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
    вычитается из полотна: на 1440×900 те же 420/320 px оставили бы доске 744×436 и
    клетку 33 px — ровно ту, из-за которой бой и был тесным. Компактные значения по
    умолчанию, просторные — только когда ширины действительно хватает. */
-.game-area { --status: 60px; --server-column: var(--ui-server-column, 320px); --rail: calc(292px * var(--ui-readable-scale, 1)); --slot: 64px; position: relative; display: grid; grid-template-columns: minmax(0, 1fr) var(--server-column); grid-template-rows: var(--status) minmax(0, 1fr) var(--ui-rail-height, auto); grid-template-areas: 'status status' 'board server' 'rail rail'; flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: #090908; }
-.pending-check-overlay { position: absolute; z-index: 45; top: calc(var(--status) + 14px); right: calc(var(--server-column) + 14px); width: min(520px, calc(100% - var(--server-column) - 28px)); pointer-events: auto; }
+.game-area { --rail: calc(292px * var(--ui-readable-scale, 1)); --slot: calc(64px * var(--ui-readable-scale, 1)); position: relative; display: grid; grid-template-columns: minmax(0, 1fr) var(--server-column); grid-template-rows: var(--status) minmax(0, 1fr) var(--ui-rail-height, auto); grid-template-areas: 'status status' 'board server' 'rail rail'; flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: #090908; }
+/* Слой оверлеев стоит рядом с `main`, а не внутри игровой области: рассказчик и
+   требование броска нужны игроку и в инвентаре, и в журнале, а раньше жили
+   только в комнате. Слой повторяет рабочую область — от бокового меню слева и
+   (в комнате) до правой колонки справа, — поэтому отступы карточек внутри него
+   считаются от тех же краёв, что и прежде, и не переписаны. Модалки (z-index
+   ≥ 100) остаются выше слоя и по-прежнему перекрывают его. */
+.scene-overlay-layer { position: fixed; z-index: 46; top: var(--shell-top, 72px); right: 0; bottom: 0; left: var(--shell-left, 276px); pointer-events: none; transition: left .25s ease; }
+.scene-overlay-layer.beside-server-column { right: var(--server-column, 320px); }
+.scene-overlay-layer > * { pointer-events: auto; }
+/* Общая лента отказов. Источников было три в трёх углах — строка над доской,
+   строка под хотбаром и своя у лавки, — и вторая ошибка затирала первую раньше,
+   чем её успевали прочитать. Очередь стоит выше модалок (z-index ≥ 100
+   намеренно перекрыт): отказ приходит и на действие, начатое в окне. */
+.toast-stack { position: fixed; z-index: 250; top: calc(var(--shell-top, 72px) + 12px); right: 16px; width: min(380px, calc(100vw - 32px)); display: grid; gap: 8px; pointer-events: none; }
+.toast { display: flex; align-items: flex-start; gap: 8px; padding: 9px 10px; border: 1px solid rgba(183,78,67,.34); border-radius: 6px; background: rgba(37,20,17,.97); color: #d09184; font: var(--fs-sm)/1.4 Manrope, sans-serif; box-shadow: 0 14px 34px rgba(0,0,0,.55); pointer-events: auto; animation: toast-arrive .18s ease-out; }
+.toast > svg { flex: 0 0 auto; margin-top: 1px; color: #c26a5b; }
+.toast > span { flex: 1; min-width: 0; }
+.toast > button { flex: 0 0 auto; width: 18px; min-height: 18px; margin: -2px -2px 0 0; padding: 0; border: 0; background: transparent; color: #a97068; cursor: pointer; }
+.toast > button:hover { color: #d09184; }
+@keyframes toast-arrive { from { opacity: 0; transform: translateY(-6px); } }
+.pending-check-overlay { position: absolute; z-index: 45; top: calc(var(--status) + 14px); right: 14px; width: min(520px, calc(100% - 28px)); pointer-events: auto; }
 .pending-check-overlay > summary { min-height: 34px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid rgba(204,151,86,.3); border-radius: 8px; background: rgba(12,10,8,.94); color: #c49a63; font: 600 var(--fs-sm) Manrope, sans-serif; cursor: pointer; list-style: none; box-shadow: 0 12px 30px rgba(0,0,0,.36); }
 .pending-check-overlay > summary::-webkit-details-marker { display: none; }
 .pending-check-overlay > summary span { flex: 1; }
@@ -222,7 +309,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   /* На широком экране другие умолчания, но заданный игроком размер остаётся
      главнее: раньше это правило жёстко ставило 420 и перетаскивание колонки в
      полноэкранном режиме переставало работать вовсе. */
-  .game-area { --status: 72px; --server-column: var(--ui-server-column, 420px); --rail: var(--ui-rail-height, 320px); --slot: 76px; }
+  .app { --status: 72px; --server-column: var(--ui-server-column, 420px); }
+  .game-area { --rail: var(--ui-rail-height, 320px); --slot: calc(76px * var(--ui-readable-scale, 1)); }
 }
 .status-bar { grid-area: status; min-width: 0; display: flex; align-items: center; gap: 18px; padding: 0 26px; border-bottom: 1px solid var(--line); background: rgba(18,16,14,.97); overflow: hidden; }
 .scene-header { position: relative; z-index: auto; flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 18px; pointer-events: none; }
@@ -266,16 +354,72 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
    мышь — из подсказки, а словами пункт «Торговец» стоит в боковом меню. */
 .scene-merchant { flex: 0 0 auto; width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid rgba(114,150,120,.45); border-radius: 50%; background: rgba(23,32,25,.75); color: #9ec2a4; cursor: pointer; pointer-events: auto; }
 .scene-merchant:hover { border-color: rgba(140,193,148,.75); background: rgba(37,55,41,.88); color: #c4e1c8; }
-.server-column { position: relative; grid-area: server; min-width: 0; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 10px; padding: 12px; border-left: 1px solid var(--line); background: #12100e; overflow: hidden; }
-.server-column > .combat-context-panel { grid-row: 1; min-width: 0; min-height: 0; max-height: 34vh; overflow: auto; }
-.server-column > .rest-controls { grid-row: 1; }
-.server-column > .chat-panel { grid-row: 2; min-width: 0; min-height: 0; }
-.server-column > .chat-closed { grid-row: 2; position: static; inset: auto; width: 100%; justify-self: stretch; align-self: start; }
-.server-column > .player-hud-stack { grid-row: 3; }
+/* Колонка набирается сверху вниз, а не по трём именованным строкам: строк было
+   ровно три, а панелей в разметке — двенадцать, и всё, кроме боевого контекста,
+   хроники и HUD, уезжало в неявные строки под HUD и срезалось `overflow:
+   hidden`. Прокрутить туда было нечем. Поток вместо сетки: боевой контекст
+   первым, ситуативные панели одной прокручиваемой полосой, хроника забирает
+   остаток, HUD прижат к низу. */
+.server-column { position: relative; grid-area: server; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 12px; border-left: 1px solid var(--line); background: #12100e; overflow-y: auto; overscroll-behavior: contain; }
+/* Колонка — лента и две полоски. Замерено на 1440×900: колонке достаётся
+   384px, и прежний штабель (контекст боя до 435px, ситуативные панели,
+   хроника, карточка героя) оставлял рассказу 78px — подпись без текста.
+   Теперь сверху полоска хода, снизу полоска жизни, между ними ситуации
+   чипами и хроника, которая берёт всё остальное. Прокрутка внутри колонки
+   одна — у самой ленты. */
+.server-column > .turn-strip, .server-column > .movement-preview, .server-column > .npc-turn-group { flex: 0 0 auto; min-width: 0; }
+.server-column > .movement-preview { margin-top: 0; }
+.server-column > .server-situational { flex: 0 0 auto; min-width: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.server-column > .server-situational:empty { display: none; }
+.server-column > .chat-panel { flex: 1 1 auto; min-width: 0; min-height: 120px; }
+.server-column > .player-hud-stack { flex: 0 0 auto; margin-top: auto; }
+
+.turn-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 7px 10px; border: 1px solid rgba(211,184,149,.14); border-radius: 7px; background: rgba(17,15,13,.84); color: #a2957f; font: 600 var(--fs-xs) Manrope, sans-serif; }
+.turn-strip-round { color: #c9a36f; }
+.turn-strip-actor { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.turn-strip-actor b { color: #e2b879; font-weight: 600; }
+.turn-strip-actor b.enemy { color: #d98a7c; }
+.turn-strip-condition { display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px; border: 1px solid rgba(93,153,109,.3); border-radius: 999px; color: #94b59a; font-size: var(--fs-xxs); }
+.turn-strip-condition.partial { border-color: rgba(181,130,67,.35); color: #c5a16f; }
+.turn-strip-condition.marker { border-style: dashed; border-color: rgba(139,124,108,.3); color: #a09588; }
+.turn-strip-condition i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.turn-strip > .combat-turn-clock { margin-left: auto; }
+.combat-turn-clock.compact { display: grid; grid-template-columns: auto; gap: 2px; min-width: 44px; padding: 0; border: 0; }
+.combat-turn-clock.compact b { font-size: var(--fs-sm); text-align: right; }
+.combat-turn-clock.compact > span { grid-column: 1; height: 2px; }
+
+/* Ходы противников, пока игрок ждал: одна строка со счётчиком, раскрывается по
+   нажатию; наведение на строку подсвечивает участников на доске. */
+.npc-turn-group { display: grid; gap: 4px; }
+.npc-turn-group > button { width: 100%; display: flex; align-items: center; gap: 6px; margin: 0; padding: 5px 9px; border: 1px solid rgba(222,201,171,.12); border-radius: 6px; background: rgba(255,255,255,.025); color: #9c8a6c; font: 600 var(--fs-xs) Manrope, sans-serif; text-align: left; cursor: pointer; }
+.npc-turn-group > button:hover { border-color: rgba(217,163,95,.35); color: #c9a36f; }
+.npc-turn-group > button b { color: #c9a36f; font-weight: 600; }
+.npc-turn-group > button svg:last-child { margin-left: auto; transition: transform .15s; }
+.npc-turn-group.open > button svg:last-child { transform: rotate(180deg); }
+.npc-turn-group ol { display: grid; gap: 3px; margin: 0; padding: 0; list-style: none; }
+.npc-turn-group li { padding: 4px 8px; border: 1px solid transparent; border-radius: 4px; color: #a89888; font: var(--fs-xxs)/1.4 Spectral, serif; outline: 0; }
+.npc-turn-group li:hover, .npc-turn-group li:focus-visible, .npc-turn-group li.linked { border-color: rgba(217,163,95,.35); background: rgba(161,103,49,.12); }
+
+/* Ситуативные панели: чип в строке, раскрытая — поверх ленты. */
+.situational-chip { display: inline-flex; align-items: center; gap: 5px; margin: 0; padding: 4px 10px; border: 1px solid rgba(211,160,97,.28); border-radius: 999px; background: rgba(127,81,36,.12); color: #c9a36f; font: 600 var(--fs-xs) Manrope, sans-serif; cursor: pointer; }
+.situational-chip:hover { border-color: rgba(226,184,121,.6); color: #e2b879; }
+.situational-chip.open { border-color: #e2b879; background: rgba(192,132,66,.24); color: #f0d3a6; }
+.situational-chip b { min-width: 16px; padding: 0 5px; border-radius: 999px; background: rgba(226,184,121,.18); color: #e2b879; font-size: var(--fs-xxs); text-align: center; }
+.situational-overlay { position: absolute; z-index: 6; inset: 12px; display: flex; flex-direction: column; border: 1px solid rgba(211,160,97,.35); border-radius: 8px; background: rgba(17,15,13,.98); box-shadow: 0 18px 50px rgba(0,0,0,.6); overflow: hidden; animation: chatIn .18s ease-out; }
+.situational-overlay > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 8px 8px 12px; border-bottom: 1px solid var(--line); color: #c9a36f; font: 600 var(--fs-sm) Manrope, sans-serif; }
+.situational-overlay > header > span { display: inline-flex; align-items: center; gap: 6px; }
+.situational-overlay-body { flex: 1 1 auto; min-height: 0; display: grid; gap: 10px; align-content: start; padding: 10px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #4a3f34 transparent; }
+/* Внутри оверлея у панели уже есть рамка — своя ей не нужна. */
+.situational-overlay-body > section { padding: 0; border: 0; background: transparent; box-shadow: none; }
+
+/* Инспектор цели у фишки: позицию считает `targetPopoverStyle`, указатель
+   сквозь него проходит к доске, чтобы не гасить наведение на саму фишку. */
+.combat-target-popover { z-index: 40; overflow: hidden; border-radius: 7px; background: rgba(14,12,10,.96); box-shadow: 0 18px 50px rgba(0,0,0,.6); backdrop-filter: blur(10px); pointer-events: none; animation: battle-roll-arrive .15s ease-out; }
+.combat-target-popover > .combat-target-inspector { height: 100%; overflow: hidden; }
 .rest-controls { padding: 11px; border: 1px solid rgba(204,151,86,.22); border-radius: 7px; background: rgba(21,17,13,.88); }
 .rest-controls > header { display: flex; align-items: center; gap: 8px; color: #bd8750; }
 .rest-controls > header span { display: grid; }
-.rest-controls > header small { color: #775b3e; font-size: var(--fs-xxs); letter-spacing: .12em; }
+.rest-controls > header small { color: #775b3e; font-size: var(--fs-xxs); }
 .rest-controls > header strong { color: #d2c0a9; font: 600 var(--fs-lg) Spectral, serif; }
 .rest-controls > p { margin: 6px 0 9px; color: #776e64; font-size: var(--fs-sm); }
 .rest-controls > div { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
@@ -287,14 +431,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .captive-panel { padding: 11px; border: 1px solid rgba(150,116,86,.3); border-radius: 7px; background: rgba(24,18,14,.9); }
 .captive-panel > header { display: flex; align-items: center; gap: 8px; color: #b08a63; }
 .captive-panel > header span { display: grid; }
-.captive-panel > header small { color: #7a6047; font-size: var(--fs-xxs); letter-spacing: .12em; }
+.captive-panel > header small { color: #7a6047; font-size: var(--fs-xxs); }
 .captive-panel > header strong { color: #d2c0a9; font: 600 var(--fs-lg) Spectral, serif; }
 .captive-card { margin-top: 9px; padding: 8px 9px; border: 1px solid rgba(150,116,86,.22); border-left: 3px solid #8a6a45; border-radius: 6px; background: rgba(32,24,18,.7); }
 .captive-card.starving { border-left-color: #a4442f; }
 .captive-card > header { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; }
 .captive-card > header b { color: #d8c8b1; font: 600 var(--fs-md) Spectral, serif; }
 .captive-card > header small { color: #7a6f63; font-size: var(--fs-xxs); }
-.captive-tag { padding: 1px 6px; border: 1px solid rgba(196,147,92,.45); border-radius: 3px; background: rgba(138,106,69,.2); color: #d2a06a; font-size: var(--fs-xxs); font-style: normal; letter-spacing: .1em; }
+.captive-tag { padding: 1px 6px; border: 1px solid rgba(196,147,92,.45); border-radius: 3px; background: rgba(138,106,69,.2); color: #d2a06a; font-size: var(--fs-xxs); font-style: normal; }
 .captive-card > p { margin: 5px 0 8px; color: #7e7367; font-size: var(--fs-sm); }
 .captive-card.starving > p { color: #b4705c; }
 .captive-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
@@ -308,7 +452,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .loot-panel { padding: 11px; border: 1px solid rgba(126,140,104,.3); border-radius: 7px; background: rgba(20,22,16,.9); }
 .loot-panel > header { display: flex; align-items: center; gap: 8px; color: #94a578; }
 .loot-panel > header span { display: grid; }
-.loot-panel > header small { color: #6b7554; font-size: var(--fs-xxs); letter-spacing: .12em; }
+.loot-panel > header small { color: #6b7554; font-size: var(--fs-xxs); }
 .loot-panel > header strong { color: #c6cdb2; font: 600 var(--fs-lg) Spectral, serif; }
 .loot-card { margin-top: 9px; padding: 8px 9px; border: 1px solid rgba(126,140,104,.22); border-left: 3px solid #6f7f52; border-radius: 6px; background: rgba(28,31,22,.7); transition: border-color .18s ease, box-shadow .18s ease, opacity .5s ease; }
 .loot-card.kind-captive { border-left-color: #8a6a45; }
@@ -327,7 +471,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .loot-source-portrait { flex: 0 0 auto; width: 34px; height: 34px; display: grid; place-items: center; overflow: hidden; border: 1px solid rgba(150,176,110,.32); border-radius: 5px; background: radial-gradient(circle, rgba(60,68,44,.7), rgba(18,20,14,.9) 72%); background-size: cover; background-position: center 22%; color: #97a87a; }
 .loot-source-portrait.neutral.kind-captive { border-color: rgba(196,147,92,.35); color: #c1965f; }
 .loot-source-portrait.neutral.spent { border-color: rgba(120,120,110,.3); color: #7d8073; }
-.loot-tag { justify-self: start; padding: 1px 6px; border: 1px solid rgba(150,176,110,.4); border-radius: 3px; background: rgba(105,127,74,.2); color: #a7bd80; font-size: var(--fs-xxs); font-style: normal; letter-spacing: .1em; }
+.loot-tag { justify-self: start; padding: 1px 6px; border: 1px solid rgba(150,176,110,.4); border-radius: 3px; background: rgba(105,127,74,.2); color: #a7bd80; font-size: var(--fs-xxs); font-style: normal; }
 .loot-far { margin: 6px 0 0; color: #7b8168; font-size: var(--fs-sm); font-style: italic; }
 .loot-refusal { margin: 6px 0 0; padding: 5px 7px; border: 1px solid rgba(180,96,74,.34); border-radius: 5px; background: rgba(96,42,30,.2); color: #c98d78; font-size: var(--fs-xs); }
 .loot-items { display: grid; gap: 4px; margin: 7px 0 8px; padding: 0; list-style: none; }
@@ -375,7 +519,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .loot-aftermath { padding: 11px; border: 1px solid rgba(211,160,97,.34); border-radius: 7px; background: linear-gradient(180deg, rgba(48,36,22,.92), rgba(22,20,15,.92)); }
 .loot-aftermath > header { display: flex; align-items: center; gap: 8px; color: #d2a86a; }
 .loot-aftermath > header span { display: grid; flex: 1; }
-.loot-aftermath > header small { color: #9c7c4c; font-size: var(--fs-xxs); letter-spacing: .12em; }
+.loot-aftermath > header small { color: #9c7c4c; font-size: var(--fs-xxs); }
 .loot-aftermath > header strong { color: #e4d3b4; font: 600 var(--fs-lg) Spectral, serif; }
 .loot-aftermath > header button { width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid rgba(211,160,97,.24); border-radius: 4px; background: rgba(0,0,0,.28); color: #a98d63; cursor: pointer; }
 .loot-aftermath-counts { display: flex; flex-wrap: wrap; gap: 7px; margin: 9px 0 8px; }
@@ -401,7 +545,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .beast-panel { padding: 11px; border: 1px solid rgba(116,142,104,.28); border-radius: 7px; background: rgba(19,24,17,.9); }
 .beast-panel > header { display: flex; align-items: center; gap: 8px; color: #8fae7c; }
 .beast-panel > header span { display: grid; }
-.beast-panel > header small { color: #6b7f5c; font-size: var(--fs-xxs); letter-spacing: .12em; }
+.beast-panel > header small { color: #6b7f5c; font-size: var(--fs-xxs); }
 .beast-panel > header strong { color: #c4d0b4; font: 600 var(--fs-lg) Spectral, serif; }
 .beast-card { margin-top: 9px; padding: 8px 9px; border: 1px solid rgba(116,142,104,.2); border-left: 3px solid #6d8a5e; border-radius: 6px; background: rgba(26,32,22,.7); }
 .beast-card.predator { border-left-color: #a4784a; }
@@ -409,7 +553,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .beast-card > header { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; }
 .beast-card > header b { color: #cfd6c1; font: 600 var(--fs-md) Spectral, serif; }
 .beast-card > header small { color: #74806a; font-size: var(--fs-xxs); }
-.beast-tag { padding: 1px 6px; border: 1px solid rgba(140,176,124,.42); border-radius: 3px; background: rgba(101,134,88,.18); color: #9dbd86; font-size: var(--fs-xxs); font-style: normal; letter-spacing: .1em; }
+.beast-tag { padding: 1px 6px; border: 1px solid rgba(140,176,124,.42); border-radius: 3px; background: rgba(101,134,88,.18); color: #9dbd86; font-size: var(--fs-xxs); font-style: normal; }
 .beast-tag.predator { border-color: rgba(196,147,92,.45); background: rgba(138,106,69,.2); color: #d2a06a; }
 .beast-tag.companion { border-color: rgba(125,176,122,.5); background: rgba(96,142,92,.2); color: #a6cf9f; }
 .beast-card > p { margin: 5px 0 8px; color: #78826d; font-size: var(--fs-sm); }
@@ -506,7 +650,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .feature.rune { width: 72%; height: 72%; color: #6b9c80; animation: runeGlow 2.4s ease-in-out infinite; }
 .feature.stairs { --prop-base: #8a806f; --prop-light: #b6aa94; --prop-line: #403a31; }
 .feature.enemy { color: #a5534b; }
-.map-token { position: absolute; z-index: 4; width: clamp(22px, 4.5cqw, 36px); height: clamp(22px, 4.5cqw, 36px); border-radius: 50%; border: 2px solid color-mix(in srgb, var(--token), white 27%); background-color: color-mix(in srgb, var(--token), #18130f 45%); background-size: 200% 200%; background-repeat: no-repeat; color: #f2e7d9; box-shadow: 0 4px 9px #000, 0 0 0 3px rgba(0,0,0,.5); font: 700 clamp(9px, 2cqw, 15px) Spectral, serif; cursor: pointer; transition: .18s; }
+.map-token { position: absolute; z-index: 4; width: clamp(22px, 4.5cqw, 36px); height: clamp(22px, 4.5cqw, 36px); border-radius: 50%; border: 2px solid color-mix(in srgb, var(--token), white 27%); background-color: color-mix(in srgb, var(--token), #18130f 45%); background-size: 200% 200%; background-repeat: no-repeat; color: #f2e7d9; box-shadow: 0 4px 9px #000, 0 0 0 3px rgba(0,0,0,.5); font: 700 clamp(10px, 2cqw, 15px) Spectral, serif; cursor: pointer; transition: .18s; }
 .map-token:hover, .map-token.selected { transform: translateY(-4px) scale(1.08); box-shadow: 0 7px 12px #000, 0 0 0 3px color-mix(in srgb, var(--token), transparent 45%); }
 .map-token.label-open, .map-token.label-open:hover { transform: none; }
 .neutral-token { --neutral-ring: #9d8f72; --token: #786d58; display: grid; place-items: center; padding: 0; border-width: 1px; border-color: #d1c3a8; background: radial-gradient(circle at 45% 34%, #8a7c64, #322c23 70%); box-shadow: 0 4px 9px #000, 0 0 0 2px var(--neutral-ring); cursor: pointer; }
@@ -516,7 +660,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .neutral-token.stance-panicked { --neutral-ring: #a57ab0; }
 .neutral-token:hover, .neutral-token:focus-visible { box-shadow: 0 7px 12px #000, 0 0 0 2px var(--neutral-ring); }
 .neutral-token.dead { filter: grayscale(.78); opacity: .68; cursor: default; }
-.neutral-token-mark { font: 700 clamp(7px,1.5cqw,11px) Spectral,serif; letter-spacing: -.04em; }
+.neutral-token-mark { font: 700 clamp(10px,1.5cqw,12px) Spectral,serif; letter-spacing: -.04em; }
 /* Портрет заполняет круг токена; при ошибке загрузки остаются инициалы. */
 .neutral-token-portrait { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; object-position: center 18%; pointer-events: none; }
 .neutral-nameplate { position: absolute; left: 50%; top: calc(100% + 7px); max-width: 116px; overflow: hidden; padding: 3px 6px; border: 1px solid color-mix(in srgb,var(--neutral-ring),transparent 55%); border-radius: 4px; background: rgba(13,11,10,.94); color: #e2d8ca; font: 600 var(--fs-xs) Manrope,sans-serif; text-overflow: ellipsis; white-space: nowrap; transform: translateX(-50%); pointer-events: none; }
@@ -534,7 +678,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 /* Шкала держится палитры интерфейса: плоская заливка, приглушённые цвета и
    пергаментная линия по краю, как у табличек на поле. Градиенты и ядовитая
    зелень выбивались из карты — здесь всё выцветшее и рукописное. */
-.map-token-hp { position: absolute; left: -6px; right: -6px; bottom: -13px; height: 11px; overflow: hidden; border: 1px solid rgba(222,201,171,.2); border-radius: 3px; background: #14100d; box-shadow: 0 0 0 1px rgba(0,0,0,.8), 0 1px 3px #000; font: 500 clamp(6px, 1.3cqw, 9px)/1 Manrope, sans-serif; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+.map-token-hp { position: absolute; left: -6px; right: -6px; bottom: -13px; height: 11px; overflow: hidden; border: 1px solid rgba(222,201,171,.2); border-radius: 3px; background: #14100d; box-shadow: 0 0 0 1px rgba(0,0,0,.8), 0 1px 3px #000; font: 500 clamp(9px, 1.3cqw, 11px)/1 Manrope, sans-serif; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
 .map-token-hp > i { position: absolute; left: 0; top: 0; width: calc(var(--hp-fill) * 100%); height: 100%; background: #6d9068; transition: width .25s ease; }
 /* Раненый и тяжелораненый различимы без чтения чисел. */
 .map-token.wounded .map-token-hp > i { background: #b98b46; }
@@ -559,7 +703,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .party-quest-hud { position: absolute; z-index: 13; left: 22px; top: 58px; width: min(330px, calc(100% - 44px)); border: 1px solid rgba(211,153,86,.3); border-radius: 8px; background: rgba(17,14,12,.92); box-shadow: 0 10px 28px rgba(0,0,0,.4); backdrop-filter: blur(9px); }
 .party-quest-hud > button { width: 100%; min-height: 48px; display: grid; grid-template-columns: 20px minmax(0,1fr) 16px; align-items: center; gap: 8px; padding: 8px 10px; border: 0; background: transparent; color: #b98853; text-align: left; cursor: pointer; }
 .party-quest-hud > button > span { min-width: 0; display: grid; gap: 2px; }
-.party-quest-hud > button small { color: #806344; font: 700 var(--fs-xxs) Manrope, sans-serif; letter-spacing: .1em; }
+.party-quest-hud > button small { color: #806344; font: 700 var(--fs-xxs) Manrope, sans-serif; }
 .party-quest-hud > button strong { overflow: hidden; color: #ddc9ad; font: 600 var(--fs-md) Spectral, serif; text-overflow: ellipsis; white-space: nowrap; }
 .party-quest-hud > button > svg:last-child { transition: transform .18s ease; }
 .party-quest-hud.expanded > button > svg:last-child { transform: rotate(180deg); }
@@ -626,7 +770,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
    растяжка без краёв: на светлом полу слово держалось на одной тени и давало
    контраст 1.5:1, а пятно, гаснущее к краям, читается как свет на карте, а не
    как ещё одна панель поверх неё. */
-.map-mode-plate { position: absolute; z-index: 8; left: 50%; top: 8px; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; padding: 12px 40px; background: radial-gradient(ellipse at center, rgba(9,7,6,.78) 0%, rgba(9,7,6,.52) 42%, rgba(9,7,6,0) 76%); color: #bb9058; font: 700 var(--fs-xs) Manrope, sans-serif; letter-spacing: .16em; text-transform: uppercase; white-space: nowrap; pointer-events: none; text-shadow: 0 1px 2px rgba(0,0,0,.95), 0 0 7px rgba(0,0,0,.85); }
+.map-mode-plate { position: absolute; z-index: 8; left: 50%; top: 8px; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; padding: 12px 40px; background: radial-gradient(ellipse at center, rgba(9,7,6,.78) 0%, rgba(9,7,6,.52) 42%, rgba(9,7,6,0) 76%); color: #bb9058; font: 700 var(--fs-xs) Manrope, sans-serif; letter-spacing: .16em; white-space: nowrap; pointer-events: none; text-shadow: 0 1px 2px rgba(0,0,0,.95), 0 0 7px rgba(0,0,0,.85); }
 .npc-tactic-banner { position: absolute; z-index: 12; left: 50%; top: 14px; max-width: min(620px, calc(100% - 160px)); display: flex; align-items: center; gap: 8px; padding: 7px 12px; border: 1px solid rgba(193,119,94,.42); border-radius: 18px; background: rgba(28,17,14,.92); color: #ddb6a6; font: 600 var(--fs-sm) Manrope, sans-serif; transform: translateX(-50%); box-shadow: 0 8px 24px rgba(0,0,0,.42); backdrop-filter: blur(8px); pointer-events: none; animation: npc-tactic-arrive .2s ease-out; }
 .npc-tactic-banner span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Перемирие. Отдельный холодный акцент — не боевой красный и не тёплый
@@ -639,7 +783,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .truce-panel { padding: 11px; border: 1px solid rgba(126,168,178,.34); border-radius: 7px; background: rgba(14,22,25,.9); }
 .truce-panel > header { display: flex; align-items: center; gap: 8px; color: #7ea8b2; }
 .truce-panel > header span { display: grid; }
-.truce-panel > header small { color: #5d7c84; font-size: var(--fs-xxs); letter-spacing: .12em; }
+.truce-panel > header small { color: #5d7c84; font-size: var(--fs-xxs); }
 .truce-panel > header strong { color: #c3dde3; font: 600 var(--fs-lg) Spectral, serif; }
 .truce-panel > p { margin: 6px 0 9px; color: #7f8f93; font-size: var(--fs-sm); }
 .truce-terms { display: grid; gap: 6px; }
@@ -659,7 +803,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .guard-panel { padding: 11px; border: 1px solid rgba(132,141,158,.34); border-radius: 7px; background: rgba(16,19,26,.9); }
 .guard-panel > header { display: flex; align-items: center; gap: 8px; color: #8b93a6; }
 .guard-panel > header span { display: grid; }
-.guard-panel > header small { color: #666e80; font-size: var(--fs-xxs); letter-spacing: .12em; }
+.guard-panel > header small { color: #666e80; font-size: var(--fs-xxs); }
 .guard-panel > header strong { color: #c6cbd8; font: 600 var(--fs-lg) Spectral, serif; }
 .guard-demand { margin: 7px 0 4px; color: #a9aebd; font: italic var(--fs-md)/1.5 Spectral, serif; }
 .guard-warning { margin: 0 0 8px; color: #c08a63; font-size: var(--fs-sm); }
@@ -682,7 +826,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .tavern-panel { padding: 11px; border: 1px solid rgba(158,132,84,.34); border-radius: 7px; background: rgba(26,20,14,.9); }
 .tavern-panel > header { display: flex; align-items: center; gap: 8px; color: #a6906b; }
 .tavern-panel > header span { display: grid; }
-.tavern-panel > header small { color: #80704f; font-size: var(--fs-xxs); letter-spacing: .12em; }
+.tavern-panel > header small { color: #80704f; font-size: var(--fs-xxs); }
 .tavern-panel > header strong { color: #d8cbb0; font: 600 var(--fs-lg) Spectral, serif; }
 .tavern-note { margin: 7px 0 8px; color: #bdae92; font: var(--fs-md)/1.5 Spectral, serif; }
 .tavern-note b { color: #e6d6ae; }
@@ -723,7 +867,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .letters-panel { padding: 11px; border: 1px solid rgba(146,140,118,.3); border-radius: 7px; background: rgba(24,23,20,.9); }
 .letters-panel > header { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 8px; color: #9d9781; }
 .letters-panel > header span { min-width: 0; display: grid; }
-.letters-panel > header small { color: #7d7866; font-size: var(--fs-xxs); letter-spacing: .12em; }
+.letters-panel > header small { color: #7d7866; font-size: var(--fs-xxs); }
 .letters-panel > header strong { color: #d3cfc0; font: 600 var(--fs-lg) Spectral, serif; }
 .letters-toggle { display: flex; align-items: center; gap: 4px; padding: 3px 8px; border: 1px solid rgba(146,140,118,.28); border-radius: 4px; background: transparent; color: #9d9781; font-size: var(--fs-xs); cursor: pointer; }
 .letters-toggle:hover { border-color: rgba(190,183,158,.55); color: #d3cfc0; }
@@ -770,7 +914,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 @keyframes narration-light-two { from { transform: translate3d(5%,-3%,0) scale(1.07); } to { transform: translate3d(-8%,6%,0) scale(.93); } }
 @keyframes narration-vignette { from { opacity: .52; } to { opacity: .92; } }
 
-.cinematic-narration { position: absolute; z-index: 54; left: calc((100% - var(--server-column)) / 2); top: calc(var(--status) + 34px); width: min(680px, calc(100% - var(--server-column) - 54px)); max-height: min(44vh, 430px); display: grid; gap: 12px; padding: 18px 22px 17px; overflow: auto; border: 1px solid rgba(222,180,120,.42); border-radius: 10px; background: radial-gradient(circle at 50% -30%, rgba(154,102,58,.24), transparent 58%), rgba(12,10,10,.94); color: #e6d7c3; transform: translateX(-50%); box-shadow: 0 22px 70px rgba(0,0,0,.72), inset 0 1px rgba(255,244,220,.06); backdrop-filter: blur(14px); animation: cinematic-narration-arrive .34s ease-out; }
+/* Врезка центрируется по слою оверлеев — он уже вырезан по рабочей области,
+   поэтому вычитать правую колонку из ширины больше не нужно. */
+.cinematic-narration { position: absolute; z-index: 54; left: 50%; top: calc(var(--status) + 34px); width: min(680px, calc(100% - 54px)); max-height: min(44vh, 430px); display: grid; gap: 12px; padding: 18px 22px 17px; overflow: auto; border: 1px solid rgba(222,180,120,.42); border-radius: 10px; background: radial-gradient(circle at 50% -30%, rgba(154,102,58,.24), transparent 58%), rgba(12,10,10,.94); color: #e6d7c3; transform: translateX(-50%); box-shadow: 0 22px 70px rgba(0,0,0,.72), inset 0 1px rgba(255,244,220,.06); backdrop-filter: blur(14px); animation: cinematic-narration-arrive .34s ease-out; }
 .cinematic-narration > header { display: flex; align-items: center; gap: 8px; color: #d4a668; font: 700 var(--fs-xs) Manrope,sans-serif; letter-spacing: .16em; }
 .cinematic-narration > header button { margin-left: auto; width: 28px; height: 28px; display: grid; place-items: center; padding: 0; border: 1px solid rgba(255,255,255,.08); border-radius: 50%; background: rgba(255,255,255,.03); color: #9b8e80; cursor: pointer; }
 .cinematic-narration p { margin: 0; color: #eadfce; font: 500 clamp(var(--fs-xl),2.05vw,var(--fs-3xl))/1.56 Spectral,Georgia,serif; text-wrap: pretty; }
@@ -779,22 +925,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 
 .journal-linked { filter: brightness(1.22) saturate(1.18); box-shadow: 0 0 0 3px rgba(231,185,115,.9), 0 0 24px rgba(226,154,67,.82) !important; }
 .token-damage-history { margin-top: 8px; padding-top: 7px; border-top: 1px solid rgba(196,98,80,.18); }
-.token-damage-history > small { color: #a67468; letter-spacing: .1em; }
+.token-damage-history > small { color: #a67468; }
 .token-damage-history ol { display: grid; gap: 3px; margin: 5px 0 0; padding: 0; list-style: none; }
 .token-damage-history li { display: grid; grid-template-columns: 24px 34px minmax(0,1fr); align-items: baseline; gap: 5px; font: var(--fs-xxs) Manrope,sans-serif; }
 .token-damage-history li span { color: #6f665d; }.token-damage-history li b { color: #d48677; }.token-damage-history li em { overflow: hidden; color: #91867a; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
 
-.board-combat-journal, .npc-turn-summary { margin-top: 9px; padding-top: 9px; border-top: 1px solid rgba(255,255,255,.07); }
-.board-combat-journal > header, .npc-turn-summary > header { display: flex; align-items: center; gap: 7px; color: #a68056; }
-.board-combat-journal > header strong { color: #c3b29e; font: 600 var(--fs-sm) Spectral,serif; }
-.board-combat-journal > header small { margin-left: auto; color: #6f675e; font-size: var(--fs-xxs); }
-.board-combat-journal > div { display: grid; gap: 3px; margin-top: 6px; }
-.board-combat-journal article { display: grid; grid-template-columns: 22px minmax(0,1fr); gap: 6px; padding: 5px 6px; border: 1px solid transparent; border-radius: 4px; outline: 0; transition: .15s; }
-.board-combat-journal article:hover, .board-combat-journal article:focus-visible, .board-combat-journal article.linked { border-color: rgba(217,163,95,.35); background: rgba(161,103,49,.12); }
-.board-combat-journal article i { color: #856846; font: 600 var(--fs-xs) Spectral,serif; font-style: normal; }
-.board-combat-journal article p { margin: 0; color: #958a7e; font: var(--fs-xxs)/1.35 Spectral,serif; }
-.npc-turn-summary > header span { display: grid; }.npc-turn-summary > header small { color: #8b6950; font-size: var(--fs-xxs); letter-spacing: .11em; }.npc-turn-summary > header strong { color: #c5a98c; font: 600 var(--fs-sm) Spectral,serif; }
-.npc-turn-summary ol { display: grid; gap: 4px; margin: 7px 0 0; padding-left: 18px; color: #a89888; font: var(--fs-xxs)/1.4 Spectral,serif; }
 
 .npc-dialog-backdrop { position: absolute; z-index: 58; inset: var(--status) 0 0; display: grid; place-items: center; padding: 20px; background: rgba(5,4,3,.58); backdrop-filter: blur(5px); }
 .npc-dialog { width: min(760px,calc(100vw - 48px)); max-height: min(720px,calc(100vh - var(--status) - 40px)); display: grid; grid-template-rows: auto auto minmax(0,1fr) auto; overflow: hidden; border: 1px solid rgba(211,166,105,.34); border-radius: 12px; background: radial-gradient(circle at 0 0, rgba(136,91,50,.17), transparent 40%), #15120f; box-shadow: 0 28px 90px rgba(0,0,0,.78); }
@@ -832,7 +967,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .map-legend > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; padding: 0 13px 11px; border-top: 1px solid rgba(222,201,171,.1); }
 /* Нижнюю строку стола в бою занимает остаток хода, и легенда встаёт над ней:
    вместе они шире поля (533 + 473 при ~900 доступных) и наезжали друг на друга. */
-.map-stage:has(.map-economy) .map-legend { bottom: 90px; }
 .map-legend span { display: flex; align-items: center; gap: 7px; }
 .legend-dot { width: 9px; height: 9px; border-radius: 50%; }
 .legend-dot.party { background: #c9985b; }.legend-dot.summon { background: #70a78b; }.legend-dot.danger { background: #994a45; }.legend-dot.interest { background: #5f8f78; }
@@ -840,7 +974,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .legend-swatch.difficult { background: repeating-linear-gradient(135deg, rgba(235,211,157,.56) 0 1px, rgba(80,64,44,.2) 1px 4px); }
 .legend-swatch.hazard { border-style: dashed; border-color: rgba(205,116,81,.72); background: rgba(128,54,39,.22); }
 .legend-swatch.spell { border: 2px dashed rgba(203,184,221,.78); background: rgba(122,106,142,.16); }
-.legend-mark { flex: 0 0 17px; width: 17px; height: 17px; display: grid; place-items: center; border: 1px solid rgba(210,180,136,.38); border-radius: 50%; color: #d1b78d; font: 800 9px/1 Manrope, sans-serif; font-style: normal; }
+.legend-mark { flex: 0 0 17px; width: 17px; height: 17px; display: grid; place-items: center; border: 1px solid rgba(210,180,136,.38); border-radius: 50%; color: #d1b78d; font: 800 10px/1 Manrope, sans-serif; font-style: normal; }
 .legend-mark.elevation { width: 24px; border-radius: 3px; color: #e9cc98; }
 .legend-mark.cover { border-color: rgba(136,176,193,.48); color: #a9cedb; }
 /* Поверхности: те же тона, что SURFACE_COLORS в src/board-render.ts. */
@@ -857,7 +991,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .zoom-control span { width: 41px; color: #766e66; font-size: var(--fs-sm); text-align: center; }
 .zoom-control .map-drag-label { width: 96px; align-self: stretch; display: grid; place-items: center; border-right: 1px solid var(--line); color: #9b784e; font-size: var(--fs-sm); font-weight: 700; letter-spacing: .08em; }
 .zoom-control button:focus-visible { position: relative; z-index: 1; outline: 2px solid #d6a160; outline-offset: -2px; }
-.player-hud { position: relative; z-index: auto; top: auto; right: auto; width: 100%; padding: 11px; border: 1px solid rgba(211,184,149,.14); border-radius: 7px; background: rgba(17,15,13,.84); box-shadow: 0 15px 40px rgba(0,0,0,.38); backdrop-filter: blur(13px); }
+.player-hud { position: relative; z-index: auto; top: auto; right: auto; width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 7px 8px 7px 11px; border: 1px solid rgba(211,184,149,.14); border-radius: 7px; background: rgba(17,15,13,.84); box-shadow: 0 15px 40px rgba(0,0,0,.38); backdrop-filter: blur(13px); }
 .player-hud-stack { position: static; z-index: auto; grid-row: 3; min-width: 0; width: auto; display: grid; gap: 8px; }
 .player-hud-stack > .player-hud { position: relative; inset: auto; width: 100%; }
 .player-hud-stack > .dice-tray:not(.dice-tray--rolling) { position: relative; inset: auto; width: 100%; }
@@ -865,23 +999,47 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .player-hud-stack > .dice-tray:not(.dice-tray--rolling) .dice-tray__die-scene { width: 52px; height: 52px; }
 .player-hud-stack > .dice-tray:not(.dice-tray--rolling) .dice-tray__die { width: 49px; height: 45px; }
 .player-hud-stack > .dice-tray--rolling { position: fixed; }
-.hud-identity { display: flex; align-items: center; gap: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
-.hud-portrait { width: 54px; height: 54px; flex: 0 0 auto; border: 1px solid rgba(216,168,107,.3); border-radius: 6px; background-size: 200% 200%; background-repeat: no-repeat; }
-.hud-identity > span { min-width: 0; display: grid; }
-.hud-identity small { color: #856944; font-size: var(--fs-xs); font-weight: 700; letter-spacing: .14em; }
-.hud-identity strong { margin-top: 1px; overflow: hidden; color: #d5cabd; font: 600 var(--fs-md) Spectral, serif; text-overflow: ellipsis; white-space: nowrap; }
-.hud-identity em { color: #736b63; font-size: var(--fs-sm); font-style: normal; }
-.hud-vitals { display: grid; grid-template-columns: 1.35fr 1fr 1fr; padding: 9px 0; }
-.hud-vitals span { display: grid; grid-template-columns: 17px 1fr; align-items: center; color: #9d695f; }
+/* Полоска жизни: три величины в строку, подписи — в title. Портрет, имя и
+   класс сюда не входят — они в списке отряда слева, а каждая строка здесь
+   отнята у рассказа. */
+.hud-vitals { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 0; }
+.hud-vitals span { min-width: 0; display: inline-flex; align-items: center; gap: 4px; color: #9d695f; }
 .hud-vitals span:nth-child(2), .hud-vitals span:nth-child(3) { color: #8a7a67; }
-.hud-vitals b { color: #c5b8aa; font: 600 var(--fs-lg) Spectral, serif; }
-.hud-vitals span { min-width: 0; }
-.hud-vitals small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; grid-column: 1 / -1; margin-top: 2px; color: #8d857b; font-size: var(--fs-xs); letter-spacing: .08em; }
-.hud-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.hud-actions button { height: 29px; display: flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid var(--line); border-radius: 4px; background: rgba(255,255,255,.025); color: #8f867c; font-size: var(--fs-sm); cursor: pointer; }
-.hud-actions button:hover { border-color: rgba(201,149,85,.3); color: #c69a65; }.hud-actions svg { width: 13px; height: 13px; }.hud-actions b { color: #bc8b52; }
-.hud-hazards { display: flex; align-items: center; gap: 7px; margin: 0 0 8px; padding: 7px 8px; border: 1px solid rgba(190,76,55,.28); border-radius: 4px; background: rgba(139,45,34,.13); color: #c36b59; }
-.hud-hazards span { min-width: 0; display: grid; }.hud-hazards small { color: #8d5147; font-size: var(--fs-xs); font-weight: 800; letter-spacing: .1em; }.hud-hazards b { overflow: hidden; color: #d39a8e; font: 600 var(--fs-md) Spectral,serif; text-overflow: ellipsis; white-space: nowrap; }
+.hud-vitals b { color: #c5b8aa; font: 600 var(--fs-md) Spectral, serif; white-space: nowrap; }
+.hud-vitals small { margin: 0; color: #8d857b; font: 600 var(--fs-xxs) Manrope, sans-serif; letter-spacing: 0; }
+.hud-vitals .hud-hazard { min-width: 0; display: inline-flex; align-items: center; gap: 4px; overflow: hidden; color: #d08a6a; font: 600 var(--fs-xxs) Manrope, sans-serif; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+.hud-actions { flex: 0 0 auto; display: flex; gap: 6px; }
+.hud-actions button { height: 28px; min-width: 28px; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 0 6px; border: 1px solid var(--line); border-radius: 4px; background: rgba(255,255,255,.025); color: #8f867c; font-size: var(--fs-xs); cursor: pointer; }
+.hud-actions button:hover { border-color: rgba(201,149,85,.3); color: #c69a65; }.hud-actions svg { width: 15px; height: 15px; }.hud-actions b { color: #bc8b52; }
+.hud-temp { margin-left: 3px; color: #8bb8e0; font: 700 var(--fs-xs) Manrope, sans-serif; font-style: normal; }
+/* Вторая строка полоски жизни — состояния словами: по ним принимают решения
+   (держать ли концентрацию под ударом, чем лечить). Есть только когда есть
+   что сказать. */
+.hud-status { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.hud-chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border: 1px solid rgba(196,98,80,.45); border-radius: 999px; color: #d48677; font: 600 var(--fs-xxs) Manrope, sans-serif; white-space: nowrap; }
+.hud-chip small { color: inherit; opacity: .7; font-size: inherit; }
+.hud-chip.partial { border-color: rgba(181,130,67,.4); color: #c5a16f; }
+.hud-chip.marker { border-style: dashed; border-color: rgba(139,124,108,.35); color: #a09588; }
+.hud-chip.concentration { border-color: rgba(139,167,189,.45); color: #a9c3d8; }
+.hud-chip.concentration b { padding: 0 3px; border: 1px solid currentColor; border-radius: 3px; color: #8ba7bd; font: 700 var(--fs-xxs) Spectral, serif; }
+
+/* Компактный HUD вместо спрятанного. Три правила гасили карточку героя
+   насовсем: две по ширине и одно по высоте (≤850 px) — а под последнее попадают
+   ровно те экраны, за которыми играют, 1366×768 и 1440×900. Вместе с карточкой
+   уходили КБ, ОЗ, скорость и обе кнопки листа героя, и узнать их было негде.
+   Теперь карточка — одна полоска, и на тех же условиях она лишь теснее. */
+@media (max-width: 1120px), (max-height: 850px) and (min-width: 681px) {
+  .player-hud { padding: 5px 6px 5px 9px; }
+  .player-hud-stack { gap: 6px; }
+  /* На 1366×768 колонке достаётся 261px: зазоры и минимум ленты теснее,
+     чтобы полоска жизни не уезжала под нижний край. */
+  .server-column { gap: 7px; }
+  .server-column > .chat-panel { min-height: 88px; }
+  .turn-strip { padding: 5px 9px; }
+  .hud-vitals { gap: 9px; }
+  .hud-vitals b { font-size: var(--fs-sm); }
+  .hud-actions button { height: 26px; }
+}
 
 .chat-panel { position: static; z-index: auto; left: auto; right: auto; top: auto; bottom: auto; width: auto; height: auto; min-width: 0; min-height: 0; display: grid; grid-template-rows: 41px minmax(0, 1fr) auto; border: 1px solid rgba(211,184,149,.15); border-radius: 7px; background: rgba(20,18,15,.95); box-shadow: 0 20px 60px rgba(0,0,0,.75); backdrop-filter: blur(18px); overflow: hidden; animation: chatIn .22s ease-out; }
 .chat-head { display: flex; align-items: center; justify-content: space-between; padding: 0 10px 0 15px; border-bottom: 1px solid var(--line); }
@@ -892,7 +1050,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
    у него не было вовсе, и он брал корневой шрифт: 16px, обычного начертания,
    почти белый — из-за этого и выделялся. */
 .chat-head-eyebrow { color: #856944; font: 700 var(--fs-sm) Manrope, sans-serif; letter-spacing: .14em; }
-.chronicle-filters { display: none; align-items: center; gap: 2px; padding: 2px; border: 1px solid rgba(211,184,149,.09); border-radius: 15px; background: rgba(5,4,3,.24); }
+/* Фильтр хроники доступен на любой ширине, где видна сама хроника. Раньше он
+   включался только с 1280px: на ноутбуке лента шла сплошняком, и отделить
+   рассказ от боя было нечем. На узкой колонке пилюли уходят во второй ряд
+   шапки — правило переноса стоит ниже, у `.chat-head > div`. */
+.chronicle-filters { display: flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid rgba(211,184,149,.09); border-radius: 15px; background: rgba(5,4,3,.24); }
 .chronicle-filters button { height: 22px; padding: 0 8px; border: 0; border-radius: 11px; background: transparent; color: #746b61; font: 700 var(--fs-xs) Manrope,sans-serif; cursor: pointer; }
 .chronicle-filters button:hover { color: #b39777; }
 .chronicle-filters button.active { background: rgba(190,137,73,.15); color: #c79b65; }
@@ -919,15 +1081,27 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .message.player .message-meta strong { color: #9ca08b; }
 .message-meta time { color: #5e5852; font-size: var(--fs-sm); }
 .message-body p { margin: 2px 0 0; color: #b8afa4; font-family: Spectral, Georgia, serif; font-size: var(--fs-xs); line-height: 1.5; }
-.chronicle-to-latest { position: absolute; z-index: 3; right: 14px; bottom: 13px; min-width: 31px; height: 31px; display: none; align-items: center; justify-content: center; gap: 4px; padding: 0 8px; border: 1px solid rgba(201,149,85,.34); border-radius: 16px; background: rgba(34,28,22,.96); color: #c3935d; cursor: pointer; box-shadow: 0 5px 16px rgba(0,0,0,.55); }
+/* «К последним» — тоже на любой ширине: кнопка плавает над лентой и ничего не
+   двигает, а без неё прочитанная назад хроника не возвращается к свежим
+   записям иначе как прокруткой руками. */
+.chronicle-to-latest { position: absolute; z-index: 3; right: 14px; bottom: 13px; min-width: 31px; height: 31px; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 0 8px; border: 1px solid rgba(201,149,85,.34); border-radius: 16px; background: rgba(34,28,22,.96); color: #c3935d; cursor: pointer; box-shadow: 0 5px 16px rgba(0,0,0,.55); }
 .chronicle-to-latest b { min-width: 15px; height: 15px; display: grid; place-items: center; border-radius: 8px; background: rgba(198,139,72,.18); font-size: var(--fs-xs); }
 @media (min-width: 1280px) {
   .chat-panel { grid-template-rows: auto auto minmax(0, 1fr); }
   .chat-head { min-height: 47px; gap: 8px; padding: 5px 8px 5px 13px; }
   .chat-head > div { min-width: 0; gap: 10px; }
   .chat-interaction-slot:empty { display: block; }
-  .chronicle-filters { display: flex; }
-  .chronicle-to-latest { display: flex; }
+}
+/* Ниже 1280px фильтры не помещаются в строку с подписью — подпись и пилюли
+   встают друг под другом, а кнопка сворачивания остаётся справа на первой
+   строке. Переносить саму шапку нельзя: кнопка уезжала третьим рядом и съедала
+   у ленты сорок пикселей. */
+@media (max-width: 1279px) {
+  .chat-panel { grid-template-rows: auto minmax(0, 1fr) auto; }
+  .chat-head { min-height: 41px; gap: 6px; padding: 4px 10px 4px 15px; }
+  .chat-head > div { min-width: 0; flex-wrap: wrap; gap: 3px 6px; }
+  .chat-head > .icon-button { flex: 0 0 auto; }
+  .chronicle-filters button { height: 20px; padding: 0 7px; }
 }
 /* Служебные записи («Разбор правил», отказы) приглушены на любой ширине
    экрана: раньше стиль жил только в @media ≥1280px, и на ноутбуке разбор
@@ -976,7 +1150,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .beast-chronicle-card { padding: 12px 13px; border: 1px solid rgba(124,150,112,.28); border-radius: 8px; background: linear-gradient(160deg, rgba(40,50,36,.5), rgba(17,20,16,.72)); }
 .beast-chronicle-card > header { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 9px; color: #9cb489; }
 .beast-chronicle-card header > span { min-width: 0; display: grid; }
-.beast-chronicle-card header small { color: #7c8d6d; font: 700 var(--fs-xxs) Manrope, sans-serif; letter-spacing: .13em; }
+.beast-chronicle-card header small { color: #7c8d6d; font: 700 var(--fs-xxs) Manrope, sans-serif; }
 .beast-chronicle-card header strong { color: #d9e0cc; font: 600 var(--fs-lg) Spectral, serif; }
 .beast-chronicle-card header time { color: #66705c; font-size: var(--fs-xs); }
 .beast-chronicle-who { margin: 9px 0 0; color: #93a084; font: var(--fs-sm)/1.5 Manrope, sans-serif; }
@@ -1031,8 +1205,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .end-turn-button:hover:not(:disabled) { color: #dfcaa7; border-color: rgba(217,166,101,.4); }
 .end-turn-button:disabled, .cancel-check:disabled { opacity: .35; cursor: default; }
 .cancel-check { border: 0; background: transparent; color: #a89d89; text-decoration: underline; cursor: pointer; }
-.chat-closed { position: absolute; z-index: 10; right: 27px; bottom: 37px; height: 38px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid rgba(208,160,96,.3); border-radius: 5px; background: rgba(23,19,15,.9); color: #c59357; cursor: pointer; backdrop-filter: blur(10px); box-shadow: 0 8px 25px #000; }
-.chat-closed span { font-family: Spectral, serif; font-size: var(--fs-lg); }.chat-closed b { display: grid; place-items: center; min-width: 17px; height: 17px; border-radius: 9px; background: rgba(200,151,88,.12); font-size: var(--fs-sm); }
 
 
 .agent-interaction { display: grid; grid-template-columns: minmax(220px, .9fr) minmax(320px, 1.6fr); gap: 12px; align-items: center; min-height: 92px; padding: 10px 12px; border: 1px solid rgba(189,139,78,.25); border-radius: 7px; background: radial-gradient(circle at 8% 20%, rgba(192,128,58,.14), transparent 34%), rgba(18,15,12,.84); }
@@ -1107,7 +1279,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .character-sheet { position: relative; min-width: 0; padding: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: #171512; text-align: left; cursor: pointer; transition: .22s; }.character-sheet:hover { transform: translateY(-3px); border-color: rgba(202,151,88,.27); box-shadow: 0 15px 35px rgba(0,0,0,.28); }.character-sheet.active { border-color: rgba(207,153,86,.48); box-shadow: 0 0 0 1px rgba(207,153,86,.08); }
 .character-sheet.locked { opacity: .48; cursor: not-allowed; filter: saturate(.45); }.character-sheet.locked:hover { transform: none; border-color: var(--line); box-shadow: none; }
 .character-art { position: relative; height: clamp(180px, 20vw, 270px); background-size: 200% 200%; background-repeat: no-repeat; filter: saturate(.8); }.character-art::after { content: ''; position: absolute; inset: 40% 0 0; background: linear-gradient(transparent, #171512); }.character-art > span { position: absolute; z-index: 1; top: 10px; right: 10px; padding: 4px 6px; border-radius: 3px; background: rgba(15,13,11,.75); color: #716b64; font-size: var(--fs-sm); letter-spacing: .09em; backdrop-filter: blur(5px); }.character-art > span.online { color: #78a27d; }
-.character-info { position: relative; margin-top: -21px; padding: 0 15px 17px; }.character-info > small { color: #625c55; font-size: var(--fs-sm); }.character-info h2 { margin: 2px 0 0; color: #d8cdbf; font: 600 var(--fs-2xl) Spectral, serif; }.character-info > p { margin: 2px 0 13px; color: #8c7966; font-size: var(--fs-md); }.character-stats { display: grid; grid-template-columns: 1.25fr 1fr 1fr; padding-top: 12px; border-top: 1px solid var(--line); }.character-stats span { display: grid; color: #706960; font-size: var(--fs-md); }.character-stats b { color: #b6aa9c; font: 600 var(--fs-md) Spectral, serif; }.character-stats small { margin-top: 2px; color: #554f49; font-size: var(--fs-xs); letter-spacing: .08em; }
+.character-info { position: relative; margin-top: -21px; padding: 0 15px 17px; }.character-info > small { color: #625c55; font-size: var(--fs-sm); }.character-info h2 { margin: 2px 0 0; color: #d8cdbf; font: 600 var(--fs-2xl) Spectral, serif; }.character-info > p { margin: 2px 0 13px; color: #8c7966; font-size: var(--fs-md); }.character-stats { display: grid; grid-template-columns: 1.25fr 1fr 1fr; padding-top: 12px; border-top: 1px solid var(--line); }.character-stats span { display: grid; color: #706960; font-size: var(--fs-md); }.character-stats b { color: #b6aa9c; font: 600 var(--fs-md) Spectral, serif; }.character-stats small { margin-top: 2px; color: #554f49; font-size: var(--fs-xs); }
 .character-sheet > em { position: absolute; left: 10px; top: 10px; display: flex; align-items: center; gap: 5px; padding: 4px 7px; border-radius: 3px; background: rgba(90,60,31,.83); color: #dfb376; font-size: var(--fs-sm); font-style: normal; letter-spacing: .06em; }
 .asset-note { max-width: 880px; display: flex; gap: 15px; align-items: center; margin-top: 24px; padding: 16px; border: 1px solid rgba(174,127,75,.14); border-radius: 7px; background: rgba(155,101,46,.045); }.wand-icon { flex: 0 0 auto; width: 43px; height: 43px; display: grid; place-items: center; border-radius: 50%; background: rgba(181,128,65,.08); color: #b48249; }.asset-note b { color: #b7aa9b; font: var(--fs-xs) Spectral, serif; }.asset-note p { margin: 3px 0 0; color: #716a63; font: var(--fs-md)/1.5 Spectral, serif; }
 .settings-page { background: radial-gradient(circle at 20% 12%, rgba(90,74,112,.08), transparent 30%), #100f0d; }.settings-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 15px; max-width: 1050px; }.settings-card { padding: 18px; border: 1px solid var(--line); border-radius: 8px; background: rgba(27,24,20,.78); }.settings-card-title { display: flex; align-items: center; gap: 11px; padding-bottom: 15px; border-bottom: 1px solid var(--line); color: #a98459; }.settings-card-title > span { display: grid; }.settings-card-title b { color: #c7bcaf; font: 600 var(--fs-sm) Spectral, serif; }.settings-card-title small { margin-top: 1px; color: #68615a; font-size: var(--fs-sm); }.settings-card-title em { display: flex; align-items: center; gap: 5px; margin-left: auto; padding: 4px 7px; border-radius: 3px; background: rgba(133,66,59,.08); color: #956760; font-size: var(--fs-sm); font-style: normal; letter-spacing: .07em; }.settings-card-title em.connected { background: rgba(89,137,94,.09); color: #739477; }
@@ -1165,7 +1337,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 @media (max-width: 920px) {
   .auth-screen { grid-template-columns: 1fr; overflow-y: auto; }.auth-story { min-height: 340px; padding: 35px; }.auth-story > div:nth-child(2) { margin: 55px 0; }.auth-card { padding: 45px 25px 60px; }
   .objective { display: none; }
-  .player-hud-stack, .player-hud { display: none; }
+  /* Карточка героя не гасится: её ужимает правило «компактный HUD» рядом с
+     самим HUD — на этой ширине оно и срабатывает. */
   .input-wrap > span { display: none; }
   .character-grid { grid-template-columns: repeat(2, minmax(190px, 1fr)); }
   .admin-layout { grid-template-columns: 1fr; }.admin-user { grid-template-columns: minmax(140px,.7fr) minmax(250px,1.3fr) auto; }
@@ -1174,6 +1347,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 @media (max-width: 680px) {
   body { overflow: auto; }
   .app, .app.sidebar-is-collapsed { display: block; min-height: 0; }
+  /* Меню уезжает за край, верхняя панель ниже — слой оверлеев идёт за ними. */
+  .app, .app.sidebar-is-collapsed { --shell-left: 0px; --shell-top: 58px; }
   .sidebar { position: fixed; left: 0; top: 0; bottom: 0; width: 246px; transform: translateX(0); transition: transform .25s ease; }
   .sidebar.collapsed { transform: translateX(-100%); }
   .sidebar:not(.collapsed) .logo > span, .sidebar:not(.collapsed) .nav-item span, .sidebar:not(.collapsed) .section-label, .sidebar:not(.collapsed) .player-meta, .sidebar:not(.collapsed) .demo-badge span { display: initial; }
@@ -1301,7 +1476,6 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 
 /* Колоды — равные по весу чипы одной строки. Раньше сетка 2×N делала пятую вкладку
    вдвое шире остальных, и самая широкая кнопка вела в самую редкую колоду. */
-.hotbar-controls-row { min-width: 0; display: flex; align-items: center; gap: 10px; }
 .hotbar-decks { min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0; border: 0; background: none; }
 .hotbar-decks button { width: auto; min-width: 0; min-height: 40px; height: 40px; display: flex; align-items: center; gap: 7px; margin: 0; padding: 0 12px; border: 1px solid rgba(222,201,171,.14); border-radius: 20px; background: rgba(255,255,255,.03); color: #8d857b; cursor: pointer; }
 .hotbar-decks button:last-child { grid-column: auto; min-height: 40px; }
@@ -1313,19 +1487,11 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 /* Четыре пилюли со словесными значениями: без букв Д/Б/Р/С. Стоят у нижней
    кромки стола по центру — там же, где игрок ведёт фишку, а не над панелью
    действий. Указатель сквозь плашку проходит: клетки под ней кликаются. */
-.map-economy { position: absolute; z-index: 8; left: 50%; bottom: 22px; display: flex; align-items: center; gap: 8px; padding: 7px 9px; border: 1px solid rgba(222,201,171,.14); border-radius: 26px; background: rgba(15,13,11,.82); box-shadow: 0 10px 28px rgba(0,0,0,.45); backdrop-filter: blur(10px); transform: translateX(-50%); pointer-events: none; }
-.map-economy > span { min-width: 0; height: 44px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; padding: 0 14px; border: 1px solid rgba(222,201,171,.14); border-radius: 22px; background: rgba(255,255,255,.03); color: #8d857b; }
-.map-economy > span.ready { border-color: rgba(214,161,96,.32); background: rgba(174,113,52,.13); }
-.map-economy > span.spent { color: #8d857b; }
-.map-economy small { color: #8d857b; font: 600 var(--fs-sm) Manrope, sans-serif; letter-spacing: 0; }
-.map-economy b { color: #e6bd83; font: 700 var(--fs-lg) Manrope, sans-serif; white-space: nowrap; }
-.map-economy > span.spent b { color: #8d857b; text-decoration: line-through; }
 
 /* Вне боя ту же строку занимает не экономика хода, а режим исследования: слева
    компас и имя героя, справа бросок инициативы. Панель зеленеет — цвет режима
    тот же, каким была прежняя полоска исследования. */
 /* В строке остался только вход в бой: сам режим переехал на поле. */
-.hotbar-exploration-note { margin-left: auto; display: flex; align-items: center; gap: 11px; }
 .combat-hotbar.out-of-combat .hotbar-decks button.active { border-color: rgba(112,185,148,.42); background: rgba(74,141,107,.16); color: #a7cdb5; }
 /* Закрытая плитка вне боя гасится сильнее обычного: она здесь ради обзора
    арсенала, а не ради нажатия. */
@@ -1340,7 +1506,7 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
    Описание к нему — речь о выбранном, и подложка ей не нужна: она читается
    как продолжение карточки, а не как второй ящик рядом. Перегородки между
    ними тоже нет — их разделяет промежуток. */
-.hotbar-main { min-width: 0; min-height: 0; display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(460px, 44%); gap: 10px; }
+.hotbar-main { min-width: 0; min-height: 0; display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(460px, min(44%, 680px)); gap: 10px; }
 /* Высота карточки закреплена ровно под два ряда плиток и не зависит от колоды:
    раньше она тянулась на весь ряд панели, плитки центрировались, и сверху и
    снизу оставалось по 19 пикселей пустоты. Число рядов считается от высоты
@@ -1349,13 +1515,107 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 /* Рамка карточки принадлежит оболочке, а не области прокрутки: внутри одной
    рамки теперь лежат и плитки, и кнопки хода. Правый отступ шире левого — под
    ним проходит ручка ширины, и кнопки не должны попадать ей под курсор. */
-.hotbar-actions-shell { min-width: 0; align-self: start; height: min(calc(var(--slot, 64px) * var(--ui-tile-rows, 2) + (var(--ui-tile-rows, 2) - 1) * 4px + 22px), 100%); display: flex; align-items: stretch; gap: 10px; padding: 10px 20px 10px 10px; border: 1px solid rgba(211,184,149,.14); border-radius: 9px; background: rgba(17,15,13,.84); }
+.hotbar-actions-shell { position: relative; min-width: 0; align-self: start; height: min(calc(var(--slot, 64px) * var(--ui-tile-rows, 2) + (var(--ui-tile-rows, 2) - 1) * 4px + 22px), 100%); display: flex; align-items: stretch; gap: 10px; padding: 10px 20px 10px 10px; border: 1px solid rgba(211,184,149,.14); border-radius: 9px; background: rgba(17,15,13,.84); }
 /* Все трое живут в одном ряду: без явного ряда ручка занимала первый, а
    карточки уезжали во второй и отрывались от неё. */
 .hotbar-actions-shell { grid-column: 2; grid-row: 1; }
 /* Описание начинается на той же линии, что и карточка действий: обе прижаты к
    верху ряда, поэтому при любой высоте панели они выровнены между собой. */
 .hotbar-detail { grid-column: 3; grid-row: 1; align-self: start; }
+
+/* Ресурсный кластер активного героя: первый блок внутри карточки действий,
+   слева от плиток и под общей с ними рамкой. От колоды его отделяет такая же
+   тонкая линия, какой отделены кнопки хода справа — это тот же разряд знания:
+   не «что нажать», а «чем герой сейчас располагает».
+
+   Бокс растёт вместе со шкалой текста. Раньше ширина была жёсткими 236px, а
+   высота — ровно под ряды плиток в 64px, тогда как сам текст масштабировался
+   настройкой «размер текста»: при 130% «магическое восстановление» резалось
+   многоточием, а у паладина 29px контента уходили в невидимую прокрутку
+   (`scrollbar-width: none`). Теперь и слот плитки (`--slot` в `.game-area`),
+   и ширина кластера умножены на ту же шкалу, зазор фиксированный, а
+   прокрутки нет вовсе: хвост запасов, который не влез, сворачивается в чип
+   «+N ещё» (`heroPoolLayout`), а не исчезает молча. */
+.hotbar-hero-cluster { flex: 0 0 auto; min-width: 0; max-width: calc(240px * var(--ui-readable-scale, 1)); display: grid; align-content: center; gap: 4px; padding: 0 10px 0 0; border-right: 1px solid rgba(255,255,255,.07); }
+/* Строка лица: аватар и имя. Имя тянется и обрывается многоточием — полное
+   лежит в `title`. Пипсы ушли из этой строки в свою: с подписями они в неё
+   не помещаются. */
+.hero-cluster-face { min-width: 0; display: flex; align-items: center; gap: 6px; }
+.hero-cluster-avatar { width: calc(26px * var(--ui-readable-scale, 1)); height: calc(26px * var(--ui-readable-scale, 1)); flex: 0 0 auto; display: grid; place-items: center; overflow: hidden; border: 1px solid rgba(214,161,96,.55); border-radius: 50%; background: radial-gradient(circle at 50% 22%, rgba(128,91,53,.32), rgba(17,15,13,.95) 72%); background-size: 200% 200%; background-repeat: no-repeat; color: #e2b879; font: 600 var(--fs-xxs) Spectral, serif; letter-spacing: .04em; }
+/* Только прямой ребёнок: заглушка портрета внутри аватара — тоже `b`, и
+   правило-потомок навязывало бы ей чужой цвет. */
+.hero-cluster-face > b { flex: 1 1 auto; min-width: 0; overflow: hidden; color: #a2957f; font: 600 var(--fs-xs) Manrope, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+/* Экономика хода с подписями: «● Действие · атаки 1/2  ▲ Бонус  ◆ Реакция».
+   Фигуры остаются — они же стоят на плитках, — но читаются теперь без
+   наведения. Перенос строки разрешён: при крупном тексте три подписи не
+   помещаются в одну. */
+.hero-cluster-pips { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
+/* Пипс — кнопка: фигура несёт смысл стоимости, а рамка кнопки показывает, что
+   по ней сейчас отфильтрована колода. Две роли на разных слоях, чтобы фигура
+   не меняла очертаний от состояния фильтра. */
+.combat-hotbar .hero-pip { width: auto; min-width: 0; min-height: 0; height: auto; display: inline-flex; align-items: center; gap: 5px; margin: 0; padding: 1px 4px; border: 1px solid transparent; border-radius: 5px; background: none; color: #c99556; font: 600 var(--fs-xxs) Manrope, sans-serif; cursor: pointer; }
+.combat-hotbar .hero-pip:hover { border-color: rgba(222,201,171,.24); background: rgba(255,255,255,.04); }
+.combat-hotbar .hero-pip.filtering { border-color: #e2b879; background: rgba(192,132,66,.18); }
+.hero-pip-shape { width: calc(11px * var(--ui-readable-scale, 1)); height: calc(11px * var(--ui-readable-scale, 1)); flex: 0 0 auto; background: currentColor; clip-path: circle(50% at 50% 50%); }
+.hero-pip-label { white-space: nowrap; }
+.hero-pip.bonus_action { color: #d79a4e; }
+.hero-pip.bonus_action .hero-pip-shape { clip-path: polygon(50% 2%, 100% 98%, 0 98%); }
+.hero-pip.reaction { color: #8ba7bd; }
+.hero-pip.reaction .hero-pip-shape { clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
+/* Потраченное гасится, а не подменяется другой фигурой: форма кодирует вид
+   ресурса и обязана остаться узнаваемой на пустом пипсе. */
+.combat-hotbar .hero-pip.spent { color: #6d6459; }
+.hero-pip.spent .hero-pip-shape { opacity: .45; }
+.hero-pip em { color: #9c8a6c; font: 600 var(--fs-xxs) Manrope, sans-serif; font-style: normal; white-space: nowrap; }
+/* Движение: слово, короткая полоса и «осталось/всего». Голое «24 фт» не
+   говорило, много это или мало; полоса по-прежнему короткая — во всю ширину
+   она обещала бы точность, которой в ней нет. */
+.hero-cluster-move { min-width: 0; display: flex; align-items: center; gap: 6px; color: #8d857b; font: 600 var(--fs-xxs) Manrope, sans-serif; }
+.hero-cluster-move-label { flex: 0 0 auto; }
+.hero-cluster-move-bar { flex: 0 1 calc(58px * var(--ui-readable-scale, 1)); min-width: 24px; height: 5px; overflow: hidden; border-radius: 3px; background: rgba(255,255,255,.07); }
+.hero-cluster-move-bar > i { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, #c99556, #e2b879); }
+.hero-cluster-move b { flex: 0 0 auto; color: #c9a36f; font: 700 var(--fs-xxs) Manrope, sans-serif; white-space: nowrap; }
+.hero-cluster-move.spent b { color: #8d857b; }
+.hero-cluster-move.spent .hero-cluster-move-bar > i { background: rgba(222,201,171,.18); }
+/* Запасы одним переносимым потоком: слово «Ячейки» один раз, круги цифрами,
+   следом классовые запасы полными именами. Перенос — целыми чипами: рваться
+   посреди слова или между именем и пипсами ряду нельзя. */
+.hero-cluster-resources { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 3px 8px; }
+.hero-pools-label { color: #8d857b; font: 600 var(--fs-xxs) Manrope, sans-serif; }
+.hero-resource { flex: 0 0 auto; min-width: 0; max-width: 100%; display: inline-flex; align-items: center; gap: 4px; overflow: hidden; white-space: nowrap; }
+/* Круг ячеек — цифра золотом сразу после слова «Ячейки»; соседние круги
+   разделены точкой, чтобы «1 ●●○○ 2 ●●» не слипалось в одну цепочку. */
+.hero-resource.slot + .hero-resource.slot::before { content: '·'; margin-right: 4px; color: #6d6459; }
+.hero-resource.slot em { color: #c9a36f; }
+/* Подпись чипа обрывается многоточием только как аномалия: ширина кластера
+   теперь растёт со шкалой, и штатные имена помещаются целиком. Полное имя
+   вместе с сырым ключом всё так же лежит в подсказке (`heroResourceTitle`). */
+.hero-resource em { flex: 0 1 auto; min-width: 0; overflow: hidden; color: #8d857b; font: 600 var(--fs-xxs) Manrope, sans-serif; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+/* Пипсы и счётчик не жмутся: обрезать разрешено только подпись — число заряда
+   с многоточием врало бы о запасе. */
+.hero-resource i { flex: 0 0 auto; display: flex; gap: 3px; }
+.hero-resource u { width: calc(6px * var(--ui-readable-scale, 1)); height: calc(6px * var(--ui-readable-scale, 1)); border: 1px solid rgba(212,161,93,.55); border-radius: 50%; background: #d4a15d; text-decoration: none; }
+.hero-resource u.spent { border-color: rgba(212,161,93,.28); background: transparent; }
+.hero-resource b { flex: 0 0 auto; color: #c9a36f; font: 700 var(--fs-xxs) Manrope, sans-serif; white-space: nowrap; }
+.hero-resource.spent em, .hero-resource.spent b { color: #6d6459; }
+/* Запасной клапан: хвост запасов сверх бюджета позиций — чип со счётчиком и
+   полным перечнем в подсказке. Невидимой прокрутки у кластера больше нет. */
+.hero-resource-more { flex: 0 0 auto; padding: 0 6px; border: 1px solid rgba(222,201,171,.24); border-radius: 4px; background: rgba(255,255,255,.04); color: #c2a274; font: 600 var(--fs-xxs) Manrope, sans-serif; cursor: help; }
+/* Один ряд плиток: карточка высотой в один слот, и штабель из четырёх строк в
+   неё не влезет никогда. Кластер ложится одной полосой: лицо, фигуры без
+   подписей, полоса с числом, запасы. Режим выбирает игрок тумблером, а не
+   ширина окна, поэтому это класс, а не медиазапрос. */
+.hotbar-hero-cluster.band { flex: 0 1 auto; max-width: calc(320px * var(--ui-readable-scale, 1)); display: flex; flex-wrap: nowrap; align-items: center; gap: 10px; }
+.hotbar-hero-cluster.band .hero-cluster-face { flex: 0 1 auto; max-width: calc(120px * var(--ui-readable-scale, 1)); }
+.hotbar-hero-cluster.band .hero-cluster-pips { flex: 0 0 auto; flex-wrap: nowrap; gap: 2px; }
+.hotbar-hero-cluster.band .hero-pip-label, .hotbar-hero-cluster.band .hero-cluster-move-label { display: none; }
+.hotbar-hero-cluster.band .hero-cluster-move { flex: 0 0 auto; }
+.hotbar-hero-cluster.band .hero-cluster-resources { flex: 0 1 auto; flex-wrap: nowrap; min-width: 0; overflow: hidden; }
+/* Строка активного фильтра стоимости — чип у нижней кромки карточки действий,
+   а не строка кластера: это контекст колоды, не героя, и в кластере она
+   воровала строку высоты. */
+.hero-cluster-filter { position: absolute; z-index: 2; left: 50%; bottom: 2px; margin: 0; padding: 1px 9px; border: 1px solid rgba(222,201,171,.24); border-radius: 999px; background: rgba(17,15,13,.96); color: #9c8a6c; font: 600 var(--fs-xxs) Manrope, sans-serif; white-space: nowrap; transform: translateX(-50%); }
+.combat-hotbar .hero-cluster-filter button { width: auto; min-width: 0; min-height: 0; height: auto; display: inline; margin: 0; padding: 0; border: 0; border-radius: 0; background: none; color: #e2b879; font: inherit; text-decoration: underline; cursor: pointer; }
 
 /* Панель действий — сетка квадратных слотов, как в Baldur's Gate: колонка слотов
    заполняет высоту, следующая колонка начинается правее. Слово на плитке проиграло
@@ -1392,9 +1652,23 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .combat-hotbar .action-tile em { position: absolute; right: 2px; top: 2px; z-index: 4; min-width: 0; padding: 0 3px; border-radius: 5px; background: rgba(10,9,8,.88); color: #ddc49c; font: normal 700 var(--fs-xxs)/1.35 Manrope, sans-serif; }
 
 /* Стоимость — слово, а не буква в кружке: «хватит ли» должно читаться без расшифровки. */
-.action-cost { position: static; width: max-content; height: 20px; display: flex; align-items: center; padding: 0 9px; border: 0; border-radius: 10px; background: rgba(209,152,83,.22); color: #e0b47a; font: normal 600 var(--fs-xs) Manrope, sans-serif; }
-.action-cost.bonus_action { background: rgba(130,103,183,.24); color: #bba0db; }
-.action-cost.reaction { background: rgba(80,145,154,.24); color: #8abdc1; }
+.action-cost { position: static; width: max-content; height: 20px; display: flex; align-items: center; gap: 5px; padding: 0 9px 0 7px; border: 0; border-radius: 10px; background: rgba(209,152,83,.22); color: #e0b47a; font: normal 600 var(--fs-xs) Manrope, sans-serif; }
+/* Перед словом — фигура той же семантики, что у пипсов ресурсного кластера:
+   круг у действия, треугольник у бонуса, ромб у реакции, стрелка у движения,
+   контурный кружок у свободного. Слово остаётся: фигура ускоряет узнавание, но
+   заучивать её никто не обязан. Правило одно на все плитки. */
+.action-cost::before { content: ''; flex: 0 0 auto; width: 9px; height: 9px; background: currentColor; clip-path: circle(50% at 50% 50%); }
+.action-cost.bonus_action::before { clip-path: polygon(50% 2%, 100% 98%, 0 98%); }
+.action-cost.reaction::before { clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
+.action-cost.movement::before { clip-path: polygon(0 32%, 56% 32%, 56% 6%, 100% 50%, 56% 94%, 56% 68%, 0 68%); }
+.action-cost.free::before { background: transparent; box-shadow: inset 0 0 0 1.5px currentColor; border-radius: 50%; clip-path: none; }
+.action-cost.long_cast::before { clip-path: polygon(0 34%, 100% 34%, 100% 66%, 0 66%); }
+/* Бонус и реакция взяли цвета ресурсного кластера: один и тот же ресурс не
+   имеет права быть сиреневым у плитки и янтарным у пипса. Круг от треугольника
+   теперь различает форма, а не оттенок, и тёплая пара «действие — бонус»
+   честно говорит, что оба тратятся из своего хода. */
+.action-cost.bonus_action { background: rgba(199,140,64,.22); color: #d79a4e; }
+.action-cost.reaction { background: rgba(120,150,175,.24); color: #8ba7bd; }
 .action-cost.free { background: rgba(110,165,120,.24); color: #a2ccab; }
 .action-cost.movement { background: rgba(110,165,120,.24); color: #a2ccab; }
 .action-cost.long_cast { background: rgba(140,130,120,.24); color: #b6ada2; }
@@ -1402,7 +1676,11 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 /* На слоте стоимость — цветная полоска снизу: слово туда не влезает, а цвет
    различает действие, бонус, реакцию и свободное без расшифровки. Слово остаётся
    в разметке для скринридера и для колонки шага. */
-.combat-hotbar .action-tile .action-cost { position: absolute; right: 0; bottom: 0; left: 0; z-index: 4; width: auto; height: 3px; padding: 0; border-radius: 0; font-size: 0; }
+.combat-hotbar .action-tile .action-cost { position: absolute; right: 0; bottom: 0; left: 0; z-index: 4; width: auto; height: 3px; gap: 0; padding: 0; border-radius: 0; font-size: 0; }
+/* Фигура стоимости на слоте — угловая метка над полоской: цвет отвечает на
+   «какой ценой», фигура — на «чем именно», и обе видны, не наводя курсор.
+   Тень нужна, чтобы метка читалась поверх рисунка любой яркости. */
+.combat-hotbar .action-tile .action-cost::before { position: absolute; right: 4px; bottom: 7px; width: 10px; height: 10px; filter: drop-shadow(0 0 2px rgba(0,0,0,.95)) drop-shadow(0 1px 1px rgba(0,0,0,.8)); }
 /* Поддержка механики — точка в углу вместо слова: цвет статуса тот же. */
 .combat-hotbar .action-tile .mechanics-support-badge { top: auto; right: auto; bottom: 3px; left: 3px; width: 7px; height: 7px; max-width: none; padding: 0; border: 0; border-radius: 50%; background: currentColor; font-size: 0; }
 /* Выбранный слот: кольцо внутрь, чтобы рамка не съезжала на соседей. */
@@ -1499,8 +1777,15 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .knockout-toggle.active { border-color: rgba(220,157,84,.68); background: rgba(126,72,31,.42); color: #e0b47e; }
 .combat-hotbar .hotbar-turn-controls .knockout-turn-toggle.active { border-color: rgba(220,157,84,.72); background: linear-gradient(145deg, rgba(126,76,36,.72), rgba(78,47,29,.82)); color: #edbd82; box-shadow: inset 0 0 0 1px rgba(238,183,111,.12); }
 .spell-option-picker { display: flex; flex-wrap: wrap; gap: 3px; }
-.spell-option-picker button { min-height: 20px; padding: 2px 6px; border: 1px solid rgba(202,164,105,.2); border-radius: 4px; background: rgba(29,22,18,.88); color: #9f8c75; font: 600 var(--fs-xs) Spectral, serif; cursor: pointer; }
-.spell-option-picker button:hover, .spell-option-picker button.selected { border-color: rgba(231,184,105,.72); background: rgba(104,66,31,.55); color: #f0d3a6; }
+/* Вариант заклинания, режим атаки и характеристика — это чипы в строку, а не
+   ряд кнопок. Класс панели в селекторе не украшение: общее правило
+   `.tactical-control button` той же силы (0,1,1) объявлено ниже по файлу и
+   перебивало компактный вид — «Одной рукой», «Метнуть», «Сила» растягивались
+   на всю колонку описания красноватыми кнопками. Отсюда (0,2,1) и явные
+   `width`/`margin`: их задаёт только общее правило, и без возврата они
+   протекают сюда. Само общее правило не трогаем — на нём висит вся панель. */
+.combat-hotbar .spell-option-picker button { width: auto; min-height: 20px; margin: 0; padding: 2px 6px; border: 1px solid rgba(202,164,105,.2); border-radius: 4px; background: rgba(29,22,18,.88); color: #9f8c75; font: 600 var(--fs-xs) Spectral, serif; cursor: pointer; }
+.combat-hotbar .spell-option-picker button:hover, .combat-hotbar .spell-option-picker button.selected { border-color: rgba(231,184,105,.72); background: rgba(104,66,31,.55); color: #f0d3a6; }
 .weapon-rider-toggle { width: fit-content; display: inline-flex; align-items: center; gap: 7px; padding: 4px 8px; border: 1px solid rgba(202,164,105,.2); border-radius: 5px; background: rgba(29,22,18,.88); color: #a99a87; font: 600 var(--fs-xs) Manrope, sans-serif; cursor: pointer; }
 .weapon-rider-toggle input { margin: 0; accent-color: #bd7d3b; }
 .weapon-rider-toggle.selected { border-color: rgba(231,184,105,.72); background: rgba(104,66,31,.55); color: #f0d3a6; }
@@ -1510,12 +1795,43 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
    ширина по содержимому, но не уже 132px — «Сменить оружие» иначе режется. */
 .hotbar-turn-controls { flex: 0 0 auto; min-width: 132px; max-width: 176px; display: grid; align-content: center; gap: 6px; padding: 0 0 0 12px; border-left: 1px solid rgba(255,255,255,.07); }
 .combat-hotbar .hotbar-turn-controls button { width: 100%; min-width: 0; overflow: hidden; font-size: var(--fs-sm); min-height: 32px; display: flex; align-items: center; justify-content: center; gap: 5px; margin: 0; padding: 5px; border: 1px solid rgba(211,160,97,.2); border-radius: 5px; background: rgba(127,81,36,.08); color: #a9845d; font-size: var(--fs-sm); cursor: pointer; }
-.combat-hotbar .hotbar-turn-controls .end-turn-hotbar { border-color: rgba(146,177,113,.3); background: rgba(71,105,52,.12); color: #abc48e; }
+/* «Завершить ход» — главное решение ряда, и выглядит оно главным: выше соседних
+   кнопок и в том же золоте, что «Отправить» у строки намерения. Раньше оно
+   стояло тихой зелёной кнопкой в общем столбце и терялось между дверью и
+   нокаутом. Прижата к правому краю столбца — дальше края панели уже некуда. */
+.combat-hotbar .hotbar-turn-controls .end-turn-hotbar { min-height: 46px; justify-self: end; gap: 8px; border-color: rgba(217,166,101,.55); border-radius: 6px; background: linear-gradient(145deg, #7e5732, #533a25); color: #f0d3a6; }
+.combat-hotbar .hotbar-turn-controls .end-turn-hotbar:hover:not(:disabled) { border-color: #e2b879; color: #f7e2c1; }
+.combat-hotbar .hotbar-turn-controls .end-turn-hotbar span { display: grid; gap: 2px; justify-items: start; overflow: visible; font: 600 var(--fs-md) Manrope, sans-serif; text-align: left; }
+.combat-hotbar .hotbar-turn-controls .end-turn-hotbar kbd { padding: 0 4px; border: 1px solid rgba(222,201,171,.24); border-radius: 4px; background: rgba(0,0,0,.28); color: #c2a274; font: 600 var(--fs-xxs) Manrope, sans-serif; }
+/* Когда действие, бонус и движение уже израсходованы, рамка мягко дышит: это
+   единственный оставшийся шаг хода. Анимации не будет там, где системе велено
+   её не показывать — вместо неё ровная яркая рамка. */
+@keyframes end-turn-ready-pulse {
+  0%, 100% { border-color: rgba(217,166,101,.55); box-shadow: 0 0 0 0 rgba(226,184,121,0); }
+  50% { border-color: #e2b879; box-shadow: 0 0 12px 1px rgba(226,184,121,.3); }
+}
+.combat-hotbar .hotbar-turn-controls .end-turn-hotbar.exhausted { animation: end-turn-ready-pulse 2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .combat-hotbar .hotbar-turn-controls .end-turn-hotbar.exhausted { animation: none; border-color: #e2b879; box-shadow: 0 0 0 1px rgba(226,184,121,.3); }
+}
 /* Дверь под рукой: обычная — в цвете панели, запертая — тревожным красным,
    потому что она стоит хода и может не поддаться. */
 .combat-hotbar .hotbar-turn-controls .door-control.locked { border-color: rgba(188,79,63,.36); background: rgba(126,48,39,.16); color: #cf8174; }
 .combat-hotbar .hotbar-turn-controls .start-combat-button { border-color: rgba(188,79,63,.36); background: rgba(126,48,39,.16); color: #cf8174; }
 .combat-hotbar .hotbar-turn-controls button:disabled { opacity: .35; cursor: default; }
+.combat-hotbar .hotbar-turn-controls .exploration-leave-location, .combat-hotbar .hotbar-turn-controls .exploration-start-combat { width: 100%; min-height: 44px; justify-content: flex-start; gap: 8px; padding: 5px 9px; border-radius: 6px; }
+.combat-hotbar .hotbar-turn-controls .exploration-leave-location span, .combat-hotbar .hotbar-turn-controls .exploration-start-combat span { overflow: visible; text-align: left; }
+.combat-hotbar .hotbar-turn-controls .exploration-leave-location strong, .combat-hotbar .hotbar-turn-controls .exploration-start-combat strong { font-size: var(--fs-sm); white-space: normal; line-height: 1.15; }
+/* Один ряд плиток: карточка высотой в слот, и три кнопки хода столбиком в
+   неё не входят — они вылезали на колонку описания. В этом режиме кнопки
+   ложатся в строку; плитки всё равно прокручиваются по горизонтали. */
+.combat-hotbar .hotbar-actions-shell.one-row .hotbar-turn-controls { max-width: none; display: flex; align-items: center; gap: 6px; }
+.combat-hotbar .hotbar-actions-shell.one-row .hotbar-turn-controls button { width: auto; }
+/* Второстепенные кнопки в строку входят только значками: подпись остаётся в
+   title; «Завершить ход» — главная, она подписана всегда. */
+.combat-hotbar .hotbar-actions-shell.one-row .hotbar-turn-controls button:not(.end-turn-hotbar) { min-width: 34px; padding: 5px 8px; }
+.combat-hotbar .hotbar-actions-shell.one-row .hotbar-turn-controls button:not(.end-turn-hotbar) span { display: none; }
+.combat-hotbar .hotbar-actions-shell.one-row .hotbar-turn-controls .end-turn-hotbar { min-height: 40px; justify-self: auto; }
 /* Отмена рядом с подтверждением: тише кнопкой, но того же роста. */
 .combat-hotbar .hotbar-turn-controls .cancel-self-cast { min-height: 28px; justify-content: center; gap: 6px; border-color: var(--line); background: transparent; color: #8b8177; }
 .combat-hotbar .hotbar-turn-controls .cancel-self-cast:hover { border-color: rgba(211,160,97,.35); color: #c49a63; }
@@ -1523,8 +1839,6 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
    может быть закрыта боем или расстоянием, а назначение перехода видно всегда. */
 .hotbar-turn-controls .scene-object-lead { overflow: hidden; color: #9c8a6c; font: 600 var(--fs-sm) Manrope, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
 .combat-hotbar > .tactical-command-status { position: absolute; left: 10px; bottom: calc(100% + 45px); margin: 0; padding: 6px 9px; border-radius: 4px; background: rgba(15,13,11,.92); }
-.combat-hotbar > .tactical-command-error { position: absolute; right: 0; bottom: calc(100% + 44px); width: min(360px, 70vw); margin: 0; }
-.combat-hotbar > .tactical-command-error button { width: 18px; margin: -3px -3px 0 0; }
 /* Отдельной панели исследования больше нет — её место заняла общая панель
    действий в режиме `out-of-combat`. Классы ниже остались: ими размечены строка
    режима и бросок инициативы внутри неё. */
@@ -1564,7 +1878,6 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
      описание. */
   .hotbar-main { grid-template-columns: auto minmax(0, 1fr) minmax(360px, 46%); gap: 10px; }
   .hotbar-turn-controls { min-width: 112px; }
-  .player-hud-stack, .player-hud { display: none; }
 }
 
 @media (max-width: 820px) {
@@ -1578,9 +1891,22 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
   .spellbook-tools label { flex-basis: 100%; }
   .combat-hotbar.tactical-control { bottom: 8px; width: calc(100% - 16px); }
   .exploration-path-status { display: none; }
-  .hotbar-main { grid-template-columns: auto minmax(0, 1fr); gap: 8px; }
-  .hotbar-detail { display: none; }
+  /* Описание действия не исчезает молча: третьей колонки на такой ширине нет,
+     поэтому оно переезжает под плитки узкой полосой со своей прокруткой.
+     Дальность, шанс попасть и ожидаемый урон больше нигде не показаны — до
+     броска это единственное место, где их видно. */
+  .hotbar-main { grid-template-columns: auto minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; gap: 8px; }
+  .hotbar-detail { grid-column: 1 / -1; grid-row: 2; align-self: stretch; max-height: 78px; gap: 3px; padding: 6px 0 0; border-top: 1px solid var(--line); }
+  .hotbar-detail strong { font-size: var(--fs-xl); }
+  .hotbar-detail p, .hotbar-detail span { font-size: var(--fs-sm); line-height: 1.35; }
   .hotbar-turn-controls { min-width: 94px; }
+  /* Плитки на такой ширине втрое крупнее, и место кластеру приходится урезать:
+     ряд запасов уходит первым — те же числа стоят счётчиком на самих плитках
+     заклинаний, а имя и пипсы экономики нигде больше не показаны. Первая
+     строка расходится надвое: лицо с именем сверху, пипсы под ними — вместо
+     того чтобы сжимать имя до одной буквы. */
+  .hotbar-hero-cluster { max-width: 150px; }
+  .hero-pip-label, .hero-cluster-move-label, .hero-cluster-resources { display: none; }
   .combat-hotbar .action-tile { width: 138px; min-width: 138px; height: 140px; }
   .map-legend { display: none; }
 }
@@ -1596,11 +1922,14 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
   .rail-free-input > button { width: 48px; padding: 0; justify-content: center; font-size: 0; }
 }
 
-/* На ноутбуке высота важнее декоративной карточки героя: голосование, ожидание
-   броска и групповой typing живут в правой колонке и обязаны оставаться видимыми. */
+/* На ноутбуке нижняя панель уступает высоту правой колонке: голосование,
+   ожидание броска и групповой typing живут там и обязаны оставаться видимыми.
+   Карточку героя это правило раньше гасило целиком — а под условие попадают
+   ровно те экраны, за которыми играют (1366×768 и 1440×900), и стол терял КБ,
+   ОЗ, скорость и обе кнопки листа героя. Теперь она ужимается, а не исчезает
+   (правило «компактный HUD» рядом с самим HUD). */
 @media (max-height: 850px) and (min-width: 681px) {
   .game-area { --rail: 230px; }
-  .server-column > .player-hud-stack { display: none; }
 }
 
 @media (max-width: 560px) {
@@ -1617,9 +1946,11 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
      карточки, а плиткам нужна вся оставшаяся ширина. */
   .hotbar-turn-controls { min-width: 0; padding-left: 8px; }
   .hotbar-turn-controls button span { display: none; }
+  /* От кластера остаётся самое необходимое: инициалы того, кто ходит, и пипсы
+     экономики. Имя целиком есть в подписи самой панели. */
+  .hotbar-hero-cluster { max-width: 118px; padding-right: 8px; }
+  .hero-cluster-face b { display: none; }
   .combat-hotbar .action-tile { width: 128px; min-width: 128px; height: 134px; padding: 10px 6px; }
-  .map-economy { gap: 5px; padding: 5px 6px; }
-  .map-economy > span { padding: 0 9px; }
   .game-area > .dice-tray:not(.dice-tray--rolling) { bottom: 150px; }
   .exploration-start-combat,
   .exploration-leave-location { width: 42px; min-width: 42px; justify-content: center; padding: 6px; }
@@ -1639,7 +1970,7 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
   .chat-panel { height: min(44vh, 300px); min-height: 240px; }
 }
 
-.turn-resolution { display: inline-flex; margin-top: 8px; padding: 4px 8px; border-radius: 999px; font-size: var(--fs-md); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.turn-resolution { display: inline-flex; margin-top: 8px; padding: 4px 8px; border-radius: 999px; font-size: var(--fs-md); font-weight: 700; }
 .turn-resolution.kept { color: #b9e6c8; background: rgba(59, 151, 94, .18); border: 1px solid rgba(83, 190, 122, .28); }
 .turn-resolution.spent { color: #d7cfbd; background: rgba(151, 130, 83, .14); border: 1px solid rgba(179, 155, 101, .22); }
 
@@ -1754,6 +2085,19 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 /* Campaign, party and tactical map controls */
 button.campaign-title { padding: 0; border: 0; background: transparent; text-align: left; cursor: pointer; }
 button.campaign-title:hover strong { color: #edc996; }
+/* «Сюда не дойти» — одна клетка под курсором, а не слой по всей карте.
+   Раньше красноватый × рисовался холстом на каждой недостижимой клетке разом
+   (`drawBoardOverlay`), и карта пропадала под ковром крестов: достижимый
+   пятачок был виден, а поле боя за ним — уже нет. Достижимая область
+   показывается по-прежнему, отказ объясняется по наведению — это то же
+   решение, что и UI-001 в `docs/manual-review-findings.md`. Причина словами
+   приходит подсказкой клетки, метка нужна лишь затем, чтобы курсор не гадал,
+   к чему относится подсказка. */
+.board-cell.move-unavailable { cursor: not-allowed; background-color: rgba(20,10,8,.36); }
+.cell-block-mark { position: absolute; z-index: 3; inset: 26%; pointer-events: none; }
+.cell-block-mark::before, .cell-block-mark::after { content: ''; position: absolute; left: 0; top: calc(50% - 1px); width: 100%; height: 2px; border-radius: 2px; background: rgba(196,110,100,.88); box-shadow: 0 0 4px rgba(0,0,0,.7); }
+.cell-block-mark::before { transform: rotate(45deg); }
+.cell-block-mark::after { transform: rotate(-45deg); }
 .board-cell.move-target { cursor: crosshair; box-shadow: inset 0 0 0 2px rgba(102,177,118,.38), inset 0 0 18px rgba(69,141,86,.18); }
 .board-cell.move-target::after { content: ''; position: absolute; z-index: 1; width: 10px; height: 10px; border: 1px solid rgba(146,213,158,.72); border-radius: 50%; background: rgba(83,157,99,.18); box-shadow: 0 0 10px rgba(82,176,104,.55); }
 .board-cell.move-target.opportunity-risk { box-shadow: inset 0 0 0 2px rgba(216,92,70,.68), inset 0 0 22px rgba(165,48,35,.28); }
@@ -1773,11 +2117,11 @@ button.campaign-title:hover strong { color: #edc996; }
 .preview-page { min-height: 100vh; padding: 36px; display: grid; grid-template-columns: repeat(3, minmax(280px, 1fr)); gap: 24px; background: #17120d; color: #eadcc5; overflow: auto; }
 .preview-intro { grid-column: 1 / -1; max-width: 780px; }
 .preview-intro span { color: #d49b56; text-transform: uppercase; letter-spacing: .18em; font-size: var(--fs-lg); }
-.preview-intro h1 { margin: 7px 0 6px; font: 500 clamp(30px, 4vw, 52px) Georgia, serif; }
+.preview-intro h1 { margin: 7px 0 6px; font: 500 clamp(30px, 4vw, 52px) Spectral, Georgia, serif; }
 .preview-intro p, .preview-card p { margin: 0; color: #bcae9b; }
 .preview-card { min-width: 0; border: 1px solid #5b4630; border-radius: 14px; overflow: hidden; background: #211a13; box-shadow: 0 20px 50px rgba(0,0,0,.32); }
 .preview-card header { padding: 17px 19px; border-bottom: 1px solid #493624; }
-.preview-card h2 { margin: 0 0 4px; font: 500 var(--fs-3xl) Georgia, serif; color: #f0dfc2; }
+.preview-card h2 { margin: 0 0 4px; font: 500 var(--fs-3xl) Spectral, Georgia, serif; color: #f0dfc2; }
 .preview-card p { font-size: var(--fs-xs); }
 .preview-board { position: relative; height: 500px; container-type: size; }
 .preview-board .map-stage { position: absolute; inset: 0; }
@@ -1866,13 +2210,10 @@ button.campaign-title:hover strong { color: #edc996; }
 .action-economy > span.spent { opacity: .5; }
 .action-economy > span.ready { border-color: rgba(119,162,127,.15); }
 .tactical-command-status { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; color: #a88a67; font-size: var(--fs-sm); }
-.tactical-command-error { display: flex; align-items: flex-start; gap: 5px; margin-top: 8px; padding: 7px; border: 1px solid rgba(183,78,67,.28); border-radius: 4px; background: rgba(119,42,35,.14); color: #c28176; font: var(--fs-sm)/1.4 Manrope, sans-serif; }
-.tactical-command-error span { flex: 1; }
-.tactical-control .tactical-command-error button { width: 18px; min-height: 18px; flex: 0 0 18px; margin: -3px -3px 0 0; padding: 0; border: 0; background: transparent; color: #a97068; }
 
 .initiative-ribbon { position: relative; z-index: auto; flex: 0 1 620px; min-width: 0; width: min(620px, 100%); height: 52px; display: flex; flex-wrap: nowrap; align-items: center; gap: 9px; overflow: hidden; padding: 2px 8px; border: 1px solid rgba(206,165,109,.16); border-radius: 6px; background: rgba(14,12,10,.88); box-shadow: 0 8px 24px rgba(0,0,0,.3); backdrop-filter: blur(10px); }
 .initiative-ribbon.exploration { flex: 0 0 auto; width: auto; border-color: rgba(112,185,148,.3); background: rgba(24,46,34,.32); }
-.initiative-active-chip { flex: 0 1 auto; min-width: 0; height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 11px 0 4px; border: 1px solid rgba(210,157,91,.55); border-radius: 23px; background: rgba(157,99,43,.18); }
+.initiative-active-chip { flex: 0 0 auto; min-width: 0; max-width: 220px; height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 11px 0 4px; border: 1px solid rgba(210,157,91,.55); border-radius: 23px; background: rgba(157,99,43,.18); }
 .initiative-active-chip.enemy { border-color: rgba(200,108,93,.62); background: rgba(120,48,40,.24); }
 .initiative-active-chip.summon { border-color: rgba(112,185,148,.55); background: rgba(50,96,72,.24); }
 .initiative-active-chip > span:last-child { min-width: 0; display: grid; gap: 1px; }
@@ -1889,7 +2230,7 @@ button.campaign-title:hover strong { color: #edc996; }
 .initiative-active-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .initiative-exploration-lead { display: flex; align-items: center; gap: 10px; }
 .initiative-ribbon-label { color: #7fae95; font: 700 var(--fs-sm) Manrope, sans-serif; letter-spacing: .14em; white-space: nowrap; }
-.initiative-ribbon > header { flex: 0 0 auto; display: grid; place-items: center; min-width: 45px; color: #786d62; font-size: var(--fs-xs); letter-spacing: .1em; }
+.initiative-ribbon > header { flex: 0 0 auto; display: grid; place-items: center; min-width: 45px; color: #786d62; font-size: var(--fs-xs); }
 .initiative-ribbon > header b { color: #c89a61; font: 600 var(--fs-md) Spectral, serif; }
 .initiative-ribbon > ol { min-width: 0; display: flex; gap: 5px; margin: 0; padding: 0; overflow-x: auto; list-style: none; scrollbar-width: thin; }
 .initiative-ribbon li { flex: 0 0 auto; display: block; padding: 0; }
@@ -1905,7 +2246,7 @@ button.campaign-title:hover strong { color: #edc996; }
 .initiative-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .initiative-order { position: absolute; z-index: 2; left: -3px; top: -3px; min-width: 14px; height: 14px; display: grid; place-items: center; border: 1px solid rgba(211,160,97,.3); border-radius: 50%; background: #17120e; color: #b89568; font: 700 var(--fs-xs) Manrope, sans-serif; }
 .initiative-turn-dot { position: absolute; right: 0; bottom: 1px; width: 8px; height: 8px; border: 1px solid #17120e; border-radius: 50%; background: #d4a15d; box-shadow: 0 0 8px rgba(212,161,93,.8); }
-.initiative-status-label { position: absolute; z-index: 3; left: 50%; bottom: -5px; min-width: 32px; padding: 1px 4px; border: 1px solid rgba(211,160,97,.34); border-radius: 6px; background: #17120e; color: #c9a36f; font: 700 7px/1.25 Manrope, sans-serif; letter-spacing: .04em; text-transform: uppercase; transform: translateX(-50%); pointer-events: none; }
+.initiative-status-label { position: absolute; z-index: 3; left: 50%; bottom: -5px; min-width: 32px; padding: 1px 4px; border: 1px solid rgba(211,160,97,.34); border-radius: 6px; background: #17120e; color: #c9a36f; font: 700 10px/1.2 Manrope, sans-serif; transform: translateX(-50%); pointer-events: none; }
 .initiative-status-label.next { border-color: rgba(102,158,118,.4); color: #8fb89a; }
 .initiative-status-label.defeated { border-color: rgba(172,89,77,.44); color: #bd8076; }
 
@@ -2292,7 +2633,7 @@ button.campaign-title:hover strong { color: #edc996; }
 .enemy-token[aria-disabled="true"],.map-token[aria-disabled="true"]{cursor:help}
 .token-tactical-badges{position:absolute;z-index:10;left:calc(50% + 19px);bottom:calc(50% + 11px);display:flex;align-items:center;gap:3px;opacity:0;transform:translateY(2px);transition:opacity .14s ease,transform .14s ease;pointer-events:none}
 .board-cell:hover>.token-tactical-badges,.board-cell:focus-within>.token-tactical-badges{opacity:1;transform:translateY(0)}
-.token-tactical-badges i{min-width:18px;height:18px;display:grid;place-items:center;padding:0 4px;border:1px solid rgba(137,179,195,.52);border-radius:9px;background:rgba(18,27,31,.92);color:#abd2df;font:800 9px/1 Manrope,sans-serif;font-style:normal;white-space:nowrap;box-shadow:0 2px 7px #000}
+.token-tactical-badges i{min-width:18px;height:18px;display:grid;place-items:center;padding:0 4px;border:1px solid rgba(137,179,195,.52);border-radius:9px;background:rgba(18,27,31,.92);color:#abd2df;font:800 10px/1 Manrope,sans-serif;font-style:normal;white-space:nowrap;box-shadow:0 2px 7px #000}
 .token-tactical-badges .advantage{border-color:rgba(104,167,116,.58);background:rgba(25,51,31,.94);color:#b8daba;font-size:13px}.token-tactical-badges .disadvantage{border-color:rgba(185,119,83,.62);background:rgba(58,33,24,.94);color:#e0ae91;font-size:13px}.token-tactical-badges .blocked{border-color:rgba(190,76,67,.68);background:rgba(65,24,22,.95);color:#efaaa4;font-size:13px}
 .token-conditions{position:absolute;z-index:8;left:50%;top:calc(100% + 8px);display:flex;gap:2px;transform:translateX(-50%);pointer-events:auto}
 .token-conditions i{width:13px;height:13px;display:grid;place-items:center;border:1px solid rgba(117,155,121,.5);border-radius:50%;background:#203126;color:#b9d6bc;font:700 var(--fs-xxs) Manrope,sans-serif;font-style:normal;box-shadow:0 2px 4px #000}
@@ -2301,38 +2642,28 @@ button.campaign-title:hover strong { color: #edc996; }
 /* Полоска героя и призыва теперь с числами и вдвое толще: значки состояний
    уезжают ниже, иначе они ложатся прямо на цифры. У врага полоска прежняя. */
 .map-token .token-conditions{top:calc(100% + 16px)}
-.combat-context-panel{position:static;z-index:auto;min-width:0;min-height:0;width:auto;max-height:none;overflow:auto;padding:10px;border:1px solid rgba(203,151,88,.2);border-radius:7px;background:rgba(14,12,10,.9);box-shadow:0 12px 35px rgba(0,0,0,.38);backdrop-filter:blur(12px);scrollbar-width:thin}
-.combat-context-panel>header{display:flex;align-items:center;justify-content:space-between;gap:9px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,.06)}
-.combat-context-panel>header>div{display:grid}.combat-context-panel>header small{color:#84684c;font-size: var(--fs-xs);letter-spacing:.1em}.combat-context-panel>header strong{color:#e0c6a2;font:600 var(--fs-lg) Spectral,serif}.combat-context-panel>header>span{display:flex;align-items:center;gap:4px;color:#c98676;font-size: var(--fs-sm)}
 .battle-roll-card{display:grid;grid-template-columns:54px minmax(0,1fr) auto;align-items:center;gap:9px;margin-top:8px;padding:8px;border:1px solid rgba(189,139,78,.32);border-radius:7px;background:linear-gradient(145deg,rgba(100,63,29,.17),rgba(24,18,13,.35));animation:battle-roll-arrive .18s ease-out}
 .battle-roll-card.success{border-color:rgba(91,157,105,.42);background:linear-gradient(145deg,rgba(49,106,64,.15),rgba(18,29,21,.32))}.battle-roll-card.failed{border-color:rgba(174,77,66,.42);background:linear-gradient(145deg,rgba(113,42,35,.16),rgba(31,18,16,.34))}
 .battle-roll-d20{width:52px;height:48px;display:grid;place-items:center;align-content:center;clip-path:polygon(50% 0,94% 24%,86% 79%,50% 100%,14% 79%,6% 24%);background:#2d2116;color:#ebc98e;text-align:center}.battle-roll-card.success .battle-roll-d20{background:#203326;color:#a9d0ac}.battle-roll-card.failed .battle-roll-d20{background:#39201d;color:#dc988e}
-.battle-roll-d20 small{font:700 8px/1 Manrope,sans-serif;letter-spacing:.08em;text-transform:uppercase}.battle-roll-d20 b{font:800 23px/1 Manrope,sans-serif;font-variant-numeric:tabular-nums}
-.battle-roll-summary{min-width:0;display:flex;align-items:center;gap:5px}.battle-roll-summary span{display:grid;place-items:center;min-width:38px}.battle-roll-summary small{color:#796b5d;font:700 7px/1.15 Manrope,sans-serif;letter-spacing:.06em}.battle-roll-summary b{color:#c9b49a;font:800 var(--fs-lg) Manrope,sans-serif;font-variant-numeric:tabular-nums}.battle-roll-summary .total b{color:#e4b872}.battle-roll-summary>i{color:#6f6255;font:normal var(--fs-xs) Manrope,sans-serif}
+.battle-roll-d20 small{font:700 10px/1 Manrope,sans-serif;}.battle-roll-d20 b{font:800 23px/1 Manrope,sans-serif;font-variant-numeric:tabular-nums}
+.battle-roll-summary{min-width:0;display:flex;align-items:center;gap:5px}.battle-roll-summary span{display:grid;place-items:center;min-width:38px}.battle-roll-summary small{color:#796b5d;font:700 10px/1.15 Manrope,sans-serif;}.battle-roll-summary b{color:#c9b49a;font:800 var(--fs-lg) Manrope,sans-serif;font-variant-numeric:tabular-nums}.battle-roll-summary .total b{color:#e4b872}.battle-roll-summary>i{color:#6f6255;font:normal var(--fs-xs) Manrope,sans-serif}
 .battle-roll-card>strong{color:#d68c80;font:800 var(--fs-xs) Manrope,sans-serif;letter-spacing:.08em}.battle-roll-card.success>strong{color:#91be98}
 .combat-turn-clock{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:4px 9px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)}.combat-turn-clock small{color:#776b5f;font:700 var(--fs-xxs) Manrope,sans-serif;letter-spacing:.09em}.combat-turn-clock b{color:#d7ba8d;font:800 var(--fs-md) Manrope,sans-serif;font-variant-numeric:tabular-nums}.combat-turn-clock>span{grid-column:1/-1;height:3px;overflow:hidden;border-radius:2px;background:rgba(255,255,255,.06)}.combat-turn-clock>span i{display:block;height:100%;border-radius:inherit;background:#a97845;transition:width .25s linear}.combat-turn-clock.urgent b{color:#e18a78}.combat-turn-clock.urgent>span i{background:#bd5d4f}.combat-turn-clock.expired{opacity:.72}
-.battle-roll-reasons{grid-column:1/-1;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,.06);font-size:var(--fs-xs)}.battle-roll-reasons small{color:#8f6747;font-weight:800;letter-spacing:.08em}.battle-roll-reasons.disadvantage small{color:#a56e67}.battle-roll-reasons span{color:#b6a896}.battle-roll-reasons em{color:#766b60;font-style:normal;font-variant-numeric:tabular-nums}
-.battle-roll-token-callout{position:absolute;z-index:18;left:50%;bottom:calc(50% + clamp(24px,4.8cqw,42px));width:max-content;max-width:min(260px,42cqw);display:flex;align-items:baseline;flex-wrap:wrap;justify-content:center;gap:3px 6px;padding:6px 9px;border:1px solid rgba(173,77,66,.58);border-radius:7px;background:rgba(35,18,15,.96);color:#dec8b1;box-shadow:0 7px 20px rgba(0,0,0,.62);transform:translateX(-50%);pointer-events:none;animation:battle-roll-token-arrive .2s ease-out}.battle-roll-token-callout.success{border-color:rgba(91,157,105,.62);background:rgba(19,38,24,.96)}.battle-roll-token-callout b{color:#f0d1a1;font:800 clamp(10px,1.55cqw,14px) Manrope,sans-serif;font-variant-numeric:tabular-nums}.battle-roll-token-callout span{color:#aa9a88;font:600 clamp(8px,1.25cqw,12px) Manrope,sans-serif}.battle-roll-token-callout strong{color:#dc8c81;font:800 clamp(8px,1.25cqw,12px) Manrope,sans-serif;text-transform:uppercase}.battle-roll-token-callout.success strong{color:#9bc9a2}.battle-roll-token-callout small{flex-basis:100%;overflow:hidden;color:#bfaa8d;font:600 clamp(7px,1.1cqw,10px) Manrope,sans-serif;text-align:center;text-overflow:ellipsis;white-space:nowrap}
+.battle-roll-reasons{grid-column:1/-1;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,.06);font-size:var(--fs-xs)}.battle-roll-reasons small{color:#8f6747;font-weight:800;}.battle-roll-reasons.disadvantage small{color:#a56e67}.battle-roll-reasons span{color:#b6a896}.battle-roll-reasons em{color:#766b60;font-style:normal;font-variant-numeric:tabular-nums}
+.battle-roll-token-callout{position:absolute;z-index:18;left:50%;bottom:calc(50% + clamp(24px,4.8cqw,42px));width:max-content;max-width:min(260px,42cqw);display:flex;align-items:baseline;flex-wrap:wrap;justify-content:center;gap:3px 6px;padding:6px 9px;border:1px solid rgba(173,77,66,.58);border-radius:7px;background:rgba(35,18,15,.96);color:#dec8b1;box-shadow:0 7px 20px rgba(0,0,0,.62);transform:translateX(-50%);pointer-events:none;animation:battle-roll-token-arrive .2s ease-out}.battle-roll-token-callout.success{border-color:rgba(91,157,105,.62);background:rgba(19,38,24,.96)}.battle-roll-token-callout b{color:#f0d1a1;font:800 clamp(10px,1.55cqw,14px) Manrope,sans-serif;font-variant-numeric:tabular-nums}.battle-roll-token-callout span{color:#aa9a88;font:600 clamp(10px,1.25cqw,12px) Manrope,sans-serif}.battle-roll-token-callout strong{color:#dc8c81;font:800 clamp(10px,1.25cqw,12px) Manrope,sans-serif;text-transform:uppercase}.battle-roll-token-callout.success strong{color:#9bc9a2}.battle-roll-token-callout small{flex-basis:100%;overflow:hidden;color:#bfaa8d;font:600 clamp(10px,1.1cqw,11px) Manrope,sans-serif;text-align:center;text-overflow:ellipsis;white-space:nowrap}
 @keyframes battle-roll-token-arrive{from{opacity:0;transform:translate(-50%,8px) scale(.88)}to{opacity:1;transform:translateX(-50%)}}
 @keyframes battle-roll-arrive{from{opacity:0;transform:translateY(-5px) scale(.98)}to{opacity:1;transform:none}}
 @media(max-width:980px){.battle-roll-card{grid-template-columns:48px minmax(0,1fr);gap:7px}.battle-roll-d20{width:46px;height:43px}.battle-roll-summary{flex-wrap:wrap;gap:2px 4px}.battle-roll-summary span{min-width:30px}.battle-roll-card>strong{grid-column:1/-1;text-align:right}}
-.combat-context-conditions{display:flex;flex-wrap:wrap;gap:4px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)}
-.combat-context-conditions>span{display:flex;align-items:center;gap:4px;padding:3px 5px;border:1px solid rgba(93,153,109,.24);border-radius:3px;background:rgba(55,112,70,.08);color:#94b59a;font-size: var(--fs-sm)}.combat-context-conditions>span.partial{border-color:rgba(181,130,67,.3);color:#c5a16f}.combat-context-conditions>span.marker{border-style:dashed;border-color:rgba(139,124,108,.3);color:#a09588}.combat-context-conditions i{width:5px;height:5px;border-radius:50%;background:currentColor}.combat-context-conditions small{color:inherit;font-size: var(--fs-xs);opacity:.65}.combat-context-conditions>em{color:#655e57;font-size: var(--fs-sm);font-style:normal}
-.combat-context-command,.combat-last-result{display:grid;grid-template-columns:17px minmax(0,1fr);align-items:start;gap:6px;padding:8px 0;color:#b08250}.combat-context-command span,.combat-last-result span{display:grid;gap:2px}.combat-context-command small,.combat-last-result small{color:#756453;font-size: var(--fs-xs);letter-spacing:.1em}.combat-context-command strong{overflow:hidden;color:#cbb69c;font:600 var(--fs-lg) Spectral,serif;text-overflow:ellipsis;white-space:nowrap}
 .combat-target-inspector{padding:7px 8px;border:1px solid rgba(101,157,111,.25);border-radius:4px;background:rgba(52,108,66,.08)}.combat-target-inspector.blocked{border-color:rgba(184,77,66,.34);background:rgba(127,42,35,.1)}.combat-target-inspector>span{display:grid;grid-template-columns:1fr auto;gap:1px 8px}.combat-target-inspector small{grid-column:1/-1;color:#7d746b;font-size: var(--fs-xs)}.combat-target-inspector strong{color:#cdbdab;font:600 var(--fs-lg) Spectral,serif}.combat-target-inspector em{color:#b7796f;font-size: var(--fs-sm);font-style:normal}.combat-target-inspector p{margin:4px 0 0;color:#8eb197;font:var(--fs-sm)/1.35 Spectral,serif}.combat-target-inspector.blocked p{color:#c47c71}
 /* Карточка босса: крупный портрет во всю ширину — существо, ради которого
    собрался стол, не должно опознаваться по фишке в 28 пикселей. */
 .combat-target-inspector.boss{border-color:rgba(212,161,93,.4);background:rgba(94,66,30,.12)}
 .combat-target-portrait{position:relative;display:grid;place-items:center;width:100%;height:96px;margin:-3px 0 7px;overflow:hidden;border:1px solid rgba(212,161,93,.34);border-radius:4px;background:#241d17;color:#d48677}
 .combat-target-portrait img{width:100%;height:100%;object-fit:cover;object-position:center 22%}
-.combat-target-portrait b{position:absolute;left:5px;bottom:5px;display:inline-flex;align-items:center;gap:3px;padding:2px 6px;border:1px solid rgba(212,161,93,.5);border-radius:5px;background:rgba(23,18,14,.86);color:#e0b878;font:700 7px/1.25 Manrope,sans-serif;letter-spacing:.1em}
+.combat-target-portrait b{position:absolute;left:5px;bottom:5px;display:inline-flex;align-items:center;gap:3px;padding:2px 6px;border:1px solid rgba(212,161,93,.5);border-radius:5px;background:rgba(23,18,14,.86);color:#e0b878;font:700 10px/1.2 Manrope,sans-serif;letter-spacing:.1em}
 /* Пипсы встают третьей строкой сетки карточки, а не в колонку с дистанцией. */
 .combat-target-inspector .legendary-pips{grid-column:1/-1;margin-top:3px}
 .movement-preview{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px;padding:7px 8px;border:1px solid rgba(94,159,111,.28);border-radius:4px;background:rgba(47,105,62,.1)}.movement-preview.selected{border-color:rgba(137,199,121,.52);box-shadow:inset 0 0 16px rgba(64,139,77,.1)}.movement-preview>span{display:grid;grid-template-columns:17px auto;align-items:center;gap:1px 4px;color:#8db495}.movement-preview>span svg{grid-row:1/3}.movement-preview b{font-size: var(--fs-md)}.movement-preview small{grid-column:2;color:#718477;font-size: var(--fs-xs)}.movement-preview>div{display:flex;gap:3px}.movement-preview button{height:25px;display:flex;align-items:center;gap:4px;padding:0 7px;border:1px solid rgba(125,184,111,.35);border-radius:3px;background:rgba(70,130,75,.15);color:#abd09e;font-size: var(--fs-sm);cursor:pointer}.movement-preview button+button{width:25px;padding:0;justify-content:center;border-color:rgba(156,102,83,.25);background:rgba(112,54,43,.08);color:#a9786e}
-.combat-last-result{margin-top:6px;padding:7px;border-top:1px solid rgba(255,255,255,.05);color:#b98b55}.combat-last-result p{margin:0;color:#a99a89;font:var(--fs-sm)/1.4 Spectral,serif}
-.combat-command-confirmation{display:grid;gap:6px;margin-top:6px;padding:8px;border:1px solid rgba(213,157,84,.42);border-radius:5px;background:linear-gradient(145deg,rgba(125,75,34,.18),rgba(48,32,20,.2));box-shadow:inset 0 0 18px rgba(168,104,42,.08)}
-.combat-command-confirmation>header{display:flex;align-items:center;gap:6px;color:#d1a264}.combat-command-confirmation>header span{display:grid;min-width:0}.combat-command-confirmation>header small{color:#8d714f;font-size: var(--fs-xs);letter-spacing:.1em}.combat-command-confirmation>header strong{overflow:hidden;color:#e0c49d;font:600 var(--fs-md) Spectral,serif;text-overflow:ellipsis;white-space:nowrap}
-.combat-command-confirmation>p{margin:0;color:#927d66;font:var(--fs-sm)/1.35 Manrope,sans-serif}.combat-command-confirmation>div{display:flex;gap:4px}.combat-command-confirmation button{min-height:26px;display:flex;align-items:center;justify-content:center;gap:4px;margin:0;padding:0 8px;border:1px solid rgba(203,151,88,.44);border-radius:3px;background:rgba(136,82,35,.2);color:#dfb77f;font-size: var(--fs-sm);cursor:pointer}.combat-command-confirmation button+button{width:27px;padding:0;border-color:rgba(159,91,74,.3);background:rgba(109,48,40,.12);color:#b67d72}.combat-command-confirmation button:disabled{opacity:.4;cursor:default}
 .combat-result-card{display:grid;grid-template-columns:20px minmax(0,1fr);gap:7px;margin-top:7px;padding:8px;border:1px solid rgba(194,146,86,.24);border-radius:5px;background:rgba(88,57,28,.08)}.combat-result-card.success{border-color:rgba(91,157,105,.34);background:rgba(45,104,60,.09)}.combat-result-card.miss,.combat-result-card.failed{border-color:rgba(174,77,66,.34);background:rgba(113,42,35,.1)}.combat-result-card.healing,.combat-result-card.saved{border-color:rgba(75,151,125,.32);background:rgba(38,103,80,.09)}
 .combat-result-icon{width:20px;height:20px;display:grid;place-items:center;border:1px solid rgba(201,153,93,.25);border-radius:4px;background:rgba(0,0,0,.2);color:#c7975d}.combat-result-card.success .combat-result-icon,.combat-result-card.healing .combat-result-icon{color:#8fbe96}.combat-result-card.miss .combat-result-icon,.combat-result-card.failed .combat-result-icon{color:#c47d72}
 .combat-result-body{min-width:0;display:grid;gap:5px}.combat-result-body>header{display:flex;align-items:center;justify-content:space-between;gap:6px}.combat-result-body>header small{color:#7d6c59;font-size: var(--fs-xs);letter-spacing:.09em}.combat-result-body>header strong{color:#d8b16f;font:700 var(--fs-sm) Manrope,sans-serif;letter-spacing:.06em}.combat-result-card.success header strong,.combat-result-card.healing header strong{color:#98c39c}.combat-result-card.miss header strong,.combat-result-card.failed header strong{color:#d0887c}.combat-result-body>p{margin:0;color:#aa9b89;font:var(--fs-sm)/1.35 Spectral,serif}
@@ -2340,8 +2671,8 @@ button.campaign-title:hover strong { color: #edc996; }
 .combat-roll-equation.difficulty-hidden{grid-template-columns:1fr auto 1fr auto 1fr}
 .combat-result-body>footer{display:flex;flex-wrap:wrap;gap:4px}.combat-result-body>footer span{display:flex;align-items:center;gap:3px;padding:3px 5px;border-radius:3px;background:rgba(0,0,0,.16);color:#9f8d78;font-size: var(--fs-xs)}.combat-result-body>footer span:first-child{color:#c58a76}
 @media(max-width:980px){.combat-result-body>p{font-size: var(--fs-sm)}.combat-roll-equation{grid-template-columns:1fr auto 1fr}.combat-roll-equation>span:nth-of-type(n+3),.combat-roll-equation>i:nth-of-type(n+3){display:none}}
-@media(max-width:980px){.combat-context-panel{top:128px;left:14px;width:230px;max-height:calc(100% - 275px)}.initiative-ribbon{width:calc(100% - 28px)}.initiative-condition-list{max-width:120px}.combat-last-result{display:none}}
-@media(max-width:680px){.combat-context-panel{top:112px;left:8px;width:210px;max-height:180px;padding:7px}.combat-context-conditions{max-height:43px;overflow:auto}.combat-context-panel>header strong{font-size: var(--fs-xs)}.combat-target-inspector p{font-size: var(--fs-sm)}}
+@media(max-width:980px){.initiative-ribbon{width:calc(100% - 28px)}.initiative-condition-list{max-width:120px}}
+@media(max-width:680px){.combat-target-inspector p{font-size: var(--fs-sm)}}
 
 /* Immersive board presentation: the structured grid remains authoritative,
    while the scene backdrop and painted props are purely visual projections. */
@@ -2402,7 +2733,7 @@ button.campaign-title:hover strong { color: #edc996; }
      рамка. Значение обязано остаться длиной, а не `auto`: на `--status` стоит
      `calc()` в позиции кубика (`.dice-tray--compact`), и `calc(auto + 18px)`
      обнуляет отступ — свободный бросок уезжает в самый верх, на планку. */
-  .game-area { --status: 84px; }
+  .app { --status: 84px; }
   .initiative-ribbon { height: auto; min-height: 52px; width: max-content; max-width: min(860px, calc(100% - 560px)); gap: 12px; padding: 7px 12px; }
   /* Свои поля вместо срезки родителем — и только по вертикали: два пикселя по
      бокам уводили ленту за предел `max-width`, планка вылезала из своей колонки
@@ -2459,7 +2790,7 @@ button.campaign-title:hover strong { color: #edc996; }
 .board-cell.loot-focused { box-shadow: inset 0 0 0 2px rgba(196,222,150,.6), inset 0 0 18px rgba(112,136,78,.22); }
 .loot-cell-mark { position: absolute; z-index: 5; inset: 0; pointer-events: none; }
 .fallen-token { position: absolute; z-index: 3; left: 50%; top: 50%; width: clamp(24px, 4.6cqw, 38px); height: clamp(24px, 4.6cqw, 38px); display: grid; place-items: center; overflow: hidden; border: 1px solid rgba(120,116,104,.5); border-radius: 50% 50% 42% 42%; background-color: rgba(24,22,19,.86); background-size: cover; background-position: center 26%; color: #7d7a6f; filter: grayscale(.85) brightness(.52); transform: translate(-50%, -50%) rotate(-8deg); }
-.loot-pin { position: absolute; z-index: 6; right: 6%; bottom: 6%; display: flex; align-items: center; gap: 2px; min-height: 17px; padding: 0 4px; border: 1px solid rgba(180,206,138,.62); border-radius: 4px; background: rgba(24,32,18,.92); color: #cfe0a6; font: 700 clamp(7px, 1.4cqw, 10px) Manrope, sans-serif; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,.6); transition: transform .16s ease, opacity .5s ease, box-shadow .16s ease; }
+.loot-pin { position: absolute; z-index: 6; right: 6%; bottom: 6%; display: flex; align-items: center; gap: 2px; min-height: 17px; padding: 0 4px; border: 1px solid rgba(180,206,138,.62); border-radius: 4px; background: rgba(24,32,18,.92); color: #cfe0a6; font: 700 clamp(10px, 1.4cqw, 11px) Manrope, sans-serif; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,.6); transition: transform .16s ease, opacity .5s ease, box-shadow .16s ease; }
 .loot-pin i { font-style: normal; font-variant-numeric: tabular-nums; }
 .loot-pin:hover, .loot-cell-mark.selected .loot-pin { transform: scale(1.16); box-shadow: 0 0 0 2px rgba(196,222,150,.55), 0 3px 9px rgba(0,0,0,.6); }
 .loot-cell-mark.kind-captive .loot-pin { border-color: rgba(204,151,86,.62); color: #dcb079; }
@@ -2670,7 +3001,7 @@ button.campaign-title:hover strong { color: #edc996; }
 .attack-forecast { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,.08); display: grid; gap: 6px; }
 .attack-forecast > header { display: flex; align-items: baseline; gap: 8px; }
 .attack-forecast > header b { font: 600 var(--fs-3xl) Spectral, serif; color: #e8dcc8; }
-.attack-forecast > header span { display: grid; font: 600 var(--fs-xxs) Manrope, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: #8d8478; }
+.attack-forecast > header span { display: grid; font: 600 var(--fs-xxs) Manrope, sans-serif; color: #8d8478; }
 .attack-forecast > header small { font-size: var(--fs-xxs); color: #756c61; }
 .attack-forecast.advantage > header b { color: #8fd0a2; }
 .attack-forecast.disadvantage > header b { color: #e6a5a0; }

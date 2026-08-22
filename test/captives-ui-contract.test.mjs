@@ -11,8 +11,8 @@ const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8
 
 test('пленник виден на панели сцены с меткой и полным набором кнопок', () => {
   assert.match(board, /className="captive-panel"/u)
-  assert.match(board, /ПЛЕННИКИ · \{heldCaptives\.length\}/u)
-  assert.match(board, /className="captive-tag">ПЛЕННИК</u)
+  assert.match(board, /Пленники · \{heldCaptives\.length\}/u)
+  assert.match(board, /className="captive-tag">Пленник</u)
   for (const label of ['Допросить', 'Уговорить', 'Накормить', 'Отпустить', 'Сдать страже', 'Убить']) {
     assert.ok(board.includes(`>${label}</button>`), `в меню пленного нет кнопки «${label}»`)
   }
@@ -22,7 +22,7 @@ test('пленник виден на панели сцены с меткой и 
 })
 
 test('меню самого NPC тоже помечает пленника и даёт те же действия', () => {
-  assert.match(board, /className="npc-dialog-captive"><small>ПОЛОЖЕНИЕ<\/small><b>Пленник отряда<\/b>/u)
+  assert.match(board, /className="npc-dialog-captive"><small>Положение<\/small><b>Пленник отряда<\/b>/u)
   assert.match(board, /className="npc-dialog-captive-actions"/u)
   assert.match(board, /dossierCaptive = dossierSceneNpc \? captiveByNpcId\.get\(dossierSceneNpc\.id\)/u)
 })

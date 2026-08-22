@@ -84,8 +84,8 @@
     },
     {
       "path": "data/dndsu-spell-mechanics-overrides.json",
-      "sha256": "31490b262106dbe55cf83a91dd96bd399d7eae8250222b92844c84fc4401a167",
-      "size_bytes": 170310,
+      "sha256": "585c28693485e838878401b9c0f9cd5fdb9e9359ffe5f7de2c23a8b72510571f",
+      "size_bytes": 181938,
       "source_id": "dndsu-compatibility-index",
       "rights_status": "review_required"
     },

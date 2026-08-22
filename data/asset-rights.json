@@ -1354,7 +1354,15 @@
     ["items/item-srd-5-2-1-weavers-tools.png", "12530bb6f7945ca1db862098952a083e5327d927b0eed2da48597e3462725745", 426810],
     ["items/item-srd-5-2-1-whip.png", "bb14d8f93eab62cd5892ab99fc8ce49432fb78207d91a33b6fad0fca277bcc83", 345721],
     ["items/item-srd-5-2-1-woodcarvers-tools.png", "4bfacce4896a40c346e969d54476c15e4450af393aa0dc8d2914a97d906fcf7c", 383141],
-    ["enemies/goblin-minion.png", "0ecebea84d514d252b71ff2cdc2a084f73fd568c78c7d06e4d860639465861eb", 354953]
+    ["enemies/goblin-minion.png", "0ecebea84d514d252b71ff2cdc2a084f73fd568c78c7d06e4d860639465861eb", 354953],
+    ["fonts/manrope-cyrillic-variable.woff2", "c268b459a9329e59fecf39a17618efd44c71735532048d60b12aab76a8c14914", 14500],
+    ["fonts/manrope-latin-variable.woff2", "a30ddcd349703aff7464c34bef3fffdff405ee50c113440d7c8693c02d210972", 24836],
+    ["fonts/spectral-cyrillic-500.woff2", "48a05ffb93237d6d238ef45e0e906218fc6816f573fc0202c6f160813510369b", 16616],
+    ["fonts/spectral-cyrillic-600.woff2", "a8297883e0f04031243b893bee1b629eb43dd90b3957e89d61b67109d655b04f", 16908],
+    ["fonts/spectral-cyrillic-700.woff2", "a9c33f590be03b7ea9701222b77a5ec4c413bec6a6dd1e6b3f500f01cdc4ca99", 16776],
+    ["fonts/spectral-latin-500.woff2", "2b70215ed40f2c73bbc7bb53cff9c8975a244c8462569e60989c77b8c5a87a00", 22836],
+    ["fonts/spectral-latin-600.woff2", "33faca8b5795a0de1af77cbc43a050a3655c4b1e03e04847fdef4d19d2e361d2", 22936],
+    ["fonts/spectral-latin-700.woff2", "5276f202cce67e8caa9f697800e11cfc9d708da67d47f6f5507dcadcf1e11c11", 23036]
   ],
   "rights_status": "review_required",
   "distribution": "blocked",
