@@ -716,10 +716,16 @@ export function layoutSettlement(theme, {
     }
   }
 
+  // Геометрия идёт за зерном: улица гуляет на клетку вверх-вниз, переулок
+  // стоит не строго посередине, дома сдвинуты вдоль улицы. Без этого каждое
+  // поселение мира было одной и той же деревней из четырёх домов по углам, и
+  // две соседние деревни на карте мира отличались только травой.
+  const roadShift = Math.floor(random() * 3) - 1
+  const roadPhase = random() * Math.PI * 2
   /** @param {number} x */
   const roadYAt = (x) => (
-    Math.floor(safeHeight / 2)
-    + Math.round(Math.sin((x / Math.max(1, safeWidth - 1)) * Math.PI * 2) * Math.max(1, safeHeight * 0.045))
+    Math.floor(safeHeight / 2) + roadShift
+    + Math.round(Math.sin((x / Math.max(1, safeWidth - 1)) * Math.PI * 2 + roadPhase) * Math.max(1, safeHeight * 0.045))
   )
   for (let x = 0; x < safeWidth; x += 1) {
     const roadY = roadYAt(x)
@@ -728,24 +734,30 @@ export function layoutSettlement(theme, {
     }
   }
   // Площадь и поперечный переулок не дают деревне читаться одной полосой.
-  const crossX = Math.floor(safeWidth / 2)
+  // Переулок гуляет вокруг середины, но не заходит под дома: дом рисуется
+  // после улицы и перекрыл бы её стеной.
+  const houseWidth = clamp(Math.round(safeWidth * 0.24), 5, 7)
+  const houseHeight = clamp(Math.round(safeHeight * 0.22), 5, 6)
+  const crossX = clamp(Math.floor(safeWidth / 2) + Math.floor(random() * 5) - 2, houseWidth + 3, safeWidth - houseWidth - 4)
   for (let y = 0; y < safeHeight; y += 1) {
     for (let dx = -1; dx <= 1; dx += 1) {
       setCell(map, crossX + dx, y, { passable: true, material: 'earth', zone: 'street' })
     }
   }
 
-  const houseWidth = clamp(Math.round(safeWidth * 0.24), 5, 7)
-  const houseHeight = clamp(Math.round(safeHeight * 0.22), 5, 6)
-  const leftX = 2
-  const rightX = safeWidth - houseWidth - 2
-  const topY = 1
-  const bottomY = safeHeight - houseHeight - 1
+  // Дома сдвигаются вдоль карты и на клетку к улице — с той стороны, от которой
+  // улица отошла, иначе стена легла бы на проезжую часть.
+  const leftX = 2 + Math.floor(random() * Math.max(1, Math.min(3, crossX - 1 - (2 + houseWidth))))
+  const rightX = safeWidth - houseWidth - 2 - Math.floor(random() * Math.max(1, Math.min(3, safeWidth - houseWidth - 2 - (crossX + 2))))
+  const topY = 1 + (roadShift >= 0 ? Math.floor(random() * 2) : 0)
+  const bottomY = safeHeight - houseHeight - 1 - (roadShift <= 0 ? Math.floor(random() * 2) : 0)
+  const labels = ['Дом ремесленника', 'Дом травницы', 'Амбар', 'Дом старосты']
+  const firstLabel = Math.floor(random() * labels.length)
   const houses = [
-    { x: leftX, y: topY, side: 'top', label: 'Дом ремесленника' },
-    { x: rightX, y: topY, side: 'top', label: 'Дом травницы' },
-    { x: leftX, y: bottomY, side: 'bottom', label: 'Амбар' },
-    { x: rightX, y: bottomY, side: 'bottom', label: 'Дом старосты' },
+    { x: leftX, y: topY, side: 'top', label: labels[firstLabel] },
+    { x: rightX, y: topY, side: 'top', label: labels[(firstLabel + 1) % labels.length] },
+    { x: leftX, y: bottomY, side: 'bottom', label: labels[(firstLabel + 2) % labels.length] },
+    { x: rightX, y: bottomY, side: 'bottom', label: labels[(firstLabel + 3) % labels.length] },
   ]
   /** @type {Array<{id: string, x: number, y: number, dir: 's'}>} */
   const doors = []

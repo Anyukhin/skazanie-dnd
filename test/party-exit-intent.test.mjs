@@ -57,9 +57,16 @@ test('предложение маршрута с карты мира разби�
 test('кнопка карты мира отправляет ровно тот формат, который читает сервер', async () => {
   // Договор был неявным и разошёлся: клиент слал текст, под шаблоны ухода не
   // подходивший, голосование не открывалось, и переход становился невозможен.
-  const client = await readFile(new URL('../src/WorldMapView.tsx', import.meta.url), 'utf8')
-  const emitted = client.match(/onTravel\(`([^`]+)`\)/u)
+  // Шаблон один на глобальную карту и выбор пути с доски — `travelProposalText`
+  // в `src/world-travel.ts`; обе кнопки обязаны звать его, а не писать строку.
+  const client = await readFile(new URL('../src/world-travel.ts', import.meta.url), 'utf8')
+  const emitted = client.match(/export function travelProposalText[^\n]*\n\s*return `([^`]+)`/u)
   assert.ok(emitted, 'кнопка перехода обязана отправлять шаблонную строку')
+  for (const caller of ['../src/WorldMapView.tsx', '../src/SceneTransitionOverlay.tsx']) {
+    const source = await readFile(new URL(caller, import.meta.url), 'utf8')
+    assert.match(source, /travelProposalText\(/u, `${caller}: предложение пути обязано собираться общим шаблоном`)
+    assert.doesNotMatch(source, /ГЛОБАЛЬНАЯ КАРТА\]/u, `${caller}: маркер карты мира пишется только в world-travel.ts`)
+  }
   assert.ok(emitted[1].startsWith(WORLD_MAP_TRAVEL_MARKER), 'строка обязана начинаться с маркера карты мира')
 
   // Подставляем в шаблон правдоподобные значения и проверяем результат тем же
