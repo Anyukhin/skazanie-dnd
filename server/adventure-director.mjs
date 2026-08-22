@@ -7,10 +7,8 @@ import { REFERENCE_SIZE } from './building-generator.mjs'
 import { normalizeDeclaredLevels } from './level-generator.mjs'
 import {
   buildThemedScene,
-  fallbackThemeFor,
   isLiveTheme,
-  matchTheme,
-  themeFromMapRequest,
+  resolveSceneTheme,
 } from './scene-themes.mjs'
 
 const WIDTH = 13
@@ -250,11 +248,12 @@ export function rememberCurrentSceneMap(state) {
  * «явная просьба сильнее догадки» сохранён, но выражен иначе: просьба теперь
  * ведёт к теме, а не мимо неё.
  */
-function generateSceneCellsFor({ theme, danger, location, sceneKind, seed, locationId, requestedMap, levels = [] }) {
-  // Опознание живёт в одном месте — `server/scene-themes.mjs`.
-  const recognized = matchTheme({ location, theme, sceneKind })
-    ?? themeFromMapRequest(requestedMap)
-    ?? fallbackThemeFor({ sceneKind, request: requestedMap })
+function generateSceneCellsFor({ theme, danger, location, sceneKind, settlementType = '', worldKind = '', seed, locationId, requestedMap, levels = [] }) {
+  // Опознание живёт в одном месте — `server/scene-themes.mjs`. Название —
+  // не единственный признак: вид точки карты мира, тип поселения и заявка
+  // картографа весят не меньше, иначе деревня с «бродом» в имени становилась
+  // дорогой и ничем не отличалась от дороги, в которую из неё уходили.
+  const recognized = resolveSceneTheme({ location, theme, sceneKind, settlementType, worldKind, request: requestedMap })
   const matched = isLiveTheme(recognized) ? recognized : null
   if (matched) {
     const built = buildThemedScene({
@@ -289,10 +288,10 @@ function generateSceneCellsFor({ theme, danger, location, sceneKind, seed, locat
  * @param {object} input
  * @returns {ReturnType<typeof generateDynamicSceneMap>}
  */
-export function generateSceneCells({ theme = '', danger = 'средняя', location = '', sceneKind = '', seed = 'scene', locationId = '', map = {}, levels = [] } = {}) {
+export function generateSceneCells({ theme = '', danger = 'средняя', location = '', sceneKind = '', settlementType = '', worldKind = '', seed = 'scene', locationId = '', map = {}, levels = [] } = {}) {
   const requestedMap = map && typeof map === 'object' && !Array.isArray(map) ? map : {}
   return generateSceneCellsFor({
-    theme, danger, location, sceneKind, seed, locationId, requestedMap, levels: normalizeDeclaredLevels(levels),
+    theme, danger, location, sceneKind, settlementType, worldKind, seed, locationId, requestedMap, levels: normalizeDeclaredLevels(levels),
   })
 }
 
@@ -319,6 +318,24 @@ export function levelKey(locationId, level = 0) {
   if (!base || safeLevel === 0) return base
   const suffix = `@L${safeLevel}`
   return `${base.slice(0, 120 - suffix.length)}${suffix}`
+}
+
+/**
+ * Вид точки на карте мира, которая там **уже была**: по идентификатору, иначе
+ * по имени. Пустая строка — место на карте новое, и о его виде карта ничего
+ * не знает.
+ *
+ * @param {Record<string, any>|undefined} worldMap карта до сверки с новой сценой
+ * @param {string} locationId
+ * @param {string} location
+ * @returns {string}
+ */
+export function knownWorldKind(worldMap, locationId, location) {
+  const locations = Array.isArray(worldMap?.locations) ? worldMap.locations : []
+  const wanted = text(location, 180).toLocaleLowerCase('ru')
+  const node = worldLocationById(worldMap, locationId)
+    ?? locations.find((candidate) => text(candidate?.name, 180).toLocaleLowerCase('ru') === wanted)
+  return text(node?.kind, 40)
 }
 
 export function stableLocationMapSeed(worldMap, locationId, location) {
@@ -479,6 +496,13 @@ export function createSceneTransition(input = {}, state = {}) {
     danger,
     location,
     sceneKind: input.scene_kind,
+    settlementType: publicText(input.settlement_type, 40),
+    // Карта мира знает, что это за место — деревня, пустошь, руины, — даже
+    // когда название об этом молчит. Спрашивается карта **до** сверки:
+    // место, которого на ней ещё не было, только что получило вид от этой же
+    // сцены (а запасная карта и вовсе ставит «город» вслепую), и выводить из
+    // него тему значило бы рисовать улицы по собственному предположению.
+    worldKind: publicText(knownWorldKind(state.worldMap, locationId, location), 40),
     seed: stableLocationMapSeed(worldMap, locationId, location),
     locationId,
     requestedMap,

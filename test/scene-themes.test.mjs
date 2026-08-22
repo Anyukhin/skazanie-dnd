@@ -10,6 +10,7 @@ import {
   layoutOpenTerrain,
   layoutSettlement,
   matchTheme,
+  resolveSceneTheme,
   sceneGraphForTheme,
   themeFor,
   themeFromMapRequest,
@@ -201,6 +202,41 @@ test('дикая местность не становится зданием, д
   assert.equal(themeFor({ location: 'Дом травницы' }).id, 'building')
   // Неопознанная дикая местность — лес, а не таверна.
   assert.equal(themeFor({ location: 'Безымянная пустошь', sceneKind: 'wilderness' }).id, 'forest')
+})
+
+test('деревня с «бродом» в названии — поселение, когда карта мира знает её вид', () => {
+  // Баг из живой кампании: «Тихий Брод» — деревня с колодцем и кузницей —
+  // опознавался дорогой по слову «брод» и рисовался полем с полосой земли, ровно
+  // таким же, как дорога, куда отряд потом уходил. Одно название слабее карты
+  // мира, вида сцены, типа поселения и заявки картографа.
+  assert.equal(resolveSceneTheme({ location: 'Тихий Брод' }).id, 'road', 'без других признаков название решает по-прежнему')
+  assert.equal(resolveSceneTheme({ location: 'Тихий Брод', worldKind: 'village' }).id, 'settlement')
+  assert.equal(resolveSceneTheme({ location: 'Тихий Брод', worldKind: 'town' }).id, 'settlement')
+  assert.equal(resolveSceneTheme({ location: 'Мормар', worldKind: 'port' }).id, 'settlement')
+  assert.equal(resolveSceneTheme({ location: 'Тихий Брод', sceneKind: 'settlement' }).id, 'settlement')
+  assert.equal(resolveSceneTheme({ location: 'Тихий Брод', settlementType: 'village' }).id, 'settlement')
+  assert.equal(resolveSceneTheme({ location: 'Тихий Брод', request: { layout: 'streets', pattern: 'village' } }).id, 'settlement')
+})
+
+test('постройка и местность в названии сильнее вида точки карты мира', () => {
+  // Таверна стоит в городе, но сцена — таверна; роща у деревни — роща.
+  assert.equal(resolveSceneTheme({ location: 'Таверна «Кабан»', worldKind: 'town' }).id, 'building')
+  assert.equal(resolveSceneTheme({ location: 'Склеп под площадью', worldKind: 'city' }).id, 'crypt')
+  assert.equal(resolveSceneTheme({ location: 'Роща у Эствуда', worldKind: 'village' }).id, 'forest')
+  // Явный вид сцены спорит с картой и выигрывает: перевал остаётся дорогой, а
+  // подземелье посреди пустоши — подземельем.
+  assert.equal(resolveSceneTheme({ location: 'Перевал Трёх Ветров', worldKind: 'town', sceneKind: 'wilderness' }).id, 'road')
+  assert.equal(resolveSceneTheme({ location: 'Безымянная нора', worldKind: 'wilds', sceneKind: 'dungeon', request: { layout: 'cavern' } }).id, 'cave')
+})
+
+test('вид точки карты мира дорисовывает тему, когда название молчит', () => {
+  assert.equal(resolveSceneTheme({ location: 'Керская пустошь', worldKind: 'wilds' }).id, 'forest')
+  assert.equal(resolveSceneTheme({ location: 'Норская башня', worldKind: 'dungeon' }).id, 'cave')
+  assert.equal(resolveSceneTheme({ location: 'Кальская твердыня', worldKind: 'fortress' }).id, 'crypt')
+  assert.equal(resolveSceneTheme({ location: 'Старое пепелище', worldKind: 'ruin' }).id, 'crypt')
+  // Ориентир без вида — прежний fallback по заявке.
+  assert.equal(resolveSceneTheme({ location: 'Кальмар', worldKind: 'landmark', request: { layout: 'cavern' } }).id, 'cave')
+  assert.equal(resolveSceneTheme({ location: 'Кальмар', worldKind: 'landmark' }).id, 'road')
 })
 
 test('у каждой темы есть предметы в реестре и они ей принадлежат', () => {

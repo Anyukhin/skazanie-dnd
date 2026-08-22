@@ -127,7 +127,7 @@ pnpm backup           # зашифрованная копия storage в ./backu
 | `server/npc-controller.mjs` | `prompts/npc_controller/v1.txt` | тактика NPC |
 | `server/npc-social-controller.mjs` | `prompts/npc_controller/social_v3.txt` | социальные сцены |
 | `server/narrator.mjs` | `prompts/narrator/v6.txt` | текст после commit |
-| `server/scene-architect.mjs` | `prompts/map_architect/v4.txt` | новые области |
+| `server/scene-architect.mjs` | `prompts/map_architect/v5.txt` | новые области |
 | `server/campaign-bootstrap.mjs` | `prompts/campaign_creator/v3.txt` | исходная ситуация кампании |
 | `server/action-adjudicator.mjs` | `prompts/action_adjudicator/v4.txt` | прочтение свободного действия |
 | `server/campaign-recap.mjs` | `prompts/recap/v1.txt` | рекап «в прошлой серии» после перерыва |
@@ -136,7 +136,7 @@ pnpm backup           # зашифрованная копия storage в ./backu
 Режиссёр держит по файлу на режим импровизации кампании (`improv_mode`), и
 вариант выбирается в `choose()`, а не импортом. Файлов в `prompts/` ещё больше:
 рядом с загружаемой версией лежат предыдущие (`action_adjudicator/v2`, `v3`,
-`campaign_creator/v1`, `v2`, `director/v1`, `map_architect/v1`, `v2`,
+`campaign_creator/v1`, `v2`, `director/v1`, `map_architect/v1`—`v4`,
 `narrator/v1`—`v4`, `npc_controller/social_v1`, `v2`) плюс
 `narrator/few-shot-v1.json`. Актуальна та
 версия, которую действительно читает модуль из таблицы, — остальные оставлены

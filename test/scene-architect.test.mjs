@@ -3,7 +3,7 @@ import test from 'node:test'
 
 import { createSceneTransition } from '../server/adventure-director.mjs'
 import { generateDynamicSceneMap } from '../server/dynamic-map.mjs'
-import { SceneArchitectAgent, interpretResolvedPartyDecision } from '../server/scene-architect.mjs'
+import { SceneArchitectAgent, buildDirectorPlanningBrief, interpretResolvedPartyDecision, knownDestinationsFrom } from '../server/scene-architect.mjs'
 import { SCENE_COMMERCE_PLAN_VERSION, defaultSceneShopIntent } from '../server/scene-commerce.mjs'
 import { UNTRUSTED_DATA_END, UNTRUSTED_DATA_START } from '../server/security.mjs'
 
@@ -55,6 +55,89 @@ test('картограф без модели строит городскую к�
   assert.match(transition.adventure.currentHook, /Печать архивариуса/u)
   assert.ok(transition.adventure.unresolvedThreads.includes(archiveState.adventure.currentHook))
   assert.equal(transition.adventure.history.at(-1).status, 'unresolved')
+})
+
+/** Карта мира с двумя соседями: деревня по дороге и пустошь по тропе. */
+function brodWorldMap() {
+  return {
+    seed: 'brod', name: 'Край', width: 1000, height: 640, currentLocationId: 'tihiy-brod',
+    regions: [{ id: 'r', name: 'Долина', x: 500, y: 320, radius: 300, biome: 'лес' }],
+    locations: [
+      { id: 'tihiy-brod', name: 'Тихий Брод', kind: 'village', x: 500, y: 360, regionId: 'r', summary: '', known: true, visited: true },
+      { id: 'estwood', name: 'Эствуд', kind: 'village', x: 300, y: 280, regionId: 'r', summary: '', known: true, visited: false },
+      { id: 'kerskaya', name: 'Керская пустошь', kind: 'wilds', x: 170, y: 450, regionId: 'r', summary: '', known: true, visited: false },
+      { id: 'far', name: 'Дальний форт', kind: 'fortress', x: 900, y: 100, regionId: 'r', summary: '', known: true, visited: false },
+    ],
+    routes: [
+      { id: 'route-1', from: 'tihiy-brod', to: 'estwood', kind: 'road', distance: 2, danger: 'низкая', discovered: true },
+      { id: 'route-2', from: 'kerskaya', to: 'tihiy-brod', kind: 'trail', distance: 4, danger: 'средняя', discovered: true },
+      { id: 'route-3', from: 'tihiy-brod', to: 'far', kind: 'road', distance: 9, danger: 'высокая', discovered: false },
+    ],
+  }
+}
+
+const brodState = {
+  sessionCode: 'BROD', worldMap: brodWorldMap(),
+  scene: { title: 'Камень у брода', location: 'Тихий Брод', location_id: 'tihiy-brod', objective: 'Понять, что с камнем', turn: 3, cells: [] },
+  adventure: { chapter: 1, currentHook: 'Зелёный камень', visitedLocations: ['Тихий Брод'], history: [] },
+}
+
+test('соседи по карте мира: открытые пути, сначала непосещённые, ближние раньше дальних', () => {
+  const known = knownDestinationsFrom(brodState)
+  assert.deepEqual(known.map((entry) => entry.name), ['Эствуд', 'Керская пустошь'], 'неоткрытый путь к форту не предлагается')
+  assert.deepEqual(known.map((entry) => entry.kind), ['village', 'wilds'])
+  assert.deepEqual(known.map((entry) => entry.days), [2, 4])
+  assert.equal(knownDestinationsFrom({ scene: { location: 'Нигде' } }).length, 0)
+  // Текущая точка ищется и по названию сцены, когда идентификатора в карте нет.
+  const byName = knownDestinationsFrom({ ...brodState, worldMap: { ...brodWorldMap(), currentLocationId: '' } })
+  assert.equal(byName[0]?.name, 'Эствуд')
+})
+
+test('уход без названного места ведёт к соседу по карте мира, а не в «Окрестности»', async () => {
+  // Так выглядел уход в живой кампании: «покинуть локацию» без цели давал
+  // «Окрестности Тихий Брод», второй уход — «Окрестности Окрестности Тихий
+  // Брод», и оба раза то же поле. Карта мира с соседними деревнями стояла без дела.
+  const architect = new SceneArchitectAgent()
+  const planned = await architect.plan({
+    action: '[РЕШЕНИЕ ГРУППЫ] Покинуть «Тихий Брод»', state: brodState, decision: 'Покинуть «Тихий Брод»', destinationHint: '',
+  })
+  assert.equal(planned.sceneArgs.location, 'Эствуд')
+  assert.equal(planned.sceneArgs.map.layout, 'streets', 'деревня по карте мира обязана получить улицы')
+  assert.equal(planned.sceneArgs.map.pattern, 'village')
+  assert.match(planned.sceneArgs.arrival, /Эствуд/u)
+  const transition = createSceneTransition(planned.sceneArgs, brodState)
+  assert.equal(transition.scene.location_id, 'estwood')
+  assert.ok(transition.scene.cells.some((cell) => cell.type === 'door'), 'в деревне по карте мира нет домов')
+
+  // Названное игроками место остаётся главнее соседей.
+  const hinted = await architect.plan({
+    action: '[РЕШЕНИЕ ГРУППЫ] Уходим в Керскую пустошь', state: brodState, decision: 'Уходим в Керскую пустошь', destinationHint: 'Керская пустошь',
+  })
+  assert.equal(hinted.sceneArgs.location, 'Керская пустошь')
+  assert.equal(hinted.sceneArgs.map.pattern, 'natural', 'пустошь по карте мира — дикая местность')
+  assert.equal(hinted.sceneArgs.map.material, 'grass')
+})
+
+test('без карты мира уход не вкладывает «Окрестности» друг в друга', async () => {
+  const architect = new SceneArchitectAgent()
+  const first = await architect.plan({ action: '[РЕШЕНИЕ ГРУППЫ] Уходим отсюда', state: archiveState, decision: 'Уходим отсюда', destinationHint: '' })
+  assert.equal(first.sceneArgs.location, 'Окрестности Подземный архив Норвина')
+  const secondState = { ...archiveState, scene: { ...archiveState.scene, location: first.sceneArgs.location } }
+  const second = await architect.plan({ action: '[РЕШЕНИЕ ГРУППЫ] Уходим отсюда', state: secondState, decision: 'Уходим отсюда', destinationHint: '' })
+  assert.equal(second.sceneArgs.location, 'Тракт за Подземный архив Норвина')
+  assert.doesNotMatch(second.sceneArgs.location, /Окрестности Окрестности/u)
+})
+
+test('картограф получает соседей по карте мира в planning brief', async () => {
+  const brief = buildDirectorPlanningBrief(brodState)
+  assert.deepEqual(brief.known_destinations.map((entry) => entry.name), ['Эствуд', 'Керская пустошь'])
+  assert.deepEqual(Object.keys(brief.known_destinations[0]).sort(), ['danger', 'days', 'kind', 'name', 'visited'])
+  let capturedRequest = null
+  const architect = new SceneArchitectAgent({ llmClient: { async completeJson(request) { capturedRequest = request; return {} } } })
+  await architect.plan({ action: '[РЕШЕНИЕ ГРУППЫ] Покинуть «Тихий Брод»', state: brodState, decision: 'Покинуть «Тихий Брод»', destinationHint: '' })
+  const context = untrustedPayload(capturedRequest.messages[1].content, 'scene_planning')
+  assert.equal(context.known_destinations[0].name, 'Эствуд')
+  assert.match(capturedRequest.messages[0].content, /known_destinations/u)
 })
 
 test('детерминированный fallback не создаёт стационарную лавку в дикой местности', async () => {

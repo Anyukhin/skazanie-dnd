@@ -279,6 +279,89 @@ export function isLiveTheme(theme) {
   return Boolean(theme?.live)
 }
 
+/** Темы, которые называют постройку или подземелье, а не открытую местность. */
+const STRUCTURE_THEMES = new Set(['building', 'temple', 'crypt', 'cave'])
+
+/** Виды точек карты мира, которые означают поселение. */
+const SETTLEMENT_WORLD_KINDS = new Set(['capital', 'city', 'town', 'village', 'port'])
+
+/**
+ * Тема по виду точки карты мира, когда название сцены о местности молчит.
+ * @type {Record<string, string>}
+ */
+const WORLD_KIND_THEMES = {
+  wilds: 'forest',
+  dungeon: 'cave',
+  ruin: 'crypt',
+  fortress: 'crypt',
+}
+
+/**
+ * @param {string} id
+ * @returns {typeof SCENE_THEMES[number]}
+ */
+function themeById(id) {
+  return SCENE_THEMES.find((candidate) => candidate.id === id) ?? FALLBACK_THEME
+}
+
+/**
+ * Выбор темы для живой сцены — по всем признакам, а не только по словам в
+ * названии.
+ *
+ * Одного названия мало: деревня «Тихий Брод» опознавалась как дорога по слову
+ * «брод», и поселение с колодцем, кузницей и архивом рисовалось полем с полосой
+ * утоптанной земли — ровно таким же, как дорога, в которую отряд потом уходил.
+ * Игрок нажимал «покинуть локацию» и видел ту же пустую карту, что и до того.
+ *
+ * Порядок признаков:
+ *
+ * 1. Название, в котором есть постройка или подземелье (таверна, храм, склеп,
+ *    пещера), — самый точный признак: таверна в городе остаётся зданием.
+ * 2. Признак поселения — вид сцены `settlement`, тип поселения, вид точки карты
+ *    мира (столица, город, городок, деревня, порт), заявка картографа
+ *    (`streets`/`village`). Он перекрывает «дорогу» и молчащее название, но не
+ *    лес и не рощу: «Роща у Эствуда» — это роща, а не улица. Явный вид сцены
+ *    «дикая местность», «дорога» или «подземелье» снимает признак поселения,
+ *    взятый с карты мира: карта знает о месте, а сцена — о том, где отряд стоит.
+ * 3. Название открытой местности (лес, дорога, поселение) — как и раньше.
+ * 4. Вид точки карты мира: пустошь — лес, подземелье — пещера, руины и
+ *    крепость — каменные палаты.
+ * 5. Заявка картографа, затем безопасный fallback по топологии.
+ *
+ * @param {object} [input]
+ * @param {string} [input.location]
+ * @param {string} [input.theme]
+ * @param {string} [input.sceneKind]
+ * @param {string} [input.settlementType]
+ * @param {string} [input.worldKind]
+ * @param {{layout?: string, pattern?: string, material?: string}} [input.request]
+ * @returns {typeof SCENE_THEMES[number]}
+ */
+export function resolveSceneTheme({ location = '', theme = '', sceneKind = '', settlementType = '', worldKind = '', request = {} } = {}) {
+  const kind = String(sceneKind ?? '').toLocaleLowerCase('en')
+  const byName = matchTheme({ location, theme, sceneKind: kind })
+  if (byName && STRUCTURE_THEMES.has(byName.id)) return byName
+  const explicitlyNotSettlement = kind === 'wilderness' || kind === 'road' || kind === 'dungeon'
+  const requestedLayout = String(request?.layout ?? '').toLocaleLowerCase('en')
+  const requestedPattern = String(request?.pattern ?? '').toLocaleLowerCase('en')
+  const settlementSignal = kind === 'settlement'
+    || Boolean(String(settlementType ?? '').trim())
+    || requestedLayout === 'streets'
+    || requestedPattern === 'village'
+    || (!explicitlyNotSettlement && SETTLEMENT_WORLD_KINDS.has(String(worldKind ?? '').toLocaleLowerCase('en')))
+  if (settlementSignal && (!byName || byName.id === 'road')) return themeById('settlement')
+  if (byName) return byName
+  const byWorld = WORLD_KIND_THEMES[String(worldKind ?? '').toLocaleLowerCase('en')] ?? ''
+  // Вид сцены, объявленный явно, спорит с картой мира — и выигрывает: подземелье
+  // посреди пустоши остаётся подземельем. Карта мира дорисовывает только то,
+  // чему сцена не противоречит.
+  const worldThemeFits = !kind || kind === 'other' || kind === 'settlement'
+    || (kind === 'wilderness' && byWorld === 'forest')
+    || (kind === 'dungeon' && (byWorld === 'cave' || byWorld === 'crypt'))
+  if (byWorld && worldThemeFits) return themeById(byWorld)
+  return themeFromMapRequest(request ?? {}) ?? fallbackThemeFor({ sceneKind: kind, request: request ?? {} })
+}
+
 /**
  * Граф зон под тему: цепочка помещений, последнее — цель. У склепа последняя
  * дверь заперта, а ключ лежит в предыдущей зоне — проверку порядка ключей

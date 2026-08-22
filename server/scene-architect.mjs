@@ -17,7 +17,7 @@ import { buildDataOnlyContext } from './security.mjs'
 export const SCENE_ARCHITECT_AGENT_ID = 'scene_architect'
 export const LEGACY_SCENE_ARCHITECT_AGENT_ID = 'AgentCartographer'
 
-const prompt = readFileSync(fileURLToPath(new URL('../prompts/map_architect/v4.txt', import.meta.url)), 'utf8')
+const prompt = readFileSync(fileURLToPath(new URL('../prompts/map_architect/v5.txt', import.meta.url)), 'utf8')
 
 function clean(value, maximum = 240) {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, maximum)
@@ -72,6 +72,16 @@ export function buildDirectorPlanningBrief(state = {}) {
       name: clean(enemy?.name, 80),
       kind: clean(enemy?.kind ?? enemy?.type, 80),
     })).slice(0, 16),
+    // Соседи по карте мира: картограф обязан знать, куда отсюда ведут дороги,
+    // иначе отряд, ушедший «куда-нибудь», раз за разом выходил на выдуманную
+    // дорогу, а Вейр и Чащоба Рун оставались точками на карте.
+    known_destinations: knownDestinationsFrom(source).map((entry) => ({
+      name: entry.name,
+      kind: entry.kind,
+      days: entry.days,
+      danger: entry.danger,
+      visited: entry.visited,
+    })),
   }
 }
 
@@ -120,9 +130,104 @@ function themeFor(destination, action) {
   return { theme: 'новая местность', layout: 'open', scale: 'site', pattern: 'natural', material: 'earth', width: 15, height: 11, openness: 0.64, water: 0.05, featureCount: 5, danger: 'средняя' }
 }
 
+/**
+ * Заявка картографа по виду точки карты мира. Когда отряд идёт в известное
+ * место, его вид знает карта, а не слова в названии: «Мормар» — порт, и
+ * рисовать его надо улицами, а не полем.
+ *
+ * @param {string} kind
+ * @returns {ReturnType<typeof themeFor>|null}
+ */
+function themeForWorldKind(kind) {
+  switch (String(kind ?? '')) {
+    case 'capital':
+    case 'city':
+    case 'town':
+    case 'village':
+    case 'port':
+      return { theme: kind === 'village' ? 'деревенские улицы' : 'городские улицы', layout: 'streets', scale: 'site', pattern: 'village', material: 'stone', width: 17, height: 11, openness: 0.68, water: kind === 'port' ? 0.12 : 0.02, featureCount: 7, danger: 'низкая' }
+    case 'wilds':
+      return { theme: 'дикая местность', layout: 'winding', scale: 'site', pattern: 'natural', material: 'grass', width: 15, height: 11, openness: 0.62, water: 0.06, featureCount: 10, danger: 'средняя' }
+    case 'fortress':
+      return { theme: 'крепость', layout: 'rooms', scale: 'stronghold', pattern: 'keep', material: 'stone', width: 23, height: 17, openness: 0.62, water: 0.02, featureCount: 10, danger: 'высокая' }
+    case 'ruin':
+      return { theme: 'древние руины', layout: 'ruins', scale: 'site', pattern: 'courtyard', material: 'stone', width: 15, height: 11, openness: 0.58, water: 0.05, featureCount: 6, danger: 'средняя' }
+    case 'dungeon':
+      return { theme: 'подземные пещеры', layout: 'cavern', scale: 'site', pattern: 'cave-cluster', material: 'earth', width: 15, height: 11, openness: 0.62, water: 0.08, featureCount: 10, danger: 'средняя' }
+    default:
+      return null
+  }
+}
+
+/**
+ * Известные места, куда из текущей точки ведёт открытый путь. Это то, что
+ * видит игрок на глобальной карте, — и то, что картограф обязан учитывать:
+ * отряд, уходящий «куда-нибудь», скорее выйдет к соседней деревне, чем к
+ * «окрестностям окрестностей».
+ *
+ * Порядок — сначала непосещённые, затем ближние. Маршрут считается по одному
+ * сегменту: многодневные переходы через несколько точек планирует карта мира.
+ *
+ * @param {Record<string, any>} [state]
+ * @returns {Array<{id: string, name: string, kind: string, days: number, danger: string, visited: boolean}>}
+ */
+export function knownDestinationsFrom(state = {}) {
+  const map = state?.worldMap
+  if (!map || typeof map !== 'object' || !Array.isArray(map.locations)) return []
+  const byId = new Map(map.locations.filter((location) => location?.id).map((location) => [String(location.id), location]))
+  const sceneLocation = clean(state?.scene?.location, 120).toLocaleLowerCase('ru')
+  const current = byId.get(String(map.currentLocationId ?? ''))
+    ?? map.locations.find((location) => clean(location?.name, 120).toLocaleLowerCase('ru') === sceneLocation)
+  if (!current) return []
+  const reachable = []
+  for (const route of Array.isArray(map.routes) ? map.routes : []) {
+    if (!route || route.discovered === false) continue
+    const otherId = String(route.from) === String(current.id) ? String(route.to)
+      : String(route.to) === String(current.id) ? String(route.from) : ''
+    const other = otherId ? byId.get(otherId) : null
+    if (!other || other.known === false || reachable.some((entry) => entry.id === other.id)) continue
+    reachable.push({
+      id: String(other.id),
+      name: clean(other.name, 120),
+      kind: clean(other.kind, 40) || 'landmark',
+      days: Math.max(1, Number(route.distance) || 1),
+      danger: ['низкая', 'средняя', 'высокая'].includes(route.danger) ? route.danger : 'средняя',
+      visited: other.visited === true,
+    })
+  }
+  return reachable
+    .filter((entry) => entry.name)
+    .sort((left, right) => Number(left.visited) - Number(right.visited) || left.days - right.days || left.name.localeCompare(right.name, 'ru'))
+    .slice(0, 8)
+}
+
+/**
+ * Куда идёт отряд, когда места не назвал никто. Раньше это были «Окрестности
+ * X», а после второго ухода — «Окрестности Окрестности X»: карта мира с
+ * соседними деревнями и руинами при этом стояла без дела.
+ *
+ * @param {Record<string, any>} state
+ * @param {string} from
+ * @returns {{name: string, kind: string}}
+ */
+function fallbackDestination(state, from) {
+  const [known] = knownDestinationsFrom(state)
+  if (known) return { name: known.name, kind: known.kind }
+  const base = from.replace(/^(?:окрестности|тракт за|дальние земли за)\s+/iu, '').trim() || from
+  if (/^окрестности\s/iu.test(from)) return { name: `Тракт за ${base}`, kind: 'landmark' }
+  if (/^тракт за\s/iu.test(from)) return { name: `Дальние земли за ${base}`, kind: 'landmark' }
+  return { name: `Окрестности ${from}`, kind: 'landmark' }
+}
+
 function fallbackPlan({ action, state, decision, destinationHint, abandonsQuest = false }) {
   const from = clean(state.scene?.location || state.scene?.title, 120) || 'прежняя локация'
-  const destination = clean(destinationHint, 120) || `Окрестности ${from}`
+  const hinted = clean(destinationHint, 120)
+  const chosen = hinted ? null : fallbackDestination(state, from)
+  const destination = hinted || chosen.name
+  // Вид известного места — с карты мира: по названию «Мормар» ни порт, ни
+  // деревня не угадываются, а карта это знает.
+  const knownKind = (knownDestinationsFrom(state).find((entry) => entry.name.toLocaleLowerCase('ru') === destination.toLocaleLowerCase('ru'))?.kind)
+    ?? chosen?.kind ?? ''
   const location = destination.charAt(0).toLocaleUpperCase('ru') + destination.slice(1)
   const chapter = Math.max(1, Number(state.adventure?.chapter) || 1) + 1
   const oldHook = clean(state.adventure?.currentHook, 240)
@@ -134,25 +239,30 @@ function fallbackPlan({ action, state, decision, destinationHint, abandonsQuest 
   const hook = abandonsQuest
     ? `В ${location} найдётся дело, не связанное с оставленным заданием.`
     : requestedHook || oldHook || oldObjective || `В ${location} обнаружится связь с оставленным позади путём.`
-  const map = themeFor(location, action)
+  // Слова в названии уступают виду точки карты мира, но только когда название
+  // само о месте молчит: «Таверна в Мормаре» остаётся таверной, а не портом.
+  const map = themeFor(location, hinted ? action : '')
+  const byWorldKind = map.theme === 'новая местность' ? themeForWorldKind(knownKind) : null
+  const plannedMap = byWorldKind ?? map
+  const streets = plannedMap.layout === 'streets'
   return {
     title: `Глава ${chapter} · ${location}`,
     location,
-    mood: map.theme === 'городские улицы' ? 'Шумная передышка за городскими стенами, где опасность прячется среди людей' : 'Неизведанное место, в котором путь ещё предстоит найти',
+    mood: streets ? 'Шумная передышка за городскими стенами, где опасность прячется среди людей' : 'Неизведанное место, в котором путь ещё предстоит найти',
     objective: abandonsQuest
       ? `Осмотреться в ${location} и найти новую цель`
       : oldHook ? `Найти в ${location} другой путь к разгадке: ${oldHook}` : `Осмотреться в ${location} и найти другой путь`,
     transition: `Отряд отступает из «${from}» и следует принятому решению: ${clean(decision, 220)}.`,
-    arrival: map.theme === 'городские улицы' ? `Дорога выводит героев к воротам. За ними открываются улицы локации «${location}» — с площадями, переулками и местами, где можно искать сведения.` : `Путь из «${from}» приводит героев в новую локацию — «${location}».`,
+    arrival: streets ? `Дорога выводит героев к воротам. За ними открываются улицы локации «${location}» — с площадями, переулками и местами, где можно искать сведения.` : `Путь из «${from}» приводит героев в новую локацию — «${location}».`,
     hook,
-    theme: map.theme,
-    danger: map.danger,
+    theme: plannedMap.theme,
+    danger: plannedMap.danger,
     outcome: abandonsQuest
       ? `Отряд покинул «${from}», отказавшись от прежнего задания.`
       : `Отряд покинул «${from}», не закрыв прежнюю сюжетную нить.`,
     objective_status: abandonsQuest ? 'abandoned' : 'unresolved',
     carry_unresolved: !abandonsQuest,
-    map: { layout: map.layout, scale: map.scale, pattern: map.pattern, material: map.material, width: map.width, height: map.height, openness: map.openness, water: map.water, featureCount: map.featureCount },
+    map: { layout: plannedMap.layout, scale: plannedMap.scale, pattern: plannedMap.pattern, material: plannedMap.material, width: plannedMap.width, height: plannedMap.height, openness: plannedMap.openness, water: plannedMap.water, featureCount: plannedMap.featureCount },
   }
 }
 

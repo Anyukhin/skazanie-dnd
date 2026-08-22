@@ -64,6 +64,38 @@ test('новая кампания создаёт чистый самостоят
   assert.ok(state.players[0].inventory[0].combat?.damage)
 })
 
+test('стартовая деревня по карте мира автора рисуется улицами, даже если в названии «брод»', async () => {
+  // Живая кампания: автор назвал стартовую точку «Тихий Брод» и на карте мира
+  // отметил её деревней, но первая сцена рисовалась дорогой — по слову «брод».
+  const opening = {
+    campaignName: 'Зелёный камень', partyName: 'Одиночка',
+    worldSummary: 'Долина с тихими деревнями.',
+    openingNarration: 'К вечеру Тихий Брод погружается в тишину.\n\nУ колодца из земли выступает зелёный камень.',
+    scene: { title: 'Камень у тихого брода', location: 'Тихий Брод', mood: 'Тревожная тишина', objective: 'Понять, что с камнем', theme: 'тихая деревня у реки', danger: 'низкая', map: { layout: 'open', pattern: 'natural', material: 'earth', width: 15, height: 11, openness: .6, water: 0, featureCount: 6 } },
+    hook: 'Зелёный камень',
+    worldMap: {
+      name: 'Долина', locations: [
+        { id: 'tihiy-brod', name: 'Тихий Брод', kind: 'village', x: 500, y: 360, summary: 'Деревня у брода.', known: true, visited: true },
+        { id: 'veyr', name: 'Вейр', kind: 'city', x: 300, y: 200, summary: 'Город.', known: true, visited: false },
+      ],
+      routes: [{ id: 'route-1', from: 'tihiy-brod', to: 'veyr', kind: 'road', distance: 3, danger: 'низкая', discovered: true }],
+    },
+  }
+  const authored = await new CampaignBootstrapper({ llmClient: new FakeLLM([{ content: JSON.stringify(opening) }]) }).create({
+    code: 'BROD-1', name: 'Зелёный камень', partyName: 'Одиночка', world: { startingLocation: 'Тихий Брод' }, players: [hero],
+  })
+  assert.equal(authored.worldMap.locations.find((location) => location.id === authored.worldMap.currentLocationId)?.kind, 'village')
+  assert.ok(authored.scene.cells.filter((cell) => cell.type === 'door').length >= 4, 'у стартовой деревни нет домов — нарисована дорога')
+
+  // Без карты автора запасная карта ставит стартовой точке «город» вслепую — по
+  // нему улицы не рисуются, и первая сцена остаётся прежней дорогой.
+  const { worldMap: _authored, ...blind } = opening
+  const fallback = await new CampaignBootstrapper({ llmClient: new FakeLLM([{ content: JSON.stringify(blind) }]) }).create({
+    code: 'BROD-2', name: 'Зелёный камень', partyName: 'Одиночка', world: { startingLocation: 'Тихий Брод' }, players: [hero],
+  })
+  assert.equal(fallback.scene.cells.some((cell) => cell.type === 'door'), false)
+})
+
 test('стартовый набор соответствует классу и не перезаписывает готовый лист', async () => {
   const fighter = await new CampaignBootstrapper().create({
     code: 'KIT-FIGHTER', world: {}, players: [{ ...hero, id: 'fighter', role: 'Воин · ур. 1', abilities: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 } }],
