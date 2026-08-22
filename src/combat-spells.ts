@@ -71,6 +71,13 @@ export function spellSelectionRules(player?: Player) {
   }
 }
 
+/** Имя заклинания по идентификатору каталога — для чипа концентрации. */
+export function spellNameById(id: string | null | undefined): string | null {
+  if (!id) return null
+  const spell = (catalogPayload.spells as unknown as CombatSpell[]).find((entry) => entry.id === id)
+  return spell?.name ?? null
+}
+
 export function fallbackCombatSpells(player?: Player): CombatSpell[] {
   const profile = caster(player)
   if (!profile) return []

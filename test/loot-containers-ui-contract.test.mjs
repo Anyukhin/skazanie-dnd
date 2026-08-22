@@ -52,7 +52,7 @@ test('чистые правила панели лежат в исполняем�
 
 test('панель добычи есть в сцене и называет каждый вид контейнера', () => {
   assert.match(panel, /className="loot-panel"/u)
-  assert.match(panel, /ДОБЫЧА · \{containers\.length\}/u)
+  assert.match(panel, /Добыча · \{containers\.length\}/u)
   // Сами подписи проверены прогоном (`loot-panel-rules.test.mjs`) — здесь
   // важно, что карточка их действительно печатает.
   assert.match(panel, /LOOT_KIND_LABELS\[container\.kind\]/u)
@@ -159,7 +159,7 @@ test('метка добычи на доске закрыта туманом на
 })
 
 test('послебоевая сводка называет тела, тайники и невзятое', () => {
-  assert.match(panel, /ПОБЕДА · ЧТО ОСТАЛОСЬ/u)
+  assert.match(panel, /Победа · что осталось/u)
   assert.match(panel, /Тел не обыскано/u)
   assert.match(panel, /Тайники и тюки/u)
   assert.match(panel, /Уйдёте с этажа/u)

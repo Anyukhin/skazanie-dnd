@@ -22,7 +22,7 @@ const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8
 test('перемирие заметно на доске: рамка, полоса и раунд', () => {
   assert.match(board, /truce-held/u, 'у доски нет состояния перемирия')
   assert.match(board, /className="truce-banner"/u)
-  assert.match(board, /ПЕРЕМИРИЕ · РАУНД/u)
+  assert.match(board, /Перемирие · раунд/u)
   assert.match(styles, /\.map-stage\.truce-held::after \{/u, 'рамка перемирия обязана рисоваться на самой доске')
   assert.match(styles, /\.truce-banner \{/u)
 })

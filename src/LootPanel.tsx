@@ -277,7 +277,7 @@ export function LootPanel({
     <header>
       <Package size={15} />
       <span>
-        <small>ДОБЫЧА · {containers.length}</small>
+        <small>Добыча · {containers.length}</small>
         <strong>{actionCost === 'action' ? 'В бою обыск стоит действия' : 'Смотреть и брать — свободно'}</strong>
       </span>
     </header>
@@ -321,7 +321,7 @@ export function LootPanel({
         <header>
           <LootSourcePortrait container={container} enemy={sourceEnemy} />
           <span className="loot-card-title">
-            <i className="loot-tag">{LOOT_KIND_LABELS[container.kind] ?? 'ДОБЫЧА'}</i>
+            <i className="loot-tag">{LOOT_KIND_LABELS[container.kind] ?? 'добыча'}</i>
             <b>{container.name}</b>
             <small>
               {itemCountLabel(container.item_count)} · {container.total_weight} фнт
@@ -409,7 +409,7 @@ export function LootPanel({
       <header>
         <span className="loot-source-portrait neutral spent" role="img" aria-label={ghost.name}><PackageX size={17} /></span>
         <span className="loot-card-title">
-          <i className="loot-tag">ПУСТО</i>
+          <i className="loot-tag">Пусто</i>
           <b>{ghost.name}</b>
           <small>{lootCellLabel(ghost) || 'на сцене'}</small>
         </span>
@@ -456,7 +456,7 @@ export function PostCombatLootSummary({ containers, onClose, onFocus }: {
   return <section className="loot-aftermath" aria-label="Что осталось после боя" aria-live="polite">
     <header>
       <Sparkles size={15} />
-      <span><small>ПОБЕДА · ЧТО ОСТАЛОСЬ</small><strong>{itemCountLabel(aftermath.itemCount)} на {aftermath.weight} фнт</strong></span>
+      <span><small>Победа · что осталось</small><strong>{itemCountLabel(aftermath.itemCount)} на {aftermath.weight} фнт</strong></span>
       <button type="button" onClick={onClose} aria-label="Закрыть сводку добычи"><X size={15} /></button>
     </header>
     <dl className="loot-aftermath-counts">

@@ -8,13 +8,14 @@
  */
 
 import { Fragment, cloneElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import {
   BookOpen, ChevronDown, ChevronRight, Coins, Copy, Crown, DoorOpen,
   Dices, Flame, Footprints, Gem, History, Menu, MessageSquare,
   MoreHorizontal, PanelLeftClose, PanelLeftOpen, Plus, RotateCcw,
   ScrollText, Send, Settings, Shield, Sparkles, Swords, Target, Users, X,
   BrainCircuit, Check, Compass, SlidersHorizontal, Wifi, WifiOff,
-  Heart, HeartCrack, HelpCircle,
+  HeartCrack, HelpCircle,
   Lock, LockKeyhole, LockOpen, LogOut, ShieldCheck, RefreshCw, Store,
   Bot, PawPrint, Skull, WandSparkles, Globe2, Volume2, VolumeX, Bell, BellOff,
   Gavel, Soup, Unlink, UserLock, Handshake, ShieldAlert, Beer, Ear, Eye,
@@ -38,7 +39,7 @@ import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } f
 import { CELL_FEET, currentTacticalTurn, mapGridDimensions } from './tactical-engine'
 import { TOKEN_CONDITION_PRIORITY, battleRollContext, battleRollPresentation, boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, levelIndicatorRows, levelTransitionHint, levelTransitionPresentation, mechanicsSupportPresentation, movementCellReason, movementCostLabel, tokenConditionGlyph, turnClockPresentation, type MovementPath } from './tactical-ui'
 import { fallbackCombatActions, fallbackCombatResources, featureResourceName } from './combat-actions'
-import { fallbackCombatSpells, fallbackSpellResources } from './combat-spells'
+import { fallbackCombatSpells, fallbackSpellResources, spellNameById } from './combat-spells'
 import { MerchantScreen } from './MerchantView'
 import { CombatIcon } from './CombatIcon'
 import { TacticalBoard, type BoardAnimationActor, type BoardCellHint, type BoardCellNode } from './TacticalBoard'
@@ -47,6 +48,7 @@ import { areaCells } from './area-geometry'
 import {
   createPersistentSpellEffectsRenderer,
   persistentSpellEffectsFromProjection,
+  spellIdFromEffect,
   systemPrefersReducedMotion,
 } from './spell-effects'
 import { doorsReachableFrom, sceneTacticalMap } from './tactical-map-client'
@@ -79,6 +81,44 @@ export type EnemyVisualKind = 'construct' | 'undead' | 'beast' | 'mystic' | 'rai
 
 export type PresentedCondition = ReturnType<typeof conditionPresentation>
 
+/**
+ * Что у героя «на нём» прямо сейчас: состояния, концентрация и временные хиты.
+ * Три вещи, без которых за столом D&D не принять решения, а в интерфейсе они
+ * жили только на фишке и в полоске хода того, кто ходит. Всё читается из
+ * серверной проекции: состояния — `mechanics.conditions`, концентрация —
+ * `mechanics.concentration` (имя заклинания — по эффекту или по самому ключу
+ * эффекта), временные хиты — `mechanics.temporary_hp`.
+ */
+export type HeroStatus = { conditions: PresentedCondition[]; concentration: string | null; temporaryHp: number }
+
+export function heroStatusFor(state: GameState, actorId: string): HeroStatus {
+  const conditions = (state.mechanics?.conditions?.[actorId] ?? []).map(conditionPresentation)
+  const concentration = state.mechanics?.concentration?.[actorId]
+  let concentrationLabel: string | null = null
+  if (concentration) {
+    const effectId = concentration.effect_id
+    const effect = (state.mechanics?.active_effects ?? []).find((entry) => entry.effect_id === effectId || entry.id === effectId)
+    const spellId = effect?.spell_id ?? spellIdFromEffect(effectId)
+    concentrationLabel = spellNameById(spellId ? String(spellId) : null) ?? 'заклинание'
+  }
+  const temporaryHp = Math.max(0, Math.floor(Number(state.mechanics?.temporary_hp?.[actorId] ?? 0) || 0))
+  // Своё же заклинание под концентрацией движок кладёт герою и состоянием
+  // («Благословение · пока держится концентрация»): чип концентрации уже
+  // сказал то же самое, второй раз не повторяем.
+  const raw = state.mechanics?.conditions?.[actorId] ?? []
+  const visibleConditions = conditions.filter((condition, index) => !(concentrationLabel && condition.label === concentrationLabel && raw[index]?.duration === 'concentration'))
+  return { conditions: visibleConditions, concentration: concentrationLabel, temporaryHp }
+}
+
+/** Подсказка к точкам состояний в отряде: всё словами, через точку. */
+export function heroStatusSummary(status: HeroStatus): string {
+  const parts = []
+  if (status.temporaryHp > 0) parts.push(`Временные хиты: ${status.temporaryHp}`)
+  if (status.concentration) parts.push(`Концентрация: ${status.concentration}`)
+  for (const condition of status.conditions) parts.push(`${condition.label}${condition.duration ? ` · ${condition.duration}` : ''}`)
+  return parts.join(' · ')
+}
+
 export const MAP_FEEDBACK_TTL_MS = 4200
 export const BATTLE_ROLL_TTL_MS = 4600
 export const NPC_TACTIC_TTL_MS = 4800
@@ -103,7 +143,7 @@ export function BattleRollReasons({ context }: { context: BattleRollContext | nu
   if (!context || context.mode === 'normal') return null
   const reasons = context.mode === 'advantage' ? context.advantageReasons : context.disadvantageReasons
   return <div className={`battle-roll-reasons ${context.mode}`}>
-    <small>{context.mode === 'advantage' ? 'ПРЕИМУЩЕСТВО' : 'ПОМЕХА'}</small>
+    <small>{context.mode === 'advantage' ? 'Преимущество' : 'Помеха'}</small>
     <span>{reasons.length > 0 ? reasons.join(' · ') : 'Причина не раскрыта сервером'}</span>
     {context.dice.length === 2 && <em>кости {context.dice.join(' и ')}</em>}
   </div>
@@ -261,6 +301,27 @@ export function heroResourceShortLabel(key: string): string {
   const slot = /^spell_slots_([1-9])$/u.exec(key)
   if (slot) return slot[1]
   return heroResourceLabel(key).toLocaleLowerCase('ru')
+}
+
+/** Круг ячеек заклинаний — цифра после общего слова «Ячейки», а не имя. */
+export function isSpellSlotPool(key: string): boolean {
+  return /^spell_slots_[1-9]$/u.test(key)
+}
+
+export type HeroPoolRow = { keys: string[]; current: number; max: number }
+
+/**
+ * Бюджет позиций ряда запасов: круг ячеек — позиция, классовый запас —
+ * позиция. Что не влезло, сворачивается в чип «+N ещё», и он сам занимает
+ * последнюю позицию — поэтому при переполнении видимых на одну меньше
+ * бюджета, а хвост всегда не короче двух. Невидимой прокрутки у кластера
+ * нет: хвост обязан быть виден как счётчик, а не срезан молча.
+ */
+export function heroPoolLayout<T extends HeroPoolRow>(rows: readonly T[], budget: number): { visible: T[]; hidden: T[]; slotCount: number } {
+  const limit = Math.max(1, Math.floor(budget))
+  const visible = rows.length <= limit ? [...rows] : rows.slice(0, Math.max(1, limit - 1))
+  const hidden = rows.slice(visible.length)
+  return { visible, hidden, slotCount: visible.filter((row) => isSpellSlotPool(row.keys[0])).length }
 }
 
 /** Порядок ряда: ячейки по кругам, следом договор и арканум, дальше классовое. */
@@ -607,11 +668,11 @@ export function BattleRollCard({ event, context }: { event: BattleEvent; context
   return <div className={`battle-roll-card ${roll.success ? 'success' : 'failed'}`} role="status" aria-label={`Бросок d20: ${roll.natural == null ? 'кости скрыты' : `${roll.natural} ${roll.modifierText}`}, итого ${roll.total}${roll.difficulty != null ? ` против ${roll.difficultyLabel} ${roll.difficulty}` : ''}. ${roll.outcome}`}>
     {roll.natural != null && <div className="battle-roll-d20"><small>d20</small><b>{roll.natural}</b></div>}
     <div className="battle-roll-summary">
-      {roll.natural != null && <><span><small>МОДИФИКАТОР</small><b>{roll.modifierText}</b></span><i aria-hidden="true">=</i></>}
-      <span className="total"><small>ИТОГ</small><b>{roll.total}</b></span>
+      {roll.natural != null && <><span><small>Модификатор</small><b>{roll.modifierText}</b></span><i aria-hidden="true">=</i></>}
+      <span className="total"><small>Итог</small><b>{roll.total}</b></span>
       {roll.difficulty != null && <><i aria-hidden="true">против</i><span><small>{roll.difficultyLabel}</small><b>{roll.difficulty}</b></span></>}
     </div>
-    <strong>{roll.success ? 'УСПЕХ' : event.type === 'attack' ? 'ПРОМАХ' : 'НЕУДАЧА'}</strong>
+    <strong>{roll.success ? 'Успех' : event.type === 'attack' ? 'Промах' : 'Неудача'}</strong>
     <BattleRollReasons context={context} />
   </div>
 }
@@ -645,14 +706,12 @@ export function PartyQuestHud({ state }: { state: GameState }) {
   const npcNames = new Map((state.social?.npcs ?? []).map((npc) => [npc.id, npc.name]))
   const reputation = state.autonomy?.reputation_standing ?? []
   if (quests.length === 0 && threads.length === 0 && promises.length === 0 && reputation.length === 0) return null
-  const primary = promises[0]?.text ?? threads[0]?.title ?? quests[0]?.title ?? 'Состояние отряда'
   const signalCount = quests.length + threads.length + promises.length
   return <section className={`party-quest-hud ${expanded ? 'expanded' : ''}`} aria-label="Задачи отряда">
     <button type="button" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
       <ScrollText size={15} />
       <span>
-        <small>ЗАДАЧИ {quests.length} · ОБЕЩАНИЯ {promises.length} · НИТИ {threads.length}</small>
-        <strong>{primary}</strong>
+        <small>Задачи {quests.length} · Обещания {promises.length} · Нити {threads.length}</small>
       </span>
       <ChevronDown size={15} />
     </button>
@@ -703,7 +762,7 @@ export function PartyQuestHud({ state }: { state: GameState }) {
   </section>
 }
 
-export function CombatTurnClock({ clock, actorName }: { clock: GameState['turn_clock']; actorName?: string }) {
+export function CombatTurnClock({ clock, actorName, compact = false }: { clock: GameState['turn_clock']; actorName?: string; compact?: boolean }) {
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
     setNow(Date.now())
@@ -713,16 +772,65 @@ export function CombatTurnClock({ clock, actorName }: { clock: GameState['turn_c
   }, [clock?.deadline_at, clock?.turn_id])
   const presentation = turnClockPresentation(clock, now)
   if (!presentation) return null
+  /* Компактный вид — для полоски хода: одни цифры и нить таймера, а подпись
+     «до автопропуска» уходит в title и aria — в строке шириной с колонку ей
+     места нет, а смысл цифр и так ясен из соседства с именем ходящего. */
+  const caption = `${clock?.reaction_window_id ? 'Ответ на реакцию' : 'До автопропуска'}${actorName ? ` · ${actorName}` : ''}`
   return <div
-    className={`combat-turn-clock ${presentation.urgent ? 'urgent' : ''} ${presentation.expired ? 'expired' : ''}`}
+    className={`combat-turn-clock ${compact ? 'compact' : ''} ${presentation.urgent ? 'urgent' : ''} ${presentation.expired ? 'expired' : ''}`}
     role="timer"
     aria-live={presentation.urgent ? 'polite' : 'off'}
     aria-label={`До автоматического пропуска хода${actorName ? ` ${actorName}` : ''}: ${presentation.label}`}
+    title={compact ? caption : undefined}
   >
-    <small>{clock?.reaction_window_id ? 'ОТВЕТ НА РЕАКЦИЮ' : 'ДО АВТОПРОПУСКА'}{actorName ? ` · ${actorName}` : ''}</small>
+    {!compact && <small>{caption}</small>}
     <b>{presentation.label}</b>
     <span aria-hidden="true"><i style={{ width: `${presentation.remainingRatio * 100}%` }} /></span>
   </div>
+}
+
+/** Рамка фишки в момент наведения — якорь для поповера инспектора цели. */
+export type TokenAnchor = { left: number; top: number; right: number; bottom: number }
+
+export function tokenAnchor(element: Element): TokenAnchor {
+  const rect = element.getBoundingClientRect()
+  return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom }
+}
+
+/**
+ * Поповер встаёт справа от фишки, а у правого края окна — слева от неё; по
+ * вертикали начинается чуть выше фишки и не выходит за низ окна. Ширина
+ * фиксированная: прогноз атаки с разбором броска рассчитан на колонку в
+ * 300px, и уже он читается хуже.
+ */
+export function targetPopoverStyle(anchor: TokenAnchor, viewport: { width: number; height: number } = { width: window.innerWidth, height: window.innerHeight }): CSSProperties {
+  const width = 300
+  const margin = 12
+  const fitsRight = anchor.right + margin + width <= viewport.width - margin
+  const left = fitsRight ? anchor.right + margin : Math.max(margin, anchor.left - margin - width)
+  const top = Math.max(margin, Math.min(anchor.top - 8, viewport.height - margin - 240))
+  return { position: 'fixed', left, top, width, maxHeight: Math.max(120, viewport.height - top - margin) }
+}
+
+/**
+ * Ситуативная панель колонки — перемирие, стража, добыча, таверна, почта,
+ * пленники, звери, отдых — живёт чипом в одной строке, а раскрывается
+ * поверх ленты, а не в штабеле: раньше девять панелей делили с хроникой
+ * 384 пикселя, и хронике доставалось 78. Срочные (стража, перемирие, кость
+ * на столе) раскрываются сами — см. `urgentSituational` в `DungeonMap`.
+ */
+export function SituationalSlot({ id, icon, label, badge, open, onToggle, onClose, children }: {
+  id: string; icon: ReactNode; label: string; badge?: number | string | null; open: boolean; onToggle: (id: string) => void; onClose: () => void; children: ReactNode
+}) {
+  return <>
+    <button type="button" className={`situational-chip${open ? ' open' : ''}`} aria-expanded={open} onClick={() => onToggle(id)}>
+      {icon}<span>{label}</span>{badge != null && badge !== '' && badge !== 0 && <b>{badge}</b>}
+    </button>
+    {open && <div className="situational-overlay" role="dialog" aria-label={label}>
+      <header><span>{icon}{label}</span><button type="button" className="icon-button" onClick={onClose} aria-label={`Закрыть: ${label}`}><X size={16} /></button></header>
+      <div className="situational-overlay-body">{children}</div>
+    </div>}
+  </>
 }
 
 /**
@@ -962,6 +1070,12 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const [hoveredMoveKey, setHoveredMoveKey] = useState<string | null>(null)
   const [pendingMoveKey, setPendingMoveKey] = useState<string | null>(null)
   const [inspectedTarget, setInspectedTarget] = useState<{ id: string; name: string; team: 'ally' | 'enemy'; hp?: number; maxHp?: number; healthLabel?: string; distanceFeet: number; allowed: boolean; reason: string | null } | null>(null)
+  /* Якорь инспектора — рамка фишки, на которую навели: поповер стоит у неё,
+     а не в правой колонке. Снимается вместе с самим `inspectedTarget`. */
+  const [inspectedAnchor, setInspectedAnchor] = useState<TokenAnchor | null>(null)
+  /* Какая ситуативная панель раскрыта поверх ленты; чипы — в одной строке. */
+  const [openSituational, setOpenSituational] = useState<string | null>(null)
+  const [npcGroupOpen, setNpcGroupOpen] = useState(false)
   const { columns: cellColumns, rows: cellRows } = mapGridDimensions(state.scene.cells)
   // Канон сцены — `scene.map`; старая проекция без него собирается из клеток.
   const boardMap = useMemo(() => sceneTacticalMap(state.scene), [state.scene])
@@ -996,7 +1110,6 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           : null
   const activeSummon = state.actors?.find((actor) => actor.id === turnActorId && actor.alive)
   const activeEnemy = state.enemies?.find((enemy) => enemy.id === turnActorId && enemy.alive)
-  const activeTurnLabel = !combatActive ? 'ИДЁТ СВОБОДНО' : activeEnemy ? 'ХОД ПРОТИВНИКА' : activeSummon ? 'ХОД ПРИЗЫВА' : 'ХОД ИГРОКА'
   const active: BoardCombatant | undefined = activeHero ?? activeSummon
   const activeName = activeHero?.character ?? activeSummon?.name ?? activeEnemy?.name ?? 'участник боя'
   const sceneLocationId = state.scene.location_id ?? boardMap?.locationId ?? ''
@@ -1038,7 +1151,6 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     ...sceneNpcs.filter((npc) => npc.alive).map((npc) => ({ id: npc.id, x: npc.x, y: npc.y, label: npc.name, color: '#9d8f72', kind: 'neutral' as const })),
   ]
   const npcSummaryEvents = latestNpcTurnEvents(state.battleLog ?? [])
-  const recentCombatJournal = (state.battleLog ?? []).slice(-6).reverse()
   // Пленные приезжают отдельной серверной веткой проекции: на доске связанный
   // выглядит обычным NPC сцены, и без этого списка отличить его было бы нечем.
   const heldCaptives = useMemo(
@@ -1082,6 +1194,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     const closing = [...(state.battleLog ?? [])].reverse().find((event) => event.type === 'combat-end')
     return closing?.reason === 'enemies_defeated' ? closing : null
   }, [combatActive, state.battleLog])
+  const lootChipVisible = sceneLoot.length > 0 || vanishedLoot.some((ghost) => !sceneLoot.some((container) => container.id === ghost.id))
   const showLootAftermath = Boolean(victoryEntry && victoryEntry.id !== dismissedVictoryId && sceneLoot.length > 0)
   // Звери приезжают отдельной серверной веткой проекции: и кандидаты с
   // объявленной СЛ, и уже прирученные спутники. Своей формулы сложности здесь
@@ -1132,6 +1245,23 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const tavernOpponents = tavern?.opponents ?? []
   const tavernStakes = tavern?.stakes ?? []
   const tavernRound = tavern?.round ?? null
+  /* Срочные панели раскрываются сами: стража ждёт ответа, перемирие держит
+     очередь, кость уже на столе. Остальные (почта, добыча, отдых) ждут чипом —
+     они не срочнее рассказа. Закрыть срочную можно, но при новой страже или
+     новом раунде она откроется снова — ключ эффекта и есть это событие. */
+  const urgentSituational = guardEncounter ? 'guard' : truce ? 'truce' : tavernRound ? 'tavern' : null
+  const urgentSituationalKey = `${urgentSituational ?? ''}:${guardEncounter ? 'guard' : ''}:${truce?.round ?? ''}:${tavernRound?.id ?? ''}`
+  useEffect(() => {
+    if (urgentSituational) setOpenSituational(urgentSituational)
+  }, [urgentSituationalKey])
+  useEffect(() => {
+    if (!openSituational) return
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpenSituational(null) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [openSituational])
+  const toggleSituational = (id: string) => setOpenSituational((current) => current === id ? null : id)
+  const closeSituational = () => setOpenSituational(null)
   const chosenTavernOpponentId = tavernOpponents.some((npc) => npc.id === tavernOpponentId)
     ? tavernOpponentId
     : tavernOpponents[0]?.id ?? ''
@@ -1497,6 +1627,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       else rows.push({ keys: [entry.key], current: entry.current, max: entry.max })
       return rows
     }, [])
+  const heroPools = heroPoolLayout(heroResourceRows, tileRows === 1 ? 2 : 4)
   /* Что в ходу ещё не потрачено — списком, из которого собирается честная
      подсказка «Завершить ход». Реакции здесь нет намеренно: она переживает
      конец своего хода и тратится на чужом. */
@@ -1601,17 +1732,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const projectileEnd = pendingTarget ?? projectileTarget
   const trajectory = active && projectileEnd ? { x1: (active.x + .5) / columns * 100, y1: (active.y + .5) / rows * 100, x2: (projectileEnd.x + .5) / columns * 100, y2: (projectileEnd.y + .5) / rows * 100 } : null
   const activeConditions = (state.mechanics?.conditions?.[turnActorId] ?? []).map(conditionPresentation)
-  const activeTeam = activeHero || activeSummon ? 'СОЮЗНИК' : 'ПРОТИВНИК'
-  const activeHealth = active
-    ? `${active.hp}/${active.maxHp} ОЗ`
-    : activeEnemy ? enemyHealthPresentation(activeEnemy).label : '—'
-  const selectedCommandName = combatMode === 'magic' && selectedSpell
-    ? selectedSpell.name
-    : combatMode === 'action' && selectedCombatAction ? selectedCombatAction.name : selectedItem?.name ?? 'Базовая атака'
   const pendingTargetName = pendingTarget
     ? ('character' in pendingTarget ? pendingTarget.character : pendingTarget.name)
     : pendingPoint ? `клетка ${pendingPoint.x + 1}:${pendingPoint.y + 1}` : ''
-  const pendingCommandLabel = pendingCommand ? `${selectedCommandName} → ${pendingTargetName}` : ''
   // Прогноз выбирается под пару «выбранное оружие + наведённая/выбранная цель».
   // Все числа уже пришли с сервера; без цели helper намеренно возвращает null.
   const inspectedForecast = selectedAttackForecast(
@@ -2119,10 +2242,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             data-enemy-kind={enemyKind}
             onPointerDown={(event) => event.stopPropagation()}
             onPointerUp={(event) => event.stopPropagation()}
-            onMouseEnter={() => { setLinkedParticipantIds([enemy.id]); setAimCell({ x: enemy.x, y: enemy.y }); setInspectedTarget({ id: enemy.id, name: enemy.name, team: 'enemy', ...(enemyHealth?.exact ? { hp: enemy.hp, maxHp: enemy.maxHp } : { healthLabel: enemyHealth?.label }), distanceFeet: attackDistanceFeet, allowed: enemyCommandAllowed, reason: enemyTargetReason }) }}
-            onMouseLeave={() => { setLinkedParticipantIds([]); if (!pendingCommand) { setAimCell(null); setInspectedTarget(null) } }}
-            onFocus={() => { setLinkedParticipantIds([enemy.id]); setInspectedTarget({ id: enemy.id, name: enemy.name, team: 'enemy', ...(enemyHealth?.exact ? { hp: enemy.hp, maxHp: enemy.maxHp } : { healthLabel: enemyHealth?.label }), distanceFeet: attackDistanceFeet, allowed: enemyCommandAllowed, reason: enemyTargetReason }) }}
-            onBlur={() => { setLinkedParticipantIds([]); if (!pendingCommand) setInspectedTarget(null) }}
+            onMouseEnter={(event) => { setLinkedParticipantIds([enemy.id]); setInspectedAnchor(tokenAnchor(event.currentTarget)); setAimCell({ x: enemy.x, y: enemy.y }); setInspectedTarget({ id: enemy.id, name: enemy.name, team: 'enemy', ...(enemyHealth?.exact ? { hp: enemy.hp, maxHp: enemy.maxHp } : { healthLabel: enemyHealth?.label }), distanceFeet: attackDistanceFeet, allowed: enemyCommandAllowed, reason: enemyTargetReason }) }}
+            onMouseLeave={() => { setLinkedParticipantIds([]); if (!pendingCommand) { setAimCell(null); setInspectedTarget(null); setInspectedAnchor(null) } }}
+            onFocus={(event) => { setLinkedParticipantIds([enemy.id]); setInspectedAnchor(tokenAnchor(event.currentTarget)); setInspectedTarget({ id: enemy.id, name: enemy.name, team: 'enemy', ...(enemyHealth?.exact ? { hp: enemy.hp, maxHp: enemy.maxHp } : { healthLabel: enemyHealth?.label }), distanceFeet: attackDistanceFeet, allowed: enemyCommandAllowed, reason: enemyTargetReason }) }}
+            onBlur={() => { setLinkedParticipantIds([]); if (!pendingCommand) { setInspectedTarget(null); setInspectedAnchor(null) } }}
             onClick={(event) => { event.stopPropagation(); if (canPointSpellHere) castAtCell(cell.x, cell.y); else if (canThrowHere) chooseArea(cell.x, cell.y); else if (canActionTargetEnemy) useActionAtTarget(enemy.id); else if (canSpellTargetEnemy) castAtTarget(enemy.id); else if (canWeaponTargetEnemy) chooseTarget(enemy.id) }}
             aria-disabled={tacticalBusy || !enemyCommandAllowed}
             aria-label={canThrowHere ? `Бросить ${selectedItem?.name ?? 'предмет'} в клетку с ${enemy.name}` : `${canActionTargetEnemy ? `Использовать ${selectedCombatAction?.name} на` : canSpellTargetEnemy ? 'Наложить заклинание на' : 'Атаковать'} ${enemy.name}. Состояние: ${enemyHealth?.label}`}
@@ -2286,10 +2409,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             style={heroFaceStyle(player, { '--token': player.color } as React.CSSProperties)}
             onPointerDown={(event) => event.stopPropagation()}
             onPointerUp={(event) => event.stopPropagation()}
-            onMouseEnter={() => { setLinkedParticipantIds([player.id]); if (canHeal) setAimCell({ x: player.x, y: player.y }); setInspectedTarget({ id: player.id, name: player.character, team: 'ally', hp: player.hp, maxHp: player.maxHp, distanceFeet: healingDistance, allowed: playerCommandAllowed, reason: playerTargetReason }) }}
-            onMouseLeave={() => { setLinkedParticipantIds([]); if (!pendingCommand) { setAimCell(null); setInspectedTarget(null) } }}
-            onFocus={() => { setLinkedParticipantIds([player.id]); setInspectedTarget({ id: player.id, name: player.character, team: 'ally', hp: player.hp, maxHp: player.maxHp, distanceFeet: healingDistance, allowed: playerCommandAllowed, reason: playerTargetReason }) }}
-            onBlur={() => { setLinkedParticipantIds([]); if (!pendingCommand) setInspectedTarget(null) }}
+            onMouseEnter={(event) => { setLinkedParticipantIds([player.id]); setInspectedAnchor(tokenAnchor(event.currentTarget)); if (canHeal) setAimCell({ x: player.x, y: player.y }); setInspectedTarget({ id: player.id, name: player.character, team: 'ally', hp: player.hp, maxHp: player.maxHp, distanceFeet: healingDistance, allowed: playerCommandAllowed, reason: playerTargetReason }) }}
+            onMouseLeave={() => { setLinkedParticipantIds([]); if (!pendingCommand) { setAimCell(null); setInspectedTarget(null); setInspectedAnchor(null) } }}
+            onFocus={(event) => { setLinkedParticipantIds([player.id]); setInspectedAnchor(tokenAnchor(event.currentTarget)); setInspectedTarget({ id: player.id, name: player.character, team: 'ally', hp: player.hp, maxHp: player.maxHp, distanceFeet: healingDistance, allowed: playerCommandAllowed, reason: playerTargetReason }) }}
+            onBlur={() => { setLinkedParticipantIds([]); if (!pendingCommand) { setInspectedTarget(null); setInspectedAnchor(null) } }}
             onClick={(event) => { event.stopPropagation(); setOpenTokenLabelId((current) => current === player.id ? null : player.id); if (canPointSpellHere) castAtCell(cell.x, cell.y); else if (canThrowHere) chooseArea(cell.x, cell.y); else if (canAid) useActionAtTarget(player.id); else if (canHeal) castAtTarget(player.id) }}
             aria-label={canThrowHere ? `Бросить ${selectedItem?.name ?? 'предмет'} в клетку с ${player.character}` : canAid ? `Использовать ${selectedCombatAction?.name} на ${player.character}` : canHeal ? `Наложить ${selectedSpell?.name} на ${player.character}` : player.character + (player.id === turnActorId ? ', активный герой' : '')}
             aria-disabled={!canHeal && !canAid && !canThrowHere}
@@ -2324,10 +2447,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             style={{ '--token': '#70a78b' } as React.CSSProperties}
             onPointerDown={(event) => event.stopPropagation()}
             onPointerUp={(event) => event.stopPropagation()}
-            onMouseEnter={() => { setLinkedParticipantIds([summon.id]); if (canHeal) setAimCell({ x: summon.x, y: summon.y }); setInspectedTarget({ id: summon.id, name: summon.name, team: 'ally', hp: summon.hp, maxHp: summon.maxHp, distanceFeet: healingDistance, allowed: summonCommandAllowed, reason: summonTargetReason }) }}
-            onMouseLeave={() => { setLinkedParticipantIds([]); if (!pendingCommand) { setAimCell(null); setInspectedTarget(null) } }}
-            onFocus={() => { setLinkedParticipantIds([summon.id]); setInspectedTarget({ id: summon.id, name: summon.name, team: 'ally', hp: summon.hp, maxHp: summon.maxHp, distanceFeet: healingDistance, allowed: summonCommandAllowed, reason: summonTargetReason }) }}
-            onBlur={() => { setLinkedParticipantIds([]); if (!pendingCommand) setInspectedTarget(null) }}
+            onMouseEnter={(event) => { setLinkedParticipantIds([summon.id]); setInspectedAnchor(tokenAnchor(event.currentTarget)); if (canHeal) setAimCell({ x: summon.x, y: summon.y }); setInspectedTarget({ id: summon.id, name: summon.name, team: 'ally', hp: summon.hp, maxHp: summon.maxHp, distanceFeet: healingDistance, allowed: summonCommandAllowed, reason: summonTargetReason }) }}
+            onMouseLeave={() => { setLinkedParticipantIds([]); if (!pendingCommand) { setAimCell(null); setInspectedTarget(null); setInspectedAnchor(null) } }}
+            onFocus={(event) => { setLinkedParticipantIds([summon.id]); setInspectedAnchor(tokenAnchor(event.currentTarget)); setInspectedTarget({ id: summon.id, name: summon.name, team: 'ally', hp: summon.hp, maxHp: summon.maxHp, distanceFeet: healingDistance, allowed: summonCommandAllowed, reason: summonTargetReason }) }}
+            onBlur={() => { setLinkedParticipantIds([]); if (!pendingCommand) { setInspectedTarget(null); setInspectedAnchor(null) } }}
             onClick={(event) => { event.stopPropagation(); setOpenTokenLabelId((current) => current === summon.id ? null : summon.id); if (canPointSpellHere) castAtCell(cell.x, cell.y); else if (canThrowHere) chooseArea(cell.x, cell.y); else if (canAid) useActionAtTarget(summon.id); else if (canHeal) castAtTarget(summon.id) }}
             aria-label={canThrowHere ? `Бросить ${selectedItem?.name ?? 'предмет'} в клетку с ${summon.name}` : canAid ? `Использовать ${selectedCombatAction?.name} на ${summon.name}` : canHeal ? `Наложить ${selectedSpell?.name} на ${summon.name}` : `${summon.name}, призванный союзник${summon.id === turnActorId ? ', активный участник' : ''}`}
             aria-disabled={!canHeal && !canAid && !canThrowHere}
@@ -2417,10 +2540,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                 : activeEnemy
                   ? <span className="initiative-active-avatar enemy">{activeEnemy.image ? <img src={activeEnemy.image} alt="" /> : <EnemyGlyph kind={enemyVisualKind(activeEnemy)} />}</span>
                   : <span className="initiative-active-avatar summon"><Sparkles size={18} /></span>}
-              <span><strong>{activeName}</strong><small>{activeTurnLabel}</small></span>
+              <span><strong>{activeName}</strong></span>
               {activeEnemy?.legendary && <LegendaryPips legendary={activeEnemy.legendary} />}
             </div>
-            <header>РАУНД <b>{combat.round ?? 1}</b></header>
+            <header>Раунд <b>{combat.round ?? 1}</b></header>
             <ol>{combat.initiative?.map((entry, index) => {
               const hero = state.players.find((player) => player.id === entry.actor_id)
               const enemy = state.enemies?.find((item) => item.id === entry.actor_id)
@@ -2430,7 +2553,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               const defeated = participantDefeated(entry.actor_id)
               const activeNow = index === activeInitiativeIndex
               const nextUp = index === nextInitiativeIndex
-              const statusLabel = defeated ? 'выбыл' : activeNow ? 'сейчас' : nextUp ? 'следующий' : ''
+              const statusLabel = defeated ? 'Выбыл' : activeNow ? 'Сейчас' : nextUp ? 'Следующий' : ''
               const enemyKind = enemy ? enemyVisualKind(enemy) : null
               // Босса стол узнаёт в ленте с первого взгляда: он действует между
               // чужими ходами, и очередь без этого читалась бы неправдой.
@@ -2457,7 +2580,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               </li>
             })}</ol>
           </> : <div className="initiative-exploration-lead">
-            <span className="initiative-ribbon-label">СВОБОДНАЯ СЦЕНА</span>
+            <span className="initiative-ribbon-label">Свободная сцена</span>
             <div className="initiative-active-chip exploration">
               <span className="initiative-active-avatar portrait" data-face={heroFaceMode(activeHero)} style={heroFaceStyle(activeHero)}>{!hasHeroPortrait(activeHero) && <HeroFaceInitials hero={activeHero} />}</span>
               <span><strong>Говорит любой герой</strong><small>Групповые решения — голосованием</small></span>
@@ -2546,16 +2669,6 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           <span><i className="legend-mark stairs">⇅</i>Лестница или люк · переход между этажами</span>
         </div>
       </details>
-      {/* Остаток хода стоит у нижней кромки стола, а не над панелью действий:
-          «хватит ли на ещё один шаг» спрашивают, глядя на карту, и ответ теперь
-          лежит на той же линии взгляда. Плашка не перехватывает указатель —
-          клетки под ней остаются кликабельными. */}
-      {combatActive && <div className="map-economy" aria-label="Экономика текущего хода">
-        <span className={remainingFeet > 0 && movementAvailable ? 'ready' : 'spent'}><small>Движение</small><b>{movementAvailable ? `${remainingFeet} из ${speedFeet} фт` : 'потрачено'}</b></span>
-        <span className={actionReady || weaponAttackReady ? 'ready' : 'spent'}><small>Действие</small><b>{actionReady ? 'свободно' : weaponAttackReady ? `ещё ${weaponAttacksLeft} атака` : 'потрачено'}</b></span>
-        <span className={bonusReady ? 'ready' : 'spent'}><small>Бонус</small><b>{bonusReady ? 'свободен' : 'потрачен'}</b></span>
-        <span className={reactionReady ? 'ready' : 'spent'}><small>Реакция</small><b>{reactionReady ? 'свободна' : 'потрачена'}</b></span>
-      </div>}
       {spellbookOpen && <section className="spellbook-panel" role="dialog" aria-modal="true" aria-label={`Книга заклинаний: ${activeName}`} onPointerDown={(event) => event.stopPropagation()}>
         <header><div><BookOpen size={21} /><span><small>КНИГА ЗАКЛИНАНИЙ</small><strong>{activeName}</strong></span></div><button onClick={() => setSpellbookOpen(false)} aria-label="Закрыть книгу заклинаний"><X size={18} /></button></header>
         <div className="spellbook-tools">
@@ -2578,7 +2691,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             </button>
             <button className="pin-spell" disabled={support.blocked || spell.prepared === false} onClick={() => toggleHotbarSpell(spell.id)} aria-pressed={pinned} title={support.blocked ? unavailableReason : spell.prepared === false ? 'Сначала изучите или подготовьте заклинание' : pinned ? 'Убрать с панели' : 'Закрепить на панели'}>{pinned ? <Check size={15} /> : <Plus size={15} />}</button>
             {spell.concentration && <i className="spellbook-tag">К</i>}
-            {spell.prepared === false && <i className="spellbook-tag unavailable">НЕ ПОДГОТОВЛЕНО</i>}
+            {spell.prepared === false && <i className="spellbook-tag unavailable">Не подготовлено</i>}
             {support.status !== 'verified' && <i className={`mechanics-support-badge support-${support.status}`} title={support.explanation}>{support.shortLabel}</i>}
           </article>
         })}</div>
@@ -2590,13 +2703,13 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         <section className="npc-dialog" role="dialog" aria-modal="true" aria-labelledby="npc-dialog-title">
           <header>
             <NpcPortrait campaignId={state.sessionCode} npcId={dossierSceneNpc.id} name={dossierSceneNpc.name} />
-            <span><small>{dossierSceneNpc.role || 'ПЕРСОНАЖ СЦЕНЫ'}</small><strong id="npc-dialog-title">{dossierSceneNpc.name}</strong></span>
+            <span><small>{dossierSceneNpc.role || 'Персонаж сцены'}</small><strong id="npc-dialog-title">{dossierSceneNpc.name}</strong></span>
             <button type="button" onClick={() => setNpcDossier(null)} aria-label="Закрыть разговор"><X size={18} /></button>
           </header>
           <div className="npc-dialog-status">
-            <span><small>СТОЙКА НА СЦЕНЕ</small><b>{NPC_STANCE_LABELS[visibleNpcStance(dossierSceneNpc.stance)]}</b></span>
-            <span><small>ОТНОШЕНИЕ К ГЕРОЮ</small><b>{NPC_RELATIONSHIP_LABELS[dossierRelationship]}</b></span>
-            {dossierCaptive && <span className="npc-dialog-captive"><small>ПОЛОЖЕНИЕ</small><b>Пленник отряда</b></span>}
+            <span><small>Стойка на сцене</small><b>{NPC_STANCE_LABELS[visibleNpcStance(dossierSceneNpc.stance)]}</b></span>
+            <span><small>Отношение к герою</small><b>{NPC_RELATIONSHIP_LABELS[dossierRelationship]}</b></span>
+            {dossierCaptive && <span className="npc-dialog-captive"><small>Положение</small><b>Пленник отряда</b></span>}
           </div>
           <div className="npc-dialog-body">
             <section className="npc-public-dossier">
@@ -2626,7 +2739,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             {npcDossier?.mode === 'transfer'
               ? <form className="npc-gift-picker" onSubmit={submitNpcGift}>
                   <label>
-                    <span>ПРЕДМЕТ ИЗ ИНВЕНТАРЯ {giftSender?.character?.toLocaleUpperCase('ru') ?? 'ГЕРОЯ'}</span>
+                    <span>Предмет из инвентаря {giftSender?.character ?? 'героя'}</span>
                     <select
                       value={selectedGiftItemId}
                       disabled={!dossierCanReceiveGift || transferableGiftItems.length === 0}
@@ -2640,7 +2753,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                     </select>
                   </label>
                   <label className="npc-gift-quantity">
-                    <span>КОЛИЧЕСТВО</span>
+                    <span>Количество</span>
                     <input
                       type="number"
                       min={1}
@@ -2692,72 +2805,36 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       </div>}
       <aside className="server-column" aria-label="Состояние сцены">
         <div className="server-resize" role="separator" aria-orientation="vertical" aria-label="Ширина правой колонки" onPointerDown={startServerResize} onDoubleClick={() => { setServerWidth(0); window.localStorage.removeItem(SERVER_WIDTH_KEY) }} title="Потяните, чтобы изменить ширину. Двойной щелчок — вернуть обычную" />
-        {combatActive && <section className="combat-context-panel" aria-label="Текущее состояние боя" aria-live="polite">
-          <header><div><small>СЕЙЧАС ХОДИТ · {activeTeam}</small><strong>{activeName}</strong></div><span><Heart size={13} />{activeHealth}</span></header>
-          <CombatTurnClock clock={state.turn_clock} actorName={actorNameById(state.turn_clock?.actor_ids?.[0])} />
-          {visibleBattleRoll && <BattleRollCard event={visibleBattleRoll} context={visibleBattleRollContext} />}
-          <div className="combat-context-conditions" aria-label="Состояния активного участника">{activeConditions.length ? activeConditions.map((condition) => <span key={condition.id} className={condition.status} title={`${condition.statusLabel}. ${condition.explanation}${condition.duration ? ` Длительность: ${condition.duration}` : ''}`}><i />{condition.label}<small>{condition.status === 'marker' ? 'маркер' : condition.status === 'partial' ? 'частично' : 'работает'}</small></span>) : <em>Нет состояний</em>}</div>
-          <div className="combat-context-command"><Target size={14} /><span><small>ВЫБРАННАЯ КОМАНДА</small><strong>{selected ? selectedCommandName : 'Ожидание хода союзника'}</strong></span></div>
-          {inspectedTarget && <div className={`combat-target-inspector ${inspectedTarget.allowed ? 'allowed' : 'blocked'}${inspectedBoss ? ' boss' : ''}`}>
-            {/* Дистанция и причина берутся из серверного прогноза, когда он
-                есть: снимок `inspectedTarget` делается в момент наведения и
-                после перемещения показывал прежние футы. */}
-            {/* Крупный портрет — только у босса, и он читается с доски: это
-                тот же снимок, что и в ленте, только в размер карточки. Признак
-                берётся из состояния по идентификатору, а не из снимка
-                наведения: снимок делается один раз, а запас тратится и
-                восстанавливается прямо во время боя. */}
-            {inspectedBoss && <span className="combat-target-portrait">
-              {inspectedBoss.image ? <img src={inspectedBoss.image} alt="" /> : <EnemyGlyph kind={enemyVisualKind(inspectedBoss)} />}
-              {/* Подпись не прячется от чтения с экрана: «босс» — это факт о
-                  порядке боя, а не украшение рамки. */}
-              <b><Crown size={11} aria-hidden="true" />БОСС</b>
-            </span>}
-            <span><small>{inspectedTarget.team === 'enemy' ? 'ПРОТИВНИК' : 'СОЮЗНИК'} · {inspectedForecast?.distance_feet ?? inspectedTarget.distanceFeet} ФТ</small><strong>{inspectedTarget.name}</strong><em>{inspectedTarget.healthLabel ? `${inspectedTarget.healthLabel} · параметры скрыты` : `${inspectedTarget.hp}/${inspectedTarget.maxHp} ОЗ`}</em>{inspectedBoss?.legendary && <LegendaryPips legendary={inspectedBoss.legendary} />}</span>
-            {(!inspectedForecast || !inspectedForecast.in_range) && <p>{inspectedTarget.reason}</p>}
-            {inspectedForecast && <div className={`attack-forecast ${inspectedForecast.advantage && !inspectedForecast.disadvantage ? 'advantage' : inspectedForecast.disadvantage && !inspectedForecast.advantage ? 'disadvantage' : ''}`}>
-              <header>
-                <b>{inspectedForecast.in_range ? `${inspectedForecast.hit_chance}%` : '—'}</b>
-                <span>{inspectedForecast.in_range ? 'шанс попасть' : 'не достать'}<small>{inspectedForecast.label}{inspectedForecast.in_range ? ` · крит ${inspectedForecast.critical_chance}%` : ` · ${inspectedForecast.unreachable_reason}`}</small></span>
-              </header>
-              <dl>
-                <div><dt>Бросок</dt><dd>d20 {inspectedForecast.attack_modifier >= 0 ? '+' : '−'} {Math.abs(inspectedForecast.attack_modifier)}{inspectedForecast.advantage && !inspectedForecast.disadvantage ? ' с преимуществом' : inspectedForecast.disadvantage && !inspectedForecast.advantage ? ' с помехой' : ''}</dd></div>
-                <div><dt>Против</dt><dd>{inspectedForecast.armor_class == null ? 'КД неизвестен' : `КД ${inspectedForecast.armor_class}`}{inspectedForecast.cover_bonus > 0 ? ` · ${inspectedForecast.cover_label ?? 'укрытие'} +${inspectedForecast.cover_bonus}` : ''}</dd></div>
-                <div><dt>Урон</dt><dd>≈ {inspectedForecast.average_damage}</dd></div>
-              </dl>
-              {(inspectedForecast.advantage_sources.length > 0 || inspectedForecast.disadvantage_sources.length > 0) && <ul>
-                {inspectedForecast.advantage_sources.map((reason) => <li key={`plus-${reason}`} className="plus">+ {reason}</li>)}
-                {inspectedForecast.disadvantage_sources.map((reason) => <li key={`minus-${reason}`} className="minus">− {reason}</li>)}
-              </ul>}
-              {inspectedForecast.advantage && inspectedForecast.disadvantage && <small className="forecast-note">Преимущество и помеха гасят друг друга — бросается одна кость.</small>}
-            </div>}
-            {inspectedDamageHistory.length > 0 && <div className="token-damage-history" aria-label={`Последний полученный урон: ${inspectedTarget.name}`}>
-              <small>ИСТОРИЯ УРОНА</small>
-              <ol>{inspectedDamageHistory.map((entry) => <li key={entry.id}>
-                <span>{entry.round != null ? `Р${entry.round}` : entry.sceneTurn != null ? `Х${entry.sceneTurn}` : '·'}</span>
-                <b>−{entry.amount}</b>
-                {/* Вид урона называется тем же словом, что и в строке хроники:
-                    словарь общий, и «колющий» под фишкой не расходится с
-                    «колющего» в журнале. */}
-                <em>{actorNameById(entry.actorId) || 'источник'}{entry.damageType ? ` · ${(damageTypeLabel(entry.damageType) || entry.damageType).toLocaleLowerCase('ru')}` : ''}</em>
-              </li>)}</ol>
-            </div>}
-          </div>}
-          {pendingCommand && <div className="combat-command-confirmation">
-            <header><Target size={14} /><span><small>ЦЕЛЬ ЗАФИКСИРОВАНА</small><strong>{pendingCommandLabel}</strong></span></header>
-            <p>Команда ждёт в строке действия внизу: добавьте слова, если хотите, и нажмите «Отправить».</p>
-            <div><button onClick={() => { setPendingCommand(null); setAimCell(null); setInspectedTarget(null) }}><X size={13} />Отменить</button></div>
-          </div>}
-          {previewRoute && <div className={`movement-preview ${pendingMoveKey ? 'selected' : ''}`}>
-            <span><Footprints size={14} /><b>{movementCostLabel(previewRoute)}</b><small>{previewRoute.path.length} кл. · останется {Math.max(0, remainingFeet - previewRoute.costFeet)} фт</small></span>
-            {pendingMoveKey && selected && <div><button disabled={tacticalBusy} onClick={() => { const [x, y] = pendingMoveKey.split(',').map(Number); void onMove(selected, x, y).then((outcome) => { if (outcome.ok) setPendingMoveKey(null) }) }}><Check size={13} />Подтвердить</button><button onClick={() => setPendingMoveKey(null)} aria-label="Отменить маршрут"><X size={13} /></button></div>}
-          </div>}
-          {recentCombatJournal.length > 0 && <section className="board-combat-journal" aria-label="Боевая хроника, связанная с картой">
-          <header><Swords size={14} /><strong>Боевая хроника</strong><small>наведите — участники подсветятся</small></header>
-          <div>{recentCombatJournal.map((event) => {
+        {/* Полоска хода — всё, что колонка говорит о бое сверху: раунд, кто
+            ходит, его состояния чипами и часы автопропуска одной строкой.
+            Прежняя карточка контекста росла до 435px, а колонке на ноутбуке
+            доставалось 384: видны были первые 80, остальное — инспектор цели,
+            боевая хроника, сводка ходов — жило под прокруткой, куда никто не
+            заглядывал. Инспектор теперь стоит у самой фишки
+            (`combat-target-popover` ниже), события боя — в ленте, ходы
+            противников — свёртком под полоской. ОЗ ходящего здесь не
+            повторяются: они есть в списке отряда и в полоске жизни. */}
+        {combatActive && <div className="turn-strip" role="status" aria-live="polite" aria-label={`Раунд ${combat.round ?? 1}, ходит ${activeName}`}>
+          <span className="turn-strip-round">Раунд {combat.round ?? 1}</span>
+          <span className="turn-strip-actor">ходит <b className={activeHero || activeSummon ? 'ally' : 'enemy'}>{activeName}</b></span>
+          {activeConditions.map((condition) => <span key={condition.id} className={`turn-strip-condition ${condition.status}`} title={`${condition.statusLabel}. ${condition.explanation}${condition.duration ? ` Длительность: ${condition.duration}` : ''}`}><i />{condition.label}</span>)}
+          <CombatTurnClock clock={state.turn_clock} actorName={actorNameById(state.turn_clock?.actor_ids?.[0])} compact />
+        </div>}
+        {previewRoute && <div className={`movement-preview ${pendingMoveKey ? 'selected' : ''}`}>
+          <span><Footprints size={14} /><b>{movementCostLabel(previewRoute)}</b><small>{previewRoute.path.length} кл. · останется {Math.max(0, remainingFeet - previewRoute.costFeet)} фт</small></span>
+          {pendingMoveKey && selected && <div><button disabled={tacticalBusy} onClick={() => { const [x, y] = pendingMoveKey.split(',').map(Number); void onMove(selected, x, y).then((outcome) => { if (outcome.ok) setPendingMoveKey(null) }) }}><Check size={13} />Подтвердить</button><button onClick={() => setPendingMoveKey(null)} aria-label="Отменить маршрут"><X size={13} /></button></div>}
+        </div>}
+        {/* Ходы противников, прошедшие пока игрок ждал, — одной свёрнутой
+            строкой со счётчиком, а не отдельной панелью: раскрывается по
+            нажатию, наведение на строку подсвечивает участников на доске. */}
+        {npcSummaryEvents.length > 0 && <section className={`npc-turn-group${npcGroupOpen ? ' open' : ''}`} aria-label="Пока вы ждали: ходы противников">
+          <button type="button" aria-expanded={npcGroupOpen} onClick={() => setNpcGroupOpen((value) => !value)}>
+            <History size={14} /><span>Пока вы ждали</span><b>{npcSummaryEvents.length}</b><ChevronDown size={14} />
+          </button>
+          {npcGroupOpen && <ol>{npcSummaryEvents.map((event) => {
             const participantIds = battleEventParticipantIds(event)
             const linked = participantIds.some((id) => linkedParticipantIds.includes(id))
-            return <article
+            return <li
               key={event.id}
               className={linked ? 'linked' : ''}
               tabIndex={0}
@@ -2765,29 +2842,20 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               onMouseLeave={() => setLinkedParticipantIds([])}
               onFocus={() => setLinkedParticipantIds(participantIds)}
               onBlur={() => setLinkedParticipantIds([])}
-            >
-              <i>{event.round ?? event.sceneTurn ?? '·'}</i>
-              <p>{battleEventText(state, event)}</p>
-            </article>
-          })}</div>
-        </section>}
-        {npcSummaryEvents.length > 0 && <section className="npc-turn-summary" aria-label="Сводка ходов противников" aria-live="polite">
-          <header><History size={14} /><span><small>ПОКА ВЫ ЖДАЛИ</small><strong>Ходы противников</strong></span></header>
-          <ol>{npcSummaryEvents.map((event) => <li key={event.id}>{battleEventText(state, event)}</li>)}</ol>
-        </section>}
+            >{battleEventText(state, event)}</li>
+          })}</ol>}
         </section>}
         {/* Ситуативные панели — перемирие, стража, добыча, таверна, почта,
-            пленники, звери, отдых — живут в одной прокручиваемой области. По
-            отдельности они уезжали в неявные строки сетки колонки ниже HUD и
-            срезались `overflow: hidden`: панель существовала, но добраться до
-            неё было нечем. Разметка их уже перечисляет подряд, поэтому обёртка
-            ничего не переставляет — только даёт им общую полосу и полосу
-            прокрутки. Отступ содержимого оставлен без сдвига намеренно: смысл
-            вложенности виден по этой обёртке, а не по лишним 430 строкам
-            диффа. */}
+            пленники, звери, отдых — одной строкой чипов; раскрытая встаёт
+            поверх ленты (`SituationalSlot`). Раньше они стояли штабелем между
+            контекстом боя и хроникой и делили с ней 384 пикселя колонки: почта
+            обрезалась пополам, хронике оставалось 78. Отступ содержимого
+            оставлен без сдвига намеренно: смысл вложенности виден по обёртке,
+            а не по лишним 430 строкам диффа. */}
         <div className="server-situational">
-        {truce && <section className="truce-panel" aria-label="Условия перемирия" aria-live="polite">
-          <header><Handshake size={15} /><span><small>ПЕРЕМИРИЕ · РАУНД {truce.round ?? combat.round ?? 1}</small><strong>Говорит {truce.leader_name || 'предводитель уцелевших'}</strong></span></header>
+        {truce && <SituationalSlot id="truce" icon={<Handshake size={14} />} label="Перемирие" open={openSituational === 'truce'} onToggle={toggleSituational} onClose={closeSituational}>
+        <section className="truce-panel" aria-label="Условия перемирия" aria-live="polite">
+          <header><Handshake size={15} /><span><small>Перемирие · раунд {truce.round ?? combat.round ?? 1}</small><strong>Говорит {truce.leader_name || 'предводитель уцелевших'}</strong></span></header>
           <p>
             Оружие опущено, очередь заморожена. Любая атака рвёт уговор — и это запомнят.
             {truce.hero_name ? ` Переговоры ведёт ${truce.hero_name}.` : ''}
@@ -2810,9 +2878,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               </button>
             })}
           </div>
-        </section>}
-        {guardEncounter && <section className="guard-panel" aria-label="Встреча со стражей" aria-live="polite">
-          <header><ShieldAlert size={15} /><span><small>СТРАЖА · {guardEncounter.place_name || 'поселение'}</small><strong>{guardEncounter.officer_rank || 'стражник'} {guardEncounter.officer_name || ''}</strong></span></header>
+        </section></SituationalSlot>}
+        {guardEncounter && <SituationalSlot id="guard" icon={<ShieldAlert size={14} />} label="Стража" open={openSituational === 'guard'} onToggle={toggleSituational} onClose={closeSituational}>
+        <section className="guard-panel" aria-label="Встреча со стражей" aria-live="polite">
+          <header><ShieldAlert size={15} /><span><small>Стража · {guardEncounter.place_name || 'поселение'}</small><strong>{guardEncounter.officer_rank || 'стражник'} {guardEncounter.officer_name || ''}</strong></span></header>
           <p className="guard-demand">{guardEncounter.demand || '«Стоять. Разговор есть».'}</p>
           {Number(guardEncounter.escape_attempts) > 0 && <p className="guard-warning">Уйти уже пробовали — теперь стража смотрит в оба, и проверка идёт с помехой.</p>}
           <div className="guard-options">
@@ -2838,12 +2907,13 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               onClick={() => setGuardEscapeSkill(skill)}
             >{skill === 'stealth' ? 'тихо (Скрытность)' : 'напролом (Атлетика)'}</button>)}
           </div>
-        </section>}
-        {showLootAftermath && victoryEntry && <PostCombatLootSummary
+        </section></SituationalSlot>}
+        {showLootAftermath && victoryEntry && <SituationalSlot id="aftermath" icon={<Coins size={14} />} label="После боя" open={openSituational === 'aftermath'} onToggle={toggleSituational} onClose={closeSituational}><PostCombatLootSummary
           containers={sceneLoot}
           onClose={() => setDismissedVictoryId(victoryEntry.id)}
           onFocus={setFocusedLootId}
-        />}
+        /></SituationalSlot>}
+        {lootChipVisible && <SituationalSlot id="loot" icon={<Gem size={14} />} label="Добыча" badge={sceneLoot.length} open={openSituational === 'loot'} onToggle={toggleSituational} onClose={closeSituational}>
         <LootPanel
           containers={sceneLoot}
           ghosts={vanishedLoot}
@@ -2860,9 +2930,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           focusedId={focusedLootId}
           onFocus={setFocusedLootId}
           onLoot={onLootContainer}
-        />
-        {tavern && <section className="tavern-panel" aria-label="Жизнь таверны" aria-live="polite">
-          <header><Beer size={15} /><span><small>ЗАВЕДЕНИЕ · {tavern.place_name || 'таверна'}</small><strong>{tavernRound ? 'Кость на столе' : 'Кости и выпивка'}</strong></span></header>
+        /></SituationalSlot>}
+        {tavern && <SituationalSlot id="tavern" icon={<Beer size={14} />} label="Таверна" open={openSituational === 'tavern'} onToggle={toggleSituational} onClose={closeSituational}>
+        <section className="tavern-panel" aria-label="Жизнь таверны" aria-live="polite">
+          <header><Beer size={15} /><span><small>Заведение · {tavern.place_name || 'таверна'}</small><strong>{tavernRound ? 'Кость на столе' : 'Кости и выпивка'}</strong></span></header>
           {/* Заметка о запрете входа и блок раунда идут **рядом**, а не через
               «или»: выставленный за дверь остаётся с открытым раундом на руках,
               и до ревью панель рисовала ему одну заметку — кнопки «встать из-за
@@ -2997,15 +3068,16 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                   </small>
                 </div>
               </>}
-        </section>}
+        </section></SituationalSlot>}
         {/* Почта отряда. Панель складная и по умолчанию закрыта: письмо — не
             срочное действие, и держать открытым бланк рядом с боем незачем.
             Показывается она только там, где почте есть смысл, — когда отряд
             знает хоть одного адресата или уже отправил хоть одно письмо. */}
-        {(letterAddressees.length > 0 || heroLetters.length > 0) && <section className="letters-panel" aria-label="Почта отряда" aria-live="polite">
+        {(letterAddressees.length > 0 || heroLetters.length > 0) && <SituationalSlot id="letters" icon={<Mail size={14} />} label="Письма" badge={heroLettersInTransit.length} open={openSituational === 'letters'} onToggle={toggleSituational} onClose={closeSituational}>
+        <section className="letters-panel" aria-label="Почта отряда" aria-live="polite">
           <header>
             <Mail size={15} />
-            <span><small>ПОЧТА ОТРЯДА{heroLettersInTransit.length ? ` · В ПУТИ: ${heroLettersInTransit.length}` : ''}</small><strong>Письма и курьеры</strong></span>
+            <span><small>Почта отряда{heroLettersInTransit.length ? ` · в пути: ${heroLettersInTransit.length}` : ''}</small><strong>Письма и курьеры</strong></span>
             <button
               type="button"
               className="letters-toggle"
@@ -3071,14 +3143,15 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               </small>
             </div>
           </div>}
-        </section>}
-        {heldCaptives.length > 0 && <section className="captive-panel" aria-label="Пленники отряда">
-          <header><UserLock size={15} /><span><small>ПЛЕННИКИ · {heldCaptives.length}</small><strong>Судьба решается вами</strong></span></header>
+        </section></SituationalSlot>}
+        {heldCaptives.length > 0 && <SituationalSlot id="captives" icon={<UserLock size={14} />} label="Пленники" badge={heldCaptives.length} open={openSituational === 'captives'} onToggle={toggleSituational} onClose={closeSituational}>
+        <section className="captive-panel" aria-label="Пленники отряда">
+          <header><UserLock size={15} /><span><small>Пленники · {heldCaptives.length}</small><strong>Судьба решается вами</strong></span></header>
           {heldCaptives.map((captive) => {
             const starving = captive.neglected_at_minutes != null
             return <article key={captive.id} className={`captive-card${starving ? ' starving' : ''}`}>
               <header>
-                <i className="captive-tag">ПЛЕННИК</i>
+                <i className="captive-tag">Пленник</i>
                 <b>{captive.name}</b>
                 <small>{captive.role || 'без роли'} · {captive.origin === 'knocked_out' ? 'взят без сознания' : 'сдался в бою'}</small>
               </header>
@@ -3108,12 +3181,13 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               </div>
             </article>
           })}
-        </section>}
-        {(beastCandidates.length > 0 || beastCompanions.length > 0) && <section className="beast-panel" aria-label="Звери отряда">
-          <header><PawPrint size={15} /><span><small>ЗВЕРИ · {beastCandidates.length + beastCompanions.length}</small><strong>Кого можно увести с собой</strong></span></header>
+        </section></SituationalSlot>}
+        {(beastCandidates.length > 0 || beastCompanions.length > 0) && <SituationalSlot id="beasts" icon={<PawPrint size={14} />} label="Звери" badge={beastCandidates.length + beastCompanions.length} open={openSituational === 'beasts'} onToggle={toggleSituational} onClose={closeSituational}>
+        <section className="beast-panel" aria-label="Звери отряда">
+          <header><PawPrint size={15} /><span><small>Звери · {beastCandidates.length + beastCompanions.length}</small><strong>Кого можно увести с собой</strong></span></header>
           {beastCompanions.map((companion) => <article key={companion.id} className="beast-card companion">
             <header>
-              <i className="beast-tag companion">СПУТНИК</i>
+              <i className="beast-tag companion">Спутник</i>
               <b>{companion.name}</b>
               <small>идёт с отрядом · в бой не вводится</small>
             </header>
@@ -3187,9 +3261,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             </div>
           </article>
           })}
-        </section>}
-        {!combatActive && <section className="rest-controls" aria-label="Отдых">
-          <header><Flame size={15} /><span><small>ПЕРЕДЫШКА</small><strong>Отдых героя</strong></span></header>
+        </section></SituationalSlot>}
+        {!combatActive && <SituationalSlot id="rest" icon={<Flame size={14} />} label="Отдых" open={openSituational === 'rest'} onToggle={toggleSituational} onClose={closeSituational}>
+        <section className="rest-controls" aria-label="Отдых">
+          <header><Flame size={15} /><span><small>Передышка</small><strong>Отдых героя</strong></span></header>
           {!activeRest
             ? <>
                 <p>Короткий отдых откроет поштучный расход костей хитов. Долгий пройдёт атомарно.</p>
@@ -3213,10 +3288,62 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                   <button disabled={!canAct || narrating || Boolean(state.pendingCheck)} onClick={onCompleteRest}>Завершить отдых</button>
                 </div>
               </>}
-        </section>}
+        </section></SituationalSlot>}
         </div>
         {children}
       </aside>
+      {/* Инспектор цели стоит у самой фишки, а не в правой колонке: это
+          состояние наведения на доску, и читать его надо там же, где курсор.
+          Якорь — рамка фишки в момент наведения; поповер не ловит указатель,
+          чтобы не гасить наведение на саму фишку. Содержимое то же, что было
+          в колонке: серверный прогноз, разбор броска, история урона. */}
+      {inspectedTarget && inspectedAnchor && <div className="combat-target-popover" style={targetPopoverStyle(inspectedAnchor)} role="tooltip" aria-label={`Цель: ${inspectedTarget.name}`}>
+          <div className={`combat-target-inspector ${inspectedTarget.allowed ? 'allowed' : 'blocked'}${inspectedBoss ? ' boss' : ''}`}>
+            {/* Дистанция и причина берутся из серверного прогноза, когда он
+                есть: снимок `inspectedTarget` делается в момент наведения и
+                после перемещения показывал прежние футы. */}
+            {/* Крупный портрет — только у босса, и он читается с доски: это
+                тот же снимок, что и в ленте, только в размер карточки. Признак
+                берётся из состояния по идентификатору, а не из снимка
+                наведения: снимок делается один раз, а запас тратится и
+                восстанавливается прямо во время боя. */}
+            {inspectedBoss && <span className="combat-target-portrait">
+              {inspectedBoss.image ? <img src={inspectedBoss.image} alt="" /> : <EnemyGlyph kind={enemyVisualKind(inspectedBoss)} />}
+              {/* Подпись не прячется от чтения с экрана: «босс» — это факт о
+                  порядке боя, а не украшение рамки. */}
+              <b><Crown size={11} aria-hidden="true" />Босс</b>
+            </span>}
+            <span><small>{inspectedTarget.team === 'enemy' ? 'Противник' : 'Союзник'} · {inspectedForecast?.distance_feet ?? inspectedTarget.distanceFeet} фт</small><strong>{inspectedTarget.name}</strong><em>{inspectedTarget.healthLabel ? `${inspectedTarget.healthLabel} · параметры скрыты` : `${inspectedTarget.hp}/${inspectedTarget.maxHp} ОЗ`}</em>{inspectedBoss?.legendary && <LegendaryPips legendary={inspectedBoss.legendary} />}</span>
+            {(!inspectedForecast || !inspectedForecast.in_range) && <p>{inspectedTarget.reason}</p>}
+            {inspectedForecast && <div className={`attack-forecast ${inspectedForecast.advantage && !inspectedForecast.disadvantage ? 'advantage' : inspectedForecast.disadvantage && !inspectedForecast.advantage ? 'disadvantage' : ''}`}>
+              <header>
+                <b>{inspectedForecast.in_range ? `${inspectedForecast.hit_chance}%` : '—'}</b>
+                <span>{inspectedForecast.in_range ? 'шанс попасть' : 'не достать'}<small>{inspectedForecast.label}{inspectedForecast.in_range ? ` · крит ${inspectedForecast.critical_chance}%` : ` · ${inspectedForecast.unreachable_reason}`}</small></span>
+              </header>
+              <dl>
+                <div><dt>Бросок</dt><dd>d20 {inspectedForecast.attack_modifier >= 0 ? '+' : '−'} {Math.abs(inspectedForecast.attack_modifier)}{inspectedForecast.advantage && !inspectedForecast.disadvantage ? ' с преимуществом' : inspectedForecast.disadvantage && !inspectedForecast.advantage ? ' с помехой' : ''}</dd></div>
+                <div><dt>Против</dt><dd>{inspectedForecast.armor_class == null ? 'КД неизвестен' : `КД ${inspectedForecast.armor_class}`}{inspectedForecast.cover_bonus > 0 ? ` · ${inspectedForecast.cover_label ?? 'укрытие'} +${inspectedForecast.cover_bonus}` : ''}</dd></div>
+                <div><dt>Урон</dt><dd>≈ {inspectedForecast.average_damage}</dd></div>
+              </dl>
+              {(inspectedForecast.advantage_sources.length > 0 || inspectedForecast.disadvantage_sources.length > 0) && <ul>
+                {inspectedForecast.advantage_sources.map((reason) => <li key={`plus-${reason}`} className="plus">+ {reason}</li>)}
+                {inspectedForecast.disadvantage_sources.map((reason) => <li key={`minus-${reason}`} className="minus">− {reason}</li>)}
+              </ul>}
+              {inspectedForecast.advantage && inspectedForecast.disadvantage && <small className="forecast-note">Преимущество и помеха гасят друг друга — бросается одна кость.</small>}
+            </div>}
+            {inspectedDamageHistory.length > 0 && <div className="token-damage-history" aria-label={`Последний полученный урон: ${inspectedTarget.name}`}>
+              <small>История урона</small>
+              <ol>{inspectedDamageHistory.map((entry) => <li key={entry.id}>
+                <span>{entry.round != null ? `Р${entry.round}` : entry.sceneTurn != null ? `Х${entry.sceneTurn}` : '·'}</span>
+                <b>−{entry.amount}</b>
+                {/* Вид урона называется тем же словом, что и в строке хроники:
+                    словарь общий, и «колющий» под фишкой не расходится с
+                    «колющего» в журнале. */}
+                <em>{actorNameById(entry.actorId) || 'источник'}{entry.damageType ? ` · ${(damageTypeLabel(entry.damageType) || entry.damageType).toLocaleLowerCase('ru')}` : ''}</em>
+              </li>)}</ol>
+            </div>}
+          </div>
+      </div>}
       <section className="turn-rail">
         {/* Ручка высоты: тянется вверх и вниз, значение переживает перезагрузку. */}
         <div className="rail-resize" role="separator" aria-orientation="horizontal" aria-label="Высота нижней панели" onPointerDown={startRailResize} onDoubleClick={() => { setRailHeight(0); window.localStorage.removeItem(RAIL_HEIGHT_KEY) }} title="Потяните, чтобы изменить высоту. Двойной щелчок — вернуть обычную" />
@@ -3276,35 +3403,6 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           вообще владеет герой, пока не бросит инициативу. Место под панель в сетке
           зарезервировано всегда, поэтому показывать арсенал ничего не стоит. */}
       <section className={`tactical-control combat-hotbar ${combatActive ? '' : 'out-of-combat'}`} aria-label={combatActive ? `Панель боевых действий: ${activeName}` : `Панель действий вне боя: ${activeName}`}>
-        {/* Ряд рисуется только со своим содержимым: остаток хода уехал под стол,
-            и в бою здесь не остаётся ничего, кроме пустой полосы отступов. */}
-        {!combatActive && <div className="hotbar-controls-row">
-          <div className="hotbar-exploration-note">
-            {/* Сам режим переехал на поле, по центру сверху: он относится к карте,
-                а не к панели действий. Здесь остались вход в бой и выход из
-                локации — два решения, которые не выражаются плиткой действия.
-
-                Уход показывается всегда вне боя, в том числе когда противников в
-                сцене не осталось: именно тогда уйти и хочется, а прежде ряд без
-                кнопки боя не рисовался вовсе. Отряд она не уводит — открывает
-                голосование, а переход исполняет сервер по его результату. Замок
-                тот же, что у свободного ввода вне боя, и не строже: кнопка — ярлык
-                к той же фразе, и запирать её там, где те же слова можно набрать
-                руками, не за что. */}
-            {/* Пока стража стоит перед отрядом, уход закрыт: сервер такой переход
-                и не пропустит (`GUARD_ENCOUNTER_BLOCKS_SCENE`), а «бежать» —
-                это ответ офицеру с групповой проверкой, а не эта кнопка. */}
-            <button
-              className="exploration-leave-location"
-              disabled={narrating || tacticalBusy || Boolean(guardEncounter)}
-              onClick={onLeaveLocation}
-              title={guardEncounter
-                ? 'Стража стоит перед отрядом — сначала ответьте офицеру'
-                : 'Предложить отряду покинуть локацию. Переход начнётся после решения группы'}
-            ><DoorOpen size={22} /><span><small>Решение группы</small><strong>Покинуть локацию</strong></span></button>
-            {showStartCombat && <button className="exploration-start-combat" disabled={!canAct || tacticalBusy} onClick={onStartCombat}><CombatIcon id="start-combat" kind="start-combat" hint="инициатива начать бой" size={27} compact /><span><small>Бросить инициативу</small><strong>Начать бой</strong></span></button>}
-          </div>
-        </div>}
         <div className="hotbar-main">
           {/* Настройки панели держатся у самой панели, а не в строке ввода: замок
               бережёт расстановку, вторая кнопка меняет число рядов. */}
@@ -3316,60 +3414,71 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               краю: они завершают тот же выбор, что и плитки, а отдельной колонкой
               между колодой и описанием рвала строку надвое. Прокрутка плиток их
               не уносит — они лежат рядом с областью прокрутки, а не в ней. */}
-          <div className="hotbar-actions-shell">
+          <div className={`hotbar-actions-shell${tileRows === 1 ? ' one-row' : ''}`}>
           {/* Ресурсный кластер активного героя: кто ходит и чем он ещё
               располагает — слева от самих плиток, в той же оправе. Все числа
               приезжают серверной `action_economy` и `mechanics.resources`;
               панель их только показывает. Вне боя кластера нет: экономики хода
-              вне инициативы не существует, и рисовать пустые пипсы не за что. */}
-          {combatActive && <div className="hotbar-hero-cluster" aria-label={`Ресурсы хода: ${activeName}`}>
-            {/* Строка 1 — «кто ходит и чем платит»: лицо, имя и сразу три пипса
-                экономики. Раньше лицо с именем стояло отдельной колонкой слева,
-                а пипсы начинались во второй, — и первая строка кластера уходила
-                в пустоту. Теперь всё три вещи в одном ряду. */}
+              вне инициативы не существует, и рисовать пустые пипсы не за что.
+
+              Каждой строке — слово: фигуры экономики подписаны, у движения
+              есть «осталось/всего», у ячеек одно общее слово вместо загадочной
+              цифры. Владелец просил надписи, а не только перестановку: голые
+              ●▲◆ читались лишь по наведению, а чип «1 ●●» был ребусом.
+              При одном ряде плиток кластер ложится одной полосой (`band`). */}
+          {combatActive && <div className={`hotbar-hero-cluster${tileRows === 1 ? ' band' : ''}`} aria-label={`Ресурсы хода: ${activeName}`}>
             <div className="hero-cluster-face">
               <span className="hero-cluster-avatar" data-face={heroFaceMode(activeHero)} style={heroFaceStyle(activeHero)}>
                 {!hasHeroPortrait(activeHero) && <HeroFaceInitials hero={activeHero} />}
               </span>
               <b title={activeName}>{activeName}</b>
-              <div className="hero-cluster-pips" role="group" aria-label="Экономика хода">
-                {heroPips.map((pip) => <button
-                  type="button"
-                  key={pip.id}
-                  className={`hero-pip ${pip.id} ${pip.ready ? 'ready' : 'spent'} ${costFilter === pip.id ? 'filtering' : ''}`}
-                  aria-pressed={costFilter === pip.id}
-                  onClick={() => setCostFilter((current) => current === pip.id ? null : pip.id)}
-                  title={`${pip.label}: ${pip.ready ? 'доступно' : 'потрачено'}${pip.note ? ` · ${pip.note}` : ''}. Нажмите, чтобы оставить в колоде только плитки этой стоимости`}
-                  aria-label={`${pip.label}: ${pip.ready ? 'доступно' : 'потрачено'}${pip.note ? `, ${pip.note}` : ''}`}
-                ><i className="hero-pip-shape" aria-hidden="true" />{pip.note && <em>{pip.note}</em>}</button>)}
-              </div>
             </div>
-            {/* Строка 2 — движение. Полоса короткая и стоит перед числом: длинная
-                во всю ширину она обещала бы точность, которой в ней нет, а число
-                футов рядом и есть настоящий ответ. */}
+            <div className="hero-cluster-pips" role="group" aria-label="Экономика хода">
+              {heroPips.map((pip) => <button
+                type="button"
+                key={pip.id}
+                className={`hero-pip ${pip.id} ${pip.ready ? 'ready' : 'spent'} ${costFilter === pip.id ? 'filtering' : ''}`}
+                aria-pressed={costFilter === pip.id}
+                onClick={() => setCostFilter((current) => current === pip.id ? null : pip.id)}
+                title={`${pip.label}: ${pip.ready ? 'доступно' : 'потрачено'}${pip.note ? ` · ${pip.note}` : ''}. Нажмите, чтобы оставить в колоде только плитки этой стоимости`}
+                aria-label={`${pip.label}: ${pip.ready ? 'доступно' : 'потрачено'}${pip.note ? `, ${pip.note}` : ''}`}
+              ><i className="hero-pip-shape" aria-hidden="true" /><span className="hero-pip-label" aria-hidden="true">{pip.label}</span>{pip.note && <em>· {pip.note}</em>}</button>)}
+            </div>
+            {/* Движение: слово, короткая полоса и «осталось/всего». Полоса
+                короткая намеренно — во всю ширину она обещала бы точность,
+                которой в ней нет; настоящий ответ — числа рядом. */}
             <div
               className={`hero-cluster-move ${movementAvailable && remainingFeet > 0 ? 'ready' : 'spent'}`}
               title={movementAvailable ? `Движение: осталось ${remainingFeet} из ${speedFeet} фт` : 'Движение: потрачено'}
               aria-label={movementAvailable ? `Движение: осталось ${remainingFeet} из ${speedFeet} футов` : 'Движение: потрачено'}
-            ><span aria-hidden="true"><i style={{ width: `${Math.round(movementRatio * 100)}%` }} /></span><b>{movementAvailable ? `${remainingFeet} фт` : '0 фт'}</b></div>
-            {/* Строки 3 и ниже — запасы. Рисуются только с содержимым: у воина
-                ячеек нет, и пустой полосы под пипсами он не увидит. Мелкий запас
+            ><span className="hero-cluster-move-label" aria-hidden="true">Движение</span><span className="hero-cluster-move-bar" aria-hidden="true"><i style={{ width: `${Math.round(movementRatio * 100)}%` }} /></span><b>{movementAvailable ? `${remainingFeet}/${speedFeet} фт` : `0/${speedFeet} фт`}</b></div>
+            {/* Запасы одним потоком: слово «Ячейки» один раз, круги цифрами,
+                классовые запасы полными именами. Рисуются только с содержимым:
+                у воина ячеек нет, и пустой строки он не увидит. Мелкий запас
                 показан пипсами, крупный (наложение рук — пять хитов за уровень)
-                — числом: тридцать точек в ряду никто не пересчитает. */}
-            {heroResourceRows.length > 0 && <div className="hero-cluster-resources" role="group" aria-label="Ячейки и классовые запасы">
-              {heroResourceRows.map((row) => <span
+                — числом: тридцать точек в ряду никто не пересчитает. Хвост
+                сверх бюджета позиций — чип «+N ещё» с перечнем в подсказке. */}
+            {heroPools.visible.length > 0 && <div className="hero-cluster-resources" role="group" aria-label="Ячейки и классовые запасы">
+              {heroPools.slotCount > 0 && <span className="hero-pools-label">Ячейки</span>}
+              {heroPools.visible.map((row) => <span
                 key={row.keys.join('+')}
-                className={`hero-resource ${row.current > 0 ? 'ready' : 'spent'}`}
+                className={`hero-resource ${row.current > 0 ? 'ready' : 'spent'}${isSpellSlotPool(row.keys[0]) ? ' slot' : ''}`}
                 title={heroResourceTitle(row.keys, row.current, row.max)}
                 aria-label={heroResourceTitle(row.keys, row.current, row.max)}
               ><em>{heroResourceShortLabel(row.keys[0])}</em>{row.max <= 6
                 ? <i aria-hidden="true">{Array.from({ length: row.max }, (_, index) => <u key={index} className={index < row.current ? '' : 'spent'} />)}</i>
                 : <b>{row.current}/{row.max}</b>}</span>)}
+              {heroPools.hidden.length > 0 && <span
+                className="hero-resource-more"
+                title={heroPools.hidden.map((row) => heroResourceTitle(row.keys, row.current, row.max)).join('; ')}
+                aria-label={`Ещё запасов: ${heroPools.hidden.length}. ${heroPools.hidden.map((row) => heroResourceTitle(row.keys, row.current, row.max)).join('; ')}`}
+              >+{heroPools.hidden.length} ещё</span>}
             </div>}
-            {/* Пока выборка держится, её видно словами, а не только рамкой
-                пипса: снять её можно и мышью, и Escape. */}
-            {costFilter && <p className="hero-cluster-filter" role="status">Показаны: {HOTBAR_COST_FILTER_LABELS[costFilter]} · <button type="button" onClick={() => setCostFilter(null)} title="Снять фильтр стоимости (Escape)">сбросить</button></p>}
           </div>}
+          {/* Пока выборка держится, её видно словами, а не только рамкой
+              пипса: снять её можно и мышью, и Escape. Чип стоит у нижней
+              кромки карточки, а не строкой кластера: это контекст колоды. */}
+          {combatActive && costFilter && <p className="hero-cluster-filter" role="status">Показаны: {HOTBAR_COST_FILTER_LABELS[costFilter]} · <button type="button" onClick={() => setCostFilter(null)} title="Снять фильтр стоимости (Escape)">сбросить</button></p>}
           <div className="hotbar-actions" role="tabpanel" aria-label="Доступные действия">
             {visibleTiles.map(({ id, node }) => cloneElement(node as React.ReactElement<Record<string, unknown>>, {
               key: id,
@@ -3388,7 +3497,26 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           {/* Кнопки шага: вне боя это подтверждение выбранной цели и двери под
               рукой, в бою — ещё нокаут, смена оружия и завершение хода. Без
               содержимого блок не рисуется, и плитки занимают всю карточку. */}
-          {(combatActive || pendingCommand || doorsAtHand.length > 0 || selectedSceneObject) && <div className="hotbar-turn-controls">
+          {(combatActive || pendingCommand || doorsAtHand.length > 0 || selectedSceneObject || !combatActive) && <div className="hotbar-turn-controls">
+            {/* Вне боя колонка управления держит два решения, которые не
+                выражаются плиткой: уйти из локации и войти в бой. Раньше они
+                стояли отдельным рядом между строкой ввода и карточкой — на
+                широком экране это была пустая полоса с одной кнопкой у края.
+                Уход показывается всегда вне боя, в том числе когда противников
+                не осталось: именно тогда уйти и хочется. Отряд он не уводит —
+                открывает голосование, а переход исполняет сервер. Пока стража
+                стоит перед отрядом, уход закрыт: сервер такой переход и не
+                пропустит (`GUARD_ENCOUNTER_BLOCKS_SCENE`). */}
+            {!combatActive && <button
+              type="button"
+              className="exploration-leave-location"
+              disabled={narrating || tacticalBusy || Boolean(guardEncounter)}
+              onClick={onLeaveLocation}
+              title={guardEncounter
+                ? 'Стража стоит перед отрядом — сначала ответьте офицеру'
+                : 'Предложить отряду покинуть локацию. Переход начнётся после решения группы'}
+            ><DoorOpen size={18} /><span><small>Решение группы</small><strong>Покинуть локацию</strong></span></button>}
+            {!combatActive && showStartCombat && <button type="button" className="exploration-start-combat" disabled={!canAct || tacticalBusy} onClick={onStartCombat}><CombatIcon id="start-combat" kind="start-combat" hint="инициатива начать бой" size={22} compact /><span><small>Бросить инициативу</small><strong>Начать бой</strong></span></button>}
             {/* Дверь рядом — единственное, что делается и вне боя: заперто это
                 или просто прикрыто, игрок видит по самой кнопке. */}
             {doorsAtHand.map((door) => {

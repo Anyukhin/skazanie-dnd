@@ -69,7 +69,7 @@ test('рамка, корона и пипсы стоят в ленте иници
   assert.match(board, /combat-target-portrait/u)
   // Подпись «БОСС» читается с экрана: `aria-hidden` висит на короне, а не на
   // самой подписи — иначе слепой игрок не узнал бы о боссе вовсе.
-  assert.match(board, /<b><Crown size=\{11\} aria-hidden="true" \/>БОСС<\/b>/u)
+  assert.match(board, /<b><Crown size=\{11\} aria-hidden="true" \/>Босс<\/b>/u)
   assert.doesNotMatch(board, /<span className="combat-target-portrait" aria-hidden/u)
 
   // Пипс — та же форма, что у часов квеста: `<i>` строка, `<u>` пипс.

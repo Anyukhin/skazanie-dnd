@@ -377,6 +377,7 @@ const CONDITION_LABELS: Record<string, string> = {
   'aura-of-life': 'Аура жизни',
   'aura-of-protection': 'Аура защиты',
   bless: 'Благословение',
+  'bless-d4': 'Благословение',
   /* Малое благословение алтаря или жреца (`server/blessings.mjs`). Имя у него
      своё, отдельное от заклинания «Благословение»: у того кость на каждый
      бросок и концентрация, у этого — плоская единица до первой атаки. */
@@ -395,7 +396,7 @@ const CONDITION_LABELS: Record<string, string> = {
 }
 
 const IMPLEMENTED_CONDITIONS = new Set([
-  'unconscious', 'disengaged', 'bless', 'bane', 'minor-blessing', 'beacon-of-hope', 'death-ward',
+  'unconscious', 'disengaged', 'bless', 'bless-d4', 'bane', 'minor-blessing', 'beacon-of-hope', 'death-ward',
   'aura-of-life', 'aura-of-protection', 'metamagic-quickened', 'fled', 'surrendered',
 ])
 
@@ -420,6 +421,8 @@ const CONDITION_DURATION_LABELS: Record<string, string> = {
   'until-long-rest': 'до продолжительного отдыха',
   'until-short-rest': 'до короткого отдыха',
   'until-next-turn': 'до начала следующего хода',
+  // Срок «пока держится концентрация» движок пишет одним словом.
+  concentration: 'пока держится концентрация',
 }
 
 function conditionDurationLabel(duration: string) {

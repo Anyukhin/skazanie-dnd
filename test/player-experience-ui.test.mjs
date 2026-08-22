@@ -170,7 +170,7 @@ test('сводка NPC берётся из синхронизируемого ba
   assert.deepEqual(experience.latestNpcTurnEvents([heroAttack, enemyMove, enemyAttack]).map((event) => event.id), ['e1', 'e2'])
   assert.deepEqual(experience.latestNpcTurnEvents([enemyMove, enemyAttack, heroAttack]), [])
   assert.match(appSource, /latestNpcTurnEvents\(state\.battleLog \?\? \[\]\)/u)
-  assert.match(appSource, /ПОКА ВЫ ЖДАЛИ/u)
+  assert.match(appSource, /<span>Пока вы ждали<\/span><b>\{npcSummaryEvents\.length\}<\/b>/u)
 })
 
 test('прогноз последствий показывает server-owned шанс, ожидаемый урон и причины преимущества', () => {
@@ -202,7 +202,7 @@ test('история урона использует только записан
   ], 'goblin')
   assert.deepEqual(history.map((entry) => [entry.id, entry.amount]), [['two', 7], ['one', 4]])
   assert.match(appSource, /recentDamageForTarget\(state\.battleLog \?\? \[\], inspectedTarget\.id\)/u)
-  assert.match(appSource, /ИСТОРИЯ УРОНА/u)
+  assert.match(appSource, /История урона/u)
 })
 
 test('новый committed-текст показывается целиком поверх сцены и остаётся в журнале', () => {

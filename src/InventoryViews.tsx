@@ -227,7 +227,7 @@ export function CharacterEditor({ player, onClose, onSave, onImport, onLevelUp }
               <Field label="Опыт · сервер" type="number" min={0} value={draft.experience} readOnly onChange={(value) => patch('experience', Number(value))} />
               <Field label="Текущие хиты · сервер" type="number" min={0} value={draft.hp} readOnly onChange={(value) => patch('hp', Number(value))} />
               <Field label="Максимум хитов · сервер" type="number" min={1} value={draft.maxHp} readOnly onChange={(value) => patch('maxHp', Number(value))} />
-              <Field label="Класс брони · сервер" type="number" min={0} value={draft.armor} readOnly onChange={(value) => patch('armor', Number(value))} />
+              <Field label="Класс доспеха · сервер" type="number" min={0} value={draft.armor} readOnly onChange={(value) => patch('armor', Number(value))} />
               <Field label="Скорость · сервер" type="number" min={0} value={draft.speed} readOnly onChange={(value) => patch('speed', Number(value))} />
               <Field label="Бонус мастерства · сервер" type="number" min={0} value={draft.proficiency} readOnly onChange={(value) => patch('proficiency', Number(value))} />
             </div>

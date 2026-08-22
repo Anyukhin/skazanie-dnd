@@ -39,8 +39,12 @@ test('строка исследования не рендерится пусто
   // не осталось ни одного противника и кнопки боя нет.
   const appSource = (await Promise.all(['../src/App.tsx', '../src/AppViews.tsx', '../src/DungeonMap.tsx', '../src/app-shared.tsx']
   .map((path) => readFile(new URL(path, import.meta.url), 'utf8')))).join('\n')
-  const row = appSource.match(/\{!combatActive && <div className="hotbar-controls-row">[\s\S]*?<\/div>\}/)
-  assert.ok(row, 'строка исследования обязана рендериться только вне боя')
-  assert.match(row[0], /<button\s+className="exploration-leave-location"/)
-  assert.match(row[0], /\{showStartCombat && <button className="exploration-start-combat"/)
+  // Отдельного ряда больше нет: на широком экране он был пустой полосой с одной
+  // кнопкой у края. Оба решения стоят в колонке управления карточки действий,
+  // там же, где в бою стоит «Завершить ход», и только вне боя.
+  assert.doesNotMatch(appSource, /className="hotbar-controls-row"/)
+  const controls = appSource.match(/<div className="hotbar-turn-controls">[\s\S]*?\{doorsAtHand\.map/)
+  assert.ok(controls, 'колонка управления карточки действий')
+  assert.match(controls[0], /\{!combatActive && <button\s+type="button"\s+className="exploration-leave-location"/)
+  assert.match(controls[0], /\{!combatActive && showStartCombat && <button type="button" className="exploration-start-combat"/)
 })

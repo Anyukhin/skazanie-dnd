@@ -2253,6 +2253,8 @@ export type GameMechanics = Record<string, unknown> & {
     recovery_minutes_remaining?: number
   }>
   concentration?: Record<string, { effect_id?: string; source_rule_ids?: string[] }>
+  /** Временные хиты по участникам; у неопознанного врага ключа нет. */
+  temporary_hp?: Record<string, number>
   conditions?: Record<string, Array<{ id: string; duration?: string | null; source_actor?: string | null; effect_id?: string | null; repeat_save_timing?: 'turn-end' | null; repeat_save_on_damage?: boolean; damage_save_advantage?: boolean; break_on_damage_from_source_allies?: boolean; save_ability?: string | null; save_dc?: number | null; spell_id?: string | null; spell_option?: string | null; last_used_turn?: string | null }>>
   active_effects?: Array<{
     id: string
