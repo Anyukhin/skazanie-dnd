@@ -2354,6 +2354,8 @@ function executeTool(name, args, effects, state = {}) {
       label: String(option || '').replace(/\s+/g, ' ').trim().slice(0, 100),
     })).filter((option) => option.label).slice(0, 4)
     if (options.length < 2) return { error: 'Для решения нужны хотя бы два варианта' }
+    const destinationLocationId = String(args.destinationLocationId ?? args.destination_location_id ?? '')
+      .normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, 120)
     effects.interaction = {
       // Идентификатор обычно случайный: карточку открывает живой ход, и повтор
       // её не воспроизводит. Соло-путь передаёт свой — выведенный из ключа
@@ -2368,6 +2370,7 @@ function executeTool(name, args, effects, state = {}) {
       status: 'open',
       difficulty: args.type === 'roll' ? Math.max(5, Math.min(25, Number(args.difficulty) || 12)) : undefined,
       resolutionPrompt: String(args.resolutionPrompt || '').replace(/\s+/g, ' ').trim().slice(0, 360),
+      ...(destinationLocationId ? { destinationLocationId } : {}),
       createdAt: Date.now(),
       policy: state.partyDecisionPolicy,
     }
@@ -2584,6 +2587,7 @@ async function executeSoloPartyExit({ campaignId, room, user, action, idempotenc
     // с маркером вместо подписи варианта.
     agentInteraction: {
       id: interactionId, status: 'resolved', resolvedOptionId: chosen.option.id, options: interaction.options,
+      ...(interaction.destinationLocationId ? { destinationLocationId: interaction.destinationLocationId } : {}),
     },
   })
   if (resolution?.type !== 'scene_request') return null
@@ -2609,6 +2613,7 @@ async function executeDirectorSceneTransitionOnce({ campaignId, room, user, acti
     state: planningState,
     decision: resolution.decision,
     destinationHint: resolution.destinationHint,
+    destinationLocationId: resolution.destinationLocationId,
     abandonsQuest: resolution.abandonsQuest === true,
   })
   // Считаем только живую генерацию: детерминированный fallback токенов не

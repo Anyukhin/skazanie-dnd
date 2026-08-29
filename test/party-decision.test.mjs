@@ -14,10 +14,17 @@ const state = {
 }
 
 test('party decision open event strips forged votes and resolution', () => {
-  const event = partyDecisionOpenedEvent({ ...state.agentInteraction, votes: { a: 'north' }, status: 'resolved', resolvedOptionId: 'north' }, 'a')
+  const event = partyDecisionOpenedEvent({ ...state.agentInteraction, destinationLocationId: 'форт:Север', votes: { a: 'north' }, status: 'resolved', resolvedOptionId: 'north' }, 'a')
   assert.equal(event.event_type, 'PartyDecisionOpened')
   assert.deepEqual(event.payload.interaction.votes, {})
   assert.equal(event.payload.interaction.status, 'open')
+  assert.equal(event.payload.interaction.destinationLocationId, 'форт:Север')
+
+  const initial = normalizeCampaignState({ partyMemberIds: ['a'], players: [{ id: 'a' }] })
+  const projected = applyGameEvent(initial, event)
+  const replayed = replayEvents(initial, [event])
+  assert.equal(projected.agentInteraction.destinationLocationId, 'форт:Север')
+  assert.deepEqual(replayed, projected)
 })
 
 test('third eligible vote atomically emits vote and majority resolution', () => {

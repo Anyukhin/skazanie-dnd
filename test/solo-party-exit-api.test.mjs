@@ -22,7 +22,7 @@ function cookie(response) {
   return response.headers.get('set-cookie')?.split(';')[0]
 }
 
-async function soloCampaign(t, { code, quests = [] }) {
+async function soloCampaign(t, { code, quests = [], stateOverrides = {} }) {
   const port = 30_000 + Math.floor(Math.random() * 10_000)
   const baseUrl = 'http://127.0.0.1:' + port
   const storage = mkdtempSync(join(tmpdir(), 'skazanie-solo-'))
@@ -60,6 +60,7 @@ async function soloCampaign(t, { code, quests = [] }) {
         scene: { title: 'Подземелье', location: 'Нижний зал', mood: '', objective: 'Найти выход', turn: 4, cells: [] },
         adventure: { chapter: 1, visitedLocations: ['Нижний зал'], history: [] },
         ...(quests.length ? { worldMemory: { quests } } : {}),
+        ...stateOverrides,
       },
     }),
   })
@@ -98,6 +99,47 @@ test('соло-стол уходит из локации без карточки
   assert.equal(afterRepeat.state.agentInteraction, null)
   assert.equal(afterRepeat.state.scene.location, room.state.scene.location)
   assert.equal(afterRepeat.state.adventure.chapter, room.state.adventure.chapter)
+})
+
+test('соло-переход сохраняет ID карты до Архитектора и идемпотентного SceneAdvanced', { timeout: runnerTimeout(60_000) }, async (t) => {
+  const worldMap = {
+    seed: 'solo-map', name: 'Край', width: 1000, height: 640, currentLocationId: 'brod',
+    regions: [{ id: 'region', name: 'Долина', x: 500, y: 320, radius: 300, biome: 'лес' }],
+    locations: [
+      { id: 'brod', name: 'Тихий Брод', kind: 'village', x: 500, y: 360, regionId: 'region', summary: '', known: true, visited: true },
+      { id: 'estwood', name: 'Эствуд', kind: 'village', x: 300, y: 280, regionId: 'region', summary: '', known: true, visited: false },
+      { id: 'wastes', name: 'Керская пустошь', kind: 'wilds', x: 170, y: 450, regionId: 'region', summary: '', known: true, visited: false },
+    ],
+    routes: [
+      { id: 'road-estwood', from: 'brod', to: 'estwood', kind: 'road', distance: 2, danger: 'низкая', discovered: true },
+      { id: 'trail-wastes', from: 'brod', to: 'wastes', kind: 'trail', distance: 4, danger: 'средняя', discovered: true },
+    ],
+  }
+  const { baseUrl, adminCookie } = await soloCampaign(t, {
+    code: 'SOLO-ID',
+    stateOverrides: {
+      scene: { title: 'Камень у брода', location: 'Тихий Брод', location_id: 'brod', mood: '', objective: 'Выбрать путь', turn: 4, cells: [] },
+      adventure: { chapter: 1, visitedLocations: ['Тихий Брод'], history: [] },
+      worldMap,
+    },
+  })
+  const action = '[ГЛОБАЛЬНАЯ КАРТА] [destination_location_id=estwood] Отряд предлагает отправиться из «Тихий Брод» в «Керская пустошь». Выбранный путь: Тихий Брод → Керская пустошь.'
+  const request = () => fetch(baseUrl + '/api/narrate', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+    body: JSON.stringify({ campaignId: 'SOLO-ID', action, idempotency_key: 'solo-id-1' }),
+  })
+
+  const first = await request()
+  assert.equal(first.status, 200)
+  const result = await first.json()
+  assert.equal(result.effects.scene.scene.location, 'Эствуд', 'авторитетный ID должен победить расходящееся видимое имя')
+  assert.equal(result.effects.scene.scene.location_id, 'estwood')
+
+  const repeated = await request()
+  assert.equal(repeated.status, 200)
+  const room = await (await fetch(baseUrl + '/api/rooms/SOLO-ID', { headers: { Cookie: adminCookie } })).json()
+  assert.equal(room.state.scene.location_id, 'estwood')
+  assert.equal(room.state.adventure.chapter, 2, 'повтор не должен выполнить переход второй раз')
 })
 
 test('соло-стол бросает задание своими словами, без третьего варианта в карточке', { timeout: runnerTimeout(60_000) }, async (t) => {

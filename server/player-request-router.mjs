@@ -103,6 +103,7 @@ export function proposeAgentInteraction(action, state = {}) {
       description: 'Маршрут меняет судьбу всей группы, поэтому Режиссёр просит большинство героев принять решение вместе.',
       options: [leaveOption, ...(abandonOption ? [abandonOption] : []), 'Остаться и исследовать дальше'],
       resolutionPrompt: 'Исполни решение большинства. Если отряд уходит, бесшовно открой следующую локацию.',
+      ...(exit.destinationLocationId ? { destinationLocationId: exit.destinationLocationId } : {}),
     }
   }
   return null
@@ -203,6 +204,7 @@ export function resolvePartyDecision(action, state = {}) {
       decision: interpretation.decision,
       destinationHint: interpretation.destinationHint,
       abandonsQuest: interpretation.abandonsQuest === true,
+      ...(interpretation.destinationLocationId ? { destinationLocationId: interpretation.destinationLocationId } : {}),
     }
   }
   if (interpretation.kind === 'stay') {

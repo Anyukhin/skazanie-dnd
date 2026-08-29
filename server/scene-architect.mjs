@@ -7,6 +7,7 @@ import { normalizeDeclaredLevels } from './level-generator.mjs'
 import { defaultSceneShopIntent, normalizeSceneShopIntent } from './scene-commerce.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'
 import { buildDataOnlyContext } from './security.mjs'
+import { worldLocationById } from './world-map.mjs'
 
 /**
  * Один идентификатор роли на код и на новые трассы. Прежнее имя
@@ -105,7 +106,17 @@ export function interpretResolvedPartyDecision(action, state = {}) {
   const decision = selectedDecision(text, state)
   const classified = classifyPartyDecision(decision)
   if (classified.kind === 'move') {
-    return { kind: 'move', decision, destinationHint: classified.destinationHint, abandonsQuest: classified.abandonsQuest }
+    const destinationLocationId = clean(
+      state.agentInteraction?.destinationLocationId ?? state.agentInteraction?.destination_location_id,
+      120,
+    )
+    return {
+      kind: 'move',
+      decision,
+      destinationHint: classified.destinationHint,
+      abandonsQuest: classified.abandonsQuest,
+      ...(destinationLocationId ? { destinationLocationId } : {}),
+    }
   }
   return { kind: classified.kind, decision, abandonsQuest: classified.abandonsQuest }
 }
@@ -216,6 +227,17 @@ function knownWorldDestinationByName(state, name) {
   }
 }
 
+/** Известная точка карты по авторитетному идентификатору. */
+function knownWorldDestinationById(state, locationId) {
+  const location = worldLocationById(state?.worldMap, clean(locationId, 120))
+  if (!location?.id || location.known === false) return null
+  return {
+    id: String(location.id),
+    name: clean(location.name, 120),
+    kind: clean(location.kind, 40) || 'landmark',
+  }
+}
+
 /** Кратчайший по числу открытых сегментов путь до известной точки. */
 function knownWorldRouteTo(state, target) {
   const map = state?.worldMap
@@ -277,11 +299,12 @@ function fallbackDestination(state, from) {
   return { name: `Окрестности ${from}`, kind: 'landmark' }
 }
 
-function fallbackPlan({ action, state, decision, destinationHint, abandonsQuest = false }) {
+function fallbackPlan({ action, state, decision, destinationHint, destinationLocationId = '', abandonsQuest = false }) {
   const from = clean(state.scene?.location || state.scene?.title, 120) || 'прежняя локация'
   const hinted = clean(destinationHint, 120)
-  const chosen = hinted ? null : fallbackDestination(state, from)
-  const intendedKnownDestination = hinted ? knownWorldDestinationByName(state, hinted) : null
+  const destinationById = knownWorldDestinationById(state, destinationLocationId)
+  const chosen = hinted || destinationById ? null : fallbackDestination(state, from)
+  const intendedKnownDestination = destinationById ?? (hinted ? knownWorldDestinationByName(state, hinted) : null)
   const route = intendedKnownDestination ? knownWorldRouteTo(state, intendedKnownDestination) : []
   // Многосегментный путь исполняется по одному ребру за сцену. Иначе переход
   // сразу в конечную точку заставлял reconcileWorldMap дорисовать ложную прямую
@@ -290,7 +313,7 @@ function fallbackPlan({ action, state, decision, destinationHint, abandonsQuest 
   const routedDestination = route.length > 1 ? route[1] : route.length === 1 ? route[0] : null
   const unreachableKnownDestination = Boolean(intendedKnownDestination && !route.length)
   const destination = routedDestination?.name
-    || (unreachableKnownDestination ? `Тракт к ${intendedKnownDestination.name}` : hinted || chosen.name)
+    || (unreachableKnownDestination ? `Тракт к ${intendedKnownDestination.name}` : intendedKnownDestination?.name || hinted || chosen.name)
   // Вид известного места — с карты мира: по названию «Мормар» ни порт, ни
   // деревня не угадываются, а карта это знает.
   const knownDestination = routedDestination ?? knownWorldDestinationByName(state, destination)
@@ -399,9 +422,23 @@ function genericDestinationHint(value) {
  * модели ради хорошего ответа, но не является проверкой: идентификатор, имя и
  * вид карты всё равно закрепляются по worldMap после ответа.
  */
-function knownDestinationConstraint({ state, destinationHint, modelLocation, fallbackLocation }) {
+function knownDestinationConstraint({ state, destinationHint, destinationLocationId, modelLocation, fallbackLocation, fallbackLocationId }) {
   const known = knownDestinationsFrom(state)
   const hinted = locationKey(destinationHint)
+  const intendedById = knownWorldDestinationById(state, destinationLocationId)
+  if (intendedById) {
+    // Имя не является идентификатором: на карте законны две «Рыночные
+    // площади». Первый сегмент fallback закрепляется по ID, а не повторным
+    // поиском первой локации с тем же названием.
+    const destination = knownWorldDestinationById(state, fallbackLocationId)
+    const exactLocation = destination ? '' : clean(fallbackLocation, 120)
+    const modeled = locationKey(modelLocation)
+    return {
+      destination,
+      exactLocation,
+      rejected: Boolean(modeled && modeled !== locationKey(destination?.name ?? exactLocation)),
+    }
+  }
   if (hinted) {
     // Для дальней известной точки fallback уже выбрал первый сегмент маршрута.
     // Неизвестное собственное имя тоже фиксируется; обобщённое «город» или
@@ -436,8 +473,18 @@ export class SceneArchitectAgent {
     this.llmClient = llmClient
   }
 
-  async plan({ action, state = {}, decision = '', destinationHint = '', abandonsQuest = false } = {}) {
-    const fallback = fallbackPlan({ action: clean(action, 2000), state, decision: clean(decision, 500), destinationHint, abandonsQuest })
+  async plan({ action, state = {}, decision = '', destinationHint = '', destinationLocationId = '', abandonsQuest = false } = {}) {
+    // ID приходит от клиента, но доверенным становится только после точного
+    // совпадения с известным узлом server-owned worldMap. При успехе каноническое
+    // имя по ID важнее текста; неизвестный ID оставляет прежний разбор по имени.
+    const authoritativeDestination = knownWorldDestinationById(state, destinationLocationId)
+    const resolvedDestinationHint = authoritativeDestination?.name || clean(destinationHint, 120)
+    const fallback = fallbackPlan({
+      action: clean(action, 2000), state, decision: clean(decision, 500),
+      destinationHint: resolvedDestinationHint,
+      destinationLocationId: authoritativeDestination?.id ?? '',
+      abandonsQuest,
+    })
     const fallbackShopIntent = defaultSceneShopIntent(fallback)
     if (!this.llmClient) return {
       sceneArgs: fallback,
@@ -452,22 +499,29 @@ export class SceneArchitectAgent {
           // Решение партии и текст разрешения — свободный текст игроков; память
           // кампании тоже могла быть записана из их слов. Всё уходит только
           // внутри UNTRUSTED_DATA, снаружи не остаётся ни одной их строки.
-          { role: 'user', content: buildDataOnlyContext({ scene_planning: { selected_party_decision: clean(decision, 500), destination_hint: clean(destinationHint, 120), quest_abandoned: abandonsQuest === true, ...planningBrief, full_resolution_context: clean(action, 2000) } }) },
+          { role: 'user', content: buildDataOnlyContext({ scene_planning: { selected_party_decision: clean(decision, 500), destination_hint: resolvedDestinationHint, destination_location_id: authoritativeDestination?.id ?? null, quest_abandoned: abandonsQuest === true, ...planningBrief, full_resolution_context: clean(action, 2000) } }) },
         ],
         temperature: 0.45,
         maxTokens: 1000,
       })
       const constraint = knownDestinationConstraint({
         state,
-        destinationHint,
+        destinationHint: resolvedDestinationHint,
+        destinationLocationId: authoritativeDestination?.id ?? '',
         modelLocation: result?.location,
         fallbackLocation: fallback.location,
+        fallbackLocationId: fallback.location_id,
       })
       // Если модель при наличии известных дорог придумала третье место или
       // подменила явно выбранное, её творческий план отбрасывается целиком:
       // отдельные строки arrival/hook тоже могли бы ссылаться на ложную точку.
       const constrainedFallback = constraint.destination
-        ? fallbackPlan({ action: clean(action, 2000), state, decision: clean(decision, 500), destinationHint: constraint.destination.name, abandonsQuest })
+        ? fallbackPlan({
+          action: clean(action, 2000), state, decision: clean(decision, 500),
+          destinationHint: constraint.destination.name,
+          destinationLocationId: constraint.destination.id,
+          abandonsQuest,
+        })
         : fallback
       const sceneArgs = constraint.rejected ? fallback : normalizePlan(result, constrainedFallback)
       if (constraint.destination && !constraint.rejected) {

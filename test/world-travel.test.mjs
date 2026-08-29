@@ -19,7 +19,7 @@ const compiled = spawnSync(process.execPath, [
 assert.equal(compiled.status, 0, compiled.stderr || compiled.stdout)
 const modulePath = join(buildDir, 'world-travel.mjs')
 writeFileSync(modulePath, readFileSync(join(buildDir, 'world-travel.js'), 'utf8'))
-const { currentWorldLocation, neighboringDestinations, reachableDestinations } = await import(pathToFileURL(modulePath).href)
+const { currentWorldLocation, neighboringDestinations, reachableDestinations, travelProposalText } = await import(pathToFileURL(modulePath).href)
 
 test.after(() => rmSync(buildDir, { recursive: true, force: true }))
 
@@ -59,4 +59,14 @@ test('текущая точка ищется без учёта регистра 
   campaign.scene.location = 'Несуществующее место'
   assert.equal(currentWorldLocation(campaign), null)
   assert.deepEqual(neighboringDestinations(campaign), [])
+})
+
+test('предложение маршрута кодирует ID выбранного узла независимо от видимого имени', () => {
+  const campaign = state()
+  const current = campaign.worldMap.locations[0]
+  const selected = { ...campaign.worldMap.locations[1], id: 'город:Дорфорд/юг' }
+  assert.equal(
+    travelProposalText(current, selected, ['Тихий Брод', 'Дорфорд']),
+    `[ГЛОБАЛЬНАЯ КАРТА] [destination_location_id=${encodeURIComponent(selected.id)}] Отряд предлагает отправиться из «Тихий Брод» в «Дорфорд». Выбранный путь: Тихий Брод → Дорфорд.`,
+  )
 })

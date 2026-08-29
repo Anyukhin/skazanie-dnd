@@ -22,6 +22,13 @@ export const WORLD_MAP_TRAVEL_MARKER = '[ГЛОБАЛЬНАЯ КАРТА]'
 const WORLD_MAP_MARKER = /^\s*\[ГЛОБАЛЬНАЯ КАРТА\]/iu
 
 /**
+ * Machine-readable цель карты мира. Значение кодирует клиент через
+ * `encodeURIComponent`, поэтому оно не может преждевременно закрыть квадратную
+ * скобку. Маркер необязателен: старые клиенты продолжают работать по имени.
+ */
+const WORLD_MAP_DESTINATION_ID = /^\s*\[ГЛОБАЛЬНАЯ КАРТА\]\s*\[destination_location_id=([^\]\s]{1,1500})\]/iu
+
+/**
  * Места, из которых и в которые уходят целиком. Комнаты, залы и коридоры сюда
  * намеренно не входят: перемещение внутри локации — дело тактической доски и
  * `UseLevelTransition`, а не перехода сцены.
@@ -100,6 +107,23 @@ function quotedPlaces(text) {
 }
 
 /**
+ * @param {string} text
+ * @returns {string}
+ */
+function worldMapDestinationLocationId(text) {
+  const encoded = WORLD_MAP_DESTINATION_ID.exec(text)?.[1]
+  if (!encoded) return ''
+  try {
+    const decoded = decodeURIComponent(encoded).normalize('NFKC').replace(/\s+/gu, ' ').trim()
+    if (!decoded || decoded.length > 120 || /[\u0000-\u001f\u007f]/u.test(decoded)) return ''
+    return decoded
+  } catch {
+    // Неверное percent-encoding не отменяет legacy-разбор видимого названия.
+    return ''
+  }
+}
+
+/**
  * Пункт назначения и признак того, что назван именно он, а не цель внутри сцены.
  *
  * @param {string} text
@@ -120,7 +144,7 @@ function destinationIn(text) {
  * говорит о чём угодно другом.
  *
  * @param {unknown} action
- * @returns {{destination: string, source: 'world-map'|'text'}|null}
+ * @returns {{destination: string, source: 'world-map'|'text', destinationLocationId?: string}|null}
  */
 export function detectPartyExitRequest(action) {
   const text = compact(action, 2_000)
@@ -128,9 +152,14 @@ export function detectPartyExitRequest(action) {
   const heading = destinationIn(text)
   if (WORLD_MAP_MARKER.test(text)) {
     const places = quotedPlaces(text)
+    const destinationLocationId = worldMapDestinationLocationId(text)
     // Первая кавычка — откуда, вторая — куда. Если названо одно место, это и есть
     // пункт назначения: маршрут строил клиент, и «откуда» он знает сам.
-    return { destination: places.length > 1 ? places[1] : places[0] ?? heading.destination, source: 'world-map' }
+    return {
+      destination: places.length > 1 ? places[1] : places[0] ?? heading.destination,
+      source: 'world-map',
+      ...(destinationLocationId ? { destinationLocationId } : {}),
+    }
   }
   const leaves = LEAVE_TARGET.test(text)
     || heading.isPlace

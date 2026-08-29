@@ -135,6 +135,7 @@ export function normalizePartyDecision(value, { policy = null } = {}) {
   const rawRequired = safeNumber(value.requiredVotes ?? value.required_votes, calculatedRequired)
   const maximumRequired = activeVoterIds.length || eligibleVoterIds.length
   const requiredVotes = Math.max(0, Math.min(maximumRequired, rawRequired))
+  const destinationLocationId = text(value.destinationLocationId ?? value.destination_location_id, 120)
   return {
     id: decisionId,
     type,
@@ -156,6 +157,7 @@ export function normalizePartyDecision(value, { policy = null } = {}) {
     policyVersion: PARTY_DECISION_POLICY_VERSION,
     ...(type === 'roll' ? { difficulty: Math.max(5, Math.min(25, safeNumber(value.difficulty, 12))) } : {}),
     ...(value.roll && typeof value.roll === 'object' ? { roll: structuredClone(value.roll) } : {}),
+    ...(destinationLocationId ? { destinationLocationId } : {}),
     resolutionPrompt: text(value.resolutionPrompt, 360),
     createdAt,
     expiresAt,

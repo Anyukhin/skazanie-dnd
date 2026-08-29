@@ -159,6 +159,7 @@ export type AgentInteraction = {
   policyVersion?: string
   difficulty?: number
   roll?: DiceRollEvent
+  destinationLocationId?: string
   resolutionPrompt: string
   createdAt: number
   expiresAt?: number
