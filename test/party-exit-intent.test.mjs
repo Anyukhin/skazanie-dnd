@@ -54,6 +54,21 @@ test('предложение маршрута с карты мира разби�
   assert.equal(request.destination, 'Каменный Град')
 })
 
+test('карта мира передаёт bounded ID назначения и сохраняет legacy-разбор при ошибке', () => {
+  const encoded = encodeURIComponent('форт:Северные врата')
+  assert.deepEqual(
+    detectPartyExitRequest(`[ГЛОБАЛЬНАЯ КАРТА] [destination_location_id=${encoded}] Отряд предлагает отправиться из «Брод» в «Северный форт».`),
+    { destination: 'Северный форт', source: 'world-map', destinationLocationId: 'форт:Северные врата' },
+  )
+  assert.deepEqual(
+    detectPartyExitRequest('[ГЛОБАЛЬНАЯ КАРТА] [destination_location_id=%E0%A4%A] Отряд предлагает отправиться из «Брод» в «Северный форт».'),
+    { destination: 'Северный форт', source: 'world-map' },
+    'сломанный machine token не должен ломать совместимый маршрут по имени',
+  )
+  const tooLong = encodeURIComponent('я'.repeat(121))
+  assert.equal(detectPartyExitRequest(`[ГЛОБАЛЬНАЯ КАРТА] [destination_location_id=${tooLong}] Идём из «Брод» в «Форт».`).destinationLocationId, undefined)
+})
+
 test('кнопка карты мира отправляет ровно тот формат, который читает сервер', async () => {
   // Договор был неявным и разошёлся: клиент слал текст, под шаблоны ухода не
   // подходивший, голосование не открывалось, и переход становился невозможен.
@@ -72,11 +87,14 @@ test('кнопка карты мира отправляет ровно тот ф
   // Подставляем в шаблон правдоподобные значения и проверяем результат тем же
   // разбором, что стоит на сервере.
   const sample = emitted[1]
+    .replace('${encodeURIComponent(selected.id)}', encodeURIComponent('city:Каменный Град'))
     .replace('${current.name}', 'Заброшенный Караван-сарай')
     .replace('${selected.name}', 'Каменный Град')
     .replace('${routeNames.join(\' → \')}', 'Заброшенный Караван-сарай → Каменный Град')
   assert.equal(sample.includes('$'), false, 'в шаблоне остались неподставленные поля')
-  assert.deepEqual(detectPartyExitRequest(sample), { destination: 'Каменный Град', source: 'world-map' })
+  assert.deepEqual(detectPartyExitRequest(sample), {
+    destination: 'Каменный Град', source: 'world-map', destinationLocationId: 'city:Каменный Град',
+  })
 })
 
 test('отказ от задания опознаётся отдельно от самого ухода', () => {
@@ -123,8 +141,9 @@ test('каждый вариант предложенного голосован�
   // Словарь предложения и словарь разбора были разными списками, и вариант, за
   // который отряд уже проголосовал, мог не опознаться как уход. Сторож проверяет
   // именно замкнутость круга, а не отдельные формулировки.
-  const card = proposeAgentInteraction('[ГЛОБАЛЬНАЯ КАРТА] Отряд предлагает отправиться из «Заброшенный Караван-сарай» в «Каменный Град». Выбранный путь: Заброшенный Караван-сарай → Каменный Град.', caravanserai)
+  const card = proposeAgentInteraction('[ГЛОБАЛЬНАЯ КАРТА] [destination_location_id=stone-city] Отряд предлагает отправиться из «Заброшенный Караван-сарай» в «Каменный Град». Выбранный путь: Заброшенный Караван-сарай → Каменный Град.', caravanserai)
   assert.equal(card.type, 'vote')
+  assert.equal(card.destinationLocationId, 'stone-city')
   assert.equal(card.options.length, 3)
   for (const label of card.options) {
     assert.ok(label.length <= 100, `подпись варианта не помещается в лимит сервера: ${label}`)
@@ -141,11 +160,13 @@ test('каждый вариант предложенного голосован�
       agentInteraction: {
         id: 'decision-1', status: 'resolved', resolvedOptionId: `option-${index + 1}`,
         options: card.options.map((item, position) => ({ id: `option-${position + 1}`, label: item })),
+        destinationLocationId: card.destinationLocationId,
       },
     })
     assert.equal(resolved.type === 'scene_request' ? 'scene_request' : 'narration', expected[index].kind, label)
     assert.equal(resolved.destinationHint, expected[index].destinationHint, label)
     assert.equal(resolved.abandonsQuest, expected[index].abandonsQuest, label)
+    assert.equal(resolved.destinationLocationId, expected[index].kind === 'scene_request' ? 'stone-city' : undefined, label)
   })
 })
 

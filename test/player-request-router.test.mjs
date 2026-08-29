@@ -126,6 +126,25 @@ test('resolved party exit creates scene arguments', () => {
   assert.equal(typeof result.destinationHint, 'string')
 })
 
+test('world-map destination ID survives proposal and resolved vote', () => {
+  const proposal = proposeAgentInteraction(
+    '[ГЛОБАЛЬНАЯ КАРТА] [destination_location_id=estwood] Отряд предлагает отправиться из «Тихий Брод» в «Эствуд».',
+    { scene: { location: 'Тихий Брод' } },
+  )
+  assert.equal(proposal.destinationLocationId, 'estwood')
+  const interaction = {
+    ...proposal,
+    id: 'travel-estwood',
+    status: 'resolved',
+    resolvedOptionId: 'option-1',
+    options: proposal.options.map((label, index) => ({ id: `option-${index + 1}`, label })),
+  }
+  const result = resolvePartyDecision(`[РЕШЕНИЕ ГРУППЫ] ${interaction.options[0].label}`, { agentInteraction: interaction })
+  assert.equal(result.type, 'scene_request')
+  assert.equal(result.destinationHint, 'Эствуд')
+  assert.equal(result.destinationLocationId, 'estwood')
+})
+
 test('resolved stay decision continues current scene', () => {
   const result = resolvePartyDecision('[\u0420\u0415\u0428\u0415\u041D\u0418\u0415 \u0413\u0420\u0423\u041F\u041F\u042B] \u041E\u0441\u0442\u0430\u0442\u044C\u0441\u044F', {
     agentInteraction: { resolvedOptionId: 'option-2', options: [{ id: 'option-2', label: '\u041E\u0441\u0442\u0430\u0442\u044C\u0441\u044F \u0438 \u0438\u0441\u0441\u043B\u0435\u0434\u043E\u0432\u0430\u0442\u044C \u0434\u0430\u043B\u044C\u0448\u0435' }] },

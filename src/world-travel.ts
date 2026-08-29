@@ -139,7 +139,7 @@ export function routeDanger(routes: WorldMapRoute[]): WorldMapRoute['danger'] {
 
 /** Предложение маршрута в формате, который понимает сервер. */
 export function travelProposalText(current: WorldMapLocation, selected: WorldMapLocation, routeNames: string[]) {
-  return `[ГЛОБАЛЬНАЯ КАРТА] Отряд предлагает отправиться из «${current.name}» в «${selected.name}». Выбранный путь: ${routeNames.join(' → ')}.`
+  return `[ГЛОБАЛЬНАЯ КАРТА] [destination_location_id=${encodeURIComponent(selected.id)}] Отряд предлагает отправиться из «${current.name}» в «${selected.name}». Выбранный путь: ${routeNames.join(' → ')}.`
 }
 
 export function worldMapHasRoutes(map: WorldMapState | undefined): boolean {

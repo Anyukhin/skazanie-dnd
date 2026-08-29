@@ -132,6 +132,57 @@ test('уход без названного места ведёт к соседу
   assert.equal(exactVillage.sceneArgs.map.pattern, 'village')
 })
 
+test('авторитетный ID назначения побеждает расходящееся имя, а неизвестный ID сохраняет legacy', async () => {
+  const architect = new SceneArchitectAgent()
+  const byId = await architect.plan({
+    action: '[РЕШЕНИЕ ГРУППЫ] Идём в Керскую пустошь',
+    state: brodState,
+    decision: 'Идём в Керскую пустошь',
+    destinationHint: 'Керская пустошь',
+    destinationLocationId: 'estwood',
+  })
+  assert.equal(byId.sceneArgs.location, 'Эствуд')
+  assert.equal(byId.sceneArgs.location_id, 'estwood')
+  assert.equal(byId.sceneArgs.map.pattern, 'village')
+
+  const legacy = await architect.plan({
+    action: '[РЕШЕНИЕ ГРУППЫ] Идём в Керскую пустошь',
+    state: brodState,
+    decision: 'Идём в Керскую пустошь',
+    destinationHint: 'Керская пустошь',
+    destinationLocationId: 'missing-location',
+  })
+  assert.equal(legacy.sceneArgs.location, 'Керская пустошь')
+  assert.equal(legacy.sceneArgs.location_id, 'kerskaya')
+})
+
+test('ID различает две известные локации с одинаковым названием и без модели, и после ответа модели', async () => {
+  const duplicateMap = brodWorldMap()
+  duplicateMap.locations.push({
+    id: 'estwood-south', name: 'Эствуд', kind: 'wilds', x: 650, y: 500,
+    regionId: 'r', summary: 'Южная окраина', known: true, visited: false,
+  })
+  duplicateMap.routes.push({
+    id: 'route-south', from: 'tihiy-brod', to: 'estwood-south', kind: 'trail',
+    distance: 3, danger: 'средняя', discovered: true,
+  })
+  const state = { ...brodState, worldMap: duplicateMap }
+  const input = {
+    action: '[РЕШЕНИЕ ГРУППЫ] Идём в Эствуд', state, decision: 'Идём в Эствуд',
+    destinationHint: 'Эствуд', destinationLocationId: 'estwood-south',
+  }
+
+  const fallback = await new SceneArchitectAgent().plan(input)
+  assert.equal(fallback.sceneArgs.location_id, 'estwood-south')
+  assert.equal(fallback.sceneArgs.map.pattern, 'natural', 'вид выбранного дубля берётся по его ID')
+
+  const modeled = await new SceneArchitectAgent({ llmClient: {
+    async completeJson() { return { location: 'Эствуд', map: { layout: 'streets', pattern: 'village' } } },
+  } }).plan(input)
+  assert.equal(modeled.sceneArgs.location_id, 'estwood-south')
+  assert.equal(modeled.sceneArgs.map.pattern, 'natural')
+})
+
 test('без карты мира уход не вкладывает «Окрестности» друг в друга', async () => {
   const architect = new SceneArchitectAgent()
   const first = await architect.plan({ action: '[РЕШЕНИЕ ГРУППЫ] Уходим отсюда', state: archiveState, decision: 'Уходим отсюда', destinationHint: '' })
@@ -224,7 +275,8 @@ test('дальний маршрут исполняется по одному с�
     action: '[ГЛОБАЛЬНАЯ КАРТА] Отряд предлагает отправиться из «Тихий Брод» в «Дальний форт». Выбранный путь: Тихий Брод → Эствуд → Дальний форт.',
     state: brodState,
     decision: 'Отправиться из «Тихий Брод» в «Дальний форт» через Эствуд',
-    destinationHint: 'Дальний форт',
+    destinationHint: 'Керская пустошь',
+    destinationLocationId: 'far',
   })
   assert.equal(planned.sceneArgs.location, 'Эствуд')
   assert.equal(planned.sceneArgs.location_id, 'estwood')
