@@ -53,9 +53,11 @@ export function shortestRoute(start: string, target: string, routes: WorldMapRou
 export function currentWorldLocation(state: Pick<GameState, 'scene' | 'worldMap'>): WorldMapLocation | null {
   const map = state.worldMap
   if (!map) return null
+  const byId = map.locations.find((location) => location.id === map.currentLocationId)
+  if (byId) return byId
+  const sceneName = String(state.scene.location ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().toLocaleLowerCase('ru')
   const known = map.locations.filter((location) => location.known || location.visited)
-  return known.find((location) => location.id === map.currentLocationId)
-    ?? known.find((location) => location.name === state.scene.location)
+  return known.find((location) => location.name.normalize('NFKC').replace(/\s+/gu, ' ').trim().toLocaleLowerCase('ru') === sceneName)
     ?? null
 }
 
@@ -93,6 +95,37 @@ export function reachableDestinations(state: Pick<GameState, 'scene' | 'worldMap
   return destinations
     .sort((left, right) => Number(left.location.visited) - Number(right.location.visited)
       || left.routeNames.length - right.routeNames.length
+      || left.days - right.days
+      || left.location.name.localeCompare(right.location.name, 'ru'))
+    .slice(0, limit)
+}
+
+/**
+ * Соседи для быстрого выхода с тактической доски. Дальние точки остаются на
+ * глобальной карте: там игрок видит весь маршрут и осознанно выбирает несколько
+ * сегментов, а здесь один клик означает ровно один открытый путь.
+ */
+export function neighboringDestinations(state: Pick<GameState, 'scene' | 'worldMap'>, limit = 8): TravelDestination[] {
+  const map = state.worldMap
+  const current = currentWorldLocation(state)
+  if (!map || !current) return []
+  const known = map.locations.filter((location) => location.known || location.visited || location.id === current.id)
+  const byId = new Map(known.map((location) => [location.id, location]))
+  const destinations = new Map<string, TravelDestination>()
+  for (const route of map.routes) {
+    if (route.discovered === false) continue
+    const otherId = route.from === current.id ? route.to : route.to === current.id ? route.from : ''
+    const location = otherId ? byId.get(otherId) : undefined
+    if (!location || destinations.has(location.id)) continue
+    destinations.set(location.id, {
+      location,
+      routeNames: [current.name, location.name],
+      days: Math.max(1, Number(route.distance) || 1),
+      danger: ['низкая', 'средняя', 'высокая'].includes(route.danger) ? route.danger : 'средняя',
+    })
+  }
+  return [...destinations.values()]
+    .sort((left, right) => Number(left.location.visited) - Number(right.location.visited)
       || left.days - right.days
       || left.location.name.localeCompare(right.location.name, 'ru'))
     .slice(0, limit)

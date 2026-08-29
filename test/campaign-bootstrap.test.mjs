@@ -96,6 +96,29 @@ test('стартовая деревня по карте мира автора р
   assert.equal(fallback.scene.cells.some((cell) => cell.type === 'door'), false)
 })
 
+test('стартовая сцена и currentLocationId не расходятся при ошибке карты автора', async () => {
+  const opening = {
+    campaignName: 'Несогласованный мир', partyName: 'Путники',
+    worldSummary: 'Карта, в которой автор забыл стартовую точку.',
+    openingNarration: 'История начинается в месте, которого ещё нет на карте.',
+    scene: { title: 'Первый шаг', location: 'Несуществующий старт', mood: 'Тревога', objective: 'Осмотреться', theme: 'открытая местность', danger: 'низкая', map: { layout: 'open', pattern: 'natural', material: 'grass', width: 15, height: 11 } },
+    hook: 'Найти дорогу',
+    worldMap: {
+      locations: [
+        { id: 'foreign-fort', name: 'Чужой форт', kind: 'fortress', known: true },
+        { id: 'foreign-port', name: 'Чужой порт', kind: 'port', known: true },
+      ],
+    },
+  }
+  const state = await new CampaignBootstrapper({ llmClient: new FakeLLM([{ content: JSON.stringify(opening) }]) }).create({
+    code: 'MAP-MISMATCH', name: 'Несогласованный мир', partyName: 'Путники', world: {}, players: [hero],
+  })
+  const current = state.worldMap.locations.find((location) => location.id === state.worldMap.currentLocationId)
+  assert.equal(state.scene.location, 'Несуществующий старт')
+  assert.equal(state.scene.location_id, current?.id)
+  assert.equal(current?.name, state.scene.location)
+})
+
 test('стартовый набор соответствует классу и не перезаписывает готовый лист', async () => {
   const fighter = await new CampaignBootstrapper().create({
     code: 'KIT-FIGHTER', world: {}, players: [{ ...hero, id: 'fighter', role: 'Воин · ур. 1', abilities: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 } }],

@@ -215,12 +215,41 @@ function normalizeRoutes(rawRoutes, fallback, locations) {
   })
 }
 
-export function createCampaignWorldMap({ seed, campaignName, concept = {}, source = {}, startingLocation = '', startingLocationId = '' } = {}) {
+export function createCampaignWorldMap({
+  seed,
+  campaignName,
+  concept = {},
+  source = {},
+  startingLocation = '',
+  startingLocationId = '',
+  addMissingStartingLocation = true,
+} = {}) {
   const safeSeed = text(seed, 120) || hash(`${campaignName}:${startingLocation}`).slice(0, 24)
   const regionFallback = fallbackRegions(safeSeed, concept)
   const regions = normalizeRegions(source.regions, regionFallback)
   const locationFallback = fallbackLocations(safeSeed, startingLocation, regions)
   const locations = normalizeLocations(source.locations, locationFallback, regions, startingLocation, startingLocationId)
+  // Авторская карта может не согласоваться с авторской же стартовой сценой.
+  // Первая произвольная точка не имеет права молча стать currentLocationId:
+  // сохраняем выбранное место сцены отдельным каноническим узлом. Явный id
+  // сильнее имени и остаётся путём совместимости для уже сохранённых карт.
+  const requestedById = locationById(locations, startingLocationId)
+  const startName = text(startingLocation, 120)
+  if (addMissingStartingLocation && !requestedById && startName && !locations.some((location) => key(location.name) === key(startName))) {
+    const fallbackStart = locationFallback[0] ?? { x: WIDTH / 2, y: HEIGHT / 2, regionId: regions[0]?.id ?? '' }
+    if (locations.length >= 40) locations.splice(39)
+    locations.push({
+      id: uniqueId(slug(startName, 'starting-location'), new Set(locations.map((location) => location.id))),
+      name: startName,
+      kind: 'landmark',
+      x: fallbackStart.x,
+      y: fallbackStart.y,
+      regionId: fallbackStart.regionId || nearestRegionId(regions, fallbackStart.x, fallbackStart.y),
+      summary: 'Здесь начинается история отряда.',
+      known: true,
+      visited: true,
+    })
+  }
   const routeFallback = fallbackRoutes(locations)
   const routes = normalizeRoutes([...(Array.isArray(source.routes) ? source.routes : []), ...routeFallback], routeFallback, locations)
   const current = locationById(locations, startingLocationId)
@@ -271,6 +300,11 @@ export function reconcileWorldMap(rawMap, {
     source: rawMap && typeof rawMap === 'object' ? rawMap : {},
     startingLocation: currentLocation,
     startingLocationId: currentLocationId,
+    // У существующей карты новое место должен поставить reconcileWorldMap:
+    // он знает предыдущую точку, выбирает свободную позицию рядом с ней и
+    // сохраняет прежнюю детерминированную границу региона. Начальная сборка
+    // карты этих сведений не имеет и только там добавляет пропущенный старт.
+    addMissingStartingLocation: false,
   })
   const allNames = [...new Set([...knownLocations, previousLocation, currentLocation].map((name) => text(name, 120)).filter(Boolean))]
   for (const name of allNames) {

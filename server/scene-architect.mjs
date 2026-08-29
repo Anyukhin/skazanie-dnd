@@ -201,6 +201,64 @@ export function knownDestinationsFrom(state = {}) {
     .slice(0, 8)
 }
 
+/** Известная точка карты по каноническому имени, включая дальний маршрут. */
+function knownWorldDestinationByName(state, name) {
+  const key = locationKey(name)
+  if (!key || !Array.isArray(state?.worldMap?.locations)) return null
+  const location = state.worldMap.locations.find((entry) => (
+    entry?.id && entry.known !== false && locationKey(entry.name) === key
+  ))
+  if (!location) return null
+  return {
+    id: String(location.id),
+    name: clean(location.name, 120),
+    kind: clean(location.kind, 40) || 'landmark',
+  }
+}
+
+/** Кратчайший по числу открытых сегментов путь до известной точки. */
+function knownWorldRouteTo(state, target) {
+  const map = state?.worldMap
+  if (!map || !Array.isArray(map.locations) || !Array.isArray(map.routes) || !target?.id) return []
+  const byId = new Map(map.locations.filter((entry) => entry?.id).map((entry) => [String(entry.id), entry]))
+  const sceneLocation = locationKey(state?.scene?.location)
+  const current = byId.get(String(map.currentLocationId ?? ''))
+    ?? map.locations.find((entry) => locationKey(entry?.name) === sceneLocation)
+  if (!current?.id) return []
+  const startId = String(current.id)
+  const targetId = String(target.id)
+  const queue = [startId]
+  const previous = new Map([[startId, null]])
+  for (let cursor = 0; cursor < queue.length && !previous.has(targetId); cursor += 1) {
+    const currentId = queue[cursor]
+    for (const route of map.routes) {
+      if (!route || route.discovered === false) continue
+      const nextId = String(route.from) === currentId ? String(route.to)
+        : String(route.to) === currentId ? String(route.from) : ''
+      const next = nextId ? byId.get(nextId) : null
+      if (!next || next.known === false || previous.has(nextId)) continue
+      previous.set(nextId, currentId)
+      queue.push(nextId)
+    }
+  }
+  if (!previous.has(targetId)) return []
+  const ids = [targetId]
+  for (let currentId = targetId; currentId !== startId;) {
+    const parent = previous.get(currentId)
+    if (!parent) return []
+    ids.unshift(parent)
+    currentId = parent
+  }
+  return ids.map((id) => {
+    const entry = byId.get(id)
+    return {
+      id,
+      name: clean(entry?.name, 120),
+      kind: clean(entry?.kind, 40) || 'landmark',
+    }
+  })
+}
+
 /**
  * Куда идёт отряд, когда места не назвал никто. Раньше это были «Окрестности
  * X», а после второго ухода — «Окрестности Окрестности X»: карта мира с
@@ -223,11 +281,23 @@ function fallbackPlan({ action, state, decision, destinationHint, abandonsQuest 
   const from = clean(state.scene?.location || state.scene?.title, 120) || 'прежняя локация'
   const hinted = clean(destinationHint, 120)
   const chosen = hinted ? null : fallbackDestination(state, from)
-  const destination = hinted || chosen.name
+  const intendedKnownDestination = hinted ? knownWorldDestinationByName(state, hinted) : null
+  const route = intendedKnownDestination ? knownWorldRouteTo(state, intendedKnownDestination) : []
+  // Многосегментный путь исполняется по одному ребру за сцену. Иначе переход
+  // сразу в конечную точку заставлял reconcileWorldMap дорисовать ложную прямую
+  // дорогу поверх выбранного маршрута. Если известная точка пока недостижима,
+  // создаётся промежуточный тракт к ней, а не телепорт через закрытую карту.
+  const routedDestination = route.length > 1 ? route[1] : route.length === 1 ? route[0] : null
+  const unreachableKnownDestination = Boolean(intendedKnownDestination && !route.length)
+  const destination = routedDestination?.name
+    || (unreachableKnownDestination ? `Тракт к ${intendedKnownDestination.name}` : hinted || chosen.name)
   // Вид известного места — с карты мира: по названию «Мормар» ни порт, ни
   // деревня не угадываются, а карта это знает.
-  const knownKind = (knownDestinationsFrom(state).find((entry) => entry.name.toLocaleLowerCase('ru') === destination.toLocaleLowerCase('ru'))?.kind)
-    ?? chosen?.kind ?? ''
+  const knownDestination = routedDestination ?? knownWorldDestinationByName(state, destination)
+  const onwardDestination = intendedKnownDestination && intendedKnownDestination.id !== knownDestination?.id
+    ? intendedKnownDestination.name
+    : ''
+  const knownKind = knownDestination?.kind ?? chosen?.kind ?? ''
   const location = destination.charAt(0).toLocaleUpperCase('ru') + destination.slice(1)
   const chapter = Math.max(1, Number(state.adventure?.chapter) || 1) + 1
   const oldHook = clean(state.adventure?.currentHook, 240)
@@ -239,17 +309,24 @@ function fallbackPlan({ action, state, decision, destinationHint, abandonsQuest 
   const hook = abandonsQuest
     ? `В ${location} найдётся дело, не связанное с оставленным заданием.`
     : requestedHook || oldHook || oldObjective || `В ${location} обнаружится связь с оставленным позади путём.`
-  // Слова в названии уступают виду точки карты мира, но только когда название
-  // само о месте молчит: «Таверна в Мормаре» остаётся таверной, а не портом.
-  const map = themeFor(location, hinted ? action : '')
-  const byWorldKind = map.theme === 'новая местность' ? themeForWorldKind(knownKind) : null
+  // Слова в названии уступают виду известной точки карты мира. Для нового
+  // места, которого на карте нет, явная «Таверна в Мормаре» по-прежнему
+  // распознаётся как таверна, а не как город по словам исходной сцены.
+  // Для уже известной точки вид карты авторитетнее слов в тексте решения.
+  // Иначе маршрут «из Тихого Брода в Эствуд» цеплялся за слово «брод» в
+  // исходной точке и рисовал мост вместо деревенских улиц.
+  const byWorldKind = knownDestination ? themeForWorldKind(knownKind) : null
+  const map = themeFor(location, hinted && !knownDestination ? action : '')
   const plannedMap = byWorldKind ?? map
   const streets = plannedMap.layout === 'streets'
   return {
     title: `Глава ${chapter} · ${location}`,
     location,
+    ...(knownDestination?.id ? { location_id: knownDestination.id } : {}),
     mood: streets ? 'Шумная передышка за городскими стенами, где опасность прячется среди людей' : 'Неизведанное место, в котором путь ещё предстоит найти',
-    objective: abandonsQuest
+    objective: onwardDestination
+      ? `Продолжить путь из ${location} к «${onwardDestination}»`
+      : abandonsQuest
       ? `Осмотреться в ${location} и найти новую цель`
       : oldHook ? `Найти в ${location} другой путь к разгадке: ${oldHook}` : `Осмотреться в ${location} и найти другой путь`,
     transition: `Отряд отступает из «${from}» и следует принятому решению: ${clean(decision, 220)}.`,
@@ -271,7 +348,6 @@ function normalizePlan(value, fallback) {
   const mapSource = source.map && typeof source.map === 'object' && !Array.isArray(source.map) ? source.map : {}
   const layouts = new Set(['rooms', 'streets', 'open', 'winding', 'cavern', 'ruins', 'radial'])
   const danger = new Set(['низкая', 'средняя', 'высокая'])
-  const objectiveStatus = new Set(['completed', 'unresolved', 'abandoned'])
   const scale = MAP_SCALES.has(mapSource.scale) ? mapSource.scale : fallback.map.scale
   const dimensions = scaleDimensions(scale)
   // Этажи необязательны, и их отсутствие — самый частый и совершенно нормальный
@@ -290,8 +366,11 @@ function normalizePlan(value, fallback) {
     theme: clean(source.theme, 80) || fallback.theme,
     danger: danger.has(source.danger) ? source.danger : fallback.danger,
     outcome: clean(source.outcome, 240) || fallback.outcome,
-    objective_status: objectiveStatus.has(source.objective_status) ? source.objective_status : fallback.objective_status,
-    carry_unresolved: source.carry_unresolved !== false,
+    // Это следствие подтверждённого решения группы, а не творческая часть
+    // ответа модели. Уход не может превратиться в «цель завершена», а явный
+    // отказ — снова открыть оставленную нить.
+    objective_status: fallback.objective_status,
+    carry_unresolved: fallback.carry_unresolved,
     ...(levels.length ? { levels } : {}),
     map: {
       layout: layouts.has(mapSource.layout) ? mapSource.layout : fallback.map.layout,
@@ -304,6 +383,51 @@ function normalizePlan(value, fallback) {
       water: Math.max(0, Math.min(0.3, Number(mapSource.water) || fallback.map.water)),
       featureCount: clampInteger(mapSource.featureCount, fallback.map.featureCount, 2, 12),
     },
+  }
+}
+
+function locationKey(value) {
+  return clean(value, 120).normalize('NFKC').toLocaleLowerCase('ru')
+}
+
+function genericDestinationHint(value) {
+  return /^(?:подземель|локац|мест|город|деревн|сел|пос[её]л|лес|чащ|рощ|болот|пустош|пустын|порт|гаван|пристан|зам|крепост|цитадел|форт|застав|лагер|храм|святилищ|монастыр|пещер|руин|архив|склеп|катакомб|шахт|башн|таверн|трактир|корчм|усадьб|поместь|особняк|здани|район|улиц|площад|рынок|тракт|дорог|перевал|ущель|долин|остров|берег|станци|пол)[а-яё]*$/iu.test(locationKey(value))
+}
+
+/**
+ * Известная точка назначения — серверный инвариант. Промпт объясняет его
+ * модели ради хорошего ответа, но не является проверкой: идентификатор, имя и
+ * вид карты всё равно закрепляются по worldMap после ответа.
+ */
+function knownDestinationConstraint({ state, destinationHint, modelLocation, fallbackLocation }) {
+  const known = knownDestinationsFrom(state)
+  const hinted = locationKey(destinationHint)
+  if (hinted) {
+    // Для дальней известной точки fallback уже выбрал первый сегмент маршрута.
+    // Неизвестное собственное имя тоже фиксируется; обобщённое «город» или
+    // «лес» оставляет модели право придумать конкретное место.
+    const intended = knownWorldDestinationByName(state, destinationHint)
+    if (!intended && genericDestinationHint(destinationHint)) return { destination: null, exactLocation: '', rejected: false }
+    const destination = knownWorldDestinationByName(state, fallbackLocation)
+    const exactLocation = destination ? '' : clean(fallbackLocation, 120)
+    const modeled = locationKey(modelLocation)
+    return {
+      destination,
+      exactLocation,
+      rejected: Boolean(modeled && modeled !== locationKey(destination?.name ?? exactLocation)),
+    }
+  }
+  if (!known.length) return { destination: null, exactLocation: '', rejected: false }
+  const modeled = locationKey(modelLocation)
+  if (modeled) {
+    const destination = known.find((entry) => locationKey(entry.name) === modeled) ?? null
+    return { destination, exactLocation: '', rejected: !destination }
+  }
+  const fallbackKey = locationKey(fallbackLocation)
+  return {
+    destination: known.find((entry) => locationKey(entry.name) === fallbackKey) ?? known[0] ?? null,
+    exactLocation: '',
+    rejected: false,
   }
 }
 
@@ -333,11 +457,36 @@ export class SceneArchitectAgent {
         temperature: 0.45,
         maxTokens: 1000,
       })
-      const sceneArgs = normalizePlan(result, fallback)
+      const constraint = knownDestinationConstraint({
+        state,
+        destinationHint,
+        modelLocation: result?.location,
+        fallbackLocation: fallback.location,
+      })
+      // Если модель при наличии известных дорог придумала третье место или
+      // подменила явно выбранное, её творческий план отбрасывается целиком:
+      // отдельные строки arrival/hook тоже могли бы ссылаться на ложную точку.
+      const constrainedFallback = constraint.destination
+        ? fallbackPlan({ action: clean(action, 2000), state, decision: clean(decision, 500), destinationHint: constraint.destination.name, abandonsQuest })
+        : fallback
+      const sceneArgs = constraint.rejected ? fallback : normalizePlan(result, constrainedFallback)
+      if (constraint.destination && !constraint.rejected) {
+        sceneArgs.location = constraint.destination.name
+        sceneArgs.location_id = constraint.destination.id
+        sceneArgs.theme = constrainedFallback.theme
+        sceneArgs.danger = constrainedFallback.danger
+        sceneArgs.map = constrainedFallback.map
+      }
+      if (constraint.exactLocation && !constraint.rejected) sceneArgs.location = constraint.exactLocation
       return {
         sceneArgs,
-        shopIntent: normalizeSceneShopIntent(result?.shop_intent, sceneArgs),
-        trace: { agent: SCENE_ARCHITECT_AGENT_ID, mode: 'model', model: this.llmClient.model ?? null },
+        shopIntent: constraint.rejected ? fallbackShopIntent : normalizeSceneShopIntent(result?.shop_intent, sceneArgs),
+        trace: {
+          agent: SCENE_ARCHITECT_AGENT_ID,
+          mode: 'model',
+          model: this.llmClient.model ?? null,
+          ...(constraint.rejected ? { constraint: 'known_destination_fallback' } : {}),
+        },
       }
     } catch (error) {
       return {

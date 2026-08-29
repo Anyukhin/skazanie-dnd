@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Compass, DoorOpen, Map, MapPin, Navigation, Sparkles, X } from 'lucide-react'
 import type { GameState, WorldMapLocation } from './types'
-import { KIND_LABELS, currentWorldLocation, reachableDestinations, travelProposalText, type TravelDestination } from './world-travel'
+import { KIND_LABELS, currentWorldLocation, neighboringDestinations, travelProposalText, type TravelDestination } from './world-travel'
 
 /**
  * Две карточки перехода между локациями поверх доски.
@@ -19,7 +19,7 @@ import { KIND_LABELS, currentWorldLocation, reachableDestinations, travelProposa
  */
 
 export function travelDestinationsFor(state: Pick<GameState, 'scene' | 'worldMap'>): TravelDestination[] {
-  return reachableDestinations(state)
+  return neighboringDestinations(state)
 }
 
 export function LeaveLocationPicker({ state, busy, onTravel, onNarratorDecides, onOpenWorldMap, onClose }: {
@@ -67,7 +67,7 @@ export function LeaveLocationPicker({ state, busy, onTravel, onNarratorDecides, 
       <button type="button" className="leave-location-narrator" disabled={busy} onClick={onNarratorDecides}>
         <Sparkles size={15} /><span><strong>Куда глаза глядят</strong><small>Пусть Рассказчик решит, что за поворотом</small></span>
       </button>
-      {state.worldMap && <button type="button" className="leave-location-world-map" onClick={onOpenWorldMap}>
+      {state.worldMap && <button type="button" className="leave-location-world-map" disabled={busy} onClick={onOpenWorldMap}>
         <Map size={15} /><span><strong>Глобальная карта</strong><small>Выбрать путь на карте мира</small></span>
       </button>}
     </footer>
@@ -125,6 +125,7 @@ export function SceneTransitionBanner({ notice, onClose }: { notice: SceneTransi
   // под зелёными знаками») — другое дело, его показываем.
   const subtitle = notice.title.replace(/^глава\s+\d+\s*[·:—-]\s*/iu, '').trim()
   return <section className={`scene-transition-banner${leaving ? ' leaving' : ''}`} role="status" aria-live="polite" onClick={onClose}>
+    <button type="button" className="scene-transition-close" aria-label="Закрыть объявление о новой локации" onClick={onClose}><X size={14} /></button>
     <small>{notice.chapter > 0 ? `Глава ${notice.chapter} · ` : ''}Новая локация{notice.kind ? ` · ${KIND_LABELS[notice.kind]}` : ''}</small>
     <strong>{notice.location}</strong>
     {subtitle && subtitle !== notice.location && <em>{subtitle}</em>}

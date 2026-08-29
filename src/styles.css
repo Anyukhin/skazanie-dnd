@@ -932,6 +932,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .scene-transition-banner strong { color: #fbeed6; font: 700 clamp(var(--fs-xl),2.3vw,var(--fs-3xl))/1.15 Spectral,Georgia,serif; text-wrap: balance; }
 .scene-transition-banner em { color: #cdb793; font: italic 500 var(--fs-md) Spectral,Georgia,serif; }
 .scene-transition-banner span { display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; color: #9f8f7a; font: var(--fs-xs) Manrope,sans-serif; }
+.scene-transition-close { position: absolute; top: 7px; right: 7px; width: 27px; height: 27px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: transparent; color: #9f8f7a; cursor: pointer; }
+.scene-transition-close:hover, .scene-transition-close:focus-visible { background: rgba(255,255,255,.08); color: #f0dcb8; }
 .scene-transition-banner ~ .cinematic-narration { top: calc(var(--status) + 158px); }
 @keyframes scene-transition-arrive { from { opacity: 0; transform: translate(-50%,-18px) scale(.96); } to { opacity: 1; transform: translate(-50%,0) scale(1); } }
 @keyframes scene-transition-leave { to { opacity: 0; transform: translate(-50%,-10px); } }
@@ -944,10 +946,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .leave-location-picker > header small { color: #9a8468; font: 700 var(--fs-xxs) Manrope,sans-serif; letter-spacing: .16em; text-transform: uppercase; }
 .leave-location-picker > header strong { color: #f3e3c7; font: 600 var(--fs-lg) Spectral,Georgia,serif; }
 .leave-location-picker > header .icon-button { margin-left: auto; width: 30px; height: 30px; }
-.leave-location-destinations { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 6px; margin: 0; padding: 0; list-style: none; }
+.leave-location-destinations { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 6px; margin: 0; padding: 0; list-style: none; }
 .leave-location-destinations button, .leave-location-narrator, .leave-location-world-map { width: 100%; height: 100%; display: flex; align-items: center; gap: 10px; margin: 0; padding: 8px 11px; border: 1px solid rgba(211,160,97,.26); border-radius: 8px; background: rgba(127,81,36,.1); color: #d9c5a4; text-align: left; cursor: pointer; transition: .18s; }
-.leave-location-destinations button:hover:not(:disabled), .leave-location-narrator:hover:not(:disabled), .leave-location-world-map:hover { border-color: rgba(226,184,121,.66); background: rgba(192,132,66,.2); color: #f0d3a6; transform: translateY(-1px); }
-.leave-location-destinations button:disabled, .leave-location-narrator:disabled { opacity: .45; cursor: default; }
+.leave-location-destinations button:hover:not(:disabled), .leave-location-narrator:hover:not(:disabled), .leave-location-world-map:hover:not(:disabled) { border-color: rgba(226,184,121,.66); background: rgba(192,132,66,.2); color: #f0d3a6; transform: translateY(-1px); }
+.leave-location-destinations button:disabled, .leave-location-narrator:disabled, .leave-location-world-map:disabled { opacity: .45; cursor: default; }
 .leave-location-destinations button > span, .leave-location-narrator > span, .leave-location-world-map > span { display: grid; gap: 2px; min-width: 0; }
 .leave-location-destinations strong, .leave-location-narrator strong, .leave-location-world-map strong { color: inherit; font: 600 var(--fs-md) Spectral,Georgia,serif; }
 .leave-location-destinations small, .leave-location-narrator small, .leave-location-world-map small { color: #9a8a74; font: var(--fs-xs) Manrope,sans-serif; }
@@ -1348,6 +1350,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 @keyframes sceneIllustrationDrift { from { transform: scale(1.055); } to { transform: scale(1); } }
 @media (prefers-reduced-motion: reduce) {
   .scene-illustration, .scene-illustration img, .cinematic-narration,
+  .scene-transition-banner, .scene-transition-banner.leaving, .leave-location-picker, .party-pin,
   .game-area.is-narrating .map-atmosphere-one, .game-area.is-narrating .map-atmosphere-two,
   .game-area.is-narrating .map-stage::after { animation: none; }
   .scene-illustration img.scene-location-art { transition: none; }

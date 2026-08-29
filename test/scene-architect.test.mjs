@@ -72,6 +72,7 @@ function brodWorldMap() {
       { id: 'route-1', from: 'tihiy-brod', to: 'estwood', kind: 'road', distance: 2, danger: 'низкая', discovered: true },
       { id: 'route-2', from: 'kerskaya', to: 'tihiy-brod', kind: 'trail', distance: 4, danger: 'средняя', discovered: true },
       { id: 'route-3', from: 'tihiy-brod', to: 'far', kind: 'road', distance: 9, danger: 'высокая', discovered: false },
+      { id: 'route-4', from: 'estwood', to: 'far', kind: 'road', distance: 3, danger: 'высокая', discovered: true },
     ],
   }
 }
@@ -116,6 +117,19 @@ test('уход без названного места ведёт к соседу
   assert.equal(hinted.sceneArgs.location, 'Керская пустошь')
   assert.equal(hinted.sceneArgs.map.pattern, 'natural', 'пустошь по карте мира — дикая местность')
   assert.equal(hinted.sceneArgs.map.material, 'grass')
+
+  // Название исходной точки входит в служебный текст глобальной карты. Оно не
+  // должно перекрасить непрозрачно названную деревню в мост из-за слова «Брод».
+  const exactVillage = await architect.plan({
+    action: '[ГЛОБАЛЬНАЯ КАРТА] Отряд предлагает отправиться из «Тихий Брод» в «Эствуд». Выбранный путь: Тихий Брод → Эствуд.',
+    state: brodState,
+    decision: 'Отправиться из «Тихий Брод» в «Эствуд»',
+    destinationHint: 'Эствуд',
+  })
+  assert.equal(exactVillage.sceneArgs.location, 'Эствуд')
+  assert.equal(exactVillage.sceneArgs.location_id, 'estwood')
+  assert.equal(exactVillage.sceneArgs.map.layout, 'streets')
+  assert.equal(exactVillage.sceneArgs.map.pattern, 'village')
 })
 
 test('без карты мира уход не вкладывает «Окрестности» друг в друга', async () => {
@@ -138,6 +152,105 @@ test('картограф получает соседей по карте мир�
   const context = untrustedPayload(capturedRequest.messages[1].content, 'scene_planning')
   assert.equal(context.known_destinations[0].name, 'Эствуд')
   assert.match(capturedRequest.messages[0].content, /known_destinations/u)
+})
+
+test('известное назначение и его карта остаются серверными после ответа модели', async () => {
+  const architect = new SceneArchitectAgent({ llmClient: { model: 'fake-cartographer', async completeJson() {
+    return {
+      title: 'Ложный склеп',
+      location: 'Керская пустошь',
+      theme: 'древний склеп',
+      objective_status: 'completed',
+      carry_unresolved: false,
+      map: { layout: 'cavern', scale: 'room', pattern: 'crypt', material: 'stone', width: 7, height: 7 },
+    }
+  } } })
+  const planned = await architect.plan({
+    action: '[РЕШЕНИЕ ГРУППЫ] Покинуть «Тихий Брод»',
+    state: brodState,
+    decision: 'Покинуть «Тихий Брод»',
+    destinationHint: '',
+  })
+
+  assert.equal(planned.trace.mode, 'model')
+  assert.equal(planned.sceneArgs.location, 'Керская пустошь')
+  assert.equal(planned.sceneArgs.location_id, 'kerskaya')
+  assert.equal(planned.sceneArgs.theme, 'дикая местность')
+  assert.equal(planned.sceneArgs.map.layout, 'winding')
+  assert.equal(planned.sceneArgs.map.pattern, 'natural')
+  assert.equal(planned.sceneArgs.map.material, 'grass')
+  assert.equal(planned.sceneArgs.objective_status, 'unresolved')
+  assert.equal(planned.sceneArgs.carry_unresolved, true)
+  assert.equal(createSceneTransition(planned.sceneArgs, brodState).scene.location_id, 'kerskaya')
+
+  const abandoned = await architect.plan({
+    action: '[РЕШЕНИЕ ГРУППЫ] Отказываемся от задания и уходим в Керскую пустошь',
+    state: brodState,
+    decision: 'Отказываемся от задания и уходим в Керскую пустошь',
+    destinationHint: 'Керская пустошь',
+    abandonsQuest: true,
+  })
+  assert.equal(abandoned.sceneArgs.objective_status, 'abandoned')
+  assert.equal(abandoned.sceneArgs.carry_unresolved, false)
+})
+
+test('модель не может заменить известного соседа выдуманной промежуточной сценой', async () => {
+  const architect = new SceneArchitectAgent({ llmClient: { model: 'fake-cartographer', async completeJson() {
+    return {
+      title: 'Окрестности окрестностей',
+      location: 'Окрестности Тихого Брода',
+      theme: 'дорога',
+      map: { layout: 'winding', pattern: 'natural', material: 'earth' },
+      shop_intent: { action: 'create', settlement_type: 'city', theme: 'arms', budget_cp: 100_000 },
+    }
+  } } })
+  const planned = await architect.plan({
+    action: '[РЕШЕНИЕ ГРУППЫ] Покинуть «Тихий Брод»',
+    state: brodState,
+    decision: 'Покинуть «Тихий Брод»',
+    destinationHint: '',
+  })
+
+  assert.equal(planned.trace.mode, 'model', 'генерация была и должна учитываться в расходе')
+  assert.equal(planned.trace.constraint, 'known_destination_fallback')
+  assert.equal(planned.sceneArgs.location, 'Эствуд')
+  assert.equal(planned.sceneArgs.location_id, 'estwood')
+  assert.equal(planned.sceneArgs.map.layout, 'streets')
+  assert.deepEqual(planned.shopIntent, defaultSceneShopIntent(planned.sceneArgs))
+})
+
+test('дальний маршрут исполняется по одному сегменту и не создаёт ложную прямую дорогу', async () => {
+  const planned = await new SceneArchitectAgent().plan({
+    action: '[ГЛОБАЛЬНАЯ КАРТА] Отряд предлагает отправиться из «Тихий Брод» в «Дальний форт». Выбранный путь: Тихий Брод → Эствуд → Дальний форт.',
+    state: brodState,
+    decision: 'Отправиться из «Тихий Брод» в «Дальний форт» через Эствуд',
+    destinationHint: 'Дальний форт',
+  })
+  assert.equal(planned.sceneArgs.location, 'Эствуд')
+  assert.equal(planned.sceneArgs.location_id, 'estwood')
+  assert.match(planned.sceneArgs.objective, /Дальний форт/u)
+
+  const transition = createSceneTransition(planned.sceneArgs, brodState)
+  assert.equal(transition.worldMap.currentLocationId, 'estwood')
+  assert.equal(transition.worldMap.routes.find((route) => route.id === 'route-3')?.discovered, false)
+  assert.equal(transition.worldMap.routes.filter((route) => (
+    new Set([route.from, route.to]).has('tihiy-brod') && new Set([route.from, route.to]).has('far')
+  )).length, 1, 'переход через Эствуд не должен дорисовать второе ребро Тихий Брод → Дальний форт')
+})
+
+test('названное неизвестное место не может быть переименовано моделью', async () => {
+  const architect = new SceneArchitectAgent({ llmClient: { model: 'fake-cartographer', async completeJson() {
+    return { location: 'Совсем другая долина', title: 'Подмена направления', map: { layout: 'open', pattern: 'natural' } }
+  } } })
+  const planned = await architect.plan({
+    action: '[РЕШЕНИЕ ГРУППЫ] Идём в Долину Серебряных Рек',
+    state: archiveState,
+    decision: 'Идём в Долину Серебряных Рек',
+    destinationHint: 'Долина Серебряных Рек',
+  })
+  assert.equal(planned.trace.mode, 'model')
+  assert.equal(planned.trace.constraint, 'known_destination_fallback')
+  assert.equal(planned.sceneArgs.location, 'Долина Серебряных Рек')
 })
 
 test('детерминированный fallback не создаёт стационарную лавку в дикой местности', async () => {
