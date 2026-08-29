@@ -186,7 +186,7 @@ test('встреча со стражей живёт на доске отдель
   // Пока офицер стоит перед отрядом, уход из локации закрыт: сервер такой
   // переход не пропустит, и кнопка обязана говорить об этом, а не падать
   // ошибкой после нажатия.
-  assert.match(board, /disabled=\{narrating \|\| tacticalBusy \|\| Boolean\(guardEncounter\)\}/u)
+  assert.match(board, /disabled=\{leaveLocationDisabled \|\| narrating \|\| tacticalBusy \|\| Boolean\(guardEncounter\)\}/u)
   assert.match(board, /Стража стоит перед отрядом — сначала ответьте офицеру/u)
   // Подходы к побегу выбирает игрок, навык уезжает командой.
   assert.match(board, /guard-escape-skill/u)

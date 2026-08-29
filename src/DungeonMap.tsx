@@ -869,7 +869,7 @@ export function boardVisualTheme(theme: SceneVisualTheme) {
   return 'map-theme-wild'
 }
 
-export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, visualBatch, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
+export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, visualBatch, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, leaveLocationDisabled, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -894,6 +894,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   onOperateSceneObject: (actorId: string, propId: string, intent: SceneObjectIntent) => Promise<CommandOutcome>
   onUseLevelTransition: (actorId: string, propId: string) => Promise<CommandOutcome>
   onLeaveLocation: () => void
+  leaveLocationDisabled?: boolean
   onOpenMerchant: (merchantId: string) => void
   onFinishTurn: () => Promise<CommandOutcome>
   onFreeAction: (text: string) => Promise<CommandOutcome>
@@ -3510,10 +3511,12 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             {!combatActive && <button
               type="button"
               className="exploration-leave-location"
-              disabled={narrating || tacticalBusy || Boolean(guardEncounter)}
+              disabled={leaveLocationDisabled || narrating || tacticalBusy || Boolean(guardEncounter)}
               onClick={onLeaveLocation}
               title={guardEncounter
                 ? 'Стража стоит перед отрядом — сначала ответьте офицеру'
+                : leaveLocationDisabled
+                  ? 'Сначала завершите текущее действие или проверку'
                 : 'Предложить отряду покинуть локацию. Переход начнётся после решения группы'}
             ><DoorOpen size={18} /><span><small>Решение группы</small><strong>Покинуть локацию</strong></span></button>}
             {!combatActive && showStartCombat && <button type="button" className="exploration-start-combat" disabled={!canAct || tacticalBusy} onClick={onStartCombat}><CombatIcon id="start-combat" kind="start-combat" hint="инициатива начать бой" size={22} compact /><span><small>Бросить инициативу</small><strong>Начать бой</strong></span></button>}

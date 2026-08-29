@@ -16,6 +16,24 @@ test('глобальная карта кампании детерминиров�
   assert.equal(start.visited, true)
 })
 
+test('стартовая сцена добавляется на авторскую карту вместо подмены первой точкой', () => {
+  const map = createCampaignWorldMap({
+    seed: 'MISMATCH-1',
+    campaignName: 'Несогласованный мир',
+    startingLocation: 'Несуществующий старт',
+    source: {
+      locations: [
+        { id: 'foreign-fort', name: 'Чужой форт', kind: 'fortress', known: true },
+        { id: 'foreign-port', name: 'Чужой порт', kind: 'port', known: true },
+      ],
+    },
+  })
+  const current = map.locations.find((location) => location.id === map.currentLocationId)
+  assert.equal(current?.name, 'Несуществующий старт')
+  assert.equal(current?.kind, 'landmark', 'вид отсутствующей точки нельзя выдумывать из первой записи карты')
+  assert.equal(current?.visited, true)
+})
+
 test('новая сцена становится канонической точкой карты и соединяется с предыдущей', () => {
   const initial = createCampaignWorldMap({ seed: 'ROUTE-1', campaignName: 'Дороги', startingLocation: 'Старый порт' })
   const updated = reconcileWorldMap(initial, {

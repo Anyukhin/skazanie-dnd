@@ -101,6 +101,40 @@ test('публичный переход не переносит private memory �
   ]) assert.doesNotMatch(publicPayload, new RegExp(secret, 'u'))
 })
 
+test('переход в известную деревню рисует улицы и дома, а не поле с полосой земли', () => {
+  // Тот же сценарий, что и в живой кампании: отряд в «Тихом Броде» (деревня на
+  // карте мира) уходит в соседний «Эствуд» (тоже деревня). Ни одно из двух
+  // названий о поселении не говорит — об этом знает только карта мира.
+  const worldMap = {
+    seed: 'brod', name: 'Край', width: 1000, height: 640, currentLocationId: 'tihiy-brod',
+    regions: [{ id: 'r', name: 'Долина', x: 500, y: 320, radius: 300, biome: 'лес' }],
+    locations: [
+      { id: 'tihiy-brod', name: 'Тихий Брод', kind: 'village', x: 500, y: 360, regionId: 'r', summary: '', known: true, visited: true },
+      { id: 'estwood', name: 'Эствуд', kind: 'village', x: 300, y: 280, regionId: 'r', summary: '', known: true, visited: false },
+    ],
+    routes: [{ id: 'route-1', from: 'tihiy-brod', to: 'estwood', kind: 'road', distance: 2, danger: 'низкая', discovered: true }],
+  }
+  const state = {
+    sessionCode: 'BROD', worldMap,
+    scene: { title: 'Камень у брода', location: 'Тихий Брод', location_id: 'tihiy-brod', objective: 'x', turn: 3, cells: [] },
+    adventure: { chapter: 1, visitedLocations: ['Тихий Брод'], history: [] },
+  }
+  const transition = createSceneTransition({
+    title: 'Эствуд', location: 'Эствуд', theme: 'новая местность',
+    map: mapRequest({ layout: 'open', pattern: 'natural', material: 'earth', width: 15, height: 11 }),
+  }, state)
+  assert.equal(transition.scene.location_id, 'estwood')
+  assert.ok(transition.scene.cells.filter((cell) => cell.type === 'door').length >= 4, 'у домов деревни нет дверей — нарисовано поле')
+  assert.ok(transition.scene.cells.filter((cell) => cell.type === 'wall' && cell.material === 'wood').length >= 40, 'в деревне нет стен домов')
+  // Место, которого на карте ещё не было, вид с карты не получает: запасная
+  // карта ставит «город» вслепую, и по нему рисовать улицы нельзя.
+  const unknown = createSceneTransition({
+    title: 'Безымянная низина', location: 'Безымянная низина', theme: 'новая местность',
+    map: mapRequest({ layout: 'open', pattern: 'natural', material: 'earth', width: 15, height: 11 }),
+  }, { ...state, worldMap: undefined })
+  assert.equal(unknown.scene.cells.some((cell) => cell.type === 'door'), false, 'неизвестная низина стала поселением')
+})
+
 test('заявка картографа на планировку больше не отменяет тему сцены', () => {
   // Регресс, который жил в игре: тема применялась только когда картограф не
   // назвал `layout`/`pattern`, а промпт `map_architect` требует оба поля в

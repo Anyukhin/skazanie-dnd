@@ -923,6 +923,42 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .cinematic-narration > small { display: flex; align-items: center; gap: 6px; color: #857869; font: var(--fs-xs) Manrope,sans-serif; }
 @keyframes cinematic-narration-arrive { from { opacity: 0; transform: translate(-50%,12px) scale(.98); } to { opacity: 1; transform: translate(-50%,0) scale(1); } }
 
+/* Плашка смены сцены: стоит над карточкой Рассказчика и объявляет главу,
+   место и откуда пришёл отряд. Сама закрывается через восемь секунд, по щелчку —
+   сразу. Пока она на экране, карточка Рассказчика отодвинута вниз. */
+.scene-transition-banner { position: absolute; z-index: 56; left: 50%; top: calc(var(--status) + 12px); display: grid; justify-items: center; gap: 2px; min-width: min(460px, calc(100% - 54px)); max-width: min(720px, calc(100% - 54px)); padding: 12px 30px 13px; border: 1px solid rgba(226,184,121,.62); border-radius: 10px; background: linear-gradient(180deg, rgba(64,44,22,.96), rgba(22,16,12,.96)); color: #f0dcb8; text-align: center; transform: translateX(-50%); box-shadow: 0 18px 60px rgba(0,0,0,.72), 0 0 0 4px rgba(226,184,121,.1), inset 0 1px rgba(255,244,220,.1); cursor: pointer; animation: scene-transition-arrive .46s cubic-bezier(.2,.8,.3,1); }
+.scene-transition-banner.leaving { animation: scene-transition-leave .8s ease-in forwards; }
+.scene-transition-banner small { color: #d4a668; font: 700 var(--fs-xs) Manrope,sans-serif; letter-spacing: .18em; text-transform: uppercase; }
+.scene-transition-banner strong { color: #fbeed6; font: 700 clamp(var(--fs-xl),2.3vw,var(--fs-3xl))/1.15 Spectral,Georgia,serif; text-wrap: balance; }
+.scene-transition-banner em { color: #cdb793; font: italic 500 var(--fs-md) Spectral,Georgia,serif; }
+.scene-transition-banner span { display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; color: #9f8f7a; font: var(--fs-xs) Manrope,sans-serif; }
+.scene-transition-close { position: absolute; top: 7px; right: 7px; width: 27px; height: 27px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: transparent; color: #9f8f7a; cursor: pointer; }
+.scene-transition-close:hover, .scene-transition-close:focus-visible { background: rgba(255,255,255,.08); color: #f0dcb8; }
+.scene-transition-banner ~ .cinematic-narration { top: calc(var(--status) + 158px); }
+@keyframes scene-transition-arrive { from { opacity: 0; transform: translate(-50%,-18px) scale(.96); } to { opacity: 1; transform: translate(-50%,0) scale(1); } }
+@keyframes scene-transition-leave { to { opacity: 0; transform: translate(-50%,-10px); } }
+
+/* Выбор пункта назначения по кнопке «Покинуть локацию»: соседи по карте мира,
+   «куда глаза глядят» и переход к глобальной карте. */
+.leave-location-picker { position: absolute; z-index: 57; left: 50%; top: calc(var(--status) + 34px); width: min(680px, calc(100% - 54px)); max-height: calc(100% - var(--status) - 120px); display: grid; gap: 12px; padding: 16px 18px 14px; overflow: auto; border: 1px solid rgba(222,180,120,.46); border-radius: 10px; background: radial-gradient(circle at 50% -30%, rgba(154,102,58,.22), transparent 58%), rgba(12,10,10,.96); color: #e6d7c3; transform: translateX(-50%); box-shadow: 0 22px 70px rgba(0,0,0,.72), inset 0 1px rgba(255,244,220,.06); backdrop-filter: blur(14px); animation: cinematic-narration-arrive .3s ease-out; }
+.leave-location-picker > header { display: flex; align-items: center; gap: 10px; color: #d4a668; }
+.leave-location-picker > header > span { display: grid; gap: 1px; }
+.leave-location-picker > header small { color: #9a8468; font: 700 var(--fs-xxs) Manrope,sans-serif; letter-spacing: .16em; text-transform: uppercase; }
+.leave-location-picker > header strong { color: #f3e3c7; font: 600 var(--fs-lg) Spectral,Georgia,serif; }
+.leave-location-picker > header .icon-button { margin-left: auto; width: 30px; height: 30px; }
+.leave-location-destinations { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 6px; margin: 0; padding: 0; list-style: none; }
+.leave-location-destinations button, .leave-location-narrator, .leave-location-world-map { width: 100%; height: 100%; display: flex; align-items: center; gap: 10px; margin: 0; padding: 8px 11px; border: 1px solid rgba(211,160,97,.26); border-radius: 8px; background: rgba(127,81,36,.1); color: #d9c5a4; text-align: left; cursor: pointer; transition: .18s; }
+.leave-location-destinations button:hover:not(:disabled), .leave-location-narrator:hover:not(:disabled), .leave-location-world-map:hover:not(:disabled) { border-color: rgba(226,184,121,.66); background: rgba(192,132,66,.2); color: #f0d3a6; transform: translateY(-1px); }
+.leave-location-destinations button:disabled, .leave-location-narrator:disabled, .leave-location-world-map:disabled { opacity: .45; cursor: default; }
+.leave-location-destinations button > span, .leave-location-narrator > span, .leave-location-world-map > span { display: grid; gap: 2px; min-width: 0; }
+.leave-location-destinations strong, .leave-location-narrator strong, .leave-location-world-map strong { color: inherit; font: 600 var(--fs-md) Spectral,Georgia,serif; }
+.leave-location-destinations small, .leave-location-narrator small, .leave-location-world-map small { color: #9a8a74; font: var(--fs-xs) Manrope,sans-serif; }
+.leave-location-picker > footer { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.leave-location-narrator { border-style: dashed; }
+.leave-location-empty { margin: 0; color: #a89880; font: var(--fs-sm) Manrope,sans-serif; }
+.leave-location-note { color: #6f6559; font: var(--fs-xxs) Manrope,sans-serif; }
+@media (max-width: 900px) { .leave-location-picker > footer { grid-template-columns: 1fr; } }
+
 .journal-linked { filter: brightness(1.22) saturate(1.18); box-shadow: 0 0 0 3px rgba(231,185,115,.9), 0 0 24px rgba(226,154,67,.82) !important; }
 .token-damage-history { margin-top: 8px; padding-top: 7px; border-top: 1px solid rgba(196,98,80,.18); }
 .token-damage-history > small { color: #a67468; }
@@ -1314,6 +1350,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 @keyframes sceneIllustrationDrift { from { transform: scale(1.055); } to { transform: scale(1); } }
 @media (prefers-reduced-motion: reduce) {
   .scene-illustration, .scene-illustration img, .cinematic-narration,
+  .scene-transition-banner, .scene-transition-banner.leaving, .leave-location-picker, .party-pin,
   .game-area.is-narrating .map-atmosphere-one, .game-area.is-narrating .map-atmosphere-two,
   .game-area.is-narrating .map-stage::after { animation: none; }
   .scene-illustration img.scene-location-art { transition: none; }

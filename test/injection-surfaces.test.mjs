@@ -68,7 +68,7 @@ test('решение партии уходит картографу только
   assert.ok(plan)
   assert.ok(client.captured.messages, 'модель должна была быть вызвана')
   const [system, user] = client.captured.messages
-  assert.match(system.content, /PROMPT_ID: map_architect\/v4/)
+  assert.match(system.content, /PROMPT_ID: map_architect\/v5/)
   assert.match(system.content, /UNTRUSTED_DATA/)
   assertInsideUntrustedData(user.content, INJECTION)
 })

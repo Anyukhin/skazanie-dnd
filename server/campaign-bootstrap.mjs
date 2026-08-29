@@ -350,18 +350,6 @@ export class CampaignBootstrapper {
     // кампании — такая же локация, и таверна в её начале обязана быть таверной,
     // а не серой коробкой. Прежде здесь стоял прямой вызов процедурного
     // генератора, и стартовая сцена не могла получить тему ни при каких словах.
-    const cells = generateSceneCells({
-      seed,
-      theme: opening.scene.theme,
-      danger: opening.scene.danger,
-      location: opening.scene.location,
-      map: opening.scene.map,
-    })
-    const positions = startingCells(cells, heroes.length)
-    const positionedHeroes = heroes.map((hero, index) => ({ ...hero, x: positions[index].x, y: positions[index].y }))
-    const merchants = normalizeMerchants(Array.isArray(rawMerchants) && rawMerchants.length
-      ? rawMerchants
-      : [createStarterMerchant({ location: opening.scene.location })])
     const campaignWorldMap = createCampaignWorldMap({
       seed,
       campaignName: campaignName === 'Новая кампания' ? opening.campaignName : campaignName,
@@ -369,6 +357,26 @@ export class CampaignBootstrapper {
       source: opening.worldMap,
       startingLocation: opening.scene.location,
     })
+    // Вид стартовой точки берётся с карты мира только когда её нарисовал автор
+    // кампании: запасная карта ставит стартовой точке «город» вслепую, и по
+    // такому виду поляну или перевал рисовать улицей нельзя.
+    const authoredWorldMap = Array.isArray(opening.worldMap?.locations) && opening.worldMap.locations.length > 0
+    const startingWorldKind = authoredWorldMap
+      ? String(campaignWorldMap.locations.find((location) => location.id === campaignWorldMap.currentLocationId)?.kind ?? '')
+      : ''
+    const cells = generateSceneCells({
+      seed,
+      theme: opening.scene.theme,
+      danger: opening.scene.danger,
+      location: opening.scene.location,
+      worldKind: startingWorldKind,
+      map: opening.scene.map,
+    })
+    const positions = startingCells(cells, heroes.length)
+    const positionedHeroes = heroes.map((hero, index) => ({ ...hero, x: positions[index].x, y: positions[index].y }))
+    const merchants = normalizeMerchants(Array.isArray(rawMerchants) && rawMerchants.length
+      ? rawMerchants
+      : [createStarterMerchant({ location: opening.scene.location })])
     const starterFactionId = `faction-${seed.slice(0, 12)}`
     const starterQuestId = `quest-${seed.slice(0, 12)}`
     const openingNpcs = opening.npcs.map((npc, index) => ({

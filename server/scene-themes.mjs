@@ -279,6 +279,89 @@ export function isLiveTheme(theme) {
   return Boolean(theme?.live)
 }
 
+/** Темы, которые называют постройку или подземелье, а не открытую местность. */
+const STRUCTURE_THEMES = new Set(['building', 'temple', 'crypt', 'cave'])
+
+/** Виды точек карты мира, которые означают поселение. */
+const SETTLEMENT_WORLD_KINDS = new Set(['capital', 'city', 'town', 'village', 'port'])
+
+/**
+ * Тема по виду точки карты мира, когда название сцены о местности молчит.
+ * @type {Record<string, string>}
+ */
+const WORLD_KIND_THEMES = {
+  wilds: 'forest',
+  dungeon: 'cave',
+  ruin: 'crypt',
+  fortress: 'crypt',
+}
+
+/**
+ * @param {string} id
+ * @returns {typeof SCENE_THEMES[number]}
+ */
+function themeById(id) {
+  return SCENE_THEMES.find((candidate) => candidate.id === id) ?? FALLBACK_THEME
+}
+
+/**
+ * Выбор темы для живой сцены — по всем признакам, а не только по словам в
+ * названии.
+ *
+ * Одного названия мало: деревня «Тихий Брод» опознавалась как дорога по слову
+ * «брод», и поселение с колодцем, кузницей и архивом рисовалось полем с полосой
+ * утоптанной земли — ровно таким же, как дорога, в которую отряд потом уходил.
+ * Игрок нажимал «покинуть локацию» и видел ту же пустую карту, что и до того.
+ *
+ * Порядок признаков:
+ *
+ * 1. Название, в котором есть постройка или подземелье (таверна, храм, склеп,
+ *    пещера), — самый точный признак: таверна в городе остаётся зданием.
+ * 2. Признак поселения — вид сцены `settlement`, тип поселения, вид точки карты
+ *    мира (столица, город, городок, деревня, порт), заявка картографа
+ *    (`streets`/`village`). Он перекрывает «дорогу» и молчащее название, но не
+ *    лес и не рощу: «Роща у Эствуда» — это роща, а не улица. Явный вид сцены
+ *    «дикая местность», «дорога» или «подземелье» снимает признак поселения,
+ *    взятый с карты мира: карта знает о месте, а сцена — о том, где отряд стоит.
+ * 3. Название открытой местности (лес, дорога, поселение) — как и раньше.
+ * 4. Вид точки карты мира: пустошь — лес, подземелье — пещера, руины и
+ *    крепость — каменные палаты.
+ * 5. Заявка картографа, затем безопасный fallback по топологии.
+ *
+ * @param {object} [input]
+ * @param {string} [input.location]
+ * @param {string} [input.theme]
+ * @param {string} [input.sceneKind]
+ * @param {string} [input.settlementType]
+ * @param {string} [input.worldKind]
+ * @param {{layout?: string, pattern?: string, material?: string}} [input.request]
+ * @returns {typeof SCENE_THEMES[number]}
+ */
+export function resolveSceneTheme({ location = '', theme = '', sceneKind = '', settlementType = '', worldKind = '', request = {} } = {}) {
+  const kind = String(sceneKind ?? '').toLocaleLowerCase('en')
+  const byName = matchTheme({ location, theme, sceneKind: kind })
+  if (byName && STRUCTURE_THEMES.has(byName.id)) return byName
+  const explicitlyNotSettlement = kind === 'wilderness' || kind === 'road' || kind === 'dungeon'
+  const requestedLayout = String(request?.layout ?? '').toLocaleLowerCase('en')
+  const requestedPattern = String(request?.pattern ?? '').toLocaleLowerCase('en')
+  const settlementSignal = kind === 'settlement'
+    || Boolean(String(settlementType ?? '').trim())
+    || requestedLayout === 'streets'
+    || requestedPattern === 'village'
+    || (!explicitlyNotSettlement && SETTLEMENT_WORLD_KINDS.has(String(worldKind ?? '').toLocaleLowerCase('en')))
+  if (settlementSignal && (!byName || byName.id === 'road')) return themeById('settlement')
+  if (byName) return byName
+  const byWorld = WORLD_KIND_THEMES[String(worldKind ?? '').toLocaleLowerCase('en')] ?? ''
+  // Вид сцены, объявленный явно, спорит с картой мира — и выигрывает: подземелье
+  // посреди пустоши остаётся подземельем. Карта мира дорисовывает только то,
+  // чему сцена не противоречит.
+  const worldThemeFits = !kind || kind === 'other' || kind === 'settlement'
+    || (kind === 'wilderness' && byWorld === 'forest')
+    || (kind === 'dungeon' && (byWorld === 'cave' || byWorld === 'crypt'))
+  if (byWorld && worldThemeFits) return themeById(byWorld)
+  return themeFromMapRequest(request ?? {}) ?? fallbackThemeFor({ sceneKind: kind, request: request ?? {} })
+}
+
 /**
  * Граф зон под тему: цепочка помещений, последнее — цель. У склепа последняя
  * дверь заперта, а ключ лежит в предыдущей зоне — проверку порядка ключей
@@ -633,10 +716,16 @@ export function layoutSettlement(theme, {
     }
   }
 
+  // Геометрия идёт за зерном: улица гуляет на клетку вверх-вниз, переулок
+  // стоит не строго посередине, дома сдвинуты вдоль улицы. Без этого каждое
+  // поселение мира было одной и той же деревней из четырёх домов по углам, и
+  // две соседние деревни на карте мира отличались только травой.
+  const roadShift = Math.floor(random() * 3) - 1
+  const roadPhase = random() * Math.PI * 2
   /** @param {number} x */
   const roadYAt = (x) => (
-    Math.floor(safeHeight / 2)
-    + Math.round(Math.sin((x / Math.max(1, safeWidth - 1)) * Math.PI * 2) * Math.max(1, safeHeight * 0.045))
+    Math.floor(safeHeight / 2) + roadShift
+    + Math.round(Math.sin((x / Math.max(1, safeWidth - 1)) * Math.PI * 2 + roadPhase) * Math.max(1, safeHeight * 0.045))
   )
   for (let x = 0; x < safeWidth; x += 1) {
     const roadY = roadYAt(x)
@@ -645,24 +734,30 @@ export function layoutSettlement(theme, {
     }
   }
   // Площадь и поперечный переулок не дают деревне читаться одной полосой.
-  const crossX = Math.floor(safeWidth / 2)
+  // Переулок гуляет вокруг середины, но не заходит под дома: дом рисуется
+  // после улицы и перекрыл бы её стеной.
+  const houseWidth = clamp(Math.round(safeWidth * 0.24), 5, 7)
+  const houseHeight = clamp(Math.round(safeHeight * 0.22), 5, 6)
+  const crossX = clamp(Math.floor(safeWidth / 2) + Math.floor(random() * 5) - 2, houseWidth + 3, safeWidth - houseWidth - 4)
   for (let y = 0; y < safeHeight; y += 1) {
     for (let dx = -1; dx <= 1; dx += 1) {
       setCell(map, crossX + dx, y, { passable: true, material: 'earth', zone: 'street' })
     }
   }
 
-  const houseWidth = clamp(Math.round(safeWidth * 0.24), 5, 7)
-  const houseHeight = clamp(Math.round(safeHeight * 0.22), 5, 6)
-  const leftX = 2
-  const rightX = safeWidth - houseWidth - 2
-  const topY = 1
-  const bottomY = safeHeight - houseHeight - 1
+  // Дома сдвигаются вдоль карты и на клетку к улице — с той стороны, от которой
+  // улица отошла, иначе стена легла бы на проезжую часть.
+  const leftX = 2 + Math.floor(random() * Math.max(1, Math.min(3, crossX - 1 - (2 + houseWidth))))
+  const rightX = safeWidth - houseWidth - 2 - Math.floor(random() * Math.max(1, Math.min(3, safeWidth - houseWidth - 2 - (crossX + 2))))
+  const topY = 1 + (roadShift >= 0 ? Math.floor(random() * 2) : 0)
+  const bottomY = safeHeight - houseHeight - 1 - (roadShift <= 0 ? Math.floor(random() * 2) : 0)
+  const labels = ['Дом ремесленника', 'Дом травницы', 'Амбар', 'Дом старосты']
+  const firstLabel = Math.floor(random() * labels.length)
   const houses = [
-    { x: leftX, y: topY, side: 'top', label: 'Дом ремесленника' },
-    { x: rightX, y: topY, side: 'top', label: 'Дом травницы' },
-    { x: leftX, y: bottomY, side: 'bottom', label: 'Амбар' },
-    { x: rightX, y: bottomY, side: 'bottom', label: 'Дом старосты' },
+    { x: leftX, y: topY, side: 'top', label: labels[firstLabel] },
+    { x: rightX, y: topY, side: 'top', label: labels[(firstLabel + 1) % labels.length] },
+    { x: leftX, y: bottomY, side: 'bottom', label: labels[(firstLabel + 2) % labels.length] },
+    { x: rightX, y: bottomY, side: 'bottom', label: labels[(firstLabel + 3) % labels.length] },
   ]
   /** @type {Array<{id: string, x: number, y: number, dir: 's'}>} */
   const doors = []

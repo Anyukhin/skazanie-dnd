@@ -1,16 +1,8 @@
 import { useMemo, useState } from 'react'
 import { Castle, Check, Clock3, Compass, MapPin, Minus, Mountain, Navigation, Plus, Route, ScrollText, Trees } from 'lucide-react'
 import type { GameState, WorldMapLocation, WorldMapRoute } from './types'
+import { KIND_LABELS, ROUTE_LABELS, currentWorldLocation, routeDanger, shortestRoute, travelProposalText } from './world-travel'
 import './world-map.css'
-
-const KIND_LABELS: Record<WorldMapLocation['kind'], string> = {
-  capital: 'Столица', city: 'Город', town: 'Городок', village: 'Поселение', port: 'Порт', fortress: 'Крепость',
-  ruin: 'Руины', dungeon: 'Подземелье', landmark: 'Ориентир', wilds: 'Дикая местность',
-}
-
-const ROUTE_LABELS: Record<WorldMapRoute['kind'], string> = {
-  road: 'тракт', trail: 'тропа', river: 'река', sea: 'морской путь', pass: 'перевал',
-}
 
 function seedNumber(value: string) {
   let result = 2166136261
@@ -34,33 +26,6 @@ function routePath(route: WorldMapRoute, byId: Map<string, WorldMapLocation>) {
   const mx = (from.x + to.x) / 2 + (random() - .5) * 54
   const my = (from.y + to.y) / 2 + (random() - .5) * 42
   return `M ${from.x} ${from.y} Q ${mx} ${my} ${to.x} ${to.y}`
-}
-
-function shortestRoute(start: string, target: string, routes: WorldMapRoute[]) {
-  if (!start || !target || start === target) return { locationIds: start ? [start] : [], routes: [] as WorldMapRoute[] }
-  const queue = [start]
-  const previous = new Map<string, { locationId: string; route: WorldMapRoute } | null>([[start, null]])
-  for (let cursor = 0; cursor < queue.length; cursor += 1) {
-    const current = queue[cursor]
-    if (current === target) break
-    for (const route of routes.filter((candidate) => candidate.discovered && (candidate.from === current || candidate.to === current))) {
-      const next = route.from === current ? route.to : route.from
-      if (previous.has(next)) continue
-      previous.set(next, { locationId: current, route })
-      queue.push(next)
-    }
-  }
-  if (!previous.has(target)) return { locationIds: [], routes: [] as WorldMapRoute[] }
-  const locationIds = [target]
-  const selectedRoutes: WorldMapRoute[] = []
-  for (let current = target; current !== start;) {
-    const step = previous.get(current)
-    if (!step) break
-    selectedRoutes.unshift(step.route)
-    locationIds.unshift(step.locationId)
-    current = step.locationId
-  }
-  return { locationIds, routes: selectedRoutes }
 }
 
 function Terrain({ state }: { state: GameState }) {
@@ -95,6 +60,8 @@ function LocationMarker({ location, selected, current, onSelect }: { location: W
     role="button"
     tabIndex={0}
     aria-label={`${location.name}${current ? ', здесь находится отряд' : ''}`}
+    aria-current={current ? 'location' : undefined}
+    aria-pressed={selected}
     onClick={onSelect}
     onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect() } }}
   >
@@ -115,15 +82,16 @@ export function WorldMapView({ state, busy, onTravel }: { state: GameState; busy
   const [zoom, setZoom] = useState(1)
   if (!map) return <section className="world-map-empty"><Compass size={40}/><h1>Карта мира составляется</h1><p>Хранитель мира ещё связывает места этой кампании с географией.</p></section>
 
-  const knownLocations = map.locations.filter((location) => location.known || location.visited)
+  const current = currentWorldLocation(state)
+  const knownLocations = map.locations.filter((location) => location.known || location.visited || location.id === current?.id)
   const byId = new Map(knownLocations.map((location) => [location.id, location]))
-  const current = byId.get(map.currentLocationId) ?? knownLocations.find((location) => location.name === state.scene.location) ?? knownLocations[0]
   const selected = byId.get(selectedId) ?? current
   const route = shortestRoute(current?.id ?? '', selected?.id ?? '', map.routes)
   const routeIds = new Set(route.routes.map((item) => item.id))
   const routeNames = route.locationIds.map((id) => byId.get(id)?.name).filter(Boolean) as string[]
+  const nextStop = route.locationIds.length > 2 ? byId.get(route.locationIds[1]) : selected
   const totalDays = route.routes.reduce((sum, item) => sum + item.distance, 0)
-  const highestDanger = route.routes.some((item) => item.danger === 'высокая') ? 'высокая' : route.routes.some((item) => item.danger === 'средняя') ? 'средняя' : 'низкая'
+  const highestDanger = routeDanger(route.routes)
   const selectedRegion = map.regions.find((region) => region.id === selected?.regionId)
   const viewWidth = map.width / zoom
   const viewHeight = map.height / zoom
@@ -132,18 +100,18 @@ export function WorldMapView({ state, busy, onTravel }: { state: GameState; busy
   const viewX = Math.max(0, Math.min(map.width - viewWidth, focusX - viewWidth / 2))
   const viewY = Math.max(0, Math.min(map.height - viewHeight, focusY - viewHeight / 2))
   const combatActive = state.mechanics?.combat?.active === true
-  const travelBlocked = busy || combatActive
+  const travelBlocked = busy || combatActive || !current
 
-  // Формат строки — договор с сервером, а не проза. `detectPartyExitRequest`
-  // (`server/party-exit-intent.mjs`) читает маркер и берёт из кавычек первое
-  // место как исходное, а второе как пункт назначения. Пока договора не было,
-  // кнопка отправляла текст, который не подходил ни под один шаблон ухода:
-  // голосование не открывалось, решения группы не появлялось, а без него сервер
-  // отказывается менять сцену — кнопка не работала вовсе.
+  // Формат строки — договор с сервером, а не проза (`travelProposalText`,
+  // `src/world-travel.ts`): `detectPartyExitRequest` читает маркер и берёт из
+  // кавычек первое место как исходное, а второе как пункт назначения. Пока
+  // договора не было, кнопка отправляла текст, который не подходил ни под один
+  // шаблон ухода: голосование не открывалось, решения группы не появлялось, а
+  // без него сервер отказывается менять сцену — кнопка не работала вовсе.
   // Сторож на обе стороны — `test/party-exit-intent.test.mjs`.
   const proposeTravel = () => {
     if (!selected || !current || selected.id === current.id || !route.locationIds.length || travelBlocked) return
-    onTravel(`[ГЛОБАЛЬНАЯ КАРТА] Отряд предлагает отправиться из «${current.name}» в «${selected.name}». Выбранный путь: ${routeNames.join(' → ')}.`)
+    onTravel(travelProposalText(current, selected, routeNames))
   }
 
   return <section className="world-map-page">
@@ -178,6 +146,7 @@ export function WorldMapView({ state, busy, onTravel }: { state: GameState; busy
       </div>
 
       <aside className="world-map-inspector">
+        {!current && <p className="route-missing" role="status">Текущая точка отряда не совпадает с картой мира. Переход временно недоступен — обновите кампанию или обратитесь к мастеру.</p>}
         {selected && <>
           <div className="location-kind"><span>{selected.kind === 'fortress' ? <Castle size={18}/> : selected.kind === 'wilds' ? <Trees size={18}/> : selected.kind === 'ruin' || selected.kind === 'dungeon' ? <Mountain size={18}/> : <MapPin size={18}/>}</span><small>{KIND_LABELS[selected.kind]}</small></div>
           <h2>{selected.name}</h2>
@@ -189,8 +158,18 @@ export function WorldMapView({ state, busy, onTravel }: { state: GameState; busy
             {route.locationIds.length ? <>
               <div className="route-chain">{routeNames.map((name, index) => <span key={`${name}-${index}`}>{name}{index < routeNames.length - 1 && <i>→</i>}</span>)}</div>
               <dl><div><dt><Clock3 size={13}/>В пути</dt><dd>≈ {totalDays} дн.</dd></div><div><dt>Опасность</dt><dd className={`danger-${highestDanger}`}>{highestDanger}</dd></div></dl>
-              <button className="travel-button" disabled={travelBlocked} onClick={proposeTravel}><Navigation size={16}/>{combatActive ? 'Сначала завершите бой' : busy ? 'Рассказчик прокладывает путь…' : 'Предложить отряду этот путь'}</button>
-              <small className="travel-note">{combatActive ? 'Во время боя глобальное перемещение недоступно.' : 'Переход начнётся после решения группы. Агент создаст следующую локальную карту в точке назначения.'}</small>
+              <button className="travel-button" disabled={travelBlocked} onClick={proposeTravel}><Navigation size={16}/>{combatActive
+                ? 'Сначала завершите бой'
+                : busy
+                  ? 'Сначала завершите текущее действие'
+                  : route.routes.length > 1 && nextStop
+                    ? `Начать путь через «${nextStop.name}»`
+                    : 'Предложить отряду этот путь'}</button>
+              <small className="travel-note">{combatActive
+                ? 'Во время боя глобальное перемещение недоступно.'
+                : route.routes.length > 1 && nextStop
+                  ? `Дальний путь проходит поэтапно: следующая локальная сцена откроется в точке «${nextStop.name}».`
+                  : 'Переход начнётся после решения группы. Агент создаст следующую локальную карту в точке назначения.'}</small>
             </> : <p className="route-missing">Из текущего места ещё не открыт путь к этой точке.</p>}
           </div>}
         </>}
