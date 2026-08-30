@@ -116,8 +116,8 @@
     },
     {
       "path": "data/ruleset-cutover-2014.json",
-      "sha256": "3d1c511a3ce7cc01a6c20cf76a9270b77a10d2d5aa1fa608de362128ba1b7fb4",
-      "size_bytes": 6559,
+      "sha256": "f8171bf57f11a847495ca3a21a159bba8f4b8cfa3f229fa17279ff85d1dbab5d",
+      "size_bytes": 6670,
       "source_id": "dndsu-5e14-core",
       "rights_status": "project_license_required"
     },
@@ -167,11 +167,11 @@
     },
     {
       "path": "data/character-creation-dnd-5e-2014.json",
-      "sha256": "3703d1dbaf86968bac019cef17c5938cf24231cf54e90eaf1e58bcc8407c0f68",
-      "size_bytes": 10756,
+      "sha256": "ba7353db6a39941684f27184f6e629562dcff9e0cb58fed554848c7dc8e4d653",
+      "size_bytes": 19324,
       "source_id": "dndsu-5e14-core",
       "rights_status": "project_license_required",
-      "notes": "Структурированные механические факты рас и подрас PHB 2014; полные тексты источника не включены."
+      "notes": "Структурированные механические факты рас, подрас, обязательных выборов и основных особенностей PHB 2014; полные тексты источника не включены."
     },
     {
       "path": "data/backgrounds-dnd-5e-2014.json",
@@ -183,11 +183,11 @@
     },
     {
       "path": "data/starter-equipment-dnd-5e-2014.json",
-      "sha256": "399ca680effb3c562f6805551e588bf811fa3418d63911cf6e75499dffb601aa",
-      "size_bytes": 4198,
+      "sha256": "4c04beea9cc57ad46c7babbb843fac091216b8277b4501babb0febf2be3bcaa3",
+      "size_bytes": 31033,
       "source_id": "dndsu-5e14-core",
       "rights_status": "project_license_required",
-      "notes": "Детерминированный вариант стартового снаряжения из классовых вариантов PHB 2014."
+      "notes": "Server-validated группы поддержанных вариантов стартового снаряжения PHB 2014."
     }
   ],
   "release_blockers": [

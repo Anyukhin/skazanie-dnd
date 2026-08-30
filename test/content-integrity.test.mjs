@@ -22,6 +22,8 @@ test('content integrity gate verifies hashes, references, counts and the complet
     species_options: 14,
     backgrounds: 13,
     classes_with_starter_equipment: 12,
+    species_choice_groups: 8,
+    starter_choice_groups: 37,
     bonus_source: 'species',
   })
   assert.equal(report.integrity.character_creation_catalogs.srd_5_2_1.bonus_source, 'background')

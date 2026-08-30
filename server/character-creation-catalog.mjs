@@ -29,6 +29,29 @@ function policyFor(rulesetId) {
   return policy
 }
 
+function publicChoiceGroup(policy, group) {
+  const options = Array.isArray(group.options)
+    ? group.options
+    : Array.isArray(policy.choice_catalogs?.[group.catalog])
+      ? policy.choice_catalogs[group.catalog]
+      : []
+  return { ...structuredClone(group), options: structuredClone(options) }
+}
+
+function publicSpeciesOption(policy, option) {
+  return {
+    ...structuredClone(option),
+    choice_groups: (option.choice_groups ?? []).map((group) => publicChoiceGroup(policy, group)),
+  }
+}
+
+function publicPolicy(policy) {
+  return {
+    ...structuredClone(policy),
+    species_options: policy.species_options.map((option) => publicSpeciesOption(policy, option)),
+  }
+}
+
 function assertPolicy(policy) {
   if (policy.schema_version !== 1 || policy.method !== 'standard_array'
     || !Array.isArray(policy.standard_array) || policy.standard_array.length !== 6
@@ -50,12 +73,13 @@ function assertPolicy(policy) {
 for (const policy of policies.values()) assertPolicy(policy)
 
 export function characterCreationPolicyFor(rulesetId = LEGACY_DEFAULT_RULESET_ID) {
-  return structuredClone(policyFor(rulesetId))
+  return publicPolicy(policyFor(rulesetId))
 }
 
 export function speciesOptionFor(speciesOptionId, rulesetId = LEGACY_DEFAULT_RULESET_ID) {
-  const option = policyFor(rulesetId).species_options.find((entry) => String(entry.id) === String(speciesOptionId ?? ''))
-  return option ? structuredClone(option) : null
+  const policy = policyFor(rulesetId)
+  const option = policy.species_options.find((entry) => String(entry.id) === String(speciesOptionId ?? ''))
+  return option ? publicSpeciesOption(policy, option) : null
 }
 
 export function originBonusProfileFor(profileId, rulesetId = LEGACY_DEFAULT_RULESET_ID) {
@@ -63,10 +87,71 @@ export function originBonusProfileFor(profileId, rulesetId = LEGACY_DEFAULT_RULE
   return profile ? structuredClone(profile) : null
 }
 
-export function speciesBenefitsFor(speciesOptionId, rulesetId = LEGACY_DEFAULT_RULESET_ID) {
+export function defaultSpeciesChoices(speciesOptionId, rulesetId = LEGACY_DEFAULT_RULESET_ID) {
+  const option = speciesOptionFor(speciesOptionId, rulesetId)
+  if (!option) return null
+  return Object.fromEntries((option.choice_groups ?? []).map((group) => [
+    group.id,
+    group.options.slice(0, Number(group.count ?? 0)).map((entry) => entry.id),
+  ]))
+}
+
+export function resolveSpeciesChoices(speciesOptionId, choices = {}, rulesetId = LEGACY_DEFAULT_RULESET_ID) {
+  const option = speciesOptionFor(speciesOptionId, rulesetId)
+  if (!option) return { ok: false, reason: 'Выбран неподдерживаемый вид персонажа' }
+  if (!choices || typeof choices !== 'object' || Array.isArray(choices)) return { ok: false, reason: 'speciesChoices должен быть объектом' }
+  const groups = option.choice_groups ?? []
+  const allowedGroups = new Set(groups.map((group) => String(group.id)))
+  for (const key of Object.keys(choices)) if (!allowedGroups.has(key)) return { ok: false, reason: `Выбор ${key} не принадлежит этому виду` }
+  const resolved = {}
+  const selectedOptions = []
+  for (const group of groups) {
+    const selected = Array.isArray(choices[group.id]) ? choices[group.id].map(String) : []
+    const expected = Math.max(0, Number(group.count ?? 0))
+    if (selected.length !== expected || new Set(selected).size !== selected.length) {
+      return { ok: false, reason: `${group.label}: нужно выбрать ${expected}` }
+    }
+    const byId = new Map((group.options ?? []).map((entry) => [String(entry.id), entry]))
+    if (selected.some((id) => !byId.has(id))) return { ok: false, reason: `${group.label}: неизвестный вариант` }
+    if (group.kind === 'language' && selected.some((id) => (option.languages ?? []).includes(id))) {
+      return { ok: false, reason: `${group.label}: этот язык уже известен персонажу` }
+    }
+    resolved[group.id] = selected
+    selectedOptions.push(...selected.map((id) => ({ group_id: group.id, kind: group.kind, ...structuredClone(byId.get(id)) })))
+  }
+  return { ok: true, choices: resolved, selected_options: selectedOptions }
+}
+
+export function speciesBenefitsFor(speciesOptionId, rulesetId = LEGACY_DEFAULT_RULESET_ID, choices = undefined) {
   const option = speciesOptionFor(speciesOptionId, rulesetId)
   if (!option) return null
   const profile = option.bonus_profile_id ? originBonusProfileFor(option.bonus_profile_id, rulesetId) : null
+  const resolved = resolveSpeciesChoices(
+    speciesOptionId,
+    choices ?? defaultSpeciesChoices(speciesOptionId, rulesetId) ?? {},
+    rulesetId,
+  )
+  if (!resolved.ok) return null
+  const selectedLanguages = resolved.selected_options.filter((entry) => entry.kind === 'language').map((entry) => entry.id)
+  const selectedSkills = resolved.selected_options.filter((entry) => entry.kind === 'skill').map((entry) => entry.id)
+  const selectedTools = resolved.selected_options.filter((entry) => entry.kind === 'tool').map((entry) => entry.id)
+  const selectedCantrips = resolved.selected_options.filter((entry) => entry.kind === 'cantrip').map((entry) => ({
+    id: entry.id, minimum_level: 1, ability: 'int', uses: 'at-will', source: 'species-choice',
+  }))
+  const ancestry = resolved.selected_options.find((entry) => entry.kind === 'ancestry') ?? null
+  const mechanics = structuredClone(option.mechanics ?? {})
+  if (ancestry) {
+    mechanics.damage_resistances = [...new Set([...(mechanics.damage_resistances ?? []), ancestry.damage_type])]
+    mechanics.dragon_ancestry = {
+      id: ancestry.id,
+      label: ancestry.label,
+      damage_type: ancestry.damage_type,
+      shape: ancestry.shape,
+      distance_feet: Number(ancestry.distance_feet),
+      save_ability: 'dex',
+    }
+  }
+  const innateSpells = [...(mechanics.innate_spells ?? []), ...selectedCantrips]
   return {
     ruleset_id: String(policyFor(rulesetId).ruleset_id),
     species_option_id: option.id,
@@ -74,11 +159,16 @@ export function speciesBenefitsFor(speciesOptionId, rulesetId = LEGACY_DEFAULT_R
     subrace_id: option.subrace_id ?? null,
     size: option.size ?? null,
     base_speed: Number(option.base_speed),
-    languages: [...(option.languages ?? [])],
-    language_choice_count: Number(option.language_choice_count ?? 0),
+    choices: structuredClone(resolved.choices),
+    languages: [...new Set([...(option.languages ?? []), ...selectedLanguages])],
+    skill_proficiencies: [...new Set([...(mechanics.skill_proficiencies ?? []), ...selectedSkills])],
+    tool_proficiencies: [...new Set([...(mechanics.tool_proficiencies ?? []), ...selectedTools])],
+    innate_spells: innateSpells,
+    mechanics,
     ability_bonus_profile_id: profile?.id ?? null,
     trait_summaries: [...(option.trait_summaries ?? [])],
     traits_supported: false,
+    traits_mechanics_status: Object.keys(mechanics).length ? 'partial' : 'ruling-only',
     source_url: option.source_url ?? null,
   }
 }

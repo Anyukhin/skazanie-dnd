@@ -237,7 +237,26 @@ export function combatActionsFor(actor) {
   const curatedNames = new Set(curated.map((entry) => normalizedName(entry.name)))
   const generated = classKey ? generatedActionsFor(actor, classKey).filter((entry) => entry.actionType !== 'free' && isOptionalFeatureSelected(actor, entry.id) && !curatedNames.has(normalizedName(entry.name))) : []
   const classActions = [...curated, ...generated]
-  return [...COMMON_ACTIONS, ...classActions]
+  const ancestry = actor?.speciesBenefits?.mechanics?.dragon_ancestry
+  const speciesActions = actor?.speciesBenefits?.mechanics?.breath_weapon === true && ancestry
+    ? [action('breath-weapon', 'Оружие дыхания', {
+        category: 'class',
+        target: 'enemy',
+        range: Math.max(5, Number(ancestry.distance_feet) || 15),
+        resource: 'species_breath_weapon',
+        mechanicsSupport: 'verified',
+        sourceUrl: actor?.speciesBenefits?.source_url,
+        description: `${ancestry.label}: ${ancestry.shape === 'line' ? 'линия' : 'конус'} ${ancestry.distance_feet} футов, спасбросок Ловкости, половина урона при успехе.`,
+        effect: {
+          kind: 'species_breath',
+          shape: ancestry.shape,
+          distanceFeet: ancestry.distance_feet,
+          damageType: ancestry.damage_type,
+          saveAbility: ancestry.save_ability ?? 'dex',
+        },
+      })]
+    : []
+  return [...COMMON_ACTIONS, ...classActions, ...speciesActions]
     .filter((entry) => level >= entry.minimumLevel)
     .map((entry) => ({ ...clone(entry), sourceUrl: entry.sourceUrl ?? CLASS_URL[classKey] ?? 'https://www.dnd.su/articles/actions-in-combat/' }))
 }
@@ -294,6 +313,12 @@ export function combatResourceMaximumsFor(actor) {
         : Math.max(1, Number(entry.uses.maximum) || 1)
     resources[`feature_${entry.id}`] = maximum
   }
+  for (const spell of Array.isArray(actor?.speciesBenefits?.innate_spells) ? actor.speciesBenefits.innate_spells : []) {
+    if (level < Math.max(1, Number(spell?.minimum_level) || 1)) continue
+    const uses = Number(spell?.uses)
+    if (Number.isFinite(uses) && uses > 0) resources[`species_spell_${spell.id}`] = Math.max(1, Math.trunc(uses))
+  }
+  if (actor?.speciesBenefits?.mechanics?.breath_weapon === true) resources.species_breath_weapon = 1
   return resources
 }
 
@@ -329,5 +354,11 @@ export function combatResourceRecoveryFor(actor) {
     if (!entry.uses || level < entry.minimumLevel) continue
     recovery[`feature_${entry.id}`] = entry.uses.recovery === 'short_or_long' ? 'short_or_long' : 'long'
   }
+  for (const spell of Array.isArray(actor?.speciesBenefits?.innate_spells) ? actor.speciesBenefits.innate_spells : []) {
+    if (level < Math.max(1, Number(spell?.minimum_level) || 1)) continue
+    const uses = Number(spell?.uses)
+    if (Number.isFinite(uses) && uses > 0) recovery[`species_spell_${spell.id}`] = 'long'
+  }
+  if (actor?.speciesBenefits?.mechanics?.breath_weapon === true) recovery.species_breath_weapon = 'short_or_long'
   return recovery
 }

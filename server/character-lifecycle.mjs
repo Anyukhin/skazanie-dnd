@@ -22,7 +22,12 @@ import {
 } from './combat-spells.mjs'
 import { ITEM_ARMOR_PROFILES } from './item-catalog.mjs'
 import { activeItemEffectTotals } from './item-lifecycle.mjs'
-import { withStarterKit } from './starter-kit.mjs'
+import {
+  defaultStarterEquipmentChoices,
+  resolveStarterEquipmentChoices,
+  starterEquipmentCatalogFor,
+  withStarterKit,
+} from './starter-kit.mjs'
 import {
   backgroundCatalogFor,
   backgroundById,
@@ -33,12 +38,14 @@ import {
 } from './backgrounds.mjs'
 import {
   characterCreationPolicyFor,
+  defaultSpeciesChoices,
   originBonusProfileFor,
+  resolveSpeciesChoices,
   speciesBenefitsFor,
   speciesOptionFor,
   validateSpeciesOriginBonuses,
 } from './character-creation-catalog.mjs'
-import { LEGACY_DEFAULT_RULESET_ID } from './ruleset-config.mjs'
+import { DND_2014_RULESET_ID, LEGACY_DEFAULT_RULESET_ID } from './ruleset-config.mjs'
 
 /**
  * Standalone character domain contract.
@@ -248,9 +255,14 @@ function validateAbilityGeneration(source, abilities, {
     )
   }
   exactKeys(source, ABILITY_GENERATION_FIELDS, 'character.abilityGeneration')
-  if (source.policyId !== characterCreationPolicy.policy_id
+  const legacyClassicPolicy = allowLegacyAbilityPolicy
+    && rulesetId === DND_2014_RULESET_ID
+    && source.policyId === characterCreationPolicy.policy_id
+    && Number(source.policyVersion) === 1
+    && source.method === characterCreationPolicy.method
+  if (!legacyClassicPolicy && (source.policyId !== characterCreationPolicy.policy_id
     || Number(source.policyVersion) !== characterCreationPolicy.policy_version
-    || source.method !== characterCreationPolicy.method) {
+    || source.method !== characterCreationPolicy.method)) {
     throw new CharacterLifecycleValidationError(
       'Импорт использует неподдерживаемую policy генерации характеристик',
       'IMPORT_ABILITY_POLICY_UNSUPPORTED',
@@ -303,7 +315,7 @@ function validateAbilityGeneration(source, abilities, {
   }
   return {
     policyId: characterCreationPolicy.policy_id,
-    policyVersion: characterCreationPolicy.policy_version,
+    policyVersion: legacyClassicPolicy ? 1 : characterCreationPolicy.policy_version,
     method: characterCreationPolicy.method,
     baseScores,
     originBonusProfileId: bonusProfile.id,
@@ -317,6 +329,8 @@ export function characterCreationCatalog(rulesetId = LEGACY_DEFAULT_RULESET_ID) 
   const backgrounds = backgroundCatalogFor(rulesetId)
   const classBuild = classBuildCatalogInfo()
   const classCombat = combatClassCatalogInfo()
+  const starterEquipment = starterEquipmentCatalogFor(rulesetId)
+  const starterByClass = new Map((starterEquipment?.classes ?? []).map((entry) => [entry.class_id, entry]))
   const skillsById = new Map(classBuild.skills.map((skill) => [skill.id, skill]))
   return {
     schema_version: 1,
@@ -329,6 +343,7 @@ export function characterCreationCatalog(rulesetId = LEGACY_DEFAULT_RULESET_ID) 
     // выбора до перехода дальше, а сервер всё равно пересчитывает их сам по
     // идентификатору — присланные клиентом бонусы недоверенные.
     backgrounds,
+    starter_equipment: starterEquipment,
     classes: classCombat.classes.map((classOption) => {
       const actor = {
         characterClass: classOption.classKey,
@@ -349,6 +364,7 @@ export function characterCreationCatalog(rulesetId = LEGACY_DEFAULT_RULESET_ID) 
           options: skillRule.skills.map((id) => clone(skillsById.get(id))).filter(Boolean),
         } : null,
         feature_choice_groups: featureChoiceGroupsFor(actor),
+        starter_equipment: clone(starterByClass.get(classOption.classKey) ?? null),
         spell_selection: spellRules ? {
           ...spellRules,
           spellcastingAbility: availableSpells[0]?.spellcastingAbility ?? null,
@@ -458,13 +474,15 @@ export function deriveMaximumHitPoints(actor, { level = normalizedLevel(actor?.l
   const constitutionModifier = abilityModifier(abilities.con)
   const increases = normalizedHitPointIncreases(actor, { level, hitDie })
   const perLevel = Array.from({ length: Math.max(0, level - 1) }, (_, index) => increases[index] ?? fixedHitPointIncrease(hitDie))
-  const firstLevel = Math.max(1, hitDie + constitutionModifier)
-  const laterLevels = perLevel.map((increase) => Math.max(1, increase + constitutionModifier))
+  const speciesBonusPerLevel = Math.max(0, Number(actor?.speciesBenefits?.mechanics?.extra_hit_points_per_level) || 0)
+  const firstLevel = Math.max(1, hitDie + constitutionModifier + speciesBonusPerLevel)
+  const laterLevels = perLevel.map((increase) => Math.max(1, increase + constitutionModifier + speciesBonusPerLevel))
   return {
     value: firstLevel + laterLevels.reduce((sum, entry) => sum + entry, 0),
     hitDie,
     constitutionModifier,
     levelOne: firstLevel,
+    speciesBonusPerLevel,
     increases: perLevel,
     policy: increases.length === level - 1 ? 'recorded_rolls' : 'fixed_average_for_missing_levels',
   }
@@ -526,7 +544,9 @@ export function deriveSpeed(actor, { armorProfiles } = {}) {
   const base = normalizedBaseSpeed(actor)
   const penalties = equippedArmorEntries(actor, profiles)
     .map((entry) => Math.max(0, Number(entry.profile.speedPenalty) || 0))
-  const penalty = Math.max(0, ...penalties, 0)
+  const penalty = actor?.speciesBenefits?.mechanics?.ignore_armor_speed_penalty === true
+    ? 0
+    : Math.max(0, ...penalties, 0)
   return { base, penalty, value: Math.max(0, base - penalty) }
 }
 
@@ -569,9 +589,12 @@ export function deriveCharacterSheet(actor, options = {}) {
   const backgroundSkillProficiencies = new Set(
     (Array.isArray(canonical.backgroundSkillProficiencies) ? canonical.backgroundSkillProficiencies : []).map(catalogSkillId),
   )
+  const speciesSkillProficiencies = new Set(
+    (Array.isArray(canonical.speciesSkillProficiencies) ? canonical.speciesSkillProficiencies : []).map(catalogSkillId),
+  )
   const skills = Object.fromEntries(SKILL_IDS.map((id) => {
     const ability = skillAbility(id)
-    const proficient = classSkillProficiencies.has(id) || backgroundSkillProficiencies.has(id)
+    const proficient = classSkillProficiencies.has(id) || backgroundSkillProficiencies.has(id) || speciesSkillProficiencies.has(id)
     const modifier = abilityModifier(abilities[ability])
     return [id, {
       ability,
@@ -613,6 +636,7 @@ export function deriveCharacterSheet(actor, options = {}) {
     armor_class: armorClass,
     speed,
     hit_points: hitPoints,
+    species_traits: clone(canonical.speciesBenefits ?? null),
     class_resources: classResourcePlan(canonical),
   }
 }
@@ -799,6 +823,8 @@ export function validateCharacterImportCommand(command, state, context = {}) {
   assertActorAuthority(actorId, context)
   const rulesetId = String(state?.ruleset_id ?? LEGACY_DEFAULT_RULESET_ID)
   const parsed = parseCharacterImport(command.document, { rulesetId })
+  const starterCatalog = starterEquipmentCatalogFor(rulesetId)
+  const speciesPolicy = characterCreationPolicyFor(rulesetId)
   return {
     command_type: 'ImportCharacter',
     actor_id: actorId,
@@ -808,6 +834,9 @@ export function validateCharacterImportCommand(command, state, context = {}) {
     patch: parsed.patch,
     derived_sheet: parsed.sheet,
     ruleset_id: rulesetId,
+    starter_equipment_policy_id: starterCatalog?.policy_id ?? null,
+    starter_equipment_policy_version: starterCatalog?.policy_version ?? null,
+    species_policy_version: speciesPolicy.policy_version,
     source_rule_ids: Array.isArray(command.source_rule_ids) && command.source_rule_ids.length
       ? [...command.source_rule_ids]
       : [`${rulesetId}:resources:spending`],
@@ -829,6 +858,9 @@ export function characterImportEvent(command) {
       schema: CHARACTER_IMPORT_SCHEMA,
       schema_version: CHARACTER_IMPORT_SCHEMA_VERSION,
       ruleset_id: command.ruleset_id ?? LEGACY_DEFAULT_RULESET_ID,
+      starter_equipment_policy_id: command.starter_equipment_policy_id ?? null,
+      starter_equipment_policy_version: command.starter_equipment_policy_version ?? null,
+      species_policy_version: command.species_policy_version ?? null,
       patch: clone(command.patch),
     },
   }
@@ -866,22 +898,46 @@ export function applyCharacterLifecycleEvent(state, event) {
       character: payload.patch,
     }, { allowLegacyAbilityPolicy: true, rulesetId: eventRulesetId })
     const wasCharacterSlot = actor.characterSetupRequired === true
+    let speciesBenefits = parsed.patch.abilityGeneration
+      ? speciesBenefitsFor(
+          parsed.patch.abilityGeneration.speciesOptionId,
+          eventRulesetId,
+          parsed.patch.speciesChoices,
+        )
+      : null
+    const speciesPolicyVersion = Math.max(1, Number(payload.species_policy_version ?? parsed.patch.abilityGeneration?.policyVersion) || 1)
+    if (speciesBenefits && eventRulesetId === DND_2014_RULESET_ID && speciesPolicyVersion < 2) {
+      speciesBenefits = {
+        ...speciesBenefits,
+        choices: {},
+        skill_proficiencies: [],
+        tool_proficiencies: [],
+        innate_spells: [],
+        mechanics: {},
+        traits_supported: false,
+      }
+    }
     let updated = withBackgroundBenefits({
       ...actor,
       ...parsed.patch,
       id: actor.id,
       inventory: clone(actor.inventory ?? []),
       currency: clone(actor.currency ?? {}),
-      speciesBenefits: parsed.patch.abilityGeneration
-        ? speciesBenefitsFor(parsed.patch.abilityGeneration.speciesOptionId, eventRulesetId)
-        : null,
+      speciesBenefits,
+      speciesSkillProficiencies: speciesBenefits?.skill_proficiencies ?? [],
+      speciesToolProficiencies: speciesBenefits?.tool_proficiencies ?? [],
+      speciesLanguages: speciesBenefits?.languages ?? [],
+      speciesSpellIds: (speciesBenefits?.innate_spells ?? []).map((entry) => entry.id),
     }, eventRulesetId)
     if (wasCharacterSlot) {
       updated = withStarterKit({
         ...updated,
         inventory: [],
         currency: { copper: 0, silver: 0, gold: 0, platinum: 0 },
-      }, { rulesetId: eventRulesetId })
+      }, {
+        rulesetId: eventRulesetId,
+        starterPolicyVersion: payload.starter_equipment_policy_version ?? 1,
+      })
       updated.initials = updated.character.slice(0, 2).toLocaleUpperCase('ru')
     }
     const sheet = deriveCharacterSheet(updated)
@@ -918,7 +974,7 @@ const IMPORT_CHARACTER_V1 = Object.freeze([
   'abilityGeneration', 'baseSpeed', 'hitPointIncreases', 'classSkillProficiencies', 'selectedFeatureIds', 'knownSpellIds', 'preparedSpellIds',
   // Предыстория: только идентификатор и раскладка прибавок. Сами бонусы,
   // навыки и черта выводятся сервером из каталога и полем импорта не являются.
-  'backgroundId', 'backgroundAbilityChoice', 'backgroundChoices',
+  'backgroundId', 'backgroundAbilityChoice', 'backgroundChoices', 'speciesChoices', 'starterEquipmentChoices',
 ])
 const IMPORT_V0_ALIASES = Object.freeze({
   character_class: 'characterClass',
@@ -1003,6 +1059,7 @@ export function parseCharacterImport(raw, options = {}) {
   const abilityGeneration = validateAbilityGeneration(source.abilityGeneration, abilities, { ...options, rulesetId })
   const baseSpeed = integer(source.baseSpeed, 'character.baseSpeed', { minimum: 5, maximum: 120 })
   let derivedSpecies = ''
+  let resolvedSpeciesBenefits = null
   if (abilityGeneration) {
     const speciesOption = speciesOptionFor(abilityGeneration.speciesOptionId, rulesetId)
     const requestedSpecies = optionalText(source.species, 'character.species', 120)
@@ -1028,6 +1085,18 @@ export function parseCharacterImport(raw, options = {}) {
         'IMPORT_SPECIES_SPEED_INVALID',
       )
     }
+    const rawSpeciesChoices = source.speciesChoices
+      ?? defaultSpeciesChoices(speciesOption.id, rulesetId)
+      ?? {}
+    if (!isRecord(rawSpeciesChoices)) {
+      throw new CharacterLifecycleValidationError('speciesChoices должен быть объектом', 'IMPORT_SPECIES_CHOICE_INVALID')
+    }
+    const resolvedChoices = resolveSpeciesChoices(speciesOption.id, rawSpeciesChoices, rulesetId)
+    if (!resolvedChoices.ok) {
+      throw new CharacterLifecycleValidationError(resolvedChoices.reason, 'IMPORT_SPECIES_CHOICE_INVALID')
+    }
+    source.speciesChoices = resolvedChoices.choices
+    resolvedSpeciesBenefits = speciesBenefitsFor(speciesOption.id, rulesetId, resolvedChoices.choices)
   }
   const provisional = {
     character,
@@ -1072,6 +1141,7 @@ export function parseCharacterImport(raw, options = {}) {
     if (value !== undefined) canonical[field] = value
   }
   if (derivedSpecies) canonical.species = derivedSpecies
+  if (abilityGeneration) canonical.speciesChoices = clone(source.speciesChoices ?? {})
   // Предыстория: клиент присылает только её идентификатор и раскладку прибавок,
   // всё остальное сервер берёт из каталога. Прибавки ложатся поверх стандартного
   // массива уже здесь, поэтому в лист уходит итоговая характеристика, а не
@@ -1125,12 +1195,28 @@ export function parseCharacterImport(raw, options = {}) {
     // роняли бы событие как «неподдерживаемые». Они выводятся из
     // `backgroundId` в `withBackgroundBenefits` при сборке героя.
   }
+  const rawStarterChoices = source.starterEquipmentChoices
+    ?? defaultStarterEquipmentChoices(classId, rulesetId)
+    ?? {}
+  if (!isRecord(rawStarterChoices)) {
+    throw new CharacterLifecycleValidationError('starterEquipmentChoices должен быть объектом', 'IMPORT_STARTER_EQUIPMENT_INVALID')
+  }
+  const resolvedStarter = resolveStarterEquipmentChoices(classId, rawStarterChoices, rulesetId)
+  if (!resolvedStarter.ok) {
+    throw new CharacterLifecycleValidationError(resolvedStarter.reason, 'IMPORT_STARTER_EQUIPMENT_INVALID')
+  }
+  if (rulesetId !== LEGACY_DEFAULT_RULESET_ID) canonical.starterEquipmentChoices = clone(resolvedStarter.choices)
+  const enriched = {
+    ...canonical,
+    speciesBenefits: resolvedSpeciesBenefits,
+    speciesSkillProficiencies: resolvedSpeciesBenefits?.skill_proficiencies ?? [],
+    speciesToolProficiencies: resolvedSpeciesBenefits?.tool_proficiencies ?? [],
+    speciesLanguages: resolvedSpeciesBenefits?.languages ?? [],
+    speciesSpellIds: (resolvedSpeciesBenefits?.innate_spells ?? []).map((entry) => entry.id),
+  }
   return {
     document,
     patch: canonical,
-    sheet: deriveCharacterSheet(withBackgroundBenefits({
-      ...canonical,
-      speciesBenefits: abilityGeneration ? speciesBenefitsFor(abilityGeneration.speciesOptionId, rulesetId) : null,
-    }, rulesetId)),
+    sheet: deriveCharacterSheet(withBackgroundBenefits(enriched, rulesetId)),
   }
 }

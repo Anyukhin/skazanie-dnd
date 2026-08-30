@@ -55,9 +55,9 @@
     {
       "id": "character_origins",
       "status": "complete",
-      "current_edition": "per-ruleset catalogs isolate 14 race/subrace options, racial ability adjustments, 13 PHB backgrounds and deterministic class/background starter equipment for 2014; non-executable racial/background features remain explicitly descriptive",
+      "current_edition": "per-ruleset catalogs isolate 14 race/subrace options, racial choices and ability adjustments, 13 PHB backgrounds and server-validated class/background starter equipment for 2014; core level-1 racial mechanics execute through shared rule paths while unsupported vision/social features remain explicitly partial",
       "required_outcome": "2014 races, ability adjustments, backgrounds, proficiencies, features, and starting choices",
-      "evidence": ["data/character-creation-dnd-5e-2014.json", "data/backgrounds-dnd-5e-2014.json", "data/starter-equipment-dnd-5e-2014.json", "server/character-creation-catalog.mjs", "server/backgrounds.mjs", "test/character-creation-2014.test.mjs"]
+      "evidence": ["data/character-creation-dnd-5e-2014.json", "data/backgrounds-dnd-5e-2014.json", "data/starter-equipment-dnd-5e-2014.json", "server/character-creation-catalog.mjs", "server/backgrounds.mjs", "test/character-creation-2014.test.mjs", "test/species-traits-2014.test.mjs"]
     },
     {
       "id": "classes_progression",

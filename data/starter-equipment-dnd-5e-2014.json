@@ -1,20 +1,250 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "ruleset_id": "dnd_5e_2014",
   "policy_id": "skazanie.starter-equipment.dnd-5e-2014",
-  "choice_policy": "deterministic-default-from-phb-options",
+  "policy_version": 2,
+  "choice_policy": "server-validated-phb-2014-options",
   "classes": [
-    { "class_id": "barbarian", "items": [{ "catalog_id": "srd_5_2_1:greataxe", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:handaxe", "quantity": 2 }, { "catalog_id": "srd_5_2_1:javelin", "quantity": 4 }, { "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }] },
-    { "class_id": "bard", "items": [{ "catalog_id": "srd_5_2_1:rapier", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:dagger", "quantity": 1 }, { "catalog_id": "srd_5_2_1:leather-armor", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }] },
-    { "class_id": "cleric", "items": [{ "catalog_id": "srd_5_2_1:mace", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:scale-mail", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:shield", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:light-crossbow", "quantity": 1 }, { "catalog_id": "srd_5_2_1:bolts-20", "quantity": 1 }, { "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }] },
-    { "class_id": "druid", "items": [{ "catalog_id": "srd_5_2_1:scimitar", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:leather-armor", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:shield", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }] },
-    { "class_id": "fighter", "items": [{ "catalog_id": "srd_5_2_1:longsword", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:shield", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:chain-mail", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:light-crossbow", "quantity": 1 }, { "catalog_id": "srd_5_2_1:bolts-20", "quantity": 1 }, { "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }] },
-    { "class_id": "monk", "items": [{ "catalog_id": "srd_5_2_1:shortsword", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:dart", "quantity": 10 }, { "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }] },
-    { "class_id": "paladin", "items": [{ "catalog_id": "srd_5_2_1:longsword", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:shield", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:chain-mail", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:javelin", "quantity": 5 }, { "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }] },
-    { "class_id": "ranger", "items": [{ "catalog_id": "srd_5_2_1:shortsword", "quantity": 2, "equipped": true }, { "catalog_id": "srd_5_2_1:longbow", "quantity": 1 }, { "catalog_id": "srd_5_2_1:arrows-20", "quantity": 1 }, { "catalog_id": "srd_5_2_1:leather-armor", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }] },
-    { "class_id": "rogue", "items": [{ "catalog_id": "srd_5_2_1:rapier", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:shortbow", "quantity": 1 }, { "catalog_id": "srd_5_2_1:arrows-20", "quantity": 1 }, { "catalog_id": "srd_5_2_1:dagger", "quantity": 2 }, { "catalog_id": "srd_5_2_1:leather-armor", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }] },
-    { "class_id": "sorcerer", "items": [{ "catalog_id": "srd_5_2_1:light-crossbow", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:bolts-20", "quantity": 1 }, { "catalog_id": "srd_5_2_1:dagger", "quantity": 2 }, { "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }] },
-    { "class_id": "warlock", "items": [{ "catalog_id": "srd_5_2_1:light-crossbow", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:bolts-20", "quantity": 1 }, { "catalog_id": "srd_5_2_1:dagger", "quantity": 2 }, { "catalog_id": "srd_5_2_1:leather-armor", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }] },
-    { "class_id": "wizard", "items": [{ "catalog_id": "srd_5_2_1:quarterstaff", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }] }
+    {
+      "class_id": "barbarian",
+      "legacy_default_items": [{ "catalog_id": "srd_5_2_1:greataxe", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:handaxe", "quantity": 2 }, { "catalog_id": "srd_5_2_1:javelin", "quantity": 4 }, { "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }],
+      "fixed_items": [{ "catalog_id": "srd_5_2_1:javelin", "quantity": 4 }],
+      "choice_groups": [
+        { "id": "primary-weapon", "label": "Основное оружие", "count": 1, "options": [
+          { "id": "greataxe", "label": "Секира", "summary": "Тяжёлое двуручное оружие", "items": [{ "catalog_id": "srd_5_2_1:greataxe", "quantity": 1, "equipped": true }] },
+          { "id": "greatsword", "label": "Двуручный меч", "summary": "Две кости урона и тяжёлый хват", "items": [{ "catalog_id": "srd_5_2_1:greatsword", "quantity": 1, "equipped": true }] }
+        ] },
+        { "id": "secondary-weapon", "label": "Запасное оружие", "count": 1, "options": [
+          { "id": "two-handaxes", "label": "Два ручных топора", "summary": "Лёгкое метательное оружие", "items": [{ "catalog_id": "srd_5_2_1:handaxe", "quantity": 2 }] },
+          { "id": "two-javelins", "label": "Два дополнительных копья", "summary": "Дальний запас метательного оружия", "items": [{ "catalog_id": "srd_5_2_1:javelin", "quantity": 2 }] }
+        ] },
+        { "id": "pack", "label": "Походный набор", "count": 1, "options": [
+          { "id": "explorers-pack", "label": "Набор путешественника", "summary": "Рюкзак и припасы для дороги", "items": [{ "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }] }
+        ] }
+      ]
+    },
+    {
+      "class_id": "bard",
+      "legacy_default_items": [{ "catalog_id": "srd_5_2_1:rapier", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:dagger", "quantity": 1 }, { "catalog_id": "srd_5_2_1:leather-armor", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }],
+      "fixed_items": [{ "catalog_id": "srd_5_2_1:leather-armor", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:dagger", "quantity": 1 }],
+      "choice_groups": [
+        { "id": "weapon", "label": "Оружие", "count": 1, "options": [
+          { "id": "rapier", "label": "Рапира", "summary": "Фехтовальное оружие", "items": [{ "catalog_id": "srd_5_2_1:rapier", "quantity": 1, "equipped": true }] },
+          { "id": "longsword", "label": "Длинный меч", "summary": "Универсальное оружие", "items": [{ "catalog_id": "srd_5_2_1:longsword", "quantity": 1, "equipped": true }] },
+          { "id": "shortsword", "label": "Короткий меч", "summary": "Лёгкое фехтовальное оружие", "items": [{ "catalog_id": "srd_5_2_1:shortsword", "quantity": 1, "equipped": true }] }
+        ] },
+        { "id": "pack", "label": "Набор", "count": 1, "options": [
+          { "id": "diplomats-pack", "label": "Набор дипломата", "summary": "Одежда, письменные принадлежности и дорожные мелочи", "narrative_items": [{ "name": "Набор дипломата", "description": "Комплект дипломата из стартового снаряжения барда." }] },
+          { "id": "entertainers-pack", "label": "Набор артиста", "summary": "Костюм, реквизит и дорожные принадлежности", "narrative_items": [{ "name": "Набор артиста", "description": "Комплект артиста из стартового снаряжения барда." }] }
+        ] },
+        { "id": "instrument", "label": "Музыкальный инструмент", "count": 1, "options": [
+          { "id": "lute", "label": "Лютня", "summary": "Классический инструмент странствующего барда", "narrative_items": [{ "name": "Лютня", "description": "Музыкальный инструмент барда." }] },
+          { "id": "flute", "label": "Флейта", "summary": "Лёгкий духовой инструмент", "narrative_items": [{ "name": "Флейта", "description": "Музыкальный инструмент барда." }] },
+          { "id": "drum", "label": "Барабан", "summary": "Ритм, слышимый через шум трактира", "narrative_items": [{ "name": "Барабан", "description": "Музыкальный инструмент барда." }] }
+        ] }
+      ]
+    },
+    {
+      "class_id": "cleric",
+      "legacy_default_items": [{ "catalog_id": "srd_5_2_1:mace", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:scale-mail", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:shield", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:light-crossbow", "quantity": 1 }, { "catalog_id": "srd_5_2_1:bolts-20", "quantity": 1 }, { "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }],
+      "fixed_items": [{ "catalog_id": "srd_5_2_1:shield", "quantity": 1, "equipped": true }],
+      "fixed_narrative_items": [{ "name": "Священный символ", "description": "Фокус божественной магии жреца." }],
+      "choice_groups": [
+        { "id": "armor", "label": "Доспех", "count": 1, "options": [
+          { "id": "scale-mail", "label": "Чешуйчатый доспех", "summary": "Средний доспех", "items": [{ "catalog_id": "srd_5_2_1:scale-mail", "quantity": 1, "equipped": true }] },
+          { "id": "leather-armor", "label": "Кожаный доспех", "summary": "Лёгкий доспех", "items": [{ "catalog_id": "srd_5_2_1:leather-armor", "quantity": 1, "equipped": true }] },
+          { "id": "chain-mail", "label": "Кольчуга", "summary": "Тяжёлый доспех для владеющего им домена", "items": [{ "catalog_id": "srd_5_2_1:chain-mail", "quantity": 1, "equipped": true }] }
+        ] },
+        { "id": "weapon", "label": "Оружие", "count": 1, "options": [
+          { "id": "mace", "label": "Булава", "summary": "Надёжное дробящее оружие", "items": [{ "catalog_id": "srd_5_2_1:mace", "quantity": 1, "equipped": true }] },
+          { "id": "warhammer", "label": "Боевой молот", "summary": "Для жреца, владеющего воинским оружием", "items": [{ "catalog_id": "srd_5_2_1:warhammer", "quantity": 1, "equipped": true }] }
+        ] },
+        { "id": "ranged-or-simple", "label": "Дальнее или запасное оружие", "count": 1, "options": [
+          { "id": "light-crossbow", "label": "Лёгкий арбалет и 20 болтов", "summary": "Дальнобойный комплект", "items": [{ "catalog_id": "srd_5_2_1:light-crossbow", "quantity": 1 }, { "catalog_id": "srd_5_2_1:bolts-20", "quantity": 1 }] },
+          { "id": "javelin", "label": "Метательное копьё", "summary": "Простое оружие ближнего и дальнего боя", "items": [{ "catalog_id": "srd_5_2_1:javelin", "quantity": 1 }] }
+        ] },
+        { "id": "pack", "label": "Набор", "count": 1, "options": [
+          { "id": "priests-pack", "label": "Набор священника", "summary": "Ритуальные и дорожные принадлежности", "narrative_items": [{ "name": "Набор священника", "description": "Комплект священника из стартового снаряжения жреца." }] },
+          { "id": "explorers-pack", "label": "Набор путешественника", "summary": "Припасы для дороги", "items": [{ "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }] }
+        ] }
+      ]
+    },
+    {
+      "class_id": "druid",
+      "legacy_default_items": [{ "catalog_id": "srd_5_2_1:scimitar", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:leather-armor", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:shield", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }],
+      "fixed_items": [{ "catalog_id": "srd_5_2_1:leather-armor", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }],
+      "fixed_narrative_items": [{ "name": "Друидический фокус", "description": "Природный фокус магии друида." }],
+      "choice_groups": [
+        { "id": "defense", "label": "Защита или оружие", "count": 1, "options": [
+          { "id": "wooden-shield", "label": "Деревянный щит", "summary": "+2 к КД", "items": [{ "catalog_id": "srd_5_2_1:shield", "quantity": 1, "equipped": true }] },
+          { "id": "spear", "label": "Копьё", "summary": "Простое универсальное оружие", "items": [{ "catalog_id": "srd_5_2_1:spear", "quantity": 1 }] }
+        ] },
+        { "id": "weapon", "label": "Основное оружие", "count": 1, "options": [
+          { "id": "scimitar", "label": "Скимитар", "summary": "Лёгкое фехтовальное оружие", "items": [{ "catalog_id": "srd_5_2_1:scimitar", "quantity": 1, "equipped": true }] },
+          { "id": "quarterstaff", "label": "Боевой посох", "summary": "Простое универсальное оружие", "items": [{ "catalog_id": "srd_5_2_1:quarterstaff", "quantity": 1, "equipped": true }] }
+        ] }
+      ]
+    },
+    {
+      "class_id": "fighter",
+      "legacy_default_items": [{ "catalog_id": "srd_5_2_1:longsword", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:shield", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:chain-mail", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:light-crossbow", "quantity": 1 }, { "catalog_id": "srd_5_2_1:bolts-20", "quantity": 1 }, { "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }],
+      "choice_groups": [
+        { "id": "armor", "label": "Доспех", "count": 1, "options": [
+          { "id": "chain-mail", "label": "Кольчуга", "summary": "КД 16, тяжёлый доспех", "items": [{ "catalog_id": "srd_5_2_1:chain-mail", "quantity": 1, "equipped": true }] },
+          { "id": "leather-and-longbow", "label": "Кожа, длинный лук и стрелы", "summary": "Подвижный дальнобойный комплект", "items": [{ "catalog_id": "srd_5_2_1:leather-armor", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:longbow", "quantity": 1 }, { "catalog_id": "srd_5_2_1:arrows-20", "quantity": 1 }] }
+        ] },
+        { "id": "melee-loadout", "label": "Боевой комплект", "count": 1, "options": [
+          { "id": "longsword-shield", "label": "Длинный меч и щит", "summary": "Универсальное оружие и +2 к КД", "items": [{ "catalog_id": "srd_5_2_1:longsword", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:shield", "quantity": 1, "equipped": true }] },
+          { "id": "battleaxe-shield", "label": "Боевой топор и щит", "summary": "Рубящее оружие и +2 к КД", "items": [{ "catalog_id": "srd_5_2_1:battleaxe", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:shield", "quantity": 1, "equipped": true }] },
+          { "id": "greatsword", "label": "Двуручный меч", "summary": "Тяжёлое двуручное оружие", "items": [{ "catalog_id": "srd_5_2_1:greatsword", "quantity": 1, "equipped": true }] },
+          { "id": "two-shortswords", "label": "Два коротких меча", "summary": "Два лёгких фехтовальных оружия", "items": [{ "catalog_id": "srd_5_2_1:shortsword", "quantity": 2, "equipped": true }] }
+        ] },
+        { "id": "secondary", "label": "Запас", "count": 1, "options": [
+          { "id": "light-crossbow", "label": "Лёгкий арбалет и 20 болтов", "summary": "Дальнобойный комплект", "items": [{ "catalog_id": "srd_5_2_1:light-crossbow", "quantity": 1 }, { "catalog_id": "srd_5_2_1:bolts-20", "quantity": 1 }] },
+          { "id": "two-handaxes", "label": "Два ручных топора", "summary": "Лёгкое метательное оружие", "items": [{ "catalog_id": "srd_5_2_1:handaxe", "quantity": 2 }] }
+        ] },
+        { "id": "pack", "label": "Набор", "count": 1, "options": [
+          { "id": "dungeoneers-pack", "label": "Набор исследователя подземелий", "summary": "Факелы, лом и припасы", "narrative_items": [{ "name": "Набор исследователя подземелий", "description": "Комплект для исследования подземелий." }] },
+          { "id": "explorers-pack", "label": "Набор путешественника", "summary": "Припасы для дороги", "items": [{ "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }] }
+        ] }
+      ]
+    },
+    {
+      "class_id": "monk",
+      "legacy_default_items": [{ "catalog_id": "srd_5_2_1:shortsword", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:dart", "quantity": 10 }, { "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }],
+      "fixed_items": [{ "catalog_id": "srd_5_2_1:dart", "quantity": 10 }],
+      "choice_groups": [
+        { "id": "weapon", "label": "Оружие", "count": 1, "options": [
+          { "id": "shortsword", "label": "Короткий меч", "summary": "Монашеское фехтовальное оружие", "items": [{ "catalog_id": "srd_5_2_1:shortsword", "quantity": 1, "equipped": true }] },
+          { "id": "quarterstaff", "label": "Боевой посох", "summary": "Универсальное монашеское оружие", "items": [{ "catalog_id": "srd_5_2_1:quarterstaff", "quantity": 1, "equipped": true }] }
+        ] },
+        { "id": "pack", "label": "Набор", "count": 1, "options": [
+          { "id": "dungeoneers-pack", "label": "Набор исследователя подземелий", "summary": "Для руин и подземелий", "narrative_items": [{ "name": "Набор исследователя подземелий", "description": "Комплект для исследования подземелий." }] },
+          { "id": "explorers-pack", "label": "Набор путешественника", "summary": "Для долгой дороги", "items": [{ "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }] }
+        ] }
+      ]
+    },
+    {
+      "class_id": "paladin",
+      "legacy_default_items": [{ "catalog_id": "srd_5_2_1:longsword", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:shield", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:chain-mail", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:javelin", "quantity": 5 }, { "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }],
+      "fixed_items": [{ "catalog_id": "srd_5_2_1:chain-mail", "quantity": 1, "equipped": true }],
+      "fixed_narrative_items": [{ "name": "Священный символ", "description": "Фокус божественной магии паладина." }],
+      "choice_groups": [
+        { "id": "melee-loadout", "label": "Боевой комплект", "count": 1, "options": [
+          { "id": "longsword-shield", "label": "Длинный меч и щит", "summary": "Классический защитный комплект", "items": [{ "catalog_id": "srd_5_2_1:longsword", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:shield", "quantity": 1, "equipped": true }] },
+          { "id": "warhammer-shield", "label": "Боевой молот и щит", "summary": "Дробящее оружие и защита", "items": [{ "catalog_id": "srd_5_2_1:warhammer", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:shield", "quantity": 1, "equipped": true }] },
+          { "id": "greatsword", "label": "Двуручный меч", "summary": "Наступательный двуручный комплект", "items": [{ "catalog_id": "srd_5_2_1:greatsword", "quantity": 1, "equipped": true }] }
+        ] },
+        { "id": "secondary", "label": "Запасное оружие", "count": 1, "options": [
+          { "id": "five-javelins", "label": "Пять метательных копий", "summary": "Дальний запас", "items": [{ "catalog_id": "srd_5_2_1:javelin", "quantity": 5 }] },
+          { "id": "spear", "label": "Копьё", "summary": "Простое универсальное оружие", "items": [{ "catalog_id": "srd_5_2_1:spear", "quantity": 1 }] }
+        ] },
+        { "id": "pack", "label": "Набор", "count": 1, "options": [
+          { "id": "priests-pack", "label": "Набор священника", "summary": "Ритуальные принадлежности", "narrative_items": [{ "name": "Набор священника", "description": "Ритуальный комплект паладина." }] },
+          { "id": "explorers-pack", "label": "Набор путешественника", "summary": "Припасы для дороги", "items": [{ "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }] }
+        ] }
+      ]
+    },
+    {
+      "class_id": "ranger",
+      "legacy_default_items": [{ "catalog_id": "srd_5_2_1:shortsword", "quantity": 2, "equipped": true }, { "catalog_id": "srd_5_2_1:longbow", "quantity": 1 }, { "catalog_id": "srd_5_2_1:arrows-20", "quantity": 1 }, { "catalog_id": "srd_5_2_1:leather-armor", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }],
+      "fixed_items": [{ "catalog_id": "srd_5_2_1:longbow", "quantity": 1 }, { "catalog_id": "srd_5_2_1:arrows-20", "quantity": 1 }],
+      "choice_groups": [
+        { "id": "armor", "label": "Доспех", "count": 1, "options": [
+          { "id": "scale-mail", "label": "Чешуйчатый доспех", "summary": "Более высокий КД", "items": [{ "catalog_id": "srd_5_2_1:scale-mail", "quantity": 1, "equipped": true }] },
+          { "id": "leather-armor", "label": "Кожаный доспех", "summary": "Лёгкость и скрытность", "items": [{ "catalog_id": "srd_5_2_1:leather-armor", "quantity": 1, "equipped": true }] }
+        ] },
+        { "id": "melee", "label": "Оружие ближнего боя", "count": 1, "options": [
+          { "id": "two-shortswords", "label": "Два коротких меча", "summary": "Два лёгких фехтовальных оружия", "items": [{ "catalog_id": "srd_5_2_1:shortsword", "quantity": 2, "equipped": true }] },
+          { "id": "two-handaxes", "label": "Два ручных топора", "summary": "Два лёгких метательных оружия", "items": [{ "catalog_id": "srd_5_2_1:handaxe", "quantity": 2, "equipped": true }] }
+        ] },
+        { "id": "pack", "label": "Набор", "count": 1, "options": [
+          { "id": "dungeoneers-pack", "label": "Набор исследователя подземелий", "summary": "Для руин и подземелий", "narrative_items": [{ "name": "Набор исследователя подземелий", "description": "Комплект для исследования подземелий." }] },
+          { "id": "explorers-pack", "label": "Набор путешественника", "summary": "Для долгой дороги", "items": [{ "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }] }
+        ] }
+      ]
+    },
+    {
+      "class_id": "rogue",
+      "legacy_default_items": [{ "catalog_id": "srd_5_2_1:rapier", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:shortbow", "quantity": 1 }, { "catalog_id": "srd_5_2_1:arrows-20", "quantity": 1 }, { "catalog_id": "srd_5_2_1:dagger", "quantity": 2 }, { "catalog_id": "srd_5_2_1:leather-armor", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }],
+      "fixed_items": [{ "catalog_id": "srd_5_2_1:leather-armor", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:dagger", "quantity": 2 }],
+      "fixed_narrative_items": [{ "name": "Воровские инструменты", "description": "Набор для замков и ловушек." }],
+      "choice_groups": [
+        { "id": "primary", "label": "Основное оружие", "count": 1, "options": [
+          { "id": "rapier", "label": "Рапира", "summary": "Фехтовальное оружие", "items": [{ "catalog_id": "srd_5_2_1:rapier", "quantity": 1, "equipped": true }] },
+          { "id": "shortsword", "label": "Короткий меч", "summary": "Лёгкое фехтовальное оружие", "items": [{ "catalog_id": "srd_5_2_1:shortsword", "quantity": 1, "equipped": true }] }
+        ] },
+        { "id": "secondary", "label": "Второй комплект", "count": 1, "options": [
+          { "id": "shortbow", "label": "Короткий лук и 20 стрел", "summary": "Дальнобойный комплект", "items": [{ "catalog_id": "srd_5_2_1:shortbow", "quantity": 1 }, { "catalog_id": "srd_5_2_1:arrows-20", "quantity": 1 }] },
+          { "id": "shortsword", "label": "Второй короткий меч", "summary": "Для боя двумя оружиями", "items": [{ "catalog_id": "srd_5_2_1:shortsword", "quantity": 1 }] }
+        ] },
+        { "id": "pack", "label": "Набор", "count": 1, "options": [
+          { "id": "burglars-pack", "label": "Набор взломщика", "summary": "Лом, шарики, верёвка и скрытные принадлежности", "narrative_items": [{ "name": "Набор взломщика", "description": "Комплект взломщика из стартового снаряжения плута." }] },
+          { "id": "dungeoneers-pack", "label": "Набор исследователя подземелий", "summary": "Для руин и ловушек", "narrative_items": [{ "name": "Набор исследователя подземелий", "description": "Комплект для исследования подземелий." }] },
+          { "id": "explorers-pack", "label": "Набор путешественника", "summary": "Для долгой дороги", "items": [{ "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }] }
+        ] }
+      ]
+    },
+    {
+      "class_id": "sorcerer",
+      "legacy_default_items": [{ "catalog_id": "srd_5_2_1:light-crossbow", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:bolts-20", "quantity": 1 }, { "catalog_id": "srd_5_2_1:dagger", "quantity": 2 }, { "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }],
+      "fixed_items": [{ "catalog_id": "srd_5_2_1:dagger", "quantity": 2 }],
+      "choice_groups": [
+        { "id": "weapon", "label": "Оружие", "count": 1, "options": [
+          { "id": "light-crossbow", "label": "Лёгкий арбалет и 20 болтов", "summary": "Дальнобойный комплект", "items": [{ "catalog_id": "srd_5_2_1:light-crossbow", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:bolts-20", "quantity": 1 }] },
+          { "id": "quarterstaff", "label": "Боевой посох", "summary": "Простое универсальное оружие", "items": [{ "catalog_id": "srd_5_2_1:quarterstaff", "quantity": 1, "equipped": true }] }
+        ] },
+        { "id": "focus", "label": "Магический фокус", "count": 1, "options": [
+          { "id": "component-pouch", "label": "Мешочек с компонентами", "summary": "Материальные компоненты заклинаний", "narrative_items": [{ "name": "Мешочек с компонентами", "description": "Фокус для заклинаний чародея." }] },
+          { "id": "arcane-focus", "label": "Магическая фокусировка", "summary": "Жезл, кристалл или иной фокус", "narrative_items": [{ "name": "Магическая фокусировка", "description": "Фокус для заклинаний чародея." }] }
+        ] },
+        { "id": "pack", "label": "Набор", "count": 1, "options": [
+          { "id": "dungeoneers-pack", "label": "Набор исследователя подземелий", "summary": "Для руин и подземелий", "narrative_items": [{ "name": "Набор исследователя подземелий", "description": "Комплект для исследования подземелий." }] },
+          { "id": "explorers-pack", "label": "Набор путешественника", "summary": "Для долгой дороги", "items": [{ "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }] }
+        ] }
+      ]
+    },
+    {
+      "class_id": "warlock",
+      "legacy_default_items": [{ "catalog_id": "srd_5_2_1:light-crossbow", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:bolts-20", "quantity": 1 }, { "catalog_id": "srd_5_2_1:dagger", "quantity": 2 }, { "catalog_id": "srd_5_2_1:leather-armor", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }],
+      "fixed_items": [{ "catalog_id": "srd_5_2_1:leather-armor", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:dagger", "quantity": 2 }],
+      "choice_groups": [
+        { "id": "ranged", "label": "Дальнее оружие", "count": 1, "options": [
+          { "id": "light-crossbow", "label": "Лёгкий арбалет и 20 болтов", "summary": "Дальнобойный комплект", "items": [{ "catalog_id": "srd_5_2_1:light-crossbow", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:bolts-20", "quantity": 1 }] },
+          { "id": "javelin", "label": "Метательное копьё", "summary": "Простое метательное оружие", "items": [{ "catalog_id": "srd_5_2_1:javelin", "quantity": 1, "equipped": true }] }
+        ] },
+        { "id": "focus", "label": "Магический фокус", "count": 1, "options": [
+          { "id": "component-pouch", "label": "Мешочек с компонентами", "summary": "Материальные компоненты заклинаний", "narrative_items": [{ "name": "Мешочек с компонентами", "description": "Фокус для магии договора." }] },
+          { "id": "arcane-focus", "label": "Магическая фокусировка", "summary": "Жезл, кристалл или иной фокус", "narrative_items": [{ "name": "Магическая фокусировка", "description": "Фокус для магии договора." }] }
+        ] },
+        { "id": "melee", "label": "Запасное оружие", "count": 1, "options": [
+          { "id": "quarterstaff", "label": "Боевой посох", "summary": "Простое универсальное оружие", "items": [{ "catalog_id": "srd_5_2_1:quarterstaff", "quantity": 1 }] },
+          { "id": "spear", "label": "Копьё", "summary": "Простое метательное оружие", "items": [{ "catalog_id": "srd_5_2_1:spear", "quantity": 1 }] }
+        ] },
+        { "id": "pack", "label": "Набор", "count": 1, "options": [
+          { "id": "scholars-pack", "label": "Набор учёного", "summary": "Книги и письменные принадлежности", "narrative_items": [{ "name": "Набор учёного", "description": "Комплект учёного из стартового снаряжения колдуна." }] },
+          { "id": "dungeoneers-pack", "label": "Набор исследователя подземелий", "summary": "Для руин и подземелий", "narrative_items": [{ "name": "Набор исследователя подземелий", "description": "Комплект для исследования подземелий." }] }
+        ] }
+      ]
+    },
+    {
+      "class_id": "wizard",
+      "legacy_default_items": [{ "catalog_id": "srd_5_2_1:quarterstaff", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }],
+      "fixed_narrative_items": [{ "name": "Книга заклинаний", "description": "Книга с шестью стартовыми заклинаниями волшебника." }],
+      "choice_groups": [
+        { "id": "weapon", "label": "Оружие", "count": 1, "options": [
+          { "id": "quarterstaff", "label": "Боевой посох", "summary": "Универсальное оружие", "items": [{ "catalog_id": "srd_5_2_1:quarterstaff", "quantity": 1, "equipped": true }] },
+          { "id": "dagger", "label": "Кинжал", "summary": "Лёгкое фехтовальное оружие", "items": [{ "catalog_id": "srd_5_2_1:dagger", "quantity": 1, "equipped": true }] }
+        ] },
+        { "id": "focus", "label": "Магический фокус", "count": 1, "options": [
+          { "id": "component-pouch", "label": "Мешочек с компонентами", "summary": "Материальные компоненты заклинаний", "narrative_items": [{ "name": "Мешочек с компонентами", "description": "Фокус для заклинаний волшебника." }] },
+          { "id": "arcane-focus", "label": "Магическая фокусировка", "summary": "Жезл, кристалл или иной фокус", "narrative_items": [{ "name": "Магическая фокусировка", "description": "Фокус для заклинаний волшебника." }] }
+        ] },
+        { "id": "pack", "label": "Набор", "count": 1, "options": [
+          { "id": "scholars-pack", "label": "Набор учёного", "summary": "Книги и письменные принадлежности", "narrative_items": [{ "name": "Набор учёного", "description": "Комплект учёного из стартового снаряжения волшебника." }] },
+          { "id": "explorers-pack", "label": "Набор путешественника", "summary": "Для долгой дороги", "items": [{ "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }] }
+        ] }
+      ]
+    }
   ]
 }

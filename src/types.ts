@@ -187,6 +187,13 @@ export type Player = {
   backgroundBenefits?: Record<string, unknown> | null
   speciesBenefits?: Record<string, unknown> | null
   starterEquipmentPolicyId?: string
+  starterEquipmentPolicyVersion?: number
+  starterEquipmentChoices?: Record<string, string[]>
+  speciesChoices?: Record<string, string[]>
+  speciesSkillProficiencies?: string[]
+  speciesToolProficiencies?: string[]
+  speciesLanguages?: string[]
+  speciesSpellIds?: string[]
   characterSheet?: {
     schema_version: number
     level: number
@@ -2522,6 +2529,20 @@ export type CharacterCreationCatalog = {
       languages?: string[]
       language_choice_count?: number
       trait_summaries?: string[]
+      choice_groups?: Array<{
+        id: string
+        label: string
+        kind: 'language' | 'skill' | 'tool' | 'cantrip' | 'ancestry'
+        count: number
+        options: Array<{
+          id: string
+          label: string
+          damage_type?: string
+          shape?: 'line' | 'cone'
+          distance_feet?: number
+        }>
+      }>
+      mechanics?: Record<string, unknown>
       source_url?: string
     }>
   }
@@ -2550,6 +2571,14 @@ export type CharacterCreationCatalog = {
     origin_feats_supported: boolean
     background_features_supported: boolean
   }
+  starter_equipment?: {
+    schema_version: number
+    ruleset_id: string
+    policy_id: string
+    policy_version: number
+    choice_policy: string
+    classes: Array<StarterEquipmentClass>
+  } | null
   classes: Array<{
     id: DndClassKey
     label: string
@@ -2566,6 +2595,7 @@ export type CharacterCreationCatalog = {
       choiceCount: number
       options: Array<{ id: string; name: string }>
     }>
+    starter_equipment: StarterEquipmentClass | null
     spell_selection: {
       classKey: DndClassKey
       spellcastingAbility: keyof CharacterAbilityScores | null
@@ -2585,6 +2615,32 @@ export type CharacterCreationCatalog = {
         mechanics_support?: 'verified' | 'partial' | 'heuristic' | 'ruling-only'
       }>
     } | null
+  }>
+}
+
+export type StarterEquipmentItem = {
+  catalog_id?: string
+  name?: string
+  description?: string
+  quantity?: number
+  equipped?: boolean
+}
+
+export type StarterEquipmentClass = {
+  class_id: DndClassKey
+  fixed_items?: StarterEquipmentItem[]
+  fixed_narrative_items?: StarterEquipmentItem[]
+  choice_groups: Array<{
+    id: string
+    label: string
+    count: number
+    options: Array<{
+      id: string
+      label: string
+      summary: string
+      items?: StarterEquipmentItem[]
+      narrative_items?: StarterEquipmentItem[]
+    }>
   }>
 }
 

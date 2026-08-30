@@ -172,20 +172,47 @@ export function spellSelectionRulesFor(actor) {
 
 export function combatSpellsFor(actor) {
   const profile = casterProfile(actor)
-  if (!profile) return []
   const level = boundedLevel(actor)
-  const maximum = maximumSpellLevel(profile, level)
-  const rules = spellSelectionRulesFor(actor)
-  const { known, prepared } = boundedSelection(actor, profile, level, rules)
-  return SPELLS
-    .filter((spell) => spell.classes.includes(profile.key) && (spell.level === 0 || spell.level <= maximum))
-    .map((spell) => {
+  const classSpells = profile ? (() => {
+    const maximum = maximumSpellLevel(profile, level)
+    const rules = spellSelectionRulesFor(actor)
+    const { known, prepared } = boundedSelection(actor, profile, level, rules)
+    return SPELLS
+      .filter((spell) => spell.classes.includes(profile.key) && (spell.level === 0 || spell.level <= maximum))
+      .map((spell) => {
       const isPrepared = spell.level === 0 ? (known ? known.has(spell.id) : true)
         : rules.mode === 'known' ? (known ? known.has(spell.id) : true)
           : rules.mode === 'spellbook' ? (known ? known.has(spell.id) : true) && (prepared ? prepared.has(spell.id) : true)
             : prepared ? prepared.has(spell.id) : true
       return { ...clone(spell), slotResource: slotResourceForProfile(profile, spell), spellcastingAbility: profile.ability, prepared: isPrepared }
+      })
+  })() : []
+  const innate = (Array.isArray(actor?.speciesBenefits?.innate_spells) ? actor.speciesBenefits.innate_spells : [])
+    .filter((entry) => level >= Math.max(1, Number(entry?.minimum_level) || 1))
+    .map((entry) => {
+      const spell = SPELLS_BY_ID.get(String(entry?.id ?? ''))
+      if (!spell) return null
+      const limited = Number.isFinite(Number(entry?.uses)) && Number(entry.uses) > 0
+      return {
+        ...clone(spell),
+        prepared: true,
+        innateSpell: true,
+        innateCastLevel: Math.max(spell.level, Number(entry?.cast_level) || spell.level),
+        spellcastingAbility: String(entry?.ability ?? 'cha'),
+        slotResource: limited ? `species_spell_${spell.id}` : null,
+        source: 'species',
+      }
     })
+    .filter(Boolean)
+  const byId = new Map(classSpells.map((spell) => [spell.id, spell]))
+  for (const spell of innate) {
+    const classVersion = byId.get(spell.id)
+    byId.set(spell.id, {
+      ...spell,
+      ...(classVersion?.prepared !== false && classVersion?.slotResource ? { fallbackSlotResource: classVersion.slotResource } : {}),
+    })
+  }
+  return [...byId.values()]
 }
 
 export function combatSpellFor(actor, spellId) {

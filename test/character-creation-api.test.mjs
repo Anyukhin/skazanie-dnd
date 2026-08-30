@@ -137,6 +137,9 @@ test('каждый игрок заполняет свой серверный с�
   assert.equal(classicCatalog.body.ability_policy.bonus_source, 'species')
   assert.equal(classicCatalog.body.ability_policy.species_options.length, 14)
   assert.equal(classicCatalog.body.backgrounds.options.length, 13)
+  assert.equal(classicCatalog.body.starter_equipment.policy_version, 2)
+  assert.equal(classicCatalog.body.classes.find((entry) => entry.id === 'fighter').starter_equipment.choice_groups.length, 4)
+  assert.ok(classicCatalog.body.ability_policy.species_options.find((entry) => entry.id === 'dragonborn').choice_groups[0].options.length === 10)
 
   const admin = await request(baseUrl, '/api/auth/setup-admin', { method: 'POST', body: {
     name: 'Setup', email: 'setup@creation.test', password: 'secure-setup-password', setupToken: 'character-creation-setup',
@@ -165,9 +168,14 @@ test('каждый игрок заполняет свой серверный с�
     background: 'Солдат',
     backgroundId: 'soldier',
     backgroundChoices: { tools: ['dice_set'], languages: [] },
+    speciesChoices: { 'artisan-tool': ['smiths_tools'] },
+    starterEquipmentChoices: {
+      armor: ['chain-mail'], 'melee-loadout': ['longsword-shield'],
+      secondary: ['light-crossbow'], pack: ['explorers-pack'],
+    },
     abilities: { str: 15, dex: 14, con: 15, int: 12, wis: 11, cha: 8 },
     abilityGeneration: {
-      policyId: 'skazanie.character-abilities.dnd-5e-2014', policyVersion: 1, method: 'standard_array',
+      policyId: 'skazanie.character-abilities.dnd-5e-2014', policyVersion: 2, method: 'standard_array',
       baseScores: classicBase,
       originBonusProfileId: 'dwarf-hill',
       originBonuses: { str: 0, dex: 0, con: 2, int: 0, wis: 1, cha: 0 },
@@ -180,6 +188,8 @@ test('каждый игрок заполняет свой серверный с�
   assert.equal(classicHero.speciesBenefits.species_option_id, 'dwarf-hill')
   assert.equal(classicHero.backgroundBenefits.background_id, 'soldier')
   assert.equal(classicHero.currency.gold, 10)
+  assert.deepEqual(classicHero.speciesToolProficiencies, ['smiths_tools'])
+  assert.equal(classicHero.starterEquipmentChoices['melee-loadout'][0], 'longsword-shield')
   assert.ok(classicHero.inventory.some((item) => item.catalog_id === 'srd_5_2_1:chain-mail'))
 
   const forgedPlayers = Array.from({ length: 4 }, (_, index) => ({
