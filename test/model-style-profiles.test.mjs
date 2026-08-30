@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { promptForModel, styleAddendumFor } from '../server/model-style-profiles.mjs'
+import { promptForModel, reasoningProfileFor, styleAddendumFor } from '../server/model-style-profiles.mjs'
 
 /**
  * Добавка под Luna — компенсация замеренного провала, а не украшение: без неё
@@ -28,4 +28,10 @@ test('добавка требует ровно того, что провалив
   assert.match(addendum, /speech_profile/u)
   assert.match(addendum, /обещания,\s+прошлые разговоры/u)
   assert.match(addendum, /Однострочный ответ — ошибка/u)
+})
+
+test('у моделей горячего пути reasoning ограничен самым быстрым поддерживаемым режимом', () => {
+  assert.deepEqual(reasoningProfileFor('z-ai/glm-5.3-flash'), { effort: 'low' })
+  assert.deepEqual(reasoningProfileFor('openai/gpt-5.6-luna'), { enabled: false })
+  assert.equal(reasoningProfileFor('unknown/model'), null)
 })

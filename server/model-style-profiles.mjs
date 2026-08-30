@@ -48,16 +48,17 @@ export function promptForModel(basePrompt, llmClient) {
 }
 
 /**
- * Горячий путь хода работает без «размышлений» у всех известных моделей: у
- * GLM и DeepSeek это было всегда, у Luna замер 2026-07-31 показал, что с
- * добавкой формы reasoning не даёт качества, а хвост задержки без него
- * исчезает (медиана 3,3 с и максимум 5,4 с против 7,3 и 9,2 с). Незнакомая
- * модель остаётся на умолчании провайдера.
+ * Горячий путь хода работает без «размышлений» там, где провайдер разрешает
+ * их выключить. У Luna замер 2026-07-31 показал, что с добавкой формы reasoning
+ * не даёт качества, а хвост задержки без него исчезает. RouterAI требует
+ * reasoning у GLM-5.3-Flash, поэтому для неё задан минимальный поддерживаемый
+ * effort `low`. Незнакомая модель остаётся на умолчании провайдера.
  *
  * @param {string | null | undefined} modelId
- * @returns {{ enabled: false } | null}
+ * @returns {{ enabled: false } | { effort: 'low' } | null}
  */
 export function reasoningProfileFor(modelId) {
+  if (String(modelId ?? '') === 'z-ai/glm-5.3-flash') return { effort: 'low' }
   const known = new Set([
     'z-ai/glm-5.2',
     'deepseek/deepseek-v4-flash',

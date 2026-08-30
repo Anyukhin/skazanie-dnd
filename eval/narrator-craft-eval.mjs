@@ -27,6 +27,7 @@ import { resolve } from 'node:path'
 import { performance } from 'node:perf_hooks'
 
 import { FallbackLLMClient, RouterAIClient } from '../server/llm-client.mjs'
+import { reasoningProfileFor } from '../server/model-style-profiles.mjs'
 import { NARRATOR_PROMPT_VERSION, Narrator } from '../server/narrator.mjs'
 import { NpcSocialController } from '../server/npc-social-controller.mjs'
 import { buildNarrationBrief } from '../server/security.mjs'
@@ -138,7 +139,7 @@ function reasoningForModel(modelId) {
   const requested = String(process.env.DND_AI_REASONING_EFFORT ?? '').trim().toLowerCase()
   if (requested === 'off') return { enabled: false }
   if (requested) return { effort: requested }
-  return ['z-ai/glm-5.2', 'deepseek/deepseek-v4-flash'].includes(modelId) ? { enabled: false } : null
+  return reasoningProfileFor(modelId)
 }
 
 function productionChainClient() {
