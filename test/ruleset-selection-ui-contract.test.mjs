@@ -27,10 +27,14 @@ test('настройки читают редакцию кампании, а не
   assert.match(views, /campaignAiError && <p className="admin-error" role="alert">/u)
 })
 
-test('2014 preview не скрывает общий partial-каталог создания героя', () => {
+test('мастер героя загружает отдельный каталог редакции и показывает правила 2014', () => {
+  assert.match(app, /getCharacterCreationCatalog\(rulesetId\)/u)
+  assert.match(app, /key=\{`\$\{creatingPlayerId\}:\$\{state\.ruleset_id/u)
   assert.match(app, /rulesetId=\{state\.ruleset_id\}/u)
-  assert.match(wizard, /D&D 5e 2014 · частичное покрытие/u)
-  assert.match(wizard, /расы, предыстории и стартовое снаряжение ещё переводятся/u)
+  assert.match(wizard, /D&D 5e 2014\./u)
+  assert.match(wizard, /Прибавки расы и подрасы/u)
+  assert.match(wizard, /Выборы предыстории/u)
+  assert.match(wizard, /bonusSource === 'species'/u)
   assert.match(inventoryViews, /classFeatureCatalogFor\(draft, true, rulesetId\)/u)
   assert.match(combatActions, /classicPassiveFeatureOverrides/u)
 })

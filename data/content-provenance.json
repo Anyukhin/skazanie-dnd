@@ -116,8 +116,8 @@
     },
     {
       "path": "data/ruleset-cutover-2014.json",
-      "sha256": "23a39ca77720ec947bc2541c409af07ddda387545202a282afa7995802271e47",
-      "size_bytes": 6259,
+      "sha256": "3d1c511a3ce7cc01a6c20cf76a9270b77a10d2d5aa1fa608de362128ba1b7fb4",
+      "size_bytes": 6559,
       "source_id": "dndsu-5e14-core",
       "rights_status": "project_license_required"
     },
@@ -156,6 +156,38 @@
       "source_id": "srd-5.2.1",
       "rights_status": "project_license_required",
       "notes": "Механические факты предысторий редакции 2024. Описания написаны для проекта и текст источника не воспроизводят."
+    },
+    {
+      "path": "data/character-creation-policy-v1.json",
+      "sha256": "618a4b820a99ee7499bac6167c388169bfcb2e9666d2af0b186cc7b9f8f8afce",
+      "size_bytes": 1746,
+      "source_id": "srd-5.2.1",
+      "rights_status": "project_license_required",
+      "notes": "Каталог видов и политики прибавок характеристик редакции 2024."
+    },
+    {
+      "path": "data/character-creation-dnd-5e-2014.json",
+      "sha256": "3703d1dbaf86968bac019cef17c5938cf24231cf54e90eaf1e58bcc8407c0f68",
+      "size_bytes": 10756,
+      "source_id": "dndsu-5e14-core",
+      "rights_status": "project_license_required",
+      "notes": "Структурированные механические факты рас и подрас PHB 2014; полные тексты источника не включены."
+    },
+    {
+      "path": "data/backgrounds-dnd-5e-2014.json",
+      "sha256": "cfa5bae70e6bae6ec3cb5c6d634689f342f5f12cebbee47b8df4cc16cfa694f4",
+      "size_bytes": 13784,
+      "source_id": "dndsu-5e14-core",
+      "rights_status": "project_license_required",
+      "notes": "Структурированные механические факты 13 предысторий PHB 2014; описания написаны для проекта."
+    },
+    {
+      "path": "data/starter-equipment-dnd-5e-2014.json",
+      "sha256": "399ca680effb3c562f6805551e588bf811fa3418d63911cf6e75499dffb601aa",
+      "size_bytes": 4198,
+      "source_id": "dndsu-5e14-core",
+      "rights_status": "project_license_required",
+      "notes": "Детерминированный вариант стартового снаряжения из классовых вариантов PHB 2014."
     }
   ],
   "release_blockers": [

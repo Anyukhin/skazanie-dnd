@@ -16,7 +16,7 @@ const profiles = [
     enabled_rule_packs: ['dnd_5e_2014'],
     default_house_rules: ['skazanie:2014-preview-legacy-catalogs-v1'],
     limitations: [
-      'Создание героев, предметы и бестиарий ещё переводятся на отдельные каталоги 2014.',
+      'Предметы и бестиарий ещё переводятся на отдельные каталоги 2014; стартовые наборы пока ссылаются на совместимые item IDs SRD 5.2.1.',
       'Неперенесённые различия остаются partial и перечислены в аудите cutover.',
     ],
   },
@@ -58,6 +58,10 @@ export class RulesetSelectionError extends Error {
   }
 }
 
+/**
+ * @param {unknown} rulesetId
+ * @param {{ fallback?: string | null, requireCreation?: boolean }} [options]
+ */
 export function rulesetProfile(rulesetId, { fallback = null, requireCreation = false } = {}) {
   const requested = String(rulesetId ?? '').trim()
   const resolvedId = requested || fallback

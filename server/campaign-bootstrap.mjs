@@ -297,7 +297,9 @@ export class CampaignBootstrapper {
     if (!/^[A-Z0-9-]{3,24}$/.test(campaignCode)) throw new Error('Некорректный код кампании')
     if (!Array.isArray(rawPlayers) || rawPlayers.length < 1 || rawPlayers.length > 12) throw new Error('Для новой кампании выберите от 1 до 12 героев')
     const selectedRuleset = rulesetLock(ruleset_id ?? rulesetId, { fallback: LEGACY_DEFAULT_RULESET_ID, requireCreation: true })
-    const heroes = rawPlayers.map(normalizeHero).map((hero) => hero.characterSetupRequired ? hero : withStarterKit(hero))
+    const heroes = rawPlayers.map(normalizeHero).map((hero) => hero.characterSetupRequired
+      ? hero
+      : withStarterKit(hero, { rulesetId: selectedRuleset.ruleset_id }))
     if (new Set(heroes.map((hero) => hero.id)).size !== heroes.length) throw new Error('В кампании повторяются id героев')
     const world = normalizeWorld(rawWorld)
     const inspiration = drawCampaignInspiration({ world, diceService: this.diceService })

@@ -1,6 +1,15 @@
+import { readFileSync } from 'node:fs'
+
 import { ammunitionCatalogIdForWeapon, catalogItem, materializeCatalogItem } from './item-catalog.mjs'
+import { backgroundById } from './backgrounds.mjs'
+import { DND_2014_RULESET_ID, LEGACY_DEFAULT_RULESET_ID } from './ruleset-config.mjs'
 
 const STARTING_GOLD = 20
+const classicEquipment = JSON.parse(readFileSync(
+  new URL('../data/starter-equipment-dnd-5e-2014.json', import.meta.url),
+  'utf8',
+))
+const classicClassProfiles = new Map(classicEquipment.classes.map((entry) => [entry.class_id, entry]))
 
 const WEAPONS = Object.freeze({
   dagger: Object.freeze({
@@ -109,22 +118,68 @@ function starterGear(heroId, gearKey) {
   })
 }
 
+function classicStarterItem(heroId, item, index, prefix = 'class') {
+  const entry = catalogItem(item.catalog_id)
+  if (!entry) throw new TypeError(`Стартовый набор 2014 ссылается на неизвестный предмет ${item.catalog_id}`)
+  return materializeCatalogItem(item.catalog_id, {
+    id: `${heroId}-starter-${prefix}-${index + 1}`.slice(0, 120),
+    quantity: Math.max(1, Math.trunc(Number(item.quantity) || 1)),
+    equipped: item.equipped === true,
+    rarity: 'обычный',
+    image: '',
+    imageStatus: 'ready',
+  })
+}
+
+function classicStarterInventory(hero, profile) {
+  const heroId = String(hero?.id || 'hero')
+  const classItems = (profile?.items ?? []).map((item, index) => classicStarterItem(heroId, item, index))
+  const background = backgroundById(hero?.backgroundId, DND_2014_RULESET_ID)
+  const backgroundItems = (background?.equipment?.catalogItems ?? [])
+    .map((item, index) => classicStarterItem(heroId, item, index, 'background'))
+  if (background?.equipment?.includeChosenTool) {
+    const selected = new Set(hero?.backgroundChoices?.tools ?? [])
+    const tool = (background.toolChoice?.options ?? []).find((entry) => selected.has(entry.id) && entry.catalogId)
+    if (tool?.catalogId) backgroundItems.push(classicStarterItem(heroId, { catalog_id: tool.catalogId, quantity: 1 }, backgroundItems.length, 'background-tool'))
+  }
+  if (background?.equipment?.summary) {
+    backgroundItems.push({
+      id: `${heroId}-starter-background-keepsakes`.slice(0, 120),
+      name: `${background.name}: личные вещи`,
+      type: 'other',
+      quantity: 1,
+      weight: 0,
+      description: String(background.equipment.summary),
+      properties: 'Нарративный комплект предыстории; отдельные механические применения требуют подтверждённого правила.',
+      mechanics_status: 'ruling-only',
+      sellable: false,
+      equipped: false,
+    })
+  }
+  return [...classItems, ...backgroundItems]
+}
+
 /** Supplies only missing first-session essentials; imported, already-built
  * character sheets keep their money, abilities and equipment unchanged. */
-export function withStarterKit(hero) {
+export function withStarterKit(hero, { rulesetId = LEGACY_DEFAULT_RULESET_ID } = {}) {
   const role = `${hero?.role ?? ''} ${hero?.characterClass ?? ''}`.toLocaleLowerCase('ru')
   const profile = CLASS_PROFILES.find((entry) => entry.key === hero?.characterClass || entry.pattern.test(role))
   const heroId = String(hero?.id || 'hero')
+  const classicProfile = classicClassProfiles.get(hero?.characterClass ?? profile?.key)
   const inventory = Array.isArray(hero?.inventory) && hero.inventory.length
     ? structuredClone(hero.inventory)
-    : [
+    : rulesetId === DND_2014_RULESET_ID
+      ? classicStarterInventory(hero, classicProfile)
+      : [
         starterWeapon(heroId, profile?.weapon ?? 'dagger'),
         ...[starterAmmunition(heroId, profile?.weapon ?? 'dagger')].filter(Boolean),
         ...(profile?.gear ?? []).map((key) => starterGear(heroId, key)).filter(Boolean),
       ]
   const currency = totalCurrency(hero?.currency) > 0
     ? structuredClone(hero.currency)
-    : { copper: 0, silver: 0, gold: STARTING_GOLD, platinum: 0 }
+    : rulesetId === DND_2014_RULESET_ID
+      ? { copper: 0, silver: 0, gold: Math.max(0, Number(backgroundById(hero?.backgroundId, DND_2014_RULESET_ID)?.equipment?.gold) || 0), platinum: 0 }
+      : { copper: 0, silver: 0, gold: STARTING_GOLD, platinum: 0 }
   const abilities = abilityScoresAreBlank(hero?.abilities) && profile
     ? structuredClone(profile.abilities)
     : structuredClone(hero?.abilities ?? { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 })
@@ -134,5 +189,6 @@ export function withStarterKit(hero) {
     inventory,
     currency,
     abilities,
+    ...(rulesetId === DND_2014_RULESET_ID ? { starterEquipmentPolicyId: classicEquipment.policy_id } : {}),
   }
 }

@@ -1,4 +1,4 @@
-import type { AiHealth, AiTurnResult, DiceRollEvent, GameState, PendingCheck, RollResult } from './types'
+import type { AiHealth, AiTurnResult, CharacterCreationCatalog, DiceRollEvent, GameState, PendingCheck, RollResult, RulesetProfileDescriptor } from './types'
 
 type SharedDiceRollResponse = {
   roll: DiceRollEvent
@@ -60,6 +60,18 @@ export async function getAiHealth(): Promise<AiHealth> {
   const response = await fetchWithTimeout('/api/health', {}, 10_000, 'Сервер рассказчика не ответил вовремя')
   if (!response.ok) throw new Error('Сервер рассказчика недоступен')
   return response.json() as Promise<AiHealth>
+}
+
+export async function getCharacterCreationCatalog(rulesetId: RulesetProfileDescriptor['id']): Promise<CharacterCreationCatalog> {
+  const response = await fetchWithTimeout(
+    `/api/rulesets/${encodeURIComponent(rulesetId)}/character-creation`,
+    {},
+    10_000,
+    'Сервер не отдал каталог создания героя вовремя',
+  )
+  const body = await response.json().catch(() => null) as (CharacterCreationCatalog & { error?: string }) | null
+  if (!response.ok || !body?.ruleset_id) throw new Error(body?.error || 'Каталог создания героя недоступен')
+  return body
 }
 
 function newIdempotencyKey() {

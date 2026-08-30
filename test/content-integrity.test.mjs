@@ -18,6 +18,13 @@ test('content integrity gate verifies hashes, references, counts and the complet
   assert.equal(report.integrity.target_rule_references.referenced_terms, 34)
   assert.equal(report.integrity.compatibility_catalogs.spells, 439)
   assert.equal(report.integrity.compatibility_catalogs.classes, 12)
+  assert.deepEqual(report.integrity.character_creation_catalogs.dnd_5e_2014, {
+    species_options: 14,
+    backgrounds: 13,
+    classes_with_starter_equipment: 12,
+    bonus_source: 'species',
+  })
+  assert.equal(report.integrity.character_creation_catalogs.srd_5_2_1.bonus_source, 'background')
   assert.deepEqual(report.integrity.item_catalog, { entries: 107, shop_entries: 12 })
   assert.equal(report.integrity.coverage.find((entry) => entry.id === 'equipment').count, 107)
   // 1222 + 7 петель атмосферы (`public/assets/audio/ambience/*.ogg`)

@@ -3192,6 +3192,15 @@ const server = createServer((req, res) => {
   applySecurityHeaders(res)
   if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Allow-Origin': 'http://127.0.0.1:4173', 'Access-Control-Allow-Headers': 'Content-Type, X-Idempotency-Key', 'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS', 'Access-Control-Allow-Credentials': 'true' }); return res.end() }
   if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method || '') && !originAllowed(req)) return json(res, 403, { error: 'Запрос с другого источника отклонён' })
+  const characterCreationCatalogMatch = requestPath.match(/^\/api\/rulesets\/([a-z0-9_]+)\/character-creation$/u)
+  if (characterCreationCatalogMatch && req.method === 'GET') {
+    try {
+      const profile = rulesetProfile(characterCreationCatalogMatch[1], { requireCreation: true })
+      return json(res, 200, characterCreationCatalog(profile.id))
+    } catch (error) {
+      return json(res, 404, { error: error instanceof Error ? error.message : 'Каталог создания героя не найден', code: error?.code })
+    }
+  }
   if (req.url === '/api/health') return json(res, 200, {
     configured: Boolean(apiKey),
     provider: 'RouterAI',
@@ -3203,7 +3212,7 @@ const server = createServer((req, res) => {
     rulesetId: rulePack.manifest.ruleset_id,
     ruleCount: rulePack.rules.length,
     installedRulesets: installedRulesetProfiles,
-    characterCreation: characterCreationCatalog(),
+    characterCreation: characterCreationCatalog(LEGACY_DEFAULT_RULESET_ID),
     tools: [],
   })
   if (req.url === '/api/admin/usage' && req.method === 'GET') {

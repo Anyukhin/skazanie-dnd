@@ -8,6 +8,8 @@ import { spellCatalogInfo } from './combat-spells.mjs'
 import { SRD_5_2_1_MONSTER_ALLOWLIST } from './encounter-assembler.mjs'
 import { ITEM_CATALOG, ITEM_SHOP_CATALOG_IDS } from './item-catalog.mjs'
 import { loadRulePack } from './rule-pack.mjs'
+import { backgroundCatalogInfo } from './backgrounds.mjs'
+import { characterCreationOriginCatalogInfo } from './character-creation-catalog.mjs'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const SHA256 = /^[a-f0-9]{64}$/u
@@ -162,6 +164,45 @@ function validateCompatibilityCatalogs(rootDir) {
   }
 }
 
+function validateCharacterCreationCatalogs(rootDir) {
+  const origins = characterCreationOriginCatalogInfo()
+  const backgrounds = backgroundCatalogInfo()
+  const starter = readJson(safeProjectFile(rootDir, 'data/starter-equipment-dnd-5e-2014.json'))
+  const classicBackgrounds = readJson(safeProjectFile(rootDir, 'data/backgrounds-dnd-5e-2014.json'))
+  const problems = []
+  if (origins.dnd_5e_2014?.species_options !== 14 || origins.dnd_5e_2014?.bonus_source !== 'species') {
+    problems.push('2014 must expose 14 race/subrace options with species-owned ability bonuses')
+  }
+  if (backgrounds.dnd_5e_2014?.backgrounds !== 13 || backgrounds.dnd_5e_2014?.ability_modes !== 0) {
+    problems.push('2014 must expose 13 backgrounds without background ability modes')
+  }
+  if (origins.srd_5_2_1?.bonus_source !== 'background') problems.push('2024 background-owned ability bonuses changed')
+  if (starter.ruleset_id !== 'dnd_5e_2014' || starter.classes?.length !== 12) problems.push('2014 starter equipment must cover 12 classes')
+  const classIds = new Set()
+  for (const profile of starter.classes ?? []) {
+    if (classIds.has(profile.class_id)) problems.push(`duplicate 2014 starter class ${profile.class_id}`)
+    classIds.add(profile.class_id)
+    for (const item of profile.items ?? []) if (!ITEM_CATALOG[item.catalog_id]) problems.push(`unknown starter item ${item.catalog_id}`)
+  }
+  for (const background of classicBackgrounds.backgrounds ?? []) {
+    for (const item of background.equipment?.catalogItems ?? []) if (!ITEM_CATALOG[item.catalogId]) problems.push(`unknown background item ${item.catalogId}`)
+  }
+  if (problems.length) throw new ContentIntegrityError(`Character creation catalog integrity failed: ${problems.join('; ')}`, 'CHARACTER_CREATION_CATALOG_INVALID', { problems })
+  return {
+    dnd_5e_2014: {
+      species_options: origins.dnd_5e_2014.species_options,
+      backgrounds: backgrounds.dnd_5e_2014.backgrounds,
+      classes_with_starter_equipment: starter.classes.length,
+      bonus_source: origins.dnd_5e_2014.bonus_source,
+    },
+    srd_5_2_1: {
+      species_options: origins.srd_5_2_1.species_options,
+      backgrounds: backgrounds.srd_5_2_1.backgrounds,
+      bonus_source: origins.srd_5_2_1.bonus_source,
+    },
+  }
+}
+
 function runtimeCoverageCounts(rootDir, rulePack) {
   const actions = readJson(safeProjectFile(rootDir, 'data/dndsu-class-actions-1-12.json'))
   return {
@@ -230,6 +271,7 @@ export async function verifyContentIntegrity({ rootDir = projectRoot } = {}) {
   const ruleReferences = validateRuleReferences(rulePack)
   const targetRuleReferences = validateRuleReferences(targetRulePack)
   const compatibility = validateCompatibilityCatalogs(root)
+  const characterCreation = validateCharacterCreationCatalogs(root)
   const counts = runtimeCoverageCounts(root, rulePack)
   const coverage = validateCoverageMatrix(readJson(safeProjectFile(root, 'data/rules-coverage-matrix.json')), counts)
   assertAttribution(root)
@@ -250,6 +292,7 @@ export async function verifyContentIntegrity({ rootDir = projectRoot } = {}) {
       rule_references: ruleReferences,
       target_rule_references: targetRuleReferences,
       compatibility_catalogs: compatibility,
+      character_creation_catalogs: characterCreation,
       item_catalog: {
         entries: counts.equipment,
         shop_entries: counts.commerce_equipment,

@@ -10,8 +10,8 @@ import {
   Bot, PawPrint, Skull, WandSparkles, Globe2, Volume2, VolumeX, Bell, BellOff, ShieldAlert,
   Sun, Cloudy, CloudRain, CloudFog, CloudLightning,
 } from 'lucide-react'
-import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignRecap, CampaignRecapResponse, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, MapCell, MapFeedback, Merchant, Message, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp, WeatherConditionId, WeatherProjection } from './types'
-import { fetchWithTimeout, getAiHealth } from './ai-client'
+import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignRecap, CampaignRecapResponse, CampaignSummary, CharacterCreationCatalog, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, MapCell, MapFeedback, Merchant, Message, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp, WeatherConditionId, WeatherProjection } from './types'
+import { fetchWithTimeout, getAiHealth, getCharacterCreationCatalog } from './ai-client'
 import type { NarrationPreview } from './ai-client'
 import {
   ABILITY_LABELS, DIFFICULTY_LABELS, ErrorToasts, HeroFaceInitials, PageHeader, SKILL_LABELS, UI_SCALE_MAX, UI_SCALE_MIN,
@@ -755,6 +755,8 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const [joinError, setJoinError] = useState<string | null>(null)
   const [view, setView] = useState<View>(() => new URLSearchParams(window.location.search).get('agentLab') === '1' ? 'agent-lab' : 'room')
   const [aiHealth, setAiHealth] = useState<AiHealth | null>(null)
+  const [characterCreationCatalog, setCharacterCreationCatalog] = useState<CharacterCreationCatalog | null>(null)
+  const [characterCreationError, setCharacterCreationError] = useState('')
   const [campaignAi, setCampaignAi] = useState<CampaignAiSettingsResponse | null>(null)
   const [campaignAiBusy, setCampaignAiBusy] = useState(false)
   const [campaignAiError, setCampaignAiError] = useState('')
@@ -976,6 +978,19 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   }, [campaignAi, campaignAiBusy, state.sessionCode])
 
   useEffect(() => { getAiHealth().then(setAiHealth).catch(() => setAiHealth(null)) }, [])
+  useEffect(() => {
+    let active = true
+    setCharacterCreationCatalog(null)
+    setCharacterCreationError('')
+    if (!state.sessionCode) return () => { active = false }
+    const rulesetId = state.ruleset_id === 'dnd_5e_2014' ? 'dnd_5e_2014' : 'srd_5_2_1'
+    void getCharacterCreationCatalog(rulesetId)
+      .then((catalog) => { if (active) setCharacterCreationCatalog(catalog) })
+      .catch((error) => {
+        if (active) setCharacterCreationError(error instanceof Error ? error.message : 'Каталог создания героя недоступен')
+      })
+    return () => { active = false }
+  }, [state.sessionCode, state.ruleset_id])
   useEffect(() => {
     const controller = new AbortController()
     setCampaignAi(null)
@@ -1625,6 +1640,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           показывает их по порядку. */}
       <ErrorToasts sources={[
         { text: directorError },
+        { text: characterCreationError },
         { text: joinError },
         { text: lifecycleError },
         { text: tacticalError, onDismiss: clearTacticalError },
@@ -1632,10 +1648,11 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
       {merchantOpen && <MerchantScreen merchants={merchantScreenMerchants} player={activePlayer} sceneLocation={state.scene.location} stateVersion={state.state_version ?? 0} view={merchantView} narration={merchantNarration} busy={merchantBusy} error={merchantError} onLoad={loadMerchant} onBargain={bargainWithMerchant} onBuy={buyFromMerchant} onSell={sellToMerchant} onAppraise={appraiseWithMerchant} onService={purchaseMerchantService} onClose={() => setMerchantOpen(false)} />}
       {inviteOpen && <InviteModal code={state.sessionCode} onClose={() => setInviteOpen(false)} />}
       {campaignsOpen && <CampaignModal state={state} rulesets={aiHealth?.installedRulesets} onSwitch={switchCampaign} onAccountRefresh={onAccountRefresh} onCreateHero={setCreatingPlayerId} onWizardChange={setWorldWizardOpen} onClose={() => setCampaignsOpen(false)} />}
-      {creatingPlayerId && aiHealth?.characterCreation && <CharacterCreationWizard
+      {creatingPlayerId && (characterCreationCatalog ?? (state.ruleset_id !== 'dnd_5e_2014' ? aiHealth?.characterCreation : null)) && <CharacterCreationWizard
+        key={`${creatingPlayerId}:${state.ruleset_id ?? 'srd_5_2_1'}`}
         player={state.players.find((player) => player.id === creatingPlayerId) ?? activePlayer}
         accountName={account.name}
-        catalog={aiHealth.characterCreation}
+        catalog={characterCreationCatalog ?? aiHealth!.characterCreation!}
         rulesetId={state.ruleset_id}
         required={Boolean(state.players.find((player) => player.id === creatingPlayerId)?.characterSetupRequired)}
         onClose={() => { setCreatingPlayerId(null); setHeroWizardDismissed(true) }}

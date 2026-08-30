@@ -54,10 +54,10 @@
     },
     {
       "id": "character_origins",
-      "status": "pending",
-      "current_edition": "2024 backgrounds and no complete 2014 species ability adjustments",
+      "status": "complete",
+      "current_edition": "per-ruleset catalogs isolate 14 race/subrace options, racial ability adjustments, 13 PHB backgrounds and deterministic class/background starter equipment for 2014; non-executable racial/background features remain explicitly descriptive",
       "required_outcome": "2014 races, ability adjustments, backgrounds, proficiencies, features, and starting choices",
-      "evidence": ["data/backgrounds-srd-5-2-1.json", "data/character-creation-policy-v1.json", "server/backgrounds.mjs"]
+      "evidence": ["data/character-creation-dnd-5e-2014.json", "data/backgrounds-dnd-5e-2014.json", "data/starter-equipment-dnd-5e-2014.json", "server/character-creation-catalog.mjs", "server/backgrounds.mjs", "test/character-creation-2014.test.mjs"]
     },
     {
       "id": "classes_progression",

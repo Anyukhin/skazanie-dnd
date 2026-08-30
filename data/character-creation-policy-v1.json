@@ -1,8 +1,11 @@
 {
   "schema_version": 1,
+  "ruleset_id": "srd_5_2_1",
+  "edition_family": "5e_2024",
   "policy_id": "skazanie.character-abilities.standard-array",
   "policy_version": 1,
   "method": "standard_array",
+  "bonus_source": "background",
   "standard_array": [
     15,
     14,

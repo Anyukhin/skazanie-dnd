@@ -180,6 +180,13 @@ export type Player = {
   hitPointIncreases?: number[]
   characterSetupRequired?: boolean
   abilityGeneration?: CharacterAbilityGeneration
+  backgroundId?: string
+  backgroundAbilityChoice?: { mode: string; abilities: string[] }
+  backgroundChoices?: { tools: string[]; languages: string[] }
+  backgroundSkillProficiencies?: string[]
+  backgroundBenefits?: Record<string, unknown> | null
+  speciesBenefits?: Record<string, unknown> | null
+  starterEquipmentPolicyId?: string
   characterSheet?: {
     schema_version: number
     level: number
@@ -2483,20 +2490,46 @@ export type CharacterAbilityGeneration = {
 
 export type CharacterCreationCatalog = {
   schema_version: number
+  ruleset_id: RulesetProfileDescriptor['id']
+  edition_family: RulesetProfileDescriptor['editionFamily']
   import_schema: 'skazanie.character'
   import_schema_version: 1
   ability_policy: {
     policy_id: string
     policy_version: number
     method: 'standard_array'
+    bonus_source: 'background' | 'species'
     standard_array: number[]
-    origin_bonus_profiles: Array<{ id: string; label: string; bonuses: number[] }>
-    species_options: Array<{ id: string; label: string; base_speed: number }>
+    origin_bonus_profiles: Array<{
+      id: string
+      label: string
+      bonuses: number[]
+      fixed_bonuses?: Partial<CharacterAbilityScores>
+      choice_count?: number
+      choice_amount?: number
+      excluded_choices?: string[]
+    }>
+    species_options: Array<{
+      id: string
+      label: string
+      race_id?: string
+      race_label?: string
+      subrace_id?: string | null
+      subrace_label?: string | null
+      base_speed: number
+      size?: 'small' | 'medium'
+      bonus_profile_id?: string
+      languages?: string[]
+      language_choice_count?: number
+      trait_summaries?: string[]
+      source_url?: string
+    }>
   }
-  /** Предыстории редакции 2024: их последствия сервер пересчитывает по id. */
+  /** Последствия предыстории сервер пересчитывает по id выбранного ruleset. */
   backgrounds?: {
     policy_id: string
     ability_modes: Array<{ id: string; label: string; increases: number[] }>
+    language_options: Array<{ id: string; name: string }>
     options: Array<{
       id: string
       name: string
@@ -2504,12 +2537,18 @@ export type CharacterCreationCatalog = {
       summary: string
       abilityOptions: string[]
       skillProficiencies: string[]
-      toolProficiency: { id: string; name: string } | null
-      originFeat: { id: string; name: string } | null
-      equipment: { summary: string; gold: number; alternativeGold: number } | null
+      toolProficiency?: { id: string; name: string } | null
+      toolProficiencies: Array<{ id: string; name: string }>
+      toolChoice?: { group: string; count: number; options: Array<{ id: string; name: string; catalogId?: string }> }
+      languageChoiceCount?: number
+      originFeat?: { id: string; name: string } | null
+      feature?: { id: string; name: string; supported: boolean } | null
+      equipment: { summary: string; gold: number; alternativeGold?: number } | null
+      sourceUrl?: string
     }>
     /** Черта происхождения записывается, но движком пока не исполняется. */
     origin_feats_supported: boolean
+    background_features_supported: boolean
   }
   classes: Array<{
     id: DndClassKey
