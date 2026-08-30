@@ -19,7 +19,7 @@ import type {
   Account, AgentInteraction, AiHealth, AssetPreparationReport, BeastChronicleCard,
   CampaignAiSettings, CampaignAiSettingsResponse,
   CampaignSummary, EncounterProposal, GameState, LetterChronicleCard, Merchant, Message,
-  OffscreenChronicleCard, Player,
+  OffscreenChronicleCard, Player, RulesetProfileDescriptor,
 } from './types'
 import { useGameSession, type EncounterAssemblyOptions, type ShopAssemblyOptions } from './useGameSession'
 
@@ -39,7 +39,20 @@ const IMPROV_MODE_FALLBACK: CampaignAiSettingsResponse['improvModes'] = [
   { id: 'chaos', label: 'Хаос', description: 'можно всё, мир подстраивается под выбор отряда' },
 ]
 
-export function CampaignModal({ state, onSwitch, onAccountRefresh, onCreateHero, onWizardChange, onClose }: { state: GameState; onSwitch: (code: string, room?: { version?: number; state?: GameState | null }) => Promise<void>; onAccountRefresh: () => Promise<Account | null>; onCreateHero: (heroId: string) => void; onWizardChange?: (open: boolean) => void; onClose: () => void }) {
+const RULESET_FALLBACK: RulesetProfileDescriptor[] = [
+  {
+    id: 'dnd_5e_2014', version: '2014.1.0', editionFamily: '5e_2014', label: 'D&D 5e 2014',
+    description: 'Классическая редакция по локальному профилю 5e14.dnd.su.', mechanicsStatus: 'partial', availability: 'preview',
+    limitations: ['Создание героев, предметы и бестиарий ещё переводятся на отдельные каталоги 2014.'],
+  },
+  {
+    id: 'srd_5_2_1', version: '5.2.1', editionFamily: '5e_2024', label: 'D&D 2024',
+    description: 'Текущий стабильный runtime-профиль SRD 5.2.1.', mechanicsStatus: 'partial', availability: 'active',
+    limitations: ['Покрытие механики остаётся частичным.'],
+  },
+]
+
+export function CampaignModal({ state, rulesets = RULESET_FALLBACK, onSwitch, onAccountRefresh, onCreateHero, onWizardChange, onClose }: { state: GameState; rulesets?: RulesetProfileDescriptor[]; onSwitch: (code: string, room?: { version?: number; state?: GameState | null }) => Promise<void>; onAccountRefresh: () => Promise<Account | null>; onCreateHero: (heroId: string) => void; onWizardChange?: (open: boolean) => void; onClose: () => void }) {
   const [campaigns, setCampaigns] = useState<CampaignSummary[]>([])
   const [campaignsLoading, setCampaignsLoading] = useState(true)
   const [wizard, setWizard] = useState(false)
@@ -54,6 +67,7 @@ export function CampaignModal({ state, onSwitch, onAccountRefresh, onCreateHero,
   // Режим импровизации выбирается при старте, но записывается тем же
   // settings-эндпоинтом, что и потом: второго пути записи настроек нет.
   const [improvMode, setImprovMode] = useState<CampaignAiSettings['improvMode']>('story')
+  const [rulesetId, setRulesetId] = useState<RulesetProfileDescriptor['id']>('dnd_5e_2014')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   useDialogEscape(onClose)
@@ -97,7 +111,7 @@ export function CampaignModal({ state, onSwitch, onAccountRefresh, onCreateHero,
     setError('')
     try {
       const resolvedCode = code || `WORLD-${(globalThis.crypto?.randomUUID?.() ?? Date.now().toString(36)).replace(/-/g, '').slice(0, 8).toUpperCase()}`
-      const response = await fetch('/api/campaigns', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: resolvedCode, name: name.trim(), bootstrap: { partyName: partyName.trim(), world, slotCount } }) })
+      const response = await fetch('/api/campaigns', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: resolvedCode, name: name.trim(), bootstrap: { partyName: partyName.trim(), world, slotCount, rulesetId } }) })
       const body = await response.json() as { version?: number; state?: GameState | null; error?: string }
       if (!response.ok) throw new Error(body.error || 'Не удалось создать кампанию')
       // «Сюжет» — серверный дефолт, поэтому лишний PATCH не отправляем: он
@@ -131,7 +145,7 @@ export function CampaignModal({ state, onSwitch, onAccountRefresh, onCreateHero,
           <div className="campaign-list">
             {campaignsLoading && <p className="campaign-empty campaign-loading" role="status"><RefreshCw className="spinning" size={14} />Загружаем кампании…</p>}
             {campaigns.map((campaign) => <button key={campaign.code} className={campaign.code === state.sessionCode ? 'active' : ''} onClick={async () => { setBusy(true); setError(''); try { await onSwitch(campaign.code); onClose() } catch (reason) { setError(reason instanceof Error ? reason.message : 'Ошибка переключения') } finally { setBusy(false) } }} disabled={busy}>
-              <span><b>{campaign.name}</b><small>{campaign.partyName} · {campaign.memberCount} участников{campaign.setting ? ' · ' + campaign.setting : ''}</small></span><em>{campaign.code}</em>
+              <span><b>{campaign.name}</b><small>{campaign.partyName} · {campaign.memberCount} участников{campaign.setting ? ' · ' + campaign.setting : ''}{campaign.rulesetId ? ` · ${rulesets.find((entry) => entry.id === campaign.rulesetId)?.label ?? campaign.rulesetId}` : ''}</small></span><em>{campaign.code}</em>
             </button>)}
             {!campaignsLoading && !campaigns.length && !error && <p className="campaign-empty">Доступных кампаний пока нет.</p>}
             {!campaignsLoading && !!error && <button type="button" className="campaign-retry" onClick={() => void load()} disabled={busy}><RefreshCw size={14} />Повторить загрузку кампаний</button>}
@@ -147,6 +161,13 @@ export function CampaignModal({ state, onSwitch, onAccountRefresh, onCreateHero,
             <label><span>Основа мира и желаемая история</span><textarea value={world.premise} onChange={(event) => setWorld({ ...world, premise: event.target.value })} placeholder="Что существует в мире, о чём должна быть кампания, какие конфликты интересны?" /></label>
             <label><span>С чего начинается первая сцена</span><textarea value={world.openingSituation} onChange={(event) => setWorld({ ...world, openingSituation: event.target.value })} placeholder="Например: герои прибывают на станцию в момент исчезновения дипломатического корабля" /></label>
             <div className="field-grid"><label><span>Темы и мотивы</span><input value={world.themes} onChange={(event) => setWorld({ ...world, themes: event.target.value })} placeholder="Исследование, политика, выживание…" /></label><label><span>Границы контента</span><input value={world.boundaries} onChange={(event) => setWorld({ ...world, boundaries: event.target.value })} placeholder="Что не должно появляться в истории" /></label></div>
+            <div className="ruleset-picker" role="group" aria-label="Правила кампании">
+              <span className="ruleset-picker-title"><b>Правила кампании</b><small>Редакция сохраняется в кампании и после первого игрового события блокируется.</small></span>
+              <div>{rulesets.map((profile) => <button key={profile.id} type="button" className={rulesetId === profile.id ? 'selected' : ''} aria-pressed={rulesetId === profile.id} onClick={() => setRulesetId(profile.id)}>
+                <strong>{profile.label}</strong><small>{profile.description}</small><em>{profile.availability === 'preview' ? 'ПРЕДПРОСМОТР · ЧАСТИЧНО' : 'АКТИВНО · ЧАСТИЧНО'}</em>
+              </button>)}</div>
+              {rulesets.find((profile) => profile.id === rulesetId)?.limitations.map((limitation) => <small className="secure-note" key={limitation}><Shield size={13} />{limitation}</small>)}
+            </div>
             <label><span>Режим импровизации</span>
               <select value={improvMode} onChange={(event) => setImprovMode(event.currentTarget.value as CampaignAiSettings['improvMode'])} aria-label="Режим импровизации кампании">
                 {IMPROV_MODE_FALLBACK.map((improv) => <option key={improv.id} value={improv.id}>{improv.label} — {improv.description}</option>)}
@@ -163,7 +184,7 @@ export function CampaignModal({ state, onSwitch, onAccountRefresh, onCreateHero,
             </div>
             <div className="hero-library">{Array.from({ length: slotCount }, (_, index) => index + 1).map((slot) => <div className="hero-slot-preview" key={slot}><span>{slot}</span><div><b>{slot === 1 ? 'Ваш герой' : `Герой друга ${slot - 1}`}</b><small>Класс, вид, характеристики и история ещё не выбраны</small></div><ShieldCheck size={16} /></div>)}</div>
           </div>}
-          {step === 3 && <div className="campaign-review"><span><Sparkles size={22} /></span><h3>Рассказчик готов создать мир</h3><p>Сначала появятся мир, первая сцена и места героев. Затем каждый игрок создаст собственного героя через серверно проверяемый мастер.</p><dl><div><dt>Кампания</dt><dd>{name.trim() || 'Название придумает рассказчик'}{partyName.trim() ? ` · отряд «${partyName.trim()}»` : ''}</dd></div><div><dt>Мир</dt><dd>{[world.preset, world.era, world.genre].filter(Boolean).join(' · ') || 'Полная автоматическая генерация'}</dd></div>{world.premise.trim() && <div><dt>Основа</dt><dd>{world.premise.trim()}</dd></div>}<div><dt>Начало</dt><dd>{world.openingSituation || 'Придумает рассказчик'}</dd></div><div><dt>Герои</dt><dd>{slotCount === 1 ? 'одно место · соло-кампания' : `${slotCount} места · первый герой ваш`}</dd></div><div><dt>Импровизация</dt><dd>{IMPROV_MODE_FALLBACK.find((improv) => improv.id === improvMode)?.label ?? 'Сюжет'}</dd></div></dl><small>Ни один игрок не сможет сделать первый ход, пока не завершит создание закреплённого за ним героя.</small></div>}
+          {step === 3 && <div className="campaign-review"><span><Sparkles size={22} /></span><h3>Рассказчик готов создать мир</h3><p>Сначала появятся мир, первая сцена и места героев. Затем каждый игрок создаст собственного героя через серверно проверяемый мастер.</p><dl><div><dt>Кампания</dt><dd>{name.trim() || 'Название придумает рассказчик'}{partyName.trim() ? ` · отряд «${partyName.trim()}»` : ''}</dd></div><div><dt>Мир</dt><dd>{[world.preset, world.era, world.genre].filter(Boolean).join(' · ') || 'Полная автоматическая генерация'}</dd></div>{world.premise.trim() && <div><dt>Основа</dt><dd>{world.premise.trim()}</dd></div>}<div><dt>Начало</dt><dd>{world.openingSituation || 'Придумает рассказчик'}</dd></div><div><dt>Герои</dt><dd>{slotCount === 1 ? 'одно место · соло-кампания' : `${slotCount} места · первый герой ваш`}</dd></div><div><dt>Правила</dt><dd>{rulesets.find((profile) => profile.id === rulesetId)?.label ?? rulesetId}</dd></div><div><dt>Импровизация</dt><dd>{IMPROV_MODE_FALLBACK.find((improv) => improv.id === improvMode)?.label ?? 'Сюжет'}</dd></div></dl><small>Ни один игрок не сможет сделать первый ход, пока не завершит создание закреплённого за ним героя.</small></div>}
           <div className="campaign-wizard-actions"><button onClick={() => step === 1 ? setWizard(false) : setStep((current) => current - 1)}>{step === 1 ? 'К списку кампаний' : 'Назад'}</button>{step < 3 ? <button className="primary" onClick={() => { if (validateStep()) setStep((current) => current + 1) }}>Продолжить<ChevronRight size={14} /></button> : <button className="primary" onClick={() => { void create() }} disabled={busy}><Sparkles size={14} />{busy ? 'Рассказчик создаёт мир…' : 'Создать мир и написать пролог'}</button>}</div>
         </>}
         {error && <div className="admin-error">{error}</div>}
@@ -1023,7 +1044,7 @@ export function AtmosphereRange({ label, description, value, onChange }: { label
   </label>
 }
 
-export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiError, uiScale, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, atmosphereSettings, notificationPermission, voiceMode, voiceSupported, actionHintsEnabled, onCampaignAiChange, onUiScaleChange, onAutoAttackRollChange, onScenicBackdropChange, onBoardLightingChange, onCombatAnimationsChange, onAmbientVolumeChange, onAtmosphereMutedChange, onRequestNotifications, onVoiceModeChange, onActionHintsEnabledChange }: {
+export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiError, uiScale, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, atmosphereSettings, notificationPermission, voiceMode, voiceSupported, actionHintsEnabled, onCampaignAiChange, onCampaignRulesetChange, onUiScaleChange, onAutoAttackRollChange, onScenicBackdropChange, onBoardLightingChange, onCombatAnimationsChange, onAmbientVolumeChange, onAtmosphereMutedChange, onRequestNotifications, onVoiceModeChange, onActionHintsEnabledChange }: {
   health: AiHealth | null
   campaignAi: CampaignAiSettingsResponse | null
   campaignAiBusy: boolean
@@ -1039,6 +1060,7 @@ export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiErr
   voiceSupported: boolean
   actionHintsEnabled: boolean
   onCampaignAiChange: (patch: Partial<CampaignAiSettings>) => void
+  onCampaignRulesetChange: (rulesetId: RulesetProfileDescriptor['id']) => void
   onUiScaleChange: (value: number) => void
   onAutoAttackRollChange: (value: boolean) => void
   onScenicBackdropChange: (value: boolean) => void
@@ -1069,6 +1091,18 @@ export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiErr
       <div className="settings-grid">
         <div className="settings-card ai-card">
           <div className="settings-card-title"><BrainCircuit size={20} /><span><b>ИИ-рассказчик</b><small>Серверное подключение</small></span><em className={health?.configured ? 'connected' : ''}>{health?.configured ? <Wifi size={14} /> : <WifiOff size={14} />}{health?.configured ? 'ПОДКЛЮЧЁН' : 'НЕДОСТУПЕН'}</em></div>
+          <label className="ui-scale-setting ruleset-setting">
+            <span><b>Правила кампании</b><small>{campaignAi?.ruleset.locked ? 'Редакция зафиксирована после первого игрового события' : 'До первого игрового события владелец может изменить редакцию'}</small></span>
+            <select
+              value={campaignAi?.ruleset.current.id ?? health?.rulesetId ?? 'srd_5_2_1'}
+              disabled={!campaignAi?.ruleset.canChange || campaignAiBusy}
+              onChange={(event) => onCampaignRulesetChange(event.currentTarget.value as RulesetProfileDescriptor['id'])}
+              aria-label="Правила кампании"
+            >
+              {(campaignAi?.ruleset.available ?? health?.installedRulesets ?? RULESET_FALLBACK).map((profile) => <option key={profile.id} value={profile.id}>{profile.label} · {profile.mechanicsStatus === 'partial' ? 'частичное покрытие' : profile.mechanicsStatus}</option>)}
+            </select>
+            {campaignAi?.ruleset.current.availability === 'preview' && <small className="secure-note"><Shield size={13} />Редакция 2014 доступна как честно ограниченный preview; текущие ограничения перечислены в выборе мира.</small>}
+          </label>
           <label className="ui-scale-setting">
             <span><b>Модель для группы</b><small>Сервер разрешает только модели из настроенного основного и резервного списка</small></span>
             <select
@@ -1111,8 +1145,8 @@ export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiErr
             )}
           </label>
           {!campaignAi?.canManage && campaignAi && <p className="secure-note"><Lock size={14} />Изменять общие настройки ИИ может владелец кампании или администратор.</p>}
-          {campaignAiError && <p className="admin-error">{campaignAiError}</p>}
-          <div className="provider-info"><span>ПРОВАЙДЕР<strong>{health?.provider ?? 'RouterAI'}</strong></span><span>МОДЕЛЬ<strong>{health?.model ?? 'Проверка подключения…'}</strong></span><span>МЕХАНИКА<strong>Единый серверный движок</strong></span><span>RULESET<strong>{health?.rulesetId ?? 'не выбран'}</strong></span></div>
+          {campaignAiError && <p className="admin-error" role="alert">{campaignAiError}</p>}
+          <div className="provider-info"><span>ПРОВАЙДЕР<strong>{health?.provider ?? 'RouterAI'}</strong></span><span>МОДЕЛЬ<strong>{health?.model ?? 'Проверка подключения…'}</strong></span><span>МЕХАНИКА<strong>Единый серверный движок</strong></span><span>RULESET<strong>{campaignAi?.ruleset.current.label ?? health?.rulesetId ?? 'не выбран'}</strong></span></div>
           <div className="tools-list"><small>ДОСТУПНЫЕ ИНСТРУМЕНТЫ</small><div>{(health?.tools ?? ['roll_check', 'reveal_area', 'update_objective', 'spawn_entity', 'grant_item']).map((tool) => <span key={tool}><Check size={11} />{tool}</span>)}</div></div>
           <p className="secure-note"><Shield size={14} />Ключ RouterAI хранится только в серверном `.env` и не передаётся в браузер.</p>
         </div>

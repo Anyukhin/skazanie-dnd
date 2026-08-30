@@ -501,7 +501,7 @@ const LOOT_COMMAND_FIELDS = new Set([
   'command_type', 'command_id', 'campaign_id', 'actor_id', 'target_id', 'target_ids',
   'container_id', 'lines', 'recipient_id',
   'merchant_id', 'stock_id', 'action_id', 'item_id', 'quantity',
-  'expected_state_version', 'source_rule_ids', 'house_rule_id', 'ruling_id', 'visibility',
+  'expected_state_version', 'ruleset_id', 'source_rule_ids', 'house_rule_id', 'ruling_id', 'visibility',
   'request_fingerprint', 'server_authoritative',
 ])
 

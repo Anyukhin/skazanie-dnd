@@ -53,8 +53,15 @@ import { NpcMoraleAgent } from './npc-controller.mjs'
 import { NpcSocialController } from './npc-social-controller.mjs'
 import { ensureNpcSocialState, npcProfileAtWorldTime, npcSocialForViewer } from './npc-social.mjs'
 import { RollRegistry } from './roll-registry.mjs'
-import { loadRulePack } from './rule-pack.mjs'
+import { loadRulePacks } from './rule-pack.mjs'
 import { createRuleRetriever } from './rule-retriever.mjs'
+import {
+  INSTALLED_RULESET_IDS,
+  LEGACY_DEFAULT_RULESET_ID,
+  publicRulesetProfiles,
+  rulesetLock,
+  rulesetProfile,
+} from './ruleset-config.mjs'
 import { LoreAuthor } from './lore-author.mjs'
 import { reasoningProfileFor } from './model-style-profiles.mjs'
 import { PostCommitCoordinator } from './post-commit-coordinator.mjs'
@@ -62,12 +69,19 @@ import {
   AuthoritativeExecutor,
   CAMPAIGN_CONTROL_CAPABILITY,
   CAMPAIGN_LIFECYCLE_CAPABILITY,
+  CAMPAIGN_RULESET_CAPABILITY,
   ECONOMY_CLOCK_CAPABILITY,
   PARTY_DECISION_CAPABILITY,
   PRESENCE_CAPABILITY,
   PUBLIC_DICE_CAPABILITY,
   WORLD_RUMOR_CAPABILITY,
 } from './authoritative-executor.mjs'
+import {
+  CampaignRulesetError,
+  campaignRulesetChangeEvent,
+  campaignRulesetMetadata,
+  campaignRulesetSettings,
+} from './campaign-ruleset.mjs'
 import { GAME_STATE_PROJECTOR_VERSION, RulesEngine, actorNameResolver, applyGameEvent, assertSendLetterAllowed, attackForecast, normalizeCampaignState } from './rules-engine.mjs'
 import { runNpcTurnScheduler } from './npc-turn-scheduler.mjs'
 import { CombatTurnCoordinator, combatTurnClockForState } from './combat-turn-coordinator.mjs'
@@ -237,8 +251,19 @@ const llmClient = new FallbackLLMClient({
 })
 if (apiKey) void llmClient.probe().catch(() => {})
 const sceneArchitect = new SceneArchitectAgent({ llmClient: apiKey ? llmClient : null })
-const rulePack = await loadRulePack(process.env.DND_DEFAULT_RULESET_ID || 'srd_5_2_1')
-const ruleRetriever = createRuleRetriever([rulePack])
+const defaultRulesetId = process.env.DND_DEFAULT_RULESET_ID || LEGACY_DEFAULT_RULESET_ID
+const defaultRulesetProfile = rulesetProfile(defaultRulesetId)
+const installedRulePacks = await loadRulePacks([...new Set([...INSTALLED_RULESET_IDS, defaultRulesetId])])
+const rulePack = installedRulePacks.find((candidate) => candidate.manifest.ruleset_id === defaultRulesetId)
+if (!rulePack) throw new Error(`Не установлен ruleset DND_DEFAULT_RULESET_ID=${defaultRulesetId}`)
+if (defaultRulesetProfile.process_default_allowed !== true) {
+  throw new Error(`Ruleset ${defaultRulesetId} доступен для кампании, но не может быть process-wide runtime default`)
+}
+const ruleRetriever = createRuleRetriever(installedRulePacks)
+const installedRulesetProfiles = publicRulesetProfiles().map((profile) => {
+  const pack = installedRulePacks.find((candidate) => candidate.manifest.ruleset_id === profile.id)
+  return { ...profile, ruleCount: pack?.rules.length ?? 0 }
+})
 const rulesEngine = new RulesEngine({ diceService })
 // Карты живут отдельно от снимков и адресуются хешем содержимого: снимок
 // пишется каждые 25 событий, и карта в нём стоила бы больше самого состояния.
@@ -3167,6 +3192,15 @@ const server = createServer((req, res) => {
   applySecurityHeaders(res)
   if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Allow-Origin': 'http://127.0.0.1:4173', 'Access-Control-Allow-Headers': 'Content-Type, X-Idempotency-Key', 'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS', 'Access-Control-Allow-Credentials': 'true' }); return res.end() }
   if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method || '') && !originAllowed(req)) return json(res, 403, { error: 'Запрос с другого источника отклонён' })
+  const characterCreationCatalogMatch = requestPath.match(/^\/api\/rulesets\/([a-z0-9_]+)\/character-creation$/u)
+  if (characterCreationCatalogMatch && req.method === 'GET') {
+    try {
+      const profile = rulesetProfile(characterCreationCatalogMatch[1], { requireCreation: true })
+      return json(res, 200, characterCreationCatalog(profile.id))
+    } catch (error) {
+      return json(res, 404, { error: error instanceof Error ? error.message : 'Каталог создания героя не найден', code: error?.code })
+    }
+  }
   if (req.url === '/api/health') return json(res, 200, {
     configured: Boolean(apiKey),
     provider: 'RouterAI',
@@ -3177,7 +3211,8 @@ const server = createServer((req, res) => {
     engineMode: 'enforce',
     rulesetId: rulePack.manifest.ruleset_id,
     ruleCount: rulePack.rules.length,
-    characterCreation: characterCreationCatalog(),
+    installedRulesets: installedRulesetProfiles,
+    characterCreation: characterCreationCatalog(LEGACY_DEFAULT_RULESET_ID),
     tools: [],
   })
   if (req.url === '/api/admin/usage' && req.method === 'GET') {
@@ -3588,6 +3623,8 @@ const server = createServer((req, res) => {
             playerCount: state.players?.length ?? 0,
             setting: [state.campaignConcept?.era, state.campaignConcept?.genre].filter(Boolean).join(' · '),
             lifecycleStatus: state.mechanics?.campaign_lifecycle?.status ?? (state.mechanics?.death?.campaign_status === 'party_defeated' ? 'failed' : 'active'),
+            rulesetId: state.ruleset_id,
+            rulesetVersion: state.ruleset_version,
             membershipRole: user.role === 'admin' ? 'admin' : campaignMembership(user, code)?.role ?? 'legacy',
             updatedAt: room.updatedAt,
           }
@@ -3624,6 +3661,10 @@ const server = createServer((req, res) => {
         return json(res, 400, { error: `Число мест героев должно быть от ${MIN_PARTY_SLOTS} до ${MAX_PARTY_SLOTS}` })
       }
       if (creator.role !== 'admin' && body.state) return json(res, 403, { error: 'Обычный игрок создаёт кампанию только через проверенный мастер создания' })
+      if (body.bootstrap && (body.bootstrap.rulesetVersion !== undefined || body.bootstrap.ruleset_version !== undefined
+        || body.bootstrap.enabledRulePacks !== undefined || body.bootstrap.enabled_rule_packs !== undefined)) {
+        return json(res, 400, { error: 'Версию и состав rule packs определяет сервер', code: 'RULESET_FIELDS_SERVER_OWNED' })
+      }
       const usesServerSlots = creator.role !== 'admin' || !Array.isArray(body.bootstrap?.players) || body.bootstrap.players.length === 0
       const slotCount = Math.min(MAX_PARTY_SLOTS, Math.max(MIN_PARTY_SLOTS, Math.trunc(requestedSlotCount) || MAX_PARTY_SLOTS))
       const bootstrapPlayers = usesServerSlots
@@ -3638,13 +3679,41 @@ const server = createServer((req, res) => {
         partyName: body.bootstrap.partyName,
         world: body.bootstrap.world,
         players: bootstrapPlayers,
+        rulesetId: body.bootstrap.rulesetId ?? body.bootstrap.ruleset_id,
       }) : null
-      const state = normalizeCampaignState(generatedState ?? body.state ?? {
+      let initialState = generatedState ?? body.state ?? {
         sessionCode: code,
         campaign: String(body.name || 'Новая кампания').slice(0, 120),
         players: [], messages: [], activePlayerId: '', isNarrating: false, pendingCheck: null,
         scene: { title: 'Начало', location: '', mood: '', objective: '', turn: 0, cells: [] },
-      })
+      }
+      // Admin-only raw state is an import boundary, not a second way to forge
+      // the version or pack list. It has no accompanying event history, so it
+      // is locked immediately: changing editions after importing populated
+      // state would mix catalogs without any replayable migration.
+      if (!generatedState) {
+        const requestedRuleset = body.state?.ruleset_id ?? body.state?.rulesetId ?? LEGACY_DEFAULT_RULESET_ID
+        const lock = rulesetLock(requestedRuleset, { fallback: LEGACY_DEFAULT_RULESET_ID })
+        const suppliedVersion = body.state?.ruleset_version ?? body.state?.rulesetVersion
+        const suppliedPacks = body.state?.enabled_rule_packs ?? body.state?.enabledRulePacks
+        if (suppliedVersion != null && String(suppliedVersion) !== lock.ruleset_version) {
+          return json(res, 400, { error: 'Версию ruleset определяет сервер', code: 'RULESET_FIELDS_SERVER_OWNED' })
+        }
+        if (Array.isArray(suppliedPacks)
+          && JSON.stringify(suppliedPacks.map(String)) !== JSON.stringify(lock.enabled_rule_packs)) {
+          return json(res, 400, { error: 'Состав rule packs определяет сервер', code: 'RULESET_FIELDS_SERVER_OWNED' })
+        }
+        initialState = {
+          ...initialState,
+          ...lock,
+          enabled_house_rules: [...new Set([
+            ...(Array.isArray(initialState?.enabled_house_rules) ? initialState.enabled_house_rules.map(String) : []),
+            ...(lock.enabled_house_rules ?? []),
+          ])],
+          ruleset_selection_locked: true,
+        }
+      }
+      const state = normalizeCampaignState(initialState)
       state.sessionCode = code
       state.engine_mode = 'enforce'
       const initialized = await eventStore.initializeCampaign({
@@ -3664,7 +3733,7 @@ const server = createServer((req, res) => {
       }
       const updatedCreator = userForToken(cookies(req).skazanie_session) ?? creator
       return json(res, 201, { ...room.room, user: updatedCreator })
-    } catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : 'Не удалось создать кампанию' }) }
+    } catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : 'Не удалось создать кампанию', code: error?.code }) }
   }
 
   // Рекап «в прошлой серии»: стол вернулся после перерыва и вспоминает, на чём
@@ -3700,7 +3769,10 @@ const server = createServer((req, res) => {
     const room = getRoom(campaignId)
     if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
     if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
+    const loaded = await eventStore.load(campaignId)
     const saved = getCampaignAiSettings(campaignId)
+    const canManage = user.role === 'admin' || campaignMembershipFor(user.id, campaignId)?.role === 'owner'
+    const rulesetEvents = await eventStore.getEvents(campaignId)
     return json(res, 200, {
       settings: {
         model: allowedAiModels.includes(saved.model) ? saved.model : model,
@@ -3712,7 +3784,8 @@ const server = createServer((req, res) => {
       improvModes: Object.values(IMPROV_MODES).map(({ id, label, description }) => ({ id, label, description })),
       architectGenerationsToday: architectUsage.generationsToday(campaignId),
       architectAlertThreshold: architectUsage.alertThreshold,
-      canManage: user.role === 'admin' || campaignMembershipFor(user.id, campaignId)?.role === 'owner',
+      canManage,
+      ruleset: campaignRulesetSettings(loaded.state, rulesetEvents, { canManage }),
     })
   }
   if (campaignAiSettingsMatch && req.method === 'PATCH') {
@@ -3726,6 +3799,7 @@ const server = createServer((req, res) => {
     }
     try {
       const body = await readBody(req)
+      const loaded = await eventStore.load(campaignId)
       const current = getCampaignAiSettings(campaignId)
       const requestedModel = body.model === undefined ? (current.model || model) : String(body.model).trim()
       const requestedStyle = body.narratorStyle === undefined ? current.narratorStyle : String(body.narratorStyle).trim().toLowerCase()
@@ -3740,6 +3814,38 @@ const server = createServer((req, res) => {
       }
       if (!Object.hasOwn(IMPROV_MODES, requestedImprovMode)) {
         return json(res, 400, { error: 'Неизвестный режим импровизации', code: 'IMPROV_MODE_INVALID' })
+      }
+      let rulesetState = loaded.state
+      const requestedRulesetId = body.rulesetId === undefined && body.ruleset_id === undefined
+        ? String(loaded.state.ruleset_id)
+        : String(body.rulesetId ?? body.ruleset_id).trim()
+      if (requestedRulesetId !== String(loaded.state.ruleset_id)) {
+        const idempotencyKey = String(body.idempotency_key ?? req.headers['x-idempotency-key'] ?? '').trim()
+        if (!idempotencyKey) throw new CampaignRulesetError('Для смены редакции нужен idempotency_key', 'IDEMPOTENCY_KEY_REQUIRED')
+        const duplicate = await eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
+        let committed = duplicate
+        if (duplicate) {
+          const selected = duplicate.events?.find((event) => event.event_type === 'CampaignRulesetChanged')?.payload?.ruleset_id_after
+          if (String(selected ?? '') !== requestedRulesetId) {
+            const conflict = new CampaignRulesetError('Этот idempotency_key уже использован для другой редакции', 'IDEMPOTENCY_CONFLICT')
+            throw conflict
+          }
+        } else {
+          committed = await authoritativeExecutor.commitDerived({
+            campaignId,
+            idempotencyKey,
+            deriveEvents: async (freshState) => {
+              const freshEvents = await eventStore.getEvents(campaignId)
+              const event = campaignRulesetChangeEvent(requestedRulesetId, freshState, freshEvents, { actorId: user.id })
+              return event ? [event] : []
+            },
+            deriveMetadata: (events) => campaignRulesetMetadata(events[0]),
+            producerCapability: CAMPAIGN_RULESET_CAPABILITY,
+          })
+        }
+        const latest = await eventStore.load(campaignId)
+        rulesetState = latest.state
+        persistAuthoritativeProjection(campaignId, latest.state, committed?.replayed ? [] : (committed?.events ?? []))
       }
       const previousImprovMode = normalizeImprovMode(current.improvMode)
       const saved = saveCampaignAiSettings(campaignId, {
@@ -3767,9 +3873,11 @@ const server = createServer((req, res) => {
         architectGenerationsToday: architectUsage.generationsToday(campaignId),
         architectAlertThreshold: architectUsage.alertThreshold,
         canManage: true,
+        ruleset: campaignRulesetSettings(rulesetState, await eventStore.getEvents(campaignId), { canManage: true }),
       })
     } catch (error) {
-      return json(res, 400, { error: error instanceof Error ? error.message : 'Не удалось сохранить настройки ИИ кампании' })
+      const status = ['CAMPAIGN_RULESET_LOCKED', 'IDEMPOTENCY_CONFLICT', 'STATE_VERSION_CONFLICT'].includes(error?.code) ? 409 : 400
+      return json(res, status, { error: error instanceof Error ? error.message : 'Не удалось сохранить настройки ИИ кампании', code: error?.code })
     }
   }
 

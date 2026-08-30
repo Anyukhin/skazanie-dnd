@@ -35,6 +35,7 @@ export const ECONOMY_CLOCK_CAPABILITY = Symbol('skazanie:economy-clock-capabilit
 export const WORLD_RUMOR_CAPABILITY = Symbol('skazanie:world-rumor-capability')
 export const PRESENCE_CAPABILITY = Symbol('skazanie:presence-capability')
 export const CAMPAIGN_CONTROL_CAPABILITY = Symbol('skazanie:campaign-control-capability')
+export const CAMPAIGN_RULESET_CAPABILITY = Symbol('skazanie:campaign-ruleset-capability')
 
 /**
  * Явная таблица вместо общей эвристики: производитель получает ровно свои типы
@@ -82,6 +83,9 @@ const DERIVED_EVENT_ALLOWLIST = new Map([
   ])],
   [PUBLIC_DICE_CAPABILITY, new Set([
     'PublicDieRolled',
+  ])],
+  [CAMPAIGN_RULESET_CAPABILITY, new Set([
+    'CampaignRulesetChanged',
   ])],
 ])
 
@@ -228,6 +232,8 @@ export class AuthoritativeExecutor {
    *   events: Array<Record<string, unknown>>,
    *   producerCapability: symbol,
    *   derivedFrom?: string[],
+   *   metadata?: Record<string, unknown>,
+   *   deriveMetadata?: ((events: Array<Record<string, unknown>>, state: Record<string, unknown>, loaded: Record<string, unknown>) => Record<string, unknown> | Promise<Record<string, unknown>>),
    * }} input
    */
   async commitDerived({
@@ -237,6 +243,8 @@ export class AuthoritativeExecutor {
     deriveEvents = null,
     producerCapability,
     derivedFrom = [],
+    metadata = {},
+    deriveMetadata = null,
   } = {}) {
     const key = String(idempotencyKey ?? '')
     if (!key) throw new AuthoritativeExecutorError('Нужен идемпотентный ключ', 'IDEMPOTENCY_KEY_REQUIRED')
@@ -288,6 +296,9 @@ export class AuthoritativeExecutor {
       const prepared = deriveEvents ? await deriveEvents(loaded.state, loaded) : events
       if (deriveEvents && (!Array.isArray(prepared) || !prepared.length)) return null
       if (deriveEvents) assertAllowed(prepared)
+      const preparedMetadata = deriveMetadata
+        ? await deriveMetadata(prepared, loaded.state, loaded)
+        : metadata
       try {
         const committed = await this.eventStore.commit({
           campaign_id: campaignId,
@@ -299,6 +310,7 @@ export class AuthoritativeExecutor {
             campaign_id: campaignId,
             ...(derivedFrom.length ? { source_event_ids: [...derivedFrom].map(String).slice(0, 32) } : {}),
           })),
+          ...(preparedMetadata && Object.keys(preparedMetadata).length ? { metadata: preparedMetadata } : {}),
         })
         return { ...committed, replayed: false }
       } catch (error) {
@@ -358,6 +370,7 @@ export const DERIVED_PRODUCERS = Object.freeze({
   worldRumor: WORLD_RUMOR_CAPABILITY,
   campaignLifecycle: CAMPAIGN_LIFECYCLE_CAPABILITY,
   publicDice: PUBLIC_DICE_CAPABILITY,
+  campaignRuleset: CAMPAIGN_RULESET_CAPABILITY,
 })
 
 /**

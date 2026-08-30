@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "rulesetId": "dnd_5e_2014",
+  "editionFamily": "5e_2014",
+  "policyId": "skazanie.backgrounds.dnd-5e-2014",
+  "note": "Структурированные факты PHB 2014 и самостоятельные краткие описания; полные тексты источника не включены.",
+  "abilityChoiceModes": [],
+  "languageOptions": [
+    { "id": "dwarvish", "name": "Дварфский" }, { "id": "elvish", "name": "Эльфийский" },
+    { "id": "giant", "name": "Великаний" }, { "id": "gnomish", "name": "Гномий" },
+    { "id": "goblin", "name": "Гоблинский" }, { "id": "halfling", "name": "Полуросликов" },
+    { "id": "orc", "name": "Орочий" }, { "id": "abyssal", "name": "Бездны" },
+    { "id": "celestial", "name": "Небесный" }, { "id": "draconic", "name": "Драконий" },
+    { "id": "deep-speech", "name": "Глубинная Речь" }, { "id": "infernal", "name": "Инфернальный" },
+    { "id": "primordial", "name": "Первичный" }, { "id": "sylvan", "name": "Сильван" },
+    { "id": "undercommon", "name": "Подземный" }
+  ],
+  "toolChoiceGroups": {
+    "artisan": [
+      { "id": "alchemists_supplies", "name": "Алхимические принадлежности", "catalogId": "srd_5_2_1:alchemists-supplies" },
+      { "id": "brewers_supplies", "name": "Принадлежности пивовара", "catalogId": "srd_5_2_1:brewers-supplies" },
+      { "id": "calligraphers_supplies", "name": "Инструменты каллиграфа", "catalogId": "srd_5_2_1:calligraphers-supplies" },
+      { "id": "carpenters_tools", "name": "Инструменты плотника", "catalogId": "srd_5_2_1:carpenters-tools" },
+      { "id": "cartographers_tools", "name": "Инструменты картографа", "catalogId": "srd_5_2_1:cartographers-tools" },
+      { "id": "cooks_utensils", "name": "Кухонная утварь", "catalogId": "srd_5_2_1:cooks-utensils" },
+      { "id": "leatherworkers_tools", "name": "Инструменты кожевника", "catalogId": "srd_5_2_1:leatherworkers-tools" },
+      { "id": "masons_tools", "name": "Инструменты каменщика", "catalogId": "srd_5_2_1:masons-tools" },
+      { "id": "smiths_tools", "name": "Инструменты кузнеца", "catalogId": "srd_5_2_1:smiths-tools" },
+      { "id": "tinkers_tools", "name": "Инструменты ремонтника", "catalogId": "srd_5_2_1:tinkers-tools" },
+      { "id": "woodcarvers_tools", "name": "Инструменты резчика по дереву", "catalogId": "srd_5_2_1:woodcarvers-tools" }
+    ],
+    "gaming": [
+      { "id": "dice_set", "name": "Набор игральных костей" },
+      { "id": "playing_cards", "name": "Набор карт" },
+      { "id": "dragonchess", "name": "Драконьи шахматы" }
+    ],
+    "musical": [
+      { "id": "lute", "name": "Лютня" }, { "id": "flute", "name": "Флейта" },
+      { "id": "drum", "name": "Барабан" }, { "id": "horn", "name": "Рожок" },
+      { "id": "lyre", "name": "Лира" }, { "id": "viol", "name": "Виола" }
+    ]
+  },
+  "backgrounds": [
+    { "id": "entertainer", "name": "Артист", "englishName": "Entertainer", "summary": "Вы привыкли удерживать внимание публики выступлением.", "abilityOptions": [], "skillProficiencies": ["acrobatics", "performance"], "toolProficiencies": [{ "id": "disguise_kit", "name": "Набор для грима" }], "toolChoice": { "group": "musical", "count": 1 }, "languageChoiceCount": 0, "feature": { "id": "by-popular-demand", "name": "По многочисленным просьбам", "supported": false }, "equipment": { "summary": "Музыкальный инструмент, подарок поклонника, костюм и поясной кошель", "gold": 15, "catalogItems": [] }, "sourceUrl": "https://5e14.dnd.su/backgrounds/757-entertainer/" },
+    { "id": "urchin", "name": "Беспризорник", "englishName": "Urchin", "summary": "Улица научила вас скрываться, выживать и находить короткие пути.", "abilityOptions": [], "skillProficiencies": ["sleight_of_hand", "stealth"], "toolProficiencies": [{ "id": "thieves_tools", "name": "Воровские инструменты" }, { "id": "disguise_kit", "name": "Набор для грима" }], "languageChoiceCount": 0, "feature": { "id": "city-secrets", "name": "Городские тайны", "supported": false }, "equipment": { "summary": "Маленький нож, карта родного города, ручная мышь, памятная вещь и обычная одежда", "gold": 10, "catalogItems": [{ "catalogId": "srd_5_2_1:dagger", "quantity": 1 }] }, "sourceUrl": "https://5e14.dnd.su/backgrounds/758-urchin/" },
+    { "id": "noble", "name": "Благородный", "englishName": "Noble", "summary": "Вы знаете родословные, этикет и язык привилегий.", "abilityOptions": [], "skillProficiencies": ["history", "persuasion"], "toolProficiencies": [], "toolChoice": { "group": "gaming", "count": 1 }, "languageChoiceCount": 1, "feature": { "id": "position-of-privilege", "name": "Привилегированное положение", "supported": false }, "equipment": { "summary": "Парадная одежда, перстень с печаткой и документ о родословной", "gold": 25, "catalogItems": [] }, "sourceUrl": "https://5e14.dnd.su/backgrounds/759-noble/" },
+    { "id": "guild-artisan", "name": "Гильдейский ремесленник", "englishName": "Guild Artisan", "summary": "Вы прошли обучение ремеслу и сохранили связи в гильдии.", "abilityOptions": [], "skillProficiencies": ["insight", "persuasion"], "toolProficiencies": [], "toolChoice": { "group": "artisan", "count": 1 }, "languageChoiceCount": 1, "feature": { "id": "guild-membership", "name": "Членство в гильдии", "supported": false }, "equipment": { "summary": "Выбранные ремесленные инструменты, рекомендательное письмо и дорожная одежда", "gold": 15, "catalogItems": [], "includeChosenTool": true }, "sourceUrl": "https://5e14.dnd.su/backgrounds/760-guild-artisan/" },
+    { "id": "sailor", "name": "Моряк", "englishName": "Sailor", "summary": "Палуба, снасти и портовые обычаи стали вашей второй природой.", "abilityOptions": [], "skillProficiencies": ["athletics", "perception"], "toolProficiencies": [{ "id": "navigators_tools", "name": "Инструменты навигатора" }, { "id": "vehicles_water", "name": "Водный транспорт" }], "languageChoiceCount": 0, "feature": { "id": "ships-passage", "name": "Корабельный билет", "supported": false }, "equipment": { "summary": "Такелажная дубинка, шёлковая верёвка, талисман и обычная одежда", "gold": 10, "catalogItems": [{ "catalogId": "srd_5_2_1:club", "quantity": 1 }, { "catalogId": "srd_5_2_1:rope-hempen-50-feet", "quantity": 1 }] }, "sourceUrl": "https://5e14.dnd.su/backgrounds/761-sailor/" },
+    { "id": "sage", "name": "Мудрец", "englishName": "Sage", "summary": "Вы годами искали ответы в книгах и переписке учёных.", "abilityOptions": [], "skillProficiencies": ["arcana", "history"], "toolProficiencies": [], "languageChoiceCount": 2, "feature": { "id": "researcher", "name": "Исследователь", "supported": false }, "equipment": { "summary": "Чернила, перо, маленький нож, письмо с загадкой и обычная одежда", "gold": 10, "catalogItems": [{ "catalogId": "srd_5_2_1:dagger", "quantity": 1 }] }, "sourceUrl": "https://5e14.dnd.su/backgrounds/762-sage/" },
+    { "id": "folk-hero", "name": "Народный герой", "englishName": "Folk Hero", "summary": "Обычные люди считают вас своим защитником и помнят ваш поступок.", "abilityOptions": [], "skillProficiencies": ["animal_handling", "survival"], "toolProficiencies": [{ "id": "vehicles_land", "name": "Наземный транспорт" }], "toolChoice": { "group": "artisan", "count": 1 }, "languageChoiceCount": 0, "feature": { "id": "rustic-hospitality", "name": "Деревенское гостеприимство", "supported": false }, "equipment": { "summary": "Выбранные ремесленные инструменты, лопата, железный горшок и обычная одежда", "gold": 10, "catalogItems": [], "includeChosenTool": true }, "sourceUrl": "https://5e14.dnd.su/backgrounds/763-folk-hero/" },
+    { "id": "hermit", "name": "Отшельник", "englishName": "Hermit", "summary": "Долгое уединение принесло вам знания и спокойную наблюдательность.", "abilityOptions": [], "skillProficiencies": ["medicine", "religion"], "toolProficiencies": [{ "id": "herbalism_kit", "name": "Набор травника" }], "languageChoiceCount": 1, "feature": { "id": "discovery", "name": "Откровение", "supported": false }, "equipment": { "summary": "Контейнер со свитками, тёплое одеяло, обычная одежда и набор травника", "gold": 5, "catalogItems": [{ "catalogId": "srd_5_2_1:herbalism-kit", "quantity": 1 }] }, "sourceUrl": "https://5e14.dnd.su/backgrounds/764-hermit/" },
+    { "id": "criminal", "name": "Преступник", "englishName": "Criminal", "summary": "Вы знаете подпольный мир, его правила и надёжные каналы связи.", "abilityOptions": [], "skillProficiencies": ["deception", "stealth"], "toolProficiencies": [{ "id": "thieves_tools", "name": "Воровские инструменты" }], "toolChoice": { "group": "gaming", "count": 1 }, "languageChoiceCount": 0, "feature": { "id": "criminal-contact", "name": "Криминальные связи", "supported": false }, "equipment": { "summary": "Ломик, тёмная одежда с капюшоном и поясной кошель", "gold": 15, "catalogItems": [{ "catalogId": "srd_5_2_1:crowbar", "quantity": 1 }] }, "sourceUrl": "https://5e14.dnd.su/backgrounds/765-criminal/" },
+    { "id": "acolyte", "name": "Прислужник", "englishName": "Acolyte", "summary": "Служба при храме научила вас обрядам, религии и пониманию людей.", "abilityOptions": [], "skillProficiencies": ["insight", "religion"], "toolProficiencies": [], "languageChoiceCount": 2, "feature": { "id": "shelter-of-the-faithful", "name": "Приют для верующих", "supported": false }, "equipment": { "summary": "Священный символ, молитвенник, благовония, облачение и обычная одежда", "gold": 15, "catalogItems": [] }, "sourceUrl": "https://5e14.dnd.su/backgrounds/766-acolyte/" },
+    { "id": "soldier", "name": "Солдат", "englishName": "Soldier", "summary": "Строй, приказ и походная жизнь дали вам военную выучку.", "abilityOptions": [], "skillProficiencies": ["athletics", "intimidation"], "toolProficiencies": [{ "id": "vehicles_land", "name": "Наземный транспорт" }], "toolChoice": { "group": "gaming", "count": 1 }, "languageChoiceCount": 0, "feature": { "id": "military-rank", "name": "Воинское звание", "supported": false }, "equipment": { "summary": "Знак звания, трофей, игровой набор и обычная одежда", "gold": 10, "catalogItems": [] }, "sourceUrl": "https://5e14.dnd.su/backgrounds/767-soldier/" },
+    { "id": "outlander", "name": "Чужеземец", "englishName": "Outlander", "summary": "Вы выросли вдали от городов и умеете жить дорогой и дикой землёй.", "abilityOptions": [], "skillProficiencies": ["athletics", "survival"], "toolProficiencies": [], "toolChoice": { "group": "musical", "count": 1 }, "languageChoiceCount": 1, "feature": { "id": "wanderer", "name": "Странник", "supported": false }, "equipment": { "summary": "Посох, охотничий капкан, охотничий трофей и дорожная одежда", "gold": 10, "catalogItems": [{ "catalogId": "srd_5_2_1:quarterstaff", "quantity": 1 }, { "catalogId": "srd_5_2_1:hunting-trap", "quantity": 1 }] }, "sourceUrl": "https://5e14.dnd.su/backgrounds/768-outlander/" },
+    { "id": "charlatan", "name": "Шарлатан", "englishName": "Charlatan", "summary": "Вы умеете создавать убедительную ложь и жить под чужой личиной.", "abilityOptions": [], "skillProficiencies": ["deception", "sleight_of_hand"], "toolProficiencies": [{ "id": "disguise_kit", "name": "Набор для грима" }, { "id": "forgery_kit", "name": "Набор для подделок" }], "languageChoiceCount": 0, "feature": { "id": "false-identity", "name": "Поддельная личность", "supported": false }, "equipment": { "summary": "Парадная одежда, набор для грима и инструменты выбранной аферы", "gold": 15, "catalogItems": [] }, "sourceUrl": "https://5e14.dnd.su/backgrounds/769-charlatan/" }
+  ]
+}

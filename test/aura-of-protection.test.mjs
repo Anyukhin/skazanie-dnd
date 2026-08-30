@@ -14,10 +14,13 @@ function dice(values = []) {
   })
 }
 
-function fixture({ dying = false, paladinConditions = [], includeWeakPaladin = true, allyRing = false } = {}) {
+function fixture({ dying = false, paladinConditions = [], includeWeakPaladin = true, allyRing = false, rulesetId = 'srd_5_2_1' } = {}) {
   const cells = Array.from({ length: 40 }, (_, index) => ({ x: index % 10, y: Math.floor(index / 10), type: 'floor', revealed: true }))
   return normalizeCampaignState({
     sessionCode: 'AURA-OF-PROTECTION',
+    ruleset_id: rulesetId,
+    ruleset_version: rulesetId === 'dnd_5e_2014' ? '2014.1.0' : '5.2.1',
+    enabled_rule_packs: [rulesetId],
     partyMemberIds: ['paladin', 'ally', 'far', ...(includeWeakPaladin ? ['weak-paladin'] : [])],
     players: [
       { id: 'paladin', character: 'Сиэль', characterClass: 'paladin', level: 6, hp: 38, maxHp: 38, armor: 18, speed: 30, proficiency: 3, abilities: { str: 16, dex: 10, con: 14, int: 10, wis: 12, cha: 18 }, x: 1, y: 1, inventory: [] },
@@ -87,6 +90,26 @@ test('Аура защиты отключается при недееспособ
   const outsideEvent = outside.events.find((event) => event.event_type === 'SavingThrowResolved')
   assert.equal(outsideEvent.payload.total, 8)
   assert.equal(outsideEvent.payload.aura_of_protection_source, undefined)
+})
+
+test('редакции различают условие работы Ауры защиты', () => {
+  const conditions = [{ id: 'stunned' }]
+  const current = resolveCommand(
+    { command_type: 'MakeSavingThrow', actor_id: 'ally', ability: 'wis', difficulty: 10 },
+    fixture({ paladinConditions: conditions, includeWeakPaladin: false }),
+    { diceService: dice([8]), context: { isAdmin: true } },
+  )
+  assert.equal(current.events.find((event) => event.event_type === 'SavingThrowResolved').payload.total, 8)
+
+  const classic = resolveCommand(
+    { command_type: 'MakeSavingThrow', actor_id: 'ally', ability: 'wis', difficulty: 10 },
+    fixture({ paladinConditions: conditions, includeWeakPaladin: false, rulesetId: 'dnd_5e_2014' }),
+    { diceService: dice([8]), context: { isAdmin: true } },
+  )
+  const classicSave = classic.events.find((event) => event.event_type === 'SavingThrowResolved')
+  assert.equal(classicSave.payload.total, 12, 'в 2014 аура требует сознания, а не полной дееспособности')
+  assert.ok(classicSave.source_rule_ids.includes('dnd_5e_2014:classes:paladin-aura-of-protection'))
+  assert.equal(classicSave.source_rule_ids.some((id) => id.startsWith('srd_5_2_1:')), false)
 })
 
 test('Аура защиты и предмет применяются к death save, но не отменяют особый эффект натуральной 1', () => {

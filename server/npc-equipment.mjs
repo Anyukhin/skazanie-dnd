@@ -55,7 +55,7 @@
  * из боевого слоя не импортирует. Иначе `rules-engine` и `npc-turn-scheduler`
  * замкнулись бы на него кольцом — оба уже импортируют движок.
  */
-import { catalogItem } from './item-catalog.mjs'
+import { catalogItem, itemLifecycleProfile } from './item-catalog.mjs'
 import { AMMUNITION_BY_WEAPON, WEAPON_CATALOG_BY_ACTION } from './enemy-loadouts.mjs'
 
 export const NPC_EQUIPMENT_POLICY_ID = 'npc-equipment-v1'
@@ -433,17 +433,18 @@ export function npcAttackExpenditureFor(enemy, actionId) {
  * (`itemLifecycleProfile`): в событие уезжает уже разобранный профиль, поэтому
  * replay не зависит от будущей правки записи.
  */
-export function npcUsableItems(enemy) {
+export function npcUsableItems(enemy, { rulesetId = '' } = {}) {
   const usable = []
   for (const item of loadoutItems(enemy)) {
     const catalogId = text(item?.catalog_id, 120)
     const tactic = npcItemTacticFor(catalogId)
     if (!tactic || integer(item?.quantity, 1) <= 0) continue
     const entry = catalogItem(catalogId)
+    const lifecycle = itemLifecycleProfile(catalogId, { rulesetId })
     // Каталог — источник истины и для вида применения, и для цены хода.
     // Тактика объявляет оба поля своей копией, поэтому расхождение закрывает
     // вещь целиком, а не молча меняет то, чем существо платит.
-    if (!entry?.use || entry.mechanics_status !== 'verified') continue
+    if (!entry?.use || !lifecycle?.use || entry.mechanics_status !== 'verified') continue
     if (entry.use.kind !== tactic.use_kind || String(entry.use.combat_action ?? '') !== tactic.combat_action) continue
     usable.push({
       item_instance_id: text(item.item_instance_id, 160),
@@ -453,15 +454,15 @@ export function npcUsableItems(enemy) {
       tactic: tactic.tactic,
       label: tactic.label,
       once_per_combat: tactic.once_per_combat === true,
-      use: entry.use,
+      use: lifecycle.use,
     })
   }
   return usable
 }
 
-export function npcUsableItemFor(enemy, itemInstanceId) {
+export function npcUsableItemFor(enemy, itemInstanceId, { rulesetId = '' } = {}) {
   const expected = text(itemInstanceId, 160)
-  return npcUsableItems(enemy).find((candidate) => candidate.item_instance_id === expected) ?? null
+  return npcUsableItems(enemy, { rulesetId }).find((candidate) => candidate.item_instance_id === expected) ?? null
 }
 
 export function npcTacticCondition(tactic) {

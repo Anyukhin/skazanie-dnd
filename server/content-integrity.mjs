@@ -8,6 +8,9 @@ import { spellCatalogInfo } from './combat-spells.mjs'
 import { SRD_5_2_1_MONSTER_ALLOWLIST } from './encounter-assembler.mjs'
 import { ITEM_CATALOG, ITEM_SHOP_CATALOG_IDS } from './item-catalog.mjs'
 import { loadRulePack } from './rule-pack.mjs'
+import { backgroundCatalogInfo } from './backgrounds.mjs'
+import { characterCreationOriginCatalogInfo, characterCreationPolicyFor } from './character-creation-catalog.mjs'
+import { canonicalCombatSpellFor } from './combat-spells.mjs'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const SHA256 = /^[a-f0-9]{64}$/u
@@ -162,6 +165,78 @@ function validateCompatibilityCatalogs(rootDir) {
   }
 }
 
+function validateCharacterCreationCatalogs(rootDir) {
+  const origins = characterCreationOriginCatalogInfo()
+  const backgrounds = backgroundCatalogInfo()
+  const starter = readJson(safeProjectFile(rootDir, 'data/starter-equipment-dnd-5e-2014.json'))
+  const classicBackgrounds = readJson(safeProjectFile(rootDir, 'data/backgrounds-dnd-5e-2014.json'))
+  const problems = []
+  if (origins.dnd_5e_2014?.species_options !== 14 || origins.dnd_5e_2014?.bonus_source !== 'species') {
+    problems.push('2014 must expose 14 race/subrace options with species-owned ability bonuses')
+  }
+  if (backgrounds.dnd_5e_2014?.backgrounds !== 13 || backgrounds.dnd_5e_2014?.ability_modes !== 0) {
+    problems.push('2014 must expose 13 backgrounds without background ability modes')
+  }
+  if (origins.srd_5_2_1?.bonus_source !== 'background') problems.push('2024 background-owned ability bonuses changed')
+  const classicOrigins = characterCreationPolicyFor('dnd_5e_2014')
+  if (starter.schema_version !== 2 || starter.policy_version !== 2 || starter.ruleset_id !== 'dnd_5e_2014' || starter.classes?.length !== 12) problems.push('2014 starter equipment v2 must cover 12 classes')
+  const classIds = new Set()
+  let starterChoiceGroups = 0
+  for (const profile of starter.classes ?? []) {
+    if (classIds.has(profile.class_id)) problems.push(`duplicate 2014 starter class ${profile.class_id}`)
+    classIds.add(profile.class_id)
+    const groupIds = new Set()
+    for (const item of profile.legacy_default_items ?? []) if (!ITEM_CATALOG[item.catalog_id]) problems.push(`unknown legacy starter item ${item.catalog_id}`)
+    for (const item of profile.fixed_items ?? []) if (!ITEM_CATALOG[item.catalog_id]) problems.push(`unknown starter item ${item.catalog_id}`)
+    for (const group of profile.choice_groups ?? []) {
+      starterChoiceGroups += 1
+      if (!group.id || groupIds.has(group.id)) problems.push(`invalid starter choice group ${profile.class_id}:${group.id}`)
+      groupIds.add(group.id)
+      const optionIds = new Set()
+      if (!Array.isArray(group.options) || group.options.length < Number(group.count ?? 0)) problems.push(`empty starter choice group ${profile.class_id}:${group.id}`)
+      for (const option of group.options ?? []) {
+        if (!option.id || optionIds.has(option.id)) problems.push(`duplicate starter option ${profile.class_id}:${group.id}:${option.id}`)
+        optionIds.add(option.id)
+        for (const item of option.items ?? []) if (!ITEM_CATALOG[item.catalog_id]) problems.push(`unknown starter item ${item.catalog_id}`)
+      }
+    }
+  }
+  let speciesChoiceGroups = 0
+  for (const species of classicOrigins.species_options) {
+    const groupIds = new Set()
+    for (const group of species.choice_groups ?? []) {
+      speciesChoiceGroups += 1
+      if (!group.id || groupIds.has(group.id) || !Array.isArray(group.options) || group.options.length < Number(group.count ?? 0)) problems.push(`invalid species choice group ${species.id}:${group.id}`)
+      groupIds.add(group.id)
+      const optionIds = group.options.map((option) => String(option.id))
+      if (new Set(optionIds).size !== optionIds.length) problems.push(`duplicate species option ${species.id}:${group.id}`)
+      if (group.kind === 'cantrip') for (const spellId of optionIds) {
+        const spell = canonicalCombatSpellFor(spellId)
+        if (!spell || spell.level !== 0 || !spell.classes.includes('wizard')) problems.push(`invalid species cantrip ${species.id}:${spellId}`)
+      }
+    }
+  }
+  for (const background of classicBackgrounds.backgrounds ?? []) {
+    for (const item of background.equipment?.catalogItems ?? []) if (!ITEM_CATALOG[item.catalogId]) problems.push(`unknown background item ${item.catalogId}`)
+  }
+  if (problems.length) throw new ContentIntegrityError(`Character creation catalog integrity failed: ${problems.join('; ')}`, 'CHARACTER_CREATION_CATALOG_INVALID', { problems })
+  return {
+    dnd_5e_2014: {
+      species_options: origins.dnd_5e_2014.species_options,
+      backgrounds: backgrounds.dnd_5e_2014.backgrounds,
+      classes_with_starter_equipment: starter.classes.length,
+      species_choice_groups: speciesChoiceGroups,
+      starter_choice_groups: starterChoiceGroups,
+      bonus_source: origins.dnd_5e_2014.bonus_source,
+    },
+    srd_5_2_1: {
+      species_options: origins.srd_5_2_1.species_options,
+      backgrounds: backgrounds.srd_5_2_1.backgrounds,
+      bonus_source: origins.srd_5_2_1.bonus_source,
+    },
+  }
+}
+
 function runtimeCoverageCounts(rootDir, rulePack) {
   const actions = readJson(safeProjectFile(rootDir, 'data/dndsu-class-actions-1-12.json'))
   return {
@@ -204,6 +279,9 @@ function assertAttribution(rootDir) {
     'System Reference Document 5.2.1 (“SRD 5.2.1”) by Wizards of the Coast LLC',
     'https://creativecommons.org/licenses/by/4.0/legalcode',
     'не означает официальный статус, одобрение',
+    'data/rule_packs/dnd_5e_2014',
+    '5e14.dnd.su',
+    'Права на русские переводы и базу dnd.su по-прежнему не подтверждены',
   ]
   const missing = required.filter((text) => !attribution.includes(text))
   if (missing.length) throw new ContentIntegrityError(`ATTRIBUTION.md misses required notices: ${missing.join(', ')}`, 'ATTRIBUTION_MISSING')
@@ -220,9 +298,14 @@ export async function verifyContentIntegrity({ rootDir = projectRoot } = {}) {
   }
   const assetRegistry = readJson(safeProjectFile(root, 'data/asset-rights.json'))
   const assets = validateAssetRegistry(root, assetRegistry)
-  const rulePack = await loadRulePack('srd_5_2_1', { rootDir: safeProjectFile(root, 'data/rule_packs') })
+  const [rulePack, targetRulePack] = await Promise.all([
+    loadRulePack('srd_5_2_1', { rootDir: safeProjectFile(root, 'data/rule_packs') }),
+    loadRulePack('dnd_5e_2014', { rootDir: safeProjectFile(root, 'data/rule_packs') }),
+  ])
   const ruleReferences = validateRuleReferences(rulePack)
+  const targetRuleReferences = validateRuleReferences(targetRulePack)
   const compatibility = validateCompatibilityCatalogs(root)
+  const characterCreation = validateCharacterCreationCatalogs(root)
   const counts = runtimeCoverageCounts(root, rulePack)
   const coverage = validateCoverageMatrix(readJson(safeProjectFile(root, 'data/rules-coverage-matrix.json')), counts)
   assertAttribution(root)
@@ -239,8 +322,11 @@ export async function verifyContentIntegrity({ rootDir = projectRoot } = {}) {
       artifacts: artifacts.length,
       assets: assets.length,
       rule_pack: rulePack.summary,
+      rule_packs: [rulePack.summary, targetRulePack.summary],
       rule_references: ruleReferences,
+      target_rule_references: targetRuleReferences,
       compatibility_catalogs: compatibility,
+      character_creation_catalogs: characterCreation,
       item_catalog: {
         entries: counts.equipment,
         shop_entries: counts.commerce_equipment,

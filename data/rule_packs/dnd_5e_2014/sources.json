@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "ruleset_id": "dnd_5e_2014",
+  "content_policy": {
+    "core_allowlist": ["Player's Handbook 2014", "Dungeon Master's Guide 2014", "Monster Manual 2014"],
+    "supplements": "default_deny_separate_pack",
+    "excluded_by_default": ["Unearthed Arcana", "Homebrew", "Unofficial", "third_party"],
+    "bundled_content": "structured mechanical facts and independent short paraphrases only",
+    "copyrighted_page_text": "not_bundled",
+    "external_content_hash_status": "unavailable; revision_id identifies the reviewed page snapshot recorded by the audit"
+  },
+  "sources": [
+    {
+      "id": "dndsu-2014-ability-scores",
+      "title": "Использование характеристик",
+      "url": "https://5e14.dnd.su/articles/newbie/468-using-ability-scores/",
+      "archive_url": "https://web.archive.org/web/20240726/https://dnd.su/articles/newbie/468-using-ability-scores/",
+      "edition_family": "5e_2014",
+      "source_books": ["Player's Handbook 2014"],
+      "revision_id": "dndsu-2014-audit-2024-07-26-ability-scores",
+      "accessed_at": "2026-08-30",
+      "rights_status": "review_required",
+      "bundled": false
+    },
+    {
+      "id": "dndsu-2014-actions",
+      "title": "Действия",
+      "url": "https://5e14.dnd.su/articles/mechanics/360-actions/",
+      "archive_url": "https://web.archive.org/web/20250805/https://dnd.su/articles/mechanics/360-actions/",
+      "edition_family": "5e_2014",
+      "source_books": ["Player's Handbook 2014"],
+      "revision_id": "dndsu-2014-audit-2025-08-05-actions",
+      "accessed_at": "2026-08-30",
+      "rights_status": "review_required",
+      "bundled": false
+    },
+    {
+      "id": "dndsu-2014-movement",
+      "title": "Перемещения и позиция в бою",
+      "url": "https://5e14.dnd.su/articles/mechanics/158-movement-and-position/",
+      "archive_url": "https://web.archive.org/web/20260518/https://dnd.su/articles/mechanics/158-movement-and-position/",
+      "edition_family": "5e_2014",
+      "source_books": ["Player's Handbook 2014"],
+      "revision_id": "dndsu-2014-audit-2026-05-18-movement",
+      "accessed_at": "2026-08-30",
+      "rights_status": "review_required",
+      "bundled": false
+    },
+    {
+      "id": "dndsu-2014-conditions",
+      "title": "Состояния",
+      "url": "https://5e14.dnd.su/articles/mechanics/27-conditions/",
+      "archive_url": "https://web.archive.org/web/20250916/https://dnd.su/articles/mechanics/27-conditions/",
+      "edition_family": "5e_2014",
+      "source_books": ["Player's Handbook 2014"],
+      "revision_id": "dndsu-2014-audit-2025-09-16-conditions",
+      "accessed_at": "2026-08-30",
+      "rights_status": "review_required",
+      "bundled": false
+    },
+    {
+      "id": "dndsu-2014-environment",
+      "title": "Окружающая среда и укрытия",
+      "url": "https://5e14.dnd.su/articles/mechanics/156-environment-and-covers/",
+      "archive_url": "https://web.archive.org/web/20260706/https://dnd.su/articles/mechanics/156-environment-and-covers/",
+      "edition_family": "5e_2014",
+      "source_books": ["Player's Handbook 2014", "Dungeon Master's Guide 2014"],
+      "revision_id": "dndsu-2014-audit-2026-07-06-environment",
+      "accessed_at": "2026-08-30",
+      "rights_status": "review_required",
+      "bundled": false
+    },
+    {
+      "id": "dndsu-2014-spellcasting",
+      "title": "Использование заклинаний",
+      "url": "https://5e14.dnd.su/articles/mechanics/157-spellcasting/",
+      "archive_url": "https://web.archive.org/web/20260518/https://dnd.su/articles/mechanics/157-spellcasting/",
+      "edition_family": "5e_2014",
+      "source_books": ["Player's Handbook 2014"],
+      "revision_id": "dndsu-2014-audit-2026-05-18-spellcasting",
+      "accessed_at": "2026-08-30",
+      "rights_status": "review_required",
+      "bundled": false
+    },
+    {
+      "id": "dndsu-2014-main-formulas",
+      "title": "Основные формулы",
+      "url": "https://5e14.dnd.su/articles/mechanics/26-main-formulas/",
+      "archive_url": "https://web.archive.org/web/20241103/https://dnd.su/articles/mechanics/26-main-formulas/",
+      "edition_family": "5e_2014",
+      "source_books": ["Player's Handbook 2014"],
+      "revision_id": "dndsu-2014-audit-2024-11-03-main-formulas",
+      "accessed_at": "2026-08-30",
+      "rights_status": "review_required",
+      "bundled": false
+    },
+    {
+      "id": "dndsu-2014-downtime",
+      "title": "Деятельность во время простоя",
+      "url": "https://5e14.dnd.su/articles/mechanics/159-downtime-activities/",
+      "archive_url": "https://web.archive.org/web/20260422/https://dnd.su/articles/mechanics/159-downtime-activities/",
+      "edition_family": "5e_2014",
+      "source_books": ["Player's Handbook 2014", "Dungeon Master's Guide 2014"],
+      "revision_id": "dndsu-2014-audit-2026-04-22-downtime",
+      "accessed_at": "2026-08-30",
+      "rights_status": "review_required",
+      "bundled": false
+    },
+    {
+      "id": "dndsu-2014-fighter",
+      "title": "Воин",
+      "url": "https://5e14.dnd.su/class/91-fighter/",
+      "edition_family": "5e_2014",
+      "source_books": ["Player's Handbook 2014"],
+      "revision_id": "dndsu-2014-live-2026-08-30-fighter",
+      "accessed_at": "2026-08-30",
+      "rights_status": "review_required",
+      "bundled": false
+    },
+    {
+      "id": "dndsu-2014-paladin",
+      "title": "Паладин",
+      "url": "https://5e14.dnd.su/class/94-paladin/",
+      "edition_family": "5e_2014",
+      "source_books": ["Player's Handbook 2014"],
+      "revision_id": "dndsu-2014-live-2026-08-30-paladin",
+      "accessed_at": "2026-08-30",
+      "rights_status": "review_required",
+      "bundled": false
+    }
+  ]
+}
