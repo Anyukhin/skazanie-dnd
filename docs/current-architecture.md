@@ -1,6 +1,14 @@
 # Текущая архитектура
 
-Дата среза: 25 июля 2026 года.
+Дата среза: 30 августа 2026 года.
+
+> **Редакция правил:** целевым выбран `dnd_5e_2014`; мастер мира предлагает его
+> как `preview` рядом со стабильным `srd_5_2_1` / D&D 2024. Выбор хранится в
+> кампании, до первого игрового события меняется событием, а затем блокируется.
+> Ниже во многих старых разделах описан стабильный baseline `srd_5_2_1`; смешение
+> каталогов preview 2014
+> и безопасный переход зафиксированы в
+> [`ruleset-2014-cutover-audit.md`](ruleset-2014-cutover-audit.md).
 
 ## Краткий вывод
 
@@ -19,7 +27,7 @@ flowchart TD
     Room["Compatibility room JSON (read model)"]
     Orch["GameOrchestrator"]
     Parse["Intent Parser"]
-    Retrieve["Rule Retriever + srd_5_2_1"]
+    Retrieve["Rule Retriever + per-campaign Rule Pack"]
     Judge["Adjudicator"]
     Engine["Rules Engine + Dice Service"]
     Npc["Deterministic NPC scheduler"]
@@ -78,10 +86,11 @@ Frontend является UI/read-model adapter. Он не отправляет 
 
 | Маршрут | Подключённый контур |
 |---|---|
-| `GET /api/health` | RouterAI configuration, фиксированный `enforce`, ruleset и число правил |
+| `GET /api/health` | RouterAI configuration, фиксированный `enforce` и descriptors двух установленных ruleset |
 | auth/admin routes | `server/store.mjs`: пользователи, scrypt, sessions, hero access |
 | `GET /api/rules/search` | Rule Retriever; auth и строгая фильтрация ruleset/enabled packs |
-| `POST /api/campaigns` | Admin-only создание кампании непосредственно в Event Store |
+| `POST /api/campaigns` | Admin-only создание кампании непосредственно в Event Store с server-owned lock выбранного ruleset |
+| `GET/PATCH /api/campaigns/:id/settings` | Настройки ИИ и ruleset кампании; редакция меняется событием только до первого игрового события |
 | `PATCH /api/campaigns/:id/engine-mode` | Retired endpoint: всегда `410 ENGINE_MODE_RETIRED` |
 | `POST /api/campaigns/:id/commands` | Игрок — разрешённый typed набор за назначенного героя; admin — расширенный typed набор. Затем Rules Engine → event commit → при необходимости NPC scheduler → room projection |
 | `POST /api/campaigns/:id/encounters/assemble` | Admin-only: bounded `difficulty/theme` → server-owned EncounterAssembler → атомарные `EncounterCreated + CombatStarted` → NPC scheduler/replay → viewer projection |
@@ -222,7 +231,11 @@ storage/rooms/<code>.json
   checksummed snapshots
 ```
 
-`normalizeCampaignState` добавляет ruleset lock, `state_version` и разделы `mechanics`. Новые кампании инициализируются непосредственно в Event Store. Старые данные разрешено импортировать только явно и offline после backup и успешной replay/hash-сверки.
+`normalizeCampaignState` добавляет ruleset lock, `state_version` и разделы
+`mechanics`. `CampaignRulesetChanged` может заменить lock только в пустом
+pre-game журнале; первое другое событие делает его неизменяемым. Новые кампании
+инициализируются непосредственно в Event Store. Старые данные разрешено
+импортировать только явно и offline после backup и успешной replay/hash-сверки.
 
 `persistAuthoritativeProjection` строит полную server-owned read-модель. Event commit и room-файл не являются одной физической транзакцией, поэтому используется durable projection outbox/checkpoint; acknowledgement выполняется только после совпадения канонического SHA-256. Startup и room GET выполняют reconciliation.
 

@@ -170,3 +170,5 @@
   .creation-form.identity{grid-template-columns:1fr}
   .creation-form.identity label:first-child,.creation-form.identity .creation-summary{grid-column:1}
 }
+.creation-ruleset-note { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 12px; padding: 9px 11px; border: 1px solid rgba(201,149,85,.22); border-radius: 5px; background: rgba(166,106,49,.08); color: #897d71; font-size: var(--fs-sm); line-height: 1.45; }
+.creation-ruleset-note svg { flex: 0 0 auto; margin-top: 1px; color: #b88750; }.creation-ruleset-note b { color: #b9aa9b; }

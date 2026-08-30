@@ -20,9 +20,10 @@ test('настройки кампании не запрашиваются, по�
   assert.ok(effect.indexOf('setCampaignAi(null)') < effect.indexOf('if (!state.sessionCode)'), 'состояние сбрасывается до раннего возврата')
   assert.ok(effect.includes("setCampaignAiError('')"))
 
-  // Второй потребитель того же маршрута — сохранение настроек. Оно живёт под
-  // `canManage` и без кампании недостижимо, поэтому своего гварда не требует;
-  // проверка стоит, чтобы правка не завела третий вызов без разбора.
-  assert.equal((app.match(/\/api\/campaigns\/\$\{encodeURIComponent\(state\.sessionCode\)\}\/settings/gu) ?? []).length, 2)
+  // Ещё два потребителя того же маршрута сохраняют настройки ИИ и pre-game
+  // ruleset. Оба живут под серверным `canManage`/`canChange` и без кампании
+  // недостижимы; счётчик не позволяет завести новый вызов без разбора.
+  assert.equal((app.match(/\/api\/campaigns\/\$\{encodeURIComponent\(state\.sessionCode\)\}\/settings/gu) ?? []).length, 3)
   assert.match(app, /if \(!campaignAi\?\.canManage \|\| campaignAiBusy\) return/u)
+  assert.match(app, /if \(!campaignAi\?\.ruleset\.canChange \|\| campaignAiBusy\) return/u)
 })

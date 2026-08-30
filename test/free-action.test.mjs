@@ -32,7 +32,7 @@ function campaign(overrides = {}) {
   })
 }
 
-async function setup(initialState = campaign(), { rollRegistry = null } = {}) {
+async function setup(initialState = campaign(), { rollRegistry = null, narrator = null } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'skazanie-free-action-'))
   const dice = new DiceService({ rng: new SequenceDiceRng([18, 3, 18, 3, 18, 3, 18, 3]), idFactory: (() => { let id = 0; return () => `free-roll-${++id}` })() })
   const eventStore = new FileEventStore({
@@ -46,7 +46,7 @@ async function setup(initialState = campaign(), { rollRegistry = null } = {}) {
   const orchestrator = new GameOrchestrator({
     rulesEngine,
     eventStore,
-    narrator: { render: async () => { narratorCalls += 1; throw new Error('Свободное действие не должно вызывать Narrator') } },
+    narrator: narrator ?? { render: async () => { narratorCalls += 1; throw new Error('Свободное действие не должно вызывать Narrator') } },
     rollRegistry,
     idFactory: (() => { let id = 0; return () => `free-turn-${++id}` })(),
   })
@@ -431,6 +431,43 @@ test('обычный ability_check тоже передаёт навык, а Rule
   assert.equal(check.payload.modifier, 7)
   assert.equal(check.payload.expertise, true)
   assert.equal(check.payload.proficiency_bonus, 4)
+})
+
+test('свободный текст в кампании 2014 использует только provenance своей редакции', async () => {
+  const state = campaign({
+    ruleset_id: 'dnd_5e_2014',
+    ruleset_version: '2014.1.0',
+    enabled_rule_packs: ['dnd_5e_2014'],
+  })
+  const adjudicator = new Adjudicator()
+  const plan = await adjudicator.createPlan({
+    intent: {
+      actor_id: 'hero', intent: 'ability_check', approach: 'perception',
+      difficulty_category: 'medium', raw_message: 'Осматриваю зал', confidence: 1,
+    },
+    state,
+    retrievedRules: { results: [], confidence: 1 },
+  })
+
+  assert.ok(plan.rule_ids.length > 0)
+  assert.ok(plan.rule_ids.every((id) => id.startsWith('dnd_5e_2014:')), plan.rule_ids)
+  assert.ok(plan.proposed_commands[0].source_rule_ids.every((id) => id.startsWith('dnd_5e_2014:')))
+  const resolved = new RulesEngine({ diceService: new DiceService({ rng: new SequenceDiceRng([10]) }) })
+    .resolvePlan(plan, state, { allowedActorIds: ['hero'] })
+  assert.ok(resolved.events.length > 0)
+  assert.ok(resolved.events.every((event) => event.source_rule_ids.every((id) => id.startsWith('dnd_5e_2014:'))))
+
+  const { orchestrator } = await setup(state, { narrator: {
+    render: async () => ({
+      narration: 'Ада внимательно осматривает зал.',
+      verification: { valid: true, violations: [] },
+      prompt_version: 'test/narrator',
+      provider: 'test',
+    }),
+  } })
+  const turn = await orchestrator.handle(actionInput('Внимательно осматриваю зал', 'free-2014', state))
+  assert.ok(turn.mechanics.length > 0)
+  assert.ok(turn.mechanics.every((event) => event.source_rule_ids.every((id) => id.startsWith('dnd_5e_2014:'))))
 })
 
 test('Verifier блокирует утверждение изменения мира без подтверждённого события', () => {

@@ -37,6 +37,10 @@ test('совместимый API создаёт кампанию, исполня
   const healthBody = await health.json()
   assert.equal(healthBody.rulesetId, 'srd_5_2_1')
   assert.equal(healthBody.ruleCount, 23)
+  assert.deepEqual(healthBody.installedRulesets.map((profile) => [profile.id, profile.ruleCount, profile.availability]), [
+    ['dnd_5e_2014', 28, 'preview'],
+    ['srd_5_2_1', 23, 'active'],
+  ])
   assert.equal('usage' in healthBody, false, 'public health must not expose cost or quota telemetry')
   const anonymousUsage = await fetch(`${baseUrl}/api/admin/usage`)
   assert.equal(anonymousUsage.status, 401)
@@ -93,6 +97,12 @@ test('совместимый API создаёт кампанию, исполня
   const searchResult = await ruleSearch.json()
   assert.equal(searchResult.results[0].rule_id, 'srd_5_2_1:core:advantage-disadvantage')
   assert.ok(searchResult.results[0].matched_by.length > 0)
+
+  const targetRuleSearch = await fetch(`${baseUrl}/api/rules/search?q=${encodeURIComponent('Как работает удушье?')}&ruleset_id=dnd_5e_2014`, { headers: { Cookie: cookie } })
+  assert.equal(targetRuleSearch.status, 200)
+  const targetSearchResult = await targetRuleSearch.json()
+  assert.equal(targetSearchResult.results[0].rule_id, 'dnd_5e_2014:environment:suffocation')
+  assert.ok(targetSearchResult.results.every((entry) => entry.ruleset_id === 'dnd_5e_2014'))
 
   const commandBody = JSON.stringify({
     idempotency_key: 'api-damage-1', message: 'Нанести урон',

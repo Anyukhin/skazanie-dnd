@@ -248,6 +248,7 @@ export function CharacterCreationWizard({
   player,
   accountName,
   catalog,
+  rulesetId,
   required = false,
   onClose,
   onImport,
@@ -255,6 +256,7 @@ export function CharacterCreationWizard({
   player: Player
   accountName: string
   catalog: CharacterCreationCatalog
+  rulesetId?: string
   required?: boolean
   onClose: () => void
   onImport: (source: string) => Promise<void>
@@ -631,6 +633,7 @@ export function CharacterCreationWizard({
           {steps.map((entry, index) => <button key={entry.title} className={index === step ? 'active' : index < step ? 'complete' : ''} onClick={() => index <= step && setStep(index)}><i>{index < step ? <Check size={12} /> : index + 1}</i><span><b>{entry.title}</b><small>{entry.description}</small></span></button>)}
         </nav>
         <main>
+          {rulesetId === 'dnd_5e_2014' && <p className="creation-ruleset-note"><ShieldCheck size={15} /><span><b>D&D 5e 2014 · частичное покрытие.</b> Классы используют каталог 2014, но расы, предыстории и стартовое снаряжение ещё переводятся на отдельный профиль этой редакции.</span></p>}
           {/* Английский `entry.id` здесь раньше печатался игроку как есть. */}
           {step === 0 && <div className="creation-card-grid" role="group" aria-label="Выбор класса">{catalog.classes.map((entry) => {
             const skills = entry.class_skills?.choice_count ?? 0

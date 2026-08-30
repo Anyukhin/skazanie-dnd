@@ -1026,7 +1026,7 @@ export const PROJECTED_STATE_KEYS = Object.freeze([
   // Отдаются как есть: общий контекст отряда без скрытого.
   'sessionCode', 'campaign', 'partyName', 'partyMemberIds', 'partyDecisionPolicy',
   'campaignConcept', 'state_version', 'ruleset_id', 'ruleset_version',
-  'enabled_rule_packs', 'enabled_house_rules', 'ruleset_locked_at', 'engine_mode',
+  'enabled_rule_packs', 'enabled_house_rules', 'ruleset_locked_at', 'ruleset_selection_locked', 'engine_mode',
   'players', 'entities', 'mapFeedback', 'rulings', 'activePlayerId', 'tacticalTurn',
   'isNarrating', 'pendingCheck', 'agentInteraction', 'lastDiceRoll',
   'actors', 'economyLog', 'state_projector_version', 'presence', 'turn_clock', 'locationMaps',
@@ -1062,16 +1062,17 @@ function viewerFor(state, user, actorId) {
  *
  * @param {Loose[]} players
  * @param {string} [viewerId]
+ * @param {string} [rulesetId]
  * @returns {Loose[]}
  */
-function playerItemsWithCapabilities(players, viewerId = '') {
+function playerItemsWithCapabilities(players, viewerId = '', rulesetId = '') {
   const viewer = String(viewerId ?? '')
   return (Array.isArray(players) ? players : []).map((player) => {
     const own = !viewer || String(player?.id ?? '') === viewer
     return {
       ...player,
       inventory: (Array.isArray(player?.inventory) ? player.inventory : []).map((item) => {
-        const capabilities = itemViewerCapabilities(item)
+        const capabilities = itemViewerCapabilities(item, { rulesetId })
         const withCapabilities = capabilities ? { ...item, capabilities } : item
         if (own || !PRIVATE_ITEM_ORIGIN_KINDS.includes(String(item?.origin ?? ''))) return withCapabilities
         const { origin, ...rest } = withCapabilities
@@ -1094,7 +1095,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
   if (!state || typeof state !== 'object') return state
   if (user?.role === 'admin') return {
     ...state,
-    players: playerItemsWithCapabilities(state.players),
+    players: playerItemsWithCapabilities(state.players, '', String(state.ruleset_id ?? '')),
     // Летопись поступков уезжает ведущему уже лентой: свежие сверху, с русской
     // подписью вида и числом свидетелей. Сортировка и таблица подписей живут в
     // одном месте — на сервере, рядом с `DEED_KINDS`. Карточка админки раньше
@@ -1260,7 +1261,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
     : visible.mechanics
   const room = {
     ...publicState,
-    players: playerItemsWithCapabilities(publicState.players, actorId),
+    players: playerItemsWithCapabilities(publicState.players, actorId, String(state.ruleset_id ?? '')),
     scene,
     adventure: publicAdventureFor(visible.adventure),
     worldMap: publicWorldMapFor(visible.worldMap ?? state.worldMap),
@@ -1626,7 +1627,7 @@ function eventForViewer(event, user, actorId, state = {}) {
     // server/`. Закрыть сам факт можно только решением о самом событии; тихим
     // расширением списка урона это не делается.
     if (Array.isArray(visible.source_rule_ids)) {
-      visible.source_rule_ids = visible.source_rule_ids.filter((/** @type {unknown} */ id) => String(id) !== RULE_IDS.temporaryHp)
+      visible.source_rule_ids = visible.source_rule_ids.filter((/** @type {unknown} */ id) => !String(id).endsWith(':combat:temporary-hit-points'))
     }
     // Величина лечения — то же знание, что и ОЗ до и после, только записанное
     // разностью: у зелья противника (2к4 + 2) ровная десятка называет вещь

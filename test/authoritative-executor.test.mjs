@@ -8,10 +8,12 @@ import {
   AuthoritativeExecutor,
   CAMPAIGN_CONTROL_CAPABILITY,
   CAMPAIGN_LIFECYCLE_CAPABILITY,
+  CAMPAIGN_RULESET_CAPABILITY,
   PARTY_DECISION_CAPABILITY,
   PUBLIC_DICE_CAPABILITY,
   derivedEventAllowlistForReview,
 } from '../server/authoritative-executor.mjs'
+import { campaignRulesetChangeEvent } from '../server/campaign-ruleset.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { FileEventStore } from '../server/event-store.mjs'
 import { RulesEngine, applyGameEvent, normalizeCampaignState } from '../server/rules-engine.mjs'
@@ -209,6 +211,25 @@ test('повтор производного события идемпотент�
   assert.equal(second.replayed, true)
 })
 
+test('смена ruleset повторно проверяет lock после конфликта версии', async (t) => {
+  const store = await storeFor(t)
+  const executor = new AuthoritativeExecutor({ eventStore: racingStore(store, 'EXECUTOR') })
+
+  await assert.rejects(
+    () => executor.commitDerived({
+      campaignId: 'EXECUTOR',
+      idempotencyKey: 'ruleset-race',
+      producerCapability: CAMPAIGN_RULESET_CAPABILITY,
+      deriveEvents: async (freshState) => {
+        const event = campaignRulesetChangeEvent('dnd_5e_2014', freshState, await store.getEvents('EXECUTOR'))
+        return event ? [event] : []
+      },
+    }),
+    (error) => error.code === 'CAMPAIGN_RULESET_LOCKED',
+  )
+  assert.equal((await store.load('EXECUTOR')).state.ruleset_id, 'srd_5_2_1')
+})
+
 test('откат кампании идёт отдельным управляющим входом, а не производным', async (t) => {
   const store = await storeFor(t)
   const executor = new AuthoritativeExecutor({ eventStore: store })
@@ -242,7 +263,7 @@ test('откат кампании идёт отдельным управляющ
 test('таблица производных событий читается целиком и не пуста ни у кого', () => {
   const table = derivedEventAllowlistForReview()
   assert.deepEqual(Object.keys(table).sort(),
-    ['campaignLifecycle', 'economyClock', 'partyDecision', 'presence', 'publicDice', 'worldRumor'])
+    ['campaignLifecycle', 'campaignRuleset', 'economyClock', 'partyDecision', 'presence', 'publicDice', 'worldRumor'])
   for (const [producer, types] of Object.entries(table)) {
     assert.ok(types.length > 0, `${producer}: пустой список превращает capability в формальность`)
     assert.deepEqual(types, [...types].sort(), `${producer}: список обязан быть отсортирован для ревью`)
@@ -250,6 +271,7 @@ test('таблица производных событий читается це
   // Пополнение лавки остаётся за Rules Engine: часы — единственный производитель,
   // который расщепляется на два входа, и это записано в плане.
   assert.deepEqual(table.economyClock, ['MerchantEconomyClockAdvanced'])
+  assert.deepEqual(table.campaignRuleset, ['CampaignRulesetChanged'])
   // Часы молвы расщепляются так же: слухи — команды памяти мира через
   // `executeCommands`, а сюда приходит только реакция мира на дошедший слух.
   assert.deepEqual(table.worldRumor, ['FactionReputationAdjusted'])

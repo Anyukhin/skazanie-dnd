@@ -204,6 +204,9 @@ function assertAttribution(rootDir) {
     'System Reference Document 5.2.1 (“SRD 5.2.1”) by Wizards of the Coast LLC',
     'https://creativecommons.org/licenses/by/4.0/legalcode',
     'не означает официальный статус, одобрение',
+    'data/rule_packs/dnd_5e_2014',
+    '5e14.dnd.su',
+    'Права на русские переводы и базу dnd.su по-прежнему не подтверждены',
   ]
   const missing = required.filter((text) => !attribution.includes(text))
   if (missing.length) throw new ContentIntegrityError(`ATTRIBUTION.md misses required notices: ${missing.join(', ')}`, 'ATTRIBUTION_MISSING')
@@ -220,8 +223,12 @@ export async function verifyContentIntegrity({ rootDir = projectRoot } = {}) {
   }
   const assetRegistry = readJson(safeProjectFile(root, 'data/asset-rights.json'))
   const assets = validateAssetRegistry(root, assetRegistry)
-  const rulePack = await loadRulePack('srd_5_2_1', { rootDir: safeProjectFile(root, 'data/rule_packs') })
+  const [rulePack, targetRulePack] = await Promise.all([
+    loadRulePack('srd_5_2_1', { rootDir: safeProjectFile(root, 'data/rule_packs') }),
+    loadRulePack('dnd_5e_2014', { rootDir: safeProjectFile(root, 'data/rule_packs') }),
+  ])
   const ruleReferences = validateRuleReferences(rulePack)
+  const targetRuleReferences = validateRuleReferences(targetRulePack)
   const compatibility = validateCompatibilityCatalogs(root)
   const counts = runtimeCoverageCounts(root, rulePack)
   const coverage = validateCoverageMatrix(readJson(safeProjectFile(root, 'data/rules-coverage-matrix.json')), counts)
@@ -239,7 +246,9 @@ export async function verifyContentIntegrity({ rootDir = projectRoot } = {}) {
       artifacts: artifacts.length,
       assets: assets.length,
       rule_pack: rulePack.summary,
+      rule_packs: [rulePack.summary, targetRulePack.summary],
       rule_references: ruleReferences,
+      target_rule_references: targetRuleReferences,
       compatibility_catalogs: compatibility,
       item_catalog: {
         entries: counts.equipment,

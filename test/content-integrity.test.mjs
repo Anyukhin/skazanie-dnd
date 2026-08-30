@@ -11,6 +11,11 @@ test('content integrity gate verifies hashes, references, counts and the complet
   const report = await verifyContentIntegrity()
   assert.equal(report.integrity.ok, true)
   assert.equal(report.integrity.rule_pack.rule_count, 23)
+  assert.deepEqual(
+    report.integrity.rule_packs.map((pack) => [pack.ruleset_id, pack.rule_count]),
+    [['srd_5_2_1', 23], ['dnd_5e_2014', 28]],
+  )
+  assert.equal(report.integrity.target_rule_references.referenced_terms, 34)
   assert.equal(report.integrity.compatibility_catalogs.spells, 439)
   assert.equal(report.integrity.compatibility_catalogs.classes, 12)
   assert.deepEqual(report.integrity.item_catalog, { entries: 107, shop_entries: 12 })

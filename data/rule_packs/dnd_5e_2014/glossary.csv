@@ -1,0 +1,35 @@
+canonical_id,term_en,term_ru,aliases_ru,notes
+term:ability-check,ability check,проверка характеристики,проверка навыка|чек характеристики|бросок характеристики,2014 normalized term
+term:saving-throw,saving throw,спасбросок,спасительный бросок|сейв|спас,2014 normalized term
+term:attack-roll,attack roll,бросок атаки,атака на попадание|бросок на попадание|атакующий бросок,2014 normalized term
+term:armor-class,Armor Class,класс доспеха,КД|защита|armor class,2014 normalized term
+term:advantage,advantage,преимущество,бросок с преимуществом|лучший из двух|advantage,2014 normalized term
+term:disadvantage,disadvantage,помеха,бросок с помехой|худший из двух|дисадвантаж,2014 normalized term
+term:critical-hit,critical hit,критическое попадание,крит|критический удар|critical hit,2014 normalized term
+term:damage,damage,урон,повреждение|дамаг|damage,2014 normalized term
+term:healing,healing,лечение,исцеление|восстановление здоровья|heal,2014 normalized term
+term:temporary-hit-points,temporary Hit Points,временные хиты,временные очки хитов|temporary HP|темп хп,2014 normalized term
+term:resistance,resistance,сопротивление,резист|половина урона|resistance,2014 normalized term
+term:vulnerability,vulnerability,уязвимость,двойной урон|vulnerability,2014 normalized term
+term:immunity,immunity,иммунитет,невосприимчивость|immunity,2014 normalized term
+term:initiative,initiative,инициатива,порядок инициативы|бросок инициативы|initiative,2014 normalized term
+term:turn,turn,ход,очередь хода|turn,2014 normalized term
+term:action,action,действие,основное действие|action,2014 normalized term
+term:bonus-action,bonus action,бонусное действие,бонус-действие|bonus action|бонусник,2014 normalized term
+term:reaction,reaction,реакция,ответное действие|reaction|реакционное действие,2014 normalized term
+term:condition,condition,состояние,эффект состояния|статус|condition,2014 normalized term
+term:concentration,concentration,концентрация,поддержание заклинания|концентра|concentration,2014 normalized term
+term:hit-points,Hit Points,хиты,очки хитов|здоровье|HP|хп,2014 normalized term
+term:death-saving-throw,death saving throw,спасбросок от смерти,бросок смерти|death save|сейв от смерти,2014 normalized term
+term:surprise,surprise,внезапность,застигнут врасплох|surprised,2014 normalized term
+term:grappled,grappled,схвачен,захват|в захвате|grappled,2014 normalized term
+term:shove,shove,толчок,оттолкнуть|сбить с ног|shove,2014 normalized term
+term:swimming,swimming,плавание,плыть|бурная вода|swim speed,2014 normalized term
+term:suffocation,suffocation,удушье,задержка дыхания|задыхается|тонет,2014 normalized term
+term:exhaustion,exhaustion,истощение,уровень истощения|exhaustion,2014 normalized term
+term:long-rest,long rest,продолжительный отдых,длинный отдых|long rest,2014 normalized term
+term:hit-die,Hit Die,кость хитов,кость здоровья|hit die|hit dice,2014 normalized term
+term:spell-slot,spell slot,ячейка заклинания,ячейка|слот заклинания|spell slot,2014 normalized term
+term:resource,resource,ресурс,заряд|использование способности|resource,2014 normalized term
+term:currency,currency,валюта,монеты|деньги|золото|серебро|медь|электрум|платина,2014 normalized term
+term:equipment,equipment,снаряжение,экипировка|предмет|товар|инвентарь,2014 normalized term

@@ -1326,6 +1326,7 @@ export type GameState = {
   enabled_rule_packs?: string[]
   enabled_house_rules?: string[]
   ruleset_locked_at?: string | null
+  ruleset_selection_locked?: boolean
   engine_mode?: 'enforce'
   mechanics?: GameMechanics
   /**
@@ -2299,6 +2300,8 @@ export type CampaignSummary = {
   memberCount: number
   playerCount: number
   setting?: string
+  rulesetId?: 'dnd_5e_2014' | 'srd_5_2_1'
+  rulesetVersion?: string
   lifecycleStatus?: 'setup' | 'active' | 'paused' | 'completed' | 'failed' | 'archived'
   membershipRole?: 'admin' | 'owner' | 'player' | 'legacy'
   updatedAt: string | null
@@ -2400,6 +2403,7 @@ export type AiHealth = {
   engineMode?: 'enforce'
   rulesetId?: string
   ruleCount?: number
+  installedRulesets?: RulesetProfileDescriptor[]
   characterCreation?: CharacterCreationCatalog
 }
 
@@ -2428,7 +2432,34 @@ export type CampaignAiSettingsResponse = {
   architectGenerationsToday: number
   architectAlertThreshold: number
   canManage: boolean
+  ruleset: CampaignRulesetSettings
   error?: string
+}
+
+export type RulesetProfileDescriptor = {
+  id: 'dnd_5e_2014' | 'srd_5_2_1'
+  version: string
+  editionFamily: '5e_2014' | '5e_2024'
+  label: string
+  description: string
+  mechanicsStatus: 'partial'
+  availability: 'preview' | 'active'
+  limitations: string[]
+  ruleCount?: number
+}
+
+export type CampaignRulesetSettings = {
+  current: {
+    id: RulesetProfileDescriptor['id']
+    version: string
+    label: string
+    mechanicsStatus: 'partial'
+    availability: 'preview' | 'active'
+  }
+  available: RulesetProfileDescriptor[]
+  canChange: boolean
+  locked: boolean
+  lockReason: string | null
 }
 
 export type CharacterAbilityScores = {

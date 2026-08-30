@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { materializeCatalogItem } from '../server/item-catalog.mjs'
+import { itemViewerCapabilities, materializeCatalogItem } from '../server/item-catalog.mjs'
 import {
   MAX_ACTIVE_ITEM_EFFECT_BONUS,
   activeItemEffectTotals,
@@ -22,8 +22,9 @@ function hero(id, overrides = {}) {
   }
 }
 
-function state(players, combat = false) {
+function state(players, combat = false, rulesetId = 'srd_5_2_1') {
   return {
+    ruleset_id: rulesetId,
     players,
     partyMemberIds: players.map((actor) => actor.id),
     mechanics: { combat: { active: combat } },
@@ -117,6 +118,14 @@ test('usable and attunable items are server-profiled and enforce attunement limi
     range_feet: 5,
     target: 'party',
   })
+  const classicUse = validateItemLifecycleCommand({
+    command_type: 'UseItem',
+    actor_id: owner.id,
+    item_id: 'potion',
+    target_id: owner.id,
+  }, state([owner], true, 'dnd_5e_2014'), context(owner.id))
+  assert.equal(classicUse.use_profile.combat_action, 'action')
+  assert.equal(itemViewerCapabilities(owner.inventory[0], { rulesetId: 'dnd_5e_2014' }).use.action_type, 'action')
   assert.throws(() => validateItemLifecycleCommand({
     command_type: 'AttuneItem',
     actor_id: owner.id,

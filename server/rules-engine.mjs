@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { parseDiceExpression } from './dice-service.mjs'
+import { DND_2014_RULESET_ID, INSTALLED_RULESET_IDS, LEGACY_DEFAULT_RULESET_ID, rulesetRuleId } from './ruleset-config.mjs'
 import { applyAutonomyEvent, normalizeAutonomyState } from './autonomous-campaign.mjs'
 import {
   createSceneTransition,
@@ -454,7 +455,8 @@ import {
   worldClockEventDrafts,
 } from './weather.mjs'
 
-export const DEFAULT_RULESET_ID = 'srd_5_2_1'
+export const DEFAULT_RULESET_ID = LEGACY_DEFAULT_RULESET_ID
+const usesDnd2014 = (state) => String(state?.ruleset_id ?? DEFAULT_RULESET_ID) === DND_2014_RULESET_ID
 const MAGIC_ITEM_SPELL_IMMUNITY_EVENT_SCHEMA_VERSION = 1
 // 4: карта сцены хранится слоями в `scene.map`, а `scene.cells` стал производной
 // read-моделью. Старые снимки переигрываются от нулевого, поэтому отдельной
@@ -1714,6 +1716,7 @@ export function normalizeCampaignState(input = {}) {
   if (!state.enabled_rule_packs.length) state.enabled_rule_packs = [state.ruleset_id]
   state.enabled_house_rules = uniqueStrings(state.enabled_house_rules ?? state.enabledHouseRules)
   state.ruleset_locked_at = state.ruleset_locked_at ?? state.rulesetLockedAt ?? null
+  state.ruleset_selection_locked = state.ruleset_selection_locked === true || state.rulesetSelectionLocked === true
   state.mechanics = mechanics
   state.players = Array.isArray(state.players) ? state.players.map((player) => {
     const normalizedPlayer = { ...player }
@@ -3432,19 +3435,27 @@ function opportunityAttackers(state, moverId, from, path) {
       || actorId(left).localeCompare(actorId(right)))
 }
 
-function sourceIdsFor(command) {
+function sourceIdsFor(command, state) {
   const explicit = uniqueStrings(command.source_rule_ids ?? command.sourceRuleIds)
-  return explicit.length ? explicit : (COMMAND_RULES[command.command_type] ?? [])
+  const rulesetId = String(state?.ruleset_id || DEFAULT_RULESET_ID)
+  const foreign = explicit.find((ruleId) => {
+    const owner = INSTALLED_RULESET_IDS.find((candidate) => ruleId.startsWith(`${candidate}:`))
+    return owner && owner !== rulesetId
+  })
+  if (foreign) throw new RulesValidationError(`Rule id ${foreign} принадлежит другой редакции`, 'RULESET_RULE_ID_MISMATCH')
+  if (explicit.length) return explicit
+  return (COMMAND_RULES[command.command_type] ?? []).map((ruleId) => rulesetRuleId(ruleId, rulesetId))
 }
 
 function normalizeCommand(input, state) {
   const command = { ...(input ?? {}) }
   command.command_type = String(command.command_type ?? command.type ?? '')
+  command.ruleset_id = String(state?.ruleset_id || DEFAULT_RULESET_ID)
   command.command_id = String(command.command_id ?? command.commandId ?? randomUUID())
   command.actor_id = command.actor_id == null && command.actorId == null ? null : String(command.actor_id ?? command.actorId)
   command.target_id = command.target_id == null && command.targetId == null ? null : String(command.target_id ?? command.targetId)
   command.target_ids = uniqueStrings(command.target_ids ?? command.targetIds ?? (command.target_id ? [command.target_id] : []))
-  command.source_rule_ids = sourceIdsFor(command)
+  command.source_rule_ids = sourceIdsFor(command, state)
   command.house_rule_id = command.house_rule_id ?? command.houseRuleId ?? null
   command.ruling_id = command.ruling_id ?? command.rulingId ?? null
   command.merchant_id = command.merchant_id == null && command.merchantId == null ? null : String(command.merchant_id ?? command.merchantId).slice(0, 120)
@@ -3749,7 +3760,7 @@ const NPC_ITEM_USE_COMMAND_FIELDS = new Set([
   'command_type', 'command_id', 'campaign_id', 'actor_id', 'target_id', 'target_ids',
   'item_id', 'npc_tactic', 'weapon_id',
   'merchant_id', 'stock_id', 'action_id', 'quantity',
-  'expected_state_version', 'source_rule_ids', 'house_rule_id', 'ruling_id', 'visibility',
+  'expected_state_version', 'ruleset_id', 'source_rule_ids', 'house_rule_id', 'ruling_id', 'visibility',
   'request_fingerprint', 'server_authoritative',
 ])
 
@@ -3788,7 +3799,7 @@ function validateNpcItemUseCommand(command, state, context = {}) {
   if (!state.mechanics.combat.active) {
     throw new RulesValidationError('Снаряжение противника расходуется только в бою', 'COMBAT_NOT_ACTIVE')
   }
-  const item = npcUsableItemFor(enemy, command.item_id)
+  const item = npcUsableItemFor(enemy, command.item_id, { rulesetId: state.ruleset_id })
   if (!item) throw new RulesValidationError('У существа нет такой вещи или сервер не умеет её применять', 'NPC_ITEM_NOT_USABLE')
   if (String(command.npc_tactic ?? '') !== item.tactic) {
     throw new RulesValidationError('Заявленная тактика не соответствует вещи', 'NPC_ITEM_TACTIC_MISMATCH')
@@ -5594,7 +5605,7 @@ function eventFrom(command, eventType, payload = {}, targets = command.target_id
   const payloadRuleIds = [
     ...(payload?.resistance_cantrip_reduction || payload?.aura_of_life_source ? [RULE_IDS.resistance] : []),
     ...(payload?.aura_of_protection_source ? [RULE_IDS.auraOfProtection] : []),
-    ...(payload?.indomitable_bonus ? [RULE_IDS.indomitable] : []),
+    ...(payload?.indomitable_applied === true || payload?.indomitable_bonus ? [RULE_IDS.indomitable] : []),
   ]
   return {
     campaign_id: command.campaign_id ?? null,
@@ -5603,7 +5614,7 @@ function eventFrom(command, eventType, payload = {}, targets = command.target_id
     actor_id: command.actor_id,
     target_ids: uniqueStrings(targets),
     payload: clone(payload),
-    source_rule_ids: [...new Set([...command.source_rule_ids, ...payloadRuleIds])],
+    source_rule_ids: [...new Set([...command.source_rule_ids, ...payloadRuleIds.map((ruleId) => rulesetRuleId(ruleId, command.ruleset_id))])],
     house_rule_id: command.house_rule_id,
     ruling_id: command.ruling_id,
     visibility: command.visibility ?? 'public',
@@ -5673,7 +5684,13 @@ function itemGrantedEventFrom(command, payload = {}, targets = command.target_id
 }
 
 function commandWithRules(command, ...ruleIds) {
-  return { ...command, source_rule_ids: [...new Set([...command.source_rule_ids, ...ruleIds.filter(Boolean)])] }
+  return {
+    ...command,
+    source_rule_ids: [...new Set([
+      ...command.source_rule_ids,
+      ...ruleIds.filter(Boolean).map((ruleId) => rulesetRuleId(ruleId, command.ruleset_id)),
+    ])],
+  }
 }
 
 function criticalDamageExpression(expression) {
@@ -7375,7 +7392,10 @@ function activeAuraOfProtection(state, targetId) {
     if (characterClassKey(source) !== 'paladin' || safeInteger(source?.level, 1) < 6) continue
     if (isEnemyActor(state, sourceId) !== targetIsEnemy || !isLivingActor(source)) continue
     const sourceConditions = conditionIdsFor(state, sourceId)
-    if (sourceConditions.has('unconscious') || sourceConditions.has('incapacitated') || sourceConditions.has('stunned') || sourceConditions.has('paralyzed') || sourceConditions.has('dead')) continue
+    const auraDisabled = usesDnd2014(state)
+      ? sourceConditions.has('unconscious') || sourceConditions.has('dead')
+      : sourceConditions.has('unconscious') || sourceConditions.has('incapacitated') || sourceConditions.has('stunned') || sourceConditions.has('paralyzed') || sourceConditions.has('dead')
+    if (auraDisabled) continue
     const distance = sourceId === String(targetId) ? 0 : distanceBetweenActors(state, sourceId, targetId)
     if (distance == null || distance > 10) continue
     candidates.push({
@@ -7947,10 +7967,11 @@ function replayDiceService(base, transcript, replacements = null) {
     const replacement = replacementMap.get(String(original.roll_id ?? ''))
     if (!replacement) return original
     if (!['rollD20', 'rollCheck'].includes(method)) throw new RulesValidationError('Indomitable может заменить только d20 спасброска', 'INVALID_INDOMITABLE_ROLL')
-    const bonus = Math.max(1, safeInteger(replacement.bonus, 1))
+    const bonus = Math.max(0, safeInteger(replacement.bonus, 0))
     const rerolled = replacement.result ? clone(replacement.result) : invoke({ ...(options ?? {}), modifier: safeInteger(options?.modifier, 0) + bonus })
     return {
       ...rerolled,
+      indomitable_applied: true,
       indomitable_bonus: bonus,
       indomitable_original_roll_id: original.roll_id,
       indomitable_original_total: safeInteger(original.total, 0),
@@ -7967,10 +7988,12 @@ function rollIndomitableReplacement(diceService, transcript, rollId, bonus) {
   const entry = transcript.find((candidate) => String(candidate?.result?.roll_id ?? '') === String(rollId ?? ''))
   if (!entry || !['rollD20', 'rollCheck'].includes(entry.method)) throw new RulesValidationError('Не найден исходный d20 спасброска', 'INVALID_INDOMITABLE_ROLL')
   const options = entry.args?.[0] && typeof entry.args[0] === 'object' ? entry.args[0] : {}
-  const rerolled = diceService[entry.method]({ ...options, modifier: safeInteger(options.modifier, 0) + Math.max(1, safeInteger(bonus, 1)) })
+  const normalizedBonus = Math.max(0, safeInteger(bonus, 0))
+  const rerolled = diceService[entry.method]({ ...options, modifier: safeInteger(options.modifier, 0) + normalizedBonus })
   return {
     ...rerolled,
-    indomitable_bonus: Math.max(1, safeInteger(bonus, 1)),
+    indomitable_applied: true,
+    indomitable_bonus: normalizedBonus,
     indomitable_original_roll_id: entry.result.roll_id,
     indomitable_original_total: safeInteger(entry.result.total, 0),
   }
@@ -9506,7 +9529,10 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       }
       const resolveIndomitableChoice = (accepted) => {
         if (reactionWindow?.trigger !== 'failed-saving-throw' || !reactionWindow.pending_command || !Array.isArray(reactionWindow.pending_dice_transcript)) return
-        const bonus = Math.max(1, safeInteger(reactionWindow.fighter_level, safeInteger(actor?.level, 9)))
+        const bonus = Math.max(0, safeInteger(
+          reactionWindow.indomitable_bonus,
+          usesDnd2014(state) ? 0 : safeInteger(reactionWindow.fighter_level, safeInteger(actor?.level, 9)),
+        ))
         const failedRollId = String(reactionWindow.failed_roll_id ?? '')
         const rerolled = accepted
           ? rollIndomitableReplacement(diceService, reactionWindow.pending_dice_transcript, failedRollId, bonus)
@@ -9535,6 +9561,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           const failedEvent = next.failed_event ?? {}
           const failed = failedEvent.payload ?? {}
           const nextLevel = Math.max(9, safeInteger(next.fighter_level, 9))
+          const nextBonus = Math.max(0, safeInteger(next.indomitable_bonus, usesDnd2014(state) ? 0 : nextLevel))
           events.push(eventFrom(commandWithRules(command, RULE_IDS.savingThrow, RULE_IDS.indomitable), 'ReactionWindowOpened', {
             ...clone(reactionWindow),
             id: `indomitable:${String(reactionWindow.pending_command.command_id ?? command.command_id)}:${String(next.target_id)}`,
@@ -9543,7 +9570,9 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
             action_ids: ['indomitable'],
             action_options: [{
               id: 'indomitable', name: 'Несгибаемый', resource: 'indomitable', cost: 1,
-              description: `Перебросить спасбросок с бонусом +${nextLevel}. Новый результат обязателен.`,
+              description: nextBonus > 0
+                ? `Перебросить спасбросок с бонусом +${nextBonus}. Новый результат обязателен.`
+                : 'Перебросить проваленный спасбросок. Новый результат обязателен.',
             }],
             trigger_roll: {
               kept: safeInteger(failed.kept ?? failed.natural_roll, 0),
@@ -9555,6 +9584,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
             },
             failed_roll_id: String(failed.roll_id ?? ''),
             fighter_level: nextLevel,
+            indomitable_bonus: nextBonus,
             pending_indomitable_queue: queue.slice(1),
             indomitable_decisions: decisions,
           }, [String(next.target_id)]))
@@ -9576,8 +9606,8 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
             action_type: 'free',
             reaction_window_id: reactionWindow.id,
             original_total: safeInteger(decision.original_total, 0),
-            bonus: Math.max(1, safeInteger(decision.bonus, 1)),
-            indomitable_bonus: Math.max(1, safeInteger(decision.bonus, 1)),
+            bonus: Math.max(0, safeInteger(decision.bonus, 0)),
+            indomitable_bonus: Math.max(0, safeInteger(decision.bonus, 0)),
           }, [decisionActorId]))
         }
         context.indomitable_bypass_actor_ids = [...new Set([
@@ -9587,7 +9617,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         const resumedState = events.reduce(applyGameEvent, state)
         const replacements = decisions.filter((decision) => decision.accepted === true).map((decision) => ({
           roll_id: String(decision.roll_id),
-          bonus: Math.max(1, safeInteger(decision.bonus, 1)),
+          bonus: Math.max(0, safeInteger(decision.bonus, 0)),
           result: clone(decision.result),
         }))
         const pendingResult = resolveCommand({
@@ -9737,12 +9767,11 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         spendActionResource()
         events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction), 'ReactionWindowClosed', { id: reactionWindow.id, accepted: true, action_id: action.id }, [command.actor_id]))
         const attackResult = resolveCommand({
-          ...command,
+          ...commandWithRules(command, RULE_IDS.attack, RULE_IDS.reaction),
           command_type: 'MakeAttack',
           target_id: String(reactionWindow.source_actor_id),
           target_ids: [String(reactionWindow.source_actor_id)],
           reaction_attack: true,
-          source_rule_ids: [...new Set([...command.source_rule_ids, RULE_IDS.attack, RULE_IDS.reaction])],
         }, state, { diceService, context: { ...context, reactionResolution: true } })
         events.push(...attackResult.events, actionEvent({ reaction_window_id: reactionWindow.id, economy_consumed_by_attack: false }))
         rolls.push(...attackResult.rolls)
@@ -9751,14 +9780,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         if (!opportunity) throw new RulesValidationError('Для атаки по возможности нужно готовое ближнее оружие', 'OPPORTUNITY_WEAPON_UNAVAILABLE')
         events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction), 'ReactionWindowClosed', { id: reactionWindow.id, accepted: true, action_id: action.id }, [command.actor_id]))
         const attackResult = resolveCommand({
-          ...command,
+          ...commandWithRules(command, RULE_IDS.attack, RULE_IDS.reaction),
           command_type: 'MakeAttack',
           target_id: String(reactionWindow.source_actor_id),
           target_ids: [String(reactionWindow.source_actor_id)],
           ...(opportunity.item_id ? { item_id: opportunity.item_id } : {}),
           reaction_attack: true,
           reaction_target_position: reactionWindow.source_previous_position,
-          source_rule_ids: [...new Set([...command.source_rule_ids, RULE_IDS.attack, RULE_IDS.reaction])],
         }, state, { diceService, context: { ...context, reactionResolution: true } })
         events.push(...attackResult.events, actionEvent({ reaction_window_id: reactionWindow.id, economy_consumed_by_attack: false }))
         rolls.push(...attackResult.rolls)
@@ -9824,14 +9852,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         if (readied.effect_id) events.push(eventFrom(commandWithRules(command, RULE_IDS.concentration), 'ConcentrationEnded', { reason: 'readied-released', effect_id: readied.effect_id }, [command.actor_id]))
         const releaseState = events.reduce(applyGameEvent, state)
         const spellResult = resolveCommand({
-          ...command,
+          ...commandWithRules(command, RULE_IDS.reaction),
           command_type: 'CastSpell',
           spell_id: String(readied.spell_id),
           slot_level: safeInteger(readied.slot_level, 1),
           expected_state_version: releaseState.state_version,
           target_id: command.target_id ?? String(reactionWindow.source_actor_id),
           target_ids: command.target_ids?.length ? command.target_ids : [String(reactionWindow.source_actor_id)],
-          source_rule_ids: [...new Set([...command.source_rule_ids, RULE_IDS.reaction])],
         }, releaseState, { diceService, context: { ...context, isAdmin: true, serverAuthoritativeCombat: true, readiedRelease: true } })
         events.push(...spellResult.events, actionEvent({ reaction_window_id: reactionWindow.id, readied_spell_id: readied.spell_id }))
         rolls.push(...spellResult.rolls)
@@ -9841,13 +9868,12 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction), 'ReactionWindowClosed', { id: reactionWindow.id, accepted: true, action_id: action.id }, [command.actor_id]))
         events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction), 'ReadiedActionExpired', { reason: 'used', trigger: readied.trigger }, [command.actor_id]))
         const attackResult = resolveCommand({
-          ...command,
+          ...commandWithRules(command, RULE_IDS.attack, RULE_IDS.reaction),
           command_type: 'MakeAttack',
           item_id: command.item_id ?? readied.item_id ?? undefined,
           target_id: String(reactionWindow.source_actor_id),
           target_ids: [String(reactionWindow.source_actor_id)],
           reaction_attack: true,
-          source_rule_ids: [...new Set([...command.source_rule_ids, RULE_IDS.attack, RULE_IDS.reaction])],
         }, state, { diceService, context: { ...context, reactionResolution: true } })
         events.push(...attackResult.events, actionEvent({ reaction_window_id: reactionWindow.id, economy_consumed_by_attack: false }))
         rolls.push(...attackResult.rolls)
@@ -9990,11 +10016,10 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         events.push(actionEvent({ restore_action: true, surged_action: true }))
       } else if (action.id === 'trip-attack' || action.id === 'menacing-attack') {
         const attackResult = resolveCommand({
-          ...command,
+          ...commandWithRules(command, RULE_IDS.attack),
           command_type: 'MakeAttack',
           target_id: actionTargetId,
           target_ids: [actionTargetId],
-          source_rule_ids: [...new Set([...command.source_rule_ids, RULE_IDS.attack])],
         }, state, { diceService, context })
         const attackEvent = attackResult.events.find((event) => event.event_type === 'AttackResolved')
         const hit = Boolean(attackEvent?.payload?.hit)
@@ -10110,14 +10135,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         for (let index = 0; index < attacks; index += 1) {
           if (!isLivingActor(findActor(workingState, actionTargetId))) break
           const attackResult = resolveCommand({
-            ...command,
+            ...commandWithRules(command, RULE_IDS.attack),
             command_id: `${command.command_id}:attack:${index + 1}`,
             expected_state_version: workingState.state_version,
             command_type: 'MakeAttack',
             target_id: actionTargetId,
             target_ids: [actionTargetId],
             item_id: action.effect.unarmed ? undefined : command.item_id,
-            source_rule_ids: [...new Set([...command.source_rule_ids, RULE_IDS.attack])],
           }, workingState, { diceService, context })
           const attackEvent = attackResult.events.find((event) => event.event_type === 'AttackResolved')
           const hit = Boolean(attackEvent?.payload?.hit)
@@ -11559,7 +11583,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         events.push(eventFrom(command, 'ResourceSpent', { resource: String(command.resource), amount: cost, before: pool.current, after: pool.current - cost, max: pool.max }, [command.actor_id]))
       }
       events.push(eventFrom(command, 'SpellCast', { spell_id: command.spell_id ?? null, name: String(command.name || '') }, command.target_ids))
-      if (command.concentration) events.push(eventFrom({ ...command, source_rule_ids: [...new Set([...command.source_rule_ids, RULE_IDS.concentration])] }, 'ConcentrationStarted', { effect_id: String(command.spell_id || command.name || randomUUID()) }, [command.actor_id]))
+      if (command.concentration) events.push(eventFrom(commandWithRules(command, RULE_IDS.concentration), 'ConcentrationStarted', { effect_id: String(command.spell_id || command.name || randomUUID()) }, [command.actor_id]))
       break
     }
     case 'MoveActor': {
@@ -14487,7 +14511,9 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const rest = state.mechanics.resting[command.actor_id]
       const constitutionModifier = abilityModifier(actor?.abilities?.con)
       const roll = diceService.roll(`1d${pool.die_size}`, 'short-rest-hit-point-die', command.actor_id, command.visibility ?? 'public')
-      const healingTotal = Math.max(1, roll.total + constitutionModifier)
+      const healingTotal = usesDnd2014(state)
+        ? Math.max(0, roll.total + constitutionModifier)
+        : Math.max(1, roll.total + constitutionModifier)
       const hpBefore = actorHp(actor)
       const hpAfter = Math.min(actorMaxHp(actor), hpBefore + healingTotal)
       const poolAfter = { ...pool, spent: pool.spent + 1 }
@@ -14533,14 +14559,17 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       if (command.kind === 'long') {
         const pool = hitPointDicePoolForActor(state, command.actor_id)
         if (pool) {
+          const restored = usesDnd2014(state)
+            ? Math.min(pool.spent, Math.max(1, Math.floor(pool.maximum / 2)))
+            : pool.spent
           events.push({
             ...eventFrom(commandWithRules(command, RULE_IDS.resource), 'HitPointDiceRestored', {
               schema_version: HIT_POINT_DIE_EVENT_SCHEMA_VERSION,
               policy_id: REST_POLICY_ID,
               rest_id: activeRest?.rest_id ?? null,
               pool_before: pool,
-              pool_after: { ...pool, spent: 0 },
-              restored: pool.spent,
+              pool_after: { ...pool, spent: Math.max(0, pool.spent - restored) },
+              restored,
             }, [command.actor_id]),
             event_schema_version: HIT_POINT_DIE_EVENT_SCHEMA_VERSION,
           })
@@ -15012,9 +15041,12 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     const opportunity = opportunities[0]
     if (opportunity) {
       const failed = opportunity.event.payload
+      const indomitableBonus = usesDnd2014(state) ? 0 : safeInteger(opportunity.actor.level, 9)
       const option = {
         id: 'indomitable', name: 'Несгибаемый', resource: 'indomitable', cost: 1,
-        description: `Перебросить спасбросок с бонусом +${safeInteger(opportunity.actor.level, 9)}. Новый результат обязателен.`,
+        description: indomitableBonus > 0
+          ? `Перебросить спасбросок с бонусом +${indomitableBonus}. Новый результат обязателен.`
+          : 'Перебросить проваленный спасбросок. Новый результат обязателен.',
       }
       const windowEvent = eventFrom(commandWithRules(command, RULE_IDS.savingThrow, RULE_IDS.indomitable), 'ReactionWindowOpened', {
         id: `indomitable:${command.command_id}`,
@@ -15034,9 +15066,11 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         pending_dice_transcript: clone(diceTranscript),
         failed_roll_id: String(failed.roll_id),
         fighter_level: Math.max(9, safeInteger(opportunity.actor.level, 9)),
+        indomitable_bonus: indomitableBonus,
         pending_indomitable_queue: opportunities.slice(1).map((candidate) => ({
           target_id: candidate.target_id,
           fighter_level: Math.max(9, safeInteger(candidate.actor.level, 9)),
+          indomitable_bonus: usesDnd2014(state) ? 0 : Math.max(9, safeInteger(candidate.actor.level, 9)),
           failed_event: clone(candidate.event),
         })),
         indomitable_decisions: [],
@@ -15354,6 +15388,15 @@ export function applyGameEvent(rawState, event) {
         paused_at: null,
         changed_by: payload.changed_by ?? event.actor_id ?? null,
       }
+      break
+    case 'CampaignRulesetChanged':
+      state.ruleset_id = String(payload.ruleset_id_after || state.ruleset_id)
+      state.ruleset_version = String(payload.ruleset_version_after || state.ruleset_version)
+      state.enabled_rule_packs = uniqueStrings(payload.enabled_rule_packs_after)
+      if (!state.enabled_rule_packs.length) state.enabled_rule_packs = [state.ruleset_id]
+      state.enabled_house_rules = uniqueStrings(payload.enabled_house_rules_after)
+      state.ruleset_locked_at = payload.changed_at ?? state.ruleset_locked_at
+      state.ruleset_selection_locked = false
       break
     case 'CampaignPaused':
       state.mechanics.campaign_lifecycle = {
@@ -17081,7 +17124,7 @@ export function applyGameEvent(rawState, event) {
       state.mechanics.hit_point_dice[target] = {
         schema_version: HIT_POINT_DIE_EVENT_SCHEMA_VERSION,
         maximum: Math.max(1, Math.min(12, safeInteger(payload.pool_after?.maximum, 1))),
-        spent: 0,
+        spent: Math.max(0, safeInteger(payload.pool_after?.spent, 0)),
         die_size: [6, 8, 10, 12].includes(Number(payload.pool_after?.die_size)) ? Number(payload.pool_after.die_size) : 8,
       }
       break
@@ -17541,6 +17584,7 @@ export function eventSummary(event, resolveName = (id) => id) {
   const payload = event.payload ?? {}
   const named = (id) => (id == null || id === '' ? id : resolveName(id))
   switch (event.event_type) {
+    case 'CampaignRulesetChanged': return `Правила кампании изменены: ${payload.ruleset_id_after} · ${payload.ruleset_version_after}`
     case 'MapLevelChanged': return `${Number(payload.to_level) > Number(payload.from_level) ? 'Партия поднимается' : 'Партия спускается'}: ${payload.level_label || `этаж ${payload.to_level}`}`
     case 'SceneObjectOperated': return `${named(event.actor_id) || 'Герой'} взаимодействует с объектом ${payload.prop_id}: ${payload.intent}`
     case 'SceneObjectCheckResolved': return `${named(event.actor_id) || 'Герой'} проверяет объект ${payload.prop_id}: ${payload.success ? 'успех' : 'неудача'} (${payload.total}/${payload.difficulty})`

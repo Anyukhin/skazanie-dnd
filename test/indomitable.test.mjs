@@ -14,9 +14,12 @@ function dice(values = []) {
   })
 }
 
-function fixture({ level = 9, resource = 1, concentration = false } = {}) {
+function fixture({ level = 9, resource = 1, concentration = false, rulesetId = 'srd_5_2_1' } = {}) {
   return normalizeCampaignState({
     sessionCode: 'INDOMITABLE',
+    ruleset_id: rulesetId,
+    ruleset_version: rulesetId === 'dnd_5e_2014' ? '2014.1.0' : '5.2.1',
+    enabled_rule_packs: [rulesetId],
     partyMemberIds: ['fighter'],
     players: [{
       id: 'fighter', character: 'Бранн', characterClass: 'fighter', level,
@@ -102,6 +105,25 @@ test('новый результат обязателен даже при пов�
   assert.equal(save.payload.total, 10)
   assert.equal(save.payload.success, false)
   assert.equal(applyAll(waiting, accepted.events).mechanics.resources.fighter.indomitable.current, 0)
+})
+
+test('D&D 2014 перебрасывает провал без бонуса уровня', () => {
+  const state = fixture({ rulesetId: 'dnd_5e_2014' })
+  const service = dice([2, 10])
+  const { waiting } = openWindow(state, service)
+  assert.equal(waiting.mechanics.combat.reaction_window.indomitable_bonus, 0)
+  assert.doesNotMatch(waiting.mechanics.combat.reaction_window.action_options[0].description, /бонус/u)
+
+  const accepted = resolveCommand({
+    command_type: 'UseCombatAction', actor_id: 'fighter', action_id: 'indomitable', server_authoritative: true,
+  }, waiting, { diceService: service, context: { serverAuthoritativeCombat: true } })
+  const save = accepted.events.find((event) => event.event_type === 'SavingThrowResolved')
+  assert.equal(save.payload.kept, 10)
+  assert.equal(save.payload.total, 10)
+  assert.equal(save.payload.success, false)
+  assert.equal(save.payload.indomitable_bonus, 0)
+  assert.ok(save.source_rule_ids.includes('dnd_5e_2014:classes:fighter-indomitable'))
+  assert.equal(save.source_rule_ids.some((id) => id.startsWith('srd_5_2_1:')), false)
 })
 
 test('особенность недоступна до 9 уровня, без ресурса и вне серверного окна', () => {

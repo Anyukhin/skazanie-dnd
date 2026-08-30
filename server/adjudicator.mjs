@@ -1,13 +1,14 @@
 import { RULE_IDS, abilityModifier, findActor, skillProficiencyForActor } from './rules-engine.mjs'
+import { LEGACY_DEFAULT_RULESET_ID, rulesetRuleId } from './ruleset-config.mjs'
 
 export const DIFFICULTY_CLASSES = Object.freeze({ easy: 10, medium: 15, hard: 20 })
 export const DIFFICULTY_CATEGORIES = Object.freeze(Object.keys(DIFFICULTY_CLASSES))
 
-function retrievedIds(retrievedRules, fallbacks = []) {
+function retrievedIds(retrievedRules, fallbacks = [], rulesetId = LEGACY_DEFAULT_RULESET_ID) {
   const ids = Array.isArray(retrievedRules?.results)
     ? retrievedRules.results.map((result) => result.rule_id).filter(Boolean)
     : []
-  return [...new Set([...ids.slice(0, 5), ...fallbacks])]
+  return [...new Set([...ids.slice(0, 5), ...fallbacks].map((id) => rulesetRuleId(id, rulesetId)))]
 }
 
 function attackProfile(actor) {
@@ -60,7 +61,8 @@ export function difficultyClassFor(category) {
 
 export class Adjudicator {
   async createPlan({ intent, state, retrievedRules }) {
-    const ruleIds = retrievedIds(retrievedRules)
+    const ruleIdsFor = (fallbacks = []) => retrievedIds(retrievedRules, fallbacks, state?.ruleset_id)
+    const ruleIds = ruleIdsFor()
     const base = {
       rule_ids: ruleIds,
       proposed_commands: [],
@@ -77,8 +79,8 @@ export class Adjudicator {
         const targetId = intent.targets?.[0]
         return {
           ...base,
-          rule_ids: retrievedIds(retrievedRules, [RULE_IDS.attack, RULE_IDS.damage]),
-          proposed_commands: [{ command_type: 'MakeAttack', actor_id: intent.actor_id, target_id: targetId, ...attackProfile(actor), source_rule_ids: retrievedIds(retrievedRules, [RULE_IDS.attack, RULE_IDS.damage]) }],
+          rule_ids: ruleIdsFor([RULE_IDS.attack, RULE_IDS.damage]),
+          proposed_commands: [{ command_type: 'MakeAttack', actor_id: intent.actor_id, target_id: targetId, ...attackProfile(actor), source_rule_ids: ruleIdsFor([RULE_IDS.attack, RULE_IDS.damage]) }],
           roll_requests: [{ expression: '1d20', purpose: 'attack', actor_id: intent.actor_id }],
           confidence: 0.82,
         }
@@ -91,7 +93,7 @@ export class Adjudicator {
         const proficiency = skill ? skillProficiencyForActor(actor, skill) : null
         return {
           ...base,
-          rule_ids: retrievedIds(retrievedRules, [RULE_IDS.abilityCheck]),
+          rule_ids: ruleIdsFor([RULE_IDS.abilityCheck]),
           proposed_commands: [{
             command_type: 'MakeAbilityCheck',
             actor_id: intent.actor_id,
@@ -106,7 +108,7 @@ export class Adjudicator {
             } : {}),
             difficulty,
             difficulty_category,
-            source_rule_ids: retrievedIds(retrievedRules, [RULE_IDS.abilityCheck]),
+            source_rule_ids: ruleIdsFor([RULE_IDS.abilityCheck]),
           }],
           roll_requests: [{ expression: '1d20', purpose: `ability_check:${ability}`, actor_id: intent.actor_id }],
           confidence: 0.74,
@@ -116,8 +118,8 @@ export class Adjudicator {
         const difficulty_category = difficultyCategoryFor(intent, state)
         return {
           ...base,
-          rule_ids: retrievedIds(retrievedRules, [RULE_IDS.savingThrow]),
-          proposed_commands: [{ command_type: 'MakeSavingThrow', actor_id: intent.actor_id, ability: abilityForApproach(intent.approach), difficulty: difficultyClassFor(difficulty_category), difficulty_category, source_rule_ids: retrievedIds(retrievedRules, [RULE_IDS.savingThrow]) }],
+          rule_ids: ruleIdsFor([RULE_IDS.savingThrow]),
+          proposed_commands: [{ command_type: 'MakeSavingThrow', actor_id: intent.actor_id, ability: abilityForApproach(intent.approach), difficulty: difficultyClassFor(difficulty_category), difficulty_category, source_rule_ids: ruleIdsFor([RULE_IDS.savingThrow]) }],
           roll_requests: [{ expression: '1d20', purpose: 'saving_throw', actor_id: intent.actor_id }],
           confidence: 0.72,
         }
@@ -127,24 +129,24 @@ export class Adjudicator {
         // До появления подтверждённого предмета/заклинания это остаётся ruling.
         break
       case 'end_turn':
-        return { ...base, rule_ids: [RULE_IDS.turns], proposed_commands: [{ command_type: 'EndTurn', actor_id: intent.actor_id, source_rule_ids: [RULE_IDS.turns] }], confidence: 0.95 }
+        return { ...base, rule_ids: ruleIdsFor([RULE_IDS.turns]), proposed_commands: [{ command_type: 'EndTurn', actor_id: intent.actor_id, source_rule_ids: ruleIdsFor([RULE_IDS.turns]) }], confidence: 0.95 }
       case 'start_combat': {
         const participantIds = [...(state.players ?? []), ...(state.actors ?? [])].map((item) => String(item.id)).filter(Boolean)
-        return { ...base, rule_ids: [RULE_IDS.initiative], proposed_commands: [{ command_type: 'StartCombat', actor_id: intent.actor_id, participant_ids: participantIds, source_rule_ids: [RULE_IDS.initiative] }], roll_requests: participantIds.map((actor_id) => ({ expression: '1d20', purpose: 'initiative', actor_id })), confidence: 0.8 }
+        return { ...base, rule_ids: ruleIdsFor([RULE_IDS.initiative]), proposed_commands: [{ command_type: 'StartCombat', actor_id: intent.actor_id, participant_ids: participantIds, source_rule_ids: ruleIdsFor([RULE_IDS.initiative]) }], roll_requests: participantIds.map((actor_id) => ({ expression: '1d20', purpose: 'initiative', actor_id })), confidence: 0.8 }
       }
       case 'end_combat':
-        return { ...base, rule_ids: [RULE_IDS.initiative, RULE_IDS.turns], proposed_commands: [{ command_type: 'EndCombat', actor_id: intent.actor_id, source_rule_ids: [RULE_IDS.initiative, RULE_IDS.turns] }], confidence: 0.9 }
+        return { ...base, rule_ids: ruleIdsFor([RULE_IDS.initiative, RULE_IDS.turns]), proposed_commands: [{ command_type: 'EndCombat', actor_id: intent.actor_id, source_rule_ids: ruleIdsFor([RULE_IDS.initiative, RULE_IDS.turns]) }], confidence: 0.9 }
       case 'rest':
       {
         const kind = /долг|продолж|long/iu.test(intent.raw_message) ? 'long' : 'short'
         const minutes = kind === 'long' ? 480 : 60
         return {
           ...base,
-          rule_ids: [RULE_IDS.resource],
+          rule_ids: ruleIdsFor([RULE_IDS.resource]),
           proposed_commands: [
-            { command_type: 'StartRest', actor_id: intent.actor_id, kind, source_rule_ids: [RULE_IDS.resource] },
-            { command_type: 'AdvanceTime', amount: minutes, unit: 'minute', source_rule_ids: [RULE_IDS.resource] },
-            { command_type: 'CompleteRest', actor_id: intent.actor_id, kind, source_rule_ids: [RULE_IDS.resource] },
+            { command_type: 'StartRest', actor_id: intent.actor_id, kind, source_rule_ids: ruleIdsFor([RULE_IDS.resource]) },
+            { command_type: 'AdvanceTime', amount: minutes, unit: 'minute', source_rule_ids: ruleIdsFor([RULE_IDS.resource]) },
+            { command_type: 'CompleteRest', actor_id: intent.actor_id, kind, source_rule_ids: ruleIdsFor([RULE_IDS.resource]) },
           ],
           confidence: 0.9,
         }

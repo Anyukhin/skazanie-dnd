@@ -242,6 +242,26 @@ test('bootstrap fixes a deterministic one-evening structure and matching quest b
   assert.equal(mainQuest.clock.max, first.campaignConcept.arc.target_scenes)
 })
 
+test('bootstrap locks the selected campaign ruleset while legacy callers keep 2024', async () => {
+  const input = {
+    code: 'RULESET-BOOTSTRAP', name: 'Редакции', partyName: 'Двое', world: {},
+    players: [{ ...hero, id: 'hero-1', character: 'Первый' }],
+  }
+  const legacy = await new CampaignBootstrapper().create(input)
+  assert.equal(legacy.ruleset_id, 'srd_5_2_1')
+  assert.equal(legacy.ruleset_version, '5.2.1')
+
+  const classic = await new CampaignBootstrapper().create({ ...input, code: 'RULESET-CLASSIC', rulesetId: 'dnd_5e_2014' })
+  assert.equal(classic.ruleset_id, 'dnd_5e_2014')
+  assert.equal(classic.ruleset_version, '2014.1.0')
+  assert.deepEqual(classic.enabled_rule_packs, ['dnd_5e_2014'])
+  assert.ok(classic.enabled_house_rules.includes('skazanie:2014-preview-legacy-catalogs-v1'))
+  await assert.rejects(
+    () => new CampaignBootstrapper().create({ ...input, code: 'RULESET-BAD', rulesetId: 'invented' }),
+    (error) => error.code === 'RULESET_INVALID',
+  )
+})
+
 test('герой без портрета получает лицо из спрайта отряда по номеру места', async () => {
   // Мастерский путь: администратор присылает готовый список героев, и портрета
   // в нём нет. Раньше поле оставалось пустой строкой, клиент красил ею фишку —

@@ -1,7 +1,9 @@
 {
   "schema_version": 1,
   "ruleset_id": "srd_5_2_1",
-  "verified_at": "2026-07-28",
+  "target_ruleset_id": "dnd_5e_2014",
+  "target_cutover_status": "preview",
+  "verified_at": "2026-08-30",
   "external_sources": [
     {
       "id": "srd-5.2.1",
@@ -20,6 +22,15 @@
       "title": "dnd.su structured compatibility indexes",
       "publisher": "UNKNOWN",
       "url": "https://www.dnd.su/",
+      "license_id": "UNKNOWN",
+      "bundled": false,
+      "rights_status": "review_required"
+    },
+    {
+      "id": "dndsu-5e14-core",
+      "title": "5e14.dnd.su D&D 5e 2014 core rules pages",
+      "publisher": "UNKNOWN",
+      "url": "https://5e14.dnd.su/",
       "license_id": "UNKNOWN",
       "bundled": false,
       "rights_status": "review_required"
@@ -59,6 +70,55 @@
       "sha256": "9db57d9949ed9411ed37770543e02c3c845e1ca978ea965036e7a737f2edd5cf",
       "size_bytes": 3984,
       "source_id": "srd-5.2.1",
+      "rights_status": "project_license_required"
+    },
+    {
+      "path": "data/rule_packs/dnd_5e_2014/manifest.yaml",
+      "sha256": "80e2b8ce8c79aed0cecee1b9b8f0938831f4ecb9b6280d1739576a1820c1549b",
+      "size_bytes": 665,
+      "source_id": "dndsu-5e14-core",
+      "rights_status": "project_license_required"
+    },
+    {
+      "path": "data/rule_packs/dnd_5e_2014/coverage.yaml",
+      "sha256": "55c3077961020715dfec1419c6847e4e898d95a797f6f29f727702555893e0fc",
+      "size_bytes": 780,
+      "source_id": "dndsu-5e14-core",
+      "rights_status": "project_license_required"
+    },
+    {
+      "path": "data/rule_packs/dnd_5e_2014/glossary.csv",
+      "sha256": "e2744ecf01629dd3485341274fca91c4386807c9d616cf6b426d43a508674bc0",
+      "size_bytes": 4425,
+      "source_id": "dndsu-5e14-core",
+      "rights_status": "project_license_required"
+    },
+    {
+      "path": "data/rule_packs/dnd_5e_2014/rules.jsonl",
+      "sha256": "0bdd24c66ae613ae6450227aff4b9943a5a69d8b1a7e47098ad73fd6de847e6d",
+      "size_bytes": 39024,
+      "source_id": "dndsu-5e14-core",
+      "rights_status": "project_license_required"
+    },
+    {
+      "path": "data/rule_packs/dnd_5e_2014/ontology_edges.jsonl",
+      "sha256": "5f7a696feec47b104a35bc51ef569e5ee1538a5b540cffea4e93fdbcb391a822",
+      "size_bytes": 5732,
+      "source_id": "dndsu-5e14-core",
+      "rights_status": "project_license_required"
+    },
+    {
+      "path": "data/rule_packs/dnd_5e_2014/sources.json",
+      "sha256": "36099e6348e35aaa4fba591c3860ef5122ddf6a00a401b47ce165576034d43ac",
+      "size_bytes": 5813,
+      "source_id": "dndsu-5e14-core",
+      "rights_status": "project_license_required"
+    },
+    {
+      "path": "data/ruleset-cutover-2014.json",
+      "sha256": "23a39ca77720ec947bc2541c409af07ddda387545202a282afa7995802271e47",
+      "size_bytes": 6259,
+      "source_id": "dndsu-5e14-core",
       "rights_status": "project_license_required"
     },
     {

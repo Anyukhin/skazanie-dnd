@@ -741,7 +741,9 @@ export function validateLevelUpCommand(command, state, context = {}) {
     hit_point_policy: hitPointPolicy,
     max_hp_before: before.value,
     max_hp_after: after.value,
-    source_rule_ids: ['srd_5_2_1:resources:spending'],
+    source_rule_ids: Array.isArray(command.source_rule_ids) && command.source_rule_ids.length
+      ? [...command.source_rule_ids]
+      : ['srd_5_2_1:resources:spending'],
     visibility: 'party',
   }
 }
@@ -793,7 +795,9 @@ export function validateCharacterImportCommand(command, state, context = {}) {
     document: parsed.document,
     patch: parsed.patch,
     derived_sheet: parsed.sheet,
-    source_rule_ids: ['srd_5_2_1:resources:spending'],
+    source_rule_ids: Array.isArray(command.source_rule_ids) && command.source_rule_ids.length
+      ? [...command.source_rule_ids]
+      : ['srd_5_2_1:resources:spending'],
     visibility: 'party',
   }
 }

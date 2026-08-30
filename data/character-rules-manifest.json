@@ -2,12 +2,14 @@
   "catalog_id": "character-build-1-12",
   "catalog_version": "1.0.0",
   "engine_ruleset_id": "srd_5_2_1",
+  "target_engine_ruleset_id": "dnd_5e_2014",
+  "target_cutover_status": "preview",
   "compatibility_profile": "dndsu-5e-2014-official",
   "maximum_character_level": 12,
   "source_file": "dndsu-class-build-rules-1-12.json",
   "source_sha256": "0c3ed5a59267c003c0d488f56e5d110ece5e78c501faa5cddabdedba3f1efdbc",
   "source_size_bytes": 9818,
   "license_id": "PROJECT-COMPATIBILITY-DATA",
-  "content_origin": "bounded compatibility catalog; the authoritative mechanical ruleset remains srd_5_2_1",
+  "content_origin": "bounded 2014 compatibility catalog; selectable dnd_5e_2014 preview uses it under skazanie:2014-preview-legacy-catalogs-v1 until the dedicated catalog cutover is complete",
   "verified_at": "2026-07-28"
 }

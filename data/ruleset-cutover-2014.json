@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "decision_id": "ADR-0002",
+  "captured_at": "2026-08-30",
+  "target": {
+    "ruleset_id": "dnd_5e_2014",
+    "edition_family": "5e_2014",
+    "rule_pack": "data/rule_packs/dnd_5e_2014",
+    "source_root": "https://5e14.dnd.su/",
+    "core_allowlist": ["Player's Handbook 2014", "Dungeon Master's Guide 2014", "Monster Manual 2014"]
+  },
+  "current_runtime": {
+    "ruleset_id": "srd_5_2_1",
+    "edition_family": "5e_2024",
+    "rule_pack": "data/rule_packs/srd_5_2_1",
+    "hardcoded_marker_files_at_capture": 114,
+    "hardcoded_marker_occurrences_at_capture": 1199
+  },
+  "activation": {
+    "allowed": false,
+    "reason": "The target pack is selectable per campaign as a partial preview, but process-wide activation remains blocked while catalogs still mix 2014, 2024, and house rules.",
+    "new_campaign_policy_before_activation": "the main UI may explicitly create a dnd_5e_2014 partial preview with skazanie:2014-preview-legacy-catalogs-v1; legacy API callers still default to srd_5_2_1",
+    "new_campaign_policy_after_activation": "lock new campaigns to dnd_5e_2014",
+    "existing_campaign_policy": "preserve the recorded ruleset_id, catalog IDs, events, snapshots, and replay behavior; never rewrite automatically"
+  },
+  "content_policy": {
+    "official_2014_supplements": "separate allowlisted packs only",
+    "default_exclusions": ["Unearthed Arcana", "Homebrew", "Unofficial", "third_party"],
+    "repository_content": "structured mechanical facts and original short paraphrases",
+    "full_external_prose": "not bundled",
+    "rights_status": "review_required"
+  },
+  "domains": [
+    {
+      "id": "core_rule_pack",
+      "status": "complete",
+      "current_edition": "5e_2014 target pack added alongside the legacy 2024 pack",
+      "required_outcome": "loadable bilingual 2014 pack with source registry and no copied page prose",
+      "evidence": ["data/rule_packs/dnd_5e_2014/manifest.yaml", "test/rule-pack.test.mjs"]
+    },
+    {
+      "id": "runtime_selection",
+      "status": "partial",
+      "current_edition": "both packs are installed, creation/settings select per campaign, retrieval and core provenance are isolated; mechanical catalogs still use the legacy namespace under an explicit preview house rule",
+      "required_outcome": "select rule pack and every mechanical catalog per campaign without cross-edition results",
+      "evidence": ["server/ruleset-config.mjs", "server/campaign-ruleset.mjs", "server/index.mjs", "server/game-orchestrator.mjs", "test/rule-retriever.test.mjs", "test/ruleset-selection-api.test.mjs", "test/ruleset-activation-guard.test.mjs"]
+    },
+    {
+      "id": "campaign_persistence",
+      "status": "partial",
+      "current_edition": "new worlds record either selected ruleset; pre-game changes are event-sourced and metadata-aligned; old campaigns retain their recorded ruleset",
+      "required_outcome": "new campaigns use 2014 only after activation; existing campaigns replay under their recorded edition",
+      "evidence": ["server/campaign-bootstrap.mjs", "server/campaign-ruleset.mjs", "server/event-store.mjs", "server/migrations/001-event-engine.mjs", "test/campaign-ruleset.test.mjs"]
+    },
+    {
+      "id": "character_origins",
+      "status": "pending",
+      "current_edition": "2024 backgrounds and no complete 2014 species ability adjustments",
+      "required_outcome": "2014 races, ability adjustments, backgrounds, proficiencies, features, and starting choices",
+      "evidence": ["data/backgrounds-srd-5-2-1.json", "data/character-creation-policy-v1.json", "server/backgrounds.mjs"]
+    },
+    {
+      "id": "classes_progression",
+      "status": "partial",
+      "current_edition": "dnd.su 2014 structured class catalogs executed by a partly 2024 engine",
+      "required_outcome": "server behavior for levels 1-12 agrees with the allowlisted 2014 class facts",
+      "evidence": ["data/dndsu-class-actions-1-12.json", "data/dndsu-class-build-rules-1-12.json", "server/character-progression.mjs"]
+    },
+    {
+      "id": "spells",
+      "status": "partial",
+      "current_edition": "dnd.su compatibility catalog with mixed or individually overridden mechanics",
+      "required_outcome": "every enabled spell identifies an official 2014 source and has verified, partial, or blocked execution status",
+      "evidence": ["data/dndsu-spells-0-6.json", "data/dndsu-spell-mechanics-overrides.json", "server/combat-spells.mjs"]
+    },
+    {
+      "id": "equipment_consumables_economy",
+      "status": "pending",
+      "current_edition": "shared SRD 5.2.1 catalog; potion of healing and antitoxin action costs branch for 2014, while the remaining item profiles stay under the explicit preview compatibility rule",
+      "required_outcome": "2014 item profiles, prices, attunement, action costs, ammunition, and merchant behavior",
+      "evidence": ["server/item-catalog.mjs", "server/merchant-economy.mjs", "server/starter-kit.mjs"]
+    },
+    {
+      "id": "monsters_encounters",
+      "status": "pending",
+      "current_edition": "50 SRD 5.2.1 namespaced projections and a 2024 XP budget policy",
+      "required_outcome": "whole 2014 stat-block projections, 2014 encounter multipliers, spell slots, saves, skills, and senses",
+      "evidence": ["server/encounter-assembler.mjs", "server/npc-turn-scheduler.mjs"]
+    },
+    {
+      "id": "core_combat_conditions_rest",
+      "status": "partial",
+      "current_edition": "2014 preview branches Indomitable, Aura condition, short-rest minimum healing, long-rest Hit Dice recovery, and potion/antitoxin action costs; surprise/grapple/exhaustion, suffocation and other house rules remain mixed",
+      "required_outcome": "all edition-sensitive mechanics use 2014 behavior or an explicit enabled house_rule_id",
+      "evidence": ["server/rules-engine.mjs", "docs/rules-audit-dndsu-2026-08-22.md"]
+    },
+    {
+      "id": "provenance_and_rights",
+      "status": "blocked",
+      "current_edition": "dnd.su source rights remain unverified",
+      "required_outcome": "confirmed distribution basis or replacement with a licensed source while preserving 2014 compatibility",
+      "evidence": ["data/content-provenance.json", "ATTRIBUTION.md", "docs/production-readiness.md"]
+    }
+  ]
+}
