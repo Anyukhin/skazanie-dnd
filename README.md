@@ -141,12 +141,12 @@ Vite покажет адрес интерфейса. При первом зап�
 ROUTERAI_API_KEY=...
 ROUTERAI_BASE_URL=https://routerai.ru/api/v1
 # Первичная модель — по замеру 2026-07-31 (docs/model-benchmark-2026-07-31.md).
-# GLM 5.3 Flash добавлена по повторному замеру 2026-08-30: она быстрее и
-# дешевле Luna, но чаще требует безопасный fallback текста Рассказчика.
+# GLM 5.3 Flash добавлена по повторному замеру 2026-08-30. Отдельный строгий
+# контракт Рассказчика дал 12/12 принятых ответов при 100% памяти и голосов.
 # Подробнее: docs/model-benchmark-2026-08-30-glm-5.3-flash.md.
 DND_AI_MODEL=openai/gpt-5.6-luna
 DND_AI_FALLBACK_MODELS=z-ai/glm-5.3-flash,z-ai/glm-5.2,deepseek/deepseek-v4-flash,google/gemini-2.5-flash-lite,openai/gpt-4.1-nano
-DND_AI_MODEL_TIMEOUT_MS=9000
+DND_AI_MODEL_TIMEOUT_MS=20000
 DND_IMAGE_MODEL=openai/gpt-image-1
 ```
 

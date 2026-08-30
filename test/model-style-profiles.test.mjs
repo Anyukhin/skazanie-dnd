@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { promptForModel, reasoningProfileFor, styleAddendumFor } from '../server/model-style-profiles.mjs'
+import { promptForModel, promptForModelRole, reasoningProfileFor, styleAddendumFor } from '../server/model-style-profiles.mjs'
 
 /**
  * Добавка под Luna — компенсация замеренного провала, а не украшение: без неё
@@ -34,4 +34,16 @@ test('у моделей горячего пути reasoning ограничен �
   assert.deepEqual(reasoningProfileFor('z-ai/glm-5.3-flash'), { effort: 'low' })
   assert.deepEqual(reasoningProfileFor('openai/gpt-5.6-luna'), { enabled: false })
   assert.equal(reasoningProfileFor('unknown/model'), null)
+})
+
+test('строгий контракт GLM применяется только к Рассказчику', () => {
+  const client = { model: 'z-ai/glm-5.3-flash' }
+  const narratorPrompt = promptForModelRole('база', client, 'narrator')
+  assert.match(narratorPrompt, /Не описывай процесс/u)
+  assert.match(narratorPrompt, /ровно 1–2 предложения/u)
+  assert.match(narratorPrompt, /open_promises/u)
+  assert.match(narratorPrompt, /memory_focus/u)
+  assert.match(narratorPrompt, /вообще не упоминай героя по имени/u)
+  assert.equal(promptForModelRole('база', client, 'shared'), 'база')
+  assert.equal(promptForModel('база', client), 'база')
 })
