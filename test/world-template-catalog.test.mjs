@@ -11,10 +11,10 @@ import {
   worldTemplateOpening,
 } from '../server/world-template-catalog.mjs'
 
-test('каталог содержит ровно три заранее написанных мира с bounded preview', () => {
+test('каталог содержит ровно четыре заранее написанных мира с bounded preview', () => {
   const previews = listWorldTemplates()
-  assert.equal(previews.length, 3)
-  assert.equal(new Set(previews.map((entry) => entry.id)).size, 3)
+  assert.equal(previews.length, 4)
+  assert.equal(new Set(previews.map((entry) => entry.id)).size, 4)
   for (const preview of previews) {
     assert.ok(preview.id)
     assert.match(preview.version, /^\d+\.\d+\.\d+/u)
@@ -135,4 +135,23 @@ test('каждый стартовый город имеет один строг�
     assert.ok(overview.districts.every((district) => district.history && district.storyHooks.length === 2))
     assert.ok(overview.places.every((place) => districtIds.has(place.districtId) && place.history && place.storyHooks.length === 2))
   }
+})
+
+test('Асстоханские равнины сохраняют авторскую расстановку ключевых мест', () => {
+  const template = getWorldTemplate('astohan-plains')
+  const location = (name) => template.world_map.locations.find((entry) => entry.name === name)
+  assert.equal(template.world.startingLocation, 'Штормберг')
+  assert.equal(template.world_map.backgroundImage, '/assets/maps/world/skazanie/dragon-scar-v1.webp')
+  assert.deepEqual(
+    ['Штормберг', 'Редстоуновка', 'Миттлайд', 'Дикий лес', 'Проклятый лес', 'Башня Ломара', 'Замок Забытых Скал']
+      .map((name) => template.world_map.locations.some((location) => location.name === name)),
+    [true, true, true, true, true, true, true],
+  )
+  assert.ok(location('Штормберг').x > location('Дикий лес').x && location('Штормберг').y < location('Дикий лес').y)
+  assert.ok(location('Редстоуновка').x < location('Дикий лес').x && location('Редстоуновка').y > location('Дикий лес').y)
+  assert.ok(location('Башня Ломара').x < location('Дикий лес').x)
+  assert.ok(location('Миттлайд').y > location('Озеро Двух Отражений').y)
+  assert.ok(location('Замок Забытых Скал').x > location('Озеро Двух Отражений').x)
+  assert.ok(location('Проклятый лес').y > location('Редстоуновка').y)
+  assert.ok(location('Жаровня Вулканиса').x < location('Дикий лес').x && location('Жаровня Вулканиса').y < location('Дикий лес').y)
 })

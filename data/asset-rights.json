@@ -1371,7 +1371,9 @@
     ["maps/world/skazanie/unfading-star-v2.webp", "cfb4eb3eb4061fc57b03fe65ec25ae76df66e1ba83611e389ccd66bfb92e3d6e", 797570],
     ["maps/city/skazanie/limnara-v1.webp", "d1eef28c2e5bc0bae19a54ef9eaac1ffb8af320ff481dc2064eac96b34e7913f", 792562],
     ["maps/city/skazanie/nur-kesh-v1.webp", "def459e571602c002ab4391b1ee9e3df87c58838c5c726e1f7539473b5e2f140", 845672],
-    ["maps/city/skazanie/veld-burg-v1.webp", "5d21d1362aae4e8442ee58b29536af653de5db0a5156339c4fb48bd0233550c2", 749070]
+    ["maps/city/skazanie/veld-burg-v1.webp", "5d21d1362aae4e8442ee58b29536af653de5db0a5156339c4fb48bd0233550c2", 749070],
+    ["maps/world/skazanie/dragon-scar-v1.webp", "b085ef389c3c91f835f15272808e2d8b8391f8450093870be2d9c6540ee1c078", 664240],
+    ["maps/city/skazanie/stormberg-v1.webp", "239f0df0c831d9cfc53b3a5e668162d9a1a75cf937afecf17377ea07e0f8865f", 665812]
   ],
   "rights_status": "review_required",
   "distribution": "blocked",

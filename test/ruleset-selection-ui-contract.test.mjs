@@ -22,9 +22,12 @@ test('мастер мира загружает server-owned авторские �
   assert.match(views, /const \[worldTemplateId, setWorldTemplateId\] = useState\(''\)/u)
   assert.match(views, /world-template-card\$\{worldTemplateId === template\.id/u)
   assert.match(views, /worldTemplateId: worldTemplateId \|\| undefined/u)
+  assert.match(views, /template\.routeCount/u)
+  assert.match(views, /Опорные точки:/u)
   assert.match(views, /план столицы/u)
   assert.match(views, /Сервер возьмёт именно эту историю, карту, города и стартовую сцену/u)
   assert.match(styles, /\.world-template-grid/u)
+  assert.match(styles, /grid-template-columns: repeat\(5,minmax\(0,1fr\)\)/u)
   assert.match(styles, /\.world-template-card\.selected/u)
 })
 

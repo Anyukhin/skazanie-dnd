@@ -15,7 +15,7 @@ export const WORLD_TEMPLATE_SCHEMA_VERSION = 1
 export const WORLD_TEMPLATE_IMAGE_PATTERN = /^\/assets\/maps\/world\/skazanie\/[a-z0-9][a-z0-9-]*-v[1-9][0-9]*\.webp$/u
 export const CITY_OVERVIEW_IMAGE_PATTERN = /^\/assets\/maps\/city\/skazanie\/[a-z0-9][a-z0-9-]*-v[1-9][0-9]*\.webp$/u
 
-const WORLD_TEMPLATE_COUNT = 3
+const WORLD_TEMPLATE_COUNT = 4
 const PROJECT_ROOT = fileURLToPath(new URL('../', import.meta.url))
 const DATA_FILE = fileURLToPath(new URL('../data/campaign-worlds-v1.json', import.meta.url))
 

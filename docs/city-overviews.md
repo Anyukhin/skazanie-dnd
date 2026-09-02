@@ -12,6 +12,7 @@
 | Лига Девяти Отливов | Вельдбург | `public/assets/maps/city/skazanie/veld-burg-v1.webp` | 6 районов, 10 мест |
 | Пояс Непогашенной Звезды | Нур-Кеш | `public/assets/maps/city/skazanie/nur-kesh-v1.webp` | 6 районов, 10 мест |
 | Чаша Пепельного Сада | Лимнара | `public/assets/maps/city/skazanie/limnara-v1.webp` | 6 районов, 10 мест |
+| Асстоханские равнины | Штормберг | `public/assets/maps/city/skazanie/stormberg-v1.webp` | 6 районов, 10 мест |
 
 Районы, координаты, описания и зацепки находятся в
 `data/campaign-worlds-v1.json`. Растр не содержит текста или игровых маркеров:
@@ -19,11 +20,12 @@
 
 ## Генерация и происхождение
 
-Три изображения созданы встроенным `imagegen` 1 сентября 2026 года отдельными
-вызовами. Внешние изображения не использовались: для единства набора Image 1 в
-каждом вызове был соответствующей глобальной картой `v2` проекта и служил только
-стилевым референсом. Исходные PNG 1536×1024 механически приведены к 1600×1024
-WebP через Pillow 12.3.0: Lanczos, quality 90, без crop, чтобы сохранить раму.
+Первые три изображения созданы встроенным `imagegen` 1 сентября 2026 года
+отдельными вызовами. Для единства набора Image 1 в каждом вызове был
+соответствующей глобальной картой `v2` проекта и служил только стилевым
+референсом. Штормберг создан отдельным вызовом 2 сентября 2026 года по
+авторскому описанию, без внешнего изображения. PNG механически приведены к
+WebP через Pillow 12.3.0, quality 90, без crop.
 
 ### Вельдбург — точный prompt
 
@@ -68,6 +70,22 @@ Composition/framing: strict top-down orthographic plan, wide landscape about 25:
 Lighting/mood: brilliant late-summer Mediterranean sun with quiet volcanic unease
 Constraints: no words, no letters, no numbers, no district labels, no city names, no title cartouche, no banners, no shields, no map pins, no route overlays, no legend, no grid, no watermark, no logos, no people large enough to become focal points
 Avoid: no isometric or perspective camera; no copied symbols, border ornament, labels or exact composition from the reference; do not show the entire caldera island, only the city and immediate volcanic coast
+~~~
+
+### Штормберг — точный prompt
+
+~~~text
+Use case: stylized-concept
+Asset type: production game asset, background for an interactive fantasy city overview
+Primary request: an original strict top-down city map of Stormberg, the coastal royal capital shown in the northeast of the supplied world concept
+Scene/backdrop: a compact fortified medieval city on a rugged coast, with a sheltered working harbor on the east, a royal keep and war-room on the highest central ground, six visually distinct connected districts inside and just outside stone walls, red and slate roofs, a broad market court, an archive and temple quarter, barracks by the southern land gate, craftsmen and inns along the road south, wind-bent gardens, docks and warehouses; a small ruined older quarter and scorched memorial grove immediately northwest of the living city; open sea along the north and east edges
+Subject: the city architecture, districts, roads and harbor, prepared as a clean background for later interactive overlays
+Style/medium: hand-painted fantasy cartography on aged parchment, refined medieval atlas, watercolor and ink, detailed rooftops and believable streets, same cohesive style as a premium D&D world map
+Composition/framing: strict top-down orthographic view, wide landscape close to 25:16, full city, harbor, walls, ruined quarter and immediate outskirts visible, clear district shapes and open courtyards for later markers
+Lighting/mood: cold clear coastal daylight warmed around inhabited streets; proud capital under wartime pressure, restrained smoke far inland
+Color palette: deep sea blue, weathered sandstone, slate gray, muted royal crimson, garden green and parchment gold
+Materials/textures: subtle paper grain, inked walls and roofs, watercolor sea, rocky shore and fields
+Constraints: background only; no words, no letters, no numbers, no labels, no banners with symbols, no UI markers, no route lines, no legend, no compass rose, no border frame, no watermark, no logos
 ~~~
 
 ## Права

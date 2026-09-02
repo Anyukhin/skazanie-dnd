@@ -209,15 +209,15 @@ export function CampaignModal({ state, rulesets = RULESET_FALLBACK, onSwitch, on
                 >
                   <img src={template.image} alt="" aria-hidden="true" />
                   <span className="world-template-card-shade" />
-                  <span className="world-template-card-copy"><strong>{template.name}</strong><small>{template.tagline}</small><em>{template.locationCount ?? 0} мест · {template.cityCount ?? template.cities?.length ?? 0} городов{template.cityOverviewCount ? ' · план столицы' : ''}</em></span>
+                  <span className="world-template-card-copy"><strong>{template.name}</strong><small>{template.tagline}</small><em>{template.locationCount ?? 0} мест · {template.routeCount ?? 0} путей{template.cityOverviewCount ? ' · план столицы' : ''}</em></span>
                 </button>)}
               </div>
-              {worldTemplatesLoading && <p className="world-template-status" role="status"><RefreshCw className="spinning" size={14} />Загружаем три авторских мира…</p>}
+              {worldTemplatesLoading && <p className="world-template-status" role="status"><RefreshCw className="spinning" size={14} />Загружаем четыре авторских мира…</p>}
               {!worldTemplatesLoading && worldTemplatesError && <p className="world-template-status warning">{worldTemplatesError} Свой мир можно создать без каталога.</p>}
               {selectedWorldTemplate && <article className="world-template-preview">
                 <div><b>{selectedWorldTemplate.description}</b><small>{[selectedWorldTemplate.world?.era, selectedWorldTemplate.world?.genre, selectedWorldTemplate.recommendedLevels ? `уровни ${selectedWorldTemplate.recommendedLevels}` : ''].filter(Boolean).join(' · ')}</small></div>
                 <p>{selectedWorldTemplate.historyTeaser}</p>
-                {!!selectedWorldTemplate.cities?.length && <span><MapPin size={14} />Важные города: {selectedWorldTemplate.cities.join(', ')}</span>}
+                {!!selectedWorldTemplate.cities?.length && <span><MapPin size={14} />Опорные точки: {selectedWorldTemplate.cities.join(', ')}</span>}
               </article>}
             </section>
             <div className="field-grid three"><label><span>Название кампании · необязательно</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Придумает рассказчик" /></label><label><span>Название группы · необязательно</span><input value={partyName} onChange={(event) => setPartyName(event.target.value)} placeholder="Новый отряд" /></label><label><span>Код комнаты · необязательно</span><input value={code} onChange={(event) => setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ''))} placeholder="Создастся автоматически" maxLength={24} /></label></div>

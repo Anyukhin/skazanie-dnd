@@ -1,11 +1,11 @@
 # Предзаготовленные миры
 
 Версия набора: campaign-worlds-v1
-Дата генерации карт: **2026-08-31**
+Дата генерации карт: **2026-08-31 — 2026-09-02**
 Модель изображений: **built-in imagegen**
 Внешние ссылки на изображения при генерации не использовались.
 
-В наборе три независимых региона. Данные для загрузки лежат в
+В наборе четыре независимых региона. Данные для загрузки лежат в
 data/campaign-worlds-v1.json. Фоновые иллюстрации служат атмосферной
 проекцией: игровая геометрия, подписи, видимость и маршруты берутся из JSON, а
 не из пикселей изображения. У каждой стартовой локации visited: true;
@@ -218,6 +218,81 @@ Materials/textures: subtle paper grain, ink-wash cliffs, watercolor sea and cult
 Constraints: terrain background only; no words, no letters, no numbers, no city labels, no banners, no shields, no city-marker icons, no route lines, no legend, no border frame, no compass rose, no watermark, no logos; preserve open readable areas for UI labels
 ~~~
 
+## Асстоханские равнины
+
+**Короткая формула:** прославленная компания охотится на молодого красного
+дракона и раскрывает нарушенную клятву самого короля-драконоборца.
+Рекомендуемые уровни: **7–10**.
+
+Штормберг стоит у холодного моря, Миттлайд держит речное снабжение, а
+Редстоуновка лежит между башней Ломара и круглым Диким лесом. На западе
+поднимаются Клыки Вулканиса, на юге начинается Проклятый лес, а у восточного
+озера пустует Замок Забытых Скал. Молодой дракон Саргат разоряет равнины,
+собирает сведения через запуганных жителей и ищет реликвии своего рода.
+
+### История
+
+Шесть веков назад волшебник Элдрин получил бессмертие, связав сознание с Диким
+лесом, но потерял тело и свободу. Двести лет назад Каэлан Вердант предал короля
+Элдрика при поддержке драконьего культа; казнь драконьим клинком превратила его
+в Дуннахана Забытых Скал.
+
+Тридцать лет назад Арес и его спутники убили Вулканиса. Король обещал пощадить
+кладку в обмен на уход дракона, однако один из соратников разбил яйца после
+боя. Арес скрыл случившееся и принял славу безупречного победителя. Один
+детёныш выжил. Теперь Саргат хочет не только мести: ему нужны останки Вулканиса,
+реликвия Каэлана и публичное признание старой лжи.
+
+### Фракции
+
+- **Корона Валедора** хочет остановить Саргата, не потеряв фронт и доверие к
+  Аресу.
+- **Пограничное войско Тарна** использует каждый налёт, чтобы вынудить короля
+  открыть северную оборону.
+- **Пепельная сеть** объединяет запуганных и подкупленных осведомителей дракона.
+- **Хранители Дикого леса** защищают Элдрина и не позволяют превратить память
+  корней в оружие.
+- **Башня Ломара** ищет способ отделить бессмертие от проклятия и требует
+  сердечную ветвь Великого Древа.
+
+### Кампанийные арки
+
+1. **«Королевская охота» (7).** Осмотр Пепельной заставы, раскрытие сети
+   осведомителей и выбор между скрытой разведкой, защитой поселений и прямым
+   походом к горам.
+2. **«Три ответа на бессмертие» (8–9).** Ломар, Элдрин и Каэлан дают разные
+   преимущества и назначают разную цену за подготовку к схватке.
+3. **«Последний наследник Вулканиса» (9–10).** Правда об Аресе становится
+   оружием, а герои выбирают место встречи и исход: смерть, изгнание, договор
+   или новый порядок в королевстве.
+
+Полный редакционный эталон и честный список ещё не реализованной
+высокоуровневой механики находятся в
+[`world-reference-dragon-scar.md`](world-reference-dragon-scar.md).
+
+### Фон карты и точный prompt
+
+Файл: /assets/maps/world/skazanie/dragon-scar-v1.webp
+
+Image 1 — пользовательская схема расположения мест; она не включена в
+репозиторий. Финальный растр перерисован с нуля, а не собран из её элементов.
+
+~~~text
+Use case: stylized-concept
+Asset type: final production game asset, richly illustrated background for an interactive D&D world map
+Input images: Image 1 is a loose spatial diagram only. Preserve the relative arrangement of its major places, but redraw the entire world from scratch with far more beauty, detail, natural geography and visual storytelling. Do not preserve the simple collage rendering.
+Primary request: create a premium hand-painted fantasy atlas of the Astohan Plains, as polished and richly detailed as a collector's tabletop RPG campaign map
+Required relative layout: a dramatic jagged mountain realm dominates the northwest; a solitary magical tower stands west of the great central forest, with a small dark spring and one dead tree nearby; a cave lies farther southwest; Redstone village lies southwest of the great forest; the great Wild Forest forms the central heart of the map with an immense ancient tree subtly visible at its center; the Cursed Forest spreads across the southwest and southern frontier; Stormberg is a substantial fortified coastal capital in the northeast with an old burned ruin just northwest of it; a large irregular lake lies southeast of Stormberg and feeds a winding river toward the south; Forgotten Cliffs Castle stands east of the lake; Mittlayd lies south of the lake beside the river and an old windmill; a small distant roadside camp lies farther southeast
+Natural geography: make every biome transition believable; mountain foothills descend into ridges and valleys; add minor tributaries feeding the lake and main river; shape a rugged coast with beaches, coves and shallow water; add cultivated fields, hedgerows, orchards, scattered copses, low hills, rocky outcrops and marshy riverbanks; roads follow terrain and connect the existing places naturally; add atmospheric minor ruins and watch posts only as small environmental details, never as new major locations
+Visual storytelling: the center and settled east feel green and inhabited; the Wild Forest feels ancient, deep and alive; the Cursed Forest is visibly blighted and twisted without becoming a black empty strip; the northwest mountains feel old, dangerous and dragon-haunted with faint scorched stone and a distant warm glow near a hidden high cave; Stormberg feels proud and storm-beaten; the old eastern castle feels lonely and haunted
+Style/medium: high-detail hand-painted fantasy cartography, refined medieval illuminated atlas, ink outlines and layered watercolor/gouache, realistic landforms, dense environmental texture, coherent custom architecture, no cutout or clip-art look, no modern satellite realism
+Composition/framing: strict top-down orthographic world map, wide landscape about 25:16, geography fills the canvas, elegant restrained carved-gold border within the outer edge, one small tasteful unlabeled compass rose in open sea, enough quiet space around important locations for later UI labels
+Lighting/mood: luminous late-afternoon light over the plains, cool sea haze in the northeast, deep green filtered light in the Wild Forest, bruised dusk and faint ember glow near cursed and dragon-haunted regions; adventurous, ancient and ominous
+Color palette: aged parchment gold, meadow green, deep moss and pine, river sapphire, storm-sea teal, slate and snow gray, muted rust and ember red
+Text and overlay constraints: remove all source labels and banners; no words, no letters, no numbers, no city names, no title cartouche, no map pins, no route-marker icons, no legend, no grid, no watermark, no logos
+Do not: move the required major locations to different sides of each other; omit any required major place; add a visible dragon; turn the map into an isometric scene; leave large flat empty plains; reproduce source clip-art
+~~~
+
 ## Финальная атласная стилизация v2
 
 Ниже — точные production-prompts финального style-transfer. В каждом вызове
@@ -314,6 +389,12 @@ Avoid: do not copy Image 2's continent shapes, names, exact border ornament, tit
   общая схема потери, поиска, спуска и возвращения, связанная с урожаем и
   подземным миром.
 
+### Асстоханские равнины
+
+Исходная география, названия мест, король Арес, охота на молодого красного
+дракона, Ломар, Элдрин и Замок Забытых Скал предоставлены владельцем проекта.
+Внешние источники для текста и карты не использовались.
+
 ## Авторское и лицензионное примечание
 
 Исторические факты и древние сюжеты использованы как общественный культурный
@@ -322,7 +403,7 @@ Avoid: do not copy Image 2's continent shapes, names, exact border ornament, tit
 формулировки. Названия регионов и локаций, фракции, таймлайны, NPC, завязки и
 развязки являются оригинальным материалом набора.
 
-Базовые фоны `v1` созданы встроенным `imagegen` 2026-08-31 по промптам выше,
+Первые три базовых фона `v1` созданы встроенным `imagegen` 2026-08-31 по промптам выше,
 без внешних изображений. Финальные атласные `v2` — отдельный style-transfer:
 Image 1 был соответствующим оригинальным `v1`, Image 2 — пользовательским
 примером классической фэнтезийной карты. Референс использовался только для
@@ -330,8 +411,13 @@ Image 1 был соответствующим оригинальным `v1`, Ima
 компас; prompt запрещал копировать географию, названия, картуш, шрифты, гербы,
 точный орнамент и водяной знак. Сам референс в репозиторий не включён.
 
-Финальные PNG 1536×1024 после визуальной проверки механически приведены к
-1600×1024 WebP: Lanczos, Pillow 12.3.0, quality 90, без crop, чтобы сохранить
-раму целиком. Фоновые карты не заменяют проверку прав на отдельные ассеты
+Фон Асстоханских равнин создан встроенным `imagegen` 2026-09-02. В качестве
+Image 1 использована карта владельца проекта только как схема относительного
+расположения; prompt требовал полной художественной перерисовки и запрещал
+перенос текста, баннеров и исходных коллажных элементов. Исходная схема в
+репозиторий не включена.
+
+Финальные PNG после визуальной проверки механически приведены к WebP через
+Pillow 12.3.0, quality 90, без crop, чтобы сохранить раму целиком. Фоновые карты не заменяют проверку прав на отдельные ассеты
 проекта: при публикации следует соблюдать общую политику атрибуции и проверки
 ассетов репозитория.

@@ -71,15 +71,15 @@ test('HTTP-каталог не раскрывает полный шаблон, �
 
   const catalog = await request(baseUrl, '/api/world-templates', { cookie })
   assert.equal(catalog.status, 200, catalog.text)
-  assert.equal(catalog.body.templates.length, 3)
+  assert.equal(catalog.body.templates.length, 4)
   assert.deepEqual(catalog.body.templates.map((template) => template.id), [
-    'league-nine-tides', 'unfading-star-belt', 'ashen-garden-bowl',
+    'league-nine-tides', 'unfading-star-belt', 'ashen-garden-bowl', 'astohan-plains',
   ])
   for (const template of catalog.body.templates) {
     assert.equal(Object.hasOwn(template, 'worldMap'), false)
     assert.equal(Object.hasOwn(template, 'world_map'), false)
     assert.equal(Object.hasOwn(template, 'worldHistory'), false)
-    assert.match(template.image, /^\/assets\/maps\/world\/skazanie\/.+-v2\.webp$/u)
+    assert.match(template.image, /^\/assets\/maps\/world\/skazanie\/.+-v[1-9][0-9]*\.webp$/u)
     assert.equal(template.locationCount, 14)
     assert.equal(template.routeCount, 18)
     assert.equal(template.cityOverviewCount, 1)
