@@ -28,6 +28,7 @@ import { courierLetterForViewer, courierLettersForViewer } from './courier-lette
 import { weatherForViewer } from './weather.mjs'
 import { WORLD_DEEDS_SCHEMA_VERSION, worldDeedsFeed } from './world-deeds.mjs'
 import { worldMemoryForViewer } from './world-memory.mjs'
+import { normalizeCityOverview, normalizeWorldMapBackground, normalizeWorldMapLocationLore } from './world-map.mjs'
 
 /**
  * Модуль принимает внутреннее состояние кампании — произвольные объекты из
@@ -144,17 +145,23 @@ export function publicWorldMapFor(worldMap = {}) {
     width: Math.max(320, Math.min(2000, integer(worldMap.width, 1000))),
     height: Math.max(240, Math.min(1200, integer(worldMap.height, 640))),
     currentLocationId: locationIds.has(currentLocationId) ? currentLocationId : '',
+    ...normalizeWorldMapBackground(worldMap),
     regions: (Array.isArray(worldMap.regions) ? worldMap.regions : [])
       .filter((region) => regionIds.has(text(region?.id, 100)))
       .slice(0, 12).map((region) => ({
       id: text(region?.id, 100), name: text(region?.name, 120), biome: text(region?.biome, 40),
       x: integer(region?.x, 0), y: integer(region?.y, 0), radius: integer(region?.radius, 180),
     })),
-    locations: locations.map((location) => ({
-      id: text(location?.id, 100), name: text(location?.name, 160), kind: text(location?.kind, 40),
-      x: integer(location?.x, 0), y: integer(location?.y, 0), regionId: text(location?.regionId, 100),
-      summary: text(location?.summary, 500), known: location?.known !== false, visited: location?.visited === true,
-    })),
+    locations: locations.map((location) => {
+      const cityOverview = normalizeCityOverview(location?.cityOverview ?? location?.city_overview)
+      return {
+        id: text(location?.id, 100), name: text(location?.name, 160), kind: text(location?.kind, 40),
+        x: integer(location?.x, 0), y: integer(location?.y, 0), regionId: text(location?.regionId, 100),
+        summary: text(location?.summary, 500), known: location?.known !== false, visited: location?.visited === true,
+        ...normalizeWorldMapLocationLore(location),
+        ...(cityOverview ? { cityOverview } : {}),
+      }
+    }),
     routes: (Array.isArray(worldMap.routes) ? worldMap.routes : []).slice(0, 100)
       .filter((route) => route?.discovered !== false && locationIds.has(text(route?.from, 100)) && locationIds.has(text(route?.to, 100)))
       .map((route) => ({

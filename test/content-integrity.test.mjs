@@ -37,7 +37,10 @@ test('content integrity gate verifies hashes, references, counts and the complet
   // + 12 рисованных эмблем классов (`public/assets/ui/class-icons/*.webp`).
   // + 6 переиспользуемых фонов способностей (`public/assets/ui/action-backgrounds/*.webp`).
   // + 8 файлов гарнитур интерфейса (`public/assets/fonts/*.woff2`, см. docs/fonts.md).
-  assert.equal(report.integrity.assets, 1360)
+  // + 6 авторских глобальных карт: три исходных фона v1 и три атласных v2
+  // (`public/assets/maps/world/skazanie/*.webp`).
+  // + 3 авторских плана стартовых городов (`public/assets/maps/city/skazanie/*.webp`).
+  assert.equal(report.integrity.assets, 1369)
   assert.equal(report.integrity.coverage.find((entry) => entry.id === 'feats').coverage, 'missing')
 })
 

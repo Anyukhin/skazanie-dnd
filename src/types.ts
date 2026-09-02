@@ -1197,6 +1197,41 @@ export type WorldMapRegion = {
   radius: number
 }
 
+export type WorldMapCityDistrict = {
+  id: string
+  name: string
+  x: number
+  y: number
+  bounds: { x: number; y: number; width: number; height: number }
+  summary: string
+  history?: string
+  storyHooks?: string[]
+}
+
+export type WorldMapCityPlace = {
+  id: string
+  name: string
+  kind: 'civic' | 'harbor' | 'market' | 'temple' | 'archive' | 'gate' | 'tower' | 'garden' | 'workshop' | 'infrastructure' | 'inn' | 'other'
+  districtId: string
+  x: number
+  y: number
+  summary: string
+  history?: string
+  storyHooks?: string[]
+}
+
+export type WorldMapCityOverview = {
+  version: number
+  name: string
+  summary: string
+  image: string
+  imageAlt?: string
+  width: number
+  height: number
+  districts: WorldMapCityDistrict[]
+  places: WorldMapCityPlace[]
+}
+
 export type WorldMapLocation = {
   id: string
   name: string
@@ -1207,6 +1242,12 @@ export type WorldMapLocation = {
   summary: string
   known: boolean
   visited: boolean
+  /** Краткая история места, доступная вместе с открытой точкой карты. */
+  history?: string
+  /** До трёх сюжетных нитей, которые могут развиться вокруг места. */
+  storyHooks?: string[]
+  /** Авторский обзор стартового города; клики меняют только локальный выбор UI. */
+  cityOverview?: WorldMapCityOverview
 }
 
 export type WorldMapRoute = {
@@ -1226,9 +1267,14 @@ export type WorldMapState = {
   width: number
   height: number
   currentLocationId: string
+  /** Авторская сеть уже связна и не дополняется процедурными дорогами. */
+  routesComplete?: boolean
   regions: WorldMapRegion[]
   locations: WorldMapLocation[]
   routes: WorldMapRoute[]
+  /** Заранее подготовленный декоративный фон из public/assets. */
+  backgroundImage?: string
+  backgroundAlt?: string
 }
 
 export type SceneTransition = {

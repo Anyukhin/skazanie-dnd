@@ -91,6 +91,7 @@ import { SCENE_ARCHITECT_AGENT_ID, SceneArchitectAgent } from './scene-architect
 import { proposeAgentInteraction, resolvePartyDecision } from './player-request-router.mjs'
 import { abandonableQuest, classifyPartyDecision } from './party-exit-intent.mjs'
 import { CampaignBootstrapper } from './campaign-bootstrap.mjs'
+import { listWorldTemplates } from './world-template-catalog.mjs'
 import { AutonomousCampaignOrchestrator } from './autonomous-orchestrator.mjs'
 import { ActionAdjudicator } from './action-adjudicator.mjs'
 import { DirectorAgent } from './director-agent.mjs'
@@ -3606,6 +3607,14 @@ const server = createServer((req, res) => {
     } catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : 'Ошибка поиска правил' }) }
   }
 
+  // Публичная часть авторского каталога: только карточки выбора и счётчики.
+  // Полная история, карта и стартовые NPC остаются server-owned и попадают в
+  // кампанию лишь после разрешения выбранного id через каталог.
+  if (parsedUrl.pathname === '/api/world-templates' && req.method === 'GET') {
+    const user = requireUser(req, res); if (!user) return
+    return json(res, 200, { templates: listWorldTemplates() })
+  }
+
   if (parsedUrl.pathname === '/api/campaigns' && req.method === 'GET') {
     const user = requireUser(req, res); if (!user) return
     try {
@@ -3665,6 +3674,10 @@ const server = createServer((req, res) => {
         || body.bootstrap.enabledRulePacks !== undefined || body.bootstrap.enabled_rule_packs !== undefined)) {
         return json(res, 400, { error: 'Версию и состав rule packs определяет сервер', code: 'RULESET_FIELDS_SERVER_OWNED' })
       }
+      if (body.bootstrap && (body.bootstrap.worldTemplateVersion !== undefined || body.bootstrap.world_template_version !== undefined
+        || body.bootstrap.worldMap !== undefined || body.bootstrap.world_map !== undefined)) {
+        return json(res, 400, { error: 'Версию и содержимое авторского мира определяет сервер', code: 'WORLD_TEMPLATE_FIELDS_SERVER_OWNED' })
+      }
       const usesServerSlots = creator.role !== 'admin' || !Array.isArray(body.bootstrap?.players) || body.bootstrap.players.length === 0
       const slotCount = Math.min(MAX_PARTY_SLOTS, Math.max(MIN_PARTY_SLOTS, Math.trunc(requestedSlotCount) || MAX_PARTY_SLOTS))
       const bootstrapPlayers = usesServerSlots
@@ -3678,6 +3691,7 @@ const server = createServer((req, res) => {
         name: body.name,
         partyName: body.bootstrap.partyName,
         world: body.bootstrap.world,
+        worldTemplateId: body.bootstrap.worldTemplateId ?? body.bootstrap.world_template_id,
         players: bootstrapPlayers,
         rulesetId: body.bootstrap.rulesetId ?? body.bootstrap.ruleset_id,
       }) : null

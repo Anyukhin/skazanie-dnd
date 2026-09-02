@@ -36,8 +36,19 @@ function privateState() {
         { id: 'hidden-region', name: 'Тайная область', biome: 'void', x: 800, y: 500, radius: 80 },
       ],
       locations: [
-        { id: 'norvin', name: 'Норвин', kind: 'city', x: 100, y: 100, regionId: 'north', summary: 'Текущий город', known: true, visited: true },
-        { id: 'secret-vault', name: 'Тайное хранилище', kind: 'dungeon', x: 220, y: 140, regionId: 'north', summary: 'Скрытая база канцлера', known: false, visited: false },
+        {
+          id: 'norvin', name: 'Норвин', kind: 'city', x: 100, y: 100, regionId: 'north', summary: 'Текущий город', known: true, visited: true,
+          cityOverview: {
+            version: 1, name: 'План Норвина', summary: 'Известные районы.', image: '/assets/maps/city/skazanie/norvin-v1.webp', width: 1000, height: 640,
+            districts: [{ id: 'market', name: 'Рынок', x: 100, y: 100, bounds: { x: 20, y: 20, width: 200, height: 200 }, summary: 'Рыночный район', secret: 'городской секрет' }],
+            places: [{ id: 'fountain', name: 'Фонтан', kind: 'civic', districtId: 'market', x: 100, y: 100, summary: 'Старый фонтан', destinationLocationId: 'forged' }],
+            routes: [{ from: 'market', to: 'fountain' }],
+          },
+        },
+        {
+          id: 'secret-vault', name: 'Тайное хранилище', kind: 'dungeon', x: 220, y: 140, regionId: 'north', summary: 'Скрытая база канцлера', known: false, visited: false,
+          cityOverview: { name: 'Секретный план', summary: 'Не показывать', image: '/assets/maps/city/skazanie/secret-v1.webp', districts: [], places: [] },
+        },
       ],
       routes: [
         { id: 'secret-road', from: 'norvin', to: 'secret-vault', kind: 'trail', distance: 2, danger: 'high', discovered: false },
@@ -88,6 +99,10 @@ test('player campaign projection hides private memory, fog features and remote m
   assert.equal(projected.adventure.currentHook, 'Публичный след печати')
   assert.equal(projected.adventure.history[0].outcome, 'Герои вышли')
   assert.deepEqual(projected.worldMap.locations.map((location) => location.id), ['norvin'])
+  assert.equal(projected.worldMap.locations[0].cityOverview.name, 'План Норвина')
+  assert.equal(projected.worldMap.locations[0].cityOverview.districts[0].secret, undefined)
+  assert.equal(projected.worldMap.locations[0].cityOverview.places[0].destinationLocationId, undefined)
+  assert.equal(projected.worldMap.locations[0].cityOverview.routes, undefined)
   assert.deepEqual(projected.worldMap.routes, [])
   assert.equal(projected.worldMap.seed, undefined)
   assert.deepEqual(projected.worldMap.regions.map((region) => region.id), ['north'])
