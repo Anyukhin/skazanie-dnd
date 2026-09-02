@@ -3,6 +3,8 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { normalizeAuthoredNpcMechanics } from './authored-npc.mjs'
+
 /**
  * Каталог заранее написанных миров. В отличие от `campaign-inspiration.mjs`
  * это не источник случайных ориентиров и не ответ модели: записи здесь —
@@ -424,20 +426,38 @@ function validateOpening(raw, path, worldMap, defaults = {}) {
   const danger = text(scene.danger, `${path}.scene.danger`, 40)
   if (!DANGERS.has(danger)) throw new WorldTemplateCatalogError(`${path}.scene.danger имеет недопустимое значение`)
   const npcs = array(source.npcs, `${path}.npcs`, 1)
-  if (npcs.length > 5) throw new WorldTemplateCatalogError(`${path}.npcs не должен содержать больше пяти записей`)
+  if (npcs.length > 12) throw new WorldTemplateCatalogError(`${path}.npcs не должен содержать больше двенадцати записей`)
+  const npcIds = new Set()
   const normalizedNpcs = npcs.map((rawNpc, index) => {
     const npcPath = `${path}.npcs[${index}]`
     const npc = object(rawNpc, npcPath)
     const goals = Array.isArray(npc.goals) ? npc.goals.map((entry, goalIndex) => text(entry, `${npcPath}.goals[${goalIndex}]`, 240)).slice(0, 4) : []
     const beliefs = Array.isArray(npc.beliefs) ? npc.beliefs.map((entry, beliefIndex) => text(entry, `${npcPath}.beliefs[${beliefIndex}]`, 240)).slice(0, 4) : []
+    const npcId = npc.id == null ? '' : id(npc.id, `${npcPath}.id`)
+    if (npcId && npcIds.has(npcId)) throw new WorldTemplateCatalogError(`${path}.npcs содержит повторяющийся id «${npcId}»`)
+    if (npcId) npcIds.add(npcId)
+    const npcLocationId = npc.location == null
+      ? start.id
+      : resolveName(worldMap.locations, npc.location, `${npcPath}.location`)
+    const npcLocation = worldMap.locations.find((entry) => entry.id === npcLocationId)?.name ?? start.name
+    const npcVisibility = npc.visibility == null ? 'party' : text(npc.visibility, `${npcPath}.visibility`, 20)
+    if (!['public', 'party', 'gm_only'].includes(npcVisibility)) throw new WorldTemplateCatalogError(`${npcPath}.visibility имеет недопустимое значение`)
+    const revealOnPresence = npc.reveal_on_presence === true
+    if (revealOnPresence && npcVisibility !== 'gm_only') throw new WorldTemplateCatalogError(`${npcPath}.reveal_on_presence разрешён только закрытому NPC`)
     return {
       ...clone(npc),
+      ...(npcId ? { id: npcId } : {}),
       name: text(npc.name, `${npcPath}.name`, TEXT_LIMITS.name),
       role: optionalText(npc.role, `${npcPath}.role`, TEXT_LIMITS.short),
+      location: npcLocation,
+      location_id: npcLocationId,
+      visibility: npcVisibility,
+      ...(revealOnPresence ? { reveal_on_presence: true } : {}),
       summary: text(field(npc, 'summary', 'description', 'lore'), `${npcPath}.summary`, TEXT_LIMITS.short),
       voice: optionalText(npc.voice, `${npcPath}.voice`, TEXT_LIMITS.short),
       goals,
       beliefs,
+      ...(npc.mechanics == null ? {} : { mechanics: normalizeAuthoredNpcMechanics(npc.mechanics, `${npcPath}.mechanics`) }),
     }
   })
   return {
@@ -520,6 +540,18 @@ function validateTemplate(raw, index) {
   })))
   const timeline = validateRichCollection(source.timeline, `${path}.timeline`)
   const factions = validateRichCollection(source.factions, `${path}.factions`, true)
+  const factionIds = new Set(factions.map((faction) => id(field(faction, 'id', 'faction_id'), `${path}.factions.id`)))
+  const profileIds = new Set()
+  for (const npc of opening.npcs) {
+    if (npc.faction_id != null && !factionIds.has(id(npc.faction_id, `${path}.opening.npcs.faction_id`))) {
+      throw new WorldTemplateCatalogError(`${path}.opening.npcs содержит неизвестную фракцию «${npc.faction_id}»`)
+    }
+    if (!npc.mechanics) continue
+    if (profileIds.has(npc.mechanics.profile_id)) {
+      throw new WorldTemplateCatalogError(`${path}.opening.npcs содержит повторяющийся mechanics.profile_id «${npc.mechanics.profile_id}»`)
+    }
+    profileIds.add(npc.mechanics.profile_id)
+  }
   const storyArcs = validateRichCollection(field(source, 'story_arcs', 'storyArcs'), `${path}.story_arcs`)
   return {
     ...clone(source),

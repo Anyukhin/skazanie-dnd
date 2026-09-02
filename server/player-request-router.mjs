@@ -16,7 +16,7 @@ import { campaignConceptForAgent } from './agent-context.mjs'
  */
 export const PLAYER_REQUEST_ROLES = Object.freeze({
   worldkeeper: { id: 'worldkeeper', purpose: 'Лор, память мира и знания героя' },
-  director: { id: 'director', prompt_id: ['director/v2_story', 'director/v2_chaos'], purpose: 'Темп, развилки, групповые решения и переходы сцен' },
+  director: { id: 'director', prompt_id: ['director/v3_story', 'director/v3_chaos'], purpose: 'Темп, развилки, групповые решения и переходы сцен' },
   game_master: { id: 'game_master', purpose: 'Правила, проверки, кубики и игровые инструменты' },
   narrator: { id: 'narrator', prompt_id: 'narrator/v6', purpose: 'Финальное повествование из подтверждённых результатов' },
   map_architect: { id: 'map_architect', prompt_id: 'map_architect/v5', purpose: 'Динамическая архитектура новой локации и игровой карты' },

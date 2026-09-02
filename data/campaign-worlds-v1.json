@@ -3401,11 +3401,19 @@
         "hook": "Саргат разоряет равнины и собирает сведения о героях, а три свежих донесения связывают его охоту с забытым походом самого короля.",
         "npcs": [
           {
+            "id": "astohan-ares",
             "faction_id": "astohan-crown",
             "name": "Король Арес",
             "role": "король Валедора и прославленный драконоборец",
+            "location": "Штормберг",
             "summary": "Постаревший герой со шрамом от когтя Вулканиса на груди и плохо сгибающейся правой рукой.",
             "voice": "Говорит коротко и по-военному; риск называет честно, о прошлом отвечает только на точные вопросы.",
+            "speech_profile": {
+              "pace": "медленно, короткими приказами",
+              "lexicon": "походы, строй, клятвы и цена решения",
+              "mannerism": "перед ответом о прошлом проводит пальцами по старому шраму"
+            },
+            "social_dcs": { "persuasion": 18, "deception": 20, "intimidation": 21, "insight": 17 },
             "goals": [
               "остановить Саргата",
               "не покинуть северный фронт",
@@ -3414,14 +3422,62 @@
             "beliefs": [
               "самоуверенность убивает быстрее огня",
               "не всякая правда полезна во время войны"
-            ]
+            ],
+            "inventory": [
+              { "id": "ares-oathblade", "name": "Клятвенный клинок", "quantity": 1, "description": "Двуручный меч похода против Вулканиса; на гарде остался оплавленный знак старой клятвы.", "visibility": "party" },
+              { "id": "ares-missing-journal-page", "name": "Последняя страница журнала", "quantity": 1, "description": "Страница с признанием о судьбе кладки Вулканиса.", "visibility": "gm_only" }
+            ],
+            "tags": ["king", "dragon-slayer", "incorruptible"],
+            "mechanics": {
+              "profile_id": "astohan:ares-v1",
+              "status": "partial",
+              "level": 14,
+              "challenge_rating": "10",
+              "xp": 5900,
+              "encounter_difficulty": "deadly",
+              "hp": 168,
+              "armor": 19,
+              "speed": 30,
+              "initiative_bonus": 3,
+              "proficiency_bonus": 4,
+              "size": "medium",
+              "creature_type": "humanoid",
+              "abilities": { "str": 20, "dex": 14, "con": 18, "int": 13, "wis": 16, "cha": 18 },
+              "skills": { "athletics": 9, "history": 5, "insight": 7, "intimidation": 8, "perception": 7 },
+              "saving_throws": { "str": 9, "con": 8, "wis": 7 },
+              "condition_immunities": ["frightened"],
+              "traits": [
+                { "id": "multiattack", "name": "Три удара", "attacks": 3 },
+                { "id": "bloodied-frenzy", "name": "Последний строй" }
+              ],
+              "action_profiles": [
+                { "id": "royal-greatsword", "name": "Клятвенный клинок", "kind": "melee", "attack_modifier": 9, "damage_expression": "2d6+5", "damage_type": "slashing", "range_feet": 5, "tactical_priority": 8 }
+              ],
+              "features": [
+                { "id": "dragon-scarred-resolve", "name": "Закалённый драконом", "status": "verified", "description": "Невосприимчивость к испугу хранится в серверном списке состояний стат-блока." },
+                { "id": "old-wound", "name": "Старая рана", "status": "ruling-only", "description": "Рана правой руки важна для сюжета, но пока не меняет числа боя без отдельного правила." }
+              ],
+              "tactics": [
+                "держит ближнюю линию и не отступает при половине ОЗ",
+                "сосредотачивает удары на самой опасной цели",
+                "не преследует бегущего, если это открывает союзников"
+              ]
+            }
           },
           {
+            "id": "astohan-ivara",
             "faction_id": "astohan-crown",
             "name": "Маршал Ивара Тейн",
             "role": "командующая гарнизоном Штормберга",
+            "location": "Штормберг",
             "summary": "Практичная воительница, требующая ударить до следующего налёта.",
             "voice": "Начинает с вывода, затем перечисляет факты и сроки.",
+            "speech_profile": {
+              "pace": "быстро, рублеными фразами",
+              "lexicon": "дистанции, сроки, дозоры и снабжение",
+              "mannerism": "завершает разговор конкретным поручением и временем"
+            },
+            "social_dcs": { "persuasion": 17, "deception": 18, "intimidation": 20, "insight": 16 },
             "goals": [
               "защитить южные амбары",
               "не дать двору скрыть военные сведения"
@@ -3429,14 +3485,62 @@
             "beliefs": [
               "тайна без плана становится слабостью",
               "дракон понимает только цену риска"
-            ]
+            ],
+            "inventory": [
+              { "id": "ivara-command-horn", "name": "Рог трёх дозоров", "quantity": 1, "description": "Сигнальный рог с тремя различимыми командами гарнизону.", "visibility": "party" },
+              { "id": "ivara-front-orders", "name": "Приказы Северных Ворот", "quantity": 1, "description": "Свежая сводка о слабом участке фронта.", "visibility": "gm_only" }
+            ],
+            "tags": ["marshal", "soldier", "incorruptible"],
+            "mechanics": {
+              "profile_id": "astohan:ivara-v1",
+              "status": "partial",
+              "level": 11,
+              "challenge_rating": "8",
+              "xp": 3900,
+              "encounter_difficulty": "hard",
+              "hp": 132,
+              "armor": 18,
+              "speed": 30,
+              "initiative_bonus": 4,
+              "proficiency_bonus": 4,
+              "size": "medium",
+              "creature_type": "humanoid",
+              "abilities": { "str": 18, "dex": 16, "con": 18, "int": 14, "wis": 16, "cha": 15 },
+              "skills": { "athletics": 8, "insight": 7, "intimidation": 6, "perception": 7, "survival": 7 },
+              "saving_throws": { "str": 8, "con": 8, "wis": 7 },
+              "traits": [
+                { "id": "multiattack", "name": "Три удара", "attacks": 3 },
+                { "id": "martial-advantage", "name": "Командный нажим" }
+              ],
+              "action_profiles": [
+                { "id": "marshal-longsword", "name": "Меч маршала", "kind": "melee", "attack_modifier": 8, "damage_expression": "1d8+4", "damage_type": "slashing", "range_feet": 5, "tactical_priority": 7 },
+                { "id": "marshal-crossbow", "name": "Тяжёлый арбалет", "kind": "ranged", "attack_modifier": 7, "damage_expression": "1d10+3", "damage_type": "piercing", "range_feet": 400, "normal_range_feet": 100, "tactical_priority": 6 }
+              ],
+              "features": [
+                { "id": "commanders-order", "name": "Приказ маршала", "status": "ruling-only", "description": "Перестроение союзника отдельной реакцией ещё не имеет типизированной команды." },
+                { "id": "formation-fighter", "name": "Бой в строю", "status": "verified", "description": "Командный нажим использует существующую серверную черту martial-advantage." }
+              ],
+              "tactics": [
+                "держится рядом с союзником ради командного нажима",
+                "арбалетом перекрывает дальний проход до сближения",
+                "защищает раненого союзника раньше преследования"
+              ]
+            }
           },
           {
+            "id": "astohan-oren",
             "faction_id": "astohan-crown",
             "name": "Орен Фаль",
             "role": "хранитель Архива Сломанного Клыка",
+            "location": "Штормберг",
             "summary": "Архивист, заметивший сходство новых знаков с печатями Вулканиса.",
             "voice": "Осторожно цитирует документы и всегда уточняет, кто видел оригинал.",
+            "speech_profile": {
+              "pace": "неторопливо, с паузой перед выводом",
+              "lexicon": "даты, свидетельства, почерки и происхождение записей",
+              "mannerism": "отделяет услышанное от прочитанного словами «в документе сказано»"
+            },
+            "social_dcs": { "persuasion": 13, "deception": 16, "intimidation": 14, "insight": 18 },
             "goals": [
               "найти пропавшую страницу журнала",
               "отделить свидетельство от легенды"
@@ -3444,14 +3548,70 @@
             "beliefs": [
               "пробел в летописи тоже является фактом",
               "старые клятвы переживают королей"
-            ]
+            ],
+            "inventory": [
+              { "id": "oren-archive-keys", "name": "Связка архивных ключей", "quantity": 1, "description": "Ключи от общих хранилищ и один неподписанный ключ старой формы.", "visibility": "party" },
+              { "id": "oren-vulkanis-index", "name": "Указатель похода Вулканиса", "quantity": 1, "description": "Закрытый список документов, включая изъятую последнюю страницу.", "visibility": "gm_only" }
+            ],
+            "tags": ["archivist", "scholar"],
+            "mechanics": {
+              "profile_id": "astohan:oren-v1",
+              "status": "partial",
+              "level": 7,
+              "challenge_rating": "3",
+              "xp": 700,
+              "encounter_difficulty": "medium",
+              "hp": 45,
+              "armor": 13,
+              "speed": 30,
+              "initiative_bonus": 1,
+              "proficiency_bonus": 3,
+              "size": "medium",
+              "creature_type": "humanoid",
+              "abilities": { "str": 9, "dex": 12, "con": 13, "int": 19, "wis": 16, "cha": 12 },
+              "skills": { "arcana": 10, "history": 10, "insight": 6, "investigation": 10, "religion": 7 },
+              "saving_throws": { "int": 7, "wis": 6 },
+              "traits": [
+                { "id": "keep-distance", "name": "Держится за укрытием" }
+              ],
+              "action_profiles": [
+                { "id": "archive-dagger", "name": "Архивный кинжал", "kind": "melee", "attack_modifier": 4, "damage_expression": "1d4+1", "damage_type": "piercing", "range_feet": 5, "tactical_priority": 2 }
+              ],
+              "spellcasting": {
+                "ability": "int",
+                "save_dc": 15,
+                "attack_bonus": 7,
+                "spells": [
+                  { "id": "magic-missile", "uses": 3 },
+                  { "id": "shield", "uses": 2 },
+                  { "id": "counterspell", "uses": 1 }
+                ]
+              },
+              "features": [
+                { "id": "archivists-eye", "name": "Глаз архивиста", "status": "partial", "description": "Профиль хранит уникальные бонусы Истории, Магии и Расследования; отдельного броска NPC против мира пока нет." },
+                { "id": "prepared-ward", "name": "Архивная защита", "status": "partial", "description": "Щит и Контрзаклинание проходят каталог и дневные пределы, но планировщик ещё не разыгрывает защитные реакции NPC." }
+              ],
+              "tactics": [
+                "остаётся за укрытием и избегает ближнего боя",
+                "сначала срывает опасную магию Контрзаклинанием",
+                "Магическую стрелу использует только при прямой угрозе жизни"
+              ]
+            }
           },
           {
-            "faction_id": "ash-network",
+            "id": "astohan-mira",
+            "faction_id": "astohan-crown",
             "name": "Мира Венн",
             "role": "посланница Редстоуновки",
+            "location": "Штормберг",
             "summary": "Уставшая наездница, знающая, что среди её соседей есть осведомитель дракона.",
             "voice": "Говорит прямо, но замолкает перед именами тех, чьи семьи остаются в деревне.",
+            "speech_profile": {
+              "pace": "быстро, пока речь не заходит о соседях",
+              "lexicon": "дороги, следы, погода и приметы поселений",
+              "mannerism": "перед опасным именем заменяет его описанием места"
+            },
+            "social_dcs": { "persuasion": 14, "deception": 17, "intimidation": 15, "insight": 16 },
             "goals": [
               "вернуться до нового налёта",
               "вывести запуганных жителей из Пепельной сети"
@@ -3459,7 +3619,374 @@
             "beliefs": [
               "доносчик не всегда предатель",
               "королевская грамота не остановит огонь"
-            ]
+            ],
+            "inventory": [
+              { "id": "mira-road-bow", "name": "Лук дорожной стражи", "quantity": 1, "description": "Длинный составной лук, пристрелянный для выстрела с седла.", "visibility": "party" },
+              { "id": "mira-ash-cipher", "name": "Пепельный шифр", "quantity": 1, "description": "Полоса кожи с условными знаками осведомителей Саргата.", "visibility": "gm_only" }
+            ],
+            "tags": ["scout", "messenger", "hunter"],
+            "mechanics": {
+              "profile_id": "astohan:mira-v1",
+              "status": "partial",
+              "level": 9,
+              "challenge_rating": "5",
+              "xp": 1800,
+              "encounter_difficulty": "hard",
+              "hp": 78,
+              "armor": 16,
+              "speed": 35,
+              "initiative_bonus": 5,
+              "proficiency_bonus": 4,
+              "size": "medium",
+              "creature_type": "humanoid",
+              "abilities": { "str": 12, "dex": 18, "con": 14, "int": 13, "wis": 17, "cha": 14 },
+              "skills": { "acrobatics": 8, "deception": 6, "perception": 7, "stealth": 8, "survival": 9 },
+              "saving_throws": { "dex": 8, "wis": 7 },
+              "traits": [
+                { "id": "multiattack", "name": "Две атаки", "attacks": 2 },
+                { "id": "keep-distance", "name": "Держит дистанцию" },
+                { "id": "nimble-escape", "name": "Скользящий отход" }
+              ],
+              "action_profiles": [
+                { "id": "road-longbow", "name": "Дорожный лук", "kind": "ranged", "attack_modifier": 8, "damage_expression": "1d8+4", "damage_type": "piercing", "range_feet": 600, "normal_range_feet": 150, "tactical_priority": 8 },
+                { "id": "road-shortsword", "name": "Короткий меч", "kind": "melee", "attack_modifier": 8, "damage_expression": "1d6+4", "damage_type": "piercing", "range_feet": 5, "tactical_priority": 5 }
+              ],
+              "features": [
+                { "id": "ash-tracker", "name": "Следопыт Пепельной сети", "status": "partial", "description": "Высокий бонус Выживания записан в профиль; автоматического выслеживания по глобальной карте пока нет." },
+                { "id": "mobile-skirmisher", "name": "Подвижный стрелок", "status": "verified", "description": "Keep-distance и nimble-escape используют действующие политики планировщика NPC." }
+              ],
+              "tactics": [
+                "ищет дальнюю линию огня и укрытие",
+                "отходит без размена, когда враг подходит вплотную",
+                "помогает раненому союзнику выйти из окружения"
+              ]
+            }
+          },
+          {
+            "id": "astohan-lomar",
+            "faction_id": "lomar-tower",
+            "name": "Ломар",
+            "role": "чародей и исследователь бессмертия",
+            "location": "Башня Ломара",
+            "visibility": "gm_only",
+            "reveal_on_presence": true,
+            "summary": "Молодой могущественный маг, чья тяга к знанию постоянно спорит со страхом собственной смерти.",
+            "voice": "Начинает уверенно и учёно, но ускоряет речь, когда собеседник называет цену его опытов.",
+            "speech_profile": {
+              "pace": "размеренно в объяснениях и быстро при возражениях",
+              "lexicon": "структуры чар, сосуды памяти, доказательства и продолжение сознания",
+              "mannerism": "называет опасный опыт «следующим необходимым шагом»"
+            },
+            "social_dcs": { "persuasion": 17, "deception": 16, "intimidation": 19, "insight": 18 },
+            "goals": [
+              "получить сердечную ветвь Элдрина",
+              "доказать возможность бессмертия без утраты личности",
+              "не признать страх единственной причиной исследований"
+            ],
+            "beliefs": [
+              "запрет без объяснения не заслуживает повиновения",
+              "смерть обрывает слишком много незавершённого",
+              "риск можно оправдать знанием"
+            ],
+            "inventory": [
+              { "id": "lomar-focus-staff", "name": "Посох разомкнутого круга", "quantity": 1, "description": "Фокус Ломара с незавершённой руной переноса сознания.", "visibility": "party" },
+              { "id": "lomar-heartwood-vial", "name": "Сосуд для сердечной ветви", "quantity": 1, "description": "Пустой сосуд, подготовленный для живой части Элдрина.", "visibility": "gm_only" }
+            ],
+            "tags": ["mage", "scholar", "ambitious"],
+            "mechanics": {
+              "profile_id": "astohan:lomar-v1",
+              "status": "partial",
+              "level": 12,
+              "challenge_rating": "9",
+              "xp": 5000,
+              "encounter_difficulty": "deadly",
+              "hp": 96,
+              "armor": 15,
+              "speed": 30,
+              "initiative_bonus": 3,
+              "proficiency_bonus": 4,
+              "size": "medium",
+              "creature_type": "humanoid",
+              "abilities": { "str": 9, "dex": 16, "con": 14, "int": 20, "wis": 13, "cha": 18 },
+              "skills": { "arcana": 10, "deception": 8, "history": 9, "investigation": 9, "persuasion": 8 },
+              "saving_throws": { "int": 9, "cha": 8 },
+              "traits": [
+                { "id": "keep-distance", "name": "Держит дистанцию" }
+              ],
+              "action_profiles": [
+                { "id": "runed-staff", "name": "Рунический посох", "kind": "melee", "attack_modifier": 5, "damage_expression": "1d6+2", "damage_type": "bludgeoning", "range_feet": 5, "tactical_priority": 2 }
+              ],
+              "spellcasting": {
+                "ability": "int",
+                "save_dc": 17,
+                "attack_bonus": 9,
+                "spells": [
+                  { "id": "fire-bolt", "uses": "at-will" },
+                  { "id": "magic-missile", "uses": 3 },
+                  { "id": "scorching-ray", "uses": 2 },
+                  { "id": "shield", "uses": 3 },
+                  { "id": "misty-step", "uses": 2 },
+                  { "id": "counterspell", "uses": 2 },
+                  { "id": "hold-person", "uses": 2 },
+                  { "id": "fireball", "uses": 1 }
+                ]
+              },
+              "features": [
+                { "id": "prepared-arcanist", "name": "Подготовленный чародей", "status": "partial", "description": "Все перечисленные заклинания существуют в локальном каталоге и имеют дневные пределы; защитные реакции NPC планировщик пока не выбирает." },
+                { "id": "barrier-breaker", "name": "Взлом корневого барьера", "status": "ruling-only", "description": "Разрушение связи Элдрина с лесом заблокировано до отдельного мирового правила и последствий." }
+              ],
+              "tactics": [
+                "держит врагов на расстоянии и сначала ограничивает движение",
+                "Контрзаклинание бережёт для самой опасной магии",
+                "при угрозе жизни отступает Туманным шагом"
+              ]
+            }
+          },
+          {
+            "id": "astohan-eldrin",
+            "faction_id": "wild-forest-wardens",
+            "name": "Элдрин",
+            "role": "Великое Древо и бывший волшебник",
+            "location": "Сердце Элдрина",
+            "visibility": "gm_only",
+            "reveal_on_presence": true,
+            "summary": "Бессмертный разум, связанный с корнями Дикого леса и горькой памятью о собственном выборе.",
+            "voice": "Говорит медленно, через шелест нескольких крон; отвечает правдиво, но только в пределах памяти земли.",
+            "speech_profile": {
+              "pace": "очень медленно, с длинными паузами",
+              "lexicon": "корни, сезоны, вода, память и цена продолжения",
+              "mannerism": "повторяет ключевое слово вопроса образом из жизни леса"
+            },
+            "social_dcs": { "persuasion": 19, "deception": 21, "intimidation": 22, "insight": 15 },
+            "goals": [
+              "не допустить повторения ритуала бессмертия",
+              "защитить связь леса с подземными водами",
+              "найти способ освободить лес от своего сознания"
+            ],
+            "beliefs": [
+              "долгая жизнь не равна прожитой жизни",
+              "земля помнит прикосновение, но не знает будущего",
+              "страх Ломара можно исцелить только правдой"
+            ],
+            "inventory": [
+              { "id": "eldrin-first-seed", "name": "Первое семя", "quantity": 1, "description": "Семя дерева, росшего здесь до ритуала Элдрина.", "visibility": "gm_only" }
+            ],
+            "tags": ["ancient", "tree", "incorruptible"],
+            "mechanics": {
+              "profile_id": "astohan:eldrin-v1",
+              "status": "partial",
+              "level": 15,
+              "challenge_rating": "11",
+              "xp": 7200,
+              "encounter_difficulty": "deadly",
+              "hp": 210,
+              "armor": 18,
+              "speed": 0,
+              "initiative_bonus": -1,
+              "proficiency_bonus": 4,
+              "size": "huge",
+              "creature_type": "plant",
+              "abilities": { "str": 22, "dex": 8, "con": 21, "int": 19, "wis": 22, "cha": 16 },
+              "skills": { "arcana": 8, "history": 8, "insight": 10, "nature": 12, "perception": 10 },
+              "saving_throws": { "con": 9, "int": 8, "wis": 10 },
+              "damage_resistances": ["bludgeoning", "psychic"],
+              "damage_immunities": ["poison"],
+              "condition_immunities": ["exhaustion", "poisoned", "prone"],
+              "traits": [
+                { "id": "multiattack", "name": "Два удара корнями", "attacks": 2 }
+              ],
+              "action_profiles": [
+                { "id": "root-lash", "name": "Удар корнем", "kind": "melee", "attack_modifier": 10, "damage_expression": "2d8+6", "damage_type": "bludgeoning", "range_feet": 15, "tactical_priority": 7 }
+              ],
+              "spellcasting": {
+                "ability": "wis",
+                "save_dc": 18,
+                "attack_bonus": 10,
+                "spells": [
+                  { "id": "thorn-whip", "uses": "at-will" },
+                  { "id": "entangle", "uses": 3 },
+                  { "id": "barkskin", "uses": 2 },
+                  { "id": "blight", "uses": 2 },
+                  { "id": "wall-of-thorns", "uses": 1 }
+                ]
+              },
+              "legendary": {
+                "uses": 2,
+                "resistance": 1,
+                "actions": [
+                  { "id": "root-sweep", "name": "Взмах корней", "cost": 1, "kind": "attack", "attack_modifier": 10, "damage_expression": "2d8+6", "damage_type": "bludgeoning", "range_feet": 15 },
+                  { "id": "ground-surge", "name": "Восстание корней", "cost": 2, "kind": "save", "save_ability": "str", "save_dc": 18, "damage_expression": "3d8", "damage_type": "bludgeoning", "half_on_save": true, "condition": "restrained", "radius_feet": 15, "range_feet": 60 }
+                ]
+              },
+              "features": [
+                { "id": "rooted-body", "name": "Укоренённое тело", "status": "verified", "description": "Нулевая скорость, защиты и иммунитеты записаны непосредственно в серверном профиле." },
+                { "id": "memory-of-roots", "name": "Память корней", "status": "ruling-only", "description": "Ответы о прошлом ограничены каноном мира; универсального механического всеведения нет." }
+              ],
+              "tactics": [
+                "не преследует противников и контролирует пространство вокруг ствола",
+                "сдерживает корнями тех, кто угрожает стволу",
+                "останавливает бой, если герои прекращают вредить лесу"
+              ]
+            }
+          },
+          {
+            "id": "astohan-kaelan",
+            "faction_id": "astohan-crown",
+            "name": "Каэлан Вердант",
+            "role": "Дуннахан Замка Забытых Скал",
+            "location": "Замок Забытых Скал",
+            "visibility": "gm_only",
+            "reveal_on_presence": true,
+            "summary": "Обезглавленный рыцарь-предатель, который две сотни лет принимает вечную стражу за искупление.",
+            "voice": "Его отрубленная призрачная голова говорит холодным придворным тоном, а тело отвечает движением клинка.",
+            "speech_profile": {
+              "pace": "торжественно, с тяжёлыми паузами",
+              "lexicon": "честь, суд, корона, долг и искупление",
+              "mannerism": "каждый вопрос возвращает собеседнику как обвинение"
+            },
+            "social_dcs": { "persuasion": 20, "deception": 18, "intimidation": 22, "insight": 19 },
+            "goals": [
+              "доказать, что вечная стража искупила предательство",
+              "не позволить Саргату забрать реликвию",
+              "услышать правду о своей казни"
+            ],
+            "beliefs": [
+              "клятва переживает того, кто её нарушил",
+              "освобождение нужно заслужить",
+              "корона помнит только удобных мёртвых"
+            ],
+            "inventory": [
+              { "id": "kaelan-moon-judge", "name": "Лунный Судья", "quantity": 1, "description": "Проклятый клинок казни, связанный с драконьей кровью.", "visibility": "party" },
+              { "id": "kaelan-cursed-tear", "name": "Слеза Проклятого Рыцаря", "quantity": 1, "description": "Кристаллизованная скорбь Каэлана и будущая сюжетная награда.", "visibility": "gm_only" }
+            ],
+            "tags": ["undead", "knight", "incorruptible"],
+            "mechanics": {
+              "profile_id": "astohan:kaelan-v1",
+              "status": "partial",
+              "level": 13,
+              "challenge_rating": "10",
+              "xp": 5900,
+              "encounter_difficulty": "deadly",
+              "hp": 172,
+              "armor": 18,
+              "speed": 40,
+              "initiative_bonus": 4,
+              "proficiency_bonus": 4,
+              "size": "medium",
+              "creature_type": "undead",
+              "abilities": { "str": 20, "dex": 16, "con": 19, "int": 14, "wis": 15, "cha": 18 },
+              "skills": { "athletics": 9, "history": 6, "intimidation": 8, "perception": 6, "religion": 6 },
+              "saving_throws": { "str": 9, "con": 8, "cha": 8 },
+              "damage_resistances": ["cold", "necrotic"],
+              "damage_immunities": ["poison"],
+              "condition_immunities": ["exhaustion", "frightened", "poisoned"],
+              "traits": [
+                { "id": "multiattack", "name": "Две атаки", "attacks": 2 },
+                { "id": "relentless-pursuit", "name": "Неумолимая погоня" },
+                { "id": "bloodied-frenzy", "name": "Ярость осуждённого" }
+              ],
+              "action_profiles": [
+                { "id": "moon-judge", "name": "Лунный Судья", "kind": "melee", "attack_modifier": 9, "damage_expression": "2d8+5", "damage_type": "slashing", "range_feet": 5, "tactical_priority": 8 },
+                { "id": "spectral-lance", "name": "Призрачное копьё", "kind": "ranged", "attack_modifier": 8, "damage_expression": "2d6+4", "damage_type": "cold", "range_feet": 60, "normal_range_feet": 60, "tactical_priority": 6 }
+              ],
+              "legendary": {
+                "uses": 2,
+                "resistance": 1,
+                "actions": [
+                  { "id": "judges-cut", "name": "Удар Судьи", "cost": 1, "kind": "attack", "attack_modifier": 9, "damage_expression": "2d8+5", "damage_type": "slashing", "range_feet": 5 },
+                  { "id": "wail-of-the-condemned", "name": "Вой осуждённых", "cost": 2, "kind": "save", "save_ability": "con", "save_dc": 17, "damage_expression": "3d8", "damage_type": "thunder", "half_on_save": true, "condition": "frightened", "radius_feet": 30, "range_feet": 30 }
+                ]
+              },
+              "features": [
+                { "id": "dullahan-form", "name": "Дуннахан", "status": "partial", "description": "Защиты, иммунитеты, легендарное сопротивление и Вой осуждённых исполняются; возвращение головы и полуночная уязвимость пока не связаны событиями." },
+                { "id": "midnight-invulnerability", "name": "Неуязвимость полуночи", "status": "ruling-only", "description": "Полная неуязвимость до возвращения головы заблокирована до типизированной механики загадки." }
+              ],
+              "tactics": [
+                "неумолимо сокращает дистанцию до носителя реликвии",
+                "Воем осуждённых разрывает плотный строй",
+                "может прекратить бой после признания правды о предательстве"
+              ]
+            }
+          },
+          {
+            "id": "astohan-sargat",
+            "faction_id": "ash-network",
+            "name": "Саргат",
+            "role": "молодой красный дракон и наследник Вулканиса",
+            "location": "Жаровня Вулканиса",
+            "visibility": "gm_only",
+            "reveal_on_presence": true,
+            "summary": "Гордый и вспыльчивый молодой дракон, который скрывает страх оказаться последним и слабейшим в своём роду.",
+            "voice": "Говорит подчёркнуто вежливо и почти придворно; при потере контроля переходит на короткие угрозы.",
+            "speech_profile": {
+              "pace": "медленно и учтиво, затем внезапно резко",
+              "lexicon": "род, наследство, дань, огонь и право сильного",
+              "mannerism": "называет собеседника полным титулом перед каждой угрозой"
+            },
+            "social_dcs": { "persuasion": 22, "deception": 23, "intimidation": 24, "insight": 21 },
+            "goals": [
+              "вернуть останки и наследие Вулканиса",
+              "заставить Ареса признать нарушенную клятву",
+              "получить реликвию Каэлана"
+            ],
+            "beliefs": [
+              "страх является честнейшей формой признания",
+              "чужая вина даёт ему право требовать расплаты",
+              "последний наследник обязан стать величайшим"
+            ],
+            "inventory": [
+              { "id": "sargat-ash-mask", "name": "Пепельная личина", "quantity": 1, "description": "Авторский предмет предполагаемого человеческого облика Саргата.", "visibility": "gm_only" },
+              { "id": "sargat-vulkanis-scale", "name": "Чешуя Вулканиса", "quantity": 1, "description": "Единственная уцелевшая чешуя предка, которую Саргат носит у сердца.", "visibility": "gm_only" }
+            ],
+            "tags": ["dragon", "boss", "incorruptible"],
+            "mechanics": {
+              "profile_id": "astohan:sargat-v1",
+              "status": "partial",
+              "level": 14,
+              "challenge_rating": "10",
+              "xp": 5900,
+              "encounter_difficulty": "deadly",
+              "hp": 189,
+              "armor": 18,
+              "speed": 40,
+              "initiative_bonus": 4,
+              "proficiency_bonus": 4,
+              "size": "large",
+              "creature_type": "dragon",
+              "abilities": { "str": 23, "dex": 14, "con": 21, "int": 15, "wis": 13, "cha": 19 },
+              "skills": { "deception": 8, "insight": 5, "intimidation": 8, "perception": 9, "stealth": 6 },
+              "saving_throws": { "dex": 6, "con": 9, "wis": 5, "cha": 8 },
+              "damage_immunities": ["fire"],
+              "traits": [
+                { "id": "multiattack", "name": "Укус и два удара когтями", "action_counts": { "sargat-bite": 1, "sargat-claw": 2 } },
+                { "id": "aggressive", "name": "Огненный налёт" },
+                { "id": "bloodied-frenzy", "name": "Ярость последнего наследника" }
+              ],
+              "action_profiles": [
+                { "id": "sargat-bite", "name": "Укус", "kind": "melee", "attack_modifier": 10, "damage_expression": "2d10+6", "damage_type": "piercing", "range_feet": 10, "tactical_priority": 8 },
+                { "id": "sargat-claw", "name": "Коготь", "kind": "melee", "attack_modifier": 10, "damage_expression": "2d6+6", "damage_type": "slashing", "range_feet": 5, "tactical_priority": 7 },
+                { "id": "sargat-tail", "name": "Хвост", "kind": "melee", "attack_modifier": 10, "damage_expression": "2d8+6", "damage_type": "bludgeoning", "range_feet": 15, "tactical_priority": 6 }
+              ],
+              "legendary": {
+                "uses": 3,
+                "resistance": 2,
+                "actions": [
+                  { "id": "tail-sweep", "name": "Удар хвостом", "cost": 1, "kind": "attack", "attack_modifier": 10, "damage_expression": "2d8+6", "damage_type": "bludgeoning", "range_feet": 15 },
+                  { "id": "wing-buffet", "name": "Взмах крыльев", "cost": 2, "kind": "save", "save_ability": "dex", "save_dc": 17, "damage_expression": "2d6+6", "damage_type": "bludgeoning", "half_on_save": true, "condition": "prone", "radius_feet": 10, "range_feet": 10 },
+                  { "id": "fire-breath", "name": "Огненное дыхание", "cost": 3, "kind": "save", "save_ability": "dex", "save_dc": 17, "damage_expression": "6d6", "damage_type": "fire", "half_on_save": true, "radius_feet": 30, "range_feet": 60 }
+                ]
+              },
+              "features": [
+                { "id": "young-red-dragon", "name": "Красный дракон", "status": "partial", "description": "КД, ОЗ, огненная невосприимчивость и атаки записаны в исполнимой форме; полёт и точная форма конуса дыхания ещё не поддержаны." },
+                { "id": "ash-mask", "name": "Пепельная личина", "status": "ruling-only", "description": "Человеческий облик остаётся заблокированным до отдельной механики превращения и предмета." },
+                { "id": "ash-network-awareness", "name": "Осведомлённость Пепельной сети", "status": "ruling-only", "description": "Счётчик сведений о героях ещё не меняется событиями мира." }
+              ],
+              "tactics": [
+                "начинает с огненного дыхания по плотному строю",
+                "использует досягаемость и крылья, не оставаясь окружённым",
+                "при угрозе поражения отступает к заранее выбранному выходу"
+              ]
+            }
           }
         ]
       },

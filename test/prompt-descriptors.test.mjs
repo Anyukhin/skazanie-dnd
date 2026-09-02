@@ -60,7 +60,7 @@ test('старые версии промптов остаются на диск�
 
 test('вариант промпта Режиссёра объявлен на каждый режим импровизации', () => {
   const director = PROMPT_DESCRIPTORS.filter((descriptor) => descriptor.promptId.startsWith('director/'))
-  assert.deepEqual(director.map((descriptor) => descriptor.promptId).sort(), ['director/v2_chaos', 'director/v2_story'],
+  assert.deepEqual(director.map((descriptor) => descriptor.promptId).sort(), ['director/v3_chaos', 'director/v3_story'],
     'режимов импровизации два, и у каждого свой промпт Режиссёра')
   for (const descriptor of director) {
     assert.equal(descriptor.module, 'director-agent.mjs', 'оба варианта грузит один модуль')

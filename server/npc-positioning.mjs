@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 
+import { safeAuthoredNpcMechanics } from './authored-npc.mjs'
 import {
   inventoryStackKey,
   MAX_STOCK_QUANTITY,
@@ -53,7 +54,7 @@ function safePlacement(value = {}) {
 }
 
 function safeVital(value = {}) {
-  const maximum = Math.max(1, Math.min(100, integer(value.max_hp, 4)))
+  const maximum = Math.max(1, Math.min(500, integer(value.max_hp, 4)))
   const hp = Math.max(0, Math.min(maximum, integer(value.hp, maximum)))
   return { hp, max_hp: maximum, alive: value.alive !== false && hp > 0 }
 }
@@ -126,12 +127,16 @@ export function normalizeNpcWorldState(input = {}) {
     inventoryEntries.push([npcId, inventory])
   }
   const inventories = Object.fromEntries(inventoryEntries)
+  const profiles = Object.fromEntries(Object.entries(source.profiles ?? {}).slice(0, 500)
+    .map(([npcId, value]) => [text(npcId, 120), safeAuthoredNpcMechanics(value)])
+    .filter(([npcId, profile]) => npcId && profile))
   return {
-    schema_version: 2,
+    schema_version: 3,
     placements: placements.slice(-MAX_PLACEMENTS),
     vitals,
     stances,
     inventories,
+    profiles,
   }
 }
 
@@ -146,7 +151,9 @@ export function sceneLocationId(state = {}) {
 function npcLocationMatchesCurrentScene(npc, state) {
   const currentId = comparable(sceneLocationId(state))
   const currentName = comparable(state.scene?.location ?? state.scene?.title)
+  const locationId = comparable(npc?.location_id ?? npc?.locationId)
   const location = comparable(npc?.location)
+  if (locationId && currentId) return locationId === currentId
   if (!location) return false
   return location === currentId || location === currentName
 }
@@ -175,8 +182,14 @@ export function npcVitalFor(state = {}, npcId) {
   const world = normalizeNpcWorldState(state.npc_world)
   const persisted = world.vitals[String(npcId ?? '')]
   if (persisted) return persisted
+  const authored = world.profiles[String(npcId ?? '')]
+  if (authored) return { hp: authored.hp, max_hp: authored.hp, alive: authored.hp > 0 }
   const npc = (state.social?.npcs ?? []).find((candidate) => String(candidate?.id) === String(npcId ?? ''))
   return initialNpcVital(npc)
+}
+
+export function npcMechanicsFor(state = {}, npcId) {
+  return clone(normalizeNpcWorldState(state.npc_world).profiles[String(npcId ?? '')] ?? null)
 }
 
 /**
@@ -187,7 +200,7 @@ export function npcVitalFor(state = {}, npcId) {
 export function npcInteractionTargetForViewer(state = {}, npcId) {
   const expectedNpcId = String(npcId ?? '')
   const npc = (state.social?.npcs ?? []).find((candidate) => String(candidate?.id) === expectedNpcId) ?? null
-  if (!npc || npc.visibility === 'gm_only' || !npcLocationMatchesCurrentScene(npc, state)) return null
+  if (!npc || (npc.visibility === 'gm_only' && npc.reveal_on_presence !== true) || !npcLocationMatchesCurrentScene(npc, state)) return null
   const placement = npcPlacementFor(state, expectedNpcId)
   return placement ? { npc, placement } : null
 }
@@ -357,7 +370,11 @@ export function planSceneNpcPlacementEvents(state = {}) {
       anchor_prop_id: selected.anchor_prop_id,
       placement_reason: existing ? 'relocated-invalid-post' : 'role-suitable-post',
       policy_id: NPC_WORLD_POLICY_ID,
-      ...(existing ? { from: { x: existing.x, y: existing.y } } : { vitality: initialNpcVital(npc) }),
+      ...(existing ? { from: { x: existing.x, y: existing.y } } : {
+        vitality: world.profiles[String(npc.id)]
+          ? { hp: world.profiles[String(npc.id)].hp, max_hp: world.profiles[String(npc.id)].hp, alive: true }
+          : initialNpcVital(npc),
+      }),
     }
     events.push({
       event_type: existing ? 'NpcMoved' : 'NpcPlaced',
@@ -751,7 +768,7 @@ export function sceneNpcsForViewer(state = {}) {
   const world = normalizeNpcWorldState(state.npc_world)
   const locationId = sceneLocationId(state)
   return presentSceneNpcs({ ...state, npc_world: { ...world, vitals: {} } })
-    .filter((npc) => npc.visibility !== 'gm_only')
+    .filter((npc) => npc.visibility !== 'gm_only' || npc.reveal_on_presence === true)
     .map((npc) => {
       const placement = world.placements.find((entry) => entry.npc_id === String(npc.id) && entry.location_id === locationId)
       if (!placement) return null

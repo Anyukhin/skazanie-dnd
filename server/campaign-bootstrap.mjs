@@ -214,28 +214,38 @@ function fallbackOpening({ name, partyName, world, heroes, entropy, inspiration 
  * прологе трактирщик и рыбак не существовали как NPC — заговорить с ними было
  * нельзя, парсер отвечал «Уточните имя собеседника».
  */
-function normalizeOpeningNpcs(value, fallback) {
+function normalizeOpeningNpcs(value, fallback, { authored = false } = {}) {
   const source = Array.isArray(value) ? value : []
   const normalized = source
     .map((entry) => (entry && typeof entry === 'object' && !Array.isArray(entry) ? entry : {}))
     .map((entry) => ({
+      id: authored ? clean(entry.id, 120) : '',
       name: clean(entry.name, 80),
       role: clean(entry.role, 120),
+      location: authored ? clean(entry.location, 180) : '',
+      locationId: authored ? clean(entry.location_id ?? entry.locationId, 120) : '',
       summary: clean(entry.summary, 400),
       voice: clean(entry.voice, 240),
       factionId: clean(entry.faction_id ?? entry.factionId, 80),
       goals: (Array.isArray(entry.goals) ? entry.goals : []).map((goal) => clean(goal, 160)).filter(Boolean).slice(0, 4),
       beliefs: (Array.isArray(entry.beliefs) ? entry.beliefs : []).map((belief) => clean(belief, 160)).filter(Boolean).slice(0, 4),
+      speechProfile: authored && entry.speech_profile && typeof entry.speech_profile === 'object' ? structuredClone(entry.speech_profile) : null,
+      socialDcs: authored && entry.social_dcs && typeof entry.social_dcs === 'object' ? structuredClone(entry.social_dcs) : null,
+      inventory: authored && Array.isArray(entry.inventory) ? structuredClone(entry.inventory) : [],
+      tags: authored && Array.isArray(entry.tags) ? entry.tags.map((tag) => clean(tag, 60)).filter(Boolean).slice(0, 20) : [],
+      visibility: authored && ['public', 'party', 'gm_only'].includes(String(entry.visibility)) ? String(entry.visibility) : 'party',
+      revealOnPresence: authored && entry.reveal_on_presence === true,
+      mechanics: authored && entry.mechanics && typeof entry.mechanics === 'object' ? structuredClone(entry.mechanics) : null,
     }))
     .filter((entry) => entry.name)
-    // Пять, а не три: пролог регулярно называет по имени больше трёх персонажей,
-    // и срезанные исчезали из мира — с ними нельзя было заговорить, а их
-    // токенов не было на карте.
-    .slice(0, 5)
+    // Модель по-прежнему ограничена пятью NPC первой сцены. Авторский шаблон
+    // может хранить до двенадцати заранее проверенных персонажей в разных
+    // локациях: в текущей сцене появятся только совпавшие по location.
+    .slice(0, authored ? 12 : 5)
   return normalized.length ? normalized : fallback
 }
 
-function normalizeOpening(input, fallback) {
+function normalizeOpening(input, fallback, { authored = false } = {}) {
   const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
   const scene = source.scene && typeof source.scene === 'object' && !Array.isArray(source.scene) ? source.scene : {}
   const map = scene.map && typeof scene.map === 'object' && !Array.isArray(scene.map) ? scene.map : {}
@@ -274,7 +284,7 @@ function normalizeOpening(input, fallback) {
       },
     },
     hook: clean(source.hook, 500) || fallback.hook,
-    npcs: normalizeOpeningNpcs(source.npcs, fallback.npcs),
+    npcs: normalizeOpeningNpcs(source.npcs, fallback.npcs, { authored }),
   }
 }
 
@@ -315,7 +325,7 @@ export class CampaignBootstrapper {
     const inspiration = worldTemplate ? null : drawCampaignInspiration({ world, diceService: this.diceService })
     const fallback = fallbackOpening({ name: campaignName, partyName: groupName, world, heroes, entropy: campaignCode, inspiration })
     let opening = worldTemplate
-      ? normalizeOpening(worldTemplateOpening(worldTemplate, { campaignName, partyName: groupName }), fallback)
+      ? normalizeOpening(worldTemplateOpening(worldTemplate, { campaignName, partyName: groupName }), fallback, { authored: true })
       : fallback
     let generatedBy = worldTemplate ? 'authored-world-template' : 'local-storyteller'
     if (this.llmClient && !worldTemplate) {
@@ -421,16 +431,22 @@ export class CampaignBootstrapper {
     const starterFactionId = factionEntities[0].id
     const starterQuestId = `quest-${seed.slice(0, 12)}`
     const openingNpcs = opening.npcs.map((npc, index) => ({
-      id: `npc-${seed.slice(0, 12)}-${index + 1}`,
+      id: npc.id || `npc-${seed.slice(0, 12)}-${index + 1}`,
       name: npc.name,
       role: npc.role || 'житель этих мест',
-      location: opening.scene.location,
+      location: npc.location || opening.scene.location,
+      ...(npc.locationId ? { location_id: npc.locationId } : {}),
       public_summary: npc.summary || `${npc.name} — часть первой сцены.`,
       voice: npc.voice || 'Говорит спокойно и по делу.',
+      ...(npc.speechProfile ? { speech_profile: structuredClone(npc.speechProfile) } : {}),
       goals: npc.goals.length ? npc.goals : ['Пережить происходящее'],
       beliefs: npc.beliefs.length ? npc.beliefs : ['Слухам верить нельзя'],
-      known_fact_ids: [], visibility: 'party', available: true,
-      tags: [`faction:${factionIdByTemplateId.get(npc.factionId) ?? starterFactionId}`],
+      ...(npc.socialDcs ? { social_dcs: structuredClone(npc.socialDcs) } : {}),
+      ...(npc.inventory?.length ? { inventory: structuredClone(npc.inventory) } : {}),
+      known_fact_ids: [], visibility: npc.visibility || 'party',
+      ...(npc.revealOnPresence === true ? { reveal_on_presence: true } : {}),
+      available: true,
+      tags: [...new Set([...(npc.tags ?? []), `faction:${factionIdByTemplateId.get(npc.factionId) ?? starterFactionId}`])],
     }))
     const starterNpcId = openingNpcs[0].id
     // Токены собеседников появляются уже в первой сцене. Раньше расстановка
@@ -442,7 +458,14 @@ export class CampaignBootstrapper {
       locationId: startingLocationId,
       seed: campaignWorldMap.seed ?? seed,
     }))
-    const emptyNpcWorld = { schema_version: 2, placements: [], vitals: {}, stances: {}, inventories: {} }
+    const emptyNpcWorld = {
+      schema_version: 3,
+      placements: [], vitals: {}, stances: {}, inventories: {},
+      profiles: Object.fromEntries(opening.npcs.filter((npc) => npc.mechanics).map((npc, index) => [
+        npc.id || `npc-${seed.slice(0, 12)}-${index + 1}`,
+        structuredClone(npc.mechanics),
+      ])),
+    }
     const placementDraft = {
       scene: { title: opening.scene.title, location: opening.scene.location, location_id: startingLocationId, mood: opening.scene.mood, objective: opening.scene.objective, turn: 1, cells, map: sceneTacticalMap },
       social: { npcs: openingNpcs },

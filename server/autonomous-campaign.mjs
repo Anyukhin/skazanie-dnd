@@ -79,6 +79,7 @@ export function normalizeDirectorIntent(input = {}) {
     if (!DIFFICULTIES.has(input.difficulty)) throw new DirectorIntentError('Сложность встречи не входит в server allowlist', 'DIRECTOR_ENCOUNTER_DIFFICULTY_NOT_ALLOWED')
     intent.theme = input.theme
     intent.difficulty = input.difficulty
+    if (input.npc_id != null) intent.npc_id = safeId(input.npc_id, 'npc_id')
   }
   if (type === 'advance_quest_clock') intent.quest_id = safeId(input.quest_id, 'quest_id')
   if (type === 'open_social_scene' && input.npc_id != null) intent.npc_id = safeId(input.npc_id, 'npc_id')
