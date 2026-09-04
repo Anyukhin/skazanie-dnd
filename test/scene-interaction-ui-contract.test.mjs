@@ -71,9 +71,8 @@ test('клик выбирает интерактивный prop, а его кн�
 })
 
 test('адрес иллюстрации локации строится и у игрока: id берётся из карты мира, когда сцена его не несёт', () => {
-  // `scene.location_id` есть только в проекции ведущего. Если фолбэк на
-  // `worldMap.currentLocationId` схлопнуть обратно до голого `scene.location_id`,
-  // картинку локации увидит один ведущий, а игроки — библиотечную подложку.
+  // В старой сцене канонического id может не быть. Для неё сохраняется
+  // запасной источник worldMap.currentLocationId.
   assert.match(appTsxSource, /const locationArtId = state\.scene\.location_id \?\? state\.worldMap\?\.currentLocationId \?\? ''/u)
   assert.match(appTsxSource, /\/api\/campaigns\/\$\{state\.sessionCode\}\/locations\/\$\{encodeURIComponent\(locationArtId\)\}\/illustration/u)
 })

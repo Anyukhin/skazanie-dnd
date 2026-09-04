@@ -25,13 +25,39 @@ const typesSource = readFileSync(new URL('../src/types.ts', import.meta.url), 'u
 const buildDir = mkdtempSync(join(tmpdir(), 'skazanie-player-experience-'))
 const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
 const helperPath = fileURLToPath(new URL('../src/player-experience.ts', import.meta.url))
+const mapHelperPath = fileURLToPath(new URL('../src/tactical-map-client.ts', import.meta.url))
 const compiled = spawnSync(process.execPath, [
   compiler, '--ignoreConfig', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler',
-  '--lib', 'ES2023,DOM', '--strict', '--skipLibCheck', '--outDir', buildDir, helperPath,
+  '--lib', 'ES2023,DOM', '--strict', '--skipLibCheck', '--outDir', buildDir, helperPath, mapHelperPath,
 ], { encoding: 'utf8' })
 assert.equal(compiled.status, 0, compiled.stderr || compiled.stdout)
 renameSync(join(buildDir, 'player-experience.js'), join(buildDir, 'player-experience.mjs'))
 const experience = await import(pathToFileURL(join(buildDir, 'player-experience.mjs')).href)
+renameSync(join(buildDir, 'tactical-map-client.js'), join(buildDir, 'tactical-map-client.mjs'))
+const tacticalMap = await import(pathToFileURL(join(buildDir, 'tactical-map-client.mjs')).href)
+
+test('NPC старой сцены без слоя карты доходит от серверной проекции до фишки', () => {
+  for (const explicitId of ['old-inn', null]) {
+    const locationId = explicitId ?? 'Трактир'
+    const state = normalizeCampaignState({
+      sessionCode: 'NPC-LEGACY', activePlayerId: 'hero', partyMemberIds: ['hero'],
+      players: [{ id: 'hero', character: 'Лира', hp: 10, maxHp: 10, x: 0, y: 0, inventory: [] }],
+      scene: { title: 'Трактир', location: 'Трактир', ...(explicitId ? { location_id: explicitId } : {}),
+        cells: [{ x: 0, y: 0, type: 'floor', revealed: true }, { x: 1, y: 0, type: 'floor', revealed: true }],
+      },
+      social: { npcs: [{ id: 'brom', name: 'Бром', role: 'трактирщик', location: 'Трактир', visibility: 'party', available: true }] },
+      npc_world: { placements: [{ npc_id: 'brom', location_id: locationId, x: 1, y: 0 }] },
+      messages: [{ id: 'intro', speaker: 'narrator', text: 'Перед вами стоит трактирщик Бром.' }],
+    })
+    const projected = campaignStateForViewer(state, { role: 'player' }, 'hero')
+    assert.deepEqual(projected.scene_npcs.map(npc => npc.id), ['brom'], 'сервер уже разместил видимого собеседника')
+    const map = tacticalMap.sceneTacticalMap(projected.scene)
+    const markers = experience.sceneNpcsAt(projected.scene_npcs,
+      projected.scene.location_id ?? map?.locationId ?? '',
+      { columns: map.width, rows: map.height }, new Set(['hero']))
+    assert.deepEqual(markers.map(npc => npc.id), ['brom'], `фишка пропала: location_id=${locationId}`)
+  }
+})
 
 test.after(() => rmSync(buildDir, { recursive: true, force: true }))
 

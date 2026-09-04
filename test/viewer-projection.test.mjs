@@ -5,6 +5,42 @@ import { campaignStateForViewer, mechanicsForViewer, publicEnemyFor, publicWorld
 
 const user = { role: 'player', heroIds: ['hero'] }
 
+function placedNpcState() {
+  return {
+    sessionCode: 'NPC-PRESENT', activePlayerId: 'hero',
+    players: [{ id: 'hero', character: 'Лира', hp: 10, maxHp: 10, x: 0, y: 0, inventory: [] }],
+    scene: { title: 'Трактир', location: 'Трактир', location_id: 'inn', cells: [
+      { x: 0, y: 0, type: 'floor', revealed: true }, { x: 1, y: 0, type: 'floor', revealed: true },
+    ] },
+    social: { npcs: [
+      { id: 'brom', name: 'Бром', location: 'Трактир', available: true, visibility: 'party' },
+      { id: 'hidden', name: 'Тайный наблюдатель', location: 'Трактир', available: true, visibility: 'gm_only' },
+    ] },
+    npc_world: { placements: [
+      { npc_id: 'brom', location_id: 'inn', x: 1, y: 0 },
+      { npc_id: 'hidden', location_id: 'inn', x: 2, y: 0 },
+    ] },
+  }
+}
+
+test('администратор за игровым столом получает те же фишки NPC, что и игрок', () => {
+  const state = placedNpcState()
+  const adminView = campaignStateForViewer(state, { role: 'admin' }, 'hero')
+  const playerView = campaignStateForViewer(state, user, 'hero')
+  assert.deepEqual((adminView.scene_npcs ?? []).map(npc => npc.id), ['brom'])
+  assert.deepEqual(adminView.scene_npcs, playerView.scene_npcs)
+  assert.deepEqual(adminView.npc_world, state.npc_world, 'внутренние данные ведущего остаются доступны ему')
+  assert.equal(playerView.npc_world, undefined)
+})
+
+test('ответ на действие администратора не стирает фишки NPC с доски', () => {
+  const state = placedNpcState()
+  const response = turnResultForViewer({ authoritative_state: state, mechanics: [], debug: { trace: 'admin-only' } }, { role: 'admin' }, 'hero')
+  assert.deepEqual((response.authoritative_state.scene_npcs ?? []).map(npc => npc.id), ['brom'])
+  assert.deepEqual(response.debug, { trace: 'admin-only' })
+  assert.equal(state.scene_npcs, undefined, 'проекция не переписывает сохранённое состояние')
+})
+
 function privateState() {
   return {
     sessionCode: 'VISIBLE',
@@ -139,10 +175,9 @@ test('у игрока остаётся непустой источник илл�
   const authored = privateState()
   authored.scene.location_id = 'norvin'
   const projected = campaignStateForViewer(authored, user, 'hero')
-  // Публичная сцена id локации не несёт — он есть только у ведущего. Значит у
-  // игрока остаётся ровно одно поле, и его пустота означает шапку сцены с
-  // библиотечной подложкой вместо картинки и карту мира без метки «вы здесь».
-  assert.equal(projected.scene.location_id, undefined)
+  // Канонический id нужен и фишкам NPC, и иллюстрации. Он остаётся в сцене,
+  // даже когда текущая точка находится за пределами среза карты мира.
+  assert.equal(projected.scene.location_id, 'norvin')
   assert.equal(locationArtIdFor(projected), 'norvin')
 
   // Полсотни известных мест — обычная длинная кампания: `reconcileWorldMap`

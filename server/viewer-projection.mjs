@@ -349,9 +349,11 @@ export function publicSceneFor(scene = {}, knownLevels = undefined) {
   const projected = publicTacticalMapWithHashFor(scene.map)
   const levels = publicKnownLevelsFor(knownLevels)
   const levelIndex = Number(scene.level?.index)
+  const locationId = text(scene.location_id ?? scene.locationId ?? scene.map?.locationId, 180)
   return {
     title: text(scene.title, 120),
     location: text(scene.location, 180),
+    ...(locationId ? { location_id: locationId } : {}),
     mood: text(scene.mood, 500),
     objective: text(scene.objective, 500),
     turn: Math.max(0, integer(scene.turn, 0)),
@@ -1102,6 +1104,9 @@ export function campaignStateForViewer(state, user, actorId = '') {
   if (!state || typeof state !== 'object') return state
   if (user?.role === 'admin') return {
     ...state,
+    // Ведущий тоже играет на общей доске: renderer читает scene_npcs, а не
+    // внутренний npc_world. Фишки собираются тем же путём, что и для игрока.
+    scene_npcs: sceneNpcsForViewer(state),
     players: playerItemsWithCapabilities(state.players, '', String(state.ruleset_id ?? '')),
     // Летопись поступков уезжает ведущему уже лентой: свежие сверху, с русской
     // подписью вида и числом свидетелей. Сортировка и таблица подписей живут в
@@ -1806,7 +1811,11 @@ export function sceneTransitionForViewer(transition) {
  * @returns {any}
  */
 export function turnResultForViewer(result, user, actorId = '') {
-  if (!result || typeof result !== 'object' || user?.role === 'admin') return result
+  if (!result || typeof result !== 'object') return result
+  if (user?.role === 'admin') return {
+    ...result,
+    ...(result.authoritative_state ? { authoritative_state: campaignStateForViewer(result.authoritative_state, user, actorId) } : {}),
+  }
   const visible = projectVisibleState(result, viewerFor(result.authoritative_state, user, actorId), { forNarrator: true }) ?? {}
   const { locationMaps: _locationMaps, ...publicResult } = visible
   const effects = visible.effects && typeof visible.effects === 'object' && !Array.isArray(visible.effects)

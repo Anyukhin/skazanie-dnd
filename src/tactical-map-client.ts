@@ -807,6 +807,12 @@ export function applySerializedRevealDelta(
  * Единая точка входа для доски: каноническая карта сцены, а при её отсутствии —
  * сборка из старых клеток. Второго пути отрисовки не появляется.
  */
-export function sceneTacticalMap(scene: { map?: SerializedTacticalMap; cells?: readonly MapCell[] }): TacticalMap | null {
-  return decodeTacticalMap(scene?.map) ?? tacticalMapFromCells(scene?.cells ?? [])
+export function sceneTacticalMap(scene: { map?: SerializedTacticalMap; cells?: readonly MapCell[]; location_id?: string; locationId?: string; location?: string; title?: string }): TacticalMap | null {
+  const map = decodeTacticalMap(scene?.map) ?? tacticalMapFromCells(scene?.cells ?? [])
+  if (!map || map.locationId) return map
+  // Старые посты NPC привязаны к имени сцены. Восстановленная из клеток
+  // карта должна сохранить эту привязку, как server/npc-positioning.mjs.
+  const locationId = String(scene.location_id || scene.locationId || scene.location || scene.title || '')
+    .normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, 180)
+  return { ...map, locationId }
 }
