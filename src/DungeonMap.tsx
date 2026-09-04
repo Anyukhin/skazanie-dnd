@@ -1584,7 +1584,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     : new Set<string>()
   const previewMoveKey = pendingMoveKey ?? hoveredMoveKey
   const previewRoute = previewMoveKey ? movementPaths.get(previewMoveKey) ?? null : null
-  const previewRouteSteps = new Map((previewRoute?.path ?? []).map((step, index) => [boardPositionKey(step.x, step.y), index + 1]))
+  const maneuverPath = state.pendingAction?.proposal.actor_id === selected ? state.pendingAction.proposal.path : null
+  const previewRouteSteps = new Map((maneuverPath ?? previewRoute?.path ?? []).map((step, index) => [boardPositionKey(step.x, step.y), index + 1]))
   const actionReady = !tactical.actionUsed && economy?.action !== false
   // «Дополнительная атака» — свойство действия «Атака», а не отдельная кнопка:
   // действие уже потрачено первым ударом, но оружие бьёт ещё раз, и между
@@ -3660,7 +3661,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             </>}
           </aside>
         </div>
-        {tacticalBusy && <p className="tactical-command-status"><RefreshCw className={state.pendingCheck?.status === 'ready' ? '' : 'spinning'} size={12} />{state.pendingCheck?.status === 'ready' ? 'Сначала подтвердите предложение ведущего или откажитесь от него.' : 'Действие идёт, мир отзывается на него…'}</p>}
+        {tacticalBusy && <p className="tactical-command-status"><RefreshCw className={state.pendingAction?.status === 'ready' || state.pendingCheck?.status === 'ready' ? '' : 'spinning'} size={12} />{state.pendingAction?.status === 'ready' || state.pendingCheck?.status === 'ready' ? 'Сначала подтвердите предложение ведущего или откажитесь от него.' : 'Действие идёт, мир отзывается на него…'}</p>}
         {/* Отказ команды больше не рисуется здесь своей строкой: он уходит в
             общую ленту тостов над всем экраном (`ErrorToasts`). Раньше строка
             жила только под хотбаром и только в комнате, а следующий отказ

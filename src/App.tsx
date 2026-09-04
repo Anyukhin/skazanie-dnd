@@ -738,7 +738,9 @@ function ConnectionIndicator({ status }: { status: ConnectionState }) {
 }
 
 function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; onAccountRefresh: () => Promise<Account | null>; onLogout: () => void }) {
-  const { state, combatVisualBatch, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, narrationPreview, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, startRest, spendHitPointDie, completeRest, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, changeWeapon, operateDoor, operateSceneObject, captiveAction, lootContainer, beastAction, resolveGuardEncounter, proposeParley, settleParley, openTavernDiceRound, answerTavernDiceRound, leaveTavernDiceRound, orderTavernDrink, sendLetter, receiveNpcBlessing, useLevelTransition, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, attuneItem, activateItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, reset, updatePlayer, updateWorld } = useGameSession()
+  const gameSession = useGameSession()
+  const { confirmPendingAction, cancelPendingAction } = gameSession
+  const { state, combatVisualBatch, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, narrationPreview, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, startRest, spendHitPointDie, completeRest, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, changeWeapon, operateDoor, operateSceneObject, captiveAction, lootContainer, beastAction, resolveGuardEncounter, proposeParley, settleParley, openTavernDiceRound, answerTavernDiceRound, leaveTavernDiceRound, orderTavernDrink, sendLetter, receiveNpcBlessing, useLevelTransition, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, attuneItem, activateItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, reset, updatePlayer, updateWorld } = gameSession
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth <= 920)
   const [inviteOpen, setInviteOpen] = useState(false)
   // Меню «Мастер» в шапке: закрывается Escape, кликом мимо и после любого выбора.
@@ -825,6 +827,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const latestNarratorMessage = [...state.messages].reverse().find((message) => message.speaker === 'narrator')
   const visibleNarrationPreview = narrationPreview
     && !state.pendingCheck
+    && !state.pendingAction
     && narrationPreview.replayed !== true
     && narrationPreview.phase !== 'aborted'
     && narrationPreview.phase !== 'replaced'
@@ -1235,7 +1238,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const combatUnderway = Boolean(state.mechanics?.combat?.active)
   const travelBlocked = state.isNarrating
     || tacticalBusy
-    || Boolean(state.pendingCheck)
+    || Boolean(state.pendingCheck || state.pendingAction)
     || combatUnderway
     || Boolean(state.law?.encounter)
     || lifecycleStatus !== 'active'
@@ -1497,8 +1500,8 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             players={partyPlayers}
             turnActorId={mapActorId}
             typingActorId={activePlayer.id}
-            canAct={canAct && !state.pendingCheck}
-            tacticalBusy={tacticalBusy || Boolean(state.pendingCheck)}
+            canAct={canAct && !state.pendingCheck && !state.pendingAction}
+            tacticalBusy={tacticalBusy || Boolean(state.pendingCheck || state.pendingAction)}
             tacticalError={tacticalError}
             autoAttackRoll={autoAttackRoll}
             scenicBackdrop={scenicBackdrop}
@@ -1588,13 +1591,27 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           onOpenWorldMap={() => { setLeavePickerOpen(false); navigate('world-map') }}
           onClose={() => setLeavePickerOpen(false)}
         />}
-        {cinematicNarrationId && !state.pendingCheck && <section key={cinematicNarrationId} className={`cinematic-narration ${visibleNarrationPreview ? `phase-${visibleNarrationPreview.phase}` : 'phase-committed'}`} role="status" aria-live="polite">
+        {cinematicNarrationId && !state.pendingCheck && !state.pendingAction && <section key={cinematicNarrationId} className={`cinematic-narration ${visibleNarrationPreview ? `phase-${visibleNarrationPreview.phase}` : 'phase-committed'}`} role="status" aria-live="polite">
           <header><Sparkles size={16} /><span>РАССКАЗЧИК</span><button type="button" onClick={() => {
             if (visibleNarrationPreview) setDismissedNarrationPreviewId(visibleNarrationPreview.messageId)
             else setCinematicNarration(null)
           }} aria-label="Скрыть текст сцены"><X size={15} /></button></header>
           <p>{cinematicNarrationText || 'Сцена складывается…'}</p>
           <small><ScrollText size={13} />{visibleNarrationPreview?.phase === 'streaming' || visibleNarrationPreview?.phase === 'start' ? 'Текст приходит от Рассказчика…' : 'Сохранено в журнале кампании'}</small>
+        </section>}
+        {state.pendingAction && <section className="pending-check-overlay" aria-label="План боевого манёвра" aria-live="polite">
+          <div className="dice-check has-proposal">
+            <div className="dice-copy"><span>План манёвра</span><strong>{state.pendingAction.proposal.title}</strong></div>
+            <div className="improvisation-proposal">
+              <dl><div><dt>Цена</dt><dd>{state.pendingAction.proposal.cost}</dd></div>
+                <div><dt>Маршрут</dt><dd>{state.pendingAction.proposal.path.length ? 'Отмечен цифрами на карте' : 'Герой уже в пределах досягаемости'}</dd></div></dl>
+              <p>{state.pendingAction.proposal.consequence}</p>
+            </div>
+            <button className="d20-button" onClick={() => { void confirmPendingAction() }} disabled={state.pendingAction.status !== 'ready'}>
+              <span>{state.pendingAction.status === 'submitting' ? 'Манёвр выполняется…' : 'Подтвердить манёвр'}</span>
+            </button>
+            <button className="cancel-check" onClick={cancelPendingAction} disabled={state.pendingAction.status !== 'ready'}>Отказаться</button>
+          </div>
         </section>}
         {state.pendingCheck && (
           <details key={state.pendingCheck.check_id ?? state.pendingCheck.action} className="pending-check-overlay" open aria-live="polite">

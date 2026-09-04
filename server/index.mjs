@@ -5077,6 +5077,7 @@ const server = createServer((req, res) => {
             npcId: explicitNpcId,
             verifiedRoll,
             manualRoll: body.manual_roll === true,
+            confirmedProposalId: typeof body.confirmed_proposal_id === 'string' ? body.confirmed_proposal_id : null,
             user,
             allowedActorIds: campaignHeroIds(user, campaignId),
             onNarrationStart: startNarration,
@@ -5099,7 +5100,7 @@ const server = createServer((req, res) => {
       const metaCommand = /^\s*\//u.test(action)
       // Приглашение к броску не является событием истории: в летопись попадёт
       // только завершённый ход, когда игрок бросит кубик и сервер его примет.
-      const checkRequired = Boolean(result.check)
+      const checkRequired = Boolean(result.check || result.action_proposal)
       const journalNarrationId = !checkRequired && String(result.narration ?? '').trim() ? narrationMessageId(idempotencyKey) : null
       const narrationEntry = journalNarrationId ? {
         id: journalNarrationId,

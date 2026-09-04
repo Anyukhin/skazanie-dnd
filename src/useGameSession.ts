@@ -250,7 +250,7 @@ function stateVersionConflictMessage(refreshed: boolean) {
 }
 
 function stateForPersistence(state: GameState): GameState {
-  return { ...state, engine_mode: 'enforce', pendingCheck: null, ...(state.isNarrating ? { isNarrating: false } : {}) }
+  return { ...state, engine_mode: 'enforce', pendingCheck: null, pendingAction: null, ...(state.isNarrating ? { isNarrating: false } : {}) }
 }
 
 function latestRoomVersion(current: number, candidate: unknown): number {
@@ -421,7 +421,8 @@ export function useGameSession() {
     const recovered = stateForPersistence(scene && scene !== next.scene ? { ...next, scene } : next)
     // Карточка проверки принадлежит этому игроку. Серверный снимок комнаты
     // её не содержит, а рассылать её соседнему игроку нельзя.
-    const local = { ...recovered, pendingCheck: stateRef.current.sessionCode === recovered.sessionCode ? stateRef.current.pendingCheck : null }
+    const sameCampaign = stateRef.current.sessionCode === recovered.sessionCode
+    const local = { ...recovered, pendingCheck: sameCampaign ? stateRef.current.pendingCheck : null, pendingAction: sameCampaign ? stateRef.current.pendingAction : null }
     stateRef.current = local
     setState(local)
     persistLocal(recovered)
@@ -510,7 +511,7 @@ export function useGameSession() {
     channel.current.onmessage = (event: MessageEvent<GameState>) => {
       if (event.data.sessionCode !== state.sessionCode) return
       const recovered = stateForPersistence(event.data)
-      const local = { ...recovered, pendingCheck: stateRef.current.pendingCheck }
+      const local = { ...recovered, pendingCheck: stateRef.current.pendingCheck, pendingAction: stateRef.current.pendingAction }
       stateRef.current = local
       setState(local)
     }
@@ -577,7 +578,7 @@ export function useGameSession() {
         if (!preview) return
         publishNarrationPreview(state.sessionCode, preview)
         setNarrationPreview(() => (
-          stateRef.current.pendingCheck?.proposal || stateRef.current.messages.some((message) => message.id === preview.messageId)
+          stateRef.current.pendingAction || stateRef.current.pendingCheck?.proposal || stateRef.current.messages.some((message) => message.id === preview.messageId)
             ? null
             : preview
         ))
@@ -737,13 +738,14 @@ export function useGameSession() {
       state_version: aiResult?.state_version ?? base.state_version,
       isNarrating: false,
       pendingCheck: null,
+      pendingAction: null,
       activePlayerId: base.activePlayerId,
       messages: narrationPersisted ? base.messages : [...base.messages, narratorMessage],
     }
   }, [])
 
   const submitAction = useCallback(async (text: string, actorId?: string, npcId?: string): Promise<CommandOutcome> => {
-    if (!text.trim() || state.isNarrating || state.pendingCheck) {
+    if (!text.trim() || state.isNarrating || state.pendingCheck || state.pendingAction) {
       return { ok: false, error: 'Сейчас нельзя отправить это действие.' }
     }
     busy.current = true
@@ -809,6 +811,15 @@ export function useGameSession() {
       })
     }
 
+    if (aiResult?.action_proposal) {
+      const proposal = aiResult.action_proposal
+      setNarrationPreview(null)
+      mutate((current) => ({ ...current, isNarrating: false, pendingAction: {
+        proposal, action: text.trim(), playerId: player.id, status: 'ready', idempotencyKey: commandId(),
+      } }))
+      busy.current = false
+      return { ok: true }
+    }
     const check = aiResult?.check ?? null
     if (check) {
       setNarrationPreview(null)
@@ -852,6 +863,37 @@ export function useGameSession() {
     }
     return { ok: true }
   }, [commit, finishTurn, mutate, normalizeCommandError, state])
+
+  const confirmPendingAction = useCallback(async () => {
+    const pending = stateRef.current.pendingAction
+    if (!pending || pending.status !== 'ready' || busy.current) return
+    busy.current = true
+    const epoch = ++actionEpoch.current
+    mutate((current) => ({ ...current, isNarrating: true, pendingAction: { ...pending, status: 'submitting' } }))
+    try {
+      const current = stateRef.current
+      const hero = current.players.find((player) => player.id === pending.playerId)
+      const result = await narrateWithAgent(current, pending.action, hero?.character ?? '', undefined,
+        pending.idempotencyKey, pending.playerId, { confirmedProposalId: pending.proposal.id })
+      if (epoch !== actionEpoch.current) return
+      if (result.room_version) roomVersion.current = latestRoomVersion(roomVersion.current, result.room_version)
+      if (result.mechanics?.length) setCombatVisualBatch({ id: `maneuver:${result.turn_id}`, events: result.mechanics, npcTurns: [] })
+      mutate((latest) => finishTurn(latest, pending.action, result))
+    } catch (error) {
+      if (epoch !== actionEpoch.current) return
+      const normalized = await normalizeCommandError(error)
+      const conflict = isStateVersionConflictError(normalized)
+      mutate((current) => ({ ...current, isNarrating: false, pendingAction: conflict ? null : { ...pending, status: 'ready' },
+        messages: [...current.messages, { id: `${Date.now()}-maneuver-error`, speaker: 'system', author: 'Правила игры', timestamp: clock(),
+          text: conflict ? `Обстановка изменилась. Согласуйте манёвр заново: «${pending.action}».` : normalized.message, turnConsumed: false }],
+      }))
+    } finally { if (epoch === actionEpoch.current) busy.current = false }
+  }, [finishTurn, mutate, normalizeCommandError])
+
+  const cancelPendingAction = useCallback(() => {
+    if (stateRef.current.pendingAction?.status !== 'ready') return
+    mutate((current) => ({ ...current, pendingAction: null }))
+  }, [mutate])
 
   const rollPendingCheck = useCallback(async () => {
     const check = state.pendingCheck
@@ -1872,6 +1914,8 @@ export function useGameSession() {
     merchantNarration,
     clearTacticalError: () => setTacticalError(null),
     submitAction,
+    confirmPendingAction,
+    cancelPendingAction,
     rollPendingCheck,
     cancelPendingCheck,
     rollFreeDie,

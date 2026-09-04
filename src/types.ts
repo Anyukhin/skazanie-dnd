@@ -115,6 +115,19 @@ export type PendingCheck = {
   command?: TwoPhaseCheckCommand
 }
 
+export type CombatActionProposal = {
+  id: string
+  kind: 'approach_attack'
+  actor_id: string
+  target_id: string
+  title: string
+  path: Array<{ x: number; y: number }>
+  to: { x: number; y: number }
+  movement_feet: number
+  cost: string
+  consequence: string
+}
+
 /**
  * Команды доски, у которых первая фаза возвращает карточку броска вместо
  * результата. Список закрыт и обязан совпадать с серверным: карточку выдают
@@ -1326,6 +1339,7 @@ export type GameState = {
   activePlayerId: string
   isNarrating: boolean
   pendingCheck: PendingCheck | null
+  pendingAction?: { proposal: CombatActionProposal; action: string; playerId: string; status: 'ready' | 'submitting'; idempotencyKey: string } | null
   agentInteraction?: AgentInteraction | null
   /** Optional so rooms saved before the dice tray was added remain valid. */
   lastDiceRoll?: DiceRollEvent | null
@@ -2319,6 +2333,7 @@ export type SuggestedAction = {
 }
 
 export type AiTurnResult = {
+  action_proposal?: CombatActionProposal
   narration: string
   provider: string
   model: string

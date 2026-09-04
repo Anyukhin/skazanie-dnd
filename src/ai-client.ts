@@ -68,6 +68,7 @@ function newIdempotencyKey() {
 }
 
 export interface NarrateOptions {
+  confirmedProposalId?: string
   npcId?: string
   onNarrationPreview?: (preview: NarrationPreview) => void
 }
@@ -156,6 +157,7 @@ export async function narrateWithAgent(
         idempotency_key: idempotencyKey,
         ...(actorId ? { actor_id: actorId } : {}),
         ...(options.npcId ? { npc_id: options.npcId } : {}),
+        ...(options.confirmedProposalId ? { confirmed_proposal_id: options.confirmedProposalId } : {}),
         ...(roll?.roll_id ? { roll: { roll_id: roll.roll_id } } : {}),
         // Ручной режим: сервер не бросает d20 за игрока, а возвращает карточку
         // проверки; ход завершится повторным запросом с roll_id.

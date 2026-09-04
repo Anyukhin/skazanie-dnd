@@ -36,6 +36,7 @@ export function classifyFreeActionKind(value) {
   const leap = /(?<![\p{L}\p{M}])(?:вс|с|за|пере|под|вы|при|от)?прыг|(?<![\p{L}\p{M}])(?:прыж|соскоч|спрыг|перескоч)/iu
   const strike = /(?<![\p{L}\p{M}])(?:атак|удар|бью|бить|стреля|рублю|колю|попасть\s+по|attack|strike)/iu
   if (leap.test(text) && strike.test(text)) return 'compound_maneuver'
+  if (/(?<![\p{L}\p{M}])(?:подхож|подой|подбег|подбеж|приближа|приближусь|добег|добеж|иду\s+к)/iu.test(text) && strike.test(text)) return 'approach_attack'
   return FREE_ACTION_PATTERNS.find(([, pattern]) => pattern.test(text))?.[0] ?? null
 }
 
@@ -56,6 +57,7 @@ function visibleActors(visibleState) {
   const candidates = [
     ...(Array.isArray(visibleState?.players) ? visibleState.players : []),
     ...(Array.isArray(visibleState?.actors) ? visibleState.actors : []),
+    ...(Array.isArray(visibleState?.enemies) ? visibleState.enemies : []),
     ...(Array.isArray(visibleState?.social?.npcs) ? visibleState.social.npcs : []),
     ...(Array.isArray(visibleState?.merchants) ? visibleState.merchants : []),
   ]
@@ -191,15 +193,17 @@ export class IntentParser {
     const socialSkill = classifyNpcSocialCheck(text)
     const freeActionKind = classifyFreeActionKind(text)
     const intent = freeActionKind === 'compound_maneuver' ? 'improvised_action'
+      : freeActionKind === 'approach_attack' ? 'approach_attack'
       : socialSkill ? 'social' : INTENT_PATTERNS.find(([, pattern]) => pattern.test(text))?.[0] ?? 'improvised_action'
     const socialTargets = intent === 'social' ? resolvePresentSocialActors(text, visibleState) : []
     const mentioned = intent === 'social' && socialTargets.length ? socialTargets : mentionedActors(text, visibleState)
     const targets = mentioned.map((actor) => String(actor.id)).filter((id) => id !== String(playerId ?? ''))
-    const requiresTarget = intent === 'attack' || intent === 'damage'
+    const requiresTarget = intent === 'attack' || intent === 'damage' || intent === 'approach_attack'
     const ambiguousSocialTarget = intent === 'social' && socialTargets.length > 1
     const missing = [
       ...(requiresTarget && !targets.length ? ['target_id'] : []),
       ...(ambiguousSocialTarget ? ['ambiguous_npc'] : []),
+      ...(intent === 'approach_attack' && targets.length > 1 ? ['target_id'] : []),
     ]
     const number = /(?:^|\s)(\d{1,3})(?:\s|$)/.exec(text)?.[1]
     return {

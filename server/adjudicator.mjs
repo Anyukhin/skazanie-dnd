@@ -1,4 +1,5 @@
-import { RULE_IDS, abilityModifier, findActor, skillProficiencyForActor } from './rules-engine.mjs'
+import { createHash } from 'node:crypto'
+import { RULE_IDS, RulesValidationError, abilityModifier, findActor, skillProficiencyForActor, previewApproachAttack } from './rules-engine.mjs'
 
 export const DIFFICULTY_CLASSES = Object.freeze({ easy: 10, medium: 15, hard: 20 })
 export const DIFFICULTY_CATEGORIES = Object.freeze(Object.keys(DIFFICULTY_CLASSES))
@@ -73,6 +74,34 @@ export class Adjudicator {
     if (intent?.requires_clarification) return { ...base, clarification_required: true, missing_information: intent.missing_information }
     const actor = findActor(state, intent?.actor_id)
     switch (intent?.intent) {
+      case 'approach_attack': {
+        try {
+          const targetId = intent.targets[0]
+          const route = previewApproachAttack(state, intent.actor_id, targetId)
+          const id = createHash('sha256').update(JSON.stringify({
+            kind: 'approach-attack/v1', campaign_id: state.sessionCode, state_version: state.state_version,
+            actor_id: intent.actor_id, target_id: targetId, action: intent.raw_message, path: route.path,
+          })).digest('hex')
+          const target = findActor(state, targetId)
+          return {
+            ...base, maneuver: 'approach_attack',
+            proposed_commands: [
+              { command_type: 'DeclareAction', actor_id: intent.actor_id, action: intent.raw_message, expected_state_version: state.state_version },
+              ...route.commands,
+            ],
+            proposal: {
+              id, kind: 'approach_attack', actor_id: intent.actor_id, target_id: targetId,
+              title: `Подойти и атаковать: ${target.name ?? target.character}`,
+              path: route.path, to: route.to, movement_feet: route.movement_feet,
+              cost: `${route.movement_feet} фт перемещения + ${route.attack_cost}`,
+              consequence: 'Герой пройдёт отмеченным маршрутом и совершит один удар. Движение может вызвать реакции и последствия поверхностей; если герой не сможет продолжать, атака не состоится.',
+            },
+          }
+        } catch (error) {
+          if (!(error instanceof RulesValidationError)) throw error
+          return { ...base, clarification_required: true, clarification_message: error.message }
+        }
+      }
       case 'attack': {
         const targetId = intent.targets?.[0]
         return {
