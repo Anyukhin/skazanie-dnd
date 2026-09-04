@@ -61,3 +61,26 @@ test('shared campaign premise передаёт только три послед�
   assert.ok(premise.arc_history.every((entry) => entry.epilogue.length <= 1_200))
   assert.doesNotMatch(JSON.stringify(premise), /private_solution/u)
 })
+
+test('shared campaign premise передаёт bounded-историю и публичные опоры авторского мира', () => {
+  const state = {
+    campaignConcept: {
+      world_template_id: 'league-nine-tides',
+      world_template_version: '1.0.0',
+      worldSummary: 'Лига островов живёт по картам прилива.',
+      worldHistory: `${'Старая дамба помнит бурю. '.repeat(200)}конец`,
+      factions: [{ id: 'dam-keepers', name: 'Смотрители дамб', summary: 'Чинят берег и хранят правду.', goal: 'Не дать морю забрать города.', private_solution: 'не передавать' }],
+      story_arcs: [{ title: 'Город под водой', levels: '1–4', summary: 'Экспедиция в затонувшие кварталы.', stakes: 'Будущее побережья.', private_solution: 'не передавать' }],
+      private_solution: 'не передавать',
+    },
+  }
+
+  const premise = campaignConceptForAgent(state)
+  assert.equal(premise.world_template_id, 'league-nine-tides')
+  assert.equal(premise.world_template_version, '1.0.0')
+  assert.equal(premise.world_summary, 'Лига островов живёт по картам прилива.')
+  assert.equal(premise.world_history.length, 3_000)
+  assert.equal(premise.factions[0].name, 'Смотрители дамб')
+  assert.equal(premise.story_arcs[0].title, 'Город под водой')
+  assert.doesNotMatch(JSON.stringify(premise), /private_solution/u)
+})

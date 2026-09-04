@@ -15,6 +15,7 @@ import { buildDataOnlyContext } from './security.mjs'
 import { buildCampaignArcPlan } from './campaign-loop-policy.mjs'
 import { drawCampaignInspiration, inspirationPromptSeed } from './campaign-inspiration.mjs'
 import { LEGACY_DEFAULT_RULESET_ID, rulesetLock } from './ruleset-config.mjs'
+import { getWorldTemplate, worldTemplateConcept, worldTemplateOpening } from './world-template-catalog.mjs'
 
 const prompt = readFileSync(fileURLToPath(new URL('../prompts/campaign_creator/v3.txt', import.meta.url)), 'utf8')
 
@@ -213,27 +214,38 @@ function fallbackOpening({ name, partyName, world, heroes, entropy, inspiration 
  * прологе трактирщик и рыбак не существовали как NPC — заговорить с ними было
  * нельзя, парсер отвечал «Уточните имя собеседника».
  */
-function normalizeOpeningNpcs(value, fallback) {
+function normalizeOpeningNpcs(value, fallback, { authored = false } = {}) {
   const source = Array.isArray(value) ? value : []
   const normalized = source
     .map((entry) => (entry && typeof entry === 'object' && !Array.isArray(entry) ? entry : {}))
     .map((entry) => ({
+      id: authored ? clean(entry.id, 120) : '',
       name: clean(entry.name, 80),
       role: clean(entry.role, 120),
+      location: authored ? clean(entry.location, 180) : '',
+      locationId: authored ? clean(entry.location_id ?? entry.locationId, 120) : '',
       summary: clean(entry.summary, 400),
       voice: clean(entry.voice, 240),
+      factionId: clean(entry.faction_id ?? entry.factionId, 80),
       goals: (Array.isArray(entry.goals) ? entry.goals : []).map((goal) => clean(goal, 160)).filter(Boolean).slice(0, 4),
       beliefs: (Array.isArray(entry.beliefs) ? entry.beliefs : []).map((belief) => clean(belief, 160)).filter(Boolean).slice(0, 4),
+      speechProfile: authored && entry.speech_profile && typeof entry.speech_profile === 'object' ? structuredClone(entry.speech_profile) : null,
+      socialDcs: authored && entry.social_dcs && typeof entry.social_dcs === 'object' ? structuredClone(entry.social_dcs) : null,
+      inventory: authored && Array.isArray(entry.inventory) ? structuredClone(entry.inventory) : [],
+      tags: authored && Array.isArray(entry.tags) ? entry.tags.map((tag) => clean(tag, 60)).filter(Boolean).slice(0, 20) : [],
+      visibility: authored && ['public', 'party', 'gm_only'].includes(String(entry.visibility)) ? String(entry.visibility) : 'party',
+      revealOnPresence: authored && entry.reveal_on_presence === true,
+      mechanics: authored && entry.mechanics && typeof entry.mechanics === 'object' ? structuredClone(entry.mechanics) : null,
     }))
     .filter((entry) => entry.name)
-    // Пять, а не три: пролог регулярно называет по имени больше трёх персонажей,
-    // и срезанные исчезали из мира — с ними нельзя было заговорить, а их
-    // токенов не было на карте.
-    .slice(0, 5)
+    // Модель по-прежнему ограничена пятью NPC первой сцены. Авторский шаблон
+    // может хранить до двенадцати заранее проверенных персонажей в разных
+    // локациях: в текущей сцене появятся только совпавшие по location.
+    .slice(0, authored ? 12 : 5)
   return normalized.length ? normalized : fallback
 }
 
-function normalizeOpening(input, fallback) {
+function normalizeOpening(input, fallback, { authored = false } = {}) {
   const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
   const scene = source.scene && typeof source.scene === 'object' && !Array.isArray(source.scene) ? source.scene : {}
   const map = scene.map && typeof scene.map === 'object' && !Array.isArray(scene.map) ? scene.map : {}
@@ -254,6 +266,7 @@ function normalizeOpening(input, fallback) {
     scene: {
       title: clean(scene.title, 100) || fallback.scene.title,
       location: clean(scene.location, 160) || fallback.scene.location,
+      locationId: clean(scene.locationId ?? scene.location_id, 120),
       mood: clean(scene.mood, 240) || fallback.scene.mood,
       objective: clean(scene.objective, 240) || fallback.scene.objective,
       theme: clean(scene.theme, 120) || fallback.scene.theme,
@@ -271,7 +284,7 @@ function normalizeOpening(input, fallback) {
       },
     },
     hook: clean(source.hook, 500) || fallback.hook,
-    npcs: normalizeOpeningNpcs(source.npcs, fallback.npcs),
+    npcs: normalizeOpeningNpcs(source.npcs, fallback.npcs, { authored }),
   }
 }
 
@@ -290,7 +303,7 @@ export class CampaignBootstrapper {
     this.diceService = diceService
   }
 
-  async create({ code, name, partyName, world: rawWorld, players: rawPlayers, merchants: rawMerchants, rulesetId, ruleset_id } = {}) {
+  async create({ code, name, partyName, world: rawWorld, worldTemplateId, world_template_id, players: rawPlayers, merchants: rawMerchants, rulesetId, ruleset_id } = {}) {
     const campaignCode = clean(code, 24).toUpperCase()
     const campaignName = clean(name, 120) || 'Новая кампания'
     const groupName = clean(partyName, 120) || 'Новый отряд'
@@ -301,12 +314,21 @@ export class CampaignBootstrapper {
       ? hero
       : withStarterKit(hero, { rulesetId: selectedRuleset.ruleset_id }))
     if (new Set(heroes.map((hero) => hero.id)).size !== heroes.length) throw new Error('В кампании повторяются id героев')
-    const world = normalizeWorld(rawWorld)
-    const inspiration = drawCampaignInspiration({ world, diceService: this.diceService })
+    const requestedWorldTemplateId = clean(world_template_id ?? worldTemplateId, 80)
+    const worldTemplate = requestedWorldTemplateId ? getWorldTemplate(requestedWorldTemplateId) : null
+    const ownerWorld = normalizeWorld(rawWorld)
+    // У готового мира карта, история и отправная точка server-owned. Игрок
+    // по-прежнему задаёт границы контента — это настройка стола, а не лор.
+    const world = worldTemplate
+      ? { ...normalizeWorld(worldTemplate.world), boundaries: ownerWorld.boundaries || clean(worldTemplate.world?.boundaries, 500) }
+      : ownerWorld
+    const inspiration = worldTemplate ? null : drawCampaignInspiration({ world, diceService: this.diceService })
     const fallback = fallbackOpening({ name: campaignName, partyName: groupName, world, heroes, entropy: campaignCode, inspiration })
-    let opening = fallback
-    let generatedBy = 'local-storyteller'
-    if (this.llmClient) {
+    let opening = worldTemplate
+      ? normalizeOpening(worldTemplateOpening(worldTemplate, { campaignName, partyName: groupName }), fallback, { authored: true })
+      : fallback
+    let generatedBy = worldTemplate ? 'authored-world-template' : 'local-storyteller'
+    if (this.llmClient && !worldTemplate) {
       try {
         const result = await this.llmClient.completeJson({
           messages: [
@@ -330,11 +352,16 @@ export class CampaignBootstrapper {
         generatedBy = 'ai-storyteller'
       } catch { /* A new campaign must still be playable when the provider is unavailable. */ }
     }
-    const seed = createHash('sha256').update(JSON.stringify({ campaignCode, world, heroes: heroes.map((hero) => hero.id) })).digest('hex').slice(0, 24)
+    const seed = createHash('sha256').update(JSON.stringify({
+      campaignCode,
+      world,
+      worldTemplate: worldTemplate ? `${worldTemplate.id}@${worldTemplate.version}` : '',
+      heroes: heroes.map((hero) => hero.id),
+    })).digest('hex').slice(0, 24)
     const arc = buildCampaignArcPlan(seed)
     // Пролог — необязательное украшение: письмо-завязка, которое владелец
     // зачитает перед первым вечером. Отказ летописца кампанию не задерживает.
-    const prologue = this.loreAuthor
+    const prologue = this.loreAuthor && !worldTemplate
       ? await this.loreAuthor.composePrologue({
         campaign: campaignName,
         worldSummary: opening.worldSummary,
@@ -343,6 +370,7 @@ export class CampaignBootstrapper {
       })
       : ''
     const campaignConcept = {
+      ...(worldTemplate ? worldTemplateConcept(worldTemplate) : {}),
       ...world,
       worldSummary: opening.worldSummary,
       worldHistory: opening.worldHistory,
@@ -360,6 +388,7 @@ export class CampaignBootstrapper {
       concept: campaignConcept,
       source: opening.worldMap,
       startingLocation: opening.scene.location,
+      startingLocationId: opening.scene.locationId,
     })
     // Вид стартовой точки берётся с карты мира только когда её нарисовал автор
     // кампании: запасная карта ставит стартовой точке «город» вслепую, и по
@@ -381,19 +410,43 @@ export class CampaignBootstrapper {
     const merchants = normalizeMerchants(Array.isArray(rawMerchants) && rawMerchants.length
       ? rawMerchants
       : [createStarterMerchant({ location: opening.scene.location })])
-    const starterFactionId = `faction-${seed.slice(0, 12)}`
+    const rawTemplateFactions = Array.isArray(campaignConcept.factions) ? campaignConcept.factions.slice(0, 8) : []
+    const factionIdByTemplateId = new Map(rawTemplateFactions.map((faction, index) => {
+      const localId = clean(faction?.id, 60).toLocaleLowerCase('ru').replace(/[^a-z0-9-]+/gu, '-').replace(/^-+|-+$/gu, '') || `group-${index + 1}`
+      return [clean(faction?.id, 80), `faction-${worldTemplate?.id ?? seed.slice(0, 12)}-${localId}`.slice(0, 120)]
+    }))
+    const factionEntities = rawTemplateFactions.length
+      ? rawTemplateFactions.map((faction) => ({
+          id: factionIdByTemplateId.get(clean(faction?.id, 80)),
+          kind: 'faction',
+          name: clean(faction?.name, 120),
+          summary: [clean(faction?.summary, 500), clean(faction?.goal, 300) ? `Цель: ${clean(faction.goal, 300)}` : ''].filter(Boolean).join(' '),
+          aliases: [], visibility: 'party', tags: ['world-template-faction', `world-template:${worldTemplate.id}`],
+        }))
+      : [{
+          id: `faction-${seed.slice(0, 12)}`, kind: 'faction', name: 'Хранители дороги',
+          summary: 'Небольшое объединение проводников и дозорных, защищающее пути между поселениями.',
+          aliases: [], visibility: 'party', tags: ['starter-faction'],
+        }]
+    const starterFactionId = factionEntities[0].id
     const starterQuestId = `quest-${seed.slice(0, 12)}`
     const openingNpcs = opening.npcs.map((npc, index) => ({
-      id: `npc-${seed.slice(0, 12)}-${index + 1}`,
+      id: npc.id || `npc-${seed.slice(0, 12)}-${index + 1}`,
       name: npc.name,
       role: npc.role || 'житель этих мест',
-      location: opening.scene.location,
+      location: npc.location || opening.scene.location,
+      ...(npc.locationId ? { location_id: npc.locationId } : {}),
       public_summary: npc.summary || `${npc.name} — часть первой сцены.`,
       voice: npc.voice || 'Говорит спокойно и по делу.',
+      ...(npc.speechProfile ? { speech_profile: structuredClone(npc.speechProfile) } : {}),
       goals: npc.goals.length ? npc.goals : ['Пережить происходящее'],
       beliefs: npc.beliefs.length ? npc.beliefs : ['Слухам верить нельзя'],
-      known_fact_ids: [], visibility: 'party', available: true,
-      tags: [`faction:${starterFactionId}`],
+      ...(npc.socialDcs ? { social_dcs: structuredClone(npc.socialDcs) } : {}),
+      ...(npc.inventory?.length ? { inventory: structuredClone(npc.inventory) } : {}),
+      known_fact_ids: [], visibility: npc.visibility || 'party',
+      ...(npc.revealOnPresence === true ? { reveal_on_presence: true } : {}),
+      available: true,
+      tags: [...new Set([...(npc.tags ?? []), `faction:${factionIdByTemplateId.get(npc.factionId) ?? starterFactionId}`])],
     }))
     const starterNpcId = openingNpcs[0].id
     // Токены собеседников появляются уже в первой сцене. Раньше расстановка
@@ -405,7 +458,14 @@ export class CampaignBootstrapper {
       locationId: startingLocationId,
       seed: campaignWorldMap.seed ?? seed,
     }))
-    const emptyNpcWorld = { schema_version: 2, placements: [], vitals: {}, stances: {}, inventories: {} }
+    const emptyNpcWorld = {
+      schema_version: 3,
+      placements: [], vitals: {}, stances: {}, inventories: {},
+      profiles: Object.fromEntries(opening.npcs.filter((npc) => npc.mechanics).map((npc, index) => [
+        npc.id || `npc-${seed.slice(0, 12)}-${index + 1}`,
+        structuredClone(npc.mechanics),
+      ])),
+    }
     const placementDraft = {
       scene: { title: opening.scene.title, location: opening.scene.location, location_id: startingLocationId, mood: opening.scene.mood, objective: opening.scene.objective, turn: 1, cells, map: sceneTacticalMap },
       social: { npcs: openingNpcs },
@@ -427,11 +487,7 @@ export class CampaignBootstrapper {
     })
     const initialWorldMemory = {
       ...sceneMemory,
-      entities: [...(sceneMemory.entities ?? []), {
-        id: starterFactionId, kind: 'faction', name: 'Хранители дороги',
-        summary: 'Небольшое объединение проводников и дозорных, защищающее пути между поселениями.',
-        aliases: [], visibility: 'party', tags: ['starter-faction'],
-      }],
+      entities: [...(sceneMemory.entities ?? []), ...factionEntities],
       quests: [...(sceneMemory.quests ?? []), {
         id: starterQuestId,
         title: opening.hook || opening.scene.objective || 'Первая зацепка',

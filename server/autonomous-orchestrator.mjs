@@ -570,7 +570,10 @@ export class AutonomousCampaignOrchestrator {
       else commands.push({ command_type: 'UpdateObjective', objective: nextHook(loaded.state, 'Найти подтверждённую квестовую зацепку') })
     }
     if (intent.type === 'request_encounter') {
-      commands.push({ command_type: 'CreateEncounter', theme: intent.theme, difficulty: intent.difficulty, seed: `${campaignId}:${key}` })
+      commands.push({
+        command_type: 'CreateEncounter', theme: intent.theme, difficulty: intent.difficulty, seed: `${campaignId}:${key}`,
+        ...(intent.npc_id ? { npc_id: intent.npc_id } : {}),
+      })
       commands.push({ command_type: 'StartCombat', server_authoritative: true })
     }
     if (intent.type === 'end_scene') {

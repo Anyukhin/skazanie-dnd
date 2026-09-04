@@ -259,7 +259,10 @@ test('HTTP MakeAttack игрока применяет Скрытую атаку 
   assert.equal(attack.payload.hit, true)
   assert.equal(attack.payload.sneak_attack_eligible_by, 'ally')
   assert.equal(attack.payload.sneak_attack_supporter_id, 'ally')
-  assert.equal(sneak.payload.expression, '3d6')
+  // Боевой API использует настоящую случайность: натуральная 20 удваивает и
+  // кости Скрытой атаки. Без этой развилки тест примерно раз в двадцать запусков
+  // принимал корректные 6d6 за регрессию.
+  assert.equal(sneak.payload.expression, attack.payload.critical ? '6d6' : '3d6')
   assert.equal(sneak.payload.supporter_id, 'ally')
 
   const duplicate = await request(baseUrl, `/api/campaigns/${campaignId}/commands`, {

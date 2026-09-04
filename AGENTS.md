@@ -123,7 +123,7 @@ pnpm backup           # зашифрованная копия storage в ./backu
 
 | Файл | Промпт | Роль |
 | --- | --- | --- |
-| `server/director-agent.mjs` | `prompts/director/v2_story.txt`, `prompts/director/v2_chaos.txt` | темп, развилки, переходы |
+| `server/director-agent.mjs` | `prompts/director/v3_story.txt`, `prompts/director/v3_chaos.txt` | темп, развилки, переходы |
 | `server/npc-controller.mjs` | `prompts/npc_controller/v1.txt` | тактика NPC |
 | `server/npc-social-controller.mjs` | `prompts/npc_controller/social_v3.txt` | социальные сцены |
 | `server/narrator.mjs` | `prompts/narrator/v6.txt` | текст после commit |

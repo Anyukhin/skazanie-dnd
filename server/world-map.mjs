@@ -5,9 +5,205 @@ const HEIGHT = 640
 const KINDS = new Set(['capital', 'city', 'town', 'village', 'port', 'fortress', 'ruin', 'dungeon', 'landmark', 'wilds'])
 const BIOMES = new Set(['plains', 'forest', 'mountains', 'marsh', 'desert', 'tundra', 'coast', 'wastes'])
 const ROUTE_KINDS = new Set(['road', 'trail', 'river', 'sea', 'pass'])
+const WORLD_MAP_BACKGROUND_MAX_LENGTH = 180
+const WORLD_MAP_BACKGROUND_ALT_MAX_LENGTH = 240
+const LOCATION_HISTORY_MAX_LENGTH = 1_200
+const LOCATION_STORY_HOOK_LIMIT = 3
+const LOCATION_STORY_HOOK_MAX_LENGTH = 320
+const CITY_OVERVIEW_TEXT_MAX_LENGTH = 1_200
+const CITY_OVERVIEW_DISTRICT_LIMIT = 8
+const CITY_OVERVIEW_PLACE_LIMIT = 12
+const CITY_OVERVIEW_ID_RE = /^[a-z0-9][a-z0-9-]{0,79}$/u
+const CITY_OVERVIEW_PLACE_KINDS = new Set(['civic', 'harbor', 'market', 'temple', 'archive', 'gate', 'tower', 'garden', 'workshop', 'infrastructure', 'inn', 'other'])
+
+/**
+ * Фон карты — только заранее зарегистрированный ассет репозитория. Полный
+ * URL, query string и фрагменты здесь намеренно не проходят: SVG не должен
+ * превращаться в канал загрузки внешнего ресурса из данных кампании.
+ */
+export const WORLD_MAP_BACKGROUND_URL_RE = /^\/assets\/maps\/world\/skazanie\/[a-z0-9-]+-v[1-9][0-9]*\.webp$/u
+export const CITY_OVERVIEW_IMAGE_URL_RE = /^\/assets\/maps\/city\/skazanie\/[a-z0-9-]+-v[1-9][0-9]*\.webp$/u
 
 function text(value, maximum = 180) {
   return String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
+}
+
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
+function stringText(value, maximum) {
+  return typeof value === 'string' ? text(value, maximum) : ''
+}
+
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
+export function safeWorldMapBackgroundUrl(value) {
+  const candidate = stringText(value, WORLD_MAP_BACKGROUND_MAX_LENGTH)
+  return WORLD_MAP_BACKGROUND_URL_RE.test(candidate) ? candidate : ''
+}
+
+/**
+ * @param {unknown} value
+ * @returns {{backgroundImage?: string, backgroundAlt?: string}}
+ */
+export function normalizeWorldMapBackground(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  const source = /** @type {Record<string, unknown>} */ (value)
+  const backgroundImage = safeWorldMapBackgroundUrl(source.backgroundImage)
+  if (!backgroundImage) return {}
+  const backgroundAlt = stringText(source.backgroundAlt, WORLD_MAP_BACKGROUND_ALT_MAX_LENGTH)
+  return {
+    backgroundImage,
+    ...(backgroundAlt ? { backgroundAlt } : {}),
+  }
+}
+
+/**
+ * @param {unknown} value
+ * @returns {string[]}
+ */
+function storyHooks(value) {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((entry) => stringText(entry, LOCATION_STORY_HOOK_MAX_LENGTH))
+    .filter(Boolean)
+    .slice(0, LOCATION_STORY_HOOK_LIMIT)
+}
+
+/**
+ * @param {Record<string, unknown>} raw
+ * @returns {{history?: string, storyHooks?: string[]}}
+ */
+function locationLore(raw) {
+  const history = stringText(raw.history, LOCATION_HISTORY_MAX_LENGTH)
+  const hooks = storyHooks(raw.storyHooks)
+  return {
+    ...(history ? { history } : {}),
+    ...(hooks.length ? { storyHooks: hooks } : {}),
+  }
+}
+
+/**
+ * Sanitizes lore at both the authored-map and viewer-projection boundaries.
+ *
+ * @param {unknown} value
+ * @returns {{history?: string, storyHooks?: string[]}}
+ */
+export function normalizeWorldMapLocationLore(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return locationLore(/** @type {Record<string, unknown>} */ (value))
+}
+
+function safeCityOverviewId(value) {
+  const candidate = stringText(value, 80)
+  return CITY_OVERVIEW_ID_RE.test(candidate) ? candidate : ''
+}
+
+export function safeCityOverviewImageUrl(value) {
+  const candidate = stringText(value, 180)
+  return CITY_OVERVIEW_IMAGE_URL_RE.test(candidate) ? candidate : ''
+}
+
+function cityOverviewLore(raw) {
+  const history = stringText(raw.history, LOCATION_HISTORY_MAX_LENGTH)
+  const hooks = storyHooks(raw.storyHooks)
+  return {
+    ...(history ? { history } : {}),
+    ...(hooks.length ? { storyHooks: hooks } : {}),
+  }
+}
+
+/**
+ * Городской обзор — только презентационная server-owned структура. В нём нет
+ * расстояний, опасности, текущей позиции или команды перехода: клик по району
+ * не имеет права незаметно стать вторым механизмом путешествия.
+ *
+ * @param {unknown} value
+ * @returns {null | {
+ *   version: number,
+ *   name: string,
+ *   summary: string,
+ *   image: string,
+ *   imageAlt?: string,
+ *   width: number,
+ *   height: number,
+ *   districts: Array<Record<string, unknown>>,
+ *   places: Array<Record<string, unknown>>,
+ * }}
+ */
+export function normalizeCityOverview(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const source = /** @type {Record<string, any>} */ (value)
+  const image = safeCityOverviewImageUrl(source.image)
+  const name = stringText(source.name, 160)
+  const summary = stringText(source.summary, CITY_OVERVIEW_TEXT_MAX_LENGTH)
+  if (!image || !name || !summary) return null
+  const width = number(source.width, WIDTH, 320, 2_000)
+  const height = number(source.height, HEIGHT, 240, 1_200)
+  const districtIds = new Set()
+  const districts = (Array.isArray(source.districts) ? source.districts : [])
+    .slice(0, CITY_OVERVIEW_DISTRICT_LIMIT)
+    .flatMap((raw) => {
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return []
+      const id = safeCityOverviewId(raw.id)
+      const districtName = stringText(raw.name, 120)
+      if (!id || !districtName || districtIds.has(id)) return []
+      districtIds.add(id)
+      const x = number(raw.x, width / 2, 35, width - 35)
+      const y = number(raw.y, height / 2, 35, height - 35)
+      const rawBounds = raw.bounds && typeof raw.bounds === 'object' && !Array.isArray(raw.bounds) ? raw.bounds : {}
+      const boundsX = number(rawBounds.x, Math.max(20, x - 90), 20, width - 80)
+      const boundsY = number(rawBounds.y, Math.max(20, y - 70), 20, height - 80)
+      const boundsWidth = number(rawBounds.width, 180, 80, Math.max(80, width - boundsX - 20))
+      const boundsHeight = number(rawBounds.height, 140, 80, Math.max(80, height - boundsY - 20))
+      return [{
+        id,
+        name: districtName,
+        x,
+        y,
+        bounds: { x: boundsX, y: boundsY, width: boundsWidth, height: boundsHeight },
+        summary: stringText(raw.summary, 500),
+        ...cityOverviewLore(raw),
+      }]
+    })
+  if (!districts.length) return null
+  const placeIds = new Set()
+  const places = (Array.isArray(source.places) ? source.places : [])
+    .slice(0, CITY_OVERVIEW_PLACE_LIMIT)
+    .flatMap((raw) => {
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return []
+      const id = safeCityOverviewId(raw.id)
+      const placeName = stringText(raw.name, 120)
+      const districtId = safeCityOverviewId(raw.districtId ?? raw.district_id)
+      if (!id || !placeName || !districtIds.has(districtId) || placeIds.has(id)) return []
+      placeIds.add(id)
+      return [{
+        id,
+        name: placeName,
+        kind: CITY_OVERVIEW_PLACE_KINDS.has(raw.kind) ? raw.kind : 'other',
+        districtId,
+        x: number(raw.x, width / 2, 25, width - 25),
+        y: number(raw.y, height / 2, 25, height - 25),
+        summary: stringText(raw.summary, 500),
+        ...cityOverviewLore(raw),
+      }]
+    })
+  if (!places.length) return null
+  const imageAlt = stringText(source.imageAlt ?? source.image_alt, 300)
+  return {
+    version: number(source.version, 1, 1, 99),
+    name,
+    summary,
+    image,
+    ...(imageAlt ? { imageAlt } : {}),
+    width,
+    height,
+    districts,
+    places,
+  }
 }
 
 function key(value) {
@@ -166,11 +362,14 @@ function normalizeLocations(rawLocations, fallback, regions, currentLocation, cu
     const regionId = regions.some((region) => region.id === raw.regionId) ? raw.regionId
       : regionByName.get(key(raw.region)) ?? nearestRegionId(regions, x, y)
     const id = uniqueId(slug(raw.id || name, `location-${index + 1}`), used)
+    const cityOverview = normalizeCityOverview(raw.cityOverview ?? raw.city_overview)
     return [{
       id, name,
       kind: KINDS.has(raw.kind) ? raw.kind : 'landmark',
       x, y, regionId,
       summary: text(raw.summary || raw.description, 320),
+      ...normalizeWorldMapLocationLore(raw),
+      ...(cityOverview ? { cityOverview } : {}),
       known: raw.known !== false,
       visited: raw.visited === true || id === text(currentLocationId, 120) || key(name) === key(currentLocation),
     }]
@@ -251,7 +450,12 @@ export function createCampaignWorldMap({
     })
   }
   const routeFallback = fallbackRoutes(locations)
-  const routes = normalizeRoutes([...(Array.isArray(source.routes) ? source.routes : []), ...routeFallback], routeFallback, locations)
+  // Полностью авторская сеть уже прошла отдельную проверку связности каталога.
+  // Её нельзя молча дополнять процедурными дорогами: лишний shortcut меняет
+  // время пути, риск и саму географию заранее написанной кампании.
+  const authoredRoutes = Array.isArray(source.routes) ? source.routes : []
+  const routesComplete = source.routesComplete === true && authoredRoutes.length > 0
+  const routes = normalizeRoutes(routesComplete ? authoredRoutes : [...authoredRoutes, ...routeFallback], routeFallback, locations)
   const current = locationById(locations, startingLocationId)
     ?? locations.find((location) => key(location.name) === key(startingLocation))
     ?? locations[0]
@@ -263,6 +467,8 @@ export function createCampaignWorldMap({
     width: WIDTH,
     height: HEIGHT,
     currentLocationId: current?.id ?? '',
+    ...(routesComplete ? { routesComplete: true } : {}),
+    ...normalizeWorldMapBackground(source),
     regions,
     locations,
     routes,

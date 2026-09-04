@@ -101,6 +101,9 @@ test('Director contract accepts only six narrative intentions and rejects forged
   assert.deepEqual(valid.map((intent) => normalizeDirectorIntent(intent).type), [
     'continue_exploration', 'open_social_scene', 'advance_quest_clock', 'request_encounter', 'end_scene', 'offer_next_hook',
   ])
+  assert.equal(normalizeDirectorIntent({
+    type: 'request_encounter', theme: 'generic', difficulty: 'deadly', npc_id: 'astohan-sargat',
+  }).npc_id, 'astohan-sargat')
   for (const forged of [
     { type: 'deal_damage', damage: 999 },
     { type: 'request_encounter', theme: 'beasts', difficulty: 'easy', hp: 1 },

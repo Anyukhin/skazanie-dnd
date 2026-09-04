@@ -152,7 +152,7 @@ test('TransferItem атомарно убирает предмет у владе�
 
   const next = result.events.reduce(applyGameEvent, initial)
   assert.equal(next.players[0].inventory[0].quantity, 2)
-  assert.equal(next.npc_world.schema_version, 2)
+  assert.equal(next.npc_world.schema_version, 3)
   assert.equal(next.npc_world.inventories.marta.length, 1)
   assert.equal(next.npc_world.inventories.marta[0].quantity, 2)
   assert.deepEqual(replayEvents(initial, result.events), next)
@@ -259,7 +259,7 @@ test('bounded NPC inventory объединяет стопки и отклоня�
   )
 })
 
-test('legacy npc_world v1 нормализуется в bounded v2 и replay остаётся точным', () => {
+test('legacy npc_world v1 нормализуется в bounded v3 и replay остаётся точным', () => {
   const legacy = {
     schema_version: 1,
     placements: [{
@@ -273,7 +273,7 @@ test('legacy npc_world v1 нормализуется в bounded v2 и replay о�
     stances: {},
   }
   const upgraded = normalizeNpcWorldState(legacy)
-  assert.equal(upgraded.schema_version, 2)
+  assert.equal(upgraded.schema_version, 3)
   assert.deepEqual(upgraded.inventories, {})
 
   const initial = campaign()

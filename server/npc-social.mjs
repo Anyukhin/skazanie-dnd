@@ -286,6 +286,7 @@ function safeProfile(value = {}) {
     name: clean(value.name, 160),
     role: clean(value.role, 160),
     location: clean(value.location, 180),
+    ...(clean(value.location_id ?? value.locationId, 120) ? { location_id: clean(value.location_id ?? value.locationId, 120) } : {}),
     public_summary: clean(value.public_summary, 1_000),
     voice: clean(value.voice, 500),
     speech_profile: npcSpeechProfile(value),
@@ -294,6 +295,7 @@ function safeProfile(value = {}) {
     known_fact_ids: strings(value.known_fact_ids, 120, 100),
     social_dcs: safeSocialDcs(value.social_dcs),
     visibility: PROFILE_VISIBILITIES.has(value.visibility) ? value.visibility : 'party',
+    ...(value.reveal_on_presence === true ? { reveal_on_presence: true } : {}),
     available: value.available !== false,
     tags: strings(value.tags, 60, 20),
     schedule: safeSchedule(value.schedule),
@@ -584,7 +586,7 @@ function strictSpeechProfileInput(value) {
 
 function normalizeProfileInput(input) {
   const value = object(input, 'npc')
-  fields(value, new Set(['id', 'name', 'role', 'location', 'public_summary', 'voice', 'speech_profile', 'goals', 'beliefs', 'known_fact_ids', 'social_dcs', 'visibility', 'available', 'tags', 'schedule', 'inventory', 'dossier']), 'npc')
+  fields(value, new Set(['id', 'name', 'role', 'location', 'location_id', 'public_summary', 'voice', 'speech_profile', 'goals', 'beliefs', 'known_fact_ids', 'social_dcs', 'visibility', 'reveal_on_presence', 'available', 'tags', 'schedule', 'inventory', 'dossier']), 'npc')
   // Досье принадлежит серверу. Поле принимается только для round-trip
   // спроецированного профиля через админское редактирование: присланные записи
   // игнорируются, а reducer сохраняет событийную историю самого NPC.
@@ -859,7 +861,16 @@ export function npcSocialForViewer(input, viewer = {}) {
   if (viewer.isAdmin) return social
   const playerId = clean(viewer.playerId, 120)
   const npcs = social.npcs
-    .filter((npc) => viewerMaySee(npc.visibility, viewer))
+    .filter((npc) => {
+      if (viewerMaySee(npc.visibility, viewer)) return true
+      if (npc.reveal_on_presence !== true) return false
+      const current = npcProfileAtWorldTime(npc, viewer.state ?? {})
+      const sceneLocationId = clean(viewer.state?.scene?.location_id ?? viewer.state?.scene?.locationId, 120)
+      const sceneLocation = clean(viewer.state?.scene?.location, 180).toLocaleLowerCase('ru')
+      return current.available !== false
+        && ((sceneLocationId && current.location_id === sceneLocationId)
+          || (sceneLocation && clean(current.location, 180).toLocaleLowerCase('ru') === sceneLocation))
+    })
     .map((npc) => npcProfileForViewerAt(npc, viewer))
   const visibleNpcIds = new Set(npcs.map((npc) => npc.id))
   const conversations = social.conversations.filter((entry) => visibleNpcIds.has(entry.npc_id) && (entry.visibility === 'party' || entry.hero_id === playerId))
