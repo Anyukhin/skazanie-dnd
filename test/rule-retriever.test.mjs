@@ -159,6 +159,30 @@ test('ruleset and enabled-pack filters never mix editions', async () => {
   await assert.rejects(() => retriever.search({ queries: ['помеха'] }), /ruleset_id is required/)
 })
 
+test('installed 2014 and 2024 packs remain isolated in one retriever', async () => {
+  const packs = await Promise.all([loadRulePack('srd_5_2_1'), loadRulePack('dnd_5e_2014')])
+  const retriever = new RuleRetriever(packs)
+
+  const result2014 = await retriever.search({
+    queries: ['Сколько раундов можно дышать после задержки дыхания?'],
+    ruleset_id: 'dnd_5e_2014',
+    enabled_packs: ['dnd_5e_2014'],
+    limit: 10,
+  })
+  assert.equal(result2014.results[0]?.rule_id, 'dnd_5e_2014:environment:suffocation')
+  assert.ok(result2014.results.every((entry) => entry.ruleset_id === 'dnd_5e_2014'))
+  assert.ok(result2014.results[0].text_ru.includes('опускаются до 0'))
+
+  await assert.rejects(
+    () => retriever.search({
+      queries: ['удушье'],
+      ruleset_id: 'dnd_5e_2014',
+      enabled_packs: ['srd_5_2_1'],
+    }),
+    /belongs to srd_5_2_1, not requested dnd_5e_2014/,
+  )
+})
+
 test('same request produces stable ids, ordering, scores, and explanations', async () => {
   const retriever = await makeRetriever()
   const request = {

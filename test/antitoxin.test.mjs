@@ -21,8 +21,9 @@ function dice(values = []) {
   })
 }
 
-function stateWithAntitoxin({ quantity = 2, combat = true } = {}) {
+function stateWithAntitoxin({ quantity = 2, combat = true, rulesetId = 'srd_5_2_1' } = {}) {
   return normalizeCampaignState({
+    ruleset_id: rulesetId,
     sessionCode: 'ANTITOXIN-1',
     campaign_id: 'ANTITOXIN-1',
     partyMemberIds: ['hero'],
@@ -110,6 +111,14 @@ test('drinking antitoxin spends a bonus action, consumes one flask and replays i
     (error) => error.code === 'BONUS_ACTION_SPENT',
   )
   assert.equal(after.players[0].inventory[0].quantity, 1, 'отказ не расходует оставшийся флакон')
+})
+
+test('antitoxin spends an action under D&D 5e 2014 rules', () => {
+  const initial = stateWithAntitoxin({ rulesetId: 'dnd_5e_2014' })
+  const after = replayEvents(initial, drink(initial, 'drink-antitoxin-2014').events)
+
+  assert.equal(after.mechanics.combat.action_economy.hero.action, false)
+  assert.equal(after.mechanics.combat.action_economy.hero.bonus_action, true)
 })
 
 test('antitoxin is self-only and cannot be used without a remaining flask', () => {

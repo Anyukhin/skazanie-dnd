@@ -672,9 +672,10 @@ function equipmentItemCommand(enemy, item, extra = {}) {
 
 /** Зелье — на последних хитах и один раз за бой. */
 function healingPotionCommandFor(state, enemy, usable, economy) {
-  if (economy.bonus_action === false || !npcNeedsHealingPotion(enemy)) return null
-  if (conditionIds(state, actorId(enemy)).has(npcTacticCondition('heal'))) return null
   const potion = usable.find((item) => item.tactic === 'heal')
+  const resource = String(potion?.use?.combat_action ?? '')
+  if (!potion || !npcNeedsHealingPotion(enemy) || (resource && economy[resource] === false)) return null
+  if (conditionIds(state, actorId(enemy)).has(npcTacticCondition('heal'))) return null
   return potion ? equipmentItemCommand(enemy, potion) : null
 }
 
@@ -935,11 +936,14 @@ export function planNpcTurn(rawState, enemyId) {
   const candidate = targetCandidates(state, enemy)[0]
   // Снаряжение читается один раз на план: у зверя, слизня и всякого, кому
   // инвентарь не положен, список пуст, и три ветки ниже выключаются сами.
-  const usableEquipment = npcUsableItems(enemy)
+  const usableEquipment = npcUsableItems(enemy, { rulesetId: state.ruleset_id })
   // Отход раненого идёт раньше любой атакующей ветки: существо на последних
   // ОЗ не разменивается насмерть, если не одержимо чертой ярости.
   const bloodiedRetreat = shouldRetreatBloodied(state, enemy) ? bloodiedRetreatFor(state, enemy) : null
   const healingSip = healingPotionCommandFor(state, enemy, usableEquipment, currentEconomy)
+  const healingUsesAction = healingSip && usableEquipment
+    .find((item) => item.item_instance_id === healingSip.item_id)?.use?.combat_action === 'action'
+  if (healingUsesAction) return [healingSip, { command_type: 'EndTurn', actor_id: String(enemyId) }]
   // Магия стат-блока идёт раньше оружия и раньше подхода: заклинатель на то и
   // заклинатель, что достаёт оттуда, откуда не дотянется клинком. Ветка стоит
   // после отхода раненого — своя шкура важнее лишнего Огненного шара — и

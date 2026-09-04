@@ -103,8 +103,8 @@ function importDocument(overrides = {}) {
   }
 }
 
-async function command(baseUrl, cookieValue, actorId, document, key) {
-  return request(baseUrl, '/api/campaigns/CREATE-HERO/commands', {
+async function command(baseUrl, cookieValue, actorId, document, key, campaignCode = 'CREATE-HERO') {
+  return request(baseUrl, `/api/campaigns/${campaignCode}/commands`, {
     method: 'POST',
     cookie: cookieValue,
     key,
@@ -131,6 +131,15 @@ test('каждый игрок заполняет свой серверный с�
   assert.equal(health.characterCreation.ability_policy.policy_id, 'skazanie.character-abilities.standard-array')
   assert.equal(health.characterCreation.classes.length, 12)
   assert.ok(health.characterCreation.classes.find((entry) => entry.id === 'wizard').spell_selection.spells.length > 0)
+  const classicCatalog = await request(baseUrl, '/api/rulesets/dnd_5e_2014/character-creation')
+  assert.equal(classicCatalog.status, 200, classicCatalog.text)
+  assert.equal(classicCatalog.body.ruleset_id, 'dnd_5e_2014')
+  assert.equal(classicCatalog.body.ability_policy.bonus_source, 'species')
+  assert.equal(classicCatalog.body.ability_policy.species_options.length, 14)
+  assert.equal(classicCatalog.body.backgrounds.options.length, 13)
+  assert.equal(classicCatalog.body.starter_equipment.policy_version, 2)
+  assert.equal(classicCatalog.body.classes.find((entry) => entry.id === 'fighter').starter_equipment.choice_groups.length, 4)
+  assert.ok(classicCatalog.body.ability_policy.species_options.find((entry) => entry.id === 'dragonborn').choice_groups[0].options.length === 10)
 
   const admin = await request(baseUrl, '/api/auth/setup-admin', { method: 'POST', body: {
     name: 'Setup', email: 'setup@creation.test', password: 'secure-setup-password', setupToken: 'character-creation-setup',
@@ -145,6 +154,44 @@ test('каждый игрок заполняет свой серверный с�
   const ownerCookie = cookie(owner)
   const guestCookie = cookie(guest)
 
+  const classicCreated = await request(baseUrl, '/api/campaigns', {
+    method: 'POST',
+    cookie: ownerCookie,
+    body: { code: 'CLASSIC-HERO', name: 'Классический герой', bootstrap: { slotCount: 1, rulesetId: 'dnd_5e_2014' } },
+  })
+  assert.equal(classicCreated.status, 201, classicCreated.text)
+  assert.equal(classicCreated.body.state.ruleset_id, 'dnd_5e_2014')
+  const classicBase = { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 }
+  const classicImported = await command(baseUrl, ownerCookie, 'hero-slot-1', importDocument({
+    character: 'Торин',
+    species: 'Холмовой дварф',
+    background: 'Солдат',
+    backgroundId: 'soldier',
+    backgroundChoices: { tools: ['dice_set'], languages: [] },
+    speciesChoices: { 'artisan-tool': ['smiths_tools'] },
+    starterEquipmentChoices: {
+      armor: ['chain-mail'], 'melee-loadout': ['longsword-shield'],
+      secondary: ['light-crossbow'], pack: ['explorers-pack'],
+    },
+    abilities: { str: 15, dex: 14, con: 15, int: 12, wis: 11, cha: 8 },
+    abilityGeneration: {
+      policyId: 'skazanie.character-abilities.dnd-5e-2014', policyVersion: 2, method: 'standard_array',
+      baseScores: classicBase,
+      originBonusProfileId: 'dwarf-hill',
+      originBonuses: { str: 0, dex: 0, con: 2, int: 0, wis: 1, cha: 0 },
+      speciesOptionId: 'dwarf-hill',
+    },
+    baseSpeed: 25,
+  }), 'classic-owner-character', 'CLASSIC-HERO')
+  assert.equal(classicImported.status, 200, classicImported.text)
+  const classicHero = classicImported.body.authoritative_state.players[0]
+  assert.equal(classicHero.speciesBenefits.species_option_id, 'dwarf-hill')
+  assert.equal(classicHero.backgroundBenefits.background_id, 'soldier')
+  assert.equal(classicHero.currency.gold, 10)
+  assert.deepEqual(classicHero.speciesToolProficiencies, ['smiths_tools'])
+  assert.equal(classicHero.starterEquipmentChoices['melee-loadout'][0], 'longsword-shield')
+  assert.ok(classicHero.inventory.some((item) => item.catalog_id === 'srd_5_2_1:chain-mail'))
+
   const forgedPlayers = Array.from({ length: 4 }, (_, index) => ({
     id: `slot-${index + 1}`,
     character: `Подделка ${index + 1}`,
@@ -157,7 +204,7 @@ test('каждый игрок заполняет свой серверный с�
     body: { code: 'CREATE-HERO', name: 'Создание героев', bootstrap: { slotCount: 4, players: forgedPlayers } },
   })
   assert.equal(created.status, 201, created.text)
-  assert.deepEqual(created.body.user.campaignMemberships[0].heroIds, ['slot-1'])
+  assert.deepEqual(created.body.user.campaignMemberships.find((entry) => entry.campaignId === 'CREATE-HERO').heroIds, ['slot-1'])
   assert.equal(created.body.state.players.length, 4)
   assert.ok(created.body.state.players.every((hero) => hero.characterSetupRequired))
   assert.notEqual(created.body.state.players[0].abilities.str, 30)

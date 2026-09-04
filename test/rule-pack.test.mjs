@@ -32,6 +32,31 @@ test('loads and validates the bilingual P0 rule pack', async () => {
   assert.ok(Object.isFrozen(pack.rules[0]))
 })
 
+test('loads the Russian-canonical D&D 5e 2014 cutover pack with pinned source references', async () => {
+  const pack = await loadRulePack('dnd_5e_2014')
+
+  assert.deepEqual(pack.summary, {
+    ruleset_id: 'dnd_5e_2014',
+    pack_id: 'dnd_5e_2014',
+    rule_count: 28,
+    glossary_term_count: 34,
+    ontology_edge_count: 32,
+    source_count: 10,
+  })
+  assert.equal(pack.manifest.canonical_language, 'ru')
+  assert.equal(pack.manifest.edition_family, '5e_2014')
+  assert.equal(pack.manifest.activation_status, 'preview')
+  assert.equal(pack.sourceRegistry.content_policy.copyrighted_page_text, 'not_bundled')
+  assert.ok(pack.sourceRegistry.sources.every((source) => source.url.startsWith('https://5e14.dnd.su/')))
+  assert.ok(pack.sourceRegistry.sources.every((source) => source.bundled === false))
+  assert.ok(pack.rules.every((rule) => rule.source_ref && rule.source_hash))
+  assert.ok(pack.rules.some((rule) => rule.id === 'dnd_5e_2014:environment:suffocation'
+    && rule.text_ru.includes('опускаются до 0')))
+  assert.ok(pack.rules.some((rule) => rule.id === 'dnd_5e_2014:classes:fighter-indomitable'
+    && !rule.text_ru.includes('бонусом, равным уровню')))
+  assert.ok(Object.isFrozen(pack.sourceRegistry))
+})
+
 test('formalization metadata matches the implemented P0 coverage report', async () => {
   const pack = await loadRulePack('srd_5_2_1')
   const counts = pack.rules.reduce((result, rule) => ({ ...result, [rule.formalization_level]: (result[rule.formalization_level] || 0) + 1 }), {})
@@ -87,6 +112,16 @@ test('validation strictly rejects rules and ontology edges from another ruleset'
   const mixedOntologyPack = structuredClone(await loadRulePack('srd_5_2_1'))
   mixedOntologyPack.ontologyEdges[0].ruleset_id = 'other_edition'
   assert.throws(() => validateRulePack(mixedOntologyPack), /mixes other_edition/)
+})
+
+test('source registry rejects an unknown or mismatched rule source revision', async () => {
+  const unknown = structuredClone(await loadRulePack('dnd_5e_2014'))
+  unknown.rules[0].source_ref = 'dndsu-2014-unknown'
+  assert.throws(() => validateRulePack(unknown), /references unknown source/)
+
+  const mismatched = structuredClone(await loadRulePack('dnd_5e_2014'))
+  mismatched.rules[0].source_hash = 'another-revision'
+  assert.throws(() => validateRulePack(mismatched), /source revision does not match/)
 })
 
 test('loader rejects invalid and unavailable ruleset ids without path traversal', async () => {

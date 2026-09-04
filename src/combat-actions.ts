@@ -59,6 +59,16 @@ const curatedPassiveFeatures: Partial<Record<NonNullable<Player['characterClass'
     sourceUrl: 'https://www.dndbeyond.com/sources/dnd/br-2024/character-classes#Paladin', uses: null,
   }],
 }
+const classicPassiveFeatureOverrides: Record<string, Pick<CatalogAction, 'description' | 'sourceUrl'>> = {
+  'fighter-indomitable': {
+    description: 'После проваленного спасброска перебросьте его и обязательно примите новый результат. Использование восстанавливается долгим отдыхом.',
+    sourceUrl: 'https://5e14.dnd.su/class/91-fighter/',
+  },
+  'paladin-aura-of-protection': {
+    description: 'Пассивная аура 10 футов: пока вы в сознании, вы и союзники добавляете к спасброскам ваш модификатор Харизмы (минимум +1). Несколько аур не складываются.',
+    sourceUrl: 'https://5e14.dnd.su/class/94-paladin/',
+  },
+}
 const normalizedName = (value?: string | null) => String(value ?? '').toLocaleLowerCase('ru').replace(/ё/gu, 'е').replace(/[^a-zа-я0-9]+/giu, ' ').trim()
 const featureChoiceGroups = buildRules.featureChoiceGroups as Array<{ classKey: string; subclass?: string; unlockLevel: number; options: Array<{ id: string }> }>
 
@@ -111,13 +121,18 @@ export function subclassOptionsFor(player?: Player) {
   return classKey ? generatedClasses.get(classKey)?.subclasses ?? [] : []
 }
 
-export function classFeatureCatalogFor(player?: Player, includeLocked = false): CatalogAction[] {
+export function classFeatureCatalogFor(player?: Player, includeLocked = false, rulesetId = 'srd_5_2_1'): CatalogAction[] {
   const classKey = playerClassKey(player)
   const catalog = classKey ? generatedClasses.get(classKey) : undefined
   const level = Math.max(1, Math.min(12, Number(player?.level) || 1))
   const selectedSubclass = normalizedName(player?.subclass)
   const generatedEntries = (catalog?.actions ?? []).map((entry): CatalogAction => ({ ...entry, mechanicsSupport: entry.effect?.kind === 'special' ? 'ruling-only' : 'heuristic' }))
-  const passiveEntries = (classKey ? curatedPassiveFeatures[classKey] ?? [] : []).map((entry): CatalogAction => ({ ...entry, mechanicsSupport: 'partial', supportNote: entry.supportNote ?? defaultPartialActionNote }))
+  const passiveEntries = (classKey ? curatedPassiveFeatures[classKey] ?? [] : []).map((entry): CatalogAction => ({
+    ...entry,
+    ...(rulesetId === 'dnd_5e_2014' ? classicPassiveFeatureOverrides[entry.id] : {}),
+    mechanicsSupport: 'partial',
+    supportNote: entry.supportNote ?? defaultPartialActionNote,
+  }))
   const entries = [...generatedEntries, ...passiveEntries]
   return [...new Map(entries.map((entry) => [entry.id, entry])).values()]
     .filter((entry) => (!entry.subclass || normalizedName(entry.subclass) === selectedSubclass) && (includeLocked || level >= Number(entry.minimumLevel ?? 1)))

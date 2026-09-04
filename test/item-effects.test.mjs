@@ -26,6 +26,7 @@ function applyAll(state, events) {
 
 function itemFixture({
   item,
+  rulesetId = 'srd_5_2_1',
   targetHp = 4,
   targetX = 1,
   combat = true,
@@ -37,6 +38,7 @@ function itemFixture({
     ? { medic: { x: 0, y: 0 }, ally: { x: targetX, y: 0 }, foe: { x: 2, y: 0 } }
     : {}
   return normalizeCampaignState({
+    ruleset_id: rulesetId,
     sessionCode: 'ITEM-EFFECTS',
     partyMemberIds: ['medic', 'ally'],
     players: [
@@ -134,6 +136,26 @@ test('healing potion uses a bonus action, heals a living nearby party target wit
     }, initial, { diceService: dice([]), context: serverContext }),
     (error) => error instanceof RulesValidationError && error.code === 'BONUS_ACTION_SPENT',
   )
+})
+
+test('healing potion uses an action in a D&D 5e 2014 campaign', () => {
+  const initial = itemFixture({
+    rulesetId: 'dnd_5e_2014',
+    item: materializeCatalogItem('srd_5_2_1:potion-of-healing', { id: 'potion', quantity: 1 }),
+  })
+  const result = resolveCommand({
+    command_type: 'UseItem',
+    command_id: 'drink-potion-2014',
+    actor_id: 'medic',
+    target_id: 'ally',
+    item_id: 'potion',
+    server_authoritative: true,
+  }, initial, { diceService: dice([2, 4]), context: serverContext })
+
+  assert.equal(result.events[0].payload.combat_action, 'action')
+  const after = applyAll(initial, result.events)
+  assert.equal(after.mechanics.combat.action_economy.medic.action, false)
+  assert.equal(after.mechanics.combat.action_economy.medic.bonus_action, true)
 })
 
 test('party-target item range fails closed outside combat when authoritative positions are unknown', () => {

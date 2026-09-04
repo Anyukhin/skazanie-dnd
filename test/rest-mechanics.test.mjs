@@ -201,6 +201,33 @@ test('долгий отдых восстанавливает все потрач
   assert.equal(result.state.mechanics.hit_point_dice.fighter.spent, 0)
 })
 
+test('D&D 2014 восстанавливает продолжительным отдыхом только половину костей хитов', () => {
+  const state = fighterState({
+    ruleset_id: 'dnd_5e_2014',
+    ruleset_version: '2014.1.0',
+    enabled_rule_packs: ['dnd_5e_2014'],
+    players: [{
+      id: 'fighter', character: 'Бран', role: 'Воин · ур. 5', characterClass: 'fighter', level: 5,
+      hp: 30, maxHp: 44, abilities: { str: 16, dex: 12, con: 14, int: 10, wis: 10, cha: 8 }, inventory: [],
+    }],
+    mechanics: {
+      resources: { fighter: {} },
+      hit_point_dice: { fighter: { schema_version: 1, maximum: 5, spent: 5, die_size: 10 } },
+    },
+  })
+  const result = resolveCommands([
+    { command_type: 'StartRest', actor_id: 'fighter', kind: 'long' },
+    { command_type: 'AdvanceTime', amount: 480, unit: 'minute' },
+    { command_type: 'CompleteRest', actor_id: 'fighter', kind: 'long' },
+  ], state, { diceService, context: { allowedActorIds: ['fighter'] } })
+  const restored = result.events.find((event) => event.event_type === 'HitPointDiceRestored')
+  assert.equal(restored.payload.restored, 2)
+  assert.equal(restored.payload.pool_after.spent, 3)
+  assert.equal(result.state.mechanics.hit_point_dice.fighter.spent, 3)
+  assert.ok(restored.source_rule_ids.includes('dnd_5e_2014:resources:spending'))
+  assert.equal(restored.source_rule_ids.some((id) => id.startsWith('srd_5_2_1:')), false)
+})
+
 test('размер кости хитов определяется классом, а неизвестный класс получает d8', () => {
   const expected = new Map([
     ['barbarian', 12],
@@ -250,6 +277,28 @@ test('лечение костью хитов не опускается ниже 
   assert.equal(spent.payload.healing_total, 1)
   assert.equal(spent.payload.applied_healing, 1)
   assert.equal(result.state.players[0].hp, 3)
+})
+
+test('в D&D 2014 отрицательное Телосложение может свести лечение кости хитов к нулю', () => {
+  const state = normalizeCampaignState({
+    ruleset_id: 'dnd_5e_2014', ruleset_version: '2014.1.0', enabled_rule_packs: ['dnd_5e_2014'],
+    players: [{
+      id: 'sorcerer', characterClass: 'sorcerer', level: 1,
+      hp: 2, maxHp: 8, abilities: { con: 1 }, inventory: [],
+    }],
+  })
+  const localDice = new DiceService({ rng: new SequenceDiceRng([1]) })
+  const result = resolveCommands([
+    { command_type: 'StartRest', actor_id: 'sorcerer', kind: 'short' },
+    { command_type: 'AdvanceTime', amount: 60, unit: 'minute' },
+    { command_type: 'SpendHitPointDie', actor_id: 'sorcerer' },
+  ], state, { diceService: localDice, context: { allowedActorIds: ['sorcerer'] } })
+
+  const spent = result.events.find((event) => event.event_type === 'HitPointDieSpent')
+  assert.equal(spent.payload.formula, '1d6-5')
+  assert.equal(spent.payload.healing_total, 0)
+  assert.equal(spent.payload.applied_healing, 0)
+  assert.equal(result.state.players[0].hp, 2)
 })
 
 test('редьюсер Hit Dice отклоняет события без версии и с неизвестной версией', () => {

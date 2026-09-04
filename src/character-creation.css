@@ -170,3 +170,54 @@
   .creation-form.identity{grid-template-columns:1fr}
   .creation-form.identity label:first-child,.creation-form.identity .creation-summary{grid-column:1}
 }
+.creation-ruleset-note { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 12px; padding: 9px 11px; border: 1px solid rgba(201,149,85,.22); border-radius: 5px; background: rgba(166,106,49,.08); color: #897d71; font-size: var(--fs-sm); line-height: 1.45; }
+.creation-ruleset-note svg { flex: 0 0 auto; margin-top: 1px; color: #b88750; }.creation-ruleset-note b { color: #b9aa9b; }
+
+/* Композиция мастера следует тому же принципу, что хороший экран создания
+   героя в партийной RPG: выбор занимает сцену, а справа постоянно видны его
+   последствия. Это собственная панель «Сказания», без чужих ассетов. */
+.character-creation-wizard>main{display:grid;grid-template-columns:minmax(0,1fr) 310px;align-content:start;gap:18px 26px}
+.character-creation-wizard>main>.creation-ruleset-note{grid-column:1}
+.character-creation-wizard>main>*:not(.creation-summary-rail){grid-column:1;min-width:0}
+.character-creation-wizard>main>.creation-form{max-width:none}
+.creation-summary-rail{grid-column:2;grid-row:1/span 30;position:sticky;top:0;display:grid;align-content:start;gap:8px;padding:18px;border:1px solid rgba(211,160,97,.28);border-radius:10px;background:linear-gradient(155deg,rgba(57,43,30,.82),rgba(16,14,12,.94));box-shadow:0 16px 38px rgba(0,0,0,.26)}
+.creation-summary-rail>small{color:#a98151;font:800 var(--fs-xxs) Manrope,sans-serif;letter-spacing:.18em}
+.creation-summary-rail h3{margin:0 0 4px;color:#efd8b8;font:600 var(--fs-2xl) Spectral,serif}
+.creation-summary-rail dl{display:grid;gap:0;margin:0}
+.creation-summary-rail dl>div{display:grid;gap:3px;padding:10px 0;border-top:1px solid rgba(255,255,255,.07)}
+.creation-summary-rail dt{color:#82766a;font:700 var(--fs-xxs) Manrope,sans-serif;letter-spacing:.08em;text-transform:uppercase}
+.creation-summary-rail dd{margin:0;color:#cbb89f;font:500 var(--fs-xs)/1.45 Manrope,sans-serif}
+
+.creation-equipment-groups{display:grid;gap:18px}
+.creation-equipment-groups section{display:grid;gap:10px}
+.creation-equipment-groups section>header{display:flex;align-items:baseline;justify-content:space-between;color:#dac2a3;font:600 var(--fs-xl) Spectral,serif}
+.creation-equipment-groups section>header b{color:#a98256;font:700 var(--fs-xs) Manrope,sans-serif}
+.creation-equipment-fixed{padding:14px;border:1px solid rgba(112,185,148,.22);border-radius:8px;background:rgba(48,91,68,.1)}
+.creation-equipment-fixed p{margin:0;color:#9db6a5;font:500 var(--fs-xs)/1.5 Manrope,sans-serif}
+.creation-equipment-group>div{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}
+.creation-equipment-option{min-width:0;display:grid;align-content:start;gap:7px;padding:14px;border:1px solid rgba(255,255,255,.09);border-radius:8px;color:#a3978a;text-align:left;background:rgba(255,255,255,.025)}
+.creation-equipment-option>span{display:flex;align-items:center;gap:8px}.creation-equipment-option svg{opacity:.2}
+.creation-equipment-option strong{color:#ddc5a6;font:600 var(--fs-lg) Spectral,serif}
+.creation-equipment-option small{color:#9b8d7d;font:500 var(--fs-xs)/1.4 Manrope,sans-serif}
+.creation-equipment-option i{color:#746a60;font:500 var(--fs-xxs)/1.4 Manrope,sans-serif;font-style:normal}
+.creation-equipment-option.selected{border-color:rgba(210,158,95,.62);background:linear-gradient(145deg,rgba(151,98,48,.22),rgba(63,44,30,.12));box-shadow:inset 0 0 0 1px rgba(238,194,137,.08)}
+.creation-equipment-option.selected svg{opacity:1;color:#8fbea0}.creation-equipment-option.selected strong{color:#f1d6ae}
+
+.character-creation-wizard button:focus-visible,.character-creation-wizard input:focus-visible,.character-creation-wizard select:focus-visible,.character-creation-wizard textarea:focus-visible{outline:2px solid #ddb070;outline-offset:2px}
+.character-creation-wizard>nav button:disabled{opacity:.5;cursor:not-allowed}
+
+@media(max-width:1180px){
+  .character-creation-wizard>main{grid-template-columns:minmax(0,1fr) 260px;gap:16px 20px}
+}
+@media(max-width:900px){
+  .character-creation-wizard>main{grid-template-columns:minmax(0,1fr)}
+  .character-creation-wizard>main>*:not(.creation-summary-rail),.character-creation-wizard>main>.creation-ruleset-note,.creation-summary-rail{grid-column:1}
+  .creation-summary-rail{grid-row:auto;position:static;order:2;margin-top:8px}
+}
+@media(max-width:760px){
+  .character-creation-wizard>footer span{min-width:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+  .character-creation-wizard>footer button{min-width:0;justify-content:center;padding:0 7px;font-size:var(--fs-xxs)}
+  .character-creation-wizard>footer .creation-roll{margin-right:0}
+  .creation-origin-bonus .origin-abilities,.creation-equipment-group>div{grid-template-columns:minmax(0,1fr)}
+  .creation-summary-rail{padding:13px}
+}

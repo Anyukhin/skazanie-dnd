@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "ruleset_id": "dnd_5e_2014",
+  "edition_family": "5e_2014",
+  "policy_id": "skazanie.character-abilities.dnd-5e-2014",
+  "policy_version": 2,
+  "method": "standard_array",
+  "bonus_source": "species",
+  "standard_array": [15, 14, 13, 12, 10, 8],
+  "choice_catalogs": {
+    "languages": [
+      { "id": "dwarvish", "label": "Дварфский" }, { "id": "elvish", "label": "Эльфийский" },
+      { "id": "giant", "label": "Великаний" }, { "id": "gnomish", "label": "Гномий" },
+      { "id": "goblin", "label": "Гоблинский" }, { "id": "halfling", "label": "Полуросликов" },
+      { "id": "orc", "label": "Орочий" }, { "id": "abyssal", "label": "Бездны" },
+      { "id": "celestial", "label": "Небесный" }, { "id": "draconic", "label": "Драконий" },
+      { "id": "deep-speech", "label": "Глубинная Речь" }, { "id": "infernal", "label": "Инфернальный" },
+      { "id": "primordial", "label": "Первичный" }, { "id": "sylvan", "label": "Сильван" },
+      { "id": "undercommon", "label": "Подземный" }
+    ],
+    "skills": [
+      { "id": "acrobatics", "label": "Акробатика" }, { "id": "animal_handling", "label": "Уход за животными" },
+      { "id": "arcana", "label": "Магия" }, { "id": "athletics", "label": "Атлетика" },
+      { "id": "deception", "label": "Обман" }, { "id": "history", "label": "История" },
+      { "id": "insight", "label": "Проницательность" }, { "id": "intimidation", "label": "Запугивание" },
+      { "id": "investigation", "label": "Расследование" }, { "id": "medicine", "label": "Медицина" },
+      { "id": "nature", "label": "Природа" }, { "id": "perception", "label": "Восприятие" },
+      { "id": "performance", "label": "Выступление" }, { "id": "persuasion", "label": "Убеждение" },
+      { "id": "religion", "label": "Религия" }, { "id": "sleight_of_hand", "label": "Ловкость рук" },
+      { "id": "stealth", "label": "Скрытность" }, { "id": "survival", "label": "Выживание" }
+    ],
+    "dwarf_tools": [
+      { "id": "smiths_tools", "label": "Инструменты кузнеца" },
+      { "id": "brewers_supplies", "label": "Принадлежности пивовара" },
+      { "id": "masons_tools", "label": "Инструменты каменщика" }
+    ],
+    "wizard_cantrips": [
+      { "id": "acid-splash", "label": "Брызги кислоты" }, { "id": "blade-ward", "label": "Защита от оружия" },
+      { "id": "chill-touch", "label": "Леденящее прикосновение" }, { "id": "dancing-lights", "label": "Пляшущие огоньки" },
+      { "id": "fire-bolt", "label": "Огненный снаряд" }, { "id": "friends", "label": "Дружба" },
+      { "id": "light", "label": "Свет" }, { "id": "mage-hand", "label": "Волшебная рука" },
+      { "id": "mending", "label": "Починка" }, { "id": "message", "label": "Сообщение" },
+      { "id": "minor-illusion", "label": "Малая иллюзия" }, { "id": "poison-spray", "label": "Ядовитые брызги" },
+      { "id": "prestidigitation", "label": "Фокусы" }, { "id": "ray-of-frost", "label": "Луч холода" },
+      { "id": "shocking-grasp", "label": "Электрошок" }, { "id": "true-strike", "label": "Меткий удар" }
+    ],
+    "dragon_ancestries": [
+      { "id": "black", "label": "Чёрный · кислота", "damage_type": "acid", "shape": "line", "distance_feet": 30 },
+      { "id": "blue", "label": "Синий · электричество", "damage_type": "lightning", "shape": "line", "distance_feet": 30 },
+      { "id": "brass", "label": "Латунный · огонь", "damage_type": "fire", "shape": "line", "distance_feet": 30 },
+      { "id": "bronze", "label": "Бронзовый · электричество", "damage_type": "lightning", "shape": "line", "distance_feet": 30 },
+      { "id": "copper", "label": "Медный · кислота", "damage_type": "acid", "shape": "line", "distance_feet": 30 },
+      { "id": "gold", "label": "Золотой · огонь", "damage_type": "fire", "shape": "cone", "distance_feet": 15 },
+      { "id": "green", "label": "Зелёный · яд", "damage_type": "poison", "shape": "cone", "distance_feet": 15 },
+      { "id": "red", "label": "Красный · огонь", "damage_type": "fire", "shape": "cone", "distance_feet": 15 },
+      { "id": "silver", "label": "Серебряный · холод", "damage_type": "cold", "shape": "cone", "distance_feet": 15 },
+      { "id": "white", "label": "Белый · холод", "damage_type": "cold", "shape": "cone", "distance_feet": 15 }
+    ]
+  },
+  "origin_bonus_profiles": [
+    { "id": "dwarf-hill", "label": "Холмовой дварф: +2 Телосложение, +1 Мудрость", "bonuses": [2, 1], "fixed_bonuses": { "con": 2, "wis": 1 }, "choice_count": 0, "choice_amount": 0, "excluded_choices": [] },
+    { "id": "dwarf-mountain", "label": "Горный дварф: +2 Телосложение, +2 Сила", "bonuses": [2, 2], "fixed_bonuses": { "con": 2, "str": 2 }, "choice_count": 0, "choice_amount": 0, "excluded_choices": [] },
+    { "id": "elf-high", "label": "Высший эльф: +2 Ловкость, +1 Интеллект", "bonuses": [2, 1], "fixed_bonuses": { "dex": 2, "int": 1 }, "choice_count": 0, "choice_amount": 0, "excluded_choices": [] },
+    { "id": "elf-wood", "label": "Лесной эльф: +2 Ловкость, +1 Мудрость", "bonuses": [2, 1], "fixed_bonuses": { "dex": 2, "wis": 1 }, "choice_count": 0, "choice_amount": 0, "excluded_choices": [] },
+    { "id": "elf-drow", "label": "Дроу: +2 Ловкость, +1 Харизма", "bonuses": [2, 1], "fixed_bonuses": { "dex": 2, "cha": 1 }, "choice_count": 0, "choice_amount": 0, "excluded_choices": [] },
+    { "id": "halfling-lightfoot", "label": "Легконогий полурослик: +2 Ловкость, +1 Харизма", "bonuses": [2, 1], "fixed_bonuses": { "dex": 2, "cha": 1 }, "choice_count": 0, "choice_amount": 0, "excluded_choices": [] },
+    { "id": "halfling-stout", "label": "Коренастый полурослик: +2 Ловкость, +1 Телосложение", "bonuses": [2, 1], "fixed_bonuses": { "dex": 2, "con": 1 }, "choice_count": 0, "choice_amount": 0, "excluded_choices": [] },
+    { "id": "gnome-forest", "label": "Лесной гном: +2 Интеллект, +1 Ловкость", "bonuses": [2, 1], "fixed_bonuses": { "int": 2, "dex": 1 }, "choice_count": 0, "choice_amount": 0, "excluded_choices": [] },
+    { "id": "gnome-rock", "label": "Скальный гном: +2 Интеллект, +1 Телосложение", "bonuses": [2, 1], "fixed_bonuses": { "int": 2, "con": 1 }, "choice_count": 0, "choice_amount": 0, "excluded_choices": [] },
+    { "id": "human", "label": "Человек: +1 ко всем характеристикам", "bonuses": [1, 1, 1, 1, 1, 1], "fixed_bonuses": { "str": 1, "dex": 1, "con": 1, "int": 1, "wis": 1, "cha": 1 }, "choice_count": 0, "choice_amount": 0, "excluded_choices": [] },
+    { "id": "dragonborn", "label": "Драконорождённый: +2 Сила, +1 Харизма", "bonuses": [2, 1], "fixed_bonuses": { "str": 2, "cha": 1 }, "choice_count": 0, "choice_amount": 0, "excluded_choices": [] },
+    { "id": "half-elf", "label": "Полуэльф: +2 Харизма и +1 к двум другим", "bonuses": [2, 1, 1], "fixed_bonuses": { "cha": 2 }, "choice_count": 2, "choice_amount": 1, "excluded_choices": ["cha"] },
+    { "id": "half-orc", "label": "Полуорк: +2 Сила, +1 Телосложение", "bonuses": [2, 1], "fixed_bonuses": { "str": 2, "con": 1 }, "choice_count": 0, "choice_amount": 0, "excluded_choices": [] },
+    { "id": "tiefling", "label": "Тифлинг: +2 Харизма, +1 Интеллект", "bonuses": [2, 1], "fixed_bonuses": { "cha": 2, "int": 1 }, "choice_count": 0, "choice_amount": 0, "excluded_choices": [] }
+  ],
+  "species_options": [
+    { "id": "dwarf-hill", "race_id": "dwarf", "subrace_id": "hill", "label": "Холмовой дварф", "race_label": "Дварф", "subrace_label": "Холмовой", "base_speed": 25, "size": "medium", "bonus_profile_id": "dwarf-hill", "languages": ["common", "dwarvish"], "choice_groups": [{ "id": "artisan-tool", "label": "Ремесленный инструмент", "kind": "tool", "count": 1, "catalog": "dwarf_tools" }], "mechanics": { "darkvision_feet": 60, "damage_resistances": ["poison"], "save_advantage_conditions": ["poisoned"], "ignore_armor_speed_penalty": true, "extra_hit_points_per_level": 1, "weapon_proficiencies": ["battleaxe", "handaxe", "light-hammer", "warhammer"] }, "source_url": "https://5e14.dnd.su/race/78-dwarf/", "trait_summaries": ["Тёмное зрение 60 футов", "Устойчивость к яду", "Дварфское владение оружием", "Дополнительный максимум хитов за уровень"] },
+    { "id": "dwarf-mountain", "race_id": "dwarf", "subrace_id": "mountain", "label": "Горный дварф", "race_label": "Дварф", "subrace_label": "Горный", "base_speed": 25, "size": "medium", "bonus_profile_id": "dwarf-mountain", "languages": ["common", "dwarvish"], "choice_groups": [{ "id": "artisan-tool", "label": "Ремесленный инструмент", "kind": "tool", "count": 1, "catalog": "dwarf_tools" }], "mechanics": { "darkvision_feet": 60, "damage_resistances": ["poison"], "save_advantage_conditions": ["poisoned"], "ignore_armor_speed_penalty": true, "weapon_proficiencies": ["battleaxe", "handaxe", "light-hammer", "warhammer"], "armor_proficiencies": ["light", "medium"] }, "source_url": "https://5e14.dnd.su/race/78-dwarf/", "trait_summaries": ["Тёмное зрение 60 футов", "Устойчивость к яду", "Дварфское владение оружием", "Владение лёгкими и средними доспехами"] },
+    { "id": "elf-high", "race_id": "elf", "subrace_id": "high", "label": "Высший эльф", "race_label": "Эльф", "subrace_label": "Высший", "base_speed": 30, "size": "medium", "bonus_profile_id": "elf-high", "languages": ["common", "elvish"], "choice_groups": [{ "id": "extra-language", "label": "Дополнительный язык", "kind": "language", "count": 1, "catalog": "languages" }, { "id": "wizard-cantrip", "label": "Заговор волшебника", "kind": "cantrip", "count": 1, "catalog": "wizard_cantrips" }], "mechanics": { "darkvision_feet": 60, "save_advantage_conditions": ["charmed"], "condition_immunities": ["magical-sleep"], "long_rest_hours": 4, "weapon_proficiencies": ["longsword", "shortsword", "shortbow", "longbow"] }, "source_url": "https://5e14.dnd.su/race/79-elf/", "trait_summaries": ["Тёмное зрение 60 футов", "Наследие фей", "Транс", "Эльфийское владение оружием", "Один заговор волшебника"] },
+    { "id": "elf-wood", "race_id": "elf", "subrace_id": "wood", "label": "Лесной эльф", "race_label": "Эльф", "subrace_label": "Лесной", "base_speed": 35, "size": "medium", "bonus_profile_id": "elf-wood", "languages": ["common", "elvish"], "mechanics": { "darkvision_feet": 60, "save_advantage_conditions": ["charmed"], "condition_immunities": ["magical-sleep"], "long_rest_hours": 4, "weapon_proficiencies": ["longsword", "shortsword", "shortbow", "longbow"] }, "source_url": "https://5e14.dnd.su/race/79-elf/", "trait_summaries": ["Тёмное зрение 60 футов", "Наследие фей", "Транс", "Эльфийское владение оружием", "Маскировка в дикой местности"] },
+    { "id": "elf-drow", "race_id": "elf", "subrace_id": "drow", "label": "Дроу", "race_label": "Эльф", "subrace_label": "Дроу", "base_speed": 30, "size": "medium", "bonus_profile_id": "elf-drow", "languages": ["common", "elvish", "undercommon"], "mechanics": { "darkvision_feet": 120, "save_advantage_conditions": ["charmed"], "condition_immunities": ["magical-sleep"], "long_rest_hours": 4, "sunlight_sensitivity": true, "weapon_proficiencies": ["rapier", "shortsword", "hand-crossbow"], "innate_spells": [{ "id": "dancing-lights", "minimum_level": 1, "ability": "cha", "uses": "at-will" }, { "id": "faerie-fire", "minimum_level": 3, "ability": "cha", "uses": 1 }, { "id": "darkness", "minimum_level": 5, "ability": "cha", "uses": 1 }] }, "source_url": "https://5e14.dnd.su/race/79-elf/", "trait_summaries": ["Превосходное тёмное зрение 120 футов", "Чувствительность к солнечному свету", "Магия дроу", "Владение оружием дроу"] },
+    { "id": "halfling-lightfoot", "race_id": "halfling", "subrace_id": "lightfoot", "label": "Легконогий полурослик", "race_label": "Полурослик", "subrace_label": "Легконогий", "base_speed": 25, "size": "small", "bonus_profile_id": "halfling-lightfoot", "languages": ["common", "halfling"], "mechanics": { "reroll_natural_one": true, "save_advantage_conditions": ["frightened"], "move_through_larger": true }, "source_url": "https://5e14.dnd.su/race/80-halfling/", "trait_summaries": ["Везение", "Храбрость", "Проворство полурослика", "Естественная скрытность"] },
+    { "id": "halfling-stout", "race_id": "halfling", "subrace_id": "stout", "label": "Коренастый полурослик", "race_label": "Полурослик", "subrace_label": "Коренастый", "base_speed": 25, "size": "small", "bonus_profile_id": "halfling-stout", "languages": ["common", "halfling"], "mechanics": { "reroll_natural_one": true, "save_advantage_conditions": ["frightened", "poisoned"], "move_through_larger": true, "damage_resistances": ["poison"] }, "source_url": "https://5e14.dnd.su/race/80-halfling/", "trait_summaries": ["Везение", "Храбрость", "Проворство полурослика", "Устойчивость к яду"] },
+    { "id": "gnome-forest", "race_id": "gnome", "subrace_id": "forest", "label": "Лесной гном", "race_label": "Гном", "subrace_label": "Лесной", "base_speed": 25, "size": "small", "bonus_profile_id": "gnome-forest", "languages": ["common", "gnomish"], "mechanics": { "darkvision_feet": 60, "magic_save_advantage_abilities": ["int", "wis", "cha"], "innate_spells": [{ "id": "minor-illusion", "minimum_level": 1, "ability": "int", "uses": "at-will" }] }, "source_url": "https://5e14.dnd.su/race/83-gnome/", "trait_summaries": ["Тёмное зрение 60 футов", "Гномья хитрость", "Малая иллюзия", "Общение с маленькими зверями"] },
+    { "id": "gnome-rock", "race_id": "gnome", "subrace_id": "rock", "label": "Скальный гном", "race_label": "Гном", "subrace_label": "Скальный", "base_speed": 25, "size": "small", "bonus_profile_id": "gnome-rock", "languages": ["common", "gnomish"], "mechanics": { "darkvision_feet": 60, "magic_save_advantage_abilities": ["int", "wis", "cha"], "tool_proficiencies": ["tinkers_tools"] }, "source_url": "https://5e14.dnd.su/race/83-gnome/", "trait_summaries": ["Тёмное зрение 60 футов", "Гномья хитрость", "Ремесленные знания", "Владение инструментами ремонтника"] },
+    { "id": "human", "race_id": "human", "subrace_id": null, "label": "Человек", "race_label": "Человек", "subrace_label": null, "base_speed": 30, "size": "medium", "bonus_profile_id": "human", "languages": ["common"], "choice_groups": [{ "id": "extra-language", "label": "Дополнительный язык", "kind": "language", "count": 1, "catalog": "languages" }], "mechanics": {}, "source_url": "https://5e14.dnd.su/race/81-human/", "trait_summaries": ["Один дополнительный язык"] },
+    { "id": "dragonborn", "race_id": "dragonborn", "subrace_id": null, "label": "Драконорождённый", "race_label": "Драконорождённый", "subrace_label": null, "base_speed": 30, "size": "medium", "bonus_profile_id": "dragonborn", "languages": ["common", "draconic"], "choice_groups": [{ "id": "dragon-ancestry", "label": "Драконье происхождение", "kind": "ancestry", "count": 1, "catalog": "dragon_ancestries" }], "mechanics": { "breath_weapon": true }, "source_url": "https://5e14.dnd.su/race/82-dragonborn/", "trait_summaries": ["Драконье происхождение", "Оружие дыхания", "Сопротивление стихии"] },
+    { "id": "half-elf", "race_id": "half-elf", "subrace_id": null, "label": "Полуэльф", "race_label": "Полуэльф", "subrace_label": null, "base_speed": 30, "size": "medium", "bonus_profile_id": "half-elf", "languages": ["common", "elvish"], "choice_groups": [{ "id": "extra-language", "label": "Дополнительный язык", "kind": "language", "count": 1, "catalog": "languages" }, { "id": "versatility-skills", "label": "Универсальность навыков", "kind": "skill", "count": 2, "catalog": "skills" }], "mechanics": { "darkvision_feet": 60, "save_advantage_conditions": ["charmed"], "condition_immunities": ["magical-sleep"] }, "source_url": "https://5e14.dnd.su/race/84-half-elf/", "trait_summaries": ["Тёмное зрение 60 футов", "Наследие фей", "Владение двумя навыками"] },
+    { "id": "half-orc", "race_id": "half-orc", "subrace_id": null, "label": "Полуорк", "race_label": "Полуорк", "subrace_label": null, "base_speed": 30, "size": "medium", "bonus_profile_id": "half-orc", "languages": ["common", "orc"], "mechanics": { "darkvision_feet": 60, "skill_proficiencies": ["intimidation"], "relentless_endurance": true, "savage_attacks": true }, "source_url": "https://5e14.dnd.su/race/85-half-orc/", "trait_summaries": ["Тёмное зрение 60 футов", "Угрожающий вид", "Непоколебимая стойкость", "Свирепые атаки"] },
+    { "id": "tiefling", "race_id": "tiefling", "subrace_id": null, "label": "Тифлинг", "race_label": "Тифлинг", "subrace_label": null, "base_speed": 30, "size": "medium", "bonus_profile_id": "tiefling", "languages": ["common", "infernal"], "mechanics": { "darkvision_feet": 60, "damage_resistances": ["fire"], "innate_spells": [{ "id": "thaumaturgy", "minimum_level": 1, "ability": "cha", "uses": "at-will" }, { "id": "hellish-rebuke", "minimum_level": 3, "ability": "cha", "uses": 1, "cast_level": 2 }, { "id": "darkness", "minimum_level": 5, "ability": "cha", "uses": 1 }] }, "source_url": "https://5e14.dnd.su/race/86-tiefling/", "trait_summaries": ["Тёмное зрение 60 футов", "Сопротивление огню", "Инфернальное наследие"] }
+  ]
+}

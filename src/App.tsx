@@ -10,8 +10,8 @@ import {
   Bot, PawPrint, Skull, WandSparkles, Globe2, Volume2, VolumeX, Bell, BellOff, ShieldAlert,
   Sun, Cloudy, CloudRain, CloudFog, CloudLightning,
 } from 'lucide-react'
-import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignRecap, CampaignRecapResponse, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, MapCell, MapFeedback, Merchant, Message, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp, WeatherConditionId, WeatherProjection } from './types'
-import { fetchWithTimeout, getAiHealth } from './ai-client'
+import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignRecap, CampaignRecapResponse, CampaignSummary, CharacterCreationCatalog, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, MapCell, MapFeedback, Merchant, Message, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp, WeatherConditionId, WeatherProjection } from './types'
+import { fetchWithTimeout, getAiHealth, getCharacterCreationCatalog } from './ai-client'
 import type { NarrationPreview } from './ai-client'
 import {
   ABILITY_LABELS, DIFFICULTY_LABELS, ErrorToasts, HeroFaceInitials, PageHeader, SKILL_LABELS, UI_SCALE_MAX, UI_SCALE_MIN,
@@ -766,6 +766,8 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const [joinError, setJoinError] = useState<string | null>(null)
   const [view, setView] = useState<View>(() => new URLSearchParams(window.location.search).get('agentLab') === '1' ? 'agent-lab' : 'room')
   const [aiHealth, setAiHealth] = useState<AiHealth | null>(null)
+  const [characterCreationCatalog, setCharacterCreationCatalog] = useState<CharacterCreationCatalog | null>(null)
+  const [characterCreationError, setCharacterCreationError] = useState('')
   const [campaignAi, setCampaignAi] = useState<CampaignAiSettingsResponse | null>(null)
   const [campaignAiBusy, setCampaignAiBusy] = useState(false)
   const [campaignAiError, setCampaignAiError] = useState('')
@@ -964,7 +966,44 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     }
   }, [campaignAi, campaignAiBusy, state.sessionCode])
 
+  const updateCampaignRuleset = useCallback(async (rulesetId: 'dnd_5e_2014' | 'srd_5_2_1') => {
+    if (!campaignAi?.ruleset.canChange || campaignAiBusy) return
+    setCampaignAiBusy(true)
+    setCampaignAiError('')
+    try {
+      const response = await fetch(`/api/campaigns/${encodeURIComponent(state.sessionCode)}/settings`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...campaignAi.settings,
+          rulesetId,
+          idempotency_key: globalThis.crypto?.randomUUID?.() ?? `ruleset-${Date.now()}`,
+        }),
+      })
+      const body = await response.json().catch(() => null) as CampaignAiSettingsResponse | null
+      if (!response.ok || !body?.ruleset) throw new Error(body?.error || 'Не удалось изменить правила кампании')
+      setCampaignAi(body)
+    } catch (error) {
+      setCampaignAiError(error instanceof Error ? error.message : 'Не удалось изменить правила кампании')
+    } finally {
+      setCampaignAiBusy(false)
+    }
+  }, [campaignAi, campaignAiBusy, state.sessionCode])
+
   useEffect(() => { getAiHealth().then(setAiHealth).catch(() => setAiHealth(null)) }, [])
+  useEffect(() => {
+    let active = true
+    setCharacterCreationCatalog(null)
+    setCharacterCreationError('')
+    if (!state.sessionCode) return () => { active = false }
+    const rulesetId = state.ruleset_id === 'dnd_5e_2014' ? 'dnd_5e_2014' : 'srd_5_2_1'
+    void getCharacterCreationCatalog(rulesetId)
+      .then((catalog) => { if (active) setCharacterCreationCatalog(catalog) })
+      .catch((error) => {
+        if (active) setCharacterCreationError(error instanceof Error ? error.message : 'Каталог создания героя недоступен')
+      })
+    return () => { active = false }
+  }, [state.sessionCode, state.ruleset_id])
   useEffect(() => {
     const controller = new AbortController()
     setCampaignAi(null)
@@ -975,6 +1014,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     // спрашивать сервер не о чем, и карточка настроек в этот момент не
     // показывается вовсе. Возврат стоит **после** сброса состояния: иначе на
     // выходе из кампании в интерфейсе осталась бы карточка прежней.
+    if (view !== 'settings') return () => controller.abort()
     if (!state.sessionCode) return () => controller.abort()
     void fetch(`/api/campaigns/${encodeURIComponent(state.sessionCode)}/settings`, { signal: controller.signal })
       .then(async (response) => {
@@ -987,7 +1027,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         setCampaignAiError(error instanceof Error ? error.message : 'Не удалось загрузить настройки ИИ кампании')
       })
     return () => controller.abort()
-  }, [state.sessionCode])
+  }, [state.sessionCode, state.state_version, view])
   // Рекап «в прошлой серии». Сервер сам решает, был ли перерыв, и отдаёт
   // recap: null, если карточку показывать не нужно. Закрытая версия помнится
   // локально на игрока, чтобы один и тот же текст не встречал его дважды.
@@ -1343,7 +1383,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             <button className="primary" onClick={() => setCampaignsOpen(true)}><Plus size={16} />Кампании и группы</button>
             <button onClick={onLogout}>Выйти из аккаунта</button>
           </div>
-          {campaignsOpen && <CampaignModal state={state} onSwitch={switchCampaign} onAccountRefresh={onAccountRefresh} onCreateHero={setCreatingPlayerId} onWizardChange={setWorldWizardOpen} onClose={() => setCampaignsOpen(false)} />}
+          {campaignsOpen && <CampaignModal state={state} rulesets={aiHealth?.installedRulesets} onSwitch={switchCampaign} onAccountRefresh={onAccountRefresh} onCreateHero={setCreatingPlayerId} onWizardChange={setWorldWizardOpen} onClose={() => setCampaignsOpen(false)} />}
         </main>
       </div>
     )
@@ -1359,7 +1399,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             <button className="primary" onClick={() => setCampaignsOpen(true)}><ScrollText size={16} />Кампании и группы</button>
             <button onClick={onLogout}>Выйти из аккаунта</button>
           </div>
-          {campaignsOpen && <CampaignModal state={state} onSwitch={switchCampaign} onAccountRefresh={onAccountRefresh} onCreateHero={setCreatingPlayerId} onWizardChange={setWorldWizardOpen} onClose={() => setCampaignsOpen(false)} />}
+          {campaignsOpen && <CampaignModal state={state} rulesets={aiHealth?.installedRulesets} onSwitch={switchCampaign} onAccountRefresh={onAccountRefresh} onCreateHero={setCreatingPlayerId} onWizardChange={setWorldWizardOpen} onClose={() => setCampaignsOpen(false)} />}
         </main>
       </div>
     )
@@ -1571,7 +1611,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           onAttune={(itemId, attuned) => attuneItem(activePlayer.id, itemId, attuned)}
           onActivate={(itemId, activated) => activateItem(activePlayer.id, itemId, activated)}
         />}
-        {view === 'settings' && <SettingsView health={aiHealth} campaignAi={campaignAi} campaignAiBusy={campaignAiBusy} campaignAiError={campaignAiError} uiScale={uiScale} autoAttackRoll={autoAttackRoll} scenicBackdrop={scenicBackdrop} boardLighting={boardLighting} combatAnimations={combatAnimations} atmosphereSettings={atmosphereSettings} notificationPermission={notificationPermission} voiceMode={voiceMode} voiceSupported={voiceSupported} onVoiceModeChange={setVoiceMode} actionHintsEnabled={actionHintsEnabled} onActionHintsEnabledChange={setActionHintsEnabled} onCampaignAiChange={(patch) => { void updateCampaignAi(patch) }} onUiScaleChange={setUiScale} onAutoAttackRollChange={setAutoAttackRoll} onScenicBackdropChange={setScenicBackdrop} onBoardLightingChange={setBoardLighting} onCombatAnimationsChange={setCombatAnimations} onAmbientVolumeChange={changeAmbientVolume} onAtmosphereMutedChange={changeAtmosphereMuted} onRequestNotifications={() => { void requestTurnNotifications() }} />}
+        {view === 'settings' && <SettingsView health={aiHealth} campaignAi={campaignAi} campaignAiBusy={campaignAiBusy} campaignAiError={campaignAiError} uiScale={uiScale} autoAttackRoll={autoAttackRoll} scenicBackdrop={scenicBackdrop} boardLighting={boardLighting} combatAnimations={combatAnimations} atmosphereSettings={atmosphereSettings} notificationPermission={notificationPermission} voiceMode={voiceMode} voiceSupported={voiceSupported} onVoiceModeChange={setVoiceMode} actionHintsEnabled={actionHintsEnabled} onActionHintsEnabledChange={setActionHintsEnabled} onCampaignAiChange={(patch) => { void updateCampaignAi(patch) }} onCampaignRulesetChange={(rulesetId) => { void updateCampaignRuleset(rulesetId) }} onUiScaleChange={setUiScale} onAutoAttackRollChange={setAutoAttackRoll} onScenicBackdropChange={setScenicBackdrop} onBoardLightingChange={setBoardLighting} onCombatAnimationsChange={setCombatAnimations} onAmbientVolumeChange={changeAmbientVolume} onAtmosphereMutedChange={changeAtmosphereMuted} onRequestNotifications={() => { void requestTurnNotifications() }} />}
         {view === 'admin' && isAdmin && <AdminView account={account} state={state} onUpdateWorld={updateWorld} onAssembleEncounter={assembleEncounter} onAssembleMerchant={assembleMerchant} onMoveMerchant={moveMerchant} onSetMerchantAvailability={setMerchantAvailability} onReset={reset} />}
         {view === 'agent-lab' && isAdmin && <AgentLabView state={state} />}
       </main>
@@ -1627,23 +1667,27 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           показывает их по порядку. */}
       <ErrorToasts sources={[
         { text: directorError },
+        { text: characterCreationError },
         { text: joinError },
         { text: lifecycleError },
         { text: tacticalError, onDismiss: clearTacticalError },
       ]} />
       {merchantOpen && <MerchantScreen merchants={merchantScreenMerchants} player={activePlayer} sceneLocation={state.scene.location} stateVersion={state.state_version ?? 0} view={merchantView} narration={merchantNarration} busy={merchantBusy} error={merchantError} onLoad={loadMerchant} onBargain={bargainWithMerchant} onBuy={buyFromMerchant} onSell={sellToMerchant} onAppraise={appraiseWithMerchant} onService={purchaseMerchantService} onClose={() => setMerchantOpen(false)} />}
       {inviteOpen && <InviteModal code={state.sessionCode} onClose={() => setInviteOpen(false)} />}
-      {campaignsOpen && <CampaignModal state={state} onSwitch={switchCampaign} onAccountRefresh={onAccountRefresh} onCreateHero={setCreatingPlayerId} onWizardChange={setWorldWizardOpen} onClose={() => setCampaignsOpen(false)} />}
-      {creatingPlayerId && aiHealth?.characterCreation && <CharacterCreationWizard
+      {campaignsOpen && <CampaignModal state={state} rulesets={aiHealth?.installedRulesets} onSwitch={switchCampaign} onAccountRefresh={onAccountRefresh} onCreateHero={setCreatingPlayerId} onWizardChange={setWorldWizardOpen} onClose={() => setCampaignsOpen(false)} />}
+      {creatingPlayerId && (characterCreationCatalog ?? (state.ruleset_id !== 'dnd_5e_2014' ? aiHealth?.characterCreation : null)) && <CharacterCreationWizard
+        key={`${creatingPlayerId}:${state.ruleset_id ?? 'srd_5_2_1'}`}
         player={state.players.find((player) => player.id === creatingPlayerId) ?? activePlayer}
         accountName={account.name}
-        catalog={aiHealth.characterCreation}
+        catalog={characterCreationCatalog ?? aiHealth!.characterCreation!}
+        rulesetId={state.ruleset_id}
         required={Boolean(state.players.find((player) => player.id === creatingPlayerId)?.characterSetupRequired)}
         onClose={() => { setCreatingPlayerId(null); setHeroWizardDismissed(true) }}
         onImport={(source) => importCharacter(creatingPlayerId, source)}
       />}
       {editingPlayerId && <CharacterEditor
         player={state.players.find((player) => player.id === editingPlayerId) ?? activePlayer}
+        rulesetId={state.ruleset_id}
         onClose={() => setEditingPlayerId(null)}
         onSave={(patch) => updatePlayer(editingPlayerId, patch)}
         onImport={(source) => importCharacter(editingPlayerId, source)}

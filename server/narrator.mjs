@@ -9,7 +9,7 @@ import {
   currentNarratorStyleInstruction,
 } from './campaign-ai-context.mjs'
 import { findNarratorCliches } from './narrator-craft-quality.mjs'
-import { promptForModel } from './model-style-profiles.mjs'
+import { promptForModelRole } from './model-style-profiles.mjs'
 import { npcDossiersForNarrator } from './npc-social.mjs'
 import { worldClockNarration } from './weather.mjs'
 
@@ -1575,7 +1575,7 @@ export class Narrator {
       const generation = currentNarratorGenerationParameters()
       const request = {
         messages: [
-          { role: 'system', content: promptForModel(narratorPromptWithExamples(examples), this.llmClient) },
+          { role: 'system', content: promptForModelRole(narratorPromptWithExamples(examples), this.llmClient, 'narrator') },
           {
             role: 'user',
             content: buildDataOnlyContext({

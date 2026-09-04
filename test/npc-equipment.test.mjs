@@ -93,8 +93,9 @@ function foe(statBlockId, { hp = null, x = 6, y = 0, seed = 'npc-equipment' } = 
  * что через это окно уезжает столу, остаётся непроверенным. Плуту 5 уровня
  * доступно «Невероятное уклонение» — обычная реакция ровно после попадания.
  */
-function battleState(enemy, { heroX = 0, heroArmor = 10, heroClass = 'fighter' } = {}) {
+function battleState(enemy, { heroX = 0, heroArmor = 10, heroClass = 'fighter', rulesetId = 'srd_5_2_1' } = {}) {
   return normalizeCampaignState({
+    ruleset_id: rulesetId,
     sessionCode: 'A2EQ',
     partyMemberIds: ['hero'],
     players: [{
@@ -319,6 +320,21 @@ test('зелье лечения: только на последних хитах
     },
   }
   rejects(restocked, { command_type: 'UseItem', actor_id: 'foe', item_id: potionId, npc_tactic: 'heal' }, 'NPC_ITEM_TACTIC_SPENT')
+})
+
+test('в кампании 2014 зелье противника тратит действие и завершает его план', () => {
+  const seed = seedWith('srd_5_2_1:berserker', 'srd_5_2_1:potion-of-healing')
+  const enemy = foe('srd_5_2_1:berserker', { hp: 8, x: 1, seed })
+  const state = battleState(enemy, { rulesetId: 'dnd_5e_2014' })
+  const potion = itemOf(enemy, 'srd_5_2_1:potion-of-healing')
+  assert.equal(npcUsableItems(enemy, { rulesetId: 'dnd_5e_2014' })[0].use.combat_action, 'action')
+  assert.deepEqual(planNpcTurn(state, 'foe').map((command) => command.command_type), ['UseItem', 'EndTurn'])
+
+  const after = commit(state, {
+    command_type: 'UseItem', actor_id: 'foe', item_id: potion.item_instance_id, npc_tactic: 'heal',
+  }).state
+  assert.equal(after.mechanics.combat.action_economy.foe.action, false)
+  assert.equal(after.mechanics.combat.action_economy.foe.bonus_action, true)
 })
 
 test('расход снаряжения идемпотентен: повтор события не тратит вещь дважды', () => {
@@ -1030,6 +1046,11 @@ test('поглощённое временными ОЗ снимается у н�
   // видит, а вот маркер временных ОЗ — уже чужой запас.
   assert.deepEqual(hidden.source_rule_ids, [RULE_IDS.damage])
   assert.equal(RULE_IDS.temporaryHp, 'srd_5_2_1:combat:temporary-hit-points')
+  const [classicHidden] = mechanicsForViewer([{
+    ...strike(),
+    source_rule_ids: ['dnd_5e_2014:combat:damage', 'dnd_5e_2014:combat:temporary-hit-points'],
+  }], viewer, 'hero', { ...state, ruleset_id: 'dnd_5e_2014' })
+  assert.deepEqual(classicHidden.source_rule_ids, ['dnd_5e_2014:combat:damage'])
 
   // Граница та же, что и у окна: опознание, а не сама цель-противник. Иначе
   // проверки выше были бы зелены и от безусловного удаления.

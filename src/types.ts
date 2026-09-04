@@ -202,6 +202,20 @@ export type Player = {
   hitPointIncreases?: number[]
   characterSetupRequired?: boolean
   abilityGeneration?: CharacterAbilityGeneration
+  backgroundId?: string
+  backgroundAbilityChoice?: { mode: string; abilities: string[] }
+  backgroundChoices?: { tools: string[]; languages: string[] }
+  backgroundSkillProficiencies?: string[]
+  backgroundBenefits?: Record<string, unknown> | null
+  speciesBenefits?: Record<string, unknown> | null
+  starterEquipmentPolicyId?: string
+  starterEquipmentPolicyVersion?: number
+  starterEquipmentChoices?: Record<string, string[]>
+  speciesChoices?: Record<string, string[]>
+  speciesSkillProficiencies?: string[]
+  speciesToolProficiencies?: string[]
+  speciesLanguages?: string[]
+  speciesSpellIds?: string[]
   characterSheet?: {
     schema_version: number
     level: number
@@ -1349,6 +1363,7 @@ export type GameState = {
   enabled_rule_packs?: string[]
   enabled_house_rules?: string[]
   ruleset_locked_at?: string | null
+  ruleset_selection_locked?: boolean
   engine_mode?: 'enforce'
   mechanics?: GameMechanics
   /**
@@ -2322,6 +2337,8 @@ export type CampaignSummary = {
   memberCount: number
   playerCount: number
   setting?: string
+  rulesetId?: 'dnd_5e_2014' | 'srd_5_2_1'
+  rulesetVersion?: string
   lifecycleStatus?: 'setup' | 'active' | 'paused' | 'completed' | 'failed' | 'archived'
   membershipRole?: 'admin' | 'owner' | 'player' | 'legacy'
   updatedAt: string | null
@@ -2424,6 +2441,7 @@ export type AiHealth = {
   engineMode?: 'enforce'
   rulesetId?: string
   ruleCount?: number
+  installedRulesets?: RulesetProfileDescriptor[]
   characterCreation?: CharacterCreationCatalog
 }
 
@@ -2452,7 +2470,34 @@ export type CampaignAiSettingsResponse = {
   architectGenerationsToday: number
   architectAlertThreshold: number
   canManage: boolean
+  ruleset: CampaignRulesetSettings
   error?: string
+}
+
+export type RulesetProfileDescriptor = {
+  id: 'dnd_5e_2014' | 'srd_5_2_1'
+  version: string
+  editionFamily: '5e_2014' | '5e_2024'
+  label: string
+  description: string
+  mechanicsStatus: 'partial'
+  availability: 'preview' | 'active'
+  limitations: string[]
+  ruleCount?: number
+}
+
+export type CampaignRulesetSettings = {
+  current: {
+    id: RulesetProfileDescriptor['id']
+    version: string
+    label: string
+    mechanicsStatus: 'partial'
+    availability: 'preview' | 'active'
+  }
+  available: RulesetProfileDescriptor[]
+  canChange: boolean
+  locked: boolean
+  lockReason: string | null
 }
 
 export type CharacterAbilityScores = {
@@ -2476,20 +2521,60 @@ export type CharacterAbilityGeneration = {
 
 export type CharacterCreationCatalog = {
   schema_version: number
+  ruleset_id: RulesetProfileDescriptor['id']
+  edition_family: RulesetProfileDescriptor['editionFamily']
   import_schema: 'skazanie.character'
   import_schema_version: 1
   ability_policy: {
     policy_id: string
     policy_version: number
     method: 'standard_array'
+    bonus_source: 'background' | 'species'
     standard_array: number[]
-    origin_bonus_profiles: Array<{ id: string; label: string; bonuses: number[] }>
-    species_options: Array<{ id: string; label: string; base_speed: number }>
+    origin_bonus_profiles: Array<{
+      id: string
+      label: string
+      bonuses: number[]
+      fixed_bonuses?: Partial<CharacterAbilityScores>
+      choice_count?: number
+      choice_amount?: number
+      excluded_choices?: string[]
+    }>
+    species_options: Array<{
+      id: string
+      label: string
+      race_id?: string
+      race_label?: string
+      subrace_id?: string | null
+      subrace_label?: string | null
+      base_speed: number
+      size?: 'small' | 'medium'
+      bonus_profile_id?: string
+      languages?: string[]
+      language_choice_count?: number
+      trait_summaries?: string[]
+      choice_groups?: Array<{
+        id: string
+        label: string
+        kind: 'language' | 'skill' | 'tool' | 'cantrip' | 'ancestry'
+        count: number
+        options: Array<{
+          id: string
+          label: string
+          damage_type?: string
+          shape?: 'line' | 'cone'
+          distance_feet?: number
+        }>
+      }>
+      mechanics?: Record<string, unknown>
+      source_url?: string
+    }>
   }
-  /** Предыстории редакции 2024: их последствия сервер пересчитывает по id. */
+  /** Последствия предыстории сервер пересчитывает по id выбранного ruleset. */
   backgrounds?: {
     policy_id: string
     ability_modes: Array<{ id: string; label: string; increases: number[] }>
+    language_options: Array<{ id: string; name: string }>
     options: Array<{
       id: string
       name: string
@@ -2497,13 +2582,27 @@ export type CharacterCreationCatalog = {
       summary: string
       abilityOptions: string[]
       skillProficiencies: string[]
-      toolProficiency: { id: string; name: string } | null
-      originFeat: { id: string; name: string } | null
-      equipment: { summary: string; gold: number; alternativeGold: number } | null
+      toolProficiency?: { id: string; name: string } | null
+      toolProficiencies: Array<{ id: string; name: string }>
+      toolChoice?: { group: string; count: number; options: Array<{ id: string; name: string; catalogId?: string }> }
+      languageChoiceCount?: number
+      originFeat?: { id: string; name: string } | null
+      feature?: { id: string; name: string; supported: boolean } | null
+      equipment: { summary: string; gold: number; alternativeGold?: number } | null
+      sourceUrl?: string
     }>
     /** Черта происхождения записывается, но движком пока не исполняется. */
     origin_feats_supported: boolean
+    background_features_supported: boolean
   }
+  starter_equipment?: {
+    schema_version: number
+    ruleset_id: string
+    policy_id: string
+    policy_version: number
+    choice_policy: string
+    classes: Array<StarterEquipmentClass>
+  } | null
   classes: Array<{
     id: DndClassKey
     label: string
@@ -2520,6 +2619,7 @@ export type CharacterCreationCatalog = {
       choiceCount: number
       options: Array<{ id: string; name: string }>
     }>
+    starter_equipment: StarterEquipmentClass | null
     spell_selection: {
       classKey: DndClassKey
       spellcastingAbility: keyof CharacterAbilityScores | null
@@ -2539,6 +2639,32 @@ export type CharacterCreationCatalog = {
         mechanics_support?: 'verified' | 'partial' | 'heuristic' | 'ruling-only'
       }>
     } | null
+  }>
+}
+
+export type StarterEquipmentItem = {
+  catalog_id?: string
+  name?: string
+  description?: string
+  quantity?: number
+  equipped?: boolean
+}
+
+export type StarterEquipmentClass = {
+  class_id: DndClassKey
+  fixed_items?: StarterEquipmentItem[]
+  fixed_narrative_items?: StarterEquipmentItem[]
+  choice_groups: Array<{
+    id: string
+    label: string
+    count: number
+    options: Array<{
+      id: string
+      label: string
+      summary: string
+      items?: StarterEquipmentItem[]
+      narrative_items?: StarterEquipmentItem[]
+    }>
   }>
 }
 

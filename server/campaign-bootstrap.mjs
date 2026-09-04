@@ -14,6 +14,7 @@ import { DEFAULT_PARTY_DECISION_POLICY } from './party-decision.mjs'
 import { buildDataOnlyContext } from './security.mjs'
 import { buildCampaignArcPlan } from './campaign-loop-policy.mjs'
 import { drawCampaignInspiration, inspirationPromptSeed } from './campaign-inspiration.mjs'
+import { LEGACY_DEFAULT_RULESET_ID, rulesetLock } from './ruleset-config.mjs'
 
 const prompt = readFileSync(fileURLToPath(new URL('../prompts/campaign_creator/v3.txt', import.meta.url)), 'utf8')
 
@@ -289,13 +290,16 @@ export class CampaignBootstrapper {
     this.diceService = diceService
   }
 
-  async create({ code, name, partyName, world: rawWorld, players: rawPlayers, merchants: rawMerchants } = {}) {
+  async create({ code, name, partyName, world: rawWorld, players: rawPlayers, merchants: rawMerchants, rulesetId, ruleset_id } = {}) {
     const campaignCode = clean(code, 24).toUpperCase()
     const campaignName = clean(name, 120) || 'Новая кампания'
     const groupName = clean(partyName, 120) || 'Новый отряд'
     if (!/^[A-Z0-9-]{3,24}$/.test(campaignCode)) throw new Error('Некорректный код кампании')
     if (!Array.isArray(rawPlayers) || rawPlayers.length < 1 || rawPlayers.length > 12) throw new Error('Для новой кампании выберите от 1 до 12 героев')
-    const heroes = rawPlayers.map(normalizeHero).map((hero) => hero.characterSetupRequired ? hero : withStarterKit(hero))
+    const selectedRuleset = rulesetLock(ruleset_id ?? rulesetId, { fallback: LEGACY_DEFAULT_RULESET_ID, requireCreation: true })
+    const heroes = rawPlayers.map(normalizeHero).map((hero) => hero.characterSetupRequired
+      ? hero
+      : withStarterKit(hero, { rulesetId: selectedRuleset.ruleset_id }))
     if (new Set(heroes.map((hero) => hero.id)).size !== heroes.length) throw new Error('В кампании повторяются id героев')
     const world = normalizeWorld(rawWorld)
     const inspiration = drawCampaignInspiration({ world, diceService: this.diceService })
@@ -457,7 +461,9 @@ export class CampaignBootstrapper {
         }],
       },
       state_version: 0,
-      ruleset_id: 'srd_5_2_1', ruleset_version: '5.2.1', enabled_rule_packs: ['srd_5_2_1'], enabled_house_rules: merchants.length ? [ECONOMY_POLICY_ID] : [], ruleset_locked_at: new Date().toISOString(), engine_mode: 'enforce',
+      ...selectedRuleset,
+      enabled_house_rules: [...new Set([...(selectedRuleset.enabled_house_rules ?? []), ...(merchants.length ? [ECONOMY_POLICY_ID] : [])])],
+      ruleset_locked_at: new Date().toISOString(), engine_mode: 'enforce',
       players: positionedHeroes,
       merchants,
       enemies: [], entities: [], mapFeedback: [], battleLog: [], mechanics: {}, rulings: [],

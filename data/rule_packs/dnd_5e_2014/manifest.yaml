@@ -1,0 +1,21 @@
+ruleset_id: dnd_5e_2014
+pack_id: dnd_5e_2014
+edition_family: 5e_2014
+version: "2014.1.0"
+canonical_language: ru
+display_languages:
+  - ru
+  - en
+source_title: "D&D 5e 2014: локальный структурированный профиль по 5e14.dnd.su"
+source_url: "https://5e14.dnd.su/"
+source_registry: sources.json
+source_hash: external_sources_not_bundled
+license_id: PROJECT-LICENSE-PENDING
+content_license_id: ORIGINAL-PARAPHRASE
+content_origin: independent_mechanics_paraphrase
+source_revision: 1
+translation_revision: 1
+translation_is_adaptation: true
+activation_status: preview
+created_at: "2026-08-30T00:00:00Z"
+verified_at: "2026-08-30T00:00:00Z"

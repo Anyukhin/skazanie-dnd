@@ -7,6 +7,7 @@ const projectRoot = fileURLToPath(new URL('..', import.meta.url))
 export const DEFAULT_RULE_PACKS_ROOT = join(projectRoot, 'data', 'rule_packs')
 export const RULESET_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,79}$/i
 export const FORMALIZATION_LEVELS = new Set(['deterministic', 'structured', 'retrieval_only'])
+const SOURCE_REGISTRY_FILE_PATTERN = /^[a-z0-9][a-z0-9._-]*\.json$/i
 
 const REQUIRED_RULE_FIELDS = [
   'id',
@@ -232,7 +233,32 @@ function assertStringArray(value, label) {
   }
 }
 
-function validateRule(rule, rulesetId, seenIds) {
+function validateSourceRegistry(registry, rulesetId) {
+  if (!registry || typeof registry !== 'object' || Array.isArray(registry)) {
+    throw new RulePackValidationError('Rule-pack source registry must be an object')
+  }
+  if (registry.schema_version !== 1) throw new RulePackValidationError('Rule-pack source registry must use schema_version 1')
+  if (registry.ruleset_id !== rulesetId) {
+    throw new RulePackValidationError(`Source registry belongs to ${registry.ruleset_id || '<unknown>'}, expected ${rulesetId}`)
+  }
+  if (!Array.isArray(registry.sources) || registry.sources.length === 0) {
+    throw new RulePackValidationError('Rule-pack source registry must contain sources')
+  }
+
+  const sourcesById = new Map()
+  for (const source of registry.sources) {
+    for (const field of ['id', 'title', 'url', 'edition_family', 'revision_id', 'accessed_at', 'rights_status']) {
+      assertString(source?.[field], `source.${field}`)
+    }
+    if (!String(source.url).startsWith('https://')) throw new RulePackValidationError(`Source ${source.id} must use an https URL`)
+    if (source.bundled !== false) throw new RulePackValidationError(`Source ${source.id} must explicitly remain unbundled`)
+    if (sourcesById.has(source.id)) throw new RulePackValidationError(`Duplicate source id ${source.id}`)
+    sourcesById.set(source.id, source)
+  }
+  return sourcesById
+}
+
+function validateRule(rule, rulesetId, seenIds, sourcesById = null) {
   for (const field of REQUIRED_RULE_FIELDS) {
     if (!Object.hasOwn(rule, field)) throw new RulePackValidationError(`Rule ${rule.id || '<unknown>'} misses required field ${field}`)
   }
@@ -255,12 +281,20 @@ function validateRule(rule, rulesetId, seenIds) {
   if (!Number.isInteger(rule.source_page_start) || !Number.isInteger(rule.source_page_end) || rule.source_page_start < 0 || rule.source_page_end < rule.source_page_start) {
     throw new RulePackValidationError(`Rule ${rule.id} has invalid source page range`)
   }
+  if (sourcesById) {
+    assertString(rule.source_ref, `${rule.id}.source_ref`)
+    const source = sourcesById.get(rule.source_ref)
+    if (!source) throw new RulePackValidationError(`Rule ${rule.id} references unknown source ${rule.source_ref}`)
+    if (rule.source_hash !== source.revision_id) {
+      throw new RulePackValidationError(`Rule ${rule.id} source revision does not match ${rule.source_ref}`)
+    }
+  }
   assertTranslationNumericIntegrity(rule)
 }
 
 export function validateRulePack(pack, { expectedRulesetId } = {}) {
   if (!pack || typeof pack !== 'object') throw new RulePackValidationError('Rule pack must be an object')
-  const { manifest, rules, glossary, ontologyEdges, coverage } = pack
+  const { manifest, rules, glossary, ontologyEdges, coverage, sourceRegistry = null } = pack
   if (!manifest || typeof manifest !== 'object') throw new RulePackValidationError('Rule pack has no manifest')
   const rulesetId = manifest.ruleset_id
   assertString(rulesetId, 'manifest.ruleset_id')
@@ -271,14 +305,26 @@ export function validateRulePack(pack, { expectedRulesetId } = {}) {
   for (const field of ['pack_id', 'edition_family', 'version', 'canonical_language', 'license_id', 'created_at', 'verified_at']) {
     assertString(manifest[field], `manifest.${field}`)
   }
-  if (manifest.canonical_language !== 'en') throw new RulePackValidationError('manifest.canonical_language must be en')
+  if (!['en', 'ru'].includes(manifest.canonical_language)) {
+    throw new RulePackValidationError('manifest.canonical_language must be en or ru')
+  }
   assertStringArray(manifest.display_languages, 'manifest.display_languages')
   if (!manifest.display_languages.includes('ru') || !manifest.display_languages.includes('en')) {
     throw new RulePackValidationError('manifest.display_languages must include ru and en')
   }
+  let sourcesById = null
+  if (manifest.source_registry) {
+    assertString(manifest.source_registry, 'manifest.source_registry')
+    if (!SOURCE_REGISTRY_FILE_PATTERN.test(manifest.source_registry)) {
+      throw new RulePackValidationError(`Invalid source registry filename ${manifest.source_registry}`)
+    }
+    sourcesById = validateSourceRegistry(sourceRegistry, rulesetId)
+  } else if (sourceRegistry) {
+    throw new RulePackValidationError('Rule pack has a source registry that is not declared by its manifest')
+  }
   if (!Array.isArray(rules) || rules.length === 0) throw new RulePackValidationError('Rule pack must contain at least one rule')
   const seenIds = new Set()
-  for (const rule of rules) validateRule(rule, rulesetId, seenIds)
+  for (const rule of rules) validateRule(rule, rulesetId, seenIds, sourcesById)
 
   if (!Array.isArray(glossary)) throw new RulePackValidationError('Rule pack glossary must be an array')
   const glossaryIds = new Set()
@@ -315,6 +361,7 @@ export function validateRulePack(pack, { expectedRulesetId } = {}) {
     rule_count: rules.length,
     glossary_term_count: glossary.length,
     ontology_edge_count: ontologyEdges.length,
+    ...(sourcesById ? { source_count: sourcesById.size } : {}),
   }
 }
 
@@ -339,7 +386,17 @@ function resolvePackDirectory(rootDir, rulesetId) {
 
 export async function loadRulePack(rulesetId, { rootDir = DEFAULT_RULE_PACKS_ROOT, freeze = true } = {}) {
   const directory = resolvePackDirectory(rootDir, rulesetId)
-  const files = ['manifest.yaml', 'glossary.csv', 'rules.jsonl', 'ontology_edges.jsonl', 'coverage.yaml']
+  let manifestSource
+  try {
+    manifestSource = await readFile(join(directory, 'manifest.yaml'), 'utf8')
+  } catch (error) {
+    throw new RulePackValidationError(`Unable to read rule pack ${rulesetId}: ${error instanceof Error ? error.message : 'file error'}`, {
+      ruleset_id: rulesetId,
+      directory,
+    })
+  }
+  const manifest = parseMetadataYaml(manifestSource, `${rulesetId}/manifest.yaml`)
+  const files = ['glossary.csv', 'rules.jsonl', 'ontology_edges.jsonl', 'coverage.yaml']
   let contents
   try {
     contents = await Promise.all(files.map((file) => readFile(join(directory, file), 'utf8')))
@@ -350,14 +407,27 @@ export async function loadRulePack(rulesetId, { rootDir = DEFAULT_RULE_PACKS_ROO
     })
   }
 
-  const [manifestSource, glossarySource, rulesSource, ontologySource, coverageSource] = contents
+  const [glossarySource, rulesSource, ontologySource, coverageSource] = contents
+  let sourceRegistry = null
+  if (manifest.source_registry) {
+    if (!SOURCE_REGISTRY_FILE_PATTERN.test(String(manifest.source_registry))) {
+      throw new RulePackValidationError(`Invalid source registry filename ${manifest.source_registry}`)
+    }
+    try {
+      const source = await readFile(join(directory, manifest.source_registry), 'utf8')
+      sourceRegistry = JSON.parse(source)
+    } catch (error) {
+      throw new RulePackValidationError(`Unable to read source registry for ${rulesetId}: ${error instanceof Error ? error.message : 'file error'}`)
+    }
+  }
   const pack = {
     directory,
-    manifest: parseMetadataYaml(manifestSource, `${rulesetId}/manifest.yaml`),
+    manifest,
     glossary: parseGlossaryCsv(glossarySource, `${rulesetId}/glossary.csv`),
     rules: parseJsonLines(rulesSource, `${rulesetId}/rules.jsonl`),
     ontologyEdges: parseJsonLines(ontologySource, `${rulesetId}/ontology_edges.jsonl`),
     coverage: parseMetadataYaml(coverageSource, `${rulesetId}/coverage.yaml`),
+    sourceRegistry,
   }
   pack.summary = validateRulePack(pack, { expectedRulesetId: rulesetId })
   return freeze ? deepFreeze(pack) : pack

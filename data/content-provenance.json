@@ -1,7 +1,9 @@
 {
   "schema_version": 1,
   "ruleset_id": "srd_5_2_1",
-  "verified_at": "2026-07-28",
+  "target_ruleset_id": "dnd_5e_2014",
+  "target_cutover_status": "preview",
+  "verified_at": "2026-08-30",
   "external_sources": [
     {
       "id": "srd-5.2.1",
@@ -20,6 +22,15 @@
       "title": "dnd.su structured compatibility indexes",
       "publisher": "UNKNOWN",
       "url": "https://www.dnd.su/",
+      "license_id": "UNKNOWN",
+      "bundled": false,
+      "rights_status": "review_required"
+    },
+    {
+      "id": "dndsu-5e14-core",
+      "title": "5e14.dnd.su D&D 5e 2014 core rules pages",
+      "publisher": "UNKNOWN",
+      "url": "https://5e14.dnd.su/",
       "license_id": "UNKNOWN",
       "bundled": false,
       "rights_status": "review_required"
@@ -62,6 +73,55 @@
       "rights_status": "project_license_required"
     },
     {
+      "path": "data/rule_packs/dnd_5e_2014/manifest.yaml",
+      "sha256": "80e2b8ce8c79aed0cecee1b9b8f0938831f4ecb9b6280d1739576a1820c1549b",
+      "size_bytes": 665,
+      "source_id": "dndsu-5e14-core",
+      "rights_status": "project_license_required"
+    },
+    {
+      "path": "data/rule_packs/dnd_5e_2014/coverage.yaml",
+      "sha256": "55c3077961020715dfec1419c6847e4e898d95a797f6f29f727702555893e0fc",
+      "size_bytes": 780,
+      "source_id": "dndsu-5e14-core",
+      "rights_status": "project_license_required"
+    },
+    {
+      "path": "data/rule_packs/dnd_5e_2014/glossary.csv",
+      "sha256": "e2744ecf01629dd3485341274fca91c4386807c9d616cf6b426d43a508674bc0",
+      "size_bytes": 4425,
+      "source_id": "dndsu-5e14-core",
+      "rights_status": "project_license_required"
+    },
+    {
+      "path": "data/rule_packs/dnd_5e_2014/rules.jsonl",
+      "sha256": "0bdd24c66ae613ae6450227aff4b9943a5a69d8b1a7e47098ad73fd6de847e6d",
+      "size_bytes": 39024,
+      "source_id": "dndsu-5e14-core",
+      "rights_status": "project_license_required"
+    },
+    {
+      "path": "data/rule_packs/dnd_5e_2014/ontology_edges.jsonl",
+      "sha256": "5f7a696feec47b104a35bc51ef569e5ee1538a5b540cffea4e93fdbcb391a822",
+      "size_bytes": 5732,
+      "source_id": "dndsu-5e14-core",
+      "rights_status": "project_license_required"
+    },
+    {
+      "path": "data/rule_packs/dnd_5e_2014/sources.json",
+      "sha256": "36099e6348e35aaa4fba591c3860ef5122ddf6a00a401b47ce165576034d43ac",
+      "size_bytes": 5813,
+      "source_id": "dndsu-5e14-core",
+      "rights_status": "project_license_required"
+    },
+    {
+      "path": "data/ruleset-cutover-2014.json",
+      "sha256": "f8171bf57f11a847495ca3a21a159bba8f4b8cfa3f229fa17279ff85d1dbab5d",
+      "size_bytes": 6670,
+      "source_id": "dndsu-5e14-core",
+      "rights_status": "project_license_required"
+    },
+    {
       "path": "data/dndsu-spells-0-6.json",
       "sha256": "5a0a4c1bc9e718a1fe7ca4e967b535ee1f867aac7b4669027739aa8faad0a1db",
       "size_bytes": 433305,
@@ -96,6 +156,38 @@
       "source_id": "srd-5.2.1",
       "rights_status": "project_license_required",
       "notes": "Механические факты предысторий редакции 2024. Описания написаны для проекта и текст источника не воспроизводят."
+    },
+    {
+      "path": "data/character-creation-policy-v1.json",
+      "sha256": "618a4b820a99ee7499bac6167c388169bfcb2e9666d2af0b186cc7b9f8f8afce",
+      "size_bytes": 1746,
+      "source_id": "srd-5.2.1",
+      "rights_status": "project_license_required",
+      "notes": "Каталог видов и политики прибавок характеристик редакции 2024."
+    },
+    {
+      "path": "data/character-creation-dnd-5e-2014.json",
+      "sha256": "ba7353db6a39941684f27184f6e629562dcff9e0cb58fed554848c7dc8e4d653",
+      "size_bytes": 19324,
+      "source_id": "dndsu-5e14-core",
+      "rights_status": "project_license_required",
+      "notes": "Структурированные механические факты рас, подрас, обязательных выборов и основных особенностей PHB 2014; полные тексты источника не включены."
+    },
+    {
+      "path": "data/backgrounds-dnd-5e-2014.json",
+      "sha256": "cfa5bae70e6bae6ec3cb5c6d634689f342f5f12cebbee47b8df4cc16cfa694f4",
+      "size_bytes": 13784,
+      "source_id": "dndsu-5e14-core",
+      "rights_status": "project_license_required",
+      "notes": "Структурированные механические факты 13 предысторий PHB 2014; описания написаны для проекта."
+    },
+    {
+      "path": "data/starter-equipment-dnd-5e-2014.json",
+      "sha256": "4c04beea9cc57ad46c7babbb843fac091216b8277b4501babb0febf2be3bcaa3",
+      "size_bytes": 31033,
+      "source_id": "dndsu-5e14-core",
+      "rights_status": "project_license_required",
+      "notes": "Server-validated группы поддержанных вариантов стартового снаряжения PHB 2014."
     }
   ],
   "release_blockers": [

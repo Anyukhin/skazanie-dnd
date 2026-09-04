@@ -34,7 +34,7 @@ function TextField({ label, value, onChange, rows = 3 }: { label: string; value:
   return <label className="sheet-field textarea-field"><span>{label}</span><textarea rows={rows} value={value} onChange={(event) => onChange(event.target.value)} /></label>
 }
 
-export function CharacterEditor({ player, onClose, onSave, onImport, onLevelUp }: { player: Player; onClose: () => void; onSave: (patch: Partial<Player>) => void; onImport: (source: string) => Promise<void>; onLevelUp: () => void }) {
+export function CharacterEditor({ player, rulesetId, onClose, onSave, onImport, onLevelUp }: { player: Player; rulesetId?: string; onClose: () => void; onSave: (patch: Partial<Player>) => void; onImport: (source: string) => Promise<void>; onLevelUp: () => void }) {
   const [draft, setDraft] = useState<Player>(() => structuredClone(player))
   const [tab, setTab] = useState<'sheet' | 'story' | 'advancement'>('sheet')
   const [notice, setNotice] = useState('')
@@ -66,7 +66,7 @@ export function CharacterEditor({ player, onClose, onSave, onImport, onLevelUp }
     ...group,
     options: group.options.filter((option) => !developmentQuery || `${group.name} ${option.name}`.toLocaleLowerCase('ru').includes(developmentQuery)),
   })).filter((group) => group.options.length > 0)
-  const developmentFeatures = classFeatureCatalogFor(draft, true).filter((feature) => !developmentQuery || `${feature.name} ${feature.description} ${feature.subclass ?? ''}`.toLocaleLowerCase('ru').includes(developmentQuery))
+  const developmentFeatures = classFeatureCatalogFor(draft, true, rulesetId).filter((feature) => !developmentQuery || `${feature.name} ${feature.description} ${feature.subclass ?? ''}`.toLocaleLowerCase('ru').includes(developmentQuery))
   const filteredDevelopmentSpells = developmentSpells.filter((spell) => (spellLevelFilter === 'all' || spell.level === spellLevelFilter) && (!developmentQuery || `${spell.name} ${spell.englishName ?? ''} ${spell.description ?? ''}`.toLocaleLowerCase('ru').includes(developmentQuery)))
   const skillsValid = !Object.hasOwn(draft, 'classSkillProficiencies') || !classSkillRules || selectedClassSkills.length === classSkillRules.choiceCount
   const featureChoicesRequired = Object.hasOwn(draft, 'selectedFeatureIds') || draft.level > player.level

@@ -1,6 +1,15 @@
+import { readFileSync } from 'node:fs'
+
 import { ammunitionCatalogIdForWeapon, catalogItem, materializeCatalogItem } from './item-catalog.mjs'
+import { backgroundById } from './backgrounds.mjs'
+import { DND_2014_RULESET_ID, LEGACY_DEFAULT_RULESET_ID } from './ruleset-config.mjs'
 
 const STARTING_GOLD = 20
+const classicEquipment = JSON.parse(readFileSync(
+  new URL('../data/starter-equipment-dnd-5e-2014.json', import.meta.url),
+  'utf8',
+))
+const classicClassProfiles = new Map(classicEquipment.classes.map((entry) => [entry.class_id, entry]))
 
 const WEAPONS = Object.freeze({
   dagger: Object.freeze({
@@ -109,22 +118,148 @@ function starterGear(heroId, gearKey) {
   })
 }
 
+function classicStarterItem(heroId, item, index, prefix = 'class') {
+  const entry = catalogItem(item.catalog_id)
+  if (!entry) throw new TypeError(`Стартовый набор 2014 ссылается на неизвестный предмет ${item.catalog_id}`)
+  return materializeCatalogItem(item.catalog_id, {
+    id: `${heroId}-starter-${prefix}-${index + 1}`.slice(0, 120),
+    quantity: Math.max(1, Math.trunc(Number(item.quantity) || 1)),
+    equipped: item.equipped === true,
+    rarity: 'обычный',
+    image: '',
+    imageStatus: 'ready',
+  })
+}
+
+function narrativeStarterItem(heroId, entry, index, prefix) {
+  return {
+    id: `${heroId}-starter-${prefix}-${index + 1}`.slice(0, 120),
+    name: String(entry.name ?? 'Личные вещи').slice(0, 160),
+    type: 'other',
+    quantity: 1,
+    weight: 0,
+    description: String(entry.description ?? '').slice(0, 2_000),
+    properties: 'Нарративный предмет; механическое применение требует подтверждённого правила.',
+    mechanics_status: 'ruling-only',
+    sellable: false,
+    equipped: false,
+  }
+}
+
+export function starterEquipmentCatalogFor(rulesetId = LEGACY_DEFAULT_RULESET_ID) {
+  if (rulesetId !== DND_2014_RULESET_ID) return null
+  const labelItem = (item) => ({
+    ...structuredClone(item),
+    ...(item.catalog_id ? { name: catalogItem(item.catalog_id)?.name ?? item.catalog_id } : {}),
+  })
+  return {
+    ...structuredClone(classicEquipment),
+    classes: classicEquipment.classes.map((profile) => ({
+      ...structuredClone(profile),
+      fixed_items: (profile.fixed_items ?? []).map(labelItem),
+      fixed_narrative_items: (profile.fixed_narrative_items ?? []).map(labelItem),
+      choice_groups: (profile.choice_groups ?? []).map((group) => ({
+        ...structuredClone(group),
+        options: (group.options ?? []).map((option) => ({
+          ...structuredClone(option),
+          items: (option.items ?? []).map(labelItem),
+          narrative_items: (option.narrative_items ?? []).map(labelItem),
+        })),
+      })),
+    })),
+  }
+}
+
+export function defaultStarterEquipmentChoices(classId, rulesetId = LEGACY_DEFAULT_RULESET_ID) {
+  if (rulesetId !== DND_2014_RULESET_ID) return {}
+  const profile = classicClassProfiles.get(String(classId ?? ''))
+  if (!profile) return null
+  return Object.fromEntries((profile.choice_groups ?? []).map((group) => [
+    group.id,
+    (group.options ?? []).slice(0, Number(group.count ?? 0)).map((option) => option.id),
+  ]))
+}
+
+export function resolveStarterEquipmentChoices(classId, choices = {}, rulesetId = LEGACY_DEFAULT_RULESET_ID) {
+  if (rulesetId !== DND_2014_RULESET_ID) return { ok: true, choices: {}, selected_options: [], profile: null }
+  const profile = classicClassProfiles.get(String(classId ?? ''))
+  if (!profile) return { ok: false, reason: 'Для класса нет стартового набора 2014' }
+  if (!choices || typeof choices !== 'object' || Array.isArray(choices)) return { ok: false, reason: 'starterEquipmentChoices должен быть объектом' }
+  const groups = profile.choice_groups ?? []
+  const allowedGroups = new Set(groups.map((group) => String(group.id)))
+  for (const key of Object.keys(choices)) if (!allowedGroups.has(key)) return { ok: false, reason: `Группа снаряжения ${key} не принадлежит классу` }
+  const resolved = {}
+  const selectedOptions = []
+  for (const group of groups) {
+    const selected = Array.isArray(choices[group.id]) ? choices[group.id].map(String) : []
+    const expected = Math.max(0, Number(group.count ?? 0))
+    if (selected.length !== expected || new Set(selected).size !== selected.length) return { ok: false, reason: `${group.label}: нужно выбрать ${expected}` }
+    const byId = new Map((group.options ?? []).map((option) => [String(option.id), option]))
+    if (selected.some((id) => !byId.has(id))) return { ok: false, reason: `${group.label}: неизвестный вариант` }
+    resolved[group.id] = selected
+    selectedOptions.push(...selected.map((id) => ({ group_id: group.id, ...structuredClone(byId.get(id)) })))
+  }
+  return { ok: true, choices: resolved, selected_options: selectedOptions, profile: structuredClone(profile) }
+}
+
+function classicStarterInventory(hero, profile, { policyVersion = classicEquipment.policy_version } = {}) {
+  const heroId = String(hero?.id || 'hero')
+  let classItems
+  if (Number(policyVersion) < 2) {
+    classItems = (profile?.legacy_default_items ?? []).map((item, index) => classicStarterItem(heroId, item, index))
+  } else {
+    const requestedChoices = hero?.starterEquipmentChoices
+      ?? defaultStarterEquipmentChoices(hero?.characterClass, DND_2014_RULESET_ID)
+      ?? {}
+    const resolved = resolveStarterEquipmentChoices(hero?.characterClass, requestedChoices, DND_2014_RULESET_ID)
+    if (!resolved.ok) throw new TypeError(resolved.reason)
+    const selectedItems = resolved.selected_options.flatMap((option) => option.items ?? [])
+    const selectedNarrative = resolved.selected_options.flatMap((option) => option.narrative_items ?? [])
+    classItems = [...(profile?.fixed_items ?? []), ...selectedItems]
+      .map((item, index) => classicStarterItem(heroId, item, index))
+    classItems.push(...[...(profile?.fixed_narrative_items ?? []), ...selectedNarrative]
+      .map((item, index) => narrativeStarterItem(heroId, item, index, 'class-keepsake')))
+  }
+  const background = backgroundById(hero?.backgroundId, DND_2014_RULESET_ID)
+  const backgroundItems = (background?.equipment?.catalogItems ?? [])
+    .map((item, index) => classicStarterItem(heroId, item, index, 'background'))
+  if (background?.equipment?.includeChosenTool) {
+    const selected = new Set(hero?.backgroundChoices?.tools ?? [])
+    const tool = (background.toolChoice?.options ?? []).find((entry) => selected.has(entry.id) && entry.catalogId)
+    if (tool?.catalogId) backgroundItems.push(classicStarterItem(heroId, { catalog_id: tool.catalogId, quantity: 1 }, backgroundItems.length, 'background-tool'))
+  }
+  if (background?.equipment?.summary) {
+    backgroundItems.push(narrativeStarterItem(heroId, {
+      name: `${background.name}: личные вещи`,
+      description: String(background.equipment.summary),
+    }, 0, 'background-keepsakes'))
+  }
+  return [...classItems, ...backgroundItems]
+}
+
 /** Supplies only missing first-session essentials; imported, already-built
  * character sheets keep their money, abilities and equipment unchanged. */
-export function withStarterKit(hero) {
+export function withStarterKit(hero, { rulesetId = LEGACY_DEFAULT_RULESET_ID, starterPolicyVersion = classicEquipment.policy_version } = {}) {
   const role = `${hero?.role ?? ''} ${hero?.characterClass ?? ''}`.toLocaleLowerCase('ru')
   const profile = CLASS_PROFILES.find((entry) => entry.key === hero?.characterClass || entry.pattern.test(role))
   const heroId = String(hero?.id || 'hero')
+  const classicProfile = classicClassProfiles.get(hero?.characterClass ?? profile?.key)
   const inventory = Array.isArray(hero?.inventory) && hero.inventory.length
     ? structuredClone(hero.inventory)
-    : [
+    : rulesetId === DND_2014_RULESET_ID
+      ? classicProfile
+        ? classicStarterInventory(hero, classicProfile, { policyVersion: starterPolicyVersion })
+        : [starterWeapon(heroId, profile?.weapon ?? 'dagger')]
+      : [
         starterWeapon(heroId, profile?.weapon ?? 'dagger'),
         ...[starterAmmunition(heroId, profile?.weapon ?? 'dagger')].filter(Boolean),
         ...(profile?.gear ?? []).map((key) => starterGear(heroId, key)).filter(Boolean),
       ]
   const currency = totalCurrency(hero?.currency) > 0
     ? structuredClone(hero.currency)
-    : { copper: 0, silver: 0, gold: STARTING_GOLD, platinum: 0 }
+    : rulesetId === DND_2014_RULESET_ID
+      ? { copper: 0, silver: 0, gold: Math.max(0, Number(backgroundById(hero?.backgroundId, DND_2014_RULESET_ID)?.equipment?.gold) || 0), platinum: 0 }
+      : { copper: 0, silver: 0, gold: STARTING_GOLD, platinum: 0 }
   const abilities = abilityScoresAreBlank(hero?.abilities) && profile
     ? structuredClone(profile.abilities)
     : structuredClone(hero?.abilities ?? { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 })
@@ -134,5 +269,12 @@ export function withStarterKit(hero) {
     inventory,
     currency,
     abilities,
+    ...(rulesetId === DND_2014_RULESET_ID && classicProfile ? {
+      starterEquipmentPolicyId: classicEquipment.policy_id,
+      starterEquipmentPolicyVersion: classicEquipment.policy_version,
+      starterEquipmentChoices: structuredClone(hero?.starterEquipmentChoices
+        ?? defaultStarterEquipmentChoices(hero?.characterClass, DND_2014_RULESET_ID)
+        ?? {}),
+    } : {}),
   }
 }

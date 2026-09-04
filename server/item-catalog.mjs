@@ -1,3 +1,5 @@
+import { DND_2014_RULESET_ID } from './ruleset-config.mjs'
+
 export const ITEM_CATALOG_SCHEMA_VERSION = 'skazanie:item-catalog:v1'
 
 export const ITEM_CATALOG_SOURCE = Object.freeze({
@@ -1387,9 +1389,24 @@ export function catalogIdsFor(channel) {
   return []
 }
 
-export function itemLifecycleProfile(catalogId) {
+const DND_2014_ACTION_ITEM_IDS = new Set([
+  'srd_5_2_1:antitoxin',
+  'srd_5_2_1:potion-of-healing',
+])
+
+function itemUseProfileForRuleset(entry, rulesetId = '') {
+  if (!entry?.use) return null
+  const use = clone(entry.use)
+  if (String(rulesetId) === DND_2014_RULESET_ID && DND_2014_ACTION_ITEM_IDS.has(entry.catalog_id)) {
+    use.combat_action = 'action'
+  }
+  return use
+}
+
+export function itemLifecycleProfile(catalogId, { rulesetId = '' } = {}) {
   const entry = catalogItem(catalogId)
   if (!entry) return null
+  const use = itemUseProfileForRuleset(entry, rulesetId)
   return clone({
     equippable: entry.lifecycle?.equippable === true,
     stackable: entry.lifecycle?.stackable !== false,
@@ -1402,7 +1419,7 @@ export function itemLifecycleProfile(catalogId) {
       },
     } : {}),
     ...(entry.equip?.armor?.kind === 'shield' ? { armor_bonus: entry.equip.armor.armorClassBonus } : {}),
-    ...(entry.use ? { use: entry.use } : {}),
+    ...(use ? { use } : {}),
     ...(entry.activation ? { activation: entry.activation } : {}),
     ...(entry.charges ? { charges: entry.charges } : {}),
     ...(normalizeItemRechargeProfile(entry.recharge) ? { recharge: normalizeItemRechargeProfile(entry.recharge) } : {}),
@@ -1494,7 +1511,7 @@ export function hydrateCatalogItem(input = {}) {
   return catalogItem(catalogId) ? materializeCatalogItem(catalogId, source) : clone(source)
 }
 
-export function itemViewerCapabilities(item = {}) {
+export function itemViewerCapabilities(item = {}, { rulesetId = '' } = {}) {
   const entry = catalogItem(item?.catalog_id ?? item?.catalogId)
   if (!entry) {
     const equipSlot = item?.type === 'weapon' && item?.combat
@@ -1517,22 +1534,23 @@ export function itemViewerCapabilities(item = {}) {
       requires_attunement: requiresAttunement,
     }
   }
-  const use = entry.use
+  const rulesetUse = itemUseProfileForRuleset(entry, rulesetId)
+  const use = rulesetUse
     ? {
-        kind: entry.use.kind,
-        action_type: entry.use.combat_action,
-        target: entry.use.target ?? 'self',
-        range_feet: entry.use.range_feet ?? 0,
-        ...(entry.use.charges_per_use ? { charges_per_use: entry.use.charges_per_use } : {}),
-        ...(entry.use.spell_id ? { spell_id: entry.use.spell_id } : {}),
-        ...(entry.use.min_charges_to_spend ? { min_charges_to_spend: entry.use.min_charges_to_spend } : {}),
-        ...(entry.use.max_charges_to_spend ? { max_charges_to_spend: entry.use.max_charges_to_spend } : {}),
-        ...(entry.use.default_charges_to_spend ? { default_charges_to_spend: entry.use.default_charges_to_spend } : {}),
-        ...(entry.use.requires_equipped === true ? { requires_equipped: true } : {}),
-        ...(entry.use.combat_only === true ? { combat_only: true } : {}),
-        ...(entry.use.kind === 'spill_zone' ? { point_target: true } : {}),
-        ...(entry.use.spill_mode ? { use_modes: ['target', 'spill'], point_target: true } : {}),
-        ...(entry.use.kind === 'coat_weapon' ? { requires_weapon: true } : {}),
+        kind: rulesetUse.kind,
+        action_type: rulesetUse.combat_action,
+        target: rulesetUse.target ?? 'self',
+        range_feet: rulesetUse.range_feet ?? 0,
+        ...(rulesetUse.charges_per_use ? { charges_per_use: rulesetUse.charges_per_use } : {}),
+        ...(rulesetUse.spell_id ? { spell_id: rulesetUse.spell_id } : {}),
+        ...(rulesetUse.min_charges_to_spend ? { min_charges_to_spend: rulesetUse.min_charges_to_spend } : {}),
+        ...(rulesetUse.max_charges_to_spend ? { max_charges_to_spend: rulesetUse.max_charges_to_spend } : {}),
+        ...(rulesetUse.default_charges_to_spend ? { default_charges_to_spend: rulesetUse.default_charges_to_spend } : {}),
+        ...(rulesetUse.requires_equipped === true ? { requires_equipped: true } : {}),
+        ...(rulesetUse.combat_only === true ? { combat_only: true } : {}),
+        ...(rulesetUse.kind === 'spill_zone' ? { point_target: true } : {}),
+        ...(rulesetUse.spill_mode ? { use_modes: ['target', 'spill'], point_target: true } : {}),
+        ...(rulesetUse.kind === 'coat_weapon' ? { requires_weapon: true } : {}),
       }
     : null
   const activation = entry.activation
@@ -1578,6 +1596,8 @@ export function itemViewerCapabilities(item = {}) {
     recharge: normalizeItemRechargeProfile(entry.recharge),
     requires_attunement: entry.attunement?.required === true,
     mechanics_status: entry.mechanics_status,
-    limitation: entry.limitation,
+    limitation: String(rulesetId) === DND_2014_RULESET_ID && DND_2014_ACTION_ITEM_IDS.has(entry.catalog_id)
+      ? `${entry.limitation ? `${entry.limitation} ` : ''}В профиле D&D 5e 2014 предмет требует основное действие.`
+      : entry.limitation,
   })
 }

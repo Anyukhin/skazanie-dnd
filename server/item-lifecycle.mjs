@@ -40,8 +40,8 @@ function itemFor(actor, id) {
   return (actor?.inventory ?? []).find((item) => String(item?.id) === String(id ?? '') && Number(item?.quantity ?? 1) > 0) ?? null
 }
 
-function profileFor(item) {
-  const catalog = itemLifecycleProfile(String(item?.catalog_id ?? item?.catalogId ?? ''))
+function profileFor(item, rulesetId = '') {
+  const catalog = itemLifecycleProfile(String(item?.catalog_id ?? item?.catalogId ?? ''), { rulesetId })
   if (catalog) return clone(catalog)
   const profile = {
     requires_attunement: item?.requires_attunement === true,
@@ -91,7 +91,7 @@ function assertPlainCommand(command) {
     // допустимость клетки, дальность и принадлежность оружия проверяет
     // Rules Engine, а не отправитель команды.
     'to', 'use_mode', 'weapon_id',
-    'expected_state_version', 'source_rule_ids', 'house_rule_id', 'ruling_id', 'visibility', 'request_fingerprint',
+    'expected_state_version', 'ruleset_id', 'source_rule_ids', 'house_rule_id', 'ruling_id', 'visibility', 'request_fingerprint',
     'server_authoritative',
   ]
   const unexpected = Object.keys(command).filter((key) => !common.includes(key))
@@ -100,8 +100,8 @@ function assertPlainCommand(command) {
   }
 }
 
-export function itemProfileFor(item) {
-  return profileFor(item)
+export function itemProfileFor(item, { rulesetId = '' } = {}) {
+  return profileFor(item, rulesetId)
 }
 
 export function inventoryWeight(actor) {
@@ -309,7 +309,7 @@ export function validateItemLifecycleCommand(command, state, context = {}) {
   const itemId = clean(command.item_id)
   const item = itemFor(owner, itemId)
   if (!item) throw new ItemLifecycleValidationError('Предмет не найден', 'ITEM_NOT_FOUND')
-  const profile = profileFor(item)
+  const profile = profileFor(item, state?.ruleset_id)
   const result = {
     ...command,
     actor_id: ownerId,
