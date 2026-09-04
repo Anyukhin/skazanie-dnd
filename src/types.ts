@@ -98,12 +98,35 @@ export type PendingCheck = {
   playerId: string
   status: 'ready' | 'rolling' | 'resolving'
   result?: RollResult
+  resolutionKey?: string
+  /** Предложение ведущего, которое игрок принимает нажатием на бросок. */
+  proposal?: {
+    summary: string
+    approach: string
+    cost: string
+    on_success: string
+    on_failure: string
+  }
   /**
    * Команда доски, ждущая броска: вторая фаза повторяет **ту же** команду с
    * серверным `roll_id`, а не пересобирает свободное действие. Пусто — обычная
    * проверка свободной фразы.
    */
   command?: TwoPhaseCheckCommand
+}
+
+export type CombatActionProposal = {
+  id: string
+  state_version: number
+  kind: 'approach_attack'
+  actor_id: string
+  target_id: string
+  title: string
+  path: Array<{ x: number; y: number }>
+  to: { x: number; y: number }
+  movement_feet: number
+  cost: string
+  consequence: string
 }
 
 /**
@@ -1377,6 +1400,7 @@ export type GameState = {
   activePlayerId: string
   isNarrating: boolean
   pendingCheck: PendingCheck | null
+  pendingAction?: { proposal: CombatActionProposal; action: string; playerId: string; status: 'ready' | 'submitting'; idempotencyKey: string } | null
   agentInteraction?: AgentInteraction | null
   /** Optional so rooms saved before the dice tray was added remain valid. */
   lastDiceRoll?: DiceRollEvent | null
@@ -2373,10 +2397,11 @@ export type SuggestedAction = {
 }
 
 export type AiTurnResult = {
+  action_proposal?: CombatActionProposal
   narration: string
   provider: string
   model: string
-  check?: { check_id?: string; label: string; modifier: number; difficulty: number; sides: 20 } | null
+  check?: Pick<PendingCheck, 'check_id' | 'label' | 'modifier' | 'difficulty' | 'sides' | 'ability' | 'skill' | 'advantage' | 'disadvantage' | 'proposal'> | null
   effects: {
     roll: Message['roll'] | null
     reveal: Array<{ x: number; y: number }>

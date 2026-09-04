@@ -9,6 +9,7 @@ import test from 'node:test'
 import { AutonomousCampaignOrchestrator } from '../server/autonomous-orchestrator.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { FileEventStore } from '../server/event-store.mjs'
+import { RollRegistry } from '../server/roll-registry.mjs'
 import { RulesEngine, applyGameEvent, normalizeCampaignState } from '../server/rules-engine.mjs'
 
 const CAMPAIGN_ID = 'IMPROV-1'
@@ -53,6 +54,47 @@ async function fixture(t, initialState = battle()) {
 
 const improvise = (autonomy, key, action) => autonomy.handleUnknownAction({
   campaignId: CAMPAIGN_ID, playerId: 'hero', action, idempotencyKey: key,
+})
+
+test('боевое предложение показывает действительную цену провала и ждёт подтверждения', async (t) => {
+  const { autonomy, eventStore } = await fixture(t)
+  autonomy.rollRegistry = new RollRegistry({ diceService: new DiceService({ rng: new SequenceDiceRng([20, 20]) }) })
+  const result = await improvise(autonomy, 'offer-combat', 'Опрокидываю жаровню под ноги огру, чтобы он оступился.')
+  assert.equal(result.kind, 'check_required')
+  assert.equal(result.check.proposal.cost, 'действие')
+  assert.match(result.check.proposal.on_failure, /действие будет потрачено/u)
+  assert.doesNotMatch(result.check.proposal.on_failure, /минут|время|час/u)
+  assert.deepEqual(result.events, [])
+  assert.equal((await eventStore.load(CAMPAIGN_ID)).state_version, 0)
+
+  const roll = autonomy.rollRegistry.issue({ checkId: result.check.check_id, campaignId: CAMPAIGN_ID, actorId: 'hero' })
+  const verifiedRoll = autonomy.rollRegistry.consume(roll.roll_id, { campaignId: CAMPAIGN_ID, actorId: 'hero', idempotencyKey: 'accept-combat' })
+  const request = { campaignId: CAMPAIGN_ID, playerId: 'hero', action: 'Опрокидываю жаровню под ноги огру, чтобы он оступился.', idempotencyKey: 'accept-combat', verifiedRoll }
+  const resolved = await autonomy.handleUnknownAction(request)
+  assert.equal(resolved.kind, 'check_success')
+  const current = await eventStore.load(CAMPAIGN_ID)
+  assert.equal(current.state.mechanics.combat.action_economy.hero.action, false)
+  assert.deepEqual((await eventStore.replay(CAMPAIGN_ID, { useSnapshots: false })).state, current.state)
+  const duplicate = await autonomy.handleUnknownAction(request)
+  assert.equal(duplicate.kind, resolved.kind)
+  assert.equal(duplicate.narration, resolved.narration)
+  assert.deepEqual(duplicate.events, resolved.events)
+  assert.equal((await eventStore.load(CAMPAIGN_ID)).state_version, current.state_version)
+})
+
+test('недостижимый эффект отклоняется до броска и расхода действия', async (t) => {
+  const initial = battle()
+  initial.mechanics.positions.ogre = { x: 5, y: 0 }
+  const { autonomy, eventStore } = await fixture(t, initial)
+  autonomy.actionAdjudicator = { read: async () => ({
+    ability: 'str', skill: 'athletics', plausibility: 'strenuous', risk: 'serious',
+    action_cost: 'action', effect: 'prone', effect_target: 'ogre', required_means: [],
+  }) }
+  const result = await improvise(autonomy, 'far-effect', 'Сбиваю огра с ног рывком верёвки')
+  assert.equal(result.kind, 'clarification')
+  assert.match(result.narration, /слишком далеко/u)
+  assert.deepEqual(result.events, [])
+  assert.equal((await eventStore.load(CAMPAIGN_ID)).state_version, 0)
 })
 
 test('импровизация в бою тратит действие и не двигает время', async (t) => {

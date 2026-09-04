@@ -1,4 +1,5 @@
 import 'dotenv/config'
+import { assertFreeActionConfirmation } from './free-action-adjudication.mjs'
 import { createServer } from 'node:http'
 import { createReadStream, existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
 import { extname, join, resolve, sep } from 'node:path'
@@ -5085,7 +5086,14 @@ const server = createServer((req, res) => {
       }
       let verifiedRoll = null
       if (body.roll?.roll_id) {
-        verifiedRoll = rollRegistry.consume(body.roll.roll_id, { campaignId, actorId: playerId, idempotencyKey })
+        const previousCommit = await eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
+        verifiedRoll = rollRegistry.consume(body.roll.roll_id, {
+          campaignId, actorId: playerId, idempotencyKey,
+          validateContext: (context) => {
+            if (context?.kind === 'free_action') assertFreeActionConfirmation(context, body.action,
+              previousCommit?.events?.[0]?.state_version_before ?? trustedState.state_version)
+          },
+        })
       } else if (body.roll && mode === 'enforce') {
         return json(res, 400, { error: 'Enforce-режим принимает только серверный roll_id', code: 'UNVERIFIED_ROLL' })
       }
@@ -5191,6 +5199,7 @@ const server = createServer((req, res) => {
             npcId: explicitNpcId,
             verifiedRoll,
             manualRoll: body.manual_roll === true,
+            confirmedProposalId: typeof body.confirmed_proposal_id === 'string' ? body.confirmed_proposal_id : null,
             user,
             allowedActorIds: campaignHeroIds(user, campaignId),
             onNarrationStart: startNarration,
@@ -5213,7 +5222,7 @@ const server = createServer((req, res) => {
       const metaCommand = /^\s*\//u.test(action)
       // Приглашение к броску не является событием истории: в летопись попадёт
       // только завершённый ход, когда игрок бросит кубик и сервер его примет.
-      const checkRequired = Boolean(result.check)
+      const checkRequired = Boolean(result.check || result.action_proposal)
       const journalNarrationId = !checkRequired && String(result.narration ?? '').trim() ? narrationMessageId(idempotencyKey) : null
       const narrationEntry = journalNarrationId ? {
         id: journalNarrationId,
@@ -5226,7 +5235,7 @@ const server = createServer((req, res) => {
       } : null
       // Вторая фаза ручного броска приходит с тем же текстом действия: реплика
       // игрока уже записана первой фазой, второй раз её не повторяем.
-      const playerEntry = !metaCommand && !body.roll?.roll_id && String(action ?? '').trim() ? {
+      const playerEntry = !metaCommand && !body.roll?.roll_id && !body.confirmed_proposal_id && String(action ?? '').trim() ? {
         id: playerMessageId(idempotencyKey),
         text: action,
         speaker: 'player',

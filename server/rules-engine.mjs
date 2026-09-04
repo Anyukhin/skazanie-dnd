@@ -3170,6 +3170,84 @@ function d20HitChance(target, { advantage = false, disadvantage = false } = {}) 
  * модификаторов. Ничего не решает и не расходует — читается проекцией, чтобы
  * игрок видел цену размена до клика, как за столом видит свой лист и СЛ.
  */
+function assertVoluntaryMovementPath(state, actorIdValue, from, to, path) {
+  const movementConditions = state.mechanics.conditions[actorIdValue] ?? []
+  const frightened = movementConditions.find((condition) => String(condition?.id ?? condition) === 'frightened' && condition.source_actor)
+  const commandApproach = movementConditions.find((condition) => String(condition?.id ?? condition) === 'command:approach')
+  const commandFlee = movementConditions.find((condition) => String(condition?.id ?? condition) === 'command:flee')
+  const distanceTo = (position, sourceActor) => {
+    const source = actorPosition(state, sourceActor)
+    return source ? Math.max(Math.abs(position.x - source.x), Math.abs(position.y - source.y)) : null
+  }
+  if (frightened) {
+    let previousDistance = distanceTo(from, frightened.source_actor)
+    for (const step of path) {
+      const nextDistance = distanceTo(step, frightened.source_actor)
+      if (previousDistance != null && nextDistance != null && nextDistance < previousDistance) throw new RulesValidationError('Испуганное существо не может добровольно приблизиться к источнику страха', 'FRIGHTENED_CLOSER')
+      previousDistance = nextDistance
+    }
+  }
+  if (commandApproach && distanceTo(to, commandApproach.source_actor) >= distanceTo(from, commandApproach.source_actor)) {
+    throw new RulesValidationError('Приказ «Подойди» требует приблизиться к заклинателю', 'COMMAND_MOVEMENT_DIRECTION')
+  }
+  if (commandFlee && distanceTo(to, commandFlee.source_actor) <= distanceTo(from, commandFlee.source_actor)) {
+    throw new RulesValidationError('Приказ «Убегай» требует отдалиться от заклинателя', 'COMMAND_MOVEMENT_DIRECTION')
+  }
+}
+
+/** Маршрут составной ближней атаки. Числа, путь и клетки выбирает движок. */
+export function previewApproachAttack(rawState, actorIdValue, targetIdValue) {
+  const state = normalizeCampaignState(rawState)
+  const actor = findActor(state, actorIdValue)
+  const target = findActor(state, targetIdValue)
+  if (!state.mechanics.combat.active) throw new RulesValidationError('Такой манёвр доступен после начала боя', 'COMBAT_REQUIRED')
+  if (!actor || !target || !isEnemyActor(state, targetIdValue) || !isLivingActor(target)) {
+    throw new RulesValidationError('Выберите живого противника на карте', 'INVALID_TARGET')
+  }
+  const profile = trustedAttackProfile(state, actor)
+  if (!profile || profile.kind !== 'melee') throw new RulesValidationError('Для этого манёвра нужно оружие ближнего боя', 'MELEE_WEAPON_REQUIRED')
+  const from = actorPosition(state, actorIdValue)
+  const targetAt = actorPosition(state, targetIdValue)
+  if (!from || !targetAt) throw new RulesValidationError('Герой и противник должны находиться на карте', 'MAP_POSITION_REQUIRED')
+  const { map, stepCost } = movementStepCostFor(state, actorIdValue)
+  const cells = tacticalCellMap(state)
+  const occupied = occupiedPositions(state, actorIdValue)
+  const economy = state.mechanics.combat.action_economy[actorIdValue] ?? {}
+  const budget = effectiveSpeedFeet(state, actor, actorIdValue) + Math.max(0, safeInteger(economy.movement_bonus, 0)) - Math.max(0, safeInteger(economy.movement_spent, 0))
+  const radius = Math.max(1, Math.min(6, Math.floor(Number(profile.range_feet || 5) / 5)))
+  const candidates = []
+  const attack = { command_type: 'MakeAttack', actor_id: actorIdValue, target_id: targetIdValue, server_authoritative: true }
+  let attackRefusal = null
+  for (let x = targetAt.x - radius; x <= targetAt.x + radius; x += 1) {
+    for (let y = targetAt.y - radius; y <= targetAt.y + radius; y += 1) {
+      const to = { x, y }
+      if (!isWalkableCell(cells.get(positionKey(to))) || occupied.has(positionKey(to))) continue
+      const path = shortestTacticalPath(state, actorIdValue, to, { tacticalMap: map, stepCost })
+      if (!path || path.some((step) => cells.get(positionKey(step))?.revealed === false)) continue
+      try { if (path.length) assertVoluntaryMovementPath(state, actorIdValue, from, to, path) }
+      catch (error) { if (error instanceof RulesValidationError) continue; throw error }
+      const cost = path.reduce((total, step) => total + stepCost(step, map), 0)
+      if (cost > budget) continue
+      const atDestination = { ...state, mechanics: { ...state.mechanics, positions: { ...state.mechanics.positions, [actorIdValue]: to } } }
+      if (!attackForecast(atDestination, actorIdValue, targetIdValue)?.in_range) continue
+      try { validateCommand(attack, atDestination, { allowedActorIds: [actorIdValue] }) }
+      catch (error) { if (!(error instanceof RulesValidationError)) throw error; attackRefusal ??= error; continue }
+      candidates.push({ to, path, cost })
+    }
+  }
+  candidates.sort((a, b) => a.cost - b.cost || a.to.y - b.to.y || a.to.x - b.to.x)
+  const chosen = candidates[0]
+  if (!chosen) throw attackRefusal ?? new RulesValidationError('Не хватает свободного пути или скорости, чтобы подойти и атаковать', 'APPROACH_UNREACHABLE')
+  const move = { command_type: 'MoveActor', actor_id: actorIdValue, to: chosen.to, server_authoritative: true }
+  if (chosen.path.length) validateCommand(move, state, { allowedActorIds: [actorIdValue] })
+  const continuation = Number(economy.attacks_used) > 0 && Number(economy.attacks_used) < Number(economy.attacks_allowed)
+  return {
+    commands: [...(chosen.path.length ? [move] : []), attack],
+    path: chosen.path, to: chosen.to, movement_feet: chosen.cost,
+    attack_cost: continuation ? 'одна оставшаяся атака' : 'действие «Атака» (один удар)',
+  }
+}
+
 export function attackForecast(state, attackerIdValue, targetIdValue, { actionId = null, itemId = null, attackMode = null, attackAbility = null } = {}) {
   const attacker = findActor(state, attackerIdValue)
   const target = findActor(state, targetIdValue)
@@ -11861,30 +11939,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         const { map, stepCost } = movementStepCostFor(state, command.actor_id)
         path = shortestTacticalPath(state, command.actor_id, to, { tacticalMap: map, stepCost })
         if (!path?.length) throw new RulesValidationError('До клетки назначения нет свободного пути', 'PATH_BLOCKED')
-        if (!reactionMovement) {
-          const movementConditions = state.mechanics.conditions[command.actor_id] ?? []
-          const frightened = movementConditions.find((condition) => String(condition?.id ?? condition) === 'frightened' && condition.source_actor)
-          const commandApproach = movementConditions.find((condition) => String(condition?.id ?? condition) === 'command:approach')
-          const commandFlee = movementConditions.find((condition) => String(condition?.id ?? condition) === 'command:flee')
-          const distanceTo = (position, sourceActor) => {
-            const source = actorPosition(state, sourceActor)
-            return source ? Math.max(Math.abs(position.x - source.x), Math.abs(position.y - source.y)) : null
-          }
-          if (frightened) {
-            let previousDistance = distanceTo(from, frightened.source_actor)
-            for (const step of path) {
-              const nextDistance = distanceTo(step, frightened.source_actor)
-              if (previousDistance != null && nextDistance != null && nextDistance < previousDistance) throw new RulesValidationError('Испуганное существо не может добровольно приблизиться к источнику страха', 'FRIGHTENED_CLOSER')
-              previousDistance = nextDistance
-            }
-          }
-          if (commandApproach && distanceTo(to, commandApproach.source_actor) >= distanceTo(from, commandApproach.source_actor)) {
-            throw new RulesValidationError('Приказ «Подойди» требует приблизиться к заклинателю', 'COMMAND_MOVEMENT_DIRECTION')
-          }
-          if (commandFlee && distanceTo(to, commandFlee.source_actor) <= distanceTo(from, commandFlee.source_actor)) {
-            throw new RulesValidationError('Приказ «Убегай» требует отдалиться от заклинателя', 'COMMAND_MOVEMENT_DIRECTION')
-          }
-        }
+        if (!reactionMovement) assertVoluntaryMovementPath(state, command.actor_id, from, to, path)
         distance = path.length * 5
         // Цена исполняемого пути считается тем же предикатом, который получил
         // взвешенный поиск и который использует NPC-планировщик.
@@ -17848,6 +17903,13 @@ export function resolveCommands(commands, initialState, options) {
     const expected = commandIndex === 0 && hasExplicitExpected
       ? (item.expected_state_version ?? item.expectedStateVersion)
       : state.state_version
+    if (options?.stopAttackAfterMovement && item.command_type === 'MakeAttack'
+      && validatedCommands.some((entry) => entry.command_type === 'MoveActor')) {
+      // Реакция или поверхность могла лишить героя возможности атаковать.
+      // Состоявшееся движение и его последствия остаются частью одного commit.
+      try { validateCommand({ ...item, expected_state_version: expected }, state, options.context) }
+      catch (error) { if (error instanceof RulesValidationError) break; throw error }
+    }
     const result = resolveCommand({ ...item, expected_state_version: expected }, state, options)
     validatedCommands.push(result.command)
     for (const event of result.events) {
@@ -18110,7 +18172,9 @@ export class RulesEngine {
   }
 
   resolvePlan(plan, state, context) {
-    return resolveCommands(plan?.proposed_commands ?? plan?.commands ?? [], state, { diceService: this.diceService, context })
+    return resolveCommands(plan?.proposed_commands ?? plan?.commands ?? [], state, {
+      diceService: this.diceService, context, stopAttackAfterMovement: plan?.maneuver === 'approach_attack',
+    })
   }
 
   authorizeDirectorIntent(intent, state) {

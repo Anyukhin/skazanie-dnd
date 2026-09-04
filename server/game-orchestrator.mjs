@@ -1673,8 +1673,27 @@ export class GameOrchestrator {
               narration_constraints: ['free-action-committed-consequences-only'],
               confidence: intent.confidence,
             }
-        : await this.adjudicator.createPlan({ intent, state: originalState, retrievedRules })
+        : await this.adjudicator.createPlan({ intent, state: intent.intent === 'approach_attack'
+          ? duplicate ? (await this.eventStore.load(campaignId, { atVersion: duplicate.events[0].state_version_before })).state : authoritativeState
+          : originalState, retrievedRules })
     plan = { ...plan, proposed_commands: validateAllowedCommands(plan.proposed_commands ?? []).map((command, index) => ({ ...command, campaign_id: campaignId, command_id: `${idempotencyKey}:${index + 1}` })) }
+    if (plan.maneuver === 'approach_attack' && !duplicate) {
+      this.rulesEngine.validate(plan.proposed_commands[0], authoritativeState, rulesContext)
+      if (!input.confirmedProposalId) {
+        return {
+          narration: 'Проверьте маршрут и цену манёвра. Подтвердите план или откажитесь от него.',
+          action_proposal: plan.proposal,
+          effects: emptyEffects(), provider: 'RulesEngine', model: 'deterministic',
+          turn_id: turnId, engine_mode: mode, state_version: authoritativeState.state_version,
+          mechanics: [], visible_state_changes: [], turn_consumed: false,
+        }
+      }
+      if (input.confirmedProposalId !== plan.proposal.id) {
+        const error = new Error('План манёвра изменился. Отправьте заявку заново и подтвердите новый маршрут.')
+        error.code = 'STATE_VERSION_CONFLICT'
+        throw error
+      }
+    }
 
     if (freeActionRequest) {
       turnId = structuredCommandTurnId(campaignId, idempotencyKey)
@@ -1734,7 +1753,7 @@ export class GameOrchestrator {
 
 
     if (intent.requires_clarification || plan.clarification_required) {
-      const narration = humanMissingInformation(intent.missing_information ?? plan.missing_information, authoritativeState, intent)
+      const narration = plan.clarification_message ?? humanMissingInformation(intent.missing_information ?? plan.missing_information, authoritativeState, intent)
       const response = { narration, effects: emptyEffects(), provider: 'RulesEngine', model: 'deterministic', turn_id: turnId, engine_mode: mode, state_version: authoritativeState.state_version, mechanics: [], visible_state_changes: [], authoritative_state: authoritativeState, turn_consumed: false }
       this.saveTrace({ turnId, campaignId, mode, intent, retrievalQueries, retrievedRules, plan, stateBefore: authoritativeState.state_version, stateAfter: authoritativeState.state_version, verification: { valid: true }, latency: this.now() - started })
       return response
@@ -1873,7 +1892,7 @@ export class GameOrchestrator {
           committed = await this.eventStore.commit({ campaign_id: campaignId, expected_state_version: resolutionState.state_version, idempotency_key: idempotencyKey, command_id: idempotencyKey, events: engineResult.events })
           break
         } catch (error) {
-          if (error?.code === 'STATE_VERSION_CONFLICT' && attempt < 2) {
+          if (error?.code === 'STATE_VERSION_CONFLICT' && attempt < 2 && !plan.maneuver) {
             const latest = await this.eventStore.load(campaignId)
             resolutionState = normalizeCampaignState(latest.state)
             continue
@@ -1933,7 +1952,7 @@ export class GameOrchestrator {
     const replayFallback = deterministicResponse
       ?? storedSocialNarration
       ?? deterministicReplayNarration(brief, resolvedRuleIds, resolveActorName)
-    const structuredMechanics = Array.isArray(input.commands) && !deterministicNarrator
+    const structuredMechanics = (Array.isArray(input.commands) || plan.maneuver === 'approach_attack') && !deterministicNarrator
     const streamsModelNarration = !idempotentReplay
       && !deterministicResponse
       && !storedSocialNarration

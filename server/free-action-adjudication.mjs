@@ -80,7 +80,7 @@ const APPROACH_PATTERNS = Object.freeze([
   { test: /(осматр|разгляд|изуча|ищу\s+след|обыск)/iu, ability: 'wis', skill: 'perception', plausibility: 'trivial', risk: 'none', obstacle: 'обстановка' },
   { test: /(вспомина|припомин|знаю\s+ли|что\s+известно)/iu, ability: 'int', skill: 'history', plausibility: 'trivial', risk: 'none', obstacle: 'память' },
   { test: /(залез|взбира|караб|подтягива)/iu, ability: 'str', skill: 'athletics', plausibility: 'strenuous', risk: 'serious', obstacle: 'высота' },
-  { test: /(перепрыг|прыга|перескоч)/iu, ability: 'dex', skill: 'acrobatics', plausibility: 'strenuous', risk: 'serious', obstacle: 'разрыв' },
+  { test: /(?<![\p{L}\p{M}])(?:вс|с|за|пере|под|вы|при|от)?прыг|(?<![\p{L}\p{M}])(?:прыж|соскоч|перескоч)/iu, ability: 'dex', skill: 'acrobatics', plausibility: 'strenuous', risk: 'serious', obstacle: 'разрыв' },
 ])
 
 /**
@@ -139,6 +139,20 @@ export function interpretFreeAction(text = '') {
     consequence_type: consequenceType,
     source: match ? 'deterministic-pattern' : 'deterministic-default',
   }, value)
+}
+
+/** Проверка согласованной заявки до расходования зарегистрированной кости. */
+export function assertFreeActionConfirmation(context, text, stateVersion) {
+  if (context?.kind !== 'free_action' || context.action_fingerprint !== digest(clean(text, 1_000)) || !context.reading) {
+    const error = new Error('Бросок не относится к согласованной заявке. Отправьте действие ещё раз, чтобы согласовать проверку.')
+    error.code = 'ROLL_CONTEXT_MISMATCH'
+    throw error
+  }
+  if (!Number.isSafeInteger(context.state_version) || context.state_version !== stateVersion) {
+    const error = new Error('Обстановка изменилась после предложения. Отправьте действие ещё раз: ведущий заново проверит цену и последствия.')
+    error.code = 'STATE_VERSION_CONFLICT'
+    throw error
+  }
 }
 
 function normalizedWords(value) {

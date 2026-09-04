@@ -53,6 +53,7 @@ import {
   d20CheckLabel,
   failForwardFor,
   interpretFreeAction,
+  assertFreeActionConfirmation,
   previousFailedAttempt,
   resolveCorpseSearch,
   resolveInventoryTransfer,
@@ -692,7 +693,12 @@ export class AutonomousCampaignOrchestrator {
 
   async handleUnknownAction({ campaignId, action, idempotencyKey, playerId = '', intent = null, manualRoll = false, verifiedRoll = null }) {
     const text = clean(action, 1_000)
-    const loaded = await this.load(campaignId)
+    const previousCommit = await this.eventStore.getByIdempotencyKey?.(campaignId, idempotencyKey)
+    // Повтор и восстановление после первой фиксации используют исходную
+    // обстановку: уже потраченный слот не должен превращать успех в отказ.
+    const loaded = previousCommit?.events?.length
+      ? await this.eventStore.load(campaignId, { atVersion: previousCommit.events[0].state_version_before })
+      : await this.load(campaignId)
     const actorId = clean(playerId, 120)
     const declaration = declaredActionCommand(actorId, text)
     const run = async (commands) => {
@@ -741,6 +747,20 @@ export class AutonomousCampaignOrchestrator {
       }
     }
     const freeActionKind = intent?.free_action_kind ?? classifyFreeActionKind(text)
+    if (freeActionKind === 'compound_maneuver' || freeActionKind === 'compound_ranged_attack') {
+      return {
+        kind: 'clarification',
+        narration: freeActionKind === 'compound_ranged_attack'
+          ? 'Связка подхода и выстрела пока не поддерживается. Выберите перемещение на карте и затем дальнюю атаку. Заявка не выполнена и ничего не расходует.'
+          : 'В вашей заявке есть прыжок и атака. Пока я не умею связывать их в один манёвр с перемещением и приземлением. Действие не выполнено: выберите перемещение на карте и затем атаку или опишите отдельную импровизацию. Попытка ничего не расходует.',
+        turn_consumed: false,
+        admin_commands: 0,
+        state: loaded.state,
+        state_version: loaded.state_version,
+        events: [], commands: [], rolls: [], duplicate: false,
+      }
+    }
+    verifyDuplicate(previousCommit)
     if (text.length < 8 || isNoise(text) || /^(?:это|туда|сделать|что-то|как-нибудь)[?.!]*$/iu.test(text)) {
       const commit = await run([declaration])
       verifyDuplicate(commit)
@@ -873,6 +893,7 @@ export class AutonomousCampaignOrchestrator {
       && String(verifiedRoll.context.action_fingerprint ?? '') === digest(text)
       ? verifiedRoll.context.reading ?? null
       : null
+    if (verifiedRoll) assertFreeActionConfirmation(verifiedRoll.context, text, loaded.state_version)
     const proposedReading = storedReading
       ?? (this.actionAdjudicator
         ? await this.actionAdjudicator.read(loaded.state, actorId, text, deterministicReading)
@@ -1136,6 +1157,14 @@ export class AutonomousCampaignOrchestrator {
     // слот — это отказ, а не потраченный впустую кубик.
     const inCombat = Boolean(loaded.state.mechanics?.combat?.active)
     const actionCost = inCombat ? resolveActionCost(loaded.state, actorId, reading.action_cost) : { cost: 'free', available: true }
+    if (inCombat && actionCost.cost === 'action' && loaded.state.mechanics.combat.action_economy?.[actorId]?.surged_action_only) {
+      return {
+        kind: 'clarification', narration: 'Дополнительное действие от Всплеска действий нельзя потратить на импровизацию. Выберите другое доступное действие.',
+        turn_consumed: false, admin_commands: 0,
+        state: loaded.state, state_version: loaded.state_version,
+        events: [], commands: [], rolls: [], duplicate: false,
+      }
+    }
     if (inCombat && !actionCost.available) {
       const commit = await run([declaration])
       verifyDuplicate(commit)
@@ -1153,12 +1182,37 @@ export class AutonomousCampaignOrchestrator {
       }
     }
 
-    // Ручной бросок: проверка объявляется, но кубик остаётся за игроком.
+    const effectPreview = inCombat ? planImprovisedEffect(loaded.state, {
+      actorId, effectId: reading.effect, targetId: reading.effect_target, hazardId: reading.hazard, risk: reading.risk,
+    }) : null
+    if (effectPreview?.rejected) {
+      return {
+        kind: 'clarification',
+        narration: `Этот результат пока недоступен: ${effectPreview.rejected}. Уточните цель или способ действия. Попытка ничего не расходует.`,
+        turn_consumed: false, admin_commands: 0,
+        state: loaded.state, state_version: loaded.state_version,
+        events: [], commands: [], rolls: [], duplicate: false,
+      }
+    }
+    const failure = failForwardFor(reading.risk, reading.consequence_type)
+    const proposal = {
+      summary: reading.goal_summary,
+      approach: reading.approach_summary,
+      cost: inCombat ? actionCost.slot || 'свободное взаимодействие' : '5 минут при успехе',
+      on_success: inCombat ? effectPreview.effect.id === 'none' ? 'Попытка будет отмечена в истории без механического эффекта.' : effectPreview.summary
+        : 'Задумка отмечается в истории и цели сцены. Перемещение, урон и предметы этой проверкой не создаются.',
+      on_failure: inCombat
+        ? actionCost.cost === 'free' ? 'Задумка не удастся; действие и бонусное действие сохранятся.' : `Задумка не удастся; ${actionCost.slot} будет потрачено.`
+        : `${failure.summary} Пройдёт ${failure.minutes} минут.`,
+    }
+    if (stakes) stakes.on_failure = proposal.on_failure
+    // Согласование рискованной импровизации обязательно даже с автоброском:
+    // нажатие «Подтвердить и бросить» принимает ровно показанное предложение.
     // Сервер регистрирует её в реестре бросков и ничего не коммитит; ход
     // завершится вторым запросом с roll_id, выданным `/api/roll`. Прочтение
     // действия едет в контексте проверки, чтобы вторая фаза не спрашивала
     // модель заново и игрок бросал ровно то, что ему объявили.
-    if (manualRoll && !verifiedRoll && this.rollRegistry) {
+    if (!verifiedRoll && this.rollRegistry) {
       const preview = previewD20Check(loaded.state, {
         actorId, kind: 'check', ability: reading.ability, skill: reading.skill, difficulty: resolution.difficulty,
       })
@@ -1171,13 +1225,13 @@ export class AutonomousCampaignOrchestrator {
         ability: preview.ability,
         advantage: preview.advantage,
         disadvantage: preview.disadvantage,
-        context: { kind: 'free_action', action_fingerprint: digest(text), reading },
+        context: { kind: 'free_action', action_fingerprint: digest(text), state_version: loaded.state_version, reading },
       })
       return {
         kind: 'check_required',
-        check: { ...check, sides: 20, skill: preview.skill },
+        check: { ...check, sides: 20, skill: preview.skill, proposal },
         stakes,
-        narration: `Требуется проверка: ${check.label}, СЛ ${check.difficulty}. Бросьте d20, чтобы узнать исход.`,
+        narration: `Предлагаю проверку: ${check.label}, СЛ ${check.difficulty}. Цена: ${proposal.cost}. При успехе: ${proposal.on_success} При провале: ${proposal.on_failure} Подтвердите предложение или откажитесь от попытки.`,
         turn_consumed: false,
         admin_commands: 0,
         state: loaded.state,

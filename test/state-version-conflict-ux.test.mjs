@@ -75,7 +75,9 @@ test('свободный и подготовленный ввод очищают
   assert.doesNotMatch(appSource, /onFreeAction\(text\)\s+updateFreeText\(''\)/u)
 })
 
-test('проверка и выбранный маршрут остаются доступны после отказа', () => {
-  assert.match(sessionSource, /pendingCheck: \{ \.\.\.check, status: 'ready' \}/u)
+test('при сетевом отказе остаётся прежний бросок, а выбранный маршрут не теряется', () => {
+  assert.match(sessionSource, /\{ \.\.\.check, resolutionKey, result, status: 'ready' \}/u)
+  assert.match(sessionSource, /check\.result \?\?\s+rollDice/u)
+  assert.match(sessionSource, /narrateWithAgent\(state, check\.action, player\.character, result, resolutionKey, player\.id\)/u)
   assert.match(appSource, /onMove\(selected, cell\.x, cell\.y\)\.then\(\(outcome\) => \{\s+if \(outcome\.ok\) setPendingMoveKey\(null\)/u)
 })

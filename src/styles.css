@@ -1215,6 +1215,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .dice-check { min-height: 94px; display: grid; grid-template-columns: minmax(150px, 1fr) 190px minmax(150px, 1fr); align-items: center; gap: 16px; padding: 9px 18px; border-top: 1px solid rgba(204,151,86,.22); background: radial-gradient(circle at 50% 100%, rgba(179,119,54,.14), transparent 48%), rgba(11,9,7,.58); }
 .dice-copy { display: grid; }.dice-copy > span { color: #a97943; font-size: var(--fs-sm); font-weight: 700; letter-spacing: .16em; }.dice-copy strong { margin-top: 2px; color: #d8cdbf; font: 600 var(--fs-xl) Spectral, serif; }.dice-copy small { margin-top: 3px; color: #6e665e; font-size: var(--fs-sm); }
 .dice-check > p { margin: 0; color: #766e66; font: var(--fs-md)/1.45 Spectral, serif; }
+.dice-check.has-proposal > .dice-copy, .improvisation-proposal { grid-column: 1 / -1; }
+.improvisation-proposal { color: #d8cdbf; font-size: var(--fs-md); line-height: 1.5; }
+.improvisation-proposal > p { margin: 4px 0; color: #b5a898; }
+.improvisation-proposal dl { display: grid; gap: 8px; margin: 10px 0 0; }
+.improvisation-proposal dl > div { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 12px; }
+.improvisation-proposal dt { color: #d9b27d; }
+.improvisation-proposal dd { margin: 0; overflow-wrap: anywhere; }
 .d20-button { height: 70px; display: flex; align-items: center; justify-content: center; gap: 9px; border: 1px solid rgba(222,172,105,.38); border-radius: 6px; background: linear-gradient(145deg, rgba(116,76,39,.42), rgba(48,33,23,.55)); color: #d5a866; cursor: pointer; box-shadow: inset 0 1px rgba(255,255,255,.05), 0 8px 25px rgba(0,0,0,.25); }
 .d20-button:hover:not(:disabled) { border-color: rgba(235,190,128,.65); transform: translateY(-1px); filter: brightness(1.1); }.d20-button:disabled { cursor: default; }
 .d20-button > i { position: relative; width: 51px; height: 51px; display: grid; place-items: center; clip-path: polygon(50% 0, 95% 27%, 82% 82%, 50% 100%, 18% 82%, 5% 27%); background: linear-gradient(150deg, #c18a4d, #5f3b20); color: #19110b; font-style: normal; filter: drop-shadow(0 5px 5px #000); }

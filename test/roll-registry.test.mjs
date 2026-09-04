@@ -7,6 +7,25 @@ import test from 'node:test'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { RollRegistry } from '../server/roll-registry.mjs'
 
+test('потеря ответа на выдачу кости не создаёт новый бросок, в том числе после перезапуска', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'skazanie-check-retry-'))
+  t.after(() => rmSync(directory, { recursive: true, force: true }))
+  const options = { diceService: new DiceService({ rng: new SequenceDiceRng([17]) }), storageFile: join(directory, 'rolls.json') }
+  const registry = new RollRegistry(options)
+  const check = registry.registerCheck({ campaignId: 'ROOM', actorId: 'hero', context: { kind: 'free_action' } })
+  const request = { checkId: check.check_id, campaignId: 'ROOM', actorId: 'hero' }
+  const rolled = registry.issue(request)
+  assert.deepEqual(registry.issue(request), rolled)
+  const reopened = new RollRegistry(options)
+  assert.deepEqual(reopened.issue(request), rolled)
+  assert.throws(() => reopened.issue({ ...request, actorId: 'other' }), { code: 'CHECK_FORBIDDEN' })
+  assert.throws(() => reopened.consume(rolled.roll_id, {
+    campaignId: 'ROOM', actorId: 'hero', idempotencyKey: 'wrong',
+    validateContext: () => { throw new Error('Другая заявка') },
+  }), /Другая заявка/u)
+  assert.equal(reopened.consume(rolled.roll_id, { campaignId: 'ROOM', actorId: 'hero', idempotencyKey: 'right' }).roll_id, rolled.roll_id)
+})
+
 test('серверный roll_id нельзя подменить, передать другому герою или использовать дважды', () => {
   let now = 1000
   const registry = new RollRegistry({
@@ -37,7 +56,7 @@ test('параметры проверки закрепляются сервер�
   assert.equal(result.difficulty, 15)
   assert.equal(result.ability, 'dex')
   assert.equal(result.success, true)
-  assert.throws(() => registry.issue({ checkId: 'check-1', campaignId: 'ROOM', actorId: 'hero' }), (error) => error.code === 'CHECK_NOT_FOUND')
+  assert.deepEqual(registry.issue({ checkId: 'check-1', campaignId: 'ROOM', actorId: 'hero', modifier: 99, difficulty: 1 }), result)
 })
 
 test('выданный и уже использованный roll_id переживает перезапуск процесса', (t) => {

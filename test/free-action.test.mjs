@@ -549,7 +549,9 @@ test('ручной бросок: сервер объявляет проверк�
   assert.equal(invited.check.difficulty, 15)
   assert.equal(invited.check.ability, 'str')
   assert.match(invited.check.label, /Сила/u)
-  assert.match(invited.narration, /Бросьте d20/u)
+  assert.match(invited.narration, /Подтвердите предложение/u)
+  assert.equal(invited.check.proposal.cost, '5 минут при успехе')
+  assert.match(invited.check.proposal.on_failure, /10 минут/u)
   assert.deepEqual(invited.mechanics, [])
   assert.equal((await eventStore.load('FREE-ACTION')).state_version, 0)
 
@@ -578,12 +580,57 @@ test('ручной бросок: сервер объявляет проверк�
   assert.ok((await eventStore.load('FREE-ACTION')).state_version > 0)
 })
 
-test('без manualRoll свободное действие разрешается прежним серверным броском', async () => {
+test('автобросок не отменяет согласование рискованной импровизации', async () => {
   const registry = new RollRegistry({
     diceService: new DiceService({ rng: new SequenceDiceRng([9]), idFactory: () => 'manual-roll-x' }),
   })
-  const { orchestrator } = await setup(campaign(), { rollRegistry: registry })
+  const { orchestrator, eventStore } = await setup(campaign(), { rollRegistry: registry })
   const result = await orchestrator.handle(actionInput('Подпираю дверь тяжёлой скамьёй, чтобы её не открыли снаружи', 'free-auto-1', campaign()))
-  assert.equal(result.free_action_outcome, 'check_success')
-  assert.ok(result.mechanics.some((event) => event.event_type === 'AbilityCheckResolved'))
+  assert.equal(result.free_action_outcome, 'check_required')
+  assert.ok(result.check.proposal)
+  assert.deepEqual(result.mechanics, [])
+  assert.equal((await eventStore.load('FREE-ACTION')).state_version, 0)
+})
+
+test('подтверждение нельзя перенести на другую заявку или изменившуюся сцену', async () => {
+  const registry = new RollRegistry({ diceService: new DiceService({ rng: new SequenceDiceRng([18]) }) })
+  const { orchestrator, eventStore } = await setup(campaign(), { rollRegistry: registry })
+  const text = 'Подпираю дверь тяжёлой скамьёй, чтобы её не открыли снаружи'
+  const offered = await orchestrator.handle(actionInput(text, 'proposal', campaign()))
+  const rolled = registry.issue({ checkId: offered.check.check_id, campaignId: 'FREE-ACTION', actorId: 'hero' })
+  const verifiedRoll = registry.consume(rolled.roll_id, { campaignId: 'FREE-ACTION', actorId: 'hero', idempotencyKey: 'confirm' })
+  await assert.rejects(orchestrator.handle({
+    ...actionInput('Подпираю дверь верёвкой', 'confirm-other', campaign()), verifiedRoll,
+  }), { code: 'ROLL_CONTEXT_MISMATCH' })
+  assert.equal((await eventStore.load('FREE-ACTION')).state_version, 0)
+
+  await eventStore.commit({ campaignId: 'FREE-ACTION', expectedStateVersion: 0, idempotencyKey: 'world-changed', events: [
+    { event_type: 'ActionDeclared', actor_id: 'other', payload: { action: 'В мире произошло другое действие' } },
+  ] })
+  const changed = await eventStore.load('FREE-ACTION')
+  await assert.rejects(orchestrator.handle({
+    ...actionInput(text, 'confirm', changed.state), verifiedRoll,
+  }), { code: 'STATE_VERSION_CONFLICT' })
+  assert.equal((await eventStore.load('FREE-ACTION')).state_version, changed.state_version)
+})
+
+test('прыжок с атакой не сокращается до удара и не расходует ход', async () => {
+  const { orchestrator, eventStore } = await setup()
+  for (const text of ['Хочу вспрыгнуть с люстры и попасть по врагу во время боя', 'Вспрыгиваю с люстры и бью огра']) {
+    const result = await orchestrator.handle(actionInput(text, text, campaign()))
+    assert.equal(result.free_action_outcome, 'clarification')
+    assert.match(result.narration, /прыжок и атака/u)
+    assert.deepEqual(result.mechanics, [])
+    assert.equal(result.turn_consumed, false)
+  }
+  assert.equal((await eventStore.load('FREE-ACTION')).state_version, 0)
+})
+
+test('разбор сохраняет обычную атаку и отличает составной манёвр', async () => {
+  const parser = new IntentParser()
+  const parse = (message) => parser.parse({ message, playerId: 'hero', visibleState: campaign() })
+  assert.equal((await parse('Бью огра')).intent, 'attack')
+  assert.equal((await parse('Вспрыгиваю с люстры и бью огра')).intent, 'improvised_action')
+  assert.equal((await parse('Вспрыгиваю с люстры и бью огра')).free_action_kind, 'compound_maneuver')
+  assert.equal((await parse('Прыгаю через канаву')).free_action_kind, null)
 })

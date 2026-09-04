@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+test('прыжки в разных формах распознаются как акробатика', () => {
+  for (const text of ['Вспрыгиваю на люстру', 'Хочу вспрыгнуть на стол', 'Спрыгну с уступа', 'Прыгаю через канаву', 'Совершаю прыжок через ручей']) {
+    const reading = interpretFreeAction(text)
+    assert.equal(reading.ability, 'dex', text)
+    assert.equal(reading.skill, 'acrobatics', text)
+    assert.equal(reading.source, 'deterministic-pattern', text)
+  }
+})
+
 import {
   attemptFingerprint,
   bindFreeActionReadingToState,
