@@ -31,6 +31,11 @@ const INTENT_PATTERNS = [
 
 export function classifyFreeActionKind(value) {
   const text = normalizedText(value)
+  // Удар после прыжка нельзя молча сократить до обычной атаки: заявка
+  // содержит перемещение, которого одиночный эффект импровизации не исполняет.
+  const leap = /(?<![\p{L}\p{M}])(?:вс|с|за|пере|под|вы|при|от)?прыг|(?<![\p{L}\p{M}])(?:прыж|соскоч|спрыг|перескоч)/iu
+  const strike = /(?<![\p{L}\p{M}])(?:атак|удар|бью|бить|стреля|рублю|колю|попасть\s+по|attack|strike)/iu
+  if (leap.test(text) && strike.test(text)) return 'compound_maneuver'
   return FREE_ACTION_PATTERNS.find(([, pattern]) => pattern.test(text))?.[0] ?? null
 }
 
@@ -185,7 +190,8 @@ export class IntentParser {
     }
     const socialSkill = classifyNpcSocialCheck(text)
     const freeActionKind = classifyFreeActionKind(text)
-    const intent = socialSkill ? 'social' : INTENT_PATTERNS.find(([, pattern]) => pattern.test(text))?.[0] ?? 'improvised_action'
+    const intent = freeActionKind === 'compound_maneuver' ? 'improvised_action'
+      : socialSkill ? 'social' : INTENT_PATTERNS.find(([, pattern]) => pattern.test(text))?.[0] ?? 'improvised_action'
     const socialTargets = intent === 'social' ? resolvePresentSocialActors(text, visibleState) : []
     const mentioned = intent === 'social' && socialTargets.length ? socialTargets : mentionedActors(text, visibleState)
     const targets = mentioned.map((actor) => String(actor.id)).filter((id) => id !== String(playerId ?? ''))

@@ -98,6 +98,15 @@ export type PendingCheck = {
   playerId: string
   status: 'ready' | 'rolling' | 'resolving'
   result?: RollResult
+  resolutionKey?: string
+  /** Предложение ведущего, которое игрок принимает нажатием на бросок. */
+  proposal?: {
+    summary: string
+    approach: string
+    cost: string
+    on_success: string
+    on_failure: string
+  }
   /**
    * Команда доски, ждущая броска: вторая фаза повторяет **ту же** команду с
    * серверным `roll_id`, а не пересобирает свободное действие. Пусто — обычная
@@ -2313,7 +2322,7 @@ export type AiTurnResult = {
   narration: string
   provider: string
   model: string
-  check?: { check_id?: string; label: string; modifier: number; difficulty: number; sides: 20 } | null
+  check?: Pick<PendingCheck, 'check_id' | 'label' | 'modifier' | 'difficulty' | 'sides' | 'ability' | 'skill' | 'advantage' | 'disadvantage' | 'proposal'> | null
   effects: {
     roll: Message['roll'] | null
     reveal: Array<{ x: number; y: number }>

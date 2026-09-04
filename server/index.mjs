@@ -1,4 +1,5 @@
 import 'dotenv/config'
+import { assertFreeActionConfirmation } from './free-action-adjudication.mjs'
 import { createServer } from 'node:http'
 import { createReadStream, existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
 import { extname, join, resolve, sep } from 'node:path'
@@ -4963,7 +4964,14 @@ const server = createServer((req, res) => {
       }
       let verifiedRoll = null
       if (body.roll?.roll_id) {
-        verifiedRoll = rollRegistry.consume(body.roll.roll_id, { campaignId, actorId: playerId, idempotencyKey })
+        const previousCommit = await eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
+        verifiedRoll = rollRegistry.consume(body.roll.roll_id, {
+          campaignId, actorId: playerId, idempotencyKey,
+          validateContext: (context) => {
+            if (context?.kind === 'free_action') assertFreeActionConfirmation(context, body.action,
+              previousCommit?.events?.[0]?.state_version_before ?? trustedState.state_version)
+          },
+        })
       } else if (body.roll && mode === 'enforce') {
         return json(res, 400, { error: 'Enforce-режим принимает только серверный roll_id', code: 'UNVERIFIED_ROLL' })
       }

@@ -112,7 +112,13 @@ export class RollRegistry {
       if (registered.campaign_id !== String(campaignId || '') || registered.actor_id !== String(actorId || '')) {
         throw new RollRegistryError('Проверка принадлежит другому ходу или персонажу', 'CHECK_FORBIDDEN')
       }
-      this.checks.delete(String(registeredId))
+      // Повтор HTTP-запроса после потери ответа возвращает ту же кость.
+      // Связь хранится вместе с реестром и переживает перезапуск.
+      if (registered.issued_roll_id) {
+        const issued = this.rolls.get(registered.issued_roll_id)
+        if (!issued) throw new RollRegistryError('Выданный бросок истёк', 'ROLL_NOT_FOUND')
+        return structuredClone(issued.result)
+      }
       context = registered.context ?? null
       ;({ label, modifier, difficulty, ability, advantage, disadvantage, visibility } = registered)
     }
@@ -129,11 +135,12 @@ export class RollRegistry {
       consumed_by: null,
     }
     this.rolls.set(result.roll_id, entry)
+    if (registeredId) this.checks.get(String(registeredId)).issued_roll_id = result.roll_id
     this._persist()
     return structuredClone(entry.result)
   }
 
-  consume(rollId, { campaignId, actorId, idempotencyKey }) {
+  consume(rollId, { campaignId, actorId, idempotencyKey, validateContext }) {
     this.cleanup()
     const entry = this.rolls.get(String(rollId || ''))
     if (!entry) throw new RollRegistryError('Бросок не найден или истёк', 'ROLL_NOT_FOUND')
@@ -142,6 +149,7 @@ export class RollRegistry {
     }
     const key = String(idempotencyKey || '')
     if (entry.consumed_by && entry.consumed_by !== key) throw new RollRegistryError('Бросок уже использован', 'ROLL_ALREADY_USED')
+    if (validateContext) validateContext(structuredClone(entry.context ?? null))
     entry.consumed_by = key || `used:${this.now()}`
     this._persist()
     return structuredClone({ ...entry.result, ...(entry.context ? { context: entry.context } : {}) })

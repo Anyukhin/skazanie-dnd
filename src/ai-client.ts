@@ -131,7 +131,7 @@ export async function narrateWithAgent(
   action: string,
   _player: string,
   roll?: RollResult,
-  idempotencyKey = newIdempotencyKey(),
+  idempotencyKey: string = newIdempotencyKey(),
   actorId?: string,
   options: NarrateOptions = {},
 ): Promise<AiTurnResult> {

@@ -3660,7 +3660,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             </>}
           </aside>
         </div>
-        {tacticalBusy && <p className="tactical-command-status"><RefreshCw className="spinning" size={12} />Действие идёт, мир отзывается на него…</p>}
+        {tacticalBusy && <p className="tactical-command-status"><RefreshCw className={state.pendingCheck?.status === 'ready' ? '' : 'spinning'} size={12} />{state.pendingCheck?.status === 'ready' ? 'Сначала подтвердите предложение ведущего или откажитесь от него.' : 'Действие идёт, мир отзывается на него…'}</p>}
         {/* Отказ команды больше не рисуется здесь своей строкой: он уходит в
             общую ленту тостов над всем экраном (`ErrorToasts`). Раньше строка
             жила только под хотбаром и только в комнате, а следующий отказ

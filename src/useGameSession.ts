@@ -250,7 +250,7 @@ function stateVersionConflictMessage(refreshed: boolean) {
 }
 
 function stateForPersistence(state: GameState): GameState {
-  return { ...state, engine_mode: 'enforce', ...(state.isNarrating ? { isNarrating: false } : {}) }
+  return { ...state, engine_mode: 'enforce', pendingCheck: null, ...(state.isNarrating ? { isNarrating: false } : {}) }
 }
 
 function latestRoomVersion(current: number, candidate: unknown): number {
@@ -407,7 +407,7 @@ export function useGameSession() {
   // раньше `executeTacticalCommand`, и прямая зависимость читалась бы до
   // инициализации константы; ссылка проставляется сразу после объявления.
   const tacticalCommandRef = useRef<
-    ((command: TacticalCommand, message: string, dice?: { manualRoll?: boolean; roll?: RollResult }) => Promise<CommandOutcome>) | null
+    ((command: TacticalCommand, message: string, dice?: { manualRoll?: boolean; roll?: RollResult; idempotencyKey?: string }) => Promise<CommandOutcome>) | null
   >(null)
   const queuedRooms = useRef<Array<{ version: number; state: GameState }>>([])
   const persistLocal = useCallback((next: GameState) => {
@@ -419,8 +419,11 @@ export function useGameSession() {
     // запоминает её в кэше, чтобы следующая дельта было к чему приложить.
     const scene = next.scene ? resolveSceneMap(next.scene) : null
     const recovered = stateForPersistence(scene && scene !== next.scene ? { ...next, scene } : next)
-    stateRef.current = recovered
-    setState(recovered)
+    // Карточка проверки принадлежит этому игроку. Серверный снимок комнаты
+    // её не содержит, а рассылать её соседнему игроку нельзя.
+    const local = { ...recovered, pendingCheck: stateRef.current.sessionCode === recovered.sessionCode ? stateRef.current.pendingCheck : null }
+    stateRef.current = local
+    setState(local)
     persistLocal(recovered)
     channel.current?.postMessage(recovered)
   }, [persistLocal])
@@ -507,8 +510,9 @@ export function useGameSession() {
     channel.current.onmessage = (event: MessageEvent<GameState>) => {
       if (event.data.sessionCode !== state.sessionCode) return
       const recovered = stateForPersistence(event.data)
-      stateRef.current = recovered
-      setState(recovered)
+      const local = { ...recovered, pendingCheck: stateRef.current.pendingCheck }
+      stateRef.current = local
+      setState(local)
     }
     return () => channel.current?.close()
   }, [state.sessionCode])
@@ -573,7 +577,7 @@ export function useGameSession() {
         if (!preview) return
         publishNarrationPreview(state.sessionCode, preview)
         setNarrationPreview(() => (
-          stateRef.current.messages.some((message) => message.id === preview.messageId)
+          stateRef.current.pendingCheck?.proposal || stateRef.current.messages.some((message) => message.id === preview.messageId)
             ? null
             : preview
         ))
@@ -807,11 +811,12 @@ export function useGameSession() {
 
     const check = aiResult?.check ?? null
     if (check) {
+      setNarrationPreview(null)
       mutate((current) => ({
         ...current,
         isNarrating: false,
         pendingCheck: { ...check, action: text.trim(), playerId: player.id, status: 'ready' },
-        messages: [...current.messages, {
+        messages: check.proposal ? current.messages : [...current.messages, {
           id: `${Date.now()}-check`, speaker: 'narrator', author: 'Рассказчик',
           timestamp: new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' }).format(new Date()),
           text: aiResult?.narration || `Это рискованное действие. Проверим, насколько удачно оно получится: брось d20 на «${check.label}».`,
@@ -853,11 +858,15 @@ export function useGameSession() {
     if (!check || check.status !== 'ready') return
     busy.current = true
     const epoch = ++actionEpoch.current
-    mutate((current) => current.pendingCheck ? { ...current, pendingCheck: { ...current.pendingCheck, status: 'rolling' } } : current)
+    const resolutionKey = check.resolutionKey ?? commandId()
+    mutate((current) => current.pendingCheck ? { ...current, pendingCheck: { ...current.pendingCheck, resolutionKey, status: check.result ? 'resolving' : 'rolling' } } : current)
 
     let result: RollResult
     try {
       const [rolled] = await Promise.all([
+        // Повтор после сетевой ошибки отправляет тот же бросок и тот же ключ.
+        // Новая кость позволила бы переиграть уже подтверждённую попытку.
+        check.result ??
         rollDice(check, state.sessionCode),
         new Promise((resolve) => window.setTimeout(resolve, 1250)),
       ])
@@ -893,12 +902,12 @@ export function useGameSession() {
     // достаётся не только парлею, но и побегу от стражи, ответному броску за
     // костями и уговору зверя.
     if (check.command) {
-      const outcome = await tacticalCommandRef.current?.(check.command, check.action, { roll: result })
+      const outcome = await tacticalCommandRef.current?.(check.command, check.action, { roll: result, idempotencyKey: resolutionKey })
         ?? { ok: false as const, error: 'Команда доски сейчас недоступна' }
       mutate((current) => ({
         ...current,
         isNarrating: false,
-        pendingCheck: outcome.ok ? null : { ...check, status: 'ready' },
+        pendingCheck: outcome.ok ? null : { ...check, resolutionKey, result, status: 'ready' },
       }))
       busy.current = false
       return
@@ -907,7 +916,7 @@ export function useGameSession() {
     const player = state.players.find((item) => item.id === check.playerId) ?? state.players[0]
     let aiResult: AiTurnResult | null = null
     try {
-      aiResult = await narrateWithAgent(state, check.action, player.character, result, undefined, player.id)
+      aiResult = await narrateWithAgent(state, check.action, player.character, result, resolutionKey, player.id)
     } catch (error) {
       const normalized = await normalizeCommandError(error)
       const conflict = isStateVersionConflictError(normalized)
@@ -917,11 +926,11 @@ export function useGameSession() {
         isNarrating: false,
         // Полный refresh при конфликте заменяет оптимистическое состояние.
         // Возвращаем исходную проверку, чтобы повтор не требовал заново вводить действие.
-        pendingCheck: { ...check, status: 'ready' },
+        pendingCheck: conflict || (normalized instanceof ApiRequestError && normalized.code === 'ROLL_CONTEXT_MISMATCH') ? null : { ...check, resolutionKey, result, status: 'ready' },
         messages: [...current.messages, {
           id: `${Date.now()}-resolution-error`, speaker: 'system', author: 'Правила игры',
           timestamp: clock(),
-          text: normalized.message,
+          text: check.proposal && conflict ? `Обстановка изменилась. Согласуйте попытку заново: «${check.action}».` : normalized.message,
           turnConsumed: false,
         }],
       }))
@@ -963,7 +972,7 @@ export function useGameSession() {
       messages: [...current.messages, {
         id: `${Date.now()}-cancel-check`, speaker: 'system', author: 'Система',
         timestamp: new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' }).format(new Date()),
-        text: 'Игрок отменил рискованное действие или его зависшее разрешение. Ход остаётся у текущего героя.',
+        text: current.pendingCheck?.result ? 'Карточка закрыта. Уже отправленный результат может быть учтён сервером; обновление комнаты покажет итог.' : 'Игрок отказался от предложения. Действие не выполнено.',
       }],
     }))
   }, [mutate])
@@ -1071,7 +1080,7 @@ export function useGameSession() {
      * вместо того, чтобы бросить за игрока; `roll` приносит уже сделанный
      * серверный бросок во второй фазе. Обычные команды доски обходятся без них.
      */
-    dice: { manualRoll?: boolean; roll?: RollResult } = {},
+    dice: { manualRoll?: boolean; roll?: RollResult; idempotencyKey?: string } = {},
   ): Promise<CommandOutcome> => {
     if (tacticalBusyRef.current) return { ok: false, error: 'Предыдущая команда ещё выполняется.' }
     const current = stateRef.current
@@ -1081,7 +1090,7 @@ export function useGameSession() {
       return { ok: false, error: 'Сейчас ход другого участника боя.' }
     }
 
-    const requestId = commandId()
+    const requestId = dice.idempotencyKey ?? commandId()
     tacticalBusyRef.current = true
     setTacticalBusy(true)
     setTacticalError(null)

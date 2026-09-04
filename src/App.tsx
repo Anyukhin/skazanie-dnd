@@ -486,18 +486,27 @@ function DiceCheckCard({ check, onRoll, onCancel }: { check: PendingCheck; onRol
   const shownValue = check.result?.value ?? (rolling ? spinValue : 20)
   const swing = check.advantage && !check.disadvantage ? 'преимущество' : check.disadvantage && !check.advantage ? 'помеха' : null
   return (
-    <div className={`dice-check ${rolling ? 'rolling' : ''} ${resolving ? 'resolving' : ''}`}>
+    <div className={`dice-check ${check.proposal ? 'has-proposal' : ''} ${rolling ? 'rolling' : ''} ${resolving ? 'resolving' : ''}`}>
       <div className="dice-copy">
-        <span>Требуется проверка</span>
+        <span>{check.proposal ? 'Предложение ведущего · временное правило' : 'Требуется проверка'}</span>
         <strong>{check.label}</strong>
         <small>Сложность {check.difficulty} · модификатор {check.modifier >= 0 ? '+' : ''}{check.modifier}{swing ? ` · ${swing}` : ''}</small>
       </div>
-      <button className="d20-button" onClick={onRoll} disabled={check.status !== 'ready'} aria-label={`Бросить d20: ${check.label}`}>
+      {check.proposal && <div className="improvisation-proposal">
+        <strong>{check.proposal.summary}</strong>
+        {check.proposal.approach !== check.proposal.summary && <p>{check.proposal.approach}</p>}
+        <dl>
+          <div><dt>Цена попытки</dt><dd>{check.proposal.cost}</dd></div>
+          <div><dt>При успехе</dt><dd>{check.proposal.on_success}</dd></div>
+          <div><dt>При провале</dt><dd>{check.proposal.on_failure}</dd></div>
+        </dl>
+      </div>}
+      <button className="d20-button" onClick={onRoll} disabled={check.status !== 'ready'} aria-label={`${check.result ? 'Повторить отправку результата' : check.proposal ? 'Подтвердить и бросить d20' : 'Бросить d20'}: ${check.label}`}>
         <i><b>{shownValue}</b><small>d20</small></i>
-        <span>{rolling ? 'Кость катится…' : resolving ? `${check.result?.value} ${check.modifier >= 0 ? '+' : '−'} ${Math.abs(check.modifier)} = ${check.result?.total}` : 'Бросить кубик'}</span>
+        <span>{rolling ? 'Кость катится…' : resolving ? `${check.result?.value} ${check.modifier >= 0 ? '+' : '−'} ${Math.abs(check.modifier)} = ${check.result?.total}` : check.result ? 'Повторить отправку результата' : check.proposal ? 'Подтвердить и бросить' : 'Бросить кубик'}</span>
       </button>
-      <button className="cancel-check" onClick={onCancel} disabled={check.status === 'rolling'}>{check.status === 'resolving' ? 'Отменить зависшее разрешение' : 'Отказаться от действия'}</button>
-      <p>{resolving ? 'Рассказчик учитывает результат и продолжает сцену…' : 'Нажми на кость — что выпадет, то и будет.'}</p>
+      <button className="cancel-check" onClick={onCancel} disabled={check.status === 'rolling' || (Boolean(check.proposal) && check.status === 'resolving')}>{check.result ? 'Закрыть проверку' : 'Отказаться от действия'}</button>
+      <p>{resolving ? 'Рассказчик учитывает результат и продолжает сцену…' : check.proposal ? 'До подтверждения ход и ресурсы не расходуются. Можно отказаться и описать другой способ.' : 'Нажми на кость — что выпадет, то и будет.'}</p>
     </div>
   )
 }
@@ -815,6 +824,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const normalDocumentTitle = useRef(document.title || DEFAULT_DOCUMENT_TITLE)
   const latestNarratorMessage = [...state.messages].reverse().find((message) => message.speaker === 'narrator')
   const visibleNarrationPreview = narrationPreview
+    && !state.pendingCheck
     && narrationPreview.replayed !== true
     && narrationPreview.phase !== 'aborted'
     && narrationPreview.phase !== 'replaced'
@@ -1487,8 +1497,8 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             players={partyPlayers}
             turnActorId={mapActorId}
             typingActorId={activePlayer.id}
-            canAct={canAct}
-            tacticalBusy={tacticalBusy}
+            canAct={canAct && !state.pendingCheck}
+            tacticalBusy={tacticalBusy || Boolean(state.pendingCheck)}
             tacticalError={tacticalError}
             autoAttackRoll={autoAttackRoll}
             scenicBackdrop={scenicBackdrop}
@@ -1578,7 +1588,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           onOpenWorldMap={() => { setLeavePickerOpen(false); navigate('world-map') }}
           onClose={() => setLeavePickerOpen(false)}
         />}
-        {cinematicNarrationId && <section key={cinematicNarrationId} className={`cinematic-narration ${visibleNarrationPreview ? `phase-${visibleNarrationPreview.phase}` : 'phase-committed'}`} role="status" aria-live="polite">
+        {cinematicNarrationId && !state.pendingCheck && <section key={cinematicNarrationId} className={`cinematic-narration ${visibleNarrationPreview ? `phase-${visibleNarrationPreview.phase}` : 'phase-committed'}`} role="status" aria-live="polite">
           <header><Sparkles size={16} /><span>РАССКАЗЧИК</span><button type="button" onClick={() => {
             if (visibleNarrationPreview) setDismissedNarrationPreviewId(visibleNarrationPreview.messageId)
             else setCinematicNarration(null)
