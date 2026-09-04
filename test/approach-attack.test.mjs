@@ -83,6 +83,16 @@ test('владение героем проверяется до выдачи м�
   await assert.rejects(orchestrator.handle({ ...input, allowedActorIds: ['someone-else'] }))
 })
 
+test('подход с выстрелом не подменяется ближней атакой', async (t) => {
+  const { orchestrator, input, eventStore } = await fixture(t)
+  const result = await orchestrator.handle({ ...input, message: 'Подбегаю к огру и стреляю' })
+  assert.equal(result.action_proposal, undefined)
+  assert.equal(result.free_action_outcome, 'clarification')
+  assert.match(result.narration, /подхода и выстрела/u)
+  assert.deepEqual(result.mechanics, [])
+  assert.equal((await eventStore.load('MANEUVER')).state_version, 0)
+})
+
 test('реакция по пути не откатывается, если герой больше не может атаковать', async (t) => {
   const initial = battle()
   initial.players[0].hp = 1

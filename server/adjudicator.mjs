@@ -92,7 +92,7 @@ export class Adjudicator {
               ...route.commands,
             ],
             proposal: {
-              id, kind: 'approach_attack', actor_id: intent.actor_id, target_id: targetId,
+              id, kind: 'approach_attack', state_version: state.state_version, actor_id: intent.actor_id, target_id: targetId,
               title: `Подойти и атаковать: ${target.name ?? target.character}`,
               path: route.path, to: route.to, movement_feet: route.movement_feet,
               cost: `${route.movement_feet} фт перемещения + ${route.attack_cost}`,

@@ -117,6 +117,7 @@ export type PendingCheck = {
 
 export type CombatActionProposal = {
   id: string
+  state_version: number
   kind: 'approach_attack'
   actor_id: string
   target_id: string

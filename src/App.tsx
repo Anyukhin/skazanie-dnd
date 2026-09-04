@@ -1639,7 +1639,8 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           <p>{cinematicNarrationText || 'Сцена складывается…'}</p>
           <small><ScrollText size={13} />{visibleNarrationPreview?.phase === 'streaming' || visibleNarrationPreview?.phase === 'start' ? 'Текст приходит от Рассказчика…' : 'Сохранено в журнале кампании'}</small>
         </section>}
-        {state.pendingAction && <section className="pending-check-overlay" aria-label="План боевого манёвра" aria-live="polite">
+        {state.pendingAction && <details className="pending-check-overlay" aria-label="План боевого манёвра" aria-live="polite" open>
+          <summary><Footprints size={15} /><span>План манёвра · {state.pendingAction.proposal.movement_feet} фт</span><ChevronDown size={16} /></summary>
           <div className="dice-check has-proposal">
             <div className="dice-copy"><span>План манёвра</span><strong>{state.pendingAction.proposal.title}</strong></div>
             <div className="improvisation-proposal">
@@ -1652,7 +1653,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             </button>
             <button className="cancel-check" onClick={cancelPendingAction} disabled={state.pendingAction.status !== 'ready'}>Отказаться</button>
           </div>
-        </section>}
+        </details>}
         {state.pendingCheck && (
           <details key={state.pendingCheck.check_id ?? state.pendingCheck.action} className="pending-check-overlay" open aria-live="polite">
             <summary><Dices size={15} /><span>Ожидающая проверка</span><ChevronDown size={16} /></summary>

@@ -747,10 +747,12 @@ export class AutonomousCampaignOrchestrator {
       }
     }
     const freeActionKind = intent?.free_action_kind ?? classifyFreeActionKind(text)
-    if (freeActionKind === 'compound_maneuver') {
+    if (freeActionKind === 'compound_maneuver' || freeActionKind === 'compound_ranged_attack') {
       return {
         kind: 'clarification',
-        narration: 'В вашей заявке есть прыжок и атака. Пока я не умею связывать их в один манёвр с перемещением и приземлением. Действие не выполнено: выберите перемещение на карте и затем атаку или опишите отдельную импровизацию. Попытка ничего не расходует.',
+        narration: freeActionKind === 'compound_ranged_attack'
+          ? 'Связка подхода и выстрела пока не поддерживается. Выберите перемещение на карте и затем дальнюю атаку. Заявка не выполнена и ничего не расходует.'
+          : 'В вашей заявке есть прыжок и атака. Пока я не умею связывать их в один манёвр с перемещением и приземлением. Действие не выполнено: выберите перемещение на карте и затем атаку или опишите отдельную импровизацию. Попытка ничего не расходует.',
         turn_consumed: false,
         admin_commands: 0,
         state: loaded.state,

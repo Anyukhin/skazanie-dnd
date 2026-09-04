@@ -5235,7 +5235,7 @@ const server = createServer((req, res) => {
       } : null
       // Вторая фаза ручного броска приходит с тем же текстом действия: реплика
       // игрока уже записана первой фазой, второй раз её не повторяем.
-      const playerEntry = !metaCommand && !body.roll?.roll_id && String(action ?? '').trim() ? {
+      const playerEntry = !metaCommand && !body.roll?.roll_id && !body.confirmed_proposal_id && String(action ?? '').trim() ? {
         id: playerMessageId(idempotencyKey),
         text: action,
         speaker: 'player',

@@ -1584,7 +1584,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     : new Set<string>()
   const previewMoveKey = pendingMoveKey ?? hoveredMoveKey
   const previewRoute = previewMoveKey ? movementPaths.get(previewMoveKey) ?? null : null
-  const maneuverPath = state.pendingAction?.proposal.actor_id === selected ? state.pendingAction.proposal.path : null
+  const maneuverPath = state.pendingAction?.proposal.actor_id === turnActorId ? state.pendingAction.proposal.path : null
   const previewRouteSteps = new Map((maneuverPath ?? previewRoute?.path ?? []).map((step, index) => [boardPositionKey(step.x, step.y), index + 1]))
   const actionReady = !tactical.actionUsed && economy?.action !== false
   // «Дополнительная атака» — свойство действия «Атака», а не отдельная кнопка:

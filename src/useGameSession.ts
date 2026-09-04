@@ -253,6 +253,11 @@ function stateForPersistence(state: GameState): GameState {
   return { ...state, engine_mode: 'enforce', pendingCheck: null, pendingAction: null, ...(state.isNarrating ? { isNarrating: false } : {}) }
 }
 
+function pendingActionForSnapshot(current: GameState, incoming: GameState) {
+  const pending = current.sessionCode === incoming.sessionCode ? current.pendingAction : null
+  return pending?.status === 'submitting' || pending?.proposal.state_version === incoming.state_version ? pending : null
+}
+
 function latestRoomVersion(current: number, candidate: unknown): number {
   const version = Number(candidate)
   return Number.isSafeInteger(version) && version >= 0 ? Math.max(current, version) : current
@@ -422,7 +427,9 @@ export function useGameSession() {
     // Карточка проверки принадлежит этому игроку. Серверный снимок комнаты
     // её не содержит, а рассылать её соседнему игроку нельзя.
     const sameCampaign = stateRef.current.sessionCode === recovered.sessionCode
-    const local = { ...recovered, pendingCheck: sameCampaign ? stateRef.current.pendingCheck : null, pendingAction: sameCampaign ? stateRef.current.pendingAction : null }
+    const pendingAction = pendingActionForSnapshot(stateRef.current, recovered)
+    if (sameCampaign && stateRef.current.pendingAction && !pendingAction) setTacticalError('Обстановка изменилась. Отправьте заявку заново, чтобы согласовать маршрут.')
+    const local = { ...recovered, pendingCheck: sameCampaign ? stateRef.current.pendingCheck : null, pendingAction }
     stateRef.current = local
     setState(local)
     persistLocal(recovered)
@@ -511,7 +518,9 @@ export function useGameSession() {
     channel.current.onmessage = (event: MessageEvent<GameState>) => {
       if (event.data.sessionCode !== state.sessionCode) return
       const recovered = stateForPersistence(event.data)
-      const local = { ...recovered, pendingCheck: stateRef.current.pendingCheck, pendingAction: stateRef.current.pendingAction }
+      const pendingAction = pendingActionForSnapshot(stateRef.current, recovered)
+      if (stateRef.current.pendingAction && !pendingAction) setTacticalError('Обстановка изменилась. Отправьте заявку заново, чтобы согласовать маршрут.')
+      const local = { ...recovered, pendingCheck: stateRef.current.pendingCheck, pendingAction }
       stateRef.current = local
       setState(local)
     }
