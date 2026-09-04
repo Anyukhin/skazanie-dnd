@@ -852,9 +852,8 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   // картинки не генерируются, их готовит ведущий заранее. Нет в кеше — сервер
   // честно отвечает 404, и шапка остаётся с библиотечной подложкой.
   //
-  // `scene.location_id` есть только у ведущего: публичная проекция сцены его не
-  // несёт, и по одному этому полю иллюстрацию видел бы только он. Запасной
-  // источник — текущая точка карты мира, тот же порядок, что на доске.
+  // Старые сцены могут не иметь канонического location_id. Для них запасной
+  // источник иллюстрации — текущая точка карты мира.
   const locationArtId = state.scene.location_id ?? state.worldMap?.currentLocationId ?? ''
   const locationArtUrl = locationArtId
     ? `/api/campaigns/${state.sessionCode}/locations/${encodeURIComponent(locationArtId)}/illustration`

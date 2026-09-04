@@ -115,11 +115,9 @@ test('игроку не видны ни gm_only локации памяти ми
   assert.ok(visibleLocationProfile(admin, 'loc:cult-lair'), 'ведущий готовит и закрытые локации')
 })
 
-test('текущая локация опознаётся по карте мира: в публичной сцене location_id нет', () => {
+test('текущая локация имеет один id в публичной сцене и на карте мира', () => {
   const player = campaignStateForViewer(campaignState(), { role: 'player', id: 'user:ada' }, 'hero:ada')
-  // Вот из-за чего иллюстрацию не видел никто, кроме ведущего: публичная сцена
-  // id локации не несёт, и клиент строил пустой адрес.
-  assert.equal(player.scene.location_id, undefined)
+  assert.equal(player.scene.location_id, 'loc:norvin-road')
   assert.equal(player.worldMap.currentLocationId, 'loc:norvin-road', 'запасной источник id для клиента и сервера')
 
   const current = visibleLocationProfile(player, player.worldMap.currentLocationId)

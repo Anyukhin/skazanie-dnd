@@ -280,12 +280,11 @@ test('иллюстрации локаций готовятся заранее, �
   assert.equal(usage.usage.completed_requests, 1, 'расход подготовки виден ведущему')
   assert.equal(usage.usage.provider_cost, 0.03)
 
-  // Игрок должен уметь построить адрес картинки. `scene.location_id` в его
-  // проекции нет и не будет — id текущего места он берёт из карты мира, и это
-  // ровно тот же ключ, под которым ведущий готовил иллюстрацию.
+  // Сцена и карта мира дают тот же id, под которым подготовлена иллюстрация.
+  // Запасной источник остаётся нужен старым сценам без канонического id.
   const playerRoom = await json(await request(baseUrl, '/api/rooms/LOCATION-ART', { cookie: playerCookie }))
   const playerState = playerRoom.state
-  assert.equal(playerState.scene.location_id, undefined, 'публичная сцена id локации не несёт')
+  assert.equal(playerState.scene.location_id, 'loc-norvin-road')
   assert.equal(playerState.worldMap.currentLocationId, 'loc-norvin-road', 'запасной источник id для клиента')
 
   // Теперь игрок получает картинку — из кеша, без обращения к модели.
