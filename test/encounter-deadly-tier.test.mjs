@@ -96,7 +96,7 @@ test('режиссёр может запросить deadly, но не выду�
 })
 
 test('оба промпта режиссёра синхронно разрешают deadly и ограничивают его провокацией', async () => {
-  for (const name of ['v2_story', 'v2_chaos']) {
+  for (const name of ['v3_story', 'v3_chaos']) {
     const prompt = await readFile(new URL(`../prompts/director/${name}.txt`, import.meta.url), 'utf8')
     assert.match(prompt, /difficulty только easy, medium, hard, deadly;/u, `${name}: перечисление обновлено`)
     assert.match(prompt, /deadly запрашивается только тогда, когда отряд сознательно провоцирует/u, `${name}: условие названо`)

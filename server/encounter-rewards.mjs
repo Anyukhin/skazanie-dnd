@@ -4,6 +4,7 @@ import {
   ENCOUNTER_ASSEMBLER_LIMITS,
   SRD_5_2_1_MONSTER_ALLOWLIST,
 } from './encounter-assembler.mjs'
+import { npcMechanicsFor } from './npc-positioning.mjs'
 import {
   MAX_CURRENCY_CP,
   copperToCurrency,
@@ -175,8 +176,11 @@ export function freezeEncounterOutcomePlan(state = {}, requestedOutcome = null) 
       reject(`Враг ${enemyId} не принадлежит замороженному stat block`, 'ENCOUNTER_ENEMY_FOREIGN')
     }
     const block = SRD_5_2_1_MONSTER_ALLOWLIST[statBlockId]
-    if (!block) reject(`Stat block ${statBlockId} не входит в allowlist`, 'ENCOUNTER_STAT_BLOCK_UNKNOWN')
-    const xp = Number(block.xp)
+    const authored = block ? null : npcMechanicsFor(state, enemy.origin?.npc_id)
+    if (!block && (!authored || authored.profile_id !== statBlockId)) {
+      reject(`Stat block ${statBlockId} не входит в allowlist`, 'ENCOUNTER_STAT_BLOCK_UNKNOWN')
+    }
+    const xp = Number(block?.xp ?? authored?.xp)
     if (!Number.isSafeInteger(xp) || xp < 0 || xp > 100_000) {
       reject(`Stat block ${statBlockId} содержит некорректный XP`, 'ENCOUNTER_STAT_BLOCK_XP_INVALID')
     }

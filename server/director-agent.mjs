@@ -5,6 +5,7 @@ import { normalizeDirectorIntent } from './autonomous-campaign.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'
 import { currentImprovMode, normalizeImprovMode } from './campaign-ai-context.mjs'
 import { campaignArcPosition } from './campaign-loop-policy.mjs'
+import { npcMechanicsFor } from './npc-positioning.mjs'
 import { buildDataOnlyContext } from './security.mjs'
 import { worldClockForAgents } from './weather.mjs'
 import { retrieveWorldMemory } from './world-memory.mjs'
@@ -13,12 +14,12 @@ import { retrieveWorldMemory } from './world-memory.mjs'
 // обоих файлах один и тот же: allowlist намерений, запрет на числа и свободные
 // tool calls, UNTRUSTED_DATA как данные. Различаются только творческие
 // директивы. `v1.txt` остаётся на диске для чтения сохранённых трасс.
-const STORY_PROMPT = readFileSync(fileURLToPath(new URL('../prompts/director/v2_story.txt', import.meta.url)), 'utf8')
-const CHAOS_PROMPT = readFileSync(fileURLToPath(new URL('../prompts/director/v2_chaos.txt', import.meta.url)), 'utf8')
+const STORY_PROMPT = readFileSync(fileURLToPath(new URL('../prompts/director/v3_story.txt', import.meta.url)), 'utf8')
+const CHAOS_PROMPT = readFileSync(fileURLToPath(new URL('../prompts/director/v3_chaos.txt', import.meta.url)), 'utf8')
 
 const DIRECTOR_PROMPTS = Object.freeze({
-  story: { id: 'director/v2_story', text: STORY_PROMPT },
-  chaos: { id: 'director/v2_chaos', text: CHAOS_PROMPT },
+  story: { id: 'director/v3_story', text: STORY_PROMPT },
+  chaos: { id: 'director/v3_chaos', text: CHAOS_PROMPT },
 })
 const clean = (value, maximum = 240) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
 
@@ -193,8 +194,15 @@ function publicDirectorBrief(state = {}, playerAction = '') {
         id: clean(quest.id, 120), title: clean(quest.title, 160), objectives: (quest.objectives ?? []).map((item) => clean(item, 180)).slice(0, 8),
         clock: quest.clock ? { current: Number(quest.clock.current) || 0, max: Number(quest.clock.max) || 1 } : null,
       })),
-      available_npcs: (state.social?.npcs ?? []).filter((npc) => npc.available !== false).slice(0, 12).map((npc) => ({
+      available_npcs: (state.social?.npcs ?? []).filter((npc) => {
+        if (npc.available === false) return false
+        const currentId = clean(state.scene?.location_id ?? state.scene?.locationId, 120)
+        const npcLocationId = clean(npc.location_id ?? npc.locationId, 120)
+        if (currentId && npcLocationId) return currentId === npcLocationId
+        return clean(npc.location, 160).toLocaleLowerCase('ru') === clean(state.scene?.location, 160).toLocaleLowerCase('ru')
+      }).slice(0, 12).map((npc) => ({
         id: clean(npc.id, 120), name: clean(npc.name, 120), role: clean(npc.role, 120), location: clean(npc.location, 160),
+        combat_ready: Boolean(npcMechanicsFor(state, npc.id)),
       })),
       encounter: state.mechanics?.encounter ? { status: clean(state.mechanics.encounter.status, 40), outcome: clean(state.mechanics.encounter.outcome, 80) } : null,
       narrative_memory: directorNarrativeMemory(state, playerAction),

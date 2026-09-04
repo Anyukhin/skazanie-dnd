@@ -1,8 +1,22 @@
 import { useMemo, useState } from 'react'
-import { Castle, Check, Clock3, Compass, MapPin, Minus, Mountain, Navigation, Plus, Route, ScrollText, Trees } from 'lucide-react'
+import { Castle, Check, Clock3, Compass, Map as MapIcon, MapPin, Minus, Mountain, Navigation, Plus, Route, ScrollText, Trees } from 'lucide-react'
 import type { GameState, WorldMapLocation, WorldMapRoute } from './types'
 import { KIND_LABELS, ROUTE_LABELS, currentWorldLocation, routeDanger, shortestRoute, travelProposalText } from './world-travel'
+import { CityOverviewView } from './CityOverviewView'
 import './world-map.css'
+
+const WORLD_MAP_BACKGROUND_URL_RE = /^\/assets\/maps\/world\/skazanie\/[a-z0-9-]+-v[1-9][0-9]*\.webp$/u
+
+function safeWorldMapBackgroundUrl(value: unknown) {
+  const candidate = typeof value === 'string' ? value.trim() : ''
+  return WORLD_MAP_BACKGROUND_URL_RE.test(candidate) ? candidate : ''
+}
+
+function safeWorldMapBackgroundAlt(value: unknown) {
+  return typeof value === 'string'
+    ? value.replace(/[\u0000-\u001f\u007f]/gu, ' ').replace(/\s+/gu, ' ').trim().slice(0, 240)
+    : ''
+}
 
 function seedNumber(value: string) {
   let result = 2166136261
@@ -28,9 +42,9 @@ function routePath(route: WorldMapRoute, byId: Map<string, WorldMapLocation>) {
   return `M ${from.x} ${from.y} Q ${mx} ${my} ${to.x} ${to.y}`
 }
 
-function Terrain({ state }: { state: GameState }) {
+function Terrain({ state, showOrnaments = true }: { state: GameState; showOrnaments?: boolean }) {
   const map = state.worldMap!
-  const ornaments = useMemo(() => map.regions.flatMap((region) => {
+  const ornaments = useMemo(() => showOrnaments ? map.regions.flatMap((region) => {
     const random = randomFor(`${map.seed}:${region.id}:terrain`)
     const count = region.biome === 'forest' ? 34 : region.biome === 'mountains' ? 22 : region.biome === 'marsh' ? 18 : 10
     return Array.from({ length: count }, (_, index) => {
@@ -38,9 +52,9 @@ function Terrain({ state }: { state: GameState }) {
       const radius = Math.sqrt(random()) * region.radius * .72
       return { id: `${region.id}-${index}`, biome: region.biome, x: region.x + Math.cos(angle) * radius, y: region.y + Math.sin(angle) * radius, scale: .65 + random() * .65 }
     })
-  }), [map.seed, map.regions])
+  }) : [], [map.seed, map.regions, showOrnaments])
   return <g className="world-terrain" aria-hidden="true">
-    {map.regions.map((region) => <ellipse key={region.id} className={`world-region-fill biome-${region.biome}`} cx={region.x} cy={region.y} rx={region.radius} ry={region.radius * .72} />)}
+    {showOrnaments && map.regions.map((region) => <ellipse key={region.id} className={`world-region-fill biome-${region.biome}`} cx={region.x} cy={region.y} rx={region.radius} ry={region.radius * .72} />)}
     {ornaments.map((item) => item.biome === 'mountains' || item.biome === 'tundra'
       ? <g key={item.id} className="terrain-mountain" transform={`translate(${item.x} ${item.y}) scale(${item.scale})`}><path d="M-15 10 0-14 15 10Z"/><path d="m-6-3 6-11 5 9-5-3z"/></g>
       : item.biome === 'forest'
@@ -80,8 +94,18 @@ export function WorldMapView({ state, busy, onTravel }: { state: GameState; busy
   const map = state.worldMap
   const [selectedId, setSelectedId] = useState(() => map?.currentLocationId ?? '')
   const [zoom, setZoom] = useState(1)
+  const [cityLocationId, setCityLocationId] = useState('')
   if (!map) return <section className="world-map-empty"><Compass size={40}/><h1>Карта мира составляется</h1><p>Хранитель мира ещё связывает места этой кампании с географией.</p></section>
 
+  const cityLocation = map.locations.find((location) => location.id === cityLocationId && location.cityOverview)
+  if (cityLocation) return <CityOverviewView key={cityLocation.id} campaignName={state.campaign} location={cityLocation} onBack={() => setCityLocationId('')}/>
+
+  // Даже проекция сервера не является причиной разрешать произвольный href в
+  // SVG: состояние клиента может быть устаревшим или собранным старым кодом.
+  // Фон — только versioned WebP из каталога проекта; без него остаётся
+  // процедурная бумага и орнаменты карты.
+  const backgroundImage = safeWorldMapBackgroundUrl(map.backgroundImage)
+  const backgroundAlt = backgroundImage ? safeWorldMapBackgroundAlt(map.backgroundAlt) : ''
   const current = currentWorldLocation(state)
   const knownLocations = map.locations.filter((location) => location.known || location.visited || location.id === current?.id)
   const byId = new Map(knownLocations.map((location) => [location.id, location]))
@@ -121,22 +145,38 @@ export function WorldMapView({ state, busy, onTravel }: { state: GameState; busy
     </header>
 
     <div className="world-map-layout">
-      <div className="world-map-frame">
-        <svg className="world-map-canvas" viewBox={`${viewX} ${viewY} ${viewWidth} ${viewHeight}`} role="img" aria-label={`Глобальная карта кампании ${state.campaign}`}>
+      <div className="world-map-frame" style={{ aspectRatio: `${map.width} / ${map.height}`, minHeight: 0, alignSelf: 'start' }}>
+        <svg className="world-map-canvas" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} viewBox={`${viewX} ${viewY} ${viewWidth} ${viewHeight}`} role="img" aria-label={`Глобальная карта кампании ${state.campaign}`}>
           <defs>
             <filter id="paper-grain"><feTurbulence baseFrequency=".72" numOctaves="3" seed={seedNumber(map.seed) % 97}/><feColorMatrix values="0 0 0 0 .25 0 0 0 0 .2 0 0 0 0 .12 0 0 0 .15 0"/><feBlend in="SourceGraphic" mode="multiply"/></filter>
             <pattern id="map-dots" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="2" cy="3" r=".7"/><circle cx="14" cy="12" r=".5"/></pattern>
           </defs>
-          <rect className="world-paper" width={map.width} height={map.height}/>
+          {backgroundImage
+            ? <>
+                <image
+                  className="world-map-background"
+                  href={backgroundImage}
+                  style={{ opacity: .94, filter: 'saturate(.94) contrast(.98) brightness(1.02)' }}
+                  x="0"
+                  y="0"
+                  width={map.width}
+                  height={map.height}
+                  preserveAspectRatio="xMidYMid slice"
+                  role={backgroundAlt ? 'img' : undefined}
+                  aria-label={backgroundAlt || undefined}
+                />
+                <rect className="world-map-background-veil" width={map.width} height={map.height} style={{ opacity: .1 }}/>
+              </>
+            : <rect className="world-paper" width={map.width} height={map.height}/>}
           <rect className="world-paper-dots" width={map.width} height={map.height} fill="url(#map-dots)"/>
-          <Terrain state={state}/>
+          <Terrain state={state} showOrnaments={!backgroundImage}/>
           <g className="world-routes">
             {map.routes.filter((item) => item.discovered && byId.has(item.from) && byId.has(item.to)).map((item) => <path key={item.id} className={`world-route route-${item.kind} danger-${item.danger} ${routeIds.has(item.id) ? 'selected' : ''}`} d={routePath(item, byId)}/>)}
           </g>
           <g className="world-locations">
             {knownLocations.map((location) => <LocationMarker key={location.id} location={location} selected={selected?.id === location.id} current={current?.id === location.id} onSelect={() => setSelectedId(location.id)}/>)}
           </g>
-          <g className="compass-rose" transform={`translate(${viewX + viewWidth - 55 / zoom} ${viewY + 58 / zoom}) scale(${1 / zoom})`} aria-hidden="true"><circle r="28"/><path d="M0-25 5-5 0 0-5-5ZM25 0 5 5 0 0 5-5ZM0 25-5 5 0 0 5 5ZM-25 0-5-5 0 0-5 5Z"/><text y="-34">С</text></g>
+          {!backgroundImage && <g className="compass-rose" transform={`translate(${viewX + viewWidth - 55 / zoom} ${viewY + 58 / zoom}) scale(${1 / zoom})`} aria-hidden="true"><circle r="28"/><path d="M0-25 5-5 0 0-5-5ZM25 0 5 5 0 0 5-5ZM0 25-5 5 0 0 5 5ZM-25 0-5-5 0 0-5 5Z"/><text y="-34">С</text></g>}
         </svg>
         <div className="world-map-tools">
           <button onClick={() => setZoom((value) => Math.min(1.8, value + .2))} disabled={zoom >= 1.8} aria-label="Приблизить карту"><Plus size={17}/></button>
@@ -152,7 +192,10 @@ export function WorldMapView({ state, busy, onTravel }: { state: GameState; busy
           <h2>{selected.name}</h2>
           <p className="region-name">{selectedRegion?.name ?? 'Неизведанный регион'}</p>
           <p className="location-summary">{selected.summary || 'Об этом месте пока известно немного.'}</p>
+          {selected.history && <section className="location-history" aria-label="История места"><h3>История места</h3><p>{selected.history}</p></section>}
+          {!!selected.storyHooks?.length && <section className="location-hooks" aria-label="Сюжетные зацепки"><h3>Сюжетные зацепки</h3><ul>{selected.storyHooks.map((hook, index) => <li key={`${selected.id}-hook-${index}`}>{hook}</li>)}</ul></section>}
           <div className="location-status">{selected.visited ? <span className="visited"><Check size={13}/>Посещено</span> : <span>Известно по карте</span>}{selected.id === current?.id && <b><Navigation size={13}/>Здесь отряд</b>}</div>
+          {selected.cityOverview && <button type="button" className="city-overview-open" onClick={() => setCityLocationId(selected.id)}><MapIcon size={16}/>Открыть план города · {selected.cityOverview.districts.length} районов</button>}
           {selected.id !== current?.id && <div className="route-card">
             <header><Route size={16}/><strong>Выбранный путь</strong></header>
             {route.locationIds.length ? <>

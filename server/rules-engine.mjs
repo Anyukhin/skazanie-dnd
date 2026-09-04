@@ -1,4 +1,5 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
+import { authoredNpcCombatant } from './authored-npc.mjs'
 import { parseDiceExpression } from './dice-service.mjs'
 import { DND_2014_RULESET_ID, INSTALLED_RULESET_IDS, LEGACY_DEFAULT_RULESET_ID, rulesetRuleId } from './ruleset-config.mjs'
 import { applyAutonomyEvent, normalizeAutonomyState } from './autonomous-campaign.mjs'
@@ -245,6 +246,7 @@ import {
   npcCombatStanceEventDrafts,
   npcHarmEventDrafts,
   npcMissCollateralTarget,
+  npcMechanicsFor,
   npcPlacementFor,
   npcTargetsWithinArea,
   npcVitalFor,
@@ -254,7 +256,7 @@ import {
   planSceneNpcPlacementEvents,
   validateNpcWorldCommand,
 } from './npc-positioning.mjs'
-import { assembleEncounter } from './encounter-assembler.mjs'
+import { ENCOUNTER_PROPOSAL_VERSION, assembleEncounter, encounterDifficultyLabel } from './encounter-assembler.mjs'
 import { normalizeEnemyLoadout } from './enemy-loadouts.mjs'
 import {
   NPC_ACTION_UNAVAILABLE_MESSAGES,
@@ -492,7 +494,10 @@ const MAGIC_ITEM_SPELL_IMMUNITY_EVENT_SCHEMA_VERSION = 1
 // версии реестра не содержит, а доигранный хвост журнала вернул бы отряду
 // только тех зверей, к кому подошли после границы снимка, — то есть приручённый
 // спутник исчезал бы из панели просто потому, что сервер перезапустили.
-export const GAME_STATE_PROJECTOR_VERSION = 13
+// 14: `npc_world.profiles` хранит закрытые механические листы авторских NPC.
+// Старый снимок отбрасывается, чтобы профиль из initial-state события не
+// исчезал после restart и последующего проигрывания только хвоста журнала.
+export const GAME_STATE_PROJECTOR_VERSION = 14
 
 /**
  * Сколько раз один ход может начать отсчёт заново из-за окна реакции. Ноль
@@ -3766,10 +3771,26 @@ function listedSkill(values, skill) {
  * Единственный серверный источник бонуса владения для проверок навыка.
  * Команда и модель могут назвать навык, но не могут выдать герою владение:
  * оно читается из нормализованного листа. Необязательные expertise-поля
- * поддерживают импортированные/legacy-листы без изменения обязательной схемы.
+ * поддерживают импортированные/legacy-листы без изменения обязательной схемы,
+ * а точный total авторского NPC принимается только вместе с его server-owned
+ * origin и совпадающим stat block.
  */
 export function skillProficiencyForActor(actor, skill) {
   const id = canonicalSkillId(skill)
+  const authoredSheet = actor?.origin?.kind === 'authored-npc'
+    && String(actor?.origin?.npc_id ?? '') === actorId(actor)
+    && String(actor?.origin?.profile_id ?? '') === String(actor?.stat_block_id ?? '')
+  const explicitTotal = authoredSheet
+    ? actor?.skillModifiers?.[id]
+      ?? actor?.skillModifiers?.[id.replace(/-/gu, '_')]
+      ?? actor?.skill_modifiers?.[id]
+      ?? actor?.skill_modifiers?.[id.replace(/-/gu, '_')]
+    : undefined
+  if (Number.isSafeInteger(Number(explicitTotal))) {
+    const ability = String(skillAbility(id) || 'str')
+    const bonus = Math.max(-30, Math.min(30, Number(explicitTotal) - abilityModifier(actor?.abilities?.[ability])))
+    return { skill: id, proficient: true, expertise: false, multiplier: 1, bonus, explicit_total: Number(explicitTotal) }
+  }
   const sheetEntry = actor?.characterSheet?.skills?.[id]
     ?? actor?.characterSheet?.skills?.[id.replace(/-/gu, '_')]
     ?? null
@@ -3800,6 +3821,19 @@ export function skillProficiencyForActor(actor, skill) {
     multiplier,
     bonus: proficiency * multiplier,
   }
+}
+
+function savingThrowModifierForActor(actor, ability, currentModifier) {
+  const id = String(ability ?? '').toLowerCase()
+  const authoredSheet = actor?.origin?.kind === 'authored-npc'
+    && String(actor?.origin?.npc_id ?? '') === actorId(actor)
+    && String(actor?.origin?.profile_id ?? '') === String(actor?.stat_block_id ?? '')
+  const explicit = authoredSheet
+    ? actor?.savingThrowModifiers?.[id] ?? actor?.saving_throw_modifiers?.[id]
+    : undefined
+  if (!Number.isSafeInteger(Number(explicit))) return currentModifier
+  const baseline = Number.isFinite(Number(currentModifier)) ? Number(currentModifier) : abilityModifier(actor?.abilities?.[id])
+  return Math.max(-30, Math.min(30, baseline + Number(explicit) - abilityModifier(actor?.abilities?.[id])))
 }
 
 function skillProficiencyBonus(actor, skill) {
@@ -4391,6 +4425,45 @@ function assertTurn(command, state, context = {}) {
 }
 
 function assembleEncounterFromState(state, command) {
+  const authoredNpcId = String(command.npc_id ?? command.authored_npc_id ?? '').trim()
+  if (authoredNpcId) {
+    const npc = presentSceneNpcs(state).find((candidate) => String(candidate.id) === authoredNpcId)
+    if (!npc) throw new RulesValidationError('Авторский NPC отсутствует в текущей сцене', 'AUTHORED_NPC_NOT_PRESENT')
+    const mechanics = npcMechanicsFor(state, authoredNpcId)
+    if (!mechanics) throw new RulesValidationError('У NPC нет проверенного боевого листа', 'AUTHORED_NPC_PROFILE_MISSING')
+    const placement = npcPlacementFor(state, authoredNpcId)
+    if (!placement) throw new RulesValidationError('Авторский NPC ещё не размещён на карте сцены', 'AUTHORED_NPC_PLACEMENT_MISSING')
+    const fingerprint = createHash('sha256')
+      .update(`${String(state.sessionCode ?? '')}\0${authoredNpcId}\0${String(command.command_id ?? '')}\0${String(command.seed ?? '')}`)
+      .digest('hex')
+    const vital = npcVitalFor(state, authoredNpcId)
+    const enemy = {
+      ...authoredNpcCombatant({ npc, mechanics, position: placement }),
+      hp: vital.hp,
+      maxHp: vital.max_hp,
+      alive: vital.alive,
+    }
+    const difficulty = mechanics.encounter_difficulty
+    return {
+      proposal_id: `encounter-proposal-${fingerprint.slice(0, 24)}`,
+      version: ENCOUNTER_PROPOSAL_VERSION,
+      difficulty,
+      difficulty_label: encounterDifficultyLabel(difficulty),
+      theme: 'generic',
+      xp_budget: mechanics.xp,
+      xp_spent: mechanics.xp,
+      threat: {
+        budget_xp: mechanics.xp,
+        spent_xp: mechanics.xp,
+        unspent_xp: 0,
+        utilization_bps: 10_000,
+        quantity: 1,
+        quantity_cap: 1,
+      },
+      enemies: [enemy],
+      source: { kind: 'server-owned-authored-npc-profile', profile_id: mechanics.profile_id },
+    }
+  }
   const memberIds = new Set(state.partyMemberIds?.length ? state.partyMemberIds.map(String) : state.players.map(actorId))
   const party = state.players.filter((actor) => memberIds.has(actorId(actor)) && isLivingActor(actor)).map((actor) => {
     const position = actorPosition(state, actorId(actor))
@@ -7715,7 +7788,11 @@ export function previewD20Check(state, { actorId, kind = 'check', ability = null
   const actor = findActor(state, actorId)
   if (kind === 'save') {
     const saveAbility = String(ability || 'con').toLowerCase()
-    const baseModifier = abilityModifier(actor?.abilities?.[saveAbility]) + (proficient ? safeInteger(actor?.proficiency, 0) : 0)
+    const baseModifier = savingThrowModifierForActor(
+      actor,
+      saveAbility,
+      abilityModifier(actor?.abilities?.[saveAbility]) + (proficient ? safeInteger(actor?.proficiency, 0) : 0),
+    )
     const aura = savingThrowModifierWithAura(state, String(actorId), baseModifier)
     return {
       kind: 'save',
@@ -8012,7 +8089,9 @@ function blessingGrantedEvents(command, state, {
  */
 function rollSavingThrowD20(state, diceService, targetId, options = {}) {
   const { avoid_or_end_condition: conditionContext, ...diceOptions } = options
-  const auraProtection = savingThrowModifierWithAura(state, targetId, options.modifier)
+  const actor = findActor(state, targetId)
+  const authoredModifier = savingThrowModifierForActor(actor, options.ability, options.modifier)
+  const auraProtection = savingThrowModifierWithAura(state, targetId, authoredModifier)
   const autoFailed = autoFailedSaveConditionFor(state, targetId, options.ability)
   // Преимущество от состояния приходит сюда же, где живёт автопровал: это
   // единственная воронка всех спасбросков, поэтому правило действует независимо
@@ -8047,7 +8126,9 @@ function rollSavingThrowD20(state, diceService, targetId, options = {}) {
 
 function rollSavingThrowCheck(state, diceService, targetId, options = {}) {
   const { avoid_or_end_condition: conditionContext, ...diceOptions } = options
-  const auraProtection = savingThrowModifierWithAura(state, targetId, options.modifier)
+  const actor = findActor(state, targetId)
+  const authoredModifier = savingThrowModifierForActor(actor, options.ability, options.modifier)
+  const auraProtection = savingThrowModifierWithAura(state, targetId, authoredModifier)
   const autoFailed = autoFailedSaveConditionFor(state, targetId, options.ability)
   const bloodiedFrenzy = bloodiedFrenzySaveAdvantage(state, targetId)
   const antitoxin = activeAntitoxinSaveAdvantage(state, targetId, conditionContext)
@@ -8604,9 +8685,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     case 'MakeSavingThrow': {
       const actor = findActor(state, command.actor_id)
       const ability = String(command.ability || 'con').toLowerCase()
-      const baseModifier = Number.isSafeInteger(Number(command.modifier))
-        ? Number(command.modifier)
-        : abilityModifier(actor?.abilities?.[ability]) + (command.proficient ? safeInteger(actor?.proficiency, 0) : 0)
+      const baseModifier = savingThrowModifierForActor(
+        actor,
+        ability,
+        Number.isSafeInteger(Number(command.modifier))
+          ? Number(command.modifier)
+          : abilityModifier(actor?.abilities?.[ability]) + (command.proficient ? safeInteger(actor?.proficiency, 0) : 0),
+      )
       const auraProtection = savingThrowModifierWithAura(state, command.actor_id, baseModifier)
       let modifier = auraProtection.modifier
       const savingConditions = conditionIdsFor(state, command.actor_id)
@@ -15423,6 +15508,22 @@ function replaceActor(state, id, updater) {
   if (Array.isArray(state.enemies)) state.enemies = state.enemies.map((actor) => actorId(actor) === id ? updater(actor) : actor)
 }
 
+function syncAuthoredNpcVital(state, targetId, { hp, maxHp } = {}) {
+  const enemy = state.enemies.find((candidate) => actorId(candidate) === targetId)
+  const npcId = String(enemy?.origin?.npc_id ?? '')
+  if (!npcId) return
+  const world = normalizeNpcWorldState(state.npc_world)
+  const before = world.vitals[npcId] ?? {
+    hp: actorHp(enemy),
+    max_hp: actorMaxHp(enemy),
+    alive: isLivingActor(enemy),
+  }
+  const maximum = Math.max(1, safeInteger(maxHp, before.max_hp))
+  const current = Math.min(maximum, Math.max(0, safeInteger(hp, before.hp)))
+  world.vitals[npcId] = { hp: current, max_hp: maximum, alive: current > 0 }
+  state.npc_world = normalizeNpcWorldState(world)
+}
+
 function refreshPlayerDerivedState(state, actorIds) {
   const requested = new Set((actorIds ?? []).map(String))
   state.players = (state.players ?? []).map((actor) => {
@@ -15930,10 +16031,12 @@ export function applyGameEvent(rawState, event) {
       break
     }
     case 'DamageApplied':
+      {
       replaceActor(state, target, (actor) => {
         const hp = Math.max(0, safeInteger(payload.hp_after, actorHp(actor)))
         return { ...actor, hp, ...(isEnemyActor(state, target) ? { alive: hp > 0 } : {}) }
       })
+      syncAuthoredNpcVital(state, target, { hp: payload.hp_after })
       state.mechanics.temporary_hp[target] = Math.max(0, safeInteger(payload.temporary_hp_after, 0))
       if (payload.resistance_cantrip_condition && payload.resistance_cantrip_turn) {
         state.mechanics.conditions[target] = (state.mechanics.conditions[target] ?? []).map((condition) => {
@@ -16013,8 +16116,9 @@ export function applyGameEvent(rawState, event) {
         const position = actorPosition(state, target)
         if (position) appendMapFeedback(state, event, { ...position, text: `−${safeInteger(payload.applied_amount, 0)}`, kind: payload.hp_after === 0 ? 'defeat' : 'damage' })
       }
+      }
       break
-    case 'HitPointMaximumReduced':
+    case 'HitPointMaximumReduced': {
       replaceActor(state, target, (actor) => {
         const maximumHp = Math.max(0, safeInteger(payload.maximum_hp_after, actorMaxHp(actor)))
         const hp = Math.min(maximumHp, Math.max(0, safeInteger(payload.hp_after, actorHp(actor))))
@@ -16026,15 +16130,17 @@ export function applyGameEvent(rawState, event) {
           ...(isEnemyActor(state, target) ? { alive: maximumHp > 0 && hp > 0 } : {}),
         }
       })
+      syncAuthoredNpcVital(state, target, { hp: payload.hp_after, maxHp: payload.maximum_hp_after })
       appendBattleLog(state, event, {
         type: 'max-hp-reduction', actorId: event.actor_id, targetId: target,
         maximumHpBefore: safeInteger(payload.maximum_hp_before, 0), maximumHpAfter: safeInteger(payload.maximum_hp_after, 0),
       })
       break
+    }
     // Зеркало снижения: «Подмога» поднимает и предел, и текущие хиты на одно
     // и то же число. Значения в событии абсолютные, поэтому повтор реплея
     // даёт тот же лист, а не складывает прибавку дважды.
-    case 'HitPointMaximumIncreased':
+    case 'HitPointMaximumIncreased': {
       replaceActor(state, target, (actor) => {
         const maximumHp = Math.max(1, safeInteger(payload.maximum_hp_after, actorMaxHp(actor)))
         const hp = Math.min(maximumHp, Math.max(0, safeInteger(payload.hp_after, actorHp(actor))))
@@ -16046,6 +16152,7 @@ export function applyGameEvent(rawState, event) {
           ...(isEnemyActor(state, target) ? { alive: hp > 0 } : {}),
         }
       })
+      syncAuthoredNpcVital(state, target, { hp: payload.hp_after, maxHp: payload.maximum_hp_after })
       // Поднятый предел выводит из-за черты так же, как лечение: умирающий
       // герой, которому «Подмога» дала хиты, перестаёт кидать спасброски от
       // смерти. Иначе на листе были бы хиты, а в механике — агония.
@@ -16059,6 +16166,7 @@ export function applyGameEvent(rawState, event) {
         maximumHpBefore: safeInteger(payload.maximum_hp_before, 0), maximumHpAfter: safeInteger(payload.maximum_hp_after, 0),
       })
       break
+    }
     case 'HitPointMaximumReductionPrevented':
       appendBattleLog(state, event, {
         type: 'max-hp-reduction-prevented', actorId: event.actor_id, targetId: target,
@@ -16067,10 +16175,12 @@ export function applyGameEvent(rawState, event) {
       })
       break
     case 'HealingApplied':
+      {
       replaceActor(state, target, (actor) => {
         const hp = Math.min(actorMaxHp(actor), Math.max(0, safeInteger(payload.hp_after, actorHp(actor))))
         return { ...actor, hp, ...(isEnemyActor(state, target) ? { alive: hp > 0 } : {}) }
       })
+      syncAuthoredNpcVital(state, target, { hp: payload.hp_after })
       appendBattleLog(state, event, {
         sceneTurn: safeInteger(state.scene?.turn, state.mechanics.combat.round),
         round: state.mechanics.combat.round,
@@ -16088,6 +16198,7 @@ export function applyGameEvent(rawState, event) {
         state.mechanics.conditions[target] = (state.mechanics.conditions[target] ?? []).filter((condition) => condition.id !== 'unconscious')
         delete state.mechanics.death.saving_throws[target]
         if (state.mechanics.resting[target]?.reason === 'knockout') delete state.mechanics.resting[target]
+      }
       }
       break
     case 'CreatureKnockedOut': {
@@ -16976,6 +17087,10 @@ export function applyGameEvent(rawState, event) {
       state.mechanics.positions = Object.fromEntries(Object.entries(state.mechanics.positions ?? {}).filter(([id]) => !oldEnemyIds.has(String(id))))
       state.enemies = (Array.isArray(encounter.enemies) ? encounter.enemies : [])
         .map((enemy) => ({ ...clone(enemy), alive: true, loadout: normalizeEnemyLoadout(enemy?.loadout) }))
+      const authoredNpcIds = new Set(state.enemies.map((enemy) => String(enemy?.origin?.npc_id ?? '')).filter(Boolean))
+      if (authoredNpcIds.size) state.social.npcs = state.social.npcs.map((npc) => (
+        authoredNpcIds.has(String(npc.id)) ? { ...npc, available: false } : npc
+      ))
       for (const enemy of state.enemies) {
         state.mechanics.positions[actorId(enemy)] = { x: safeInteger(enemy.x, 0), y: safeInteger(enemy.y, 0) }
       }

@@ -39,15 +39,16 @@ test('невалидный ответ модели откатывается к �
 })
 
 test('оба промпта Режиссёра лежат на диске и объявляют свой PROMPT_ID', async () => {
-  const story = await promptText('v2_story')
-  const chaos = await promptText('v2_chaos')
-  assert.match(story, /^PROMPT_ID: director\/v2_story/u)
-  assert.match(chaos, /^PROMPT_ID: director\/v2_chaos/u)
+  const story = await promptText('v3_story')
+  const chaos = await promptText('v3_chaos')
+  assert.match(story, /^PROMPT_ID: director\/v3_story/u)
+  assert.match(chaos, /^PROMPT_ID: director\/v3_chaos/u)
   // Творческие директивы разные, bounded-intent контракт — общий и неослабленный.
   for (const prompt of [story, chaos]) {
     assert.match(prompt, /UNTRUSTED_DATA/u)
     assert.match(prompt, /continue_exploration, open_social_scene, advance_quest_clock, request_encounter, end_scene, offer_next_hook/u)
     assert.match(prompt, /никогда не указывай HP, DC, броски/u)
+    assert.match(prompt, /npc_id в request_encounter выбирается только у текущего available_npcs с combat_ready=true/u)
     assert.match(prompt, /строгий JSON DirectorIntent; свободные tool calls запрещены/u)
   }
   assert.match(story, /главная сюжетная линия сохраняет приоритет/u)
@@ -55,20 +56,20 @@ test('оба промпта Режиссёра лежат на диске и о�
 })
 
 test('режим импровизации выбирает системный промпт Режиссёра', async () => {
-  const story = await promptText('v2_story')
-  const chaos = await promptText('v2_chaos')
+  const story = await promptText('v3_story')
+  const chaos = await promptText('v3_chaos')
   const reply = { type: 'continue_exploration', reason: 'Отряд ещё не осмотрел сцену.' }
 
   const chaosLlm = new FakeLLM({ response: reply })
   const chaosRun = await new DirectorAgent({ llmClient: chaosLlm }).choose({ state: state(), playerAction: 'Поджечь таверну', improvMode: 'chaos' })
   assert.equal(chaosLlm.requests[0].messages[0].content, chaos)
-  assert.equal(chaosRun.trace.prompt_id, 'director/v2_chaos')
+  assert.equal(chaosRun.trace.prompt_id, 'director/v3_chaos')
   assert.equal(chaosRun.trace.improv_mode, 'chaos')
 
   const storyLlm = new FakeLLM({ response: reply })
   const storyRun = await new DirectorAgent({ llmClient: storyLlm }).choose({ state: state(), playerAction: 'Поджечь таверну', improvMode: 'story' })
   assert.equal(storyLlm.requests[0].messages[0].content, story)
-  assert.equal(storyRun.trace.prompt_id, 'director/v2_story')
+  assert.equal(storyRun.trace.prompt_id, 'director/v3_story')
 
   // По умолчанию и на мусорном значении — «сюжет», как и дефолт настройки.
   const defaultLlm = new FakeLLM({ response: reply })
@@ -78,7 +79,7 @@ test('режим импровизации выбирает системный п
   const garbageLlm = new FakeLLM({ response: reply })
   const garbageRun = await new DirectorAgent({ llmClient: garbageLlm }).choose({ state: state(), playerAction: 'Осмотреться', improvMode: 'anarchy' })
   assert.equal(garbageLlm.requests[0].messages[0].content, story)
-  assert.equal(garbageRun.trace.prompt_id, 'director/v2_story')
+  assert.equal(garbageRun.trace.prompt_id, 'director/v3_story')
 
   // Настройка кампании доезжает до промпта без явного параметра.
   const contextLlm = new FakeLLM({ response: reply })

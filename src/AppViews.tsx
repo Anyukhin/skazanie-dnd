@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
 import {
   BrainCircuit, ChevronDown, ChevronRight, Dices, Ear, Flame, Globe2, HelpCircle, History, Hourglass,
-  Mail, MailOpen, MailX, Moon, PawPrint, Plus, RefreshCw, ScrollText, Send, ShieldCheck, Soup, Sparkles,
+  Mail, MailOpen, MailX, MapPin, Moon, PawPrint, Plus, RefreshCw, ScrollText, Send, ShieldCheck, Soup, Sparkles,
   Swords, Target, Users, Volume2, VolumeX, X, Check, RotateCcw, SlidersHorizontal, Store, Wifi, WifiOff, Lock, Shield, Bell, BellOff, Gavel,
 } from 'lucide-react'
 
@@ -52,15 +52,40 @@ const RULESET_FALLBACK: RulesetProfileDescriptor[] = [
   },
 ]
 
+type WorldTemplatePreview = {
+  id: string
+  version: string
+  name: string
+  tagline: string
+  description: string
+  image: string
+  imageAlt?: string
+  accent?: string
+  focus?: string[]
+  recommendedLevels?: string
+  world?: { era?: string; genre?: string; tone?: string; themes?: string; startingLocation?: string }
+  cities?: string[]
+  cityCount?: number
+  regionCount?: number
+  locationCount?: number
+  routeCount?: number
+  cityOverviewCount?: number
+  historyTeaser?: string
+}
+
 export function CampaignModal({ state, rulesets = RULESET_FALLBACK, onSwitch, onAccountRefresh, onCreateHero, onWizardChange, onClose }: { state: GameState; rulesets?: RulesetProfileDescriptor[]; onSwitch: (code: string, room?: { version?: number; state?: GameState | null }) => Promise<void>; onAccountRefresh: () => Promise<Account | null>; onCreateHero: (heroId: string) => void; onWizardChange?: (open: boolean) => void; onClose: () => void }) {
   const [campaigns, setCampaigns] = useState<CampaignSummary[]>([])
   const [campaignsLoading, setCampaignsLoading] = useState(true)
+  const [worldTemplates, setWorldTemplates] = useState<WorldTemplatePreview[]>([])
+  const [worldTemplatesLoading, setWorldTemplatesLoading] = useState(true)
+  const [worldTemplatesError, setWorldTemplatesError] = useState('')
   const [wizard, setWizard] = useState(false)
   const [step, setStep] = useState(1)
   const [name, setName] = useState('')
   const [partyName, setPartyName] = useState('')
   const [code, setCode] = useState('')
   const [world, setWorld] = useState({ preset: '', era: '', genre: '', tone: '', premise: '', themes: '', boundaries: '', magicLevel: '', technologyLevel: '', startingLocation: '', openingSituation: '' })
+  const [worldTemplateId, setWorldTemplateId] = useState('')
   // Соло-кампания — полноценный режим. Мест ровно столько, сколько игроков
   // сядет за стол; лишние места иначе висят пустыми и блокируют ход.
   const [slotCount, setSlotCount] = useState(1)
@@ -92,6 +117,20 @@ export function CampaignModal({ state, rulesets = RULESET_FALLBACK, onSwitch, on
     }
   }
   useEffect(() => { void load() }, [])
+  useEffect(() => {
+    let active = true
+    setWorldTemplatesLoading(true)
+    fetchWithTimeout('/api/world-templates', {}, 15_000, 'Каталог готовых миров не загрузился вовремя.')
+      .then(async (response) => {
+        const body = await response.json() as { templates?: WorldTemplatePreview[]; error?: string }
+        if (!response.ok) throw new Error(body.error || 'Не удалось загрузить готовые миры')
+        if (active) setWorldTemplates(body.templates ?? [])
+      })
+      .catch((reason) => { if (active) setWorldTemplatesError(reason instanceof Error ? reason.message : 'Не удалось загрузить готовые миры') })
+      .finally(() => { if (active) setWorldTemplatesLoading(false) })
+    return () => { active = false }
+  }, [])
+  const selectedWorldTemplate = worldTemplates.find((template) => template.id === worldTemplateId)
   // Мастер создания мира — отдельный экран для звука. Окно кампаний о звуке
   // ничего не знает и знать не должно: оно только сообщает, открыт ли мастер.
   useEffect(() => {
@@ -111,7 +150,7 @@ export function CampaignModal({ state, rulesets = RULESET_FALLBACK, onSwitch, on
     setError('')
     try {
       const resolvedCode = code || `WORLD-${(globalThis.crypto?.randomUUID?.() ?? Date.now().toString(36)).replace(/-/g, '').slice(0, 8).toUpperCase()}`
-      const response = await fetch('/api/campaigns', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: resolvedCode, name: name.trim(), bootstrap: { partyName: partyName.trim(), world, slotCount, rulesetId } }) })
+      const response = await fetch('/api/campaigns', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: resolvedCode, name: name.trim(), bootstrap: { partyName: partyName.trim(), world, worldTemplateId: worldTemplateId || undefined, slotCount, rulesetId } }) })
       const body = await response.json() as { version?: number; state?: GameState | null; error?: string }
       if (!response.ok) throw new Error(body.error || 'Не удалось создать кампанию')
       // «Сюжет» — серверный дефолт, поэтому лишний PATCH не отправляем: он
@@ -154,13 +193,45 @@ export function CampaignModal({ state, rulesets = RULESET_FALLBACK, onSwitch, on
         </> : <>
           <div className="campaign-steps"><span className={step >= 1 ? 'active' : ''}>1 · Мир</span><i /><span className={step >= 2 ? 'active' : ''}>2 · Герои</span><i /><span className={step >= 3 ? 'active' : ''}>3 · Пролог</span></div>
           {step === 1 && <div className="world-creator">
-            <div className="world-auto-note"><Sparkles size={15} /><span><b>Все поля необязательны.</b> Оставьте их пустыми, и рассказчик сам случайно придумает мир, его историю и первую сцену.</span></div>
+            <section className="world-template-picker" aria-labelledby="world-template-title">
+              <header><div><span className="eyebrow">АВТОРСКИЕ МИРЫ</span><h3 id="world-template-title">Начать с большой готовой карты</h3></div><small>История, города и дороги уже написаны; решения игроков по-прежнему меняют мир.</small></header>
+              <div className="world-template-grid" role="group" aria-label="Основа нового мира">
+                <button type="button" className={`world-template-card custom${worldTemplateId ? '' : ' selected'}`} aria-pressed={!worldTemplateId} onClick={() => setWorldTemplateId('')}>
+                  <span className="world-template-custom-icon"><Globe2 size={28} /></span><strong>Свой мир</strong><small>Свободное описание или полная генерация рассказчиком</small><em>БЕЗ ГОТОВОЙ КАРТЫ</em>
+                </button>
+                {worldTemplates.map((template) => <button
+                  type="button"
+                  key={template.id}
+                  className={`world-template-card${worldTemplateId === template.id ? ' selected' : ''}`}
+                  aria-pressed={worldTemplateId === template.id}
+                  onClick={() => setWorldTemplateId(template.id)}
+                  style={{ '--world-template-accent': template.accent || '#b8844f' } as React.CSSProperties}
+                >
+                  <img src={template.image} alt="" aria-hidden="true" />
+                  <span className="world-template-card-shade" />
+                  <span className="world-template-card-copy"><strong>{template.name}</strong><small>{template.tagline}</small><em>{template.locationCount ?? 0} мест · {template.routeCount ?? 0} путей{template.cityOverviewCount ? ' · план столицы' : ''}</em></span>
+                </button>)}
+              </div>
+              {worldTemplatesLoading && <p className="world-template-status" role="status"><RefreshCw className="spinning" size={14} />Загружаем четыре авторских мира…</p>}
+              {!worldTemplatesLoading && worldTemplatesError && <p className="world-template-status warning">{worldTemplatesError} Свой мир можно создать без каталога.</p>}
+              {selectedWorldTemplate && <article className="world-template-preview">
+                <div><b>{selectedWorldTemplate.description}</b><small>{[selectedWorldTemplate.world?.era, selectedWorldTemplate.world?.genre, selectedWorldTemplate.recommendedLevels ? `уровни ${selectedWorldTemplate.recommendedLevels}` : ''].filter(Boolean).join(' · ')}</small></div>
+                <p>{selectedWorldTemplate.historyTeaser}</p>
+                {!!selectedWorldTemplate.cities?.length && <span><MapPin size={14} />Опорные точки: {selectedWorldTemplate.cities.join(', ')}</span>}
+              </article>}
+            </section>
             <div className="field-grid three"><label><span>Название кампании · необязательно</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Придумает рассказчик" /></label><label><span>Название группы · необязательно</span><input value={partyName} onChange={(event) => setPartyName(event.target.value)} placeholder="Новый отряд" /></label><label><span>Код комнаты · необязательно</span><input value={code} onChange={(event) => setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ''))} placeholder="Создастся автоматически" maxLength={24} /></label></div>
-            <label><span>Пресет или своё описание · необязательно</span><input list="world-preset-options" value={world.preset} onChange={(event) => setWorld({ ...world, preset: event.target.value })} placeholder="Например: фэнтези, далёкое будущее — или любое своё описание" /><datalist id="world-preset-options"><option value="Классическое фэнтези" /><option value="Тёмное фэнтези" /><option value="Далёкое будущее" /><option value="Космическая опера" /><option value="Современная мистика" /><option value="Постапокалипсис" /></datalist></label>
-            <div className="field-grid"><label><span>Эпоха · необязательно</span><input value={world.era} onChange={(event) => setWorld({ ...world, era: event.target.value })} placeholder="На усмотрение рассказчика" /></label><label><span>Жанр · необязательно</span><input value={world.genre} onChange={(event) => setWorld({ ...world, genre: event.target.value })} placeholder="На усмотрение рассказчика" /></label><label><span>Тон истории · необязательно</span><input value={world.tone} onChange={(event) => setWorld({ ...world, tone: event.target.value })} placeholder="На усмотрение рассказчика" /></label><label><span>Уровень магии · необязательно</span><input value={world.magicLevel} onChange={(event) => setWorld({ ...world, magicLevel: event.target.value })} placeholder="На усмотрение рассказчика" /></label><label><span>Уровень технологий · необязательно</span><input value={world.technologyLevel} onChange={(event) => setWorld({ ...world, technologyLevel: event.target.value })} placeholder="На усмотрение рассказчика" /></label><label><span>Стартовая локация · необязательно</span><input value={world.startingLocation} onChange={(event) => setWorld({ ...world, startingLocation: event.target.value })} placeholder="На усмотрение рассказчика" /></label></div>
-            <label><span>Основа мира и желаемая история</span><textarea value={world.premise} onChange={(event) => setWorld({ ...world, premise: event.target.value })} placeholder="Что существует в мире, о чём должна быть кампания, какие конфликты интересны?" /></label>
-            <label><span>С чего начинается первая сцена</span><textarea value={world.openingSituation} onChange={(event) => setWorld({ ...world, openingSituation: event.target.value })} placeholder="Например: герои прибывают на станцию в момент исчезновения дипломатического корабля" /></label>
-            <div className="field-grid"><label><span>Темы и мотивы</span><input value={world.themes} onChange={(event) => setWorld({ ...world, themes: event.target.value })} placeholder="Исследование, политика, выживание…" /></label><label><span>Границы контента</span><input value={world.boundaries} onChange={(event) => setWorld({ ...world, boundaries: event.target.value })} placeholder="Что не должно появляться в истории" /></label></div>
+            {selectedWorldTemplate ? <>
+              <div className="world-auto-note"><ScrollText size={15} /><span><b>Авторская основа зафиксирована.</b> Сервер возьмёт именно эту историю, карту, города и стартовую сцену — модель их не заменит.</span></div>
+              <label><span>Границы контента</span><input value={world.boundaries} onChange={(event) => setWorld({ ...world, boundaries: event.target.value })} placeholder="Что не должно появляться в истории" /><small>Границы стола применяются и к готовому миру.</small></label>
+            </> : <>
+              <div className="world-auto-note"><Sparkles size={15} /><span><b>Все поля необязательны.</b> Оставьте их пустыми, и рассказчик сам случайно придумает мир, его историю и первую сцену.</span></div>
+              <label><span>Пресет или своё описание · необязательно</span><input list="world-preset-options" value={world.preset} onChange={(event) => setWorld({ ...world, preset: event.target.value })} placeholder="Например: фэнтези, далёкое будущее — или любое своё описание" /><datalist id="world-preset-options"><option value="Классическое фэнтези" /><option value="Тёмное фэнтези" /><option value="Далёкое будущее" /><option value="Космическая опера" /><option value="Современная мистика" /><option value="Постапокалипсис" /></datalist></label>
+              <div className="field-grid"><label><span>Эпоха · необязательно</span><input value={world.era} onChange={(event) => setWorld({ ...world, era: event.target.value })} placeholder="На усмотрение рассказчика" /></label><label><span>Жанр · необязательно</span><input value={world.genre} onChange={(event) => setWorld({ ...world, genre: event.target.value })} placeholder="На усмотрение рассказчика" /></label><label><span>Тон истории · необязательно</span><input value={world.tone} onChange={(event) => setWorld({ ...world, tone: event.target.value })} placeholder="На усмотрение рассказчика" /></label><label><span>Уровень магии · необязательно</span><input value={world.magicLevel} onChange={(event) => setWorld({ ...world, magicLevel: event.target.value })} placeholder="На усмотрение рассказчика" /></label><label><span>Уровень технологий · необязательно</span><input value={world.technologyLevel} onChange={(event) => setWorld({ ...world, technologyLevel: event.target.value })} placeholder="На усмотрение рассказчика" /></label><label><span>Стартовая локация · необязательно</span><input value={world.startingLocation} onChange={(event) => setWorld({ ...world, startingLocation: event.target.value })} placeholder="На усмотрение рассказчика" /></label></div>
+              <label><span>Основа мира и желаемая история</span><textarea value={world.premise} onChange={(event) => setWorld({ ...world, premise: event.target.value })} placeholder="Что существует в мире, о чём должна быть кампания, какие конфликты интересны?" /></label>
+              <label><span>С чего начинается первая сцена</span><textarea value={world.openingSituation} onChange={(event) => setWorld({ ...world, openingSituation: event.target.value })} placeholder="Например: герои прибывают на станцию в момент исчезновения дипломатического корабля" /></label>
+              <div className="field-grid"><label><span>Темы и мотивы</span><input value={world.themes} onChange={(event) => setWorld({ ...world, themes: event.target.value })} placeholder="Исследование, политика, выживание…" /></label><label><span>Границы контента</span><input value={world.boundaries} onChange={(event) => setWorld({ ...world, boundaries: event.target.value })} placeholder="Что не должно появляться в истории" /></label></div>
+            </>}
             <div className="ruleset-picker" role="group" aria-label="Правила кампании">
               <span className="ruleset-picker-title"><b>Правила кампании</b><small>Редакция сохраняется в кампании и после первого игрового события блокируется.</small></span>
               <div>{rulesets.map((profile) => <button key={profile.id} type="button" className={rulesetId === profile.id ? 'selected' : ''} aria-pressed={rulesetId === profile.id} onClick={() => setRulesetId(profile.id)}>
@@ -184,7 +255,7 @@ export function CampaignModal({ state, rulesets = RULESET_FALLBACK, onSwitch, on
             </div>
             <div className="hero-library">{Array.from({ length: slotCount }, (_, index) => index + 1).map((slot) => <div className="hero-slot-preview" key={slot}><span>{slot}</span><div><b>{slot === 1 ? 'Ваш герой' : `Герой друга ${slot - 1}`}</b><small>Класс, вид, характеристики и история ещё не выбраны</small></div><ShieldCheck size={16} /></div>)}</div>
           </div>}
-          {step === 3 && <div className="campaign-review"><span><Sparkles size={22} /></span><h3>Рассказчик готов создать мир</h3><p>Сначала появятся мир, первая сцена и места героев. Затем каждый игрок создаст собственного героя через серверно проверяемый мастер.</p><dl><div><dt>Кампания</dt><dd>{name.trim() || 'Название придумает рассказчик'}{partyName.trim() ? ` · отряд «${partyName.trim()}»` : ''}</dd></div><div><dt>Мир</dt><dd>{[world.preset, world.era, world.genre].filter(Boolean).join(' · ') || 'Полная автоматическая генерация'}</dd></div>{world.premise.trim() && <div><dt>Основа</dt><dd>{world.premise.trim()}</dd></div>}<div><dt>Начало</dt><dd>{world.openingSituation || 'Придумает рассказчик'}</dd></div><div><dt>Герои</dt><dd>{slotCount === 1 ? 'одно место · соло-кампания' : `${slotCount} места · первый герой ваш`}</dd></div><div><dt>Правила</dt><dd>{rulesets.find((profile) => profile.id === rulesetId)?.label ?? rulesetId}</dd></div><div><dt>Импровизация</dt><dd>{IMPROV_MODE_FALLBACK.find((improv) => improv.id === improvMode)?.label ?? 'Сюжет'}</dd></div></dl><small>Ни один игрок не сможет сделать первый ход, пока не завершит создание закреплённого за ним героя.</small></div>}
+          {step === 3 && <div className="campaign-review"><span><Sparkles size={22} /></span><h3>Рассказчик готов создать мир</h3><p>Сначала появятся мир, первая сцена и места героев. Затем каждый игрок создаст собственного героя через серверно проверяемый мастер.</p><dl><div><dt>Кампания</dt><dd>{name.trim() || (selectedWorldTemplate ? selectedWorldTemplate.name : 'Название придумает рассказчик')}{partyName.trim() ? ` · отряд «${partyName.trim()}»` : ''}</dd></div><div><dt>Мир</dt><dd>{selectedWorldTemplate?.name || [world.preset, world.era, world.genre].filter(Boolean).join(' · ') || 'Полная автоматическая генерация'}</dd></div>{selectedWorldTemplate ? <><div><dt>Основа</dt><dd>{selectedWorldTemplate.description}</dd></div><div><dt>Карта</dt><dd>{selectedWorldTemplate.regionCount ?? 0} регионов · {selectedWorldTemplate.locationCount ?? 0} мест · {selectedWorldTemplate.routeCount ?? 0} путей{selectedWorldTemplate.cityOverviewCount ? ' · план столицы' : ''}</dd></div></> : world.premise.trim() && <div><dt>Основа</dt><dd>{world.premise.trim()}</dd></div>}<div><dt>Начало</dt><dd>{selectedWorldTemplate?.world?.startingLocation || world.openingSituation || 'Придумает рассказчик'}</dd></div><div><dt>Герои</dt><dd>{slotCount === 1 ? 'одно место · соло-кампания' : `${slotCount} места · первый герой ваш`}</dd></div><div><dt>Правила</dt><dd>{rulesets.find((profile) => profile.id === rulesetId)?.label ?? rulesetId}</dd></div><div><dt>Импровизация</dt><dd>{IMPROV_MODE_FALLBACK.find((improv) => improv.id === improvMode)?.label ?? 'Сюжет'}</dd></div></dl><small>Ни один игрок не сможет сделать первый ход, пока не завершит создание закреплённого за ним героя.</small></div>}
           <div className="campaign-wizard-actions"><button onClick={() => step === 1 ? setWizard(false) : setStep((current) => current - 1)}>{step === 1 ? 'К списку кампаний' : 'Назад'}</button>{step < 3 ? <button className="primary" onClick={() => { if (validateStep()) setStep((current) => current + 1) }}>Продолжить<ChevronRight size={14} /></button> : <button className="primary" onClick={() => { void create() }} disabled={busy}><Sparkles size={14} />{busy ? 'Рассказчик создаёт мир…' : 'Создать мир и написать пролог'}</button>}</div>
         </>}
         {error && <div className="admin-error">{error}</div>}
