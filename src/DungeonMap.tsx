@@ -32,6 +32,7 @@ import {
 import type { BoardCombatant } from './app-shared'
 import { CharacterEditor, InventoryView } from './InventoryViews'
 import { LootCellMarker, LootPanel, PostCombatLootSummary, useVanishedLoot } from './LootPanel'
+import { VoiceInput } from './VoiceInput'
 import { CharacterCreationWizard } from './CharacterCreationWizard'
 import { DiceTray } from './DiceTray'
 import { useGameSession, type BeastAction, type CaptiveAction, type CaptiveInterrogationSkill, type CommandOutcome, type ConnectionState, type EncounterAssemblyOptions, type ShopAssemblyOptions, type WeaponAttackChoice } from './useGameSession'
@@ -3397,6 +3398,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             disabled={narrating || (combatActive && !canAct)}
             title={narrating ? 'Рассказчик разрешает предыдущее действие' : combatActive && !canAct ? `Сейчас ходит ${activeName}` : 'Отправить намерение от имени выбранного героя'}
           />
+          <VoiceInput key={state.sessionCode + turnActorId} value={freeText} onChange={updateFreeText} disabled={narrating || (combatActive && !canAct)} />
         </div>
         <button type="submit" disabled={narrating || (combatActive && !canAct) || ((!preparedLabel || awaitingTarget) && !freeText.trim())} title={narrating ? 'Рассказчик разрешает предыдущее действие' : combatActive && !canAct ? `Сейчас ходит ${activeName}` : awaitingTarget ? 'Сначала выберите цель на карте' : !preparedLabel && !freeText.trim() ? 'Сначала опишите действие' : 'Отправить действие'}><Send size={17} />Отправить</button>
       </form>
