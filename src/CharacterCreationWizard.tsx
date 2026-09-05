@@ -576,17 +576,10 @@ export function CharacterCreationWizard({
   }
 
   const assignAbility = (ability: keyof CharacterAbilityScores, score: number) => {
+    setError('')
     setDraft((current) => {
-      const previous = current.abilities[ability]
-      const swapAbility = abilityIds.find((candidate) => candidate !== ability && current.abilities[candidate] === score)
-      return {
-        ...current,
-        abilities: {
-          ...current.abilities,
-          [ability]: score,
-          ...(swapAbility ? { [swapAbility]: previous } : {}),
-        },
-      }
+      if (score !== 0 && (!catalog.ability_policy.standard_array.includes(score) || abilityIds.some((candidate) => candidate !== ability && current.abilities[candidate] === score))) return current
+      return { ...current, abilities: { ...current.abilities, [ability]: score } }
     })
   }
 
@@ -641,6 +634,7 @@ export function CharacterCreationWizard({
   }
 
   const validateStep = () => {
+    if (step >= 3 && [...abilityIds.map((ability) => draft.abilities[ability])].sort((a, b) => a - b).join(',') !== [...catalog.ability_policy.standard_array].sort((a, b) => a - b).join(',')) return 'Распределите все шесть значений характеристик без повторов.'
     if (!classOption) return 'Выберите поддерживаемый класс.'
     if (step === 1 && (!speciesOption || !selectedSpecies)) return 'Выберите вид.'
     if (step === 1 && !originBonusReady) {
@@ -764,7 +758,7 @@ export function CharacterCreationWizard({
               <div><dt>Класс</dt><dd>{classOption?.label ?? '—'}</dd></div>
               <div><dt>Раса</dt><dd>{selectedSpecies || '—'}</dd></div>
               <div><dt>Предыстория</dt><dd>{selectedBackground?.name ?? '—'}</dd></div>
-              <div><dt>Характеристики</dt><dd>{abilityIds.map((ability) => `${abilityLabels[ability].slice(0, 3)} ${draft.abilities[ability] + originBonusFor(ability)}`).join(' · ')}</dd></div>
+              <div><dt>Характеристики</dt><dd>{abilityIds.map((ability) => `${abilityLabels[ability].slice(0, 3)} ${draft.abilities[ability] ? draft.abilities[ability] + originBonusFor(ability) : '—'}`).join(' · ')}</dd></div>
               <div><dt>Расовые выборы</dt><dd>{speciesChoiceGroups.flatMap((group) => group.options.filter((option) => (draft.speciesChoices[group.id] ?? []).includes(option.id)).map((option) => option.label)).join(', ') || 'нет'}</dd></div>
               <div><dt>Снаряжение</dt><dd>{starterGroups.flatMap((group) => group.options.filter((option) => (draft.starterEquipmentChoices[group.id] ?? []).includes(option.id)).map((option) => option.label)).join(', ') || 'серверный набор'}</dd></div>
             </dl>
@@ -907,8 +901,8 @@ export function CharacterCreationWizard({
             {selectedBackground?.feature && !catalog.backgrounds?.background_features_supported && <p className="creation-support-note"><ShieldCheck size={13} /><span><b>{selectedBackground.feature.name}</b> сохраняется как особенность предыстории, но пока не применяется движком автоматически.</span></p>}
           </div>}
           {step === 3 && <div className="creation-abilities">
-            <p>Распределите значения {catalog.ability_policy.standard_array.join(', ')}. При выборе уже занятого значения мастер автоматически меняет характеристики местами.</p>
-            <div>{abilityIds.map((ability) => <label key={ability}><span>{abilityLabels[ability]}</span><select value={draft.abilities[ability]} onChange={(event) => assignAbility(ability, Number(event.target.value))}>{catalog.ability_policy.standard_array.map((score) => <option key={score} value={score}>{score}</option>)}</select><b>{signed(abilityModifier(draft.abilities[ability] + originBonusFor(ability)))}</b><small>{originBonusFor(ability) > 0 ? `+ ${originBonusFor(ability)} ${bonusSource === 'species' ? 'раса' : 'предыстория'} · итог ${draft.abilities[ability] + originBonusFor(ability)}` : `без прибавки ${bonusSource === 'species' ? 'расы' : 'предыстории'}`}</small></label>)}</div>
+            <p>Распределите значения {catalog.ability_policy.standard_array.join(', ')}. Каждое число можно выбрать только один раз. Чтобы перенести занятое число, сначала освободите его, выбрав «Не выбрано».</p>
+            <div>{abilityIds.map((ability) => <label key={ability}><span>{abilityLabels[ability]}</span><select value={draft.abilities[ability]} onChange={(event) => assignAbility(ability, Number(event.target.value))}><option value={0}>Не выбрано</option>{catalog.ability_policy.standard_array.map((score) => <option key={score} value={score} disabled={abilityIds.some((other) => other !== ability && draft.abilities[other] === score)}>{score}</option>)}</select><b>{draft.abilities[ability] ? signed(abilityModifier(draft.abilities[ability] + originBonusFor(ability))) : '—'}</b><small>{!draft.abilities[ability] ? 'Выберите значение' : originBonusFor(ability) > 0 ? `+ ${originBonusFor(ability)} ${bonusSource === 'species' ? 'раса' : 'предыстория'} · итог ${draft.abilities[ability] + originBonusFor(ability)}` : `без прибавки ${bonusSource === 'species' ? 'расы' : 'предыстории'}`}</small></label>)}</div>
           </div>}
           {step === 4 && <div className="creation-choices">
             {speciesChoiceGroups.map((group) => <section key={group.id} className="creation-choice-group">

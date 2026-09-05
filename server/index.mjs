@@ -1,4 +1,5 @@
 import 'dotenv/config'
+import { speechInputAvailable, readSpeechWav, transcribeSpeech } from './speech-input.mjs'
 import { assertFreeActionConfirmation } from './free-action-adjudication.mjs'
 import { createServer } from 'node:http'
 import { createReadStream, existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
@@ -3220,6 +3221,16 @@ const server = createServer((req, res) => {
   if (req.url === '/api/admin/usage' && req.method === 'GET') {
     const user = requireAdmin(req, res); if (!user) return
     return json(res, 200, { usage: usageLedger.report(), architect: architectUsage.report(), models: llmClient.health() })
+  }
+  if (req.url === '/api/speech/status' && req.method === 'GET') {
+    const user = requireUser(req, res); if (!user) return
+    return json(res, 200, { available: await speechInputAvailable(), maxSeconds: 60 })
+  }
+  if (req.url === '/api/speech/transcribe' && req.method === 'POST') {
+    const user = requireUser(req, res); if (!user) return
+    if (rateLimited(req)) return json(res, 429, { error: 'Слишком много запросов. Попробуйте позже.' })
+    try { return json(res, 200, { text: await transcribeSpeech(await readSpeechWav(req)) }) }
+    catch (error) { return json(res, error.status ?? 400, { error: error.message }) }
   }
   if (req.url === '/api/auth/me' && req.method === 'GET') {
     const user = userForToken(cookies(req).skazanie_session)

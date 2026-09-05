@@ -222,7 +222,7 @@ function classicStarterInventory(hero, profile, { policyVersion = classicEquipme
   }
   const background = backgroundById(hero?.backgroundId, DND_2014_RULESET_ID)
   const backgroundItems = (background?.equipment?.catalogItems ?? [])
-    .map((item, index) => classicStarterItem(heroId, item, index, 'background'))
+    .map((item, index) => classicStarterItem(heroId, { ...item, catalog_id: item.catalogId }, index, 'background'))
   if (background?.equipment?.includeChosenTool) {
     const selected = new Set(hero?.backgroundChoices?.tools ?? [])
     const tool = (background.toolChoice?.options ?? []).find((entry) => selected.has(entry.id) && entry.catalogId)
