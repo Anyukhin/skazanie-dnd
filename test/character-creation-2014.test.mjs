@@ -29,7 +29,7 @@ test('все эльфы владеют Восприятием, а дроу не 
   assert.deepEqual(speciesBenefitsFor('elf-drow', RULESET_ID, {}).languages, ['common', 'elvish'])
 })
 
-test('все 2184 сочетания расы, класса и предыстории собираются без потери навыков и языков', () => {
+test('все 2340 сочетания расы, класса и предыстории собираются без потери навыков и языков', () => {
   const catalog = characterCreationCatalog(RULESET_ID)
   const skillIds = [...new Set(catalog.classes.flatMap((entry) => entry.class_skills.options.map((skill) => skill.id)))]
   let checked = 0
@@ -74,7 +74,7 @@ test('все 2184 сочетания расы, класса и предысто�
       checked += 1
     }
   }
-  assert.equal(checked, 2184)
+  assert.equal(checked, 2340)
 })
 
 test('повтор навыка заменяется свободным владением и сохраняется после replay', () => {
@@ -150,7 +150,7 @@ test('каталог создания 2014 отделён по ruleset_id и с�
   assert.equal(catalog.ruleset_id, RULESET_ID)
   assert.equal(catalog.edition_family, '5e_2014')
   assert.equal(catalog.ability_policy.bonus_source, 'species')
-  assert.equal(catalog.ability_policy.species_options.length, 14)
+  assert.equal(catalog.ability_policy.species_options.length, 15)
   assert.equal(new Set(catalog.ability_policy.species_options.map((entry) => entry.race_id)).size, 9)
   assert.equal(catalog.backgrounds.options.length, 13)
   assert.deepEqual(catalog.backgrounds.ability_modes, [])

@@ -135,7 +135,7 @@ test('каждый игрок заполняет свой серверный с�
   assert.equal(classicCatalog.status, 200, classicCatalog.text)
   assert.equal(classicCatalog.body.ruleset_id, 'dnd_5e_2014')
   assert.equal(classicCatalog.body.ability_policy.bonus_source, 'species')
-  assert.equal(classicCatalog.body.ability_policy.species_options.length, 14)
+  assert.equal(classicCatalog.body.ability_policy.species_options.length, 15)
   assert.equal(classicCatalog.body.backgrounds.options.length, 13)
   assert.equal(classicCatalog.body.starter_equipment.policy_version, 2)
   assert.equal(classicCatalog.body.classes.find((entry) => entry.id === 'fighter').starter_equipment.choice_groups.length, 4)
@@ -191,6 +191,39 @@ test('каждый игрок заполняет свой серверный с�
   assert.deepEqual(classicHero.speciesToolProficiencies, ['smiths_tools'])
   assert.equal(classicHero.starterEquipmentChoices['melee-loadout'][0], 'longsword-shield')
   assert.ok(classicHero.inventory.some((item) => item.catalog_id === 'srd_5_2_1:chain-mail'))
+
+  const rolledCampaign = await request(baseUrl, '/api/campaigns', { method: 'POST', cookie: ownerCookie,
+    body: { code: 'PHB-ROLLS', name: 'PHB с бросками', bootstrap: { slotCount: 1, rulesetId: 'dnd_5e_2014' } },
+  })
+  assert.equal(rolledCampaign.status, 201, rolledCampaign.text)
+  const rollBody = { idempotency_key: 'phb-ability-roll', command: { command_type: 'RollCharacterAbilities', actor_id: 'hero-slot-1' } }
+  const rolled = await request(baseUrl, '/api/campaigns/PHB-ROLLS/commands', { method: 'POST', cookie: ownerCookie, key: rollBody.idempotency_key, body: rollBody })
+  assert.equal(rolled.status, 200, rolled.text)
+  const savedRoll = rolled.body.authoritative_state.players[0].characterCreationRolls.abilities
+  assert.equal(savedRoll.scores.length, 6)
+  const rolledAgain = await request(baseUrl, '/api/campaigns/PHB-ROLLS/commands', { method: 'POST', cookie: ownerCookie, key: rollBody.idempotency_key, body: rollBody })
+  assert.equal(rolledAgain.status, 200, rolledAgain.text)
+  assert.deepEqual(rolledAgain.body.authoritative_state.players[0].characterCreationRolls.abilities, savedRoll)
+  const wealthBody = { idempotency_key: 'phb-wealth-roll', command: { command_type: 'RollCharacterWealth', actor_id: 'hero-slot-1', character_class: 'fighter' } }
+  const wealth = await request(baseUrl, '/api/campaigns/PHB-ROLLS/commands', { method: 'POST', cookie: ownerCookie, key: wealthBody.idempotency_key, body: wealthBody })
+  assert.equal(wealth.status, 200, wealth.text)
+  const savedWealth = wealth.body.authoritative_state.players[0].characterCreationRolls.wealth
+  const baseRolled = Object.fromEntries(['str', 'dex', 'con', 'int', 'wis', 'cha'].map((id, index) => [id, savedRoll.scores[index]]))
+  const phbDocument = importDocument({
+    abilities: Object.fromEntries(Object.entries(baseRolled).map(([id, value]) => [id, value + 1])),
+    speciesChoices: { 'extra-language': ['dwarvish'] },
+    backgroundId: 'acolyte', background: 'Прислужник', backgroundChoices: { tools: [], languages: ['elvish', 'giant'], replacementSkills: [], replacementTools: [] },
+    abilityGeneration: { policyId: 'skazanie.character-abilities.dnd-5e-2014', policyVersion: 2, method: 'rolled', baseScores: baseRolled,
+      originBonusProfileId: 'human', originBonuses: { str: 1, dex: 1, con: 1, int: 1, wis: 1, cha: 1 }, speciesOptionId: 'human', rollId: savedRoll.id },
+    phbCreation: { schema_version: 1, classChoices: {}, equipmentMode: 'wealth', wealthRollId: savedWealth.id, purchases: [{ id: 'srd_5_2_1:dagger', quantity: 1 }] },
+  })
+  const purchased = await command(baseUrl, ownerCookie, 'hero-slot-1', phbDocument, 'phb-character', 'PHB-ROLLS')
+  assert.equal(purchased.status, 200, purchased.text)
+  const purchasedHero = purchased.body.authoritative_state.players[0]
+  assert.equal(purchasedHero.inventory.length, 1, 'Покупки заменяют, а не дополняют бесплатные комплекты')
+  assert.equal(purchasedHero.inventory[0].catalog_id, 'srd_5_2_1:dagger')
+  assert.equal(purchasedHero.currency.gold, savedWealth.total_gp - 2)
+  assert.equal(purchasedHero.creationBenefits.class.class_key, 'fighter')
 
   const forgedPlayers = Array.from({ length: 4 }, (_, index) => ({
     id: `slot-${index + 1}`,

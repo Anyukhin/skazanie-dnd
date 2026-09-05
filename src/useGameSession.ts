@@ -66,6 +66,8 @@ type TacticalCommand =
   | { command_type: 'SendLetter'; actor_id: string; addressee_kind: LetterAddresseeKind; addressee_id: string; body: string }
   | { command_type: 'ReceiveNpcBlessing'; actor_id: string; npc_id: string }
   | { command_type: 'ImportCharacter'; actor_id: string; document: unknown }
+  | { command_type: 'RollCharacterAbilities'; actor_id: string }
+  | { command_type: 'RollCharacterWealth'; actor_id: string; character_class: string }
   | { command_type: 'LevelUp'; actor_id: string; expected_level: number }
 
 /**
@@ -1622,6 +1624,15 @@ export function useGameSession() {
     if (!outcome.ok) throw new Error(outcome.error || 'Сервер отклонил создание персонажа.')
   }, [executeTacticalCommand])
 
+  const rollCharacterAbilities = useCallback(async (playerId: string) => {
+    const outcome = await executeTacticalCommand({ command_type: 'RollCharacterAbilities', actor_id: playerId }, 'Бросить характеристики героя: шесть раз 4к6')
+    if (!outcome.ok) throw new Error(outcome.error || 'Не удалось получить серверные броски.')
+  }, [executeTacticalCommand])
+  const rollCharacterWealth = useCallback(async (playerId: string, classId: string) => {
+    const outcome = await executeTacticalCommand({ command_type: 'RollCharacterWealth', actor_id: playerId, character_class: classId }, 'Определить стартовое богатство героя')
+    if (!outcome.ok) throw new Error(outcome.error || 'Не удалось определить стартовое богатство.')
+  }, [executeTacticalCommand])
+
   const levelUpCharacter = useCallback((playerId: string, expectedLevel: number) => {
     void executeTacticalCommand({ command_type: 'LevelUp', actor_id: playerId, expected_level: expectedLevel } as TacticalCommand, 'Повысить уровень персонажа')
   }, [executeTacticalCommand])
@@ -1966,6 +1977,8 @@ export function useGameSession() {
     attuneItem,
     activateItem,
     importCharacter,
+    rollCharacterAbilities,
+    rollCharacterWealth,
     levelUpCharacter,
     switchCampaign,
     loadMerchant,

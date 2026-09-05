@@ -161,7 +161,11 @@ export function CharacterEditor({ player, rulesetId, onClose, onSave, onImport, 
   }
 
   const exportSheet = () => {
-    const blob = new Blob([JSON.stringify(draft, null, 2)], { type: 'application/json' })
+    const source = draft as unknown as Record<string, unknown>
+    const fields = ['character', 'name', 'role', 'characterClass', 'subclass', 'species', 'background', 'alignment', 'traits', 'ideals', 'bonds', 'flaws', 'backstory', 'notes', 'level', 'experience', 'abilities', 'abilityGeneration', 'baseSpeed', 'hitPointIncreases', 'classSkillProficiencies', 'selectedFeatureIds', 'knownSpellIds', 'preparedSpellIds', 'backgroundId', 'backgroundAbilityChoice', 'backgroundChoices', 'speciesChoices', 'starterEquipmentChoices', 'phbCreation']
+    const character = Object.fromEntries(fields.filter((key) => source[key] !== undefined).map((key) => [key, source[key]]))
+    character.baseSpeed ??= draft.speed
+    const blob = new Blob([JSON.stringify({ schema: 'skazanie.character', schema_version: 1, character }, null, 2)], { type: 'application/json' })
     const anchor = document.createElement('a')
     anchor.href = URL.createObjectURL(blob)
     anchor.download = `${draft.character || 'character'}-skazanie.json`
@@ -233,6 +237,15 @@ export function CharacterEditor({ player, rulesetId, onClose, onSave, onImport, 
             </div>
             <div className="currency-editor"><span><Coins size={16} />МОНЕТЫ · СЕРВЕР</span>{(['copper', 'silver', 'gold', 'platinum'] as const).map((key) => <Field key={key} label={{ copper: 'Медь', silver: 'Серебро', gold: 'Золото', platinum: 'Платина' }[key]} type="number" min={0} value={draft.currency[key]} readOnly onChange={(value) => patch('currency', { ...draft.currency, [key]: Number(value) })} />)}</div>
           </> : tab === 'story' ? <div className="story-editor-grid">
+            {player.creationBenefits && <section className="advancement-block">
+              <h3>Создание по PHB 2014</h3>
+              <p>Инструменты: {Array.isArray(player.creationBenefits.tool_proficiency_labels) ? player.creationBenefits.tool_proficiency_labels.join(', ') || 'нет' : 'нет'}</p>
+              <p>Языки: {Array.isArray(player.creationBenefits.language_labels) ? player.creationBenefits.language_labels.join(', ') : ''}</p>
+              {Array.isArray(player.creationBenefits.owned_assets) && player.creationBenefits.owned_assets.length > 0 && <p>Имущество вне рюкзака: {player.creationBenefits.owned_assets.map((asset) => String((asset as { name: string }).name)).join(', ')}.</p>}
+              {Array.isArray(player.creationBenefits.domain_spell_names) && player.creationBenefits.domain_spell_names.length > 0 && <p>Всегда подготовленные заклинания домена: {player.creationBenefits.domain_spell_names.join(', ')}</p>}
+              {player.creationBenefits.feat != null && <p>Черта: {String((player.creationBenefits.feat as { name?: string }).name ?? '')}. Игровые эффекты черт поддержаны частично.</p>}
+              {((player.creationBenefits.class as { features?: Array<{ id: string; name: string; summary: string }> })?.features ?? []).map((feature) => <p key={feature.id}><strong>{feature.name}.</strong> {feature.summary}</p>)}
+            </section>}
             <TextField label="Предыстория" value={draft.backstory} onChange={(value) => patch('backstory', value)} rows={7} />
             <TextField label="Черты характера" value={draft.traits} onChange={(value) => patch('traits', value)} />
             <TextField label="Идеалы" value={draft.ideals} onChange={(value) => patch('ideals', value)} />

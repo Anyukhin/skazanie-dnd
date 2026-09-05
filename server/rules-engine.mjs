@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { authoredNpcCombatant } from './authored-npc.mjs'
 import { withBackgroundBenefits } from './backgrounds.mjs'
+import { PHB_STARTING_WEALTH } from './character-creation-wealth.mjs'
 import { parseDiceExpression } from './dice-service.mjs'
 import { DND_2014_RULESET_ID, INSTALLED_RULESET_IDS, LEGACY_DEFAULT_RULESET_ID, rulesetRuleId } from './ruleset-config.mjs'
 import { applyAutonomyEvent, normalizeAutonomyState } from './autonomous-campaign.mjs'
@@ -406,6 +407,7 @@ import {
   levelUpEvent,
   proficiencyBonusForLevel,
   validateCharacterImportCommand,
+  validateCharacterAbilityRollCommand,
   validateLevelUpCommand,
 } from './character-lifecycle.mjs'
 import {
@@ -720,6 +722,8 @@ const COMMAND_RULES = Object.freeze({
   ActivateItem: [RULE_IDS.actions],
   LevelUp: [RULE_IDS.resource],
   ImportCharacter: [RULE_IDS.resource],
+  RollCharacterAbilities: [RULE_IDS.resource],
+  RollCharacterWealth: [RULE_IDS.resource],
 })
 
 export const ALLOWED_COMMAND_TYPES = new Set([
@@ -746,7 +750,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   ...COURIER_LETTER_COMMAND_TYPES,
   ...BLESSING_COMMAND_TYPES,
   'SetCharacterChoices', 'SetSpellSelections',
-  'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'LevelUp', 'ImportCharacter',
+  'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'LevelUp', 'ImportCharacter', 'RollCharacterAbilities', 'RollCharacterWealth',
   'CompleteCampaign', 'AdvanceCampaignArc',
 ])
 
@@ -3215,6 +3219,10 @@ export function previewApproachAttack(rawState, actorIdValue, targetIdValue) {
   if (!from || !targetAt) throw new RulesValidationError('Герой и противник должны находиться на карте', 'MAP_POSITION_REQUIRED')
   const { map, stepCost } = movementStepCostFor(state, actorIdValue)
   const cells = tacticalCellMap(state)
+  const targetCell = cells.get(positionKey(targetAt))
+  if (!targetCell || targetCell.revealed === false) {
+    throw new RulesValidationError('Цель находится в нераскрытой части карты', 'TARGET_NOT_VISIBLE')
+  }
   const occupied = occupiedPositions(state, actorIdValue)
   const economy = state.mechanics.combat.action_economy[actorIdValue] ?? {}
   const budget = effectiveSpeedFeet(state, actor, actorIdValue) + Math.max(0, safeInteger(economy.movement_bonus, 0)) - Math.max(0, safeInteger(economy.movement_spent, 0))
@@ -3249,6 +3257,103 @@ export function previewApproachAttack(rawState, actorIdValue, targetIdValue) {
     commands: [...(chosen.path.length ? [move] : []), attack],
     path: chosen.path, to: chosen.to, movement_feet: chosen.cost,
     attack_cost: continuation ? 'одна оставшаяся атака' : 'действие «Атака» (один удар)',
+  }
+}
+
+/**
+ * Server-owned horizontal long jump followed by one melee attack.  The jump
+ * is intentionally orthogonal and stays on one elevation: this is the small
+ * 2014 slice we can execute with the existing 2D tactical map.  A chandelier,
+ * suspended object, or any other unsupported vertical anchor must not be
+ * smuggled through this path as flavour text.
+ */
+export function previewLongJumpAttack(rawState, actorIdValue, targetIdValue, { runningStart = false } = {}) {
+  const state = normalizeCampaignState(rawState)
+  const actor = findActor(state, actorIdValue)
+  const target = findActor(state, targetIdValue)
+  if (!state.mechanics.combat.active) throw new RulesValidationError('Такой манёвр доступен после начала боя', 'COMBAT_REQUIRED')
+  if (!actor || !target || !isEnemyActor(state, targetIdValue) || !isLivingActor(target)) {
+    throw new RulesValidationError('Выберите живого противника на карте', 'INVALID_TARGET')
+  }
+  const profile = trustedAttackProfile(state, actor)
+  if (!profile || profile.kind !== 'melee') throw new RulesValidationError('Для прыжка с атакой нужно оружие ближнего боя', 'MELEE_WEAPON_REQUIRED')
+  const from = actorPosition(state, actorIdValue)
+  const targetAt = actorPosition(state, targetIdValue)
+  if (!from || !targetAt) throw new RulesValidationError('Герой и противник должны находиться на карте', 'MAP_POSITION_REQUIRED')
+  const { map } = movementStepCostFor(state, actorIdValue)
+  const cells = tacticalCellMap(state)
+  const targetCell = cells.get(positionKey(targetAt))
+  if (!targetCell || targetCell.revealed === false) {
+    throw new RulesValidationError('Цель находится в нераскрытой части карты', 'TARGET_NOT_VISIBLE')
+  }
+  const fromCell = cells.get(positionKey(from))
+  if (!fromCell || fromCell.revealed === false) throw new RulesValidationError('Герой находится в нераскрытой части карты', 'JUMP_START_NOT_VISIBLE')
+  if (safeInteger(fromCell.elevation, 0) !== safeInteger(targetCell.elevation, 0)) {
+    throw new RulesValidationError('Горизонтальный прыжок между разными высотами пока не поддерживается', 'JUMP_ELEVATION_UNSUPPORTED')
+  }
+  const economy = state.mechanics.combat.action_economy[actorIdValue] ?? {}
+  const movementSpent = Math.max(0, safeInteger(economy.movement_spent, 0))
+  if (runningStart && movementSpent < 10) {
+    throw new RulesValidationError('Для прыжка с разбега сначала нужно потратить 10 фт на разбег', 'JUMP_RUNNING_START_REQUIRED')
+  }
+  const strengthScore = Math.max(1, safeInteger(actor.abilities?.str, 10))
+  const maximumJumpFeet = runningStart ? strengthScore : Math.floor(strengthScore / 2)
+  const budget = effectiveSpeedFeet(state, actor, actorIdValue)
+    + Math.max(0, safeInteger(economy.movement_bonus, 0)) - movementSpent
+  const radius = Math.max(1, Math.min(6, Math.floor(Number(profile.range_feet || 5) / 5)))
+  const occupied = occupiedPositions(state, actorIdValue)
+  const jumpPathFor = (to) => {
+    const dx = to.x - from.x
+    const dy = to.y - from.y
+    if ((dx !== 0 && dy !== 0) || (dx === 0 && dy === 0)) return null
+    const steps = Math.abs(dx) + Math.abs(dy)
+    const distanceFeet = steps * 5
+    if (distanceFeet <= 5 || distanceFeet > maximumJumpFeet || distanceFeet > budget) return null
+    const path = []
+    for (let index = 1; index <= steps; index += 1) {
+      const point = {
+        x: from.x + Math.sign(dx) * (dx === 0 ? 0 : index),
+        y: from.y + Math.sign(dy) * (dy === 0 ? 0 : index),
+      }
+      const cell = cells.get(positionKey(point))
+      if (!cell || cell.revealed === false || safeInteger(cell.elevation, 0) !== safeInteger(fromCell.elevation, 0)) return null
+      if (index < steps && (String(cell.type) === 'wall' || doorBlocksStep(map, path.at(-1)?.x ?? from.x, path.at(-1)?.y ?? from.y, point.x, point.y))) return null
+      if (occupied.has(positionKey(point))) return null
+      path.push(point)
+    }
+    if (!isWalkableCell(cells.get(positionKey(to)))) return null
+    return { path, distanceFeet }
+  }
+  const attack = { command_type: 'MakeAttack', actor_id: actorIdValue, target_id: targetIdValue, server_authoritative: true }
+  const candidates = []
+  for (let x = targetAt.x - radius; x <= targetAt.x + radius; x += 1) {
+    for (let y = targetAt.y - radius; y <= targetAt.y + radius; y += 1) {
+      const to = { x, y }
+      if (!isWalkableCell(cells.get(positionKey(to))) || occupied.has(positionKey(to))) continue
+      const jump = jumpPathFor(to)
+      if (!jump) continue
+      const atDestination = { ...state, mechanics: { ...state.mechanics, positions: { ...state.mechanics.positions, [actorIdValue]: to } } }
+      if (!attackForecast(atDestination, actorIdValue, targetIdValue)?.in_range) continue
+      try { validateCommand(attack, atDestination, { allowedActorIds: [actorIdValue] }) }
+      catch (error) { if (!(error instanceof RulesValidationError)) throw error; continue }
+      candidates.push({ ...jump, to })
+    }
+  }
+  candidates.sort((a, b) => a.distanceFeet - b.distanceFeet || a.to.y - b.to.y || a.to.x - b.to.x)
+  const chosen = candidates[0]
+  if (!chosen) throw new RulesValidationError('Не хватает длины прыжка, свободной скорости или места для приземления', 'JUMP_UNREACHABLE')
+  return {
+    commands: [{
+      command_type: 'MoveActor', actor_id: actorIdValue, to: chosen.to,
+      movement_mode: 'long_jump', jump_running_start: runningStart, server_authoritative: true,
+    }, attack],
+    path: chosen.path,
+    to: chosen.to,
+    movement_feet: chosen.distanceFeet,
+    jump: { kind: 'long', running_start: runningStart, distance_feet: chosen.distanceFeet, maximum_feet: maximumJumpFeet },
+    attack_cost: Number(economy.attacks_used) > 0 && Number(economy.attacks_used) < Number(economy.attacks_allowed)
+      ? 'одна оставшаяся атака'
+      : 'действие «Атака» (один удар)',
   }
 }
 
@@ -5055,7 +5160,8 @@ export function validateCommand(input, rawState, context = {}) {
     try {
       Object.assign(command, command.command_type === 'LevelUp'
         ? validateLevelUpCommand(command, state, context)
-        : validateCharacterImportCommand(command, state, context))
+        : ['RollCharacterAbilities', 'RollCharacterWealth'].includes(command.command_type) ? validateCharacterAbilityRollCommand(command, state, context)
+          : validateCharacterImportCommand(command, state, context))
     } catch (error) {
       if (error instanceof CharacterLifecycleValidationError) {
         throw new RulesValidationError(error.message, error.code)
@@ -5071,7 +5177,7 @@ export function validateCommand(input, rawState, context = {}) {
     && context.isAdmin === true
     && context.serverAuthoritativeCombat === true
   if (setupActor?.characterSetupRequired
-    && command.command_type !== 'ImportCharacter'
+    && !['ImportCharacter', 'RollCharacterAbilities', 'RollCharacterWealth'].includes(command.command_type)
     && !serverTimeoutMaySkipSetupActor) {
     throw new RulesValidationError(
       'Сначала завершите создание этого героя',
@@ -7527,7 +7633,7 @@ function hitPointMaximumBonusOf(state, id) {
  * the rules that depend on it simply do not fire.
  */
 function passivePerception(actor) {
-  return 10 + abilityModifier(actor?.abilities?.wis) + skillProficiencyBonus(actor, 'perception')
+  return 10 + abilityModifier(actor?.abilities?.wis) + skillProficiencyBonus(actor, 'perception') + Number(actor?.creationBenefits?.passive_skill_bonuses?.perception ?? 0)
 }
 
 /**
@@ -7671,6 +7777,7 @@ const CLASS_SAVING_THROW_PROFICIENCIES = Object.freeze({
 
 function isSavingThrowProficient(actor, ability) {
   const normalizedAbility = String(ability ?? '').toLowerCase()
+  if (actor?.creationBenefits?.saving_throw_proficiencies?.includes(normalizedAbility)) return true
   const explicit = [actor?.savingThrowProficiencies, actor?.saving_throw_proficiencies, actor?.saveProficiencies]
     .find(Array.isArray)
   if (explicit) return explicit.map((entry) => String(entry).toLowerCase()).includes(normalizedAbility)
@@ -12776,7 +12883,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       for (const id of [...partyIds, ...enemyIds]) {
         const actor = findActor(state, id)
         if (!actor) throw new RulesValidationError(`Участник ${id} не найден`, 'TARGET_NOT_FOUND')
-        const modifier = Number.isSafeInteger(Number(actor?.initiativeBonus))
+        const modifier = actor?.creationBenefits ? abilityModifier(actor.abilities?.dex) + Number(actor.creationBenefits.initiative_bonus ?? 0) : Number.isSafeInteger(Number(actor?.initiativeBonus))
           ? Math.max(-30, Math.min(30, Number(actor.initiativeBonus)))
           : abilityModifier(actor?.abilities?.dex)
         const initiativeItemSources = activeItemMechanicEffects(actor)
@@ -15036,6 +15143,24 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     case 'ImportCharacter': {
       const lifecycleEvent = characterImportEvent(command)
       events.push(eventFrom(command, lifecycleEvent.event_type, lifecycleEvent.payload, lifecycleEvent.target_ids))
+      break
+    }
+    case 'RollCharacterAbilities': {
+      const abilityRolls = Array.from({ length: 6 }, (_, index) => diceService.roll('4d6', `character-ability-${index + 1}`, command.actor_id, 'party'))
+      rolls.push(...abilityRolls)
+      events.push(eventFrom(command, 'CharacterAbilitiesRolled', {
+        schema_version: 1,
+        id: abilityRolls[0].roll_id,
+        rolls: abilityRolls,
+        scores: abilityRolls.map((roll) => [...roll.dice].sort((a, b) => b - a).slice(0, 3).reduce((sum, value) => sum + value, 0)),
+      }, [command.actor_id]))
+      break
+    }
+    case 'RollCharacterWealth': {
+      const formula = PHB_STARTING_WEALTH[command.character_class]
+      const roll = diceService.roll(formula.expression, 'character-starting-wealth', command.actor_id, 'party')
+      rolls.push(roll)
+      events.push(eventFrom(command, 'CharacterWealthRolled', { schema_version: 1, id: roll.roll_id, class_id: command.character_class, roll, total_gp: roll.total * formula.multiplier }, [command.actor_id]))
       break
     }
     case 'EquipItem':
@@ -17711,6 +17836,12 @@ export function applyGameEvent(rawState, event) {
         classSkillProficiencies: uniqueStrings(payload.class_skill_proficiencies),
         selectedFeatureIds: uniqueStrings(payload.selected_feature_ids),
       }))
+      break
+    case 'CharacterAbilitiesRolled':
+      replaceActor(state, target, (actor) => ({ ...actor, characterCreationRolls: { ...actor.characterCreationRolls, abilities: clone(payload) } }))
+      break
+    case 'CharacterWealthRolled':
+      replaceActor(state, target, (actor) => ({ ...actor, characterCreationRolls: { ...actor.characterCreationRolls, wealth: clone(payload) } }))
       break
     case 'CharacterLeveledUp':
     case 'CharacterImported': {

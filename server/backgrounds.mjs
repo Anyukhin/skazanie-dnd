@@ -3,6 +3,38 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { DND_2014_RULESET_ID, LEGACY_DEFAULT_RULESET_ID, rulesetProfile } from './ruleset-config.mjs'
+import { PHB_2014_SKILLS, PHB_2014_TOOL_IDS } from './character-creation-class-options.mjs'
+
+const TOOL_LABELS = Object.fromEntries([
+  ['alchemists_supplies', 'Алхимические принадлежности'], ['brewers_supplies', 'Принадлежности пивовара'], ['calligraphers_supplies', 'Принадлежности каллиграфа'], ['carpenters_tools', 'Инструменты плотника'], ['cartographers_tools', 'Инструменты картографа'], ['cobblers_tools', 'Инструменты сапожника'], ['cooks_utensils', 'Кухонная утварь'], ['glassblowers_tools', 'Инструменты стеклодува'], ['jewelers_tools', 'Инструменты ювелира'], ['leatherworkers_tools', 'Инструменты кожевника'], ['masons_tools', 'Инструменты каменщика'], ['painters_supplies', 'Принадлежности художника'], ['potters_tools', 'Инструменты гончара'], ['smiths_tools', 'Инструменты кузнеца'], ['tinkers_tools', 'Инструменты ремонтника'], ['weavers_tools', 'Инструменты ткача'], ['woodcarvers_tools', 'Инструменты резчика по дереву'],
+  ['bagpipes', 'Волынка'], ['drum', 'Барабан'], ['dulcimer', 'Цимбалы'], ['flute', 'Флейта'], ['lute', 'Лютня'], ['lyre', 'Лира'], ['horn', 'Рожок'], ['pan_flute', 'Свирель'], ['shawm', 'Шалмей'], ['viol', 'Виола'], ['dice_set', 'Игральные кости'], ['dragonchess_set', 'Драконьи шахматы'], ['playing_cards', 'Игральные карты'], ['three_dragon_ante_set', 'Ставка трёх драконов'], ['disguise_kit', 'Набор для грима'], ['forgery_kit', 'Набор для подделок'], ['herbalism_kit', 'Набор травника'], ['navigators_tools', 'Инструменты навигатора'], ['poisoners_kit', 'Набор отравителя'], ['thieves_tools', 'Воровские инструменты'], ['vehicles_land', 'Наземный транспорт'], ['vehicles_water', 'Водный транспорт'],
+])
+
+export const PHB_BACKGROUND_VARIANTS = Object.freeze([
+  { id: 'spy', backgroundId: 'criminal', name: 'Шпион' },
+  { id: 'gladiator', backgroundId: 'entertainer', name: 'Гладиатор' },
+  { id: 'guild-merchant', backgroundId: 'guild-artisan', name: 'Гильдейский торговец' },
+  { id: 'knight', backgroundId: 'noble', name: 'Рыцарь', feature: { id: 'retainers', name: 'Слуги', supported: false } },
+  { id: 'pirate', backgroundId: 'sailor', name: 'Пират', feature: { id: 'bad-reputation', name: 'Дурная репутация', supported: false } },
+])
+
+export function phbToolOptions() { return PHB_2014_TOOL_IDS.map((id) => ({ id, name: TOOL_LABELS[id] ?? TOOL_LABELS[`${id}_set`] ?? id })) }
+
+/** @param {unknown} raw */
+export function resolveBackgroundCustomization(raw) {
+  if (raw == null) return null
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new TypeError('Настройка предыстории должна быть объектом')
+  const value = /** @type {Record<string, any>} */ (raw)
+  if (Object.keys(value).some((key) => !['name', 'skills', 'toolCount', 'featureBackgroundId', 'variant'].includes(key))) throw new TypeError('Неизвестное поле настройки предыстории')
+  const skills = value.skills
+  if (!Array.isArray(skills) || skills.length !== 2 || new Set(skills).size !== 2 || skills.some((id) => !PHB_2014_SKILLS.includes(id))) throw new TypeError('Авторская предыстория даёт два разных навыка')
+  const toolCount = value.toolCount
+  if (!Number.isInteger(toolCount) || toolCount < 0 || toolCount > 2) throw new TypeError('Выберите всего два инструмента или языка')
+  if (!classicCatalog.backgrounds.some((entry) => entry.id === value.featureBackgroundId)) throw new TypeError('Выберите существующую особенность предыстории')
+  const variant = value.variant ? PHB_BACKGROUND_VARIANTS.find((entry) => entry.id === value.variant && entry.backgroundId === value.featureBackgroundId) : null
+  if (value.variant && !variant) throw new TypeError('Вариант не принадлежит выбранной предыстории')
+  return { name: String(value.name ?? 'Своя предыстория').trim().slice(0, 160), skills: [...skills], toolCount, featureBackgroundId: String(value.featureBackgroundId), ...(variant ? { variant: variant.id } : {}) }
+}
 
 /** @typedef {{ id: string, name: string, catalogId?: string }} NamedEntry */
 /** @typedef {{ id: string, label: string, increases: number[] }} AbilityMode */
@@ -72,6 +104,7 @@ export function backgroundCatalogFor(rulesetId = LEGACY_DEFAULT_RULESET_ID) {
     options: catalog.backgrounds.map((entry) => publicBackground(catalog, entry)),
     origin_feats_supported: false,
     background_features_supported: false,
+    ...(rulesetId === DND_2014_RULESET_ID ? { customization: { skill_count: 2, tool_language_count: 2, tool_options: phbToolOptions(), variants: structuredClone(PHB_BACKGROUND_VARIANTS) } } : {}),
   }
 }
 
@@ -81,10 +114,20 @@ export function listBackgrounds(rulesetId = LEGACY_DEFAULT_RULESET_ID) {
 }
 
 /** @param {unknown} id @param {unknown} [rulesetId] */
-export function backgroundById(id, rulesetId = LEGACY_DEFAULT_RULESET_ID) {
+export function backgroundById(id, rulesetId = LEGACY_DEFAULT_RULESET_ID, customization = null) {
   const catalog = catalogFor(rulesetId)
   const entry = catalog.backgrounds.find((candidate) => String(candidate.id) === String(id ?? ''))
-  return entry ? publicBackground(catalog, entry) : null
+  if (!entry) return null
+  const result = publicBackground(catalog, entry)
+  if (rulesetId !== DND_2014_RULESET_ID || customization == null) return result
+  const selected = resolveBackgroundCustomization(customization)
+  if (!selected) return result
+  const featureBackground = classicCatalog.backgrounds.find((entry) => entry.id === selected.featureBackgroundId)
+  const variant = PHB_BACKGROUND_VARIANTS.find((entry) => entry.id === selected.variant)
+  return { ...result, name: selected.name || result.name, skillProficiencies: selected.skills,
+    toolProficiencies: [], toolChoice: { count: selected.toolCount, options: phbToolOptions() },
+    languageChoiceCount: 2 - selected.toolCount, feature: variant?.feature ?? featureBackground?.feature,
+  }
 }
 
 /**
@@ -130,13 +173,13 @@ export function defaultBackgroundAbilityChoice(backgroundId, rulesetId = LEGACY_
 
 /**
  * @param {unknown} backgroundId
- * @param {{ tools?: string[], languages?: string[] }} [choice]
+ * @param {{ tools?: string[], languages?: string[], customization?: any }} [choice]
  * @param {unknown} [rulesetId]
  * @returns {{ ok: true, tools: string[], languages: string[], selected_tool_entries: NamedEntry[], fixed_tool_proficiencies: NamedEntry[] } | { ok: false, reason: string }}
  */
 export function resolveBackgroundChoices(backgroundId, choice = {}, rulesetId = LEGACY_DEFAULT_RULESET_ID) {
   const catalog = catalogFor(rulesetId)
-  const background = backgroundById(backgroundId, rulesetId)
+  const background = backgroundById(backgroundId, rulesetId, choice.customization)
   if (!background) return { ok: false, reason: 'Такой предыстории нет в каталоге' }
   const toolOptions = background.toolChoice?.options ?? []
   const toolCount = Number(background.toolChoice?.count ?? 0)
@@ -172,7 +215,7 @@ export function defaultBackgroundChoices(backgroundId, rulesetId = LEGACY_DEFAUL
 
 /** @param {Record<string, any>} actor @param {unknown} [rulesetId] */
 export function withBackgroundBenefits(actor, rulesetId = LEGACY_DEFAULT_RULESET_ID) {
-  const background = backgroundById(actor?.backgroundId, rulesetId)
+  const background = backgroundById(actor?.backgroundId, rulesetId, actor?.backgroundChoices?.customization)
   if (!background) {
     const { backgroundSkillProficiencies: _skills, backgroundBenefits: _benefits, ...rest } = actor ?? {}
     return rest
@@ -180,6 +223,7 @@ export function withBackgroundBenefits(actor, rulesetId = LEGACY_DEFAULT_RULESET
   const granted = [
     ...(actor.classSkillProficiencies ?? []),
     ...(actor.speciesSkillProficiencies ?? actor.speciesBenefits?.skill_proficiencies ?? []),
+    ...(actor.creationSkillProficiencies ?? []),
     ...background.skillProficiencies,
   ].map((id) => String(id).replace(/-/gu, '_'))
   const known = new Set(granted)
@@ -197,10 +241,10 @@ export function withBackgroundBenefits(actor, rulesetId = LEGACY_DEFAULT_RULESET
   }
 }
 
-/** @param {unknown} backgroundId @param {{ mode?: string, abilities?: string[] } | null} [abilityChoice] @param {{ tools?: string[], languages?: string[] } | null} [choices] @param {unknown} [rulesetId] */
+/** @param {unknown} backgroundId @param {{ mode?: string, abilities?: string[] } | null} [abilityChoice] @param {{ tools?: string[], languages?: string[], customization?: any } | null} [choices] @param {unknown} [rulesetId] */
 export function backgroundBenefits(backgroundId, abilityChoice, choices, rulesetId = LEGACY_DEFAULT_RULESET_ID) {
   const catalog = catalogFor(rulesetId)
-  const background = backgroundById(backgroundId, rulesetId)
+  const background = backgroundById(backgroundId, rulesetId, choices?.customization)
   if (!background) return null
   const resolvedAbilities = resolveBackgroundAbilityChoice(backgroundId, abilityChoice ?? defaultBackgroundAbilityChoice(backgroundId, rulesetId) ?? {}, rulesetId)
   const resolvedChoices = resolveBackgroundChoices(backgroundId, choices ?? defaultBackgroundChoices(backgroundId, rulesetId) ?? {}, rulesetId)

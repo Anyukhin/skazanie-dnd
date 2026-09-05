@@ -171,8 +171,8 @@ function validateCharacterCreationCatalogs(rootDir) {
   const starter = readJson(safeProjectFile(rootDir, 'data/starter-equipment-dnd-5e-2014.json'))
   const classicBackgrounds = readJson(safeProjectFile(rootDir, 'data/backgrounds-dnd-5e-2014.json'))
   const problems = []
-  if (origins.dnd_5e_2014?.species_options !== 14 || origins.dnd_5e_2014?.bonus_source !== 'species') {
-    problems.push('2014 must expose 14 race/subrace options with species-owned ability bonuses')
+  if (origins.dnd_5e_2014?.species_options !== 15 || origins.dnd_5e_2014?.bonus_source !== 'species') {
+    problems.push('2014 must expose 14 core race/subrace options plus variant human with species-owned ability bonuses')
   }
   if (backgrounds.dnd_5e_2014?.backgrounds !== 13 || backgrounds.dnd_5e_2014?.ability_modes !== 0) {
     problems.push('2014 must expose 13 backgrounds without background ability modes')

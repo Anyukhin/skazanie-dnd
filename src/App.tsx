@@ -1684,6 +1684,8 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         required={Boolean(state.players.find((player) => player.id === creatingPlayerId)?.characterSetupRequired)}
         onClose={() => { setCreatingPlayerId(null); setHeroWizardDismissed(true) }}
         onImport={(source) => importCharacter(creatingPlayerId, source)}
+        onRollAbilities={() => gameSession.rollCharacterAbilities(creatingPlayerId)}
+        onRollWealth={(classId) => gameSession.rollCharacterWealth(creatingPlayerId, classId)}
       />}
       {editingPlayerId && <CharacterEditor
         player={state.players.find((player) => player.id === editingPlayerId) ?? activePlayer}
