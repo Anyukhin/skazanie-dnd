@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { authoredNpcCombatant } from './authored-npc.mjs'
+import { withBackgroundBenefits } from './backgrounds.mjs'
 import { parseDiceExpression } from './dice-service.mjs'
 import { DND_2014_RULESET_ID, INSTALLED_RULESET_IDS, LEGACY_DEFAULT_RULESET_ID, rulesetRuleId } from './ruleset-config.mjs'
 import { applyAutonomyEvent, normalizeAutonomyState } from './autonomous-campaign.mjs'
@@ -1734,6 +1735,9 @@ export function normalizeCampaignState(input = {}) {
     const normalizedPlayer = { ...player }
     if (Object.hasOwn(player, 'subclass')) normalizedPlayer.subclass = normalizedCombatSubclassFor(player) ?? undefined
     if (Object.hasOwn(player, 'classSkillProficiencies')) normalizedPlayer.classSkillProficiencies = normalizedClassSkillProficiencies(normalizedPlayer)
+    if (Array.isArray(player.backgroundChoices?.replacementSkills)) {
+      Object.assign(normalizedPlayer, withBackgroundBenefits(normalizedPlayer, state.ruleset_id))
+    }
     if (Object.hasOwn(player, 'selectedFeatureIds')) normalizedPlayer.selectedFeatureIds = normalizedSelectedFeatureIds(normalizedPlayer)
     const spellSelections = normalizedSpellSelectionsFor(normalizedPlayer)
     if (Object.hasOwn(player, 'knownSpellIds')) normalizedPlayer.knownSpellIds = spellSelections.knownSpellIds ?? []

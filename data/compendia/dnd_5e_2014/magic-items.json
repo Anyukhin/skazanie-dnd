@@ -1,0 +1,1729 @@
+{
+  "schema_version": 1,
+  "ruleset_id": "dnd_5e_2014",
+  "version": "2014.content.1.0.0",
+  "scope": "curated_core_2014",
+  "magic_items": [
+    {
+      "id": "dnd_5e_2014:item:potion-of-healing",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "magic_item",
+      "name_ru": "Зелье лечения",
+      "name_en": "Potion of Healing",
+      "book_code": "DMG14",
+      "source_ref": "dndsu:item:61-potion-of-healing",
+      "source_url": "https://dnd.su/items/61-potion-of-healing/",
+      "item_type": "potion",
+      "rarity": "common",
+      "attunement": {
+        "required": false,
+        "requirements": []
+      },
+      "summary_ru": "Одноразовое восстановление хитов; сила определяется разновидностью зелья.",
+      "activation": [
+        {
+          "id": "drink-or-administer",
+          "action_cost": "action",
+          "target": [
+            "self",
+            "other_creature"
+          ],
+          "consumes_item": true
+        }
+      ],
+      "effects": [
+        {
+          "kind": "heal",
+          "expression": "2d4+2",
+          "cap": "target_hit_point_maximum"
+        }
+      ],
+      "charges": null,
+      "consumable": true,
+      "weight_lb": null,
+      "price_gp": null,
+      "price_policy": "not_assigned_no_2024_or_market_price_import",
+      "variant": null,
+      "requires_base_item": false,
+      "field_notes": [],
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "full_source_text_included": false,
+      "description_origin": "independent_short_mechanical_summary"
+    },
+    {
+      "id": "dnd_5e_2014:item:potion-of-greater-healing",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "magic_item",
+      "name_ru": "Зелье большого лечения",
+      "name_en": "Potion of Greater Healing",
+      "book_code": "DMG14",
+      "source_ref": "dndsu:item:61-potion-of-healing",
+      "source_url": "https://dnd.su/items/61-potion-of-healing/",
+      "item_type": "potion",
+      "rarity": "uncommon",
+      "attunement": {
+        "required": false,
+        "requirements": []
+      },
+      "summary_ru": "Одноразовое восстановление хитов; сила определяется разновидностью зелья.",
+      "activation": [
+        {
+          "id": "drink-or-administer",
+          "action_cost": "action",
+          "target": [
+            "self",
+            "other_creature"
+          ],
+          "consumes_item": true
+        }
+      ],
+      "effects": [
+        {
+          "kind": "heal",
+          "expression": "4d4+4",
+          "cap": "target_hit_point_maximum"
+        }
+      ],
+      "charges": null,
+      "consumable": true,
+      "weight_lb": null,
+      "price_gp": null,
+      "price_policy": "not_assigned_no_2024_or_market_price_import",
+      "variant": null,
+      "requires_base_item": false,
+      "field_notes": [],
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "full_source_text_included": false,
+      "description_origin": "independent_short_mechanical_summary"
+    },
+    {
+      "id": "dnd_5e_2014:item:potion-of-superior-healing",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "magic_item",
+      "name_ru": "Зелье отличного лечения",
+      "name_en": "Potion of Superior Healing",
+      "book_code": "DMG14",
+      "source_ref": "dndsu:item:61-potion-of-healing",
+      "source_url": "https://dnd.su/items/61-potion-of-healing/",
+      "item_type": "potion",
+      "rarity": "rare",
+      "attunement": {
+        "required": false,
+        "requirements": []
+      },
+      "summary_ru": "Одноразовое восстановление хитов; сила определяется разновидностью зелья.",
+      "activation": [
+        {
+          "id": "drink-or-administer",
+          "action_cost": "action",
+          "target": [
+            "self",
+            "other_creature"
+          ],
+          "consumes_item": true
+        }
+      ],
+      "effects": [
+        {
+          "kind": "heal",
+          "expression": "8d4+8",
+          "cap": "target_hit_point_maximum"
+        }
+      ],
+      "charges": null,
+      "consumable": true,
+      "weight_lb": null,
+      "price_gp": null,
+      "price_policy": "not_assigned_no_2024_or_market_price_import",
+      "variant": null,
+      "requires_base_item": false,
+      "field_notes": [],
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "full_source_text_included": false,
+      "description_origin": "independent_short_mechanical_summary"
+    },
+    {
+      "id": "dnd_5e_2014:item:potion-of-supreme-healing",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "magic_item",
+      "name_ru": "Зелье превосходного лечения",
+      "name_en": "Potion of Supreme Healing",
+      "book_code": "DMG14",
+      "source_ref": "dndsu:item:61-potion-of-healing",
+      "source_url": "https://dnd.su/items/61-potion-of-healing/",
+      "item_type": "potion",
+      "rarity": "very_rare",
+      "attunement": {
+        "required": false,
+        "requirements": []
+      },
+      "summary_ru": "Одноразовое восстановление хитов; сила определяется разновидностью зелья.",
+      "activation": [
+        {
+          "id": "drink-or-administer",
+          "action_cost": "action",
+          "target": [
+            "self",
+            "other_creature"
+          ],
+          "consumes_item": true
+        }
+      ],
+      "effects": [
+        {
+          "kind": "heal",
+          "expression": "10d4+20",
+          "cap": "target_hit_point_maximum"
+        }
+      ],
+      "charges": null,
+      "consumable": true,
+      "weight_lb": null,
+      "price_gp": null,
+      "price_policy": "not_assigned_no_2024_or_market_price_import",
+      "variant": null,
+      "requires_base_item": false,
+      "field_notes": [],
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "full_source_text_included": false,
+      "description_origin": "independent_short_mechanical_summary"
+    },
+    {
+      "id": "dnd_5e_2014:item:weapon-plus-1",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "magic_item",
+      "name_ru": "Оружие +1",
+      "name_en": "Weapon +1",
+      "book_code": "DMG14",
+      "source_ref": "dndsu:item:160-weapon-1-2-3",
+      "source_url": "https://dnd.su/items/160-weapon-1-2-3/",
+      "item_type": "weapon",
+      "rarity": "uncommon",
+      "attunement": {
+        "required": false,
+        "requirements": []
+      },
+      "summary_ru": "Магическое улучшение выбранного базового предмета; не заменяет его обычные свойства.",
+      "activation": [],
+      "effects": [
+        {
+          "kind": "weapon_enhancement",
+          "attack_bonus": 1,
+          "damage_bonus": 1,
+          "attacks_are_magical": true,
+          "requires": "attack_with_this_weapon"
+        }
+      ],
+      "charges": null,
+      "consumable": false,
+      "weight_lb": null,
+      "price_gp": null,
+      "price_policy": "not_assigned_no_2024_or_market_price_import",
+      "variant": {
+        "kind": "base_item_required",
+        "allowed_categories": [
+          "weapon"
+        ],
+        "enhancement_bonus": 1,
+        "selection_timing": "item_creation"
+      },
+      "requires_base_item": true,
+      "field_notes": [
+        "Вес, базовый урон, владение, ограничения доспеха и свойства оружия берутся из выбранного базового предмета."
+      ],
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "full_source_text_included": false,
+      "description_origin": "independent_short_mechanical_summary"
+    },
+    {
+      "id": "dnd_5e_2014:item:weapon-plus-2",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "magic_item",
+      "name_ru": "Оружие +2",
+      "name_en": "Weapon +2",
+      "book_code": "DMG14",
+      "source_ref": "dndsu:item:160-weapon-1-2-3",
+      "source_url": "https://dnd.su/items/160-weapon-1-2-3/",
+      "item_type": "weapon",
+      "rarity": "rare",
+      "attunement": {
+        "required": false,
+        "requirements": []
+      },
+      "summary_ru": "Магическое улучшение выбранного базового предмета; не заменяет его обычные свойства.",
+      "activation": [],
+      "effects": [
+        {
+          "kind": "weapon_enhancement",
+          "attack_bonus": 2,
+          "damage_bonus": 2,
+          "attacks_are_magical": true,
+          "requires": "attack_with_this_weapon"
+        }
+      ],
+      "charges": null,
+      "consumable": false,
+      "weight_lb": null,
+      "price_gp": null,
+      "price_policy": "not_assigned_no_2024_or_market_price_import",
+      "variant": {
+        "kind": "base_item_required",
+        "allowed_categories": [
+          "weapon"
+        ],
+        "enhancement_bonus": 2,
+        "selection_timing": "item_creation"
+      },
+      "requires_base_item": true,
+      "field_notes": [
+        "Вес, базовый урон, владение, ограничения доспеха и свойства оружия берутся из выбранного базового предмета."
+      ],
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "full_source_text_included": false,
+      "description_origin": "independent_short_mechanical_summary"
+    },
+    {
+      "id": "dnd_5e_2014:item:weapon-plus-3",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "magic_item",
+      "name_ru": "Оружие +3",
+      "name_en": "Weapon +3",
+      "book_code": "DMG14",
+      "source_ref": "dndsu:item:160-weapon-1-2-3",
+      "source_url": "https://dnd.su/items/160-weapon-1-2-3/",
+      "item_type": "weapon",
+      "rarity": "very_rare",
+      "attunement": {
+        "required": false,
+        "requirements": []
+      },
+      "summary_ru": "Магическое улучшение выбранного базового предмета; не заменяет его обычные свойства.",
+      "activation": [],
+      "effects": [
+        {
+          "kind": "weapon_enhancement",
+          "attack_bonus": 3,
+          "damage_bonus": 3,
+          "attacks_are_magical": true,
+          "requires": "attack_with_this_weapon"
+        }
+      ],
+      "charges": null,
+      "consumable": false,
+      "weight_lb": null,
+      "price_gp": null,
+      "price_policy": "not_assigned_no_2024_or_market_price_import",
+      "variant": {
+        "kind": "base_item_required",
+        "allowed_categories": [
+          "weapon"
+        ],
+        "enhancement_bonus": 3,
+        "selection_timing": "item_creation"
+      },
+      "requires_base_item": true,
+      "field_notes": [
+        "Вес, базовый урон, владение, ограничения доспеха и свойства оружия берутся из выбранного базового предмета."
+      ],
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "full_source_text_included": false,
+      "description_origin": "independent_short_mechanical_summary"
+    },
+    {
+      "id": "dnd_5e_2014:item:armor-plus-1",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "magic_item",
+      "name_ru": "Доспех +1",
+      "name_en": "Armor +1",
+      "book_code": "DMG14",
+      "source_ref": "dndsu:item:33-armor-1-2-3",
+      "source_url": "https://www.dnd.su/items/33-armor-1-2-3/",
+      "item_type": "armor",
+      "rarity": "rare",
+      "attunement": {
+        "required": false,
+        "requirements": []
+      },
+      "summary_ru": "Магическое улучшение выбранного базового предмета; не заменяет его обычные свойства.",
+      "activation": [],
+      "effects": [
+        {
+          "kind": "armor_class_bonus",
+          "value": 1,
+          "requires": "worn",
+          "stacks_with_base_shield_bonus": false
+        }
+      ],
+      "charges": null,
+      "consumable": false,
+      "weight_lb": null,
+      "price_gp": null,
+      "price_policy": "not_assigned_no_2024_or_market_price_import",
+      "variant": {
+        "kind": "base_item_required",
+        "allowed_categories": [
+          "armor"
+        ],
+        "enhancement_bonus": 1,
+        "selection_timing": "item_creation"
+      },
+      "requires_base_item": true,
+      "field_notes": [
+        "Вес, базовый урон, владение, ограничения доспеха и свойства оружия берутся из выбранного базового предмета."
+      ],
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "full_source_text_included": false,
+      "description_origin": "independent_short_mechanical_summary"
+    },
+    {
+      "id": "dnd_5e_2014:item:armor-plus-2",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "magic_item",
+      "name_ru": "Доспех +2",
+      "name_en": "Armor +2",
+      "book_code": "DMG14",
+      "source_ref": "dndsu:item:33-armor-1-2-3",
+      "source_url": "https://www.dnd.su/items/33-armor-1-2-3/",
+      "item_type": "armor",
+      "rarity": "very_rare",
+      "attunement": {
+        "required": false,
+        "requirements": []
+      },
+      "summary_ru": "Магическое улучшение выбранного базового предмета; не заменяет его обычные свойства.",
+      "activation": [],
+      "effects": [
+        {
+          "kind": "armor_class_bonus",
+          "value": 2,
+          "requires": "worn",
+          "stacks_with_base_shield_bonus": false
+        }
+      ],
+      "charges": null,
+      "consumable": false,
+      "weight_lb": null,
+      "price_gp": null,
+      "price_policy": "not_assigned_no_2024_or_market_price_import",
+      "variant": {
+        "kind": "base_item_required",
+        "allowed_categories": [
+          "armor"
+        ],
+        "enhancement_bonus": 2,
+        "selection_timing": "item_creation"
+      },
+      "requires_base_item": true,
+      "field_notes": [
+        "Вес, базовый урон, владение, ограничения доспеха и свойства оружия берутся из выбранного базового предмета."
+      ],
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "full_source_text_included": false,
+      "description_origin": "independent_short_mechanical_summary"
+    },
+    {
+      "id": "dnd_5e_2014:item:armor-plus-3",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "magic_item",
+      "name_ru": "Доспех +3",
+      "name_en": "Armor +3",
+      "book_code": "DMG14",
+      "source_ref": "dndsu:item:33-armor-1-2-3",
+      "source_url": "https://www.dnd.su/items/33-armor-1-2-3/",
+      "item_type": "armor",
+      "rarity": "legendary",
+      "attunement": {
+        "required": false,
+        "requirements": []
+      },
+      "summary_ru": "Магическое улучшение выбранного базового предмета; не заменяет его обычные свойства.",
+      "activation": [],
+      "effects": [
+        {
+          "kind": "armor_class_bonus",
+          "value": 3,
+          "requires": "worn",
+          "stacks_with_base_shield_bonus": false
+        }
+      ],
+      "charges": null,
+      "consumable": false,
+      "weight_lb": null,
+      "price_gp": null,
+      "price_policy": "not_assigned_no_2024_or_market_price_import",
+      "variant": {
+        "kind": "base_item_required",
+        "allowed_categories": [
+          "armor"
+        ],
+        "enhancement_bonus": 3,
+        "selection_timing": "item_creation"
+      },
+      "requires_base_item": true,
+      "field_notes": [
+        "Вес, базовый урон, владение, ограничения доспеха и свойства оружия берутся из выбранного базового предмета."
+      ],
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "full_source_text_included": false,
+      "description_origin": "independent_short_mechanical_summary"
+    },
+    {
+      "id": "dnd_5e_2014:item:shield-plus-1",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "magic_item",
+      "name_ru": "Щит +1",
+      "name_en": "Shield +1",
+      "book_code": "DMG14",
+      "source_ref": "dndsu:item:254-shield-1-2-3",
+      "source_url": "https://dnd.su/items/254-shield-1-2-3/",
+      "item_type": "shield",
+      "rarity": "uncommon",
+      "attunement": {
+        "required": false,
+        "requirements": []
+      },
+      "summary_ru": "Магическое улучшение выбранного базового предмета; не заменяет его обычные свойства.",
+      "activation": [],
+      "effects": [
+        {
+          "kind": "armor_class_bonus",
+          "value": 1,
+          "requires": "wielded",
+          "stacks_with_base_shield_bonus": true
+        }
+      ],
+      "charges": null,
+      "consumable": false,
+      "weight_lb": null,
+      "price_gp": null,
+      "price_policy": "not_assigned_no_2024_or_market_price_import",
+      "variant": {
+        "kind": "base_item_required",
+        "allowed_categories": [
+          "shield"
+        ],
+        "enhancement_bonus": 1,
+        "selection_timing": "item_creation"
+      },
+      "requires_base_item": true,
+      "field_notes": [
+        "Вес, базовый урон, владение, ограничения доспеха и свойства оружия берутся из выбранного базового предмета."
+      ],
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "full_source_text_included": false,
+      "description_origin": "independent_short_mechanical_summary"
+    },
+    {
+      "id": "dnd_5e_2014:item:shield-plus-2",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "magic_item",
+      "name_ru": "Щит +2",
+      "name_en": "Shield +2",
+      "book_code": "DMG14",
+      "source_ref": "dndsu:item:254-shield-1-2-3",
+      "source_url": "https://dnd.su/items/254-shield-1-2-3/",
+      "item_type": "shield",
+      "rarity": "rare",
+      "attunement": {
+        "required": false,
+        "requirements": []
+      },
+      "summary_ru": "Магическое улучшение выбранного базового предмета; не заменяет его обычные свойства.",
+      "activation": [],
+      "effects": [
+        {
+          "kind": "armor_class_bonus",
+          "value": 2,
+          "requires": "wielded",
+          "stacks_with_base_shield_bonus": true
+        }
+      ],
+      "charges": null,
+      "consumable": false,
+      "weight_lb": null,
+      "price_gp": null,
+      "price_policy": "not_assigned_no_2024_or_market_price_import",
+      "variant": {
+        "kind": "base_item_required",
+        "allowed_categories": [
+          "shield"
+        ],
+        "enhancement_bonus": 2,
+        "selection_timing": "item_creation"
+      },
+      "requires_base_item": true,
+      "field_notes": [
+        "Вес, базовый урон, владение, ограничения доспеха и свойства оружия берутся из выбранного базового предмета."
+      ],
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "full_source_text_included": false,
+      "description_origin": "independent_short_mechanical_summary"
+    },
+    {
+      "id": "dnd_5e_2014:item:shield-plus-3",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "magic_item",
+      "name_ru": "Щит +3",
+      "name_en": "Shield +3",
+      "book_code": "DMG14",
+      "source_ref": "dndsu:item:254-shield-1-2-3",
+      "source_url": "https://dnd.su/items/254-shield-1-2-3/",
+      "item_type": "shield",
+      "rarity": "very_rare",
+      "attunement": {
+        "required": false,
+        "requirements": []
+      },
+      "summary_ru": "Магическое улучшение выбранного базового предмета; не заменяет его обычные свойства.",
+      "activation": [],
+      "effects": [
+        {
+          "kind": "armor_class_bonus",
+          "value": 3,
+          "requires": "wielded",
+          "stacks_with_base_shield_bonus": true
+        }
+      ],
+      "charges": null,
+      "consumable": false,
+      "weight_lb": null,
+      "price_gp": null,
+      "price_policy": "not_assigned_no_2024_or_market_price_import",
+      "variant": {
+        "kind": "base_item_required",
+        "allowed_categories": [
+          "shield"
+        ],
+        "enhancement_bonus": 3,
+        "selection_timing": "item_creation"
+      },
+      "requires_base_item": true,
+      "field_notes": [
+        "Вес, базовый урон, владение, ограничения доспеха и свойства оружия берутся из выбранного базового предмета."
+      ],
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "full_source_text_included": false,
+      "description_origin": "independent_short_mechanical_summary"
+    },
+    {
+      "id": "dnd_5e_2014:item:bag-of-holding",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "magic_item",
+      "name_ru": "Сумка хранения",
+      "name_en": "Bag of Holding",
+      "book_code": "DMG14",
+      "source_ref": "dndsu:item:227-bag-of-holding",
+      "source_url": "https://dnd.su/items/227-bag-of-holding/",
+      "item_type": "wondrous",
+      "rarity": "uncommon",
+      "attunement": {
+        "required": false,
+        "requirements": []
+      },
+      "summary_ru": "Межпространственное хранилище с ограничениями массы, объёма и запаса воздуха.",
+      "activation": [
+        {
+          "id": "retrieve",
+          "action_cost": "action"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "extradimensional_storage",
+          "capacity_lb": 500,
+          "capacity_cubic_ft": 64,
+          "opening_diameter_ft_approx": 2,
+          "depth_ft_approx": 4,
+          "air_minutes": {
+            "numerator": 10,
+            "divide_by": "breathing_creature_count",
+            "minimum": 1
+          },
+          "air_exhausted": "suffocation",
+          "destruction_triggers": [
+            "overloaded",
+            "pierced",
+            "torn"
+          ],
+          "on_destruction": "contents_scattered_astral_plane",
+          "inside_out": "contents_spill_unharmed; unusable_until_reversed",
+          "nested_in_similar_extradimensional_item": {
+            "both_destroyed": true,
+            "gate_radius_ft": 10,
+            "transport": "all_creatures_in_radius_to_random_astral_location",
+            "one_way": true,
+            "closes_after_transport": true
+          }
+        }
+      ],
+      "charges": null,
+      "consumable": false,
+      "weight_lb": 15,
+      "price_gp": null,
+      "price_policy": "not_assigned_no_2024_or_market_price_import",
+      "variant": null,
+      "requires_base_item": false,
+      "field_notes": [],
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "full_source_text_included": false,
+      "description_origin": "independent_short_mechanical_summary"
+    },
+    {
+      "id": "dnd_5e_2014:item:cloak-of-protection",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "magic_item",
+      "name_ru": "Плащ защиты",
+      "name_en": "Cloak of Protection",
+      "book_code": "DMG14",
+      "source_ref": "dndsu:item:171-cloak-of-protection",
+      "source_url": "https://dnd.su/items/171-cloak-of-protection/",
+      "item_type": "wondrous",
+      "rarity": "uncommon",
+      "attunement": {
+        "required": true,
+        "requirements": []
+      },
+      "summary_ru": "Защищает настроившегося владельца, пока предмет надет.",
+      "activation": [],
+      "effects": [
+        {
+          "kind": "armor_class_bonus",
+          "value": 1,
+          "requires": [
+            "worn",
+            "attuned"
+          ]
+        },
+        {
+          "kind": "saving_throw_bonus",
+          "value": 1,
+          "abilities": "all",
+          "requires": [
+            "worn",
+            "attuned"
+          ]
+        }
+      ],
+      "charges": null,
+      "consumable": false,
+      "weight_lb": null,
+      "price_gp": null,
+      "price_policy": "not_assigned_no_2024_or_market_price_import",
+      "variant": null,
+      "requires_base_item": false,
+      "field_notes": [],
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "full_source_text_included": false,
+      "description_origin": "independent_short_mechanical_summary"
+    },
+    {
+      "id": "dnd_5e_2014:item:ring-of-protection",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "magic_item",
+      "name_ru": "Кольцо защиты",
+      "name_en": "Ring of Protection",
+      "book_code": "DMG14",
+      "source_ref": "dndsu:item:94-ring-of-protection",
+      "source_url": "https://dnd.su/items/94-ring-of-protection/",
+      "item_type": "ring",
+      "rarity": "rare",
+      "attunement": {
+        "required": true,
+        "requirements": []
+      },
+      "summary_ru": "Защищает настроившегося владельца, пока предмет надет.",
+      "activation": [],
+      "effects": [
+        {
+          "kind": "armor_class_bonus",
+          "value": 1,
+          "requires": [
+            "worn",
+            "attuned"
+          ]
+        },
+        {
+          "kind": "saving_throw_bonus",
+          "value": 1,
+          "abilities": "all",
+          "requires": [
+            "worn",
+            "attuned"
+          ]
+        }
+      ],
+      "charges": null,
+      "consumable": false,
+      "weight_lb": null,
+      "price_gp": null,
+      "price_policy": "not_assigned_no_2024_or_market_price_import",
+      "variant": null,
+      "requires_base_item": false,
+      "field_notes": [],
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "full_source_text_included": false,
+      "description_origin": "independent_short_mechanical_summary"
+    },
+    {
+      "id": "dnd_5e_2014:item:ring-of-resistance",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "magic_item",
+      "name_ru": "Кольцо сопротивления",
+      "name_en": "Ring of Resistance",
+      "book_code": "DMG14",
+      "source_ref": "dndsu:item:107-ring-of-resistance",
+      "source_url": "https://5e14.dnd.su/items/107-ring-of-resistance/",
+      "item_type": "ring",
+      "rarity": "rare",
+      "attunement": {
+        "required": true,
+        "requirements": []
+      },
+      "summary_ru": "Даёт сопротивление одному закреплённому виду урона; не всем видам одновременно.",
+      "activation": [],
+      "effects": [
+        {
+          "kind": "damage_resistance",
+          "damage_type_from": "variant.damage_type",
+          "requires": [
+            "worn",
+            "attuned"
+          ]
+        }
+      ],
+      "charges": null,
+      "consumable": false,
+      "weight_lb": null,
+      "price_gp": null,
+      "price_policy": "not_assigned_no_2024_or_market_price_import",
+      "variant": {
+        "kind": "damage_type_required",
+        "selection_timing": "item_creation",
+        "selection_method": [
+          "dm_choice",
+          "1d10"
+        ],
+        "options": [
+          {
+            "roll": 1,
+            "damage_type": "acid",
+            "gem_ru": "жемчужина"
+          },
+          {
+            "roll": 2,
+            "damage_type": "cold",
+            "gem_ru": "турмалин"
+          },
+          {
+            "roll": 3,
+            "damage_type": "fire",
+            "gem_ru": "гранат"
+          },
+          {
+            "roll": 4,
+            "damage_type": "force",
+            "gem_ru": "сапфир"
+          },
+          {
+            "roll": 5,
+            "damage_type": "lightning",
+            "gem_ru": "цитрин"
+          },
+          {
+            "roll": 6,
+            "damage_type": "necrotic",
+            "gem_ru": "гагат"
+          },
+          {
+            "roll": 7,
+            "damage_type": "poison",
+            "gem_ru": "аметист"
+          },
+          {
+            "roll": 8,
+            "damage_type": "psychic",
+            "gem_ru": "жадеит"
+          },
+          {
+            "roll": 9,
+            "damage_type": "radiant",
+            "gem_ru": "топаз"
+          },
+          {
+            "roll": 10,
+            "damage_type": "thunder",
+            "gem_ru": "шпинель"
+          }
+        ]
+      },
+      "requires_base_item": false,
+      "field_notes": [],
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "full_source_text_included": false,
+      "description_origin": "independent_short_mechanical_summary"
+    },
+    {
+      "id": "dnd_5e_2014:item:gauntlets-of-ogre-power",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "magic_item",
+      "name_ru": "Рукавицы силы огра",
+      "name_en": "Gauntlets of Ogre Power",
+      "book_code": "DMG14",
+      "source_ref": "dndsu:item:203-gauntlets-of-ogre-power",
+      "source_url": "https://dnd.su/items/203-gauntlets-of-ogre-power/",
+      "item_type": "wondrous",
+      "rarity": "uncommon",
+      "attunement": {
+        "required": true,
+        "requirements": []
+      },
+      "summary_ru": "Устанавливает характеристику на заданное значение, только если без предмета она ниже.",
+      "activation": [],
+      "effects": [
+        {
+          "kind": "ability_score_floor",
+          "ability": "str",
+          "value": 19,
+          "requires": [
+            "worn",
+            "attuned"
+          ],
+          "not_an_additive_bonus": true
+        }
+      ],
+      "charges": null,
+      "consumable": false,
+      "weight_lb": null,
+      "price_gp": null,
+      "price_policy": "not_assigned_no_2024_or_market_price_import",
+      "variant": null,
+      "requires_base_item": false,
+      "field_notes": [],
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "full_source_text_included": false,
+      "description_origin": "independent_short_mechanical_summary"
+    },
+    {
+      "id": "dnd_5e_2014:item:headband-of-intellect",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "magic_item",
+      "name_ru": "Повязка интеллекта",
+      "name_en": "Headband of Intellect",
+      "book_code": "DMG14",
+      "source_ref": "dndsu:item:178-headband-of-intellect",
+      "source_url": "https://dnd.su/items/178-headband-of-intellect/",
+      "item_type": "wondrous",
+      "rarity": "uncommon",
+      "attunement": {
+        "required": true,
+        "requirements": []
+      },
+      "summary_ru": "Устанавливает характеристику на заданное значение, только если без предмета она ниже.",
+      "activation": [],
+      "effects": [
+        {
+          "kind": "ability_score_floor",
+          "ability": "int",
+          "value": 19,
+          "requires": [
+            "worn",
+            "attuned"
+          ],
+          "not_an_additive_bonus": true
+        }
+      ],
+      "charges": null,
+      "consumable": false,
+      "weight_lb": null,
+      "price_gp": null,
+      "price_policy": "not_assigned_no_2024_or_market_price_import",
+      "variant": null,
+      "requires_base_item": false,
+      "field_notes": [],
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "full_source_text_included": false,
+      "description_origin": "independent_short_mechanical_summary"
+    },
+    {
+      "id": "dnd_5e_2014:item:amulet-of-health",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "magic_item",
+      "name_ru": "Амулет здоровья",
+      "name_en": "Amulet of Health",
+      "book_code": "DMG14",
+      "source_ref": "dndsu:item:4-amulet-of-health",
+      "source_url": "https://5e14.dnd.su/items/4-amulet-of-health/",
+      "item_type": "wondrous",
+      "rarity": "rare",
+      "attunement": {
+        "required": true,
+        "requirements": []
+      },
+      "summary_ru": "Устанавливает характеристику на заданное значение, только если без предмета она ниже.",
+      "activation": [],
+      "effects": [
+        {
+          "kind": "ability_score_floor",
+          "ability": "con",
+          "value": 19,
+          "requires": [
+            "worn",
+            "attuned"
+          ],
+          "not_an_additive_bonus": true
+        }
+      ],
+      "charges": null,
+      "consumable": false,
+      "weight_lb": null,
+      "price_gp": null,
+      "price_policy": "not_assigned_no_2024_or_market_price_import",
+      "variant": null,
+      "requires_base_item": false,
+      "field_notes": [],
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "full_source_text_included": false,
+      "description_origin": "independent_short_mechanical_summary"
+    },
+    {
+      "id": "dnd_5e_2014:item:goggles-of-night",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "magic_item",
+      "name_ru": "Очки ночного зрения",
+      "name_en": "Goggles of Night",
+      "book_code": "DMG14",
+      "source_ref": "dndsu:item:154-goggles-of-night",
+      "source_url": "https://dnd.su/items/154-goggles-of-night/",
+      "item_type": "wondrous",
+      "rarity": "uncommon",
+      "attunement": {
+        "required": false,
+        "requirements": []
+      },
+      "summary_ru": "Дают тёмное зрение либо увеличивают уже имеющуюся дальность.",
+      "activation": [],
+      "effects": [
+        {
+          "kind": "darkvision",
+          "grant_if_absent_ft": 60,
+          "extend_existing_ft": 60,
+          "requires": "worn"
+        }
+      ],
+      "charges": null,
+      "consumable": false,
+      "weight_lb": null,
+      "price_gp": null,
+      "price_policy": "not_assigned_no_2024_or_market_price_import",
+      "variant": null,
+      "requires_base_item": false,
+      "field_notes": [],
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "full_source_text_included": false,
+      "description_origin": "independent_short_mechanical_summary"
+    },
+    {
+      "id": "dnd_5e_2014:item:boots-of-elvenkind",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "magic_item",
+      "name_ru": "Эльфийские сапоги",
+      "name_en": "Boots of Elvenkind",
+      "book_code": "DMG14",
+      "source_ref": "dndsu:item:260-boots-of-elvenkind",
+      "source_url": "https://dnd.su/items/260-boots-of-elvenkind/",
+      "item_type": "wondrous",
+      "rarity": "uncommon",
+      "attunement": {
+        "required": false,
+        "requirements": []
+      },
+      "summary_ru": "Шаги бесшумны; легче скрытно двигаться.",
+      "activation": [],
+      "effects": [
+        {
+          "kind": "silent_footsteps",
+          "surface": "any",
+          "requires": "worn"
+        },
+        {
+          "kind": "check_advantage",
+          "check": "dex:stealth",
+          "when": "relies_on_moving_silently",
+          "requires": "worn"
+        }
+      ],
+      "charges": null,
+      "consumable": false,
+      "weight_lb": null,
+      "price_gp": null,
+      "price_policy": "not_assigned_no_2024_or_market_price_import",
+      "variant": null,
+      "requires_base_item": false,
+      "field_notes": [],
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "full_source_text_included": false,
+      "description_origin": "independent_short_mechanical_summary"
+    },
+    {
+      "id": "dnd_5e_2014:item:cloak-of-elvenkind",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "magic_item",
+      "name_ru": "Эльфийский плащ",
+      "name_en": "Cloak of Elvenkind",
+      "book_code": "DMG14",
+      "source_ref": "dndsu:item:261-cloak-of-elvenkind",
+      "source_url": "https://dnd.su/items/261-cloak-of-elvenkind/",
+      "item_type": "wondrous",
+      "rarity": "uncommon",
+      "attunement": {
+        "required": true,
+        "requirements": []
+      },
+      "summary_ru": "Поднятый капюшон помогает скрываться и затрудняет обнаружение зрением.",
+      "activation": [
+        {
+          "id": "hood-up-or-down",
+          "action_cost": "action"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "check_advantage",
+          "check": "dex:stealth",
+          "when": "hiding",
+          "requires": [
+            "worn",
+            "attuned",
+            "hood_up"
+          ]
+        },
+        {
+          "kind": "observer_check_disadvantage",
+          "check": "wis:perception",
+          "sense": "sight",
+          "requires": [
+            "worn",
+            "attuned",
+            "hood_up"
+          ]
+        }
+      ],
+      "charges": null,
+      "consumable": false,
+      "weight_lb": null,
+      "price_gp": null,
+      "price_policy": "not_assigned_no_2024_or_market_price_import",
+      "variant": null,
+      "requires_base_item": false,
+      "field_notes": [],
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "full_source_text_included": false,
+      "description_origin": "independent_short_mechanical_summary"
+    },
+    {
+      "id": "dnd_5e_2014:item:boots-of-speed",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "magic_item",
+      "name_ru": "Сапоги скорости",
+      "name_en": "Boots of Speed",
+      "book_code": "DMG14",
+      "source_ref": "dndsu:item:205-boots-of-speed",
+      "source_url": "https://dnd.su/items/205-boots-of-speed/",
+      "item_type": "wondrous",
+      "rarity": "rare",
+      "attunement": {
+        "required": true,
+        "requirements": []
+      },
+      "summary_ru": "Ускоряют ходьбу и мешают провоцированным атакам; общий запас времени ограничен.",
+      "activation": [
+        {
+          "id": "activate",
+          "action_cost": "bonus_action",
+          "gesture": "click_heels"
+        },
+        {
+          "id": "deactivate",
+          "action_cost": null,
+          "gesture": "click_heels",
+          "note_ru": "Отдельная цена повторного щелчка в тексте предмета не уточняется; движок должен иметь явную политику."
+        }
+      ],
+      "effects": [
+        {
+          "kind": "speed_multiplier",
+          "mode": "walk",
+          "multiplier": 2,
+          "requires": [
+            "worn",
+            "attuned",
+            "active"
+          ]
+        },
+        {
+          "kind": "incoming_attack_disadvantage",
+          "attack_kind": "opportunity",
+          "requires": [
+            "worn",
+            "attuned",
+            "active"
+          ]
+        }
+      ],
+      "charges": null,
+      "consumable": false,
+      "weight_lb": null,
+      "price_gp": null,
+      "price_policy": "not_assigned_no_2024_or_market_price_import",
+      "variant": null,
+      "requires_base_item": false,
+      "field_notes": [],
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "full_source_text_included": false,
+      "description_origin": "independent_short_mechanical_summary",
+      "duration_pool": {
+        "maximum_minutes": 10,
+        "recovery": "long_rest",
+        "recovery_amount_minutes": 10
+      }
+    },
+    {
+      "id": "dnd_5e_2014:item:winged-boots",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "magic_item",
+      "name_ru": "Крылатые сапоги",
+      "name_en": "Winged Boots",
+      "book_code": "DMG14",
+      "source_ref": "dndsu:item:117-winged-boots",
+      "source_url": "https://dnd.su/items/117-winged-boots/",
+      "item_type": "wondrous",
+      "rarity": "uncommon",
+      "attunement": {
+        "required": true,
+        "requirements": []
+      },
+      "summary_ru": "Дают полёт с ограниченным запасом времени и постепенным восстановлением.",
+      "activation": [],
+      "effects": [
+        {
+          "kind": "speed_equal_to",
+          "mode": "fly",
+          "source_mode": "walk",
+          "requires": [
+            "worn",
+            "attuned",
+            "remaining_duration"
+          ]
+        },
+        {
+          "kind": "duration_exhaustion_descent",
+          "ft_per_round": 30,
+          "until": "landed"
+        }
+      ],
+      "charges": null,
+      "consumable": false,
+      "weight_lb": null,
+      "price_gp": null,
+      "price_policy": "not_assigned_no_2024_or_market_price_import",
+      "variant": null,
+      "requires_base_item": false,
+      "field_notes": [],
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "full_source_text_included": false,
+      "description_origin": "independent_short_mechanical_summary",
+      "duration_pool": {
+        "maximum_minutes": 240,
+        "minimum_charge_per_use_minutes": 1,
+        "recovery": {
+          "unused_hours": 12,
+          "recover_minutes": 120,
+          "cap_minutes": 240
+        }
+      }
+    },
+    {
+      "id": "dnd_5e_2014:item:wand-of-magic-missiles",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "magic_item",
+      "name_ru": "Волшебная палочка волшебных снарядов",
+      "name_en": "Wand of Magic Missiles",
+      "book_code": "DMG14",
+      "source_ref": "dndsu:item:26-wand-of-magic-missiles",
+      "source_url": "https://dnd.su/items/26-wand-of-magic-missiles/",
+      "item_type": "wand",
+      "rarity": "uncommon",
+      "attunement": {
+        "required": false,
+        "requirements": []
+      },
+      "summary_ru": "Расходует заряды на заклинание; последний заряд несёт риск уничтожения.",
+      "activation": [
+        {
+          "id": "cast",
+          "action_cost": "action",
+          "requires": [
+            "held"
+          ],
+          "min_charges": 1,
+          "max_charges": 7
+        }
+      ],
+      "effects": [
+        {
+          "kind": "cast_spell",
+          "spell_key": "magic-missile",
+          "ruleset_id": "dnd_5e_2014",
+          "base_spell_level": 1,
+          "save_dc": null,
+          "additional_levels_per_extra_charge": 1,
+          "uses_caster_spell_slot": false,
+          "components_required": false,
+          "concentration_required": false,
+          "spell_definition": "external_2014_spell_catalog_required"
+        }
+      ],
+      "charges": {
+        "maximum": 7,
+        "regain": {
+          "trigger": "dawn",
+          "expression": "1d6+1",
+          "cap_at_maximum": true
+        },
+        "last_charge": {
+          "roll": "1d20",
+          "destroy_on": [
+            1
+          ]
+        }
+      },
+      "consumable": false,
+      "weight_lb": null,
+      "price_gp": null,
+      "price_policy": "not_assigned_no_2024_or_market_price_import",
+      "variant": null,
+      "requires_base_item": false,
+      "field_notes": [],
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "full_source_text_included": false,
+      "description_origin": "independent_short_mechanical_summary"
+    },
+    {
+      "id": "dnd_5e_2014:item:wand-of-web",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "magic_item",
+      "name_ru": "Волшебная палочка паутины",
+      "name_en": "Wand of Web",
+      "book_code": "DMG14",
+      "source_ref": "dndsu:item:22-wand-of-web",
+      "source_url": "https://5e14.dnd.su/items/22-wand-of-web/",
+      "item_type": "wand",
+      "rarity": "uncommon",
+      "attunement": {
+        "required": true,
+        "requirements": [
+          "spellcaster"
+        ]
+      },
+      "summary_ru": "Расходует заряды на заклинание; последний заряд несёт риск уничтожения.",
+      "activation": [
+        {
+          "id": "cast",
+          "action_cost": "action",
+          "requires": [
+            "held",
+            "attuned"
+          ],
+          "min_charges": 1,
+          "max_charges": 1
+        }
+      ],
+      "effects": [
+        {
+          "kind": "cast_spell",
+          "spell_key": "web",
+          "ruleset_id": "dnd_5e_2014",
+          "base_spell_level": 2,
+          "save_dc": 15,
+          "additional_levels_per_extra_charge": 0,
+          "uses_caster_spell_slot": false,
+          "components_required": false,
+          "concentration_required": true,
+          "spell_definition": "external_2014_spell_catalog_required"
+        }
+      ],
+      "charges": {
+        "maximum": 7,
+        "regain": {
+          "trigger": "dawn",
+          "expression": "1d6+1",
+          "cap_at_maximum": true
+        },
+        "last_charge": {
+          "roll": "1d20",
+          "destroy_on": [
+            1
+          ]
+        }
+      },
+      "consumable": false,
+      "weight_lb": null,
+      "price_gp": null,
+      "price_policy": "not_assigned_no_2024_or_market_price_import",
+      "variant": null,
+      "requires_base_item": false,
+      "field_notes": [],
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "full_source_text_included": false,
+      "description_origin": "independent_short_mechanical_summary"
+    },
+    {
+      "id": "dnd_5e_2014:item:wand-of-fireballs",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "magic_item",
+      "name_ru": "Волшебная палочка огненных шаров",
+      "name_en": "Wand of Fireballs",
+      "book_code": "DMG14",
+      "source_ref": "dndsu:item:20-wand-of-fireballs",
+      "source_url": "https://dnd.su/items/20-wand-of-fireballs/",
+      "item_type": "wand",
+      "rarity": "rare",
+      "attunement": {
+        "required": true,
+        "requirements": [
+          "spellcaster"
+        ]
+      },
+      "summary_ru": "Расходует заряды на заклинание; последний заряд несёт риск уничтожения.",
+      "activation": [
+        {
+          "id": "cast",
+          "action_cost": "action",
+          "requires": [
+            "held",
+            "attuned"
+          ],
+          "min_charges": 1,
+          "max_charges": 7
+        }
+      ],
+      "effects": [
+        {
+          "kind": "cast_spell",
+          "spell_key": "fireball",
+          "ruleset_id": "dnd_5e_2014",
+          "base_spell_level": 3,
+          "save_dc": 15,
+          "additional_levels_per_extra_charge": 1,
+          "uses_caster_spell_slot": false,
+          "components_required": false,
+          "concentration_required": false,
+          "spell_definition": "external_2014_spell_catalog_required"
+        }
+      ],
+      "charges": {
+        "maximum": 7,
+        "regain": {
+          "trigger": "dawn",
+          "expression": "1d6+1",
+          "cap_at_maximum": true
+        },
+        "last_charge": {
+          "roll": "1d20",
+          "destroy_on": [
+            1
+          ]
+        }
+      },
+      "consumable": false,
+      "weight_lb": null,
+      "price_gp": null,
+      "price_policy": "not_assigned_no_2024_or_market_price_import",
+      "variant": null,
+      "requires_base_item": false,
+      "field_notes": [],
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "full_source_text_included": false,
+      "description_origin": "independent_short_mechanical_summary"
+    },
+    {
+      "id": "dnd_5e_2014:item:immovable-rod",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "magic_item",
+      "name_ru": "Неподвижный жезл",
+      "name_en": "Immovable Rod",
+      "book_code": "DMG14",
+      "source_ref": "dndsu:item:153-immovable-rod",
+      "source_url": "https://dnd.su/items/153-immovable-rod/",
+      "item_type": "rod",
+      "rarity": "uncommon",
+      "attunement": {
+        "required": false,
+        "requirements": []
+      },
+      "summary_ru": "Кнопка фиксирует положение жезла, но слишком большая нагрузка срывает фиксацию.",
+      "activation": [
+        {
+          "id": "toggle",
+          "action_cost": "action",
+          "interaction": "press_button"
+        }
+      ],
+      "effects": [
+        {
+          "kind": "fixed_position",
+          "ignores_gravity": true,
+          "maximum_load_lb": 8000,
+          "overload": "deactivate_and_fall",
+          "force_move": {
+            "action_cost": "action",
+            "check": "str",
+            "dc": 30,
+            "on_success_ft": 10
+          }
+        }
+      ],
+      "charges": null,
+      "consumable": false,
+      "weight_lb": null,
+      "price_gp": null,
+      "price_policy": "not_assigned_no_2024_or_market_price_import",
+      "variant": null,
+      "requires_base_item": false,
+      "field_notes": [],
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "full_source_text_included": false,
+      "description_origin": "independent_short_mechanical_summary"
+    },
+    {
+      "id": "dnd_5e_2014:item:rope-of-climbing",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "magic_item",
+      "name_ru": "Верёвка лазания",
+      "name_en": "Rope of Climbing",
+      "book_code": "DMG14",
+      "source_ref": "dndsu:item:13-rope-of-climbing",
+      "source_url": "https://dnd.su/items/13-rope-of-climbing/",
+      "item_type": "wondrous",
+      "rarity": "uncommon",
+      "attunement": {
+        "required": false,
+        "requirements": []
+      },
+      "summary_ru": "Управляемая командами верёвка, способная закрепляться и образовывать узлы.",
+      "activation": [
+        {
+          "id": "animate",
+          "action_cost": "action",
+          "requires": "hold_one_end",
+          "command": true
+        },
+        {
+          "id": "direct-end",
+          "action_cost": "bonus_action",
+          "command": true
+        }
+      ],
+      "effects": [
+        {
+          "kind": "animated_rope",
+          "length_ft": 60,
+          "capacity_lb": 3000,
+          "end_speed_ft_per_round": 10,
+          "stop_conditions": [
+            "destination_reached",
+            "fully_uncoiled",
+            "halt_command"
+          ],
+          "commands": [
+            "fasten",
+            "unfasten",
+            "knot",
+            "unknot",
+            "coil"
+          ],
+          "knots": {
+            "spacing_ft": 1,
+            "length_reduction_ft": 10,
+            "climb_check_advantage": true
+          },
+          "object": {
+            "ac": 20,
+            "hp": 20,
+            "regeneration": {
+              "hp": 1,
+              "minutes": 5,
+              "requires_hp_at_least": 1
+            },
+            "at_0_hp": "destroyed"
+          }
+        }
+      ],
+      "charges": null,
+      "consumable": false,
+      "weight_lb": 3,
+      "price_gp": null,
+      "price_policy": "not_assigned_no_2024_or_market_price_import",
+      "variant": null,
+      "requires_base_item": false,
+      "field_notes": [],
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "full_source_text_included": false,
+      "description_origin": "independent_short_mechanical_summary"
+    },
+    {
+      "id": "dnd_5e_2014:item:potion-of-climbing",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "magic_item",
+      "name_ru": "Зелье лазания",
+      "name_en": "Potion of Climbing",
+      "book_code": "DMG14",
+      "source_ref": "dndsu:item:60-potion-of-climbing",
+      "source_url": "https://dnd.su/items/60-potion-of-climbing/",
+      "item_type": "potion",
+      "rarity": "common",
+      "attunement": {
+        "required": false,
+        "requirements": []
+      },
+      "summary_ru": "Одноразовый эффект исследования окружающей среды.",
+      "activation": [
+        {
+          "id": "drink",
+          "action_cost": "action",
+          "consumes_item": true
+        }
+      ],
+      "effects": [
+        {
+          "kind": "speed_equal_to",
+          "mode": "climb",
+          "source_mode": "walk"
+        },
+        {
+          "kind": "check_advantage",
+          "check": "str:athletics",
+          "when": "climbing"
+        }
+      ],
+      "charges": null,
+      "consumable": true,
+      "weight_lb": null,
+      "price_gp": null,
+      "price_policy": "not_assigned_no_2024_or_market_price_import",
+      "variant": null,
+      "requires_base_item": false,
+      "field_notes": [],
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "full_source_text_included": false,
+      "description_origin": "independent_short_mechanical_summary",
+      "duration_minutes": 60
+    },
+    {
+      "id": "dnd_5e_2014:item:potion-of-water-breathing",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "magic_item",
+      "name_ru": "Зелье подводного дыхания",
+      "name_en": "Potion of Water Breathing",
+      "book_code": "DMG14",
+      "source_ref": "dndsu:item:65-potion-of-water-breathing",
+      "source_url": "https://dnd.su/items/65-potion-of-water-breathing/",
+      "item_type": "potion",
+      "rarity": "uncommon",
+      "attunement": {
+        "required": false,
+        "requirements": []
+      },
+      "summary_ru": "Одноразовый эффект исследования окружающей среды.",
+      "activation": [
+        {
+          "id": "drink",
+          "action_cost": "action",
+          "consumes_item": true
+        }
+      ],
+      "effects": [
+        {
+          "kind": "breathe",
+          "medium": "water"
+        }
+      ],
+      "charges": null,
+      "consumable": true,
+      "weight_lb": null,
+      "price_gp": null,
+      "price_policy": "not_assigned_no_2024_or_market_price_import",
+      "variant": null,
+      "requires_base_item": false,
+      "field_notes": [],
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "full_source_text_included": false,
+      "description_origin": "independent_short_mechanical_summary",
+      "duration_minutes": 60
+    }
+  ]
+}

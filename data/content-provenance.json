@@ -167,8 +167,8 @@
     },
     {
       "path": "data/character-creation-dnd-5e-2014.json",
-      "sha256": "ba7353db6a39941684f27184f6e629562dcff9e0cb58fed554848c7dc8e4d653",
-      "size_bytes": 19324,
+      "sha256": "63539c224172c03a7a571ec733d981431b0bfc84896f2419447111ffa7607b28",
+      "size_bytes": 19672,
       "source_id": "dndsu-5e14-core",
       "rights_status": "project_license_required",
       "notes": "Структурированные механические факты рас, подрас, обязательных выборов и основных особенностей PHB 2014; полные тексты источника не включены."

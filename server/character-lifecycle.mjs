@@ -527,12 +527,14 @@ export function deriveArmorClass(actor, { abilities = normalizedAbilityScores(ac
   const armorDexterity = bodyArmor ? Math.min(dexterityModifier, bodyArmor.dexterityCap ?? dexterityModifier) : 0
   const shieldBonus = shields.reduce((sum, entry) => sum + integer(entry.profile.armorClassBonus, `armor profile ${entry.catalogId}.armorClassBonus`, { minimum: 0, maximum: 10 }), 0)
   const itemEffectBonus = activeItemEffectTotals(actor).armor_class_bonus
+  const defenseBonus = bodyArmor && normalizedSelectedFeatureIds(actor).includes('fighting-style-defense') ? 1 : 0
   return {
-    value: (bodyArmor ? bodyArmor.base + armorDexterity : unarmoredBase) + shieldBonus + itemEffectBonus,
+    value: (bodyArmor ? bodyArmor.base + armorDexterity : unarmoredBase) + shieldBonus + itemEffectBonus + defenseBonus,
     base: bodyArmor ? bodyArmor.base : unarmoredBase,
     dexterityModifier: bodyArmor ? armorDexterity : dexterityModifier,
     shieldBonus,
     item_effect_bonus: itemEffectBonus,
+    fighting_style_bonus: defenseBonus,
     source: bodyArmor ? 'equipped_server_profile' : classKey === 'barbarian' || classKey === 'monk' ? 'class_unarmored_defense' : 'unarmored',
     armorCatalogId: bodyArmor?.catalogId ?? null,
     shieldCatalogIds: shields.map((entry) => entry.catalogId),
@@ -822,7 +824,7 @@ export function validateCharacterImportCommand(command, state, context = {}) {
   actorFromState(state, actorId)
   assertActorAuthority(actorId, context)
   const rulesetId = String(state?.ruleset_id ?? LEGACY_DEFAULT_RULESET_ID)
-  const parsed = parseCharacterImport(command.document, { rulesetId })
+  const parsed = parseCharacterImport(command.document, { rulesetId, validateCreationLanguages: true })
   const starterCatalog = starterEquipmentCatalogFor(rulesetId)
   const speciesPolicy = characterCreationPolicyFor(rulesetId)
   return {
@@ -1179,7 +1181,7 @@ export function parseCharacterImport(raw, options = {}) {
     if (!isRecord(rawBackgroundChoices)) {
       throw new CharacterLifecycleValidationError('backgroundChoices должен быть объектом', 'IMPORT_BACKGROUND_CHOICE_INVALID')
     }
-    exactKeys(rawBackgroundChoices, ['tools', 'languages'], 'character.backgroundChoices')
+    exactKeys(rawBackgroundChoices, ['tools', 'languages', 'replacementSkills'], 'character.backgroundChoices')
     const backgroundChoices = {
       tools: uniqueIdentifiers(rawBackgroundChoices.tools ?? [], 'character.backgroundChoices.tools', { maximum: 4 }),
       languages: uniqueIdentifiers(rawBackgroundChoices.languages ?? [], 'character.backgroundChoices.languages', { maximum: 4 }),
@@ -1189,6 +1191,26 @@ export function parseCharacterImport(raw, options = {}) {
       throw new CharacterLifecycleValidationError(resolvedChoices.reason, 'IMPORT_BACKGROUND_CHOICE_INVALID')
     }
     canonical.backgroundChoices = { tools: resolvedChoices.tools, languages: resolvedChoices.languages }
+    if (rulesetId === DND_2014_RULESET_ID && options.validateCreationLanguages
+      && resolvedChoices.languages.some((id) => resolvedSpeciesBenefits?.languages.includes(id))) {
+      throw new CharacterLifecycleValidationError('Язык предыстории уже известен от расы: выберите другой язык', 'IMPORT_LANGUAGE_DUPLICATE')
+    }
+    if (own(rawBackgroundChoices, 'replacementSkills')) {
+      const skills = [
+        ...canonical.classSkillProficiencies,
+        ...(resolvedSpeciesBenefits?.skill_proficiencies ?? []),
+        ...background.skillProficiencies,
+      ].map(catalogSkillId)
+      const known = new Set(skills)
+      const count = rulesetId === DND_2014_RULESET_ID ? skills.length - known.size : 0
+      const replacements = uniqueIdentifiers(rawBackgroundChoices.replacementSkills, 'character.backgroundChoices.replacementSkills').map(catalogSkillId)
+      const allowed = new Set(classBuildCatalogInfo().skills.map((skill) => catalogSkillId(skill.id)))
+      if (replacements.length !== count || new Set(replacements).size !== count
+        || replacements.some((id) => !allowed.has(id) || known.has(id))) {
+        throw new CharacterLifecycleValidationError(`Выберите ${count} новых навыков взамен повторяющихся владений`, 'IMPORT_SKILL_REPLACEMENT_INVALID')
+      }
+      canonical.backgroundChoices.replacementSkills = replacements
+    }
     // Навыки и черта здесь намеренно НЕ сохраняются: патч обязан пройти
     // обратно через тот же контракт импорта — его перечитывает reducer при
     // применении и replay, — а производные поля в контракт не входят и

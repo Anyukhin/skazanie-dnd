@@ -177,10 +177,23 @@ export function withBackgroundBenefits(actor, rulesetId = LEGACY_DEFAULT_RULESET
     const { backgroundSkillProficiencies: _skills, backgroundBenefits: _benefits, ...rest } = actor ?? {}
     return rest
   }
+  const granted = [
+    ...(actor.classSkillProficiencies ?? []),
+    ...(actor.speciesSkillProficiencies ?? actor.speciesBenefits?.skill_proficiencies ?? []),
+    ...background.skillProficiencies,
+  ].map((id) => String(id).replace(/-/gu, '_'))
+  const known = new Set(granted)
+  const count = rulesetId === DND_2014_RULESET_ID ? granted.length - known.size : 0
+  // При смене классовых выборов старый повтор может исчезнуть: он больше не
+  // даёт дополнительное владение. Сам сохранённый выбор остаётся в документе.
+  const replacements = [...new Set(/** @type {string[]} */ (actor.backgroundChoices?.replacementSkills ?? []))]
+    .filter((id) => !known.has(id)).slice(0, count)
+  const skills = [...background.skillProficiencies, ...replacements]
+  const benefits = backgroundBenefits(background.id, actor.backgroundAbilityChoice, actor.backgroundChoices, rulesetId)
   return {
     ...actor,
-    backgroundSkillProficiencies: [...background.skillProficiencies],
-    backgroundBenefits: backgroundBenefits(background.id, actor.backgroundAbilityChoice, actor.backgroundChoices, rulesetId),
+    backgroundSkillProficiencies: skills,
+    backgroundBenefits: benefits ? { ...benefits, skill_proficiencies: skills } : null,
   }
 }
 

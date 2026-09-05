@@ -41,7 +41,8 @@ test('content integrity gate verifies hashes, references, counts and the complet
   // и авторская карта Асстоханских равнин
   // (`public/assets/maps/world/skazanie/*.webp`).
   // + 4 авторских плана стартовых городов (`public/assets/maps/city/skazanie/*.webp`).
-  assert.equal(report.integrity.assets, 1371)
+  // + 10 портретов рас мастера создания, включая отдельный портрет дроу.
+  assert.equal(report.integrity.assets, 1381)
   assert.equal(report.integrity.coverage.find((entry) => entry.id === 'feats').coverage, 'missing')
 })
 

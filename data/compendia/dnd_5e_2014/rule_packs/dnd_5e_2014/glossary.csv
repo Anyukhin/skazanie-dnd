@@ -1,0 +1,92 @@
+canonical_id,term_en,term_ru,aliases_ru,notes
+term:checks-ability-modifier,Ability modifier,Модификатор характеристики,модификатор характеристики,Термин расширения; не заменяет существующие canonical_id проекта.
+term:checks-proficiency,Proficiency bonus,Бонус мастерства,бонус мастерства,Термин расширения; не заменяет существующие canonical_id проекта.
+term:checks-ability,Ability check,Проверка характеристики,проверка характеристики,Термин расширения; не заменяет существующие canonical_id проекта.
+term:checks-saving-throw,Saving throw,Спасбросок,спасбросок,Термин расширения; не заменяет существующие canonical_id проекта.
+term:checks-difficulty,Typical difficulties,Типичные сложности,типичные сложности,Термин расширения; не заменяет существующие canonical_id проекта.
+term:checks-advantage,Advantage and disadvantage,Преимущество и помеха,преимущество и помеха,Термин расширения; не заменяет существующие canonical_id проекта.
+term:checks-passive,Passive check,Пассивная проверка,пассивная проверка,Термин расширения; не заменяет существующие canonical_id проекта.
+term:checks-contest,Contest,Состязание,состязание,Термин расширения; не заменяет существующие canonical_id проекта.
+term:checks-group,Group check,Групповая проверка,групповая проверка,Термин расширения; не заменяет существующие canonical_id проекта.
+term:checks-working-together,Working together,Совместная работа,совместная работа,Термин расширения; не заменяет существующие canonical_id проекта.
+term:combat-initiative,Initiative,Инициатива,инициатива,Термин расширения; не заменяет существующие canonical_id проекта.
+term:combat-surprise,Surprise,Внезапность,внезапность,Термин расширения; не заменяет существующие canonical_id проекта.
+term:combat-turn-budget,Turn economy,Ресурсы хода,ресурсы хода,Термин расширения; не заменяет существующие canonical_id проекта.
+term:combat-reaction,Reaction,Реакция,реакция,Термин расширения; не заменяет существующие canonical_id проекта.
+term:combat-attack-roll,Attack roll,Бросок атаки,бросок атаки,Термин расширения; не заменяет существующие canonical_id проекта.
+term:combat-critical,Critical hit,Критическое попадание,критическое попадание,Термин расширения; не заменяет существующие canonical_id проекта.
+term:combat-ranged,Ranged attack,Дальнобойная атака,дальнобойная атака,Термин расширения; не заменяет существующие canonical_id проекта.
+term:combat-unseen,Unseen attackers and targets,Невидимые участники атаки,невидимые участники атаки,Термин расширения; не заменяет существующие canonical_id проекта.
+term:combat-attack-action,Attack action,Действие Атака,действие атака,Термин расширения; не заменяет существующие canonical_id проекта.
+term:combat-opportunity,Opportunity attack,Провоцированная атака,провоцированная атака,Термин расширения; не заменяет существующие canonical_id проекта.
+term:combat-grapple,Grapple,Захват,захват,Термин расширения; не заменяет существующие canonical_id проекта.
+term:combat-escape-grapple,Escape a grapple,Освобождение из захвата,освобождение из захвата,Термин расширения; не заменяет существующие canonical_id проекта.
+term:combat-shove,Shove,Толчок,толчок,Термин расширения; не заменяет существующие canonical_id проекта.
+term:combat-two-weapon,Two-weapon fighting,Бой двумя оружиями,бой двумя оружиями,Термин расширения; не заменяет существующие canonical_id проекта.
+term:combat-dash,Dash,Рывок,рывок,Термин расширения; не заменяет существующие canonical_id проекта.
+term:combat-disengage,Disengage,Отход,отход,Термин расширения; не заменяет существующие canonical_id проекта.
+term:combat-dodge,Dodge,Уклонение,уклонение,Термин расширения; не заменяет существующие canonical_id проекта.
+term:combat-help,Help in combat,Помощь в бою,помощь в бою,Термин расширения; не заменяет существующие canonical_id проекта.
+term:combat-hide,Hide and stealth,Засада и скрытность,засада и скрытность,Термин расширения; не заменяет существующие canonical_id проекта.
+term:combat-ready,Ready an action,Подготовка действия,подготовка действия,Термин расширения; не заменяет существующие canonical_id проекта.
+term:combat-ready-spell,Ready a spell,Подготовка заклинания,подготовка заклинания,Термин расширения; не заменяет существующие canonical_id проекта.
+term:combat-objects,Objects on a turn,Предметы в свой ход,предметы в свой ход,Термин расширения; не заменяет существующие canonical_id проекта.
+term:combat-nonlethal,Knocking a creature out,Несмертельный удар,несмертельный удар,Термин расширения; не заменяет существующие canonical_id проекта.
+term:damage-apply,Damage and resistance,Урон и сопротивления,урон и сопротивления,Термин расширения; не заменяет существующие canonical_id проекта.
+term:damage-healing,Healing,Восстановление хитов,восстановление хитов,Термин расширения; не заменяет существующие canonical_id проекта.
+term:damage-temporary-hp,Temporary hit points,Временные хиты,временные хиты,Термин расширения; не заменяет существующие canonical_id проекта.
+term:damage-zero,Dropping to zero hit points,Падение до нуля хитов,падение до нуля хитов,Термин расширения; не заменяет существующие canonical_id проекта.
+term:damage-death-save,Death saving throws,Спасброски от смерти,спасброски от смерти,Термин расширения; не заменяет существующие canonical_id проекта.
+term:damage-damage-at-zero,Damage at zero hit points,Урон при нуле хитов,урон при нуле хитов,Термин расширения; не заменяет существующие canonical_id проекта.
+term:damage-stabilize,Stabilizing,Стабилизация,стабилизация,Термин расширения; не заменяет существующие canonical_id проекта.
+term:rest-short,Short rest,Короткий отдых,короткий отдых,Термин расширения; не заменяет существующие canonical_id проекта.
+term:rest-long,Long rest,Продолжительный отдых,продолжительный отдых,Термин расширения; не заменяет существующие canonical_id проекта.
+term:movement-budget,Movement budget,Расход перемещения,расход перемещения,Термин расширения; не заменяет существующие canonical_id проекта.
+term:movement-difficult,Difficult terrain,Труднопроходимая местность,труднопроходимая местность,Термин расширения; не заменяет существующие canonical_id проекта.
+term:movement-prone,"Drop prone, crawl, stand","Лечь, ползти и встать","лечь, ползти и встать",Термин расширения; не заменяет существующие canonical_id проекта.
+term:movement-climb-swim,Climbing and swimming,Лазанье и плавание,лазанье и плавание,Термин расширения; не заменяет существующие canonical_id проекта.
+term:movement-jump,Jumping,Прыжки,прыжки,Термин расширения; не заменяет существующие canonical_id проекта.
+term:movement-creature-spaces,Creature spaces,Пространства существ,пространства существ,Термин расширения; не заменяет существующие canonical_id проекта.
+term:movement-squeeze,Squeezing,Протискивание,протискивание,Термин расширения; не заменяет существующие canonical_id проекта.
+term:movement-drag-grappled,Dragging a grappled creature,Перетаскивание схваченного,перетаскивание схваченного,Термин расширения; не заменяет существующие canonical_id проекта.
+term:movement-fall,Falling,Падение,падение,Термин расширения; не заменяет существующие canonical_id проекта.
+term:movement-flight,Losing flight,Потеря полёта,потеря полёта,Термин расширения; не заменяет существующие canonical_id проекта.
+term:environment-cover,Cover,Укрытия,укрытия,Термин расширения; не заменяет существующие canonical_id проекта.
+term:environment-light,Light and visibility,Свет и видимость,свет и видимость,Термин расширения; не заменяет существующие canonical_id проекта.
+term:environment-darkvision,Darkvision,Тёмное зрение,тёмное зрение,Термин расширения; не заменяет существующие canonical_id проекта.
+term:environment-suffocation,Suffocation,Удушение,удушение,Термин расширения; не заменяет существующие canonical_id проекта.
+term:environment-carrying,Carrying capacity,Грузоподъёмность,грузоподъёмность,Термин расширения; не заменяет существующие canonical_id проекта.
+term:spells-slots,Spell slots,Ячейки заклинаний,ячейки заклинаний,Термин расширения; не заменяет существующие canonical_id проекта.
+term:spells-attack-dc,Spell attack and save difficulty,Атака и сложность заклинания,атака и сложность заклинания,Термин расширения; не заменяет существующие canonical_id проекта.
+term:spells-bonus-action,Bonus-action spell restriction,Заклинание бонусным действием,заклинание бонусным действием,Термин расширения; не заменяет существующие canonical_id проекта.
+term:spells-components,Components,Компоненты,компоненты,Термин расширения; не заменяет существующие canonical_id проекта.
+term:spells-ritual,Ritual casting,Ритуал,ритуал,Термин расширения; не заменяет существующие canonical_id проекта.
+term:spells-concentration,Concentration,Концентрация,концентрация,Термин расширения; не заменяет существующие canonical_id проекта.
+term:spells-concentration-damage,Concentration after damage,Концентрация при уроне,концентрация при уроне,Термин расширения; не заменяет существующие canonical_id проекта.
+term:spells-long-casting,Long casting times,Долгое накладывание,долгое накладывание,Термин расширения; не заменяет существующие canonical_id проекта.
+term:spells-targeting,Spell targeting,Цель заклинания,цель заклинания,Термин расширения; не заменяет существующие canonical_id проекта.
+term:spells-same-effect,Combining identical spells,Повтор одинакового заклинания,повтор одинакового заклинания,Термин расширения; не заменяет существующие canonical_id проекта.
+term:condition-blinded,Blinded,Ослеплённый,ослеплённый,Термин расширения; не заменяет существующие canonical_id проекта.
+term:condition-charmed,Charmed,Очарованный,очарованный,Термин расширения; не заменяет существующие canonical_id проекта.
+term:condition-deafened,Deafened,Оглохший,оглохший,Термин расширения; не заменяет существующие canonical_id проекта.
+term:condition-frightened,Frightened,Испуганный,испуганный,Термин расширения; не заменяет существующие canonical_id проекта.
+term:condition-grappled,Grappled,Схваченный,схваченный,Термин расширения; не заменяет существующие canonical_id проекта.
+term:condition-incapacitated,Incapacitated,Недееспособный,недееспособный,Термин расширения; не заменяет существующие canonical_id проекта.
+term:condition-invisible,Invisible,Невидимый,невидимый,Термин расширения; не заменяет существующие canonical_id проекта.
+term:condition-paralyzed,Paralyzed,Парализованный,парализованный,Термин расширения; не заменяет существующие canonical_id проекта.
+term:condition-petrified,Petrified,Окаменевший,окаменевший,Термин расширения; не заменяет существующие canonical_id проекта.
+term:condition-poisoned,Poisoned,Отравленный,отравленный,Термин расширения; не заменяет существующие canonical_id проекта.
+term:condition-prone,Prone,Сбитый с ног,сбитый с ног,Термин расширения; не заменяет существующие canonical_id проекта.
+term:condition-restrained,Restrained,Опутанный,опутанный,Термин расширения; не заменяет существующие canonical_id проекта.
+term:condition-stunned,Stunned,Ошеломлённый,ошеломлённый,Термин расширения; не заменяет существующие canonical_id проекта.
+term:condition-unconscious,Unconscious,Бессознательный,бессознательный,Термин расширения; не заменяет существующие canonical_id проекта.
+term:condition-exhaustion,Exhaustion,Истощение,истощение,Термин расширения; не заменяет существующие canonical_id проекта.
+term:items-attunement,Attunement,Настройка на предмет,настройка на предмет,Термин расширения; не заменяет существующие canonical_id проекта.
+term:items-potions,Using a potion,Использование зелья,использование зелья,Термин расширения; не заменяет существующие canonical_id проекта.
+term:items-spellcasting,Spells from magic items,Заклинания из предметов,заклинания из предметов,Термин расширения; не заменяет существующие canonical_id проекта.
+term:items-identification,Identifying magic items,Определение свойств,определение свойств,Термин расширения; не заменяет существующие canonical_id проекта.
+term:encounters-thresholds,Encounter thresholds,Пороги сложности боя,пороги сложности боя,Термин расширения; не заменяет существующие canonical_id проекта.
+term:encounters-multipliers,Monster count multipliers,Множители числа противников,множители числа противников,Термин расширения; не заменяет существующие canonical_id проекта.
+term:encounters-party-size,Party size adjustment,Поправка на размер группы,поправка на размер группы,Термин расширения; не заменяет существующие canonical_id проекта.
+term:encounters-daily-budget,Adventuring day budget,Бюджет дня приключений,бюджет дня приключений,Термин расширения; не заменяет существующие canonical_id проекта.
+term:encounters-waves,Encounter waves,Волны противников,волны противников,Термин расширения; не заменяет существующие canonical_id проекта.

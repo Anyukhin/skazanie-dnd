@@ -1373,7 +1373,17 @@
     ["maps/city/skazanie/nur-kesh-v1.webp", "def459e571602c002ab4391b1ee9e3df87c58838c5c726e1f7539473b5e2f140", 845672],
     ["maps/city/skazanie/veld-burg-v1.webp", "5d21d1362aae4e8442ee58b29536af653de5db0a5156339c4fb48bd0233550c2", 749070],
     ["maps/world/skazanie/dragon-scar-v1.webp", "b085ef389c3c91f835f15272808e2d8b8391f8450093870be2d9c6540ee1c078", 664240],
-    ["maps/city/skazanie/stormberg-v1.webp", "239f0df0c831d9cfc53b3a5e668162d9a1a75cf937afecf17377ea07e0f8865f", 665812]
+    ["maps/city/skazanie/stormberg-v1.webp", "239f0df0c831d9cfc53b3a5e668162d9a1a75cf937afecf17377ea07e0f8865f", 665812],
+    ["species/dragonborn.png", "e109493837b0560a679de56296699be9fcb3534d2878ae3943d25d172142e8a0", 2330853],
+    ["species/dwarf.png", "6e99fdab34b134dafb93e809ec31589aa65a1696ada6f5bbc5a1676f48927b52", 2462860],
+    ["species/elf.png", "c1e236c1c9cd6464ca6ef662deb1a38ff684a5fcd5bb3572fc527b16d354316b", 2415866],
+    ["species/gnome.png", "45eb7cd74ec5091bf5e6de29d326e2ceedc65d9a6257f59d7744bfcff18f991a", 2329811],
+    ["species/half-elf.png", "1a6e69d3ffc615b84803966ad1bac4b0f0d8493132ed950950bd693f186002ed", 2242110],
+    ["species/half-orc.png", "4bbf424878464df1d7b2b442e96276fdcde47336d2cd00dc9ef3631ba4e1d0fb", 2242718],
+    ["species/halfling.png", "6b6344fdbf61445ed922ebd33e44310d7f2227111093b8096e5cde58a734d5f5", 2330424],
+    ["species/human.png", "a363ebd336e76bbf6df9b757e099d8823ae56362299019ccb64de67c3ad68de4", 2257912],
+    ["species/tiefling.png", "8c09809b13bf6f4b6dc57ee054404dc33fbfd8eeb7ca70b78b98c85eddaafeef", 2171067],
+    ["species/elf-drow.png", "f8afb42b7819dbc5eb5eef50aa293cd37c26aeac9dffaa192561ba9c2a48af85", 2283696]
   ],
   "rights_status": "review_required",
   "distribution": "blocked",

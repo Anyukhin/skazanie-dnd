@@ -205,7 +205,7 @@ export type Player = {
   abilityGeneration?: CharacterAbilityGeneration
   backgroundId?: string
   backgroundAbilityChoice?: { mode: string; abilities: string[] }
-  backgroundChoices?: { tools: string[]; languages: string[] }
+  backgroundChoices?: { tools: string[]; languages: string[]; replacementSkills?: string[] }
   backgroundSkillProficiencies?: string[]
   backgroundBenefits?: Record<string, unknown> | null
   speciesBenefits?: Record<string, unknown> | null
