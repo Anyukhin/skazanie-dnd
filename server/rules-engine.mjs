@@ -3219,10 +3219,6 @@ export function previewApproachAttack(rawState, actorIdValue, targetIdValue) {
   if (!from || !targetAt) throw new RulesValidationError('Герой и противник должны находиться на карте', 'MAP_POSITION_REQUIRED')
   const { map, stepCost } = movementStepCostFor(state, actorIdValue)
   const cells = tacticalCellMap(state)
-  const targetCell = cells.get(positionKey(targetAt))
-  if (!targetCell || targetCell.revealed === false) {
-    throw new RulesValidationError('Цель находится в нераскрытой части карты', 'TARGET_NOT_VISIBLE')
-  }
   const occupied = occupiedPositions(state, actorIdValue)
   const economy = state.mechanics.combat.action_economy[actorIdValue] ?? {}
   const budget = effectiveSpeedFeet(state, actor, actorIdValue) + Math.max(0, safeInteger(economy.movement_bonus, 0)) - Math.max(0, safeInteger(economy.movement_spent, 0))
@@ -3257,103 +3253,6 @@ export function previewApproachAttack(rawState, actorIdValue, targetIdValue) {
     commands: [...(chosen.path.length ? [move] : []), attack],
     path: chosen.path, to: chosen.to, movement_feet: chosen.cost,
     attack_cost: continuation ? 'одна оставшаяся атака' : 'действие «Атака» (один удар)',
-  }
-}
-
-/**
- * Server-owned horizontal long jump followed by one melee attack.  The jump
- * is intentionally orthogonal and stays on one elevation: this is the small
- * 2014 slice we can execute with the existing 2D tactical map.  A chandelier,
- * suspended object, or any other unsupported vertical anchor must not be
- * smuggled through this path as flavour text.
- */
-export function previewLongJumpAttack(rawState, actorIdValue, targetIdValue, { runningStart = false } = {}) {
-  const state = normalizeCampaignState(rawState)
-  const actor = findActor(state, actorIdValue)
-  const target = findActor(state, targetIdValue)
-  if (!state.mechanics.combat.active) throw new RulesValidationError('Такой манёвр доступен после начала боя', 'COMBAT_REQUIRED')
-  if (!actor || !target || !isEnemyActor(state, targetIdValue) || !isLivingActor(target)) {
-    throw new RulesValidationError('Выберите живого противника на карте', 'INVALID_TARGET')
-  }
-  const profile = trustedAttackProfile(state, actor)
-  if (!profile || profile.kind !== 'melee') throw new RulesValidationError('Для прыжка с атакой нужно оружие ближнего боя', 'MELEE_WEAPON_REQUIRED')
-  const from = actorPosition(state, actorIdValue)
-  const targetAt = actorPosition(state, targetIdValue)
-  if (!from || !targetAt) throw new RulesValidationError('Герой и противник должны находиться на карте', 'MAP_POSITION_REQUIRED')
-  const { map } = movementStepCostFor(state, actorIdValue)
-  const cells = tacticalCellMap(state)
-  const targetCell = cells.get(positionKey(targetAt))
-  if (!targetCell || targetCell.revealed === false) {
-    throw new RulesValidationError('Цель находится в нераскрытой части карты', 'TARGET_NOT_VISIBLE')
-  }
-  const fromCell = cells.get(positionKey(from))
-  if (!fromCell || fromCell.revealed === false) throw new RulesValidationError('Герой находится в нераскрытой части карты', 'JUMP_START_NOT_VISIBLE')
-  if (safeInteger(fromCell.elevation, 0) !== safeInteger(targetCell.elevation, 0)) {
-    throw new RulesValidationError('Горизонтальный прыжок между разными высотами пока не поддерживается', 'JUMP_ELEVATION_UNSUPPORTED')
-  }
-  const economy = state.mechanics.combat.action_economy[actorIdValue] ?? {}
-  const movementSpent = Math.max(0, safeInteger(economy.movement_spent, 0))
-  if (runningStart && movementSpent < 10) {
-    throw new RulesValidationError('Для прыжка с разбега сначала нужно потратить 10 фт на разбег', 'JUMP_RUNNING_START_REQUIRED')
-  }
-  const strengthScore = Math.max(1, safeInteger(actor.abilities?.str, 10))
-  const maximumJumpFeet = runningStart ? strengthScore : Math.floor(strengthScore / 2)
-  const budget = effectiveSpeedFeet(state, actor, actorIdValue)
-    + Math.max(0, safeInteger(economy.movement_bonus, 0)) - movementSpent
-  const radius = Math.max(1, Math.min(6, Math.floor(Number(profile.range_feet || 5) / 5)))
-  const occupied = occupiedPositions(state, actorIdValue)
-  const jumpPathFor = (to) => {
-    const dx = to.x - from.x
-    const dy = to.y - from.y
-    if ((dx !== 0 && dy !== 0) || (dx === 0 && dy === 0)) return null
-    const steps = Math.abs(dx) + Math.abs(dy)
-    const distanceFeet = steps * 5
-    if (distanceFeet <= 5 || distanceFeet > maximumJumpFeet || distanceFeet > budget) return null
-    const path = []
-    for (let index = 1; index <= steps; index += 1) {
-      const point = {
-        x: from.x + Math.sign(dx) * (dx === 0 ? 0 : index),
-        y: from.y + Math.sign(dy) * (dy === 0 ? 0 : index),
-      }
-      const cell = cells.get(positionKey(point))
-      if (!cell || cell.revealed === false || safeInteger(cell.elevation, 0) !== safeInteger(fromCell.elevation, 0)) return null
-      if (index < steps && (String(cell.type) === 'wall' || doorBlocksStep(map, path.at(-1)?.x ?? from.x, path.at(-1)?.y ?? from.y, point.x, point.y))) return null
-      if (occupied.has(positionKey(point))) return null
-      path.push(point)
-    }
-    if (!isWalkableCell(cells.get(positionKey(to)))) return null
-    return { path, distanceFeet }
-  }
-  const attack = { command_type: 'MakeAttack', actor_id: actorIdValue, target_id: targetIdValue, server_authoritative: true }
-  const candidates = []
-  for (let x = targetAt.x - radius; x <= targetAt.x + radius; x += 1) {
-    for (let y = targetAt.y - radius; y <= targetAt.y + radius; y += 1) {
-      const to = { x, y }
-      if (!isWalkableCell(cells.get(positionKey(to))) || occupied.has(positionKey(to))) continue
-      const jump = jumpPathFor(to)
-      if (!jump) continue
-      const atDestination = { ...state, mechanics: { ...state.mechanics, positions: { ...state.mechanics.positions, [actorIdValue]: to } } }
-      if (!attackForecast(atDestination, actorIdValue, targetIdValue)?.in_range) continue
-      try { validateCommand(attack, atDestination, { allowedActorIds: [actorIdValue] }) }
-      catch (error) { if (!(error instanceof RulesValidationError)) throw error; continue }
-      candidates.push({ ...jump, to })
-    }
-  }
-  candidates.sort((a, b) => a.distanceFeet - b.distanceFeet || a.to.y - b.to.y || a.to.x - b.to.x)
-  const chosen = candidates[0]
-  if (!chosen) throw new RulesValidationError('Не хватает длины прыжка, свободной скорости или места для приземления', 'JUMP_UNREACHABLE')
-  return {
-    commands: [{
-      command_type: 'MoveActor', actor_id: actorIdValue, to: chosen.to,
-      movement_mode: 'long_jump', jump_running_start: runningStart, server_authoritative: true,
-    }, attack],
-    path: chosen.path,
-    to: chosen.to,
-    movement_feet: chosen.distanceFeet,
-    jump: { kind: 'long', running_start: runningStart, distance_feet: chosen.distanceFeet, maximum_feet: maximumJumpFeet },
-    attack_cost: Number(economy.attacks_used) > 0 && Number(economy.attacks_used) < Number(economy.attacks_allowed)
-      ? 'одна оставшаяся атака'
-      : 'действие «Атака» (один удар)',
   }
 }
 
