@@ -134,7 +134,7 @@
   .turn-rail { padding-inline: 12px; }
   .turn-rail > .hotbar-decks { gap: 4px; }
   .turn-rail > .hotbar-decks button { padding-inline: 7px; }
-  .turn-rail > .hotbar-decks button .combat-icon { display: none; }
+  .turn-rail > .hotbar-decks .hotbar-tabs button > svg { display: none; }
   .turn-rail .hotbar-main { grid-template-columns: 28px minmax(0, 1fr) minmax(180px, 32%); gap: 8px; }
   .server-column, .game-area > .dialogue-composer { padding-inline: 14px; }
   .scene-title h1 { font-size: 22px; }
@@ -151,7 +151,7 @@
   .turn-rail { min-height: 180px; max-height: none; }
   .turn-rail .hotbar-main { grid-template-columns: 28px minmax(0, 1fr) minmax(140px, 34%); }
   .turn-rail > .hotbar-decks button { padding-inline: 5px; }
-  .turn-rail > .hotbar-decks button .combat-icon { display: none; }
+  .turn-rail > .hotbar-decks .hotbar-tabs button > svg { display: none; }
   .character-grid, .character-grid.single-hero { grid-template-columns: minmax(0, 1fr); }
   .character-grid.single-hero .character-sheet { display: block; }
   .character-grid.single-hero .character-art { height: 300px; }
