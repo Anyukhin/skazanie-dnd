@@ -1,0 +1,388 @@
+/*
+ * Локальная геометрия трёх экранов кампании.
+ * Палитра и шрифты остаются в styles.css; этот файл отвечает только за
+ * ритм, ширину чтения и поведение оверлея на широком экране.
+ */
+
+.campaign-page-modal {
+  padding: clamp(18px, 3vw, 42px);
+}
+
+.campaign-page-modal .campaign-modal {
+  width: min(760px, calc(100vw - 48px));
+  max-height: min(850px, calc(100dvh - 48px));
+  overflow-y: auto;
+}
+
+.campaign-page-modal .campaign-modal-header {
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+}
+
+.campaign-page-modal .campaign-modal-header .modal-icon {
+  margin: 0 0 5px;
+}
+
+.campaign-page-modal .campaign-modal-header h2 {
+  margin-bottom: 0;
+}
+
+.campaign-page-modal .campaign-wizard {
+  width: min(1040px, calc(100vw - 48px));
+  max-height: min(920px, calc(100dvh - 40px));
+  display: flex;
+  flex-direction: column;
+  padding: 25px 32px 18px;
+  text-align: left;
+  overflow: hidden;
+}
+
+.campaign-page-modal .campaign-wizard .campaign-modal-header {
+  grid-template-columns: auto minmax(0, 1fr);
+  justify-items: start;
+  align-items: center;
+  column-gap: 13px;
+  flex: 0 0 auto;
+  padding-right: 34px;
+}
+
+.campaign-page-modal .campaign-wizard .campaign-modal-header .modal-icon {
+  grid-row: span 2;
+  width: 42px;
+  height: 42px;
+  margin: 0;
+}
+
+.campaign-page-modal .campaign-wizard .campaign-modal-header .eyebrow {
+  align-self: end;
+}
+
+.campaign-page-modal .campaign-wizard .campaign-modal-header h2 {
+  align-self: start;
+  margin: 0;
+  font-size: clamp(25px, 2.4vw, 34px);
+}
+
+.campaign-page-modal .campaign-wizard .campaign-steps {
+  flex: 0 0 auto;
+  margin: 20px 0 15px;
+  padding: 10px 0;
+  border-top: 1px solid rgba(222, 201, 171, .12);
+  border-bottom: 1px solid rgba(222, 201, 171, .12);
+}
+
+.campaign-page-modal .campaign-wizard > .world-creator,
+.campaign-page-modal .campaign-wizard > .hero-creator,
+.campaign-page-modal .campaign-wizard > .campaign-review {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 2px 5px 4px 1px;
+  scrollbar-width: thin;
+  scrollbar-color: #5c4633 transparent;
+}
+
+.campaign-page-modal .campaign-wizard-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  flex: 0 0 auto;
+  margin: 15px -32px 0;
+  padding: 14px 32px 0;
+  background: linear-gradient(180deg, rgba(21, 19, 17, 0), rgba(21, 19, 17, .98) 28%);
+}
+
+.campaign-page-modal .campaign-advanced-fields {
+  margin-top: 15px;
+  border-top: 1px solid rgba(222, 201, 171, .12);
+  border-bottom: 1px solid rgba(222, 201, 171, .12);
+}
+
+.campaign-page-modal .campaign-advanced-fields summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 42px;
+  color: #b8844f;
+  font-size: var(--fs-md);
+  font-weight: 700;
+  cursor: pointer;
+  list-style: none;
+}
+
+.campaign-page-modal .campaign-advanced-fields summary::-webkit-details-marker {
+  display: none;
+}
+
+.campaign-page-modal .campaign-advanced-fields summary svg {
+  transition: transform .16s ease;
+}
+
+.campaign-page-modal .campaign-advanced-fields[open] summary svg {
+  transform: rotate(180deg);
+}
+
+.campaign-page-modal .campaign-advanced-fields > .field-grid,
+.campaign-page-modal .campaign-advanced-fields > label {
+  margin-bottom: 14px;
+}
+
+.campaign-page-modal .campaign-advanced-fields > summary + * {
+  margin-top: 4px;
+}
+
+.campaign-journal-page {
+  width: min(100%, 1900px);
+  margin-inline: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(380px, 22vw, 420px);
+  grid-template-areas:
+    'header header'
+    'stats stats'
+    'main rail';
+  align-content: start;
+  column-gap: clamp(22px, 3vw, 48px);
+  row-gap: 0;
+}
+
+.campaign-journal-page > .page-header {
+  grid-area: header;
+  width: min(760px, 100%);
+}
+
+.campaign-journal-page > .journal-stats {
+  grid-area: stats;
+  width: 100%;
+  margin-bottom: 26px;
+}
+
+.campaign-journal-page > .journal-layout {
+  grid-area: main;
+  min-width: 0;
+  grid-template-columns: minmax(200px, 240px) minmax(0, 1fr);
+  gap: clamp(16px, 2vw, 28px);
+  max-width: none;
+}
+
+.campaign-journal-page > .quest-board {
+  grid-area: rail;
+  align-self: start;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  min-width: 0;
+  margin: 0;
+}
+
+.campaign-journal-page .journal-stats > div {
+  min-width: 0;
+  flex: 0 1 190px;
+  padding: 4px 18px 4px 0;
+  border: 0;
+  border-right: 1px solid rgba(222, 201, 171, .16);
+  border-radius: 0;
+  background: transparent;
+}
+
+.campaign-journal-page .journal-stats > div:last-child {
+  border-right: 0;
+}
+
+.campaign-journal-page .chapter-list {
+  position: sticky;
+  top: 24px;
+  align-self: start;
+  max-height: calc(100dvh - 180px);
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #5c4633 transparent;
+}
+
+.campaign-journal-page .chapter-list > span {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.campaign-journal-page .journal-feed {
+  min-width: 0;
+  max-width: 80ch;
+}
+
+.campaign-journal-page .journal-entry p {
+  max-width: 80ch;
+  font-size: clamp(17px, .9vw, 18px);
+  line-height: 1.65;
+}
+
+.campaign-journal-page .combat-journal-entry p {
+  font-size: clamp(16px, .85vw, 17px);
+  line-height: 1.55;
+}
+
+.campaign-journal-page .quest-column {
+  min-width: 0;
+}
+
+.campaign-journal-page .quest-card {
+  padding: 12px 0;
+  border-width: 0 0 1px;
+  border-radius: 0;
+  background: transparent;
+}
+
+.campaign-journal-page .quest-card:last-child {
+  border-bottom: 0;
+}
+
+.campaign-journal-page .quest-card p,
+.campaign-journal-page .quest-card li {
+  line-height: 1.45;
+}
+
+.campaign-journal-page .quest-board > .quest-column > header {
+  margin-bottom: 1px;
+}
+
+.campaign-settings-page {
+  --settings-content-width: 1600px;
+}
+
+.campaign-settings-page > .page-header {
+  max-width: var(--settings-content-width);
+}
+
+.campaign-settings-page .settings-grid {
+  width: min(100%, var(--settings-content-width));
+  margin-inline: auto;
+  max-width: var(--settings-content-width);
+  grid-template-areas: 'preferences campaign';
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  gap: clamp(16px, 2vw, 28px);
+}
+
+.campaign-settings-page .settings-preferences-card {
+  grid-area: preferences;
+}
+
+.campaign-settings-page .settings-campaign-card {
+  grid-area: campaign;
+}
+
+.campaign-settings-page .settings-card {
+  padding: 20px 22px;
+  border-radius: 7px;
+  background: rgba(27, 24, 20, .72);
+}
+
+.campaign-settings-page .settings-card-title {
+  padding-bottom: 13px;
+}
+
+.campaign-settings-page .settings-card-title small {
+  max-width: 34ch;
+  line-height: 1.35;
+}
+
+.campaign-settings-page .settings-diagnostics {
+  margin-top: 17px;
+  border-top: 1px solid var(--line);
+}
+
+.campaign-settings-page .settings-diagnostics summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 40px;
+  color: #756c62;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  list-style: none;
+}
+
+.campaign-settings-page .settings-diagnostics summary::-webkit-details-marker {
+  display: none;
+}
+
+.campaign-settings-page .settings-diagnostics summary svg:last-child {
+  margin-left: auto;
+  transition: transform .16s ease;
+}
+
+.campaign-settings-page .settings-diagnostics[open] summary svg:last-child {
+  transform: rotate(180deg);
+}
+
+.campaign-settings-page .settings-diagnostics .provider-info,
+.campaign-settings-page .settings-diagnostics .tools-list,
+.campaign-settings-page .settings-diagnostics .secure-note {
+  margin-top: 11px;
+}
+
+@media (max-width: 1300px) {
+  .campaign-journal-page {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'header' 'stats' 'rail' 'main';
+  }
+
+  .campaign-journal-page > .quest-board {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-bottom: 17px;
+  }
+
+  .campaign-settings-page .settings-grid {
+    grid-template-areas: 'campaign' 'preferences';
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .campaign-page-modal {
+    padding: 8px;
+  }
+
+  .campaign-page-modal .campaign-modal,
+  .campaign-page-modal .campaign-wizard {
+    width: 100%;
+    max-height: calc(100dvh - 16px);
+  }
+
+  .campaign-page-modal .campaign-wizard {
+    padding: 22px 18px 14px;
+  }
+
+  .campaign-page-modal .campaign-wizard-actions {
+    margin-left: -18px;
+    margin-right: -18px;
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .campaign-journal-page > .quest-board {
+    grid-template-columns: 1fr;
+  }
+
+  .campaign-journal-page > .journal-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .campaign-journal-page .chapter-list {
+    position: static;
+    max-height: none;
+  }
+
+  .campaign-journal-page .journal-stats {
+    overflow-x: auto;
+  }
+
+  .campaign-journal-page .journal-stats > div {
+    flex: 0 0 130px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .campaign-page-modal .campaign-advanced-fields summary svg,
+  .campaign-settings-page .settings-diagnostics summary svg:last-child {
+    transition: none;
+  }
+}

@@ -1476,10 +1476,28 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .server-resize { position: absolute; z-index: 12; top: 0; bottom: 0; left: -3px; width: 9px; cursor: ew-resize; touch-action: none; }
 .server-resize::after { content: ''; position: absolute; top: 50%; left: 3px; width: 3px; height: 46px; border-radius: 2px; background: rgba(222,201,171,.18); transform: translateY(-50%); transition: background .15s ease; }
 .server-resize:hover::after { background: rgba(214,161,96,.55); }
-.turn-rail { position: relative; grid-area: rail; min-width: 0; min-height: var(--ui-rail-height, var(--rail)); max-height: var(--ui-rail-height, 38vh); display: grid; grid-template-rows: 52px minmax(0, 1fr); gap: 12px; padding: 14px 20px 16px; border-top: 1px solid rgba(211,160,97,.3); background: linear-gradient(180deg, rgba(28,23,18,.99), rgba(12,11,9,1)); }
+.turn-rail { position: relative; grid-area: rail; min-width: 0; min-height: var(--ui-rail-height, var(--rail)); max-height: var(--ui-rail-height, 38vh); display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 12px; padding: 14px 20px 16px; border-top: 1px solid rgba(211,160,97,.3); background: linear-gradient(180deg, rgba(28,23,18,.99), rgba(12,11,9,1)); }
 /* Одна строка на всё действие: слева колоды, справа поле со словами и отправка.
    Отдельного ряда под колоды больше нет — панель стала ниже на его высоту. */
 .rail-free-input { min-width: 0; display: flex; align-items: center; gap: 12px; }
+.dialogue-composer { min-width: 0; }
+.request-kind { max-width: 175px; min-width: 100px; height: 52px; padding: 0 10px; border: 1px solid #66513b; border-radius: 9px; background: #211b15; color: #e7ddd0; font: inherit; }
+.dialogue-context { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; margin-bottom: 8px; border-left: 3px solid #caa46c; background: #211b15; color: #e7ddd0; }
+.dialogue-context > div { min-width: 0; display: grid; gap: 3px; }
+.dialogue-context strong, .dialogue-context span { overflow-wrap: anywhere; }
+.dialogue-context small { color: #caa46c; }
+.dialogue-context button { flex-shrink: 0; padding: 8px 12px; color: #e7ddd0; border: 1px solid #66513b; border-radius: 6px; background: #2b2219; cursor: pointer; }
+.proposal-dialogue { display: grid; gap: 8px; width: 100%; margin-top: 12px; }
+.proposal-dialogue label { display: grid; gap: 6px; }
+.proposal-dialogue input { min-width: 0; width: 100%; padding: 10px; border: 1px solid #66513b; border-radius: 6px; background: #17130f; color: #e7ddd0; }
+.proposal-dialogue button { padding: 9px 12px; border: 1px solid #66513b; border-radius: 6px; color: #e7ddd0; background: #2b2219; cursor: pointer; }
+.proposal-dialogue p { margin: 0; padding: 10px; border-left: 2px solid #caa46c; text-align: left; overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+  .rail-free-input { flex-wrap: wrap; }
+  .rail-free-input .hotbar-decks { order: -2; }
+  .request-kind { order: -1; margin-left: auto; height: 38px; max-width: 160px; }
+  .rail-free-input .rail-input-shell { flex-basis: calc(100% - 65px); }
+}
 .rail-free-input .hotbar-decks { flex: 0 0 auto; gap: 6px; }
 .rail-input-shell { flex: 1 1 0; min-width: 0; height: 52px; display: flex; align-items: center; gap: 9px; padding: 0 6px 0 12px; border: 1px solid rgba(222,201,171,.16); border-radius: 9px; background: rgba(9,8,7,.72); }
 .rail-input-shell:focus-within { border-color: rgba(214,161,96,.6); }
@@ -1901,12 +1919,6 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .exploration-start-combat strong { color: inherit; font: 600 var(--fs-md) Spectral, serif; white-space: nowrap; }
 /* Уход из локации стоит рядом с началом боя и намеренно холоднее его: это не
    опасное действие, а предложение отряду, и красным оно кричать не должно. */
-.exploration-leave-location { min-height: 44px; display: flex; align-items: center; gap: 8px; margin: 0; padding: 7px 11px; border: 1px solid rgba(120,142,176,.4); border-radius: 6px; background: linear-gradient(180deg, rgba(52,68,94,.3), rgba(28,36,52,.24)); color: #9fb2ce; cursor: pointer; }
-.exploration-leave-location:hover:not(:disabled) { border-color: rgba(146,175,219,.66); color: #c6d6ef; transform: translateY(-1px); }
-.exploration-leave-location:disabled { opacity: .36; cursor: default; }
-.exploration-leave-location span { display: grid; gap: 1px; text-align: left; }
-.exploration-leave-location small { color: inherit; opacity: .62; font: var(--fs-xs) Manrope, sans-serif; }
-.exploration-leave-location strong { color: inherit; font: 600 var(--fs-md) Spectral, serif; white-space: nowrap; }
 .map-legend { bottom: 18px; }
 
 @media (max-width: 1120px) {
@@ -1993,10 +2005,8 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
   .hero-cluster-face b { display: none; }
   .combat-hotbar .action-tile { width: 128px; min-width: 128px; height: 134px; padding: 10px 6px; }
   .game-area > .dice-tray:not(.dice-tray--rolling) { bottom: 150px; }
-  .exploration-start-combat,
-  .exploration-leave-location { width: 42px; min-width: 42px; justify-content: center; padding: 6px; }
-  .exploration-start-combat span,
-  .exploration-leave-location span { display: none; }
+  .exploration-start-combat { width: 42px; min-width: 42px; justify-content: center; padding: 6px; }
+  .exploration-start-combat span { display: none; }
 }
 
 @media (max-width: 440px) {

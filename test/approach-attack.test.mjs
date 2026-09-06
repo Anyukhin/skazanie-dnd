@@ -128,3 +128,27 @@ test('поддельное и устаревшее подтверждения н
   await assert.rejects(orchestrator.handle({ ...input, idempotencyKey: 'stale', confirmedProposalId: offer.action_proposal.id }), { code: 'STATE_VERSION_CONFLICT' })
   assert.equal((await eventStore.load('MANEUVER')).state_version, 1)
 })
+
+test('редактирование выдаёт новый непрозрачный proposal id, а старое подтверждение отвергается после рестарта', async (t) => {
+  const { eventStore, orchestrator, input } = await fixture(t)
+  const offered = await orchestrator.handle(input)
+  const revised = await orchestrator.handle({
+    ...input,
+    idempotencyKey: 'same-text-edit',
+    supersedesProposalId: offered.action_proposal.id,
+  })
+  assert.ok(revised.action_proposal)
+  assert.notEqual(revised.action_proposal.id, offered.action_proposal.id)
+
+  const restarted = new GameOrchestrator({
+    eventStore,
+    rulesEngine: new RulesEngine({ diceService: new DiceService({ rng: new SequenceDiceRng(Array(20).fill(18)) }) }),
+    narrator: { render: async () => { throw new Error('Манёвр не должен звать Narrator до подтверждения') } },
+  })
+  await assert.rejects(
+    restarted.handle({ ...input, idempotencyKey: 'old-after-restart', confirmedProposalId: offered.action_proposal.id }),
+    { code: 'PROPOSAL_REVOKED' },
+  )
+  const accepted = await orchestrator.handle({ ...input, idempotencyKey: 'same-text-accept', confirmedProposalId: revised.action_proposal.id })
+  assert.ok(accepted.mechanics.some((event) => event.event_type === 'AttackResolved'))
+})

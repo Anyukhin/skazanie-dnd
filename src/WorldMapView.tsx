@@ -144,7 +144,7 @@ export function WorldMapView({ state, busy, onTravel }: { state: GameState; busy
 
   return <section className="world-map-page">
     <header className="world-map-header">
-      <div><span>ГЕОГРАФИЯ КАМПАНИИ</span><h1>{map.name}</h1><p>{state.campaignConcept?.worldSummary ?? 'Известные земли, дороги и места этой истории.'}</p></div>
+      <div><h1>{map.name}</h1><details className="world-map-intro"><summary>Об этом мире</summary><p>{state.campaignConcept?.worldSummary ?? 'Известные земли, дороги и места этой истории.'}</p></details></div>
       <div className="world-map-stats"><span><MapPin size={14}/>{knownLocations.length} мест</span><span><Route size={14}/>{map.routes.filter((item) => item.discovered).length} путей</span></div>
     </header>
 
@@ -189,15 +189,13 @@ export function WorldMapView({ state, busy, onTravel }: { state: GameState; busy
         <div className="world-map-legend"><span><i className="legend-current"/>Отряд</span><span><i className="legend-visited"/>Посещено</span><span><i className="legend-road"/>Дорога</span></div>
       </div>
 
-      <aside className="world-map-inspector">
+      <aside className="world-map-inspector world-map-location-inspector">
         {!current && <p className="route-missing" role="status">Текущая точка отряда не совпадает с картой мира. Переход временно недоступен — обновите кампанию или обратитесь к мастеру.</p>}
         {selected && <>
           <div className="location-kind"><span>{selected.kind === 'fortress' ? <Castle size={18}/> : selected.kind === 'wilds' ? <Trees size={18}/> : selected.kind === 'ruin' || selected.kind === 'dungeon' ? <Mountain size={18}/> : <MapPin size={18}/>}</span><small>{KIND_LABELS[selected.kind]}</small></div>
           <h2>{selected.name}</h2>
           <p className="region-name">{selectedRegion?.name ?? 'Неизведанный регион'}</p>
           <p className="location-summary">{selected.summary || 'Об этом месте пока известно немного.'}</p>
-          {selected.history && <section className="location-history" aria-label="История места"><h3>История места</h3><p>{selected.history}</p></section>}
-          {!!selected.storyHooks?.length && <section className="location-hooks" aria-label="Сюжетные зацепки"><h3>Сюжетные зацепки</h3><ul>{selected.storyHooks.map((hook, index) => <li key={`${selected.id}-hook-${index}`}>{hook}</li>)}</ul></section>}
           <div className="location-status">{selected.visited ? <span className="visited"><Check size={13}/>Посещено</span> : <span>Известно по карте</span>}{selected.id === current?.id && <b><Navigation size={13}/>Здесь отряд</b>}</div>
           {selected.cityOverview && <button type="button" className="city-overview-open" onClick={() => setCityLocationId(selected.id)}><MapIcon size={16}/>Открыть план города · {selected.cityOverview.districts.length} районов</button>}
           {selected.id !== current?.id && <div className="route-card">
@@ -219,8 +217,10 @@ export function WorldMapView({ state, busy, onTravel }: { state: GameState; busy
                 : 'Переход начнётся после решения группы. Сервер учтёт время пути и создаст следующую локальную карту в точке назначения.'}</small>
             </> : <p className="route-missing">Из текущего места ещё не открыт путь к этой точке.</p>}
           </div>}
+          {selected.history && <details className="location-history"><summary>История места</summary><p>{selected.history}</p></details>}
+          {!!selected.storyHooks?.length && <details className="location-hooks"><summary>Сюжетные зацепки</summary><ul>{selected.storyHooks.map((hook, index) => <li key={`${selected.id}-hook-${index}`}>{hook}</li>)}</ul></details>}
         </>}
-        <details className="world-lore" open={!selected || selected.id === current?.id}>
+        <details className="world-lore">
           <summary><ScrollText size={15}/>Летопись мира</summary>
           <p>{state.campaignConcept?.worldHistory ?? state.campaignConcept?.worldSummary ?? 'Летопись будет дополняться по мере развития кампании.'}</p>
         </details>

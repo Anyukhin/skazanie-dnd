@@ -1,0 +1,246 @@
+/* Карта — главный рабочий стол. Инспектор остаётся одной спокойной колонкой:
+   длинные истории раскрываются по запросу, а маршрут и цель всегда ближе к
+   выбранному месту. */
+.world-map-page {
+  height: 100%;
+  box-sizing: border-box;
+  overflow: auto;
+  padding: clamp(20px, 2.1vw, 40px);
+  background: #0d0c0a;
+}
+
+.world-map-header {
+  margin-bottom: clamp(14px, 1.6vw, 24px);
+}
+
+.world-map-header > div:first-child {
+  max-width: 980px;
+}
+
+.world-map-header h1 {
+  margin: 0 0 5px;
+  font-size: clamp(28px, 2.5vw, 44px);
+}
+
+.world-map-header p {
+  max-width: 72ch;
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+.world-map-intro summary { width: fit-content; color: #c7b396; font-size: var(--fs-md); cursor: pointer; }
+.world-map-intro p { margin-top: 10px; color: #bfb1a0; }
+
+.world-map-layout {
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr) clamp(360px, 22vw, 470px);
+  gap: clamp(16px, 1.6vw, 26px);
+  align-items: stretch;
+}
+
+.world-map-frame {
+  height: auto;
+  min-height: 0;
+  align-self: stretch;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 4px rgba(55, 39, 23, .22), 0 4px 12px rgba(0, 0, 0, .25);
+}
+
+.world-map-inspector.world-map-location-inspector {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+  padding: clamp(18px, 1.6vw, 26px);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .18);
+}
+
+.world-map-location-inspector .location-summary {
+  display: -webkit-box;
+  min-height: 0;
+  margin: 12px 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.world-map-location-inspector .location-status {
+  margin-top: 2px;
+  padding-bottom: 13px;
+}
+
+.world-map-location-inspector .city-overview-open {
+  min-height: 38px;
+  margin-top: 12px;
+  border: 1px solid rgba(208, 146, 74, .3);
+  border-radius: 4px;
+  background: rgba(169, 103, 43, .1);
+  color: #d4a467;
+  font: 600 var(--fs-xs) Manrope, sans-serif;
+  cursor: pointer;
+}
+
+.world-map-location-inspector .city-overview-open:hover {
+  background: rgba(169, 103, 43, .2);
+}
+
+.world-map-location-inspector .route-card {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, .08);
+}
+
+.world-map-location-inspector .route-chain {
+  margin: 9px 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.world-map-location-inspector .route-card dl > div {
+  background: rgba(255, 255, 255, .025);
+}
+
+.world-map-location-inspector .location-history,
+.world-map-location-inspector .location-hooks,
+.world-map-location-inspector .world-lore {
+  margin: 14px 0 0;
+  padding: 12px 0 0;
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 0;
+  background: transparent;
+}
+
+.world-map-location-inspector .location-history summary,
+.world-map-location-inspector .location-hooks summary,
+.world-map-location-inspector .world-lore summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #b18b60;
+  font: 600 var(--fs-xs) Spectral, serif;
+  cursor: pointer;
+  list-style: none;
+}
+
+.world-map-location-inspector .location-history summary::-webkit-details-marker,
+.world-map-location-inspector .location-hooks summary::-webkit-details-marker,
+.world-map-location-inspector .world-lore summary::-webkit-details-marker {
+  display: none;
+}
+
+.world-map-location-inspector .location-history summary::after,
+.world-map-location-inspector .location-hooks summary::after,
+.world-map-location-inspector .world-lore summary::after {
+  content: '+';
+  margin-left: auto;
+  color: #8a6b48;
+  font: 600 var(--fs-lg) Manrope, sans-serif;
+}
+
+.world-map-location-inspector .location-history[open] summary::after,
+.world-map-location-inspector .location-hooks[open] summary::after,
+.world-map-location-inspector .world-lore[open] summary::after {
+  content: '−';
+}
+
+.world-map-location-inspector .location-history p,
+.world-map-location-inspector .world-lore p {
+  max-height: none;
+  margin: 9px 0 0;
+  overflow: visible;
+  color: #958a7d;
+  font: var(--fs-xs)/1.55 Spectral, serif;
+  white-space: pre-line;
+}
+
+.world-map-location-inspector .location-hooks ul {
+  display: grid;
+  gap: 7px;
+  margin: 9px 0 0;
+  padding-left: 17px;
+  color: #958a7d;
+  font: var(--fs-xs)/1.5 Spectral, serif;
+}
+
+.world-map-location-inspector .route-legend {
+  order: 9;
+  margin-top: auto;
+  padding-top: 14px;
+}
+
+.world-map-location-inspector .world-lore {
+  order: 8;
+}
+
+.world-map-location-inspector .location-kind small {
+  letter-spacing: .1em;
+}
+
+@media (min-width: 1600px) {
+  .world-map-location-inspector {
+    font-size: 1.04em;
+  }
+
+  .world-map-location-inspector h2 {
+    font-size: clamp(31px, 2vw, 42px);
+  }
+}
+
+@media (max-width: 1280px) and (min-width: 781px) {
+  .world-map-page {
+    padding: 20px;
+  }
+
+  .world-map-layout {
+    grid-template-columns: minmax(0, 1fr) 350px;
+    gap: 16px;
+  }
+
+  .world-map-inspector.world-map-location-inspector {
+    padding: 18px;
+  }
+}
+
+@media (max-width: 780px) {
+  .world-map-page {
+    height: auto;
+    min-height: 100%;
+    overflow: auto;
+    padding: 14px;
+  }
+
+  .world-map-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .world-map-frame {
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    align-self: stretch;
+  }
+
+  .world-map-inspector.world-map-location-inspector {
+    overflow: visible;
+    max-height: none;
+  }
+
+  .world-map-location-inspector .route-legend {
+    margin-top: 18px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .world-map-location,
+  .world-map-location *,
+  .world-route,
+  .party-pin {
+    transition: none !important;
+    animation: none !important;
+  }
+}

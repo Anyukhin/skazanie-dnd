@@ -16,7 +16,7 @@ import { playerMessage } from './game-engine'
 import { withLootTakenRecord } from './loot-panel-rules.mjs'
 import { forgetSceneMaps, latestSceneMapHash, resolveSceneMap } from './scene-map-cache'
 import { canIssueUiTacticalCommand } from './tactical-command-guard.mjs'
-import type { AgentInteraction, AiTurnResult, BattleEvent, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, GuardResolution, InventoryItem, ItemUseOptions, LetterAddresseeKind, LootContainersProjection, Merchant, MerchantView, Message, ParleyOutcome, Player, RestCommand, RollResult, SceneObjectIntent, TavernDiceApproach, TwoPhaseCheckCommand } from './types'
+import type { ActionClarification, AgentInteraction, AiTurnResult, BattleEvent, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, GuardResolution, InventoryItem, ItemUseOptions, LetterAddresseeKind, LootContainersProjection, Merchant, MerchantView, Message, ParleyOutcome, Player, PlayerRequestKind, RestCommand, RollResult, SceneObjectIntent, TavernDiceApproach, TwoPhaseCheckCommand } from './types'
 
 const ACTIVE_CAMPAIGN_KEY = 'skazanie-active-campaign-v2'
 const channelNameFor = (campaignId: string) => `skazanie-room:${String(campaignId || '').toUpperCase()}`
@@ -107,6 +107,8 @@ type CharacterBuildCommand =
       subclass: string
       class_skill_proficiencies: string[]
       selected_feature_ids: string[]
+      ability_score_level?: number
+      ability_score_increases?: string[]
     }
   | {
       command_type: 'SetSpellSelections'
@@ -393,6 +395,16 @@ export function useGameSession() {
   const [state, setState] = useState<GameState>(loadState)
   const [connectionState, setConnectionState] = useState<ConnectionState>('connecting')
   const [narrationPreview, setNarrationPreview] = useState<NarrationPreview | null>(null)
+  const [lastDialogueAnswer, setLastDialogueAnswer] = useState('')
+  const [pendingClarification, setPendingClarification] = useState<ActionClarification | null>(null)
+  const [dialogueDraft, setDialogueDraft] = useState<{ id: number; text: string; kind: PlayerRequestKind; actorId: string; campaignId: string } | null>(null)
+  const editingProposal = useRef<{ campaignId: string; actorId: string; checkId?: string; proposalId?: string; check?: GameState['pendingCheck'] } | null>(null)
+  useEffect(() => {
+    setPendingClarification(null)
+    setDialogueDraft(null)
+    setLastDialogueAnswer('')
+    editingProposal.current = null
+  }, [state.sessionCode])
   const [tacticalBusy, setTacticalBusy] = useState(false)
   const [tacticalError, setTacticalError] = useState<string | null>(null)
   const [merchantBusy, setMerchantBusy] = useState(false)
@@ -753,18 +765,21 @@ export function useGameSession() {
       pendingCheck: null,
       pendingAction: null,
       activePlayerId: base.activePlayerId,
-      messages: narrationPersisted ? base.messages : [...base.messages, narratorMessage],
+      messages: narrationPersisted || !aiResult.narration.trim() ? base.messages : [...base.messages, narratorMessage],
     }
   }, [])
 
-  const submitAction = useCallback(async (text: string, actorId?: string, npcId?: string): Promise<CommandOutcome> => {
-    if (!text.trim() || state.isNarrating || state.pendingCheck || state.pendingAction) {
+  const submitAction = useCallback(async (text: string, actorId?: string, npcId?: string, requestKind: PlayerRequestKind = 'action'): Promise<CommandOutcome> => {
+    const conversationOnly = requestKind !== 'action'
+    if (!text.trim() || busy.current || tacticalBusyRef.current || merchantBusyRef.current || directorBusyRef.current || state.isNarrating || (!conversationOnly && (state.pendingCheck || state.pendingAction))) {
       return { ok: false, error: 'Сейчас нельзя отправить это действие.' }
     }
     busy.current = true
     setTacticalError(null)
     const epoch = ++actionEpoch.current
     const player = state.players.find((item) => item.id === (actorId || state.activePlayerId)) ?? state.players[0]
+    const continuation = !npcId && pendingClarification?.actor_id === player.id && pendingClarification.campaign_id === state.sessionCode ? pendingClarification : null
+    const edited = !conversationOnly && editingProposal.current?.actorId === player.id && editingProposal.current.campaignId === state.sessionCode ? editingProposal.current : null
     // Служебные команды (`/why`) сервер в летопись не пишет — локальный пузырь
     // игрока прожил бы ровно до следующего опроса комнаты и исчезал на глазах.
     const metaCommand = /^\s*\//u.test(text.trim())
@@ -785,7 +800,10 @@ export function useGameSession() {
         undefined,
         undefined,
         player.id,
-        { npcId, onNarrationPreview: setNarrationPreview },
+        { npcId, requestKind, clarificationId: continuation?.id,
+          supersedesCheckId: edited?.checkId, supersedesProposalId: edited?.proposalId,
+          ...(requestKind === 'question' ? { questionCheckId: state.pendingCheck?.check_id, questionProposalId: state.pendingAction?.proposal.id } : {}),
+          onNarrationPreview: setNarrationPreview },
       )
     } catch (error) {
       console.warn('AI fallback:', error instanceof Error ? error.message : error)
@@ -796,6 +814,21 @@ export function useGameSession() {
       return { ok: false, error: 'Действие было отменено.' }
     }
     if (authoritativeError) {
+      if (edited && authoritativeError instanceof ApiRequestError) {
+        if (authoritativeError.code === 'CHECK_ALREADY_ROLLED' && edited.check) {
+          // Ответ на выдачу кости мог потеряться. Возвращаем исходную карточку,
+          // чтобы повтор получил ту же кость, а не оставлял игрока без выхода.
+          mutate((current) => ({ ...current, pendingCheck: edited.check ?? null }))
+          editingProposal.current = null
+          setDialogueDraft(null)
+        } else if (['CHECK_NOT_FOUND', 'PROPOSAL_NOT_FOUND', 'PROPOSAL_STALE', 'STATE_VERSION_CONFLICT'].includes(authoritativeError.code ?? '')) {
+          editingProposal.current = null
+        }
+      }
+      if (authoritativeError instanceof ApiRequestError && authoritativeError.code?.startsWith('CLARIFICATION_')) {
+        setPendingClarification(null)
+        if (continuation) setDialogueDraft({ id: Date.now(), text: `${continuation.action}. ${text.trim()}`, kind: 'action', actorId: player.id, campaignId: state.sessionCode })
+      }
       const message = authoritativeError.message
       const conflict = isStateVersionConflictError(authoritativeError)
       if (conflict) setTacticalError(message)
@@ -824,11 +857,19 @@ export function useGameSession() {
       })
     }
 
+    const conversationResult = conversationOnly || aiResult?.request_kind === 'question' || aiResult?.request_kind === 'discussion'
+    if (!conversationResult) {
+      setPendingClarification(aiResult?.clarification ?? null)
+      setDialogueDraft(null)
+      setLastDialogueAnswer('')
+      if (edited) editingProposal.current = null
+    }
+    const resolvedAction = aiResult?.resolved_action ?? text.trim()
     if (aiResult?.action_proposal) {
       const proposal = aiResult.action_proposal
       setNarrationPreview(null)
       mutate((current) => ({ ...current, isNarrating: false, pendingAction: {
-        proposal, action: text.trim(), playerId: player.id, status: 'ready', idempotencyKey: commandId(),
+        proposal, action: resolvedAction, playerId: player.id, status: 'ready', idempotencyKey: commandId(),
       } }))
       busy.current = false
       return { ok: true }
@@ -839,7 +880,7 @@ export function useGameSession() {
       mutate((current) => ({
         ...current,
         isNarrating: false,
-        pendingCheck: { ...check, action: text.trim(), playerId: player.id, status: 'ready' },
+        pendingCheck: { ...check, action: resolvedAction, playerId: player.id, status: 'ready' },
         messages: check.proposal ? current.messages : [...current.messages, {
           id: `${Date.now()}-check`, speaker: 'narrator', author: 'Рассказчик',
           timestamp: new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' }).format(new Date()),
@@ -850,7 +891,13 @@ export function useGameSession() {
       return { ok: true }
     }
 
-    mutate((current) => finishTurn(current, text, aiResult!))
+    if (conversationResult) {
+      setLastDialogueAnswer(aiResult!.narration)
+      mutate((current) => ({ ...finishTurn(current, text, aiResult!), pendingCheck: current.pendingCheck, pendingAction: current.pendingAction }))
+    } else {
+      setLastDialogueAnswer('')
+      mutate((current) => finishTurn(current, text, aiResult!))
+    }
     busy.current = false
 
     for (const item of aiResult?.effects.grantItems ?? []) {
@@ -875,7 +922,7 @@ export function useGameSession() {
       })
     }
     return { ok: true }
-  }, [commit, finishTurn, mutate, normalizeCommandError, state])
+  }, [commit, finishTurn, mutate, normalizeCommandError, pendingClarification, state])
 
   const confirmPendingAction = useCallback(async () => {
     const pending = stateRef.current.pendingAction
@@ -908,9 +955,29 @@ export function useGameSession() {
     mutate((current) => ({ ...current, pendingAction: null }))
   }, [mutate])
 
+  const editPendingProposal = useCallback(() => {
+    const current = stateRef.current
+    const check = current.pendingCheck
+    const action = current.pendingAction
+    if (busy.current || (check && (check.status !== 'ready' || check.result || check.command)) || (action && action.status !== 'ready')) return
+    if (!check && !action) return
+    const actorId = (check ?? action)!.playerId
+    const text = (check ?? action)!.action
+    editingProposal.current = { campaignId: current.sessionCode, actorId, checkId: check?.check_id, proposalId: action?.proposal.id, check }
+    setPendingClarification(null)
+    setLastDialogueAnswer('')
+    setDialogueDraft({ id: Date.now(), text, kind: 'action', actorId, campaignId: current.sessionCode })
+    mutate((latest) => ({ ...latest, pendingCheck: null, pendingAction: null }))
+  }, [mutate])
+
+  const cancelDialogue = useCallback(() => {
+    setPendingClarification(null)
+    setDialogueDraft(null)
+  }, [])
+
   const rollPendingCheck = useCallback(async () => {
     const check = state.pendingCheck
-    if (!check || check.status !== 'ready') return
+    if (!check || check.status !== 'ready' || busy.current) return
     busy.current = true
     const epoch = ++actionEpoch.current
     const resolutionKey = check.resolutionKey ?? commandId()
@@ -1636,7 +1703,7 @@ export function useGameSession() {
   }, [executeTacticalCommand])
 
   const levelUpCharacter = useCallback((playerId: string, expectedLevel: number) => {
-    void executeTacticalCommand({ command_type: 'LevelUp', actor_id: playerId, expected_level: expectedLevel } as TacticalCommand, 'Повысить уровень персонажа')
+    return executeTacticalCommand({ command_type: 'LevelUp', actor_id: playerId, expected_level: expectedLevel } as TacticalCommand, 'Повысить уровень персонажа')
   }, [executeTacticalCommand])
 
   const switchCampaign = useCallback(async (code: string, prefetched?: { version?: number; state?: GameState | null }) => {
@@ -1873,13 +1940,19 @@ export function useGameSession() {
     const player = current.players.find((candidate) => candidate.id === playerId)
     if (!player) return
     const commands: CharacterBuildCommand[] = []
-    if (patch.subclass !== undefined || patch.classSkillProficiencies !== undefined || patch.selectedFeatureIds !== undefined) {
+    const abilityScoreEntry = Object.entries(patch.abilityScoreIncreases ?? {})
+      .find(([level, choices]) => JSON.stringify(player.abilityScoreIncreases?.[level] ?? null) !== JSON.stringify(choices))
+    if (patch.subclass !== undefined || patch.classSkillProficiencies !== undefined || patch.selectedFeatureIds !== undefined || abilityScoreEntry) {
       commands.push({
         command_type: 'SetCharacterChoices',
         actor_id: playerId,
         subclass: String(patch.subclass ?? player.subclass ?? ''),
         class_skill_proficiencies: patch.classSkillProficiencies ?? player.classSkillProficiencies ?? [],
         selected_feature_ids: patch.selectedFeatureIds ?? player.selectedFeatureIds ?? [],
+        ...(abilityScoreEntry ? {
+          ability_score_level: Number(abilityScoreEntry[0]),
+          ability_score_increases: abilityScoreEntry[1],
+        } : {}),
       })
     }
     if (patch.knownSpellIds !== undefined || patch.preparedSpellIds !== undefined) {
@@ -1892,7 +1965,7 @@ export function useGameSession() {
     }
     if (commands.length) await executeCharacterBuild(commands)
     const mechanical = new Set<keyof Player>([
-      'subclass', 'classSkillProficiencies', 'selectedFeatureIds', 'knownSpellIds', 'preparedSpellIds',
+      'subclass', 'classSkillProficiencies', 'selectedFeatureIds', 'knownSpellIds', 'preparedSpellIds', 'abilityScoreIncreases',
       'role', 'characterClass', 'level', 'experience', 'hp', 'maxHp', 'armor', 'speed', 'proficiency', 'abilities', 'currency',
       'inventory', 'combatActions', 'combatSpells',
       'x', 'y',
@@ -1924,6 +1997,11 @@ export function useGameSession() {
   return {
     state,
     narrationPreview,
+    lastDialogueAnswer,
+    pendingClarification,
+    dialogueDraft,
+    editPendingProposal,
+    cancelDialogue,
     connectionState,
     tacticalBusy,
     tacticalError,

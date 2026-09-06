@@ -1118,7 +1118,7 @@ export const PROJECTED_STATE_KEYS = Object.freeze([
   'suggested_actions',
   // Отдаются как есть: общий контекст отряда без скрытого.
   'sessionCode', 'campaign', 'partyName', 'partyMemberIds', 'partyDecisionPolicy',
-  'campaignConcept', 'state_version', 'ruleset_id', 'ruleset_version',
+  'campaignConcept', 'character_start_level', 'state_version', 'ruleset_id', 'ruleset_version',
   'enabled_rule_packs', 'enabled_house_rules', 'ruleset_locked_at', 'ruleset_selection_locked', 'engine_mode',
   'players', 'entities', 'mapFeedback', 'rulings', 'activePlayerId', 'tacticalTurn',
   'isNarrating', 'pendingCheck', 'agentInteraction', 'lastDiceRoll',

@@ -1,4 +1,5 @@
 import './character-creation.css'
+import { useState } from 'react'
 
 import type { PhbAbilityId, PhbChoiceRecord, PhbCatalogEntry, PhbSpellCatalogEntry, PhbFeatCatalogEntry, PhbChoiceSchema, PhbClassCatalogEntry, PhbSubclassCatalogEntry, PhbCharacterOptionsCatalog, PhbFeatSelection, PhbCharacterOptionsValue, PhbCharacterOptionsProps } from './phb-character-types'
 export type { PhbAbilityId, PhbChoiceRecord, PhbCatalogEntry, PhbSpellCatalogEntry, PhbFeatCatalogEntry, PhbChoiceSchema, PhbClassCatalogEntry, PhbSubclassCatalogEntry, PhbCharacterOptionsCatalog, PhbFeatSelection, PhbCharacterOptionsValue, PhbCharacterOptionsProps } from './phb-character-types'
@@ -137,6 +138,7 @@ export function PhbCharacterOptions({
   const featSelection = value.feat
   const feat = catalog.feats.find((entry) => entry.id === featSelection?.id) ?? null
   const featChoices = featSelection?.choices ?? {}
+  const [featSearch, setFeatSearch] = useState('')
   const knownSkills = knownSet(knownSkillIds)
   const knownTools = knownSet(knownToolIds)
 
@@ -337,23 +339,48 @@ export function PhbCharacterOptions({
 
   const renderFeats = () => {
     if (!variantHuman) return null
+    const needle = featSearch.trim().toLocaleLowerCase('ru').replace(/ё/gu, 'е')
+    const visibleFeats = catalog.feats.filter((entry) => !needle || [entry.name, entry.label, entry.english_name, entry.summary]
+      .some((value) => text(value).toLocaleLowerCase('ru').replace(/ё/gu, 'е').includes(needle)))
     return <section className="phb-feats">
       <header><span>Черта вариативного человека</span><b>{feat ? feat.name ?? feat.label ?? feat.id : 'не выбрана'}</b></header>
       <p className="creation-form">Вариативный человек получает одну черту PHB 2014 на 1 уровне. Требования показаны на карточках и проверяются сервером.</p>
-      <div className="creation-card-grid">
-        {catalog.feats.map((entry) => {
+      {feat && <div className="phb-feat-current" role="status">
+        <span>Выбрано сейчас</span>
+        <strong>{feat.name ?? feat.label ?? feat.id}</strong>
+        {feat.summary && <p>{feat.summary}</p>}
+      </div>}
+      <div className="phb-feat-filter">
+        <label>
+          <span>Найти черту</span>
+          <input type="search" value={featSearch} onChange={(event) => setFeatSearch(event.target.value)} placeholder="Название на русском, English или описание" aria-label="Поиск черты" />
+        </label>
+        <span className="phb-feat-filter-count" aria-live="polite">Найдено: {visibleFeats.length} из {catalog.feats.length}</span>
+      </div>
+      {visibleFeats.length > 0 ? <div className="creation-card-grid phb-feat-grid">
+        {visibleFeats.map((entry) => {
           const status = featPrerequisiteStatus(entry, option, abilities)
           const checked = entry.id === featSelection?.id
-          return <label key={entry.id} className={`creation-card ${checked ? 'selected' : ''} ${!status.available ? 'disabled' : ''}`}>
+          const name = entry.name ?? entry.label ?? entry.id
+          const requirementText = (entry.prerequisites ?? []).length > 0
+            ? status.available
+              ? 'Требования выполнены'
+              : `Требуется: ${(status.failures.length ? status.failures : (entry.prerequisites ?? [])).map((prerequisite) => text(prerequisite.label ?? prerequisite.description ?? prerequisite.value ?? prerequisite.kind)).join('; ')}`
+            : ''
+          return <label key={entry.id} className={`phb-feat-card ${checked ? 'selected' : ''} ${!status.available ? 'disabled' : ''}`}>
             <input type="radio" name="phb-feat" value={entry.id} checked={checked} disabled={!status.available} onChange={() => updateFeat(entry.id, {})} />
-            <strong>{entry.name ?? entry.label ?? entry.id}</strong>
-            {entry.english_name && <small>{entry.english_name}</small>}
-            {entry.summary && <i>{entry.summary}</i>}
-            {(entry.prerequisites ?? []).length > 0 && <small>{status.available ? 'Требования выполнены' : `Требуется: ${(status.failures.length ? status.failures : (entry.prerequisites ?? [])).map((prerequisite) => text(prerequisite.label ?? prerequisite.description ?? prerequisite.value ?? prerequisite.kind)).join('; ')}`}</small>}
-            {entry.mechanics_status === 'partial' && <small>Применение механики в игре частичное; выбор сохраняется на листе.</small>}
+            <span className="phb-feat-card-body">
+              <span className="phb-feat-card-heading">
+                <strong>{name}</strong>
+                {entry.english_name && <small className="phb-feat-card-english">{entry.english_name}</small>}
+              </span>
+              {entry.summary && <span className="phb-feat-card-summary">{entry.summary}</span>}
+              {requirementText && <span className={`phb-feat-card-requirement ${status.available ? 'met' : 'unmet'}`}>{requirementText}</span>}
+              {entry.mechanics_status === 'partial' && <span className="phb-feat-card-support">Механика применяется частично; выбор сохраняется на листе.</span>}
+            </span>
           </label>
         })}
-      </div>
+      </div> : <p className="phb-feat-empty" role="status">По запросу «{featSearch.trim()}» ничего не найдено. Попробуйте другое слово или очистите поиск.</p>}
       {feat && <div className="creation-form">
         <h3>Выборы черты: {feat.name ?? feat.label ?? feat.id}</h3>
         {Object.entries(feat.choice_schema ?? {}).map(([key, schema]) => renderFeatChoice(feat, key, schema ?? {}))}

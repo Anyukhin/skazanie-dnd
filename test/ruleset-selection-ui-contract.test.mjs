@@ -11,7 +11,7 @@ const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8
 
 test('мастер мира выбирает ruleset, отправляет его серверу и показывает в итогах', () => {
   assert.match(views, /const \[rulesetId, setRulesetId\].*'dnd_5e_2014'/u)
-  assert.match(views, /bootstrap: \{ partyName: partyName\.trim\(\), world, worldTemplateId: worldTemplateId \|\| undefined, slotCount, rulesetId \}/u)
+  assert.match(views, /bootstrap: \{ partyName: partyName\.trim\(\), world, worldTemplateId: worldTemplateId \|\| undefined, slotCount(?:, startLevel)?, rulesetId \}/u)
   assert.match(views, /className="ruleset-picker" role="group" aria-label="Правила кампании"/u)
   assert.match(views, /<dt>Правила<\/dt><dd>\{rulesets\.find/u)
   assert.match(styles, /\.ruleset-picker button\.selected/u)

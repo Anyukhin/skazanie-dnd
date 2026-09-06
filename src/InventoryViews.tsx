@@ -11,6 +11,7 @@ import { classSkillRulesFor, featureChoiceGroupsFor, normalizedSelectedFeatures 
 import { itemImageFor } from './item-images'
 import type { FeatureChoiceGroup } from './character-progression'
 import type { InventoryItem, ItemUseOptions, Player } from './types'
+import { playerRoleLabel } from './player-experience'
 
 // Сокращения характеристик общие с боевой хроникой: словарь один, и лист героя
 // с журналом боя не разъезжаются в подписях.
@@ -27,23 +28,28 @@ function modifier(score: number) {
 }
 
 function Field({ label, value, onChange, type = 'text', min, max, readOnly = false }: { label: string; value: string | number; onChange: (value: string) => void; type?: string; min?: number; max?: number; readOnly?: boolean }) {
-  return <label className="sheet-field"><span>{label}</span><input type={type} min={min} max={max} value={value} readOnly={readOnly} aria-readonly={readOnly} onChange={(event) => onChange(event.target.value)} /></label>
+  return <label className={`sheet-field${readOnly ? ' sheet-field--readonly' : ''}`}><span>{label}</span><input type={type} min={min} max={max} value={value} readOnly={readOnly} aria-readonly={readOnly} onChange={(event) => onChange(event.target.value)} /></label>
 }
 
 function TextField({ label, value, onChange, rows = 3 }: { label: string; value: string; onChange: (value: string) => void; rows?: number }) {
   return <label className="sheet-field textarea-field"><span>{label}</span><textarea rows={rows} value={value} onChange={(event) => onChange(event.target.value)} /></label>
 }
 
-export function CharacterEditor({ player, rulesetId, onClose, onSave, onImport, onLevelUp }: { player: Player; rulesetId?: string; onClose: () => void; onSave: (patch: Partial<Player>) => void; onImport: (source: string) => Promise<void>; onLevelUp: () => void }) {
+export function CharacterEditor({ player, rulesetId, targetLevel = player.level, onClose, onSave, onImport, onLevelUp }: { player: Player; rulesetId?: string; targetLevel?: number; onClose: () => void; onSave: (patch: Partial<Player>) => void | Promise<void>; onImport: (source: string) => Promise<void>; onLevelUp: () => void | Promise<{ ok?: boolean; error?: string } | void> }) {
   const [draft, setDraft] = useState<Player>(() => structuredClone(player))
-  const [tab, setTab] = useState<'sheet' | 'story' | 'advancement'>('sheet')
+  const [tab, setTab] = useState<'sheet' | 'story' | 'advancement'>(() => player.characterSetupStage === 'leveling' ? 'advancement' : 'sheet')
   const [notice, setNotice] = useState('')
+  const [saving, setSaving] = useState(false)
+  const startedAsSetup = useRef(player.characterSetupStage === 'leveling')
   const [developmentSearch, setDevelopmentSearch] = useState('')
   const [spellLevelFilter, setSpellLevelFilter] = useState<number | 'all'>('all')
   const avatarInput = useRef<HTMLInputElement>(null)
   const importInput = useRef<HTMLInputElement>(null)
 
-  useEffect(() => setDraft(structuredClone(player)), [player])
+  useEffect(() => {
+    setDraft(structuredClone(player))
+    if (player.characterSetupStage === 'leveling') setTab('advancement')
+  }, [player])
   const patch = <K extends keyof Player>(key: K, value: Player[K]) => setDraft((current) => ({ ...current, [key]: value }))
   const classKey = playerClassKey(draft)
   const classOption = DND_CLASS_OPTIONS.find((entry) => entry.key === classKey)
@@ -72,10 +78,35 @@ export function CharacterEditor({ player, rulesetId, onClose, onSave, onImport, 
   const featureChoicesRequired = Object.hasOwn(draft, 'selectedFeatureIds') || draft.level > player.level
   const featureChoicesValid = !featureChoicesRequired || featureChoiceGroups.every((group) => group.options.filter((option) => selectedFeatureIds.includes(option.id)).length === group.choiceCount)
   const subclassValid = !subclassUnlocked || Boolean(draft.subclass)
-  const developmentValid = subclassValid && skillsValid && featureChoicesValid && (!spellRules || (knownCantrips <= spellRules.cantrips
+  const abilityScoreChoiceLevels = classKey === 'fighter' ? [4, 6, 8, 12] : classKey === 'rogue' ? [4, 8, 10, 12] : [4, 8, 12]
+  const stagedSetup = player.characterSetupStage === 'leveling'
+  const setupTargetLevel = Math.max(draft.level, Math.min(12, Number(targetLevel) || draft.level))
+  const stagedAbilityScoreLevel = stagedSetup
+    ? abilityScoreChoiceLevels.find((level) => level <= draft.level && !draft.abilityScoreIncreases?.[String(level)]) ?? null
+    : null
+  const [abilityScoreChoice, setAbilityScoreChoice] = useState<string[]>([])
+  useEffect(() => {
+    setAbilityScoreChoice(stagedAbilityScoreLevel == null ? [] : [...(draft.abilityScoreIncreases?.[String(stagedAbilityScoreLevel)] ?? [])])
+  }, [draft.abilityScoreIncreases, stagedAbilityScoreLevel])
+  const abilityScoreChoicesValid = stagedAbilityScoreLevel == null || [1, 2].includes(abilityScoreChoice.length)
+  const abilityScoreChoiceSaved = stagedAbilityScoreLevel == null
+    || JSON.stringify(player.abilityScoreIncreases?.[String(stagedAbilityScoreLevel)] ?? []) === JSON.stringify(abilityScoreChoice)
+  const stagedSpellsComplete = !stagedSetup || !spellRules || (knownCantrips === spellRules.cantrips
+    && (spellRules.mode !== 'known' || knownLeveled === spellRules.spellsKnown)
+    && (spellRules.mode !== 'spellbook' || knownLeveled >= spellRules.spellbookMinimum)
+    && preparedLeveled <= spellRules.preparedLimit)
+  const developmentValid = subclassValid && skillsValid && featureChoicesValid && stagedSpellsComplete && (!spellRules || (knownCantrips <= spellRules.cantrips
     && (spellRules.mode !== 'known' || knownLeveled <= spellRules.spellsKnown)
     && (spellRules.mode !== 'spellbook' || knownLeveled <= Math.max(spellRules.spellbookMinimum, player.knownSpellIds?.length ?? 0))
-    && preparedLeveled <= spellRules.preparedLimit))
+    && preparedLeveled <= spellRules.preparedLimit)) && abilityScoreChoicesValid
+  const stagedReadyToAdvance = stagedSetup && draft.level < setupTargetLevel && developmentValid
+  const developmentHint = !subclassValid && subclassUnlocked
+    ? 'Выберите подкласс, чтобы открыть выборы этого уровня.'
+    : !skillsValid ? 'Завершите выбор классовых навыков.'
+      : !featureChoicesValid ? 'Завершите выбор классовых умений.'
+        : !abilityScoreChoicesValid ? 'Выберите улучшение характеристик этого уровня.'
+          : !stagedSpellsComplete ? 'Выберите все обязательные заговоры и заклинания этого уровня.'
+            : 'Исправьте превышенные лимиты заклинаний.'
 
   useEffect(() => {
     if (!subclassUnlocked && draft.subclass) setDraft((current) => ({ ...current, subclass: undefined }))
@@ -173,6 +204,45 @@ export function CharacterEditor({ player, rulesetId, onClose, onSave, onImport, 
     URL.revokeObjectURL(anchor.href)
   }
 
+  const saveCharacter = async () => {
+    if (saving) return
+    if (!developmentValid) {
+      setTab('advancement')
+      setNotice('Завершите обязательные выборы текущего уровня; исправьте превышенные лимиты заклинаний.')
+      return
+    }
+    const sanitized = {
+      ...draft,
+      selectedFeatureIds: normalizedSelectedFeatures(draft),
+      ...(stagedAbilityScoreLevel != null ? { abilityScoreIncreases: { ...(draft.abilityScoreIncreases ?? {}), [String(stagedAbilityScoreLevel)]: abilityScoreChoice } } : {}),
+    }
+    setSaving(true)
+    setNotice('')
+    try {
+      await Promise.resolve(onSave(sanitized))
+      if (stagedReadyToAdvance) {
+        const result = await Promise.resolve(onLevelUp())
+        if (result && result.ok === false) throw new Error(result.error || 'Не удалось перейти к следующему уровню')
+        return
+      }
+      if (!stagedSetup) onClose()
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Не удалось сохранить выбор')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (startedAsSetup.current && !player.characterSetupRequired && player.level >= targetLevel) return (
+    <div className="sheet-overlay">
+      <section className="character-editor character-setup-complete" role="dialog" aria-modal="true" aria-label="Подготовка героя завершена">
+        <header className="editor-head"><div><span>ГЕРОЙ ГОТОВ К ПРИКЛЮЧЕНИЮ</span><h2>{player.character}</h2><p>{playerRoleLabel(player)}</p></div></header>
+        <div className="editor-content"><p>Все обязательные выборы сохранены. Здоровье: {player.hp} из {player.maxHp}. Можно присоединяться к отряду.</p></div>
+        <footer className="editor-footer"><button onClick={onClose}>К приключению</button></footer>
+      </section>
+    </div>
+  )
+
   return (
     <div className="sheet-overlay" onMouseDown={onClose}>
       <section className="character-editor" role="dialog" aria-modal="true" aria-label={`Лист персонажа: ${draft.character}`} onMouseDown={(event) => event.stopPropagation()}>
@@ -182,21 +252,21 @@ export function CharacterEditor({ player, rulesetId, onClose, onSave, onImport, 
             <button onClick={() => avatarInput.current?.click()}><ImagePlus size={17} />Сменить фото</button>
             <input ref={avatarInput} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => uploadAvatar(event.target.files?.[0])} />
           </div>
-          <div><span>ЛИСТ ПЕРСОНАЖА</span><h2>{draft.character}</h2><p>{draft.role}</p></div>
+          <div><span>ЛИСТ ПЕРСОНАЖА</span><h2>{draft.character}</h2><p>{playerRoleLabel(draft)}</p></div>
           <div className="editor-actions">
             <input ref={importInput} hidden type="file" accept="application/json,.json" onChange={(event) => importSheet(event.target.files?.[0])} />
-            <button onClick={() => importInput.current?.click()}><Upload size={15} />Импорт Skazanie JSON</button>
+            <button onClick={() => importInput.current?.click()} disabled={saving}><Upload size={15} />Импорт Skazanie JSON</button>
             <button onClick={exportSheet}><Download size={15} />Экспорт</button>
-            <button className="close-editor" onClick={onClose} aria-label="Закрыть лист персонажа"><X size={20} /></button>
+            <button className="close-editor" onClick={onClose} disabled={saving} aria-label="Закрыть лист персонажа"><X size={20} /></button>
           </div>
         </header>
-        <nav className="editor-tabs"><button className={tab === 'sheet' ? 'active' : ''} onClick={() => setTab('sheet')}>Основной лист</button><button className={tab === 'story' ? 'active' : ''} onClick={() => setTab('story')}>История и особенности</button><button className={tab === 'advancement' ? 'active' : ''} onClick={() => setTab('advancement')}><Sparkles size={14} />Развитие</button><button onClick={onLevelUp}><Sparkles size={14} />Повысить уровень</button><span><Backpack size={14} />{draft.inventory.length} предметов</span></nav>
+        <nav className="editor-tabs"><button disabled={saving} className={tab === 'sheet' ? 'active' : ''} onClick={() => setTab('sheet')}>Основной лист</button><button disabled={saving} className={tab === 'story' ? 'active' : ''} onClick={() => setTab('story')}>История и особенности</button><button disabled={saving} className={tab === 'advancement' ? 'active' : ''} onClick={() => setTab('advancement')}><Sparkles size={14} />Развитие</button>{!stagedSetup && <button onClick={onLevelUp} disabled={saving || !developmentValid || !abilityScoreChoiceSaved}><Sparkles size={14} />Повысить уровень</button>}<span><Backpack size={14} />{draft.inventory.length} предметов</span></nav>
         <div className="editor-content">
           {tab === 'sheet' ? <>
             <div className="sheet-section identity-grid">
               <Field label="Имя персонажа" value={draft.character} onChange={(value) => patch('character', value)} />
               <Field label="Имя игрока" value={draft.name} onChange={(value) => patch('name', value)} />
-              <label className="sheet-field"><span>Класс · задаётся сервером</span><select value={classKey ?? ''} disabled onChange={(event) => {
+              <label className="sheet-field sheet-field--readonly"><span>Класс</span><select value={classKey ?? ''} disabled onChange={(event) => {
                 const next = DND_CLASS_OPTIONS.find((entry) => entry.key === event.target.value)
                 setDraft((current) => ({
                   ...current,
@@ -224,18 +294,19 @@ export function CharacterEditor({ player, rulesetId, onClose, onSave, onImport, 
               {(Object.keys(abilityNames) as Array<keyof Player['abilities']>).map((key) => <label key={key}><span>{abilityNames[key]}</span><input type="number" min="1" max="30" value={draft.abilities[key]} readOnly aria-readonly="true" /><b>{modifier(draft.abilities[key])}</b></label>)}
             </div>
             <div className="sheet-section combat-grid">
-              <Field label="Уровень · сервер" type="number" min={1} max={12} value={draft.level} readOnly onChange={(value) => {
+              <p className="sheet-section-note">Боевые параметры рассчитаны правилами игры.</p>
+              <Field label="Уровень" type="number" min={1} max={12} value={draft.level} readOnly onChange={(value) => {
                 const level = Math.max(1, Math.min(12, Number(value) || 1))
                 setDraft((current) => ({ ...current, level, role: classOption ? `${classOption.label} · ур. ${level}` : current.role }))
               }} />
-              <Field label="Опыт · сервер" type="number" min={0} value={draft.experience} readOnly onChange={(value) => patch('experience', Number(value))} />
-              <Field label="Текущие хиты · сервер" type="number" min={0} value={draft.hp} readOnly onChange={(value) => patch('hp', Number(value))} />
-              <Field label="Максимум хитов · сервер" type="number" min={1} value={draft.maxHp} readOnly onChange={(value) => patch('maxHp', Number(value))} />
-              <Field label="Класс доспеха · сервер" type="number" min={0} value={draft.armor} readOnly onChange={(value) => patch('armor', Number(value))} />
-              <Field label="Скорость · сервер" type="number" min={0} value={draft.speed} readOnly onChange={(value) => patch('speed', Number(value))} />
-              <Field label="Бонус мастерства · сервер" type="number" min={0} value={draft.proficiency} readOnly onChange={(value) => patch('proficiency', Number(value))} />
+              <Field label="Опыт" type="number" min={0} value={draft.experience} readOnly onChange={(value) => patch('experience', Number(value))} />
+              <Field label="Текущие хиты" type="number" min={0} value={draft.hp} readOnly onChange={(value) => patch('hp', Number(value))} />
+              <Field label="Максимум хитов" type="number" min={1} value={draft.maxHp} readOnly onChange={(value) => patch('maxHp', Number(value))} />
+              <Field label="Класс доспеха" type="number" min={0} value={draft.armor} readOnly onChange={(value) => patch('armor', Number(value))} />
+              <Field label="Скорость" type="number" min={0} value={draft.speed} readOnly onChange={(value) => patch('speed', Number(value))} />
+              <Field label="Бонус мастерства" type="number" min={0} value={draft.proficiency} readOnly onChange={(value) => patch('proficiency', Number(value))} />
             </div>
-            <div className="currency-editor"><span><Coins size={16} />МОНЕТЫ · СЕРВЕР</span>{(['copper', 'silver', 'gold', 'platinum'] as const).map((key) => <Field key={key} label={{ copper: 'Медь', silver: 'Серебро', gold: 'Золото', platinum: 'Платина' }[key]} type="number" min={0} value={draft.currency[key]} readOnly onChange={(value) => patch('currency', { ...draft.currency, [key]: Number(value) })} />)}</div>
+            <div className="currency-editor"><span><Coins size={16} />Монеты</span>{(['copper', 'silver', 'gold', 'platinum'] as const).map((key) => <Field key={key} label={{ copper: 'Медь', silver: 'Серебро', gold: 'Золото', platinum: 'Платина' }[key]} type="number" min={0} value={draft.currency[key]} readOnly onChange={(value) => patch('currency', { ...draft.currency, [key]: Number(value) })} />)}</div>
           </> : tab === 'story' ? <div className="story-editor-grid">
             {player.creationBenefits && <section className="advancement-block">
               <h3>Создание по PHB 2014</h3>
@@ -255,9 +326,24 @@ export function CharacterEditor({ player, rulesetId, onClose, onSave, onImport, 
             <TextField label="Заметки" value={draft.notes} onChange={(value) => patch('notes', value)} rows={5} />
           </div> : <div className="advancement-editor">
             <section className="advancement-summary">
-              <div><Sparkles size={20} /><span><small>{draft.level > player.level ? 'ПОВЫШЕНИЕ УРОВНЯ' : 'КОНСТРУКТОР ПЕРСОНАЖА'}</small><strong>{classOption?.label ?? 'Сначала выберите класс'} · {draft.level} уровень</strong></span></div>
+              <div><Sparkles size={20} /><span><small>{stagedSetup ? 'ПОЭТАПНАЯ ПОДГОТОВКА' : draft.level > player.level ? 'ПОВЫШЕНИЕ УРОВНЯ' : 'КОНСТРУКТОР ПЕРСОНАЖА'}</small><strong>{stagedSetup ? `Уровень ${draft.level} из ${setupTargetLevel}` : `${classOption?.label ?? 'Сначала выберите класс'} · ${draft.level} уровень`}</strong></span></div>
+              {stagedSetup && <p>Сохраните выбор текущего уровня, чтобы перейти дальше. Игра откроется после подготовки до {setupTargetLevel}-го уровня.</p>}
+              {stagedSetup && subclassUnlocked && <label className="sheet-field staged-subclass-choice"><span>Подкласс · обязательный выбор</span><select value={draft.subclass ?? ''} onChange={(event) => {
+                const nextSubclass = event.target.value || undefined
+                setDraft((current) => {
+                  const next = { ...current, subclass: nextSubclass }
+                  return { ...next, selectedFeatureIds: normalizedSelectedFeatures(next) }
+                })
+              }}><option value="">Выберите подкласс</option>{subclasses.map((entry) => <option key={entry.id} value={entry.name}>{entry.name}</option>)}</select></label>}
               {classOption && <p>{subclassUnlocked ? draft.subclass ? `Подкласс: ${draft.subclass}` : 'На этом уровне нужно выбрать подкласс.' : `Подкласс откроется на ${classOption.subclassLevel}-м уровне.`}</p>}
             </section>
+            {stagedAbilityScoreLevel != null && <section className="advancement-block ability-score-development">
+              <header><div><Sparkles size={17} /><span><strong>Улучшение характеристик · {stagedAbilityScoreLevel} уровень</strong><small>Выберите +2 одной характеристике или +1 двум</small></span></div><b className={!abilityScoreChoicesValid ? 'invalid' : ''}>{abilityScoreChoice.length}/2</b></header>
+              <div className="ability-score-choice-grid">
+                <label><span>Первая прибавка</span><select value={abilityScoreChoice[0] ?? ''} onChange={(event) => setAbilityScoreChoice((current) => [event.target.value, current[1]].filter(Boolean))}><option value="">Выберите характеристику</option>{Object.keys(abilityNames).map((ability) => <option key={ability} value={ability}>{abilityNames[ability as keyof Player['abilities']]}</option>)}</select></label>
+                <label><span>Вторая прибавка <small>(пусто = +2 к первой)</small></span><select value={abilityScoreChoice[1] ?? ''} onChange={(event) => setAbilityScoreChoice((current) => event.target.value ? [current[0] ?? '', event.target.value].filter(Boolean) : [current[0]].filter(Boolean))}><option value="">Не выбирать</option>{Object.keys(abilityNames).map((ability) => <option key={ability} value={ability}>{abilityNames[ability as keyof Player['abilities']]}</option>)}</select></label>
+              </div>
+            </section>}
             <label className="advancement-search"><Search size={16} /><input value={developmentSearch} onChange={(event) => setDevelopmentSearch(event.target.value)} placeholder="Поиск навыка, умения или заклинания…" /></label>
             <section className="advancement-block skill-development">
               <header><div><Check size={17} /><span><strong>Владение навыками</strong><small>Классовый выбор первого уровня</small></span></div>{classSkillRules && <b className={selectedClassSkills.length !== classSkillRules.choiceCount ? 'invalid' : ''}>{selectedClassSkills.length}/{classSkillRules.choiceCount}</b>}</header>
@@ -304,7 +390,7 @@ export function CharacterEditor({ player, rulesetId, onClose, onSave, onImport, 
             </section>
           </div>}
         </div>
-        <footer className="editor-footer"><p>{notice || (developmentValid ? 'Изменения сохраняются в общей сессии и сразу видны отряду.' : 'Не завершён обязательный выбор подкласса, навыков, умений или превышен лимит заклинаний.')}</p><button onClick={() => { if (!developmentValid) { setTab('advancement'); setNotice('Завершите обязательный выбор подкласса, навыков и классовых умений; исправьте превышенные лимиты заклинаний.'); return } const sanitized = { ...draft, selectedFeatureIds: normalizedSelectedFeatures(draft) }; onClose(); onSave(sanitized) }}><Save size={16} />Сохранить персонажа</button></footer>
+        <footer className="editor-footer"><p>{notice || (developmentValid ? stagedSetup ? `Уровень ${draft.level} из ${setupTargetLevel}: выбор готов.` : 'Изменения сохраняются в общей сессии и сразу видны отряду.' : developmentHint)}</p><button onClick={() => { void saveCharacter() }} disabled={saving}><Save size={16} />{saving ? 'Сохраняем…' : stagedSetup ? (draft.level >= setupTargetLevel ? 'Завершить подготовку' : `Сохранить выбор и перейти к уровню ${draft.level + 1}`) : 'Сохранить персонажа'}</button></footer>
       </section>
     </div>
   )
@@ -394,6 +480,7 @@ export function InventoryView({
   onTransfer,
   onAttune,
   onActivate,
+  onCreateHero,
 }: {
   player: Player
   party: Player[]
@@ -408,6 +495,7 @@ export function InventoryView({
   onTransfer: (itemId: string, recipientId: string, quantity: number) => void
   onAttune: (itemId: string, attuned: boolean) => void
   onActivate: (itemId: string, activated: boolean) => void
+  onCreateHero?: () => void
 }) {
   const [query, setQuery] = useState('')
   const recipients = party.filter((candidate) => candidate.id !== player.id)
@@ -421,6 +509,12 @@ export function InventoryView({
   const usableWeapons = player.inventory.filter((item) => item.type === 'weapon' && item.quantity > 0)
   const totalWeight = useMemo(() => player.inventory.reduce((sum, item) => sum + item.weight * item.quantity, 0), [player.inventory])
   const items = player.inventory.filter((item) => item.name.toLowerCase().includes(query.toLowerCase()))
+  const setupRequired = player.characterSetupRequired === true
+  const emptyInventoryMessage = setupRequired
+    ? { title: 'Герой ещё не создан', text: 'Сначала завершите создание героя — после этого здесь появятся его вещи.', action: 'Создать героя' }
+    : query.trim()
+      ? { title: 'Ничего не найдено', text: 'Попробуйте изменить запрос или очистить поиск.', action: null }
+      : { title: 'Сумка пуста', text: 'Предметы появятся здесь, когда герой найдёт или получит их в приключении.', action: null }
   const enemyTargetFor = (itemId: string) => {
     const selected = useTargets[itemId]
     return enemyTargets.some((candidate) => candidate.id === selected) ? selected : enemyTargets[0]?.id
@@ -460,10 +554,21 @@ export function InventoryView({
       ...(use?.requires_weapon ? { weaponId: weaponTargetFor(item) } : {}),
     }
   }
+  const useDisabledReasonFor = (item: InventoryItem) => {
+    const use = item.capabilities?.use
+    if (!use) return ''
+    if (use.combat_only && !combatActive) return 'Использовать можно только в бою.'
+    if (use.combat_only && !combatItemTurnAvailable) return 'Использовать можно только в свой ход.'
+    if (use.requires_equipped && !item.equipped) return 'Сначала экипируйте предмет.'
+    if (['enemy', 'creature'].includes(use.target ?? '') && useModeFor(item) !== 'spill' && enemyTargets.length === 0) return 'Подходящей цели рядом нет.'
+    if (use.requires_weapon && !weaponTargetFor(item)) return 'Выберите оружие для этого действия.'
+    if (item.capabilities?.charges && item.capabilities.charges.current < (chargesToSpendFor(item) ?? use.charges_per_use ?? 0)) return 'Недостаточно зарядов.'
+    return ''
+  }
 
   return <section className="section-page inventory-page">
-    <div className="inventory-head"><div><span>ЛИЧНЫЕ ВЕЩИ</span><h1>Инвентарь {player.character}</h1><p>Всё, что герой несёт с собой: снаряжение, находки и то, что пока не пригодилось.</p></div>
-      <div className="inventory-owner"><div className="mini-owner-avatar" data-face={heroFaceMode(player)} style={heroFaceStyle(player)}>{!hasHeroPortrait(player) && <HeroFaceInitials hero={player} />}</div><span><small>ВЛАДЕЛЕЦ</small><b>{player.character}</b></span></div>
+    <div className="inventory-head"><div><span>Инвентарь</span><h1>{player.character}</h1><p>Снаряжение и находки героя.</p></div>
+      <div className="inventory-owner"><div className="mini-owner-avatar" data-face={heroFaceMode(player)} style={heroFaceStyle(player)}>{!hasHeroPortrait(player) && <HeroFaceInitials hero={player} />}</div><span><small>Герой</small><b>{player.character}</b></span></div>
     </div>
     <div className="inventory-summary"><div><PackageOpen size={19} /><span><b>{player.inventory.length}</b><small>предметов</small></span></div><div><Weight size={19} /><span><b>{totalWeight.toFixed(1)} / {player.inventoryLoad?.capacity ?? player.abilities.str * 15}</b><small>фунтов</small></span></div><div><Coins size={19} /><span><b>{player.currency.gold}</b><small>золотых</small></span></div></div>
     <div className="inventory-toolbar"><label><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Найти предмет…" /></label>{recipients.length > 0 && <label className="inventory-recipient"><span>Получатель</span><select value={recipientId} disabled={busy} aria-label="Получатель передачи" onChange={(event) => setRecipientId(event.target.value)}>{recipients.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.character}</option>)}</select></label>}</div>
@@ -471,7 +576,10 @@ export function InventoryView({
     {items.length ? <div className="inventory-grid">{items.map((item) => <article className="inventory-card" key={item.id}>
       <div className="inventory-art"><ItemImage item={item} />{item.equipped && <span><Check size={11} />НАДЕТО</span>}{item.quantity > 1 && <b>×{item.quantity}</b>}{item.origin === 'stolen' && <i className="item-stolen-mark" title="Краденое. Это видите только вы и ведущий: за столом о находке никто не знает, пока вы не скажете сами.">КРАДЕНОЕ</i>}</div>
       <div className="inventory-card-info"><small>{itemTypeNames[item.type]}</small><strong>{item.name}</strong><p>{item.description}</p><em className={`rarity ${item.rarity.replace(' ', '-')}`}>{item.rarity}</em></div>
-      {item.capabilities?.mechanics_status && item.capabilities.mechanics_status !== 'verified' && item.capabilities.limitation && <p className="item-mechanics-limitation"><b>Ограничение:</b> {item.capabilities.limitation}</p>}
+      {item.capabilities?.mechanics_status && item.capabilities.mechanics_status !== 'verified' && item.capabilities.limitation && <details className="item-mechanics-limitation">
+        <summary><strong>{item.capabilities.mechanics_status === 'ruling-only' ? 'Требует решения ведущего' : 'Частично поддерживается'}</strong><span>Подробнее</span></summary>
+        <p>{item.capabilities.limitation}</p>
+      </details>}
       {item.capabilities?.charges && <div className="item-charge-state">Применения: <b>{item.capabilities.charges.current}/{item.capabilities.charges.max}</b></div>}
       <div className="item-actions">
         {item.capabilities?.equippable && <button disabled={busy} onClick={() => onEquip(item.id, !item.equipped)}>{item.equipped ? 'Снять' : 'Экипировать'}</button>}
@@ -537,11 +645,12 @@ export function InventoryView({
             || Boolean(item.capabilities.charges && item.capabilities.charges.current < (
               chargesToSpendFor(item) ?? item.capabilities.use?.charges_per_use ?? 0
             ))}
+          title={useDisabledReasonFor(item) || undefined}
           onClick={() => onUse(item.id, useOptionsFor(item))}
         >
           Использовать · {item.capabilities.use?.action_type === 'bonus_action' ? 'бонус' : item.capabilities.use?.action_type === 'action' ? 'действие' : 'вне боя'}
         </button>}
-        {item.capabilities?.use?.requires_equipped && !item.equipped && <small className="item-use-hint">Экипируйте предмет до начала боя.</small>}
+        {item.capabilities?.usable && useDisabledReasonFor(item) && <small className="item-use-hint">{useDisabledReasonFor(item)}</small>}
         {item.capabilities?.activatable && <button
           disabled={busy
             || Boolean(item.capabilities.activation?.requires_equipped && !item.equipped)
@@ -563,6 +672,6 @@ export function InventoryView({
         {item.capabilities?.requires_attunement && <button disabled={busy} onClick={() => onAttune(item.id, item.attuned_to !== player.id)}>{item.attuned_to === player.id ? 'Разорвать настройку' : 'Настроиться'}</button>}
         {recipientId && !item.equipped && !item.attuned_to && <button disabled={busy} onClick={() => onTransfer(item.id, recipientId, 1)}>Передать 1</button>}
       </div>
-    </article>)}</div> : <div className="empty-inventory"><Backpack size={31} /><h3>Ничего не найдено</h3><p>Измените запрос или получите предмет в игре.</p></div>}
+    </article>)}</div> : <div className={`empty-inventory${setupRequired ? ' empty-inventory--setup' : ''}`}><Backpack size={31} /><h3>{emptyInventoryMessage.title}</h3><p>{emptyInventoryMessage.text}</p>{emptyInventoryMessage.action && onCreateHero && <button type="button" onClick={onCreateHero}><Sparkles size={15} />{emptyInventoryMessage.action}</button>}</div>}
   </section>
 }

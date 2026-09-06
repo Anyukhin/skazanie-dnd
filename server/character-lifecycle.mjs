@@ -1,5 +1,6 @@
 import {
   catalogSkillId,
+  abilityScoreChoiceLevelsFor,
   classBuildCatalogInfo,
   classSkillRuleFor,
   characterClassKey,
@@ -93,8 +94,10 @@ export const EXPERIENCE_THRESHOLDS = Object.freeze({
   12: 100_000,
 })
 
+export const MAX_CHARACTER_LEVEL = 12
+
 export const DERIVED_CHARACTER_POLICY = Object.freeze({
-  maximumLevel: 12,
+  maximumLevel: MAX_CHARACTER_LEVEL,
   proficiency: '2 + floor((level - 1) / 4)',
   hitPoints: 'level 1 uses the maximum hit die; later levels use a recorded dN roll or the fixed average, then add CON with a minimum of 1 per level',
   armorClass: 'only equipped items resolved through a server-owned armor profile affect AC; otherwise the class unarmored rule applies',
@@ -102,7 +105,7 @@ export const DERIVED_CHARACTER_POLICY = Object.freeze({
   imports: 'v1 excludes id, current/max HP, AC, proficiency, inventory, currency, resources, and all derived fields',
 })
 
-const MAX_LEVEL = 12
+const MAX_LEVEL = MAX_CHARACTER_LEVEL
 const MAX_EXPERIENCE = 2_000_000_000
 const DEFAULT_BASE_SPEED = 30
 const DEFAULT_ARMOR_PROFILES = ITEM_ARMOR_PROFILES
@@ -741,6 +744,64 @@ function actorFromState(state, actorId) {
   return actor
 }
 
+/**
+ * Начальный уровень — настройка кампании, а не поле листа от клиента. Старые
+ * комнаты его не знают и поэтому сохраняют исторический путь с первого уровня.
+ */
+export function characterCreationTargetLevel(state) {
+  return integer(state?.character_start_level ?? state?.characterStartLevel, 'character_start_level', {
+    minimum: 1,
+    maximum: MAX_LEVEL,
+    fallback: 1,
+  })
+}
+
+function stagedCharacterSetupFor(state, actor) {
+  return actor?.characterSetupRequired === true
+    && actor?.characterSetupStage === 'leveling'
+    && characterCreationTargetLevel(state) > normalizedLevel(actor?.level)
+}
+
+/**
+ * Проверяет обязательные выборы на текущем уровне. В поэтапном создании нельзя
+ * просто нажимать «дальше»: новый уровень открывается только после того, как
+ * сервер увидел полный допустимый набор навыков, подкласса, классовых выборов
+ * и заклинаний этого уровня.
+ */
+export function characterCreationChoicesComplete(actor) {
+  const abilityChoices = actor?.abilityScoreIncreases && typeof actor.abilityScoreIncreases === 'object' && !Array.isArray(actor.abilityScoreIncreases)
+    ? actor.abilityScoreIncreases
+    : {}
+  if (abilityScoreChoiceLevelsFor(actor).some((level) => level <= normalizedLevel(actor.level)
+    && (!Array.isArray(abilityChoices[String(level)]) || ![1, 2].includes(abilityChoices[String(level)].length)))) return false
+
+  const classRule = classSkillRuleFor(actor)
+  if (classRule && normalizedClassSkillProficiencies(actor).length !== classRule.choiceCount) return false
+
+  const classKey = characterClassKey(actor)
+  const classInfo = combatClassCatalogInfo().classes.find((entry) => entry.classKey === classKey)
+  if (classInfo && normalizedLevel(actor.level) >= Number(classInfo.subclassLevel ?? 1)
+    && classInfo.subclasses > 0 && !normalizedCombatSubclassFor(actor)) return false
+
+  const selectedFeatures = new Set(normalizedSelectedFeatureIds(actor))
+  for (const group of featureChoiceGroupsFor(actor)) {
+    const selected = group.options.filter((option) => selectedFeatures.has(option.id)).length
+    if (selected !== group.choiceCount) return false
+  }
+
+  const spellRules = spellSelectionRulesFor(actor)
+  if (!spellRules) return true
+  const selected = normalizedSpellSelectionsFor(actor)
+  const known = new Set(selected.knownSpellIds ?? [])
+  const spells = new Map(combatSpellsFor(actor).map((spell) => [spell.id, spell]))
+  const cantrips = [...known].filter((id) => spells.get(id)?.level === 0).length
+  const leveled = [...known].filter((id) => (spells.get(id)?.level ?? 0) > 0).length
+  if (cantrips !== spellRules.cantrips) return false
+  if (spellRules.mode === 'known' && leveled !== spellRules.spellsKnown) return false
+  if (spellRules.mode === 'spellbook' && leveled < spellRules.spellbookMinimum) return false
+  return true
+}
+
 function assertActorAuthority(actorId, context) {
   const allowed = new Set((context?.allowedActorIds ?? []).map(String))
   if (context?.isAdmin !== true && !allowed.has(actorId)) {
@@ -768,6 +829,19 @@ export function validateLevelUpCommand(command, state, context = {}) {
   if (command.next_level != null && integer(command.next_level, 'next_level', { minimum: 1, maximum: MAX_LEVEL }) !== nextLevel) {
     throw new CharacterLifecycleValidationError('За одну команду можно повысить ровно один уровень', 'LEVEL_UP_STEP_INVALID')
   }
+  const characterCreationLevelUp = stagedCharacterSetupFor(state, actor)
+  if (actor.characterSetupRequired === true && !characterCreationLevelUp) {
+    throw new CharacterLifecycleValidationError('Сначала импортируйте героя и начните его поэтапную подготовку', 'CHARACTER_SETUP_REQUIRED')
+  }
+  if (characterCreationLevelUp && nextLevel > characterCreationTargetLevel(state)) {
+    throw new CharacterLifecycleValidationError('Герой уже достиг выбранного стартового уровня', 'CHARACTER_CREATION_LEVEL_REACHED')
+  }
+  if (characterCreationLevelUp && !characterCreationChoicesComplete(actor)) {
+    throw new CharacterLifecycleValidationError(
+      'Сначала завершите выборы текущего уровня персонажа',
+      'CHARACTER_CREATION_CHOICES_REQUIRED',
+    )
+  }
   const experience = integer(actor.experience, 'experience', { minimum: 0, maximum: MAX_EXPERIENCE, fallback: 0 })
   const requiredExperience = experienceForLevel(nextLevel)
   /**
@@ -783,13 +857,15 @@ export function validateLevelUpCommand(command, state, context = {}) {
    * заслуженный уровень нельзя потратить дважды.
    */
   const milestoneEarned = state?.mechanics?.progression?.level_up_available === true
-  if (experience < requiredExperience && !milestoneEarned) {
+  if (!characterCreationLevelUp && experience < requiredExperience && !milestoneEarned) {
     throw new CharacterLifecycleValidationError(
       `Для уровня ${nextLevel} нужно ${requiredExperience} XP или заслуженная веха`,
       'LEVEL_UP_PROGRESSION_REQUIRED',
     )
   }
-  const progressionSource = experience >= requiredExperience ? 'experience' : 'milestone'
+  const progressionSource = characterCreationLevelUp
+    ? 'character_creation'
+    : experience >= requiredExperience ? 'experience' : 'milestone'
   const hitDie = hitDieFor(actor)
   const rawRoll = command.hit_point_roll ?? command.hitPointRoll
   const hitPointRoll = rawRoll == null
@@ -811,7 +887,7 @@ export function validateLevelUpCommand(command, state, context = {}) {
     expected_level: currentLevel,
     level_before: currentLevel,
     level_after: nextLevel,
-    experience,
+    experience: characterCreationLevelUp ? requiredExperience : experience,
     experience_required: requiredExperience,
     progression_source: progressionSource,
     hit_die: hitDie,
@@ -862,10 +938,16 @@ export function validateCharacterImportCommand(command, state, context = {}) {
     throw new CharacterLifecycleValidationError('Нельзя импортировать лист во время боя', 'IMPORT_DURING_COMBAT')
   }
   const actorId = cleanIdentifier(command.actor_id ?? command.actorId, 'actor_id')
-  actorFromState(state, actorId)
+  const actor = actorFromState(state, actorId)
   assertActorAuthority(actorId, context)
   const rulesetId = String(state?.ruleset_id ?? LEGACY_DEFAULT_RULESET_ID)
-  const parsed = parseCharacterImport(command.document, { rulesetId, validateCreationLanguages: true, trustedAbilityRoll: actorFromState(state, actorId).characterCreationRolls?.abilities, trustedWealthRoll: actorFromState(state, actorId).characterCreationRolls?.wealth })
+  const parsed = parseCharacterImport(command.document, { rulesetId, validateCreationLanguages: true, trustedAbilityRoll: actor.characterCreationRolls?.abilities, trustedWealthRoll: actor.characterCreationRolls?.wealth })
+  if (actor.characterSetupRequired === true && parsed.patch.level !== 1) {
+    throw new CharacterLifecycleValidationError(
+      'Новый герой должен начинать с первого уровня; последующие уровни проходят по одному в мастере подготовки',
+      'IMPORT_LEVEL_MUST_START_AT_ONE',
+    )
+  }
   const starterCatalog = starterEquipmentCatalogFor(rulesetId)
   const speciesPolicy = characterCreationPolicyFor(rulesetId)
   return {
@@ -1012,7 +1094,10 @@ export function applyCharacterLifecycleEvent(state, event) {
     updated.hp = wasCharacterSlot
       ? sheet.hit_points.value
       : Math.min(Math.max(0, Number(actor.hp) || sheet.hit_points.value), sheet.hit_points.value)
-    updated.characterSetupRequired = false
+    const targetLevel = characterCreationTargetLevel(next)
+    updated.characterSetupRequired = wasCharacterSlot && targetLevel > normalizedLevel(updated.level)
+    if (updated.characterSetupRequired) updated.characterSetupStage = 'leveling'
+    else delete updated.characterSetupStage
     next.players[index] = updated
     return next
   }
@@ -1025,11 +1110,23 @@ export function applyCharacterLifecycleEvent(state, event) {
   const updated = {
     ...actor,
     level: levelAfter,
+    experience: integer(payload.experience, 'event.experience', { minimum: 0, maximum: MAX_EXPERIENCE, fallback: actor.experience ?? 0 }),
     hitPointIncreases: [...normalizedHitPointIncreases(actor, { level: previousLevel, hitDie: hitDieFor(actor) }), roll],
   }
   const hitPoints = deriveMaximumHitPoints(updated, { level: levelAfter })
   updated.maxHp = hitPoints.value
-  updated.hp = Math.min(Math.max(0, Number(updated.hp) || 0), hitPoints.value)
+  updated.hp = payload.progression_source === 'character_creation'
+    ? hitPoints.value
+    : Math.min(Math.max(0, Number(updated.hp) || 0), hitPoints.value)
+  if (payload.progression_source === 'character_creation') {
+    const targetLevel = characterCreationTargetLevel(next)
+    if (actor.characterSetupStage !== 'leveling' || levelAfter > targetLevel) {
+      throw new CharacterLifecycleValidationError('Событие поэтапного создания героя вышло за пределы стартового уровня', 'CHARACTER_CREATION_LEVEL_INVALID')
+    }
+    updated.characterSetupRequired = levelAfter < targetLevel || !characterCreationChoicesComplete(updated)
+    if (updated.characterSetupRequired) updated.characterSetupStage = 'leveling'
+    else delete updated.characterSetupStage
+  }
   next.players[index] = updated
   return next
 }

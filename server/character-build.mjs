@@ -1,6 +1,6 @@
 import { normalizedSpellSelectionsFor, spellSelectionRulesFor } from './combat-spells.mjs'
 import { normalizedCombatSubclassFor } from './combat-actions.mjs'
-import { catalogSkillId, normalizedClassSkillProficiencies, normalizedSelectedFeatureIds } from './character-progression.mjs'
+import { abilityScoreChoiceLevelsFor, catalogSkillId, normalizedClassSkillProficiencies, normalizedSelectedFeatureIds } from './character-progression.mjs'
 
 export const CHARACTER_BUILD_COMMAND_TYPES = new Set(['SetCharacterChoices', 'SetSpellSelections'])
 
@@ -14,6 +14,7 @@ export class CharacterBuildValidationError extends Error {
 
 const clone = (value) => structuredClone(value)
 const clean = (value, maximum = 120) => String(value ?? '').normalize('NFKC').trim().slice(0, maximum)
+const ABILITY_IDS = new Set(['str', 'dex', 'con', 'int', 'wis', 'cha'])
 
 function uniqueIds(value, field) {
   if (!Array.isArray(value)) {
@@ -35,6 +36,58 @@ function sameIds(left, right) {
   if (left.length !== right.length) return false
   const expected = new Set(right)
   return left.every((item) => expected.has(item))
+}
+
+function abilityScoreChoicesFor(actor) {
+  const source = actor?.abilityScoreIncreases
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return {}
+  return Object.fromEntries(Object.entries(source).flatMap(([level, choices]) => {
+    const numericLevel = Number(level)
+    if (!Number.isSafeInteger(numericLevel) || !Array.isArray(choices)) return []
+    return [[String(numericLevel), choices.map(String)]]
+  }))
+}
+
+function normalizeAbilityScoreChoices(value) {
+  if (!Array.isArray(value) || (value.length !== 1 && value.length !== 2)) {
+    throw new CharacterBuildValidationError('Улучшение характеристик должно дать +2 одной или +1 двум характеристикам', 'ABILITY_SCORE_CHOICE_INVALID')
+  }
+  const choices = value.map((entry) => clean(entry, 12).toLowerCase())
+  if (choices.some((entry) => !ABILITY_IDS.has(entry))) {
+    throw new CharacterBuildValidationError('Выбрана неизвестная характеристика', 'ABILITY_SCORE_CHOICE_INVALID')
+  }
+  return choices
+}
+
+function abilityScoreChoiceFor(command, actor) {
+  const rawLevel = command.ability_score_level ?? command.abilityScoreLevel
+  const rawChoices = command.ability_score_increases ?? command.abilityScoreIncreases
+  const existing = abilityScoreChoicesFor(actor)
+  if (rawLevel == null && rawChoices == null) return { level: null, choices: null, all: existing, abilities: clone(actor.abilities ?? {}) }
+  const level = Number(rawLevel)
+  if (!Number.isSafeInteger(level) || !abilityScoreChoiceLevelsFor(actor).includes(level) || level > Number(actor.level ?? 1)) {
+    throw new CharacterBuildValidationError('Улучшение характеристик недоступно на этом уровне', 'ABILITY_SCORE_LEVEL_INVALID')
+  }
+  const choices = normalizeAbilityScoreChoices(rawChoices)
+  const previous = existing[String(level)]
+  if (previous && JSON.stringify(previous) !== JSON.stringify(choices)) {
+    throw new CharacterBuildValidationError('Улучшение характеристик этого уровня уже выбрано', 'ABILITY_SCORE_CHOICE_LOCKED')
+  }
+  const all = { ...existing, [String(level)]: choices }
+  const abilities = Object.fromEntries(['str', 'dex', 'con', 'int', 'wis', 'cha'].map((id) => [id, Math.max(1, Math.min(30, Number(actor.abilities?.[id]) || 10))]))
+  if (!previous) {
+    if (choices.length === 1) {
+      const id = choices[0]
+      if (abilities[id] > 18) throw new CharacterBuildValidationError('Характеристика уже достигла максимума 20', 'ABILITY_SCORE_MAX_REACHED')
+      abilities[id] += 2
+    } else {
+      for (const id of choices) {
+        if (abilities[id] >= 20) throw new CharacterBuildValidationError('Характеристика уже достигла максимума 20', 'ABILITY_SCORE_MAX_REACHED')
+        abilities[id] += 1
+      }
+    }
+  }
+  return { level, choices, all, abilities }
 }
 
 export function validateCharacterBuildCommand(command, state, context = {}) {
@@ -81,6 +134,7 @@ export function validateCharacterBuildCommand(command, state, context = {}) {
         'CHARACTER_CHOICE_NOT_ALLOWED',
       )
     }
+    const abilityScores = abilityScoreChoiceFor(command, actor)
     return {
       ...command,
       actor_id: actorId,
@@ -89,6 +143,9 @@ export function validateCharacterBuildCommand(command, state, context = {}) {
       subclass: canonicalSubclass,
       class_skill_proficiencies: canonicalSkills,
       selected_feature_ids: canonicalFeatures,
+      ability_score_level: abilityScores.level,
+      ability_score_increases: abilityScores.all,
+      abilities_after: abilityScores.abilities,
       visibility: 'party',
     }
   }
@@ -131,6 +188,9 @@ export function characterBuildEvent(command) {
         subclass: command.subclass,
         class_skill_proficiencies: clone(command.class_skill_proficiencies),
         selected_feature_ids: clone(command.selected_feature_ids),
+        ability_score_level: command.ability_score_level,
+        ability_score_increases: clone(command.ability_score_increases),
+        abilities_after: clone(command.abilities_after),
         request_fingerprint: clean(command.request_fingerprint, 128),
       },
       target_ids: [command.actor_id],

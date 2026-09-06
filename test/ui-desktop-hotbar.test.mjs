@@ -33,19 +33,14 @@ test('wide hotbar lays out title, chips and readable detail at the requested thr
   assert.doesNotMatch(styles, /\.hotbar-detail \.detail-description \{[^}]*columns: 2;/)
 })
 
-test('строка исследования не рендерится пустой и всегда несёт выход из локации', async () => {
-  // Прежний сторож требовал, чтобы коробка не появлялась без кнопки боя. Смысл
-  // остался тот же — пустой полосы отступов быть не должно, — но безусловное
-  // содержимое теперь другое: уйти из локации нужно как раз тогда, когда в сцене
-  // не осталось ни одного противника и кнопки боя нет.
-  const appSource = (await Promise.all(['../src/App.tsx', '../src/AppViews.tsx', '../src/DungeonMap.tsx', '../src/app-shared.tsx']
-  .map((path) => readFile(new URL(path, import.meta.url), 'utf8')))).join('\n')
-  // Отдельного ряда больше нет: на широком экране он был пустой полосой с одной
-  // кнопкой у края. Оба решения стоят в колонке управления карточки действий,
-  // там же, где в бою стоит «Завершить ход», и только вне боя.
-  assert.doesNotMatch(appSource, /className="hotbar-controls-row"/)
-  const controls = appSource.match(/<div className="hotbar-turn-controls">[\s\S]*?\{doorsAtHand\.map/)
-  assert.ok(controls, 'колонка управления карточки действий')
-  assert.match(controls[0], /\{!combatActive && <button\s+type="button"\s+className="exploration-leave-location"/)
-  assert.match(controls[0], /\{!combatActive && showStartCombat && <button type="button" className="exploration-start-combat"/)
+test('решение группы находится рядом с категориями, а пустая колонка действий не занимает место', async () => {
+  const source = await readFile(new URL('../src/DungeonMap.tsx', import.meta.url), 'utf8')
+  const header = source.slice(source.indexOf('<div className="hotbar-decks">'), source.indexOf('<div className="hotbar-main">'))
+  assert.match(header, /Предметы/)
+  assert.match(header, /<\/nav>\s*\{!combatActive && <button/)
+  assert.match(header, /onClick=\{onLeaveLocation\}/)
+  assert.match(header, /disabled=\{leaveLocationDisabled \|\| narrating \|\| tacticalBusy \|\| Boolean\(guardEncounter\)\}/)
+  assert.match(header, /Решение группы/)
+  assert.match(source, /\(combatActive \|\| showStartCombat \|\| doorsAtHand.length > 0 \|\| selectedSceneObject\) && <div className="hotbar-turn-controls">/)
+  assert.doesNotMatch(source, /className="exploration-leave-location"/)
 })

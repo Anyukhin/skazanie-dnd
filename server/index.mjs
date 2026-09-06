@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import { speechInputAvailable, readSpeechWav, transcribeSpeech } from './speech-input.mjs'
 import { assertFreeActionConfirmation } from './free-action-adjudication.mjs'
+import { inferRequestKind, normalizeRequestKind, REQUEST_KINDS } from './intent-parser.mjs'
 import { createServer } from 'node:http'
 import { createReadStream, existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
 import { extname, join, resolve, sep } from 'node:path'
@@ -797,6 +798,10 @@ function characterBuildFingerprint(command) {
         subclass: String(command.subclass ?? ''),
         class_skill_proficiencies: [...new Set(command.class_skill_proficiencies ?? [])].map(String).sort(),
         selected_feature_ids: [...new Set(command.selected_feature_ids ?? [])].map(String).sort(),
+        ability_score_level: command.ability_score_level == null ? null : Number(command.ability_score_level),
+        ability_score_increases: Array.isArray(command.ability_score_increases)
+          ? command.ability_score_increases.map(String)
+          : [],
       }
     : {
         command_type: 'SetSpellSelections',
@@ -1282,6 +1287,14 @@ function sanitizePlayerCharacterCommand(user, state, input) {
         selected_feature_ids: Array.isArray(input?.selected_feature_ids ?? input?.selectedFeatureIds)
           ? (input.selected_feature_ids ?? input.selectedFeatureIds).map(String)
           : [],
+        ...(input?.ability_score_level == null && input?.abilityScoreLevel == null ? {} : {
+          ability_score_level: input.ability_score_level ?? input.abilityScoreLevel,
+        }),
+        ...(input?.ability_score_increases == null && input?.abilityScoreIncreases == null ? {} : {
+          ability_score_increases: Array.isArray(input.ability_score_increases ?? input.abilityScoreIncreases)
+            ? (input.ability_score_increases ?? input.abilityScoreIncreases).map(String)
+            : [],
+        }),
       }
     : {
         ...base,
@@ -3708,6 +3721,7 @@ const server = createServer((req, res) => {
         worldTemplateId: body.bootstrap.worldTemplateId ?? body.bootstrap.world_template_id,
         players: bootstrapPlayers,
         rulesetId: body.bootstrap.rulesetId ?? body.bootstrap.ruleset_id,
+        startLevel: body.bootstrap.startLevel ?? body.bootstrap.start_level,
       }) : null
       let initialState = generatedState ?? body.state ?? {
         sessionCode: code,
@@ -5036,6 +5050,15 @@ const server = createServer((req, res) => {
     let narrationTransport = null
     try {
       const body = await readBody(req)
+      const action = String(body.action || '').trim().slice(0, 2_000)
+      if (body.request_kind != null && !REQUEST_KINDS.includes(body.request_kind)) {
+        return json(res, 400, { error: 'Неизвестный тип реплики', code: 'REQUEST_KIND_INVALID' })
+      }
+      const requestKind = body.request_kind == null ? inferRequestKind(action) : normalizeRequestKind(body.request_kind)
+      const conversationOnly = requestKind !== 'action'
+      if (conversationOnly && (body.roll || body.confirmed_proposal_id || body.supersedes_check_id || body.supersedes_proposal_id)) {
+        return json(res, 400, { error: 'Вопрос и обсуждение не могут подтверждать или изменять игровые действия', code: 'NON_ACTION_EXECUTION_FORBIDDEN' })
+      }
       if (Object.hasOwn(body, 'state') || Object.hasOwn(body, 'player')
         || Object.hasOwn(body, 'engine_mode') || Object.hasOwn(body, 'engineMode')
         || Object.hasOwn(body, 'mode')) {
@@ -5055,20 +5078,20 @@ const server = createServer((req, res) => {
       const room = await reconcileCampaignProjection(campaignId)
       if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
       if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
-      assertCampaignPlayable(room.state)
+      if (!conversationOnly) assertCampaignPlayable(room.state)
       const trustedState = room.state
       const requestedPlayerId = String(body.actor_id ?? '')
       const playerId = requestedPlayerId || String(trustedState.activePlayerId || '')
       if (!canUseHero(user, playerId, campaignId)) return json(res, 403, { error: 'Этот герой не принадлежит вашему аккаунту' })
-      const explicitNpcId = explicitNarrationNpcId(trustedState, user, playerId, body.npc_id)
+      const explicitNpcId = conversationOnly ? '' : explicitNarrationNpcId(trustedState, user, playerId, body.npc_id)
       const combatActorId = String(trustedState.mechanics?.combat?.initiative?.[trustedState.mechanics?.combat?.active_index ?? 0]?.actor_id ?? '')
-      if (trustedState.mechanics?.combat?.active && combatActorId && playerId !== combatActorId) {
+      if (!conversationOnly && trustedState.mechanics?.combat?.active && combatActorId && playerId !== combatActorId) {
         return json(res, 409, { error: `Сейчас ходит другой участник: ${combatActorId}`, code: 'NOT_ACTIVE_ACTOR' })
       }
-      if (trustedState.mechanics?.death?.campaign_status === 'party_defeated') {
+      if (!conversationOnly && trustedState.mechanics?.death?.campaign_status === 'party_defeated') {
         return json(res, 409, { error: 'Все герои погибли. Эта история завершена, продолжать игру в этом мире нельзя', code: 'WORLD_ENDED' })
       }
-      if (trustedState.mechanics?.death?.heroes?.[playerId]?.status === 'dead') {
+      if (!conversationOnly && trustedState.mechanics?.death?.heroes?.[playerId]?.status === 'dead') {
         return json(res, 409, { error: 'Сначала воскресите погибшего героя или замените его новым', code: 'HERO_DEAD_UNRESOLVED' })
       }
       if (exceedsRate(`narrate:${user.id}`, 40)) return json(res, 429, { error: 'Слишком много ходов за короткое время' })
@@ -5111,10 +5134,9 @@ const server = createServer((req, res) => {
         return json(res, 400, { error: 'Enforce-режим принимает только серверный roll_id', code: 'UNVERIFIED_ROLL' })
       }
       const player = trustedState.players?.find((candidate) => String(candidate.id) === playerId)
-      const action = String(body.action || '').trim().slice(0, 2_000)
       let directorResolution = null
       let directorReplay = null
-      if (mode === 'enforce' && !explicitNpcId) {
+      if (!conversationOnly && mode === 'enforce' && !explicitNpcId) {
         const duplicate = await eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
         const duplicateScene = (duplicate?.events ?? []).find((event) => event.event_type === 'SceneAdvanced')
         if (duplicateScene) {
@@ -5145,7 +5167,7 @@ const server = createServer((req, res) => {
           throw commandPolicyError('Нет завершённого решения группы для перехода сцены', 'PARTY_DECISION_REQUIRED')
         }
       }
-      const directorInteraction = mode === 'enforce' && !explicitNpcId && !directorResolution && !directorReplay
+      const directorInteraction = !conversationOnly && mode === 'enforce' && !explicitNpcId && !directorResolution && !directorReplay
         ? proposeAgentInteraction(action, trustedState)
         : null
       // Соло-стол не голосует. Бросок судьбы остаётся карточкой и в одиночку:
@@ -5208,6 +5230,7 @@ const server = createServer((req, res) => {
             playerId,
             playerName: player?.character ?? player?.name ?? body.player,
             message: action,
+            requestKind,
             idempotencyKey,
             npcId: explicitNpcId,
             verifiedRoll,
@@ -5229,7 +5252,7 @@ const server = createServer((req, res) => {
           result = { ...result, narration: String(persistedNarration.text) }
         }
       }
-      const interactionProjection = await persistInteractionProjection(campaignId, result.effects?.interaction)
+      const interactionProjection = conversationOnly ? null : await persistInteractionProjection(campaignId, result.effects?.interaction)
       // Служебные команды (`/why`) — не часть истории отряда: реплику игрока не
       // сохраняем, а ответ подписываем разбором правил, а не Рассказчиком.
       const metaCommand = /^\s*\//u.test(action)
@@ -5241,7 +5264,7 @@ const server = createServer((req, res) => {
         id: journalNarrationId,
         text: result.narration,
         speaker: metaCommand ? 'system' : 'narrator',
-        author: metaCommand ? 'Разбор правил' : result.journal_author,
+        author: metaCommand ? 'Разбор правил' : requestKind === 'question' ? 'Ведущий · ответ' : result.journal_author,
         turnConsumed: result.turn_consumed !== false && !metaCommand,
         roll: result.effects?.roll ?? null,
         stakes: result.stakes ?? null,
@@ -5269,6 +5292,7 @@ const server = createServer((req, res) => {
         : result.narration
       const responsePayload = {
         ...result,
+        request_kind: requestKind,
         narration: canonicalNarration,
         ...(journalNarrationId ? { narration_message_id: journalNarrationId } : {}),
         ...(result.authoritative_state ? { authoritative_state: journaled?.state ?? projected?.state ?? result.authoritative_state } : {}),

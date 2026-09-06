@@ -1,4 +1,4 @@
-import type { AiHealth, AiTurnResult, CharacterCreationCatalog, DiceRollEvent, GameState, PendingCheck, RollResult, RulesetProfileDescriptor } from './types'
+import type { AiHealth, AiTurnResult, CharacterCreationCatalog, DiceRollEvent, GameState, PendingCheck, PlayerRequestKind, RollResult, RulesetProfileDescriptor } from './types'
 
 type SharedDiceRollResponse = {
   roll: DiceRollEvent
@@ -80,6 +80,12 @@ function newIdempotencyKey() {
 }
 
 export interface NarrateOptions {
+  requestKind?: PlayerRequestKind
+  clarificationId?: string
+  supersedesCheckId?: string
+  supersedesProposalId?: string
+  questionCheckId?: string
+  questionProposalId?: string
   confirmedProposalId?: string
   npcId?: string
   onNarrationPreview?: (preview: NarrationPreview) => void
@@ -169,6 +175,14 @@ export async function narrateWithAgent(
         idempotency_key: idempotencyKey,
         ...(actorId ? { actor_id: actorId } : {}),
         ...(options.npcId ? { npc_id: options.npcId } : {}),
+        ...(options.requestKind && options.requestKind !== 'action'
+          ? { request_kind: options.requestKind }
+          : roll || options.confirmedProposalId || options.clarificationId || options.supersedesCheckId || options.supersedesProposalId || options.npcId ? { request_kind: 'action' } : {}),
+        ...(options.clarificationId ? { clarification_id: options.clarificationId } : {}),
+        ...(options.supersedesCheckId ? { supersedes_check_id: options.supersedesCheckId } : {}),
+        ...(options.supersedesProposalId ? { supersedes_proposal_id: options.supersedesProposalId } : {}),
+        ...(options.questionCheckId ? { question_check_id: options.questionCheckId } : {}),
+        ...(options.questionProposalId ? { question_proposal_id: options.questionProposalId } : {}),
         ...(options.confirmedProposalId ? { confirmed_proposal_id: options.confirmedProposalId } : {}),
         ...(roll?.roll_id ? { roll: { roll_id: roll.roll_id } } : {}),
         // Ручной режим: сервер не бросает d20 за игрока, а возвращает карточку

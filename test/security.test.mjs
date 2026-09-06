@@ -364,7 +364,7 @@ test('RouterAI timeout does not depend on fetch implementation honouring AbortSi
 // прежний записанный пробел закрыт.
 test('loaded role prompts are explicitly versioned and treat retrieved/user text as data', async () => {
   // Версия в списке обязана совпадать с той, которую роль действительно грузит:
-  // narrator перешёл на v5, campaign_creator — на v3, map_architect — на v5
+  // narrator перешёл на v5, campaign_creator — на v4, map_architect — на v5
   // (v4 плюс соседи по карте мира как пункты назначения),
   // социальный контроллер — на v3 с границей UNTRUSTED_DATA,
   // action_adjudicator — на v4 вместе с мостом к обстановке (topple_prop и
@@ -378,7 +378,7 @@ test('loaded role prompts are explicitly versioned and treat retrieved/user text
     ['director/v3_story', 'director/v3_story'],
     ['director/v3_chaos', 'director/v3_chaos'],
     ['action_adjudicator/v4', 'action_adjudicator/v4'],
-    ['campaign_creator/v3', 'campaign_creator/v3'],
+    ['campaign_creator/v4', 'campaign_creator/v4'],
     ['map_architect/v5', 'map_architect/v5'],
     ['recap/v1', 'recap/v1'],
   ]

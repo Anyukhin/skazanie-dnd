@@ -102,6 +102,19 @@ export class RollRegistry {
     return structuredClone(visible)
   }
 
+  getCheck(checkId, { campaignId, actorId, includeContext = false } = {}) {
+    this.cleanup()
+    const check = this.checks.get(String(checkId ?? ''))
+    if (!check) throw new RollRegistryError('Проверка не найдена или истекла', 'CHECK_NOT_FOUND')
+    if (check.campaign_id !== String(campaignId || '') || check.actor_id !== String(actorId || '')) {
+      throw new RollRegistryError('Проверка принадлежит другому ходу или персонажу', 'CHECK_FORBIDDEN')
+    }
+    if (check.invalidated_at != null) throw new RollRegistryError('Эта проверка отменена: заявка была изменена', 'CHECK_INVALIDATED')
+    const { context, ...visible } = check
+    if (includeContext && context) visible.context = structuredClone(context)
+    return structuredClone(visible)
+  }
+
   issue({ checkId, check_id, campaignId, actorId, label = 'Проверка', modifier = 0, difficulty = 10, ability = null, advantage = false, disadvantage = false, visibility = 'public' }) {
     this.cleanup()
     const registeredId = checkId ?? check_id
@@ -112,6 +125,7 @@ export class RollRegistry {
       if (registered.campaign_id !== String(campaignId || '') || registered.actor_id !== String(actorId || '')) {
         throw new RollRegistryError('Проверка принадлежит другому ходу или персонажу', 'CHECK_FORBIDDEN')
       }
+      if (registered.invalidated_at != null) throw new RollRegistryError('Эта проверка отменена: заявка была изменена', 'CHECK_INVALIDATED')
       // Повтор HTTP-запроса после потери ответа возвращает ту же кость.
       // Связь хранится вместе с реестром и переживает перезапуск.
       if (registered.issued_roll_id) {
@@ -147,11 +161,50 @@ export class RollRegistry {
     if (entry.campaign_id !== String(campaignId || '') || entry.actor_id !== String(actorId || '')) {
       throw new RollRegistryError('Бросок принадлежит другому ходу или персонажу', 'ROLL_FORBIDDEN')
     }
+    if (entry.invalidated_at != null) throw new RollRegistryError('Этот бросок отменён: заявка была изменена', 'ROLL_INVALIDATED')
     const key = String(idempotencyKey || '')
     if (entry.consumed_by && entry.consumed_by !== key) throw new RollRegistryError('Бросок уже использован', 'ROLL_ALREADY_USED')
     if (validateContext) validateContext(structuredClone(entry.context ?? null))
     entry.consumed_by = key || `used:${this.now()}`
     this._persist()
     return structuredClone({ ...entry.result, ...(entry.context ? { context: entry.context } : {}) })
+  }
+
+  /**
+   * Отменяет карточку до выдачи кости. После выдачи редактирование запрещено:
+   * потерянный ответ возвращает прежнюю кость и не даёт бесплатного переброса.
+   */
+  invalidateCheck(checkId, { campaignId, actorId, reason = 'proposal-edited' } = {}) {
+    this.cleanup()
+    const id = String(checkId ?? '')
+    const check = this.checks.get(id)
+    if (!check) throw new RollRegistryError('Проверка не найдена или истекла', 'CHECK_NOT_FOUND')
+    if (check.campaign_id !== String(campaignId || '') || check.actor_id !== String(actorId || '')) {
+      throw new RollRegistryError('Проверка принадлежит другому ходу или персонажу', 'CHECK_FORBIDDEN')
+    }
+    if (check.invalidated_at != null) return false
+    if (check.issued_roll_id) {
+      throw new RollRegistryError('Кость уже брошена: изменить эту заявку нельзя. Повторите отправку прежнего результата.', 'CHECK_ALREADY_ROLLED')
+    }
+    check.invalidated_at = this.now()
+    check.invalidated_reason = String(reason).slice(0, 80)
+    this._persist()
+    return true
+  }
+
+  /** Отменяет карточку по её публичному proposal_id или check_id. */
+  invalidateProposal(proposalId, { campaignId, actorId, reason = 'proposal-edited' } = {}) {
+    this.cleanup()
+    const wanted = String(proposalId ?? '')
+    const matches = [...this.checks.entries()]
+      .filter(([id, check]) => (
+        id === wanted || String(check.context?.proposal_id ?? '') === wanted
+      ))
+    if (!matches.length) throw new RollRegistryError('Предложение проверки не найдено или истекло', 'CHECK_NOT_FOUND')
+    let changed = false
+    for (const [id] of matches) {
+      changed = this.invalidateCheck(id, { campaignId, actorId, reason }) || changed
+    }
+    return changed
   }
 }
