@@ -1784,10 +1784,7 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 
 @container hotbar-detail (min-width: 400px) {
   .hotbar-detail .detail-description {
-    max-width: none;
-    columns: 2;
-    column-gap: 24px;
-    column-rule: 1px solid rgba(255,255,255,.06);
+    max-width: 70ch;
     text-wrap: pretty;
   }
 }
@@ -2014,9 +2011,6 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
   .chat-panel { height: min(44vh, 300px); min-height: 240px; }
 }
 
-.turn-resolution { display: inline-flex; margin-top: 8px; padding: 4px 8px; border-radius: 999px; font-size: var(--fs-md); font-weight: 700; }
-.turn-resolution.kept { color: #b9e6c8; background: rgba(59, 151, 94, .18); border: 1px solid rgba(83, 190, 122, .28); }
-.turn-resolution.spent { color: #d7cfbd; background: rgba(151, 130, 83, .14); border: 1px solid rgba(179, 155, 101, .22); }
 
 
 /* During a roll the server-backed die leaves its HUD and lands on the same

@@ -1791,8 +1791,21 @@ export function legacyCellsFromTacticalMap(map) {
   /** @type {Map<string, TacticalProp>} */
   const propByCell = new Map()
   for (const prop of map.props) {
-    if (prop.footprint.length !== 1) continue
-    const key = `${prop.footprint[0].x},${prop.footprint[0].y}`
+    // Старый `feature` умеет обозначить только один центр предмета. Для
+    // обычной крупной мебели это намеренная потеря: её геометрия живёт в
+    // rich map. У межэтажного перехода другой контракт — без маркера
+    // `stairs_up`/`stairs_down`/`trapdoor` старые клетки не смогут восстановить
+    // сам предмет и `attachLevelTransitions` не найдёт, к чему привязать этаж.
+    // Поэтому переход получает один legacy-маркер на anchor-клетке footprint
+    // (или на первой клетке как запасной путь для старой записи), не дублируя
+    // остальную геометрию предмета в производном массиве. Anchor важен: именно
+    // его координаты использует генератор парного этажа.
+    if (prop.footprint.length !== 1 && !prop.transition) continue
+    const anchor = { x: Math.floor(prop.x), y: Math.floor(prop.y) }
+    const marker = prop.footprint.find((cell) => cell.x === anchor.x && cell.y === anchor.y)
+      ?? prop.footprint[0]
+      ?? anchor
+    const key = `${marker.x},${marker.y}`
     const previous = propByCell.get(key)
     if (!previous || prop.zOrder < previous.zOrder || (prop.zOrder === previous.zOrder && prop.id < previous.id)) {
       propByCell.set(key, prop)

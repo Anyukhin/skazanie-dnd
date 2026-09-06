@@ -4,6 +4,16 @@ import { existsSync, readFileSync } from 'node:fs'
 import { PLAYER_REQUEST_ROLES, answerKnownLore, proposeAgentInteraction, resolvePartyDecision, roleAllowsWorldTools, selectAgentRole } from '../server/player-request-router.mjs'
 import { NARRATOR_PROMPT_VERSION } from '../server/narrator.mjs'
 
+test('вопрос собеседнику не подменяется справкой о маршруте или лоре', () => {
+  for (const action of [
+    'Подхожу к королю Аресу, кланяюсь так низко, что роняю шляпу, и спрашиваю: что известно о молодом драконе и куда нам идти сначала?',
+    'Спрашиваю стражника: что ты знаешь про легенду дракона?',
+    'Говорю Аресу: расскажи мне об этой охоте',
+  ]) assert.equal(answerKnownLore(action, { scene: { location: 'Штормберг' } }), null, action)
+  assert.ok(answerKnownLore('Куда нам идти дальше?', { scene: { location: 'Штормберг' } }))
+  assert.ok(answerKnownLore('Что я знаю про легенду дракона?', {}))
+})
+
 const PROMPT_OWNER_FILES = Object.freeze({
   director: '../server/director-agent.mjs',
   narrator: '../server/narrator.mjs',

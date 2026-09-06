@@ -249,6 +249,7 @@ export const HERO_RESOURCE_LABELS: Record<string, string> = {
   channel_divinity: 'Божественный канал',
   wild_shape: 'Дикий облик',
   lay_on_hands: 'Наложение рук',
+  divine_sense: 'Божественное чувство',
   sorcery_points: 'Единицы чародейства',
   /* «Восстановление сил» было вольным синонимом: сама способность и здесь, и на
      сервере называется «Магическое восстановление» (`combat-actions.ts`,
@@ -1756,7 +1757,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     ? state.enemies?.find((enemy) => enemy.id === inspectedTarget.id && enemy.boss === true) ?? null
     : null
   const sceneTheme = resolveSceneTheme(state)
-  const visualTheme = boardVisualTheme(sceneTheme)
+  const fortressMap = boardMap?.generator?.id === 'ares-fortress'
+  const visualTheme = fortressMap ? 'map-theme-fortress' : boardVisualTheme(sceneTheme)
   const mapArt = boardMapArtForTheme(sceneTheme)
 
   useEffect(() => {
@@ -2598,7 +2600,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       >
       <div className="map-atmosphere map-atmosphere-one" />
       <div className="map-atmosphere map-atmosphere-two" />
-      <PartyQuestHud state={state} />
+      {!combatActive && <PartyQuestHud state={state} />}
       {/* Перемирие видно на самой доске, а не только в панели: рамка вокруг
           поля и полоса сверху. Без этого стол не понимал бы, почему очередь
           стоит и почему кнопки боя ведут себя иначе. */}
@@ -2608,13 +2610,14 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       </div>}
       {npcTacticText && <div className="npc-tactic-banner" role="status" aria-live="polite"><Swords size={15} /><span>{npcTacticText}</span></div>}
       <TacticalBoard
+        campaignId={state.sessionCode}
         key={state.sessionCode}
         map={boardMap}
         columns={columns}
         rows={rows}
         irregular={irregularMap}
         themeKey={visualTheme}
-        artUrl={scenicBackdrop ? mapArt.url : null}
+        artUrl={scenicBackdrop && !fortressMap ? mapArt.url : null}
         lighting={boardLighting}
         ariaLabel={`Тактическая карта, вид сверху. Колесо меняет масштаб, перетаскивание двигает полотно, двойной клик центрирует. Активный участник: ${activeName}`}
         cells={boardCells}
@@ -3629,7 +3632,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           </div>
           <aside className="hotbar-detail" aria-live="polite">
             {!combatActive && !(combatMode === 'magic' && selectedSpell) ? <>
-              <DetailHeader title="Вне боя" description="Лечение, усиление и утилита творятся прямо здесь. Всё, что бьёт, требует инициативы." />
+              <DetailHeader title="Исследование" description="Выберите место или персонажа на карте либо опишите действие своими словами. Для атаки сначала начните бой." />
             </> : combatMode === 'magic' && selectedSpell ? <>
               <DetailHeader title={selectedSpell.name} description={selectedSpell.description} meta={<>
                 {selectedSpellRange > 0 ? <i className="detail-chip" title={`Дальность: ${selectedSpellRange} фт`}>{selectedSpellRange} фт</i> : <i className="detail-chip" title="Заклинание на себя">на себя</i>}

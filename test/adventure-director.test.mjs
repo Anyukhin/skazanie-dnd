@@ -46,7 +46,9 @@ test('переход архивирует сцену и не повторяет 
   assert.equal(result.adventure.history[0].location, 'Склеп Норвин')
   assert.equal(result.scene.location, 'Северный тракт')
   assert.equal(result.scene.turn, 8)
-  assert.deepEqual(result.entrance, { x: 1, y: 4 })
+  const spawn = result.scene.map.spawnPoints.find((point) => point.role === 'party')
+  assert.deepEqual(result.entrance, { x: spawn.x, y: spawn.y })
+  assert.ok(result.scene.cells.some((cell) => cell.x === spawn.x && cell.y === spawn.y && cell.type === 'floor'))
   assert.equal(Object.hasOwn(result, 'suggestions'), false)
 })
 

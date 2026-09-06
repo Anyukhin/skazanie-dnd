@@ -30,7 +30,13 @@ import {
  * стены можно будет убрать, а рёбра останутся на месте.
  */
 
-export const BUILDING_GENERATOR = Object.freeze({ id: 'building-with-yard', version: '1' })
+export const BUILDING_GENERATOR = Object.freeze({ id: 'building-with-yard', version: '2' })
+
+/** Генератор authored-крепости: геометрия одна на все столы, seed меняет только отделку. */
+export const ARES_FORTRESS_GENERATOR = Object.freeze({ id: 'ares-fortress', version: '1' })
+
+/** Крепость занимает карту класса `area`, чтобы двор не сжимался до нескольких клеток. */
+export const ARES_FORTRESS_SIZE = Object.freeze({ width: 40, height: 36 })
 
 /** Размер сцены-эталона. */
 export const REFERENCE_SIZE = Object.freeze({ width: 26, height: 26 })
@@ -242,15 +248,15 @@ export function generateBuildingScene({
       seed: `${seed}:props`,
       maxProps: SIZE_CLASSES[/** @type {keyof typeof SIZE_CLASSES} */ (map.sizeClass)].maxProps,
       zones: [
-        { zoneId: 'hall', theme: 'interior', density: 22, require: ['bar_counter', 'fireplace', 'table_round', 'table_long', 'stairs_up'] },
-        { zoneId: 'kitchen', theme: 'interior', density: 26, require: ['cupboard', 'barrel', 'crate', 'shelf_wall'] },
-        { zoneId: 'store', theme: 'interior', density: 30, require: ['crate_stack', 'barrel_stack', 'sack', 'chest'] },
+        { zoneId: 'hall', purpose: 'hall', theme: 'interior', density: 22, require: ['bar_counter', 'fireplace', 'table_round', 'table_long', 'stairs_up', 'chandelier'] },
+        { zoneId: 'kitchen', purpose: 'kitchen', theme: 'interior', density: 26, require: ['cupboard', 'barrel', 'crate', 'shelf_wall'] },
+        { zoneId: 'store', purpose: 'store', theme: 'interior', density: 30, require: ['crate_stack', 'barrel_stack', 'sack', 'chest'] },
         // Двор наполняется крупным и узнаваемым: деревья, кусты, поленница,
         // телега. Мелочь вроде цветов и колёс приходит только спутником и не
         // участвует в случайном доборе — иначе двор превращается в россыпь
         // непонятных значков вместо участка с деревьями.
         {
-          zoneId: 'yard',
+          zoneId: 'yard', purpose: 'exterior',
           theme: 'yard',
           density: 10,
           require: ['tree_oak', 'tree_birch', 'tree_pine', 'well', 'cart', 'woodpile'],
@@ -264,6 +270,363 @@ export function generateBuildingScene({
   // вызов ничего не меняет, и одноэтажная таверна собирается ровно как прежде.
   ensureDeclaredTransitions(map, levels, 'hall')
   return map
+}
+
+/**
+ * Рисует прямоугольный корпус комнаты. Периметр остаётся клетками стены, а
+ * соседние проходы потом получают настоящие двери на рёбрах.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {{minX: number, minY: number, maxX: number, maxY: number}} rect
+ * @param {string} zoneId
+ * @param {string} material
+ */
+function paintFortressRoom(map, rect, zoneId, material) {
+  for (let y = rect.minY; y <= rect.maxY; y += 1) {
+    for (let x = rect.minX; x <= rect.maxX; x += 1) {
+      const border = x === rect.minX || x === rect.maxX || y === rect.minY || y === rect.maxY
+      setCell(map, x, y, {
+        passable: !border,
+        material: border ? 'stone' : material,
+        zone: border ? 'walls' : zoneId,
+        variant: floorVariantAt(map.seed, x, y),
+      })
+    }
+  }
+}
+
+/**
+ * Внешние стены и корпуса имеют одну серверную границу: непроходимая клетка
+ * плюс ребро-стена. Поэтому старый `scene.cells` и TacticalMap совпадают.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ */
+function outlineFortressWalls(map) {
+  for (let y = 0; y < map.height; y += 1) {
+    for (let x = 0; x < map.width; x += 1) {
+      const cell = cellAt(map, x, y)
+      if (cell?.passable) continue
+      edgesAround(map, x, y, 'wall')
+    }
+  }
+}
+
+/**
+ * Ставит дверь по уже выбранному ребру. `setDoor` остаётся единственным
+ * владельцем согласования записи двери и ребра.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {{id: string, x: number, y: number, dir: 'e'|'s'}} door
+ */
+function addFortressDoor(map, door) {
+  setDoor(map, {
+    ...door,
+    state: 'closed',
+    blocksMove: false,
+    blocksSight: false,
+  })
+}
+
+/**
+ * Смысловой план предметов крепости. `purpose` не расширяет схему зоны: это
+ * подсказка владельцу расстановки, чтобы склад и казарма не получали один
+ * случайный каталог.
+ *
+ * @param {string} seed
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ */
+function placeAresFortressProps(seed, map) {
+  placeProps(map, {
+    seed: `${seed}:props`,
+    maxProps: SIZE_CLASSES.area.maxProps,
+    zones: [
+      {
+        zoneId: 'gallery', purpose: 'hall', theme: 'building', density: 22,
+        require: ['table_small', 'candelabra', 'banner', 'chair', 'chandelier'],
+        prefer: ['table_small', 'candelabra', 'banner', 'chair', 'chandelier', 'bookshelf'],
+      },
+      {
+        zoneId: 'barracks', purpose: 'barracks', theme: 'building', density: 24,
+        require: ['bunk_bed', 'bunk_bed', 'chest', 'table_long', 'bench'],
+        prefer: ['bunk_bed', 'bed', 'chest', 'table_long', 'bench', 'bookshelf', 'lantern_wall'],
+      },
+      {
+        zoneId: 'stables', purpose: 'stable', theme: 'yard', density: 22,
+        require: ['haystack', 'water_trough', 'hitching_post'],
+        prefer: ['haystack', 'water_trough', 'hitching_post', 'woodpile', 'lamp_post'],
+      },
+      {
+        zoneId: 'storehouse', purpose: 'store', theme: 'building', density: 30,
+        require: ['crate_stack', 'barrel_stack', 'chest', 'shelf_wall'],
+        prefer: ['crate_stack', 'barrel_stack', 'crate', 'barrel', 'sack', 'chest', 'shelf_wall'],
+      },
+      {
+        zoneId: 'workshop', purpose: 'workshop', theme: 'building', density: 32,
+        // `workshop` уже добавляет стол и полку через semantic_props; здесь
+        // закрепляем снабжение и топливо, чтобы мастерская не стала вторым
+        // залом даже при малом бюджете зоны.
+        require: ['crate', 'barrel', 'firewood_stack'],
+        prefer: ['crate', 'barrel', 'firewood_stack', 'chest', 'cauldron'],
+      },
+      {
+        zoneId: 'exterior', purpose: 'exterior', theme: 'yard', density: 6,
+        require: ['tree_oak', 'bush', 'boulder'],
+        prefer: ['tree_oak', 'tree_pine', 'tree_dead', 'bush', 'shrub', 'boulder', 'rock_small'],
+      },
+      {
+        zoneId: 'courtyard', purpose: 'courtyard', theme: 'yard', density: 8,
+        require: ['well', 'water_trough', 'woodpile', 'lamp_post'],
+        prefer: ['well', 'water_trough', 'woodpile', 'lamp_post', 'campfire', 'bush'],
+      },
+    ],
+  })
+}
+
+/**
+ * Авторская «Крепость Ареса»: внешний двор с тремя воротами и пять
+ * функциональных корпусов вокруг него. В отличие от общего генератора здания
+ * здесь seed не меняет топологию: повторный вход возвращает тот же двор,
+ * двери и комнаты, а меняется только порядок вариантов пола и предметов.
+ *
+ * @param {object} [options]
+ * @param {string} [options.seed]
+ * @param {number} [options.width]
+ * @param {number} [options.height]
+ * @param {string} [options.locationId]
+ * @param {string} [options.theme]
+ * @param {boolean} [options.withProps]
+ * @returns {import('./tactical-map.mjs').TacticalMap}
+ */
+export function generateAresFortressScene({
+  seed = 'ares-fortress',
+  width = ARES_FORTRESS_SIZE.width,
+  height = ARES_FORTRESS_SIZE.height,
+  locationId = '',
+  theme = 'authored-palace',
+  withProps = true,
+} = {}) {
+  const safeWidth = Math.max(36, Math.min(SIZE_CLASSES.area.maxWidth, Math.round(width)))
+  const safeHeight = Math.max(36, Math.min(SIZE_CLASSES.area.maxHeight, Math.round(height)))
+  const map = createTacticalMap({
+    width: safeWidth,
+    height: safeHeight,
+    locationId,
+    seed: String(seed),
+    generator: { ...ARES_FORTRESS_GENERATOR },
+    theme,
+    tilesetId: 'fortress',
+    sizeClass: 'area',
+  })
+
+  addZone(map, { id: 'courtyard', kind: 'exterior', material: 'grass', lightLevel: 'bright', floorDirection: 'horizontal', label: 'Большой внутренний двор' })
+  addZone(map, { id: 'exterior', kind: 'exterior', material: 'grass', lightLevel: 'bright', floorDirection: 'horizontal', label: '' })
+  addZone(map, { id: 'gallery', kind: 'interior', material: 'stone', lightLevel: 'bright', floorDirection: 'horizontal', label: 'Военная галерея' })
+  addZone(map, { id: 'barracks', kind: 'interior', material: 'wood', lightLevel: 'dim', floorDirection: 'vertical', label: 'Казарма' })
+  addZone(map, { id: 'stables', kind: 'interior', material: 'earth', lightLevel: 'bright', floorDirection: 'horizontal', label: 'Конюшня' })
+  addZone(map, { id: 'storehouse', kind: 'interior', material: 'wood', lightLevel: 'dark', floorDirection: 'vertical', label: 'Военный склад' })
+  addZone(map, { id: 'workshop', kind: 'interior', material: 'stone', lightLevel: 'dim', floorDirection: 'horizontal', label: 'Мастерская' })
+  addZone(map, { id: 'walls', kind: 'interior', material: 'stone', lightLevel: 'dark', floorDirection: 'horizontal', label: '' })
+
+  // Трёхклеточный внешний пояс даёт место крупным деревьям и камням. Один
+  // срезанный угол с каждой диагонали делает контур крепости менее коробочным,
+  // но диагональный срез не открывает ортогональный проход во двор.
+  const outer = { minX: 3, minY: 3, maxX: safeWidth - 4, maxY: safeHeight - 4 }
+  const courtyard = { minX: outer.minX + 1, minY: outer.minY + 1, maxX: outer.maxX - 1, maxY: outer.maxY - 1 }
+  const centerX = Math.floor((outer.minX + outer.maxX) / 2)
+
+  // Внешняя площадка остаётся клетками карты: через ворота можно выйти за
+  // стену, а не упереться в край прямоугольника.
+  for (let y = 0; y < safeHeight; y += 1) {
+    for (let x = 0; x < safeWidth; x += 1) {
+      setCell(map, x, y, {
+        passable: true,
+        material: 'grass',
+        zone: x < outer.minX || x > outer.maxX || y < outer.minY || y > outer.maxY ? 'exterior' : '',
+        variant: floorVariantAt(seed, x, y),
+        revealed: false,
+      })
+    }
+  }
+  for (let y = courtyard.minY; y <= courtyard.maxY; y += 1) {
+    for (let x = courtyard.minX; x <= courtyard.maxX; x += 1) {
+      setCell(map, x, y, { passable: true, material: 'grass', zone: 'courtyard' })
+    }
+  }
+
+  // Основа двора — трава. Позже в нём появятся earth-карманы и каменные
+  // дорожки; так покрытие различается даже без растрового арта.
+
+  // Наружная стена крепости.
+  for (let x = outer.minX; x <= outer.maxX; x += 1) {
+    for (const y of [outer.minY, outer.maxY]) setCell(map, x, y, { passable: false, material: 'stone', zone: 'walls' })
+  }
+  for (let y = outer.minY; y <= outer.maxY; y += 1) {
+    for (const x of [outer.minX, outer.maxX]) setCell(map, x, y, { passable: false, material: 'stone', zone: 'walls' })
+  }
+
+  const gallery = { minX: Math.round(safeWidth * 0.28), minY: 5, maxX: Math.round(safeWidth * 0.72), maxY: 13 }
+  const barracks = { minX: 5, minY: 16, maxX: Math.round(safeWidth * 0.28), maxY: Math.min(courtyard.maxY - 3, Math.round(safeHeight * 0.82)) }
+  const stables = { minX: Math.round(safeWidth * 0.72), minY: 16, maxX: safeWidth - 6, maxY: barracks.maxY }
+  const workshopTop = Math.min(courtyard.maxY - 5, Math.round(safeHeight * 0.72))
+  // Оставляем полосу перед главными воротами свободной: южная дверь мастерской
+  // не должна занять сам проезд во двор.
+  const workshopBottom = courtyard.maxY - 1
+  const storehouse = { minX: Math.round(safeWidth * 0.33), minY: workshopTop, maxX: centerX, maxY: workshopBottom }
+  const workshop = { minX: centerX, minY: workshopTop, maxX: Math.round(safeWidth * 0.67), maxY: workshopBottom }
+  const galleryEastDoorY = gallery.minY + 4
+  const barracksDoorY = Math.floor((barracks.minY + barracks.maxY) / 2)
+  const stablesDoorY = Math.floor((stables.minY + stables.maxY) / 2)
+  const storehouseDoorX = storehouse.minX + 2
+  const workshopDoorX = workshop.minX + 2
+  const storeWorkshopDoorY = Math.floor((workshopTop + workshopBottom) / 2)
+  paintFortressRoom(map, gallery, 'gallery', 'stone')
+  paintFortressRoom(map, barracks, 'barracks', 'wood')
+  paintFortressRoom(map, stables, 'stables', 'earth')
+  paintFortressRoom(map, storehouse, 'storehouse', 'wood')
+  paintFortressRoom(map, workshop, 'workshop', 'stone')
+
+  // Проёмы в корпусах. Дверь — проход в стене, а не декоративная клетка:
+  // вокруг неё остаются косяки и стены, соседняя зона достижима по ребру.
+  setCell(map, centerX, gallery.maxY, { passable: true, material: 'stone', zone: 'gallery' })
+  setCell(map, gallery.maxX, galleryEastDoorY, { passable: true, material: 'stone', zone: 'gallery' })
+  setCell(map, barracks.maxX, barracksDoorY, { passable: true, material: 'wood', zone: 'barracks' })
+  setCell(map, stables.minX, stablesDoorY, { passable: true, material: 'earth', zone: 'stables' })
+  setCell(map, storehouseDoorX, storehouse.minY, { passable: true, material: 'wood', zone: 'storehouse' })
+  setCell(map, workshopDoorX, workshop.minY, { passable: true, material: 'stone', zone: 'workshop' })
+  setCell(map, centerX, storeWorkshopDoorY, { passable: true, material: 'wood', zone: 'storehouse' })
+
+  // Ворота оставляют внешний двор частью той же карты и дают три реальные
+  // входа: главный проезд и две боковые калитки.
+  const sideGateY = gallery.maxY + 1
+  setCell(map, centerX, outer.maxY, { passable: true, material: 'stone', zone: 'courtyard' })
+  setCell(map, outer.minX, sideGateY, { passable: true, material: 'stone', zone: 'courtyard' })
+  setCell(map, outer.maxX, sideGateY, { passable: true, material: 'stone', zone: 'courtyard' })
+  for (const corner of [
+    { x: outer.minX, y: outer.minY },
+    { x: outer.maxX, y: outer.maxY },
+  ]) {
+    setCell(map, corner.x, corner.y, { passable: true, material: 'grass', zone: 'exterior' })
+  }
+
+  /** @param {number} x @param {number} fromY @param {number} toY @param {number} [halfWidth] */
+  const paintVerticalPath = (x, fromY, toY, halfWidth = 0) => {
+    const low = Math.min(fromY, toY)
+    const high = Math.max(fromY, toY)
+    for (let y = low; y <= high; y += 1) {
+      for (let dx = -halfWidth; dx <= halfWidth; dx += 1) {
+        const cell = cellAt(map, x + dx, y)
+        if (cell?.passable && cell.zone === 'courtyard') setCell(map, x + dx, y, { material: 'stone' })
+      }
+    }
+  }
+  /** @param {number} y @param {number} fromX @param {number} toX @param {number} [halfWidth] */
+  const paintHorizontalPath = (y, fromX, toX, halfWidth = 0) => {
+    const low = Math.min(fromX, toX)
+    const high = Math.max(fromX, toX)
+    for (let x = low; x <= high; x += 1) {
+      for (let dy = -halfWidth; dy <= halfWidth; dy += 1) {
+        const cell = cellAt(map, x, y + dy)
+        if (cell?.passable && cell.zone === 'courtyard') setCell(map, x, y + dy, { material: 'stone' })
+      }
+    }
+  }
+
+  // Земляные карманы остаются между дорожками: это место для дворовой жизни,
+  // а не единая каменная площадка.
+  const earthPockets = [
+    { minX: courtyard.minX + 2, maxX: courtyard.minX + 6, minY: courtyard.minY + 2, maxY: courtyard.minY + 6 },
+    { minX: courtyard.maxX - 6, maxX: courtyard.maxX - 2, minY: courtyard.maxY - 6, maxY: courtyard.maxY - 2 },
+  ]
+  for (const pocket of earthPockets) {
+    for (let y = pocket.minY; y <= pocket.maxY; y += 1) {
+      for (let x = pocket.minX; x <= pocket.maxX; x += 1) {
+        if (cellAt(map, x, y)?.zone === 'courtyard') setCell(map, x, y, { material: 'earth' })
+      }
+    }
+  }
+  // Главная ось идёт от ворот к галерее, а короткие ответвления — к каждому
+  // корпусу. Проверка зоны не даёт дорожке прорезать стены зданий.
+  paintVerticalPath(centerX, gallery.maxY + 1, courtyard.maxY, 1)
+  paintHorizontalPath(galleryEastDoorY, centerX, gallery.maxX + 1)
+  paintHorizontalPath(barracksDoorY, barracks.maxX + 1, centerX)
+  paintHorizontalPath(stablesDoorY, centerX, stables.minX - 1)
+  const workshopPathY = workshopTop - 1
+  paintHorizontalPath(workshopPathY, storehouseDoorX, workshopDoorX)
+  paintVerticalPath(storehouseDoorX, workshopPathY, storehouse.minY - 1)
+  paintVerticalPath(workshopDoorX, workshopPathY, workshop.minY - 1)
+
+  outlineFortressWalls(map)
+  addFortressDoor(map, { id: 'gallery-courtyard-door', x: centerX, y: gallery.maxY, dir: 's' })
+  addFortressDoor(map, { id: 'gallery-east-door', x: gallery.maxX, y: galleryEastDoorY, dir: 'e' })
+  addFortressDoor(map, { id: 'barracks-door', x: barracks.maxX, y: barracksDoorY, dir: 'e' })
+  addFortressDoor(map, { id: 'stables-door', x: stables.minX - 1, y: stablesDoorY, dir: 'e' })
+  addFortressDoor(map, { id: 'storehouse-door', x: storehouseDoorX, y: storehouse.minY, dir: 's' })
+  addFortressDoor(map, { id: 'workshop-door', x: workshopDoorX, y: workshop.minY, dir: 's' })
+  addFortressDoor(map, { id: 'storehouse-workshop-door', x: centerX, y: storeWorkshopDoorY, dir: 'e' })
+  addFortressDoor(map, { id: 'main-gate', x: centerX, y: outer.maxY - 1, dir: 's' })
+  addFortressDoor(map, { id: 'west-sally', x: outer.minX, y: sideGateY, dir: 'e' })
+  addFortressDoor(map, { id: 'east-sally', x: outer.maxX - 1, y: sideGateY, dir: 'e' })
+
+  if (withProps) placeAresFortressProps(seed, map)
+
+  // Авторский пролог начинается в галерее. Выбираем свободную клетку рядом с
+  // картографическим столом, чтобы партия и король действительно стояли в
+  // одной функциональной комнате, а не на случайном дворе.
+  const table = map.props.find((prop) => prop.assetId === 'table_long' && prop.footprint.some((cell) => cellAt(map, cell.x, cell.y)?.zone === 'gallery'))
+    ?? map.props.find((prop) => prop.assetId === 'table_small' && prop.footprint.some((cell) => cellAt(map, cell.x, cell.y)?.zone === 'gallery'))
+  if (table) table.id = 'war-table'
+  const occupied = new Set(map.props.flatMap((prop) => prop.footprint.map((cell) => `${cell.x},${cell.y}`)))
+  /** @type {Array<{x: number, y: number}>} */
+  const galleryCells = []
+  for (let y = gallery.minY + 1; y < gallery.maxY; y += 1) {
+    for (let x = gallery.minX + 1; x < gallery.maxX; x += 1) {
+      if (cellAt(map, x, y)?.passable && !occupied.has(`${x},${y}`)) galleryCells.push({ x, y })
+    }
+  }
+  /** @param {{x: number, y: number}} cell @param {{x: number, y: number}} anchor @returns {number} */
+  const distance = (cell, anchor) => Math.abs(cell.x - anchor.x) + Math.abs(cell.y - anchor.y)
+  const tableAnchor = table?.footprint[0] ?? { x: centerX, y: gallery.minY + 3 }
+  galleryCells.sort((left, right) => distance(left, tableAnchor) - distance(right, tableAnchor) || left.x - right.x || left.y - right.y)
+  const partyStart = galleryCells[0] ?? { x: centerX, y: gallery.minY + 2 }
+  map.spawnPoints.push({ id: 'party-war-gallery', x: partyStart.x, y: partyStart.y, role: 'party' })
+  const kingStart = galleryCells.find((cell) => cell !== partyStart && distance(cell, tableAnchor) > 0) ?? partyStart
+  map.spawnPoints.push({ id: 'king-war-gallery', x: kingStart.x, y: kingStart.y, role: 'neutral' })
+
+  // Общий план королевской крепости известен приглашённой партии. Двери и
+  // непроходимые стены всё равно проверяются при каждом физическом переходе.
+  for (let y = courtyard.minY; y <= courtyard.maxY; y += 1) {
+    for (let x = courtyard.minX; x <= courtyard.maxX; x += 1) {
+      if (cellAt(map, x, y)) setCell(map, x, y, { revealed: true })
+    }
+  }
+  for (let y = gallery.minY; y <= gallery.maxY; y += 1) {
+    for (let x = gallery.minX; x <= gallery.maxX; x += 1) {
+      if (cellAt(map, x, y)) setCell(map, x, y, { revealed: true })
+    }
+  }
+  map.overlays = {
+    compass: true,
+    scaleBar: true,
+    roomLabels: map.zones.filter((zone) => zone.label).map((zone) => ({ zoneId: zone.id, label: zone.label })),
+  }
+  return map
+}
+
+/**
+ * Сборка authored-крепости с тем же отчётом, что и общий building-generator.
+ *
+ * @param {Parameters<typeof generateAresFortressScene>[0]} [options]
+ * @returns {{map: import('./tactical-map.mjs').TacticalMap, fallback: string, warnings: string[]}}
+ */
+export function buildAresFortressScene(options = {}) {
+  const map = generateAresFortressScene(options)
+  const report = validateTacticalMap(map)
+  const reachability = reachabilityIssues(map)
+  return {
+    map,
+    fallback: 'none',
+    warnings: [...report.errors.map((issue) => issue.code), ...reachability, ...tacticalFitnessWarnings(map)],
+  }
 }
 
 /**

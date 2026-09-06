@@ -7,6 +7,7 @@ import { TURN_TRACE_SCHEMA_VERSION } from './trace-store.mjs'
 import { AutonomousCampaignOrchestrator } from './autonomous-orchestrator.mjs'
 import { IdempotencyConflictError } from './event-store.mjs'
 import { deterministicNarratorFor, renderDeterministicNarration } from './deterministic-narration.mjs'
+import { combatNarrator } from './combat-narration.mjs'
 import './encounter-narration.mjs'
 import { IntentParser, buildRuleQueries } from './intent-parser.mjs'
 import './merchant-narration.mjs'
@@ -38,7 +39,7 @@ import './scene-narration.mjs'
 import './scene-hazard-narration.mjs'
 import { buildNarrationBrief, projectVisibleState, validateAllowedCommands, verifyNarration } from './security.mjs'
 import { campaignStateForViewer, mechanicsForViewer, publicAdventureFor, turnExplanationForViewer } from './viewer-projection.mjs'
-import { campaignConceptForAgent } from './agent-context.mjs'
+import { campaignConceptForAgent, sceneContextForAgent } from './agent-context.mjs'
 import { worldClockForAgents } from './weather.mjs'
 import { buildTurnExplanation } from './trace-store.mjs'
 import { retrieveWorldMemory } from './world-memory.mjs'
@@ -1162,11 +1163,11 @@ export class GameOrchestrator {
       visible_events: publicCommittedEvents,
       visible_state_changes: visibleChanges(publicCommittedEvents),
       known_environment: {
-        scene: projectVisibleState(state.scene ?? {}, viewer, { forNarrator: true }) ?? {},
+        scene: sceneContextForAgent(state, playerId),
         campaign_premise: campaignConceptForAgent(state),
         // Небо и час — данные, а не право сочинять: Рассказчик получает уже
         // решённые время суток и погоду, чтобы не выдумывать закат в полдень.
-        world_clock: worldClockForAgents(state),
+        world_clock: worldClockForAgents(state, playerId),
         world_memory: { facts: narrationWorldFacts(state, viewer, message, publicCommittedEvents) },
         story_context: storyContext,
         social_consequences: narrationSocialConsequences(publicCommittedEvents, state),
@@ -1613,7 +1614,20 @@ export class GameOrchestrator {
     let intent = input.commands
       ? { actor_id: playerId, intent: 'structured_commands', approach: 'api', targets: [], mentioned_entities: [], missing_information: [], requires_clarification: false, confidence: 1, raw_message: message }
       : await this.intentParser.parse({ message, playerId, visibleState })
-    if (!input.commands && explicitNpcId) {
+    // `npc_id` binds an already social phrase to the selected NPC. It is not a
+    // permission to reinterpret every addressed action as dialogue: the NPC
+    // card also sends pickpocket and other deterministic interactions through
+    // this endpoint, and those must reach their own server command path.
+    const deterministicActionIntent = new Set([
+      'improvised_action', 'compound_maneuver', 'approach_attack', 'attack', 'damage',
+      'ability_check', 'saving_throw', 'healing', 'cast_spell', 'start_combat',
+      'end_combat', 'end_turn', 'rest',
+    ])
+    const explicitPickpocket = intent.intent === 'improvised_action'
+      && /(?:обчищ|обчист|карман|кошел)/iu.test(message)
+    const deterministicAction = deterministicActionIntent.has(intent.intent)
+      && (intent.intent !== 'improvised_action' || Boolean(intent.free_action_kind) || explicitPickpocket)
+    if (!input.commands && explicitNpcId && !deterministicAction) {
       intent = {
         ...intent,
         intent: 'social',
@@ -1673,11 +1687,11 @@ export class GameOrchestrator {
               narration_constraints: ['free-action-committed-consequences-only'],
               confidence: intent.confidence,
             }
-        : await this.adjudicator.createPlan({ intent, state: intent.intent === 'approach_attack'
+        : await this.adjudicator.createPlan({ intent, state: ['approach_attack', 'compound_maneuver'].includes(intent.intent)
           ? duplicate ? (await this.eventStore.load(campaignId, { atVersion: duplicate.events[0].state_version_before })).state : authoritativeState
           : originalState, retrievedRules })
     plan = { ...plan, proposed_commands: validateAllowedCommands(plan.proposed_commands ?? []).map((command, index) => ({ ...command, campaign_id: campaignId, command_id: `${idempotencyKey}:${index + 1}` })) }
-    if (plan.maneuver === 'approach_attack' && !duplicate) {
+    if (['approach_attack', 'long_jump_attack', 'swing_attack'].includes(plan.maneuver) && !duplicate) {
       this.rulesEngine.validate(plan.proposed_commands[0], authoritativeState, rulesContext)
       if (!input.confirmedProposalId) {
         return {
@@ -1921,11 +1935,11 @@ export class GameOrchestrator {
       visible_events: publicCommittedEvents,
       visible_state_changes: visibleChanges(publicCommittedEvents),
       known_environment: {
-        scene: projectVisibleState(committed.state.scene ?? {}, viewer, { forNarrator: true }) ?? {},
+        scene: sceneContextForAgent(committed.state, playerId),
         campaign_premise: campaignConceptForAgent(committed.state),
         // Небо и час — данные, а не право сочинять: тот же расчёт, что у
         // индикатора в шапке сцены, чтобы текст и картинка не разошлись.
-        world_clock: worldClockForAgents(committed.state),
+        world_clock: worldClockForAgents(committed.state, playerId),
         world_memory: {
           facts: narrationWorldFacts(committed.state, viewer, message, publicCommittedEvents),
         },
@@ -1945,14 +1959,23 @@ export class GameOrchestrator {
     // Кто рассказывает про эти события, знает реестр. Раньше выбор был записан
     // лестницей `?:` дважды — здесь и в ветке повтора, — и расходились они
     // молча.
-    const deterministicNarrator = deterministicNarratorFor(committedEvents)
+    // Составной манёвр подтверждается отдельной карточкой, поэтому его
+    // committed-события должны попасть в боевую ленту целиком: generic
+    // mechanics narration берёт только первые четыре сводки и может потерять
+    // AttackResolved после проверки и перемещения. combatNarrator намеренно не
+    // зарегистрирован глобально; здесь он выбирается только для этого явного
+    // пути и не перехватывает остальные ходы.
+    const explicitCombatManeuver = ['approach_attack', 'long_jump_attack', 'swing_attack'].includes(plan.maneuver)
+    const deterministicNarrator = explicitCombatManeuver
+      ? combatNarrator
+      : deterministicNarratorFor(committedEvents)
     const deterministicResponse = deterministicNarrator
       ? deterministicNarratorResponse(deterministicNarrator, committedEvents, committed.state, brief, resolvedRuleIds)
       : null
     const replayFallback = deterministicResponse
       ?? storedSocialNarration
       ?? deterministicReplayNarration(brief, resolvedRuleIds, resolveActorName)
-    const structuredMechanics = (Array.isArray(input.commands) || plan.maneuver === 'approach_attack') && !deterministicNarrator
+    const structuredMechanics = (Array.isArray(input.commands) || ['approach_attack', 'long_jump_attack', 'swing_attack'].includes(plan.maneuver)) && !deterministicNarrator
     const streamsModelNarration = !idempotentReplay
       && !deterministicResponse
       && !storedSocialNarration

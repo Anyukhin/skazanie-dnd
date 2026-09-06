@@ -296,6 +296,32 @@ test('свободный текст не даёт взять чужую вещь
   assert.deepEqual(after.state.players, before.state.players)
 })
 
+test('явный npc_id не превращает карманную кражу в социальный разговор', async () => {
+  const initialState = campaign({
+    scene: {
+      ...campaign().scene,
+      location_id: 'old-tavern',
+      cells: [
+        { x: 0, y: 0, type: 'floor', revealed: true },
+        { x: 1, y: 0, type: 'floor', revealed: true },
+      ],
+    },
+    players: [{ ...hero('hero', 'Ада'), x: 0, y: 0 }],
+    mechanics: { positions: { hero: { x: 0, y: 0 } } },
+    social: { npcs: [{ id: 'mira', name: 'Мира', role: 'merchant', location: 'Старый трактир', available: true }] },
+    npc_world: { placements: [{ npc_id: 'mira', location_id: 'old-tavern', x: 1, y: 0 }] },
+  })
+  const { orchestrator } = await setup(initialState)
+  const result = await orchestrator.handle({
+    ...actionInput('Незаметно обчищаю карманы: Мира', 'free-pickpocket-explicit-npc', initialState),
+    npcId: 'mira',
+  })
+
+  assert.equal(result.free_action_outcome, 'pickpocket')
+  assert.ok(result.mechanics.some((event) => event.event_type === 'AbilityCheckResolved'))
+  assert.equal(result.mechanics.some((event) => event.event_type === 'NpcConversationRecorded'), false)
+})
+
 test('неоднозначные предмет или союзник требуют уточнения без мутации', async () => {
   const initialState = campaign({
     players: [
@@ -614,12 +640,16 @@ test('подтверждение нельзя перенести на другу
   assert.equal((await eventStore.load('FREE-ACTION')).state_version, changed.state_version)
 })
 
-test('прыжок с атакой не сокращается до удара и не расходует ход', async () => {
-  const { orchestrator, eventStore } = await setup()
-  for (const text of ['Хочу вспрыгнуть с люстры и попасть по врагу во время боя', 'Вспрыгиваю с люстры и бью огра']) {
-    const result = await orchestrator.handle(actionInput(text, text, campaign()))
-    assert.equal(result.free_action_outcome, 'clarification')
-    assert.match(result.narration, /прыжок и атака/u)
+test('прыжок с люстры получает честный отказ без расхода хода', async () => {
+  const initial = campaign({ enemies: [{ id: 'ogre', name: 'Огр', hp: 10, maxHp: 10, armor: 12, alive: true }] })
+  const { orchestrator, eventStore } = await setup(initial)
+  for (const [text, expected] of [
+    ['Хочу вспрыгнуть с люстры и попасть по врагу во время боя', /Уточните цель действия/u],
+    ['Вспрыгиваю с люстры и бью огра', /точки опоры и высоты|люстр/iu],
+  ]) {
+    const result = await orchestrator.handle(actionInput(text, text, initial))
+    assert.equal(result.free_action_outcome, undefined)
+    assert.match(result.narration, expected)
     assert.deepEqual(result.mechanics, [])
     assert.equal(result.turn_consumed, false)
   }
@@ -630,7 +660,32 @@ test('разбор сохраняет обычную атаку и отлича�
   const parser = new IntentParser()
   const parse = (message) => parser.parse({ message, playerId: 'hero', visibleState: campaign() })
   assert.equal((await parse('Бью огра')).intent, 'attack')
-  assert.equal((await parse('Вспрыгиваю с люстры и бью огра')).intent, 'improvised_action')
+  assert.equal((await parse('Вспрыгиваю с люстры и бью огра')).intent, 'compound_maneuver')
   assert.equal((await parse('Вспрыгиваю с люстры и бью огра')).free_action_kind, 'compound_maneuver')
   assert.equal((await parse('Прыгаю через канаву')).free_action_kind, null)
+})
+
+test('дефисное имя врага сохраняет номер и не смешивает двух одинаковых гоблинов', async () => {
+  const parser = new IntentParser()
+  const visibleState = {
+    players: [{ id: 'hero', character: 'Ада' }],
+    enemies: [
+      { id: 'enemy1', name: 'Гоблин-воин 1' },
+      { id: 'enemy2', name: 'Гоблин-воин 2' },
+    ],
+  }
+  const selected = await parser.parse({
+    message: 'Прыгаю вперёд и бью гоблина-воина 1 длинным мечом',
+    playerId: 'hero', visibleState,
+  })
+  assert.deepEqual(selected.targets, ['enemy1'])
+  assert.equal(selected.requires_clarification, false)
+
+  const missingNumber = await parser.parse({
+    message: 'Прыгаю вперёд и бью гоблина-воина длинным мечом',
+    playerId: 'hero', visibleState,
+  })
+  assert.deepEqual(missingNumber.targets, [])
+  assert.deepEqual(missingNumber.missing_information, ['target_id'])
+  assert.equal(missingNumber.requires_clarification, true)
 })

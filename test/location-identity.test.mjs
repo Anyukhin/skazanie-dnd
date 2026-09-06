@@ -103,15 +103,15 @@ test('director transition creates or reuses a shop using location_id before the 
     campaignId: 'LOCATION-IDENTITY-1', action: 'travel east', state: state({ merchants: [westMerchant] }), sceneArgs: eastScene,
     shopIntent: { action: 'create', settlement_type: 'city', theme: 'general', budget_cp: 20_000 },
   })
-  assert.deepEqual(created.commands.map((command) => command.command_type), ['AdvanceScene', 'CreateMerchant'])
-  assert.equal(created.commands[0].scene_args.location_id, 'market-east')
-  assert.equal(created.commands[1].merchant.location_id, 'market-east')
+  assert.deepEqual(created.commands.map((command) => command.command_type), ['AdvanceTime', 'AdvanceScene', 'CreateMerchant'])
+  assert.equal(created.commands[1].scene_args.location_id, 'market-east')
+  assert.equal(created.commands[2].merchant.location_id, 'market-east')
 
   const eastMerchant = { id: 'east-shop', location: 'Twin Market', location_id: 'market-east', stock: [] }
   const reused = buildDirectorTransitionCommands({
     campaignId: 'LOCATION-IDENTITY-1', action: 'return east', state: state({ merchants: [eastMerchant] }), sceneArgs: eastScene,
     shopIntent: { action: 'create', settlement_type: 'city', theme: 'general', budget_cp: 20_000 },
   })
-  assert.deepEqual(reused.commands.map((command) => command.command_type), ['AdvanceScene'])
+  assert.deepEqual(reused.commands.map((command) => command.command_type), ['AdvanceTime', 'AdvanceScene'])
   assert.equal(reused.existingMerchantId, 'east-shop')
 })

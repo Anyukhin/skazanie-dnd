@@ -266,8 +266,30 @@ export function publicTacticalMapWithHashFor(value) {
     map.layers.surface[index] = emptySurfaceCode
     delete map.hazards[String(index)]
   }
-  map.props = map.props.filter((prop) => prop.footprint.some((cell) => revealedAt(cell.x, cell.y))
-    || (prop.footprint.length === 0 && revealedAt(Math.floor(prop.x), Math.floor(prop.y))))
+  const visibleZoneCodes = new Map()
+  const visibleZones = []
+  for (let index = 0; index < cellCount; index += 1) {
+    const revealed = (revealedBits[index >> 3] & (1 << (index & 7))) !== 0
+    const sourceCode = map.layers.zoneId[index]
+    if (!revealed || sourceCode <= 0 || !map.zones[sourceCode - 1]) {
+      map.layers.zoneId[index] = 0
+      continue
+    }
+    let publicCode = visibleZoneCodes.get(sourceCode)
+    if (!publicCode) {
+      publicCode = visibleZones.length + 1
+      visibleZoneCodes.set(sourceCode, publicCode)
+      visibleZones.push({ ...map.zones[sourceCode - 1] })
+    }
+    map.layers.zoneId[index] = publicCode
+  }
+  map.zones = visibleZones
+  const visibleZoneIds = new Set(visibleZones.map((zone) => zone.id))
+  map.overlays.roomLabels = map.overlays.roomLabels.filter((label) => visibleZoneIds.has(String(label.zoneId)))
+  map.spawnPoints = map.spawnPoints.filter((point) => revealedAt(point.x, point.y))
+  map.props = map.props.filter((prop) => prop.footprint.length === 0
+    ? revealedAt(Math.floor(prop.x), Math.floor(prop.y))
+    : prop.footprint.every((cell) => revealedAt(cell.x, cell.y)))
   // Игроку нужна только affordance-часть интерактивного предмета. Ключи
   // скрытой детали и награды остаются в авторитетной карте до подтверждённого
   // события осмотра/открытия; иначе Рассказчик увидит тайник вместе с картой.
@@ -289,19 +311,34 @@ export function publicTacticalMapWithHashFor(value) {
       delete map.edges[key]
     }
   }
-  map.doors = map.doors.filter((door) => visibleEdges.has(`${door.x},${door.y},${door.dir}`))
+  map.doors = map.doors
+    .filter((door) => visibleEdges.has(`${door.x},${door.y},${door.dir}`))
+    .map((door) => ({ ...door, keyItemId: null }))
   const projectedMap = serializeTacticalMap(map)
-  const projectedProps = /** @type {Array<Record<string, any>>} */ (
-    Array.isArray(projectedMap.props) ? projectedMap.props : []
-  )
-  const projectedPropById = new Map(projectedProps.map((prop) => [String(prop.id ?? ''), prop]))
   // Авторитетный serializer ради map budget хранит полную metadata только у
   // 2–4 POI, а обычным словарным объектам восстанавливает её из каталога.
   // Публичная карта материализует affordance для каждого видимого предмета,
   // но ни при каких условиях не переносит ключи детали и награды.
-  for (const prop of map.props) {
-    const projectedProp = projectedPropById.get(prop.id)
-    if (!projectedProp || !prop.interaction) continue
+  materializePropMetadataForTransport(projectedMap, map.props)
+  return { map: projectedMap, hash: serializedTacticalMapHash(projectedMap) }
+}
+
+/**
+ * Компактное хранение опускает действия из каталога. Перед отправкой карты
+ * браузеру возвращаем только публичную часть server-owned metadata, сохраняя
+ * компактную форму в хранилище.
+ *
+ * @param {Record<string, any>} projectedMap
+ * @param {Array<Loose>} props
+ */
+function materializePropMetadataForTransport(projectedMap, props) {
+  const projectedProps = Array.isArray(projectedMap.props) ? projectedMap.props : []
+  const projectedPropById = new Map(projectedProps.map((prop) => [String(prop.id ?? ''), prop]))
+  for (const prop of Array.isArray(props) ? props : []) {
+    const projectedProp = projectedPropById.get(String(prop.id ?? ''))
+    if (!projectedProp) continue
+    if (prop.interactive === true) projectedProp.interactive = true
+    if (!prop.interaction) continue
     projectedProp.interactive = true
     projectedProp.interaction = {
       kind: prop.interaction.kind,
@@ -309,7 +346,53 @@ export function publicTacticalMapWithHashFor(value) {
       pointOfInterest: prop.interaction.pointOfInterest === true,
     }
   }
-  return { map: projectedMap, hash: serializedTacticalMapHash(projectedMap) }
+  return projectedMap
+}
+
+/**
+ * Ведущий получает полную карту, но те же affordance, что и игрок. Здесь нет
+ * фильтра тумана: это admin-only ветка, а карта всё равно остаётся JSON-формой.
+ *
+ * @param {unknown} value
+ * @returns {unknown}
+ */
+function adminTacticalMapFor(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value
+  try {
+    const raw = /** @type {Record<string, any>} */ (value)
+    const map = ArrayBuffer.isView(raw.layers?.zoneId)
+      ? /** @type {import('./tactical-map.mjs').TacticalMap} */ (raw)
+      : deserializeTacticalMap(raw)
+    const projectedMap = serializeTacticalMap(map)
+    return materializePropMetadataForTransport(projectedMap, map.props)
+  } catch {
+    return value
+  }
+}
+
+/** @param {Loose} [scene] @returns {Loose} */
+function adminSceneFor(scene = {}) {
+  if (!scene || typeof scene !== 'object' || Array.isArray(scene)) return scene
+  const map = adminTacticalMapFor(scene.map)
+  return map === scene.map ? scene : { ...scene, map }
+}
+
+/**
+ * Погода не секретна, но крыша зависит от клетки конкретного героя. Поэтому
+ * проекция отдаёт готовые варианты для выбора героя, а не заставляет клиент
+ * повторять разбор карты.
+ *
+ * @param {LooseState} state
+ * @param {{isAdmin?: boolean, actorId?: string}} [options]
+ * @returns {Record<string, any>}
+ */
+function weatherByActorFor(state, { isAdmin = false, actorId = '' } = {}) {
+  const players = Array.isArray(state?.players) ? state.players : []
+  const partyIds = new Set((Array.isArray(state?.partyMemberIds) ? state.partyMemberIds : []).map(String))
+  const ids = players
+    .map((player) => String(player?.id ?? player?.actor_id ?? ''))
+    .filter((id) => id && (isAdmin || partyIds.has(id) || id === String(actorId ?? '')))
+  return Object.fromEntries([...new Set(ids)].map((id) => [id, weatherForViewer(state, id)]))
 }
 
 /**
@@ -1027,6 +1110,7 @@ export const PROJECTED_STATE_KEYS = Object.freeze([
   // существуют только в проекции. Решение осознанное и в обе стороны одинаковое:
   // небо над отрядом видно всем, и прятать его от игрока значило бы врать.
   'weather',
+  'weather_by_actor',
   'enemies', 'mechanics', 'battleLog', 'messages', 'autonomy',
   // Собственного ключа в состоянии нет: подсказки выводятся из уже собранной
   // комнаты и существуют только в проекции. Решение осознанное — скрытого в
@@ -1104,6 +1188,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
   if (!state || typeof state !== 'object') return state
   if (user?.role === 'admin') return {
     ...state,
+    scene: adminSceneFor(state.scene),
     // Ведущий тоже играет на общей доске: renderer читает scene_npcs, а не
     // внутренний npc_world. Фишки собираются тем же путём, что и для игрока.
     scene_npcs: sceneNpcsForViewer(state),
@@ -1155,7 +1240,8 @@ export function campaignStateForViewer(state, user, actorId = '') {
     lockpicking: lockpickingForViewer(state, { playerId: String(actorId ?? '') }),
     // Небо у ведущего и у игрока одно и то же: время суток и погода выводятся
     // из минут кампании и сида, тайной ведущего они не являются.
-    weather: weatherForViewer(state),
+    weather: weatherForViewer(state, actorId),
+    weather_by_actor: weatherByActorFor(state, { isAdmin: true, actorId: String(actorId ?? '') }),
     mechanics: {
       ...(state.mechanics ?? {}),
       hit_point_dice: Object.fromEntries((state.players ?? []).map((/** @type {Loose} */ player) => [String(player.id), hitPointDicePoolForActor(state, player.id)])),
@@ -1323,7 +1409,8 @@ export function campaignStateForViewer(state, user, actorId = '') {
     // Время суток и погода — то, что герой видит, подняв голову. Строка
     // индикатора и подписи действующих помех приходят готовыми: своей таблицы
     // ни у клиента, ни у проекции нет.
-    weather: weatherForViewer(state),
+    weather: weatherForViewer(state, actorId),
+    weather_by_actor: weatherByActorFor(state, { actorId: String(actorId ?? '') }),
     merchants,
     enemies,
     mechanics,

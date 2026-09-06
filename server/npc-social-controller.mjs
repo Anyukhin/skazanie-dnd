@@ -3,14 +3,14 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { ensureNpcSocialState, npcProfileAtWorldTime, relationshipTier } from './npc-social.mjs'
-import { campaignConceptForAgent } from './agent-context.mjs'
+import { campaignConceptForAgent, sceneContextForAgent } from './agent-context.mjs'
 import { promptForModel } from './model-style-profiles.mjs'
 import { buildDataOnlyContext } from './security.mjs'
 import { tavernTableMood } from './tavern-life.mjs'
 import { retrieveWorldMemory } from './world-memory.mjs'
 
-export const NPC_SOCIAL_PROMPT_VERSION = 'npc_controller/social-v3'
-const prompt = readFileSync(fileURLToPath(new URL('../prompts/npc_controller/social_v3.txt', import.meta.url)), 'utf8')
+export const NPC_SOCIAL_PROMPT_VERSION = 'npc_controller/social-v4'
+const prompt = readFileSync(fileURLToPath(new URL('../prompts/npc_controller/social_v4.txt', import.meta.url)), 'utf8')
 const STANCES = new Set(['friendly', 'neutral', 'guarded', 'hostile'])
 const DIRECTIONS = new Set(['npc_to_party', 'party_to_npc'])
 export const NPC_SOCIAL_MEMORY_LIMIT = 8
@@ -92,7 +92,7 @@ function briefFor(state, profile, playerId, message, checkOutcome = null) {
       title: clean(state.scene?.title, 160),
       location: clean(state.scene?.location, 180),
       mood: clean(state.scene?.mood, 160),
-      objective: clean(state.scene?.objective, 300),
+      spatial_context: sceneContextForAgent(state, playerId).spatial_context,
     },
     // Цели и убеждения профиля намеренно не передаются: всё, что уходит в
     // модель, может дословно оказаться в реплике перед игроком, поэтому бриф

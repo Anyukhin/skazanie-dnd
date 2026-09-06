@@ -391,6 +391,7 @@ test('камера доски помнится по этажу, а этаж вх
   assert.equal(tacticalUi.boardCameraKey('taverna', -1), 'taverna@L-1')
   assert.notEqual(tacticalUi.boardCameraKey('taverna', 1), tacticalUi.boardCameraKey('taverna', -1), 'спальни и погреб не должны делить камеру')
   assert.equal(tacticalUi.boardCameraKey('', 0), 'нет карты')
+  assert.notEqual(tacticalUi.boardCameraKey('palace', 0, 'PARTY-A'), tacticalUi.boardCameraKey('palace', 0, 'PARTY-B'), 'Одинаковая локация разных кампаний не разделяет камеру')
 })
 
 test('кнопка перехода называет направление и подпись этажа, а отказ объясняет причину', () => {

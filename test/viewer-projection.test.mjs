@@ -41,6 +41,56 @@ test('ответ на действие администратора не сти�
   assert.equal(state.scene_npcs, undefined, 'проекция не переписывает сохранённое состояние')
 })
 
+test('admin projection восстанавливает affordance каталожных props из compact map', async () => {
+  const { addProp, createTacticalMap, serializeTacticalMap } = await import('../server/tactical-map.mjs')
+  const map = createTacticalMap({ width: 4, height: 3, seed: 'admin-affordances', fill: { passable: true, revealed: false } })
+  addProp(map, { id: 'chandelier-1', assetId: 'chandelier', x: 1.5, y: 1.5, footprint: [{ x: 1, y: 1 }] })
+  addProp(map, { id: 'table-1', assetId: 'table', x: 2.5, y: 1.5, footprint: [{ x: 2, y: 1 }] })
+  const compact = serializeTacticalMap(map)
+  const state = {
+    sessionCode: 'ADMIN-MAP', activePlayerId: 'hero',
+    players: [{ id: 'hero', character: 'Лира', hp: 10, maxHp: 10, inventory: [] }],
+    scene: { title: 'Зал', location: 'Крепость', map: compact },
+  }
+  assert.equal(compact.props[0].interactive, undefined, 'fixture должен идти в projection compact-формой')
+  const projected = campaignStateForViewer(state, { role: 'admin' }, 'hero')
+  const props = projected.scene.map.props
+  const chandelier = props.find((prop) => prop.id === 'chandelier-1')
+  const table = props.find((prop) => prop.id === 'table-1')
+  assert.equal(chandelier.interactive, true)
+  assert.equal(table.interactive, true)
+  assert.ok(chandelier.interaction.verbs.includes('inspect'))
+  assert.ok(table.interaction.verbs.includes('inspect'))
+  assert.equal(props.length, 2, 'admin получает полную карту, включая нераскрытый реквизит')
+  assert.equal(compact.props[0].interaction, undefined, 'persisted compact map не переписывается projection')
+})
+
+test('weather_by_actor даёт проекции готовую погоду для выбранных героев', async () => {
+  const { addZone, createTacticalMap, serializeTacticalMap, setCell } = await import('../server/tactical-map.mjs')
+  const map = createTacticalMap({ width: 2, height: 1, fill: { passable: true, revealed: true } })
+  addZone(map, { id: 'courtyard', kind: 'exterior', label: 'Двор' })
+  addZone(map, { id: 'gallery', kind: 'interior', label: 'Галерея' })
+  setCell(map, 0, 0, { zone: 'courtyard' })
+  setCell(map, 1, 0, { zone: 'gallery' })
+  const state = {
+    sessionCode: 'WEATHER-ACTORS', activePlayerId: 'borin', partyMemberIds: ['borin', 'lada'],
+    players: [
+      { id: 'borin', character: 'Борин', x: 0, y: 0, inventory: [] },
+      { id: 'lada', character: 'Лада', x: 1, y: 0, inventory: [] },
+      { id: 'outsider', character: 'Чужой', x: 1, y: 0, inventory: [] },
+    ],
+    scene: { title: 'Крепость', location: 'Крепость', map: serializeTacticalMap(map) },
+    mechanics: { world_time: { elapsed_minutes: 0 }, positions: { borin: { x: 0, y: 0 }, lada: { x: 1, y: 0 }, outsider: { x: 1, y: 0 } } },
+  }
+  const admin = campaignStateForViewer(state, { role: 'admin' }, 'borin')
+  const player = campaignStateForViewer(state, { role: 'player', heroIds: ['borin'] }, 'borin')
+  assert.deepEqual(Object.keys(admin.weather_by_actor).sort(), ['borin', 'lada', 'outsider'])
+  assert.deepEqual(Object.keys(player.weather_by_actor).sort(), ['borin', 'lada'])
+  assert.equal(admin.weather_by_actor.borin.indoors, false)
+  assert.equal(admin.weather_by_actor.lada.indoors, true)
+  assert.equal(player.weather_by_actor.lada.indoors, true)
+})
+
 function privateState() {
   return {
     sessionCode: 'VISIBLE',
@@ -660,6 +710,48 @@ test('карта в проекции игрока не выдаёт нераск
   assert.ok(edges.includes('0,0,e'), 'ребро у раскрытой клетки видно')
   assert.equal(edges.includes('0,2,e'), false, 'ребро между двумя нераскрытыми клетками не передаётся')
   assert.deepEqual(visible.doors, [], 'дверь на нераскрытом ребре не передаётся')
+})
+
+test('проекция карты скрывает зоны, частичный реквизит, точки появления и ключи дверей', async () => {
+  const { publicTacticalMapWithHashFor } = await import('../server/viewer-projection.mjs')
+  const { addProp, addSpawnPoint, addZone, cellAt, createTacticalMap, deserializeTacticalMap, serializeTacticalMap, setCell, setDoor } =
+    await import('../server/tactical-map.mjs')
+  const map = createTacticalMap({ width: 4, height: 3, fill: { passable: true, revealed: false } })
+  addZone(map, { id: 'hall', kind: 'interior', label: 'Главный зал' })
+  addZone(map, { id: 'secret-archive', kind: 'interior', label: 'Тайный архив' })
+  for (let y = 0; y < map.height; y += 1) {
+    for (let x = 0; x < map.width; x += 1) setCell(map, x, y, { zone: y === 0 ? 'hall' : 'secret-archive' })
+  }
+  for (let x = 0; x < map.width; x += 1) for (let y = 0; y < 1; y += 1) setCell(map, x, y, { revealed: true })
+  map.overlays.roomLabels = [
+    { zoneId: 'hall', label: 'Зал' },
+    { zoneId: 'secret-archive', label: 'Архив' },
+  ]
+  addSpawnPoint(map, { id: 'visible-party', x: 1, y: 0, role: 'party' })
+  addSpawnPoint(map, { id: 'hidden-enemy', x: 1, y: 2, role: 'enemy' })
+  addProp(map, { id: 'visible-table', assetId: 'table', x: 0.5, y: 0.5, footprint: [{ x: 0, y: 0 }] })
+  addProp(map, { id: 'partial-table', assetId: 'table_long', x: 0.5, y: 0.5, footprint: [{ x: 0, y: 0 }, { x: 0, y: 1 }] })
+  addProp(map, { id: 'hidden-chest', assetId: 'chest', x: 1.5, y: 2.5, footprint: [{ x: 1, y: 2 }] })
+  setDoor(map, { id: 'visible-door', x: 2, y: 0, dir: 'e', state: 'locked', lockDc: 18, keyItemId: 'secret-archive-key' })
+  setDoor(map, { id: 'hidden-door', x: 2, y: 1, dir: 'e', state: 'locked', lockDc: 22, keyItemId: 'deeper-key' })
+
+  const first = publicTacticalMapWithHashFor(serializeTacticalMap(map))
+  const second = publicTacticalMapWithHashFor(serializeTacticalMap(map))
+  assert.ok(first && second)
+  assert.equal(first.hash, second.hash, 'одинаковая проекция должна сохранять map hash')
+  assert.deepEqual(first.map, second.map, 'hash cache получает стабильную форму карты')
+  const visible = deserializeTacticalMap(first.map)
+
+  assert.deepEqual(visible.zones.map((zone) => zone.id), ['hall'], 'неизвестная зона не должна доехать в zones')
+  assert.deepEqual(visible.overlays.roomLabels, [{ zoneId: 'hall', label: 'Зал' }])
+  assert.deepEqual(visible.spawnPoints.map((point) => point.id), ['visible-party'])
+  assert.equal(cellAt(visible, 0, 0)?.zone, 'hall')
+  assert.equal(cellAt(visible, 0, 1)?.zone, '', 'zoneId туманной клетки обязан быть нулём')
+  assert.deepEqual(visible.props.map((prop) => prop.id), ['visible-table'], 'частичный footprint и скрытый предмет не передаются')
+  assert.deepEqual(visible.doors, [{
+    id: 'visible-door', x: 2, y: 0, dir: 'e', state: 'locked', lockDc: 18, keyItemId: null,
+  }], 'публичная дверь не раскрывает идентификатор ключа')
+  assert.doesNotThrow(() => serializeTacticalMap(visible), 'обезличенная карта обязана оставаться валидной для roundtrip')
 })
 
 test('сцена без карты проецируется как прежде', async () => {

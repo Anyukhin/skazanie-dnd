@@ -204,6 +204,9 @@ const DECLARED = Object.freeze([
   entry('torch_wall', { kind: 'decal', baseFootprint: { w: 0, h: 0 }, anchor: 'wall', interactive: true }),
   entry('lantern_wall', { kind: 'decal', baseFootprint: { w: 0, h: 0 }, anchor: 'wall', interactive: true }),
   entry('candelabra', { destructible: true, hp: 4 }),
+  // Подвешенный реквизит имеет отдельный server-owned профиль swing в
+  // `scene-hazards.mjs`; сам asset остаётся обычным декоративным prop.
+  entry('chandelier', { baseFootprint: { w: 0, h: 0 }, interactive: true, scaleRange: { min: 0.9, max: 1.15 } }),
   entry('banner', { kind: 'decal', baseFootprint: { w: 0, h: 0 }, anchor: 'wall', interactive: true }),
   entry('sign_board', { kind: 'decal', baseFootprint: { w: 0, h: 0 }, anchor: 'wall' }),
   entry('rug', { kind: 'decal', baseFootprint: { w: 0, h: 0 }, interactive: true, scaleRange: { min: 0.9, max: 1.3 } }),

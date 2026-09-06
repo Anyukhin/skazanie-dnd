@@ -888,6 +888,7 @@
             "layout": "streets",
             "scale": "site",
             "pattern": "village",
+            "theme_id": "authored-harbor",
             "material": "stone",
             "width": 17,
             "height": 11,
@@ -1772,6 +1773,7 @@
             "layout": "streets",
             "scale": "site",
             "pattern": "village",
+            "theme_id": "authored-oasis",
             "material": "sand",
             "width": 17,
             "height": 11,
@@ -2656,6 +2658,7 @@
             "layout": "streets",
             "scale": "site",
             "pattern": "village",
+            "theme_id": "authored-caldera-port",
             "material": "stone",
             "width": 17,
             "height": 11,
@@ -2737,7 +2740,7 @@
     },
     {
       "id": "astohan-plains",
-      "version": 1,
+      "version": 2,
       "name": "Асстоханские равнины",
       "tagline": "Старая победа короля вернулась молодым драконом.",
       "description": "Королевство известных героев, где война делит внимание Ареса между фронтом и столицей, молодой красный дракон разоряет юг, а три старые тайны могут изменить условия охоты.",
@@ -3389,10 +3392,11 @@
           "map": {
             "layout": "rooms",
             "scale": "site",
-            "pattern": "temple",
+            "pattern": "great-hall",
+            "theme_id": "authored-palace",
             "material": "stone",
-            "width": 17,
-            "height": 11,
+            "width": 40,
+            "height": 36,
             "openness": 0.38,
             "water": 0,
             "featureCount": 6
@@ -3427,7 +3431,7 @@
               { "id": "ares-oathblade", "name": "Клятвенный клинок", "quantity": 1, "description": "Двуручный меч похода против Вулканиса; на гарде остался оплавленный знак старой клятвы.", "visibility": "party" },
               { "id": "ares-missing-journal-page", "name": "Последняя страница журнала", "quantity": 1, "description": "Страница с признанием о судьбе кладки Вулканиса.", "visibility": "gm_only" }
             ],
-            "tags": ["king", "dragon-slayer", "incorruptible"],
+            "tags": ["king", "dragon-slayer", "incorruptible", "post:gallery", "anchor:war-table"],
             "mechanics": {
               "profile_id": "astohan:ares-v1",
               "status": "partial",
@@ -3490,7 +3494,7 @@
               { "id": "ivara-command-horn", "name": "Рог трёх дозоров", "quantity": 1, "description": "Сигнальный рог с тремя различимыми командами гарнизону.", "visibility": "party" },
               { "id": "ivara-front-orders", "name": "Приказы Северных Ворот", "quantity": 1, "description": "Свежая сводка о слабом участке фронта.", "visibility": "gm_only" }
             ],
-            "tags": ["marshal", "soldier", "incorruptible"],
+            "tags": ["marshal", "soldier", "incorruptible", "post:gallery"],
             "mechanics": {
               "profile_id": "astohan:ivara-v1",
               "status": "partial",
@@ -3553,7 +3557,7 @@
               { "id": "oren-archive-keys", "name": "Связка архивных ключей", "quantity": 1, "description": "Ключи от общих хранилищ и один неподписанный ключ старой формы.", "visibility": "party" },
               { "id": "oren-vulkanis-index", "name": "Указатель похода Вулканиса", "quantity": 1, "description": "Закрытый список документов, включая изъятую последнюю страницу.", "visibility": "gm_only" }
             ],
-            "tags": ["archivist", "scholar"],
+            "tags": ["archivist", "scholar", "post:gallery"],
             "mechanics": {
               "profile_id": "astohan:oren-v1",
               "status": "partial",
@@ -3624,7 +3628,7 @@
               { "id": "mira-road-bow", "name": "Лук дорожной стражи", "quantity": 1, "description": "Длинный составной лук, пристрелянный для выстрела с седла.", "visibility": "party" },
               { "id": "mira-ash-cipher", "name": "Пепельный шифр", "quantity": 1, "description": "Полоса кожи с условными знаками осведомителей Саргата.", "visibility": "gm_only" }
             ],
-            "tags": ["scout", "messenger", "hunter"],
+            "tags": ["scout", "messenger", "hunter", "post:gallery"],
             "mechanics": {
               "profile_id": "astohan:mira-v1",
               "status": "partial",

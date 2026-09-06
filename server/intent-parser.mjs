@@ -67,23 +67,41 @@ function visibleActors(visibleState) {
 }
 
 function namesFor(actor) {
-  return [
+  const names = [
     actor?.id,
     actor?.name,
     actor?.character,
     actor?.label,
     ...(Array.isArray(actor?.aliases) ? actor.aliases : []),
   ].map((value) => String(value ?? '').trim()).filter(Boolean)
+  // Для составного имени вроде «Король Арес» последняя часть — обычное имя,
+  // а не новый рольовой alias. Добавляем её в общий индекс упоминаний, чтобы
+  // «Ареса» и «Аресу» находили того же NPC; неоднозначные совпадения по-прежнему
+  // возвращаются всеми кандидатами и требуют уточнения выше по стеку.
+  const humanNames = [
+    actor?.name,
+    actor?.character,
+    actor?.label,
+    ...(Array.isArray(actor?.aliases) ? actor.aliases : []),
+  ].map((value) => String(value ?? '').trim()).filter(Boolean)
+  const trailingNameTokens = humanNames.flatMap((value) => {
+    const tokens = wordTokens(value)
+    const last = tokens.at(-1)
+    return tokens.length > 1 && last && !/^\d+$/u.test(last) ? [last] : []
+  })
+  return [...new Set([...names, ...trailingNameTokens].filter(Boolean))]
 }
 
 function wordTokens(value) {
-  return String(value ?? '').toLocaleLowerCase('ru').match(/\p{L}[\p{L}\p{M}-]*/gu) ?? []
+  return String(value ?? '').toLocaleLowerCase('ru').match(/\p{L}[\p{L}\p{M}]*|\d+/gu) ?? []
 }
 
 function sameNameToken(left, right) {
   if (left === right) return true
+  if (/^\d+$/u.test(left) || /^\d+$/u.test(right)) return false
   if (!/^[а-яё]{3,}$/u.test(left) || !/^[а-яё]{3,}$/u.test(right)) return false
   const stem = (value) => {
+    if (value.endsWith('ь') && value.length > 3) return value.slice(0, -1)
     for (const suffix of ['иями', 'ями', 'ами', 'ого', 'ему', 'ому', 'ыми', 'ими', 'ах', 'ях', 'ой', 'ей', 'ом', 'ем', 'а', 'я', 'у', 'ю', 'е', 'ы', 'и']) {
       if (value.endsWith(suffix) && value.length - suffix.length >= 3) return value.slice(0, -suffix.length)
     }
@@ -194,18 +212,19 @@ export class IntentParser {
     }
     const socialSkill = classifyNpcSocialCheck(text)
     const freeActionKind = classifyFreeActionKind(text)
-    const intent = ['compound_maneuver', 'compound_ranged_attack'].includes(freeActionKind) ? 'improvised_action'
+    const intent = freeActionKind === 'compound_maneuver' ? 'compound_maneuver'
+      : freeActionKind === 'compound_ranged_attack' ? 'improvised_action'
       : freeActionKind === 'approach_attack' ? 'approach_attack'
       : socialSkill ? 'social' : INTENT_PATTERNS.find(([, pattern]) => pattern.test(text))?.[0] ?? 'improvised_action'
     const socialTargets = intent === 'social' ? resolvePresentSocialActors(text, visibleState) : []
     const mentioned = intent === 'social' && socialTargets.length ? socialTargets : mentionedActors(text, visibleState)
     const targets = mentioned.map((actor) => String(actor.id)).filter((id) => id !== String(playerId ?? ''))
-    const requiresTarget = intent === 'attack' || intent === 'damage' || intent === 'approach_attack'
+    const requiresTarget = intent === 'attack' || intent === 'damage' || intent === 'approach_attack' || intent === 'compound_maneuver'
     const ambiguousSocialTarget = intent === 'social' && socialTargets.length > 1
     const missing = [
       ...(requiresTarget && !targets.length ? ['target_id'] : []),
       ...(ambiguousSocialTarget ? ['ambiguous_npc'] : []),
-      ...(intent === 'approach_attack' && targets.length > 1 ? ['target_id'] : []),
+      ...(['approach_attack', 'compound_maneuver'].includes(intent) && targets.length > 1 ? ['target_id'] : []),
     ]
     const number = /(?:^|\s)(\d{1,3})(?:\s|$)/.exec(text)?.[1]
     return {
@@ -219,7 +238,7 @@ export class IntentParser {
       missing_information: missing,
       requires_clarification: missing.length > 0,
       confidence: intent === 'improvised_action' ? 0.45 : missing.length ? 0.55 : 0.86,
-      free_action_kind: intent === 'improvised_action' ? freeActionKind : null,
+      free_action_kind: freeActionKind,
       ...(ambiguousSocialTarget ? {
         target_candidates: socialTargets.map((actor) => ({
           id: String(actor.id),

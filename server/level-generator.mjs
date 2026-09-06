@@ -175,9 +175,16 @@ function refusal(code, message, levelIndex, levelLabel) {
 function arrivalPointOf(baseMap, sourceProp) {
   if (!sourceProp || typeof sourceProp !== 'object') return null
   const footprint = Array.isArray(sourceProp.footprint) ? sourceProp.footprint : []
-  const cell = footprint.length
-    ? { x: Number(footprint[0].x), y: Number(footprint[0].y) }
-    : { x: Math.floor(Number(sourceProp.x)), y: Math.floor(Number(sourceProp.y)) }
+  // `x/y` — это anchor предмета, а не обязательно первая клетка его
+  // footprint. Для лестницы 2×1 порядок footprint может начинаться с верхней
+  // клетки, тогда как переход должен прибывать в клетку под anchor игрока.
+  // Старые/повреждённые записи без согласованного anchor сохраняют прежний
+  // запасной путь через первую клетку footprint.
+  const anchor = { x: Math.floor(Number(sourceProp.x)), y: Math.floor(Number(sourceProp.y)) }
+  const anchorInFootprint = footprint.some((cell) => Number(cell?.x) === anchor.x && Number(cell?.y) === anchor.y)
+  const cell = anchorInFootprint || !footprint.length
+    ? anchor
+    : { x: Number(footprint[0].x), y: Number(footprint[0].y) }
   if (!Number.isSafeInteger(cell.x) || !Number.isSafeInteger(cell.y)) return null
   if (cell.x < 0 || cell.y < 0 || cell.x >= baseMap.width || cell.y >= baseMap.height) return null
   return cell

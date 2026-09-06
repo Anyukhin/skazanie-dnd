@@ -18,7 +18,7 @@ test('attack details exist only for a hovered or selected server target', () => 
   assert.deepEqual(selectedAttackForecast(targets, 'goblin', 'unknown'), targets.goblin[0])
 })
 
-test('wide hotbar lays out title, chips and two-column detail at the requested thresholds', async () => {
+test('wide hotbar lays out title, chips and readable detail at the requested thresholds', async () => {
   const [appSource, styles] = await Promise.all([
     Promise.all(['../src/App.tsx', '../src/AppViews.tsx', '../src/DungeonMap.tsx', '../src/app-shared.tsx']
       .map((path) => readFile(new URL(path, import.meta.url), 'utf8'))).then((parts) => parts.join('\n')),
@@ -29,7 +29,8 @@ test('wide hotbar lays out title, chips and two-column detail at the requested t
   assert.match(appSource, /selectedWeaponCombat\?\.damage/)
   assert.match(styles, /@media \(min-width: 1500px\)/)
   assert.match(styles, /@container hotbar-detail \(min-width: 400px\)/)
-  assert.match(styles, /\.hotbar-detail \.detail-description \{[^}]*columns: 2;/)
+  assert.match(styles, /\.hotbar-detail \.detail-description \{[^}]*max-width: 70ch;[^}]*text-wrap: pretty;/)
+  assert.doesNotMatch(styles, /\.hotbar-detail \.detail-description \{[^}]*columns: 2;/)
 })
 
 test('строка исследования не рендерится пустой и всегда несёт выход из локации', async () => {

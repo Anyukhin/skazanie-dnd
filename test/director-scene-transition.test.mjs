@@ -36,12 +36,12 @@ test('Director строит атомарный batch SceneAdvanced + catalog mer
   const planned = buildDirectorTransitionCommands({
     campaignId: 'DIRECTOR-1', action: '[РЕШЕНИЕ ГРУППЫ] Идём в город', state: state(), sceneArgs: urbanScene,
   })
-  assert.deepEqual(planned.commands.map((command) => command.command_type), ['AdvanceScene', 'CreateMerchant'])
-  assert.equal(planned.commands[0].request_fingerprint, planned.commands[1].request_fingerprint)
-  assert.deepEqual(planned.commands[0].party_decision, { interaction_id: 'decision-1', resolved_option_id: 'go' })
-  assert.deepEqual(planned.partyDecision, planned.commands[0].party_decision)
-  assert.equal(planned.commands[1].merchant.location, 'Город Норвин')
-  assert.ok(planned.commands[1].merchant.stock.every((item) => item.catalog_id.startsWith('srd_5_2_1:')))
+  assert.deepEqual(planned.commands.map((command) => command.command_type), ['AdvanceTime', 'AdvanceScene', 'CreateMerchant'])
+  assert.equal(planned.commands[1].request_fingerprint, planned.commands[2].request_fingerprint)
+  assert.deepEqual(planned.commands[1].party_decision, { interaction_id: 'decision-1', resolved_option_id: 'go' })
+  assert.deepEqual(planned.partyDecision, planned.commands[1].party_decision)
+  assert.equal(planned.commands[2].merchant.location, 'Город Норвин')
+  assert.ok(planned.commands[2].merchant.stock.every((item) => item.catalog_id.startsWith('srd_5_2_1:')))
   assert.equal(planned.shopIntent.action, 'create')
   assert.equal(planned.shopIntent.settlement_type, 'city')
 })
@@ -54,9 +54,9 @@ test('отказ от задания едет тем же пакетом и с �
     sceneArgs: { title: 'Чаща', location: 'Серая чаща', theme: 'дикая местность', objective: 'Осмотреться', seed: 'forest-abandon' },
     abandonQuest: { id: 'quest:main', title: 'Найти выход' },
   })
-  assert.deepEqual(planned.commands.map((command) => command.command_type), ['AdvanceScene', 'ResolveQuest'])
+  assert.deepEqual(planned.commands.map((command) => command.command_type), ['AdvanceTime', 'AdvanceScene', 'ResolveQuest'])
   assert.equal(planned.abandonedQuestId, 'quest:main')
-  const resolve = planned.commands[1]
+  const resolve = planned.commands[2]
   assert.equal(resolve.outcome, 'abandoned')
   assert.equal(resolve.request_fingerprint, planned.fingerprint)
   assert.match(resolve.summary, /Склеп Норвин/u)
@@ -68,7 +68,7 @@ test('отказ от задания едет тем же пакетом и с �
     campaignId: 'DIRECTOR-1', action: '[РЕШЕНИЕ ГРУППЫ] Уходим в чащу', state: state(),
     sceneArgs: { title: 'Чаща', location: 'Серая чаща', theme: 'дикая местность', seed: 'forest-abandon' },
   })
-  assert.deepEqual(withoutAbandon.commands.map((command) => command.command_type), ['AdvanceScene'])
+  assert.deepEqual(withoutAbandon.commands.map((command) => command.command_type), ['AdvanceTime', 'AdvanceScene'])
   assert.equal(withoutAbandon.abandonedQuestId, null)
 })
 
@@ -96,7 +96,7 @@ test('wilderness transition does not create a stationary shop', () => {
     campaignId: 'DIRECTOR-1', action: '[РЕШЕНИЕ ГРУППЫ] Идём в лес', state: state(),
     sceneArgs: { title: 'Чаща', location: 'Серая чаща', theme: 'дикая местность', seed: 'forest' },
   })
-  assert.deepEqual(planned.commands.map((command) => command.command_type), ['AdvanceScene'])
+  assert.deepEqual(planned.commands.map((command) => command.command_type), ['AdvanceTime', 'AdvanceScene'])
   assert.equal(planned.shopProposal, null)
 })
 
@@ -109,12 +109,12 @@ test('commerce action none with a city profile cannot reclassify a forest as set
       reason: 'Торговая точка не запрашивается.',
     },
   })
-  assert.deepEqual(planned.commands.map((command) => command.command_type), ['AdvanceScene'])
-  assert.equal(planned.commands[0].scene_args.scene_kind, 'wilderness')
-  assert.equal(planned.commands[0].scene_args.settlement_type, null)
-  assert.equal(planned.commands[0].scene_commerce.action, 'none')
-  assert.equal(planned.commands[0].scene_commerce.outcome, 'not-requested')
-  assert.equal(planned.commands[0].scene_commerce.merchant_id, null)
+  assert.deepEqual(planned.commands.map((command) => command.command_type), ['AdvanceTime', 'AdvanceScene'])
+  assert.equal(planned.commands[1].scene_args.scene_kind, 'wilderness')
+  assert.equal(planned.commands[1].scene_args.settlement_type, null)
+  assert.equal(planned.commands[1].scene_commerce.action, 'none')
+  assert.equal(planned.commands[1].scene_commerce.outcome, 'not-requested')
+  assert.equal(planned.commands[1].scene_commerce.merchant_id, null)
 })
 
 test('inconsistent create intent cannot provision an outpost shop in a forest scene', () => {
@@ -126,12 +126,12 @@ test('inconsistent create intent cannot provision an outpost shop in a forest sc
       reason: 'Директор ошибочно запросил заставу.',
     },
   })
-  assert.deepEqual(planned.commands.map((command) => command.command_type), ['AdvanceScene'])
+  assert.deepEqual(planned.commands.map((command) => command.command_type), ['AdvanceTime', 'AdvanceScene'])
   assert.equal(planned.shopIntent.action, 'none')
   assert.equal(planned.shopProposal, null)
-  assert.equal(planned.commands[0].scene_args.scene_kind, 'wilderness')
-  assert.equal(planned.commands[0].scene_args.settlement_type, null)
-  assert.equal(planned.commands[0].scene_commerce.outcome, 'not-requested')
+  assert.equal(planned.commands[1].scene_args.scene_kind, 'wilderness')
+  assert.equal(planned.commands[1].scene_args.settlement_type, null)
+  assert.equal(planned.commands[1].scene_commerce.outcome, 'not-requested')
 })
 
 test('revisit reuses the merchant at that location without resetting stock', () => {
@@ -140,9 +140,9 @@ test('revisit reuses the merchant at that location without resetting stock', () 
     campaignId: 'DIRECTOR-1', action: '[РЕШЕНИЕ ГРУППЫ] Возвращаемся в город',
     state: state({ merchants: [merchant] }), sceneArgs: urbanScene,
   })
-  assert.deepEqual(planned.commands.map((command) => command.command_type), ['AdvanceScene'])
+  assert.deepEqual(planned.commands.map((command) => command.command_type), ['AdvanceTime', 'AdvanceScene'])
   assert.equal(planned.existingMerchantId, merchant.id)
-  assert.equal(planned.commands[0].scene_commerce.outcome, 'reused')
+  assert.equal(planned.commands[1].scene_commerce.outcome, 'reused')
 })
 
 test('semantic fingerprint is stable for whitespace but changes with destination', () => {

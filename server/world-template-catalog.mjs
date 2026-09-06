@@ -4,6 +4,7 @@ import { join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { normalizeAuthoredNpcMechanics } from './authored-npc.mjs'
+import { SCENE_THEME_IDS } from './scene-themes.mjs'
 
 /**
  * Каталог заранее написанных миров. В отличие от `campaign-inspiration.mjs`
@@ -28,6 +29,7 @@ const SETTLEMENT_KINDS = new Set(['capital', 'city', 'town', 'village', 'port', 
 const WORLD_BIOMES = new Set(['plains', 'forest', 'mountains', 'marsh', 'desert', 'tundra', 'coast', 'wastes'])
 const ROUTE_KINDS = new Set(['road', 'trail', 'river', 'sea', 'pass'])
 const DANGERS = new Set(['низкая', 'средняя', 'высокая'])
+const SCENE_MAP_PATTERNS = new Set(['small-room', 'great-hall', 'keep', 'courtyard', 'crypt', 'temple', 'cave-cluster', 'village', 'bridge', 'natural'])
 const CITY_PLACE_KINDS = new Set(['civic', 'harbor', 'market', 'temple', 'archive', 'gate', 'tower', 'garden', 'workshop', 'infrastructure', 'inn', 'other'])
 const ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,79}$/u
 const TEXT_LIMITS = Object.freeze({
@@ -423,6 +425,13 @@ function validateOpening(raw, path, worldMap, defaults = {}) {
   if (sceneMap.layout != null && !layouts.has(text(sceneMap.layout, `${path}.scene.map.layout`, 40))) {
     throw new WorldTemplateCatalogError(`${path}.scene.map.layout имеет недопустимое значение`)
   }
+  if (sceneMap.pattern != null && !SCENE_MAP_PATTERNS.has(text(sceneMap.pattern, `${path}.scene.map.pattern`, 40))) {
+    throw new WorldTemplateCatalogError(`${path}.scene.map.pattern имеет недопустимое значение`)
+  }
+  const sceneThemeId = field(sceneMap, 'theme_id', 'themeId')
+  if (sceneThemeId != null && !SCENE_THEME_IDS.has(text(sceneThemeId, `${path}.scene.map.theme_id`, 40))) {
+    throw new WorldTemplateCatalogError(`${path}.scene.map.theme_id имеет недопустимое значение`)
+  }
   const danger = text(scene.danger, `${path}.scene.danger`, 40)
   if (!DANGERS.has(danger)) throw new WorldTemplateCatalogError(`${path}.scene.danger имеет недопустимое значение`)
   const npcs = array(source.npcs, `${path}.npcs`, 1)
@@ -477,7 +486,10 @@ function validateOpening(raw, path, worldMap, defaults = {}) {
       objective: text(scene.objective, `${path}.scene.objective`, TEXT_LIMITS.short),
       theme: text(scene.theme, `${path}.scene.theme`, TEXT_LIMITS.short),
       danger,
-      map: clone(sceneMap),
+      map: {
+        ...clone(sceneMap),
+        ...(sceneThemeId != null ? { theme_id: text(sceneThemeId, `${path}.scene.map.theme_id`, 40) } : {}),
+      },
     },
     hook: text(source.hook, `${path}.hook`, TEXT_LIMITS.short),
     npcs: normalizedNpcs,

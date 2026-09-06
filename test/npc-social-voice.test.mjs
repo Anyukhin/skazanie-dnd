@@ -62,12 +62,13 @@ test('бриф NPC-диалога несёт сцену, цели NPC и пам�
   assert.ok(result)
   assert.equal(requests.length, 1)
 
-  assert.match(requests[0].messages[0].content, /PROMPT_ID: npc_controller\/social-v3/)
+  assert.match(requests[0].messages[0].content, /PROMPT_ID: npc_controller\/social-v4/)
   assert.equal(result.prompt_version, NPC_SOCIAL_PROMPT_VERSION)
   const brief = untrustedPayload(requests[0].messages[1].content, 'npc_social_brief')
 
   assert.equal(brief.scene.location, 'Трактир «Пустой кубок»')
   assert.equal(brief.scene.mood, 'настороженно')
+  assert.equal(Object.hasOwn(brief.scene, 'objective'), false, 'Игровой список задач не становится прямой речью NPC')
   // Цели профиля — приватные мотивы: модель получает только party-видимые
   // поля, потому что всё переданное может дословно уйти в реплику игроку.
   assert.equal(Object.hasOwn(brief.npc, 'goals'), false)

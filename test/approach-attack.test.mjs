@@ -78,6 +78,12 @@ test('стена и неоднозначная цель не превращаю�
   assert.deepEqual(response.mechanics, [])
 })
 
+test('цель на нераскрытой клетке не получает preview даже если герой уже рядом', () => {
+  const hidden = battle()
+  hidden.scene.cells.find((cell) => cell.x === 4 && cell.y === 1).revealed = false
+  assert.throws(() => previewApproachAttack(hidden, 'hero', 'ogre'), { code: 'TARGET_NOT_VISIBLE' })
+})
+
 test('владение героем проверяется до выдачи маршрута', async (t) => {
   const { orchestrator, input } = await fixture(t)
   await assert.rejects(orchestrator.handle({ ...input, allowedActorIds: ['someone-else'] }))

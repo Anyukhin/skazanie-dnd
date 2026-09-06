@@ -125,7 +125,7 @@ pnpm backup           # зашифрованная копия storage в ./backu
 | --- | --- | --- |
 | `server/director-agent.mjs` | `prompts/director/v3_story.txt`, `prompts/director/v3_chaos.txt` | темп, развилки, переходы |
 | `server/npc-controller.mjs` | `prompts/npc_controller/v1.txt` | тактика NPC |
-| `server/npc-social-controller.mjs` | `prompts/npc_controller/social_v3.txt` | социальные сцены |
+| `server/npc-social-controller.mjs` | `prompts/npc_controller/social_v4.txt` | социальные сцены |
 | `server/narrator.mjs` | `prompts/narrator/v6.txt` | текст после commit |
 | `server/scene-architect.mjs` | `prompts/map_architect/v5.txt` | новые области |
 | `server/campaign-bootstrap.mjs` | `prompts/campaign_creator/v3.txt` | исходная ситуация кампании |

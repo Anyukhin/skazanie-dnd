@@ -37,7 +37,12 @@ export default defineConfig(({ mode }) => ({
       // браузер не попадает — его читает только этот конфиг.
       const env = loadEnv(mode, process.cwd(), '')
       const agentTarget = `http://127.0.0.1:${resolveAgentPort(env.AGENT_PORT)}`
-      return { '/api': agentTarget, '/generated': agentTarget }
+      // Сохраняем адрес браузера: сервер сравнивает Origin с Host. Подмена
+      // Host адресом backend ломает вход на другом порту и из локальной сети.
+      return {
+        '/api': { target: agentTarget, changeOrigin: false },
+        '/generated': { target: agentTarget, changeOrigin: false },
+      }
     })(),
   },
 }))

@@ -69,7 +69,7 @@ function transitionTo(map, toLevel) {
 function tavernState({ withMap = true, extra = {} } = {}) {
   const map = tavernMap()
   const stairs = transitionTo(map, 1)
-  const anchor = stairs.footprint[0]
+  const anchor = { x: Math.floor(stairs.x), y: Math.floor(stairs.y) }
   const spots = []
   for (let radius = 1; spots.length < PARTY.length && radius <= 4; radius += 1) {
     for (let dy = -radius; dy <= radius; dy += 1) {
@@ -328,6 +328,7 @@ test('партия не появляется в одной клетке с жи�
 // --- мина этапа L2 --------------------------------------------------------
 
 test('привязка лестницы восстанавливается после круга через старые клетки', () => {
+  const source = transitionTo(tavernMap(), 1)
   const state = tavernState({ withMap: false })
   const rebuilt = deserializeTacticalMap(state.scene.map)
   assert.equal(
@@ -337,6 +338,11 @@ test('привязка лестницы восстанавливается по�
   )
   const stairs = rebuilt.props.find((prop) => prop.assetId === 'stairs_up')
   assert.ok(stairs, 'сама лестница круг переживает')
+  assert.deepEqual(
+    stairs.footprint,
+    [{ x: Math.floor(source.x), y: Math.floor(source.y) }],
+    'legacy marker должен сохранять anchor исходной multi-cell лестницы',
+  )
 
   const result = resolveCommand({
     command_type: 'UseLevelTransition',

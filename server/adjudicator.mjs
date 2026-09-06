@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { RULE_IDS, RulesValidationError, abilityModifier, findActor, skillProficiencyForActor, previewApproachAttack } from './rules-engine.mjs'
+import { RULE_IDS, RulesValidationError, abilityModifier, findActor, skillProficiencyForActor, previewApproachAttack, previewLongJumpAttack, previewSwingAttack, swingPropForText } from './rules-engine.mjs'
 import { LEGACY_DEFAULT_RULESET_ID, rulesetRuleId } from './ruleset-config.mjs'
 
 export const DIFFICULTY_CLASSES = Object.freeze({ easy: 10, medium: 15, hard: 20 })
@@ -102,6 +102,52 @@ export class Adjudicator {
         } catch (error) {
           if (!(error instanceof RulesValidationError)) throw error
           return { ...base, clarification_required: true, clarification_message: error.message }
+        }
+      }
+      case 'compound_maneuver': {
+        const targetId = intent.targets?.[0]
+        try {
+          const swingProp = swingPropForText(state, intent.raw_message ?? '')
+          if (/(люстр|chandelier)/iu.test(intent.raw_message ?? '') && !swingProp) {
+            return {
+              ...base,
+              clarification_required: true,
+              clarification_message: 'На этой карте нет серверно подтверждённой люстры с точкой опоры и высотой. Можно сначала выбрать обычный маршрут и затем атаковать противника; заявка ничего не расходует.',
+            }
+          }
+          const runningStart = /(?:с|для)\s+разбег\p{L}*/iu.test(intent.raw_message ?? '')
+          const route = swingProp
+            ? previewSwingAttack(state, intent.actor_id, targetId, swingProp.id, { runningStart })
+            : previewLongJumpAttack(state, intent.actor_id, targetId, { runningStart })
+          const id = createHash('sha256').update(JSON.stringify({
+            kind: swingProp ? 'swing-attack/v1' : 'long-jump-attack/v1', campaign_id: state.sessionCode, state_version: state.state_version,
+            actor_id: intent.actor_id, target_id: targetId, action: intent.raw_message,
+            path: route.path, running_start: runningStart, prop_id: swingProp?.id ?? null,
+          })).digest('hex')
+          const target = findActor(state, targetId)
+          return {
+            ...base,
+            maneuver: swingProp ? 'swing_attack' : 'long_jump_attack',
+            proposed_commands: [
+              { command_type: 'DeclareAction', actor_id: intent.actor_id, action: intent.raw_message, expected_state_version: state.state_version },
+              ...route.commands,
+            ],
+            proposal: {
+              id, kind: 'approach_attack', state_version: state.state_version, actor_id: intent.actor_id, target_id: targetId,
+              title: swingProp ? `Раскачаться на люстре и атаковать: ${target.name ?? target.character}` : `Прыгнуть и атаковать: ${target.name ?? target.character}`,
+              path: route.path, to: route.to, movement_feet: route.movement_feet,
+              cost: swingProp
+                ? `${route.movement_feet} фт движения + ${route.attack_cost}; Сила (Атлетика) СЛ ${route.ruling.difficulty}`
+                : `${route.movement_feet} фт прыжка + ${route.attack_cost}`,
+              consequence: swingProp
+                ? 'Предлагаемое временное решение для этой люстры: успех даёт обычный удар без бонусного урона; при провале герой срывается, не удерживает опору и падает ничком у неё, без удара.'
+                : 'Герой совершит горизонтальный прыжок по отмеченной траектории и один обычный удар. Прыжок не добавляет урон; стены, занятые клетки и реакция по пути остаются действительными.',
+              ...(route.ruling ? { ruling: route.ruling } : {}),
+            },
+          }
+        } catch (error) {
+          if (!(error instanceof RulesValidationError)) throw error
+          return { ...base, clarification_required: true, clarification_message: `${error.message}. Попытка ничего не расходует.` }
         }
       }
       case 'attack': {

@@ -2,8 +2,12 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  ARES_FORTRESS_GENERATOR,
+  ARES_FORTRESS_SIZE,
   REFERENCE_SIZE,
+  buildAresFortressScene,
   buildBuildingScene,
+  generateAresFortressScene,
   generateBuildingScene,
   reachabilityIssues,
   safeRoom,
@@ -190,4 +194,87 @@ test('минимальная безопасная комната валидна 
   assert.deepEqual(validateTacticalMap(map).errors, [])
   assert.deepEqual(reachabilityIssues(map), [])
   assert.equal(map.overlays.compass, true)
+})
+
+test('крепость Ареса имеет стабильный большой двор и один owner-генератор', () => {
+  const first = generateAresFortressScene({ seed: 'ares-stable', width: 17, height: 11 })
+  const second = generateAresFortressScene({ seed: 'ares-stable', width: 17, height: 11 })
+  assert.deepEqual(serializeTacticalMap(first), serializeTacticalMap(second))
+  assert.equal(first.generator.id, ARES_FORTRESS_GENERATOR.id)
+  assert.equal(first.generator.version, ARES_FORTRESS_GENERATOR.version)
+  assert.ok(first.width >= ARES_FORTRESS_SIZE.width - 4, 'крепость не должна сжимать двор до комнаты')
+  assert.ok(first.height >= ARES_FORTRESS_SIZE.height, 'крепость должна оставаться глубокой картой')
+  assert.deepEqual(validateTacticalMap(first).errors, [])
+  assert.deepEqual(reachabilityIssues(first), [])
+})
+
+test('из военной галереи открыты двор и все функциональные корпуса через двери', () => {
+  const map = generateAresFortressScene({ seed: 'ares-connectivity' })
+  const spawn = map.spawnPoints.find((point) => point.id === 'party-war-gallery')
+  assert.deepEqual(spawn?.role, 'party')
+  const reached = reachableCells(map, spawn.x, spawn.y)
+  for (const zone of ['courtyard', 'gallery', 'barracks', 'stables', 'storehouse', 'workshop']) {
+    assert.ok([...reached].some((key) => cellAt(map, ...key.split(',').map(Number))?.zone === zone),
+      `из галереи недостижима зона ${zone}`)
+  }
+  assert.equal(map.doors.length, 10, 'ворота, межкомнатные и корпусные двери должны быть явными')
+  for (const door of map.doors) {
+    const edge = map.edges[`${door.x},${door.y},${door.dir}`]
+    assert.equal(edge?.kind, 'door', `${door.id}: дверь не закреплена на ребре`)
+    const target = door.dir === 'e' ? { x: door.x + 1, y: door.y } : { x: door.x, y: door.y + 1 }
+    assert.equal(cellAt(map, door.x, door.y)?.passable, true, `${door.id}: первая сторона непроходима`)
+    assert.equal(cellAt(map, target.x, target.y)?.passable, true, `${door.id}: вторая сторона непроходима`)
+  }
+})
+
+test('крепость наполнена по назначению зон, а пролог начинается у стола', () => {
+  const map = buildAresFortressScene({ seed: 'ares-prologue' }).map
+  const party = map.spawnPoints.find((point) => point.id === 'party-war-gallery')
+  const king = map.spawnPoints.find((point) => point.id === 'king-war-gallery')
+  assert.ok(party && king)
+  assert.equal(cellAt(map, party.x, party.y)?.zone, 'gallery')
+  assert.equal(cellAt(map, king.x, king.y)?.zone, 'gallery')
+  assert.notDeepEqual(party, king, 'король и партия должны иметь разные стартовые клетки')
+
+  const propsIn = (zoneId) => new Set(map.props
+    .filter((prop) => cellAt(map, Math.floor(prop.x), Math.floor(prop.y))?.zone === zoneId)
+    .map((prop) => prop.assetId))
+  for (const [zone, required] of [
+    ['gallery', ['table_small', 'candelabra', 'banner', 'chandelier']],
+    ['barracks', ['bunk_bed', 'chest']],
+    ['stables', ['haystack', 'water_trough', 'hitching_post']],
+    ['storehouse', ['crate_stack', 'barrel_stack', 'chest']],
+    ['workshop', ['table_long', 'crate', 'barrel', 'firewood_stack']],
+    ['courtyard', ['well', 'water_trough', 'woodpile']],
+  ]) {
+    const assets = propsIn(zone)
+    for (const asset of required) assert.ok(assets.has(asset), `${zone}: отсутствует ${asset}`)
+  }
+})
+
+test('двор имеет травяные и земляные карманы, а внешний пояс — свою семантическую зону', () => {
+  const map = generateAresFortressScene({ seed: 'ares-surface' })
+  const exterior = map.zones.find((zone) => zone.id === 'exterior')
+  assert.equal(exterior?.kind, 'exterior')
+  const materials = new Set()
+  let exteriorCells = 0
+  for (let y = 0; y < map.height; y += 1) {
+    for (let x = 0; x < map.width; x += 1) {
+      const cell = cellAt(map, x, y)
+      if (cell?.zone === 'courtyard') materials.add(cell.material)
+      if (cell?.zone === 'exterior') exteriorCells += 1
+    }
+  }
+  assert.ok(materials.has('grass'))
+  assert.ok(materials.has('earth'))
+  assert.ok(materials.has('stone'))
+  assert.ok(exteriorCells > 3, 'за внешней стеной должен оставаться настоящий пояс местности')
+
+  const exteriorProps = map.props.filter((prop) => cellAt(map, Math.floor(prop.x), Math.floor(prop.y))?.zone === 'exterior')
+  assert.ok(exteriorProps.some((prop) => prop.assetId.startsWith('tree_') || ['bush', 'shrub', 'boulder', 'rock_small'].includes(prop.assetId)))
+
+  const centerX = Math.floor((2 + map.width - 3) / 2)
+  for (let y = 14; y <= 25; y += 1) {
+    assert.equal(cellAt(map, centerX, y)?.material, 'stone', `главная дорожка прервана в ${centerX},${y}`)
+  }
 })

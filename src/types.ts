@@ -1491,6 +1491,8 @@ export type GameState = {
    * отрядом тайной не является.
    */
   weather?: WeatherProjection
+  /** Серверный расчёт условий для переключения между героями отряда. */
+  weather_by_actor?: Record<string, WeatherProjection>
   /**
    * Optional viewer-safe contract introduced by server PR #18. Coordinates
    * are authoritative; raw HP, goals and beliefs are deliberately absent.

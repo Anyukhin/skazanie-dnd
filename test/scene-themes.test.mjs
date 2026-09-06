@@ -285,6 +285,13 @@ test('каждая тема собирается в валидную связн�
   }
 })
 
+test('интерьерная карта действительно получает подвешенную люстру', () => {
+  const tavern = buildThemedScene({ location: 'Таверна «Пустой кубок»', seed: 'swing-tavern', width: 28, height: 28 }).map
+  assert.ok(tavern.props.some((prop) => prop.assetId === 'chandelier'))
+  const palace = buildThemedScene({ themeId: 'authored-palace', location: 'Военная галерея', seed: 'swing-palace', width: 28, height: 28 }).map
+  assert.ok(palace.props.some((prop) => prop.assetId === 'chandelier'))
+})
+
 test('решётка склепа и бойница храма стоят на карте и не открывают прохода', () => {
   const cases = [['Склеп Норвин', 'crypt', 'grate'], ['Храм Утренней Звезды', 'temple', 'loophole']]
   for (const [location, themeId, kind] of cases) {

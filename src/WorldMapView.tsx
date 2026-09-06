@@ -114,7 +114,11 @@ export function WorldMapView({ state, busy, onTravel }: { state: GameState; busy
   const routeIds = new Set(route.routes.map((item) => item.id))
   const routeNames = route.locationIds.map((id) => byId.get(id)?.name).filter(Boolean) as string[]
   const nextStop = route.locationIds.length > 2 ? byId.get(route.locationIds[1]) : selected
-  const totalDays = route.routes.reduce((sum, item) => sum + item.distance, 0)
+  // The server turns graph distance into campaign minutes together with route
+  // kind, biome and danger. The preview therefore shows the number of map
+  // transitions, which is useful to the player without inventing a second
+  // client-side duration policy.
+  const transitionCount = route.routes.length
   const highestDanger = routeDanger(route.routes)
   const selectedRegion = map.regions.find((region) => region.id === selected?.regionId)
   const viewWidth = map.width / zoom
@@ -200,7 +204,7 @@ export function WorldMapView({ state, busy, onTravel }: { state: GameState; busy
             <header><Route size={16}/><strong>Выбранный путь</strong></header>
             {route.locationIds.length ? <>
               <div className="route-chain">{routeNames.map((name, index) => <span key={`${name}-${index}`}>{name}{index < routeNames.length - 1 && <i>→</i>}</span>)}</div>
-              <dl><div><dt><Clock3 size={13}/>В пути</dt><dd>≈ {totalDays} дн.</dd></div><div><dt>Опасность</dt><dd className={`danger-${highestDanger}`}>{highestDanger}</dd></div></dl>
+              <dl><div><dt><Clock3 size={13}/>Путь</dt><dd>{transitionCount} {transitionCount === 1 ? 'переход' : transitionCount < 5 ? 'перехода' : 'переходов'}</dd></div><div><dt>Опасность</dt><dd className={`danger-${highestDanger}`}>{highestDanger}</dd></div></dl>
               <button className="travel-button" disabled={travelBlocked} onClick={proposeTravel}><Navigation size={16}/>{combatActive
                 ? 'Сначала завершите бой'
                 : busy
@@ -212,7 +216,7 @@ export function WorldMapView({ state, busy, onTravel }: { state: GameState; busy
                 ? 'Во время боя глобальное перемещение недоступно.'
                 : route.routes.length > 1 && nextStop
                   ? `Дальний путь проходит поэтапно: следующая локальная сцена откроется в точке «${nextStop.name}».`
-                  : 'Переход начнётся после решения группы. Агент создаст следующую локальную карту в точке назначения.'}</small>
+                : 'Переход начнётся после решения группы. Сервер учтёт время пути и создаст следующую локальную карту в точке назначения.'}</small>
             </> : <p className="route-missing">Из текущего места ещё не открыт путь к этой точке.</p>}
           </div>}
         </>}

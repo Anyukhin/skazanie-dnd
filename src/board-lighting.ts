@@ -93,6 +93,7 @@ export const LIGHT_SOURCE_ASSETS: Record<string, { radius: number; strength: num
   lantern_wall: { radius: 5, strength: 112 },
   lamp_post: { radius: 5, strength: 112 },
   candelabra: { radius: 4, strength: 92 },
+  chandelier: { radius: 4, strength: 92 },
   candle: { radius: 2, strength: 48 },
 }
 

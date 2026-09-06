@@ -2,9 +2,9 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import { generateSceneCells } from './adventure-director.mjs'
+import { generateSceneGeometry } from './adventure-director.mjs'
 import { applyNpcWorldEvent, planSceneNpcPlacementEvents } from './npc-positioning.mjs'
-import { serializeTacticalMap, tacticalMapFromLegacyCells } from './tactical-map.mjs'
+import { serializeTacticalMap, reachableCells, SIZE_CLASSES } from './tactical-map.mjs'
 import { ECONOMY_POLICY_ID, createStarterMerchant, normalizeMerchants } from './merchant-economy.mjs'
 import { withStarterKit } from './starter-kit.mjs'
 import { partyPresentationFor } from './character-lifecycle.mjs'
@@ -16,6 +16,7 @@ import { buildCampaignArcPlan } from './campaign-loop-policy.mjs'
 import { drawCampaignInspiration, inspirationPromptSeed } from './campaign-inspiration.mjs'
 import { LEGACY_DEFAULT_RULESET_ID, rulesetLock } from './ruleset-config.mjs'
 import { getWorldTemplate, worldTemplateConcept, worldTemplateOpening } from './world-template-catalog.mjs'
+import { isLiveTheme, resolveSceneTheme, SCENE_THEME_IDS } from './scene-themes.mjs'
 
 const prompt = readFileSync(fileURLToPath(new URL('../prompts/campaign_creator/v3.txt', import.meta.url)), 'utf8')
 
@@ -35,6 +36,43 @@ function clean(value, maximum = 500) {
 
 function prose(value, maximum = 4000) {
   return String(value ?? '').replace(/\r/g, '').replace(/[^\S\n]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim().slice(0, maximum)
+}
+
+/**
+ * Пролог — единственный канонический текст, который можно сразу положить в
+ * память партии. История мира сюда намеренно не попадает: она может содержать
+ * скрытые ответы будущих арок. Абзацы разделяются, чтобы bounded-факт не
+ * обрезал важное имя в длинном сгенерированном вступлении.
+ */
+function openingNarrationFacts(opening, locationEntity, campaignCode) {
+  if (!locationEntity?.id) return []
+  const paragraphs = prose(opening?.openingNarration, 4_000)
+    .split(/\n{2,}/u)
+    .flatMap((paragraph) => {
+      const normalized = prose(paragraph, 4_000)
+      return Array.from({ length: Math.ceil(normalized.length / 1_000) }, (_, index) => normalized.slice(index * 1_000, (index + 1) * 1_000))
+    })
+    .filter(Boolean)
+    .slice(0, 8)
+  return paragraphs.map((summary, index) => {
+    const id = createHash('sha256')
+      .update(`opening-narration\0${campaignCode}\0${locationEntity.id}\0${index}\0${summary}`)
+      .digest('hex')
+      .slice(0, 24)
+    return {
+      id: `fact:opening:${id}`,
+      subject_id: locationEntity.id,
+      predicate: 'opening_narration',
+      object: `Подтверждённый пролог сцены «${clean(opening?.scene?.title, 160)}»`,
+      summary,
+      visibility: 'party',
+      source_event_ids: [],
+      source_command_id: `campaign-bootstrap:${campaignCode}`,
+      supersedes_fact_id: '',
+      status: 'active',
+      recorded_at_minutes: 0,
+    }
+  })
 }
 
 function integer(value, fallback, minimum, maximum) {
@@ -151,7 +189,7 @@ function fallbackTheme(world, entropy = '', inspiration = null) {
 }
 
 const MAP_SCALES = new Set(['room', 'site', 'stronghold', 'region'])
-const MAP_PATTERNS = new Set(['small-room', 'great-hall', 'keep', 'courtyard', 'crypt', 'cave-cluster', 'village', 'bridge', 'natural'])
+const MAP_PATTERNS = new Set(['small-room', 'great-hall', 'keep', 'courtyard', 'crypt', 'temple', 'cave-cluster', 'village', 'bridge', 'natural'])
 const MAP_MATERIALS = new Set(['stone', 'wood', 'earth', 'grass', 'sand', 'metal', 'marble', 'ice'])
 
 function startingVisualSpec(theme, world) {
@@ -252,6 +290,7 @@ function normalizeOpening(input, fallback, { authored = false } = {}) {
   const layouts = new Set(['rooms', 'streets', 'open', 'winding', 'cavern', 'ruins', 'radial'])
   const danger = new Set(['низкая', 'средняя', 'высокая'])
   const scale = MAP_SCALES.has(map.scale) ? map.scale : fallback.scene.map.scale
+  const themeId = authored && SCENE_THEME_IDS.has(map.theme_id ?? map.themeId) ? String(map.theme_id ?? map.themeId) : ''
   const scaleMinimum = scale === 'stronghold' ? { width: 19, height: 13 }
     : scale === 'region' ? { width: 21, height: 15 }
       : scale === 'site' ? { width: 11, height: 9 }
@@ -276,11 +315,12 @@ function normalizeOpening(input, fallback, { authored = false } = {}) {
         scale,
         pattern: MAP_PATTERNS.has(map.pattern) ? map.pattern : fallback.scene.map.pattern,
         material: MAP_MATERIALS.has(map.material) ? map.material : fallback.scene.map.material,
-        width: integer(map.width, fallback.scene.map.width, scaleMinimum.width, 25),
-        height: integer(map.height, fallback.scene.map.height, scaleMinimum.height, 19),
+        width: integer(map.width, fallback.scene.map.width, scaleMinimum.width, authored ? SIZE_CLASSES.area.maxWidth : 25),
+        height: integer(map.height, fallback.scene.map.height, scaleMinimum.height, authored ? SIZE_CLASSES.area.maxHeight : 19),
         openness: decimal(map.openness, fallback.scene.map.openness, 0.35, 0.85),
         water: decimal(map.water, fallback.scene.map.water, 0, 0.3),
         featureCount: integer(map.featureCount, fallback.scene.map.featureCount, 2, 12),
+        ...(themeId ? { theme_id: themeId } : {}),
       },
     },
     hook: clean(source.hook, 500) || fallback.hook,
@@ -288,10 +328,19 @@ function normalizeOpening(input, fallback, { authored = false } = {}) {
   }
 }
 
-function startingCells(cells, count) {
-  const floors = cells.filter((cell) => cell.revealed && cell.type === 'floor')
+function startingCells(cells, count, { anchorFeatures = [], map = null } = {}) {
+  const occupied = new Set((map?.props ?? []).flatMap((prop) => prop.footprint ?? []).map((cell) => `${cell.x},${cell.y}`))
+  const spawn = map?.spawnPoints?.find((point) => point.role === 'party')
+  const reached = spawn ? reachableCells(map, spawn.x, spawn.y, { throughDoors: false }) : null
+  const floors = cells.filter((cell) => cell.revealed && cell.type === 'floor' && !cell.feature && !occupied.has(`${cell.x},${cell.y}`) && (!reached || reached.has(`${cell.x},${cell.y}`)))
     .sort((left, right) => left.x - right.x || left.y - right.y)
-  return Array.from({ length: count }, (_, index) => floors[index] ?? floors[0] ?? { x: 1, y: 1 })
+  const anchor = spawn ?? cells.find((cell) => anchorFeatures.includes(cell.feature))
+  if (anchor) {
+    const distance = (cell) => Math.abs(cell.x - anchor.x) + Math.abs(cell.y - anchor.y)
+    floors.sort((left, right) => distance(left) - distance(right) || left.x - right.x || left.y - right.y)
+  }
+  if (floors.length < count) throw new Error('В начальной области недостаточно свободных клеток для всего отряда')
+  return floors.slice(0, count)
 }
 
 export class CampaignBootstrapper {
@@ -397,15 +446,24 @@ export class CampaignBootstrapper {
     const startingWorldKind = authoredWorldMap
       ? String(campaignWorldMap.locations.find((location) => location.id === campaignWorldMap.currentLocationId)?.kind ?? '')
       : ''
-    const cells = generateSceneCells({
-      seed,
+    // Авторские стартовые карты должны быть одинаковыми для разных столов:
+    // их геометрия принадлежит шаблону, а не коду кампании или составу партии.
+    // Свободные кампании сохраняют прежний seed и процедурный путь.
+    const sceneSeed = worldTemplate ? `authored-scene:${worldTemplate.id}@${worldTemplate.version}` : seed
+    const geometry = generateSceneGeometry({
+      seed: sceneSeed,
       theme: opening.scene.theme,
       danger: opening.scene.danger,
       location: opening.scene.location,
+      locationId: campaignWorldMap.currentLocationId || opening.scene.location,
       worldKind: startingWorldKind,
       map: opening.scene.map,
     })
-    const positions = startingCells(cells, heroes.length)
+    const cells = geometry.cells
+    const positions = startingCells(cells, heroes.length, {
+      map: geometry.map,
+      anchorFeatures: worldTemplate ? ['table_small', 'market_stall', 'well', 'water_trough'] : [],
+    })
     const positionedHeroes = heroes.map((hero, index) => ({ ...hero, x: positions[index].x, y: positions[index].y }))
     const merchants = normalizeMerchants(Array.isArray(rawMerchants) && rawMerchants.length
       ? rawMerchants
@@ -454,10 +512,21 @@ export class CampaignBootstrapper {
     // кампании названные в прологе NPC существовали лишь в тексте — на поле их
     // не было. Расстановку планирует тот же модуль, что и при переходах.
     const startingLocationId = campaignWorldMap.currentLocationId || opening.scene.location
-    const sceneTacticalMap = serializeTacticalMap(tacticalMapFromLegacyCells(cells, {
-      locationId: startingLocationId,
-      seed: campaignWorldMap.seed ?? seed,
-    }))
+    const sceneTacticalMapValue = geometry.map
+    // `weather.mjs` и клиент читают стандартную тему уже собранной карты.
+    // Authored variant сводится к её базовой крыше/улице, а generated opening
+    // проходит через тот же resolver, чтобы столица с галереей не стала улицей.
+    const startingTheme = resolveSceneTheme({
+      location: opening.scene.location,
+      theme: opening.scene.theme,
+      worldKind: startingWorldKind,
+      request: opening.scene.map,
+    })
+    const startingThemeId = startingTheme?.assetTheme ?? startingTheme?.id
+    if (isLiveTheme(startingTheme) && ['building', 'temple', 'crypt', 'cave', 'forest', 'road', 'settlement'].includes(startingThemeId)) {
+      sceneTacticalMapValue.theme = startingThemeId
+    }
+    const sceneTacticalMap = serializeTacticalMap(sceneTacticalMapValue)
     const emptyNpcWorld = {
       schema_version: 3,
       placements: [], vitals: {}, stances: {}, inventories: {},
@@ -485,8 +554,22 @@ export class CampaignBootstrapper {
         visitedLocations: [opening.scene.location], unresolvedThreads: [opening.hook], history: [],
       },
     })
+    const openingLocationEntity = sceneMemory.entities.find((entity) => entity.kind === 'location'
+      && entity.name.toLocaleLowerCase('ru') === opening.scene.location.toLocaleLowerCase('ru'))
+    const openingFacts = openingNarrationFacts(opening, openingLocationEntity, campaignCode)
+    const openingFactIds = openingFacts.map((fact) => fact.id)
+    // Знание принадлежит NPC текущей сцены. Публичность самих фактов позволяет
+    // партии и её собеседнику читать их через общий retriever, а список IDs
+    // сохраняет явное происхождение знания в профиле NPC.
+    for (const npc of openingNpcs) {
+      const sameLocation = !npc.location_id
+        || npc.location_id === startingLocationId
+        || npc.location?.toLocaleLowerCase('ru') === opening.scene.location.toLocaleLowerCase('ru')
+      if (sameLocation) npc.known_fact_ids = openingFactIds
+    }
     const initialWorldMemory = {
       ...sceneMemory,
+      facts: [...(sceneMemory.facts ?? []), ...openingFacts],
       entities: [...(sceneMemory.entities ?? []), ...factionEntities],
       quests: [...(sceneMemory.quests ?? []), {
         id: starterQuestId,

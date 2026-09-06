@@ -230,9 +230,10 @@ const cameraByLocation = new Map<string, { zoom: number; pan: { x: number; y: nu
 export function TacticalBoard({
   map, columns, rows, irregular, ariaLabel, themeKey, artUrl, cells, cellHints, overlayCells, decoration,
   effectRenderers, battleLog, visualBatch, animationActors, animationsEnabled, conditions, conditionVersion, onBackgroundActivate,
-  levelIndex = 0, lighting = true,
+  levelIndex = 0, lighting = true, campaignId = '',
 }: {
   map: TacticalMap | null
+  campaignId?: string
   columns: number
   rows: number
   irregular: boolean
@@ -267,7 +268,7 @@ export function TacticalBoard({
    */
   lighting?: boolean
 }) {
-  const cameraKey = boardCameraKey(map?.locationId, levelIndex)
+  const cameraKey = boardCameraKey(map?.locationId, levelIndex, campaignId)
   const [zoom, setZoom] = useState(() => cameraByLocation.get(cameraKey)?.zoom ?? 1)
   const [hoverCell, setHoverCell] = useState<{ x: number; y: number } | null>(null)
   const [pan, setPan] = useState(() => cameraByLocation.get(cameraKey)?.pan ?? { x: 0, y: 0 })
@@ -275,7 +276,9 @@ export function TacticalBoard({
   const [dragging, setDragging] = useState(false)
   const [cellPixels, setCellPixels] = useState(0)
   const [assetsVersion, setAssetsVersion] = useState(0)
-  useEffect(() => { cameraByLocation.set(cameraKey, { zoom, pan }) }, [cameraKey, zoom, pan])
+  useEffect(() => {
+    if (lastCameraKey.current === cameraKey) cameraByLocation.set(cameraKey, { zoom, pan })
+  }, [cameraKey, zoom, pan])
   useEffect(() => {
     // Локация сменилась под живым компонентом — берём её камеру, а не чужую.
     if (lastCameraKey.current === cameraKey) return
@@ -919,7 +922,7 @@ export function TacticalBoard({
     event.preventDefault()
     const direction = Math.sign(event.deltaY)
     if (!direction) return
-    setZoom((value) => Math.max(.65, Math.min(1.6, Number((value - direction * .08).toFixed(2)))))
+    setZoom((value) => Math.max(.65, Math.min(3, Number((value - direction * .12).toFixed(2)))))
   }
   const leaveBoard = () => {
     if (hovered.current === null) return
@@ -970,7 +973,8 @@ export function TacticalBoard({
 
   return (
     <div
-      className={'map-scroll ' + (dragging ? 'dragging' : '')}
+      className={'map-scroll tactical-scroll ' + (dragging ? 'dragging' : '')}
+      data-overview={cellPixels * zoom < 24 ? 'true' : undefined}
       style={{
         transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
         '--counter-scale': 1 / zoom,
@@ -999,7 +1003,7 @@ export function TacticalBoard({
           event.stopPropagation()
           return
         }
-        if (!(event.target as HTMLElement).closest('.map-token')) onBackgroundActivate?.()
+        if (!(event.target as HTMLElement).closest('.map-token, .neutral-token-menu')) onBackgroundActivate?.()
       }}
       onClick={(event) => {
         // Клик по холсту переводится в координату клетки арифметикой, а не
@@ -1015,7 +1019,7 @@ export function TacticalBoard({
       <div
         ref={frameRef}
         className={`board-frame ${irregular ? 'irregular' : ''} ${levelShift ? `level-change-${levelShift}` : ''}`}
-        style={{ width: `calc(var(--cell) * ${columns})`, height: `calc(var(--cell) * ${rows})` }}
+        style={{ '--board-columns': columns, '--board-rows': rows, width: `calc(var(--cell) * ${columns})`, height: `calc(var(--cell) * ${rows})` } as React.CSSProperties}
       >
         <canvas ref={canvasRef} className="board-canvas" aria-hidden="true" />
         {decoration}

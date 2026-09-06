@@ -49,6 +49,12 @@ function fixture({ npcs = null, combat = false } = {}) {
         abilities: { str: 16, dex: 10, con: 14, int: 10, wis: 10, cha: 10 }, inventory: [] },
     ],
     social: { npcs: people },
+    npc_world: {
+      placements: [
+        { npc_id: 'npc-1', location_id: 'Рынок', x: 2, y: 1 },
+        { npc_id: 'npc-2', location_id: 'Рынок', x: 3, y: 1 },
+      ],
+    },
     worldMap: {
       seed: 'thief-seed',
       regions: [{ id: 'region-1', name: 'Приречье', biome: 'plains', x: 200, y: 200, radius: 205 }],
@@ -141,6 +147,25 @@ test('посреди боя и у отсутствующего человека 
   rejects(fixture(), { command_type: 'PickpocketNpc', actor_id: 'hero', npc_id: 'npc-нет' }, 'NPC_NOT_PRESENT')
 })
 
+test('кража дальше пяти футов отклоняется до броска и не меняет состояние', () => {
+  const state = fixture()
+  state.npc_world.placements[0].x = 11
+  const before = structuredClone(state)
+  let diceCalls = 0
+  const guardedDice = { rollCheck(...args) { diceCalls += 1; return dice(20).rollCheck(...args) } }
+  assert.throws(
+    () => resolveCommand(
+      { campaign_id: 'campaign-1', command_id: 'pickpocket-far', server_authoritative: true,
+        command_type: 'PickpocketNpc', actor_id: 'hero', npc_id: 'npc-1' },
+      state,
+      { diceService: guardedDice, context: { isAdmin: true } },
+    ),
+    (error) => error.code === 'PICKPOCKET_OUT_OF_REACH',
+  )
+  assert.equal(diceCalls, 0)
+  assert.deepEqual(state, before)
+})
+
 test('карман один: обчищенный второй раз не отдаёт ничего', () => {
   const state = fixture()
   const first = commit(state, { command_type: 'PickpocketNpc', actor_id: 'hero', npc_id: 'npc-1' })
@@ -151,7 +176,7 @@ test('карман один: обчищенный второй раз не от�
 // ---------------------------------------------------------------------------
 // Успех и провал
 
-test('успех отдаёт содержимое кармана, помечает добычу краденым и не зовёт свидетелей', () => {
+test('успех на соседней клетке отдаёт содержимое кармана, помечает добычу краденым и не зовёт свидетелей', () => {
   const state = fixture()
   const result = commit(state, { command_type: 'PickpocketNpc', actor_id: 'hero', npc_id: 'npc-1' }, { roll: 20 })
   const picked = result.events.find((event) => event.event_type === 'NpcPocketPicked')

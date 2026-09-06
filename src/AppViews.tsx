@@ -11,7 +11,7 @@ import {
   ABILITY_LABELS, DIFFICULTY_LABELS, PageHeader, SKILL_LABELS, UI_SCALE_MAX, UI_SCALE_MIN,
   UI_SCALE_PRESETS, battleEventText, clampUiScale, locationsMatch, useDialogEscape,
 } from './app-shared'
-import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
+import { chronicleMatchesFilter, chronicleMessageText, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
 import type { NarrationVoiceMode } from './narration-tts.mjs'
 import { campaignClockLabel, localizedQuestClockLabel } from './desktop-ui.mjs'
 import type { AtmosphereSettings } from './atmosphere-audio'
@@ -512,7 +512,7 @@ export function ChatPanel({ messages, isNarrating, interaction, players, typingA
           <article key={message.id} className={`message ${message.speaker}`}>
             <div className="message-body">
               <div className="message-meta"><strong>{message.author}</strong><time>{message.timestamp}</time></div>
-              <p>{message.text}</p>
+              <p>{chronicleMessageText(message.text)}</p>
               {/* Ставки: что проверялось, против какой СЛ и чем грозил провал.
                   Сервер считал их и раньше, но игрок их не видел. */}
               {message.stakes?.difficulty != null && (
@@ -530,8 +530,6 @@ export function ChatPanel({ messages, isNarrating, interaction, players, typingA
                   <em>{message.roll.success ? 'Успех' : 'Осложнение'}</em>
                 </div>
               )}
-              {/* Вне боя очереди нет и «передавать» ход некому. */}
-              {message.speaker === 'narrator' && message.turnConsumed != null && <small className={`turn-resolution ${message.turnConsumed ? 'spent' : 'kept'}`}>{message.turnConsumed ? (combatActive ? 'Ход передан следующему герою' : 'Действие засчитано') : 'Можно продолжить ход'}</small>}
               {/* Провенанс правила нажимается. Сырой rule_id в игровом интерфейсе не
                   показываем — сервер отвечает разбором по запросу. */}
               {message.roll && <button className="why-link" onClick={onWhy} disabled={isNarrating}><HelpCircle size={15} />Почему так?</button>}

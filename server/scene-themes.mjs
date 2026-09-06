@@ -1,7 +1,7 @@
 // @ts-check
 import { createHash } from 'node:crypto'
 
-import { buildBuildingScene } from './building-generator.mjs'
+import { buildAresFortressScene, buildBuildingScene } from './building-generator.mjs'
 import { buildSceneFromGraph } from './graph-layout.mjs'
 import { addSceneLink, addSceneZone, createSceneGraph } from './scene-graph.mjs'
 import { placeProps } from './prop-placement.mjs'
@@ -146,6 +146,51 @@ export const SCENE_THEMES = Object.freeze([
   },
 ])
 
+/**
+ * Небольшие варианты карт стартовых authored-миров. Они не становятся общими
+ * эвристическими темами: их можно выбрать только явным `scene.map.theme_id`.
+ * Так «порт» и «оазис» не разъезжаются с обычным городом, а дворец не
+ * превращается в храм из-за слова `capital` на глобальной карте.
+ */
+/** @type {ReadonlyArray<Record<string, any>>} */
+const AUTHORED_SCENE_THEMES = Object.freeze([
+  {
+    id: 'authored-harbor', label: 'Каменная гавань', kind: 'settlement', live: true,
+    assetTheme: 'settlement', surfaceMaterial: 'stone', streetMaterial: 'earth', houseMaterial: 'stone', waterBand: 'right',
+    density: 14, require: ['market_stall', 'well', 'cart', 'village_fence'],
+    prefer: ['market_stall', 'cart', 'lamp_post', 'woodpile', 'campfire'],
+  },
+  {
+    id: 'authored-oasis', label: 'Оазисная площадь', kind: 'settlement', live: true,
+    assetTheme: 'settlement', surfaceMaterial: 'sand', streetMaterial: 'earth', houseMaterial: 'sand', waterBand: 'top',
+    density: 14, require: ['market_stall', 'well', 'cart', 'village_fence'],
+    prefer: ['market_stall', 'well', 'water_trough', 'cart', 'campfire'],
+  },
+  {
+    id: 'authored-caldera-port', label: 'Пепельная гавань', kind: 'settlement', live: true,
+    assetTheme: 'settlement', surfaceMaterial: 'stone', streetMaterial: 'earth', houseMaterial: 'stone', waterBand: 'left',
+    density: 14, require: ['market_stall', 'well', 'cart', 'village_fence'],
+    prefer: ['market_stall', 'cart', 'campfire', 'woodpile', 'lamp_post'],
+  },
+  {
+    id: 'authored-palace', label: 'Военная галерея', kind: 'fortress', live: true, material: 'stone', assetTheme: 'building',
+    zones: ['Большой внутренний двор', 'Военная галерея', 'Казарма', 'Конюшня', 'Военный склад', 'Мастерская'],
+  },
+])
+
+/** @type {ReadonlyArray<Record<string, any>>} */
+const ALL_SCENE_THEMES = Object.freeze([...SCENE_THEMES, ...AUTHORED_SCENE_THEMES])
+
+/** Старые и короткие имена authored-крепости сходятся в один генератор. */
+/** @type {Readonly<Record<string, string>>} */
+const SCENE_THEME_ALIASES = Object.freeze({
+  'ares-fortress': 'authored-palace',
+  'authored-ares-fortress': 'authored-palace',
+})
+
+/** Идентификаторы тем, которые можно закрепить в авторском шаблоне карты. */
+export const SCENE_THEME_IDS = new Set([...ALL_SCENE_THEMES.map((theme) => theme.id), ...Object.keys(SCENE_THEME_ALIASES)])
+
 /** Тема по умолчанию, когда ничто не опознано. */
 export const FALLBACK_THEME = SCENE_THEMES[0]
 
@@ -214,8 +259,8 @@ export function matchTheme({ location = '', theme = '', sceneKind = '' } = {}) {
  * Сознательно не сопоставляется `small-room`: комната бывает в любом здании, и
  * по одному этому слову нельзя ставить дом с двором, оградой и деревьями.
  *
- * @param {{layout?: string, pattern?: string}} [request]
- * @returns {typeof SCENE_THEMES[number]|null}
+ * @param {{layout?: string, pattern?: string, theme_id?: string, themeId?: string}} [request]
+ * @returns {Record<string, any>|null}
  */
 export function themeFromMapRequest({ pattern = '', layout = '' } = {}) {
   /** @type {Record<string, string>} */
@@ -240,8 +285,8 @@ export function themeFromMapRequest({ pattern = '', layout = '' } = {}) {
  *
  * @param {object} [input]
  * @param {string} [input.sceneKind]
- * @param {{layout?: string, pattern?: string, material?: string}} [input.request]
- * @returns {typeof SCENE_THEMES[number]}
+ * @param {{layout?: string, pattern?: string, material?: string, theme_id?: string, themeId?: string}} [input.request]
+ * @returns {Record<string, any>}
  */
 export function fallbackThemeFor({ sceneKind = '', request = {} } = {}) {
   const requested = themeFromMapRequest(request)
@@ -298,10 +343,11 @@ const WORLD_KIND_THEMES = {
 
 /**
  * @param {string} id
- * @returns {typeof SCENE_THEMES[number]}
+ * @returns {Record<string, any>}
  */
 function themeById(id) {
-  return SCENE_THEMES.find((candidate) => candidate.id === id) ?? FALLBACK_THEME
+  const canonicalId = SCENE_THEME_ALIASES[id] ?? id
+  return ALL_SCENE_THEMES.find((candidate) => candidate.id === canonicalId) ?? FALLBACK_THEME
 }
 
 /**
@@ -334,16 +380,39 @@ function themeById(id) {
  * @param {string} [input.sceneKind]
  * @param {string} [input.settlementType]
  * @param {string} [input.worldKind]
- * @param {{layout?: string, pattern?: string, material?: string}} [input.request]
- * @returns {typeof SCENE_THEMES[number]}
+ * @param {{layout?: string, pattern?: string, material?: string, theme_id?: string, themeId?: string}} [input.request]
+ * @returns {Record<string, any>}
  */
 export function resolveSceneTheme({ location = '', theme = '', sceneKind = '', settlementType = '', worldKind = '', request = {} } = {}) {
   const kind = String(sceneKind ?? '').toLocaleLowerCase('en')
+  const explicitThemeId = String(request?.theme_id ?? request?.themeId ?? '').trim()
+  const explicitCanonicalId = SCENE_THEME_ALIASES[explicitThemeId] ?? explicitThemeId
+  const explicitTheme = explicitThemeId
+    ? ALL_SCENE_THEMES.find((candidate) => candidate.id === explicitCanonicalId) ?? null
+    : null
+  // Авторский шаблон может знать больше, чем эвристика по названию и виду
+  // точки мира: «военная галерея» находится в столице, но это всё ещё зал,
+  // а не улица. Явная тема сильнее worldKind и сохраняет тот же генератор,
+  // который используется для обычных переходов.
+  if (explicitTheme) return explicitTheme
   const byName = matchTheme({ location, theme, sceneKind: kind })
   if (byName && STRUCTURE_THEMES.has(byName.id)) return byName
   const explicitlyNotSettlement = kind === 'wilderness' || kind === 'road' || kind === 'dungeon'
   const requestedLayout = String(request?.layout ?? '').toLocaleLowerCase('en')
   const requestedPattern = String(request?.pattern ?? '').toLocaleLowerCase('en')
+  const sceneText = `${location} ${theme}`.toLocaleLowerCase('ru')
+  const outdoorStructure = /(?:^|[\s«])двор(?:\s|$|ом(?:\s|$)|е(?:\s|$)|у(?:\s|$)|а(?:\s|$))|площад|улиц|пристан|гаван|порт|набережн|рынок|сад|переул|внешн|за ворот|перед ворот/iu.test(sceneText)
+  const interiorStructure = /галере|дворец|замок|крепост|цитадел|трон|кабинет|поко[ия]|военн(?:ая|ый).*(?:зал|галере)|архив|библиотек|зал/iu.test(sceneText)
+  const interiorLayout = requestedLayout === 'rooms'
+    || ['small-room', 'great-hall', 'keep', 'crypt', 'temple'].includes(requestedPattern)
+  // Название внутренней части места сильнее вида узла карты мира. Слова
+  // «двор», «пристань» и «улица» явно оставляют сцену снаружи: «двор замка»
+  // не должен внезапно стать комнатой только из-за слова «замок».
+  if (!explicitlyNotSettlement && kind !== 'settlement' && !outdoorStructure && (interiorStructure || interiorLayout)) {
+    if (/крепост|замок|цитадел/iu.test(sceneText)) return themeById('authored-palace')
+    if (/храм|святилищ|алтар|собор|монастыр/iu.test(sceneText) || requestedPattern === 'temple') return themeById('temple')
+    return themeById('building')
+  }
   const settlementSignal = kind === 'settlement'
     || Boolean(String(settlementType ?? '').trim())
     || requestedLayout === 'streets'
@@ -367,7 +436,7 @@ export function resolveSceneTheme({ location = '', theme = '', sceneKind = '', s
  * дверь заперта, а ключ лежит в предыдущей зоне — проверку порядка ключей
  * делает стадия 1.
  *
- * @param {typeof SCENE_THEMES[number]} theme
+ * @param {Record<string, any>} theme
  * @param {string} seed
  * @returns {import('./scene-graph.mjs').SceneGraph}
  */
@@ -465,7 +534,7 @@ function outlineImpassableCells(map) {
  * Полость строится только добавлением пересекающихся дисков. Поэтому она
  * связна по построению, а не благодаря ремонту после случайной генерации.
  *
- * @param {typeof SCENE_THEMES[number]} theme
+ * @param {Record<string, any>} theme
  * @param {{seed?: string, width?: number, height?: number, locationId?: string}} [options]
  * @returns {import('./tactical-map.mjs').TacticalMap}
  */
@@ -606,7 +675,7 @@ export function layoutOrganicCave(theme, {
  * Открытая местность: помещений нет, есть проходимая площадка с опушкой по
  * краю. У дороги и поселения через карту идёт полоса утоптанной земли.
  *
- * @param {typeof SCENE_THEMES[number]} theme
+ * @param {Record<string, any>} theme
  * @param {{seed?: string, width?: number, height?: number, locationId?: string}} [options]
  * @returns {import('./tactical-map.mjs').TacticalMap}
  */
@@ -682,7 +751,7 @@ export function layoutOpenTerrain(theme, { seed = 'open', width = 26, height = 2
  * зона с деревянным полом, непроходимой стеной и дверью. Поэтому геометрия
  * остаётся играбельной без растрового арта и переживает legacy-проекцию.
  *
- * @param {typeof SCENE_THEMES[number]} theme
+ * @param {Record<string, any>} theme
  * @param {{seed?: string, width?: number, height?: number, locationId?: string}} [options]
  * @returns {import('./tactical-map.mjs').TacticalMap}
  */
@@ -692,6 +761,9 @@ export function layoutSettlement(theme, {
   const safeWidth = Math.max(20, Math.min(SIZE_CLASSES.area.maxWidth, Math.round(width)))
   const safeHeight = Math.max(20, Math.min(SIZE_CLASSES.area.maxHeight, Math.round(height)))
   const random = randomFor(`settlement:${theme.id}:${seed}`)
+  const surfaceMaterial = theme.surfaceMaterial ?? 'grass'
+  const streetMaterial = theme.streetMaterial ?? 'earth'
+  const houseMaterial = theme.houseMaterial ?? 'wood'
   const map = createTacticalMap({
     width: safeWidth,
     height: safeHeight,
@@ -701,14 +773,14 @@ export function layoutSettlement(theme, {
     theme: theme.id,
     sizeClass: safeWidth * safeHeight <= SIZE_CLASSES.arena.maxCells ? 'arena' : 'area',
   })
-  addZone(map, { id: 'common', kind: 'exterior', material: 'grass', lightLevel: 'bright', floorDirection: 'horizontal', label: 'Поселение' })
-  addZone(map, { id: 'street', kind: 'exterior', material: 'earth', lightLevel: 'bright', floorDirection: 'horizontal', label: 'Главная улица' })
+  addZone(map, { id: 'common', kind: 'exterior', material: surfaceMaterial, lightLevel: 'bright', floorDirection: 'horizontal', label: theme.label || 'Поселение' })
+  addZone(map, { id: 'street', kind: 'exterior', material: streetMaterial, lightLevel: 'bright', floorDirection: 'horizontal', label: 'Главная улица' })
 
   for (let y = 0; y < safeHeight; y += 1) {
     for (let x = 0; x < safeWidth; x += 1) {
       setCell(map, x, y, {
         passable: true,
-        material: 'grass',
+        material: surfaceMaterial,
         zone: 'common',
         variant: floorVariantAt(seed, x, y),
         revealed: true,
@@ -730,7 +802,7 @@ export function layoutSettlement(theme, {
   for (let x = 0; x < safeWidth; x += 1) {
     const roadY = roadYAt(x)
     for (let dy = -1; dy <= 1; dy += 1) {
-      setCell(map, x, roadY + dy, { passable: true, material: 'earth', zone: 'street' })
+      setCell(map, x, roadY + dy, { passable: true, material: streetMaterial, zone: 'street' })
     }
   }
   // Площадь и поперечный переулок не дают деревне читаться одной полосой.
@@ -741,7 +813,7 @@ export function layoutSettlement(theme, {
   const crossX = clamp(Math.floor(safeWidth / 2) + Math.floor(random() * 5) - 2, houseWidth + 3, safeWidth - houseWidth - 4)
   for (let y = 0; y < safeHeight; y += 1) {
     for (let dx = -1; dx <= 1; dx += 1) {
-      setCell(map, crossX + dx, y, { passable: true, material: 'earth', zone: 'street' })
+      setCell(map, crossX + dx, y, { passable: true, material: streetMaterial, zone: 'street' })
     }
   }
 
@@ -777,14 +849,14 @@ export function layoutSettlement(theme, {
       for (let dx = 0; dx < houseWidth; dx += 1) {
         const boundary = dx === 0 || dy === 0 || dx === houseWidth - 1 || dy === houseHeight - 1
         setCell(map, house.x + dx, house.y + dy, boundary
-          ? { passable: false, material: 'wood', zone: '' }
-          : { passable: true, material: 'wood', zone: zoneId })
+          ? { passable: false, material: houseMaterial, zone: '' }
+          : { passable: true, material: houseMaterial, zone: zoneId })
       }
     }
 
     const doorX = house.x + Math.floor(houseWidth / 2)
     const doorY = house.side === 'top' ? house.y + houseHeight - 1 : house.y
-    setCell(map, doorX, doorY, { passable: true, material: 'wood', zone: zoneId })
+    setCell(map, doorX, doorY, { passable: true, material: houseMaterial, zone: zoneId })
     doors.push({ id: `house-door-${index + 1}`, x: doorX, y: doorY, dir: 's' })
 
     // От каждой двери до главной улицы лежит отдельный проход.
@@ -793,7 +865,23 @@ export function layoutSettlement(theme, {
     const toY = Math.max(doorY, streetY)
     for (let y = fromY; y <= toY; y += 1) {
       if (y === doorY) continue
-      setCell(map, doorX, y, { passable: true, material: 'earth', zone: 'street' })
+      setCell(map, doorX, y, { passable: true, material: streetMaterial, zone: 'street' })
+    }
+  }
+
+  // Вода — часть нескольких authored стартов, а не случайная заливка. Берём
+  // только общую площадку, чтобы не прорезать дома и улицу: берег остаётся
+  // читаемым и не ломает гарантированный путь от входа.
+  if (theme.waterBand) {
+    for (let y = 0; y < safeHeight; y += 1) {
+      for (let x = 0; x < safeWidth; x += 1) {
+        const onBand = theme.waterBand === 'right' ? x >= safeWidth - 3
+          : theme.waterBand === 'left' ? x <= 2
+            : y <= 2
+        const cell = cellAt(map, x, y)
+        if (!onBand || !cell || cell.zone !== 'common') continue
+        setCell(map, x, y, { passable: false, surface: 'water', material: surfaceMaterial, zone: '' })
+      }
     }
   }
 
@@ -837,8 +925,13 @@ export function buildThemedScene({
 } = {}) {
   // Тему могли опознать не по названию, а по узору из заявки картографа. Тогда
   // повторное опознание здесь её потеряет: `themeFor` читает только слова.
-  const chosen = themeId ? SCENE_THEMES.find((candidate) => candidate.id === themeId) : null
-  const definition = chosen ?? themeFor({ location, theme, sceneKind })
+  const chosen = themeId ? themeById(themeId) : null
+  const definition = /** @type {any} */ (chosen ?? themeFor({ location, theme, sceneKind }))
+
+  if (definition.kind === 'fortress') {
+    const built = buildAresFortressScene({ seed, width, height, locationId, theme: definition.id })
+    return { map: built.map, theme: definition.id, warnings: built.warnings }
+  }
 
   if (definition.kind === 'building') {
     // Объявленные этажи нужны только теме здания: лестницу на этаже входа
@@ -878,13 +971,19 @@ export function buildThemedScene({
       maxProps: SIZE_CLASSES[/** @type {keyof typeof SIZE_CLASSES} */ (built.map.sizeClass)].maxProps,
       zones: built.map.zones
         .filter((zone) => zone.label)
-        .map((zone) => ({
-          zoneId: zone.id,
-          theme: definition.id,
-          density: definition.density ?? 12,
-          require: definition.require,
-          prefer: definition.prefer,
-        })),
+        .map((zone, index) => {
+          const plan = Array.isArray(definition.propPlans) && definition.propPlans.length
+            ? (definition.propPlans[index % definition.propPlans.length] ?? {})
+            : {}
+          return {
+            ...plan,
+            zoneId: zone.id,
+            theme: plan.theme ?? definition.assetTheme ?? definition.id,
+            density: plan.density ?? definition.density ?? 12,
+            require: plan.require ?? definition.require,
+            prefer: plan.prefer ?? definition.prefer,
+          }
+        }),
     })
     return {
       map,
@@ -900,7 +999,7 @@ export function buildThemedScene({
       maxProps: SIZE_CLASSES[/** @type {keyof typeof SIZE_CLASSES} */ (map.sizeClass)].maxProps,
       zones: [{
         zoneId: 'common',
-        theme: definition.id,
+        theme: definition.assetTheme ?? definition.id,
         density: definition.density ?? 10,
         require: definition.require,
         prefer: definition.prefer,

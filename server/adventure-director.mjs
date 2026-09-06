@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { generateDynamicSceneMap } from './dynamic-map.mjs'
 import { reconcileWorldMap, worldLocationById } from './world-map.mjs'
-import { SIZE_CLASSES, legacyCellsFromTacticalMap } from './tactical-map.mjs'
+import { SIZE_CLASSES, legacyCellsFromTacticalMap, serializeTacticalMap, tacticalMapFromLegacyCells } from './tactical-map.mjs'
 import { sceneInteractionCatalogEntry, sceneInteractionFallbackAssets } from './scene-interactions.mjs'
 import { REFERENCE_SIZE } from './building-generator.mjs'
 import { normalizeDeclaredLevels } from './level-generator.mjs'
@@ -248,13 +248,22 @@ export function rememberCurrentSceneMap(state) {
  * «явная просьба сильнее догадки» сохранён, но выражен иначе: просьба теперь
  * ведёт к теме, а не мимо неё.
  */
-function generateSceneCellsFor({ theme, danger, location, sceneKind, settlementType = '', worldKind = '', seed, locationId, requestedMap, levels = [] }) {
+function generateSceneGeometryFor({ theme, danger, location, sceneKind, settlementType = '', worldKind = '', seed, locationId, requestedMap, levels = [] }) {
   // Опознание живёт в одном месте — `server/scene-themes.mjs`. Название —
   // не единственный признак: вид точки карты мира, тип поселения и заявка
   // картографа весят не меньше, иначе деревня с «бродом» в имени становилась
   // дорогой и ничем не отличалась от дороги, в которую из неё уходили.
   const recognized = resolveSceneTheme({ location, theme, sceneKind, settlementType, worldKind, request: requestedMap })
-  const matched = isLiveTheme(recognized) ? recognized : null
+  // Готовые комнатные/поселковые темы намеренно не заливают воду: их
+  // генераторы строят мебель и зоны, а не русло. Для неизвестного водоёма
+  // оставляем заявку процедурному генератору, который умеет сохранять
+  // непроходимую поверхность `water`; authored-вариант с явным theme_id
+  // остаётся за своей подготовленной геометрией.
+  const explicitTheme = String(requestedMap.theme_id ?? requestedMap.themeId ?? '').trim()
+  const waterChance = Number(requestedMap.water)
+  const waterBody = /озер|река|водо[её]м|пруд|залив|отмел|переправ|берег/iu.test(`${location} ${theme}`)
+  const waterScene = !explicitTheme && (waterBody || (Number.isFinite(waterChance) && waterChance >= 0.35))
+  const matched = !waterScene && isLiveTheme(recognized) ? recognized : null
   if (matched) {
     const built = buildThemedScene({
       location,
@@ -267,17 +276,17 @@ function generateSceneCellsFor({ theme, danger, location, sceneKind, settlementT
       height: integer(requestedMap.height, REFERENCE_SIZE.height, 16, SIZE_CLASSES.area.maxHeight),
       levels,
     })
-    return ensureSceneInteractionFeatures(
-      legacyCellsFromTacticalMap(built.map),
-      seed,
-      [...(matched.require ?? []), ...(matched.prefer ?? [])],
-    )
+    built.map.theme = matched.assetTheme ?? matched.id
+    return { cells: legacyCellsFromTacticalMap(built.map), map: built.map }
   }
   // Сейчас сюда не попадает ни одна сцена: `fallbackThemeFor` всегда возвращает
   // тему, а `live` стоит у всех семи. Ветка остаётся предохранителем на случай
   // новой темы, которую отключат флагом, — тогда сцена уйдёт прежним
   // процедурным путём вместо того, чтобы собраться недоделанной геометрией.
-  return generateDynamicSceneMap({ ...requestedMap, seed, theme, danger })
+  const cells = generateDynamicSceneMap({ ...requestedMap, seed, theme, danger })
+  const map = tacticalMapFromLegacyCells(cells, { locationId, seed })
+  map.theme = recognized.assetTheme ?? recognized.id
+  return { cells, map }
 }
 
 /**
@@ -288,11 +297,17 @@ function generateSceneCellsFor({ theme, danger, location, sceneKind, settlementT
  * @param {object} input
  * @returns {ReturnType<typeof generateDynamicSceneMap>}
  */
-export function generateSceneCells({ theme = '', danger = 'средняя', location = '', sceneKind = '', settlementType = '', worldKind = '', seed = 'scene', locationId = '', map = {}, levels = [] } = {}) {
+export function generateSceneGeometry({ theme = '', danger = 'средняя', location = '', sceneKind = '', settlementType = '', worldKind = '', seed = 'scene', locationId = '', map = {}, levels = [] } = {}) {
   const requestedMap = map && typeof map === 'object' && !Array.isArray(map) ? map : {}
-  return generateSceneCellsFor({
+  return generateSceneGeometryFor({
     theme, danger, location, sceneKind, settlementType, worldKind, seed, locationId, requestedMap, levels: normalizeDeclaredLevels(levels),
   })
+}
+
+/** Совместимое клеточное представление для старых потребителей и инструментов. */
+export function generateSceneCells(input = {}) {
+  const definition = resolveSceneTheme({ ...input, request: input.map ?? {} })
+  return ensureSceneInteractionFeatures(generateSceneGeometry(input).cells, input.seed ?? 'scene', [...(definition.require ?? []), ...(definition.prefer ?? [])])
 }
 
 /**
@@ -487,11 +502,22 @@ export function createSceneTransition(input = {}, state = {}) {
   })
 
   const locationId = worldMap.currentLocationId
+  const knownKind = publicText(knownWorldKind(state.worldMap, locationId, location), 40)
   const rememberedMap = sceneMapForLocation(state.locationMaps, locationId)
     ?? (sceneLocationId(state) === locationId ? normalizedSceneCells(previousScene.cells) : null)
+  const rememberedTacticalMap = sceneTacticalMapForLocation(state.locationMaps, locationId)
+    ?? (sceneLocationId(state) === locationId && previousScene.map ? clone(previousScene.map) : null)
   const requestedMap = input.map && typeof input.map === 'object' && !Array.isArray(input.map) ? input.map : {}
   const declaredLevels = normalizeDeclaredLevels(input.levels)
-  const cells = rememberedMap ?? generateSceneCellsFor({
+  const resolvedTheme = resolveSceneTheme({
+    location,
+    theme,
+    sceneKind: input.scene_kind,
+    settlementType: publicText(input.settlement_type, 40),
+    worldKind: knownKind,
+    request: requestedMap,
+  })
+  const generated = rememberedMap ? null : generateSceneGeometryFor({
     theme,
     danger,
     location,
@@ -502,12 +528,23 @@ export function createSceneTransition(input = {}, state = {}) {
     // место, которого на ней ещё не было, только что получило вид от этой же
     // сцены (а запасная карта и вовсе ставит «город» вслепую), и выводить из
     // него тему значило бы рисовать улицы по собственному предположению.
-    worldKind: publicText(knownWorldKind(state.worldMap, locationId, location), 40),
+    worldKind: knownKind,
     seed: stableLocationMapSeed(worldMap, locationId, location),
     locationId,
     requestedMap,
     levels: declaredLevels,
   })
+  const cells = rememberedMap ?? generated.cells
+  const mapTheme = text(resolvedTheme?.assetTheme ?? resolvedTheme?.id, 60)
+  const tacticalMap = rememberedTacticalMap ?? generated?.map ?? tacticalMapFromLegacyCells(cells, {
+    locationId,
+    seed: stableLocationMapSeed(worldMap, locationId, location),
+  })
+  if (!rememberedTacticalMap && mapTheme) tacticalMap.theme = mapTheme
+  const serializedMap = rememberedTacticalMap ?? serializeTacticalMap(tacticalMap)
+  const partySpawn = Array.isArray(tacticalMap.spawnPoints)
+    ? tacticalMap.spawnPoints.find((point) => point?.role === 'party')
+    : null
   const scene = {
     title,
     location,
@@ -525,6 +562,7 @@ export function createSceneTransition(input = {}, state = {}) {
     // сохранённые кампании и старые события читаются как раньше.
     ...(declaredLevels.length ? { levels: declaredLevels } : {}),
     cells,
+    map: serializedMap,
   }
 
   return {
@@ -544,7 +582,12 @@ export function createSceneTransition(input = {}, state = {}) {
     },
     transition,
     arrival,
-    entrance: { x: 1, y: 4 },
+    // Старый переход без заявки сохраняет совместимую точку (1,4). Для
+    // заявленной карты вход выводится из её размеров, чтобы широкий берег или
+    // озеро не получили недостижимую старую координату.
+    entrance: partySpawn
+      ? { x: partySpawn.x, y: partySpawn.y }
+      : { x: 1, y: Object.keys(requestedMap).length ? Math.floor((tacticalMap.height - 1) / 2) : 4 },
   }
 }
 

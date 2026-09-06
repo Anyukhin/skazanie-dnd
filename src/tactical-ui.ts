@@ -353,6 +353,7 @@ export function mechanicsSupportPresentation(support?: MechanicsSupport, support
 export type ConditionRuleStatus = 'implemented' | 'partial' | 'marker'
 
 const CONDITION_LABELS: Record<string, string> = {
+  dead: 'Погиб',
   unconscious: 'Без сознания',
   incapacitated: 'Недееспособен',
   stunned: 'Ошеломлён',
@@ -396,7 +397,7 @@ const CONDITION_LABELS: Record<string, string> = {
 }
 
 const IMPLEMENTED_CONDITIONS = new Set([
-  'unconscious', 'disengaged', 'bless', 'bless-d4', 'bane', 'minor-blessing', 'beacon-of-hope', 'death-ward',
+  'dead', 'unconscious', 'disengaged', 'bless', 'bless-d4', 'bane', 'minor-blessing', 'beacon-of-hope', 'death-ward',
   'aura-of-life', 'aura-of-protection', 'metamagic-quickened', 'fled', 'surrendered',
 ])
 
@@ -500,8 +501,8 @@ export type SceneLevel = { index: number; label?: string }
  * входа ключ не меняет — записи, сделанные до этажей, остаются валидными (то же
  * правило, что у серверного `levelKey`).
  */
-export function boardCameraKey(locationId?: string | null, levelIndex = 0) {
-  const base = String(locationId || '') || 'нет карты'
+export function boardCameraKey(locationId?: string | null, levelIndex = 0, campaignId = '') {
+  const base = (campaignId ? `${campaignId}:` : '') + (String(locationId || '') || 'нет карты')
   const level = Number.isSafeInteger(Number(levelIndex)) ? Number(levelIndex) : 0
   return level === 0 ? base : `${base}@L${level}`
 }
