@@ -106,6 +106,14 @@ export function featureChoiceGroupsFor(actor) {
     .map((group) => ({ ...structuredClone(group), choiceCount: Number(choiceCountAtLevel(group, level)) }))
 }
 
+/** Уровни, на которых этот класс получает стандартное улучшение характеристик. */
+export function abilityScoreChoiceLevelsFor(actor) {
+  const classKey = characterClassKey(actor)
+  if (classKey === 'fighter') return [4, 6, 8, 12]
+  if (classKey === 'rogue') return [4, 8, 10, 12]
+  return [4, 8, 12]
+}
+
 export function normalizedSelectedFeatureIds(actor) {
   if (!Array.isArray(actor?.selectedFeatureIds)) return []
   const selected = new Set(actor.selectedFeatureIds.map(String))

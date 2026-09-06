@@ -82,5 +82,5 @@ test('свободное действие не подменяется готов
   assert.doesNotMatch(sessionSource, /suggestions/u)
   assert.doesNotMatch(typesSource, /suggestions/u)
   assert.doesNotMatch(narratorPrompt, /"suggestions"/u)
-  assert.match(appSource, /aria-label="Действие своими словами"/u)
+  assert.match(appSource, /aria-label=(?:"Действие своими словами"|\{[^}]*'Действие своими словами'[^}]*\})/u)
 })

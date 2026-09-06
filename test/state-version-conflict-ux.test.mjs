@@ -67,12 +67,12 @@ test('хук обновляет авторитетное состояние и �
 })
 
 test('свободный и подготовленный ввод очищаются только после успешной команды', () => {
-  assert.match(appSource, /const outcome = await onFreeAction\(text\)\s+if \(outcome\.ok\) updateFreeText\(''\)/u)
+  assert.match(appSource, /const outcome = await onFreeAction\(text(?:, requestKind)?\)\s+if \(outcome\.ok\) updateFreeText\(''\)/u)
   assert.match(appSource, /const outcome = await confirmPreparedCommand\(text \|\| undefined\)\s+if \(outcome\?\.ok\) updateFreeText\(''\)/u)
   assert.match(appSource, /if \(outcome\?\.ok\) \{\s+if \(pendingCommand\.kind === 'target' && pendingCommand\.sneakAttack\) setSneakAttack\(false\)\s+setPendingCommand\(null\)\s+\}/u)
   assert.match(appSource, /const outcome = await confirmSelfCast\(text \|\| undefined\)\s+if \(outcome\?\.ok\) updateFreeText\(''\)/u)
   assert.match(appSource, /if \(outcome\?\.ok\) setCombatMode\('weapon'\)/u)
-  assert.doesNotMatch(appSource, /onFreeAction\(text\)\s+updateFreeText\(''\)/u)
+  assert.doesNotMatch(appSource, /onFreeAction\(text(?:, requestKind)?\)\s+updateFreeText\(''\)/u)
 })
 
 test('при сетевом отказе остаётся прежний бросок, а выбранный маршрут не теряется', () => {

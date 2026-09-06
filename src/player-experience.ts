@@ -2,6 +2,12 @@ import type { BattleEvent, GameEvent, ReputationTier, SceneNpcProjection, SceneN
 
 export const NEWBIE_GUIDE_DISMISSED_KEY = 'skazanie-newbie-guide-dismissed-v1'
 
+/** Подпись класса всегда показывает текущий серверный уровень, даже у старого листа. */
+export function playerRoleLabel(player: { role: string; level: number }) {
+  const role = String(player.role ?? '').replace(/\s*·?\s*ур(?:\.|овень)?\s*\d+\s*$/iu, '').trim()
+  return `${role || 'Герой'} · ур. ${player.level}`
+}
+
 /**
  * Публичное следствие уже публичной ступени славы.
  *
@@ -111,7 +117,7 @@ export function latestNpcTurnEvents(battleLog: readonly BattleEvent[], limit = 6
   return foundEnemy ? collected.reverse() : []
 }
 
-export type LevelSnapshot = { id: string; level: number; character: string }
+export type LevelSnapshot = { id: string; level: number; character: string; characterSetupStage?: 'leveling' }
 export type ConfirmedLevelUp = { playerId: string; character: string; level: number }
 
 /**
@@ -125,13 +131,21 @@ export function confirmedLevelUps(
   events: readonly GameEvent[],
 ): ConfirmedLevelUp[] {
   const eventLevels = new Map<string, number>()
+  const characterCreationActors = new Set<string>()
   for (const event of events) {
     if (event.event_type !== 'CharacterLeveledUp' || !event.actor_id) continue
+    // Поэтапное создание уже ведётся в листе героя; праздничная плашка поверх
+    // мастера перехватывала следующий выбор и превращала его в тупик.
+    if (event.payload?.progression_source === 'character_creation') {
+      characterCreationActors.add(event.actor_id)
+      continue
+    }
     const level = Number(event.payload?.level_after)
     if (Number.isSafeInteger(level) && level > 0) eventLevels.set(event.actor_id, level)
   }
 
   return players.flatMap((player) => {
+    if (player.characterSetupStage === 'leveling' || characterCreationActors.has(player.id)) return []
     const previous = previousLevels[player.id]
     const transitionConfirmed = Number.isSafeInteger(previous) && player.level > previous
     const eventConfirmed = eventLevels.get(player.id) === player.level

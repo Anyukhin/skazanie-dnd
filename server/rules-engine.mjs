@@ -400,7 +400,10 @@ import {
 import {
   CHARACTER_LIFECYCLE_COMMAND_TYPES,
   CharacterLifecycleValidationError,
+  MAX_CHARACTER_LEVEL,
   applyCharacterLifecycleEvent,
+  characterCreationChoicesComplete,
+  characterCreationTargetLevel,
   characterImportEvent,
   classResourcePlan,
   deriveCharacterSheet,
@@ -1611,6 +1614,13 @@ function encounterWithoutLoadouts(encounter) {
 
 export function normalizeCampaignState(input = {}) {
   const state = clone(input && typeof input === 'object' ? input : {})
+  // Старые снимки не знают о подготовке героев на повышенный стартовый
+  // уровень. Для них сохраняется прежний первый уровень; новое значение
+  // ограничивается тем же каталогом, что и обычный LevelUp.
+  state.character_start_level = Math.max(1, Math.min(MAX_CHARACTER_LEVEL, safeInteger(
+    state.character_start_level ?? state.characterStartLevel,
+    1,
+  )))
   const mechanics = { ...defaultMechanics(), ...(state.mechanics && typeof state.mechanics === 'object' ? state.mechanics : {}) }
   mechanics.temporary_hp = { ...(state.mechanics?.temporary_hp ?? {}) }
   mechanics.resources = clone(state.mechanics?.resources ?? {})
@@ -5294,8 +5304,12 @@ export function validateCommand(input, rawState, context = {}) {
     && command.auto_skip_reason === 'turn-timeout'
     && context.isAdmin === true
     && context.serverAuthoritativeCombat === true
+  const stagedSetupCommand = setupActor?.characterSetupRequired
+    && setupActor?.characterSetupStage === 'leveling'
+    && ['SetCharacterChoices', 'SetSpellSelections', 'LevelUp'].includes(command.command_type)
   if (setupActor?.characterSetupRequired
     && !['ImportCharacter', 'RollCharacterAbilities', 'RollCharacterWealth'].includes(command.command_type)
+    && !stagedSetupCommand
     && !serverTimeoutMaySkipSetupActor) {
     throw new RulesValidationError(
       'Сначала завершите создание этого героя',
@@ -18116,6 +18130,16 @@ export function applyGameEvent(rawState, event) {
         knownSpellIds: uniqueStrings(payload.known_spell_ids),
         preparedSpellIds: uniqueStrings(payload.prepared_spell_ids),
       }))
+      {
+        const actor = state.players.find((candidate) => actorId(candidate) === String(target))
+        if (actor?.characterSetupStage === 'leveling'
+          && actor.level >= characterCreationTargetLevel(state)
+          && characterCreationChoicesComplete(actor)) {
+          actor.characterSetupRequired = false
+          delete actor.characterSetupStage
+        }
+      }
+      refreshPlayerDerivedState(state, [target])
       break
     case 'CharacterChoicesUpdated':
       replaceActor(state, target, (actor) => ({
@@ -18123,7 +18147,21 @@ export function applyGameEvent(rawState, event) {
         subclass: String(payload.subclass ?? ''),
         classSkillProficiencies: uniqueStrings(payload.class_skill_proficiencies),
         selectedFeatureIds: uniqueStrings(payload.selected_feature_ids),
+        ...(payload.ability_score_increases && typeof payload.ability_score_increases === 'object' && !Array.isArray(payload.ability_score_increases)
+          ? { abilityScoreIncreases: clone(payload.ability_score_increases) } : {}),
+        ...(payload.abilities_after && typeof payload.abilities_after === 'object' && !Array.isArray(payload.abilities_after)
+          ? { abilities: clone(payload.abilities_after) } : {}),
       }))
+      {
+        const actor = state.players.find((candidate) => actorId(candidate) === String(target))
+        if (actor?.characterSetupStage === 'leveling'
+          && actor.level >= characterCreationTargetLevel(state)
+          && characterCreationChoicesComplete(actor)) {
+          actor.characterSetupRequired = false
+          delete actor.characterSetupStage
+        }
+      }
+      refreshPlayerDerivedState(state, [target])
       break
     case 'CharacterAbilitiesRolled':
       replaceActor(state, target, (actor) => ({ ...actor, characterCreationRolls: { ...actor.characterCreationRolls, abilities: clone(payload) } }))

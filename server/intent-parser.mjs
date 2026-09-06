@@ -6,6 +6,32 @@ const FREE_ACTION_PATTERNS = Object.freeze([
   ['corpse_search', /(?:обыск\p{L}*|провер\p{L}*|осматр\p{L}*|ищ\p{L}*)[^.!?]{0,80}(?:труп|тел[оаеу]|останки|карман)|(?:труп|тел[оаеу]|останки|карман)[^.!?]{0,80}(?:обыск\p{L}*|провер\p{L}*|осматр\p{L}*|ищ\p{L}*)/iu],
 ])
 
+export const REQUEST_KINDS = Object.freeze(['action', 'question', 'discussion'])
+
+/**
+ * Ввод игрока приходит из недоверенного клиента. Режим заявки — это только
+ * маршрутизация: он не даёт права выполнить команду и не меняет механику.
+ */
+export function normalizeRequestKind(value) {
+  const kind = String(value ?? '').trim().toLocaleLowerCase('en')
+  return REQUEST_KINDS.includes(kind) ? kind : 'action'
+}
+
+const DIRECT_QUESTION_PATTERN = /^(?:можно\s+ли|могу\s+ли|есть\s+ли|как\s+далеко|что\s+будет|почему|зачем|где\s+(?:наход|стоит|леж)|кто\s+так|сколько|как\s+(?:это|мне|нам))(?:\s|$)/iu
+const PARTY_PROPOSAL_PATTERN = /^(?:давайте|предлагаю|может\s+(?:нам|мы)|стоит\s+(?:ли\s+)?нам)(?:\s|$)/iu
+const EXPLICIT_NPC_SPEECH_PATTERN = /^(?:спрашиваю|спрашиваем|говорю|говорим|обращаюсь|обращаемся|прошу|просим)(?:\s|$)/iu
+const ACTION_LIKE_GROUP_PATTERN = /(?:покида|покин|уходим|уйти|маршрут|голосован|переговор|перемир|сдавайт)/iu
+const EXPLICIT_CHECK_PATTERN = /(?:провер\p{L}*|спасброс\p{L}*|\bcheck\b|\bsave\b)/iu
+
+/** Безопасный fallback для клиентов, которые ещё не передают request_kind. */
+export function inferRequestKind(value) {
+  const text = normalizedText(value)
+  if (!text || EXPLICIT_NPC_SPEECH_PATTERN.test(text)) return 'action'
+  if (DIRECT_QUESTION_PATTERN.test(text)) return 'question'
+  if (PARTY_PROPOSAL_PATTERN.test(text) && !ACTION_LIKE_GROUP_PATTERN.test(text)) return 'discussion'
+  return 'action'
+}
+
 // Шаблоны намерений тоже привязаны к началу слова: без границы `долг` ловил
 // «долго», `тон` — «стоном», а `rest` — любое английское слово с этой
 // подстрокой, и обычная фраза уезжала в отдых или в проверку Силы.
@@ -212,10 +238,19 @@ export class IntentParser {
     }
     const socialSkill = classifyNpcSocialCheck(text)
     const freeActionKind = classifyFreeActionKind(text)
-    const intent = freeActionKind === 'compound_maneuver' ? 'compound_maneuver'
+    const detectedIntent = freeActionKind === 'compound_maneuver' ? 'compound_maneuver'
       : freeActionKind === 'compound_ranged_attack' ? 'improvised_action'
       : freeActionKind === 'approach_attack' ? 'approach_attack'
       : socialSkill ? 'social' : INTENT_PATTERNS.find(([, pattern]) => pattern.test(text))?.[0] ?? 'improvised_action'
+    const approach = socialSkill ?? inferApproach(text)
+    // Свободная задумка вроде «пытаюсь поймать шишку ртом» не должна
+    // превращаться в проверку Мудрости только из-за глагола «пытаюсь».
+    // Явно запрошенная проверка сохраняет обычный маршрут арбитра.
+    const intent = detectedIntent === 'ability_check'
+      && approach === 'unspecified'
+      && !EXPLICIT_CHECK_PATTERN.test(text)
+      ? 'improvised_action'
+      : detectedIntent
     const socialTargets = intent === 'social' ? resolvePresentSocialActors(text, visibleState) : []
     const mentioned = intent === 'social' && socialTargets.length ? socialTargets : mentionedActors(text, visibleState)
     const targets = mentioned.map((actor) => String(actor.id)).filter((id) => id !== String(playerId ?? ''))
@@ -230,7 +265,7 @@ export class IntentParser {
     return {
       actor_id: String(playerId ?? ''),
       intent,
-      approach: socialSkill ?? inferApproach(text),
+      approach,
       targets,
       mentioned_entities: mentioned.map((actor) => String(actor.id)),
       numeric_value: number ? Number(number) : null,

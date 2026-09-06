@@ -29,7 +29,7 @@ test('hook подписывается на все фазы и снимает т�
   assert.match(sessionSource, /NARRATION_PREVIEW_EVENT_MAX_BYTES = 16 \* 1024/u)
   assert.match(sessionSource, /messages\?\.some\(\(message\) => message\.id === current\.messageId\)/u)
   assert.match(sessionSource, /stateRef\.current\.messages\.some\(\(message\) => message\.id === preview\.messageId\)/u)
-  assert.match(sessionSource, /const submitAction = useCallback\(async \(text: string, actorId\?: string, npcId\?: string\)/u)
+  assert.match(sessionSource, /const submitAction = useCallback\(async \(text: string, actorId\?: string, npcId\?: string(?:,[^)]*)?\)/u)
   assert.match(sessionSource, /narrationPreview,/u)
 })
 

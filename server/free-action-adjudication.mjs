@@ -71,6 +71,7 @@ export function resolutionModeFor({ plausibility, risk } = {}) {
 const APPROACH_PATTERNS = Object.freeze([
   { test: /(подпира|баррикад|завал|подпер|держ\w+\s+двер)/iu, ability: 'str', skill: 'athletics', plausibility: 'plausible', risk: 'minor', obstacle: 'дверь' },
   { test: /(взлам|выбива|выломать|ломаю)/iu, ability: 'str', skill: 'athletics', plausibility: 'strenuous', risk: 'serious', obstacle: 'преграда' },
+  { test: /(опрокид|сбива|толка|рывк|поднож|жаровн|спотык|оступить)/iu, ability: 'str', skill: 'athletics', plausibility: 'strenuous', risk: 'serious', obstacle: 'противник' },
   { test: /(поджиг|зажиг|подпал|факел\w*\s+к)/iu, ability: 'dex', skill: 'sleight-of-hand', plausibility: 'plausible', risk: 'serious', obstacle: 'огонь' },
   { test: /(крад|тих\w+|незамет|прячусь|скрыва)/iu, ability: 'dex', skill: 'stealth', plausibility: 'plausible', risk: 'minor', obstacle: 'наблюдатели' },
   { test: /(запуг|угрож|пригрож)/iu, ability: 'cha', skill: 'intimidation', plausibility: 'plausible', risk: 'minor', obstacle: 'собеседник' },
@@ -139,6 +140,16 @@ export function interpretFreeAction(text = '') {
     consequence_type: consequenceType,
     source: match ? 'deterministic-pattern' : 'deterministic-default',
   }, value)
+}
+
+/**
+ * Детерминированный fallback не должен выбирать Восприятие для фразы, смысл
+ * которой он не понял. Модель может распознать такой текст отдельно, но без
+ * её подтверждённого прочтения действие получает уточнение.
+ */
+export function hasRecognizedFreeActionApproach(text = '') {
+  const value = clean(text, 1_000)
+  return APPROACH_PATTERNS.some((pattern) => pattern.test.test(value))
 }
 
 /** Проверка согласованной заявки до расходования зарегистрированной кости. */

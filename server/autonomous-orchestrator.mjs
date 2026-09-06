@@ -52,6 +52,7 @@ import {
   contextualResolutionFor,
   d20CheckLabel,
   failForwardFor,
+  hasRecognizedFreeActionApproach,
   interpretFreeAction,
   assertFreeActionConfirmation,
   previousFailedAttempt,
@@ -1052,6 +1053,23 @@ export class AutonomousCampaignOrchestrator {
         duplicate: Boolean(commit.duplicate),
       }
     }
+    if (!storedReading
+      && String(reading.source ?? '').startsWith('deterministic-default')
+      && !hasRecognizedFreeActionApproach(text)) {
+      return {
+        kind: 'clarification',
+        clarification_question: 'Я не понял способ действия. Опишите, что именно делает герой, с чем или с кем он взаимодействует и какого результата хочет добиться.',
+        narration: 'Я не понял способ действия. Опишите, что именно делает герой, с чем или с кем он взаимодействует и какого результата хочет добиться. Попытка ничего не расходует.',
+        turn_consumed: false,
+        admin_commands: 0,
+        state: loaded.state,
+        state_version: loaded.state_version,
+        events: [],
+        commands: [],
+        rolls: [],
+        duplicate: false,
+      }
+    }
     const means = verifyMeans(loaded.state, actorId, reading.required_means)
     const resolution = means.satisfied
       ? contextualResolutionFor(loaded.state, actorId, reading, text)
@@ -1141,6 +1159,7 @@ export class AutonomousCampaignOrchestrator {
       return {
         kind: 'auto_success',
         ruling,
+        reading,
         narration: `Это удаётся без броска — на кону ничего нет. Следующая цель отряда: «${objective}»`,
         turn_consumed: false,
         admin_commands: 0,
@@ -1225,11 +1244,18 @@ export class AutonomousCampaignOrchestrator {
         ability: preview.ability,
         advantage: preview.advantage,
         disadvantage: preview.disadvantage,
-        context: { kind: 'free_action', action_fingerprint: digest(text), state_version: loaded.state_version, reading },
+        context: {
+          kind: 'free_action',
+          action_fingerprint: digest(text),
+          state_version: loaded.state_version,
+          reading,
+          proposal,
+        },
       })
       return {
         kind: 'check_required',
         check: { ...check, sides: 20, skill: preview.skill, proposal },
+        reading,
         stakes,
         narration: `Предлагаю проверку: ${check.label}, СЛ ${check.difficulty}. Цена: ${proposal.cost}. При успехе: ${proposal.on_success} При провале: ${proposal.on_failure} Подтвердите предложение или откажитесь от попытки.`,
         turn_consumed: false,
@@ -1305,6 +1331,7 @@ export class AutonomousCampaignOrchestrator {
     return {
       kind: succeeded ? 'check_success' : 'check_failure',
       ruling: outcomeRuling,
+      reading,
       stakes,
       narration: inCombat
         ? succeeded

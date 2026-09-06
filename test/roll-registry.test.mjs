@@ -7,6 +7,20 @@ import test from 'node:test'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { RollRegistry } from '../server/roll-registry.mjs'
 
+test('выданную кость нельзя отменить редактированием, даже до применения результата и после рестарта', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'skazanie-edit-roll-'))
+  const options = { diceService: new DiceService({ rng: new SequenceDiceRng([1]) }), storageFile: join(directory, 'rolls.json') }
+  const registry = new RollRegistry(options)
+  const check = registry.registerCheck({ campaignId: 'ROOM', actorId: 'hero' })
+  const request = { checkId: check.check_id, campaignId: 'ROOM', actorId: 'hero' }
+  const roll = registry.issue(request)
+  assert.throws(() => registry.invalidateCheck(check.check_id, request), { code: 'CHECK_ALREADY_ROLLED' })
+  const restarted = new RollRegistry(options)
+  assert.throws(() => restarted.invalidateCheck(check.check_id, request), { code: 'CHECK_ALREADY_ROLLED' })
+  assert.deepEqual(restarted.issue(request), roll)
+  assert.equal(restarted.consume(roll.roll_id, { ...request, idempotencyKey: 'resolve' }).roll_id, roll.roll_id)
+})
+
 test('потеря ответа на выдачу кости не создаёт новый бросок, в том числе после перезапуска', (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'skazanie-check-retry-'))
   t.after(() => rmSync(directory, { recursive: true, force: true }))

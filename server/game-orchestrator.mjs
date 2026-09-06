@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { join } from 'node:path'
 
 import { Adjudicator } from './adjudicator.mjs'
 import { answerKnownLore } from './player-request-router.mjs'
@@ -9,7 +10,7 @@ import { IdempotencyConflictError } from './event-store.mjs'
 import { deterministicNarratorFor, renderDeterministicNarration } from './deterministic-narration.mjs'
 import { combatNarrator } from './combat-narration.mjs'
 import './encounter-narration.mjs'
-import { IntentParser, buildRuleQueries } from './intent-parser.mjs'
+import { IntentParser, buildRuleQueries, inferRequestKind, normalizeRequestKind } from './intent-parser.mjs'
 import './merchant-narration.mjs'
 import { ensureNpcSocialState, npcConversationNarration, npcProfileAtWorldTime, npcSocialForViewer, relationshipTier } from './npc-social.mjs'
 import { assertNpcSocialCheckFingerprint, buildNpcSocialCheckPolicy, npcSocialCheckOutcome } from './npc-social-check.mjs'
@@ -43,6 +44,7 @@ import { campaignConceptForAgent, sceneContextForAgent } from './agent-context.m
 import { worldClockForAgents } from './weather.mjs'
 import { buildTurnExplanation } from './trace-store.mjs'
 import { retrieveWorldMemory } from './world-memory.mjs'
+import { ClarificationRegistry } from './clarification-registry.mjs'
 
 // A JSON request cannot manufacture this identity. Only server-owned world
 // orchestration may attach it to derived AdvanceScene/merchant commands.
@@ -519,7 +521,37 @@ export function narrationRequestFingerprint({
   playerId = '',
   message = '',
   npcId = '',
+  requestKind = 'action',
+  clarificationId = '',
+  supersedesCheckId = '',
+  supersedesProposalId = '',
+  questionCheckId = '',
+  questionProposalId = '',
 } = {}) {
+  return createHash('sha256')
+    .update(String(campaignId).toUpperCase())
+    .update('\0')
+    .update(String(playerId))
+    .update('\0')
+    .update(String(message).normalize('NFKC').replace(/\s+/gu, ' ').trim())
+    .update('\0')
+    .update(String(npcId))
+    .update('\0')
+    .update(String(requestKind))
+    .update('\0')
+    .update(String(clarificationId))
+    .update('\0')
+    .update(String(supersedesCheckId))
+    .update('\0')
+    .update(String(supersedesProposalId))
+    .update('\0')
+    .update(String(questionCheckId))
+    .update('\0')
+    .update(String(questionProposalId))
+    .digest('hex')
+}
+
+function legacyNarrationRequestFingerprint({ campaignId = '', playerId = '', message = '', npcId = '' } = {}) {
   return createHash('sha256')
     .update(String(campaignId).toUpperCase())
     .update('\0')
@@ -537,6 +569,12 @@ function assertNarrationRequestIdempotency(duplicate, trace, {
   playerId,
   message,
   npcId,
+  requestKind = 'action',
+  clarificationId = '',
+  supersedesCheckId = '',
+  supersedesProposalId = '',
+  questionCheckId = '',
+  questionProposalId = '',
 }) {
   if (!duplicate) return
   const requestFingerprint = narrationRequestFingerprint({
@@ -544,9 +582,18 @@ function assertNarrationRequestIdempotency(duplicate, trace, {
     playerId,
     message,
     npcId,
+    requestKind,
+    clarificationId,
+    supersedesCheckId,
+    supersedesProposalId,
+    questionCheckId,
+    questionProposalId,
   })
   if (trace?.request_fingerprint) {
-    if (String(trace.request_fingerprint) !== requestFingerprint) {
+    const compatibleLegacy = requestKind === 'action'
+      && !clarificationId && !supersedesCheckId && !supersedesProposalId
+      && String(trace.request_fingerprint) === legacyNarrationRequestFingerprint({ campaignId, playerId, message, npcId })
+    if (String(trace.request_fingerprint) !== requestFingerprint && !compatibleLegacy) {
       throw new IdempotencyConflictError(campaignId, idempotencyKey)
     }
     return
@@ -564,6 +611,12 @@ function assertNarrationRequestIdempotency(duplicate, trace, {
         playerId: conversation.hero_id,
         message: conversation.player_message,
         npcId: conversation.npc_id,
+        requestKind,
+        clarificationId,
+        supersedesCheckId,
+        supersedesProposalId,
+        questionCheckId,
+        questionProposalId,
       })
     : ''
   if (!replayFingerprint || replayFingerprint !== requestFingerprint) {
@@ -690,6 +743,70 @@ function proposalIdFor(campaignId, seed) {
   return `proposal:${createHash('sha256').update(`${campaignId} ${seed}`).digest('hex').slice(0, 20)}`
 }
 
+function mergeClarificationAction(original, answer) {
+  const first = String(original?.action ?? '').trim()
+  const second = String(answer ?? '').trim()
+  if (!first) return second
+  if (!second) return first
+  return `${first}. Уточнение игрока: ${second}`.slice(0, 2_000)
+}
+
+function maneuverProposalFingerprint(proposal = {}) {
+  const { id: _id, ...body } = proposal ?? {}
+  return createHash('sha256').update(JSON.stringify(body)).digest('hex')
+}
+
+function trimSentenceEnd(value, maximum = 500) {
+  return String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().replace(/[.!?…]+$/u, '').slice(0, maximum)
+}
+
+function freeActionTimeText(events = []) {
+  const time = [...events].reverse().find((event) => event?.event_type === 'TimeAdvanced')
+  const amount = Number(time?.payload?.amount)
+  if (!Number.isFinite(amount) || amount <= 0) return ''
+  const unit = String(time?.payload?.unit ?? 'minute').toLowerCase()
+  if (unit === 'hour' || unit === 'hours') return `Прошло ${amount} ч.`
+  if (unit === 'day' || unit === 'days') return `Прошёл ${amount} день.`
+  return `Прошло ${amount} мин.`
+}
+
+function freeActionEffectText(events = []) {
+  const labels = new Map([
+    ['SceneObjectOperated', 'объект сцены обработан по правилам'],
+    ['SceneObjectStateChanged', 'состояние объекта сцены изменилось'],
+    ['DamageApplied', 'подтверждённый урон нанесён цели'],
+    ['ConditionApplied', 'на цели подтверждено состояние'],
+    ['ConditionRemoved', 'с цели снято состояние'],
+    ['ItemTransferred', 'предмет передан по правилам'],
+    ['CombatActionUsed', 'действие героя израсходовано'],
+    ['WorldFactRecorded', 'изменение записано в память мира'],
+    ['WorldFactRevealed', 'отряду открыт подтверждённый факт'],
+  ])
+  return [...new Set(events.map((event) => labels.get(String(event?.event_type ?? ''))).filter(Boolean))]
+}
+
+/**
+ * Короткий offline-текст свободного действия. Он опирается на исходную
+ * задумку и уже записанные события, поэтому не может закрыть дверь, нанести
+ * урон или объявить навык, которого нет в commit.
+ */
+function deterministicFreeActionNarration({ freeAction, message, events }) {
+  const kind = String(freeAction?.kind ?? '')
+  if (!['auto_success', 'check_success', 'check_failure'].includes(kind)) return ''
+  const goal = trimSentenceEnd(freeAction?.reading?.goal_summary || message, 280) || 'задумка героя'
+  const outcome = kind === 'check_failure'
+    ? 'не удалась'
+    : kind === 'auto_success'
+      ? 'удалась без проверки'
+      : 'удалась'
+  const parts = [`Задумка «${goal}» ${outcome}.`]
+  const effects = freeActionEffectText(events)
+  if (effects.length) parts.push(`Подтверждено: ${effects.join('; ')}.`)
+  const time = freeActionTimeText(events)
+  if (time) parts.push(time)
+  return parts.join(' ')
+}
+
 /**
  * Честные версии промптов хода. Роли без загружаемого промпта помечаются
  * `null`, а не выдуманным ярлыком: разбор намерения ведут детерминированные
@@ -720,6 +837,7 @@ export class GameOrchestrator {
     npcSocialController = null,
     unknownActionHandler = null,
     rollRegistry = null,
+    clarificationRegistry = null,
     idFactory = randomUUID,
     now = () => Date.now(),
   } = {}) {
@@ -748,6 +866,10 @@ export class GameOrchestrator {
     this.narrator = narrator
     this.npcSocialController = npcSocialController
     this.unknownActionHandler = unknownActionHandler ?? new AutonomousCampaignOrchestrator({ eventStore, rulesEngine, rollRegistry, now })
+    this.clarificationRegistry = clarificationRegistry ?? new ClarificationRegistry({
+      storageFile: eventStore?.rootDir ? join(eventStore.rootDir, 'clarifications.json') : null,
+      now,
+    })
     // Реестр бросков включает ручное подтверждение кубика игроком; без него
     // все d20-проверки разрешаются немедленным серверным броском, как раньше.
     this.rollRegistry = rollRegistry
@@ -1114,7 +1236,7 @@ export class GameOrchestrator {
     }
   }
 
-  freeActionResponse({
+  async freeActionResponse({
     freeAction,
     campaignId,
     playerId,
@@ -1129,11 +1251,18 @@ export class GameOrchestrator {
     turnId,
     started,
     mode,
+    resolvedAction = null,
   }) {
     const state = freeAction.state ?? authoritativeState
     // Проверка объявлена, но кубик за игроком: события не коммитились, мир не
     // изменился. Клиент получает карточку броска, а не нарацию хода.
     if (freeAction.kind === 'check_required') {
+      const check = freeAction.check
+        ? {
+            ...freeAction.check,
+            proposal_id: freeAction.check.proposal_id ?? freeAction.check.check_id ?? null,
+          }
+        : null
       return {
         narration: String(freeAction.narration ?? ''),
         effects: emptyEffects(),
@@ -1144,10 +1273,13 @@ export class GameOrchestrator {
         state_version: freeAction.state_version ?? state.state_version,
         mechanics: [],
         visible_state_changes: [],
-        check: freeAction.check,
+        check,
+        proposal_id: check?.proposal_id ?? null,
+        ...(resolvedAction ? { resolved_action: resolvedAction } : {}),
         ...(freeAction.stakes ? { stakes: freeAction.stakes } : {}),
         turn_consumed: false,
         action_kind: 'free',
+        request_kind: 'action',
         free_action_outcome: freeAction.kind,
       }
     }
@@ -1165,6 +1297,12 @@ export class GameOrchestrator {
       known_environment: {
         scene: sceneContextForAgent(state, playerId),
         campaign_premise: campaignConceptForAgent(state),
+        player_intent: {
+          action: message,
+          goal: String(freeAction.reading?.goal_summary ?? message).slice(0, 500),
+          approach: String(freeAction.reading?.approach_summary ?? '').slice(0, 500),
+          outcome: freeAction.kind,
+        },
         // Небо и час — данные, а не право сочинять: Рассказчик получает уже
         // решённые время суток и погоду, чтобы не выдумывать закат в полдень.
         world_clock: worldClockForAgents(state, playerId),
@@ -1177,9 +1315,37 @@ export class GameOrchestrator {
       viewer,
     })
     const candidateNarration = String(freeAction.narration ?? '').trim()
-    const candidateVerification = verifyNarration(candidateNarration, brief, { knownRuleIds: [] })
-    const narration = candidateVerification.valid && candidateNarration
-      ? candidateNarration
+    let renderedNarration = ''
+    let renderedProvider = ''
+    const narrateCommittedImprovisation = !freeAction.duplicate
+      && ['auto_success', 'check_success', 'check_failure'].includes(String(freeAction.kind))
+      && committedEvents.length > 0
+      && typeof this.narrator?.render === 'function'
+    if (narrateCommittedImprovisation) {
+      try {
+        const rendered = await this.narrator.render(brief, {
+          knownRuleIds: [],
+          recentNarrations: this.recentNarrationsFor(campaignId),
+        })
+        renderedNarration = String(rendered?.narration ?? '').trim()
+        renderedProvider = String(rendered?.provider ?? '').trim()
+      } catch {
+        // Нарация необязательна: подтверждённый результат уже сохранён, поэтому
+        // отказ провайдера возвращает короткое серверное описание.
+      }
+    }
+    const deterministicNarration = deterministicFreeActionNarration({
+      freeAction,
+      message,
+      events: committedEvents,
+    })
+    const deterministicProvider = /^deterministic(?:-|$)/u.test(renderedProvider)
+    const preferredNarration = deterministicProvider
+      ? deterministicNarration || candidateNarration || renderedNarration
+      : renderedNarration || candidateNarration || deterministicNarration
+    const candidateVerification = verifyNarration(preferredNarration, brief, { knownRuleIds: [] })
+    const narration = candidateVerification.valid && preferredNarration
+      ? preferredNarration
       : freeAction.kind === 'clarification'
         ? 'Опишите действие подробнее, чтобы его можно было разрешить по правилам.'
         : 'Действие не получило подтверждённого последствия. Уточните, чего герой хочет добиться.'
@@ -1188,7 +1354,9 @@ export class GameOrchestrator {
     const response = {
       narration,
       effects: eventsToClientEffects(committedEvents, freeAction.rolls ?? []),
-      provider: 'deterministic-free-action',
+      provider: deterministicProvider && deterministicNarration
+        ? 'deterministic-free-action'
+        : renderedProvider || 'deterministic-free-action',
       model: 'server-policy',
       turn_id: turnId,
       engine_mode: mode,
@@ -1204,8 +1372,20 @@ export class GameOrchestrator {
       idempotent_replay: idempotentReplay,
       turn_consumed: false,
       action_kind: 'free',
+      request_kind: 'action',
       free_action_outcome: freeAction.kind,
       ...(freeAction.rejected ? { rejected: true } : {}),
+      ...(resolvedAction ? { resolved_action: resolvedAction } : {}),
+    }
+    if (['clarification', 'counter_offer'].includes(String(freeAction.kind))) {
+        response.clarification = this.clarificationRegistry.create({
+        campaignId,
+        actorId: playerId,
+        stateVersion: state.state_version,
+        action: message,
+        question: narration || 'Уточните, как именно герой хочет поступить.',
+        intent,
+      })
     }
     if (!idempotentReplay) {
       this.saveTrace({
@@ -1240,18 +1420,108 @@ export class GameOrchestrator {
     return response
   }
 
+  /**
+   * Ответы игроку, которые не объявляют действие. Они остаются в чате, но не
+   * попадают в Rules Engine: вопрос и обсуждение не могут случайно потратить
+   * слот, продвинуть часы или создать проверку даже посреди боя.
+   */
+  nonActionResponse({ campaignId, playerId, requestKind, message, pendingClarification, questionCheckId = '', questionProposalId = '', state, turnId, mode, viewer }) {
+    const lore = requestKind === 'question'
+      ? answerKnownLore(message, state, { viewer })
+      : null
+    const pending = pendingClarification
+      ? {
+          id: pendingClarification.id,
+          campaign_id: pendingClarification.campaign_id,
+          actor_id: pendingClarification.actor_id,
+          state_version: pendingClarification.state_version,
+          action: pendingClarification.action,
+          question: pendingClarification.question,
+        }
+      : null
+    let checkAnswer = ''
+    if (requestKind === 'question' && questionCheckId && this.rollRegistry?.getCheck) {
+      try {
+        const check = this.rollRegistry.getCheck(questionCheckId, { campaignId, actorId: playerId, includeContext: true })
+        const proposal = check.context?.proposal ?? null
+        checkAnswer = proposal
+          ? `Карточка готова: ${check.label}, СЛ ${check.difficulty}. Цена: ${trimSentenceEnd(proposal.cost ?? 'указана на карточке')}. При успехе: ${trimSentenceEnd(proposal.on_success ?? 'подтверждённый результат')}. При провале: ${trimSentenceEnd(proposal.on_failure ?? 'последствие указано на карточке')}.`
+          : `Карточка готова: ${check.label}, СЛ ${check.difficulty}. Сначала подтвердите или измените способ действия, затем бросок будет принят только для этой заявки.`
+      } catch (error) {
+        if (!['CHECK_NOT_FOUND', 'CHECK_INVALIDATED'].includes(error?.code)) throw error
+        checkAnswer = 'Эта карточка уже устарела или отменена. Измените заявку и получите новое предложение; старый бросок не исполнится.'
+      }
+    }
+    if (requestKind === 'question' && questionProposalId && !checkAnswer) {
+      try {
+        const entry = this.clarificationRegistry.getProposal(questionProposalId, {
+          campaignId,
+          actorId: playerId,
+          stateVersion: state.state_version,
+        })
+        const proposal = entry.proposal ?? {}
+        checkAnswer = `Предложение «${String(proposal.title ?? 'действие').slice(0, 180)}»: цена — ${String(proposal.cost ?? 'указана на карточке')}; результат — ${String(proposal.consequence ?? 'определяется после подтверждения')}`
+      } catch (error) {
+        if (!['PROPOSAL_NOT_FOUND', 'PROPOSAL_REVOKED', 'PROPOSAL_STALE'].includes(error?.code)) throw error
+        checkAnswer = 'Предложение уже устарело. Получите новую карточку после изменения заявки; старый маршрут не будет исполнен.'
+      }
+    }
+    const narration = requestKind === 'discussion'
+      ? ''
+      : lore?.narration
+        ? pending
+          ? `${lore.narration} Заявка всё ещё ждёт уточнения и не выполнена.`
+          : lore.narration
+        : checkAnswer
+          ? checkAnswer
+          : pending
+            ? 'Уточнение относится к заявке, но само действие ещё не выполнено. Ответьте на вопрос карточки отдельной репликой.'
+            : 'По доступным подтверждённым сведениям точного ответа пока нет. Вопрос не расходует ход; узнайте это исследованием или у собеседника.'
+    return {
+      narration,
+      effects: emptyEffects(),
+      provider: lore?.provider ?? 'deterministic-dialogue',
+      model: lore?.model ?? 'server-policy',
+      turn_id: turnId,
+      engine_mode: mode,
+      state_version: state.state_version,
+      mechanics: [],
+      visible_state_changes: [],
+      check: null,
+      action_proposal: null,
+      turn_consumed: false,
+      action_kind: requestKind,
+      request_kind: requestKind,
+      ...(pending ? { clarification: pending } : {}),
+      ...(lore?.agent_context ? { agent_context: lore.agent_context } : {}),
+      idempotent_replay: false,
+      chat_message: message,
+      ...(campaignId ? { room_id: campaignId } : {}),
+    }
+  }
+
   async handle(input) {
     const originalState = normalizeCampaignState(input.state ?? {})
     const campaignId = String(input.campaignId ?? input.campaign_id ?? originalState.sessionCode ?? originalState.campaign_id ?? '')
     const playerId = String(input.playerId ?? input.player_id ?? originalState.activePlayerId ?? '')
     const message = String(input.message ?? input.action ?? '').trim().slice(0, 2000)
+    const requestedKind = input.requestKind ?? input.request_kind
+    const requestKind = requestedKind == null ? inferRequestKind(message) : normalizeRequestKind(requestedKind)
+    const clarificationId = String(input.clarificationId ?? input.clarification_id ?? '').trim().slice(0, 8_000)
+    const supersedesCheckId = String(input.supersedesCheckId ?? input.supersedes_check_id ?? '').trim().slice(0, 200)
+    const supersedesProposalId = String(input.supersedesProposalId ?? input.supersedes_proposal_id ?? '').trim().slice(0, 300)
+    const questionCheckId = String(input.questionCheckId ?? input.question_check_id ?? '').trim().slice(0, 200)
+    const questionProposalId = String(input.questionProposalId ?? input.question_proposal_id ?? '').trim().slice(0, 300)
     const idempotencyKey = String(input.idempotencyKey ?? input.idempotency_key ?? '')
     const npcId = String(input.npcId ?? input.npc_id ?? '').trim().slice(0, 120)
     const coalesces = !input.commands && message !== '/why' && input.why !== true && Boolean(campaignId && idempotencyKey)
     if (!coalesces) return this._handle(input)
 
     const key = `${campaignId}\u001f${idempotencyKey}`
-    const requestFingerprint = narrationRequestFingerprint({ campaignId, playerId, message, npcId })
+    const requestFingerprint = narrationRequestFingerprint({
+      campaignId, playerId, message, npcId, requestKind, clarificationId, supersedesCheckId, supersedesProposalId,
+      questionCheckId, questionProposalId,
+    })
     const existing = this.narrationInflight.get(key)
     if (existing) {
       if (existing.requestFingerprint !== requestFingerprint) {
@@ -1276,7 +1546,22 @@ export class GameOrchestrator {
     const originalState = normalizeCampaignState(input.state ?? {})
     const campaignId = String(input.campaignId ?? input.campaign_id ?? originalState.sessionCode ?? originalState.campaign_id ?? '')
     const playerId = String(input.playerId ?? input.player_id ?? originalState.activePlayerId ?? '')
-    const message = String(input.message ?? input.action ?? '').trim().slice(0, 2000)
+    const rawMessage = String(input.message ?? input.action ?? '').trim().slice(0, 2000)
+    const requestedKind = input.requestKind ?? input.request_kind
+    const requestKind = requestedKind == null ? inferRequestKind(rawMessage) : normalizeRequestKind(requestedKind)
+    const clarificationId = String(input.clarificationId ?? input.clarification_id ?? '').trim().slice(0, 8_000)
+    const supersedesCheckId = String(input.supersedesCheckId ?? input.supersedes_check_id ?? '').trim().slice(0, 200)
+    const supersedesProposalId = String(input.supersedesProposalId ?? input.supersedes_proposal_id ?? '').trim().slice(0, 300)
+    const questionCheckId = String(input.questionCheckId ?? input.question_check_id ?? '').trim().slice(0, 200)
+    const questionProposalId = String(input.questionProposalId ?? input.question_proposal_id ?? '').trim().slice(0, 300)
+    const pendingClarification = clarificationId
+      ? this.clarificationRegistry.resolve(clarificationId, { campaignId, actorId: playerId })
+      : null
+    // Вопрос/обсуждение не должны исполнять старое действие. Для обычной
+    // заявки ответ дописывается к исходному намерению до разбора маршрутизатором.
+    const message = requestKind === 'action' && pendingClarification
+      ? mergeClarificationAction(pendingClarification, rawMessage)
+      : rawMessage
     const idempotencyKey = String(input.idempotencyKey ?? input.idempotency_key ?? this.idFactory())
     const explicitNpcId = String(input.npcId ?? input.npc_id ?? '').trim().slice(0, 120)
     const directorCapability = input.commandCapability === DIRECTOR_COMMAND_CAPABILITY
@@ -1320,7 +1605,7 @@ export class GameOrchestrator {
     // Окрик о переговорах посреди боя — не вопрос к миру: Хранитель мира на
     // него отвечать не должен, иначе «предлагаю переговоры» уходило бы в
     // «подтверждённых сведений нет» и до правила не доезжало.
-    const loreAnswer = input.commands || explicitNpcId
+    const loreAnswer = requestKind !== 'action' || input.commands || explicitNpcId
       || (originalState.mechanics?.combat?.active === true && mentionsParley(message))
       ? null
       : answerKnownLore(message, worldkeeperState, { viewer: worldkeeperViewer })
@@ -1337,6 +1622,55 @@ export class GameOrchestrator {
     }
     const loaded = await this.eventStore.load(campaignId)
     const authoritativeState = normalizeCampaignState(loaded.state)
+    if (pendingClarification) {
+      this.clarificationRegistry.resolve(clarificationId, {
+        campaignId,
+        actorId: playerId,
+        stateVersion: authoritativeState.state_version,
+      })
+    }
+    if (requestKind !== 'action') {
+      const nonActionState = campaignStateForViewer(authoritativeState, input.user ?? {}, playerId) ?? {}
+      return this.nonActionResponse({
+        campaignId,
+        playerId,
+        requestKind,
+        message: rawMessage,
+        pendingClarification,
+        questionCheckId,
+        questionProposalId,
+        state: nonActionState,
+        turnId,
+        mode,
+        viewer: { playerId, partyIds: input.partyIds ?? [], isPartyMember: true, role: input.user?.role },
+      })
+    }
+    if (supersedesProposalId) {
+      this.clarificationRegistry.revokeProposal(supersedesProposalId, { campaignId, actorId: playerId })
+    }
+    if (this.rollRegistry && (supersedesCheckId || supersedesProposalId)) {
+      if (supersedesCheckId) {
+        this.rollRegistry.invalidateCheck(supersedesCheckId, {
+          campaignId,
+          actorId: playerId,
+          reason: 'proposal-edited',
+        })
+      }
+      if (supersedesProposalId) {
+        // A free-action proposal uses the same public id as its check. For a
+        // structured maneuver this is only a marker; rebuilding the plan below
+        // ensures the old proposal is never accepted as confirmation.
+        try {
+          this.rollRegistry.invalidateProposal(supersedesProposalId, {
+            campaignId,
+            actorId: playerId,
+            reason: 'proposal-edited',
+          })
+        } catch (error) {
+          if (error?.code !== 'CHECK_NOT_FOUND') throw error
+        }
+      }
+    }
     const duplicate = typeof this.eventStore.getByIdempotencyKey === 'function'
       ? await this.eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
       : null
@@ -1345,6 +1679,12 @@ export class GameOrchestrator {
       playerId,
       message,
       npcId: explicitNpcId,
+      requestKind,
+      clarificationId,
+      supersedesCheckId,
+      supersedesProposalId,
+      questionCheckId,
+      questionProposalId,
     })
     const requestTrace = duplicate && this.traceStore && typeof this.traceStore.get === 'function'
       ? this.traceStore.get(campaignId, turnId)
@@ -1355,6 +1695,12 @@ export class GameOrchestrator {
       playerId,
       message,
       npcId: explicitNpcId,
+      requestKind,
+      clarificationId,
+      supersedesCheckId,
+      supersedesProposalId,
+      questionCheckId,
+      questionProposalId,
     })
     // Парлей: единственная развилка на оба входа.
     //
@@ -1694,15 +2040,41 @@ export class GameOrchestrator {
     if (['approach_attack', 'long_jump_attack', 'swing_attack'].includes(plan.maneuver) && !duplicate) {
       this.rulesEngine.validate(plan.proposed_commands[0], authoritativeState, rulesContext)
       if (!input.confirmedProposalId) {
+        const issuedProposal = this.clarificationRegistry.issueProposal({
+          campaignId,
+          actorId: playerId,
+          stateVersion: authoritativeState.state_version,
+          proposal: plan.proposal,
+          planFingerprint: maneuverProposalFingerprint(plan.proposal),
+        })
+        plan = { ...plan, proposal: issuedProposal }
         return {
           narration: 'Проверьте маршрут и цену манёвра. Подтвердите план или откажитесь от него.',
           action_proposal: plan.proposal,
+          proposal_id: plan.proposal?.id ?? null,
           effects: emptyEffects(), provider: 'RulesEngine', model: 'deterministic',
           turn_id: turnId, engine_mode: mode, state_version: authoritativeState.state_version,
-          mechanics: [], visible_state_changes: [], turn_consumed: false,
+          mechanics: [], visible_state_changes: [], turn_consumed: false, action_kind: 'proposal',
+          request_kind: 'action',
+          ...(pendingClarification ? { resolved_action: message } : {}),
         }
       }
-      if (input.confirmedProposalId !== plan.proposal.id) {
+      let approvedProposal
+      try {
+        approvedProposal = this.clarificationRegistry.resolveProposal(input.confirmedProposalId, {
+          campaignId,
+          actorId: playerId,
+          stateVersion: authoritativeState.state_version,
+        })
+      } catch (error) {
+        if (['PROPOSAL_NOT_FOUND', 'PROPOSAL_FORBIDDEN', 'PROPOSAL_STALE'].includes(error?.code)) {
+          const conflict = new Error('План манёвра изменился. Отправьте заявку заново и подтвердите новый маршрут.')
+          conflict.code = 'STATE_VERSION_CONFLICT'
+          throw conflict
+        }
+        throw error
+      }
+      if (approvedProposal.plan_fingerprint !== maneuverProposalFingerprint(plan.proposal)) {
         const error = new Error('План манёвра изменился. Отправьте заявку заново и подтвердите новый маршрут.')
         error.code = 'STATE_VERSION_CONFLICT'
         throw error
@@ -1720,7 +2092,7 @@ export class GameOrchestrator {
         manualRoll,
         verifiedRoll,
       })
-      return this.freeActionResponse({
+      return await this.freeActionResponse({
         freeAction,
         campaignId,
         playerId,
@@ -1735,6 +2107,7 @@ export class GameOrchestrator {
         turnId,
         started,
         mode,
+        resolvedAction: pendingClarification ? message : null,
       })
     }
     if (socialRequest && !duplicate) {
@@ -1768,7 +2141,30 @@ export class GameOrchestrator {
 
     if (intent.requires_clarification || plan.clarification_required) {
       const narration = plan.clarification_message ?? humanMissingInformation(intent.missing_information ?? plan.missing_information, authoritativeState, intent)
-      const response = { narration, effects: emptyEffects(), provider: 'RulesEngine', model: 'deterministic', turn_id: turnId, engine_mode: mode, state_version: authoritativeState.state_version, mechanics: [], visible_state_changes: [], authoritative_state: authoritativeState, turn_consumed: false }
+      const response = {
+        narration,
+        effects: emptyEffects(),
+        provider: 'RulesEngine',
+        model: 'deterministic',
+        turn_id: turnId,
+        engine_mode: mode,
+        state_version: authoritativeState.state_version,
+        mechanics: [],
+        visible_state_changes: [],
+        authoritative_state: authoritativeState,
+        turn_consumed: false,
+        action_kind: 'clarification',
+        request_kind: 'action',
+        clarification: this.clarificationRegistry.create({
+          campaignId,
+          actorId: playerId,
+          stateVersion: authoritativeState.state_version,
+          action: message,
+          question: narration,
+          intent,
+        }),
+        ...(pendingClarification ? { resolved_action: message } : {}),
+      }
       this.saveTrace({ turnId, campaignId, mode, intent, retrievalQueries, retrievedRules, plan, stateBefore: authoritativeState.state_version, stateAfter: authoritativeState.state_version, verification: { valid: true }, latency: this.now() - started })
       return response
     }
@@ -2020,6 +2416,7 @@ export class GameOrchestrator {
       authoritative_state: committed.state,
       verification: narration.verification,
       ruling: plan.ruling_draft ?? null,
+      ...(pendingClarification ? { resolved_action: message } : {}),
       explanation_url: `/api/campaigns/${encodeURIComponent(campaignId)}/turns/${encodeURIComponent(turnId)}/explanation`,
       idempotent_replay: idempotentReplay,
       ...(storedSocialNarration ? { turn_consumed: true, action_kind: 'social' } : {}),

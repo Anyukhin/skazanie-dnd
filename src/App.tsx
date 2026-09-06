@@ -63,6 +63,7 @@ import {
 import {
   NEWBIE_GUIDE_DISMISSED_KEY,
   confirmedLevelUps,
+  playerRoleLabel,
   battleEventParticipantIds,
   factionDisplayName,
   latestNpcTurnEvents,
@@ -170,7 +171,7 @@ function PlayerCard({ player, selected, turn, accessible, typing, deathSaves, st
       </div>
       <div className="player-meta">
         <div className="player-name-row"><strong>{player.character}</strong>{turn && <Crown size={12} />}{!accessible && <LockKeyhole size={11} />}</div>
-        <span>{player.role}{typing ? ' · печатает…' : ''}</span>
+        <span>{playerRoleLabel(player)}{typing ? ' · печатает…' : ''}</span>
         {/* Временные хиты — голубой хвост поверх полосы и «+N» в числе: они
             уходят первыми и не лечатся, поэтому цвет свой, а не продолжение
             красного. Точки под полосой — состояния и концентрация словами в
@@ -444,7 +445,7 @@ function SceneHeader({ title, location, objective, turn, chapter, illustration, 
           не добавляла ни тем, ни другим. */}
       {/* `turn` — номер сцены, а не ход отряда: он растёт только при переходе
           Директора. Подпись «ХОД» читалась как замерший счётчик действий. */}
-      <div className="scene-title"><span>ГЛАВА {chapter} · СЦЕНА {turn}</span><h1>{title}</h1><p><Target size={13} />{location}</p></div>
+      <div className="scene-title"><span>Глава {chapter} · сцена {turn}</span><h1>{title}</h1><p><Target size={13} />{location}</p></div>
       {/* Время суток и погода стоят рядом с названием места: это часть ответа
           на вопрос «где мы», а не отдельная панель. */}
       <SceneWeather weather={weather} />
@@ -473,7 +474,24 @@ function SceneHeader({ title, location, objective, turn, chapter, illustration, 
   )
 }
 
-function DiceCheckCard({ check, onRoll, onCancel }: { check: PendingCheck; onRoll: () => void; onCancel: () => void }) {
+function ProposalQuestion({ busy, answer, onAsk }: { busy: boolean; answer: string; onAsk: (text: string) => Promise<CommandOutcome> }) {
+  const [question, setQuestion] = useState('')
+  const [error, setError] = useState('')
+  return <form className="proposal-dialogue" onSubmit={async (event) => {
+    event.preventDefault()
+    if (busy || !question.trim()) return
+    setError('')
+    const outcome = await onAsk(question.trim())
+    if (outcome.ok) setQuestion('')
+    else setError(outcome.error)
+  }}>
+    <label>Уточнить перед действием<input value={question} onChange={(event) => setQuestion(event.target.value)} disabled={busy} placeholder="Например: что произойдёт при неудаче?" /></label>
+    <button type="submit" disabled={busy || !question.trim()}>Спросить ведущего</button>
+    {(error || answer) && <p role="status">{error || answer}</p>}
+  </form>
+}
+
+function DiceCheckCard({ check, onRoll, onCancel, busy = false, children }: { check: PendingCheck; onRoll: () => void; onCancel: () => void; busy?: boolean; children?: React.ReactNode }) {
   const rolling = check.status === 'rolling'
   const resolving = check.status === 'resolving'
   // Пока кость «катится», на грани мелькают случайные числа — сам результат
@@ -502,12 +520,13 @@ function DiceCheckCard({ check, onRoll, onCancel }: { check: PendingCheck; onRol
           <div><dt>При провале</dt><dd>{check.proposal.on_failure}</dd></div>
         </dl>
       </div>}
-      <button className="d20-button" onClick={onRoll} disabled={check.status !== 'ready'} aria-label={`${check.result ? 'Повторить отправку результата' : check.proposal ? 'Подтвердить и бросить d20' : 'Бросить d20'}: ${check.label}`}>
+      <button className="d20-button" onClick={onRoll} disabled={busy || check.status !== 'ready'} aria-label={`${check.result ? 'Повторить отправку результата' : check.proposal ? 'Подтвердить и бросить d20' : 'Бросить d20'}: ${check.label}`}>
         <i><b>{shownValue}</b><small>d20</small></i>
         <span>{rolling ? 'Кость катится…' : resolving ? `${check.result?.value} ${check.modifier >= 0 ? '+' : '−'} ${Math.abs(check.modifier)} = ${check.result?.total}` : check.result ? 'Повторить отправку результата' : check.proposal ? 'Подтвердить и бросить' : 'Бросить кубик'}</span>
       </button>
-      <button className="cancel-check" onClick={onCancel} disabled={check.status === 'rolling' || (Boolean(check.proposal) && check.status === 'resolving')}>{check.result ? 'Закрыть проверку' : 'Отказаться от действия'}</button>
+      <button className="cancel-check" onClick={onCancel} disabled={busy || check.status === 'rolling' || (Boolean(check.proposal) && check.status === 'resolving')}>{check.result ? 'Закрыть проверку' : 'Отказаться от действия'}</button>
       <p>{resolving ? 'Рассказчик учитывает результат и продолжает сцену…' : check.proposal ? 'До подтверждения ход и ресурсы не расходуются. Можно отказаться и описать другой способ.' : 'Нажми на кость — что выпадет, то и будет.'}</p>
+      {children}
     </div>
   )
 }
@@ -586,30 +605,26 @@ function InviteModal({ code, onClose }: { code: string; onClose: () => void }) {
   )
 }
 
-function CharactersView({ players, selectedId, turnId, accessibleHeroIds, onSelect, onEdit }: { players: Player[]; selectedId: string; turnId: string; accessibleHeroIds: string[]; onSelect: (id: string) => void; onEdit: (id: string) => void }) {
+function CharactersView({ players, selectedId, turnId, combatActive, accessibleHeroIds, onSelect, onEdit }: { players: Player[]; selectedId: string; turnId: string; combatActive: boolean; accessibleHeroIds: string[]; onSelect: (id: string) => void; onEdit: (id: string) => void }) {
   const active = players.find((player) => player.id === selectedId) ?? players[0]
   const canEdit = accessibleHeroIds.includes(active.id)
   return (
-    <section className="section-page">
+    <section className="section-page characters-page">
       <PageHeader eyebrow="ВАШ ОТРЯД" title="Персонажи" description="Герои кампании, их состояние и положение в текущей сцене." />
-      <div className="character-actions-bar"><span>Выбран: <b>{active.character}</b></span><button disabled={!canEdit} onClick={() => onEdit(active.id)}>{canEdit ? <PencilIcon /> : <LockKeyhole size={14} />}{canEdit ? 'Открыть и редактировать лист' : 'Нет доступа к герою'}</button></div>
-      <div className="character-grid">
+      <div className="character-actions-bar"><span>Выбран: <b>{active.character}</b></span><button disabled={!canEdit} onClick={() => onEdit(active.id)}>{canEdit ? <PencilIcon /> : <LockKeyhole size={14} />}{canEdit ? active.characterSetupRequired ? 'Продолжить создание героя' : 'Открыть и редактировать лист' : 'Нет доступа к герою'}</button></div>
+      <div className={`character-grid ${players.length === 1 ? 'single-hero' : ''}`}>
         {players.map((player) => (
           <button key={player.id} disabled={!accessibleHeroIds.includes(player.id)} className={`character-sheet ${selectedId === player.id ? 'active' : ''} ${accessibleHeroIds.includes(player.id) ? '' : 'locked'}`} onClick={() => onSelect(player.id)}>
-            <div className="character-art" data-face={heroFaceMode(player)} style={heroFaceStyle(player)}>{!hasHeroPortrait(player) && <HeroFaceInitials hero={player} />}<span className={player.online ? 'online' : ''}>{player.online ? 'В СЕТИ' : 'НЕ В СЕТИ'}</span></div>
-            <div className="character-info"><small>{player.name} играет за</small><h2>{player.character}</h2><p>{player.role}</p>
+            <div className="character-art" data-face={heroFaceMode(player)} style={heroFaceStyle(player)}>{!hasHeroPortrait(player) && <HeroFaceInitials hero={player} />}<div className="character-statuses"><span className={player.online ? 'online' : ''}>{player.online ? 'В сети' : 'Не в сети'}</span>{combatActive && turnId === player.id && <em><Crown size={13} />Сейчас ходит</em>}</div></div>
+            <div className="character-info"><small>{player.name} играет за</small><h2>{player.character}</h2><p>{playerRoleLabel(player)}</p>
               <div className="character-stats"><span><b>{player.hp}</b> / {player.maxHp}<small>Здоровье</small></span><span><b>{player.armor}</b><small>Класс доспеха</small></span><span><b>{player.speed} фт</b><small>Скорость</small></span></div>
             </div>
-            {turnId === player.id && <em><Crown size={13} />Сейчас ходит</em>}
           </button>
         ))}
       </div>
-      <div className="asset-note"><WandIcon /><div><b>Визуальные образы управляются игровым движком</b><p>У каждого существа есть тип, координаты и ссылка на ассет. Рассказчик может вызвать инструмент появления сущности; интерфейс подставит подходящую модель автоматически.</p></div></div>
     </section>
   )
 }
-
-function WandIcon() { return <div className="wand-icon"><Sparkles size={21} /></div> }
 
 function PencilIcon() { return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9"><path d="m15 5 4 4L8 20H4v-4L15 5Z"/><path d="m13 7 4 4"/></svg> }
 
@@ -674,7 +689,7 @@ function DeathScreen({ heroes, partyDefeated, busy, error, canResolve, onResolve
         const replacing = replacementOpen[hero.id] === true
         return <article key={hero.id} className="fallen-hero-card">
           <div className="fallen-hero-portrait" data-face={heroFaceMode(hero)} style={heroFaceStyle(hero)}>{!hasHeroPortrait(hero) && <HeroFaceInitials hero={hero} />}<Skull size={22} /></div>
-          <div className="fallen-hero-name"><small>ПОГИБШИЙ ГЕРОЙ</small><strong>{hero.character}</strong><span>{hero.role} · {hero.level} уровень</span></div>
+          <div className="fallen-hero-name"><small>ПОГИБШИЙ ГЕРОЙ</small><strong>{hero.character}</strong><span>{playerRoleLabel(hero)}</span></div>
           {controllable ? <div className="death-resolution-actions">
             <button className="resurrect-hero" disabled={busy} onClick={() => { setLocalError(null); onResolve(hero.id, 'resurrect') }}><Sparkles size={17} /><span><strong>Воскресить</strong><small>Вернётся с 1 ОЗ</small></span></button>
             {!replacing ? <button disabled={busy} onClick={() => setReplacementOpen((current) => ({ ...current, [hero.id]: true }))}><Users size={17} /><span><strong>Новый герой</strong><small>Заменит погибшего и откроет лист</small></span></button> : <div className="replacement-name-field">
@@ -899,6 +914,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   // закреплённый за аккаунтом: на этом различии держится мастер создания.
   const ownedHeroIds = (currentMembership?.heroIds ?? account.heroIds ?? []).filter((id) => partyIdSet.has(id))
   const [selectedHeroId, setSelectedHeroId] = useState(accessibleHeroIds[0])
+  const activePlayer = partyPlayers.find((player) => player.id === selectedHeroId && accessibleHeroIds.includes(player.id)) ?? partyPlayers.find((player) => accessibleHeroIds.includes(player.id)) ?? partyPlayers[0] ?? state.players[0]
   const alertTurnActorId = currentTurnActorId(state)
   const alertCombatActive = Boolean(state.mechanics?.combat?.active && state.mechanics.combat.initiative?.length)
   const alertActorName = partyPlayers.find((player) => player.id === alertTurnActorId)?.character ?? 'герой'
@@ -1090,8 +1106,11 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     // У администратора accessibleHeroIds — весь отряд, и прежнее условие
     // затягивало его в бесконечную цепочку чужих мест без выхода.
     const pendingHero = partyPlayers.find((hero) => ownedHeroIds.includes(hero.id) && hero.characterSetupRequired)
-    if (pendingHero && creatingPlayerId == null && !heroWizardDismissed) setCreatingPlayerId(pendingHero.id)
-  }, [creatingPlayerId, heroWizardDismissed, ownedHeroIds, partyPlayers])
+    if (pendingHero && creatingPlayerId == null && editingPlayerId == null && !heroWizardDismissed) {
+      if (pendingHero.characterSetupStage === 'leveling') setEditingPlayerId(pendingHero.id)
+      else setCreatingPlayerId(pendingHero.id)
+    }
+  }, [creatingPlayerId, editingPlayerId, heroWizardDismissed, ownedHeroIds, partyPlayers])
   useEffect(() => {
     window.localStorage.setItem(UI_SCALE_KEY, String(uiScale))
     /* Масштаб живёт на корне документа, а не на `.app`: шкала кегля объявлена
@@ -1277,6 +1296,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   }, [state.sessionCode, state.scene.location_id, state.scene.location])
   const combatUnderway = Boolean(state.mechanics?.combat?.active)
   const travelBlocked = state.isNarrating
+    || Boolean(activePlayer?.characterSetupRequired)
     || tacticalBusy
     || Boolean(state.pendingCheck || state.pendingAction)
     || combatUnderway
@@ -1367,7 +1387,6 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
       body: JSON.stringify({ actor_id: actorId, typing }),
     }).catch(() => undefined)
   }, [state.sessionCode])
-  const activePlayer = partyPlayers.find((player) => player.id === selectedHeroId && accessibleHeroIds.includes(player.id)) ?? partyPlayers.find((player) => accessibleHeroIds.includes(player.id)) ?? partyPlayers[0] ?? state.players[0]
   // Без выбранной кампании игровую комнату рисовать нечем: раньше её место
   // занимал демо-мир, и новый аккаунт попадал в чужую историю. Проверка стоит
   // после всех хуков и до первого обращения к activePlayer.
@@ -1447,7 +1466,15 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const canControlHero = Boolean(mapHero && partyIdSet.has(mapActorId) && (isAdmin || accessibleHeroIds.includes(mapActorId)))
   const summonControllerIds = mapSummon ? [mapSummon.ownerId, mapSummon.controllerId] : []
   const canControlSummon = Boolean(mapSummon && mapSummon.faction === 'party' && (isAdmin || summonControllerIds.some((id) => accessibleHeroIds.includes(id))))
-  const canAct = !tacticalBusy && lifecycleStatus === 'active' && !partyDefeated && !deadHeroIds.has(mapActorId) && (canControlHero || canControlSummon)
+  const canAct = !tacticalBusy && !mapHero?.characterSetupRequired && lifecycleStatus === 'active' && !partyDefeated && !deadHeroIds.has(mapActorId) && (canControlHero || canControlSummon)
+  const needsHeroSetup = Boolean(activePlayer.characterSetupRequired)
+  const openHeroEditor = (heroId: string) => {
+    if (!accessibleHeroIds.includes(heroId)) return
+    const hero = state.players.find((player) => player.id === heroId)
+    setHeroWizardDismissed(false)
+    if (hero?.characterSetupRequired && hero.characterSetupStage !== 'leveling') setCreatingPlayerId(heroId)
+    else setEditingPlayerId(heroId)
+  }
   const canFinishTurn = canAct && combatActive
   const reactionWindow = state.mechanics?.combat?.reaction_window ?? null
   const reactionActor = reactionWindow ? [...state.players, ...(state.actors ?? [])].find((actor) => actor.id === reactionWindow.actor_id) : null
@@ -1463,7 +1490,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
 
   return (
     <div className={`app ${sidebarCollapsed ? 'sidebar-is-collapsed' : ''}`} style={{
-      '--ui-sidebar-width': `${Math.round(276 + Math.max(0, uiScale - 100) * .4)}px`,
+      '--ui-sidebar-width': `${Math.round(256 + Math.max(0, uiScale - 100) * .4)}px`,
       '--ui-hud-width': `${Math.round(246 + Math.max(0, uiScale - 100) * .25)}px`,
     } as React.CSSProperties}>
       <Sidebar players={partyPlayers} selectedPlayerId={activePlayer.id} turnPlayerId={turnActorId} accessibleHeroIds={accessibleHeroIds} typingActorIds={visibleTypingActorIds} isAdmin={isAdmin} deathSavesByHero={state.mechanics?.death?.saving_throws} statusByHero={heroStatusByHero} onSelect={setSelectedHeroId} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(value => !value)} view={view} onNavigate={navigate} aiConnected={Boolean(aiHealth?.configured)} />
@@ -1480,7 +1507,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             {progression && progression.milestones_since_level > 0 && (progression.level_up_available
               ? <button
                   className="progression-status earned"
-                  onClick={() => setEditingPlayerId(ownedHeroIds[0] ?? accessibleHeroIds[0] ?? activePlayer.id)}
+                  onClick={() => openHeroEditor(ownedHeroIds[0] ?? accessibleHeroIds[0] ?? activePlayer.id)}
                   title="Отряд заслужил уровень. Откройте лист героя, чтобы выбрать умения."
                 ><Sparkles size={13} /><span>Уровень готов</span></button>
               : <div
@@ -1517,7 +1544,12 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             <div className="account-chip"><span>{account.name}<small>{activePlayer.character}</small></span><button onClick={onLogout} title="Выйти"><LogOut size={15} /></button></div>
           </div>
         </header>
-        {view === 'room' && <div className={`game-area ${combatActive ? 'combat-active' : 'exploration-active'} ${state.isNarrating ? 'is-narrating' : ''}`}>
+        {view === 'room' && <div className={`game-area ${combatActive ? 'combat-active' : 'exploration-active'} ${state.isNarrating ? 'is-narrating' : ''} ${needsHeroSetup ? 'needs-hero-setup' : ''}`}>
+          {needsHeroSetup && <section className="hero-setup-notice" aria-label="Подготовка героя">
+            <div><strong>{activePlayer.characterSetupStage === 'leveling' ? `Подготовьте героя к ${(state.character_start_level ?? 1)}-му уровню` : 'Создайте героя, чтобы начать приключение'}</strong>
+              <p>{activePlayer.characterSetupStage === 'leveling' ? `Сейчас уровень ${activePlayer.level}. Сохранённые выборы останутся при возвращении.` : 'Выберите класс, расу и историю. После подготовки станут доступны игровые действия.'}</p></div>
+            <button disabled={!accessibleHeroIds.includes(activePlayer.id)} onClick={() => openHeroEditor(activePlayer.id)}>{accessibleHeroIds.includes(activePlayer.id) ? activePlayer.characterSetupStage === 'leveling' ? 'Продолжить подготовку' : 'Создать героя' : 'Ожидаем владельца героя'}</button>
+          </section>}
           {lifecycleStatus === 'paused' && <CampaignPausedNotice
             canManage={canManageLifecycle}
             busy={lifecycleBusy}
@@ -1540,6 +1572,11 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             players={partyPlayers}
             turnActorId={mapActorId}
             typingActorId={activePlayer.id}
+            canConverse={accessibleHeroIds.includes(activePlayer.id)}
+            dialogueBusy={tacticalBusy || merchantBusy}
+            onCancelDialogue={gameSession.cancelDialogue}
+            dialogueContext={gameSession.pendingClarification?.actor_id === activePlayer.id && gameSession.pendingClarification.campaign_id === state.sessionCode ? gameSession.pendingClarification : null}
+            dialogueDraft={gameSession.dialogueDraft?.actorId === activePlayer.id && gameSession.dialogueDraft.campaignId === state.sessionCode ? gameSession.dialogueDraft : null}
             canAct={canAct && !state.pendingCheck && !state.pendingAction}
             tacticalBusy={tacticalBusy || Boolean(state.pendingCheck || state.pendingAction)}
             tacticalError={tacticalError}
@@ -1562,7 +1599,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             leaveLocationDisabled={travelBlocked}
             onOpenMerchant={openMerchant}
             onFinishTurn={finishMapTurn}
-            onFreeAction={(text) => submitAction(text, activePlayer.id)}
+            onFreeAction={(text, kind) => submitAction(text, activePlayer.id, undefined, kind)}
             onNpcAction={(text, npcId) => submitAction(text, activePlayer.id, npcId)}
             onCaptiveAction={(captiveId, action, skill) => captiveAction(activePlayer.id, captiveId, action, skill)}
             onLootContainer={(containerId, lines, recipientId) => lootContainer(activePlayer.id, containerId, lines, recipientId)}
@@ -1586,7 +1623,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           >
             <ChatPanel messages={state.messages} isNarrating={state.isNarrating} interaction={state.agentInteraction} players={partyPlayers} typingActorIds={visibleTypingActorIds} currentPlayerId={activePlayer.id} canAct={canAct} combatActive={combatActive} suggestedActions={actionHints} sceneKey={`${state.scene.location}|${state.scene.title}`} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={() => continueAgentInteraction(activePlayer.id)} onWhy={() => { void submitAction('/why', activePlayer.id) }} onSpeak={voiceSupported && voiceMode !== 'off' ? (text) => speakNarration(text, narrationVoice) : null} />
             <div className="player-hud-stack">
-              <PlayerHud player={activePlayer} combatActive={combatActive} status={heroStatusByHero[activePlayer.id]} hazards={((state.mechanics as { hazards?: Record<string, Array<{ id: string; label?: string; severity?: string; description?: string }>> } | undefined)?.hazards?.[activePlayer.id] ?? [])} onCharacter={() => { setEditingPlayerId(activePlayer.id) }} onInventory={() => navigate('inventory')} />
+              <PlayerHud player={activePlayer} combatActive={combatActive} status={heroStatusByHero[activePlayer.id]} hazards={((state.mechanics as { hazards?: Record<string, Array<{ id: string; label?: string; severity?: string; description?: string }>> } | undefined)?.hazards?.[activePlayer.id] ?? [])} onCharacter={() => openHeroEditor(activePlayer.id)} onInventory={() => navigate('inventory')} />
 
             </div>
           </DungeonMap>
@@ -1595,8 +1632,9 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           void submitAction(action, activePlayer.id).then((outcome) => { if (outcome.ok) navigate('room') })
         }} />}
         {view === 'journal' && <JournalView state={state} />}
-        {view === 'characters' && <CharactersView players={partyPlayers} selectedId={activePlayer.id} turnId={turnActorId} accessibleHeroIds={accessibleHeroIds} onSelect={setSelectedHeroId} onEdit={setEditingPlayerId} />}
+        {view === 'characters' && <CharactersView players={partyPlayers} selectedId={activePlayer.id} turnId={turnActorId} combatActive={combatActive} accessibleHeroIds={accessibleHeroIds} onSelect={setSelectedHeroId} onEdit={openHeroEditor} />}
         {view === 'inventory' && <InventoryView
+          onCreateHero={accessibleHeroIds.includes(activePlayer.id) ? () => openHeroEditor(activePlayer.id) : undefined}
           player={activePlayer}
           party={partyPlayers}
           enemyTargets={(state.enemies ?? []).filter((candidate) => candidate.alive && (candidate.hp == null || candidate.hp > 0)).map((candidate) => ({ id: candidate.id, label: candidate.name }))}
@@ -1641,24 +1679,29 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         </section>}
         {state.pendingAction && <details className="pending-check-overlay" aria-label="План боевого манёвра" aria-live="polite" open>
           <summary><Footprints size={15} /><span>План манёвра · {state.pendingAction.proposal.movement_feet} фт</span><ChevronDown size={16} /></summary>
-          <div className="dice-check has-proposal">
+          {canAct && state.pendingAction.playerId === activePlayer.id ? <div className="dice-check has-proposal">
             <div className="dice-copy"><span>План манёвра</span><strong>{state.pendingAction.proposal.title}</strong></div>
             <div className="improvisation-proposal">
               <dl><div><dt>Цена</dt><dd>{state.pendingAction.proposal.cost}</dd></div>
                 <div><dt>Маршрут</dt><dd>{state.pendingAction.proposal.path.length ? 'Отмечен цифрами на карте' : 'Герой уже в пределах досягаемости'}</dd></div></dl>
               <p>{state.pendingAction.proposal.consequence}</p>
             </div>
-            <button className="d20-button" onClick={() => { void confirmPendingAction() }} disabled={state.pendingAction.status !== 'ready'}>
+            <button className="d20-button" onClick={() => { void confirmPendingAction() }} disabled={state.isNarrating || state.pendingAction.status !== 'ready'}>
               <span>{state.pendingAction.status === 'submitting' ? 'Манёвр выполняется…' : 'Подтвердить манёвр'}</span>
             </button>
-            <button className="cancel-check" onClick={cancelPendingAction} disabled={state.pendingAction.status !== 'ready'}>Отказаться</button>
-          </div>
+            <button className="cancel-check" onClick={cancelPendingAction} disabled={state.isNarrating || state.pendingAction.status !== 'ready'}>Отказаться</button>
+            {state.pendingAction.status === 'ready' && <button className="cancel-check" disabled={state.isNarrating} onClick={gameSession.editPendingProposal}>Изменить способ</button>}
+            {state.pendingAction.status === 'ready' && <ProposalQuestion busy={state.isNarrating} answer={gameSession.lastDialogueAnswer} onAsk={(text) => submitAction(text, state.pendingAction!.playerId, undefined, 'question')} />}
+          </div> : <div className="turn-wait"><LockKeyhole size={18} /><span>Выберите героя, которому принадлежит это предложение. Подтверждение доступно в его ход.</span></div>}
         </details>}
         {state.pendingCheck && (
           <details key={state.pendingCheck.check_id ?? state.pendingCheck.action} className="pending-check-overlay" open aria-live="polite">
             <summary><Dices size={15} /><span>Ожидающая проверка</span><ChevronDown size={16} /></summary>
-            {canAct
-              ? <DiceCheckCard check={state.pendingCheck} onRoll={rollPendingCheck} onCancel={cancelPendingCheck} />
+            {canAct && state.pendingCheck.playerId === activePlayer.id
+              ? <DiceCheckCard check={state.pendingCheck} onRoll={rollPendingCheck} onCancel={cancelPendingCheck} busy={state.isNarrating}>
+                {state.pendingCheck.status === 'ready' && !state.pendingCheck.result && !state.pendingCheck.command && <button className="cancel-check" disabled={state.isNarrating} onClick={gameSession.editPendingProposal}>Изменить способ</button>}
+                {state.pendingCheck.status === 'ready' && !state.pendingCheck.result && <ProposalQuestion busy={state.isNarrating} answer={gameSession.lastDialogueAnswer} onAsk={(text) => submitAction(text, state.pendingCheck!.playerId, undefined, 'question')} />}
+              </DiceCheckCard>
               : <div className="turn-wait"><LockKeyhole size={18} /><span><b>Бросок выполняет владелец героя</b><small>Ожидаем игрока: {turnActorName}</small></span></div>}
           </details>
         )}
@@ -1684,19 +1727,26 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         rulesetId={state.ruleset_id}
         required={Boolean(state.players.find((player) => player.id === creatingPlayerId)?.characterSetupRequired)}
         onClose={() => { setCreatingPlayerId(null); setHeroWizardDismissed(true) }}
-        onImport={(source) => importCharacter(creatingPlayerId, source)}
+        onImport={async (source) => {
+          await importCharacter(creatingPlayerId, source)
+          // При повышенном старте импорт фиксирует только первый уровень;
+          // дальше тот же игрок продолжает подготовку во вкладке «Развитие».
+          if ((state.character_start_level ?? 1) > 1) setEditingPlayerId(creatingPlayerId)
+        }}
         onRollAbilities={() => gameSession.rollCharacterAbilities(creatingPlayerId)}
         onRollWealth={(classId) => gameSession.rollCharacterWealth(creatingPlayerId, classId)}
       />}
       {editingPlayerId && <CharacterEditor
+        key={editingPlayerId}
         player={state.players.find((player) => player.id === editingPlayerId) ?? activePlayer}
         rulesetId={state.ruleset_id}
-        onClose={() => setEditingPlayerId(null)}
+        targetLevel={state.character_start_level}
+        onClose={() => { setEditingPlayerId(null); setHeroWizardDismissed(true) }}
         onSave={(patch) => updatePlayer(editingPlayerId, patch)}
         onImport={(source) => importCharacter(editingPlayerId, source)}
         onLevelUp={() => {
           const player = state.players.find((candidate) => candidate.id === editingPlayerId)
-          if (player) levelUpCharacter(player.id, player.level)
+          return player ? levelUpCharacter(player.id, player.level) : Promise.resolve({ ok: false, error: 'Герой не найден' })
         }}
       />}
       {reactionWindow && canAnswerReaction && <ReactionPrompt actorName={String(reactionActorName)} sourceName={String(reactionSourceName)} window={reactionWindow} busy={tacticalBusy} beneficiaries={reactionBeneficiaries} onChoose={(actionId, beneficiaryId) => useCombatAction(reactionWindow.actor_id, actionId, reactionWindow.source_actor_id, undefined, beneficiaryId)} onDecline={() => useCombatAction(reactionWindow.actor_id, 'decline-reaction')} />}

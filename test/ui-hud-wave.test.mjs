@@ -482,12 +482,12 @@ test('инструменты мастера собраны в меню, на в�
   assert.doesNotMatch(rootSource, /className="invite-button"[^\n]*Играть дальше арками/u)
 })
 
-test('капс остаётся названиям разделов, подписи к данным — обычным регистром', () => {
+test('названия разделов сохранены, подписи к данным — обычным регистром', () => {
   for (const caps of ['ИСТОРИЯ УРОНА', 'ЗАДАЧИ {quests.length}', '<header>РАУНД', 'ПРОТИВНИК', 'МОДИФИКАТОР', '<span>ВЕХИ</span>', 'ТРЕБУЕТСЯ ПРОВЕРКА', 'БЕЗ СОЗНАНИЯ']) {
     assert.equal(appSource.includes(caps), false, `подпись к данным набрана капсом: ${caps}`)
   }
-  for (const kept of ['ЧТО ПРОИСХОДИТ', 'ОТРЯД · ', 'ПЕРВЫЕ ШАГИ', 'КНИГА ЗАКЛИНАНИЙ']) {
-    assert.equal(appSource.includes(kept), true, `название раздела потеряло капс: ${kept}`)
+  for (const kept of ['Хроника', 'ОТРЯД · ', 'ПЕРВЫЕ ШАГИ', 'КНИГА ЗАКЛИНАНИЙ']) {
+    assert.equal(appSource.includes(kept), true, `название раздела потерялось: ${kept}`)
   }
   assert.doesNotMatch(stylesSource, /\.turn-resolution \{[^}]*text-transform: uppercase/u)
   assert.doesNotMatch(stylesSource, /\.initiative-status-label \{[^}]*text-transform: uppercase/u)

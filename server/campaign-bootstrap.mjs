@@ -7,7 +7,7 @@ import { applyNpcWorldEvent, planSceneNpcPlacementEvents } from './npc-positioni
 import { serializeTacticalMap, reachableCells, SIZE_CLASSES } from './tactical-map.mjs'
 import { ECONOMY_POLICY_ID, createStarterMerchant, normalizeMerchants } from './merchant-economy.mjs'
 import { withStarterKit } from './starter-kit.mjs'
-import { partyPresentationFor } from './character-lifecycle.mjs'
+import { MAX_CHARACTER_LEVEL, partyPresentationFor } from './character-lifecycle.mjs'
 import { ensureSceneWorldMemory } from './scene-memory.mjs'
 import { createCampaignWorldMap } from './world-map.mjs'
 import { DEFAULT_PARTY_DECISION_POLICY } from './party-decision.mjs'
@@ -18,7 +18,7 @@ import { LEGACY_DEFAULT_RULESET_ID, rulesetLock } from './ruleset-config.mjs'
 import { getWorldTemplate, worldTemplateConcept, worldTemplateOpening } from './world-template-catalog.mjs'
 import { isLiveTheme, resolveSceneTheme, SCENE_THEME_IDS } from './scene-themes.mjs'
 
-const prompt = readFileSync(fileURLToPath(new URL('../prompts/campaign_creator/v3.txt', import.meta.url)), 'utf8')
+const prompt = readFileSync(fileURLToPath(new URL('../prompts/campaign_creator/v4.txt', import.meta.url)), 'utf8')
 
 /**
  * Создание кампании — не ход. Оно просит у модели на порядок больше текста
@@ -78,6 +78,15 @@ function openingNarrationFacts(opening, locationEntity, campaignCode) {
 function integer(value, fallback, minimum, maximum) {
   const number = Number(value)
   return Number.isSafeInteger(number) ? Math.max(minimum, Math.min(maximum, number)) : fallback
+}
+
+function startingLevel(value) {
+  if (value == null || value === '') return 1
+  const number = Number(value)
+  if (!Number.isSafeInteger(number) || number < 1 || number > MAX_CHARACTER_LEVEL) {
+    throw new Error(`Начальный уровень должен быть целым числом от 1 до ${MAX_CHARACTER_LEVEL}`)
+  }
+  return number
 }
 
 function decimal(value, fallback, minimum, maximum) {
@@ -352,12 +361,13 @@ export class CampaignBootstrapper {
     this.diceService = diceService
   }
 
-  async create({ code, name, partyName, world: rawWorld, worldTemplateId, world_template_id, players: rawPlayers, merchants: rawMerchants, rulesetId, ruleset_id } = {}) {
+  async create({ code, name, partyName, world: rawWorld, worldTemplateId, world_template_id, players: rawPlayers, merchants: rawMerchants, rulesetId, ruleset_id, startLevel, start_level } = {}) {
     const campaignCode = clean(code, 24).toUpperCase()
     const campaignName = clean(name, 120) || 'Новая кампания'
     const groupName = clean(partyName, 120) || 'Новый отряд'
     if (!/^[A-Z0-9-]{3,24}$/.test(campaignCode)) throw new Error('Некорректный код кампании')
     if (!Array.isArray(rawPlayers) || rawPlayers.length < 1 || rawPlayers.length > 12) throw new Error('Для новой кампании выберите от 1 до 12 героев')
+    const campaignStartLevel = startingLevel(start_level ?? startLevel)
     const selectedRuleset = rulesetLock(ruleset_id ?? rulesetId, { fallback: LEGACY_DEFAULT_RULESET_ID, requireCreation: true })
     const heroes = rawPlayers.map(normalizeHero).map((hero) => hero.characterSetupRequired
       ? hero
@@ -389,7 +399,7 @@ export class CampaignBootstrapper {
             // что подмешивать. Оно серверное, но идёт тем же data-only путём:
             // отдельного доверенного канала ради него заводить не за чем.
             { role: 'user', content: buildDataOnlyContext({
-              campaign_setup: { campaign: campaignName, party: groupName, party_size: heroes.length, world, heroes: heroes.map((hero) => ({ character: hero.character, role: hero.role, species: hero.species, background: hero.background, backstory: hero.backstory, traits: hero.traits, ideals: hero.ideals, bonds: hero.bonds, flaws: hero.flaws })) },
+              campaign_setup: { campaign: campaignName, party: groupName, party_size: heroes.length, starting_level: campaignStartLevel, world, heroes: heroes.map((hero) => ({ character: hero.character, role: hero.role, species: hero.species, background: hero.background, backstory: hero.backstory, traits: hero.traits, ideals: hero.ideals, bonds: hero.bonds, flaws: hero.flaws })) },
               ...(inspirationPromptSeed(inspiration) ? { inspiration_seed: inspirationPromptSeed(inspiration) } : {}),
             }) },
           ],
@@ -582,6 +592,7 @@ export class CampaignBootstrapper {
     }
     return {
       sessionCode: campaignCode,
+      character_start_level: campaignStartLevel,
       campaign: campaignName === 'Новая кампания' ? opening.campaignName : campaignName,
       partyName: groupName === 'Новый отряд' ? opening.partyName : groupName,
       partyMemberIds: positionedHeroes.map((hero) => hero.id),

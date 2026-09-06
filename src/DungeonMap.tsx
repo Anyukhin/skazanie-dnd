@@ -21,7 +21,7 @@ import {
   Gavel, Soup, Unlink, UserLock, Handshake, ShieldAlert, Beer, Ear, Eye,
   Mail, MailOpen, MailX, HandHeart,
 } from 'lucide-react'
-import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, GuardResolution, LetterAddresseeKind, MapCell, MapFeedback, Merchant, Message, ParleyOutcome, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp, TavernDiceApproach } from './types'
+import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, GuardResolution, LetterAddresseeKind, MapCell, MapFeedback, Merchant, Message, ParleyOutcome, PendingCheck, Player, PlayerRequestKind, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp, TavernDiceApproach } from './types'
 import { fetchWithTimeout, getAiHealth } from './ai-client'
 import type { NarrationPreview } from './ai-client'
 import {
@@ -871,7 +871,7 @@ export function boardVisualTheme(theme: SceneVisualTheme) {
   return 'map-theme-wild'
 }
 
-export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, visualBatch, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, leaveLocationDisabled, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
+export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, canConverse, dialogueBusy, dialogueDraft, dialogueContext, onCancelDialogue, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, visualBatch, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, leaveLocationDisabled, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -899,7 +899,12 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   leaveLocationDisabled?: boolean
   onOpenMerchant: (merchantId: string) => void
   onFinishTurn: () => Promise<CommandOutcome>
-  onFreeAction: (text: string) => Promise<CommandOutcome>
+  canConverse: boolean
+  dialogueBusy: boolean
+  dialogueDraft?: { id: number; text: string; kind: PlayerRequestKind } | null
+  dialogueContext?: { action: string; question: string } | null
+  onCancelDialogue: () => void
+  onFreeAction: (text: string, kind?: PlayerRequestKind) => Promise<CommandOutcome>
   onNpcAction: (text: string, npcId: string) => Promise<CommandOutcome>
   onCaptiveAction: (captiveId: string, action: CaptiveAction, skill?: CaptiveInterrogationSkill) => Promise<CommandOutcome>
   onLootContainer: (containerId: string, lines: Array<{ item_instance_id: string; quantity: number }>, recipientId?: string) => Promise<CommandOutcome>
@@ -923,7 +928,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   children?: React.ReactNode
 }) {
   const [freeText, setFreeText] = useState('')
-  const freeInputRef = useRef<HTMLInputElement | null>(null)
+  const [requestKind, setRequestKind] = useState<PlayerRequestKind>('action')
+  const conversationOnly = requestKind !== 'action'
+  const composerBlocked = narrating || dialogueBusy || (conversationOnly ? !canConverse : Boolean(state.pendingCheck || state.pendingAction) || !canAct)
+  const freeInputRef = useRef<HTMLTextAreaElement | null>(null)
   const typingTimeoutRef = useRef<number | null>(null)
   const typingActiveRef = useRef(false)
   const [openTokenLabelId, setOpenTokenLabelId] = useState<string | null>(null)
@@ -977,6 +985,16 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       onTypingChange(typingActorId, false)
     }
   }, [onTypingChange, typingActorId])
+  useEffect(() => {
+    setFreeText('')
+    setRequestKind('action')
+  }, [state.sessionCode, typingActorId])
+  useEffect(() => {
+    if (!dialogueDraft) return
+    setFreeText(dialogueDraft.text)
+    setRequestKind(dialogueDraft.kind)
+    freeInputRef.current?.focus()
+  }, [dialogueDraft])
   /* Высота панели и ширина хроники переживают перезагрузку. Описание действия
      больше не отделено ручкой: она дробила нижнюю полосу и заставляла текст
      переноситься, хотя рядом оставалось свободное место. */
@@ -1016,7 +1034,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     const startY = event.clientY
     const startHeight = document.querySelector('.turn-rail')?.getBoundingClientRect().height ?? 292
     const move = (moveEvent: PointerEvent) => {
-      const next = Math.round(Math.min(window.innerHeight * .45, Math.max(196, startHeight + (startY - moveEvent.clientY))))
+      const next = Math.round(Math.min(window.innerHeight * .45, Math.max(120, startHeight + (startY - moveEvent.clientY))))
       setRailHeight(next)
     }
     const stop = () => {
@@ -1032,7 +1050,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     const startX = event.clientX
     const startWidth = document.querySelector('.server-column')?.getBoundingClientRect().width ?? 320
     const move = (moveEvent: PointerEvent) => {
-      const next = Math.round(Math.min(window.innerWidth * .32, Math.max(240, startWidth + (startX - moveEvent.clientX))))
+      const next = Math.round(Math.min(window.innerWidth * .4, Math.max(300, startWidth + (startX - moveEvent.clientX))))
       setServerWidth(next)
     }
     const stop = () => {
@@ -3350,6 +3368,61 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             </div>}
           </div>
       </div>}
+      <div className="dialogue-composer">
+      {dialogueContext && <div className="dialogue-context" role="status">
+        <div><small>Уточняем намерение</small><strong>{dialogueContext.action}</strong><span>{dialogueContext.question}</span></div>
+        <button type="button" disabled={narrating || dialogueBusy} onClick={onCancelDialogue}>Новая заявка</button>
+      </div>}
+      <form
+        className="rail-free-input"
+        onSubmit={async (event) => {
+          event.preventDefault()
+          if (composerBlocked) return
+          const text = freeText.trim()
+          if (!conversationOnly && pendingCommand) {
+            const outcome = await confirmPreparedCommand(text || undefined)
+            if (outcome?.ok) updateFreeText('')
+            return
+          }
+          if (!conversationOnly && selfCastReady) {
+            const outcome = await confirmSelfCast(text || undefined)
+            if (outcome?.ok) updateFreeText('')
+            return
+          }
+          if (!text) return
+          const outcome = await onFreeAction(text, requestKind)
+          if (outcome.ok) updateFreeText('')
+        }}
+      >
+
+        <select className="request-kind" aria-label="Тип реплики" value={requestKind} disabled={narrating} onChange={(event) => { setRequestKind(event.target.value as PlayerRequestKind); clearPrepared() }}>
+          <option value="action">Действие</option>
+          <option value="question">Вопрос ведущему</option>
+          <option value="discussion">Обсуждение с отрядом</option>
+        </select>
+        <div className="rail-input-shell">
+          {preparedLabel && <span className={`prepared-chip ${awaitingTarget ? 'awaiting' : ''}`}><CombatIcon id="prepared-command" kind="roll" hint="выбранное действие" size={15} compact /><b>{preparedLabel}</b><button type="button" onClick={clearPrepared} aria-label="Снять выбранное действие"><X size={12} /></button></span>}
+          <textarea
+            rows={2}
+            ref={freeInputRef}
+            value={freeText}
+            onChange={(event) => updateFreeText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+                event.preventDefault()
+                event.currentTarget.form?.requestSubmit()
+              }
+            }}
+            placeholder={requestKind === 'question' ? 'Спросите о ситуации или возможном действии' : requestKind === 'discussion' ? 'Предложите план товарищам — герой пока не действует' : dialogueContext ? 'Ответьте ведущему — исходное намерение сохранено' : preparedLabel ? 'Добавьте слова к действию — или отправьте как есть' : 'Что делает ваш герой?'}
+            aria-label={requestKind === 'question' ? 'Вопрос ведущему' : requestKind === 'discussion' ? 'Обсуждение с отрядом' : 'Действие своими словами'}
+            disabled={composerBlocked}
+            title={narrating ? 'Рассказчик разрешает предыдущее действие' : combatActive && !canAct ? `Сейчас ходит ${activeName}` : 'Отправить намерение от имени выбранного героя'}
+          />
+          <VoiceInput key={state.sessionCode + turnActorId} value={freeText} onChange={updateFreeText} disabled={composerBlocked} />
+        </div>
+        <button type="submit" disabled={composerBlocked || ((conversationOnly || !preparedLabel || awaitingTarget) && !freeText.trim())} title={narrating ? 'Рассказчик разрешает предыдущее действие' : combatActive && !canAct ? `Сейчас ходит ${activeName}` : awaitingTarget ? 'Сначала выберите цель на карте' : !preparedLabel && !freeText.trim() ? 'Сначала опишите действие' : 'Отправить действие'}><Send size={17} />Отправить</button>
+      </form>
+      </div>
       <section className="turn-rail">
         {/* Ручка высоты: тянется вверх и вниз, значение переживает перезагрузку. */}
         <div className="rail-resize" role="separator" aria-orientation="horizontal" aria-label="Высота нижней панели" onPointerDown={startRailResize} onDoubleClick={() => { setRailHeight(0); window.localStorage.removeItem(RAIL_HEIGHT_KEY) }} title="Потяните, чтобы изменить высоту. Двойной щелчок — вернуть обычную" />
@@ -3357,54 +3430,30 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           принципы 2 и 3 требуют, чтобы предложения интерфейса не были границами;
           раньше в бою на месте этого поля стоял только хотбар, и у принципа не было
           носителя в UI. Ход не расходуется до подтверждённого сервером броска. */}
-      {/* Одна строка на всё: слева колоды, справа поле и «Отправить». Выбранное
-          действие подтверждается той же кнопкой — отдельного «Подтвердить»
-          больше нет, а слова игрока уезжают вместе с командой. */}
-      <form
-        className="rail-free-input"
-        onSubmit={async (event) => {
-          event.preventDefault()
-          if (narrating) return
-          const text = freeText.trim()
-          if (pendingCommand) {
-            const outcome = await confirmPreparedCommand(text || undefined)
-            if (outcome?.ok) updateFreeText('')
-            return
-          }
-          if (selfCastReady) {
-            const outcome = await confirmSelfCast(text || undefined)
-            if (outcome?.ok) updateFreeText('')
-            return
-          }
-          if (!text) return
-          const outcome = await onFreeAction(text)
-          if (outcome.ok) updateFreeText('')
-        }}
-      >
-        <nav className="hotbar-decks" role="tablist" aria-label="Категории действий">
+      {/* Колоды стоят у карты, а выбранная команда подтверждается
+          той же формой реплики под хроникой. */}
+        <div className="hotbar-decks">
+        <nav className="hotbar-tabs" role="tablist" aria-label="Категории действий">
           {([
-            ['common', 'Основные', <CombatIcon id="deck-common" kind="deck" hint="перемещение основные действия" size={21} compact />],
-            ['weapon', 'Атаки', <CombatIcon id="deck-weapon" kind="deck" hint="оружие атака меч" size={21} compact />],
-            ['magic', 'Заклинания', <CombatIcon id="deck-magic" kind="deck" hint="магия заклинания" size={21} compact />],
-            ['class', 'Классовые', <CombatIcon id="deck-class" kind="deck" hint="классовые способности защита" size={21} compact />],
-            ['items', 'Предметы', <CombatIcon id="deck-items" kind="deck" hint="предметы зелья" size={21} compact />],
+            ['common', 'Основные', <Footprints size={18} />],
+            ['weapon', 'Атаки', <Swords size={18} />],
+            ['magic', 'Заклинания', <Sparkles size={18} />],
+            ['class', 'Классовые', <Shield size={18} />],
+            ['items', 'Предметы', <Gem size={18} />],
           ] as Array<[CombatDeck, string, React.ReactNode]>).map(([deck, label, icon]) => <button type="button" key={deck} role="tab" aria-selected={activeDeck === deck} className={activeDeck === deck ? 'active' : ''} onClick={() => setActiveDeck(deck)} disabled={tacticalBusy || (deck === 'magic' && !spells.length)} title={label}>{icon}<span>{label}</span></button>)}
         </nav>
-        <div className="rail-input-shell">
-          {preparedLabel && <span className={`prepared-chip ${awaitingTarget ? 'awaiting' : ''}`}><CombatIcon id="prepared-command" kind="roll" hint="выбранное действие" size={15} compact /><b>{preparedLabel}</b><button type="button" onClick={clearPrepared} aria-label="Снять выбранное действие"><X size={12} /></button></span>}
-          <input
-            ref={freeInputRef}
-            value={freeText}
-            onChange={(event) => updateFreeText(event.target.value)}
-            placeholder={preparedLabel ? 'Добавьте слова к действию — или отправьте как есть' : `Опишите действие ${activeName} так, как сказали бы за столом — Арбитр найдёт правило`}
-            aria-label="Действие своими словами"
-            disabled={narrating || (combatActive && !canAct)}
-            title={narrating ? 'Рассказчик разрешает предыдущее действие' : combatActive && !canAct ? `Сейчас ходит ${activeName}` : 'Отправить намерение от имени выбранного героя'}
-          />
-          <VoiceInput key={state.sessionCode + turnActorId} value={freeText} onChange={updateFreeText} disabled={narrating || (combatActive && !canAct)} />
+        {!combatActive && <button
+          type="button"
+          className="group-decision-button"
+          disabled={leaveLocationDisabled || narrating || tacticalBusy || Boolean(guardEncounter)}
+          onClick={onLeaveLocation}
+          title={guardEncounter
+            ? 'Стража стоит перед отрядом — сначала ответьте офицеру'
+            : leaveLocationDisabled
+              ? 'Сначала завершите текущее действие или проверку'
+            : 'Предложить отряду покинуть локацию. Переход начнётся после решения группы'}
+        ><DoorOpen size={18} /><span>Решение группы</span></button>}
         </div>
-        <button type="submit" disabled={narrating || (combatActive && !canAct) || ((!preparedLabel || awaitingTarget) && !freeText.trim())} title={narrating ? 'Рассказчик разрешает предыдущее действие' : combatActive && !canAct ? `Сейчас ходит ${activeName}` : awaitingTarget ? 'Сначала выберите цель на карте' : !preparedLabel && !freeText.trim() ? 'Сначала опишите действие' : 'Отправить действие'}><Send size={17} />Отправить</button>
-      </form>
       {/* Панель одна на оба режима. Раньше вне боя вместо неё показывалась полоска
           «исследование», а колоды и плитки не рендерились вовсе: игрок не видел, чем
           вообще владеет герой, пока не бросит инициативу. Место под панель в сетке
@@ -3504,27 +3553,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           {/* Кнопки шага: вне боя это подтверждение выбранной цели и двери под
               рукой, в бою — ещё нокаут, смена оружия и завершение хода. Без
               содержимого блок не рисуется, и плитки занимают всю карточку. */}
-          {(combatActive || pendingCommand || doorsAtHand.length > 0 || selectedSceneObject || !combatActive) && <div className="hotbar-turn-controls">
-            {/* Вне боя колонка управления держит два решения, которые не
-                выражаются плиткой: уйти из локации и войти в бой. Раньше они
-                стояли отдельным рядом между строкой ввода и карточкой — на
-                широком экране это была пустая полоса с одной кнопкой у края.
-                Уход показывается всегда вне боя, в том числе когда противников
-                не осталось: именно тогда уйти и хочется. Отряд он не уводит —
-                открывает голосование, а переход исполняет сервер. Пока стража
-                стоит перед отрядом, уход закрыт: сервер такой переход и не
-                пропустит (`GUARD_ENCOUNTER_BLOCKS_SCENE`). */}
-            {!combatActive && <button
-              type="button"
-              className="exploration-leave-location"
-              disabled={leaveLocationDisabled || narrating || tacticalBusy || Boolean(guardEncounter)}
-              onClick={onLeaveLocation}
-              title={guardEncounter
-                ? 'Стража стоит перед отрядом — сначала ответьте офицеру'
-                : leaveLocationDisabled
-                  ? 'Сначала завершите текущее действие или проверку'
-                : 'Предложить отряду покинуть локацию. Переход начнётся после решения группы'}
-            ><DoorOpen size={18} /><span><small>Решение группы</small><strong>Покинуть локацию</strong></span></button>}
+          {(combatActive || showStartCombat || doorsAtHand.length > 0 || selectedSceneObject) && <div className="hotbar-turn-controls">
             {!combatActive && showStartCombat && <button type="button" className="exploration-start-combat" disabled={!canAct || tacticalBusy} onClick={onStartCombat}><CombatIcon id="start-combat" kind="start-combat" hint="инициатива начать бой" size={22} compact /><span><small>Бросить инициативу</small><strong>Начать бой</strong></span></button>}
             {/* Дверь рядом — единственное, что делается и вне боя: заперто это
                 или просто прикрыто, игрок видит по самой кнопке. */}
@@ -3630,9 +3659,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             ><CombatIcon id="end-turn" kind="end-turn" hint="завершить ход" size={27} compact /><span>Завершить ход<kbd>Пробел</kbd></span></button>}
           </div>}
           </div>
-          <aside className="hotbar-detail" aria-live="polite">
+          <aside className={`hotbar-detail${!combatActive && !(combatMode === 'magic' && selectedSpell) ? ' exploration-hint' : ''}`} aria-live="polite">
             {!combatActive && !(combatMode === 'magic' && selectedSpell) ? <>
-              <DetailHeader title="Исследование" description="Выберите место или персонажа на карте либо опишите действие своими словами. Для атаки сначала начните бой." />
+              <DetailHeader title="Исследование" description="Выберите цель на карте или опишите действие в хронике. Для атаки сначала начните бой." />
             </> : combatMode === 'magic' && selectedSpell ? <>
               <DetailHeader title={selectedSpell.name} description={selectedSpell.description} meta={<>
                 {selectedSpellRange > 0 ? <i className="detail-chip" title={`Дальность: ${selectedSpellRange} фт`}>{selectedSpellRange} фт</i> : <i className="detail-chip" title="Заклинание на себя">на себя</i>}

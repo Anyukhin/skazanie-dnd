@@ -52,6 +52,8 @@ const RULESET_FALLBACK: RulesetProfileDescriptor[] = [
   },
 ]
 
+const START_LEVELS = Array.from({ length: 12 }, (_, index) => index + 1)
+
 type WorldTemplatePreview = {
   id: string
   version: string
@@ -89,6 +91,7 @@ export function CampaignModal({ state, rulesets = RULESET_FALLBACK, onSwitch, on
   // Соло-кампания — полноценный режим. Мест ровно столько, сколько игроков
   // сядет за стол; лишние места иначе висят пустыми и блокируют ход.
   const [slotCount, setSlotCount] = useState(1)
+  const [startLevel, setStartLevel] = useState(1)
   // Режим импровизации выбирается при старте, но записывается тем же
   // settings-эндпоинтом, что и потом: второго пути записи настроек нет.
   const [improvMode, setImprovMode] = useState<CampaignAiSettings['improvMode']>('story')
@@ -131,6 +134,12 @@ export function CampaignModal({ state, rulesets = RULESET_FALLBACK, onSwitch, on
     return () => { active = false }
   }, [])
   const selectedWorldTemplate = worldTemplates.find((template) => template.id === worldTemplateId)
+  // Авторские миры уже знают рекомендуемый диапазон; берём его нижнюю
+  // границу как безопасный старт и оставляем игроку полный выбор 1–12.
+  useEffect(() => {
+    const recommended = String(selectedWorldTemplate?.recommendedLevels ?? '').match(/\d+/u)?.[0]
+    setStartLevel(recommended ? Math.max(1, Math.min(12, Number(recommended))) : 1)
+  }, [worldTemplateId, selectedWorldTemplate?.recommendedLevels])
   // Мастер создания мира — отдельный экран для звука. Окно кампаний о звуке
   // ничего не знает и знать не должно: оно только сообщает, открыт ли мастер.
   useEffect(() => {
@@ -150,7 +159,7 @@ export function CampaignModal({ state, rulesets = RULESET_FALLBACK, onSwitch, on
     setError('')
     try {
       const resolvedCode = code || `WORLD-${(globalThis.crypto?.randomUUID?.() ?? Date.now().toString(36)).replace(/-/g, '').slice(0, 8).toUpperCase()}`
-      const response = await fetch('/api/campaigns', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: resolvedCode, name: name.trim(), bootstrap: { partyName: partyName.trim(), world, worldTemplateId: worldTemplateId || undefined, slotCount, rulesetId } }) })
+      const response = await fetch('/api/campaigns', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: resolvedCode, name: name.trim(), bootstrap: { partyName: partyName.trim(), world, worldTemplateId: worldTemplateId || undefined, slotCount, startLevel, rulesetId } }) })
       const body = await response.json() as { version?: number; state?: GameState | null; error?: string }
       if (!response.ok) throw new Error(body.error || 'Не удалось создать кампанию')
       // «Сюжет» — серверный дефолт, поэтому лишний PATCH не отправляем: он
@@ -174,12 +183,14 @@ export function CampaignModal({ state, rulesets = RULESET_FALLBACK, onSwitch, on
   }
 
   return (
-    <div className="modal-backdrop" onMouseDown={onClose}>
+    <div className="modal-backdrop campaign-page-modal" onMouseDown={onClose}>
       <div className={'modal campaign-modal ' + (wizard ? 'campaign-wizard' : '')} role="dialog" aria-modal="true" aria-labelledby="campaign-modal-title" onMouseDown={(event) => event.stopPropagation()}>
         <button className="modal-close" onClick={onClose} aria-label="Закрыть выбор кампании" title="Закрыть"><X size={19} /></button>
-        <div className="modal-icon"><ScrollText size={23} /></div>
-        <span className="eyebrow">КАМПАНИИ И ГРУППЫ</span>
-        <h2 id="campaign-modal-title">{wizard ? 'Создание нового мира' : 'Выберите приключение'}</h2>
+        <header className="campaign-modal-header">
+          <div className="modal-icon"><ScrollText size={23} /></div>
+          <span className="eyebrow">КАМПАНИИ И ГРУППЫ</span>
+          <h2 id="campaign-modal-title">{wizard ? 'Создание нового мира' : 'Выберите приключение'}</h2>
+        </header>
         {!wizard ? <>
           <div className="campaign-list">
             {campaignsLoading && <p className="campaign-empty campaign-loading" role="status"><RefreshCw className="spinning" size={14} />Загружаем кампании…</p>}
@@ -223,14 +234,18 @@ export function CampaignModal({ state, rulesets = RULESET_FALLBACK, onSwitch, on
             <div className="field-grid three"><label><span>Название кампании · необязательно</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Придумает рассказчик" /></label><label><span>Название группы · необязательно</span><input value={partyName} onChange={(event) => setPartyName(event.target.value)} placeholder="Новый отряд" /></label><label><span>Код комнаты · необязательно</span><input value={code} onChange={(event) => setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ''))} placeholder="Создастся автоматически" maxLength={24} /></label></div>
             {selectedWorldTemplate ? <>
               <div className="world-auto-note"><ScrollText size={15} /><span><b>Авторская основа зафиксирована.</b> Сервер возьмёт именно эту историю, карту, города и стартовую сцену — модель их не заменит.</span></div>
-              <label><span>Границы контента</span><input value={world.boundaries} onChange={(event) => setWorld({ ...world, boundaries: event.target.value })} placeholder="Что не должно появляться в истории" /><small>Границы стола применяются и к готовому миру.</small></label>
+              <details className="campaign-advanced-fields"><summary>Дополнительные параметры мира <ChevronDown size={15} /></summary>
+                <label><span>Границы контента</span><input value={world.boundaries} onChange={(event) => setWorld({ ...world, boundaries: event.target.value })} placeholder="Что не должно появляться в истории" /><small>Границы стола применяются и к готовому миру.</small></label>
+              </details>
             </> : <>
               <div className="world-auto-note"><Sparkles size={15} /><span><b>Все поля необязательны.</b> Оставьте их пустыми, и рассказчик сам случайно придумает мир, его историю и первую сцену.</span></div>
               <label><span>Пресет или своё описание · необязательно</span><input list="world-preset-options" value={world.preset} onChange={(event) => setWorld({ ...world, preset: event.target.value })} placeholder="Например: фэнтези, далёкое будущее — или любое своё описание" /><datalist id="world-preset-options"><option value="Классическое фэнтези" /><option value="Тёмное фэнтези" /><option value="Далёкое будущее" /><option value="Космическая опера" /><option value="Современная мистика" /><option value="Постапокалипсис" /></datalist></label>
-              <div className="field-grid"><label><span>Эпоха · необязательно</span><input value={world.era} onChange={(event) => setWorld({ ...world, era: event.target.value })} placeholder="На усмотрение рассказчика" /></label><label><span>Жанр · необязательно</span><input value={world.genre} onChange={(event) => setWorld({ ...world, genre: event.target.value })} placeholder="На усмотрение рассказчика" /></label><label><span>Тон истории · необязательно</span><input value={world.tone} onChange={(event) => setWorld({ ...world, tone: event.target.value })} placeholder="На усмотрение рассказчика" /></label><label><span>Уровень магии · необязательно</span><input value={world.magicLevel} onChange={(event) => setWorld({ ...world, magicLevel: event.target.value })} placeholder="На усмотрение рассказчика" /></label><label><span>Уровень технологий · необязательно</span><input value={world.technologyLevel} onChange={(event) => setWorld({ ...world, technologyLevel: event.target.value })} placeholder="На усмотрение рассказчика" /></label><label><span>Стартовая локация · необязательно</span><input value={world.startingLocation} onChange={(event) => setWorld({ ...world, startingLocation: event.target.value })} placeholder="На усмотрение рассказчика" /></label></div>
               <label><span>Основа мира и желаемая история</span><textarea value={world.premise} onChange={(event) => setWorld({ ...world, premise: event.target.value })} placeholder="Что существует в мире, о чём должна быть кампания, какие конфликты интересны?" /></label>
               <label><span>С чего начинается первая сцена</span><textarea value={world.openingSituation} onChange={(event) => setWorld({ ...world, openingSituation: event.target.value })} placeholder="Например: герои прибывают на станцию в момент исчезновения дипломатического корабля" /></label>
-              <div className="field-grid"><label><span>Темы и мотивы</span><input value={world.themes} onChange={(event) => setWorld({ ...world, themes: event.target.value })} placeholder="Исследование, политика, выживание…" /></label><label><span>Границы контента</span><input value={world.boundaries} onChange={(event) => setWorld({ ...world, boundaries: event.target.value })} placeholder="Что не должно появляться в истории" /></label></div>
+              <details className="campaign-advanced-fields"><summary>Дополнительные параметры мира <ChevronDown size={15} /></summary>
+                <div className="field-grid"><label><span>Эпоха · необязательно</span><input value={world.era} onChange={(event) => setWorld({ ...world, era: event.target.value })} placeholder="На усмотрение рассказчика" /></label><label><span>Жанр · необязательно</span><input value={world.genre} onChange={(event) => setWorld({ ...world, genre: event.target.value })} placeholder="На усмотрение рассказчика" /></label><label><span>Тон истории · необязательно</span><input value={world.tone} onChange={(event) => setWorld({ ...world, tone: event.target.value })} placeholder="На усмотрение рассказчика" /></label><label><span>Уровень магии · необязательно</span><input value={world.magicLevel} onChange={(event) => setWorld({ ...world, magicLevel: event.target.value })} placeholder="На усмотрение рассказчика" /></label><label><span>Уровень технологий · необязательно</span><input value={world.technologyLevel} onChange={(event) => setWorld({ ...world, technologyLevel: event.target.value })} placeholder="На усмотрение рассказчика" /></label><label><span>Стартовая локация · необязательно</span><input value={world.startingLocation} onChange={(event) => setWorld({ ...world, startingLocation: event.target.value })} placeholder="На усмотрение рассказчика" /></label></div>
+                <div className="field-grid"><label><span>Темы и мотивы</span><input value={world.themes} onChange={(event) => setWorld({ ...world, themes: event.target.value })} placeholder="Исследование, политика, выживание…" /></label><label><span>Границы контента</span><input value={world.boundaries} onChange={(event) => setWorld({ ...world, boundaries: event.target.value })} placeholder="Что не должно появляться в истории" /></label></div>
+              </details>
             </>}
             <div className="ruleset-picker" role="group" aria-label="Правила кампании">
               <span className="ruleset-picker-title"><b>Правила кампании</b><small>Редакция сохраняется в кампании и после первого игрового события блокируется.</small></span>
@@ -248,6 +263,7 @@ export function CampaignModal({ state, rulesets = RULESET_FALLBACK, onSwitch, on
           </div>}
           {step === 2 && <div className="hero-creator slot-creator">
             <div className="world-auto-note"><Users size={17} /><span><b>Сколько игроков сядет за стол?</b> Первое место всегда ваше, остальные заполнят приглашённые друзья при входе по ссылке. Пустых мест не останется.</span></div>
+            <label><span>Начальный уровень героев</span><select value={startLevel} onChange={(event) => setStartLevel(Number(event.currentTarget.value))}>{START_LEVELS.map((level) => <option key={level} value={level}>{level}-й уровень</option>)}</select><small>{selectedWorldTemplate?.recommendedLevels ? `Для этого мира рекомендованы уровни ${selectedWorldTemplate.recommendedLevels}; можно выбрать любой поддерживаемый уровень.` : 'Герои создаются с первого уровня и затем проходят выбранные уровни по одному, как в Baldur’s Gate 3.'}</small></label>
             <div className="slot-count-picker" role="group" aria-label="Число мест героев">
               {[1, 2, 3, 4, 5].map((count) => <button key={count} type="button" className={count === slotCount ? 'selected' : ''} aria-pressed={count === slotCount} onClick={() => setSlotCount(count)}>
                 <strong>{count}</strong><small>{count === 1 ? 'соло-кампания' : `${count} ${count >= 5 ? 'игроков' : 'игрока'}`}</small>
@@ -255,7 +271,7 @@ export function CampaignModal({ state, rulesets = RULESET_FALLBACK, onSwitch, on
             </div>
             <div className="hero-library">{Array.from({ length: slotCount }, (_, index) => index + 1).map((slot) => <div className="hero-slot-preview" key={slot}><span>{slot}</span><div><b>{slot === 1 ? 'Ваш герой' : `Герой друга ${slot - 1}`}</b><small>Класс, вид, характеристики и история ещё не выбраны</small></div><ShieldCheck size={16} /></div>)}</div>
           </div>}
-          {step === 3 && <div className="campaign-review"><span><Sparkles size={22} /></span><h3>Рассказчик готов создать мир</h3><p>Сначала появятся мир, первая сцена и места героев. Затем каждый игрок создаст собственного героя через серверно проверяемый мастер.</p><dl><div><dt>Кампания</dt><dd>{name.trim() || (selectedWorldTemplate ? selectedWorldTemplate.name : 'Название придумает рассказчик')}{partyName.trim() ? ` · отряд «${partyName.trim()}»` : ''}</dd></div><div><dt>Мир</dt><dd>{selectedWorldTemplate?.name || [world.preset, world.era, world.genre].filter(Boolean).join(' · ') || 'Полная автоматическая генерация'}</dd></div>{selectedWorldTemplate ? <><div><dt>Основа</dt><dd>{selectedWorldTemplate.description}</dd></div><div><dt>Карта</dt><dd>{selectedWorldTemplate.regionCount ?? 0} регионов · {selectedWorldTemplate.locationCount ?? 0} мест · {selectedWorldTemplate.routeCount ?? 0} путей{selectedWorldTemplate.cityOverviewCount ? ' · план столицы' : ''}</dd></div></> : world.premise.trim() && <div><dt>Основа</dt><dd>{world.premise.trim()}</dd></div>}<div><dt>Начало</dt><dd>{selectedWorldTemplate?.world?.startingLocation || world.openingSituation || 'Придумает рассказчик'}</dd></div><div><dt>Герои</dt><dd>{slotCount === 1 ? 'одно место · соло-кампания' : `${slotCount} места · первый герой ваш`}</dd></div><div><dt>Правила</dt><dd>{rulesets.find((profile) => profile.id === rulesetId)?.label ?? rulesetId}</dd></div><div><dt>Импровизация</dt><dd>{IMPROV_MODE_FALLBACK.find((improv) => improv.id === improvMode)?.label ?? 'Сюжет'}</dd></div></dl><small>Ни один игрок не сможет сделать первый ход, пока не завершит создание закреплённого за ним героя.</small></div>}
+          {step === 3 && <div className="campaign-review"><span><Sparkles size={22} /></span><h3>Рассказчик готов создать мир</h3><p>Сначала появятся мир, первая сцена и места героев. Затем каждый игрок создаст собственного героя через серверно проверяемый мастер.</p><dl><div><dt>Кампания</dt><dd>{name.trim() || (selectedWorldTemplate ? selectedWorldTemplate.name : 'Название придумает рассказчик')}{partyName.trim() ? ` · отряд «${partyName.trim()}»` : ''}</dd></div><div><dt>Мир</dt><dd>{selectedWorldTemplate?.name || [world.preset, world.era, world.genre].filter(Boolean).join(' · ') || 'Полная автоматическая генерация'}</dd></div>{selectedWorldTemplate ? <><div><dt>Основа</dt><dd>{selectedWorldTemplate.description}</dd></div><div><dt>Карта</dt><dd>{selectedWorldTemplate.regionCount ?? 0} регионов · {selectedWorldTemplate.locationCount ?? 0} мест · {selectedWorldTemplate.routeCount ?? 0} путей{selectedWorldTemplate.cityOverviewCount ? ' · план столицы' : ''}</dd></div></> : world.premise.trim() && <div><dt>Основа</dt><dd>{world.premise.trim()}</dd></div>}<div><dt>Начало</dt><dd>{selectedWorldTemplate?.world?.startingLocation || world.openingSituation || 'Придумает рассказчик'}</dd></div><div><dt>Герои</dt><dd>{slotCount === 1 ? 'одно место · соло-кампания' : `${slotCount} места · первый герой ваш`} · старт с {startLevel}-го уровня</dd></div><div><dt>Правила</dt><dd>{rulesets.find((profile) => profile.id === rulesetId)?.label ?? rulesetId}</dd></div><div><dt>Импровизация</dt><dd>{IMPROV_MODE_FALLBACK.find((improv) => improv.id === improvMode)?.label ?? 'Сюжет'}</dd></div></dl><small>Ни один игрок не сможет сделать первый ход, пока не завершит создание закреплённого за ним героя и поэтапную подготовку до стартового уровня.</small></div>}
           <div className="campaign-wizard-actions"><button onClick={() => step === 1 ? setWizard(false) : setStep((current) => current - 1)}>{step === 1 ? 'К списку кампаний' : 'Назад'}</button>{step < 3 ? <button className="primary" onClick={() => { if (validateStep()) setStep((current) => current + 1) }}>Продолжить<ChevronRight size={14} /></button> : <button className="primary" onClick={() => { void create() }} disabled={busy}><Sparkles size={14} />{busy ? 'Рассказчик создаёт мир…' : 'Создать мир и написать пролог'}</button>}</div>
         </>}
         {error && <div className="admin-error">{error}</div>}
@@ -477,7 +493,7 @@ export function ChatPanel({ messages, isNarrating, interaction, players, typingA
     <section className="chat-panel" aria-label="Что происходит в сцене">
       <div className="chat-head">
         <div>
-          <span className="chat-head-eyebrow">ЧТО ПРОИСХОДИТ</span>
+          <span className="chat-head-eyebrow">Хроника</span>
           <nav className="chronicle-filters" aria-label="Фильтр хроники">
             <button className={filter === 'all' ? 'active' : ''} type="button" onClick={() => chooseFilter('all')} aria-pressed={filter === 'all'}>Всё</button>
             <button className={filter === 'story' ? 'active' : ''} type="button" onClick={() => chooseFilter('story')} aria-pressed={filter === 'story'}>Рассказ</button>
@@ -550,6 +566,12 @@ export function ChatPanel({ messages, isNarrating, interaction, players, typingA
   )
 }
 
+const normalizeJournalText = (value: unknown) => String(value ?? '')
+  .normalize('NFKC')
+  .replace(/\s+/gu, ' ')
+  .trim()
+  .toLocaleLowerCase('ru')
+
 export function JournalView({ state }: { state: GameState }) {
   const narratorCount = state.messages.filter((message) => message.speaker === 'narrator').length
   const battleLog = state.battleLog ?? []
@@ -562,7 +584,7 @@ export function JournalView({ state }: { state: GameState }) {
   const threads = (state.worldMemory?.threads ?? []).filter((thread) => thread.status === 'active')
   const summaries = (state.worldMemory?.summaries ?? []).slice(-4).reverse()
   return (
-    <section className="section-page">
+    <section className="section-page campaign-journal-page">
       <PageHeader eyebrow="ЛЕТОПИСЬ ПРИКЛЮЧЕНИЯ" title="Журнал кампании" description="Общая память отряда: реплики, решения, броски и последствия." />
       <div className="journal-stats">
         <div><ScrollText size={18} /><span><b>{state.messages.length + battleLog.length}</b><small>событий</small></span></div>
@@ -572,18 +594,32 @@ export function JournalView({ state }: { state: GameState }) {
       {(quests.length > 0 || threads.length > 0 || summaries.length > 0) && <section className="quest-board" aria-label="Задачи и нити">
         {quests.length > 0 && <div className="quest-column">
           <header><ScrollText size={15} /><strong>Задачи отряда</strong><span>{quests.length}</span></header>
-          {quests.map((quest) => <article className="quest-card" key={quest.id}>
-            <b>{quest.title}</b>
-            {quest.summary && <p>{quest.summary}</p>}
-            {quest.objectives && quest.objectives.length > 0 && <ul>{quest.objectives.slice(0, 4).map((objective) => <li key={objective}>{objective}</li>)}</ul>}
-            {/* Часы квеста — server-owned счётчик давления, а не украшение:
-                когда он заполнится, ситуация изменится сама. */}
-            {quest.clock && quest.clock.max > 0 && <div className="quest-clock" title={localizedQuestClockLabel(quest.clock.label)}>
-              <span>{localizedQuestClockLabel(quest.clock.label)}</span>
-              <i>{Array.from({ length: Math.min(12, quest.clock.max) }, (_, index) => <u key={index} className={index < quest.clock!.current ? 'filled' : ''} />)}</i>
-              <b>{quest.clock.current}/{quest.clock.max}</b>
-            </div>}
-          </article>)}
+          {quests.map((quest) => {
+            // Это только представление: серверные цели и часы не меняются.
+            // Повтор убираем по нормализованному тексту внутри одного квеста,
+            // не сравнивая разные квесты между собой.
+            const titleKey = normalizeJournalText(quest.title)
+            const summaryKey = normalizeJournalText(quest.summary)
+            const seen = new Set([titleKey, summaryKey].filter(Boolean))
+            const objectives = (quest.objectives ?? []).filter((objective) => {
+              const key = normalizeJournalText(objective)
+              if (!key || seen.has(key)) return false
+              seen.add(key)
+              return true
+            }).slice(0, 4)
+            return <article className="quest-card" key={quest.id}>
+              <b>{quest.title}</b>
+              {quest.summary && summaryKey !== titleKey && <p>{quest.summary}</p>}
+              {objectives.length > 0 && <ul>{objectives.map((objective) => <li key={objective}>{objective}</li>)}</ul>}
+              {/* Часы квеста — server-owned счётчик давления, а не украшение:
+                  когда он заполнится, ситуация изменится сама. */}
+              {quest.clock && quest.clock.max > 0 && <div className="quest-clock" title={localizedQuestClockLabel(quest.clock.label)}>
+                <span>{localizedQuestClockLabel(quest.clock.label)}</span>
+                <i>{Array.from({ length: Math.min(12, quest.clock.max) }, (_, index) => <u key={index} className={index < quest.clock!.current ? 'filled' : ''} />)}</i>
+                <b>{quest.clock.current}/{quest.clock.max}</b>
+              </div>}
+            </article>
+          })}
         </div>}
         {(threads.length > 0 || summaries.length > 0) && <div className="quest-column">
           {threads.length > 0 && <>
@@ -1155,11 +1191,11 @@ export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiErr
 
 
   return (
-    <section className="section-page settings-page">
+    <section className="section-page settings-page campaign-settings-page">
       <PageHeader eyebrow="ПАРАМЕТРЫ КАМПАНИИ" title="Настройки" description="Рассказчик, отображение сцены и локальные предпочтения." />
       <div className="settings-grid">
-        <div className="settings-card ai-card">
-          <div className="settings-card-title"><BrainCircuit size={20} /><span><b>ИИ-рассказчик</b><small>Серверное подключение</small></span><em className={health?.configured ? 'connected' : ''}>{health?.configured ? <Wifi size={14} /> : <WifiOff size={14} />}{health?.configured ? 'ПОДКЛЮЧЁН' : 'НЕДОСТУПЕН'}</em></div>
+        <div className="settings-card ai-card settings-campaign-card">
+          <div className="settings-card-title"><BrainCircuit size={20} /><span><b>Кампания и рассказчик</b><small>Общие параметры для отряда</small></span><em className={health?.configured ? 'connected' : ''}>{health?.configured ? <Wifi size={14} /> : <WifiOff size={14} />}{health?.configured ? 'ПОДКЛЮЧЁН' : 'НЕДОСТУПЕН'}</em></div>
           <label className="ui-scale-setting ruleset-setting">
             <span><b>Правила кампании</b><small>{campaignAi?.ruleset.locked ? 'Редакция зафиксирована после первого игрового события' : 'До первого игрового события владелец может изменить редакцию'}</small></span>
             <select
@@ -1215,11 +1251,13 @@ export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiErr
           </label>
           {!campaignAi?.canManage && campaignAi && <p className="secure-note"><Lock size={14} />Изменять общие настройки ИИ может владелец кампании или администратор.</p>}
           {campaignAiError && <p className="admin-error" role="alert">{campaignAiError}</p>}
-          <div className="provider-info"><span>ПРОВАЙДЕР<strong>{health?.provider ?? 'RouterAI'}</strong></span><span>МОДЕЛЬ<strong>{health?.model ?? 'Проверка подключения…'}</strong></span><span>МЕХАНИКА<strong>Единый серверный движок</strong></span><span>RULESET<strong>{campaignAi?.ruleset.current.label ?? health?.rulesetId ?? 'не выбран'}</strong></span></div>
-          <div className="tools-list"><small>ДОСТУПНЫЕ ИНСТРУМЕНТЫ</small><div>{(health?.tools ?? ['roll_check', 'reveal_area', 'update_objective', 'spawn_entity', 'grant_item']).map((tool) => <span key={tool}><Check size={11} />{tool}</span>)}</div></div>
-          <p className="secure-note"><Shield size={14} />Ключ RouterAI хранится только в серверном `.env` и не передаётся в браузер.</p>
+          <details className="settings-diagnostics"><summary><ShieldCheck size={15} />Диагностика подключения <ChevronDown size={14} /></summary>
+            <div className="provider-info"><span>ПРОВАЙДЕР<strong>{health?.provider ?? 'RouterAI'}</strong></span><span>МОДЕЛЬ<strong>{health?.model ?? 'Проверка подключения…'}</strong></span><span>МЕХАНИКА<strong>Единый серверный движок</strong></span><span>RULESET<strong>{campaignAi?.ruleset.current.label ?? health?.rulesetId ?? 'не выбран'}</strong></span></div>
+            <div className="tools-list"><small>ДОСТУПНЫЕ ИНСТРУМЕНТЫ</small><div>{(health?.tools ?? ['roll_check', 'reveal_area', 'update_objective', 'spawn_entity', 'grant_item']).map((tool) => <span key={tool}><Check size={11} />{tool}</span>)}</div></div>
+            <p className="secure-note"><Shield size={14} />Секреты остаются на сервере и не передаются в браузер.</p>
+          </details>
         </div>
-        <div className="settings-card"><div className="settings-card-title"><SlidersHorizontal size={20} /><span><b>Интерфейс игры</b><small>Настройки этого устройства</small></span></div>
+        <div className="settings-card settings-preferences-card"><div className="settings-card-title"><SlidersHorizontal size={20} /><span><b>Предпочтения игрока</b><small>Только на этом устройстве</small></span></div>
           <label className="ui-scale-setting">
             <span><b>Масштаб интерфейса</b><small>Текст, иконки и основные панели адаптируются вместе</small></span>
             <div className="ui-scale-value">

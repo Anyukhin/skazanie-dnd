@@ -205,6 +205,10 @@ export type Player = {
   preparedSpellIds?: string[]
   hitPointIncreases?: number[]
   characterSetupRequired?: boolean
+  /** Поэтапная подготовка до server-owned стартового уровня. */
+  characterSetupStage?: 'leveling'
+  /** Выбранные на уровнях улучшения характеристик: ключ — уровень. */
+  abilityScoreIncreases?: Record<string, string[]>
   abilityGeneration?: CharacterAbilityGeneration
   backgroundId?: string
   backgroundAbilityChoice?: { mode: string; abilities: string[] }
@@ -1359,6 +1363,8 @@ export type AssetPreparationReport = {
 export type GameState = {
   sessionCode: string
   campaign: string
+  /** Начальный уровень кампании; старые комнаты получают 1. */
+  character_start_level?: number
   campaignConcept?: CampaignConcept
   worldMap?: WorldMapState
   partyName?: string
@@ -2401,7 +2407,21 @@ export type SuggestedAction = {
   prompt: string
 }
 
+export type PlayerRequestKind = 'action' | 'question' | 'discussion'
+
+export type ActionClarification = {
+  id: string
+  campaign_id: string
+  actor_id: string
+  state_version: number
+  action: string
+  question: string
+}
+
 export type AiTurnResult = {
+  clarification?: ActionClarification | null
+  resolved_action?: string
+  request_kind?: PlayerRequestKind
   action_proposal?: CombatActionProposal
   narration: string
   provider: string

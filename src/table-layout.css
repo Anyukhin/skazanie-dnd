@@ -1,0 +1,162 @@
+/* Основной рабочий размер — 2560×1440. Карта и хроника получают две
+   постоянные колонки, а ввод остаётся непосредственно под разговором. */
+.app {
+  --status: 108px;
+  --server-column: var(--ui-server-column, clamp(350px, 23vw, 600px));
+  --muted: #ab9f91;
+}
+.sidebar { background: #151310; box-shadow: none; }
+.nav-item { color: #b4aa9c; }
+.nav-item.active { background: #2a2218; box-shadow: inset 2px 0 var(--gold); }
+.section-label { color: #a69a8b; letter-spacing: .04em; }
+.player-card { gap: 8px; }
+.player-name-row + span { color: #ad9f8d; }
+
+.game-area {
+  --rail: calc(210px * var(--ui-readable-scale, 1));
+  grid-template-areas: 'status status' 'board server' 'rail compose';
+  grid-template-rows: var(--status) minmax(0, 1fr) minmax(min-content, var(--ui-rail-height, auto));
+}
+.game-area > .dice-tray--compact:not(.dice-tray--rolling) { grid-area: board; position: relative; inset: auto; align-self: start; justify-self: end; margin: 18px; width: auto; }
+.game-area.exploration-active { --rail: calc(170px * var(--ui-readable-scale, 1)); --slot: calc(50px * var(--ui-readable-scale, 1)); }
+.game-area.needs-hero-setup {
+  grid-template-areas: 'status status' 'setup setup' 'board server' 'rail compose';
+  grid-template-rows: var(--status) auto minmax(0, 1fr) minmax(min-content, var(--ui-rail-height, auto));
+}
+.hero-setup-notice { grid-area: setup; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 18px 24px; border-bottom: 1px solid #6a5130; background: #292115; }
+.hero-setup-notice > div { min-width: 0; }
+.hero-setup-notice strong { color: #eed4a7; font-size: var(--fs-2xl); }
+.hero-setup-notice p { margin: 5px 0 0; color: #c5b9a8; font-size: var(--fs-md); }
+.hero-setup-notice button { flex-shrink: 0; min-height: 44px; padding: 10px 20px; border: 1px solid #be955f; border-radius: 6px; background: #c59b63; color: #17130e; font: 700 var(--fs-md) Manrope, sans-serif; cursor: pointer; }
+.hero-setup-notice button:disabled { opacity: .65; cursor: default; }
+
+.status-bar { gap: 20px; padding: 0 24px; }
+.scene-header { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; grid-template-rows: auto auto; gap: 5px 16px; }
+.scene-header.has-illustration { padding-block: 8px; }
+.scene-title { grid-column: 1; grid-row: 1; }
+.scene-title > span { color: #b6a284; letter-spacing: .03em; font-weight: 500; }
+.scene-title h1 { white-space: normal; text-wrap: balance; font-size: var(--fs-3xl); line-height: 1.2; }
+.scene-header > .scene-weather { grid-column: 2; grid-row: 1; }
+.scene-header > .scene-merchant { grid-column: 3; grid-row: 1; }
+.scene-header > .objective { grid-column: 1 / -1; grid-row: 2; max-width: 100%; width: fit-content; height: auto; min-height: 24px; padding: 0; border: 0; border-radius: 0; color: #c9b99f; }
+.scene-header > .objective.expanded { padding: 12px 16px; border: 1px solid var(--line); }
+.scene-header .objective strong { font-size: var(--fs-md); color: inherit; font-weight: 500; }
+.initiative-ribbon { box-shadow: none; backdrop-filter: none; }
+.initiative-ribbon.exploration { max-width: 440px; background: #17221b; border-color: #344b3c; }
+.initiative-exploration-lead { min-width: 0; }
+.initiative-active-chip.exploration { max-width: none; height: auto; min-height: 40px; padding-block: 5px; border: 0; border-radius: 4px; background: none; }
+.initiative-active-chip.exploration small { letter-spacing: 0; white-space: normal; font-size: var(--fs-xs); font-weight: 500; }
+.scene-header > .scene-wanted { grid-column: 2 / -1; grid-row: 2; max-width: 260px; }
+.scene-header:has(.scene-wanted) > .objective { grid-column: 1; }
+
+.server-column { gap: 12px; padding: 14px 20px; overflow: hidden; background: #151310; }
+.server-column > .chat-panel { min-height: 100px; }
+.chat-panel { border: 0; border-radius: 0; background: transparent; box-shadow: none; backdrop-filter: none; }
+.chat-head { padding: 0 0 10px; min-height: 46px; }
+.chat-head-eyebrow { color: #e6dac8; font-size: var(--fs-xl); font-weight: 600; letter-spacing: 0; }
+.chronicle-filters { border: 0; border-radius: 0; background: none; }
+.chronicle-filters button { min-height: 30px; border-radius: 0; border-bottom: 2px solid transparent; color: #aa9b87; font-weight: 500; }
+.chronicle-filters button.active { color: #edd2a4; background: none; border-bottom-color: #c99556; }
+.messages { padding: 18px 4px 6px 0; overflow-x: hidden; }
+.message { margin-bottom: 24px; }
+.message-body p { color: #ddd3c4; font-size: calc(17px * var(--ui-readable-scale, 1)); line-height: 1.6; overflow-wrap: anywhere; }
+.message.player .message-body p, .journal-entry.player p { white-space: pre-wrap; }
+.message-meta time { color: #a29381; }
+.message.system { opacity: 1; }
+.message.system .message-meta strong, .message.system .message-body p { color: #ad9f8d; }
+.player-hud { border-radius: 4px; box-shadow: none; backdrop-filter: none; background: transparent; }
+.hud-vitals span:nth-child(2), .hud-vitals span:nth-child(3) { color: #b6a48d; }
+.hud-vitals b { color: #e0d4c3; }
+
+.game-area > .dialogue-composer { grid-area: compose; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; padding: 16px 20px 20px; border-left: 1px solid var(--line); border-top: 1px solid var(--line); background: #151310; }
+.dialogue-composer .rail-free-input { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
+.dialogue-composer .request-kind { grid-column: 1; grid-row: 1; width: fit-content; max-width: 100%; height: 36px; padding: 0 8px; border-radius: 4px; background: #211c16; font-size: var(--fs-md); }
+.dialogue-composer .rail-input-shell { grid-column: 1 / -1; grid-row: 2; display: flex; flex-wrap: wrap; height: auto; min-height: 86px; padding: 10px 8px 10px 12px; border-radius: 6px; background: #100e0c; align-items: flex-end; }
+.dialogue-composer textarea { flex: 1 1 0; min-width: 0; width: 100%; min-height: 64px; max-height: 160px; resize: vertical; border: 0; outline: none; background: transparent; color: #ece0ce; font: var(--fs-lg)/1.5 Manrope, sans-serif; }
+.dialogue-composer textarea::placeholder { color: #a79883; }
+.dialogue-composer .prepared-chip { flex: 1 0 100%; max-width: 100%; background: #30261a; border-radius: 4px; }
+.dialogue-composer .rail-free-input > button { grid-column: 2; grid-row: 1; width: auto; height: 36px; padding: 0 12px; font: 600 var(--fs-md) Manrope, sans-serif; border-radius: 4px; background: #5f4227; color: #f0d6ae; }
+.dialogue-composer .rail-free-input > button:disabled { opacity: .5; }
+.dialogue-context { margin: 0 0 12px; padding: 10px 12px; max-height: 140px; overflow-y: auto; font-size: var(--fs-md); }
+.dialogue-context > div { gap: 6px; }
+.dialogue-context strong { font-weight: 500; }
+
+.turn-rail { min-height: var(--ui-rail-height, var(--rail)); max-height: var(--ui-rail-height, 32vh); grid-template-rows: 34px minmax(0, 1fr); gap: 10px; padding: 10px 20px 14px; background: #18140f; }
+.turn-rail > .hotbar-decks { justify-content: flex-start; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+.hotbar-tabs { display: flex; flex: 0 0 auto; align-items: center; gap: inherit; }
+.turn-rail > .hotbar-decks > button { flex-shrink: 0; }
+.turn-rail > .hotbar-decks button { display: inline-flex; min-width: 36px; width: auto; height: 34px; padding: 0 10px; align-items: center; gap: 7px; border-radius: 4px; }
+.turn-rail > .hotbar-decks button span { display: inline; font-size: var(--fs-md); }
+.turn-rail .hotbar-main { grid-template-columns: 34px minmax(0, 1fr) minmax(220px, 34%); gap: 12px; }
+.turn-rail .hotbar-actions-shell { padding: 6px 10px; height: min(calc(var(--slot) * var(--ui-tile-rows, 2) + 18px), 100%); border: 0; background: none; }
+.turn-rail .tile-toolbar { padding: 4px; border: 0; background: none; }
+.turn-rail .hotbar-detail { padding: 0 0 0 12px; border-left: 1px solid var(--line); }
+.turn-rail .hotbar-detail p { color: #c2b5a2; }
+.turn-rail .hotbar-detail .detail-description { font-size: var(--fs-md); line-height: 1.5; }
+.turn-rail .hotbar-detail h3 { font-size: var(--fs-xl); }
+.turn-rail .hotbar-detail.exploration-hint { margin-block: 6px; padding: 12px 18px; gap: 8px; border: 1px solid var(--line); border-radius: 4px; background: #1c1812; }
+.turn-rail .exploration-hint .detail-head > strong { color: #d7c5ab; font: 600 var(--fs-md)/1.4 Manrope, sans-serif; }
+.turn-rail .exploration-hint .detail-description { max-width: 48ch; color: #ad9f8d; font-family: Manrope, sans-serif; font-size: var(--fs-sm); }
+@media (min-width: 1281px) {
+  .turn-rail .hotbar-detail.exploration-hint { min-height: calc(var(--slot) * var(--ui-tile-rows, 2) + (var(--ui-tile-rows, 2) - 1) * 4px); align-content: center; }
+}
+
+.characters-page { max-width: none; }
+.character-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 350px)); max-width: 1900px; gap: 22px; }
+.character-grid.single-hero { grid-template-columns: minmax(0, 920px); }
+.character-grid.single-hero .character-sheet { display: grid; grid-template-columns: minmax(230px, 34%) minmax(0, 1fr); text-align: left; }
+.character-grid.single-hero .character-art { height: 370px; }
+.character-grid.single-hero .character-info { padding: 32px; align-self: center; }
+.character-info > small { font-size: var(--fs-md); color: #b3a593; }
+.character-info h2 { font-size: var(--fs-3xl); }
+.character-info > p { color: #b7a891; font-size: var(--fs-lg); }
+.character-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.character-stats span { font-size: var(--fs-md); }
+.character-stats span b { font-size: var(--fs-2xl); }
+.character-stats small { display: block; margin-top: 5px; color: #ae9f8c; font-size: var(--fs-sm); }
+.character-statuses { position: absolute; top: 12px; left: 12px; right: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.character-statuses > span, .character-statuses > em { position: static; display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; border-radius: 4px; background: #17140ee8; color: #d3c1a7; font: 500 var(--fs-sm) Manrope, sans-serif; }
+.character-statuses > span.online { color: #b3d2bd; }
+.character-creation-wizard .creation-roll { border-color: var(--line); background: #211d17; color: #cbbba5; }
+
+@media (min-width: 1800px) {
+  :root { --fs-xxs: calc(12px * var(--ui-readable-scale, 1)); --fs-xs: calc(13px * var(--ui-readable-scale, 1)); --fs-sm: calc(14px * var(--ui-readable-scale, 1)); --fs-md: calc(15px * var(--ui-readable-scale, 1)); --fs-lg: calc(16px * var(--ui-readable-scale, 1)); --fs-xl: calc(18px * var(--ui-readable-scale, 1)); --fs-2xl: calc(21px * var(--ui-readable-scale, 1)); --fs-3xl: calc(28px * var(--ui-readable-scale, 1)); }
+  .app { --status: 104px; }
+  .message-body p { font-size: calc(19px * var(--ui-readable-scale, 1)); }
+  .character-creation-wizard { width: min(1800px, calc(100vw - 96px)); max-height: calc(100dvh - 80px); }
+  .hero-setup-notice { padding-block: 20px; }
+}
+@media (min-width: 901px) and (max-width: 1500px) {
+  .status-bar { padding-inline: 16px; gap: 12px; }
+  .scene-header.has-illustration { padding-inline: 12px 34px; }
+  .initiative-ribbon.exploration { max-width: 280px; }
+  .initiative-ribbon.exploration .initiative-ribbon-label { display: none; }
+  .turn-rail { padding-inline: 12px; }
+  .turn-rail > .hotbar-decks { gap: 4px; }
+  .turn-rail > .hotbar-decks button { padding-inline: 7px; }
+  .turn-rail > .hotbar-decks button .combat-icon { display: none; }
+  .turn-rail .hotbar-main { grid-template-columns: 28px minmax(0, 1fr) minmax(180px, 32%); gap: 8px; }
+  .server-column, .game-area > .dialogue-composer { padding-inline: 14px; }
+  .scene-title h1 { font-size: 22px; }
+}
+@media (max-width: 900px) {
+  .game-area { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(320px, 55vh) auto minmax(340px, 55vh) auto; grid-template-areas: 'status' 'board' 'rail' 'server' 'compose'; overflow-y: auto; }
+  .game-area.needs-hero-setup { grid-template-rows: auto auto minmax(320px, 55vh) auto minmax(340px, 55vh) auto; grid-template-areas: 'status' 'setup' 'board' 'rail' 'server' 'compose'; }
+  .status-bar { padding: 12px; flex-wrap: wrap; }
+  .scene-header.has-illustration { width: 100%; flex-basis: 100%; padding: 10px 36px 10px 12px; }
+  .initiative-ribbon.exploration { max-width: 100%; }
+  .hero-setup-notice { padding: 16px; flex-wrap: wrap; gap: 12px; }
+  .hero-setup-notice strong { font-size: var(--fs-xl); }
+  .server-column, .game-area > .dialogue-composer { border-left: 0; }
+  .turn-rail { min-height: 180px; max-height: none; }
+  .turn-rail .hotbar-main { grid-template-columns: 28px minmax(0, 1fr) minmax(140px, 34%); }
+  .turn-rail > .hotbar-decks button { padding-inline: 5px; }
+  .turn-rail > .hotbar-decks button .combat-icon { display: none; }
+  .character-grid, .character-grid.single-hero { grid-template-columns: minmax(0, 1fr); }
+  .character-grid.single-hero .character-sheet { display: block; }
+  .character-grid.single-hero .character-art { height: 300px; }
+  .character-grid.single-hero .character-info { padding: 22px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app, .scene-overlay-layer, .chat-panel { transition: none; animation: none; }
+}

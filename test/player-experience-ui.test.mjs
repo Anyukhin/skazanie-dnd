@@ -33,6 +33,11 @@ const compiled = spawnSync(process.execPath, [
 assert.equal(compiled.status, 0, compiled.stderr || compiled.stdout)
 renameSync(join(buildDir, 'player-experience.js'), join(buildDir, 'player-experience.mjs'))
 const experience = await import(pathToFileURL(join(buildDir, 'player-experience.mjs')).href)
+
+test('после подготовки подпись первого уровня не скрывает достигнутый седьмой', () => {
+  assert.equal(experience.playerRoleLabel({ role: 'Воин · ур. 1', level: 7 }), 'Воин · ур. 7')
+  assert.equal(experience.playerRoleLabel({ role: 'Следопыт', level: 3 }), 'Следопыт · ур. 3')
+})
 renameSync(join(buildDir, 'tactical-map-client.js'), join(buildDir, 'tactical-map-client.mjs'))
 const tacticalMap = await import(pathToFileURL(join(buildDir, 'tactical-map-client.mjs')).href)
 
@@ -144,6 +149,9 @@ test('экран уровня появляется только после по�
   assert.deepEqual(experience.confirmedLevelUps({ hero: 2 }, [hero], [{
     event_type: 'CharacterLeveledUp', actor_id: 'hero', visibility: 'party', payload: { level_after: 3 },
   }]), [], 'событие без совпавшего server state недостаточно')
+  assert.deepEqual(experience.confirmedLevelUps({ hero: 1 }, [hero], [{
+    event_type: 'CharacterLeveledUp', actor_id: 'hero', visibility: 'party', payload: { level_after: 2, progression_source: 'character_creation' },
+  }]), [], 'поэтапное создание не открывает праздничный экран поверх мастера')
   assert.equal(experience.levelUpSeenKey('ROOM A', 'hero/1', 2), 'skazanie-level-up-seen-v1:ROOM%20A:hero%2F1:2')
   assert.match(appSource, /localStorage\.setItem\(levelUpSeenKey/u)
   assert.match(stylesSource, /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.level-up-backdrop, \.level-up-screen, \.level-up-rays \{ animation: none; \}/u)
