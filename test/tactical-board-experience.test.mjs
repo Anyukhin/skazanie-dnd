@@ -81,7 +81,7 @@ test('лестница даёт кнопку перехода, а индикат
 })
 
 test('доска помнит камеру по этажу и растворяет смену этажа за 400 мс без rAF-цикла', () => {
-  assert.match(board, /boardCameraKey\(map\?\.locationId, levelIndex\)/u)
+  assert.match(board, /boardCameraKey\(map\?\.locationId, levelIndex, campaignId\)/u)
   assert.match(board, /const LEVEL_CROSSFADE_MS = 400/u)
   assert.match(board, /level-change-\$\{levelShift\}/u)
   // Анимация живёт только эти 400 мс: таймер снимает класс, постоянного цикла нет.

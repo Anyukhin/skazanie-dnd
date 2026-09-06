@@ -17,7 +17,7 @@
 
 /* Неисполнимая механика: карточку видно, но выбрать нельзя. */
 .creation-spells article.blocked{opacity:.45}
-.creation-spells article.blocked button{cursor:not-allowed}
+.creation-spells article.blocked button{cursor:pointer}
 .character-creation-wizard>footer .creation-error{color:#e6a5a0}
 
 /* Выбор числа мест героев в мастере кампании. */

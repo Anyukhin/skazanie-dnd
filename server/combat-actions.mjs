@@ -313,7 +313,7 @@ export function combatResourceMaximumsFor(actor) {
         : Math.max(1, Number(entry.uses.maximum) || 1)
     resources[`feature_${entry.id}`] = maximum
   }
-  for (const spell of Array.isArray(actor?.speciesBenefits?.innate_spells) ? actor.speciesBenefits.innate_spells : []) {
+  for (const spell of [...(Array.isArray(actor?.speciesBenefits?.innate_spells) ? actor.speciesBenefits.innate_spells : []), ...(actor?.creationSpellGrants ?? [])]) {
     if (level < Math.max(1, Number(spell?.minimum_level) || 1)) continue
     const uses = Number(spell?.uses)
     if (Number.isFinite(uses) && uses > 0) resources[`species_spell_${spell.id}`] = Math.max(1, Math.trunc(uses))
@@ -354,7 +354,7 @@ export function combatResourceRecoveryFor(actor) {
     if (!entry.uses || level < entry.minimumLevel) continue
     recovery[`feature_${entry.id}`] = entry.uses.recovery === 'short_or_long' ? 'short_or_long' : 'long'
   }
-  for (const spell of Array.isArray(actor?.speciesBenefits?.innate_spells) ? actor.speciesBenefits.innate_spells : []) {
+  for (const spell of [...(Array.isArray(actor?.speciesBenefits?.innate_spells) ? actor.speciesBenefits.innate_spells : []), ...(actor?.creationSpellGrants ?? [])]) {
     if (level < Math.max(1, Number(spell?.minimum_level) || 1)) continue
     const uses = Number(spell?.uses)
     if (Number.isFinite(uses) && uses > 0) recovery[`species_spell_${spell.id}`] = 'long'

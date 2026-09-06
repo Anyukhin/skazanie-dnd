@@ -11,6 +11,8 @@ import {
   sceneHazardAssetIds,
   sceneHazardTagsFor,
   sceneHazardVerbsFor,
+  swingPropAssetIds,
+  swingPropProfileFor,
 } from '../server/scene-hazards.mjs'
 import { hasSceneHazardEvent, sceneHazardNarration } from '../server/scene-hazard-narration.mjs'
 import { addProp, createTacticalMap, serializeTacticalMap } from '../server/tactical-map.mjs'
@@ -132,6 +134,24 @@ test('декор без тегов опасности интерактивным
     assert.equal(asset.interactive, false, `${assetId}: декор не должен становиться интерактивным`)
     assert.equal(sceneInteractionCatalogEntry(assetId), null, `${assetId}: каталог не должен знать декор`)
   }
+})
+
+test('люстра — реальный asset с server-owned высотой и точкой опоры', () => {
+  assert.deepEqual(swingPropAssetIds(), ['chandelier'])
+  assert.ok(assetById('chandelier'))
+  assert.deepEqual(swingPropProfileFor('chandelier'), {
+    anchor: 'ceiling',
+    height_feet: 10,
+    reach_feet: 5,
+    check: { ability: 'str', skill: 'athletics', difficulty: 12 },
+    failure_condition: 'prone',
+  })
+  const definition = sceneInteractionDefinition({
+    mapSeed: 'swing-coverage',
+    props: [{ id: 'chandelier-1', assetId: 'chandelier', x: 1.5, y: 1.5, footprint: [] }],
+    propId: 'chandelier-1',
+  })
+  assert.ok(definition.verbs.includes('inspect'))
 })
 
 test('новые пропсы обстановки действительно валятся и горят через движок', () => {

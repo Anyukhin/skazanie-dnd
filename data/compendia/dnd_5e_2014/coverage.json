@@ -1,0 +1,102 @@
+{
+  "ruleset_id": "dnd_5e_2014",
+  "counts": {
+    "rules": 91,
+    "monsters": 24,
+    "magic_items": 32,
+    "glossary_terms": 91,
+    "ontology_edges": 81,
+    "sources": 56
+  },
+  "complete_website_export": false,
+  "mechanics_execution": "not_implemented_by_this_package",
+  "supported_source_scope": [
+    "PHB14 selected core mechanics",
+    "MM14 selected 24 baseline stat blocks",
+    "DMG14 selected 32 item records including enhancement variants",
+    "SRD51 explicitly tagged complementary facts"
+  ],
+  "not_included": [
+    "All website entries",
+    "Full lore histories or translations",
+    "Complete classes races feats and spell catalogs",
+    "Optional monster variants",
+    "Supplement books",
+    "2014 engine cutover",
+    "Old campaign migrations"
+  ],
+  "source_discrepancies": [
+    {
+      "monster_id": "dnd_5e_2014:monster:bandit-captain",
+      "notes": [
+        {
+          "field": "skills",
+          "reason_ru": "Строка отсутствовала в просмотренной карточке dnd.su; дополнена по официальному SRD 5.1, а не выведена из формулы.",
+          "source_ref": "srd51:stat-block-corroboration",
+          "printed_page": 397
+        }
+      ]
+    },
+    {
+      "monster_id": "dnd_5e_2014:monster:cultist",
+      "notes": [
+        {
+          "field": "alignment",
+          "status": "source_literal",
+          "note_ru": "На наблюдаемой странице: нейтральный. Не заменено автоматически на формулировку из другой публикации."
+        }
+      ]
+    },
+    {
+      "monster_id": "dnd_5e_2014:monster:acolyte",
+      "notes": [
+        {
+          "field": "spellcasting.spell_slots",
+          "reason_ru": "У прислужника указаны именно 3 ячейки первого уровня; это значение стат-блока, а не таблица класса героя.",
+          "source_ref": "srd51:stat-block-corroboration",
+          "printed_page": 395
+        }
+      ]
+    },
+    {
+      "monster_id": "dnd_5e_2014:monster:mage",
+      "notes": [
+        {
+          "field": "saving_throws",
+          "reason_ru": "Строка отсутствовала в просмотренной карточке dnd.su; дополнена по официальному SRD 5.1, а не выведена из формулы.",
+          "source_ref": "srd51:stat-block-corroboration",
+          "printed_page": 400
+        }
+      ]
+    }
+  ],
+  "external_spell_dependencies": [
+    "bless",
+    "command",
+    "cone-of-cold",
+    "counterspell",
+    "cure-wounds",
+    "detect-magic",
+    "fire-bolt",
+    "fireball",
+    "fly",
+    "greater-invisibility",
+    "hold-person",
+    "ice-storm",
+    "inflict-wounds",
+    "light",
+    "mage-armor",
+    "mage-hand",
+    "magic-missile",
+    "misty-step",
+    "prestidigitation",
+    "sacred-flame",
+    "sanctuary",
+    "shield",
+    "shield-of-faith",
+    "spiritual-weapon",
+    "suggestion",
+    "thaumaturgy",
+    "web"
+  ]
+}

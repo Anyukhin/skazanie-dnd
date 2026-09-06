@@ -430,7 +430,7 @@ const PUBLIC_DIE_SIDES = new Set([4, 6, 8, 10, 12, 20, 100])
 const PLAYER_COMBAT_COMMANDS = new Set(['StartCombat', 'MoveActor', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'IdentifyEnemy', 'ProposeParley', 'SettleParley', 'OperateDoor', 'OperateSceneObject', 'UseLevelTransition', 'EndTurn', 'ResolveHeroDeath'])
 const PLAYER_REST_COMMANDS = new Set(['StartRest', 'SpendHitPointDie', 'CompleteRest'])
 const PLAYER_CHARACTER_COMMANDS = new Set(['SetCharacterChoices', 'SetSpellSelections'])
-const PLAYER_CHARACTER_LIFECYCLE_COMMANDS = new Set(['LevelUp', 'ImportCharacter'])
+const PLAYER_CHARACTER_LIFECYCLE_COMMANDS = new Set(['LevelUp', 'ImportCharacter', 'RollCharacterAbilities', 'RollCharacterWealth'])
 const PLAYER_ITEM_COMMANDS = new Set(['EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem'])
 const PLAYER_MERCHANT_COMMANDS = new Set(['BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService'])
 // Карманная кража. Отдельный набор, а не часть боевого: она живёт в социальной
@@ -1270,6 +1270,8 @@ function sanitizePlayerCharacterCommand(user, state, input) {
   if (type === 'ImportCharacter') {
     return { ...base, document: input?.document }
   }
+  if (type === 'RollCharacterAbilities') return base
+  if (type === 'RollCharacterWealth') return { ...base, character_class: String(input?.character_class ?? '') }
   const command = type === 'SetCharacterChoices'
     ? {
         ...base,

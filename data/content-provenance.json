@@ -167,8 +167,8 @@
     },
     {
       "path": "data/character-creation-dnd-5e-2014.json",
-      "sha256": "ba7353db6a39941684f27184f6e629562dcff9e0cb58fed554848c7dc8e4d653",
-      "size_bytes": 19324,
+      "sha256": "5eb73a9a344bc0b79c550e8e5603e27ee295ada01316f924f4bee462be99fb17",
+      "size_bytes": 20626,
       "source_id": "dndsu-5e14-core",
       "rights_status": "project_license_required",
       "notes": "Структурированные механические факты рас, подрас, обязательных выборов и основных особенностей PHB 2014; полные тексты источника не включены."
@@ -183,8 +183,8 @@
     },
     {
       "path": "data/starter-equipment-dnd-5e-2014.json",
-      "sha256": "4c04beea9cc57ad46c7babbb843fac091216b8277b4501babb0febf2be3bcaa3",
-      "size_bytes": 31033,
+      "sha256": "599cbbfd5ee14f28f90d915e965af5e921e60701e9868393c94cc7833e1bc7fc",
+      "size_bytes": 45934,
       "source_id": "dndsu-5e14-core",
       "rights_status": "project_license_required",
       "notes": "Server-validated группы поддержанных вариантов стартового снаряжения PHB 2014."

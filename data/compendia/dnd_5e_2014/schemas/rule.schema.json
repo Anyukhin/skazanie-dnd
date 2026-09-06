@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skazanie:dnd-2014:rule:1",
+  "title": "Skazanie D&D 2014 rule",
+  "description": "Reference data contract. Conditional combat effects still require typed handlers and runtime tests.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^dnd_5e_2014:"
+    },
+    "ruleset_id": {
+      "const": "dnd_5e_2014"
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "const": "rule"
+    },
+    "book_code": {
+      "enum": [
+        "PHB14",
+        "DMG14",
+        "MM14",
+        "SRD51"
+      ]
+    },
+    "source_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mechanics_status": {
+      "const": "data_only"
+    },
+    "runtime_activation_allowed": {
+      "const": false
+    },
+    "title_ru": {
+      "type": "string",
+      "minLength": 1
+    },
+    "title_en": {
+      "type": "string",
+      "minLength": 1
+    },
+    "text_ru": {
+      "type": "string",
+      "minLength": 1
+    },
+    "text_en": {
+      "type": "string",
+      "minLength": 1
+    },
+    "section_path": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "entity_refs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "aliases_ru": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "aliases_en": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "formalization_level": {
+      "enum": [
+        "deterministic",
+        "structured",
+        "retrieval_only"
+      ]
+    },
+    "source_page_start": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10000
+    },
+    "source_page_end": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10000
+    },
+    "source_hash": {
+      "type": "string",
+      "minLength": 1
+    },
+    "license_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mechanics": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "id",
+    "ruleset_id",
+    "version",
+    "kind",
+    "book_code",
+    "source_ref",
+    "mechanics_status",
+    "runtime_activation_allowed",
+    "title_ru",
+    "title_en",
+    "text_ru",
+    "text_en",
+    "section_path",
+    "tags",
+    "entity_refs",
+    "aliases_ru",
+    "aliases_en",
+    "formalization_level",
+    "source_page_start",
+    "source_page_end",
+    "source_hash",
+    "license_id",
+    "mechanics"
+  ],
+  "additionalProperties": true
+}

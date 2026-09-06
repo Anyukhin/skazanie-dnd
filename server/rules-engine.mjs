@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { authoredNpcCombatant } from './authored-npc.mjs'
+import { withBackgroundBenefits } from './backgrounds.mjs'
+import { PHB_STARTING_WEALTH } from './character-creation-wealth.mjs'
 import { parseDiceExpression } from './dice-service.mjs'
 import { DND_2014_RULESET_ID, INSTALLED_RULESET_IDS, LEGACY_DEFAULT_RULESET_ID, rulesetRuleId } from './ruleset-config.mjs'
 import { applyAutonomyEvent, normalizeAutonomyState } from './autonomous-campaign.mjs'
@@ -405,6 +407,7 @@ import {
   levelUpEvent,
   proficiencyBonusForLevel,
   validateCharacterImportCommand,
+  validateCharacterAbilityRollCommand,
   validateLevelUpCommand,
 } from './character-lifecycle.mjs'
 import {
@@ -449,6 +452,8 @@ import {
   burningPropEffect,
   fireSourceNear,
   hazardPropCells,
+  SCENE_SWING_POLICY_ID,
+  swingPropProfileFor,
 } from './scene-hazards.mjs'
 import {
   regionWeatherEventDraft,
@@ -719,6 +724,8 @@ const COMMAND_RULES = Object.freeze({
   ActivateItem: [RULE_IDS.actions],
   LevelUp: [RULE_IDS.resource],
   ImportCharacter: [RULE_IDS.resource],
+  RollCharacterAbilities: [RULE_IDS.resource],
+  RollCharacterWealth: [RULE_IDS.resource],
 })
 
 export const ALLOWED_COMMAND_TYPES = new Set([
@@ -745,7 +752,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   ...COURIER_LETTER_COMMAND_TYPES,
   ...BLESSING_COMMAND_TYPES,
   'SetCharacterChoices', 'SetSpellSelections',
-  'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'LevelUp', 'ImportCharacter',
+  'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'LevelUp', 'ImportCharacter', 'RollCharacterAbilities', 'RollCharacterWealth',
   'CompleteCampaign', 'AdvanceCampaignArc',
 ])
 
@@ -1734,6 +1741,9 @@ export function normalizeCampaignState(input = {}) {
     const normalizedPlayer = { ...player }
     if (Object.hasOwn(player, 'subclass')) normalizedPlayer.subclass = normalizedCombatSubclassFor(player) ?? undefined
     if (Object.hasOwn(player, 'classSkillProficiencies')) normalizedPlayer.classSkillProficiencies = normalizedClassSkillProficiencies(normalizedPlayer)
+    if (Array.isArray(player.backgroundChoices?.replacementSkills)) {
+      Object.assign(normalizedPlayer, withBackgroundBenefits(normalizedPlayer, state.ruleset_id))
+    }
     if (Object.hasOwn(player, 'selectedFeatureIds')) normalizedPlayer.selectedFeatureIds = normalizedSelectedFeatureIds(normalizedPlayer)
     const spellSelections = normalizedSpellSelectionsFor(normalizedPlayer)
     if (Object.hasOwn(player, 'knownSpellIds')) normalizedPlayer.knownSpellIds = spellSelections.knownSpellIds ?? []
@@ -3135,7 +3145,7 @@ function attackSwingShape(state, attackerIdValue, targetIdValue, profile, {
   // проверяет это сам модуль погоды. Ближний бой он не трогает — на длине руки
   // видно и в тумане. Подпись берётся из ответа модуля, а не пишется здесь
   // вторым авторитетом: вторая дальняя помеха получила бы чужое слово.
-  const weatherRanged = profile?.kind === 'ranged' ? weatherRangedPenalty(state) : null
+  const weatherRanged = profile?.kind === 'ranged' ? weatherRangedPenalty(state, attackerIdValue) : null
   if (weatherRanged) disadvantageSources.push(weatherRanged.reason)
   if (targetConditions.has('dodging')) disadvantageSources.push('цель уклоняется')
   if (oneShotDisadvantage) disadvantageSources.push('помеха на следующую атаку')
@@ -3211,6 +3221,10 @@ export function previewApproachAttack(rawState, actorIdValue, targetIdValue) {
   if (!from || !targetAt) throw new RulesValidationError('Герой и противник должны находиться на карте', 'MAP_POSITION_REQUIRED')
   const { map, stepCost } = movementStepCostFor(state, actorIdValue)
   const cells = tacticalCellMap(state)
+  const targetCell = cells.get(positionKey(targetAt))
+  if (!targetCell || targetCell.revealed === false) {
+    throw new RulesValidationError('Цель находится в нераскрытой части карты', 'TARGET_NOT_VISIBLE')
+  }
   const occupied = occupiedPositions(state, actorIdValue)
   const economy = state.mechanics.combat.action_economy[actorIdValue] ?? {}
   const budget = effectiveSpeedFeet(state, actor, actorIdValue) + Math.max(0, safeInteger(economy.movement_bonus, 0)) - Math.max(0, safeInteger(economy.movement_spent, 0))
@@ -3245,6 +3259,219 @@ export function previewApproachAttack(rawState, actorIdValue, targetIdValue) {
     commands: [...(chosen.path.length ? [move] : []), attack],
     path: chosen.path, to: chosen.to, movement_feet: chosen.cost,
     attack_cost: continuation ? 'одна оставшаяся атака' : 'действие «Атака» (один удар)',
+  }
+}
+
+function creatureHeightFeet(actor) {
+  const explicit = Number(actor?.height_feet ?? actor?.heightFeet)
+  if (Number.isFinite(explicit) && explicit > 0) return Math.max(1, Math.min(30, explicit))
+  return ({ tiny: 2, small: 4, medium: 6, large: 8, huge: 15, gargantuan: 25 })[String(actor?.size ?? 'medium').toLowerCase()] ?? 6
+}
+
+function swingDetailsFor(state, actorIdValue, propId, { runningStart = false } = {}) {
+  const map = sceneTacticalMap(state)
+  const prop = map?.props?.find((candidate) => String(candidate.id) === String(propId)) ?? null
+  const profile = prop ? swingPropProfileFor(prop.assetId) : null
+  if (!prop || !profile || prop.state === 'broken' || prop.state === 'toppled') {
+    throw new RulesValidationError('На карте нет исправной люстры с подтверждённой опорой', 'SWING_PROP_NOT_FOUND')
+  }
+  const anchor = prop.footprint?.[0]
+    ? { x: Number(prop.footprint[0].x), y: Number(prop.footprint[0].y) }
+    : { x: Math.floor(Number(prop.x)), y: Math.floor(Number(prop.y)) }
+  const cells = tacticalCellMap(state)
+  const anchorCell = cells.get(positionKey(anchor))
+  if (!anchorCell || anchorCell.revealed === false || !isWalkableCell(anchorCell)) {
+    throw new RulesValidationError('Точка опоры люстры не раскрыта или недоступна', 'SWING_ANCHOR_UNAVAILABLE')
+  }
+  const actor = findActor(state, actorIdValue)
+  const from = actorPosition(state, actorIdValue)
+  if (!actor || !from) throw new RulesValidationError('Герой должен находиться на карте', 'MAP_POSITION_REQUIRED')
+  const reachDistance = Math.max(Math.abs(from.x - anchor.x), Math.abs(from.y - anchor.y)) * 5
+  if (reachDistance > profile.reach_feet) {
+    throw new RulesValidationError('До люстры нужно подойти вплотную', 'SWING_PROP_OUT_OF_REACH')
+  }
+  const highJumpFeet = (3 + abilityModifier(actor.abilities?.str)) * (runningStart ? 1 : 0.5)
+  const reachHeight = 1.5 * creatureHeightFeet(actor) + highJumpFeet
+  if (reachHeight < profile.height_feet) {
+    throw new RulesValidationError(`До опоры не достать: нужен рост и прыжок до ${profile.height_feet} фт`, 'SWING_HEIGHT_UNREACHABLE')
+  }
+  return { prop, profile, anchor, anchorCell, actor, from, reachHeight }
+}
+
+export function swingPropForText(rawState, text = '') {
+  const state = normalizeCampaignState(rawState)
+  if (!/(люстр|chandelier)/iu.test(String(text))) return null
+  const map = sceneTacticalMap(state)
+  const cells = tacticalCellMap(state)
+  const activeLevel = Number(state.scene?.level?.index ?? map?.levelIndex ?? 0)
+  const props = map?.props ?? []
+  const publicAnchor = (prop) => {
+    const cell = prop.footprint?.[0]
+      ? prop.footprint[0]
+      : { x: Math.floor(Number(prop.x)), y: Math.floor(Number(prop.y)) }
+    return { x: Number(cell.x), y: Number(cell.y) }
+  }
+  const visible = props.filter((prop) => {
+    if (!swingPropProfileFor(prop.assetId)) return false
+    const propLevel = prop.level_index ?? prop.levelIndex
+    if (propLevel != null && Number(propLevel) !== activeLevel) return false
+    const anchor = publicAnchor(prop)
+    return cells.get(positionKey(anchor))?.revealed === true
+  })
+  const normalized = String(text).normalize('NFKC').toLocaleLowerCase('ru')
+  const selected = visible.filter((prop) => {
+    const anchor = publicAnchor(prop)
+    const label = sceneObjectLabelFor(prop.assetId).toLocaleLowerCase('ru')
+    const id = String(prop.id ?? '').toLocaleLowerCase('ru')
+    const coordinate = `${anchor.x},${anchor.y}`
+    return (id && normalized.includes(id))
+      || (label && normalized.includes(`${label} ${coordinate}`))
+      || (label && normalized.includes(`${label} у ${coordinate}`))
+      || (normalized.includes(coordinate) && /люстр|chandelier/iu.test(normalized))
+  })
+  const candidates = selected.length ? selected : visible
+  if (candidates.length > 1) {
+    const labels = candidates.map((prop) => {
+      const anchor = publicAnchor(prop)
+      return `${sceneObjectLabelFor(prop.assetId) || 'предмет'} у опоры ${anchor.x},${anchor.y}`
+    }).join(', ')
+    throw new RulesValidationError(`Уточните, к какой опоре прыгнуть: ${labels}`, 'SWING_PROP_AMBIGUOUS')
+  }
+  if (!candidates.length) return null
+  return candidates[0]
+}
+
+/** Составной swing с реальной опорой сцены и обычной ближней атакой. */
+export function previewSwingAttack(rawState, actorIdValue, targetIdValue, propId, { runningStart = false } = {}) {
+  const state = normalizeCampaignState(rawState)
+  const details = swingDetailsFor(state, actorIdValue, propId, { runningStart })
+  const actor = details.actor
+  const target = findActor(state, targetIdValue)
+  if (!state.mechanics.combat.active) throw new RulesValidationError('Такой манёвр доступен после начала боя', 'COMBAT_REQUIRED')
+  if (!target || !isEnemyActor(state, targetIdValue) || !isLivingActor(target)) {
+    throw new RulesValidationError('Выберите живого противника на карте', 'INVALID_TARGET')
+  }
+  const profile = trustedAttackProfile(state, actor)
+  if (!profile || profile.kind !== 'melee') throw new RulesValidationError('Для swing с атакой нужно оружие ближнего боя', 'MELEE_WEAPON_REQUIRED')
+  const targetAt = actorPosition(state, targetIdValue)
+  const cells = tacticalCellMap(state)
+  const targetCell = targetAt ? cells.get(positionKey(targetAt)) : null
+  if (!targetAt || !targetCell) throw new RulesValidationError('Противник должен находиться на карте', 'MAP_POSITION_REQUIRED')
+  if (targetCell.revealed === false) throw new RulesValidationError('Цель находится в нераскрытой части карты', 'TARGET_NOT_VISIBLE')
+  const economy = state.mechanics.combat.action_economy[actorIdValue] ?? {}
+  const radius = Math.max(1, Math.min(6, Math.floor(Number(profile.range_feet || 5) / 5)))
+  const occupied = occupiedPositions(state, actorIdValue)
+  const candidates = []
+  for (let x = targetAt.x - radius; x <= targetAt.x + radius; x += 1) {
+    for (let y = targetAt.y - radius; y <= targetAt.y + radius; y += 1) {
+      const to = { x, y }
+      if (!isWalkableCell(cells.get(positionKey(to))) || occupied.has(positionKey(to))) continue
+      let route
+      try { route = longJumpMovementFor(state, actorIdValue, to, { runningStart, minimumDistanceFeet: 5 }) }
+      catch (error) { if (error instanceof RulesValidationError) continue; throw error }
+      const landingState = { ...state, mechanics: { ...state.mechanics, positions: { ...state.mechanics.positions, [actorIdValue]: to } } }
+      if (!attackForecast(landingState, actorIdValue, targetIdValue)?.in_range) continue
+      try {
+        validateCommand({ command_type: 'MakeAttack', actor_id: actorIdValue, target_id: targetIdValue, server_authoritative: true }, landingState, { allowedActorIds: [actorIdValue] })
+      } catch (error) {
+        if (!(error instanceof RulesValidationError)) throw error
+        continue
+      }
+      candidates.push({ route, to })
+    }
+  }
+  candidates.sort((a, b) => a.route.distanceFeet - b.route.distanceFeet || a.to.y - b.to.y || a.to.x - b.to.x)
+  const chosen = candidates[0]
+  if (!chosen) throw new RulesValidationError('Не хватает прыжка, свободной скорости или места для swing-приземления', 'SWING_UNREACHABLE')
+  const ruling = {
+    policy_id: SCENE_SWING_POLICY_ID,
+    status: 'ruling',
+    prop_id: String(propId),
+    ability: details.profile.check.ability,
+    skill: details.profile.check.skill,
+    difficulty: details.profile.check.difficulty,
+    on_failure: 'Герой срывается и падает ничком у точки опоры; удар не происходит.',
+  }
+  return {
+    commands: [{
+      command_type: 'MoveActor', actor_id: actorIdValue, to: chosen.to,
+      movement_mode: 'swing', swing_prop_id: String(propId), swing_running_start: runningStart,
+      swing_ruling: ruling, house_rule_id: SCENE_SWING_POLICY_ID, server_authoritative: true,
+    }, { command_type: 'MakeAttack', actor_id: actorIdValue, target_id: targetIdValue, server_authoritative: true }],
+    path: chosen.route.path,
+    to: chosen.to,
+    movement_feet: chosen.route.distanceFeet,
+    ruling,
+    attack_cost: 'действие «Атака» (один удар)',
+    prop: { id: String(propId), asset_id: String(details.prop.assetId), height_feet: details.profile.height_feet, anchor: details.profile.anchor },
+  }
+}
+
+/**
+ * Server-owned horizontal long jump followed by one melee attack.  The jump
+ * is intentionally orthogonal and stays on one elevation: this is the small
+ * 2014 slice we can execute with the existing 2D tactical map.  A chandelier,
+ * suspended object, or any other unsupported vertical anchor must not be
+ * smuggled through this path as flavour text.
+ */
+export function previewLongJumpAttack(rawState, actorIdValue, targetIdValue, { runningStart = false } = {}) {
+  const state = normalizeCampaignState(rawState)
+  const actor = findActor(state, actorIdValue)
+  const target = findActor(state, targetIdValue)
+  if (!state.mechanics.combat.active) throw new RulesValidationError('Такой манёвр доступен после начала боя', 'COMBAT_REQUIRED')
+  if (!actor || !target || !isEnemyActor(state, targetIdValue) || !isLivingActor(target)) {
+    throw new RulesValidationError('Выберите живого противника на карте', 'INVALID_TARGET')
+  }
+  const profile = trustedAttackProfile(state, actor)
+  if (!profile || profile.kind !== 'melee') throw new RulesValidationError('Для прыжка с атакой нужно оружие ближнего боя', 'MELEE_WEAPON_REQUIRED')
+  const from = actorPosition(state, actorIdValue)
+  const targetAt = actorPosition(state, targetIdValue)
+  if (!from || !targetAt) throw new RulesValidationError('Герой и противник должны находиться на карте', 'MAP_POSITION_REQUIRED')
+  const cells = tacticalCellMap(state)
+  const targetCell = cells.get(positionKey(targetAt))
+  if (!targetCell || targetCell.revealed === false) {
+    throw new RulesValidationError('Цель находится в нераскрытой части карты', 'TARGET_NOT_VISIBLE')
+  }
+  const economy = state.mechanics.combat.action_economy[actorIdValue] ?? {}
+  const movementSpent = Math.max(0, safeInteger(economy.movement_spent, 0))
+  if (runningStart && movementSpent < 10) {
+    throw new RulesValidationError('Для прыжка с разбега сначала нужно потратить 10 фт на разбег', 'JUMP_RUNNING_START_REQUIRED')
+  }
+  const strengthScore = Math.max(1, safeInteger(actor.abilities?.str, 10))
+  const maximumJumpFeet = runningStart ? strengthScore : Math.floor(strengthScore / 2)
+  const radius = Math.max(1, Math.min(6, Math.floor(Number(profile.range_feet || 5) / 5)))
+  const occupied = occupiedPositions(state, actorIdValue)
+  const attack = { command_type: 'MakeAttack', actor_id: actorIdValue, target_id: targetIdValue, server_authoritative: true }
+  const candidates = []
+  for (let x = targetAt.x - radius; x <= targetAt.x + radius; x += 1) {
+    for (let y = targetAt.y - radius; y <= targetAt.y + radius; y += 1) {
+      const to = { x, y }
+      if (!isWalkableCell(cells.get(positionKey(to))) || occupied.has(positionKey(to))) continue
+      let jump
+      try { jump = longJumpMovementFor(state, actorIdValue, to, { runningStart }) }
+      catch (error) { if (error instanceof RulesValidationError) continue; throw error }
+      const atDestination = { ...state, mechanics: { ...state.mechanics, positions: { ...state.mechanics.positions, [actorIdValue]: to } } }
+      if (!attackForecast(atDestination, actorIdValue, targetIdValue)?.in_range) continue
+      try { validateCommand(attack, atDestination, { allowedActorIds: [actorIdValue] }) }
+      catch (error) { if (!(error instanceof RulesValidationError)) throw error; continue }
+      candidates.push({ ...jump, to })
+    }
+  }
+  candidates.sort((a, b) => a.distanceFeet - b.distanceFeet || a.to.y - b.to.y || a.to.x - b.to.x)
+  const chosen = candidates[0]
+  if (!chosen) throw new RulesValidationError('Не хватает длины прыжка, свободной скорости или места для приземления', 'JUMP_UNREACHABLE')
+  return {
+    commands: [{
+      command_type: 'MoveActor', actor_id: actorIdValue, to: chosen.to,
+      movement_mode: 'long_jump', jump_running_start: runningStart, server_authoritative: true,
+    }, attack],
+    path: chosen.path,
+    to: chosen.to,
+    movement_feet: chosen.distanceFeet,
+    jump: { kind: 'long', running_start: runningStart, distance_feet: chosen.distanceFeet, maximum_feet: maximumJumpFeet },
+    attack_cost: Number(economy.attacks_used) > 0 && Number(economy.attacks_used) < Number(economy.attacks_allowed)
+      ? 'одна оставшаяся атака'
+      : 'действие «Атака» (один удар)',
   }
 }
 
@@ -5051,7 +5278,8 @@ export function validateCommand(input, rawState, context = {}) {
     try {
       Object.assign(command, command.command_type === 'LevelUp'
         ? validateLevelUpCommand(command, state, context)
-        : validateCharacterImportCommand(command, state, context))
+        : ['RollCharacterAbilities', 'RollCharacterWealth'].includes(command.command_type) ? validateCharacterAbilityRollCommand(command, state, context)
+          : validateCharacterImportCommand(command, state, context))
     } catch (error) {
       if (error instanceof CharacterLifecycleValidationError) {
         throw new RulesValidationError(error.message, error.code)
@@ -5067,7 +5295,7 @@ export function validateCommand(input, rawState, context = {}) {
     && context.isAdmin === true
     && context.serverAuthoritativeCombat === true
   if (setupActor?.characterSetupRequired
-    && command.command_type !== 'ImportCharacter'
+    && !['ImportCharacter', 'RollCharacterAbilities', 'RollCharacterWealth'].includes(command.command_type)
     && !serverTimeoutMaySkipSetupActor) {
     throw new RulesValidationError(
       'Сначала завершите создание этого героя',
@@ -5393,6 +5621,14 @@ export function validateCommand(input, rawState, context = {}) {
     if (state.mechanics.combat.active) throw new RulesValidationError('Посреди боя карманов не чистят', 'COMBAT_ACTIVE')
     const npc = presentSceneNpcs(state).find((candidate) => String(candidate.id) === npcId)
     if (!npc) throw new RulesValidationError('Этого человека нет рядом', 'NPC_NOT_PRESENT')
+    const actorAt = actorPosition(state, command.actor_id)
+    const npcPlacement = npcPlacementFor(state, npcId)
+    const distanceFeet = actorAt && npcPlacement
+      ? Math.max(Math.abs(actorAt.x - npcPlacement.x), Math.abs(actorAt.y - npcPlacement.y)) * 5
+      : Number.POSITIVE_INFINITY
+    if (distanceFeet > 5) {
+      throw new RulesValidationError('До кармана надо дойти: встаньте вплотную, в пределах 5 футов', 'PICKPOCKET_OUT_OF_REACH')
+    }
     if (conditionIdsFor(state, npcId).has(pickpocketSpentCondition(npcId))) {
       throw new RulesValidationError('У этого человека карман уже пуст', 'PICKPOCKET_POCKET_EMPTY')
     }
@@ -5703,6 +5939,23 @@ export function validateCommand(input, rawState, context = {}) {
     const y = Number(command.to?.y)
     if (!Number.isSafeInteger(x) || !Number.isSafeInteger(y)) throw new RulesValidationError('Нужны целые координаты назначения', 'INVALID_DESTINATION')
     if (!isLivingActor(findActor(state, command.actor_id))) throw new RulesValidationError('Побеждённый участник не может двигаться', 'ACTOR_DEFEATED')
+    if (command.movement_mode != null && !['long_jump', 'swing'].includes(command.movement_mode)) {
+      throw new RulesValidationError('Неизвестный режим прыжкового перемещения', 'MOVEMENT_MODE_INVALID')
+    }
+    if (command.movement_mode === 'long_jump' && (command.swing_prop_id != null || command.swing_ruling != null)) {
+      throw new RulesValidationError('Команда long jump содержит поля swing', 'JUMP_FIELDS_CONFLICT')
+    }
+    if (['long_jump', 'swing'].includes(command.movement_mode) && !state.mechanics.combat.active) {
+      throw new RulesValidationError('Прыжковый манёвр требует активного боя', 'COMBAT_REQUIRED')
+    }
+    if (['long_jump', 'swing'].includes(command.movement_mode) && command.server_authoritative !== true && context.serverAuthoritativeCombat !== true) {
+      throw new RulesValidationError('Прыжковый манёвр выбирает только серверный план', 'JUMP_SERVER_ONLY')
+    }
+    if (command.movement_mode === 'swing'
+      && (String(command.house_rule_id ?? '') !== SCENE_SWING_POLICY_ID || !String(command.swing_prop_id ?? '')
+        || command.swing_ruling?.policy_id != null && String(command.swing_ruling.policy_id) !== SCENE_SWING_POLICY_ID)) {
+      throw new RulesValidationError('Swing требует авторитетный профиль временного решения', 'SWING_POLICY_REQUIRED')
+    }
   }
 
   // Grappled, restrained, paralysed, stunned, unconscious and petrified all set
@@ -7006,6 +7259,74 @@ export function movementCostOfPath(state, actorIdValue, path, options = {}) {
   return (Array.isArray(path) ? path : []).reduce((total, step) => total + stepCost(step), 0)
 }
 
+/** Серверная проверка одной горизонтальной траектории long jump. */
+function longJumpMovementFor(state, actorIdValue, destination, { runningStart = false, minimumDistanceFeet = 5 } = {}) {
+  const actor = findActor(state, actorIdValue)
+  const from = actorPosition(state, actorIdValue)
+  const to = { x: Number(destination?.x), y: Number(destination?.y) }
+  if (!actor || !from || !Number.isSafeInteger(to.x) || !Number.isSafeInteger(to.y)) {
+    throw new RulesValidationError('Для прыжка нужны герой и целевая клетка на карте', 'MAP_POSITION_REQUIRED')
+  }
+  const cells = tacticalCellMap(state)
+  const map = sceneTacticalMap(state)
+  const fromCell = cells.get(positionKey(from))
+  const toCell = cells.get(positionKey(to))
+  if (!fromCell || fromCell.revealed === false) throw new RulesValidationError('Герой находится в нераскрытой части карты', 'JUMP_START_NOT_VISIBLE')
+  if (!toCell || toCell.revealed === false) throw new RulesValidationError('Клетка приземления не раскрыта', 'JUMP_LANDING_NOT_VISIBLE')
+  if (!isWalkableCell(toCell)) throw new RulesValidationError('В клетку приземления нельзя войти', 'INVALID_DESTINATION')
+  if (safeInteger(fromCell.elevation, 0) !== safeInteger(toCell.elevation, 0)) {
+    throw new RulesValidationError('Горизонтальный прыжок между разными высотами пока не поддерживается', 'JUMP_ELEVATION_UNSUPPORTED')
+  }
+  const economy = state.mechanics.combat.action_economy[actorIdValue] ?? {}
+  const movementSpent = Math.max(0, safeInteger(economy.movement_spent, 0))
+  const movementPath = Array.isArray(economy.movement_path) ? economy.movement_path : []
+  const [runLast, runPrevious, runBeforePrevious] = movementPath.slice(-3).reverse()
+  const hasStraightRunUp = Boolean(runLast && runPrevious && runBeforePrevious
+    && runLast.x === from.x && runLast.y === from.y
+    && runLast.x - runPrevious.x === runPrevious.x - runBeforePrevious.x
+    && runLast.y - runPrevious.y === runPrevious.y - runBeforePrevious.y
+    && Math.abs(runLast.x - runPrevious.x) + Math.abs(runLast.y - runPrevious.y) === 1)
+  if (runningStart && (movementSpent < 10 || !hasStraightRunUp)) {
+    throw new RulesValidationError('Для прыжка с разбега сначала нужно потратить 10 фт на разбег', 'JUMP_RUNNING_START_REQUIRED')
+  }
+  const strengthScore = Math.max(1, safeInteger(actor.abilities?.str, 10))
+  const maximumJumpFeet = runningStart ? strengthScore : Math.floor(strengthScore / 2)
+  const budget = effectiveSpeedFeet(state, actor, actorIdValue)
+    + Math.max(0, safeInteger(economy.movement_bonus, 0)) - movementSpent
+  const dx = to.x - from.x
+  const dy = to.y - from.y
+  if ((dx !== 0 && dy !== 0) || (dx === 0 && dy === 0)) {
+    throw new RulesValidationError('Прыжок должен идти по горизонтальной или вертикальной линии карты', 'JUMP_DIRECTION_UNSUPPORTED')
+  }
+  const steps = Math.abs(dx) + Math.abs(dy)
+  const distanceFeet = steps * 5
+  if (distanceFeet < minimumDistanceFeet || distanceFeet > maximumJumpFeet) {
+    throw new RulesValidationError(`Длина прыжка ограничена ${maximumJumpFeet} фт`, 'JUMP_DISTANCE_EXCEEDED')
+  }
+  if (distanceFeet > budget) throw new RulesValidationError('Недостаточно свободной скорости для прыжка', 'SPEED_EXCEEDED')
+  const occupied = occupiedPositions(state, actorIdValue)
+  const path = []
+  let previous = from
+  for (let index = 1; index <= steps; index += 1) {
+    const point = {
+      x: from.x + Math.sign(dx) * (dx === 0 ? 0 : index),
+      y: from.y + Math.sign(dy) * (dy === 0 ? 0 : index),
+    }
+    const cell = cells.get(positionKey(point))
+    if (!cell || cell.revealed === false) throw new RulesValidationError('Траектория прыжка проходит по нераскрытой клетке', 'JUMP_PATH_NOT_VISIBLE')
+    if (safeInteger(cell.elevation, 0) !== safeInteger(fromCell.elevation, 0)) {
+      throw new RulesValidationError('Горизонтальный прыжок между разными высотами пока не поддерживается', 'JUMP_ELEVATION_UNSUPPORTED')
+    }
+    if (String(cell.type) === 'wall' || doorBlocksStep(map, previous.x, previous.y, point.x, point.y)) {
+      throw new RulesValidationError('Траекторию прыжка перекрывает стена или закрытая дверь', 'JUMP_PATH_BLOCKED')
+    }
+    if (occupied.has(positionKey(point))) throw new RulesValidationError('Траектория или место приземления заняты', 'JUMP_OCCUPIED')
+    path.push(point)
+    previous = point
+  }
+  return { from, to, path, distanceFeet, maximumJumpFeet, movementSpent: movementSpent + distanceFeet }
+}
+
 /**
  * Cells a wall occupies: a straight run from the caster toward the chosen point.
  * A wall is the one area whose shape a centre and a radius cannot express, so
@@ -7523,7 +7844,7 @@ function hitPointMaximumBonusOf(state, id) {
  * the rules that depend on it simply do not fire.
  */
 function passivePerception(actor) {
-  return 10 + abilityModifier(actor?.abilities?.wis) + skillProficiencyBonus(actor, 'perception')
+  return 10 + abilityModifier(actor?.abilities?.wis) + skillProficiencyBonus(actor, 'perception') + Number(actor?.creationBenefits?.passive_skill_bonuses?.perception ?? 0)
 }
 
 /**
@@ -7667,6 +7988,7 @@ const CLASS_SAVING_THROW_PROFICIENCIES = Object.freeze({
 
 function isSavingThrowProficient(actor, ability) {
   const normalizedAbility = String(ability ?? '').toLowerCase()
+  if (actor?.creationBenefits?.saving_throw_proficiencies?.includes(normalizedAbility)) return true
   const explicit = [actor?.savingThrowProficiencies, actor?.saving_throw_proficiencies, actor?.saveProficiencies]
     .find(Array.isArray)
   if (explicit) return explicit.map((entry) => String(entry).toLowerCase()).includes(normalizedAbility)
@@ -7772,7 +8094,7 @@ function litByLightCantrip(state, actorIdValue) {
  * Дождю, туману и грозе заговор не мешает — это не темнота.
  */
 function weatherCheckSwingFor(state, skill, actorIdValue) {
-  const swing = weatherCheckSwing(state, skill)
+  const swing = weatherCheckSwing(state, skill, actorIdValue)
   if (!swing) return null
   if (swing.effect_id === NIGHT_PERCEPTION_EFFECT_ID && litByLightCantrip(state, actorIdValue)) return null
   return swing
@@ -11930,36 +12252,99 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       let movementCost = 0
       const reactionMovement = command.reaction_movement === true
       let movementSpent = reactionMovement ? 0 : Math.max(0, safeInteger(state.mechanics.combat.action_economy[command.actor_id]?.movement_spent, 0))
+      let swingResolution = null
       if (authoritative) {
         if (!from) throw new RulesValidationError('Участник должен находиться на карте', 'MAP_POSITION_REQUIRED')
         if (!cells.size) throw new RulesValidationError('Для перемещения нужна тактическая карта', 'TACTICAL_MAP_REQUIRED')
-        if (!isWalkableCell(cells.get(positionKey(to))) || occupiedPositions(state, command.actor_id).has(positionKey(to))) {
-          throw new RulesValidationError('Клетка назначения недоступна', 'INVALID_DESTINATION')
+        if (command.movement_mode === 'swing') {
+          if (reactionMovement) throw new RulesValidationError('Swing нельзя выполнить как реакционное перемещение', 'SWING_REACTION_FORBIDDEN')
+          const details = swingDetailsFor(state, command.actor_id, command.swing_prop_id, { runningStart: command.swing_running_start === true })
+          const route = longJumpMovementFor(state, command.actor_id, to, {
+            runningStart: command.swing_running_start === true,
+            minimumDistanceFeet: 5,
+          })
+          const checkOptions = {
+            modifier: abilityModifier(actor?.abilities?.[details.profile.check.ability])
+              + skillProficiencyBonus(actor, details.profile.check.skill),
+            difficulty: details.profile.check.difficulty,
+            purpose: 'scene_swing:athletics',
+            actorId: command.actor_id,
+            visibility: command.visibility ?? 'public',
+          }
+          const check = diceService.rollCheck(checkOptions)
+          rolls.push(check)
+          const checkEvent = eventFrom(commandWithRules(command, RULE_IDS.abilityCheck), 'AbilityCheckResolved', {
+            ability: details.profile.check.ability,
+            skill: details.profile.check.skill,
+            ...check,
+            swing_prop_id: String(command.swing_prop_id),
+            policy_id: SCENE_SWING_POLICY_ID,
+          }, [command.actor_id])
+          events.push(checkEvent)
+          swingResolution = { ...details, route, check, success: check.success === true }
+          if (!swingResolution.success) {
+            events.push(eventFrom(commandWithRules(command, RULE_IDS.turns), 'CombatActionUsed', {
+              action_id: 'scene-swing', name: 'Раскачка на люстре', action_type: 'action',
+            }, [command.actor_id]))
+            events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
+              condition: details.profile.failure_condition, duration: 'until-next-turn', source_actor: command.actor_id,
+              swing_prop_id: String(command.swing_prop_id), policy_id: SCENE_SWING_POLICY_ID,
+            }, [command.actor_id]))
+            events.push(eventFrom(command, 'SwingResolved', {
+              success: false,
+              prop_id: String(command.swing_prop_id),
+              policy_id: SCENE_SWING_POLICY_ID,
+              difficulty: details.profile.check.difficulty,
+              failure: 'сорвался при попытке ухватиться за опору; упал ничком у неё',
+            }, [command.actor_id]))
+            break
+          }
+          events.push(eventFrom(command, 'SwingResolved', {
+            success: true,
+            prop_id: String(command.swing_prop_id),
+            policy_id: SCENE_SWING_POLICY_ID,
+            difficulty: details.profile.check.difficulty,
+          }, [command.actor_id]))
+          path = route.path
+          distance = route.distanceFeet
+          movementCost = route.distanceFeet
+          movementSpent = route.movementSpent
+        } else if (command.movement_mode === 'long_jump') {
+          if (reactionMovement) throw new RulesValidationError('Прыжок нельзя выполнить как реакционное перемещение', 'JUMP_REACTION_FORBIDDEN')
+          const jump = longJumpMovementFor(state, command.actor_id, to, { runningStart: command.jump_running_start === true })
+          path = jump.path
+          distance = jump.distanceFeet
+          movementCost = jump.distanceFeet
+          movementSpent = jump.movementSpent
+        } else {
+          if (!isWalkableCell(cells.get(positionKey(to))) || occupiedPositions(state, command.actor_id).has(positionKey(to))) {
+            throw new RulesValidationError('Клетка назначения недоступна', 'INVALID_DESTINATION')
+          }
+          const { map, stepCost } = movementStepCostFor(state, command.actor_id)
+          path = shortestTacticalPath(state, command.actor_id, to, { tacticalMap: map, stepCost })
+          if (!path?.length) throw new RulesValidationError('До клетки назначения нет свободного пути', 'PATH_BLOCKED')
+          if (!reactionMovement) assertVoluntaryMovementPath(state, command.actor_id, from, to, path)
+          distance = path.length * 5
+          // Цена исполняемого пути считается тем же предикатом, который получил
+          // взвешенный поиск и который использует NPC-планировщик.
+          movementCost = path.reduce((total, step) => total + stepCost(step, map), 0)
+          const speed = effectiveSpeedFeet(state, actor, command.actor_id)
+          const movementBonus = Math.max(0, safeInteger(state.mechanics.combat.action_economy[command.actor_id]?.movement_bonus, 0))
+          const aggressiveBonus = command.monster_ability === 'aggressive'
+            && context.isNpcScheduler
+            && isEnemyActor(state, command.actor_id)
+            && monsterTraitFor(actor, 'aggressive')
+            && state.mechanics.combat.action_economy[command.actor_id]?.bonus_action !== false
+            ? speed
+            : 0
+          // D&D limits speed per turn in combat. During adventure movement the GM
+          // may summarise travel instead, so exploration is constrained by the map
+          // and occupied cells, not by a combat turn that has not started.
+          if (state.mechanics.combat.active && movementSpent + movementCost > speed + (reactionMovement ? 0 : movementBonus + aggressiveBonus)) {
+            throw new RulesValidationError('Недостаточно скорости для этого перемещения', 'SPEED_EXCEEDED')
+          }
+          movementSpent = state.mechanics.combat.active && !reactionMovement ? movementSpent + movementCost : 0
         }
-        const { map, stepCost } = movementStepCostFor(state, command.actor_id)
-        path = shortestTacticalPath(state, command.actor_id, to, { tacticalMap: map, stepCost })
-        if (!path?.length) throw new RulesValidationError('До клетки назначения нет свободного пути', 'PATH_BLOCKED')
-        if (!reactionMovement) assertVoluntaryMovementPath(state, command.actor_id, from, to, path)
-        distance = path.length * 5
-        // Цена исполняемого пути считается тем же предикатом, который получил
-        // взвешенный поиск и который использует NPC-планировщик.
-        movementCost = path.reduce((total, step) => total + stepCost(step, map), 0)
-        const speed = effectiveSpeedFeet(state, actor, command.actor_id)
-        const movementBonus = Math.max(0, safeInteger(state.mechanics.combat.action_economy[command.actor_id]?.movement_bonus, 0))
-        const aggressiveBonus = command.monster_ability === 'aggressive'
-          && context.isNpcScheduler
-          && isEnemyActor(state, command.actor_id)
-          && monsterTraitFor(actor, 'aggressive')
-          && state.mechanics.combat.action_economy[command.actor_id]?.bonus_action !== false
-          ? speed
-          : 0
-        // D&D limits speed per turn in combat. During adventure movement the GM
-        // may summarise travel instead, so exploration is constrained by the map
-        // and occupied cells, not by a combat turn that has not started.
-        if (state.mechanics.combat.active && movementSpent + movementCost > speed + (reactionMovement ? 0 : movementBonus + aggressiveBonus)) {
-          throw new RulesValidationError('Недостаточно скорости для этого перемещения', 'SPEED_EXCEEDED')
-        }
-        movementSpent = state.mechanics.combat.active && !reactionMovement ? movementSpent + movementCost : 0
       } else {
         const legacyFrom = from ?? (command.from && Number.isSafeInteger(Number(command.from.x)) && Number.isSafeInteger(Number(command.from.y))
           ? { x: Number(command.from.x), y: Number(command.from.y) }
@@ -12020,6 +12405,20 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         movement_remaining: Math.max(0, speed - movementSpent),
         spend_movement: !reactionMovement,
         reaction_movement: reactionMovement,
+        ...(command.movement_mode === 'long_jump' ? {
+          movement_mode: 'long_jump',
+          jump: {
+            running_start: command.jump_running_start === true,
+            distance_feet: distance,
+          },
+        } : command.movement_mode === 'swing' ? {
+          movement_mode: 'swing',
+          swing: {
+            prop_id: String(command.swing_prop_id),
+            distance_feet: distance,
+            policy_id: SCENE_SWING_POLICY_ID,
+          },
+        } : {}),
         monster_ability: aggressiveBonus > 0 ? 'aggressive' : null,
         phase: state.mechanics.combat.active ? 'combat' : 'exploration',
       }, [command.actor_id]))
@@ -12772,7 +13171,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       for (const id of [...partyIds, ...enemyIds]) {
         const actor = findActor(state, id)
         if (!actor) throw new RulesValidationError(`Участник ${id} не найден`, 'TARGET_NOT_FOUND')
-        const modifier = Number.isSafeInteger(Number(actor?.initiativeBonus))
+        const modifier = actor?.creationBenefits ? abilityModifier(actor.abilities?.dex) + Number(actor.creationBenefits.initiative_bonus ?? 0) : Number.isSafeInteger(Number(actor?.initiativeBonus))
           ? Math.max(-30, Math.min(30, Number(actor.initiativeBonus)))
           : abilityModifier(actor?.abilities?.dex)
         const initiativeItemSources = activeItemMechanicEffects(actor)
@@ -15032,6 +15431,24 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     case 'ImportCharacter': {
       const lifecycleEvent = characterImportEvent(command)
       events.push(eventFrom(command, lifecycleEvent.event_type, lifecycleEvent.payload, lifecycleEvent.target_ids))
+      break
+    }
+    case 'RollCharacterAbilities': {
+      const abilityRolls = Array.from({ length: 6 }, (_, index) => diceService.roll('4d6', `character-ability-${index + 1}`, command.actor_id, 'party'))
+      rolls.push(...abilityRolls)
+      events.push(eventFrom(command, 'CharacterAbilitiesRolled', {
+        schema_version: 1,
+        id: abilityRolls[0].roll_id,
+        rolls: abilityRolls,
+        scores: abilityRolls.map((roll) => [...roll.dice].sort((a, b) => b - a).slice(0, 3).reduce((sum, value) => sum + value, 0)),
+      }, [command.actor_id]))
+      break
+    }
+    case 'RollCharacterWealth': {
+      const formula = PHB_STARTING_WEALTH[command.character_class]
+      const roll = diceService.roll(formula.expression, 'character-starting-wealth', command.actor_id, 'party')
+      rolls.push(roll)
+      events.push(eventFrom(command, 'CharacterWealthRolled', { schema_version: 1, id: roll.roll_id, class_id: command.character_class, roll, total_gp: roll.total * formula.multiplier }, [command.actor_id]))
       break
     }
     case 'EquipItem':
@@ -17708,6 +18125,12 @@ export function applyGameEvent(rawState, event) {
         selectedFeatureIds: uniqueStrings(payload.selected_feature_ids),
       }))
       break
+    case 'CharacterAbilitiesRolled':
+      replaceActor(state, target, (actor) => ({ ...actor, characterCreationRolls: { ...actor.characterCreationRolls, abilities: clone(payload) } }))
+      break
+    case 'CharacterWealthRolled':
+      replaceActor(state, target, (actor) => ({ ...actor, characterCreationRolls: { ...actor.characterCreationRolls, wealth: clone(payload) } }))
+      break
     case 'CharacterLeveledUp':
     case 'CharacterImported': {
       const next = applyCharacterLifecycleEvent(state, event)
@@ -17903,6 +18326,8 @@ export function resolveCommands(commands, initialState, options) {
     const expected = commandIndex === 0 && hasExplicitExpected
       ? (item.expected_state_version ?? item.expectedStateVersion)
       : state.state_version
+    const failedSwing = allEvents.some((event) => event.event_type === 'SwingResolved' && event.payload?.success === false)
+    if (failedSwing && item.command_type === 'MakeAttack') break
     if (options?.stopAttackAfterMovement && item.command_type === 'MakeAttack'
       && validatedCommands.some((entry) => entry.command_type === 'MoveActor')) {
       // Реакция или поверхность могла лишить героя возможности атаковать.
@@ -18084,6 +18509,9 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'RulingRecorded': return 'Для действия сохранён ограниченный следующий шаг.'
     case 'ObjectiveUpdated': return `Цель отряда: ${payload.objective || 'следующий шаг не задан'}`
     case 'ActionDeclared': return 'Намерение героя принято к рассмотрению.'
+    case 'SwingResolved': return payload.success === true
+      ? 'Раскачка на люстре удалась; герой продолжает движение к цели.'
+      : 'Герой срывается при попытке ухватиться за люстру и падает ничком у опоры; удар не происходит.'
     case 'TimeAdvanced': return `Проходит ${payload.amount || 0} ${payload.unit || 'мин.'}`
     case OFFSCREEN_WORLD_EVENT_TYPE: return `Пока отряда не было: ${(payload.step?.lines ?? []).join(' ') || 'мир сделал свой ход'}`
     case 'TimeOfDayChanged': return `${payload.phase_label || 'Время суток сменилось'} — ${payload.clock || ''}, день ${safeInteger(payload.day, 1)}`.trim()
@@ -18173,7 +18601,8 @@ export class RulesEngine {
 
   resolvePlan(plan, state, context) {
     return resolveCommands(plan?.proposed_commands ?? plan?.commands ?? [], state, {
-      diceService: this.diceService, context, stopAttackAfterMovement: plan?.maneuver === 'approach_attack',
+      diceService: this.diceService, context,
+      stopAttackAfterMovement: ['approach_attack', 'long_jump_attack', 'swing_attack'].includes(plan?.maneuver),
     })
   }
 

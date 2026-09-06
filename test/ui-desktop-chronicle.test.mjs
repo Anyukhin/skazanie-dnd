@@ -4,8 +4,17 @@ import test from 'node:test'
 
 import {
   chronicleMatchesFilter,
+  chronicleMessageText,
   isChronicleNearBottom,
 } from '../src/chat-chronicle.mjs'
+
+test('хроника показывает маршрут без служебных меток и сохраняет обычную речь', () => {
+  const route = 'Отряд предлагает отправиться из «Штормберг» в «Миттлайд».'
+  assert.equal(chronicleMessageText(`[ГЛОБАЛЬНАЯ КАРТА] [destination_location_id=astohan-mittlayd] ${route}`), route)
+  assert.equal(chronicleMessageText('[РЕШЕНИЕ ГРУППЫ] Идём к озеру'), 'Идём к озеру')
+  assert.equal(chronicleMessageText('Говорю: [улыбаюсь] идём к озеру'), 'Говорю: [улыбаюсь] идём к озеру')
+  assert.equal(chronicleMessageText('[ДНЕВНИК] Мои заметки'), '[ДНЕВНИК] Мои заметки')
+})
 
 test('desktop chronicle filters the existing speaker contract without losing player narration', () => {
   assert.equal(chronicleMatchesFilter('narrator', 'story'), true)

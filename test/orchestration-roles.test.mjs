@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { Adjudicator } from '../server/adjudicator.mjs'
-import { IntentParser, buildRuleQueries } from '../server/intent-parser.mjs'
+import { IntentParser, buildRuleQueries, resolvePresentSocialActors } from '../server/intent-parser.mjs'
 import { normalizeCampaignState } from '../server/rules-engine.mjs'
 
 const state = normalizeCampaignState({ players: [
@@ -32,6 +32,28 @@ test('Intent Parser узнаёт русское имя NPC в естествен
   assert.equal(intent.approach, 'persuasion')
   assert.deepEqual(intent.targets, ['mira-guide'])
   assert.equal(intent.requires_clarification, false)
+})
+
+test('Intent Parser узнаёт составное имя короля и его короткое имя в падеже', async () => {
+  const visibleState = {
+    players: [{ id: 'hero', character: 'Ада' }],
+    scene: { location: 'Астраханские равнины' },
+    social: { npcs: [{ id: 'ares', name: 'Король Арес', role: 'king', location: 'Астраханские равнины', available: true }] },
+  }
+  assert.deepEqual(
+    resolvePresentSocialActors('Спрашиваю короля Ареса: что известно о молодом драконе?', visibleState).map((npc) => npc.id),
+    ['ares'],
+  )
+  const parser = new IntentParser()
+  for (const message of [
+    'Спрашиваю короля Ареса: что известно о молодом драконе и куда нам идти сначала?',
+    'Спрашиваю Аресу, куда идти?',
+  ]) {
+    const intent = await parser.parse({ message, playerId: 'hero', visibleState })
+    assert.equal(intent.intent, 'social')
+    assert.deepEqual(intent.targets, ['ares'])
+    assert.equal(intent.requires_clarification, false)
+  }
 })
 
 test('Adjudicator предлагает команду, но не меняет состояние', async () => {

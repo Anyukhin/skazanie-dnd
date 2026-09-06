@@ -16,7 +16,7 @@
         ] },
         { "id": "secondary-weapon", "label": "Запасное оружие", "count": 1, "options": [
           { "id": "two-handaxes", "label": "Два ручных топора", "summary": "Лёгкое метательное оружие", "items": [{ "catalog_id": "srd_5_2_1:handaxe", "quantity": 2 }] },
-          { "id": "two-javelins", "label": "Два дополнительных копья", "summary": "Дальний запас метательного оружия", "items": [{ "catalog_id": "srd_5_2_1:javelin", "quantity": 2 }] }
+          { "id": "two-javelins", "label": "Два дополнительных копья", "summary": "Исторический вариант policy v2; в PHB 2014 в этой строке выбирается одно простое оружие", "legacy_only": true, "items": [{ "catalog_id": "srd_5_2_1:javelin", "quantity": 2 }] }
         ] },
         { "id": "pack", "label": "Походный набор", "count": 1, "options": [
           { "id": "explorers-pack", "label": "Набор путешественника", "summary": "Рюкзак и припасы для дороги", "items": [{ "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }] }
@@ -96,7 +96,7 @@
         { "id": "melee-loadout", "label": "Боевой комплект", "count": 1, "options": [
           { "id": "longsword-shield", "label": "Длинный меч и щит", "summary": "Универсальное оружие и +2 к КД", "items": [{ "catalog_id": "srd_5_2_1:longsword", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:shield", "quantity": 1, "equipped": true }] },
           { "id": "battleaxe-shield", "label": "Боевой топор и щит", "summary": "Рубящее оружие и +2 к КД", "items": [{ "catalog_id": "srd_5_2_1:battleaxe", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:shield", "quantity": 1, "equipped": true }] },
-          { "id": "greatsword", "label": "Двуручный меч", "summary": "Тяжёлое двуручное оружие", "items": [{ "catalog_id": "srd_5_2_1:greatsword", "quantity": 1, "equipped": true }] },
+          { "id": "greatsword", "label": "Двуручный меч", "summary": "Исторический вариант policy v2; complete PHB требует щит или второе воинское оружие", "legacy_only": true, "items": [{ "catalog_id": "srd_5_2_1:greatsword", "quantity": 1, "equipped": true }] },
           { "id": "two-shortswords", "label": "Два коротких меча", "summary": "Два лёгких фехтовальных оружия", "items": [{ "catalog_id": "srd_5_2_1:shortsword", "quantity": 2, "equipped": true }] }
         ] },
         { "id": "secondary", "label": "Запас", "count": 1, "options": [
@@ -133,7 +133,7 @@
         { "id": "melee-loadout", "label": "Боевой комплект", "count": 1, "options": [
           { "id": "longsword-shield", "label": "Длинный меч и щит", "summary": "Классический защитный комплект", "items": [{ "catalog_id": "srd_5_2_1:longsword", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:shield", "quantity": 1, "equipped": true }] },
           { "id": "warhammer-shield", "label": "Боевой молот и щит", "summary": "Дробящее оружие и защита", "items": [{ "catalog_id": "srd_5_2_1:warhammer", "quantity": 1, "equipped": true }, { "catalog_id": "srd_5_2_1:shield", "quantity": 1, "equipped": true }] },
-          { "id": "greatsword", "label": "Двуручный меч", "summary": "Наступательный двуручный комплект", "items": [{ "catalog_id": "srd_5_2_1:greatsword", "quantity": 1, "equipped": true }] }
+          { "id": "greatsword", "label": "Двуручный меч", "summary": "Исторический вариант policy v2; complete PHB требует щит или второе воинское оружие", "legacy_only": true, "items": [{ "catalog_id": "srd_5_2_1:greatsword", "quantity": 1, "equipped": true }] }
         ] },
         { "id": "secondary", "label": "Запасное оружие", "count": 1, "options": [
           { "id": "five-javelins", "label": "Пять метательных копий", "summary": "Дальний запас", "items": [{ "catalog_id": "srd_5_2_1:javelin", "quantity": 5 }] },
@@ -245,6 +245,179 @@
           { "id": "explorers-pack", "label": "Набор путешественника", "summary": "Для долгой дороги", "items": [{ "catalog_id": "srd_5_2_1:explorers-pack", "quantity": 1 }] }
         ] }
       ]
+    }
+  ],
+  "complete_schema_version": 1,
+  "complete_classes": [
+    { "class_id": "barbarian", "dynamic_groups": { "primary-weapon": "martial-melee", "secondary-weapon": "simple" } },
+    { "class_id": "bard", "dynamic_groups": { "weapon": "simple", "instrument": "musical" } },
+    { "class_id": "cleric", "dynamic_groups": { "ranged-or-simple": "simple" } },
+    { "class_id": "druid", "dynamic_groups": { "defense": "simple", "weapon": "simple-melee" } },
+    { "class_id": "fighter", "dynamic_groups": { "melee-loadout": "fighter-melee" } },
+    { "class_id": "monk", "dynamic_groups": { "weapon": "simple" } },
+    { "class_id": "paladin", "dynamic_groups": { "melee-loadout": "paladin-melee", "secondary": "simple-melee" } },
+    { "class_id": "ranger", "dynamic_groups": { "melee": "two-simple-melee" } },
+    { "class_id": "rogue", "dynamic_groups": {} },
+    { "class_id": "sorcerer", "dynamic_groups": { "weapon": "simple" } },
+    { "class_id": "warlock", "dynamic_groups": { "ranged": "simple", "melee": "simple" } },
+    { "class_id": "wizard", "dynamic_groups": { "weapon": "simple" } }
+  ],
+  "complete_backgrounds": [
+    {
+      "background_id": "acolyte", "name": "Прислужник", "gold": 15, "skill_proficiencies": ["insight", "religion"], "feature_id": "shelter-of-the-faithful", "tool_proficiencies": [], "language_choice_count": 2,
+      "fixed_narrative_items": [
+        { "name": "Священный символ", "type": "focus", "quantity": 1, "weight": 1, "description": "Подарок за вступление в священство." },
+        { "name": "Благовония", "type": "other", "quantity": 5, "weight": 0.5 },
+        { "name": "Облачение", "type": "clothing", "quantity": 1, "weight": 4 },
+        { "name": "Обычная одежда", "type": "clothing", "quantity": 1, "weight": 3 },
+        { "name": "Поясной кошель", "type": "container", "quantity": 1, "weight": 1 }
+      ],
+      "choice_groups": [
+        { "id": "prayer-book-or-prayer-wheel", "label": "Книга молитв или молитвенное колесо", "count": 1, "options": [
+          { "id": "prayer-book", "label": "Молитвенник", "narrative_items": [{ "name": "Молитвенник", "type": "book", "quantity": 1, "weight": 5 }] },
+          { "id": "prayer-wheel", "label": "Молитвенное колесо", "narrative_items": [{ "name": "Молитвенное колесо", "type": "focus", "quantity": 1, "weight": 1 }] }
+        ] }
+      ],
+      "source_url": "https://5e14.dnd.su/backgrounds/766-acolyte/"
+    },
+    {
+      "background_id": "charlatan", "name": "Шарлатан", "gold": 15, "skill_proficiencies": ["deception", "sleight_of_hand"], "feature_id": "false-identity", "tool_proficiencies": ["disguise_kit", "forgery_kit"], "language_choice_count": 0,
+      "fixed_narrative_items": [
+        { "name": "Парадная одежда", "type": "clothing", "quantity": 1, "weight": 6 },
+        { "name": "Набор для грима", "type": "tool", "quantity": 1, "weight": 3, "proficiency": "disguise_kit" },
+        { "name": "Поясной кошель", "type": "container", "quantity": 1, "weight": 1 }
+      ],
+      "choice_groups": [
+        { "id": "con-tool", "label": "Инструмент аферы", "count": 1, "options": [
+          { "id": "colored-bottles", "label": "Десять бутылочек с цветной жидкостью", "narrative_items": [{ "name": "Бутылочки с цветной жидкостью", "type": "other", "quantity": 10, "weight": 1 }] },
+          { "id": "weighted-dice", "label": "Набор шулерских костей", "narrative_items": [{ "name": "Набор шулерских костей", "type": "tool", "quantity": 1, "weight": 0, "proficiency": "dice_set" }] },
+          { "id": "marked-cards", "label": "Краплёная колода", "narrative_items": [{ "name": "Краплёная колода карт", "type": "tool", "quantity": 1, "weight": 0, "proficiency": "playing_cards" }] },
+          { "id": "imaginary-duke-ring", "label": "Перстень вымышленного герцога", "narrative_items": [{ "name": "Перстень вымышленного герцога", "type": "jewelry", "quantity": 1, "weight": 0 }] }
+        ] }
+      ],
+      "source_url": "https://5e14.dnd.su/backgrounds/765-charlatan/"
+    },
+    {
+      "background_id": "criminal", "name": "Преступник", "gold": 15, "skill_proficiencies": ["deception", "stealth"], "feature_id": "criminal-contact", "tool_proficiencies": ["thieves_tools"], "tool_choice": { "group": "gaming", "count": 1 }, "language_choice_count": 0,
+      "fixed_items": [{ "catalog_id": "srd_5_2_1:crowbar", "quantity": 1 }],
+      "fixed_narrative_items": [
+        { "name": "Тёмная обычная одежда с капюшоном", "type": "clothing", "quantity": 1, "weight": 3 },
+        { "name": "Поясной кошель", "type": "container", "quantity": 1, "weight": 1 }
+      ],
+      "choice_groups": [], "source_url": "https://5e14.dnd.su/backgrounds/765-criminal/"
+    },
+    {
+      "background_id": "entertainer", "name": "Артист", "gold": 15, "skill_proficiencies": ["acrobatics", "performance"], "feature_id": "by-popular-demand", "tool_proficiencies": ["disguise_kit"], "tool_choice": { "group": "musical", "count": 1 }, "language_choice_count": 0,
+      "fixed_narrative_items": [
+        { "name": "Подарок поклонника", "type": "other", "quantity": 1, "weight": 0 },
+        { "name": "Костюм", "type": "clothing", "quantity": 1, "weight": 4 },
+        { "name": "Поясной кошель", "type": "container", "quantity": 1, "weight": 1 }
+      ],
+      "choice_groups": [{ "id": "musical-instrument", "label": "Музыкальный инструмент", "count": 1, "dynamic_source": "musical", "options": [] }],
+      "source_url": "https://5e14.dnd.su/backgrounds/757-entertainer/"
+    },
+    {
+      "background_id": "folk-hero", "name": "Народный герой", "gold": 10, "skill_proficiencies": ["animal_handling", "survival"], "feature_id": "rustic-hospitality", "tool_proficiencies": ["vehicles_land"], "tool_choice": { "group": "artisan", "count": 1 }, "language_choice_count": 0,
+      "fixed_narrative_items": [
+        { "name": "Лопата", "type": "tool", "quantity": 1, "weight": 5 },
+        { "name": "Железный горшок", "type": "other", "quantity": 1, "weight": 10 },
+        { "name": "Обычная одежда", "type": "clothing", "quantity": 1, "weight": 3 },
+        { "name": "Поясной кошель", "type": "container", "quantity": 1, "weight": 1 }
+      ],
+      "choice_groups": [{ "id": "artisan-tool", "label": "Ремесленный инструмент", "count": 1, "dynamic_source": "artisan", "options": [] }],
+      "source_url": "https://5e14.dnd.su/backgrounds/763-folk-hero/"
+    },
+    {
+      "background_id": "guild-artisan", "name": "Гильдейский ремесленник", "gold": 15, "skill_proficiencies": ["insight", "persuasion"], "feature_id": "guild-membership", "tool_proficiencies": [], "tool_choice": { "group": "artisan", "count": 1 }, "language_choice_count": 1,
+      "fixed_narrative_items": [
+        { "name": "Рекомендательное письмо гильдии", "type": "document", "quantity": 1, "weight": 0 },
+        { "name": "Дорожная одежда", "type": "clothing", "quantity": 1, "weight": 4 },
+        { "name": "Поясной кошель", "type": "container", "quantity": 1, "weight": 1 }
+      ],
+      "choice_groups": [{ "id": "artisan-tool", "label": "Ремесленный инструмент", "count": 1, "dynamic_source": "artisan", "options": [] }],
+      "source_url": "https://5e14.dnd.su/backgrounds/760-guild-artisan/"
+    },
+    {
+      "background_id": "hermit", "name": "Отшельник", "gold": 5, "skill_proficiencies": ["medicine", "religion"], "feature_id": "discovery", "tool_proficiencies": ["herbalism_kit"], "language_choice_count": 1,
+      "fixed_items": [{ "catalog_id": "srd_5_2_1:herbalism-kit", "quantity": 1 }],
+      "fixed_narrative_items": [
+        { "name": "Футляр со свитками и записями", "type": "container", "quantity": 1, "weight": 1 },
+        { "name": "Зимнее одеяло", "type": "clothing", "quantity": 1, "weight": 3 },
+        { "name": "Обычная одежда", "type": "clothing", "quantity": 1, "weight": 3 }
+      ],
+      "choice_groups": [], "source_url": "https://5e14.dnd.su/backgrounds/764-hermit/"
+    },
+    {
+      "background_id": "noble", "name": "Благородный", "gold": 25, "skill_proficiencies": ["history", "persuasion"], "feature_id": "position-of-privilege", "tool_proficiencies": [], "tool_choice": { "group": "gaming", "count": 1 }, "language_choice_count": 1,
+      "fixed_narrative_items": [
+        { "name": "Парадная одежда", "type": "clothing", "quantity": 1, "weight": 6 },
+        { "name": "Перстень с печаткой", "type": "jewelry", "quantity": 1, "weight": 0 },
+        { "name": "Свиток родословной", "type": "document", "quantity": 1, "weight": 0 },
+        { "name": "Кошель", "type": "container", "quantity": 1, "weight": 1 }
+      ],
+      "choice_groups": [], "source_url": "https://5e14.dnd.su/backgrounds/759-noble/"
+    },
+    {
+      "background_id": "outlander", "name": "Чужеземец", "gold": 10, "skill_proficiencies": ["athletics", "survival"], "feature_id": "wanderer", "tool_proficiencies": [], "tool_choice": { "group": "musical", "count": 1 }, "language_choice_count": 1,
+      "fixed_items": [{ "catalog_id": "srd_5_2_1:quarterstaff", "quantity": 1 }, { "catalog_id": "srd_5_2_1:hunting-trap", "quantity": 1 }],
+      "fixed_narrative_items": [
+        { "name": "Трофей животного", "type": "other", "quantity": 1, "weight": 0 },
+        { "name": "Дорожная одежда", "type": "clothing", "quantity": 1, "weight": 4 },
+        { "name": "Поясной кошель", "type": "container", "quantity": 1, "weight": 1 }
+      ],
+      "choice_groups": [], "source_url": "https://5e14.dnd.su/backgrounds/768-outlander/"
+    },
+    {
+      "background_id": "sage", "name": "Мудрец", "gold": 10, "skill_proficiencies": ["arcana", "history"], "feature_id": "researcher", "tool_proficiencies": [], "language_choice_count": 2,
+      "fixed_items": [{ "catalog_id": "srd_5_2_1:dagger", "quantity": 1 }],
+      "fixed_narrative_items": [
+        { "name": "Бутылочка чёрных чернил", "type": "other", "quantity": 1, "weight": 0 },
+        { "name": "Перо", "type": "other", "quantity": 1, "weight": 0 },
+        { "name": "Письмо от умершего коллеги", "type": "document", "quantity": 1, "weight": 0 },
+        { "name": "Обычная одежда", "type": "clothing", "quantity": 1, "weight": 3 },
+        { "name": "Поясной кошель", "type": "container", "quantity": 1, "weight": 1 }
+      ],
+      "choice_groups": [], "source_url": "https://5e14.dnd.su/backgrounds/762-sage/"
+    },
+    {
+      "background_id": "sailor", "name": "Моряк", "gold": 10, "skill_proficiencies": ["athletics", "perception"], "feature_id": "ships-passage", "tool_proficiencies": ["navigators_tools", "vehicles_water"], "language_choice_count": 0,
+      "fixed_items": [{ "catalog_id": "srd_5_2_1:club", "quantity": 1 }],
+      "fixed_narrative_items": [
+        { "name": "Шёлковая верёвка, 50 футов", "type": "tool", "quantity": 1, "weight": 5 },
+        { "name": "Счастливый талисман", "type": "other", "quantity": 1, "weight": 0 },
+        { "name": "Обычная одежда", "type": "clothing", "quantity": 1, "weight": 3 },
+        { "name": "Поясной кошель", "type": "container", "quantity": 1, "weight": 1 }
+      ],
+      "choice_groups": [], "source_url": "https://5e14.dnd.su/backgrounds/761-sailor/"
+    },
+    {
+      "background_id": "soldier", "name": "Солдат", "gold": 10, "skill_proficiencies": ["athletics", "intimidation"], "feature_id": "military-rank", "tool_proficiencies": ["vehicles_land"], "tool_choice": { "group": "gaming", "count": 1 }, "language_choice_count": 0,
+      "fixed_narrative_items": [
+        { "name": "Знак звания", "type": "insignia", "quantity": 1, "weight": 0 },
+        { "name": "Обычная одежда", "type": "clothing", "quantity": 1, "weight": 3 },
+        { "name": "Поясной кошель", "type": "container", "quantity": 1, "weight": 1 }
+      ],
+      "choice_groups": [
+        { "id": "trophy", "label": "Трофей павшего врага", "count": 1, "options": [
+          { "id": "trophy-dagger", "label": "Кинжал", "items": [{ "catalog_id": "srd_5_2_1:dagger", "quantity": 1 }] },
+          { "id": "trophy-broken-blade", "label": "Обломок клинка", "narrative_items": [{ "name": "Обломок клинка", "type": "other", "quantity": 1, "weight": 1 }] },
+          { "id": "trophy-banner", "label": "Кусок знамени", "narrative_items": [{ "name": "Кусок знамени павшего врага", "type": "other", "quantity": 1, "weight": 0 }] }
+        ] },
+        { "id": "gaming-set", "label": "Игровой набор", "count": 1, "dynamic_source": "gaming", "options": [] }
+      ],
+      "source_url": "https://5e14.dnd.su/backgrounds/767-soldier/"
+    },
+    {
+      "background_id": "urchin", "name": "Беспризорник", "gold": 10, "skill_proficiencies": ["sleight_of_hand", "stealth"], "feature_id": "city-secrets", "tool_proficiencies": ["thieves_tools", "disguise_kit"], "language_choice_count": 0,
+      "fixed_items": [{ "catalog_id": "srd_5_2_1:dagger", "quantity": 1 }],
+      "fixed_narrative_items": [
+        { "name": "Карта родного города", "type": "document", "quantity": 1, "weight": 0 },
+        { "name": "Ручная мышь", "type": "beast", "quantity": 1, "weight": 0 },
+        { "name": "Памятная вещь родителей", "type": "other", "quantity": 1, "weight": 0 },
+        { "name": "Обычная одежда", "type": "clothing", "quantity": 1, "weight": 3 },
+        { "name": "Поясной кошель", "type": "container", "quantity": 1, "weight": 1 }
+      ],
+      "choice_groups": [], "source_url": "https://5e14.dnd.su/backgrounds/758-urchin/"
     }
   ]
 }

@@ -254,13 +254,14 @@ function actorOccupiedCells(state) {
 
 function preferredAssets(npc = {}) {
   const role = `${text(npc.role, 160)} ${(Array.isArray(npc.tags) ? npc.tags : []).join(' ')}`.toLocaleLowerCase('ru')
+  if (/корол|правител|king|ruler|marshal|archivist|messenger/iu.test(role)) return ['table_long', 'table_small', 'table_round', 'bookshelf']
   if (/торгов|merchant|трактир|innkeep|бармен|barkeep/iu.test(role)) return ['bar_counter', 'table_long', 'table_round', 'stall', 'counter']
   if (/жрец|priest|свящ|cleric/iu.test(role)) return ['altar', 'shrine', 'candle', 'fireplace']
   if (/лекар|healer|травник|herbal/iu.test(role)) return ['table_long', 'fireplace', 'campfire', 'shelf']
   if (/кузнец|blacksmith|ремесл|artisan/iu.test(role)) return ['forge', 'anvil', 'workbench', 'fireplace']
   if (/страж|guard|часов|watch/iu.test(role)) return ['signpost', 'hitching_post', 'gate', 'door', 'campfire']
   if (/фермер|farmer|конюх|stable/iu.test(role)) return ['well', 'hitching_post', 'cart', 'hay']
-  return ['table_round', 'table_long', 'well', 'signpost', 'campfire', 'fireplace']
+  return ['table_round', 'table_long', 'table_small', 'well', 'signpost', 'campfire', 'fireplace']
 }
 
 function suitableProps(map, npc) {
@@ -286,12 +287,17 @@ function placementCellAllowed(map, position, occupied, propOccupied) {
 
 function candidateCells(map, npc, occupied, propOccupied) {
   const preferred = preferredAssets(npc)
-  const props = suitableProps(map, npc)
+  const post = (npc.tags ?? []).find((tag) => String(tag).startsWith('post:'))?.slice(5)
+  const assignedZone = map.zones.find((zone) => zone.id === post)
+  const anchorId = (npc.tags ?? []).find((tag) => String(tag).startsWith('anchor:'))?.slice(7)
+  const assignedProp = map.props.find((prop) => prop.id === anchorId)
+  const props = assignedProp ? [assignedProp] : suitableProps(map, npc)
   const candidates = []
   for (let y = 0; y < map.height; y += 1) {
     for (let x = 0; x < map.width; x += 1) {
       const position = { x, y }
       if (!placementCellAllowed(map, position, occupied, propOccupied)) continue
+      if (assignedZone && cellAt(map, x, y)?.zone !== assignedZone.id) continue
       let anchor = null
       let anchorDistance = Number.MAX_SAFE_INTEGER
       let anchorRank = preferred.length + 1

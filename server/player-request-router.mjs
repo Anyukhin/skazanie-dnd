@@ -28,6 +28,7 @@ const DIRECTOR_REQUEST = /(?:покида|уходим|маршрут|куда\s
 const DIRECTION_REQUEST = /(?:куда\s+(?:нам\s+)?(?:идти|пойти|уходить|направляться|двигаться)(?:\s+дальше|\s+отсюда|\s+по\s+заданию)?|куда\s+по\s+заданию|что\s+делать\s+дальше)/iu
 const FATE_REQUEST = /(?:пусть|пускай|давайте|может)\s+(?:решит|определит|бросим)\s+(?:кубик|кость)|кубик\s+судьбы/iu
 const RULES_REQUEST = /(?:правил|можно\s+ли|провер|брос|куб|атак|урон|заклин|спасброс|инициатив|класс\s+брони)/iu
+const NPC_SPEECH_REQUEST = /(?<![\p{L}\p{M}])(?:спрашиваю|спросим|расспрашиваю|расспросим|говорю|говорим|обращаюсь|обращаемся|прошу|просим)(?![\p{L}\p{M}])/iu
 
 export function selectAgentRole(action) {
   const text = String(action || '').normalize('NFKC')
@@ -110,6 +111,9 @@ export function proposeAgentInteraction(action, state = {}) {
 }
 
 export function answerKnownLore(action, state = {}, options = {}) {
+  // Вопрос внутри реплики адресован собеседнику. Даже неизвестный NPC должен
+  // пройти обычный разбор с уточнением цели, а не исчезнуть за справкой о мире.
+  if (NPC_SPEECH_REQUEST.test(String(action || '').normalize('NFKC'))) return null
   const asksDirection = DIRECTION_REQUEST.test(String(action || '').normalize('NFKC'))
   if (!asksDirection && selectAgentRole(action) !== 'worldkeeper') return null
   const adventure = state.adventure ?? {}

@@ -1,0 +1,17 @@
+ruleset_id: dnd_5e_2014
+pack_id: skazanie_dndsu_2014_reference_extension
+edition_family: 5e_2014
+version: "2014.content.1.0.0"
+canonical_language: ru
+display_languages:
+  - ru
+  - en
+source_registry: sources.json
+source_title: "dnd.su 2014 facts with explicitly identified SRD 5.1 supplements"
+source_url: "https://5e14.dnd.su/"
+source_hash: external_source_bytes_not_bundled
+license_id: PROJECT-LICENSE-PENDING
+content_license_id: ORIGINAL-PARAPHRASE
+activation_status: preview
+created_at: "2026-09-05T00:00:00Z"
+verified_at: "2026-09-05T00:00:00Z"

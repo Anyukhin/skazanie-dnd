@@ -671,7 +671,7 @@ function drawSceneArt(context: BoardContext2D, scene: BoardScene, cell: Tactical
   const sliceWidth = art.width / Math.max(1, scene.map.width)
   const sliceHeight = art.height / Math.max(1, scene.map.height)
   context.save()
-  context.globalAlpha = 0.72
+  context.globalAlpha = scene.map.zones.length ? 0.22 : 0.72
   context.globalCompositeOperation = 'multiply'
   context.drawImage(art.image, cell.x * sliceWidth, cell.y * sliceHeight, sliceWidth, sliceHeight, left, top, scene.cellSize, scene.cellSize)
   context.restore()
@@ -720,7 +720,9 @@ function drawVariantTint(context: BoardContext2D, cell: TacticalCell, left: numb
   const shift = FLOOR_VARIANT_SHADES[Math.abs(cell.variant) % FLOOR_VARIANT_SHADES.length]
   if (Math.abs(shift) < 0.005) return
   context.save()
-  context.globalAlpha = Math.min(0.22, Math.abs(shift) * 2.4)
+  // На грунте и траве слабый оттенок сохраняет цельное покрытие вместо шахматной доски.
+  const natural = cell.material === 'grass' || cell.material === 'earth' || cell.material === 'sand'
+  context.globalAlpha = Math.min(0.22, Math.abs(shift) * (natural ? 0.6 : 2.4))
   context.fillStyle = shift > 0 ? VARIANT_TINT_LIGHT : VARIANT_TINT_DARK
   context.fillRect(left, top, size, size)
   context.globalAlpha = 1
@@ -2369,11 +2371,34 @@ function platterPainter(kind: 'plate' | 'bowl' | 'cheese' | 'board' | 'bread' | 
   }
 }
 
-/** Свечи: одиночная на столе и канделябр на три рожка. */
-function candlePainter(kind: 'candle' | 'stand'): PropPainter {
+/** Свеча, канделябр и подвешенное кольцо люстры, вид сверху. */
+function candlePainter(kind: 'candle' | 'stand' | 'chandelier'): PropPainter {
   return (context, { hw, hh }, palette) => {
     const t = tones(palette)
     const thin = Math.min(hw, hh)
+    if (kind === 'chandelier') {
+      context.strokeStyle = t.accent
+      context.lineWidth = thin * 0.15
+      context.beginPath()
+      context.arc(0, 0, thin * 0.73, 0, Math.PI * 2)
+      context.stroke()
+      for (let index = 0; index < 6; index += 1) {
+        const angle = index * Math.PI / 3
+        const x = Math.cos(angle) * thin * 0.73
+        const y = Math.sin(angle) * thin * 0.73
+        context.beginPath()
+        context.moveTo(0, 0)
+        context.lineTo(x, y)
+        context.stroke()
+        context.fillStyle = t.light
+        circle(context, x, y, thin * 0.2)
+        context.fillStyle = t.glow
+        circle(context, x, y, thin * 0.11)
+      }
+      context.fillStyle = t.dark
+      circle(context, 0, 0, thin * 0.2)
+      return
+    }
     if (kind === 'stand') {
       context.fillStyle = t.dark
       circle(context, 0, hh * 0.42, thin * 0.6)
@@ -3004,6 +3029,7 @@ const PROP_LIBRARY: Record<string, PropDrawing> = {
   torch_wall: { paint: wallDecalPainter('torch'), simple: 'round', visual: { w: 0.5, h: 0.72 }, flat: true },
   lantern_wall: { paint: wallDecalPainter('lantern'), simple: 'round', visual: { w: 0.5, h: 0.72 }, flat: true },
   candelabra: { paint: candlePainter('stand'), simple: 'round' },
+  chandelier: { paint: candlePainter('chandelier'), simple: 'round', visual: { w: 1.4, h: 1.4 } },
   banner: { paint: wallDecalPainter('banner'), simple: 'block', visual: { w: 0.7, h: 1.3 }, flat: true },
   sign_board: { paint: wallDecalPainter('sign'), simple: 'block', visual: { w: 1.1, h: 0.8 }, flat: true },
   rug: { paint: groundDecalPainter('rug'), simple: 'block', visual: { w: 3, h: 2 }, flat: true },
@@ -3272,7 +3298,7 @@ export function drawProps(context: BoardContext2D, scene: BoardScene, tile: Boar
     const placement = propPlacement(prop, drawing, frame.size)
     // Штамп берётся только на полной детализации: ниже её предмет занимает
     // считаные пиксели, и силуэт заливкой там и дешевле, и разборчивее.
-    const stamp = level === 'full' || ART_ONLY_PROP_ASSETS.has(prop.assetId)
+    const stamp = level === 'full' || ART_ONLY_PROP_ASSETS.has(prop.assetId) || (scene.map.generator.id === 'ares-fortress' && level === 'simple')
       ? scene.propAtlas?.frames[prop.assetId]
       : undefined
     context.save()

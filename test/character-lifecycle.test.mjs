@@ -48,9 +48,19 @@ test('derived sheet computes ability modifiers, class saves, skill proficiency, 
   assert.equal(sheet.saving_throws.str.total, 5)
   assert.equal(sheet.skills.athletics.total, 5)
   assert.equal(sheet.skills.stealth.total, 2)
-  assert.equal(sheet.armor_class.value, 15, '11 + DEX + shield, not client armor=99')
+  assert.equal(sheet.armor_class.value, 16, '11 + DEX + shield + Defense, not client armor=99')
   assert.equal(sheet.speed.value, 30, 'not client speed=99')
   assert.equal(sheet.hit_points.value, 36)
+})
+
+test('Защита даёт +1 КД только с надетым доспехом и допустимым классовым выбором', () => {
+  const armor = { id: 'chain', catalog_id: 'srd_5_2_1:chain-mail', equipped: true }
+  const shield = { id: 'shield', catalog_id: 'srd_5_2_1:shield', equipped: true }
+  assert.equal(deriveCharacterSheet(fighter({ inventory: [armor, shield] })).armor_class.value, 19)
+  assert.equal(deriveCharacterSheet(fighter({ inventory: [shield] })).armor_class.value, 14)
+  assert.equal(deriveCharacterSheet(fighter({ inventory: [{ ...armor, equipped: false }] })).armor_class.value, 12)
+  assert.equal(deriveCharacterSheet(fighter({ inventory: [armor], selectedFeatureIds: [] })).armor_class.value, 16)
+  assert.equal(deriveCharacterSheet(fighter({ characterClass: 'wizard', inventory: [armor] })).armor_class.value, 16)
 })
 
 test('derived sheet exposes one stamped item bonus in AC and every saving throw', () => {

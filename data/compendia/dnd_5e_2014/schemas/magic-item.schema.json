@@ -1,0 +1,189 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skazanie:dnd-2014:magic-item:1",
+  "title": "Skazanie D&D 2014 magic-item",
+  "description": "Reference data contract. Conditional combat effects still require typed handlers and runtime tests.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^dnd_5e_2014:"
+    },
+    "ruleset_id": {
+      "const": "dnd_5e_2014"
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "const": "magic_item"
+    },
+    "book_code": {
+      "const": "DMG14"
+    },
+    "source_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mechanics_status": {
+      "const": "data_only"
+    },
+    "runtime_activation_allowed": {
+      "const": false
+    },
+    "name_ru": {
+      "type": "string",
+      "minLength": 1
+    },
+    "name_en": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_url": {
+      "type": "string",
+      "minLength": 1
+    },
+    "item_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rarity": {
+      "enum": [
+        "common",
+        "uncommon",
+        "rare",
+        "very_rare",
+        "legendary"
+      ]
+    },
+    "summary_ru": {
+      "type": "string",
+      "minLength": 1
+    },
+    "attunement": {
+      "type": "object",
+      "properties": {
+        "required": {
+          "type": "boolean"
+        },
+        "requirements": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "required",
+        "requirements"
+      ],
+      "additionalProperties": true
+    },
+    "activation": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "action_cost": {
+            "enum": [
+              "action",
+              "bonus_action",
+              "reaction",
+              null
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "action_cost"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "effects": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "charges": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "consumable": {
+      "type": "boolean"
+    },
+    "weight_lb": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "price_gp": {
+      "const": null
+    },
+    "variant": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "requires_base_item": {
+      "type": "boolean"
+    },
+    "field_notes": {
+      "type": "array"
+    },
+    "full_source_text_included": {
+      "const": false
+    }
+  },
+  "required": [
+    "id",
+    "ruleset_id",
+    "version",
+    "kind",
+    "book_code",
+    "source_ref",
+    "mechanics_status",
+    "runtime_activation_allowed",
+    "name_ru",
+    "name_en",
+    "source_url",
+    "item_type",
+    "rarity",
+    "summary_ru",
+    "attunement",
+    "activation",
+    "effects",
+    "charges",
+    "consumable",
+    "weight_lb",
+    "price_gp",
+    "variant",
+    "requires_base_item",
+    "field_notes",
+    "full_source_text_included"
+  ],
+  "additionalProperties": true
+}

@@ -22,6 +22,22 @@ const policies = new Map([
 
 const ABILITY_IDS = Object.freeze(['str', 'dex', 'con', 'int', 'wis', 'cha'])
 
+// У базового драконорождённого 2014 тип спасброска оружия дыхания зависит от
+// наследия: зелёный, белый и серебряный драконы требуют Телосложение, остальные
+// — Ловкость.  Это отдельное свойство ancestry, а не общий дефолт области.
+const DRAGON_ANCESTRY_SAVE_ABILITIES = Object.freeze({
+  black: 'dex',
+  blue: 'dex',
+  brass: 'dex',
+  bronze: 'dex',
+  copper: 'dex',
+  gold: 'dex',
+  green: 'con',
+  red: 'dex',
+  silver: 'con',
+  white: 'con',
+})
+
 function policyFor(rulesetId) {
   const profile = rulesetProfile(rulesetId, { fallback: LEGACY_DEFAULT_RULESET_ID })
   const policy = policies.get(profile.id)
@@ -148,7 +164,7 @@ export function speciesBenefitsFor(speciesOptionId, rulesetId = LEGACY_DEFAULT_R
       damage_type: ancestry.damage_type,
       shape: ancestry.shape,
       distance_feet: Number(ancestry.distance_feet),
-      save_ability: 'dex',
+      save_ability: DRAGON_ANCESTRY_SAVE_ABILITIES[String(ancestry.id)] ?? 'dex',
     }
   }
   const innateSpells = [...(mechanics.innate_spells ?? []), ...selectedCantrips]

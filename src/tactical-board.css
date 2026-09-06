@@ -147,3 +147,29 @@
     opacity: 0;
   }
 }
+.map-scroll.tactical-scroll { margin-top: 0; }
+.tactical-scroll > .board-frame {
+  /* Первый вид вмещает фактическую карту; детали доступны колесом и панорамой. */
+  --cell: clamp(6px, min(calc((100cqw - 48px) / var(--board-columns)), calc((100cqh - 48px) / var(--board-rows))), 80px);
+}
+.map-stage.map-theme-fortress {
+  --map-floor: #a49d89;
+  --map-floor-alt: #b0a792;
+  --map-wall: #55544a;
+  --map-grid-line: rgba(45, 49, 38, .12);
+  --map-light-shadow: #202626;
+  background: #394132;
+}
+.party-quest-hud:not(.expanded) { width: min(180px, calc(100% - 44px)); }
+.party-quest-hud:not(.expanded) > button { min-height: 34px; }
+.party-quest-hud:not(.expanded) small { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.tactical-scroll .board-cell .map-token {
+  width: clamp(8px, calc(var(--cell) * .9), 36px);
+  height: clamp(8px, calc(var(--cell) * .9), 36px);
+  border-width: 1px;
+  box-shadow: 0 1px 3px #000, 0 0 0 1px rgba(0,0,0,.5);
+}
+.tactical-scroll[data-overview="true"] .neutral-nameplate { opacity: 0; }
+.tactical-scroll[data-overview="true"] .map-token:hover .neutral-nameplate,
+.tactical-scroll[data-overview="true"] .map-token:focus-visible .neutral-nameplate,
+.tactical-scroll[data-overview="true"] .map-token.label-open .neutral-nameplate { opacity: 1; }

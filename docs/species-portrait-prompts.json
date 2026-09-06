@@ -1,0 +1,47 @@
+{
+  "generated_at": "2026-09-05",
+  "tool": "image_gen (built-in)",
+  "usage": "Портреты девяти базовых рас и отдельный портрет дроу для мастера создания; остальные подрасы используют портрет базовой расы.",
+  "prompts": [
+    {
+      "id": "human",
+      "prompt": "Square human female adventurer portrait; warm brown skin, dark wavy hair, leather travel cloak; painterly fantasy, dark umber background, golden rim light, no text."
+    },
+    {
+      "id": "dwarf",
+      "prompt": "Square portrait for a fantasy RPG race selection card. Subject: a stout broad-faced adult male dwarf, magnificent braided auburn beard, thick eyebrows, bronze clasps, wool and sturdy leather adventuring clothes. Chest-up centered portrait, full head inside the frame with generous top margin, face readable at 80px. Original hand-painted realistic fantasy art, natural anatomy, muted dark umber background, warm golden rim light, bronze and earthy palette, detailed painterly texture. One character only, no text, no frame, no watermark. Square PNG."
+    },
+    {
+      "id": "elf",
+      "prompt": "Square portrait for a fantasy RPG race selection card. Subject: an elegant adult female elf with clearly pointed long ears, silver-blond hair swept back, angular delicate features, forest green cloak and a simple bronze leaf clasp. Chest-up centered portrait, full head inside the frame with generous top margin, face readable at 80px. Original hand-painted realistic fantasy art, natural anatomy, muted dark umber background, warm golden rim light, bronze and earthy palette, detailed painterly texture. One character only, no text, no frame, no watermark. Square PNG."
+    },
+    {
+      "id": "halfling",
+      "prompt": "Square portrait for a fantasy RPG race selection card. Subject: an adult male halfling, round kindly face, curly chestnut hair, subtly pointed ears, compact shoulders, earth-green waistcoat and a rustic travel cloak; mature adult proportions, no child. Chest-up centered portrait, full head inside the frame with generous top margin, face readable at 80px. Original hand-painted realistic fantasy art, natural anatomy, muted dark umber background, warm golden rim light, bronze and earthy palette, detailed painterly texture. One character only, no text, no frame, no watermark. Square PNG."
+    },
+    {
+      "id": "gnome",
+      "prompt": "Square portrait for a fantasy RPG race selection card. Subject: an adult female gnome inventor, lively intelligent eyes, small angular face, pronounced nose, clearly pointed ears, copper-red braided hair, leather apron over a moss-colored tunic, simple brass spectacles resting on her forehead; mature adult, not a child. Chest-up centered portrait, full head inside the frame with generous top margin, face readable at 80px. Original hand-painted realistic fantasy art, natural anatomy, muted dark umber background, warm golden rim light, bronze and earthy palette, detailed painterly texture. One character only, no text, no frame, no watermark. Square PNG."
+    },
+    {
+      "id": "half-orc",
+      "prompt": "Square portrait for a fantasy RPG race selection card. Subject: an adult male half-orc adventurer, olive-gray green skin, prominent brow, broad muscular neck, strong jaw, two small lower tusks, black hair tied back, weathered leather travel clothes, thoughtful calm expression, dignified rather than monstrous. Chest-up centered portrait, full head inside the frame with generous top margin, face readable at 80px. Original hand-painted realistic fantasy art, natural anatomy, muted dark umber background, warm golden rim light, bronze and earthy palette, detailed painterly texture. One character only, no text, no frame, no watermark. Square PNG."
+    },
+    {
+      "id": "half-elf",
+      "prompt": "Square portrait for a fantasy RPG race selection card. Subject: an adult male half-elf traveler, humanlike warm olive face with gently pointed ears, dark brown shoulder-length hair, faint stubble, amber eyes, muted teal travel cloak with bronze clasp. Chest-up centered portrait, full head inside the frame with generous top margin, face readable at 80px. Original hand-painted realistic fantasy art, natural anatomy, muted dark umber background, warm golden rim light, bronze and earthy palette, detailed painterly texture. One character only, no text, no frame, no watermark. Square PNG."
+    },
+    {
+      "id": "tiefling",
+      "prompt": "Square portrait for a fantasy RPG race selection card. Subject: an adult female tiefling traveler, muted burgundy red skin, two symmetrical swept-back curved horns fully visible, golden eyes with dark pupils, black wavy hair, dark plum cloak with bronze clasp, intelligent composed expression. Chest-up centered portrait, full head inside the frame with generous top margin, face readable at 80px. Original hand-painted realistic fantasy art, natural anatomy, muted dark umber background, warm golden rim light, bronze and earthy palette, detailed painterly texture. One character only, no text, no frame, no watermark. Square PNG."
+    },
+    {
+      "id": "dragonborn",
+      "prompt": "Square portrait for a fantasy RPG race selection card. Subject: an adult bronze dragonborn adventurer: unmistakably dragon-shaped long reptilian head and snout, bronze overlapping scales, ridged brow, small swept-back cranial horns fully visible, amber reptilian eyes, no human hair, no external ears, no wings; sturdy leather travel mantle with bronze clasp, noble composed expression. Chest-up centered portrait, full head inside the frame with generous top margin, face readable at 80px. Original hand-painted realistic fantasy art, natural anatomy, muted dark umber background, warm golden rim light, bronze and earthy palette, detailed painterly texture. One character only, no text, no frame, no watermark. Square PNG."
+    },
+    {
+      "id": "elf-drow",
+      "prompt": "Square portrait for a fantasy RPG drow race selection card. An adult female dark elf traveler with deep slate-violet skin, white silver hair swept back, clearly pointed long ears, pale lavender eyes, dignified calm expression, dark indigo cloak and bronze clasp. Chest-up centered, full head within frame, face readable at 80px. Original hand-painted realistic fantasy illustration, natural anatomy, muted dark umber background, warm golden rim light, bronze earthy highlights, painterly texture. One character, no text, no frame, no watermark. Square PNG."
+    }
+  ]
+}

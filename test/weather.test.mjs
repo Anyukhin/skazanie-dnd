@@ -28,18 +28,23 @@ import {
   WEATHER_TABLE_WEIGHT,
   campaignDayOf,
   clockLabelOf,
+  isIndoors,
   isIndoorScene,
   regionWeatherEventDraft,
   timeOfDayOf,
   weatherCheckSwing,
   weatherEffectsUnder,
+  weatherEffectLabels,
+  weatherForViewer,
   weatherOnDay,
   weatherRangedPenalty,
   worldClockEventDrafts,
   worldClockFor,
+  worldClockForAgents,
   worldClockNarration,
 } from '../server/weather.mjs'
 import { normalizeCampaignState, previewD20Check, replayEvents, resolveCommand, resolveCommands } from '../server/rules-engine.mjs'
+import { addZone, createTacticalMap, serializeTacticalMap, setCell } from '../server/tactical-map.mjs'
 import { campaignStateForViewer } from '../server/viewer-projection.mjs'
 
 const source = (relative) => readFileSync(new URL(`../${relative}`, import.meta.url), 'utf8')
@@ -248,6 +253,30 @@ function generatedScene(themeId, minutes) {
   return field({ minutes, cells, location })
 }
 
+/** Смешанная карта крепости: двор слева, крытая галерея справа. */
+function mixedFortress({ minutes, actorAt = { x: 4, y: 0 }, locationId = 'road', typedMap = false } = {}) {
+  const state = field({ minutes, locationId, location: 'Крепость Ареса', sceneKind: 'other' })
+  const map = createTacticalMap({ width: 8, height: 2, locationId: 'ares-fortress', theme: 'fortress', fill: { passable: true, revealed: true } })
+  addZone(map, { id: 'courtyard', kind: 'exterior', material: 'grass', label: 'Двор' })
+  addZone(map, { id: 'gallery', kind: 'interior', material: 'stone', label: 'Галерея' })
+  for (let y = 0; y < map.height; y += 1) {
+    for (let x = 0; x < map.width; x += 1) setCell(map, x, y, { zone: x < 4 ? 'courtyard' : 'gallery' })
+  }
+  const { cells: _legacyCells, ...sceneWithoutLegacyCells } = state.scene
+  return {
+    ...state,
+    scene: { ...sceneWithoutLegacyCells, map: typedMap ? map : serializeTacticalMap(map) },
+    mechanics: {
+      ...state.mechanics,
+      positions: {
+        ...state.mechanics.positions,
+        scout: actorAt,
+        foe: { x: 6, y: 0 },
+      },
+    },
+  }
+}
+
 test('крыша опознаётся у состояния из живого конвейера, а не только на форме объекта', () => {
   // Проверка формы (`{map:{theme}}`) пропускала главное: карта сцены доезжает до
   // состояния старыми клетками, и `map.theme` там пуст у всех тем, кроме склепа.
@@ -294,11 +323,69 @@ test('в помещении дождя нет: та же минута, тот ж
   const minutes = minutesWithWeather('rain')
   const indoors = generatedScene('crypt', minutes)
   assert.equal(worldClockFor(indoors).indoors, true)
+  assert.equal(isIndoors(indoors, 'scout'), true, 'legacy-сцена сохраняет крышу и для конкретного героя')
   assert.deepEqual(worldClockFor(indoors).effects, [], 'под крышей действующих помех нет вовсе')
 
   const check = skillCheck(indoors, 'perception', [18])
   assert.equal(check.rolls[0].mode, 'normal')
   assert.equal(check.events.find((event) => event.event_type === 'AbilityCheckResolved').payload.weather_disadvantage, undefined)
+})
+
+test('смешанная карта берёт крышу из зоны героя для проверки и выстрела', () => {
+  const rainMinutes = minutesWithWeather('rain')
+  const fogMinutes = minutesWithWeather('fog', { biome: 'marsh' })
+  const outdoors = mixedFortress({ minutes: rainMinutes, actorAt: { x: 1, y: 0 } })
+  const indoors = mixedFortress({ minutes: rainMinutes, actorAt: { x: 4, y: 0 } })
+
+  assert.equal(isIndoors(outdoors, 'scout'), false)
+  assert.equal(isIndoors(indoors, 'scout'), true)
+  assert.equal(weatherCheckSwing(outdoors, 'perception', 'scout')?.swing, 'disadvantage')
+  assert.equal(weatherCheckSwing(indoors, 'perception', 'scout'), null)
+  assert.equal(skillCheck(outdoors, 'perception', [18, 4]).rolls[0].mode, 'disadvantage', 'проверка читает клетку действующего героя')
+  assert.equal(skillCheck(indoors, 'perception', [18, 4]).rolls[0].mode, 'normal', 'крытая зона снимает дождь')
+
+  const outdoorShot = mixedFortress({ minutes: fogMinutes, locationId: 'fen', actorAt: { x: 1, y: 0 } })
+  const indoorShot = mixedFortress({ minutes: fogMinutes, locationId: 'fen', actorAt: { x: 4, y: 0 } })
+  assert.equal(weatherRangedPenalty(outdoorShot, 'scout')?.reason, 'туман')
+  assert.equal(weatherRangedPenalty(indoorShot, 'scout'), null)
+  assert.equal(attackRoll(shoot(outdoorShot, [18, 4])).mode, 'disadvantage', 'дальний бой во дворе получает помеху')
+  assert.equal(attackRoll(shoot(indoorShot, [18, 4])).mode, 'normal', 'дальний бой в галерее не получает помеху')
+
+  const advanced = resolveCommand(
+    authoritative({ command_type: 'AdvanceTime', amount: 1, unit: 'minute' }),
+    indoorShot,
+    options(dice([])),
+  )
+  const replayed = replayEvents(indoorShot, advanced.events)
+  assert.equal(isIndoors(replayed, 'scout'), true, 'зона и позиция переживают replay')
+  assert.equal(weatherRangedPenalty(replayed, 'scout'), null)
+})
+
+test('шапка, рассказчик и проекция читают зону выбранного героя', () => {
+  const state = mixedFortress({ minutes: minutesWithWeather('fog', { biome: 'marsh' }), locationId: 'fen' })
+  const yardHero = { ...state.players[0], id: 'yard-scout', character: 'Разведчик двора', x: 1, y: 0 }
+  state.players = [...state.players, yardHero]
+  state.partyMemberIds = [...state.partyMemberIds, yardHero.id]
+  state.mechanics.positions[yardHero.id] = { x: 1, y: 0 }
+
+  assert.equal(worldClockFor(state).indoors, true, 'по умолчанию берётся activePlayerId')
+  state.activePlayerId = ''
+  assert.equal(worldClockFor(state).indoors, true, 'после activePlayerId берётся первый игрок')
+  assert.equal(worldClockFor(state, 'yard-scout').indoors, false)
+  assert.equal(weatherForViewer(state, 'scout').indoors, true)
+  assert.equal(weatherForViewer(state, 'yard-scout').indoors, false)
+  assert.deepEqual(weatherEffectLabels(state), weatherForViewer(state).effects)
+  assert.equal(worldClockForAgents(state, 'scout').indoors, true)
+  assert.equal(worldClockForAgents(state, 'yard-scout').indoors, false)
+  assert.deepEqual(weatherEffectLabels(state, 'yard-scout'), weatherForViewer(state, 'yard-scout').effects)
+
+  const indoorProjection = campaignStateForViewer(state, { id: 'user-indoor', role: 'player', heroIds: ['scout'] }, 'scout')
+  const yardProjection = campaignStateForViewer(state, { id: 'user-yard', role: 'player', heroIds: ['yard-scout'] }, 'yard-scout')
+  assert.equal(indoorProjection.weather.indoors, true)
+  assert.equal(yardProjection.weather.indoors, false)
+
+  const typed = mixedFortress({ minutes: minutesWithWeather('rain'), actorAt: { x: 4, y: 0 }, typedMap: true })
+  assert.equal(isIndoors(typed, 'scout'), true, 'генераторская карта с typed layers читается напрямую')
 })
 
 test('ночь мешает Восприятию, но не следопытству', () => {
@@ -607,7 +694,7 @@ test('индикатор доезжает и игроку, и ведущему �
 
 test('шапка сцены показывает время и погоду, а таблицы неба у клиента нет', () => {
   assert.match(app, /className=\{`scene-weather phase-\$\{weather\.phase\} sky-\$\{weather\.weather\}`\}/u)
-  assert.match(app, /weather=\{state\.weather\}/u)
+  assert.match(app, /weather=\{state\.weather_by_actor\?\.\[activePlayer\.id\] \?\? state\.weather\}/u)
   assert.match(app, /<SceneWeather weather=\{weather\} \/>/u)
   assert.match(styles, /\.scene-weather \{/u)
   assert.match(styles, /\.scene-weather\.phase-night \{/u)

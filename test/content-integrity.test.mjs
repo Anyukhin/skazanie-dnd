@@ -19,10 +19,10 @@ test('content integrity gate verifies hashes, references, counts and the complet
   assert.equal(report.integrity.compatibility_catalogs.spells, 439)
   assert.equal(report.integrity.compatibility_catalogs.classes, 12)
   assert.deepEqual(report.integrity.character_creation_catalogs.dnd_5e_2014, {
-    species_options: 14,
+    species_options: 15,
     backgrounds: 13,
     classes_with_starter_equipment: 12,
-    species_choice_groups: 8,
+    species_choice_groups: 10,
     starter_choice_groups: 37,
     bonus_source: 'species',
   })
@@ -41,7 +41,8 @@ test('content integrity gate verifies hashes, references, counts and the complet
   // и авторская карта Асстоханских равнин
   // (`public/assets/maps/world/skazanie/*.webp`).
   // + 4 авторских плана стартовых городов (`public/assets/maps/city/skazanie/*.webp`).
-  assert.equal(report.integrity.assets, 1371)
+  // + 10 портретов рас мастера создания, включая отдельный портрет дроу.
+  assert.equal(report.integrity.assets, 1381)
   assert.equal(report.integrity.coverage.find((entry) => entry.id === 'feats').coverage, 'missing')
 })
 

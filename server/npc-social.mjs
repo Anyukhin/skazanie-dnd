@@ -1017,7 +1017,7 @@ export function npcConversationNarration(events = [], state = {}) {
     narration: checkSummary + conversation.npc_reply,
     ...(npcName ? { journal_author: npcName } : {}),
     provider: 'NpcSocialController',
-    prompt_version: 'npc_controller/social-v3',
+    prompt_version: 'npc_controller/social-v4',
     verification: { valid: true, violations: [] },
   }
 }

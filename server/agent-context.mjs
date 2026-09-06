@@ -1,4 +1,44 @@
+import { cellAt, deserializeTacticalMap } from './tactical-map.mjs'
+
 const clean = (value, maximum) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
+
+/** Видимая обстановка у действующего лица, без скрытых комнат и бинарных слоёв карты. */
+export function sceneContextForAgent(state = {}, actorId = '') {
+  const scene = state.scene ?? {}
+  const context = Object.fromEntries(['title', 'location', 'mood', 'objective', 'theme', 'scene_kind'].map((key) => [key, clean(scene[key], 300)]))
+  if (!scene.map?.zones?.length) return context
+  let map
+  try { map = scene.map.layers?.present instanceof Uint8Array ? scene.map : deserializeTacticalMap(scene.map) }
+  catch { return context }
+  const id = String(actorId || state.activePlayerId || '')
+  const actor = [...(state.players ?? []), ...(state.actors ?? [])].find((entry) => entry.id === id)
+  const position = state.mechanics?.positions?.[id] ?? actor
+    ?? state.npc_world?.placements?.find((entry) => entry.npc_id === id && entry.location_id === scene.location_id)
+  const at = position ? cellAt(map, Number(position.x), Number(position.y)) : null
+  const currentZone = at?.revealed ? map.zones.find((zone) => zone.id === at.zone) : null
+  const discovered = new Set()
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    const cell = cellAt(map, x, y)
+    if (cell?.revealed && cell.passable && cell.zone) discovered.add(cell.zone)
+  }
+  const objects = map.props.filter((prop) => {
+    const cell = cellAt(map, Math.floor(prop.x), Math.floor(prop.y))
+    const footprintVisible = !prop.footprint?.length || prop.footprint.every((point) => cellAt(map, point.x, point.y)?.revealed)
+    return cell?.revealed && (!currentZone || cell.zone === currentZone.id)
+      && footprintVisible && !['broken', 'destroyed'].includes(prop.state)
+  }).sort((left, right) => position
+    ? Math.hypot(left.x - position.x, left.y - position.y) - Math.hypot(right.x - position.x, right.y - position.y)
+    : String(left.id).localeCompare(String(right.id))).slice(0, 16).map((prop) => ({ kind: prop.assetId, x: prop.x, y: prop.y, state: prop.state }))
+  return { ...context,
+    ...(currentZone ? { id: `${scene.location_id || scene.location}:${currentZone.id}`, theme: currentZone.label || currentZone.kind } : {}),
+    spatial_context: {
+      schema_version: 1,
+      current_area: currentZone ? { name: currentZone.label, indoors: currentZone.kind === 'interior' } : null,
+      known_areas: map.zones.filter((zone) => discovered.has(zone.id) && zone.label).slice(0, 16).map((zone) => zone.label),
+      objects,
+    },
+  }
+}
 
 function positiveInteger(value) {
   const number = Number(value)

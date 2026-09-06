@@ -1,0 +1,3989 @@
+{
+  "schema_version": 1,
+  "ruleset_id": "dnd_5e_2014",
+  "version": "2014.content.1.0.0",
+  "scope": "curated_core_2014",
+  "monsters": [
+    {
+      "id": "dnd_5e_2014:monster:goblin",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "monster",
+      "name_ru": "Гоблин",
+      "name_en": "Goblin",
+      "book_code": "MM14",
+      "source_ref": "dndsu:monster:goblin",
+      "source_url": "https://dnd.su/bestiary/4-goblin/",
+      "size": "small",
+      "creature_type": "humanoid",
+      "subtypes": [
+        "goblinoid"
+      ],
+      "alignment": "neutral_evil",
+      "armor_class": {
+        "value": 15,
+        "details_ru": "Кожаный доспех и щит"
+      },
+      "hit_points": {
+        "average": 7,
+        "formula": "2d6"
+      },
+      "speed_ft": {
+        "walk": 30
+      },
+      "abilities": {
+        "str": 8,
+        "dex": 14,
+        "con": 10,
+        "int": 10,
+        "wis": 8,
+        "cha": 8
+      },
+      "saving_throws": {},
+      "skills": {
+        "stealth": 6
+      },
+      "senses": {
+        "darkvision_ft": 60,
+        "passive_perception": 9
+      },
+      "languages": {
+        "spoken": [
+          "common",
+          "goblin"
+        ],
+        "understood_only": [],
+        "notes_ru": null
+      },
+      "challenge_rating": "1/4",
+      "xp": 50,
+      "proficiency_bonus": 2,
+      "damage_resistances": [],
+      "damage_immunities": [],
+      "damage_vulnerabilities": [],
+      "condition_immunities": [],
+      "traits": [],
+      "actions": [
+        {
+          "id": "scimitar",
+          "name_ru": "Скимитар",
+          "kind": "weapon_attack",
+          "attack_modifier": 4,
+          "target": "one_target",
+          "modes": [
+            "melee"
+          ],
+          "reach_ft": 5,
+          "range_ft": null,
+          "damage": [
+            {
+              "expression": "1d6+2",
+              "type": "slashing",
+              "average": 5
+            }
+          ],
+          "mechanics_status": "requires_handler"
+        },
+        {
+          "id": "shortbow",
+          "name_ru": "Короткий лук",
+          "kind": "weapon_attack",
+          "attack_modifier": 4,
+          "target": "one_target",
+          "modes": [
+            "ranged"
+          ],
+          "reach_ft": null,
+          "range_ft": {
+            "normal": 80,
+            "long": 320
+          },
+          "damage": [
+            {
+              "expression": "1d6+2",
+              "type": "piercing",
+              "average": 5
+            }
+          ],
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "bonus_actions": [
+        {
+          "id": "nimble-escape",
+          "name_ru": "Ловкое бегство",
+          "summary_ru": "Можно Спрятаться или Отойти бонусным действием.",
+          "mechanics": {
+            "action_cost": "bonus_action",
+            "options": [
+              "hide",
+              "disengage"
+            ]
+          },
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "reactions": [],
+      "legendary_actions": [],
+      "lair_actions": [],
+      "spellcasting": null,
+      "habitats": [
+        "forest",
+        "grassland",
+        "underdark",
+        "hill"
+      ],
+      "lore": {
+        "summary_ru": "Небольшие гоблиноиды, использующие численность и внезапность. Сведения о конкретном племени задаёт кампания, а не стат-блок.",
+        "full_text_included": false,
+        "source_url": "https://dnd.su/bestiary/4-goblin/",
+        "origin": "original_game_use_summary",
+        "scope": "short_species_or_role_summary_not_individual_biography",
+        "history_status": "no_source_history_bundled"
+      },
+      "optional_variants_included": false,
+      "excluded_optional_sections": [],
+      "field_notes": [],
+      "data_status": "reviewed_transcription",
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "ability_modifiers": {
+        "str": -1,
+        "dex": 2,
+        "con": 0,
+        "int": 0,
+        "wis": -1,
+        "cha": -1
+      },
+      "initiative_bonus": 2,
+      "description_language": "ru",
+      "habitat_usage": "descriptive_encounter_tags_not_spawn_restrictions"
+    },
+    {
+      "id": "dnd_5e_2014:monster:kobold",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "monster",
+      "name_ru": "Кобольд",
+      "name_en": "Kobold",
+      "book_code": "MM14",
+      "source_ref": "dndsu:monster:kobold",
+      "source_url": "https://dnd.su/bestiary/210-kobold/",
+      "size": "small",
+      "creature_type": "humanoid",
+      "subtypes": [
+        "kobold"
+      ],
+      "alignment": "lawful_evil",
+      "armor_class": {
+        "value": 12,
+        "details_ru": null
+      },
+      "hit_points": {
+        "average": 5,
+        "formula": "2d6-2"
+      },
+      "speed_ft": {
+        "walk": 30
+      },
+      "abilities": {
+        "str": 7,
+        "dex": 15,
+        "con": 9,
+        "int": 8,
+        "wis": 7,
+        "cha": 8
+      },
+      "saving_throws": {},
+      "skills": {},
+      "senses": {
+        "darkvision_ft": 60,
+        "passive_perception": 8
+      },
+      "languages": {
+        "spoken": [
+          "common",
+          "draconic"
+        ],
+        "understood_only": [],
+        "notes_ru": null
+      },
+      "challenge_rating": "1/8",
+      "xp": 25,
+      "proficiency_bonus": 2,
+      "damage_resistances": [],
+      "damage_immunities": [],
+      "damage_vulnerabilities": [],
+      "condition_immunities": [],
+      "traits": [
+        {
+          "id": "pack-tactics",
+          "name_ru": "Тактика стаи",
+          "summary_ru": "Преимущество на атаки, когда рядом с целью есть дееспособный союзник.",
+          "mechanics": {
+            "ally_distance_ft": 5,
+            "ally_must_not_be_incapacitated": true,
+            "grants": "attack_advantage"
+          },
+          "mechanics_status": "requires_handler"
+        },
+        {
+          "id": "sunlight-sensitivity",
+          "name_ru": "Чувствительность к солнечному свету",
+          "summary_ru": "На солнечном свету атаки и зрительное Восприятие выполняются с помехой.",
+          "mechanics": {
+            "attack_disadvantage": true,
+            "perception_disadvantage": "sight",
+            "when": "in_sunlight"
+          },
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "actions": [
+        {
+          "id": "dagger",
+          "name_ru": "Кинжал",
+          "kind": "weapon_attack",
+          "attack_modifier": 4,
+          "target": "one_target",
+          "modes": [
+            "melee"
+          ],
+          "reach_ft": 5,
+          "range_ft": null,
+          "damage": [
+            {
+              "expression": "1d4+2",
+              "type": "piercing",
+              "average": 4
+            }
+          ],
+          "mechanics_status": "requires_handler"
+        },
+        {
+          "id": "sling",
+          "name_ru": "Праща",
+          "kind": "weapon_attack",
+          "attack_modifier": 4,
+          "target": "one_target",
+          "modes": [
+            "ranged"
+          ],
+          "reach_ft": null,
+          "range_ft": {
+            "normal": 30,
+            "long": 120
+          },
+          "damage": [
+            {
+              "expression": "1d4+2",
+              "type": "bludgeoning",
+              "average": 4
+            }
+          ],
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "bonus_actions": [],
+      "reactions": [],
+      "legendary_actions": [],
+      "lair_actions": [],
+      "spellcasting": null,
+      "habitats": [
+        "forest",
+        "hill",
+        "underdark"
+      ],
+      "lore": {
+        "summary_ru": "Рептилоидные гуманоиды, связанные с драконами. Предпочитают численное преимущество и защищённые подземные поселения.",
+        "full_text_included": false,
+        "source_url": "https://dnd.su/bestiary/210-kobold/",
+        "origin": "original_short_summary",
+        "scope": "short_species_or_role_summary_not_individual_biography",
+        "history_status": "short_summary_only"
+      },
+      "optional_variants_included": false,
+      "excluded_optional_sections": [],
+      "field_notes": [],
+      "data_status": "reviewed_transcription",
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "ability_modifiers": {
+        "str": -2,
+        "dex": 2,
+        "con": -1,
+        "int": -1,
+        "wis": -2,
+        "cha": -1
+      },
+      "initiative_bonus": 2,
+      "description_language": "ru",
+      "habitat_usage": "descriptive_encounter_tags_not_spawn_restrictions"
+    },
+    {
+      "id": "dnd_5e_2014:monster:hobgoblin",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "monster",
+      "name_ru": "Хобгоблин",
+      "name_en": "Hobgoblin",
+      "book_code": "MM14",
+      "source_ref": "dndsu:monster:hobgoblin",
+      "source_url": "https://dnd.su/bestiary/27-hobgoblin/",
+      "size": "medium",
+      "creature_type": "humanoid",
+      "subtypes": [
+        "goblinoid"
+      ],
+      "alignment": "lawful_evil",
+      "armor_class": {
+        "value": 18,
+        "details_ru": "Кольчуга и щит"
+      },
+      "hit_points": {
+        "average": 11,
+        "formula": "2d8+2"
+      },
+      "speed_ft": {
+        "walk": 30
+      },
+      "abilities": {
+        "str": 13,
+        "dex": 12,
+        "con": 12,
+        "int": 10,
+        "wis": 10,
+        "cha": 9
+      },
+      "saving_throws": {},
+      "skills": {},
+      "senses": {
+        "darkvision_ft": 60,
+        "passive_perception": 10
+      },
+      "languages": {
+        "spoken": [
+          "common",
+          "goblin"
+        ],
+        "understood_only": [],
+        "notes_ru": null
+      },
+      "challenge_rating": "1/2",
+      "xp": 100,
+      "proficiency_bonus": 2,
+      "damage_resistances": [],
+      "damage_immunities": [],
+      "damage_vulnerabilities": [],
+      "condition_immunities": [],
+      "traits": [
+        {
+          "id": "martial-advantage",
+          "name_ru": "Воинское преимущество",
+          "summary_ru": "Дополнительный урон оружием при поддержке союзника рядом с целью.",
+          "mechanics": {
+            "once_per_turn": true,
+            "extra_damage": "2d6",
+            "ally_distance_ft": 5,
+            "ally_must_not_be_incapacitated": true
+          },
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "actions": [
+        {
+          "id": "longsword",
+          "name_ru": "Длинный меч",
+          "kind": "weapon_attack",
+          "attack_modifier": 3,
+          "target": "one_target",
+          "modes": [
+            "melee"
+          ],
+          "reach_ft": 5,
+          "range_ft": null,
+          "damage": [
+            {
+              "expression": "1d8+1",
+              "type": "slashing",
+              "average": 5
+            }
+          ],
+          "mechanics_status": "requires_handler",
+          "versatile_damage": "1d10+1"
+        },
+        {
+          "id": "longbow",
+          "name_ru": "Длинный лук",
+          "kind": "weapon_attack",
+          "attack_modifier": 3,
+          "target": "one_target",
+          "modes": [
+            "ranged"
+          ],
+          "reach_ft": null,
+          "range_ft": {
+            "normal": 150,
+            "long": 600
+          },
+          "damage": [
+            {
+              "expression": "1d8+1",
+              "type": "piercing",
+              "average": 5
+            }
+          ],
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "bonus_actions": [],
+      "reactions": [],
+      "legendary_actions": [],
+      "lair_actions": [],
+      "spellcasting": null,
+      "habitats": [
+        "forest",
+        "grassland",
+        "desert",
+        "underdark",
+        "hill"
+      ],
+      "lore": {
+        "summary_ru": "Гоблиноидный воин; боевой профиль рассчитан на совместные действия с союзниками. История отряда определяется отдельно.",
+        "full_text_included": false,
+        "source_url": "https://dnd.su/bestiary/27-hobgoblin/",
+        "origin": "original_game_use_summary",
+        "scope": "short_species_or_role_summary_not_individual_biography",
+        "history_status": "no_source_history_bundled"
+      },
+      "optional_variants_included": false,
+      "excluded_optional_sections": [],
+      "field_notes": [],
+      "data_status": "reviewed_transcription",
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "ability_modifiers": {
+        "str": 1,
+        "dex": 1,
+        "con": 1,
+        "int": 0,
+        "wis": 0,
+        "cha": -1
+      },
+      "initiative_bonus": 1,
+      "description_language": "ru",
+      "habitat_usage": "descriptive_encounter_tags_not_spawn_restrictions"
+    },
+    {
+      "id": "dnd_5e_2014:monster:bugbear",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "monster",
+      "name_ru": "Багбир",
+      "name_en": "Bugbear",
+      "book_code": "MM14",
+      "source_ref": "dndsu:monster:bugbear",
+      "source_url": "https://dnd.su/bestiary/13-bugbear/",
+      "size": "medium",
+      "creature_type": "humanoid",
+      "subtypes": [
+        "goblinoid"
+      ],
+      "alignment": "chaotic_evil",
+      "armor_class": {
+        "value": 16,
+        "details_ru": "Шкурный доспех и щит"
+      },
+      "hit_points": {
+        "average": 27,
+        "formula": "5d8+5"
+      },
+      "speed_ft": {
+        "walk": 30
+      },
+      "abilities": {
+        "str": 15,
+        "dex": 14,
+        "con": 13,
+        "int": 8,
+        "wis": 11,
+        "cha": 9
+      },
+      "saving_throws": {},
+      "skills": {
+        "stealth": 6,
+        "survival": 2
+      },
+      "senses": {
+        "darkvision_ft": 60,
+        "passive_perception": 10
+      },
+      "languages": {
+        "spoken": [
+          "common",
+          "goblin"
+        ],
+        "understood_only": [],
+        "notes_ru": null
+      },
+      "challenge_rating": "1",
+      "xp": 200,
+      "proficiency_bonus": 2,
+      "damage_resistances": [],
+      "damage_immunities": [],
+      "damage_vulnerabilities": [],
+      "condition_immunities": [],
+      "traits": [
+        {
+          "id": "brute",
+          "name_ru": "Грубая сила",
+          "summary_ru": "Добавочная кость рукопашного оружия уже учтена в уроне.",
+          "mechanics": {
+            "extra_weapon_dice": 1,
+            "included_in_attacks": true
+          },
+          "mechanics_status": "requires_handler"
+        },
+        {
+          "id": "surprise-attack",
+          "name_ru": "Внезапное нападение",
+          "summary_ru": "Попадание по застигнутой врасплох цели в первом раунде наносит добавочный урон.",
+          "mechanics": {
+            "extra_damage": "2d6",
+            "combat_round": 1,
+            "target_surprised": true
+          },
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "actions": [
+        {
+          "id": "morningstar",
+          "name_ru": "Моргенштерн",
+          "kind": "weapon_attack",
+          "attack_modifier": 4,
+          "target": "one_target",
+          "modes": [
+            "melee"
+          ],
+          "reach_ft": 5,
+          "range_ft": null,
+          "damage": [
+            {
+              "expression": "2d8+2",
+              "type": "piercing",
+              "average": 11
+            }
+          ],
+          "mechanics_status": "requires_handler"
+        },
+        {
+          "id": "javelin",
+          "name_ru": "Метательное копьё",
+          "kind": "weapon_attack",
+          "attack_modifier": 4,
+          "target": "one_target",
+          "modes": [
+            "melee",
+            "ranged"
+          ],
+          "reach_ft": 5,
+          "range_ft": {
+            "normal": 30,
+            "long": 120
+          },
+          "damage": [
+            {
+              "expression": "2d6+2",
+              "type": "piercing",
+              "average": 9
+            }
+          ],
+          "mechanics_status": "requires_handler",
+          "ranged_damage": "1d6+2"
+        }
+      ],
+      "bonus_actions": [],
+      "reactions": [],
+      "legendary_actions": [],
+      "lair_actions": [],
+      "spellcasting": null,
+      "habitats": [
+        "forest",
+        "grassland",
+        "underdark"
+      ],
+      "lore": {
+        "summary_ru": "Крупный и скрытный гоблиноид. Его механика особенно опасна при нападении из засады; биография конкретного существа не задана.",
+        "full_text_included": false,
+        "source_url": "https://dnd.su/bestiary/13-bugbear/",
+        "origin": "original_game_use_summary",
+        "scope": "short_species_or_role_summary_not_individual_biography",
+        "history_status": "no_source_history_bundled"
+      },
+      "optional_variants_included": false,
+      "excluded_optional_sections": [],
+      "field_notes": [],
+      "data_status": "reviewed_transcription",
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "ability_modifiers": {
+        "str": 2,
+        "dex": 2,
+        "con": 1,
+        "int": -1,
+        "wis": 0,
+        "cha": -1
+      },
+      "initiative_bonus": 2,
+      "description_language": "ru",
+      "habitat_usage": "descriptive_encounter_tags_not_spawn_restrictions"
+    },
+    {
+      "id": "dnd_5e_2014:monster:orc",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "monster",
+      "name_ru": "Орк",
+      "name_en": "Orc",
+      "book_code": "MM14",
+      "source_ref": "dndsu:monster:orc",
+      "source_url": "https://dnd.su/bestiary/20-orc/",
+      "size": "medium",
+      "creature_type": "humanoid",
+      "subtypes": [
+        "orc"
+      ],
+      "alignment": "chaotic_evil",
+      "armor_class": {
+        "value": 13,
+        "details_ru": "Шкурный доспех"
+      },
+      "hit_points": {
+        "average": 15,
+        "formula": "2d8+6"
+      },
+      "speed_ft": {
+        "walk": 30
+      },
+      "abilities": {
+        "str": 16,
+        "dex": 12,
+        "con": 16,
+        "int": 7,
+        "wis": 11,
+        "cha": 10
+      },
+      "saving_throws": {},
+      "skills": {
+        "intimidation": 2
+      },
+      "senses": {
+        "darkvision_ft": 60,
+        "passive_perception": 10
+      },
+      "languages": {
+        "spoken": [
+          "common",
+          "orc"
+        ],
+        "understood_only": [],
+        "notes_ru": null
+      },
+      "challenge_rating": "1/2",
+      "xp": 100,
+      "proficiency_bonus": 2,
+      "damage_resistances": [],
+      "damage_immunities": [],
+      "damage_vulnerabilities": [],
+      "condition_immunities": [],
+      "traits": [],
+      "actions": [
+        {
+          "id": "greataxe",
+          "name_ru": "Секира",
+          "kind": "weapon_attack",
+          "attack_modifier": 5,
+          "target": "one_target",
+          "modes": [
+            "melee"
+          ],
+          "reach_ft": 5,
+          "range_ft": null,
+          "damage": [
+            {
+              "expression": "1d12+3",
+              "type": "slashing",
+              "average": 9
+            }
+          ],
+          "mechanics_status": "requires_handler"
+        },
+        {
+          "id": "javelin",
+          "name_ru": "Метательное копьё",
+          "kind": "weapon_attack",
+          "attack_modifier": 5,
+          "target": "one_target",
+          "modes": [
+            "melee",
+            "ranged"
+          ],
+          "reach_ft": 5,
+          "range_ft": {
+            "normal": 30,
+            "long": 120
+          },
+          "damage": [
+            {
+              "expression": "1d6+3",
+              "type": "piercing",
+              "average": 6
+            }
+          ],
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "bonus_actions": [
+        {
+          "id": "aggressive",
+          "name_ru": "Агрессивность",
+          "summary_ru": "Дополнительное перемещение к видимому враждебному существу.",
+          "mechanics": {
+            "action_cost": "bonus_action",
+            "max_distance": "speed",
+            "must_move_toward": "visible_hostile_creature"
+          },
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "reactions": [],
+      "legendary_actions": [],
+      "lair_actions": [],
+      "spellcasting": null,
+      "habitats": [
+        "forest",
+        "grassland",
+        "mountain",
+        "underdark",
+        "hill"
+      ],
+      "lore": {
+        "summary_ru": "Воин орков, способный быстро сближаться с врагом. Принадлежность к племени и причины конфликта задаются отдельно.",
+        "full_text_included": false,
+        "source_url": "https://dnd.su/bestiary/20-orc/",
+        "origin": "original_game_use_summary",
+        "scope": "short_species_or_role_summary_not_individual_biography",
+        "history_status": "no_source_history_bundled"
+      },
+      "optional_variants_included": false,
+      "excluded_optional_sections": [],
+      "field_notes": [],
+      "data_status": "reviewed_transcription",
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "ability_modifiers": {
+        "str": 3,
+        "dex": 1,
+        "con": 3,
+        "int": -2,
+        "wis": 0,
+        "cha": 0
+      },
+      "initiative_bonus": 1,
+      "description_language": "ru",
+      "habitat_usage": "descriptive_encounter_tags_not_spawn_restrictions"
+    },
+    {
+      "id": "dnd_5e_2014:monster:bandit",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "monster",
+      "name_ru": "Разбойник",
+      "name_en": "Bandit",
+      "book_code": "MM14",
+      "source_ref": "dndsu:monster:bandit",
+      "source_url": "https://dnd.su/bestiary/437-bandit/",
+      "size": "medium",
+      "creature_type": "humanoid",
+      "subtypes": [],
+      "alignment": "any_nonlawful",
+      "armor_class": {
+        "value": 12,
+        "details_ru": "Кожаный доспех"
+      },
+      "hit_points": {
+        "average": 11,
+        "formula": "2d8+2"
+      },
+      "speed_ft": {
+        "walk": 30
+      },
+      "abilities": {
+        "str": 11,
+        "dex": 12,
+        "con": 12,
+        "int": 10,
+        "wis": 10,
+        "cha": 10
+      },
+      "saving_throws": {},
+      "skills": {},
+      "senses": {
+        "passive_perception": 10
+      },
+      "languages": {
+        "spoken": [],
+        "understood_only": [],
+        "notes_ru": "Один любой язык, обычно Общий."
+      },
+      "challenge_rating": "1/8",
+      "xp": 25,
+      "proficiency_bonus": 2,
+      "damage_resistances": [],
+      "damage_immunities": [],
+      "damage_vulnerabilities": [],
+      "condition_immunities": [],
+      "traits": [],
+      "actions": [
+        {
+          "id": "scimitar",
+          "name_ru": "Скимитар",
+          "kind": "weapon_attack",
+          "attack_modifier": 3,
+          "target": "one_target",
+          "modes": [
+            "melee"
+          ],
+          "reach_ft": 5,
+          "range_ft": null,
+          "damage": [
+            {
+              "expression": "1d6+1",
+              "type": "slashing",
+              "average": 4
+            }
+          ],
+          "mechanics_status": "requires_handler"
+        },
+        {
+          "id": "light-crossbow",
+          "name_ru": "Лёгкий арбалет",
+          "kind": "weapon_attack",
+          "attack_modifier": 3,
+          "target": "one_target",
+          "modes": [
+            "ranged"
+          ],
+          "reach_ft": null,
+          "range_ft": {
+            "normal": 80,
+            "long": 320
+          },
+          "damage": [
+            {
+              "expression": "1d8+1",
+              "type": "piercing",
+              "average": 5
+            }
+          ],
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "bonus_actions": [],
+      "reactions": [],
+      "legendary_actions": [],
+      "lair_actions": [],
+      "spellcasting": null,
+      "habitats": [
+        "arctic",
+        "urban",
+        "forest",
+        "coastal",
+        "desert",
+        "hill"
+      ],
+      "lore": {
+        "summary_ru": "Разбойничьи группы могут возникать из жадности, изгнания или нужды. Морской вариант — пират; принадлежность к банде не описывает всю личность.",
+        "full_text_included": false,
+        "source_url": "https://dnd.su/bestiary/437-bandit/",
+        "origin": "original_short_summary",
+        "scope": "short_species_or_role_summary_not_individual_biography",
+        "history_status": "short_summary_only"
+      },
+      "optional_variants_included": false,
+      "excluded_optional_sections": [],
+      "field_notes": [],
+      "data_status": "reviewed_transcription",
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "ability_modifiers": {
+        "str": 0,
+        "dex": 1,
+        "con": 1,
+        "int": 0,
+        "wis": 0,
+        "cha": 0
+      },
+      "initiative_bonus": 1,
+      "description_language": "ru",
+      "habitat_usage": "descriptive_encounter_tags_not_spawn_restrictions"
+    },
+    {
+      "id": "dnd_5e_2014:monster:bandit-captain",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "monster",
+      "name_ru": "Капитан разбойников",
+      "name_en": "Bandit Captain",
+      "book_code": "MM14",
+      "source_ref": "dndsu:monster:bandit-captain",
+      "source_url": "https://dnd.su/bestiary/433-bandit-captain/",
+      "size": "medium",
+      "creature_type": "humanoid",
+      "subtypes": [],
+      "alignment": "any_nonlawful",
+      "armor_class": {
+        "value": 15,
+        "details_ru": "Проклёпанный кожаный доспех"
+      },
+      "hit_points": {
+        "average": 65,
+        "formula": "10d8+20"
+      },
+      "speed_ft": {
+        "walk": 30
+      },
+      "abilities": {
+        "str": 15,
+        "dex": 16,
+        "con": 14,
+        "int": 14,
+        "wis": 11,
+        "cha": 14
+      },
+      "saving_throws": {
+        "str": 4,
+        "dex": 5,
+        "wis": 2
+      },
+      "skills": {
+        "athletics": 4,
+        "deception": 4
+      },
+      "senses": {
+        "passive_perception": 10
+      },
+      "languages": {
+        "spoken": [],
+        "understood_only": [],
+        "notes_ru": "Два любых языка."
+      },
+      "challenge_rating": "2",
+      "xp": 450,
+      "proficiency_bonus": 2,
+      "damage_resistances": [],
+      "damage_immunities": [],
+      "damage_vulnerabilities": [],
+      "condition_immunities": [],
+      "traits": [],
+      "actions": [
+        {
+          "id": "multiattack",
+          "name_ru": "Мультиатака",
+          "kind": "multiattack",
+          "sequences": [
+            [
+              {
+                "action_id": "scimitar",
+                "count": 2,
+                "mode": "melee"
+              },
+              {
+                "action_id": "dagger",
+                "count": 1,
+                "mode": "melee"
+              }
+            ],
+            [
+              {
+                "action_id": "dagger",
+                "count": 2,
+                "mode": "ranged"
+              }
+            ]
+          ],
+          "mechanics_status": "requires_handler"
+        },
+        {
+          "id": "scimitar",
+          "name_ru": "Скимитар",
+          "kind": "weapon_attack",
+          "attack_modifier": 5,
+          "target": "one_target",
+          "modes": [
+            "melee"
+          ],
+          "reach_ft": 5,
+          "range_ft": null,
+          "damage": [
+            {
+              "expression": "1d6+3",
+              "type": "slashing",
+              "average": 6
+            }
+          ],
+          "mechanics_status": "requires_handler"
+        },
+        {
+          "id": "dagger",
+          "name_ru": "Кинжал",
+          "kind": "weapon_attack",
+          "attack_modifier": 5,
+          "target": "one_target",
+          "modes": [
+            "melee",
+            "ranged"
+          ],
+          "reach_ft": 5,
+          "range_ft": {
+            "normal": 20,
+            "long": 60
+          },
+          "damage": [
+            {
+              "expression": "1d4+3",
+              "type": "piercing",
+              "average": 5
+            }
+          ],
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "bonus_actions": [],
+      "reactions": [
+        {
+          "id": "parry",
+          "name_ru": "Парирование",
+          "summary_ru": "Повышение КД против одной попавшей рукопашной атаки.",
+          "mechanics": {
+            "armor_class_bonus": 2,
+            "requires": [
+              "see_attacker",
+              "wield_melee_weapon"
+            ],
+            "trigger": "hit_by_melee_attack"
+          },
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "legendary_actions": [],
+      "lair_actions": [],
+      "spellcasting": null,
+      "habitats": [],
+      "lore": {
+        "summary_ru": "Предводитель удерживает банду силой характера, хитростью и обещанием добычи. Пиратский капитан дополнительно управляет кораблём и экипажем.",
+        "full_text_included": false,
+        "source_url": "https://dnd.su/bestiary/433-bandit-captain/",
+        "origin": "original_short_summary",
+        "scope": "short_species_or_role_summary_not_individual_biography",
+        "history_status": "short_summary_only"
+      },
+      "optional_variants_included": false,
+      "excluded_optional_sections": [],
+      "field_notes": [
+        {
+          "field": "skills",
+          "reason_ru": "Строка отсутствовала в просмотренной карточке dnd.su; дополнена по официальному SRD 5.1, а не выведена из формулы.",
+          "source_ref": "srd51:stat-block-corroboration",
+          "printed_page": 397
+        }
+      ],
+      "data_status": "reviewed_with_secondary_completion",
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "ability_modifiers": {
+        "str": 2,
+        "dex": 3,
+        "con": 2,
+        "int": 2,
+        "wis": 0,
+        "cha": 2
+      },
+      "initiative_bonus": 3,
+      "description_language": "ru",
+      "habitat_usage": "descriptive_encounter_tags_not_spawn_restrictions"
+    },
+    {
+      "id": "dnd_5e_2014:monster:guard",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "monster",
+      "name_ru": "Стражник",
+      "name_en": "Guard",
+      "book_code": "MM14",
+      "source_ref": "dndsu:monster:guard",
+      "source_url": "https://5e14.dnd.su/bestiary/442-guard/",
+      "size": "medium",
+      "creature_type": "humanoid",
+      "subtypes": [],
+      "alignment": "any",
+      "armor_class": {
+        "value": 16,
+        "details_ru": "Кольчужная рубаха и щит"
+      },
+      "hit_points": {
+        "average": 11,
+        "formula": "2d8+2"
+      },
+      "speed_ft": {
+        "walk": 30
+      },
+      "abilities": {
+        "str": 13,
+        "dex": 12,
+        "con": 12,
+        "int": 10,
+        "wis": 11,
+        "cha": 10
+      },
+      "saving_throws": {},
+      "skills": {
+        "perception": 2
+      },
+      "senses": {
+        "passive_perception": 12
+      },
+      "languages": {
+        "spoken": [],
+        "understood_only": [],
+        "notes_ru": "Один любой язык, обычно Общий."
+      },
+      "challenge_rating": "1/8",
+      "xp": 25,
+      "proficiency_bonus": 2,
+      "damage_resistances": [],
+      "damage_immunities": [],
+      "damage_vulnerabilities": [],
+      "condition_immunities": [],
+      "traits": [],
+      "actions": [
+        {
+          "id": "spear",
+          "name_ru": "Копьё",
+          "kind": "weapon_attack",
+          "attack_modifier": 3,
+          "target": "one_target",
+          "modes": [
+            "melee",
+            "ranged"
+          ],
+          "reach_ft": 5,
+          "range_ft": {
+            "normal": 20,
+            "long": 60
+          },
+          "damage": [
+            {
+              "expression": "1d6+1",
+              "type": "piercing",
+              "average": 4
+            }
+          ],
+          "mechanics_status": "requires_handler",
+          "versatile_damage": "1d8+1"
+        }
+      ],
+      "bonus_actions": [],
+      "reactions": [],
+      "legendary_actions": [],
+      "lair_actions": [],
+      "spellcasting": null,
+      "habitats": [],
+      "lore": {
+        "summary_ru": "Стражники охраняют города, крепости и отдельных нанимателей. Этот профиль годится как для противника, так и для союзника.",
+        "full_text_included": false,
+        "source_url": "https://5e14.dnd.su/bestiary/442-guard/",
+        "origin": "original_short_summary",
+        "scope": "short_species_or_role_summary_not_individual_biography",
+        "history_status": "short_summary_only"
+      },
+      "optional_variants_included": false,
+      "excluded_optional_sections": [],
+      "field_notes": [],
+      "data_status": "reviewed_transcription",
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "ability_modifiers": {
+        "str": 1,
+        "dex": 1,
+        "con": 1,
+        "int": 0,
+        "wis": 0,
+        "cha": 0
+      },
+      "initiative_bonus": 1,
+      "description_language": "ru",
+      "habitat_usage": "descriptive_encounter_tags_not_spawn_restrictions"
+    },
+    {
+      "id": "dnd_5e_2014:monster:cultist",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "monster",
+      "name_ru": "Культист",
+      "name_en": "Cultist",
+      "book_code": "MM14",
+      "source_ref": "dndsu:monster:cultist",
+      "source_url": "https://dnd.su/bestiary/12-cultist/",
+      "size": "medium",
+      "creature_type": "humanoid",
+      "subtypes": [],
+      "alignment": "neutral",
+      "armor_class": {
+        "value": 12,
+        "details_ru": "Кожаный доспех"
+      },
+      "hit_points": {
+        "average": 9,
+        "formula": "2d8"
+      },
+      "speed_ft": {
+        "walk": 30
+      },
+      "abilities": {
+        "str": 11,
+        "dex": 12,
+        "con": 10,
+        "int": 10,
+        "wis": 11,
+        "cha": 10
+      },
+      "saving_throws": {},
+      "skills": {
+        "deception": 2,
+        "religion": 2
+      },
+      "senses": {
+        "passive_perception": 10
+      },
+      "languages": {
+        "spoken": [
+          "common"
+        ],
+        "understood_only": [],
+        "notes_ru": null
+      },
+      "challenge_rating": "1/8",
+      "xp": 25,
+      "proficiency_bonus": 2,
+      "damage_resistances": [],
+      "damage_immunities": [],
+      "damage_vulnerabilities": [],
+      "condition_immunities": [],
+      "traits": [
+        {
+          "id": "dark-devotion",
+          "name_ru": "Тёмная преданность",
+          "summary_ru": "Преимущество на спасброски против испуга и очарования.",
+          "mechanics": {
+            "save_advantage_against": [
+              "frightened",
+              "charmed"
+            ]
+          },
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "actions": [
+        {
+          "id": "scimitar",
+          "name_ru": "Скимитар",
+          "kind": "weapon_attack",
+          "attack_modifier": 3,
+          "target": "one_target",
+          "modes": [
+            "melee"
+          ],
+          "reach_ft": 5,
+          "range_ft": null,
+          "damage": [
+            {
+              "expression": "1d6+1",
+              "type": "slashing",
+              "average": 4
+            }
+          ],
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "bonus_actions": [],
+      "reactions": [],
+      "legendary_actions": [],
+      "lair_actions": [],
+      "spellcasting": null,
+      "habitats": [
+        "urban"
+      ],
+      "lore": {
+        "summary_ru": "Последователь тайного культа. Его вера помогает сопротивляться устрашению и очарованию; цели конкретного культа остаются частью сюжета.",
+        "full_text_included": false,
+        "source_url": "https://dnd.su/bestiary/12-cultist/",
+        "origin": "original_short_summary",
+        "scope": "short_species_or_role_summary_not_individual_biography",
+        "history_status": "short_summary_only"
+      },
+      "optional_variants_included": false,
+      "excluded_optional_sections": [],
+      "field_notes": [
+        {
+          "field": "alignment",
+          "status": "source_literal",
+          "note_ru": "На наблюдаемой странице: нейтральный. Не заменено автоматически на формулировку из другой публикации."
+        }
+      ],
+      "data_status": "reviewed_transcription",
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "ability_modifiers": {
+        "str": 0,
+        "dex": 1,
+        "con": 0,
+        "int": 0,
+        "wis": 0,
+        "cha": 0
+      },
+      "initiative_bonus": 1,
+      "description_language": "ru",
+      "habitat_usage": "descriptive_encounter_tags_not_spawn_restrictions"
+    },
+    {
+      "id": "dnd_5e_2014:monster:cult-fanatic",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "monster",
+      "name_ru": "Фанатик культа",
+      "name_en": "Cult Fanatic",
+      "book_code": "MM14",
+      "source_ref": "dndsu:monster:cult-fanatic",
+      "source_url": "https://dnd.su/bestiary/443-cult-fanatic/",
+      "size": "medium",
+      "creature_type": "humanoid",
+      "subtypes": [],
+      "alignment": "any_nongood",
+      "armor_class": {
+        "value": 13,
+        "details_ru": "Кожаный доспех"
+      },
+      "hit_points": {
+        "average": 33,
+        "formula": "6d8+6"
+      },
+      "speed_ft": {
+        "walk": 30
+      },
+      "abilities": {
+        "str": 11,
+        "dex": 14,
+        "con": 12,
+        "int": 10,
+        "wis": 13,
+        "cha": 14
+      },
+      "saving_throws": {},
+      "skills": {
+        "deception": 4,
+        "religion": 2,
+        "persuasion": 4
+      },
+      "senses": {
+        "passive_perception": 11
+      },
+      "languages": {
+        "spoken": [],
+        "understood_only": [],
+        "notes_ru": "Один любой язык, обычно Общий."
+      },
+      "challenge_rating": "2",
+      "xp": 450,
+      "proficiency_bonus": 2,
+      "damage_resistances": [],
+      "damage_immunities": [],
+      "damage_vulnerabilities": [],
+      "condition_immunities": [],
+      "traits": [
+        {
+          "id": "dark-devotion",
+          "name_ru": "Тёмная преданность",
+          "summary_ru": "Преимущество на спасброски против испуга и очарования.",
+          "mechanics": {
+            "save_advantage_against": [
+              "frightened",
+              "charmed"
+            ]
+          },
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "actions": [
+        {
+          "id": "multiattack",
+          "name_ru": "Мультиатака",
+          "kind": "multiattack",
+          "sequences": [
+            [
+              {
+                "action_id": "dagger",
+                "count": 2,
+                "mode": "melee"
+              }
+            ]
+          ],
+          "mechanics_status": "requires_handler"
+        },
+        {
+          "id": "dagger",
+          "name_ru": "Кинжал",
+          "kind": "weapon_attack",
+          "attack_modifier": 4,
+          "target": "one_creature",
+          "modes": [
+            "melee",
+            "ranged"
+          ],
+          "reach_ft": 5,
+          "range_ft": {
+            "normal": 20,
+            "long": 60
+          },
+          "damage": [
+            {
+              "expression": "1d4+2",
+              "type": "piercing",
+              "average": 4
+            }
+          ],
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "bonus_actions": [],
+      "reactions": [],
+      "legendary_actions": [],
+      "lair_actions": [],
+      "spellcasting": {
+        "caster_level": 4,
+        "class": "cleric",
+        "ability": "wis",
+        "save_dc": 11,
+        "attack_modifier": 3,
+        "casting_mode": "prepared",
+        "spell_slots": [
+          {
+            "level": 0,
+            "slots": null,
+            "spells": [
+              {
+                "key": "light",
+                "name_ru": "Свет"
+              },
+              {
+                "key": "sacred-flame",
+                "name_ru": "Священное пламя"
+              },
+              {
+                "key": "thaumaturgy",
+                "name_ru": "Чудотворство"
+              }
+            ]
+          },
+          {
+            "level": 1,
+            "slots": 4,
+            "spells": [
+              {
+                "key": "command",
+                "name_ru": "Приказ"
+              },
+              {
+                "key": "inflict-wounds",
+                "name_ru": "Нанесение ран"
+              },
+              {
+                "key": "shield-of-faith",
+                "name_ru": "Щит веры"
+              }
+            ]
+          },
+          {
+            "level": 2,
+            "slots": 3,
+            "spells": [
+              {
+                "key": "hold-person",
+                "name_ru": "Удержание личности"
+              },
+              {
+                "key": "spiritual-weapon",
+                "name_ru": "Божественное оружие"
+              }
+            ]
+          }
+        ],
+        "mechanics_status": "requires_handler",
+        "spell_resolution": "external_spell_key_requires_2014_catalog"
+      },
+      "habitats": [
+        "urban"
+      ],
+      "lore": {
+        "summary_ru": "Религиозный лидер, использующий обаяние и догматы для подчинения последователей. В бою поддерживает культ божественной магией.",
+        "full_text_included": false,
+        "source_url": "https://dnd.su/bestiary/443-cult-fanatic/",
+        "origin": "original_short_summary",
+        "scope": "short_species_or_role_summary_not_individual_biography",
+        "history_status": "short_summary_only"
+      },
+      "optional_variants_included": false,
+      "excluded_optional_sections": [],
+      "field_notes": [],
+      "data_status": "reviewed_transcription",
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "ability_modifiers": {
+        "str": 0,
+        "dex": 2,
+        "con": 1,
+        "int": 0,
+        "wis": 1,
+        "cha": 2
+      },
+      "initiative_bonus": 2,
+      "description_language": "ru",
+      "habitat_usage": "descriptive_encounter_tags_not_spawn_restrictions"
+    },
+    {
+      "id": "dnd_5e_2014:monster:acolyte",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "monster",
+      "name_ru": "Прислужник",
+      "name_en": "Acolyte",
+      "book_code": "MM14",
+      "source_ref": "dndsu:monster:acolyte",
+      "source_url": "https://dnd.su/bestiary/438-acolyte/",
+      "size": "medium",
+      "creature_type": "humanoid",
+      "subtypes": [],
+      "alignment": "any",
+      "armor_class": {
+        "value": 10,
+        "details_ru": null
+      },
+      "hit_points": {
+        "average": 9,
+        "formula": "2d8"
+      },
+      "speed_ft": {
+        "walk": 30
+      },
+      "abilities": {
+        "str": 10,
+        "dex": 10,
+        "con": 10,
+        "int": 10,
+        "wis": 14,
+        "cha": 11
+      },
+      "saving_throws": {},
+      "skills": {
+        "medicine": 4,
+        "religion": 2
+      },
+      "senses": {
+        "passive_perception": 12
+      },
+      "languages": {
+        "spoken": [],
+        "understood_only": [],
+        "notes_ru": "Один любой язык, обычно Общий."
+      },
+      "challenge_rating": "1/4",
+      "xp": 50,
+      "proficiency_bonus": 2,
+      "damage_resistances": [],
+      "damage_immunities": [],
+      "damage_vulnerabilities": [],
+      "condition_immunities": [],
+      "traits": [],
+      "actions": [
+        {
+          "id": "club",
+          "name_ru": "Дубинка",
+          "kind": "weapon_attack",
+          "attack_modifier": 2,
+          "target": "one_target",
+          "modes": [
+            "melee"
+          ],
+          "reach_ft": 5,
+          "range_ft": null,
+          "damage": [
+            {
+              "expression": "1d4",
+              "type": "bludgeoning",
+              "average": 2
+            }
+          ],
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "bonus_actions": [],
+      "reactions": [],
+      "legendary_actions": [],
+      "lair_actions": [],
+      "spellcasting": {
+        "caster_level": 1,
+        "class": "cleric",
+        "ability": "wis",
+        "save_dc": 12,
+        "attack_modifier": 4,
+        "casting_mode": "prepared",
+        "spell_slots": [
+          {
+            "level": 0,
+            "slots": null,
+            "spells": [
+              {
+                "key": "light",
+                "name_ru": "Свет"
+              },
+              {
+                "key": "sacred-flame",
+                "name_ru": "Священное пламя"
+              },
+              {
+                "key": "thaumaturgy",
+                "name_ru": "Чудотворство"
+              }
+            ]
+          },
+          {
+            "level": 1,
+            "slots": 3,
+            "spells": [
+              {
+                "key": "bless",
+                "name_ru": "Благословение"
+              },
+              {
+                "key": "cure-wounds",
+                "name_ru": "Лечение ран"
+              },
+              {
+                "key": "sanctuary",
+                "name_ru": "Убежище"
+              }
+            ]
+          }
+        ],
+        "mechanics_status": "requires_handler",
+        "spell_resolution": "external_spell_key_requires_2014_catalog"
+      },
+      "habitats": [
+        "urban"
+      ],
+      "lore": {
+        "summary_ru": "Младший служитель религиозной организации. Может выступать помощником жреца, хранителем небольшого святилища или участником враждебного культа.",
+        "full_text_included": false,
+        "source_url": "https://dnd.su/bestiary/438-acolyte/",
+        "origin": "original_short_summary",
+        "scope": "short_species_or_role_summary_not_individual_biography",
+        "history_status": "short_summary_only"
+      },
+      "optional_variants_included": false,
+      "excluded_optional_sections": [],
+      "field_notes": [
+        {
+          "field": "spellcasting.spell_slots",
+          "reason_ru": "У прислужника указаны именно 3 ячейки первого уровня; это значение стат-блока, а не таблица класса героя.",
+          "source_ref": "srd51:stat-block-corroboration",
+          "printed_page": 395
+        }
+      ],
+      "data_status": "reviewed_transcription",
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "ability_modifiers": {
+        "str": 0,
+        "dex": 0,
+        "con": 0,
+        "int": 0,
+        "wis": 2,
+        "cha": 0
+      },
+      "initiative_bonus": 0,
+      "description_language": "ru",
+      "habitat_usage": "descriptive_encounter_tags_not_spawn_restrictions"
+    },
+    {
+      "id": "dnd_5e_2014:monster:mage",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "monster",
+      "name_ru": "Маг",
+      "name_en": "Mage",
+      "book_code": "MM14",
+      "source_ref": "dndsu:monster:mage",
+      "source_url": "https://dnd.su/bestiary/434-mage/",
+      "size": "medium",
+      "creature_type": "humanoid",
+      "subtypes": [],
+      "alignment": "any",
+      "armor_class": {
+        "value": 12,
+        "details_ru": null,
+        "alternatives": [
+          {
+            "value": 15,
+            "requires_spell": "mage-armor"
+          }
+        ]
+      },
+      "hit_points": {
+        "average": 40,
+        "formula": "9d8"
+      },
+      "speed_ft": {
+        "walk": 30
+      },
+      "abilities": {
+        "str": 9,
+        "dex": 14,
+        "con": 11,
+        "int": 17,
+        "wis": 12,
+        "cha": 11
+      },
+      "saving_throws": {
+        "int": 6,
+        "wis": 4
+      },
+      "skills": {
+        "arcana": 6,
+        "history": 6
+      },
+      "senses": {
+        "passive_perception": 11
+      },
+      "languages": {
+        "spoken": [],
+        "understood_only": [],
+        "notes_ru": "Четыре любых языка."
+      },
+      "challenge_rating": "6",
+      "xp": 2300,
+      "proficiency_bonus": 3,
+      "damage_resistances": [],
+      "damage_immunities": [],
+      "damage_vulnerabilities": [],
+      "condition_immunities": [],
+      "traits": [],
+      "actions": [
+        {
+          "id": "dagger",
+          "name_ru": "Кинжал",
+          "kind": "weapon_attack",
+          "attack_modifier": 5,
+          "target": "one_target",
+          "modes": [
+            "melee",
+            "ranged"
+          ],
+          "reach_ft": 5,
+          "range_ft": {
+            "normal": 20,
+            "long": 60
+          },
+          "damage": [
+            {
+              "expression": "1d4+2",
+              "type": "piercing",
+              "average": 4
+            }
+          ],
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "bonus_actions": [],
+      "reactions": [],
+      "legendary_actions": [],
+      "lair_actions": [],
+      "spellcasting": {
+        "caster_level": 9,
+        "class": "wizard",
+        "ability": "int",
+        "save_dc": 14,
+        "attack_modifier": 6,
+        "casting_mode": "prepared",
+        "spell_slots": [
+          {
+            "level": 0,
+            "slots": null,
+            "spells": [
+              {
+                "key": "mage-hand",
+                "name_ru": "Волшебная рука"
+              },
+              {
+                "key": "fire-bolt",
+                "name_ru": "Огненный снаряд"
+              },
+              {
+                "key": "light",
+                "name_ru": "Свет"
+              },
+              {
+                "key": "prestidigitation",
+                "name_ru": "Фокусы"
+              }
+            ]
+          },
+          {
+            "level": 1,
+            "slots": 4,
+            "spells": [
+              {
+                "key": "magic-missile",
+                "name_ru": "Волшебная стрела"
+              },
+              {
+                "key": "mage-armor",
+                "name_ru": "Доспехи мага"
+              },
+              {
+                "key": "detect-magic",
+                "name_ru": "Обнаружение магии"
+              },
+              {
+                "key": "shield",
+                "name_ru": "Щит"
+              }
+            ]
+          },
+          {
+            "level": 2,
+            "slots": 3,
+            "spells": [
+              {
+                "key": "suggestion",
+                "name_ru": "Внушение"
+              },
+              {
+                "key": "misty-step",
+                "name_ru": "Туманный шаг"
+              }
+            ]
+          },
+          {
+            "level": 3,
+            "slots": 3,
+            "spells": [
+              {
+                "key": "counterspell",
+                "name_ru": "Контрзаклинание"
+              },
+              {
+                "key": "fireball",
+                "name_ru": "Огненный шар"
+              },
+              {
+                "key": "fly",
+                "name_ru": "Полёт"
+              }
+            ]
+          },
+          {
+            "level": 4,
+            "slots": 3,
+            "spells": [
+              {
+                "key": "greater-invisibility",
+                "name_ru": "Высшая невидимость"
+              },
+              {
+                "key": "ice-storm",
+                "name_ru": "Град"
+              }
+            ]
+          },
+          {
+            "level": 5,
+            "slots": 1,
+            "spells": [
+              {
+                "key": "cone-of-cold",
+                "name_ru": "Конус холода"
+              }
+            ]
+          }
+        ],
+        "mechanics_status": "requires_handler",
+        "spell_resolution": "external_spell_key_requires_2014_catalog"
+      },
+      "habitats": [
+        "urban"
+      ],
+      "lore": {
+        "summary_ru": "Учёный-практик тайной магии. Одни маги становятся советниками властителей, другие предпочитают уединение и опасные исследования.",
+        "full_text_included": false,
+        "source_url": "https://dnd.su/bestiary/434-mage/",
+        "origin": "original_short_summary",
+        "scope": "short_species_or_role_summary_not_individual_biography",
+        "history_status": "short_summary_only"
+      },
+      "optional_variants_included": false,
+      "excluded_optional_sections": [
+        "Фамильяры: отдельный опциональный выбор, существо не добавлено автоматически."
+      ],
+      "field_notes": [
+        {
+          "field": "saving_throws",
+          "reason_ru": "Строка отсутствовала в просмотренной карточке dnd.su; дополнена по официальному SRD 5.1, а не выведена из формулы.",
+          "source_ref": "srd51:stat-block-corroboration",
+          "printed_page": 400
+        }
+      ],
+      "data_status": "reviewed_with_secondary_completion",
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "ability_modifiers": {
+        "str": -1,
+        "dex": 2,
+        "con": 0,
+        "int": 3,
+        "wis": 1,
+        "cha": 0
+      },
+      "initiative_bonus": 2,
+      "description_language": "ru",
+      "habitat_usage": "descriptive_encounter_tags_not_spawn_restrictions"
+    },
+    {
+      "id": "dnd_5e_2014:monster:skeleton",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "monster",
+      "name_ru": "Скелет",
+      "name_en": "Skeleton",
+      "book_code": "MM14",
+      "source_ref": "dndsu:monster:skeleton",
+      "source_url": "https://dnd.su/bestiary/24-skeleton/",
+      "size": "medium",
+      "creature_type": "undead",
+      "subtypes": [],
+      "alignment": "lawful_evil",
+      "armor_class": {
+        "value": 13,
+        "details_ru": "Обломки доспехов"
+      },
+      "hit_points": {
+        "average": 13,
+        "formula": "2d8+4"
+      },
+      "speed_ft": {
+        "walk": 30
+      },
+      "abilities": {
+        "str": 10,
+        "dex": 14,
+        "con": 15,
+        "int": 6,
+        "wis": 8,
+        "cha": 5
+      },
+      "saving_throws": {},
+      "skills": {},
+      "senses": {
+        "darkvision_ft": 60,
+        "passive_perception": 9
+      },
+      "languages": {
+        "spoken": [],
+        "understood_only": [],
+        "notes_ru": "Понимает языки, известные при жизни, но не говорит."
+      },
+      "challenge_rating": "1/4",
+      "xp": 50,
+      "proficiency_bonus": 2,
+      "damage_resistances": [],
+      "damage_immunities": [
+        "poison"
+      ],
+      "damage_vulnerabilities": [
+        "bludgeoning"
+      ],
+      "condition_immunities": [
+        "exhaustion",
+        "poisoned"
+      ],
+      "traits": [
+        {
+          "id": "undead-nature",
+          "name_ru": "Природа нежити",
+          "summary_ru": "Не нуждается в воздухе, еде, питье или сне.",
+          "mechanics": {
+            "does_not_require": [
+              "air",
+              "food",
+              "water",
+              "sleep"
+            ]
+          },
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "actions": [
+        {
+          "id": "shortsword",
+          "name_ru": "Короткий меч",
+          "kind": "weapon_attack",
+          "attack_modifier": 4,
+          "target": "one_target",
+          "modes": [
+            "melee"
+          ],
+          "reach_ft": 5,
+          "range_ft": null,
+          "damage": [
+            {
+              "expression": "1d6+2",
+              "type": "piercing",
+              "average": 5
+            }
+          ],
+          "mechanics_status": "requires_handler"
+        },
+        {
+          "id": "shortbow",
+          "name_ru": "Короткий лук",
+          "kind": "weapon_attack",
+          "attack_modifier": 4,
+          "target": "one_target",
+          "modes": [
+            "ranged"
+          ],
+          "reach_ft": null,
+          "range_ft": {
+            "normal": 80,
+            "long": 320
+          },
+          "damage": [
+            {
+              "expression": "1d6+2",
+              "type": "piercing",
+              "average": 5
+            }
+          ],
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "bonus_actions": [],
+      "reactions": [],
+      "legendary_actions": [],
+      "lair_actions": [],
+      "spellcasting": null,
+      "habitats": [
+        "urban"
+      ],
+      "lore": {
+        "summary_ru": "Кости, приведённые в движение некромантией. Могут охранять гробницы или выполнять приказы создателя, не нуждаясь в пище и отдыхе.",
+        "full_text_included": false,
+        "source_url": "https://dnd.su/bestiary/24-skeleton/",
+        "origin": "original_short_summary",
+        "scope": "short_species_or_role_summary_not_individual_biography",
+        "history_status": "short_summary_only"
+      },
+      "optional_variants_included": false,
+      "excluded_optional_sections": [],
+      "field_notes": [],
+      "data_status": "reviewed_transcription",
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "ability_modifiers": {
+        "str": 0,
+        "dex": 2,
+        "con": 2,
+        "int": -2,
+        "wis": -1,
+        "cha": -3
+      },
+      "initiative_bonus": 2,
+      "description_language": "ru",
+      "habitat_usage": "descriptive_encounter_tags_not_spawn_restrictions"
+    },
+    {
+      "id": "dnd_5e_2014:monster:zombie",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "monster",
+      "name_ru": "Зомби",
+      "name_en": "Zombie",
+      "book_code": "MM14",
+      "source_ref": "dndsu:monster:zombie",
+      "source_url": "https://dnd.su/bestiary/9-zombie/",
+      "size": "medium",
+      "creature_type": "undead",
+      "subtypes": [],
+      "alignment": "neutral_evil",
+      "armor_class": {
+        "value": 8,
+        "details_ru": null
+      },
+      "hit_points": {
+        "average": 22,
+        "formula": "3d8+9"
+      },
+      "speed_ft": {
+        "walk": 20
+      },
+      "abilities": {
+        "str": 13,
+        "dex": 6,
+        "con": 16,
+        "int": 3,
+        "wis": 6,
+        "cha": 5
+      },
+      "saving_throws": {
+        "wis": 0
+      },
+      "skills": {},
+      "senses": {
+        "darkvision_ft": 60,
+        "passive_perception": 8
+      },
+      "languages": {
+        "spoken": [],
+        "understood_only": [],
+        "notes_ru": "Понимает языки, известные при жизни, но не говорит."
+      },
+      "challenge_rating": "1/4",
+      "xp": 50,
+      "proficiency_bonus": 2,
+      "damage_resistances": [],
+      "damage_immunities": [
+        "poison"
+      ],
+      "damage_vulnerabilities": [],
+      "condition_immunities": [
+        "poisoned"
+      ],
+      "traits": [
+        {
+          "id": "undead-fortitude",
+          "name_ru": "Стойкость нежити",
+          "summary_ru": "При падении хитов до нуля спасбросок может оставить зомби с одним хитом.",
+          "mechanics": {
+            "trigger": "damage_reduces_hp_to_0",
+            "save_ability": "con",
+            "save_dc_expression": "5 + damage_taken",
+            "success_hp": 1,
+            "excluded_damage": [
+              "radiant"
+            ],
+            "excluded_hit": "critical"
+          },
+          "mechanics_status": "requires_handler"
+        },
+        {
+          "id": "undead-nature",
+          "name_ru": "Природа нежити",
+          "summary_ru": "Не нуждается в воздухе, еде, питье или сне.",
+          "mechanics": {
+            "does_not_require": [
+              "air",
+              "food",
+              "water",
+              "sleep"
+            ]
+          },
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "actions": [
+        {
+          "id": "slam",
+          "name_ru": "Размашистый удар",
+          "kind": "weapon_attack",
+          "attack_modifier": 3,
+          "target": "one_target",
+          "modes": [
+            "melee"
+          ],
+          "reach_ft": 5,
+          "range_ft": null,
+          "damage": [
+            {
+              "expression": "1d6+1",
+              "type": "bludgeoning",
+              "average": 4
+            }
+          ],
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "bonus_actions": [],
+      "reactions": [],
+      "legendary_actions": [],
+      "lair_actions": [],
+      "spellcasting": null,
+      "habitats": [
+        "urban"
+      ],
+      "lore": {
+        "summary_ru": "Оживлённый труп, медленно преследующий добычу. Необычная живучесть позволяет ему продолжать бой после смертельных для живого тела ран.",
+        "full_text_included": false,
+        "source_url": "https://dnd.su/bestiary/9-zombie/",
+        "origin": "original_short_summary",
+        "scope": "short_species_or_role_summary_not_individual_biography",
+        "history_status": "short_summary_only"
+      },
+      "optional_variants_included": false,
+      "excluded_optional_sections": [],
+      "field_notes": [],
+      "data_status": "reviewed_transcription",
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "ability_modifiers": {
+        "str": 1,
+        "dex": -2,
+        "con": 3,
+        "int": -4,
+        "wis": -2,
+        "cha": -3
+      },
+      "initiative_bonus": -2,
+      "description_language": "ru",
+      "habitat_usage": "descriptive_encounter_tags_not_spawn_restrictions"
+    },
+    {
+      "id": "dnd_5e_2014:monster:ghoul",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "monster",
+      "name_ru": "Упырь",
+      "name_en": "Ghoul",
+      "book_code": "MM14",
+      "source_ref": "dndsu:monster:ghoul",
+      "source_url": "https://5e14.dnd.su/bestiary/166-ghoul/",
+      "size": "medium",
+      "creature_type": "undead",
+      "subtypes": [],
+      "alignment": "chaotic_evil",
+      "armor_class": {
+        "value": 12,
+        "details_ru": null
+      },
+      "hit_points": {
+        "average": 22,
+        "formula": "5d8"
+      },
+      "speed_ft": {
+        "walk": 30
+      },
+      "abilities": {
+        "str": 13,
+        "dex": 15,
+        "con": 10,
+        "int": 7,
+        "wis": 10,
+        "cha": 6
+      },
+      "saving_throws": {},
+      "skills": {},
+      "senses": {
+        "darkvision_ft": 60,
+        "passive_perception": 10
+      },
+      "languages": {
+        "spoken": [
+          "common"
+        ],
+        "understood_only": [],
+        "notes_ru": null
+      },
+      "challenge_rating": "1",
+      "xp": 200,
+      "proficiency_bonus": 2,
+      "damage_resistances": [],
+      "damage_immunities": [
+        "poison"
+      ],
+      "damage_vulnerabilities": [],
+      "condition_immunities": [
+        "charmed",
+        "poisoned",
+        "exhaustion"
+      ],
+      "traits": [],
+      "actions": [
+        {
+          "id": "bite",
+          "name_ru": "Укус",
+          "kind": "weapon_attack",
+          "attack_modifier": 2,
+          "target": "one_creature",
+          "modes": [
+            "melee"
+          ],
+          "reach_ft": 5,
+          "range_ft": null,
+          "damage": [
+            {
+              "expression": "2d6+2",
+              "type": "piercing",
+              "average": 9
+            }
+          ],
+          "mechanics_status": "requires_handler"
+        },
+        {
+          "id": "claws",
+          "name_ru": "Когти",
+          "kind": "weapon_attack",
+          "attack_modifier": 4,
+          "target": "one_target",
+          "modes": [
+            "melee"
+          ],
+          "reach_ft": 5,
+          "range_ft": null,
+          "damage": [
+            {
+              "expression": "2d4+2",
+              "type": "slashing",
+              "average": 7
+            }
+          ],
+          "mechanics_status": "requires_handler",
+          "on_hit": {
+            "save_ability": "con",
+            "dc": 10,
+            "on_failure": "paralyzed",
+            "duration_minutes": 1,
+            "excluded_targets": [
+              "elf",
+              "undead"
+            ],
+            "repeat_save": "end_of_each_target_turn",
+            "success_ends_effect": true
+          }
+        }
+      ],
+      "bonus_actions": [],
+      "reactions": [],
+      "legendary_actions": [],
+      "lair_actions": [],
+      "spellcasting": null,
+      "habitats": [
+        "swamp",
+        "urban",
+        "underdark"
+      ],
+      "lore": {
+        "summary_ru": "Ночная нежить, пожирающая мёртвую и живую плоть. Её мифическое происхождение связано с Доресэйном и Оркусом; эльфы не поддаются параличу от её когтей.",
+        "full_text_included": false,
+        "source_url": "https://5e14.dnd.su/bestiary/166-ghoul/",
+        "origin": "original_short_summary",
+        "scope": "short_species_or_role_summary_not_individual_biography",
+        "history_status": "short_summary_only"
+      },
+      "optional_variants_included": false,
+      "excluded_optional_sections": [],
+      "field_notes": [],
+      "data_status": "reviewed_transcription",
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "ability_modifiers": {
+        "str": 1,
+        "dex": 2,
+        "con": 0,
+        "int": -2,
+        "wis": 0,
+        "cha": -2
+      },
+      "initiative_bonus": 2,
+      "description_language": "ru",
+      "habitat_usage": "descriptive_encounter_tags_not_spawn_restrictions"
+    },
+    {
+      "id": "dnd_5e_2014:monster:ogre",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "monster",
+      "name_ru": "Огр",
+      "name_en": "Ogre",
+      "book_code": "MM14",
+      "source_ref": "dndsu:monster:ogre",
+      "source_url": "https://www.dnd.su/bestiary/19-ogre/",
+      "size": "large",
+      "creature_type": "giant",
+      "subtypes": [],
+      "alignment": "chaotic_evil",
+      "armor_class": {
+        "value": 11,
+        "details_ru": "Шкурный доспех"
+      },
+      "hit_points": {
+        "average": 59,
+        "formula": "7d10+21"
+      },
+      "speed_ft": {
+        "walk": 40
+      },
+      "abilities": {
+        "str": 19,
+        "dex": 8,
+        "con": 16,
+        "int": 5,
+        "wis": 7,
+        "cha": 7
+      },
+      "saving_throws": {},
+      "skills": {},
+      "senses": {
+        "darkvision_ft": 60,
+        "passive_perception": 8
+      },
+      "languages": {
+        "spoken": [
+          "common",
+          "giant"
+        ],
+        "understood_only": [],
+        "notes_ru": null
+      },
+      "challenge_rating": "2",
+      "xp": 450,
+      "proficiency_bonus": 2,
+      "damage_resistances": [],
+      "damage_immunities": [],
+      "damage_vulnerabilities": [],
+      "condition_immunities": [],
+      "traits": [],
+      "actions": [
+        {
+          "id": "greatclub",
+          "name_ru": "Палица",
+          "kind": "weapon_attack",
+          "attack_modifier": 6,
+          "target": "one_target",
+          "modes": [
+            "melee"
+          ],
+          "reach_ft": 5,
+          "range_ft": null,
+          "damage": [
+            {
+              "expression": "2d8+4",
+              "type": "bludgeoning",
+              "average": 13
+            }
+          ],
+          "mechanics_status": "requires_handler"
+        },
+        {
+          "id": "javelin",
+          "name_ru": "Метательное копьё",
+          "kind": "weapon_attack",
+          "attack_modifier": 6,
+          "target": "one_target",
+          "modes": [
+            "melee",
+            "ranged"
+          ],
+          "reach_ft": 5,
+          "range_ft": {
+            "normal": 30,
+            "long": 120
+          },
+          "damage": [
+            {
+              "expression": "2d6+4",
+              "type": "piercing",
+              "average": 11
+            }
+          ],
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "bonus_actions": [],
+      "reactions": [],
+      "legendary_actions": [],
+      "lair_actions": [],
+      "spellcasting": null,
+      "habitats": [
+        "arctic",
+        "swamp",
+        "mountain",
+        "forest",
+        "grassland",
+        "underdark",
+        "desert",
+        "hill"
+      ],
+      "lore": {
+        "summary_ru": "Могучий, но недалёкий великан, добывающий пищу и богатство грабежом. Его размер и сила компенсируют слабую защиту.",
+        "full_text_included": false,
+        "source_url": "https://www.dnd.su/bestiary/19-ogre/",
+        "origin": "original_short_summary",
+        "scope": "short_species_or_role_summary_not_individual_biography",
+        "history_status": "short_summary_only"
+      },
+      "optional_variants_included": false,
+      "excluded_optional_sections": [],
+      "field_notes": [],
+      "data_status": "reviewed_transcription",
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "ability_modifiers": {
+        "str": 4,
+        "dex": -1,
+        "con": 3,
+        "int": -3,
+        "wis": -2,
+        "cha": -2
+      },
+      "initiative_bonus": -1,
+      "description_language": "ru",
+      "habitat_usage": "descriptive_encounter_tags_not_spawn_restrictions"
+    },
+    {
+      "id": "dnd_5e_2014:monster:troll",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "monster",
+      "name_ru": "Тролль",
+      "name_en": "Troll",
+      "book_code": "MM14",
+      "source_ref": "dndsu:monster:troll",
+      "source_url": "https://www.dnd.su/bestiary/304-troll/",
+      "size": "large",
+      "creature_type": "giant",
+      "subtypes": [],
+      "alignment": "chaotic_evil",
+      "armor_class": {
+        "value": 15,
+        "details_ru": "Природный доспех"
+      },
+      "hit_points": {
+        "average": 84,
+        "formula": "8d10+40"
+      },
+      "speed_ft": {
+        "walk": 30
+      },
+      "abilities": {
+        "str": 18,
+        "dex": 13,
+        "con": 20,
+        "int": 7,
+        "wis": 9,
+        "cha": 7
+      },
+      "saving_throws": {},
+      "skills": {
+        "perception": 2
+      },
+      "senses": {
+        "darkvision_ft": 60,
+        "passive_perception": 12
+      },
+      "languages": {
+        "spoken": [
+          "giant"
+        ],
+        "understood_only": [],
+        "notes_ru": null
+      },
+      "challenge_rating": "5",
+      "xp": 1800,
+      "proficiency_bonus": 3,
+      "damage_resistances": [],
+      "damage_immunities": [],
+      "damage_vulnerabilities": [],
+      "condition_immunities": [],
+      "traits": [
+        {
+          "id": "keen-smell",
+          "name_ru": "Тонкий нюх",
+          "summary_ru": "Преимущество на Восприятие по запаху.",
+          "mechanics": {
+            "check": "wis:perception",
+            "advantage_senses": [
+              "smell"
+            ]
+          },
+          "mechanics_status": "requires_handler"
+        },
+        {
+          "id": "regeneration",
+          "name_ru": "Регенерация",
+          "summary_ru": "Лечение в начале хода; огонь и кислота временно подавляют восстановление.",
+          "mechanics": {
+            "heal_hp": 10,
+            "trigger": "start_of_turn",
+            "suppressed_until": "next_start_of_turn_after_damage",
+            "suppressing_damage_types": [
+              "acid",
+              "fire"
+            ],
+            "death_condition": "starts_turn_at_0_hp_and_cannot_regenerate"
+          },
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "actions": [
+        {
+          "id": "multiattack",
+          "name_ru": "Мультиатака",
+          "kind": "multiattack",
+          "sequences": [
+            [
+              {
+                "action_id": "bite",
+                "count": 1
+              },
+              {
+                "action_id": "claws",
+                "count": 2
+              }
+            ]
+          ],
+          "mechanics_status": "requires_handler"
+        },
+        {
+          "id": "bite",
+          "name_ru": "Укус",
+          "kind": "weapon_attack",
+          "attack_modifier": 7,
+          "target": "one_target",
+          "modes": [
+            "melee"
+          ],
+          "reach_ft": 5,
+          "range_ft": null,
+          "damage": [
+            {
+              "expression": "1d6+4",
+              "type": "piercing",
+              "average": 7
+            }
+          ],
+          "mechanics_status": "requires_handler"
+        },
+        {
+          "id": "claws",
+          "name_ru": "Когти",
+          "kind": "weapon_attack",
+          "attack_modifier": 7,
+          "target": "one_target",
+          "modes": [
+            "melee"
+          ],
+          "reach_ft": 5,
+          "range_ft": null,
+          "damage": [
+            {
+              "expression": "2d6+4",
+              "type": "slashing",
+              "average": 11
+            }
+          ],
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "bonus_actions": [],
+      "reactions": [],
+      "legendary_actions": [],
+      "lair_actions": [],
+      "spellcasting": null,
+      "habitats": [
+        "arctic",
+        "swamp",
+        "mountain",
+        "forest",
+        "underdark",
+        "hill"
+      ],
+      "lore": {
+        "summary_ru": "Ненасытный великан с быстро восстанавливающейся плотью. Может служить наёмником за еду и сокровища, но остаётся трудным и опасным союзником.",
+        "full_text_included": false,
+        "source_url": "https://www.dnd.su/bestiary/304-troll/",
+        "origin": "original_short_summary",
+        "scope": "short_species_or_role_summary_not_individual_biography",
+        "history_status": "short_summary_only"
+      },
+      "optional_variants_included": false,
+      "excluded_optional_sections": [
+        "Отвратительные конечности: опциональный вариант MM14 не включён; базовый тролль приведён отдельно."
+      ],
+      "field_notes": [],
+      "data_status": "reviewed_transcription",
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "ability_modifiers": {
+        "str": 4,
+        "dex": 1,
+        "con": 5,
+        "int": -2,
+        "wis": -1,
+        "cha": -2
+      },
+      "initiative_bonus": 1,
+      "description_language": "ru",
+      "habitat_usage": "descriptive_encounter_tags_not_spawn_restrictions"
+    },
+    {
+      "id": "dnd_5e_2014:monster:wolf",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "monster",
+      "name_ru": "Волк",
+      "name_en": "Wolf",
+      "book_code": "MM14",
+      "source_ref": "dndsu:monster:wolf",
+      "source_url": "https://dnd.su/bestiary/2-wolf/",
+      "size": "medium",
+      "creature_type": "beast",
+      "subtypes": [],
+      "alignment": "unaligned",
+      "armor_class": {
+        "value": 13,
+        "details_ru": "Природный доспех"
+      },
+      "hit_points": {
+        "average": 11,
+        "formula": "2d8+2"
+      },
+      "speed_ft": {
+        "walk": 40
+      },
+      "abilities": {
+        "str": 12,
+        "dex": 15,
+        "con": 12,
+        "int": 3,
+        "wis": 12,
+        "cha": 6
+      },
+      "saving_throws": {},
+      "skills": {
+        "perception": 3,
+        "stealth": 4
+      },
+      "senses": {
+        "passive_perception": 13
+      },
+      "languages": {
+        "spoken": [],
+        "understood_only": [],
+        "notes_ru": null
+      },
+      "challenge_rating": "1/4",
+      "xp": 50,
+      "proficiency_bonus": 2,
+      "damage_resistances": [],
+      "damage_immunities": [],
+      "damage_vulnerabilities": [],
+      "condition_immunities": [],
+      "traits": [
+        {
+          "id": "keen-hearing-smell",
+          "name_ru": "Чуткий слух и нюх",
+          "summary_ru": "Преимущество на Восприятие при использовании слуха или обоняния.",
+          "mechanics": {
+            "check": "wis:perception",
+            "advantage_senses": [
+              "hearing",
+              "smell"
+            ]
+          },
+          "mechanics_status": "requires_handler"
+        },
+        {
+          "id": "pack-tactics",
+          "name_ru": "Тактика стаи",
+          "summary_ru": "Преимущество на атаки, когда рядом с целью есть дееспособный союзник.",
+          "mechanics": {
+            "ally_distance_ft": 5,
+            "ally_must_not_be_incapacitated": true,
+            "grants": "attack_advantage"
+          },
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "actions": [
+        {
+          "id": "bite",
+          "name_ru": "Укус",
+          "kind": "weapon_attack",
+          "attack_modifier": 4,
+          "target": "one_target",
+          "modes": [
+            "melee"
+          ],
+          "reach_ft": 5,
+          "range_ft": null,
+          "damage": [
+            {
+              "expression": "2d4+2",
+              "type": "piercing",
+              "average": 7
+            }
+          ],
+          "mechanics_status": "requires_handler",
+          "on_hit": {
+            "target_is": "creature",
+            "save_ability": "str",
+            "dc": 11,
+            "on_failure": "prone"
+          }
+        }
+      ],
+      "bonus_actions": [],
+      "reactions": [],
+      "legendary_actions": [],
+      "lair_actions": [],
+      "spellcasting": null,
+      "habitats": [
+        "forest",
+        "grassland",
+        "hill"
+      ],
+      "lore": {
+        "summary_ru": "Стайный хищник лесов и холмов умеренных и субарктических областей. Встреча с волками не обязательно становится боем.",
+        "full_text_included": false,
+        "source_url": "https://dnd.su/bestiary/2-wolf/",
+        "origin": "original_short_summary",
+        "scope": "short_species_or_role_summary_not_individual_biography",
+        "history_status": "short_summary_only"
+      },
+      "optional_variants_included": false,
+      "excluded_optional_sections": [],
+      "field_notes": [],
+      "data_status": "reviewed_transcription",
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "ability_modifiers": {
+        "str": 1,
+        "dex": 2,
+        "con": 1,
+        "int": -4,
+        "wis": 1,
+        "cha": -2
+      },
+      "initiative_bonus": 2,
+      "description_language": "ru",
+      "habitat_usage": "descriptive_encounter_tags_not_spawn_restrictions"
+    },
+    {
+      "id": "dnd_5e_2014:monster:dire-wolf",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "monster",
+      "name_ru": "Лютый волк",
+      "name_en": "Dire Wolf",
+      "book_code": "MM14",
+      "source_ref": "dndsu:monster:dire-wolf",
+      "source_url": "https://dnd.su/bestiary/297-dire-wolf/",
+      "size": "large",
+      "creature_type": "beast",
+      "subtypes": [],
+      "alignment": "unaligned",
+      "armor_class": {
+        "value": 14,
+        "details_ru": "Природный доспех"
+      },
+      "hit_points": {
+        "average": 37,
+        "formula": "5d10+10"
+      },
+      "speed_ft": {
+        "walk": 50
+      },
+      "abilities": {
+        "str": 17,
+        "dex": 15,
+        "con": 15,
+        "int": 3,
+        "wis": 12,
+        "cha": 7
+      },
+      "saving_throws": {},
+      "skills": {
+        "perception": 3,
+        "stealth": 4
+      },
+      "senses": {
+        "passive_perception": 13
+      },
+      "languages": {
+        "spoken": [],
+        "understood_only": [],
+        "notes_ru": null
+      },
+      "challenge_rating": "1",
+      "xp": 200,
+      "proficiency_bonus": 2,
+      "damage_resistances": [],
+      "damage_immunities": [],
+      "damage_vulnerabilities": [],
+      "condition_immunities": [],
+      "traits": [
+        {
+          "id": "keen-hearing-smell",
+          "name_ru": "Чуткий слух и нюх",
+          "summary_ru": "Преимущество на Восприятие при использовании слуха или обоняния.",
+          "mechanics": {
+            "check": "wis:perception",
+            "advantage_senses": [
+              "hearing",
+              "smell"
+            ]
+          },
+          "mechanics_status": "requires_handler"
+        },
+        {
+          "id": "pack-tactics",
+          "name_ru": "Тактика стаи",
+          "summary_ru": "Преимущество на атаки, когда рядом с целью есть дееспособный союзник.",
+          "mechanics": {
+            "ally_distance_ft": 5,
+            "ally_must_not_be_incapacitated": true,
+            "grants": "attack_advantage"
+          },
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "actions": [
+        {
+          "id": "bite",
+          "name_ru": "Укус",
+          "kind": "weapon_attack",
+          "attack_modifier": 5,
+          "target": "one_target",
+          "modes": [
+            "melee"
+          ],
+          "reach_ft": 5,
+          "range_ft": null,
+          "damage": [
+            {
+              "expression": "2d6+3",
+              "type": "piercing",
+              "average": 10
+            }
+          ],
+          "mechanics_status": "requires_handler",
+          "on_hit": {
+            "target_is": "creature",
+            "save_ability": "str",
+            "dc": 13,
+            "on_failure": "prone"
+          }
+        }
+      ],
+      "bonus_actions": [],
+      "reactions": [],
+      "legendary_actions": [],
+      "lair_actions": [],
+      "spellcasting": null,
+      "habitats": [
+        "forest",
+        "hill"
+      ],
+      "lore": {
+        "summary_ru": "Крупный стайный хищник лесов и холмов. Описание индивидуальной истории отсутствует в карточке; следы и поведение выводятся из роли в кампании.",
+        "full_text_included": false,
+        "source_url": "https://dnd.su/bestiary/297-dire-wolf/",
+        "origin": "original_game_use_summary",
+        "scope": "short_species_or_role_summary_not_individual_biography",
+        "history_status": "no_source_history_bundled"
+      },
+      "optional_variants_included": false,
+      "excluded_optional_sections": [],
+      "field_notes": [],
+      "data_status": "reviewed_transcription",
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "ability_modifiers": {
+        "str": 3,
+        "dex": 2,
+        "con": 2,
+        "int": -4,
+        "wis": 1,
+        "cha": -2
+      },
+      "initiative_bonus": 2,
+      "description_language": "ru",
+      "habitat_usage": "descriptive_encounter_tags_not_spawn_restrictions"
+    },
+    {
+      "id": "dnd_5e_2014:monster:giant-spider",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "monster",
+      "name_ru": "Гигантский паук",
+      "name_en": "Giant Spider",
+      "book_code": "MM14",
+      "source_ref": "dndsu:monster:giant-spider",
+      "source_url": "https://dnd.su/bestiary/3-giant-spider/",
+      "size": "large",
+      "creature_type": "beast",
+      "subtypes": [],
+      "alignment": "unaligned",
+      "armor_class": {
+        "value": 14,
+        "details_ru": "Природный доспех"
+      },
+      "hit_points": {
+        "average": 26,
+        "formula": "4d10+4"
+      },
+      "speed_ft": {
+        "walk": 30,
+        "climb": 30
+      },
+      "abilities": {
+        "str": 14,
+        "dex": 16,
+        "con": 12,
+        "int": 2,
+        "wis": 11,
+        "cha": 4
+      },
+      "saving_throws": {},
+      "skills": {
+        "stealth": 7
+      },
+      "senses": {
+        "blindsight_ft": 10,
+        "darkvision_ft": 60,
+        "passive_perception": 10
+      },
+      "languages": {
+        "spoken": [],
+        "understood_only": [],
+        "notes_ru": null
+      },
+      "challenge_rating": "1",
+      "xp": 200,
+      "proficiency_bonus": 2,
+      "damage_resistances": [],
+      "damage_immunities": [],
+      "damage_vulnerabilities": [],
+      "condition_immunities": [],
+      "traits": [
+        {
+          "id": "spider-climb",
+          "name_ru": "Паучье лазанье",
+          "summary_ru": "Лазает по сложным поверхностям и потолку без проверок.",
+          "mechanics": {
+            "ignores_climb_checks": true,
+            "ceiling": true
+          },
+          "mechanics_status": "requires_handler"
+        },
+        {
+          "id": "web-sense",
+          "name_ru": "Чувство паутины",
+          "summary_ru": "Через общую паутину определяет точные позиции касающихся её существ.",
+          "mechanics": {
+            "requires": "contact_with_same_web",
+            "reveals": "exact_positions"
+          },
+          "mechanics_status": "requires_handler"
+        },
+        {
+          "id": "web-walker",
+          "name_ru": "Хождение по паутине",
+          "summary_ru": "Паутина не ограничивает перемещение.",
+          "mechanics": {
+            "ignore_web_movement_restrictions": true
+          },
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "actions": [
+        {
+          "id": "bite",
+          "name_ru": "Укус",
+          "kind": "weapon_attack",
+          "attack_modifier": 5,
+          "target": "one_creature",
+          "modes": [
+            "melee"
+          ],
+          "reach_ft": 5,
+          "range_ft": null,
+          "damage": [
+            {
+              "expression": "1d8+3",
+              "type": "piercing",
+              "average": 7
+            }
+          ],
+          "mechanics_status": "requires_handler",
+          "on_hit": {
+            "save_ability": "con",
+            "dc": 11,
+            "damage": {
+              "expression": "2d8",
+              "type": "poison",
+              "average": 9
+            },
+            "save_success": "half_damage",
+            "at_0_hp_from_poison": {
+              "stable": true,
+              "poisoned_minutes": 60,
+              "paralyzed_while_poisoned": true
+            }
+          }
+        },
+        {
+          "id": "web",
+          "name_ru": "Паутина",
+          "kind": "weapon_attack",
+          "attack_modifier": 5,
+          "modes": [
+            "ranged"
+          ],
+          "reach_ft": null,
+          "range_ft": {
+            "normal": 30,
+            "long": 60
+          },
+          "target": "one_creature",
+          "damage": [],
+          "recharge": {
+            "die": "1d6",
+            "success": [
+              5,
+              6
+            ],
+            "check": "start_of_turn"
+          },
+          "on_hit": {
+            "condition": "restrained",
+            "escape": {
+              "action_cost": "action",
+              "check": "str",
+              "dc": 12
+            },
+            "web_object": {
+              "ac": 10,
+              "hp": 5,
+              "vulnerabilities": [
+                "fire"
+              ],
+              "immunities": [
+                "bludgeoning",
+                "poison",
+                "psychic"
+              ]
+            }
+          },
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "bonus_actions": [],
+      "reactions": [],
+      "legendary_actions": [],
+      "lair_actions": [],
+      "spellcasting": null,
+      "habitats": [
+        "swamp",
+        "urban",
+        "forest",
+        "desert",
+        "underdark"
+      ],
+      "lore": {
+        "summary_ru": "Засадный хищник тёмных полостей и подземелий. Паутина задерживает добычу, а коконы в логове выдают предыдущих жертв.",
+        "full_text_included": false,
+        "source_url": "https://dnd.su/bestiary/3-giant-spider/",
+        "origin": "original_short_summary",
+        "scope": "short_species_or_role_summary_not_individual_biography",
+        "history_status": "short_summary_only"
+      },
+      "optional_variants_included": false,
+      "excluded_optional_sections": [],
+      "field_notes": [],
+      "data_status": "reviewed_transcription",
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "ability_modifiers": {
+        "str": 2,
+        "dex": 3,
+        "con": 1,
+        "int": -4,
+        "wis": 0,
+        "cha": -3
+      },
+      "initiative_bonus": 3,
+      "description_language": "ru",
+      "habitat_usage": "descriptive_encounter_tags_not_spawn_restrictions"
+    },
+    {
+      "id": "dnd_5e_2014:monster:mimic",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "monster",
+      "name_ru": "Мимик",
+      "name_en": "Mimic",
+      "book_code": "MM14",
+      "source_ref": "dndsu:monster:mimic",
+      "source_url": "https://www.dnd.su/bestiary/236-mimic/",
+      "size": "medium",
+      "creature_type": "monstrosity",
+      "subtypes": [
+        "shapechanger"
+      ],
+      "alignment": "neutral",
+      "armor_class": {
+        "value": 12,
+        "details_ru": "Природный доспех"
+      },
+      "hit_points": {
+        "average": 58,
+        "formula": "9d8+18"
+      },
+      "speed_ft": {
+        "walk": 15
+      },
+      "abilities": {
+        "str": 17,
+        "dex": 12,
+        "con": 15,
+        "int": 5,
+        "wis": 13,
+        "cha": 8
+      },
+      "saving_throws": {},
+      "skills": {
+        "stealth": 5
+      },
+      "senses": {
+        "darkvision_ft": 60,
+        "passive_perception": 11
+      },
+      "languages": {
+        "spoken": [],
+        "understood_only": [],
+        "notes_ru": null
+      },
+      "challenge_rating": "2",
+      "xp": 450,
+      "proficiency_bonus": 2,
+      "damage_resistances": [],
+      "damage_immunities": [
+        "acid"
+      ],
+      "damage_vulnerabilities": [],
+      "condition_immunities": [
+        "prone"
+      ],
+      "traits": [
+        {
+          "id": "shapechanger",
+          "name_ru": "Перевёртыш",
+          "summary_ru": "Действием меняет форму предмета и аморфную форму; параметры сохраняются.",
+          "mechanics": {
+            "action_cost": "action",
+            "forms": [
+              "object",
+              "amorphous"
+            ],
+            "equipment_changes": false,
+            "death_reverts": true
+          },
+          "mechanics_status": "requires_handler"
+        },
+        {
+          "id": "adhesive",
+          "name_ru": "Клейкость",
+          "summary_ru": "В форме предмета приклеивает коснувшихся; освобождение с помехой.",
+          "mechanics": {
+            "requires_form": "object",
+            "max_target_size": "huge",
+            "condition": "grappled",
+            "escape_dc": 13,
+            "escape_check_disadvantage": true
+          },
+          "mechanics_status": "requires_handler"
+        },
+        {
+          "id": "false-appearance",
+          "name_ru": "Обманчивая внешность",
+          "summary_ru": "Неподвижный предмет-мимик неотличим от обычного предмета.",
+          "mechanics": {
+            "requires": [
+              "object_form",
+              "motionless"
+            ]
+          },
+          "mechanics_status": "requires_handler"
+        },
+        {
+          "id": "grappler",
+          "name_ru": "Борец",
+          "summary_ru": "Атакует схваченных им существ с преимуществом.",
+          "mechanics": {
+            "attack_advantage_against": "self_grappled_targets"
+          },
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "actions": [
+        {
+          "id": "pseudopod",
+          "name_ru": "Ложноножка",
+          "kind": "weapon_attack",
+          "attack_modifier": 5,
+          "target": "one_target",
+          "modes": [
+            "melee"
+          ],
+          "reach_ft": 5,
+          "range_ft": null,
+          "damage": [
+            {
+              "expression": "1d8+3",
+              "type": "bludgeoning",
+              "average": 7
+            }
+          ],
+          "mechanics_status": "requires_handler",
+          "on_hit": {
+            "apply_trait": "adhesive",
+            "requires_form": "object"
+          }
+        },
+        {
+          "id": "bite",
+          "name_ru": "Укус",
+          "kind": "weapon_attack",
+          "attack_modifier": 5,
+          "target": "one_target",
+          "modes": [
+            "melee"
+          ],
+          "reach_ft": 5,
+          "range_ft": null,
+          "damage": [
+            {
+              "expression": "1d8+3",
+              "type": "piercing",
+              "average": 7
+            },
+            {
+              "expression": "1d8",
+              "type": "acid",
+              "average": 4
+            }
+          ],
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "bonus_actions": [],
+      "reactions": [],
+      "legendary_actions": [],
+      "lair_actions": [],
+      "spellcasting": null,
+      "habitats": [
+        "urban",
+        "underdark"
+      ],
+      "lore": {
+        "summary_ru": "Одиночный хищник, имитирующий предметы ради засады. Чаще выбирает сундуки и двери; с редкими разумными особями можно договориться за пищу.",
+        "full_text_included": false,
+        "source_url": "https://www.dnd.su/bestiary/236-mimic/",
+        "origin": "original_short_summary",
+        "scope": "short_species_or_role_summary_not_individual_biography",
+        "history_status": "short_summary_only"
+      },
+      "optional_variants_included": false,
+      "excluded_optional_sections": [],
+      "field_notes": [],
+      "data_status": "reviewed_transcription",
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "ability_modifiers": {
+        "str": 3,
+        "dex": 1,
+        "con": 2,
+        "int": -3,
+        "wis": 1,
+        "cha": -1
+      },
+      "initiative_bonus": 1,
+      "description_language": "ru",
+      "habitat_usage": "descriptive_encounter_tags_not_spawn_restrictions"
+    },
+    {
+      "id": "dnd_5e_2014:monster:gelatinous-cube",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "monster",
+      "name_ru": "Студенистый куб",
+      "name_en": "Gelatinous Cube",
+      "book_code": "MM14",
+      "source_ref": "dndsu:monster:gelatinous-cube",
+      "source_url": "https://www.dnd.su/bestiary/256-gelatinous-cube/",
+      "size": "large",
+      "creature_type": "ooze",
+      "subtypes": [],
+      "alignment": "unaligned",
+      "armor_class": {
+        "value": 6,
+        "details_ru": null
+      },
+      "hit_points": {
+        "average": 84,
+        "formula": "8d10+40"
+      },
+      "speed_ft": {
+        "walk": 15
+      },
+      "abilities": {
+        "str": 14,
+        "dex": 3,
+        "con": 20,
+        "int": 1,
+        "wis": 6,
+        "cha": 1
+      },
+      "saving_throws": {},
+      "skills": {},
+      "senses": {
+        "blindsight_ft": 60,
+        "blind_beyond_blindsight": true,
+        "passive_perception": 8
+      },
+      "languages": {
+        "spoken": [],
+        "understood_only": [],
+        "notes_ru": null
+      },
+      "challenge_rating": "2",
+      "xp": 450,
+      "proficiency_bonus": 2,
+      "damage_resistances": [],
+      "damage_immunities": [],
+      "damage_vulnerabilities": [],
+      "condition_immunities": [
+        "prone",
+        "charmed",
+        "blinded",
+        "exhaustion",
+        "frightened",
+        "deafened"
+      ],
+      "traits": [
+        {
+          "id": "ooze-cube",
+          "name_ru": "Куб слизи",
+          "summary_ru": "Заполняет пространство; поглощённые существа видны, но защищены полным укрытием.",
+          "mechanics": {
+            "space_ft": 10,
+            "enter_space_triggers": "engulf_save_with_disadvantage",
+            "engulfed_have": "total_cover",
+            "capacity": {
+              "large": 1,
+              "medium_or_smaller": 4
+            },
+            "pull_out": {
+              "action_cost": "action",
+              "check": "str",
+              "dc": 12,
+              "damage_to_puller": "3d6",
+              "damage_type": "acid",
+              "range_ft": 5,
+              "damage_applies": "regardless_of_check_result",
+              "targets": [
+                "creature",
+                "object"
+              ]
+            }
+          },
+          "mechanics_status": "requires_handler"
+        },
+        {
+          "id": "transparent",
+          "name_ru": "Прозрачность",
+          "summary_ru": "Неподвижный неатакующий куб трудно заметить; незаметное столкновение застаёт врасплох.",
+          "mechanics": {
+            "perception_dc": 15,
+            "requires": [
+              "not_moving",
+              "not_attacking"
+            ],
+            "unaware_entry_causes": "surprised"
+          },
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "actions": [
+        {
+          "id": "pseudopod",
+          "name_ru": "Ложноножка",
+          "kind": "weapon_attack",
+          "attack_modifier": 4,
+          "target": "one_creature",
+          "modes": [
+            "melee"
+          ],
+          "reach_ft": 5,
+          "range_ft": null,
+          "damage": [
+            {
+              "expression": "3d6",
+              "type": "acid",
+              "average": 10
+            }
+          ],
+          "mechanics_status": "requires_handler"
+        },
+        {
+          "id": "engulf",
+          "name_ru": "Поглощение",
+          "kind": "special",
+          "move_up_to": "speed",
+          "max_target_size": "large",
+          "save": {
+            "ability": "dex",
+            "dc": 12,
+            "success": "choose_push_5_ft_away_or_side; refusing_means_failure"
+          },
+          "on_failure": {
+            "damage": "3d6",
+            "type": "acid",
+            "engulfed": true,
+            "condition": "restrained",
+            "cannot_breathe": true,
+            "moves_with_cube": true
+          },
+          "ongoing": {
+            "trigger": "start_of_cube_turn",
+            "damage": "6d6",
+            "type": "acid"
+          },
+          "escape": {
+            "action_cost": "action",
+            "check": "str",
+            "dc": 12,
+            "success_move_within_ft": 5
+          },
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "bonus_actions": [],
+      "reactions": [],
+      "legendary_actions": [],
+      "lair_actions": [],
+      "spellcasting": null,
+      "habitats": [
+        "underdark"
+      ],
+      "lore": {
+        "summary_ru": "Почти прозрачная слизь, медленно очищающая коридоры от органических останков. Нерастворённые предметы внутри тела могут выдать её присутствие.",
+        "full_text_included": false,
+        "source_url": "https://www.dnd.su/bestiary/256-gelatinous-cube/",
+        "origin": "original_short_summary",
+        "scope": "short_species_or_role_summary_not_individual_biography",
+        "history_status": "short_summary_only"
+      },
+      "optional_variants_included": false,
+      "excluded_optional_sections": [],
+      "field_notes": [],
+      "data_status": "reviewed_transcription",
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "ability_modifiers": {
+        "str": 2,
+        "dex": -4,
+        "con": 5,
+        "int": -5,
+        "wis": -2,
+        "cha": -5
+      },
+      "initiative_bonus": -4,
+      "description_language": "ru",
+      "habitat_usage": "descriptive_encounter_tags_not_spawn_restrictions"
+    },
+    {
+      "id": "dnd_5e_2014:monster:owlbear",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "monster",
+      "name_ru": "Совомед",
+      "name_en": "Owlbear",
+      "book_code": "MM14",
+      "source_ref": "dndsu:monster:owlbear",
+      "source_url": "https://dnd.su/bestiary/25-owlbear/",
+      "size": "large",
+      "creature_type": "monstrosity",
+      "subtypes": [],
+      "alignment": "unaligned",
+      "armor_class": {
+        "value": 13,
+        "details_ru": "Природный доспех"
+      },
+      "hit_points": {
+        "average": 59,
+        "formula": "7d10+21"
+      },
+      "speed_ft": {
+        "walk": 40
+      },
+      "abilities": {
+        "str": 20,
+        "dex": 12,
+        "con": 17,
+        "int": 3,
+        "wis": 12,
+        "cha": 7
+      },
+      "saving_throws": {},
+      "skills": {
+        "perception": 3
+      },
+      "senses": {
+        "darkvision_ft": 60,
+        "passive_perception": 13
+      },
+      "languages": {
+        "spoken": [],
+        "understood_only": [],
+        "notes_ru": null
+      },
+      "challenge_rating": "3",
+      "xp": 700,
+      "proficiency_bonus": 2,
+      "damage_resistances": [],
+      "damage_immunities": [],
+      "damage_vulnerabilities": [],
+      "condition_immunities": [],
+      "traits": [
+        {
+          "id": "keen-sight-smell",
+          "name_ru": "Острое зрение и нюх",
+          "summary_ru": "Преимущество на Восприятие с помощью зрения и обоняния.",
+          "mechanics": {
+            "check": "wis:perception",
+            "advantage_senses": [
+              "sight",
+              "smell"
+            ]
+          },
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "actions": [
+        {
+          "id": "multiattack",
+          "name_ru": "Мультиатака",
+          "kind": "multiattack",
+          "sequences": [
+            [
+              {
+                "action_id": "beak",
+                "count": 1
+              },
+              {
+                "action_id": "claws",
+                "count": 1
+              }
+            ]
+          ],
+          "mechanics_status": "requires_handler"
+        },
+        {
+          "id": "beak",
+          "name_ru": "Клюв",
+          "kind": "weapon_attack",
+          "attack_modifier": 7,
+          "target": "one_target",
+          "modes": [
+            "melee"
+          ],
+          "reach_ft": 5,
+          "range_ft": null,
+          "damage": [
+            {
+              "expression": "1d10+5",
+              "type": "piercing",
+              "average": 10
+            }
+          ],
+          "mechanics_status": "requires_handler"
+        },
+        {
+          "id": "claws",
+          "name_ru": "Когти",
+          "kind": "weapon_attack",
+          "attack_modifier": 7,
+          "target": "one_target",
+          "modes": [
+            "melee"
+          ],
+          "reach_ft": 5,
+          "range_ft": null,
+          "damage": [
+            {
+              "expression": "2d8+5",
+              "type": "slashing",
+              "average": 14
+            }
+          ],
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "bonus_actions": [],
+      "reactions": [],
+      "legendary_actions": [],
+      "lair_actions": [],
+      "spellcasting": null,
+      "habitats": [
+        "forest"
+      ],
+      "lore": {
+        "summary_ru": "Лесной хищник с медвежьим телом и совиными чертами. Нападает клювом и когтями; индивидуальный характер и происхождение задаёт ведущий.",
+        "full_text_included": false,
+        "source_url": "https://dnd.su/bestiary/25-owlbear/",
+        "origin": "original_game_use_summary",
+        "scope": "short_species_or_role_summary_not_individual_biography",
+        "history_status": "no_source_history_bundled"
+      },
+      "optional_variants_included": false,
+      "excluded_optional_sections": [],
+      "field_notes": [],
+      "data_status": "reviewed_transcription",
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "ability_modifiers": {
+        "str": 5,
+        "dex": 1,
+        "con": 3,
+        "int": -4,
+        "wis": 1,
+        "cha": -2
+      },
+      "initiative_bonus": 1,
+      "description_language": "ru",
+      "habitat_usage": "descriptive_encounter_tags_not_spawn_restrictions"
+    },
+    {
+      "id": "dnd_5e_2014:monster:young-red-dragon",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.0.0",
+      "kind": "monster",
+      "name_ru": "Молодой красный дракон",
+      "name_en": "Young Red Dragon",
+      "book_code": "MM14",
+      "source_ref": "dndsu:monster:young-red-dragon",
+      "source_url": "https://dnd.su/bestiary/109-young-red-dragon/",
+      "size": "large",
+      "creature_type": "dragon",
+      "subtypes": [],
+      "alignment": "chaotic_evil",
+      "armor_class": {
+        "value": 18,
+        "details_ru": "Природный доспех"
+      },
+      "hit_points": {
+        "average": 178,
+        "formula": "17d10+85"
+      },
+      "speed_ft": {
+        "walk": 40,
+        "fly": 80,
+        "climb": 40
+      },
+      "abilities": {
+        "str": 23,
+        "dex": 10,
+        "con": 21,
+        "int": 14,
+        "wis": 11,
+        "cha": 19
+      },
+      "saving_throws": {
+        "dex": 4,
+        "con": 9,
+        "wis": 4,
+        "cha": 8
+      },
+      "skills": {
+        "perception": 8,
+        "stealth": 4
+      },
+      "senses": {
+        "blindsight_ft": 30,
+        "darkvision_ft": 120,
+        "passive_perception": 18
+      },
+      "languages": {
+        "spoken": [
+          "common",
+          "draconic"
+        ],
+        "understood_only": [],
+        "notes_ru": null
+      },
+      "challenge_rating": "10",
+      "xp": 5900,
+      "proficiency_bonus": 4,
+      "damage_resistances": [],
+      "damage_immunities": [
+        "fire"
+      ],
+      "damage_vulnerabilities": [],
+      "condition_immunities": [],
+      "traits": [],
+      "actions": [
+        {
+          "id": "multiattack",
+          "name_ru": "Мультиатака",
+          "kind": "multiattack",
+          "sequences": [
+            [
+              {
+                "action_id": "bite",
+                "count": 1
+              },
+              {
+                "action_id": "claw",
+                "count": 2
+              }
+            ]
+          ],
+          "mechanics_status": "requires_handler"
+        },
+        {
+          "id": "bite",
+          "name_ru": "Укус",
+          "kind": "weapon_attack",
+          "attack_modifier": 10,
+          "target": "one_target",
+          "modes": [
+            "melee"
+          ],
+          "reach_ft": 10,
+          "range_ft": null,
+          "damage": [
+            {
+              "expression": "2d10+6",
+              "type": "piercing",
+              "average": 17
+            },
+            {
+              "expression": "1d6",
+              "type": "fire",
+              "average": 3
+            }
+          ],
+          "mechanics_status": "requires_handler"
+        },
+        {
+          "id": "claw",
+          "name_ru": "Коготь",
+          "kind": "weapon_attack",
+          "attack_modifier": 10,
+          "target": "one_target",
+          "modes": [
+            "melee"
+          ],
+          "reach_ft": 5,
+          "range_ft": null,
+          "damage": [
+            {
+              "expression": "2d6+6",
+              "type": "slashing",
+              "average": 13
+            }
+          ],
+          "mechanics_status": "requires_handler"
+        },
+        {
+          "id": "fire-breath",
+          "name_ru": "Огненное дыхание",
+          "kind": "save_area",
+          "area": {
+            "shape": "cone",
+            "length_ft": 30
+          },
+          "save": {
+            "ability": "dex",
+            "dc": 17,
+            "success": "half_damage"
+          },
+          "damage": [
+            {
+              "expression": "16d6",
+              "average": 56,
+              "type": "fire"
+            }
+          ],
+          "recharge": {
+            "die": "1d6",
+            "success": [
+              5,
+              6
+            ],
+            "check": "start_of_turn"
+          },
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "bonus_actions": [],
+      "reactions": [],
+      "legendary_actions": [],
+      "lair_actions": [],
+      "spellcasting": null,
+      "habitats": [
+        "mountain",
+        "hill"
+      ],
+      "lore": {
+        "summary_ru": "Красные драконы ревниво охраняют горные владения и сокровища. Высокомерие и память о каждой ценности делают кражу из их кладов особенно опасной.",
+        "full_text_included": false,
+        "source_url": "https://dnd.su/bestiary/109-young-red-dragon/",
+        "origin": "original_short_summary",
+        "scope": "short_species_or_role_summary_not_individual_biography",
+        "history_status": "short_summary_only"
+      },
+      "optional_variants_included": false,
+      "excluded_optional_sections": [
+        "Опциональные изменения драконов и дополнительные чувства не включены.",
+        "Легендарные действия и действия логова взрослых драконов не добавлены молодому дракону."
+      ],
+      "field_notes": [],
+      "data_status": "reviewed_transcription",
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "ability_modifiers": {
+        "str": 6,
+        "dex": 0,
+        "con": 5,
+        "int": 2,
+        "wis": 0,
+        "cha": 4
+      },
+      "initiative_bonus": 0,
+      "description_language": "ru",
+      "habitat_usage": "descriptive_encounter_tags_not_spawn_restrictions"
+    }
+  ]
+}

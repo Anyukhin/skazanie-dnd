@@ -537,7 +537,9 @@ test('масштаб крепости не может быть сжат моде
   assert.equal(planned.sceneArgs.map.width, 19)
   assert.equal(planned.sceneArgs.map.height, 13)
   const transition = createSceneTransition(planned.sceneArgs, archiveState)
-  assert.equal(transition.scene.cells.length, 19 * 16)
+  assert.ok(transition.scene.map.width >= 19 && transition.scene.map.height >= 16,
+    'Полная крепость не должна сжиматься до старого комнатного минимума')
+  assert.ok(transition.scene.map.zones.some((zone) => zone.id === 'courtyard'))
   assert.ok(transition.scene.cells.some((cell) => cell.type === 'door'),
     'каменная крепость обязана получить структурированную планировку с проходами')
 })

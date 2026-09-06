@@ -160,7 +160,8 @@ function PlayerCard({ player, selected, turn, accessible, typing, deathSaves, st
   // Герой на 0 ОЗ выглядел точно как здоровый: движок помечал его `unconscious`
   // и вёл спасброски от смерти, а в списке отряда об этом не было ни слова.
   const downed = player.hp <= 0
-  const downedLabel = deathSaves?.stable ? 'Стабилизирован' : 'Без сознания'
+  const dead = status?.conditions.some((condition) => condition.id === 'dead') ?? false
+  const downedLabel = dead ? 'Погиб' : deathSaves?.stable ? 'Стабилизирован' : 'Без сознания'
   return (
     <button className={`player-card ${selected ? 'active' : ''} ${accessible ? '' : 'locked'} ${downed ? 'downed' : ''}`} onClick={onClick} disabled={!accessible} title={accessible ? `${player.character}: ${player.online ? 'в сети' : 'не в сети'}${typing ? ', формулирует намерение' : ''}` : `${player.character}: этот герой закреплён за другим игроком`}>
       <div className="avatar portrait-avatar" data-face={heroFaceMode(player)} style={heroFaceStyle(player, { '--avatar': player.color } as React.CSSProperties)}>
@@ -182,7 +183,7 @@ function PlayerCard({ player, selected, turn, accessible, typing, deathSaves, st
         </div>}
         {downed && <div className="downed-line" title={deathSaves ? `Спасброски от смерти: ${deathSaves.successes} успеха, ${deathSaves.failures} провала` : undefined}>
           <HeartCrack size={11} /><span>{downedLabel}</span>
-          {deathSaves && !deathSaves.stable && <em>{deathSaves.successes}✓ · {deathSaves.failures}✕</em>}
+          {deathSaves && !deathSaves.stable && !dead && <em>{deathSaves.successes}✓ · {deathSaves.failures}✕</em>}
         </div>}
       </div>
       {/* Щит и число — один блок. Раньше число висело абсолютом от края карточки,
@@ -341,7 +342,7 @@ function SceneWeather({ weather }: { weather?: WeatherProjection }) {
   const lines = [
     `День ${weather.day}, ${weather.clock}`,
     weather.weather_summary,
-    weather.indoors ? 'Отряд под крышей: погода на броски не влияет.' : '',
+    weather.indoors ? 'Герой под крышей: погода на броски не влияет.' : '',
     ...weather.effects,
   ].filter(Boolean)
   return (
@@ -1581,7 +1582,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onCompleteRest={() => completeRest(activePlayer.id)}
             onTypingChange={updateTypingPresence}
             narrating={state.isNarrating}
-            statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} illustration={sceneIllustration} illustrationKey={sceneLocationKey} locationArtUrl={locationArtUrl} scenicBackdrop={scenicBackdrop} merchants={combatActive ? [] : availableMerchants} wantedSigns={state.law?.signs ?? []} weather={state.weather} canReset={canManageLifecycle || isAdmin} onOpenMerchant={() => openMerchant()} onReset={reset} />}
+            statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} illustration={sceneIllustration} illustrationKey={sceneLocationKey} locationArtUrl={locationArtUrl} scenicBackdrop={scenicBackdrop} merchants={combatActive ? [] : availableMerchants} wantedSigns={state.law?.signs ?? []} weather={state.weather_by_actor?.[activePlayer.id] ?? state.weather} canReset={canManageLifecycle || isAdmin} onOpenMerchant={() => openMerchant()} onReset={reset} />}
           >
             <ChatPanel messages={state.messages} isNarrating={state.isNarrating} interaction={state.agentInteraction} players={partyPlayers} typingActorIds={visibleTypingActorIds} currentPlayerId={activePlayer.id} canAct={canAct} combatActive={combatActive} suggestedActions={actionHints} sceneKey={`${state.scene.location}|${state.scene.title}`} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={() => continueAgentInteraction(activePlayer.id)} onWhy={() => { void submitAction('/why', activePlayer.id) }} onSpeak={voiceSupported && voiceMode !== 'off' ? (text) => speakNarration(text, narrationVoice) : null} />
             <div className="player-hud-stack">
@@ -1684,6 +1685,8 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         required={Boolean(state.players.find((player) => player.id === creatingPlayerId)?.characterSetupRequired)}
         onClose={() => { setCreatingPlayerId(null); setHeroWizardDismissed(true) }}
         onImport={(source) => importCharacter(creatingPlayerId, source)}
+        onRollAbilities={() => gameSession.rollCharacterAbilities(creatingPlayerId)}
+        onRollWealth={(classId) => gameSession.rollCharacterWealth(creatingPlayerId, classId)}
       />}
       {editingPlayerId && <CharacterEditor
         player={state.players.find((player) => player.id === editingPlayerId) ?? activePlayer}

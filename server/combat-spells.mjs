@@ -1,4 +1,11 @@
 import { readFileSync } from 'node:fs'
+import { PHB_CANTRIPS, PHB_FIRST_LEVEL_SPELLS } from './character-creation-feats.mjs'
+
+function availableClassSpell(spell, classKey, actor) {
+  if (!actor?.creationBenefits) return spell.classes.includes(classKey)
+  if ((actor.creationBenefits.expanded_spells ?? []).includes(spell.id)) return true
+  return (spell.level === 0 ? PHB_CANTRIPS[classKey] : spell.level === 1 ? PHB_FIRST_LEVEL_SPELLS[classKey] : spell.classes.includes(classKey) ? [spell.id] : [])?.includes(spell.id) === true
+}
 
 const payload = JSON.parse(readFileSync(new URL('../data/dndsu-spells-0-6.json', import.meta.url), 'utf8'))
 const overridePayload = JSON.parse(readFileSync(new URL('../data/dndsu-spell-mechanics-overrides.json', import.meta.url), 'utf8'))
@@ -125,7 +132,7 @@ function selectedSpellIds(actor, camel, snake) {
 }
 
 function boundedSelection(actor, profile, level, rules) {
-  const available = SPELLS.filter((spell) => spell.classes.includes(profile.key) && (spell.level === 0 || spell.level <= rules.maximumSpellLevel))
+  const available = SPELLS.filter((spell) => availableClassSpell(spell, profile.key, actor) && (spell.level === 0 || spell.level <= rules.maximumSpellLevel))
   const byId = new Map(available.map((spell) => [spell.id, spell]))
   const rawKnown = selectedSpellIds(actor, 'knownSpellIds', 'known_spell_ids')
   const rawPrepared = selectedSpellIds(actor, 'preparedSpellIds', 'prepared_spell_ids')
@@ -178,16 +185,16 @@ export function combatSpellsFor(actor) {
     const rules = spellSelectionRulesFor(actor)
     const { known, prepared } = boundedSelection(actor, profile, level, rules)
     return SPELLS
-      .filter((spell) => spell.classes.includes(profile.key) && (spell.level === 0 || spell.level <= maximum))
+      .filter((spell) => (availableClassSpell(spell, profile.key, actor) || (actor.creationBenefits?.domain_spells ?? []).includes(spell.id)) && (spell.level === 0 || spell.level <= maximum))
       .map((spell) => {
-      const isPrepared = spell.level === 0 ? (known ? known.has(spell.id) : true)
+      const isPrepared = (actor.creationBenefits?.domain_spells ?? []).includes(spell.id) ? true : spell.level === 0 ? (known ? known.has(spell.id) : true)
         : rules.mode === 'known' ? (known ? known.has(spell.id) : true)
           : rules.mode === 'spellbook' ? (known ? known.has(spell.id) : true) && (prepared ? prepared.has(spell.id) : true)
             : prepared ? prepared.has(spell.id) : true
       return { ...clone(spell), slotResource: slotResourceForProfile(profile, spell), spellcastingAbility: profile.ability, prepared: isPrepared }
       })
   })() : []
-  const innate = (Array.isArray(actor?.speciesBenefits?.innate_spells) ? actor.speciesBenefits.innate_spells : [])
+  const innate = [...(Array.isArray(actor?.speciesBenefits?.innate_spells) ? actor.speciesBenefits.innate_spells : []), ...(actor?.creationSpellGrants ?? [])]
     .filter((entry) => level >= Math.max(1, Number(entry?.minimum_level) || 1))
     .map((entry) => {
       const spell = SPELLS_BY_ID.get(String(entry?.id ?? ''))
@@ -200,7 +207,7 @@ export function combatSpellsFor(actor) {
         innateCastLevel: Math.max(spell.level, Number(entry?.cast_level) || spell.level),
         spellcastingAbility: String(entry?.ability ?? 'cha'),
         slotResource: limited ? `species_spell_${spell.id}` : null,
-        source: 'species',
+        source: entry.source ?? 'species',
       }
     })
     .filter(Boolean)

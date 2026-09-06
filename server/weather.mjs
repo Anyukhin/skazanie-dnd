@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 
 import { matchTheme } from './scene-themes.mjs'
+import { cellAt, deserializeTacticalMap } from './tactical-map.mjs'
 import { worldLocationById } from './world-map.mjs'
 
 /**
@@ -324,8 +325,52 @@ export function isIndoorScene(scene = {}) {
   return INDOOR_SCENE_KINDS.has(text(scene?.scene_kind, 40))
 }
 
-export function isIndoors(state = {}) {
-  return isIndoorScene(state?.scene ?? {})
+function actorPositionForWeather(state, actorIdValue) {
+  const id = String(actorIdValue ?? '').trim()
+  if (!id) return null
+  const stored = state?.mechanics?.positions?.[id]
+  const actor = [...(Array.isArray(state?.players) ? state.players : []), ...(Array.isArray(state?.actors) ? state.actors : []), ...(Array.isArray(state?.enemies) ? state.enemies : [])]
+    .find((candidate) => String(candidate?.id ?? candidate?.actor_id ?? '') === id)
+  const x = Number(stored?.x ?? actor?.x)
+  const y = Number(stored?.y ?? actor?.y)
+  return Number.isSafeInteger(x) && Number.isSafeInteger(y) ? { x, y } : null
+}
+
+function defaultWeatherActorId(state = {}) {
+  const active = String(state?.activePlayerId ?? '').trim()
+  if (active) return active
+  const firstPlayer = Array.isArray(state?.players) ? state.players[0] : null
+  const first = String(firstPlayer?.id ?? firstPlayer?.actor_id ?? '').trim()
+  return first || null
+}
+
+function resolvedWeatherActorId(state, actorIdValue) {
+  const explicit = String(actorIdValue ?? '').trim()
+  return explicit || defaultWeatherActorId(state)
+}
+
+/**
+ * Возвращает покрытие клетки из богатой карты, если оно однозначно известно.
+ * Ошибочная или старая форма карты отдаётся прежнему сценическому fallback'у.
+ */
+function richMapIndoorFor(state, actorIdValue) {
+  const position = actorPositionForWeather(state, actorIdValue)
+  const rawMap = state?.scene?.map
+  if (!position || !rawMap || typeof rawMap !== 'object' || !Array.isArray(rawMap.zones) || !rawMap.layers) return null
+  try {
+    const map = ArrayBuffer.isView(rawMap.layers.zoneId) ? rawMap : deserializeTacticalMap(rawMap)
+    const cell = cellAt(map, position.x, position.y)
+    const zone = map.zones.find((candidate) => candidate.id === cell?.zone)
+    if (zone?.kind === 'interior') return true
+    if (zone?.kind === 'exterior') return false
+  } catch {
+    // Legacy/повреждённая карта не должна отключать прежнюю сценическую оценку.
+  }
+  return null
+}
+
+export function isIndoors(state = {}, actorIdValue = null) {
+  return richMapIndoorFor(state, actorIdValue) ?? isIndoorScene(state?.scene ?? {})
 }
 
 // ---------------------------------------------------------------------------
@@ -400,17 +445,18 @@ export function weatherEffectsUnder({ indoors = false, phase = 'day', weather = 
   ))
 }
 
-function activeEffects(state, elapsedMinutes = elapsedMinutesOf(state)) {
+function activeEffects(state, elapsedMinutes = elapsedMinutesOf(state), actorIdValue = null) {
   return weatherEffectsUnder({
-    indoors: isIndoors(state),
+    indoors: isIndoors(state, actorIdValue),
     phase: timeOfDayOf(elapsedMinutes),
     weather: weatherOf(state, elapsedMinutes),
   })
 }
 
 /** Русские подписи действующих эффектов — для подсказки индикатора и ведущего. */
-export function weatherEffectLabels(state = {}) {
-  return activeEffects(state).map((effect) => effect.label)
+/** @param {number|string|null|undefined} [actorIdValue] */
+export function weatherEffectLabels(state = {}, actorIdValue = null) {
+  return activeEffects(state, undefined, resolvedWeatherActorId(state, actorIdValue)).map((effect) => effect.label)
 }
 
 /**
@@ -420,16 +466,16 @@ export function weatherEffectLabels(state = {}) {
  * Обе стороны сразу вернуться не могут: одна и та же погода не даёт навыку и
  * помеху, и преимущество. Сторож — `test/weather.test.mjs`.
  */
-export function weatherCheckSwing(state = {}, skill = '') {
+export function weatherCheckSwing(state = {}, skill = '', actorIdValue = null) {
   const id = String(skill ?? '').trim().toLocaleLowerCase('en').replace(/_/gu, '-')
   if (!WEATHER_AFFECTED_SKILLS.has(id)) return null
-  const effect = activeEffects(state).find((candidate) => (candidate.skills ?? []).includes(id))
+  const effect = activeEffects(state, undefined, actorIdValue).find((candidate) => (candidate.skills ?? []).includes(id))
   return effect ? { swing: effect.swing, reason: effect.reason, effect_id: effect.id } : null
 }
 
 /** Причина помехи дальней атаке под открытым небом либо `null`. */
-export function weatherRangedPenalty(state = {}) {
-  const effect = activeEffects(state).find((candidate) => candidate.ranged === true)
+export function weatherRangedPenalty(state = {}, actorIdValue = null) {
+  const effect = activeEffects(state, undefined, actorIdValue).find((candidate) => candidate.ranged === true)
   return effect ? { reason: effect.reason, effect_id: effect.id } : null
 }
 
@@ -442,10 +488,19 @@ export function weatherRangedPenalty(state = {}) {
  * проекцию, контекст Рассказчика и карточку ведущего: второго ответа на вопрос
  * «который час и что на небе» быть не должно.
  */
-export function worldClockFor(state = {}, elapsedMinutes = elapsedMinutesOf(state)) {
+/**
+ * @param {object} [state]
+ * @param {number|string|undefined} [elapsedMinutesOrActorId]
+ * @param {number|string|null|undefined} [actorIdValue]
+ */
+export function worldClockFor(state = {}, elapsedMinutesOrActorId, actorIdValue = null) {
+  const elapsedMinutes = typeof elapsedMinutesOrActorId === 'number'
+    ? elapsedMinutesOrActorId
+    : elapsedMinutesOf(state)
+  const actorId = typeof elapsedMinutesOrActorId === 'string' ? elapsedMinutesOrActorId : actorIdValue
   const phase = timeOfDayOf(elapsedMinutes)
   const weather = weatherOf(state, elapsedMinutes)
-  const indoors = isIndoors(state)
+  const indoors = isIndoors(state, resolvedWeatherActorId(state, actorId))
   const phaseLabel = dayPhaseLabel(phase)
   const weatherLabel = weatherConditionLabel(weather)
   return {
@@ -470,8 +525,9 @@ export function worldClockFor(state = {}, elapsedMinutes = elapsedMinutesOf(stat
  * То же, но для проекции игроку. Форма совпадает с админской намеренно: небо
  * над отрядом — не тайна ведущего, и прятать от игрока погоду было бы враньём.
  */
-export function weatherForViewer(state = {}) {
-  return worldClockFor(state)
+/** @param {number|string|null|undefined} [actorIdValue] */
+export function weatherForViewer(state = {}, actorIdValue = null) {
+  return worldClockFor(state, actorIdValue)
 }
 
 /**
@@ -479,8 +535,9 @@ export function weatherForViewer(state = {}) {
  * подписи действующих эффектов: модель не должна догадываться, почему бросок
  * ушёл с помехой.
  */
-export function worldClockForAgents(state = {}) {
-  const clock = worldClockFor(state)
+/** @param {number|string|null|undefined} [actorIdValue] */
+export function worldClockForAgents(state = {}, actorIdValue = null) {
+  const clock = worldClockFor(state, actorIdValue)
   return {
     day: clock.day,
     clock: clock.clock,

@@ -171,6 +171,36 @@ function themeForWorldKind(kind) {
 }
 
 /**
+ * География известной точки иногда важнее её общего `kind=landmark`: озеро,
+ * берег и горный кряж не должны сводиться к сухому процедурному лесу.
+ * Возвращается только bounded заявка уже существующих генераторов; числа
+ * правил и состояние мира здесь не вычисляются.
+ *
+ * @param {{name?: string, kind?: string, summary?: string, history?: string, biome?: string}|null} destination
+ * @returns {ReturnType<typeof themeFor>|null}
+ */
+function themeForWorldDescription(destination) {
+  if (!destination) return null
+  const value = `${destination.name ?? ''} ${destination.summary ?? ''} ${destination.history ?? ''} ${destination.biome ?? ''}`.toLocaleLowerCase('ru')
+  if (/озер|водо[её]м|пруд|залив/iu.test(value)) {
+    return { theme: 'озеро и отмели', layout: 'open', scale: 'site', pattern: 'natural', material: 'grass', width: 17, height: 11, openness: 0.55, water: 0.72, featureCount: 8, danger: 'средняя' }
+  }
+  if (/река|слияни[ея]\s+рек|берег|отмел|переправ|пристан|гаван|побереж/iu.test(value)) {
+    return { theme: 'берег реки', layout: 'winding', scale: 'site', pattern: 'bridge', material: 'earth', width: 17, height: 11, openness: 0.62, water: 0.42, featureCount: 7, danger: 'средняя' }
+  }
+  if (/горн|кряж|пик|скал|перевал|ущел/iu.test(value) || destination.biome === 'mountains') {
+    return { theme: 'горный рубеж', layout: 'winding', scale: 'site', pattern: 'bridge', material: 'earth', width: 17, height: 11, openness: 0.55, water: 0.02, featureCount: 7, danger: 'высокая' }
+  }
+  if (/лес|чащ|рощ|дубрав|пущ|wild/iu.test(value) || destination.biome === 'forest') {
+    return { theme: 'лесная окраина', layout: 'open', scale: 'site', pattern: 'natural', material: 'grass', width: 15, height: 11, openness: 0.62, water: 0.04, featureCount: 9, danger: 'средняя' }
+  }
+  if (/крепост|замок|цитадел|твердын|fortress/iu.test(value) || destination.kind === 'fortress') {
+    return { theme: 'каменная крепость', layout: 'rooms', scale: 'stronghold', pattern: 'keep', material: 'stone', width: 23, height: 17, openness: 0.62, water: 0.02, featureCount: 10, danger: 'высокая' }
+  }
+  return null
+}
+
+/**
  * Известные места, куда из текущей точки ведёт открытый путь. Это то, что
  * видит игрок на глобальной карте, — и то, что картограф обязан учитывать:
  * отряд, уходящий «куда-нибудь», скорее выйдет к соседней деревне, чем к
@@ -220,10 +250,16 @@ function knownWorldDestinationByName(state, name) {
     entry?.id && entry.known !== false && locationKey(entry.name) === key
   ))
   if (!location) return null
+  const region = Array.isArray(state?.worldMap?.regions)
+    ? state.worldMap.regions.find((candidate) => String(candidate?.id ?? '') === String(location.regionId ?? location.region_id ?? ''))
+    : null
   return {
     id: String(location.id),
     name: clean(location.name, 120),
     kind: clean(location.kind, 40) || 'landmark',
+    summary: clean(location.summary, 500),
+    history: clean(location.history, 700),
+    biome: clean(region?.biome, 40),
   }
 }
 
@@ -231,10 +267,16 @@ function knownWorldDestinationByName(state, name) {
 function knownWorldDestinationById(state, locationId) {
   const location = worldLocationById(state?.worldMap, clean(locationId, 120))
   if (!location?.id || location.known === false) return null
+  const region = Array.isArray(state?.worldMap?.regions)
+    ? state.worldMap.regions.find((candidate) => String(candidate?.id ?? '') === String(location.regionId ?? location.region_id ?? ''))
+    : null
   return {
     id: String(location.id),
     name: clean(location.name, 120),
     kind: clean(location.kind, 40) || 'landmark',
+    summary: clean(location.summary, 500),
+    history: clean(location.history, 700),
+    biome: clean(region?.biome, 40),
   }
 }
 
@@ -277,6 +319,9 @@ function knownWorldRouteTo(state, target) {
       id,
       name: clean(entry?.name, 120),
       kind: clean(entry?.kind, 40) || 'landmark',
+      summary: clean(entry?.summary, 500),
+      history: clean(entry?.history, 700),
+      biome: clean(byId.get(id)?.regionId ? map.regions?.find((region) => String(region?.id ?? '') === String(byId.get(id)?.regionId))?.biome : '', 40),
     }
   })
 }
@@ -339,8 +384,15 @@ function fallbackPlan({ action, state, decision, destinationHint, destinationLoc
   // Иначе маршрут «из Тихого Брода в Эствуд» цеплялся за слово «брод» в
   // исходной точке и рисовал мост вместо деревенских улиц.
   const byWorldKind = knownDestination ? themeForWorldKind(knownKind) : null
+  // Узел карты остаётся авторитетом для поселений, лесов и подземелий:
+  // описание деревни может упомянуть лес, но отряд всё равно прибывает на
+  // улицы деревни. Описание уточняет географию только для landmark/fortress,
+  // где `kind` сам по себе не различает озеро, перевал и дворец.
+  const byWorldDescription = knownDestination && ['landmark', 'fortress'].includes(knownKind)
+    ? themeForWorldDescription(knownDestination)
+    : null
   const map = themeFor(location, hinted && !knownDestination ? action : '')
-  const plannedMap = byWorldKind ?? map
+  const plannedMap = byWorldDescription ?? byWorldKind ?? map
   const streets = plannedMap.layout === 'streets'
   return {
     title: `Глава ${chapter} · ${location}`,

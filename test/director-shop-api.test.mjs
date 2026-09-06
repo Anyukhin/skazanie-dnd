@@ -166,7 +166,7 @@ test('enforce Director atomically advances scene and assembles a durable catalog
   // Смена таблицы климатов — решение владельца, и оно обязано красить этот тест.
   const transitionedTypes = transitioned.body.mechanics.map((event) => event.event_type)
   assert.deepEqual(transitionedTypes, [
-    'PartyDecisionConsumed', 'SceneAdvanced', 'WeatherChanged',
+    'TimeAdvanced', 'PartyDecisionConsumed', 'SceneAdvanced', 'WeatherChanged',
     'WorldEntityUpserted', 'QuestUpserted', 'QuestUpserted',
     'WorldFactRecorded', 'WorldFactRecorded', 'NarrativeSummaryRecorded', 'MerchantCreated',
   ])
@@ -271,7 +271,7 @@ test('enforce Director atomically advances scene and assembles a durable catalog
   // ожидание, и небо снова ровно одной строкой.
   const forestTypes = forest.body.mechanics.map((event) => event.event_type)
   assert.deepEqual(forestTypes, [
-    'PartyDecisionConsumed', 'SceneAdvanced', 'WeatherChanged',
+    'TimeAdvanced', 'TimeOfDayChanged', 'PartyDecisionConsumed', 'SceneAdvanced', 'WeatherChanged',
     'WorldEntityUpserted', 'QuestUpserted', 'QuestUpserted',
     'WorldFactRecorded', 'WorldFactRecorded', 'NarrativeSummaryRecorded',
   ])

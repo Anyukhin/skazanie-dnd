@@ -159,6 +159,13 @@ function tacticalNarrationLines(events, state) {
       meaningful.push(`Бой начался, инициатива определена для ${(event.target_ids ?? []).length} участников.`)
       const surprised = (payload.surprised ?? []).map((id) => tacticalActorName(state, id))
       if (surprised.length) meaningful.push(`Застигнуты врасплох: ${surprised.join(', ')} — первый ход они теряют и не могут использовать реакцию.`)
+    } else if (event.event_type === 'SwingResolved') {
+      // Раскачка — составной манёвр: проверка уже зафиксирована соседним
+      // событием, а это событие сообщает её безопасный для игрока итог. Не
+      // повторяем d20, модификатор или СЛ; интерфейс показывает их отдельно.
+      meaningful.push(payload.success === true
+        ? `${actor} удерживается за люстру и продолжает манёвр.`
+        : `${actor} срывается при попытке ухватиться за люстру и падает ничком у опоры; удар не происходит.`)
     } else if (event.event_type === 'ActorMoved') {
       meaningful.push(`${actor} перемещается на ${Math.max(0, Number(payload.distance) || 0)} фт.`)
     } else if (event.event_type === 'MapLevelChanged') {
@@ -470,7 +477,7 @@ function tacticalNarration(events, state) {
 
 /** Типы событий, про которые этот рассказчик умеет говорить. */
 export const COMBAT_NARRATION_EVENT_TYPES = Object.freeze(new Set([
-  'ActionReadied', 'ActorMoved', 'AreaAttackResolved', 'AttackResolved',
+  'ActionReadied', 'ActorMoved', 'AreaAttackResolved', 'AttackResolved', 'SwingResolved',
   'BeastBit', 'BeastEncountered', 'BeastFed', 'BeastMoved',
   'BeastScaredThreat', 'BeastSoothingResolved', 'BeastTamed',
   'CaptiveExecuted', 'CaptiveFed', 'CaptiveHandedOver', 'CaptiveInterrogated',

@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "ruleset_id": "dnd_5e_2014",
+  "pack_id": "skazanie-dndsu-2014-reference-extension",
+  "version": "2014.content.1.0.0",
+  "edition_family": "5e_2014",
+  "created_at": "2026-09-05",
+  "language": "ru",
+  "rules_display_languages": [
+    "ru",
+    "en"
+  ],
+  "status": "curated_partial_reference",
+  "runtime_activation_allowed": false,
+  "mechanics_status": "data_only",
+  "repository": {
+    "name": "Anyukhin/skazanie-dnd",
+    "inspected_ref": "main",
+    "inspected_commit": "bcfe5de6ffd81c2d31f2b4b0f949eaa0fb0b941d",
+    "changes_pushed": false
+  },
+  "counts": {
+    "rules": 91,
+    "monsters": 24,
+    "magic_items": 32,
+    "glossary_terms": 91,
+    "ontology_edges": 81,
+    "sources": 56
+  },
+  "source_policy": {
+    "primary": "dnd.su / 5e14.dnd.su, 2014 selected core",
+    "secondary": "SRD 5.1 only where individually attributed",
+    "excluded": [
+      "next.dnd.su",
+      "2024",
+      "UA",
+      "homebrew",
+      "supplement_books",
+      "full_external_prose",
+      "images",
+      "comments"
+    ],
+    "rights_status": "review_required",
+    "raw_source_hashes_available": false
+  },
+  "requirements": {
+    "node": ">=20.19.0",
+    "npm_dependencies": [],
+    "external_spell_catalog": "2014 spell keys must be resolved explicitly before execution"
+  },
+  "files": {
+    "coverage.json": {
+      "sha256": "b971aac65b1c73d2110e002c87713cab5a0f9e90d6d62e479840de1732e2159b",
+      "bytes": 3109
+    },
+    "magic-items.json": {
+      "sha256": "994b44b21dc631e1cbe8318af3299a1a0b4aab346b03397fb3feb801a0a1076f",
+      "bytes": 56520
+    },
+    "monsters.json": {
+      "sha256": "4b3ac07b5ce4c7f19b56c385da97bb0ac640999c83e29300c4531b9716f39737",
+      "bytes": 115056
+    },
+    "rule_packs/dnd_5e_2014/coverage.yaml": {
+      "sha256": "50e224e03b6f8363ea7de27f30bff2046286ab0720fd5b77b339d55c703afe6f",
+      "bytes": 190
+    },
+    "rule_packs/dnd_5e_2014/glossary.csv": {
+      "sha256": "7b424a733bd150fa4931d4f8cf975f5d17cea957cdc6b1dc90ad4013454701f6",
+      "bytes": 19510
+    },
+    "rule_packs/dnd_5e_2014/manifest.yaml": {
+      "sha256": "776d2e39a559a67db57d43c06edce9db53f78fd1ee9eb96d147c2795d5ef3ace",
+      "bytes": 550
+    },
+    "rule_packs/dnd_5e_2014/ontology_edges.jsonl": {
+      "sha256": "90029775137315c9700efcc320f9b5e3352c7e71b61520307c257a505a81bb0a",
+      "bytes": 15144
+    },
+    "rule_packs/dnd_5e_2014/rules.jsonl": {
+      "sha256": "699e5d5859f7b4ca8dee874c86d1a38412b25d5c9ea51fc8ce5225b09c333ca5",
+      "bytes": 153263
+    },
+    "rule_packs/dnd_5e_2014/sources.json": {
+      "sha256": "d67ccb2634575420e086c6fffdf55af287faaf38cd905d284d8a8a931e5adbed",
+      "bytes": 6699
+    },
+    "schemas/magic-item.schema.json": {
+      "sha256": "7ff44f33103bfe5156fa93af14e2828cbba693e5942b360bc8308f76deb3bba0",
+      "bytes": 3587
+    },
+    "schemas/monster.schema.json": {
+      "sha256": "becb034b14d4d03d36cfaf79a972242bf5d57e51a9c5528dfd9c27e951a9338b",
+      "bytes": 10413
+    },
+    "schemas/rule.schema.json": {
+      "sha256": "451ecb3f66a97fe5ceb4901991908aa710f10d7bbb9d55baedb0e5ce79262e17",
+      "bytes": 2761
+    },
+    "sources.json": {
+      "sha256": "15850301613f658070aa899e3e98ed8b5eb95f03945e636def35781a39036dc9",
+      "bytes": 43584
+    }
+  }
+}

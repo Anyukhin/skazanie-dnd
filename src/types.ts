@@ -190,6 +190,9 @@ export type AgentInteraction = {
 }
 
 export type Player = {
+  phbCreation?: import('./phb-character-types').PhbCharacterOptionsValue & { backgroundEquipmentChoices?: Record<string, string[]> }
+  creationBenefits?: Record<string, unknown>
+  characterCreationRolls?: { abilities?: { id: string; scores: number[]; rolls: Array<{ dice: number[] }> }; wealth?: { id: string; class_id: string; total_gp: number } }
   id: string
   name: string
   character: string
@@ -205,7 +208,7 @@ export type Player = {
   abilityGeneration?: CharacterAbilityGeneration
   backgroundId?: string
   backgroundAbilityChoice?: { mode: string; abilities: string[] }
-  backgroundChoices?: { tools: string[]; languages: string[] }
+  backgroundChoices?: { tools: string[]; languages: string[]; replacementSkills?: string[]; replacementTools?: string[]; customization?: { name: string; skills: string[]; toolCount: number; featureBackgroundId: string; variant?: string } }
   backgroundSkillProficiencies?: string[]
   backgroundBenefits?: Record<string, unknown> | null
   speciesBenefits?: Record<string, unknown> | null
@@ -1488,6 +1491,8 @@ export type GameState = {
    * отрядом тайной не является.
    */
   weather?: WeatherProjection
+  /** Серверный расчёт условий для переключения между героями отряда. */
+  weather_by_actor?: Record<string, WeatherProjection>
   /**
    * Optional viewer-safe contract introduced by server PR #18. Coordinates
    * are authoritative; raw HP, goals and beliefs are deliberately absent.
@@ -2559,7 +2564,8 @@ export type CharacterAbilityScores = {
 export type CharacterAbilityGeneration = {
   policyId: string
   policyVersion: number
-  method: 'standard_array'
+  method: 'standard_array' | 'point_buy' | 'rolled'
+  rollId?: string
   baseScores: CharacterAbilityScores
   originBonusProfileId: string
   originBonuses: CharacterAbilityScores
@@ -2567,6 +2573,10 @@ export type CharacterAbilityGeneration = {
 }
 
 export type CharacterCreationCatalog = {
+  starting_wealth?: { formulas: Record<string, { expression: string; multiplier: number }>; items: Array<{ id: string; name: string; price_cp: number; weight: number | null }> }
+  phb?: import('./phb-character-types').PhbCharacterOptionsCatalog
+  ability_methods?: Array<'standard_array' | 'point_buy' | 'rolled'>
+  point_buy?: { budget: number; costs: Record<number, number> }
   schema_version: number
   ruleset_id: RulesetProfileDescriptor['id']
   edition_family: RulesetProfileDescriptor['editionFamily']
@@ -2619,6 +2629,7 @@ export type CharacterCreationCatalog = {
   }
   /** Последствия предыстории сервер пересчитывает по id выбранного ruleset. */
   backgrounds?: {
+    customization?: { skill_count: number; tool_language_count: number; tool_options: Array<{id: string; name: string}>; variants: Array<{ id: string; backgroundId: string; name: string }> }
     policy_id: string
     ability_modes: Array<{ id: string; label: string; increases: number[] }>
     language_options: Array<{ id: string; name: string }>
@@ -2643,6 +2654,7 @@ export type CharacterCreationCatalog = {
     background_features_supported: boolean
   }
   starter_equipment?: {
+    backgrounds?: Array<{ background_id: string; fixed_items?: Array<{ name?: string; quantity?: number }>; fixed_narrative_items?: Array<{ name?: string; quantity?: number }>; choice_groups: Array<{ id: string; label: string; count: number; options: Array<{ id: string; label: string }> }> }>
     schema_version: number
     ruleset_id: string
     policy_id: string

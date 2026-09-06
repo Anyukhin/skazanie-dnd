@@ -34,7 +34,7 @@ const CATALOG = Object.freeze([
     aliases: Object.freeze([
       'bar_counter', 'bar_shelf', 'shelf_wall', 'pillar', 'cart', 'market_stall',
       'haystack', 'woodpile', 'firewood_stack', 'broom', 'cobweb',
-      'banner', 'temple_banner', 'rug', 'bed', 'bunk_bed', 'bench', 'prayer_bench',
+      'banner', 'temple_banner', 'rug', 'bed', 'bunk_bed', 'bench', 'prayer_bench', 'chandelier',
     ]),
     verbs: Object.freeze(['inspect']),
   }),
@@ -89,6 +89,7 @@ const ASSET_ALIASES_RU = Object.freeze({
   roadside_shrine: Object.freeze(['святилище', 'святилища', 'святилище']),
   brazier: Object.freeze(['жаровня', 'жаровню', 'жаровне', 'чаша с огнём']),
   campfire: Object.freeze(['костёр', 'костер', 'очаг']),
+  chandelier: Object.freeze(['люстра', 'люстру', 'люстре']),
   bookshelf: Object.freeze(['полка', 'полку', 'шкаф', 'книги']),
   table: Object.freeze(['стол', 'стола', 'столе']),
   fallen_log: Object.freeze(['бревно', 'бревна', 'бревне']),

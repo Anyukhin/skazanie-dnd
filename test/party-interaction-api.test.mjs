@@ -126,6 +126,7 @@ test('агент открывает общее голосование, а неа
   room = await persistedVoteResponse.json()
   assert.equal(persistedVoteResponse.status, 200)
   assert.equal(room.state.agentInteraction.id, result.effects.interaction.id)
+  const worldMinutesBeforeTravel = Number(room.state.mechanics?.world_time?.elapsed_minutes ?? 0)
 
   const forgedSave = await fetch(baseUrl + '/api/rooms/PARTY-VOTE', {
     method: 'PUT', headers: { 'Content-Type': 'application/json', Cookie: playerCookie },
@@ -175,6 +176,10 @@ test('агент открывает общее голосование, а неа
   assert.notEqual(transition.effects.scene.scene.location, '\u041D\u0438\u0436\u043D\u0438\u0439 \u0437\u0430\u043B')
   assert.ok(transition.agent_trace.some((stage) => stage.agent === 'scene_architect'))
   assert.equal(transition.effects.scene.adventure.chapter, 2)
+  assert.ok(transition.mechanics.some((event) => event.event_type === 'TimeAdvanced'))
+  const afterTravelRoom = await (await fetch(baseUrl + '/api/rooms/PARTY-VOTE', { headers: { Cookie: adminCookie } })).json()
+  assert.ok(afterTravelRoom.state.mechanics.world_time.elapsed_minutes > worldMinutesBeforeTravel,
+    'групповой переход должен продвинуть мировые часы')
   assert.ok(transition.effects.scene.scene.cells.length >= 16 * 16,
     'неопознанный выход обязан получить структурированный тематический fallback')
   assert.ok(transition.effects.scene.scene.cells.some((cell) => cell.feature),

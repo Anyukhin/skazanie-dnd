@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 
 import { createSceneTransition } from './adventure-director.mjs'
+import { planServerTravel } from './campaign-loop-policy.mjs'
 import { merchantIsAtLocation } from './merchant-economy.mjs'
 import { normalizeSceneShopIntent } from './scene-commerce.mjs'
 import { assembleShop } from './shop-assembler.mjs'
@@ -192,6 +193,19 @@ export function buildDirectorTransitionCommands({
   const resolvedDecision = resolvedPartyDecisionReference(partyDecision ?? state)
   const decisionFingerprint = directorDecisionFingerprint({ campaignId, partyDecision: resolvedDecision })
   const provisionalTransition = createSceneTransition(sceneArgs, state)
+  // Переход по карте мира — это не только смена декора. Тот же policy, который
+  // считает путь автономного Директора, обязан поставить мировые минуты и в
+  // голосуемый переход: иначе карта показывала бы путь, а обещания NPC,
+  // погода и эффекты времени оставались на старых часах. Отпечаток перехода
+  // служит ключом policy для неизвестных локаций и сохраняет детерминизм при
+  // повторе исходного решения группы.
+  const travel = planServerTravel(state, {
+    campaignId,
+    destination: provisionalTransition.scene.location,
+    destinationLocationId: provisionalTransition.scene.location_id,
+    idempotencyKey: fingerprint,
+  })
+  const travelMinutes = Math.max(0, Number(travel.duration_minutes) || 0)
   const kind = sceneKind(sceneArgs, provisionalTransition)
   const normalizedShopIntent = commerceForScene(normalizeSceneShopIntent(shopIntent, sceneArgs), kind)
   const canonicalSceneArgs = {
@@ -208,20 +222,28 @@ export function buildDirectorTransitionCommands({
       .find((merchant) => merchantIsAtLocation(merchant, transition.scene)) ?? null
     : null
 
-  const commands = [{
-    command_type: 'AdvanceScene',
-    expected_state_version: Number(state.state_version) || 0,
-    scene_args: canonicalSceneArgs,
-    scene_commerce: {
-      ...normalizedShopIntent,
-      outcome: !shopRequested
-        ? 'not-requested'
-        : existingMerchant ? 'reused' : 'created',
-      merchant_id: existingMerchant?.id ?? null,
+  const commands = [
+    {
+      command_type: 'AdvanceTime',
+      amount: travelMinutes,
+      unit: 'minute',
+      server_authoritative: true,
     },
-    party_decision: resolvedDecision,
-    request_fingerprint: fingerprint,
-  }]
+    {
+      command_type: 'AdvanceScene',
+      expected_state_version: Number(state.state_version) || 0,
+      scene_args: canonicalSceneArgs,
+      scene_commerce: {
+        ...normalizedShopIntent,
+        outcome: !shopRequested
+          ? 'not-requested'
+          : existingMerchant ? 'reused' : 'created',
+        merchant_id: existingMerchant?.id ?? null,
+      },
+      party_decision: resolvedDecision,
+      request_fingerprint: fingerprint,
+    },
+  ]
 
   // Отказ от задания едет тем же коммитом, что и уход: отряд проголосовал за
   // одно решение, и распадаться на «локация сменилась, а нить осталась висеть»

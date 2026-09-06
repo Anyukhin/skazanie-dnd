@@ -50,3 +50,10 @@ test('городской обзор открывается локально, п�
   assert.match(cityStyles, /\.city-district-shape/u)
   assert.match(cityStyles, /\.city-place-ring/u)
 })
+
+test('глобальная карта не выдаёт логические единицы маршрута за дни', () => {
+  assert.ok(source.includes('<dt><Clock3 size={13}/>Путь</dt>'))
+  assert.match(source, /переходов/u)
+  assert.match(source, /Сервер учтёт время пути/u)
+  assert.doesNotMatch(source, /totalDistance|totalDays|\{totalDistance\} ед\./u)
+})

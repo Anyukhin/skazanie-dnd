@@ -150,6 +150,27 @@ test('оружие дыхания использует выбранное нас
   assert.ok(result.events.some((event) => event.event_type === 'ResourceSpent' && event.payload.resource === 'species_breath_weapon'))
 })
 
+test('оружие дыхания выбирает тип спасброска по наследию драконорождённого', () => {
+  const conAncestries = ['green', 'silver', 'white']
+  const dexAncestries = ['black', 'blue', 'brass', 'bronze', 'copper', 'gold', 'red']
+  for (const ancestry of conAncestries) {
+    assert.equal(
+      speciesBenefitsFor('dragonborn', RULESET_ID, { 'dragon-ancestry': [ancestry] })
+        .mechanics.dragon_ancestry.save_ability,
+      'con',
+      `${ancestry}: дыхание должно требовать спасбросок Телосложения`,
+    )
+  }
+  for (const ancestry of dexAncestries) {
+    assert.equal(
+      speciesBenefitsFor('dragonborn', RULESET_ID, { 'dragon-ancestry': [ancestry] })
+        .mechanics.dragon_ancestry.save_ability,
+      'dex',
+      `${ancestry}: дыхание должно требовать спасбросок Ловкости`,
+    )
+  }
+})
+
 test('Проворство полурослика позволяет пройти сквозь большую цель, но не остановиться в ней', () => {
   const halfling = speciesBenefitsFor('halfling-lightfoot', RULESET_ID, {})
   const state = combatState(halfling)

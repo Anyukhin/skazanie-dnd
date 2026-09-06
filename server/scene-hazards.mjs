@@ -11,13 +11,35 @@
  * карты для этого не менялся, а присланный клиентом `prop.interaction` здесь,
  * как и в `scene-interactions.mjs`, не читается.
  *
- * Обрушения подвешенных объектов (люстра, балка) в этом наборе нет намеренно:
- * в реестре ассетов таких пропсов не существует и у сцены нет понятия высоты,
- * поэтому «обрушить» было бы правилом без предмета. Подробности — в отчёте
- * и `docs/known-limitations.md`.
+ * Подвешенные объекты не становятся универсальной физикой карты: для swing
+ * есть отдельный закрытый профиль с фиксированной высотой, опорой и СЛ.
+ * Поэтому игрок может использовать только реально существующий проп из карты,
+ * а не назвать люстру в тексте.
  */
 
 export const SCENE_HAZARD_POLICY_ID = 'skazanie:scene-hazards-v1'
+
+export const SCENE_SWING_POLICY_ID = 'skazanie:scene-swing-v1'
+
+const SWING_PROPS = Object.freeze({
+  chandelier: Object.freeze({
+    anchor: 'ceiling',
+    height_feet: 10,
+    reach_feet: 5,
+    check: Object.freeze({ ability: 'str', skill: 'athletics', difficulty: 12 }),
+    failure_condition: 'prone',
+  }),
+})
+
+export function swingPropProfileFor(assetId) {
+  const key = hazardAssetKey(assetId)
+  const profile = SWING_PROPS[key]
+  return profile ? { ...profile, check: { ...profile.check } } : null
+}
+
+export function swingPropAssetIds() {
+  return Object.keys(SWING_PROPS).sort()
+}
 
 /** Опрокидываемая мебель: СЛ Атлетики по массивности и урон падения. */
 const HEAVY_PROPS = Object.freeze({

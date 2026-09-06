@@ -24,6 +24,8 @@ import { ITEM_ARMOR_PROFILES } from './item-catalog.mjs'
 import { activeItemEffectTotals } from './item-lifecycle.mjs'
 import {
   defaultStarterEquipmentChoices,
+  completeBackgroundChoicesForHero,
+  validateCompleteBackgroundChoices,
   resolveStarterEquipmentChoices,
   starterEquipmentCatalogFor,
   withStarterKit,
@@ -34,6 +36,7 @@ import {
   defaultBackgroundChoices,
   resolveBackgroundAbilityChoice,
   resolveBackgroundChoices,
+  resolveBackgroundCustomization,
   withBackgroundBenefits,
 } from './backgrounds.mjs'
 import {
@@ -46,6 +49,9 @@ import {
   validateSpeciesOriginBonuses,
 } from './character-creation-catalog.mjs'
 import { DND_2014_RULESET_ID, LEGACY_DEFAULT_RULESET_ID } from './ruleset-config.mjs'
+import { phbCreationCatalog, phbFirstLevelSpells, PHB_FIGHTING_STYLES, resolvePhbCreation } from './character-creation-phb.mjs'
+import { classOptionFor } from './character-creation-class-options.mjs'
+import { PHB_STARTING_WEALTH, startingPurchaseCatalog, resolveStartingPurchases } from './character-creation-wealth.mjs'
 
 /**
  * Standalone character domain contract.
@@ -58,7 +64,7 @@ import { DND_2014_RULESET_ID, LEGACY_DEFAULT_RULESET_ID } from './ruleset-config
 export const CHARACTER_LIFECYCLE_SCHEMA_VERSION = 1
 export const CHARACTER_IMPORT_SCHEMA = 'skazanie.character'
 export const CHARACTER_IMPORT_SCHEMA_VERSION = 1
-export const CHARACTER_LIFECYCLE_COMMAND_TYPES = new Set(['LevelUp', 'ImportCharacter'])
+export const CHARACTER_LIFECYCLE_COMMAND_TYPES = new Set(['LevelUp', 'ImportCharacter', 'RollCharacterAbilities', 'RollCharacterWealth'])
 export const CHARACTER_LIFECYCLE_EVENT_TYPES = new Set(['CharacterLeveledUp', 'CharacterImported'])
 
 export const ABILITY_IDS = Object.freeze(['str', 'dex', 'con', 'int', 'wis', 'cha'])
@@ -228,8 +234,10 @@ export function normalizedAbilityScores(input) {
 }
 
 const ABILITY_GENERATION_FIELDS = Object.freeze([
-  'policyId', 'policyVersion', 'method', 'baseScores', 'originBonusProfileId', 'originBonuses', 'speciesOptionId',
+  'policyId', 'policyVersion', 'method', 'baseScores', 'originBonusProfileId', 'originBonuses', 'speciesOptionId', 'rollId',
 ])
+
+export const POINT_BUY_COSTS = Object.freeze({ 8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9 })
 
 function abilityScoreMap(input, field, { minimum, maximum }) {
   if (!isRecord(input)) {
@@ -245,6 +253,8 @@ function abilityScoreMap(input, field, { minimum, maximum }) {
 function validateAbilityGeneration(source, abilities, {
   allowLegacyAbilityPolicy = false,
   rulesetId = LEGACY_DEFAULT_RULESET_ID,
+  trustedAbilityRoll = null,
+  additionalAbilityBonuses = {},
 } = {}) {
   const characterCreationPolicy = characterCreationPolicyFor(rulesetId)
   if (!isRecord(source)) {
@@ -262,7 +272,7 @@ function validateAbilityGeneration(source, abilities, {
     && source.method === characterCreationPolicy.method
   if (!legacyClassicPolicy && (source.policyId !== characterCreationPolicy.policy_id
     || Number(source.policyVersion) !== characterCreationPolicy.policy_version
-    || source.method !== characterCreationPolicy.method)) {
+    || !(rulesetId === DND_2014_RULESET_ID ? ['standard_array', 'point_buy', 'rolled'] : [characterCreationPolicy.method]).includes(source.method))) {
     throw new CharacterLifecycleValidationError(
       'Импорт использует неподдерживаемую policy генерации характеристик',
       'IMPORT_ABILITY_POLICY_UNSUPPORTED',
@@ -271,7 +281,18 @@ function validateAbilityGeneration(source, abilities, {
   const baseScores = abilityScoreMap(source.baseScores, 'character.abilityGeneration.baseScores', { minimum: 1, maximum: 30 })
   const expectedArray = [...characterCreationPolicy.standard_array].sort((left, right) => left - right)
   const actualArray = Object.values(baseScores).sort((left, right) => left - right)
-  if (JSON.stringify(actualArray) !== JSON.stringify(expectedArray)) {
+  if (source.method === 'point_buy') {
+    const cost = Object.values(baseScores).reduce((sum, score) => sum + (POINT_BUY_COSTS[score] ?? Number.POSITIVE_INFINITY), 0)
+    if (cost > 27) throw new CharacterLifecycleValidationError('Покупка характеристик: значения 8–15, бюджет не больше 27 очков', 'IMPORT_ABILITY_BUDGET_INVALID')
+  } else if (source.method === 'rolled') {
+    if (!source.rollId || Object.values(baseScores).some((score) => score < 3 || score > 18)) {
+      throw new CharacterLifecycleValidationError('Для бросков характеристик нужен серверный результат 4к6', 'IMPORT_ABILITY_ROLL_REQUIRED')
+    }
+    if (!allowLegacyAbilityPolicy && (trustedAbilityRoll?.id !== source.rollId
+      || JSON.stringify([...(trustedAbilityRoll?.scores ?? [])].sort((a, b) => a - b)) !== JSON.stringify(actualArray))) {
+      throw new CharacterLifecycleValidationError('Распределение не совпадает с сохранёнными серверными бросками этого героя', 'IMPORT_ABILITY_ROLL_INVALID')
+    }
+  } else if (JSON.stringify(actualArray) !== JSON.stringify(expectedArray)) {
     throw new CharacterLifecycleValidationError(
       `Базовые характеристики должны быть распределением стандартного массива ${characterCreationPolicy.standard_array.join(', ')}`,
       'IMPORT_ABILITY_BUDGET_INVALID',
@@ -297,7 +318,7 @@ function validateAbilityGeneration(source, abilities, {
   if (!speciesOption) {
     throw new CharacterLifecycleValidationError('Выбран неподдерживаемый вид персонажа', 'IMPORT_SPECIES_UNSUPPORTED')
   }
-  const expectedScores = Object.fromEntries(ABILITY_IDS.map((ability) => [ability, baseScores[ability] + originBonuses[ability]]))
+  const expectedScores = Object.fromEntries(ABILITY_IDS.map((ability) => [ability, Math.min(20, baseScores[ability] + originBonuses[ability] + Number(additionalAbilityBonuses[ability] ?? 0))]))
   if (ABILITY_IDS.some((ability) => abilities[ability] !== expectedScores[ability])) {
     throw new CharacterLifecycleValidationError(
       'Итоговые характеристики не совпадают с базовым массивом и явными бонусами происхождения',
@@ -316,7 +337,8 @@ function validateAbilityGeneration(source, abilities, {
   return {
     policyId: characterCreationPolicy.policy_id,
     policyVersion: legacyClassicPolicy ? 1 : characterCreationPolicy.policy_version,
-    method: characterCreationPolicy.method,
+    method: source.method,
+    ...(source.method === 'rolled' ? { rollId: String(source.rollId) } : {}),
     baseScores,
     originBonusProfileId: bonusProfile.id,
     originBonuses,
@@ -329,7 +351,7 @@ export function characterCreationCatalog(rulesetId = LEGACY_DEFAULT_RULESET_ID) 
   const backgrounds = backgroundCatalogFor(rulesetId)
   const classBuild = classBuildCatalogInfo()
   const classCombat = combatClassCatalogInfo()
-  const starterEquipment = starterEquipmentCatalogFor(rulesetId)
+  const starterEquipment = starterEquipmentCatalogFor(rulesetId, { complete: rulesetId === DND_2014_RULESET_ID })
   const starterByClass = new Map((starterEquipment?.classes ?? []).map((entry) => [entry.class_id, entry]))
   const skillsById = new Map(classBuild.skills.map((skill) => [skill.id, skill]))
   return {
@@ -339,6 +361,10 @@ export function characterCreationCatalog(rulesetId = LEGACY_DEFAULT_RULESET_ID) 
     import_schema: CHARACTER_IMPORT_SCHEMA,
     import_schema_version: CHARACTER_IMPORT_SCHEMA_VERSION,
     ability_policy: clone(characterCreationPolicy),
+    ability_methods: rulesetId === DND_2014_RULESET_ID ? ['standard_array', 'point_buy', 'rolled'] : ['standard_array'],
+    point_buy: { budget: 27, costs: { ...POINT_BUY_COSTS } },
+    ...(rulesetId === DND_2014_RULESET_ID ? { starting_wealth: { formulas: PHB_STARTING_WEALTH, items: startingPurchaseCatalog() } } : {}),
+    ...(rulesetId === DND_2014_RULESET_ID ? { phb: { ...phbCreationCatalog(), skills: classBuild.skills.map((skill) => ({ id: skill.id, name: skill.name })) } } : {}),
     // Предыстории отдаются каталогом целиком: мастер показывает последствия
     // выбора до перехода дальше, а сервер всё равно пересчитывает их сам по
     // идентификатору — присланные клиентом бонусы недоверенные.
@@ -352,22 +378,25 @@ export function characterCreationCatalog(rulesetId = LEGACY_DEFAULT_RULESET_ID) 
       }
       const skillRule = classSkillRuleFor(actor)
       const spellRules = spellSelectionRulesFor(actor)
-      const availableSpells = spellRules ? combatSpellsFor(actor).filter((spell) => spell.level <= 1) : []
+      const availableSpells = spellRules ? (rulesetId === DND_2014_RULESET_ID
+        ? phbFirstLevelSpells().filter((spell) => spell.classes.includes(classOption.classKey))
+        : combatSpellsFor(actor).filter((spell) => spell.level <= 1)) : []
+      const phbClass = rulesetId === DND_2014_RULESET_ID ? classOptionFor(classOption.classKey) : null
       return {
         id: classOption.classKey,
         label: classOption.label,
         source_url: classOption.sourceUrl,
         subclass_level: classOption.subclassLevel,
-        subclasses: classOption.subclassOptions,
+        subclasses: phbClass?.subclass_level === 1 ? phbClass.subclass_options.map((entry) => ({ id: entry.id, name: entry.label })) : classOption.subclassOptions,
         class_skills: skillRule ? {
           choice_count: skillRule.choiceCount,
           options: skillRule.skills.map((id) => clone(skillsById.get(id))).filter(Boolean),
         } : null,
-        feature_choice_groups: featureChoiceGroupsFor(actor),
+        feature_choice_groups: featureChoiceGroupsFor(actor).map((group) => ({ ...group, options: phbClass && classOption.classKey === 'fighter' ? group.options.filter((entry) => PHB_FIGHTING_STYLES[entry.id]) : group.options })),
         starter_equipment: clone(starterByClass.get(classOption.classKey) ?? null),
         spell_selection: spellRules ? {
           ...spellRules,
-          spellcastingAbility: availableSpells[0]?.spellcastingAbility ?? null,
+          spellcastingAbility: phbClass?.spellcasting?.ability ?? availableSpells[0]?.spellcastingAbility ?? null,
           spells: availableSpells
             .map((spell) => ({
               id: spell.id,
@@ -475,8 +504,9 @@ export function deriveMaximumHitPoints(actor, { level = normalizedLevel(actor?.l
   const increases = normalizedHitPointIncreases(actor, { level, hitDie })
   const perLevel = Array.from({ length: Math.max(0, level - 1) }, (_, index) => increases[index] ?? fixedHitPointIncrease(hitDie))
   const speciesBonusPerLevel = Math.max(0, Number(actor?.speciesBenefits?.mechanics?.extra_hit_points_per_level) || 0)
-  const firstLevel = Math.max(1, hitDie + constitutionModifier + speciesBonusPerLevel)
-  const laterLevels = perLevel.map((increase) => Math.max(1, increase + constitutionModifier + speciesBonusPerLevel))
+  const creationBonus = Number(actor?.creationBenefits?.extra_hit_points_per_level ?? 0)
+  const firstLevel = Math.max(1, hitDie + constitutionModifier + speciesBonusPerLevel + creationBonus)
+  const laterLevels = perLevel.map((increase) => Math.max(1, increase + constitutionModifier + speciesBonusPerLevel + creationBonus))
   return {
     value: firstLevel + laterLevels.reduce((sum, entry) => sum + entry, 0),
     hitDie,
@@ -509,12 +539,14 @@ export function deriveArmorClass(actor, { abilities = normalizedAbilityScores(ac
   const profiles = normalizedArmorProfiles(armorProfiles)
   const classKey = characterClassKey(actor)
   const dexterityModifier = abilityModifier(abilities.dex)
-  const unarmoredBase = classKey === 'barbarian'
+  const equipped = equippedArmorEntries(actor, profiles)
+  const unarmoredBase = actor?.creationBenefits?.unarmored_armor_class
+    ? Number(actor.creationBenefits.unarmored_armor_class.base) + dexterityModifier
+    : classKey === 'barbarian'
     ? 10 + dexterityModifier + abilityModifier(abilities.con)
-    : classKey === 'monk'
+    : classKey === 'monk' && !equipped.some((entry) => entry.profile.kind === 'shield')
       ? 10 + dexterityModifier + abilityModifier(abilities.wis)
       : 10 + dexterityModifier
-  const equipped = equippedArmorEntries(actor, profiles)
   const bodyArmor = equipped.filter((entry) => entry.profile.kind === 'armor')
     .map((entry) => ({
       ...entry,
@@ -524,15 +556,18 @@ export function deriveArmorClass(actor, { abilities = normalizedAbilityScores(ac
     .sort((left, right) => right.base - left.base || left.catalogId.localeCompare(right.catalogId))[0] ?? null
   const shields = equipped.filter((entry) => entry.profile.kind === 'shield')
     .sort((left, right) => left.catalogId.localeCompare(right.catalogId)).slice(0, 1)
-  const armorDexterity = bodyArmor ? Math.min(dexterityModifier, bodyArmor.dexterityCap ?? dexterityModifier) : 0
+  const armorDexterity = !bodyArmor || bodyArmor.dexterityCap === 0 ? 0 : Math.min(dexterityModifier,
+    actor?.creationBenefits?.feat?.id === 'medium-armor-master' && bodyArmor.dexterityCap === 2 ? 3 : bodyArmor.dexterityCap ?? dexterityModifier)
   const shieldBonus = shields.reduce((sum, entry) => sum + integer(entry.profile.armorClassBonus, `armor profile ${entry.catalogId}.armorClassBonus`, { minimum: 0, maximum: 10 }), 0)
   const itemEffectBonus = activeItemEffectTotals(actor).armor_class_bonus
+  const defenseBonus = bodyArmor && normalizedSelectedFeatureIds(actor).includes('fighting-style-defense') ? 1 : 0
   return {
-    value: (bodyArmor ? bodyArmor.base + armorDexterity : unarmoredBase) + shieldBonus + itemEffectBonus,
+    value: (bodyArmor ? bodyArmor.base + armorDexterity : unarmoredBase) + shieldBonus + itemEffectBonus + defenseBonus,
     base: bodyArmor ? bodyArmor.base : unarmoredBase,
     dexterityModifier: bodyArmor ? armorDexterity : dexterityModifier,
     shieldBonus,
     item_effect_bonus: itemEffectBonus,
+    fighting_style_bonus: defenseBonus,
     source: bodyArmor ? 'equipped_server_profile' : classKey === 'barbarian' || classKey === 'monk' ? 'class_unarmored_defense' : 'unarmored',
     armorCatalogId: bodyArmor?.catalogId ?? null,
     shieldCatalogIds: shields.map((entry) => entry.catalogId),
@@ -542,12 +577,14 @@ export function deriveArmorClass(actor, { abilities = normalizedAbilityScores(ac
 export function deriveSpeed(actor, { armorProfiles } = {}) {
   const profiles = normalizedArmorProfiles(armorProfiles)
   const base = normalizedBaseSpeed(actor)
+  const creationBonus = Number(actor?.creationBenefits?.speed_bonus ?? 0)
   const penalties = equippedArmorEntries(actor, profiles)
-    .map((entry) => Math.max(0, Number(entry.profile.speedPenalty) || 0))
+    .map((entry) => Math.max(0, Number(entry.profile.speedPenalty) || 0,
+      actor?.creationBenefits && Number(actor?.abilities?.str) < Number(entry.profile.strengthRequirement ?? 0) ? 10 : 0))
   const penalty = actor?.speciesBenefits?.mechanics?.ignore_armor_speed_penalty === true
     ? 0
     : Math.max(0, ...penalties, 0)
-  return { base, penalty, value: Math.max(0, base - penalty) }
+  return { base, ...(creationBonus ? { creation_bonus: creationBonus } : {}), penalty, value: Math.max(0, base + creationBonus - penalty) }
 }
 
 function canonicalCharacterChoices(actor) {
@@ -571,7 +608,7 @@ export function deriveCharacterSheet(actor, options = {}) {
   const proficiencyBonus = proficiencyBonusForLevel(level)
   const canonical = canonicalCharacterChoices({ ...actor, characterClass, level, abilities })
   const itemEffects = activeItemEffectTotals(canonical)
-  const savingThrowProficiencies = new Set(savingThrowProficienciesFor(canonical))
+  const savingThrowProficiencies = new Set([...savingThrowProficienciesFor(canonical), ...(canonical.creationBenefits?.saving_throw_proficiencies ?? [])])
   // Владения считаются один раз на весь лист, а не восемнадцать. Сравнение при
   // этом буквальное и таким и остаётся: написание приводит к канону каталога
   // сам нормализатор (`catalogSkillId`, `server/character-progression.mjs`), и
@@ -594,14 +631,16 @@ export function deriveCharacterSheet(actor, options = {}) {
   )
   const skills = Object.fromEntries(SKILL_IDS.map((id) => {
     const ability = skillAbility(id)
-    const proficient = classSkillProficiencies.has(id) || backgroundSkillProficiencies.has(id) || speciesSkillProficiencies.has(id)
+    const proficient = classSkillProficiencies.has(id) || backgroundSkillProficiencies.has(id) || speciesSkillProficiencies.has(id) || (canonical.creationSkillProficiencies ?? []).includes(id)
+    const expertise = proficient && (canonical.creationBenefits?.expertise ?? []).includes(id)
     const modifier = abilityModifier(abilities[ability])
     return [id, {
       ability,
       modifier,
       proficient,
-      proficiencyBonus: proficient ? proficiencyBonus : 0,
-      total: modifier + (proficient ? proficiencyBonus : 0),
+      expertise,
+      proficiencyBonus: proficient ? proficiencyBonus * (expertise ? 2 : 1) : 0,
+      total: modifier + (proficient ? proficiencyBonus * (expertise ? 2 : 1) : 0),
     }]
   }))
   const savingThrows = Object.fromEntries(ABILITY_IDS.map((ability) => {
@@ -632,7 +671,11 @@ export function deriveCharacterSheet(actor, options = {}) {
     saving_throw_proficiencies: [...savingThrowProficiencies],
     saving_throws: savingThrows,
     skills,
-    passive_perception: 10 + skills.perception.total,
+    passive_perception: 10 + skills.perception.total + Number(canonical.creationBenefits?.passive_skill_bonuses?.perception ?? 0),
+    passive_investigation: 10 + skills.investigation.total + Number(canonical.creationBenefits?.passive_skill_bonuses?.investigation ?? 0),
+    initiative: abilityModifier(abilities.dex) + Number(canonical.creationBenefits?.initiative_bonus ?? 0),
+    skill_expertise: canonical.creationBenefits?.expertise ?? [],
+    creation_benefits: clone(canonical.creationBenefits ?? null),
     armor_class: armorClass,
     speed,
     hit_points: hitPoints,
@@ -822,7 +865,7 @@ export function validateCharacterImportCommand(command, state, context = {}) {
   actorFromState(state, actorId)
   assertActorAuthority(actorId, context)
   const rulesetId = String(state?.ruleset_id ?? LEGACY_DEFAULT_RULESET_ID)
-  const parsed = parseCharacterImport(command.document, { rulesetId })
+  const parsed = parseCharacterImport(command.document, { rulesetId, validateCreationLanguages: true, trustedAbilityRoll: actorFromState(state, actorId).characterCreationRolls?.abilities, trustedWealthRoll: actorFromState(state, actorId).characterCreationRolls?.wealth })
   const starterCatalog = starterEquipmentCatalogFor(rulesetId)
   const speciesPolicy = characterCreationPolicyFor(rulesetId)
   return {
@@ -832,6 +875,7 @@ export function validateCharacterImportCommand(command, state, context = {}) {
     target_ids: [actorId],
     document: parsed.document,
     patch: parsed.patch,
+    ...(parsed.creation ? { creation_result: parsed.creation } : {}),
     derived_sheet: parsed.sheet,
     ruleset_id: rulesetId,
     starter_equipment_policy_id: starterCatalog?.policy_id ?? null,
@@ -842,6 +886,22 @@ export function validateCharacterImportCommand(command, state, context = {}) {
       : [`${rulesetId}:resources:spending`],
     visibility: 'party',
   }
+}
+
+export function validateCharacterAbilityRollCommand(command, state, context = {}) {
+  const actorId = cleanIdentifier(command.actor_id, 'actor_id')
+  const actor = actorFromState(state, actorId)
+  assertActorAuthority(actorId, context)
+  if (state.ruleset_id !== DND_2014_RULESET_ID || !actor.characterSetupRequired || state.mechanics?.combat?.active) {
+    throw new CharacterLifecycleValidationError('Броски характеристик доступны только при создании героя D&D 2014', 'CHARACTER_ROLL_UNAVAILABLE')
+  }
+  if (command.command_type === 'RollCharacterWealth') {
+    if (!PHB_STARTING_WEALTH[command.character_class]) throw new CharacterLifecycleValidationError('Выберите класс PHB 2014', 'CHARACTER_CLASS_UNSUPPORTED')
+    if (actor.characterCreationRolls?.wealth) throw new CharacterLifecycleValidationError('Стартовое богатство уже определено', 'CHARACTER_WEALTH_ALREADY_ROLLED')
+    return { command_type: 'RollCharacterWealth', actor_id: actorId, target_id: actorId, target_ids: [actorId], character_class: command.character_class, visibility: 'party' }
+  }
+  if (actor.characterCreationRolls?.abilities) throw new CharacterLifecycleValidationError('Броски уже сохранены: распределите имеющиеся значения', 'CHARACTER_ABILITIES_ALREADY_ROLLED')
+  return { command_type: 'RollCharacterAbilities', actor_id: actorId, target_id: actorId, target_ids: [actorId], source_rule_ids: [`${DND_2014_RULESET_ID}:resources:spending`], visibility: 'party' }
 }
 
 export function characterImportEvent(command) {
@@ -862,6 +922,7 @@ export function characterImportEvent(command) {
       starter_equipment_policy_version: command.starter_equipment_policy_version ?? null,
       species_policy_version: command.species_policy_version ?? null,
       patch: clone(command.patch),
+      ...(command.creation_result ? { phb_creation_result: clone(command.creation_result) } : {}),
     },
   }
 }
@@ -896,7 +957,7 @@ export function applyCharacterLifecycleEvent(state, event) {
       schema: payload.schema,
       schema_version: payload.schema_version,
       character: payload.patch,
-    }, { allowLegacyAbilityPolicy: true, rulesetId: eventRulesetId })
+    }, { allowLegacyAbilityPolicy: true, rulesetId: eventRulesetId, recordedCreation: payload.phb_creation_result })
     const wasCharacterSlot = actor.characterSetupRequired === true
     let speciesBenefits = parsed.patch.abilityGeneration
       ? speciesBenefitsFor(
@@ -920,6 +981,7 @@ export function applyCharacterLifecycleEvent(state, event) {
     let updated = withBackgroundBenefits({
       ...actor,
       ...parsed.patch,
+      ...(parsed.creation ? { creationBenefits: parsed.creation.benefits, creationSkillProficiencies: parsed.creation.additionalSkills, creationSpellGrants: parsed.creation.benefits.spell_grants } : {}),
       id: actor.id,
       inventory: clone(actor.inventory ?? []),
       currency: clone(actor.currency ?? {}),
@@ -929,7 +991,12 @@ export function applyCharacterLifecycleEvent(state, event) {
       speciesLanguages: speciesBenefits?.languages ?? [],
       speciesSpellIds: (speciesBenefits?.innate_spells ?? []).map((entry) => entry.id),
     }, eventRulesetId)
-    if (wasCharacterSlot) {
+    if (wasCharacterSlot && parsed.creation?.wealth) {
+      const currency = parsed.creation.wealth.remaining_currency
+      updated.inventory = clone(parsed.creation.wealth.inventory)
+      updated.currency = { gold: currency.gold, silver: currency.silver, copper: currency.copper, platinum: 0 }
+      updated.initials = updated.character.slice(0, 2).toLocaleUpperCase('ru')
+    } else if (wasCharacterSlot) {
       updated = withStarterKit({
         ...updated,
         inventory: [],
@@ -969,6 +1036,7 @@ export function applyCharacterLifecycleEvent(state, event) {
 
 const IMPORT_TOP_LEVEL_V1 = Object.freeze(['schema', 'schema_version', 'character'])
 const IMPORT_CHARACTER_V1 = Object.freeze([
+  'phbCreation',
   'character', 'name', 'role', 'characterClass', 'subclass', 'species', 'background', 'alignment',
   'traits', 'ideals', 'bonds', 'flaws', 'backstory', 'notes', 'level', 'experience', 'abilities',
   'abilityGeneration', 'baseSpeed', 'hitPointIncreases', 'classSkillProficiencies', 'selectedFeatureIds', 'knownSpellIds', 'preparedSpellIds',
@@ -1056,7 +1124,24 @@ export function parseCharacterImport(raw, options = {}) {
     throw new CharacterLifecycleValidationError('Уровень должен соответствовать порогу XP текущего ruleset', 'IMPORT_LEVEL_EXPERIENCE_MISMATCH')
   }
   const abilities = normalizedAbilityScores(source.abilities)
-  const abilityGeneration = validateAbilityGeneration(source.abilityGeneration, abilities, { ...options, rulesetId })
+  let phb = null
+  try {
+    if (source.phbCreation && rulesetId !== DND_2014_RULESET_ID) throw new Error('Создание PHB требует редакцию 2014')
+    phb = options.allowLegacyAbilityPolicy && options.recordedCreation ? clone(options.recordedCreation) : resolvePhbCreation(source)
+    if (phb && source.phbCreation.equipmentMode === 'wealth' && !options.recordedCreation) {
+      const roll = options.trustedWealthRoll
+      if (!roll || roll.id !== source.phbCreation.wealthRollId) throw new Error('Нужен сохранённый серверный бросок стартового богатства этого героя')
+      const purchases = source.phbCreation.purchases
+      if (!Array.isArray(purchases) || purchases.length > 250) throw new Error('Покупки должны быть списком до 250 позиций')
+      const result = resolveStartingPurchases(classId, roll, purchases)
+      if (!result.ok) throw new Error(result.reason)
+      phb.wealth = result
+      phb.value.equipmentMode = 'wealth'
+      phb.value.wealthRollId = roll.id
+      phb.value.purchases = purchases.map((item) => ({ id: item.id, quantity: item.quantity }))
+    }
+  } catch (error) { throw new CharacterLifecycleValidationError(error.message, 'IMPORT_PHB_CHOICES_INVALID') }
+  const abilityGeneration = validateAbilityGeneration(source.abilityGeneration, abilities, { ...options, rulesetId, additionalAbilityBonuses: phb?.abilityBonuses })
   const baseSpeed = integer(source.baseSpeed, 'character.baseSpeed', { minimum: 5, maximum: 120 })
   let derivedSpecies = ''
   let resolvedSpeciesBenefits = null
@@ -1099,6 +1184,7 @@ export function parseCharacterImport(raw, options = {}) {
     resolvedSpeciesBenefits = speciesBenefitsFor(speciesOption.id, rulesetId, resolvedChoices.choices)
   }
   const provisional = {
+    ...(phb ? { creationBenefits: phb.benefits } : {}),
     character,
     characterClass: classId,
     level,
@@ -1128,6 +1214,19 @@ export function parseCharacterImport(raw, options = {}) {
     throw new CharacterLifecycleValidationError('character.hitPointIncreases длиннее истории уровней', 'IMPORT_INVALID_FIELD')
   }
   const canonical = canonicalCharacterChoices(provisional)
+  delete canonical.creationBenefits
+  if (phb) canonical.phbCreation = phb.value
+  if (phb) {
+    const rules = spellSelectionRulesFor({ ...provisional, abilities })
+    const selected = phbFirstLevelSpells().filter((spell) => provisional.knownSpellIds.includes(spell.id))
+    if (rules && selected.filter((spell) => spell.level === 0).length !== rules.cantrips) {
+      throw new CharacterLifecycleValidationError(`Выберите ${rules.cantrips} классовых заговоров`, 'IMPORT_PHB_SPELL_COUNT_INVALID')
+    }
+    const expected = rules?.mode === 'known' ? rules.spellsKnown : rules?.mode === 'spellbook' ? rules.spellbookMinimum : null
+    if (expected != null && selected.filter((spell) => spell.level === 1).length !== expected) {
+      throw new CharacterLifecycleValidationError(`Выберите ${expected} известных заклинаний первого круга`, 'IMPORT_PHB_SPELL_COUNT_INVALID')
+    }
+  }
   const requestedSubclass = provisional.subclass ?? ''
   if ((requestedSubclass && canonical.subclass !== requestedSubclass)
     || !sameStringSet(provisional.classSkillProficiencies, canonical.classSkillProficiencies ?? [])
@@ -1148,7 +1247,12 @@ export function parseCharacterImport(raw, options = {}) {
   // «база плюс обещание».
   const backgroundId = optionalText(source.backgroundId, 'character.backgroundId', 60)
   if (backgroundId) {
-    const background = backgroundById(backgroundId, rulesetId)
+    let customization = null
+    try { customization = resolveBackgroundCustomization(source.backgroundChoices?.customization) } catch (error) {
+      throw new CharacterLifecycleValidationError(error.message, 'IMPORT_BACKGROUND_CUSTOM_INVALID')
+    }
+    if (customization && rulesetId !== DND_2014_RULESET_ID) throw new CharacterLifecycleValidationError('Настройка предыстории доступна только для PHB 2014', 'IMPORT_BACKGROUND_CUSTOM_INVALID')
+    const background = backgroundById(backgroundId, rulesetId, customization)
     if (!background) {
       throw new CharacterLifecycleValidationError('Такой предыстории нет в каталоге', 'IMPORT_BACKGROUND_UNKNOWN')
     }
@@ -1179,8 +1283,9 @@ export function parseCharacterImport(raw, options = {}) {
     if (!isRecord(rawBackgroundChoices)) {
       throw new CharacterLifecycleValidationError('backgroundChoices должен быть объектом', 'IMPORT_BACKGROUND_CHOICE_INVALID')
     }
-    exactKeys(rawBackgroundChoices, ['tools', 'languages'], 'character.backgroundChoices')
+    exactKeys(rawBackgroundChoices, ['tools', 'languages', 'replacementSkills', 'replacementTools', 'customization'], 'character.backgroundChoices')
     const backgroundChoices = {
+      ...(customization ? { customization } : {}),
       tools: uniqueIdentifiers(rawBackgroundChoices.tools ?? [], 'character.backgroundChoices.tools', { maximum: 4 }),
       languages: uniqueIdentifiers(rawBackgroundChoices.languages ?? [], 'character.backgroundChoices.languages', { maximum: 4 }),
     }
@@ -1188,7 +1293,29 @@ export function parseCharacterImport(raw, options = {}) {
     if (!resolvedChoices.ok) {
       throw new CharacterLifecycleValidationError(resolvedChoices.reason, 'IMPORT_BACKGROUND_CHOICE_INVALID')
     }
-    canonical.backgroundChoices = { tools: resolvedChoices.tools, languages: resolvedChoices.languages }
+    canonical.backgroundChoices = { tools: resolvedChoices.tools, languages: resolvedChoices.languages, ...(customization ? { customization } : {}) }
+    if (rulesetId === DND_2014_RULESET_ID && options.validateCreationLanguages
+      && resolvedChoices.languages.some((id) => resolvedSpeciesBenefits?.languages.includes(id))) {
+      throw new CharacterLifecycleValidationError('Язык предыстории уже известен от расы: выберите другой язык', 'IMPORT_LANGUAGE_DUPLICATE')
+    }
+    if (own(rawBackgroundChoices, 'replacementSkills')) {
+      const skills = [
+        ...canonical.classSkillProficiencies,
+        ...(resolvedSpeciesBenefits?.skill_proficiencies ?? []),
+        ...(phb?.additionalSkills ?? []),
+        ...background.skillProficiencies,
+      ].map(catalogSkillId)
+      const known = new Set(skills)
+      const count = rulesetId === DND_2014_RULESET_ID ? skills.length - known.size : 0
+      const replacements = uniqueIdentifiers(rawBackgroundChoices.replacementSkills, 'character.backgroundChoices.replacementSkills').map(catalogSkillId)
+      const allowed = new Set(classBuildCatalogInfo().skills.map((skill) => catalogSkillId(skill.id)))
+      if (replacements.length !== count || new Set(replacements).size !== count
+        || replacements.some((id) => !allowed.has(id) || known.has(id))) {
+        throw new CharacterLifecycleValidationError(`Выберите ${count} новых навыков взамен повторяющихся владений`, 'IMPORT_SKILL_REPLACEMENT_INVALID')
+      }
+      canonical.backgroundChoices.replacementSkills = replacements
+    }
+    if (phb) canonical.backgroundChoices.replacementTools = clone(rawBackgroundChoices.replacementTools ?? [])
     // Навыки и черта здесь намеренно НЕ сохраняются: патч обязан пройти
     // обратно через тот же контракт импорта — его перечитывает reducer при
     // применении и replay, — а производные поля в контракт не входят и
@@ -1201,12 +1328,31 @@ export function parseCharacterImport(raw, options = {}) {
   if (!isRecord(rawStarterChoices)) {
     throw new CharacterLifecycleValidationError('starterEquipmentChoices должен быть объектом', 'IMPORT_STARTER_EQUIPMENT_INVALID')
   }
-  const resolvedStarter = resolveStarterEquipmentChoices(classId, rawStarterChoices, rulesetId)
+  const resolvedStarter = resolveStarterEquipmentChoices(classId, rawStarterChoices, rulesetId, { complete: Boolean(phb) })
   if (!resolvedStarter.ok) {
     throw new CharacterLifecycleValidationError(resolvedStarter.reason, 'IMPORT_STARTER_EQUIPMENT_INVALID')
   }
+  if (phb && classId === 'cleric' && !phb.wealth) {
+    for (const item of resolvedStarter.selected_options.flatMap((option) => option.items ?? [])) {
+      if (item.catalog_id === 'srd_5_2_1:chain-mail' && !phb.benefits.armor_proficiencies.includes('heavy')) {
+        throw new CharacterLifecycleValidationError('Кольчуга жрецу доступна в стартовом наборе только при владении тяжёлыми доспехами', 'IMPORT_STARTER_PROFICIENCY_REQUIRED')
+      }
+      if (item.catalog_id === 'srd_5_2_1:warhammer' && !phb.benefits.weapon_proficiencies.some((id) => ['martial', 'warhammer'].includes(id))) {
+        throw new CharacterLifecycleValidationError('Для выбора боевого молота в стартовом наборе нужно владение им', 'IMPORT_STARTER_PROFICIENCY_REQUIRED')
+      }
+    }
+  }
+  if (phb) {
+    try {
+      canonical.phbCreation.backgroundEquipmentChoices = completeBackgroundChoicesForHero({ ...canonical, phbCreation: phb.value })
+      const backgroundEquipment = validateCompleteBackgroundChoices(canonical.backgroundId, canonical.phbCreation.backgroundEquipmentChoices)
+      if (!backgroundEquipment.ok) throw new Error(backgroundEquipment.reason)
+      phb.benefits.owned_assets = phb.wealth ? clone(phb.wealth.owned_assets ?? []) : backgroundEquipment.selected_options.flatMap((option) => option.owned_assets ?? [])
+    } catch (error) { throw new CharacterLifecycleValidationError(error.message, 'IMPORT_BACKGROUND_EQUIPMENT_INVALID') }
+  }
   if (rulesetId !== LEGACY_DEFAULT_RULESET_ID) canonical.starterEquipmentChoices = clone(resolvedStarter.choices)
   const enriched = {
+    ...(phb ? { creationBenefits: phb.benefits, creationSkillProficiencies: phb.additionalSkills, creationSpellGrants: phb.benefits.spell_grants } : {}),
     ...canonical,
     speciesBenefits: resolvedSpeciesBenefits,
     speciesSkillProficiencies: resolvedSpeciesBenefits?.skill_proficiencies ?? [],
@@ -1216,6 +1362,7 @@ export function parseCharacterImport(raw, options = {}) {
   }
   return {
     document,
+    creation: phb,
     patch: canonical,
     sheet: deriveCharacterSheet(withBackgroundBenefits(enriched, rulesetId)),
   }
