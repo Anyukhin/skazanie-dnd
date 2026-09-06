@@ -1,4 +1,9 @@
-import { MONSTER_SPELL_AT_WILL } from './combat-spells.mjs'
+import { MONSTER_SPELL_AT_WILL, canonicalCombatSpellFor } from './combat-spells.mjs'
+import { SRD_5_2_1_MONSTER_ALLOWLIST } from './encounter-assembler.mjs'
+
+// Из существующего каталога берётся только уже подготовленный рисунок.
+// Характеристики и механика ниже всегда читаются из записи 2014.
+const PORTRAITS = new Set(Object.values(SRD_5_2_1_MONSTER_ALLOWLIST).map((record) => record.image).filter(Boolean))
 
 const CLONE = (value) => value == null ? value : structuredClone(value)
 const MIXED_MODE_WEAPONS = new Set(['dagger', 'javelin', 'spear', 'handaxe', 'hand-axe', 'dart', 'net'])
@@ -155,7 +160,7 @@ function monsterSpellcasting(record) {
       if (!id) continue
       const previous = spells.get(id)
       if (!previous || (previous.uses !== MONSTER_SPELL_AT_WILL && uses !== MONSTER_SPELL_AT_WILL && uses > previous.uses)) {
-        spells.set(id, { id, uses })
+        spells.set(id, { id, uses, level: Number(slot.level) })
       }
     }
   }
@@ -164,9 +169,8 @@ function monsterSpellcasting(record) {
     save_dc: Number(source.save_dc),
     attack_bonus: Number(source.attack_modifier),
     spells: [...spells.values()],
-    // Kept beside the executor-facing projection so the observer can display
-    // the actual 2014 shared-slot table. `monsterSpellcastingFor` ignores this
-    // field by design; its schema has per-spell limits only.
+    // Исходная таблица общих ячеек 2014 нужна наблюдателю и
+    // `monsterSpellcastingFor`, который задаёт реальные пулы ресурсов.
     spell_slots: CLONE(source.spell_slots ?? []),
     caster_level: Number(source.caster_level),
     class: String(source.class ?? ''),
@@ -207,8 +211,12 @@ function recordLimitations(record) {
     ...onHitLimitations(record),
   ]
   const multiattack = (record.actions ?? []).find((action) => action.kind === 'multiattack')
+  for (const entry of record.spellcasting?.spell_slots ?? []) for (const known of entry.spells ?? []) {
+    const spell = canonicalCombatSpellFor(known.key)
+    if (!spell || !['verified', 'partial'].includes(spell.mechanicsSupport)) limitations.push(`Заклинание «${known.name_ru || spell?.name || known.key}» пока не исполняется движком.`)
+    else if (spell.actionType !== 'action') limitations.push(`Заклинание «${spell.name}» с этим временем накладывания пока не выбирается тактикой NPC.`)
+  }
   if ((multiattack?.sequences?.length ?? 0) > 1) limitations.push('Альтернативные последовательности мультиатаки сохранены в записи, планировщик использует первую.')
-  if (record.spellcasting) limitations.push('Общие ячейки заклинаний 2014 проецируются на отдельные лимиты заклинаний для существующего runtime-схемы.')
   return unique(limitations)
 }
 
@@ -216,6 +224,7 @@ export function monsterCatalogEntry(record) {
   return {
     id: String(record.id),
     name: String(record.name_ru),
+    ...(PORTRAITS.has(`/assets/enemies/${slugOf(record)}.png`) ? { image: `/assets/enemies/${slugOf(record)}.png` } : {}),
     cr: String(record.challenge_rating),
     hp: Number(record.hit_points.average),
     sourceUrl: String(record.source_url),
@@ -236,6 +245,7 @@ export function enemyFrom2014(record, position, index = 0) {
   const enemy = {
     id,
     name: String(record.name_ru),
+    ...(PORTRAITS.has(`/assets/enemies/${slugOf(record)}.png`) ? { image: `/assets/enemies/${slugOf(record)}.png` } : {}),
     hp: maxHp,
     maxHp,
     armor: Number(record.armor_class.value),

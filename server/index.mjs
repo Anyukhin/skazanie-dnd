@@ -92,6 +92,7 @@ import { FileTraceStore, buildTurnExplanation } from './trace-store.mjs'
 import { createSceneTransition } from './adventure-director.mjs'
 import { SCENE_ARCHITECT_AGENT_ID, SceneArchitectAgent } from './scene-architect.mjs'
 import { proposeAgentInteraction, resolvePartyDecision } from './player-request-router.mjs'
+import { planHeroCombatCommand } from './party-tactics.mjs'
 import { abandonableQuest, classifyPartyDecision } from './party-exit-intent.mjs'
 import { CampaignBootstrapper } from './campaign-bootstrap.mjs'
 import { listWorldTemplates } from './world-template-catalog.mjs'
@@ -167,6 +168,7 @@ import {
   visibleCampaignLocations,
   visibleLocationProfile,
 } from './location-illustrations.mjs'
+import { CombatLabError, CombatLabRuns } from './combat-lab.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const dist = join(root, 'dist')
@@ -278,6 +280,10 @@ const eventStore = new FileEventStore({
   normalizeState: normalizeCampaignState,
   snapshotProjectorVersion: GAME_STATE_PROJECTOR_VERSION,
   mapStore,
+})
+const combatLabRuns = new CombatLabRuns({
+  loadCampaign: async (campaignId) => (await eventStore.load(String(campaignId).toUpperCase())).state,
+  chooseCommand: planHeroCombatCommand,
 })
 
 /**
@@ -3236,6 +3242,55 @@ const server = createServer((req, res) => {
   if (req.url === '/api/admin/usage' && req.method === 'GET') {
     const user = requireAdmin(req, res); if (!user) return
     return json(res, 200, { usage: usageLedger.report(), architect: architectUsage.report(), models: llmClient.health() })
+  }
+  if (requestPath === '/api/admin/combat-lab/scenarios' && req.method === 'GET') {
+    const admin = requireAdmin(req, res); if (!admin) return
+    return json(res, 200, { scenarios: combatLabRuns.scenarios() })
+  }
+  if (requestPath === '/api/admin/combat-lab/catalog' && req.method === 'GET') {
+    const admin = requireAdmin(req, res); if (!admin) return
+    try { return json(res, 200, await combatLabRuns.catalog()) }
+    catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : 'Не удалось загрузить каталог боевого стенда', code: error?.code }) }
+  }
+  if (requestPath === '/api/admin/combat-lab/runs' && req.method === 'GET') {
+    const admin = requireAdmin(req, res); if (!admin) return
+    return json(res, 200, { activeRun: combatLabRuns.active() })
+  }
+  if (requestPath === '/api/admin/combat-lab/runs' && req.method === 'POST') {
+    const admin = requireAdmin(req, res); if (!admin) return
+    try {
+      const body = await readBody(req)
+      const run = await combatLabRuns.create({ scenario: body.scenario, seed: body.seed, config: body.config })
+      return json(res, 202, { id: run.id })
+    } catch (error) {
+      const status = error instanceof CombatLabError ? error.status : 400
+      return json(res, status, { error: error instanceof Error ? error.message : 'Не удалось запустить боевой стенд', code: error?.code })
+    }
+  }
+  const combatLabRunMatch = requestPath.match(/^\/api\/admin\/combat-lab\/runs\/([^/]+)(\/report)?$/u)
+  if (combatLabRunMatch && (req.method === 'GET' || req.method === 'DELETE')) {
+    const admin = requireAdmin(req, res); if (!admin) return
+    const id = decodeURIComponent(combatLabRunMatch[1])
+    if (combatLabRunMatch[2]) {
+      if (req.method !== 'GET') return json(res, 405, { error: 'Отчёт доступен только для чтения' })
+      const report = combatLabRuns.report(id)
+      if (!report) return json(res, 404, { error: 'Прогон боевого стенда не найден' })
+      res.setHeader('Content-Disposition', `attachment; filename="combat-lab-report.json"`)
+      return json(res, 200, report)
+    }
+    if (req.method === 'GET') {
+      const rawAfter = new URL(req.url, 'http://skazanie.local').searchParams.get('after')
+      const after = rawAfter == null ? -1 : Number(rawAfter)
+      if (!Number.isSafeInteger(after) || after < -1 || after > 2000) return json(res, 400, { error: 'Некорректный номер последнего кадра' })
+      const run = combatLabRuns.get(id, after)
+      return run ? json(res, 200, run) : json(res, 404, { error: 'Прогон боевого стенда не найден', code: 'COMBAT_LAB_RUN_NOT_FOUND' })
+    }
+    try {
+      const run = await combatLabRuns.cancel(id)
+      return run ? json(res, 202, run) : json(res, 404, { error: 'Прогон боевого стенда не найден', code: 'COMBAT_LAB_RUN_NOT_FOUND' })
+    } catch (error) {
+      return json(res, 400, { error: error instanceof Error ? error.message : 'Не удалось отменить прогон', code: error?.code })
+    }
   }
   if (req.url === '/api/speech/status' && req.method === 'GET') {
     const user = requireUser(req, res); if (!user) return

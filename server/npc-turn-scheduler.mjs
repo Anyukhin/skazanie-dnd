@@ -731,6 +731,21 @@ const spellDistanceFeet = (from, to) => from && to
   : Number.MAX_SAFE_INTEGER
 
 /**
+ * 2014-блок хранит общие ячейки круга, а не отдельный запас на каждое
+ * заклинание. Доступная ячейка более высокого круга тоже подходит: финальная
+ * проверка и выбор конкретного круга всё равно остаются в Rules Engine.
+ */
+function sharedSpellSlotAvailable(state, enemy, spell) {
+  if (!spell?.slotResource) return true
+  const minimumLevel = Math.max(1, Number(spell.level) || 1)
+  const pools = state.mechanics?.resources?.[actorId(enemy)] ?? {}
+  return Object.entries(pools).some(([resource, pool]) => {
+    const match = /^spell_slots_(\d+)$/u.exec(resource)
+    return match && Number(match[1]) >= minimumLevel && Math.max(0, Number(pool?.current) || 0) > 0
+  })
+}
+
+/**
  * Заклинания стат-блока, которые существо может произнести прямо сейчас.
  *
  * Фильтр здесь строже, чем «есть в блоке», и это не перестраховка: движок
@@ -747,6 +762,7 @@ function availableMonsterSpells(state, enemy) {
     .filter((spell) => spell
       && EXECUTABLE_SPELL_SUPPORT.has(String(spell.mechanicsSupport))
       && spell.actionType === 'action'
+      && sharedSpellSlotAvailable(state, enemy, spell)
       && (spell.monsterSpell.perDay == null
         || monsterSpellUsesSpentIn(conditions, spell.id) < spell.monsterSpell.perDay))
 }
@@ -929,7 +945,6 @@ export function planNpcTurn(rawState, enemyId) {
   const usedBeforePlan = Math.max(0, Number(currentEconomy.attacks_used) || 0)
   const declaredMultiattackCount = multiattackCount(enemy)
   if (currentEconomy.action === false
-    && declaredMultiattackCount > 1
     && (usedBeforePlan === 0 || usedBeforePlan >= declaredMultiattackCount)) {
     return [{ command_type: 'EndTurn', actor_id: String(enemyId) }]
   }

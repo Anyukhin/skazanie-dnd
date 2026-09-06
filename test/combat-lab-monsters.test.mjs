@@ -6,7 +6,7 @@ import { DiceService } from '../server/dice-service.mjs'
 import { monsterCombatSpellFor, monsterSpellcastingFor } from '../server/combat-spells.mjs'
 import { enemyFrom2014, monsterCatalogEntry } from '../server/combat-lab-monsters.mjs'
 import { planNpcTurn } from '../server/npc-turn-scheduler.mjs'
-import { applyGameEvent, normalizeCampaignState, resolveCommand } from '../server/rules-engine.mjs'
+import { applyGameEvent, normalizeCampaignState, replayEvents, resolveCommand } from '../server/rules-engine.mjs'
 
 const records = JSON.parse(readFileSync(new URL('../data/compendia/dnd_5e_2014/monsters.json', import.meta.url), 'utf8')).monsters
 const record = (slug) => records.find((candidate) => candidate.id.endsWith(`:${slug}`))
@@ -89,6 +89,7 @@ test('каталог монстров отдаёт только настройк
   assert.deepEqual(monsterCatalogEntry(record('goblin')), {
     id: 'dnd_5e_2014:monster:goblin',
     name: 'Гоблин',
+    image: '/assets/enemies/goblin.png',
     cr: '1/4',
     hp: 7,
     sourceUrl: 'https://dnd.su/bestiary/4-goblin/',
@@ -174,7 +175,8 @@ test('маг получает CastSpell через monsterSpellcastingFor, а н
   assert.equal(block.ability, 'int')
   assert.equal(block.saveDc, 14)
   assert.equal(block.attackBonus, 6)
-  assert.equal(monsterCombatSpellFor(enemy, 'fireball').monsterSpell.perDay, 3)
+  assert.equal(monsterCombatSpellFor(enemy, 'fireball').monsterSpell.perDay, null)
+  assert.equal(monsterCombatSpellFor(enemy, 'fireball').slotResource, 'spell_slots_3')
   assert.equal(monsterCombatSpellFor(enemy, 'fire-bolt').monsterSpell.perDay, null)
 
   const state = arenaState(enemy, [hero()], { enemyFirst: true })
@@ -182,6 +184,7 @@ test('маг получает CastSpell через monsterSpellcastingFor, а н
   assert.ok(planned, JSON.stringify(planNpcTurn(state, enemy.id)))
   const after = commit(state, planned)
   assert.equal(after.mechanics.combat.action_economy[enemy.id].action, false)
+  assert.equal(after.mechanics.resources[enemy.id].spell_slots_2.current, 2)
 })
 
 test('прислужник и фанатик сохраняют 2014 список заклинаний и лимиты блоков', () => {
@@ -190,8 +193,65 @@ test('прислужник и фанатик сохраняют 2014 списо�
     const block = monsterSpellcastingFor(enemy)
     assert.ok(block.spells.length > 0, slug)
     assert.ok(block.spells.some((spell) => spell.id === 'sacred-flame' && spell.perDay === null), slug)
-    assert.ok(enemy.limitations.some((limitation) => limitation.includes('ячейки')), slug)
+    assert.equal(Boolean(enemy.limitations?.some((limitation) => limitation.includes('ячейки'))), false, slug)
   }
+})
+
+test('две разные заклинания 2014 делят один общий пул ячеек', () => {
+  const enemy = enemyFrom2014(record('mage'), { x: 5, y: 0 }, 0)
+  let state = arenaState(enemy, [hero()], { enemyFirst: true })
+  assert.equal(state.mechanics.resources[enemy.id].spell_slots_1.max, 4)
+  assert.equal(state.mechanics.resources[enemy.id].spell_slots_3.max, 3)
+  state.mechanics.resources[enemy.id].spell_slots_1 = { current: 1, max: 1 }
+  for (const level of [2, 3, 4, 5]) state.mechanics.resources[enemy.id][`spell_slots_${level}`] = { current: 0, max: state.mechanics.resources[enemy.id][`spell_slots_${level}`].max }
+
+  const firstCommand = {
+    command_type: 'CastSpell',
+    actor_id: enemy.id,
+    spell_id: 'magic-missile',
+    target_id: 'hero',
+  }
+  const first = resolveCommand({
+    campaign_id: 'COMBAT-LAB-MONSTERS',
+    command_id: 'shared-slot:first',
+    server_authoritative: true,
+    ...firstCommand,
+  }, state, { diceService: maximumDice(), context: NPC_CONTEXT })
+  const afterFirst = first.events.reduce(applyGameEvent, state)
+  assert.equal(first.events.find((event) => event.event_type === 'ResourceSpent').payload.resource, 'spell_slots_1')
+  assert.equal(afterFirst.mechanics.resources[enemy.id].spell_slots_1.current, 0)
+  assert.deepEqual(replayEvents(state, first.events), afterFirst)
+
+  const refreshed = normalizeCampaignState({
+    ...afterFirst,
+    mechanics: {
+      ...afterFirst.mechanics,
+      combat: {
+        ...afterFirst.mechanics.combat,
+        action_economy: {
+          ...afterFirst.mechanics.combat.action_economy,
+          [enemy.id]: { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 },
+        },
+      },
+    },
+  })
+  assert.throws(() => resolveCommand({
+    campaign_id: 'COMBAT-LAB-MONSTERS',
+    command_id: 'shared-slot:second',
+    server_authoritative: true,
+    command_type: 'CastSpell',
+    actor_id: enemy.id,
+    spell_id: 'mage-armor',
+    target_id: enemy.id,
+  }, refreshed, { diceService: maximumDice(), context: NPC_CONTEXT }), (error) => error.code === 'INSUFFICIENT_RESOURCE')
+  assert.equal(refreshed.mechanics.resources[enemy.id].spell_slots_1.current, 0)
+
+  const legacy = {
+    ...enemy,
+    spellcasting: { ability: 'int', save_dc: 14, attack_bonus: 6, spells: [{ id: 'magic-missile', uses: 1 }] },
+  }
+  assert.equal(monsterCombatSpellFor(legacy, 'magic-missile').slotResource, null)
+  assert.equal(monsterCombatSpellFor(legacy, 'magic-missile').monsterSpell.perDay, 1)
 })
 
 test('огненное дыхание остаётся видимым действием с честным ограничением', () => {

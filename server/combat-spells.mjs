@@ -235,13 +235,18 @@ export function canonicalCombatSpellFor(spellId) {
 }
 
 /**
- * Заклинатель из стат-блока — не класс и не ячейки.
+ * Заклинатель из стат-блока — не класс.
  *
- * Редакция 2024 записывает магию существа двумя строками: «неограниченно» и
- * «X в день». Ячеек у стат-блока нет вовсе, поэтому ни `casterProfile`, ни
- * таблицы прогрессии выше сюда не годятся: они вывели бы существу класс по
- * имени роли («жрец культа» → полный жрец со всеми ячейками своего уровня) и
- * подарили бы ему чужую магию. Блок объявляется явно и целиком:
+ * У современных/авторских блоков всё ещё встречается схема «неограниченно» и
+ * «X в день», но записи MM14 для стенда хранят настоящую таблицу общих ячеек
+ * 2014 в `spell_slots`. Нельзя превращать такую таблицу в отдельный суточный
+ * лимит для каждого заклинания: четыре ячейки первого круга — это четыре
+ * применения, разделённые между всеми заклинаниями круга.
+ *
+ * Обе формы остаются в одном нормализованном блоке. Для 2014-записи у каждого
+ * заклинания появляется `slotResource: spell_slots_N`, а `perDay` остаётся
+ * `null`; legacy/authoring-блоки без `spell_slots` продолжают использовать
+ * маркеры `monster-spell-used:*`.
  *
  * ```js
  * spellcasting: {
@@ -265,17 +270,41 @@ const SPELL_ABILITIES = Object.freeze(['str', 'dex', 'con', 'int', 'wis', 'cha']
 export function monsterSpellcastingFor(actor) {
   const raw = actor?.spellcasting
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const slotMaximums = {}
+  const spellLevels = new Map()
+  for (const slot of Array.isArray(raw.spell_slots) ? raw.spell_slots : []) {
+    const level = Math.trunc(Number(slot?.level))
+    if (!Number.isSafeInteger(level) || level < 1 || level > 9) continue
+    const maximum = Math.max(0, Math.trunc(Number(slot?.slots) || 0))
+    slotMaximums[level] = maximum
+    for (const spell of Array.isArray(slot?.spells) ? slot.spells : []) {
+      const id = String(spell?.key ?? spell?.id ?? '')
+      if (id) spellLevels.set(id, level)
+    }
+  }
+  const hasSharedSlots = Object.keys(slotMaximums).length > 0
   const spells = (Array.isArray(raw.spells) ? raw.spells : [])
     .map((entry) => {
       const id = String(entry?.id ?? '')
       if (!id) return null
+      const declaredLevel = Math.trunc(Number(entry?.level))
+      const level = Number.isSafeInteger(declaredLevel) && declaredLevel > 0
+        ? declaredLevel
+        : spellLevels.get(id) ?? null
+      const sharedSlot = hasSharedSlots && level != null && Object.hasOwn(slotMaximums, String(level))
       const declared = entry?.uses
       // «неограниченно» — это отсутствие предела, а не ноль применений:
       // `null` ниже читается всеми потребителями как «лимита нет».
-      const perDay = declared == null || declared === MONSTER_SPELL_AT_WILL
+      const perDay = sharedSlot
+        ? null
+        : declared == null || declared === MONSTER_SPELL_AT_WILL
         ? null
         : Math.max(0, Math.trunc(Number(declared) || 0))
-      return { id, perDay }
+      return {
+        id,
+        perDay,
+        ...(sharedSlot ? { level, slotResource: `spell_slots_${level}` } : {}),
+      }
     })
     .filter(Boolean)
   if (!spells.length) return null
@@ -284,6 +313,7 @@ export function monsterSpellcastingFor(actor) {
     saveDc: Math.max(1, Math.trunc(Number(raw.save_dc ?? raw.saveDc) || 10)),
     attackBonus: Math.trunc(Number(raw.attack_bonus ?? raw.attackBonus) || 0),
     spells,
+    ...(hasSharedSlots ? { slotMaximums } : {}),
   }
 }
 
@@ -311,11 +341,18 @@ export function monsterCombatSpellFor(actor, spellId) {
   if (!entry || !spell) return null
   return {
     ...clone(spell),
-    // Ячеек у стат-блока нет: предел записан «X в день» и считается маркерами.
-    slotResource: null,
+    // В 2014-блоке `slotResource` указывает на общий пул круга. В legacy-блоке
+    // он отсутствует, и расход идёт маркером `monster-spell-used:*`.
+    slotResource: entry.slotResource ?? null,
     spellcastingAbility: block.ability,
     prepared: true,
-    monsterSpell: { id: entry.id, perDay: entry.perDay, saveDc: block.saveDc, attackBonus: block.attackBonus },
+    monsterSpell: {
+      id: entry.id,
+      perDay: entry.perDay,
+      ...(entry.slotResource ? { slotLevel: entry.level } : {}),
+      saveDc: block.saveDc,
+      attackBonus: block.attackBonus,
+    },
   }
 }
 
@@ -340,12 +377,10 @@ export function monsterSpellRefusalFor(actor, spellId) {
 }
 
 /**
- * Сколько применений «X в день» уже потрачено, по маркерам состояний.
+ * Сколько применений legacy «X в день» уже потрачено, по маркерам состояний.
  *
- * Считают одинаково и движок (проверка предела), и планировщик (не предлагать
- * исчерпанное). Второй копии счёта быть не должно: разойдись они — планировщик
- * предлагал бы заклинание, на которое движок отвечает отказом, и весь ход
- * существа падал бы на собственном плане.
+ * MM14 с общей таблицей ячеек сюда не попадает: его расход живёт в обычном
+ * `mechanics.resources[actor].spell_slots_N`, как и у героя.
  */
 export function monsterSpellUsesSpentIn(conditionIds, spellId) {
   const prefix = `${MONSTER_SPELL_USE_CONDITION_PREFIX}${String(spellId ?? '')}#`
@@ -360,6 +395,10 @@ export function monsterSpellcastingIssues(actor) {
 }
 
 export function spellSlotMaximumsFor(actor) {
+  const monster = monsterSpellcastingFor(actor)
+  if (monster?.slotMaximums) {
+    return Object.fromEntries(Object.entries(monster.slotMaximums).map(([level, maximum]) => [`spell_slots_${level}`, maximum]))
+  }
   const profile = casterProfile(actor)
   if (!profile) return {}
   const level = boundedLevel(actor)

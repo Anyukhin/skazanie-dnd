@@ -37,6 +37,7 @@ import { battleRollContext, battleRollPresentation, boardPositionKey, buildMovem
 import { fallbackCombatActions, fallbackCombatResources } from './combat-actions'
 import { fallbackCombatSpells, fallbackSpellResources } from './combat-spells'
 import { AgentLabView } from './AgentLabView'
+import { CombatLabView } from './CombatLabView'
 import { MerchantScreen } from './MerchantView'
 import { CombatIcon } from './CombatIcon'
 import { TacticalBoard, type BoardAnimationActor, type BoardCellHint, type BoardCellNode } from './TacticalBoard'
@@ -77,7 +78,7 @@ import {
 
 // Торговли здесь нет намеренно: она открывается модальным окном поверх комнаты,
 // а не отдельным разделом. Второго пути к ней быть не должно.
-type View = 'room' | 'world-map' | 'journal' | 'characters' | 'inventory' | 'settings' | 'admin' | 'agent-lab'
+type View = 'room' | 'world-map' | 'journal' | 'characters' | 'inventory' | 'settings' | 'admin' | 'agent-lab' | 'combat-lab'
 
 /** Слава приходит с сервера ступенями, а не числом: показываем то же словом. */
 const UI_SCALE_KEY = 'skazanie-ui-scale-v3'
@@ -224,6 +225,7 @@ function Sidebar({ players, selectedPlayerId, turnPlayerId, accessibleHeroIds, t
             большинстве локаций горел «недоступен». */}
         {isAdmin && <button className={`nav-item ${view === 'admin' ? 'active' : ''}`} data-tooltip="Управление миром" aria-label="Управление миром" onClick={() => onNavigate('admin')}><ShieldCheck size={18} /><span>Управление миром</span></button>}
         {isAdmin && <button className={`nav-item ${view === 'agent-lab' ? 'active' : ''}`} data-tooltip="Лаборатория агентов" aria-label="Открыть лабораторию агентов в отдельном окне" onClick={() => { const url = new URL(window.location.href); url.searchParams.set('agentLab', '1'); window.open(url.toString(), 'skazanie-agent-lab', 'width=1500,height=950') }}><BrainCircuit size={18} /><span>Лаборатория агентов</span></button>}
+        {isAdmin && <button className={`nav-item ${view === 'combat-lab' ? 'active' : ''}`} data-tooltip="Боевой стенд" aria-label="Открыть боевой стенд" onClick={() => onNavigate('combat-lab')}><Swords size={18} /><span>Боевой стенд</span></button>}
       </nav>
       <div className="sidebar-section">
         <div className="section-label"><span>ОТРЯД · {players.filter(p => p.online).length} В СЕТИ{players.some((p) => p.hp <= 0) ? ` · ${players.filter((p) => p.hp <= 0).length} ПАЛИ` : ''}</span></div>
@@ -774,13 +776,13 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const [merchantOpen, setMerchantOpen] = useState(false)
   const [preferredMerchantId, setPreferredMerchantId] = useState<string | null>(null)
   const requestedRoomAtEntry = useRef(new URLSearchParams(window.location.search).get('room')?.toUpperCase() ?? '')
-  const [campaignsOpen, setCampaignsOpen] = useState(() => shouldAutoOpenCampaignModal({
+  const [campaignsOpen, setCampaignsOpen] = useState(() => new URLSearchParams(window.location.search).get('combatLab') !== '1' && shouldAutoOpenCampaignModal({
     heroCount: account.heroIds.length,
     membershipCount: account.campaignMemberships?.length ?? 0,
     requestedRoom: requestedRoomAtEntry.current,
   }))
   const [joinError, setJoinError] = useState<string | null>(null)
-  const [view, setView] = useState<View>(() => new URLSearchParams(window.location.search).get('agentLab') === '1' ? 'agent-lab' : 'room')
+  const [view, setView] = useState<View>(() => new URLSearchParams(window.location.search).get('combatLab') === '1' ? 'combat-lab' : new URLSearchParams(window.location.search).get('agentLab') === '1' ? 'agent-lab' : 'room')
   const [aiHealth, setAiHealth] = useState<AiHealth | null>(null)
   const [characterCreationCatalog, setCharacterCreationCatalog] = useState<CharacterCreationCatalog | null>(null)
   const [characterCreationError, setCharacterCreationError] = useState('')
@@ -1344,6 +1346,10 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
 
   const navigate = (next: View) => {
     setLeavePickerOpen(false)
+    const url = new URL(window.location.href)
+    if (next === 'combat-lab') url.searchParams.set('combatLab', '1')
+    else url.searchParams.delete('combatLab')
+    window.history.replaceState(null, '', url)
     setView(next)
     if (window.innerWidth <= 680) setSidebarCollapsed(true)
   }
@@ -1391,6 +1397,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   // занимал демо-мир, и новый аккаунт попадал в чужую историю. Проверка стоит
   // после всех хуков и до первого обращения к activePlayer.
   if (!state.sessionCode || !activePlayer) {
+    if (isAdmin && view === 'combat-lab') return <div className="app no-campaign"><main className="game-main"><button className="combat-lab-back" onClick={() => navigate('room')}>Вернуться к кампаниям</button><CombatLabView /></main></div>
     return (
       <div className="app no-campaign">
         <main className="game-main">
@@ -1400,6 +1407,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             <p>{joinError || 'Создайте новый мир — рассказчик придумает его и напишет пролог — либо откройте кампанию, в которую вас пригласили.'}</p>
             {joinError && <small className="campaign-join-explanation">Если все герои уже разобраны, попросите владельца создать кампанию с дополнительным местом. Роль наблюдателя не выдаёт скрытых данных и пока не входит в MVP.</small>}
             <button className="primary" onClick={() => setCampaignsOpen(true)}><Plus size={16} />Кампании и группы</button>
+            {isAdmin && <button onClick={() => { setCampaignsOpen(false); navigate('combat-lab') }}><Swords size={16} />Боевой стенд</button>}
             <button onClick={onLogout}>Выйти из аккаунта</button>
           </div>
           {campaignsOpen && <CampaignModal state={state} rulesets={aiHealth?.installedRulesets} onSwitch={switchCampaign} onAccountRefresh={onAccountRefresh} onCreateHero={setCreatingPlayerId} onWizardChange={setWorldWizardOpen} onClose={() => setCampaignsOpen(false)} />}
@@ -1652,6 +1660,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         {view === 'settings' && <SettingsView health={aiHealth} campaignAi={campaignAi} campaignAiBusy={campaignAiBusy} campaignAiError={campaignAiError} uiScale={uiScale} autoAttackRoll={autoAttackRoll} scenicBackdrop={scenicBackdrop} boardLighting={boardLighting} combatAnimations={combatAnimations} atmosphereSettings={atmosphereSettings} notificationPermission={notificationPermission} voiceMode={voiceMode} voiceSupported={voiceSupported} onVoiceModeChange={setVoiceMode} actionHintsEnabled={actionHintsEnabled} onActionHintsEnabledChange={setActionHintsEnabled} onCampaignAiChange={(patch) => { void updateCampaignAi(patch) }} onCampaignRulesetChange={(rulesetId) => { void updateCampaignRuleset(rulesetId) }} onUiScaleChange={setUiScale} onAutoAttackRollChange={setAutoAttackRoll} onScenicBackdropChange={setScenicBackdrop} onBoardLightingChange={setBoardLighting} onCombatAnimationsChange={setCombatAnimations} onAmbientVolumeChange={changeAmbientVolume} onAtmosphereMutedChange={changeAtmosphereMuted} onRequestNotifications={() => { void requestTurnNotifications() }} />}
         {view === 'admin' && isAdmin && <AdminView account={account} state={state} onUpdateWorld={updateWorld} onAssembleEncounter={assembleEncounter} onAssembleMerchant={assembleMerchant} onMoveMerchant={moveMerchant} onSetMerchantAvailability={setMerchantAvailability} onReset={reset} />}
         {view === 'agent-lab' && isAdmin && <AgentLabView state={state} />}
+        {view === 'combat-lab' && isAdmin && <CombatLabView />}
       </main>
       {/* Рассказчик и требование броска стоят поверх ЛЮБОГО раздела, а не
           только комнаты: игрок, ушедший в инвентарь или журнал, до этого не
