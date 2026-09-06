@@ -1168,7 +1168,7 @@ export function CharacterCreationWizard({
               </section> : null}
               {starterGroups.map((group) => <section key={group.id} className="creation-equipment-group">
                 <header><span>{group.label}</span><b aria-live="polite">{(draft.starterEquipmentChoices[group.id] ?? []).length}/{group.count}</b></header>
-                <div>{group.options.map((option) => {
+                <div>{group.options.length > 12 ? <select aria-label={group.label} value={draft.starterEquipmentChoices[group.id]?.[0] ?? ''} onChange={(event) => patch('starterEquipmentChoices', { ...draft.starterEquipmentChoices, [group.id]: [event.target.value] })}><option value="">Выберите вариант</option>{group.options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select> : group.options.map((option) => {
                   const selected = (draft.starterEquipmentChoices[group.id] ?? []).includes(option.id)
                   return <button
                     key={option.id}
