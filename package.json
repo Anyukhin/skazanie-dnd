@@ -12,6 +12,7 @@
     "dev:agent": "node server/index.mjs",
     "build": "tsc --noEmit -p tsconfig.app.json && vite build",
     "test": "node tools/run-test-suite.mjs",
+    "combat:lab": "node eval/combat-lab.mjs",
     "test:coverage": "node --test --test-concurrency=4 --experimental-test-coverage",
     "typecheck:server": "tsc --noEmit -p tsconfig.server.json",
     "verify": "pnpm test && pnpm typecheck:server && pnpm build",
