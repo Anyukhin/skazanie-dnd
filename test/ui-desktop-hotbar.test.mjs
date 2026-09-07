@@ -41,6 +41,7 @@ test('решение группы находится рядом с катего�
   assert.match(header, /onClick=\{onLeaveLocation\}/)
   assert.match(header, /disabled=\{leaveLocationDisabled \|\| narrating \|\| tacticalBusy \|\| Boolean\(guardEncounter\)\}/)
   assert.match(header, /Решение группы/)
-  assert.match(source, /\(combatActive \|\| showStartCombat \|\| doorsAtHand.length > 0 \|\| selectedSceneObject\) && <div className="hotbar-turn-controls">/)
+  assert.match(header, /showStartCombat && <button[^>]*className="start-combat-button"[^>]*onClick=\{onStartCombat\}/)
+  assert.match(source, /\(combatActive \|\| doorsAtHand.length > 0 \|\| selectedSceneObject\) && <div className="hotbar-turn-controls">/)
   assert.doesNotMatch(source, /className="exploration-leave-location"/)
 })

@@ -103,11 +103,14 @@
 
 .turn-rail { height:var(--ui-rail-height,auto); min-height: max-content; max-height: none; grid-template-rows: 28px auto; gap: 6px; padding: 8px 20px; background: #18140f; }
 .turn-rail .combat-hotbar.tactical-control{grid-template-rows:auto;gap:0}
-.turn-rail > .hotbar-decks { max-width:calc(100% - 330px * var(--ui-readable-scale,1));justify-content: flex-start; gap: 4px; overflow-x: auto; scrollbar-width: none; }
-.hotbar-tabs { display: flex; flex: 0 0 auto; align-items: center; gap: inherit; }
+.turn-rail > .hotbar-decks { max-width:calc(100% - 302px * var(--ui-readable-scale,1));justify-content: flex-start; gap: 4px; overflow: visible; }
+.hotbar-tabs { display: flex; flex: 0 1 auto; min-width: 0; align-items: center; gap: inherit; overflow-x: auto; scrollbar-width: none; }
 .turn-rail > .hotbar-decks > button { flex-shrink: 0; }
 .turn-rail > .hotbar-decks button { display: inline-flex; min-width: 28px; width: auto; height: 28px; padding: 0 6px; align-items: center; gap: 4px; border-radius: 4px; }
 .turn-rail > .hotbar-decks button span { display: inline; font-size: var(--fs-sm); }
+.turn-rail > .hotbar-decks .start-combat-button { border: 1px solid #994e45; background: #572c27; color: #f0b5a9; }
+.turn-rail > .hotbar-decks .start-combat-button:hover:not(:disabled) { border-color: #cd7868; background: #70362e; color: #ffe0d6; }
+.turn-rail > .hotbar-decks .start-combat-button:disabled { opacity: .5; cursor: not-allowed; }
 .turn-rail .hotbar-main { grid-template-columns: 34px minmax(0, 1fr) minmax(220px, 34%); gap: 12px; }
 .turn-rail .hotbar-actions-shell { padding: 6px 10px; height: min(calc(var(--slot) * var(--ui-tile-rows, 2) + 18px), 100%); border: 0; background: none; }
 .turn-rail .tile-toolbar { padding: 4px; border: 0; background: none; }
@@ -115,10 +118,9 @@
 .turn-rail .hotbar-detail p { color: #c2b5a2; }
 .turn-rail .hotbar-detail .detail-description { font-size: var(--fs-md); line-height: 1.5; }
 .turn-rail .hotbar-detail h3 { font-size: var(--fs-xl); }
-.turn-rail .hotbar-main:not(:has(>.hotbar-detail)){grid-template-columns:34px minmax(0,1fr)}
 .turn-rail .hotbar-actions-shell{height:auto;min-height:calc(var(--slot) * var(--ui-tile-rows,2) + 18px);align-items:flex-start}
 .turn-rail .hotbar-main{min-height:max-content}
-.turn-rail .player-resource-panel{order:2;margin-left:auto;margin-top:-34px;width:calc(300px * var(--ui-readable-scale,1));max-width:42%;padding:8px 12px;border:1px solid #58442c;border-radius:7px;background:#15110c;align-content:start;gap:4px;font:500 var(--fs-sm)/1.45 Manrope,sans-serif}
+.turn-rail .player-resource-panel{align-content:start;gap:3px;font:500 var(--fs-sm)/1.35 Manrope,sans-serif}
 .player-resource-panel .turn-rail-player-hud>.player-hud{position:static;width:100%;min-width:0;padding:0 0 4px;border:0;border-bottom:1px solid var(--line);border-radius:0;background:none;box-shadow:none;grid-template-rows:auto auto;gap:4px 8px}
 .player-resource-panel .hud-identity{grid-column:1;grid-row:1}
 .player-resource-panel .hud-portrait{width:28px;height:28px;flex-basis:28px}
@@ -196,6 +198,116 @@
   .character-grid.single-hero .character-sheet { display: block; }
   .character-grid.single-hero .character-art { height: 300px; }
   .character-grid.single-hero .character-info { padding: 22px; }
+}
+
+/* Б1: два ряда иконок и ресурсы делят одну строку сетки. Подробности
+   раскрываются над панелью, не увеличивая её постоянную высоту. */
+.turn-rail { align-content: start; }
+.turn-rail .combat-hotbar { --slot: calc(94px * var(--ui-readable-scale, 1)); }
+.turn-rail .hotbar-main {
+  position: relative;
+  grid-template-columns: 28px minmax(0, 1fr) minmax(260px, calc(290px * var(--ui-readable-scale, 1)));
+  grid-template-rows: auto;
+  gap: 8px 12px;
+  min-height: 0;
+  align-items: stretch;
+}
+.turn-rail .tile-toolbar { grid-column: 1; grid-row: 1; height: auto; align-self: stretch; align-content: start; }
+.turn-rail .hotbar-actions-shell {
+  grid-column: 2;
+  grid-row: 1;
+  height: auto;
+  min-height: 0;
+  align-self: stretch;
+  align-items: stretch;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.turn-rail .hotbar-actions { grid-template-rows: repeat(2, minmax(var(--slot), 1fr)); grid-auto-columns: var(--slot); grid-auto-flow: column; align-content: stretch; }
+.turn-rail .action-tile { width: 100%; min-width: 0; height: 100%; padding: 0; }
+.turn-rail .hotbar-hero-cluster {
+  grid-column: 3;
+  grid-row: 1;
+  order: initial;
+  width: auto;
+  max-width: none;
+  margin: -34px 0 0;
+  padding: 0 0 0 12px;
+  border: 0;
+  border-left: 1px solid var(--line);
+  border-radius: 0;
+  background: none;
+  align-content: start;
+}
+.turn-rail .hotbar-detail {
+  position: absolute;
+  top: 36px;
+  left: 0;
+  right: auto;
+  bottom: auto;
+  display: block;
+  overflow: visible;
+  container-type: normal;
+  max-height: none;
+  padding: 0;
+  border: 0;
+  z-index: 5;
+}
+.turn-rail .hotbar-detail > summary { width: 26px; height: 26px; display: grid; place-items: center; padding: 0; cursor: pointer; color: #c9b99f; border: 1px solid var(--line); border-radius: 4px; list-style: none; }
+.turn-rail .hotbar-detail > summary::-webkit-details-marker { display: none; }
+.turn-rail .hotbar-detail-content { position: absolute; left: 34px; bottom: calc(100% + 8px); width: min(420px, 75vw); max-height: min(460px, 55vh); overflow: auto; display: grid; gap: 8px; padding: 14px; border: 1px solid #745737; border-radius: 5px; background: #211a13; box-shadow: 0 2px 8px #0005; }
+.turn-rail .hotbar-detail:not([open]) > .hotbar-detail-content { display: none; }
+.turn-rail .hotbar-detail .detail-head > strong { font-size: var(--fs-xl); white-space: normal; }
+.turn-rail .hotbar-detail .detail-description { font-size: var(--fs-md); }
+.turn-rail .hero-cluster-resources {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 4px 8px;
+  overflow: visible;
+}
+.turn-rail .hero-pools-label { grid-column: 1 / -1; }
+.turn-rail .hero-spell-slot-grid {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(3, minmax(18px, auto));
+  gap: 2px 8px;
+}
+.turn-rail .hero-spell-slot-grid .hero-resource {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  overflow: visible;
+}
+.turn-rail .hero-spell-slot-grid .hero-resource em {
+  flex: 0 0 22px;
+  color: #d8bb8d;
+  font: 500 var(--fs-sm) Spectral, serif;
+  font-style: normal;
+  text-align: center;
+}
+.turn-rail .hero-spell-slot-grid .hero-resource i { display: flex; gap: 3px; flex-wrap: wrap; }
+.turn-rail .hero-spell-slot-grid .hero-resource u { width: 7px; height: 7px; }
+.turn-rail .hero-spell-slot-grid .hero-resource.empty { opacity: .42; }
+.turn-rail .hero-spell-slot-grid .hero-resource.slot::before { content: none; }
+.turn-rail .hero-resource.class-pool { grid-column: 1 / -1; }
+
+@media (min-width: 901px) and (max-width: 1500px) {
+  .turn-rail > .hotbar-decks { max-width: calc(100% - 268px); }
+  .turn-rail .combat-hotbar { --slot: calc(82px * var(--ui-readable-scale, 1)); }
+  .turn-rail .hotbar-main { grid-template-columns: 26px minmax(0, 1fr) 260px; gap: 8px; }
+  .turn-rail .hotbar-turn-controls { flex-basis: 44px; width: 44px; min-width: 44px; padding-left: 4px; }
+  .turn-rail .hotbar-turn-controls button { justify-content: center; padding: 5px; }
+  .turn-rail .hotbar-turn-controls button > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+}
+@media (max-width: 900px) {
+  .turn-rail .combat-hotbar { --slot: 66px; }
+  .turn-rail .hotbar-main { grid-template-columns: 28px minmax(0, 1fr); grid-template-rows: auto auto; min-height: 0; }
+  .turn-rail .hotbar-actions-shell { grid-column: 2; grid-row: 1; }
+  .turn-rail .hotbar-hero-cluster { grid-column: 1 / -1; grid-row: 2; max-width: none; margin: 0; padding: 8px 0 0; border-top: 1px solid var(--line); border-left: 0; }
+  .turn-rail > .hotbar-decks { max-width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) {
   .app, .scene-overlay-layer, .chat-panel { transition: none; animation: none; }

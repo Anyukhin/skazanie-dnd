@@ -342,7 +342,7 @@ test('панель героя показывает подписанные рес
   assert.match(appSource, /heroResourceRows\.map\(\(row\)/u)
   assert.match(appSource, /<div className="turn-rail-player-hud">\{playerHud\}<\/div>/u)
   assert.doesNotMatch(rootSource, /className="player-hud-stack"/u)
-  assert.match(layout, /\.turn-rail \.player-resource-panel\{[^}]*var\(--ui-readable-scale/u)
+  assert.match(layout, /\.turn-rail \.hotbar-main\s*\{[^}]*grid-template-columns:[^;]*var\(--ui-readable-scale/u)
   assert.match(layout, /\.player-resource-panel \.hero-resource em\{[^}]*white-space:normal/u)
   assert.match(appSource, /onClick=\{\(\) => setCostFilter\(\(current\) => current === pip\.id \? null : pip\.id\)\}/u)
 })
