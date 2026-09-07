@@ -1,11 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { PHB_CANTRIPS, PHB_FIRST_LEVEL_SPELLS } from './character-creation-feats.mjs'
-
-function availableClassSpell(spell, classKey, actor) {
-  if (!actor?.creationBenefits) return spell.classes.includes(classKey)
-  if ((actor.creationBenefits.expanded_spells ?? []).includes(spell.id)) return true
-  return (spell.level === 0 ? PHB_CANTRIPS[classKey] : spell.level === 1 ? PHB_FIRST_LEVEL_SPELLS[classKey] : spell.classes.includes(classKey) ? [spell.id] : [])?.includes(spell.id) === true
-}
+import { isClassSpellAvailable } from './character-creation-feats.mjs'
 
 const payload = JSON.parse(readFileSync(new URL('../data/dndsu-spells-0-6.json', import.meta.url), 'utf8'))
 const overridePayload = JSON.parse(readFileSync(new URL('../data/dndsu-spell-mechanics-overrides.json', import.meta.url), 'utf8'))
@@ -132,7 +126,7 @@ function selectedSpellIds(actor, camel, snake) {
 }
 
 function boundedSelection(actor, profile, level, rules) {
-  const available = SPELLS.filter((spell) => availableClassSpell(spell, profile.key, actor) && (spell.level === 0 || spell.level <= rules.maximumSpellLevel))
+  const available = SPELLS.filter((spell) => isClassSpellAvailable(spell, profile.key, actor) && (spell.level === 0 || spell.level <= rules.maximumSpellLevel))
   const byId = new Map(available.map((spell) => [spell.id, spell]))
   const rawKnown = selectedSpellIds(actor, 'knownSpellIds', 'known_spell_ids')
   const rawPrepared = selectedSpellIds(actor, 'preparedSpellIds', 'prepared_spell_ids')
@@ -185,7 +179,7 @@ export function combatSpellsFor(actor) {
     const rules = spellSelectionRulesFor(actor)
     const { known, prepared } = boundedSelection(actor, profile, level, rules)
     return SPELLS
-      .filter((spell) => (availableClassSpell(spell, profile.key, actor) || (actor.creationBenefits?.domain_spells ?? []).includes(spell.id)) && (spell.level === 0 || spell.level <= maximum))
+      .filter((spell) => (isClassSpellAvailable(spell, profile.key, actor) || (actor.creationBenefits?.domain_spells ?? []).includes(spell.id)) && (spell.level === 0 || spell.level <= maximum))
       .map((spell) => {
       const isPrepared = (actor.creationBenefits?.domain_spells ?? []).includes(spell.id) ? true : spell.level === 0 ? (known ? known.has(spell.id) : true)
         : rules.mode === 'known' ? (known ? known.has(spell.id) : true)

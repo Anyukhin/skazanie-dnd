@@ -185,22 +185,9 @@ test('агент открывает общее голосование, а неа
   assert.ok(transition.effects.scene.scene.cells.some((cell) => cell.feature),
     'fallback не должен оставлять новую сцену пустой')
 
-  const labResponse = await fetch(baseUrl + '/api/agent-lab/scene-transition', {
+  const removedLabRoute = await fetch(baseUrl + '/api/agent-lab/scene-transition', {
     method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
-    body: JSON.stringify({
-      campaignId: 'PARTY-VOTE',
-      decision: 'Уходим в город — отступаем и ищем другой путь, сохранив нить с печатью архивариуса',
-      scene: { location: 'Затопленный архив', objective: 'Исследовать печать архивариуса' },
-      adventure: { currentHook: 'Печать архивариуса открывает скрытый зал' },
-    }),
+    body: JSON.stringify({ campaignId: 'PARTY-VOTE', decision: 'Тестовый прогон' }),
   })
-  assert.equal(labResponse.status, 200)
-  const lab = await labResponse.json()
-  assert.equal(lab.dry_run, true)
-  assert.equal(lab.transition.scene.location, 'Город')
-  assert.equal(lab.transition.scene.cells.length, 20 * 20)
-  assert.ok(lab.transition.scene.cells.filter((cell) => cell.type === 'door').length >= 4,
-    'городская карта обязана содержать двери домов')
-  assert.deepEqual(lab.stages.map((stage) => stage.agent), ['AgentDirector', 'scene_architect', 'WorldEngine', 'AgentNarrator'])
-  assert.match(lab.transition.adventure.currentHook, /Печать архивариуса/u)
+  assert.equal(removedLabRoute.status, 404, 'удалённый AgentLab route не должен быть доступен')
 })

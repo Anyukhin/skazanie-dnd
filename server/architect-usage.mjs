@@ -97,26 +97,19 @@ export class ArchitectUsageStore {
   /**
    * Отмечает одну живую генерацию.
    *
-   * `kind: 'lab'` — прогон в «Лаборатории агентов». Он тратит токены, поэтому
-   * попадает в отчёт админа, но не увеличивает игровой счётчик: лаборатория
-   * работает в режиме `dry_run` и настоящей локации в кампании не создаёт.
-   * Сказать игрокам «создано N локаций», посчитав туда админские примерки,
-   * было бы неправдой.
-   *
    * @returns {{ day: string, generations: number, threshold: number, alert: boolean }}
    *   `alert` истинен ровно один раз за день на кампанию — на пересечении порога.
    */
-  recordGeneration(campaignId, { kind = 'campaign' } = {}) {
+  recordGeneration(campaignId) {
     const state = this._read()
     const key = campaignKey(campaignId)
     if (!key) return { day: state.day, generations: 0, threshold: this.alertThreshold, alert: false }
     const entry = this._campaign(state, key)
-    if (kind === 'lab') entry.lab_generations += 1
-    else entry.generations += 1
+    entry.generations += 1
     // Порог считается достигнутым, когда за день создано столько локаций,
     // сколько названо порогом. Предупреждение уходит один раз: дальше расход
     // растёт, но повторять строку каждый ход — это шум, а не сигнал.
-    const alert = kind !== 'lab' && !entry.alerted && entry.generations >= this.alertThreshold
+    const alert = !entry.alerted && entry.generations >= this.alertThreshold
     if (alert) entry.alerted = true
     state.campaigns[key] = entry
     atomicWrite(this.storageFile, state)

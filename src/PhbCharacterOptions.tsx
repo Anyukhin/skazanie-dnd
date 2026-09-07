@@ -1,5 +1,6 @@
 import './character-creation.css'
 import { useState } from 'react'
+import { resolveCharacterCreationFeat } from '../server/character-creation-feats.mjs'
 
 import type { PhbAbilityId, PhbChoiceRecord, PhbCatalogEntry, PhbSpellCatalogEntry, PhbFeatCatalogEntry, PhbChoiceSchema, PhbClassCatalogEntry, PhbSubclassCatalogEntry, PhbCharacterOptionsCatalog, PhbFeatSelection, PhbCharacterOptionsValue, PhbCharacterOptionsProps } from './phb-character-types'
 export type { PhbAbilityId, PhbChoiceRecord, PhbCatalogEntry, PhbSpellCatalogEntry, PhbFeatCatalogEntry, PhbChoiceSchema, PhbClassCatalogEntry, PhbSubclassCatalogEntry, PhbCharacterOptionsCatalog, PhbFeatSelection, PhbCharacterOptionsValue, PhbCharacterOptionsProps } from './phb-character-types'
@@ -129,6 +130,8 @@ export function PhbCharacterOptions({
   knownSkillIds,
   knownToolIds,
   variantHuman,
+  featOnly = false,
+  featContext,
   value,
   onChange,
 }: PhbCharacterOptionsProps) {
@@ -338,13 +341,13 @@ export function PhbCharacterOptions({
   }
 
   const renderFeats = () => {
-    if (!variantHuman) return null
+    if (!variantHuman && !featOnly) return null
     const needle = featSearch.trim().toLocaleLowerCase('ru').replace(/ё/gu, 'е')
-    const visibleFeats = catalog.feats.filter((entry) => !needle || [entry.name, entry.label, entry.english_name, entry.summary]
+    const visibleFeats = catalog.feats.filter((entry) => !needle || [entry.name, entry.label, entry.english_name, entry.summary, ...(entry.description ?? [])]
       .some((value) => text(value).toLocaleLowerCase('ru').replace(/ё/gu, 'е').includes(needle)))
     return <section className="phb-feats">
-      <header><span>Черта вариативного человека</span><b>{feat ? feat.name ?? feat.label ?? feat.id : 'не выбрана'}</b></header>
-      <p className="creation-form">Вариативный человек получает одну черту PHB 2014 на 1 уровне. Требования показаны на карточках и проверяются сервером.</p>
+      <header><span>{featOnly ? 'Черта вместо улучшения характеристик' : 'Черта вариативного человека'}</span><b>{feat ? feat.name ?? feat.label ?? feat.id : 'не выбрана'}</b></header>
+      <p className="creation-form">{featOnly ? 'Выберите одну черту PHB 2014 вместо +2 к характеристикам. Требования и дополнительные выборы проверяются сервером.' : 'Вариативный человек получает одну черту PHB 2014 на 1 уровне. Требования показаны на карточках и проверяются сервером.'}</p>
       {feat && <div className="phb-feat-current" role="status">
         <span>Выбрано сейчас</span>
         <strong>{feat.name ?? feat.label ?? feat.id}</strong>
@@ -360,14 +363,24 @@ export function PhbCharacterOptions({
       {visibleFeats.length > 0 ? <div className="creation-card-grid phb-feat-grid">
         {visibleFeats.map((entry) => {
           const status = featPrerequisiteStatus(entry, option, abilities)
+          if (featOnly && featContext) {
+            const result = resolveCharacterCreationFeat(entry.id, entry.id === featSelection?.id ? featSelection.choices : {}, featContext)
+            status.available = true
+            status.failures = []
+            if (!result.ok && ['PREREQUISITE_NOT_MET', 'FEAT_ALREADY_TAKEN'].includes(result.code ?? '')) {
+              status.available = false
+              status.failures = [{ label: result.reason }]
+            }
+          }
           const checked = entry.id === featSelection?.id
           const name = entry.name ?? entry.label ?? entry.id
-          const requirementText = (entry.prerequisites ?? []).length > 0
+          const requirementText = !status.available || (entry.prerequisites ?? []).length > 0
             ? status.available
               ? 'Требования выполнены'
               : `Требуется: ${(status.failures.length ? status.failures : (entry.prerequisites ?? [])).map((prerequisite) => text(prerequisite.label ?? prerequisite.description ?? prerequisite.value ?? prerequisite.kind)).join('; ')}`
             : ''
-          return <label key={entry.id} className={`phb-feat-card ${checked ? 'selected' : ''} ${!status.available ? 'disabled' : ''}`}>
+          return <article key={entry.id} className={`phb-feat-card ${checked ? 'selected' : ''} ${!status.available ? 'disabled' : ''}`}>
+            <label className="phb-feat-select">
             <input type="radio" name="phb-feat" value={entry.id} checked={checked} disabled={!status.available} onChange={() => updateFeat(entry.id, {})} />
             <span className="phb-feat-card-body">
               <span className="phb-feat-card-heading">
@@ -376,18 +389,23 @@ export function PhbCharacterOptions({
               </span>
               {entry.summary && <span className="phb-feat-card-summary">{entry.summary}</span>}
               {requirementText && <span className={`phb-feat-card-requirement ${status.available ? 'met' : 'unmet'}`}>{requirementText}</span>}
-              {entry.mechanics_status === 'partial' && <span className="phb-feat-card-support">Механика применяется частично; выбор сохраняется на листе.</span>}
             </span>
-          </label>
+            </label>
+            {!!entry.description?.length && <details className="phb-feat-description" open={checked}>
+              <summary aria-label={`Полное описание: ${name}`}>Полное описание</summary>
+              <ul>{entry.description.map((paragraph) => <li key={paragraph}>{paragraph}</li>)}</ul>
+            </details>}
+          </article>
         })}
       </div> : <p className="phb-feat-empty" role="status">По запросу «{featSearch.trim()}» ничего не найдено. Попробуйте другое слово или очистите поиск.</p>}
-      {feat && <div className="creation-form">
+      {feat && Object.keys(feat.choice_schema ?? {}).length > 0 && <div className="creation-form">
         <h3>Выборы черты: {feat.name ?? feat.label ?? feat.id}</h3>
         {Object.entries(feat.choice_schema ?? {}).map(([key, schema]) => renderFeatChoice(feat, key, schema ?? {}))}
       </div>}
     </section>
   }
 
+  if (featOnly) return <div className="creation-choices phb-character-options">{renderFeats()}</div>
   return <div className="creation-choices phb-character-options">
     <section><header><span>Класс: {option?.label ?? option?.name ?? classId}</span><b>1 уровень</b></header></section>
     {renderClassChoices()}

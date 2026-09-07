@@ -136,6 +136,8 @@ test('каждый игрок заполняет свой серверный с�
   assert.equal(classicCatalog.body.ruleset_id, 'dnd_5e_2014')
   assert.equal(classicCatalog.body.ability_policy.bonus_source, 'species')
   assert.equal(classicCatalog.body.ability_policy.species_options.length, 15)
+  assert.equal(classicCatalog.body.phb.feats.length, 42)
+  assert.ok(classicCatalog.body.phb.feats.every((feat) => Array.isArray(feat.description) && feat.description.length > 0), 'полные описания черт доступны мастеру через HTTP')
   assert.equal(classicCatalog.body.backgrounds.options.length, 13)
   assert.equal(classicCatalog.body.starter_equipment.policy_version, 2)
   assert.equal(classicCatalog.body.classes.find((entry) => entry.id === 'fighter').starter_equipment.choice_groups.length, 4)
@@ -196,14 +198,32 @@ test('каждый игрок заполняет свой серверный с�
     body: { code: 'PHB-ROLLS', name: 'PHB с бросками', bootstrap: { slotCount: 1, rulesetId: 'dnd_5e_2014' } },
   })
   assert.equal(rolledCampaign.status, 201, rolledCampaign.text)
-  const rollBody = { idempotency_key: 'phb-ability-roll', command: { command_type: 'RollCharacterAbilities', actor_id: 'hero-slot-1' } }
+  const rollBody = { idempotency_key: 'phb-ability-roll', command: { command_type: 'RollCharacterAbilities', actor_id: 'hero-slot-1', roll_index: 0 } }
   const rolled = await request(baseUrl, '/api/campaigns/PHB-ROLLS/commands', { method: 'POST', cookie: ownerCookie, key: rollBody.idempotency_key, body: rollBody })
   assert.equal(rolled.status, 200, rolled.text)
-  const savedRoll = rolled.body.authoritative_state.players[0].characterCreationRolls.abilities
-  assert.equal(savedRoll.scores.length, 6)
+  let savedRoll = rolled.body.authoritative_state.players[0].characterCreationRolls.abilities
+  assert.equal(savedRoll.scores.length, 1)
   const rolledAgain = await request(baseUrl, '/api/campaigns/PHB-ROLLS/commands', { method: 'POST', cookie: ownerCookie, key: rollBody.idempotency_key, body: rollBody })
   assert.equal(rolledAgain.status, 200, rolledAgain.text)
   assert.deepEqual(rolledAgain.body.authoritative_state.players[0].characterCreationRolls.abilities, savedRoll)
+  await stopServer(child)
+  child = startServer(port, storage, (chunk) => { logs += chunk })
+  await waitForHealth(baseUrl, child, () => logs)
+  const resumedRolls = await request(baseUrl, '/api/rooms/PHB-ROLLS', { cookie: ownerCookie })
+  assert.equal(resumedRolls.status, 200, resumedRolls.text)
+  assert.deepEqual(resumedRolls.body.state.players[0].characterCreationRolls.abilities, savedRoll)
+  const stale = await request(baseUrl, '/api/campaigns/PHB-ROLLS/commands', { method: 'POST', cookie: ownerCookie, key: 'stale-ability-roll', body: { ...rollBody, idempotency_key: 'stale-ability-roll' } })
+  assert.notEqual(stale.status, 200, 'повторный клик со старым номером не бросает следующий набор')
+  for (let index = 1; index < 6; index++) {
+    const key = `phb-ability-roll-${index}`
+    const next = await request(baseUrl, '/api/campaigns/PHB-ROLLS/commands', { method: 'POST', cookie: ownerCookie, key, body: { idempotency_key: key, command: { ...rollBody.command, roll_index: index } } })
+    assert.equal(next.status, 200, next.text)
+    const nextRoll = next.body.authoritative_state.players[0].characterCreationRolls.abilities
+    assert.equal(nextRoll.id, savedRoll.id)
+    assert.deepEqual(nextRoll.scores.slice(0, index), savedRoll.scores)
+    assert.equal(nextRoll.scores.length, index + 1)
+    savedRoll = nextRoll
+  }
   const wealthBody = { idempotency_key: 'phb-wealth-roll', command: { command_type: 'RollCharacterWealth', actor_id: 'hero-slot-1', character_class: 'fighter' } }
   const wealth = await request(baseUrl, '/api/campaigns/PHB-ROLLS/commands', { method: 'POST', cookie: ownerCookie, key: wealthBody.idempotency_key, body: wealthBody })
   assert.equal(wealth.status, 200, wealth.text)
@@ -224,6 +244,51 @@ test('каждый игрок заполняет свой серверный с�
   assert.equal(purchasedHero.inventory[0].catalog_id, 'srd_5_2_1:dagger')
   assert.equal(purchasedHero.currency.gold, savedWealth.total_gp - 2)
   assert.equal(purchasedHero.creationBenefits.class.class_key, 'fighter')
+
+  const featCampaign = await request(baseUrl, '/api/campaigns', { method: 'POST', cookie: ownerCookie,
+    body: { code: 'FEAT-LEVEL', name: 'Черта четвёртого уровня', bootstrap: { slotCount: 1, startLevel: 4, rulesetId: 'dnd_5e_2014' } },
+  })
+  assert.equal(featCampaign.status, 201, featCampaign.text)
+  const featDocument = structuredClone(phbDocument)
+  const standardBase = { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 }
+  featDocument.character.abilities = Object.fromEntries(Object.entries(standardBase).map(([id, value]) => [id, value + 1]))
+  featDocument.character.abilityGeneration = { ...featDocument.character.abilityGeneration, method: 'standard_array', baseScores: standardBase }
+  delete featDocument.character.abilityGeneration.rollId
+  featDocument.character.phbCreation = { schema_version: 1, classChoices: {} }
+  const featImported = await command(baseUrl, ownerCookie, 'hero-slot-1', featDocument, 'feat-import', 'FEAT-LEVEL')
+  assert.equal(featImported.status, 200, featImported.text)
+  let featHero = featImported.body.authoritative_state.players[0]
+  const featCommand = async (cmd, key, actorCookie = ownerCookie) => request(baseUrl, '/api/campaigns/FEAT-LEVEL/commands', {
+    method: 'POST', cookie: actorCookie, key, body: { idempotency_key: key, command: { actor_id: 'hero-slot-1', ...cmd } },
+  })
+  for (let level = 1; level < 4; level++) {
+    if (level === 3) {
+      const choices = await featCommand({ command_type: 'SetCharacterChoices', subclass: 'Чемпион', class_skill_proficiencies: featHero.classSkillProficiencies, selected_feature_ids: featHero.selectedFeatureIds }, 'feat-subclass')
+      assert.equal(choices.status, 200, choices.text)
+    }
+    const next = await featCommand({ command_type: 'LevelUp', expected_level: level }, `feat-level-${level}`)
+    assert.equal(next.status, 200, next.text)
+    featHero = next.body.authoritative_state.players[0]
+  }
+  const chooseFeat = { command_type: 'SetCharacterChoices', subclass: 'Чемпион', class_skill_proficiencies: featHero.classSkillProficiencies, selected_feature_ids: featHero.selectedFeatureIds, ability_score_level: 4, ability_score_feat: { id: 'tough', choices: {} } }
+  const forbiddenFeat = await featCommand(chooseFeat, 'feat-forbidden', guestCookie)
+  assert.equal(forbiddenFeat.status, 403)
+  const chosen = await featCommand(chooseFeat, 'feat-choice')
+  assert.equal(chosen.status, 200, chosen.text)
+  const chosenHero = chosen.body.authoritative_state.players[0]
+  assert.equal(chosenHero.levelFeats['4'].id, 'tough')
+  assert.equal(chosenHero.maxHp, featHero.maxHp + 8)
+  assert.deepEqual(chosenHero.abilities, featHero.abilities)
+  assert.equal(chosenHero.characterSetupRequired, false)
+  const duplicateFeat = await featCommand(chooseFeat, 'feat-choice')
+  assert.equal(duplicateFeat.status, 200, duplicateFeat.text)
+  assert.equal(duplicateFeat.body.state_version, chosen.body.state_version)
+  await stopServer(child)
+  child = startServer(port, storage, (chunk) => { logs += chunk })
+  await waitForHealth(baseUrl, child, () => logs)
+  const restoredFeat = await request(baseUrl, '/api/rooms/FEAT-LEVEL', { cookie: ownerCookie })
+  assert.deepEqual(restoredFeat.body.state.players[0].levelFeats, chosenHero.levelFeats)
+  assert.equal(restoredFeat.body.state.players[0].maxHp, chosenHero.maxHp)
 
   const forgedPlayers = Array.from({ length: 4 }, (_, index) => ({
     id: `slot-${index + 1}`,

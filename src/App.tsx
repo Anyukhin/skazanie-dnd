@@ -4,7 +4,7 @@ import {
   Dices, Flame, Footprints, Gem, History, Menu, MessageSquare,
   PanelLeftClose, PanelLeftOpen, Plus, RotateCcw,
   ScrollText, Send, Settings, Shield, Sparkles, Swords, Target, Users, X,
-  BrainCircuit, Check, Compass, SlidersHorizontal, Wifi, WifiOff,
+  Check, Compass, SlidersHorizontal, Wifi, WifiOff,
   Heart, HeartCrack, HelpCircle,
   Lock, LockKeyhole, LockOpen, LogOut, ShieldCheck, RefreshCw, Store,
   Bot, PawPrint, Skull, WandSparkles, Globe2, Volume2, VolumeX, Bell, BellOff, ShieldAlert,
@@ -36,7 +36,6 @@ import { CELL_FEET, currentTacticalTurn, mapGridDimensions } from './tactical-en
 import { battleRollContext, battleRollPresentation, boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, mechanicsSupportPresentation, movementCellReason, movementCostLabel, turnClockPresentation, type MovementPath } from './tactical-ui'
 import { fallbackCombatActions, fallbackCombatResources } from './combat-actions'
 import { fallbackCombatSpells, fallbackSpellResources } from './combat-spells'
-import { AgentLabView } from './AgentLabView'
 import { MerchantScreen } from './MerchantView'
 import { CombatIcon } from './CombatIcon'
 import { TacticalBoard, type BoardAnimationActor, type BoardCellHint, type BoardCellNode } from './TacticalBoard'
@@ -77,7 +76,7 @@ import {
 
 // Торговли здесь нет намеренно: она открывается модальным окном поверх комнаты,
 // а не отдельным разделом. Второго пути к ней быть не должно.
-type View = 'room' | 'world-map' | 'journal' | 'characters' | 'inventory' | 'settings' | 'admin' | 'agent-lab'
+type View = 'room' | 'world-map' | 'journal' | 'characters' | 'inventory' | 'settings' | 'admin'
 
 /** Слава приходит с сервера ступенями, а не числом: показываем то же словом. */
 const UI_SCALE_KEY = 'skazanie-ui-scale-v3'
@@ -223,7 +222,6 @@ function Sidebar({ players, selectedPlayerId, turnPlayerId, accessibleHeroIds, t
             называет его по имени. Постоянный пункт меню вёл в то же окно и в
             большинстве локаций горел «недоступен». */}
         {isAdmin && <button className={`nav-item ${view === 'admin' ? 'active' : ''}`} data-tooltip="Управление миром" aria-label="Управление миром" onClick={() => onNavigate('admin')}><ShieldCheck size={18} /><span>Управление миром</span></button>}
-        {isAdmin && <button className={`nav-item ${view === 'agent-lab' ? 'active' : ''}`} data-tooltip="Лаборатория агентов" aria-label="Открыть лабораторию агентов в отдельном окне" onClick={() => { const url = new URL(window.location.href); url.searchParams.set('agentLab', '1'); window.open(url.toString(), 'skazanie-agent-lab', 'width=1500,height=950') }}><BrainCircuit size={18} /><span>Лаборатория агентов</span></button>}
       </nav>
       <div className="sidebar-section">
         <div className="section-label"><span>ОТРЯД · {players.filter(p => p.online).length} В СЕТИ{players.some((p) => p.hp <= 0) ? ` · ${players.filter((p) => p.hp <= 0).length} ПАЛИ` : ''}</span></div>
@@ -532,19 +530,26 @@ function DiceCheckCard({ check, onRoll, onCancel, busy = false, children }: { ch
 }
 
 /**
- * Полоска жизни героя у низа правой колонки: ОЗ, КД, скорость и две
- * кнопки-иконки в одну строку. Раньше это была карточка в 124px с портретом,
- * подписью «Ваш герой» и классом — всё это уже есть в списке отряда слева, а
- * колонке на ноутбуке достаётся 384px, и каждая лишняя строка здесь отнята у
- * рассказа. Подписи величин живут в `title` и `aria-label`, опасность —
- * чипом в той же строке.
+ * Полоска героя у нижней панели действий: портрет, ОЗ, КД, скорость и две
+ * кнопки-иконки. Счётчики действия, бонусного действия, реакции и ячеек
+ * заклинаний живут рядом в `DungeonMap` и читают ту же серверную проекцию.
  */
 function PlayerHud({ player, hazards = [], combatActive = false, status, onCharacter, onInventory }: { player: Player; hazards?: Array<{ id: string; label?: string; severity?: string; description?: string }>; combatActive?: boolean; status?: HeroStatus; onCharacter: () => void; onInventory: () => void }) {
   const hazardLabel = hazards.map((hazard) => hazard.label || hazard.id).join(', ')
+  const hp = Math.max(0, Number(player.hp) || 0)
+  const maxHp = Math.max(1, Number(player.maxHp) || 1)
+  const hpRatio = Math.max(0, Math.min(1, hp / maxHp))
   return (
-    <aside className="player-hud" aria-label={`${player.character}: здоровье ${player.hp} из ${player.maxHp}, класс доспеха ${player.armor}, скорость ${player.speed} футов`}>
+    <aside className="player-hud" aria-label={`${player.character}: здоровье ${hp} из ${maxHp}, класс доспеха ${player.armor}, скорость ${player.speed} футов`}>
+      <div className="hud-identity">
+        <span className="hud-portrait" data-face={heroFaceMode(player)} style={heroFaceStyle(player)}>{!hasHeroPortrait(player) && <HeroFaceInitials hero={player} />}</span>
+        <span><strong>{player.character}</strong><small>{playerRoleLabel(player)}</small></span>
+      </div>
+      <div className="hud-health" title={`Здоровье: ${hp} из ${maxHp}${status && status.temporaryHp > 0 ? ` · временные хиты ${status.temporaryHp}` : ''}`}>
+        <div className="hud-health-label"><Heart size={14} /><b>{hp}/{maxHp}</b>{status && status.temporaryHp > 0 && <em className="hud-temp">+{status.temporaryHp}</em>}</div>
+        <span className="hud-health-bar" aria-hidden="true"><i style={{ width: `${Math.round(hpRatio * 100)}%` }} /></span>
+      </div>
       <div className="hud-vitals">
-        <span title={status && status.temporaryHp > 0 ? `Здоровье · временные хиты: ${status.temporaryHp}` : 'Здоровье'} aria-label={`Здоровье ${player.hp} из ${player.maxHp}${status && status.temporaryHp > 0 ? `, временные хиты ${status.temporaryHp}` : ''}`}><Heart size={14} /><b>{player.hp}/{player.maxHp}</b>{status && status.temporaryHp > 0 && <em className="hud-temp">+{status.temporaryHp}</em>}</span>
         <span title="Класс доспеха (КД)" aria-label={`Класс доспеха ${player.armor}`}><Shield size={14} /><b>{player.armor}</b></span>
         {!combatActive && <span title="Скорость" aria-label={`Скорость ${player.speed} футов`}><Footprints size={14} /><b>{player.speed}</b><small>фт</small></span>}
         {hazards.length > 0 && <em className="hud-hazard" title={`Активная опасность: ${hazardLabel}`}><Flame size={13} />{hazardLabel}</em>}
@@ -780,7 +785,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     requestedRoom: requestedRoomAtEntry.current,
   }))
   const [joinError, setJoinError] = useState<string | null>(null)
-  const [view, setView] = useState<View>(() => new URLSearchParams(window.location.search).get('agentLab') === '1' ? 'agent-lab' : 'room')
+  const [view, setView] = useState<View>('room')
   const [aiHealth, setAiHealth] = useState<AiHealth | null>(null)
   const [characterCreationCatalog, setCharacterCreationCatalog] = useState<CharacterCreationCatalog | null>(null)
   const [characterCreationError, setCharacterCreationError] = useState('')
@@ -789,6 +794,8 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const [campaignAiError, setCampaignAiError] = useState('')
   const [campaignRecap, setCampaignRecap] = useState<CampaignRecap | null>(null)
   const [editingPlayerId, setEditingPlayerId] = useState<string | null>(null)
+  const [editorInitialTab, setEditorInitialTab] = useState<'sheet' | 'story' | 'advancement'>('sheet')
+  const [editorRequestLevelUp, setEditorRequestLevelUp] = useState(false)
   const [creatingPlayerId, setCreatingPlayerId] = useState<string | null>(null)
   // Закрытый мастер не должен открываться заново на том же экране: иначе
   // «Закрыть» ничего не значит, а Escape выглядит сломанным.
@@ -1107,7 +1114,11 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     // затягивало его в бесконечную цепочку чужих мест без выхода.
     const pendingHero = partyPlayers.find((hero) => ownedHeroIds.includes(hero.id) && hero.characterSetupRequired)
     if (pendingHero && creatingPlayerId == null && editingPlayerId == null && !heroWizardDismissed) {
-      if (pendingHero.characterSetupStage === 'leveling') setEditingPlayerId(pendingHero.id)
+      if (pendingHero.characterSetupStage === 'leveling') {
+        setEditorInitialTab('advancement')
+        setEditorRequestLevelUp(false)
+        setEditingPlayerId(pendingHero.id)
+      }
       else setCreatingPlayerId(pendingHero.id)
     }
   }, [creatingPlayerId, editingPlayerId, heroWizardDismissed, ownedHeroIds, partyPlayers])
@@ -1468,12 +1479,17 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const canControlSummon = Boolean(mapSummon && mapSummon.faction === 'party' && (isAdmin || summonControllerIds.some((id) => accessibleHeroIds.includes(id))))
   const canAct = !tacticalBusy && !mapHero?.characterSetupRequired && lifecycleStatus === 'active' && !partyDefeated && !deadHeroIds.has(mapActorId) && (canControlHero || canControlSummon)
   const needsHeroSetup = Boolean(activePlayer.characterSetupRequired)
-  const openHeroEditor = (heroId: string) => {
+  const openHeroEditor = (heroId: string, intent: 'sheet' | 'development' | 'levelup' = 'sheet') => {
     if (!accessibleHeroIds.includes(heroId)) return
     const hero = state.players.find((player) => player.id === heroId)
     setHeroWizardDismissed(false)
     if (hero?.characterSetupRequired && hero.characterSetupStage !== 'leveling') setCreatingPlayerId(heroId)
-    else setEditingPlayerId(heroId)
+    else {
+      const stagedSetup = hero?.characterSetupStage === 'leveling'
+      setEditorInitialTab(stagedSetup || intent !== 'sheet' ? 'advancement' : 'sheet')
+      setEditorRequestLevelUp(!stagedSetup && intent === 'levelup')
+      setEditingPlayerId(heroId)
+    }
   }
   const canFinishTurn = canAct && combatActive
   const reactionWindow = state.mechanics?.combat?.reaction_window ?? null
@@ -1507,7 +1523,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             {progression && progression.milestones_since_level > 0 && (progression.level_up_available
               ? <button
                   className="progression-status earned"
-                  onClick={() => openHeroEditor(ownedHeroIds[0] ?? accessibleHeroIds[0] ?? activePlayer.id)}
+                  onClick={() => openHeroEditor(ownedHeroIds[0] ?? accessibleHeroIds[0] ?? activePlayer.id, 'levelup')}
                   title="Отряд заслужил уровень. Откройте лист героя, чтобы выбрать умения."
                 ><Sparkles size={13} /><span>Уровень готов</span></button>
               : <div
@@ -1619,13 +1635,10 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onCompleteRest={() => completeRest(activePlayer.id)}
             onTypingChange={updateTypingPresence}
             narrating={state.isNarrating}
+            playerHud={<PlayerHud player={mapHero ?? activePlayer} combatActive={combatActive} status={heroStatusByHero[(mapHero ?? activePlayer).id]} hazards={((state.mechanics as { hazards?: Record<string, Array<{ id: string; label?: string; severity?: string; description?: string }>> } | undefined)?.hazards?.[(mapHero ?? activePlayer).id] ?? [])} onCharacter={() => openHeroEditor((mapHero ?? activePlayer).id)} onInventory={() => navigate('inventory')} />}
             statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} illustration={sceneIllustration} illustrationKey={sceneLocationKey} locationArtUrl={locationArtUrl} scenicBackdrop={scenicBackdrop} merchants={combatActive ? [] : availableMerchants} wantedSigns={state.law?.signs ?? []} weather={state.weather_by_actor?.[activePlayer.id] ?? state.weather} canReset={canManageLifecycle || isAdmin} onOpenMerchant={() => openMerchant()} onReset={reset} />}
           >
             <ChatPanel messages={state.messages} isNarrating={state.isNarrating} interaction={state.agentInteraction} players={partyPlayers} typingActorIds={visibleTypingActorIds} currentPlayerId={activePlayer.id} canAct={canAct} combatActive={combatActive} suggestedActions={actionHints} sceneKey={`${state.scene.location}|${state.scene.title}`} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={() => continueAgentInteraction(activePlayer.id)} onWhy={() => { void submitAction('/why', activePlayer.id) }} onSpeak={voiceSupported && voiceMode !== 'off' ? (text) => speakNarration(text, narrationVoice) : null} />
-            <div className="player-hud-stack">
-              <PlayerHud player={activePlayer} combatActive={combatActive} status={heroStatusByHero[activePlayer.id]} hazards={((state.mechanics as { hazards?: Record<string, Array<{ id: string; label?: string; severity?: string; description?: string }>> } | undefined)?.hazards?.[activePlayer.id] ?? [])} onCharacter={() => openHeroEditor(activePlayer.id)} onInventory={() => navigate('inventory')} />
-
-            </div>
           </DungeonMap>
         </div>}
         {view === 'world-map' && <WorldMapView state={state} busy={travelBlocked} onTravel={(action) => {
@@ -1651,7 +1664,6 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         />}
         {view === 'settings' && <SettingsView health={aiHealth} campaignAi={campaignAi} campaignAiBusy={campaignAiBusy} campaignAiError={campaignAiError} uiScale={uiScale} autoAttackRoll={autoAttackRoll} scenicBackdrop={scenicBackdrop} boardLighting={boardLighting} combatAnimations={combatAnimations} atmosphereSettings={atmosphereSettings} notificationPermission={notificationPermission} voiceMode={voiceMode} voiceSupported={voiceSupported} onVoiceModeChange={setVoiceMode} actionHintsEnabled={actionHintsEnabled} onActionHintsEnabledChange={setActionHintsEnabled} onCampaignAiChange={(patch) => { void updateCampaignAi(patch) }} onCampaignRulesetChange={(rulesetId) => { void updateCampaignRuleset(rulesetId) }} onUiScaleChange={setUiScale} onAutoAttackRollChange={setAutoAttackRoll} onScenicBackdropChange={setScenicBackdrop} onBoardLightingChange={setBoardLighting} onCombatAnimationsChange={setCombatAnimations} onAmbientVolumeChange={changeAmbientVolume} onAtmosphereMutedChange={changeAtmosphereMuted} onRequestNotifications={() => { void requestTurnNotifications() }} />}
         {view === 'admin' && isAdmin && <AdminView account={account} state={state} onUpdateWorld={updateWorld} onAssembleEncounter={assembleEncounter} onAssembleMerchant={assembleMerchant} onMoveMerchant={moveMerchant} onSetMerchantAvailability={setMerchantAvailability} onReset={reset} />}
-        {view === 'agent-lab' && isAdmin && <AgentLabView state={state} />}
       </main>
       {/* Рассказчик и требование броска стоят поверх ЛЮБОГО раздела, а не
           только комнаты: игрок, ушедший в инвентарь или журнал, до этого не
@@ -1730,18 +1742,25 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         onImport={async (source) => {
           await importCharacter(creatingPlayerId, source)
           // При повышенном старте импорт фиксирует только первый уровень;
-          // дальше тот же игрок продолжает подготовку во вкладке «Развитие».
-          if ((state.character_start_level ?? 1) > 1) setEditingPlayerId(creatingPlayerId)
+          // дальше тот же игрок продолжает подготовку в мастере развития.
+          if ((state.character_start_level ?? 1) > 1) {
+            setEditorInitialTab('advancement')
+            setEditorRequestLevelUp(false)
+            setEditingPlayerId(creatingPlayerId)
+          }
         }}
-        onRollAbilities={() => gameSession.rollCharacterAbilities(creatingPlayerId)}
+        onRollAbilities={(rollIndex) => gameSession.rollCharacterAbilities(creatingPlayerId, rollIndex)}
         onRollWealth={(classId) => gameSession.rollCharacterWealth(creatingPlayerId, classId)}
       />}
       {editingPlayerId && <CharacterEditor
-        key={editingPlayerId}
+        key={`${editingPlayerId}:${editorInitialTab}:${editorRequestLevelUp ? 'levelup' : 'browse'}`}
         player={state.players.find((player) => player.id === editingPlayerId) ?? activePlayer}
         rulesetId={state.ruleset_id}
         targetLevel={state.character_start_level}
-        onClose={() => { setEditingPlayerId(null); setHeroWizardDismissed(true) }}
+        initialTab={editorInitialTab}
+        phbCatalog={characterCreationCatalog?.phb}
+        requestLevelUp={editorRequestLevelUp}
+        onClose={() => { setEditingPlayerId(null); setEditorInitialTab('sheet'); setEditorRequestLevelUp(false); setHeroWizardDismissed(true) }}
         onSave={(patch) => updatePlayer(editingPlayerId, patch)}
         onImport={(source) => importCharacter(editingPlayerId, source)}
         onLevelUp={() => {
@@ -1752,11 +1771,11 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
       {reactionWindow && canAnswerReaction && <ReactionPrompt actorName={String(reactionActorName)} sourceName={String(reactionSourceName)} window={reactionWindow} busy={tacticalBusy} beneficiaries={reactionBeneficiaries} onChoose={(actionId, beneficiaryId) => useCombatAction(reactionWindow.actor_id, actionId, reactionWindow.source_actor_id, undefined, beneficiaryId)} onDecline={() => useCombatAction(reactionWindow.actor_id, 'decline-reaction')} />}
       {!campaignsOpen && showDeathScreen && <DeathScreen heroes={fallenHeroes} partyDefeated={partyDefeated} busy={tacticalBusy} error={tacticalError} canResolve={(heroId) => isAdmin || accessibleHeroIds.includes(heroId)} onResolve={(heroId, resolution, replacementName) => { if (resolution === 'replace') setReplacementEditorId(heroId); resolveHeroDeath(heroId, resolution, replacementName) }} onContinueToEpilogue={() => setReviewedPartyDefeat(state.sessionCode)} />}
       {!campaignsOpen && showConclusion && <CampaignConclusionScreen status={lifecycleStatus as 'completed' | 'failed' | 'archived'} epilogue={lifecycle?.epilogue} busy={lifecycleBusy} canManage={canManageLifecycle} onArchive={() => { void changeLifecycle('archive') }} onChooseCampaign={() => setCampaignsOpen(true)} />}
-      {!campaignsOpen && !showDeathScreen && !showConclusion && levelUpCelebration && <LevelUpScreen
+      {!campaignsOpen && !showDeathScreen && !showConclusion && levelUpCelebration && !(editingPlayerId === levelUpCelebration.playerId) && <LevelUpScreen
         levelUp={levelUpCelebration}
         canOpenSheet={isAdmin || accessibleHeroIds.includes(levelUpCelebration.playerId)}
         onOpenSheet={() => {
-          setEditingPlayerId(levelUpCelebration.playerId)
+          openHeroEditor(levelUpCelebration.playerId, 'development')
           setLevelUpCelebration(null)
         }}
         onClose={() => setLevelUpCelebration(null)}

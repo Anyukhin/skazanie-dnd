@@ -871,7 +871,7 @@ export function boardVisualTheme(theme: SceneVisualTheme) {
   return 'map-theme-wild'
 }
 
-export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, canConverse, dialogueBusy, dialogueDraft, dialogueContext, onCancelDialogue, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, visualBatch, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, leaveLocationDisabled, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
+export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, canConverse, dialogueBusy, dialogueDraft, dialogueContext, onCancelDialogue, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, visualBatch, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, leaveLocationDisabled, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, playerHud, statusContent, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -924,6 +924,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   onCompleteRest: () => Promise<CommandOutcome>
   onTypingChange: (actorId: string, typing: boolean) => void
   narrating: boolean
+  playerHud?: ReactNode
   statusContent: React.ReactNode
   children?: React.ReactNode
 }) {
@@ -1649,7 +1650,6 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       else rows.push({ keys: [entry.key], current: entry.current, max: entry.max })
       return rows
     }, [])
-  const heroPools = heroPoolLayout(heroResourceRows, tileRows === 1 ? 2 : 4)
   /* Что в ходу ещё не потрачено — списком, из которого собирается честная
      подсказка «Завершить ход». Реакции здесь нет намеренно: она переживает
      конец своего хода и тратится на чужом. */
@@ -3430,7 +3430,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           принципы 2 и 3 требуют, чтобы предложения интерфейса не были границами;
           раньше в бою на месте этого поля стоял только хотбар, и у принципа не было
           носителя в UI. Ход не расходуется до подтверждённого сервером броска. */}
-      {/* Колоды стоят у карты, а выбранная команда подтверждается
+        {/* Колоды стоят у карты, а выбранная команда подтверждается
           той же формой реплики под хроникой. */}
         <div className="hotbar-decks">
         <nav className="hotbar-tabs" role="tablist" aria-label="Категории действий">
@@ -3471,66 +3471,31 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               между колодой и описанием рвала строку надвое. Прокрутка плиток их
               не уносит — они лежат рядом с областью прокрутки, а не в ней. */}
           <div className={`hotbar-actions-shell${tileRows === 1 ? ' one-row' : ''}`}>
-          {/* Ресурсный кластер активного героя: кто ходит и чем он ещё
-              располагает — слева от самих плиток, в той же оправе. Все числа
-              приезжают серверной `action_economy` и `mechanics.resources`;
-              панель их только показывает. Вне боя кластера нет: экономики хода
-              вне инициативы не существует, и рисовать пустые пипсы не за что.
-
-              Каждой строке — слово: фигуры экономики подписаны, у движения
-              есть «осталось/всего», у ячеек одно общее слово вместо загадочной
-              цифры. Владелец просил надписи, а не только перестановку: голые
-              ●▲◆ читались лишь по наведению, а чип «1 ●●» был ребусом.
-              При одном ряде плиток кластер ложится одной полосой (`band`). */}
-          {combatActive && <div className={`hotbar-hero-cluster${tileRows === 1 ? ' band' : ''}`} aria-label={`Ресурсы хода: ${activeName}`}>
-            <div className="hero-cluster-face">
-              <span className="hero-cluster-avatar" data-face={heroFaceMode(activeHero)} style={heroFaceStyle(activeHero)}>
-                {!hasHeroPortrait(activeHero) && <HeroFaceInitials hero={activeHero} />}
-              </span>
-              <b title={activeName}>{activeName}</b>
-            </div>
-            <div className="hero-cluster-pips" role="group" aria-label="Экономика хода">
-              {heroPips.map((pip) => <button
-                type="button"
-                key={pip.id}
-                className={`hero-pip ${pip.id} ${pip.ready ? 'ready' : 'spent'} ${costFilter === pip.id ? 'filtering' : ''}`}
-                aria-pressed={costFilter === pip.id}
+          <div className="hotbar-hero-cluster player-resource-panel" aria-label={`Ресурсы героя: ${activeName}`}>
+            {playerHud && <div className="turn-rail-player-hud">{playerHud}</div>}
+            <div className="hero-cluster-pips" role="group" aria-label={combatActive ? 'Экономика хода' : 'Экономика хода вне боя не расходуется'}>
+              {heroPips.map((pip) => <button type="button" key={pip.id}
+                className={`hero-pip ${pip.id} ${combatActive && pip.ready ? 'ready' : 'spent'} ${costFilter === pip.id ? 'filtering' : ''}`}
+                aria-pressed={costFilter === pip.id} disabled={!combatActive}
                 onClick={() => setCostFilter((current) => current === pip.id ? null : pip.id)}
-                title={`${pip.label}: ${pip.ready ? 'доступно' : 'потрачено'}${pip.note ? ` · ${pip.note}` : ''}. Нажмите, чтобы оставить в колоде только плитки этой стоимости`}
-                aria-label={`${pip.label}: ${pip.ready ? 'доступно' : 'потрачено'}${pip.note ? `, ${pip.note}` : ''}`}
-              ><i className="hero-pip-shape" aria-hidden="true" /><span className="hero-pip-label" aria-hidden="true">{pip.label}</span>{pip.note && <em>· {pip.note}</em>}</button>)}
+                title={!combatActive ? 'Вне боя действия не расходуются' : `${pip.label}: ${pip.note || (pip.ready ? 'доступно' : 'потрачено')}`}
+              ><i className="hero-pip-shape" aria-hidden="true" /><span>{pip.label}</span><b>{!combatActive ? '—' : pip.id === 'action' ? Number(actionReady) + Math.max(0, Number(economy?.extra_actions) || 0) : Number(pip.ready)}</b></button>)}
             </div>
-            {/* Движение: слово, короткая полоса и «осталось/всего». Полоса
-                короткая намеренно — во всю ширину она обещала бы точность,
-                которой в ней нет; настоящий ответ — числа рядом. */}
-            <div
-              className={`hero-cluster-move ${movementAvailable && remainingFeet > 0 ? 'ready' : 'spent'}`}
-              title={movementAvailable ? `Движение: осталось ${remainingFeet} из ${speedFeet} фт` : 'Движение: потрачено'}
-              aria-label={movementAvailable ? `Движение: осталось ${remainingFeet} из ${speedFeet} футов` : 'Движение: потрачено'}
-            ><span className="hero-cluster-move-label" aria-hidden="true">Движение</span><span className="hero-cluster-move-bar" aria-hidden="true"><i style={{ width: `${Math.round(movementRatio * 100)}%` }} /></span><b>{movementAvailable ? `${remainingFeet}/${speedFeet} фт` : `0/${speedFeet} фт`}</b></div>
-            {/* Запасы одним потоком: слово «Ячейки» один раз, круги цифрами,
-                классовые запасы полными именами. Рисуются только с содержимым:
-                у воина ячеек нет, и пустой строки он не увидит. Мелкий запас
-                показан пипсами, крупный (наложение рук — пять хитов за уровень)
-                — числом: тридцать точек в ряду никто не пересчитает. Хвост
-                сверх бюджета позиций — чип «+N ещё» с перечнем в подсказке. */}
-            {heroPools.visible.length > 0 && <div className="hero-cluster-resources" role="group" aria-label="Ячейки и классовые запасы">
-              {heroPools.slotCount > 0 && <span className="hero-pools-label">Ячейки</span>}
-              {heroPools.visible.map((row) => <span
-                key={row.keys.join('+')}
-                className={`hero-resource ${row.current > 0 ? 'ready' : 'spent'}${isSpellSlotPool(row.keys[0]) ? ' slot' : ''}`}
-                title={heroResourceTitle(row.keys, row.current, row.max)}
-                aria-label={heroResourceTitle(row.keys, row.current, row.max)}
+            <div className="hero-cluster-move ready">
+              <span>Движение</span><span className="hero-cluster-move-bar" aria-hidden="true"><i style={{width:`${combatActive ? Math.round(movementRatio * 100) : 100}%`}} /></span>
+              <b>{combatActive ? `${movementAvailable ? remainingFeet : 0}/${speedFeet} фт` : `${active?.speed ?? 0} фт · свободно`}</b>
+            </div>
+            {combatActive && weaponAttacksUsed > 0 && weaponAttacksLeft > 0 && <small>Атак в действии осталось: {weaponAttacksLeft}</small>}
+            {heroResourceRows.length > 0 && <div className="hero-cluster-resources" role="group" aria-label="Ячейки и классовые запасы">
+              {heroResourceRows.some((row) => isSpellSlotPool(row.keys[0])) && <span className="hero-pools-label">Ячейки</span>}
+              {heroResourceRows.map((row) => <span key={row.keys.join('+')}
+                className={`hero-resource ${row.current > 0 ? 'ready' : 'spent'}${isSpellSlotPool(row.keys[0]) ? ' slot' : ' class-pool'}`}
+                title={heroResourceTitle(row.keys, row.current, row.max)} aria-label={heroResourceTitle(row.keys, row.current, row.max)}
               ><em>{heroResourceShortLabel(row.keys[0])}</em>{row.max <= 6
-                ? <i aria-hidden="true">{Array.from({ length: row.max }, (_, index) => <u key={index} className={index < row.current ? '' : 'spent'} />)}</i>
+                ? <i aria-hidden="true">{Array.from({length:row.max}, (_,index) => <u key={index} className={index < row.current ? '' : 'spent'} />)}</i>
                 : <b>{row.current}/{row.max}</b>}</span>)}
-              {heroPools.hidden.length > 0 && <span
-                className="hero-resource-more"
-                title={heroPools.hidden.map((row) => heroResourceTitle(row.keys, row.current, row.max)).join('; ')}
-                aria-label={`Ещё запасов: ${heroPools.hidden.length}. ${heroPools.hidden.map((row) => heroResourceTitle(row.keys, row.current, row.max)).join('; ')}`}
-              >+{heroPools.hidden.length} ещё</span>}
             </div>}
-          </div>}
+          </div>
           {/* Пока выборка держится, её видно словами, а не только рамкой
               пипса: снять её можно и мышью, и Escape. Чип стоит у нижней
               кромки карточки, а не строкой кластера: это контекст колоды. */}
@@ -3659,10 +3624,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             ><CombatIcon id="end-turn" kind="end-turn" hint="завершить ход" size={27} compact /><span>Завершить ход<kbd>Пробел</kbd></span></button>}
           </div>}
           </div>
-          <aside className={`hotbar-detail${!combatActive && !(combatMode === 'magic' && selectedSpell) ? ' exploration-hint' : ''}`} aria-live="polite">
-            {!combatActive && !(combatMode === 'magic' && selectedSpell) ? <>
-              <DetailHeader title="Исследование" description="Выберите цель на карте или опишите действие в хронике. Для атаки сначала начните бой." />
-            </> : combatMode === 'magic' && selectedSpell ? <>
+          {(combatActive || (combatMode === 'magic' && selectedSpell)) && <aside className="hotbar-detail" aria-live="polite">
+            {combatMode === 'magic' && selectedSpell ? <>
               <DetailHeader title={selectedSpell.name} description={selectedSpell.description} meta={<>
                 {selectedSpellRange > 0 ? <i className="detail-chip" title={`Дальность: ${selectedSpellRange} фт`}>{selectedSpellRange} фт</i> : <i className="detail-chip" title="Заклинание на себя">на себя</i>}
                 {selectedSpell.concentration ? <i className="detail-chip mark" title="Требует концентрации">К</i> : null}
@@ -3693,7 +3656,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               <span>{sneakAttackSpent ? 'Коварная атака использована' : 'Коварная атака'}</span>
             </label>}
             </>}
-          </aside>
+          </aside>}
         </div>
         {tacticalBusy && <p className="tactical-command-status"><RefreshCw className={state.pendingAction?.status === 'ready' || state.pendingCheck?.status === 'ready' ? '' : 'spinning'} size={12} />{state.pendingAction?.status === 'ready' || state.pendingCheck?.status === 'ready' ? 'Сначала подтвердите предложение ведущего или откажитесь от него.' : 'Действие идёт, мир отзывается на него…'}</p>}
         {/* Отказ команды больше не рисуется здесь своей строкой: он уходит в

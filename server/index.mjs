@@ -802,6 +802,10 @@ function characterBuildFingerprint(command) {
         ability_score_increases: Array.isArray(command.ability_score_increases)
           ? command.ability_score_increases.map(String)
           : [],
+        ability_score_feat: command.ability_score_feat == null ? null : {
+          id: String(command.ability_score_feat.id ?? ''),
+          choices: command.ability_score_feat.choices ?? {},
+        },
       }
     : {
         command_type: 'SetSpellSelections',
@@ -1275,7 +1279,7 @@ function sanitizePlayerCharacterCommand(user, state, input) {
   if (type === 'ImportCharacter') {
     return { ...base, document: input?.document }
   }
-  if (type === 'RollCharacterAbilities') return base
+  if (type === 'RollCharacterAbilities') return { ...base, roll_index: input?.roll_index }
   if (type === 'RollCharacterWealth') return { ...base, character_class: String(input?.character_class ?? '') }
   const command = type === 'SetCharacterChoices'
     ? {
@@ -1294,6 +1298,12 @@ function sanitizePlayerCharacterCommand(user, state, input) {
           ability_score_increases: Array.isArray(input.ability_score_increases ?? input.abilityScoreIncreases)
             ? (input.ability_score_increases ?? input.abilityScoreIncreases).map(String)
             : [],
+        }),
+        ...(input?.ability_score_feat == null && input?.abilityScoreFeat == null ? {} : {
+          ability_score_feat: {
+            id: String((input.ability_score_feat ?? input.abilityScoreFeat)?.id ?? ''),
+            choices: (input.ability_score_feat ?? input.abilityScoreFeat)?.choices,
+          },
         }),
       }
     : {
@@ -5004,46 +5014,6 @@ const server = createServer((req, res) => {
       if (!body.prompt || String(body.prompt).length < 20) return json(res, 400, { error: 'Нужен подробный промпт' })
       return json(res, 200, await generateItemImage(body.prompt, body.aspectRatio === '16:9' ? '16:9' : '1:1'))
     } catch (error) { return json(res, 502, { error: error instanceof Error ? error.message : 'Ошибка генерации' }) }
-  }
-  if (req.url === '/api/agent-lab/scene-transition' && req.method === 'POST') {
-    const user = requireUser(req, res); if (!user) return
-    try {
-      const body = await readBody(req)
-      const campaignId = String(body.campaignId || body.campaign_id || '')
-      const room = getRoom(campaignId)
-      if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
-      if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
-      const decision = String(body.decision || '').replace(/\s+/g, ' ').trim().slice(0, 500)
-      if (!decision) return json(res, 400, { error: 'Нужно решение группы' })
-      const labState = normalizeCampaignState({
-        ...room.state,
-        scene: { ...room.state.scene, ...(body.scene ?? {}) },
-        adventure: { ...room.state.adventure, ...(body.adventure ?? {}) },
-        agentInteraction: { id: 'agent-lab', status: 'resolved', resolvedOptionId: 'option-1', options: [{ id: 'option-1', label: decision }] },
-      })
-      const action = `[РЕШЕНИЕ ГРУППЫ] ${decision}`
-      const resolved = resolvePartyDecision(action, labState)
-      if (resolved?.type !== 'scene_request') {
-        return json(res, 200, { dry_run: true, transition: null, stages: [{ agent: 'AgentDirector', status: 'completed', output: resolved }], narration: resolved?.narration ?? 'Переход сцены не требуется.' })
-      }
-      const planned = await sceneArchitect.plan({ action, state: labState, decision: resolved.decision, destinationHint: resolved.destinationHint })
-      // Лаборатория — админская примерка в режиме dry_run: настоящей локации в
-      // кампании она не создаёт. Токены тратит, поэтому попадает в отчёт админа
-      // отдельным счётчиком, но игровой счётчик и предупреждение стола не
-      // трогает — иначе игроки увидят «создано N локаций», которых нет.
-      if (planned.trace?.mode === 'model') architectUsage.recordGeneration(campaignId, { kind: 'lab' })
-      const transition = createSceneTransition(planned.sceneArgs, labState)
-      return json(res, 200, {
-        dry_run: true,
-        transition,
-        stages: [
-          { agent: 'AgentDirector', status: 'completed', output: { intent: 'advance_scene', decision: resolved.decision, destinationHint: resolved.destinationHint } },
-          { agent: SCENE_ARCHITECT_AGENT_ID, status: 'completed', output: { ...planned.trace, scene: planned.sceneArgs } },
-          { agent: 'WorldEngine', status: 'completed', output: { cells: transition.scene.cells.length, width: Math.max(...transition.scene.cells.map((cell) => cell.x)) + 1, height: Math.max(...transition.scene.cells.map((cell) => cell.y)) + 1, entrance: transition.entrance } },
-          { agent: 'AgentNarrator', status: 'completed', output: { narration: `${transition.transition} ${transition.arrival}` } },
-        ],
-      })
-    } catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : 'Не удалось выполнить тестовый прогон' }) }
   }
   if (req.url === '/api/narrate' && req.method === 'POST') {
     const user = requireUser(req, res); if (!user) return

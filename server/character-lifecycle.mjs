@@ -559,8 +559,12 @@ export function deriveArmorClass(actor, { abilities = normalizedAbilityScores(ac
     .sort((left, right) => right.base - left.base || left.catalogId.localeCompare(right.catalogId))[0] ?? null
   const shields = equipped.filter((entry) => entry.profile.kind === 'shield')
     .sort((left, right) => left.catalogId.localeCompare(right.catalogId)).slice(0, 1)
+  const levelFeatIds = Object.values(actor?.levelFeats ?? {})
+    .filter((entry) => entry && typeof entry === 'object')
+    .map((entry) => String(entry.id ?? ''))
+  const hasMediumArmorMaster = actor?.creationBenefits?.feat?.id === 'medium-armor-master' || levelFeatIds.includes('medium-armor-master')
   const armorDexterity = !bodyArmor || bodyArmor.dexterityCap === 0 ? 0 : Math.min(dexterityModifier,
-    actor?.creationBenefits?.feat?.id === 'medium-armor-master' && bodyArmor.dexterityCap === 2 ? 3 : bodyArmor.dexterityCap ?? dexterityModifier)
+    hasMediumArmorMaster && bodyArmor.dexterityCap === 2 ? 3 : bodyArmor.dexterityCap ?? dexterityModifier)
   const shieldBonus = shields.reduce((sum, entry) => sum + integer(entry.profile.armorClassBonus, `armor profile ${entry.catalogId}.armorClassBonus`, { minimum: 0, maximum: 10 }), 0)
   const itemEffectBonus = activeItemEffectTotals(actor).armor_class_bonus
   const defenseBonus = bodyArmor && normalizedSelectedFeatureIds(actor).includes('fighting-style-defense') ? 1 : 0
@@ -772,8 +776,17 @@ export function characterCreationChoicesComplete(actor) {
   const abilityChoices = actor?.abilityScoreIncreases && typeof actor.abilityScoreIncreases === 'object' && !Array.isArray(actor.abilityScoreIncreases)
     ? actor.abilityScoreIncreases
     : {}
-  if (abilityScoreChoiceLevelsFor(actor).some((level) => level <= normalizedLevel(actor.level)
-    && (!Array.isArray(abilityChoices[String(level)]) || ![1, 2].includes(abilityChoices[String(level)].length)))) return false
+  const levelFeats = actor?.levelFeats && typeof actor.levelFeats === 'object' && !Array.isArray(actor.levelFeats)
+    ? actor.levelFeats
+    : {}
+  const missingAbilityChoice = abilityScoreChoiceLevelsFor(actor).some((level) => {
+    if (level > normalizedLevel(actor.level)) return false
+    const asi = abilityChoices[String(level)]
+    const feat = levelFeats[String(level)]
+    return !((Array.isArray(asi) && [1, 2].includes(asi.length))
+      || (feat && typeof feat === 'object' && String(feat.id ?? '').trim()))
+  })
+  if (missingAbilityChoice) return false
 
   const classRule = classSkillRuleFor(actor)
   if (classRule && normalizedClassSkillProficiencies(actor).length !== classRule.choiceCount) return false
@@ -982,8 +995,12 @@ export function validateCharacterAbilityRollCommand(command, state, context = {}
     if (actor.characterCreationRolls?.wealth) throw new CharacterLifecycleValidationError('Стартовое богатство уже определено', 'CHARACTER_WEALTH_ALREADY_ROLLED')
     return { command_type: 'RollCharacterWealth', actor_id: actorId, target_id: actorId, target_ids: [actorId], character_class: command.character_class, visibility: 'party' }
   }
-  if (actor.characterCreationRolls?.abilities) throw new CharacterLifecycleValidationError('Броски уже сохранены: распределите имеющиеся значения', 'CHARACTER_ABILITIES_ALREADY_ROLLED')
-  return { command_type: 'RollCharacterAbilities', actor_id: actorId, target_id: actorId, target_ids: [actorId], source_rule_ids: [`${DND_2014_RULESET_ID}:resources:spending`], visibility: 'party' }
+  const rollIndex = actor.characterCreationRolls?.abilities?.scores?.length ?? 0
+  if (rollIndex >= 6) throw new CharacterLifecycleValidationError('Броски уже сохранены: распределите имеющиеся значения', 'CHARACTER_ABILITIES_ALREADY_ROLLED')
+  if (!Number.isInteger(command.roll_index) || command.roll_index !== rollIndex) {
+    throw new CharacterLifecycleValidationError('Этот бросок уже выполнен или запрошен не по порядку. Продолжите с очередного броска.', 'CHARACTER_ABILITY_ROLL_INDEX_CONFLICT')
+  }
+  return { command_type: 'RollCharacterAbilities', actor_id: actorId, roll_index: rollIndex, target_id: actorId, target_ids: [actorId], source_rule_ids: [`${DND_2014_RULESET_ID}:resources:spending`], visibility: 'party' }
 }
 
 export function characterImportEvent(command) {

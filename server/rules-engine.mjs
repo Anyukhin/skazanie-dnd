@@ -15448,11 +15448,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       break
     }
     case 'RollCharacterAbilities': {
-      const abilityRolls = Array.from({ length: 6 }, (_, index) => diceService.roll('4d6', `character-ability-${index + 1}`, command.actor_id, 'party'))
-      rolls.push(...abilityRolls)
+      const previous = findActor(state, command.actor_id).characterCreationRolls?.abilities
+      const roll = diceService.roll('4d6', `character-ability-${command.roll_index + 1}`, command.actor_id, 'party')
+      const abilityRolls = [...(previous?.rolls ?? []), roll]
+      rolls.push(roll)
       events.push(eventFrom(command, 'CharacterAbilitiesRolled', {
-        schema_version: 1,
-        id: abilityRolls[0].roll_id,
+        schema_version: 2,
+        id: previous?.id ?? roll.roll_id,
         rolls: abilityRolls,
         scores: abilityRolls.map((roll) => [...roll.dice].sort((a, b) => b - a).slice(0, 3).reduce((sum, value) => sum + value, 0)),
       }, [command.actor_id]))
@@ -15971,6 +15973,12 @@ function refreshPlayerDerivedState(state, actorIds) {
         proficiency: characterSheet.proficiency_bonus,
       } : {}),
       characterSheet,
+      // Выборы героя могут изменить доступные заклинания и классовые
+      // действия (например, черта «Посвящённый в магию»). Эти поля лежат в
+      // состоянии, которое сразу уходит клиенту, поэтому их нужно пересчитать
+      // вместе с листом, а не ждать следующей нормализации после перезапуска.
+      combatSpells: combatSpellsFor(actor),
+      combatActions: combatActionsFor(actor),
       inventoryLoad: inventoryLoadFor(actor),
     }
   })
@@ -18149,16 +18157,37 @@ export function applyGameEvent(rawState, event) {
         selectedFeatureIds: uniqueStrings(payload.selected_feature_ids),
         ...(payload.ability_score_increases && typeof payload.ability_score_increases === 'object' && !Array.isArray(payload.ability_score_increases)
           ? { abilityScoreIncreases: clone(payload.ability_score_increases) } : {}),
+        ...(Number(payload.schema_version) >= 2 && payload.level_feats && typeof payload.level_feats === 'object' && !Array.isArray(payload.level_feats)
+          ? { levelFeats: clone(payload.level_feats) } : {}),
         ...(payload.abilities_after && typeof payload.abilities_after === 'object' && !Array.isArray(payload.abilities_after)
           ? { abilities: clone(payload.abilities_after) } : {}),
+        ...(Number(payload.schema_version) >= 2 && payload.creation_benefits && typeof payload.creation_benefits === 'object' && !Array.isArray(payload.creation_benefits)
+          ? { creationBenefits: clone(payload.creation_benefits) } : {}),
+        ...(Number(payload.schema_version) >= 2 && Array.isArray(payload.creation_skill_proficiencies)
+          ? { creationSkillProficiencies: uniqueStrings(payload.creation_skill_proficiencies) } : {}),
+        ...(Number(payload.schema_version) >= 2 && Array.isArray(payload.creation_spell_grants)
+          ? { creationSpellGrants: clone(payload.creation_spell_grants) } : {}),
       }))
       {
         const actor = state.players.find((candidate) => actorId(candidate) === String(target))
-        if (actor?.characterSetupStage === 'leveling'
-          && actor.level >= characterCreationTargetLevel(state)
-          && characterCreationChoicesComplete(actor)) {
-          actor.characterSetupRequired = false
-          delete actor.characterSetupStage
+        if (actor && Number(payload.schema_version) >= 2 && payload.creation_benefits && typeof payload.creation_benefits === 'object') {
+          try {
+            const sheet = deriveCharacterSheet(actor)
+            state.players = state.players.map((candidate) => actorId(candidate) === String(target)
+              ? {
+                  ...candidate,
+                  maxHp: sheet.hit_points.value,
+                  hp: Math.min(Math.max(0, safeInteger(candidate.hp, 0)), sheet.hit_points.value),
+                }
+              : candidate)
+          } catch {}
+        }
+        const currentActor = state.players.find((candidate) => actorId(candidate) === String(target))
+        if (currentActor?.characterSetupStage === 'leveling'
+          && currentActor.level >= characterCreationTargetLevel(state)
+          && characterCreationChoicesComplete(currentActor)) {
+          currentActor.characterSetupRequired = false
+          delete currentActor.characterSetupStage
         }
       }
       refreshPlayerDerivedState(state, [target])

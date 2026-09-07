@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Castle, Check, Clock3, Compass, Map as MapIcon, MapPin, Minus, Mountain, Navigation, Plus, Route, ScrollText, Trees } from 'lucide-react'
 import type { GameState, WorldMapLocation, WorldMapRoute } from './types'
 import { KIND_LABELS, ROUTE_LABELS, currentWorldLocation, routeDanger, shortestRoute, travelProposalText } from './world-travel'
@@ -94,6 +94,10 @@ export function WorldMapView({ state, busy, onTravel }: { state: GameState; busy
   const map = state.worldMap
   const [selectedId, setSelectedId] = useState(() => map?.currentLocationId ?? '')
   const [zoom, setZoom] = useState(1)
+  const [pan, setPan] = useState<{ x: number; y: number } | null>(null)
+  const [panning, setPanning] = useState(false)
+  const drag = useRef<{ pointerId: number; x: number; y: number; viewX: number; viewY: number; inverse: DOMMatrix } | null>(null)
+  const suppressClick = useRef(false)
   const [cityLocationId, setCityLocationId] = useState('')
   if (!map) return <section className="world-map-empty"><Compass size={40}/><h1>Карта мира составляется</h1><p>Хранитель мира ещё связывает места этой кампании с географией.</p></section>
 
@@ -123,8 +127,8 @@ export function WorldMapView({ state, busy, onTravel }: { state: GameState; busy
   const selectedRegion = map.regions.find((region) => region.id === selected?.regionId)
   const viewWidth = map.width / zoom
   const viewHeight = map.height / zoom
-  const focusX = selected?.x ?? map.width / 2
-  const focusY = selected?.y ?? map.height / 2
+  const focusX = pan?.x ?? selected?.x ?? map.width / 2
+  const focusY = pan?.y ?? selected?.y ?? map.height / 2
   const viewX = Math.max(0, Math.min(map.width - viewWidth, focusX - viewWidth / 2))
   const viewY = Math.max(0, Math.min(map.height - viewHeight, focusY - viewHeight / 2))
   const combatActive = state.mechanics?.combat?.active === true
@@ -150,7 +154,43 @@ export function WorldMapView({ state, busy, onTravel }: { state: GameState; busy
 
     <div className="world-map-layout">
       <div className="world-map-frame" style={{ aspectRatio: `${map.width} / ${map.height}`, minHeight: 0, alignSelf: 'start' }}>
-        <svg className="world-map-canvas" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} viewBox={`${viewX} ${viewY} ${viewWidth} ${viewHeight}`} role="img" aria-label={`Глобальная карта кампании ${state.campaign}`}>
+        <svg className={`world-map-canvas${zoom > 1 ? ' pannable' : ''}${panning ? ' panning' : ''}`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} viewBox={`${viewX} ${viewY} ${viewWidth} ${viewHeight}`} role="img" aria-label={`Глобальная карта кампании ${state.campaign}`}
+          aria-description="Увеличенную карту можно перетаскивать левой кнопкой мыши. Клик по месту выбирает его."
+          onPointerDown={(event) => {
+            if (!event.isPrimary || event.button !== 0) return
+            suppressClick.current = false
+            const matrix = event.currentTarget.getScreenCTM()
+            if (zoom <= 1 || !matrix) return
+            drag.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, viewX, viewY, inverse: matrix.inverse() }
+          }}
+          onPointerMove={(event) => {
+            const start = drag.current
+            if (!start || event.pointerId !== start.pointerId) return
+            if (!(event.buttons & 1)) { drag.current = null; setPanning(false); return }
+            // Небольшое движение руки остаётся кликом по метке.
+            if (!suppressClick.current && Math.hypot(event.clientX - start.x, event.clientY - start.y) < 4) return
+            event.preventDefault()
+            event.currentTarget.setPointerCapture(event.pointerId)
+            suppressClick.current = true
+            setPanning(true)
+            const from = new DOMPoint(start.x, start.y).matrixTransform(start.inverse)
+            const to = new DOMPoint(event.clientX, event.clientY).matrixTransform(start.inverse)
+            const x = Math.max(0, Math.min(map.width - viewWidth, start.viewX + from.x - to.x))
+            const y = Math.max(0, Math.min(map.height - viewHeight, start.viewY + from.y - to.y))
+            setPan({ x: x + viewWidth / 2, y: y + viewHeight / 2 })
+          }}
+          onPointerUp={(event) => {
+            if (drag.current?.pointerId !== event.pointerId) return
+            drag.current = null
+            setPanning(false)
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+          }}
+          onPointerCancel={() => { drag.current = null; setPanning(false) }}
+          onLostPointerCapture={() => { drag.current = null; setPanning(false) }}
+          onClickCapture={(event) => {
+            if (suppressClick.current && event.detail !== 0) { event.preventDefault(); event.stopPropagation() }
+          }}
+        >
           <defs>
             <filter id="paper-grain"><feTurbulence baseFrequency=".72" numOctaves="3" seed={seedNumber(map.seed) % 97}/><feColorMatrix values="0 0 0 0 .25 0 0 0 0 .2 0 0 0 0 .12 0 0 0 .15 0"/><feBlend in="SourceGraphic" mode="multiply"/></filter>
             <pattern id="map-dots" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="2" cy="3" r=".7"/><circle cx="14" cy="12" r=".5"/></pattern>
@@ -178,7 +218,7 @@ export function WorldMapView({ state, busy, onTravel }: { state: GameState; busy
             {map.routes.filter((item) => item.discovered && byId.has(item.from) && byId.has(item.to)).map((item) => <path key={item.id} className={`world-route route-${item.kind} danger-${item.danger} ${routeIds.has(item.id) ? 'selected' : ''}`} d={routePath(item, byId)}/>)}
           </g>
           <g className="world-locations">
-            {knownLocations.map((location) => <LocationMarker key={location.id} location={location} selected={selected?.id === location.id} current={current?.id === location.id} onSelect={() => setSelectedId(location.id)}/>)}
+            {knownLocations.map((location) => <LocationMarker key={location.id} location={location} selected={selected?.id === location.id} current={current?.id === location.id} onSelect={() => { setSelectedId(location.id); setPan(null) }}/>) }
           </g>
           {!backgroundImage && <g className="compass-rose" transform={`translate(${viewX + viewWidth - 55 / zoom} ${viewY + 58 / zoom}) scale(${1 / zoom})`} aria-hidden="true"><circle r="28"/><path d="M0-25 5-5 0 0-5-5ZM25 0 5 5 0 0 5-5ZM0 25-5 5 0 0 5 5ZM-25 0-5-5 0 0-5 5Z"/><text y="-34">С</text></g>}
         </svg>

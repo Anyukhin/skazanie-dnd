@@ -30,6 +30,39 @@ test('каталог содержит ровно 42 черты PHB 2014 и не 
   assert.equal(characterCreationFeatFor('RESILIENT').id, 'resilient')
 })
 
+test('каждая черта содержит полное русское описание правил', () => {
+  const phb2014AsiFeats = new Set([
+    'actor', 'athlete', 'observant', 'tavern-brawler', 'lightly-armored', 'moderately-armored',
+    'heavily-armored', 'durable', 'weapon-master', 'heavy-armor-master', 'keen-mind', 'resilient', 'linguist',
+  ])
+  for (const feat of PHB_2014_FEATS) {
+    assert.ok(Array.isArray(feat.description), `${feat.id}: description должен быть массивом`)
+    assert.ok(feat.description.length > 0, `${feat.id}: description не должен быть пустым`)
+    assert.ok(feat.description.every((paragraph) => typeof paragraph === 'string' && paragraph.trim()), `${feat.id}: описание содержит пустой абзац`)
+    assert.ok(!feat.description.some((paragraph) => paragraph.includes('Механика применяется частично')), `${feat.id}: generic mechanics placeholder остался в описании`)
+  }
+  assert.deepEqual(
+    new Set(PHB_2014_FEATS.filter((feat) => feat.description.some((paragraph) => /^Увеличьте .* на 1/u.test(paragraph))).map((feat) => feat.id)),
+    phb2014AsiFeats,
+  )
+  assert.match(characterCreationFeatFor('lucky').description.join(' '), /3 очка удачи/)
+  assert.match(characterCreationFeatFor('polearm-master').description.join(' '), /пик/)
+  assert.match(characterCreationFeatFor('ritual-caster').description.join(' '), /2 часа за каждый уровень.*50 зм за каждый уровень/u)
+  assert.match(characterCreationFeatFor('athlete').description.join(' '), /5 футов вместо обычных 10/)
+  assert.doesNotMatch(characterCreationFeatFor('grappler').description.join(' '), /Увеличьте Силу/)
+  assert.doesNotMatch(characterCreationFeatFor('inspiring-leader').description.join(' '), /Увеличьте Харизму/)
+  assert.doesNotMatch(characterCreationFeatFor('defensive-duelist').description.join(' '), /Увеличьте Ловкость/)
+  assert.match(characterCreationFeatFor('mounted-combatant').description.join(' '), /верхом и не недееспособны/)
+  assert.doesNotMatch(characterCreationFeatFor('mounted-combatant').description.join(' '), /реакц/)
+  assert.match(characterCreationFeatFor('spell-sniper').description.join(' '), /Интеллект для волшебника/)
+  assert.match(characterCreationFeatFor('ritual-caster').description.join(' '), /списке выбранного класса/)
+  assert.match(characterCreationFeatFor('shield-master').description.join(' '), /при успешном спасброске/)
+  assert.doesNotMatch(characterCreationFeatFor('shield-master').description.join(' '), /половину урона при провале/)
+  assert.match(characterCreationFeatFor('sharpshooter').description.join(' '), /дальнобойные атаки оружием/)
+  assert.match(characterCreationFeatFor('magic-initiate').description.join(' '), /выбранный для черты класс является одним из ваших классов/)
+  assert.match(characterCreationFeatFor('sentinel').description.join(' '), /не имеющей этой черты/)
+})
+
 test('list сохраняет все варианты и помечает требования для конкретного героя', () => {
   const list = listCharacterCreationFeats({ abilities: { str: 8, dex: 12, con: 10, int: 10, wis: 10, cha: 10 }, canCastSpells: false })
   assert.equal(list.length, 42)
