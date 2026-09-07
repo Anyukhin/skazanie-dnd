@@ -201,7 +201,11 @@ test('планировщик открывает Паутиной, исключа
   assert.equal(opening[0].action_id, 'web', 'заряженный приём — сильнейший ход и идёт первым')
 
   const spent = afterWebAndSpiderTurn()
-  const withoutWeb = planNpcTurn(spent, 'spider')
+  // План следующего хода строится после передачи инициативы пауку. Пока
+  // ходит герой, действие паука всё ещё потрачено предыдущей Паутиной.
+  const unrecharged = endTurn(spent, 'hero', [1], 'end-hero-without-recharge').events.reduce(applyGameEvent, spent)
+  assert.equal(spentWeb(unrecharged), true)
+  const withoutWeb = planNpcTurn(unrecharged, 'spider')
   assert.equal(withoutWeb.some((command) => command.action_id === 'web'), false)
   assert.ok(withoutWeb.some((command) => command.command_type === 'MakeAttack' || command.command_type === 'MoveActor'))
 

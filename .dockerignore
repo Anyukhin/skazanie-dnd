@@ -24,6 +24,7 @@ public/assets/test
 .claude
 .github
 docs
-eval
+eval/*
+!eval/combat-lab.mjs
 tools
 test
