@@ -3448,6 +3448,31 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             : 'Предложить отряду покинуть локацию. Переход начнётся после решения группы'}
         ><DoorOpen size={18} /><span>Решение группы</span></button>}
         {showStartCombat && <button type="button" className="start-combat-button" disabled={!canAct || tacticalBusy} onClick={onStartCombat} title="Бросить инициативу и начать бой"><Swords size={18} /><span>Начать бой</span></button>}
+        {combatActive && <div className="hotbar-combat-controls">
+            {combatActive && !truce && <button
+              className="parley-hotbar"
+              disabled={!canAct || tacticalBusy || narrating || Boolean(state.pendingCheck)}
+              onClick={() => { void onProposeParley('persuasion') }}
+              title={parleyAttempted
+                ? 'Повторный окрик в этом бою идёт с помехой. Тратит действие; отклик решает мораль противника'
+                : 'Проверка Убеждения против серверной СЛ по морали противника. Тратит действие'}
+            ><CombatIcon id="propose-parley" kind="action" hint="переговоры перемирие поговорить" size={18} compact /><span>{parleyAttempted ? 'Переговоры (помеха)' : 'Переговоры'}</span></button>}
+            {combatActive && knockoutEligible && <button className={`knockout-turn-toggle ${knockOut ? 'active' : ''}`} disabled={tacticalBusy} aria-pressed={knockOut} onClick={() => setKnockOut((current) => !current)} title='При снижении до 0 ОЗ оставить цель с 1 ОЗ без сознания'><CombatIcon id='knockout-toggle' kind='action' hint='несмертельный нокаут пощадить цель' size={18} compact /><span>{knockOut ? 'Нокаут включён' : 'Нокаутировать'}</span></button>}
+            {combatActive && selectedItem && needsWeaponChange && <button disabled={!canAct || tacticalBusy || !actionReady} onClick={() => selected && onChangeWeapon(selected, selectedItem.id)}><CombatIcon id={`swap-${selectedItem.id}`} kind="swap" hint={`сменить оружие ${selectedItem.name}`} size={18} compact /><span>Сменить оружие</span></button>}
+            {/* Завершение хода — главное решение этого ряда, и выглядит оно так
+                же: выше соседей, в золоте отправки. Когда тратить больше нечего,
+                рамка мягко пульсирует; при `prefers-reduced-motion` она просто
+                светлее. Подсказка не хвалит кнопку, а перечисляет, что игрок
+                уносит с собой неистраченным. */}
+            {combatActive && <button
+              className={`end-turn-hotbar ${turnFullySpent ? 'exhausted' : ''}`}
+              disabled={!canAct || tacticalBusy}
+              onClick={onFinishTurn}
+              title={turnFullySpent
+                ? 'Ресурсы хода израсходованы. Завершить ход — клавиша «Пробел»'
+                : `Остались: ${unspentTurnResources.join(', ')}. Завершить ход — клавиша «Пробел»`}
+            ><CombatIcon id="end-turn" kind="end-turn" hint="завершить ход" size={18} compact /><span>Завершить ход<kbd>Пробел</kbd></span></button>}
+        </div>}
         </div>
       {/* Панель одна на оба режима. Раньше вне боя вместо неё показывалась полоска
           «исследование», а колоды и плитки не рендерились вовсе: игрок не видел, чем
@@ -3486,7 +3511,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           {/* Кнопки шага: вне боя это подтверждение выбранной цели и двери под
               рукой, в бою — ещё нокаут, смена оружия и завершение хода. Без
               содержимого блок не рисуется, и плитки занимают всю карточку. */}
-          {(combatActive || doorsAtHand.length > 0 || selectedSceneObject) && <div className="hotbar-turn-controls">
+          {(doorsAtHand.length > 0 || selectedSceneObject) && <div className="hotbar-turn-controls">
             {/* Дверь рядом — единственное, что делается и вне боя: заперто это
                 или просто прикрыто, игрок видит по самой кнопке. */}
             {doorsAtHand.map((door) => {
@@ -3566,29 +3591,6 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               <span>{selectedLevelTransition.label}</span>
             </button>}
             {selectedSceneObject && selectedSceneObjectVerbs.length === 0 && !selectedLevelTransition && <button type="button" className="scene-object-control" disabled title="Сервер не открыл доступных действий для этого объекта"><span>Нет доступных действий</span></button>}
-            {combatActive && !truce && <button
-              className="parley-hotbar"
-              disabled={!canAct || tacticalBusy || narrating || Boolean(state.pendingCheck)}
-              onClick={() => { void onProposeParley('persuasion') }}
-              title={parleyAttempted
-                ? 'Повторный окрик в этом бою идёт с помехой. Тратит действие; отклик решает мораль противника'
-                : 'Проверка Убеждения против серверной СЛ по морали противника. Тратит действие'}
-            ><CombatIcon id="propose-parley" kind="action" hint="переговоры перемирие поговорить" size={27} compact /><span>{parleyAttempted ? 'Переговоры (помеха)' : 'Переговоры'}</span></button>}
-            {combatActive && knockoutEligible && <button className={`knockout-turn-toggle ${knockOut ? 'active' : ''}`} disabled={tacticalBusy} aria-pressed={knockOut} onClick={() => setKnockOut((current) => !current)} title='При снижении до 0 ОЗ оставить цель с 1 ОЗ без сознания'><CombatIcon id='knockout-toggle' kind='action' hint='несмертельный нокаут пощадить цель' size={27} compact /><span>{knockOut ? 'Нокаут включён' : 'Нокаутировать'}</span></button>}
-            {combatActive && selectedItem && needsWeaponChange && <button disabled={!canAct || tacticalBusy || !actionReady} onClick={() => selected && onChangeWeapon(selected, selectedItem.id)}><CombatIcon id={`swap-${selectedItem.id}`} kind="swap" hint={`сменить оружие ${selectedItem.name}`} size={27} compact /><span>Сменить оружие</span></button>}
-            {/* Завершение хода — главное решение этого ряда, и выглядит оно так
-                же: выше соседей, в золоте отправки. Когда тратить больше нечего,
-                рамка мягко пульсирует; при `prefers-reduced-motion` она просто
-                светлее. Подсказка не хвалит кнопку, а перечисляет, что игрок
-                уносит с собой неистраченным. */}
-            {combatActive && <button
-              className={`end-turn-hotbar ${turnFullySpent ? 'exhausted' : ''}`}
-              disabled={!canAct || tacticalBusy}
-              onClick={onFinishTurn}
-              title={turnFullySpent
-                ? 'Ресурсы хода израсходованы. Завершить ход — клавиша «Пробел»'
-                : `Остались: ${unspentTurnResources.join(', ')}. Завершить ход — клавиша «Пробел»`}
-            ><CombatIcon id="end-turn" kind="end-turn" hint="завершить ход" size={27} compact /><span>Завершить ход<kbd>Пробел</kbd></span></button>}
            </div>}
            </div>
            <div className="hotbar-hero-cluster player-resource-panel" aria-label={`Ресурсы героя: ${activeName}`}>

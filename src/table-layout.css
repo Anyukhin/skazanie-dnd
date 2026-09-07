@@ -106,11 +106,18 @@
 .turn-rail > .hotbar-decks { max-width:calc(100% - 302px * var(--ui-readable-scale,1));justify-content: flex-start; gap: 4px; overflow: visible; }
 .hotbar-tabs { display: flex; flex: 0 1 auto; min-width: 0; align-items: center; gap: inherit; overflow-x: auto; scrollbar-width: none; }
 .turn-rail > .hotbar-decks > button { flex-shrink: 0; }
+.turn-rail > .hotbar-decks .hotbar-tabs button { flex: 0 0 auto; }
 .turn-rail > .hotbar-decks button { display: inline-flex; min-width: 28px; width: auto; height: 28px; padding: 0 6px; align-items: center; gap: 4px; border-radius: 4px; }
 .turn-rail > .hotbar-decks button span { display: inline; font-size: var(--fs-sm); }
 .turn-rail > .hotbar-decks .start-combat-button { border: 1px solid #994e45; background: #572c27; color: #f0b5a9; }
 .turn-rail > .hotbar-decks .start-combat-button:hover:not(:disabled) { border-color: #cd7868; background: #70362e; color: #ffe0d6; }
 .turn-rail > .hotbar-decks .start-combat-button:disabled { opacity: .5; cursor: not-allowed; }
+.turn-rail .hotbar-combat-controls { display: flex; flex: 0 0 auto; gap: 4px; align-items: center; }
+.turn-rail .hotbar-combat-controls button { flex-shrink: 0; white-space: nowrap; color: #d1baa0; border: 1px solid #58442c; background: #261e15; }
+.turn-rail .hotbar-combat-controls button:disabled { opacity: .45; cursor: not-allowed; }
+.turn-rail .hotbar-combat-controls .end-turn-hotbar { background: #73522c; color: #f0d3a2; border-color: #a67b45; }
+.turn-rail .hotbar-combat-controls .knockout-turn-toggle.active { background: #49331c; border-color: #c49a63; color: #f0d3a2; }
+.turn-rail .hotbar-combat-controls kbd { display: none; }
 .turn-rail .hotbar-main { grid-template-columns: 34px minmax(0, 1fr) minmax(220px, 34%); gap: 12px; }
 .turn-rail .hotbar-actions-shell { padding: 6px 10px; height: min(calc(var(--slot) * var(--ui-tile-rows, 2) + 18px), 100%); border: 0; background: none; }
 .turn-rail .tile-toolbar { padding: 4px; border: 0; background: none; }
@@ -242,6 +249,8 @@
 }
 .turn-rail .hotbar-detail {
   position: absolute;
+  grid-column: auto;
+  grid-row: auto;
   top: 36px;
   left: 0;
   right: auto;
@@ -301,6 +310,11 @@
   .turn-rail .hotbar-turn-controls { flex-basis: 44px; width: 44px; min-width: 44px; padding-left: 4px; }
   .turn-rail .hotbar-turn-controls button { justify-content: center; padding: 5px; }
   .turn-rail .hotbar-turn-controls button > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+}
+@media (min-width: 901px) and (max-width: 1800px) {
+  .turn-rail > .hotbar-decks .hotbar-tabs button { padding-inline: 4px; }
+  .turn-rail > .hotbar-decks .hotbar-tabs button > svg { display: none; }
+  .turn-rail > .hotbar-decks .hotbar-tabs button > span { font-size: var(--fs-xs); }
 }
 @media (max-width: 900px) {
   .turn-rail .combat-hotbar { --slot: 66px; }
