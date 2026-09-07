@@ -1,6 +1,7 @@
 import catalogPayload from '../data/dndsu-spells-0-6.json'
 import mechanicsOverrides from '../data/dndsu-spell-mechanics-overrides.json'
 import type { CombatSpell, Player } from './types'
+import { isClassSpellAvailable } from '../server/character-creation-feats.mjs'
 
 const defaultPartialNote = 'Сервер исполняет формализованную часть карточки; полный набор исключений и взаимодействий ещё не подтверждён.'
 const defaultRulingNote = 'Карточка известна каталогу, но для её эффекта ещё нет исполняемого серверного решения.'
@@ -88,7 +89,7 @@ export function fallbackCombatSpells(player?: Player): CombatSpell[] {
   const rules = spellSelectionRules(player)
   const overrides = mechanicsOverrides.spells as unknown as Record<string, Partial<CombatSpell>>
   return (catalogPayload.spells as unknown as CombatSpell[])
-    .filter((spell) => (spell as CombatSpell & { classes?: string[] }).classes?.includes(profile.key) && (spell.level === 0 || spell.level <= maximum))
+    .filter((spell) => isClassSpellAvailable(spell, profile.key, player) && (spell.level === 0 || spell.level <= maximum))
     .map((spell) => {
       const isPrepared = spell.level === 0 ? (known ? known.has(spell.id) : true)
         : rules?.mode === 'known' ? (known ? known.has(spell.id) : true)

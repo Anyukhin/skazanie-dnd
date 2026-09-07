@@ -1,17 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
-  Backpack, Check, Coins, Download, FileJson, ImagePlus, LockKeyhole, Maximize2, PackageOpen,
+  ArrowLeft, ArrowRight, Backpack, Check, Coins, Download, FileJson, ImagePlus, LockKeyhole, Maximize2, PackageOpen,
   Pencil, Plus, Save, Search, Shield, Sparkles, Trash2, Upload, Weight, X, ZoomIn, ZoomOut,
 } from 'lucide-react'
 import { generateItemImage } from './ai-client'
 import { ABILITY_SHORT_LABELS, HeroFaceInitials, hasHeroPortrait, heroFaceMode, heroFaceStyle } from './app-shared'
 import { DND_CLASS_OPTIONS, classFeatureCatalogFor, playerClassKey, subclassOptionsFor } from './combat-actions'
-import { fallbackCombatSpells, spellSelectionRules } from './combat-spells'
+import { fallbackCombatSpells, spellNameById, spellSelectionRules } from './combat-spells'
 import { classSkillRulesFor, featureChoiceGroupsFor, normalizedSelectedFeatures } from './character-progression'
 import { itemImageFor } from './item-images'
 import type { FeatureChoiceGroup } from './character-progression'
 import type { InventoryItem, ItemUseOptions, Player } from './types'
 import { playerRoleLabel } from './player-experience'
+import { CombatIcon } from './CombatIcon'
+import { PhbCharacterOptions } from './PhbCharacterOptions'
+import type { PhbCharacterOptionsCatalog, PhbCharacterOptionsValue } from './phb-character-types'
+import { resolveCharacterCreationFeat } from '../server/character-creation-feats.mjs'
 
 // Сокращения характеристик общие с боевой хроникой: словарь один, и лист героя
 // с журналом боя не разъезжаются в подписях.
@@ -35,12 +39,101 @@ function TextField({ label, value, onChange, rows = 3 }: { label: string; value:
   return <label className="sheet-field textarea-field"><span>{label}</span><textarea rows={rows} value={value} onChange={(event) => onChange(event.target.value)} /></label>
 }
 
-export function CharacterEditor({ player, rulesetId, targetLevel = player.level, onClose, onSave, onImport, onLevelUp }: { player: Player; rulesetId?: string; targetLevel?: number; onClose: () => void; onSave: (patch: Partial<Player>) => void | Promise<void>; onImport: (source: string) => Promise<void>; onLevelUp: () => void | Promise<{ ok?: boolean; error?: string } | void> }) {
+type CharacterDevelopmentStage = 'class' | 'subclass' | 'abilities' | 'choices' | 'spells'
+type CharacterDevelopmentStageEntry = { id: CharacterDevelopmentStage; title: string; description: string }
+
+function CharacterDevelopmentWizard({
+  draft,
+  stages,
+  stage,
+  onStageChange,
+  stagedSetup,
+  levelUpRequested,
+  completed = false,
+  targetLevel,
+  saving,
+  valid,
+  notice,
+  hint,
+  onFinish,
+  onClose,
+  children,
+  summary,
+}: {
+  draft: Player
+  stages: CharacterDevelopmentStageEntry[]
+  stage: CharacterDevelopmentStage
+  onStageChange: (stage: CharacterDevelopmentStage) => void
+  stagedSetup: boolean
+  levelUpRequested: boolean
+  completed?: boolean
+  targetLevel: number
+  saving: boolean
+  valid: boolean
+  notice: string
+  hint: string
+  onFinish: (advance: boolean) => void | Promise<unknown>
+  onClose: () => void
+  children: ReactNode
+  summary: Array<{ label: string; value: string }>
+}) {
+  const currentIndex = Math.max(0, stages.findIndex((entry) => entry.id === stage))
+  const last = currentIndex >= stages.length - 1
+  const mainRef = useRef<HTMLElement>(null)
+  useEffect(() => { mainRef.current?.scrollTo({ top: 0, behavior: 'auto' }) }, [draft.level, stage])
+  const finish = (advance: boolean) => { void onFinish(advance) }
+  const message = completed ? 'Все обязательные выборы сохранены. Герой готов к приключению.' : notice || (valid
+    ? stagedSetup ? draft.level >= targetLevel ? `Выбор уровня ${draft.level} готов. Можно завершить подготовку.` : `Выбор уровня ${draft.level} готов. Следующий шаг — уровень ${draft.level + 1}.`
+      : levelUpRequested ? 'Проверьте выборы и подтвердите повышение уровня.' : 'Изменения можно сохранить сейчас или применить при повышении уровня.'
+    : hint)
+
+  return <div className="character-creation-backdrop">
+    <section className="character-creation-wizard character-development-wizard" role="dialog" aria-modal="true" aria-labelledby="character-development-title">
+      <header>
+        <div><Sparkles size={22} /><span><small>РАЗВИТИЕ ГЕРОЯ · УРОВЕНЬ {draft.level}</small><h2 id="character-development-title">Развитие героя</h2></span></div>
+        <button type="button" onClick={onClose} aria-label="Закрыть развитие" title="Закрыть"><X size={20} /></button>
+      </header>
+      <nav aria-label="Шаги развития героя">
+        {stages.map((entry, index) => <button
+          key={entry.id}
+          type="button"
+          disabled={saving}
+          className={entry.id === stage ? 'active' : index < currentIndex ? 'complete' : ''}
+          aria-current={entry.id === stage ? 'step' : undefined}
+          onClick={() => onStageChange(entry.id)}
+        ><i>{index < currentIndex ? <Check size={12} /> : index + 1}</i><span><b>{entry.title}</b><small>{entry.description}</small></span></button>)}
+      </nav>
+      <main ref={mainRef} inert={saving} aria-busy={saving}>
+        <aside className="creation-summary-rail" aria-label="Итог развития">
+          <small>ИТОГ РАЗВИТИЯ</small>
+          <h3>{draft.character || 'Безымянный герой'}</h3>
+          <dl>{summary.map((entry) => <div key={entry.label}><dt>{entry.label}</dt><dd>{entry.value || '—'}</dd></div>)}</dl>
+        </aside>
+        {children}
+      </main>
+      <footer>
+        <div className={notice || !valid ? 'creation-error' : ''} role={notice || !valid ? 'alert' : undefined}>{message}</div>
+        {completed ? <span><button type="button" className="primary" onClick={onClose}>К приключению</button></span> : <span>
+          <button type="button" disabled={saving || currentIndex === 0} onClick={() => onStageChange(stages[currentIndex - 1]?.id ?? stage)}><ArrowLeft size={15} />Назад</button>
+          {last ? <>
+            {!stagedSetup && !levelUpRequested && <button type="button" disabled={saving} onClick={() => finish(false)}>Сохранить выборы</button>}
+            {!stagedSetup && !levelUpRequested && <button type="button" className="primary" disabled={saving} onClick={() => finish(true)}><Sparkles size={15} />Повысить уровень</button>}
+            {(stagedSetup || levelUpRequested) && <button type="button" className="primary" disabled={saving} onClick={() => finish(true)}><Sparkles size={15} />{stagedSetup ? draft.level >= targetLevel ? 'Завершить подготовку' : 'Сохранить и продолжить' : 'Подтвердить повышение'}</button>}
+          </> : <button type="button" className="primary" disabled={saving} onClick={() => onStageChange(stages[currentIndex + 1]?.id ?? stage)}>Дальше<ArrowRight size={15} /></button>}
+        </span>}
+      </footer>
+    </section>
+  </div>
+}
+
+export function CharacterEditor({ player, rulesetId, phbCatalog, targetLevel = player.level, initialTab = 'sheet', requestLevelUp = false, onClose, onSave, onImport, onLevelUp }: { player: Player; rulesetId?: string; phbCatalog?: PhbCharacterOptionsCatalog; targetLevel?: number; initialTab?: 'sheet' | 'story' | 'advancement'; requestLevelUp?: boolean; onClose: () => void; onSave: (patch: Partial<Player>) => void | Promise<void>; onImport: (source: string) => Promise<void>; onLevelUp: () => void | Promise<{ ok?: boolean; error?: string } | void> }) {
   const [draft, setDraft] = useState<Player>(() => structuredClone(player))
-  const [tab, setTab] = useState<'sheet' | 'story' | 'advancement'>(() => player.characterSetupStage === 'leveling' ? 'advancement' : 'sheet')
+  const [tab, setTab] = useState<'sheet' | 'story' | 'advancement'>(() => player.characterSetupStage === 'leveling' ? 'advancement' : initialTab)
   const [notice, setNotice] = useState('')
   const [saving, setSaving] = useState(false)
   const startedAsSetup = useRef(player.characterSetupStage === 'leveling')
+  const [developmentStage, setDevelopmentStage] = useState<CharacterDevelopmentStage>('class')
+  const [levelUpRequested, setLevelUpRequested] = useState(player.characterSetupStage === 'leveling' || requestLevelUp)
   const [developmentSearch, setDevelopmentSearch] = useState('')
   const [spellLevelFilter, setSpellLevelFilter] = useState<number | 'all'>('all')
   const avatarInput = useRef<HTMLInputElement>(null)
@@ -49,6 +142,8 @@ export function CharacterEditor({ player, rulesetId, targetLevel = player.level,
   useEffect(() => {
     setDraft(structuredClone(player))
     if (player.characterSetupStage === 'leveling') setTab('advancement')
+    if (player.characterSetupStage === 'leveling') setLevelUpRequested(true)
+    setDevelopmentStage('class')
   }, [player])
   const patch = <K extends keyof Player>(key: K, value: Player[K]) => setDraft((current) => ({ ...current, [key]: value }))
   const classKey = playerClassKey(draft)
@@ -56,6 +151,7 @@ export function CharacterEditor({ player, rulesetId, targetLevel = player.level,
   const subclasses = subclassOptionsFor(draft)
   const subclassUnlocked = Boolean(classOption && draft.level >= classOption.subclassLevel)
   const spellRules = spellSelectionRules(draft)
+  const spellbookMaximum = spellRules?.spellbookMinimum ?? 0
   const classSkillRules = classSkillRulesFor(draft)
   const selectedClassSkills = draft.classSkillProficiencies ?? []
   const featureChoiceGroups = featureChoiceGroupsFor(draft)
@@ -63,6 +159,8 @@ export function CharacterEditor({ player, rulesetId, targetLevel = player.level,
   const developmentSpells = fallbackCombatSpells(draft)
   const knownSpellIds = draft.knownSpellIds ?? []
   const preparedSpellIds = draft.preparedSpellIds ?? []
+  const availableSpellIds = new Set(developmentSpells.map((spell) => spell.id))
+  const unavailableSpellIds = [...new Set([...knownSpellIds, ...preparedSpellIds])].filter((id) => !availableSpellIds.has(id))
   const knownCantrips = developmentSpells.filter((spell) => spell.level === 0 && knownSpellIds.includes(spell.id)).length
   const knownLeveled = developmentSpells.filter((spell) => spell.level > 0 && knownSpellIds.includes(spell.id)).length
   const preparedLeveled = developmentSpells.filter((spell) => spell.level > 0 && preparedSpellIds.includes(spell.id)).length
@@ -81,32 +179,61 @@ export function CharacterEditor({ player, rulesetId, targetLevel = player.level,
   const abilityScoreChoiceLevels = classKey === 'fighter' ? [4, 6, 8, 12] : classKey === 'rogue' ? [4, 8, 10, 12] : [4, 8, 12]
   const stagedSetup = player.characterSetupStage === 'leveling'
   const setupTargetLevel = Math.max(draft.level, Math.min(12, Number(targetLevel) || draft.level))
-  const stagedAbilityScoreLevel = stagedSetup
-    ? abilityScoreChoiceLevels.find((level) => level <= draft.level && !draft.abilityScoreIncreases?.[String(level)]) ?? null
-    : null
+  const stagedAbilityScoreLevel = abilityScoreChoiceLevels.find((level) => level <= draft.level && !draft.abilityScoreIncreases?.[String(level)] && !draft.levelFeats?.[String(level)]) ?? null
   const [abilityScoreChoice, setAbilityScoreChoice] = useState<string[]>([])
+  const [improvementMode, setImprovementMode] = useState<'abilities' | 'feat'>('abilities')
+  const [featChoice, setFeatChoice] = useState<PhbCharacterOptionsValue>({ schema_version: 1, classChoices: {} })
+  useEffect(() => { setImprovementMode('abilities'); setFeatChoice({ schema_version: 1, classChoices: {} }) }, [stagedAbilityScoreLevel])
+  const initialFeat = player.phbCreation?.feat
+  const takenFeats = [...(initialFeat ? [initialFeat] : []), ...Object.values(player.levelFeats ?? {})]
+  const featContext = {
+    allowCappedAbilityIncrease: true,
+    abilities: player.abilities,
+    feats: takenFeats.map((feat) => feat.id),
+    existingFeatChoices: Object.fromEntries([...new Set(takenFeats.map((feat) => feat.id))].map((id) => [id, takenFeats.filter((feat) => feat.id === id).map((feat) => feat.choices)])),
+    canCastSpells: Boolean(spellRules || player.creationSpellGrants?.length),
+    armor: player.creationBenefits?.armor_proficiencies ?? phbCatalog?.classes.find((entry) => entry.id === classKey)?.armor_proficiencies ?? [],
+    weapons: player.creationBenefits?.weapon_proficiencies ?? [],
+    skills: [...(player.classSkillProficiencies ?? []), ...(player.creationSkillProficiencies ?? [])],
+    tools: player.creationBenefits?.tool_proficiencies ?? [],
+    languages: player.creationBenefits?.languages ?? [],
+  }
+  const featResult = improvementMode === 'feat' && featChoice.feat ? resolveCharacterCreationFeat(featChoice.feat.id, featChoice.feat.choices, featContext) : null
   useEffect(() => {
     setAbilityScoreChoice(stagedAbilityScoreLevel == null ? [] : [...(draft.abilityScoreIncreases?.[String(stagedAbilityScoreLevel)] ?? [])])
   }, [draft.abilityScoreIncreases, stagedAbilityScoreLevel])
-  const abilityScoreChoicesValid = stagedAbilityScoreLevel == null || [1, 2].includes(abilityScoreChoice.length)
+  const abilityScoreChoicesValid = stagedAbilityScoreLevel == null || (improvementMode === 'feat' ? featResult?.ok === true : [1, 2].includes(abilityScoreChoice.length))
   const abilityScoreChoiceSaved = stagedAbilityScoreLevel == null
     || JSON.stringify(player.abilityScoreIncreases?.[String(stagedAbilityScoreLevel)] ?? []) === JSON.stringify(abilityScoreChoice)
   const stagedSpellsComplete = !stagedSetup || !spellRules || (knownCantrips === spellRules.cantrips
     && (spellRules.mode !== 'known' || knownLeveled === spellRules.spellsKnown)
     && (spellRules.mode !== 'spellbook' || knownLeveled >= spellRules.spellbookMinimum)
     && preparedLeveled <= spellRules.preparedLimit)
-  const developmentValid = subclassValid && skillsValid && featureChoicesValid && stagedSpellsComplete && (!spellRules || (knownCantrips <= spellRules.cantrips
+  const developmentValid = unavailableSpellIds.length === 0 && subclassValid && skillsValid && featureChoicesValid && stagedSpellsComplete && (!spellRules || (knownCantrips <= spellRules.cantrips
     && (spellRules.mode !== 'known' || knownLeveled <= spellRules.spellsKnown)
-    && (spellRules.mode !== 'spellbook' || knownLeveled <= Math.max(spellRules.spellbookMinimum, player.knownSpellIds?.length ?? 0))
+    && (spellRules.mode !== 'spellbook' || knownLeveled <= spellbookMaximum)
     && preparedLeveled <= spellRules.preparedLimit)) && abilityScoreChoicesValid
-  const stagedReadyToAdvance = stagedSetup && draft.level < setupTargetLevel && developmentValid
-  const developmentHint = !subclassValid && subclassUnlocked
+  const developmentHint = unavailableSpellIds.length > 0
+    ? `Уберите недоступные заклинания: ${unavailableSpellIds.map((id) => spellNameById(id) ?? id).join(', ')}.`
+    : spellRules?.mode === 'spellbook' && knownLeveled > spellbookMaximum
+      ? `В книге ${knownLeveled} заклинаний, на этом уровне разрешено ${spellbookMaximum}. Уберите лишние заклинания.`
+    : !subclassValid && subclassUnlocked
     ? 'Выберите подкласс, чтобы открыть выборы этого уровня.'
     : !skillsValid ? 'Завершите выбор классовых навыков.'
       : !featureChoicesValid ? 'Завершите выбор классовых умений.'
         : !abilityScoreChoicesValid ? 'Выберите улучшение характеристик этого уровня.'
           : !stagedSpellsComplete ? 'Выберите все обязательные заговоры и заклинания этого уровня.'
             : 'Исправьте превышенные лимиты заклинаний.'
+  const developmentStages = useMemo<CharacterDevelopmentStageEntry[]>(() => [
+    { id: 'class', title: 'Класс', description: classOption?.label ?? 'Текущий класс' },
+    ...(subclassUnlocked ? [{ id: 'subclass' as const, title: 'Подкласс', description: draft.subclass || 'Выбор подкласса' }] : []),
+    ...(stagedAbilityScoreLevel != null ? [{ id: 'abilities' as const, title: 'Характеристики', description: `${stagedAbilityScoreLevel} уровень · улучшение` }] : []),
+    { id: 'choices' as const, title: 'Умения', description: classSkillRules ? `Навыки ${selectedClassSkills.length}/${classSkillRules.choiceCount}` : 'Навыки и особенности' },
+    ...(spellRules ? [{ id: 'spells' as const, title: 'Магия', description: 'Заклинания и подготовка' }] : []),
+  ], [classOption?.label, classSkillRules, draft.subclass, selectedClassSkills.length, spellRules, stagedAbilityScoreLevel, subclassUnlocked])
+  useEffect(() => {
+    if (!developmentStages.some((entry) => entry.id === developmentStage)) setDevelopmentStage(developmentStages[0]?.id ?? 'class')
+  }, [developmentStage, developmentStages])
 
   useEffect(() => {
     if (!subclassUnlocked && draft.subclass) setDraft((current) => ({ ...current, subclass: undefined }))
@@ -136,7 +263,7 @@ export function CharacterEditor({ player, rulesetId, targetLevel = player.level,
       return
     }
     if (spellRules.mode === 'spellbook' && !prepare) {
-      const maximum = Math.max(spellRules.spellbookMinimum, player.knownSpellIds?.length ?? 0)
+      const maximum = spellbookMaximum
       toggleSpellId('knownSpellIds', spellId, maximum, developmentSpells.filter((entry) => entry.level > 0 && knownSpellIds.includes(entry.id)).map((entry) => entry.id))
       if (knownSpellIds.includes(spellId)) patch('preparedSpellIds', preparedSpellIds.filter((id) => id !== spellId))
       return
@@ -204,44 +331,172 @@ export function CharacterEditor({ player, rulesetId, targetLevel = player.level,
     URL.revokeObjectURL(anchor.href)
   }
 
-  const saveCharacter = async () => {
-    if (saving) return
+  const saveCharacter = async (advance = false) => {
+    if (saving) return { ok: false, error: 'Сохранение уже выполняется' }
     if (!developmentValid) {
       setTab('advancement')
-      setNotice('Завершите обязательные выборы текущего уровня; исправьте превышенные лимиты заклинаний.')
-      return
+      setNotice(developmentHint)
+      return { ok: false, error: developmentHint }
     }
     const sanitized = {
       ...draft,
       selectedFeatureIds: normalizedSelectedFeatures(draft),
-      ...(stagedAbilityScoreLevel != null ? { abilityScoreIncreases: { ...(draft.abilityScoreIncreases ?? {}), [String(stagedAbilityScoreLevel)]: abilityScoreChoice } } : {}),
+      ...(stagedAbilityScoreLevel != null ? improvementMode === 'feat' && featChoice.feat
+        ? { levelFeats: { ...(draft.levelFeats ?? {}), [String(stagedAbilityScoreLevel)]: featChoice.feat } }
+        : { abilityScoreIncreases: { ...(draft.abilityScoreIncreases ?? {}), [String(stagedAbilityScoreLevel)]: abilityScoreChoice } } : {}),
     }
     setSaving(true)
     setNotice('')
     try {
       await Promise.resolve(onSave(sanitized))
-      if (stagedReadyToAdvance) {
+      const shouldAdvance = advance && (!stagedSetup || draft.level < setupTargetLevel)
+      if (shouldAdvance) {
         const result = await Promise.resolve(onLevelUp())
         if (result && result.ok === false) throw new Error(result.error || 'Не удалось перейти к следующему уровню')
-        return
+        if (!stagedSetup) {
+          setLevelUpRequested(false)
+          setDevelopmentStage('class')
+        }
+        return result ?? { ok: true }
       }
       if (!stagedSetup) onClose()
+      return { ok: true }
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Не удалось сохранить выбор')
+      const message = error instanceof Error ? error.message : 'Не удалось сохранить выбор'
+      setNotice(message)
+      return { ok: false, error: message }
     } finally {
       setSaving(false)
     }
   }
 
-  if (startedAsSetup.current && !player.characterSetupRequired && player.level >= targetLevel) return (
-    <div className="sheet-overlay">
-      <section className="character-editor character-setup-complete" role="dialog" aria-modal="true" aria-label="Подготовка героя завершена">
-        <header className="editor-head"><div><span>ГЕРОЙ ГОТОВ К ПРИКЛЮЧЕНИЮ</span><h2>{player.character}</h2><p>{playerRoleLabel(player)}</p></div></header>
-        <div className="editor-content"><p>Все обязательные выборы сохранены. Здоровье: {player.hp} из {player.maxHp}. Можно присоединяться к отряду.</p></div>
-        <footer className="editor-footer"><button onClick={onClose}>К приключению</button></footer>
+  const developmentSummary = [
+    ...(takenFeats.length > 0 ? [{ label: 'Черты', value: takenFeats.map((feat) => phbCatalog?.feats.find((entry) => entry.id === feat.id)?.name ?? feat.id).join(', ') }] : []),
+    ...(improvementMode === 'feat' && featChoice.feat ? [{ label: 'Выбрана черта', value: phbCatalog?.feats.find((entry) => entry.id === featChoice.feat?.id)?.name ?? featChoice.feat.id }] : []),
+    { label: 'Класс', value: classOption?.label ?? '' },
+    { label: 'Уровень', value: stagedSetup ? `${draft.level} из ${setupTargetLevel}` : `${draft.level}` },
+    { label: 'Подкласс', value: draft.subclass || (subclassUnlocked ? 'нужно выбрать' : 'ещё не открыт') },
+    { label: 'Навыки', value: classSkillRules ? `${selectedClassSkills.length}/${classSkillRules.choiceCount}` : 'не требуется' },
+    ...(spellRules ? [{ label: 'Магия', value: `${knownCantrips} заговоров · ${knownLeveled} заклинаний` }] : []),
+  ]
+  const developmentContent = <div className="development-stage-content">
+    {developmentStage === 'class' && <section className="advancement-block development-stage-intro">
+      <header><div><Sparkles size={17} /><span><strong>Развитие класса</strong><small>Выберите следующий обязательный шаг</small></span></div><b>{draft.level} уровень</b></header>
+      <p>Класс <strong>{classOption?.label ?? 'героя'}</strong> уже выбран. Пройдите доступные этапы слева, затем сохраните выборы или подтвердите повышение уровня.</p>
+      {classOption && <p>Новые особенности класса открываются автоматически по правилам. Подкласс и выборы появятся на требуемом уровне.</p>}
+    </section>}
+    {developmentStage === 'subclass' && <section className="advancement-block development-stage-panel">
+      <header><div><Sparkles size={17} /><span><strong>Подкласс</strong><small>Обязательный выбор при открытии</small></span></div><b className={!subclassValid ? 'invalid' : ''}>{draft.subclass ? 'готово' : 'нужно выбрать'}</b></header>
+      <label className="sheet-field staged-subclass-choice"><span>Подкласс · с {classOption?.subclassLevel ?? 1} уровня</span><select value={draft.subclass ?? ''} onChange={(event) => {
+        const nextSubclass = event.target.value || undefined
+        setDraft((current) => {
+          const next = { ...current, subclass: nextSubclass }
+          return { ...next, selectedFeatureIds: normalizedSelectedFeatures(next) }
+        })
+      }}><option value="">Выберите подкласс</option>{subclasses.map((entry) => <option key={entry.id} value={entry.name}>{entry.name}</option>)}</select></label>
+      <p>Выбор сохраняется в листе героя и используется сервером при проверке доступных особенностей.</p>
+    </section>}
+    {developmentStage === 'abilities' && <section className="advancement-block ability-score-development">
+      <header><div><Sparkles size={17} /><span><strong>Развитие · {stagedAbilityScoreLevel} уровень</strong><small>Улучшение характеристик{rulesetId === 'dnd_5e_2014' ? ' или черта PHB 2014' : ''}</small></span></div><b className={!abilityScoreChoicesValid ? 'invalid' : ''}>{improvementMode === 'feat' ? featResult?.ok ? 'готово' : 'выберите черту' : `${abilityScoreChoice.length}/2`}</b></header>
+      {rulesetId === 'dnd_5e_2014' && phbCatalog && <div className="development-improvement-mode" role="group" aria-label="Способ улучшения героя"><button type="button" aria-pressed={improvementMode === 'abilities'} onClick={() => setImprovementMode('abilities')}>Повысить характеристики</button><button type="button" aria-pressed={improvementMode === 'feat'} onClick={() => setImprovementMode('feat')}>Выбрать черту</button></div>}
+      {improvementMode === 'feat' && phbCatalog ? <div className="development-feat-choice"><PhbCharacterOptions catalog={phbCatalog} classId={classKey ?? ''} subclass={draft.subclass} abilities={player.abilities} knownSkillIds={featContext.skills} knownToolIds={Array.isArray(featContext.tools) ? featContext.tools as string[] : []} variantHuman={false} featOnly featContext={featContext} value={featChoice} onChange={setFeatChoice} />{featChoice.feat && !featResult?.ok && <p role="status">{featResult?.reason}</p>}</div> : <div className="ability-score-choice-grid">
+        <label><span>Первая прибавка</span><select value={abilityScoreChoice[0] ?? ''} onChange={(event) => setAbilityScoreChoice((current) => [event.target.value, current[1]].filter(Boolean))}><option value="">Выберите характеристику</option>{Object.keys(abilityNames).map((ability) => <option key={ability} value={ability}>{abilityNames[ability as keyof Player['abilities']]}</option>)}</select></label>
+        <label><span>Вторая прибавка <small>(пусто = +2 к первой)</small></span><select value={abilityScoreChoice[1] ?? ''} onChange={(event) => setAbilityScoreChoice((current) => event.target.value ? [current[0] ?? '', event.target.value].filter(Boolean) : [current[0]].filter(Boolean))}><option value="">Не выбирать</option>{Object.keys(abilityNames).map((ability) => <option key={ability} value={ability}>{abilityNames[ability as keyof Player['abilities']]}</option>)}</select></label>
+      </div>}
+    </section>}
+    {developmentStage === 'choices' && <>
+      <label className="advancement-search"><Search size={16} /><input value={developmentSearch} onChange={(event) => setDevelopmentSearch(event.target.value)} placeholder="Поиск навыка, умения или заклинания…" /></label>
+      <section className="advancement-block skill-development">
+        <header><div><Check size={17} /><span><strong>Владение навыками</strong><small>Классовый выбор</small></span></div>{classSkillRules && <b className={selectedClassSkills.length !== classSkillRules.choiceCount ? 'invalid' : ''}>{selectedClassSkills.length}/{classSkillRules.choiceCount}</b>}</header>
+        {classSkillRules ? <div className="class-skill-list">{filteredClassSkills.map((skill) => {
+          const selected = selectedClassSkills.includes(skill.id)
+          return <button key={skill.id} className={selected ? 'selected' : ''} onClick={() => toggleClassSkill(skill.id)}><i>{selected ? <Check size={14} /> : <Plus size={14} />}</i><span><strong>{skill.name}</strong><small>{skill.ability.toUpperCase()}</small></span></button>
+        })}</div> : <p className="advancement-empty">Для этого класса нет отдельного выбора навыков.</p>}
       </section>
-    </div>
-  )
+      {featureChoiceGroups.length > 0 && <section className="advancement-block feature-choice-development">
+        <header><div><Sparkles size={17} /><span><strong>Выбор классовых умений</strong><small>Новые варианты появляются на нужном уровне</small></span></div><b className={!featureChoicesValid ? 'invalid' : ''}>{featureChoiceGroups.reduce((sum, group) => sum + group.options.filter((option) => selectedFeatureIds.includes(option.id)).length, 0)}/{featureChoiceGroups.reduce((sum, group) => sum + group.choiceCount, 0)}</b></header>
+        <div className="feature-choice-groups">{filteredFeatureChoiceGroups.map((group) => {
+          const chosen = group.options.filter((option) => selectedFeatureIds.includes(option.id)).length
+          return <section key={group.id}><header><span><strong>{group.name}</strong><small>Открыто на {group.unlockLevel} уровне</small></span><b className={chosen !== group.choiceCount ? 'invalid' : ''}>{chosen}/{group.choiceCount}</b></header><div>{group.options.map((option) => {
+            const selected = selectedFeatureIds.includes(option.id)
+            return <button key={option.id} className={selected ? 'selected' : ''} onClick={() => toggleFeatureChoice(group, option.id)}><i>{selected ? <Check size={14} /> : <Plus size={14} />}</i><span><strong>{option.name}</strong>{option.minimumLevel && <small>с {option.minimumLevel} уровня</small>}</span></button>
+          })}</div></section>
+        })}</div>
+      </section>}
+      <section className="advancement-block">
+        <header><div><Shield size={17} /><span><strong>Классовые умения</strong><small>Автоматически открываются на требуемом уровне</small></span></div><b>{developmentFeatures.filter((feature) => draft.level >= Number(feature.minimumLevel ?? 1)).length}</b></header>
+        <div className="feature-progression-list">{developmentFeatures.length ? developmentFeatures.map((feature) => {
+          const unlocked = draft.level >= Number(feature.minimumLevel ?? 1)
+          return <article key={feature.id} className={unlocked ? 'unlocked' : 'locked'}><i>{unlocked ? <Check size={14} /> : <LockKeyhole size={14} />}</i><span><strong>{feature.name}</strong><small>{feature.subclass || classOption?.label} · {feature.minimumLevel ?? 1} уровень</small><p>{feature.description}</p></span></article>
+        }) : <p className="advancement-empty">Выберите класс и подкласс, чтобы увидеть развитие умений.</p>}</div>
+      </section>
+    </>}
+    {developmentStage === 'spells' && <section className="advancement-block spell-development">
+      <header><div><Sparkles size={17} /><span><strong>Заклинания</strong><small>{spellRules ? spellRules.mode === 'known' ? 'Известные заклинания' : spellRules.mode === 'spellbook' ? 'Книга и подготовка' : 'Подготовка после отдыха' : 'Этот класс не использует заклинания'}</small></span></div>{spellRules && <b>до {spellRules.maximumSpellLevel} круга</b>}</header>
+      {unavailableSpellIds.length > 0 && <div className="development-unavailable-spells" role="alert"><p>Эти заклинания недоступны для текущего класса, уровня или набора правил. Уберите их из выбора, чтобы продолжить.</p>{unavailableSpellIds.map((id) => <button key={id} type="button" onClick={() => {
+        setDraft((current) => ({ ...current, knownSpellIds: (current.knownSpellIds ?? []).filter((spellId) => spellId !== id), preparedSpellIds: (current.preparedSpellIds ?? []).filter((spellId) => spellId !== id) }))
+        setNotice('')
+      }}><X size={14} />Убрать «{spellNameById(id) ?? id}»</button>)}</div>}
+      {spellRules ? <>
+        <label className="advancement-search"><Search size={16} /><input type="search" aria-label="Поиск заклинаний" value={developmentSearch} onChange={(event) => setDevelopmentSearch(event.target.value)} placeholder="Название или описание заклинания…" /></label>
+        <div className="spell-choice-counters">
+          {spellRules.cantrips > 0 && <span className={knownCantrips > spellRules.cantrips ? 'invalid' : ''}>Заговоры <b>{knownCantrips}/{spellRules.cantrips}</b></span>}
+          {spellRules.mode === 'known' && <span className={knownLeveled > spellRules.spellsKnown ? 'invalid' : ''}>Известно <b>{knownLeveled}/{spellRules.spellsKnown}</b></span>}
+          {spellRules.mode === 'spellbook' && <span className={knownLeveled > spellbookMaximum ? 'invalid' : ''}>В книге <b>{knownLeveled}/{spellbookMaximum}</b></span>}
+          {(spellRules.mode === 'prepared' || spellRules.mode === 'spellbook') && <span className={preparedLeveled > spellRules.preparedLimit ? 'invalid' : ''}>Подготовлено <b>{preparedLeveled}/{spellRules.preparedLimit}</b></span>}
+        </div>
+        <nav className="advancement-level-filter"><button className={spellLevelFilter === 'all' ? 'active' : ''} onClick={() => setSpellLevelFilter('all')}>Все</button>{[...new Set(developmentSpells.map((spell) => spell.level))].sort((a, b) => a - b).map((level) => <button key={level} className={spellLevelFilter === level ? 'active' : ''} onClick={() => setSpellLevelFilter(level)}>{level === 0 ? 'Заговоры' : level}</button>)}</nav>
+        {filteredDevelopmentSpells.length === 0 && <p className="advancement-empty" role="status">Заклинания не найдены. Измените запрос или выбранный круг.</p>}
+        <div className="development-spell-list">{filteredDevelopmentSpells.map((spell) => {
+          const known = knownSpellIds.includes(spell.id)
+          const prepared = preparedSpellIds.includes(spell.id)
+          return <article key={spell.id} className={known || prepared ? 'selected' : ''}><CombatIcon id={spell.id} kind="spell" hint={spell.name} size={48} /><span><strong>{spell.name}</strong><small>{spell.level ? `${spell.level} круг` : 'заговор'} · {spell.castingTime || '1 действие'} · {spell.rangeText || `${spell.range} фт.`}</small><p>{spell.description}</p></span><div>
+            {spell.level === 0 || spellRules.mode === 'known' ? <button className={known ? 'active' : ''} onClick={() => toggleDevelopmentSpell(spell.id)}>{known ? <Check size={13} /> : <Plus size={13} />}{spell.level === 0 ? 'Изучен' : 'Выбрать'}</button> : spellRules.mode === 'spellbook' ? <><button className={known ? 'active' : ''} onClick={() => toggleDevelopmentSpell(spell.id)}>{known ? <Check size={13} /> : <Plus size={13} />}Книга</button><button className={prepared ? 'active' : ''} disabled={!known} onClick={() => toggleDevelopmentSpell(spell.id, true)}>{prepared ? <Check size={13} /> : <Plus size={13} />}Подготовить</button></> : <button className={prepared ? 'active' : ''} onClick={() => toggleDevelopmentSpell(spell.id, true)}>{prepared ? <Check size={13} /> : <Plus size={13} />}Подготовить</button>}
+          </div></article>
+        })}</div>
+      </> : <p className="advancement-empty">Заклинания появятся здесь автоматически, если выбран класс-заклинатель.</p>}
+    </section>}
+  </div>
+
+  if (startedAsSetup.current && !player.characterSetupRequired && player.level >= targetLevel) return <CharacterDevelopmentWizard
+    draft={draft}
+    stages={developmentStages}
+    stage={developmentStage}
+    onStageChange={setDevelopmentStage}
+    stagedSetup={false}
+    levelUpRequested={false}
+    completed
+    targetLevel={setupTargetLevel}
+    saving={false}
+    valid
+    notice=""
+    hint=""
+    onFinish={onClose}
+    onClose={onClose}
+    summary={developmentSummary}
+  >
+    <section className="advancement-block development-stage-intro character-development-complete">
+      <header><div><Sparkles size={20} /><span><strong>Герой готов к приключению</strong><small>{playerRoleLabel(player)}</small></span></div><b>{player.level} уровень</b></header>
+      <p>Все обязательные выборы сохранены. Здоровье: {player.hp} из {player.maxHp}. Можно присоединяться к отряду.</p>
+    </section>
+  </CharacterDevelopmentWizard>
+
+  if (tab === 'advancement') return <CharacterDevelopmentWizard
+    draft={draft}
+    stages={developmentStages}
+    stage={developmentStage}
+    onStageChange={setDevelopmentStage}
+    stagedSetup={stagedSetup}
+    levelUpRequested={levelUpRequested}
+    targetLevel={setupTargetLevel}
+    saving={saving}
+    valid={developmentValid}
+    notice={notice}
+    hint={developmentHint}
+    onFinish={saveCharacter}
+    onClose={onClose}
+    summary={developmentSummary}
+  >{developmentContent}</CharacterDevelopmentWizard>
 
   return (
     <div className="sheet-overlay" onMouseDown={onClose}>
@@ -260,7 +515,7 @@ export function CharacterEditor({ player, rulesetId, targetLevel = player.level,
             <button className="close-editor" onClick={onClose} disabled={saving} aria-label="Закрыть лист персонажа"><X size={20} /></button>
           </div>
         </header>
-        <nav className="editor-tabs"><button disabled={saving} className={tab === 'sheet' ? 'active' : ''} onClick={() => setTab('sheet')}>Основной лист</button><button disabled={saving} className={tab === 'story' ? 'active' : ''} onClick={() => setTab('story')}>История и особенности</button><button disabled={saving} className={tab === 'advancement' ? 'active' : ''} onClick={() => setTab('advancement')}><Sparkles size={14} />Развитие</button>{!stagedSetup && <button onClick={onLevelUp} disabled={saving || !developmentValid || !abilityScoreChoiceSaved}><Sparkles size={14} />Повысить уровень</button>}<span><Backpack size={14} />{draft.inventory.length} предметов</span></nav>
+        <nav className="editor-tabs"><button disabled={saving} className={tab === 'sheet' ? 'active' : ''} onClick={() => setTab('sheet')}>Основной лист</button><button disabled={saving} className={tab === 'story' ? 'active' : ''} onClick={() => setTab('story')}>История и особенности</button><button disabled={saving} className={String(tab) === 'advancement' ? 'active' : ''} onClick={() => setTab('advancement')}><Sparkles size={14} />Развитие</button>{!stagedSetup && <button onClick={() => { setLevelUpRequested(true); setDevelopmentStage('class'); setTab('advancement') }} disabled={saving || !developmentValid || !abilityScoreChoiceSaved}><Sparkles size={14} />Повысить уровень</button>}<span><Backpack size={14} />{draft.inventory.length} предметов</span></nav>
         <div className="editor-content">
           {tab === 'sheet' ? <>
             <div className="sheet-section identity-grid">
@@ -324,71 +579,7 @@ export function CharacterEditor({ player, rulesetId, targetLevel = player.level,
             <TextField label="Слабости" value={draft.flaws} onChange={(value) => patch('flaws', value)} />
             <TextField label="Умения и особенности" value={draft.features} onChange={(value) => patch('features', value)} rows={6} />
             <TextField label="Заметки" value={draft.notes} onChange={(value) => patch('notes', value)} rows={5} />
-          </div> : <div className="advancement-editor">
-            <section className="advancement-summary">
-              <div><Sparkles size={20} /><span><small>{stagedSetup ? 'ПОЭТАПНАЯ ПОДГОТОВКА' : draft.level > player.level ? 'ПОВЫШЕНИЕ УРОВНЯ' : 'КОНСТРУКТОР ПЕРСОНАЖА'}</small><strong>{stagedSetup ? `Уровень ${draft.level} из ${setupTargetLevel}` : `${classOption?.label ?? 'Сначала выберите класс'} · ${draft.level} уровень`}</strong></span></div>
-              {stagedSetup && <p>Сохраните выбор текущего уровня, чтобы перейти дальше. Игра откроется после подготовки до {setupTargetLevel}-го уровня.</p>}
-              {stagedSetup && subclassUnlocked && <label className="sheet-field staged-subclass-choice"><span>Подкласс · обязательный выбор</span><select value={draft.subclass ?? ''} onChange={(event) => {
-                const nextSubclass = event.target.value || undefined
-                setDraft((current) => {
-                  const next = { ...current, subclass: nextSubclass }
-                  return { ...next, selectedFeatureIds: normalizedSelectedFeatures(next) }
-                })
-              }}><option value="">Выберите подкласс</option>{subclasses.map((entry) => <option key={entry.id} value={entry.name}>{entry.name}</option>)}</select></label>}
-              {classOption && <p>{subclassUnlocked ? draft.subclass ? `Подкласс: ${draft.subclass}` : 'На этом уровне нужно выбрать подкласс.' : `Подкласс откроется на ${classOption.subclassLevel}-м уровне.`}</p>}
-            </section>
-            {stagedAbilityScoreLevel != null && <section className="advancement-block ability-score-development">
-              <header><div><Sparkles size={17} /><span><strong>Улучшение характеристик · {stagedAbilityScoreLevel} уровень</strong><small>Выберите +2 одной характеристике или +1 двум</small></span></div><b className={!abilityScoreChoicesValid ? 'invalid' : ''}>{abilityScoreChoice.length}/2</b></header>
-              <div className="ability-score-choice-grid">
-                <label><span>Первая прибавка</span><select value={abilityScoreChoice[0] ?? ''} onChange={(event) => setAbilityScoreChoice((current) => [event.target.value, current[1]].filter(Boolean))}><option value="">Выберите характеристику</option>{Object.keys(abilityNames).map((ability) => <option key={ability} value={ability}>{abilityNames[ability as keyof Player['abilities']]}</option>)}</select></label>
-                <label><span>Вторая прибавка <small>(пусто = +2 к первой)</small></span><select value={abilityScoreChoice[1] ?? ''} onChange={(event) => setAbilityScoreChoice((current) => event.target.value ? [current[0] ?? '', event.target.value].filter(Boolean) : [current[0]].filter(Boolean))}><option value="">Не выбирать</option>{Object.keys(abilityNames).map((ability) => <option key={ability} value={ability}>{abilityNames[ability as keyof Player['abilities']]}</option>)}</select></label>
-              </div>
-            </section>}
-            <label className="advancement-search"><Search size={16} /><input value={developmentSearch} onChange={(event) => setDevelopmentSearch(event.target.value)} placeholder="Поиск навыка, умения или заклинания…" /></label>
-            <section className="advancement-block skill-development">
-              <header><div><Check size={17} /><span><strong>Владение навыками</strong><small>Классовый выбор первого уровня</small></span></div>{classSkillRules && <b className={selectedClassSkills.length !== classSkillRules.choiceCount ? 'invalid' : ''}>{selectedClassSkills.length}/{classSkillRules.choiceCount}</b>}</header>
-              {classSkillRules ? <div className="class-skill-list">{filteredClassSkills.map((skill) => {
-                const selected = selectedClassSkills.includes(skill.id)
-                return <button key={skill.id} className={selected ? 'selected' : ''} onClick={() => toggleClassSkill(skill.id)}><i>{selected ? <Check size={14} /> : <Plus size={14} />}</i><span><strong>{skill.name}</strong><small>{skill.ability.toUpperCase()}</small></span></button>
-              })}</div> : <p className="advancement-empty">Выберите класс, чтобы открыть допустимые навыки.</p>}
-            </section>
-            {featureChoiceGroups.length > 0 && <section className="advancement-block feature-choice-development">
-              <header><div><Sparkles size={17} /><span><strong>Выбор классовых умений</strong><small>Новые варианты появляются на нужном уровне</small></span></div><b className={!featureChoicesValid ? 'invalid' : ''}>{featureChoiceGroups.reduce((sum, group) => sum + group.options.filter((option) => selectedFeatureIds.includes(option.id)).length, 0)}/{featureChoiceGroups.reduce((sum, group) => sum + group.choiceCount, 0)}</b></header>
-              <div className="feature-choice-groups">{filteredFeatureChoiceGroups.map((group) => {
-                const chosen = group.options.filter((option) => selectedFeatureIds.includes(option.id)).length
-                return <section key={group.id}><header><span><strong>{group.name}</strong><small>Открыто на {group.unlockLevel} уровне</small></span><b className={chosen !== group.choiceCount ? 'invalid' : ''}>{chosen}/{group.choiceCount}</b></header><div>{group.options.map((option) => {
-                  const selected = selectedFeatureIds.includes(option.id)
-                  return <button key={option.id} className={selected ? 'selected' : ''} onClick={() => toggleFeatureChoice(group, option.id)}><i>{selected ? <Check size={14} /> : <Plus size={14} />}</i><span><strong>{option.name}</strong>{option.minimumLevel && <small>с {option.minimumLevel} уровня</small>}</span></button>
-                })}</div></section>
-              })}</div>
-            </section>}
-            <section className="advancement-block">
-              <header><div><Shield size={17} /><span><strong>Классовые умения</strong><small>Автоматически открываются на требуемом уровне</small></span></div><b>{developmentFeatures.filter((feature) => draft.level >= Number(feature.minimumLevel ?? 1)).length}</b></header>
-              <div className="feature-progression-list">{developmentFeatures.length ? developmentFeatures.map((feature) => {
-                const unlocked = draft.level >= Number(feature.minimumLevel ?? 1)
-                return <article key={feature.id} className={unlocked ? 'unlocked' : 'locked'}><i>{unlocked ? <Check size={14} /> : <LockKeyhole size={14} />}</i><span><strong>{feature.name}</strong><small>{feature.subclass || classOption?.label} · {feature.minimumLevel ?? 1} уровень</small><p>{feature.description}</p></span></article>
-              }) : <p className="advancement-empty">Выберите класс и подкласс, чтобы увидеть развитие умений.</p>}</div>
-            </section>
-            <section className="advancement-block spell-development">
-              <header><div><Sparkles size={17} /><span><strong>Заклинания</strong><small>{spellRules ? spellRules.mode === 'known' ? 'Известные заклинания' : spellRules.mode === 'spellbook' ? 'Книга и подготовка' : 'Подготовка после отдыха' : 'Этот класс не использует заклинания'}</small></span></div>{spellRules && <b>до {spellRules.maximumSpellLevel} круга</b>}</header>
-              {spellRules ? <>
-                <div className="spell-choice-counters">
-                  {spellRules.cantrips > 0 && <span className={knownCantrips > spellRules.cantrips ? 'invalid' : ''}>Заговоры <b>{knownCantrips}/{spellRules.cantrips}</b></span>}
-                  {spellRules.mode === 'known' && <span className={knownLeveled > spellRules.spellsKnown ? 'invalid' : ''}>Известно <b>{knownLeveled}/{spellRules.spellsKnown}</b></span>}
-                  {spellRules.mode === 'spellbook' && <span className={knownLeveled > Math.max(spellRules.spellbookMinimum, player.knownSpellIds?.length ?? 0) ? 'invalid' : ''}>В книге <b>{knownLeveled}/{Math.max(spellRules.spellbookMinimum, player.knownSpellIds?.length ?? 0)}</b></span>}
-                  {(spellRules.mode === 'prepared' || spellRules.mode === 'spellbook') && <span className={preparedLeveled > spellRules.preparedLimit ? 'invalid' : ''}>Подготовлено <b>{preparedLeveled}/{spellRules.preparedLimit}</b></span>}
-                </div>
-                <nav className="advancement-level-filter"><button className={spellLevelFilter === 'all' ? 'active' : ''} onClick={() => setSpellLevelFilter('all')}>Все</button>{[...new Set(developmentSpells.map((spell) => spell.level))].sort((a, b) => a - b).map((level) => <button key={level} className={spellLevelFilter === level ? 'active' : ''} onClick={() => setSpellLevelFilter(level)}>{level === 0 ? 'З' : level}</button>)}</nav>
-                <div className="development-spell-list">{filteredDevelopmentSpells.map((spell) => {
-                  const known = knownSpellIds.includes(spell.id)
-                  const prepared = preparedSpellIds.includes(spell.id)
-                  return <article key={spell.id} className={known || prepared ? 'selected' : ''}><span><strong>{spell.name}</strong><small>{spell.level ? `${spell.level} круг` : 'заговор'} · {spell.castingTime || '1 действие'} · {spell.rangeText || `${spell.range} фт.`}</small><p>{spell.description}</p></span><div>
-                    {spell.level === 0 || spellRules.mode === 'known' ? <button className={known ? 'active' : ''} onClick={() => toggleDevelopmentSpell(spell.id)}>{known ? <Check size={13} /> : <Plus size={13} />}{spell.level === 0 ? 'Изучен' : 'Выбрать'}</button> : spellRules.mode === 'spellbook' ? <><button className={known ? 'active' : ''} onClick={() => toggleDevelopmentSpell(spell.id)}>{known ? <Check size={13} /> : <Plus size={13} />}Книга</button><button className={prepared ? 'active' : ''} disabled={!known} onClick={() => toggleDevelopmentSpell(spell.id, true)}>{prepared ? <Check size={13} /> : <Plus size={13} />}Подготовить</button></> : <button className={prepared ? 'active' : ''} onClick={() => toggleDevelopmentSpell(spell.id, true)}>{prepared ? <Check size={13} /> : <Plus size={13} />}Подготовить</button>}
-                  </div></article>
-                })}</div>
-              </> : <p className="advancement-empty">Заклинания появятся здесь автоматически, если выбран класс-заклинатель и достигнут нужный уровень.</p>}
-            </section>
-          </div>}
+          </div> : developmentContent}
         </div>
         <footer className="editor-footer"><p>{notice || (developmentValid ? stagedSetup ? `Уровень ${draft.level} из ${setupTargetLevel}: выбор готов.` : 'Изменения сохраняются в общей сессии и сразу видны отряду.' : developmentHint)}</p><button onClick={() => { void saveCharacter() }} disabled={saving}><Save size={16} />{saving ? 'Сохраняем…' : stagedSetup ? (draft.level >= setupTargetLevel ? 'Завершить подготовку' : `Сохранить выбор и перейти к уровню ${draft.level + 1}`) : 'Сохранить персонажа'}</button></footer>
       </section>

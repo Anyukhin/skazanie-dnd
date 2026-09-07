@@ -468,6 +468,10 @@ import {
 export const DEFAULT_RULESET_ID = LEGACY_DEFAULT_RULESET_ID
 const usesDnd2014 = (state) => String(state?.ruleset_id ?? DEFAULT_RULESET_ID) === DND_2014_RULESET_ID
 const MAGIC_ITEM_SPELL_IMMUNITY_EVENT_SCHEMA_VERSION = 1
+// Внутренний маркер для атак, которые уже оплачены родительским бонусным
+// действием. Символ и токен не могут приехать в JSON-команде игрока.
+const MONK_BONUS_ATTACK_CONTEXT = Symbol('monk-bonus-attack')
+const MONK_BONUS_ATTACK_TOKEN = Object.freeze({})
 // 4: карта сцены хранится слоями в `scene.map`, а `scene.cells` стал производной
 // read-моделью. Старые снимки переигрываются от нулевого, поэтому отдельной
 // файловой миграции не требуется.
@@ -2797,6 +2801,54 @@ function trustedAttackProfile(state, actor, actionId = null) {
   }
 }
 
+function isMonkBonusAttackContext(context) {
+  return context?.[MONK_BONUS_ATTACK_CONTEXT] === MONK_BONUS_ATTACK_TOKEN
+}
+
+function monkMartialArtsAttackProfile(actor) {
+  const level = Math.max(1, safeInteger(actor?.level, 1))
+  const die = level >= 11 ? 8 : level >= 5 ? 6 : 4
+  const strength = abilityModifier(actor?.abilities?.str)
+  const unarmored = armorRestrictions(actor).length === 0 && !hasEquippedShield(actor)
+  if (!unarmored) {
+    return {
+      id: 'monk-unarmed-strike',
+      name: 'Безоружный удар',
+      kind: 'melee',
+      modifier: strength + Math.max(0, safeInteger(actor?.proficiency, 0)),
+      damage_expression: null,
+      damage_amount: Math.max(0, 1 + strength),
+      damage_type: 'bludgeoning',
+      range_feet: 5,
+      normal_range_feet: 5,
+      advantage: false,
+      disadvantage: false,
+      on_hit: null,
+      uses: 0,
+      recharge: 0,
+      tactical_priority: 0,
+    }
+  }
+  const ability = Math.max(strength, abilityModifier(actor?.abilities?.dex))
+  return {
+    id: 'monk-unarmed-strike',
+    name: 'Безоружный удар монаха',
+    kind: 'melee',
+    modifier: ability + Math.max(0, safeInteger(actor?.proficiency, 0)),
+    damage_expression: diceExpression(`1d${die}`, ability, die),
+    damage_amount: null,
+    damage_type: 'bludgeoning',
+    range_feet: 5,
+    normal_range_feet: 5,
+    advantage: false,
+    disadvantage: false,
+    on_hit: null,
+    uses: 0,
+    recharge: 0,
+    tactical_priority: 0,
+  }
+}
+
 /**
  * Recharge (X–6): наименьшее значение d6, возвращающее способность. `0` —
  * способность не восстанавливается броском вовсе.
@@ -4254,7 +4306,7 @@ function validateNpcItemUseCommand(command, state, context = {}) {
   return result
 }
 
-/** Сколько раз существо уже произносило это заклинание за день. */
+/** Сколько раз legacy-существо уже произносило заклинание с лимитом `X/day`. */
 function monsterSpellUsesSpent(state, actorIdValue, spellId) {
   return monsterSpellUsesSpentIn(conditionIdsFor(state, actorIdValue), spellId)
 }
@@ -4453,6 +4505,17 @@ function assertActorPermission(command, context, state) {
   }
 }
 
+function assertMonkUnarmedActionAllowed(state, actor, action) {
+  if (!['martial-arts-strike', 'flurry-of-blows'].includes(String(action?.id ?? ''))) return
+  const economy = state.mechanics.combat.action_economy[actorId(actor)] ?? {}
+  if (Math.max(0, safeInteger(economy.attacks_used, 0)) < 1) {
+    throw new RulesValidationError('Безоружный удар монаха бонусным действием доступен после действия «Атака»', 'MONK_ATTACK_ACTION_REQUIRED')
+  }
+  if (action.id === 'martial-arts-strike' && (armorRestrictions(actor).length || hasEquippedShield(actor))) {
+    throw new RulesValidationError('Боевые искусства монаха требуют отсутствия доспеха и щита', 'MONK_MARTIAL_ARTS_REQUIRES_UNARMORED')
+  }
+}
+
 function assertTurn(command, state, context = {}) {
   const combat = state.mechanics.combat
   // `SettleParley` в списке нет намеренно: перемирие уже заморозило очередь, и
@@ -4640,6 +4703,7 @@ function assertTurn(command, state, context = {}) {
       }
     }
     if (economy && economy.action === false) {
+      if (command.command_type === 'MakeAttack' && isMonkBonusAttackContext(context)) return
       // Extra Attack lets the Attack action carry more than one weapon attack.
       // The exception applies only to a creature that has already attacked this
       // turn: spending the action on anything else leaves no attacks to make.
@@ -5909,6 +5973,7 @@ export function validateCommand(input, rawState, context = {}) {
     if (!action) throw new RulesValidationError('Это действие недоступно активному герою', 'COMBAT_ACTION_NOT_AVAILABLE')
     assertMechanicsSupported(action, 'действия')
     if (!state.mechanics.combat.active && action.id !== 'indomitable') throw new RulesValidationError('Сначала нужно начать бой и определить инициативу', 'COMBAT_NOT_ACTIVE')
+    assertMonkUnarmedActionAllowed(state, actor, action)
     if (!isLivingActor(actor) && !(action.id === 'indomitable' && actor && state.mechanics.death.saving_throws[command.actor_id])) throw new RulesValidationError('Побеждённый участник не может действовать', 'ACTOR_DEFEATED')
     if (action.id === 'indomitable') {
       if (!reactionWindow || reactionWindow.trigger !== 'failed-saving-throw' || String(reactionWindow.actor_id) !== command.actor_id || !(reactionWindow.action_ids ?? []).includes('indomitable')) throw new RulesValidationError('Сейчас нет проваленного спасброска для Indomitable', 'INDOMITABLE_NOT_AVAILABLE')
@@ -9073,10 +9138,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const actor = findActor(state, command.actor_id)
       const target = findActor(state, targetId)
       const authoritative = Boolean(command.server_authoritative || context.serverAuthoritativeCombat || context.isNpcScheduler || isEnemyActor(state, command.actor_id) || isEnemyActor(state, targetId))
+      const monkBonusAttack = isMonkBonusAttackContext(context)
       const selectedProfile = authoritative && command.item_id
         ? itemAttackProfile(state, actor, command.item_id, { attackMode: command.attack_mode, attackAbility: command.attack_ability })
         : null
-      const profile = selectedProfile ?? (authoritative ? trustedAttackProfile(state, actor, command.action_id) : null)
+      const profile = monkBonusAttack
+        ? monkMartialArtsAttackProfile(actor)
+        : selectedProfile ?? (authoritative ? trustedAttackProfile(state, actor, command.action_id) : null)
       if (profile) {
         command.attack_modifier = profile.modifier
         command.damage_expression = profile.damage_expression
@@ -9308,6 +9376,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           ...(sneakAttackSupporter ? { sneak_attack_supporter_id: actorId(sneakAttackSupporter) } : {}),
         } : {}),
         ...(command.request_fingerprint ? { request_fingerprint: command.request_fingerprint } : {}),
+        ...(monkBonusAttack ? { economy: { action: false, attack: false } } : {}),
         action_id: profile?.id ?? null,
         action_name: profile?.name ?? null,
         // Признак качественный: за столом и так видно, что существо пустило в
@@ -10799,6 +10868,10 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         const level = Math.max(1, safeInteger(actor?.level, 1))
         const tier = Object.entries(action.effect.attacksByLevel ?? {}).sort(([left], [right]) => Number(right) - Number(left)).find(([minimum]) => level >= Number(minimum))
         const attacks = Math.max(1, safeInteger(tier?.[1] ?? action.effect.attacks, 1))
+        const monkUnarmedBonus = action.effect.unarmed === true && ['martial-arts-strike', 'flurry-of-blows'].includes(action.id)
+        const nestedContext = monkUnarmedBonus
+          ? { ...context, [MONK_BONUS_ATTACK_CONTEXT]: MONK_BONUS_ATTACK_TOKEN }
+          : context
         let workingState = state
         let landed = false
         for (let index = 0; index < attacks; index += 1) {
@@ -10811,7 +10884,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
             target_id: actionTargetId,
             target_ids: [actionTargetId],
             item_id: action.effect.unarmed ? undefined : command.item_id,
-          }, workingState, { diceService, context })
+          }, workingState, { diceService, context: nestedContext })
           const attackEvent = attackResult.events.find((event) => event.event_type === 'AttackResolved')
           const hit = Boolean(attackEvent?.payload?.hit)
           landed ||= hit
@@ -10849,9 +10922,9 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           events.push(...attackResult.events)
           rolls.push(...attackResult.rolls)
           workingState = replayEvents(workingState, attackResult.events)
-          if (workingState.mechanics.combat.action_economy[command.actor_id]) workingState.mechanics.combat.action_economy[command.actor_id].action = true
+          if (!monkUnarmedBonus && workingState.mechanics.combat.action_economy[command.actor_id]) workingState.mechanics.combat.action_economy[command.actor_id].action = true
         }
-        events.push(actionEvent({ hit: landed, attacks, economy_consumed_by_attack: true }))
+        events.push(actionEvent({ hit: landed, attacks, ...(monkUnarmedBonus ? {} : { economy_consumed_by_attack: true }) }))
       } else if (action.effect?.kind === 'save') {
         const target = findActor(state, actionTargetId)
         const saveAbility = String(action.effect.saveAbility ?? 'wis')
@@ -15448,11 +15521,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       break
     }
     case 'RollCharacterAbilities': {
-      const abilityRolls = Array.from({ length: 6 }, (_, index) => diceService.roll('4d6', `character-ability-${index + 1}`, command.actor_id, 'party'))
-      rolls.push(...abilityRolls)
+      const previous = findActor(state, command.actor_id).characterCreationRolls?.abilities
+      const roll = diceService.roll('4d6', `character-ability-${command.roll_index + 1}`, command.actor_id, 'party')
+      const abilityRolls = [...(previous?.rolls ?? []), roll]
+      rolls.push(roll)
       events.push(eventFrom(command, 'CharacterAbilitiesRolled', {
-        schema_version: 1,
-        id: abilityRolls[0].roll_id,
+        schema_version: 2,
+        id: previous?.id ?? roll.roll_id,
         rolls: abilityRolls,
         scores: abilityRolls.map((roll) => [...roll.dice].sort((a, b) => b - a).slice(0, 3).reduce((sum, value) => sum + value, 0)),
       }, [command.actor_id]))
@@ -15971,6 +16046,12 @@ function refreshPlayerDerivedState(state, actorIds) {
         proficiency: characterSheet.proficiency_bonus,
       } : {}),
       characterSheet,
+      // Выборы героя могут изменить доступные заклинания и классовые
+      // действия (например, черта «Посвящённый в магию»). Эти поля лежат в
+      // состоянии, которое сразу уходит клиенту, поэтому их нужно пересчитать
+      // вместе с листом, а не ждать следующей нормализации после перезапуска.
+      combatSpells: combatSpellsFor(actor),
+      combatActions: combatActionsFor(actor),
       inventoryLoad: inventoryLoadFor(actor),
     }
   })
@@ -16967,12 +17048,13 @@ export function applyGameEvent(rawState, event) {
       // правило: иначе босс, ударивший хвостом после хода героя, приходил бы в
       // свой ход без действия, то есть платил бы за подарок редакции.
       if (!payload.reaction_attack && !payload.legendary_action_id) {
+        const economyInfo = payload.economy && typeof payload.economy === 'object' ? payload.economy : {}
         // Extra Attack is part of the Attack action, so the action is still
         // spent here; what changes is that the economy remembers how many of
         // the granted weapon attacks have been made.
-        spendCombatEconomy(state, event.actor_id, 'action')
+        if (economyInfo.action !== false) spendCombatEconomy(state, event.actor_id, 'action')
         const attacker = findActor(state, event.actor_id)
-        if (state.mechanics.combat.active && event.actor_id && attacker) {
+        if (economyInfo.attack !== false && state.mechanics.combat.active && event.actor_id && attacker) {
           const economy = state.mechanics.combat.action_economy[event.actor_id] ?? actionEconomy()
           const usedActionIds = Array.isArray(economy.multiattack_action_ids) ? economy.multiattack_action_ids.map(String) : []
           state.mechanics.combat.action_economy[event.actor_id] = {
@@ -18149,16 +18231,37 @@ export function applyGameEvent(rawState, event) {
         selectedFeatureIds: uniqueStrings(payload.selected_feature_ids),
         ...(payload.ability_score_increases && typeof payload.ability_score_increases === 'object' && !Array.isArray(payload.ability_score_increases)
           ? { abilityScoreIncreases: clone(payload.ability_score_increases) } : {}),
+        ...(Number(payload.schema_version) >= 2 && payload.level_feats && typeof payload.level_feats === 'object' && !Array.isArray(payload.level_feats)
+          ? { levelFeats: clone(payload.level_feats) } : {}),
         ...(payload.abilities_after && typeof payload.abilities_after === 'object' && !Array.isArray(payload.abilities_after)
           ? { abilities: clone(payload.abilities_after) } : {}),
+        ...(Number(payload.schema_version) >= 2 && payload.creation_benefits && typeof payload.creation_benefits === 'object' && !Array.isArray(payload.creation_benefits)
+          ? { creationBenefits: clone(payload.creation_benefits) } : {}),
+        ...(Number(payload.schema_version) >= 2 && Array.isArray(payload.creation_skill_proficiencies)
+          ? { creationSkillProficiencies: uniqueStrings(payload.creation_skill_proficiencies) } : {}),
+        ...(Number(payload.schema_version) >= 2 && Array.isArray(payload.creation_spell_grants)
+          ? { creationSpellGrants: clone(payload.creation_spell_grants) } : {}),
       }))
       {
         const actor = state.players.find((candidate) => actorId(candidate) === String(target))
-        if (actor?.characterSetupStage === 'leveling'
-          && actor.level >= characterCreationTargetLevel(state)
-          && characterCreationChoicesComplete(actor)) {
-          actor.characterSetupRequired = false
-          delete actor.characterSetupStage
+        if (actor && Number(payload.schema_version) >= 2 && payload.creation_benefits && typeof payload.creation_benefits === 'object') {
+          try {
+            const sheet = deriveCharacterSheet(actor)
+            state.players = state.players.map((candidate) => actorId(candidate) === String(target)
+              ? {
+                  ...candidate,
+                  maxHp: sheet.hit_points.value,
+                  hp: Math.min(Math.max(0, safeInteger(candidate.hp, 0)), sheet.hit_points.value),
+                }
+              : candidate)
+          } catch {}
+        }
+        const currentActor = state.players.find((candidate) => actorId(candidate) === String(target))
+        if (currentActor?.characterSetupStage === 'leveling'
+          && currentActor.level >= characterCreationTargetLevel(state)
+          && characterCreationChoicesComplete(currentActor)) {
+          currentActor.characterSetupRequired = false
+          delete currentActor.characterSetupStage
         }
       }
       refreshPlayerDerivedState(state, [target])

@@ -15,7 +15,8 @@ import { planHeroReaction } from '../server/party-tactics.mjs'
 import { RulesEngine, applyGameEvent, normalizeCampaignState, actorPosition, eventSummary, movementCostOfPath, shortestTacticalPath } from '../server/rules-engine.mjs'
 import { campaignStateForViewer } from '../server/viewer-projection.mjs'
 import { withStarterKit } from '../server/starter-kit.mjs'
-import { cellAt, deserializeTacticalMap, serializeTacticalMap, setCell, tacticalMapFromLegacyCells } from '../server/tactical-map.mjs'
+import { canonicalCombatSpellFor } from '../server/combat-spells.mjs'
+import { cellAt, deserializeTacticalMap, legacyCellsFromTacticalMap, serializeTacticalMap, setCell, tacticalMapFromLegacyCells } from '../server/tactical-map.mjs'
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const NOW = '2026-09-06T12:00:00.000Z'
@@ -69,7 +70,7 @@ function fixture(scenario) {
 
 // Бот получает только проекцию игрока. Его стратегия намеренно проста:
 // лечение рядом, сближение и атака; правила исполняет настоящий Rules Engine.
-function chooseCommand(view, actorId, report) {
+function chooseLabCommand(view, actorId, report) {
   const combat = view.mechanics.combat
   if (combat.reaction_window) return planHeroReaction(view, combat.reaction_window).commands[0]
   const hero = view.players.find((actor) => actor.id === actorId)
@@ -216,9 +217,142 @@ export function combatEventChecker(initial) {
   }
 }
 
+function abortIfRequested(signal) {
+  if (!signal?.aborted) return
+  const error = new Error('Бой отменён')
+  error.name = 'AbortError'
+  error.code = 'ABORT_ERR'
+  throw error
+}
+
+function frameCells(state) {
+  const sceneCells = Array.isArray(state?.scene?.cells) ? state.scene.cells : []
+  let map = null
+  try {
+    map = state?.scene?.map ? deserializeTacticalMap(state.scene.map) : null
+  } catch { /* повреждённую карту не даём наблюдателю уронить сам прогон */ }
+  const cells = sceneCells.length
+    ? sceneCells
+    : map ? legacyCellsFromTacticalMap(map) : []
+  return cells.map((raw) => {
+    const cell = map ? cellAt(map, Number(raw.x), Number(raw.y)) : null
+    const result = {
+      x: Number(raw.x),
+      y: Number(raw.y),
+      type: String(raw.type || (cell?.passable === false ? 'wall' : 'floor')),
+    }
+    if (Boolean(raw.difficult) || Number(raw.moveCost ?? cell?.moveCost) > 1) result.difficult = true
+    return result
+  })
+}
+
+const FRAME_ACTOR_NAMES = Object.freeze({
+  hero: 'Воин',
+  ally: 'Союзник',
+  enemy: 'Противник',
+  'enemy-2': 'Второй противник',
+})
+
+function actorDisplayName(actor) {
+  const id = String(actor?.id ?? '')
+  const name = String(actor?.name || actor?.character || '').trim()
+  return name && name !== id ? name : (FRAME_ACTOR_NAMES[id] || id)
+}
+
+function frameEventText(event, names) {
+  const resolveName = (id) => names.get(String(id)) ?? id
+  const summary = eventSummary(event, resolveName)
+  const payload = event.payload ?? {}
+  if (event.event_type === 'SpellCast') {
+    return `${resolveName(event.actor_id) || 'Герой'} накладывает заклинание «${payload.spell_name || payload.name || payload.spell_id || 'заклинание'}»`
+  }
+  if (event.event_type === 'ConcentrationStarted') return `${resolveName(event.actor_id) || 'Герой'} начинает концентрацию`
+  if (event.event_type === 'ConcentrationEnded') return 'Концентрация прекращена'
+  if (event.event_type === 'ConcentrationCheckRequired') return 'Получен урон: требуется проверка концентрации'
+  if (event.event_type === 'ReactionWindowOpened') return 'Открыта возможность реакции'
+  if (event.event_type === 'ReactionWindowClosed') return 'Реакция разрешена; бой продолжается'
+  if (event.event_type === 'ReactionDamageReduced') return 'Реакция уменьшила полученный урон'
+  if (event.event_type === 'ConditionAdded' && payload.condition === 'shielded') return 'Действует заклинание «Щит»'
+  if (event.event_type === 'ConditionAdded' && payload.condition === 'bless-d4') return 'Действует «Благословение»'
+  if (event.event_type === 'ResourceSpent' && String(payload.resource || '').startsWith('spell_slots_')) {
+    return `${resolveName(event.actor_id) || 'Герой'} расходует ячейку заклинания`
+  }
+  return payload.spell_id ? summary.replace(String(payload.spell_id), canonicalCombatSpellFor(payload.spell_id)?.name ?? String(payload.spell_id)) : summary
+}
+
+function combatFrame(state, events, index) {
+  const players = Array.isArray(state?.players) ? state.players : []
+  const enemies = Array.isArray(state?.enemies) ? state.enemies : []
+  const all = [...players.map((actor) => ({ actor, side: 'party' })), ...enemies.map((actor) => ({ actor, side: 'enemy' }))]
+  const names = new Map(all.map(({ actor }) => [String(actor.id), actorDisplayName(actor)]))
+  const combat = state?.mechanics?.combat
+  const initiative = Array.isArray(combat?.initiative) ? combat.initiative : []
+  const activeIndex = Number.isSafeInteger(combat?.active_index) ? combat.active_index : -1
+  return {
+    index,
+    round: Number(combat?.round ?? state?.scene?.turn ?? 0),
+    activeActorId: initiative[activeIndex]?.actor_id ?? null,
+    actors: all.map(({ actor, side }) => {
+      const position = actorPosition(state, actor.id) ?? { x: actor.x, y: actor.y }
+      return {
+        id: String(actor.id),
+        name: actorDisplayName(actor),
+        side,
+        hp: Number(actor.hp ?? 0),
+        maxHp: Number(actor.maxHp ?? actor.hp ?? 0),
+        x: Number(position?.x ?? 0),
+        y: Number(position?.y ?? 0),
+        image: actor.image || actor.portrait,
+        conditions: (state.mechanics?.conditions?.[actor.id] ?? []).map((condition) => String(condition.id ?? condition)),
+        resources: state.mechanics?.resources?.[actor.id] ?? {},
+        arsenal: [
+          ...(actor.combatSpells ?? []).filter((spell) => spell.prepared !== false).map((spell) => ({ name: spell.name, status: spell.mechanicsSupport ?? 'partial' })),
+          ...(actor.combatActions ?? []).filter((action) => action.category !== 'common').map((action) => ({ name: action.name, status: action.mechanicsSupport ?? 'partial' })),
+          ...(actor.action_profiles ?? []).map((action) => ({ name: action.name, status: 'verified' })),
+          ...(actor.spellcasting?.spells ?? []).map((spell) => ({ name: canonicalCombatSpellFor(spell.spell_id ?? spell.id)?.name ?? spell.spell_id ?? spell.id, status: canonicalCombatSpellFor(spell.spell_id ?? spell.id)?.mechanicsSupport ?? 'partial' })),
+        ],
+      }
+    }),
+    cells: frameCells(state),
+    map: state.scene?.map,
+    gameEvents: events,
+    events: (Array.isArray(events) ? events : []).map((event, eventIndex) => ({
+      id: String(event.event_id || `${index}-${eventIndex}-${event.event_type}`),
+      text: String(frameEventText(event, names)),
+      actorId: event.actor_id == null ? null : String(event.actor_id),
+    })),
+  }
+}
+
+function observedEventStore(eventStore, { onFrame, signal, takeTactic = () => null }) {
+  let frameIndex = 0
+  const notify = async (state, events) => {
+    if (typeof onFrame !== 'function') return
+    const frame = combatFrame(state, events, ++frameIndex)
+    const tactic = takeTactic()
+    if (tactic) frame.events.unshift({ id: `tactic-${frameIndex}`, actorId: tactic.actorId, text: `Тактика: ${tactic.text}` })
+    await onFrame(frame)
+  }
+  return new Proxy(eventStore, {
+    get(target, property, receiver) {
+      if (property === 'commit') {
+        return async (input) => {
+          abortIfRequested(signal)
+          const committed = await target.commit(input)
+          await notify(committed.state, committed.events)
+          abortIfRequested(signal)
+          return committed
+        }
+      }
+      const value = Reflect.get(target, property, receiver)
+      return typeof value === 'function' ? value.bind(target) : value
+    },
+  })
+}
+
 /** Один воспроизводимый бой. Отчёт содержит также отказавшую команду. */
-export async function runCombatScenario({ scenario = 'duel', seed = 1, maxSteps = 160 } = {}) {
-  assert.ok(COMBAT_SCENARIOS.includes(scenario), `Неизвестный сценарий: ${scenario}`)
+export async function runCombatScenario({ scenario = 'duel', seed = 1, maxSteps = 160, onFrame, signal, initialState: customState = null, chooseCommand = null } = {}) {
+  assert.ok(COMBAT_SCENARIOS.includes(scenario) || (scenario === 'custom' && customState && typeof chooseCommand === 'function'), `Неизвестный сценарий: ${scenario}`)
   assert.ok(Number.isSafeInteger(seed) && seed >= 0 && seed <= 0xffffffff, 'seed: целое число 0..4294967295')
   assert.ok(Number.isSafeInteger(maxSteps) && maxSteps >= 1 && maxSteps <= 1000, 'maxSteps: целое число 1..1000')
   const storage = mkdtempSync(join(tmpdir(), 'skazanie-combat-lab-'))
@@ -234,38 +368,50 @@ export async function runCombatScenario({ scenario = 'duel', seed = 1, maxSteps 
     snapshotEvery: 7, clock: () => new Date(NOW), idFactory: sequence('commit') }
   const eventStore = new FileEventStore(options)
   const rulesEngine = new RulesEngine({ diceService: new DiceService({ rng, idFactory: sequence('roll'), now: () => NOW }) })
-  const executor = new AuthoritativeExecutor({ eventStore, rulesEngine })
-  const initialState = fixture(scenario)
-  const checkEvents = combatEventChecker(initialState)
+  const initialState = customState ? normalizeCampaignState(structuredClone(customState)) : fixture(scenario)
+  // Независимый счётчик маленьких арен не применим к Extra Attack, легендарным
+  // действиям и произвольным эффектам. Общие проверки состояния/replay остаются.
+  const checkEvents = customState ? () => {} : combatEventChecker(initialState)
   const report = { schema: 'combat-lab/v1', rng: 'lcg32-1664525-1013904223/v1', scenario, seed, initial_state: initialState, steps: [], rolls, passed: false }
   const campaignId = initialState.sessionCode
+  let pendingTactic = null
+  const observedStore = observedEventStore(eventStore, { onFrame, signal, takeTactic: () => {
+    const value = pendingTactic; pendingTactic = null; return value
+  } })
+  const observedExecutor = new AuthoritativeExecutor({ eventStore: observedStore, rulesEngine })
   try {
+    abortIfRequested(signal)
     await eventStore.initializeCampaign({ campaign_id: campaignId, initial_state: initialState })
-    let command = { command_type: 'StartCombat', actor_id: 'hero' }
+    if (typeof onFrame === 'function') await onFrame(combatFrame(initialState, [], 0))
+    abortIfRequested(signal)
+    let command = { command_type: 'StartCombat', actor_id: initialState.players[0].id }
+    let tactic = null
     for (let step = 0; step < maxSteps; step++) {
+      abortIfRequested(signal)
       const before = (await eventStore.load(campaignId)).state
       const key = `lab-${step}`
-      const entry = { step, command, before_version: before.state_version }
+      const entry = { step, command, before_version: before.state_version, ...(tactic ? { tactic } : {}) }
       report.steps.push(entry)
+      pendingTactic = tactic ? { text: tactic, actorId: command.actor_id } : null
       const input = { campaignId, idempotencyKey: key, commands: [{ ...command, command_id: `lab-command-${step}`, server_authoritative: true }],
         actorIds: [command.actor_id], context: { serverAuthoritativeCombat: true, allowedActorIds: [command.actor_id] } }
-      const committed = await executor.executeCommands(input)
+      const committed = await observedExecutor.executeCommands(input)
       entry.events = committed.events
       checkEvents(committed.events)
       const rollCount = rolls.length
-      const duplicate = await executor.executeCommands(input)
+      const duplicate = await observedExecutor.executeCommands(input)
       assert.equal(duplicate.replayed, true, 'Повтор команды создал новый коммит')
       assert.equal(rolls.length, rollCount, 'Повтор команды сделал новые броски')
       assert.deepEqual(duplicate.events, committed.events)
       assert.equal((await eventStore.load(campaignId)).state_version, committed.state_version)
       const afterPlayer = (await eventStore.load(campaignId)).state
       assertState(afterPlayer)
-      if (command.command_type === 'MakeAttack' && !afterPlayer.mechanics.combat.reaction_window
+      if (!customState && command.command_type === 'MakeAttack' && !afterPlayer.mechanics.combat.reaction_window
         && afterPlayer.enemies.some((actor) => actor.id === command.target_id && actor.hp > 0 && actor.alive !== false)) {
         // Новый ключ не должен превращать вторую атаку в разрешённую. В этих
         // аренах у героев нет Extra Attack и Action Surge.
         entry.rejected_probe = { command, idempotency_key: `${key}-extra-attack` }
-        await assert.rejects(() => executor.executeCommands({ ...input, idempotencyKey: entry.rejected_probe.idempotency_key,
+        await assert.rejects(() => observedExecutor.executeCommands({ ...input, idempotencyKey: entry.rejected_probe.idempotency_key,
           commands: [{ ...input.commands[0], command_id: `${key}-extra-attack` }] }), (error) => {
           entry.rejected_probe.code = error.code
           return error.code === 'ACTION_SPENT'
@@ -273,7 +419,7 @@ export async function runCombatScenario({ scenario = 'duel', seed = 1, maxSteps 
         assert.deepEqual((await eventStore.load(campaignId)).state, afterPlayer, 'Отказ второй атаке изменил состояние')
         assert.equal(rolls.length, rollCount, 'Отказ второй атаке сделал новый бросок')
       }
-      const settled = await runNpcTurnScheduler({ campaignId, eventStore, rulesEngine,
+      const settled = await runNpcTurnScheduler({ campaignId, eventStore: observedStore, rulesEngine,
         advanceNpc: ['StartCombat', 'EndTurn'].includes(command.command_type) || Boolean(before.mechanics.combat.reaction_window) })
       entry.npc_turns = settled.turns
       entry.npc_events = settled.events
@@ -284,21 +430,24 @@ export async function runCombatScenario({ scenario = 'duel', seed = 1, maxSteps 
       // Проверка воспроизведения выполняется после каждого шага, включая ходы NPC.
       assert.deepEqual((await eventStore.replay(campaignId, { use_snapshots: false })).state, state, 'Replay расходится с текущим состоянием')
       if (!state.mechanics.combat.active) {
+        const incapacitated = (actor) => actor.hp <= 0 || actor.alive === false
+          || state.mechanics.resting?.[actor.id]?.reason === 'knockout'
+          || (state.mechanics.conditions?.[actor.id] ?? []).some((condition) => (condition.id ?? condition) === 'unconscious')
         assert.equal(state.mechanics.combat.reaction_window, null, 'Бой завершился с открытой реакцией')
         for (const hero of state.players) {
           if (hero.hp === 0 && state.mechanics.death.heroes[hero.id]?.status !== 'dead') {
             assert.equal(state.mechanics.death.saving_throws[hero.id]?.stable, true, 'Бой завершился до спасбросков от смерти')
           }
         }
-        assert.ok(state.enemies.every((actor) => actor.hp <= 0 || actor.alive === false)
-          || state.players.every((actor) => actor.hp <= 0), 'Бой завершился при двух боеспособных сторонах')
+        assert.ok(state.enemies.every(incapacitated)
+          || state.players.every(incapacitated), 'Бой завершился при двух боеспособных сторонах')
         const ended = [...committed.events, ...settled.events].findLast((event) => event.event_type === 'CombatEnded')
         assert.ok(ended, 'Нет события завершения боя')
         if (ended.payload.reason === 'enemies_defeated') {
-          assert.ok(state.enemies.every((actor) => actor.hp <= 0 || actor.alive === false), 'Объявлена победа над живым противником')
+          assert.ok(state.enemies.every(incapacitated), 'Объявлена победа над боеспособным противником')
         } else {
-          assert.equal(ended.payload.reason, 'party_defeated', 'Неожиданная причина завершения арены')
-          assert.ok(state.players.every((actor) => actor.hp <= 0), 'Объявлено поражение боеспособного отряда')
+          assert.ok(['party_defeated', 'party_incapacitated'].includes(ended.payload.reason), 'Неожиданная причина завершения арены')
+          assert.ok(state.players.every(incapacitated), 'Объявлено поражение боеспособного отряда')
         }
         assert.deepEqual((await new FileEventStore(options).load(campaignId)).state, state, 'Состояние изменилось при повторном открытии хранилища')
         report.passed = true
@@ -310,7 +459,11 @@ export async function runCombatScenario({ scenario = 'duel', seed = 1, maxSteps 
       assert.ok(state.players.some((actor) => actor.id === actorId), 'Планировщик не вернул управление игроку')
       const view = campaignStateForViewer(state, { id: `user-${actorId}`, role: 'player', heroIds: [actorId] }, actorId)
       for (const enemy of view.enemies) assert.equal(enemy.hp, undefined, 'Проекция раскрывает точные ОЗ противника')
-      command = chooseCommand(view, actorId, report)
+      if (chooseCommand) {
+        const plan = chooseCommand(view, actorId)
+        command = plan.command
+        tactic = plan.reason
+      } else command = chooseLabCommand(view, actorId, report)
     }
     assert.ok(report.passed, `Бой не завершён за ${maxSteps} шагов`)
   } catch (error) {

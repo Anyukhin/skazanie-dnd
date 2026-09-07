@@ -2094,7 +2094,7 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 /* Счётчик локаций стоит под селектором режима и занимает всю ширину строки:
    иначе он уезжает во вторую колонку сетки настройки. */
 .architect-usage-note { grid-column: 1 / -1; }
-.world-creator label > small { color: #615a53; font-size: var(--fs-sm); }
+:is(.world-creator, .slot-creator) label > small { color: #615a53; font-size: var(--fs-sm); }
 
 @media (max-width: 680px) {
   .ui-scale-setting { grid-template-columns: 1fr 66px; }
@@ -2356,7 +2356,7 @@ button.campaign-title:hover strong { color: #edc996; }
 .campaign-wizard { width: min(920px, 96vw); max-height: 94vh; }
 .campaign-steps { display: grid; grid-template-columns: auto 1fr auto 1fr auto; align-items: center; gap: 9px; margin: 18px 0; }
 .campaign-steps span { color: #655e57; font-size: var(--fs-sm); font-weight: 700; letter-spacing: .08em; }.campaign-steps span.active { color: #c18d52; }.campaign-steps i { height: 1px; background: var(--line); }
-.world-creator, .hero-creator { display: grid; gap: 12px; }.world-creator > label, .new-hero-form > label { display: grid; gap: 5px; }.world-creator label > span, .field-grid label > span, .new-hero-form label > span { color: #81766b; font-size: var(--fs-sm); font-weight: 700; letter-spacing: .05em; }
+:is(.world-creator, .slot-creator), .hero-creator { display: grid; gap: 12px; }:is(.world-creator, .slot-creator) > label, .new-hero-form > label { display: grid; gap: 5px; }:is(.world-creator, .slot-creator) label > span, .field-grid label > span, .new-hero-form label > span { color: #81766b; font-size: var(--fs-sm); font-weight: 700; letter-spacing: .05em; }
 .world-auto-note { display: flex; align-items: center; gap: 9px; padding: 10px 12px; border: 1px solid rgba(203,151,87,.22); border-radius: 5px; background: rgba(166,106,49,.08); color: #94877a; font: var(--fs-md)/1.45 Spectral, serif; }.world-auto-note svg { flex: 0 0 auto; color: #c89458; }.world-auto-note b { color: #c9bdb0; }
 .world-template-picker { display: grid; gap: 10px; padding: 13px; border: 1px solid rgba(203,151,87,.2); border-radius: 7px; background: linear-gradient(145deg,rgba(166,106,49,.065),rgba(7,6,5,.18)); }
 .world-template-picker > header { display: flex; align-items: end; justify-content: space-between; gap: 18px; }.world-template-picker > header h3 { margin: 3px 0 0; color: #cbbdad; font: 600 var(--fs-xl)/1.15 Spectral,serif; }.world-template-picker > header > small { max-width: 390px; color: #746a61; font: var(--fs-sm)/1.45 Spectral,serif; text-align: right; }
@@ -2372,7 +2372,7 @@ button.campaign-title:hover strong { color: #edc996; }
 .ruleset-picker > div { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }.ruleset-picker button { min-width: 0; display: grid; gap: 3px; padding: 11px; border: 1px solid var(--line); border-radius: 5px; background: rgba(0,0,0,.12); color: #8f8479; text-align: left; cursor: pointer; }.ruleset-picker button.selected { border-color: rgba(201,149,85,.42); background: rgba(166,106,49,.12); }.ruleset-picker button strong { color: #c2b4a5; font: 600 var(--fs-lg) Spectral, serif; }.ruleset-picker button small { color: #736960; font-size: var(--fs-sm); line-height: 1.4; }.ruleset-picker button em { margin-top: 4px; color: #a57d4e; font-size: var(--fs-xs); font-style: normal; letter-spacing: .06em; }
 .ruleset-picker > .secure-note { display: flex; align-items: center; gap: 6px; margin: 0; color: #7d7166; }
 .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }.field-grid.three { grid-template-columns: repeat(3, 1fr); }.field-grid label { display: grid; gap: 5px; }
-.world-creator input, .world-creator select, .world-creator textarea, .new-hero-form input, .new-hero-form textarea { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 4px; outline: 0; resize: vertical; background: #141210; color: #c9bdb0; font-size: var(--fs-md); }.world-creator select { height: 36px; }.world-creator textarea { min-height: 74px; line-height: 1.5; }.world-creator input:focus, .world-creator select:focus, .world-creator textarea:focus, .new-hero-form input:focus, .new-hero-form textarea:focus { border-color: rgba(204,151,86,.4); }
+:is(.world-creator, .slot-creator) input, :is(.world-creator, .slot-creator) select, :is(.world-creator, .slot-creator) textarea, .new-hero-form input, .new-hero-form textarea { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 4px; outline: 0; resize: vertical; background: #141210; color: #c9bdb0; font-size: var(--fs-md); }:is(.world-creator, .slot-creator) select { height: 36px; color-scheme: dark; }:is(.world-creator, .slot-creator) textarea { min-height: 74px; line-height: 1.5; }:is(.world-creator, .slot-creator) input:focus, :is(.world-creator, .slot-creator) select:focus, :is(.world-creator, .slot-creator) textarea:focus, .new-hero-form input:focus, .new-hero-form textarea:focus { border-color: rgba(204,151,86,.4); }
 .hero-creator > p { margin: 0; color: #7c746c; font: var(--fs-md)/1.55 Spectral, serif; }.hero-library { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; max-height: 250px; overflow: auto; }.hero-library > button { display: grid; grid-template-columns: 35px 1fr 18px; align-items: center; gap: 9px; padding: 9px; border: 1px solid var(--line); border-radius: 5px; background: rgba(0,0,0,.12); text-align: left; cursor: pointer; }.hero-library > button.selected { border-color: rgba(105,157,111,.34); background: rgba(73,116,78,.1); }.hero-library > button > span { width: 33px; height: 33px; display: grid; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--hero-color), #17130f 50%); color: #eadfce; font-size: var(--fs-sm); }.hero-library > button > div { min-width: 0; display: grid; }.hero-library b { color: #bdb1a4; font: var(--fs-lg) Spectral, serif; }.hero-library small { color: #746b63; font-size: var(--fs-sm); }.hero-library em { overflow: hidden; margin-top: 2px; color: #5d5650; font: var(--fs-sm) Spectral, serif; text-overflow: ellipsis; white-space: nowrap; }.hero-library svg { color: #7fa184; }
 .new-hero-list { display: flex; flex-wrap: wrap; gap: 6px; }.new-hero-list > span { display: flex; align-items: center; gap: 5px; padding: 5px 7px; border: 1px solid rgba(103,153,109,.22); border-radius: 4px; color: #849d86; font-size: var(--fs-sm); }.new-hero-list button { display: grid; place-items: center; padding: 0; border: 0; background: transparent; color: #87726d; cursor: pointer; }
 .new-hero-form { display: grid; gap: 10px; padding: 13px; border: 1px solid rgba(193,143,82,.15); border-radius: 6px; background: rgba(166,104,45,.035); }.new-hero-form > strong { display: flex; align-items: center; gap: 6px; color: #bd8c54; font: var(--fs-lg) Spectral, serif; }.new-hero-form textarea { min-height: 58px; }.new-hero-form > button { justify-self: start; height: 33px; display: flex; align-items: center; gap: 6px; padding: 0 11px; border: 1px solid rgba(109,158,115,.25); border-radius: 4px; background: rgba(75,116,79,.08); color: #86a489; font-size: var(--fs-sm); cursor: pointer; }
@@ -2407,9 +2407,9 @@ button.campaign-title:hover strong { color: #edc996; }
 .campaign-list small,
 .campaign-list em,
 .campaign-create input,
-.world-creator input,
-.world-creator select,
-.world-creator textarea,
+:is(.world-creator, .slot-creator) input,
+:is(.world-creator, .slot-creator) select,
+:is(.world-creator, .slot-creator) textarea,
 .new-hero-form input,
 .new-hero-form textarea {
   font-size: var(--fs-md);
@@ -2469,7 +2469,7 @@ button.campaign-title:hover strong { color: #edc996; }
 .party-editor em,
 .admin-world .engine-mode-field select,
 .campaign-steps span,
-.world-creator label > span,
+:is(.world-creator, .slot-creator) label > span,
 .field-grid label > span,
 .new-hero-form label > span,
 .hero-library small,

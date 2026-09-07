@@ -88,13 +88,16 @@ test('счётчик переживает перезапуск процесса'
   assert.equal(third.recordGeneration('ALFA').alert, false, 'однократность тоже durable')
 })
 
-test('прогон лаборатории считается отдельно и не поднимает игровой счётчик', (t) => {
+test('старые записи AgentLab остаются читаемыми после удаления прогона', (t) => {
   const fixture = temporaryStore()
   t.after(() => rmSync(fixture.directory, { recursive: true, force: true }))
   const store = fixture.create({ alertThreshold: 2 })
 
-  assert.equal(store.recordGeneration('ALFA', { kind: 'lab' }).alert, false)
-  assert.equal(store.recordGeneration('ALFA', { kind: 'lab' }).alert, false)
+  writeFileSync(fixture.storageFile, JSON.stringify({
+    schema_version: 1,
+    day: new Date().toISOString().slice(0, 10),
+    campaigns: { ALFA: { generations: 0, lab_generations: 2, alerted: false } },
+  }), 'utf8')
   assert.equal(store.generationsToday('ALFA'), 0, 'dry-run лаборатории локаций не создаёт')
   assert.equal(store.report().campaigns.ALFA.lab_generations, 2, 'но расход админ видит')
   assert.equal(store.recordGeneration('ALFA').alert, false)
@@ -108,7 +111,14 @@ test('отчёт даёт разбивку по кампаниям за сего
   store.recordGeneration('ALFA')
   store.recordGeneration('ALFA')
   store.recordGeneration('BETA')
-  store.recordGeneration('BETA', { kind: 'lab' })
+  writeFileSync(fixture.storageFile, JSON.stringify({
+    schema_version: 1,
+    day: new Date().toISOString().slice(0, 10),
+    campaigns: {
+      ALFA: { generations: 2, lab_generations: 0, alerted: true },
+      BETA: { generations: 1, lab_generations: 1, alerted: false },
+    },
+  }), 'utf8')
 
   const report = store.report()
   assert.equal(report.alert_threshold, 2)

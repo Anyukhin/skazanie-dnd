@@ -192,6 +192,8 @@ export type AgentInteraction = {
 export type Player = {
   phbCreation?: import('./phb-character-types').PhbCharacterOptionsValue & { backgroundEquipmentChoices?: Record<string, string[]> }
   creationBenefits?: Record<string, unknown>
+  creationSkillProficiencies?: string[]
+  creationSpellGrants?: Array<{ id: string; ability: string; uses: string | number; source: string }>
   characterCreationRolls?: { abilities?: { id: string; scores: number[]; rolls: Array<{ dice: number[] }> }; wealth?: { id: string; class_id: string; total_gp: number } }
   id: string
   name: string
@@ -209,6 +211,7 @@ export type Player = {
   characterSetupStage?: 'leveling'
   /** Выбранные на уровнях улучшения характеристик: ключ — уровень. */
   abilityScoreIncreases?: Record<string, string[]>
+  levelFeats?: Record<string, { id: string; name?: string; choices: Record<string, unknown>; benefits?: Record<string, unknown> }>
   abilityGeneration?: CharacterAbilityGeneration
   backgroundId?: string
   backgroundAbilityChoice?: { mode: string; abilities: string[] }

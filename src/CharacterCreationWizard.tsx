@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { ArrowLeft, ArrowRight, Check, ShieldCheck, Sparkles, X } from 'lucide-react'
 
@@ -165,6 +165,35 @@ const abilityLabels: Record<(typeof abilityIds)[number], string> = {
   cha: 'Харизма',
 }
 
+type CreationStepId = 'class' | 'race' | 'subrace' | 'background' | 'abilities' | 'proficiencies' | 'equipment' | 'magic' | 'identity'
+type SpeciesOption = CharacterCreationCatalog['ability_policy']['species_options'][number]
+type RaceChoice = { id: string; raceId: string; label: string; option: SpeciesOption; subraces: SpeciesOption[] }
+
+/**
+ * `species_options` хранит итоговый выбор вида, а не отдельный каталог рас:
+ * дварф и эльф представлены несколькими строками с одним `race_id`. На
+ * экране сначала показываем одну карточку расы, а реальные подрасы оставляем
+ * для следующего шага. Вариантный человек не имеет `subrace_label`, поэтому
+ * остаётся отдельным авторитетным выбором расы, без придуманной подрасы.
+ */
+function raceChoicesFor(options: SpeciesOption[]): RaceChoice[] {
+  const groups = new Map<string, SpeciesOption[]>()
+  for (const option of options) {
+    const raceId = String(option.race_id ?? option.id)
+    const group = groups.get(raceId) ?? []
+    group.push(option)
+    groups.set(raceId, group)
+  }
+  return [...groups].flatMap(([raceId, group]) => {
+    const subraces = group.filter((option) => Boolean(option.subrace_id && option.subrace_label))
+    if (subraces.length > 0) {
+      const representative = subraces[0]
+      return [{ id: raceId, raceId, label: representative.race_label ?? representative.label, option: representative, subraces }]
+    }
+    return group.map((option) => ({ id: option.id, raceId, label: option.label, option, subraces: [] }))
+  })
+}
+
 type CreationDraft = {
   equipmentMode: 'standard' | 'wealth'
   purchases: Array<{ id: string; quantity: number }>
@@ -309,12 +338,18 @@ export function CharacterCreationWizard({
   required?: boolean
   onClose: () => void
   onImport: (source: string) => Promise<void>
-  onRollAbilities?: () => Promise<void>
+  onRollAbilities?: (rollIndex: number) => Promise<void>
   onRollWealth?: (classId: string) => Promise<void>
 }) {
-  const [step, setStep] = useState(0)
-  const [furthestStep, setFurthestStep] = useState(0)
-  const [draft, setDraft] = useState<CreationDraft>(() => initialDraft(catalog))
+  const [step, setStep] = useState<CreationStepId>('class')
+  const mainRef = useRef<HTMLElement>(null)
+  const [furthestStep, setFurthestStep] = useState<CreationStepId>('class')
+  const [draft, setDraft] = useState<CreationDraft>(() => {
+    const initial = initialDraft(catalog)
+    const savedRoll = player.characterCreationRolls?.abilities
+    const completedRoll = savedRoll?.scores.length === abilityIds.length
+    return savedRoll ? { ...initial, abilityMethod: 'rolled', abilities: completedRoll ? Object.fromEntries(abilityIds.map((id, index) => [id, savedRoll.scores[index]])) as CharacterAbilityScores : zeroScores() } : initial
+  })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   // `hero-slot-3` — внутренний идентификатор, игроку он ничего не говорит.
@@ -329,17 +364,26 @@ export function CharacterCreationWizard({
   const [spellSearch, setSpellSearch] = useState('')
   const classOption = catalog.classes.find((entry) => entry.id === draft.classId) ?? catalog.classes[0]
   const speciesOption = catalog.ability_policy.species_options.find((entry) => entry.id === draft.speciesOptionId)
+  const raceChoices = useMemo(() => raceChoicesFor(catalog.ability_policy.species_options), [catalog])
+  const selectedRaceId = String(speciesOption?.race_id ?? speciesOption?.id ?? '')
+  const selectedRaceChoice = raceChoices.find((choice) => choice.subraces.length > 0
+    ? choice.raceId === selectedRaceId
+    : choice.option.id === speciesOption?.id)
+  const subraceOptions = selectedRaceChoice?.subraces ?? []
+  const hasSubraceStep = subraceOptions.length > 0
   const abilityRoll = player.characterCreationRolls?.abilities
+  const abilityRollCount = abilityRoll?.scores.length ?? 0
+  const abilityRollComplete = abilityRollCount === abilityIds.length
   const wealthRoll = player.characterCreationRolls?.wealth
   const purchaseTotal = draft.purchases.reduce((sum, item) => sum + item.quantity * (catalog.starting_wealth?.items.find((entry) => entry.id === item.id)?.price_cp ?? 0), 0)
   const abilityValues = draft.abilityMethod === 'rolled' ? abilityRoll?.scores ?? [] : catalog.ability_policy.standard_array
   const abilityChoices = draft.abilityMethod === 'point_buy' ? [8, 9, 10, 11, 12, 13, 14, 15] : [...new Set(abilityValues)].sort((a, b) => b - a)
   const pointBuySpent = abilityIds.reduce((sum, ability) => sum + (catalog.point_buy?.costs[draft.abilities[ability]] ?? 0), 0)
   useEffect(() => {
-    if (draft.abilityMethod === 'rolled' && abilityRoll?.scores.length === 6) {
+    if (draft.abilityMethod === 'rolled' && abilityRoll?.scores.length === abilityIds.length) {
       setDraft((current) => ({ ...current, abilities: Object.fromEntries(abilityIds.map((id, index) => [id, abilityRoll.scores[index]])) as CharacterAbilityScores }))
     }
-  }, [draft.abilityMethod, abilityRoll?.id])
+  }, [draft.abilityMethod, abilityRoll?.id, abilityRoll?.scores.length])
   const skillRule = classOption?.class_skills
   const featureGroups = classOption?.feature_choice_groups ?? []
   const spellRules = classOption?.spell_selection
@@ -382,16 +426,28 @@ export function CharacterCreationWizard({
   const cantripSupport = sharedSupport(cantrips)
   const leveledSupport = sharedSupport(leveledSpells)
 
-  const steps = useMemo(() => [
-    { title: 'Класс', description: 'Двенадцать классов на выбор' },
-    { title: 'Раса', description: 'Раса, подраса и наследие' },
-    { title: 'Предыстория', description: 'Опыт до приключения' },
-    { title: 'Характеристики', description: 'Стандартный массив' },
-    { title: 'Владения', description: 'Навыки и расовые выборы' },
-    { title: 'Снаряжение', description: 'Стартовый комплект' },
-    { title: 'Магия', description: 'Заговоры и 1 круг' },
-    { title: 'Личность', description: 'Имя и история' },
-  ], [])
+  const steps = useMemo<Array<{ id: CreationStepId; title: string; description: string }>>(() => {
+    const base = [
+      { id: 'class' as const, title: 'Класс', description: 'Двенадцать классов на выбор' },
+      { id: 'race' as const, title: 'Раса', description: 'Основной вид героя' },
+      { id: 'background' as const, title: 'Предыстория', description: 'Опыт до приключения' },
+      { id: 'abilities' as const, title: 'Характеристики', description: draft.abilityMethod === 'rolled' ? `Броски 4к6 · ${abilityRollCount}/6` : draft.abilityMethod === 'point_buy' ? 'Покупка за 27 очков' : 'Стандартный массив' },
+      { id: 'proficiencies' as const, title: 'Владения', description: 'Навыки и расовые выборы' },
+      { id: 'equipment' as const, title: 'Снаряжение', description: 'Стартовый комплект' },
+      { id: 'magic' as const, title: 'Магия', description: 'Заговоры и 1 круг' },
+      { id: 'identity' as const, title: 'Личность', description: 'Имя и история' },
+    ]
+    if (!hasSubraceStep) return base
+    return [...base.slice(0, 2), { id: 'subrace' as const, title: 'Подраса', description: 'Подвид выбранной расы' }, ...base.slice(2)]
+  }, [abilityRollCount, draft.abilityMethod, hasSubraceStep])
+  const currentStep = !hasSubraceStep && step === 'subrace' ? 'race' : step
+  useEffect(() => { mainRef.current?.scrollTo({ top: 0 }) }, [currentStep])
+  const currentStepIndex = Math.max(0, steps.findIndex((entry) => entry.id === currentStep))
+  const furthestStepIndex = Math.max(0, steps.findIndex((entry) => entry.id === (!hasSubraceStep && furthestStep === 'subrace' ? 'race' : furthestStep)))
+  useEffect(() => {
+    if (!hasSubraceStep && step === 'subrace') setStep('race')
+    if (!hasSubraceStep && furthestStep === 'subrace') setFurthestStep('race')
+  }, [furthestStep, hasSubraceStep, step])
 
   const patch = <K extends keyof CreationDraft>(key: K, value: CreationDraft[K]) => {
     setDraft((current) => ({ ...current, [key]: value }))
@@ -494,19 +550,28 @@ export function CharacterCreationWizard({
     ...(draft.classId === 'fighter' ? { fighting_style: styleIds[draft.selectedFeatureIds[0]] } : {}),
   }, { skill_proficiencies: [...knownSkills, ...replacementSkills], tool_proficiencies: [...knownTools, ...replacementTools] }) : null
 
-  const selectSpecies = (option: (typeof catalog.ability_policy.species_options)[number]) => {
+  const selectSpecies = (option: SpeciesOption) => {
     const profile = catalog.ability_policy.origin_bonus_profiles.find((entry) => entry.id === option.bonus_profile_id)
     const excluded = new Set(profile?.excluded_choices ?? [])
     const choices = abilityIds.filter((ability) => !excluded.has(ability)).slice(0, profile?.choice_count ?? 0)
     setDraft((current) => ({
       ...current,
       speciesOptionId: option.id,
-      phb: { schema_version: 1, classChoices: current.phb.classChoices, ...(option.id === 'human-variant' && current.phb.feat ? { feat: current.phb.feat } : {}) },
+      phb: option.id === 'human-variant'
+        ? { schema_version: 1, classChoices: current.phb.classChoices, ...(current.phb.feat ? { feat: current.phb.feat } : {}) }
+        : { schema_version: 1, classChoices: current.phb.classChoices },
       customSpecies: '',
       speciesBonusAbilities: choices,
       speciesChoices: defaultChoiceRecord(option.choice_groups),
+      backgroundLanguages: current.backgroundLanguages.filter((id) => !(option.languages ?? []).includes(id)),
+      backgroundReplacementSkills: [],
     }))
     setError('')
+  }
+
+  const selectRaceChoice = (choice: RaceChoice) => {
+    const selectedSubrace = choice.subraces.find((option) => option.id === draft.speciesOptionId)
+    selectSpecies(selectedSubrace ?? choice.option)
   }
 
   const selectBackground = (option: (typeof backgroundOptions)[number]) => {
@@ -719,6 +784,7 @@ export function CharacterCreationWizard({
   }
 
   const assignAbility = (ability: keyof CharacterAbilityScores, score: number) => {
+    if (draft.abilityMethod === 'rolled' && !abilityRollComplete) return
     setError('')
     setDraft((current) => {
       if (current.abilityMethod !== 'point_buy' && score !== 0 && (!abilityValues.includes(score)
@@ -778,37 +844,40 @@ export function CharacterCreationWizard({
   }
 
   const validateStep = () => {
-    if (step >= 3 && draft.abilityMethod === 'point_buy' && (pointBuySpent > 27 || abilityIds.some((id) => draft.abilities[id] < 8 || draft.abilities[id] > 15))) return 'Покупка характеристик: значения 8–15, не более 27 очков.'
-    if (step >= 3 && draft.abilityMethod !== 'point_buy' && [...abilityIds.map((ability) => draft.abilities[ability])].sort((a, b) => a - b).join(',') !== [...abilityValues].sort((a, b) => a - b).join(',')) return 'Распределите все шесть полученных значений характеристик.'
+    const abilitiesStepIndex = steps.findIndex((entry) => entry.id === 'abilities')
+    const abilitiesReached = currentStepIndex >= abilitiesStepIndex
+    if (abilitiesReached && draft.abilityMethod === 'point_buy' && (pointBuySpent > 27 || abilityIds.some((id) => draft.abilities[id] < 8 || draft.abilities[id] > 15))) return 'Покупка характеристик: значения 8–15, не более 27 очков.'
+    if (abilitiesReached && draft.abilityMethod === 'rolled' && !abilityRollComplete) return `Сделайте все шесть бросков 4к6 (${abilityRollCount}/6).`
+    if (abilitiesReached && draft.abilityMethod !== 'point_buy' && [...abilityIds.map((ability) => draft.abilities[ability])].sort((a, b) => a - b).join(',') !== [...abilityValues].sort((a, b) => a - b).join(',')) return 'Распределите все шесть полученных значений характеристик.'
     if (!classOption) return 'Выберите поддерживаемый класс.'
-    if (step === 1 && (!speciesOption || !selectedSpecies)) return 'Выберите вид.'
-    if (step === 1 && !originBonusReady) {
+    if ((currentStep === 'race' || currentStep === 'subrace') && (!speciesOption || !selectedSpecies)) return currentStep === 'subrace' ? 'Выберите подрасу.' : 'Выберите вид.'
+    if ((currentStep === 'subrace' || (currentStep === 'race' && !hasSubraceStep)) && !originBonusReady) {
       const count = bonusSource === 'species' ? speciesChoiceCount : originIncreases.length
       return `Отметьте ${count} ${plural(count, ['характеристику', 'характеристики', 'характеристик'])} для прибавок ${bonusSource === 'species' ? 'вида' : 'предыстории'}.`
     }
-    if (step === 2 && !draft.backgroundId) return 'Выберите предысторию.'
-    if (step === 2 && !backgroundChoicesReady) return 'Завершите выбор языков и инструментов предыстории.'
-    if (step === 2 && draft.customBackground && (draft.customBackgroundSkills.length !== 2 || !draft.customFeatureBackground)) return 'Для своей предыстории выберите два навыка и особенность.'
-    if ((step === 2 || step === 4) && duplicateBackgroundLanguage) return 'Язык предыстории уже известен от расы. Вернитесь к предыстории и выберите другой.'
-    if (step === 4 && replacementSkills.length !== replacementCount) return `Выберите ${replacementCount} новых навыков взамен повторяющихся владений.`
-    if (step === 4 && classOption?.subclass_level === 1 && !draft.subclass) return 'Выберите подкласс первого уровня.'
-    if (step === 4 && skillRule && draft.classSkillIds.length !== skillRule.choice_count) return `Выберите ${skillRule.choice_count} ${plural(skillRule.choice_count, ['классовый навык', 'классовых навыка', 'классовых навыков'])}.`
-    if (step === 4 && !speciesChoicesReady) return 'Завершите расовые выборы.'
-    if (step === 4 && catalog.phb && classPreview && !classPreview.ok) return classPreview.errors?.join('; ') ?? 'Завершите классовые выборы PHB.'
-    if (step === 4 && speciesOption?.id === 'human-variant' && !featPreview?.ok) return featPreview?.reason ?? 'Выберите черту вариантного человека.'
-    if (step === 4 && replacementTools.length !== replacementToolCount) return `Выберите замены инструментальных владений: ${replacementToolCount}.`
-    if (step === 4) {
+    if (currentStep === 'background' && !draft.backgroundId) return 'Выберите предысторию.'
+    if (currentStep === 'background' && !backgroundChoicesReady) return 'Завершите выбор языков и инструментов предыстории.'
+    if (currentStep === 'background' && draft.customBackground && (draft.customBackgroundSkills.length !== 2 || !draft.customFeatureBackground)) return 'Для своей предыстории выберите два навыка и особенность.'
+    if ((currentStep === 'background' || currentStep === 'proficiencies') && duplicateBackgroundLanguage) return 'Язык предыстории уже известен от расы. Вернитесь к предыстории и выберите другой.'
+    if (currentStep === 'proficiencies' && replacementSkills.length !== replacementCount) return `Выберите ${replacementCount} новых навыков взамен повторяющихся владений.`
+    if (currentStep === 'proficiencies' && classOption?.subclass_level === 1 && !draft.subclass) return 'Выберите подкласс первого уровня.'
+    if (currentStep === 'proficiencies' && skillRule && draft.classSkillIds.length !== skillRule.choice_count) return `Выберите ${skillRule.choice_count} ${plural(skillRule.choice_count, ['классовый навык', 'классовых навыка', 'классовых навыков'])}.`
+    if (currentStep === 'proficiencies' && !speciesChoicesReady) return 'Завершите расовые выборы.'
+    if (currentStep === 'proficiencies' && catalog.phb && classPreview && !classPreview.ok) return classPreview.errors?.join('; ') ?? 'Завершите классовые выборы PHB.'
+    if (currentStep === 'proficiencies' && speciesOption?.id === 'human-variant' && !featPreview?.ok) return featPreview?.reason ?? 'Выберите черту вариантного человека.'
+    if (currentStep === 'proficiencies' && replacementTools.length !== replacementToolCount) return `Выберите замены инструментальных владений: ${replacementToolCount}.`
+    if (currentStep === 'proficiencies') {
       const incomplete = featureGroups.find((group) => group.options.filter((option) => draft.selectedFeatureIds.includes(option.id)).length !== group.choiceCount)
       if (incomplete) return `${incomplete.name}: выберите ${incomplete.choiceCount}.`
     }
-    if (step === 5 && draft.equipmentMode === 'standard' && !starterChoicesReady) return 'Выберите стартовое снаряжение.'
-    if (step === 5 && draft.equipmentMode === 'wealth' && (!wealthRoll || wealthRoll.class_id !== draft.classId || purchaseTotal > wealthRoll.total_gp * 100)) return 'Получите бросок богатства выбранного класса и уложитесь в бюджет покупок.'
-    if (step === 6 && spellRules) {
+    if (currentStep === 'equipment' && draft.equipmentMode === 'standard' && !starterChoicesReady) return 'Выберите стартовое снаряжение.'
+    if (currentStep === 'equipment' && draft.equipmentMode === 'wealth' && (!wealthRoll || wealthRoll.class_id !== draft.classId || purchaseTotal > wealthRoll.total_gp * 100)) return 'Получите бросок богатства выбранного класса и уложитесь в бюджет покупок.'
+    if (currentStep === 'magic' && spellRules) {
       if (selectedCantrips !== cantripLimit) return `Выберите ${cantripLimit} ${plural(cantripLimit, ['заговор', 'заговора', 'заговоров'])}.`
       if (spellRules.mode === 'known' && selectedKnownSpells !== knownLimit) return `Выберите ${knownLimit} ${plural(knownLimit, ['заклинание', 'заклинания', 'заклинаний'])} 1 круга.`
       if (spellRules.mode === 'spellbook' && selectedKnownSpells !== bookLimit) return `Добавьте ${bookLimit} ${plural(bookLimit, ['заклинание', 'заклинания', 'заклинаний'])} в книгу.`
     }
-    if (step === 7 && !draft.character.trim()) return 'Назовите персонажа.'
+    if (currentStep === 'identity' && !draft.character.trim()) return 'Назовите персонажа.'
     return ''
   }
 
@@ -817,9 +886,11 @@ export function CharacterCreationWizard({
     if (message) return setError(message)
     setError('')
     setStep((current) => {
-      const nextStep = Math.min(steps.length - 1, current + 1)
-      setFurthestStep((furthest) => Math.max(furthest, nextStep))
-      return nextStep
+      const index = steps.findIndex((entry) => entry.id === current)
+      const nextEntry = steps[Math.min(steps.length - 1, index + 1)]
+      if (!nextEntry) return current
+      setFurthestStep((furthest) => steps.findIndex((entry) => entry.id === furthest) >= steps.findIndex((entry) => entry.id === nextEntry.id) ? furthest : nextEntry.id)
+      return nextEntry.id
     })
   }
 
@@ -898,6 +969,27 @@ export function CharacterCreationWizard({
     }
   }
 
+  const renderSpeciesDetails = () => <>
+    {speciesOption?.id === 'custom' && <label><span>Название авторского вида</span><input value={draft.customSpecies} onChange={(event) => patch('customSpecies', event.target.value)} maxLength={120} /></label>}
+    {bonusSource === 'species' && speciesOption && <div className="creation-origin-bonus">
+      <header><span>Прибавки расы и подрасы</span><b>{originBonusReady ? 'готово' : `выберите ${speciesChoiceCount}`}</b></header>
+      <p>{speciesBonusProfile?.label}</p>
+      {speciesChoiceCount > 0 && <div className="origin-abilities">
+        {speciesChoiceOptions.map((ability) => <button
+          key={ability}
+          type="button"
+          className={draft.speciesBonusAbilities.includes(ability) ? 'selected' : ''}
+          aria-pressed={draft.speciesBonusAbilities.includes(ability)}
+          onClick={() => toggleSpeciesAbility(ability)}
+        ><span>{abilityLabels[ability]}</span><b>{draft.speciesBonusAbilities.includes(ability) ? `+${speciesChoiceAmount}` : '—'}</b></button>)}
+      </div>}
+      {(speciesOption.trait_summaries?.length ?? 0) > 0 && <div className="creation-support-note creation-species-traits"><ShieldCheck size={13} /><div><b>Расовые особенности</b><ul>{speciesOption.trait_summaries?.map((trait) => <li key={trait}>{trait}</li>)}</ul><span>Они записываются в лист; автоматическое исполнение зависит от конкретной механики.</span></div></div>}
+    </div>}
+    <p><ShieldCheck size={17} />{bonusSource === 'species'
+      ? 'В редакции 2014 характеристики повышает раса или подраса, а предыстория отвечает за опыт, владения и начальные вещи.'
+      : 'Скорость определяется видом. Предыстория редакции 2024 даёт прибавки к характеристикам, два владения навыками, инструмент и черту происхождения.'}</p>
+  </>
+
   return (
     <div className="character-creation-backdrop">
       <section className="character-creation-wizard" role="dialog" aria-modal="true" aria-labelledby="character-creation-title">
@@ -908,9 +1000,12 @@ export function CharacterCreationWizard({
           <button type="button" onClick={onClose} aria-label="Закрыть мастер" title="Закрыть"><X size={20} /></button>
         </header>
         <nav aria-label="Шаги создания персонажа">
-          {steps.map((entry, index) => <button type="button" key={entry.title} className={index === step ? 'active' : index <= furthestStep ? 'complete' : ''} aria-current={index === step ? 'step' : undefined} disabled={index > furthestStep} onClick={() => setStep(index)}><i>{index < furthestStep ? <Check size={12} /> : index + 1}</i><span><b>{entry.title}</b><small>{entry.description}</small></span></button>)}
+          {steps.map((entry, index) => {
+            const subraceShortcut = entry.id === 'subrace' && currentStep === 'race' && hasSubraceStep
+            return <button type="button" key={entry.id} className={entry.id === currentStep ? 'active' : index <= furthestStepIndex ? 'complete' : ''} aria-current={entry.id === currentStep ? 'step' : undefined} disabled={index > furthestStepIndex && !subraceShortcut} onClick={() => { setStep(entry.id); if (subraceShortcut) setFurthestStep(entry.id) }}><i>{index < furthestStepIndex ? <Check size={12} /> : index + 1}</i><span><b>{entry.title}</b><small>{entry.description}</small></span></button>
+          })}
         </nav>
-        <main>
+        <main ref={mainRef}>
           {rulesetId === 'dnd_5e_2014' && <p className="creation-ruleset-note"><ShieldCheck size={15} /><span><b>D&D 5e 2014.</b> Раса и подраса дают прибавки к характеристикам; предыстория — навыки, языки, инструменты, особенность и комплект снаряжения. Расовые и фоновые особенности сохраняются в листе, но не все ещё исполняются движком автоматически.</span></p>}
           <aside className="creation-summary-rail" aria-label="Итог героя">
             <small>ИТОГ ГЕРОЯ</small>
@@ -925,7 +1020,7 @@ export function CharacterCreationWizard({
             </dl>
           </aside>
           {/* Английский `entry.id` здесь раньше печатался игроку как есть. */}
-          {step === 0 && <div className="creation-card-grid" role="radiogroup" aria-label="Выбор класса">{catalog.classes.map((entry) => {
+          {currentStep === 'class' && <div className="creation-card-grid" role="radiogroup" aria-label="Выбор класса">{catalog.classes.map((entry) => {
             const skills = entry.class_skills?.choice_count ?? 0
             const magic = entry.spell_selection && (entry.spell_selection.cantrips > 0 || entry.spell_selection.maximumSpellLevel > 0) ? 'есть магия' : 'без магии на 1 уровне'
             return <button
@@ -938,10 +1033,36 @@ export function CharacterCreationWizard({
               onClick={() => selectClass(entry.id)}
             ><ClassEmblem classId={entry.id} /><strong>{entry.label}</strong><small>{skills} навыка · {magic}</small></button>
           })}</div>}
-          {step === 1 && <div className="creation-form">
-            <label><span>Вид</span></label>
-            <div className="creation-species" role="radiogroup" aria-label="Выбор расы и подрасы">
-              {catalog.ability_policy.species_options.map((entry) => <button
+          {currentStep === 'race' && <div className="creation-form">
+            <label><span>Раса</span></label>
+            <div className="creation-species" role="radiogroup" aria-label="Выбор расы">
+              {raceChoices.map((choice) => {
+                const selected = selectedRaceChoice?.id === choice.id
+                const option = choice.option
+                return <button
+                  key={choice.id}
+                  type="button"
+                  role="radio"
+                  className={selected ? 'selected' : ''}
+                  aria-checked={selected}
+                  onClick={() => selectRaceChoice(choice)}
+                >
+                  <SpeciesEmblem speciesId={choice.raceId} label={choice.label} />
+                  <b>{choice.label}</b>
+                  <small>{option.base_speed} фт.{option.size ? ` · ${option.size === 'small' ? 'Маленький' : 'Средний'}` : ''}</small>
+                  {choice.subraces.length > 0
+                    ? <small>{choice.subraces.length} {plural(choice.subraces.length, ['подраса', 'подрасы', 'подрас'])}</small>
+                    : option.bonus_profile_id && <small>{abilityBonusLabel(catalog.ability_policy.origin_bonus_profiles.find((profile) => profile.id === option.bonus_profile_id))}</small>}
+                </button>
+              })}
+            </div>
+            {!hasSubraceStep && renderSpeciesDetails()}
+            {hasSubraceStep && <p><ShieldCheck size={17} />У этой расы есть подрасы. Выберите одну на следующем шаге.</p>}
+          </div>}
+          {currentStep === 'subrace' && <div className="creation-form creation-subrace">
+            <label><span>Подраса</span></label>
+            <div className="creation-species creation-subrace-grid" role="radiogroup" aria-label="Выбор подрасы">
+              {subraceOptions.map((entry) => <button
                 key={entry.id}
                 type="button"
                 role="radio"
@@ -949,32 +1070,15 @@ export function CharacterCreationWizard({
                 aria-checked={draft.speciesOptionId === entry.id}
                 onClick={() => selectSpecies(entry)}
               >
-                <SpeciesEmblem speciesId={entry.id === 'elf-drow' ? entry.id : entry.race_id ?? entry.id} label={entry.label} />
-                <b>{entry.label}</b>
+                <SpeciesEmblem speciesId={entry.id === 'elf-drow' ? entry.id : entry.race_id ?? entry.id} label={entry.subrace_label ?? entry.label} />
+                <b>{entry.subrace_label ?? entry.label}</b>
                 <small>{entry.base_speed} фт.{entry.size ? ` · ${entry.size === 'small' ? 'Маленький' : 'Средний'}` : ''}</small>
                 {entry.bonus_profile_id && <small>{abilityBonusLabel(catalog.ability_policy.origin_bonus_profiles.find((profile) => profile.id === entry.bonus_profile_id))}</small>}
               </button>)}
             </div>
-            {speciesOption?.id === 'custom' && <label><span>Название авторского вида</span><input value={draft.customSpecies} onChange={(event) => patch('customSpecies', event.target.value)} maxLength={120} /></label>}
-            {bonusSource === 'species' && speciesOption && <div className="creation-origin-bonus">
-              <header><span>Прибавки расы и подрасы</span><b>{originBonusReady ? 'готово' : `выберите ${speciesChoiceCount}`}</b></header>
-              <p>{speciesBonusProfile?.label}</p>
-              {speciesChoiceCount > 0 && <div className="origin-abilities">
-                {speciesChoiceOptions.map((ability) => <button
-                  key={ability}
-                  type="button"
-                  className={draft.speciesBonusAbilities.includes(ability) ? 'selected' : ''}
-                  aria-pressed={draft.speciesBonusAbilities.includes(ability)}
-                  onClick={() => toggleSpeciesAbility(ability)}
-                ><span>{abilityLabels[ability]}</span><b>{draft.speciesBonusAbilities.includes(ability) ? `+${speciesChoiceAmount}` : '—'}</b></button>)}
-              </div>}
-              {(speciesOption.trait_summaries?.length ?? 0) > 0 && <p className="creation-support-note"><ShieldCheck size={13} /><span><b>Расовые особенности:</b> {speciesOption.trait_summaries?.join('; ')}. Они записываются в лист; автоматическое исполнение зависит от конкретной механики.</span></p>}
-            </div>}
-            <p><ShieldCheck size={17} />{bonusSource === 'species'
-              ? 'В редакции 2014 характеристики повышает раса или подраса, а предыстория отвечает за опыт, владения и начальные вещи.'
-              : 'Скорость определяется видом. Предыстория редакции 2024 даёт прибавки к характеристикам, два владения навыками, инструмент и черту происхождения.'}</p>
+            {renderSpeciesDetails()}
           </div>}
-          {step === 2 && <div className="creation-form">
+          {currentStep === 'background' && <div className="creation-form">
             <div className="creation-backgrounds" role="radiogroup" aria-label="Выбор предыстории">
               {(catalog.backgrounds?.options ?? []).map((option) => {
                 const chosen = draft.backgroundId === option.id
@@ -1091,23 +1195,42 @@ export function CharacterCreationWizard({
             </div>}
             {selectedBackground?.feature && !catalog.backgrounds?.background_features_supported && <p className="creation-support-note"><ShieldCheck size={13} /><span><b>{selectedBackground.feature.name}</b> сохраняется как особенность предыстории, но пока не применяется движком автоматически.</span></p>}
           </div>}
-          {step === 3 && <div className="creation-abilities">
+          {currentStep === 'abilities' && <div className="creation-abilities">
             {(catalog.ability_methods?.length ?? 0) > 1 && <label>Способ определения характеристик<select value={draft.abilityMethod} onChange={(event) => {
               const method = event.target.value as CreationDraft['abilityMethod']
-              setDraft((current) => ({ ...current, abilityMethod: method, abilities: Object.fromEntries(abilityIds.map((id, index) => [id, method === 'point_buy' ? 8 : method === 'rolled' ? abilityRoll?.scores[index] ?? 0 : catalog.ability_policy.standard_array[index]])) as CharacterAbilityScores }))
+              setDraft((current) => ({ ...current, abilityMethod: method, abilities: Object.fromEntries(abilityIds.map((id, index) => [id, method === 'point_buy' ? 8 : method === 'rolled' ? abilityRollComplete ? abilityRoll?.scores[index] ?? 0 : 0 : catalog.ability_policy.standard_array[index]])) as CharacterAbilityScores }))
               setError('')
             }}>
               <option value="standard_array">Стандартный массив</option><option value="point_buy">Покупка за 27 очков</option><option value="rolled">Серверные броски 4к6</option>
             </select></label>}
-            {draft.abilityMethod === 'rolled' && !abilityRoll && <button type="button" disabled={busy || !onRollAbilities} onClick={async () => {
-              setBusy(true); setError('')
-              try { await onRollAbilities?.() } catch (error) { setError(error instanceof Error ? error.message : 'Ошибка бросков') } finally { setBusy(false) }
-            }}>Бросить шесть раз 4к6</button>}
+            {draft.abilityMethod === 'rolled' && <>
+              {abilityRollCount < abilityIds.length && <button type="button" disabled={busy || !onRollAbilities} onClick={async () => {
+                setBusy(true); setError('')
+                try { await onRollAbilities?.(abilityRollCount) } catch (error) { setError(error instanceof Error ? error.message : 'Ошибка броска') } finally { setBusy(false) }
+              }}>Бросить 4к6 · {abilityRollCount + 1} из 6</button>}
+              <section className="creation-roll-panel" aria-label="Сохранённые броски характеристик">
+                <header><span>Броски характеристик</span><b>{abilityRollCount}/6</b></header>
+                {abilityRollCount === 0
+                  ? <p>Каждый бросок запускается отдельно. Минимальная кость из четырёх отбрасывается.</p>
+                  : <div className="creation-roll-list">{(abilityRoll?.rolls ?? []).map((roll, index) => {
+                    const minimumIndex = roll.dice.length
+                      ? roll.dice.reduce((lowest, value, dieIndex, dice) => value < dice[lowest] ? dieIndex : lowest, 0)
+                      : -1
+                    return <article className="creation-roll-row" key={index}>
+                      <span>Бросок {index + 1}</span>
+                      <div className="creation-roll-dice" aria-label={`Кости броска ${index + 1}: ${roll.dice.join(', ')}`}>
+                        {roll.dice.map((die, dieIndex) => <b className={dieIndex === minimumIndex ? 'discarded' : ''} key={`${index}-${dieIndex}`} title={dieIndex === minimumIndex ? 'Минимальная кость отброшена' : undefined}>{die}</b>)}
+                      </div>
+                      <span className="creation-roll-total"><small>Итог</small><strong>{abilityRoll?.scores[index] ?? '—'}</strong></span>
+                    </article>
+                  })}</div>}
+              </section>
+            </>}
             {draft.abilityMethod === 'point_buy' ? <p>Потрачено {pointBuySpent}/27 очков. Значения 8–13 стоят 0–5 очков, 14 — 7 очков, 15 — 9 очков. Расовые и другие прибавки применяются после покупки.</p>
-              : <p>Распределите значения {abilityValues.join(', ') || 'после серверного броска'}. Каждое выпавшее значение используется один раз. Для обмена сначала выберите «Не выбрано».</p>}
-            <div>{abilityIds.map((ability) => <label key={ability}><span>{abilityLabels[ability]}</span><select value={draft.abilities[ability]} onChange={(event) => assignAbility(ability, Number(event.target.value))}><option value={0}>Не выбрано</option>{abilityChoices.map((score) => <option key={score} value={score} disabled={draft.abilityMethod !== 'point_buy' && abilityIds.filter((other) => other !== ability && draft.abilities[other] === score).length >= abilityValues.filter((value) => value === score).length}>{score}</option>)}</select><b>{draft.abilities[ability] ? signed(abilityModifier(draft.abilities[ability] + originBonusFor(ability))) : '—'}</b><small>{!draft.abilities[ability] ? 'Выберите значение' : originBonusFor(ability) > 0 ? `+ ${originBonusFor(ability)} ${bonusSource === 'species' ? 'раса' : 'предыстория'} · итог ${draft.abilities[ability] + originBonusFor(ability)}` : `без прибавки ${bonusSource === 'species' ? 'расы' : 'предыстории'}`}</small></label>)}</div>
+              : <p>{draft.abilityMethod === 'rolled' && !abilityRollComplete ? `Сначала сделайте все шесть бросков (${abilityRollCount}/6).` : `Распределите значения ${abilityValues.join(', ') || 'после серверного броска'}. Каждое выпавшее значение используется один раз. Для обмена сначала выберите «Не выбрано».`}</p>}
+            <div>{abilityIds.map((ability) => <label key={ability}><span>{abilityLabels[ability]}</span><select disabled={draft.abilityMethod === 'rolled' && !abilityRollComplete} value={draft.abilities[ability]} onChange={(event) => assignAbility(ability, Number(event.target.value))}><option value={0}>Не выбрано</option>{abilityChoices.map((score) => <option key={score} value={score} disabled={draft.abilityMethod !== 'point_buy' && abilityIds.filter((other) => other !== ability && draft.abilities[other] === score).length >= abilityValues.filter((value) => value === score).length}>{score}</option>)}</select><b>{draft.abilities[ability] ? signed(abilityModifier(draft.abilities[ability] + originBonusFor(ability))) : '—'}</b><small>{!draft.abilities[ability] ? 'Выберите значение' : originBonusFor(ability) > 0 ? `+ ${originBonusFor(ability)} ${bonusSource === 'species' ? 'раса' : 'предыстория'} · итог ${draft.abilities[ability] + originBonusFor(ability)}` : `без прибавки ${bonusSource === 'species' ? 'расы' : 'предыстории'}`}</small></label>)}</div>
           </div>}
-          {step === 4 && <div className="creation-choices">
+          {currentStep === 'proficiencies' && <div className="creation-choices">
             {catalog.phb && <PhbCharacterOptions catalog={catalog.phb} classId={draft.classId} subclass={draft.subclass}
               abilities={preFeatAbilities} knownSkillIds={[...knownSkills, ...replacementSkills]} knownToolIds={[...knownTools, ...replacementTools]}
               variantHuman={speciesOption?.id === 'human-variant'} value={draft.phb} onChange={(value) => patch('phb', value)} />}
@@ -1147,7 +1270,7 @@ export function CharacterCreationWizard({
             </section>}
             {featureGroups.map((group) => <section key={group.id}><header><span>{group.name}</span><b>{group.options.filter((option) => draft.selectedFeatureIds.includes(option.id)).length}/{group.choiceCount}</b></header><div>{group.options.map((option) => <button key={option.id} className={draft.selectedFeatureIds.includes(option.id) ? 'selected' : ''} aria-label={FEATURE_HINTS[option.id] ? `${option.name}: ${FEATURE_HINTS[option.id]}` : option.name} title={FEATURE_HINTS[option.id]} onClick={() => toggleFeature(group, option.id)}><Check size={13} />{option.name}{FEATURE_HINTS[option.id] && <small>{FEATURE_HINTS[option.id]}</small>}</button>)}</div></section>)}
           </div>}
-          {step === 5 && <div className="creation-equipment-groups">
+          {currentStep === 'equipment' && <div className="creation-equipment-groups">
             {catalog.phb && <label className="creation-form">Стартовое снаряжение<select value={draft.equipmentMode} onChange={(event) => patch('equipmentMode', event.target.value as 'standard' | 'wealth')}><option value="standard">Наборы класса и предыстории</option><option value="wealth">Стартовое богатство и покупки</option></select></label>}
             {draft.equipmentMode === 'wealth' && <section className="creation-form">
               <p>Этот вариант заменяет вещи и деньги класса и предыстории. Купленные предметы можно надеть в инвентаре после создания.</p>
@@ -1184,7 +1307,7 @@ export function CharacterCreationWizard({
               </section>)}
             </>}
           </div>}
-          {step === 6 && <div className="creation-spells">
+          {currentStep === 'magic' && <div className="creation-spells">
             {catalog.phb && <p>Выбирайте заклинания PHB для листа. Статус карточки показывает, какие эффекты уже исполняются движком, а какие пока требуют решения ведущего.</p>}
             {domainSpellIds.length > 0 && <p>Заклинания домена всегда подготовлены и не занимают лимит: {domainSpellIds.map((id) => catalog.phb?.spells.find((spell) => spell.id === id)?.name ?? id).join(', ')}.</p>}
             {!spellRules ? <div className="creation-empty"><ShieldCheck size={24} /><strong>На 1 уровне у этого класса нет выбора заклинаний</strong><p>Доступ к магии на следующих уровнях зависит от класса и подкласса.</p></div> : <>
@@ -1206,7 +1329,7 @@ export function CharacterCreationWizard({
               })}</div></section>}
             </>}
           </div>}
-          {step === 7 && <div className="creation-form identity">
+          {currentStep === 'identity' && <div className="creation-form identity">
             <label>Мировоззрение<select value={draft.alignment} onChange={(event) => patch('alignment', event.target.value)}><option value="">Не определено</option>{['Законопослушный добрый', 'Нейтральный добрый', 'Хаотичный добрый', 'Законопослушный нейтральный', 'Истинно нейтральный', 'Хаотичный нейтральный', 'Законопослушный злой', 'Нейтральный злой', 'Хаотичный злой'].map((value) => <option key={value}>{value}</option>)}</select></label>
             <label>Идеал<textarea value={draft.ideals} onChange={(event) => patch('ideals', event.target.value)} maxLength={2000} /></label>
             <label>Привязанность<textarea value={draft.bonds} onChange={(event) => patch('bonds', event.target.value)} maxLength={2000} /></label>
@@ -1233,8 +1356,8 @@ export function CharacterCreationWizard({
               type="button"
               onClick={rollRandomHero}
             ><Sparkles size={15} />Случайный герой</button>
-            <button type="button" disabled={step === 0 || busy} onClick={() => setStep((current) => Math.max(0, current - 1))}><ArrowLeft size={15} />Назад</button>
-            {step < steps.length - 1
+            <button type="button" disabled={currentStepIndex === 0 || busy} onClick={() => setStep((current) => steps[Math.max(0, steps.findIndex((entry) => entry.id === current) - 1)]?.id ?? current)}><ArrowLeft size={15} />Назад</button>
+            {currentStepIndex < steps.length - 1
               ? <button type="button" className="primary" onClick={next}>Дальше<ArrowRight size={15} /></button>
               : <button type="button" className="primary" disabled={busy} onClick={() => { void submit() }}><ShieldCheck size={15} />{busy ? 'Создаём героя…' : 'Создать героя'}</button>}
           </span>

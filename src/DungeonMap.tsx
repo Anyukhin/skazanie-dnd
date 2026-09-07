@@ -176,7 +176,6 @@ export const NPC_CONVERSATION_STANCE_LABELS = {
 
 export const RAIL_HEIGHT_KEY = 'skazanie-rail-height-v1'
 export const SERVER_WIDTH_KEY = 'skazanie-server-width-v1'
-export const TILE_ROWS_KEY = 'skazanie-tile-rows-v1'
 export const TILE_LOCK_KEY = 'skazanie-tiles-locked-v1'
 export const TILE_ORDER_KEY = 'skazanie-tile-order-v1'
 export const MAP_LEGEND_KEY = 'skazanie-map-legend-open-v1'
@@ -304,6 +303,8 @@ export function heroResourceShortLabel(key: string): string {
   if (slot) return slot[1]
   return heroResourceLabel(key).toLocaleLowerCase('ru')
 }
+
+const SPELL_SLOT_ROMANS = ['I', 'II', 'III', 'IV', 'V', 'VI'] as const
 
 /** Круг ячеек заклинаний — цифра после общего слова «Ячейки», а не имя. */
 export function isSpellSlotPool(key: string): boolean {
@@ -871,7 +872,7 @@ export function boardVisualTheme(theme: SceneVisualTheme) {
   return 'map-theme-wild'
 }
 
-export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, canConverse, dialogueBusy, dialogueDraft, dialogueContext, onCancelDialogue, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, visualBatch, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, leaveLocationDisabled, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, statusContent, children }: {
+export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, canConverse, dialogueBusy, dialogueDraft, dialogueContext, onCancelDialogue, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, visualBatch, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, leaveLocationDisabled, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, playerHud, statusContent, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -924,6 +925,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   onCompleteRest: () => Promise<CommandOutcome>
   onTypingChange: (actorId: string, typing: boolean) => void
   narrating: boolean
+  playerHud?: ReactNode
   statusContent: React.ReactNode
   children?: React.ReactNode
 }) {
@@ -1000,12 +1002,6 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
      переноситься, хотя рядом оставалось свободное место. */
   const [railHeight, setRailHeight] = useState(() => Number(window.localStorage.getItem(RAIL_HEIGHT_KEY)) || 0)
   const [serverWidth, setServerWidth] = useState(() => Number(window.localStorage.getItem(SERVER_WIDTH_KEY)) || 0)
-  /* Рядов плиток — один или два. Раньше их считал `auto-fill` от высоты
-     карточки, и в «Основных» получалась петля: плитки не влезали по ширине,
-     появлялся ползунок, он съедал высоту, второй ряд переставал помещаться —
-     и колода оставалась в один ряд, хотя место было. Теперь это решение
-     игрока, а не побочный эффект. */
-  const [tileRows, setTileRows] = useState(() => (Number(window.localStorage.getItem(TILE_ROWS_KEY)) === 1 ? 1 : 2))
   /* Замок бережёт расстановку от случайного перетаскивания в бою: пока он
      закрыт, плитки только нажимаются. Порядок хранится по герою и колоде. */
   const [tilesLocked, setTilesLocked] = useState(() => window.localStorage.getItem(TILE_LOCK_KEY) !== 'unlocked')
@@ -1026,9 +1022,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     else root.removeProperty('--ui-rail-height')
     if (serverWidth) root.setProperty('--ui-server-column', `${serverWidth}px`)
     else root.removeProperty('--ui-server-column')
-    root.setProperty('--ui-tile-rows', String(tileRows))
-    window.localStorage.setItem(TILE_ROWS_KEY, String(tileRows))
-  }, [railHeight, serverWidth, tileRows])
+    root.setProperty('--ui-tile-rows', '2')
+  }, [railHeight, serverWidth])
   const startRailResize = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault()
     const startY = event.clientY
@@ -1649,7 +1644,6 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       else rows.push({ keys: [entry.key], current: entry.current, max: entry.max })
       return rows
     }, [])
-  const heroPools = heroPoolLayout(heroResourceRows, tileRows === 1 ? 2 : 4)
   /* Что в ходу ещё не потрачено — списком, из которого собирается честная
      подсказка «Завершить ход». Реакции здесь нет намеренно: она переживает
      конец своего хода и тратится на чужом. */
@@ -3430,7 +3424,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           принципы 2 и 3 требуют, чтобы предложения интерфейса не были границами;
           раньше в бою на месте этого поля стоял только хотбар, и у принципа не было
           носителя в UI. Ход не расходуется до подтверждённого сервером броска. */}
-      {/* Колоды стоят у карты, а выбранная команда подтверждается
+        {/* Колоды стоят у карты, а выбранная команда подтверждается
           той же формой реплики под хроникой. */}
         <div className="hotbar-decks">
         <nav className="hotbar-tabs" role="tablist" aria-label="Категории действий">
@@ -3453,6 +3447,32 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               ? 'Сначала завершите текущее действие или проверку'
             : 'Предложить отряду покинуть локацию. Переход начнётся после решения группы'}
         ><DoorOpen size={18} /><span>Решение группы</span></button>}
+        {showStartCombat && <button type="button" className="start-combat-button" disabled={!canAct || tacticalBusy} onClick={onStartCombat} title="Бросить инициативу и начать бой"><Swords size={18} /><span>Начать бой</span></button>}
+        {combatActive && <div className="hotbar-combat-controls">
+            {combatActive && !truce && <button
+              className="parley-hotbar"
+              disabled={!canAct || tacticalBusy || narrating || Boolean(state.pendingCheck)}
+              onClick={() => { void onProposeParley('persuasion') }}
+              title={parleyAttempted
+                ? 'Повторный окрик в этом бою идёт с помехой. Тратит действие; отклик решает мораль противника'
+                : 'Проверка Убеждения против серверной СЛ по морали противника. Тратит действие'}
+            ><CombatIcon id="propose-parley" kind="action" hint="переговоры перемирие поговорить" size={18} compact /><span>{parleyAttempted ? 'Переговоры (помеха)' : 'Переговоры'}</span></button>}
+            {combatActive && knockoutEligible && <button className={`knockout-turn-toggle ${knockOut ? 'active' : ''}`} disabled={tacticalBusy} aria-pressed={knockOut} onClick={() => setKnockOut((current) => !current)} title='При снижении до 0 ОЗ оставить цель с 1 ОЗ без сознания'><CombatIcon id='knockout-toggle' kind='action' hint='несмертельный нокаут пощадить цель' size={18} compact /><span>{knockOut ? 'Нокаут включён' : 'Нокаутировать'}</span></button>}
+            {combatActive && selectedItem && needsWeaponChange && <button disabled={!canAct || tacticalBusy || !actionReady} onClick={() => selected && onChangeWeapon(selected, selectedItem.id)}><CombatIcon id={`swap-${selectedItem.id}`} kind="swap" hint={`сменить оружие ${selectedItem.name}`} size={18} compact /><span>Сменить оружие</span></button>}
+            {/* Завершение хода — главное решение этого ряда, и выглядит оно так
+                же: выше соседей, в золоте отправки. Когда тратить больше нечего,
+                рамка мягко пульсирует; при `prefers-reduced-motion` она просто
+                светлее. Подсказка не хвалит кнопку, а перечисляет, что игрок
+                уносит с собой неистраченным. */}
+            {combatActive && <button
+              className={`end-turn-hotbar ${turnFullySpent ? 'exhausted' : ''}`}
+              disabled={!canAct || tacticalBusy}
+              onClick={onFinishTurn}
+              title={turnFullySpent
+                ? 'Ресурсы хода израсходованы. Завершить ход — клавиша «Пробел»'
+                : `Остались: ${unspentTurnResources.join(', ')}. Завершить ход — клавиша «Пробел»`}
+            ><CombatIcon id="end-turn" kind="end-turn" hint="завершить ход" size={18} compact /><span>Завершить ход<kbd>Пробел</kbd></span></button>}
+        </div>}
         </div>
       {/* Панель одна на оба режима. Раньше вне боя вместо неё показывалась полоска
           «исследование», а колоды и плитки не рендерились вовсе: игрок не видел, чем
@@ -3460,77 +3480,15 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           зарезервировано всегда, поэтому показывать арсенал ничего не стоит. */}
       <section className={`tactical-control combat-hotbar ${combatActive ? '' : 'out-of-combat'}`} aria-label={combatActive ? `Панель боевых действий: ${activeName}` : `Панель действий вне боя: ${activeName}`}>
         <div className="hotbar-main">
-          {/* Настройки панели держатся у самой панели, а не в строке ввода: замок
-              бережёт расстановку, вторая кнопка меняет число рядов. */}
+          {/* Замок защищает сохранённую расстановку плиток от перетаскивания. */}
           <div className="tile-toolbar" role="group" aria-label="Настройки панели действий">
             <button type="button" className={tilesLocked ? '' : 'active'} aria-pressed={!tilesLocked} onClick={() => { const next = !tilesLocked; setTilesLocked(next); window.localStorage.setItem(TILE_LOCK_KEY, next ? 'locked' : 'unlocked') }} title={tilesLocked ? 'Разблокировать: плитки можно перетаскивать' : 'Заблокировать: расстановка сохранится'}>{tilesLocked ? <Lock size={15} /> : <LockOpen size={15} />}</button>
-            <button type="button" onClick={() => setTileRows(tileRows === 1 ? 2 : 1)} title={tileRows === 1 ? 'Сейчас один ряд плиток — переключить на два' : 'Сейчас два ряда плиток — переключить на один'} aria-label={`Рядов плиток: ${tileRows}`}>{tileRows === 1 ? <span className="rows-glyph one"><i /></span> : <span className="rows-glyph two"><i /><i /></span>}</button>
           </div>
           {/* Кнопки хода живут внутри карточки действий, прижатые к её правому
               краю: они завершают тот же выбор, что и плитки, а отдельной колонкой
               между колодой и описанием рвала строку надвое. Прокрутка плиток их
               не уносит — они лежат рядом с областью прокрутки, а не в ней. */}
-          <div className={`hotbar-actions-shell${tileRows === 1 ? ' one-row' : ''}`}>
-          {/* Ресурсный кластер активного героя: кто ходит и чем он ещё
-              располагает — слева от самих плиток, в той же оправе. Все числа
-              приезжают серверной `action_economy` и `mechanics.resources`;
-              панель их только показывает. Вне боя кластера нет: экономики хода
-              вне инициативы не существует, и рисовать пустые пипсы не за что.
-
-              Каждой строке — слово: фигуры экономики подписаны, у движения
-              есть «осталось/всего», у ячеек одно общее слово вместо загадочной
-              цифры. Владелец просил надписи, а не только перестановку: голые
-              ●▲◆ читались лишь по наведению, а чип «1 ●●» был ребусом.
-              При одном ряде плиток кластер ложится одной полосой (`band`). */}
-          {combatActive && <div className={`hotbar-hero-cluster${tileRows === 1 ? ' band' : ''}`} aria-label={`Ресурсы хода: ${activeName}`}>
-            <div className="hero-cluster-face">
-              <span className="hero-cluster-avatar" data-face={heroFaceMode(activeHero)} style={heroFaceStyle(activeHero)}>
-                {!hasHeroPortrait(activeHero) && <HeroFaceInitials hero={activeHero} />}
-              </span>
-              <b title={activeName}>{activeName}</b>
-            </div>
-            <div className="hero-cluster-pips" role="group" aria-label="Экономика хода">
-              {heroPips.map((pip) => <button
-                type="button"
-                key={pip.id}
-                className={`hero-pip ${pip.id} ${pip.ready ? 'ready' : 'spent'} ${costFilter === pip.id ? 'filtering' : ''}`}
-                aria-pressed={costFilter === pip.id}
-                onClick={() => setCostFilter((current) => current === pip.id ? null : pip.id)}
-                title={`${pip.label}: ${pip.ready ? 'доступно' : 'потрачено'}${pip.note ? ` · ${pip.note}` : ''}. Нажмите, чтобы оставить в колоде только плитки этой стоимости`}
-                aria-label={`${pip.label}: ${pip.ready ? 'доступно' : 'потрачено'}${pip.note ? `, ${pip.note}` : ''}`}
-              ><i className="hero-pip-shape" aria-hidden="true" /><span className="hero-pip-label" aria-hidden="true">{pip.label}</span>{pip.note && <em>· {pip.note}</em>}</button>)}
-            </div>
-            {/* Движение: слово, короткая полоса и «осталось/всего». Полоса
-                короткая намеренно — во всю ширину она обещала бы точность,
-                которой в ней нет; настоящий ответ — числа рядом. */}
-            <div
-              className={`hero-cluster-move ${movementAvailable && remainingFeet > 0 ? 'ready' : 'spent'}`}
-              title={movementAvailable ? `Движение: осталось ${remainingFeet} из ${speedFeet} фт` : 'Движение: потрачено'}
-              aria-label={movementAvailable ? `Движение: осталось ${remainingFeet} из ${speedFeet} футов` : 'Движение: потрачено'}
-            ><span className="hero-cluster-move-label" aria-hidden="true">Движение</span><span className="hero-cluster-move-bar" aria-hidden="true"><i style={{ width: `${Math.round(movementRatio * 100)}%` }} /></span><b>{movementAvailable ? `${remainingFeet}/${speedFeet} фт` : `0/${speedFeet} фт`}</b></div>
-            {/* Запасы одним потоком: слово «Ячейки» один раз, круги цифрами,
-                классовые запасы полными именами. Рисуются только с содержимым:
-                у воина ячеек нет, и пустой строки он не увидит. Мелкий запас
-                показан пипсами, крупный (наложение рук — пять хитов за уровень)
-                — числом: тридцать точек в ряду никто не пересчитает. Хвост
-                сверх бюджета позиций — чип «+N ещё» с перечнем в подсказке. */}
-            {heroPools.visible.length > 0 && <div className="hero-cluster-resources" role="group" aria-label="Ячейки и классовые запасы">
-              {heroPools.slotCount > 0 && <span className="hero-pools-label">Ячейки</span>}
-              {heroPools.visible.map((row) => <span
-                key={row.keys.join('+')}
-                className={`hero-resource ${row.current > 0 ? 'ready' : 'spent'}${isSpellSlotPool(row.keys[0]) ? ' slot' : ''}`}
-                title={heroResourceTitle(row.keys, row.current, row.max)}
-                aria-label={heroResourceTitle(row.keys, row.current, row.max)}
-              ><em>{heroResourceShortLabel(row.keys[0])}</em>{row.max <= 6
-                ? <i aria-hidden="true">{Array.from({ length: row.max }, (_, index) => <u key={index} className={index < row.current ? '' : 'spent'} />)}</i>
-                : <b>{row.current}/{row.max}</b>}</span>)}
-              {heroPools.hidden.length > 0 && <span
-                className="hero-resource-more"
-                title={heroPools.hidden.map((row) => heroResourceTitle(row.keys, row.current, row.max)).join('; ')}
-                aria-label={`Ещё запасов: ${heroPools.hidden.length}. ${heroPools.hidden.map((row) => heroResourceTitle(row.keys, row.current, row.max)).join('; ')}`}
-              >+{heroPools.hidden.length} ещё</span>}
-            </div>}
-          </div>}
+          <div className="hotbar-actions-shell">
           {/* Пока выборка держится, её видно словами, а не только рамкой
               пипса: снять её можно и мышью, и Escape. Чип стоит у нижней
               кромки карточки, а не строкой кластера: это контекст колоды. */}
@@ -3553,8 +3511,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           {/* Кнопки шага: вне боя это подтверждение выбранной цели и двери под
               рукой, в бою — ещё нокаут, смена оружия и завершение хода. Без
               содержимого блок не рисуется, и плитки занимают всю карточку. */}
-          {(combatActive || showStartCombat || doorsAtHand.length > 0 || selectedSceneObject) && <div className="hotbar-turn-controls">
-            {!combatActive && showStartCombat && <button type="button" className="exploration-start-combat" disabled={!canAct || tacticalBusy} onClick={onStartCombat}><CombatIcon id="start-combat" kind="start-combat" hint="инициатива начать бой" size={22} compact /><span><small>Бросить инициативу</small><strong>Начать бой</strong></span></button>}
+          {(doorsAtHand.length > 0 || selectedSceneObject) && <div className="hotbar-turn-controls">
             {/* Дверь рядом — единственное, что делается и вне боя: заперто это
                 или просто прикрыто, игрок видит по самой кнопке. */}
             {doorsAtHand.map((door) => {
@@ -3634,35 +3591,51 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               <span>{selectedLevelTransition.label}</span>
             </button>}
             {selectedSceneObject && selectedSceneObjectVerbs.length === 0 && !selectedLevelTransition && <button type="button" className="scene-object-control" disabled title="Сервер не открыл доступных действий для этого объекта"><span>Нет доступных действий</span></button>}
-            {combatActive && !truce && <button
-              className="parley-hotbar"
-              disabled={!canAct || tacticalBusy || narrating || Boolean(state.pendingCheck)}
-              onClick={() => { void onProposeParley('persuasion') }}
-              title={parleyAttempted
-                ? 'Повторный окрик в этом бою идёт с помехой. Тратит действие; отклик решает мораль противника'
-                : 'Проверка Убеждения против серверной СЛ по морали противника. Тратит действие'}
-            ><CombatIcon id="propose-parley" kind="action" hint="переговоры перемирие поговорить" size={27} compact /><span>{parleyAttempted ? 'Переговоры (помеха)' : 'Переговоры'}</span></button>}
-            {combatActive && knockoutEligible && <button className={`knockout-turn-toggle ${knockOut ? 'active' : ''}`} disabled={tacticalBusy} aria-pressed={knockOut} onClick={() => setKnockOut((current) => !current)} title='При снижении до 0 ОЗ оставить цель с 1 ОЗ без сознания'><CombatIcon id='knockout-toggle' kind='action' hint='несмертельный нокаут пощадить цель' size={27} compact /><span>{knockOut ? 'Нокаут включён' : 'Нокаутировать'}</span></button>}
-            {combatActive && selectedItem && needsWeaponChange && <button disabled={!canAct || tacticalBusy || !actionReady} onClick={() => selected && onChangeWeapon(selected, selectedItem.id)}><CombatIcon id={`swap-${selectedItem.id}`} kind="swap" hint={`сменить оружие ${selectedItem.name}`} size={27} compact /><span>Сменить оружие</span></button>}
-            {/* Завершение хода — главное решение этого ряда, и выглядит оно так
-                же: выше соседей, в золоте отправки. Когда тратить больше нечего,
-                рамка мягко пульсирует; при `prefers-reduced-motion` она просто
-                светлее. Подсказка не хвалит кнопку, а перечисляет, что игрок
-                уносит с собой неистраченным. */}
-            {combatActive && <button
-              className={`end-turn-hotbar ${turnFullySpent ? 'exhausted' : ''}`}
-              disabled={!canAct || tacticalBusy}
-              onClick={onFinishTurn}
-              title={turnFullySpent
-                ? 'Ресурсы хода израсходованы. Завершить ход — клавиша «Пробел»'
-                : `Остались: ${unspentTurnResources.join(', ')}. Завершить ход — клавиша «Пробел»`}
-            ><CombatIcon id="end-turn" kind="end-turn" hint="завершить ход" size={27} compact /><span>Завершить ход<kbd>Пробел</kbd></span></button>}
-          </div>}
-          </div>
-          <aside className={`hotbar-detail${!combatActive && !(combatMode === 'magic' && selectedSpell) ? ' exploration-hint' : ''}`} aria-live="polite">
-            {!combatActive && !(combatMode === 'magic' && selectedSpell) ? <>
-              <DetailHeader title="Исследование" description="Выберите цель на карте или опишите действие в хронике. Для атаки сначала начните бой." />
-            </> : combatMode === 'magic' && selectedSpell ? <>
+           </div>}
+           </div>
+           <div className="hotbar-hero-cluster player-resource-panel" aria-label={`Ресурсы героя: ${activeName}`}>
+             {playerHud && <div className="turn-rail-player-hud">{playerHud}</div>}
+             <div className="hero-cluster-pips" role="group" aria-label={combatActive ? 'Экономика хода' : 'Экономика хода вне боя не расходуется'}>
+               {heroPips.map((pip) => <button type="button" key={pip.id}
+                 className={`hero-pip ${pip.id} ${combatActive && pip.ready ? 'ready' : 'spent'} ${costFilter === pip.id ? 'filtering' : ''}`}
+                 aria-pressed={costFilter === pip.id} disabled={!combatActive}
+                 onClick={() => setCostFilter((current) => current === pip.id ? null : pip.id)}
+                 title={!combatActive ? 'Вне боя действия не расходуются' : `${pip.label}: ${pip.note || (pip.ready ? 'доступно' : 'потрачено')}`}
+               ><i className="hero-pip-shape" aria-hidden="true" /><span>{pip.label}</span><b>{!combatActive ? '—' : pip.id === 'action' ? Number(actionReady) + Math.max(0, Number(economy?.extra_actions) || 0) : Number(pip.ready)}</b></button>)}
+             </div>
+             <div className="hero-cluster-move ready">
+               <span>Движение</span><span className="hero-cluster-move-bar" aria-hidden="true"><i style={{width:`${combatActive ? Math.round(movementRatio * 100) : 100}%`}} /></span>
+               <b>{combatActive ? `${movementAvailable ? remainingFeet : 0}/${speedFeet} фт` : `${active?.speed ?? 0} фт · свободно`}</b>
+             </div>
+             {combatActive && weaponAttacksUsed > 0 && weaponAttacksLeft > 0 && <small>Атак в действии осталось: {weaponAttacksLeft}</small>}
+              {heroResourceRows.length > 0 && <div className="hero-cluster-resources" role="group" aria-label="Ячейки и классовые запасы">
+                {heroResourceRows.some((row) => isSpellSlotPool(row.keys[0])) && <>
+                  <span className="hero-pools-label">Ячейки</span>
+                  <div className="hero-spell-slot-grid" role="group" aria-label="Ячейки по кругам">
+                    {SPELL_SLOT_ROMANS.map((roman, index) => {
+                      const key = `spell_slots_${index + 1}`
+                      const row = heroResourceRows.find((candidate) => candidate.keys.includes(key))
+                      const current = row?.current ?? 0
+                      const max = row?.max ?? 0
+                      const label = row ? heroResourceTitle(row.keys, current, max) : `Ячейки ${roman} круга: недоступно`
+                      return <span key={key} className={`hero-resource slot ${current > 0 ? 'ready' : 'spent'}${max === 0 ? ' empty' : ''}`} title={label} aria-label={label}>
+                        <em>{roman}</em><i aria-hidden="true">{Array.from({ length: max }, (_, dot) => <u key={dot} className={dot < current ? '' : 'spent'} />)}</i>
+                      </span>
+                    })}
+                  </div>
+                </>}
+                {heroResourceRows.map((row) => !isSpellSlotPool(row.keys[0]) && <span key={row.keys.join('+')}
+                  className={`hero-resource class-pool ${row.current > 0 ? 'ready' : 'spent'}`}
+                  title={heroResourceTitle(row.keys, row.current, row.max)} aria-label={heroResourceTitle(row.keys, row.current, row.max)}
+                ><em>{heroResourceShortLabel(row.keys[0])}</em>{row.max <= 6
+                  ? <i aria-hidden="true">{Array.from({length:row.max}, (_,index) => <u key={index} className={index < row.current ? '' : 'spent'} />)}</i>
+                  : <b>{row.current}/{row.max}</b>}</span>)}
+              </div>}
+           </div>
+           {(combatActive || (combatMode === 'magic' && selectedSpell)) && <details className="hotbar-detail">
+            <summary aria-label="Параметры действия" title="Параметры действия"><SlidersHorizontal size={15} /></summary>
+            <div className="hotbar-detail-content">
+            {combatMode === 'magic' && selectedSpell ? <>
               <DetailHeader title={selectedSpell.name} description={selectedSpell.description} meta={<>
                 {selectedSpellRange > 0 ? <i className="detail-chip" title={`Дальность: ${selectedSpellRange} фт`}>{selectedSpellRange} фт</i> : <i className="detail-chip" title="Заклинание на себя">на себя</i>}
                 {selectedSpell.concentration ? <i className="detail-chip mark" title="Требует концентрации">К</i> : null}
@@ -3693,7 +3666,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               <span>{sneakAttackSpent ? 'Коварная атака использована' : 'Коварная атака'}</span>
             </label>}
             </>}
-          </aside>
+            </div>
+          </details>}
         </div>
         {tacticalBusy && <p className="tactical-command-status"><RefreshCw className={state.pendingAction?.status === 'ready' || state.pendingCheck?.status === 'ready' ? '' : 'spinning'} size={12} />{state.pendingAction?.status === 'ready' || state.pendingCheck?.status === 'ready' ? 'Сначала подтвердите предложение ведущего или откажитесь от него.' : 'Действие идёт, мир отзывается на него…'}</p>}
         {/* Отказ команды больше не рисуется здесь своей строкой: он уходит в

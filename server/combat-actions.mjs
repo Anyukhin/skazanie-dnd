@@ -84,6 +84,7 @@ const CLASS_ACTIONS = Object.freeze({
   monk: Object.freeze([
     action('martial-arts-strike', 'Боевые искусства', { target: 'enemy', actionType: 'bonus_action', range: 5, description: 'Совершить безоружную атаку бонусным действием.', effect: { kind: 'weapon_attack', attacks: 1, unarmed: true } }),
     action('flurry-of-blows', 'Шквал ударов', { target: 'enemy', actionType: 'bonus_action', range: 5, minimumLevel: 2, resource: 'ki', description: 'Потратить 1 ци и совершить две безоружные атаки.', effect: { kind: 'weapon_attack', attacks: 2, unarmed: true } }),
+    action('extra-attack', 'Дополнительная атака', { target: 'enemy', range: 600, minimumLevel: 5, requiresWeapon: true, description: 'Дважды атаковать оружием действием Атака.', effect: { kind: 'weapon_attack', attacks: 2 } }),
     action('patient-defense', 'Терпеливая оборона', { actionType: 'bonus_action', minimumLevel: 2, resource: 'ki', description: 'Потратить 1 ци и использовать Уклонение.', effect: { kind: 'condition', condition: 'dodging', duration: 'until-next-turn' } }),
     action('step-of-the-wind', 'Шаг ветра', { actionType: 'bonus_action', minimumLevel: 2, resource: 'ki', description: 'Потратить 1 ци: Рывок и Отход, дальность прыжка удваивается.', effect: { kind: 'dash', addCondition: 'disengaged' } }),
     action('quickened-healing', 'Быстрое исцеление', { actionType: 'action', minimumLevel: 4, resource: 'ki', cost: 2, description: 'Потратить 2 ци и восстановить кость боевых искусств + мастерство хитов.', effect: { kind: 'heal', dice: '1d6', addProficiency: true } }),

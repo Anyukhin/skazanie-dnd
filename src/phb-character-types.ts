@@ -18,6 +18,7 @@ export interface PhbSpellCatalogEntry extends PhbCatalogEntry {
 
 export interface PhbFeatCatalogEntry extends PhbCatalogEntry {
   summary?: string
+  description?: string[]
   source?: string
   mechanics_status?: string
   prerequisites?: Array<Record<string, unknown>>
@@ -82,6 +83,8 @@ export interface PhbCharacterOptionsProps {
   knownSkillIds: string[]
   knownToolIds: string[]
   variantHuman: boolean
+  featOnly?: boolean
+  featContext?: Record<string, unknown>
   value: PhbCharacterOptionsValue
   onChange: (value: PhbCharacterOptionsValue) => void
 }

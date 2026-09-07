@@ -66,7 +66,7 @@ type TacticalCommand =
   | { command_type: 'SendLetter'; actor_id: string; addressee_kind: LetterAddresseeKind; addressee_id: string; body: string }
   | { command_type: 'ReceiveNpcBlessing'; actor_id: string; npc_id: string }
   | { command_type: 'ImportCharacter'; actor_id: string; document: unknown }
-  | { command_type: 'RollCharacterAbilities'; actor_id: string }
+  | { command_type: 'RollCharacterAbilities'; actor_id: string; roll_index: number }
   | { command_type: 'RollCharacterWealth'; actor_id: string; character_class: string }
   | { command_type: 'LevelUp'; actor_id: string; expected_level: number }
 
@@ -109,6 +109,7 @@ type CharacterBuildCommand =
       selected_feature_ids: string[]
       ability_score_level?: number
       ability_score_increases?: string[]
+      ability_score_feat?: { id: string; choices: Record<string, unknown> }
     }
   | {
       command_type: 'SetSpellSelections'
@@ -1693,8 +1694,8 @@ export function useGameSession() {
     if (!outcome.ok) throw new Error(outcome.error || 'Сервер отклонил создание персонажа.')
   }, [executeTacticalCommand])
 
-  const rollCharacterAbilities = useCallback(async (playerId: string) => {
-    const outcome = await executeTacticalCommand({ command_type: 'RollCharacterAbilities', actor_id: playerId }, 'Бросить характеристики героя: шесть раз 4к6')
+  const rollCharacterAbilities = useCallback(async (playerId: string, rollIndex: number) => {
+    const outcome = await executeTacticalCommand({ command_type: 'RollCharacterAbilities', actor_id: playerId, roll_index: rollIndex }, `Бросить характеристику ${rollIndex + 1} из 6: 4к6`)
     if (!outcome.ok) throw new Error(outcome.error || 'Не удалось получить серверные броски.')
   }, [executeTacticalCommand])
   const rollCharacterWealth = useCallback(async (playerId: string, classId: string) => {
@@ -1942,7 +1943,8 @@ export function useGameSession() {
     const commands: CharacterBuildCommand[] = []
     const abilityScoreEntry = Object.entries(patch.abilityScoreIncreases ?? {})
       .find(([level, choices]) => JSON.stringify(player.abilityScoreIncreases?.[level] ?? null) !== JSON.stringify(choices))
-    if (patch.subclass !== undefined || patch.classSkillProficiencies !== undefined || patch.selectedFeatureIds !== undefined || abilityScoreEntry) {
+    const featEntry = Object.entries(patch.levelFeats ?? {}).find(([level, feat]) => JSON.stringify(player.levelFeats?.[level] ?? null) !== JSON.stringify(feat))
+    if (patch.subclass !== undefined || patch.classSkillProficiencies !== undefined || patch.selectedFeatureIds !== undefined || abilityScoreEntry || featEntry) {
       commands.push({
         command_type: 'SetCharacterChoices',
         actor_id: playerId,
@@ -1953,6 +1955,7 @@ export function useGameSession() {
           ability_score_level: Number(abilityScoreEntry[0]),
           ability_score_increases: abilityScoreEntry[1],
         } : {}),
+        ...(featEntry ? { ability_score_level: Number(featEntry[0]), ability_score_feat: { id: featEntry[1].id, choices: featEntry[1].choices } } : {}),
       })
     }
     if (patch.knownSpellIds !== undefined || patch.preparedSpellIds !== undefined) {
@@ -1965,7 +1968,7 @@ export function useGameSession() {
     }
     if (commands.length) await executeCharacterBuild(commands)
     const mechanical = new Set<keyof Player>([
-      'subclass', 'classSkillProficiencies', 'selectedFeatureIds', 'knownSpellIds', 'preparedSpellIds', 'abilityScoreIncreases',
+      'subclass', 'classSkillProficiencies', 'selectedFeatureIds', 'knownSpellIds', 'preparedSpellIds', 'abilityScoreIncreases', 'levelFeats',
       'role', 'characterClass', 'level', 'experience', 'hp', 'maxHp', 'armor', 'speed', 'proficiency', 'abilities', 'currency',
       'inventory', 'combatActions', 'combatSpells',
       'x', 'y',

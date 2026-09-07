@@ -139,8 +139,8 @@ test('правая колонка: ситуации чипами поверх л
   // Карточка героя — одна полоска: числа с подписями в title, портрет и класс
   // не повторяются (они в списке отряда). Прежние правила гасили её целиком на
   // 1366×768 и 1440×900, за которыми и играют.
-  assert.match(rootSource, /aria-label=\{`Здоровье \$\{player\.hp\} из \$\{player\.maxHp\}\$\{status && status\.temporaryHp > 0 \? `, временные хиты \$\{status\.temporaryHp\}` : ''\}`\}><Heart size=\{14\} \/><b>\{player\.hp\}\/\{player\.maxHp\}<\/b>/u)
-  assert.doesNotMatch(rootSource, /className="hud-identity"/u)
+  assert.match(rootSource, /className="hud-health"/u)
+  assert.match(rootSource, /className="hud-identity"/u)
   assert.doesNotMatch(stylesSource, /\.player-hud-stack, \.player-hud \{ display: none; \}/u)
   assert.doesNotMatch(stylesSource, /\.server-column > \.player-hud-stack \{ display: none; \}/u)
   assert.match(stylesSource, /@media \(max-width: 1120px\), \(max-height: 850px\) and \(min-width: 681px\) \{/u, 'вместо сокрытия — компактная форма на тех же условиях')
@@ -175,32 +175,15 @@ test('отказы идут одной очередью тостов, а не т
   assert.match(stylesSource, /\.toast-stack \{[^}]*position: fixed;/u)
 })
 
-test('ресурсный кластер героя рисуется только в бою и читает серверную экономику хода', () => {
-  // Кластер живёт внутри карточки действий, слева от плиток, и появляется
-  // ровно там, где появляется экономика хода — в бою.
-  assert.match(appSource, /\{combatActive && <div className=\{`hotbar-hero-cluster\$\{tileRows === 1 \? ' band' : ''\}`\}/u)
-  assert.match(stylesSource, /\.hotbar-hero-cluster \{/u)
-  // Ни одного собственного счётчика: пипсы и полоса движения выведены из той же
-  // `action_economy`, что и плашка над картой.
+test('ресурсы героя видны у действий, а экономика хода вне боя не расходуется', () => {
+  assert.match(appSource, /className="hotbar-hero-cluster player-resource-panel"/u)
+  assert.match(appSource, /Экономика хода вне боя не расходуется/u)
+  assert.match(appSource, /disabled=\{!combatActive\}/u)
   assert.match(appSource, /const economy = combat\.action_economy\?\.\[turnActorId\]/u)
-  assert.match(appSource, /const heroPips: Array<\{ id: HotbarCostFilter/u)
-  assert.match(appSource, /\{ id: 'action', label: 'Действие', ready: actionReady \|\| weaponAttackReady/u)
-  assert.match(appSource, /\{ id: 'bonus_action', label: 'Бонус', ready: bonusReady/u)
-  assert.match(appSource, /\{ id: 'reaction', label: 'Реакция', ready: reactionReady/u)
-  assert.match(appSource, /weaponAttacksAllowed > 1 \? `атаки \$\{weaponAttacksUsed\}\/\$\{weaponAttacksAllowed\}`/u, 'Дополнительная атака показана подписью, а не вторым пипсом')
-  assert.match(appSource, /const heroResourceRows = Object\.entries\(activeResources\)/u, 'ячейки и классовые запасы читаются перебором, а не списком-хардкодом')
-  assert.match(appSource, /\.filter\(\(entry\) => entry\.max > 0\)/u, 'ряда без содержимого быть не должно')
-  assert.match(appSource, /hero-cluster-move \$\{movementAvailable && remainingFeet > 0 \? 'ready' : 'spent'\}/u)
-  // Каждый пипс объясняет себя и мышью, и скринридером.
-  assert.match(appSource, /title=\{`\$\{pip\.label\}: \$\{pip\.ready \? 'доступно' : 'потрачено'\}/u)
-  assert.match(appSource, /aria-label=\{`\$\{pip\.label\}: \$\{pip\.ready \? 'доступно' : 'потрачено'\}/u)
-  assert.match(appSource, /title=\{heroResourceTitle\(row\.keys, row\.current, row\.max\)\}/u)
-  // Фигуры пипсов различают ресурс формой, а не только цветом.
-  assert.match(stylesSource, /\.hero-pip-shape \{[^}]*clip-path: circle/u)
-  assert.match(stylesSource, /\.hero-pip\.bonus_action \.hero-pip-shape \{ clip-path: polygon/u)
-  assert.match(stylesSource, /\.hero-pip\.reaction \.hero-pip-shape \{ clip-path: polygon/u)
+  assert.match(appSource, /Number\(actionReady\) \+ Math\.max\(0, Number\(economy\?\.extra_actions\)/u)
+  assert.match(appSource, /const heroResourceRows = Object\.entries\(activeResources\)/u)
+  assert.match(appSource, /aria-label=\{heroResourceTitle\(row\.keys, row\.current, row\.max\)\}/u)
 })
-
 test('запас героя подписан по-русски, а незнакомый ключ опрятен и не теряет сырого имени', () => {
   // Ключ серверной проекции — `feature_<id>` из каталога классов, латиницей и
   // в транслите: «feature_wizard-magicheskoe-vosstanovlenie». Словарём по ключу
@@ -330,7 +313,7 @@ test('герой без портрета показывает инициалы �
   assert.match(appSource, /className="avatar portrait-avatar" data-face=\{heroFaceMode\(player\)\} style=\{heroFaceStyle\(player, \{ '--avatar': player\.color \}/u, 'аватар отряда в сайдбаре')
   assert.match(appSource, /className="initiative-active-avatar portrait" data-face=\{heroFaceMode\(activeHero\)\}/u, 'лента инициативы: активный')
   assert.match(appSource, /className="initiative-avatar portrait" data-face=\{heroFaceMode\(hero\)\}/u, 'лента инициативы: очередь')
-  assert.match(appSource, /className="hero-cluster-avatar" data-face=\{heroFaceMode\(activeHero\)\}/u, 'ресурсный кластер панели')
+  assert.match(rootSource, /className="hud-portrait" data-face=\{heroFaceMode\(player\)\}/u)
   // Ни одного оставшегося безусловного `url()` от поля портрета: пустая строка
   // в нём и была причиной пустых кружков. Место, где адрес портрета вообще
   // превращается в фон, во всём корпусе теперь ровно одно — сам помощник.
@@ -352,43 +335,17 @@ test('герой без портрета показывает инициалы �
   assert.match(stylesSource, /:where\(\[data-face="initials"\]\) \{ position: relative; \}/u)
 })
 
-test('ресурсный кластер подписан словами, растёт со шкалой текста и не режет запасы молча', () => {
-  // Бокс и слот плитки умножены на ту же шкалу, что и текст: при 130% раньше
-  // «магическое восстановление» резалось, а 29px контента уходили в невидимую
-  // прокрутку (`scrollbar-width: none`). Прокрутки у кластера больше нет.
-  assert.match(stylesSource, /\.game-area \{[^}]*--slot: calc\(64px \* var\(--ui-readable-scale, 1\)\);/u)
-  assert.match(stylesSource, /\.hotbar-hero-cluster \{[^}]*max-width: calc\(240px \* var\(--ui-readable-scale, 1\)\);[^}]*display: grid;[^}]*gap: 4px;/u)
-  assert.doesNotMatch(stylesSource, /\.hotbar-hero-cluster \{[^}]*overflow-y: auto;/u, 'переполнение больше не прячется в прокрутку')
-  assert.doesNotMatch(stylesSource, /\.hotbar-hero-cluster \{[^}]*scrollbar-width: none;/u)
-  assert.doesNotMatch(stylesSource, /\.hotbar-hero-cluster \{[^}]*grid-template-columns:/u, 'вторая колонка и была той самой пустотой')
-  // Строка лица — аватар и имя; пипсы — своей строкой, с подписями.
-  assert.match(appSource, /<b title=\{activeName\}>\{activeName\}<\/b>\s+<\/div>\s+<div className="hero-cluster-pips" role="group" aria-label="Экономика хода">/u)
-  assert.match(appSource, /<span className="hero-pip-label" aria-hidden="true">\{pip\.label\}<\/span>/u, 'фигура экономики подписана словом')
-  assert.match(stylesSource, /\.hero-cluster-pips \{[^}]*flex-wrap: wrap;/u, 'при крупном тексте подписи переносятся, а не режутся')
-  // Движение: слово и «осталось/всего», а не голое число.
-  assert.match(appSource, /<span className="hero-cluster-move-label" aria-hidden="true">Движение<\/span>/u)
-  assert.match(appSource, /<b>\{movementAvailable \? `\$\{remainingFeet\}\/\$\{speedFeet\} фт` : `0\/\$\{speedFeet\} фт`\}<\/b>/u)
-  assert.match(stylesSource, /\.hero-cluster-move-bar \{[^}]*flex: 0 1 calc\(58px \* var\(--ui-readable-scale, 1\)\);/u)
-  // Ячейки — одним словом на все круги, круг — цифрой золотом.
-  assert.match(appSource, /\{heroPools\.slotCount > 0 && <span className="hero-pools-label">Ячейки<\/span>\}/u)
-  assert.match(appSource, /export function isSpellSlotPool\(key: string\): boolean/u)
-  assert.match(stylesSource, /\.hero-resource\.slot em \{ color: #c9a36f; \}/u)
-  // Хвост сверх бюджета — чип «+N ещё» с перечнем в подсказке.
-  assert.match(appSource, /export function heroPoolLayout<T extends HeroPoolRow>\(rows: readonly T\[\], budget: number\)/u)
-  assert.match(appSource, /const heroPools = heroPoolLayout\(heroResourceRows, tileRows === 1 \? 2 : 4\)/u)
-  assert.match(appSource, /className="hero-resource-more"[\s\S]{0,400}?>\+\{heroPools\.hidden\.length\} ещё<\/span>/u)
-  // Один ряд плиток — однополосный кластер классом от тумблера, не медиазапросом.
-  assert.match(appSource, /className=\{`hotbar-hero-cluster\$\{tileRows === 1 \? ' band' : ''\}`\}/u)
-  assert.match(stylesSource, /\.hotbar-hero-cluster\.band \{[^}]*display: flex;[^}]*flex-wrap: nowrap;/u)
-  assert.match(stylesSource, /\.hotbar-hero-cluster\.band \.hero-pip-label, \.hotbar-hero-cluster\.band \.hero-cluster-move-label \{ display: none; \}/u)
-  // Строка фильтра стоимости — чип у кромки карточки, а не строка кластера.
-  assert.match(stylesSource, /\.hero-cluster-filter \{[^}]*position: absolute;/u)
-  assert.match(stylesSource, /\.hotbar-actions-shell \{ position: relative;/u)
-  // Поведение пипсов правка не трогала: те же подсказки и тот же фильтр.
-  assert.match(appSource, /className=\{`hero-pip \$\{pip\.id\} \$\{pip\.ready \? 'ready' : 'spent'\} \$\{costFilter === pip\.id \? 'filtering' : ''\}`\}/u)
+test('панель героя показывает подписанные ресурсы целиком и растёт с текстом', () => {
+  const layout = readFileSync(new URL('../src/table-layout.css', import.meta.url), 'utf8')
+  assert.match(appSource, /<span>Движение<\/span>/u)
+  assert.match(appSource, /hero-pools-label">Ячейки/u)
+  assert.match(appSource, /heroResourceRows\.map\(\(row\)/u)
+  assert.match(appSource, /<div className="turn-rail-player-hud">\{playerHud\}<\/div>/u)
+  assert.doesNotMatch(rootSource, /className="player-hud-stack"/u)
+  assert.match(layout, /\.turn-rail \.hotbar-main\s*\{[^}]*grid-template-columns:[^;]*var\(--ui-readable-scale/u)
+  assert.match(layout, /\.player-resource-panel \.hero-resource em\{[^}]*white-space:normal/u)
   assert.match(appSource, /onClick=\{\(\) => setCostFilter\(\(current\) => current === pip\.id \? null : pip\.id\)\}/u)
 })
-
 test('бюджет позиций ряда запасов: лёгкие герои целиком, тяжёлый — с чипом «+N ещё»', () => {
   // Сама функция чистая; сторож читает её из исходника и исполняет в песочнице.
   const fn = appSource.match(/export function heroPoolLayout<T extends HeroPoolRow>\(rows: readonly T\[\], budget: number\): \{ visible: T\[\]; hidden: T\[\]; slotCount: number \} \{([\s\S]*?)\n\}/u)
