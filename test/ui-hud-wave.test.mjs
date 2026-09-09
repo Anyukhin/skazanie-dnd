@@ -402,7 +402,7 @@ test('свет и тени доски выключаются настройко�
   // Проп доходит до сцены доски и гасит ровно один слой.
   assert.match(appSource, /lighting=\{boardLighting\}/u)
   assert.match(boardSource, /levelIndex = 0, lighting = true,/u)
-  assert.match(boardSource, /propAtlas,\s+lighting,\s+\}/u)
+  assert.match(boardSource, /propAtlas,\s+modelPropAtlas,\s+lighting,\s+\}/u)
   assert.match(renderSource, /if \(scene\.lighting !== false && !painted\) drawLightShading\(context, scene, tile\)/u)
   assert.match(renderSource, /^\s+drawFog\(context, scene, tile\)$/mu, 'туман войны — правило видимости, а не украшение')
   // Свет запечён в тайл, поэтому выключение обязано обесценить кэш.

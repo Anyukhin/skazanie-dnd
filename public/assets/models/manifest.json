@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "models": [
+    {
+      "key": "warrior",
+      "name_ru": "Рыцарь",
+      "profile": "warrior",
+      "actorIds": [],
+      "archetypes": [
+        "warrior",
+        "fighter",
+        "barbarian",
+        "paladin",
+        "воин"
+      ],
+      "url": "/assets/models/kaykit/knight.glb",
+      "height": 1.4,
+      "rights": {
+        "source": "https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0/tree/672074b73ba276876a19e8816ecdc5241817ab47",
+        "license": "CC0-1.0",
+        "attribution": "Kay Lousberg / KayKit — https://kaylousberg.com",
+        "notes": "Подготовлено tools/import-kaykit-models.mjs: шесть клипов, один комплект аксессуаров, встроенные текстуры."
+      }
+    },
+    {
+      "key": "mage",
+      "name_ru": "Волшебник",
+      "profile": "mage",
+      "actorIds": [],
+      "archetypes": [
+        "mage",
+        "wizard",
+        "sorcerer",
+        "warlock",
+        "cleric",
+        "druid",
+        "bard",
+        "маг",
+        "волшебник"
+      ],
+      "url": "/assets/models/kaykit/mage.glb",
+      "height": 1.4,
+      "rights": {
+        "source": "https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0/tree/672074b73ba276876a19e8816ecdc5241817ab47",
+        "license": "CC0-1.0",
+        "attribution": "Kay Lousberg / KayKit — https://kaylousberg.com",
+        "notes": "Подготовлено tools/import-kaykit-models.mjs: шесть клипов, один комплект аксессуаров, встроенные текстуры."
+      }
+    },
+    {
+      "key": "rogue",
+      "name_ru": "Плут",
+      "profile": "rogue",
+      "actorIds": [],
+      "archetypes": [
+        "rogue",
+        "ranger",
+        "scout",
+        "thief",
+        "плут",
+        "следопыт"
+      ],
+      "url": "/assets/models/kaykit/rogue.glb",
+      "height": 1.4,
+      "rights": {
+        "source": "https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0/tree/672074b73ba276876a19e8816ecdc5241817ab47",
+        "license": "CC0-1.0",
+        "attribution": "Kay Lousberg / KayKit — https://kaylousberg.com",
+        "notes": "Подготовлено tools/import-kaykit-models.mjs: шесть клипов, один комплект аксессуаров, встроенные текстуры."
+      }
+    },
+    {
+      "key": "goblin",
+      "name_ru": "Гоблин",
+      "profile": "goblin",
+      "actorIds": [],
+      "archetypes": [
+        "goblin",
+        "goblinoid",
+        "гоблин"
+      ],
+      "url": null,
+      "height": 1.18,
+      "rights": {
+        "source": "Процедурная модель проекта «Сказание»",
+        "license": "original",
+        "attribution": "Проект «Сказание»"
+      }
+    },
+    {
+      "key": "skeleton",
+      "name_ru": "Скелет-воин",
+      "profile": "skeleton",
+      "actorIds": [],
+      "archetypes": [
+        "skeleton",
+        "undead",
+        "zombie",
+        "скелет",
+        "нежить"
+      ],
+      "url": "/assets/models/kaykit/skeleton-warrior.glb",
+      "height": 1.4,
+      "rights": {
+        "source": "https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Skeletons-1.0/tree/15b62b9bad122f72926c10fb14d622c73819fa54",
+        "license": "CC0-1.0",
+        "attribution": "Kay Lousberg / KayKit — https://kaylousberg.com",
+        "notes": "Подготовлено tools/import-kaykit-models.mjs: шесть клипов, один комплект аксессуаров, встроенные текстуры."
+      }
+    },
+    {
+      "key": "beast",
+      "name_ru": "Зверь",
+      "profile": "beast",
+      "actorIds": [],
+      "archetypes": [
+        "beast",
+        "wolf",
+        "bear",
+        "boar",
+        "lion",
+        "tiger",
+        "summon",
+        "зверь"
+      ],
+      "url": null,
+      "height": 1.18,
+      "rights": {
+        "source": "Процедурная модель проекта «Сказание»",
+        "license": "original",
+        "attribution": "Проект «Сказание»"
+      }
+    }
+  ]
+}

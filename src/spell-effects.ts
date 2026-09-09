@@ -4,6 +4,7 @@ import { areaCells, type AreaPoint, type AreaShape } from './area-geometry'
 import type { BoardContext2D, BoardEffectRenderer, BoardScene } from './board-render'
 import type { BoardPoint, CombatAnimationCue, SpellAnimationCue } from './combat-animation'
 import { revealedAt } from './tactical-map-client'
+import type { TacticalMap } from './types'
 
 export type MagicSchool =
   | 'abjuration'
@@ -545,12 +546,13 @@ function drawProjectile(
   }
 }
 
-function burstCells(
-  scene: BoardScene,
+export function spellBurstCells(
+  map: TacticalMap,
   cue: Extract<SpellAnimationCue, { kind: 'burst' }>,
   actors: readonly SpellEffectActor[],
 ) {
-  if (cue.cells?.length) return cue.cells.filter((cell) => visiblePoint(scene, cell))
+  const visible = (cell: BoardPoint) => revealedAt(map, Math.floor(cell.x), Math.floor(cell.y))
+  if (cue.cells?.length) return cue.cells.filter(visible)
   const actor = actorPoint(actors, cue.actorId)
   const center = cue.center ?? actorPoint(actors, cue.targetIds[0])
   const origin = cue.origin ?? actor
@@ -561,9 +563,9 @@ function burstCells(
     target: center,
     originMode: cue.originMode,
     sizeFeet: cue.sizeFeet,
-    bounds: { minX: 0, minY: 0, maxX: scene.map.width - 1, maxY: scene.map.height - 1 },
+    bounds: { minX: 0, minY: 0, maxX: map.width - 1, maxY: map.height - 1 },
   })
-  return cells.filter((cell) => visiblePoint(scene, cell))
+  return cells.filter(visible)
 }
 
 function evenlySample<T>(values: readonly T[], maximum: number) {
@@ -582,7 +584,7 @@ function drawBurst(
   input: SpellEffectRenderInput,
   detail: SpellEffectDetail,
 ) {
-  const cells = burstCells(scene, cue, input.actors)
+  const cells = spellBurstCells(scene.map, cue, input.actors)
   if (!cells.length) return
   const style = spellStyle(cue)
   const progress = input.reducedMotion || cue.motion === 'reduced' ? .68 : clamp01(input.progress)

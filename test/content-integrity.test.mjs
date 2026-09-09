@@ -46,7 +46,8 @@ test('content integrity gate verifies hashes, references, counts and the complet
   // + 4 портрета бестиария, 11 готовых карт локаций и 8 портретов Асстохана.
   // + 41 портрет расширенного бестиария CR 0–6 (четыре предыдущих учтены выше).
   // + 52 файла общих планов локаций и дополнительных изображений замка.
-  assert.equal(report.integrity.assets, 1526)
+  // + 125 GLB окружения, 4 файла происхождения/лицензий, каталог и парный 2D-атлас.
+  assert.equal(report.integrity.assets, 1664)
   assert.equal(report.integrity.coverage.find((entry) => entry.id === 'feats').coverage, 'missing')
 })
 

@@ -36,6 +36,19 @@ const lighting = await import(pathToFileURL(join(buildDir, 'board-lighting.mjs')
 const ambient = await import(pathToFileURL(join(buildDir, 'board-ambient.mjs')).href)
 process.on('exit', () => rmSync(buildDir, { recursive: true, force: true }))
 
+test('общая раскладка 2D/3D разворачивает футпринт в локальные размеры один раз', () => {
+  const footprint = [1, 2, 3, 4].map((y) => ({ x: 2, y }))
+  const counter = { assetId: 'bar_counter', x: 2.5, y: 1.5, rotation: 90, scale: 1.1, footprint }
+  const layout = render.propVisualLayout(counter)
+  assert.deepEqual(layout, { x: 2.5, y: 3, width: 4, depth: 1, scale: 1.1, rotation: 90, fromFootprint: true })
+  assert.deepEqual(counter.footprint, footprint)
+  const mug = render.propVisualLayout({ assetId: 'mug', x: 4.5, y: 5.5, rotation: 0, scale: 1, footprint: [] })
+  assert.equal(mug.width, .44)
+  assert.equal(mug.depth, .44)
+  assert.equal(mug.x, 4.5)
+  assert.equal(mug.y, 5.5)
+})
+
 /** Поддельный 2D-контекст: записывает присвоения стилей и вызовы по порядку. */
 function recordingContext() {
   const ops = []

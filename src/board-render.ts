@@ -7,6 +7,7 @@ import {
   LIGHT_FULL, lightAt, lightGridFor, lightSourceVisibilityFor, lightSourcesOf,
   type LightSource,
 } from './board-lighting'
+import { propModelFor, type PropModelCatalog } from './prop-model-catalog'
 import { cellAt, cellIndex, doorStates, edgeBetween, edgeList, edgeNeighbor, passableAt, revealedAt } from './tactical-map-client'
 
 /**
@@ -345,6 +346,10 @@ export type BoardScene = {
   artMode?: 'backdrop' | 'map'
   /** Растровые штампы предметов. Их отсутствие — штатный путь Р6: рисуется вектор. */
   propAtlas?: PropAtlas | null
+  /** Preview-атлас моделей окружения; при отсутствии кадра используется propAtlas. */
+  modelPropAtlas?: { catalog: PropModelCatalog; texture: BoardTexture; key: string } | null
+  /** Подписывать ли высоту поверх клетки; у объёмного пола высота уже видна геометрией. */
+  showElevationLabels?: boolean
   /**
    * Рисовать ли запечённый свет (`src/board-lighting.ts`): тьму по сетке
    * освещённости, мягкие тени вдоль стен и тёплые ореолы источников.
@@ -505,11 +510,12 @@ export function tileKey(scene: BoardScene, tile: BoardTile) {
   const art = scene.art ? `${scene.artKey ?? 'art'}:${scene.artMode ?? 'backdrop'}` : ''
   const textures = texturesAvailableIn(scene) ? 't' : 'f'
   const stamps = scene.propAtlas?.key ?? ''
+  const modelStamps = scene.modelPropAtlas?.key ?? ''
   const tiles = scene.terrain?.key ?? ''
   // Свет запечён в тайл, поэтому его выключение обязано обесценить кэш: без
   // этой буквы тумблер настроек не менял бы уже нарисованные тайлы вовсе.
   const light = scene.lighting === false ? 'n' : 'l'
-  return `${scene.map.terrainHash}:${scene.map.levelIndex}:${scene.cellSize}:${textures}:${art}:${stamps}:${tiles}:${light}:${tile.tileX}:${tile.tileY}:${tileRevealSignature(scene.map, tile)}`
+  return `${scene.map.terrainHash}:${scene.map.levelIndex}:${scene.cellSize}:${textures}:${art}:${stamps}:${modelStamps}:${tiles}:${light}:${tile.tileX}:${tile.tileY}:${tileRevealSignature(scene.map, tile)}`
 }
 
 /**
@@ -3285,8 +3291,11 @@ function propReach(prop: TacticalProp) {
   }
 }
 
-/** Куда переносить начало координат и каким габаритом рисовать. */
-function propPlacement(prop: TacticalProp, drawing: PropDrawing, cellSize: number) {
+/**
+ * Общая раскладка предмета для 2D и 3D, в клетках. Размер локальный:
+ * поворот применяется рендером ровно один раз. Механический футпринт не меняется.
+ */
+export function propVisualLayout(prop: TacticalProp, drawing = propDrawingFor(prop.assetId)) {
   const span = propSpanInCells(prop, drawing)
   const scale = prop.scale > 0 ? prop.scale : 1
   // Занимаемые клетки уже развёрнуты поворотом (стойка 4×1 на 90° занимает
@@ -3294,12 +3303,22 @@ function propPlacement(prop: TacticalProp, drawing: PropDrawing, cellSize: numbe
   // локальную систему предмета, иначе стойка окажется поперёк себя.
   const quarter = Math.round((((prop.rotation % 360) + 360) % 360) / 90) % 4
   const swap = span.fromFootprint && quarter % 2 === 1
-  const half = (cells: number) => Math.max(1, (cells * cellSize * PROP_FOOTPRINT_FILL * scale) / 2)
   return {
     x: span.centerX,
     y: span.centerY,
-    box: { hw: half(swap ? span.h : span.w), hh: half(swap ? span.w : span.h) },
+    width: swap ? span.h : span.w,
+    depth: swap ? span.w : span.h,
+    scale,
+    rotation: prop.rotation,
+    fromFootprint: span.fromFootprint,
   }
+}
+
+/** Пиксельный габарит 2D-рисунка из общей раскладки. */
+function propPlacement(prop: TacticalProp, drawing: PropDrawing, cellSize: number) {
+  const layout = propVisualLayout(prop, drawing)
+  const half = (cells: number) => Math.max(1, (cells * cellSize * PROP_FOOTPRINT_FILL * layout.scale) / 2)
+  return { x: layout.x, y: layout.y, box: { hw: half(layout.width), hh: half(layout.depth) } }
 }
 
 export type PropDetailLevel = 'full' | 'simple' | 'mark'
@@ -3344,11 +3363,11 @@ function drawSilhouette(context: BoardContext2D, box: PropBox, palette: BoardPal
  * сплющить круглый стол в овал на клетке 2×1, а габарит приходит из футпринта
  * и совпадает с пропорцией рисунка не всегда.
  */
-function drawStamp(context: BoardContext2D, box: PropBox, atlas: PropAtlas, frame: PropFrame) {
+function drawStamp(context: BoardContext2D, box: PropBox, texture: BoardTexture, frame: PropFrame) {
   const fit = Math.min((box.hw * 2) / frame.w, (box.hh * 2) / frame.h)
   const width = frame.w * fit
   const height = frame.h * fit
-  context.drawImage(atlas.texture.image, frame.x, frame.y, frame.w, frame.h, -width / 2, -height / 2, width, height)
+  context.drawImage(texture.image, frame.x, frame.y, frame.w, frame.h, -width / 2, -height / 2, width, height)
 }
 
 /**
@@ -3376,6 +3395,11 @@ export function drawProps(context: BoardContext2D, scene: BoardScene, tile: Boar
     }
     const drawing = propDrawingFor(prop.assetId)
     const placement = propPlacement(prop, drawing, frame.size)
+    const modelEntry = scene.modelPropAtlas
+      ? propModelFor(scene.modelPropAtlas.catalog, resolvePropAssetId(prop.assetId), prop.id)
+      : null
+    const detailed = level === 'full' || ART_ONLY_PROP_ASSETS.has(prop.assetId)
+    const modelPreview = detailed ? modelEntry?.preview : undefined
     // Штамп берётся только на полной детализации: ниже её предмет занимает
     // считаные пиксели, и силуэт заливкой там и дешевле, и разборчивее.
     const stamp = level === 'full' || ART_ONLY_PROP_ASSETS.has(prop.assetId) || (scene.map.generator.id === 'ares-fortress' && level === 'simple')
@@ -3387,7 +3411,8 @@ export function drawProps(context: BoardContext2D, scene: BoardScene, tile: Boar
     // Декаль лежит на полу: прозрачность возвращается руками, а не `restore`, —
     // поддельный контекст тестов не обязан хранить стек состояний.
     if (drawing.flat) context.globalAlpha = PROP_DECAL_ALPHA
-    if (stamp && scene.propAtlas) drawStamp(context, placement.box, scene.propAtlas, stamp)
+    if (modelPreview && scene.modelPropAtlas) drawStamp(context, placement.box, scene.modelPropAtlas.texture, modelPreview)
+    else if (stamp && scene.propAtlas) drawStamp(context, placement.box, scene.propAtlas.texture, stamp)
     else if (level === 'full') drawing.paint(context, placement.box, scene.palette)
     else if (level === 'simple') drawSilhouette(context, placement.box, scene.palette, drawing)
     else drawMark(context, placement.box, scene.palette, drawing)
@@ -3664,7 +3689,7 @@ export function drawCellFeatures(context: BoardContext2D, scene: BoardScene, til
         }
         context.stroke()
       }
-      if (cell.elevation !== 0) {
+      if (cell.elevation !== 0 && scene.showElevationLabels !== false) {
         const upward = cell.elevation > 0
         context.strokeStyle = upward ? 'rgba(238,207,148,.62)' : 'rgba(131,174,190,.58)'
         context.fillStyle = upward ? 'rgba(238,207,148,.88)' : 'rgba(160,202,216,.84)'

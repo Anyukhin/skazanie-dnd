@@ -1,0 +1,4 @@
+Nature Kit (2.1) by Kenney.
+Source archive: kenney_nature-kit.zip; SHA-256: fa7974a0d342bfe63c38664ba9f8ec1a4aab8ea25f099bdc56870e33588c4d9d.
+Selected 31 GLB files from the official GLTF export. No DAE or FBX files are imported.
+Палитра материалов нормализована для «Сказания»: листва тёмно-зелёная/оливковая, кора коричневая, камни серо-бурые, осенняя листва охристая; metallicFactor=0, roughnessFactor=1.

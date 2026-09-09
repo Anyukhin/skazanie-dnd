@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { BattleEvent, CombatVisualBatch, TacticalMap } from './types'
 import {
   DEFAULT_BOARD_PALETTE, TILE_CELLS, boardPaletteFrom, createTileCache, drawBoardEffects, drawBoardOverlay, drawMapDecorations,
@@ -26,8 +26,48 @@ import {
   hasAmbientMotion,
   type BoardDoorSwing,
 } from './board-ambient'
+import { loadPropModelCatalog, type PropModelCatalog } from './prop-model-catalog'
 import { boardCameraKey } from './tactical-ui'
 import './tactical-board.css'
+import './board3d.css'
+
+const TacticalBoard3D = lazy(() => import('./TacticalBoard3D'))
+const BOARD_VIEW_KEY = 'skazanie-board-view'
+
+class Board3DErrorBoundary extends Component<{ onError: (message: string) => void; children: React.ReactNode }, { failed: boolean }> {
+  state = { failed: false }
+  static getDerivedStateFromError() { return { failed: true } }
+  componentDidCatch() { this.props.onError('Не удалось загрузить 3D-режим.') }
+  render() { return this.state.failed ? null : this.props.children }
+}
+
+/** Режим принадлежит зрителю, а не кампании: оба вида отправляют те же команды. */
+export function TacticalBoard(props: TacticalBoardProps) {
+  const [view, setView] = useState<'2d' | '3d'>(() => {
+    try { return localStorage.getItem(BOARD_VIEW_KEY) === '3d' ? '3d' : '2d' } catch { return '2d' }
+  })
+  const [error, setError] = useState('')
+  const changeView = (next: '2d' | '3d') => {
+    setView(next)
+    setError('')
+    try { localStorage.setItem(BOARD_VIEW_KEY, next) } catch { /* Приватный режим не мешает игре. */ }
+  }
+  const fallback = useCallback((message: string) => {
+    setError(message)
+    setView('2d')
+    try { localStorage.setItem(BOARD_VIEW_KEY, '2d') } catch { /* Настройка необязательна. */ }
+  }, [])
+  return <>
+    <div className="board-view-controls" role="group" aria-label="Вид карты">
+      <button type="button" aria-pressed={view === '2d'} onClick={() => changeView('2d')}>2D</button>
+      <button type="button" aria-pressed={view === '3d'} onClick={() => changeView('3d')}>3D</button>
+    </div>
+    {error && <p className="board-view-error" role="status">{error} Включён вид 2D.</p>}
+    {view === '3d'
+      ? <Board3DErrorBoundary onError={fallback}><Suspense fallback={<div className="board3d-loading" role="status">Загрузка 3D-карты…</div>}><TacticalBoard3D {...props} onUnavailable={fallback} /></Suspense></Board3DErrorBoundary>
+      : <TacticalBoard2D {...props} />}
+  </>
+}
 
 /**
  * Тактическая доска. Местность (слои 1–7 плана) живёт на canvas и кэшируется
@@ -72,6 +112,8 @@ const loadedTextures = new Map<string, BoardTexture>()
 const loadedArt = new Map<string, BoardTexture>()
 let propAtlas: PropAtlas | null = null
 let propAtlasAsked = false
+let modelPropAtlas: { catalog: PropModelCatalog; texture: BoardTexture; key: string } | null = null
+let modelPropAtlasAsked = false
 let terrainManifest: TerrainManifest | null = null
 let terrainAsked = false
 
@@ -160,6 +202,22 @@ function loadPropAtlas(onReady: () => void) {
     .catch(() => {})
 }
 
+/** Отдельный атлас preview моделей: при ошибке 2D остаётся на старом атласе. */
+function loadPropModelAtlas(onReady: () => void) {
+  if (modelPropAtlasAsked) return
+  modelPropAtlasAsked = true
+  void loadPropModelCatalog().then((catalog) => {
+    if (!catalog?.atlas) return
+    const url = `${catalog.atlas.image}?v=${encodeURIComponent(catalog.atlas.key)}`
+    loadImage(url, loadedTextures, () => {
+      const texture = loadedTextures.get(url)
+      if (!texture) return
+      modelPropAtlas = { catalog, texture, key: `${url}:${texture.width}x${texture.height}` }
+      onReady()
+    })
+  })
+}
+
 /**
  * Поверхность тайла: `OffscreenCanvas`, если он есть, иначе обычный `<canvas>`
  * вне документа. Наличие проверяется, а не предполагается.
@@ -205,6 +263,10 @@ export type BoardAnimationActor = {
   label: string
   color?: string
   kind: 'hero' | 'enemy' | 'summon' | 'neutral'
+  /** Только внешний вид; не влияет на размеры и правила существа. */
+  modelKey?: string
+  archetype?: string
+  defeated?: boolean
 }
 
 type BoardConditionState = Record<string, Array<{ id: string }>>
@@ -227,11 +289,7 @@ type BoardConditionState = Record<string, Array<{ id: string }>>
  */
 const cameraByLocation = new Map<string, { zoom: number; pan: { x: number; y: number } }>()
 
-export function TacticalBoard({
-  map, columns, rows, irregular, ariaLabel, themeKey, artUrl, cells, cellHints, overlayCells, decoration,
-  effectRenderers, battleLog, visualBatch, animationActors, animationsEnabled, conditions, conditionVersion, onBackgroundActivate,
-  levelIndex = 0, lighting = true, campaignId = '', artMode = 'backdrop', viewResetKey, wheelZoomRequiresAltKey = false,
-}: {
+export type TacticalBoardProps = {
   map: TacticalMap | null
   campaignId?: string
   columns: number
@@ -272,7 +330,14 @@ export function TacticalBoard({
   viewResetKey?: string | number
   /** В прокручиваемом стенде колесо страницы не должно случайно увеличивать карту. */
   wheelZoomRequiresAltKey?: boolean
-}) {
+  trajectory?: { x1: number; y1: number; x2: number; y2: number } | null
+}
+
+function TacticalBoard2D({
+  map, columns, rows, irregular, ariaLabel, themeKey, artUrl, cells, cellHints, overlayCells, decoration,
+  effectRenderers, battleLog, visualBatch, animationActors, animationsEnabled, conditions, conditionVersion, onBackgroundActivate,
+  levelIndex = 0, lighting = true, campaignId = '', artMode = 'backdrop', viewResetKey, wheelZoomRequiresAltKey = false,
+}: TacticalBoardProps) {
   const cameraKey = boardCameraKey(map?.locationId, levelIndex, campaignId)
   const [zoom, setZoom] = useState(() => cameraByLocation.get(cameraKey)?.zoom ?? 1)
   const [hoverCell, setHoverCell] = useState<{ x: number; y: number } | null>(null)
@@ -352,6 +417,7 @@ export function TacticalBoard({
   useEffect(() => {
     const notify = () => setAssetsVersion((value) => value + 1)
     loadPropAtlas(notify)
+    loadPropModelAtlas(notify)
     loadTerrainManifest(notify)
   }, [])
   useEffect(() => {
@@ -401,9 +467,10 @@ export function TacticalBoard({
       artKey: artUrl ?? '',
       artMode,
       propAtlas,
+      modelPropAtlas,
       lighting,
     }
-  }, [map, terrain, artUrl, artMode, lighting])
+  }, [map, terrain, artUrl, artMode, lighting, modelPropAtlas])
 
   /**
    * Видимое окно в координатах клеток. Холст лежит внутри трансформированного

@@ -1161,9 +1161,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       })()
     : null
   const animationActors: BoardAnimationActor[] = [
-    ...players.map((player) => ({ id: player.id, x: player.x, y: player.y, label: player.character, color: player.color, kind: 'hero' as const })),
-    ...(state.enemies ?? []).map((enemy) => ({ id: enemy.id, x: enemy.x, y: enemy.y, label: enemy.name, color: '#c86c5d', kind: 'enemy' as const })),
-    ...(state.actors ?? []).map((actor) => ({ id: actor.id, x: actor.x, y: actor.y, label: actor.name, color: '#70a78b', kind: 'summon' as const })),
+    ...players.map((player) => ({ id: player.id, x: player.x, y: player.y, label: player.character, color: player.color, kind: 'hero' as const, archetype: player.characterClass ?? player.role, defeated: player.hp <= 0 })),
+    ...(state.enemies ?? []).map((enemy) => ({ id: enemy.id, x: enemy.x, y: enemy.y, label: enemy.name, color: '#c86c5d', kind: 'enemy' as const, archetype: enemy.creature_type, defeated: enemy.alive === false })),
+    ...(state.actors ?? []).map((actor) => ({ id: actor.id, x: actor.x, y: actor.y, label: actor.name, color: '#70a78b', kind: 'summon' as const, defeated: actor.alive === false })),
     ...sceneNpcs.filter((npc) => npc.alive).map((npc) => ({ id: npc.id, x: npc.x, y: npc.y, label: npc.name, color: '#9d8f72', kind: 'neutral' as const })),
   ]
   const npcSummaryEvents = latestNpcTurnEvents(state.battleLog ?? [])
@@ -2775,6 +2775,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         animationActors={animationActors}
         animationsEnabled={combatAnimations}
         conditions={state.mechanics?.conditions}
+        trajectory={trajectory}
         conditionVersion={state.state_version}
         levelIndex={sceneLevelIndex}
         onBackgroundActivate={() => { setOpenTokenLabelId(null); setSelectedSceneObjectId(null) }}

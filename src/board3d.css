@@ -1,0 +1,146 @@
+/* Тот же игровой интерфейс; объём и свет принадлежат только полю боя. */
+.board-view-controls {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 30;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid #79664a;
+  border-radius: 5px;
+  background: #242119;
+}
+.board-view-controls button,
+.board3d-tools > button,
+.board3d-models summary,
+.board3d-skip {
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: #242119;
+  color: #e7dcc8;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.board-view-controls button[aria-pressed="true"] { background: #675437; color: #fff0ce; }
+.board-view-controls button:focus-visible,
+.board3d button:focus-visible,
+.board3d summary:focus-visible,
+.board3d select:focus-visible,
+.board3d-canvas:focus-visible { outline: 2px solid #e1ba74; outline-offset: 2px; }
+.board-view-controls button:hover,
+.board3d-tools > button:hover,
+.board3d-models summary:hover { background: #4b4030; }
+.board-view-error { position: absolute; z-index: 31; top: 52px; left: 12px; max-width: min(380px, 85%); margin: 0; padding: 8px 10px; background: #30281f; border: 1px solid #a98655; color: #eeddbd; font-size: 12px; }
+.board3d-loading { color: #e7dcc8; padding: 24px; }
+.board3d {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  isolation: isolate;
+  background: #191914;
+  color: #e7dcc8;
+  --cell: 48px;
+}
+.board3d-canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.board3d-tools { position: absolute; z-index: 12; bottom: 64px; right: 12px; display: flex; flex-wrap: wrap; justify-content: flex-end; max-width: calc(100% - 24px); align-items: flex-start; gap: 3px; }
+.board3d-tools > button { border-color: #675940; }
+.board3d-tools > button[aria-pressed="true"] { background: #675437; color: #fff0ce; }
+.board3d-fps { position: absolute; z-index: 10; top: 64px; right: 16px; padding: 4px 7px; border: 1px solid #675940; border-radius: 3px; background: #242119; color: #eadcc1; font-size: 12px; font-variant-numeric: tabular-nums; pointer-events: none; }
+.board3d-models { position: relative; font-size: 12px; }
+.board3d-models summary { display: flex; align-items: center; list-style: none; border-color: #675940; }
+.board3d-models summary::after { content: '⌄'; margin-left: 8px; }
+.board3d-models > div { position: absolute; bottom: 39px; right: 0; width: 250px; display: grid; gap: 12px; padding: 14px; background: #242119; border: 1px solid #79664a; border-radius: 4px; }
+.board3d-models label { display: grid; gap: 5px; }
+.board3d-models select { width: 100%; min-height: 34px; padding: 4px 7px; border: 1px solid #79664a; border-radius: 3px; background: #171711; color: #eee4d2; font: inherit; }
+.board3d-models p { margin: 0; color: #c1b49f; font-size: 11px; line-height: 1.5; }
+.board3d-labels { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+.board3d-cell { position: absolute; display: block; transform: translate(-50%, -50%); pointer-events: none; border: 0; background: transparent; }
+.board3d-cell-action { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
+.board3d-cell button:not(.board3d-cell-action), .board3d-cell [role="button"] { pointer-events: auto; }
+.board3d-cell :is(.map-token, .enemy-token) {
+  position: absolute !important;
+  inset: auto !important;
+  left: 50% !important;
+  bottom: 42% !important;
+  width: calc(var(--cell) * .8) !important;
+  height: calc(var(--cell) * 1.35) !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  transform: translateX(-50%) !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  filter: none !important;
+  animation: none !important;
+  pointer-events: auto;
+  color: #eee6d5;
+}
+.board3d-cell :is(.map-token, .enemy-token)::before,
+.board3d-cell :is(.map-token, .enemy-token)::after,
+.board3d-cell :is(.enemy-emblem, .hero-face-initials, .npc-token-portrait, .neutral-token-mark, .cell-footprint),
+.board3d-cell .map-token > img,
+.board3d-cell .map-token > svg { display: none !important; }
+.board3d-cell :is(.token-label, .enemy-nameplate, .neutral-nameplate) {
+  position: absolute !important;
+  top: auto !important;
+  bottom: -18px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  min-width: 0 !important;
+  max-width: 135px;
+  width: max-content;
+  padding: 2px 5px !important;
+  border: 0 !important;
+  border-radius: 2px !important;
+  background: #191913d9 !important;
+  color: #f2e7d2 !important;
+  font: 500 11px/1.3 Manrope, sans-serif !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none;
+}
+.board3d-cell :is(.active-turn, .selected, .initiative-focus, .journal-linked, .label-open, .command-selected, :hover, :focus-visible) > :is(.token-label, .enemy-nameplate, .neutral-nameplate) { opacity: .95 !important; visibility: visible !important; }
+.board3d-cell :is(.map-token, .enemy-token):is(:hover, :focus-visible, .command-selected) > :is(.token-label, .enemy-nameplate, .neutral-nameplate) { bottom: calc(100% + 4px) !important; }
+.board3d-cell :is(.token-label, .enemy-nameplate, .neutral-nameplate)::after { display: none; }
+.board3d-cell .active-turn .token-label,
+.board3d-cell .active-turn .enemy-nameplate { color: #ffdc8b !important; }
+.board3d-cell .token-conditions { top: -14px; bottom: auto; }
+.board3d-cell .token-tactical-badges { top: calc(var(--cell) * -1.3); }
+.board3d-cell .enemy-health { top: calc(var(--cell) * -1.15); bottom: auto; }
+.board3d-cell .enemy-health-ring { width: 90%; height: 38%; inset: auto; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+.board3d-cell .enemy-health-value { display: none; }
+.board3d-cell .neutral-token-menu,
+.board3d-cell .scene-object-menu,
+.board3d-cell .loot-cell-marker { pointer-events: auto; }
+.board3d-hotspot { position: absolute; inset: 15%; pointer-events: none; }
+.board3d-hotspot :is(button, [role="button"]) { pointer-events: auto; }
+.board3d-cell .route-step-badge { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+.board3d .combat-lab-piece { border: 0; background: none; box-shadow: none; position: absolute; width: 100%; height: 100%; pointer-events: none; }
+.board3d .combat-lab-piece > img { display: none; }
+.board3d .combat-lab-piece > b { position: absolute; left: 50%; top: 70%; color: #f7e5bf; font-size: 11px; text-shadow: 0 1px 2px #000; }
+.board3d .combat-lab-piece-health { top: -80%; }
+.board3d-floating-result { position: absolute; z-index: 7; pointer-events: none; transform: translate(-50%, -100%); color: #ffde9e; font: 700 23px/1.2 Spectral, serif; text-shadow: 0 2px 3px #000, 0 0 2px #000; white-space: nowrap; }
+.board3d-help { position: absolute; z-index: 6; bottom: 10px; right: 12px; width: max-content; max-width: calc(100% - 190px); padding: 4px 8px; margin: 0; pointer-events: none; background: #191913cf; color: #d5c8ae; border-radius: 3px; font-size: 11px; text-align: right; }
+.board3d-skip { position: absolute; z-index: 10; left: 50%; bottom: 42px; transform: translateX(-50%); border-color: #a58a5e; }
+.combat-lab-board-viewport { position: relative; }
+.map-stage:has(.board-view-controls) .map-scale-plate { top: auto; bottom: 47px; left: auto; right: 12px; }
+.map-stage:has(.board3d) .map-scale-plate { bottom: 106px; }
+@container (max-width: 360px) {
+  .map-stage:has(.board3d) .map-scale-plate { bottom: 142px; }
+}
+@media (max-width: 650px) {
+  .board-view-controls { top: 6px; left: 6px; }
+  .board3d-tools { bottom: 60px; right: 6px; gap: 2px; }
+  .board3d-tools > button { padding: 4px 7px; }
+  .board3d-models summary { padding: 4px 7px; }
+  .board3d-help { font-size: 10px; bottom: 6px; }
+  .board3d-cell :is(.token-label, .enemy-nameplate, .neutral-nameplate) { max-width: 95px; font-size: 10px !important; }
+}
