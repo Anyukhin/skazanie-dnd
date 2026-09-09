@@ -160,6 +160,98 @@ test('deterministic narration verifier accepts only evidenced mechanics', () => 
   assert.equal(verifyNarration('За дверью ждёт красный дракон.', brief, { hiddenValues: ['красный дракон'] }).valid, false)
 })
 
+test('NarrationBrief не позволяет объявить свободное перемещение, разговор и новые показания без событий', () => {
+  const brief = buildNarrationBrief({
+    known_environment: {
+      player_intent: {
+        action: 'Расспросить Миру и сверить со словами Мартена',
+        goal: 'Понять, что произошло',
+        constraints: ['Не покидая укрытия'],
+      },
+      structured_result: { status: 'ruling', confirmed: false },
+    },
+    visible_events: [
+      { event_type: 'ActionDeclared', visibility: 'public' },
+      { event_type: 'RulingRecorded', visibility: 'public' },
+      { event_type: 'ObjectiveUpdated', visibility: 'public' },
+    ],
+  })
+  const result = verifyNarration('Ада оставляет навес и волочит тело к Мартену. Мира уже рассказала показания и разговор состоялся.', brief)
+  assert.equal(result.valid, false)
+  assert.ok(result.violations.some((entry) => entry.code === 'PLAYER_CONSTRAINT_VIOLATION'))
+  assert.ok(result.violations.some((entry) => entry.code === 'UNCONFIRMED_FREE_ACTION'))
+  assert.ok(result.violations.some((entry) => entry.code === 'UNCONFIRMED_DISCLOSURE'))
+})
+
+test('подтверждённое движение и разговор проходят новый guard', () => {
+  const brief = buildNarrationBrief({
+    known_environment: { player_intent: { constraints: ['Не покидая укрытия'] } },
+    visible_events: [
+      { event_type: 'ActorMoved', visibility: 'public' },
+      { event_type: 'NpcConversationRecorded', visibility: 'public' },
+      { event_type: 'KnowledgeRevealed', visibility: 'public' },
+    ],
+  })
+  assert.equal(verifyNarration('Ада выходит к Мире и узнаёт её показания.', brief).valid, true)
+})
+
+test('браузерная реплика про ворота и укрытие блокирует выдуманный уход и разговор', () => {
+  const brief = buildNarrationBrief({
+    known_environment: {
+      player_intent: {
+        action: 'Расспросить Миру и сверить со словами Мартена',
+        goal: 'Понять, что случилось у ворот',
+        constraints: ['НЕ ПОКИДАЯ укрытия'],
+      },
+      structured_result: { status: 'ruling', confirmed: false, categories: [] },
+      story_context: { present_npcs: [{ id: 'mira', name: 'Мира' }, { id: 'marten', name: 'Мартен' }] },
+    },
+    visible_events: [
+      { event_type: 'ActionDeclared', visibility: 'public' },
+      { event_type: 'RulingRecorded', visibility: 'public' },
+      { event_type: 'ObjectiveUpdated', visibility: 'public' },
+    ],
+  })
+  const rejected = verifyNarration('Ада оставляет укрытие у ворот. Мира говорит, что Мартен уже волочил тело к воротам.', brief)
+  assert.equal(rejected.valid, false)
+  assert.ok(rejected.violations.some((entry) => entry.code === 'PLAYER_CONSTRAINT_VIOLATION'))
+  assert.ok(rejected.violations.some((entry) => entry.code === 'UNCONFIRMED_SOCIAL_ACTION'))
+  assert.ok(rejected.violations.some((entry) => entry.code === 'UNCONFIRMED_DISCLOSURE'))
+
+  const safe = verifyNarration('У ворот сохраняется прежняя обстановка; подтверждённого нового исхода нет.', brief)
+  assert.equal(safe.valid, true, JSON.stringify(safe.violations))
+})
+
+test('подтверждённый бросок монеты не разрешает выдуманные слова NPC', () => {
+  const brief = buildNarrationBrief({
+    known_environment: {
+      player_intent: { action: 'Подбрасываю монету', constraints: [] },
+      structured_result: { status: 'resolved', confirmed: true, category: 'mechanical' },
+      story_context: { present_npcs: [{ id: 'mira', name: 'Мира' }] },
+    },
+    visible_events: [{ event_type: 'DieRolled', visibility: 'public', payload: { expression: '1d2', dice: [2], total: 2 } }],
+  })
+  const rejected = verifyNarration('Монета падает удачно, а Мира говорит, что видела Мартена у ворот.', brief)
+  assert.equal(rejected.valid, false)
+  assert.ok(rejected.violations.some((entry) => entry.code === 'UNCONFIRMED_SOCIAL_ACTION'))
+
+  const relationshipBrief = buildNarrationBrief({
+    known_environment: {
+      player_intent: { action: 'Оцениваю отношение Миры' },
+      structured_result: { confirmed: true, category: 'mechanical' },
+      story_context: { present_npcs: [{ id: 'mira', name: 'Мира' }] },
+    },
+    visible_events: [{ event_type: 'NpcRelationshipAdjusted', visibility: 'public' }],
+  })
+  assert.equal(verifyNarration('Мира говорит, что видела Мартена.', relationshipBrief).valid, false)
+
+  const movementBrief = buildNarrationBrief({
+    known_environment: { player_intent: { action: 'Иду к воротам' }, structured_result: { confirmed: true, category: 'movement' }, story_context: { present_npcs: [{ id: 'mira', name: 'Мира' }] } },
+    visible_events: [{ event_type: 'ActionDeclared', visibility: 'public' }],
+  })
+  assert.equal(verifyNarration('Герой не выходит из укрытия, а Мира ничего не говорит.', movementBrief).valid, true)
+})
+
 test('strict JSON parser rejects prose, markdown and prototype keys', () => {
   assert.deepEqual(strictJsonParse('{"ok":true}', { expected: 'object' }), { ok: true })
   assert.deepEqual(strictJsonParse(JSON.stringify({ content: '```json\n{\"ok\":true}\n```' }), { expected: 'object' }), { content: '```json\n{\"ok\":true}\n```' })
@@ -271,6 +363,62 @@ test('fallback cascade switches models on timeout and observes cooldown', async 
   assert.deepEqual(calls, ['primary', 'secondary', 'secondary'])
 })
 
+test('fallback cascade делит timeoutMs между провайдерами, а не умножает бюджет', async () => {
+  const calls = []
+  const hanging = (model) => ({
+    model,
+    complete: (_input, { signal }) => {
+      calls.push(model)
+      return new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }))
+    },
+  })
+  const primary = {
+    model: 'primary-budget',
+    complete: (_input, { signal }) => {
+      calls.push('primary-budget')
+      return new Promise((_resolve, reject) => setTimeout(() => reject(new LLMTimeoutError(15)), 15))
+    },
+  }
+  const secondary = hanging('secondary-budget')
+  const cascade = new FallbackLLMClient({ clients: [primary, secondary] })
+  const startedAt = Date.now()
+  await assert.rejects(cascade.complete({ messages, timeoutMs: 40 }), LLMTimeoutError)
+  const elapsed = Date.now() - startedAt
+  assert.deepEqual(calls, ['primary-budget', 'secondary-budget'])
+  assert.ok(elapsed < 180, `fallback budget multiplied: ${elapsed}ms`)
+})
+
+test('fallback cascade оставляет резерв: primary timeout, secondary успевает завершиться', async () => {
+  const startedAt = Date.now()
+  const primary = {
+    model: 'primary-slow',
+    complete: async () => new Promise((_resolve, reject) => setTimeout(() => reject(new LLMTimeoutError(10)), 10)),
+  }
+  const secondary = {
+    model: 'secondary-fast',
+    complete: async () => ({ content: 'usable fallback response', model: 'secondary-fast' }),
+  }
+  const result = await new FallbackLLMClient({ clients: [primary, secondary] }).complete({ messages, timeoutMs: 40 })
+  assert.equal(result.model, 'secondary-fast')
+  assert.equal(result.fallback_used, true)
+  assert.ok(Date.now() - startedAt < 100)
+})
+
+test('fallback cascade прерывает primary, который игнорирует signal, до secondary', async () => {
+  const calls = []
+  const primary = {
+    model: 'primary-ignores-signal',
+    complete: async () => { calls.push('primary'); return new Promise(() => {}) },
+  }
+  const secondary = {
+    model: 'secondary-after-stall',
+    complete: async () => { calls.push('secondary'); return { content: 'usable fallback response', model: 'secondary-after-stall' } },
+  }
+  const result = await new FallbackLLMClient({ clients: [primary, secondary] }).complete({ messages, timeoutMs: 40 })
+  assert.equal(result.model, 'secondary-after-stall')
+  assert.deepEqual(calls, ['primary', 'secondary'])
+})
+
 test('fallback cascade prioritizes the model selected for the current campaign only', async () => {
   const calls = []
   const primary = { model: 'primary', async complete() { calls.push('primary'); return { content: 'primary', model: 'primary' } } }
@@ -367,17 +515,17 @@ test('loaded role prompts are explicitly versioned and treat retrieved/user text
   // narrator перешёл на v5, campaign_creator — на v4, map_architect — на v5
   // (v4 плюс соседи по карте мира как пункты назначения),
   // социальный контроллер — на v3 с границей UNTRUSTED_DATA,
-  // action_adjudicator — на v4 вместе с мостом к обстановке (topple_prop и
-  // ignite_prop), остальные на v1. Режиссёр грузит два промпта —
+  // action_adjudicator — на v6 вместе с bounded-полями активности, длительности
+  // и причинной ценой провала (topple_prop и ignite_prop сохраняются), остальные на v1. Режиссёр грузит два промпта —
   // по одному на режим импровизации кампании, — и оба обязаны держать тот же
   // bounded-intent контракт, что и прежний v1.
   const prompts = [
     ['npc_controller/v1', 'npc_controller/v1'],
-    ['npc_controller/social_v4', 'npc_controller/social-v4'],
-    ['narrator/v6', 'narrator/v6'],
-    ['director/v3_story', 'director/v3_story'],
-    ['director/v3_chaos', 'director/v3_chaos'],
-    ['action_adjudicator/v4', 'action_adjudicator/v4'],
+    ['npc_controller/social_v5', 'npc_controller/social-v5'],
+    ['narrator/v9', 'narrator/v9'],
+    ['director/v4_story', 'director/v4_story'],
+    ['director/v4_chaos', 'director/v4_chaos'],
+    ['action_adjudicator/v6', 'action_adjudicator/v6'],
     ['campaign_creator/v4', 'campaign_creator/v4'],
     ['map_architect/v5', 'map_architect/v5'],
     ['recap/v1', 'recap/v1'],

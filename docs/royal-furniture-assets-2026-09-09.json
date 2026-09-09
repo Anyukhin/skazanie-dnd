@@ -1,0 +1,42 @@
+{
+  "created": "2026-09-09",
+  "generator": "built-in-imagegen",
+  "actual_model": "not-exposed-by-tool",
+  "purpose": "Реквизит королевской галереи Ареса",
+  "pipeline": "ImageGen → исправление ракурса → одноцветный фон → штатный build-prop-atlas --append; существующие 111 кадров сохранены пиксель в пиксель.",
+  "atlas": "public/assets/maps/props/prop-atlas.png",
+  "atlas_manifest": "public/assets/maps/props/prop-atlas.json",
+  "assets": [
+    {
+      "id": "royal_throne",
+      "source": "C:/Users/anton/.codex/generated_images/01a07e05-706e-7d53-904f-47902e0f5121/exec-151f359c-fee1-48b8-8ec8-3d3c63731407.png",
+      "sheet": "assets-src/prop-stamps/royal-throne-v1.png",
+      "preview": "output/imagegen/royal-throne-v1.png",
+      "footprint": [
+        2,
+        2
+      ],
+      "frame_pixels": [
+        384,
+        345
+      ],
+      "prompt": "Use case: stylized-concept. Create one production-ready VTT tabletop game prop sprite: a magnificent royal throne for King Ares, a human dragon-slayer king in a medieval fantasy palace. This is an isolated object asset on a REAL TRANSPARENT alpha background, PNG, not a whole scene. TRUE 90-DEGREE ORTHOGRAPHIC TOP-DOWN VIEW directly over the seat, absolutely no isometric angle or frontal view. Back of throne at the TOP edge, seat faces DOWN. Rich deep sapphire-blue velvet seat, carved dark walnut, ornate worn gold armrests sculpted as dragon heads, an elegant gilded crest behind the seat visible from above, small pale ivory inlay. It must unmistakably look like a king's throne, not a plain dining chair. Painterly realistic hand-painted battlemap style, warm neutral upper-left light, subtle close contact shadow only, sharp material detail readable when reduced to 96 pixels. One compact square footprint, generous transparent padding, centered, entire object visible, no floor, no carpet, no stone pedestal, no room, no people, no labels, no text, no grid, no watermark. Only the throne. Square image."
+    },
+    {
+      "id": "table_royal",
+      "source": "C:/Users/anton/.codex/generated_images/01a07e05-706e-7d53-904f-47902e0f5121/exec-793ab560-fe17-494d-9027-ca3afdc35485.png",
+      "sheet": "assets-src/prop-stamps/royal-table-v1.png",
+      "preview": "output/imagegen/royal-table-v1.png",
+      "footprint": [
+        5,
+        2
+      ],
+      "frame_pixels": [
+        960,
+        363
+      ],
+      "prompt": "Use case: stylized-concept. Create one production-ready VTT tabletop game prop sprite: a royal council and military planning table for King Ares, a medieval fantasy dragon-slayer monarch. Isolated furniture asset on REAL TRANSPARENT alpha background, PNG, not a room. TRUE 90-DEGREE ORTHOGRAPHIC TOP-DOWN VIEW, no isometric or frontal perspective. A long HORIZONTAL dark walnut table, long axis LEFT TO RIGHT, width about 2.6 times its depth. Elegant gold-trimmed carved edges with restrained dragon motifs. On tabletop: a broad hand-painted parchment terrain map with NO text, three sealed rolled dispatches, tiny wooden army markers, a brass compass, two small candleholders. Rich but orderly composition; the map visibly occupies the middle of the table. No chairs or benches attached, no people. Painterly realistic battlemap style consistent with sapphire-and-gold royal hall, warm neutral upper-left lighting, subtle close contact shadow only, detailed texture readable at 200 pixels. Entire object visible, generous transparent padding, no floor, no room, no labels, no letters or numbers, no grid, no watermark. Only this one table. LANDSCAPE HORIZONTAL image."
+    }
+  ],
+  "qa": "Предметы соответствуют дворцу, синий бархат и золото согласованы с Аресом и общим планом. Стол содержит карту и три донесения. В игре footprint стола 2×5, поворот90°; трон2×2. Растр вписан в те же клетки."
+}

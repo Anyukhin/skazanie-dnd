@@ -1,0 +1,24 @@
+{
+  "content": "{\"door\":\"closed\",\"resolved\":false,\"items\":[]}",
+  "parsed": {
+    "door": "closed",
+    "resolved": false,
+    "items": []
+  },
+  "model": "z-ai/glm-5.3-flash",
+  "usage": {
+    "total_tokens": 101,
+    "prompt_tokens": 85,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    },
+    "completion_tokens": 16,
+    "completion_tokens_details": {
+      "reasoning_tokens": 2,
+      "text_tokens": 14
+    },
+    "cost": 0.001278749740125
+  },
+  "latency_ms": 2683,
+  "errorcode": null
+}

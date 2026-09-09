@@ -15,6 +15,7 @@ import {
   bindFreeActionReadingToState,
   contextualResolutionFor,
   failForwardFor,
+  freeActionResolutionPolicy,
   interpretFreeAction,
   previousFailedAttempt,
   resolveCorpseSearch,
@@ -220,7 +221,7 @@ test('заявленное средство сверяется с листом �
   assert.deepEqual(missing.missing, ['Крылья'])
 })
 
-test('провал всегда несёт последствие — сценария «ничего не произошло» нет', () => {
+test('старые согласованные проверки сохраняют прежнюю таблицу последствий', () => {
   for (const risk of ['none', 'minor', 'serious', 'deadly']) {
     const consequence = failForwardFor(risk)
     assert.ok(consequence.minutes > 0, `${risk}: время обязано идти`)
@@ -229,6 +230,81 @@ test('провал всегда несёт последствие — сцена
   assert.equal(failForwardFor('serious').advances_quest_clock, true)
   assert.equal(failForwardFor('none').advances_quest_clock, false)
   assert.equal(failForwardFor('minor', 'exposure').consequence_type, 'exposure')
+})
+
+test('семейство сложного движения требует проверку даже при ошибочном trivial/none от модели', () => {
+  const state = normalizeCampaignState({ players: [{ id: 'hero', inventory: [] }], scene: { cells: [] } })
+  for (const [text, skill, ability] of [
+    ['Удерживаю стойку на одной ладони', 'acrobatics', 'dex'],
+    ['Держу тело горизонтально на шесте', 'athletics', 'str'],
+    ['Прохожу по узкой вращающейся опоре', 'acrobatics', 'dex'],
+  ]) {
+    const reading = bindFreeActionReadingToState(state, 'hero', text, {
+      activity_kind: 'stunt', duration_class: 'prolonged', skill, ability,
+      plausibility: 'trivial', risk: 'none', consequence_type: 'time', effect: 'none',
+      damage_expression: '100d100', duration_minutes: 999, success: true,
+    })
+    const resolution = contextualResolutionFor(state, 'hero', reading, text)
+    const policy = freeActionResolutionPolicy(reading)
+    assert.equal(resolution.mode, 'check', text)
+    assert.equal(resolution.difficulty, 20, text)
+    assert.equal(policy.success_minutes, 0, text)
+    assert.equal(policy.failure.minutes, 0, text)
+    assert.equal(policy.failure.damage_expression, '1d4', text)
+    assert.equal(Object.hasOwn(reading, 'damage_expression'), false)
+    assert.equal(Object.hasOwn(reading, 'duration_minutes'), false)
+    assert.equal(Object.hasOwn(reading, 'success'), false)
+  }
+})
+
+test('длительность зависит от работы, а физические и социальные последствия не смешиваются', () => {
+  const state = normalizeCampaignState({ players: [{ id: 'hero', inventory: [] }], scene: { cells: [] } })
+  const cases = [
+    ['Убеждаю собеседника помочь', 'persuasion', 'social', 'brief', 'lost_opportunity', 1, null],
+    ['Сопоставляю записи в старых книгах', 'investigation', 'knowledge', 'prolonged', 'injury', 60, null],
+    ['Проворачиваю тяжёлый механизм с опасной отдачей', 'athletics', 'environmental', 'extended', 'injury', 10, null],
+    ['Незаметно меняю положение за колонной', 'stealth', 'stealth', 'instant', 'exposure', 0, null],
+  ]
+  for (const [text, skill, activity_kind, duration_class, consequence_type, minutes, expression] of cases) {
+    const reading = bindFreeActionReadingToState(state, 'hero', text, {
+      skill, activity_kind, duration_class, consequence_type, plausibility: 'plausible', risk: 'serious',
+    })
+    const policy = freeActionResolutionPolicy(reading)
+    assert.equal(policy.success_minutes, minutes, text)
+    assert.equal(policy.failure.minutes, minutes, text)
+    assert.equal(policy.failure.damage_expression ?? null, expression, text)
+    assert.equal(policy.failure.advances_quest_clock, false, text)
+    assert.doesNotMatch(policy.failure.summary, /место перестало быть спокойным|события пошли своим ходом/u)
+  }
+})
+
+test('старое подтверждённое предложение не получает новую травму, а безопасная рутина остаётся без броска', () => {
+  const state = normalizeCampaignState({ players: [{ id: 'hero', inventory: [] }], scene: { cells: [] } })
+  const legacy = bindFreeActionReadingToState(state, 'hero', 'Акробатический трюк', {
+    ability: 'dex', skill: 'acrobatics', plausibility: 'strenuous', risk: 'minor', consequence_type: 'time',
+  }, { preserveActionProfile: true })
+  assert.equal(freeActionResolutionPolicy(legacy).success_minutes, 5)
+  assert.equal(freeActionResolutionPolicy(legacy).failure.minutes, 10)
+  assert.equal(freeActionResolutionPolicy(legacy).failure.damage_expression, undefined)
+  const oldProfile = bindFreeActionReadingToState(state, 'hero', 'Сложный трюк', {
+    ability: 'dex', skill: 'acrobatics', plausibility: 'strenuous', risk: 'minor',
+    consequence_type: 'injury', activity_kind: 'stunt', duration_class: 'instant',
+    policy_version: 'free-action-resolution/v1', hazard: 'fire',
+  }, { preserveActionProfile: true })
+  assert.equal(freeActionResolutionPolicy(oldProfile).success_minutes, 0)
+  assert.equal(freeActionResolutionPolicy(oldProfile).failure.damage_expression, '1d4')
+  assert.equal(freeActionResolutionPolicy(oldProfile).failure.damage_type, 'bludgeoning')
+  const routine = bindFreeActionReadingToState(state, 'hero', 'Поправляю рукав', {
+    activity_kind: 'routine', skill: 'sleight_of_hand', plausibility: 'trivial', risk: 'none',
+  })
+  assert.equal(contextualResolutionFor(state, 'hero', routine).mode, 'auto_success')
+  assert.equal(freeActionResolutionPolicy(routine).success_minutes, 0)
+  assert.equal(freeActionResolutionPolicy(routine).failure.damage_expression, undefined)
+  const safeBalance = bindFreeActionReadingToState(state, 'hero', 'Спокойно удерживаю простую позу на ровном полу', {
+    activity_kind: 'routine', skill: 'acrobatics', plausibility: 'trivial', risk: 'none',
+  })
+  assert.equal(contextualResolutionFor(state, 'hero', safeBalance).mode, 'auto_success')
+  assert.equal(freeActionResolutionPolicy(safeBalance).failure.damage_expression, undefined)
 })
 
 test('ставки объявляются до броска и молчат там, где броска нет', () => {

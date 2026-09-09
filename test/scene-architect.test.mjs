@@ -28,6 +28,15 @@ const archiveState = {
   },
 }
 
+test('картограф не объявляет выдуманную длительность перехода в прибытии', async () => {
+  const architect = new SceneArchitectAgent({ llmClient: { completeJson: async () => ({
+    location: 'Город', arrival: 'После нескольких дней пути отряд достигает городских ворот.',
+  }) } })
+  const planned = await architect.plan({ state: archiveState, decision: 'Уходим в город', destinationHint: 'Город' })
+  assert.doesNotMatch(planned.sceneArgs.arrival, /нескольких дней/u)
+  assert.match(planned.sceneArgs.arrival, /прибывает/u)
+})
+
 test('формулировка «Уходим в город» распознаётся по выбранной опции, а не по тексту инструкции', () => {
   const action = '[РЕШЕНИЕ ГРУППЫ] Уйти из архива в город?: Уходим в город. Если решила остаться — продолжи архив.'
   const result = interpretResolvedPartyDecision(action, archiveState)

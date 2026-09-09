@@ -1,0 +1,97 @@
+{
+  "edition": "dnd_5e_2014",
+  "book_code": "MM14",
+  "generated_at": "2026-09-08",
+  "tool": "built-in image_gen",
+  "rights_note_ru": "Портреты созданы заново для проекта; внешние изображения dnd.su не копировались. Перед публикацией ассеты требуют регистрации в data/asset-rights.json.",
+  "assets": [
+    {
+      "monster_id": "dnd_5e_2014:monster:chimera",
+      "slug": "chimera",
+      "target_path": "public/assets/enemies/dnd-2014/chimera.png",
+      "image_path": "C:/Users/anton/.codex/generated_images/01a07e2f-79dd-7463-a85d-68fa3545c06d/exec-6a02fc0b-a9cd-4092-8251-bebdf643d7f4.png",
+      "source": "original_generated_art",
+      "prompt": "Use case: stylized-concept. Asset type: square tabletop battlemap enemy token portrait. Primary request: an original dark-fantasy portrait of a D&D 2014 chimera, a single readable three-headed creature with a lion front, goat rear and leathery dragon wings, shown as one cohesive silhouette. Scene/backdrop: nearly black smoky cavern with a subtle ember glow. Subject: fierce lion, goat and dragon heads, natural anatomy, no rider or extra creature. Style/medium: painted dark-fantasy concept art with crisp silhouette and restrained texture. Composition/framing: centered bust-to-torso view, circular-safe margins, subject readable at small UI size. Lighting/mood: dramatic warm rim light from below, ominous. Color palette: charcoal, dark umber, muted bronze and ember orange. Materials/textures: fur, horns, scales, leathery wings. Constraints: one creature only, no text, no border, no logo, no watermark, no copied franchise art; 1:1 square composition. Avoid: collage, multiple creatures, extra heads beyond the three natural heads, modern objects, photorealistic gore.",
+      "production_path": "public/assets/enemies/dnd-2014/chimera.png",
+      "installed": true,
+      "production_sha256": "87a0171b8233e8e2e541a54a1665b3c6cf21eacb58ab9b7f0f5c228e9d348606"
+    },
+    {
+      "monster_id": "dnd_5e_2014:monster:cyclops",
+      "slug": "cyclops",
+      "target_path": "public/assets/enemies/dnd-2014/cyclops.png",
+      "image_path": "C:/Users/anton/.codex/generated_images/01a07e2f-79dd-7463-a85d-68fa3545c06d/exec-378aac2c-53a9-4740-ac25-d946b93fa81e.png",
+      "source": "original_generated_art",
+      "prompt": "Use case: stylized-concept. Asset type: square tabletop battlemap enemy token portrait. Primary request: an original dark-fantasy portrait of a D&D 2014 cyclops, a single huge one-eyed giant with a heavy stone club. Scene/backdrop: dim mountain cave, smoky darkness. Subject: rugged solitary giant, one clearly visible central eye, rough hide and primitive leather, club partly visible. Style/medium: painted dark-fantasy concept art, clear silhouette, readable face. Composition/framing: centered head-and-shoulders portrait, circular-safe margins, no cropped eye. Lighting/mood: cold side light with a warm reflected glint in the eye, grim and watchful. Color palette: slate, brown, muted ochre, small amber highlight. Materials/textures: weathered skin, rough stone, worn leather. Constraints: one creature only, no text, no border, no logo, no watermark, no copied franchise art; 1:1 square composition. Avoid: two eyes, extra characters, modern objects, excessive gore, tiny subject.",
+      "production_path": "public/assets/enemies/dnd-2014/cyclops.png",
+      "installed": true,
+      "production_sha256": "b31bfd3dadc1d6eeb9cf5caaa989ef2670ab305f04cd841ec8f545ec001490f9"
+    },
+    {
+      "monster_id": "dnd_5e_2014:monster:medusa",
+      "slug": "medusa",
+      "target_path": "public/assets/enemies/dnd-2014/medusa.png",
+      "image_path": "C:/Users/anton/.codex/generated_images/01a07e2f-79dd-7463-a85d-68fa3545c06d/exec-0327e67b-daa2-4b81-8722-fb94c7041da4.png",
+      "source": "original_generated_art",
+      "prompt": "Use case: stylized-concept. Asset type: square tabletop battlemap enemy token portrait. Primary request: an original dark-fantasy portrait of a D&D 2014 medusa, a single regal cursed woman with living snakes for hair, holding a short sword. Scene/backdrop: ruined desert shrine with dark stone and faint dust. Subject: one humanoid medusa, expressive face, many distinct snake heads framing her hair, subtle scale texture, sword held low. Style/medium: painted dark-fantasy concept art, elegant but threatening, crisp silhouette. Composition/framing: centered shoulders-and-torso view, circular-safe margins, no mirror. Lighting/mood: moonlit teal shadows with a narrow gold edge light, tense and uncanny. Color palette: black, desaturated green, sandstone, muted gold. Materials/textures: snakeskin, weathered cloth, stone. Constraints: one creature only, no text, no border, no logo, no watermark, no copied franchise art; 1:1 square composition. Avoid: multiple humanoids, mirror reflection, cartoon style, excessive gore, modern objects.",
+      "production_path": "public/assets/enemies/dnd-2014/medusa.png",
+      "installed": true,
+      "production_sha256": "a7223adf17462a8a56053b1ced1563886625e2ab4d5268edb4bd74754027a92c"
+    },
+    {
+      "monster_id": "dnd_5e_2014:monster:mammoth",
+      "slug": "mammoth",
+      "target_path": "public/assets/enemies/dnd-2014/mammoth.png",
+      "image_path": "C:/Users/anton/.codex/generated_images/01a07e2f-79dd-7463-a85d-68fa3545c06d/exec-25e5f24a-eabe-44d4-b04d-4ac1b6bf8f17.png",
+      "source": "original_generated_art",
+      "prompt": "Use case: stylized-concept. Asset type: square tabletop battlemap enemy token portrait. Primary request: an original dark-fantasy portrait of a D&D 2014 mammoth, a single enormous woolly mammoth with long ivory tusks. Scene/backdrop: windblown arctic snow and dark ice cliffs. Subject: massive shaggy mammoth, broad head and tusks clearly readable, no rider or herd. Style/medium: painted dark-fantasy concept art with strong silhouette and tactile fur. Composition/framing: centered head-and-chest view, circular-safe margins, tusks inside the frame. Lighting/mood: pale cold rim light through snow haze, ancient and imposing. Color palette: blue-gray, charcoal, ivory, muted rust accents. Materials/textures: thick frost-dusted fur, cracked ivory, snow. Constraints: one animal only, no text, no border, no logo, no watermark, no copied franchise art; 1:1 square composition. Avoid: elephants without fur, riders, multiple animals, cartoon style, excessive gore.",
+      "production_path": "public/assets/enemies/dnd-2014/mammoth.png",
+      "installed": true,
+      "production_sha256": "e66d8c14f2dc243887a77b141157b3c4aba7f88a4590fa2c498e7fb962e23835"
+    },
+    {
+      "monster_id": "dnd_5e_2014:monster:vrock",
+      "slug": "vrock",
+      "target_path": "public/assets/enemies/dnd-2014/vrock.png",
+      "image_path": "C:/Users/anton/.codex/generated_images/01a07e2f-79dd-7463-a85d-68fa3545c06d/exec-4631aa8b-bac9-4108-84bf-114859efbc4e.png",
+      "source": "original_generated_art",
+      "prompt": "Use case: stylized-concept. Asset type: square tabletop battlemap enemy token portrait. Primary request: an original dark-fantasy portrait of a D&D 2014 vrock, a single large demon resembling a hunched humanoid vulture with ragged wings, hooked beak and talons. Scene/backdrop: smoky abyssal cavern with faint poisonous spores. Subject: one grotesque bird-demon, wings framing the silhouette, beak and talons readable. Style/medium: painted dark-fantasy concept art, gritty but not gory, strong silhouette. Composition/framing: centered torso portrait, circular-safe margins, wings contained. Lighting/mood: sickly violet backlight and red underlight, hostile. Color palette: soot black, bruised violet, dark crimson, dull bone. Materials/textures: ragged feathers, leathery wing membranes, talons. Constraints: one creature only, no text, no border, no logo, no watermark, no copied franchise art; 1:1 square composition. Avoid: extra demons, angelic wings, modern objects, excessive gore, cartoon style.",
+      "production_path": "public/assets/enemies/dnd-2014/vrock.png",
+      "installed": true,
+      "production_sha256": "86e41b7fcea7aee639cd6d53706cdf67f791118e7542e402eb4ed824e150c623"
+    },
+    {
+      "monster_id": "dnd_5e_2014:monster:drider",
+      "slug": "drider",
+      "target_path": "public/assets/enemies/dnd-2014/drider.png",
+      "image_path": "C:/Users/anton/.codex/generated_images/01a07e2f-79dd-7463-a85d-68fa3545c06d/exec-61929afb-9e62-4a72-8119-6eadafd62322.png",
+      "source": "original_generated_art",
+      "prompt": "Use case: stylized-concept. Asset type: square tabletop battlemap enemy token portrait. Primary request: an original dark-fantasy portrait of a D&D 2014 drider, a single cursed drow upper body fused to a large spider body, armed with a longsword. Scene/backdrop: deep Underdark cavern with thin webs and black rock. Subject: one spider-centaur monster, four pairs of legs suggested by the silhouette, pale dark-elf face, sword visible. Style/medium: painted dark-fantasy concept art, elegant menace, clean readable silhouette. Composition/framing: centered three-quarter torso view, circular-safe margins, legs and sword remain within the frame. Lighting/mood: cold blue bioluminescent rim light, ominous. Color palette: obsidian, deep blue, muted silver, violet accents. Materials/textures: chitin, dark leather, braided hair, steel. Constraints: one creature only, no text, no border, no logo, no watermark, no copied franchise art; 1:1 square composition. Avoid: separate elf and spider, extra humanoids, explicit gore, modern objects, cartoon style.",
+      "production_path": "public/assets/enemies/dnd-2014/drider.png",
+      "installed": true,
+      "production_sha256": "024c8f500843d2dcbb5596905757e08cd8cdbabdaf813785155ca99148505e5d"
+    },
+    {
+      "monster_id": "dnd_5e_2014:monster:young-white-dragon",
+      "slug": "young-white-dragon",
+      "target_path": "public/assets/enemies/dnd-2014/young-white-dragon.png",
+      "image_path": "C:/Users/anton/.codex/generated_images/01a07e2f-79dd-7463-a85d-68fa3545c06d/exec-0972ceea-a4db-4583-b40c-6fb92de36fbf.png",
+      "source": "original_generated_art",
+      "prompt": "Use case: stylized-concept. Asset type: square tabletop battlemap enemy token portrait. Primary request: an original dark-fantasy portrait of a D&D 2014 young white dragon, a single lean young chromatic dragon with icy white scales, sharp horns and visible breath frost. Scene/backdrop: frozen cavern and blowing snow. Subject: one dragon head and shoulders with a hint of folded wing, predatory and feral. Style/medium: painted dark-fantasy concept art, clear silhouette and readable anatomy. Composition/framing: centered close portrait, circular-safe margins, horns and jaw fully inside frame. Lighting/mood: cold moonlit blue with bright icy rim, hungry and severe. Color palette: white, pale blue, slate, tiny cyan highlights. Materials/textures: frosted scales, ice crystals, leathery wing. Constraints: one creature only, no text, no border, no logo, no watermark, no copied franchise art; 1:1 square composition. Avoid: red or brass coloration, adult-size ornate horns, multiple dragons, cartoon style, excessive gore.",
+      "production_path": "public/assets/enemies/dnd-2014/young-white-dragon.png",
+      "installed": true,
+      "production_sha256": "2c98d1cc9ff66ddfac54fb60e2d0b8129dee68ab2954a277d1e058cc009dbcbe"
+    },
+    {
+      "monster_id": "dnd_5e_2014:monster:young-brass-dragon",
+      "slug": "young-brass-dragon",
+      "target_path": "public/assets/enemies/dnd-2014/young-brass-dragon.png",
+      "image_path": "C:/Users/anton/.codex/generated_images/01a07e2f-79dd-7463-a85d-68fa3545c06d/exec-816628f6-7b41-4d8f-8ea8-d13f298d7c5a.png",
+      "source": "original_generated_art",
+      "prompt": "Use case: stylized-concept. Asset type: square tabletop battlemap enemy token portrait. Primary request: an original dark-fantasy portrait of a D&D 2014 young brass dragon, a single friendly-looking but dangerous young metallic dragon with warm brass scales, broad protective head plate and folded wings. Scene/backdrop: sunlit desert canyon with drifting sand. Subject: one dragon head and shoulders, alert eyes, small curling horns, faint heat haze and a suggestion of fire breath. Style/medium: painted dark-fantasy concept art, polished but weathered, clear silhouette. Composition/framing: centered close portrait, circular-safe margins, head and wing edge inside frame. Lighting/mood: strong golden sunlight with deep umber shadows, charismatic and watchful. Color palette: brass gold, ochre, rust, dark brown, warm amber. Materials/textures: metallic scales, leathery wing membranes, sandstone dust. Constraints: one creature only, no text, no border, no logo, no watermark, no copied franchise art; 1:1 square composition. Avoid: white or red coloration, adult-size elaborate horns, multiple dragons, cartoon style, modern objects.",
+      "production_path": "public/assets/enemies/dnd-2014/young-brass-dragon.png",
+      "installed": true,
+      "production_sha256": "a4cb960b9d6cf2fde5abf541c1c4a66fec22e4c4913876e3acf4dbfcd1b61c47"
+    }
+  ]
+}

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
-import { combatActionsFor } from '../server/combat-actions.mjs'
+import { combatActionsFor, combatResourceMaximumsFor, combatResourceRecoveryFor } from '../server/combat-actions.mjs'
 import { applyGameEvent, normalizeCampaignState, resolveCommand } from '../server/rules-engine.mjs'
 import { campaignStateForViewer } from '../server/viewer-projection.mjs'
 
@@ -28,6 +28,24 @@ function combatState() {
 function applyAll(state, events) {
   return events.reduce((current, event) => applyGameEvent(current, event), state)
 }
+
+test('изменение выданной карточки не меняет каталог и ресурсы другого героя', () => {
+  const actor = { characterClass: 'cleric', level: 12 }
+  const expected = combatActionsFor(actor)
+  const maxima = combatResourceMaximumsFor(actor)
+  const recovery = combatResourceRecoveryFor(actor)
+  const actions = combatActionsFor(actor)
+  const generated = actions.find((entry) => entry.id === 'cleric-pravednoe-vosstanovlenie')
+  assert.ok(generated?.uses && generated.effect)
+  generated.uses.maximum = 999
+  generated.uses.recovery = 'short_or_long'
+  generated.effect.kind = 'heal'
+  actions.find((entry) => entry.id === 'dash').effect.kind = 'heal'
+  actions.length = 0
+  assert.deepEqual(combatActionsFor({ ...actor }), expected)
+  assert.deepEqual(combatResourceMaximumsFor({ ...actor }), maxima)
+  assert.deepEqual(combatResourceRecoveryFor({ ...actor }), recovery)
+})
 
 test('нормализация выдаёт воину классовые действия и их серверные ресурсы', () => {
   const state = combatState()

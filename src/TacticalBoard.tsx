@@ -144,16 +144,16 @@ function loadTerrainManifest(onReady: () => void) {
 function loadPropAtlas(onReady: () => void) {
   if (propAtlasAsked || typeof fetch !== 'function') return
   propAtlasAsked = true
-  void fetch(PROP_ATLAS_MANIFEST)
+  void fetch(PROP_ATLAS_MANIFEST, { cache: 'no-cache' })
     .then((response) => (response.ok ? response.json() : null))
     .then((manifest) => {
       const frames = manifest?.frames
       if (!manifest?.image || !frames || !Object.keys(frames).length) return
-      const url = `/assets/${manifest.image}`
+      const url = `/assets/${manifest.image}${manifest.imageHash ? `?v=${encodeURIComponent(manifest.imageHash)}` : ''}`
       loadImage(url, loadedTextures, () => {
         const texture = loadedTextures.get(url)
         if (!texture) return
-        propAtlas = { texture, frames, key: `${manifest.image}:${texture.width}x${texture.height}` }
+        propAtlas = { texture, frames, key: `${url}:${texture.width}x${texture.height}` }
         onReady()
       })
     })
@@ -230,7 +230,7 @@ const cameraByLocation = new Map<string, { zoom: number; pan: { x: number; y: nu
 export function TacticalBoard({
   map, columns, rows, irregular, ariaLabel, themeKey, artUrl, cells, cellHints, overlayCells, decoration,
   effectRenderers, battleLog, visualBatch, animationActors, animationsEnabled, conditions, conditionVersion, onBackgroundActivate,
-  levelIndex = 0, lighting = true, campaignId = '',
+  levelIndex = 0, lighting = true, campaignId = '', artMode = 'backdrop', viewResetKey, wheelZoomRequiresAltKey = false,
 }: {
   map: TacticalMap | null
   campaignId?: string
@@ -241,6 +241,7 @@ export function TacticalBoard({
   /** Ключ темы: при его смене палитра перечитывается из CSS. */
   themeKey: string
   artUrl: string | null
+  artMode?: 'backdrop' | 'map'
   cells: BoardCellNode[]
   /**
    * Подсказки клеток без узла. Наведение обслуживается внутри доски: если бы
@@ -267,6 +268,10 @@ export function TacticalBoard({
    * остаются как были.
    */
   lighting?: boolean
+  /** Внешняя кнопка «Вся карта»; обычная карта сохраняет камеру без этого ключа. */
+  viewResetKey?: string | number
+  /** В прокручиваемом стенде колесо страницы не должно случайно увеличивать карту. */
+  wheelZoomRequiresAltKey?: boolean
 }) {
   const cameraKey = boardCameraKey(map?.locationId, levelIndex, campaignId)
   const [zoom, setZoom] = useState(() => cameraByLocation.get(cameraKey)?.zoom ?? 1)
@@ -287,6 +292,10 @@ export function TacticalBoard({
     setZoom(saved?.zoom ?? 1)
     setPan(saved?.pan ?? { x: 0, y: 0 })
   }, [cameraKey])
+  useEffect(() => {
+    if (viewResetKey === undefined) return
+    setZoom(1); setPan({ x: 0, y: 0 })
+  }, [viewResetKey])
 
   /*
    * Кроссфейд этажа сделан CSS-анимацией самой рамки доски, а не снимком
@@ -390,10 +399,11 @@ export function TacticalBoard({
       terrain,
       art: artUrl ? loadedArt.get(artUrl) ?? null : null,
       artKey: artUrl ?? '',
+      artMode,
       propAtlas,
       lighting,
     }
-  }, [map, terrain, artUrl, lighting])
+  }, [map, terrain, artUrl, artMode, lighting])
 
   /**
    * Видимое окно в координатах клеток. Холст лежит внутри трансформированного
@@ -918,11 +928,13 @@ export function TacticalBoard({
     setDragging(false)
   }
   const zoomWithWheel = (event: React.WheelEvent<HTMLDivElement>) => {
-    if (event.ctrlKey) return
+    if (event.ctrlKey || (wheelZoomRequiresAltKey && !event.altKey)) return
     event.preventDefault()
     const direction = Math.sign(event.deltaY)
     if (!direction) return
-    setZoom((value) => Math.max(.65, Math.min(3, Number((value - direction * .12).toFixed(2)))))
+    // Даже карта 96×64 должна приближаться до различимых клеток и фишек.
+    const maximumZoom = Math.max(3, 48 / Math.max(6, cellPixels))
+    setZoom((value) => Math.max(.65, Math.min(maximumZoom, Number((value - direction * .12).toFixed(2)))))
   }
   const leaveBoard = () => {
     if (hovered.current === null) return
@@ -1003,7 +1015,7 @@ export function TacticalBoard({
           event.stopPropagation()
           return
         }
-        if (!(event.target as HTMLElement).closest('.map-token, .neutral-token-menu')) onBackgroundActivate?.()
+        if (!(event.target as HTMLElement).closest('.map-token, .neutral-token-menu, .scene-object-hotspot, .scene-object-menu')) onBackgroundActivate?.()
       }}
       onClick={(event) => {
         // Клик по холсту переводится в координату клетки арифметикой, а не

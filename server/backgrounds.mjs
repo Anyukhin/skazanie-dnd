@@ -90,11 +90,6 @@ function publicBackground(catalog, entry) {
   }))
 }
 
-export const BACKGROUND_POLICY_ID = String(currentCatalog.policyId ?? 'skazanie.backgrounds')
-export const BACKGROUND_ABILITY_MODES = Object.freeze(
-  abilityModesFor(currentCatalog).map((mode) => Object.freeze({ ...mode, increases: Object.freeze([...mode.increases]) })),
-)
-
 export function backgroundCatalogFor(rulesetId = LEGACY_DEFAULT_RULESET_ID) {
   const catalog = catalogFor(rulesetId)
   return {
@@ -106,11 +101,6 @@ export function backgroundCatalogFor(rulesetId = LEGACY_DEFAULT_RULESET_ID) {
     background_features_supported: false,
     ...(rulesetId === DND_2014_RULESET_ID ? { customization: { skill_count: 2, tool_language_count: 2, tool_options: phbToolOptions(), variants: structuredClone(PHB_BACKGROUND_VARIANTS) } } : {}),
   }
-}
-
-export function listBackgrounds(rulesetId = LEGACY_DEFAULT_RULESET_ID) {
-  const catalog = catalogFor(rulesetId)
-  return catalog.backgrounds.map((entry) => publicBackground(catalog, entry))
 }
 
 /** @param {unknown} id @param {unknown} [rulesetId] */

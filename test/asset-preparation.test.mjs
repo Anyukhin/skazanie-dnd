@@ -138,6 +138,27 @@ test('инвентарь подготовки показывает, у кого 
   assert.deepEqual(filtered, [])
 })
 
+test('предзаготовленный портрет считается готовым даже без campaign cache', async (t) => {
+  const rootDir = mkdtempSync(join(tmpdir(), 'skazanie-asset-prep-authored-'))
+  t.after(() => rmSync(rootDir, { recursive: true, force: true }))
+  const calls = []
+  const service = serviceWith(rootDir, calls)
+  const authored = publicNpcPortraitProfile({
+    id: 'astohan-sargat', name: 'Саргат', role: 'молодой красный дракон',
+    public_summary: 'Авторский дракон.', tags: ['boss'],
+  })
+  assert.ok(authored)
+  const inventory = await npcPortraitInventory({
+    service,
+    campaignId: 'ASTOHAN-AUTHORED',
+    projectedState: projected([authored]),
+    significance: () => false,
+    profiles: [authored],
+  })
+  assert.deepEqual(inventory.map((entry) => [entry.id, entry.has_portrait]), [['astohan-sargat', true]])
+  assert.equal(calls.length, 0)
+})
+
 test('план подготовки уважает кап, неизвестные позиции и уже готовое', () => {
   const npcs = [
     { id: 'npc:a', has_portrait: false },

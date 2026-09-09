@@ -1,0 +1,606 @@
+[
+  {
+    "id": "decision-n-minus-2",
+    "brief": {
+      "visible_events": [
+        {
+          "event_type": "AbilityCheckResolved",
+          "actor_id": "hero:ada",
+          "target_ids": [],
+          "payload": {
+            "ability": "wis",
+            "success": true
+          },
+          "visibility": "public",
+          "source_rule_ids": [
+            "srd:ability-check"
+          ]
+        }
+      ],
+      "visible_state_changes": [],
+      "known_environment": {
+        "scene": {
+          "title": "Тишина у Северных ворот",
+          "location": "Северные ворота",
+          "mood": "люди говорят вполголоса после тревоги",
+          "objective": "Связать след у ворот с пропавшим караваном"
+        },
+        "campaign_premise": {
+          "tone": "приземлённое тёмное фэнтези без пафоса",
+          "premise": "Пограничный город зависит от северного тракта."
+        },
+        "world_memory": {
+          "facts": [
+            {
+              "id": "fact:thread",
+              "subject": "Засов Северных ворот",
+              "predicate": "matching_trace",
+              "summary": "На засове застряла такая же синяя нить, как у каменного льва."
+            }
+          ]
+        },
+        "story_context": {
+          "active_quests": [
+            {
+              "title": "Пропавший караван",
+              "summary": "Караван из Волчьего брода исчез за Северными воротами.",
+              "objectives": [
+                "Сверить след синей нити",
+                "Узнать, кто открыл старую заставу"
+              ]
+            }
+          ],
+          "active_threads": [
+            {
+              "title": "Сгоревшая мельница",
+              "summary": "Ночью у мельницы видели телегу с меткой каравана."
+            }
+          ],
+          "recent_summaries": [
+            {
+              "id": "summary:n-minus-2",
+              "kind": "scene",
+              "title": "Каменный лев",
+              "summary": "Две сцены назад Рен перевязал сломанную печать синей нитью у каменного льва."
+            },
+            {
+              "id": "summary:n-minus-1",
+              "kind": "scene",
+              "title": "Северный тракт",
+              "summary": "След телеги привёл отряд обратно к воротам."
+            }
+          ],
+          "recent_decisions": [
+            {
+              "title": "Каменный лев",
+              "location": "Северный тракт",
+              "objective": "Не бросать след",
+              "outcome": "Ада настояла сохранить синюю нить как улику."
+            }
+          ],
+          "heroes": [
+            {
+              "id": "hero:ada",
+              "name": "Ада",
+              "class_name": "следопыт",
+              "background": "бывшая проводница караванов",
+              "personal_history": "Ада настояла не бросать след у каменного льва.",
+              "is_viewer": true
+            },
+            {
+              "id": "hero:ren",
+              "name": "Рен",
+              "class_name": "плут",
+              "is_viewer": false
+            }
+          ],
+          "present_npcs": [
+            {
+              "id": "npc:mira",
+              "name": "Мира",
+              "role": "хозяйка трактира",
+              "public_summary": "Двадцать лет знает путников северного тракта.",
+              "voice": "Живая разговорная манера.",
+              "speech_profile": {
+                "pace": "быстро, короткими фразами",
+                "lexicon": "простые дорожные слова и прибаутки",
+                "mannerism": "важную мысль начинает словами «Ну-ка»"
+              },
+              "relationship": "friendly"
+            },
+            {
+              "id": "npc:borin",
+              "name": "Борин",
+              "role": "архивариус заставы",
+              "public_summary": "Сверяет каждое свидетельство с журналом ворот.",
+              "voice": "Сдержанная осведомлённая манера.",
+              "speech_profile": {
+                "pace": "медленно, с заметными паузами",
+                "lexicon": "книжные и точные слова",
+                "mannerism": "перед выводом говорит «Заметьте»"
+              },
+              "relationship": "neutral"
+            }
+          ],
+          "open_promises": [
+            {
+              "npc": "Мира",
+              "direction": "npc_to_party",
+              "text": "Мира обещала оставить карту старых троп под медной кружкой.",
+              "due_hint": "к вечеру"
+            }
+          ],
+          "recent_interactions": [
+            {
+              "npc": "Борин",
+              "hero": "Рен",
+              "player_message": "Кто дежурил в ночь пропажи?",
+              "npc_reply": "После третьего колокола журнал заполнял сам начальник стражи.",
+              "stance": "guarded"
+            }
+          ]
+        },
+        "social_consequences": []
+      },
+      "permitted_npc_reactions": [],
+      "narration_constraints": []
+    },
+    "memory_anchors": [
+      "син(?:яя|ей|юю)?\\s+нит",
+      "каменн(?:ый|ого)\\s+льв",
+      "не\\s+броса.{0,20}след"
+    ]
+  },
+  {
+    "id": "open-promise",
+    "brief": {
+      "visible_events": [
+        {
+          "event_type": "AbilityCheckResolved",
+          "actor_id": "hero:ada",
+          "target_ids": [],
+          "payload": {
+            "ability": "int",
+            "success": true
+          },
+          "visibility": "public",
+          "source_rule_ids": [
+            "srd:ability-check"
+          ]
+        }
+      ],
+      "visible_state_changes": [],
+      "known_environment": {
+        "scene": {
+          "title": "Стойка «Пустого кубка»",
+          "location": "Трактир «Пустой кубок»",
+          "mood": "посетители торопливо расходятся",
+          "objective": "Забрать обещанную карту старых троп"
+        },
+        "campaign_premise": {
+          "tone": "приземлённое тёмное фэнтези без пафоса",
+          "premise": "Пограничный город зависит от северного тракта."
+        },
+        "world_memory": {
+          "facts": [
+            {
+              "id": "fact:thread",
+              "subject": "Засов Северных ворот",
+              "predicate": "matching_trace",
+              "summary": "На засове застряла такая же синяя нить, как у каменного льва."
+            }
+          ]
+        },
+        "story_context": {
+          "active_quests": [
+            {
+              "title": "Пропавший караван",
+              "summary": "Караван из Волчьего брода исчез за Северными воротами.",
+              "objectives": [
+                "Сверить след синей нити",
+                "Узнать, кто открыл старую заставу"
+              ]
+            }
+          ],
+          "active_threads": [
+            {
+              "title": "Сгоревшая мельница",
+              "summary": "Ночью у мельницы видели телегу с меткой каравана."
+            }
+          ],
+          "recent_summaries": [
+            {
+              "id": "summary:n-minus-2",
+              "kind": "scene",
+              "title": "Каменный лев",
+              "summary": "Две сцены назад Рен перевязал сломанную печать синей нитью у каменного льва."
+            },
+            {
+              "id": "summary:n-minus-1",
+              "kind": "scene",
+              "title": "Северный тракт",
+              "summary": "След телеги привёл отряд обратно к воротам."
+            }
+          ],
+          "recent_decisions": [
+            {
+              "title": "Каменный лев",
+              "location": "Северный тракт",
+              "objective": "Не бросать след",
+              "outcome": "Ада настояла сохранить синюю нить как улику."
+            }
+          ],
+          "heroes": [
+            {
+              "id": "hero:ada",
+              "name": "Ада",
+              "class_name": "следопыт",
+              "background": "бывшая проводница караванов",
+              "personal_history": "Ада настояла не бросать след у каменного льва.",
+              "is_viewer": true
+            },
+            {
+              "id": "hero:ren",
+              "name": "Рен",
+              "class_name": "плут",
+              "is_viewer": false
+            }
+          ],
+          "present_npcs": [
+            {
+              "id": "npc:mira",
+              "name": "Мира",
+              "role": "хозяйка трактира",
+              "public_summary": "Двадцать лет знает путников северного тракта.",
+              "voice": "Живая разговорная манера.",
+              "speech_profile": {
+                "pace": "быстро, короткими фразами",
+                "lexicon": "простые дорожные слова и прибаутки",
+                "mannerism": "важную мысль начинает словами «Ну-ка»"
+              },
+              "relationship": "friendly"
+            },
+            {
+              "id": "npc:borin",
+              "name": "Борин",
+              "role": "архивариус заставы",
+              "public_summary": "Сверяет каждое свидетельство с журналом ворот.",
+              "voice": "Сдержанная осведомлённая манера.",
+              "speech_profile": {
+                "pace": "медленно, с заметными паузами",
+                "lexicon": "книжные и точные слова",
+                "mannerism": "перед выводом говорит «Заметьте»"
+              },
+              "relationship": "neutral"
+            }
+          ],
+          "open_promises": [
+            {
+              "npc": "Мира",
+              "direction": "npc_to_party",
+              "text": "Мира обещала оставить карту старых троп под медной кружкой.",
+              "due_hint": "к вечеру"
+            }
+          ],
+          "recent_interactions": [
+            {
+              "npc": "Борин",
+              "hero": "Рен",
+              "player_message": "Кто дежурил в ночь пропажи?",
+              "npc_reply": "После третьего колокола журнал заполнял сам начальник стражи.",
+              "stance": "guarded"
+            }
+          ]
+        },
+        "social_consequences": []
+      },
+      "permitted_npc_reactions": [],
+      "narration_constraints": []
+    },
+    "memory_anchors": [
+      "медн(?:ая|ой|ую)\\s+круж",
+      "обеща.{0,28}карт",
+      "карт.{0,28}обеща"
+    ]
+  },
+  {
+    "id": "past-meeting",
+    "brief": {
+      "visible_events": [
+        {
+          "event_type": "AbilityCheckResolved",
+          "actor_id": "hero:ada",
+          "target_ids": [],
+          "payload": {
+            "ability": "cha",
+            "success": true
+          },
+          "visibility": "public",
+          "source_rule_ids": [
+            "srd:ability-check"
+          ]
+        }
+      ],
+      "visible_state_changes": [],
+      "known_environment": {
+        "scene": {
+          "title": "Тишина у Северных ворот",
+          "location": "Северные ворота",
+          "mood": "люди говорят вполголоса после тревоги",
+          "objective": "Связать след у ворот с пропавшим караваном"
+        },
+        "campaign_premise": {
+          "tone": "приземлённое тёмное фэнтези без пафоса",
+          "premise": "Пограничный город зависит от северного тракта."
+        },
+        "world_memory": {
+          "facts": [
+            {
+              "id": "fact:watch",
+              "subject": "Журнал ворот",
+              "predicate": "missing_page",
+              "summary": "Из журнала вырвана страница после третьего колокола."
+            }
+          ]
+        },
+        "story_context": {
+          "active_quests": [
+            {
+              "title": "Пропавший караван",
+              "summary": "Караван из Волчьего брода исчез за Северными воротами.",
+              "objectives": [
+                "Сверить след синей нити",
+                "Узнать, кто открыл старую заставу"
+              ]
+            }
+          ],
+          "active_threads": [
+            {
+              "title": "Сгоревшая мельница",
+              "summary": "Ночью у мельницы видели телегу с меткой каравана."
+            }
+          ],
+          "recent_summaries": [
+            {
+              "id": "summary:n-minus-2",
+              "kind": "scene",
+              "title": "Каменный лев",
+              "summary": "Две сцены назад Рен перевязал сломанную печать синей нитью у каменного льва."
+            },
+            {
+              "id": "summary:n-minus-1",
+              "kind": "scene",
+              "title": "Северный тракт",
+              "summary": "След телеги привёл отряд обратно к воротам."
+            }
+          ],
+          "recent_decisions": [
+            {
+              "title": "Каменный лев",
+              "location": "Северный тракт",
+              "objective": "Не бросать след",
+              "outcome": "Ада настояла сохранить синюю нить как улику."
+            }
+          ],
+          "heroes": [
+            {
+              "id": "hero:ada",
+              "name": "Ада",
+              "class_name": "следопыт",
+              "background": "бывшая проводница караванов",
+              "personal_history": "Ада настояла не бросать след у каменного льва.",
+              "is_viewer": true
+            },
+            {
+              "id": "hero:ren",
+              "name": "Рен",
+              "class_name": "плут",
+              "is_viewer": false
+            }
+          ],
+          "present_npcs": [
+            {
+              "id": "npc:mira",
+              "name": "Мира",
+              "role": "хозяйка трактира",
+              "public_summary": "Двадцать лет знает путников северного тракта.",
+              "voice": "Живая разговорная манера.",
+              "speech_profile": {
+                "pace": "быстро, короткими фразами",
+                "lexicon": "простые дорожные слова и прибаутки",
+                "mannerism": "важную мысль начинает словами «Ну-ка»"
+              },
+              "relationship": "friendly"
+            },
+            {
+              "id": "npc:borin",
+              "name": "Борин",
+              "role": "архивариус заставы",
+              "public_summary": "Сверяет каждое свидетельство с журналом ворот.",
+              "voice": "Сдержанная осведомлённая манера.",
+              "speech_profile": {
+                "pace": "медленно, с заметными паузами",
+                "lexicon": "книжные и точные слова",
+                "mannerism": "перед выводом говорит «Заметьте»"
+              },
+              "relationship": "neutral"
+            }
+          ],
+          "open_promises": [
+            {
+              "npc": "Мира",
+              "direction": "npc_to_party",
+              "text": "Мира обещала оставить карту старых троп под медной кружкой.",
+              "due_hint": "к вечеру"
+            }
+          ],
+          "recent_interactions": [
+            {
+              "npc": "Борин",
+              "hero": "Рен",
+              "player_message": "Кто дежурил в ночь пропажи?",
+              "npc_reply": "После третьего колокола журнал заполнял сам начальник стражи.",
+              "stance": "guarded"
+            }
+          ]
+        },
+        "social_consequences": []
+      },
+      "permitted_npc_reactions": [],
+      "narration_constraints": []
+    },
+    "memory_anchors": [
+      "трет(?:ий|ьего)\\s+колокол",
+      "борин.{0,32}журнал",
+      "начальник.{0,20}страж"
+    ]
+  },
+  {
+    "id": "forward-hook",
+    "brief": {
+      "visible_events": [
+        {
+          "event_type": "AbilityCheckResolved",
+          "actor_id": "hero:ada",
+          "target_ids": [],
+          "payload": {
+            "ability": "dex",
+            "success": false
+          },
+          "visibility": "public",
+          "source_rule_ids": [
+            "srd:ability-check"
+          ]
+        }
+      ],
+      "visible_state_changes": [],
+      "known_environment": {
+        "scene": {
+          "title": "Двор сгоревшей мельницы",
+          "location": "Сгоревшая мельница",
+          "mood": "в золе ещё видны свежие колеи",
+          "objective": "Понять, куда ушла телега с меткой каравана"
+        },
+        "campaign_premise": {
+          "tone": "приземлённое тёмное фэнтези без пафоса",
+          "premise": "Пограничный город зависит от северного тракта."
+        },
+        "world_memory": {
+          "facts": [
+            {
+              "id": "fact:thread",
+              "subject": "Засов Северных ворот",
+              "predicate": "matching_trace",
+              "summary": "На засове застряла такая же синяя нить, как у каменного льва."
+            }
+          ]
+        },
+        "story_context": {
+          "active_quests": [
+            {
+              "title": "Пропавший караван",
+              "summary": "Караван из Волчьего брода исчез за Северными воротами.",
+              "objectives": [
+                "Сверить след синей нити",
+                "Узнать, кто открыл старую заставу"
+              ]
+            }
+          ],
+          "active_threads": [
+            {
+              "title": "Сгоревшая мельница",
+              "summary": "Ночью у мельницы видели телегу с меткой каравана."
+            }
+          ],
+          "recent_summaries": [
+            {
+              "id": "summary:n-minus-2",
+              "kind": "scene",
+              "title": "Каменный лев",
+              "summary": "Две сцены назад Рен перевязал сломанную печать синей нитью у каменного льва."
+            },
+            {
+              "id": "summary:n-minus-1",
+              "kind": "scene",
+              "title": "Северный тракт",
+              "summary": "След телеги привёл отряд обратно к воротам."
+            }
+          ],
+          "recent_decisions": [
+            {
+              "title": "Каменный лев",
+              "location": "Северный тракт",
+              "objective": "Не бросать след",
+              "outcome": "Ада настояла сохранить синюю нить как улику."
+            }
+          ],
+          "heroes": [
+            {
+              "id": "hero:ada",
+              "name": "Ада",
+              "class_name": "следопыт",
+              "background": "бывшая проводница караванов",
+              "personal_history": "Ада настояла не бросать след у каменного льва.",
+              "is_viewer": true
+            },
+            {
+              "id": "hero:ren",
+              "name": "Рен",
+              "class_name": "плут",
+              "is_viewer": false
+            }
+          ],
+          "present_npcs": [
+            {
+              "id": "npc:mira",
+              "name": "Мира",
+              "role": "хозяйка трактира",
+              "public_summary": "Двадцать лет знает путников северного тракта.",
+              "voice": "Живая разговорная манера.",
+              "speech_profile": {
+                "pace": "быстро, короткими фразами",
+                "lexicon": "простые дорожные слова и прибаутки",
+                "mannerism": "важную мысль начинает словами «Ну-ка»"
+              },
+              "relationship": "friendly"
+            },
+            {
+              "id": "npc:borin",
+              "name": "Борин",
+              "role": "архивариус заставы",
+              "public_summary": "Сверяет каждое свидетельство с журналом ворот.",
+              "voice": "Сдержанная осведомлённая манера.",
+              "speech_profile": {
+                "pace": "медленно, с заметными паузами",
+                "lexicon": "книжные и точные слова",
+                "mannerism": "перед выводом говорит «Заметьте»"
+              },
+              "relationship": "neutral"
+            }
+          ],
+          "open_promises": [
+            {
+              "npc": "Мира",
+              "direction": "npc_to_party",
+              "text": "Мира обещала оставить карту старых троп под медной кружкой.",
+              "due_hint": "к вечеру"
+            }
+          ],
+          "recent_interactions": [
+            {
+              "npc": "Борин",
+              "hero": "Рен",
+              "player_message": "Кто дежурил в ночь пропажи?",
+              "npc_reply": "После третьего колокола журнал заполнял сам начальник стражи.",
+              "stance": "guarded"
+            }
+          ]
+        },
+        "social_consequences": []
+      },
+      "permitted_npc_reactions": [],
+      "narration_constraints": []
+    },
+    "memory_anchors": []
+  }
+]

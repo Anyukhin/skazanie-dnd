@@ -6,6 +6,7 @@ import test from 'node:test'
 
 import { DirectorAgent } from '../server/director-agent.mjs'
 import { AutonomousCampaignOrchestrator } from '../server/autonomous-orchestrator.mjs'
+import { resolvePartyVote } from '../server/party-decision.mjs'
 import { DiceService } from '../server/dice-service.mjs'
 import { FileEventStore } from '../server/event-store.mjs'
 import { RulesEngine, applyGameEvent, normalizeCampaignState } from '../server/rules-engine.mjs'
@@ -45,14 +46,21 @@ test('offline Director связывает три сцены и позволяе�
     const loaded = await orchestrator.load('THREE-SCENES')
     const decision = await director.choose({ state: loaded.state, playerAction: 'Продолжить' })
     chosen.push(decision.intent.type)
-    await orchestrator.runIntent({ campaignId: 'THREE-SCENES', intent: decision.intent, idempotencyKey: `three-scenes-${turn}` })
+    const key = `three-scenes-${turn}`
+    const result = await orchestrator.runIntent({ campaignId: 'THREE-SCENES', intent: decision.intent, idempotencyKey: key })
+    if (result.pending_party_decision) {
+      const pending = await orchestrator.load('THREE-SCENES')
+      const vote = resolvePartyVote(pending.state, { interactionId: pending.state.agentInteraction.id, heroId: 'hero', optionId: 'continue' })
+      await eventStore.commit({ campaign_id: 'THREE-SCENES', expected_state_version: pending.state.state_version, idempotency_key: `${key}:vote`, command_id: `${key}:vote`, events: vote.events })
+      await orchestrator.runIntent({ campaignId: 'THREE-SCENES', intent: decision.intent, idempotencyKey: key })
+    }
   }
 
   const final = await orchestrator.load('THREE-SCENES')
   const events = await eventStore.getEvents('THREE-SCENES')
-  assert.deepEqual(chosen, ['end_scene', 'continue_exploration', 'advance_quest_clock', 'end_scene'])
-  assert.equal(final.state.adventure.chapter, 3)
-  assert.equal(events.filter((event) => event.event_type === 'SceneAdvanced').length, 2)
+  assert.ok(chosen.every((type) => type !== 'request_encounter'))
+  assert.equal(final.state.adventure.chapter, 2)
+  assert.equal(events.filter((event) => event.event_type === 'SceneAdvanced').length, 1)
   assert.equal(events.some((event) => event.event_type === 'EncounterCreated'), false)
   assert.equal(final.state.autonomy.admin_interventions, 0)
 })

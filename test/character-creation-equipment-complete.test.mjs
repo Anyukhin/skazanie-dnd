@@ -90,6 +90,34 @@ test('полный режим материализует каждый PHB кла
   assert.ok(pack?.contents.some((item) => item.name === 'Сухой паёк, 1 день' && item.quantity === 10 && item.weight === 20))
 })
 
+test('нарративные стартовые вещи получают существующие рисунки в полном и legacy режиме', () => {
+  const complete = withStarterKit({
+    id: 'art-complete', characterClass: 'wizard', backgroundId: 'sage', inventory: [], currency: {},
+    phbCreation: { schema_version: 1 },
+  }, { rulesetId: RULESET_ID })
+  const expected = new Map([
+    ['Книга заклинаний', '/assets/ui/action-icons/identify.png'],
+    ['Мешочек с компонентами', '/assets/items/type-other.png'],
+    ['Набор учёного', '/assets/items/item-srd-5-2-1-backpack.png'],
+    ['Письмо от умершего коллеги', '/assets/items/type-document.png'],
+  ])
+  for (const [name, image] of expected) {
+    assert.equal(complete.inventory.find((item) => item.name === name)?.image, image, name)
+  }
+  const cleric = withStarterKit({
+    id: 'art-cleric', characterClass: 'cleric', backgroundId: 'criminal', inventory: [], currency: {},
+    phbCreation: { schema_version: 1 },
+  }, { rulesetId: RULESET_ID })
+  assert.equal(cleric.inventory.find((item) => item.name === 'Священный символ')?.image, '/assets/ui/action-icons/bless.png')
+
+  const legacy = withStarterKit({
+    id: 'art-legacy', characterClass: 'wizard', backgroundId: 'sage', inventory: [], currency: {},
+  }, { rulesetId: RULESET_ID })
+  for (const [name, image] of [...expected].slice(0, 3)) {
+    assert.equal(legacy.inventory.find((item) => item.name === name)?.image, image, `legacy: ${name}`)
+  }
+})
+
 test('полный каталог содержит физический набор каждого PHB 2014 фона и явные варианты выбора', () => {
   const backgrounds = starterEquipmentCatalogFor(RULESET_ID, { complete: true }).backgrounds
   for (const background of backgrounds) {

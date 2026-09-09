@@ -1,4 +1,5 @@
 import { canonicalCombatSpellFor } from './combat-spells.mjs'
+import { NPC_PORTRAIT_CHARACTER_ASSETS } from './npc-portraits.mjs'
 import { legendaryProfileFor } from './legendary-actions.mjs'
 
 export const AUTHORED_NPC_MECHANICS_STATUSES = Object.freeze(['verified', 'partial', 'ruling-only'])
@@ -320,6 +321,7 @@ export function authoredNpcCombatant({ npc, mechanics: rawMechanics, position } 
   return {
     id: npcId,
     name,
+    ...(NPC_PORTRAIT_CHARACTER_ASSETS[npcId] ? { image: NPC_PORTRAIT_CHARACTER_ASSETS[npcId] } : {}),
     hp: mechanics.hp,
     maxHp: mechanics.hp,
     armor: mechanics.armor,

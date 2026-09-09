@@ -17,6 +17,7 @@
  *
  * Запуск:
  *   pnpm props:atlas --sheets <каталог с листами>
+ *   pnpm props:atlas --append                # добавить новые кадры, сохранив старые пиксели
  *   pnpm props:atlas --check                 # только проверить, ничего не писать
  *   pnpm props:atlas --preview <файл.png>    # контрольный лист для осмотра
  */
@@ -404,7 +405,7 @@ export function paintAtlas(packed) {
 // --- сборка ----------------------------------------------------------------
 
 /**
- * @param {{sheetDir?: string, cellPixels?: number, onWarning?: (message: string) => void}} [options]
+ * @param {{sheetDir?: string, cellPixels?: number, onWarning?: (message: string) => void, baseAtlas?: {image: PngImage, manifest: {frames: Record<string, {x: number, y: number, w: number, h: number}>, sources?: Record<string, string>}}}} [options]
  */
 export function buildPropAtlas(options = {}) {
   const sheetDir = options.sheetDir ?? join(ROOT, DEFAULT_SHEET_DIR)
@@ -412,11 +413,14 @@ export function buildPropAtlas(options = {}) {
   const warn = options.onWarning ?? (() => {})
   /** @type {Array<{id: string, image: PngImage}>} */
   const sprites = []
+  const base = options.baseAtlas
+  const preservedIds = new Set(Object.keys(base?.manifest.frames ?? {}))
   /** @type {Record<string, string>} */
-  const sources = {}
+  const sources = { ...options.baseAtlas?.manifest.sources }
   const skipped = { sheets: /** @type {string[]} */ ([]), ids: /** @type {string[]} */ ([]) }
 
   for (const sheet of PROP_STAMP_SHEETS) {
+    if (options.baseAtlas && sheet.ids.every((id) => preservedIds.has(id) || !assetById(id))) continue
     // У листа может быть свой каталог: проёмы приезжают из набора пола и стен.
     const file = sheet.dir ? join(ROOT, sheet.dir, sheet.file) : join(sheetDir, sheet.file)
     if (!existsSync(file)) {
@@ -440,6 +444,7 @@ export function buildPropAtlas(options = {}) {
     }
     for (let index = 0; index < boxes.length; index += 1) {
       const id = sheet.ids[index]
+      if (preservedIds.has(id)) continue
       if (!assetById(id)) {
         skipped.ids.push(id)
         continue
@@ -455,14 +460,25 @@ export function buildPropAtlas(options = {}) {
 
   if (skipped.ids.length) warn(`нет записи в реестре, спрайт не собран: ${skipped.ids.join(', ')}`)
 
-  const packed = packSprites(sprites)
+  const packed = packSprites(sprites, Math.max(ATLAS_WIDTH, base?.image.width ?? 0))
+  // Старые прямоугольники остаются на месте: новые ряды начинаются ниже
+  // готового полотна, и прежний manifest совместим с дополненным PNG.
+  if (base) {
+    for (const frame of packed.frames) frame.box.y += base.image.height
+    packed.height = base.image.height + (sprites.length ? packed.height : 0)
+    if (!sprites.length) packed.width = base.image.width
+  }
   const image = paintAtlas(packed)
+  if (base) for (let y = 0; y < base.image.height; y += 1) {
+    image.data.set(base.image.data.subarray(y * base.image.width * 4, (y + 1) * base.image.width * 4), y * image.width * 4)
+  }
   /** @type {Record<string, {x: number, y: number, w: number, h: number}>} */
-  const frames = {}
+  const frames = structuredClone(base?.manifest.frames ?? {})
   for (const frame of packed.frames) frames[frame.id] = frame.box
   const manifest = {
     version: ATLAS_VERSION,
     image: ATLAS_IMAGE_PATH,
+    imageHash: createHash('sha256').update(`${image.width}x${image.height}:`).update(image.data).digest('hex'),
     cellPixels,
     width: image.width,
     height: image.height,
@@ -539,9 +555,12 @@ if (process.argv[1] && process.argv[1].endsWith('build-prop-atlas.mjs')) {
   const preview = option(argv, '--preview')
   /** @type {string[]} */
   const warnings = []
-  const { image, manifest, skipped } = buildPropAtlas({ sheetDir, cellPixels, onWarning: (message) => warnings.push(message) })
   const imageFile = join(ROOT, 'public/assets', ATLAS_IMAGE_PATH)
   const manifestFile = join(ROOT, 'public/assets', ATLAS_MANIFEST_PATH)
+  const baseAtlas = argv.includes('--append')
+    ? { image: decodePng(readFileSync(imageFile)), manifest: JSON.parse(readFileSync(manifestFile, 'utf8')) }
+    : undefined
+  const { image, manifest, skipped } = buildPropAtlas({ sheetDir, cellPixels, baseAtlas, onWarning: (message) => warnings.push(message) })
   const png = encodePng(image)
   const manifestText = `${JSON.stringify(manifest, null, 2)}\n`
 

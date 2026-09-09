@@ -110,12 +110,11 @@ test('правая колонка — лента и две полоски: ко�
   assert.doesNotMatch(stylesSource, /\.map-economy \{/u)
 })
 
-test('сброс сцены — правка вида: только у владельца, с подтверждением и честной подписью', () => {
-  assert.match(appSource, /canReset && <button/u, 'кнопка сброса рисуется только по праву')
-  assert.match(appSource, /canReset=\{canManageLifecycle \|\| isAdmin\}/u)
-  assert.match(appSource, /window\.confirm\(RESET_CONFIRMATION\)/u)
-  assert.match(appSource, /сервер такой правки не получит/u, 'подтверждение обязано называть локальность правки')
-  assert.doesNotMatch(appSource, /title="Снять бой и поднять павших героев"/u, 'старая подпись обещала команду миру')
+test('диагностический локальный сброс удалён, owner rewind/replay остаются отдельным путём', () => {
+  assert.doesNotMatch(appSource, /RESET_CONFIRMATION|reset-button|canReset|onReset=\{reset\}/u)
+  assert.doesNotMatch(stylesSource, /\.reset-button\b|\.admin-reset\b/u)
+  assert.match(appSource, /onRunCampaignControl\('rewind_turn'\)/u)
+  assert.match(appSource, /onRunCampaignControl\('replay_scene'\)/u)
 })
 
 test('правая колонка: ситуации чипами поверх ленты, хроника берёт остаток, HUD — полоска у низа', () => {
@@ -157,7 +156,8 @@ test('рассказчик и ожидающая проверка живут п�
   const mainEnd = rootSource.lastIndexOf('</main>')
   assert.ok(mainStart > 0 && mainEnd > mainStart)
   const insideMain = rootSource.slice(mainStart, mainEnd)
-  assert.doesNotMatch(insideMain, /cinematic-narration/u, 'врезка рассказчика не должна зависеть от раздела «комната»')
+  assert.doesNotMatch(insideMain, /cinematic-narration|РАССКАЗЧИК/u, 'всплывающая врезка рассказчика удалена')
+  assert.doesNotMatch(rootSource, /className="cinematic-narration"|Сохранено в журнале кампании/u)
   assert.doesNotMatch(insideMain, /pending-check-overlay/u, 'карточка броска не должна зависеть от раздела «комната»')
   assert.match(rootSource.slice(mainEnd), /className=\{`scene-overlay-layer/u)
   assert.match(rootSource, /className="pending-check-overlay"/u)
@@ -403,7 +403,7 @@ test('свет и тени доски выключаются настройко�
   assert.match(appSource, /lighting=\{boardLighting\}/u)
   assert.match(boardSource, /levelIndex = 0, lighting = true,/u)
   assert.match(boardSource, /propAtlas,\s+lighting,\s+\}/u)
-  assert.match(renderSource, /if \(scene\.lighting !== false\) drawLightShading\(context, scene, tile\)/u)
+  assert.match(renderSource, /if \(scene\.lighting !== false && !painted\) drawLightShading\(context, scene, tile\)/u)
   assert.match(renderSource, /^\s+drawFog\(context, scene, tile\)$/mu, 'туман войны — правило видимости, а не украшение')
   // Свет запечён в тайл, поэтому выключение обязано обесценить кэш.
   assert.match(renderSource, /const light = scene\.lighting === false \? 'n' : 'l'/u)
@@ -427,16 +427,31 @@ test('состояния героя: точки в отряде, слова у �
 })
 
 test('инструменты мастера собраны в меню, на виду остаются пауза и приглашение', () => {
-  assert.match(rootSource, /className=\{`invite-button master-menu-button \$\{masterMenuOpen \? 'open' : ''\}`\} aria-haspopup="menu" aria-expanded=\{masterMenuOpen\}/u)
+  assert.match(rootSource, /className=\{`invite-button master-menu-button[^`]+`\}[^>]*aria-haspopup="menu" aria-expanded=\{masterMenuOpen\}/u)
   assert.match(rootSource, /className="master-menu-list" role="menu" aria-label="Инструменты мастера"/u)
   // Откат и переигровка внутри меню сохраняют owner-гейт; опасное «Завершить» — красным и за вторым кликом.
-  assert.match(rootSource, /role="menuitem" onClick=\{\(\) => \{ setMasterMenuOpen\(false\); void runCampaignControl\('rewind_turn'\) \}\}/u)
-  assert.match(rootSource, /className="danger" onClick=\{\(\) => \{ setMasterMenuOpen\(false\); if \(window\.confirm\(/u)
+  assert.match(rootSource, /role="menuitem" onClick=\{\(\) => \{ onToggleMasterMenu\(\); onRunCampaignControl\('rewind_turn'\) \}\}/u)
+  assert.match(rootSource, /className="danger" onClick=\{\(\) => \{ onToggleMasterMenu\(\); if \(window\.confirm\(/u)
   assert.match(rootSource, /useDialogEscape\(\(\) => setMasterMenuOpen\(false\), masterMenuOpen\)/u)
   assert.match(rootSource, /document\.addEventListener\('pointerdown', onPointerDown\)/u, 'клик мимо закрывает меню')
   // В шапке больше нет ряда из пяти мастерских кнопок.
   assert.doesNotMatch(rootSource, /className="invite-button"[^\n]*Переиграть сцену/u)
   assert.doesNotMatch(rootSource, /className="invite-button"[^\n]*Играть дальше арками/u)
+})
+
+test('контекст кампании живёт в sidebar, верхняя полоса удалена, мобильное меню осталось доступным', () => {
+  assert.match(rootSource, /function Sidebar\([\s\S]*className="sidebar-context"/u)
+  assert.match(rootSource, /className="campaign-title sidebar-campaign"[^>]*onClick=\{onOpenCampaigns\}/u)
+  assert.match(rootSource, /className="mobile-menu icon-button"/u)
+  assert.doesNotMatch(rootSource, /<header className="topbar">/u)
+  assert.match(stylesSource, /\.sidebar-context\s*\{/u)
+  assert.match(stylesSource, /\.collapsed \.sidebar-context-action/u)
+})
+
+test('composer does not render a clarification banner and keeps the normal action placeholder', () => {
+  assert.doesNotMatch(appSource, /dialogueContext|onCancelDialogue|dialogue-context|Уточняем намерение|Новая заявка|Подтвердить шаг/u)
+  assert.match(appSource, /placeholder=\{[^\r\n]*'Что вы делаете\?'/u)
+  assert.doesNotMatch(stylesSource, /\.dialogue-context\b/u)
 })
 
 test('названия разделов сохранены, подписи к данным — обычным регистром', () => {

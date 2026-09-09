@@ -13,8 +13,6 @@ import { fileURLToPath } from 'node:url'
  * серверной валидации.
  */
 
-export const ASSET_REGISTRY_VERSION = 'skazanie:asset-registry-v1'
-
 export const ASSET_KINDS = Object.freeze(['prop', 'floor_tile', 'wall_segment', 'door_leaf', 'decal'])
 
 /**
@@ -152,6 +150,8 @@ const DECLARED = Object.freeze([
   // обязаны совпадать — сторож `test/scene-hazards.test.mjs`.
   entry('table_round', { baseFootprint: { w: 2, h: 2 }, blocksMove: true, cover: 'half', destructible: true, hp: 12, interactive: true, scaleRange: { min: 0.85, max: 1.15 } }),
   entry('table_long', { baseFootprint: { w: 3, h: 1 }, blocksMove: true, cover: 'half', destructible: true, hp: 15, interactive: true }),
+  entry('table_royal', { themes: ['royal'], baseFootprint: { w: 5, h: 2 }, blocksMove: true, cover: 'half', destructible: true, hp: 30, interactive: true }),
+  entry('royal_throne', { themes: ['royal'], baseFootprint: { w: 2, h: 2 }, blocksMove: true, cover: 'half', destructible: true, hp: 25, interactive: true }),
   entry('table_small', { blocksMove: true, cover: 'half', destructible: true, hp: 8, interactive: true }),
   entry('bench', { baseFootprint: { w: 2, h: 1 }, anchor: 'wall', destructible: true, hp: 8, interactive: true }),
   entry('chair', { destructible: true, hp: 5, scaleRange: { min: 0.85, max: 1.1 } }),

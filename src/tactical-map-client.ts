@@ -205,16 +205,23 @@ export function doorStates(map: TacticalMap) {
  * меняться вместе с ним: разойдись они, предпросмотр маршрута покажет путь
  * сквозь закрытую дверь, а сервер команду отклонит.
  *
- * Спрашивается только полотно двери. Стены на рёбрах движению пока не мешают —
- * проходимость считается по клетке.
+ * Спрашивается только полотно двери; общая преграда — movementStepBlocked.
  */
 export function doorBlocksStep(map: TacticalMap, ax: number, ay: number, bx: number, by: number): 'closed' | 'locked' | null {
   const edge = edgeBetween(map, ax, ay, bx, by)
   if (!edge || edge.kind !== 'door') return null
   const door = edge.doorId ? map.doors.find((entry) => entry.id === edge.doorId) : null
   const state = door?.state ?? 'closed'
-  if (state === 'open' || state === 'broken') return null
+  if ((state === 'open' || state === 'broken') && !door?.barricade) return null
   return state === 'locked' ? 'locked' : 'closed'
+}
+
+/** Зеркало серверной проверки двери и стены между двумя клетками пола. */
+export function movementStepBlocked(map: TacticalMap, ax: number, ay: number, bx: number, by: number): boolean {
+  const edge = edgeBetween(map, ax, ay, bx, by)
+  if (!edge) return false
+  if (edge.kind === 'door') return Boolean(doorBlocksStep(map, ax, ay, bx, by))
+  return edge.blocksMove === true && cellAt(map, ax, ay)?.passable === true && cellAt(map, bx, by)?.passable === true
 }
 
 /** Двери, до которых дотягивается стоящий в клетке: любое из четырёх её рёбер. */
@@ -463,6 +470,7 @@ function decodeDoor(value: unknown): TacticalDoor | null {
   const raw = value as Record<string, unknown>
   const id = text(raw.id, 120)
   if (!id) return null
+  const barricade = raw.barricade && typeof raw.barricade === 'object' ? raw.barricade as Record<string, unknown> : null
   return {
     id,
     x: boundedInteger(raw.x, 0, 0, MAX_WIDTH),
@@ -471,6 +479,11 @@ function decodeDoor(value: unknown): TacticalDoor | null {
     state: (DOOR_STATES.includes(raw.state as TacticalDoorState) ? raw.state : 'closed') as TacticalDoorState,
     lockDc: boundedInteger(raw.lockDc, 0, 0, 40),
     keyItemId: typeof raw.keyItemId === 'string' ? raw.keyItemId : null,
+    ...(barricade ? { barricade: {
+      material_item_id: text(barricade.material_item_id, 120), actor_id: text(barricade.actor_id, 120),
+      previous_state: (DOOR_STATES.includes(barricade.previous_state as TacticalDoorState) ? barricade.previous_state : 'open') as TacticalDoorState,
+      side_x: boundedInteger(barricade.side_x, 0, 0, MAX_WIDTH), side_y: boundedInteger(barricade.side_y, 0, 0, MAX_HEIGHT),
+    } } : {}),
   }
 }
 

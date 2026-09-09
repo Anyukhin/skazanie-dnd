@@ -2,17 +2,16 @@ import { cloneElement, useCallback, useEffect, useMemo, useRef, useState } from 
 import {
   BookOpen, ChevronDown, ChevronRight, Copy, Crown, DoorOpen,
   Dices, Flame, Footprints, Gem, History, Menu, MessageSquare,
-  PanelLeftClose, PanelLeftOpen, Plus, RotateCcw,
+  PanelLeftClose, PanelLeftOpen, Pause, Play, Plus, RotateCcw,
   ScrollText, Send, Settings, Shield, Sparkles, Swords, Target, Users, X,
   Check, Compass, SlidersHorizontal, Wifi, WifiOff,
   Heart, HeartCrack, HelpCircle,
-  Lock, LockKeyhole, LockOpen, LogOut, ShieldCheck, RefreshCw, Store,
+  Lock, LockKeyhole, LockOpen, LogOut, ShieldCheck, RefreshCw,
   Bot, PawPrint, Skull, WandSparkles, Globe2, Volume2, VolumeX, Bell, BellOff, ShieldAlert,
   Sun, Cloudy, CloudRain, CloudFog, CloudLightning,
 } from 'lucide-react'
-import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignRecap, CampaignRecapResponse, CampaignSummary, CharacterCreationCatalog, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, MapCell, MapFeedback, Merchant, Message, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp, WeatherConditionId, WeatherProjection } from './types'
+import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignRecap, CampaignRecapResponse, CampaignSummary, CharacterCreationCatalog, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, MapCell, MapFeedback, Merchant, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp, WeatherConditionId, WeatherProjection } from './types'
 import { fetchWithTimeout, getAiHealth, getCharacterCreationCatalog } from './ai-client'
-import type { NarrationPreview } from './ai-client'
 import {
   ABILITY_LABELS, DIFFICULTY_LABELS, ErrorToasts, HeroFaceInitials, PageHeader, SKILL_LABELS, UI_SCALE_MAX, UI_SCALE_MIN,
   REPUTATION_TIER_LABELS, UI_SCALE_PRESETS, battleEventText, canonicalLocationKey, clampUiScale,
@@ -26,6 +25,7 @@ import { AuthScreen } from './AuthScreen'
 import { CharacterEditor, InventoryView } from './InventoryViews'
 import { CharacterCreationWizard } from './CharacterCreationWizard'
 import { DiceTray } from './DiceTray'
+import { DiceRollScene, type DiceRollResult } from './DiceRollScene'
 import { useGameSession, type CommandOutcome, type ConnectionState, type EncounterAssemblyOptions, type ShopAssemblyOptions } from './useGameSession'
 import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
 import { atmosphereScreenAttenuation, atmosphereScreenFor } from './atmosphere-screen.mjs'
@@ -64,6 +64,7 @@ import {
   NEWBIE_GUIDE_DISMISSED_KEY,
   confirmedLevelUps,
   playerRoleLabel,
+  merchantForSceneNpc,
   battleEventParticipantIds,
   factionDisplayName,
   latestNpcTurnEvents,
@@ -119,15 +120,6 @@ function reachableBoardCells(state: GameState, actor: BoardCombatant, remainingF
     }
   }
   return result
-}
-
-function merchantIsAtLocation(merchantLocation: unknown, sceneLocation: unknown) {
-  const merchantObject = merchantLocation && typeof merchantLocation === 'object'
-    ? merchantLocation as { location_id?: unknown; location?: unknown }
-    : null
-  const merchantKey = canonicalLocationKey(merchantObject?.location ?? merchantLocation)
-  const merchantId = String(merchantObject?.location_id ?? '').trim()
-  return (!merchantKey && !merchantId) || locationsMatch(merchantLocation, sceneLocation)
 }
 
 function currentTurnActorId(state: GameState) {
@@ -195,8 +187,31 @@ function PlayerCard({ player, selected, turn, accessible, typing, deathSaves, st
   )
 }
 
-function Sidebar({ players, selectedPlayerId, turnPlayerId, accessibleHeroIds, typingActorIds, isAdmin, deathSavesByHero, statusByHero, onSelect, collapsed, onToggle, view, onNavigate, aiConnected }: {
-  players: Player[]; selectedPlayerId: string; turnPlayerId: string; accessibleHeroIds: string[]; typingActorIds: string[]; isAdmin: boolean; deathSavesByHero?: Record<string, { successes: number; failures: number; stable: boolean }>; statusByHero?: Record<string, HeroStatus>; onSelect: (id: string) => void; collapsed: boolean; onToggle: () => void; view: View; onNavigate: (view: View) => void; aiConnected: boolean
+type SidebarLifecycleAction = 'pause' | 'resume' | 'complete' | 'chain_arcs' | 'conclude_after_arc'
+type SidebarPacing = { phase: string; label: string; tension: number; title: string }
+type SidebarProgression = { milestonesSinceLevel: number; milestonesPerLevel: number; levelUpAvailable: boolean }
+type SidebarReputation = { label: string; known: boolean }
+
+function Sidebar({
+  players, selectedPlayerId, turnPlayerId, accessibleHeroIds, typingActorIds, isAdmin,
+  deathSavesByHero, statusByHero, onSelect, collapsed, onToggle, view, onNavigate,
+  campaignName, partyName, sessionCode, connectionState, pacing, progression, reputationStanding = [],
+  canManageLifecycle, lifecycleStatus, lifecycleBusy, onChangeLifecycle, inviteEnabled, onInvite,
+  masterMenuOpen, masterMenuRef, campaignControlBusy, arcChainEnabled, onToggleMasterMenu,
+  onRunCampaignControl, onOpenNewbieGuide, newbieGuideOpen, accountName, activeHeroName, onLogout,
+  onOpenCampaigns, onOpenLevelUp,
+}: {
+  players: Player[]; selectedPlayerId: string; turnPlayerId: string; accessibleHeroIds: string[]; typingActorIds: string[]; isAdmin: boolean
+  deathSavesByHero?: Record<string, { successes: number; failures: number; stable: boolean }>
+  statusByHero?: Record<string, HeroStatus>
+  onSelect: (id: string) => void; collapsed: boolean; onToggle: () => void; view: View; onNavigate: (view: View) => void
+  campaignName: string; partyName: string; sessionCode: string; connectionState: ConnectionState; pacing?: SidebarPacing | null
+  progression?: SidebarProgression | null; reputationStanding: SidebarReputation[]
+  canManageLifecycle: boolean; lifecycleStatus: string; lifecycleBusy: boolean; onChangeLifecycle: (action: SidebarLifecycleAction) => void
+  inviteEnabled: boolean; onInvite: () => void; masterMenuOpen: boolean; masterMenuRef: React.RefObject<HTMLDivElement | null>
+  campaignControlBusy: boolean; arcChainEnabled: boolean; onToggleMasterMenu: () => void
+  onRunCampaignControl: (action: 'rewind_turn' | 'replay_scene') => void; onOpenNewbieGuide: () => void; newbieGuideOpen: boolean
+  accountName: string; activeHeroName: string; onLogout: () => void; onOpenCampaigns: () => void; onOpenLevelUp: () => void
 }) {
   return (
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
@@ -212,6 +227,44 @@ function Sidebar({ players, selectedPlayerId, turnPlayerId, accessibleHeroIds, t
           {collapsed ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}
         </button>
       </div>
+      <section className="sidebar-context" aria-label="Состояние кампании">
+        <button className="campaign-title sidebar-campaign" data-tooltip="Переключить кампанию" onClick={onOpenCampaigns} title="Переключить кампанию или группу">
+          <Dices className="sidebar-campaign-icon" size={18} />
+          <span><small>КАМПАНИЯ · {partyName}</small><strong>{campaignName}</strong></span>
+          <ChevronDown size={15} />
+        </button>
+        <div className="sidebar-context-row">
+          <div className="session-code" title={`Код комнаты: ${sessionCode}`}><i /><span>КОМНАТА</span><b>{sessionCode}</b></div>
+          <ConnectionIndicator status={connectionState} />
+        </div>
+        {(pacing || progression || reputationStanding.length > 0) && <div className="sidebar-statuses">
+          {pacing && <div className={`director-status ${pacing.phase}`} data-tooltip={pacing.label} title={pacing.title}><Sparkles size={13} /><span>{pacing.label}</span><b>{pacing.tension}</b></div>}
+          {progression && progression.milestonesSinceLevel > 0 && (progression.levelUpAvailable
+            ? <button className="progression-status earned" data-tooltip="Уровень готов" onClick={onOpenLevelUp} title="Отряд заслужил уровень. Откройте лист героя, чтобы выбрать умения."><Sparkles size={13} /><span>Уровень готов</span></button>
+            : <div className="progression-status" data-tooltip="Вехи" title={`Вех до нового уровня: ${progression.milestonesSinceLevel} из ${progression.milestonesPerLevel}`}><Sparkles size={13} /><span>Вехи</span><b>{progression.milestonesSinceLevel}/{progression.milestonesPerLevel}</b></div>)}
+          {reputationStanding.length > 0 && <div className="reputation-status" data-tooltip="Слава" title={reputationStanding.map((entry) => entry.label).join('; ')}><Shield size={13} /><span>Слава</span><b>{reputationStanding.filter((entry) => entry.known).length || '—'}</b></div>}
+        </div>}
+        <div className="sidebar-context-actions">
+          {canManageLifecycle && lifecycleStatus === 'active' && <button className="invite-button sidebar-context-action" data-tooltip="Пауза" onClick={() => onChangeLifecycle('pause')} disabled={lifecycleBusy} title="Поставить кампанию на паузу"><Pause size={15} /><span>Пауза</span></button>}
+          {canManageLifecycle && lifecycleStatus === 'paused' && <button className="invite-button sidebar-context-action" data-tooltip="Продолжить" onClick={() => onChangeLifecycle('resume')} disabled={lifecycleBusy} title="Продолжить кампанию"><Play size={15} /><span>Продолжить</span></button>}
+          {inviteEnabled && <button className="invite-button sidebar-context-action" data-tooltip="Пригласить" onClick={onInvite} title="Пригласить игрока в комнату"><Users size={17} /><span>Пригласить</span></button>}
+          {canManageLifecycle && ['active', 'paused'].includes(lifecycleStatus) && <div className="master-menu sidebar-master-menu" ref={masterMenuRef}>
+            <button type="button" className={`invite-button master-menu-button sidebar-context-action ${masterMenuOpen ? 'open' : ''}`} data-tooltip="Мастер" aria-haspopup="menu" aria-expanded={masterMenuOpen} onClick={onToggleMasterMenu} title="Инструменты мастера"><Crown size={15} /><span>Мастер</span><ChevronDown size={14} /></button>
+            {masterMenuOpen && <div className="master-menu-list" role="menu" aria-label="Инструменты мастера">
+              <small>Ход</small>
+              {canManageLifecycle && ['active', 'paused'].includes(lifecycleStatus) && <button type="button" role="menuitem" onClick={() => { onToggleMasterMenu(); onRunCampaignControl('rewind_turn') }} disabled={campaignControlBusy || lifecycleBusy} title="Вернуть состояние к началу последней серверной команды"><RotateCcw size={15} />Откатить ход</button>}
+              {canManageLifecycle && ['active', 'paused'].includes(lifecycleStatus) && <button type="button" role="menuitem" onClick={() => { onToggleMasterMenu(); onRunCampaignControl('replay_scene') }} disabled={campaignControlBusy || lifecycleBusy} title="Вернуть состояние к началу текущей сцены"><History size={15} />Переиграть сцену</button>}
+              <small>Кампания</small>
+              {arcChainEnabled
+                ? <button type="button" role="menuitem" onClick={() => { onToggleMasterMenu(); onChangeLifecycle('conclude_after_arc') }} disabled={lifecycleBusy} title="Развязка текущей арки закончит кампанию эпилогом">Закончить на этой арке</button>
+                : <button type="button" role="menuitem" onClick={() => { onToggleMasterMenu(); onChangeLifecycle('chain_arcs') }} disabled={lifecycleBusy} title="Развязка арки откроет следующую теми же героями: снаряжение, слава и незакрытые нити переезжают">Играть дальше арками</button>}
+              <button type="button" role="menuitem" className="danger" onClick={() => { onToggleMasterMenu(); if (window.confirm('Завершить кампанию и создать эпилог? Это действие необратимо.')) onChangeLifecycle('complete') }} disabled={lifecycleBusy}>Завершить кампанию</button>
+            </div>}
+          </div>}
+          <button className="newbie-guide-button sidebar-context-action" data-tooltip="Шпаргалка новичка" onClick={onOpenNewbieGuide} aria-label="Открыть шпаргалку новичка" aria-pressed={newbieGuideOpen} title="Шпаргалка новичка"><HelpCircle size={17} /></button>
+          <div className="account-chip sidebar-account"><span>{accountName}<small>{activeHeroName}</small></span><button onClick={onLogout} title="Выйти" aria-label="Выйти из аккаунта"><LogOut size={15} /></button></div>
+        </div>
+      </section>
       <nav className="main-nav">
         <button className={`nav-item ${view === 'room' ? 'active' : ''}`} data-tooltip="Игровая комната" aria-label="Игровая комната" onClick={() => onNavigate('room')}><MapSymbol /><span>Игровая комната</span></button>
         <button className={`nav-item ${view === 'world-map' ? 'active' : ''}`} data-tooltip="Глобальная карта" aria-label="Глобальная карта" onClick={() => onNavigate('world-map')}><Globe2 size={18} /><span>Глобальная карта</span></button>
@@ -233,11 +286,6 @@ function Sidebar({ players, selectedPlayerId, turnPlayerId, accessibleHeroIds, t
       </div>
       <div className="sidebar-bottom">
         <button className={`nav-item ${view === 'settings' ? 'active' : ''}`} data-tooltip="Настройки" aria-label="Настройки" onClick={() => onNavigate('settings')}><Settings size={18} /><span>Настройки</span></button>
-        {/* Об исправном агенте сообщать нечего: он подключён почти всегда, и
-            плашка просто занимала угол. А вот демо-режим менять ожидания игрока
-            обязан — историю в нём ведёт локальный рассказчик. Кто именно
-            подключён и какая модель, видно в настройках. */}
-        {!aiConnected && <div className="demo-badge"><Sparkles size={14} /><span><b>Демо-режим</b><small>Локальный рассказчик</small></span></div>}
       </div>
     </aside>
   )
@@ -362,9 +410,7 @@ function SceneWeather({ weather }: { weather?: WeatherProjection }) {
   )
 }
 
-const RESET_CONFIRMATION = 'Снять бой и поднять героев только в этом окне?\n\nЭто диагностика интерфейса, а не команда миру: сервер такой правки не получит и не подтвердит её. Остальные за столом увидят прежнюю картину, а ближайший снимок состояния вернёт бой и раны и вам.'
-
-function SceneHeader({ title, location, objective, turn, chapter, illustration, illustrationKey, locationArtUrl, scenicBackdrop, merchants, wantedSigns, weather, canReset, onOpenMerchant, onReset }: {
+function SceneHeader({ title, location, objective, turn, chapter, illustration, illustrationKey, locationArtUrl, scenicBackdrop, wantedSigns, weather }: {
   title: string
   location: string
   objective: string
@@ -378,7 +424,6 @@ function SceneHeader({ title, location, objective, turn, chapter, illustration, 
    */
   locationArtUrl: string
   scenicBackdrop: boolean
-  merchants: Merchant[]
   /**
    * Приметы розыска: что мир показывает отряду вместо цифры. Строки приходят
    * готовыми из проекции (`server/law-and-order.mjs`) и растут со ступенью —
@@ -390,13 +435,6 @@ function SceneHeader({ title, location, objective, turn, chapter, illustration, 
    * крышей» приходят готовыми из проекции (`server/weather.mjs`).
    */
   weather?: WeatherProjection
-  /**
-   * Сброс — приборная диагностика вида, а не команда миру: сервер её не
-   * получает. Поэтому кнопка есть только у владельца кампании и у админа.
-   */
-  canReset: boolean
-  onOpenMerchant: () => void
-  onReset: () => void
 }) {
   const [objectiveExpanded, setObjectiveExpanded] = useState(false)
   // Готовой картинки у локации может и не быть — это норма, а не ошибка.
@@ -413,16 +451,6 @@ function SceneHeader({ title, location, objective, turn, chapter, illustration, 
     document.addEventListener('pointerdown', closeOutside)
     return () => document.removeEventListener('pointerdown', closeOutside)
   }, [objectiveExpanded])
-  // Торговец в сцене виден прямо в заголовке, а не только пунктом бокового меню:
-  // до него игрок доходит по карте, и предложение должно стоять там же, где он
-  // смотрит.
-  // Подписи у кнопки нет намеренно. Заголовок узкий: при 1280 px на всё про всё
-  // 594 px, и подпись «Подойти к торговцу: Мартен Рыжий» съедала 280 из них —
-  // название сцены обрезалось до «Точк…». Замерено в комнате: без подписи
-  // название получает свои 188 px и читается целиком. Текст действия и имя
-  // торговца живут в подсказке и в aria-label, а словесный пункт «Торговец»
-  // остаётся в боковом меню.
-  const merchantLabel = merchants.length === 1 ? `Подойти к торговцу: ${merchants[0].name}` : `Торговцев рядом: ${merchants.length}`
   return (
     <div className={`scene-header ${scenicBackdrop ? 'has-illustration' : ''}`}>
       {scenicBackdrop && <span key={`${illustrationKey}:${illustration.id}`} className="scene-illustration" aria-hidden="true">
@@ -449,9 +477,6 @@ function SceneHeader({ title, location, objective, turn, chapter, illustration, 
       {/* Время суток и погода стоят рядом с названием места: это часть ответа
           на вопрос «где мы», а не отдельная панель. */}
       <SceneWeather weather={weather} />
-      {/* Приглашение стоит до «текущей цели»: у неё `margin-left: auto`, и всё,
-          что после, уезжает вправо под кнопку сброса с `position: absolute`. */}
-      {merchants.length > 0 && <button className="scene-merchant" onClick={onOpenMerchant} aria-haspopup="dialog" aria-label={merchantLabel} title={merchantLabel}><Store size={16} /></button>}
       {/* Цель не помещается в строку заголовка и обрезается многоточием, а
           читать её игроку надо: замерено — из 571 px текста видно 311. Полная
           формулировка уходит в подсказку, иначе цель просто теряется. */}
@@ -460,16 +485,6 @@ function SceneHeader({ title, location, objective, turn, chapter, illustration, 
           остальные — в подсказке. Цифры ступени в проекции нет, и выводить её
           из числа строк клиенту нечем и незачем. */}
       {wantedSigns.length > 0 && <div className="scene-wanted" role="note" aria-label="Приметы розыска" title={wantedSigns.join('\n')}><ShieldAlert size={13} /><span>{wantedSigns[0]}</span></div>}
-      {/* Кнопка правит только эту вкладку: `reset` меняет локальный снимок и
-          ничего не отправляет серверу. Раньше она стояла у всех и обещала
-          «снять бой», после чего ближайший серверный снимок возвращал бой на
-          место — выглядело это как поломка. Теперь и права, и подтверждение, и
-          подпись говорят ровно то, что кнопка делает. */}
-      {canReset && <button
-        className="icon-button reset-button"
-        title="Диагностика вида: снять бой и поднять героев только в этом окне. Серверу правка не уходит — ближайший снимок состояния её отменит"
-        onClick={() => { if (window.confirm(RESET_CONFIRMATION)) onReset() }}
-      ><RotateCcw size={17} /></button>}
     </div>
   )
 }
@@ -494,15 +509,9 @@ function ProposalQuestion({ busy, answer, onAsk }: { busy: boolean; answer: stri
 function DiceCheckCard({ check, onRoll, onCancel, busy = false, children }: { check: PendingCheck; onRoll: () => void; onCancel: () => void; busy?: boolean; children?: React.ReactNode }) {
   const rolling = check.status === 'rolling'
   const resolving = check.status === 'resolving'
-  // Пока кость «катится», на грани мелькают случайные числа — сам результат
-  // приходит только с сервера и подставляется по завершении броска.
-  const [spinValue, setSpinValue] = useState(20)
-  useEffect(() => {
-    if (!rolling) return
-    const timer = window.setInterval(() => setSpinValue(1 + Math.floor(Math.random() * 20)), 76)
-    return () => window.clearInterval(timer)
-  }, [rolling])
-  const shownValue = check.result?.value ?? (rolling ? spinValue : 20)
+  // До ответа сервера карточка не показывает выдуманное число: результат
+  // принадлежит только `check.result`, а промежуточное вращение живёт в сцене.
+  const shownValue = check.result?.value ?? '?'
   const swing = check.advantage && !check.disadvantage ? 'преимущество' : check.disadvantage && !check.advantage ? 'помеха' : null
   return (
     <div className={`dice-check ${check.proposal ? 'has-proposal' : ''} ${rolling ? 'rolling' : ''} ${resolving ? 'resolving' : ''}`}>
@@ -514,19 +523,19 @@ function DiceCheckCard({ check, onRoll, onCancel, busy = false, children }: { ch
       {check.proposal && <div className="improvisation-proposal">
         <strong>{check.proposal.summary}</strong>
         {check.proposal.approach !== check.proposal.summary && <p>{check.proposal.approach}</p>}
-        <dl>
-          <div><dt>Цена попытки</dt><dd>{check.proposal.cost}</dd></div>
-          <div><dt>При успехе</dt><dd>{check.proposal.on_success}</dd></div>
-          <div><dt>При провале</dt><dd>{check.proposal.on_failure}</dd></div>
-        </dl>
+        <dl><div><dt>Цена</dt><dd>{check.proposal.cost}</dd></div>
+          <div><dt>Успех</dt><dd>{check.proposal.on_success}</dd></div>
+          <div><dt>Провал</dt><dd>{check.proposal.on_failure}</dd></div></dl>
       </div>}
       <button className="d20-button" onClick={onRoll} disabled={busy || check.status !== 'ready'} aria-label={`${check.result ? 'Повторить отправку результата' : check.proposal ? 'Подтвердить и бросить d20' : 'Бросить d20'}: ${check.label}`}>
         <i><b>{shownValue}</b><small>d20</small></i>
         <span>{rolling ? 'Кость катится…' : resolving ? `${check.result?.value} ${check.modifier >= 0 ? '+' : '−'} ${Math.abs(check.modifier)} = ${check.result?.total}` : check.result ? 'Повторить отправку результата' : check.proposal ? 'Подтвердить и бросить' : 'Бросить кубик'}</span>
       </button>
-      <button className="cancel-check" onClick={onCancel} disabled={busy || check.status === 'rolling' || (Boolean(check.proposal) && check.status === 'resolving')}>{check.result ? 'Закрыть проверку' : 'Отказаться от действия'}</button>
       <p>{resolving ? 'Рассказчик учитывает результат и продолжает сцену…' : check.proposal ? 'До подтверждения ход и ресурсы не расходуются. Можно отказаться и описать другой способ.' : 'Нажми на кость — что выпадет, то и будет.'}</p>
-      {children}
+      <div className="dice-check__footer">
+        {children}
+        <button className="cancel-check cancel-check--dismiss" onClick={onCancel} disabled={busy || check.status === 'rolling' || (Boolean(check.proposal) && check.status === 'resolving')}>{check.result ? 'Закрыть проверку' : 'Отказаться от действия'}</button>
+      </div>
     </div>
   )
 }
@@ -760,10 +769,100 @@ function ConnectionIndicator({ status }: { status: ConnectionState }) {
   </div>
 }
 
+type PendingCheckDiceScene = {
+  key: string
+  label: string
+  rolling: boolean
+  value: number
+  actualResult: DiceRollResult | null
+}
+
+function pendingCheckKey(check: Pick<PendingCheck, 'check_id' | 'playerId' | 'action'>) {
+  return check.check_id ?? `${check.playerId}:${check.action}`
+}
+
 function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; onAccountRefresh: () => Promise<Account | null>; onLogout: () => void }) {
   const gameSession = useGameSession()
   const { confirmPendingAction, cancelPendingAction } = gameSession
-  const { state, combatVisualBatch, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, narrationPreview, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, startRest, spendHitPointDie, completeRest, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, changeWeapon, operateDoor, operateSceneObject, captiveAction, lootContainer, beastAction, resolveGuardEncounter, proposeParley, settleParley, openTavernDiceRound, answerTavernDiceRound, leaveTavernDiceRound, orderTavernDrink, sendLetter, receiveNpcBlessing, useLevelTransition, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, attuneItem, activateItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, reset, updatePlayer, updateWorld } = gameSession
+  const { state, combatVisualBatch, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, attackNpc, startRest, spendHitPointDie, completeRest, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, changeWeapon, operateDoor, operateSceneObject, captiveAction, lootContainer, beastAction, resolveGuardEncounter, proposeParley, settleParley, openTavernDiceRound, answerTavernDiceRound, leaveTavernDiceRound, orderTavernDrink, sendLetter, receiveNpcBlessing, useLevelTransition, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, attuneItem, activateItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, updatePlayer, updateWorld } = gameSession
+  const [checkDiceScene, setCheckDiceScene] = useState<PendingCheckDiceScene | null>(null)
+  const checkDiceSceneRef = useRef<PendingCheckDiceScene | null>(null)
+  const checkDiceTimerRef = useRef<number | null>(null)
+  const checkRollInFlightRef = useRef<string | null>(null)
+  const [checkRollBusy, setCheckRollBusy] = useState(false)
+  const reducedMotion = systemPrefersReducedMotion()
+  const clearCheckDiceTimer = useCallback(() => {
+    if (checkDiceTimerRef.current !== null) window.clearTimeout(checkDiceTimerRef.current)
+    checkDiceTimerRef.current = null
+  }, [])
+  useEffect(() => () => clearCheckDiceTimer(), [clearCheckDiceTimer])
+  const closeCheckDiceScene = useCallback(() => {
+    clearCheckDiceTimer()
+    checkDiceSceneRef.current = null
+    setCheckDiceScene(null)
+  }, [clearCheckDiceTimer])
+  const startPendingCheckRoll = useCallback((check: PendingCheck) => {
+    if (check.status !== 'ready') return
+    const key = pendingCheckKey(check)
+    if (checkRollInFlightRef.current) return
+    clearCheckDiceTimer()
+    const actualResult = check.result
+      ? { value: check.result.value, modifier: check.result.modifier, total: check.result.total }
+      : null
+    const scene: PendingCheckDiceScene = {
+      key,
+      label: check.label,
+      rolling: !actualResult,
+      value: actualResult?.value ?? check.sides,
+      actualResult,
+    }
+    checkRollInFlightRef.current = key
+    checkDiceSceneRef.current = scene
+    setCheckDiceScene(scene)
+    setCheckRollBusy(true)
+    void rollPendingCheck().catch(() => undefined).finally(() => {
+      if (checkRollInFlightRef.current !== key) return
+      checkRollInFlightRef.current = null
+      setCheckRollBusy(false)
+    })
+  }, [clearCheckDiceTimer, rollPendingCheck])
+  useEffect(() => {
+    const scene = checkDiceSceneRef.current
+    if (!scene) return
+    const pending = state.pendingCheck
+    if (pending && pendingCheckKey(pending) === scene.key) {
+      if (pending.result) {
+        const actualResult: DiceRollResult = {
+          value: pending.result.value,
+          modifier: pending.result.modifier,
+          total: pending.result.total,
+        }
+        if (scene.rolling || scene.actualResult?.value !== actualResult.value || scene.actualResult.total !== actualResult.total) {
+          const next = { ...scene, rolling: false, value: actualResult.value, actualResult }
+          checkDiceSceneRef.current = next
+          setCheckDiceScene(next)
+        }
+      } else if (pending.status === 'ready' && !checkRollInFlightRef.current && !checkRollBusy) {
+        closeCheckDiceScene()
+      }
+      return
+    }
+    if (pending) {
+      closeCheckDiceScene()
+      return
+    }
+    if (!scene.actualResult) {
+      closeCheckDiceScene()
+      return
+    }
+    if (checkDiceTimerRef.current === null) {
+      checkDiceTimerRef.current = window.setTimeout(closeCheckDiceScene, 3_200)
+    }
+  }, [checkRollBusy, closeCheckDiceScene, state.pendingCheck])
+  useEffect(() => {
+    const pending = state.pendingCheck
+    if (!checkRollBusy && checkDiceSceneRef.current?.rolling && (!pending || (pending.status === 'ready' && !pending.result))) closeCheckDiceScene()
+  }, [checkRollBusy, closeCheckDiceScene, state.pendingCheck])
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth <= 920)
   const [inviteOpen, setInviteOpen] = useState(false)
   // Меню «Мастер» в шапке: закрывается Escape, кликом мимо и после любого выбора.
@@ -778,8 +877,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     document.addEventListener('pointerdown', onPointerDown)
     return () => document.removeEventListener('pointerdown', onPointerDown)
   }, [masterMenuOpen])
-  const [merchantOpen, setMerchantOpen] = useState(false)
-  const [preferredMerchantId, setPreferredMerchantId] = useState<string | null>(null)
+  const [merchantSelection, setMerchantSelection] = useState<{ id: string; context: string } | null>(null)
   const requestedRoomAtEntry = useRef(new URLSearchParams(window.location.search).get('room')?.toUpperCase() ?? '')
   const [campaignsOpen, setCampaignsOpen] = useState(() => new URLSearchParams(window.location.search).get('combatLab') !== '1' && shouldAutoOpenCampaignModal({
     heroCount: account.heroIds.length,
@@ -811,8 +909,6 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     window.localStorage.getItem(NEWBIE_GUIDE_DISMISSED_KEY) !== 'true'
   ))
   const [levelUpCelebration, setLevelUpCelebration] = useState<ConfirmedLevelUp | null>(null)
-  const [cinematicNarration, setCinematicNarration] = useState<Message | null>(null)
-  const [dismissedNarrationPreviewId, setDismissedNarrationPreviewId] = useState('')
   // Смена сцены объявляется плашкой: сервер менял карту молча, и игрок, нажав
   // «покинуть локацию», не понимал, что уже стоит в другом месте.
   const [sceneNotice, setSceneNotice] = useState<SceneTransitionNotice | null>(null)
@@ -852,21 +948,6 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const screenMusicRef = useRef<ScreenMusicPlayer | null>(null)
   const normalDocumentTitle = useRef(document.title || DEFAULT_DOCUMENT_TITLE)
   const latestNarratorMessage = [...state.messages].reverse().find((message) => message.speaker === 'narrator')
-  const visibleNarrationPreview = narrationPreview
-    && !state.pendingCheck
-    && !state.pendingAction
-    && narrationPreview.replayed !== true
-    && narrationPreview.phase !== 'aborted'
-    && narrationPreview.phase !== 'replaced'
-    && narrationPreview.messageId !== dismissedNarrationPreviewId
-    ? narrationPreview
-    : null
-  const cinematicNarrationId = visibleNarrationPreview?.messageId ?? cinematicNarration?.id ?? ''
-  const cinematicNarrationText = visibleNarrationPreview?.text ?? cinematicNarration?.text ?? ''
-  const cinematicNarrationCursor = useRef({
-    sessionCode: state.sessionCode,
-    narratorMessageId: latestNarratorMessage?.id ?? '',
-  })
   const sceneTheme = useMemo(() => resolveSceneTheme(state), [state.scene])
   const sceneLocationKey = state.scene.location_id ?? state.scene.location
   const sceneIllustration = useMemo(
@@ -883,8 +964,6 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const locationArtUrl = locationArtId
     ? `/api/campaigns/${state.sessionCode}/locations/${encodeURIComponent(locationArtId)}/illustration`
     : ''
-  const combatWasActive = useRef(false)
-  const merchantLocation = useRef(state.scene.location)
   const joinAttempted = useRef(false)
   const isAdmin = account.role === 'admin'
   const partyIdSet = new Set(state.partyMemberIds?.length ? state.partyMemberIds : state.players.map((player) => player.id))
@@ -924,6 +1003,15 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const ownedHeroIds = (currentMembership?.heroIds ?? account.heroIds ?? []).filter((id) => partyIdSet.has(id))
   const [selectedHeroId, setSelectedHeroId] = useState(accessibleHeroIds[0])
   const activePlayer = partyPlayers.find((player) => player.id === selectedHeroId && accessibleHeroIds.includes(player.id)) ?? partyPlayers.find((player) => accessibleHeroIds.includes(player.id)) ?? partyPlayers[0] ?? state.players[0]
+  const merchantContext = JSON.stringify([state.sessionCode, state.scene.location_id, state.scene.location, state.scene.level?.index, activePlayer?.id, view])
+  const selectedMerchant = merchantSelection?.context === merchantContext
+    && activePlayer && accessibleHeroIds.includes(activePlayer.id)
+    && !activePlayer.characterSetupRequired && activePlayer.hp > 0 && lifecycleStatus === 'active'
+    ? merchantForSceneNpc(state, merchantSelection.id)
+    : null
+  useEffect(() => {
+    if (merchantSelection && !selectedMerchant) setMerchantSelection(null)
+  }, [merchantSelection, selectedMerchant])
   const alertTurnActorId = currentTurnActorId(state)
   const alertCombatActive = Boolean(state.mechanics?.combat?.active && state.mechanics.combat.initiative?.length)
   const alertActorName = partyPlayers.find((player) => player.id === alertTurnActorId)?.character ?? 'герой'
@@ -1255,49 +1343,6 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     atmosphereAudioRef.current?.setWaiting(state.isNarrating)
   }, [state.isNarrating])
   useEffect(() => {
-    const cursor = cinematicNarrationCursor.current
-    if (cursor.sessionCode !== state.sessionCode) {
-      cinematicNarrationCursor.current = {
-        sessionCode: state.sessionCode,
-        narratorMessageId: latestNarratorMessage?.id ?? '',
-      }
-      setCinematicNarration(null)
-      return
-    }
-    if (!latestNarratorMessage || cursor.narratorMessageId === latestNarratorMessage.id) return
-    cursor.narratorMessageId = latestNarratorMessage.id
-    if (narrationPreview?.messageId === latestNarratorMessage.id) {
-      setCinematicNarration(null)
-      return
-    }
-    setCinematicNarration(latestNarratorMessage)
-    const duration = Math.min(12_000, Math.max(5_200, latestNarratorMessage.text.length * 32))
-    const handle = window.setTimeout(() => {
-      setCinematicNarration((current) => current?.id === latestNarratorMessage.id ? null : current)
-    }, duration)
-    return () => window.clearTimeout(handle)
-  }, [latestNarratorMessage?.id, narrationPreview?.messageId, state.sessionCode])
-  useEffect(() => {
-    const combatActive = Boolean(state.mechanics?.combat?.active)
-    // Начавшийся бой закрывает лавку: торговля посреди инициативы — это окно
-    // поверх боя, за которым не видно ни карты, ни своего хода. Хронику бой
-    // больше не сворачивает: в новой колонке она и есть колонка.
-    if (combatActive && !combatWasActive.current) setMerchantOpen(false)
-    combatWasActive.current = combatActive
-  }, [state.mechanics?.combat?.active])
-  useEffect(() => {
-    // Отряд сменил локацию — открытая лавка закрывается сама: на экране иначе
-    // остаётся торговец, которого рядом уже нет. Сторожим именно смену места, а
-    // не отсутствие торговца: окно с объяснением «здесь торговцев нет» открывать
-    // можно и нужно, и захлопываться сразу же оно не должно.
-    const location = state.scene.location
-    if (merchantLocation.current !== location) {
-      merchantLocation.current = location
-      setMerchantOpen(false)
-      setPreferredMerchantId(null)
-    }
-  }, [state.scene.location])
-  useEffect(() => {
     // Плашка смены сцены сравнивает два снимка: первая загрузка кампании и
     // смена комнаты — не переход, объявлять там нечего.
     const notice = sceneTransitionNotice(previousSceneState.current, state)
@@ -1366,9 +1411,11 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   }
   // Лавка не меняет раздел: она ложится поверх того, что игрок и так смотрит.
   // Узкое меню при этом сворачивается — иначе на телефоне оно перекроет окно.
-  const openMerchant = (merchantId?: string) => {
-    setPreferredMerchantId(merchantId ?? null)
-    setMerchantOpen(true)
+  const openMerchant = (merchantId: string) => {
+    if (!merchantForSceneNpc(state, merchantId) || tacticalBusy || merchantBusy || state.isNarrating
+      || !activePlayer || activePlayer.characterSetupRequired || activePlayer.hp <= 0
+      || !accessibleHeroIds.includes(activePlayer.id) || lifecycleStatus !== 'active') return
+    setMerchantSelection({ id: merchantId, context: merchantContext })
     if (window.innerWidth <= 680) setSidebarCollapsed(true)
   }
   const changeAmbientVolume = (value: number) => {
@@ -1443,13 +1490,6 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     )
   }
 
-  const availableMerchants = (state.merchants ?? []).filter((merchant) => merchant.available && merchantIsAtLocation(merchant, state.scene))
-  const preferredMerchant = preferredMerchantId
-    ? availableMerchants.find((merchant) => merchant.id === preferredMerchantId)
-    : undefined
-  const merchantScreenMerchants = preferredMerchant
-    ? [preferredMerchant, ...availableMerchants.filter((merchant) => merchant.id !== preferredMerchant.id)]
-    : availableMerchants
   const combatActive = Boolean(state.mechanics?.combat?.active && state.mechanics.combat.initiative?.length)
   const turnActorId = currentTurnActorId(state)
   const turnPlayer = partyPlayers.find((player) => player.id === turnActorId)
@@ -1517,57 +1557,61 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
       '--ui-sidebar-width': `${Math.round(256 + Math.max(0, uiScale - 100) * .4)}px`,
       '--ui-hud-width': `${Math.round(246 + Math.max(0, uiScale - 100) * .25)}px`,
     } as React.CSSProperties}>
-      <Sidebar players={partyPlayers} selectedPlayerId={activePlayer.id} turnPlayerId={turnActorId} accessibleHeroIds={accessibleHeroIds} typingActorIds={visibleTypingActorIds} isAdmin={isAdmin} deathSavesByHero={state.mechanics?.death?.saving_throws} statusByHero={heroStatusByHero} onSelect={setSelectedHeroId} collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(value => !value)} view={view} onNavigate={navigate} aiConnected={Boolean(aiHealth?.configured)} />
+      <Sidebar
+        players={partyPlayers}
+        selectedPlayerId={activePlayer.id}
+        turnPlayerId={turnActorId}
+        accessibleHeroIds={accessibleHeroIds}
+        typingActorIds={visibleTypingActorIds}
+        isAdmin={isAdmin}
+        deathSavesByHero={state.mechanics?.death?.saving_throws}
+        statusByHero={heroStatusByHero}
+        onSelect={setSelectedHeroId}
+        collapsed={sidebarCollapsed}
+        onToggle={() => setSidebarCollapsed(value => !value)}
+        view={view}
+        onNavigate={navigate}
+        campaignName={state.campaign}
+        partyName={state.partyName ?? ''}
+        sessionCode={state.sessionCode ?? ''}
+        connectionState={connectionState}
+        pacing={pacing && pacing.beat > 0 ? {
+          phase: pacing.phase,
+          label: pacingLabels[pacing.phase],
+          tension: pacing.tension,
+          title: lastTravel ? `Последний путь: ${lastTravel.from} → ${lastTravel.to}, ${lastTravel.duration_minutes} мин., риск ${lastTravel.risk_score}` : 'Серверный темп автономной кампании',
+        } : null}
+        progression={progression ? {
+          milestonesSinceLevel: progression.milestones_since_level,
+          milestonesPerLevel: progression.milestones_per_level,
+          levelUpAvailable: progression.level_up_available,
+        } : null}
+        reputationStanding={reputationStanding.map((entry) => ({
+          label: `${entry.faction_id} — ${REPUTATION_TIER_LABELS[entry.tier]}`,
+          known: entry.tier !== 'unknown',
+        }))}
+        canManageLifecycle={canManageLifecycle}
+        lifecycleStatus={lifecycleStatus}
+        lifecycleBusy={lifecycleBusy}
+        onChangeLifecycle={(action) => { void changeLifecycle(action) }}
+        inviteEnabled={canManageLifecycle && lifecycleStatus === 'active'}
+        onInvite={() => setInviteOpen(true)}
+        masterMenuOpen={masterMenuOpen}
+        masterMenuRef={masterMenuRef}
+        campaignControlBusy={campaignControlBusy}
+        arcChainEnabled={arcChainEnabled}
+        onToggleMasterMenu={() => setMasterMenuOpen((value) => !value)}
+        onRunCampaignControl={(action) => { void runCampaignControl(action) }}
+        onOpenNewbieGuide={() => setNewbieGuideOpen(true)}
+        newbieGuideOpen={newbieGuideOpen}
+        accountName={account.name}
+        activeHeroName={activePlayer.character}
+        onLogout={onLogout}
+        onOpenCampaigns={() => setCampaignsOpen(true)}
+        onOpenLevelUp={() => openHeroEditor(ownedHeroIds[0] ?? accessibleHeroIds[0] ?? activePlayer.id, 'levelup')}
+      />
       <main className="game-main">
-        <header className="topbar">
-          <button className="mobile-menu icon-button" onClick={() => setSidebarCollapsed(value => !value)} aria-label={sidebarCollapsed ? 'Открыть меню' : 'Закрыть меню'} aria-expanded={!sidebarCollapsed}><Menu size={20} /></button>
-          <button className="campaign-title" onClick={() => setCampaignsOpen(true)} title="Переключить кампанию или группу"><span>КАМПАНИЯ · {state.partyName}</span><strong>{state.campaign}</strong><ChevronDown size={15} /></button>
-          <div className="top-actions">
-            {/* Подпись в отдельном span: на узкой верхней панели её прячут, а
-                сам код обязан оставаться читаемым — по нему зовут в игру. */}
-            <div className="session-code" title={`Код комнаты: ${state.sessionCode}`}><i /><span>КОМНАТА</span><b>{state.sessionCode}</b></div>
-            <ConnectionIndicator status={connectionState} />
-            {pacing && pacing.beat > 0 && <div className={`director-status ${pacing.phase}`} title={lastTravel ? `Последний путь: ${lastTravel.from} → ${lastTravel.to}, ${lastTravel.duration_minutes} мин., риск ${lastTravel.risk_score}` : 'Серверный темп автономной кампании'}><Sparkles size={13} /><span>{pacingLabels[pacing.phase]}</span><b>{pacing.tension}</b></div>}
-            {progression && progression.milestones_since_level > 0 && (progression.level_up_available
-              ? <button
-                  className="progression-status earned"
-                  onClick={() => openHeroEditor(ownedHeroIds[0] ?? accessibleHeroIds[0] ?? activePlayer.id, 'levelup')}
-                  title="Отряд заслужил уровень. Откройте лист героя, чтобы выбрать умения."
-                ><Sparkles size={13} /><span>Уровень готов</span></button>
-              : <div
-                  className="progression-status"
-                  title={`Вех до нового уровня: ${progression.milestones_since_level} из ${progression.milestones_per_level}`}
-                ><span>Вехи</span><b>{progression.milestones_since_level}/{progression.milestones_per_level}</b></div>)}
-            {reputationStanding.length > 0 && <div
-              className="reputation-status"
-              title={`Слава отряда: ${reputationStanding.map((entry) => `${entry.faction_id} — ${REPUTATION_TIER_LABELS[entry.tier]}`).join('; ')}`}
-            ><span>Слава</span><b>{reputationStanding.filter((entry) => entry.tier !== 'unknown').length || '—'}</b></div>}
-            {/* Мастерские инструменты: на виду остаются самое частое — пауза и
-                приглашение, — а откат, переигровка, арки и завершение лежат в
-                меню «Мастер»: семь кнопок в ряд делали шапку самой шумной
-                полосой экрана, а опасное «Завершить» стояло в одном клике. */}
-            {canManageLifecycle && lifecycleStatus === 'active' && <button className="invite-button" onClick={() => { void changeLifecycle('pause') }} disabled={lifecycleBusy}>Пауза</button>}
-            {canManageLifecycle && lifecycleStatus === 'paused' && <button className="invite-button" onClick={() => { void changeLifecycle('resume') }} disabled={lifecycleBusy}>Продолжить</button>}
-            {canManageLifecycle && lifecycleStatus === 'active' && <button className="invite-button" onClick={() => setInviteOpen(true)}><Users size={17} />Пригласить</button>}
-            {canManageLifecycle && ['active', 'paused'].includes(lifecycleStatus) && <div className="master-menu" ref={masterMenuRef}>
-              <button type="button" className={`invite-button master-menu-button ${masterMenuOpen ? 'open' : ''}`} aria-haspopup="menu" aria-expanded={masterMenuOpen} onClick={() => setMasterMenuOpen((value) => !value)}><Crown size={15} />Мастер<ChevronDown size={14} /></button>
-              {masterMenuOpen && <div className="master-menu-list" role="menu" aria-label="Инструменты мастера">
-                <small>Ход</small>
-                {canManageLifecycle && ['active', 'paused'].includes(lifecycleStatus) && <button type="button" role="menuitem" onClick={() => { setMasterMenuOpen(false); void runCampaignControl('rewind_turn') }} disabled={campaignControlBusy || lifecycleBusy} title="Вернуть состояние к началу последней серверной команды"><RotateCcw size={15} />Откатить ход</button>}
-                {canManageLifecycle && ['active', 'paused'].includes(lifecycleStatus) && <button type="button" role="menuitem" onClick={() => { setMasterMenuOpen(false); void runCampaignControl('replay_scene') }} disabled={campaignControlBusy || lifecycleBusy} title="Вернуть состояние к началу текущей сцены"><History size={15} />Переиграть сцену</button>}
-                <small>Кампания</small>
-                {/* Выбор объявляется заранее: развязку арки сервер закрывает сам, и
-                    в этот момент спрашивать стол уже поздно. */}
-                {arcChainEnabled
-                  ? <button type="button" role="menuitem" onClick={() => { setMasterMenuOpen(false); void changeLifecycle('conclude_after_arc') }} disabled={lifecycleBusy} title="Развязка текущей арки закончит кампанию эпилогом">Закончить на этой арке</button>
-                  : <button type="button" role="menuitem" onClick={() => { setMasterMenuOpen(false); void changeLifecycle('chain_arcs') }} disabled={lifecycleBusy} title="Развязка арки откроет следующую теми же героями: снаряжение, слава и незакрытые нити переезжают">Играть дальше арками</button>}
-                <button type="button" role="menuitem" className="danger" onClick={() => { setMasterMenuOpen(false); if (window.confirm('Завершить кампанию и создать эпилог? Это действие необратимо.')) void changeLifecycle('complete') }} disabled={lifecycleBusy}>Завершить кампанию</button>
-              </div>}
-            </div>}
-            <button className="newbie-guide-button" onClick={() => setNewbieGuideOpen(true)} aria-label="Открыть шпаргалку новичка" aria-pressed={newbieGuideOpen} title="Шпаргалка новичка"><HelpCircle size={17} /></button>
-            <div className="account-chip"><span>{account.name}<small>{activePlayer.character}</small></span><button onClick={onLogout} title="Выйти"><LogOut size={15} /></button></div>
-          </div>
-        </header>
+        <button className="mobile-menu icon-button" onClick={() => setSidebarCollapsed(value => !value)} aria-label={sidebarCollapsed ? 'Открыть меню' : 'Закрыть меню'} aria-expanded={!sidebarCollapsed}><Menu size={20} /></button>
         {view === 'room' && <div className={`game-area ${combatActive ? 'combat-active' : 'exploration-active'} ${state.isNarrating ? 'is-narrating' : ''} ${needsHeroSetup ? 'needs-hero-setup' : ''}`}>
           {needsHeroSetup && <section className="hero-setup-notice" aria-label="Подготовка героя">
             <div><strong>{activePlayer.characterSetupStage === 'leveling' ? `Подготовьте героя к ${(state.character_start_level ?? 1)}-му уровню` : 'Создайте героя, чтобы начать приключение'}</strong>
@@ -1598,8 +1642,6 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             typingActorId={activePlayer.id}
             canConverse={accessibleHeroIds.includes(activePlayer.id)}
             dialogueBusy={tacticalBusy || merchantBusy}
-            onCancelDialogue={gameSession.cancelDialogue}
-            dialogueContext={gameSession.pendingClarification?.actor_id === activePlayer.id && gameSession.pendingClarification.campaign_id === state.sessionCode ? gameSession.pendingClarification : null}
             dialogueDraft={gameSession.dialogueDraft?.actorId === activePlayer.id && gameSession.dialogueDraft.campaignId === state.sessionCode ? gameSession.dialogueDraft : null}
             canAct={canAct && !state.pendingCheck && !state.pendingAction}
             tacticalBusy={tacticalBusy || Boolean(state.pendingCheck || state.pendingAction)}
@@ -1610,6 +1652,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             combatAnimations={combatAnimations}
             visualBatch={combatVisualBatch}
             onStartCombat={() => startCombat(activePlayer.id)}
+            onNpcAttack={(npcId) => attackNpc(activePlayer.id, npcId)}
             onMove={movePlayer}
             onAttack={attackEnemy}
             onAreaAttack={throwAreaItem}
@@ -1644,7 +1687,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onTypingChange={updateTypingPresence}
             narrating={state.isNarrating}
             playerHud={<PlayerHud player={mapHero ?? activePlayer} combatActive={combatActive} status={heroStatusByHero[(mapHero ?? activePlayer).id]} hazards={((state.mechanics as { hazards?: Record<string, Array<{ id: string; label?: string; severity?: string; description?: string }>> } | undefined)?.hazards?.[(mapHero ?? activePlayer).id] ?? [])} onCharacter={() => openHeroEditor((mapHero ?? activePlayer).id)} onInventory={() => navigate('inventory')} />}
-            statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} illustration={sceneIllustration} illustrationKey={sceneLocationKey} locationArtUrl={locationArtUrl} scenicBackdrop={scenicBackdrop} merchants={combatActive ? [] : availableMerchants} wantedSigns={state.law?.signs ?? []} weather={state.weather_by_actor?.[activePlayer.id] ?? state.weather} canReset={canManageLifecycle || isAdmin} onOpenMerchant={() => openMerchant()} onReset={reset} />}
+            statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} illustration={sceneIllustration} illustrationKey={sceneLocationKey} locationArtUrl={locationArtUrl} scenicBackdrop={scenicBackdrop} wantedSigns={state.law?.signs ?? []} weather={state.weather_by_actor?.[activePlayer.id] ?? state.weather} />}
           >
             <ChatPanel messages={state.messages} isNarrating={state.isNarrating} interaction={state.agentInteraction} players={partyPlayers} typingActorIds={visibleTypingActorIds} currentPlayerId={activePlayer.id} canAct={canAct} combatActive={combatActive} suggestedActions={actionHints} sceneKey={`${state.scene.location}|${state.scene.title}`} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={() => continueAgentInteraction(activePlayer.id)} onWhy={() => { void submitAction('/why', activePlayer.id) }} onSpeak={voiceSupported && voiceMode !== 'off' ? (text) => speakNarration(text, narrationVoice) : null} />
           </DungeonMap>
@@ -1671,7 +1714,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           onActivate={(itemId, activated) => activateItem(activePlayer.id, itemId, activated)}
         />}
         {view === 'settings' && <SettingsView health={aiHealth} campaignAi={campaignAi} campaignAiBusy={campaignAiBusy} campaignAiError={campaignAiError} uiScale={uiScale} autoAttackRoll={autoAttackRoll} scenicBackdrop={scenicBackdrop} boardLighting={boardLighting} combatAnimations={combatAnimations} atmosphereSettings={atmosphereSettings} notificationPermission={notificationPermission} voiceMode={voiceMode} voiceSupported={voiceSupported} onVoiceModeChange={setVoiceMode} actionHintsEnabled={actionHintsEnabled} onActionHintsEnabledChange={setActionHintsEnabled} onCampaignAiChange={(patch) => { void updateCampaignAi(patch) }} onCampaignRulesetChange={(rulesetId) => { void updateCampaignRuleset(rulesetId) }} onUiScaleChange={setUiScale} onAutoAttackRollChange={setAutoAttackRoll} onScenicBackdropChange={setScenicBackdrop} onBoardLightingChange={setBoardLighting} onCombatAnimationsChange={setCombatAnimations} onAmbientVolumeChange={changeAmbientVolume} onAtmosphereMutedChange={changeAtmosphereMuted} onRequestNotifications={() => { void requestTurnNotifications() }} />}
-        {view === 'admin' && isAdmin && <AdminView account={account} state={state} onUpdateWorld={updateWorld} onAssembleEncounter={assembleEncounter} onAssembleMerchant={assembleMerchant} onMoveMerchant={moveMerchant} onSetMerchantAvailability={setMerchantAvailability} onReset={reset} />}
+        {view === 'admin' && isAdmin && <AdminView account={account} state={state} onUpdateWorld={updateWorld} onAssembleEncounter={assembleEncounter} onAssembleMerchant={assembleMerchant} onMoveMerchant={moveMerchant} onSetMerchantAvailability={setMerchantAvailability} />}
         {view === 'combat-lab' && isAdmin && <CombatLabView />}
       </main>
       {/* Рассказчик и требование броска стоят поверх ЛЮБОГО раздела, а не
@@ -1680,6 +1723,17 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           броске, только вернувшись на карту. Слой прижат к рабочей области
           (боковое меню слева, в комнате — правая колонка справа), поэтому
           прежние отступы карточек внутри него не изменились. */}
+      {checkDiceScene && <DiceRollScene
+        key={checkDiceScene.key}
+        sides={20}
+        value={checkDiceScene.value}
+        actualResult={checkDiceScene.actualResult}
+        rolling={checkDiceScene.rolling}
+        reducedMotion={reducedMotion}
+        title="Проверка"
+        playerName={checkDiceScene.label}
+        onClose={closeCheckDiceScene}
+      />}
       <div className={`scene-overlay-layer ${view === 'room' ? 'beside-server-column' : ''}`}>
         {sceneNotice && <SceneTransitionBanner key={sceneNotice.key} notice={sceneNotice} onClose={closeSceneNotice} />}
         {leavePickerOpen && view === 'room' && !combatActive && <LeaveLocationPicker
@@ -1690,14 +1744,6 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           onOpenWorldMap={() => { setLeavePickerOpen(false); navigate('world-map') }}
           onClose={() => setLeavePickerOpen(false)}
         />}
-        {cinematicNarrationId && !state.pendingCheck && !state.pendingAction && <section key={cinematicNarrationId} className={`cinematic-narration ${visibleNarrationPreview ? `phase-${visibleNarrationPreview.phase}` : 'phase-committed'}`} role="status" aria-live="polite">
-          <header><Sparkles size={16} /><span>РАССКАЗЧИК</span><button type="button" onClick={() => {
-            if (visibleNarrationPreview) setDismissedNarrationPreviewId(visibleNarrationPreview.messageId)
-            else setCinematicNarration(null)
-          }} aria-label="Скрыть текст сцены"><X size={15} /></button></header>
-          <p>{cinematicNarrationText || 'Сцена складывается…'}</p>
-          <small><ScrollText size={13} />{visibleNarrationPreview?.phase === 'streaming' || visibleNarrationPreview?.phase === 'start' ? 'Текст приходит от Рассказчика…' : 'Сохранено в журнале кампании'}</small>
-        </section>}
         {state.pendingAction && <details className="pending-check-overlay" aria-label="План боевого манёвра" aria-live="polite" open>
           <summary><Footprints size={15} /><span>План манёвра · {state.pendingAction.proposal.movement_feet} фт</span><ChevronDown size={16} /></summary>
           {canAct && state.pendingAction.playerId === activePlayer.id ? <div className="dice-check has-proposal">
@@ -1719,7 +1765,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           <details key={state.pendingCheck.check_id ?? state.pendingCheck.action} className="pending-check-overlay" open aria-live="polite">
             <summary><Dices size={15} /><span>Ожидающая проверка</span><ChevronDown size={16} /></summary>
             {canAct && state.pendingCheck.playerId === activePlayer.id
-              ? <DiceCheckCard check={state.pendingCheck} onRoll={rollPendingCheck} onCancel={cancelPendingCheck} busy={state.isNarrating}>
+              ? <DiceCheckCard check={state.pendingCheck} onRoll={() => startPendingCheckRoll(state.pendingCheck!)} onCancel={cancelPendingCheck} busy={state.isNarrating || checkRollBusy}>
                 {state.pendingCheck.status === 'ready' && !state.pendingCheck.result && !state.pendingCheck.command && <button className="cancel-check" disabled={state.isNarrating} onClick={gameSession.editPendingProposal}>Изменить способ</button>}
                 {state.pendingCheck.status === 'ready' && !state.pendingCheck.result && <ProposalQuestion busy={state.isNarrating} answer={gameSession.lastDialogueAnswer} onAsk={(text) => submitAction(text, state.pendingCheck!.playerId, undefined, 'question')} />}
               </DiceCheckCard>
@@ -1737,7 +1783,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         { text: lifecycleError },
         { text: tacticalError, onDismiss: clearTacticalError },
       ]} />
-      {merchantOpen && <MerchantScreen merchants={merchantScreenMerchants} player={activePlayer} sceneLocation={state.scene.location} stateVersion={state.state_version ?? 0} view={merchantView} narration={merchantNarration} busy={merchantBusy} error={merchantError} onLoad={loadMerchant} onBargain={bargainWithMerchant} onBuy={buyFromMerchant} onSell={sellToMerchant} onAppraise={appraiseWithMerchant} onService={purchaseMerchantService} onClose={() => setMerchantOpen(false)} />}
+      {selectedMerchant && <MerchantScreen key={merchantContext + selectedMerchant.id} merchant={selectedMerchant} player={activePlayer} sceneLocation={state.scene.location} stateVersion={state.state_version ?? 0} view={merchantView} narration={merchantNarration} busy={merchantBusy} error={merchantError} onLoad={loadMerchant} onBargain={bargainWithMerchant} onBuy={buyFromMerchant} onSell={sellToMerchant} onAppraise={appraiseWithMerchant} onService={purchaseMerchantService} onClose={() => setMerchantSelection(null)} />}
       {inviteOpen && <InviteModal code={state.sessionCode} onClose={() => setInviteOpen(false)} />}
       {campaignsOpen && <CampaignModal state={state} rulesets={aiHealth?.installedRulesets} onSwitch={switchCampaign} onAccountRefresh={onAccountRefresh} onCreateHero={setCreatingPlayerId} onWizardChange={setWorldWizardOpen} onClose={() => setCampaignsOpen(false)} />}
       {creatingPlayerId && (characterCreationCatalog ?? (state.ruleset_id !== 'dnd_5e_2014' ? aiHealth?.characterCreation : null)) && <CharacterCreationWizard

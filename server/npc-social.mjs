@@ -234,6 +234,21 @@ export function npcSpeechProfile(value = {}) {
   return { pace, lexicon, mannerism }
 }
 
+/** Безопасная выжимка целей NPC: мотивы никогда не передаются модели текстом. */
+export function npcBehaviorPolicy(profile = {}, relationship = 0) {
+  const source = [...(profile.goals ?? []), ...(profile.beliefs ?? [])].join(' ').toLocaleLowerCase('ru')
+  const protective = /защит|сохран|берег|страж|поряд|семь/iu.test(source)
+  const inquisitive = /узна|исслед|тайн|знани|разобрат/iu.test(source)
+  const transactional = /торг|прибыл|золот|долг|обмен|выгод/iu.test(source)
+  const secretive = /тайн|скрыт|секрет|никому|молч/iu.test(source)
+  return Object.freeze({
+    stance: relationship >= 20 ? 'friendly' : relationship <= -20 ? 'hostile' : relationship <= -5 ? 'guarded' : 'neutral',
+    concession_style: secretive || protective ? 'conditional' : transactional ? 'reciprocal' : 'open',
+    initiative: inquisitive ? 'asks_for_details' : protective ? 'offers_safe_next_step' : transactional ? 'names_a_trade' : 'waits_for_request',
+    boundaries: Object.freeze({ protects_people: protective, keeps_secrets: secretive }),
+  })
+}
+
 function safeNpcDossierEntry(value = {}) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const id = clean(value.id, 120)
@@ -1017,7 +1032,7 @@ export function npcConversationNarration(events = [], state = {}) {
     narration: checkSummary + conversation.npc_reply,
     ...(npcName ? { journal_author: npcName } : {}),
     provider: 'NpcSocialController',
-    prompt_version: 'npc_controller/social-v4',
+    prompt_version: 'npc_controller/social-v5',
     verification: { valid: true, violations: [] },
   }
 }

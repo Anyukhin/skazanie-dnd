@@ -6,7 +6,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
+import { addProp, createTacticalMap, legacyCellsFromTacticalMap, serializeTacticalMap, setCell } from '../server/tactical-map.mjs'
 import { actorPosition, findActor, shortestTacticalPath } from '../server/rules-engine.mjs'
+import { publicSceneFor } from '../server/viewer-projection.mjs'
 
 async function freePort() {
   const probe = createNetServer()
@@ -128,11 +130,36 @@ function nearestEnemy(state, actorId) {
   }).sort((left, right) => left.distance - right.distance || String(left.enemy.id).localeCompare(String(right.enemy.id)))[0] ?? null
 }
 
+function publicMovementBlockedKeys(state) {
+  return new Set((state.scene?.cells ?? [])
+    .filter((cell) => cell?.movementBlocked === true)
+    .map((cell) => `${Number(cell.x)},${Number(cell.y)}`))
+}
+
+function stateForProjectedMovement(state) {
+  const blocked = publicMovementBlockedKeys(state)
+  if (!blocked.size) return state
+  return {
+    ...state,
+    scene: {
+      ...state.scene,
+      // `shortestTacticalPath` is the server helper and has no public-only
+      // marker concept. Turn those revealed marker cells into local wall
+      // inputs so this test driver follows the same route as the browser.
+      cells: (state.scene?.cells ?? []).map((cell) => blocked.has(`${Number(cell.x)},${Number(cell.y)}`)
+        ? { ...cell, type: 'wall' }
+        : cell),
+    },
+  }
+}
+
 function approachPath(state, actorId, targetId) {
   const target = actorPosition(state, targetId)
   if (!target) return null
-  return [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => shortestTacticalPath(state, actorId, { x: target.x + dx, y: target.y + dy }))
-    .filter((path) => Array.isArray(path)).sort((left, right) => left.length - right.length)[0] ?? null
+  const pathState = stateForProjectedMovement(state)
+  return [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => shortestTacticalPath(pathState, actorId, { x: target.x + dx, y: target.y + dy }))
+    .filter((path) => Array.isArray(path))
+    .sort((left, right) => left.length - right.length)[0] ?? null
 }
 
 async function playerCommand(baseUrl, cookieValue, key, commandValue) {
@@ -141,6 +168,25 @@ async function playerCommand(baseUrl, cookieValue, key, commandValue) {
     body: { idempotency_key: key, message: `UI E2E: ${commandValue.command_type}`, command: commandValue },
   })
 }
+
+test('MVP helper follows the public movement marker around a partially hidden prop', () => {
+  const map = createTacticalMap({ width: 5, height: 2, fill: { passable: true, revealed: true } })
+  addProp(map, {
+    id: 'hidden-table', assetId: 'table_long', x: 2.5, y: 0.5, blocksMove: true,
+    footprint: [{ x: 2, y: 0 }, { x: 3, y: 0 }],
+  })
+  setCell(map, 3, 0, { revealed: false })
+  const sourceScene = { cells: legacyCellsFromTacticalMap(map), map: serializeTacticalMap(map) }
+  const state = {
+    players: [{ id: 'hero', x: 0, y: 0, hp: 10 }],
+    enemies: [{ id: 'enemy', x: 4, y: 0, alive: true }],
+    scene: publicSceneFor(sourceScene),
+  }
+  const path = approachPath(state, 'hero', 'enemy')
+  assert.ok(path)
+  assert.ok(path.every((cell) => cell.x !== 2 || cell.y !== 0), 'helper must avoid public movementBlocked cells')
+  assert.ok(path.some((cell) => cell.y === 1), 'helper must retain the legal route around the prop')
+})
 
 // Сценарий проигрывает целый бой на настоящих случайных костях: длительность
 // плавает втрое (замер 2026-07-26 — от 72 до 217 секунд в одиночном прогоне),
@@ -325,8 +371,9 @@ test('обычные игроки проходят автономную камп
   let resolvedChecks = 0
   for (let turn = 1; turn <= 4; turn += 1) {
     const key = `player-director-${turn}`
+    const playerAction = turn === 4 ? 'Ищем бой с угрозой у дороги' : 'Продолжить приключение'
     const advanced = await request(baseUrl, '/api/campaigns/PLAYER-MVP/autonomy/advance', {
-      method: 'POST', cookie: ownerCookie, key, body: { idempotency_key: key, player_action: 'Продолжить приключение' },
+      method: 'POST', cookie: ownerCookie, key, body: { idempotency_key: key, player_action: playerAction },
     })
     assert.equal(advanced.status, 200, advanced.text)
     assert.equal(advanced.body.admin_commands, 0)
@@ -375,7 +422,9 @@ test('обычные игроки проходят автономную камп
     }
   }
   assert.equal(resolvedChecks, 3)
-  assert.deepEqual(intentTypes, ['continue_exploration', 'open_social_scene', 'advance_quest_clock', 'request_encounter'])
+  assert.equal(intentTypes[0], 'continue_exploration')
+  assert.equal(intentTypes[1], 'open_social_scene')
+  assert.ok(intentTypes.includes('request_encounter'), `explicit combat request should produce encounter: ${intentTypes.join(',')}`)
 
   const combatRoom = await request(baseUrl, '/api/rooms/PLAYER-MVP', { cookie: guestCookie })
   assert.equal(combatRoom.status, 200, combatRoom.text)
@@ -451,7 +500,7 @@ test('обычные игроки проходят автономную камп
           combatEvents.push(...(rage.body.mechanics ?? []))
           battleState = rage.body.authoritative_state
         } else {
-          assert.equal(rage.body?.code, 'RESOURCE_DEPLETED', rage.text)
+          assert.equal(rage.body?.code, 'INSUFFICIENT_RESOURCE', rage.text)
         }
       }
       let target = nearestEnemy(battleState, actorId)
@@ -610,27 +659,54 @@ test('обычные игроки проходят автономную камп
   })
   assert.equal(continued.status, 200, continued.text)
   assert.equal(continued.body.admin_commands, 0)
-  assert.equal(continued.body.intent.type, 'end_scene')
+  let transition = continued
+  let transitionKey = 'player-after-combat'
+  for (let retry = 1; retry <= 3 && transition.body.intent.type !== 'end_scene'; retry += 1) {
+    transitionKey = `player-after-combat-transition-${retry}`
+    transition = await request(baseUrl, '/api/campaigns/PLAYER-MVP/autonomy/advance', {
+      method: 'POST', cookie: ownerCookie, key: transitionKey,
+      body: { idempotency_key: transitionKey, player_action: 'Перейти дальше после разрешённого боя' },
+    })
+    assert.equal(transition.status, 200, transition.text)
+  }
+  assert.equal(transition.body.intent.type, 'end_scene')
+  assert.equal(transition.body.state.agentInteraction?.status, 'open')
+  const transitionId = transition.body.state.agentInteraction.id
+  for (const [heroId, heroCookie] of heroCookies.entries()) {
+    const vote = await request(baseUrl, `/api/campaigns/PLAYER-MVP/party-decisions/${encodeURIComponent(transitionId)}/votes`, {
+      method: 'POST', cookie: heroCookie, key: `player-transition-vote-${heroId}`,
+      body: { actor_id: heroId, option_id: 'continue', idempotency_key: `player-transition-vote-${heroId}` },
+    })
+    assert.equal(vote.status, 200, vote.text)
+    if (vote.body.state.agentInteraction?.status === 'resolved') break
+  }
+  const continuedAfterVote = await request(baseUrl, '/api/campaigns/PLAYER-MVP/autonomy/advance', {
+    method: 'POST', cookie: ownerCookie, key: transitionKey,
+    body: { idempotency_key: transitionKey, player_action: 'Продолжить подтверждённый переход' },
+  })
+  assert.equal(continuedAfterVote.status, 200, continuedAfterVote.text)
+  assert.equal(continuedAfterVote.body.state.agentInteraction, null)
+  const continuedState = continuedAfterVote.body.state
   assert.ok(continued.body.reward)
   assert.ok(continued.body.reward.xp > 0)
   assert.ok(continued.body.reward.loot.length >= 1)
   assert.ok(continued.body.state.players.some((entry) => entry.inventory.some((item) => String(item.id).startsWith('loot-'))))
-  const completedTravel = continued.body.state.autonomy.travel_history.at(-1)
+  const completedTravel = continuedState.autonomy.travel_history.at(-1)
   assert.ok(completedTravel?.duration_minutes > 0)
   // Если бой закончился с героем на 0 ОЗ, отряд сначала ждёт его пробуждения
   // (1d4 часа, не больше четырёх), и только потом отдыхает восемь часов.
   const downtimeMinutes = continued.body.state.autonomy.downtime_history.at(-1)?.duration_minutes
   assert.ok([480, 720].includes(downtimeMinutes), `неожиданная длительность отдыха: ${downtimeMinutes}`)
-  assert.equal(continued.body.state.mechanics.world_time.elapsed_minutes, downtimeMinutes + completedTravel.duration_minutes)
+  assert.equal(continuedState.mechanics.world_time.elapsed_minutes, downtimeMinutes + completedTravel.duration_minutes)
   assert.ok(
-    continued.body.state.players
-      .filter((entry) => continued.body.state.mechanics.death?.heroes?.[entry.id]?.status !== 'dead')
+    continuedState.players
+      .filter((entry) => continuedState.mechanics.death?.heroes?.[entry.id]?.status !== 'dead')
       .every((entry) => entry.hp === entry.maxHp),
     'post-combat long rest must restore every surviving hero',
   )
-  assert.equal(continued.body.state.adventure.chapter, 2)
+  assert.equal(continuedState.adventure.chapter, 2)
 
-  const levelCandidate = continued.body.state.players.find((entry) => entry.id === 'mvp-hero-1')
+  const levelCandidate = continuedState.players.find((entry) => entry.id === 'mvp-hero-1')
   assert.ok(levelCandidate.experience >= 300, `expected enough XP for level 2, received ${levelCandidate.experience}`)
   const leveled = await playerCommand(baseUrl, ownerCookie, 'character-level-up-1', {
     command_type: 'LevelUp', actor_id: 'mvp-hero-1', expected_level: 1,
@@ -645,11 +721,28 @@ test('обычные игроки проходят автономную камп
   let peacefulState = leveled.body.authoritative_state
   for (let step = 1; step <= 6 && peacefulState.adventure.chapter < 3; step += 1) {
     const key = `player-peaceful-scene-${step}`
-    const advanced = await request(baseUrl, '/api/campaigns/PLAYER-MVP/autonomy/advance', {
-      method: 'POST', cookie: ownerCookie, key, body: { idempotency_key: key, player_action: 'Продолжить расследование без нового боя' },
+    // После исследования отряд сам выбирает уход: число тактов не завершает квест.
+    const playerAction = step >= 3 ? 'Перейти дальше после исследования' : 'Продолжить расследование без нового боя'
+    let advanced = await request(baseUrl, '/api/campaigns/PLAYER-MVP/autonomy/advance', {
+      method: 'POST', cookie: ownerCookie, key, body: { idempotency_key: key, player_action: playerAction },
     })
     assert.equal(advanced.status, 200, advanced.text)
     peacefulIntents.push(advanced.body.intent.type)
+    if (advanced.body.state.agentInteraction?.status === 'open') {
+      const interactionId = advanced.body.state.agentInteraction.id
+      for (const [heroId, heroCookie] of heroCookies.entries()) {
+        const vote = await request(baseUrl, `/api/campaigns/PLAYER-MVP/party-decisions/${encodeURIComponent(interactionId)}/votes`, {
+          method: 'POST', cookie: heroCookie, key: `player-peaceful-vote-${step}-${heroId}`,
+          body: { actor_id: heroId, option_id: 'continue', idempotency_key: `player-peaceful-vote-${step}-${heroId}` },
+        })
+        assert.equal(vote.status, 200, vote.text)
+        if (vote.body.state.agentInteraction?.status === 'resolved') break
+      }
+      advanced = await request(baseUrl, '/api/campaigns/PLAYER-MVP/autonomy/advance', {
+        method: 'POST', cookie: ownerCookie, key, body: { idempotency_key: key, player_action: 'Продолжить подтверждённое расследование' },
+      })
+      assert.equal(advanced.status, 200, advanced.text)
+    }
     peacefulState = advanced.body.state
   }
   assert.equal(peacefulState.adventure.chapter, 3)

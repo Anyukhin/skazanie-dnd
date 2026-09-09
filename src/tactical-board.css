@@ -164,12 +164,171 @@
 .party-quest-hud:not(.expanded) > button { min-height: 34px; }
 .party-quest-hud:not(.expanded) small { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .tactical-scroll .board-cell .map-token {
-  width: clamp(8px, calc(var(--cell) * .9), 36px);
-  height: clamp(8px, calc(var(--cell) * .9), 36px);
+  width: min(calc(var(--cell) * .9), 36px);
+  height: min(calc(var(--cell) * .9), 36px);
+  padding: 0;
   border-width: 1px;
   box-shadow: 0 1px 3px #000, 0 0 0 1px rgba(0,0,0,.5);
 }
-.tactical-scroll[data-overview="true"] .neutral-nameplate { opacity: 0; }
-.tactical-scroll[data-overview="true"] .map-token:hover .neutral-nameplate,
-.tactical-scroll[data-overview="true"] .map-token:focus-visible .neutral-nameplate,
-.tactical-scroll[data-overview="true"] .map-token.label-open .neutral-nameplate { opacity: 1; }
+/* Маршрут занимает свою клетку при любом приближении. */
+.tactical-scroll .route-step-badge {
+  width: calc(var(--cell) * .68);
+  height: calc(var(--cell) * .68);
+  border: 0;
+  font-size: calc(var(--cell) * .3);
+  line-height: 1;
+  box-shadow: inset 0 0 0 calc(var(--cell) * .045) rgba(194,235,180,.8);
+  pointer-events: none;
+}
+.tactical-scroll .board-cell.route-step {
+  box-shadow: inset 0 0 0 calc(var(--cell) * .035) rgba(116,207,141,.75);
+}
+.tactical-scroll .board-cell.route-destination {
+  box-shadow: inset 0 0 0 calc(var(--cell) * .07) rgba(176,235,158,.9);
+}
+
+/* Дверь получает один доступный hotspot на клетке-владельце ребра. Само
+   полотно остаётся на canvas, а маленькая зона поверх него даёт тот же клик,
+   что и дверь в игре: фокус и наведение подсвечивают оба соединённых поля. */
+.tactical-scroll .board-hotspot-cell .door-hotspot {
+  position: absolute;
+  z-index: 5;
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  pointer-events: auto;
+  appearance: none;
+}
+.tactical-scroll .board-hotspot-cell .door-hotspot--e {
+  top: 19%;
+  right: -7%;
+  width: 18%;
+  height: 62%;
+}
+.tactical-scroll .board-hotspot-cell .door-hotspot--s {
+  left: 19%;
+  bottom: -7%;
+  width: 62%;
+  height: 18%;
+}
+.tactical-scroll .board-hotspot-cell .door-hotspot:hover,
+.tactical-scroll .board-hotspot-cell .door-hotspot:focus-visible {
+  border-color: rgba(238, 187, 112, .9);
+  background: rgba(203, 130, 49, .22);
+  box-shadow: 0 0 calc(var(--cell) * .16) rgba(225, 145, 54, .78);
+  outline: none;
+}
+.tactical-scroll .board-hotspot-cell .door-hotspot--locked:hover,
+.tactical-scroll .board-hotspot-cell .door-hotspot--locked:focus-visible {
+  border-color: rgba(214, 117, 94, .96);
+  background: rgba(155, 55, 42, .22);
+  box-shadow: 0 0 calc(var(--cell) * .16) rgba(193, 75, 59, .72);
+}
+.tactical-scroll .board-hotspot-cell .door-hotspot:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
+.tactical-scroll .board-cell .map-token.active-turn,
+.tactical-scroll .board-cell .enemy-token.active-turn {
+  outline: none;
+  animation: none;
+  box-shadow: 0 0 0 calc(var(--cell) * .065) rgba(255,211,132,.96);
+}
+.tactical-scroll .board-cell .map-token:hover { transform: none; }
+
+/* Подпись — экранная подсказка: масштаб карты не раздувает её шрифт. */
+.tactical-scroll .map-token .neutral-nameplate,
+.tactical-scroll .map-token .token-label,
+.tactical-scroll .enemy-token .enemy-nameplate {
+  left: 50%;
+  top: calc(100% + 6px * var(--counter-scale, 1));
+  bottom: auto;
+  min-width: 0;
+  max-width: 180px;
+  padding: 3px 6px;
+  font-size: 12px;
+  line-height: 1.35;
+  opacity: 0;
+  transform: translateX(-50%) scale(var(--counter-scale, 1));
+  transform-origin: 50% 0;
+  transition: opacity .1s ease;
+  pointer-events: none;
+}
+.tactical-scroll .map-token .token-label::after { display: none; }
+.tactical-scroll .map-token:hover .neutral-nameplate,
+.tactical-scroll .map-token:focus-visible .neutral-nameplate,
+.tactical-scroll .map-token:hover .token-label,
+.tactical-scroll .map-token:focus-visible .token-label,
+.tactical-scroll .enemy-token:hover .enemy-nameplate,
+.tactical-scroll .enemy-token:focus-visible .enemy-nameplate { opacity: 1; }
+.tactical-scroll .neutral-token-menu {
+  transform: translateX(-50%) scale(var(--counter-scale, 1));
+  transform-origin: 50% 0;
+}
+
+/* Контекст объекта живёт у его hotspot, как меню NPC у фишки. Обратный scale
+   сохраняет читаемый размер при любом приближении карты. */
+.tactical-scroll .scene-object-menu {
+  position: absolute;
+  z-index: 16;
+  left: 50%;
+  top: calc(50% + 34px);
+  width: min(220px, 28cqw);
+  min-width: 176px;
+  max-height: min(360px, 46vh);
+  display: grid;
+  gap: 6px;
+  padding: 9px;
+  overflow-y: auto;
+  border: 1px solid rgba(212, 174, 123, .3);
+  border-radius: 6px;
+  background: rgba(18, 15, 12, .97);
+  color: #b8aa99;
+  transform: translateX(-50%) scale(var(--counter-scale, 1));
+  transform-origin: 50% 0;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, .62);
+  pointer-events: auto;
+}
+.scene-object-menu > header { display: flex; align-items: start; gap: 8px; }
+.scene-object-menu > header > span { min-width: 0; display: grid; gap: 2px; text-align: left; }
+.scene-object-menu > header b { overflow: hidden; color: #dfd2c1; font: 600 var(--fs-md) Spectral, serif; text-overflow: ellipsis; white-space: nowrap; }
+.scene-object-menu > header small { color: #81766b; font: var(--fs-xs) Manrope, sans-serif; }
+.scene-object-menu-close { flex: 0 0 auto; width: 24px; height: 24px; display: grid; place-items: center; margin-left: auto; padding: 0; border: 1px solid rgba(255, 255, 255, .08); border-radius: 4px; background: rgba(255, 255, 255, .03); color: #9b8e80; cursor: pointer; }
+.scene-object-menu-action { min-height: 30px; display: flex; align-items: center; justify-content: flex-start; gap: 7px; padding: 5px 7px; border: 1px solid rgba(112, 156, 119, .34); border-radius: 4px; background: rgba(70, 112, 76, .13); color: #99bd9f; font-size: var(--fs-xs); cursor: pointer; text-align: left; }
+.scene-object-menu-action:hover:not(:disabled), .scene-object-menu-action:focus-visible { border-color: rgba(149, 197, 156, .7); background: rgba(70, 112, 76, .25); }
+.scene-object-menu-action:disabled { border-color: var(--line); background: rgba(255, 255, 255, .02); color: #756c63; cursor: not-allowed; }
+.scene-object-menu-action.level-transition { border-color: rgba(214, 161, 96, .4); background: rgba(174, 113, 52, .14); color: #d9b47e; }
+.scene-object-menu-lead { color: #9c8a6c; font: 600 var(--fs-xs)/1.35 Manrope, sans-serif; }
+.scene-object-menu-empty { padding: 5px 2px; color: #756c63; font: var(--fs-xs)/1.4 Manrope, sans-serif; }
+
+.location-overview-button { position: absolute; z-index: 8; top: 20px; left: 180px; padding: 7px 12px; border: 1px solid #625546; border-radius: 6px; background: #191612; color: #e7dac8; font: inherit; font-size: 12px; }
+.location-overview-dialog { width: min(1100px, 94vw); max-height: 94vh; padding: 16px; border: 1px solid #625546; border-radius: 8px; background: #191612; color: #e7dac8; }
+.location-overview-dialog::backdrop { background: rgb(0 0 0 / 70%); }
+.location-overview-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.location-overview-dialog h2 { margin: 0; font-size: 18px; }
+.location-overview-dialog button { border: 1px solid #625546; padding: 6px 12px; border-radius: 6px; background: #242019; color: inherit; }
+.location-overview-plan { position: relative; width: min(100%, 111vh); aspect-ratio: 3 / 2; margin: 0 auto; container-type: inline-size; }
+.location-overview-dialog img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.location-overview-focus { position: absolute; width: 0; height: 0; pointer-events: none; }
+.location-overview-focus-dot { position: absolute; width: 18px; height: 18px; transform: translate(-50%, -50%); border: 3px solid #fff2d6; border-radius: 50%; background: #bf7d25; box-shadow: 0 0 0 2px #382616; }
+.location-overview-focus-label { position: absolute; bottom: 16px; left: 0; transform: translateX(-50%); display: grid; gap: 2px; width: max-content; max-width: min(240px, 60cqw); padding: 6px 10px; border: 1px solid #ad874e; border-radius: 4px; background: #201a12; color: #fff2d6; font-size: 12px; line-height: 1.35; text-align: center; }
+.location-overview-focus-label strong { font-size: 13px; }
+.location-overview-focus[data-align="left"] .location-overview-focus-label { transform: none; }
+.location-overview-focus[data-align="right"] .location-overview-focus-label { transform: translateX(-100%); }
+.location-overview-focus[data-below] .location-overview-focus-label { bottom: auto; top: 16px; }
+@container (max-width: 500px) { .location-overview-focus-name { display: none; } }
+.location-overview-dialog p { margin: 12px 0 0; font-size: 14px; }
+
+/* Полы принадлежат карте; свободное пространство вокруг неё остаётся нейтральным. */
+.game-area .map-stage.native-board-stage,
+.game-area .map-stage.native-board-stage.scenic-backdrop { background: #20211f; }
+.game-area .map-stage.native-board-stage::before { background: none; }
+.native-board-stage .map-atmosphere { display: none; }
+.native-board-stage .board-frame.irregular { box-shadow: none; }

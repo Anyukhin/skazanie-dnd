@@ -2,6 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import { PLAYER_REQUEST_ROLES, answerKnownLore, proposeAgentInteraction, resolvePartyDecision, roleAllowsWorldTools, selectAgentRole } from '../server/player-request-router.mjs'
+import { inferRequestKind } from '../server/intent-parser.mjs'
+import { GameOrchestrator } from '../server/game-orchestrator.mjs'
 import { NARRATOR_PROMPT_VERSION } from '../server/narrator.mjs'
 
 test('вопрос собеседнику не подменяется справкой о маршруте или лоре', () => {
@@ -12,6 +14,71 @@ test('вопрос собеседнику не подменяется справ
   ]) assert.equal(answerKnownLore(action, { scene: { location: 'Штормберг' } }), null, action)
   assert.ok(answerKnownLore('Куда нам идти дальше?', { scene: { location: 'Штормберг' } }))
   assert.ok(answerKnownLore('Что я знаю про легенду дракона?', {}))
+})
+
+test('вопрос о видимой сцене отвечает только по проекции и не расходует ход', () => {
+  const projected = {
+    scene: {
+      title: 'Караульная', location: 'Караульная', mood: 'Тихо',
+      map: { props: [
+        { id: 'prop-visible', assetId: 'chest', interaction: { pointOfInterest: true }, secret: 'золото' },
+        { id: 'prop-hidden', assetId: 'unknown-secret', secret: 'тайник' },
+      ] },
+    },
+    scene_npcs: [{ id: 'mira', name: 'Мира Ветрокрыл', role: 'проводница', alive: true }],
+    enemies: [{ id: 'goblin', name: 'Гоблин', alive: true }],
+  }
+  const result = answerKnownLore('Что я вижу?', projected)
+  assert.equal(result.provider, 'AgentWorldkeeper')
+  assert.equal(result.model, 'visible-scene')
+  assert.equal(result.turn_consumed, false)
+  assert.match(result.narration, /Караульная/u)
+  assert.match(result.narration, /Мира Ветрокрыл.*проводница/u)
+  assert.match(result.narration, /Гоблин/u)
+  assert.match(result.narration, /сундук/u)
+  assert.doesNotMatch(result.narration, /prop-visible|prop-hidden|золото|тайник|unknown-secret/u)
+  assert.deepEqual(result.effects, { roll: null, reveal: [], spawn: [], objective: null, grantItems: [], scene: null, interaction: null })
+})
+
+test('явный вопрос о видимой сцене получает question-маршрут, осмотр действием остаётся action', () => {
+  for (const text of ['Что я вижу?', 'Что здесь есть?', 'Что находится вокруг?', 'Опиши сцену', 'Где мы сейчас?', 'Где я?', 'Где мы находимся сейчас?']) {
+    assert.equal(inferRequestKind(text), 'question', text)
+  }
+  assert.equal(inferRequestKind('Осматриваюсь'), 'action')
+})
+
+test('вопрос о текущем месте получает прямой ответ и не раскрывает лишний контекст', () => {
+  const result = answerKnownLore('Где мы сейчас?', {
+    scene: { location: 'Каменный двор', title: 'Привал', mood: 'Тихо' },
+    scene_npcs: [{ name: 'Свидетель', role: 'стражник' }],
+  })
+  assert.equal(result.narration, 'Сейчас вы здесь: Каменный двор.')
+  assert.equal(result.turn_consumed, false)
+  assert.equal(answerKnownLore('Где я?', {}).narration, 'Текущее место пока не названо.')
+  assert.equal(answerKnownLore('Спрашиваю стражника: где мы сейчас?', {}), null)
+})
+
+test('маршрут видимой сцены остаётся readonly и не вызывает ActionAdjudicator', async () => {
+  let discussCalls = 0
+  const orchestrator = Object.create(GameOrchestrator.prototype)
+  orchestrator.actionAdjudicator = {
+    discuss: async () => { discussCalls += 1; throw new Error('обсуждение не должно вызываться') },
+  }
+  orchestrator.clarificationRegistry = {
+    recentDialogue: () => [],
+    rememberDialogue: () => {},
+  }
+  const result = await orchestrator.nonActionResponse({
+    campaignId: 'SCENE-QUESTION', playerId: 'hero', requestKind: 'question', message: 'Что я вижу?',
+    pendingClarification: null, state_version: 7,
+    state: { state_version: 7, scene: { location: 'Караульная', title: 'Караульная' }, scene_npcs: [{ name: 'Мира', role: 'проводница', alive: true }] },
+    turnId: 'turn-1', mode: 'enforce', viewer: { playerId: 'hero', isPartyMember: true },
+  })
+  assert.equal(discussCalls, 0)
+  assert.equal(result.state_version, 7)
+  assert.deepEqual(result.mechanics, [])
+  assert.equal(result.turn_consumed, false)
+  assert.match(result.narration, /Караульная.*Мира.*проводница/u)
 })
 
 const PROMPT_OWNER_FILES = Object.freeze({

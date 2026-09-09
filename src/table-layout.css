@@ -2,10 +2,13 @@
    постоянные колонки, а ввод остаётся непосредственно под разговором. */
 .app {
   --status: 108px;
+  --shell-top: 0px;
   --server-column: var(--ui-server-column, clamp(350px, 23vw, 600px));
   --muted: #ab9f91;
 }
 .sidebar { background: #151310; box-shadow: none; }
+.sidebar-context { padding: 14px 12px; }
+.sidebar-context-actions { gap: 5px; }
 .nav-item { color: #b4aa9c; }
 .nav-item.active { background: #2a2218; box-shadow: inset 2px 0 var(--gold); }
 .section-label { color: #a69a8b; letter-spacing: .04em; }
@@ -97,10 +100,6 @@
 .dialogue-composer .prepared-chip { flex: 1 0 100%; max-width: 100%; background: #30261a; border-radius: 4px; }
 .dialogue-composer .rail-free-input > button { grid-column: 2; grid-row: 1; width: auto; height: 36px; padding: 0 12px; font: 600 var(--fs-md) Manrope, sans-serif; border-radius: 4px; background: #5f4227; color: #f0d6ae; }
 .dialogue-composer .rail-free-input > button:disabled { opacity: .5; }
-.dialogue-context { margin: 0 0 12px; padding: 10px 12px; max-height: 140px; overflow-y: auto; font-size: var(--fs-md); }
-.dialogue-context > div { gap: 6px; }
-.dialogue-context strong { font-weight: 500; }
-
 .turn-rail { height:var(--ui-rail-height,auto); min-height: max-content; max-height: none; grid-template-rows: 28px auto; gap: 6px; padding: 8px 20px; background: #18140f; }
 .turn-rail .combat-hotbar.tactical-control{grid-template-rows:auto;gap:0}
 .turn-rail > .hotbar-decks { max-width:calc(100% - 302px * var(--ui-readable-scale,1));justify-content: flex-start; gap: 4px; overflow: visible; }

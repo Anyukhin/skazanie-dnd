@@ -24,6 +24,27 @@ test('глобальная карта кампании детерминиров�
   assert.equal(start.visited, true)
 })
 
+test('дороги по именам сохраняют регистр-независимый выбор первой подходящей точки', () => {
+  const map = createCampaignWorldMap({
+    seed: 'ROUTE-NAMES', startingLocationId: 'port',
+    source: {
+      locations: [
+        { id: 'port', name: 'ЮЖНЫЙ ПОРТ' },
+        { id: 'южный порт', name: 'Северная бухта' },
+        { id: 'tower', name: 'Башня Ёлки' },
+      ],
+      routesComplete: true,
+      routes: [
+        { from: 'южный порт', to: '  БАШНЯ\nЁЛКИ ' },
+        { from: 'tower', to: 'port' },
+        { from: 'нет такого места', to: 'tower' },
+        { from: 'port', to: 'port' },
+      ],
+    },
+  })
+  assert.deepEqual(map.routes.map(({ from, to }) => [from, to]), [['port', 'tower']])
+})
+
 test('стартовая сцена добавляется на авторскую карту вместо подмены первой точкой', () => {
   const map = createCampaignWorldMap({
     seed: 'MISMATCH-1',

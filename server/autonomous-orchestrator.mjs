@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 
 import { revealedPropPredicate } from './action-adjudicator.mjs'
-import { normalizeDirectorIntent, serverReputationDelta } from './autonomous-campaign.mjs'
+import { normalizeDirectorIntent, SCENE_RESOLUTION_EVENT_SCHEMA_VERSION, serverReputationDelta } from './autonomous-campaign.mjs'
 import {
   ENCOUNTER_COINS_POLICY_ID,
   ENCOUNTER_LOOT_POLICY_ID,
@@ -20,8 +20,10 @@ import {
 } from './encounter-rewards.mjs'
 import {
   assembleSocialNpc,
+  authorizeDirectorIntent,
   campaignArcPosition,
   completedDowntime,
+  confirmedQuestProgress,
   directorProgressFingerprint,
   pacingForDirectorIntent,
   planServerTravel,
@@ -33,6 +35,7 @@ import {
   RulesValidationError,
   actorPosition,
   findActor,
+  incapacitatingConditionFor,
   isEnemyActor,
   isLivingActor,
   normalizeCampaignState,
@@ -49,16 +52,22 @@ import { questTitleFromObjective } from './scene-memory.mjs'
 import {
   attemptFingerprint,
   bindFreeActionReadingToState,
+  confirmedHazardNear,
   contextualResolutionFor,
   d20CheckLabel,
-  failForwardFor,
+  damageTypeLabelRu,
+  FREE_ACTION_RESOLUTION_POLICY_VERSION,
+  freeActionResolutionPolicy,
   hasRecognizedFreeActionApproach,
   interpretFreeAction,
+  harmlessFreeActionReading,
   assertFreeActionConfirmation,
   previousFailedAttempt,
   resolveCorpseSearch,
   resolveInventoryTransfer,
+  resolveExplorationCommand,
   resolvePickpocket,
+  resolveHazardContact,
   situationFingerprint,
   stakesFor,
   verifyMeans,
@@ -117,6 +126,59 @@ function openQuest(state, requestedId = '') {
     ?? null
 }
 
+export function sceneResolutionProof(state, intent) {
+  const chapter = Math.max(1, Number(state.adventure?.chapter) || 1)
+  if (intent.type !== 'resolve_scene') return null
+  if (intent.resolution === 'negotiation') {
+    const chapter = Math.max(1, Number(state.adventure?.chapter) || 1)
+    const chapterQuest = (state.worldMemory?.quests ?? []).find((quest) => String(quest.id) === `quest:chapter:${chapter}`)
+    const objectiveTerms = [chapterQuest?.title, ...(chapterQuest?.objectives ?? [])]
+      .map((term) => clean(term, 160).toLocaleLowerCase('ru')).filter((term) => term.length >= 4)
+    const conversation = [...(state.social?.conversations ?? [])].reverse().find((entry) => (
+      entry?.check?.success === true
+        && entry?.hero_id
+        && partyOrderIds(state).includes(String(entry.hero_id))
+        && (state.social?.npcs ?? []).some((npc) => (
+          String(npc.id) === String(entry.npc_id)
+            && npc.available !== false
+            && clean(npc.location, 180).toLocaleLowerCase('ru') === clean(state.scene?.location, 180).toLocaleLowerCase('ru')
+        ))
+        && (entry.disclosed_fact_ids ?? []).some((factId) => {
+          const fact = (state.worldMemory?.facts ?? []).find((candidate) => String(candidate.id) === String(factId))
+          if (!fact) return false
+          const factText = clean(`${fact.summary ?? ''} ${fact.object ?? ''}`, 500).toLocaleLowerCase('ru')
+          return (chapterQuest?.entity_ids ?? []).includes(fact.subject_id)
+            || objectiveTerms.some((term) => factText.includes(term))
+        })
+    ))
+    return conversation ? { evidence_type: 'successful_npc_check', evidence_id: conversation.id } : null
+  }
+  if (intent.resolution === 'objective') {
+    const quest = (state.worldMemory?.quests ?? []).find((entry) => (
+      String(entry.id) === `quest:chapter:${chapter}`
+        && ['completed', 'failed', 'abandoned'].includes(String(entry.status))
+    ))
+    return quest ? { evidence_type: 'chapter_quest_resolved', evidence_id: quest.id } : null
+  }
+  const decision = state.agentInteraction
+  const decisionChapter = Math.max(1, Number(state.adventure?.chapter) || 1)
+  const chapterQuest = (state.worldMemory?.quests ?? []).find((quest) => String(quest.id) === `quest:chapter:${decisionChapter}`)
+  return decision?.status === 'resolved'
+    && decision.resolvedOptionId
+    && String(decision.resolutionPrompt ?? '').startsWith('resolve_scene:')
+    && ['completed', 'failed', 'abandoned'].includes(String(chapterQuest?.status))
+    ? { evidence_type: 'party_decision_resolved', evidence_id: decision.id }
+    : null
+}
+
+export function transitionDecisionMatches(interaction, { decisionId = '', destination = '' } = {}) {
+  return interaction?.id === decisionId
+    && interaction.destinationLocationId === clean(destination, 160)
+    && interaction.status === 'resolved'
+    && interaction.resolvedOptionId === 'continue'
+    && interaction.options?.some((option) => option.id === 'continue')
+}
+
 function currentSubject(state) {
   return (state.worldMemory?.entities ?? []).find((entity) => entity.kind === 'location' && entity.name === state.scene?.location)
     ?? state.worldMemory?.entities?.[0]
@@ -133,20 +195,35 @@ function currentSubject(state) {
  * названа опасность сцены). Обычная удачная проверка мир не меняет, и факт о
  * ней был бы шумом — а шум вытеснит из окна выборки настоящее последствие.
  */
-export function materialConsequenceCommands(state, { succeeded = false, reading = {}, checkEvent = null } = {}) {
+export function materialConsequenceCommands(state, { succeeded = false, reading = {}, checkEvent = null, committedEvents = [] } = {}) {
   if (!succeeded) return []
-  const material = reading.effect === 'hazard_damage'
-    || ['serious', 'deadly'].includes(String(reading.risk))
-    || Boolean(reading.hazard)
-  if (!material) return []
-  const eventId = String(checkEvent?.event_id ?? '')
-  if (!eventId) return []
-  const factId = `fact-scene-change-${digest(eventId)}`
+  const effects = (Array.isArray(committedEvents) ? committedEvents : []).filter((event) => {
+    if (!event || !['party', 'public', undefined, null, ''].includes(event.visibility)) return false
+    const type = String(event?.event_type ?? '')
+    if (type === 'DoorBarricaded' || type === 'DoorBarricadeCleared') return true
+    if (type === 'DoorStateChanged') return String(event.payload?.state ?? '') !== String(event.payload?.previous_state ?? '')
+    if (type !== 'SceneObjectStateChanged') return false
+    return event.payload?.success !== false && Boolean(String(event.payload?.state ?? ''))
+  })
+  if (!effects.length) return []
+  const effectIds = effects.map((event) => String(event.event_id ?? '')).filter(Boolean)
+  if (!effectIds.length) return []
+  const factId = `fact-scene-change-${digest(effectIds.join('\0'))}`
   const memory = state.worldMemory ?? {}
   if ((memory.facts ?? []).some((fact) => fact?.id === factId)) return []
-  const goal = String(reading.goal_summary ?? '').trim()
-  const approach = String(reading.approach_summary ?? '').trim()
-  if (!goal && !approach) return []
+  const propLabels = { bookshelf: 'стеллаж', table: 'стол', barrel: 'бочка', crate: 'ящик', campfire: 'костёр', bar_counter: 'стойка' }
+  const stateLabels = { burning: 'загорелся', burned: 'сгорел', toppled: 'опрокинут', open: 'открыт', taken: 'опустел', closed: 'закрыт' }
+  const facts = effects.map((event) => {
+    const payload = event.payload ?? {}
+    const type = String(event.event_type)
+    if (type === 'DoorBarricaded') return 'Дверь забаррикадирована'
+    if (type === 'DoorBarricadeCleared') return 'Баррикада двери снята'
+    if (type === 'DoorStateChanged') return `Дверь ${{ open: 'открыта', closed: 'закрыта', locked: 'заперта', broken: 'выломана' }[payload.state] ?? 'изменилась'}`
+    const prop = (state.scene?.map?.props ?? []).find((candidate) => String(candidate?.id) === String(payload.prop_id))
+    const asset = String(prop?.assetId ?? '').split(/[\\/]/u).at(-1)?.replace(/\.[a-z0-9]+$/iu, '') ?? ''
+    const name = prop?.name || prop?.label || propLabels[asset] || 'Предмет обстановки'
+    return `${name} ${stateLabels[payload.state] ?? 'изменил состояние'}`
+  })
   const commands = []
   let subject = currentSubject(state)
   if (!subject) {
@@ -163,10 +240,10 @@ export function materialConsequenceCommands(state, { succeeded = false, reading 
     id: factId,
     subject_id: subject.id,
     predicate: 'scene_change',
-    object: goal || approach,
-    summary: `${[goal, approach].filter(Boolean).join(': ')}${place ? ` (${place})` : ''}`,
+    object: facts.join('; '),
+    summary: `${facts.join('; ')}${place ? ` (${place})` : ''}`,
     visibility: 'party',
-    source_event_ids: [eventId],
+    source_event_ids: effectIds,
   } })
   return commands
 }
@@ -218,9 +295,10 @@ function nextHook(state, reason = '') {
 function nextArcHook(state) {
   const thread = (state.worldMemory?.threads ?? []).find((entry) => entry.status === 'active')
   if (thread) return clean(`Вернуться к незакрытому: ${clean(thread.title, 180)}`, 300)
-  for (const npc of state.social?.npcs ?? []) {
-    const promise = (npc.promises ?? []).find((entry) => !['fulfilled', 'broken'].includes(String(entry?.status ?? '')))
-    if (promise) return clean(`Сдержать слово, данное ${clean(npc.name, 120)}: ${clean(promise.text, 160)}`, 300)
+  for (const promise of state.social?.promises ?? []) {
+    if (['fulfilled', 'broken'].includes(String(promise?.status ?? ''))) continue
+    const npc = (state.social?.npcs ?? []).find((entry) => String(entry.id) === String(promise.npc_id))
+    if (promise) return clean(`Сдержать слово, данное ${clean(npc?.name, 120) || 'союзнику'}: ${clean(promise.text, 160)}`, 300)
   }
   const quest = (state.worldMemory?.quests ?? []).find((entry) => entry.status === 'active')
   if (quest) return clean(`Довести до конца: ${questGoal(quest)}`, 300)
@@ -242,14 +320,6 @@ function questResolutionFor(quest = {}) {
       ? `Развить последствия победы в квесте «${goal}» и приблизить развязку`
       : `Ответить на последствия провала квеста «${goal}» и найти новый путь`,
   }
-}
-
-function boundedObjective(state, text) {
-  const lower = text.toLocaleLowerCase('ru')
-  if (/двер\w*|подпира\w*|баррикад\w*/iu.test(lower)) return 'Проверить, удерживает ли баррикада дверь, и выбрать следующий способ пройти.'
-  if (/страж\w*|вор\w*|крич\w*|зову\w*/iu.test(lower)) return 'Дождаться ответа стражи на сообщение о воре.'
-  if (/поджиг\w*|зажиг\w*|огон\w*|дым\w*/iu.test(lower)) return 'Проверить последствия использования огня и выбрать безопасный путь.'
-  return nextHook(state, 'Проверить последствия нестандартного действия героя')
 }
 
 function declaredActionCommand(playerId, text) {
@@ -508,7 +578,7 @@ export class AutonomousCampaignOrchestrator {
     ])
   }
 
-  async runIntent({ campaignId, intent: rawIntent, idempotencyKey }) {
+  async runIntent({ campaignId, intent: rawIntent, idempotencyKey, playerAction = '' }) {
     const proposed = normalizeDirectorIntent(rawIntent)
     const key = clean(idempotencyKey, 120) || `director-${digest({ campaignId, intent: proposed })}`
     const existingCompletion = await this.eventStore.getByIdempotencyKey?.(campaignId, `${key}:campaign-completion`)
@@ -529,10 +599,38 @@ export class AutonomousCampaignOrchestrator {
     const existingIntentCommit = await this.eventStore.getByIdempotencyKey?.(campaignId, `${key}:intent`)
     let loaded = await this.load(campaignId)
     const existingIntent = existingIntentCommit?.events?.find((entry) => entry.event_type === 'DirectorIntentRecorded')?.payload?.intent
+    const existingOutcomeCommit = await this.eventStore.getByIdempotencyKey?.(campaignId, `${key}:director-outcome`)
+    if (existingIntent && existingOutcomeCommit) {
+      // После более позднего хода старый повтор уже не может завершать новую арку.
+      const completion = Number(loaded.state_version) === Number(existingOutcomeCommit.state_version_after)
+        ? await this.completeCampaignIfReady(campaignId, key) : null
+      loaded = await this.load(campaignId)
+      return {
+        intent: normalizeDirectorIntent(existingIntent),
+        authorization: { policy: 'director-intent-policy-v1', reason: 'idempotent_replay', replaced: false },
+        results: [existingIntentCommit, existingOutcomeCommit, ...(completion ? [completion] : [])],
+        state: loaded.state,
+        state_version: loaded.state_version,
+        admin_commands: 0,
+        duplicate: true,
+      }
+    }
     const authorization = existingIntent
       ? { intent: normalizeDirectorIntent(existingIntent), proposed_intent: proposed, replaced: false, phase: loaded.state.autonomy?.pacing?.phase, policy: 'director-intent-policy-v1', reason: 'idempotent_replay' }
-      : this.rulesEngine.authorizeDirectorIntent(proposed, loaded.state)
+      : authorizeDirectorIntent(loaded.state, proposed, { playerAction })
     const intent = authorization.intent
+    const committedEffect = existingIntent && ['advance_quest_clock', 'resolve_scene'].includes(intent.type)
+      ? await this.eventStore.getByIdempotencyKey?.(campaignId, `${key}:${intent.type === 'resolve_scene' ? 'custom' : 'commands'}`)
+      : null
+    const recordedProgress = committedEffect?.events?.some(entry => entry.event_type === 'QuestClockAdvanced' && entry.payload?.quest_id === intent.quest_id)
+    if (intent.type === 'advance_quest_clock' && !recordedProgress && !confirmedQuestProgress(loaded.state, intent.quest_id)) {
+      throw new RulesValidationError('Часы цели продвигаются только после нового подтверждённого прогресса', 'DIRECTOR_QUEST_PROGRESS_REQUIRED')
+    }
+    const recordedResolution = committedEffect?.events?.find(entry => entry.event_type === 'SceneResolutionRecorded')
+    const resolutionProof = recordedResolution?.payload?.evidence ?? sceneResolutionProof(loaded.state, intent)
+    if (intent.type === 'resolve_scene' && !resolutionProof) {
+      throw new RulesValidationError('Развязка сцены требует подтверждённого факта, а не только предложения Директора', 'DIRECTOR_SCENE_RESOLUTION_UNPROVEN')
+    }
     const progressBefore = directorProgressFingerprint(loaded.state)
     await this.recordIntent(campaignId, intent, key, authorization)
     loaded = await this.load(campaignId)
@@ -578,12 +676,23 @@ export class AutonomousCampaignOrchestrator {
       })
       commands.push({ command_type: 'StartCombat', server_authoritative: true })
     }
+    let pendingPartyDecision = false
+    if (intent.type === 'resolve_scene') {
+      custom.push(event(`${key}:scene-resolution`, 'SceneResolutionRecorded', {
+        schema_version: SCENE_RESOLUTION_EVENT_SCHEMA_VERSION,
+        chapter: Math.max(1, Number(loaded.state.adventure?.chapter) || 1),
+        resolution: intent.resolution,
+        status: 'confirmed',
+        evidence: resolutionProof,
+        intent_type: intent.type,
+      }, loaded.state.partyMemberIds ?? [], 'party'))
+    }
     if (intent.type === 'end_scene') {
-      const arc = campaignArcPosition(loaded.state)
       const destination = intent.destination || `${loaded.state.scene?.location || 'Путь'} — следующая сцена`
       travel = planServerTravel(loaded.state, { campaignId, destination, idempotencyKey: key })
       travelStartedAt = Number(loaded.state.mechanics?.world_time?.elapsed_minutes) || 0
-      const decisionId = `autonomy-${digest(key)}`
+      const requestedDestination = clean(destination, 160)
+      let decisionId = `autonomy-${digest({ campaignId, key, chapter: loaded.state.adventure?.chapter, destination: requestedDestination })}`
       const partyIds = (loaded.state.partyMemberIds?.length
         ? loaded.state.partyMemberIds
         : loaded.state.players?.map((player) => player.id) ?? []).map(String)
@@ -591,32 +700,19 @@ export class AutonomousCampaignOrchestrator {
       // отряда, пока его не воскресят или не заменят.
       const preferred = String(loaded.state.activePlayerId ?? '')
       const actorId = preferred && !isUnresolvedDeadHero(loaded.state, preferred) ? preferred : lootOwnerId(loaded.state)
-      custom.push(partyDecisionOpenedEvent({
+      const currentDecision = loaded.state.agentInteraction
+      const decisionResolved = transitionDecisionMatches(currentDecision, { decisionId, destination: requestedDestination })
+      if (decisionResolved) decisionId = currentDecision.id
+      pendingPartyDecision = !decisionResolved
+      if (!decisionResolved && (!currentDecision || currentDecision.status === 'resolved')) custom.push(partyDecisionOpenedEvent({
         id: decisionId,
-        type: 'choice',
+        type: 'vote',
         title: 'Продолжить путь',
         description: `Отряд подтверждает переход в ${destination}.`,
-        options: [{ id: 'continue', label: `Перейти в ${destination}` }],
+        options: [{ id: 'continue', label: `Перейти в ${requestedDestination}` }],
+        destinationLocationId: requestedDestination,
         resolutionPrompt: 'Продолжить подтверждённый переход.',
       }, actorId || null, { eligibleHeroIds: partyIds }))
-      custom.push({
-        ...event(`${key}:decision-resolved`, 'PartyDecisionResolved', {
-          interaction_id: decisionId,
-          resolved_option_id: 'continue',
-          votes: actorId ? { [actorId]: 'continue' } : {},
-          eligible_hero_ids: partyIds,
-          required_votes: 1,
-        }, partyIds),
-        actor_id: actorId || null,
-      })
-      const mainQuest = arc
-        ? (loaded.state.worldMemory?.quests ?? []).find((quest) => (
-            !String(quest.id || '').startsWith('quest:chapter:')
-            && quest.status === 'active'
-            && quest.clock?.triggered !== true
-          ))
-        : null
-      if (mainQuest) commands.push({ command_type: 'AdvanceQuestClock', quest_id: mainQuest.id, amount: 1 })
       commands.push({ command_type: 'AdvanceScene', scene_args: {
         title: destination,
         location: destination,
@@ -641,6 +737,10 @@ export class AutonomousCampaignOrchestrator {
     const results = []
     if (setupCommands.length) results.push(await this.runCommands(campaignId, `${key}:setup`, setupCommands))
     if (custom.length) results.push(await this.commitEvents(campaignId, `${key}:custom`, custom))
+    if (pendingPartyDecision) {
+      loaded = await this.load(campaignId)
+      return { intent, authorization, results, pending_party_decision: true, state: loaded.state, state_version: loaded.state_version, admin_commands: 0 }
+    }
     if (commands.length) results.push(await this.runCommands(campaignId, `${key}:commands`, commands))
     const questResolution = await this.resolveTriggeredQuests(
       campaignId,
@@ -692,7 +792,7 @@ export class AutonomousCampaignOrchestrator {
     return { intent, authorization, results, state: loaded.state, state_version: loaded.state_version, admin_commands: 0 }
   }
 
-  async handleUnknownAction({ campaignId, action, idempotencyKey, playerId = '', intent = null, manualRoll = false, verifiedRoll = null }) {
+  async handleUnknownAction({ campaignId, action, idempotencyKey, playerId = '', intent = null, manualRoll = false, verifiedRoll = null, confirmedAction = false }) {
     const text = clean(action, 1_000)
     const previousCommit = await this.eventStore.getByIdempotencyKey?.(campaignId, idempotencyKey)
     // Повтор и восстановление после первой фиксации используют исходную
@@ -707,7 +807,16 @@ export class AutonomousCampaignOrchestrator {
       if (!actualCommands.length) return { state: loaded.state, state_version: loaded.state_version, events: [], commands: [], rolls: [], duplicate: false }
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
-          return await this.runCommands(campaignId, idempotencyKey, actualCommands, { allowedActorIds: [actorId] })
+          const committed = await this.runCommands(campaignId, idempotencyKey, actualCommands, { allowedActorIds: [actorId] })
+          const memoryCommands = materialConsequenceCommands(committed.state ?? loaded.state, {
+            succeeded: true, committedEvents: committed.events ?? [],
+          })
+          if (!memoryCommands.length) return committed
+          const memory = await this.runCommands(campaignId, `${idempotencyKey}:material-memory`, memoryCommands)
+          return { ...committed, state: memory.state, state_version: memory.state_version,
+            events: [...(committed.events ?? []), ...(memory.events ?? [])],
+            commands: [...(committed.commands ?? []), ...(memory.commands ?? [])],
+          }
         } catch (error) {
           if (error?.code !== 'STATE_VERSION_CONFLICT' || attempt === 2) throw error
         }
@@ -727,6 +836,24 @@ export class AutonomousCampaignOrchestrator {
         const error = new Error('Этот ключ идемпотентности уже использован для другого свободного действия')
         error.code = 'IDEMPOTENCY_CONFLICT'
         throw error
+      }
+    }
+    const actor = findActor(loaded.state, actorId)
+    const incapacitating = actor ? incapacitatingConditionFor(loaded.state, actorId) : null
+    if (!isLivingActor(actor) || incapacitating) {
+      return {
+        kind: 'rejected',
+        narration: !actor
+          ? 'Герой для действия не найден.'
+          : incapacitating
+            ? `Недееспособный герой не может совершать действие (${incapacitating}).`
+            : 'Герой без хитов не может совершать действие.',
+        turn_consumed: false,
+        rejected: true,
+        admin_commands: 0,
+        state: loaded.state,
+        state_version: loaded.state_version,
+        events: [], commands: [], rolls: [], duplicate: false,
       }
     }
     const currentActorId = String(loaded.state.mechanics?.combat?.initiative?.[loaded.state.mechanics?.combat?.active_index]?.actor_id ?? '')
@@ -762,6 +889,40 @@ export class AutonomousCampaignOrchestrator {
       }
     }
     verifyDuplicate(previousCommit)
+    const directTransfer = resolveInventoryTransfer(loaded.state, actorId, text)
+    if (directTransfer?.status === 'command') {
+      const commit = await run([declaration, directTransfer.command])
+      verifyDuplicate(commit)
+      return { kind: 'item_transfer', narration: directTransfer.narration,
+        turn_consumed: false, admin_commands: 0, state: commit.state, state_version: commit.state_version,
+        events: commit.events ?? [], commands: commit.commands ?? [], rolls: commit.rolls ?? [], duplicate: Boolean(commit.duplicate) }
+    }
+    const exploration = resolveExplorationCommand(loaded.state, actorId, text)
+    if (exploration) {
+      const unchanged = { turn_consumed: false, admin_commands: 0, state: loaded.state,
+        state_version: loaded.state_version, events: [], commands: [], rolls: [], duplicate: false }
+      if (exploration.status === 'clarification') return { ...unchanged, kind: 'clarification', narration: exploration.narration }
+      if (exploration.requires_confirmation && !confirmedAction && !previousCommit) {
+        this.rulesEngine.validate(exploration.command, loaded.state, { allowedActorIds: [actorId] })
+        return { ...unchanged, kind: 'counter_offer', narration: exploration.confirmation, confirmation_required: true }
+      }
+      try {
+        const commit = await run([declaration, exploration.command])
+        verifyDuplicate(commit)
+        const door = (commit.events ?? []).find(event => event.event_type === 'DoorStateChanged')
+        const forced = (commit.events ?? []).find(event => ['DoorForced', 'DoorLockpicked', 'DoorBarricadeForced'].includes(event.event_type))
+        const narration = door ? door.payload.state === 'closed' ? 'Дверь закрыта.' : 'Дверь открыта; проход можно использовать.'
+          : forced ? forced.event_type === 'DoorBarricadeForced'
+            ? forced.payload.success ? 'Баррикада убрана. Дверью снова можно пользоваться.' : 'Баррикада не поддалась. Можно изменить способ или выбрать другой проход.'
+            : forced.payload.success ? 'Замок преодолён, проход открыт.' : 'Замок не поддался. Можно изменить способ или выбрать другой проход.'
+            : exploration.narration
+        return { ...unchanged, kind: 'scene_interaction', narration, state: commit.state, state_version: commit.state_version,
+          events: commit.events ?? [], commands: commit.commands ?? [], rolls: commit.rolls ?? [], duplicate: Boolean(commit.duplicate) }
+      } catch (error) {
+        if (!(error instanceof RulesValidationError)) throw error
+        return { ...unchanged, kind: 'clarification', narration: `${error.message}. Измените способ или выберите доступную цель на карте.` }
+      }
+    }
     if (text.length < 8 || isNoise(text) || /^(?:это|туда|сделать|что-то|как-нибудь)[?.!]*$/iu.test(text)) {
       const commit = await run([declaration])
       verifyDuplicate(commit)
@@ -895,11 +1056,11 @@ export class AutonomousCampaignOrchestrator {
       ? verifiedRoll.context.reading ?? null
       : null
     if (verifiedRoll) assertFreeActionConfirmation(verifiedRoll.context, text, loaded.state_version)
-    const proposedReading = storedReading
+    const proposedReading = storedReading ?? harmlessFreeActionReading(loaded.state, actorId, text)
       ?? (this.actionAdjudicator
         ? await this.actionAdjudicator.read(loaded.state, actorId, text, deterministicReading)
         : deterministicReading)
-    const reading = bindFreeActionReadingToState(loaded.state, actorId, text, proposedReading)
+    const reading = bindFreeActionReadingToState(loaded.state, actorId, text, proposedReading, { preserveActionProfile: Boolean(storedReading) })
     if (reading.reference_ambiguities.length) {
       return {
         kind: 'clarification',
@@ -972,6 +1133,112 @@ export class AutonomousCampaignOrchestrator {
           rolls: [],
           duplicate: false,
         }
+      }
+    }
+    // Намеренный контакт с опасностью — это заявленный самоурон, а не проверка
+    // «избежать» опасности. Источник, близость, вид урона и формулу выбирает
+    // серверный каталог; старые pending-проверки v1 сюда не переоцениваются.
+    const hazardContact = reading.policy_version === FREE_ACTION_RESOLUTION_POLICY_VERSION
+      ? resolveHazardContact(loaded.state, actorId, text, reading) : null
+    const hazardMeans = hazardContact?.status === 'contact'
+      ? verifyMeans(loaded.state, actorId, reading.required_means) : { satisfied: true, missing: [] }
+    const hazardResolution = hazardContact?.status === 'contact'
+      ? contextualResolutionFor(loaded.state, actorId, reading, text) : null
+    if (hazardContact?.status === 'contact' && (!hazardMeans.satisfied || hazardResolution?.mode === 'counter_offer')) {
+      const commit = await run([declaration])
+      verifyDuplicate(commit)
+      return {
+        kind: 'counter_offer',
+        narration: hazardMeans.missing.length
+          ? `Для этого способа не хватает подтверждённых средств: ${hazardMeans.missing.join(', ')}. Можно выбрать имеющуюся вещь или описать другой подход.`
+          : 'Обычной проверки здесь недостаточно. Назовите способность, заклинание или предмет, которые позволяют выполнить этот способ, либо предложите другой подход.',
+        turn_consumed: false,
+        admin_commands: 0,
+        state: commit.state ?? loaded.state,
+        state_version: commit.state_version ?? loaded.state_version,
+        events: commit.events ?? [], commands: commit.commands ?? [], rolls: commit.rolls ?? [],
+        duplicate: Boolean(commit.duplicate),
+      }
+    }
+    if (hazardContact?.status === 'unavailable') {
+      const commit = await run([declaration])
+      verifyDuplicate(commit)
+      return {
+        kind: 'clarification',
+        narration: `${hazardContact.reason} Уточните место или сначала подойдите ближе; действие пока не выполнено.`,
+        turn_consumed: false,
+        admin_commands: 0,
+        state: commit.state ?? loaded.state,
+        state_version: commit.state_version ?? loaded.state_version,
+        events: commit.events ?? [], commands: commit.commands ?? [], rolls: commit.rolls ?? [],
+        duplicate: Boolean(commit.duplicate),
+      }
+    }
+    if (hazardContact?.status === 'contact') {
+      const inCombat = Boolean(loaded.state.mechanics?.combat?.active)
+      const actionCost = inCombat ? resolveActionCost(loaded.state, actorId, reading.action_cost) : { cost: 'free', available: true }
+      if (inCombat && !actionCost.available) {
+        const commit = await run([declaration])
+        verifyDuplicate(commit)
+        return {
+          kind: 'clarification',
+          narration: `На этом ходу ${actionCost.slot} уже потрачено. Контакт с опасностью не выполнен.`,
+          turn_consumed: false,
+          admin_commands: 0,
+          state: commit.state ?? loaded.state,
+          state_version: commit.state_version ?? loaded.state_version,
+          events: commit.events ?? [], commands: commit.commands ?? [], rolls: commit.rolls ?? [],
+          duplicate: Boolean(commit.duplicate),
+        }
+      }
+      const ruling = {
+        id: `ruling-${digest({ campaignId, text })}`,
+        status: 'applied', scope: 'single-action', question: text,
+        bounded_options: ['hazard-contact'], selected_option: 'hazard-contact',
+        consequence: loaded.state.scene?.objective ?? '', world_change: false,
+        interpretation: {
+          hazard: hazardContact.hazard_id,
+          damage_type: hazardContact.damage_type,
+          damage_expression: hazardContact.expression,
+          activity_kind: reading.activity_kind || null,
+          policy_version: reading.policy_version,
+        },
+        provenance: {
+          source: 'free-action-adjudication', action_fingerprint: digest(text),
+          situation_fingerprint: situationFingerprint(loaded.state), policy: 'free-action-adjudication-v2',
+        },
+      }
+      const commit = await run([
+        declaration,
+        ...(inCombat ? [{
+          command_type: 'ResolveImprovisedAction', actor_id: actorId, action_cost: actionCost.cost,
+          summary: reading.goal_summary, ruling_id: ruling.id,
+        }] : []),
+        { command_type: 'RecordRuling', ruling: { ...ruling, outcome: 'applied' }, ruling_id: ruling.id },
+        {
+          command_type: 'ApplyDamage', actor_id: actorId, target_id: actorId,
+          expression: hazardContact.expression, damage_type: hazardContact.damage_type,
+          source: `free-action:hazard-contact:${hazardContact.hazard_id}`, ruling_id: ruling.id,
+        },
+      ])
+      verifyDuplicate(commit, { requiresRuling: true })
+      const events = commit.events ?? []
+      const damage = events.find((event) => event.event_type === 'DamageApplied' && event.target_ids?.includes(actorId))
+      const amount = Number(damage?.payload?.applied_amount) || 0
+      const hero = findActor(loaded.state, actorId)
+      const name = String(hero?.character || hero?.name || 'Герой').slice(0, 120)
+      const cause = String(hazardContact.source?.kind ?? '').startsWith('wall-') ? 'Удар о стену: '
+        : hazardContact.hazard_id === 'fire' ? 'Ожог: ' : ''
+      return {
+        kind: 'hazard_contact', ruling, reading,
+        narration: amount > 0
+          ? `${cause}${name} получает ${amount} ${damageTypeLabelRu(hazardContact.damage_type)} урона.`
+          : `${name} не получает урона от контакта.`,
+        turn_consumed: events.some((event) => event.event_type === 'CombatActionUsed'),
+        admin_commands: 0,
+        state: commit.state ?? loaded.state,
+        state_version: commit.state_version ?? loaded.state_version,
+        events, commands: commit.commands ?? [], rolls: commit.rolls ?? [], duplicate: Boolean(commit.duplicate),
       }
     }
     // Карманная кража разбирается **до** обыска тела: у того в шаблоне уже есть
@@ -1076,7 +1343,7 @@ export class AutonomousCampaignOrchestrator {
       : contextualResolutionFor(loaded.state, actorId, { ...reading, plausibility: 'impossible_without_means' }, text)
     const attempt = attemptFingerprint({ actorId, approach: reading.approach_summary, obstacle: reading.obstacle })
     const repeated = previousFailedAttempt(loaded.state, attempt)
-    const objective = boundedObjective(loaded.state, text)
+    const objective = loaded.state.scene?.objective ?? ''
 
     // Тот же подход к тому же препятствию в неизменившейся обстановке нового броска не даёт.
     if (repeated) {
@@ -1102,7 +1369,9 @@ export class AutonomousCampaignOrchestrator {
       verifyDuplicate(commit)
       return {
         kind: 'counter_offer',
-        narration: `Без подтверждённого средства так не выйдет: не хватает ${means.missing.join(', ')}. Но препятствие «${reading.obstacle}» можно взять проверкой — опишите, как герой к нему подступится.`,
+        narration: means.missing.length
+          ? `Для этого способа не хватает подтверждённых средств: ${means.missing.join(', ')}. Можно выбрать имеющуюся вещь или описать другой подход к препятствию «${reading.obstacle}».`
+          : `Обычной проверки здесь недостаточно. Назовите способность, заклинание или предмет, которые позволяют преодолеть препятствие «${reading.obstacle}», либо предложите другой способ.`,
         turn_consumed: false,
         admin_commands: 0,
         state: commit.state ?? loaded.state,
@@ -1114,6 +1383,7 @@ export class AutonomousCampaignOrchestrator {
       }
     }
 
+    const outcomePolicy = freeActionResolutionPolicy(reading)
     const stakes = stakesFor({
       ability: reading.ability,
       skill: reading.skill,
@@ -1121,6 +1391,7 @@ export class AutonomousCampaignOrchestrator {
       risk: reading.risk,
       proficiency: reading.proficiency,
       consequence_type: reading.consequence_type,
+      outcome_policy: outcomePolicy,
     })
     const ruling = {
       id: `ruling-${digest({ campaignId, text })}`,
@@ -1130,7 +1401,7 @@ export class AutonomousCampaignOrchestrator {
       bounded_options: ['auto-success', 'ability-check', 'counter-offer'],
       selected_option: resolution.mode === 'auto_success' ? 'auto-success' : 'ability-check',
       consequence: objective,
-      world_change: true,
+      world_change: false,
       stakes,
       interpretation: {
         target_id: reading.target_id || null,
@@ -1138,13 +1409,16 @@ export class AutonomousCampaignOrchestrator {
         skill: reading.skill,
         proficiency: reading.proficiency,
         consequence_type: reading.consequence_type,
+        activity_kind: reading.activity_kind || null,
+        duration_class: reading.duration_class || null,
+        policy_version: reading.policy_version,
       },
       provenance: {
         source: 'free-action-adjudication',
         action_fingerprint: digest(text),
         attempt_fingerprint: attempt,
         situation_fingerprint: situationFingerprint(loaded.state),
-        policy: 'free-action-adjudication-v1',
+        policy: outcomePolicy.version === 'legacy' ? 'free-action-adjudication-v1' : 'free-action-adjudication-v2',
       },
     }
 
@@ -1153,14 +1427,15 @@ export class AutonomousCampaignOrchestrator {
       const commit = await run([
         declaration,
         { command_type: 'RecordRuling', ruling: { ...ruling, outcome: 'success' }, ruling_id: ruling.id },
-        { command_type: 'UpdateObjective', objective },
+        ...(!loaded.state.mechanics?.combat?.active && outcomePolicy.success_minutes > 0
+          ? [{ command_type: 'AdvanceTime', amount: outcomePolicy.success_minutes, unit: 'minute' }] : []),
       ])
       verifyDuplicate(commit, { requiresRuling: true })
       return {
         kind: 'auto_success',
         ruling,
         reading,
-        narration: `Это удаётся без броска — на кону ничего нет. Следующая цель отряда: «${objective}»`,
+        narration: 'Это удаётся без броска: для самой попытки нет риска или противодействия.',
         turn_consumed: false,
         admin_commands: 0,
         state: commit.state ?? loaded.state,
@@ -1201,9 +1476,15 @@ export class AutonomousCampaignOrchestrator {
       }
     }
 
-    const effectPreview = inCombat ? planImprovisedEffect(loaded.state, {
-      actorId, effectId: reading.effect, targetId: reading.effect_target, hazardId: reading.hazard, risk: reading.risk,
-    }) : null
+    const hazardEffectUnavailable = inCombat && reading.effect === 'hazard_damage'
+      && !confirmedHazardNear(loaded.state, reading.effect_target, reading.hazard)
+    const effectPreview = inCombat
+      ? hazardEffectUnavailable
+        ? { effect: { id: 'none' }, rejected: 'рядом с целью нет подтверждённой видимой опасности' }
+        : planImprovisedEffect(loaded.state, {
+          actorId, effectId: reading.effect, targetId: reading.effect_target, hazardId: reading.hazard, risk: reading.risk,
+        })
+      : null
     if (effectPreview?.rejected) {
       return {
         kind: 'clarification',
@@ -1213,16 +1494,18 @@ export class AutonomousCampaignOrchestrator {
         events: [], commands: [], rolls: [], duplicate: false,
       }
     }
-    const failure = failForwardFor(reading.risk, reading.consequence_type)
+    const failure = outcomePolicy.failure
     const proposal = {
       summary: reading.goal_summary,
       approach: reading.approach_summary,
-      cost: inCombat ? actionCost.slot || 'свободное взаимодействие' : '5 минут при успехе',
+      cost: inCombat ? actionCost.slot || 'свободное взаимодействие' : outcomePolicy.cost,
       on_success: inCombat ? effectPreview.effect.id === 'none' ? 'Попытка будет отмечена в истории без механического эффекта.' : effectPreview.summary
-        : 'Задумка отмечается в истории и цели сцены. Перемещение, урон и предметы этой проверкой не создаются.',
+        : reading.activity_kind === 'stunt'
+          ? 'Трюк удаётся. Герой остаётся на своей клетке.'
+          : 'Задумка отмечается в истории и цели сцены. Перемещение, урон и предметы этой проверкой не создаются.',
       on_failure: inCombat
-        ? actionCost.cost === 'free' ? 'Задумка не удастся; действие и бонусное действие сохранятся.' : `Задумка не удастся; ${actionCost.slot} будет потрачено.`
-        : `${failure.summary} Пройдёт ${failure.minutes} минут.`,
+        ? `${actionCost.cost === 'free' ? 'Задумка не удастся; действие и бонусное действие сохранятся.' : `Задумка не удастся; ${actionCost.slot} будет потрачено.`}${failure.damage_expression ? ` ${failure.summary}` : ''}`
+        : `${failure.summary}${failure.minutes > 0 ? ` Пройдёт ${failure.minutes} минут.` : ''}`,
     }
     if (stakes) stakes.on_failure = proposal.on_failure
     // Согласование рискованной импровизации обязательно даже с автоброском:
@@ -1246,6 +1529,7 @@ export class AutonomousCampaignOrchestrator {
         disadvantage: preview.disadvantage,
         context: {
           kind: 'free_action',
+          action: text,
           action_fingerprint: digest(text),
           state_version: loaded.state_version,
           reading,
@@ -1296,7 +1580,7 @@ export class AutonomousCampaignOrchestrator {
     verifyDuplicate(checkCommit)
     const checkEvent = (checkCommit.events ?? []).find((entry) => entry.event_type === 'AbilityCheckResolved')
     const succeeded = checkEvent?.payload?.success === true
-    const consequence = failForwardFor(reading.risk, reading.consequence_type)
+    const consequence = outcomePolicy.failure
     const outcomeRuling = { ...ruling, outcome: succeeded ? 'success' : 'failure' }
     // Внутри раунда время не идёт и цель отряда не переписывается: ход занимает
     // секунды, а «следующая цель» посреди боя ломала бы сцену.
@@ -1308,10 +1592,13 @@ export class AutonomousCampaignOrchestrator {
     const followUp = [
       { command_type: 'RecordRuling', ruling: outcomeRuling, ruling_id: ruling.id },
       ...(effectPlan?.commands ?? []),
-      ...materialConsequenceCommands(loaded.state, { succeeded, reading, checkEvent }),
-      ...(inCombat ? [] : [
-        { command_type: 'AdvanceTime', amount: succeeded ? 5 : consequence.minutes, unit: 'minute' },
-        { command_type: 'UpdateObjective', objective },
+      ...(!succeeded && consequence.damage_expression ? [{
+        command_type: 'ApplyDamage', actor_id: actorId, target_id: actorId,
+        expression: consequence.damage_expression, damage_type: consequence.damage_type,
+        source: `free-action:${reading.activity_kind}`, ruling_id: ruling.id,
+      }] : []),
+      ...(inCombat || (succeeded ? outcomePolicy.success_minutes : consequence.minutes) <= 0 ? [] : [
+        { command_type: 'AdvanceTime', amount: succeeded ? outcomePolicy.success_minutes : consequence.minutes, unit: 'minute' },
       ]),
     ]
     if (!succeeded && !inCombat && consequence.advances_quest_clock) {
@@ -1328,6 +1615,10 @@ export class AutonomousCampaignOrchestrator {
       }
     }
     const events = [...(checkCommit.events ?? []), ...(consequenceCommit?.events ?? [])]
+    const injuryAmount = events.filter(event => event.event_type === 'DamageApplied' && event.target_ids?.includes(actorId))
+      .reduce((sum, event) => sum + (Number(event.payload?.applied_amount) || 0), 0)
+    const failureText = consequence.damage_expression
+      ? `Неудачное движение. Герой получает ${injuryAmount} ${damageTypeLabelRu(consequence.damage_type)} урона.` : consequence.summary
     return {
       kind: succeeded ? 'check_success' : 'check_failure',
       ruling: outcomeRuling,
@@ -1336,10 +1627,10 @@ export class AutonomousCampaignOrchestrator {
       narration: inCombat
         ? succeeded
           ? `Проверка пройдена. ${effectPlan?.summary ?? ''}`.trim()
-          : `Не вышло: задумка сорвалась, и ${actionCost.slot} потрачено впустую.`
+          : `Не вышло: задумка сорвалась, и ${actionCost.slot} потрачено впустую.${consequence.damage_expression ? ` ${failureText}` : ''}`
         : succeeded
-          ? `Проверка пройдена. Следующая цель отряда: «${objective}»`
-          : `Не вышло. ${consequence.summary} Следующая цель отряда: «${objective}»`,
+          ? 'Проверка пройдена. Результат относится к заявленному способу; цель отряда сохраняется.'
+          : `Не вышло. ${failureText} Можно изменить способ действия.`,
       turn_consumed: false,
       admin_commands: 0,
       state: consequenceCommit?.state ?? checkCommit.state ?? loaded.state,

@@ -349,6 +349,9 @@ test('в бою объект тратит действие, вне боя кос
   assert.equal(afterRest.mechanics.scene_interactions['prop-campfire'].used, false)
   assert.deepEqual(afterRest.mechanics.scene_interactions['prop-campfire'].used_by, ['hero'])
   assert.equal(sceneInteractionNarration(rested.events), 'У костра завершён короткий привал.')
+  assert.equal(sceneInteractionNarration([
+    { event_type: 'RestCompleted', actor_id: 'hero', target_ids: ['hero'], payload: { kind: 'long' } },
+  ]), '', 'обычный отдых не должен получать generic-текст объекта сцены')
   assert.throws(
     () => resolveCommand({
       command_type: 'OperateSceneObject', actor_id: 'hero', prop_id: 'prop-campfire', intent: 'use',

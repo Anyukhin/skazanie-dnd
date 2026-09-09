@@ -1,0 +1,2374 @@
+{
+  "schema_version": 1,
+  "layouts": [
+    {
+      "location_id": "astohan-stormberg",
+      "name": "Штормберг · королевский замок Ареса",
+      "width": 96,
+      "height": 64,
+      "source_width": 1536,
+      "source_height": 1024,
+      "seed": "authored-scene:astohan-plains@2",
+      "generator": {
+        "id": "ares-fortress",
+        "version": "2"
+      },
+      "theme": "building",
+      "default_material": "stone",
+      "zones": [
+        {
+          "id": "gallery",
+          "label": "Военная галерея",
+          "kind": "interior",
+          "material": "stone",
+          "lightLevel": "bright"
+        },
+        {
+          "id": "royal-dais",
+          "label": "Королевская апсида",
+          "kind": "interior",
+          "material": "marble",
+          "lightLevel": "bright"
+        },
+        {
+          "id": "courtyard",
+          "label": "Парадный двор",
+          "kind": "exterior",
+          "material": "stone",
+          "lightLevel": "bright"
+        },
+        {
+          "id": "main-gate",
+          "label": "Главный въезд",
+          "kind": "exterior",
+          "material": "stone",
+          "lightLevel": "bright"
+        },
+        {
+          "id": "sea",
+          "label": "Море под стенами",
+          "kind": "exterior",
+          "material": "stone",
+          "lightLevel": "bright"
+        },
+        {
+          "id": "west-gate-tower",
+          "label": "Западная башня",
+          "kind": "interior",
+          "material": "stone",
+          "lightLevel": "bright"
+        },
+        {
+          "id": "upper-watch-turret",
+          "label": "Малая дозорная башня",
+          "kind": "interior",
+          "material": "stone",
+          "lightLevel": "bright"
+        },
+        {
+          "id": "archive-rotunda",
+          "label": "Архивная ротонда",
+          "kind": "interior",
+          "material": "stone",
+          "lightLevel": "bright"
+        },
+        {
+          "id": "archive-vestibule",
+          "label": "Преддверие архива",
+          "kind": "interior",
+          "material": "stone",
+          "lightLevel": "bright"
+        },
+        {
+          "id": "archive-reading-room",
+          "label": "Читальный зал",
+          "kind": "interior",
+          "material": "stone",
+          "lightLevel": "bright"
+        },
+        {
+          "id": "main-library",
+          "label": "Архив Сломанного Клыка",
+          "kind": "interior",
+          "material": "stone",
+          "lightLevel": "bright"
+        },
+        {
+          "id": "archive-corridor",
+          "label": "Архивный коридор",
+          "kind": "interior",
+          "material": "stone",
+          "lightLevel": "bright"
+        },
+        {
+          "id": "west-connector",
+          "label": "Кабинеты архивистов",
+          "kind": "interior",
+          "material": "stone",
+          "lightLevel": "bright"
+        },
+        {
+          "id": "west-hall",
+          "label": "Западная галерея",
+          "kind": "interior",
+          "material": "stone",
+          "lightLevel": "bright"
+        },
+        {
+          "id": "armory",
+          "label": "Оружейная",
+          "kind": "interior",
+          "material": "stone",
+          "lightLevel": "bright"
+        },
+        {
+          "id": "training-yard",
+          "label": "Учебный двор",
+          "kind": "exterior",
+          "material": "stone",
+          "lightLevel": "bright"
+        },
+        {
+          "id": "royal-bedroom-west",
+          "label": "Западные королевские покои",
+          "kind": "interior",
+          "material": "stone",
+          "lightLevel": "bright"
+        },
+        {
+          "id": "royal-bedroom-center",
+          "label": "Средние королевские покои",
+          "kind": "interior",
+          "material": "stone",
+          "lightLevel": "bright"
+        },
+        {
+          "id": "royal-bedroom-east",
+          "label": "Восточные королевские покои",
+          "kind": "interior",
+          "material": "wood",
+          "lightLevel": "bright"
+        },
+        {
+          "id": "east-hall",
+          "label": "Восточный холл",
+          "kind": "interior",
+          "material": "stone",
+          "lightLevel": "bright"
+        },
+        {
+          "id": "east-connector",
+          "label": "Южный восточный коридор",
+          "kind": "interior",
+          "material": "stone",
+          "lightLevel": "bright"
+        },
+        {
+          "id": "dining-hall",
+          "label": "Королевская столовая",
+          "kind": "interior",
+          "material": "stone",
+          "lightLevel": "bright"
+        },
+        {
+          "id": "kitchen",
+          "label": "Кухня",
+          "kind": "interior",
+          "material": "stone",
+          "lightLevel": "bright"
+        },
+        {
+          "id": "service-room",
+          "label": "Служебные помещения",
+          "kind": "interior",
+          "material": "wood",
+          "lightLevel": "dim"
+        },
+        {
+          "id": "stables",
+          "label": "Конюшни и хозяйственный двор",
+          "kind": "interior",
+          "material": "wood",
+          "lightLevel": "bright"
+        },
+        {
+          "id": "east-round-tower",
+          "label": "Восточная круглая башня",
+          "kind": "interior",
+          "material": "stone",
+          "lightLevel": "bright"
+        },
+        {
+          "id": "east-approach",
+          "label": "Восточная обходная дорожка",
+          "kind": "exterior",
+          "material": "stone",
+          "lightLevel": "bright"
+        }
+      ],
+      "terrain": [
+        {
+          "polygon": [
+            [
+              0,
+              0
+            ],
+            [
+              258,
+              0
+            ],
+            [
+              218,
+              68
+            ],
+            [
+              176,
+              126
+            ],
+            [
+              129,
+              247
+            ],
+            [
+              74,
+              340
+            ],
+            [
+              100,
+              462
+            ],
+            [
+              157,
+              527
+            ],
+            [
+              174,
+              653
+            ],
+            [
+              144,
+              741
+            ],
+            [
+              116,
+              877
+            ],
+            [
+              181,
+              1024
+            ],
+            [
+              0,
+              1024
+            ]
+          ],
+          "zone": "sea",
+          "passable": false,
+          "material": "stone",
+          "surface": "water"
+        },
+        {
+          "rect": [
+            650,
+            165,
+            168,
+            285
+          ],
+          "zone": "gallery",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "ellipse": [
+            735,
+            108,
+            76,
+            75
+          ],
+          "zone": "royal-dais",
+          "passable": true,
+          "material": "marble"
+        },
+        {
+          "rect": [
+            671,
+            118,
+            130,
+            69
+          ],
+          "zone": "gallery",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            706,
+            435,
+            60,
+            75
+          ],
+          "zone": "gallery",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "polygon": [
+            [
+              541,
+              476
+            ],
+            [
+              686,
+              476
+            ],
+            [
+              696,
+              533
+            ],
+            [
+              704,
+              550
+            ],
+            [
+              733,
+              566
+            ],
+            [
+              759,
+              550
+            ],
+            [
+              769,
+              532
+            ],
+            [
+              779,
+              476
+            ],
+            [
+              922,
+              476
+            ],
+            [
+              935,
+              765
+            ],
+            [
+              827,
+              765
+            ],
+            [
+              815,
+              793
+            ],
+            [
+              654,
+              793
+            ],
+            [
+              650,
+              766
+            ],
+            [
+              541,
+              766
+            ]
+          ],
+          "zone": "courtyard",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            692,
+            496,
+            86,
+            99
+          ],
+          "zone": "courtyard",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            666,
+            798,
+            142,
+            226
+          ],
+          "zone": "main-gate",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            684,
+            773,
+            102,
+            61
+          ],
+          "zone": "main-gate",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "ellipse": [
+            736,
+            660,
+            44,
+            44
+          ],
+          "zone": "courtyard",
+          "passable": false,
+          "material": "stone",
+          "surface": "water"
+        },
+        {
+          "polygon": [
+            [
+              596,
+              514
+            ],
+            [
+              631,
+              524
+            ],
+            [
+              658,
+              581
+            ],
+            [
+              635,
+              616
+            ],
+            [
+              590,
+              612
+            ],
+            [
+              578,
+              590
+            ],
+            [
+              582,
+              537
+            ]
+          ],
+          "zone": "courtyard",
+          "passable": false,
+          "material": "grass"
+        },
+        {
+          "polygon": [
+            [
+              844,
+              520
+            ],
+            [
+              878,
+              515
+            ],
+            [
+              886,
+              588
+            ],
+            [
+              861,
+              617
+            ],
+            [
+              809,
+              611
+            ],
+            [
+              811,
+              581
+            ],
+            [
+              831,
+              531
+            ]
+          ],
+          "zone": "courtyard",
+          "passable": false,
+          "material": "grass"
+        },
+        {
+          "polygon": [
+            [
+              590,
+              696
+            ],
+            [
+              649,
+              696
+            ],
+            [
+              653,
+              764
+            ],
+            [
+              582,
+              764
+            ],
+            [
+              577,
+              730
+            ]
+          ],
+          "zone": "courtyard",
+          "passable": false,
+          "material": "grass"
+        },
+        {
+          "polygon": [
+            [
+              815,
+              699
+            ],
+            [
+              877,
+              702
+            ],
+            [
+              880,
+              767
+            ],
+            [
+              814,
+              767
+            ],
+            [
+              807,
+              740
+            ]
+          ],
+          "zone": "courtyard",
+          "passable": false,
+          "material": "grass"
+        },
+        {
+          "ellipse": [
+            174,
+            350,
+            43,
+            43
+          ],
+          "zone": "west-gate-tower",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            211,
+            336,
+            77,
+            24
+          ],
+          "zone": "archive-vestibule",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            280,
+            312,
+            24,
+            48
+          ],
+          "zone": "archive-vestibule",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            253,
+            264,
+            82,
+            64
+          ],
+          "zone": "archive-vestibule",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            277,
+            342,
+            58,
+            166
+          ],
+          "zone": "archive-reading-room",
+          "material": "wood",
+          "passable": true
+        },
+        {
+          "ellipse": [
+            335,
+            198,
+            28,
+            28
+          ],
+          "zone": "upper-watch-turret",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            352,
+            200,
+            104,
+            24
+          ],
+          "zone": "archive-vestibule",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "ellipse": [
+            484,
+            193,
+            34,
+            34
+          ],
+          "zone": "archive-rotunda",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            472,
+            216,
+            24,
+            64
+          ],
+          "zone": "archive-vestibule",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            440,
+            256,
+            83,
+            24
+          ],
+          "zone": "archive-vestibule",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            488,
+            272,
+            34,
+            264
+          ],
+          "zone": "archive-corridor",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            357,
+            318,
+            100,
+            130
+          ],
+          "zone": "main-library",
+          "material": "wood",
+          "passable": true
+        },
+        {
+          "rect": [
+            352,
+            468,
+            106,
+            36
+          ],
+          "zone": "main-library",
+          "material": "wood",
+          "passable": true
+        },
+        {
+          "rect": [
+            398,
+            436,
+            26,
+            48
+          ],
+          "zone": "main-library",
+          "material": "wood",
+          "passable": true
+        },
+        {
+          "rect": [
+            328,
+            400,
+            42,
+            16
+          ],
+          "zone": "main-library",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            449,
+            400,
+            55,
+            16
+          ],
+          "zone": "archive-corridor",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            536,
+            352,
+            87,
+            32
+          ],
+          "zone": "west-connector",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            538,
+            408,
+            86,
+            32
+          ],
+          "zone": "west-connector",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            518,
+            368,
+            43,
+            16
+          ],
+          "zone": "west-connector",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            518,
+            416,
+            43,
+            16
+          ],
+          "zone": "west-connector",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            523,
+            432,
+            112,
+            16
+          ],
+          "zone": "west-connector",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            624,
+            432,
+            44,
+            16
+          ],
+          "zone": "gallery",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            287,
+            520,
+            246,
+            24
+          ],
+          "zone": "west-hall",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            320,
+            562,
+            174,
+            123
+          ],
+          "zone": "armory",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            388,
+            536,
+            24,
+            40
+          ],
+          "zone": "armory",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            386,
+            676,
+            24,
+            64
+          ],
+          "zone": "armory",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            492,
+            608,
+            60,
+            16
+          ],
+          "zone": "armory",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            325,
+            734,
+            171,
+            144
+          ],
+          "zone": "training-yard",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            384,
+            864,
+            24,
+            48
+          ],
+          "zone": "training-yard",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            384,
+            896,
+            281,
+            16
+          ],
+          "zone": "training-yard",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            848,
+            32,
+            64,
+            80
+          ],
+          "zone": "royal-bedroom-west",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            976,
+            32,
+            80,
+            80
+          ],
+          "zone": "royal-bedroom-center",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            1104,
+            32,
+            64,
+            80
+          ],
+          "zone": "royal-bedroom-east",
+          "passable": true,
+          "material": "wood"
+        },
+        {
+          "rect": [
+            880,
+            112,
+            16,
+            48
+          ],
+          "zone": "east-hall",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            1008,
+            112,
+            16,
+            48
+          ],
+          "zone": "east-hall",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            1128,
+            112,
+            16,
+            48
+          ],
+          "zone": "east-hall",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "polygon": [
+            [
+              1040,
+              160
+            ],
+            [
+              1184,
+              160
+            ],
+            [
+              1184,
+              240
+            ],
+            [
+              1152,
+              256
+            ],
+            [
+              1040,
+              256
+            ]
+          ],
+          "zone": "east-hall",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            1048,
+            256,
+            16,
+            32
+          ],
+          "zone": "east-hall",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            1048,
+            288,
+            216,
+            112
+          ],
+          "zone": "dining-hall",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            1048,
+            400,
+            16,
+            48
+          ],
+          "zone": "kitchen",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            1216,
+            400,
+            16,
+            48
+          ],
+          "zone": "service-room",
+          "passable": true,
+          "material": "wood"
+        },
+        {
+          "rect": [
+            1024,
+            448,
+            80,
+            96
+          ],
+          "zone": "kitchen",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            1152,
+            448,
+            112,
+            96
+          ],
+          "zone": "service-room",
+          "passable": true,
+          "material": "wood"
+        },
+        {
+          "rect": [
+            832,
+            416,
+            72,
+            32
+          ],
+          "zone": "east-connector",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            904,
+            432,
+            64,
+            160
+          ],
+          "zone": "east-connector",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            920,
+            608,
+            56,
+            48
+          ],
+          "zone": "east-connector",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            968,
+            512,
+            40,
+            48
+          ],
+          "zone": "east-connector",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            976,
+            608,
+            112,
+            96
+          ],
+          "zone": "stables",
+          "passable": true,
+          "material": "wood"
+        },
+        {
+          "rect": [
+            1136,
+            608,
+            112,
+            96
+          ],
+          "zone": "stables",
+          "passable": true,
+          "material": "wood"
+        },
+        {
+          "polygon": [
+            [
+              976,
+              752
+            ],
+            [
+              1264,
+              752
+            ],
+            [
+              1264,
+              832
+            ],
+            [
+              1200,
+              848
+            ],
+            [
+              1008,
+              848
+            ],
+            [
+              976,
+              832
+            ]
+          ],
+          "zone": "stables",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "ellipse": [
+            1333,
+            190,
+            40,
+            44
+          ],
+          "zone": "east-round-tower",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            1184,
+            192,
+            112,
+            32
+          ],
+          "zone": "east-hall",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "polygon": [
+            [
+              1280,
+              112
+            ],
+            [
+              1344,
+              96
+            ],
+            [
+              1376,
+              128
+            ],
+            [
+              1376,
+              272
+            ],
+            [
+              1344,
+              304
+            ],
+            [
+              1344,
+              640
+            ],
+            [
+              1376,
+              688
+            ],
+            [
+              1376,
+              800
+            ],
+            [
+              1344,
+              832
+            ],
+            [
+              1312,
+              816
+            ],
+            [
+              1312,
+              720
+            ],
+            [
+              1328,
+              672
+            ],
+            [
+              1328,
+              320
+            ],
+            [
+              1280,
+              272
+            ]
+          ],
+          "zone": "east-approach",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            1048,
+            536,
+            16,
+            80
+          ],
+          "zone": "east-connector",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            1216,
+            536,
+            16,
+            80
+          ],
+          "zone": "east-connector",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            1072,
+            688,
+            80,
+            24
+          ],
+          "zone": "east-connector",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            1104,
+            696,
+            32,
+            72
+          ],
+          "zone": "east-connector",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            1264,
+            784,
+            80,
+            32
+          ],
+          "zone": "east-connector",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            920,
+            576,
+            72,
+            80
+          ],
+          "zone": "east-connector",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            880,
+            144,
+            264,
+            32
+          ],
+          "zone": "east-hall",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            920,
+            168,
+            32,
+            264
+          ],
+          "zone": "east-connector",
+          "passable": true,
+          "material": "stone"
+        },
+        {
+          "rect": [
+            808,
+            432,
+            48,
+            16
+          ],
+          "zone": "gallery",
+          "passable": true,
+          "material": "stone"
+        }
+      ],
+      "doors": [
+        {
+          "id": "ares-west-tower-archive",
+          "from": [
+            216,
+            344
+          ],
+          "to": [
+            232,
+            344
+          ],
+          "state": "open"
+        },
+        {
+          "id": "ares-reading-library",
+          "from": [
+            344,
+            408
+          ],
+          "to": [
+            360,
+            408
+          ],
+          "state": "open"
+        },
+        {
+          "id": "ares-library-corridor",
+          "from": [
+            472,
+            408
+          ],
+          "to": [
+            488,
+            408
+          ],
+          "state": "open"
+        },
+        {
+          "id": "ares-rotunda-vestibule",
+          "from": [
+            488,
+            232
+          ],
+          "to": [
+            488,
+            248
+          ],
+          "state": "open"
+        },
+        {
+          "id": "ares-corridor-cabinet",
+          "from": [
+            520,
+            376
+          ],
+          "to": [
+            536,
+            376
+          ],
+          "state": "open"
+        },
+        {
+          "id": "ares-gallery-west",
+          "from": [
+            632,
+            440
+          ],
+          "to": [
+            648,
+            440
+          ],
+          "state": "open"
+        },
+        {
+          "id": "ares-armory-north",
+          "from": [
+            392,
+            552
+          ],
+          "to": [
+            392,
+            568
+          ],
+          "state": "open"
+        },
+        {
+          "id": "ares-armory-courtyard",
+          "from": [
+            504,
+            616
+          ],
+          "to": [
+            520,
+            616
+          ],
+          "state": "open"
+        },
+        {
+          "id": "ares-armory-training",
+          "from": [
+            392,
+            712
+          ],
+          "to": [
+            392,
+            728
+          ],
+          "state": "open"
+        },
+        {
+          "id": "ares-east-gallery-connector",
+          "from": [
+            816,
+            432
+          ],
+          "to": [
+            832,
+            432
+          ],
+          "state": "open"
+        },
+        {
+          "id": "ares-east-bedroom-west",
+          "from": [
+            888,
+            112
+          ],
+          "to": [
+            888,
+            128
+          ],
+          "state": "open"
+        },
+        {
+          "id": "ares-east-bedroom-center",
+          "from": [
+            1016,
+            112
+          ],
+          "to": [
+            1016,
+            128
+          ],
+          "state": "open"
+        },
+        {
+          "id": "ares-east-bedroom-east",
+          "from": [
+            1136,
+            112
+          ],
+          "to": [
+            1136,
+            128
+          ],
+          "state": "open"
+        },
+        {
+          "id": "ares-east-hall-dining",
+          "from": [
+            1056,
+            256
+          ],
+          "to": [
+            1056,
+            272
+          ],
+          "state": "open"
+        },
+        {
+          "id": "ares-east-hall-round-tower",
+          "from": [
+            1264,
+            208
+          ],
+          "to": [
+            1280,
+            208
+          ],
+          "state": "open"
+        },
+        {
+          "id": "ares-east-dining-kitchen",
+          "from": [
+            1056,
+            400
+          ],
+          "to": [
+            1056,
+            416
+          ],
+          "state": "open"
+        },
+        {
+          "id": "ares-east-dining-service",
+          "from": [
+            1216,
+            400
+          ],
+          "to": [
+            1216,
+            416
+          ],
+          "state": "open"
+        },
+        {
+          "id": "ares-east-kitchen-stables",
+          "from": [
+            1064,
+            600
+          ],
+          "to": [
+            1064,
+            616
+          ],
+          "state": "open"
+        },
+        {
+          "id": "ares-east-service-stables",
+          "from": [
+            1224,
+            600
+          ],
+          "to": [
+            1224,
+            616
+          ],
+          "state": "open"
+        },
+        {
+          "id": "ares-east-stables-yard",
+          "from": [
+            1120,
+            720
+          ],
+          "to": [
+            1120,
+            736
+          ],
+          "state": "open"
+        },
+        {
+          "id": "ares-east-yard-approach",
+          "from": [
+            1280,
+            800
+          ],
+          "to": [
+            1296,
+            800
+          ],
+          "state": "open"
+        },
+        {
+          "id": "ares-east-courtyard",
+          "from": [
+            920,
+            632
+          ],
+          "to": [
+            936,
+            632
+          ],
+          "state": "open"
+        },
+        {
+          "id": "ares-east-connector-service",
+          "from": [
+            968,
+            512
+          ],
+          "to": [
+            984,
+            512
+          ],
+          "state": "open"
+        },
+        {
+          "id": "ares-gallery-east",
+          "from": [
+            824,
+            440
+          ],
+          "to": [
+            840,
+            440
+          ],
+          "state": "open"
+        },
+        {
+          "id": "ares-kitchen-exit",
+          "from": [
+            1064,
+            536
+          ],
+          "to": [
+            1064,
+            552
+          ],
+          "state": "open"
+        },
+        {
+          "id": "ares-service-exit",
+          "from": [
+            1224,
+            536
+          ],
+          "to": [
+            1224,
+            552
+          ],
+          "state": "open"
+        }
+      ],
+      "props": [
+        {
+          "id": "painted:war-table",
+          "assetId": "table_long",
+          "rect": [
+            723,
+            223,
+            27,
+            118
+          ],
+          "rotation": 90,
+          "blocksMove": true,
+          "cover": "half",
+          "interactive": true,
+          "destructible": true
+        },
+        {
+          "id": "painted:royal-throne",
+          "assetId": "chair",
+          "rect": [
+            724,
+            109,
+            26,
+            43
+          ],
+          "blocksMove": true,
+          "cover": "half"
+        },
+        {
+          "id": "painted:high-throne",
+          "assetId": "chair",
+          "rect": [
+            723,
+            35,
+            25,
+            35
+          ],
+          "blocksMove": true,
+          "cover": "half"
+        },
+        {
+          "id": "painted:gallery-pillar-w-1",
+          "assetId": "pillar",
+          "rect": [
+            648,
+            176,
+            20,
+            20
+          ],
+          "blocksMove": true,
+          "blocksSight": true,
+          "cover": "three_quarters"
+        },
+        {
+          "id": "painted:gallery-pillar-e-1",
+          "assetId": "pillar",
+          "rect": [
+            802,
+            176,
+            20,
+            20
+          ],
+          "blocksMove": true,
+          "blocksSight": true,
+          "cover": "three_quarters"
+        },
+        {
+          "id": "painted:gallery-pillar-w-2",
+          "assetId": "pillar",
+          "rect": [
+            648,
+            213,
+            20,
+            20
+          ],
+          "blocksMove": true,
+          "blocksSight": true,
+          "cover": "three_quarters"
+        },
+        {
+          "id": "painted:gallery-pillar-e-2",
+          "assetId": "pillar",
+          "rect": [
+            802,
+            213,
+            20,
+            20
+          ],
+          "blocksMove": true,
+          "blocksSight": true,
+          "cover": "three_quarters"
+        },
+        {
+          "id": "painted:gallery-pillar-w-3",
+          "assetId": "pillar",
+          "rect": [
+            648,
+            252,
+            20,
+            20
+          ],
+          "blocksMove": true,
+          "blocksSight": true,
+          "cover": "three_quarters"
+        },
+        {
+          "id": "painted:gallery-pillar-e-3",
+          "assetId": "pillar",
+          "rect": [
+            802,
+            252,
+            20,
+            20
+          ],
+          "blocksMove": true,
+          "blocksSight": true,
+          "cover": "three_quarters"
+        },
+        {
+          "id": "painted:gallery-pillar-w-4",
+          "assetId": "pillar",
+          "rect": [
+            648,
+            293,
+            20,
+            20
+          ],
+          "blocksMove": true,
+          "blocksSight": true,
+          "cover": "three_quarters"
+        },
+        {
+          "id": "painted:gallery-pillar-e-4",
+          "assetId": "pillar",
+          "rect": [
+            802,
+            293,
+            20,
+            20
+          ],
+          "blocksMove": true,
+          "blocksSight": true,
+          "cover": "three_quarters"
+        },
+        {
+          "id": "painted:gallery-pillar-w-5",
+          "assetId": "pillar",
+          "rect": [
+            648,
+            333,
+            20,
+            20
+          ],
+          "blocksMove": true,
+          "blocksSight": true,
+          "cover": "three_quarters"
+        },
+        {
+          "id": "painted:gallery-pillar-e-5",
+          "assetId": "pillar",
+          "rect": [
+            802,
+            333,
+            20,
+            20
+          ],
+          "blocksMove": true,
+          "blocksSight": true,
+          "cover": "three_quarters"
+        },
+        {
+          "id": "painted:gallery-pillar-w-6",
+          "assetId": "pillar",
+          "rect": [
+            648,
+            372,
+            20,
+            20
+          ],
+          "blocksMove": true,
+          "blocksSight": true,
+          "cover": "three_quarters"
+        },
+        {
+          "id": "painted:gallery-pillar-e-6",
+          "assetId": "pillar",
+          "rect": [
+            802,
+            372,
+            20,
+            20
+          ],
+          "blocksMove": true,
+          "blocksSight": true,
+          "cover": "three_quarters"
+        },
+        {
+          "id": "painted:gallery-pillar-w-7",
+          "assetId": "pillar",
+          "rect": [
+            648,
+            409,
+            20,
+            20
+          ],
+          "blocksMove": true,
+          "blocksSight": true,
+          "cover": "three_quarters"
+        },
+        {
+          "id": "painted:gallery-pillar-e-7",
+          "assetId": "pillar",
+          "rect": [
+            802,
+            409,
+            20,
+            20
+          ],
+          "blocksMove": true,
+          "blocksSight": true,
+          "cover": "three_quarters"
+        },
+        {
+          "id": "painted:apse-pillar-w",
+          "assetId": "pillar",
+          "rect": [
+            675,
+            81,
+            20,
+            15
+          ],
+          "blocksMove": true,
+          "blocksSight": true,
+          "cover": "three_quarters"
+        },
+        {
+          "id": "painted:apse-pillar-e",
+          "assetId": "pillar",
+          "rect": [
+            778,
+            76,
+            21,
+            23
+          ],
+          "blocksMove": true,
+          "blocksSight": true,
+          "cover": "three_quarters"
+        },
+        {
+          "id": "painted:west-tower-table",
+          "assetId": "table_round",
+          "rect": [
+            160,
+            335,
+            32,
+            32
+          ],
+          "blocksMove": true,
+          "cover": "half"
+        },
+        {
+          "id": "painted:watch-table",
+          "assetId": "table_small",
+          "rect": [
+            326,
+            190,
+            20,
+            16
+          ],
+          "blocksMove": true,
+          "cover": "half"
+        },
+        {
+          "id": "painted:rotunda-table",
+          "assetId": "table_round",
+          "rect": [
+            477,
+            184,
+            24,
+            24
+          ],
+          "blocksMove": true,
+          "cover": "half"
+        },
+        {
+          "id": "painted:reading-desk",
+          "assetId": "table_small",
+          "rect": [
+            288,
+            360,
+            28,
+            34
+          ],
+          "blocksMove": true,
+          "cover": "half"
+        },
+        {
+          "id": "painted:archive-main-table",
+          "assetId": "table_long",
+          "rect": [
+            377,
+            396,
+            64,
+            24
+          ],
+          "blocksMove": true,
+          "cover": "half"
+        },
+        {
+          "id": "painted:archive-books-north",
+          "assetId": "bookshelf",
+          "rect": [
+            361,
+            320,
+            84,
+            16
+          ],
+          "blocksMove": true,
+          "cover": "half"
+        },
+        {
+          "id": "painted:archive-books-east",
+          "assetId": "bookshelf",
+          "rect": [
+            441,
+            352,
+            16,
+            32
+          ],
+          "blocksMove": true,
+          "cover": "half"
+        },
+        {
+          "id": "painted:archive-cabinet",
+          "assetId": "bookshelf",
+          "rect": [
+            584,
+            411,
+            24,
+            20
+          ],
+          "blocksMove": true,
+          "cover": "half"
+        },
+        {
+          "id": "painted:armory-rack",
+          "assetId": "shelf_wall",
+          "rect": [
+            332,
+            568,
+            148,
+            22
+          ],
+          "blocksMove": true,
+          "cover": "half"
+        },
+        {
+          "id": "painted:training-targets",
+          "assetId": "statue",
+          "rect": [
+            360,
+            768,
+            80,
+            56
+          ],
+          "blocksMove": true,
+          "cover": "half"
+        },
+        {
+          "id": "painted:ares-east-dining-table",
+          "assetId": "table_long",
+          "rect": [
+            1094,
+            306,
+            160,
+            47
+          ],
+          "rotation": 0
+        },
+        {
+          "id": "painted:ares-east-bedroom-west-shelf",
+          "assetId": "bookshelf",
+          "rect": [
+            848,
+            32,
+            32,
+            32
+          ],
+          "rotation": 0
+        },
+        {
+          "id": "painted:ares-east-bedroom-center-shelf",
+          "assetId": "bookshelf",
+          "rect": [
+            976,
+            32,
+            32,
+            32
+          ],
+          "rotation": 0
+        },
+        {
+          "id": "painted:ares-east-bedroom-east-shelf",
+          "assetId": "bookshelf",
+          "rect": [
+            1104,
+            32,
+            32,
+            32
+          ],
+          "rotation": 0
+        },
+        {
+          "id": "painted:ares-east-bedroom-west-bed",
+          "assetId": "bed",
+          "rect": [
+            864,
+            80,
+            48,
+            24
+          ],
+          "rotation": 0
+        },
+        {
+          "id": "painted:ares-east-bedroom-center-bed",
+          "assetId": "bed",
+          "rect": [
+            992,
+            80,
+            48,
+            24
+          ],
+          "rotation": 0
+        },
+        {
+          "id": "painted:ares-east-bedroom-east-bed",
+          "assetId": "bed",
+          "rect": [
+            1120,
+            80,
+            48,
+            24
+          ],
+          "rotation": 0
+        },
+        {
+          "id": "painted:ares-east-kitchen-table",
+          "assetId": "table_small",
+          "rect": [
+            1024,
+            464,
+            48,
+            32
+          ],
+          "rotation": 0
+        },
+        {
+          "id": "painted:ares-east-kitchen-hearth",
+          "assetId": "fireplace",
+          "rect": [
+            1088,
+            464,
+            16,
+            48
+          ],
+          "rotation": 90
+        },
+        {
+          "id": "painted:ares-east-service-counter",
+          "assetId": "bar_counter",
+          "rect": [
+            1168,
+            512,
+            64,
+            16
+          ],
+          "rotation": 0
+        },
+        {
+          "id": "painted:ares-east-stable-west-rack",
+          "assetId": "shelf_wall",
+          "rect": [
+            976,
+            608,
+            96,
+            16
+          ],
+          "rotation": 0
+        },
+        {
+          "id": "painted:ares-east-stable-east-rack",
+          "assetId": "shelf_wall",
+          "rect": [
+            1136,
+            608,
+            96,
+            16
+          ],
+          "rotation": 0
+        },
+        {
+          "id": "painted:ares-east-stable-barrels",
+          "assetId": "barrel_stack",
+          "rect": [
+            1216,
+            640,
+            32,
+            32
+          ],
+          "rotation": 0
+        },
+        {
+          "id": "painted:ares-east-yard-table",
+          "assetId": "table_long",
+          "rect": [
+            1008,
+            768,
+            128,
+            32
+          ],
+          "rotation": 0
+        },
+        {
+          "id": "painted:ares-east-tower-table",
+          "assetId": "table_small",
+          "rect": [
+            1312,
+            176,
+            32,
+            32
+          ],
+          "rotation": 0
+        }
+      ],
+      "spawns": [
+        {
+          "id": "party-entrance",
+          "role": "party",
+          "point": [
+            702,
+            362
+          ]
+        },
+        {
+          "id": "royal-council",
+          "role": "neutral",
+          "point": [
+            737,
+            189
+          ]
+        },
+        {
+          "id": "gate-arrival",
+          "role": "neutral",
+          "point": [
+            738,
+            978
+          ]
+        }
+      ],
+      "checks": [
+        {
+          "name": "путь к королю",
+          "point": [
+            735,
+            190
+          ]
+        },
+        {
+          "name": "слева от стола",
+          "point": [
+            703,
+            270
+          ]
+        },
+        {
+          "name": "справа от стола",
+          "point": [
+            778,
+            270
+          ]
+        },
+        {
+          "name": "парадный двор",
+          "point": [
+            734,
+            597
+          ]
+        },
+        {
+          "name": "обход фонтана слева",
+          "point": [
+            674,
+            662
+          ]
+        },
+        {
+          "name": "обход фонтана справа",
+          "point": [
+            797,
+            662
+          ]
+        },
+        {
+          "name": "главный въезд",
+          "point": [
+            735,
+            965
+          ]
+        },
+        {
+          "name": "архивная ротонда",
+          "point": [
+            477,
+            213
+          ]
+        },
+        {
+          "name": "читальный зал",
+          "point": [
+            293,
+            444
+          ]
+        },
+        {
+          "name": "библиотека",
+          "point": [
+            388,
+            359
+          ]
+        },
+        {
+          "name": "оружейная",
+          "point": [
+            445,
+            643
+          ]
+        },
+        {
+          "name": "учебный двор",
+          "point": [
+            445,
+            845
+          ]
+        },
+        {
+          "name": "западная башня",
+          "point": [
+            185,
+            380
+          ]
+        },
+        {
+          "name": "Западные королевские покои",
+          "point": [
+            880,
+            64
+          ]
+        },
+        {
+          "name": "Средние королевские покои",
+          "point": [
+            1008,
+            64
+          ]
+        },
+        {
+          "name": "Восточные королевские покои",
+          "point": [
+            1136,
+            64
+          ]
+        },
+        {
+          "name": "Восточный холл",
+          "point": [
+            1088,
+            208
+          ]
+        },
+        {
+          "name": "Королевская столовая",
+          "point": [
+            1080,
+            368
+          ]
+        },
+        {
+          "name": "Кухня",
+          "point": [
+            1056,
+            528
+          ]
+        },
+        {
+          "name": "Служебные помещения",
+          "point": [
+            1200,
+            496
+          ]
+        },
+        {
+          "name": "Западный ряд конюшен",
+          "point": [
+            1024,
+            656
+          ]
+        },
+        {
+          "name": "Восточный ряд конюшен",
+          "point": [
+            1184,
+            656
+          ]
+        },
+        {
+          "name": "Хозяйственный двор",
+          "point": [
+            1120,
+            816
+          ]
+        },
+        {
+          "name": "Восточная круглая башня",
+          "point": [
+            1336,
+            216
+          ]
+        },
+        {
+          "name": "Вход из центральной галереи",
+          "point": [
+            920,
+            208
+          ]
+        }
+      ]
+    }
+  ]
+}

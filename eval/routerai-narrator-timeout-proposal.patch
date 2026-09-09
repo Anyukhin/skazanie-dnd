@@ -1,0 +1,10 @@
+diff --git a/server/narrator.mjs b/server/narrator.mjs
+--- a/server/narrator.mjs
++++ b/server/narrator.mjs
+@@ -1614,5 +1614,6 @@
+         ],
+         ...generation,
++        ...(deadlineController ? { timeoutMs: requestedTimeout } : {}),
+         signal: deadlineController?.signal,
+       }
+       let narration = ''

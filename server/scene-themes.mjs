@@ -1,6 +1,7 @@
 // @ts-check
 import { createHash } from 'node:crypto'
 
+import { authoredLocationMapFor } from './authored-location-maps.mjs'
 import { buildAresFortressScene, buildBuildingScene } from './building-generator.mjs'
 import { buildSceneFromGraph } from './graph-layout.mjs'
 import { addSceneLink, addSceneZone, createSceneGraph } from './scene-graph.mjs'
@@ -927,6 +928,12 @@ export function buildThemedScene({
   // повторное опознание здесь её потеряет: `themeFor` читает только слова.
   const chosen = themeId ? themeById(themeId) : null
   const definition = /** @type {any} */ (chosen ?? themeFor({ location, theme, sceneKind }))
+
+  // Известное authored-место сильнее эвристики темы и слов Архитектора. Карта
+  // уже собрана офлайн и приходит новой копией на каждый стол, поэтому
+  // повторный вход не меняет ни контур, ни двери, ни реквизит.
+  const authored = authoredLocationMapFor(locationId)
+  if (authored) return { map: authored, theme: authored.theme || definition.id, warnings: [] }
 
   if (definition.kind === 'fortress') {
     const built = buildAresFortressScene({ seed, width, height, locationId, theme: definition.id })

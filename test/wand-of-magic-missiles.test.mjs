@@ -161,6 +161,7 @@ test('каталог и viewer дают только авторитетный va
   assert.equal(item.spell_id, undefined)
   assert.equal(item.formula, undefined)
   assert.deepEqual(itemViewerCapabilities(item), {
+    catalog_description: item.description,
     equippable: true,
     equip_slot: 'main_hand',
     usable: true,

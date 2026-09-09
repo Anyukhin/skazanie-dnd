@@ -282,7 +282,12 @@
                   "name": "Коговые причалы",
                   "x": 205,
                   "y": 147,
-                  "bounds": { "x": 60, "y": 55, "width": 290, "height": 185 },
+                  "bounds": {
+                    "x": 60,
+                    "y": 55,
+                    "width": 290,
+                    "height": 185
+                  },
                   "summary": "Кирпичные причалы, конторские башни и мокрые склады у нового пролива.",
                   "history": "Район вырос из лагеря первых грузчиков, пришедших разгружать суда выживших после Великого Нырка.",
                   "storyHooks": [
@@ -295,7 +300,12 @@
                   "name": "Высокий гребень",
                   "x": 437,
                   "y": 165,
-                  "bounds": { "x": 315, "y": 55, "width": 245, "height": 220 },
+                  "bounds": {
+                    "x": 315,
+                    "y": 55,
+                    "width": 245,
+                    "height": 220
+                  },
                   "summary": "Самая сухая часть города: главная площадь, дома знати и каменные дороги над приливной линией.",
                   "history": "Здесь начали строить Вельдбург, когда первые семьи поднялись на каменный гребень нового берега.",
                   "storyHooks": [
@@ -308,7 +318,12 @@
                   "name": "Колокольный посад",
                   "x": 710,
                   "y": 160,
-                  "bounds": { "x": 575, "y": 50, "width": 270, "height": 220 },
+                  "bounds": {
+                    "x": 575,
+                    "y": 50,
+                    "width": 270,
+                    "height": 220
+                  },
                   "summary": "Старый квартал башен, часовен и домов хранителей звона.",
                   "history": "Его основали островитяне, спасшие колокола с затопленных приходов и принёсшие их в новый город.",
                   "storyHooks": [
@@ -321,7 +336,12 @@
                   "name": "Соляной торг",
                   "x": 215,
                   "y": 362,
-                  "bounds": { "x": 65, "y": 260, "width": 300, "height": 205 },
+                  "bounds": {
+                    "x": 65,
+                    "y": 260,
+                    "width": 300,
+                    "height": 205
+                  },
                   "summary": "Ряды соляных ларей, весовые дворы и плавучие лавки у низких каналов.",
                   "history": "Район вырос вокруг первой городской солеварни и долго оставался общинным рынком до прихода купеческих домов.",
                   "storyHooks": [
@@ -334,7 +354,12 @@
                   "name": "Линия дамб",
                   "x": 515,
                   "y": 432,
-                  "bounds": { "x": 370, "y": 290, "width": 290, "height": 285 },
+                  "bounds": {
+                    "x": 370,
+                    "y": 290,
+                    "width": 290,
+                    "height": 285
+                  },
                   "summary": "Длинный укреплённый вал со шлюзами, мастерскими и дозорными лестницами.",
                   "history": "Его возвели после Великого Нырка поверх более древней водной системы, следы которой Смотрители скрывали от Совета.",
                   "storyHooks": [
@@ -347,7 +372,12 @@
                   "name": "Нижние протоки",
                   "x": 810,
                   "y": 420,
-                  "bounds": { "x": 675, "y": 280, "width": 270, "height": 280 },
+                  "bounds": {
+                    "x": 675,
+                    "y": 280,
+                    "width": 270,
+                    "height": 280
+                  },
                   "summary": "Каналы, лодочные мастерские и дома на сваях под восточной частью города.",
                   "history": "Район построен над старыми водоотводами Грунвика, поэтому его улицы первыми уходят под воду во время штормового прилива.",
                   "storyHooks": [
@@ -1167,7 +1197,12 @@
                   "name": "Цитадель Затмения",
                   "x": 492,
                   "y": 132,
-                  "bounds": { "x": 355, "y": 45, "width": 275, "height": 175 },
+                  "bounds": {
+                    "x": 355,
+                    "y": 45,
+                    "width": 275,
+                    "height": 175
+                  },
                   "summary": "Дворец, астрологические палаты и закрытая школа на самой высокой части оазиса.",
                   "history": "Район построен вокруг древнего колодца правителей и стал резиденцией Дома Затмения после смещения русла реки.",
                   "storyHooks": [
@@ -1180,7 +1215,12 @@
                   "name": "Сердце фонтанов",
                   "x": 500,
                   "y": 315,
-                  "bounds": { "x": 350, "y": 230, "width": 300, "height": 170 },
+                  "bounds": {
+                    "x": 350,
+                    "y": 230,
+                    "width": 300,
+                    "height": 170
+                  },
                   "summary": "Центральная площадь с главным фонтаном, лавками и семью расходящимися каналами.",
                   "history": "Здесь стоял первый двор у нового русла; позднее вокруг него вырос рынок, где встречаются все дороги Пояса.",
                   "storyHooks": [
@@ -1193,7 +1233,12 @@
                   "name": "Восточный караванный двор",
                   "x": 802,
                   "y": 192,
-                  "bounds": { "x": 665, "y": 75, "width": 275, "height": 235 },
+                  "bounds": {
+                    "x": 665,
+                    "y": 75,
+                    "width": 275,
+                    "height": 235
+                  },
                   "summary": "Восточные ворота, верблюжьи дворы и мастерские вьючных сёдел на дороге к Снежным Вратам.",
                   "history": "Район вырос вокруг старой переправы и стал главным местом обмена между городами и кочевыми родами.",
                   "storyHooks": [
@@ -1206,7 +1251,12 @@
                   "name": "Сады Семи Рукавов",
                   "x": 195,
                   "y": 210,
-                  "bounds": { "x": 60, "y": 85, "width": 270, "height": 250 },
+                  "bounds": {
+                    "x": 60,
+                    "y": 85,
+                    "width": 270,
+                    "height": 250
+                  },
                   "summary": "Зелёный западный край города с оросительными каналами и садами писцов.",
                   "history": "Семьи водомеров поддерживают здесь систему каналов с тех времён, когда новое русло ещё менялось каждый сезон.",
                   "storyHooks": [
@@ -1219,7 +1269,12 @@
                   "name": "Старый меридиан",
                   "x": 465,
                   "y": 507,
-                  "bounds": { "x": 300, "y": 420, "width": 330, "height": 175 },
+                  "bounds": {
+                    "x": 300,
+                    "y": 420,
+                    "width": 330,
+                    "height": 175
+                  },
                   "summary": "Полузаброшенный квартал учёных, переписчиков и изготовителей астролябий.",
                   "history": "После закрытия школы сюда переселились изгнанные ученики Арслан-бека и сохранили часть его методов измерения.",
                   "storyHooks": [
@@ -1232,7 +1287,12 @@
                   "name": "Красные фонари",
                   "x": 800,
                   "y": 460,
-                  "bounds": { "x": 650, "y": 340, "width": 300, "height": 240 },
+                  "bounds": {
+                    "x": 650,
+                    "y": 340,
+                    "width": 300,
+                    "height": 240
+                  },
                   "summary": "Гостевые дворы, красильни, ночные лавки и скрытые проходы под старой стеной.",
                   "history": "Район появился вокруг постоялых дворов для западных караванов и всегда жил по собственным правилам.",
                   "storyHooks": [
@@ -2043,7 +2103,7 @@
               "name": "Лимнара",
               "summary": "Лимнару основали выжившие после первого великого извержения на безопасной восточной гавани кальдеры. Рыбаки, садовники и лодочники построили город вокруг причалов, амбаров и святилищ Трёх Возвращений, но теперь пепел ложится на зерно, море становится неподвижным, а из южного склона слышен детский хор.",
               "image": "/assets/maps/city/skazanie/limnara-v1.webp",
-            "imageAlt": "Иллюстрированная карта Лимнары сверху: гавань на северо-востоке, терраса Совета в центре, зерновые поля на северо-западе, белые храмовые ступени на западе, обсидиановые мастерские на юге и запечатанные ворота на юго-востоке; средиземноморская палитра, пепел и старинная рамка.",
+              "imageAlt": "Иллюстрированная карта Лимнары сверху: гавань на северо-востоке, терраса Совета в центре, зерновые поля на северо-западе, белые храмовые ступени на западе, обсидиановые мастерские на юге и запечатанные ворота на юго-востоке; средиземноморская палитра, пепел и старинная рамка.",
               "width": 1000,
               "height": 640,
               "districts": [
@@ -2052,7 +2112,12 @@
                   "name": "Янтарная гавань",
                   "x": 795,
                   "y": 167,
-                  "bounds": { "x": 650, "y": 65, "width": 290, "height": 205 },
+                  "bounds": {
+                    "x": 650,
+                    "y": 65,
+                    "width": 290,
+                    "height": 205
+                  },
                   "summary": "Портовые причалы, рыбные склады и пирсы эвакуации на восточной кромке кальдеры.",
                   "history": "Район вырос из первых лодочных стоянок выживших и сохранил старую систему причальных огней.",
                   "storyHooks": [
@@ -2065,7 +2130,12 @@
                   "name": "Терраса Совета",
                   "x": 495,
                   "y": 177,
-                  "bounds": { "x": 370, "y": 70, "width": 250, "height": 215 },
+                  "bounds": {
+                    "x": 370,
+                    "y": 70,
+                    "width": 250,
+                    "height": 215
+                  },
                   "summary": "Административная часть города с ратушей, архивами и башней сигнального огня.",
                   "history": "После серии землетрясений здесь составили первые списки эвакуации и распределили городские амбары.",
                   "storyHooks": [
@@ -2078,7 +2148,12 @@
                   "name": "Зерновые террасы",
                   "x": 197,
                   "y": 175,
-                  "bounds": { "x": 70, "y": 70, "width": 255, "height": 210 },
+                  "bounds": {
+                    "x": 70,
+                    "y": 70,
+                    "width": 255,
+                    "height": 210
+                  },
                   "summary": "Ступенчатые поля, семенные амбары и дома Садовников Первого Зерна.",
                   "history": "Террасы пережили старое извержение благодаря системе каменных водоотводов и запасам семян.",
                   "storyHooks": [
@@ -2091,7 +2166,12 @@
                   "name": "Белые ступени",
                   "x": 215,
                   "y": 412,
-                  "bounds": { "x": 70, "y": 310, "width": 290, "height": 205 },
+                  "bounds": {
+                    "x": 70,
+                    "y": 310,
+                    "width": 290,
+                    "height": 205
+                  },
                   "summary": "Старый жилой квартал из светлого известняка, храмовых лестниц и маленьких дворов.",
                   "history": "Здесь сохранились дневные и тайные ночные формы обряда, хотя имперские наместники закрыли подземный спуск.",
                   "storyHooks": [
@@ -2104,7 +2184,12 @@
                   "name": "Обсидиановые мастерские",
                   "x": 515,
                   "y": 450,
-                  "bounds": { "x": 370, "y": 320, "width": 290, "height": 260 },
+                  "bounds": {
+                    "x": 370,
+                    "y": 320,
+                    "width": 290,
+                    "height": 260
+                  },
                   "summary": "Карьеры, печи, грузовые площадки и тоннели Консорциума Пемзы.",
                   "history": "Район появился после пробоя древнего бокового хода тридцать лет назад и быстро стал промышленным центром.",
                   "storyHooks": [
@@ -2117,7 +2202,12 @@
                   "name": "Запечатанные южные ворота",
                   "x": 827,
                   "y": 442,
-                  "bounds": { "x": 700, "y": 315, "width": 255, "height": 255 },
+                  "bounds": {
+                    "x": 700,
+                    "y": 315,
+                    "width": 255,
+                    "height": 255
+                  },
                   "summary": "Военный проход к пепельному склону и Таласс-Акру, закрытый Орденом после первого пробоя.",
                   "history": "Ворота запечатали после исчезновения паломников и с тех пор открывали только для имперских проверок.",
                   "storyHooks": [
@@ -2931,7 +3021,12 @@
                   "name": "Коронная скала",
                   "x": 500,
                   "y": 145,
-                  "bounds": { "x": 375, "y": 45, "width": 250, "height": 205 },
+                  "bounds": {
+                    "x": 375,
+                    "y": 45,
+                    "width": 250,
+                    "height": 205
+                  },
                   "summary": "Высокая цитадель Ареса, откуда видны море, южная дорога и сигнальные огни.",
                   "history": "Первую крепость поставили на скале до основания города. Арес расширил её после драконьего похода и перенёс сюда военную галерею.",
                   "storyHooks": [
@@ -2944,7 +3039,12 @@
                   "name": "Пепельный квартал",
                   "x": 155,
                   "y": 165,
-                  "bounds": { "x": 25, "y": 35, "width": 265, "height": 230 },
+                  "bounds": {
+                    "x": 25,
+                    "y": 35,
+                    "width": 265,
+                    "height": 230
+                  },
                   "summary": "Обожжённые улицы старого предместья, оставленные после первого налёта Саргата.",
                   "history": "Когда городские стены были ниже, здесь жили корабелы. Недавний огонь уничтожил дома, но не каменную часовню и подземные склады.",
                   "storyHooks": [
@@ -2957,7 +3057,12 @@
                   "name": "Цепная гавань",
                   "x": 825,
                   "y": 295,
-                  "bounds": { "x": 690, "y": 80, "width": 270, "height": 380 },
+                  "bounds": {
+                    "x": 690,
+                    "y": 80,
+                    "width": 270,
+                    "height": 380
+                  },
                   "summary": "Военный и торговый порт, закрываемый на ночь двумя тяжёлыми цепями.",
                   "history": "Гавань кормила город ещё до королей Валедора. Во время войны её причалы заняли транспорты, беженцы и суда с зерном.",
                   "storyHooks": [
@@ -2970,7 +3075,12 @@
                   "name": "Сады Семи Клятв",
                   "x": 625,
                   "y": 365,
-                  "bounds": { "x": 515, "y": 245, "width": 215, "height": 260 },
+                  "bounds": {
+                    "x": 515,
+                    "y": 245,
+                    "width": 215,
+                    "height": 260
+                  },
                   "summary": "Храмы, архивы и мемориальные сады между цитаделью и портом.",
                   "history": "Семь аллей посвящены семи клятвам первых королей. После гибели Вулканиса восьмую аллею начали, но так и не назвали.",
                   "storyHooks": [
@@ -2983,7 +3093,12 @@
                   "name": "Молотный посад",
                   "x": 350,
                   "y": 365,
-                  "bounds": { "x": 220, "y": 235, "width": 290, "height": 275 },
+                  "bounds": {
+                    "x": 220,
+                    "y": 235,
+                    "width": 290,
+                    "height": 275
+                  },
                   "summary": "Мастерские, постоялые дворы и рынок снабжения у центральной площади.",
                   "history": "Посад возник вокруг кузниц флота. Во время нынешней войны здесь чинят доспехи быстрее, чем успевают записывать долги.",
                   "storyHooks": [
@@ -2996,7 +3111,12 @@
                   "name": "Южные ворота",
                   "x": 500,
                   "y": 545,
-                  "bounds": { "x": 300, "y": 455, "width": 400, "height": 150 },
+                  "bounds": {
+                    "x": 300,
+                    "y": 455,
+                    "width": 400,
+                    "height": 150
+                  },
                   "summary": "Казармы, конюшни и плотное предместье на дороге к Миттлайду и Редстоуновке.",
                   "history": "Через эти ворота уходил отряд Ареса тридцать лет назад. Теперь здесь проверяют каждую телегу из-за Пепельной сети.",
                   "storyHooks": [
@@ -3359,24 +3479,168 @@
           }
         ],
         "routes": [
-          { "id": "astohan-route-01", "from": "astohan-stormberg", "to": "astohan-ash-watch", "kind": "road", "distance": 2, "danger": "низкая", "discovered": true },
-          { "id": "astohan-route-02", "from": "astohan-stormberg", "to": "astohan-mirror-lake", "kind": "road", "distance": 3, "danger": "низкая", "discovered": true },
-          { "id": "astohan-route-03", "from": "astohan-ash-watch", "to": "astohan-obsidian-pass", "kind": "trail", "distance": 5, "danger": "высокая", "discovered": true },
-          { "id": "astohan-route-04", "from": "astohan-obsidian-pass", "to": "astohan-vulkanis-brazier", "kind": "pass", "distance": 3, "danger": "высокая", "discovered": false },
-          { "id": "astohan-route-05", "from": "astohan-mittlayd", "to": "astohan-quiet-watch-camp", "kind": "road", "distance": 4, "danger": "средняя", "discovered": true },
-          { "id": "astohan-route-06", "from": "astohan-mirror-lake", "to": "astohan-forgotten-cliffs", "kind": "road", "distance": 3, "danger": "средняя", "discovered": true },
-          { "id": "astohan-route-07", "from": "astohan-mirror-lake", "to": "astohan-wild-forest", "kind": "river", "distance": 4, "danger": "средняя", "discovered": true },
-          { "id": "astohan-route-08", "from": "astohan-mirror-lake", "to": "astohan-mittlayd", "kind": "river", "distance": 3, "danger": "низкая", "discovered": true },
-          { "id": "astohan-route-09", "from": "astohan-forgotten-cliffs", "to": "astohan-mittlayd", "kind": "road", "distance": 4, "danger": "средняя", "discovered": true },
-          { "id": "astohan-route-10", "from": "astohan-mittlayd", "to": "astohan-redstone", "kind": "road", "distance": 4, "danger": "низкая", "discovered": true },
-          { "id": "astohan-route-11", "from": "astohan-mittlayd", "to": "astohan-cursed-woods", "kind": "trail", "distance": 5, "danger": "высокая", "discovered": true },
-          { "id": "astohan-route-12", "from": "astohan-redstone", "to": "astohan-smugglers-cave", "kind": "trail", "distance": 3, "danger": "средняя", "discovered": false },
-          { "id": "astohan-route-13", "from": "astohan-redstone", "to": "astohan-lomar-tower", "kind": "road", "distance": 2, "danger": "низкая", "discovered": true },
-          { "id": "astohan-route-14", "from": "astohan-redstone", "to": "astohan-wild-forest", "kind": "trail", "distance": 2, "danger": "средняя", "discovered": true },
-          { "id": "astohan-route-15", "from": "astohan-lomar-tower", "to": "astohan-wild-forest", "kind": "trail", "distance": 2, "danger": "средняя", "discovered": true },
-          { "id": "astohan-route-16", "from": "astohan-wild-forest", "to": "astohan-eldrin-heart", "kind": "trail", "distance": 2, "danger": "средняя", "discovered": false },
-          { "id": "astohan-route-17", "from": "astohan-smugglers-cave", "to": "astohan-cursed-woods", "kind": "trail", "distance": 4, "danger": "высокая", "discovered": false },
-          { "id": "astohan-route-18", "from": "astohan-smugglers-cave", "to": "astohan-vulkanis-brazier", "kind": "pass", "distance": 6, "danger": "высокая", "discovered": false }
+          {
+            "id": "astohan-route-01",
+            "from": "astohan-stormberg",
+            "to": "astohan-ash-watch",
+            "kind": "road",
+            "distance": 2,
+            "danger": "низкая",
+            "discovered": true
+          },
+          {
+            "id": "astohan-route-02",
+            "from": "astohan-stormberg",
+            "to": "astohan-mirror-lake",
+            "kind": "road",
+            "distance": 3,
+            "danger": "низкая",
+            "discovered": true
+          },
+          {
+            "id": "astohan-route-03",
+            "from": "astohan-ash-watch",
+            "to": "astohan-obsidian-pass",
+            "kind": "trail",
+            "distance": 5,
+            "danger": "высокая",
+            "discovered": true
+          },
+          {
+            "id": "astohan-route-04",
+            "from": "astohan-obsidian-pass",
+            "to": "astohan-vulkanis-brazier",
+            "kind": "pass",
+            "distance": 3,
+            "danger": "высокая",
+            "discovered": false
+          },
+          {
+            "id": "astohan-route-05",
+            "from": "astohan-mittlayd",
+            "to": "astohan-quiet-watch-camp",
+            "kind": "road",
+            "distance": 4,
+            "danger": "средняя",
+            "discovered": true
+          },
+          {
+            "id": "astohan-route-06",
+            "from": "astohan-mirror-lake",
+            "to": "astohan-forgotten-cliffs",
+            "kind": "road",
+            "distance": 3,
+            "danger": "средняя",
+            "discovered": true
+          },
+          {
+            "id": "astohan-route-07",
+            "from": "astohan-mirror-lake",
+            "to": "astohan-wild-forest",
+            "kind": "river",
+            "distance": 4,
+            "danger": "средняя",
+            "discovered": true
+          },
+          {
+            "id": "astohan-route-08",
+            "from": "astohan-mirror-lake",
+            "to": "astohan-mittlayd",
+            "kind": "river",
+            "distance": 3,
+            "danger": "низкая",
+            "discovered": true
+          },
+          {
+            "id": "astohan-route-09",
+            "from": "astohan-forgotten-cliffs",
+            "to": "astohan-mittlayd",
+            "kind": "road",
+            "distance": 4,
+            "danger": "средняя",
+            "discovered": true
+          },
+          {
+            "id": "astohan-route-10",
+            "from": "astohan-mittlayd",
+            "to": "astohan-redstone",
+            "kind": "road",
+            "distance": 4,
+            "danger": "низкая",
+            "discovered": true
+          },
+          {
+            "id": "astohan-route-11",
+            "from": "astohan-mittlayd",
+            "to": "astohan-cursed-woods",
+            "kind": "trail",
+            "distance": 5,
+            "danger": "высокая",
+            "discovered": true
+          },
+          {
+            "id": "astohan-route-12",
+            "from": "astohan-redstone",
+            "to": "astohan-smugglers-cave",
+            "kind": "trail",
+            "distance": 3,
+            "danger": "средняя",
+            "discovered": false
+          },
+          {
+            "id": "astohan-route-13",
+            "from": "astohan-redstone",
+            "to": "astohan-lomar-tower",
+            "kind": "road",
+            "distance": 2,
+            "danger": "низкая",
+            "discovered": true
+          },
+          {
+            "id": "astohan-route-14",
+            "from": "astohan-redstone",
+            "to": "astohan-wild-forest",
+            "kind": "trail",
+            "distance": 2,
+            "danger": "средняя",
+            "discovered": true
+          },
+          {
+            "id": "astohan-route-15",
+            "from": "astohan-lomar-tower",
+            "to": "astohan-wild-forest",
+            "kind": "trail",
+            "distance": 2,
+            "danger": "средняя",
+            "discovered": true
+          },
+          {
+            "id": "astohan-route-16",
+            "from": "astohan-wild-forest",
+            "to": "astohan-eldrin-heart",
+            "kind": "trail",
+            "distance": 2,
+            "danger": "средняя",
+            "discovered": false
+          },
+          {
+            "id": "astohan-route-17",
+            "from": "astohan-smugglers-cave",
+            "to": "astohan-cursed-woods",
+            "kind": "trail",
+            "distance": 4,
+            "danger": "высокая",
+            "discovered": false
+          },
+          {
+            "id": "astohan-route-18",
+            "from": "astohan-smugglers-cave",
+            "to": "astohan-vulkanis-brazier",
+            "kind": "pass",
+            "distance": 6,
+            "danger": "высокая",
+            "discovered": false
+          }
         ]
       },
       "opening": {
@@ -3410,14 +3674,19 @@
             "name": "Король Арес",
             "role": "король Валедора и прославленный драконоборец",
             "location": "Штормберг",
-            "summary": "Постаревший герой со шрамом от когтя Вулканиса на груди и плохо сгибающейся правой рукой.",
+            "summary": "Величественный постаревший герой с седыми волосами и высоким золотым венцом с сапфирами; носит гравированные латы и сине-золотую мантию с белым мехом, владеет Клятвенным клинком, правая рука плохо сгибается, на груди шрам Вулканиса.",
             "voice": "Говорит коротко и по-военному; риск называет честно, о прошлом отвечает только на точные вопросы.",
             "speech_profile": {
               "pace": "медленно, короткими приказами",
               "lexicon": "походы, строй, клятвы и цена решения",
               "mannerism": "перед ответом о прошлом проводит пальцами по старому шраму"
             },
-            "social_dcs": { "persuasion": 18, "deception": 20, "intimidation": 21, "insight": 17 },
+            "social_dcs": {
+              "persuasion": 18,
+              "deception": 20,
+              "intimidation": 21,
+              "insight": 17
+            },
             "goals": [
               "остановить Саргата",
               "не покинуть северный фронт",
@@ -3428,10 +3697,49 @@
               "не всякая правда полезна во время войны"
             ],
             "inventory": [
-              { "id": "ares-oathblade", "name": "Клятвенный клинок", "quantity": 1, "description": "Двуручный меч похода против Вулканиса; на гарде остался оплавленный знак старой клятвы.", "visibility": "party" },
-              { "id": "ares-missing-journal-page", "name": "Последняя страница журнала", "quantity": 1, "description": "Страница с признанием о судьбе кладки Вулканиса.", "visibility": "gm_only" }
+              {
+                "id": "ares-oathblade",
+                "name": "Клятвенный клинок",
+                "quantity": 1,
+                "description": "Двуручный меч похода против Вулканиса; на гарде остался оплавленный знак старой клятвы.",
+                "visibility": "party"
+              },
+              {
+                "id": "ares-sapphire-crown",
+                "name": "Сапфировый венец Валедора",
+                "quantity": 1,
+                "description": "Высокий золотой венец с сапфирами, знак власти Ареса и памяти о победе над Вулканисом.",
+                "visibility": "party"
+              },
+              {
+                "id": "ares-royal-mantle",
+                "name": "Сине-золотая мантия короля",
+                "quantity": 1,
+                "description": "Парадная мантия с белым меховым воротом, которую Арес носит на военных советах; боевых бонусов нет.",
+                "visibility": "party"
+              },
+              {
+                "id": "ares-engraved-plate",
+                "name": "Гравированный латный доспех",
+                "quantity": 1,
+                "description": "Парадный латный доспех ветерана, украшенный старой гравировкой похода; не отменяет травму правой руки.",
+                "visibility": "party"
+              },
+              {
+                "id": "ares-missing-journal-page",
+                "name": "Последняя страница журнала",
+                "quantity": 1,
+                "description": "Страница с признанием о судьбе кладки Вулканиса.",
+                "visibility": "gm_only"
+              }
             ],
-            "tags": ["king", "dragon-slayer", "incorruptible", "post:gallery", "anchor:war-table"],
+            "tags": [
+              "king",
+              "dragon-slayer",
+              "incorruptible",
+              "post:gallery",
+              "anchor:war-table"
+            ],
             "mechanics": {
               "profile_id": "astohan:ares-v1",
               "status": "partial",
@@ -3446,20 +3754,65 @@
               "proficiency_bonus": 4,
               "size": "medium",
               "creature_type": "humanoid",
-              "abilities": { "str": 20, "dex": 14, "con": 18, "int": 13, "wis": 16, "cha": 18 },
-              "skills": { "athletics": 9, "history": 5, "insight": 7, "intimidation": 8, "perception": 7 },
-              "saving_throws": { "str": 9, "con": 8, "wis": 7 },
-              "condition_immunities": ["frightened"],
+              "abilities": {
+                "str": 20,
+                "dex": 14,
+                "con": 18,
+                "int": 13,
+                "wis": 16,
+                "cha": 18
+              },
+              "skills": {
+                "athletics": 9,
+                "history": 5,
+                "insight": 7,
+                "intimidation": 8,
+                "perception": 7
+              },
+              "saving_throws": {
+                "str": 9,
+                "con": 8,
+                "wis": 7
+              },
+              "condition_immunities": [
+                "frightened"
+              ],
               "traits": [
-                { "id": "multiattack", "name": "Три удара", "attacks": 3 },
-                { "id": "bloodied-frenzy", "name": "Последний строй" }
+                {
+                  "id": "multiattack",
+                  "name": "Три удара",
+                  "attacks": 3
+                },
+                {
+                  "id": "bloodied-frenzy",
+                  "name": "Последний строй"
+                }
               ],
               "action_profiles": [
-                { "id": "royal-greatsword", "name": "Клятвенный клинок", "kind": "melee", "attack_modifier": 9, "damage_expression": "2d6+5", "damage_type": "slashing", "range_feet": 5, "tactical_priority": 8 }
+                {
+                  "id": "royal-greatsword",
+                  "name": "Клятвенный клинок",
+                  "kind": "melee",
+                  "attack_modifier": 9,
+                  "damage_expression": "2d6+5",
+                  "damage_type": "slashing",
+                  "range_feet": 5,
+                  "tactical_priority": 8
+                }
               ],
               "features": [
-                { "id": "dragon-scarred-resolve", "name": "Закалённый драконом", "status": "verified", "description": "Невосприимчивость к испугу хранится в серверном списке состояний стат-блока." },
-                { "id": "old-wound", "name": "Старая рана", "status": "ruling-only", "description": "Рана правой руки важна для сюжета, но пока не меняет числа боя без отдельного правила." }
+                {
+                  "id": "dragon-scarred-resolve",
+                  "name": "Закалённый драконом",
+                  "status": "verified",
+                  "description": "Невосприимчивость к испугу хранится в серверном списке состояний стат-блока."
+                },
+                {
+                  "id": "old-wound",
+                  "name": "Старая рана",
+                  "status": "ruling-only",
+                  "description": "Рана правой руки важна для сюжета, но пока не меняет числа боя без отдельного правила."
+                }
               ],
               "tactics": [
                 "держит ближнюю линию и не отступает при половине ОЗ",
@@ -3474,14 +3827,19 @@
             "name": "Маршал Ивара Тейн",
             "role": "командующая гарнизоном Штормберга",
             "location": "Штормберг",
-            "summary": "Практичная воительница, требующая ударить до следующего налёта.",
+            "summary": "Практичная воительница с короткими тёмными волосами и серебром, в стальном полудоспехе и синем плаще, с сигнальным рогом в руке; требует ударить до следующего налёта.",
             "voice": "Начинает с вывода, затем перечисляет факты и сроки.",
             "speech_profile": {
               "pace": "быстро, рублеными фразами",
               "lexicon": "дистанции, сроки, дозоры и снабжение",
               "mannerism": "завершает разговор конкретным поручением и временем"
             },
-            "social_dcs": { "persuasion": 17, "deception": 18, "intimidation": 20, "insight": 16 },
+            "social_dcs": {
+              "persuasion": 17,
+              "deception": 18,
+              "intimidation": 20,
+              "insight": 16
+            },
             "goals": [
               "защитить южные амбары",
               "не дать двору скрыть военные сведения"
@@ -3491,10 +3849,62 @@
               "дракон понимает только цену риска"
             ],
             "inventory": [
-              { "id": "ivara-command-horn", "name": "Рог трёх дозоров", "quantity": 1, "description": "Сигнальный рог с тремя различимыми командами гарнизону.", "visibility": "party" },
-              { "id": "ivara-front-orders", "name": "Приказы Северных Ворот", "quantity": 1, "description": "Свежая сводка о слабом участке фронта.", "visibility": "gm_only" }
+              {
+                "id": "ivara-command-horn",
+                "name": "Рог трёх дозоров",
+                "quantity": 1,
+                "description": "Сигнальный рог с тремя различимыми командами гарнизону.",
+                "visibility": "party"
+              },
+              {
+                "id": "ivara-marshal-sword",
+                "name": "Меч маршала",
+                "quantity": 1,
+                "description": "Служебный меч Ивары, тот же клинок, что указан в её боевом действии; магических свойств нет.",
+                "visibility": "party"
+              },
+              {
+                "id": "ivara-heavy-crossbow",
+                "name": "Тяжёлый арбалет",
+                "quantity": 1,
+                "description": "Тяжёлый арбалет гарнизона, совпадающий с дальней атакой Ивары; магических свойств нет.",
+                "visibility": "party"
+              },
+              {
+                "id": "ivara-crossbow-bolts",
+                "name": "Арбалетные болты",
+                "quantity": 20,
+                "description": "Запас обычных болтов для тяжёлого арбалета.",
+                "visibility": "party"
+              },
+              {
+                "id": "ivara-half-plate",
+                "name": "Стальной полудоспех маршала",
+                "quantity": 1,
+                "description": "Стальной полудоспех гарнизонного командира; КД остаётся числом её боевого профиля.",
+                "visibility": "party"
+              },
+              {
+                "id": "ivara-blue-cloak",
+                "name": "Синий военный плащ",
+                "quantity": 1,
+                "description": "Плотный синий плащ с застёжкой гарнизона, без боевых бонусов.",
+                "visibility": "party"
+              },
+              {
+                "id": "ivara-front-orders",
+                "name": "Приказы Северных Ворот",
+                "quantity": 1,
+                "description": "Свежая сводка о слабом участке фронта.",
+                "visibility": "gm_only"
+              }
             ],
-            "tags": ["marshal", "soldier", "incorruptible", "post:gallery"],
+            "tags": [
+              "marshal",
+              "soldier",
+              "incorruptible",
+              "post:gallery"
+            ],
             "mechanics": {
               "profile_id": "astohan:ivara-v1",
               "status": "partial",
@@ -3509,20 +3919,73 @@
               "proficiency_bonus": 4,
               "size": "medium",
               "creature_type": "humanoid",
-              "abilities": { "str": 18, "dex": 16, "con": 18, "int": 14, "wis": 16, "cha": 15 },
-              "skills": { "athletics": 8, "insight": 7, "intimidation": 6, "perception": 7, "survival": 7 },
-              "saving_throws": { "str": 8, "con": 8, "wis": 7 },
+              "abilities": {
+                "str": 18,
+                "dex": 16,
+                "con": 18,
+                "int": 14,
+                "wis": 16,
+                "cha": 15
+              },
+              "skills": {
+                "athletics": 8,
+                "insight": 7,
+                "intimidation": 6,
+                "perception": 7,
+                "survival": 7
+              },
+              "saving_throws": {
+                "str": 8,
+                "con": 8,
+                "wis": 7
+              },
               "traits": [
-                { "id": "multiattack", "name": "Три удара", "attacks": 3 },
-                { "id": "martial-advantage", "name": "Командный нажим" }
+                {
+                  "id": "multiattack",
+                  "name": "Три удара",
+                  "attacks": 3
+                },
+                {
+                  "id": "martial-advantage",
+                  "name": "Командный нажим"
+                }
               ],
               "action_profiles": [
-                { "id": "marshal-longsword", "name": "Меч маршала", "kind": "melee", "attack_modifier": 8, "damage_expression": "1d8+4", "damage_type": "slashing", "range_feet": 5, "tactical_priority": 7 },
-                { "id": "marshal-crossbow", "name": "Тяжёлый арбалет", "kind": "ranged", "attack_modifier": 7, "damage_expression": "1d10+3", "damage_type": "piercing", "range_feet": 400, "normal_range_feet": 100, "tactical_priority": 6 }
+                {
+                  "id": "marshal-longsword",
+                  "name": "Меч маршала",
+                  "kind": "melee",
+                  "attack_modifier": 8,
+                  "damage_expression": "1d8+4",
+                  "damage_type": "slashing",
+                  "range_feet": 5,
+                  "tactical_priority": 7
+                },
+                {
+                  "id": "marshal-crossbow",
+                  "name": "Тяжёлый арбалет",
+                  "kind": "ranged",
+                  "attack_modifier": 7,
+                  "damage_expression": "1d10+3",
+                  "damage_type": "piercing",
+                  "range_feet": 400,
+                  "normal_range_feet": 100,
+                  "tactical_priority": 6
+                }
               ],
               "features": [
-                { "id": "commanders-order", "name": "Приказ маршала", "status": "ruling-only", "description": "Перестроение союзника отдельной реакцией ещё не имеет типизированной команды." },
-                { "id": "formation-fighter", "name": "Бой в строю", "status": "verified", "description": "Командный нажим использует существующую серверную черту martial-advantage." }
+                {
+                  "id": "commanders-order",
+                  "name": "Приказ маршала",
+                  "status": "ruling-only",
+                  "description": "Перестроение союзника отдельной реакцией ещё не имеет типизированной команды."
+                },
+                {
+                  "id": "formation-fighter",
+                  "name": "Бой в строю",
+                  "status": "verified",
+                  "description": "Командный нажим использует существующую серверную черту martial-advantage."
+                }
               ],
               "tactics": [
                 "держится рядом с союзником ради командного нажима",
@@ -3537,14 +4000,19 @@
             "name": "Орен Фаль",
             "role": "хранитель Архива Сломанного Клыка",
             "location": "Штормберг",
-            "summary": "Архивист, заметивший сходство новых знаков с печатями Вулканиса.",
+            "summary": "Худощавый седобородый архивист в тёмной мантии и круглых очках, с чернилами на пальцах и связкой ключей; заметил сходство новых знаков с печатями Вулканиса.",
             "voice": "Осторожно цитирует документы и всегда уточняет, кто видел оригинал.",
             "speech_profile": {
               "pace": "неторопливо, с паузой перед выводом",
               "lexicon": "даты, свидетельства, почерки и происхождение записей",
               "mannerism": "отделяет услышанное от прочитанного словами «в документе сказано»"
             },
-            "social_dcs": { "persuasion": 13, "deception": 16, "intimidation": 14, "insight": 18 },
+            "social_dcs": {
+              "persuasion": 13,
+              "deception": 16,
+              "intimidation": 14,
+              "insight": 18
+            },
             "goals": [
               "найти пропавшую страницу журнала",
               "отделить свидетельство от легенды"
@@ -3554,10 +4022,47 @@
               "старые клятвы переживают королей"
             ],
             "inventory": [
-              { "id": "oren-archive-keys", "name": "Связка архивных ключей", "quantity": 1, "description": "Ключи от общих хранилищ и один неподписанный ключ старой формы.", "visibility": "party" },
-              { "id": "oren-vulkanis-index", "name": "Указатель похода Вулканиса", "quantity": 1, "description": "Закрытый список документов, включая изъятую последнюю страницу.", "visibility": "gm_only" }
+              {
+                "id": "oren-archive-keys",
+                "name": "Связка архивных ключей",
+                "quantity": 1,
+                "description": "Ключи от общих хранилищ и один неподписанный ключ старой формы.",
+                "visibility": "party"
+              },
+              {
+                "id": "oren-archive-dagger",
+                "name": "Архивный кинжал",
+                "quantity": 1,
+                "description": "Простой кинжал хранителя архива, тот же клинок, что указан в его боевом действии; магических свойств нет.",
+                "visibility": "party"
+              },
+              {
+                "id": "oren-archive-mantle",
+                "name": "Архивная мантия",
+                "quantity": 1,
+                "description": "Тёмная мантия хранителя документов с карманами для заметок, без боевых бонусов.",
+                "visibility": "party"
+              },
+              {
+                "id": "oren-round-spectacles",
+                "name": "Круглые архивные очки",
+                "quantity": 1,
+                "description": "Простые очки для чтения мелкого почерка, без магических свойств.",
+                "visibility": "party"
+              },
+              {
+                "id": "oren-vulkanis-index",
+                "name": "Указатель похода Вулканиса",
+                "quantity": 1,
+                "description": "Закрытый список документов, включая изъятую последнюю страницу.",
+                "visibility": "gm_only"
+              }
             ],
-            "tags": ["archivist", "scholar", "post:gallery"],
+            "tags": [
+              "archivist",
+              "scholar",
+              "post:gallery"
+            ],
             "mechanics": {
               "profile_id": "astohan:oren-v1",
               "status": "partial",
@@ -3572,28 +4077,75 @@
               "proficiency_bonus": 3,
               "size": "medium",
               "creature_type": "humanoid",
-              "abilities": { "str": 9, "dex": 12, "con": 13, "int": 19, "wis": 16, "cha": 12 },
-              "skills": { "arcana": 10, "history": 10, "insight": 6, "investigation": 10, "religion": 7 },
-              "saving_throws": { "int": 7, "wis": 6 },
+              "abilities": {
+                "str": 9,
+                "dex": 12,
+                "con": 13,
+                "int": 19,
+                "wis": 16,
+                "cha": 12
+              },
+              "skills": {
+                "arcana": 10,
+                "history": 10,
+                "insight": 6,
+                "investigation": 10,
+                "religion": 7
+              },
+              "saving_throws": {
+                "int": 7,
+                "wis": 6
+              },
               "traits": [
-                { "id": "keep-distance", "name": "Держится за укрытием" }
+                {
+                  "id": "keep-distance",
+                  "name": "Держится за укрытием"
+                }
               ],
               "action_profiles": [
-                { "id": "archive-dagger", "name": "Архивный кинжал", "kind": "melee", "attack_modifier": 4, "damage_expression": "1d4+1", "damage_type": "piercing", "range_feet": 5, "tactical_priority": 2 }
+                {
+                  "id": "archive-dagger",
+                  "name": "Архивный кинжал",
+                  "kind": "melee",
+                  "attack_modifier": 4,
+                  "damage_expression": "1d4+1",
+                  "damage_type": "piercing",
+                  "range_feet": 5,
+                  "tactical_priority": 2
+                }
               ],
               "spellcasting": {
                 "ability": "int",
                 "save_dc": 15,
                 "attack_bonus": 7,
                 "spells": [
-                  { "id": "magic-missile", "uses": 3 },
-                  { "id": "shield", "uses": 2 },
-                  { "id": "counterspell", "uses": 1 }
+                  {
+                    "id": "magic-missile",
+                    "uses": 3
+                  },
+                  {
+                    "id": "shield",
+                    "uses": 2
+                  },
+                  {
+                    "id": "counterspell",
+                    "uses": 1
+                  }
                 ]
               },
               "features": [
-                { "id": "archivists-eye", "name": "Глаз архивиста", "status": "partial", "description": "Профиль хранит уникальные бонусы Истории, Магии и Расследования; отдельного броска NPC против мира пока нет." },
-                { "id": "prepared-ward", "name": "Архивная защита", "status": "partial", "description": "Щит и Контрзаклинание проходят каталог и дневные пределы, но планировщик ещё не разыгрывает защитные реакции NPC." }
+                {
+                  "id": "archivists-eye",
+                  "name": "Глаз архивиста",
+                  "status": "partial",
+                  "description": "Профиль хранит уникальные бонусы Истории, Магии и Расследования; отдельного броска NPC против мира пока нет."
+                },
+                {
+                  "id": "prepared-ward",
+                  "name": "Архивная защита",
+                  "status": "partial",
+                  "description": "Щит и Контрзаклинание проходят каталог и дневные пределы, но планировщик ещё не разыгрывает защитные реакции NPC."
+                }
               ],
               "tactics": [
                 "остаётся за укрытием и избегает ближнего боя",
@@ -3608,14 +4160,19 @@
             "name": "Мира Венн",
             "role": "посланница Редстоуновки",
             "location": "Штормберг",
-            "summary": "Уставшая наездница, знающая, что среди её соседей есть осведомитель дракона.",
+            "summary": "Уставшая загорелая наездница с длинной тёмной косой, зелёно-коричневыми дорожными доспехами и луком за плечом; знает, что среди соседей есть осведомитель дракона.",
             "voice": "Говорит прямо, но замолкает перед именами тех, чьи семьи остаются в деревне.",
             "speech_profile": {
               "pace": "быстро, пока речь не заходит о соседях",
               "lexicon": "дороги, следы, погода и приметы поселений",
               "mannerism": "перед опасным именем заменяет его описанием места"
             },
-            "social_dcs": { "persuasion": 14, "deception": 17, "intimidation": 15, "insight": 16 },
+            "social_dcs": {
+              "persuasion": 14,
+              "deception": 17,
+              "intimidation": 15,
+              "insight": 16
+            },
             "goals": [
               "вернуться до нового налёта",
               "вывести запуганных жителей из Пепельной сети"
@@ -3625,10 +4182,48 @@
               "королевская грамота не остановит огонь"
             ],
             "inventory": [
-              { "id": "mira-road-bow", "name": "Лук дорожной стражи", "quantity": 1, "description": "Длинный составной лук, пристрелянный для выстрела с седла.", "visibility": "party" },
-              { "id": "mira-ash-cipher", "name": "Пепельный шифр", "quantity": 1, "description": "Полоса кожи с условными знаками осведомителей Саргата.", "visibility": "gm_only" }
+              {
+                "id": "mira-road-bow",
+                "name": "Дорожный лук",
+                "quantity": 1,
+                "description": "Длинный составной лук, пристрелянный для выстрела с седла; это её боевой дальний профиль.",
+                "visibility": "party"
+              },
+              {
+                "id": "mira-road-shortsword",
+                "name": "Короткий меч",
+                "quantity": 1,
+                "description": "Короткий дорожный меч Миры, совпадающий с её боевым действием; магических свойств нет.",
+                "visibility": "party"
+              },
+              {
+                "id": "mira-road-leathers",
+                "name": "Дорожный кожаный доспех",
+                "quantity": 1,
+                "description": "Гибкий зелёно-коричневый кожаный доспех следопыта, без боевых бонусов.",
+                "visibility": "party"
+              },
+              {
+                "id": "mira-arrow-quiver",
+                "name": "Колчан стрел",
+                "quantity": 20,
+                "description": "Обычные стрелы для дорожного лука.",
+                "visibility": "party"
+              },
+              {
+                "id": "mira-ash-cipher",
+                "name": "Пепельный шифр",
+                "quantity": 1,
+                "description": "Полоса кожи с условными знаками осведомителей Саргата.",
+                "visibility": "gm_only"
+              }
             ],
-            "tags": ["scout", "messenger", "hunter", "post:gallery"],
+            "tags": [
+              "scout",
+              "messenger",
+              "hunter",
+              "post:gallery"
+            ],
             "mechanics": {
               "profile_id": "astohan:mira-v1",
               "status": "partial",
@@ -3643,21 +4238,76 @@
               "proficiency_bonus": 4,
               "size": "medium",
               "creature_type": "humanoid",
-              "abilities": { "str": 12, "dex": 18, "con": 14, "int": 13, "wis": 17, "cha": 14 },
-              "skills": { "acrobatics": 8, "deception": 6, "perception": 7, "stealth": 8, "survival": 9 },
-              "saving_throws": { "dex": 8, "wis": 7 },
+              "abilities": {
+                "str": 12,
+                "dex": 18,
+                "con": 14,
+                "int": 13,
+                "wis": 17,
+                "cha": 14
+              },
+              "skills": {
+                "acrobatics": 8,
+                "deception": 6,
+                "perception": 7,
+                "stealth": 8,
+                "survival": 9
+              },
+              "saving_throws": {
+                "dex": 8,
+                "wis": 7
+              },
               "traits": [
-                { "id": "multiattack", "name": "Две атаки", "attacks": 2 },
-                { "id": "keep-distance", "name": "Держит дистанцию" },
-                { "id": "nimble-escape", "name": "Скользящий отход" }
+                {
+                  "id": "multiattack",
+                  "name": "Две атаки",
+                  "attacks": 2
+                },
+                {
+                  "id": "keep-distance",
+                  "name": "Держит дистанцию"
+                },
+                {
+                  "id": "nimble-escape",
+                  "name": "Скользящий отход"
+                }
               ],
               "action_profiles": [
-                { "id": "road-longbow", "name": "Дорожный лук", "kind": "ranged", "attack_modifier": 8, "damage_expression": "1d8+4", "damage_type": "piercing", "range_feet": 600, "normal_range_feet": 150, "tactical_priority": 8 },
-                { "id": "road-shortsword", "name": "Короткий меч", "kind": "melee", "attack_modifier": 8, "damage_expression": "1d6+4", "damage_type": "piercing", "range_feet": 5, "tactical_priority": 5 }
+                {
+                  "id": "road-longbow",
+                  "name": "Дорожный лук",
+                  "kind": "ranged",
+                  "attack_modifier": 8,
+                  "damage_expression": "1d8+4",
+                  "damage_type": "piercing",
+                  "range_feet": 600,
+                  "normal_range_feet": 150,
+                  "tactical_priority": 8
+                },
+                {
+                  "id": "road-shortsword",
+                  "name": "Короткий меч",
+                  "kind": "melee",
+                  "attack_modifier": 8,
+                  "damage_expression": "1d6+4",
+                  "damage_type": "piercing",
+                  "range_feet": 5,
+                  "tactical_priority": 5
+                }
               ],
               "features": [
-                { "id": "ash-tracker", "name": "Следопыт Пепельной сети", "status": "partial", "description": "Высокий бонус Выживания записан в профиль; автоматического выслеживания по глобальной карте пока нет." },
-                { "id": "mobile-skirmisher", "name": "Подвижный стрелок", "status": "verified", "description": "Keep-distance и nimble-escape используют действующие политики планировщика NPC." }
+                {
+                  "id": "ash-tracker",
+                  "name": "Следопыт Пепельной сети",
+                  "status": "partial",
+                  "description": "Высокий бонус Выживания записан в профиль; автоматического выслеживания по глобальной карте пока нет."
+                },
+                {
+                  "id": "mobile-skirmisher",
+                  "name": "Подвижный стрелок",
+                  "status": "verified",
+                  "description": "Keep-distance и nimble-escape используют действующие политики планировщика NPC."
+                }
               ],
               "tactics": [
                 "ищет дальнюю линию огня и укрытие",
@@ -3674,14 +4324,19 @@
             "location": "Башня Ломара",
             "visibility": "gm_only",
             "reveal_on_presence": true,
-            "summary": "Молодой могущественный маг, чья тяга к знанию постоянно спорит со страхом собственной смерти.",
+            "summary": "Молодой бледный чародей с длинными чёрными волосами, в тёмной сине-зелёной мантии с бронзовой отделкой и с посохом-фокусом; его тяга к знанию спорит со страхом собственной смерти.",
             "voice": "Начинает уверенно и учёно, но ускоряет речь, когда собеседник называет цену его опытов.",
             "speech_profile": {
               "pace": "размеренно в объяснениях и быстро при возражениях",
               "lexicon": "структуры чар, сосуды памяти, доказательства и продолжение сознания",
               "mannerism": "называет опасный опыт «следующим необходимым шагом»"
             },
-            "social_dcs": { "persuasion": 17, "deception": 16, "intimidation": 19, "insight": 18 },
+            "social_dcs": {
+              "persuasion": 17,
+              "deception": 16,
+              "intimidation": 19,
+              "insight": 18
+            },
             "goals": [
               "получить сердечную ветвь Элдрина",
               "доказать возможность бессмертия без утраты личности",
@@ -3693,10 +4348,33 @@
               "риск можно оправдать знанием"
             ],
             "inventory": [
-              { "id": "lomar-focus-staff", "name": "Посох разомкнутого круга", "quantity": 1, "description": "Фокус Ломара с незавершённой руной переноса сознания.", "visibility": "party" },
-              { "id": "lomar-heartwood-vial", "name": "Сосуд для сердечной ветви", "quantity": 1, "description": "Пустой сосуд, подготовленный для живой части Элдрина.", "visibility": "gm_only" }
+              {
+                "id": "lomar-focus-staff",
+                "name": "Рунический посох",
+                "quantity": 1,
+                "description": "Посох-фокус Ломара, тот же рунический посох, что указан в его боевом действии; магических бонусов нет.",
+                "visibility": "party"
+              },
+              {
+                "id": "lomar-arcane-mantle",
+                "name": "Сине-зелёная мантия чародея",
+                "quantity": 1,
+                "description": "Тёмная мантия с бронзовой отделкой для работы в башенной лаборатории, без боевых бонусов.",
+                "visibility": "party"
+              },
+              {
+                "id": "lomar-heartwood-vial",
+                "name": "Сосуд для сердечной ветви",
+                "quantity": 1,
+                "description": "Пустой сосуд, подготовленный для живой части Элдрина.",
+                "visibility": "gm_only"
+              }
             ],
-            "tags": ["mage", "scholar", "ambitious"],
+            "tags": [
+              "mage",
+              "scholar",
+              "ambitious"
+            ],
             "mechanics": {
               "profile_id": "astohan:lomar-v1",
               "status": "partial",
@@ -3711,33 +4389,95 @@
               "proficiency_bonus": 4,
               "size": "medium",
               "creature_type": "humanoid",
-              "abilities": { "str": 9, "dex": 16, "con": 14, "int": 20, "wis": 13, "cha": 18 },
-              "skills": { "arcana": 10, "deception": 8, "history": 9, "investigation": 9, "persuasion": 8 },
-              "saving_throws": { "int": 9, "cha": 8 },
+              "abilities": {
+                "str": 9,
+                "dex": 16,
+                "con": 14,
+                "int": 20,
+                "wis": 13,
+                "cha": 18
+              },
+              "skills": {
+                "arcana": 10,
+                "deception": 8,
+                "history": 9,
+                "investigation": 9,
+                "persuasion": 8
+              },
+              "saving_throws": {
+                "int": 9,
+                "cha": 8
+              },
               "traits": [
-                { "id": "keep-distance", "name": "Держит дистанцию" }
+                {
+                  "id": "keep-distance",
+                  "name": "Держит дистанцию"
+                }
               ],
               "action_profiles": [
-                { "id": "runed-staff", "name": "Рунический посох", "kind": "melee", "attack_modifier": 5, "damage_expression": "1d6+2", "damage_type": "bludgeoning", "range_feet": 5, "tactical_priority": 2 }
+                {
+                  "id": "runed-staff",
+                  "name": "Рунический посох",
+                  "kind": "melee",
+                  "attack_modifier": 5,
+                  "damage_expression": "1d6+2",
+                  "damage_type": "bludgeoning",
+                  "range_feet": 5,
+                  "tactical_priority": 2
+                }
               ],
               "spellcasting": {
                 "ability": "int",
                 "save_dc": 17,
                 "attack_bonus": 9,
                 "spells": [
-                  { "id": "fire-bolt", "uses": "at-will" },
-                  { "id": "magic-missile", "uses": 3 },
-                  { "id": "scorching-ray", "uses": 2 },
-                  { "id": "shield", "uses": 3 },
-                  { "id": "misty-step", "uses": 2 },
-                  { "id": "counterspell", "uses": 2 },
-                  { "id": "hold-person", "uses": 2 },
-                  { "id": "fireball", "uses": 1 }
+                  {
+                    "id": "fire-bolt",
+                    "uses": "at-will"
+                  },
+                  {
+                    "id": "magic-missile",
+                    "uses": 3
+                  },
+                  {
+                    "id": "scorching-ray",
+                    "uses": 2
+                  },
+                  {
+                    "id": "shield",
+                    "uses": 3
+                  },
+                  {
+                    "id": "misty-step",
+                    "uses": 2
+                  },
+                  {
+                    "id": "counterspell",
+                    "uses": 2
+                  },
+                  {
+                    "id": "hold-person",
+                    "uses": 2
+                  },
+                  {
+                    "id": "fireball",
+                    "uses": 1
+                  }
                 ]
               },
               "features": [
-                { "id": "prepared-arcanist", "name": "Подготовленный чародей", "status": "partial", "description": "Все перечисленные заклинания существуют в локальном каталоге и имеют дневные пределы; защитные реакции NPC планировщик пока не выбирает." },
-                { "id": "barrier-breaker", "name": "Взлом корневого барьера", "status": "ruling-only", "description": "Разрушение связи Элдрина с лесом заблокировано до отдельного мирового правила и последствий." }
+                {
+                  "id": "prepared-arcanist",
+                  "name": "Подготовленный чародей",
+                  "status": "partial",
+                  "description": "Все перечисленные заклинания существуют в локальном каталоге и имеют дневные пределы; защитные реакции NPC планировщик пока не выбирает."
+                },
+                {
+                  "id": "barrier-breaker",
+                  "name": "Взлом корневого барьера",
+                  "status": "ruling-only",
+                  "description": "Разрушение связи Элдрина с лесом заблокировано до отдельного мирового правила и последствий."
+                }
               ],
               "tactics": [
                 "держит врагов на расстоянии и сначала ограничивает движение",
@@ -3754,14 +4494,19 @@
             "location": "Сердце Элдрина",
             "visibility": "gm_only",
             "reveal_on_presence": true,
-            "summary": "Бессмертный разум, связанный с корнями Дикого леса и горькой памятью о собственном выборе.",
+            "summary": "Огромное древнее дерево с лицом старика в коре, мшистыми ветвями и золотящимися трещинами ритуала; бессмертный разум связан с корнями Дикого леса и горькой памятью о выборе.",
             "voice": "Говорит медленно, через шелест нескольких крон; отвечает правдиво, но только в пределах памяти земли.",
             "speech_profile": {
               "pace": "очень медленно, с длинными паузами",
               "lexicon": "корни, сезоны, вода, память и цена продолжения",
               "mannerism": "повторяет ключевое слово вопроса образом из жизни леса"
             },
-            "social_dcs": { "persuasion": 19, "deception": 21, "intimidation": 22, "insight": 15 },
+            "social_dcs": {
+              "persuasion": 19,
+              "deception": 21,
+              "intimidation": 22,
+              "insight": 15
+            },
             "goals": [
               "не допустить повторения ритуала бессмертия",
               "защитить связь леса с подземными водами",
@@ -3773,9 +4518,19 @@
               "страх Ломара можно исцелить только правдой"
             ],
             "inventory": [
-              { "id": "eldrin-first-seed", "name": "Первое семя", "quantity": 1, "description": "Семя дерева, росшего здесь до ритуала Элдрина.", "visibility": "gm_only" }
+              {
+                "id": "eldrin-first-seed",
+                "name": "Первое семя",
+                "quantity": 1,
+                "description": "Семя дерева, росшего здесь до ритуала Элдрина.",
+                "visibility": "gm_only"
+              }
             ],
-            "tags": ["ancient", "tree", "incorruptible"],
+            "tags": [
+              "ancient",
+              "tree",
+              "incorruptible"
+            ],
             "mechanics": {
               "profile_id": "astohan:eldrin-v1",
               "status": "partial",
@@ -3790,41 +4545,127 @@
               "proficiency_bonus": 4,
               "size": "huge",
               "creature_type": "plant",
-              "abilities": { "str": 22, "dex": 8, "con": 21, "int": 19, "wis": 22, "cha": 16 },
-              "skills": { "arcana": 8, "history": 8, "insight": 10, "nature": 12, "perception": 10 },
-              "saving_throws": { "con": 9, "int": 8, "wis": 10 },
-              "damage_resistances": ["bludgeoning", "psychic"],
-              "damage_immunities": ["poison"],
-              "condition_immunities": ["exhaustion", "poisoned", "prone"],
+              "abilities": {
+                "str": 22,
+                "dex": 8,
+                "con": 21,
+                "int": 19,
+                "wis": 22,
+                "cha": 16
+              },
+              "skills": {
+                "arcana": 8,
+                "history": 8,
+                "insight": 10,
+                "nature": 12,
+                "perception": 10
+              },
+              "saving_throws": {
+                "con": 9,
+                "int": 8,
+                "wis": 10
+              },
+              "damage_resistances": [
+                "bludgeoning",
+                "psychic"
+              ],
+              "damage_immunities": [
+                "poison"
+              ],
+              "condition_immunities": [
+                "exhaustion",
+                "poisoned",
+                "prone"
+              ],
               "traits": [
-                { "id": "multiattack", "name": "Два удара корнями", "attacks": 2 }
+                {
+                  "id": "multiattack",
+                  "name": "Два удара корнями",
+                  "attacks": 2
+                }
               ],
               "action_profiles": [
-                { "id": "root-lash", "name": "Удар корнем", "kind": "melee", "attack_modifier": 10, "damage_expression": "2d8+6", "damage_type": "bludgeoning", "range_feet": 15, "tactical_priority": 7 }
+                {
+                  "id": "root-lash",
+                  "name": "Удар корнем",
+                  "kind": "melee",
+                  "attack_modifier": 10,
+                  "damage_expression": "2d8+6",
+                  "damage_type": "bludgeoning",
+                  "range_feet": 15,
+                  "tactical_priority": 7
+                }
               ],
               "spellcasting": {
                 "ability": "wis",
                 "save_dc": 18,
                 "attack_bonus": 10,
                 "spells": [
-                  { "id": "thorn-whip", "uses": "at-will" },
-                  { "id": "entangle", "uses": 3 },
-                  { "id": "barkskin", "uses": 2 },
-                  { "id": "blight", "uses": 2 },
-                  { "id": "wall-of-thorns", "uses": 1 }
+                  {
+                    "id": "thorn-whip",
+                    "uses": "at-will"
+                  },
+                  {
+                    "id": "entangle",
+                    "uses": 3
+                  },
+                  {
+                    "id": "barkskin",
+                    "uses": 2
+                  },
+                  {
+                    "id": "blight",
+                    "uses": 2
+                  },
+                  {
+                    "id": "wall-of-thorns",
+                    "uses": 1
+                  }
                 ]
               },
               "legendary": {
                 "uses": 2,
                 "resistance": 1,
                 "actions": [
-                  { "id": "root-sweep", "name": "Взмах корней", "cost": 1, "kind": "attack", "attack_modifier": 10, "damage_expression": "2d8+6", "damage_type": "bludgeoning", "range_feet": 15 },
-                  { "id": "ground-surge", "name": "Восстание корней", "cost": 2, "kind": "save", "save_ability": "str", "save_dc": 18, "damage_expression": "3d8", "damage_type": "bludgeoning", "half_on_save": true, "condition": "restrained", "radius_feet": 15, "range_feet": 60 }
+                  {
+                    "id": "root-sweep",
+                    "name": "Взмах корней",
+                    "cost": 1,
+                    "kind": "attack",
+                    "attack_modifier": 10,
+                    "damage_expression": "2d8+6",
+                    "damage_type": "bludgeoning",
+                    "range_feet": 15
+                  },
+                  {
+                    "id": "ground-surge",
+                    "name": "Восстание корней",
+                    "cost": 2,
+                    "kind": "save",
+                    "save_ability": "str",
+                    "save_dc": 18,
+                    "damage_expression": "3d8",
+                    "damage_type": "bludgeoning",
+                    "half_on_save": true,
+                    "condition": "restrained",
+                    "radius_feet": 15,
+                    "range_feet": 60
+                  }
                 ]
               },
               "features": [
-                { "id": "rooted-body", "name": "Укоренённое тело", "status": "verified", "description": "Нулевая скорость, защиты и иммунитеты записаны непосредственно в серверном профиле." },
-                { "id": "memory-of-roots", "name": "Память корней", "status": "ruling-only", "description": "Ответы о прошлом ограничены каноном мира; универсального механического всеведения нет." }
+                {
+                  "id": "rooted-body",
+                  "name": "Укоренённое тело",
+                  "status": "verified",
+                  "description": "Нулевая скорость, защиты и иммунитеты записаны непосредственно в серверном профиле."
+                },
+                {
+                  "id": "memory-of-roots",
+                  "name": "Память корней",
+                  "status": "ruling-only",
+                  "description": "Ответы о прошлом ограничены каноном мира; универсального механического всеведения нет."
+                }
               ],
               "tactics": [
                 "не преследует противников и контролирует пространство вокруг ствола",
@@ -3841,14 +4682,19 @@
             "location": "Замок Забытых Скал",
             "visibility": "gm_only",
             "reveal_on_presence": true,
-            "summary": "Обезглавленный рыцарь-предатель, который две сотни лет принимает вечную стражу за искупление.",
+            "summary": "Обезглавленный рыцарь в потёртых чёрно-серебряных латах; его собственная призрачная голова парит над воротом, а в руках Лунный Судья, и две сотни лет он принимает стражу за искупление.",
             "voice": "Его отрубленная призрачная голова говорит холодным придворным тоном, а тело отвечает движением клинка.",
             "speech_profile": {
               "pace": "торжественно, с тяжёлыми паузами",
               "lexicon": "честь, суд, корона, долг и искупление",
               "mannerism": "каждый вопрос возвращает собеседнику как обвинение"
             },
-            "social_dcs": { "persuasion": 20, "deception": 18, "intimidation": 22, "insight": 19 },
+            "social_dcs": {
+              "persuasion": 20,
+              "deception": 18,
+              "intimidation": 22,
+              "insight": 19
+            },
             "goals": [
               "доказать, что вечная стража искупила предательство",
               "не позволить Саргату забрать реликвию",
@@ -3860,10 +4706,33 @@
               "корона помнит только удобных мёртвых"
             ],
             "inventory": [
-              { "id": "kaelan-moon-judge", "name": "Лунный Судья", "quantity": 1, "description": "Проклятый клинок казни, связанный с драконьей кровью.", "visibility": "party" },
-              { "id": "kaelan-cursed-tear", "name": "Слеза Проклятого Рыцаря", "quantity": 1, "description": "Кристаллизованная скорбь Каэлана и будущая сюжетная награда.", "visibility": "gm_only" }
+              {
+                "id": "kaelan-moon-judge",
+                "name": "Лунный Судья",
+                "quantity": 1,
+                "description": "Проклятый клинок казни, связанный с драконьей кровью.",
+                "visibility": "party"
+              },
+              {
+                "id": "kaelan-weathered-plate",
+                "name": "Потёртые чёрно-серебряные латы",
+                "quantity": 1,
+                "description": "Старые латы Каэлана, соответствующие его облику дуннахана; КД остаётся числом боевого профиля.",
+                "visibility": "party"
+              },
+              {
+                "id": "kaelan-cursed-tear",
+                "name": "Слеза Проклятого Рыцаря",
+                "quantity": 1,
+                "description": "Кристаллизованная скорбь Каэлана и будущая сюжетная награда.",
+                "visibility": "gm_only"
+              }
             ],
-            "tags": ["undead", "knight", "incorruptible"],
+            "tags": [
+              "undead",
+              "knight",
+              "incorruptible"
+            ],
             "mechanics": {
               "profile_id": "astohan:kaelan-v1",
               "status": "partial",
@@ -3878,32 +4747,119 @@
               "proficiency_bonus": 4,
               "size": "medium",
               "creature_type": "undead",
-              "abilities": { "str": 20, "dex": 16, "con": 19, "int": 14, "wis": 15, "cha": 18 },
-              "skills": { "athletics": 9, "history": 6, "intimidation": 8, "perception": 6, "religion": 6 },
-              "saving_throws": { "str": 9, "con": 8, "cha": 8 },
-              "damage_resistances": ["cold", "necrotic"],
-              "damage_immunities": ["poison"],
-              "condition_immunities": ["exhaustion", "frightened", "poisoned"],
+              "abilities": {
+                "str": 20,
+                "dex": 16,
+                "con": 19,
+                "int": 14,
+                "wis": 15,
+                "cha": 18
+              },
+              "skills": {
+                "athletics": 9,
+                "history": 6,
+                "intimidation": 8,
+                "perception": 6,
+                "religion": 6
+              },
+              "saving_throws": {
+                "str": 9,
+                "con": 8,
+                "cha": 8
+              },
+              "damage_resistances": [
+                "cold",
+                "necrotic"
+              ],
+              "damage_immunities": [
+                "poison"
+              ],
+              "condition_immunities": [
+                "exhaustion",
+                "frightened",
+                "poisoned"
+              ],
               "traits": [
-                { "id": "multiattack", "name": "Две атаки", "attacks": 2 },
-                { "id": "relentless-pursuit", "name": "Неумолимая погоня" },
-                { "id": "bloodied-frenzy", "name": "Ярость осуждённого" }
+                {
+                  "id": "multiattack",
+                  "name": "Две атаки",
+                  "attacks": 2
+                },
+                {
+                  "id": "relentless-pursuit",
+                  "name": "Неумолимая погоня"
+                },
+                {
+                  "id": "bloodied-frenzy",
+                  "name": "Ярость осуждённого"
+                }
               ],
               "action_profiles": [
-                { "id": "moon-judge", "name": "Лунный Судья", "kind": "melee", "attack_modifier": 9, "damage_expression": "2d8+5", "damage_type": "slashing", "range_feet": 5, "tactical_priority": 8 },
-                { "id": "spectral-lance", "name": "Призрачное копьё", "kind": "ranged", "attack_modifier": 8, "damage_expression": "2d6+4", "damage_type": "cold", "range_feet": 60, "normal_range_feet": 60, "tactical_priority": 6 }
+                {
+                  "id": "moon-judge",
+                  "name": "Лунный Судья",
+                  "kind": "melee",
+                  "attack_modifier": 9,
+                  "damage_expression": "2d8+5",
+                  "damage_type": "slashing",
+                  "range_feet": 5,
+                  "tactical_priority": 8
+                },
+                {
+                  "id": "spectral-lance",
+                  "name": "Призрачное копьё",
+                  "kind": "ranged",
+                  "attack_modifier": 8,
+                  "damage_expression": "2d6+4",
+                  "damage_type": "cold",
+                  "range_feet": 60,
+                  "normal_range_feet": 60,
+                  "tactical_priority": 6
+                }
               ],
               "legendary": {
                 "uses": 2,
                 "resistance": 1,
                 "actions": [
-                  { "id": "judges-cut", "name": "Удар Судьи", "cost": 1, "kind": "attack", "attack_modifier": 9, "damage_expression": "2d8+5", "damage_type": "slashing", "range_feet": 5 },
-                  { "id": "wail-of-the-condemned", "name": "Вой осуждённых", "cost": 2, "kind": "save", "save_ability": "con", "save_dc": 17, "damage_expression": "3d8", "damage_type": "thunder", "half_on_save": true, "condition": "frightened", "radius_feet": 30, "range_feet": 30 }
+                  {
+                    "id": "judges-cut",
+                    "name": "Удар Судьи",
+                    "cost": 1,
+                    "kind": "attack",
+                    "attack_modifier": 9,
+                    "damage_expression": "2d8+5",
+                    "damage_type": "slashing",
+                    "range_feet": 5
+                  },
+                  {
+                    "id": "wail-of-the-condemned",
+                    "name": "Вой осуждённых",
+                    "cost": 2,
+                    "kind": "save",
+                    "save_ability": "con",
+                    "save_dc": 17,
+                    "damage_expression": "3d8",
+                    "damage_type": "thunder",
+                    "half_on_save": true,
+                    "condition": "frightened",
+                    "radius_feet": 30,
+                    "range_feet": 30
+                  }
                 ]
               },
               "features": [
-                { "id": "dullahan-form", "name": "Дуннахан", "status": "partial", "description": "Защиты, иммунитеты, легендарное сопротивление и Вой осуждённых исполняются; возвращение головы и полуночная уязвимость пока не связаны событиями." },
-                { "id": "midnight-invulnerability", "name": "Неуязвимость полуночи", "status": "ruling-only", "description": "Полная неуязвимость до возвращения головы заблокирована до типизированной механики загадки." }
+                {
+                  "id": "dullahan-form",
+                  "name": "Дуннахан",
+                  "status": "partial",
+                  "description": "Защиты, иммунитеты, легендарное сопротивление и Вой осуждённых исполняются; возвращение головы и полуночная уязвимость пока не связаны событиями."
+                },
+                {
+                  "id": "midnight-invulnerability",
+                  "name": "Неуязвимость полуночи",
+                  "status": "ruling-only",
+                  "description": "Полная неуязвимость до возвращения головы заблокирована до типизированной механики загадки."
+                }
               ],
               "tactics": [
                 "неумолимо сокращает дистанцию до носителя реликвии",
@@ -3920,14 +4876,19 @@
             "location": "Жаровня Вулканиса",
             "visibility": "gm_only",
             "reveal_on_presence": true,
-            "summary": "Гордый и вспыльчивый молодой дракон, который скрывает страх оказаться последним и слабейшим в своём роду.",
+            "summary": "Гордый молодой красный дракон с тёмно-алой чешуёй, янтарными глазами, короткими рогами со сколом и чешуёй Вулканиса на шее; скрывает страх оказаться последним и слабейшим в роду.",
             "voice": "Говорит подчёркнуто вежливо и почти придворно; при потере контроля переходит на короткие угрозы.",
             "speech_profile": {
               "pace": "медленно и учтиво, затем внезапно резко",
               "lexicon": "род, наследство, дань, огонь и право сильного",
               "mannerism": "называет собеседника полным титулом перед каждой угрозой"
             },
-            "social_dcs": { "persuasion": 22, "deception": 23, "intimidation": 24, "insight": 21 },
+            "social_dcs": {
+              "persuasion": 22,
+              "deception": 23,
+              "intimidation": 24,
+              "insight": 21
+            },
             "goals": [
               "вернуть останки и наследие Вулканиса",
               "заставить Ареса признать нарушенную клятву",
@@ -3939,10 +4900,26 @@
               "последний наследник обязан стать величайшим"
             ],
             "inventory": [
-              { "id": "sargat-ash-mask", "name": "Пепельная личина", "quantity": 1, "description": "Авторский предмет предполагаемого человеческого облика Саргата.", "visibility": "gm_only" },
-              { "id": "sargat-vulkanis-scale", "name": "Чешуя Вулканиса", "quantity": 1, "description": "Единственная уцелевшая чешуя предка, которую Саргат носит у сердца.", "visibility": "gm_only" }
+              {
+                "id": "sargat-ash-mask",
+                "name": "Пепельная личина",
+                "quantity": 1,
+                "description": "Авторский предмет предполагаемого человеческого облика Саргата.",
+                "visibility": "gm_only"
+              },
+              {
+                "id": "sargat-vulkanis-scale",
+                "name": "Чешуя Вулканиса",
+                "quantity": 1,
+                "description": "Единственная уцелевшая чешуя предка, которую Саргат носит у сердца.",
+                "visibility": "gm_only"
+              }
             ],
-            "tags": ["dragon", "boss", "incorruptible"],
+            "tags": [
+              "dragon",
+              "boss",
+              "incorruptible"
+            ],
             "mechanics": {
               "profile_id": "astohan:sargat-v1",
               "status": "partial",
@@ -3957,33 +4934,142 @@
               "proficiency_bonus": 4,
               "size": "large",
               "creature_type": "dragon",
-              "abilities": { "str": 23, "dex": 14, "con": 21, "int": 15, "wis": 13, "cha": 19 },
-              "skills": { "deception": 8, "insight": 5, "intimidation": 8, "perception": 9, "stealth": 6 },
-              "saving_throws": { "dex": 6, "con": 9, "wis": 5, "cha": 8 },
-              "damage_immunities": ["fire"],
+              "abilities": {
+                "str": 23,
+                "dex": 14,
+                "con": 21,
+                "int": 15,
+                "wis": 13,
+                "cha": 19
+              },
+              "skills": {
+                "deception": 8,
+                "insight": 5,
+                "intimidation": 8,
+                "perception": 9,
+                "stealth": 6
+              },
+              "saving_throws": {
+                "dex": 6,
+                "con": 9,
+                "wis": 5,
+                "cha": 8
+              },
+              "damage_immunities": [
+                "fire"
+              ],
               "traits": [
-                { "id": "multiattack", "name": "Укус и два удара когтями", "action_counts": { "sargat-bite": 1, "sargat-claw": 2 } },
-                { "id": "aggressive", "name": "Огненный налёт" },
-                { "id": "bloodied-frenzy", "name": "Ярость последнего наследника" }
+                {
+                  "id": "multiattack",
+                  "name": "Укус и два удара когтями",
+                  "action_counts": {
+                    "sargat-bite": 1,
+                    "sargat-claw": 2
+                  }
+                },
+                {
+                  "id": "aggressive",
+                  "name": "Огненный налёт"
+                },
+                {
+                  "id": "bloodied-frenzy",
+                  "name": "Ярость последнего наследника"
+                }
               ],
               "action_profiles": [
-                { "id": "sargat-bite", "name": "Укус", "kind": "melee", "attack_modifier": 10, "damage_expression": "2d10+6", "damage_type": "piercing", "range_feet": 10, "tactical_priority": 8 },
-                { "id": "sargat-claw", "name": "Коготь", "kind": "melee", "attack_modifier": 10, "damage_expression": "2d6+6", "damage_type": "slashing", "range_feet": 5, "tactical_priority": 7 },
-                { "id": "sargat-tail", "name": "Хвост", "kind": "melee", "attack_modifier": 10, "damage_expression": "2d8+6", "damage_type": "bludgeoning", "range_feet": 15, "tactical_priority": 6 }
+                {
+                  "id": "sargat-bite",
+                  "name": "Укус",
+                  "kind": "melee",
+                  "attack_modifier": 10,
+                  "damage_expression": "2d10+6",
+                  "damage_type": "piercing",
+                  "range_feet": 10,
+                  "tactical_priority": 8
+                },
+                {
+                  "id": "sargat-claw",
+                  "name": "Коготь",
+                  "kind": "melee",
+                  "attack_modifier": 10,
+                  "damage_expression": "2d6+6",
+                  "damage_type": "slashing",
+                  "range_feet": 5,
+                  "tactical_priority": 7
+                },
+                {
+                  "id": "sargat-tail",
+                  "name": "Хвост",
+                  "kind": "melee",
+                  "attack_modifier": 10,
+                  "damage_expression": "2d8+6",
+                  "damage_type": "bludgeoning",
+                  "range_feet": 15,
+                  "tactical_priority": 6
+                }
               ],
               "legendary": {
                 "uses": 3,
                 "resistance": 2,
                 "actions": [
-                  { "id": "tail-sweep", "name": "Удар хвостом", "cost": 1, "kind": "attack", "attack_modifier": 10, "damage_expression": "2d8+6", "damage_type": "bludgeoning", "range_feet": 15 },
-                  { "id": "wing-buffet", "name": "Взмах крыльев", "cost": 2, "kind": "save", "save_ability": "dex", "save_dc": 17, "damage_expression": "2d6+6", "damage_type": "bludgeoning", "half_on_save": true, "condition": "prone", "radius_feet": 10, "range_feet": 10 },
-                  { "id": "fire-breath", "name": "Огненное дыхание", "cost": 3, "kind": "save", "save_ability": "dex", "save_dc": 17, "damage_expression": "6d6", "damage_type": "fire", "half_on_save": true, "radius_feet": 30, "range_feet": 60 }
+                  {
+                    "id": "tail-sweep",
+                    "name": "Удар хвостом",
+                    "cost": 1,
+                    "kind": "attack",
+                    "attack_modifier": 10,
+                    "damage_expression": "2d8+6",
+                    "damage_type": "bludgeoning",
+                    "range_feet": 15
+                  },
+                  {
+                    "id": "wing-buffet",
+                    "name": "Взмах крыльев",
+                    "cost": 2,
+                    "kind": "save",
+                    "save_ability": "dex",
+                    "save_dc": 17,
+                    "damage_expression": "2d6+6",
+                    "damage_type": "bludgeoning",
+                    "half_on_save": true,
+                    "condition": "prone",
+                    "radius_feet": 10,
+                    "range_feet": 10
+                  },
+                  {
+                    "id": "fire-breath",
+                    "name": "Огненное дыхание",
+                    "cost": 3,
+                    "kind": "save",
+                    "save_ability": "dex",
+                    "save_dc": 17,
+                    "damage_expression": "6d6",
+                    "damage_type": "fire",
+                    "half_on_save": true,
+                    "radius_feet": 30,
+                    "range_feet": 60
+                  }
                 ]
               },
               "features": [
-                { "id": "young-red-dragon", "name": "Красный дракон", "status": "partial", "description": "КД, ОЗ, огненная невосприимчивость и атаки записаны в исполнимой форме; полёт и точная форма конуса дыхания ещё не поддержаны." },
-                { "id": "ash-mask", "name": "Пепельная личина", "status": "ruling-only", "description": "Человеческий облик остаётся заблокированным до отдельной механики превращения и предмета." },
-                { "id": "ash-network-awareness", "name": "Осведомлённость Пепельной сети", "status": "ruling-only", "description": "Счётчик сведений о героях ещё не меняется событиями мира." }
+                {
+                  "id": "young-red-dragon",
+                  "name": "Красный дракон",
+                  "status": "partial",
+                  "description": "КД, ОЗ, огненная невосприимчивость и атаки записаны в исполнимой форме; полёт и точная форма конуса дыхания ещё не поддержаны."
+                },
+                {
+                  "id": "ash-mask",
+                  "name": "Пепельная личина",
+                  "status": "ruling-only",
+                  "description": "Человеческий облик остаётся заблокированным до отдельной механики превращения и предмета."
+                },
+                {
+                  "id": "ash-network-awareness",
+                  "name": "Осведомлённость Пепельной сети",
+                  "status": "ruling-only",
+                  "description": "Счётчик сведений о героях ещё не меняется событиями мира."
+                }
               ],
               "tactics": [
                 "начинает с огненного дыхания по плотному строю",

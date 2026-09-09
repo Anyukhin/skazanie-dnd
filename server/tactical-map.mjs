@@ -88,7 +88,7 @@ export class TacticalMapError extends Error {
  * @property {boolean} passable можно ли войти
  * @property {number} moveCost 1 или 2; 2 — труднопроходимая местность
  * @property {string} surface значение из SURFACES
- * @property {string|null} hazardId ссылка на persistent-hazards
+ * @property {string|null} hazardId идентификатор опасности клетки; сам не исполняет механику
  * @property {string} material значение из MATERIALS
  * @property {number} elevation шаг 5 футов
  * @property {string} zone id зоны, пустая строка если зоны нет
@@ -132,6 +132,7 @@ export class TacticalMapError extends Error {
  * @property {string} state значение из DOOR_STATES; это НАЧАЛЬНОЕ состояние
  * @property {number} lockDc
  * @property {string|null} keyItemId
+ * @property {{material_item_id:string, actor_id:string, previous_state:string, side_x:number, side_y:number}|null} [barricade]
  */
 
 /**
@@ -746,6 +747,7 @@ export function edgeList(map) {
  * @param {string} [door.state]
  * @param {number} [door.lockDc]
  * @param {string|null} [door.keyItemId]
+ * @param {{material_item_id:string, actor_id:string, previous_state:string, side_x:number, side_y:number}|null} [door.barricade]
  * @param {boolean} [door.blocksMove]
  * @param {boolean} [door.blocksSight]
  * @returns {TacticalDoor}
@@ -764,15 +766,23 @@ export function setDoor(map, door) {
     state,
     lockDc: boundedInteger(door.lockDc, 0, 0, 40),
     keyItemId: door.keyItemId == null ? null : String(door.keyItemId),
+    barricade: door.barricade && typeof door.barricade === 'object' ? {
+      material_item_id: boundedText(door.barricade.material_item_id, 120),
+      actor_id: boundedText(door.barricade.actor_id, 120),
+      previous_state: DOOR_STATES.includes(String(door.barricade.previous_state)) ? String(door.barricade.previous_state) : 'open',
+      side_x: Number.isSafeInteger(Number(door.barricade.side_x)) ? Number(door.barricade.side_x) : 0,
+      side_y: Number.isSafeInteger(Number(door.barricade.side_y)) ? Number(door.barricade.side_y) : 0,
+    } : null,
   }
+  if (!Object.hasOwn(door, 'barricade')) delete record.barricade
   const existing = map.doors.findIndex((entry) => entry.id === id)
   if (existing >= 0) map.doors[existing] = record
   else map.doors.push(record)
   const neighbor = edgeNeighbor(record)
   setEdge(map, record.x, record.y, neighbor.x, neighbor.y, {
     kind: 'door',
-    blocksMove: door.blocksMove === true,
-    blocksSight: door.blocksSight === true,
+    blocksMove: door.blocksMove === true || Boolean(record.barricade),
+    blocksSight: door.blocksSight === true || Boolean(record.barricade),
     cover: 'none',
     doorId: id,
   })
@@ -1043,11 +1053,8 @@ export function reachableCells(map, fromX, fromY, { throughDoors = true } = {}) 
  * нибудь» и закрытую дверь считает проходимой — её ведь можно открыть. Здесь
  * вопрос другой, поэтому и правило другое.
  *
- * Спрашивается **только дверь**. Стены на рёбрах движению по-прежнему не
- * мешают: проходимость считается по клетке, и это отдельная незакрытая задача.
- * Смешивать их здесь нельзя — рёбра со стенами строятся вокруг каждой
- * непроходимой клетки, и существо, оказавшееся на такой клетке (герой в воде),
- * не смогло бы с неё сойти.
+ * Спрашивается только дверь. Общую преграду шага проверяет movementStepBlocked;
+ * её политика стен сохраняет возможность выйти из непроходимой клетки.
  *
  * Полотно двери и стена вокруг него — разные вещи. `edge.blocksMove` описывает
  * стену: у проёма между двумя проходимыми клетками он ложен, и по нему нельзя
@@ -1065,8 +1072,25 @@ export function doorBlocksStep(map, ax, ay, bx, by) {
   if (!edge || edge.kind !== 'door') return null
   const door = edge.doorId ? map.doors.find((entry) => entry.id === edge.doorId) : null
   const state = String(door?.state ?? 'closed')
-  if (state === 'open' || state === 'broken') return null
+  if ((state === 'open' || state === 'broken') && !door?.barricade) return null
   return state === 'locked' ? 'locked' : 'closed'
+}
+
+/**
+ * Преграда между клетками: дверь либо стена между двумя участками пола.
+ * Стена вокруг непроходимой клетки не запирает оказавшееся там существо.
+ * @param {TacticalMap} map
+ * @param {number} ax
+ * @param {number} ay
+ * @param {number} bx
+ * @param {number} by
+ * @returns {boolean}
+ */
+export function movementStepBlocked(map, ax, ay, bx, by) {
+  const edge = edgeBetween(map, ax, ay, bx, by)
+  if (!edge) return false
+  if (edge.kind === 'door') return Boolean(doorBlocksStep(map, ax, ay, bx, by))
+  return edge.blocksMove === true && cellAt(map, ax, ay)?.passable === true && cellAt(map, bx, by)?.passable === true
 }
 
 /**

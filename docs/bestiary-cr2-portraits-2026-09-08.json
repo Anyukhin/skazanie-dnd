@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-09-08",
+  "ruleset_id": "dnd_5e_2014",
+  "purpose": "Портреты двух новых записей CR2 MM14; передача в public и регистрация прав выполняются владельцем интеграции.",
+  "generator": "built-in image_gen",
+  "generation_policy": "original_generated_art; no dnd.su gallery image copied; staging only until catalog integration",
+  "rights_note_ru": "Портреты сгенерированы отдельно от dnd.su. Root должен скопировать staged PNG в public/assets/enemies/dnd-2014 и зарегистрировать их в data/asset-rights.json.",
+  "assets": [
+    {
+      "slug": "ghast",
+      "name_ru": "Вурдалак",
+      "challenge_rating": "2",
+      "status": "generated_staged",
+      "generated_path": "C:\\Users\\anton\\.codex\\generated_images\\01a07e43-6d62-79b3-9222-fe9c7c9e7799\\exec-4f70e449-ef7c-4466-b703-36d0fb2c18e8.png",
+      "staging_path": "tmp/bestiary-expansion/cr2-portraits/ghast.png",
+      "target_path": "public/assets/enemies/dnd-2014/ghast.png",
+      "dimensions": {
+        "width": 512,
+        "height": 512
+      },
+      "sha256": "5ecdb2b9fb47a1772c85deae79f118e57820235c540c50b9e23408d1c9a90f21",
+      "prompt": "Use case: stylized-concept; Asset type: square tabletop battlemap enemy token portrait for a dark-fantasy game UI; original dark-fantasy portrait of a D&D 5e 2014 ghast, a single undead flesh-eater with a gaunt corpse-like humanoid silhouette, predatory eyes, torn burial cloth and clawed hands; dim crypt, one figure; premium hand-painted dark fantasy illustration; centered circular-safe silhouette with generous edge padding; cold moonlike rim and restrained sickly green edge; ash gray skin, desaturated bone, charcoal cloth; no text, letters, numbers, logo, UI frame, watermark, blood, gore, extra limbs, extra characters or circular border.",
+      "notes_ru": "Проверен визуально; один читаемый силуэт, без надписей и рамки.",
+      "production_path": "public/assets/enemies/dnd-2014/ghast.png",
+      "installed": true,
+      "production_sha256": "5ecdb2b9fb47a1772c85deae79f118e57820235c540c50b9e23408d1c9a90f21"
+    },
+    {
+      "slug": "wererat",
+      "name_ru": "Веркрыса",
+      "challenge_rating": "2",
+      "status": "generated_staged",
+      "generated_path": "C:\\Users\\anton\\.codex\\generated_images\\01a07e43-6d62-79b3-9222-fe9c7c9e7799\\exec-513a206d-2332-4d8d-8734-728a9ee3a5ea.png",
+      "staging_path": "tmp/bestiary-expansion/cr2-portraits/wererat.png",
+      "target_path": "public/assets/enemies/dnd-2014/wererat.png",
+      "dimensions": {
+        "width": 512,
+        "height": 512
+      },
+      "sha256": "31e8fe3643cbd1cb89e086d4899f5afc3f78c4ae1f9ee9b78363dfe7b52cbf47",
+      "prompt": "Use case: stylized-concept; Asset type: square tabletop battlemap enemy token portrait for a dark-fantasy game UI; original dark-fantasy portrait of a D&D 5e 2014 wererat, a single humanoid rat lycanthrope in a tense half-transformed hybrid shape with rat ears, narrow muzzle, gray-brown fur, claws and a short blade; cramped moonlit city alley, one figure; premium hand-painted dark fantasy illustration; centered circular-safe silhouette with generous edge padding; cold moon rim and restrained warm lantern edge; gray-brown fur, charcoal leather, dull iron and muted blue; no text, letters, numbers, logo, UI frame, watermark, blood, gore, extra limbs, extra characters or circular border.",
+      "notes_ru": "Проверен визуально; гибридный крысолюд с коротким клинком, один читаемый силуэт.",
+      "production_path": "public/assets/enemies/dnd-2014/wererat.png",
+      "installed": true,
+      "production_sha256": "31e8fe3643cbd1cb89e086d4899f5afc3f78c4ae1f9ee9b78363dfe7b52cbf47"
+    }
+  ]
+}

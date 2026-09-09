@@ -1,7 +1,13 @@
 import { createHash } from 'node:crypto'
 
 import { DIFFICULTY_CLASSES } from './adjudicator.mjs'
-import { findActor, skillProficiencyForActor } from './rules-engine.mjs'
+import { actorPosition, findActor, shortestTacticalPath, skillProficiencyForActor } from './rules-engine.mjs'
+import { cellAt, deserializeTacticalMap, doorsReachableFrom, edgeBetween } from './tactical-map.mjs'
+import { npcPlacementFor, presentSceneNpcs } from './npc-positioning.mjs'
+import { npcSocialForViewer } from './npc-social.mjs'
+import { campaignStateForViewer } from './viewer-projection.mjs'
+import { ENVIRONMENT_HAZARD_IDS, ENVIRONMENT_HAZARDS } from './improvised-effects.mjs'
+import { hazardPropCells, sceneHazardTagsFor } from './scene-hazards.mjs'
 import {
   LOOT_CONTAINER_REACH_FEET,
   lootContainerList,
@@ -33,9 +39,246 @@ export const FREE_ACTION_SKILLS = Object.freeze([
   'stealth', 'survival',
 ])
 export const FREE_ACTION_PROFICIENCY_LEVELS = Object.freeze(['none', 'proficient', 'expertise'])
-export const FREE_ACTION_CONSEQUENCE_TYPES = Object.freeze(['time', 'noise', 'exposure', 'lost_opportunity'])
+export const FREE_ACTION_CONSEQUENCE_TYPES = Object.freeze(['time', 'noise', 'exposure', 'lost_opportunity', 'injury'])
+export const FREE_ACTION_ACTIVITY_KINDS = Object.freeze(['routine', 'stunt', 'environmental', 'stealth', 'social', 'knowledge'])
+export const FREE_ACTION_DURATION_CLASSES = Object.freeze(['instant', 'brief', 'minutes', 'extended', 'prolonged'])
+const LEGACY_RESOLUTION_POLICY_VERSION = 'free-action-resolution/v1'
+const RESOLUTION_POLICY_VERSION = 'free-action-resolution/v2'
+export const FREE_ACTION_RESOLUTION_POLICY_VERSION = RESOLUTION_POLICY_VERSION
 
 const inEnum = (values, value, fallback) => (values.includes(String(value)) ? String(value) : fallback)
+
+const HAZARD_ALIASES = Object.freeze({
+  fire: Object.freeze(['fire', 'hazard-fire', 'огонь', 'огня', 'огнем', 'огнём', 'пламя', 'пламени', 'костер', 'костёр', 'костра', 'жаровня', 'жаровни', 'горящий']),
+  scalding: Object.freeze(['scalding', 'hazard-scalding', 'кипяток', 'кипятка', 'паром', 'паре', 'ошпар']),
+  caustic: Object.freeze(['acid', 'caustic', 'hazard-acid', 'hazard-caustic', 'кислота', 'кислоты', 'кислотой', 'едкое', 'едкой', 'щелочь', 'щелочи']),
+  fall: Object.freeze(['fall', 'hazard-fall', 'падение', 'падения', 'падаю', 'падать', 'обрыв', 'обрыва', 'пропасть', 'пропасти']),
+  crush: Object.freeze(['crush', 'hazard-crush', 'обвал', 'обвала', 'обрушение', 'обрушения', 'придав', 'раздав', 'столкнов', 'вреза']),
+  shards: Object.freeze(['shards', 'hazard-shards', 'осколок', 'осколки', 'стекло', 'стекла', 'обломок', 'обломки', 'шип']),
+})
+
+const HAZARD_CONTACT_VERBS = /(?:сажусь|садя|сесть|сяду|сижу|ложусь|ложа|наступа|трога|каса|прикаса|лезу|лезть|вхожу|войти|ступа|прыга|прыгнуть|броса|обжига|облокачива|наклоняюсь)/iu
+const UNKNOWN_HAZARD_WORDS = /(?:опасност|ловуш|метеор|лав[аы]|яд|токсич|скольз|пропаст|обрыв|обвал|шип|оскол|стекл)/iu
+const HAZARD_AVOIDANCE = /(?:перепрыг|перешаг|обход|обхожу|обойти|мимо|держусь +подальше|(?:прыга|прыгну|перепрыг)[^.!?]{0,40} +(?:через|мимо))/iu
+const HAZARD_NEAR_OR_NONE = /(?:рядом +с|возле|около|не +(?:каса|трога|наступ|вхож|пада|прыга|лез))/iu
+const WALL_COLLISION_ACTION = /(?<![\p{L}\p{M}])врезаюсь(?![\p{L}\p{M}])[^.!?]{0,64}(?<![\p{L}\p{M}])стен(?:а|ы|е|у|ой|ами|ах)(?![\p{L}\p{M}])/iu
+const WALL_COLLISION_NEGATION = /(?<![\p{L}\p{M}])не\s+врезаю\p{L}*/iu
+const WALL_BREAK_ACTION = /(?:пролом|пробива|пробить|пробью|лома\p{L}*|выламыва\p{L}*|разруш\p{L}*|разбива\p{L}*)/iu
+const WALL_COLLISION_NON_ACTION = /(?:\?|(?<![\p{L}\p{M}])(?:если|хочу|могу|можно)(?![\p{L}\p{M}]))/iu
+const SELF_HAZARD_CONTACT_VERBS = /(?<![\p{L}\p{M}])(?:сажусь|сяду|сижу|ложусь|лягу|вхожу|наступаю|трогаю|касаюсь|прикасаюсь|лезу|прыгаю)(?![\p{L}\p{M}])/iu
+const SELF_HAZARD_CONTACT_NEGATION = /(?<![\p{L}\p{M}])не\s+(?:сажусь|сяду|сижу|ложусь|лягу|вхожу|наступаю|трогаю|касаюсь|прикасаюсь|лезу|прыгаю)(?![\p{L}\p{M}])/iu
+
+/** Приводит название опасности к закрытому серверному каталогу. */
+export function canonicalEnvironmentHazardId(value = '') {
+  const normalized = clean(value, 80).toLocaleLowerCase('ru').replace(/ё/gu, 'е')
+  if (ENVIRONMENT_HAZARD_IDS.includes(normalized)) return normalized
+  return ENVIRONMENT_HAZARD_IDS.find((id) => (HAZARD_ALIASES[id] ?? []).some((alias) => normalized.includes(alias))) ?? ''
+}
+
+function hazardIdMentionedIn(text = '') {
+  const value = clean(text, 1_000).toLocaleLowerCase('ru').replace(/ё/gu, 'е')
+  return Object.entries(HAZARD_ALIASES).find(([, aliases]) => aliases.some((alias) => value.includes(alias)))?.[0] ?? ''
+}
+
+function hazardIntentFor(text, reading = {}) {
+  const hazardId = canonicalEnvironmentHazardId(reading.hazard) || hazardIdMentionedIn(text)
+    || (HAZARD_CONTACT_VERBS.test(clean(text, 1_000)) && UNKNOWN_HAZARD_WORDS.test(clean(text, 1_000)) ? 'unknown' : '')
+  return hazardId || null
+}
+
+function hazardRelationFor(text, reading = {}) {
+  const value = clean(text, 1_000)
+  const hazardId = hazardIntentFor(value, reading)
+  if (!hazardId) return null
+  if (SELF_HAZARD_CONTACT_NEGATION.test(value) || WALL_COLLISION_NON_ACTION.test(value)) return { hazard_id: hazardId, relation: 'none' }
+  if (HAZARD_NEAR_OR_NONE.test(value)) return { hazard_id: hazardId, relation: 'none' }
+  if (HAZARD_AVOIDANCE.test(value)) return { hazard_id: hazardId, relation: 'avoid' }
+  if (!HAZARD_CONTACT_VERBS.test(value)) return null
+  // Контакт с опасностью — самоурон. Подстановка другого существа под огонь
+  // идёт отдельным эффектом hazard_damage и сюда не попадает.
+  if (reading.effect === 'hazard_damage') return null
+  if (reading.target_id || reading.effect_target) return { hazard_id: hazardId, relation: 'invalid_target' }
+  return { hazard_id: hazardId, relation: 'contact' }
+}
+
+function wallCollisionIntent(text) {
+  const value = clean(text, 1_000)
+  return WALL_COLLISION_ACTION.test(value)
+    && !WALL_COLLISION_NEGATION.test(value)
+    && !WALL_BREAK_ACTION.test(value)
+    && !WALL_COLLISION_NON_ACTION.test(value)
+}
+
+function selfHazardContactId(state, text, reading, actorId) {
+  const value = clean(text, 1_000)
+  if (!SELF_HAZARD_CONTACT_VERBS.test(value)
+    || SELF_HAZARD_CONTACT_NEGATION.test(value)
+    || HAZARD_NEAR_OR_NONE.test(value)
+    || HAZARD_AVOIDANCE.test(value)) return ''
+  const targets = [reading.target_id, reading.effect_target].map((target) => String(target ?? '').trim()).filter(Boolean)
+  const hazardId = hazardIdMentionedIn(value)
+  const sourceIds = targets.length ? nearestHazardAt(state, actorId)
+    .filter(candidate => candidate.hazard_id === hazardId)
+    .map(candidate => candidate.source?.id).filter(Boolean) : []
+  if (targets.some((target) => target !== String(actorId) && !sourceIds.includes(target))) return ''
+  // Предмет-источник может быть целью прочтения, но урон от явного контакта
+  // получает сам герой. Название опасности берём из его исходного действия.
+  return hazardId
+}
+
+function visibleMapForHazards(state) {
+  const serialized = state?.scene?.map
+  if (!serialized || typeof serialized !== 'object') return null
+  try { return deserializeTacticalMap(serialized) } catch { return null }
+}
+
+function nearestHazardAt(state, actorId) {
+  const at = actorPosition(state, actorId)
+  if (!at) return []
+  const map = visibleMapForHazards(state)
+  const candidates = []
+  if (map) {
+    for (const [index, rawHazard] of Object.entries(map.hazards ?? {})) {
+      const cellIndexValue = Number(index)
+      if (!Number.isSafeInteger(cellIndexValue) || cellIndexValue < 0) continue
+      const x = cellIndexValue % map.width
+      const y = Math.floor(cellIndexValue / map.width)
+      const cell = cellAt(map, x, y)
+      const hazardId = canonicalEnvironmentHazardId(rawHazard)
+      if (!cell?.revealed || !hazardId) continue
+      candidates.push({ hazard_id: hazardId, source: { kind: 'cell', x, y, cells: [{ x, y }], hazard_id: String(rawHazard) }, distance: Math.max(Math.abs(x - at.x), Math.abs(y - at.y)) })
+    }
+    for (const prop of map.props ?? []) {
+      const propVisibility = String(prop?.visibility ?? prop?.interaction?.visibility ?? '').toLowerCase()
+      if (['gm_only', 'npc_private'].includes(propVisibility) || prop?.revealed === false) continue
+      const tags = sceneHazardTagsFor(prop?.assetId)
+      const stateId = String(state?.mechanics?.scene_interactions?.[String(prop?.id ?? '')]?.state ?? prop?.state ?? '').toLowerCase()
+      const cells = hazardPropCells(prop)
+      const visible = cells.some((cell) => cellAt(map, cell.x, cell.y)?.revealed === true)
+      const inactiveFire = ['extinguished', 'unlit', 'cold', 'out', 'burned', 'off', 'disabled'].includes(stateId)
+      if (!visible || inactiveFire || (!tags.fireSource && !(tags.flammable && stateId === 'burning'))) continue
+      const distance = Math.min(...cells.map((cell) => Math.max(Math.abs(cell.x - at.x), Math.abs(cell.y - at.y))), Number.POSITIVE_INFINITY)
+      candidates.push({ hazard_id: 'fire', source: { kind: 'prop', id: String(prop?.id ?? ''), asset_id: String(prop?.assetId ?? ''), cells }, distance })
+    }
+  }
+  // Старые снимки могут хранить открытые опасные клетки без tactical map.
+  for (const cell of Array.isArray(state?.scene?.cells) ? state.scene.cells : []) {
+    const hazardId = canonicalEnvironmentHazardId(cell?.hazardId ?? cell?.hazard_id)
+    const x = Math.floor(Number(cell?.x)); const y = Math.floor(Number(cell?.y))
+    if (!hazardId || cell?.revealed !== true || !Number.isSafeInteger(x) || !Number.isSafeInteger(y)) continue
+    candidates.push({ hazard_id: hazardId, source: { kind: 'cell', x, y, cells: [{ x, y }], hazard_id: String(cell.hazardId ?? cell.hazard_id) }, distance: Math.max(Math.abs(x - at.x), Math.abs(y - at.y)) })
+  }
+  for (const hazard of Array.isArray(state?.mechanics?.hazards?.[String(actorId)]) ? state.mechanics.hazards[String(actorId)] : []) {
+    const hazardId = canonicalEnvironmentHazardId(hazard?.id ?? hazard?.hazard_id ?? hazard?.type)
+    if (hazardId) candidates.push({ hazard_id: hazardId, source: { kind: 'active-hazard', id: String(hazard?.id ?? hazardId) }, distance: 0 })
+  }
+  return candidates.sort((left, right) => left.distance - right.distance || left.hazard_id.localeCompare(right.hazard_id))
+}
+
+function hazardCandidateReachable(state, actorId, candidate) {
+  if (candidate?.source?.kind === 'active-hazard') return true
+  const map = visibleMapForHazards(state)
+  if (!map) return candidate?.distance <= 1
+  const cells = Array.isArray(candidate?.source?.cells) ? candidate.source.cells : []
+  return cells.some((cell) => {
+    const path = shortestTacticalPath(state, actorId, cell, { allowOccupiedDestination: true })
+    return Array.isArray(path) && path.length <= 1
+  })
+}
+
+function wallContactSource(state, actorId) {
+  const at = actorPosition(state, actorId)
+  if (!at) return null
+  const neighbors = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+  const map = visibleMapForHazards(state)
+  const nativeEdges = new Set()
+  if (map) {
+    const origin = cellAt(map, at.x, at.y)
+    if (origin?.revealed !== true) return null
+    for (const [dx, dy] of neighbors) {
+      const x = at.x + dx
+      const y = at.y + dy
+      const edge = edgeBetween(map, at.x, at.y, x, y)
+      if (!edge) continue
+      nativeEdges.add(`${x},${y}`)
+      if (edge.kind === 'wall' && edge.blocksMove === true) {
+        return { kind: 'wall-edge', x: edge.x, y: edge.y, dir: edge.dir, cells: [{ x: at.x, y: at.y }, { x, y }] }
+      }
+    }
+  }
+  const legacyCells = Array.isArray(state?.scene?.cells) ? state.scene.cells : []
+  const current = legacyCells.find((cell) => Number(cell?.x) === at.x && Number(cell?.y) === at.y)
+  if (current?.revealed !== true) return null
+  for (const [dx, dy] of neighbors) {
+    if (nativeEdges.has(`${at.x + dx},${at.y + dy}`)) continue
+    const wall = legacyCells.find((cell) => (
+      Number(cell?.x) === at.x + dx
+      && Number(cell?.y) === at.y + dy
+      && String(cell?.type ?? '') === 'wall'
+      && cell?.revealed === true
+    ))
+    if (wall) return { kind: 'wall-cell', x: Number(wall.x), y: Number(wall.y), cells: [{ x: at.x, y: at.y }, { x: Number(wall.x), y: Number(wall.y) }] }
+  }
+  return null
+}
+
+/** Разрешает только намеренный контакт с реально видимой ближайшей опасностью. */
+export function resolveHazardContact(state = {}, actorId = '', text = '', reading = {}) {
+  const selfHazard = selfHazardContactId(state, text, reading, actorId)
+  if (selfHazard) reading = { ...reading, hazard: selfHazard, effect: 'none', target_id: '', effect_target: '' }
+  if (wallCollisionIntent(text) && reading.effect !== 'hazard_damage' && !reading.target_id && !reading.effect_target) {
+    const source = wallContactSource(state, actorId)
+    if (!source) return {
+      status: 'unavailable', relation: 'contact', hazard_id: 'crush',
+      reason: 'Рядом с героем нет доступной стены для такого удара.',
+    }
+    const profile = ENVIRONMENT_HAZARDS.crush
+    const risk = inEnum(RISK_LEVELS, reading.risk, 'minor')
+    return {
+      status: 'contact', relation: 'contact', hazard_id: 'crush',
+      expression: profile.expressions[risk] ?? profile.expressions.minor,
+      damage_type: profile.damage_type,
+      label: 'удар о стену',
+      source,
+      distance: 1,
+    }
+  }
+  const relation = hazardRelationFor(text, reading)
+  if (!relation || relation.relation === 'none') return null
+  const requestedHazard = relation.hazard_id
+  if (relation.relation === 'invalid_target') return {
+    status: 'unavailable', relation: relation.relation, hazard_id: requestedHazard,
+    reason: 'Намеренный контакт с опасностью разрешён только самому герою.',
+  }
+  const nearby = nearestHazardAt(state, actorId).find((candidate) => candidate.distance <= 1
+    && candidate.hazard_id === requestedHazard && hazardCandidateReachable(state, actorId, candidate))
+  if (!nearby) return {
+    status: 'unavailable', relation: relation.relation, hazard_id: requestedHazard,
+    reason: 'Рядом с героем нет доступного источника этой опасности.',
+  }
+  if (relation.relation === 'avoid') return {
+    status: 'avoid', relation: 'avoid', hazard_id: requestedHazard,
+    source: nearby.source, distance: nearby.distance,
+  }
+  const profile = ENVIRONMENT_HAZARDS[nearby.hazard_id]
+  const risk = inEnum(RISK_LEVELS, reading.risk, 'minor')
+  return {
+    status: 'contact', relation: 'contact', hazard_id: nearby.hazard_id,
+    expression: profile.expressions[risk] ?? profile.expressions.minor,
+    damage_type: profile.damage_type,
+    label: profile.label,
+    source: nearby.source,
+    distance: nearby.distance,
+  }
+}
+
+/** Есть ли у указанной видимой цели подтверждённая ближайшая опасность. */
+export function confirmedHazardNear(state = {}, actorId = '', hazardId = '') {
+  const expected = canonicalEnvironmentHazardId(hazardId)
+  return Boolean(expected && nearestHazardAt(state, actorId).some((candidate) => candidate.distance <= 1
+    && candidate.hazard_id === expected && hazardCandidateReachable(state, actorId, candidate)))
+}
+
 const canonicalSkill = (value) => {
   const normalized = clean(value, 60).toLocaleLowerCase('en').replace(/_/gu, '-')
   return inEnum(FREE_ACTION_SKILLS, normalized, 'perception')
@@ -69,6 +312,8 @@ export function resolutionModeFor({ plausibility, risk } = {}) {
  * характеристика и навык выбираются независимо друг от друга.
  */
 const APPROACH_PATTERNS = Object.freeze([
+  { test: /(?<![\p{L}\p{M}])(?:сальто|кувырк\p{L}*|кувырок|кульбит\p{L}*|фляк\p{L}*|рондат\p{L}*|балансир\p{L}*|пируэт\p{L}*|акробатическ\p{L}*\s+(?:трюк|переворот))(?![\p{L}\p{M}])/iu, ability: 'dex', skill: 'acrobatics', plausibility: 'strenuous', risk: 'minor', obstacle: 'равновесие и точность движения' },
+  { test: /(?:отвле[кч]|переключ\p{L}*\s+внимани|шум\p{L}*\s+приманк)/iu, ability: 'cha', skill: 'performance', plausibility: 'plausible', risk: 'minor', obstacle: 'внимание собеседника' },
   { test: /(подпира|баррикад|завал|подпер|держ\w+\s+двер)/iu, ability: 'str', skill: 'athletics', plausibility: 'plausible', risk: 'minor', obstacle: 'дверь' },
   { test: /(взлам|выбива|выломать|ломаю)/iu, ability: 'str', skill: 'athletics', plausibility: 'strenuous', risk: 'serious', obstacle: 'преграда' },
   { test: /(опрокид|сбива|толка|рывк|поднож|жаровн|спотык|оступить)/iu, ability: 'str', skill: 'athletics', plausibility: 'strenuous', risk: 'serious', obstacle: 'противник' },
@@ -106,7 +351,7 @@ export function normalizeFreeActionReading(input = {}, fallbackText = '') {
     action_cost: inEnum(['action', 'bonus_action', 'free'], input.action_cost, 'action'),
     effect: clean(input.effect, 40) || 'none',
     effect_target: clean(input.effect_target, 120),
-    hazard: clean(input.hazard, 40),
+    hazard: canonicalEnvironmentHazardId(input.hazard),
     // Предмет обстановки для `topple_prop`/`ignite_prop`. Здесь только форма:
     // существует ли такой предмет на карте, решает привязка к состоянию ниже.
     prop_id: clean(input.prop_id, 120),
@@ -114,8 +359,37 @@ export function normalizeFreeActionReading(input = {}, fallbackText = '') {
     item_id: clean(input.item_id, 120),
     proficiency: inEnum(FREE_ACTION_PROFICIENCY_LEVELS, input.proficiency, 'none'),
     consequence_type: inEnum(FREE_ACTION_CONSEQUENCE_TYPES, input.consequence_type, 'time'),
+    activity_kind: inEnum(FREE_ACTION_ACTIVITY_KINDS, input.activity_kind, ''),
+    duration_class: inEnum(FREE_ACTION_DURATION_CLASSES, input.duration_class, ''),
     source: clean(input.source, 60) || 'deterministic-default',
   }
+}
+
+/** Бытовые жесты со своей вещью вне боя: нет противодействия и нет броска. */
+export function harmlessFreeActionReading(state, actorId, text) {
+  if (state?.mechanics?.combat?.active) return null
+  const value = clean(text, 1_000).toLocaleLowerCase('ru').replace(/ё/gu, 'е')
+  if (/[;]|\b(?:if|then)\b|(?:затем|потом|чтобы|противник|страж|двер|обрыв|пропаст|огонь|подж|связать\s+его)/iu.test(value)) return null
+  const actor = (state?.players ?? []).find(entry => String(entry.id) === String(actorId))
+  if (!actor) return null
+  const ropeGesture = /^(?:я\s+)?(?:развязываю\s+и\s+заново\s+завязываю|завязываю|перевязываю|сматываю|распутываю)\s+(?:(?:свою|имеющуюся)\s+)?веревку(?:,?\s+проверяя\s+прочность\s+узлов(?:\s+перед\s+использованием)?)?[.!]?$/u.test(value)
+  const rope = ropeGesture
+    ? (actor.inventory ?? []).find(item => /веревк|rope/iu.test(String(item.name).replace(/ё/gu, 'е'))) : null
+  const coinGesture = /^(?:я\s+)?подбрасываю\s+(?:свою\s+)?монету\s+и\s+ловлю\s+(?:ее\s+)?(?:(?:другой|левой|правой)\s+)?рукой[.!]?$/u.test(value)
+  const coin = coinGesture
+    && Object.values(actor.currency ?? {}).some(amount => Number(amount) > 0)
+  if ((coinGesture && !coin) || (ropeGesture && !rope)) return normalizeFreeActionReading({
+    goal_summary: clean(text, 200), approach_summary: clean(text, 200),
+    plausibility: 'impossible_without_means', risk: 'none', effect: 'none',
+    required_means: [coinGesture ? 'монета' : 'верёвка'], source: 'deterministic-trivial',
+  }, text)
+  if (!rope && !coin) return null
+  return normalizeFreeActionReading({
+    goal_summary: clean(text, 200), approach_summary: clean(text, 200),
+    plausibility: 'trivial', risk: 'none', effect: 'none', action_cost: 'free',
+    ability: 'dex', skill: 'sleight_of_hand', item_id: rope?.id ?? '',
+    required_means: rope ? [String(rope.id)] : [], source: 'deterministic-trivial',
+  }, text)
 }
 
 export function interpretFreeAction(text = '') {
@@ -215,12 +489,24 @@ function itemReferenceNames(item) {
     .map((value) => clean(value, 160)).filter(Boolean)
 }
 
-function actionTargets(state) {
+function namedActors(candidates, text) {
+  const ranked = candidates.map(actor => ({ actor, score: mentionsReference(text, referenceNames(actor)) ? 2
+    : [actor.name, actor.character, actor.label].some(name => {
+      const words = normalizedWords(name)
+      return words.length > 1 && mentionsReference(text, [words[0]])
+    }) ? 1 : 0 })).filter(entry => entry.score > 0)
+  const best = Math.max(0, ...ranked.map(entry => entry.score))
+  return ranked.filter(entry => entry.score === best).map(entry => entry.actor)
+}
+
+function actionTargets(state, actorId) {
+  const visible = campaignStateForViewer(state, { role: 'player' }, actorId) ?? {}
+  const social = npcSocialForViewer(state.social, { state, playerId: actorId, isPartyMember: true })
   return [...new Map([
     ...(state?.players ?? []),
-    ...(state?.actors ?? []),
-    ...(state?.enemies ?? []),
-    ...currentSocialActors(state),
+    ...(visible.actors ?? []),
+    ...(visible.enemies ?? []),
+    ...currentSocialActors({ ...state, social }),
   ].map((actor) => [String(actor?.id ?? ''), actor]).filter(([id]) => id)).values()]
 }
 
@@ -229,16 +515,59 @@ function actionTargets(state) {
  * связывает их с текущим состоянием, выводит отсутствующие ссылки из текста и
  * всегда перезаписывает уровень владения значением из листа героя.
  */
-export function bindFreeActionReadingToState(state = {}, actorId = '', text = '', input = {}) {
+export function bindFreeActionReadingToState(state = {}, actorId = '', text = '', input = {}, { preserveActionProfile = false } = {}) {
   const reading = normalizeFreeActionReading(input, text)
+  if (!preserveActionProfile) {
+    const hazardRelation = hazardRelationFor(text, reading)
+    if (hazardRelation?.relation === 'none') {
+      reading.hazard = ''
+      reading.activity_kind = 'routine'
+      reading.plausibility = 'trivial'
+      reading.risk = 'none'
+      reading.consequence_type = 'time'
+      reading.duration_class = 'instant'
+    } else if (reading.hazard && !hazardRelation && reading.effect !== 'hazard_damage') {
+      // Поле hazard от модели не создаёт опасность без причинной связи в тексте.
+      reading.hazard = ''
+    }
+    const social = ['animal-handling', 'deception', 'intimidation', 'performance', 'persuasion'].includes(reading.skill)
+    const physical = ['acrobatics', 'athletics'].includes(reading.skill)
+    const routine = (reading.activity_kind === 'routine' || reading.source.startsWith('deterministic-trivial')
+      || (!reading.activity_kind && !physical)) && reading.risk === 'none'
+      && reading.plausibility === 'trivial' && reading.effect === 'none'
+      && !reading.hazard && !reading.target_id && !reading.effect_target
+    // Механика зависит от семейства действия, а не от наличия слова из примера.
+    reading.activity_kind = routine ? 'routine'
+      : reading.skill === 'acrobatics' || (reading.activity_kind === 'stunt' && physical) ? 'stunt'
+        : reading.skill === 'stealth' ? 'stealth'
+          : social ? 'social'
+            : ['athletics', 'sleight-of-hand', 'medicine'].includes(reading.skill) ? 'environmental' : 'knowledge'
+    if (reading.activity_kind === 'stunt') {
+      if (reading.plausibility !== 'impossible_without_means') reading.plausibility = 'strenuous'
+      if (reading.risk === 'none') reading.risk = 'minor'
+      reading.consequence_type = 'injury'
+      reading.duration_class = 'instant'
+    } else {
+      // Огонь, обвал и ловушки исполняются своими командами реального объекта;
+      // слово injury от модели не создаёт отсутствующую опасность окружения.
+      if (reading.consequence_type === 'injury') {
+        reading.consequence_type = social ? 'lost_opportunity' : 'time'
+      }
+      if (!reading.duration_class) {
+        reading.duration_class = routine || (reading.risk === 'none' && reading.plausibility === 'trivial')
+          || ['history', 'arcana', 'nature', 'religion'].includes(reading.skill) ? 'instant'
+          : social || reading.skill === 'stealth' ? 'brief' : 'minutes'
+      }
+    }
+  }
   // Предмет обстановки живёт в авторитетной карте сцены, а не в списке
   // участников: сверяется он отдельно и по тому же принципу — назван моделью,
   // но существует ли он, решает сервер.
   const sceneProps = Array.isArray(state?.scene?.map?.props) ? state.scene.map.props : []
   const boundPropId = sceneProps.some((prop) => String(prop?.id ?? '') === reading.prop_id) ? reading.prop_id : ''
-  const targets = actionTargets(state).filter((actor) => String(actor?.id) !== String(actorId))
+  const targets = actionTargets(state, actorId).filter((actor) => String(actor?.id) !== String(actorId))
   const allowedTarget = targets.find((actor) => String(actor?.id) === reading.target_id) ?? null
-  const mentionedTargets = allowedTarget ? [allowedTarget] : targets.filter((actor) => mentionsReference(text, referenceNames(actor)))
+  const mentionedTargets = allowedTarget ? [allowedTarget] : namedActors(targets, text)
   const actor = findActor(state, actorId)
   const inventory = Array.isArray(actor?.inventory) ? actor.inventory : []
   const allowedItem = inventory.find((item) => String(item?.id) === reading.item_id) ?? null
@@ -256,6 +585,10 @@ export function bindFreeActionReadingToState(state = {}, actorId = '', text = ''
     proficiency: proficiency.expertise ? 'expertise' : proficiency.proficient ? 'proficient' : 'none',
     proficiency_bonus: proficiency.bonus,
     reference_ambiguities: ambiguities,
+    // Старые согласованные проверки сохраняют прежнюю цену при подтверждении.
+    policy_version: preserveActionProfile
+      ? [RESOLUTION_POLICY_VERSION, LEGACY_RESOLUTION_POLICY_VERSION].includes(input.policy_version) ? input.policy_version : null
+      : RESOLUTION_POLICY_VERSION,
   }
 }
 
@@ -310,14 +643,16 @@ const TRANSFER_TAKE = /(?<![\p{L}\p{M}])(беру|возьму|забира\p{L}
 const INVENTORY_NOUN = /(предмет|вещ|вер[её]в|меч|кинжал|лук|факел|зель|ключ|карта|свиток|па[её]к|ration|rope|item)/iu
 
 function partyActors(state, actorId) {
-  return (state?.players ?? []).filter((actor) => String(actor?.id) !== String(actorId))
+  const visibleNpcIds = new Set(npcSocialForViewer(state.social, { state, playerId: actorId, isPartyMember: true }).npcs.map(npc => String(npc.id)))
+  return [...(state?.players ?? []), ...(state.social?.npcs ?? []).filter(npc => visibleNpcIds.has(String(npc.id)))]
+    .filter((actor) => String(actor?.id) !== String(actorId))
 }
 
 function mentionedPartyActors(state, actorId, text, requestedId = '') {
   const candidates = partyActors(state, actorId)
   const requested = candidates.find((actor) => String(actor?.id) === String(requestedId ?? ''))
   if (requested) return [requested]
-  const mentioned = candidates.filter((actor) => mentionsReference(text, referenceNames(actor)))
+  const mentioned = namedActors(candidates, text)
   if (mentioned.length) return mentioned
   return /(?:товарищ|союзник|другому\s+герою|напарник)/iu.test(text) && candidates.length === 1 ? candidates : []
 }
@@ -347,7 +682,7 @@ export function resolveInventoryTransfer(state = {}, actorId = '', text = '', re
       status: 'clarification',
       narration: targets.length > 1
         ? `Уточните получателя: подходят ${targets.map((target) => target.character ?? target.name ?? target.id).join(', ')}.`
-        : 'Уточните, какому герою нужно передать предмет.',
+        : 'Уточните, кому нужно передать предмет: назовите героя или присутствующего собеседника.',
     }
   }
   const target = targets[0]
@@ -390,8 +725,70 @@ export function resolveInventoryTransfer(state = {}, actorId = '', text = '', re
       item_id: String(item.id),
       quantity: requestedQuantity,
     },
-    narration: `${actor.character ?? actor.name ?? actor.id} передаёт ${item.name ?? 'предмет'} герою ${target.character ?? target.name ?? target.id}.`,
+    narration: `${actor.character ?? actor.name ?? actor.id} передаёт ${item.name ?? 'предмет'}: получатель — ${target.character ?? target.name ?? target.id}.`,
   }
+}
+
+/** Свободная фраза выбирает только существующую команду; путь и замок считает движок. */
+export function resolveExplorationCommand(state, actorId, text) {
+  const value = clean(text, 2_000)
+  const actorAt = actorPosition(state, actorId)
+  if (!actorAt || !state.scene?.map) return null
+  let map
+  try { map = deserializeTacticalMap(state.scene.map) } catch { return null }
+  const makeBarricade = /^(?:я\s+)?(?:подпираю|баррикадирую|забаррикадирую|ставлю\s+баррикаду)/iu.test(value)
+  const clearBarricade = /^(?:я\s+)?(?:снимаю|убираю|разбираю|выбиваю|разрушаю)\s+баррикаду/iu.test(value)
+  const doorOperation = makeBarricade || clearBarricade || (/^(?:я\s+)?(?:открыва|закрыва|отпира|взламыва|выламыва|выбива)/iu.test(value) && /двер/iu.test(value))
+  if (doorOperation) {
+    const visible = map.doors.filter(door => cellAt(map, door.x, door.y)?.revealed === true)
+    const named = visible.filter(door => value.includes(door.id))
+    const nearby = doorsReachableFrom(map, actorAt.x, actorAt.y).filter(door => visible.some(entry => entry.id === door.id))
+    const candidates = named.length ? named : nearby
+    if (candidates.length !== 1) return { status: 'clarification', narration: candidates.length > 1
+      ? 'Здесь несколько дверей. Выберите нужную на карте, чтобы я не открыл другую.'
+      : 'До двери нужно дотянуться. Подойдите вплотную к нужной двери на карте; сама попытка открыть её пока ничего не расходует.' }
+    const door = candidates[0]
+    if (makeBarricade) {
+      const actor = findActor(state, actorId)
+      const items = mentionedInventoryItems(actor?.inventory ?? [], value)
+      if (items.length !== 1) return { status: 'clarification', narration: 'Назовите один материал из своего инвентаря: доску, верёвку или подходящую скамью. Предмет будет израсходован на баррикаду.' }
+      return { status: 'command', command: { command_type: 'BarricadeDoor', actor_id: String(actorId), door_id: door.id, material_item_id: items[0].id },
+        requires_confirmation: true, confirmation: `Материал баррикады: «${items[0].name}» — он будет израсходован. В бою потребуется действие. Подтвердите шаг или выберите другой материал.`,
+        narration: `Дверь забаррикадирована. Материал «${items[0].name}» израсходован.` }
+    }
+    if (clearBarricade || (door.barricade && /^(?:я\s+)?(?:выламываю|выбиваю)/iu.test(value))) {
+      const force = /выбиваю|разрушаю|выламываю/iu.test(value)
+      return { status: 'command', command: { command_type: 'ClearDoorBarricade', actor_id: String(actorId), door_id: door.id, force },
+        requires_confirmation: force,
+        confirmation: 'Выбивание баррикады: Атлетика от Силы, СЛ 15. Успех уберёт препятствие, при провале оно останется. В бою действие расходуется в любом случае. Подтвердите шаг или выберите другой способ.',
+        narration: 'Баррикада снята. Дверью снова можно пользоваться.' }
+    }
+    const force = /^(?:я\s+)?(?:выламыва|выбива)/iu.test(value)
+    if (force && /не\s+лом|не\s+повреж|без\s+повреж/iu.test(value)) return { status: 'clarification', narration: 'Выламывание повредит дверь. Для целого замка выберите взлом отмычками или другой проход.' }
+    const intent = force ? 'force' : /взламыва|отмыч/iu.test(value) ? 'lockpick' : /закрыва/iu.test(value) ? 'close' : 'open'
+    if (intent === 'open' && door.state === 'locked') return { status: 'clarification', narration: 'Дверь заперта. Открыть её обычным движением нельзя: можно взломать замок отмычками, выломать дверь с риском шума или поискать другой проход.' }
+    return { status: 'command', command: { command_type: 'OperateDoor', actor_id: String(actorId), door_id: door.id, intent }, narration: 'Действие с дверью разрешено по её состоянию.' }
+  }
+  if (!/^(?:я\s+)?(?:подхожу|приближаюсь|иду)\s+к\s+/iu.test(value) || /(?:затем|потом|и\s+(?:прошу|спрашиваю|атакую|открываю))/iu.test(value)) return null
+  if (/не\s+(?:покида|выход|двига)|без\s+перемещ/iu.test(value)) return { status: 'clarification', narration: 'Подход означает перемещение, а вы просите оставаться на месте или под укрытием. Можно обратиться к собеседнику с места; либо уточните, какое перемещение допустимо.' }
+  const candidates = namedActors(partyActors(state, actorId), value)
+  if (candidates.length !== 1) return { status: 'clarification', narration: 'К кому именно подойти? Назовите одного видимого собеседника или выберите клетку на карте.' }
+  const target = candidates[0]
+  const at = npcPlacementFor(state, target.id) ?? actorPosition(state, target.id)
+  if (!Number.isFinite(at?.x) || !Number.isFinite(at?.y)) return { status: 'clarification', narration: 'Положение собеседника на карте пока не определено. Можно обратиться к нему словами, не объявляя перемещение.' }
+  const distance = Math.max(Math.abs(at.x - actorAt.x), Math.abs(at.y - actorAt.y))
+  if (distance <= 1) return { status: 'clarification', narration: 'Вы уже рядом с собеседником. Можно заговорить или выбрать другое действие.' }
+  const routes = []
+  for (const dx of [-1, 0, 1]) for (const dy of [-1, 0, 1]) {
+    if (!dx && !dy) continue
+    const to = { x: at.x + dx, y: at.y + dy }
+    if (cellAt(map, to.x, to.y)?.revealed !== true) continue
+    const path = shortestTacticalPath(state, actorId, to)
+    if (path?.length) routes.push({ to, path })
+  }
+  routes.sort((a, b) => a.path.length - b.path.length || a.to.y - b.to.y || a.to.x - b.to.x)
+  if (!routes.length) return { status: 'clarification', narration: 'Свободного раскрытого пути к собеседнику нет. Можно выбрать другой маршрут на карте или обратиться с места.' }
+  return { status: 'command', command: { command_type: 'MoveActor', actor_id: String(actorId), to: routes[0].to, server_authoritative: true }, narration: `Вы подходите к собеседнику: ${target.character ?? target.name}.` }
 }
 
 /**
@@ -707,17 +1104,42 @@ export function verifyMeans(state = {}, actorId = '', requiredMeans = []) {
   const available = actorMeans(state, actorId)
   const required = [...new Set((Array.isArray(requiredMeans) ? requiredMeans : [])
     .map((value) => clean(value, 160)).filter(Boolean))]
-  const missing = required.filter((value) => !available.has(value.toLocaleLowerCase('ru')))
+  const canonical = value => String(value).toLocaleLowerCase('ru').replace(/ё/gu, 'е')
+  const normalized = new Set([...available].map(canonical))
+  const missing = required.filter(value => !normalized.has(canonical(value)))
   return { satisfied: missing.length === 0, required, missing }
+}
+
+/** Причина проверки объясняется отдельно от её числа и результата. */
+export function explainActionCheck({ ability = '', skill = '' } = {}) {
+  const reasons = {
+    athletics: 'Атлетика нужна, когда исход зависит от усилия: удержаться, взобраться или преодолеть сопротивление.',
+    acrobatics: 'Акробатика проверяет равновесие и точность движения, когда можно сорваться или потерять опору.',
+    sleight_of_hand: 'Ловкость рук нужна для точного обращения с предметом под риском или чужим наблюдением.',
+    stealth: 'Скрытность определяет, заметят ли героя. Отвлечение может помочь, но само по себе не делает героя незаметным.',
+    performance: 'Выступление подходит для отвлечения: нужно убедительно переключить чужое внимание. Осмотр или проход после этого будет отдельным шагом.',
+    persuasion: 'Убеждение нужно, когда вы добиваетесь добровольного согласия собеседника. Обычный вопрос сам по себе броска не требует.',
+    intimidation: 'Запугивание применяется к настоящей угрозе. Если вы не угрожаете, измените способ: мирное объяснение не должно проверяться как запугивание.',
+    deception: 'Обман проверяет, поверит ли собеседник сознательно ложному утверждению.',
+    perception: 'Восприятие помогает заметить доступную наблюдению деталь. Оно не выполняет отвлечение, открывание двери или перемещение.',
+    investigation: 'Расследование связывает доступные улики и проверяет выводы из них.',
+    insight: 'Проницательность помогает оценить поведение собеседника, но не читает его мысли и не раскрывает неизвестные герою факты.',
+    history: 'История позволяет вспомнить сведения, которые герой мог знать.',
+    arcana: 'Магия помогает разобраться в доступных магических признаках, но сама не создаёт заклинание.',
+    survival: 'Выживание помогает идти по следу и ориентироваться с учётом местности и погоды.',
+    animal_handling: 'Уход за животными нужен для взаимодействия с поведением зверя, а не для гарантированного подчинения.',
+  }
+  return reasons[String(skill).replace(/-/gu, '_')]
+    ?? `${ABILITY_LABELS_RU[ability] ?? 'Характеристика'} должна соответствовать способу действия. Для безопасного бытового жеста проверка не нужна; для риска сначала уточним препятствие и цену неудачи.`
 }
 
 /**
  * Шаг 5 брифа: провал не означает «ничего не произошло». Каталог серверный и
  * ограниченный — модель выбирает уровень риска, но не сочиняет последствие.
  *
- * Автоматический урон за провал импровизации намеренно не реализован: он требует
- * настоящей модели опасностей, иначе наказание окажется произвольным. Уровень `deadly`
- * поэтому даёт самое тяжёлое из неуронных последствий и отмечается отдельно.
+ * Эта таблица сохранена для уже согласованных старых проверок. Новые заявки
+ * используют freeActionResolutionPolicy: длительность попытки не умножается
+ * на риск, а физические последствия разрешаются отдельным серверным профилем.
  */
 const FAIL_FORWARD = Object.freeze({
   none: Object.freeze({ minutes: 5, advances_quest_clock: false, summary: 'Попытка отняла немного времени и ничего не изменила в обстановке.' }),
@@ -735,12 +1157,63 @@ const CONSEQUENCE_SUMMARIES = Object.freeze({
 
 export function failForwardFor(risk = 'minor', consequenceType = 'time') {
   const stake = inEnum(RISK_LEVELS, risk, 'minor')
-  const type = inEnum(FREE_ACTION_CONSEQUENCE_TYPES, consequenceType, 'time')
+  const type = consequenceType === 'injury' ? 'time' : inEnum(FREE_ACTION_CONSEQUENCE_TYPES, consequenceType, 'time')
   return {
     risk: stake,
     consequence_type: type,
     ...FAIL_FORWARD[stake],
     summary: `${CONSEQUENCE_SUMMARIES[type]} ${FAIL_FORWARD[stake].summary}`,
+  }
+}
+
+const ATTEMPT_MINUTES = Object.freeze({ instant: 0, brief: 1, minutes: 5, extended: 10, prolonged: 60 })
+const INJURY_EXPRESSIONS = Object.freeze({ none: null, minor: '1d4', serious: '1d6', deadly: '2d6' })
+const DAMAGE_TYPE_LABELS_RU = Object.freeze({
+  bludgeoning: 'дробящего', fire: 'огненного', acid: 'кислотного', piercing: 'колющего',
+  slashing: 'рубящего', cold: 'холодом', lightning: 'электрического', thunder: 'громового',
+  poison: 'ядовитого', force: 'силового', necrotic: 'некротического', radiant: 'сияющего', psychic: 'психического',
+})
+
+export function damageTypeLabelRu(value = '') {
+  return DAMAGE_TYPE_LABELS_RU[String(value ?? '').toLocaleLowerCase('en')] ?? 'неуточнённого'
+}
+const CAUSAL_FAILURE_SUMMARIES = Object.freeze({
+  time: 'Попытка не дала результата. Потрачено только время самой попытки.',
+  noise: 'Тихо выполнить задуманное не получилось; попытка сопровождается шумом.',
+  exposure: 'Незаметно выполнить задуманное не получилось.',
+  lost_opportunity: 'Этот подход не сработал. Нужен другой способ добиться цели.',
+})
+
+/** Версионированная серверная цена одной попытки, общая для preview и commit. */
+export function freeActionResolutionPolicy(reading = {}) {
+  if (![RESOLUTION_POLICY_VERSION, LEGACY_RESOLUTION_POLICY_VERSION].includes(reading.policy_version)) return {
+    version: 'legacy', success_minutes: 5, cost: '5 минут при успехе',
+    failure: failForwardFor(reading.risk, reading.consequence_type),
+  }
+  const duration = reading.activity_kind === 'stunt' ? 'instant' : inEnum(FREE_ACTION_DURATION_CLASSES, reading.duration_class, 'minutes')
+  const minutes = ATTEMPT_MINUTES[duration]
+  const physical = reading.activity_kind === 'stunt' && ['acrobatics', 'athletics'].includes(reading.skill)
+  const rawHazard = reading.policy_version === LEGACY_RESOLUTION_POLICY_VERSION ? '' : clean(reading.hazard, 80)
+  const hazardId = canonicalEnvironmentHazardId(rawHazard)
+  const hazard = hazardId ? ENVIRONMENT_HAZARDS[hazardId] : null
+  const invalidHazard = Boolean(rawHazard && !hazardId)
+  const expression = reading.consequence_type === 'injury' && !invalidHazard && (physical || hazard)
+    ? hazard?.expressions?.[inEnum(RISK_LEVELS, reading.risk, 'minor')] ?? hazard?.expressions?.minor
+      ?? INJURY_EXPRESSIONS[inEnum(RISK_LEVELS, reading.risk, 'minor')] : null
+  const damageType = hazard?.damage_type ?? 'bludgeoning'
+  const type = expression ? 'injury' : reading.consequence_type === 'injury' ? 'time'
+    : inEnum(FREE_ACTION_CONSEQUENCE_TYPES, reading.consequence_type, 'time')
+  return {
+    version: reading.policy_version,
+    success_minutes: minutes,
+    cost: minutes ? `время попытки: ${minutes} мин` : 'несколько секунд',
+    failure: {
+      risk: reading.risk, consequence_type: type, minutes, advances_quest_clock: false,
+      ...(expression ? { damage_expression: expression, damage_type: damageType } : {}),
+      summary: expression
+        ? `Неудачное движение приводит к травме: ${expression} ${damageTypeLabelRu(damageType)} урона самому герою.`
+        : CAUSAL_FAILURE_SUMMARIES[type],
+    },
   }
 }
 
@@ -755,9 +1228,10 @@ export function stakesFor({
   risk = 'minor',
   proficiency = 'none',
   consequence_type = 'time',
+  outcome_policy = null,
 } = {}) {
   if (resolution.mode !== 'check') return null
-  const consequence = failForwardFor(risk, consequence_type)
+  const consequence = outcome_policy?.failure ?? failForwardFor(risk, consequence_type)
   return {
     ability: clean(ability, 20),
     skill: canonicalSkill(skill),
@@ -767,7 +1241,7 @@ export function stakesFor({
     difficulty_factors: [...new Set(Array.isArray(resolution.difficulty_factors) ? resolution.difficulty_factors.map((factor) => clean(factor, 60)).filter(Boolean) : [])].slice(0, 8),
     consequence_type: consequence.consequence_type,
     on_failure: consequence.summary,
-    policy: 'free-action-stakes-v2',
+    policy: [RESOLUTION_POLICY_VERSION, LEGACY_RESOLUTION_POLICY_VERSION].includes(outcome_policy?.version) ? 'free-action-stakes-v3' : 'free-action-stakes-v2',
   }
 }
 

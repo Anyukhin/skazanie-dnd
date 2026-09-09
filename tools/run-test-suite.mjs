@@ -28,6 +28,25 @@ function runNode(args) {
   if (result.status !== 0) process.exit(result.status ?? 1)
 }
 
+function runNodeAsync(args) {
+  // В параллельной ветке spawnSync остановит чтение pipe MVP и может его заблокировать.
+  return new Promise((resolveStatus) => {
+    const child = spawn(process.execPath, args, {
+      cwd: rootDir,
+      env: process.env,
+      stdio: 'inherit',
+    })
+    child.once('error', (error) => {
+      console.error(error)
+      resolveStatus(1)
+    })
+    child.once('close', (status, signal) => {
+      if (signal) console.error(`Тестовый процесс завершён сигналом ${signal}`)
+      resolveStatus(signal ? 1 : status ?? 1)
+    })
+  })
+}
+
 // Полный MVP-сценарий сам поднимает HTTP-сервер, проигрывает случайный бой и
 // перезапускает процесс несколько раз. Рядом ещё с тремя файлами он упирается
 // в собственный timeout 600 с; одиночный замер 2026-07-31 занял 338 с.
@@ -83,11 +102,16 @@ if (sharedRunner || !enoughCores) {
   let mvpOutput = ''
   mvp.stdout.on('data', (chunk) => { mvpOutput += chunk })
   mvp.stderr.on('data', (chunk) => { mvpOutput += chunk })
-  const mvpDone = new Promise((resolve) => mvp.once('close', resolve))
+  const mvpDone = new Promise((resolve) => {
+    mvp.once('error', (error) => { mvpOutput += `${error}\n`; resolve(1) })
+    mvp.once('close', (status) => resolve(status ?? 1))
+  })
 
-  runNode(['--test', '--test-concurrency=4', ...functionalFiles])
-
+  const functionalStatus = await runNodeAsync(['--test', '--test-concurrency=4', ...functionalFiles])
+  // Дожидаемся обоих процессов, чтобы при ошибке корпуса MVP успел выполнить cleanup.
   const mvpStatus = await mvpDone
-  process.stdout.write(mvpOutput)
+  // Unix пишет в pipe асинхронно: process.exit иначе обрывает большой журнал.
+  await new Promise((resolve, reject) => process.stdout.write(mvpOutput, (error) => error ? reject(error) : resolve()))
+  if (functionalStatus !== 0) process.exit(functionalStatus)
   if (mvpStatus !== 0) process.exit(mvpStatus ?? 1)
 }

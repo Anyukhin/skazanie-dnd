@@ -1,4 +1,4 @@
-import type { BattleEvent, GameEvent, ReputationTier, SceneNpcProjection, SceneNpcStance } from './types'
+import type { BattleEvent, GameEvent, GameState, ReputationTier, SceneNpcProjection, SceneNpcStance } from './types'
 
 export const NEWBIE_GUIDE_DISMISSED_KEY = 'skazanie-newbie-guide-dismissed-v1'
 
@@ -53,6 +53,34 @@ export function sceneNpcsAt(
     && npc.x >= 0 && npc.x < bounds.columns && npc.y >= 0 && npc.y < bounds.rows
     && !occupiedIds.has(npc.id)
   ))
+}
+
+export function canonicalLocationKey(value: unknown) {
+  return String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, 180).toLocaleLowerCase('ru')
+}
+
+export function locationsMatch(left: unknown, right: unknown) {
+  const leftObject = left && typeof left === 'object' ? left as { location_id?: unknown; location?: unknown } : null
+  const rightObject = right && typeof right === 'object' ? right as { location_id?: unknown; location?: unknown } : null
+  const leftId = String(leftObject?.location_id ?? '').trim()
+  const rightId = String(rightObject?.location_id ?? '').trim()
+  if (leftId && rightId) return leftId === rightId
+  return canonicalLocationKey(leftObject?.location ?? left) === canonicalLocationKey(rightObject?.location ?? right)
+}
+
+/** Окно торговли привязано к живой, видимой фишке текущей сцены. */
+export function merchantForSceneNpc(state: GameState, npcId: string) {
+  if (state.mechanics?.combat?.active) return null
+  const npc = state.scene_npcs?.find((candidate) => candidate.id === npcId)
+  const locationId = String(state.scene.location_id ?? state.scene.map?.locationId
+    ?? state.scene.location ?? state.scene.title).normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, 180)
+  if (!npc?.alive || npc.location_id !== locationId) return null
+  if (!state.scene.cells.some((cell) => cell.revealed && cell.x === npc.x && cell.y === npc.y)) return null
+  if (state.social?.npcs?.some((candidate) => candidate.id === npcId && candidate.available === false)) return null
+  const merchant = state.merchants?.find((candidate) => candidate.id === npcId && candidate.available && candidate.can_trade !== false)
+  if (!merchant) return null
+  if ((merchant.location_id || canonicalLocationKey(merchant.location)) && !locationsMatch(merchant, state.scene)) return null
+  return merchant
 }
 
 export function battleEventParticipantIds(event: BattleEvent): string[] {

@@ -45,6 +45,7 @@ test('решение группы находится рядом с катего�
   assert.match(header, /className="hotbar-combat-controls"/)
   assert.match(header, /onClick=\{onFinishTurn\}/)
   assert.match(header, /onProposeParley\('persuasion'\)/)
-  assert.match(source, /\(doorsAtHand.length > 0 \|\| selectedSceneObject\) && <div className="hotbar-turn-controls">/)
+  assert.match(source, /doorsAtHand\.some\(\(door\) => door\.state === 'locked'\) && <div className="hotbar-turn-controls">/)
+  assert.doesNotMatch(source, /selectedSceneObjectVerbs\.map/u, 'действия объекта переехали в контекстное меню карты')
   assert.doesNotMatch(source, /className="exploration-leave-location"/)
 })

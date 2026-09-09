@@ -1,0 +1,329 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-09",
+  "method": "browser-ui-with-two-accounts-and-server-event-cross-check",
+  "campaign_id": "NARRATOR-FINAL-0909",
+  "ruleset": "dnd_5e_2014",
+  "configured_primary_model": "z-ai/glm-5.3-flash",
+  "note": "Синтетическая кампания. Версия входа улучшалась между проходами; это не слепой A/B-тест. Броски серверные и не подменялись.",
+  "samples": [
+    {
+      "time": "2026-09-09T18:35:08.765Z",
+      "request": "Где мы сейчас?",
+      "mode": "table_talk",
+      "text": "Сейчас вы здесь: Каменный двор.",
+      "prompt": null,
+      "origin": {
+        "source": "template",
+        "reason": "server_policy",
+        "upstream": "AgentWorldkeeper"
+      },
+      "rejected_codes": [],
+      "state_version_before": 0,
+      "state_version_after": 0,
+      "events": [],
+      "checks": [],
+      "damage": []
+    },
+    {
+      "time": "2026-09-09T18:35:16.278Z",
+      "request": "Что будет, если я сяду жопой на огонь?",
+      "mode": "table_talk",
+      "text": "При прямом контакте с этой опасностью герой получит огненный урон. Акробатика не отменяет ожог. Сейчас это только вопрос: действие не выполнено.",
+      "prompt": null,
+      "origin": {
+        "source": "template",
+        "reason": "server_policy",
+        "upstream": "deterministic-default"
+      },
+      "rejected_codes": [],
+      "state_version_before": 0,
+      "state_version_after": 0,
+      "events": [],
+      "checks": [],
+      "damage": []
+    },
+    {
+      "time": "2026-09-09T18:35:54.167Z",
+      "request": "делаю двойное сальто",
+      "mode": "world_narration",
+      "text": "Задумка «выполнить двойное сальто» не удалась. Дробящий удар: Ада получает 4 урона; ОЗ 40 → 36.",
+      "prompt": "deterministic-free-action/v1",
+      "origin": {
+        "source": "template",
+        "reason": "verification_rejected",
+        "elapsed_ms": 1438,
+        "upstream": "deterministic-fallback"
+      },
+      "rejected_codes": [],
+      "state_version_before": 0,
+      "state_version_after": 5,
+      "events": [
+        "ActionDeclared",
+        "AbilityCheckResolved",
+        "RulingRecorded",
+        "DieRolled",
+        "DamageApplied"
+      ],
+      "checks": [
+        {
+          "ability": "dex",
+          "skill": "acrobatics",
+          "total": 13,
+          "difficulty": 20,
+          "success": false
+        }
+      ],
+      "damage": [
+        {
+          "targets": [
+            "narrator-ada"
+          ],
+          "type": "bludgeoning",
+          "amount": 4,
+          "hp_before": 40,
+          "hp_after": 36
+        }
+      ]
+    },
+    {
+      "time": "2026-09-09T18:37:47.189Z",
+      "request": "сажусь жопой на огонь",
+      "mode": "world_narration",
+      "text": "Ожог: Ада получает 16 огненного урона.",
+      "prompt": "deterministic-free-action/v1",
+      "origin": {
+        "source": "template",
+        "reason": "no_provider",
+        "elapsed_ms": 0
+      },
+      "rejected_codes": [],
+      "state_version_before": 5,
+      "state_version_after": 9,
+      "events": [
+        "ActionDeclared",
+        "RulingRecorded",
+        "DieRolled",
+        "DamageApplied"
+      ],
+      "checks": [],
+      "damage": [
+        {
+          "targets": [
+            "narrator-ada"
+          ],
+          "type": "fire",
+          "amount": 16,
+          "hp_before": 36,
+          "hp_after": 20
+        }
+      ]
+    },
+    {
+      "time": "2026-09-09T18:38:01.317Z",
+      "request": "врезаюсь в стену",
+      "mode": "world_narration",
+      "text": "Удар о стену: Ада получает 4 дробящего урона.",
+      "prompt": "deterministic-free-action/v1",
+      "origin": {
+        "source": "template",
+        "reason": "no_provider",
+        "elapsed_ms": 0
+      },
+      "rejected_codes": [],
+      "state_version_before": 9,
+      "state_version_after": 13,
+      "events": [
+        "ActionDeclared",
+        "RulingRecorded",
+        "DieRolled",
+        "DamageApplied"
+      ],
+      "checks": [],
+      "damage": [
+        {
+          "targets": [
+            "narrator-ada"
+          ],
+          "type": "bludgeoning",
+          "amount": 4,
+          "hp_before": 20,
+          "hp_after": 16
+        }
+      ]
+    },
+    {
+      "time": "2026-09-09T18:39:24.139Z",
+      "request": "сажусь жопой на огонь",
+      "mode": "world_narration",
+      "text": "Опишите действие подробнее, чтобы его можно было разрешить по правилам.",
+      "prompt": "deterministic-free-action/v1",
+      "origin": {
+        "source": "template",
+        "reason": "verification_rejected",
+        "elapsed_ms": 0
+      },
+      "rejected_codes": [
+        "DAMAGE_NOT_IN_BRIEF"
+      ],
+      "state_version_before": 13,
+      "state_version_after": 14,
+      "events": [
+        "ActionDeclared"
+      ],
+      "checks": [],
+      "damage": []
+    },
+    {
+      "time": "2026-09-09T18:44:59.861Z",
+      "request": "делаю двойное сальто",
+      "mode": "world_narration",
+      "text": "Трюк не удался. Дробящий удар: Ада получает 3 урона; ОЗ 16 → 13.",
+      "prompt": "deterministic-free-action/v1",
+      "origin": {
+        "source": "template",
+        "reason": "verification_rejected",
+        "elapsed_ms": 1301,
+        "upstream": "deterministic-fallback"
+      },
+      "rejected_codes": [
+        "VISIBLE_MECHANICAL_NUMBER"
+      ],
+      "state_version_before": 14,
+      "state_version_after": 19,
+      "events": [
+        "ActionDeclared",
+        "AbilityCheckResolved",
+        "RulingRecorded",
+        "DieRolled",
+        "DamageApplied"
+      ],
+      "checks": [
+        {
+          "ability": "dex",
+          "skill": "acrobatics",
+          "total": 19,
+          "difficulty": 20,
+          "success": false
+        }
+      ],
+      "damage": [
+        {
+          "targets": [
+            "narrator-ada"
+          ],
+          "type": "bludgeoning",
+          "amount": 3,
+          "hp_before": 16,
+          "hp_after": 13
+        }
+      ]
+    },
+    {
+      "time": "2026-09-09T18:51:01.124Z",
+      "request": "делаю двойное сальто",
+      "mode": "world_narration",
+      "text": "Ада не смогла выполнить двойное сальто и получила урон.",
+      "prompt": "narrator/v9",
+      "origin": {
+        "source": "llm",
+        "reason": "generated",
+        "elapsed_ms": 1012
+      },
+      "rejected_codes": [],
+      "state_version_before": 19,
+      "state_version_after": 24,
+      "events": [
+        "ActionDeclared",
+        "AbilityCheckResolved",
+        "RulingRecorded",
+        "DieRolled",
+        "DamageApplied"
+      ],
+      "checks": [
+        {
+          "ability": "dex",
+          "skill": "acrobatics",
+          "total": 14,
+          "difficulty": 20,
+          "success": false
+        }
+      ],
+      "damage": [
+        {
+          "targets": [
+            "narrator-ada"
+          ],
+          "type": "bludgeoning",
+          "amount": 1,
+          "hp_before": 13,
+          "hp_after": 12
+        }
+      ]
+    },
+    {
+      "time": "2026-09-09T18:52:58.872Z",
+      "request": "сажусь жопой на огонь",
+      "mode": "world_narration",
+      "text": "Рядом с героем нет доступного источника этой опасности. Уточните место или сначала подойдите ближе; действие пока не выполнено.",
+      "prompt": "deterministic-free-action/v1",
+      "origin": {
+        "source": "template",
+        "reason": "no_provider",
+        "elapsed_ms": 0
+      },
+      "rejected_codes": [],
+      "state_version_before": 24,
+      "state_version_after": 25,
+      "events": [
+        "ActionDeclared"
+      ],
+      "checks": [],
+      "damage": []
+    },
+    {
+      "time": "2026-09-09T18:54:07.683Z",
+      "request": "Борин, на сегодня с акробатикой закончим.",
+      "mode": "silence",
+      "text": "",
+      "prompt": null,
+      "origin": {
+        "source": "template",
+        "reason": "server_policy",
+        "upstream": "party-chat"
+      },
+      "rejected_codes": [],
+      "state_version_before": 25,
+      "state_version_after": 25,
+      "events": [],
+      "checks": [],
+      "damage": []
+    }
+  ],
+  "final_state": {
+    "version": 25,
+    "heroes": [
+      {
+        "id": "narrator-ada",
+        "name": "Ада",
+        "hp": 12,
+        "maxHp": 40,
+        "x": 1,
+        "y": 2
+      },
+      {
+        "id": "narrator-borin",
+        "name": "Борин",
+        "hp": 40,
+        "maxHp": 40,
+        "x": 4,
+        "y": 2
+      }
+    ],
+    "world_time": {
+      "amount": 0,
+      "unit": "minute",
+      "elapsed_minutes": 0
+    }
+  }
+}

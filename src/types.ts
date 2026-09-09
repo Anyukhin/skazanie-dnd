@@ -85,6 +85,7 @@ export type DiceRollEvent = {
 }
 
 export type PendingCheck = {
+  clarification_id?: string
   check_id?: string
   label: string
   modifier: number
@@ -526,6 +527,7 @@ export type InventoryItem = {
     recharge: ItemRechargeProfile | null
     requires_attunement: boolean
     mechanics_status?: 'verified' | 'partial' | 'ruling-only'
+    catalog_description?: string
     limitation?: string
   }
   combat?: {
@@ -610,6 +612,8 @@ export type Merchant = {
   location: string
   location_id?: string
   available: boolean
+  /** Доступность сделки в текущем мире; административный список включает закрытые лавки. */
+  can_trade?: boolean
   purse_cp?: number
   stock: MerchantStockItem[]
   services?: MerchantService[]
@@ -777,6 +781,8 @@ export type MapCell = {
   y: number
   type: 'wall' | 'floor' | 'water' | 'door'
   revealed: boolean
+  /** Публичный маркер видимой части скрытого blocking prop. */
+  movementBlocked?: boolean
   feature?: 'chest' | 'altar' | 'torch' | 'rune' | 'stairs' | 'enemy'
     | 'table' | 'chair' | 'bed' | 'bookshelf' | 'fireplace' | 'barrel' | 'crate'
     | 'tree' | 'bush' | 'rock' | 'mushroom' | 'bones' | 'grave' | 'pillar'
@@ -845,6 +851,7 @@ export type TacticalDoor = {
   state: TacticalDoorState
   lockDc: number
   keyItemId: string | null
+  barricade?: { material_item_id: string; actor_id: string; previous_state: TacticalDoorState; side_x: number; side_y: number } | null
 }
 
 /**
@@ -1565,6 +1572,8 @@ export type SceneNpcProjection = {
   stance: SceneNpcStance | (string & {})
   alive: boolean
   health_status: 'unharmed' | 'hurt' | 'bloodied' | 'dead'
+  /** Сервер разрешает вход в бой, не раскрывая боевой профиль NPC. */
+  can_start_combat: boolean
 }
 
 export type SocialProjection = {
@@ -2413,6 +2422,7 @@ export type SuggestedAction = {
 export type PlayerRequestKind = 'action' | 'question' | 'discussion'
 
 export type ActionClarification = {
+  confirmation_required?: boolean
   id: string
   campaign_id: string
   actor_id: string
@@ -2429,7 +2439,7 @@ export type AiTurnResult = {
   narration: string
   provider: string
   model: string
-  check?: Pick<PendingCheck, 'check_id' | 'label' | 'modifier' | 'difficulty' | 'sides' | 'ability' | 'skill' | 'advantage' | 'disadvantage' | 'proposal'> | null
+  check?: Pick<PendingCheck, 'check_id' | 'clarification_id' | 'label' | 'modifier' | 'difficulty' | 'sides' | 'ability' | 'skill' | 'advantage' | 'disadvantage' | 'proposal'> | null
   effects: {
     roll: Message['roll'] | null
     reveal: Array<{ x: number; y: number }>

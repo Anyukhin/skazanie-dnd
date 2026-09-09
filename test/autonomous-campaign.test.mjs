@@ -8,6 +8,9 @@ import test from 'node:test'
 import { AUTONOMY_EVAL_SCENARIOS, LONG_CAMPAIGN_EVALS } from '../eval/autonomous-scenarios.mjs'
 import { DirectorIntentError, normalizeDirectorIntent } from '../server/autonomous-campaign.mjs'
 import { AutonomousCampaignOrchestrator } from '../server/autonomous-orchestrator.mjs'
+import { resolvePartyVote } from '../server/party-decision.mjs'
+import { partyDecisionOpenedEvent } from '../server/party-decision.mjs'
+import { buildCampaignArcPlan } from '../server/campaign-loop-policy.mjs'
 import { createAutonomyEvalReport } from '../server/autonomy-eval.mjs'
 import { DiceService } from '../server/dice-service.mjs'
 import { FileEventStore } from '../server/event-store.mjs'
@@ -95,11 +98,12 @@ test('Director contract accepts only six narrative intentions and rejects forged
     { type: 'open_social_scene', npc_id: 'marta' },
     { type: 'advance_quest_clock', quest_id: 'ledger-quest' },
     { type: 'request_encounter', theme: 'beasts', difficulty: 'easy' },
+    { type: 'resolve_scene', resolution: 'negotiation' },
     { type: 'end_scene', destination: 'North Gate' },
     { type: 'offer_next_hook', hook: 'Follow the tracks' },
   ]
   assert.deepEqual(valid.map((intent) => normalizeDirectorIntent(intent).type), [
-    'continue_exploration', 'open_social_scene', 'advance_quest_clock', 'request_encounter', 'end_scene', 'offer_next_hook',
+    'continue_exploration', 'open_social_scene', 'advance_quest_clock', 'request_encounter', 'resolve_scene', 'end_scene', 'offer_next_hook',
   ])
   assert.equal(normalizeDirectorIntent({
     type: 'request_encounter', theme: 'generic', difficulty: 'deadly', npc_id: 'astohan-sargat',
@@ -121,6 +125,7 @@ const VALID_INTENTS = Object.freeze([
   { type: 'open_social_scene', npc_id: 'marta' },
   { type: 'advance_quest_clock', quest_id: 'ledger-quest' },
   { type: 'request_encounter', theme: 'beasts', difficulty: 'easy' },
+  { type: 'resolve_scene', resolution: 'negotiation' },
   { type: 'end_scene', destination: 'North Gate' },
   { type: 'offer_next_hook', hook: 'Follow the tracks' },
 ])
@@ -220,10 +225,37 @@ test('социальную сцену нельзя открыть с NPC, кот
   assert.equal(marta?.location, 'Old Road')
 })
 
+test('повтор незавершённого квеста не требует уже использованное доказательство и восстанавливается после сбоя стадии', async (t) => {
+  const initial = campaign()
+  initial.worldMemory.quests[0].clock = { current: 0, max: 3, label: 'Evidence', triggered: false }
+  initial.autonomy = { pacing: { beat: 7, phase: 'escalation', tension: 70 }, director_history: [{ intent: { type: 'continue_exploration' } }] }
+  initial.worldMemory.facts.push({ id: 'progress-one', subject_id: 'old-road', predicate: 'discovery', source_event_ids: ['event-one'], visibility: 'party' })
+  const { eventStore, autonomy } = await fixture(t, initial)
+  const input = { campaignId: 'AUTONOMY-30', intent: { type: 'advance_quest_clock', quest_id: 'ledger-quest' }, idempotencyKey: 'one-progress' }
+  const resolveQuests = autonomy.resolveTriggeredQuests
+  autonomy.resolveTriggeredQuests = async () => { throw Error('Прерывание после коммита команды') }
+  await assert.rejects(autonomy.runIntent(input), /Прерывание/u)
+  assert.equal((await eventStore.load(input.campaignId)).state.worldMemory.quests[0].clock.current, 1)
+  autonomy.resolveTriggeredQuests = resolveQuests
+  const resumed = await autonomy.runIntent(input)
+  assert.equal(resumed.state.worldMemory.quests[0].clock.current, 1)
+  assert.equal(resumed.state.worldMemory.quests[0].status, 'active')
+  const repeated = await autonomy.runIntent(input)
+  assert.equal(repeated.duplicate, true)
+  assert.equal(repeated.state_version, resumed.state_version)
+  assert.equal((await eventStore.getEvents(input.campaignId)).filter(event => event.event_type === 'QuestClockAdvanced').length, 1)
+})
+
 test('climax resolves a triggered quest and completes the campaign replay-identically', async (t) => {
   const initial = campaign()
-  initial.worldMemory.quests[0].clock = { current: 7, max: 8, label: 'Evidence', triggered: false }
-  initial.autonomy = { pacing: { beat: 7, phase: 'escalation', tension: 70 } }
+  initial.worldMemory.quests[0].clock = { current: 0, max: 1, label: 'Evidence', triggered: false }
+  initial.autonomy = {
+    pacing: { beat: 7, phase: 'escalation', tension: 70 },
+    director_history: [{ intent: { type: 'continue_exploration' } }],
+    director_outcomes: [{ state_changed: true, progress_before: 'before', progress_after: 'after' }],
+  }
+  initial.worldMemory.facts.push({ id: 'fact-final-progress', predicate: 'discovery', subject_id: 'old-road', source_event_ids: ['event-final-progress'], status: 'active', visibility: 'party' })
+  initial.worldMemory.quests[0].entity_ids = ['old-road']
   const { eventStore, autonomy } = await fixture(t, initial)
 
   const result = await autonomy.runIntent({
@@ -238,6 +270,13 @@ test('climax resolves a triggered quest and completes the campaign replay-identi
     quests: result.state.worldMemory.quests.map((quest) => ({ id: quest.id, status: quest.status, clock: quest.clock })),
   }))
   assert.match(result.state.mechanics.campaign_lifecycle.epilogue, /Autonomous test campaign/u)
+  const repeated = await autonomy.runIntent({
+    campaignId: 'AUTONOMY-30',
+    intent: { type: 'advance_quest_clock', quest_id: 'ledger-quest' },
+    idempotencyKey: 'final-turn',
+  })
+  assert.equal(repeated.duplicate, true)
+  assert.equal(repeated.state_version, result.state_version)
   const events = await eventStore.getEvents('AUTONOMY-30')
   for (const required of ['QuestClockAdvanced', 'QuestResolved', 'WorldFactRecorded', 'DirectorIntentOutcomeRecorded', 'CampaignCompleted']) {
     assert.ok(events.some((entry) => entry.event_type === required), `missing ${required}`)
@@ -255,6 +294,38 @@ test('climax resolves a triggered quest and completes the campaign replay-identi
   assert.deepEqual(duplicate.state, result.state)
   assert.equal(await autonomy.completeCampaignIfReady('AUTONOMY-30', 'final-turn'), null)
   assert.equal((await eventStore.getEvents('AUTONOMY-30')).length, beforeCount)
+})
+
+test('мирная финальная сцена проходит через RulesEngine, реальное решение группы и replay', async (t) => {
+  const initial = campaign()
+  const arc = buildCampaignArcPlan('peaceful-final')
+  initial.campaignConcept = { arc }
+  initial.adventure.chapter = arc.target_scenes
+  initial.autonomy.pacing = { beat: 8, phase: 'climax', tension: 90 }
+  initial.worldMemory.quests = [
+    { id: `quest:chapter:${arc.target_scenes}`, title: 'Переговоры у башни', summary: '', status: 'active', visibility: 'party', entity_ids: ['road'], objectives: ['Уладить спор'], clock: { current: 1, max: 1, triggered: false } },
+    { id: 'quest:main-peace', title: 'Спасти караван', summary: '', status: 'active', visibility: 'party', entity_ids: ['road'], objectives: ['Договориться с караваном'], clock: { current: 1, max: 1, triggered: false } },
+  ]
+  const { eventStore, autonomy } = await fixture(t, normalizeCampaignState(initial))
+  await autonomy.runCommands('AUTONOMY-30', 'peaceful-close-quests', [
+    { command_type: 'ResolveQuest', quest_id: `quest:chapter:${arc.target_scenes}`, outcome: 'success', summary: 'Стороны договорились.', next_objective: 'Подтвердить мирное решение.' },
+    { command_type: 'ResolveQuest', quest_id: 'quest:main-peace', outcome: 'success', summary: 'Караван спасён переговорами.', next_objective: 'Сохранить мир.' },
+  ])
+  const opened = partyDecisionOpenedEvent({
+    id: 'peaceful-resolution-vote', type: 'vote', title: 'Подтвердить мирную развязку',
+    description: 'Отряд подтверждает завершение цели переговоров.', options: [{ id: 'confirm', label: 'Подтвердить' }],
+    resolutionPrompt: 'resolve_scene:objective',
+  }, 'hero', { eligibleHeroIds: ['hero'] })
+  const afterOpen = await eventStore.commit({ campaign_id: 'AUTONOMY-30', expected_state_version: (await eventStore.load('AUTONOMY-30')).state_version, idempotency_key: 'peaceful-open', command_id: 'peaceful-open', events: [opened] })
+  const vote = resolvePartyVote(afterOpen.state, { interactionId: 'peaceful-resolution-vote', heroId: 'hero', optionId: 'confirm' })
+  await eventStore.commit({ campaign_id: 'AUTONOMY-30', expected_state_version: afterOpen.state_version, idempotency_key: 'peaceful-vote', command_id: 'peaceful-vote', events: vote.events })
+  const result = await autonomy.runIntent({ campaignId: 'AUTONOMY-30', intent: { type: 'resolve_scene', resolution: 'decision' }, idempotencyKey: 'peaceful-finale' })
+  assert.equal(result.state.mechanics.campaign_lifecycle.status, 'completed')
+  assert.ok((await eventStore.getEvents('AUTONOMY-30')).some((event) => event.event_type === 'SceneResolutionRecorded'))
+  assert.ok((await eventStore.getEvents('AUTONOMY-30')).some((event) => event.event_type === 'CampaignCompleted'))
+  const duplicate = await autonomy.runIntent({ campaignId: 'AUTONOMY-30', intent: { type: 'resolve_scene', resolution: 'decision' }, idempotencyKey: 'peaceful-finale' })
+  assert.equal(duplicate.duplicate, true)
+  assert.deepEqual((await eventStore.replay('AUTONOMY-30', { use_snapshots: false })).state, result.state)
 })
 
 test('epilogue narrator receives only visible facts and its prose is committed', async (t) => {
@@ -285,8 +356,8 @@ test('epilogue narrator receives only visible facts and its prose is committed',
 test('30+ turn campaign completes the autonomous vertical slice and survives replay/restart', { timeout: 60_000 }, async (t) => {
   const { rootDir, eventStore, rulesEngine, autonomy } = await fixture(t)
   const turns = []
-  const run = async (intent) => {
-    const key = `turn-${turns.length + 1}`
+  const run = async (intent, keyOverride = '') => {
+    const key = keyOverride || `turn-${turns.length + 1}`
     const result = await autonomy.runIntent({ campaignId: 'AUTONOMY-30', intent, idempotencyKey: key })
     turns.push({ key, intent: intent.type, version: result.state_version })
     return result
@@ -319,7 +390,22 @@ test('30+ turn campaign completes the autonomous vertical slice and survives rep
   turns.push({ key: 'turn-schedule', intent: 'npc-schedule' })
   const advanced = await autonomy.advanceTime('AUTONOMY-30', { amount: 60, unit: 'minute', idempotencyKey: 'turn-time' })
   turns.push({ key: 'turn-time', intent: 'advance-time' })
-  await run({ type: 'end_scene', destination: 'North Gate' })
+  const pendingTransition = await run({ type: 'end_scene', destination: 'North Gate' }, 'turn-transition')
+  assert.equal(pendingTransition.pending_party_decision, true)
+  const pendingState = (await eventStore.load('AUTONOMY-30')).state
+  const vote = resolvePartyVote(pendingState, {
+    interactionId: pendingState.agentInteraction.id,
+    heroId: 'hero',
+    optionId: 'continue',
+  })
+  await eventStore.commit({
+    campaign_id: 'AUTONOMY-30',
+    expected_state_version: pendingState.state_version,
+    idempotency_key: 'turn-transition-vote',
+    command_id: 'turn-transition-vote',
+    events: vote.events,
+  })
+  await run({ type: 'end_scene', destination: 'North Gate' }, 'turn-transition')
   await run({ type: 'offer_next_hook', hook: 'Question the gate sentries' })
   while (turns.length < 32) {
     await run(turns.length % 3 === 0

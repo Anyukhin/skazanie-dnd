@@ -17,8 +17,6 @@
  * а не назвать люстру в тексте.
  */
 
-export const SCENE_HAZARD_POLICY_ID = 'skazanie:scene-hazards-v1'
-
 export const SCENE_SWING_POLICY_ID = 'skazanie:scene-swing-v1'
 
 const SWING_PROPS = Object.freeze({
@@ -51,6 +49,7 @@ const HEAVY_PROPS = Object.freeze({
   crate_stack: Object.freeze({ dc: 13, damage: '2d6', mass: 'штабель ящиков' }),
   barrel_stack: Object.freeze({ dc: 14, damage: '2d6', mass: 'штабель бочек' }),
   table_long: Object.freeze({ dc: 12, damage: '1d6', mass: 'длинный стол' }),
+  table_royal: Object.freeze({ dc: 12, damage: '1d6', mass: 'королевский стол совета' }),
   table_round: Object.freeze({ dc: 11, damage: '1d6', mass: 'круглый стол' }),
   table_small: Object.freeze({ dc: 10, damage: '1d6', mass: 'столик' }),
   bar_counter: Object.freeze({ dc: 15, damage: '2d6', mass: 'барная стойка' }),
@@ -74,6 +73,7 @@ const FLAMMABLE_PROPS = Object.freeze({
   wardrobe: Object.freeze({ damage: '1d4', rounds: 2, what: 'платяной шкаф' }),
   cupboard: Object.freeze({ damage: '1d4', rounds: 2, what: 'буфет' }),
   table_long: Object.freeze({ damage: '1d4', rounds: 2, what: 'длинный стол' }),
+  table_royal: Object.freeze({ damage: '1d4', rounds: 2, what: 'королевский стол совета' }),
   table_round: Object.freeze({ damage: '1d4', rounds: 2, what: 'круглый стол' }),
   table_small: Object.freeze({ damage: '1d4', rounds: 2, what: 'столик' }),
   crate: Object.freeze({ damage: '1d4', rounds: 2, what: 'ящик' }),

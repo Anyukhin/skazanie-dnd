@@ -291,7 +291,9 @@ export class FileEventStore {
     if (event.event_type === 'LegacyStateImported' && event.payload?.state) {
       return this._normalizeState(event.payload.state, event.state_version_after)
     }
-    const reduced = this.reducer(jsonClone(state, 'reducer state'), jsonClone(event, 'event'))
+    // Оба вызывающих пути передают приватное JSON-состояние от _normalizeState
+    // и больше его не используют. Событие ещё войдёт в журнал — его копия нужна.
+    const reduced = this.reducer(state, jsonClone(event, 'event'))
     if (reduced && typeof reduced.then === 'function') {
       throw new EventStoreError('Reducer must be synchronous', 'ASYNC_REDUCER_NOT_SUPPORTED')
     }
@@ -428,8 +430,10 @@ export class FileEventStore {
     return snapshot
   }
 
-  _load(layout, { atVersion, useSnapshots = true } = {}) {
-    const commits = this._readCommits(layout)
+  // Проверенные записи передаются только внутри _withLock. Внешние чтения
+  // всегда перечитывают журнал, чтобы видеть коммиты другого процесса.
+  _load(layout, { atVersion, useSnapshots = true } = {}, knownCommits = null) {
+    const commits = knownCommits ?? this._readCommits(layout)
     if (!this._exists(layout)) throw new CampaignNotFoundError(layout.campaignId)
     const currentVersion = commits.at(-1)?.state_version_after ?? 0
     const targetVersion = atVersion === undefined ? currentVersion : safeVersion(atVersion, 'atVersion')
@@ -560,7 +564,7 @@ export class FileEventStore {
       const duplicate = commits.find((commit) => commit.idempotency_key === key)
       if (duplicate) {
         if (duplicate.legacy_state_hash !== legacyHash) throw new IdempotencyConflictError(layout.campaignId, key)
-        const loaded = this._load(layout, { atVersion: duplicate.state_version_after })
+        const loaded = this._load(layout, { atVersion: duplicate.state_version_after }, commits)
         return { ...loaded, events: jsonClone(duplicate.events), duplicate: true, idempotency_key: key, command_id: duplicate.command_id }
       }
       const currentVersion = commits.at(-1)?.state_version_after ?? 0
@@ -651,7 +655,7 @@ export class FileEventStore {
       const duplicate = commits.find((item) => item.idempotency_key === key)
       if (duplicate) {
         if (duplicate.request_hash !== requestHash) throw new IdempotencyConflictError(layout.campaignId, key)
-        const loaded = this._load(layout, { atVersion: duplicate.state_version_after })
+        const loaded = this._load(layout, { atVersion: duplicate.state_version_after }, commits)
         return {
           ...loaded,
           events: jsonClone(duplicate.events),
@@ -663,7 +667,7 @@ export class FileEventStore {
 
       const actual = commits.at(-1)?.state_version_after ?? 0
       if (expected !== actual) throw new VersionConflictError(layout.campaignId, expected, actual)
-      const current = this._load(layout)
+      const current = this._load(layout, {}, commits)
       const timestamp = nowIso(this.clock)
       const resolvedCommandId = safeId(requestedCommandId ?? this.idFactory(), 'command_id')
       const normalizedEvents = requestedEvents.map((event, index) => this._normalizeEvent(
@@ -697,7 +701,9 @@ export class FileEventStore {
         },
       }
       this._commitFile(layout, commit)
-      if ((force_snapshot ?? forceSnapshot) || (this.snapshotEvery > 0 && nextVersion % this.snapshotEvery === 0)) {
+      // Пакет может перескочить кратную версию: считаем события после последнего
+      // пригодного снимка, уже известные загрузке, а не остаток номера версии.
+      if ((force_snapshot ?? forceSnapshot) || (this.snapshotEvery > 0 && current.events_applied + normalizedEvents.length >= this.snapshotEvery)) {
         this._writeSnapshot(layout, nextState, nextVersion)
       }
       const storedMetadata = this._writeMetadata(layout, current.metadata, metadata, nextVersion)

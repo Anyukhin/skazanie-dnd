@@ -251,7 +251,9 @@ function thrownBundle(catalogId, primaryCatalogId) {
  */
 export function enemyLoadoutFor({ statBlockId, block, ownerId, seed, sourceId = '' } = {}) {
   const templateId = text(statBlockId, 120)
-  const template = TEMPLATES[templateId]
+  const classicSlug = templateId.startsWith('dnd_5e_2014:monster:') ? templateId.split(':').at(-1) : null
+  const classicAliases = { goblin: 'goblin-warrior', veteran: 'warrior-veteran' }
+  const template = TEMPLATES[templateId] ?? (classicSlug ? TEMPLATES[id(classicAliases[classicSlug] ?? classicSlug)] : null)
   const owner = text(ownerId, 120)
   if (!template || !owner) return clone(EMPTY_LOADOUT)
   const loadoutSeed = createHash('sha256').update(`${ENEMY_LOADOUT_POLICY_ID} ${seed ?? ''} ${owner}`).digest('hex')

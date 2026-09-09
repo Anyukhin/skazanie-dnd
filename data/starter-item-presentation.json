@@ -1,0 +1,263 @@
+{
+  "schema_version": 1,
+  "ruleset_id": "dnd_5e_2014",
+  "items": {
+    "Барабан": {
+      "description": "Ударный музыкальный инструмент для ритма и сигналов.",
+      "image": "/assets/ui/action-icons/thunderwave.png"
+    },
+    "Благовония": {
+      "description": "Ароматические смолы или травы для обрядов и очищения воздуха.",
+      "image": "/assets/ui/action-icons/calm-emotions.png"
+    },
+    "Бутылочка чёрных чернил": {
+      "description": "Небольшая ёмкость с чёрными чернилами для письма.",
+      "image": "/assets/items/starter-2014/ink-bottle.png"
+    },
+    "Бутылочки с цветной жидкостью": {
+      "description": "Набор небольших бутылочек с цветными жидкостями для сценических трюков.",
+      "image": "/assets/items/item-srd-5-2-1-alchemists-supplies.png"
+    },
+    "Виола": {
+      "description": "Смычковый струнный инструмент с мягким низким тембром.",
+      "image": "/assets/items/starter-2014/viol.png"
+    },
+    "Волынка": {
+      "description": "Духовой инструмент с мехом и трубками для мелодии.",
+      "image": "/assets/items/starter-2014/bagpipes.png"
+    },
+    "Воровские инструменты": {
+      "description": "Набор тонких инструментов для замков и ловушек.",
+      "image": "/assets/items/starter-2014/thieves-tools.png"
+    },
+    "Дорожная одежда": {
+      "description": "Прочная одежда для пути и перемены погоды.",
+      "image": "/assets/items/starter-2014/clothes.png"
+    },
+    "Друидический фокус": {
+      "description": "Природный предмет для направления и удержания энергии заклинаний.",
+      "image": "/assets/ui/action-icons/druidcraft.png"
+    },
+    "Железный горшок": {
+      "description": "Тяжёлый металлический горшок для приготовления пищи.",
+      "image": "/assets/items/starter-2014/iron-pot.png"
+    },
+    "Зимнее одеяло": {
+      "description": "Тёплое одеяло для ночлега в холоде.",
+      "image": "/assets/items/item-srd-5-2-1-bedroll.png"
+    },
+    "Знак звания": {
+      "description": "Знак, обозначающий воинское звание или должность.",
+      "image": "/assets/ui/action-icons/heroism.png"
+    },
+    "Карта родного города": {
+      "description": "Схематичная карта города для ориентирования на знакомых улицах.",
+      "image": "/assets/items/type-document.png"
+    },
+    "Книга заклинаний": {
+      "description": "Книга для записи и подготовки известных заклинаний.",
+      "image": "/assets/ui/action-icons/identify.png"
+    },
+    "Книга знаний": {
+      "description": "Книга с общими сведениями, заметками и справочными записями.",
+      "image": "/assets/ui/action-icons/identify.png"
+    },
+    "Костюм": {
+      "description": "Комплект сценической или праздничной одежды.",
+      "image": "/assets/items/starter-2014/clothes.png"
+    },
+    "Кошель": {
+      "description": "Небольшой кошель для монет и мелочей.",
+      "image": "/assets/items/type-other.png"
+    },
+    "Краплёная колода карт": {
+      "description": "Колода карт с незаметными отметками для шулерских трюков.",
+      "image": "/assets/ui/action-icons/spray-of-cards.png"
+    },
+    "Кусок знамени павшего врага": {
+      "description": "Фрагмент знамени, оставленный как военный трофей.",
+      "image": "/assets/items/starter-2014/banner-scrap.png"
+    },
+    "Лира": {
+      "description": "Щипковый струнный инструмент с открытой рамой.",
+      "image": "/assets/ui/action-icons/dissonant-whispers.png"
+    },
+    "Лопата": {
+      "description": "Ручной инструмент для копания и рыхления земли.",
+      "image": "/assets/items/starter-2014/shovel.png"
+    },
+    "Лютня": {
+      "description": "Щипковый струнный инструмент с корпусом и грифом.",
+      "image": "/assets/ui/action-icons/bardic-inspiration.png"
+    },
+    "Магическая фокусировка": {
+      "description": "Предмет для направления и удержания энергии заклинаний.",
+      "image": "/assets/ui/action-icons/bless.png"
+    },
+    "Мешочек с компонентами": {
+      "description": "Небольшой мешочек с материальными компонентами для заклинаний.",
+      "image": "/assets/items/type-other.png"
+    },
+    "Молитвенник": {
+      "description": "Книга с молитвами и обрядами религиозной традиции.",
+      "image": "/assets/ui/action-icons/identify.png"
+    },
+    "Молитвенное колесо": {
+      "description": "Ритуальный предмет для повторения молитв и сосредоточения.",
+      "image": "/assets/ui/action-icons/bless.png"
+    },
+    "Набор «Ставка трёх драконов»": {
+      "description": "Игровой комплект с картами для партии в «Ставку трёх драконов».",
+      "image": "/assets/ui/action-icons/spray-of-cards.png"
+    },
+    "Набор артиста": {
+      "description": "Комплект реквизита и дорожных принадлежностей артиста.",
+      "image": "/assets/items/item-srd-5-2-1-backpack.png"
+    },
+    "Набор взломщика": {
+      "description": "Комплект принадлежностей для скрытного проникновения и работы с замками.",
+      "image": "/assets/items/item-srd-5-2-1-backpack.png"
+    },
+    "Набор дипломата": {
+      "description": "Сундук, одежда, письменные и дорожные принадлежности.",
+      "image": "/assets/items/item-srd-5-2-1-backpack.png"
+    },
+    "Набор для грима": {
+      "description": "Краски и принадлежности для изменения внешности.",
+      "image": "/assets/items/starter-2014/disguise-kit.png"
+    },
+    "Набор драконьих шахмат": {
+      "description": "Игровой комплект для партии в драконьи шахматы.",
+      "image": "/assets/items/starter-2014/dragonchess.png"
+    },
+    "Набор игральных карт": {
+      "description": "Колода карт для игр и ставок.",
+      "image": "/assets/ui/action-icons/spray-of-cards.png"
+    },
+    "Набор исследователя подземелий": {
+      "description": "Рюкзак, свет, инструменты, припасы и верёвка для подземелий.",
+      "image": "/assets/items/item-srd-5-2-1-explorers-pack.png"
+    },
+    "Набор костей": {
+      "description": "Комплект игральных костей разных граней.",
+      "image": "/assets/items/starter-2014/gaming-dice.png"
+    },
+    "Набор священника": {
+      "description": "Рюкзак, ритуальные принадлежности, свечи и припасы.",
+      "image": "/assets/items/item-srd-5-2-1-backpack.png"
+    },
+    "Набор учёного": {
+      "description": "Рюкзак, книга, письменные принадлежности и инструменты для заметок.",
+      "image": "/assets/items/item-srd-5-2-1-backpack.png"
+    },
+    "Набор шулерских костей": {
+      "description": "Кости с незаметным утяжелением для шулерских приёмов.",
+      "image": "/assets/items/starter-2014/gaming-dice.png"
+    },
+    "Облачение": {
+      "description": "Одежда для богослужения и религиозных церемоний.",
+      "image": "/assets/items/starter-2014/clothes.png"
+    },
+    "Обломок клинка": {
+      "description": "Осколок сломанного клинка, оставшийся от оружия.",
+      "image": "/assets/items/starter-2014/broken-blade.png"
+    },
+    "Обычная одежда": {
+      "description": "Простой комплект одежды для повседневной носки.",
+      "image": "/assets/items/starter-2014/clothes.png"
+    },
+    "Памятная вещь родителей": {
+      "description": "Небольшой семейный предмет, хранящий память о родных.",
+      "image": "/assets/ui/action-icons/bless.png"
+    },
+    "Парадная одежда": {
+      "description": "Качественный комплект одежды для официальных случаев.",
+      "image": "/assets/items/starter-2014/clothes.png"
+    },
+    "Перо": {
+      "description": "Птичье перо для письма чернилами.",
+      "image": "/assets/ui/action-icons/feather-fall.png"
+    },
+    "Перстень вымышленного герцога": {
+      "description": "Декоративный перстень, выдаваемый за знак высокого происхождения.",
+      "image": "/assets/items/starter-2014/signet-ring.png"
+    },
+    "Перстень с печаткой": {
+      "description": "Кольцо с личной печатью для заверения писем и документов.",
+      "image": "/assets/items/starter-2014/signet-ring.png"
+    },
+    "Письмо от умершего коллеги": {
+      "description": "Письмо на бумаге, сохранённое как документ и свидетельство.",
+      "image": "/assets/items/type-document.png"
+    },
+    "Подарок поклонника": {
+      "description": "Небольшой знак внимания от благодарного зрителя.",
+      "image": "/assets/ui/action-icons/bless.png"
+    },
+    "Поясной кошель": {
+      "description": "Кожаный кошель для монет и мелких предметов.",
+      "image": "/assets/items/type-other.png"
+    },
+    "Рекомендательное письмо гильдии": {
+      "description": "Документ, подтверждающий связь с гильдией и представляющий его владельца.",
+      "image": "/assets/items/type-document.png"
+    },
+    "Рожок": {
+      "description": "Небольшой духовой инструмент для музыки и сигналов.",
+      "image": "/assets/ui/action-icons/message.png"
+    },
+    "Ручная мышь": {
+      "description": "Маленькая приручённая мышь с тонким хвостом и чуткими усами. Это живой питомец; её привычки и история знакомства с героем определяются в кампании.",
+      "image": "/assets/items/starter-2014/pet-mouse.png"
+    },
+    "Свирель": {
+      "description": "Простой духовой инструмент с отверстиями для мелодии.",
+      "image": "/assets/items/starter-2014/pan-flute.png"
+    },
+    "Свиток родословной": {
+      "description": "Свиток с именами и линиями происхождения рода.",
+      "image": "/assets/items/type-document.png"
+    },
+    "Священный символ": {
+      "description": "Предмет, представляющий религиозную веру и используемый как фокус.",
+      "image": "/assets/ui/action-icons/bless.png"
+    },
+    "Сеть": {
+      "description": "Плетёная метательная сеть с грузиками по краям. Предназначена для захвата подходящей цели; наличие сети само по себе не гарантирует успешного опутывания.",
+      "image": "/assets/items/starter-2014/net.png"
+    },
+    "Счастливый талисман": {
+      "description": "Небольшой личный амулет, который носят как знак удачи.",
+      "image": "/assets/ui/action-icons/bless.png"
+    },
+    "Тёмная обычная одежда с капюшоном": {
+      "description": "Незаметная одежда тёмных цветов с капюшоном.",
+      "image": "/assets/items/starter-2014/clothes.png"
+    },
+    "Трофей животного": {
+      "description": "Часть или предмет, оставленный после охоты и сохранённый как трофей.",
+      "image": "/assets/items/starter-2014/hunting-trophy.png"
+    },
+    "Флейта": {
+      "description": "Деревянный духовой инструмент с отверстиями для мелодии.",
+      "image": "/assets/items/starter-2014/flute.png"
+    },
+    "Футляр со свитками и записями": {
+      "description": "Защитный футляр для свитков, карт и письменных заметок.",
+      "image": "/assets/items/type-document.png"
+    },
+    "Цимбалы": {
+      "description": "Струнный ударный инструмент с плоским корпусом.",
+      "image": "/assets/items/starter-2014/dulcimer.png"
+    },
+    "Шалмей": {
+      "description": "Деревянный духовой инструмент с тростью и ярким тембром.",
+      "image": "/assets/items/starter-2014/shawm.png"
+    },
+    "Шёлковая верёвка, 50 футов": {
+      "description": "Длинная лёгкая верёвка для переноски, крепления и подъёма.",
+      "image": "/assets/items/item-srd-5-2-1-rope-hempen-50-feet.png"
+    }
+  },
+  "reviewed_at": "2026-09-08"
+}

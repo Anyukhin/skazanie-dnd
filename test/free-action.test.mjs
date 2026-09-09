@@ -32,9 +32,9 @@ function campaign(overrides = {}) {
   })
 }
 
-async function setup(initialState = campaign(), { rollRegistry = null, narrator = null } = {}) {
+async function setup(initialState = campaign(), { rollRegistry = null, narrator = null, diceRolls = [18, 3, 18, 3, 18, 3, 18, 3] } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'skazanie-free-action-'))
-  const dice = new DiceService({ rng: new SequenceDiceRng([18, 3, 18, 3, 18, 3, 18, 3]), idFactory: (() => { let id = 0; return () => `free-roll-${++id}` })() })
+  const dice = new DiceService({ rng: new SequenceDiceRng(diceRolls), idFactory: (() => { let id = 0; return () => `free-roll-${++id}` })() })
   const eventStore = new FileEventStore({
     rootDir: join(root, 'events'),
     reducer: applyGameEvent,
@@ -64,6 +64,96 @@ function actionInput(message, idempotencyKey, state) {
     idempotencyKey,
   }
 }
+
+test('неудачное сальто наносит серверный 1d4 урона без десяти минут и повторного применения', async () => {
+  const initial = campaign()
+  const registry = new RollRegistry({ diceService: new DiceService({ rng: new SequenceDiceRng([1]) }) })
+  const { orchestrator, eventStore } = await setup(initial, {
+    rollRegistry: registry, diceRolls: [3],
+    narrator: { render: async () => ({ narration: 'Запасное описание.', provider: 'deterministic-test' }) },
+  })
+  // Воспроизводим прочтение из реальной карточки: Акробатика, strenuous, minor.
+  orchestrator.unknownActionHandler.actionAdjudicator = { read: async () => ({
+    goal_summary: 'Сделать сальто', approach_summary: 'Сальто на месте',
+    ability: 'dex', skill: 'acrobatics', plausibility: 'strenuous', risk: 'minor',
+    effect: 'none', consequence_type: 'time', source: 'regression-fixture',
+  }) }
+  const text = 'он делает сальто'
+  const offered = await orchestrator.handle(actionInput(text, 'flip-offer', initial))
+  assert.equal(offered.free_action_outcome, 'check_required')
+  assert.deepEqual(offered.mechanics, [])
+  const rolled = registry.issue({ checkId: offered.check.check_id, campaignId: 'FREE-ACTION', actorId: 'hero' })
+  const verifiedRoll = registry.consume(rolled.roll_id, { campaignId: 'FREE-ACTION', actorId: 'hero', idempotencyKey: 'flip-resolve' })
+  const input = { ...actionInput(text, 'flip-resolve', initial), verifiedRoll }
+  const result = await orchestrator.handle(input)
+  const damage = result.mechanics.filter(event => event.event_type === 'DamageApplied')
+  assert.equal(damage.length, 1)
+  assert.equal(damage[0].payload.applied_amount, 3)
+  assert.equal(damage[0].payload.damage_type, 'bludgeoning')
+  assert.match(result.narration, /Дробящий удар: Ада получает 3 урона/u)
+  assert.doesNotMatch(result.narration, /Подтверждено: подтверждённый|урон нанесён цели/u)
+  assert.deepEqual(damage[0].target_ids, ['hero'])
+  const ruling = result.mechanics.find(event => event.event_type === 'RulingRecorded').payload.ruling
+  assert.equal(damage[0].ruling_id, ruling.id)
+  assert.equal(ruling.interpretation.activity_kind, 'stunt')
+  assert.equal(ruling.interpretation.duration_class, 'instant')
+  assert.equal(ruling.interpretation.policy_version, 'free-action-resolution/v2')
+  const persisted = await eventStore.load('FREE-ACTION')
+  assert.equal(persisted.state.players.find(player => player.id === 'hero').hp, 7)
+  assert.equal(persisted.state.players.find(player => player.id === 'other').hp, 10)
+  assert.equal(result.mechanics.some(event => ['TimeAdvanced', 'QuestClockAdvanced'].includes(event.event_type)), false)
+  assert.equal(offered.check.difficulty, 20)
+  assert.match(offered.check.proposal.cost, /секунд/u)
+  assert.match(offered.check.proposal.on_failure, /1d4/u)
+  const repeated = await orchestrator.handle(input)
+  assert.equal(repeated.idempotent_replay, true)
+  assert.equal((await eventStore.load('FREE-ACTION')).state_version, persisted.state_version)
+  assert.deepEqual((await eventStore.replay('FREE-ACTION')).state, persisted.state)
+})
+
+test('общий профиль трюка не травмирует при успехе и использует обычные последствия нуля хитов', async () => {
+  for (const [kept, hp, expectedHp] of [[20, 10, 10], [1, 1, 0]]) {
+    const initial = campaign({ players: [{ ...hero('hero', 'Ада'), hp }, hero('other', 'Бор')] })
+    const registry = new RollRegistry({ diceService: new DiceService({ rng: new SequenceDiceRng([kept]) }) })
+    const { orchestrator, eventStore } = await setup(initial, { rollRegistry: registry, diceRolls: kept === 20 ? [] : [3] })
+    const text = 'Балансирую на узкой опоре'
+    const offered = await orchestrator.handle(actionInput(text, 'balance-offer', initial))
+    assert.equal(offered.free_action_outcome, 'check_required')
+    const rolled = registry.issue({ checkId: offered.check.check_id, campaignId: 'FREE-ACTION', actorId: 'hero' })
+    const verifiedRoll = registry.consume(rolled.roll_id, { campaignId: 'FREE-ACTION', actorId: 'hero', idempotencyKey: 'balance-resolve' })
+    const result = await orchestrator.handle({ ...actionInput(text, 'balance-resolve', initial), verifiedRoll })
+    const persisted = await eventStore.load('FREE-ACTION')
+    assert.equal(persisted.state.players.find(player => player.id === 'hero').hp, expectedHp)
+    assert.equal(result.mechanics.some(event => event.event_type === 'HitPointsReducedToZero'), kept === 1)
+    assert.equal(result.mechanics.some(event => event.event_type === 'DamageApplied'), kept === 1)
+    assert.equal(result.mechanics.some(event => ['TimeAdvanced', 'HeroDied'].includes(event.event_type)), false)
+    assert.deepEqual((await eventStore.replay('FREE-ACTION')).state, persisted.state)
+  }
+})
+
+test('старая карточка без версии профиля завершается по прежним согласованным условиям', async () => {
+  const initial = campaign()
+  const registry = new RollRegistry({ diceService: new DiceService({ rng: new SequenceDiceRng([1]) }) })
+  const { orchestrator, eventStore } = await setup(initial, { rollRegistry: registry, diceRolls: [] })
+  const text = 'Выполняю акробатический трюк'
+  const offered = await orchestrator.handle(actionInput(text, 'old-offer', initial))
+  const current = registry.getCheck(offered.check.check_id, { campaignId: 'FREE-ACTION', actorId: 'hero', includeContext: true })
+  const legacy = registry.registerCheck({
+    campaignId: 'FREE-ACTION', actorId: 'hero', label: current.label,
+    ability: 'dex', modifier: current.modifier, difficulty: current.difficulty,
+    context: { ...current.context, reading: {
+      ability: 'dex', skill: 'acrobatics', plausibility: 'strenuous', risk: 'minor',
+      consequence_type: 'time', source: 'agent-adjudicator', effect: 'none',
+      goal_summary: text, approach_summary: text,
+    }, proposal: { cost: '5 минут при успехе', on_failure: 'Пройдёт 10 минут.' } },
+  })
+  const rolled = registry.issue({ checkId: legacy.check_id, campaignId: 'FREE-ACTION', actorId: 'hero' })
+  const verifiedRoll = registry.consume(rolled.roll_id, { campaignId: 'FREE-ACTION', actorId: 'hero', idempotencyKey: 'old-resolve' })
+  const result = await orchestrator.handle({ ...actionInput(text, 'old-resolve', initial), verifiedRoll })
+  assert.equal(result.mechanics.some(event => event.event_type === 'DamageApplied'), false)
+  assert.equal((await eventStore.load('FREE-ACTION')).state.players[0].hp, 10)
+  assert.equal((await eventStore.load('FREE-ACTION')).state.mechanics.world_time.elapsed_minutes - initial.mechanics.world_time.elapsed_minutes, 10)
+})
 
 test('пустой ввод получает уточнение, фиксируется без расхода хода и не показывает служебное имя поля', async () => {
   const { orchestrator, eventStore, narratorCalls } = await setup()
@@ -153,14 +243,14 @@ test('разумное импровизированное действие по�
   // Судейство: подпереть дверь — это проверка Силы с серверной СЛ, а не молчаливый ruling.
   assert.equal(result.free_action_outcome, 'check_success')
   assert.deepEqual(result.mechanics.map((event) => event.event_type),
-    ['ActionDeclared', 'AbilityCheckResolved', 'RulingRecorded', 'TimeAdvanced', 'ObjectiveUpdated'])
+    ['ActionDeclared', 'AbilityCheckResolved', 'RulingRecorded', 'TimeAdvanced'])
   assert.equal(result.ruling.status, 'applied')
-  assert.equal(result.ruling.world_change, true)
+  assert.equal(result.ruling.world_change, false)
   assert.equal(result.stakes.difficulty, 15)
   assert.equal(result.stakes.ability, 'str')
   assert.ok(result.stakes.on_failure.length > 0)
-  assert.match(result.authoritative_state.scene.objective, /баррикад|дверь/u)
-  assert.match(result.narration, /Следующая цель отряда/u)
+  assert.equal(result.authoritative_state.scene.objective, campaign().scene.objective)
+  assert.match(result.narration, /Проверка пройдена|Задумка/u)
   assert.doesNotMatch(result.narration, /RulingRecorded|решени[ея]\s+ведущего/u)
   assert.equal(result.turn_consumed, false)
 })
@@ -576,8 +666,8 @@ test('ручной бросок: сервер объявляет проверк�
   assert.equal(invited.check.ability, 'str')
   assert.match(invited.check.label, /Сила/u)
   assert.match(invited.narration, /Подтвердите предложение/u)
-  assert.equal(invited.check.proposal.cost, '5 минут при успехе')
-  assert.match(invited.check.proposal.on_failure, /10 минут/u)
+  assert.equal(invited.check.proposal.cost, 'время попытки: 5 мин')
+  assert.match(invited.check.proposal.on_failure, /5 минут/u)
   assert.deepEqual(invited.mechanics, [])
   assert.equal((await eventStore.load('FREE-ACTION')).state_version, 0)
 

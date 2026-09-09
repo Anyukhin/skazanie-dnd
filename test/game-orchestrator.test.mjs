@@ -84,7 +84,7 @@ test('поток Narrator начинается только после commit, �
       return {
         narration,
         verification: { valid: true, violations: [] },
-        prompt_version: 'narrator/v6',
+        prompt_version: 'narrator/v7',
         provider: 'TestNarrator',
       }
     },
@@ -137,7 +137,7 @@ test('одинаковые параллельные prose-запросы дел�
       return {
         narration,
         verification: { valid: true, violations: [] },
-        prompt_version: 'narrator/v6',
+        prompt_version: 'narrator/v7',
         provider: 'TestNarrator',
       }
     },
@@ -210,6 +210,9 @@ test('idempotent replay без turn trace не вызывает Narrator и во
   assert.equal(replay.turn_id, first.turn_id)
   assert.equal(replay.provider, 'deterministic-idempotent-replay')
   assert.equal(replay.verification.valid, true)
+  assert.equal(replay.verification.response_plan.mode, 'world_narration')
+  assert.equal(replay.verification.origin.source, 'template')
+  assert.equal(replay.verification.origin.reason, 'replay_fallback')
   assert.equal(replay.authoritative_state.players[1].hp, 6)
   assert.equal(narratorCalls, 0)
 })
@@ -239,6 +242,36 @@ test('idempotent replay заново применяет craft guard к стар�
   assert.equal(replay.provider, 'deterministic-idempotent-replay')
   assert.equal(replay.verification.valid, true)
   assert.doesNotMatch(replay.narration, /Ада проверяет дверь/u)
+})
+
+test('idempotent replay сохраняет безопасные response plan и origin cached narration', async () => {
+  const { orchestrator, traceStore } = await setup()
+  const input = {
+    state, playerId: 'hero', message: 'Системная команда', idempotencyKey: 'safe-cached-metadata',
+    commands: [{ command_type: 'ApplyDamage', actor_id: 'hero', target_id: 'goblin', amount: 2, damage_type: 'slashing' }],
+  }
+  const first = await orchestrator.handle(input)
+  const trace = traceStore.get('TEST-ROOM', first.turn_id)
+  traceStore.save({
+    ...trace,
+    narration_result: {
+      narration: first.narration,
+      verification: {
+        valid: true,
+        violations: [],
+        response_plan: { version: 'narrator-response-plan/v1', mode: 'world_narration', speech_act: 'report_result' },
+        origin: { source: 'llm', reason: 'generated', elapsed_ms: 12 },
+      },
+      prompt_version: 'narrator/v9',
+      provider: 'legacy-cached',
+    },
+  })
+
+  const replay = await orchestrator.handle(input)
+  assert.equal(replay.verification.response_plan.delivery, 'cached')
+  assert.equal(replay.verification.origin.source, 'llm')
+  assert.equal(replay.verification.origin.reason, 'cached_response')
+  assert.equal(replay.verification.origin.upstream, 'generated')
 })
 
 test('structured merchant command bypasses free-form Narrator and speaks only from committed trade facts', async () => {

@@ -207,7 +207,7 @@ export function normalizeCityOverview(value) {
 }
 
 function key(value) {
-  return text(value, 180).toLocaleLowerCase('ru')
+  return text(value, 180).toLowerCase()
 }
 
 function number(value, fallback, minimum, maximum) {
@@ -216,7 +216,7 @@ function number(value, fallback, minimum, maximum) {
 }
 
 function slug(value, fallback = 'place') {
-  const normalized = text(value, 120).toLocaleLowerCase('ru')
+  const normalized = text(value, 120).toLowerCase()
     .replace(/[^a-zа-яё0-9]+/giu, '-')
     .replace(/^-+|-+$/gu, '')
   return (normalized || fallback).slice(0, 80)
@@ -266,7 +266,7 @@ function generatedRegionName(random, biome) {
 
 function fallbackRegions(seed, concept = {}) {
   const random = seededRandom(`${seed}:regions`)
-  const signature = `${concept.preset ?? ''} ${concept.genre ?? ''} ${concept.worldSummary ?? ''}`.toLocaleLowerCase('ru')
+  const signature = `${concept.preset ?? ''} ${concept.genre ?? ''} ${concept.worldSummary ?? ''}`.toLowerCase()
   const arid = /пустын|пустош|постапок/iu.test(signature)
   const cold = /лед|север|тундр|арктик/iu.test(signature)
   const biomes = arid
@@ -386,17 +386,19 @@ export function worldLocationById(map, locationId) {
   return locationById(Array.isArray(map?.locations) ? map.locations : [], locationId)
 }
 
-function endpointId(value, locations) {
+function endpointId(value, locations, names) {
   const expected = key(value)
-  return locations.find((location) => location.id === value || key(location.name) === expected)?.id ?? ''
+  return locations.find((location, index) => location.id === value || names[index] === expected)?.id ?? ''
 }
 
 function normalizeRoutes(rawRoutes, fallback, locations) {
   const source = Array.isArray(rawRoutes) && rawRoutes.length ? rawRoutes : fallback
+  // Имена мест неизменны в пределах сборки сети: нормализуем их один раз для всех дорог.
+  const names = locations.map((location) => key(location.name))
   const seen = new Set()
   return source.slice(0, 80).flatMap((raw, index) => {
-    const from = endpointId(raw?.from, locations)
-    const to = endpointId(raw?.to, locations)
+    const from = endpointId(raw?.from, locations, names)
+    const to = endpointId(raw?.to, locations, names)
     const signature = [from, to].sort().join(':')
     if (!from || !to || from === to || seen.has(signature)) return []
     seen.add(signature)

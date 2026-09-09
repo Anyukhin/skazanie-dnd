@@ -16,12 +16,8 @@
 .merchant-modal .merchant-page-head { padding-right: 44px; }
 .merchant-close { position: absolute; z-index: 3; top: 12px; right: 12px; width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 4px; background: rgba(8, 7, 6, .72); color: #93887d; cursor: pointer; }
 .merchant-close:hover { border-color: rgba(211, 153, 86, .4); color: #d0a36c; }
-/* На всю страницу пустое состояние занимало 65vh — в окне это дыра. */
-.merchant-modal .merchant-empty-state { min-height: 300px; }
-.merchant-page-head { max-width: 1280px; display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
-.merchant-page-head > div:first-child > span { color: #a77843; font-size: var(--fs-xs); font-weight: 700; letter-spacing: .18em; }
-.merchant-page-head h1 { margin: 5px 0 3px; color: #e1d6c8; font: 600 clamp(27px, 3vw, 38px) Spectral, serif; }
-.merchant-page-head p { margin: 0; color: #766f68; font: var(--fs-xxs) Spectral, serif; }
+.merchant-page-head { max-width: 1280px; min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 12px; }
+.merchant-page-head h1 { min-width: 0; overflow: hidden; margin: 0; color: #e1d6c8; font: 600 clamp(21px, 2.3vw, 28px) Spectral, serif; text-overflow: ellipsis; white-space: nowrap; }
 .merchant-location { max-width: 340px; display: flex; align-items: center; gap: 9px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 6px; color: #a27748; background: rgba(255,255,255,.015); }
 .merchant-location > span { min-width: 0; display: grid; }
 .merchant-location small { color: #625a52; font-size: var(--fs-xxs); letter-spacing: .11em; }
@@ -33,10 +29,6 @@
 .merchant-error { border-color: rgba(175, 76, 65, .22); background: rgba(135, 52, 44, .08); color: #b9786e; font-size: var(--fs-xs); }
 .merchant-error span { flex: 1; }
 .merchant-error button { height: 29px; display: flex; align-items: center; gap: 6px; padding: 0 9px; border: 1px solid rgba(185, 100, 88, .2); border-radius: 4px; background: transparent; color: #b9786e; cursor: pointer; }
-.merchant-selector { max-width: 1280px; display: flex; gap: 7px; margin-bottom: 12px; }
-.merchant-selector button { padding: 7px 11px; border: 1px solid var(--line); border-radius: 5px; background: rgba(0,0,0,.13); color: #756d65; font-size: var(--fs-xs); cursor: pointer; }
-.merchant-selector button.active { border-color: rgba(201, 149, 85, .28); background: rgba(173, 111, 49, .08); color: #c48f54; }
-.merchant-selector button:disabled { opacity: .45; cursor: wait; }
 .merchant-layout { max-width: 1280px; display: grid; grid-template-columns: minmax(250px, .62fr) minmax(520px, 1.65fr); gap: 14px; align-items: start; }
 .merchant-profile, .merchant-market { min-width: 0; border: 1px solid var(--line); border-radius: 9px; background: rgba(25, 22, 19, .9); box-shadow: 0 16px 42px rgba(0,0,0,.17); }
 .merchant-profile { position: sticky; top: 0; padding: 22px; text-align: center; }
@@ -139,13 +131,9 @@
 .merchant-appraisal-note b { color: #a8b89c; font: 600 var(--fs-xs) Spectral, serif; }
 .merchant-appraisal-note small, .merchant-appraisal-hint { color: #6f7868; font-size: var(--fs-xxs); line-height: 1.45; }
 .merchant-appraisal-hint { margin-right: auto; }
-.merchant-loading, .merchant-list-empty, .merchant-empty-state { display: grid; place-items: center; align-content: center; gap: 7px; min-height: 260px; padding: 35px; color: #80664a; text-align: center; }
+.merchant-loading, .merchant-list-empty, .merchant-filter-empty { display: grid; place-items: center; align-content: center; gap: 7px; min-height: 260px; padding: 35px; color: #80664a; text-align: center; }
 .merchant-loading b, .merchant-list-empty b { color: #a4988b; font: 600 var(--fs-sm) Spectral, serif; }
 .merchant-loading span, .merchant-list-empty span { color: #625b54; font-size: var(--fs-xs); }
-.merchant-empty-state { min-height: 65vh; }
-.merchant-empty-state > span { color: #9d7040; font-size: var(--fs-xxs); font-weight: 700; letter-spacing: .16em; }
-.merchant-empty-state h1 { margin: 0; color: #cfc3b5; font: 600 clamp(25px, 4vw, 38px) Spectral, serif; }
-.merchant-empty-state p { max-width: 500px; margin: 0; color: #716960; font: var(--fs-xs)/1.55 Spectral, serif; }
 
 @media (max-width: 1100px) {
   .merchant-layout { grid-template-columns: minmax(220px, .55fr) minmax(480px, 1.45fr); }
@@ -176,3 +164,71 @@
   .merchant-close { top: 9px; right: 9px; width: 44px; height: 44px; }
   .merchant-modal .merchant-page-head { padding-right: 54px; }
 }
+
+/* Навигация и фильтры принадлежат рынку: в каждой вкладке своё состояние,
+   поэтому поиск покупки не меняет список вещей героя для продажи. */
+.merchant-tab-panel { min-width: 0; }
+.merchant-tabs button { flex: 1 1 0; justify-content: center; min-width: 0; }
+.merchant-tabs button:focus-visible { position: relative; z-index: 1; outline-offset: -3px; }
+.merchant-filter-bar { display: grid; grid-template-columns: minmax(170px, .8fr) minmax(0, 1.6fr) auto; align-items: center; gap: 9px; padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,.045); background: rgba(0,0,0,.08); }
+.merchant-search { position: relative; min-width: 0; display: flex; align-items: center; color: #8b704f; }
+.merchant-search > svg { position: absolute; left: 10px; pointer-events: none; }
+.merchant-search input { width: 100%; height: 34px; padding: 0 34px 0 32px; border: 1px solid var(--line); border-radius: 5px; outline: none; background: rgba(0,0,0,.2); color: #c4b7a8; font: var(--fs-xs) Manrope, sans-serif; }
+.merchant-search input::placeholder { color: #665d54; }
+.merchant-search input:focus { border-color: rgba(203,151,88,.46); }
+.merchant-search-clear { position: absolute; right: 5px; width: 25px; height: 25px; display: grid; place-items: center; border: 0; border-radius: 4px; background: transparent; color: #77695c; cursor: pointer; }
+.merchant-search-clear:hover { background: rgba(255,255,255,.05); color: #c8a171; }
+.merchant-categories { min-width: 0; display: flex; gap: 5px; overflow-x: auto; padding-bottom: 1px; scrollbar-width: thin; }
+.merchant-categories button { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px; min-height: 30px; padding: 0 8px; border: 1px solid rgba(255,255,255,.08); border-radius: 4px; background: rgba(255,255,255,.015); color: #80766c; font-size: var(--fs-xxs); cursor: pointer; }
+.merchant-categories button:hover { border-color: rgba(203,151,88,.3); color: #b6966a; }
+.merchant-categories button.active { border-color: rgba(203,151,88,.42); background: rgba(171,112,52,.12); color: #d0a06a; }
+.merchant-categories button b { min-width: 16px; color: #655b52; font-size: var(--fs-xxs); font-weight: 600; text-align: center; }
+.merchant-categories button.active b { color: #bc8954; }
+.merchant-filter-count { color: #625b54; font-size: var(--fs-xxs); white-space: nowrap; }
+.merchant-filter-empty { min-height: 220px; padding: 28px 20px; color: #735d45; }
+.merchant-filter-empty b { color: #b4a293; font: 600 var(--fs-md) Spectral, serif; }
+.merchant-filter-empty span { color: #716960; font-size: var(--fs-xs); }
+.merchant-filter-empty button { min-height: 31px; margin-top: 5px; padding: 0 10px; border: 1px solid rgba(203,151,88,.28); border-radius: 4px; background: transparent; color: #b98a57; font-size: var(--fs-xs); cursor: pointer; }
+.merchant-filter-empty button:hover { border-color: rgba(203,151,88,.52); background: rgba(171,112,52,.08); }
+.merchant-item-title .merchant-item-state { max-width: 180px; overflow: hidden; padding: 4px 7px; border: 1px solid rgba(116,145,111,.18); border-radius: 4px; background: rgba(84,119,87,.07); color: #849d82; text-overflow: ellipsis; white-space: nowrap; }
+.merchant-item-title .merchant-item-state.warning { border-color: rgba(177,104,77,.2); background: rgba(127,55,43,.1); color: #b17b6e; }
+.merchant-avatar i.unavailable { background: #a66f64; }
+.merchant-modal :is(button, input):focus-visible { outline: 2px solid rgba(224,176,111,.92); outline-offset: 2px; }
+.merchant-modal .merchant-close:focus-visible { outline-offset: 3px; }
+.merchant-service-item .merchant-item-title > span small { color: #8b704f; }
+.merchant-quote-summary { display: grid; grid-template-columns: minmax(105px, .75fr) minmax(145px, 1fr); gap: 7px; margin-top: 8px; }
+.merchant-quote-summary > span { display: grid; gap: 2px; padding: 7px 9px; border: 1px solid rgba(201,149,85,.12); border-radius: 4px; background: rgba(152,96,40,.045); }
+.merchant-quote-summary > span:last-child { text-align: right; }
+.merchant-quote-summary small { color: #735a40; font-size: var(--fs-xxs); font-weight: 700; letter-spacing: .07em; }
+.merchant-quote-summary strong { color: #d2a265; font: 600 var(--fs-sm) Spectral, serif; }
+.merchant-quote-summary > span:first-child strong { color: #b9aa9a; }
+.merchant-price-details { margin-top: 7px; }
+.merchant-price-details summary { width: max-content; padding: 2px 0; color: #896d4c; font-size: var(--fs-xxs); cursor: pointer; }
+.merchant-price-details summary:hover { color: #c39a63; }
+.merchant-price-details[open] summary { color: #c39a63; }
+.merchant-price-details .merchant-price-flow { margin-top: 6px; }
+.merchant-price-note { margin: 6px 0 0; color: #625b54; font-size: var(--fs-xxs); }
+
+@media (max-width: 900px) {
+  .merchant-filter-bar { grid-template-columns: minmax(170px, .8fr) minmax(0, 1.2fr); }
+  .merchant-filter-count { grid-column: 2; justify-self: end; }
+}
+
+@media (max-width: 680px) {
+  .merchant-filter-bar { grid-template-columns: 1fr; gap: 8px; }
+  .merchant-filter-count { grid-column: auto; justify-self: start; }
+  .merchant-categories { margin-right: -2px; }
+  .merchant-item-title { grid-template-columns: 48px minmax(0, 1fr); }
+  .merchant-item-title .merchant-item-state { max-width: 100%; }
+}
+
+@media (max-width: 440px) {
+  .merchant-tabs button { padding: 0 9px; font-size: var(--fs-xxs); }
+  .merchant-tabs button b { display: none; }
+  .merchant-quote-summary { grid-template-columns: 1fr 1fr; }
+  .merchant-item-actions { flex-wrap: wrap; }
+  .merchant-item-actions .merchant-quantity { flex: 1 1 70px; }
+  .merchant-item-actions > button { width: 100%; min-width: 0; }
+}
+
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }

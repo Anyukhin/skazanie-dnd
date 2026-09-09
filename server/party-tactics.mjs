@@ -5,7 +5,8 @@ import {
   findActor,
   isLivingActor,
   movementCostOfPath,
-  previewApproachAttack,
+  spellDamageEstimate,
+  spellTargetsAt,
   validateCommand,
   shortestTacticalPath,
   weaponAttackProfileFor,
@@ -304,6 +305,7 @@ const COMBAT_POLICY_SUPPORT = new Set(['verified', 'partial'])
 const DAMAGE_SPELL_KINDS = new Set(['attack', 'damage', 'save', 'debuff', 'area-save', 'area-damage'])
 const HEALING_SPELL_KINDS = new Set(['healing'])
 const BUFF_SPELL_KINDS = new Set(['buff'])
+const EXTINGUISHABLE_FLAME_CONDITIONS = new Set(['searing-smite-flames', 'alchemists-fire-flames'])
 
 const combatId = (actor) => String(actor?.id ?? actor?.actor_id ?? '')
 const combatHp = (actor) => Number.isFinite(Number(actor?.hp)) ? Number(actor.hp) : null
@@ -311,6 +313,7 @@ const combatMaxHp = (actor) => Math.max(1, Number(actor?.maxHp ?? actor?.max_hp)
 const combatPosition = (state, id) => actorPosition(state, id)
 const combatDistance = (state, leftId, rightId) => feetBetween(combatPosition(state, leftId), combatPosition(state, rightId))
 const economyFor = (state, actorIdValue) => state?.mechanics?.combat?.action_economy?.[String(actorIdValue)] ?? {}
+const attackAvailable = economy => economy.action !== false || Number(economy.attacks_used) > 0 && Number(economy.attacks_used) < Number(economy.attacks_allowed)
 const resourceFor = (state, actorIdValue, resource) => state?.mechanics?.resources?.[String(actorIdValue)]?.[String(resource)] ?? null
 
 function visibleLivingEnemy(actor) {
@@ -327,6 +330,10 @@ function downedAlly(actor) {
 
 function conditionIdsForTactics(state, actorIdValue) {
   return new Set((state?.mechanics?.conditions?.[String(actorIdValue)] ?? []).map((condition) => String(condition?.id ?? condition)))
+}
+
+function hasExtinguishableFlames(state, actorIdValue) {
+  return [...conditionIdsForTactics(state, actorIdValue)].some((condition) => EXTINGUISHABLE_FLAME_CONDITIONS.has(condition))
 }
 
 function partyActorsForTactics(state) {
@@ -461,24 +468,19 @@ function actionResourceAvailable(state, actorIdValue, action) {
   return Boolean(resource) && Number(resource.current) >= Math.max(1, Number(action.cost) || 1)
 }
 
-function spellSlotForTactics(state, actorIdValue, spell) {
-  if (!spell || Number(spell.level) <= 0) return null
-  if (spell.slotResource === 'pact_slots' || String(spell.slotResource ?? '').startsWith('species_spell_')) {
+function spellSlotsForTactics(state, actorIdValue, spell) {
+  if (Number(spell.level) <= 0) return [null]
+  if (['pact_slots', 'mystic_arcanum_6'].includes(spell.slotResource) || String(spell.slotResource ?? '').startsWith('species_spell_')) {
     const resource = resourceFor(state, actorIdValue, spell.slotResource)
-    return resource?.current > 0 ? { resource: spell.slotResource, level: Math.max(Number(spell.level), Number(spell.innateCastLevel) || Number(spell.level)) } : null
+    return resource?.current > 0 ? [{ resource: spell.slotResource, level: Math.max(Number(spell.level), Number(spell.innateCastLevel) || Number(spell.level)) }] : []
   }
+  const slots = []
   const first = Math.max(1, Number(spell.level) || 1)
   for (let level = first; level <= 6; level += 1) {
     const resource = `spell_slots_${level}`
-    if (Number(resourceFor(state, actorIdValue, resource)?.current) > 0) return { resource, level }
+    if (Number(resourceFor(state, actorIdValue, resource)?.current) > 0) slots.push({ resource, level })
   }
-  return null
-}
-
-function spellAvailableForTactics(state, actorIdValue, spell) {
-  if (!spell || !COMBAT_POLICY_SUPPORT.has(spell.mechanicsSupport ?? '')) return null
-  if (spell.prepared === false || !['action', 'bonus_action'].includes(spell.actionType)) return null
-  return spellSlotForTactics(state, actorIdValue, spell)
+  return slots
 }
 
 function hasSpellCondition(state, actorIdValue, spell) {
@@ -504,98 +506,107 @@ function safeCell(state, position) {
   return Boolean(cell && cell.revealed !== false && cell.type !== 'wall')
 }
 
-function approximateAreaTargets(state, actorIdValue, spell, to) {
-  const center = spell.target === 'self' ? combatPosition(state, actorIdValue) : to
-  const radius = Math.max(0, Number(spell.radius) || 0)
-  if (!center || radius <= 0) return { enemies: [], allies: [] }
-  const inArea = (actor) => {
-    const at = combatPosition(state, combatId(actor))
-    return Boolean(at && Math.max(Math.abs(at.x - center.x), Math.abs(at.y - center.y)) * 5 <= radius)
-  }
+function areaTargetsForTactics(validationState, actorIdValue, spell, to) {
+  const enemies = new Set(enemiesForTactics(validationState).map(combatId))
+  const affected = spellTargetsAt(validationState, { actor_id: actorIdValue, to }, spell)
   return {
-    enemies: enemiesForTactics(state).filter(inArea),
-    // `spellTargetsAt` исключает заклинателя только из области вокруг себя.
-    // Заклинание в выбранную точку может задеть его самого: это союзный огонь.
-    allies: partyActorsForTactics(state).filter((ally) => (spell.target !== 'self' || combatId(ally) !== String(actorIdValue))
-      && visibleLivingAlly(ally) && inArea(ally)),
+    enemies: affected.filter(actor => enemies.has(combatId(actor))),
+    allies: affected.filter(actor => !enemies.has(combatId(actor))),
   }
 }
 
 // Оценка для выбора тактики, а не расчёт урона: точный исход остаётся за
 // Rules Engine. Не используем скрытую КД врага и не делаем пробных бросков.
 function spellTacticalScore(actor, spell, slotLevel = spell.level, targets = 1) {
-  const match = /^(\d+)d(\d+)([+-]\d+)?$/u.exec(String(spell.damage ?? ''))
-  if (!match) return 220 + 100 * targets
-  let average = Number(match[1]) * (Number(match[2]) + 1) / 2 + Number(match[3] || 0)
-  if (spell.level === 0) average *= actor.level >= 11 ? 3 : actor.level >= 5 ? 2 : 1
-  if (spell.projectileCount) average *= Number(spell.projectileCount) + Math.max(0, slotLevel - spell.level) * Number(spell.upcastProjectilesPerLevel || 0)
+  const average = spellDamageEstimate(actor, spell, slotLevel)
+  if (!average) return 220 + 100 * targets
   const success = spell.automaticHit ? 1 : spell.halfOnSave ? .75 : .65
-  return 500 + average * success * 30 * targets - Math.max(0, slotLevel) * 20
+  // Усиление сравнивается с реальной прибавкой урона. Цена круга растёт:
+  // небольшой выигрыш не оправдывает трату самой высокой ячейки каждый ход.
+  return 500 + average * success * 30 * targets - Math.max(0, slotLevel) ** 2 * 20
 }
 
 function spellCandidatesFor(state, actorIdValue, actor, add) {
   const economy = economyFor(state, actorIdValue)
   const enemies = enemiesForTactics(state)
   const allies = partyActorsForTactics(state)
+  const validationState = cloneForTacticValidation(state)
   for (const spell of combatSpellsFor(actor)) {
-    const slot = spellAvailableForTactics(state, actorIdValue, spell)
-    if (spell.level > 0 && !slot) continue
+    if (!COMBAT_POLICY_SUPPORT.has(spell.mechanicsSupport ?? '') || spell.prepared === false) continue
+    if (!['action', 'bonus_action'].includes(spell.actionType) || economy[spell.actionType] === false) continue
     if (spell.concentration && state?.mechanics?.concentration?.[String(actorIdValue)]) continue
     if (hasSpellCondition(state, actorIdValue, spell)) continue
-    const base = { command_type: 'CastSpell', actor_id: actorIdValue, spell_id: spell.id, server_authoritative: true, ...(slot ? { slot_level: slot.level } : {}) }
-    const addSpell = (command, score, reason) => {
-      const actionType = spell.actionType === 'bonus_action' ? 'bonus_action' : 'action'
-      if (economy[actionType] === false) return
-      if (validatesTacticCommand(state, actorIdValue, command)) add(command, score, reason)
-    }
-    if (HEALING_SPELL_KINDS.has(spell.kind) && spell.target !== 'point') {
-      const targets = allies.filter((ally) => !isDeadHero(state, combatId(ally)) && (downedAlly(ally) || Number(ally.hp) <= Math.max(1, Math.floor(combatMaxHp(ally) * HEAL_THRESHOLD_RATIO))))
-        .sort((left, right) => Number(left.hp) - Number(right.hp) || combatId(left).localeCompare(combatId(right)))
-      for (const target of targets) {
-        const command = { ...base, target_id: combatId(target), target_ids: [combatId(target)] }
-        const score = downedAlly(target) ? 10_000 : 4_000
-        addSpell(command, score, `${spell.name} спасает ${combatId(target)}`)
-        break
+    for (const slot of spellSlotsForTactics(state, actorIdValue, spell)) {
+      const base = { command_type: 'CastSpell', actor_id: actorIdValue, spell_id: spell.id, server_authoritative: true, ...(slot ? { slot_level: slot.level } : {}) }
+      const addSpell = (command, score, reason) => {
+        const actionType = spell.actionType === 'bonus_action' ? 'bonus_action' : 'action'
+        if (economy[actionType] === false || !validatesTacticCommand(state, actorIdValue, command)) return false
+        add(command, score, reason, true)
+        return true
       }
-    }
-    if (BUFF_SPELL_KINDS.has(spell.kind) && spell.target !== 'point') {
-      const targets = allies.filter(visibleLivingAlly).filter((target) => combatDistance(state, actorIdValue, combatId(target)) <= Number(spell.range ?? 0))
-      if (spell.target === 'self') {
-        addSpell({ ...base, target_id: actorIdValue, target_ids: [actorIdValue] }, 180, `${spell.name} усиливает героя`)
-      } else if (targets.length) {
-        const maximum = Math.max(1, Number(spell.maxTargets) || 1)
-        const selected = targets.filter((target) => !targetHasSpellCondition(state, combatId(target), spell)).slice(0, maximum)
-        if (!selected.length) continue
-        addSpell({ ...base, target_id: combatId(selected[0]), target_ids: selected.map(combatId) }, 180 + selected.length * 30, `${spell.name} поддерживает отряд`)
-      }
-    }
-    if (DAMAGE_SPELL_KINDS.has(spell.kind)) {
-      if (spell.target === 'point') {
-        const points = enemies.map((enemy) => combatPosition(state, combatId(enemy))).filter(Boolean)
-        for (const to of points) {
-          const area = approximateAreaTargets(state, actorIdValue, spell, to)
-          if (!safeCell(state, to) || !area.enemies.length || area.allies.length) continue
-          if (combatDistanceToPosition(state, actorIdValue, to) > Number(spell.range ?? 0)) continue
-          addSpell({ ...base, to }, spellTacticalScore(actor, spell, slot?.level, area.enemies.length), `${spell.name} поражает ${area.enemies.length} противников без союзного огня`)
-          break
-        }
-      } else if (spell.target === 'self' && ['area-save', 'area-damage'].includes(spell.kind)) {
-        const area = approximateAreaTargets(state, actorIdValue, spell, null)
-        if (area.enemies.length && !area.allies.length) addSpell(base, spellTacticalScore(actor, spell, slot?.level, area.enemies.length), `${spell.name} поражает врагов рядом`)
-      } else if (spell.target === 'enemy') {
-        const targets = enemies.slice().sort((left, right) => combatDistance(state, actorIdValue, combatId(left)) - combatDistance(state, actorIdValue, combatId(right)) || combatId(left).localeCompare(combatId(right)))
+      if (HEALING_SPELL_KINDS.has(spell.kind) && spell.target !== 'point') {
+        const targets = allies.filter((ally) => !isDeadHero(state, combatId(ally)) && (downedAlly(ally) || Number(ally.hp) <= Math.max(1, Math.floor(combatMaxHp(ally) * HEAL_THRESHOLD_RATIO))))
+          .sort((left, right) => Number(left.hp) - Number(right.hp) || combatId(left).localeCompare(combatId(right)))
         for (const target of targets) {
-          if (combatDistance(state, actorIdValue, combatId(target)) > Number(spell.range ?? 0)) continue
           const command = { ...base, target_id: combatId(target), target_ids: [combatId(target)] }
-          const inMelee = spell.kind === 'attack' && spell.attackKind !== 'melee' && enemies.some((enemy) => combatDistance(state, actorIdValue, combatId(enemy)) <= 5)
-          addSpell(command, spellTacticalScore(actor, spell, slot?.level) - (inMelee ? 120 : 0), `${spell.name} атакует ${combatId(target)}`)
-          break
+          const healing = Number(spell.healingAmount) || spellDamageEstimate(actor, { ...spell, damage: spell.healing, upcastDicePerLevel: spell.upcastHealingDicePerLevel }, slot?.level)
+          const useful = Math.min(downedAlly(target) ? 1 : combatMaxHp(target) - Number(target.hp), healing)
+          const score = (downedAlly(target) ? 10_000 : 4_000) + useful * 30 + (spell.actionType === 'bonus_action' ? 150 : 0) - Number(slot?.level ?? 0) ** 2 * 20
+          addSpell(command, score, `${spell.name} спасает ${combatId(target)}`)
         }
       }
+      if (BUFF_SPELL_KINDS.has(spell.kind) && spell.target !== 'point') {
+        const targets = (spell.target === 'enemy' ? enemies : allies.filter(visibleLivingAlly))
+          .filter((target) => combatDistance(state, actorIdValue, combatId(target)) <= Number(spell.range ?? 0))
+        if (spell.target === 'enemy') {
+          for (const target of targets.filter(target => !targetHasSpellCondition(state, combatId(target), spell))) {
+            // Бонусное действие проверено выше. Здесь важен оставшийся удар:
+            // усиление выгоднее накладывать до него, чем откладывать на следующий ход.
+            const score = attackAvailable(economy) ? 1_200 : 250
+            if (addSpell({ ...base, target_id: combatId(target), target_ids: [combatId(target)] }, score - Number(slot?.level ?? 0), `${spell.name} усиливает следующие атаки по ${combatId(target)}`)) break
+          }
+        } else if (spell.target === 'self') {
+          const weaponKind = equippedWeapon(actor)?.combat?.kind
+          const nextHit = spell.nextWeaponHit && weaponKind && (!spell.nextWeaponHit.meleeOnly || weaponKind === 'melee')
+            && (!spell.nextWeaponHit.rangedOnly || weaponKind === 'ranged')
+          addSpell({ ...base, target_id: actorIdValue, target_ids: [actorIdValue] }, nextHit && attackAvailable(economy) ? 1_000 : 180, `${spell.name} усиливает героя`)
+        } else if (targets.length) {
+          const maximum = Math.max(1, Number(spell.maxTargets) || 1)
+          const selected = targets.filter((target) => !targetHasSpellCondition(state, combatId(target), spell)).slice(0, maximum)
+          if (!selected.length) continue
+          addSpell({ ...base, target_id: combatId(selected[0]), target_ids: selected.map(combatId) }, 180 + selected.length * 30, `${spell.name} поддерживает отряд`)
+        }
+      }
+      if (DAMAGE_SPELL_KINDS.has(spell.kind)) {
+        if (spell.target === 'point') {
+          const points = new Map([...enemies.map((enemy) => combatPosition(state, combatId(enemy))), ...(state.scene?.cells ?? [])]
+            .filter(to => to && to.revealed !== false && to.type !== 'wall' && combatDistanceToPosition(state, actorIdValue, to) <= Number(spell.range ?? 0))
+            .map(to => [`${to.x},${to.y}`, { x: to.x, y: to.y }]))
+          const areas = [...points.values()].map(to => ({ to, area: areaTargetsForTactics(validationState, actorIdValue, spell, to) }))
+            .filter(({ to, area }) => safeCell(state, to) && area.enemies.length && !area.allies.length)
+            .sort((left, right) => right.area.enemies.length - left.area.enemies.length)
+          for (const { to, area } of areas) {
+            if (!validatesTacticCommand(state, actorIdValue, { ...base, to })) continue
+            addSpell({ ...base, to }, spellTacticalScore(actor, spell, slot?.level, area.enemies.length), `${spell.name} поражает ${area.enemies.length} противников без союзного огня`)
+            break
+          }
+        } else if (spell.target === 'self' && ['area-save', 'area-damage'].includes(spell.kind)) {
+          const area = areaTargetsForTactics(validationState, actorIdValue, spell, null)
+          if (area.enemies.length && !area.allies.length) addSpell(base, spellTacticalScore(actor, spell, slot?.level, area.enemies.length), `${spell.name} поражает врагов рядом`)
+        } else if (spell.target === 'enemy') {
+          const targets = enemies.slice().sort((left, right) => combatDistance(state, actorIdValue, combatId(left)) - combatDistance(state, actorIdValue, combatId(right)) || combatId(left).localeCompare(combatId(right)))
+          for (const target of targets) {
+            if (combatDistance(state, actorIdValue, combatId(target)) > Number(spell.range ?? 0)) continue
+            const command = { ...base, target_id: combatId(target), target_ids: [combatId(target)] }
+            const inMelee = spell.kind === 'attack' && spell.attackKind !== 'melee' && enemies.some((enemy) => combatDistance(state, actorIdValue, combatId(enemy)) <= 5)
+            if (addSpell(command, spellTacticalScore(actor, spell, slot?.level) - (inMelee ? 120 : 0), `${spell.name} атакует ${combatId(target)}`)) break
+          }
+        }
+      }
+      // Некоторые классовые списки содержат verified summon/utility spells. Они
+      // остаются кандидатами только при явно выбранной свободной клетке; без
+      // полноценного summon-controller безопаснее пропустить их.
     }
-    // Некоторые классовые списки содержат verified summon/utility spells. Они
-    // остаются кандидатами только при явно выбранной свободной клетке; без
-    // полноценного summon-controller безопаснее пропустить их.
   }
 }
 
@@ -604,20 +615,64 @@ function combatDistanceToPosition(state, actorIdValue, position) {
   return from && position ? Math.max(Math.abs(from.x - position.x), Math.abs(from.y - position.y)) * 5 : Number.MAX_SAFE_INTEGER
 }
 
+function pathThroughOccupiedCells(actorIdValue, targetIdValue, validationState) {
+  const actorId = String(actorIdValue)
+  const targetId = String(targetIdValue)
+  const routeState = structuredClone(validationState)
+  const disableBlockers = (actor) => {
+    const id = combatId(actor)
+    if (id === actorId || id === targetId) return actor
+    return { ...actor, alive: false, hp: 0 }
+  }
+  routeState.players = (routeState.players ?? []).map(disableBlockers)
+  routeState.actors = (routeState.actors ?? []).map(disableBlockers)
+  routeState.enemies = (routeState.enemies ?? []).map(disableBlockers)
+  return shortestTacticalPath(routeState, actorId, combatPosition(routeState, targetId), { allowOccupiedDestination: true })
+}
+
+function freePathPrefix(state, path, actorIdValue, targetIdValue) {
+  if (!Array.isArray(path)) return []
+  const actorId = String(actorIdValue)
+  const targetId = String(targetIdValue)
+  const occupied = new Set([...(state?.players ?? []), ...(state?.actors ?? []), ...(state?.enemies ?? [])]
+    .filter((actor) => combatId(actor) !== actorId && combatId(actor) !== targetId && actor.alive !== false && Number(actor.hp ?? 1) > 0)
+    .map((actor) => {
+      const at = combatPosition(state, combatId(actor))
+      return at ? `${at.x},${at.y}` : null
+    })
+    .filter(Boolean))
+  const firstBlocked = path.findIndex((at) => occupied.has(`${at.x},${at.y}`))
+  return firstBlocked >= 0 ? path.slice(0, firstBlocked) : path
+}
+
 function movementCandidateFor(state, actorIdValue, targetIdValue, itemId = null) {
   const validationState = cloneForTacticValidation(state)
   const actor = findActor(validationState, actorIdValue)
   const from = combatPosition(validationState, actorIdValue)
   const to = combatPosition(validationState, targetIdValue)
   if (!actor || !from || !to) return null
-  const path = shortestTacticalPath(validationState, actorIdValue, to, { allowOccupiedDestination: true })
+  let path = shortestTacticalPath(validationState, actorIdValue, to, { allowOccupiedDestination: true })
+  if (!path) {
+    // Если союзник занял узкий проход, поиск маршрута по обычному состоянию
+    // возвращает null и герой застывает на месте. В технической копии убираем
+    // живые фишки с пути, затем оставляем только свободный префикс: команда
+    // всё равно проходит обычную серверную проверку занятости клетки.
+    path = freePathPrefix(validationState, pathThroughOccupiedCells(actorIdValue, targetIdValue, validationState), actorIdValue, targetIdValue)
+  }
   if (!path?.length) return null
   const economy = economyFor(validationState, actorIdValue)
   const budget = Math.max(0, Number(actor.speed) || 30) + Math.max(0, Number(economy.movement_bonus) || 0) - Math.max(0, Number(economy.movement_spent) || 0)
+  const protectedMovement = ['disengaged', 'invisible', 'zephyr-strike'].some(id => conditionIdsForTactics(state, actorIdValue).has(id))
+  // Дальность скрытого оружия неизвестна. Видимый враг вплотную — достаточный
+  // повод остаться в досягаемости, пока не выполнен безопасный Отход.
+  const adjacentThreats = protectedMovement ? [] : enemiesForTactics(state)
+    .filter(enemy => combatDistance(state, actorIdValue, combatId(enemy)) <= 5 && economyFor(state, combatId(enemy)).reaction !== false)
+    .map(enemy => combatPosition(state, combatId(enemy)))
   let chosen = null
   let chosenCost = 0
   let spent = 0
   for (const step of path) {
+    if (adjacentThreats.some(at => feetBetween(at, step) > 5)) break
     const stepCost = movementCostOfPath(validationState, actorIdValue, [step])
     if (spent + stepCost > budget) break
     spent += stepCost
@@ -647,18 +702,12 @@ function addAttackCandidates(state, actorIdValue, actor, add) {
     const forecast = attackForecast(state, actorIdValue, targetId, itemId ? { itemId } : {})
     const attack = commandWithTarget(actorIdValue, { command_type: 'MakeAttack', target_id: targetId, ...(itemId ? { item_id: itemId } : {}) })
     if ((forecast?.reachable ?? forecast?.in_range) && validatesTacticCommand(state, actorIdValue, attack)) {
-      add(attack, 500 + Math.max(0, Number(forecast.average_damage) || 0) * 30 * (forecast.disadvantage ? .4 : forecast.advantage ? .85 : .65), `Атаковать ${targetId} доступным оружием`)
+      add(attack, 500 + Math.max(0, Number(forecast.average_damage) || 0) * 30 * (forecast.disadvantage ? .4 : forecast.advantage ? .85 : .65), `Атаковать ${targetId} доступным оружием`, true)
       continue
     }
-    if (economy.action !== false || Number(economy.attacks_used) < Number(economy.attacks_allowed)) {
-      let approach = null
-      try {
-        const preview = previewApproachAttack(cloneForTacticValidation(state), actorIdValue, targetId)
-        const move = preview.commands.find((candidate) => candidate.command_type === 'MoveActor')
-        if (move && validatesTacticCommand(state, actorIdValue, move)) approach = move
-      } catch { /* проверка маршрута ниже даёт тот же отказ без броска */ }
-      approach ??= movementCandidateFor(state, actorIdValue, targetId, itemId)?.command ?? null
-      if (approach) add(approach, 260, `Подойти к ${targetId}, чтобы атаковать`)
+    if (attackAvailable(economy)) {
+      const approach = movementCandidateFor(state, actorIdValue, targetId, itemId)?.command ?? null
+      if (approach) add(approach, 260, `Подойти к ${targetId}, чтобы атаковать`, true)
     }
   }
 }
@@ -688,9 +737,15 @@ function addActionCandidates(state, actorIdValue, actor, add) {
       continue
     }
     if (action.effect?.kind === 'heal') {
-      const target = allies.filter((ally) => visibleLivingAlly(ally) && combatDistance(state, actorIdValue, combatId(ally)) <= Number(action.range ?? 0))
-        .sort((left, right) => Number(left.hp) - Number(right.hp))[0]
-      if (target && Number(target.hp) < combatMaxHp(target) * .35) add(commandWithTarget(actorIdValue, { command_type: 'UseCombatAction', action_id: action.id, target_id: combatId(target), target_ids: [combatId(target)] }), 2_500, `${action.name} лечит союзника`)
+      const targets = (action.target === 'self' ? [actor] : allies.filter(ally => combatId(ally) !== String(actorIdValue)))
+        .filter((ally) => !isDeadHero(state, combatId(ally))
+        && combatDistance(state, actorIdValue, combatId(ally)) <= Number(action.range ?? 0)
+        && (downedAlly(ally) || Number(ally.hp) < combatMaxHp(ally) * .35))
+      for (const target of targets) {
+        const useful = Math.min(downedAlly(target) ? 1 : combatMaxHp(target) - Number(target.hp), Number(action.effect.amount) || 5)
+        add(commandWithTarget(actorIdValue, { command_type: 'UseCombatAction', action_id: action.id, target_id: combatId(target), target_ids: [combatId(target)] }),
+          (downedAlly(target) ? 10_000 : 4_000) + useful * 30 - 10, `${action.name} лечит союзника`)
+      }
       continue
     }
     if (['stabilize', 'first-aid'].includes(action.id)) {
@@ -702,13 +757,19 @@ function addActionCandidates(state, actorIdValue, actor, add) {
       if (enemies.some((enemy) => combatDistance(state, actorIdValue, combatId(enemy)) <= 5) && !conditions.has('disengaged')) add(commandWithTarget(actorIdValue, { command_type: 'UseCombatAction', action_id: action.id }), 90, 'Выйти из досягаемости без атаки по возможности')
       continue
     }
-    if (['break-free', 'steady-nerves', 'extinguish-self', 'search', 'hide', 'ready', 'ready-action'].includes(action.id)) continue
+    if (['break-free', 'steady-nerves', 'search', 'hide', 'ready', 'ready-action'].includes(action.id)) continue
+    if (action.id === 'extinguish-self' && !hasExtinguishableFlames(state, actorIdValue)) continue
     if (action.id === 'reckless-attack' && conditions.has('reckless')) continue
     if (action.id === 'reckless-attack' && (Number(economy.attacks_used) > 0 || Number(actor.hp) < combatMaxHp(actor) / 2)) continue
     if (action.id === 'rage' && conditions.has('raging')) continue
+    const alreadyAffected = (target) => action.effect?.condition && [action.effect.condition, `${action.effect.condition}:${actorIdValue}`]
+      .some(condition => conditionIdsForTactics(state, combatId(target)).has(condition))
     const target = action.target === 'self' ? null : action.target === 'ally'
-      ? allies.filter(visibleLivingAlly).sort((left, right) => Number(left.hp) - Number(right.hp))[0]
-      : enemies[0]
+      ? allies.filter(visibleLivingAlly).filter((ally) => action.id !== 'extinguish-ally' || hasExtinguishableFlames(state, combatId(ally)))
+        .filter(ally => combatId(ally) !== String(actorIdValue) && !alreadyAffected(ally))
+        .sort((left, right) => Number(left.hp) - Number(right.hp) || combatId(left).localeCompare(combatId(right)))[0]
+      : enemies.filter(enemy => !alreadyAffected(enemy) && combatDistance(state, actorIdValue, combatId(enemy)) <= Number(action.range ?? 5))
+        .sort((left, right) => combatDistance(state, actorIdValue, combatId(left)) - combatDistance(state, actorIdValue, combatId(right)) || combatId(left).localeCompare(combatId(right)))[0]
     if (action.target === 'enemy' && (!target || combatDistance(state, actorIdValue, combatId(target)) > Number(action.range ?? 5))) continue
     if (action.target === 'ally' && !target) continue
     if (action.target === 'self' && !['dash', 'dodge', 'rage', 'reckless-attack'].includes(action.id)) continue
@@ -720,8 +781,16 @@ function addActionCandidates(state, actorIdValue, actor, add) {
       ...(target ? { target_id: combatId(target), target_ids: [combatId(target)] } : {}),
       ...(action.requiresWeapon && equippedWeapon(actor) ? { item_id: String(equippedWeapon(actor).id) } : {}),
     })
-    const score = action.id === 'rage' ? 900 : action.id === 'reckless-attack' ? 750 : action.effect?.kind === 'weapon_attack' ? 300 : 70
-    if (validatesTacticCommand(state, actorIdValue, command)) add(command, score, `${action.name} — подходящая поддержанная тактика`)
+    let score = action.id === 'rage' ? 900 : action.id === 'reckless-attack' ? 750 : 70
+    if (action.effect?.kind === 'weapon_attack' && target) {
+      const forecast = attackForecast(state, actorIdValue, combatId(target), command.item_id ? { itemId: command.item_id } : {})
+      const extraDamage = action.effect.extraDamageByLevel === 'sneak' ? `${Math.ceil(Number(actor.level) / 2)}d6` : action.effect.extraDamage
+      const extra = spellDamageEstimate(actor, { level: 1, damage: extraDamage })
+      const attacks = Math.max(1, Number(action.effect.attacks) || 1)
+      score = 500 + (Math.max(0, Number(forecast?.average_damage) || 0) + extra) * attacks * 30
+        * (forecast?.disadvantage ? .4 : forecast?.advantage ? .85 : .65) + (action.effect.condition ? 100 : 0) - (action.resource ? 20 : 0)
+    }
+    if (validatesTacticCommand(state, actorIdValue, command)) add(command, score, `${action.name} — подходящая поддержанная тактика`, true)
   }
 }
 
@@ -754,8 +823,8 @@ export function planHeroCombatCommand(state, actorIdValue) {
 
   const economy = economyFor(state, actorId)
   const candidates = []
-  const add = (command, score, reason) => {
-    if (!command || !validatesTacticCommand(state, actorId, command)) return
+  const add = (command, score, reason, validated = false) => {
+    if (!command || (!validated && !validatesTacticCommand(state, actorId, command))) return
     candidates.push({ command, score, reason })
   }
   const prone = conditionIdsForTactics(state, actorId).has('prone')
@@ -774,9 +843,20 @@ export function planHeroCombatCommand(state, actorIdValue) {
   addActionCandidates(state, actorId, actor, add)
   addAttackCandidates(state, actorId, actor, add)
 
-  const best = candidates.sort((left, right) => right.score - left.score
+  const ranked = candidates.sort((left, right) => right.score - left.score
     || String(left.command.command_type).localeCompare(String(right.command.command_type))
-    || JSON.stringify(left.command).localeCompare(JSON.stringify(right.command)))[0]
+    || JSON.stringify(left.command).localeCompare(JSON.stringify(right.command)))
+  let best = ranked[0]
+  if (best?.command.command_type === 'CastSpell' && best.command.slot_level > 0) {
+    // При почти равной полезности одного заклинания бережём старшую ячейку,
+    // но не ухудшаем выбор ниже конкурирующего заговора, удара или лечения.
+    const sameCast = candidate => candidate.command.spell_id === best.command.spell_id
+      && candidate.command.target_id === best.command.target_id
+      && candidate.command.to?.x === best.command.to?.x && candidate.command.to?.y === best.command.to?.y
+    const threshold = Math.max(best.score * .95, ranked.find(candidate => !sameCast(candidate))?.score ?? 0)
+    best = ranked.filter(candidate => sameCast(candidate) && candidate.score >= threshold)
+      .sort((left, right) => Number(left.command.slot_level) - Number(right.command.slot_level))[0] ?? best
+  }
   if (best) return { command: best.command, reason: best.reason }
 
   const target = enemiesForTactics(state).sort((left, right) => combatDistance(state, actorId, combatId(left)) - combatDistance(state, actorId, combatId(right)) || combatId(left).localeCompare(combatId(right)))[0]

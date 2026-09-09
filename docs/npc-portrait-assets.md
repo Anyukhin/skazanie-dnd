@@ -1,9 +1,10 @@
 # Портреты NPC: контракт и происхождение
 
 Backlog #69 разделён на две независимые части. Этот документ описывает
-реализованный backend/static foundation. Подключение портретов к карточкам NPC
-в основном интерфейсе остаётся отдельным шагом, поэтому пункт backlog пока не
-закрыт.
+реализованный backend/static foundation и подключение портретов к карточкам NPC
+в основном интерфейсе через authenticated endpoint. Для предзаготовленных миров
+есть отдельный server-owned allowlist, поэтому такие изображения не тратят
+лимит runtime-генерации.
 
 ## Lazy endpoint
 
@@ -73,3 +74,18 @@ inventory, private conversations и GM-only заметки в генератор
 
 SHA-256 и фактический размер каждого production-файла зарегистрированы в
 `data/asset-rights.json` и проверяются `test/npc-portrait-assets.test.mjs`.
+
+## Персонажные ассеты предзаготовленных миров
+
+`server/npc-portraits.mjs` экспортирует `NPC_PORTRAIT_CHARACTER_ASSETS`. Это
+allowlist полного NPC id и URL внутри `public/assets`; произвольное поле
+профиля не может подменить адрес. Сейчас в него входят восемь персонажей
+`astohan-plains`, а файлы лежат в
+`public/assets/npcs/astohan/astohan-{npc-id}-v1.png` и имеют размер 512×512.
+
+`NpcPortraitService.resolve()` выбирает такой файл до проверки значимости и до
+ленивой генерации, возвращая `reason: prepared_asset`. Поэтому Арес, Ивара,
+Орен, Мира, Ломар, Элдрин, Каэлан и Саргат получают собственный портрет даже
+при выключенной runtime-генерации. Их визуальные опорные признаки, prompts,
+провенанс и контрольные суммы собраны в
+`docs/astohan-npc-portraits-2026-09-08.md`.

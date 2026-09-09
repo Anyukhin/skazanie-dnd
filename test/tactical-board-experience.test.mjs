@@ -72,7 +72,7 @@ test('лестница даёт кнопку перехода, а индикат
   // Кнопка живёт в том же блоке, что и действия объекта сцены: подпись,
   // доступность и подсказку считает `levelTransitionPresentation`.
   assert.match(app, /levelTransitionPresentation\(\{/u)
-  assert.match(app, /onUseLevelTransition\(selected, selectedSceneObject\.id\)/u)
+  assert.match(app, /onUseLevelTransition\(selected, sceneObject\.id\)/u)
   assert.match(app, /className="map-level-stack"/u)
   assert.match(app, /levelIndicatorRows\(knownSceneLevels, sceneLevelIndex\)/u)
   assert.match(app, /levelStackRows\.length > 0 &&/u)

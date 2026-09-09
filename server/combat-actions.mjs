@@ -5,8 +5,8 @@ const catalogPayload = JSON.parse(readFileSync(new URL('../data/dndsu-class-acti
 const GENERATED_CLASSES = new Map(catalogPayload.classes.map((entry) => [entry.classKey, Object.freeze(entry)]))
 
 const clone = (value) => structuredClone(value)
-const roleText = (actor) => `${actor?.role ?? ''} ${actor?.class ?? ''} ${actor?.characterClass ?? ''}`.toLocaleLowerCase('ru')
-const normalizedName = (value) => String(value ?? '').toLocaleLowerCase('ru').replace(/ё/gu, 'е').replace(/[^a-zа-я0-9]+/giu, ' ').trim()
+const roleText = (actor) => `${actor?.role ?? ''} ${actor?.class ?? ''} ${actor?.characterClass ?? ''}`.toLowerCase()
+const normalizedName = (value) => String(value ?? '').toLowerCase().replace(/ё/gu, 'е').replace(/[^a-zа-я0-9]+/giu, ' ').trim()
 
 const CLASS_URL = Object.freeze({
   barbarian: 'https://www.dnd.su/class/87-barbarian/', bard: 'https://www.dnd.su/class/88-bard/', cleric: 'https://www.dnd.su/class/89-cleric/',
@@ -184,14 +184,15 @@ function actorSubclass(actor, classKey) {
   return catalog.subclasses.find((entry) => role.includes(normalizedName(entry.name)))?.name ?? null
 }
 
-function generatedActionsFor(actor, classKey) {
+function generatedActionsFor(classKey, subclass) {
   const catalog = GENERATED_CLASSES.get(classKey)
   if (!catalog) return []
-  const subclass = actorSubclass(actor, classKey)
+  const selected = normalizedName(subclass)
   return catalog.actions
-    .filter((entry) => !entry.subclass || normalizedName(entry.subclass) === normalizedName(subclass))
+    .filter((entry) => !entry.subclass || normalizedName(entry.subclass) === selected)
     .map((entry) => ({
-      ...clone(entry),
+      // Внутренние потребители только читают запись; наружу копию выдаёт combatActionsFor.
+      ...entry,
       mechanicsSupport: entry.effect?.kind === 'special' ? 'ruling-only' : 'heuristic',
       resource: entry.uses ? `feature_${entry.id}` : undefined,
       cost: entry.uses ? 1 : undefined,
@@ -236,7 +237,7 @@ export function combatActionsFor(actor) {
   const curated = (classKey ? [...(CLASS_ACTIONS[classKey] ?? []), ...(classKey === 'fighter' && normalizedName(subclass) === normalizedName('Мастер боевых искусств') ? MANEUVERS : [])] : [])
     .filter((entry) => isOptionalFeatureSelected(actor, entry.id))
   const curatedNames = new Set(curated.map((entry) => normalizedName(entry.name)))
-  const generated = classKey ? generatedActionsFor(actor, classKey).filter((entry) => entry.actionType !== 'free' && isOptionalFeatureSelected(actor, entry.id) && !curatedNames.has(normalizedName(entry.name))) : []
+  const generated = classKey ? generatedActionsFor(classKey, subclass).filter((entry) => entry.actionType !== 'free' && isOptionalFeatureSelected(actor, entry.id) && !curatedNames.has(normalizedName(entry.name))) : []
   const classActions = [...curated, ...generated]
   const ancestry = actor?.speciesBenefits?.mechanics?.dragon_ancestry
   const speciesActions = actor?.speciesBenefits?.mechanics?.breath_weapon === true && ancestry
@@ -306,7 +307,7 @@ export function combatResourceMaximumsFor(actor) {
   if (classKey === 'ranger') resources.favored_foe = proficiency
   if (classKey === 'sorcerer' && level >= 2) resources.sorcery_points = level
   if (classKey === 'wizard') resources.arcane_recovery = 1
-  for (const entry of generatedActionsFor(actor, classKey)) {
+  for (const entry of generatedActionsFor(classKey, subclass)) {
     if (!entry.uses || level < entry.minimumLevel) continue
     const maximum = entry.uses.maximum === 'proficiency' ? proficiency
       : String(entry.uses.maximum).startsWith('ability:')
@@ -351,7 +352,7 @@ export function combatResourceRecoveryFor(actor) {
   if (classKey === 'ranger') recovery.favored_foe = 'long'
   if (classKey === 'sorcerer' && level >= 2) recovery.sorcery_points = 'long'
   if (classKey === 'wizard') recovery.arcane_recovery = 'long'
-  for (const entry of generatedActionsFor(actor, classKey)) {
+  for (const entry of generatedActionsFor(classKey, subclass)) {
     if (!entry.uses || level < entry.minimumLevel) continue
     recovery[`feature_${entry.id}`] = entry.uses.recovery === 'short_or_long' ? 'short_or_long' : 'long'
   }

@@ -123,16 +123,17 @@ test('занятый слот — честный отказ до броска, �
   assert.equal(result.events.some((event) => event.event_type === 'AbilityCheckResolved'), false, 'кубик не должен быть брошен')
 })
 
-test('вне боя поведение прежнее: время идёт и цель обновляется', async (t) => {
+test('баррикада без существующей двери требует уточнения и не расходует время', async (t) => {
   const outOfCombat = battle()
   outOfCombat.mechanics.combat.active = false
   const { autonomy, eventStore } = await fixture(t, normalizeCampaignState(outOfCombat))
   const result = await improvise(autonomy, 'improv-3', 'Подпираю створку ворот обломком бревна.')
 
-  assert.ok(['check_success', 'check_failure', 'auto_success'].includes(result.kind))
+  assert.equal(result.kind, 'clarification')
   assert.equal(result.events.some((event) => event.event_type === 'CombatActionUsed'), false, 'вне боя слот тратить нечего')
   const loaded = await eventStore.load(CAMPAIGN_ID)
-  assert.ok(loaded.state.mechanics.world_time.elapsed_minutes > 0, 'вне боя импровизация занимает время')
+  assert.equal(loaded.state.mechanics.world_time.elapsed_minutes, normalizeCampaignState(outOfCombat).mechanics.world_time.elapsed_minutes)
+  assert.equal(loaded.state.scene.objective, outOfCombat.scene.objective)
 })
 
 test('повтор с тем же ключом не тратит действие второй раз', async (t) => {

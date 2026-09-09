@@ -1,0 +1,68 @@
+[
+  {
+    "id": "holdout-forge-mark",
+    "expected": "Клеймо на обломке установлено; это не доказательство вины кузнеца. Нельзя добавлять разговор, приобретение обломка или открытие тайника.",
+    "brief": {
+      "visible_events": [{"event_type":"WorldFactRecorded","actor_id":"hero:eira","target_ids":[],"visibility":"public","source_rule_ids":[],"payload":{"fact":{"id":"fact:forge-mark","subject_id":"item:blade-fragment","predicate":"marked_by","object":"Гильдия речных кузнецов","summary":"На обломке клинка различимо клеймо Гильдии речных кузнецов. Кто держал этот клинок, пока неизвестно.","visibility":"public","status":"active"}}}],
+      "visible_state_changes": [],
+      "known_environment": {
+        "scene":{"title":"Подвал старого суда","location":"Подвал старого суда","mood":"Вдоль нижнего края стены тянется белая полоса соли.","objective":"Установить, кому принадлежало оружие"},
+        "campaign_premise":{"tone":"сдержанное тревожное фэнтези без пафоса"},
+        "story_context":{"heroes":[{"id":"hero:eira","name":"Эйра","is_viewer":true}],"present_npcs":[],"open_promises":[],"recent_summaries":[{"title":"Причал","summary":"Ранее лодочник упомянул мастерские Гильдии речных кузнецов на восточном берегу."}]}
+      },
+      "permitted_npc_reactions": [],
+      "narration_constraints": ["Происхождение клейма установлено. Владелец клинка и виновник не установлены."]
+    }
+  },
+  {
+    "id": "holdout-locked-archive",
+    "expected": "Попытка открыть замок неудачна, дверь всё ещё закрыта. Отмычка не сломана, тревоги и появления стражи нет.",
+    "brief": {
+      "visible_events": [{"event_type":"DoorLockpicked","actor_id":"hero:toren","target_ids":["door:archive"],"visibility":"public","source_rule_ids":[],"payload":{"door_id":"door:archive","success":false,"opened":false}}],
+      "visible_state_changes": [{"door_id":"door:archive","locked":true,"open":false,"visibility":"public"}],
+      "known_environment": {
+        "scene":{"title":"Дверь архива","location":"Коридор суда","mood":"На бронзовой накладке замка потемнел старый лак.","objective":"Открыть архив"},
+        "campaign_premise":{"tone":"приземлённое напряжённое фэнтези"},
+        "story_context":{"heroes":[{"id":"hero:toren","name":"Торен","is_viewer":true}],"present_npcs":[],"open_promises":[],"recent_summaries":[]}
+      },
+      "permitted_npc_reactions": [],
+      "narration_constraints": ["Отмычка цела. Тревога не поднята. Никакого события обнаружения отряда нет."]
+    }
+  },
+  {
+    "id": "holdout-committed-ring",
+    "expected": "Передача серебряного кольца Эйре уже произошла. Можно назвать полученный предмет, нельзя сочинять его магические свойства, надевание кольца или новое обещание.",
+    "brief": {
+      "visible_events": [{"event_type":"LootContainerTaken","actor_id":"hero:eira","target_ids":["hero:eira"],"visibility":"public","source_rule_ids":[],"payload":{"recipient_id":"hero:eira","container_id":"chest:cedar","container_name":"кедровый ларец","items":[{"id":"ring:silver","name":"серебряное кольцо без камня","quantity":1}],"summary":"Эйра забрала серебряное кольцо без камня из кедрового ларца."}}],
+      "visible_state_changes": [{"hero_id":"hero:eira","inventory_added":[{"name":"серебряное кольцо без камня","quantity":1}],"visibility":"public"}],
+      "known_environment": {
+        "scene":{"title":"Комната смотрителя","location":"Старая башня","mood":"Кедровый ларец покрыт выцветшим зелёным лаком.","objective":"Найти вещь пропавшего смотрителя"},
+        "campaign_premise":{"tone":"мрачное камерное фэнтези"},
+        "story_context":{"heroes":[{"id":"hero:eira","name":"Эйра","is_viewer":true}],"present_npcs":[],"open_promises":[],"recent_summaries":[{"title":"Разговор у башни","summary":"Сестра смотрителя говорила, что он никогда не носил перчаток."}]}
+      },
+      "permitted_npc_reactions": [],
+      "narration_constraints": ["Кольцо обычное: магические свойства не обнаружены. Нет события надевания кольца."]
+    }
+  },
+  {
+    "id": "holdout-recorded-dialogue",
+    "expected": "Надзиратель уже отказал в доступе без печати; лодочница уже подтвердила готовность ждать у переправы до заката. Передать разные голоса и существующий конфликт, не выдавая печать и не перемещая героев.",
+    "brief": {
+      "visible_events": [
+        {"event_type":"NpcConversationRecorded","actor_id":"hero:toren","target_ids":["npc:osvald","hero:toren"],"visibility":"public","source_rule_ids":[],"payload":{"conversation":{"npc_id":"npc:osvald","hero_id":"hero:toren","player_message":"Пропустите нас в архив.","npc_reply":"Без печати магистра доступ закрыт. Порядок один для всех.","disclosed_fact_ids":[]}}},
+        {"event_type":"NpcConversationRecorded","actor_id":"hero:eira","target_ids":["npc:lada","hero:eira"],"visibility":"public","source_rule_ids":[],"payload":{"conversation":{"npc_id":"npc:lada","hero_id":"hero:eira","player_message":"Сможешь подождать?","npc_reply":"До заката подожду у переправы. Дольше — уж не обессудьте.","disclosed_fact_ids":[]}}}
+      ],
+      "visible_state_changes": [],
+      "known_environment": {
+        "scene":{"title":"Двор суда","location":"Двор суда","mood":"Под аркой лежит узкая полоса тени.","objective":"Получить доступ к архиву до ухода лодки"},
+        "campaign_premise":{"tone":"живое приземлённое фэнтези"},
+        "story_context":{"heroes":[{"id":"hero:eira","name":"Эйра","is_viewer":true},{"id":"hero:toren","name":"Торен"}],"present_npcs":[{"id":"npc:osvald","name":"Освальд","role":"надзиратель","speech_profile":{"pace":"сухо","lexicon":"официальные формулировки"}},{"id":"npc:lada","name":"Лада","role":"лодочница","speech_profile":{"pace":"быстро","lexicon":"простая разговорная речь"}}],"open_promises":[],"recent_summaries":[]}
+      },
+      "permitted_npc_reactions": [
+        {"npc_id":"npc:osvald","name":"Освальд","text":"Без печати магистра доступ закрыт. Порядок один для всех."},
+        {"npc_id":"npc:lada","name":"Лада","text":"До заката подожду у переправы. Дольше — уж не обессудьте."}
+      ],
+      "narration_constraints": ["Печать не получена. Доступ в архив закрыт. Отряд остаётся во дворе суда."]
+    }
+  }
+]

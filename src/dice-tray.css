@@ -167,3 +167,26 @@
 .dice-tray__menu button:hover { border-color: rgba(211,160,97,.45); background: rgba(192,132,66,.14); color: #e2b87c; }
 .dice-tray__menu button.active { border-color: rgba(214,161,96,.5); color: #e2b87c; }
 .dice-tray__menu em { color: #756e67; font: var(--fs-xs) Manrope, sans-serif; font-style: normal; }
+
+/* Бросок вынесен в верхний слой: масштаб и transform карты его не затрагивают. */
+.dice-cinematic { position: fixed; inset: 0; width: min(680px, 100vw); max-width: 100vw; max-height: 100dvh; margin: auto; padding: 36px 28px 30px; overflow: auto; border: 0; background: transparent; color: #efdfc3; text-align: center; }
+.dice-cinematic::backdrop { background: rgba(5, 7, 9, .87); }
+.dice-cinematic__close { position: absolute; top: 12px; right: 16px; display: grid; place-items: center; width: 44px; height: 44px; border: 0; background: transparent; color: #b9aa91; cursor: pointer; }
+.dice-cinematic__heading h2 { margin: 0; color: #efdfc3; font: 500 clamp(26px, 4vw, 38px) Spectral, Georgia, serif; }
+.dice-cinematic__heading p { margin: 8px 0 0; min-height: 24px; color: #b9aa91; font: 14px Manrope, sans-serif; }
+.dice-cinematic__stage { position: relative; width: min(100%, calc((100dvh - 340px) * 1.5)); min-width: 150px; margin-inline: auto; aspect-ratio: 3 / 2; }
+.dice-cinematic__stage canvas { position: relative; display: block; width: 100%; height: 100%; }
+.dice-cinematic__circle { position: absolute; left: 50%; top: 50%; width: 60%; aspect-ratio: 1; border: 1px solid #b48b4540; border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 0 10px #b48b4509, inset 0 0 50px #b48b4508; }
+.dice-cinematic__circle::after { content: ''; position: absolute; inset: 12px; border: 1px solid #b48b4526; transform: rotate(45deg); }
+.dice-cinematic__outcome { min-height: 90px; }
+.dice-cinematic__outcome p { margin: 0 0 4px; font: 500 clamp(28px, 5vw, 42px) Spectral, Georgia, serif; color: #f5dfae; }
+.dice-cinematic__outcome span { color: #b9aa91; font: 13px Manrope, sans-serif; }
+.dice-cinematic__continue { min-width: 190px; min-height: 44px; margin-top: 18px; padding: 10px 22px; border: 1px solid #a5814f; border-radius: 3px; color: #ecd3a5; background: #211c16; font: 14px Manrope, sans-serif; cursor: pointer; }
+.dice-cinematic button:hover { color: #fff0d4; border-color: #efd09a; }
+.dice-cinematic button:focus-visible, .dice-tray button:focus-visible { outline: 2px solid #efd09a; outline-offset: 4px; }
+.dice-cinematic--result .dice-cinematic__outcome { animation: diceResultReveal .65s ease-out both; }
+@keyframes diceResultReveal { from { opacity: 0; } to { opacity: 1; } }
+.dice-tray__menu small { letter-spacing: normal; font-size: var(--fs-xs); }
+.dice-tray__menu .dice-tray__error { color: #e8a395; }
+@media (max-height: 700px) { .dice-cinematic { width: min(500px, 100vw); padding-top: 20px; padding-bottom: 20px; } .dice-cinematic__outcome { min-height: 66px; } .dice-cinematic__continue { margin-top: 10px; } }
+@media (prefers-reduced-motion: reduce) { .dice-cinematic *, .dice-cinematic *::after { animation: none !important; } }

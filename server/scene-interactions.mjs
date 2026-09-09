@@ -34,7 +34,7 @@ const CATALOG = Object.freeze([
     aliases: Object.freeze([
       'bar_counter', 'bar_shelf', 'shelf_wall', 'pillar', 'cart', 'market_stall',
       'haystack', 'woodpile', 'firewood_stack', 'broom', 'cobweb',
-      'banner', 'temple_banner', 'rug', 'bed', 'bunk_bed', 'bench', 'prayer_bench', 'chandelier',
+      'banner', 'temple_banner', 'rug', 'bed', 'bunk_bed', 'bench', 'prayer_bench', 'chandelier', 'royal_throne',
     ]),
     verbs: Object.freeze(['inspect']),
   }),
@@ -92,6 +92,7 @@ const ASSET_ALIASES_RU = Object.freeze({
   chandelier: Object.freeze(['люстра', 'люстру', 'люстре']),
   bookshelf: Object.freeze(['полка', 'полку', 'шкаф', 'книги']),
   table: Object.freeze(['стол', 'стола', 'столе']),
+  royal_throne: Object.freeze(['королевский трон', 'трон', 'трона', 'троне']),
   fallen_log: Object.freeze(['бревно', 'бревна', 'бревне']),
   tree_stump: Object.freeze(['пень', 'пня', 'пне']),
   boulder: Object.freeze(['валун', 'валуна', 'валуне', 'камень', 'камня', 'камне']),
@@ -459,7 +460,7 @@ export function nearestSceneObjectCommand({ props = [], actorPosition, text } = 
 export function sceneInteractionNarration(events = []) {
   const batch = Array.isArray(events) ? events : []
   const relevant = batch.filter((event) => String(event?.event_type ?? '').startsWith('SceneObject')
-    || event?.event_type === 'RestCompleted'
+    || (event?.event_type === 'RestCompleted' && event?.payload?.source_prop_id)
     || event?.event_type === 'LockpickNoticed'
     || (event?.event_type === 'DamageApplied' && event?.payload?.reason === 'scene-object-trap'))
   if (!relevant.length) return ''

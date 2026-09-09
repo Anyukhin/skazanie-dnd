@@ -750,6 +750,12 @@ test('social check classifier and policy choose a server-owned skill, ability an
   assert.equal(classifyNpcSocialCheck('I threaten Marta.'), 'intimidation')
   assert.equal(classifyNpcSocialCheck("I use insight to read Marta's motives."), 'insight')
   assert.equal(classifyNpcSocialCheck('I ask Marta about the weather.'), null)
+  assert.equal(classifyNpcSocialCheck('Я не угрожаю и не требую, а спокойно объясняю.'), null)
+  assert.equal(classifyNpcSocialCheck('Я не обманываю Марту.'), null)
+  assert.equal(classifyNpcSocialCheck('Я цитирую фразу «я угрожаю страже».'), null)
+  assert.equal(classifyNpcSocialCheck('Я не хочу его запугивать.'), null)
+  assert.equal(classifyNpcSocialCheck('Не только угрожаю, но и предлагаю сделку.'), 'intimidation')
+  assert.equal(classifyNpcSocialCheck('Угрожаю: «сейчас уйдите».'), 'intimidation')
 
   const policy = buildNpcSocialCheckPolicy({
     state: campaign(), npcId: 'marta', heroId: 'hero', message: 'I persuade Marta to help.', turnId: 'turn-policy',

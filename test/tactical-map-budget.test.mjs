@@ -494,7 +494,7 @@ function countingContext() {
     textAlign: 'start',
     textBaseline: 'alphabetic',
     save: count, restore: count, translate: count, rotate: count,
-    beginPath: count, closePath: count, moveTo: count, lineTo: count, arc: count,
+    beginPath: count, closePath: count, clip: count, rect: count, moveTo: count, lineTo: count, arc: count,
     fill: count, stroke: count, fillRect: count, strokeRect: count, clearRect: count,
     setLineDash: count, drawImage: count, fillText: count,
   }

@@ -22,6 +22,20 @@ export const NPC_PORTRAIT_ROLE_ASSETS = Object.freeze({
   commoner: '/assets/npcs/roles/commoner.png',
 })
 
+// Персонажные портреты предзаготовленных миров — часть репозитория, а не
+// ленивого кеша кампании. Allowlist по полному NPC id не позволяет свободному
+// тексту игрока подменить URL или выйти за каталог `public/assets`.
+export const NPC_PORTRAIT_CHARACTER_ASSETS = Object.freeze({
+  'astohan-ares': '/assets/npcs/astohan/astohan-ares-v1.png',
+  'astohan-ivara': '/assets/npcs/astohan/astohan-ivara-v1.png',
+  'astohan-oren': '/assets/npcs/astohan/astohan-oren-v1.png',
+  'astohan-mira': '/assets/npcs/astohan/astohan-mira-v1.png',
+  'astohan-lomar': '/assets/npcs/astohan/astohan-lomar-v1.png',
+  'astohan-eldrin': '/assets/npcs/astohan/astohan-eldrin-v1.png',
+  'astohan-kaelan': '/assets/npcs/astohan/astohan-kaelan-v1.png',
+  'astohan-sargat': '/assets/npcs/astohan/astohan-sargat-v1.png',
+})
+
 const IMPORTANT_TAGS = new Set([
   'important',
   'major',
@@ -43,6 +57,7 @@ const IMPORTANT_TAGS = new Set([
  *   role: string,
  *   public_summary: string,
  *   tags: string[],
+ *   portrait_url?: string,
  * }} PublicNpcPortraitProfile
  */
 
@@ -52,7 +67,7 @@ const IMPORTANT_TAGS = new Set([
  *   source: 'static',
  *   role: keyof typeof NPC_PORTRAIT_ROLE_ASSETS,
  *   url: string,
- *   reason: 'secondary_npc' | 'generator_unavailable' | 'generation_failed' | 'runtime_generation_disabled',
+ *   reason: 'secondary_npc' | 'prepared_asset' | 'generator_unavailable' | 'generation_failed' | 'runtime_generation_disabled',
  * }} StaticNpcPortrait
  */
 
@@ -108,6 +123,20 @@ function text(value, maximum) {
 }
 
 /**
+ * Кампанийный файл выбирается только по server-owned id. Поле `portrait_url`,
+ * если его когда-нибудь принесёт сохранённый профиль, само по себе не даёт
+ * права указать произвольный URL.
+ *
+ * @param {PublicNpcPortraitProfile | {id?: unknown, portrait_url?: unknown}} profile
+ * @returns {string}
+ */
+function preparedNpcPortraitUrl(profile) {
+  const id = text(profile?.id, 120)
+  const assets = /** @type {Record<string, string>} */ (NPC_PORTRAIT_CHARACTER_ASSETS)
+  return assets[id] ?? ''
+}
+
+/**
  * Копирует только публичные поля профиля. Никакой вызывающий код не может
  * случайно передать генератору goals, beliefs, schedule или GM-only заметки.
  *
@@ -120,6 +149,7 @@ export function publicNpcPortraitProfile(value) {
   const id = text(source.id, 120)
   const name = text(source.name, 160)
   if (!id || !name) return null
+  const portraitUrl = preparedNpcPortraitUrl({ id })
   return {
     id,
     name,
@@ -129,6 +159,7 @@ export function publicNpcPortraitProfile(value) {
       .map((tag) => text(tag, 60).toLocaleLowerCase('ru'))
       .filter(Boolean)
       .slice(0, 20),
+    ...(portraitUrl ? { portrait_url: portraitUrl } : {}),
   }
 }
 
@@ -204,7 +235,13 @@ export function npcPortraitRole(profile) {
  */
 export function staticNpcPortrait(profile, reason = 'secondary_npc') {
   const role = npcPortraitRole(profile)
-  return { kind: 'static', source: 'static', role, url: NPC_PORTRAIT_ROLE_ASSETS[role], reason }
+  return {
+    kind: 'static',
+    source: 'static',
+    role,
+    url: preparedNpcPortraitUrl(profile) || NPC_PORTRAIT_ROLE_ASSETS[role],
+    reason,
+  }
 }
 
 /**
@@ -338,6 +375,9 @@ export class NpcPortraitService {
     allowGeneration = () => true,
     generationEnabled = true,
   }) {
+    // У предзаготовленного мира картинка уже одобрена и лежит в репозитории:
+    // не тратим лимит и не заменяем её runtime-генерацией.
+    if (preparedNpcPortraitUrl(profile)) return staticNpcPortrait(profile, 'prepared_asset')
     if (!npcPortraitSignificance(projectedState, profile).significant) {
       return staticNpcPortrait(profile, 'secondary_npc')
     }

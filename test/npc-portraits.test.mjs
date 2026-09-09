@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative } from 'node:path'
 import test from 'node:test'
 import {
+  NPC_PORTRAIT_CHARACTER_ASSETS,
   NPC_PORTRAIT_ROLE_ASSETS,
   NpcPortraitService,
   buildNpcPortraitPrompt,
@@ -108,6 +109,35 @@ test('второстепенный NPC получает детерминиров
   assert.equal(calls, 0)
   assert.equal(npcPortraitRole(profile({ role: 'captain of the guard' })), 'guard')
   assert.equal(npcPortraitRole(profile({ role: 'court scholar' })), 'scholar')
+})
+
+test('предзаготовленный NPC получает свой кампанийный портрет без runtime-генерации', async (t) => {
+  const storage = mkdtempSync(join(tmpdir(), 'npc-portrait-authored-'))
+  t.after(() => rmSync(storage, { recursive: true, force: true }))
+  let calls = 0
+  const service = new NpcPortraitService({
+    storageDir: storage,
+    imageModel: 'test/image',
+    apiKey: 'configured',
+    generator: async () => { calls += 1; return { bytes: WEBP } },
+  })
+  const ids = Object.keys(NPC_PORTRAIT_CHARACTER_ASSETS)
+  assert.equal(ids.length, 8)
+  for (const id of ids) {
+    const authored = publicNpcPortraitProfile({
+      id, name: id, role: 'named NPC', public_summary: 'Авторский персонаж.', tags: [],
+    })
+    assert.ok(authored)
+    assert.equal(authored?.portrait_url, NPC_PORTRAIT_CHARACTER_ASSETS[id], id)
+    const result = await service.resolve({
+      campaignId: 'ASTOHAN-AUTHORED', profile: authored, projectedState: projected(authored),
+      generationEnabled: false,
+    })
+    assert.equal(result.kind, 'static', id)
+    assert.equal(result.url, NPC_PORTRAIT_CHARACTER_ASSETS[id], id)
+    assert.equal(result.reason, 'prepared_asset', id)
+  }
+  assert.equal(calls, 0)
 })
 
 test('значимый NPC генерируется один раз и читается из campaign+npc cache после рестарта', async (t) => {

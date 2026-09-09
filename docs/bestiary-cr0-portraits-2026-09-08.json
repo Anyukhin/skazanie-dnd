@@ -1,0 +1,137 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-09-08",
+  "ruleset_id": "dnd_5e_2014",
+  "book_code": "MM14",
+  "scope": "selected_cr0_portraits",
+  "generator": "image_gen_builtin",
+  "generation_policy": "One original asset per call; source files remain in the generated-images directory until the shared asset-rights update.",
+  "output": {
+    "width": 512,
+    "height": 512,
+    "format": "png",
+    "composition": "square; circular-safe center crop; one readable silhouette; no text or frame"
+  },
+  "assets": [
+    {
+      "slug": "commoner",
+      "name_ru": "Обыватель",
+      "source_path": "C:/Users/anton/.codex/generated_images/01a07e2c-6ff6-7c43-bc60-f9a872eecd53/exec-7e730d53-edbb-41e9-81f2-d78972375cda.png",
+      "target_path": "public/assets/enemies/dnd-2014/commoner.png",
+      "asset_url": "/assets/enemies/dnd-2014/commoner.png",
+      "status": "copied_to_workspace",
+      "prompt": "Use case: stylized-concept\nAsset type: square tabletop battlemap enemy token portrait for a dark-fantasy game UI\nPrimary request: an original fantasy portrait of a D&D 5e 2014 commoner, a single wary medieval villager holding a simple wooden club, grounded and readable as a weak humanoid\nScene/backdrop: a dim village lane at dusk, quiet blurred background\nStyle/medium: premium hand-painted dark fantasy game illustration, original design, subtle ink-and-gouache texture\nComposition/framing: one centered subject, strong readable silhouette, all important features inside a circular-safe center crop, generous edge padding, square composition, no border\nLighting/mood: restrained warm rim light over deep charcoal shadow, high local contrast readable at 64px\nColor palette: muted ochre, brown, charcoal, faded blue\nMaterials/textures: rough wool, weathered wood, worn leather\nConstraints: exactly one creature; no text, letters, numbers, logo, UI frame, watermark, blood, gore or extra limbs\nAvoid: copyrighted character likeness, comedy, anime, chibi, bright cartoon colors, busy scenery",
+      "production_path": "public/assets/enemies/dnd-2014/commoner.png",
+      "installed": true,
+      "production_sha256": "ccf260347f4f8f07e02947c9f4d7e7331346843b077da3ca7057acbc3077c2be"
+    },
+    {
+      "slug": "crawling-claw",
+      "name_ru": "Ползающая рука",
+      "source_path": "C:/Users/anton/.codex/generated_images/01a07e2c-6ff6-7c43-bc60-f9a872eecd53/exec-064104e9-c559-4c12-9b1d-09ed8d447817.png",
+      "target_path": "public/assets/enemies/dnd-2014/crawling-claw.png",
+      "asset_url": "/assets/enemies/dnd-2014/crawling-claw.png",
+      "status": "copied_to_workspace",
+      "prompt": "Use case: stylized-concept\nAsset type: square tabletop battlemap enemy token portrait for a dark-fantasy game UI\nPrimary request: an original fantasy portrait of a D&D 5e 2014 crawling claw, a single severed undead humanoid hand crawling on its fingers, pale weathered skin, faint dark necromantic marks, one readable silhouette\nScene/backdrop: a dim crypt floor with soft blurred stone behind it\nStyle/medium: premium hand-painted dark fantasy game illustration, original design, subtle ink-and-gouache texture\nComposition/framing: centered subject low in frame, strong readable silhouette, all important features inside a circular-safe center crop, generous edge padding, square composition, no border\nLighting/mood: restrained cold rim light over deep charcoal shadow, high local contrast readable at 64px\nColor palette: ashen skin, muted violet, charcoal and tarnished bone\nMaterials/textures: dry skin, cracked nails, dusty stone\nConstraints: exactly one hand; no text, letters, numbers, logo, UI frame, watermark, blood, gore, extra limbs or visible full body\nAvoid: copyrighted character likeness, comedy, anime, chibi, bright cartoon colors, busy scenery",
+      "production_path": "public/assets/enemies/dnd-2014/crawling-claw.png",
+      "installed": true,
+      "production_sha256": "ab591a3fba4eeccebd5667c2f28082ff43831fd6d2d48f694dab4df3e6ba77d5"
+    },
+    {
+      "slug": "homunculus",
+      "name_ru": "Гомункул",
+      "source_path": "C:/Users/anton/.codex/generated_images/01a07e2c-6ff6-7c43-bc60-f9a872eecd53/exec-34dca9dc-47cc-464e-bb29-51f34eeed116.png",
+      "target_path": "public/assets/enemies/dnd-2014/homunculus.png",
+      "asset_url": "/assets/enemies/dnd-2014/homunculus.png",
+      "status": "copied_to_workspace",
+      "prompt": "Use case: stylized-concept\nAsset type: square tabletop battlemap enemy token portrait for a dark-fantasy game UI\nPrimary request: an original fantasy portrait of a D&D 5e 2014 homunculus, a single tiny artificial humanoid with leathery wings, compact body and an alert watchful face\nScene/backdrop: a shadowed alchemist workshop with blurred glass and wood behind it\nStyle/medium: premium hand-painted dark fantasy game illustration, original design, subtle ink-and-gouache texture\nComposition/framing: centered subject, strong readable silhouette, all important features inside a circular-safe center crop, generous edge padding, square composition, no border\nLighting/mood: restrained amber rim over cool charcoal shadow, high local contrast readable at 64px\nColor palette: muted clay red, parchment cream, charcoal and brass\nMaterials/textures: stitched leather wings, clay-like skin, aged wood and brass\nConstraints: exactly one creature; no text, letters, numbers, logo, UI frame, watermark, blood, gore or extra limbs\nAvoid: copyrighted character likeness, comedy, anime, chibi, bright cartoon colors, busy scenery",
+      "production_path": "public/assets/enemies/dnd-2014/homunculus.png",
+      "installed": true,
+      "production_sha256": "febe1683babcbeb8498bda559b1712a1720825546d5a187b39d2fd52c6caef74"
+    },
+    {
+      "slug": "lemure",
+      "name_ru": "Лемур",
+      "source_path": "C:/Users/anton/.codex/generated_images/01a07e2c-6ff6-7c43-bc60-f9a872eecd53/exec-9bd7c287-a777-489f-afe4-524714eaa492.png",
+      "target_path": "public/assets/enemies/dnd-2014/lemure.png",
+      "asset_url": "/assets/enemies/dnd-2014/lemure.png",
+      "status": "copied_to_workspace",
+      "prompt": "Use case: stylized-concept\nAsset type: square tabletop battlemap enemy token portrait for a dark-fantasy game UI\nPrimary request: an original fantasy portrait of a D&D 5e 2014 lemure, a single squat malformed devil made of melted clay-like flesh, small horns and a hateful low stance\nScene/backdrop: a dim sulfurous infernal wasteland with soft ash and no other creatures\nStyle/medium: premium hand-painted dark fantasy game illustration, original design, subtle ink-and-gouache texture\nComposition/framing: centered subject, strong readable silhouette, all important features inside a circular-safe center crop, generous edge padding, square composition, no border\nLighting/mood: restrained ember rim over deep brown-black shadow, high local contrast readable at 64px\nColor palette: burnt clay, dark crimson, charcoal and muted orange\nMaterials/textures: cracked clay-like skin, smoke, blackened stone\nConstraints: exactly one creature; no text, letters, numbers, logo, UI frame, watermark, blood, gore or extra limbs; non-graphic\nAvoid: copyrighted character likeness, comedy, anime, chibi, bright cartoon colors, busy scenery",
+      "production_path": "public/assets/enemies/dnd-2014/lemure.png",
+      "installed": true,
+      "production_sha256": "8d650548fcebfc2cc4b7ed8adcf2604a74e307bd86e829b3a841b1940cc6e80d"
+    },
+    {
+      "slug": "awakened-shrub",
+      "name_ru": "Пробуждённый куст",
+      "source_path": "C:/Users/anton/.codex/generated_images/01a07e2c-6ff6-7c43-bc60-f9a872eecd53/exec-f1bf0378-6bd1-4f43-9112-8160be42e518.png",
+      "target_path": "public/assets/enemies/dnd-2014/awakened-shrub.png",
+      "asset_url": "/assets/enemies/dnd-2014/awakened-shrub.png",
+      "status": "copied_to_workspace",
+      "prompt": "Use case: stylized-concept\nAsset type: square tabletop battlemap enemy token portrait for a dark-fantasy game UI\nPrimary request: an original fantasy portrait of a D&D 5e 2014 awakened shrub, a single small sentient thorny shrub with a few angular branch-arms and bright watchful eyes hidden among leaves, one readable silhouette\nScene/backdrop: a dim overgrown forest path with soft blurred foliage and no other creature\nStyle/medium: premium hand-painted dark fantasy game illustration, original design, subtle ink-and-gouache texture\nComposition/framing: centered subject, strong readable silhouette, all important features inside a circular-safe center crop, generous edge padding, square composition, no border\nLighting/mood: restrained cool green rim over deep charcoal shadow, high local contrast readable at 64px\nColor palette: dark leaf green, muted olive, brown and charcoal\nMaterials/textures: dry leaves, thorny twigs, rough bark and forest soil\nConstraints: exactly one shrub creature; no text, letters, numbers, logo, UI frame, watermark, blood, gore or extra limbs\nAvoid: copyrighted character likeness, comedy, anime, chibi, bright cartoon colors, busy scenery",
+      "production_path": "public/assets/enemies/dnd-2014/awakened-shrub.png",
+      "installed": true,
+      "production_sha256": "55daae2958d19f5c095fafe5d563be9ac1e2b8d75d445536575889c9b85c1f17"
+    },
+    {
+      "slug": "giant-fire-beetle",
+      "name_ru": "Гигантский огненный жук",
+      "source_path": "C:/Users/anton/.codex/generated_images/01a07e2c-6ff6-7c43-bc60-f9a872eecd53/exec-a4c15a76-2cc3-4450-ab3b-901e4693deda.png",
+      "target_path": "public/assets/enemies/dnd-2014/giant-fire-beetle.png",
+      "asset_url": "/assets/enemies/dnd-2014/giant-fire-beetle.png",
+      "status": "copied_to_workspace",
+      "prompt": "Use case: stylized-concept\nAsset type: square tabletop battlemap enemy token portrait for a dark-fantasy game UI\nPrimary request: an original fantasy portrait of a D&D 5e 2014 giant fire beetle, a single small armored beetle with three softly glowing amber light organs, mandibles and a clear readable silhouette\nScene/backdrop: a dark cavern floor with quiet stones and no other creature\nStyle/medium: premium hand-painted dark fantasy game illustration, original design, subtle ink-and-gouache texture\nComposition/framing: centered subject, strong readable silhouette, all important features inside a circular-safe center crop, generous edge padding, square composition, no border\nLighting/mood: warm amber glow from the beetle against deep charcoal shadow, high local contrast readable at 64px\nColor palette: dark umber shell, copper, amber and charcoal\nMaterials/textures: segmented chitin, glossy shell, dusty stone\nConstraints: exactly one beetle; no text, letters, numbers, logo, UI frame, watermark, blood, gore or extra limbs\nAvoid: copyrighted character likeness, comedy, anime, chibi, bright cartoon colors, busy scenery",
+      "production_path": "public/assets/enemies/dnd-2014/giant-fire-beetle.png",
+      "installed": true,
+      "production_sha256": "bfa4baf4ac12d43ce93b2362bc85dda0fe9b8d647ad84664585cfbdf95ba4067"
+    },
+    {
+      "slug": "hyena",
+      "name_ru": "Гиена",
+      "source_path": "C:/Users/anton/.codex/generated_images/01a07e2c-6ff6-7c43-bc60-f9a872eecd53/exec-1ff343bc-017a-49de-8302-7117cfb092e1.png",
+      "target_path": "public/assets/enemies/dnd-2014/hyena.png",
+      "asset_url": "/assets/enemies/dnd-2014/hyena.png",
+      "status": "copied_to_workspace",
+      "prompt": "Use case: stylized-concept\nAsset type: square tabletop battlemap enemy token portrait for a dark-fantasy game UI\nPrimary request: an original fantasy portrait of a D&D 5e 2014 hyena, a single alert spotted hyena in a low predatory stance with upright ears and a strong readable silhouette\nScene/backdrop: a dark scrubland edge at dusk with soft dry grass and no other animals\nStyle/medium: premium hand-painted dark fantasy game illustration, original design, subtle ink-and-gouache texture\nComposition/framing: centered subject, strong readable silhouette, all important features inside a circular-safe center crop, generous edge padding, square composition, no border\nLighting/mood: restrained warm rim over cool brown shadow, high local contrast readable at 64px\nColor palette: dusty ochre, dark brown, charcoal and muted gold\nMaterials/textures: coarse spotted fur, paws and dry earth\nConstraints: exactly one animal; no text, letters, numbers, logo, UI frame, watermark, blood, gore or extra limbs\nAvoid: copyrighted character likeness, comedy, anime, chibi, bright cartoon colors, busy scenery",
+      "production_path": "public/assets/enemies/dnd-2014/hyena.png",
+      "installed": true,
+      "production_sha256": "f38fa5c06c7a1023944b73db0604d83ae3371080e03d56ce153cc03c7c334784"
+    },
+    {
+      "slug": "jackal",
+      "name_ru": "Шакал",
+      "source_path": "C:/Users/anton/.codex/generated_images/01a07e2c-6ff6-7c43-bc60-f9a872eecd53/exec-7e363562-283e-42cb-b1f8-7453c1d1da94.png",
+      "target_path": "public/assets/enemies/dnd-2014/jackal.png",
+      "asset_url": "/assets/enemies/dnd-2014/jackal.png",
+      "status": "staged_generated_source",
+      "prompt": "Use case: stylized-concept\nAsset type: square tabletop battlemap enemy token portrait for a dark-fantasy game UI\nPrimary request: an original fantasy portrait of a D&D 5e 2014 jackal, a single lean jackal with pointed ears, narrow muzzle and cautious stalking posture\nScene/backdrop: a quiet desert ruin at twilight with soft sand and no other creatures\nStyle/medium: premium hand-painted dark fantasy game illustration, original design, subtle ink-and-gouache texture\nComposition/framing: centered subject, strong readable silhouette, all important features inside a circular-safe center crop, generous edge padding, square composition, no border\nLighting/mood: muted amber rim over deep violet-brown shadow, high local contrast readable at 64px\nColor palette: sand ochre, russet, charcoal and dull bronze\nMaterials/textures: short fur, alert ears and weathered sandstone\nConstraints: exactly one animal; no text, letters, numbers, logo, UI frame, watermark, blood, gore or extra limbs\nAvoid: copyrighted character likeness, comedy, anime, chibi, bright cartoon colors, busy scenery",
+      "production_path": "public/assets/enemies/dnd-2014/jackal.png",
+      "installed": true,
+      "production_sha256": "8e8fa3956aeeec6a17d8634275b4858d311735f1309310ff9b0a54ad8268df59"
+    },
+    {
+      "slug": "spider",
+      "name_ru": "Паук",
+      "source_path": "C:/Users/anton/.codex/generated_images/01a07e2c-6ff6-7c43-bc60-f9a872eecd53/exec-95ca0e02-2712-45da-b068-a5e9ea27f9a5.png",
+      "target_path": "public/assets/enemies/dnd-2014/spider.png",
+      "asset_url": "/assets/enemies/dnd-2014/spider.png",
+      "status": "staged_generated_source",
+      "prompt": "Use case: stylized-concept\nAsset type: square tabletop battlemap enemy token portrait for a dark-fantasy game UI\nPrimary request: an original fantasy portrait of a D&D 5e 2014 spider, a single tiny dark spider with eight clearly readable legs, glossy body and small fangs\nScene/backdrop: a shadowed cave web with softly blurred stone and no other creatures\nStyle/medium: premium hand-painted dark fantasy game illustration, original design, subtle ink-and-gouache texture\nComposition/framing: centered subject, strong readable silhouette, all important features inside a circular-safe center crop, generous edge padding, square composition, no border\nLighting/mood: restrained cool rim over deep charcoal shadow, high local contrast readable at 64px\nColor palette: black-brown, muted violet, slate and silver highlights\nMaterials/textures: fine hairs, glossy carapace, delicate web and damp stone\nConstraints: exactly one spider; exactly eight legs; no text, letters, numbers, logo, UI frame, watermark, blood, gore or extra limbs\nAvoid: copyrighted character likeness, comedy, anime, chibi, bright cartoon colors, busy scenery",
+      "production_path": "public/assets/enemies/dnd-2014/spider.png",
+      "installed": true,
+      "production_sha256": "c5ec9af4b72be534eeb75ed9b3fd0b6a909ad57edbc830f23a48fed6110b0f72"
+    },
+    {
+      "slug": "scorpion",
+      "name_ru": "Скорпион",
+      "source_path": "C:/Users/anton/.codex/generated_images/01a07e2c-6ff6-7c43-bc60-f9a872eecd53/exec-7b0d341a-89d4-4fb0-afd5-be0ab88b99b0.png",
+      "target_path": "public/assets/enemies/dnd-2014/scorpion.png",
+      "asset_url": "/assets/enemies/dnd-2014/scorpion.png",
+      "status": "staged_generated_source",
+      "prompt": "Use case: stylized-concept\nAsset type: square tabletop battlemap enemy token portrait for a dark-fantasy game UI\nPrimary request: an original fantasy portrait of a D&D 5e 2014 scorpion, a single tiny desert scorpion with raised pincers and a curled tail, clearly readable silhouette\nScene/backdrop: a dark sandy ruin floor with a few quiet stones\nStyle/medium: premium hand-painted dark fantasy game illustration, original design, subtle ink-and-gouache texture\nComposition/framing: centered subject, strong readable silhouette, all important features inside a circular-safe center crop, generous edge padding, square composition, no border\nLighting/mood: hot muted amber edge light over deep brown shadow, high local contrast readable at 64px\nColor palette: burnt umber, black-brown, dull sand and amber\nMaterials/textures: segmented shell, pincers, tail segments and dusty sand\nConstraints: exactly one scorpion; no text, letters, numbers, logo, UI frame, watermark, blood, gore or extra limbs\nAvoid: copyrighted character likeness, comedy, anime, chibi, bright cartoon colors, busy scenery",
+      "production_path": "public/assets/enemies/dnd-2014/scorpion.png",
+      "installed": true,
+      "production_sha256": "ef23f4d2178dd967108fdc6214a793270dacbb26b606bac21db7b029140fdc1e"
+    }
+  ]
+}

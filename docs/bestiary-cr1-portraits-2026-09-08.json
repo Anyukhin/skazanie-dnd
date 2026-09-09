@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-09-08",
+  "ruleset_id": "dnd_5e_2014",
+  "book_code": "MM14",
+  "purpose": "Портреты двух новых записей CR1 MM14; передача в public и регистрация прав выполняются владельцем интеграции.",
+  "generator": "image_gen_builtin",
+  "generation_policy": "original_generated_art; one asset per call; no dnd.su gallery image copied; staging only until catalog integration",
+  "rights_note_ru": "Портреты сгенерированы отдельно от dnd.su. Root должен скопировать staged PNG в public/assets/enemies/dnd-2014 и зарегистрировать их в data/asset-rights.json.",
+  "assets": [
+    {
+      "slug": "imp",
+      "name_ru": "Бес",
+      "challenge_rating": "1",
+      "status": "generated_staged",
+      "generated_path": "C:\\Users\\anton\\.codex\\generated_images\\01a07e47-b8fc-7b20-b27a-dec4ceb4f9eb\\exec-90a886f1-22ae-4e48-a4e2-67f7c90f2754.png",
+      "staging_path": "tmp/bestiary-expansion/cr1-portraits/imp.png",
+      "target_path": "public/assets/enemies/dnd-2014/imp.png",
+      "asset_url": "/assets/enemies/dnd-2014/imp.png",
+      "dimensions": {
+        "width": 512,
+        "height": 512
+      },
+      "sha256": "1102761ced25ae00fb3c4ba387dc1ddd4ab2964aaffef8392fc85581fb056f71",
+      "prompt": "Use case: stylized-concept\nAsset type: tabletop RPG bestiary portrait, square 512x512 source\nPrimary request: an original dark-fantasy portrait of a mischievous imp devil for a 2014 fantasy RPG bestiary\nScene/backdrop: smoky shadowed infernal chamber with subtle ember glow, simple dark background\nSubject: one small horned imp with batlike wings, clawed hands, sly alert expression, clearly readable silhouette\nStyle/medium: painterly dark fantasy concept art, detailed but clean enough for a small game portrait\nComposition/framing: centered bust or three-quarter figure, face and torso prominent, generous margin on every side for circular cropping\nLighting/mood: dramatic warm rim light against cool charcoal shadows, ominous and cunning\nColor palette: charcoal, deep crimson, muted bronze, restrained ember orange\nMaterials/textures: leathery wings, rough skin, small horns, smoky atmosphere\nText (verbatim): \"\"\nConstraints: one creature only; original artwork; circular-safe composition; no text; no border; no frame; no watermark; no logo\nAvoid: multiple creatures, humanoid hero, giant demon, photorealism, bright empty background, cropped horns or wings, symbols, letters",
+      "notes_ru": "Проверен визуально; один читаемый силуэт беса, без надписей и рамки, квадрат 512×512.",
+      "production_path": "public/assets/enemies/dnd-2014/imp.png",
+      "installed": true,
+      "production_sha256": "1102761ced25ae00fb3c4ba387dc1ddd4ab2964aaffef8392fc85581fb056f71"
+    },
+    {
+      "slug": "specter",
+      "name_ru": "Спектр",
+      "challenge_rating": "1",
+      "status": "generated_staged",
+      "generated_path": "C:\\Users\\anton\\.codex\\generated_images\\01a07e47-b8fc-7b20-b27a-dec4ceb4f9eb\\exec-13faf466-05f6-454a-8dd8-e1a7d8c30767.png",
+      "staging_path": "tmp/bestiary-expansion/cr1-portraits/specter.png",
+      "target_path": "public/assets/enemies/dnd-2014/specter.png",
+      "asset_url": "/assets/enemies/dnd-2014/specter.png",
+      "dimensions": {
+        "width": 512,
+        "height": 512
+      },
+      "sha256": "7ffbe5b501f3dbf19da5a99d32feb58ff0f710cc59fb11e18ef18cc917762d0a",
+      "prompt": "Use case: stylized-concept\nAsset type: tabletop RPG bestiary portrait, square 512x512 source\nPrimary request: an original dark-fantasy portrait of a spectral undead spirit for a 2014 fantasy RPG bestiary\nScene/backdrop: abandoned stone crypt in deep shadow, faint moonlit haze and drifting dust\nSubject: one translucent humanoid specter made of torn smoke and pale blue-gray ghost light, hollow luminous eyes, ragged trailing lower body, long reaching hands, clearly readable silhouette\nStyle/medium: painterly dark fantasy concept art, atmospheric but clean enough for a small game portrait\nComposition/framing: centered bust or three-quarter figure floating upright, face and hands prominent, generous margin on every side for circular cropping\nLighting/mood: cold moonlight from behind with soft cyan rim light, ominous and mournful\nColor palette: charcoal, slate blue, desaturated cyan, tiny accents of ghostly white\nMaterials/textures: wispy translucent ectoplasm, worn spectral shroud, subtle stone haze\nText (verbatim): \"\"\nConstraints: one creature only; original artwork; circular-safe composition; no text; no border; no frame; no watermark; no logo\nAvoid: multiple ghosts, living human, solid armored warrior, bright cheerful colors, cropped head or hands, symbols, letters",
+      "notes_ru": "Проверен визуально; один читаемый бестелесный силуэт, без надписей и рамки, квадрат 512×512.",
+      "production_path": "public/assets/enemies/dnd-2014/specter.png",
+      "installed": true,
+      "production_sha256": "7ffbe5b501f3dbf19da5a99d32feb58ff0f710cc59fb11e18ef18cc917762d0a"
+    }
+  ]
+}

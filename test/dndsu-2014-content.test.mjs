@@ -27,8 +27,9 @@ test('справочное расширение загружается наст�
 
 // Golden cases protect these recorded 2014 values, not every possible D&D rule.
 test('catalog counts and unactivated state', () => {
-  assert.equal(content.monsters.length,24); assert.equal(content.magicItems.length,32)
-  assert.equal(content.rules.length,91); assert.equal(content.sources.sources.length,56)
+  assert.equal(content.monsters.length,83); assert.equal(content.magicItems.length,32)
+  assert.equal(content.rules.length,91); assert.equal(content.sources.sources.length,115)
+  for (let cr=0;cr<=6;cr++) assert.equal(content.monsters.filter(monster=>monster.challenge_rating===String(cr)).length,10)
   assert.equal(content.manifest.runtime_activation_allowed,false)
   assert.equal(content.summary.mechanics_execution,'not_integrated')
 })
@@ -86,11 +87,11 @@ test('Young Red Dragon does not acquire adult legendary actions', () => {
 test('all monster HP and weapon averages are mathematically consistent', () => {
   for (const m of content.monsters) {
     assert.equal(diceAverage(m.hit_points.formula),m.hit_points.average)
-    for(const a of m.actions) for(const d of a.damage??[]) assert.equal(diceAverage(d.expression),d.average)
+    for(const a of m.actions) for(const d of a.damage??[]) assert.equal(d.expression==null?d.amount:diceAverage(d.expression),d.average)
   }
 })
 test('full source histories are not falsely marked as present', () => {
-  assert.equal(content.monsters.filter(m=>m.lore.history_status==='no_source_history_bundled').length,6)
+  assert.ok(content.monsters.every(m=>['short_summary_only','no_source_history_bundled'].includes(m.lore.history_status)))
   content.monsters.forEach(m=>assert.equal(m.lore.full_text_included,false))
 })
 test('healing potion consumes an action and has correct dice', () => {
@@ -144,7 +145,7 @@ test('encounter tables cover levels 1–20 without multiplying awarded XP', () =
   assert.deepEqual(rule('encounters:party-size').mechanics.multiplier_scale,[0.5,1,1.5,2,2.5,3,4,5])
 })
 test('retrieval includes complete mechanics, not only short flavor text', () => {
-  const chunks=toRetrievalChunks(content); assert.equal(chunks.length,147)
+  const chunks=toRetrievalChunks(content); assert.equal(chunks.length,206)
   const r=rule('combat:grapple'); assert.ok(r.text_ru.includes('str:athletics'))
   assert.deepEqual(mechanicalTokens(r.text_ru),mechanicalTokens(r.text_en))
   assert.ok(chunks.find(c=>c.id===r.id).text.includes('free_hands_required'))

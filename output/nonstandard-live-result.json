@@ -1,0 +1,62 @@
+[
+  {
+    "text": "Герой делает сальто",
+    "source": "agent-adjudicator",
+    "activity": "stunt",
+    "skill": "acrobatics",
+    "plausibility": "strenuous",
+    "risk": "minor",
+    "mode": "check",
+    "dc": 20,
+    "minutes": 0,
+    "damage": "1d4"
+  },
+  {
+    "text": "Балансирую на узких перилах",
+    "source": "agent-adjudicator",
+    "activity": "stunt",
+    "skill": "acrobatics",
+    "plausibility": "strenuous",
+    "risk": "minor",
+    "mode": "check",
+    "dc": 20,
+    "minutes": 0,
+    "damage": "1d4"
+  },
+  {
+    "text": "Поправляю воротник своего плаща",
+    "source": "agent-adjudicator",
+    "activity": "routine",
+    "skill": "acrobatics",
+    "plausibility": "trivial",
+    "risk": "none",
+    "mode": "auto_success",
+    "dc": null,
+    "minutes": 0,
+    "damage": null
+  },
+  {
+    "text": "Сопоставляю старую карту и записи путешественника, чтобы найти несоответствия",
+    "source": "agent-adjudicator",
+    "activity": "knowledge",
+    "skill": "investigation",
+    "plausibility": "plausible",
+    "risk": "minor",
+    "mode": "check",
+    "dc": 10,
+    "minutes": 5,
+    "damage": null
+  },
+  {
+    "text": "Поднимаю весь замок одной рукой",
+    "source": "agent-adjudicator",
+    "activity": "stunt",
+    "skill": "athletics",
+    "plausibility": "impossible_without_means",
+    "risk": "serious",
+    "mode": "counter_offer",
+    "dc": null,
+    "minutes": 0,
+    "damage": "1d6"
+  }
+]

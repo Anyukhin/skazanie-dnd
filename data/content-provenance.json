@@ -123,8 +123,8 @@
     },
     {
       "path": "data/dndsu-spells-0-6.json",
-      "sha256": "5a0a4c1bc9e718a1fe7ca4e967b535ee1f867aac7b4669027739aa8faad0a1db",
-      "size_bytes": 433305,
+      "sha256": "dd50c6193710fbf860e4d51b80d1a7da8a2ccf266c6d9f417e71b93a626f8dc0",
+      "size_bytes": 591412,
       "source_id": "dndsu-compatibility-index",
       "rights_status": "review_required"
     },
@@ -144,8 +144,8 @@
     },
     {
       "path": "data/dndsu-spell-mechanics-overrides.json",
-      "sha256": "585c28693485e838878401b9c0f9cd5fdb9e9359ffe5f7de2c23a8b72510571f",
-      "size_bytes": 181938,
+      "sha256": "a6383534b4b05934202425cf1941d92450eac2039af8e800fbd8f065c61b58df",
+      "size_bytes": 182373,
       "source_id": "dndsu-compatibility-index",
       "rights_status": "review_required"
     },
@@ -188,6 +188,20 @@
       "source_id": "dndsu-5e14-core",
       "rights_status": "project_license_required",
       "notes": "Server-validated группы поддержанных вариантов стартового снаряжения PHB 2014."
+    },
+    {
+      "path": "data/spell-descriptions-ru.json",
+      "sha256": "e1d7e51c3391203b461ee74e26bb479f0105eb8fa8315dcf679af6703597ca0f",
+      "size_bytes": 186505,
+      "source_id": "dndsu-compatibility-index",
+      "rights_status": "project_license_required"
+    },
+    {
+      "path": "data/starter-item-presentation.json",
+      "sha256": "6803d947d7161d9e92d0143902b97a0eb6baf040a9b916c116efe95d3542dbec",
+      "size_bytes": 14984,
+      "source_id": "dndsu-5e14-core",
+      "rights_status": "project_license_required"
     }
   ],
   "release_blockers": [

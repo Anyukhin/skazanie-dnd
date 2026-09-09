@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import { COMBAT_SCENARIOS, runCombatScenario } from '../eval/combat-lab.mjs'
-import { buildCombatLabState, combatLabCatalog } from './combat-lab-setup.mjs'
+import { assessCombatLabEncounter, buildCombatLabState, combatLabCatalog, generateCombatLabEncounter } from './combat-lab-setup.mjs'
 
 const SCENARIO_NAMES = Object.freeze({
   duel: 'Дуэль',
@@ -58,6 +58,14 @@ export class CombatLabRuns {
 
   async catalog() {
     return combatLabCatalog({ loadCampaign: this.loadCampaign })
+  }
+
+  async assessEncounter(input) {
+    return { assessment: await assessCombatLabEncounter(input, { loadCampaign: this.loadCampaign }) }
+  }
+
+  async generateEncounter(input) {
+    return generateCombatLabEncounter(input, { loadCampaign: this.loadCampaign })
   }
 
   async create({ scenario = 'duel', seed, config } = {}) {

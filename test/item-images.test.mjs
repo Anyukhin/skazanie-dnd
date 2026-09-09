@@ -12,6 +12,7 @@ import {
   manifestIsCurrent,
   normalizeItemIdentifier,
   resolveItemImagePath,
+  starterItemPresentationFor,
 } from '../tools/build-item-manifest.mjs'
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url))
@@ -95,6 +96,16 @@ test('рисунок выбирается runtime → id/stock/catalog → type 
   assert.equal(resolveItemImagePath({ catalog_id: 'catalog id', type: 'weapon' }, manifest), '/assets/items/item-catalog-id.png')
   assert.equal(resolveItemImagePath({ type: 'weapon' }, manifest), '/assets/items/type-weapon.png')
   assert.equal(resolveItemImagePath({ type: 'unknown' }, manifest), null)
+})
+
+test('стартовые вещи получают рисунок по точному имени без подмены авторского изображения', () => {
+  const book = { name: 'Книга заклинаний', type: 'other' }
+  const art = starterItemPresentationFor(book)
+  assert.equal(resolveItemImagePath(book), art.image)
+  assert.ok(art.description.length > 20)
+  assert.equal(resolveItemImagePath({ ...book, image: '/generated/custom-book.png' }), '/generated/custom-book.png')
+  assert.equal(starterItemPresentationFor({ ...book, catalog_id: 'srd_5_2_1:dagger' }), null)
+  assert.equal(starterItemPresentationFor({ name: 'Собственный предмет игрока' }), null)
 })
 
 test('инвентарь и торговец используют общий resolver без вечных текстовых плейсхолдеров', () => {

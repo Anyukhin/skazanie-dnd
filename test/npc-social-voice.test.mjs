@@ -62,7 +62,7 @@ test('бриф NPC-диалога несёт сцену, цели NPC и пам�
   assert.ok(result)
   assert.equal(requests.length, 1)
 
-  assert.match(requests[0].messages[0].content, /PROMPT_ID: npc_controller\/social-v4/)
+  assert.match(requests[0].messages[0].content, /PROMPT_ID: npc_controller\/social-v5/)
   assert.equal(result.prompt_version, NPC_SOCIAL_PROMPT_VERSION)
   const brief = untrustedPayload(requests[0].messages[1].content, 'npc_social_brief')
 
@@ -143,4 +143,85 @@ test('два NPC одной сцены получают разные server-owne
   assert.notDeepEqual(mira.speech_profile, orin.speech_profile)
   assert.match(mira.speech_profile.mannerism, /так-то оно вернее/u)
   assert.match(orin.speech_profile.mannerism, /согласно записи/u)
+})
+
+test('server-owned policy различает мотивы и не раскрывает исходные цели', async () => {
+  const requests = []
+  const controller = new NpcSocialController({
+    llmClient: { completeJson: async (input) => { requests.push(input); return { reply: 'Слушаю.', stance: 'neutral' } } },
+  })
+  const state = dialogueState()
+  state.social.npcs[1].goals = ['Продать сведения с максимальной выгодой']
+  state.social.npcs[1].beliefs = ['Каждый договор должен быть взаимным']
+  await controller.respond({ state, playerId: 'hero', npcId: 'npc:mira', message: 'Что предложишь?', turnId: 'policy-1' })
+  await controller.respond({ state, playerId: 'hero', npcId: 'npc:orin', message: 'Что предложишь?', turnId: 'policy-2' })
+  const briefs = requests.map((request) => untrustedPayload(request.messages[1].content, 'npc_social_brief'))
+  assert.notDeepEqual(briefs[0].npc.behavior_policy, briefs[1].npc.behavior_policy)
+  assert.equal(Object.hasOwn(briefs[0].npc, 'goals'), false)
+  assert.doesNotMatch(JSON.stringify(briefs), /Продать сведения|Каждый договор/u)
+})
+
+test('релевантная старая память переживает длинный диалог и сохраняет видимость', async () => {
+  const state = dialogueState()
+  state.social.conversations = [
+    { id: 'old-relevant', npc_id: 'npc:mira', hero_id: 'hero', player_message: 'Ключ от северных ворот у меня', npc_reply: 'Я помню про ключ.', stance: 'neutral', visibility: 'party' },
+    { id: 'private-rogue', npc_id: 'npc:mira', hero_id: 'rogue', player_message: 'СЕКРЕТНЫЙ КЛЮЧ', npc_reply: 'СЕКРЕТНЫЙ ОТВЕТ', stance: 'neutral', visibility: 'specific_player' },
+    ...Array.from({ length: 35 }, (_, index) => ({ id: `old-${index}`, npc_id: 'npc:mira', hero_id: 'hero', player_message: `Пустая реплика ${index}`, npc_reply: 'Пустой ответ', stance: 'neutral', visibility: 'party' })),
+  ]
+  const requests = []
+  const controller = new NpcSocialController({ llmClient: { completeJson: async (input) => { requests.push(input); return { reply: 'Помню.', stance: 'neutral' } } } })
+  const run = async (turnId) => controller.respond({ state: structuredClone(state), playerId: 'hero', npcId: 'npc:mira', message: 'Что с ключом от северных ворот?', turnId })
+  await run('memory-1')
+  await run('memory-2')
+  const brief = untrustedPayload(requests[1].messages[1].content, 'npc_social_brief')
+  assert.ok(brief.relevant_memory.some((entry) => entry.id === 'old-relevant'))
+  assert.doesNotMatch(JSON.stringify(brief.relevant_memory), /СЕКРЕТНЫЙ КЛЮЧ|СЕКРЕТНЫЙ ОТВЕТ/u)
+  assert.ok(brief.relevant_memory.length <= 8)
+})
+
+test('обещание, противоречащее server-owned границе, отбрасывается', async () => {
+  const state = dialogueState()
+  state.social.npcs[0].goals = ['Защитить жителей и сохранить порядок']
+  const controller = new NpcSocialController({
+    llmClient: { completeJson: async () => ({ reply: 'Я помогу.', stance: 'friendly', promise: { direction: 'npc_to_party', text: 'Я убью любого жителя, который вам мешает.', due_hint: 'завтра' } }) },
+  })
+  const result = await controller.respond({ state, playerId: 'hero', npcId: 'npc:mira', message: 'Помоги нам.', turnId: 'boundary-1' })
+  assert.equal(result.promise, null)
+  assert.equal(result.reply, 'Я помогу.')
+})
+
+test('граница распознаёт русские пробелы, но не блокирует обещание героя NPC', async () => {
+  const state = dialogueState()
+  state.social.npcs[0].goals = ['Защитить жителей и сохранить порядок']
+  const controller = new NpcSocialController({
+    llmClient: { completeJson: async ({ messages }) => messages && ({ reply: 'Приму карту.', stance: 'friendly', promise: { direction: 'party_to_npc', text: 'Я передам тебе карту завтра.', due_hint: 'завтра' } }) },
+  })
+  const accepted = await controller.respond({ state, playerId: 'hero', npcId: 'npc:mira', message: 'Я передам тебе карту.', turnId: 'boundary-party-to-npc' })
+  assert.equal(accepted.promise?.direction, 'party_to_npc')
+  const rejected = await new NpcSocialController({
+    llmClient: { completeJson: async () => ({ reply: 'Не могу.', stance: 'guarded', promise: { direction: 'npc_to_party', text: 'Я выдам людей врагу.', due_hint: 'завтра' } }) },
+  }).respond({ state, playerId: 'hero', npcId: 'npc:mira', message: 'Помоги.', turnId: 'boundary-ru-space' })
+  assert.equal(rejected.promise, null)
+})
+
+test('fallback на просьбу об обещании не выдумывает согласие и не пересказывает пролог', async () => {
+  const state = dialogueState()
+  state.worldMemory = { facts: [{ id: 'intro', status: 'active', visibility: 'public', summary: 'Пограничный город и пролог кампании.' }], epistemic_claims: [] }
+  const controller = new NpcSocialController({ llmClient: { completeJson: async () => { throw new Error('timeout') } } })
+  const result = await controller.respond({ state, playerId: 'hero', npcId: 'npc:mira', message: 'Пообещай сообщить о курьере сигналом.', turnId: 'fallback-promise' })
+  assert.equal(result.promise, null)
+  assert.equal(result.reply, 'Нового обещания пока нет; уточним конкретную помощь.')
+  assert.doesNotMatch(result.reply, /Пограничный город|пролог|курьер/u)
+})
+
+test('fallback на вопрос о сигнале вспоминает видимый разговор, но не чужой private', async () => {
+  const state = dialogueState()
+  state.social.conversations.push(
+    { id: 'signal-visible', npc_id: 'npc:mira', hero_id: 'hero', player_message: 'Напомни сигнал', npc_reply: 'Три коротких удара в дверь.', stance: 'neutral', visibility: 'party' },
+    { id: 'signal-private', npc_id: 'npc:mira', hero_id: 'rogue', player_message: 'Напомни сигнал', npc_reply: 'ЧУЖОЙ СЕКРЕТНЫЙ СИГНАЛ', stance: 'neutral', visibility: 'specific_player' },
+  )
+  const controller = new NpcSocialController({ llmClient: { completeJson: async () => { throw new Error('timeout') } } })
+  const result = await controller.respond({ state, playerId: 'hero', npcId: 'npc:mira', message: 'Напомни сигнал', turnId: 'fallback-memory' })
+  assert.match(result.reply, /Три коротких удара/u)
+  assert.doesNotMatch(result.reply, /ЧУЖОЙ СЕКРЕТНЫЙ СИГНАЛ/u)
 })

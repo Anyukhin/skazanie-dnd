@@ -69,6 +69,17 @@ const NARRATIVE_ITEM_DEFAULTS = Object.freeze({
   'Воровские инструменты': { type: 'tool', weight: 1, mechanics_status: 'partial' },
 })
 
+const starterPresentation = JSON.parse(readFileSync(
+  new URL('../data/starter-item-presentation.json', import.meta.url),
+  'utf8',
+))
+const NARRATIVE_ITEM_PRESENTATION = new Map(Object.entries(starterPresentation.items ?? {}))
+
+function narrativeItemPresentation(name) {
+  const entry = NARRATIVE_ITEM_PRESENTATION.get(String(name ?? ''))
+  return entry && typeof entry === 'object' && !Array.isArray(entry) ? entry : {}
+}
+
 const PHB_PACK_CONTENTS = Object.freeze({
   'srd_5_2_1:explorers-pack': [
     { name: 'Рюкзак', quantity: 1, weight: 5 }, { name: 'Спальный мешок', quantity: 1, weight: 7 }, { name: 'Кухонная утварь', quantity: 1, weight: 1 },
@@ -262,15 +273,26 @@ function completeStarterItem(heroId, item, index, prefix = 'class') {
 }
 
 function narrativeStarterItem(heroId, entry, index, prefix, { complete = false } = {}) {
+  const presentation = narrativeItemPresentation(entry.name)
+  const presentationDescription = String(presentation.description ?? '').trim()
+  const sourceDescription = String(entry.description ?? '').trim()
+  const description = [
+    presentationDescription || sourceDescription,
+    presentationDescription && sourceDescription && presentationDescription !== sourceDescription ? sourceDescription : '',
+  ].filter(Boolean).join(' ').slice(0, 2_000)
+  const image = String(presentation.image ?? entry.image ?? '').trim()
+  const imagePosition = String(presentation.imagePosition ?? entry.imagePosition ?? '').trim()
   if (!complete) return {
     id: `${heroId}-starter-${prefix}-${index + 1}`.slice(0, 120),
     name: String(entry.name ?? 'Личные вещи').slice(0, 160),
     type: 'other',
     quantity: 1,
     weight: 0,
-    description: String(entry.description ?? '').slice(0, 2_000),
+    description,
     properties: 'Нарративный предмет; механическое применение требует подтверждённого правила.',
     mechanics_status: 'ruling-only',
+    ...(image ? { image } : {}),
+    ...(imagePosition ? { imagePosition } : {}),
     sellable: false,
     equipped: false,
   }
@@ -285,9 +307,11 @@ function narrativeStarterItem(heroId, entry, index, prefix, { complete = false }
     type,
     quantity,
     weight,
-    description: String(entry.description ?? '').slice(0, 2_000),
+    description,
     properties: String(entry.properties ?? defaults.properties ?? 'Обычный предмет стартового снаряжения PHB 2014.').slice(0, 1_000),
     mechanics_status: status,
+    ...(image ? { image } : {}),
+    ...(imagePosition ? { imagePosition } : {}),
     ...(Array.isArray(entry.contents ?? defaults.contents) ? { contents: structuredClone(entry.contents ?? defaults.contents) } : {}),
     ...(entry.proficiency ? { proficiency: String(entry.proficiency) } : {}),
     sellable: false,

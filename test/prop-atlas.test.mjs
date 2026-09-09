@@ -7,7 +7,7 @@ import test from 'node:test'
 import { decodePng, encodeIndexedPng, encodePng, PngError } from '../tools/png-codec.mjs'
 import { makeSeamless, seamScore, TERRAIN_SOURCES } from '../tools/build-terrain-tiles.mjs'
 import {
-  backgroundColorOf, cropImage, findComponents, keyOutBackground, longestSideFor,
+  backgroundColorOf, buildPropAtlas, cropImage, findComponents, keyOutBackground, longestSideFor,
   packSprites, resampleImage, sliceSheet,
 } from '../tools/build-prop-atlas.mjs'
 import { DRAWN_CELLS, PROP_STAMP_SHEETS } from '../tools/prop-stamp-sheets.mjs'
@@ -236,6 +236,17 @@ test('раскладка листов не расходится с реестр�
   for (const record of Object.keys(readPropAtlas().frames)) {
     assert.ok(seen.has(record), `кадр ${record} собран неизвестно из какого листа`)
   }
+})
+
+test('добавление новых кадров сохраняет существующий растр при отсутствии исходных листов', () => {
+  const image = filled(4, 4, [170, 120, 70, 255])
+  const result = buildPropAtlas({
+    sheetDir: `${ROOT}test/absent-prop-sheets`, onWarning: () => {},
+    baseAtlas: { image, manifest: { frames: { chair: { x: 0, y: 0, w: 4, h: 4 } }, sources: { 'original.png': 'original-hash' } } },
+  })
+  assert.deepEqual(cropImage(result.image, result.manifest.frames.chair), image)
+  assert.deepEqual(result.manifest.frames.chair, { x: 0, y: 0, w: 4, h: 4 })
+  assert.equal(result.manifest.sources['original.png'], 'original-hash')
 })
 
 test('тайлсет местности на месте, объявлен в манифесте и в правах', () => {

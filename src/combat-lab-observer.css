@@ -1,0 +1,876 @@
+.combat-lab-observer-page {
+  --observer-surface: #171512;
+  --observer-surface-soft: #1d1a17;
+  --observer-line: rgba(222, 201, 171, .14);
+  --observer-muted: #a79c90;
+  --observer-faint: #766d64;
+  --observer-party: #9bb79e;
+  --observer-enemy: #d39a8f;
+  width: 100%;
+  max-width: 1460px;
+  margin: 0 auto;
+  padding: 28px clamp(18px, 3vw, 42px) 48px;
+}
+
+.combat-lab-observer-page h1,
+.combat-lab-observer-page h2,
+.combat-lab-observer-page h3,
+.combat-lab-observer-page h4,
+.combat-lab-observer-page p {
+  overflow-wrap: anywhere;
+}
+
+.combat-lab-observer-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--observer-line);
+}
+
+.combat-lab-observer-header h1 {
+  margin: 0 0 6px;
+  color: #e7ddd0;
+  font-family: Spectral, Georgia, serif;
+  font-size: clamp(25px, 3vw, 34px);
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.combat-lab-observer-header p {
+  max-width: 650px;
+  margin: 0;
+  color: var(--observer-muted);
+  font-size: var(--fs-md);
+  line-height: 1.55;
+}
+
+.combat-lab-observer-header .combat-lab-observer-run-state {
+  flex: 0 0 auto;
+  max-width: 260px;
+  margin: 4px 0 0;
+  color: var(--gold-bright);
+  font-size: var(--fs-sm);
+  text-align: right;
+}
+
+.combat-lab-observer-view-tabs,
+.combat-lab-observer-mode-tabs {
+  display: flex;
+  gap: 22px;
+  border-bottom: 1px solid var(--observer-line);
+}
+
+.combat-lab-observer-view-tabs {
+  margin-top: 4px;
+}
+
+.combat-lab-observer-page .combat-lab-observer-view-tabs button,
+.combat-lab-observer-page .combat-lab-observer-mode-tabs button {
+  min-height: 46px;
+  padding: 0 2px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--observer-muted);
+  font-size: var(--fs-md);
+  text-align: left;
+}
+
+.combat-lab-observer-page .combat-lab-observer-view-tabs button:hover:not(:disabled),
+.combat-lab-observer-page .combat-lab-observer-mode-tabs button:hover:not(:disabled) {
+  color: #e4d7c8;
+}
+
+.combat-lab-observer-page .combat-lab-observer-view-tabs button[aria-selected='true'],
+.combat-lab-observer-page .combat-lab-observer-mode-tabs button[aria-selected='true'] {
+  border-bottom-color: var(--gold);
+  color: var(--gold-bright);
+}
+
+.combat-lab-observer-page .combat-lab-observer-view-tabs button:disabled,
+.combat-lab-observer-page .combat-lab-observer-mode-tabs button:disabled {
+  opacity: .42;
+}
+
+.combat-lab-observer-runbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px 22px;
+  align-items: end;
+  margin: 20px 0 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--observer-line);
+  background: var(--observer-surface);
+}
+
+.combat-lab-observer-runbar-fields,
+.combat-lab-observer-runbar-actions {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.combat-lab-observer-runbar label {
+  min-width: 150px;
+  color: var(--observer-muted);
+}
+
+.combat-lab-observer-runbar select {
+  min-width: 185px;
+}
+
+.combat-lab-observer-runbar .combat-lab-observer-seed {
+  min-width: 128px;
+}
+
+.combat-lab-observer-runbar .combat-lab-observer-seed input {
+  width: 128px;
+}
+
+.combat-lab-observer-mode-name {
+  display: grid;
+  gap: 4px;
+  min-width: 150px;
+  margin: 0;
+  color: var(--observer-muted);
+  font-size: var(--fs-sm);
+}
+
+.combat-lab-observer-mode-name strong {
+  color: #e2d3c2;
+  font-weight: 600;
+}
+
+.combat-lab-observer-page .combat-lab-observer-runbar-actions button {
+  min-height: 38px;
+}
+
+.combat-lab-observer-page .combat-lab-observer-runbar-actions .combat-lab-primary {
+  min-width: 148px;
+}
+
+.combat-lab-observer-report-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  color: var(--gold-bright);
+  font-size: var(--fs-sm);
+  text-underline-offset: 3px;
+  white-space: nowrap;
+}
+
+.combat-lab-observer-runbar-status {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--gold-bright);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+.combat-lab-observer-alerts {
+  margin: 0 0 16px;
+}
+
+.combat-lab-observer-alerts p {
+  margin: 5px 0;
+}
+
+.combat-lab-observer-setup-mount {
+  padding-top: 20px;
+}
+
+.combat-lab-observer-setup-mount[hidden],
+.combat-lab-observer-page [hidden] {
+  display: none;
+}
+
+.combat-lab-observer-scenario-note {
+  max-width: 620px;
+  padding: 28px 0 16px;
+}
+
+.combat-lab-observer-scenario-note h2,
+.combat-lab-observer-loading h2 {
+  margin: 0 0 8px;
+  color: #e2d6c8;
+  font-family: Spectral, Georgia, serif;
+  font-size: var(--fs-2xl);
+  font-weight: 600;
+}
+
+.combat-lab-observer-scenario-note p,
+.combat-lab-observer-loading p {
+  margin: 0;
+  color: var(--observer-muted);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+}
+
+.combat-lab-observer-battle {
+  padding-top: 22px;
+}
+
+.combat-lab-observer-battle-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 14px;
+}
+
+.combat-lab-observer-battle-heading h2 {
+  margin: 0;
+  color: #e7ddd0;
+  font-family: Spectral, Georgia, serif;
+  font-size: var(--fs-2xl);
+  font-weight: 600;
+}
+
+.combat-lab-observer-battle-heading p {
+  margin: 4px 0 0;
+  color: var(--observer-muted);
+  font-size: var(--fs-sm);
+}
+
+.combat-lab-observer-battle-heading .combat-lab-observer-frame-count {
+  flex: 0 0 auto;
+  margin: 0;
+  color: var(--gold-bright);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.combat-lab-observer-playback {
+  position: sticky;
+  z-index: 5;
+  top: -1px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 18px;
+  padding: 10px 0;
+  border-block: 1px solid var(--observer-line);
+  background: #171512;
+}
+
+.combat-lab-observer-page .combat-lab-observer-playback button {
+  min-height: 36px;
+  padding: 7px 10px;
+}
+
+.combat-lab-observer-range {
+  display: flex;
+  align-items: center;
+  flex: 1 1 190px;
+  gap: 10px;
+  min-width: 120px;
+}
+
+.combat-lab-observer-range input[type='range'] {
+  flex: 1;
+  min-width: 80px;
+  accent-color: var(--gold);
+}
+
+.combat-lab-observer-range output {
+  min-width: 64px;
+  color: var(--observer-muted);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.combat-lab-observer-speed {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--observer-muted);
+  font-size: var(--fs-sm);
+}
+
+.combat-lab-observer-speed select {
+  width: auto;
+  min-width: 104px;
+}
+
+.combat-lab-observer-battle-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, .8fr);
+  gap: 28px;
+  align-items: start;
+}
+
+.combat-lab-observer-arena-column,
+.combat-lab-observer-journal-panel {
+  min-width: 0;
+}
+
+.combat-lab-observer-board-heading,
+.combat-lab-observer-panel-heading,
+.combat-lab-observer-journal-heading,
+.combat-lab-observer-moment-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.combat-lab-observer-board-heading {
+  margin-bottom: 8px;
+}
+
+.combat-lab-observer-board-heading h3,
+.combat-lab-observer-panel-heading h3 {
+  margin: 0;
+  color: #e0d4c5;
+  font-size: var(--fs-lg);
+  font-weight: 650;
+}
+
+.combat-lab-observer-board-heading span,
+.combat-lab-observer-panel-heading span {
+  color: var(--observer-faint);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.combat-lab-observer-board-shell {
+  overflow: hidden;
+  border: 1px solid var(--observer-line);
+  background: #12110f;
+}
+
+.combat-lab-observer-board-shell .combat-lab-board {
+  margin: 0;
+  padding: 12px;
+}
+
+.combat-lab-observer-participants {
+  margin-top: 22px;
+  padding-top: 14px;
+  border-top: 1px solid var(--observer-line);
+}
+
+.combat-lab-observer-roster {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  margin-top: 10px;
+}
+
+.combat-lab-observer-roster section {
+  min-width: 0;
+}
+
+.combat-lab-observer-roster h4 {
+  margin: 0 0 4px;
+  color: var(--observer-muted);
+  font-size: var(--fs-sm);
+  font-weight: 650;
+}
+
+.combat-lab-observer-roster h4 span {
+  margin-left: 4px;
+  color: var(--observer-faint);
+  font-size: var(--fs-xs);
+  font-weight: 400;
+}
+
+.combat-lab-observer-roster ul {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.combat-lab-observer-roster li {
+  border-top: 1px solid rgba(222, 201, 171, .08);
+}
+
+.combat-lab-observer-page .combat-lab-observer-actor-row {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  width: 100%;
+  min-height: 58px;
+  gap: 9px;
+  padding: 7px 3px;
+  border: 0;
+  border-left: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.combat-lab-observer-page .combat-lab-observer-actor-row:hover:not(:disabled) {
+  background: rgba(255, 255, 255, .025);
+}
+
+.combat-lab-observer-page .combat-lab-observer-actor-row.selected {
+  border-left-color: var(--gold);
+  background: rgba(185, 126, 62, .09);
+}
+
+.combat-lab-observer-actor-mark,
+.combat-lab-observer-detail-mark {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(222, 201, 171, .3);
+  background: #2a3b2c;
+  color: #d7e5d8;
+  font-family: Spectral, Georgia, serif;
+  font-weight: 600;
+}
+
+.combat-lab-observer-actor-mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 4px;
+  font-size: var(--fs-md);
+}
+
+.combat-lab-observer-actor-mark.enemy,
+.combat-lab-observer-detail-mark.enemy {
+  background: #472c29;
+  color: #f0c5bb;
+}
+
+.combat-lab-observer-actor-mark img,
+.combat-lab-observer-detail-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.combat-lab-observer-actor-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.combat-lab-observer-actor-copy strong {
+  overflow: hidden;
+  color: #ded5c9;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.combat-lab-observer-actor-copy > span:not(.combat-lab-observer-hp-bar) {
+  overflow: hidden;
+  color: var(--observer-faint);
+  font-size: var(--fs-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.combat-lab-observer-actor-row.active .combat-lab-observer-actor-copy > span:not(.combat-lab-observer-hp-bar) {
+  color: var(--gold-bright);
+}
+
+.combat-lab-observer-hp-bar {
+  display: block;
+  width: 100%;
+  height: 4px;
+  margin-top: 3px;
+  background: #0c0b0a;
+}
+
+.combat-lab-observer-hp-bar i {
+  display: block;
+  height: 100%;
+  background: var(--observer-party);
+}
+
+.combat-lab-observer-actor-row .combat-lab-observer-hp-bar i {
+  background: var(--observer-party);
+}
+
+.combat-lab-observer-actor-row:has(.combat-lab-observer-actor-mark.enemy) .combat-lab-observer-hp-bar i {
+  background: var(--observer-enemy);
+}
+
+.combat-lab-observer-actor-hp {
+  min-width: 34px;
+  color: var(--observer-muted);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.combat-lab-observer-actor-details {
+  margin-top: 22px;
+  padding: 14px 0 0;
+  border-top: 1px solid var(--observer-line);
+}
+
+.combat-lab-observer-actor-details > header {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+}
+
+.combat-lab-observer-detail-mark {
+  width: 42px;
+  height: 42px;
+  border-radius: 5px;
+  font-size: var(--fs-lg);
+}
+
+.combat-lab-observer-actor-details h3 {
+  margin: 0;
+  color: #e5d9cb;
+  font-size: var(--fs-lg);
+  font-weight: 650;
+}
+
+.combat-lab-observer-actor-details header p {
+  margin: 2px 0 0;
+  color: var(--observer-faint);
+  font-size: var(--fs-xs);
+}
+
+.combat-lab-observer-actor-details header > strong {
+  color: #d3c2ab;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.combat-lab-observer-detail-facts,
+.combat-lab-observer-resource-list {
+  display: grid;
+  gap: 8px 18px;
+  margin: 14px 0 0;
+}
+
+.combat-lab-observer-detail-facts {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 10px 0;
+  border-block: 1px solid rgba(222, 201, 171, .08);
+}
+
+.combat-lab-observer-detail-facts div,
+.combat-lab-observer-resource-list div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.combat-lab-observer-detail-facts dt,
+.combat-lab-observer-resource-list dt {
+  color: var(--observer-faint);
+  font-size: var(--fs-xs);
+}
+
+.combat-lab-observer-detail-facts dd,
+.combat-lab-observer-resource-list dd {
+  margin: 0;
+  color: #d4c7b8;
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.combat-lab-observer-conditions {
+  margin: 12px 0 0;
+  color: var(--observer-muted);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+}
+
+.combat-lab-observer-conditions strong {
+  margin-right: 5px;
+  color: #d4c1a6;
+  font-weight: 600;
+}
+
+.combat-lab-observer-details-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+  margin-top: 14px;
+}
+
+.combat-lab-observer-details-body h4 {
+  margin: 0 0 7px;
+  color: var(--observer-muted);
+  font-size: var(--fs-sm);
+  font-weight: 650;
+}
+
+.combat-lab-observer-details-body section > p {
+  margin: 0;
+  color: var(--observer-faint);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+}
+
+.combat-lab-observer-arsenal-list {
+  display: grid;
+  gap: 6px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.combat-lab-observer-arsenal-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid rgba(222, 201, 171, .07);
+  color: #d4c8bb;
+  font-size: var(--fs-xs);
+}
+
+.combat-lab-observer-arsenal-list span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.combat-lab-observer-arsenal-list em {
+  flex: 0 0 auto;
+  color: var(--observer-faint);
+  font-size: var(--fs-xxs);
+  font-style: normal;
+  text-align: right;
+}
+
+.combat-lab-observer-resource-list {
+  grid-template-columns: 1fr;
+}
+
+.combat-lab-observer-journal-panel {
+  border-left: 1px solid var(--observer-line);
+  padding-left: 22px;
+}
+
+.combat-lab-observer-journal-heading {
+  padding-bottom: 12px;
+}
+
+.combat-lab-observer-journal-heading h2 {
+  margin: 0;
+  color: #e3d8ca;
+  font-family: Spectral, Georgia, serif;
+  font-size: var(--fs-2xl);
+  font-weight: 600;
+}
+
+.combat-lab-observer-journal-heading p {
+  margin: 4px 0 0;
+  color: var(--observer-faint);
+  font-size: var(--fs-xs);
+}
+
+.combat-lab-observer-journal-heading > strong {
+  color: var(--gold-bright);
+  font-size: var(--fs-lg);
+  font-variant-numeric: tabular-nums;
+}
+
+.combat-lab-observer-journal-filters {
+  display: flex;
+  gap: 16px;
+  border-bottom: 1px solid rgba(222, 201, 171, .08);
+}
+
+.combat-lab-observer-page .combat-lab-observer-journal-filters button {
+  min-height: 34px;
+  padding: 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--observer-faint);
+  font-size: var(--fs-xs);
+}
+
+.combat-lab-observer-page .combat-lab-observer-journal-filters button[aria-selected='true'] {
+  border-bottom-color: var(--gold);
+  color: var(--gold-bright);
+}
+
+.combat-lab-observer-journal-scroll {
+  max-height: min(700px, calc(100vh - 300px));
+  min-height: 360px;
+  overflow: auto;
+  padding: 0 12px 18px 0;
+  border-left: 0;
+}
+
+.combat-lab-observer-journal-note {
+  margin: 12px 0;
+  color: var(--observer-faint);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+}
+
+.combat-lab-observer-journal-moment {
+  padding: 14px 0 10px 14px;
+  border-left: 2px solid rgba(201, 149, 86, .24);
+}
+
+.combat-lab-observer-journal-moment + .combat-lab-observer-journal-moment {
+  margin-top: 5px;
+}
+
+.combat-lab-observer-moment-heading h3 {
+  margin: 0;
+  color: var(--gold-bright);
+  font-size: var(--fs-sm);
+  font-weight: 650;
+}
+
+.combat-lab-observer-moment-heading span {
+  color: var(--observer-faint);
+  font-size: var(--fs-xxs);
+  font-variant-numeric: tabular-nums;
+}
+
+.combat-lab-observer-journal-moment ul {
+  padding: 0;
+  margin: 9px 0 0;
+  list-style: none;
+}
+
+.combat-lab-observer-journal-moment li {
+  display: grid;
+  grid-template-columns: minmax(70px, auto) minmax(0, 1fr);
+  gap: 8px;
+  padding: 7px 0;
+  border-top: 1px solid rgba(222, 201, 171, .07);
+}
+
+.combat-lab-observer-event-actor {
+  overflow: hidden;
+  color: #bf9565;
+  font-size: var(--fs-xxs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.combat-lab-observer-journal-moment li p {
+  margin: 0;
+  color: #d0c6ba;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+
+.combat-lab-observer-journal-empty,
+.combat-lab-observer-loading {
+  margin: 0;
+  color: var(--observer-muted);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+}
+
+.combat-lab-observer-journal-empty {
+  padding: 24px 0;
+}
+
+.combat-lab-observer-loading {
+  padding: 34px 0;
+}
+
+.combat-lab-observer-note {
+  margin-top: 18px;
+}
+
+@media (max-width: 1120px) {
+  .combat-lab-observer-battle-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .combat-lab-observer-journal-panel {
+    border-top: 1px solid var(--observer-line);
+    border-left: 0;
+    padding: 20px 0 0;
+  }
+
+  .combat-lab-observer-journal-scroll {
+    max-height: 430px;
+  }
+}
+
+@media (max-width: 720px) {
+  .combat-lab-observer-page {
+    padding: 20px 14px 34px;
+  }
+
+  .combat-lab-observer-header {
+    display: block;
+  }
+
+  .combat-lab-observer-header .combat-lab-observer-run-state {
+    max-width: none;
+    margin-top: 10px;
+    text-align: left;
+  }
+
+  .combat-lab-observer-runbar {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .combat-lab-observer-runbar-fields,
+  .combat-lab-observer-runbar-actions {
+    align-items: stretch;
+  }
+
+  .combat-lab-observer-runbar label,
+  .combat-lab-observer-runbar .combat-lab-observer-seed,
+  .combat-lab-observer-runbar select,
+  .combat-lab-observer-runbar .combat-lab-observer-seed input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .combat-lab-observer-runbar-actions > * {
+    flex: 1 1 auto;
+  }
+
+  .combat-lab-observer-report-link {
+    justify-content: center;
+  }
+
+  .combat-lab-observer-playback {
+    align-items: stretch;
+  }
+
+  .combat-lab-observer-range {
+    order: 3;
+    flex-basis: 100%;
+  }
+
+  .combat-lab-observer-speed {
+    margin-left: auto;
+  }
+
+  .combat-lab-observer-speed select {
+    min-width: 90px;
+  }
+
+  .combat-lab-observer-roster,
+  .combat-lab-observer-details-body {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .combat-lab-observer-battle-heading {
+    display: block;
+  }
+
+  .combat-lab-observer-battle-heading .combat-lab-observer-frame-count {
+    margin-top: 8px;
+  }
+}

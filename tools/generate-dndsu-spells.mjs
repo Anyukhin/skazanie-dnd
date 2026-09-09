@@ -1,9 +1,10 @@
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
 const BASE_URL = 'https://www.dnd.su'
 const LIST_URL = `${BASE_URL}/piece/spells/index-list/`
 const OUTPUT = resolve('data/dndsu-spells-0-6.json')
+const DESCRIPTION_SOURCE = resolve('data/spell-descriptions-ru.json')
 
 const CLASS_IDS = Object.freeze({
   12: 'bard',
@@ -240,6 +241,8 @@ async function mapConcurrent(items, concurrency, mapper) {
 }
 
 async function main() {
+  const descriptionPayload = JSON.parse(await readFile(DESCRIPTION_SOURCE, 'utf8'))
+  const descriptions = descriptionPayload.descriptions ?? {}
   const listHtml = await fetchText(LIST_URL)
   const cards = extractJsonList(listHtml).filter((card) => {
     const level = card.level === 'Заговор' ? 0 : Number(card.level)
@@ -251,6 +254,7 @@ async function main() {
     const sourceUrl = new URL(card.link, BASE_URL).toString()
     const html = await fetchText(sourceUrl)
     const level = card.level === 'Заговор' ? 0 : Number(card.level)
+    const id = slugify(card.title_en) || `dndsu-${String(card.link).match(/\d+/u)?.[0] ?? index}`
     const classes = [...new Set([...(card.filter_class ?? []), ...(card.filter_class_tce ?? [])].map((id) => CLASS_IDS[id]).filter(Boolean))].sort()
     const facts = {
       castingTime: field(html, 'Время накладывания'),
@@ -261,7 +265,7 @@ async function main() {
     const mechanics = classify(card, facts)
     if ((index + 1) % 50 === 0 || index + 1 === cards.length) process.stdout.write(`\r${index + 1}/${cards.length}`)
     return {
-      id: slugify(card.title_en) || `dndsu-${String(card.link).match(/\d+/u)?.[0] ?? index}`,
+      id,
       name: card.title,
       englishName: card.title_en,
       level,
@@ -276,8 +280,14 @@ async function main() {
       sourceUrl,
       slotResource: level > 0 ? `spell_slots_${level}` : null,
       ...mechanics,
+      description: descriptions[id],
     }
   })
+
+  const missingDescriptions = spells.filter((spell) => typeof spell.description !== 'string' || spell.description.trim().length < 20)
+  if (missingDescriptions.length) {
+    throw new Error(`Spell description dictionary is missing: ${missingDescriptions.map((spell) => spell.id).join(', ')}`)
+  }
 
   spells.sort((a, b) => a.level - b.level || a.name.localeCompare(b.name, 'ru'))
   await mkdir(resolve('data'), { recursive: true })

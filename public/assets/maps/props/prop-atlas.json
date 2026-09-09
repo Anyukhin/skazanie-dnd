@@ -1,9 +1,10 @@
 {
   "version": "skazanie:prop-atlas-v1",
   "image": "maps/props/prop-atlas.png",
+  "imageHash": "4979bbbb433feaad1c22288fca73b2cf432c2d94b47e0441d8d7278603963493",
   "cellPixels": 96,
   "width": 2048,
-  "height": 895,
+  "height": 1262,
   "frames": {
     "altar": {
       "x": 123,
@@ -670,6 +671,18 @@
       "y": 713,
       "w": 192,
       "h": 95
+    },
+    "royal_throne": {
+      "x": 964,
+      "y": 897,
+      "w": 384,
+      "h": 345
+    },
+    "table_royal": {
+      "x": 2,
+      "y": 897,
+      "w": 960,
+      "h": 363
     }
   },
   "sources": {
@@ -685,6 +698,8 @@
     "sheet-11-temple.png": "a7d2e622080b2f92a5afd011af0107efc05a784cacd9e5f89208d1c973b58742",
     "sheet-12-crypt-cave.png": "c70b1498057b5e31c8e291657fcb4541e8f7310adf6faa364a827ff6e56e4b1b",
     "sheet-13-wild-settlement.png": "a72cd38d264af03fe7b9e04088a1b8a9a39456384edd9bafd00737dc2b5b3ea9",
-    "sheet-23-openings.png": "d6cd3dfc13eb51b557a6b5474203eadf542c8976c223fabf3a8934b0de35142e"
+    "sheet-23-openings.png": "d6cd3dfc13eb51b557a6b5474203eadf542c8976c223fabf3a8934b0de35142e",
+    "royal-throne-v1.png": "0a55e1f04fb2e335dc968260c27773ba779f2527eb5599a0c9f92131b8b17430",
+    "royal-table-v1.png": "83b4c4f78b07c08ddd64640792ec146539bd928fd0b10156f352b1c952ed317e"
   }
 }

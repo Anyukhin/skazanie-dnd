@@ -3,8 +3,11 @@ import type {
   TacticalProp, TacticalSurface,
 } from './types'
 import { areaCells, type AreaShape } from './area-geometry'
-import { LIGHT_FULL, LIGHT_SOURCE_ASSETS, lightAt, lightGridFor, lightSourceAssetId } from './board-lighting'
-import { cellAt, doorStates, edgeBetween, edgeList, edgeNeighbor, revealedAt } from './tactical-map-client'
+import {
+  LIGHT_FULL, lightAt, lightGridFor, lightSourceVisibilityFor, lightSourcesOf,
+  type LightSource,
+} from './board-lighting'
+import { cellAt, cellIndex, doorStates, edgeBetween, edgeList, edgeNeighbor, passableAt, revealedAt } from './tactical-map-client'
 
 /**
  * Чистая отрисовка тактической доски. Модуль ничего не знает ни о React, ни о
@@ -75,6 +78,8 @@ export type BoardContext2D = {
   rotate(angle: number): void
   beginPath(): void
   closePath(): void
+  clip(): void
+  rect(x: number, y: number, width: number, height: number): void
   moveTo(x: number, y: number): void
   lineTo(x: number, y: number): void
   arc(x: number, y: number, radius: number, startAngle: number, endAngle: number): void
@@ -336,6 +341,8 @@ export type BoardScene = {
   art?: BoardTexture | null
   /** Ключ иллюстрации: входит в ключ тайла, иначе смена арта не перерисует кэш. */
   artKey?: string
+  /** Готовая карта с архитектурой; механика и туман войны остаются серверными. */
+  artMode?: 'backdrop' | 'map'
   /** Растровые штампы предметов. Их отсутствие — штатный путь Р6: рисуется вектор. */
   propAtlas?: PropAtlas | null
   /**
@@ -495,7 +502,7 @@ export function tileRevealSignature(map: TacticalMap, tile: BoardTile) {
  * ключа не меняют: в нём нет ни окна просмотра, ни смещения.
  */
 export function tileKey(scene: BoardScene, tile: BoardTile) {
-  const art = scene.art ? (scene.artKey ?? 'art') : ''
+  const art = scene.art ? `${scene.artKey ?? 'art'}:${scene.artMode ?? 'backdrop'}` : ''
   const textures = texturesAvailableIn(scene) ? 't' : 'f'
   const stamps = scene.propAtlas?.key ?? ''
   const tiles = scene.terrain?.key ?? ''
@@ -671,8 +678,8 @@ function drawSceneArt(context: BoardContext2D, scene: BoardScene, cell: Tactical
   const sliceWidth = art.width / Math.max(1, scene.map.width)
   const sliceHeight = art.height / Math.max(1, scene.map.height)
   context.save()
-  context.globalAlpha = scene.map.zones.length ? 0.22 : 0.72
-  context.globalCompositeOperation = 'multiply'
+  context.globalAlpha = scene.artMode === 'map' ? 1 : scene.map.zones.length ? 0.22 : 0.72
+  context.globalCompositeOperation = scene.artMode === 'map' ? 'source-over' : 'multiply'
   context.drawImage(art.image, cell.x * sliceWidth, cell.y * sliceHeight, sliceWidth, sliceHeight, left, top, scene.cellSize, scene.cellSize)
   context.restore()
 }
@@ -687,6 +694,54 @@ function tileFrame(scene: BoardScene, tile: BoardTile): TileFrame {
     maxY: tile.tileY * TILE_CELLS + TILE_CELLS - 1,
     size: scene.cellSize,
   }
+}
+
+export type LightClipBounds = {
+  minX: number
+  minY: number
+  maxX: number
+  maxY: number
+  cellSize: number
+  /** Клетка карты, которая соответствует (0, 0) текущего контекста. */
+  offsetX: number
+  offsetY: number
+}
+
+/** Обрезает рисунок источника до клеток, куда он действительно видит. */
+export function clipLightSource(
+  context: BoardContext2D, map: TacticalMap, source: Pick<LightSource, 'x' | 'y' | 'radius'>,
+  bounds: LightClipBounds, revealedOnly = true,
+) {
+  const visibility = lightSourceVisibilityFor(map, source)
+  const fromX = Math.max(bounds.minX, Math.floor(source.x - source.radius))
+  const toX = Math.min(bounds.maxX, Math.ceil(source.x + source.radius))
+  const fromY = Math.max(bounds.minY, Math.floor(source.y - source.radius))
+  const toY = Math.min(bounds.maxY, Math.ceil(source.y + source.radius))
+  let hasVisibleCell = false
+  context.beginPath()
+  for (let y = fromY; y <= toY; y += 1) {
+    for (let x = fromX; x <= toX; x += 1) {
+      const index = cellIndex(map, x, y)
+      if (index < 0 || !visibility[index] || !passableAt(map, x, y)
+        || (revealedOnly && !revealedAt(map, x, y))) continue
+      const left = (x - bounds.offsetX) * bounds.cellSize
+      const top = (y - bounds.offsetY) * bounds.cellSize
+      context.rect(left, top, bounds.cellSize, bounds.cellSize)
+      hasVisibleCell = true
+    }
+  }
+  if (!hasVisibleCell) return false
+  context.clip()
+  return true
+}
+
+function drawRestoredFloor(context: BoardContext2D, scene: BoardScene, cell: TacticalCell, frame: TileFrame) {
+  const left = (cell.x - frame.minX) * frame.size
+  const top = (cell.y - frame.minY) * frame.size
+  context.fillStyle = boardFillColor({ kind: 'floor', cell }, scene.palette, texturesAvailableIn(scene))
+  context.fillRect(left, top, frame.size, frame.size)
+  const texture = terrainTextureFor(scene, cell)
+  if (texture && scene.terrain) drawFloorTerrainTexture(context, scene, texture, cell, left, top, frame.size, 'horizontal')
 }
 
 /** Слой 1: фон зоны. */
@@ -779,6 +834,12 @@ export function drawFloorTiles(context: BoardContext2D, scene: BoardScene, tile:
       if (!cell) continue
       const left = (x - frame.minX) * frame.size
       const top = (y - frame.minY) * frame.size
+      if (scene.artMode === 'map' && scene.art) {
+        drawSceneArt(context, scene, cell, left, top)
+        // Исходная вода уже нарисована. Новые поверхности заклинаний видны поверх.
+        if (cell.surface !== 'none' && cell.surface !== 'water') drawSurfaceTexture(context, scene, cell, left, top, frame.size, x, y)
+        continue
+      }
       context.fillStyle = boardFillColor({ kind: 'floor', cell }, scene.palette, available)
       context.fillRect(left, top, frame.size, frame.size)
       const tile = terrainTextureFor(scene, cell)
@@ -1087,10 +1148,16 @@ export function drawEdgeSegments(context: BoardContext2D, scene: BoardScene, til
   ))
   for (const edge of edges) {
     if (edge.kind === 'none') continue
+    if (scene.artMode === 'map' && scene.art && edge.kind !== 'door') continue
     const owner = cellAt(scene.map, edge.x, edge.y)
     const neighborPosition = edgeNeighbor(edge)
     const neighbor = cellAt(scene.map, neighborPosition.x, neighborPosition.y)
     if (!owner?.revealed && !neighbor?.revealed) continue
+    if (scene.artMode === 'map' && scene.art && edge.kind === 'door') {
+      // Проём и створка принадлежат состоянию игры. Закрытая дверь на исходном
+      // рисунке не остаётся фантомной стеной после открытия.
+      for (const cell of [owner, neighbor]) if (cell?.passable) drawRestoredFloor(context, scene, cell, frame)
+    }
     // Материал стены берётся с той стороны, где действительно есть кладка.
     const side = [owner, neighbor].find((cell) => cell && BUILT_MATERIALS.has(cell.material)) ?? owner ?? neighbor
     const geometry = edgeGeometry(edge, frame)
@@ -2977,6 +3044,8 @@ const PROP_LIBRARY: Record<string, PropDrawing> = {
   // --- мебель общего зала -------------------------------------------------
   table_round: { paint: tablePainter('round'), simple: 'round' },
   table_long: { paint: tablePainter('long'), simple: 'block' },
+  table_royal: { paint: tablePainter('long'), simple: 'block' },
+  royal_throne: { paint: seatPainter('chair'), simple: 'block' },
   table_small: { paint: tablePainter('small'), simple: 'block' },
   bench: { paint: seatPainter('bench'), simple: 'block' },
   chair: { paint: seatPainter('chair'), simple: 'block' },
@@ -3294,6 +3363,17 @@ export function drawProps(context: BoardContext2D, scene: BoardScene, tile: Boar
   const level = propDetailLevel(scene.cellSize)
   const frame = tileFrame(scene, tile)
   for (const prop of propsInTile(scene.map, tile, scene.cellSize)) {
+    const painted = scene.artMode === 'map' && scene.art && prop.id.startsWith('painted:')
+    if (painted) {
+      if (!['toppled', 'burned', 'broken'].includes(prop.state)) continue
+      // Изменённый предмет не остаётся целым на запечённом рисунке.
+      for (const position of prop.footprint) {
+        const cell = cellAt(scene.map, position.x, position.y)
+        if (!cell) continue
+        drawRestoredFloor(context, scene, cell, frame)
+      }
+      if (prop.state !== 'toppled') continue
+    }
     const drawing = propDrawingFor(prop.assetId)
     const placement = propPlacement(prop, drawing, frame.size)
     // Штамп берётся только на полной детализации: ниже её предмет занимает
@@ -3303,7 +3383,7 @@ export function drawProps(context: BoardContext2D, scene: BoardScene, tile: Boar
       : undefined
     context.save()
     context.translate((placement.x - frame.minX) * frame.size, (placement.y - frame.minY) * frame.size)
-    if (prop.rotation) context.rotate((prop.rotation * Math.PI) / 180)
+    if (prop.rotation || painted) context.rotate(((prop.rotation + (painted ? 90 : 0)) * Math.PI) / 180)
     // Декаль лежит на полу: прозрачность возвращается руками, а не `restore`, —
     // поддельный контекст тестов не обязан хранить стек состояний.
     if (drawing.flat) context.globalAlpha = PROP_DECAL_ALPHA
@@ -3399,23 +3479,35 @@ function drawWallShadows(context: BoardContext2D, scene: BoardScene, frame: Tile
 function drawWarmHalos(context: BoardContext2D, scene: BoardScene, frame: TileFrame) {
   const size = frame.size
   context.fillStyle = scene.palette.lightWarm
-  for (const prop of scene.map.props) {
-    const assetId = lightSourceAssetId(prop.assetId)
-    if (!assetId) continue
-    const cellX = Math.floor(prop.x)
-    const cellY = Math.floor(prop.y)
+  for (const source of lightSourcesOf(scene.map).filter((entry) => entry.warm)) {
+    const cellX = source.x
+    const cellY = source.y
     if (!revealedAt(scene.map, cellX, cellY)) continue
-    const radius = LIGHT_SOURCE_ASSETS[assetId].radius
+    const radius = source.radius
     // Отбор по тайлу с запасом на радиус: источник из соседнего тайла обязан
     // досветить сюда, иначе ореол обрывался бы ровно по шву кэша.
     if (cellX + 1 + radius <= frame.minX || cellX - radius >= frame.maxX + 1) continue
     if (cellY + 1 + radius <= frame.minY || cellY - radius >= frame.maxY + 1) continue
+    context.save()
+    if (!clipLightSource(context, scene.map, source, {
+      minX: frame.minX,
+      minY: frame.minY,
+      maxX: frame.maxX,
+      maxY: frame.maxY,
+      cellSize: size,
+      offsetX: frame.minX,
+      offsetY: frame.minY,
+    })) {
+      context.restore()
+      continue
+    }
     const centerX = (cellX + 0.5 - frame.minX) * size
     const centerY = (cellY + 0.5 - frame.minY) * size
     for (const [share, alpha] of WARM_HALO_RINGS) {
       context.globalAlpha = alpha
       circle(context, centerX, centerY, radius * share * size)
     }
+    context.restore()
   }
   context.globalAlpha = 1
 }
@@ -3629,14 +3721,15 @@ export function drawFog(context: BoardContext2D, scene: BoardScene, tile: BoardT
  * прямой отрисовки.
  */
 export function drawTerrainTile(context: BoardContext2D, scene: BoardScene, tile: BoardTile) {
+  const painted = scene.artMode === 'map' && Boolean(scene.art)
   drawZoneBackground(context, scene, tile)
   drawFloorTiles(context, scene, tile)
-  drawDecals(context, scene, tile)
+  if (!painted) drawDecals(context, scene, tile)
   drawEdgeSegments(context, scene, tile)
   drawProps(context, scene, tile)
   // Слой света — единственное, что снимает настройка зрителя. Туман войны
   // ниже по списку и рисуется всегда: он не украшение, а правило видимости.
-  if (scene.lighting !== false) drawLightShading(context, scene, tile)
+  if (scene.lighting !== false && !painted) drawLightShading(context, scene, tile)
   drawZoneLighting(context, scene, tile)
   drawCellFeatures(context, scene, tile)
   drawGrid(context, scene, tile)

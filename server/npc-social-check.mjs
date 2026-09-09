@@ -17,8 +17,15 @@ function stableHash(...parts) {
   return createHash('sha256').update(parts.map((part) => clean(part)).join('\0')).digest('hex')
 }
 
+export function affirmativeActionText(message = '') {
+  return clean(message).toLocaleLowerCase('ru')
+    .replace(/«[^»]*»|"[^"]*"|'[^']*'/gu, ' ')
+    .replace(/(?:^|\s)(?:не|ни|без|никогда)\s+(?!только(?:\s|$))(?:буду|хочу|собираюсь)\s+(?:(?:его|её|их|это|так|себя)\s+)?\p{L}+/giu, ' ')
+    .replace(/(?:^|\s)(?:не|ни|без|никогда)\s+(?!только(?:\s|$))\p{L}+/giu, ' ')
+}
+
 export function classifyNpcSocialCheck(message) {
-  const text = clean(message).toLocaleLowerCase('ru')
+  const text = affirmativeActionText(message)
   if (!text) return null
   if (/(\u043f\u0440\u043e\u043d\u0438\u0446\u0430\u0442\u0435\u043b|\u0440\u0430\u0441\u043f\u043e\u0437\u043d.*\u043c\u043e\u0442\u0438\u0432|\u043f\u043e\u043d\u0438\u043c\u0430\u044e.*\u043c\u043e\u0442\u0438\u0432|\u043b\u0436[\u0435\u0451]\u0442\s+\u043b\u0438|\u0432\u0440[\u0435\u0451]\u0442\s+\u043b\u0438|insight|read\s+(?:their|his|her)\s+intent)/iu.test(text)) return 'insight'
   if (/(\u0437\u0430\u043f\u0443\u0433|\u0443\u0433\u0440\u043e\u0436|\u0448\u0430\u043d\u0442\u0430\u0436|\u043f\u0440\u0438\u043f\u0443\u0433|intimidat|threaten|coerce)/iu.test(text)) return 'intimidation'

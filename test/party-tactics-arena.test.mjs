@@ -5,6 +5,7 @@ import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { applyGameEvent, normalizeCampaignState, resolveCommand } from '../server/rules-engine.mjs'
 import { planHeroCombatCommand } from '../server/party-tactics.mjs'
 import { buildCombatLabState } from '../server/combat-lab-setup.mjs'
+import { campaignStateForViewer } from '../server/viewer-projection.mjs'
 import { runCombatScenario } from '../eval/combat-lab.mjs'
 
 const applyAll = (state, events) => events.reduce(applyGameEvent, state)
@@ -96,6 +97,87 @@ test('исчерпанные ячейки не заставляют мага в�
   assert.equal(plan.command.spell_id, 'fire-bolt')
 })
 
+test('волшебник 12 уровня учитывает все лучи и выбирает Палящий луч вместо заговора', () => {
+  const state = arena({
+    heroes: [hero('hero', { characterClass: 'wizard', level: 12, abilities: { str: 8, dex: 14, con: 14, int: 16, wis: 10, cha: 10 },
+      knownSpellIds: ['fire-bolt', 'scorching-ray'], preparedSpellIds: ['scorching-ray'] })],
+    enemies: [enemy('enemy', { hp: 100, maxHp: 100 })],
+    positions: { hero: { x: 1, y: 1 }, enemy: { x: 8, y: 1 } },
+    resources: { hero: { spell_slots_2: { current: 3, max: 3 }, ...Object.fromEntries([3, 4, 5, 6].map(level => [`spell_slots_${level}`, { current: 0, max: 1 }])) } },
+  })
+  const view = campaignStateForViewer(state, { id: 'user', role: 'player', heroIds: ['hero'] }, 'hero')
+  const plan = planHeroCombatCommand(view, 'hero')
+  assert.equal(plan.command.spell_id, 'scorching-ray')
+  const after = resolvePlan(state, plan, Array(100).fill(4))
+  assert.equal(after.mechanics.resources.hero.spell_slots_2.current, 2)
+})
+
+test('маг сравнивает усиление доступной ячейкой, когда базовая Волшебная стрела слабее заговора', () => {
+  const state = arena({
+    heroes: [hero('hero', { characterClass: 'wizard', level: 12, knownSpellIds: ['fire-bolt', 'magic-missile'], preparedSpellIds: ['magic-missile'] })],
+    enemies: [enemy('enemy', { hp: 100, maxHp: 100 })],
+    positions: { hero: { x: 1, y: 1 }, enemy: { x: 8, y: 1 } },
+    resources: { hero: { spell_slots_1: { current: 4, max: 4 }, spell_slots_2: { current: 3, max: 3 }, spell_slots_6: { current: 1, max: 1 },
+      spell_slots_3: { current: 3, max: 3 }, ...Object.fromEntries([4, 5].map(level => [`spell_slots_${level}`, { current: 0, max: 1 }])) } },
+  })
+  const plan = planHeroCombatCommand(campaignStateForViewer(state, { id: 'user', role: 'player', heroIds: ['hero'] }, 'hero'), 'hero')
+  assert.equal(plan.command.spell_id, 'magic-missile')
+  assert.equal(plan.command.slot_level, 2, 'Для усиления достаточно второго круга: единственную ячейку шестого бережём')
+  assert.doesNotThrow(() => resolvePlan(state, plan, [3]))
+})
+
+test('Огненный шар можно сместить за врагов, чтобы не задеть союзника рядом с ними', () => {
+  const state = arena({
+    heroes: [hero('hero', { characterClass: 'wizard', level: 5, knownSpellIds: ['fire-bolt', 'fireball'], preparedSpellIds: ['fireball'] }), hero('ally')],
+    enemies: [enemy('one'), enemy('two')],
+    positions: { hero: { x: 1, y: 1 }, ally: { x: 5, y: 5 }, one: { x: 6, y: 5 }, two: { x: 6, y: 6 } },
+    resources: { hero: { spell_slots_3: { current: 1, max: 1 } } },
+  })
+  const plan = planHeroCombatCommand(campaignStateForViewer(state, { id: 'user', role: 'player', heroIds: ['hero'] }, 'hero'), 'hero')
+  assert.equal(plan.command.spell_id, 'fireball')
+  const after = resolvePlan(state, plan, Array(100).fill(4))
+  assert.equal(after.players.find(actor => actor.id === 'ally').hp, state.players[1].hp)
+  assert.ok(after.enemies.every(actor => actor.hp < 16))
+})
+
+test('заклинатель выбирает открытую цель, если ближайшая закрыта стеной', () => {
+  const state = arena({
+    heroes: [hero('hero', { characterClass: 'wizard', level: 5, knownSpellIds: ['fire-bolt'], preparedSpellIds: [] })],
+    enemies: [enemy('blocked'), enemy('clear')],
+    positions: { hero: { x: 1, y: 1 }, blocked: { x: 3, y: 1 }, clear: { x: 1, y: 6 } },
+  })
+  state.scene.cells = floor().map(cell => cell.x === 2 && cell.y < 3 ? { ...cell, type: 'wall' } : cell)
+  const plan = planHeroCombatCommand(state, 'hero')
+  assert.equal(plan.command.spell_id, 'fire-bolt')
+  assert.equal(plan.command.target_id, 'clear')
+})
+
+test('колдун накладывает Сглаз на врага перед лучами и сохраняет концентрацию', () => {
+  const state = arena({ heroes: [hero('hero', { characterClass: 'warlock', role: 'Колдун', level: 5,
+    knownSpellIds: ['eldritch-blast', 'hex'], preparedSpellIds: ['hex'], abilities: { str: 10, dex: 14, con: 14, int: 10, wis: 10, cha: 16 } })],
+    enemies: [enemy('enemy', { hp: 100, maxHp: 100 })], positions: { hero: { x: 1, y: 1 }, enemy: { x: 8, y: 1 } } })
+  const plan = planHeroCombatCommand(state, 'hero')
+  assert.equal(plan.command.spell_id, 'hex')
+  assert.equal(plan.command.target_id, 'enemy')
+  const after = resolvePlan(state, plan)
+  assert.equal(planHeroCombatCommand(after, 'hero').command.spell_id, 'eldritch-blast')
+})
+
+test('паладин подготавливает Пылающую кару бонусным действием перед ударом', () => {
+  const state = arena({ heroes: [hero('hero', { characterClass: 'paladin', role: 'Паладин', level: 5,
+    knownSpellIds: ['searing-smite'], preparedSpellIds: ['searing-smite'] })], enemies: [enemy('enemy', { hp: 100, maxHp: 100 })],
+    positions: { hero: { x: 1, y: 1 }, enemy: { x: 2, y: 1 } } })
+  const plan = planHeroCombatCommand(state, 'hero')
+  assert.equal(plan.command.spell_id, 'searing-smite')
+  const after = resolvePlan(state, plan)
+  assert.equal(after.mechanics.combat.action_economy.hero.action, true)
+  assert.equal(after.mechanics.combat.action_economy.hero.bonus_action, false)
+  const attack = planHeroCombatCommand(after, 'hero').command
+  assert.ok(attack.command_type === 'MakeAttack' || attack.action_id === 'divine-smite')
+  state.mechanics.combat.action_economy.hero = { ...economy(), action: false, attacks_used: 1, attacks_allowed: 2 }
+  assert.equal(planHeroCombatCommand(state, 'hero').command.spell_id, 'searing-smite', 'Свободное бонусное действие усиливает и оставшуюся дополнительную атаку')
+})
+
 test('лечащий герой поднимает союзника с 0 ОЗ бонусным заклинанием', () => {
   const healer = hero('hero', { characterClass: 'cleric', role: 'Жрец', level: 3, abilities: { str: 10, dex: 12, con: 14, int: 10, wis: 16, cha: 10 }, knownSpellIds: ['healing-word'], preparedSpellIds: ['healing-word'] })
   const fallen = hero('fallen', { hp: 0, x: 2, y: 1, inventory: [] })
@@ -158,6 +240,39 @@ test('Всплеск действий возвращает потраченно�
   assert.equal(planHeroCombatCommand(afterSurge, 'hero').command.command_type, 'MakeAttack')
 })
 
+test('после лечения герой не идёт мимо соседнего врага ради уже недоступной атаки', () => {
+  const state = arena({ heroes: [hero('hero', { level: 5 })], enemies: [enemy('near'), enemy('far')],
+    positions: { hero: { x: 1, y: 1 }, near: { x: 2, y: 1 }, far: { x: 7, y: 5 } } })
+  state.mechanics.combat.action_economy.hero = { ...economy(), action: false, attacks_used: 0, attacks_allowed: 2 }
+  state.mechanics.resources.hero.action_surge = { current: 0, max: 1 }
+  const plan = planHeroCombatCommand(state, 'hero')
+  assert.equal(plan.command.command_type, 'EndTurn')
+})
+
+test('паладин поднимает павшего союзника Наложением рук, когда нет лечебных заклинаний', () => {
+  const state = arena({ heroes: [hero('hero', { characterClass: 'paladin', role: 'Паладин', level: 5, knownSpellIds: [], preparedSpellIds: [] }), hero('fallen', { hp: 0 })], enemies: [enemy()],
+    positions: { hero: { x: 1, y: 1 }, fallen: { x: 1, y: 2 }, enemy: { x: 7, y: 5 } },
+    resources: { hero: { lay_on_hands: { current: 25, max: 25 } } } })
+  state.mechanics.death.saving_throws.fallen = { successes: 0, failures: 1, stable: false }
+  const plan = planHeroCombatCommand(state, 'hero')
+  assert.equal(plan.command.action_id, 'lay-on-hands')
+  assert.equal(plan.command.target_id, 'fallen')
+  const after = resolvePlan(state, plan)
+  assert.equal(after.players[1].hp, 5)
+  assert.equal(after.mechanics.resources.hero.lay_on_hands.current, 20)
+})
+
+test('паладин сравнивает Божественную кару с обычным ударом по доступной цели', () => {
+  const state = arena({ heroes: [hero('hero', { characterClass: 'paladin', role: 'Паладин', level: 5, knownSpellIds: [], preparedSpellIds: [] })], enemies: [enemy('far'), enemy('near', { hp: 100, maxHp: 100 })],
+    positions: { hero: { x: 1, y: 1 }, near: { x: 2, y: 1 }, far: { x: 7, y: 5 } },
+    resources: { hero: { spell_slots_1: { current: 4, max: 4 } } } })
+  const plan = planHeroCombatCommand(state, 'hero')
+  assert.equal(plan.command.action_id, 'divine-smite')
+  assert.equal(plan.command.target_id, 'near')
+  const after = resolvePlan(state, plan, Array(30).fill(4))
+  assert.equal(after.mechanics.resources.hero.spell_slots_1.current, 3)
+})
+
 test('заблокированный маршрут даёт безопасный EndTurn, а не недействительное перемещение', () => {
   const cells = floor(7).map((cell) => cell.x === 2 ? { ...cell, type: 'wall' } : cell)
   const state = arena({ heroes: [hero()], enemies: [enemy('enemy', { x: 5, y: 1 })], positions: { hero: { x: 1, y: 1 }, enemy: { x: 5, y: 1 } }, size: 7 })
@@ -178,6 +293,43 @@ test('линия к цели за сплошной стеной не превр�
   state.scene.cells = floor(7).map((cell) => cell.x === 2 ? { ...cell, type: 'wall' } : cell)
   const plan = planHeroCombatCommand(state, 'hero')
   assert.notEqual(plan.command.command_type, 'MakeAttack')
+  assert.doesNotThrow(() => resolvePlan(state, plan))
+})
+
+test('герой продолжает продвижение, если союзник занял единственный проход', () => {
+  const state = arena({
+    heroes: [
+      hero('front', { x: 0, y: 3 }),
+      hero('blocker', { x: 5, y: 3, inventory: [] }),
+    ],
+    enemies: [enemy('enemy', { x: 8, y: 3 })],
+    positions: { front: { x: 0, y: 3 }, blocker: { x: 5, y: 3 }, enemy: { x: 8, y: 3 } },
+  })
+  state.scene.cells = floor(12).map((cell) => cell.x === 5 && cell.y !== 3 ? { ...cell, type: 'wall' } : cell)
+
+  const visible = campaignStateForViewer(state, { id: 'front-user', role: 'player', heroIds: ['front'] }, 'front')
+  delete visible.enemies[0].hp
+  delete visible.enemies[0].maxHp
+  const plan = planHeroCombatCommand(visible, 'front')
+
+  assert.equal(plan.command.command_type, 'MoveActor')
+  assert.deepEqual(plan.command.to, { x: 4, y: 3 }, 'нужно занять свободную клетку перед союзником')
+  assert.match(plan.reason, /Продвин|Подойти/u)
+  assert.doesNotThrow(() => resolvePlan(state, plan))
+})
+
+test('бот не предлагает «Потушить союзника» без действующего пламени', () => {
+  const state = arena({
+    heroes: [hero('front', { x: 3, y: 4 }), hero('blocker', { x: 4, y: 4, inventory: [] })],
+    enemies: [enemy('enemy', { x: 8, y: 3 })],
+    positions: { front: { x: 3, y: 4 }, blocker: { x: 4, y: 4 }, enemy: { x: 8, y: 3 } },
+  })
+  const blocked = new Set(['2,4', '3,3', '3,5', '4,2', '4,3', '4,4', '5,3'])
+  state.scene.cells = floor(12).map((cell) => blocked.has(`${cell.x},${cell.y}`) ? { ...cell, type: 'wall' } : cell)
+
+  const plan = planHeroCombatCommand(campaignStateForViewer(state, { id: 'front-user', role: 'player', heroIds: ['front'] }, 'front'), 'front')
+
+  assert.notEqual(plan.command.action_id, 'extinguish-ally')
   assert.doesNotThrow(() => resolvePlan(state, plan))
 })
 

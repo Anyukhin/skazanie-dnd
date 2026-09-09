@@ -11,6 +11,7 @@ import {
   normalizeItemRechargeProfile,
 } from './item-catalog.mjs'
 import { reputationStandingFor } from './reputation-policy.mjs'
+import { npcProfileAtWorldTime } from './npc-social.mjs'
 import { STOLEN_DISCOUNT_BPS, npcIsFence } from './underworld.mjs'
 
 export const ECONOMY_POLICY_ID = 'skazanie:economy:merchant-policy-v1'
@@ -79,6 +80,66 @@ export function locationsMatch(left, right) {
 export function merchantIsAtLocation(merchantLocation, sceneLocation) {
   const merchant = locationReference(merchantLocation)
   return (!merchant.id && !merchant.key) || locationsMatch(merchantLocation, sceneLocation)
+}
+
+/**
+ * Единственная проверка, может ли NPC-торговец сейчас принимать сделки.
+ *
+ * Торговец — это одновременно экономическая запись и человек на карте.
+ * `merchant.available` закрывает саму лавку, а социальный профиль, vitality и
+ * реестр пленных закрывают человека, даже если старая запись лавки ещё не
+ * успела измениться. Положение проверяется только на уровне текущей локации;
+ * отдельного правила расстояния до NPC здесь нет.
+ *
+ * @param {Record<string, any> | null | undefined} state
+ * @param {Record<string, any> | string | null | undefined} merchantOrId
+ * @param {{ allowRemote?: boolean }} [options]
+ * @returns {{ can_trade: boolean, code: string | null, reason: string | null }}
+ */
+export function merchantTradeAvailabilityFor(state, merchantOrId, { allowRemote = false } = {}) {
+  const merchant = merchantOrId && typeof merchantOrId === 'object'
+    ? merchantOrId
+    : findMerchant(state, merchantOrId)
+  if (!merchant) return { can_trade: false, code: 'MERCHANT_NOT_FOUND', reason: 'Торговец не найден' }
+  if (merchant.available === false) {
+    return { can_trade: false, code: 'MERCHANT_UNAVAILABLE', reason: 'Торговец сейчас недоступен' }
+  }
+  if (!allowRemote && !merchantIsAtLocation(merchant, state?.scene)) {
+    return { can_trade: false, code: 'MERCHANT_NOT_PRESENT', reason: 'Торговец находится в другой локации' }
+  }
+
+  const merchantId = String(merchant.id ?? '')
+  const socialNpc = (Array.isArray(state?.social?.npcs) ? state.social.npcs : [])
+    .find((npc) => String(npc?.id ?? '') === merchantId)
+  const currentSocialNpc = socialNpc ? npcProfileAtWorldTime(socialNpc, state) : null
+  if (currentSocialNpc?.available === false) {
+    return { can_trade: false, code: 'MERCHANT_UNAVAILABLE', reason: 'Торговец сейчас недоступен' }
+  }
+  if (!allowRemote && currentSocialNpc && !merchantIsAtLocation(currentSocialNpc, state?.scene)) {
+    return { can_trade: false, code: 'MERCHANT_NOT_PRESENT', reason: 'Торговец находится в другой локации' }
+  }
+
+  const vital = state?.npc_world?.vitals?.[merchantId]
+  if (vital && (vital.alive === false || Number(vital.hp) <= 0)) {
+    return { can_trade: false, code: 'MERCHANT_UNAVAILABLE', reason: 'Торговец сейчас недоступен' }
+  }
+
+  const captives = Array.isArray(state?.captives?.captives)
+    ? state.captives.captives
+    : Array.isArray(state?.captives) ? state.captives : []
+  if (captives.some((captive) => String(captive?.npc_id ?? '') === merchantId && captive?.status === 'held')) {
+    return { can_trade: false, code: 'MERCHANT_UNAVAILABLE', reason: 'Торговец сейчас недоступен' }
+  }
+
+  const standing = reputationStandingFor(state, merchantId)
+  if (standing.trade_available === false) {
+    return {
+      can_trade: false,
+      code: 'TRADE_REFUSED_BY_WANTED_LEVEL',
+      reason: standing.trade_refusal_reason || 'Торговец отказывается иметь дело с отрядом',
+    }
+  }
+  return { can_trade: true, code: null, reason: null }
 }
 
 function clone(value) {
@@ -708,8 +769,8 @@ export function merchantServiceProposal(state, merchantId, actorId, serviceId) {
   const actor = (Array.isArray(state?.players) ? state.players : [])
     .find((player) => String(player?.id ?? '') === String(actorId ?? ''))
   const service = findMerchantService(merchant, serviceId)
-  if (!merchant || !actor || !service || !merchant.available || !service.available) return null
-  if (service.requires_presence && !merchantIsAtLocation(merchant, state?.scene)) return null
+  if (!merchant || !actor || !service || !service.available) return null
+  if (!merchantTradeAvailabilityFor(state, merchant, { allowRemote: service.requires_presence === false }).can_trade) return null
   const quote = quoteMerchantService(merchant, actor.id, service)
   if (!quote) return null
   const balance = normalizeCurrency(actor.currency)
