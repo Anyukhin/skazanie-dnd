@@ -102,7 +102,7 @@ function tracingContext() {
     },
     clearRect() {},
     setLineDash() {},
-    drawImage() {},
+    drawImage(image, sx, sy, sw, sh, dx, dy, dw, dh) { ops.push({ op: 'drawImage', image, sx, sy, sw, sh, dx, dy, dw, dh }) },
   }
   for (const name of ['fillStyle', 'strokeStyle']) {
     Object.defineProperty(context, name, {
@@ -228,6 +228,38 @@ test('каждый идентификатор реестра ассетов им
     assert.ok(context.box.maxX - context.box.minX < reach, `${asset.id} вылез за свой футпринт по ширине`)
     assert.ok(context.box.maxY - context.box.minY < reach, `${asset.id} вылез за свой футпринт по высоте`)
   }
+})
+
+test('2D предпочитает preview выбранной 3D-модели и сохраняет fallback-атлас', () => {
+  const catalog = {
+    version: 1,
+    models: [{
+      key: 'barrel-v1', label: 'Бочка', category: 'prop', url: '/assets/models/environment/barrel-v1.glb',
+      assetIds: ['barrel'], yaw: 0, preview: { x: 7, y: 11, w: 23, h: 19 },
+    }],
+  }
+  const modelAtlas = { catalog, texture: { image: 'model-preview', width: 128, height: 128 }, key: 'model-atlas-v1' }
+  const fallbackAtlas = {
+    texture: { image: 'prop-preview', width: 256, height: 256 },
+    frames: { barrel: { x: 1, y: 2, w: 30, h: 31 }, crate: { x: 40, y: 2, w: 30, h: 31 } },
+    key: 'prop-atlas-v1',
+  }
+  const modelContext = tracingContext()
+  render.drawProps(modelContext, { map: mapWithProp({ assetId: 'barrel', x: 1.5, y: 1.5, footprint: [{ x: 1, y: 1 }] }), palette: render.DEFAULT_BOARD_PALETTE, cellSize: 48, propAtlas: fallbackAtlas, modelPropAtlas: modelAtlas }, { tileX: 0, tileY: 0 })
+  const modelImage = modelContext.ops.find((operation) => operation.op === 'drawImage')
+  assert.equal(modelImage?.image, 'model-preview', 'при наличии mapping 2D должна брать preview-модель')
+  assert.deepEqual([modelImage?.sx, modelImage?.sy, modelImage?.sw, modelImage?.sh], [7, 11, 23, 19])
+
+  const fallbackContext = tracingContext()
+  render.drawProps(fallbackContext, { map: mapWithProp({ assetId: 'crate', x: 1.5, y: 1.5, footprint: [{ x: 1, y: 1 }] }), palette: render.DEFAULT_BOARD_PALETTE, cellSize: 48, propAtlas: fallbackAtlas, modelPropAtlas: modelAtlas }, { tileX: 0, tileY: 0 })
+  const fallbackImage = fallbackContext.ops.find((operation) => operation.op === 'drawImage')
+  assert.equal(fallbackImage?.image, 'prop-preview', 'для unmapped assetId должен сохраниться старый атлас')
+  assert.deepEqual([fallbackImage?.sx, fallbackImage?.sy, fallbackImage?.sw, fallbackImage?.sh], [40, 2, 30, 31])
+
+  const map = mapWithProp({ assetId: 'barrel', x: 1.5, y: 1.5, footprint: [{ x: 1, y: 1 }] })
+  const withModelAtlas = render.tileKey({ map, palette: render.DEFAULT_BOARD_PALETTE, cellSize: 48, propAtlas: fallbackAtlas, modelPropAtlas: modelAtlas }, { tileX: 0, tileY: 0 })
+  const withoutModelAtlas = render.tileKey({ map, palette: render.DEFAULT_BOARD_PALETTE, cellSize: 48, propAtlas: fallbackAtlas }, { tileX: 0, tileY: 0 })
+  assert.notEqual(withModelAtlas, withoutModelAtlas, 'смена preview-атласа должна обесценить кэш тайла')
 })
 
 test('старые значения feature продолжают рисоваться по таблице соответствия', () => {

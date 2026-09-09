@@ -28,6 +28,6 @@ export function CombatLabBoard({ map: serialized, cells, actors, activeActorId, 
   return <div className="combat-lab-board"><div className="combat-lab-board-controls"><span>Клетка — 5 футов. Масштаб: Alt + колесо.</span><button onClick={() => setViewReset((value) => value + 1)}><Maximize2 size={14} />Вся карта</button></div><div className="combat-lab-board-viewport"><TacticalBoard map={map} columns={map?.width ?? 10} rows={map?.height ?? 5} irregular={false}
     ariaLabel={onPlace ? 'Расстановка участников на карте' : 'Карта боя'} themeKey="combat-lab" artUrl={null} cells={nodes} overlayCells={[]}
     lighting={false} campaignId={preview ? 'combat-lab-setup' : 'combat-lab-playback'} viewResetKey={`${map?.locationId}:${viewReset}`} wheelZoomRequiresAltKey animationsEnabled={!preview} visualBatch={frameId ? { id: frameId, events, npcTurns: [] } : null}
-    animationActors={actors.map((actor) => ({ id: actor.id, x: actor.x, y: actor.y, label: actor.name, kind: actor.side === 'party' ? 'hero' : 'enemy' }))}
+    animationActors={actors.map((actor) => ({ id: actor.id, x: actor.x, y: actor.y, label: actor.name, kind: actor.side === 'party' ? 'hero' : 'enemy', defeated: actor.hp <= 0 }))}
   /></div></div>
 }

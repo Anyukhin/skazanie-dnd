@@ -1,0 +1,1894 @@
+{
+  "version": 1,
+  "sources": [
+    {
+      "url": "https://quaternius.com/packs/fantasypropsmegakit.html",
+      "license": "CC0-1.0",
+      "author": "Quaternius",
+      "archive": "fantasy_props_megakitstandard.zip",
+      "archiveSha256": "0bc1e5843c9f245c44bda82f97f738b09f88fe51bb34d2a69a7847a969f868e3"
+    },
+    {
+      "url": "https://kenney.nl/assets/nature-kit",
+      "license": "CC0-1.0",
+      "author": "Kenney",
+      "archive": "kenney_nature-kit.zip",
+      "archiveSha256": "fa7974a0d342bfe63c38664ba9f8ec1a4aab8ea25f099bdc56870e33588c4d9d"
+    }
+  ],
+  "models": [
+    {
+      "key": "q-anvil",
+      "label": "Наковальня",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/anvil.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 0,
+        "y": 0,
+        "w": 246,
+        "h": 92
+      }
+    },
+    {
+      "key": "q-anvil_log",
+      "label": "Наковальня на колоде",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/anvil_log.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 256,
+        "y": 0,
+        "w": 246,
+        "h": 218
+      }
+    },
+    {
+      "key": "q-axe_bronze",
+      "label": "Бронзовый топор",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/axe_bronze.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 512,
+        "y": 0,
+        "w": 246,
+        "h": 40
+      }
+    },
+    {
+      "key": "q-bag",
+      "label": "Мешок",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/quaternius/bag.glb",
+      "assetIds": [
+        "sack"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 768,
+        "y": 0,
+        "w": 246,
+        "h": 206
+      }
+    },
+    {
+      "key": "q-banner_1",
+      "label": "Знамя",
+      "category": "Освещение и декор",
+      "url": "/assets/models/environment/quaternius/banner_1.glb",
+      "assetIds": [
+        "banner"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1024,
+        "y": 0,
+        "w": 246,
+        "h": 30
+      }
+    },
+    {
+      "key": "q-banner_1_cloth",
+      "label": "Полотнище знамени",
+      "category": "Освещение и декор",
+      "url": "/assets/models/environment/quaternius/banner_1_cloth.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1280,
+        "y": 0,
+        "w": 223,
+        "h": 18
+      }
+    },
+    {
+      "key": "q-banner_2",
+      "label": "Знамя, вариант 2",
+      "category": "Освещение и декор",
+      "url": "/assets/models/environment/quaternius/banner_2.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1536,
+        "y": 0,
+        "w": 246,
+        "h": 30
+      }
+    },
+    {
+      "key": "q-banner_2_cloth",
+      "label": "Полотнище знамени, вариант 2",
+      "category": "Освещение и декор",
+      "url": "/assets/models/environment/quaternius/banner_2_cloth.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1792,
+        "y": 0,
+        "w": 222,
+        "h": 18
+      }
+    },
+    {
+      "key": "q-barrel",
+      "label": "Бочка",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/quaternius/barrel.glb",
+      "assetIds": [
+        "barrel",
+        "keg"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 0,
+        "y": 256,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-barrel_apples",
+      "label": "Бочка с яблоками",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/quaternius/barrel_apples.glb",
+      "assetIds": [
+        "barrel"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 256,
+        "y": 256,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-barrel_holder",
+      "label": "Подставка для бочки",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/quaternius/barrel_holder.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 512,
+        "y": 256,
+        "w": 246,
+        "h": 134
+      }
+    },
+    {
+      "key": "q-bed_twin1",
+      "label": "Кровать",
+      "category": "Мебель",
+      "url": "/assets/models/environment/quaternius/bed_twin1.glb",
+      "assetIds": [
+        "bed"
+      ],
+      "yaw": 90,
+      "preview": {
+        "x": 768,
+        "y": 256,
+        "w": 246,
+        "h": 192
+      }
+    },
+    {
+      "key": "q-bed_twin2",
+      "label": "Кровать, вариант",
+      "category": "Мебель",
+      "url": "/assets/models/environment/quaternius/bed_twin2.glb",
+      "assetIds": [
+        "bed"
+      ],
+      "yaw": 90,
+      "preview": {
+        "x": 1024,
+        "y": 256,
+        "w": 246,
+        "h": 192
+      }
+    },
+    {
+      "key": "q-bench",
+      "label": "Скамья",
+      "category": "Мебель",
+      "url": "/assets/models/environment/quaternius/bench.glb",
+      "assetIds": [
+        "bench"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1280,
+        "y": 256,
+        "w": 246,
+        "h": 48
+      }
+    },
+    {
+      "key": "q-book_group_medium_1",
+      "label": "Большой ряд книг",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/book_group_medium_1.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1536,
+        "y": 256,
+        "w": 246,
+        "h": 58
+      }
+    },
+    {
+      "key": "q-book_group_medium_2",
+      "label": "Большой ряд книг, вариант 2",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/book_group_medium_2.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1792,
+        "y": 256,
+        "w": 246,
+        "h": 56
+      }
+    },
+    {
+      "key": "q-book_group_medium_3",
+      "label": "Большой ряд книг, вариант 3",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/book_group_medium_3.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 0,
+        "y": 512,
+        "w": 246,
+        "h": 60
+      }
+    },
+    {
+      "key": "q-book_group_small_1",
+      "label": "Небольшой ряд книг",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/book_group_small_1.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 256,
+        "y": 512,
+        "w": 246,
+        "h": 192
+      }
+    },
+    {
+      "key": "q-book_group_small_2",
+      "label": "Небольшой ряд книг, вариант 2",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/book_group_small_2.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 512,
+        "y": 512,
+        "w": 236,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-book_group_small_3",
+      "label": "Небольшой ряд книг, вариант 3",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/book_group_small_3.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 768,
+        "y": 512,
+        "w": 246,
+        "h": 240
+      }
+    },
+    {
+      "key": "q-book_stand",
+      "label": "Подставка для книги",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/book_stand.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1024,
+        "y": 512,
+        "w": 244,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-book_5",
+      "label": "Книга в синем переплёте",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/book_5.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1280,
+        "y": 512,
+        "w": 184,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-book_7",
+      "label": "Книга в красном переплёте",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/book_7.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1536,
+        "y": 512,
+        "w": 184,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-book_simplified_single",
+      "label": "Книга",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/book_simplified_single.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1792,
+        "y": 512,
+        "w": 76,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-book_stack_1",
+      "label": "Стопка книг",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/book_stack_1.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 0,
+        "y": 768,
+        "w": 246,
+        "h": 196
+      }
+    },
+    {
+      "key": "q-book_stack_2",
+      "label": "Стопка книг, вариант 2",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/book_stack_2.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 256,
+        "y": 768,
+        "w": 246,
+        "h": 204
+      }
+    },
+    {
+      "key": "q-bookcase_2",
+      "label": "Книжный шкаф",
+      "category": "Мебель",
+      "url": "/assets/models/environment/quaternius/bookcase_2.glb",
+      "assetIds": [
+        "bookshelf"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 512,
+        "y": 768,
+        "w": 246,
+        "h": 74
+      }
+    },
+    {
+      "key": "q-bottle_1",
+      "label": "Бутылка",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/bottle_1.glb",
+      "assetIds": [
+        "bottle"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 768,
+        "y": 768,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-bucket_metal",
+      "label": "Металлическое ведро",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/quaternius/bucket_metal.glb",
+      "assetIds": [
+        "bucket"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1024,
+        "y": 768,
+        "w": 246,
+        "h": 228
+      }
+    },
+    {
+      "key": "q-bucket_wooden_1",
+      "label": "Деревянное ведро",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/quaternius/bucket_wooden_1.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1280,
+        "y": 768,
+        "w": 246,
+        "h": 218
+      }
+    },
+    {
+      "key": "q-cabinet",
+      "label": "Шкаф",
+      "category": "Мебель",
+      "url": "/assets/models/environment/quaternius/cabinet.glb",
+      "assetIds": [
+        "cupboard"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1536,
+        "y": 768,
+        "w": 246,
+        "h": 66
+      }
+    },
+    {
+      "key": "q-cage_small",
+      "label": "Небольшая клетка",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/quaternius/cage_small.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1792,
+        "y": 768,
+        "w": 238,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-candle_stick",
+      "label": "Подсвечник",
+      "category": "Освещение и декор",
+      "url": "/assets/models/environment/quaternius/candle_stick.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 0,
+        "y": 1024,
+        "w": 246,
+        "h": 170
+      }
+    },
+    {
+      "key": "q-candle_stick_stand",
+      "label": "Напольный подсвечник",
+      "category": "Освещение и декор",
+      "url": "/assets/models/environment/quaternius/candle_stick_stand.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 256,
+        "y": 1024,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-candle_stick_triple",
+      "label": "Тройной подсвечник",
+      "category": "Освещение и декор",
+      "url": "/assets/models/environment/quaternius/candle_stick_triple.glb",
+      "assetIds": [
+        "candelabra"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 512,
+        "y": 1024,
+        "w": 246,
+        "h": 76
+      }
+    },
+    {
+      "key": "q-candle_1",
+      "label": "Свеча",
+      "category": "Освещение и декор",
+      "url": "/assets/models/environment/quaternius/candle_1.glb",
+      "assetIds": [
+        "candle"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 768,
+        "y": 1024,
+        "w": 214,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-candle_2",
+      "label": "Свеча, вариант 2",
+      "category": "Освещение и декор",
+      "url": "/assets/models/environment/quaternius/candle_2.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1024,
+        "y": 1024,
+        "w": 238,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-carrot",
+      "label": "Морковь",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/carrot.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1280,
+        "y": 1024,
+        "w": 200,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-cauldron",
+      "label": "Котёл",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/quaternius/cauldron.glb",
+      "assetIds": [
+        "cauldron"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1536,
+        "y": 1024,
+        "w": 246,
+        "h": 236
+      }
+    },
+    {
+      "key": "q-chain_coil",
+      "label": "Смотанная цепь",
+      "category": "Предметы",
+      "url": "/assets/models/environment/quaternius/chain_coil.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1792,
+        "y": 1024,
+        "w": 246,
+        "h": 210
+      }
+    },
+    {
+      "key": "q-chair_1",
+      "label": "Стул",
+      "category": "Мебель",
+      "url": "/assets/models/environment/quaternius/chair_1.glb",
+      "assetIds": [
+        "chair"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 0,
+        "y": 1280,
+        "w": 246,
+        "h": 234
+      }
+    },
+    {
+      "key": "q-chalice",
+      "label": "Кубок",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/chalice.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 256,
+        "y": 1280,
+        "w": 234,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-chandelier",
+      "label": "Люстра",
+      "category": "Освещение и декор",
+      "url": "/assets/models/environment/quaternius/chandelier.glb",
+      "assetIds": [
+        "chandelier"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 512,
+        "y": 1280,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-chest_wood",
+      "label": "Деревянный сундук",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/quaternius/chest_wood.glb",
+      "assetIds": [
+        "chest"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 768,
+        "y": 1280,
+        "w": 246,
+        "h": 146
+      }
+    },
+    {
+      "key": "q-coin",
+      "label": "Монета",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/coin.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1024,
+        "y": 1280,
+        "w": 246,
+        "h": 52
+      }
+    },
+    {
+      "key": "q-coin_pile",
+      "label": "Стопка монет",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/coin_pile.glb",
+      "assetIds": [
+        "coin_pile"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1280,
+        "y": 1280,
+        "w": 246,
+        "h": 192
+      }
+    },
+    {
+      "key": "q-coin_pile_2",
+      "label": "Россыпь монет",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/coin_pile_2.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1536,
+        "y": 1280,
+        "w": 246,
+        "h": 178
+      }
+    },
+    {
+      "key": "q-crate_metal",
+      "label": "Окованный ящик",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/quaternius/crate_metal.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1792,
+        "y": 1280,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-crate_wooden",
+      "label": "Деревянный ящик",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/quaternius/crate_wooden.glb",
+      "assetIds": [
+        "crate"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 0,
+        "y": 1536,
+        "w": 229,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-dummy",
+      "label": "Тренировочное чучело",
+      "category": "Предметы",
+      "url": "/assets/models/environment/quaternius/dummy.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 256,
+        "y": 1536,
+        "w": 246,
+        "h": 178
+      }
+    },
+    {
+      "key": "q-farm_crate_apple",
+      "label": "Ящик с яблоками",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/quaternius/farm_crate_apple.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 512,
+        "y": 1536,
+        "w": 246,
+        "h": 144
+      }
+    },
+    {
+      "key": "q-farm_crate_carrot",
+      "label": "Ящик с морковью",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/quaternius/farm_crate_carrot.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 768,
+        "y": 1536,
+        "w": 246,
+        "h": 196
+      }
+    },
+    {
+      "key": "q-farm_crate_empty",
+      "label": "Овощной ящик",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/quaternius/farm_crate_empty.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1024,
+        "y": 1536,
+        "w": 246,
+        "h": 144
+      }
+    },
+    {
+      "key": "q-key_gold",
+      "label": "Золотой ключ",
+      "category": "Предметы",
+      "url": "/assets/models/environment/quaternius/key_gold.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1280,
+        "y": 1536,
+        "w": 118,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-key_metal",
+      "label": "Железный ключ",
+      "category": "Предметы",
+      "url": "/assets/models/environment/quaternius/key_metal.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1536,
+        "y": 1536,
+        "w": 107,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-lantern_wall",
+      "label": "Настенный фонарь",
+      "category": "Освещение и декор",
+      "url": "/assets/models/environment/quaternius/lantern_wall.glb",
+      "assetIds": [
+        "lantern_wall"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1792,
+        "y": 1536,
+        "w": 68,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-mug",
+      "label": "Кружка",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/mug.glb",
+      "assetIds": [
+        "mug"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 0,
+        "y": 1792,
+        "w": 246,
+        "h": 188
+      }
+    },
+    {
+      "key": "q-nightstand_shelf",
+      "label": "Прикроватная тумба",
+      "category": "Мебель",
+      "url": "/assets/models/environment/quaternius/nightstand_shelf.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 256,
+        "y": 1792,
+        "w": 246,
+        "h": 140
+      }
+    },
+    {
+      "key": "q-peg_rack",
+      "label": "Вешалка с крючками",
+      "category": "Мебель",
+      "url": "/assets/models/environment/quaternius/peg_rack.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 512,
+        "y": 1792,
+        "w": 246,
+        "h": 20
+      }
+    },
+    {
+      "key": "q-pickaxe_bronze",
+      "label": "Бронзовая кирка",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/pickaxe_bronze.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 768,
+        "y": 1792,
+        "w": 246,
+        "h": 42
+      }
+    },
+    {
+      "key": "q-pot_1",
+      "label": "Горшок",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/quaternius/pot_1.glb",
+      "assetIds": [
+        "pot"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1024,
+        "y": 1792,
+        "w": 246,
+        "h": 222
+      }
+    },
+    {
+      "key": "q-pot_1_lid",
+      "label": "Крышка горшка",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/quaternius/pot_1_lid.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1280,
+        "y": 1792,
+        "w": 246,
+        "h": 222
+      }
+    },
+    {
+      "key": "q-potion_1",
+      "label": "Зелье в зелёной бутылке",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/quaternius/potion_1.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1536,
+        "y": 1792,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-potion_2",
+      "label": "Зелье в красной бутылке",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/quaternius/potion_2.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1792,
+        "y": 1792,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-potion_4",
+      "label": "Зелье в фиолетовой бутылке",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/quaternius/potion_4.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 0,
+        "y": 2048,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-pouch_large",
+      "label": "Большой кошель",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/pouch_large.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 256,
+        "y": 2048,
+        "w": 246,
+        "h": 132
+      }
+    },
+    {
+      "key": "q-rope_1",
+      "label": "Моток верёвки",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/rope_1.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 512,
+        "y": 2048,
+        "w": 227,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-rope_2",
+      "label": "Моток верёвки, вариант 2",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/rope_2.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 768,
+        "y": 2048,
+        "w": 236,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-rope_3",
+      "label": "Моток верёвки, вариант 3",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/rope_3.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1024,
+        "y": 2048,
+        "w": 246,
+        "h": 192
+      }
+    },
+    {
+      "key": "q-scroll_1",
+      "label": "Свиток с зелёной лентой",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/scroll_1.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1280,
+        "y": 2048,
+        "w": 246,
+        "h": 64
+      }
+    },
+    {
+      "key": "q-scroll_2",
+      "label": "Свиток с красной лентой",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/scroll_2.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1536,
+        "y": 2048,
+        "w": 246,
+        "h": 68
+      }
+    },
+    {
+      "key": "q-shelf_arch",
+      "label": "Арочная полка",
+      "category": "Мебель",
+      "url": "/assets/models/environment/quaternius/shelf_arch.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1792,
+        "y": 2048,
+        "w": 246,
+        "h": 62
+      }
+    },
+    {
+      "key": "q-shelf_simple",
+      "label": "Настенная полка",
+      "category": "Мебель",
+      "url": "/assets/models/environment/quaternius/shelf_simple.glb",
+      "assetIds": [
+        "shelf_wall"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 0,
+        "y": 2304,
+        "w": 246,
+        "h": 62
+      }
+    },
+    {
+      "key": "q-shelf_small_bottles",
+      "label": "Полка с бутылками",
+      "category": "Мебель",
+      "url": "/assets/models/environment/quaternius/shelf_small_bottles.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 256,
+        "y": 2304,
+        "w": 246,
+        "h": 62
+      }
+    },
+    {
+      "key": "q-shield_wooden",
+      "label": "Деревянный щит",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/shield_wooden.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 512,
+        "y": 2304,
+        "w": 246,
+        "h": 72
+      }
+    },
+    {
+      "key": "q-small_bottle",
+      "label": "Маленькая бутылка",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/small_bottle.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 768,
+        "y": 2304,
+        "w": 246,
+        "h": 202
+      }
+    },
+    {
+      "key": "q-small_bottles_1",
+      "label": "Маленькие бутылки",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/small_bottles_1.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1024,
+        "y": 2304,
+        "w": 246,
+        "h": 64
+      }
+    },
+    {
+      "key": "q-stall_cart_empty",
+      "label": "Торговая тележка",
+      "category": "Мебель",
+      "url": "/assets/models/environment/quaternius/stall_cart_empty.glb",
+      "assetIds": [
+        "cart"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1280,
+        "y": 2304,
+        "w": 246,
+        "h": 88
+      }
+    },
+    {
+      "key": "q-stall_empty",
+      "label": "Торговая стойка",
+      "category": "Мебель",
+      "url": "/assets/models/environment/quaternius/stall_empty.glb",
+      "assetIds": [
+        "market_stall"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1536,
+        "y": 2304,
+        "w": 246,
+        "h": 126
+      }
+    },
+    {
+      "key": "q-stool",
+      "label": "Табурет",
+      "category": "Мебель",
+      "url": "/assets/models/environment/quaternius/stool.glb",
+      "assetIds": [
+        "stool"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1792,
+        "y": 2304,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-sword_bronze",
+      "label": "Бронзовый меч",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/sword_bronze.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 0,
+        "y": 2560,
+        "w": 246,
+        "h": 60
+      }
+    },
+    {
+      "key": "q-table_fork",
+      "label": "Вилка",
+      "category": "Мебель",
+      "url": "/assets/models/environment/quaternius/table_fork.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 256,
+        "y": 2560,
+        "w": 48,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-table_knife",
+      "label": "Столовый нож",
+      "category": "Мебель",
+      "url": "/assets/models/environment/quaternius/table_knife.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 512,
+        "y": 2560,
+        "w": 36,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-table_large",
+      "label": "Длинный стол",
+      "category": "Мебель",
+      "url": "/assets/models/environment/quaternius/table_large.glb",
+      "assetIds": [
+        "table_long"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 768,
+        "y": 2560,
+        "w": 246,
+        "h": 96
+      }
+    },
+    {
+      "key": "q-table_plate",
+      "label": "Тарелка",
+      "category": "Мебель",
+      "url": "/assets/models/environment/quaternius/table_plate.glb",
+      "assetIds": [
+        "plate"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1024,
+        "y": 2560,
+        "w": 244,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-table_spoon",
+      "label": "Ложка",
+      "category": "Мебель",
+      "url": "/assets/models/environment/quaternius/table_spoon.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1280,
+        "y": 2560,
+        "w": 42,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-torch_metal",
+      "label": "Настенный факел",
+      "category": "Освещение и декор",
+      "url": "/assets/models/environment/quaternius/torch_metal.glb",
+      "assetIds": [
+        "torch_wall"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1536,
+        "y": 2560,
+        "w": 142,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-vase_2",
+      "label": "Глиняная ваза",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/quaternius/vase_2.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1792,
+        "y": 2560,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-vase_4",
+      "label": "Глиняная ваза, вариант 2",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/quaternius/vase_4.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 0,
+        "y": 2816,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-vase_rubble_medium",
+      "label": "Черепки вазы",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/quaternius/vase_rubble_medium.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 256,
+        "y": 2816,
+        "w": 246,
+        "h": 186
+      }
+    },
+    {
+      "key": "q-weapon_stand",
+      "label": "Стойка для оружия",
+      "category": "Мебель",
+      "url": "/assets/models/environment/quaternius/weapon_stand.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 512,
+        "y": 2816,
+        "w": 246,
+        "h": 176
+      }
+    },
+    {
+      "key": "q-whetstone",
+      "label": "Точильный круг",
+      "category": "Утварь",
+      "url": "/assets/models/environment/quaternius/whetstone.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 768,
+        "y": 2816,
+        "w": 246,
+        "h": 196
+      }
+    },
+    {
+      "key": "q-workbench",
+      "label": "Верстак",
+      "category": "Мебель",
+      "url": "/assets/models/environment/quaternius/workbench.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1024,
+        "y": 2816,
+        "w": 246,
+        "h": 126
+      }
+    },
+    {
+      "key": "q-workbench_drawers",
+      "label": "Верстак с ящиками",
+      "category": "Мебель",
+      "url": "/assets/models/environment/quaternius/workbench_drawers.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1280,
+        "y": 2816,
+        "w": 246,
+        "h": 174
+      }
+    },
+    {
+      "key": "k-tree_default",
+      "label": "Лиственное дерево",
+      "category": "Природа",
+      "url": "/assets/models/environment/kenney/tree_default.glb",
+      "assetIds": [
+        "tree_birch"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1536,
+        "y": 2816,
+        "w": 246,
+        "h": 214
+      }
+    },
+    {
+      "key": "k-tree_oak",
+      "label": "Дуб",
+      "category": "Природа",
+      "url": "/assets/models/environment/kenney/tree_oak.glb",
+      "assetIds": [
+        "tree_oak"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1792,
+        "y": 2816,
+        "w": 214,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-tree_pine_default_a",
+      "label": "Сосна",
+      "category": "Природа",
+      "url": "/assets/models/environment/kenney/tree_pine_default_a.glb",
+      "assetIds": [
+        "tree_pine"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 0,
+        "y": 3072,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-tree_pine_round_a",
+      "label": "Круглая сосна",
+      "category": "Природа",
+      "url": "/assets/models/environment/kenney/tree_pine_round_a.glb",
+      "assetIds": [
+        "tree_spruce"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 256,
+        "y": 3072,
+        "w": 214,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-tree_pine_tall_a_detailed",
+      "label": "Высокая сосна",
+      "category": "Природа",
+      "url": "/assets/models/environment/kenney/tree_pine_tall_a_detailed.glb",
+      "assetIds": [
+        "tree_pine"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 512,
+        "y": 3072,
+        "w": 244,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-tree_simple",
+      "label": "Молодое дерево",
+      "category": "Природа",
+      "url": "/assets/models/environment/kenney/tree_simple.glb",
+      "assetIds": [
+        "tree_birch"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 768,
+        "y": 3072,
+        "w": 214,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-tree_default_fall",
+      "label": "Осеннее дерево",
+      "category": "Природа",
+      "url": "/assets/models/environment/kenney/tree_default_fall.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1024,
+        "y": 3072,
+        "w": 246,
+        "h": 214
+      }
+    },
+    {
+      "key": "k-stump_old",
+      "label": "Старый пень",
+      "category": "Природа",
+      "url": "/assets/models/environment/kenney/stump_old.glb",
+      "assetIds": [
+        "tree_stump"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1280,
+        "y": 3072,
+        "w": 238,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-stump_round_detailed",
+      "label": "Круглый пень",
+      "category": "Природа",
+      "url": "/assets/models/environment/kenney/stump_round_detailed.glb",
+      "assetIds": [
+        "tree_stump"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1536,
+        "y": 3072,
+        "w": 238,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-stump_square_detailed_wide",
+      "label": "Широкий пень",
+      "category": "Природа",
+      "url": "/assets/models/environment/kenney/stump_square_detailed_wide.glb",
+      "assetIds": [
+        "tree_stump"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1792,
+        "y": 3072,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-log",
+      "label": "Бревно",
+      "category": "Природа",
+      "url": "/assets/models/environment/kenney/log.glb",
+      "assetIds": [
+        "fallen_log"
+      ],
+      "yaw": 90,
+      "preview": {
+        "x": 0,
+        "y": 3328,
+        "w": 246,
+        "h": 82
+      }
+    },
+    {
+      "key": "k-log_large",
+      "label": "Большое бревно",
+      "category": "Природа",
+      "url": "/assets/models/environment/kenney/log_large.glb",
+      "assetIds": [
+        "fallen_log"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 256,
+        "y": 3328,
+        "w": 246,
+        "h": 136
+      }
+    },
+    {
+      "key": "k-log_stack",
+      "label": "Стопка брёвен",
+      "category": "Природа",
+      "url": "/assets/models/environment/kenney/log_stack.glb",
+      "assetIds": [
+        "woodpile"
+      ],
+      "yaw": 90,
+      "preview": {
+        "x": 512,
+        "y": 3328,
+        "w": 246,
+        "h": 148
+      }
+    },
+    {
+      "key": "k-log_stack_large",
+      "label": "Большая стопка брёвен",
+      "category": "Природа",
+      "url": "/assets/models/environment/kenney/log_stack_large.glb",
+      "assetIds": [
+        "woodpile"
+      ],
+      "yaw": 90,
+      "preview": {
+        "x": 768,
+        "y": 3328,
+        "w": 246,
+        "h": 220
+      }
+    },
+    {
+      "key": "k-rock_small_a",
+      "label": "Небольшой камень",
+      "category": "Природа",
+      "url": "/assets/models/environment/kenney/rock_small_a.glb",
+      "assetIds": [
+        "rock_small"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1024,
+        "y": 3328,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-rock_small_b",
+      "label": "Камень округлой формы",
+      "category": "Природа",
+      "url": "/assets/models/environment/kenney/rock_small_b.glb",
+      "assetIds": [
+        "rock_small"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1280,
+        "y": 3328,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-rock_small_flat_a",
+      "label": "Плоский камень",
+      "category": "Природа",
+      "url": "/assets/models/environment/kenney/rock_small_flat_a.glb",
+      "assetIds": [
+        "rock_small"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1536,
+        "y": 3328,
+        "w": 246,
+        "h": 214
+      }
+    },
+    {
+      "key": "k-rock_large_a",
+      "label": "Валун",
+      "category": "Природа",
+      "url": "/assets/models/environment/kenney/rock_large_a.glb",
+      "assetIds": [
+        "boulder"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1792,
+        "y": 3328,
+        "w": 190,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-rock_tall_a",
+      "label": "Высокий валун",
+      "category": "Природа",
+      "url": "/assets/models/environment/kenney/rock_tall_a.glb",
+      "assetIds": [
+        "boulder"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 0,
+        "y": 3584,
+        "w": 246,
+        "h": 172
+      }
+    },
+    {
+      "key": "k-plant_bush",
+      "label": "Куст",
+      "category": "Природа",
+      "url": "/assets/models/environment/kenney/plant_bush.glb",
+      "assetIds": [
+        "bush"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 256,
+        "y": 3584,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-plant_bush_detailed",
+      "label": "Густой куст",
+      "category": "Природа",
+      "url": "/assets/models/environment/kenney/plant_bush_detailed.glb",
+      "assetIds": [
+        "bush"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 512,
+        "y": 3584,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-plant_bush_large",
+      "label": "Большой куст",
+      "category": "Природа",
+      "url": "/assets/models/environment/kenney/plant_bush_large.glb",
+      "assetIds": [
+        "bush"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 768,
+        "y": 3584,
+        "w": 246,
+        "h": 222
+      }
+    },
+    {
+      "key": "k-plant_bush_small",
+      "label": "Маленький куст",
+      "category": "Природа",
+      "url": "/assets/models/environment/kenney/plant_bush_small.glb",
+      "assetIds": [
+        "shrub"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1024,
+        "y": 3584,
+        "w": 246,
+        "h": 216
+      }
+    },
+    {
+      "key": "k-mushroom_red",
+      "label": "Красный гриб",
+      "category": "Природа",
+      "url": "/assets/models/environment/kenney/mushroom_red.glb",
+      "assetIds": [
+        "mushroom_cluster"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1280,
+        "y": 3584,
+        "w": 214,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-mushroom_red_group",
+      "label": "Группа красных грибов",
+      "category": "Природа",
+      "url": "/assets/models/environment/kenney/mushroom_red_group.glb",
+      "assetIds": [
+        "mushroom_cluster"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1536,
+        "y": 3584,
+        "w": 246,
+        "h": 232
+      }
+    },
+    {
+      "key": "k-mushroom_tan_group",
+      "label": "Группа светлых грибов",
+      "category": "Природа",
+      "url": "/assets/models/environment/kenney/mushroom_tan_group.glb",
+      "assetIds": [
+        "mushroom_cluster"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1792,
+        "y": 3584,
+        "w": 246,
+        "h": 232
+      }
+    },
+    {
+      "key": "k-grass",
+      "label": "Пучок травы",
+      "category": "Природа",
+      "url": "/assets/models/environment/kenney/grass.glb",
+      "assetIds": [
+        "grass_tuft"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 0,
+        "y": 3840,
+        "w": 240,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-grass_large",
+      "label": "Высокая трава",
+      "category": "Природа",
+      "url": "/assets/models/environment/kenney/grass_large.glb",
+      "assetIds": [
+        "grass_tuft"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 256,
+        "y": 3840,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-flower_red_a",
+      "label": "Красный цветок",
+      "category": "Природа",
+      "url": "/assets/models/environment/kenney/flower_red_a.glb",
+      "assetIds": [
+        "flowers"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 512,
+        "y": 3840,
+        "w": 217,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-flower_yellow_a",
+      "label": "Жёлтый цветок",
+      "category": "Природа",
+      "url": "/assets/models/environment/kenney/flower_yellow_a.glb",
+      "assetIds": [
+        "flowers"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 768,
+        "y": 3840,
+        "w": 217,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-campfire_logs",
+      "label": "Костёр на брёвнах",
+      "category": "Природа",
+      "url": "/assets/models/environment/kenney/campfire_logs.glb",
+      "assetIds": [
+        "campfire"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1024,
+        "y": 3840,
+        "w": 246,
+        "h": 246
+      }
+    }
+  ],
+  "atlas": {
+    "image": "/assets/models/environment/topdown.png",
+    "key": "2ad6481c40530f4aa6f0d7677abc022ff22db8d8ebd96185d2f6112760932ad0"
+  }
+}
