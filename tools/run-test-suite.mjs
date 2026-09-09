@@ -110,7 +110,8 @@ if (sharedRunner || !enoughCores) {
   const functionalStatus = await runNodeAsync(['--test', '--test-concurrency=4', ...functionalFiles])
   // Дожидаемся обоих процессов, чтобы при ошибке корпуса MVP успел выполнить cleanup.
   const mvpStatus = await mvpDone
-  process.stdout.write(mvpOutput)
+  // Unix пишет в pipe асинхронно: process.exit иначе обрывает большой журнал.
+  await new Promise((resolve, reject) => process.stdout.write(mvpOutput, (error) => error ? reject(error) : resolve()))
   if (functionalStatus !== 0) process.exit(functionalStatus)
   if (mvpStatus !== 0) process.exit(mvpStatus ?? 1)
 }

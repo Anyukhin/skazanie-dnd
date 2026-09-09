@@ -18,7 +18,7 @@ function fixtureSource({ failing }) {
   }
 }
 
-function runFixture({ failing, mvpFailing = false }) {
+function runFixture({ failing, mvpFailing = false, delayBufferedOutput = false }) {
   const root = mkdtempSync(join(tmpdir(), 'skazanie-test-suite-'))
   const testDir = join(root, 'test')
   const toolsDir = join(root, 'tools')
@@ -32,7 +32,19 @@ function runFixture({ failing, mvpFailing = false }) {
     ? "import test from 'node:test'\ntest('MVP fixture fails', () => { throw new Error('MVP_FIXTURE_FAILURE') })\n"
     : source.mvp)
   const fixtureRunner = join(toolsDir, 'run-test-suite.mjs')
-  writeFileSync(fixtureRunner, runner.replace('const enoughCores = (cpus()?.length ?? 0) >= 8', 'const enoughCores = true'))
+  // На Windows pipe может писаться синхронно. Задержка воспроизводит Unix:
+  // process.exit не должен обрывать уже подготовленный большой буфер.
+  const delayedWriter = delayBufferedOutput ? `
+const originalStdoutWrite = process.stdout.write.bind(process.stdout)
+process.stdout.write = (chunk, ...args) => {
+  if (String(chunk).includes('MVP_FIXTURE_STARTED')) {
+    setTimeout(() => originalStdoutWrite(chunk, ...args), 50)
+    return true
+  }
+  return originalStdoutWrite(chunk, ...args)
+}
+` : ''
+  writeFileSync(fixtureRunner, delayedWriter + runner.replace('const enoughCores = (cpus()?.length ?? 0) >= 8', 'const enoughCores = true'))
   const env = { ...process.env, OPTIMIZATION_RUNNER_MARKER: marker }
   delete env.CI
   delete env.GITHUB_ACTIONS
@@ -72,14 +84,14 @@ test('на общем раннере порядок последовательн
 test('на машине с запасом ядер MVP идёт параллельно корпусу с буферизацией вывода', () => {
   assert.match(runner, /const mvp = spawn\(process\.execPath, \['--test', join\('test', longRunningFile\)\]/u)
   assert.match(runner, /mvpOutput \+= chunk/u)
-  assert.match(runner, /process\.stdout\.write\(mvpOutput\)/u,
+  assert.match(runner, /process\.stdout\.write\(mvpOutput,/u,
     'вывод MVP обязан буферизоваться, иначе TAP двух прогонов перемешается')
   assert.match(runner, /if \(mvpStatus !== 0\) process\.exit\(mvpStatus \?\? 1\)/u,
     'падение MVP обязано валить прогон и в параллельном режиме')
 })
 
 test('ошибка функционального корпуса дожидается MVP и сохраняет его буферизованный вывод', () => {
-  const fixture = runFixture({ failing: true })
+  const fixture = runFixture({ failing: true, delayBufferedOutput: true })
   try {
     assert.notEqual(fixture.result.error?.code, 'ETIMEDOUT', 'runner завис вместо завершения дочерних процессов')
     assert.notEqual(fixture.result.status, 0, 'ошибка функционального корпуса потерялась')
