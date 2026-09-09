@@ -1,0 +1,1509 @@
+{
+  "schema_version": 1,
+  "layouts": [
+    {
+      "location_id": "tides-veld-burg",
+      "name": "Вельдбург",
+      "width": 96,
+      "height": 64,
+      "source_width": 1536,
+      "source_height": 1024,
+      "image": "/assets/maps/locations/skazanie/tides-veld-burg-v1.webp",
+      "theme": "settlement",
+      "default_material": "stone",
+      "default_zone": "streets",
+      "zones": [
+        {
+          "id": "streets",
+          "label": "Каменные улицы",
+          "kind": "exterior",
+          "material": "stone",
+          "lightLevel": "bright"
+        },
+        {
+          "id": "west-yard",
+          "label": "Западный портовый двор",
+          "kind": "exterior",
+          "material": "stone",
+          "lightLevel": "bright"
+        },
+        {
+          "id": "harbor",
+          "label": "Причалы",
+          "kind": "exterior",
+          "material": "wood",
+          "lightLevel": "bright"
+        },
+        {
+          "id": "market",
+          "label": "Рынок под навесами",
+          "kind": "exterior",
+          "material": "stone",
+          "lightLevel": "bright"
+        },
+        {
+          "id": "map-room",
+          "label": "Военная картографическая зала",
+          "kind": "interior",
+          "material": "stone",
+          "lightLevel": "dim"
+        },
+        {
+          "id": "archive",
+          "label": "Портовый архив",
+          "kind": "interior",
+          "material": "wood",
+          "lightLevel": "dim"
+        },
+        {
+          "id": "round-tower",
+          "label": "Круглая башня",
+          "kind": "interior",
+          "material": "stone",
+          "lightLevel": "dim"
+        },
+        {
+          "id": "sea",
+          "label": "Холодное море",
+          "kind": "exterior",
+          "material": "stone",
+          "lightLevel": "bright"
+        }
+      ],
+      "terrain": [
+        {
+          "polygon": [
+            [
+              0,
+              0
+            ],
+            [
+              155,
+              0
+            ],
+            [
+              155,
+              170
+            ],
+            [
+              174,
+              350
+            ],
+            [
+              156,
+              520
+            ],
+            [
+              245,
+              650
+            ],
+            [
+              435,
+              780
+            ],
+            [
+              530,
+              930
+            ],
+            [
+              530,
+              1024
+            ],
+            [
+              0,
+              1024
+            ]
+          ],
+          "zone": "sea",
+          "passable": false,
+          "material": "stone",
+          "surface": "water",
+          "elevation": 0
+        },
+        {
+          "polygon": [
+            [
+              0,
+              865
+            ],
+            [
+              460,
+              865
+            ],
+            [
+              580,
+              920
+            ],
+            [
+              760,
+              920
+            ],
+            [
+              930,
+              975
+            ],
+            [
+              1000,
+              1024
+            ],
+            [
+              0,
+              1024
+            ]
+          ],
+          "zone": "sea",
+          "passable": false,
+          "material": "stone",
+          "surface": "water",
+          "elevation": 0
+        },
+        {
+          "polygon": [
+            [
+              1536,
+              620
+            ],
+            [
+              1536,
+              1024
+            ],
+            [
+              1400,
+              1024
+            ],
+            [
+              1350,
+              920
+            ],
+            [
+              1380,
+              790
+            ],
+            [
+              1460,
+              680
+            ]
+          ],
+          "zone": "sea",
+          "passable": false,
+          "material": "stone",
+          "surface": "water",
+          "elevation": 0
+        },
+        {
+          "polygon": [
+            [
+              160,
+              185
+            ],
+            [
+              548,
+              185
+            ],
+            [
+              565,
+              260
+            ],
+            [
+              600,
+              340
+            ],
+            [
+              566,
+              430
+            ],
+            [
+              478,
+              500
+            ],
+            [
+              294,
+              500
+            ],
+            [
+              235,
+              455
+            ],
+            [
+              160,
+              420
+            ]
+          ],
+          "zone": "west-yard",
+          "passable": true,
+          "material": "stone",
+          "surface": "none",
+          "elevation": 0
+        },
+        {
+          "polygon": [
+            [
+              555,
+              155
+            ],
+            [
+              666,
+              155
+            ],
+            [
+              666,
+              470
+            ],
+            [
+              620,
+              515
+            ],
+            [
+              560,
+              480
+            ]
+          ],
+          "zone": "streets",
+          "passable": true,
+          "material": "stone",
+          "surface": "none",
+          "elevation": 0
+        },
+        {
+          "rect": [
+            660,
+            160,
+            450,
+            285
+          ],
+          "zone": "map-room",
+          "passable": true,
+          "material": "stone",
+          "surface": "none",
+          "elevation": 0
+        },
+        {
+          "rect": [
+            1238,
+            158,
+            226,
+            325
+          ],
+          "zone": "archive",
+          "passable": true,
+          "material": "wood",
+          "surface": "none",
+          "elevation": 0
+        },
+        {
+          "polygon": [
+            [
+              650,
+              448
+            ],
+            [
+              1130,
+              448
+            ],
+            [
+              1150,
+              505
+            ],
+            [
+              1122,
+              710
+            ],
+            [
+              1030,
+              825
+            ],
+            [
+              720,
+              825
+            ],
+            [
+              650,
+              730
+            ]
+          ],
+          "zone": "market",
+          "passable": true,
+          "material": "stone",
+          "surface": "none",
+          "elevation": 0
+        },
+        {
+          "polygon": [
+            [
+              500,
+              725
+            ],
+            [
+              650,
+              725
+            ],
+            [
+              720,
+              825
+            ],
+            [
+              1035,
+              825
+            ],
+            [
+              1125,
+              750
+            ],
+            [
+              1260,
+              640
+            ],
+            [
+              1390,
+              620
+            ],
+            [
+              1410,
+              900
+            ],
+            [
+              1320,
+              960
+            ],
+            [
+              1040,
+              930
+            ],
+            [
+              850,
+              945
+            ],
+            [
+              620,
+              910
+            ]
+          ],
+          "zone": "streets",
+          "passable": true,
+          "material": "stone",
+          "surface": "none",
+          "elevation": 0
+        },
+        {
+          "polygon": [
+            [
+              1060,
+              645
+            ],
+            [
+              1365,
+              645
+            ],
+            [
+              1408,
+              720
+            ],
+            [
+              1408,
+              890
+            ],
+            [
+              1340,
+              950
+            ],
+            [
+              1190,
+              930
+            ],
+            [
+              1110,
+              850
+            ]
+          ],
+          "zone": "round-tower",
+          "passable": true,
+          "material": "stone",
+          "surface": "none",
+          "elevation": 0
+        },
+        {
+          "polygon": [
+            [
+              150,
+              500
+            ],
+            [
+              270,
+              500
+            ],
+            [
+              340,
+              565
+            ],
+            [
+              520,
+              630
+            ],
+            [
+              600,
+              780
+            ],
+            [
+              520,
+              840
+            ],
+            [
+              380,
+              770
+            ],
+            [
+              250,
+              660
+            ]
+          ],
+          "zone": "harbor",
+          "passable": true,
+          "material": "wood",
+          "surface": "none",
+          "elevation": 5
+        },
+        {
+          "polygon": [
+            [
+              550,
+              800
+            ],
+            [
+              690,
+              800
+            ],
+            [
+              810,
+              885
+            ],
+            [
+              980,
+              885
+            ],
+            [
+              1040,
+              940
+            ],
+            [
+              960,
+              985
+            ],
+            [
+              720,
+              960
+            ],
+            [
+              600,
+              900
+            ]
+          ],
+          "zone": "harbor",
+          "passable": true,
+          "material": "wood",
+          "surface": "none",
+          "elevation": 5
+        },
+        {
+          "polygon": [
+            [
+              1080,
+              480
+            ],
+            [
+              1270,
+              480
+            ],
+            [
+              1290,
+              620
+            ],
+            [
+              1110,
+              640
+            ]
+          ],
+          "zone": "streets",
+          "passable": true,
+          "material": "stone",
+          "surface": "none",
+          "elevation": 0
+        },
+        {
+          "polygon": [
+            [
+              1270,
+              480
+            ],
+            [
+              1460,
+              480
+            ],
+            [
+              1460,
+              620
+            ],
+            [
+              1370,
+              640
+            ],
+            [
+              1290,
+              620
+            ]
+          ],
+          "zone": "streets",
+          "passable": true,
+          "material": "stone",
+          "surface": "none",
+          "elevation": 0
+        }
+      ],
+      "doors": [
+        {
+          "id": "veld-map-south",
+          "from": [
+            880,
+            432
+          ],
+          "to": [
+            880,
+            448
+          ],
+          "state": "open"
+        },
+        {
+          "id": "veld-map-west",
+          "from": [
+            656,
+            320
+          ],
+          "to": [
+            640,
+            320
+          ],
+          "state": "open"
+        },
+        {
+          "id": "veld-archive-south",
+          "from": [
+            1350,
+            464
+          ],
+          "to": [
+            1350,
+            480
+          ],
+          "state": "closed"
+        },
+        {
+          "id": "veld-tower-west",
+          "from": [
+            1088,
+            800
+          ],
+          "to": [
+            1104,
+            800
+          ],
+          "state": "open"
+        },
+        {
+          "id": "veld-west-yard-gate",
+          "from": [
+            544,
+            400
+          ],
+          "to": [
+            560,
+            400
+          ],
+          "state": "open"
+        },
+        {
+          "id": "veld-south-quay",
+          "from": [
+            800,
+            816
+          ],
+          "to": [
+            800,
+            832
+          ],
+          "state": "open"
+        }
+      ],
+      "props": [
+        {
+          "id": "painted:veld-war-table",
+          "assetId": "table_long",
+          "rect": [
+            820,
+            285,
+            180,
+            70
+          ],
+          "rotation": 0
+        },
+        {
+          "id": "painted:veld-map-cabinet",
+          "assetId": "bookshelf",
+          "rect": [
+            690,
+            205,
+            70,
+            120
+          ],
+          "rotation": 90
+        },
+        {
+          "id": "painted:veld-archive-shelf-west",
+          "assetId": "bookshelf",
+          "rect": [
+            1250,
+            200,
+            70,
+            120
+          ],
+          "rotation": 90
+        },
+        {
+          "id": "painted:veld-archive-shelf-east",
+          "assetId": "bookshelf",
+          "rect": [
+            1370,
+            200,
+            70,
+            120
+          ],
+          "rotation": 90
+        },
+        {
+          "id": "painted:veld-market-stall-west",
+          "assetId": "market_stall",
+          "rect": [
+            690,
+            520,
+            100,
+            100
+          ],
+          "rotation": 0
+        },
+        {
+          "id": "painted:veld-market-stall-east",
+          "assetId": "market_stall",
+          "rect": [
+            1000,
+            520,
+            100,
+            100
+          ],
+          "rotation": 0
+        },
+        {
+          "id": "painted:veld-market-barrels",
+          "assetId": "barrel_stack",
+          "rect": [
+            740,
+            650,
+            80,
+            55
+          ],
+          "rotation": 0
+        },
+        {
+          "id": "painted:veld-round-counter",
+          "assetId": "bar_counter",
+          "rect": [
+            1180,
+            690,
+            150,
+            50
+          ],
+          "rotation": 0
+        },
+        {
+          "id": "painted:veld-round-table",
+          "assetId": "table_round",
+          "rect": [
+            1250,
+            790,
+            70,
+            70
+          ],
+          "rotation": 0
+        },
+        {
+          "id": "painted:veld-west-crates",
+          "assetId": "crate_stack",
+          "rect": [
+            260,
+            270,
+            80,
+            60
+          ],
+          "rotation": 0
+        },
+        {
+          "id": "painted:veld-west-barrels",
+          "assetId": "barrel_stack",
+          "rect": [
+            430,
+            290,
+            80,
+            60
+          ],
+          "rotation": 0
+        },
+        {
+          "id": "painted:veld-quay-cart",
+          "assetId": "cart",
+          "rect": [
+            610,
+            835,
+            80,
+            45
+          ],
+          "rotation": 0
+        },
+        {
+          "id": "painted:veld-lower-crates",
+          "assetId": "crate_stack",
+          "rect": [
+            900,
+            875,
+            80,
+            60
+          ],
+          "rotation": 0
+        }
+      ],
+      "spawns": [
+        {
+          "id": "party-south-quay",
+          "role": "party",
+          "point": [
+            820,
+            900
+          ]
+        },
+        {
+          "id": "neutral-war-gallery",
+          "role": "neutral",
+          "point": [
+            900,
+            225
+          ]
+        },
+        {
+          "id": "enemy-round-tower",
+          "role": "enemy",
+          "point": [
+            1300,
+            800
+          ]
+        }
+      ],
+      "checks": [
+        {
+          "name": "Военная картографическая зала",
+          "point": [
+            900,
+            240
+          ]
+        },
+        {
+          "name": "Западный портовый двор",
+          "point": [
+            350,
+            330
+          ]
+        },
+        {
+          "name": "Рынок под навесами",
+          "point": [
+            880,
+            590
+          ]
+        },
+        {
+          "name": "Портовый архив",
+          "point": [
+            1340,
+            350
+          ]
+        },
+        {
+          "name": "Круглая башня",
+          "point": [
+            1290,
+            800
+          ]
+        },
+        {
+          "name": "Южный причал",
+          "point": [
+            820,
+            900
+          ]
+        }
+      ]
+    },
+    {
+      "location_id": "tides-grunvik",
+      "name": "Грунвик",
+      "width": 96,
+      "height": 64,
+      "source_width": 1536,
+      "source_height": 1024,
+      "image": "/assets/maps/locations/skazanie/tides-grunvik-v1.webp",
+      "theme": "ruins",
+      "default_material": "stone",
+      "default_zone": "plaza",
+      "zones": [
+        {
+          "id": "plaza",
+          "label": "Центральный сухой двор",
+          "kind": "exterior",
+          "material": "stone",
+          "lightLevel": "dim"
+        },
+        {
+          "id": "causeways",
+          "label": "Разрушенные переходы",
+          "kind": "exterior",
+          "material": "stone",
+          "lightLevel": "dim"
+        },
+        {
+          "id": "bell-chapel",
+          "label": "Часовня затонувшего колокола",
+          "kind": "interior",
+          "material": "stone",
+          "lightLevel": "dim"
+        },
+        {
+          "id": "upper-store",
+          "label": "Верхний склад",
+          "kind": "interior",
+          "material": "stone",
+          "lightLevel": "dim"
+        },
+        {
+          "id": "library-water",
+          "label": "Затопленный архив",
+          "kind": "interior",
+          "material": "stone",
+          "lightLevel": "dark"
+        },
+        {
+          "id": "west-basin",
+          "label": "Западная затопленная площадь",
+          "kind": "exterior",
+          "material": "stone",
+          "lightLevel": "dim"
+        },
+        {
+          "id": "south-flood",
+          "label": "Южные проломы",
+          "kind": "exterior",
+          "material": "stone",
+          "lightLevel": "dim"
+        }
+      ],
+      "terrain": [
+        {
+          "polygon": [
+            [
+              0,
+              0
+            ],
+            [
+              1536,
+              0
+            ],
+            [
+              1536,
+              90
+            ],
+            [
+              1300,
+              120
+            ],
+            [
+              1150,
+              100
+            ],
+            [
+              980,
+              150
+            ],
+            [
+              800,
+              100
+            ],
+            [
+              600,
+              145
+            ],
+            [
+              400,
+              100
+            ],
+            [
+              180,
+              160
+            ],
+            [
+              0,
+              170
+            ]
+          ],
+          "zone": "west-basin",
+          "passable": false,
+          "material": "stone",
+          "surface": "water",
+          "elevation": 0
+        },
+        {
+          "polygon": [
+            [
+              0,
+              115
+            ],
+            [
+              560,
+              115
+            ],
+            [
+              620,
+              240
+            ],
+            [
+              610,
+              490
+            ],
+            [
+              510,
+              555
+            ],
+            [
+              280,
+              510
+            ],
+            [
+              95,
+              420
+            ],
+            [
+              0,
+              420
+            ]
+          ],
+          "zone": "west-basin",
+          "passable": false,
+          "material": "stone",
+          "surface": "water",
+          "elevation": 0
+        },
+        {
+          "polygon": [
+            [
+              980,
+              285
+            ],
+            [
+              1536,
+              280
+            ],
+            [
+              1536,
+              760
+            ],
+            [
+              1330,
+              720
+            ],
+            [
+              1190,
+              680
+            ],
+            [
+              1020,
+              620
+            ],
+            [
+              950,
+              480
+            ]
+          ],
+          "zone": "library-water",
+          "passable": false,
+          "material": "stone",
+          "surface": "water",
+          "elevation": 0
+        },
+        {
+          "polygon": [
+            [
+              780,
+              620
+            ],
+            [
+              1210,
+              620
+            ],
+            [
+              1310,
+              720
+            ],
+            [
+              1260,
+              900
+            ],
+            [
+              1150,
+              1024
+            ],
+            [
+              760,
+              1024
+            ],
+            [
+              740,
+              850
+            ]
+          ],
+          "zone": "south-flood",
+          "passable": false,
+          "material": "stone",
+          "surface": "water",
+          "elevation": 0
+        },
+        {
+          "ellipse": [
+            260,
+            790,
+            205,
+            160
+          ],
+          "zone": "south-flood",
+          "passable": false,
+          "material": "stone",
+          "surface": "water",
+          "elevation": 0
+        },
+        {
+          "polygon": [
+            [
+              385,
+              330
+            ],
+            [
+              625,
+              330
+            ],
+            [
+              690,
+              370
+            ],
+            [
+              960,
+              350
+            ],
+            [
+              1010,
+              470
+            ],
+            [
+              980,
+              610
+            ],
+            [
+              840,
+              680
+            ],
+            [
+              510,
+              680
+            ],
+            [
+              360,
+              565
+            ]
+          ],
+          "zone": "plaza",
+          "passable": true,
+          "material": "stone",
+          "surface": "none",
+          "elevation": 0
+        },
+        {
+          "polygon": [
+            [
+              635,
+              75
+            ],
+            [
+              835,
+              75
+            ],
+            [
+              900,
+              135
+            ],
+            [
+              900,
+              300
+            ],
+            [
+              850,
+              350
+            ],
+            [
+              670,
+              350
+            ],
+            [
+              615,
+              300
+            ],
+            [
+              615,
+              145
+            ]
+          ],
+          "zone": "bell-chapel",
+          "passable": true,
+          "material": "stone",
+          "surface": "none",
+          "elevation": 0
+        },
+        {
+          "rect": [
+            950,
+            90,
+            270,
+            205
+          ],
+          "zone": "upper-store",
+          "passable": true,
+          "material": "stone",
+          "surface": "none",
+          "elevation": 0
+        },
+        {
+          "polygon": [
+            [
+              515,
+              250
+            ],
+            [
+              625,
+              250
+            ],
+            [
+              625,
+              515
+            ],
+            [
+              560,
+              565
+            ],
+            [
+              475,
+              510
+            ]
+          ],
+          "zone": "causeways",
+          "passable": true,
+          "material": "stone",
+          "surface": "none",
+          "elevation": 0
+        },
+        {
+          "polygon": [
+            [
+              895,
+              285
+            ],
+            [
+              1010,
+              285
+            ],
+            [
+              1045,
+              470
+            ],
+            [
+              980,
+              620
+            ],
+            [
+              910,
+              600
+            ]
+          ],
+          "zone": "causeways",
+          "passable": true,
+          "material": "stone",
+          "surface": "none",
+          "elevation": 0
+        },
+        {
+          "polygon": [
+            [
+              610,
+              600
+            ],
+            [
+              800,
+              600
+            ],
+            [
+              850,
+              690
+            ],
+            [
+              800,
+              765
+            ],
+            [
+              650,
+              745
+            ]
+          ],
+          "zone": "causeways",
+          "passable": true,
+          "material": "stone",
+          "surface": "none",
+          "elevation": 0
+        },
+        {
+          "polygon": [
+            [
+              80,
+              470
+            ],
+            [
+              315,
+              470
+            ],
+            [
+              405,
+              530
+            ],
+            [
+              470,
+              630
+            ],
+            [
+              385,
+              680
+            ],
+            [
+              230,
+              630
+            ],
+            [
+              110,
+              570
+            ]
+          ],
+          "zone": "causeways",
+          "passable": true,
+          "material": "stone",
+          "surface": "none",
+          "elevation": 0
+        }
+      ],
+      "doors": [
+        {
+          "id": "grunvik-chapel-south",
+          "from": [
+            760,
+            336
+          ],
+          "to": [
+            760,
+            352
+          ],
+          "state": "open"
+        },
+        {
+          "id": "grunvik-store-south",
+          "from": [
+            1008,
+            288
+          ],
+          "to": [
+            1008,
+            304
+          ],
+          "state": "open"
+        },
+        {
+          "id": "grunvik-south-stairs",
+          "from": [
+            752,
+            592
+          ],
+          "to": [
+            752,
+            608
+          ],
+          "state": "open"
+        },
+        {
+          "id": "grunvik-west-bridge",
+          "from": [
+            512,
+            288
+          ],
+          "to": [
+            528,
+            288
+          ],
+          "state": "broken"
+        }
+      ],
+      "props": [
+        {
+          "id": "painted:grunvik-bell",
+          "assetId": "statue",
+          "rect": [
+            725,
+            125,
+            70,
+            70
+          ],
+          "rotation": 0
+        },
+        {
+          "id": "painted:grunvik-central-well",
+          "assetId": "well",
+          "rect": [
+            430,
+            515,
+            70,
+            70
+          ],
+          "rotation": 0
+        },
+        {
+          "id": "painted:grunvik-broken-cart",
+          "assetId": "cart",
+          "rect": [
+            715,
+            475,
+            90,
+            55
+          ],
+          "rotation": 15
+        },
+        {
+          "id": "painted:grunvik-upper-crates",
+          "assetId": "crate_stack",
+          "rect": [
+            1040,
+            125,
+            90,
+            60
+          ],
+          "rotation": 0
+        },
+        {
+          "id": "painted:grunvik-upper-barrels",
+          "assetId": "barrel_stack",
+          "rect": [
+            1150,
+            200,
+            80,
+            60
+          ],
+          "rotation": 0
+        },
+        {
+          "id": "painted:grunvik-waterlogged-shelves",
+          "assetId": "bookshelf",
+          "rect": [
+            956,
+            320,
+            24,
+            48
+          ],
+          "rotation": 90
+        }
+      ],
+      "spawns": [
+        {
+          "id": "party-dry-courtyard",
+          "role": "party",
+          "point": [
+            760,
+            560
+          ]
+        },
+        {
+          "id": "neutral-bell-chapel",
+          "role": "neutral",
+          "point": [
+            760,
+            245
+          ]
+        },
+        {
+          "id": "enemy-east-causeway",
+          "role": "enemy",
+          "point": [
+            930,
+            520
+          ]
+        }
+      ],
+      "checks": [
+        {
+          "name": "Сухой центральный двор",
+          "point": [
+            700,
+            520
+          ]
+        },
+        {
+          "name": "Часовня затонувшего колокола",
+          "point": [
+            760,
+            230
+          ]
+        },
+        {
+          "name": "Верхний склад",
+          "point": [
+            1080,
+            180
+          ]
+        },
+        {
+          "name": "Восточный переход",
+          "point": [
+            930,
+            520
+          ]
+        },
+        {
+          "name": "Западный мост",
+          "point": [
+            500,
+            400
+          ]
+        },
+        {
+          "name": "Южные проломы",
+          "point": [
+            760,
+            660
+          ]
+        }
+      ]
+    }
+  ]
+}

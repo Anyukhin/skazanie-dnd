@@ -13,6 +13,7 @@ const SPELLS = Object.freeze(payload.spells.map((spell) => {
   return Object.freeze({
     ...spell,
     ...(mechanicsOverride ?? {}),
+    description: spell.description,
     mechanicsAccuracy: mechanicsOverride?.mechanicsAccuracy ?? (mechanicsOverride ? 'verified-dndsu' : 'heuristic'),
     mechanicsSupport,
     ...((mechanicsOverride?.supportNote || mechanicsSupport === 'partial' || mechanicsSupport === 'ruling-only') ? { supportNote: mechanicsOverride?.supportNote ?? (mechanicsSupport === 'partial' ? DEFAULT_PARTIAL_NOTE : DEFAULT_RULING_NOTE) } : {}),
@@ -306,6 +307,7 @@ export function monsterSpellcastingFor(actor) {
     ability: SPELL_ABILITIES.includes(String(raw.ability)) ? String(raw.ability) : 'int',
     saveDc: Math.max(1, Math.trunc(Number(raw.save_dc ?? raw.saveDc) || 10)),
     attackBonus: Math.trunc(Number(raw.attack_bonus ?? raw.attackBonus) || 0),
+    casterLevel: Math.max(1, Math.trunc(Number(raw.caster_level ?? actor?.level) || 1)),
     spells,
     ...(hasSharedSlots ? { slotMaximums } : {}),
   }
@@ -346,6 +348,7 @@ export function monsterCombatSpellFor(actor, spellId) {
       ...(entry.slotResource ? { slotLevel: entry.level } : {}),
       saveDc: block.saveDc,
       attackBonus: block.attackBonus,
+      casterLevel: block.casterLevel,
     },
   }
 }

@@ -11,6 +11,13 @@ import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 
 const ITEM_DIR = new URL('../public/assets/items/', import.meta.url)
 const MANIFEST = new URL('../src/item-images.ts', import.meta.url)
+const STARTER_PRESENTATIONS = new URL('../data/starter-item-presentation.json', import.meta.url)
+
+export function starterItemPresentationFor(item) {
+  if (item?.catalog_id || item?.catalogId) return null
+  const entries = JSON.parse(readFileSync(STARTER_PRESENTATIONS, 'utf8')).items
+  return entries[String(item?.name ?? '').trim()] ?? null
+}
 
 export const ITEM_TYPES = Object.freeze([
   'weapon',
@@ -54,6 +61,8 @@ export function resolveItemImagePath(item, manifest = itemAssetsOnDisk()) {
       return `/assets/items/item-${normalized}.png`
     }
   }
+  const starter = starterItemPresentationFor(item)
+  if (starter?.image) return starter.image
   const typeId = manifest.typeIds[String(item?.type ?? '')]
   return typeId ? `/assets/items/${typeId}.png` : null
 }
@@ -65,6 +74,8 @@ export function manifestSource({ itemIds, typeIds }) {
   return `// Собран автоматически: pnpm items:manifest. Руками не править.
 // Конкретный предмет выбирается по id/catalog_id, затем используется рисунок
 // его вида. Файлы лежат в public/assets/items/<asset-id>.png.
+import starterPresentation from '../data/starter-item-presentation.json'
+
 export const ITEM_IMAGE_IDS: ReadonlySet<string> = new Set([
 ${itemIds.map((id) => `  '${id}',`).join('\n')}
 ])
@@ -74,12 +85,19 @@ ${typeRows.join('\n')}
 }) satisfies Readonly<Partial<Record<'weapon' | 'armor' | 'consumable' | 'tool' | 'quest' | 'treasure' | 'document' | 'other', string>>>
 
 export type ItemImageInput = {
+  name?: string
   id?: string
   stock_id?: string
   catalog_id?: string
   type?: string
   image?: string
   imagePosition?: string
+}
+
+export function starterItemPresentationFor(item: ItemImageInput): { description: string; image: string; imagePosition?: string } | null {
+  if (item.catalog_id) return null
+  const entries = starterPresentation.items as Record<string, { description: string; image: string; imagePosition?: string }>
+  return entries[String(item.name ?? '').trim()] ?? null
 }
 
 const normalizeItemIdentifier = (value?: string) => String(value ?? '')
@@ -96,6 +114,8 @@ export function itemImageFor(item: ItemImageInput): string | null {
     const imageId = normalized ? \`item-\${normalized}\` : ''
     if (imageId && ITEM_IMAGE_IDS.has(imageId)) return \`/assets/items/\${imageId}.png\`
   }
+  const starter = starterItemPresentationFor(item)
+  if (starter?.image) return starter.image
   const typeId = ITEM_TYPE_IMAGE_IDS[item.type as keyof typeof ITEM_TYPE_IMAGE_IDS]
   return typeId ? \`/assets/items/\${typeId}.png\` : null
 }

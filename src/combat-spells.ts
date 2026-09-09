@@ -101,6 +101,7 @@ export function fallbackCombatSpells(player?: Player): CombatSpell[] {
       return {
         ...spell,
         ...(mechanicsOverride ?? {}),
+        description: spell.description,
         mechanicsAccuracy: mechanicsOverride?.mechanicsAccuracy ?? (mechanicsOverride ? 'verified-dndsu' : 'heuristic'),
         mechanicsSupport,
         ...((mechanicsOverride?.supportNote || mechanicsSupport === 'partial' || mechanicsSupport === 'ruling-only') ? { supportNote: mechanicsOverride?.supportNote ?? (mechanicsSupport === 'partial' ? defaultPartialNote : defaultRulingNote) } : {}),

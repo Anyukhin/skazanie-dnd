@@ -94,6 +94,7 @@ test('Кольцо сопротивления (огонь) имеет точны
   assert.deepEqual(item.passive_effects, entry.passive_effects)
   assert.equal(item.requires_attunement, undefined)
   assert.deepEqual(itemViewerCapabilities(item), {
+    catalog_description: entry.description,
     equippable: true,
     equip_slot: 'ring-fire-resistance',
     usable: false,

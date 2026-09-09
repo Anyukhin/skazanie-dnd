@@ -65,7 +65,8 @@ export function itemsWithoutIllustration(state) {
 }
 
 /**
- * NPC кампании, у которых уже есть или ещё нет портрета в кеше.
+ * NPC кампании, у которых уже есть портрет в репозитории/кеше или ещё нет
+ * готового изображения.
  *
  * Значимость проверяется тем же правилом, что и в игре: второстепенному NPC
  * портрет не рисуется и в подготовке — иначе ведущий платил бы за картинки,
@@ -76,13 +77,14 @@ export function itemsWithoutIllustration(state) {
 export async function npcPortraitInventory({ service, campaignId, projectedState, significance, profiles }) {
   const entries = []
   for (const profile of profiles) {
-    if (!significance(projectedState, profile)) continue
-    const cached = await service.cached(campaignId, profile.id)
+    const prepared = Boolean(String(profile?.portrait_url ?? '').trim())
+    if (!prepared && !significance(projectedState, profile)) continue
+    const cached = prepared ? null : await service.cached(campaignId, profile.id)
     entries.push({
       id: text(profile.id, 120),
       name: text(profile.name, 120) || text(profile.id, 120),
       role: text(profile.role, 120),
-      has_portrait: Boolean(cached),
+      has_portrait: prepared || Boolean(cached),
     })
   }
   return entries.sort((left, right) => left.id.localeCompare(right.id))

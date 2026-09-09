@@ -1,0 +1,672 @@
+{
+  "schema_version": 1,
+  "template_id": "astohan-plains",
+  "layouts": [
+    {
+      "location_id": "astohan-stormberg",
+      "name": "Замок Ареса · Королевская галерея",
+      "width": 24,
+      "height": 18,
+      "source_width": 24,
+      "source_height": 18,
+      "native_grid": true,
+      "seed": "authored-tactical:astohan-stormberg:v1",
+      "generator": {
+        "id": "authored-tactical-scene",
+        "version": "1"
+      },
+      "theme": "building",
+      "default_material": "stone",
+      "default_zone": "gallery",
+      "reveal_distance": 8,
+      "zones": [
+        {
+          "id": "gallery",
+          "label": "Королевская галерея",
+          "material": "marble"
+        },
+        {
+          "id": "war-room",
+          "label": "Кабинет совета",
+          "material": "wood"
+        },
+        {
+          "id": "archive",
+          "label": "Королевский архив",
+          "material": "wood"
+        },
+        {
+          "id": "vestibule",
+          "label": "Входная галерея",
+          "material": "stone"
+        }
+      ],
+      "terrain": [
+        {
+          "rect": [
+            0,
+            0,
+            24,
+            18
+          ],
+          "present": false
+        },
+        {
+          "polygon": [
+            [
+              7,
+              4
+            ],
+            [
+              9,
+              4
+            ],
+            [
+              9,
+              2
+            ],
+            [
+              15,
+              2
+            ],
+            [
+              15,
+              4
+            ],
+            [
+              17,
+              4
+            ],
+            [
+              17,
+              14
+            ],
+            [
+              15,
+              14
+            ],
+            [
+              15,
+              17
+            ],
+            [
+              9,
+              17
+            ],
+            [
+              9,
+              14
+            ],
+            [
+              7,
+              14
+            ]
+          ],
+          "present": true,
+          "passable": true,
+          "material": "marble",
+          "zone": "gallery"
+        },
+        {
+          "rect": [
+            1,
+            5,
+            6,
+            6
+          ],
+          "present": true,
+          "passable": true,
+          "material": "wood",
+          "zone": "war-room"
+        },
+        {
+          "rect": [
+            17,
+            5,
+            6,
+            6
+          ],
+          "present": true,
+          "passable": true,
+          "material": "wood",
+          "zone": "archive"
+        },
+        {
+          "rect": [
+            9,
+            14,
+            6,
+            3
+          ],
+          "present": true,
+          "passable": true,
+          "material": "stone",
+          "zone": "vestibule"
+        }
+      ],
+      "walls": [
+        {
+          "from": [
+            6,
+            5
+          ],
+          "to": [
+            7,
+            5
+          ]
+        },
+        {
+          "from": [
+            6,
+            6
+          ],
+          "to": [
+            7,
+            6
+          ]
+        },
+        {
+          "from": [
+            6,
+            7
+          ],
+          "to": [
+            7,
+            7
+          ]
+        },
+        {
+          "from": [
+            6,
+            8
+          ],
+          "to": [
+            7,
+            8
+          ]
+        },
+        {
+          "from": [
+            6,
+            9
+          ],
+          "to": [
+            7,
+            9
+          ]
+        },
+        {
+          "from": [
+            6,
+            10
+          ],
+          "to": [
+            7,
+            10
+          ]
+        },
+        {
+          "from": [
+            16,
+            5
+          ],
+          "to": [
+            17,
+            5
+          ]
+        },
+        {
+          "from": [
+            16,
+            6
+          ],
+          "to": [
+            17,
+            6
+          ]
+        },
+        {
+          "from": [
+            16,
+            7
+          ],
+          "to": [
+            17,
+            7
+          ]
+        },
+        {
+          "from": [
+            16,
+            8
+          ],
+          "to": [
+            17,
+            8
+          ]
+        },
+        {
+          "from": [
+            16,
+            9
+          ],
+          "to": [
+            17,
+            9
+          ]
+        },
+        {
+          "from": [
+            16,
+            10
+          ],
+          "to": [
+            17,
+            10
+          ]
+        },
+        {
+          "from": [
+            9,
+            13
+          ],
+          "to": [
+            9,
+            14
+          ]
+        },
+        {
+          "from": [
+            10,
+            13
+          ],
+          "to": [
+            10,
+            14
+          ]
+        },
+        {
+          "from": [
+            11,
+            13
+          ],
+          "to": [
+            11,
+            14
+          ]
+        },
+        {
+          "from": [
+            12,
+            13
+          ],
+          "to": [
+            12,
+            14
+          ]
+        },
+        {
+          "from": [
+            13,
+            13
+          ],
+          "to": [
+            13,
+            14
+          ]
+        },
+        {
+          "from": [
+            14,
+            13
+          ],
+          "to": [
+            14,
+            14
+          ]
+        }
+      ],
+      "doors": [
+        {
+          "id": "ares-west-study",
+          "from": [
+            6,
+            8
+          ],
+          "to": [
+            7,
+            8
+          ],
+          "state": "closed"
+        },
+        {
+          "id": "ares-east-archive",
+          "from": [
+            16,
+            8
+          ],
+          "to": [
+            17,
+            8
+          ],
+          "state": "closed"
+        },
+        {
+          "id": "ares-gallery-entrance-west",
+          "from": [
+            11,
+            13
+          ],
+          "to": [
+            11,
+            14
+          ],
+          "state": "open"
+        },
+        {
+          "id": "ares-gallery-entrance-east",
+          "from": [
+            12,
+            13
+          ],
+          "to": [
+            12,
+            14
+          ],
+          "state": "open"
+        }
+      ],
+      "props": [
+        {
+          "id": "war-table",
+          "assetId": "table_royal",
+          "rotation": 90,
+          "rect": [
+            11,
+            6,
+            2,
+            5
+          ],
+          "blocksMove": true,
+          "cover": "half",
+          "interactive": true,
+          "destructible": true,
+          "hp": 30
+        },
+        {
+          "id": "throne",
+          "assetId": "royal_throne",
+          "rect": [
+            11,
+            2,
+            2,
+            2
+          ],
+          "blocksMove": true,
+          "cover": "half"
+        },
+        {
+          "id": "council-table",
+          "assetId": "table_round",
+          "rect": [
+            3,
+            7,
+            2,
+            2
+          ],
+          "blocksMove": true,
+          "cover": "half",
+          "destructible": true,
+          "hp": 20
+        },
+        {
+          "id": "archive-desk",
+          "assetId": "table_small",
+          "rect": [
+            19,
+            7,
+            2,
+            2
+          ],
+          "blocksMove": true,
+          "cover": "half",
+          "destructible": true,
+          "hp": 15
+        },
+        {
+          "id": "west-books",
+          "assetId": "bookshelf",
+          "rect": [
+            2,
+            5,
+            4,
+            1
+          ],
+          "blocksMove": true,
+          "cover": "half"
+        },
+        {
+          "id": "east-books",
+          "assetId": "bookshelf",
+          "rect": [
+            18,
+            5,
+            4,
+            1
+          ],
+          "blocksMove": true,
+          "cover": "half"
+        },
+        {
+          "id": "east-chest",
+          "assetId": "chest",
+          "rect": [
+            21,
+            10,
+            1,
+            1
+          ],
+          "blocksMove": true,
+          "interactive": true,
+          "cover": "half"
+        },
+        {
+          "id": "gallery-pillar-0",
+          "assetId": "pillar",
+          "rect": [
+            8,
+            5,
+            1,
+            1
+          ],
+          "blocksMove": true,
+          "blocksSight": true,
+          "cover": "three_quarters"
+        },
+        {
+          "id": "gallery-pillar-1",
+          "assetId": "pillar",
+          "rect": [
+            15,
+            5,
+            1,
+            1
+          ],
+          "blocksMove": true,
+          "blocksSight": true,
+          "cover": "three_quarters"
+        },
+        {
+          "id": "gallery-pillar-2",
+          "assetId": "pillar",
+          "rect": [
+            8,
+            11,
+            1,
+            1
+          ],
+          "blocksMove": true,
+          "blocksSight": true,
+          "cover": "three_quarters"
+        },
+        {
+          "id": "gallery-pillar-3",
+          "assetId": "pillar",
+          "rect": [
+            15,
+            11,
+            1,
+            1
+          ],
+          "blocksMove": true,
+          "blocksSight": true,
+          "cover": "three_quarters"
+        },
+        {
+          "id": "gallery-light-0",
+          "assetId": "candelabra",
+          "rect": [
+            9,
+            3,
+            1,
+            1
+          ],
+          "blocksMove": true,
+          "cover": "half"
+        },
+        {
+          "id": "gallery-light-1",
+          "assetId": "candelabra",
+          "rect": [
+            14,
+            3,
+            1,
+            1
+          ],
+          "blocksMove": true,
+          "cover": "half"
+        },
+        {
+          "id": "gallery-light-2",
+          "assetId": "candelabra",
+          "rect": [
+            10,
+            12,
+            1,
+            1
+          ],
+          "blocksMove": true,
+          "cover": "half"
+        },
+        {
+          "id": "gallery-light-3",
+          "assetId": "candelabra",
+          "rect": [
+            13,
+            12,
+            1,
+            1
+          ],
+          "blocksMove": true,
+          "cover": "half"
+        },
+        {
+          "id": "royal-runner",
+          "assetId": "rug",
+          "rect": [
+            11,
+            11,
+            2,
+            2
+          ],
+          "blocksMove": false,
+          "zOrder": -2
+        },
+        {
+          "id": "west-bench",
+          "assetId": "bench",
+          "rect": [
+            1,
+            9,
+            1,
+            2
+          ],
+          "blocksMove": true,
+          "cover": "half"
+        },
+        {
+          "id": "east-bench",
+          "assetId": "bench",
+          "rect": [
+            22,
+            9,
+            1,
+            2
+          ],
+          "blocksMove": true,
+          "cover": "half"
+        }
+      ],
+      "spawns": [
+        {
+          "id": "party-1",
+          "x": 9,
+          "y": 9,
+          "role": "party"
+        },
+        {
+          "id": "party-2",
+          "x": 14,
+          "y": 9,
+          "role": "party"
+        },
+        {
+          "id": "party-3",
+          "x": 9,
+          "y": 10,
+          "role": "party"
+        },
+        {
+          "id": "party-4",
+          "x": 14,
+          "y": 10,
+          "role": "party"
+        },
+        {
+          "id": "guard-west",
+          "x": 8,
+          "y": 12,
+          "role": "neutral"
+        },
+        {
+          "id": "guard-east",
+          "x": 15,
+          "y": 12,
+          "role": "neutral"
+        }
+      ],
+      "checks": [
+        {
+          "name": "галерея",
+          "x": 10,
+          "y": 8
+        },
+        {
+          "name": "совет",
+          "x": 5,
+          "y": 8
+        },
+        {
+          "name": "архив",
+          "x": 18,
+          "y": 8
+        },
+        {
+          "name": "вход",
+          "x": 11,
+          "y": 15
+        }
+      ]
+    }
+  ]
+}

@@ -1,4 +1,5 @@
 import { AuthoritativeExecutor } from './authoritative-executor.mjs'
+import { monsterActionAvailable, monsterAttackTargetAllowed, monsterMultiattackSequences, monsterMultiattackSequenceFor } from './monster-actions.mjs'
 import {
   RulesValidationError,
   actorPosition,
@@ -13,7 +14,11 @@ import {
   isLivingActor,
   movementStepCostFor,
   normalizeCampaignState,
+  previewMonsterAction,
+  spellDamageEstimate,
+  spellTargetsAt,
   shortestTacticalPath,
+  validateCommand,
 } from './rules-engine.mjs'
 import {
   isPartySummon,
@@ -142,9 +147,11 @@ function actionProfiles(state, enemy) {
   const fixedSequence = Array.isArray(multiattack?.sequence)
     ? multiattack.sequence.map(String).filter(Boolean)
     : []
+  const sequences = monsterMultiattackSequences(enemy)
+  const allowedNext = new Set(sequences.filter(sequence => usedActionIds.every((id, index) => sequence[index] === id)).map(sequence => sequence[attacksUsed]).filter(Boolean))
   const requiredActionId = multiattack?.same_action === true && attacksUsed > 0
     ? String(economy.multiattack_action_id ?? '') || null
-    : fixedSequence[attacksUsed] ?? null
+    : sequences.length ? null : fixedSequence[attacksUsed] ?? null
   // `uses` и `recharge` тратятся одним маркером, поэтому и отсеиваются одинаково:
   // разряженное дыхание не должно попадать в кандидаты — движок всё равно
   // ответит `MONSTER_ACTION_SPENT`, и ход существа пропал бы впустую.
@@ -153,11 +160,12 @@ function actionProfiles(state, enemy) {
   // или пустой колчан: `npcActionUnavailableReason` — тот же ответ, каким его
   // закроет Rules Engine, поэтому стрелок без стрел не выбирает лук и не теряет
   // ход, а переходит в ближний бой.
-  const available = explicit.filter((action) => !((Number(action?.uses) > 0 || Number(action?.recharge) > 0) && spent.has(`monster-action-used:${action.id}`))
+  const available = explicit.filter((action) => monsterActionAvailable(action, spent)
+    && (!sequences.length || allowedNext.has(String(action.id)))
     && (!requiredActionId || String(action?.id ?? '') === requiredActionId)
     && !npcActionUnavailableReason(enemy, String(action?.id ?? ''))
     && (!actionCounts.size || usedActionIds.filter((id) => id === String(action?.id ?? '')).length < (actionCounts.get(String(action?.id ?? '')) ?? 0)))
-  if (available.length) return available.map((action) => attackProfileFor(state, actorId(enemy), action.id)).filter(Boolean)
+  if (explicit.length) return available.map((action) => attackProfileFor(state, actorId(enemy), action.id)).filter(Boolean)
   const fallback = attackProfileFor(state, actorId(enemy))
   return fallback && !npcActionUnavailableReason(enemy, String(fallback.id ?? '')) ? [fallback] : []
 }
@@ -497,6 +505,7 @@ function targetCandidates(state, enemy) {
     const pathDistance = path ? path.length : gridDistance({ state, id: actorId(enemy) }, { state, id: actorId(target) })
     const support = adjacentEnemyAlly(state, enemy, target)
     for (const profile of profiles) {
+      if (!monsterAttackTargetAllowed(profile, state.mechanics.conditions[actorId(target)] ?? [], actorId(enemy))) continue
       const inRange = inAttackRange(state, actorId(enemy), actorId(target), profile)
       const damage = averageDamage(profile.damage_expression, profile.damage_amount)
       const targetHp = Math.max(1, Number(target.hp) || 1)
@@ -600,11 +609,13 @@ function multiattackActionCounts(multiattack) {
     .sort(([left], [right]) => left.localeCompare(right)))
 }
 
-function multiattackActionIds(enemy, selectedProfile) {
+function multiattackActionIds(enemy, selectedProfile, usedActionIds = []) {
   const multiattack = traitFor(enemy, NPC_BEHAVIOR_POLICIES.multiattack)
   if (!multiattack) return selectedProfile?.id ? [String(selectedProfile.id)] : []
   const actionCounts = multiattackActionCounts(multiattack)
   if (actionCounts.size) return [...actionCounts].flatMap(([id, count]) => Array.from({ length: count }, () => id))
+  const chosen = monsterMultiattackSequenceFor(enemy, selectedProfile?.id, usedActionIds)
+  if (chosen) return chosen
   const sequence = Array.isArray(multiattack.sequence)
     ? multiattack.sequence.map(String).filter(Boolean)
     : []
@@ -622,15 +633,16 @@ function multiattackCount(enemy) {
   const sequence = Array.isArray(multiattack.sequence)
     ? multiattack.sequence.map(String).filter(Boolean)
     : []
-  return sequence.length || Math.max(1, Math.min(8, Number(multiattack.attacks) || 1))
+  return Math.max(sequence.length, ...monsterMultiattackSequences(enemy).map(option => option.length)) || Math.max(1, Math.min(8, Number(multiattack.attacks) || 1))
 }
 
 function attackCommands(state, enemy, targetId, selectedProfile) {
-  const sequence = multiattackActionIds(enemy, selectedProfile)
+  const economy = state.mechanics?.combat?.action_economy?.[actorId(enemy)] ?? {}
+  const sequence = multiattackActionIds(enemy, selectedProfile, economy.multiattack_action_ids ?? [])
   const actionCounts = multiattackActionCounts(traitFor(enemy, NPC_BEHAVIOR_POLICIES.multiattack))
   const attacksUsed = Math.max(0, Number(state.mechanics?.combat?.action_economy?.[actorId(enemy)]?.attacks_used) || 0)
   const actionId = actionCounts.size ? selectedProfile?.id ?? null : sequence[attacksUsed] ?? selectedProfile?.id ?? null
-  const attackCount = multiattackCount(enemy)
+  const attackCount = sequence.length || multiattackCount(enemy)
   return [{
     command_type: 'MakeAttack',
     actor_id: actorId(enemy),
@@ -797,6 +809,29 @@ function monsterSpellPlanFor(state, enemy, candidate, economy) {
   if (!from) return null
   const inRange = (spell, at) => spellDistanceFeet(from, at) <= Math.max(CELL_FEET, spell.range)
     && (spellDistanceFeet(from, at) <= CELL_FEET || hasClearTrajectory(state, from, at))
+  const activeConcentration = Boolean(state.mechanics?.concentration?.[id])
+  const validateSpellPlan = (spell, extra) => {
+    const command = spellCastCommand(enemy, spell, extra)
+    try {
+      const normalized = validateCommand({
+        ...command,
+        server_authoritative: true,
+      }, state, {
+        serverAuthoritativeCombat: true,
+        isNpcScheduler: true,
+        allowedActorIds: [id],
+      })
+      return {
+        ...command,
+        ...(normalized.slot_level != null ? { slot_level: normalized.slot_level } : {}),
+        ...(normalized.spell_slot_resource ? { spell_slot_resource: normalized.spell_slot_resource } : {}),
+      }
+    } catch (error) {
+      if (error instanceof RulesValidationError) return null
+      throw error
+    }
+  }
+  const plannedTargets = (spell, command) => spellTargetsAt(state, command, spell).filter(isLivingActor)
 
   const wounded = livingEnemies(state)
     .filter((ally) => actorId(ally) !== id)
@@ -806,50 +841,94 @@ function monsterSpellPlanFor(state, enemy, candidate, economy) {
   const healing = wounded
     ? spells.find((spell) => spell.kind === 'healing' && spell.target === 'ally' && inRange(spell, wounded.at))
     : null
-  if (healing && wounded) return spellCastCommand(enemy, healing, { target_id: wounded.id })
+  if (healing && wounded) {
+    const command = validateSpellPlan(healing, { target_id: wounded.id })
+    if (command) return command
+  }
 
   const targetId = candidate ? actorId(candidate.actor) : ''
   const targetAt = targetId ? actorPosition(state, targetId) : null
   if (!targetId || !targetAt) return null
   const targetConditions = conditionIds(state, targetId)
-  const control = spells.find((spell) => spell.target === 'enemy'
+  const controlCandidates = spells.filter((spell) => spell.target === 'enemy'
     && Array.isArray(spell.conditions) && spell.conditions.length
     && spell.conditions.every((condition) => !targetConditions.has(String(condition)))
+    && (!spell.concentration || !activeConcentration)
     && inRange(spell, targetAt))
-  if (control) return spellCastCommand(enemy, control, { target_id: targetId })
+  for (const spell of controlCandidates) {
+    const command = validateSpellPlan(spell, { target_id: targetId })
+    if (!command) continue
+    const targets = plannedTargets(spell, command)
+    if (targets.length === 1 && actorId(targets[0]) === targetId) return command
+  }
 
   const party = livingParty(state)
     .map((hero) => ({ id: actorId(hero), at: actorPosition(state, actorId(hero)) }))
     .filter((hero) => hero.at)
-  const allies = livingEnemies(state)
-    .filter((ally) => actorId(ally) !== id)
-    .map((ally) => actorPosition(state, actorId(ally)))
-    .filter(Boolean)
-  const area = spells
-    .filter((spell) => spell.target === 'point' && Math.max(0, Number(spell.radius) || 0) > 0 && spell.damage)
-    .map((spell) => {
-      const radius = Math.max(CELL_FEET, Number(spell.radius) || CELL_FEET)
-      // Центр выбирается по клетке героя, а не «где-то между»: клетка заведомо
-      // проходима и заведомо видна, и повтор плана даёт ту же клетку.
-      const centre = party
-        .filter((hero) => inRange(spell, hero.at))
-        .map((hero) => ({
-          hero,
-          caught: party.filter((other) => spellDistanceFeet(hero.at, other.at) <= radius).length,
-          friendlyFire: allies.some((ally) => spellDistanceFeet(hero.at, ally) <= radius),
-        }))
-        .filter((option) => option.caught >= 2 && !option.friendlyFire)
-        .sort((left, right) => right.caught - left.caught || left.hero.id.localeCompare(right.hero.id))[0]
-      return centre ? { spell, to: { x: centre.hero.at.x, y: centre.hero.at.y } } : null
+  const areaCenters = []
+  const seenCenters = new Set()
+  const addCenter = (at, priority, tie) => {
+    if (!Number.isSafeInteger(at?.x) || !Number.isSafeInteger(at?.y)) return
+    const key = `${at.x},${at.y}`
+    if (seenCenters.has(key)) return
+    seenCenters.add(key)
+    areaCenters.push({ at, priority, tie })
+  }
+  for (const hero of party) addCenter(hero.at, 0, hero.id)
+  for (const cell of state.scene?.cells ?? []) {
+    if (cell.type === 'wall' || cell.revealed === false) continue
+    addCenter({ x: Number(cell.x), y: Number(cell.y) }, 1, `${cell.x},${cell.y}`)
+  }
+  const areaOptions = []
+  for (const spell of spells) {
+    if (spell.target !== 'point' || !(Number(spell.radius) > 0) || !spell.damage || (spell.concentration && activeConcentration)) continue
+    let best = null
+    for (const center of areaCenters) {
+      if (!inRange(spell, center.at)) continue
+      const command = spellCastCommand(enemy, spell, { to: center.at })
+      const affected = plannedTargets(spell, command)
+      const partyTargets = affected.filter((target) => !isEnemyActor(state, actorId(target)))
+      const friendlyFire = affected.some((target) => isEnemyActor(state, actorId(target)))
+      if (partyTargets.length < 2 || friendlyFire) continue
+      const score = spellDamageEstimate(enemy, spell, spell.level) * partyTargets.length
+      const option = { spell, extra: { to: center.at }, center, caught: partyTargets.length, score }
+      if (!best
+        || option.score > best.score
+        || option.score === best.score && (option.caught > best.caught
+          || option.caught === best.caught && (option.center.priority < best.center.priority
+            || option.center.priority === best.center.priority && option.center.tie.localeCompare(best.center.tie) < 0))) {
+        best = option
+      }
+    }
+    if (best) areaOptions.push(best)
+  }
+  areaOptions.sort((left, right) => right.score - left.score || right.caught - left.caught
+    || right.spell.level - left.spell.level || left.spell.id.localeCompare(right.spell.id))
+  const validatedAreas = []
+  for (const option of areaOptions) {
+    const command = validateSpellPlan(option.spell, option.extra)
+    if (!command) continue
+    validatedAreas.push({
+      ...option,
+      command,
+      score: spellDamageEstimate(enemy, option.spell, Number(command.slot_level ?? option.spell.level)) * option.caught,
     })
-    .filter(Boolean)
-    .sort((left, right) => right.spell.level - left.spell.level || left.spell.id.localeCompare(right.spell.id))[0]
-  if (area) return spellCastCommand(enemy, area.spell, { to: area.to })
+  }
+  validatedAreas.sort((left, right) => right.score - left.score || right.caught - left.caught
+    || right.spell.level - left.spell.level || left.spell.id.localeCompare(right.spell.id))
+  if (validatedAreas[0]) return validatedAreas[0].command
 
-  const damaging = spells
-    .filter((spell) => spell.target === 'enemy' && spell.damage && inRange(spell, targetAt))
-    .sort((left, right) => averageDamage(right.damage) - averageDamage(left.damage) || left.id.localeCompare(right.id))[0]
-  return damaging ? spellCastCommand(enemy, damaging, { target_id: targetId }) : null
+  const damaging = []
+  for (const spell of spells) {
+    if (spell.target !== 'enemy' || !spell.damage || (spell.concentration && activeConcentration) || !inRange(spell, targetAt)) continue
+    const command = validateSpellPlan(spell, { target_id: targetId })
+    if (!command) continue
+    const targets = plannedTargets(spell, command)
+    if (targets.length !== 1 || actorId(targets[0]) !== targetId) continue
+    damaging.push({ spell, command, score: spellDamageEstimate(enemy, spell, Number(command.slot_level ?? spell.level)) })
+  }
+  damaging.sort((left, right) => right.score - left.score || left.spell.id.localeCompare(right.spell.id))
+  return damaging[0]?.command ?? null
 }
 
 /**
@@ -933,6 +1012,25 @@ function publicTacticFor(state, enemy, candidate, commands = []) {
   }
 }
 
+function monsterAreaPlanFor(state, enemy, candidate) {
+  const id = actorId(enemy)
+  const areaActions = (Array.isArray(enemy.special_actions) ? enemy.special_actions : []).filter(action => action.kind === 'save_area')
+  const origins = livingParty(state).map(target => actorPosition(state, actorId(target))).filter(Boolean)
+  const attackValue = candidate ? averageDamage(candidate.profile.damage_expression, candidate.profile.damage_amount) * multiattackCount(enemy) * .6 : 0
+  let best = null
+  for (const action of areaActions) for (const to of origins) {
+    let preview
+    try { preview = previewMonsterAction(state, id, action.id, to) } catch (error) {
+      if (error instanceof RulesValidationError) continue
+      throw error
+    }
+    if (preview.affectedIds.some(targetId => isEnemyActor(state, targetId))) continue
+    const score = preview.action.damage.reduce((sum, component) => sum + averageDamage(component.expression, component.amount), 0) * preview.affectedIds.length
+    if (score >= attackValue && (!best || score > best.score)) best = { score, actionId: action.id, to }
+  }
+  return best ? { command_type: 'UseMonsterAction', actor_id: id, action_id: best.actionId, to: best.to } : null
+}
+
 export function planNpcTurn(rawState, enemyId) {
   const state = normalizeCampaignState(rawState)
   const enemy = findActor(state, enemyId)
@@ -959,6 +1057,8 @@ export function planNpcTurn(rawState, enemyId) {
   const healingUsesAction = healingSip && usableEquipment
     .find((item) => item.item_instance_id === healingSip.item_id)?.use?.combat_action === 'action'
   if (healingUsesAction) return [healingSip, { command_type: 'EndTurn', actor_id: String(enemyId) }]
+  const areaPlan = bloodiedRetreat ? null : monsterAreaPlanFor(state, enemy, candidate)
+  if (areaPlan) return [...(healingSip ? [healingSip] : []), areaPlan, { command_type: 'EndTurn', actor_id: String(enemyId) }]
   // Магия стат-блока идёт раньше оружия и раньше подхода: заклинатель на то и
   // заклинатель, что достаёт оттуда, откуда не дотянется клинком. Ветка стоит
   // после отхода раненого — своя шкура важнее лишнего Огненного шара — и

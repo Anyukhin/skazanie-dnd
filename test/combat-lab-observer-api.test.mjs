@@ -142,6 +142,38 @@ test('админ наблюдает асинхронный боевой стен
   assert.ok(catalog.body.classes.some((entry) => entry.id === 'fighter'))
   assert.ok(catalog.body.monsters.every((entry) => entry.id.startsWith('dnd_5e_2014:')))
   assert.ok(catalog.body.maps.length >= 4 && catalog.body.maps.every((entry) => entry.map && entry.cells.length > 0))
+  const encounterConfig = { mapId: 'open-courtyard',
+    party: ['fighter', 'rogue', 'cleric', 'wizard'].map((classId, y) => ({ source: 'class', classId, level: 3, x: 0, y })), enemies: [] }
+  for (const action of ['assess', 'generate']) {
+    const anonymous = await request(baseUrl, `/api/admin/combat-lab/encounter/${action}`, { method: 'POST', body: { config: encounterConfig } })
+    assert.equal(anonymous.status, 401, anonymous.text)
+    const denied = await request(baseUrl, `/api/admin/combat-lab/encounter/${action}`, { method: 'POST', cookie: playerCookie, body: { config: encounterConfig } })
+    assert.equal(denied.status, 403, denied.text)
+  }
+  const assessed = await request(baseUrl, '/api/admin/combat-lab/encounter/assess', {
+    method: 'POST', cookie: adminCookie, body: { config: encounterConfig },
+  })
+  assert.equal(assessed.status, 200, assessed.text)
+  assert.deepEqual(assessed.body.assessment.thresholds, { easy: 300, medium: 600, hard: 900, deadly: 1600 })
+  const generationBody = { config: encounterConfig, difficulty: 'medium', seed: 17 }
+  const generated = await request(baseUrl, '/api/admin/combat-lab/encounter/generate', {
+    method: 'POST', cookie: adminCookie, body: generationBody,
+  })
+  assert.equal(generated.status, 200, generated.text)
+  assert.equal(generated.body.assessment.difficulty, 'medium')
+  assert.deepEqual(generated.body.config.party, encounterConfig.party)
+  const generatedAgain = await request(baseUrl, '/api/admin/combat-lab/encounter/generate', {
+    method: 'POST', cookie: adminCookie, body: generationBody,
+  })
+  assert.deepEqual(generatedAgain.body, generated.body, 'один seed возвращает тот же состав и расчёт')
+  const invalidParty = await request(baseUrl, '/api/admin/combat-lab/encounter/generate', {
+    method: 'POST', cookie: adminCookie, body: { ...generationBody, config: { ...encounterConfig, party: [{ ...encounterConfig.party[0], level: 99 }] } },
+  })
+  assert.equal(invalidParty.status, 400, invalidParty.text)
+  const injected = await request(baseUrl, '/api/admin/combat-lab/encounter/assess', {
+    method: 'POST', cookie: adminCookie, body: { config: { ...encounterConfig, xp: 0 } },
+  })
+  assert.equal(injected.status, 400, injected.text)
   const sourceState = await buildCombatLabState({ mapId: 'open-courtyard',
     party: [{ source: 'class', classId: 'wizard', level: 5, x: 0, y: 0 }],
     enemies: [{ monsterId: 'dnd_5e_2014:monster:goblin', x: 8, y: 5 }] })
@@ -232,4 +264,10 @@ test('админ наблюдает асинхронный боевой стен
   assert.ok(download.body.trace.steps.length > 0 && download.body.trace.rolls.length > 0)
   const forbiddenReport = await request(baseUrl, `/api/admin/combat-lab/runs/${configured.id}/report`, { cookie: playerCookie })
   assert.equal(forbiddenReport.status, 403, forbiddenReport.text)
+  const generatedRun = await request(baseUrl, '/api/admin/combat-lab/runs', { method: 'POST', cookie: adminCookie,
+    body: { seed: 17, config: generated.body.config } })
+  assert.equal(generatedRun.status, 202, generatedRun.text)
+  const generatedFrames = await waitForRun(baseUrl, adminCookie, generatedRun.body.id, (run) => run.frames.length > 0)
+  assert.equal(generatedFrames.frames[0].actors.length, encounterConfig.party.length + generated.body.config.enemies.length)
+  await request(baseUrl, `/api/admin/combat-lab/runs/${generatedRun.body.id}`, { method: 'DELETE', cookie: adminCookie })
 })

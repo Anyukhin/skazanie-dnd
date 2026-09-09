@@ -317,6 +317,7 @@ function evidenceFromBrief(brief, extraRuleIds = []) {
     hasHp: false, hasDamage: false, hasHealing: false,
     hasResource: false, hasResourceSpent: false, hasResourceRestored: false,
     hasRoll: false, hasItem: false, hasPromiseResolution: false,
+    hasMovement: false, hasSocialInteraction: false, hasDisclosure: false, hasMerchantEvent: false, hasDoorOpening: false,
   }
 
   const visit = (value, path = [], inherited = { hp: false, resource: false, roll: false }, seen = new WeakSet()) => {
@@ -333,6 +334,9 @@ function evidenceFromBrief(brief, extraRuleIds = []) {
     // Вещь меняет владельца только событием. Сюда же попадают покупка, лут и
     // экипировка: все они подтверждают, что предмет действительно двигался.
     const eventIsItem = /item|loot|inventory|equip/i.test(eventType)
+    const eventIsMovement = /move|travel|arriv|depart|leave|relocat|captivemoved|beastmoved/i.test(eventType)
+    const eventIsSocial = /socialscene|socialturn|conversation|dialogue|dialog|npc.*(?:speak|talk|turn)/i.test(eventType)
+    const eventIsDisclosure = /reveal|disclos|knowledge|worldfact|rumor|testimony|witness|statement/i.test(eventType)
     const context = {
       hp: inherited.hp || eventIsDamage || eventIsHealing || /(?:^|\.)(?:hp|hit_points|temporary_hp)(?:\.|$)/.test(route),
       resource: inherited.resource || eventIsResource || /(?:^|\.)(?:resource|resources)(?:\.|$)/.test(route),
@@ -345,6 +349,13 @@ function evidenceFromBrief(brief, extraRuleIds = []) {
     if (/resourcerestored|restcompleted/i.test(eventType)) evidence.hasResourceRestored = true
     if (eventIsRoll) evidence.hasRoll = true
     if (eventIsItem) evidence.hasItem = true
+    if (eventIsMovement) evidence.hasMovement = true
+    if (eventIsSocial) evidence.hasSocialInteraction = true
+    if (eventIsDisclosure) evidence.hasDisclosure = true
+    if ((eventType === 'DoorStateChanged' && value.payload?.state === 'open')
+      || (['DoorLockpicked', 'DoorForced'].includes(eventType) && value.payload?.success === true)
+      || (eventType === 'DoorBarricadeCleared' && value.payload?.restored_state === 'open')) evidence.hasDoorOpening = true
+    if (/merchant/i.test(eventType)) evidence.hasMerchantEvent = true
     if (/promiseresolved/i.test(eventType)) evidence.hasPromiseResolution = true
 
     if (/^(?:source_rule_ids|rule_ids|rule_id|house_rule_id|ruling_id)$/.test(key)) {
@@ -377,7 +388,10 @@ function evidenceFromBrief(brief, extraRuleIds = []) {
     }
     seen.delete(value)
   }
-  visit(brief)
+  // Прошлое событие внутри памяти или structured_result не подтверждает
+  // новый результат: механические основания берём только из текущего commit.
+  visit(brief?.visible_events)
+  visit(brief?.visible_state_changes)
   return evidence
 }
 
@@ -505,6 +519,79 @@ const PROMISE_FULFILMENT_PATTERN = new RegExp(
   'iu',
 )
 
+// Это bounded guard для свободного действия: декларация/ruling не является
+// доказательством того, что герой ушёл, поговорил или узнал новый факт.
+// Список намеренно конечный; он ловит наблюдавшиеся опасные формы, а не
+// притворяется семантическим классификатором.
+const MOVEMENT_ASSERTION_PATTERN = new RegExp(
+  `(?:${ruStems('уход', 'покида', 'выхож', 'выходит', 'оставля', 'направля', 'возвраща', 'вход', 'прибыва', 'тащ', 'волоч', 'перенос')})`,
+  'iu',
+)
+const SOCIAL_ASSERTION_PATTERN = new RegExp(
+  `(?<!${RU_LETTER})(?:${ruStems('расспраш', 'расспросил', 'разговар', 'поговор', 'спрашива', 'спросил', 'отвеча', 'сказа', 'сообща', 'сверя', 'подтвержда', 'признава', 'обсужда')})`,
+  'iu',
+)
+const DISCLOSURE_ASSERTION_PATTERN = new RegExp(
+  `(?:${ruStems('показани', 'свидетельств', 'рассказыва', 'рассказ', 'узнава', 'выясня', 'раскрыва', 'сообщени', 'известн', 'правд', 'слух', 'видел')})`,
+  'iu',
+)
+
+// Наблюдавшиеся безличные результаты не требуют имени NPC или player_intent.
+const SOCIAL_OUTCOME_ASSERTION_PATTERN = /(?:(?:довод|аргумент)[а-яё]*[^.!?]{0,100}|слова\s+|(?:люди|собеседник[а-яё]*)\s+(?:начинают\s+)?)(?<![а-яё])(принят[а-яё]*|сработал[а-яё]*|нашли\s+отклик|(?:прозвучали|звучат)\s+убедительно|отвеча[а-яё]*\s+охотнее)(?![а-яё])/iu
+const DOOR_OPENING_ASSERTION_PATTERN = /(?:двер[а-яё]*|створк[а-яё]*|ворот[а-яё]*|засов[а-яё]*)[^.!?]{0,48}(?<![а-яё])(открыва(?:ется|ются|лась|лись)|открыл(?:ась|ись)|открыт[а-яё]*|распах(?:ивается|иваются|нулась|нулись|нут[а-яё]*)|отход(?:ит|ят)|подда[её]тся|поддал(?:ся|ась|ось|ись))(?![а-яё])/iu
+
+function positiveOutcomeAssertion(pattern, text) {
+  return [...text.matchAll(new RegExp(pattern.source, 'giu'))].some(match => {
+    const verbStart = match.index + match[0].length - match[1].length
+    const before = text.slice(Math.max(0, verbStart - 32), verbStart)
+    const after = text.slice(match.index + match[0].length, match.index + match[0].length + 24)
+    return !/не\s+(?:был[аои]?\s+)?$/iu.test(before) && !/^\s+не\s+был[аои]?(?![а-яё])/iu.test(after)
+  })
+}
+
+function playerIntentFromBrief(brief) {
+  const intent = brief?.known_environment?.player_intent ?? brief?.player_intent
+  return intent && typeof intent === 'object' && !Array.isArray(intent) ? intent : {}
+}
+
+function hasDirectMovementConstraint(brief) {
+  const intent = playerIntentFromBrief(brief)
+  const constraints = Array.isArray(intent.constraints) ? intent.constraints : []
+  return constraints.some((constraint) => /(?:не\s+(?:покида|уход|выход|оставля)|остава(?:ться|емся)|не\s+двига)/iu.test(String(constraint)))
+}
+
+function hasPermittedSocialReaction(brief) {
+  return (Array.isArray(brief?.permitted_npc_reactions) ? brief.permitted_npc_reactions : [])
+    .some((reaction) => typeof reaction === 'string' || reaction?.text || reaction?.dialogue || reaction?.speech)
+}
+
+function positiveAssertion(pattern, text) {
+  for (const match of String(text).matchAll(new RegExp(pattern.source, pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`))) {
+    const prefix = String(text).slice(Math.max(0, match.index - 24), match.index)
+    if (/(?:не|если|когда)\s*$/iu.test(prefix)) continue
+    return true
+  }
+  return false
+}
+
+function namedNpcSpeechAssertion(text, brief) {
+  const names = []
+  const story = brief?.known_environment?.story_context
+  for (const npc of Array.isArray(story?.present_npcs) ? story.present_npcs : []) {
+    const name = String(npc?.name ?? '').trim()
+    if (name.length >= 2) names.push(name.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'))
+  }
+  if (!names.length) return false
+  const namePattern = new RegExp(`(?:${names.join('|')})[^.!?]{0,36}(?:${ruStems('сказа', 'говор', 'отвеча', 'сообща', 'подтвержда', 'рассказыва')})`, 'iu')
+  for (const match of String(text).matchAll(new RegExp(namePattern.source, 'giu'))) {
+    if (/(?:ничего\s+не|не)\s+(?:говор|сказ|отвеч|сообщ)/iu.test(match[0])) continue
+    const prefix = String(text).slice(Math.max(0, match.index - 24), match.index)
+    if (/(?:не|ничего\s+не)\s*$/iu.test(prefix)) continue
+    return true
+  }
+  return false
+}
+
 export function verifyNarration(narration, brief, {
   hiddenValues = [],
   forbiddenHiddenTerms = [],
@@ -525,6 +612,35 @@ export function verifyNarration(narration, brief, {
 
   if (ITEM_TRANSFER_PATTERN.test(text) && !evidence.hasItem) {
     addViolation(violations, 'ITEM_TRANSFER_NOT_IN_BRIEF', 'Narrator объявил переход вещи без подтверждённого события')
+  }
+
+  const result = brief?.known_environment?.structured_result ?? brief?.structured_result
+  const hasFreeActionContext = Object.keys(playerIntentFromBrief(brief)).length > 0
+    || Boolean(result && typeof result === 'object')
+  const movementAssertion = positiveAssertion(MOVEMENT_ASSERTION_PATTERN, text)
+  const socialAssertion = positiveAssertion(SOCIAL_ASSERTION_PATTERN, text)
+    || namedNpcSpeechAssertion(text, brief)
+  const disclosureAssertion = positiveAssertion(DISCLOSURE_ASSERTION_PATTERN, text)
+    || (namedNpcSpeechAssertion(text, brief) && /(?<![а-яё])что(?![а-яё])/iu.test(text))
+  if (hasDirectMovementConstraint(brief) && movementAssertion && !evidence.hasMovement) {
+    addViolation(violations, 'PLAYER_CONSTRAINT_VIOLATION', 'Narrator нарушил прямое ограничение игрока на перемещение')
+  }
+  if (hasFreeActionContext && movementAssertion && !evidence.hasMovement) {
+    addViolation(violations, 'UNCONFIRMED_FREE_ACTION', 'Narrator объявил перемещение или разговор без подтверждённого события')
+  }
+  const hasSocialAuthority = evidence.hasSocialInteraction || evidence.hasMerchantEvent
+  const permitsPersuasion = (brief?.permitted_npc_reactions ?? []).some(reaction => reaction?.reaction === 'persuaded')
+  if (positiveOutcomeAssertion(SOCIAL_OUTCOME_ASSERTION_PATTERN, text) && !hasSocialAuthority && !permitsPersuasion) {
+    addViolation(violations, 'UNCONFIRMED_SOCIAL_ACTION', 'Рассказчик вывел согласие собеседника из проверки без подтверждённого социального результата')
+  }
+  if (positiveOutcomeAssertion(DOOR_OPENING_ASSERTION_PATTERN, text) && !evidence.hasDoorOpening) {
+    addViolation(violations, 'WORLD_CHANGE_NOT_IN_BRIEF', 'Рассказчик открыл дверь или сдвинул засов без подтверждённого события')
+  }
+  if (hasFreeActionContext && socialAssertion && !hasSocialAuthority && !hasPermittedSocialReaction(brief)) {
+    addViolation(violations, 'UNCONFIRMED_SOCIAL_ACTION', 'Narrator объявил разговор или реплику NPC без подтверждённого события')
+  }
+  if (hasFreeActionContext && disclosureAssertion && !evidence.hasDisclosure) {
+    addViolation(violations, 'UNCONFIRMED_DISCLOSURE', 'Narrator объявил новые показания или знание без подтверждённого события')
   }
 
   // Обещание закрывает только событие. Упоминать обещание можно и нужно —

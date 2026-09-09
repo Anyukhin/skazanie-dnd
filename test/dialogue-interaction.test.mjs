@@ -51,6 +51,18 @@ function input(initial, action, idempotencyKey, extra = {}) {
   }
 }
 
+test('новая самостоятельная заявка не требует актуальности старого уточнения', async () => {
+  const { orchestrator, eventStore, initial } = await fixture()
+  const first = await orchestrator.handle(input(initial, 'Делаю непонятное действие', 'stale-new-1'))
+  await eventStore.commit({ campaign_id: 'DIALOGUE', expected_state_version: 0, idempotency_key: 'world-changed', events: [
+    { event_type: 'ActionDeclared', actor_id: 'other', payload: { action: 'Другой герой изменил обстановку' } },
+  ] })
+  const current = await eventStore.load('DIALOGUE')
+  const result = await orchestrator.handle(input(current.state, 'Исследую комнату', 'stale-new-2', { clarification_id: first.clarification.id }))
+  assert.equal(result.resolved_action, 'Исследую комнату')
+  assert.doesNotMatch(result.resolved_action, /Уточнение игрока|непонятное действие/u)
+})
+
 test('уточнение хранится на сервере, продолжение получает canonical resolved_action и переживает перезапуск оркестратора', async () => {
   const fixtureData = await fixture()
   const first = await fixtureData.orchestrator.handle(input(fixtureData.initial, 'Делаю непонятное действие', 'clarify-1'))
@@ -67,12 +79,39 @@ test('уточнение хранится на сервере, продолже�
   const continued = await restarted.handle(input(fixtureData.initial, 'Подпираю дверь скамьёй', 'clarify-2', {
     clarification_id: first.clarification.id,
   }))
-  assert.match(continued.resolved_action, /Делаю непонятное действие.*Подпираю дверь/u)
+  assert.equal(continued.resolved_action, 'Подпираю дверь скамьёй')
   assert.ok(['check_success', 'check_failure', 'check_required'].includes(continued.free_action_outcome))
   await assert.rejects(
     restarted.handle({ ...input(fixtureData.initial, 'Подпираю дверь скамьёй', 'clarify-forged', { clarification_id: first.clarification.id }), playerId: 'other', allowedActorIds: ['other'] }),
     { code: 'CLARIFICATION_FORBIDDEN' },
   )
+})
+
+test('короткий ответ продолжает уточнение, а новая семантическая заявка не склеивается со старым текстом', async () => {
+  const continuationFixture = await fixture()
+  const continuation = await continuationFixture.orchestrator.handle(input(continuationFixture.initial, 'Делаю непонятное действие', 'fragment-offer'))
+  const fragment = await continuationFixture.orchestrator.handle(input(continuationFixture.initial, 'Верёвкой', 'fragment-answer', {
+    clarification_id: continuation.clarification.id,
+  }))
+  assert.match(fragment.resolved_action, /Делаю непонятное действие.*Верёвкой/u)
+
+  for (const [text, key] of [
+    ['Исследую комнату', 'independent-research'],
+    ['Убеждаю Миру открыть ворота', 'independent-social'],
+    ['Прыгаю через канаву', 'independent-jump'],
+  ]) {
+    const fixtureData = await fixture()
+    const first = await fixtureData.orchestrator.handle(input(fixtureData.initial, 'Делаю непонятное действие', `${key}-offer`))
+    const independent = await fixtureData.orchestrator.handle(input(fixtureData.initial, text, key, {
+      clarification_id: first.clarification.id,
+    }))
+    assert.equal(independent.resolved_action, text, `${text}: новая заявка не должна получать старый текст`)
+    assert.doesNotMatch(String(independent.resolved_action), /Делаю непонятное действие/u)
+    const active = fixtureData.orchestrator.clarificationRegistry.current({
+      campaignId: 'DIALOGUE', actorId: 'hero', stateVersion: independent.state_version,
+    })
+    assert.notEqual(active?.id ?? null, first.clarification.id, `${text}: старое уточнение должно быть закрыто`)
+  }
 })
 
 test('вопросы и обсуждение не создают бросков, событий и не повторяют текст игрока рассказчиком', async () => {
@@ -87,6 +126,18 @@ test('вопросы и обсуждение не создают бросков,
   assert.equal(discussion.narration, '')
   assert.deepEqual(discussion.mechanics, [])
   assert.equal((await eventStore.load('DIALOGUE')).state_version, 0)
+})
+
+test('вопрос не возвращает уточнение из устаревшей версии состояния', async () => {
+  const fixtureData = await fixture()
+  const first = await fixtureData.orchestrator.handle(input(fixtureData.initial, 'Делаю непонятное действие', 'stale-dialogue-1'))
+  const advanced = await fixtureData.orchestrator.handle(input(fixtureData.initial, 'Подбрасываю монету и ловлю её другой рукой', 'stale-dialogue-2'))
+  assert.ok(advanced.state_version > first.state_version)
+  const question = await fixtureData.orchestrator.handle(input(fixtureData.initial, 'Что с прежней заявкой?', 'stale-dialogue-question', {
+    requestKind: 'question', clarification_id: first.clarification.id,
+  }))
+  assert.equal(question.clarification ?? null, null)
+  assert.equal(question.turn_consumed, false)
 })
 
 test('изменённая до броска заявка отменяет старую карточку проверки', async () => {

@@ -123,13 +123,13 @@ pnpm backup           # зашифрованная копия storage в ./backu
 
 | Файл | Промпт | Роль |
 | --- | --- | --- |
-| `server/director-agent.mjs` | `prompts/director/v3_story.txt`, `prompts/director/v3_chaos.txt` | темп, развилки, переходы |
+| `server/director-agent.mjs` | `prompts/director/v4_story.txt`, `prompts/director/v4_chaos.txt` | темп, развилки, переходы |
 | `server/npc-controller.mjs` | `prompts/npc_controller/v1.txt` | тактика NPC |
-| `server/npc-social-controller.mjs` | `prompts/npc_controller/social_v4.txt` | социальные сцены |
-| `server/narrator.mjs` | `prompts/narrator/v6.txt` | текст после commit |
+| `server/npc-social-controller.mjs` | `prompts/npc_controller/social_v5.txt` | социальные сцены |
+| `server/narrator.mjs` | `prompts/narrator/v9.txt` | текст после commit |
 | `server/scene-architect.mjs` | `prompts/map_architect/v5.txt` | новые области |
 | `server/campaign-bootstrap.mjs` | `prompts/campaign_creator/v4.txt` | исходная ситуация кампании |
-| `server/action-adjudicator.mjs` | `prompts/action_adjudicator/v4.txt` | прочтение свободного действия |
+| `server/action-adjudicator.mjs` | `prompts/action_adjudicator/v6.txt` | прочтение свободного действия |
 | `server/campaign-recap.mjs` | `prompts/recap/v1.txt` | рекап «в прошлой серии» после перерыва |
 
 Больше промпты не загружает никто; ролей восемь, а загружаемых промптов девять:

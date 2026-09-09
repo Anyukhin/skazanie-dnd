@@ -34,13 +34,13 @@ const promptsRoot = new URL('../prompts/', import.meta.url)
  */
 export const PROMPT_DESCRIPTORS = Object.freeze([
   Object.freeze({ role: 'npc_morale', promptId: 'npc_controller/v1', module: 'npc-controller.mjs', loads: true }),
-  Object.freeze({ role: 'npc_social', promptId: 'npc_controller/social_v4', module: 'npc-social-controller.mjs', loads: true }),
-  Object.freeze({ role: 'narrator', promptId: 'narrator/v6', module: 'narrator.mjs', loads: true }),
+  Object.freeze({ role: 'npc_social', promptId: 'npc_controller/social_v5', module: 'npc-social-controller.mjs', loads: true }),
+  Object.freeze({ role: 'narrator', promptId: 'narrator/v9', module: 'narrator.mjs', loads: true }),
   // Режиссёр — единственная роль с вариантами: промпт выбирается режимом
   // импровизации кампании, поэтому один модуль объявляет два дескриптора.
-  Object.freeze({ role: 'director_story', promptId: 'director/v3_story', module: 'director-agent.mjs', loads: true }),
-  Object.freeze({ role: 'director_chaos', promptId: 'director/v3_chaos', module: 'director-agent.mjs', loads: true }),
-  Object.freeze({ role: 'action_adjudicator', promptId: 'action_adjudicator/v4', module: 'action-adjudicator.mjs', loads: true }),
+  Object.freeze({ role: 'director_story', promptId: 'director/v4_story', module: 'director-agent.mjs', loads: true }),
+  Object.freeze({ role: 'director_chaos', promptId: 'director/v4_chaos', module: 'director-agent.mjs', loads: true }),
+  Object.freeze({ role: 'action_adjudicator', promptId: 'action_adjudicator/v6', module: 'action-adjudicator.mjs', loads: true }),
   Object.freeze({ role: 'campaign_creator', promptId: 'campaign_creator/v4', module: 'campaign-bootstrap.mjs', loads: true }),
   Object.freeze({ role: 'scene_architect', promptId: 'map_architect/v5', module: 'scene-architect.mjs', loads: true }),
   Object.freeze({ role: 'recap', promptId: 'recap/v1', module: 'campaign-recap.mjs', loads: true }),

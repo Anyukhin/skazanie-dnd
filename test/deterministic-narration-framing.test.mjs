@@ -38,10 +38,9 @@ test('пустой ход без модели больше не выглядит
   assert.doesNotMatch(narration, /механических последствий/u)
 })
 
-test('обрамление добавляется и к механическому исходу, не заменяя его', () => {
+test('скудный механический исход остаётся коротким и не получает атмосферу', () => {
   const { narration } = deterministicNarration(brief({ events: [CHECK_EVENT], story: STORY }))
-  assert.match(narration, /Трактир «Пустой кубок»/u)
-  assert.match(narration, /успехом/u, 'подтверждённый исход обязан остаться в тексте')
+  assert.equal(narration, 'Проверка «Харизма» завершилась успехом.')
   assert.doesNotMatch(narration, /\d/u, 'числа проверки уже видны в интерфейсе')
 })
 

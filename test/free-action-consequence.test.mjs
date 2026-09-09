@@ -13,6 +13,8 @@ import { worldMemoryForViewer } from '../server/world-memory.mjs'
  */
 
 const checkEvent = (event_id = 'evt-check') => ({ event_type: 'AbilityCheckResolved', event_id, payload: { success: true } })
+const doorEffect = (event_id = 'evt-door') => ({ event_type: 'DoorStateChanged', event_id, payload: { door_id: 'door-1', previous_state: 'closed', state: 'open' } })
+const fireEffect = (event_id = 'evt-fire') => ({ event_type: 'SceneObjectStateChanged', event_id, payload: { prop_id: 'prop-1', intent: 'ignite', state: 'burning' } })
 
 const reading = (overrides = {}) => ({
   goal_summary: 'Поджечь разлитое масло под ногами огра',
@@ -33,18 +35,18 @@ function state(overrides = {}) {
   })
 }
 
-test('опасный успех оставляет факт scene_change с провенансом', () => {
+test('подтверждённый опасный эффект оставляет факт scene_change с провенансом', () => {
   const commands = materialConsequenceCommands(state(), {
     succeeded: true,
     reading: reading({ risk: 'serious' }),
-    checkEvent: checkEvent(),
+    checkEvent: checkEvent(), committedEvents: [fireEffect()],
   })
   const fact = commands.find((command) => command.command_type === 'RecordWorldFact')?.fact
   assert.ok(fact, 'факт записан')
   assert.equal(fact.predicate, 'scene_change')
   assert.equal(fact.visibility, 'party')
-  assert.deepEqual(fact.source_event_ids, ['evt-check'])
-  assert.match(fact.summary, /Поджечь разлитое масло/u)
+  assert.deepEqual(fact.source_event_ids, ['evt-fire'])
+  assert.match(fact.summary, /загорелся/u)
   assert.match(fact.summary, /Кабанья голова/u, 'место остаётся в тексте факта')
 })
 
@@ -56,7 +58,7 @@ test('граница заметности: считается эффект, ст
     reading({ hazard: 'fire' }),
   ]
   for (const value of notable) {
-    const commands = materialConsequenceCommands(state(), { succeeded: true, reading: value, checkEvent: checkEvent() })
+    const commands = materialConsequenceCommands(state(), { succeeded: true, reading: value, checkEvent: checkEvent(), committedEvents: [fireEffect()] })
     assert.ok(commands.some((command) => command.command_type === 'RecordWorldFact'), `ожидался факт для ${JSON.stringify(value)}`)
   }
 })
@@ -69,6 +71,25 @@ test('обычное успешное действие факта не оста�
       `тривиальное действие не должно писать факт: ${JSON.stringify(value)}`,
     )
   }
+})
+
+test('один бросок без физического эффекта не канонизирует goal_summary', () => {
+  assert.deepEqual(materialConsequenceCommands(state(), {
+    succeeded: true,
+    reading: reading({ risk: 'deadly', goal_summary: 'Таверна сожжена' }),
+    checkEvent: checkEvent(),
+    committedEvents: [checkEvent('evt-only-roll')],
+  }), [])
+})
+
+test('дверь становится фактом без AbilityCheckResolved, а провал объекта — нет', () => {
+  const opened = materialConsequenceCommands(state(), { succeeded: true, reading: reading(), committedEvents: [doorEffect('door-opened')] })
+  assert.deepEqual(opened.find((command) => command.command_type === 'RecordWorldFact')?.fact.source_event_ids, ['door-opened'])
+  assert.match(opened.find((command) => command.command_type === 'RecordWorldFact')?.fact.summary ?? '', /Дверь открыт/u)
+  assert.deepEqual(materialConsequenceCommands(state(), {
+    succeeded: true, reading: reading({ risk: 'deadly' }), checkEvent: checkEvent(),
+    committedEvents: [{ event_type: 'SceneObjectStateChanged', event_id: 'failed-object', visibility: 'party', payload: { prop_id: 'prop-1', state: 'closed', success: false } }],
+  }), [])
 })
 
 test('провал мир не меняет, даже если ставка была смертельной', () => {
@@ -95,7 +116,7 @@ test('в состоянии без сущностей локация завод�
   // существующую сущность — иначе WORLD_ENTITY_NOT_FOUND уронит весь батч.
   const bare = { scene: { title: 'Драка', location: 'Трактир «Кабанья голова»' }, worldMemory: { entities: [], facts: [] } }
   const commands = materialConsequenceCommands(bare, {
-    succeeded: true, reading: reading({ risk: 'serious' }), checkEvent: checkEvent(),
+    succeeded: true, reading: reading({ risk: 'serious' }), checkEvent: checkEvent(), committedEvents: [fireEffect()],
   })
   assert.deepEqual(commands.map((command) => command.command_type), ['UpsertWorldEntity', 'RecordWorldFact'])
   assert.equal(commands[0].entity.kind, 'location')
@@ -105,7 +126,7 @@ test('в состоянии без сущностей локация завод�
 test('повтор того же события факт не удваивает, а replay даёт то же состояние', () => {
   const initial = state()
   const first = materialConsequenceCommands(initial, {
-    succeeded: true, reading: reading({ risk: 'serious' }), checkEvent: checkEvent(),
+    succeeded: true, reading: reading({ risk: 'serious' }), checkEvent: checkEvent(), committedEvents: [fireEffect()],
   })
   // Локацию сцены движок уже завёл при нормализации — вторую заводить незачем.
   assert.deepEqual(first.map((command) => command.command_type), ['RecordWorldFact'])
@@ -117,13 +138,13 @@ test('повтор того же события факт не удваивает
 
   // Второй заход того же броска: сущность уже есть, факт уже записан.
   const second = materialConsequenceCommands(resolved.state, {
-    succeeded: true, reading: reading({ risk: 'serious' }), checkEvent: checkEvent(),
+    succeeded: true, reading: reading({ risk: 'serious' }), checkEvent: checkEvent(), committedEvents: [fireEffect()],
   })
   assert.deepEqual(second, [], 'детерминированный id закрывает повтор')
 
   // Другое действие в той же сцене чужую сущность не пересоздаёт.
   const other = materialConsequenceCommands(resolved.state, {
-    succeeded: true, reading: reading({ risk: 'deadly', goal_summary: 'Обрушить люстру' }), checkEvent: checkEvent('evt-other'),
+    succeeded: true, reading: reading({ risk: 'deadly', goal_summary: 'Обрушить люстру' }), checkEvent: checkEvent('evt-other'), committedEvents: [doorEffect('evt-other-effect')],
   })
   assert.deepEqual(other.map((command) => command.command_type), ['RecordWorldFact'])
 

@@ -2,11 +2,13 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { publicAdventureMemory } from './adventure-director.mjs'
+import { authoredLocationMapMetaFor } from './authored-location-maps.mjs'
 import { classifyPartyDecision } from './party-exit-intent.mjs'
 import { normalizeDeclaredLevels } from './level-generator.mjs'
 import { defaultSceneShopIntent, normalizeSceneShopIntent } from './scene-commerce.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'
 import { buildDataOnlyContext } from './security.mjs'
+import { SCENE_THEME_IDS } from './scene-themes.mjs'
 import { worldLocationById } from './world-map.mjs'
 
 /**
@@ -392,7 +394,13 @@ function fallbackPlan({ action, state, decision, destinationHint, destinationLoc
     ? themeForWorldDescription(knownDestination)
     : null
   const map = themeFor(location, hinted && !knownDestination ? action : '')
-  const plannedMap = byWorldDescription ?? byWorldKind ?? map
+  const authoredMap = knownDestination?.id ? authoredLocationMapMetaFor(knownDestination.id) : null
+  const plannedMapBase = byWorldDescription ?? byWorldKind ?? map
+  // У фиксированной локации тема карты берётся из versioned catalog. Это
+  // сохраняет явный authored route даже когда модель предложила свой pattern.
+  const plannedMap = authoredMap
+    ? { ...plannedMapBase, theme_id: authoredMap.themeId }
+    : plannedMapBase
   const streets = plannedMap.layout === 'streets'
   return {
     title: `Глава ${chapter} · ${location}`,
@@ -414,7 +422,18 @@ function fallbackPlan({ action, state, decision, destinationHint, destinationLoc
       : `Отряд покинул «${from}», не закрыв прежнюю сюжетную нить.`,
     objective_status: abandonsQuest ? 'abandoned' : 'unresolved',
     carry_unresolved: !abandonsQuest,
-    map: { layout: plannedMap.layout, scale: plannedMap.scale, pattern: plannedMap.pattern, material: plannedMap.material, width: plannedMap.width, height: plannedMap.height, openness: plannedMap.openness, water: plannedMap.water, featureCount: plannedMap.featureCount },
+    map: {
+      layout: plannedMap.layout,
+      scale: plannedMap.scale,
+      pattern: plannedMap.pattern,
+      material: plannedMap.material,
+      width: plannedMap.width,
+      height: plannedMap.height,
+      openness: plannedMap.openness,
+      water: plannedMap.water,
+      featureCount: plannedMap.featureCount,
+      ...(authoredMap && SCENE_THEME_IDS.has(authoredMap.themeId) ? { theme_id: authoredMap.themeId } : {}),
+    },
   }
 }
 
@@ -430,17 +449,24 @@ function normalizePlan(value, fallback) {
   // пустым массивом: одноэтажная локация обязана выглядеть ровно так же, как до
   // появления многоуровневых карт.
   const levels = normalizeDeclaredLevels(source.levels)
+  // Длительность перехода рассчитывает сервер после выбора маршрута.
+  // Автор локации описывает прибытие, но не может сам продвинуть календарь.
+  const inventedDuration = /(?:после|спустя|через|прошл[а-яё]*)[^.!?]{0,70}(?:минут[а-яё]*|час[а-яё]*|дней|дня|день|недел[а-яё]*|суток|сутки)/iu
+  const location = clean(source.location, 120) || fallback.location
+  const arrival = clean(source.arrival, 500)
+  const transition = clean(source.transition, 500)
+  const outcome = clean(source.outcome, 240)
   return {
     title: clean(source.title, 80) || fallback.title,
-    location: clean(source.location, 120) || fallback.location,
+    location,
     mood: clean(source.mood, 160) || fallback.mood,
     objective: clean(source.objective, 160) || fallback.objective,
-    transition: clean(source.transition, 500) || fallback.transition,
-    arrival: clean(source.arrival, 500) || fallback.arrival,
+    transition: inventedDuration.test(transition) ? 'Отряд следует подтверждённому маршруту.' : transition || fallback.transition,
+    arrival: inventedDuration.test(arrival) ? `Отряд прибывает в локацию «${location}».` : arrival || fallback.arrival,
     hook: clean(source.hook, 240) || fallback.hook,
     theme: clean(source.theme, 80) || fallback.theme,
     danger: danger.has(source.danger) ? source.danger : fallback.danger,
-    outcome: clean(source.outcome, 240) || fallback.outcome,
+    outcome: inventedDuration.test(outcome) ? fallback.outcome : outcome || fallback.outcome,
     // Это следствие подтверждённого решения группы, а не творческая часть
     // ответа модели. Уход не может превратиться в «цель завершена», а явный
     // отказ — снова открыть оставленную нить.
@@ -448,6 +474,11 @@ function normalizePlan(value, fallback) {
     carry_unresolved: fallback.carry_unresolved,
     ...(levels.length ? { levels } : {}),
     map: {
+      ...(typeof mapSource.theme_id === 'string' && SCENE_THEME_IDS.has(mapSource.theme_id)
+        ? { theme_id: mapSource.theme_id }
+        : (typeof fallback.map?.theme_id === 'string' && SCENE_THEME_IDS.has(fallback.map.theme_id)
+            ? { theme_id: fallback.map.theme_id }
+            : {})),
       layout: layouts.has(mapSource.layout) ? mapSource.layout : fallback.map.layout,
       scale,
       pattern: MAP_PATTERNS.has(mapSource.pattern) ? mapSource.pattern : fallback.map.pattern,
@@ -538,6 +569,23 @@ export class SceneArchitectAgent {
       abandonsQuest,
     })
     const fallbackShopIntent = defaultSceneShopIntent(fallback)
+    // Для заранее собранного места творческий вызов не нужен: canonical route,
+    // карта и тема уже принадлежат catalog. Это также не расходует лимит LLM
+    // при обычном переходе по известной точке мира.
+    const authoredDestinationId = fallback.location_id ?? authoritativeDestination?.id ?? ''
+    const authoredDestination = authoredDestinationId ? authoredLocationMapMetaFor(authoredDestinationId) : null
+    if (authoredDestination) {
+      return {
+        sceneArgs: fallback,
+        shopIntent: fallbackShopIntent,
+        trace: {
+          agent: SCENE_ARCHITECT_AGENT_ID,
+          mode: 'authored-catalog',
+          location_id: authoredDestination.locationId,
+          map_seed: authoredDestination.seed,
+        },
+      }
+    }
     if (!this.llmClient) return {
       sceneArgs: fallback,
       shopIntent: fallbackShopIntent,
@@ -555,7 +603,7 @@ export class SceneArchitectAgent {
         ],
         temperature: 0.45,
         maxTokens: 1000,
-      })
+      }, { timeoutMs: 20_000 })
       const constraint = knownDestinationConstraint({
         state,
         destinationHint: resolvedDestinationHint,

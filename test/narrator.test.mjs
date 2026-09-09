@@ -18,7 +18,7 @@ const brief = buildNarrationBrief({
 
 test('deterministic narrator описывает только подтверждённые события', () => {
   const result = deterministicNarration(brief)
-  assert.match(result.narration, /подтверждённый урон/u)
+  assert.match(result.narration, /получает урон/u)
   assert.doesNotMatch(result.narration, /\d/u, 'механические числа остаются в интерфейсе, а не в повествовании')
 })
 
@@ -41,7 +41,7 @@ test('Narrator превращает ошибку провайдера после
   assert.equal(result.provider, 'deterministic-provider-fallback')
   assert.equal(result.verification.valid, true)
   assert.equal(result.verification.provider_error, 'LLM_TIMEOUT')
-  assert.match(result.narration, /подтверждённый урон/u)
+  assert.match(result.narration, /получает урон/u)
   assert.doesNotMatch(result.narration, /\d/u)
 })
 
@@ -64,6 +64,53 @@ test('Narrator прерывает необязательное повество�
   assert.ok(Date.now() - startedAt < 500)
 })
 
+test('запасной рассказ использует русское название навыка и характеристики', () => {
+  for (const [payload, label] of [[{ skill: 'perception', ability: 'wis' }, 'Восприятие'], [{ ability: 'wis' }, 'Мудрость']]) {
+    const result = deterministicNarration(buildNarrationBrief({
+      visible_events: [{ event_type: 'AbilityCheckResolved', payload: { ...payload, success: false }, visibility: 'public' }],
+      known_environment: { location: 'Караульная' },
+    }))
+    assert.ok(result.narration.includes(label))
+    assert.doesNotMatch(result.narration, /perception|\bwis\b/u)
+    assert.match(result.narration, /неудач/u)
+  }
+})
+
+test('Narrator соблюдает общий дедлайн даже если legacy completeJson игнорирует signal', async () => {
+  const llmClient = {
+    completeJson: () => new Promise(() => {}),
+  }
+  const startedAt = Date.now()
+  const result = await new Narrator({ llmClient }).render(brief, { timeoutMs: 20 })
+  assert.equal(result.provider, 'deterministic-provider-fallback')
+  assert.equal(result.verification.provider_error, 'NARRATION_DEADLINE')
+  assert.ok(Date.now() - startedAt < 500)
+})
+
+test('Narrator для ruling без события даёт короткий честный fallback', async () => {
+  const constrainedBrief = buildNarrationBrief({
+    known_environment: {
+      player_intent: {
+        action: 'Расспросить Миру и сверить со словами Мартена',
+        goal: 'Понять, что произошло',
+        constraints: ['Не покидая укрытия'],
+      },
+      structured_result: { status: 'ruling', confirmed: false },
+    },
+    visible_events: [
+      { event_type: 'ActionDeclared', visibility: 'public' },
+      { event_type: 'RulingRecorded', visibility: 'public' },
+      { event_type: 'ObjectiveUpdated', visibility: 'public' },
+    ],
+  })
+  const llmClient = { completeJson: async () => ({ narration: 'Ада выходит из укрытия. Мира уже провела разговор и раскрыла показания.' }) }
+  const result = await new Narrator({ llmClient, asyncFeedback: false }).render(constrainedBrief)
+  assert.equal(result.provider, 'deterministic-fallback')
+  assert.equal(result.verification.valid, true, JSON.stringify(result.verification))
+  assert.doesNotMatch(result.narration, /выходит|разговор|показани|ограниченн|wis/iu)
+  assert.ok(result.narration.length < 240)
+})
+
 test('Narrator ignores legacy model suggestions', async () => {
   const safeNarration = deterministicNarration(brief).narration
   const llmClient = {
@@ -78,6 +125,10 @@ test('Narrator ignores legacy model suggestions', async () => {
 })
 
 test('Narrator получает стиль текущей кампании через изолированный контекст запроса', async () => {
+  const styledBrief = buildNarrationBrief({
+    ...brief,
+    visible_events: [{ event_type: 'AttackResolved', payload: { hit: true }, visibility: 'public' }, ...brief.visible_events],
+  })
   let userPrompt = ''
   let systemPrompt = ''
   let generation = null
@@ -86,12 +137,12 @@ test('Narrator получает стиль текущей кампании че�
       userPrompt = messages.find((message) => message.role === 'user')?.content ?? ''
       systemPrompt = messages.find((message) => message.role === 'system')?.content ?? ''
       generation = { temperature, frequencyPenalty, presencePenalty }
-      return { narration: deterministicNarration(brief).narration }
+      return { narration: deterministicNarration(styledBrief).narration }
     },
   }
   const result = await runWithCampaignAiSettings(
     { model: 'narrator-test', narratorStyle: 'formal' },
-    () => new Narrator({ llmClient }).render(brief, { knownRuleIds: ['srd:test:damage'] }),
+    () => new Narrator({ llmClient }).render(styledBrief, { knownRuleIds: ['srd:test:damage'] }),
   )
   assert.equal(result.verification.valid, true)
   assert.match(userPrompt, /Сдержанный официальный русский/u)

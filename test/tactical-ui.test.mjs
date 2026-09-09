@@ -5,6 +5,8 @@ import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import test from 'node:test'
+import { addProp, createTacticalMap, legacyCellsFromTacticalMap, serializeTacticalMap, setCell, setDoor } from '../server/tactical-map.mjs'
+import { publicSceneFor } from '../server/viewer-projection.mjs'
 
 const buildDir = mkdtempSync(join(tmpdir(), 'skazanie-tactical-ui-'))
 const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
@@ -23,6 +25,7 @@ const moduleFile = join(buildDir, 'tactical-ui.mjs')
 renameSync(join(buildDir, 'tactical-map-client.js'), join(buildDir, 'tactical-map-client'))
 renameSync(jsFile, moduleFile)
 const tacticalUi = await import(pathToFileURL(moduleFile).href)
+const mapClient = await import(pathToFileURL(join(buildDir, 'tactical-map-client')).href)
 process.on('exit', () => rmSync(buildDir, { recursive: true, force: true }))
 
 function state() {
@@ -44,6 +47,87 @@ function state() {
   }
 }
 
+test('предпросмотр огибает весь размер предмета и не предлагает клетку внутри него', () => {
+  const current = state()
+  current.players = [current.players[0]]
+  current.enemies = []
+  current.scene.cells.forEach((cell) => { cell.type = 'floor' })
+  const zero = () => new Uint8Array(15)
+  const full = () => Uint8Array.from({ length: 15 }, () => 1)
+  const map = {
+    width: 5, height: 3,
+    layers: { present: full(), passable: full(), revealed: full(), moveCost: full(), surface: zero(), material: zero(), variant: zero(), elevation: zero(), zoneId: zero() },
+    hazards: {}, edges: {}, doors: [], zones: [],
+    props: [{ id: 'painted:long-table', x: 2.5, y: 1.5, blocksMove: true, footprint: [{ x: 2, y: 1 }, { x: 3, y: 1 }] }],
+  }
+  const paths = tacticalUi.buildMovementPaths(current, current.players[0], 5, map)
+  assert.equal(paths.has('2,1'), false)
+  assert.equal(paths.has('3,1'), false)
+  assert.equal(paths.get('4,1').costFeet, 30)
+  assert.ok(paths.get('4,1').path.every((cell) => cell.y !== 1 || ![2, 3].includes(cell.x)))
+})
+
+test('предпросмотр не пересекает стену между клетками пола и пропускает открытую дверь', () => {
+  const current = state()
+  current.players = [current.players[0]]
+  current.enemies = []
+  current.scene.cells.forEach((cell) => { cell.type = 'floor' })
+  const zero = () => new Uint8Array(15)
+  const full = () => Uint8Array.from({ length: 15 }, () => 1)
+  const map = {
+    width: 5, height: 3,
+    layers: { present: new Uint8Array([255, 127]), passable: new Uint8Array([255, 127]), revealed: new Uint8Array([255, 127]), moveCost: full(), surface: zero(), material: zero(), variant: zero(), elevation: zero(), zoneId: zero() },
+    hazards: {}, edges: {}, doors: [], zones: [], props: [],
+  }
+  for (let y = 0; y < 3; y += 1) map.edges[`1,${y},e`] = { x: 1, y, dir: 'e', kind: 'wall', blocksMove: true }
+  assert.equal(tacticalUi.buildMovementPaths(current, current.players[0], 5, map).has('4,1'), false)
+  map.edges['1,1,e'] = { x: 1, y: 1, dir: 'e', kind: 'door', doorId: 'study' }
+  map.doors.push({ id: 'study', state: 'closed' })
+  assert.equal(tacticalUi.buildMovementPaths(current, current.players[0], 5, map).has('4,1'), false)
+  map.doors[0].state = 'open'
+  assert.equal(tacticalUi.buildMovementPaths(current, current.players[0], 5, map).get('4,1').costFeet, 20)
+})
+
+test('предпросмотр сохраняет серверную баррикаду при чтении открытой двери', () => {
+  const serverMap = createTacticalMap({ width: 4, height: 1, locationId: 'barricade', seed: 'barricade' })
+  for (let x = 0; x < 4; x += 1) setCell(serverMap, x, 0, { passable: true, revealed: true })
+  setDoor(serverMap, { id: 'study', x: 1, y: 0, dir: 'e', state: 'open', barricade: { material_item_id: 'plank', actor_id: 'hero', previous_state: 'open', side_x: 1, side_y: 0 } })
+  const current = { players: [{ id: 'hero', x: 0, y: 0, hp: 10 }], enemies: [], actors: [], scene: { cells: legacyCellsFromTacticalMap(serverMap) } }
+  const map = mapClient.decodeTacticalMap(serializeTacticalMap(serverMap))
+  assert.equal(tacticalUi.buildMovementPaths(current, current.players[0], 5, map).has('3,0'), false)
+})
+
+test('публичная проекция блокирует видимую часть скрытого prop в предпросмотре', () => {
+  const source = createTacticalMap({ width: 5, height: 2, fill: { passable: true, revealed: true } })
+  addProp(source, {
+    id: 'private-table', assetId: 'table_long', x: 2.5, y: 0.5, blocksMove: true,
+    footprint: [{ x: 2, y: 0 }, { x: 3, y: 0 }],
+  })
+  setCell(source, 3, 0, { revealed: false })
+  const projected = publicSceneFor({
+    cells: legacyCellsFromTacticalMap(source),
+    map: serializeTacticalMap(source),
+  })
+  const visibleCell = projected.cells.find((cell) => cell.x === 2 && cell.y === 0)
+  const hiddenCell = projected.cells.find((cell) => cell.x === 3 && cell.y === 0)
+  assert.equal(visibleCell?.movementBlocked, true)
+  assert.equal(hiddenCell?.movementBlocked, undefined)
+  assert.equal(projected.map.props.length, 0, 'неполный footprint не должен выдать prop')
+  assert.doesNotMatch(JSON.stringify(projected), /private-table|table_long|footprint/u)
+
+  const map = mapClient.decodeTacticalMap(projected.map)
+  assert.ok(map)
+  const current = {
+    players: [{ id: 'hero', x: 0, y: 0, hp: 10 }], enemies: [], actors: [], scene: projected,
+  }
+  const paths = tacticalUi.buildMovementPaths(current, current.players[0], 5, map)
+  assert.equal(paths.has('2,0'), false, 'путь не должен входить в видимую часть скрытого prop')
+  const route = paths.get('4,0')
+  assert.ok(route)
+  assert.ok(route.path.some((cell) => cell.y === 1), 'серверно разрешённый обход должен остаться в preview')
+  assert.ok(route.path.every((cell) => cell.x !== 2 || cell.y !== 0))
+})
+
 test('предпросмотр строит кратчайший легальный маршрут и считает стоимость до отправки команды', () => {
   const current = state()
   const paths = tacticalUi.buildMovementPaths(current, current.players[0], 5)
@@ -57,6 +141,33 @@ test('предпросмотр строит кратчайший легальн�
     costFeet: 15,
   })
   assert.equal(paths.has('1,1'), false, 'занятая союзником клетка не входит в маршруты')
+})
+
+test('предпросмотр учитывает пост присутствующего NPC и огибает его', () => {
+  const current = state()
+  current.players = [current.players[0]]
+  current.enemies = []
+  current.scene_npcs = [{ id: 'marta', x: 1, y: 1, alive: true, stance: 'hostile' }]
+  const paths = tacticalUi.buildMovementPaths(current, current.players[0], 5)
+  assert.equal(paths.has('1,1'), false, 'клетка NPC не должна становиться конечной точкой')
+  assert.equal(paths.get('4,1')?.path.some((cell) => cell.x === 1 && cell.y === 1), false, 'маршрут не должен проходить через NPC')
+  assert.equal(tacticalUi.movementCellReason(current, current.players[0], { x: 1, y: 1, type: 'floor', revealed: true }, 30, paths), 'Клетка занята')
+})
+
+test('предпросмотр пропускает мирного NPC транзитом, но полностью закрывает враждебного', () => {
+  const current = {
+    players: [{ id: 'hero', x: 0, y: 0, hp: 10 }],
+    enemies: [],
+    actors: [],
+    scene_npcs: [{ id: 'marta', x: 2, y: 0, alive: true, stance: 'neutral' }],
+    scene: { cells: Array.from({ length: 5 }, (_, x) => ({ x, y: 0, type: 'floor', revealed: true })) },
+  }
+  let paths = tacticalUi.buildMovementPaths(current, current.players[0], 5)
+  assert.equal(paths.has('2,0'), false)
+  assert.deepEqual(paths.get('3,0')?.path, [{ x: 1, y: 0 }, { x: 2, y: 0 }, { x: 3, y: 0 }])
+  current.scene_npcs[0].stance = 'hostile'
+  paths = tacticalUi.buildMovementPaths(current, current.players[0], 5)
+  assert.equal(paths.has('3,0'), false)
 })
 
 test('труднопроходимая область удваивает только затронутые шаги и объясняет стоимость', () => {

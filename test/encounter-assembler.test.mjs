@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { normalizeCampaignState, resolveCommand } from '../server/rules-engine.mjs'
+import { DiceService } from '../server/dice-service.mjs'
+import { serializeTacticalMap, tacticalMapFromLegacyCells } from '../server/tactical-map.mjs'
 
 import {
   ENCOUNTER_ASSEMBLER_LIMITS,
@@ -34,6 +37,21 @@ function baseInput(overrides = {}) {
     ...overrides,
   }
 }
+
+test('создание встречи исключает блокирующий реквизит из клеток появления', () => {
+  const field = cells(7, 5)
+  const map = tacticalMapFromLegacyCells(field)
+  map.props.push({ id: 'blocking-crates', assetId: 'crate', x: 2, y: 2, blocksMove: true,
+    footprint: field.filter(cell => cell.x >= 2 || cell.y >= 2).map(({ x, y }) => ({ x, y })) })
+  const state = normalizeCampaignState({ sessionCode: 'PROP-SPAWN', ruleset_id: 'dnd_5e_2014',
+    players: [{ id: 'hero', hp: 20, maxHp: 20, level: 1, x: 0, y: 0 }], partyMemberIds: ['hero'], enemies: [],
+    scene: { cells: field, map: serializeTacticalMap(map) },
+  })
+  const result = resolveCommand({ command_type: 'CreateEncounter', command_id: 'prop-spawn', actor_id: 'hero',
+    difficulty: 'easy', theme: 'goblinoids', seed: 'prop-spawn' }, state, { diceService: new DiceService(), context: { isAdmin: true } })
+  const created = result.events.find(event => event.event_type === 'EncounterCreated').payload.encounter
+  assert.deepEqual(created.enemies.map(enemy => ({ x: enemy.x, y: enemy.y })), [{ x: 1, y: 1 }])
+})
 
 function expectCode(fn, code) {
   assert.throws(fn, (error) => error?.name === 'EncounterAssemblyError' && error.code === code)

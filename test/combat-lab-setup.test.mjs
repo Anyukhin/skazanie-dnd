@@ -42,8 +42,9 @@ test('каталог и builder настраиваемой арены испол
   assert.equal(catalog.limits.enemies, 12)
   assert.ok(catalog.classes.some((entry) => entry.id === 'fighter'))
   assert.ok(catalog.monsters.some((entry) => entry.id === 'dnd_5e_2014:monster:goblin' && entry.sourceUrl.includes('dnd.su')))
-  assert.equal(catalog.maps.length, 4)
-  assert.ok(catalog.maps.every((map) => map.map && map.cells.some((cell) => cell.type === 'wall' || cell.difficult)))
+  assert.equal(catalog.maps.length, 7)
+  assert.deepEqual(catalog.maps.slice(-3).map((map) => map.id), ['forest-clearing', 'cavern-bridge', 'watchtower-terrace'])
+  assert.ok(catalog.maps.every((map) => map.map && map.cells.some((cell) => cell.type === 'wall' || cell.type === 'water' || cell.difficult)))
 
   const source = sourceCampaign()
   const before = structuredClone(source)

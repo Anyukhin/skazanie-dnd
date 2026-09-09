@@ -1,0 +1,40 @@
+{
+  "date": "2026-09-07T22:27:28.892Z",
+  "requested_models": [
+    "z-ai/glm-5.3-flash",
+    "google/gemini-2.5-flash-lite"
+  ],
+  "ok": true,
+  "model": "z-ai/glm-5.3-flash",
+  "json": {
+    "door": "closed",
+    "resolved": false,
+    "items": []
+  },
+  "usage": {
+    "total_tokens": 127,
+    "prompt_tokens": 110,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    },
+    "completion_tokens": 17,
+    "completion_tokens_details": {
+      "reasoning_tokens": 3,
+      "text_tokens": 14
+    },
+    "cost": 0.0015406623375
+  },
+  "fallback_attempts": [],
+  "attempts": [
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "ok": true,
+      "json": {
+        "door": "closed",
+        "resolved": false,
+        "items": []
+      }
+    }
+  ],
+  "latency_ms": 5077
+}

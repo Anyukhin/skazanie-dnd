@@ -11,9 +11,11 @@ import {
   edgeBetween,
   edgeNeighbor,
   legacyCellsFromTacticalMap,
+  movementStepBlocked,
   reachableCells,
   serializeTacticalMap,
   setCell,
+  setEdge,
   setDoor,
 } from '../server/tactical-map.mjs'
 import { buildThemedScene } from '../server/scene-themes.mjs'
@@ -113,15 +115,20 @@ const operate = (state, intent, values = []) => resolveCommand(
   { diceService: dice(values), context: { serverAuthoritativeCombat: true } },
 )
 
+const barricade = (state, type = 'BarricadeDoor', actorId = 'hero') => resolveCommand(
+  { command_type: type, actor_id: actorId, door_id: 'door-hall', material_item_id: 'plank-1', server_authoritative: true },
+  state,
+  { diceService: dice([]), context: { serverAuthoritativeCombat: true } },
+)
+
 const doorStateOf = (state) => deserializeTacticalMap(state.scene.map).doors.find((door) => door.id === 'door-hall')?.state
 
-test('модель: полотно двери мешает шагу, стена вокруг него — нет', () => {
+test('модель: полотно двери мешает шагу, стена проверяется отдельно', () => {
   assert.equal(doorBlocksStep(twoRooms('closed'), 3, 1, 4, 1), 'closed')
   assert.equal(doorBlocksStep(twoRooms('locked'), 3, 1, 4, 1), 'locked')
   assert.equal(doorBlocksStep(twoRooms('open'), 3, 1, 4, 1), null)
   assert.equal(doorBlocksStep(twoRooms('broken'), 3, 1, 4, 1), null)
-  // Ребро без двери молчит, даже если это стена: проходимость считается по
-  // клетке, и рёбра со стенами движению пока не мешают.
+  // Дверной запрос не подменяет общую проверку преграды.
   assert.equal(doorBlocksStep(twoRooms('closed'), 1, 1, 1, 2), null)
 })
 
@@ -248,6 +255,61 @@ test('состояние двери переживает повторное пр
   const twice = forced.events.reduce(applyGameEvent, fixture('locked', 15))
   assert.equal(doorStateOf(once), 'broken')
   assert.equal(doorStateOf(twice), 'broken')
+})
+
+test('стена между клетками пола мешает шагу, а край непроходимой клетки выпускает героя', () => {
+  const map = twoRooms('open')
+  setEdge(map, 2, 1, 3, 1, { kind: 'wall', blocksMove: true, blocksSight: true })
+  assert.equal(movementStepBlocked(map, 3, 1, 2, 1), true)
+  setCell(map, 3, 1, { passable: false })
+  assert.equal(movementStepBlocked(map, 3, 1, 2, 1), false)
+})
+
+test('открытую дверь можно забаррикадировать настоящей доской и снять обратно', () => {
+  const start = fixture('open', 0, { combat: false })
+  start.players[0].inventory = [{ id: 'plank-1', name: 'Доска', quantity: 1, tags: ['wood'] }]
+  const placed = barricade(start)
+  assert.deepEqual(placed.events.map((event) => event.event_type), ['DoorBarricaded', 'ItemConsumed'])
+  const blocked = placed.events.reduce(applyGameEvent, start)
+  const blockedMap = deserializeTacticalMap(blocked.scene.map)
+  assert.equal(blockedMap.doors[0].barricade.material_item_id, 'plank-1')
+  assert.equal(doorBlocksStep(blockedMap, 3, 1, 4, 1), 'closed')
+  assert.throws(() => operate(blocked, 'open'), /забаррикадирована|открыть/u)
+  const cleared = barricade(blocked, 'ClearDoorBarricade')
+  const restored = cleared.events.reduce(applyGameEvent, blocked)
+  assert.equal(deserializeTacticalMap(restored.scene.map).doors[0].barricade, null)
+  assert.equal(doorStateOf(restored), 'open')
+})
+
+test('баррикада требует материал, владельца и не дублируется при replay', () => {
+  const noMaterial = fixture('open', 0, { combat: false })
+  assert.throws(() => barricade(noMaterial), /материал/u)
+  const start = fixture('open', 0, { combat: false })
+  start.players[0].inventory = [{ id: 'plank-1', name: 'Доска', quantity: 1, tags: ['wood'] }]
+  const placed = barricade(start)
+  const once = placed.events.reduce(applyGameEvent, start)
+  assert.throws(() => barricade(once, 'ClearDoorBarricade', 'other'), { code: 'ACTOR_NOT_FOUND' })
+  const twice = placed.events.reduce(applyGameEvent, start)
+  assert.equal(deserializeTacticalMap(twice.scene.map).doors[0].barricade.material_item_id, 'plank-1')
+})
+
+test('работа с баррикадой проверяет очередь, дееспособность и расход действия', () => {
+  const start = fixture('open')
+  start.players[0].inventory = [{ id: 'plank-1', name: 'Доска', quantity: 1 }]
+  const foreignTurn = structuredClone(start)
+  foreignTurn.mechanics.combat.initiative = [{ actor_id: 'enemy', total: 20 }, { actor_id: 'hero', total: 18 }]
+  assert.throws(() => barricade(foreignTurn), { code: 'OUT_OF_TURN' })
+  const unconscious = structuredClone(start)
+  unconscious.mechanics.combat.active = false
+  unconscious.players[0].hp = 0
+  assert.throws(() => barricade(unconscious), { code: 'ACTOR_INCAPACITATED' })
+  const placed = barricade(start).events.reduce(applyGameEvent, start)
+  assert.equal(placed.mechanics.combat.action_economy.hero.action, false)
+  assert.throws(() => barricade(placed, 'ClearDoorBarricade'), { code: 'ACTION_SPENT' })
+  const stunned = structuredClone(placed)
+  stunned.mechanics.combat.active = false
+  stunned.mechanics.conditions.hero = [{ id: 'stunned' }]
+  assert.throws(() => barricade(stunned, 'ClearDoorBarricade'), { code: 'ACTOR_INCAPACITATED' })
 })
 
 /**

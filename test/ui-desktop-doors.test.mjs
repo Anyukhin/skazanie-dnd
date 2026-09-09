@@ -30,6 +30,14 @@ test('door controls connect hover and focus to the board overlay and expose lock
   assert.match(appSource, /СЛ \$\{lockDc\}/)
 })
 
+test('ordinary doors are clickable on the map and locked doors keep an explicit choice', async () => {
+  const source = await readFile(new URL('../src/DungeonMap.tsx', import.meta.url), 'utf8')
+  assert.match(source, /className=\{`door-hotspot door-hotspot--\$\{door\.dir\} door-hotspot--\$\{door\.state\}`\}/u)
+  assert.match(source, /onOperateDoor\(selected, door\.id, door\.state === 'open' \? 'close' : 'open'\)/u)
+  assert.match(source, /if \(locked \|\| !selected\) return/u)
+  assert.doesNotMatch(source, /className="door-control" disabled=\{!canAct \|\| tacticalBusy\} onClick=\{\(\) => selected && onOperateDoor\(selected, door\.id, door\.state === 'open' \? 'close' : 'open'\)/u)
+})
+
 test('у запертой двери два пути кнопками: отмычка гаснет без владения, сила остаётся', async () => {
   const appSource = (await Promise.all(['../src/App.tsx', '../src/AppViews.tsx', '../src/DungeonMap.tsx', '../src/app-shared.tsx']
     .map((path) => readFile(new URL(path, import.meta.url), 'utf8')))).join('\n')

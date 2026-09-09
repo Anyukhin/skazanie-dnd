@@ -30,6 +30,8 @@ export const DEFAULT_SHEET_DIR = 'assets-src/prop-stamps'
 
 /** @type {ReadonlyArray<StampSheet>} */
 export const PROP_STAMP_SHEETS = Object.freeze([
+  { file: 'royal-throne-v1.png', grid: { cols: 1, rows: 1 }, ids: ['royal_throne'] },
+  { file: 'royal-table-v1.png', grid: { cols: 1, rows: 1 }, ids: ['table_royal'] },
   {
     file: 'sheet-01-hall-wide.png',
     grid: { cols: 3, rows: 3 },
@@ -159,6 +161,9 @@ export const PROP_STAMP_SHEETS = Object.freeze([
  * Всё, чего здесь нет, хранится из расчёта одной клетки.
  */
 export const DRAWN_CELLS = Object.freeze({
+  // Королевские предметы хранят двойную плотность для крупного приближения.
+  royal_throne: 4,
+  table_royal: 10,
   rug: 3,
   mosaic: 2,
   banner: 1.3,

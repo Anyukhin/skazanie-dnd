@@ -180,6 +180,82 @@ function lightPasses(map: TacticalMap, doorState: Map<string, string>, ax: numbe
 
 const NEIGHBORS: ReadonlyArray<readonly [number, number]> = [[1, 0], [-1, 0], [0, 1], [0, -1]]
 
+type LightSourcePosition = Pick<LightSource, 'x' | 'y' | 'radius'>
+
+/**
+ * Клетки, до которых доходит конкретный источник. Сетка нужна не только для
+ * силы света: декоративный ореол тоже обязан быть обрезан стенами и дверями.
+ * Поэтому оба слоя используют один и тот же обход, а не два слегка разных
+ * raycast-а.
+ */
+function computeLightSourceVisibility(map: TacticalMap, source: LightSourcePosition): Uint8Array {
+  const width = Math.max(0, map.width)
+  const height = Math.max(0, map.height)
+  const visible = new Uint8Array(width * height)
+  const originIndex = cellIndex(map, source.x, source.y)
+  if (originIndex < 0 || source.radius <= 0) return visible
+
+  const doorState = new Map<string, string>()
+  for (const door of map.doors) doorState.set(door.id, door.state)
+  const visited = new Uint8Array(visible.length)
+  const queue = new Int32Array(visible.length)
+  const stepOf = new Int32Array(visible.length)
+  const stepLimit = Math.ceil(source.radius * 1.5)
+  let head = 0
+  let tail = 0
+  queue[tail] = originIndex
+  tail += 1
+  visited[originIndex] = 1
+  stepOf[originIndex] = 0
+  while (head < tail) {
+    const index = queue[head]
+    head += 1
+    const step = stepOf[index]
+    const x = index % width
+    const y = (index - x) / width
+    if (Math.hypot(x - source.x, y - source.y) <= source.radius) visible[index] = 1
+    if (step >= stepLimit) continue
+    // Как и в расчёте силы света: источник может стоять на непроходимой
+    // клетке, но дальше массивной клетки свет не проходит.
+    if (step > 0 && !passableAt(map, x, y)) continue
+    for (const [dx, dy] of NEIGHBORS) {
+      const nx = x + dx
+      const ny = y + dy
+      const neighborIndex = cellIndex(map, nx, ny)
+      if (neighborIndex < 0 || visited[neighborIndex]) continue
+      if (!lightPasses(map, doorState, x, y, nx, ny)) continue
+      visited[neighborIndex] = 1
+      stepOf[neighborIndex] = step + 1
+      queue[tail] = neighborIndex
+      tail += 1
+    }
+  }
+  return visible
+}
+
+type VisibilityCache = { signature: string; grids: Map<string, Uint8Array> }
+const visibilityCache = new WeakMap<TacticalMap, VisibilityCache>()
+
+function lightSourceKey(source: LightSourcePosition) {
+  return `${source.x}:${source.y}:${source.radius}`
+}
+
+/** Запоминает окклюзию источника вместе с картой, чтобы не обходить её для каждого тайла. */
+export function lightSourceVisibilityFor(map: TacticalMap, source: LightSourcePosition): Uint8Array {
+  const signature = `${map.terrainHash}:${map.width}:${map.height}`
+  const cached = visibilityCache.get(map)
+  const entry = cached?.signature === signature
+    ? cached
+    : { signature, grids: new Map<string, Uint8Array>() }
+  const key = lightSourceKey(source)
+  const existing = entry.grids.get(key)
+  if (existing) return existing
+  const visibility = computeLightSourceVisibility(map, source)
+  entry.grids.set(key, visibility)
+  visibilityCache.set(map, entry)
+  return visibility
+}
+
 /**
  * Сетка освещённости карты. Функция чистая и детерминированная: одинаковая
  * карта и тема дают побайтово одинаковый результат.
@@ -207,54 +283,15 @@ export function computeLightGrid(map: TacticalMap, theme: string = map.theme): U
     light[index] = code > 0 ? (zoneAmbient[code - 1] ?? openAmbient) : openAmbient
   }
 
-  const doorState = new Map<string, string>()
-  for (const door of map.doors) doorState.set(door.id, door.state)
-
-  const visited = new Int32Array(grid.length).fill(-1)
-  const queue = new Int32Array(grid.length)
-  const stepOf = new Int32Array(grid.length)
-  let stamp = 0
   for (const source of lightSourcesOf(map)) {
-    const originIndex = cellIndex(map, source.x, source.y)
-    if (originIndex < 0) continue
-    // Шаговый предел щедрее радиуса: обход по четырём соседям добирается до
-    // диагонали круга за |dx|+|dy| шагов, и без запаса в углах круга остались
-    // бы тёмные клинья. Дальность всё равно режет евклидов радиус.
-    const stepLimit = Math.ceil(source.radius * 1.5)
-    let head = 0
-    let tail = 0
-    queue[tail] = originIndex
-    tail += 1
-    visited[originIndex] = stamp
-    stepOf[originIndex] = 0
-    while (head < tail) {
-      const index = queue[head]
-      head += 1
-      const step = stepOf[index]
+    const visibility = lightSourceVisibilityFor(map, source)
+    for (let index = 0; index < visibility.length; index += 1) {
+      if (!visibility[index]) continue
       const x = index % width
       const y = (index - x) / width
       const distance = Math.hypot(x - source.x, y - source.y)
-      if (distance <= source.radius) {
-        light[index] += source.strength * (1 - distance / source.radius)
-      }
-      if (step >= stepLimit) continue
-      // Свет входит в непроходимую клетку — так подсвечивается лицо скалы или
-      // кладки, — но дальше сквозь массив не идёт. Пещера стены рёбрами не
-      // размечает, и без этого правила свет шёл бы сквозь породу.
-      if (step > 0 && !passableAt(map, x, y)) continue
-      for (const [dx, dy] of NEIGHBORS) {
-        const nx = x + dx
-        const ny = y + dy
-        const neighborIndex = cellIndex(map, nx, ny)
-        if (neighborIndex < 0 || visited[neighborIndex] === stamp) continue
-        if (!lightPasses(map, doorState, x, y, nx, ny)) continue
-        visited[neighborIndex] = stamp
-        stepOf[neighborIndex] = step + 1
-        queue[tail] = neighborIndex
-        tail += 1
-      }
+      light[index] += source.strength * (1 - distance / source.radius)
     }
-    stamp += 1
   }
 
   for (let index = 0; index < grid.length; index += 1) {

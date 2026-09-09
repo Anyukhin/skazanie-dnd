@@ -1,0 +1,464 @@
+{
+  "version": "narrator-few-shot/v2",
+  "examples": [
+    {
+      "id": "neutral-action-grounded-2",
+      "style": "neutral",
+      "moment": "action",
+      "tones": ["grounded", "hopeful"],
+      "player_message": "Открываю дверь.",
+      "allowed_facts": [
+        "Герой открыл деревянную дверь.",
+        "За дверью виден освещённый коридор."
+      ],
+      "response_goal": "world_narration: кратко описать открывшуюся дверь и видимый коридор.",
+      "text": "Деревянная дверь открыта; за ней виден освещённый коридор."
+    },
+    {
+      "id": "neutral-action-warm-2",
+      "style": "neutral",
+      "moment": "action",
+      "tones": ["warm", "hopeful"],
+      "player_message": "Закрепляю факел в держателе.",
+      "allowed_facts": [
+        "Факел закреплён в держателе.",
+        "Свет факела освещает каменную стену."
+      ],
+      "response_goal": "world_narration: передать результат действия одной ясной фразой.",
+      "text": "Факел закреплён в держателе и освещает каменную стену."
+    },
+    {
+      "id": "neutral-social-grounded-2",
+      "style": "neutral",
+      "moment": "social",
+      "tones": ["grounded", "warm"],
+      "player_message": "Спрашиваю стражника о проходе через северные ворота.",
+      "allowed_facts": [
+        "Стражник сообщил: «Проход через северные ворота открыт до заката»."
+      ],
+      "response_goal": "world_narration: передать разрешение стражника без продолжения сцены.",
+      "text": "Стражник разрешает пройти через северные ворота до заката."
+    },
+    {
+      "id": "neutral-social-warm-2",
+      "style": "neutral",
+      "moment": "social",
+      "tones": ["warm", "grounded"],
+      "player_message": "Плачу за комнату.",
+      "allowed_facts": [
+        "Трактирщица приняла плату и сообщила, что комната на втором этаже свободна."
+      ],
+      "response_goal": "world_narration: сообщить об оплате и свободной комнате.",
+      "text": "Плата принята; свободная комната находится на втором этаже."
+    },
+    {
+      "id": "neutral-combat-tense-2",
+      "style": "neutral",
+      "moment": "combat",
+      "tones": ["tense", "grounded"],
+      "player_message": "Бью мечом по гоблину.",
+      "allowed_facts": [
+        "Атака мечом попала по гоблину."
+      ],
+      "response_goal": "world_narration: передать подтверждённое попадание одним ясным предложением.",
+      "text": "Удар меча достигает гоблина."
+    },
+    {
+      "id": "neutral-combat-grounded-2",
+      "style": "neutral",
+      "moment": "combat",
+      "tones": ["grounded", "somber"],
+      "player_message": "Стреляю в орка.",
+      "allowed_facts": [
+        "Стрела прошла мимо орка."
+      ],
+      "response_goal": "world_narration: коротко описать промах.",
+      "text": "Стрела пролетает мимо орка."
+    },
+    {
+      "id": "neutral-transition-hopeful-2",
+      "style": "neutral",
+      "moment": "transition",
+      "tones": ["hopeful", "warm"],
+      "player_message": "Иду по тропе к деревне.",
+      "allowed_facts": [
+        "Тропа заканчивается на деревенской площади.",
+        "На площади видны жилые дома."
+      ],
+      "response_goal": "world_narration: обозначить, куда вывела тропа, и назвать видимые дома.",
+      "text": "Тропа заканчивается на деревенской площади; вокруг видны жилые дома."
+    },
+    {
+      "id": "neutral-transition-grounded-2",
+      "style": "neutral",
+      "moment": "transition",
+      "tones": ["grounded", "mysterious"],
+      "player_message": "Переходим мост.",
+      "allowed_facts": [
+        "Отряд перешёл каменный мост.",
+        "На другой стороне начинается ельник."
+      ],
+      "response_goal": "world_narration: описать положение после перехода и ближайший ельник.",
+      "text": "Каменный мост остался позади; на другой стороне начинается ельник."
+    },
+    {
+      "id": "neutral-discovery-mysterious-2",
+      "style": "neutral",
+      "moment": "discovery",
+      "tones": ["mysterious", "grounded"],
+      "player_message": "Осматриваю стол.",
+      "allowed_facts": [
+        "На столе обнаружена развёрнутая карта старых дорог.",
+        "На карте отмечены три дороги."
+      ],
+      "response_goal": "world_narration: сообщить об обнаруженной карте и отмеченных дорогах.",
+      "text": "На столе обнаруживается развёрнутая карта старых дорог; на ней отмечены три дороги."
+    },
+    {
+      "id": "neutral-discovery-grounded-2",
+      "style": "neutral",
+      "moment": "discovery",
+      "tones": ["grounded", "somber"],
+      "player_message": "Проверяю стену на тайник.",
+      "allowed_facts": [
+        "Проверка не выявила тайник.",
+        "В стене нет видимого отверстия.",
+        "Результат не подтверждает отсутствие скрытого тайника."
+      ],
+      "response_goal": "world_narration: передать предел проверки, не делая вывода о скрытом тайнике.",
+      "text": "Тайник не найден; видимого отверстия в стене нет."
+    },
+    {
+      "id": "neutral-quiet-warm-2",
+      "style": "neutral",
+      "moment": "quiet",
+      "tones": ["warm", "hopeful"],
+      "player_message": "Останавливаемся на ночлег.",
+      "allowed_facts": [
+        "Отряд разбил лагерь у каменной часовни.",
+        "Вокруг лагеря спокойно."
+      ],
+      "response_goal": "world_narration: описать место ночлега и спокойную обстановку.",
+      "text": "Отряд остановился у каменной часовни; вокруг лагеря спокойно."
+    },
+    {
+      "id": "neutral-quiet-somber-2",
+      "style": "neutral",
+      "moment": "quiet",
+      "tones": ["somber", "grounded"],
+      "player_message": "Жду у ворот.",
+      "allowed_facts": [
+        "Отряд ждёт у закрытых городских ворот.",
+        "Ворота остаются закрытыми."
+      ],
+      "response_goal": "world_narration: кратко описать ожидание у ворот без добавления нового события.",
+      "text": "Отряд ждёт у закрытых городских ворот."
+    },
+    {
+      "id": "formal-action-grounded-2",
+      "style": "formal",
+      "moment": "action",
+      "tones": ["grounded", "hopeful"],
+      "player_message": "Открываю дверь.",
+      "allowed_facts": [
+        "Герой открыл деревянную дверь.",
+        "За дверью виден освещённый коридор."
+      ],
+      "response_goal": "world_narration: формально и кратко описать дверь и видимый коридор.",
+      "text": "Деревянная дверь открыта. За ней виден освещённый коридор."
+    },
+    {
+      "id": "formal-action-warm-2",
+      "style": "formal",
+      "moment": "action",
+      "tones": ["warm", "hopeful"],
+      "player_message": "Закрепляю факел в держателе.",
+      "allowed_facts": [
+        "Факел закреплён в держателе.",
+        "Свет факела освещает каменную стену."
+      ],
+      "response_goal": "world_narration: формально описать положение факела и освещённую стену.",
+      "text": "Факел установлен в держателе; его свет освещает каменную стену."
+    },
+    {
+      "id": "formal-social-grounded-2",
+      "style": "formal",
+      "moment": "social",
+      "tones": ["grounded", "warm"],
+      "player_message": "Спрашиваю стражника о проходе через северные ворота.",
+      "allowed_facts": [
+        "Стражник сообщил: «Проход через северные ворота открыт до заката»."
+      ],
+      "response_goal": "world_narration: передать разрешение стражника без продолжения сцены.",
+      "text": "Стражник сообщает: проход через северные ворота открыт до заката."
+    },
+    {
+      "id": "formal-social-warm-2",
+      "style": "formal",
+      "moment": "social",
+      "tones": ["warm", "grounded"],
+      "player_message": "Плачу за комнату.",
+      "allowed_facts": [
+        "Трактирщица приняла плату и сообщила, что комната на втором этаже свободна."
+      ],
+      "response_goal": "world_narration: формально сообщить об оплате и свободной комнате.",
+      "text": "Оплата принята. На втором этаже есть свободная комната."
+    },
+    {
+      "id": "formal-combat-tense-2",
+      "style": "formal",
+      "moment": "combat",
+      "tones": ["tense", "grounded"],
+      "player_message": "Бью мечом по гоблину.",
+      "allowed_facts": [
+        "Атака мечом попала по гоблину."
+      ],
+      "response_goal": "world_narration: формально сообщить о подтверждённом попадании.",
+      "text": "Удар меча достигает гоблина."
+    },
+    {
+      "id": "formal-combat-grounded-2",
+      "style": "formal",
+      "moment": "combat",
+      "tones": ["grounded", "somber"],
+      "player_message": "Стреляю в орка.",
+      "allowed_facts": [
+        "Стрела прошла мимо орка."
+      ],
+      "response_goal": "world_narration: формально сообщить о промахе.",
+      "text": "Стрела проходит мимо орка."
+    },
+    {
+      "id": "formal-transition-hopeful-2",
+      "style": "formal",
+      "moment": "transition",
+      "tones": ["hopeful", "warm"],
+      "player_message": "Иду по тропе к деревне.",
+      "allowed_facts": [
+        "Тропа заканчивается на деревенской площади.",
+        "На площади видны жилые дома."
+      ],
+      "response_goal": "world_narration: формально обозначить площадь и видимые жилые дома.",
+      "text": "Тропа заканчивается на деревенской площади. На площади видны жилые дома."
+    },
+    {
+      "id": "formal-transition-grounded-2",
+      "style": "formal",
+      "moment": "transition",
+      "tones": ["grounded", "mysterious"],
+      "player_message": "Переходим мост.",
+      "allowed_facts": [
+        "Отряд перешёл каменный мост.",
+        "На другой стороне начинается ельник."
+      ],
+      "response_goal": "world_narration: формально описать переход и местность за мостом.",
+      "text": "Каменный мост пройден. На другой стороне начинается ельник."
+    },
+    {
+      "id": "formal-discovery-mysterious-2",
+      "style": "formal",
+      "moment": "discovery",
+      "tones": ["mysterious", "grounded"],
+      "player_message": "Осматриваю стол.",
+      "allowed_facts": [
+        "На столе обнаружена развёрнутая карта старых дорог.",
+        "На карте отмечены три дороги."
+      ],
+      "response_goal": "world_narration: формально сообщить об обнаруженной карте и маршрутах.",
+      "text": "На столе лежит развёрнутая карта старых дорог. На ней отмечены три дороги."
+    },
+    {
+      "id": "formal-discovery-grounded-2",
+      "style": "formal",
+      "moment": "discovery",
+      "tones": ["grounded", "somber"],
+      "player_message": "Проверяю стену на тайник.",
+      "allowed_facts": [
+        "Проверка не выявила тайник.",
+        "В стене нет видимого отверстия.",
+        "Результат не подтверждает отсутствие скрытого тайника."
+      ],
+      "response_goal": "world_narration: формально передать предел проверки, не объявляя стену безопасной.",
+      "text": "Проверка не выявила тайник. Видимого отверстия в стене нет."
+    },
+    {
+      "id": "formal-quiet-warm-2",
+      "style": "formal",
+      "moment": "quiet",
+      "tones": ["warm", "hopeful"],
+      "player_message": "Останавливаемся на ночлег.",
+      "allowed_facts": [
+        "Отряд разбил лагерь у каменной часовни.",
+        "Вокруг лагеря спокойно."
+      ],
+      "response_goal": "world_narration: формально обозначить место лагеря и спокойную обстановку.",
+      "text": "Лагерь разбит у каменной часовни. Обстановка вокруг остаётся спокойной."
+    },
+    {
+      "id": "formal-quiet-somber-2",
+      "style": "formal",
+      "moment": "quiet",
+      "tones": ["somber", "grounded"],
+      "player_message": "Жду у ворот.",
+      "allowed_facts": [
+        "Отряд ждёт у закрытых городских ворот.",
+        "Ворота остаются закрытыми."
+      ],
+      "response_goal": "world_narration: формально описать ожидание у ворот без придуманного развития.",
+      "text": "Отряд остаётся у закрытых городских ворот."
+    },
+    {
+      "id": "ironic-action-grounded-2",
+      "style": "ironic",
+      "moment": "action",
+      "tones": ["grounded", "hopeful"],
+      "player_message": "Открываю дверь.",
+      "allowed_facts": [
+        "Герой открыл деревянную дверь.",
+        "За дверью виден освещённый коридор."
+      ],
+      "response_goal": "world_narration: слегка иронично описать открывшуюся дверь и видимый коридор.",
+      "text": "Деревянная дверь всё-таки открылась; за ней — освещённый коридор."
+    },
+    {
+      "id": "ironic-action-warm-2",
+      "style": "ironic",
+      "moment": "action",
+      "tones": ["warm", "hopeful"],
+      "player_message": "Закрепляю факел в держателе.",
+      "allowed_facts": [
+        "Факел закреплён в держателе.",
+        "Свет факела освещает каменную стену."
+      ],
+      "response_goal": "world_narration: сухо иронично передать положение факела и свет на стене.",
+      "text": "Факел закреплён; каменная стена освещена — и всё."
+    },
+    {
+      "id": "ironic-social-grounded-2",
+      "style": "ironic",
+      "moment": "social",
+      "tones": ["grounded", "warm"],
+      "player_message": "Спрашиваю стражника о проходе через северные ворота.",
+      "allowed_facts": [
+        "Стражник сообщил: «Проход через северные ворота открыт до заката»."
+      ],
+      "response_goal": "world_narration: с лёгкой иронией передать разрешение стражника и остановиться.",
+      "text": "Стражник разрешает пройти через северные ворота до заката — и это весь ответ."
+    },
+    {
+      "id": "ironic-social-warm-2",
+      "style": "ironic",
+      "moment": "social",
+      "tones": ["warm", "grounded"],
+      "player_message": "Плачу за комнату.",
+      "allowed_facts": [
+        "Трактирщица приняла плату и сообщила, что комната на втором этаже свободна."
+      ],
+      "response_goal": "world_narration: сухо иронично сообщить об оплате и свободной комнате.",
+      "text": "Трактирщица принимает плату; комната на втором этаже свободна — всё ясно."
+    },
+    {
+      "id": "ironic-combat-tense-2",
+      "style": "ironic",
+      "moment": "combat",
+      "tones": ["tense", "grounded"],
+      "player_message": "Бью мечом по гоблину.",
+      "allowed_facts": [
+        "Атака мечом попала по гоблину."
+      ],
+      "response_goal": "world_narration: передать попадание с лёгкой иронией без лишнего комментария.",
+      "text": "Меч попадает по гоблину — коротко и по существу."
+    },
+    {
+      "id": "ironic-combat-grounded-2",
+      "style": "ironic",
+      "moment": "combat",
+      "tones": ["grounded", "somber"],
+      "player_message": "Стреляю в орка.",
+      "allowed_facts": [
+        "Стрела прошла мимо орка."
+      ],
+      "response_goal": "world_narration: иронично, но точно сообщить о промахе.",
+      "text": "Стрела пролетает мимо орка. Бывает."
+    },
+    {
+      "id": "ironic-transition-hopeful-2",
+      "style": "ironic",
+      "moment": "transition",
+      "tones": ["hopeful", "warm"],
+      "player_message": "Иду по тропе к деревне.",
+      "allowed_facts": [
+        "Тропа заканчивается на деревенской площади.",
+        "На площади видны жилые дома."
+      ],
+      "response_goal": "world_narration: с лёгкой иронией обозначить площадь и видимые дома.",
+      "text": "Тропа заканчивается на деревенской площади — жилые дома тоже видны."
+    },
+    {
+      "id": "ironic-transition-grounded-2",
+      "style": "ironic",
+      "moment": "transition",
+      "tones": ["grounded", "mysterious"],
+      "player_message": "Переходим мост.",
+      "allowed_facts": [
+        "Отряд перешёл каменный мост.",
+        "На другой стороне начинается ельник."
+      ],
+      "response_goal": "world_narration: иронично и кратко описать переход и ельник за мостом.",
+      "text": "Мост пройден — дальше ельник."
+    },
+    {
+      "id": "ironic-discovery-mysterious-2",
+      "style": "ironic",
+      "moment": "discovery",
+      "tones": ["mysterious", "grounded"],
+      "player_message": "Осматриваю стол.",
+      "allowed_facts": [
+        "На столе обнаружена развёрнутая карта старых дорог.",
+        "На карте отмечены три дороги."
+      ],
+      "response_goal": "world_narration: сдержанно иронично сообщить о карте и трёх маршрутах.",
+      "text": "На столе — карта старых дорог с тремя маршрутами. Выбирать есть из чего."
+    },
+    {
+      "id": "ironic-discovery-grounded-2",
+      "style": "ironic",
+      "moment": "discovery",
+      "tones": ["grounded", "somber"],
+      "player_message": "Проверяю стену на тайник.",
+      "allowed_facts": [
+        "Проверка не выявила тайник.",
+        "В стене нет видимого отверстия.",
+        "Результат не подтверждает отсутствие скрытого тайника."
+      ],
+      "response_goal": "world_narration: сохранить границу знания и добавить лёгкую иронию к отрицательному результату.",
+      "text": "Тайник не найден; видимого отверстия нет. Остальное остаётся вопросом."
+    },
+    {
+      "id": "ironic-quiet-warm-2",
+      "style": "ironic",
+      "moment": "quiet",
+      "tones": ["warm", "hopeful"],
+      "player_message": "Останавливаемся на ночлег.",
+      "allowed_facts": [
+        "Отряд разбил лагерь у каменной часовни.",
+        "Вокруг лагеря спокойно."
+      ],
+      "response_goal": "world_narration: передать спокойную остановку с лёгкой иронией без нового действия.",
+      "text": "Лагерь разбит у каменной часовни; вокруг спокойно. Даже тишина справляется."
+    },
+    {
+      "id": "ironic-quiet-somber-2",
+      "style": "ironic",
+      "moment": "quiet",
+      "tones": ["somber", "grounded"],
+      "player_message": "Жду у ворот.",
+      "allowed_facts": [
+        "Отряд ждёт у закрытых городских ворот.",
+        "Ворота остаются закрытыми."
+      ],
+      "response_goal": "world_narration: иронично описать ожидание у закрытых ворот.",
+      "text": "Ворота закрыты, отряд ждёт — порядок вещей соблюдён."
+    }
+  ]
+}

@@ -97,11 +97,11 @@ test('сервер не сохраняет предложенные модель
   assert.equal(Object.hasOwn(result, 'suggestions'), false)
 
   const systemPrompt = requests[0].messages[0].content
-  assert.match(systemPrompt, /PROMPT_ID: narrator\/v6/u)
-  assert.match(systemPrompt, /CURATED_STYLE_EXAMPLES \(narrator-few-shot\/v1\)/u)
+  assert.match(systemPrompt, /PROMPT_ID: narrator\/v9/u)
+  assert.match(systemPrompt, /CURATED_STYLE_EXAMPLES \(narrator-few-shot\/v2\)/u)
   assert.doesNotMatch(systemPrompt, /воздух густеет|повисает тишина|каталог клише/u)
   assert.ok(NARRATOR_CLICHE_CATALOG.length >= 16, 'каталог принадлежит production craft-проверке')
-  assert.match(systemPrompt, /не называй видимые числа броска/u)
+  assert.match(systemPrompt, /Без механических чисел/u)
   assert.doesNotMatch(systemPrompt, /"suggestions"/u)
   assert.match(requests[0].messages[1].content, /"memory_focus"/u)
   assert.match(requests[0].messages[1].content, /Ада сохранила синюю нить как улику/u)
@@ -447,7 +447,9 @@ test('offline replay не вызывает сеть и пишет асинхро
     sample.replay_source?.offline_pipeline_attempts === 1
     && sample.replay_source?.stage === 'saved-final-production-output-as-offline-candidate'
   )))
-  assert.ok(narratorSamples.some((sample) => sample.async_feedback?.valid === false))
+  assert.ok(narratorSamples.every((sample) => !sample.async_feedback.violations
+    .some(entry => ['LINKED_MEMORY_OMITTED', 'SENSORY_ANCHOR_OMITTED'].includes(entry.code))),
+  'чистый исход проверки больше не обязан пересказывать память или атмосферу')
   assert.ok(narratorSamples.some((sample) => sample.provider === 'SavedFinalOutputReplayClient'))
   assert.ok(narratorSamples.some((sample) => sample.provider === 'deterministic-fallback'))
   assert.equal(samples.get('forward-hook').replay_source.source_output_kind, 'deterministic-fallback')
@@ -461,10 +463,10 @@ test('offline replay не вызывает сеть и пишет асинхро
     assert.equal(replayed.replay_source.stage, 'unchanged-non-narrator-output')
   }
 
-  assert.match(promise.text, /обещал[а-яё]* оставить карту старых троп под медной кружкой/iu)
+  assert.doesNotMatch(promise.text, /под медной кружкой/iu)
   assert.doesNotMatch(promise.text, /кива|на месте|Ада проверяет|доста[её]т|забира/iu)
   assert.match(promise.text, /успех/iu)
-  assert.match(meeting.text, /после третьего колокола журнал заполнял сам начальник стражи/iu)
+  assert.doesNotMatch(meeting.text, /после третьего колокола/iu)
   assert.doesNotMatch(meeting.text, /кива|перелистыва/iu)
   assert.match(meeting.text, /успех/iu)
   assert.match(samples.get('decision-n-minus-2').text, /успех/iu)

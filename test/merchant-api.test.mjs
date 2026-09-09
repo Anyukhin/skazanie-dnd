@@ -155,7 +155,12 @@ test('merchant API is authoritative, stale-safe, idempotent and durable across r
         },
       },
       { id: 'far-merchant', name: 'Дальний торговец', location: 'Другой город', available: true, pricing: {}, stock: [] },
+      {
+        id: 'dead-merchant', name: 'Погибший торговец', location: 'рыночная площадь', available: true, pricing: {},
+        stock: [{ stock_id: 'dead-torch', catalog_id: 'srd_5_2_1:torch', quantity: 1 }],
+      },
     ],
+    npc_world: { vitals: { 'dead-merchant': { hp: 0, max_hp: 4, alive: false } } },
     scene: { title: 'Market', location: 'рыночная площадь', mood: 'Busy', objective: 'Trade', turn: 1, cells: [] },
     mechanics: { world_time: { elapsed_minutes: 60 } },
     adventure: { chapter: 1, history: [], visitedLocations: ['Рыночная площадь'] },
@@ -169,6 +174,15 @@ test('merchant API is authoritative, stale-safe, idempotent and durable across r
   assertStatus(assigned, 200, log)
   const initialView = await merchantView(baseUrl, 'SHOP-HTTP', 'marten.shop', 'hero', playerCookie)
   assertStatus(initialView, 200, log)
+  const deadView = await merchantView(baseUrl, 'SHOP-HTTP', 'dead-merchant', 'hero', playerCookie)
+  assertStatus(deadView, 409, log)
+  assert.equal(deadView.body.code, 'MERCHANT_UNAVAILABLE')
+  const deadCommand = await merchantCommand(baseUrl, 'SHOP-HTTP', 'dead-merchant', playerCookie, 'dead-merchant-buy', {
+    command_type: 'BuyItem', actor_id: 'hero', stock_id: 'dead-torch', quantity: 1,
+    expected_state_version: initialView.body.merchant_view.expected_state_version,
+  })
+  assertStatus(deadCommand, 400, log)
+  assert.equal(deadCommand.body.code, 'MERCHANT_UNAVAILABLE')
   const foreignView = await merchantView(baseUrl, 'SHOP-HTTP', 'marten.shop', 'foreign', playerCookie)
   assertStatus(foreignView, 403, log)
   assert.equal(foreignView.body.code, 'ACTOR_FORBIDDEN')
@@ -188,6 +202,7 @@ test('merchant API is authoritative, stale-safe, idempotent and durable across r
 
   const roomBeforeTamper = await request(baseUrl, '/api/rooms/SHOP-HTTP', { cookie: playerCookie })
   assertStatus(roomBeforeTamper, 200, log)
+  assert.deepEqual(roomBeforeTamper.body.state.merchants.map((merchant) => merchant.id), ['marten.shop'])
   assert.doesNotMatch(JSON.stringify(roomBeforeTamper.body.state.merchants), /GM_ONLY_|bargain_dc|agent_adjustment_bps|bargains/u)
   const tampered = structuredClone(roomBeforeTamper.body.state)
   tampered.players[0].currency = { platinum: 9_000_000, gold: 0, silver: 0, copper: 0 }

@@ -91,19 +91,29 @@ export class FileTraceStore {
     return JSON.parse(readFileSync(file, 'utf8'))
   }
 
-  latest(campaignId) {
-    return this.recent(campaignId, 1)[0] ?? null
+  latest(campaignId, options = {}) {
+    const predicate = typeof options === 'function' ? options : options?.predicate
+    return this.recent(campaignId, 1, { predicate })[0] ?? null
   }
 
-  recent(campaignId, limit = 3) {
+  recent(campaignId, limit = 3, { predicate } = {}) {
     const directory = this.campaignDir(campaignId)
     const boundedLimit = Math.max(1, Math.min(20, Number(limit) || 3))
     const traces = readdirSync(directory)
       .filter((name) => name.endsWith('.json') && SAFE_ID.test(name.slice(0, -5)))
       .map((name) => JSON.parse(readFileSync(join(directory, name), 'utf8')))
       .sort((left, right) => String(right.created_at).localeCompare(String(left.created_at)))
-    return traces.slice(0, boundedLimit)
+    return (typeof predicate === 'function' ? traces.filter(predicate) : traces).slice(0, boundedLimit)
   }
+}
+
+/** Trace with a committed command/result, suitable for `/why` latest. */
+export function isMechanicalTrace(trace) {
+  return Boolean(trace && typeof trace === 'object' && (
+    (Array.isArray(trace.events) && trace.events.length > 0)
+    || (Array.isArray(trace.validated_commands) && trace.validated_commands.length > 0)
+    || (Array.isArray(trace.rolls) && trace.rolls.length > 0)
+  ))
 }
 
 /**

@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
+import { buildCampaignArcPlan } from '../server/campaign-loop-policy.mjs'
 
 test('два игрока обсуждают и спрашивают вне своего хода без бросков, перехода и изменения механики', { timeout: runnerTimeout(30_000) }, async (t) => {
   const probe = createServer()
@@ -77,6 +78,12 @@ test('два игрока обсуждают и спрашивают вне св
 
   const unauthorized = await send(users[1], { actor_id: 'hero1', action: 'Что я знаю?', request_kind: 'question', idempotency_key: 'foreign-hero-question' })
   assert.equal(unauthorized.status, 403)
+  const savedDialogue = await request('/api/campaigns/DIALOGUE-API/dialogue?actor_id=hero2', users[1].cookie)
+  assert.equal(savedDialogue.status, 200)
+  assert.equal(savedDialogue.body.clarification, null)
+  assert.equal(savedDialogue.body.check, null)
+  const foreignDialogue = await request('/api/campaigns/DIALOGUE-API/dialogue?actor_id=hero1', users[1].cookie)
+  assert.equal(foreignDialogue.status, 403)
   const injectedRoll = await send(users[1], { action: 'Вопрос', request_kind: 'question', roll: { roll_id: 'must-not-consume' }, idempotency_key: 'question-with-roll' })
   assert.equal(injectedRoll.status, 400)
   assert.equal(injectedRoll.body.code, 'NON_ACTION_EXECUTION_FORBIDDEN')
@@ -93,4 +100,36 @@ test('два игрока обсуждают и спрашивают вне св
     assert.equal(room.body.state.messages.filter((message) => message.text === discussionBody.action).length, 1, 'Повтор сообщения не создаёт дубль у другого игрока')
     assert.ok(room.body.state.messages.some((message) => message.text === 'Могу ли я атаковать?'))
   }
+
+  await t.test('повтор ключа перехода после двух голосов потребляет решение ровно один раз', async () => {
+    const travelState = { ...state, sessionCode: 'TRANSITION-API', enemies: [], mechanics: { combat: { active: false } },
+      campaignConcept: { preset: 'one_evening', arc: buildCampaignArcPlan('transition-clock') },
+      worldMemory: { quests: [{ id: 'find-courier', title: 'Найти курьера', status: 'active', clock: { current: 0, max: 3, triggered: false } }] },
+    }
+    const campaign = await request('/api/campaigns', admin.cookie, { code: travelState.sessionCode, name: 'Согласованный переход', state: travelState })
+    assert.equal(campaign.status, 201, JSON.stringify(campaign.body))
+    const advance = () => request('/api/campaigns/TRANSITION-API/autonomy/advance', users[0].cookie,
+      { idempotency_key: 'transition-with-vote', player_action: 'Перейти дальше' })
+    const proposed = await advance()
+    assert.equal(proposed.status, 200, JSON.stringify(proposed.body))
+    const decision = proposed.body.state.agentInteraction
+    assert.equal(decision?.status, 'open')
+    const pendingReplay = await advance()
+    assert.equal(pendingReplay.body.state.state_version, proposed.body.state.state_version)
+    for (const user of users) {
+      const voted = await request(`/api/campaigns/TRANSITION-API/party-decisions/${decision.id}/votes`, user.cookie,
+        { actor_id: user.id, option_id: 'continue', idempotency_key: `transition-vote-${user.id}` })
+      assert.equal(voted.status, 200, JSON.stringify(voted.body))
+    }
+    const advanced = await advance()
+    assert.equal(advanced.status, 200, JSON.stringify(advanced.body))
+    assert.equal(advanced.body.state.agentInteraction, null)
+    assert.equal(advanced.body.state.adventure.chapter, proposed.body.state.adventure.chapter + 1)
+    assert.equal(advanced.body.state.worldMemory.quests.find(quest => quest.id === 'find-courier').clock.current, 0,
+      'сам переход не является подтверждённым прогрессом главной цели')
+    const repeated = await advance()
+    assert.equal(repeated.body.duplicate, true)
+    assert.equal(repeated.body.state.state_version, advanced.body.state.state_version)
+    assert.equal(repeated.body.state.adventure.chapter, advanced.body.state.adventure.chapter)
+  })
 })

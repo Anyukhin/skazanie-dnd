@@ -3,7 +3,7 @@ import type React from 'react'
 import {
   BrainCircuit, ChevronDown, ChevronRight, Dices, Ear, Flame, Globe2, HelpCircle, History, Hourglass,
   Mail, MailOpen, MailX, MapPin, Moon, PawPrint, Plus, RefreshCw, ScrollText, Send, ShieldCheck, Soup, Sparkles,
-  Swords, Target, Users, Volume2, VolumeX, X, Check, RotateCcw, SlidersHorizontal, Store, Wifi, WifiOff, Lock, Shield, Bell, BellOff, Gavel,
+  Swords, Target, Users, Volume2, VolumeX, X, Check, SlidersHorizontal, Store, Wifi, WifiOff, Lock, Shield, Bell, BellOff, Gavel,
 } from 'lucide-react'
 
 import { fetchWithTimeout } from './ai-client'
@@ -850,7 +850,7 @@ export function OffscreenWorldCard({ state }: { state: GameState }) {
   </div>
 }
 
-export function AdminView({ account, state, onUpdateWorld, onAssembleEncounter, onAssembleMerchant, onMoveMerchant, onSetMerchantAvailability, onReset }:{ account: Account; state: GameState; onUpdateWorld: (patch: { campaign?: string; partyName?: string; partyMemberIds?: string[]; scene?: Partial<GameState['scene']> }) => void; onAssembleEncounter: (options: EncounterAssemblyOptions) => Promise<EncounterProposal>; onAssembleMerchant: (options: ShopAssemblyOptions) => Promise<Merchant>; onMoveMerchant: (merchantId: string, location: string, locationId?: string) => Promise<void>; onSetMerchantAvailability: (merchantId: string, available: boolean) => Promise<void>; onReset: () => void }) {
+export function AdminView({ account, state, onUpdateWorld, onAssembleEncounter, onAssembleMerchant, onMoveMerchant, onSetMerchantAvailability }:{ account: Account; state: GameState; onUpdateWorld: (patch: { campaign?: string; partyName?: string; partyMemberIds?: string[]; scene?: Partial<GameState['scene']> }) => void; onAssembleEncounter: (options: EncounterAssemblyOptions) => Promise<EncounterProposal>; onAssembleMerchant: (options: ShopAssemblyOptions) => Promise<Merchant>; onMoveMerchant: (merchantId: string, location: string, locationId?: string) => Promise<void>; onSetMerchantAvailability: (merchantId: string, available: boolean) => Promise<void> }) {
   const [users, setUsers] = useState<Account[]>([])
   const [error, setError] = useState('')
   const [shopBusy, setShopBusy] = useState(false)
@@ -1017,7 +1017,6 @@ export function AdminView({ account, state, onUpdateWorld, onAssembleEncounter, 
           <label><span>Настроение</span><input value={scene.mood} onChange={(event) => setScene({ ...scene, mood: event.target.value })} /></label>
           <label><span>Текущая цель</span><textarea value={scene.objective} onChange={(event) => setScene({ ...scene, objective: event.target.value })} /></label>
           <button className="admin-save" onClick={saveWorld}><Check size={15} />Сохранить мир</button>
-          <button className="admin-reset" onClick={onReset}><RotateCcw size={15} />Сбросить демо-кампанию</button>
           <p>Листы и инвентари всех героев доступны администратору через разделы «Персонажи» и «Инвентарь».</p>
         </div>
         <div className="admin-card admin-encounters">

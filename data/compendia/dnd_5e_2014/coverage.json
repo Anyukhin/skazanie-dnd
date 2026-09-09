@@ -2,17 +2,17 @@
   "ruleset_id": "dnd_5e_2014",
   "counts": {
     "rules": 91,
-    "monsters": 24,
+    "monsters": 83,
     "magic_items": 32,
     "glossary_terms": 91,
     "ontology_edges": 81,
-    "sources": 56
+    "sources": 115
   },
   "complete_website_export": false,
   "mechanics_execution": "not_implemented_by_this_package",
   "supported_source_scope": [
     "PHB14 selected core mechanics",
-    "MM14 selected 24 baseline stat blocks",
+    "MM14: по 10 статблоков CR 0–6 и 13 ранее добавленных записей",
     "DMG14 selected 32 item records including enhancement variants",
     "SRD51 explicitly tagged complementary facts"
   ],
@@ -68,35 +68,296 @@
           "printed_page": 400
         }
       ]
+    },
+    {
+      "monster_id": "dnd_5e_2014:monster:minotaur",
+      "notes": [
+        {
+          "source_ref": "dndsu:monster:minotaur",
+          "note_ru": "Добавлена отсутствовавшая в старом каталоге особенность Labyrinthine Recall; остальные числа сверены с MM14."
+        }
+      ]
+    },
+    {
+      "monster_id": "dnd_5e_2014:monster:veteran",
+      "notes": [
+        {
+          "source_ref": "dndsu:monster:veteran",
+          "note_ru": "Мультиатака хранит два удара длинным мечом и дополнительный короткий меч, если он уже обнажён."
+        }
+      ]
+    },
+    {
+      "monster_id": "dnd_5e_2014:monster:displacer-beast",
+      "notes": [
+        {
+          "source_ref": "dndsu:monster:displacer-beast",
+          "note_ru": "На странице MM14 вид указан как monstrosity; варианты из комментариев и MM24 не импортированы."
+        }
+      ]
+    },
+    {
+      "monster_id": "dnd_5e_2014:monster:brown-bear",
+      "notes": [
+        {
+          "source_ref": "dndsu:monster:brown-bear",
+          "note_ru": "Страница dnd.su для MM14 печатает +6 к попаданию обеих атак; исходный SRD-снимок содержит +5. Сохранено значение страницы dnd.su, урон и остальные числа совпадают."
+        }
+      ]
+    },
+    {
+      "monster_id": "dnd_5e_2014:monster:imp",
+      "notes": [
+        {
+          "source_ref": "dndsu:monster:imp",
+          "note_ru": "Условное сопротивление физическому урону действует только против немагических атак без серебра; оно не сведено к безусловному сопротивлению."
+        }
+      ]
+    },
+    {
+      "monster_id": "dnd_5e_2014:monster:specter",
+      "notes": [
+        {
+          "source_ref": "dndsu:monster:specter",
+          "note_ru": "Условное сопротивление дробящему, колющему и рубящему урону сохранено объектом для немагических атак; сопротивления стихиям и иммунитеты перечислены отдельно."
+        }
+      ]
+    },
+    {
+      "monster_id": "dnd_5e_2014:monster:wererat",
+      "notes": [
+        {
+          "source_ref": "dndsu:monster:wererat",
+          "note_ru": "Иммунитет к дробящему, колющему и рубящему урону сохранён условным объектом: только немагические атаки без серебра; формы и ограничения атак разделены в механиках."
+        }
+      ]
+    },
+    {
+      "monster_id": "dnd_5e_2014:monster:basilisk",
+      "notes": [
+        {
+          "source_ref": "dndsu:monster:basilisk",
+          "note_ru": "У dnd.su в legacy-блоке MM14 КД 15; значение исправляет устаревший SRD-снимок с КД 12."
+        }
+      ]
+    },
+    {
+      "monster_id": "dnd_5e_2014:monster:werewolf",
+      "notes": [
+        {
+          "source_ref": "dndsu:monster:werewolf",
+          "note_ru": "Условный иммунитет к физическому урону сохранён в damage_immunities и требует немагической атаки без серебра; серебрение не потеряно."
+        }
+      ]
+    },
+    {
+      "monster_id": "dnd_5e_2014:monster:wight",
+      "notes": [
+        {
+          "source_ref": "dndsu:monster:wight",
+          "note_ru": "Сопротивление немагическим физическим атакам кроме серебряных сохранено отдельным условным объектом; Вытягивание жизни содержит лимит 12 зомби."
+        }
+      ]
+    },
+    {
+      "monster_id": "dnd_5e_2014:monster:mummy",
+      "notes": [
+        {
+          "source_ref": "dndsu:monster:mummy",
+          "note_ru": "Гниль мумии и иммунитет к Ужасающему взгляду на 24 часа сохранены как условная механика; обычный взгляд лорда-мумии сюда не включён."
+        }
+      ]
+    },
+    {
+      "monster_id": "dnd_5e_2014:monster:banshee",
+      "notes": [
+        {
+          "source_ref": "dndsu:monster:banshee",
+          "note_ru": "Сопротивление немагическим дробящему, колющему и рубящему атакам сохранено отдельным условным объектом."
+        }
+      ]
+    },
+    {
+      "monster_id": "dnd_5e_2014:monster:black-pudding",
+      "notes": [
+        {
+          "source_ref": "dndsu:monster:black-pudding",
+          "note_ru": "Иммунитет к рубящему урону в MM14 указан без ограничения немагичностью; условие относится только к сопротивлениям, которых у слизи нет."
+        }
+      ]
+    },
+    {
+      "monster_id": "dnd_5e_2014:monster:ghost",
+      "notes": [
+        {
+          "source_ref": "dndsu:monster:ghost",
+          "note_ru": "Сопротивление немагическим дробящему, колющему и рубящему атакам сохранено условным объектом."
+        }
+      ]
+    },
+    {
+      "monster_id": "dnd_5e_2014:monster:succubus",
+      "notes": [
+        {
+          "source_ref": "dndsu:monster:succubus-incubus",
+          "note_ru": "Имя записи «Суккуб / Инкуб» отражает единый MM14 статблок; id сохранён как succubus для выбора из CR4."
+        }
+      ]
+    },
+    {
+      "monster_id": "dnd_5e_2014:monster:couatl",
+      "notes": [
+        {
+          "source_ref": "dndsu:monster:couatl",
+          "note_ru": "Врождённые заклинания сохранены в spellcasting.innate_spells с пустым spell_slots; source не печатает caster_level или attack_modifier, поэтому оба поля null."
+        }
+      ]
+    },
+    {
+      "monster_id": "dnd_5e_2014:monster:flameskull",
+      "notes": [
+        {
+          "source_ref": "dndsu:monster:flameskull",
+          "note_ru": "Сопротивление колющему урону в MM14 указано без ограничения немагичностью и сохранено как безусловное."
+        }
+      ]
+    },
+    {
+      "monster_id": "dnd_5e_2014:monster:helmed-horror",
+      "notes": [
+        {
+          "source_ref": "dndsu:monster:helmed-horror",
+          "note_ru": "Сопротивление немагическим дробящему, колющему и рубящему атакам, кроме адамантиновых, сохранено условным объектом."
+        }
+      ]
     }
   ],
   "external_spell_dependencies": [
     "bless",
+    "blur",
     "command",
     "cone-of-cold",
     "counterspell",
+    "create-food-and-water",
     "cure-wounds",
+    "dancing-lights",
+    "darkness",
+    "detect-evil-and-good",
     "detect-magic",
+    "detect-thoughts",
+    "dream",
+    "faerie-fire",
     "fire-bolt",
     "fireball",
+    "flaming-sphere",
     "fly",
     "greater-invisibility",
+    "greater-restoration",
     "hold-person",
     "ice-storm",
     "inflict-wounds",
+    "lesser-restoration",
     "light",
     "mage-armor",
     "mage-hand",
     "magic-missile",
     "misty-step",
     "prestidigitation",
+    "protection-from-poison",
     "sacred-flame",
     "sanctuary",
+    "scrying",
     "shield",
     "shield-of-faith",
     "spiritual-weapon",
     "suggestion",
     "thaumaturgy",
     "web"
-  ]
+  ],
+  "curated_roster": {
+    "0": [
+      "dnd_5e_2014:monster:commoner",
+      "dnd_5e_2014:monster:crawling-claw",
+      "dnd_5e_2014:monster:homunculus",
+      "dnd_5e_2014:monster:lemure",
+      "dnd_5e_2014:monster:awakened-shrub",
+      "dnd_5e_2014:monster:giant-fire-beetle",
+      "dnd_5e_2014:monster:hyena",
+      "dnd_5e_2014:monster:jackal",
+      "dnd_5e_2014:monster:spider",
+      "dnd_5e_2014:monster:scorpion"
+    ],
+    "1": [
+      "dnd_5e_2014:monster:bugbear",
+      "dnd_5e_2014:monster:ghoul",
+      "dnd_5e_2014:monster:dire-wolf",
+      "dnd_5e_2014:monster:giant-spider",
+      "dnd_5e_2014:monster:harpy",
+      "dnd_5e_2014:monster:animated-armor",
+      "dnd_5e_2014:monster:brown-bear",
+      "dnd_5e_2014:monster:imp",
+      "dnd_5e_2014:monster:lion",
+      "dnd_5e_2014:monster:specter"
+    ],
+    "2": [
+      "dnd_5e_2014:monster:bandit-captain",
+      "dnd_5e_2014:monster:cult-fanatic",
+      "dnd_5e_2014:monster:ogre",
+      "dnd_5e_2014:monster:mimic",
+      "dnd_5e_2014:monster:gelatinous-cube",
+      "dnd_5e_2014:monster:giant-boar",
+      "dnd_5e_2014:monster:berserker",
+      "dnd_5e_2014:monster:ghast",
+      "dnd_5e_2014:monster:minotaur-skeleton",
+      "dnd_5e_2014:monster:wererat"
+    ],
+    "3": [
+      "dnd_5e_2014:monster:owlbear",
+      "dnd_5e_2014:monster:minotaur",
+      "dnd_5e_2014:monster:veteran",
+      "dnd_5e_2014:monster:manticore",
+      "dnd_5e_2014:monster:displacer-beast",
+      "dnd_5e_2014:monster:basilisk",
+      "dnd_5e_2014:monster:hell-hound",
+      "dnd_5e_2014:monster:werewolf",
+      "dnd_5e_2014:monster:wight",
+      "dnd_5e_2014:monster:mummy"
+    ],
+    "4": [
+      "dnd_5e_2014:monster:banshee",
+      "dnd_5e_2014:monster:black-pudding",
+      "dnd_5e_2014:monster:ghost",
+      "dnd_5e_2014:monster:ettin",
+      "dnd_5e_2014:monster:succubus",
+      "dnd_5e_2014:monster:red-dragon-wyrmling",
+      "dnd_5e_2014:monster:chuul",
+      "dnd_5e_2014:monster:couatl",
+      "dnd_5e_2014:monster:flameskull",
+      "dnd_5e_2014:monster:helmed-horror"
+    ],
+    "5": [
+      "dnd_5e_2014:monster:troll",
+      "dnd_5e_2014:monster:hill-giant",
+      "dnd_5e_2014:monster:fire-elemental",
+      "dnd_5e_2014:monster:air-elemental",
+      "dnd_5e_2014:monster:earth-elemental",
+      "dnd_5e_2014:monster:water-elemental",
+      "dnd_5e_2014:monster:flesh-golem",
+      "dnd_5e_2014:monster:vampire-spawn",
+      "dnd_5e_2014:monster:barbed-devil",
+      "dnd_5e_2014:monster:gorgon"
+    ],
+    "6": [
+      "dnd_5e_2014:monster:mage",
+      "dnd_5e_2014:monster:wyvern",
+      "dnd_5e_2014:monster:chimera",
+      "dnd_5e_2014:monster:cyclops",
+      "dnd_5e_2014:monster:medusa",
+      "dnd_5e_2014:monster:mammoth",
+      "dnd_5e_2014:monster:vrock",
+      "dnd_5e_2014:monster:drider",
+      "dnd_5e_2014:monster:young-white-dragon",
+      "dnd_5e_2014:monster:young-brass-dragon"
+    ]
+  }
 }

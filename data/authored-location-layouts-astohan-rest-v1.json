@@ -1,0 +1,734 @@
+{
+  "schema_version": 1,
+  "template_id": "astohan-plains",
+  "version": 1,
+  "layouts": [
+    {
+      "location_id": "astohan-ash-watch",
+      "name": "Пепельная застава",
+      "width": 48,
+      "height": 32,
+      "source_width": 1536,
+      "source_height": 1024,
+      "image": "/assets/maps/locations/skazanie/astohan-ash-watch-v1.webp",
+      "theme": "ruins",
+      "default_material": "earth",
+      "default_zone": "yard",
+      "zones": [
+        { "id": "yard", "label": "Пепельный двор", "kind": "exterior", "material": "earth", "lightLevel": "dim" },
+        { "id": "tower", "label": "Сожжённая башня", "kind": "interior", "material": "stone", "lightLevel": "dim" },
+        { "id": "archive", "label": "Запертый архив", "kind": "interior", "material": "stone", "lightLevel": "dark" },
+        { "id": "south-road", "label": "Южный тракт", "kind": "exterior", "material": "earth", "lightLevel": "dim" },
+        { "id": "ash-rift", "label": "След драконьего огня", "kind": "exterior", "material": "earth", "lightLevel": "dim" }
+      ],
+      "terrain": [
+        { "polygon": [[160, 240], [1280, 240], [1360, 360], [1360, 640], [1160, 744], [420, 744], [192, 608], [160, 400]], "zone": "yard", "passable": true, "material": "earth", "surface": "none", "elevation": 0 },
+        { "ellipse": [304, 176, 144, 160], "zone": "tower", "passable": true, "material": "stone", "surface": "none", "elevation": 0 },
+        { "polygon": [[1056, 176], [1272, 176], [1350, 272], [1350, 584], [1272, 632], [1056, 584], [1024, 320]], "zone": "archive", "passable": true, "material": "stone", "surface": "none", "elevation": 0 },
+        { "polygon": [[576, 672], [960, 672], [1024, 1024], [512, 1024]], "zone": "south-road", "passable": true, "material": "earth", "surface": "none", "elevation": 0 },
+        { "polygon": [[0, 0], [260, 0], [360, 240], [192, 420], [0, 520]], "zone": "ash-rift", "passable": false, "material": "earth", "surface": "rubble", "elevation": 0 }
+      ],
+      "doors": [
+        { "id": "ash-tower-yard", "from": [416, 304], "to": [448, 304], "state": "open" },
+        { "id": "ash-archive-yard", "from": [1056, 400], "to": [1088, 400], "state": "closed" },
+        { "id": "ash-yard-road", "from": [736, 672], "to": [736, 704], "state": "open" },
+        { "id": "ash-archive-south", "from": [1168, 584], "to": [1168, 616], "state": "open" }
+      ],
+      "props": [
+        { "id": "painted:ash-melted-bell", "assetId": "brazier", "rect": [288, 176, 48, 48], "rotation": 0 },
+        { "id": "painted:ash-archive-shelf-west", "assetId": "bookshelf", "rect": [1104, 240, 64, 48], "rotation": 90 },
+        { "id": "painted:ash-archive-shelf-east", "assetId": "bookshelf", "rect": [1200, 240, 64, 48], "rotation": 90 },
+        { "id": "painted:ash-archive-table", "assetId": "table_long", "rect": [1120, 400, 112, 40], "rotation": 0 },
+        { "id": "painted:ash-yard-well", "assetId": "well", "rect": [704, 448, 64, 64], "rotation": 0 },
+        { "id": "painted:ash-charred-cart", "assetId": "cart", "rect": [448, 576, 80, 48], "rotation": 12 },
+        { "id": "painted:ash-rubble", "assetId": "rubble_heap", "rect": [848, 544, 80, 64], "rotation": 0 }
+      ],
+      "spawns": [
+        { "id": "party-ash-road", "role": "party", "point": [736, 880] },
+        { "id": "neutral-ash-tower", "role": "neutral", "point": [368, 288] },
+        { "id": "enemy-ash-archive", "role": "enemy", "point": [1184, 400] }
+      ],
+      "checks": [
+        { "name": "Сожжённая башня", "point": [368, 288] },
+        { "name": "Пепельный двор", "point": [736, 496] },
+        { "name": "Запертый архив", "point": [1184, 400] },
+        { "name": "Южный тракт", "point": [736, 880] }
+      ]
+    },
+    {
+      "location_id": "astohan-mirror-lake",
+      "name": "Озеро Двух Отражений",
+      "width": 48,
+      "height": 32,
+      "source_width": 1536,
+      "source_height": 1024,
+      "image": "/assets/maps/locations/skazanie/astohan-mirror-lake-v1.webp",
+      "theme": "shore",
+      "default_material": "grass",
+      "default_zone": "west-shore",
+      "zones": [
+        { "id": "west-shore", "label": "Гладкий западный берег", "kind": "exterior", "material": "grass", "lightLevel": "bright" },
+        { "id": "central-spit", "label": "Каменный мыс", "kind": "exterior", "material": "stone", "lightLevel": "bright" },
+        { "id": "north-chapel", "label": "Береговая часовня", "kind": "interior", "material": "stone", "lightLevel": "dim" },
+        { "id": "south-dock", "label": "Скрытая пристань", "kind": "exterior", "material": "wood", "lightLevel": "bright" },
+        { "id": "east-cliffs", "label": "Рябящий восточный берег", "kind": "exterior", "material": "stone", "lightLevel": "bright" },
+        { "id": "mirror-water", "label": "Зеркальная вода", "kind": "exterior", "material": "stone", "lightLevel": "bright" },
+        { "id": "ripple-water", "label": "Ветровая рябь", "kind": "exterior", "material": "stone", "lightLevel": "bright" }
+      ],
+      "terrain": [
+        { "ellipse": [480, 320, 500, 300], "zone": "mirror-water", "passable": false, "material": "stone", "surface": "water", "elevation": 0 },
+        { "polygon": [[720, 80], [1536, 0], [1536, 840], [1400, 720], [1200, 560], [960, 480], [800, 320]], "zone": "ripple-water", "passable": false, "material": "stone", "surface": "water", "elevation": 0 },
+        { "polygon": [[0, 704], [400, 704], [600, 800], [528, 1024], [0, 1024]], "zone": "west-shore", "passable": true, "material": "grass", "surface": "none", "elevation": 0 },
+        { "polygon": [[624, 240], [816, 240], [864, 480], [720, 704], [576, 640], [592, 480]], "zone": "central-spit", "passable": true, "material": "stone", "surface": "none", "elevation": 0 },
+        { "polygon": [[848, 64], [1088, 64], [1120, 224], [960, 256], [848, 192]], "zone": "north-chapel", "passable": true, "material": "stone", "surface": "none", "elevation": 0 },
+        { "polygon": [[320, 720], [640, 720], [736, 864], [608, 960], [400, 896]], "zone": "south-dock", "passable": true, "material": "wood", "surface": "none", "elevation": 0 },
+        { "polygon": [[1264, 256], [1536, 160], [1536, 720], [1408, 640], [1280, 480]], "zone": "east-cliffs", "passable": true, "material": "stone", "surface": "none", "elevation": 0 },
+        { "polygon": [[880, 160], [1120, 160], [1200, 280], [1100, 320], [960, 272]], "zone": "east-cliffs", "passable": true, "material": "stone", "surface": "none", "elevation": 0 }
+      ],
+      "doors": [
+        { "id": "lake-spit-west", "from": [592, 480], "to": [624, 480], "state": "open" },
+        { "id": "lake-chapel-path", "from": [896, 208], "to": [928, 208], "state": "open" },
+        { "id": "lake-dock-shore", "from": [480, 704], "to": [480, 736], "state": "open" },
+        { "id": "lake-east-cliffs", "from": [1280, 448], "to": [1312, 448], "state": "open" }
+      ],
+      "props": [
+        { "id": "painted:lake-hidden-pier", "assetId": "table_long", "rect": [432, 800, 144, 32], "rotation": 0 },
+        { "id": "painted:lake-shore-shrine", "assetId": "roadside_shrine", "rect": [944, 144, 48, 48], "rotation": 0 },
+        { "id": "painted:lake-standing-stone", "assetId": "boulder", "rect": [640, 448, 64, 64], "rotation": 0 },
+        { "id": "painted:lake-west-boulder", "assetId": "boulder", "rect": [208, 816, 64, 64], "rotation": 0 },
+        { "id": "painted:lake-east-rocks", "assetId": "rock_small", "rect": [1344, 400, 48, 48], "rotation": 0 },
+        { "id": "painted:lake-dock-crates", "assetId": "crate_stack", "rect": [352, 768, 64, 48], "rotation": 0 }
+      ],
+      "spawns": [
+        { "id": "party-lake-west", "role": "party", "point": [256, 832] },
+        { "id": "neutral-lake-chapel", "role": "neutral", "point": [976, 144] },
+        { "id": "enemy-lake-east", "role": "enemy", "point": [1392, 432] }
+      ],
+      "checks": [
+        { "name": "Западный берег", "point": [256, 832] },
+        { "name": "Каменный мыс", "point": [704, 480] },
+        { "name": "Береговая часовня", "point": [976, 144] },
+        { "name": "Скрытая пристань", "point": [480, 832] },
+        { "name": "Восточный берег", "point": [1392, 432] }
+      ]
+    },
+    {
+      "location_id": "astohan-forgotten-cliffs",
+      "name": "Замок Забытых Скал",
+      "width": 48,
+      "height": 32,
+      "source_width": 1536,
+      "source_height": 1024,
+      "image": "/assets/maps/locations/skazanie/astohan-forgotten-cliffs-v1.webp",
+      "theme": "ruins",
+      "default_material": "stone",
+      "default_zone": "courtyard",
+      "zones": [
+        { "id": "courtyard", "label": "Двор падающих звёзд", "kind": "exterior", "material": "stone", "lightLevel": "dim" },
+        { "id": "west-hall", "label": "Западный зал суда", "kind": "interior", "material": "stone", "lightLevel": "dim" },
+        { "id": "east-chapel", "label": "Часовня казни", "kind": "interior", "material": "stone", "lightLevel": "dim" },
+        { "id": "south-crypt", "label": "Южная крипта", "kind": "interior", "material": "stone", "lightLevel": "dark" },
+        { "id": "north-gate", "label": "Северный подъёмный мост", "kind": "exterior", "material": "stone", "lightLevel": "dim" },
+        { "id": "east-tower", "label": "Восточная башня", "kind": "interior", "material": "stone", "lightLevel": "dark" }
+      ],
+      "terrain": [
+        { "polygon": [[480, 240], [1120, 240], [1248, 352], [1200, 640], [1024, 704], [512, 672], [384, 480]], "zone": "courtyard", "passable": true, "material": "stone", "surface": "none", "elevation": 0 },
+        { "polygon": [[144, 112], [480, 112], [512, 336], [448, 400], [176, 368], [112, 224]], "zone": "west-hall", "passable": true, "material": "stone", "surface": "none", "elevation": 0 },
+        { "polygon": [[1008, 272], [1280, 272], [1328, 400], [1280, 608], [1056, 608], [1000, 448]], "zone": "east-chapel", "passable": true, "material": "stone", "surface": "none", "elevation": 0 },
+        { "polygon": [[512, 640], [1024, 640], [1088, 800], [1000, 912], [528, 912], [448, 800]], "zone": "south-crypt", "passable": true, "material": "stone", "surface": "none", "elevation": 0 },
+        { "polygon": [[560, 0], [976, 0], [976, 224], [560, 224]], "zone": "north-gate", "passable": true, "material": "stone", "surface": "none", "elevation": 0 },
+        { "ellipse": [1280, 176, 96, 96], "zone": "east-tower", "passable": true, "material": "stone", "surface": "none", "elevation": 0 }
+      ],
+      "doors": [
+        { "id": "cliffs-north-courtyard", "from": [768, 224], "to": [768, 256], "state": "open" },
+        { "id": "cliffs-west-courtyard", "from": [448, 384], "to": [480, 384], "state": "open" },
+        { "id": "cliffs-east-chapel", "from": [1008, 416], "to": [1040, 416], "state": "closed" },
+        { "id": "cliffs-courtyard-crypt", "from": [768, 640], "to": [768, 672], "state": "closed" },
+        { "id": "cliffs-east-tower", "from": [1216, 176], "to": [1248, 176], "state": "open" }
+      ],
+      "props": [
+        { "id": "painted:cliffs-star-mosaic", "assetId": "mosaic", "rect": [640, 384, 256, 160], "rotation": 0 },
+        { "id": "painted:cliffs-judgment-table", "assetId": "table_long", "rect": [224, 208, 144, 40], "rotation": 0 },
+        { "id": "painted:cliffs-chapel-altar", "assetId": "altar", "rect": [1120, 320, 96, 40], "rotation": 0 },
+        { "id": "painted:cliffs-execution-sarcophagus", "assetId": "sarcophagus", "rect": [704, 736, 96, 48], "rotation": 0 },
+        { "id": "painted:cliffs-armory-rack", "assetId": "shelf_wall", "rect": [176, 160, 96, 40], "rotation": 90 },
+        { "id": "painted:cliffs-crypt-urn", "assetId": "urn", "rect": [912, 752, 40, 40], "rotation": 0 },
+        { "id": "painted:cliffs-brazier", "assetId": "brazier", "rect": [736, 528, 48, 48], "rotation": 0 }
+      ],
+      "spawns": [
+        { "id": "party-cliffs-north", "role": "party", "point": [768, 144] },
+        { "id": "neutral-cliffs-courtyard", "role": "neutral", "point": [768, 480] },
+        { "id": "enemy-cliffs-crypt", "role": "enemy", "point": [768, 800] }
+      ],
+      "checks": [
+        { "name": "Северный подъёмный мост", "point": [768, 144] },
+        { "name": "Двор падающих звёзд", "point": [768, 480] },
+        { "name": "Западный зал суда", "point": [288, 256] },
+        { "name": "Часовня казни", "point": [1168, 416] },
+        { "name": "Южная крипта", "point": [768, 800] }
+      ]
+    },
+    {
+      "location_id": "astohan-mittlayd",
+      "name": "Миттлайд",
+      "width": 48,
+      "height": 32,
+      "source_width": 1536,
+      "source_height": 1024,
+      "image": "/assets/maps/locations/skazanie/astohan-mittlayd-v1.webp",
+      "theme": "settlement",
+      "default_material": "stone",
+      "default_zone": "south-market",
+      "zones": [
+        { "id": "north-bank", "label": "Северный берег", "kind": "exterior", "material": "grass", "lightLevel": "bright" },
+        { "id": "river", "label": "Речной поток", "kind": "exterior", "material": "stone", "lightLevel": "bright" },
+        { "id": "bridge", "label": "Старый каменный мост", "kind": "exterior", "material": "stone", "lightLevel": "bright" },
+        { "id": "mill", "label": "Водяная мельница", "kind": "interior", "material": "wood", "lightLevel": "dim" },
+        { "id": "south-market", "label": "Южная зерновая площадь", "kind": "exterior", "material": "stone", "lightLevel": "bright" },
+        { "id": "west-neighborhood", "label": "Западные дворы", "kind": "exterior", "material": "earth", "lightLevel": "bright" },
+        { "id": "east-docks", "label": "Восточная пристань", "kind": "exterior", "material": "wood", "lightLevel": "bright" }
+      ],
+      "terrain": [
+        { "polygon": [[560, 0], [960, 0], [1056, 256], [1168, 480], [1280, 592], [1536, 544], [1536, 0]], "zone": "river", "passable": false, "material": "stone", "surface": "water", "elevation": 0 },
+        { "polygon": [[0, 0], [208, 0], [400, 128], [448, 368], [320, 512], [0, 512]], "zone": "river", "passable": false, "material": "stone", "surface": "water", "elevation": 0 },
+        { "polygon": [[0, 0], [560, 0], [640, 128], [608, 448], [400, 512], [0, 512]], "zone": "north-bank", "passable": true, "material": "grass", "surface": "none", "elevation": 0 },
+        { "rect": [624, 0, 160, 576], "zone": "bridge", "passable": true, "material": "stone", "surface": "none", "elevation": 0 },
+        { "polygon": [[0, 480], [560, 480], [760, 544], [1200, 512], [1536, 560], [1536, 1024], [0, 1024]], "zone": "south-market", "passable": true, "material": "stone", "surface": "none", "elevation": 0 },
+        { "polygon": [[816, 32], [1168, 32], [1248, 208], [1168, 304], [832, 304]], "zone": "mill", "passable": true, "material": "wood", "surface": "none", "elevation": 0 },
+        { "polygon": [[1216, 560], [1536, 560], [1536, 960], [1328, 960], [1232, 832]], "zone": "east-docks", "passable": true, "material": "wood", "surface": "none", "elevation": 0 },
+        { "polygon": [[240, 560], [560, 560], [608, 832], [240, 832]], "zone": "west-neighborhood", "passable": true, "material": "earth", "surface": "none", "elevation": 0 }
+      ],
+      "doors": [
+        { "id": "mittlayd-bridge-south", "from": [704, 576], "to": [704, 608], "state": "open" },
+        { "id": "mittlayd-mill-bridge", "from": [816, 192], "to": [848, 192], "state": "open" },
+        { "id": "mittlayd-west-yard", "from": [560, 640], "to": [592, 640], "state": "open" },
+        { "id": "mittlayd-east-dock", "from": [1200, 704], "to": [1232, 704], "state": "open" }
+      ],
+      "props": [
+        { "id": "painted:mittlayd-mill-table", "assetId": "table_long", "rect": [928, 144, 144, 40], "rotation": 0 },
+        { "id": "painted:mittlayd-mill-barrels", "assetId": "barrel_stack", "rect": [1088, 224, 64, 48], "rotation": 0 },
+        { "id": "painted:mittlayd-grain-yard", "assetId": "crate_stack", "rect": [352, 608, 80, 48], "rotation": 0 },
+        { "id": "painted:mittlayd-market-stall", "assetId": "market_stall", "rect": [800, 720, 96, 96], "rotation": 0 },
+        { "id": "painted:mittlayd-market-well", "assetId": "well", "rect": [704, 608, 64, 64], "rotation": 0 },
+        { "id": "painted:mittlayd-dock-cart", "assetId": "cart", "rect": [1296, 720, 80, 48], "rotation": 0 },
+        { "id": "painted:mittlayd-dock-crates", "assetId": "crate_stack", "rect": [1408, 832, 64, 48], "rotation": 0 }
+      ],
+      "spawns": [
+        { "id": "party-mittlayd-market", "role": "party", "point": [768, 896] },
+        { "id": "neutral-mittlayd-mill", "role": "neutral", "point": [1008, 160] },
+        { "id": "enemy-mittlayd-docks", "role": "enemy", "point": [1360, 720] }
+      ],
+      "checks": [
+        { "name": "Старый каменный мост", "point": [704, 320] },
+        { "name": "Водяная мельница", "point": [1008, 160] },
+        { "name": "Южная зерновая площадь", "point": [768, 720] },
+        { "name": "Западные дворы", "point": [384, 720] },
+        { "name": "Восточная пристань", "point": [1360, 720] }
+      ]
+    },
+    {
+      "location_id": "astohan-quiet-watch-camp",
+      "name": "Лагерь Тихой Стражи",
+      "width": 48,
+      "height": 32,
+      "source_width": 1536,
+      "source_height": 1024,
+      "image": "/assets/maps/locations/skazanie/astohan-quiet-watch-camp-v1.webp",
+      "theme": "settlement",
+      "default_material": "earth",
+      "default_zone": "camp-yard",
+      "zones": [
+        { "id": "camp-yard", "label": "Центральный плац", "kind": "exterior", "material": "earth", "lightLevel": "dim" },
+        { "id": "command-tent", "label": "Палатка командира", "kind": "interior", "material": "wood", "lightLevel": "dim" },
+        { "id": "west-barracks", "label": "Западные казармы", "kind": "interior", "material": "wood", "lightLevel": "dim" },
+        { "id": "east-supply", "label": "Склад снабжения", "kind": "interior", "material": "wood", "lightLevel": "dim" },
+        { "id": "south-corral", "label": "Южный загон", "kind": "exterior", "material": "earth", "lightLevel": "dim" },
+        { "id": "road", "label": "Юго-восточная дорога", "kind": "exterior", "material": "earth", "lightLevel": "dim" }
+      ],
+      "terrain": [
+        { "ellipse": [768, 512, 560, 360], "zone": "camp-yard", "passable": true, "material": "earth", "surface": "none", "elevation": 0 },
+        { "rect": [608, 112, 320, 208], "zone": "command-tent", "passable": true, "material": "wood", "surface": "none", "elevation": 0 },
+        { "rect": [272, 256, 320, 224], "zone": "west-barracks", "passable": true, "material": "wood", "surface": "none", "elevation": 0 },
+        { "polygon": [[960, 272], [1216, 272], [1264, 464], [1120, 608], [944, 544]], "zone": "east-supply", "passable": true, "material": "wood", "surface": "none", "elevation": 0 },
+        { "rect": [272, 640, 320, 192], "zone": "south-corral", "passable": true, "material": "earth", "surface": "none", "elevation": 0 },
+        { "polygon": [[1216, 448], [1536, 400], [1536, 672], [1200, 640]], "zone": "road", "passable": true, "material": "earth", "surface": "none", "elevation": 0 }
+      ],
+      "doors": [
+        { "id": "camp-north-command", "from": [768, 320], "to": [768, 352], "state": "open" },
+        { "id": "camp-west-barracks", "from": [592, 368], "to": [624, 368], "state": "open" },
+        { "id": "camp-east-supply", "from": [928, 432], "to": [960, 432], "state": "closed" },
+        { "id": "camp-corral-yard", "from": [432, 608], "to": [432, 640], "state": "open" },
+        { "id": "camp-road-gate", "from": [1184, 512], "to": [1216, 512], "state": "open" }
+      ],
+      "props": [
+        { "id": "painted:camp-central-fire", "assetId": "campfire", "rect": [736, 464, 64, 64], "rotation": 0 },
+        { "id": "painted:camp-well", "assetId": "well", "rect": [768, 592, 64, 64], "rotation": 0 },
+        { "id": "painted:camp-command-table", "assetId": "table_long", "rect": [704, 176, 144, 40], "rotation": 0 },
+        { "id": "painted:camp-supply-crates", "assetId": "crate_stack", "rect": [1008, 336, 80, 48], "rotation": 0 },
+        { "id": "painted:camp-supply-cart", "assetId": "cart", "rect": [1104, 480, 80, 48], "rotation": 0 },
+        { "id": "painted:camp-corral-hay", "assetId": "haystack", "rect": [368, 704, 64, 64], "rotation": 0 },
+        { "id": "painted:camp-west-rack", "assetId": "shelf_wall", "rect": [320, 288, 96, 32], "rotation": 90 },
+        { "id": "painted:camp-signal-brazier", "assetId": "brazier", "rect": [1296, 432, 48, 48], "rotation": 0 }
+      ],
+      "spawns": [
+        { "id": "party-camp-road", "role": "party", "point": [1408, 512] },
+        { "id": "neutral-camp-command", "role": "neutral", "point": [768, 208] },
+        { "id": "enemy-camp-supply", "role": "enemy", "point": [1088, 432] }
+      ],
+      "checks": [
+        { "name": "Восточные ворота", "point": [1408, 512] },
+        { "name": "Центральный плац", "point": [768, 512] },
+        { "name": "Палатка командира", "point": [768, 208] },
+        { "name": "Склад снабжения", "point": [1088, 432] },
+        { "name": "Южный загон", "point": [432, 736] }
+      ]
+    },
+    {
+      "location_id": "astohan-cursed-woods",
+      "name": "Проклятый лес",
+      "width": 48,
+      "height": 32,
+      "source_width": 1536,
+      "source_height": 1024,
+      "image": "/assets/maps/locations/skazanie/astohan-cursed-woods-v1.webp",
+      "theme": "forest",
+      "default_material": "earth",
+      "default_zone": "main-path",
+      "zones": [
+        { "id": "main-path", "label": "Каменная тропа обещаний", "kind": "exterior", "material": "stone", "lightLevel": "dim" },
+        { "id": "oath-grove", "label": "Круг клятв", "kind": "exterior", "material": "earth", "lightLevel": "dim" },
+        { "id": "chapel", "label": "Разрушенная часовня", "kind": "interior", "material": "stone", "lightLevel": "dark" },
+        { "id": "red-river", "label": "Красное русло", "kind": "exterior", "material": "earth", "lightLevel": "dim" },
+        { "id": "bog", "label": "Тёмные заводи", "kind": "exterior", "material": "earth", "lightLevel": "dim" }
+      ],
+      "terrain": [
+        { "polygon": [[0, 0], [256, 0], [400, 1024], [0, 1024]], "zone": "red-river", "passable": false, "material": "earth", "surface": "water", "elevation": 0 },
+        { "ellipse": [1120, 800, 320, 180], "zone": "bog", "passable": false, "material": "earth", "surface": "water", "elevation": 0 },
+        { "ellipse": [240, 760, 240, 140], "zone": "bog", "passable": false, "material": "earth", "surface": "water", "elevation": 0 },
+        { "polygon": [[704, 1024], [832, 1024], [832, 800], [944, 680], [1088, 560], [1248, 448], [1536, 384], [1536, 512], [1280, 608], [1120, 704], [1000, 800], [944, 1024]], "zone": "main-path", "passable": true, "material": "stone", "surface": "none", "elevation": 0 },
+        { "ellipse": [768, 464, 288, 192], "zone": "oath-grove", "passable": true, "material": "earth", "surface": "none", "elevation": 0 },
+        { "polygon": [[640, 0], [864, 0], [864, 224], [800, 320], [704, 320], [640, 224]], "zone": "main-path", "passable": true, "material": "stone", "surface": "none", "elevation": 0 },
+        { "polygon": [[256, 320], [520, 320], [688, 432], [624, 544], [464, 512], [304, 448]], "zone": "main-path", "passable": true, "material": "stone", "surface": "none", "elevation": 0 },
+        { "polygon": [[1104, 192], [1312, 192], [1408, 96], [1536, 64], [1536, 256], [1376, 288], [1248, 352], [1104, 320]], "zone": "chapel", "passable": true, "material": "stone", "surface": "none", "elevation": 0 },
+        { "ellipse": [768, 496, 160, 112], "zone": "oath-grove", "passable": true, "material": "earth", "surface": "none", "elevation": 0 }
+      ],
+      "doors": [
+        { "id": "cursed-north-path", "from": [752, 320], "to": [752, 352], "state": "open" },
+        { "id": "cursed-grove-west", "from": [608, 464], "to": [640, 464], "state": "open" },
+        { "id": "cursed-chapel-path", "from": [1088, 256], "to": [1120, 256], "state": "open" },
+        { "id": "cursed-south-path", "from": [768, 768], "to": [768, 800], "state": "open" }
+      ],
+      "props": [
+        { "id": "painted:cursed-oath-stone-north", "assetId": "boulder", "rect": [736, 208, 64, 64], "rotation": 0 },
+        { "id": "painted:cursed-oath-stone-west", "assetId": "boulder", "rect": [512, 432, 64, 64], "rotation": 0 },
+        { "id": "painted:cursed-oath-stone-east", "assetId": "boulder", "rect": [976, 464, 64, 64], "rotation": 0 },
+        { "id": "painted:cursed-chapel-shrine", "assetId": "roadside_shrine", "rect": [1248, 160, 48, 48], "rotation": 0 },
+        { "id": "painted:cursed-dead-tree", "assetId": "tree_dead", "rect": [320, 560, 64, 64], "rotation": 0 },
+        { "id": "painted:cursed-fallen-log", "assetId": "fallen_log", "rect": [992, 704, 80, 40], "rotation": 15 }
+      ],
+      "spawns": [
+        { "id": "party-cursed-south", "role": "party", "point": [768, 944] },
+        { "id": "neutral-cursed-grove", "role": "neutral", "point": [768, 480] },
+        { "id": "enemy-cursed-chapel", "role": "enemy", "point": [1280, 240] }
+      ],
+      "checks": [
+        { "name": "Южная тропа", "point": [768, 944] },
+        { "name": "Круг клятв", "point": [768, 480] },
+        { "name": "Западный мост", "point": [480, 416] },
+        { "name": "Разрушенная часовня", "point": [1280, 240] }
+      ]
+    },
+    {
+      "location_id": "astohan-redstone",
+      "name": "Редстоуновка",
+      "width": 48,
+      "height": 32,
+      "source_width": 1536,
+      "source_height": 1024,
+      "image": "/assets/maps/locations/skazanie/astohan-redstone-v1.webp",
+      "theme": "settlement",
+      "default_material": "earth",
+      "default_zone": "village-road",
+      "zones": [
+        { "id": "village-road", "label": "Главная улица", "kind": "exterior", "material": "earth", "lightLevel": "bright" },
+        { "id": "square", "label": "Поселковая площадь", "kind": "exterior", "material": "stone", "lightLevel": "bright" },
+        { "id": "headman-house", "label": "Дом старосты", "kind": "interior", "material": "wood", "lightLevel": "dim" },
+        { "id": "forge", "label": "Краснокаменная кузница", "kind": "interior", "material": "stone", "lightLevel": "bright" },
+        { "id": "south-houses", "label": "Южные дворы", "kind": "interior", "material": "wood", "lightLevel": "dim" },
+        { "id": "east-house", "label": "Восточный дом", "kind": "interior", "material": "wood", "lightLevel": "dim" },
+        { "id": "burnt-edge", "label": "Обожжённый край", "kind": "exterior", "material": "earth", "lightLevel": "dim" }
+      ],
+      "terrain": [
+        { "polygon": [[0, 0], [320, 0], [432, 320], [320, 640], [0, 768]], "zone": "burnt-edge", "passable": false, "material": "earth", "surface": "rubble", "elevation": 0 },
+        { "polygon": [[352, 256], [1216, 256], [1376, 448], [1248, 768], [992, 880], [448, 832], [256, 608]], "zone": "village-road", "passable": true, "material": "earth", "surface": "none", "elevation": 0 },
+        { "ellipse": [800, 560, 256, 176], "zone": "square", "passable": true, "material": "stone", "surface": "none", "elevation": 0 },
+        { "polygon": [[640, 64], [1008, 64], [1072, 224], [992, 288], [656, 256], [592, 160]], "zone": "headman-house", "passable": true, "material": "wood", "surface": "none", "elevation": 0 },
+        { "polygon": [[272, 256], [608, 256], [624, 496], [288, 496], [240, 384]], "zone": "forge", "passable": true, "material": "stone", "surface": "none", "elevation": 0 },
+        { "polygon": [[288, 704], [592, 704], [640, 864], [304, 896]], "zone": "south-houses", "passable": true, "material": "wood", "surface": "none", "elevation": 0 },
+        { "polygon": [[1088, 368], [1328, 368], [1408, 544], [1300, 672], [1088, 608]], "zone": "east-house", "passable": true, "material": "wood", "surface": "none", "elevation": 0 },
+        { "polygon": [[576, 832], [1024, 832], [1152, 1024], [512, 1024]], "zone": "village-road", "passable": true, "material": "earth", "surface": "none", "elevation": 0 }
+      ],
+      "doors": [
+        { "id": "redstone-headman", "from": [800, 256], "to": [800, 288], "state": "open" },
+        { "id": "redstone-forge", "from": [608, 368], "to": [640, 368], "state": "open" },
+        { "id": "redstone-south", "from": [448, 672], "to": [448, 704], "state": "open" },
+        { "id": "redstone-east", "from": [1056, 496], "to": [1088, 496], "state": "closed" }
+      ],
+      "props": [
+        { "id": "painted:redstone-square-well", "assetId": "well", "rect": [768, 528, 64, 64], "rotation": 0 },
+        { "id": "painted:redstone-headman-table", "assetId": "table_long", "rect": [736, 128, 160, 40], "rotation": 0 },
+        { "id": "painted:redstone-forge-brazier", "assetId": "brazier", "rect": [336, 320, 48, 48], "rotation": 0 },
+        { "id": "painted:redstone-market-stall", "assetId": "market_stall", "rect": [864, 608, 96, 96], "rotation": 0 },
+        { "id": "painted:redstone-forge-rack", "assetId": "shelf_wall", "rect": [432, 288, 96, 32], "rotation": 90 },
+        { "id": "painted:redstone-south-cart", "assetId": "cart", "rect": [352, 784, 80, 48], "rotation": 0 },
+        { "id": "painted:redstone-ash-barrel", "assetId": "barrel_stack", "rect": [1120, 416, 64, 48], "rotation": 0 }
+      ],
+      "spawns": [
+        { "id": "party-redstone-south", "role": "party", "point": [768, 944] },
+        { "id": "neutral-redstone-headman", "role": "neutral", "point": [800, 160] },
+        { "id": "enemy-redstone-burnt-edge", "role": "enemy", "point": [208, 320] }
+      ],
+      "checks": [
+        { "name": "Южная дорога", "point": [768, 944] },
+        { "name": "Поселковая площадь", "point": [800, 560] },
+        { "name": "Дом старосты", "point": [800, 160] },
+        { "name": "Краснокаменная кузница", "point": [432, 384] },
+        { "name": "Восточный дом", "point": [1200, 512] }
+      ]
+    },
+    {
+      "location_id": "astohan-smugglers-cave",
+      "name": "Пещера Чёрного Эха",
+      "width": 48,
+      "height": 32,
+      "source_width": 1536,
+      "source_height": 1024,
+      "image": "/assets/maps/locations/skazanie/astohan-smugglers-cave-v1.webp",
+      "theme": "cave",
+      "default_material": "stone",
+      "default_zone": "central-hall",
+      "zones": [
+        { "id": "central-hall", "label": "Центральный штрек", "kind": "interior", "material": "stone", "lightLevel": "dark" },
+        { "id": "rail-gallery", "label": "Западная рельсовая галерея", "kind": "interior", "material": "stone", "lightLevel": "dim" },
+        { "id": "stream-bridge", "label": "Подземный ручей", "kind": "interior", "material": "stone", "lightLevel": "dark" },
+        { "id": "east-storage", "label": "Тайный склад", "kind": "interior", "material": "wood", "lightLevel": "dim" },
+        { "id": "south-crystals", "label": "Южный кристальный штрек", "kind": "interior", "material": "stone", "lightLevel": "dark" },
+        { "id": "underground-water", "label": "Затопленная выработка", "kind": "interior", "material": "stone", "lightLevel": "dark" }
+      ],
+      "terrain": [
+        { "polygon": [[560, 0], [1280, 0], [1536, 176], [1536, 400], [1280, 448], [1056, 304], [768, 240]], "zone": "underground-water", "passable": false, "material": "stone", "surface": "water", "elevation": 0 },
+        { "polygon": [[400, 304], [1104, 304], [1248, 480], [1120, 704], [512, 704], [352, 512]], "zone": "central-hall", "passable": true, "material": "stone", "surface": "none", "elevation": 0 },
+        { "polygon": [[96, 320], [416, 320], [496, 480], [384, 608], [112, 576], [64, 448]], "zone": "rail-gallery", "passable": true, "material": "stone", "surface": "none", "elevation": 0 },
+        { "polygon": [[560, 96], [1056, 96], [1168, 256], [1056, 336], [640, 288]], "zone": "stream-bridge", "passable": true, "material": "stone", "surface": "none", "elevation": 0 },
+        { "polygon": [[1200, 320], [1456, 320], [1512, 544], [1392, 688], [1200, 608]], "zone": "east-storage", "passable": true, "material": "stone", "surface": "none", "elevation": 0 },
+        { "polygon": [[256, 688], [992, 688], [1088, 816], [960, 944], [352, 944], [192, 800]], "zone": "south-crystals", "passable": true, "material": "stone", "surface": "none", "elevation": 0 }
+      ],
+      "doors": [
+        { "id": "cave-west-entrance", "from": [384, 448], "to": [416, 448], "state": "open" },
+        { "id": "cave-upper-bridge", "from": [640, 288], "to": [672, 288], "state": "open" },
+        { "id": "cave-east-storage", "from": [1168, 480], "to": [1200, 480], "state": "closed" },
+        { "id": "cave-south-shaft", "from": [768, 672], "to": [768, 704], "state": "open" }
+      ],
+      "props": [
+        { "id": "painted:cave-mine-cart", "assetId": "cart", "rect": [176, 432, 80, 48], "rotation": 0 },
+        { "id": "painted:cave-contraband-crates", "assetId": "crate_stack", "rect": [1280, 400, 80, 48], "rotation": 0 },
+        { "id": "painted:cave-supports", "assetId": "shelf_wall", "rect": [528, 416, 96, 32], "rotation": 90 },
+        { "id": "painted:cave-rubble", "assetId": "rubble_heap", "rect": [864, 512, 80, 64], "rotation": 0 },
+        { "id": "painted:cave-ore-vein", "assetId": "ore_vein", "rect": [400, 768, 64, 32], "rotation": 0 },
+        { "id": "painted:cave-crystal-boulder", "assetId": "stalagmite", "rect": [704, 560, 64, 64], "rotation": 0 },
+        { "id": "painted:cave-storage-chest", "assetId": "chest", "rect": [1360, 512, 48, 40], "rotation": 0 }
+      ],
+      "spawns": [
+        { "id": "party-cave-west", "role": "party", "point": [160, 448] },
+        { "id": "neutral-cave-central", "role": "neutral", "point": [768, 480] },
+        { "id": "enemy-cave-storage", "role": "enemy", "point": [1328, 448] }
+      ],
+      "checks": [
+        { "name": "Западная рельсовая галерея", "point": [224, 448] },
+        { "name": "Центральный штрек", "point": [768, 480] },
+        { "name": "Подземный ручей", "point": [800, 192] },
+        { "name": "Тайный склад", "point": [1328, 448] },
+        { "name": "Южный кристальный штрек", "point": [768, 816] }
+      ]
+    },
+    {
+      "location_id": "astohan-lomar-tower",
+      "name": "Башня Ломара",
+      "width": 48,
+      "height": 32,
+      "source_width": 1536,
+      "source_height": 1024,
+      "image": "/assets/maps/locations/skazanie/astohan-lomar-tower-v1.webp",
+      "theme": "building",
+      "default_material": "stone",
+      "default_zone": "scorched-yard",
+      "zones": [
+        { "id": "scorched-yard", "label": "Выжженный двор", "kind": "exterior", "material": "earth", "lightLevel": "dim" },
+        { "id": "tower-ring", "label": "Круглая башня", "kind": "interior", "material": "stone", "lightLevel": "dim" },
+        { "id": "laboratory", "label": "Лаборатория", "kind": "interior", "material": "stone", "lightLevel": "dim" },
+        { "id": "south-garden", "label": "Обгоревший сад", "kind": "exterior", "material": "earth", "lightLevel": "dim" },
+        { "id": "lower-vault", "label": "Подземный сосуд", "kind": "interior", "material": "stone", "lightLevel": "dark" },
+        { "id": "north-road", "label": "Северная дорога", "kind": "exterior", "material": "stone", "lightLevel": "dim" }
+      ],
+      "terrain": [
+        { "polygon": [[176, 128], [1328, 128], [1456, 384], [1328, 720], [1120, 896], [416, 896], [144, 672], [112, 352]], "zone": "scorched-yard", "passable": true, "material": "earth", "surface": "rubble", "elevation": 0 },
+        { "ellipse": [760, 352, 272, 272], "zone": "tower-ring", "passable": true, "material": "stone", "surface": "none", "elevation": 0 },
+        { "ellipse": [760, 352, 88, 88], "zone": "tower-ring", "passable": false, "material": "stone", "surface": "none", "elevation": 0 },
+        { "polygon": [[352, 304], [592, 304], [592, 528], [352, 528]], "zone": "laboratory", "passable": true, "material": "stone", "surface": "none", "elevation": 0 },
+        { "ellipse": [760, 800, 224, 160], "zone": "south-garden", "passable": true, "material": "earth", "surface": "rubble", "elevation": 0 },
+        { "ellipse": [1280, 720, 144, 128], "zone": "lower-vault", "passable": true, "material": "stone", "surface": "none", "elevation": -1 },
+        { "polygon": [[688, 0], [832, 0], [832, 144], [688, 144]], "zone": "north-road", "passable": true, "material": "stone", "surface": "none", "elevation": 0 }
+      ],
+      "doors": [
+        { "id": "lomar-lab-tower", "from": [592, 416], "to": [624, 416], "state": "closed" },
+        { "id": "lomar-tower-garden", "from": [760, 624], "to": [760, 656], "state": "open" },
+        { "id": "lomar-vault-yard", "from": [1136, 720], "to": [1168, 720], "state": "closed" },
+        { "id": "lomar-north-road", "from": [760, 144], "to": [760, 176], "state": "open" }
+      ],
+      "props": [
+        { "id": "painted:lomar-lab-table", "assetId": "table_long", "rect": [400, 384, 144, 40], "rotation": 0 },
+        { "id": "painted:lomar-lab-shelves", "assetId": "bookshelf", "rect": [368, 320, 64, 48], "rotation": 90 },
+        { "id": "painted:lomar-lab-brazier", "assetId": "brazier", "rect": [512, 448, 48, 48], "rotation": 0 },
+        { "id": "painted:lomar-central-stairs", "assetId": "stairs_down", "rect": [728, 320, 64, 64], "rotation": 0 },
+        { "id": "painted:lomar-vault-pool", "assetId": "cave_pool", "rect": [1248, 688, 64, 64], "rotation": 0 },
+        { "id": "painted:lomar-burnt-tree", "assetId": "tree_dead", "rect": [672, 768, 64, 64], "rotation": 0 },
+        { "id": "painted:lomar-yard-boulder", "assetId": "boulder", "rect": [256, 512, 64, 64], "rotation": 0 }
+      ],
+      "spawns": [
+        { "id": "party-lomar-north", "role": "party", "point": [760, 80] },
+        { "id": "neutral-lomar-tower", "role": "neutral", "point": [760, 240] },
+        { "id": "enemy-lomar-vault", "role": "enemy", "point": [1280, 720] }
+      ],
+      "checks": [
+        { "name": "Северная дорога", "point": [760, 80] },
+        { "name": "Круглая башня", "point": [760, 240] },
+        { "name": "Лаборатория", "point": [480, 416] },
+        { "name": "Обгоревший сад", "point": [760, 800] },
+        { "name": "Подземный сосуд", "point": [1280, 720] }
+      ]
+    },
+    {
+      "location_id": "astohan-wild-forest",
+      "name": "Дикий лес",
+      "width": 48,
+      "height": 32,
+      "source_width": 1536,
+      "source_height": 1024,
+      "image": "/assets/maps/locations/skazanie/astohan-wild-forest-v1.webp",
+      "theme": "forest",
+      "default_material": "grass",
+      "default_zone": "central-clearing",
+      "zones": [
+        { "id": "central-clearing", "label": "Центральная поляна", "kind": "exterior", "material": "grass", "lightLevel": "bright" },
+        { "id": "north-trail", "label": "Северная тропа", "kind": "exterior", "material": "earth", "lightLevel": "dim" },
+        { "id": "west-trail", "label": "Западные мосты", "kind": "exterior", "material": "earth", "lightLevel": "dim" },
+        { "id": "east-trail", "label": "Восточный ручей", "kind": "exterior", "material": "earth", "lightLevel": "dim" },
+        { "id": "south-trail", "label": "Южный выход", "kind": "exterior", "material": "earth", "lightLevel": "dim" },
+        { "id": "streams", "label": "Лесные ручьи", "kind": "exterior", "material": "grass", "lightLevel": "bright" }
+      ],
+      "terrain": [
+        { "polygon": [[0, 288], [304, 288], [480, 400], [400, 512], [0, 512]], "zone": "streams", "passable": false, "material": "grass", "surface": "water", "elevation": 0 },
+        { "polygon": [[1152, 224], [1536, 224], [1536, 544], [1280, 608], [1120, 480]], "zone": "streams", "passable": false, "material": "grass", "surface": "water", "elevation": 0 },
+        { "polygon": [[352, 736], [704, 736], [704, 1024], [272, 1024]], "zone": "streams", "passable": false, "material": "grass", "surface": "water", "elevation": 0 },
+        { "ellipse": [768, 496, 288, 208], "zone": "central-clearing", "passable": true, "material": "grass", "surface": "none", "elevation": 0 },
+        { "polygon": [[704, 0], [832, 0], [880, 272], [816, 368], [704, 368], [656, 272]], "zone": "north-trail", "passable": true, "material": "earth", "surface": "none", "elevation": 0 },
+        { "polygon": [[0, 576], [256, 576], [448, 512], [560, 608], [448, 704], [208, 736], [0, 704]], "zone": "west-trail", "passable": true, "material": "earth", "surface": "none", "elevation": 0 },
+        { "polygon": [[1056, 480], [1248, 560], [1536, 640], [1536, 768], [1248, 736], [1056, 624]], "zone": "east-trail", "passable": true, "material": "earth", "surface": "none", "elevation": 0 },
+        { "polygon": [[704, 656], [832, 656], [928, 768], [976, 1024], [800, 1024], [736, 816]], "zone": "south-trail", "passable": true, "material": "earth", "surface": "none", "elevation": 0 },
+        { "polygon": [[368, 320], [560, 400], [640, 512], [560, 624], [416, 560], [304, 448]], "zone": "west-trail", "passable": true, "material": "earth", "surface": "none", "elevation": 0 }
+      ],
+      "doors": [
+        { "id": "forest-north-clearing", "from": [752, 352], "to": [752, 384], "state": "open" },
+        { "id": "forest-west-bridge", "from": [544, 496], "to": [576, 496], "state": "open" },
+        { "id": "forest-east-bridge", "from": [1024, 576], "to": [1056, 576], "state": "open" },
+        { "id": "forest-south-clearing", "from": [768, 640], "to": [768, 672], "state": "open" }
+      ],
+      "props": [
+        { "id": "painted:forest-central-oak", "assetId": "tree_oak", "rect": [736, 432, 64, 64], "rotation": 0 },
+        { "id": "painted:forest-west-bridge", "assetId": "table_long", "rect": [368, 480, 128, 32], "rotation": 0 },
+        { "id": "painted:forest-east-bridge", "assetId": "table_long", "rect": [1120, 560, 128, 32], "rotation": 0 },
+        { "id": "painted:forest-stone-north", "assetId": "boulder", "rect": [672, 160, 64, 64], "rotation": 0 },
+        { "id": "painted:forest-stone-west", "assetId": "boulder", "rect": [512, 560, 64, 64], "rotation": 0 },
+        { "id": "painted:forest-fallen-log", "assetId": "fallen_log", "rect": [960, 736, 80, 40], "rotation": 20 },
+        { "id": "painted:forest-shrine", "assetId": "roadside_shrine", "rect": [1120, 160, 48, 48], "rotation": 0 }
+      ],
+      "spawns": [
+        { "id": "party-forest-south", "role": "party", "point": [768, 944] },
+        { "id": "neutral-forest-clearing", "role": "neutral", "point": [768, 528] },
+        { "id": "enemy-forest-east", "role": "enemy", "point": [1280, 640] }
+      ],
+      "checks": [
+        { "name": "Южный выход", "point": [768, 944] },
+        { "name": "Центральная поляна", "point": [768, 528] },
+        { "name": "Северная тропа", "point": [768, 160] },
+        { "name": "Западные мосты", "point": [320, 608] },
+        { "name": "Восточный ручей", "point": [1280, 640] }
+      ]
+    },
+    {
+      "location_id": "astohan-eldrin-heart",
+      "name": "Сердце Элдрина",
+      "width": 48,
+      "height": 32,
+      "source_width": 1536,
+      "source_height": 1024,
+      "image": "/assets/maps/locations/skazanie/astohan-eldrin-heart-v1.webp",
+      "theme": "forest",
+      "default_material": "grass",
+      "default_zone": "central-clearing",
+      "zones": [
+        { "id": "central-clearing", "label": "Поляна Великого Древа", "kind": "exterior", "material": "grass", "lightLevel": "bright" },
+        { "id": "north-circle", "label": "Северный круг", "kind": "exterior", "material": "grass", "lightLevel": "bright" },
+        { "id": "east-talk", "label": "Восточная площадка", "kind": "exterior", "material": "stone", "lightLevel": "bright" },
+        { "id": "west-niche", "label": "Западная мшистая ниша", "kind": "exterior", "material": "earth", "lightLevel": "dim" },
+        { "id": "south-rift", "label": "Южная водная расщелина", "kind": "exterior", "material": "stone", "lightLevel": "dim" },
+        { "id": "roots-water", "label": "Воды под корнями", "kind": "exterior", "material": "grass", "lightLevel": "bright" }
+      ],
+      "terrain": [
+        { "polygon": [[560, 448], [720, 448], [768, 1024], [560, 1024]], "zone": "roots-water", "passable": false, "material": "grass", "surface": "water", "elevation": 0 },
+        { "polygon": [[816, 448], [976, 448], [1104, 1024], [896, 1024]], "zone": "roots-water", "passable": false, "material": "grass", "surface": "water", "elevation": 0 },
+        { "ellipse": [768, 512, 336, 256], "zone": "central-clearing", "passable": true, "material": "grass", "surface": "none", "elevation": 0 },
+        { "ellipse": [768, 176, 304, 144], "zone": "north-circle", "passable": true, "material": "grass", "surface": "none", "elevation": 0 },
+        { "polygon": [[1088, 256], [1456, 304], [1536, 512], [1280, 608], [1120, 512]], "zone": "east-talk", "passable": true, "material": "stone", "surface": "none", "elevation": 0 },
+        { "ellipse": [224, 512, 176, 160], "zone": "west-niche", "passable": true, "material": "earth", "surface": "none", "elevation": 0 },
+        { "polygon": [[672, 688], [864, 688], [976, 1024], [560, 1024]], "zone": "south-rift", "passable": true, "material": "stone", "surface": "none", "elevation": 0 }
+      ],
+      "doors": [
+        { "id": "eldrin-north-clearing", "from": [768, 320], "to": [768, 352], "state": "open" },
+        { "id": "eldrin-east-talk", "from": [1056, 432], "to": [1088, 432], "state": "open" },
+        { "id": "eldrin-west-niche", "from": [400, 544], "to": [432, 544], "state": "open" },
+        { "id": "eldrin-south-rift", "from": [768, 672], "to": [768, 704], "state": "open" }
+      ],
+      "props": [
+        { "id": "painted:eldrin-great-tree", "assetId": "tree_oak", "rect": [736, 448, 64, 64], "rotation": 0 },
+        { "id": "painted:eldrin-north-stone", "assetId": "boulder", "rect": [704, 144, 64, 64], "rotation": 0 },
+        { "id": "painted:eldrin-east-stone", "assetId": "boulder", "rect": [1168, 384, 64, 64], "rotation": 0 },
+        { "id": "painted:eldrin-west-shrine", "assetId": "roadside_shrine", "rect": [240, 496, 48, 48], "rotation": 0 },
+        { "id": "painted:eldrin-root-stone", "assetId": "rock_small", "rect": [896, 608, 48, 48], "rotation": 0 },
+        { "id": "painted:eldrin-fallen-root", "assetId": "fallen_log", "rect": [416, 688, 96, 40], "rotation": 0 }
+      ],
+      "spawns": [
+        { "id": "party-eldrin-north", "role": "party", "point": [768, 80] },
+        { "id": "neutral-eldrin-tree", "role": "neutral", "point": [768, 512] },
+        { "id": "enemy-eldrin-south", "role": "enemy", "point": [768, 832] }
+      ],
+      "checks": [
+        { "name": "Северный круг", "point": [768, 176] },
+        { "name": "Поляна Великого Древа", "point": [768, 512] },
+        { "name": "Восточная площадка", "point": [1280, 432] },
+        { "name": "Западная мшистая ниша", "point": [224, 512] },
+        { "name": "Южная водная расщелина", "point": [768, 832] }
+      ]
+    },
+    {
+      "location_id": "astohan-obsidian-pass",
+      "name": "Обсидиановый перевал",
+      "width": 48,
+      "height": 32,
+      "source_width": 1536,
+      "source_height": 1024,
+      "image": "/assets/maps/locations/skazanie/astohan-obsidian-pass-v1.webp",
+      "theme": "mountains",
+      "default_material": "stone",
+      "default_zone": "main-trail",
+      "zones": [
+        { "id": "main-trail", "label": "Серпантин перевала", "kind": "exterior", "material": "stone", "lightLevel": "bright" },
+        { "id": "north-approach", "label": "Северный подход", "kind": "exterior", "material": "stone", "lightLevel": "bright" },
+        { "id": "west-overlook", "label": "Западный уступ", "kind": "exterior", "material": "stone", "lightLevel": "bright" },
+        { "id": "east-overlook", "label": "Восточный уступ", "kind": "exterior", "material": "stone", "lightLevel": "bright" },
+        { "id": "watch-hut", "label": "Сторожка", "kind": "interior", "material": "wood", "lightLevel": "dim" },
+        { "id": "lava-cracks", "label": "Жаркие трещины", "kind": "exterior", "material": "stone", "lightLevel": "bright" }
+      ],
+      "terrain": [
+        { "polygon": [[0, 448], [432, 384], [720, 544], [1040, 704], [1536, 864], [1536, 1024], [0, 1024]], "zone": "lava-cracks", "passable": false, "material": "stone", "surface": "rubble", "elevation": 0 },
+        { "polygon": [[0, 64], [304, 64], [544, 176], [704, 320], [928, 448], [1216, 624], [1536, 768], [1536, 928], [1184, 800], [896, 640], [672, 512], [448, 368], [208, 288], [0, 288]], "zone": "main-trail", "passable": true, "material": "stone", "surface": "none", "elevation": 0 },
+        { "ellipse": [400, 208, 192, 112], "zone": "west-overlook", "passable": true, "material": "stone", "surface": "none", "elevation": 1 },
+        { "ellipse": [1120, 512, 192, 128], "zone": "east-overlook", "passable": true, "material": "stone", "surface": "none", "elevation": 1 },
+        { "polygon": [[944, 224], [1200, 224], [1232, 384], [1056, 416], [944, 336]], "zone": "watch-hut", "passable": true, "material": "wood", "surface": "none", "elevation": 0 },
+        { "polygon": [[0, 64], [256, 64], [288, 192], [0, 256]], "zone": "north-approach", "passable": true, "material": "stone", "surface": "none", "elevation": 0 }
+      ],
+      "doors": [
+        { "id": "pass-north-trail", "from": [256, 224], "to": [288, 224], "state": "open" },
+        { "id": "pass-west-overlook", "from": [560, 320], "to": [592, 320], "state": "open" },
+        { "id": "pass-watch-hut", "from": [928, 320], "to": [960, 320], "state": "open" },
+        { "id": "pass-east-overlook", "from": [1008, 512], "to": [1040, 512], "state": "open" }
+      ],
+      "props": [
+        { "id": "painted:pass-watch-fire", "assetId": "campfire", "rect": [1056, 288, 64, 64], "rotation": 0 },
+        { "id": "painted:pass-hut-table", "assetId": "table_long", "rect": [1008, 272, 128, 40], "rotation": 0 },
+        { "id": "painted:pass-old-mark", "assetId": "milestone", "rect": [368, 176, 48, 48], "rotation": 0 },
+        { "id": "painted:pass-west-boulder", "assetId": "boulder", "rect": [512, 256, 64, 64], "rotation": 0 },
+        { "id": "painted:pass-east-boulder", "assetId": "boulder", "rect": [1200, 560, 64, 64], "rotation": 0 },
+        { "id": "painted:pass-scree", "assetId": "rubble_heap", "rect": [768, 464, 80, 64], "rotation": 0 }
+      ],
+      "spawns": [
+        { "id": "party-pass-north", "role": "party", "point": [128, 160] },
+        { "id": "neutral-pass-hut", "role": "neutral", "point": [1088, 304] },
+        { "id": "enemy-pass-east", "role": "enemy", "point": [1200, 544] }
+      ],
+      "checks": [
+        { "name": "Северный подход", "point": [128, 160] },
+        { "name": "Западный уступ", "point": [400, 208] },
+        { "name": "Сторожка", "point": [1088, 304] },
+        { "name": "Восточный уступ", "point": [1200, 544] },
+        { "name": "Серпантин перевала", "point": [768, 480] }
+      ]
+    },
+    {
+      "location_id": "astohan-vulkanis-brazier",
+      "name": "Жаровня Вулканиса",
+      "width": 48,
+      "height": 32,
+      "source_width": 1536,
+      "source_height": 1024,
+      "image": "/assets/maps/locations/skazanie/astohan-vulkanis-brazier-v1.webp",
+      "theme": "cave",
+      "default_material": "stone",
+      "default_zone": "lair",
+      "zones": [
+        { "id": "lair", "label": "Центральное логово", "kind": "interior", "material": "stone", "lightLevel": "dim" },
+        { "id": "ancestor-niche", "label": "Ниша костей Вулканиса", "kind": "interior", "material": "stone", "lightLevel": "dark" },
+        { "id": "crystal-cave", "label": "Западная кристальная пещера", "kind": "interior", "material": "stone", "lightLevel": "dark" },
+        { "id": "east-gallery", "label": "Восточная галерея", "kind": "interior", "material": "stone", "lightLevel": "dim" },
+        { "id": "south-ledge", "label": "Южный каменный уступ", "kind": "interior", "material": "stone", "lightLevel": "dim" },
+        { "id": "lava", "label": "Раскалённая трещина", "kind": "interior", "material": "stone", "lightLevel": "bright" }
+      ],
+      "terrain": [
+        { "polygon": [[0, 704], [480, 672], [832, 688], [1120, 624], [1536, 640], [1536, 1024], [0, 1024]], "zone": "lava", "passable": false, "material": "stone", "surface": "water", "elevation": -1 },
+        { "polygon": [[384, 240], [1120, 240], [1232, 416], [1152, 640], [992, 720], [480, 688], [288, 496]], "zone": "lair", "passable": true, "material": "stone", "surface": "none", "elevation": 0 },
+        { "ellipse": [768, 144, 256, 128], "zone": "ancestor-niche", "passable": true, "material": "stone", "surface": "none", "elevation": 0 },
+        { "ellipse": [192, 320, 160, 128], "zone": "crystal-cave", "passable": true, "material": "stone", "surface": "none", "elevation": 0 },
+        { "polygon": [[1120, 256], [1456, 256], [1536, 384], [1456, 624], [1184, 656], [1104, 480]], "zone": "east-gallery", "passable": true, "material": "stone", "surface": "none", "elevation": 0 },
+        { "polygon": [[480, 624], [1056, 624], [1152, 736], [1056, 816], [480, 816], [400, 720]], "zone": "south-ledge", "passable": true, "material": "stone", "surface": "none", "elevation": 0 },
+        { "polygon": [[0, 512], [320, 512], [448, 640], [352, 736], [0, 768]], "zone": "crystal-cave", "passable": true, "material": "stone", "surface": "none", "elevation": 0 }
+      ],
+      "doors": [
+        { "id": "brazier-west-entrance", "from": [320, 512], "to": [352, 512], "state": "open" },
+        { "id": "brazier-ancestor-niche", "from": [752, 240], "to": [752, 272], "state": "open" },
+        { "id": "brazier-east-gallery", "from": [1088, 448], "to": [1120, 448], "state": "open" },
+        { "id": "brazier-south-ledge", "from": [768, 608], "to": [768, 640], "state": "open" }
+      ],
+      "props": [
+        { "id": "painted:brazier-central-fire", "assetId": "brazier", "rect": [736, 400, 64, 64], "rotation": 0 },
+        { "id": "painted:brazier-ancestor-bones", "assetId": "bone_pile", "rect": [704, 112, 80, 48], "rotation": 0 },
+        { "id": "painted:brazier-central-obelisk", "assetId": "stalagmite", "rect": [608, 480, 64, 64], "rotation": 0 },
+        { "id": "painted:brazier-east-shelves", "assetId": "shelf_wall", "rect": [1248, 336, 128, 32], "rotation": 90 },
+        { "id": "painted:brazier-rubble", "assetId": "rubble_heap", "rect": [944, 528, 80, 64], "rotation": 0 },
+        { "id": "painted:brazier-crystal-vein", "assetId": "ore_vein", "rect": [176, 352, 64, 32], "rotation": 0 },
+        { "id": "painted:brazier-hoard-chest", "assetId": "chest", "rect": [864, 176, 48, 40], "rotation": 0 }
+      ],
+      "spawns": [
+        { "id": "party-brazier-entrance", "role": "party", "point": [192, 608] },
+        { "id": "neutral-brazier-lair", "role": "neutral", "point": [768, 416] },
+        { "id": "enemy-brazier-gallery", "role": "enemy", "point": [1280, 448] }
+      ],
+      "checks": [
+        { "name": "Западный обрушенный вход", "point": [192, 608] },
+        { "name": "Центральное логово", "point": [768, 416] },
+        { "name": "Ниша костей Вулканиса", "point": [768, 144] },
+        { "name": "Восточная галерея", "point": [1280, 448] },
+        { "name": "Южный каменный уступ", "point": [768, 720] }
+      ]
+    }
+  ]
+}

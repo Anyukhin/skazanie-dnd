@@ -1,0 +1,332 @@
+{
+  "schema_version": "skazanie:authored-map-art-v1",
+  "generated_at": "2026-09-08",
+  "status": "complete-overviews",
+  "scope": [
+    "astohan-plains"
+  ],
+  "workflow": {
+    "generator": "built-in-imagegen",
+    "source_policy": "Оригинальный PNG-ответ ImageGen сохранён в generated_images; исходник не изменялся.",
+    "production_policy": "PNG приведён к 1536×1024 WebP через ffmpeg/libwebp; соотношение сторон сохранено.",
+    "map_policy": "Большие изображения используются только как общий план без фишек и сетки. Геометрия движения и боя — отдельные малые карты в data/authored-location-maps-v1.json.",
+    "qa_policy": [
+      "строгий top-down 90° без перспективы",
+      "богатый roofless cutaway королевского замка, а не типовая казарма",
+      "нет текста, подписей, сетки, compass, watermark, людей, чудовищ и токенов"
+    ]
+  },
+  "assets": [
+    {
+      "id": "astohan-stormberg",
+      "name": "Штормберг · королевский замок Ареса",
+      "prompt": "Use case: stylized-concept. Создай законченный богатый full top-down battlemap королевского замка Ареса в Штормберге: большой асимметричный приморский каменный дворец с башнями, круглыми бастионами, парадным садом и фонтаном, центральной военной галереей с длинным советным столом, королевской апсидой, часовнями, архивами, оружейной, мастерскими и несколькими крыльями. Крыши сняты, все комнаты и проходы читаются сверху, замок занимает почти весь кадр и имеет нерегулярный контур. Строгая ортографическая съёмка ровно сверху, без перспективы и изометрии. Без текста, букв, цифр, подписей, сетки, compass, UI, watermark, людей, животных, чудовищ, токенов и рамки.",
+      "source": {
+        "path": "C:/Users/anton/.codex/generated_images/01a07e05-706e-7d53-904f-47902e0f5121/exec-91dcce49-20c2-4f76-9c3b-a95272a4cc65.png",
+        "format": "png",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "production": {
+        "path": "public/assets/maps/locations/skazanie/astohan-stormberg-v1.webp",
+        "format": "webp",
+        "dimensions": [
+          1536,
+          1024
+        ],
+        "sha256": "13d4938b2a304f18e2c167160642b5314c1d302e468583a3b9a4699714860e7d",
+        "bytes": 586370
+      },
+      "layout": {
+        "path": "data/authored-location-layouts-ares-v1.json",
+        "map": "tmp/authored-maps/ares-full-preview.json",
+        "grid": {
+          "width": 96,
+          "height": 64,
+          "cell_pixels": 16
+        }
+      },
+      "qa": {
+        "status": "historical",
+        "checks": {
+          "top_down": true,
+          "royal_castle_readable": true,
+          "grid_aligned": true,
+          "no_text_grid_people_tokens": true,
+          "tactical_map_valid": true,
+          "doors": "ожидаются в layout root перед финальным UI-проходом"
+        },
+        "notes": "Исторический вариант большого замка v1. Его разметка сохранена для совместимости; новые кампании используют малую галерею24×18."
+      }
+    }
+  ],
+  "completed_at": "2026-09-09",
+  "current_overviews": [
+    {
+      "id": "astohan-stormberg",
+      "name": "Штормберг · Военная галерея",
+      "source": "C:\\Users\\anton\\.codex\\generated_images\\01a07e05-706e-7d53-904f-47902e0f5121\\exec-80437c4f-6724-4b6a-a60b-4d312771e172.png",
+      "source_match": {
+        "method": "recorded-tool-result"
+      },
+      "production": "public/assets/maps/locations/skazanie/astohan-stormberg-v2.webp",
+      "dimensions": [
+        1536,
+        1024
+      ],
+      "bytes": 833256,
+      "sha256": "64eacb7c2c1e45038f28eea3cacfc683c1d0e2699a4f96f4a51e099e88637490",
+      "usage": "overview-only",
+      "qa": "Просмотрено при подготовке: соответствует локации, без текста, сетки и игровых персонажей."
+    },
+    {
+      "id": "astohan-ash-watch",
+      "name": "Пепельная застава · Пепельный двор",
+      "source": "C:/Users/anton/.codex/generated_images/01a07e08-6a3a-7820-9d7b-ab1fd47b45b4/exec-9c08f1c5-f5ed-4b21-a519-021422df3e58.png",
+      "source_match": {
+        "method": "pixel-similarity",
+        "mean_difference": 0.072,
+        "next_candidate_difference": 18.8754
+      },
+      "production": "public/assets/maps/locations/skazanie/astohan-ash-watch-v1.webp",
+      "dimensions": [
+        1536,
+        1024
+      ],
+      "bytes": 810676,
+      "sha256": "b41e74ae3b24a918644adc10dde8d55dedf72f0dc53a64703f33a1d338491afb",
+      "usage": "overview-only",
+      "qa": "Просмотрено при подготовке: соответствует локации, без текста, сетки и игровых персонажей."
+    },
+    {
+      "id": "astohan-mirror-lake",
+      "name": "Озеро Двух Отражений · Гладкий западный берег",
+      "source": "C:/Users/anton/.codex/generated_images/01a07e08-6a3a-7820-9d7b-ab1fd47b45b4/exec-717661ef-e834-4556-932c-4f725dd20e0d.png",
+      "source_match": {
+        "method": "pixel-similarity",
+        "mean_difference": 0.1042,
+        "next_candidate_difference": 20.793
+      },
+      "production": "public/assets/maps/locations/skazanie/astohan-mirror-lake-v1.webp",
+      "dimensions": [
+        1536,
+        1024
+      ],
+      "bytes": 729072,
+      "sha256": "73076ee287d71a64c2073321ae2ba9b15d68acb29dba18f690634be4625124e2",
+      "usage": "overview-only",
+      "qa": "Просмотрено при подготовке: соответствует локации, без текста, сетки и игровых персонажей."
+    },
+    {
+      "id": "astohan-forgotten-cliffs",
+      "name": "Замок Забытых Скал · Двор падающих звёзд",
+      "source": "C:/Users/anton/.codex/generated_images/01a07e08-6a3a-7820-9d7b-ab1fd47b45b4/exec-56940a31-51bd-4d3c-a929-0ca14a891a51.png",
+      "source_match": {
+        "method": "pixel-similarity",
+        "mean_difference": 0.0842,
+        "next_candidate_difference": 17.9188
+      },
+      "production": "public/assets/maps/locations/skazanie/astohan-forgotten-cliffs-v1.webp",
+      "dimensions": [
+        1536,
+        1024
+      ],
+      "bytes": 648078,
+      "sha256": "eee9e8a8b613e0618d5e0880aff877fcfa0dfbe2787685936e92ac3abe9e57d4",
+      "usage": "overview-only",
+      "qa": "Просмотрено при подготовке: соответствует локации, без текста, сетки и игровых персонажей."
+    },
+    {
+      "id": "astohan-mittlayd",
+      "name": "Миттлайд · Южная зерновая площадь",
+      "source": "C:/Users/anton/.codex/generated_images/01a07e08-6a3a-7820-9d7b-ab1fd47b45b4/exec-c58fb4e7-ead5-483b-9cdb-894799b5d1b3.png",
+      "source_match": {
+        "method": "pixel-similarity",
+        "mean_difference": 0.0898,
+        "next_candidate_difference": 20.4045
+      },
+      "production": "public/assets/maps/locations/skazanie/astohan-mittlayd-v1.webp",
+      "dimensions": [
+        1536,
+        1024
+      ],
+      "bytes": 815890,
+      "sha256": "e782fd6bdaa6afd83e72839a1e8b64648da2c1454512fa7437d44aded1485556",
+      "usage": "overview-only",
+      "qa": "Просмотрено при подготовке: соответствует локации, без текста, сетки и игровых персонажей."
+    },
+    {
+      "id": "astohan-quiet-watch-camp",
+      "name": "Лагерь Тихой Стражи · Центральный плац",
+      "source": "C:/Users/anton/.codex/generated_images/01a07e08-6a3a-7820-9d7b-ab1fd47b45b4/exec-fe52c7a1-72f2-46f5-86f6-a35b80aa940e.png",
+      "source_match": {
+        "method": "pixel-similarity",
+        "mean_difference": 0.0738,
+        "next_candidate_difference": 17.0933
+      },
+      "production": "public/assets/maps/locations/skazanie/astohan-quiet-watch-camp-v1.webp",
+      "dimensions": [
+        1536,
+        1024
+      ],
+      "bytes": 715694,
+      "sha256": "b70c928443fa5ca32f1fa58f0c1be2134a882d63051e536fb58c0a812caf5f46",
+      "usage": "overview-only",
+      "qa": "Просмотрено при подготовке: соответствует локации, без текста, сетки и игровых персонажей."
+    },
+    {
+      "id": "astohan-cursed-woods",
+      "name": "Проклятый лес · Каменная тропа обещаний",
+      "source": "C:/Users/anton/.codex/generated_images/01a07e08-6a3a-7820-9d7b-ab1fd47b45b4/exec-2cc0932e-a5b1-4d2d-9645-0f3685f680bd.png",
+      "source_match": {
+        "method": "pixel-similarity",
+        "mean_difference": 0.069,
+        "next_candidate_difference": 17.0825
+      },
+      "production": "public/assets/maps/locations/skazanie/astohan-cursed-woods-v1.webp",
+      "dimensions": [
+        1536,
+        1024
+      ],
+      "bytes": 761430,
+      "sha256": "080c856209172387bb8b4d54652072edcfefbe791f51c116bc317c9bc78cd6e5",
+      "usage": "overview-only",
+      "qa": "Просмотрено при подготовке: соответствует локации, без текста, сетки и игровых персонажей."
+    },
+    {
+      "id": "astohan-redstone",
+      "name": "Редстоуновка · Главная улица",
+      "source": "C:/Users/anton/.codex/generated_images/01a07e08-6a3a-7820-9d7b-ab1fd47b45b4/exec-29700539-106c-4c45-86c9-8be70d2b688e.png",
+      "source_match": {
+        "method": "pixel-similarity",
+        "mean_difference": 0.0773,
+        "next_candidate_difference": 23.503
+      },
+      "production": "public/assets/maps/locations/skazanie/astohan-redstone-v1.webp",
+      "dimensions": [
+        1536,
+        1024
+      ],
+      "bytes": 865026,
+      "sha256": "9f6ad63d93f8b5bbe1500e8377c871f615ae5b32f385676017c025b2193f3cd2",
+      "usage": "overview-only",
+      "qa": "Просмотрено при подготовке: соответствует локации, без текста, сетки и игровых персонажей."
+    },
+    {
+      "id": "astohan-smugglers-cave",
+      "name": "Пещера Чёрного Эха · Центральный штрек",
+      "source": "C:/Users/anton/.codex/generated_images/01a07e08-6a3a-7820-9d7b-ab1fd47b45b4/exec-d5c5114a-d51c-4f6a-bdf4-c7630c4a11a7.png",
+      "source_match": {
+        "method": "pixel-similarity",
+        "mean_difference": 0.0933,
+        "next_candidate_difference": 24.5573
+      },
+      "production": "public/assets/maps/locations/skazanie/astohan-smugglers-cave-v1.webp",
+      "dimensions": [
+        1536,
+        1024
+      ],
+      "bytes": 535354,
+      "sha256": "b5ef021cb72ebaaa92c83e5b2516b32e220571f7f8e2056153c39470fb41e6fb",
+      "usage": "overview-only",
+      "qa": "Просмотрено при подготовке: соответствует локации, без текста, сетки и игровых персонажей."
+    },
+    {
+      "id": "astohan-lomar-tower",
+      "name": "Башня Ломара · Выжженный двор",
+      "source": "C:/Users/anton/.codex/generated_images/01a07e08-6a3a-7820-9d7b-ab1fd47b45b4/exec-1e9486e2-1641-4c23-9767-911e31c240b4.png",
+      "source_match": {
+        "method": "pixel-similarity",
+        "mean_difference": 0.079,
+        "next_candidate_difference": 18.8546
+      },
+      "production": "public/assets/maps/locations/skazanie/astohan-lomar-tower-v1.webp",
+      "dimensions": [
+        1536,
+        1024
+      ],
+      "bytes": 705706,
+      "sha256": "02481f35cbc0f12051b30fc9b9771ccd3c10d6b23ebd40909232ef9fcf5809ee",
+      "usage": "overview-only",
+      "qa": "Просмотрено при подготовке: соответствует локации, без текста, сетки и игровых персонажей."
+    },
+    {
+      "id": "astohan-wild-forest",
+      "name": "Дикий лес · Центральная поляна",
+      "source": "C:/Users/anton/.codex/generated_images/01a07e08-6a3a-7820-9d7b-ab1fd47b45b4/exec-03542d77-54ef-4628-867b-d3b6ca6ccd86.png",
+      "source_match": {
+        "method": "pixel-similarity",
+        "mean_difference": 0.0881,
+        "next_candidate_difference": 22.2396
+      },
+      "production": "public/assets/maps/locations/skazanie/astohan-wild-forest-v1.webp",
+      "dimensions": [
+        1536,
+        1024
+      ],
+      "bytes": 851648,
+      "sha256": "5b6ff39bcb4b82e963ad4a78c5c55b6fb906745210c93cdb95e3e78617a2ab12",
+      "usage": "overview-only",
+      "qa": "Просмотрено при подготовке: соответствует локации, без текста, сетки и игровых персонажей."
+    },
+    {
+      "id": "astohan-eldrin-heart",
+      "name": "Сердце Элдрина · Поляна Великого Древа",
+      "source": "C:/Users/anton/.codex/generated_images/01a07e08-6a3a-7820-9d7b-ab1fd47b45b4/exec-6c079237-154c-45d0-bd73-aabd62bd2cd9.png",
+      "source_match": {
+        "method": "pixel-similarity",
+        "mean_difference": 0.0972,
+        "next_candidate_difference": 22.2383
+      },
+      "production": "public/assets/maps/locations/skazanie/astohan-eldrin-heart-v1.webp",
+      "dimensions": [
+        1536,
+        1024
+      ],
+      "bytes": 862718,
+      "sha256": "8f62722064bdaecb5422ba316f8989cf7d2e7f162cfb3ff4f4b085f184ba8ffd",
+      "usage": "overview-only",
+      "qa": "Просмотрено при подготовке: соответствует локации, без текста, сетки и игровых персонажей."
+    },
+    {
+      "id": "astohan-obsidian-pass",
+      "name": "Обсидиановый перевал · Серпантин перевала",
+      "source": "C:/Users/anton/.codex/generated_images/01a07e08-6a3a-7820-9d7b-ab1fd47b45b4/exec-bf256796-19bf-4f6a-812a-f1b3393102b7.png",
+      "source_match": {
+        "method": "pixel-similarity",
+        "mean_difference": 0.0742,
+        "next_candidate_difference": 26.9983
+      },
+      "production": "public/assets/maps/locations/skazanie/astohan-obsidian-pass-v1.webp",
+      "dimensions": [
+        1536,
+        1024
+      ],
+      "bytes": 676612,
+      "sha256": "5eaef8ad0f44724131cf6308aaee66a435c464a18a2ee64017c7c881c5053b2a",
+      "usage": "overview-only",
+      "qa": "Просмотрено при подготовке: соответствует локации, без текста, сетки и игровых персонажей."
+    },
+    {
+      "id": "astohan-vulkanis-brazier",
+      "name": "Жаровня Вулканиса · Центральное логово",
+      "source": "C:/Users/anton/.codex/generated_images/01a07e08-6a3a-7820-9d7b-ab1fd47b45b4/exec-3f0dc868-e002-4799-a1f3-9c83c544416d.png",
+      "source_match": {
+        "method": "pixel-similarity",
+        "mean_difference": 0.1272,
+        "next_candidate_difference": 27.9028
+      },
+      "production": "public/assets/maps/locations/skazanie/astohan-vulkanis-brazier-v1.webp",
+      "dimensions": [
+        1536,
+        1024
+      ],
+      "bytes": 687326,
+      "sha256": "12db2b5f71463aefdf42735d8f2afc98ef0fa37725df978dc14e8653f57f20da",
+      "usage": "overview-only",
+      "qa": "Просмотрено при подготовке: соответствует локации, без текста, сетки и игровых персонажей."
+    }
+  ]
+}

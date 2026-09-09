@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -128,6 +128,81 @@ test('enforces idempotency before optimistic locking and rejects key reuse', asy
   assert.equal((await store.getEvents('locking')).length, 1)
 })
 
+test('пакет событий сохраняет снимок при превышении интервала, даже на некратной версии', async (t) => {
+  const { rootDir, reducer, store } = temporaryStore(t, { snapshotEvery: 3 })
+  await store.initializeCampaign({ campaign_id: 'batched-snapshots', initial_state: { hp: 10 } })
+  const commit = (version, count, forceSnapshot = false) => store.commit({
+    campaign_id: 'batched-snapshots', expected_state_version: version,
+    idempotency_key: `batch-${version}`, forceSnapshot,
+    events: Array.from({ length: count }, () => ({ event_type: 'HealingApplied', payload: { amount: 1 } })),
+  })
+  await commit(0, 2)
+  assert.equal((await store.load('batched-snapshots')).events_applied, 2)
+  const atFour = await commit(2, 2)
+  assert.equal((await store.load('batched-snapshots')).events_applied, 0)
+  const snapshots = () => readdirSync(join(campaignDirectory(rootDir), 'snapshots')).sort()
+  assert.deepEqual(snapshots(), ['0000000000000000.json', '0000000000000004.json'])
+  assert.deepEqual((await store.replay('batched-snapshots', { use_snapshots: false })).state, atFour.state)
+  assert.equal((await store.load('batched-snapshots', { atVersion: 3 })).state.hp, 13)
+
+  await commit(4, 1, true)
+  assert.equal((await store.load('batched-snapshots')).events_applied, 0)
+  await commit(5, 2)
+  assert.equal((await store.load('batched-snapshots')).events_applied, 2, 'принудительный снимок начинает новый интервал')
+  const last = await commit(7, 1)
+  assert.deepEqual(snapshots(), [0, 4, 5, 8].map((version) => `${String(version).padStart(16, '0')}.json`))
+  const reopened = new FileEventStore({ rootDir, reducer, snapshotEvery: 3 })
+  assert.equal((await reopened.load('batched-snapshots')).events_applied, 0)
+  assert.deepEqual((await reopened.replay('batched-snapshots', { use_snapshots: false })).state, last.state)
+})
+
+test('snapshotEvery=0 выключает автоматические снимки, но сохраняет явный forceSnapshot', async (t) => {
+  const { rootDir, store } = temporaryStore(t, { snapshotEvery: 0 })
+  await store.initializeCampaign({ campaign_id: 'manual-snapshots', initial_state: { hp: 10 } })
+  await store.commit({
+    campaign_id: 'manual-snapshots', expected_state_version: 0, idempotency_key: 'manual', forceSnapshot: true,
+    events: [{ event_type: 'HealingApplied', payload: { amount: 1 } }],
+  })
+  await store.commit({
+    campaign_id: 'manual-snapshots', expected_state_version: 1, idempotency_key: 'automatic-disabled',
+    events: Array.from({ length: 5 }, () => ({ event_type: 'HealingApplied', payload: { amount: 1 } })),
+  })
+  assert.deepEqual(readdirSync(join(campaignDirectory(rootDir), 'snapshots')).sort(), ['0000000000000000.json', '0000000000000001.json'])
+  const loaded = await store.load('manual-snapshots')
+  assert.equal(loaded.events_applied, 5)
+  assert.equal(loaded.state.hp, 16)
+})
+
+test('новый вызов видит чужой коммит и проверяет журнал даже при готовом снимке', async (t) => {
+  const { rootDir, reducer, store } = temporaryStore(t, { snapshotEvery: 1 })
+  await store.initializeCampaign({ campaign_id: 'fresh-read', initial_state: { hp: 10 } })
+  const request = {
+    campaign_id: 'fresh-read', expected_state_version: 0, idempotency_key: 'first',
+    events: [{ event_type: 'HealingApplied', payload: { amount: 1 } }],
+  }
+  await store.commit(request)
+  const other = new FileEventStore({ rootDir, reducer, snapshotEvery: 1 })
+  await other.commit({ ...request, expected_state_version: 1, idempotency_key: 'second' })
+  const duplicate = await store.getByIdempotencyKey('fresh-read', 'first')
+  assert.equal(duplicate.state_version, 1)
+  assert.equal(duplicate.current_state_version, 2)
+  assert.equal(duplicate.state.hp, 11)
+  assert.equal((await store.commit(request)).current_state_version, 2)
+  const loaded = await store.load('fresh-read', { commits: [], knownCommits: [] })
+  assert.equal(loaded.state_version, 2, 'публичные options не подменяют журнал')
+  assert.equal(loaded.state.hp, 12)
+
+  const eventsDir = join(campaignDirectory(rootDir), 'events')
+  const firstFile = join(eventsDir, readdirSync(eventsDir).sort()[0])
+  writeFileSync(firstFile, '{}')
+  for (const operation of [
+    () => store.load('fresh-read', { commits: [], knownCommits: [] }),
+    () => store.getByIdempotencyKey('fresh-read', 'first'),
+    () => store.commit({ ...request, expected_state_version: 2, idempotency_key: 'third' }),
+  ]) await assert.rejects(operation, { code: 'CORRUPT_EVENT_LOG' })
+  assert.equal(readdirSync(eventsDir).length, 2, 'повреждённый журнал не дополняется новым коммитом')
+})
+
 test('does not append an event when the injected reducer rejects it', async (t) => {
   const { store } = temporaryStore(t)
   await store.initializeCampaign({ campaign_id: 'reducer-failure', initial_state: { hp: 4 } })
@@ -143,6 +218,85 @@ test('does not append an event when the injected reducer rejects it', async (t) 
   assert.equal(loaded.state_version, 0)
   assert.equal(loaded.state.hp, 4)
   assert.deepEqual(await store.getEvents('reducer-failure'), [])
+})
+
+test('изменяемый reducer не связывает аргументы, ответы, события и снимки общими ссылками', async (t) => {
+  const reducerInputs = []
+  const normalizerInputs = []
+  const reducer = (state, event) => {
+    if (reducerInputs.length) reducerInputs.at(-1).state.stats.hp = -100
+    reducerInputs.push({ state, event })
+    state.stats.hp += event.payload.amount
+    event.payload.amount = 999
+    return state
+  }
+  const normalizeState = (state) => {
+    normalizerInputs.push(state)
+    state.normalized = true
+    return state
+  }
+  const { rootDir, store } = temporaryStore(t, { reducer, normalizeState, snapshotEvery: 2 })
+  const initial = { stats: { hp: 10 } }
+  const initialized = await store.initializeCampaign({ campaign_id: 'isolation', initial_state: initial })
+  const request = {
+    campaign_id: 'isolation', expected_state_version: 0, idempotency_key: 'two-events',
+    events: [2, 3].map((amount) => ({ event_type: 'HealingApplied', payload: { amount } })),
+  }
+  const committed = await store.commit(request)
+  const expected = { stats: { hp: 15 }, normalized: true, state_version: 2 }
+  assert.deepEqual(committed.state, expected)
+  assert.deepEqual(initial, { stats: { hp: 10 } })
+  assert.equal(initialized.state.stats.hp, 10)
+  assert.deepEqual(committed.events.map((event) => event.payload.amount), [2, 3])
+  assert.deepEqual(request.events.map((event) => event.payload.amount), [2, 3])
+
+  for (const { state, event } of reducerInputs) { state.stats.hp = -200; event.payload.amount = -200 }
+  for (const state of normalizerInputs) state.stats.hp = -300
+  assert.deepEqual(committed.state, expected)
+  const duplicate = await store.commit(request)
+  assert.equal(duplicate.duplicate, true)
+  assert.deepEqual(duplicate.state, expected)
+  committed.state.stats.hp = -400
+  committed.events[0].payload.amount = -400
+  assert.deepEqual((await store.load('isolation')).state, expected)
+  assert.deepEqual((await store.replay('isolation', { use_snapshots: false })).state, expected)
+  assert.equal((await store.load('isolation', { atVersion: 1 })).state.stats.hp, 12)
+  const reopened = new FileEventStore({ rootDir, reducer, normalizeState })
+  assert.deepEqual((await reopened.load('isolation')).state, expected)
+  assert.deepEqual((await reopened.getEvents('isolation')).map((event) => event.payload.amount), [2, 3])
+})
+
+test('ошибка после изменения состояния reducer не сохраняет часть пакета событий', async (t) => {
+  const failures = [
+    ['throw', /отказ reducer/u],
+    ['undefined', { code: 'INVALID_REDUCER_RESULT' }],
+    ['promise', { code: 'ASYNC_REDUCER_NOT_SUPPORTED' }],
+    ['bigint', { code: 'INVALID_JSON_VALUE' }],
+    ['cycle', { code: 'INVALID_JSON_VALUE' }],
+  ]
+  for (const [failure, expectedError] of failures) {
+    await t.test(failure, async (t) => {
+      const reducer = (state, event) => {
+        state.stats.hp = 0
+        if (event.event_type !== 'Failure') return state
+        if (failure === 'throw') throw new Error('отказ reducer')
+        if (failure === 'undefined') return undefined
+        if (failure === 'promise') return Promise.resolve(state)
+        if (failure === 'bigint') state.invalid = 1n
+        if (failure === 'cycle') state.invalid = state
+        return state
+      }
+      const { store } = temporaryStore(t, { reducer })
+      await store.initializeCampaign({ campaign_id: 'atomic', initial_state: { stats: { hp: 10 } } })
+      await assert.rejects(store.commit({
+        campaign_id: 'atomic', expected_state_version: 0, idempotency_key: 'rejected',
+        events: [{ event_type: 'Changed' }, { event_type: 'Failure' }],
+      }), expectedError)
+      assert.deepEqual((await store.load('atomic')).state, { stats: { hp: 10 }, state_version: 0 })
+      assert.deepEqual(await store.getEvents('atomic'), [])
+      assert.equal(await store.getByIdempotencyKey('atomic', 'rejected'), null)
+    })
+  }
 })
 
 test('projection outbox survives restart until the compatibility projection acknowledges it', async (t) => {

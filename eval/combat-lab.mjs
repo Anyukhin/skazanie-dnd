@@ -403,8 +403,10 @@ export async function runCombatScenario({ scenario = 'duel', seed = 1, maxSteps 
       assert.equal(duplicate.replayed, true, 'Повтор команды создал новый коммит')
       assert.equal(rolls.length, rollCount, 'Повтор команды сделал новые броски')
       assert.deepEqual(duplicate.events, committed.events)
-      assert.equal((await eventStore.load(campaignId)).state_version, committed.state_version)
-      const afterPlayer = (await eventStore.load(campaignId)).state
+      // Повтор уже перечитал журнал с диска, включая его текущую версию.
+      assert.equal(duplicate.current_state_version, committed.state_version)
+      assert.deepEqual(duplicate.state, committed.state, 'Повтор команды изменил подтверждённое состояние')
+      const afterPlayer = duplicate.state
       assertState(afterPlayer)
       if (!customState && command.command_type === 'MakeAttack' && !afterPlayer.mechanics.combat.reaction_window
         && afterPlayer.enemies.some((actor) => actor.id === command.target_id && actor.hp > 0 && actor.alive !== false)) {
@@ -424,7 +426,9 @@ export async function runCombatScenario({ scenario = 'duel', seed = 1, maxSteps 
       entry.npc_turns = settled.turns
       entry.npc_events = settled.events
       checkEvents(settled.events)
-      const state = (await eventStore.load(campaignId)).state
+      // Планировщик нормализует карточки и может вернуть поля с undefined;
+      // сравниваем их в той же JSON-форме, которую сохраняет Event Store.
+      const state = JSON.parse(JSON.stringify(settled.state))
       assertState(state)
       entry.after_version = state.state_version
       // Проверка воспроизведения выполняется после каждого шага, включая ходы NPC.

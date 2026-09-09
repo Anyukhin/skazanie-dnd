@@ -2,15 +2,16 @@ import { createHash, randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 
 import { Adjudicator } from './adjudicator.mjs'
+import { ActionAdjudicator } from './action-adjudicator.mjs'
 import { answerKnownLore } from './player-request-router.mjs'
 import { PROMPT_DESCRIPTORS } from './prompt-descriptors.mjs'
-import { TURN_TRACE_SCHEMA_VERSION } from './trace-store.mjs'
+import { TURN_TRACE_SCHEMA_VERSION, isMechanicalTrace } from './trace-store.mjs'
 import { AutonomousCampaignOrchestrator } from './autonomous-orchestrator.mjs'
 import { IdempotencyConflictError } from './event-store.mjs'
 import { deterministicNarratorFor, renderDeterministicNarration } from './deterministic-narration.mjs'
-import { combatNarrator } from './combat-narration.mjs'
+import { combatNarrator, combatNarration, damageTypeLabel } from './combat-narration.mjs'
 import './encounter-narration.mjs'
-import { IntentParser, buildRuleQueries, inferRequestKind, normalizeRequestKind } from './intent-parser.mjs'
+import { IntentParser, actionSequence, buildRuleQueries, inferRequestKind, normalizeRequestKind } from './intent-parser.mjs'
 import './merchant-narration.mjs'
 import { ensureNpcSocialState, npcConversationNarration, npcProfileAtWorldTime, npcSocialForViewer, relationshipTier } from './npc-social.mjs'
 import { assertNpcSocialCheckFingerprint, buildNpcSocialCheckPolicy, npcSocialCheckOutcome } from './npc-social-check.mjs'
@@ -22,6 +23,7 @@ import {
   NARRATOR_RECENT_TEXT_LIMIT,
   Narrator,
   deterministicNarration,
+  narratorResponsePlan,
   verifyNarratorCraft,
 } from './narrator.mjs'
 import { TAVERN_DICE_APPROACHES, TAVERN_POLICY_ID, tavernRoundFor } from './tavern-life.mjs'
@@ -35,10 +37,10 @@ import {
   pickpocketDifficultyFor,
 } from './pickpocket.mjs'
 import { actorNameResolver, eventSummary, normalizeCampaignState, previewD20Check, previewTavernDiceRoll, shrinePrayerRefusalFor } from './rules-engine.mjs'
-import { ABILITY_LABELS_RU, SKILL_LABELS_RU, d20CheckLabel } from './free-action-adjudication.mjs'
+import { ABILITY_LABELS_RU, SKILL_LABELS_RU, d20CheckLabel, explainActionCheck, hasRecognizedFreeActionApproach } from './free-action-adjudication.mjs'
 import './scene-narration.mjs'
 import './scene-hazard-narration.mjs'
-import { buildNarrationBrief, projectVisibleState, validateAllowedCommands, verifyNarration } from './security.mjs'
+import { buildNarrationBrief, projectVisibleState, redactTrace, validateAllowedCommands, verifyNarration } from './security.mjs'
 import { campaignStateForViewer, mechanicsForViewer, publicAdventureFor, turnExplanationForViewer } from './viewer-projection.mjs'
 import { campaignConceptForAgent, sceneContextForAgent } from './agent-context.mjs'
 import { worldClockForAgents } from './weather.mjs'
@@ -52,6 +54,25 @@ export const DIRECTOR_COMMAND_CAPABILITY = Symbol('skazanie:director-command-cap
 
 function emptyEffects() {
   return { roll: null, reveal: [], spawn: [], objective: null, grantItems: [] }
+}
+
+const DIALOGUE_RESPONSE_PLAN_VERSION = 'dialogue-response-plan/v1'
+
+function dialogueVerification(mode, upstream = '') {
+  return {
+    valid: true,
+    violations: [],
+    response_plan: {
+      version: DIALOGUE_RESPONSE_PLAN_VERSION,
+      mode,
+      speech_act: mode === 'silence' ? 'none' : 'answer_question',
+    },
+    origin: {
+      source: 'template',
+      reason: 'server_policy',
+      ...(upstream ? { upstream: String(upstream).slice(0, 80) } : {}),
+    },
+  }
 }
 
 /**
@@ -495,11 +516,16 @@ const NARRATION_MEMORY_CAMPAIGNS = 64
 
 function recentCampaignNarrations(traceStore, campaignId) {
   if (!traceStore || !campaignId) return []
+  const isNarrationMemoryTrace = (trace) => {
+    const mode = trace?.narration_result?.verification?.response_plan?.mode
+    return !['table_talk', 'silence'].includes(String(mode ?? ''))
+  }
   const traces = typeof traceStore.recent === 'function'
-    ? traceStore.recent(campaignId, NARRATOR_RECENT_TEXT_LIMIT)
-    : (typeof traceStore.latest === 'function' ? [traceStore.latest(campaignId)] : [])
+    ? traceStore.recent(campaignId, NARRATOR_RECENT_TEXT_LIMIT, { predicate: isNarrationMemoryTrace })
+    : (typeof traceStore.latest === 'function' ? [traceStore.latest(campaignId, { predicate: isNarrationMemoryTrace })] : [])
   return traces
     .filter(Boolean)
+    .filter(isNarrationMemoryTrace)
     .reverse()
     .map((trace) => String(trace?.narration_result?.narration ?? '').trim())
     .filter(Boolean)
@@ -634,23 +660,45 @@ function cachedNarration(trace, brief, knownRuleIds) {
     verifyNarration(text, brief, { knownRuleIds }),
   )
   if (!verification.valid) return null
+  const originalOrigin = cached?.verification?.origin
+  const originalSource = originalOrigin?.source === 'llm' ? 'llm' : 'template'
+  const originalReason = ['generated', 'no_provider', 'provider_error', 'verification_rejected', 'empty_response', 'cached_response', 'replay_fallback'].includes(String(originalOrigin?.reason))
+    ? String(originalOrigin.reason)
+    : ''
+  const originalElapsed = Number(originalOrigin?.elapsed_ms)
+  const responsePlan = narratorResponsePlan(brief)
+  responsePlan.delivery = 'cached'
   return {
     narration: text,
-    verification,
-    prompt_version: String(cached.prompt_version || NARRATOR_PROMPT_VERSION),
+    verification: {
+      ...verification,
+      response_plan: responsePlan,
+      origin: {
+        source: originalSource,
+        reason: 'cached_response',
+        ...(originalReason ? { upstream: originalReason } : {}),
+        elapsed_ms: Number.isFinite(originalElapsed) ? originalElapsed : 0,
+      },
+    },
+    prompt_version: Object.hasOwn(cached, 'prompt_version') ? cached.prompt_version : NARRATOR_PROMPT_VERSION,
     provider: String(cached.provider || 'cached-idempotent-replay'),
   }
 }
 
 function deterministicReplayNarration(brief, knownRuleIds, resolveName) {
   const fallback = deterministicNarration(brief, resolveName)
+  const responsePlan = narratorResponsePlan(brief)
   return {
     ...fallback,
-    verification: verifyNarratorCraft(
-      fallback.narration,
-      brief,
-      verifyNarration(fallback.narration, brief, { knownRuleIds }),
-    ),
+    verification: {
+      ...verifyNarratorCraft(
+        fallback.narration,
+        brief,
+        verifyNarration(fallback.narration, brief, { knownRuleIds }),
+      ),
+      response_plan: responsePlan,
+      origin: { source: 'template', reason: 'replay_fallback', elapsed_ms: 0 },
+    },
     prompt_version: NARRATOR_PROMPT_VERSION,
     provider: 'deterministic-idempotent-replay',
   }
@@ -684,9 +732,9 @@ function deterministicNarratorResponse(narrator, events, state, brief, knownRule
  * Отказ обязан подсказывать выход. Прежнее «Уточните имя собеседника.» было
  * тупиком: игрок не знал, кто вообще есть в сцене, и ход тратился впустую.
  */
-function availableNpcNames(state) {
+function availableNpcNames(state, actorId) {
   const sceneLocation = String(state?.scene?.location ?? '').trim().toLocaleLowerCase('ru')
-  return (state?.social?.npcs ?? [])
+  return npcSocialForViewer(state.social, { state, playerId: actorId, isPartyMember: true }).npcs
     .filter((npc) => npc?.available !== false)
     .filter((npc) => {
       const npcLocation = String(npc?.location ?? '').trim().toLocaleLowerCase('ru')
@@ -717,7 +765,7 @@ function humanMissingInformation(values, state, intent = {}) {
       : 'По описанию подходят несколько собеседников. Назовите конкретного NPC.'
   }
   if (missing.includes('npc_id') || missing.includes('available_npc')) {
-    const names = availableNpcNames(state)
+    const names = availableNpcNames(state, intent.actor_id)
     return names.length
       ? `Назовите собеседника по имени. Сейчас рядом: ${names.join(', ')}.`
       : 'Рядом нет никого, с кем можно заговорить. Осмотритесь или дойдите туда, где есть люди.'
@@ -746,9 +794,41 @@ function proposalIdFor(campaignId, seed) {
 function mergeClarificationAction(original, answer) {
   const first = String(original?.action ?? '').trim()
   const second = String(answer ?? '').trim()
+  const steps = original?.original_intent?.action_steps ?? []
+  if (original?.original_intent?.pending_step === 'proposal' && /^(?:да|согласен|согласна|выполнить)[.!\s]*$/iu.test(second)) return first
+  if (steps.length && (/^(?:да|продолжить|продолжай|выполнить|выполняю|первый шаг|согласен|согласна)[.!\s]*$/iu.test(second) || second === steps[0])) return steps[0]
+  // Исправленная заявка заменяет старый способ. Склейка двух противоречащих
+  // действий раньше заставляла парсер снова выбирать уже отвергнутый глагол.
+  if (/^(?:нет\s*[,.:]|я\s+имел[аи]?\s+в\s+виду|вместо\s+этого)/iu.test(second)) {
+    return second.replace(/^(?:нет\s*[,.:]?\s*)?(?:я\s+имел[аи]?\s+в\s+виду\s*[:,-]?\s*|вместо\s+этого\s*[,.:]?\s*)?/iu, '').trim()
+  }
+  if (/^(?:я\s+)?(?:убираю|снимаю|открываю|закрываю|подпираю|подхожу|иду|говорю|спрашиваю|передаю|беру|атакую|сматываю|развязываю|подбрасываю|осматриваю|зажигаю|прячусь|меняю)\s/iu.test(second)) return second
   if (!first) return second
   if (!second) return first
   return `${first}. Уточнение игрока: ${second}`.slice(0, 2_000)
+}
+
+const INDEPENDENT_ACTION_INTENTS = new Set([
+  'attack', 'saving_throw', 'ability_check', 'healing', 'damage', 'cast_spell',
+  'start_combat', 'end_combat', 'end_turn', 'rest', 'social', 'explore',
+  'approach_attack', 'compound_maneuver',
+])
+
+// Уточнение часто получает короткий ответ без глагола: «верёвкой», «гоблина»,
+// «да». Полный новый текст, напротив, обычно содержит сказуемое. Это bounded
+// морфологическая проверка, а не список игровых глаголов: новые формулировки
+// не должны требовать правки маршрутизатора.
+function hasActionVerbShape(value) {
+  const words = String(value ?? '').toLocaleLowerCase('ru').match(/[а-яё]{3,}/gu) ?? []
+  if (words.length < 2) return false
+  return words.slice(0, 3).some((word) => /(?:ю|у|ем|им|ешь|ишь|ете|ите|ают|яют|ут|ют|ай|яй|йте|ть|ться)$/u.test(word))
+}
+
+function standaloneActionReading(message, intent) {
+  if (intent?.free_action_kind) return true
+  if (INDEPENDENT_ACTION_INTENTS.has(String(intent?.intent ?? ''))) return true
+  if (intent?.approach && intent.approach !== 'unspecified') return true
+  return hasRecognizedFreeActionApproach(message) || hasActionVerbShape(message)
 }
 
 function maneuverProposalFingerprint(proposal = {}) {
@@ -770,11 +850,10 @@ function freeActionTimeText(events = []) {
   return `Прошло ${amount} мин.`
 }
 
-function freeActionEffectText(events = []) {
+function freeActionEffectText(events = [], state = {}) {
   const labels = new Map([
     ['SceneObjectOperated', 'объект сцены обработан по правилам'],
     ['SceneObjectStateChanged', 'состояние объекта сцены изменилось'],
-    ['DamageApplied', 'подтверждённый урон нанесён цели'],
     ['ConditionApplied', 'на цели подтверждено состояние'],
     ['ConditionRemoved', 'с цели снято состояние'],
     ['ItemTransferred', 'предмет передан по правилам'],
@@ -782,7 +861,30 @@ function freeActionEffectText(events = []) {
     ['WorldFactRecorded', 'изменение записано в память мира'],
     ['WorldFactRevealed', 'отряду открыт подтверждённый факт'],
   ])
-  return [...new Set(events.map((event) => labels.get(String(event?.event_type ?? ''))).filter(Boolean))]
+  return [...new Set(events.map((event) => {
+    if (event?.event_type === 'DamageApplied') {
+      return `${damageTypeLabel(event.payload?.damage_type)}: ${combatNarration([event], state)}`
+    }
+    if (['HitPointsReducedToZero', 'HeroDied'].includes(event?.event_type)) return combatNarration([event], state)
+    const label = labels.get(String(event?.event_type ?? ''))
+    return label ? `${label[0].toLocaleUpperCase('ru')}${label.slice(1)}.` : null
+  }).filter(Boolean))]
+}
+
+function safeNarrationViolations(value) {
+  const entries = (Array.isArray(value) ? value : []).flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') return []
+    const code = String(entry.code ?? '').trim().slice(0, 120)
+    if (!code) return []
+    const match = String(entry.match ?? '').trim().slice(0, 240)
+    return [{ code, ...(match ? { match } : {}) }]
+  }).slice(0, 32)
+  return redactTrace(entries)
+}
+
+function safeNarrationProviderError(value) {
+  const code = String(value ?? '').trim().slice(0, 80)
+  return /^[A-Z][A-Z0-9_.:-]*$/u.test(code) ? code : ''
 }
 
 /**
@@ -790,8 +892,16 @@ function freeActionEffectText(events = []) {
  * задумку и уже записанные события, поэтому не может закрыть дверь, нанести
  * урон или объявить навык, которого нет в commit.
  */
-function deterministicFreeActionNarration({ freeAction, message, events }) {
+function deterministicFreeActionNarration({ freeAction, message, events, state }) {
   const kind = String(freeAction?.kind ?? '')
+  if (kind === 'hazard_contact') {
+    const effects = freeActionEffectText(events, state)
+    const time = freeActionTimeText(events)
+    return [
+      ...effects,
+      time,
+    ].filter(Boolean).join(' ')
+  }
   if (!['auto_success', 'check_success', 'check_failure'].includes(kind)) return ''
   const goal = trimSentenceEnd(freeAction?.reading?.goal_summary || message, 280) || 'задумка героя'
   const outcome = kind === 'check_failure'
@@ -799,9 +909,11 @@ function deterministicFreeActionNarration({ freeAction, message, events }) {
     : kind === 'auto_success'
       ? 'удалась без проверки'
       : 'удалась'
-  const parts = [`Задумка «${goal}» ${outcome}.`]
-  const effects = freeActionEffectText(events)
-  if (effects.length) parts.push(`Подтверждено: ${effects.join('; ')}.`)
+  const parts = [freeAction?.reading?.activity_kind === 'stunt'
+    ? `Трюк ${kind === 'check_failure' ? 'не удался' : 'удался'}.`
+    : `Задумка «${goal}» ${outcome}.`]
+  const effects = freeActionEffectText(events, state)
+  parts.push(...effects)
   const time = freeActionTimeText(events)
   if (time) parts.push(time)
   return parts.join(' ')
@@ -817,10 +929,13 @@ function deterministicFreeActionNarration({ freeAction, message, events }) {
  */
 function turnPromptVersions(narration) {
   const byRole = new Map(PROMPT_DESCRIPTORS.map((descriptor) => [descriptor.role, descriptor.promptId]))
+  const narratorPromptVersion = narration && Object.hasOwn(narration, 'prompt_version')
+    ? narration.prompt_version
+    : byRole.get('narrator') ?? null
   return {
     intent_parser: null,
     action_adjudicator: byRole.get('action_adjudicator') ?? null,
-    narrator: narration?.prompt_version ?? byRole.get('narrator') ?? null,
+    narrator: narratorPromptVersion,
     verifier: null,
   }
 }
@@ -866,6 +981,8 @@ export class GameOrchestrator {
     this.narrator = narrator
     this.npcSocialController = npcSocialController
     this.unknownActionHandler = unknownActionHandler ?? new AutonomousCampaignOrchestrator({ eventStore, rulesEngine, rollRegistry, now })
+    this.actionAdjudicator = this.unknownActionHandler.actionAdjudicator?.discuss
+      ? this.unknownActionHandler.actionAdjudicator : new ActionAdjudicator()
     this.clarificationRegistry = clarificationRegistry ?? new ClarificationRegistry({
       storageFile: eventStore?.rootDir ? join(eventStore.rootDir, 'clarifications.json') : null,
       now,
@@ -911,7 +1028,7 @@ export class GameOrchestrator {
 
   explanation(campaignId, turnId = null, viewer = null) {
     if (!this.traceStore) return null
-    const trace = turnId ? this.traceStore.get(campaignId, turnId) : this.traceStore.latest(campaignId)
+    const trace = turnId ? this.traceStore.get(campaignId, turnId) : this.traceStore.latest(campaignId, { predicate: isMechanicalTrace })
     return buildTurnExplanation(trace, viewer)
   }
 
@@ -1299,10 +1416,12 @@ export class GameOrchestrator {
         campaign_premise: campaignConceptForAgent(state),
         player_intent: {
           action: message,
+          constraints: message.match(/(?:не\s+|без\s+)[^,.;!?]+/giu)?.slice(0, 6) ?? [],
           goal: String(freeAction.reading?.goal_summary ?? message).slice(0, 500),
           approach: String(freeAction.reading?.approach_summary ?? '').slice(0, 500),
           outcome: freeAction.kind,
         },
+        structured_result: { outcome: freeAction.kind, event_types: publicCommittedEvents.map(event => event.event_type) },
         // Небо и час — данные, а не право сочинять: Рассказчик получает уже
         // решённые время суток и погоду, чтобы не выдумывать закат в полдень.
         world_clock: worldClockForAgents(state, playerId),
@@ -1317,11 +1436,17 @@ export class GameOrchestrator {
     const candidateNarration = String(freeAction.narration ?? '').trim()
     let renderedNarration = ''
     let renderedProvider = ''
+    let renderedVerification = null
+    let renderedPromptVersion = null
+    let renderedFailureReason = ''
+    let renderedElapsedMs = 0
     const narrateCommittedImprovisation = !freeAction.duplicate
+      && freeAction.reading?.source !== 'deterministic-trivial'
       && ['auto_success', 'check_success', 'check_failure'].includes(String(freeAction.kind))
       && committedEvents.length > 0
       && typeof this.narrator?.render === 'function'
     if (narrateCommittedImprovisation) {
+      const renderStarted = this.now()
       try {
         const rendered = await this.narrator.render(brief, {
           knownRuleIds: [],
@@ -1329,34 +1454,100 @@ export class GameOrchestrator {
         })
         renderedNarration = String(rendered?.narration ?? '').trim()
         renderedProvider = String(rendered?.provider ?? '').trim()
+        renderedVerification = rendered?.verification && typeof rendered.verification === 'object'
+          ? rendered.verification
+          : null
+        renderedPromptVersion = rendered?.prompt_version ?? null
       } catch {
+        renderedFailureReason = 'provider_error'
         // Нарация необязательна: подтверждённый результат уже сохранён, поэтому
         // отказ провайдера возвращает короткое серверное описание.
+      } finally {
+        renderedElapsedMs = Math.max(0, this.now() - renderStarted)
       }
     }
+    const narrationState = campaignStateForViewer(state, viewer, playerId) ?? {}
     const deterministicNarration = deterministicFreeActionNarration({
       freeAction,
       message,
-      events: committedEvents,
+      events: publicCommittedEvents,
+      state: narrationState,
     })
     const deterministicProvider = /^deterministic(?:-|$)/u.test(renderedProvider)
     const preferredNarration = deterministicProvider
       ? deterministicNarration || candidateNarration || renderedNarration
       : renderedNarration || candidateNarration || deterministicNarration
     const candidateVerification = verifyNarration(preferredNarration, brief, { knownRuleIds: [] })
+    // Черновик может попасть под лексический guard из-за слова «предмет» в
+    // описании опасности. При этом commit уже содержит урон: собираем запасной
+    // текст только из тех же видимых событий и прогоняем его через тот же guard.
+    const groundedNarration = [
+      ...freeActionEffectText(publicCommittedEvents, narrationState),
+      freeActionTimeText(publicCommittedEvents),
+    ].filter(Boolean).join(' ')
+    const groundedVerification = groundedNarration
+      ? verifyNarration(groundedNarration, brief, { knownRuleIds: [] })
+      : null
+    const rejectedCandidateViolations = preferredNarration && !candidateVerification.valid
+      ? candidateVerification.violations
+      : []
+    const repairedFrom = [...safeNarrationViolations(renderedVerification?.repaired_from), ...safeNarrationViolations(rejectedCandidateViolations)]
+      .filter((entry, index, all) => all.findIndex((candidate) => JSON.stringify(candidate) === JSON.stringify(entry)) === index)
+    const rendererProviderError = safeNarrationProviderError(renderedVerification?.provider_error)
     const narration = candidateVerification.valid && preferredNarration
       ? preferredNarration
-      : freeAction.kind === 'clarification'
-        ? 'Опишите действие подробнее, чтобы его можно было разрешить по правилам.'
-        : 'Действие не получило подтверждённого последствия. Уточните, чего герой хочет добиться.'
-    const verification = verifyNarration(narration, brief, { knownRuleIds: [] })
+      : groundedVerification?.valid && groundedNarration
+        ? groundedNarration
+        : freeAction.kind === 'clarification'
+          ? 'Опишите действие подробнее, чтобы его можно было разрешить по правилам.'
+          : 'Действие не получило подтверждённого последствия. Уточните, чего герой хочет добиться.'
+    const acceptedRenderedNarration = !deterministicProvider
+      && Boolean(renderedNarration)
+      && renderedNarration === preferredNarration
+      && candidateVerification.valid
+    const fallbackReason = repairedFrom.length ? 'verification_rejected' : renderedFailureReason
+      || (renderedVerification?.origin?.source === 'template' ? renderedVerification.origin.reason : '')
+      || (!narrateCommittedImprovisation
+        ? 'no_provider'
+        : !renderedNarration
+          ? 'empty_response'
+          : 'no_provider')
+    const verification = {
+      ...(acceptedRenderedNarration && renderedVerification ? structuredClone(renderedVerification) : {}),
+      ...verifyNarration(narration, brief, { knownRuleIds: [] }),
+      ...(repairedFrom.length ? { repaired_from: repairedFrom } : {}),
+      ...(rendererProviderError ? { provider_error: rendererProviderError } : {}),
+      response_plan: renderedVerification?.response_plan
+        ? structuredClone(renderedVerification.response_plan)
+        : narratorResponsePlan(brief),
+      origin: acceptedRenderedNarration
+        ? {
+            ...(renderedVerification?.origin ? structuredClone(renderedVerification.origin) : {}),
+            source: 'llm',
+            reason: 'generated',
+            elapsed_ms: Number.isFinite(Number(renderedVerification?.origin?.elapsed_ms))
+              ? Number(renderedVerification.origin.elapsed_ms)
+              : renderedElapsedMs,
+          }
+        : {
+            source: 'template',
+            reason: fallbackReason,
+            elapsed_ms: renderedElapsedMs,
+            ...(renderedProvider ? { upstream: renderedProvider.slice(0, 80) } : {}),
+          },
+    }
+    const narrationPromptVersion = acceptedRenderedNarration && renderedPromptVersion
+      ? renderedPromptVersion
+      : 'deterministic-free-action/v1'
+    const narrationProvider = acceptedRenderedNarration
+      ? renderedProvider
+      : 'deterministic-free-action'
     const idempotentReplay = Boolean(freeAction.duplicate)
     const response = {
       narration,
       effects: eventsToClientEffects(committedEvents, freeAction.rolls ?? []),
-      provider: deterministicProvider && deterministicNarration
-        ? 'deterministic-free-action'
-        : renderedProvider || 'deterministic-free-action',
+      provider: narrationProvider,
+      prompt_version: narrationPromptVersion,
       model: 'server-policy',
       turn_id: turnId,
       engine_mode: mode,
@@ -1384,10 +1575,11 @@ export class GameOrchestrator {
         stateVersion: state.state_version,
         action: message,
         question: narration || 'Уточните, как именно герой хочет поступить.',
-        intent,
+        intent: freeAction.confirmation_required ? { ...intent, pending_step: 'proposal' } : intent,
       })
     }
     if (!idempotentReplay) {
+      if (committedEvents.length) this.rememberNarration(campaignId, narration)
       this.saveTrace({
         turnId,
         campaignId,
@@ -1411,7 +1603,7 @@ export class GameOrchestrator {
         narration: {
           narration,
           verification,
-          prompt_version: 'free-action/v1',
+          prompt_version: narrationPromptVersion,
           provider: response.provider,
         },
         ruling: freeAction.ruling ?? null,
@@ -1425,11 +1617,11 @@ export class GameOrchestrator {
    * попадают в Rules Engine: вопрос и обсуждение не могут случайно потратить
    * слот, продвинуть часы или создать проверку даже посреди боя.
    */
-  nonActionResponse({ campaignId, playerId, requestKind, message, pendingClarification, questionCheckId = '', questionProposalId = '', state, turnId, mode, viewer }) {
+  async nonActionResponse({ campaignId, playerId, requestKind, message, pendingClarification, questionCheckId = '', questionProposalId = '', state, turnId, mode, viewer, idempotencyKey = null, started = null }) {
     const lore = requestKind === 'question'
       ? answerKnownLore(message, state, { viewer })
       : null
-    const pending = pendingClarification
+    let pending = pendingClarification
       ? {
           id: pendingClarification.id,
           campaign_id: pendingClarification.campaign_id,
@@ -1437,6 +1629,7 @@ export class GameOrchestrator {
           state_version: pendingClarification.state_version,
           action: pendingClarification.action,
           question: pendingClarification.question,
+          ...(pendingClarification.original_intent?.action_steps?.length || pendingClarification.original_intent?.pending_step === 'proposal' ? { confirmation_required: true } : {}),
         }
       : null
     let checkAnswer = ''
@@ -1447,6 +1640,7 @@ export class GameOrchestrator {
         checkAnswer = proposal
           ? `Карточка готова: ${check.label}, СЛ ${check.difficulty}. Цена: ${trimSentenceEnd(proposal.cost ?? 'указана на карточке')}. При успехе: ${trimSentenceEnd(proposal.on_success ?? 'подтверждённый результат')}. При провале: ${trimSentenceEnd(proposal.on_failure ?? 'последствие указано на карточке')}.`
           : `Карточка готова: ${check.label}, СЛ ${check.difficulty}. Сначала подтвердите или измените способ действия, затем бросок будет принят только для этой заявки.`
+        checkAnswer = `${explainActionCheck({ ability: check.ability, skill: check.skill ?? check.context?.reading?.skill ?? check.context?.skill })} ${checkAnswer}`
       } catch (error) {
         if (!['CHECK_NOT_FOUND', 'CHECK_INVALIDATED'].includes(error?.code)) throw error
         checkAnswer = 'Эта карточка уже устарела или отменена. Измените заявку и получите новое предложение; старый бросок не исполнится.'
@@ -1466,6 +1660,15 @@ export class GameOrchestrator {
         checkAnswer = 'Предложение уже устарело. Получите новую карточку после изменения заявки; старый маршрут не будет исполнен.'
       }
     }
+    const recent = this.clarificationRegistry.recentDialogue({ campaignId, actorId: playerId }).reverse()
+    const discussed = requestKind === 'question' && !lore?.narration && !checkAnswer
+      ? await this.actionAdjudicator.discuss(state, playerId, message, {
+          action: pending?.action ?? recent.at(-1)?.action ?? '', recent,
+        }) : null
+    if (!pending && discussed?.proposed_action) pending = this.clarificationRegistry.create({
+      campaignId, actorId: playerId, stateVersion: state.state_version,
+      action: discussed.proposed_action, question: discussed.narration, intent: { pending_step: 'proposal' },
+    })
     const narration = requestKind === 'discussion'
       ? ''
       : lore?.narration
@@ -1474,10 +1677,24 @@ export class GameOrchestrator {
           : lore.narration
         : checkAnswer
           ? checkAnswer
+          : discussed?.narration
+            ? discussed.narration
           : pending
             ? 'Уточнение относится к заявке, но само действие ещё не выполнено. Ответьте на вопрос карточки отдельной репликой.'
             : 'По доступным подтверждённым сведениям точного ответа пока нет. Вопрос не расходует ход; узнайте это исследованием или у собеседника.'
-    return {
+    if (requestKind === 'question') this.clarificationRegistry.rememberDialogue({
+      campaignId, actorId: playerId, question: message, answer: narration,
+      action: pending?.action ?? recent.at(-1)?.action ?? message, stateVersion: state.state_version,
+    })
+    const responseMode = requestKind === 'discussion' ? 'silence' : 'table_talk'
+    const upstream = requestKind === 'discussion'
+      ? 'party-chat'
+      : lore?.provider
+        ?? (checkAnswer ? (questionCheckId ? 'roll-registry' : 'clarification-registry') : null)
+        ?? discussed?.reading?.source
+        ?? (discussed ? 'action-adjudicator' : pending ? 'clarification-registry' : 'dialogue-policy')
+    const verification = dialogueVerification(responseMode, upstream)
+    const response = {
       narration,
       effects: emptyEffects(),
       provider: lore?.provider ?? 'deterministic-dialogue',
@@ -1492,12 +1709,56 @@ export class GameOrchestrator {
       turn_consumed: false,
       action_kind: requestKind,
       request_kind: requestKind,
+      verification,
       ...(pending ? { clarification: pending } : {}),
       ...(lore?.agent_context ? { agent_context: lore.agent_context } : {}),
       idempotent_replay: false,
       chat_message: message,
       ...(campaignId ? { room_id: campaignId } : {}),
     }
+    // Повтор вопроса с тем же ключом не должен перезаписывать уже сохранённый
+    // механический ход, если клиент случайно переиспользовал idempotency_key.
+    const traceAlreadyExists = typeof this.traceStore?.get === 'function'
+      && this.traceStore.get(campaignId, turnId)
+    if (!traceAlreadyExists) this.saveTrace({
+      turnId,
+      campaignId,
+      idempotencyKey,
+      mode,
+      intent: {
+        actor_id: playerId,
+        intent: requestKind === 'discussion' ? 'table_talk' : 'question',
+        approach: 'deterministic',
+        targets: [],
+        mentioned_entities: [],
+        missing_information: [],
+        requires_clarification: Boolean(pending),
+        confidence: 1,
+        raw_message: message,
+      },
+      retrievalQueries: [],
+      retrievedRules: { results: [], confidence: 1, count: 0 },
+      plan: {
+        rule_ids: [],
+        proposed_commands: [],
+        roll_requests: [],
+        ruling_required: false,
+        narration_constraints: ['dialogue-only', 'no-world-change'],
+        confidence: 1,
+      },
+      engineResult: { commands: [], events: [], rolls: [] },
+      stateBefore: state.state_version,
+      stateAfter: state.state_version,
+      verification,
+      latency: started == null ? 0 : this.now() - started,
+      narration: {
+        narration,
+        verification,
+        prompt_version: null,
+        provider: response.provider,
+      },
+    })
+    return response
   }
 
   async handle(input) {
@@ -1515,7 +1776,28 @@ export class GameOrchestrator {
     const idempotencyKey = String(input.idempotencyKey ?? input.idempotency_key ?? '')
     const npcId = String(input.npcId ?? input.npc_id ?? '').trim().slice(0, 120)
     const coalesces = !input.commands && message !== '/why' && input.why !== true && Boolean(campaignId && idempotencyKey)
-    if (!coalesces) return this._handle(input)
+    const run = async () => {
+      const result = await this._handle(input)
+      if (!clarificationId || requestKind !== 'action') return result
+      const pending = this.clarificationRegistry.resolve(clarificationId, { campaignId, actorId: playerId })
+      if (result.mechanics?.length && !result.check && !result.action_proposal) this.clarificationRegistry.complete(clarificationId, { campaignId, actorId: playerId })
+      const steps = pending.original_intent?.action_steps ?? []
+      if (!steps.length || mergeClarificationAction(pending, message) !== steps[0]) return result
+      if (result.check) return { ...result, check: { ...result.check, clarification_id: clarificationId } }
+      if (!result.mechanics?.length || result.clarification || result.action_proposal || steps.length < 2) return result
+      if (result.idempotent_replay && (await this.eventStore.load(campaignId)).state_version > result.state_version) return result
+      const failed = result.mechanics.some(event => event.event_type === 'AbilityCheckResolved' && event.payload?.success === false)
+      const rest = steps.slice(1)
+      return { ...result, clarification: this.clarificationRegistry.create({
+        campaignId, actorId: playerId, stateVersion: result.state_version,
+        action: rest.join('; затем '),
+        question: failed
+          ? 'Первый шаг не удался. Остальные шаги не выполнены. Как вы хотите изменить план?'
+          : `Первый шаг завершён. Далее: «${rest[0]}». Продолжить или изменить план?`,
+        intent: failed ? { pending_step: 'reconsider' } : { action_steps: rest },
+      }) }
+    }
+    if (!coalesces) return run()
 
     const key = `${campaignId}\u001f${idempotencyKey}`
     const requestFingerprint = narrationRequestFingerprint({
@@ -1532,7 +1814,7 @@ export class GameOrchestrator {
     }
 
     const entry = { requestFingerprint, promise: null }
-    entry.promise = this._handle(input)
+    entry.promise = run()
     this.narrationInflight.set(key, entry)
     try {
       return await entry.promise
@@ -1554,12 +1836,26 @@ export class GameOrchestrator {
     const supersedesProposalId = String(input.supersedesProposalId ?? input.supersedes_proposal_id ?? '').trim().slice(0, 300)
     const questionCheckId = String(input.questionCheckId ?? input.question_check_id ?? '').trim().slice(0, 200)
     const questionProposalId = String(input.questionProposalId ?? input.question_proposal_id ?? '').trim().slice(0, 300)
-    const pendingClarification = clarificationId
+    let pendingClarification = clarificationId
       ? this.clarificationRegistry.resolve(clarificationId, { campaignId, actorId: playerId })
       : null
+    let standaloneAction = false
+    if (pendingClarification && requestKind === 'action' && !input.commands) {
+      try {
+        const candidateIntent = await this.intentParser.parse({
+          message: rawMessage,
+          playerId,
+          visibleState: originalState,
+        })
+        standaloneAction = standaloneActionReading(rawMessage, candidateIntent)
+      } catch {
+        // При ошибке разбора не теряем контекст короткого ответа молча.
+        standaloneAction = false
+      }
+    }
     // Вопрос/обсуждение не должны исполнять старое действие. Для обычной
     // заявки ответ дописывается к исходному намерению до разбора маршрутизатором.
-    const message = requestKind === 'action' && pendingClarification
+    const message = requestKind === 'action' && pendingClarification && !standaloneAction
       ? mergeClarificationAction(pendingClarification, rawMessage)
       : rawMessage
     const idempotencyKey = String(input.idempotencyKey ?? input.idempotency_key ?? this.idFactory())
@@ -1616,18 +1912,51 @@ export class GameOrchestrator {
         requires_clarification: false, confidence: 1, raw_message: message,
       }
       const lorePlan = { rule_ids: [], proposed_commands: [], roll_requests: [], ruling_required: false, narration_constraints: ['known-world-facts-only'], confidence: 1 }
-      const response = { ...loreAnswer, engine_mode: mode, turn_id: turnId, state_version: originalState.state_version }
-      this.saveTrace({ turnId, campaignId, mode, intent: loreIntent, retrievalQueries: [], retrievedRules: { results: [], confidence: 1, count: 0 }, plan: lorePlan, stateBefore: originalState.state_version, stateAfter: originalState.state_version, verification: { valid: true }, latency: this.now() - started })
+      const verification = dialogueVerification('table_talk', loreAnswer.provider)
+      const response = { ...loreAnswer, engine_mode: mode, turn_id: turnId, state_version: originalState.state_version, verification }
+      this.saveTrace({
+        turnId,
+        campaignId,
+        idempotencyKey,
+        mode,
+        intent: loreIntent,
+        retrievalQueries: [],
+        retrievedRules: { results: [], confidence: 1, count: 0 },
+        plan: lorePlan,
+        stateBefore: originalState.state_version,
+        stateAfter: originalState.state_version,
+        verification,
+        latency: this.now() - started,
+        narration: {
+          narration: response.narration,
+          verification,
+          prompt_version: null,
+          provider: response.provider,
+        },
+      })
       return response
     }
     const loaded = await this.eventStore.load(campaignId)
     const authoritativeState = normalizeCampaignState(loaded.state)
-    if (pendingClarification) {
-      this.clarificationRegistry.resolve(clarificationId, {
-        campaignId,
-        actorId: playerId,
-        stateVersion: authoritativeState.state_version,
-      })
+    // Questions and discussion may inspect a pending clarification, but never
+    // resurrect one from an older room version after another commit. Action
+    // continuations keep the explicit stale-version error below.
+    if (pendingClarification && requestKind !== 'action'
+      && Number(pendingClarification.state_version) !== Number(authoritativeState.state_version)) {
+      pendingClarification = null
+    }
+    if (pendingClarification && requestKind === 'action') {
+      if (standaloneAction) {
+        // Новая заявка не использует ни условия, ни версию старого уточнения.
+        this.clarificationRegistry.complete(clarificationId, { campaignId, actorId: playerId })
+      } else {
+        const replay = await this.eventStore.getByIdempotencyKey?.(campaignId, idempotencyKey)
+        this.clarificationRegistry.resolve(clarificationId, {
+          campaignId,
+          actorId: playerId,
+          stateVersion: replay?.events?.[0]?.state_version_before ?? authoritativeState.state_version,
+        })
+      }
     }
     if (requestKind !== 'action') {
       const nonActionState = campaignStateForViewer(authoritativeState, input.user ?? {}, playerId) ?? {}
@@ -1643,7 +1972,27 @@ export class GameOrchestrator {
         turnId,
         mode,
         viewer: { playerId, partyIds: input.partyIds ?? [], isPartyMember: true, role: input.user?.role },
+        idempotencyKey,
+        started,
       })
+    }
+    const constraints = message.match(/(?:не\s+|без\s+)[^,.;!?]+/giu)?.slice(0, 6) ?? []
+    const steps = actionSequence(message).map(step => {
+      const missing = constraints.filter(constraint => !step.includes(constraint))
+      return missing.length ? `${step}. Ограничение игрока: ${missing.join('; ')}` : step
+    })
+    if (!input.commands && !explicitNpcId && steps.length && (standaloneAction || !pendingClarification?.original_intent?.action_steps?.length)) {
+      const question = `В заявке ${steps.length} последовательных шага. Сначала: «${steps[0]}». Выполнить первый шаг? Остальные обсудим после его результата.`
+      return {
+        narration: question, effects: emptyEffects(), mechanics: [], visible_state_changes: [],
+        provider: 'deterministic-dialogue', model: 'server-policy', turn_id: turnId,
+        engine_mode: mode, state_version: authoritativeState.state_version,
+        turn_consumed: false, action_kind: 'clarification', request_kind: 'action',
+        clarification: this.clarificationRegistry.create({ campaignId, actorId: playerId,
+          stateVersion: authoritativeState.state_version, action: message, question,
+          intent: { action_steps: steps, constraints },
+        }),
+      }
     }
     if (supersedesProposalId) {
       this.clarificationRegistry.revokeProposal(supersedesProposalId, { campaignId, actorId: playerId })
@@ -1998,7 +2347,7 @@ export class GameOrchestrator {
     const retrievedRules = this.ruleRetriever && retrievalQueries.length
       ? await this.ruleRetriever.search({ queries: retrievalQueries, ruleset_id: originalState.ruleset_id, enabled_packs: originalState.enabled_rule_packs, limit: 10 })
       : { results: [], confidence: 0, count: 0 }
-    const freeActionRequest = !input.commands && ['improvised_action', 'unknown'].includes(intent.intent)
+    const freeActionRequest = !input.commands && ['improvised_action', 'unknown', 'explore'].includes(intent.intent)
     let plan = input.commands
       ? { rule_ids: [...new Set(input.commands.flatMap((command) => command.source_rule_ids ?? []))], proposed_commands: input.commands, roll_requests: [], ruling_required: false, ruling_draft: null, narration_constraints: [], confidence: 1 }
       : intent.requires_clarification
@@ -2036,7 +2385,9 @@ export class GameOrchestrator {
         : await this.adjudicator.createPlan({ intent, state: ['approach_attack', 'compound_maneuver'].includes(intent.intent)
           ? duplicate ? (await this.eventStore.load(campaignId, { atVersion: duplicate.events[0].state_version_before })).state : authoritativeState
           : originalState, retrievedRules })
-    plan = { ...plan, proposed_commands: validateAllowedCommands(plan.proposed_commands ?? []).map((command, index) => ({ ...command, campaign_id: campaignId, command_id: `${idempotencyKey}:${index + 1}` })) }
+    plan = { ...plan, proposed_commands: validateAllowedCommands(plan.proposed_commands ?? []).map((command, index) => ({ ...command,
+      ...(intent.knock_out && ['MakeAttack', 'CastSpell'].includes(command.command_type) ? { knock_out: true } : {}),
+      campaign_id: campaignId, command_id: `${idempotencyKey}:${index + 1}` })) }
     if (['approach_attack', 'long_jump_attack', 'swing_attack'].includes(plan.maneuver) && !duplicate) {
       this.rulesEngine.validate(plan.proposed_commands[0], authoritativeState, rulesContext)
       if (!input.confirmedProposalId) {
@@ -2091,6 +2442,7 @@ export class GameOrchestrator {
         intent,
         manualRoll,
         verifiedRoll,
+        confirmedAction: !standaloneAction && pendingClarification?.original_intent?.pending_step === 'proposal' && message === pendingClarification.action,
       })
       return await this.freeActionResponse({
         freeAction,
@@ -2194,6 +2546,7 @@ export class GameOrchestrator {
         ability: preview.ability,
         advantage: preview.advantage,
         disadvantage: preview.disadvantage,
+        context: { kind: 'ability_action', action: message, state_version: authoritativeState.state_version, skill: preview.skill },
       })
       return {
         narration: `Требуется проверка: ${check.label}, СЛ ${check.difficulty}. Бросьте d20, чтобы узнать исход.`,
@@ -2332,6 +2685,7 @@ export class GameOrchestrator {
       visible_state_changes: visibleChanges(publicCommittedEvents),
       known_environment: {
         scene: sceneContextForAgent(committed.state, playerId),
+        player_intent: { action: message, constraints: message.match(/(?:не\s+|без\s+)[^,.;!?]+/giu)?.slice(0, 6) ?? [] },
         campaign_premise: campaignConceptForAgent(committed.state),
         // Небо и час — данные, а не право сочинять: тот же расчёт, что у
         // индикатора в шапке сцены, чтобы текст и картинка не разошлись.
@@ -2460,7 +2814,9 @@ export class GameOrchestrator {
       token_usage: {},
       narration_result: narration ? {
         narration: narration.narration,
-        verification: narration.verification ?? verification,
+        // Редактор трасс помечает один и тот же объект во второй ветке как цикл.
+        // Копия сохраняет провенанс диалога читаемым в обеих ветках.
+        verification: structuredClone(narration.verification ?? verification),
         prompt_version: narration.prompt_version ?? null,
         provider: narration.provider ?? null,
       } : null,

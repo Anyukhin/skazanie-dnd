@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { CircleAlert, X } from 'lucide-react'
 import type { CombatMechanics, GameState, Player, ReputationTier, SummonedCreature } from './types'
+export { canonicalLocationKey, locationsMatch } from './player-experience'
 
 
 /**
@@ -457,15 +458,6 @@ export function battleEventText(state: GameState, event: BattleLogEvent) {
   return event.type
 }
 
-export function locationsMatch(left: unknown, right: unknown) {
-  const leftObject = left && typeof left === 'object' ? left as { location_id?: unknown; location?: unknown } : null
-  const rightObject = right && typeof right === 'object' ? right as { location_id?: unknown; location?: unknown } : null
-  const leftId = String(leftObject?.location_id ?? '').trim()
-  const rightId = String(rightObject?.location_id ?? '').trim()
-  if (leftId && rightId) return leftId === rightId
-  return canonicalLocationKey(leftObject?.location ?? left) === canonicalLocationKey(rightObject?.location ?? right)
-}
-
 export const SKILL_LABELS: Record<string, string> = {
   acrobatics: 'Акробатика', animal_handling: 'Уход за животными', arcana: 'Магия', athletics: 'Атлетика',
   deception: 'Обман', history: 'История', insight: 'Проницательность', intimidation: 'Запугивание',
@@ -489,10 +481,6 @@ export const UI_SCALE_MIN = 80
 export const UI_SCALE_MAX = 150
 export const UI_SCALE_PRESETS = [80, 90, 100, 110, 115, 125, 150]
 export const clampUiScale = (value: number) => Math.min(UI_SCALE_MAX, Math.max(UI_SCALE_MIN, Math.round(value / 5) * 5))
-
-export function canonicalLocationKey(value: unknown) {
-  return String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, 180).toLocaleLowerCase('ru')
-}
 
 /**
  * Разделяют доска и корень приложения: тип участника доски, набор вредящих

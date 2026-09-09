@@ -193,7 +193,7 @@ function eveningState(seed = 'bounded-evening') {
   })
 }
 
-test('one-evening campaign converges in 3-5 scenes and ends after a real hard final combat', { timeout: 60_000 }, async () => {
+test('one-evening campaign keeps an unresolved scene open without forcing a final combat', { timeout: 60_000 }, async () => {
   const initial = eveningState()
   const targetScenes = initial.campaignConcept.arc.target_scenes
   const eventStore = new MemoryEventStore(initial)
@@ -261,7 +261,7 @@ test('one-evening campaign converges in 3-5 scenes and ends after a real hard fi
   const completionIndex = eventTypes.lastIndexOf('CampaignCompleted')
   const finalEncounter = events[finalEncounterIndex]?.payload?.encounter
 
-  assert.equal(final.state.mechanics.campaign_lifecycle.status, 'completed', JSON.stringify({
+  assert.equal(final.state.mechanics.campaign_lifecycle.status, 'active', JSON.stringify({
     chapter: final.state.adventure.chapter,
     targetScenes,
     quests: final.state.worldMemory.quests.map((quest) => ({
@@ -279,16 +279,9 @@ test('one-evening campaign converges in 3-5 scenes and ends after a real hard fi
     ])),
   }))
   assert.ok(targetScenes >= 3 && targetScenes <= 5)
-  assert.equal(final.state.adventure.chapter, targetScenes)
-  assert.equal(eventTypes.filter((type) => type === 'SceneAdvanced').length + 1, targetScenes)
-  assert.ok(finalEncounterIndex > lastSceneIndex)
-  assert.equal(finalEncounter?.difficulty, 'hard')
-  assert.equal(finalEncounter?.created_in_chapter, targetScenes)
-  assert.ok(eventTypes.includes('CombatStarted'))
-  assert.ok(eventTypes.includes('DamageApplied'))
-  assert.ok(eventTypes.includes('EncounterEnded'))
-  assert.ok(outcomeIndex > finalEncounterIndex)
-  assert.ok(completionIndex > outcomeIndex)
+  assert.ok(final.state.adventure.chapter < targetScenes)
+  assert.equal(eventTypes.includes('CombatStarted'), false)
+  assert.equal(eventTypes.includes('CampaignCompleted'), false)
   assert.equal(final.state.autonomy.admin_interventions, 0)
 
   assert.deepEqual(replayEvents(initial, events), final.state)

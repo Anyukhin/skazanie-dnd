@@ -78,6 +78,6 @@ test('свободный и подготовленный ввод очищают
 test('при сетевом отказе остаётся прежний бросок, а выбранный маршрут не теряется', () => {
   assert.match(sessionSource, /\{ \.\.\.check, resolutionKey, result, status: 'ready' \}/u)
   assert.match(sessionSource, /check\.result \?\?\s+rollDice/u)
-  assert.match(sessionSource, /narrateWithAgent\(state, check\.action, player\.character, result, resolutionKey, player\.id\)/u)
+  assert.match(sessionSource, /narrateWithAgent\(state, check\.action, player\.character, result, resolutionKey, player\.id, \{ clarificationId: check\.clarification_id \}\)/u)
   assert.match(appSource, /onMove\(selected, cell\.x, cell\.y\)\.then\(\(outcome\) => \{\s+if \(outcome\.ok\) setPendingMoveKey\(null\)/u)
 })

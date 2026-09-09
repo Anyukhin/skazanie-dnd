@@ -8,8 +8,8 @@ const app = ['../src/App.tsx', '../src/AppViews.tsx', '../src/DungeonMap.tsx', '
 const server = readFileSync(new URL('../server/index.mjs', import.meta.url), 'utf8')
 
 test('инструменты отката видны владельцу стола и используют отдельный owner-scoped API', () => {
-  assert.match(app, /canManageLifecycle && \['active', 'paused'\]\.includes\(lifecycleStatus\).*runCampaignControl\('rewind_turn'\)/u)
-  assert.match(app, /canManageLifecycle && \['active', 'paused'\]\.includes\(lifecycleStatus\).*runCampaignControl\('replay_scene'\)/u)
+  assert.match(app, /canManageLifecycle && \['active', 'paused'\]\.includes\(lifecycleStatus\)[\s\S]*?onRunCampaignControl\('rewind_turn'\)/u)
+  assert.match(app, /canManageLifecycle && \['active', 'paused'\]\.includes\(lifecycleStatus\)[\s\S]*?onRunCampaignControl\('replay_scene'\)/u)
   assert.match(app, /\/api\/campaigns\/\$\{encodeURIComponent\(state\.sessionCode\)\}\/controls/u)
   assert.match(server, /campaignControlMatch.*\/controls/u)
   assert.match(server, /membership\?\.role !== 'owner'/u)

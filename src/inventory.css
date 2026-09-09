@@ -40,6 +40,7 @@
 .currency-editor > span, .item-actions button, .item-properties p {
   font-size: var(--fs-xs);
 }
+
 .inventory-head > div:first-child > span, .inventory-owner small,
 .inventory-summary small, .inventory-card-info > small, .rarity,
 .inventory-art > span, .item-image-placeholder span, .item-eyebrow > span,
@@ -156,4 +157,108 @@
   .inventory-card-info p{font-size:var(--fs-xs)}
   .empty-inventory{min-height:220px;padding:42px 20px}
   .ability-score-choice-grid{grid-template-columns:1fr}
+}
+
+/* Инвентарь держит рабочую иерархию: сначала фильтр, затем короткая карточка
+   вещи, а подробные ограничения остаются рядом с действием. Акцент один —
+   тёплая золота из основной оболочки. */
+.inventory-summary > div.is-over{border-color:rgba(178,86,74,.48);color:#c27d70;background:rgba(75,24,20,.16)}
+.inventory-summary > div.is-over b{color:#d79a8f}
+.inventory-categories{width:min(100%,1760px);display:flex;align-items:stretch;gap:2px;margin:0 auto 12px;border-bottom:1px solid rgba(212,183,147,.12);overflow-x:auto;scrollbar-width:thin}
+.inventory-categories button{min-height:36px;display:flex;align-items:center;gap:7px;padding:0 11px;border:0;border-bottom:2px solid transparent;background:transparent;color:#81766b;font-size:var(--fs-sm);white-space:nowrap;cursor:pointer}
+.inventory-categories button:hover{color:#c3a27d;background:rgba(255,255,255,.018)}
+.inventory-categories button.active{border-bottom-color:#be8950;color:#e0b579}
+.inventory-categories button b{min-width:18px;color:#625950;font-size:var(--fs-xxs);font-weight:600;text-align:center}
+.inventory-categories button.active b{color:#c99556}
+.inventory-categories button:disabled{opacity:.38;cursor:not-allowed}
+.inventory-toolbar{justify-content:flex-start;align-items:center}
+.inventory-toolbar .inventory-search{flex:1 1 280px;max-width:420px}
+.inventory-toolbar .inventory-sort{width:auto;max-width:300px;display:grid;grid-template-columns:auto minmax(150px,1fr);align-items:center;gap:8px;height:42px;padding:4px 9px;border-color:rgba(212,183,147,.16);background:rgba(6,5,4,.38);color:#8f795f}
+.inventory-sort > span{font-size:var(--fs-xs);white-space:nowrap}
+.inventory-sort select{width:100%;min-width:0;height:32px;padding:0 8px;border:1px solid rgba(212,183,147,.16);border-radius:4px;outline:0;background:#171411;color:#c5b49e;color-scheme:dark;font:var(--fs-xs) Manrope,sans-serif}
+.inventory-sort select:disabled{opacity:.55;cursor:not-allowed}
+.inventory-toolbar .inventory-clear{height:42px;flex:0 0 auto;align-self:stretch;border-color:rgba(212,183,147,.15);background:transparent;color:#8c7e6e;font-size:var(--fs-xs)}
+.inventory-toolbar .inventory-clear:hover:not(:disabled){border-color:rgba(199,145,80,.4);color:#d1a266;background:rgba(175,115,51,.08)}
+.inventory-toolbar .inventory-clear:disabled{opacity:.38;cursor:not-allowed}
+.inventory-result-count{width:min(100%,1760px);margin:0 auto 10px;color:#746b62;font-size:var(--fs-xs)}
+.inventory-card{min-width:0;cursor:default}
+.inventory-card--equipped{border-color:rgba(106,145,111,.34)}
+.item-card-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
+.item-card-heading > small{overflow:hidden;color:#8c704f;text-overflow:ellipsis;white-space:nowrap}
+.item-card-heading > .rarity{flex:0 0 auto}
+.inventory-card-info > strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item-card-description{min-height:2.9em}
+.item-properties-inline{display:flex!important;align-items:flex-start;gap:6px;min-height:2.9em;margin:0 0 9px!important;overflow:hidden!important;color:#9c866c!important;font-size:var(--fs-xs)!important;line-height:1.4!important;-webkit-line-clamp:2!important}
+.item-properties-inline svg{flex:0 0 auto;margin-top:2px;color:#b58650}
+.item-properties-inline span{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+.inventory-item-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:9px;padding-top:9px;border-top:1px solid rgba(212,183,147,.1)}
+.inventory-item-facts span{min-width:0;display:grid;gap:2px}
+.inventory-item-facts b{overflow:hidden;color:#c0ac93;font:600 var(--fs-sm) Spectral,serif;text-overflow:ellipsis;white-space:nowrap}
+.inventory-item-facts small{overflow:hidden;color:#6f655b;font-size:var(--fs-xxs);text-overflow:ellipsis;white-space:nowrap}
+.item-combat-line{margin:8px 0 0!important;color:#9f8058!important;font-size:var(--fs-xs)!important;line-height:1.35!important}
+.item-state-list{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}
+.item-state-list span{padding:3px 6px;border:1px solid rgba(212,183,147,.14);border-radius:3px;color:#8a7c6d;font-size:var(--fs-xxs)}
+.item-state-list span.active{border-color:rgba(107,151,114,.35);background:rgba(62,108,70,.1);color:#9bc0a0}
+.inventory-card>.item-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}
+.inventory-card>.item-actions > button{width:100%;min-width:0;justify-content:center}
+.inventory-card>.item-actions > .item-use-target,.inventory-card>.item-actions > .item-charge-spend{width:100%;min-width:0}
+.inventory-card>.item-actions > .item-use-target select,.inventory-card>.item-actions > .item-charge-spend select{min-width:0;flex:1;height:34px;padding:0 7px}
+.inventory-card>.item-actions > .item-point-target{width:100%;min-width:0;justify-content:space-between}
+.inventory-card>.item-actions > .item-point-target label{min-width:0;flex:1}
+.inventory-card>.item-actions > .item-point-target input{width:100%;min-width:0}
+.inventory-card>.item-actions > .item-action-main{border-color:rgba(205,154,91,.42);background:rgba(166,107,48,.1);color:#d1a266}
+.inventory-card>.item-actions > .item-use-hint{grid-column:1/-1;margin:0;padding:0 2px;color:#b88959;font-size:var(--fs-xs);line-height:1.35}
+.item-transfer{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px;align-items:end;padding-top:7px;border-top:1px solid rgba(212,183,147,.1)}
+.item-transfer > label{min-width:0;display:grid;grid-template-columns:auto minmax(48px,1fr);align-items:center;gap:7px;color:#8f806f;font-size:var(--fs-xs)}
+.item-transfer input{width:100%;height:34px;min-width:0;padding:0 7px;border:1px solid var(--line);border-radius:4px;background:#171411;color:#c5b49e;font-size:var(--fs-sm)}
+.item-transfer button{min-width:92px}
+.item-transfer .item-use-hint{grid-column:1/-1}
+.item-transfer input:disabled,.item-transfer button:disabled{opacity:.45;cursor:not-allowed}
+
+@media(max-width:680px){
+  .inventory-toolbar .inventory-search,.inventory-toolbar .inventory-sort,.inventory-toolbar .inventory-clear,.inventory-toolbar .inventory-recipient{width:100%;max-width:none;flex:1 1 100%}
+  .inventory-toolbar .inventory-clear{min-height:38px;align-self:auto;justify-content:center}
+  .inventory-toolbar .inventory-sort{grid-template-columns:auto minmax(0,1fr)}
+  .inventory-card>.item-actions{grid-template-columns:1fr}
+  .inventory-card>.item-actions > .item-use-hint,.item-transfer{grid-column:1}
+}
+
+@media(max-width:440px){
+  .inventory-categories button{padding:0 9px}
+  .inventory-summary > div{min-width:132px}
+}
+
+/* На ноутбуке предмет и его действия видны вместе, иллюстрация не вытесняет их. */
+.inventory-page{padding:20px 24px 32px}
+.inventory-page .inventory-head{padding-bottom:12px}
+.inventory-page .inventory-head h1{margin:2px 0;font-size:var(--fs-2xl)}
+.inventory-page .inventory-summary{margin:12px auto}
+.inventory-page .inventory-summary>div{min-height:0;padding:8px 12px}
+.inventory-page .inventory-toolbar{display:grid;grid-template-columns:minmax(160px,1fr) minmax(200px,auto) auto minmax(180px,auto);gap:8px;margin-bottom:10px}
+.inventory-page .inventory-toolbar>label{width:100%;max-width:none;min-width:0}
+.inventory-page .inventory-toolbar .inventory-sort{grid-template-columns:auto minmax(100px,1fr)}
+.inventory-page .inventory-toolbar .inventory-recipient{grid-template-columns:auto minmax(70px,1fr)}
+.inventory-page .inventory-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:12px}
+.inventory-page .inventory-card{display:grid;grid-template-columns:112px minmax(0,1fr);align-content:start}
+.inventory-page .inventory-art{width:96px;height:112px;margin:12px 0 12px 12px;border:0;border-radius:4px}
+.inventory-page .inventory-card-info{min-height:0;padding:12px}
+.inventory-page .inventory-card-info>strong{white-space:normal;font-size:var(--fs-lg)}
+.inventory-page .inventory-card>.item-mechanics-limitation,
+.inventory-page .inventory-card>.item-charge-state,
+.inventory-page .inventory-card>.item-actions{grid-column:1/-1}
+.inventory-page .inventory-card>.item-actions{margin-top:0;padding:0 12px 12px}
+.inventory-page .inventory-card-info p{color:#b6a899}
+.inventory-page .inventory-categories button:not(:disabled){color:#b1a18e}
+.inventory-page .inventory-categories button.active{color:#e0b579}
+@media(max-width:920px){
+  .inventory-page .inventory-toolbar{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+}
+@media(max-width:680px){
+  .inventory-page{padding:16px 12px 24px}
+  .inventory-page .inventory-grid{grid-template-columns:1fr}
+  .inventory-page .inventory-toolbar .inventory-search{grid-column:1/-1}
+  .inventory-page .inventory-toolbar .inventory-recipient{grid-column:1/-1}
+  .inventory-page .inventory-card{grid-template-columns:92px minmax(0,1fr)}
+  .inventory-page .inventory-art{width:76px;height:96px}
+  .inventory-page .inventory-toolbar .inventory-clear{width:auto;font-size:var(--fs-xs)}
 }

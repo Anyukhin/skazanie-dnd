@@ -1,37 +1,98 @@
 # Перечень записей пакета
 
-Версия 2014.content.1.0.0; 24 существа, 32 записи предметов, 91 правила. Не полный каталог сайта.
+Версия 2014.content.1.1.0; 83 существа, 32 записи предметов, 91 правило. Не полный каталог сайта.
 
 ## Существа
 
+По 10 существ для каждого целого CR 0–6, 12 прежних дробных профилей и молодой красный дракон. Полные характеристики и умения доступны в бестиарии стенда; статус исполнения указан отдельно.
+
 | Русское название | Английское | CR | КД | Хиты | ID |
 |---|---|---:|---:|---:|---|
-| Гоблин | Goblin | 1/4 | 15 | 7 (2d6) | `dnd_5e_2014:monster:goblin` |
-| Кобольд | Kobold | 1/8 | 12 | 5 (2d6-2) | `dnd_5e_2014:monster:kobold` |
-| Хобгоблин | Hobgoblin | 1/2 | 18 | 11 (2d8+2) | `dnd_5e_2014:monster:hobgoblin` |
-| Багбир | Bugbear | 1 | 16 | 27 (5d8+5) | `dnd_5e_2014:monster:bugbear` |
-| Орк | Orc | 1/2 | 13 | 15 (2d8+6) | `dnd_5e_2014:monster:orc` |
-| Разбойник | Bandit | 1/8 | 12 | 11 (2d8+2) | `dnd_5e_2014:monster:bandit` |
-| Капитан разбойников | Bandit Captain | 2 | 15 | 65 (10d8+20) | `dnd_5e_2014:monster:bandit-captain` |
-| Стражник | Guard | 1/8 | 16 | 11 (2d8+2) | `dnd_5e_2014:monster:guard` |
-| Культист | Cultist | 1/8 | 12 | 9 (2d8) | `dnd_5e_2014:monster:cultist` |
-| Фанатик культа | Cult Fanatic | 2 | 13 | 33 (6d8+6) | `dnd_5e_2014:monster:cult-fanatic` |
-| Прислужник | Acolyte | 1/4 | 10 | 9 (2d8) | `dnd_5e_2014:monster:acolyte` |
-| Маг | Mage | 6 | 12 | 40 (9d8) | `dnd_5e_2014:monster:mage` |
-| Скелет | Skeleton | 1/4 | 13 | 13 (2d8+4) | `dnd_5e_2014:monster:skeleton` |
-| Зомби | Zombie | 1/4 | 8 | 22 (3d8+9) | `dnd_5e_2014:monster:zombie` |
-| Упырь | Ghoul | 1 | 12 | 22 (5d8) | `dnd_5e_2014:monster:ghoul` |
-| Огр | Ogre | 2 | 11 | 59 (7d10+21) | `dnd_5e_2014:monster:ogre` |
-| Тролль | Troll | 5 | 15 | 84 (8d10+40) | `dnd_5e_2014:monster:troll` |
-| Волк | Wolf | 1/4 | 13 | 11 (2d8+2) | `dnd_5e_2014:monster:wolf` |
-| Лютый волк | Dire Wolf | 1 | 14 | 37 (5d10+10) | `dnd_5e_2014:monster:dire-wolf` |
-| Гигантский паук | Giant Spider | 1 | 14 | 26 (4d10+4) | `dnd_5e_2014:monster:giant-spider` |
-| Мимик | Mimic | 2 | 12 | 58 (9d8+18) | `dnd_5e_2014:monster:mimic` |
-| Студенистый куб | Gelatinous Cube | 2 | 6 | 84 (8d10+40) | `dnd_5e_2014:monster:gelatinous-cube` |
-| Совомед | Owlbear | 3 | 13 | 59 (7d10+21) | `dnd_5e_2014:monster:owlbear` |
-| Молодой красный дракон | Young Red Dragon | 10 | 18 | 178 (17d10+85) | `dnd_5e_2014:monster:young-red-dragon` |
+| [Гоблин](https://dnd.su/bestiary/4-goblin/) | Goblin | 1/4 | 15 | 7 (2d6) | `dnd_5e_2014:monster:goblin` |
+| [Кобольд](https://dnd.su/bestiary/210-kobold/) | Kobold | 1/8 | 12 | 5 (2d6-2) | `dnd_5e_2014:monster:kobold` |
+| [Хобгоблин](https://dnd.su/bestiary/27-hobgoblin/) | Hobgoblin | 1/2 | 18 | 11 (2d8+2) | `dnd_5e_2014:monster:hobgoblin` |
+| [Багбир](https://dnd.su/bestiary/13-bugbear/) | Bugbear | 1 | 16 | 27 (5d8+5) | `dnd_5e_2014:monster:bugbear` |
+| [Орк](https://dnd.su/bestiary/20-orc/) | Orc | 1/2 | 13 | 15 (2d8+6) | `dnd_5e_2014:monster:orc` |
+| [Разбойник](https://dnd.su/bestiary/437-bandit/) | Bandit | 1/8 | 12 | 11 (2d8+2) | `dnd_5e_2014:monster:bandit` |
+| [Капитан разбойников](https://dnd.su/bestiary/433-bandit-captain/) | Bandit Captain | 2 | 15 | 65 (10d8+20) | `dnd_5e_2014:monster:bandit-captain` |
+| [Стражник](https://5e14.dnd.su/bestiary/442-guard/) | Guard | 1/8 | 16 | 11 (2d8+2) | `dnd_5e_2014:monster:guard` |
+| [Культист](https://dnd.su/bestiary/12-cultist/) | Cultist | 1/8 | 12 | 9 (2d8) | `dnd_5e_2014:monster:cultist` |
+| [Фанатик культа](https://dnd.su/bestiary/443-cult-fanatic/) | Cult Fanatic | 2 | 13 | 33 (6d8+6) | `dnd_5e_2014:monster:cult-fanatic` |
+| [Прислужник](https://dnd.su/bestiary/438-acolyte/) | Acolyte | 1/4 | 10 | 9 (2d8) | `dnd_5e_2014:monster:acolyte` |
+| [Маг](https://dnd.su/bestiary/434-mage/) | Mage | 6 | 12 | 40 (9d8) | `dnd_5e_2014:monster:mage` |
+| [Скелет](https://dnd.su/bestiary/24-skeleton/) | Skeleton | 1/4 | 13 | 13 (2d8+4) | `dnd_5e_2014:monster:skeleton` |
+| [Зомби](https://dnd.su/bestiary/9-zombie/) | Zombie | 1/4 | 8 | 22 (3d8+9) | `dnd_5e_2014:monster:zombie` |
+| [Упырь](https://5e14.dnd.su/bestiary/166-ghoul/) | Ghoul | 1 | 12 | 22 (5d8) | `dnd_5e_2014:monster:ghoul` |
+| [Огр](https://dnd.su/bestiary/19-ogre/) | Ogre | 2 | 11 | 59 (7d10+21) | `dnd_5e_2014:monster:ogre` |
+| [Тролль](https://dnd.su/bestiary/304-troll/) | Troll | 5 | 15 | 84 (8d10+40) | `dnd_5e_2014:monster:troll` |
+| [Волк](https://dnd.su/bestiary/2-wolf/) | Wolf | 1/4 | 13 | 11 (2d8+2) | `dnd_5e_2014:monster:wolf` |
+| [Лютый волк](https://dnd.su/bestiary/297-dire-wolf/) | Dire Wolf | 1 | 14 | 37 (5d10+10) | `dnd_5e_2014:monster:dire-wolf` |
+| [Гигантский паук](https://dnd.su/bestiary/3-giant-spider/) | Giant Spider | 1 | 14 | 26 (4d10+4) | `dnd_5e_2014:monster:giant-spider` |
+| [Мимик](https://dnd.su/bestiary/236-mimic/) | Mimic | 2 | 12 | 58 (9d8+18) | `dnd_5e_2014:monster:mimic` |
+| [Студенистый куб](https://dnd.su/bestiary/256-gelatinous-cube/) | Gelatinous Cube | 2 | 6 | 84 (8d10+40) | `dnd_5e_2014:monster:gelatinous-cube` |
+| [Совомед](https://dnd.su/bestiary/25-owlbear/) | Owlbear | 3 | 13 | 59 (7d10+21) | `dnd_5e_2014:monster:owlbear` |
+| [Молодой красный дракон](https://dnd.su/bestiary/109-young-red-dragon/) | Young Red Dragon | 10 | 18 | 178 (17d10+85) | `dnd_5e_2014:monster:young-red-dragon` |
+| [Гнолл](https://dnd.su/bestiary/178-gnoll/) | Gnoll | 1/2 | 15 | 22 (5d8) | `dnd_5e_2014:monster:gnoll` |
+| [Гарпия](https://dnd.su/bestiary/196-harpy/) | Harpy | 1 | 11 | 38 (7d8+7) | `dnd_5e_2014:monster:harpy` |
+| [Гигантский кабан](https://dnd.su/bestiary/349-giant-boar/) | Giant Boar | 2 | 12 | 42 (5d10+15) | `dnd_5e_2014:monster:giant-boar` |
+| [Минотавр](https://5e14.dnd.su/bestiary/435-minotaur/) | Minotaur | 3 | 14 | 76 (9d10+27) | `dnd_5e_2014:monster:minotaur` |
+| [Ветеран](https://5e14.dnd.su/bestiary/421-veteran/) | Veteran | 3 | 17 | 58 (9d8+18) | `dnd_5e_2014:monster:veteran` |
+| [Мантикора](https://dnd.su/bestiary/226-manticore/) | Manticore | 3 | 14 | 68 (8d10+24) | `dnd_5e_2014:monster:manticore` |
+| [Холмовой великан](https://dnd.su/bestiary/170-hill-giant/) | Hill Giant | 5 | 13 | 105 (10d12+40) | `dnd_5e_2014:monster:hill-giant` |
+| [Огненный элементаль](https://dnd.su/bestiary/143-fire-elemental/) | Fire Elemental | 5 | 13 | 102 (12d10+36) | `dnd_5e_2014:monster:fire-elemental` |
+| [Ускользающий зверь](https://dnd.su/bestiary/94-displacer-beast/) | Displacer Beast | 3 | 13 | 85 (10d10+30) | `dnd_5e_2014:monster:displacer-beast` |
+| [Виверна](https://dnd.su/bestiary/313-wyvern/) | Wyvern | 6 | 13 | 110 (13d10+39) | `dnd_5e_2014:monster:wyvern` |
+| [Обыватель](https://5e14.dnd.su/bestiary/18-commoner/) | Commoner | 0 | 10 | 4 (1d8) | `dnd_5e_2014:monster:commoner` |
+| [Ползающая рука](https://dnd.su/bestiary/58-crawling-claw/) | Crawling Claw | 0 | 12 | 2 (1d4) | `dnd_5e_2014:monster:crawling-claw` |
+| [Гомункул](https://5e14.dnd.su/bestiary/202/) | Homunculus | 0 | 13 | 5 (2d4) | `dnd_5e_2014:monster:homunculus` |
+| [Лемур](https://5e14.dnd.su/bestiary/85/) | Lemure | 0 | 7 | 13 (3d8) | `dnd_5e_2014:monster:lemure` |
+| [Пробуждённый куст](https://5e14.dnd.su/bestiary/397-awakened-shrub/) | Awakened Shrub | 0 | 9 | 10 (3d6) | `dnd_5e_2014:monster:awakened-shrub` |
+| [Гигантский огненный жук](https://dnd.su/bestiary/355-giant_fire_beetle/) | Giant Fire Beetle | 0 | 13 | 4 (1d6+1) | `dnd_5e_2014:monster:giant-fire-beetle` |
+| [Гиена](https://dnd.su/bestiary/361-hyena/) | Hyena | 0 | 11 | 5 (1d8+1) | `dnd_5e_2014:monster:hyena` |
+| [Шакал](https://dnd.su/bestiary/415-jackal/) | Jackal | 0 | 12 | 3 (1d6) | `dnd_5e_2014:monster:jackal` |
+| [Паук](https://dnd.su/bestiary/392-spider/) | Spider | 0 | 12 | 1 (1d4-1) | `dnd_5e_2014:monster:spider` |
+| [Скорпион](https://dnd.su/bestiary/406-scorpion/) | Scorpion | 0 | 11 | 1 (1d4-1) | `dnd_5e_2014:monster:scorpion` |
+| [Оживлённый доспех](https://5e14.dnd.su/bestiary/35-animated-armor/) | Animated Armor | 1 | 18 | 33 (6d8+6) | `dnd_5e_2014:monster:animated-armor` |
+| [Бурый медведь](https://5e14.dnd.su/bestiary/330-brown-bear/) | Brown Bear | 1 | 11 | 34 (4d10+12) | `dnd_5e_2014:monster:brown-bear` |
+| [Бес](https://5e14.dnd.su/bestiary/84-imp/) | Imp | 1 | 13 | 10 (3d4+3) | `dnd_5e_2014:monster:imp` |
+| [Лев](https://www.dnd.su/bestiary/375-lion/) | Lion | 1 | 12 | 26 (4d10+4) | `dnd_5e_2014:monster:lion` |
+| [Спектр](https://5e14.dnd.su/bestiary/294-specter/) | Specter | 1 | 12 | 22 (5d8) | `dnd_5e_2014:monster:specter` |
+| [Берсерк](https://dnd.su/bestiary/420-berserker/) | Berserker | 2 | 13 | 67 (9d8+27) | `dnd_5e_2014:monster:berserker` |
+| [Вурдалак](https://dnd.su/bestiary/165-ghast/) | Ghast | 2 | 13 | 36 (8d8) | `dnd_5e_2014:monster:ghast` |
+| [Скелет минотавра](https://dnd.su/bestiary/286-minotaur-skeleton/) | Minotaur Skeleton | 2 | 12 | 67 (9d10+18) | `dnd_5e_2014:monster:minotaur-skeleton` |
+| [Веркрыса](https://dnd.su/bestiary/222-wererat/) | Wererat | 2 | 12 | 33 (6d8+6) | `dnd_5e_2014:monster:wererat` |
+| [Василиск](https://dnd.su/bestiary/41-basilisk/) | Basilisk | 3 | 15 | 52 (8d8+16) | `dnd_5e_2014:monster:basilisk` |
+| [Адская гончая](https://dnd.su/bestiary/197-hell-hound/) | Hell Hound | 3 | 15 | 45 (7d8+14) | `dnd_5e_2014:monster:hell-hound` |
+| [Вервольф](https://dnd.su/bestiary/224-werewolf/) | Werewolf | 3 | 11 | 58 (9d8+18) | `dnd_5e_2014:monster:werewolf` |
+| [Умертвие](https://dnd.su/bestiary/310-wight/) | Wight | 3 | 14 | 45 (6d8+18) | `dnd_5e_2014:monster:wight` |
+| [Мумия](https://5e14.dnd.su/bestiary/243-mummy/) | Mummy | 3 | 11 | 58 (9d8+18) | `dnd_5e_2014:monster:mummy` |
+| [Баньши](https://5e14.dnd.su/bestiary/40-banshee/) | Banshee | 4 | 12 | 58 (13d8) | `dnd_5e_2014:monster:banshee` |
+| [Чёрная слизь](https://5e14.dnd.su/bestiary/255-black-pudding/) | Black Pudding | 4 | 7 | 85 (10d10+30) | `dnd_5e_2014:monster:black-pudding` |
+| [Привидение](https://5e14.dnd.su/bestiary/164-ghost/) | Ghost | 4 | 11 | 45 (10d8) | `dnd_5e_2014:monster:ghost` |
+| [Эттин](https://5e14.dnd.su/bestiary/151-ettin/) | Ettin | 4 | 12 | 85 (10d10+30) | `dnd_5e_2014:monster:ettin` |
+| [Суккуб / Инкуб](https://5e14.dnd.su/bestiary/299-succubus-incubus/) | Succubus | 4 | 15 | 66 (12d8+12) | `dnd_5e_2014:monster:succubus` |
+| [Вирмлинг красного дракона](https://5e14.dnd.su/bestiary/110-red-dragon-wyrmling/) | Red Dragon Wyrmling | 4 | 17 | 75 (10d8+30) | `dnd_5e_2014:monster:red-dragon-wyrmling` |
+| [Чууль](https://5e14.dnd.su/bestiary/54-chuul/) | Chuul | 4 | 16 | 93 (11d10+33) | `dnd_5e_2014:monster:chuul` |
+| [Коатль](https://5e14.dnd.su/bestiary/57-couatl/) | Couatl | 4 | 19 | 97 (13d8+39) | `dnd_5e_2014:monster:couatl` |
+| [Пылающий череп](https://dnd.su/bestiary/22-flameskull/) | Flameskull | 4 | 13 | 40 (9d4+18) | `dnd_5e_2014:monster:flameskull` |
+| [Шлемоносный ужас](https://5e14.dnd.su/bestiary/198-helmed-horror/) | Helmed Horror | 4 | 20 | 60 (8d8+24) | `dnd_5e_2014:monster:helmed-horror` |
+| [Воздушный элементаль](https://dnd.su/bestiary/141-air-elemental/) | Air Elemental | 5 | 15 | 90 (12d10+24) | `dnd_5e_2014:monster:air-elemental` |
+| [Земляной элементаль](https://dnd.su/bestiary/142-earth-elemental/) | Earth Elemental | 5 | 17 | 126 (12d10+60) | `dnd_5e_2014:monster:earth-elemental` |
+| [Водяной элементаль](https://dnd.su/bestiary/144-water-elemental/) | Water Elemental | 5 | 14 | 114 (12d10+48) | `dnd_5e_2014:monster:water-elemental` |
+| [Мясной голем](https://dnd.su/bestiary/184-flesh-golem/) | Flesh Golem | 5 | 9 | 93 (11d8+44) | `dnd_5e_2014:monster:flesh-golem` |
+| [Порождение вампира](https://dnd.su/bestiary/308-vampire-spawn/) | Vampire Spawn | 5 | 15 | 82 (11d8+33) | `dnd_5e_2014:monster:vampire-spawn` |
+| [Шипастый дьявол](https://dnd.su/bestiary/77-barbed-devil/) | Barbed Devil | 5 | 15 | 110 (13d8+52) | `dnd_5e_2014:monster:barbed-devil` |
+| [Горгона](https://dnd.su/bestiary/187-gorgon/) | Gorgon | 5 | 19 | 114 (12d10+48) | `dnd_5e_2014:monster:gorgon` |
+| [Химера](https://dnd.su/bestiary/53-chimera/) | Chimera | 6 | 14 | 114 (12d10+48) | `dnd_5e_2014:monster:chimera` |
+| [Циклоп](https://dnd.su/bestiary/59-cyclops/) | Cyclops | 6 | 14 | 138 (12d12+60) | `dnd_5e_2014:monster:cyclops` |
+| [Медуза](https://dnd.su/bestiary/227-medusa/) | Medusa | 6 | 15 | 127 (17d8+51) | `dnd_5e_2014:monster:medusa` |
+| [Мамонт](https://dnd.su/bestiary/381-mammoth/) | Mammoth | 6 | 13 | 126 (11d12+55) | `dnd_5e_2014:monster:mammoth` |
+| [Врок](https://dnd.su/bestiary/75-vrock/) | Vrock | 6 | 15 | 104 (11d10+44) | `dnd_5e_2014:monster:vrock` |
+| [Драук](https://dnd.su/bestiary/138-drider/) | Drider | 6 | 19 | 123 (13d10+52) | `dnd_5e_2014:monster:drider` |
+| [Молодой белый дракон](https://dnd.su/bestiary/113-young-white-dragon/) | Young White Dragon | 6 | 17 | 133 (14d10+56) | `dnd_5e_2014:monster:young-white-dragon` |
+| [Молодой латунный дракон](https://dnd.su/bestiary/117-young-brass-dragon/) | Young Brass Dragon | 6 | 17 | 110 (13d10+39) | `dnd_5e_2014:monster:young-brass-dragon` |
 
-Все варианты здесь базовые. Виды существ могут быть противниками, союзниками или нейтральными NPC; стат-блок не обязывает нападать.
+Статблок определяет возможности существа, а его враждебность — ситуация кампании.
 
 ## Магические предметы
 

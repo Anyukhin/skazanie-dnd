@@ -3,6 +3,11 @@ import { listAssets } from './asset-registry.mjs'
 import { combatBoundsContain, combatBoundsUseful, computeCombatBounds } from './combat-bounds.mjs'
 import { enemyLoadoutFor } from './enemy-loadouts.mjs'
 import { SIZE_CLASSES } from './tactical-map.mjs'
+import { loadDndsu2014Content } from './dndsu-2014-content.mjs'
+import { enemyFrom2014 } from './combat-lab-monsters.mjs'
+import { selectEncounterRoster } from './combat-lab-encounter-math.mjs'
+
+const classicContent = await loadDndsu2014Content()
 
 export const ENCOUNTER_PROPOSAL_VERSION = 'skazanie:encounter-proposal-v1'
 
@@ -767,7 +772,7 @@ const XP_BUDGET_PER_CHARACTER = deepFreeze({
   20: { low: 6_400, moderate: 13_200, high: 22_000 },
 })
 
-const TOP_LEVEL_KEYS = new Set(['scene', 'party', 'difficulty', 'theme', 'seed'])
+const TOP_LEVEL_KEYS = new Set(['scene', 'party', 'difficulty', 'theme', 'seed', 'ruleset_id'])
 const SCENE_KEYS = new Set(['cells'])
 // `occupied` появился в M0: раньше занятость клетки существом выражалась
 // записью сущности в `feature`, а после разделения слоёв её нужно передавать
@@ -923,7 +928,8 @@ function validateInput(input) {
     throw new EncounterAssemblyError('Неизвестная тема столкновения', 'ENCOUNTER_THEME_NOT_ALLOWED')
   }
   const seed = boundedText(input.seed, ENCOUNTER_ASSEMBLER_LIMITS.maximum_seed_length, 'INVALID_ENCOUNTER_SEED', 'seed')
-  return { cells, party, difficulty: input.difficulty, theme: input.theme, seed }
+  if (input.ruleset_id != null && !['srd_5_2_1', 'dnd_5e_2014'].includes(input.ruleset_id)) throw new EncounterAssemblyError('Редакция бестиария не установлена', 'ENCOUNTER_RULESET_NOT_ALLOWED')
+  return { cells, party, difficulty: input.difficulty, theme: input.theme, seed, ...(input.ruleset_id === 'dnd_5e_2014' ? { ruleset_id: input.ruleset_id } : {}) }
 }
 
 /**
@@ -971,7 +977,7 @@ function spawnBounds(cells, party) {
 function safePlacementCells(cells, party, bounds = null) {
   const occupied = new Set(party.map(positionKey))
   const walkable = new Map(cells
-    .filter((cell) => cell.revealed && WALKABLE_TYPES.has(cell.type))
+    .filter((cell) => cell.revealed && WALKABLE_TYPES.has(cell.type) && cell.occupied !== true)
     .map((cell) => [positionKey(cell), cell]))
   const reachable = new Set()
   const queue = party.flatMap((member) => walkable.has(positionKey(member)) ? [walkable.get(positionKey(member))] : [])
@@ -1109,6 +1115,21 @@ function cloneCatalogValue(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value))
 }
 
+function classicMonstersForTheme(theme) {
+  const aliases = { 'goblin-minion': 'goblin', 'goblin-warrior': 'goblin', 'gnoll-warrior': 'gnoll', 'warrior-veteran': 'veteran' }
+  const slugs = new Set((THEMES[theme] ?? []).map(id => { const slug = id.split(':').at(-1); return aliases[slug] ?? slug }))
+  if (theme === 'law') { slugs.add('guard'); slugs.add('veteran') }
+  return classicContent.monsters.filter(record => {
+    if (theme === 'generic' || slugs.has(record.id.split(':').at(-1))) return true
+    if (theme === 'undead' || theme === 'crypt') return record.creature_type === 'undead'
+    if (theme === 'beasts') return record.creature_type === 'beast'
+    if (theme === 'vermin') return record.creature_type === 'beast' && ['tiny', 'small'].includes(record.size)
+    if (theme === 'cave') return record.habitats.some(habitat => ['cave', 'underdark'].includes(habitat))
+    if (theme === 'wilderness') return record.creature_type !== 'humanoid' && record.habitats.some(habitat => ['forest', 'grassland', 'hill', 'mountain'].includes(habitat))
+    return false
+  })
+}
+
 export class EncounterAssembler {
   assemble(input) {
     const validated = validateInput(input)
@@ -1120,6 +1141,33 @@ export class EncounterAssembler {
     const availableCells = safePlacementCells(validated.cells, validated.party, bounds)
     if (!availableCells.length) {
       throw new EncounterAssemblyError('Нет безопасных клеток для размещения противников', 'NO_SAFE_PLACEMENT_CELLS')
+    }
+    if (validated.ruleset_id === 'dnd_5e_2014') {
+      const quantityCap = Math.min(ENCOUNTER_ASSEMBLER_LIMITS.maximum_creatures, validated.party.length * 2, availableCells.length)
+      const records = classicMonstersForTheme(validated.theme)
+      const selection = selectEncounterRoster({ records, partyLevels: validated.party.map(member => member.level), difficulty: validated.difficulty, seed: proposalHash, maximumCreatures: quantityCap })
+      const positions = deterministicOrder(availableCells, proposalHash, 'placement')
+      const proposalId = `encounter-proposal-${proposalHash.slice(0, 24)}`
+      const counts = new Map()
+      const enemies = selection.records.map((record, index) => {
+        const slug = record.id.split(':').at(-1)
+        const ordinal = (counts.get(record.id) ?? 0) + 1
+        counts.set(record.id, ordinal)
+        const enemy = enemyFrom2014(record, positions[index], index)
+        enemy.id = `encounter-${proposalHash.slice(0, 16)}-${slug}-${index + 1}`.slice(0, 120)
+        enemy.name = `${record.name_ru} ${ordinal}`
+        enemy.loadout = enemyLoadoutFor({ statBlockId: record.id, block: enemy, ownerId: enemy.id, seed: proposalHash, sourceId: proposalId })
+        return enemy
+      })
+      const budgetXp = Number.isFinite(selection.interval.upper) ? selection.interval.upper : selection.target_adjusted_xp
+      return deepFreeze({
+        proposal_id: proposalId, version: ENCOUNTER_PROPOSAL_VERSION, difficulty: validated.difficulty,
+        difficulty_label: encounterDifficultyLabel(validated.difficulty), theme: validated.theme,
+        xp_budget: budgetXp, xp_spent: selection.adjusted_xp,
+        threat: { budget_xp: budgetXp, spent_xp: selection.adjusted_xp, raw_xp: selection.raw_xp, multiplier: selection.multiplier,
+          unspent_xp: Math.max(0, budgetXp - selection.adjusted_xp), utilization_bps: Math.floor(selection.adjusted_xp * 10_000 / Math.max(1, budgetXp)), quantity: enemies.length, quantity_cap: quantityCap },
+        enemies, source: { title: 'Бестиарий MM14 по dnd.su', ruleset_id: 'dnd_5e_2014', version: classicContent.manifest.version, url: 'https://5e14.dnd.su/bestiary/' },
+      })
     }
 
     const srdBudgetXp = validated.party.reduce((sum, member) => (

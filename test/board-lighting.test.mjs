@@ -134,6 +134,23 @@ test('закрытая дверь свет держит, открытая — п
   assert.ok(ajar > shut, `сквозь открытую дверь ${ajar} обязано светить сильнее, чем сквозь закрытую ${shut}`)
 })
 
+test('смена состояния двери обесценивает кэш видимости источника', () => {
+  const map = roomMap({ theme: 'crypt', width: 7, height: 3 })
+  for (let y = 0; y < 3; y += 1) setEdge(map, 2, y, 3, y, { kind: 'wall', blocksMove: true, blocksSight: true })
+  setDoor(map, { id: 'door', x: 2, y: 1, dir: 'e', state: 'closed' })
+  addProp(map, { id: 'torch', assetId: 'torch_wall', x: 1.5, y: 1.5, footprint: [{ x: 1, y: 1 }] })
+  const closed = decoded(map)
+  const source = { x: 1, y: 1, radius: 5 }
+  const shut = lighting.lightSourceVisibilityFor(closed, source)
+  assert.equal(shut[1 * closed.width + 4], 0, 'закрытая дверь должна оставить дальнюю клетку в тени')
+
+  setDoor(map, { id: 'door', x: 2, y: 1, dir: 'e', state: 'open' })
+  const open = decoded(map)
+  assert.notEqual(open.terrainHash, closed.terrainHash, 'состояние двери обязано менять отпечаток местности')
+  const ajar = lighting.lightSourceVisibilityFor(open, source)
+  assert.equal(ajar[1 * open.width + 4], 1, 'новый отпечаток обязан пропустить свет через открытую дверь')
+})
+
 test('окно даёт свет внутрь помещения', () => {
   const width = 10
   const map = createTacticalMap({ width, height: 3, seed: 'window', theme: 'building' })

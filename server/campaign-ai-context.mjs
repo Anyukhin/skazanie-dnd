@@ -42,7 +42,7 @@ export const DEFAULT_IMPROV_MODE = 'story'
 // а не внутри самого агента. RouterAI принимает оба штрафа в диапазоне
 // [-2, 2]; умеренные значения уменьшают самоповтор, не ломая связность прозы.
 export const NARRATOR_GENERATION_PARAMETERS = Object.freeze({
-  temperature: 0.8,
+  temperature: 0.4,
   frequencyPenalty: 0.35,
   presencePenalty: 0.2,
 })

@@ -1,4 +1,5 @@
-import type { GameState, MapCell } from './types'
+import type { GameState, MapCell, TacticalMap } from './types'
+import overviewManifest from '../data/authored-location-overview-manifest-v1.json' with { type: 'json' }
 
 export const SCENE_THEMES = [
   'building',
@@ -16,6 +17,7 @@ export type SceneVisualTheme = SceneTheme | 'common'
 export type SceneArt = Readonly<{
   id: string
   url: string
+  mode?: 'map'
 }>
 
 /** Пять собственных светлых top-down подложек тактической доски. */
@@ -118,6 +120,36 @@ export function boardMapArtForTheme(theme: SceneVisualTheme): SceneArt {
   if (theme === 'cave') return BOARD_MAP_LIBRARY.cave
   if (theme === 'forest' || theme === 'road' || theme === 'settlement') return BOARD_MAP_LIBRARY.village
   return BOARD_MAP_LIBRARY.dungeon
+}
+
+/** Версия рисунка хранится с картой: старое сохранение не получает чужую планировку. */
+export function boardMapArtForMap(theme: SceneVisualTheme, map: Pick<TacticalMap, 'tilesetId' | 'locationId' | 'levelIndex'> | null): SceneArt | null {
+  if (/^authored-tactical:[a-z0-9-]+:v[1-9][0-9]*$/u.test(map?.tilesetId ?? '')) return null
+  const authored = /^authored-location:([a-z0-9]+(?:-[a-z0-9]+)*):v([1-9][0-9]*)$/u.exec(map?.tilesetId ?? '')
+  if (!authored || authored[1] !== map?.locationId || map.levelIndex !== 0) return boardMapArtForTheme(theme)
+  return {
+    id: map.tilesetId,
+    url: `/assets/maps/locations/skazanie/${authored[1]}-v${authored[2]}.webp`,
+    mode: 'map',
+  }
+}
+
+/** Общий план публичной локации не определяет клетки и препятствия сцены. */
+export type LocationOverviewEntry = {
+  overviewId: string; locationId: string; worldId: string; url: string; name: string; firstPlayableZone: string
+  focus?: { x: number; y: number }
+}
+
+export function locationOverviewFor(locationId: string | null | undefined): LocationOverviewEntry | null {
+  return overviewManifest.entries.find((entry) => entry.locationId === locationId) ?? null
+}
+
+/** Указатель относится к подготовленному участку, а не к координатам героя. */
+export function tacticalOverviewFocus(overview: LocationOverviewEntry | null, map: Pick<TacticalMap, 'tilesetId' | 'locationId' | 'levelIndex'> | null) {
+  if (!overview?.focus || map?.locationId !== overview.locationId || map.levelIndex !== 0
+    || map.tilesetId !== `authored-tactical:${overview.locationId}:v1`) return null
+  const { x, y } = overview.focus
+  return Number.isFinite(x) && Number.isFinite(y) && x >= 0 && x <= 1 && y >= 0 && y <= 1 ? { x, y } : null
 }
 
 export function sceneIllustrationForTheme(theme: SceneTheme | string, locationId: string): SceneArt {

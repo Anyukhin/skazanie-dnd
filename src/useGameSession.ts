@@ -28,6 +28,7 @@ export type BeastAction = 'calm' | 'feed' | 'scare'
 
 type TacticalCommand =
   | { command_type: 'StartCombat'; actor_id: string }
+  | { command_type: 'AttackNpc'; actor_id: string; npc_id: string }
   | { command_type: 'MoveActor'; actor_id: string; to: { x: number; y: number } }
   | { command_type: 'MakeAttack'; actor_id: string; target_id: string; item_id?: string; attack_mode?: 'melee' | 'ranged' | 'thrown' | 'two-handed'; attack_ability?: 'str' | 'dex'; sneak_attack?: boolean; knock_out?: boolean }
   | { command_type: 'MakeAreaAttack'; actor_id: string; item_id: string; to: { x: number; y: number } }
@@ -420,8 +421,10 @@ export function useGameSession() {
   const roomVersion = useRef(0)
   const busy = useRef(false)
   const directorBusyRef = useRef(false)
+  const directorPendingKeyRef = useRef<string | null>(null)
   const tacticalBusyRef = useRef(false)
   const merchantBusyRef = useRef(false)
+  const merchantEpoch = useRef(0)
   const freeRollBusy = useRef(false)
   const fullRoomRequest = useRef<Promise<boolean> | null>(null)
   const actionEpoch = useRef(0)
@@ -859,6 +862,7 @@ export function useGameSession() {
     }
 
     const conversationResult = conversationOnly || aiResult?.request_kind === 'question' || aiResult?.request_kind === 'discussion'
+    if (conversationResult && aiResult?.clarification) setPendingClarification(aiResult.clarification)
     if (!conversationResult) {
       setPendingClarification(aiResult?.clarification ?? null)
       setDialogueDraft(null)
@@ -939,6 +943,7 @@ export function useGameSession() {
       if (epoch !== actionEpoch.current) return
       if (result.room_version) roomVersion.current = latestRoomVersion(roomVersion.current, result.room_version)
       if (result.mechanics?.length) setCombatVisualBatch({ id: `maneuver:${result.turn_id}`, events: result.mechanics, npcTurns: [] })
+      setPendingClarification(result.clarification ?? null)
       mutate((latest) => finishTurn(latest, pending.action, result))
     } catch (error) {
       if (epoch !== actionEpoch.current) return
@@ -971,10 +976,32 @@ export function useGameSession() {
     mutate((latest) => ({ ...latest, pendingCheck: null, pendingAction: null }))
   }, [mutate])
 
-  const cancelDialogue = useCallback(() => {
-    setPendingClarification(null)
-    setDialogueDraft(null)
-  }, [])
+  const cancelDialogue = useCallback(async () => {
+    const pending = pendingClarification
+    if (!pending || busy.current) return
+    busy.current = true
+    const cancelEpoch = actionEpoch.current
+    const campaignId = pending.campaign_id
+    try {
+      const signal = typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(10_000) : undefined
+      const response = await fetch(`/api/campaigns/${encodeURIComponent(campaignId)}/dialogue?actor_id=${encodeURIComponent(pending.actor_id)}`, {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clarification_id: pending.id }),
+        ...(signal ? { signal } : {}),
+      })
+      if (!response.ok) throw new Error('Сервер не подтвердил отмену уточнения.')
+      // Пока DELETE выполнялся, другая кампания могла установить новую карточку.
+      // Снимаем только ту карточку, для которой был отправлен запрос.
+      setPendingClarification((current) => current?.id === pending.id && current.campaign_id === campaignId ? null : current)
+      setDialogueDraft((current) => current?.campaignId === campaignId ? null : current)
+    } catch (error) {
+      if (stateRef.current.sessionCode === campaignId) {
+        setLastDialogueAnswer(error instanceof Error ? error.message : 'Не удалось отменить уточнение. Повторите попытку.')
+      }
+    } finally {
+      if (actionEpoch.current === cancelEpoch) busy.current = false
+    }
+  }, [pendingClarification])
 
   const rollPendingCheck = useCallback(async () => {
     const check = state.pendingCheck
@@ -1039,7 +1066,7 @@ export function useGameSession() {
     const player = state.players.find((item) => item.id === check.playerId) ?? state.players[0]
     let aiResult: AiTurnResult | null = null
     try {
-      aiResult = await narrateWithAgent(state, check.action, player.character, result, resolutionKey, player.id)
+      aiResult = await narrateWithAgent(state, check.action, player.character, result, resolutionKey, player.id, { clarificationId: check.clarification_id })
     } catch (error) {
       const normalized = await normalizeCommandError(error)
       const conflict = isStateVersionConflictError(normalized)
@@ -1069,6 +1096,7 @@ export function useGameSession() {
         npcTurns: [],
       })
     }
+    setPendingClarification(aiResult?.clarification ?? null)
     mutate((current) => finishTurn(current, check.action, aiResult!, result))
     busy.current = false
 
@@ -1374,6 +1402,10 @@ export function useGameSession() {
 
   const startCombat = useCallback((playerId: string) => {
     return executeTacticalCommand({ command_type: 'StartCombat', actor_id: playerId }, 'Начать бой')
+  }, [executeTacticalCommand])
+
+  const attackNpc = useCallback((playerId: string, npcId: string) => {
+    return executeTacticalCommand({ command_type: 'AttackNpc', actor_id: playerId, npc_id: npcId }, 'Напасть на NPC')
   }, [executeTacticalCommand])
 
   const startRest = useCallback((playerId: string, kind: 'short' | 'long') => {
@@ -1709,6 +1741,9 @@ export function useGameSession() {
 
   const switchCampaign = useCallback(async (code: string, prefetched?: { version?: number; state?: GameState | null }) => {
     const normalized = code.toUpperCase()
+    merchantEpoch.current += 1
+    merchantBusyRef.current = false
+    setMerchantBusy(false)
     setTacticalError(null)
     setMerchantError(null)
     setMerchantView(null)
@@ -1742,12 +1777,15 @@ export function useGameSession() {
   const loadMerchant = useCallback(async (merchantId: string, actorId: string) => {
     if (merchantBusyRef.current) return
     const current = stateRef.current
+    const epoch = merchantEpoch.current
     merchantBusyRef.current = true
     setMerchantBusy(true)
     setMerchantError(null)
+    setMerchantNarration(null)
     try {
       const response = await fetch(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/merchants/${encodeURIComponent(merchantId)}?actor_id=${encodeURIComponent(actorId)}`)
       const result = await response.json().catch(() => null) as MerchantCommandResult | MerchantView | null
+      if (epoch !== merchantEpoch.current || current.sessionCode !== stateRef.current.sessionCode) return
       const wrapped = result && 'merchant_view' in result ? result as MerchantCommandResult : null
       const view = wrapped?.merchant_view ?? (result && 'merchant' in result ? result as MerchantView : null)
       if (!response.ok) throw new Error(wrapped?.error || `Не удалось получить цены торговца (${response.status})`)
@@ -1758,17 +1796,21 @@ export function useGameSession() {
       }
       setMerchantView(view)
     } catch (error) {
+      if (epoch !== merchantEpoch.current || current.sessionCode !== stateRef.current.sessionCode) return
       setMerchantView(null)
       setMerchantError(error instanceof Error ? error.message : 'Торговец временно недоступен')
     } finally {
-      merchantBusyRef.current = false
-      setMerchantBusy(false)
+      if (epoch === merchantEpoch.current) {
+        merchantBusyRef.current = false
+        setMerchantBusy(false)
+      }
     }
   }, [applyRemote])
 
   const executeMerchantCommand = useCallback(async (merchantId: string, command: MerchantCommand) => {
     if (merchantBusyRef.current) return
     const current = stateRef.current
+    const epoch = merchantEpoch.current
     const expectedStateVersion = Number(merchantView?.expected_state_version ?? merchantView?.state_version)
     if (merchantView?.merchant.id !== merchantId || merchantView.actor_id !== command.actor_id || !Number.isInteger(expectedStateVersion) || expectedStateVersion < 0) {
       setMerchantError('Сначала обновите серверные котировки для выбранного героя.')
@@ -1786,6 +1828,7 @@ export function useGameSession() {
         body: JSON.stringify({ idempotency_key: requestId, command: { ...command, expected_state_version: expectedStateVersion } }),
       })
       const result = await response.json().catch(() => null) as MerchantCommandResult | null
+      if (epoch !== merchantEpoch.current || current.sessionCode !== stateRef.current.sessionCode) return
       if (!response.ok) throw await responseCommandError(response, result, `Торговец отклонил действие (${response.status})`)
       if (!result?.authoritative_state) throw new Error('Сервер не вернул итоговое состояние сделки')
       if (!result.merchant_view) throw new Error('Сервер не вернул обновлённые котировки торговца')
@@ -1797,10 +1840,13 @@ export function useGameSession() {
       setMerchantView(result.merchant_view)
       setMerchantNarration(result.narration?.trim() || null)
     } catch (error) {
+      if (epoch !== merchantEpoch.current || current.sessionCode !== stateRef.current.sessionCode) return
       setMerchantError(error instanceof Error ? error.message : 'Не удалось выполнить торговую операцию')
     } finally {
-      merchantBusyRef.current = false
-      setMerchantBusy(false)
+      if (epoch === merchantEpoch.current) {
+        merchantBusyRef.current = false
+        setMerchantBusy(false)
+      }
     }
   }, [applyRemote, merchantView, responseCommandError])
 
@@ -1898,7 +1944,7 @@ export function useGameSession() {
     setDirectorError(null)
     try {
       const current = stateRef.current
-      const requestId = commandId()
+      const requestId = directorPendingKeyRef.current ?? commandId()
       const response = await fetch(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/autonomy/advance`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Idempotency-Key': requestId },
@@ -1907,6 +1953,7 @@ export function useGameSession() {
       const result = await response.json().catch(() => null) as { state?: GameState; state_version?: number; intent?: { type?: string }; error?: string; code?: string } | null
       if (!response.ok) throw await responseCommandError(response, result, `Director не смог продолжить приключение (${response.status})`)
       if (!result?.state) throw new Error('Director не вернул состояние кампании')
+      directorPendingKeyRef.current = result.state.agentInteraction?.status === 'open' ? requestId : null
       applyRemote(result.state)
       return result.intent ?? null
     } catch (error) {
@@ -1918,23 +1965,6 @@ export function useGameSession() {
       setDirectorBusy(false)
     }
   }, [applyRemote, responseCommandError])
-
-  // Раньше сюда подставлялся демо-мир целиком: реальная кампания получала
-  // «Затопленный архив», чужого стража и три вымышленные реплики. Теперь это
-  // ровно то, что обещает кнопка, — снять бой и поднять отряд.
-  const reset = useCallback(() => mutate((current) => {
-    const members = current.partyMemberIds?.length ? current.partyMemberIds : current.players.map((player) => player.id)
-    return {
-      ...current,
-      players: current.players.map((player) => ({ ...player, hp: player.maxHp })),
-      enemies: [],
-      battleLog: [],
-      tacticalTurn: { sceneTurn: 0, actorId: '', movementSpent: 0, actionUsed: false },
-      pendingCheck: null,
-      isNarrating: false,
-      activePlayerId: members[0] ?? current.players[0]?.id ?? '',
-    }
-  }), [mutate])
 
   const updatePlayer = useCallback(async (playerId: string, patch: Partial<Player>) => {
     const current = stateRef.current
@@ -1997,6 +2027,27 @@ export function useGameSession() {
     }
   }), [mutate])
 
+  useEffect(() => {
+    const campaignId = state.sessionCode
+    const actorId = state.activePlayerId
+    if (!campaignId || !actorId) return
+    let cancelled = false
+    void fetch(`/api/campaigns/${encodeURIComponent(campaignId)}/dialogue`)
+      .then(async response => response.ok ? await response.json() as {
+        clarification?: ActionClarification | null
+        actor_id?: string
+        check?: (NonNullable<AiTurnResult['check']> & { action: string }) | null
+      } : null)
+      .then(saved => {
+        if (cancelled || !saved || stateRef.current.sessionCode !== campaignId || busy.current) return
+        if (saved.clarification) setPendingClarification(saved.clarification)
+        if (saved.check) mutate(current => current.pendingCheck || current.pendingAction ? current : {
+          ...current, pendingCheck: { ...saved.check!, playerId: saved.actor_id ?? actorId, status: 'ready' },
+        })
+      }).catch(() => {})
+    return () => { cancelled = true }
+  }, [state.sessionCode, state.activePlayerId, mutate])
+
   return {
     state,
     narrationPreview,
@@ -2028,6 +2079,7 @@ export function useGameSession() {
     continueAgentInteraction,
     selectPlayer,
     startCombat,
+    attackNpc,
     startRest,
     spendHitPointDie,
     completeRest,
@@ -2075,7 +2127,6 @@ export function useGameSession() {
     moveMerchant,
     setMerchantAvailability,
     advanceAdventure,
-    reset,
     updatePlayer,
     updateWorld,
   }

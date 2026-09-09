@@ -1,9 +1,17 @@
 import { getRoom, listRoomCodes } from './store.mjs'
 import { loadDndsu2014Content } from './dndsu-2014-content.mjs'
 import { normalizeCampaignState } from './rules-engine.mjs'
-import { deserializeTacticalMap, reachableCells, cellAt, legacyCellsFromTacticalMap, serializeTacticalMap, setCell, tacticalMapFromLegacyCells } from './tactical-map.mjs'
+import { deserializeTacticalMap, reachableCells, cellAt, legacyCellsFromTacticalMap, serializeTacticalMap, tacticalMapFromLegacyCells } from './tactical-map.mjs'
 import { starterEquipmentCatalogFor, withStarterKit } from './starter-kit.mjs'
 import { enemyFrom2014, monsterCatalogEntry } from './combat-lab-monsters.mjs'
+import { COMBAT_LAB_MAPS } from './combat-lab-maps.mjs'
+import {
+  COMBAT_LAB_ENCOUNTER_DIFFICULTIES,
+  COMBAT_LAB_RULES_SOURCE_2014,
+  assessEncounterRoster,
+  challengeRatingValue,
+  selectEncounterRoster,
+} from './combat-lab-encounter-math.mjs'
 
 export const COMBAT_LAB_RULESET = Object.freeze({
   id: 'dnd_5e_2014',
@@ -108,47 +116,44 @@ function mapCells(map) {
   })
 }
 
-function mapDefinition(id, name, width, height, build) {
-  const cells = Array.from({ length: width * height }, (_, index) => ({
-    x: index % width,
-    y: Math.floor(index / width),
-    type: 'floor',
-    revealed: true,
-  }))
-  const map = tacticalMapFromLegacyCells(cells, { locationId: `combat-lab:${id}`, theme: id })
-  build(map, width, height)
-  return Object.freeze({
-    id,
-    name,
-    width,
-    height,
-    theme: map.theme,
-    cells: mapCells(map),
-    map: serializeTacticalMap(map),
-  })
-}
-
-const MAPS = Object.freeze([
-  mapDefinition('open-courtyard', 'Открытый двор', 10, 6, (map) => {
-    for (let x = 3; x <= 6; x += 1) setCell(map, x, 2, { moveCost: 2 })
-  }),
-  mapDefinition('ruined-hall', 'Разрушенный зал', 12, 7, (map, width, height) => {
-    for (let y = 0; y < height; y += 1) if (y !== Math.floor(height / 2)) setCell(map, 5, y, { passable: false, revealed: true })
-    for (let x = 2; x <= 9; x += 1) if (x !== 5 && x !== 8) setCell(map, x, 4, { moveCost: 2 })
-  }),
-  mapDefinition('marsh-crossing', 'Болотная переправа', 11, 8, (map, width, height) => {
-    for (let x = 2; x <= width - 3; x += 1) for (let y = 2; y <= height - 3; y += 1) setCell(map, x, y, { moveCost: 2 })
-    for (let y = 0; y < height; y += 1) setCell(map, Math.floor(width / 2), y, { moveCost: 1 })
-  }),
-  mapDefinition('pillar-chamber', 'Зал колонн', 14, 8, (map) => {
-    for (const [x, y] of [[3, 2], [3, 5], [6, 2], [6, 5], [9, 2], [9, 5], [11, 3], [11, 4]]) {
-      setCell(map, x, y, { passable: false, revealed: true })
-    }
-    for (let x = 1; x <= 12; x += 1) setCell(map, x, 3, { moveCost: 2 })
-  }),
-])
+const MAPS = COMBAT_LAB_MAPS
 
 const MAP_BY_ID = new Map(MAPS.map((map) => [map.id, map]))
+
+export const COMBAT_LAB_ENCOUNTER_THEMES = Object.freeze([
+  'generic', 'goblinoids', 'undead', 'beasts', 'raiders', 'cultists', 'dragons', 'dungeon',
+])
+
+const COMBAT_LAB_ENCOUNTER_THEME_NAMES = Object.freeze({
+  generic: 'Любые существа',
+  goblinoids: 'Гоблиноиды',
+  undead: 'Нежить',
+  beasts: 'Звери',
+  raiders: 'Разбойники и воины',
+  cultists: 'Культ и магия',
+  dragons: 'Драконы',
+  dungeon: 'Подземелье',
+})
+
+const COMBAT_LAB_ENCOUNTER_DIFFICULTY_NAMES = Object.freeze({
+  trivial: 'ниже лёгкой', easy: 'лёгкой', medium: 'средней', hard: 'тяжёлой', deadly: 'смертельной',
+})
+
+const ENCOUNTER_THEME_ALIASES = Object.freeze({
+  generic: 'generic',
+  goblin: 'goblinoids',
+  goblinoids: 'goblinoids',
+  undead: 'undead',
+  beasts: 'beasts',
+  beast: 'beasts',
+  raiders: 'raiders',
+  humanoids: 'raiders',
+  cult: 'cultists',
+  cultists: 'cultists',
+  dragons: 'dragons',
+  dragon: 'dragons',
+  dungeon: 'dungeon',
+})
 
 function standardAbilities(classId) {
   const abilities = { str: 13, dex: 12, con: 14, int: 10, wis: 10, cha: 8 }
@@ -294,6 +299,7 @@ export async function combatLabCatalog({ loadCampaign = null } = {}) {
     classes: classCatalog(),
     monsters: loadedContent.monsters.map(monsterCatalogEntry),
     maps: MAPS.map(clone),
+    encounterThemes: COMBAT_LAB_ENCOUNTER_THEMES.map((id) => ({ id, name: COMBAT_LAB_ENCOUNTER_THEME_NAMES[id] })),
     limits: clone(COMBAT_LAB_LIMITS),
   }
 }
@@ -326,6 +332,302 @@ async function loadSourceCampaign(campaignId, loadCampaign) {
   } catch {
     return getRoom(campaignId).state
   }
+}
+
+function normalizeEncounterSeed(value) {
+  if (value == null) return 'combat-lab'
+  if (Number.isSafeInteger(value) && value >= 0 && value <= 0xffffffff) return String(value)
+  if (typeof value !== 'string') throw new CombatLabSetupError('seed должен быть строкой или целым числом 0..4294967295', 'INVALID_COMBAT_LAB_SEED')
+  const seed = value.trim()
+  if (!seed || seed.length > 120 || /[\u0000-\u001f\u007f]/u.test(seed)) {
+    throw new CombatLabSetupError('seed не прошёл проверку границ', 'INVALID_COMBAT_LAB_SEED')
+  }
+  return seed
+}
+
+function normalizeEncounterTheme(value) {
+  if (value != null && typeof value !== 'string') throw new CombatLabSetupError('Тема автоматической стычки должна быть строкой', 'UNKNOWN_COMBAT_LAB_THEME')
+  const raw = String(value ?? 'generic').trim().toLowerCase()
+  const theme = ENCOUNTER_THEME_ALIASES[raw]
+  if (!theme) throw new CombatLabSetupError('Неизвестная тема автоматической стычки', 'UNKNOWN_COMBAT_LAB_THEME')
+  return theme
+}
+
+function normalizeEncounterRequest(input, options = {}) {
+  assertObject(input, 'request')
+  const wrapped = Object.hasOwn(input, 'config')
+  if (wrapped) {
+    assertAllowedFields(input, ['config', 'difficulty', 'seed', 'theme'], 'request')
+    assertObject(input.config, 'request.config')
+    assertAllowedFields(input.config, ['mapId', 'party', 'enemies'], 'config')
+  } else {
+    assertAllowedFields(input, ['mapId', 'party', 'enemies', 'difficulty', 'seed', 'theme'], 'request')
+  }
+  const config = wrapped ? input.config : input
+  const difficultyProvided = options.difficulty != null || input.difficulty != null
+  const difficulty = options.difficulty ?? input.difficulty ?? 'medium'
+  if (typeof difficulty !== 'string' || !COMBAT_LAB_ENCOUNTER_DIFFICULTIES.includes(difficulty)) {
+    throw new CombatLabSetupError('difficulty должен быть easy, medium, hard или deadly', 'INVALID_COMBAT_LAB_DIFFICULTY')
+  }
+  if (config.mapId != null && typeof config.mapId !== 'string') throw new CombatLabSetupError('mapId должен быть строкой', 'UNKNOWN_COMBAT_LAB_MAP')
+  const mapId = String(config.mapId ?? 'open-courtyard')
+  if (!MAP_BY_ID.has(mapId)) throw new CombatLabSetupError('Неизвестная карта боевого стенда', 'UNKNOWN_COMBAT_LAB_MAP')
+  return {
+    config,
+    mapId,
+    difficulty,
+    difficultyProvided,
+    seed: normalizeEncounterSeed(options.seed ?? input.seed),
+    theme: normalizeEncounterTheme(options.theme ?? input.theme),
+  }
+}
+
+function normalizeEncounterParty(party) {
+  if (!Array.isArray(party) || party.length < 1 || party.length > COMBAT_LAB_LIMITS.party) {
+    throw new CombatLabSetupError(`В отряде должно быть 1..${COMBAT_LAB_LIMITS.party} участников`, 'PARTY_LIMIT_EXCEEDED')
+  }
+  return party.map((entry, index) => {
+    assertObject(entry, `config.party[${index}]`)
+    assertAllowedFields(entry, ['source', 'campaignId', 'heroId', 'classId', 'level', 'x', 'y'], `config.party[${index}]`)
+    if (!['hero', 'class'].includes(entry.source)) throw new CombatLabSetupError('source должен быть hero или class', 'INVALID_COMBAT_LAB_SOURCE')
+    if (entry.source === 'hero' && (typeof entry.campaignId !== 'string' || typeof entry.heroId !== 'string' || !entry.campaignId || !entry.heroId)) throw new CombatLabSetupError('Для source=hero нужны campaignId и heroId', 'HERO_SOURCE_REQUIRED')
+    if (entry.source === 'class' && (typeof entry.classId !== 'string' || !entry.classId || entry.campaignId || entry.heroId)) throw new CombatLabSetupError('Для source=class нужен только classId', 'CLASS_SOURCE_INVALID')
+    if (entry.level != null) integer(entry.level, `config.party[${index}].level`, 1, 12)
+    for (const coordinateName of ['x', 'y']) if (entry[coordinateName] != null && !Number.isSafeInteger(entry[coordinateName])) {
+      throw new CombatLabSetupError(`config.party[${index}].${coordinateName} должен быть целым числом`, 'INVALID_COMBAT_LAB_VALUE')
+    }
+    return { ...entry }
+  })
+}
+
+function normalizeEncounterEnemies(enemies) {
+  if (enemies == null) return []
+  if (!Array.isArray(enemies) || enemies.length > COMBAT_LAB_LIMITS.enemies) {
+    throw new CombatLabSetupError(`У противников должно быть 0..${COMBAT_LAB_LIMITS.enemies} участников`, 'ENEMY_LIMIT_EXCEEDED')
+  }
+  return enemies.map((entry, index) => {
+    assertObject(entry, `config.enemies[${index}]`)
+    assertAllowedFields(entry, ['monsterId', 'x', 'y'], `config.enemies[${index}]`)
+    if (typeof entry.monsterId !== 'string' || !entry.monsterId) throw new CombatLabSetupError('Для противника нужен monsterId', 'MONSTER_ID_REQUIRED')
+    for (const coordinateName of ['x', 'y']) if (entry[coordinateName] != null && !Number.isSafeInteger(entry[coordinateName])) {
+      throw new CombatLabSetupError(`config.enemies[${index}].${coordinateName} должен быть целым числом`, 'INVALID_COMBAT_LAB_VALUE')
+    }
+    return { ...entry, monsterId: String(entry.monsterId) }
+  })
+}
+
+async function resolveEncounterParty(party, { loadCampaign = null } = {}) {
+  const entries = normalizeEncounterParty(party)
+  const canonical = []
+  const levels = []
+  const warnings = []
+  const usedSourceHeroes = new Set()
+  for (const entry of entries) {
+    if (entry.source === 'class') {
+      if (!CLASS_NAMES[String(entry.classId)]) throw new CombatLabSetupError(`Класс ${entry.classId} не входит в профиль 2014`, 'UNKNOWN_COMBAT_LAB_CLASS')
+      const level = entry.level ?? 1
+      canonical.push({ ...entry, classId: String(entry.classId), level })
+      levels.push(level)
+      continue
+    }
+    const source = String(entry.campaignId).toUpperCase()
+    const heroId = String(entry.heroId)
+    const sourceKey = `${source}:${heroId}`
+    if (usedSourceHeroes.has(sourceKey)) throw new CombatLabSetupError('Один герой не может быть добавлен дважды', 'DUPLICATE_HERO_SOURCE')
+    usedSourceHeroes.add(sourceKey)
+    const state = await loadSourceCampaign(source, loadCampaign)
+    if (String(state?.ruleset_id) !== COMBAT_LAB_RULESET.id) {
+      throw new CombatLabSetupError('Копировать можно только героя из кампании D&D 2014', 'SOURCE_RULESET_UNSUPPORTED')
+    }
+    const original = (state.players ?? []).find((candidate) => String(candidate.id) === heroId)
+    if (!original) throw new CombatLabSetupError(`Герой ${heroId} не найден в кампании ${source}`, 'HERO_NOT_FOUND')
+    if (original.characterSetupRequired) throw new CombatLabSetupError('Сначала завершите создание героя в его кампании', 'HERO_SETUP_REQUIRED')
+    const level = Math.max(1, Math.min(12, Number(original.level) || 1))
+    if (entry.level != null && entry.level !== level) {
+      warnings.push(`Уровень героя «${String(original.name || original.character || heroId)}» взят из кампании: ${level}.`)
+    }
+    canonical.push({ ...entry, campaignId: source, heroId, level })
+    levels.push(level)
+  }
+  return { entries: canonical, levels, warnings }
+}
+
+function recordsForEnemyEntries(entries, loadedContent) {
+  const byId = new Map(loadedContent.monsters.map((record) => [String(record.id), record]))
+  return entries.map((entry) => {
+    const record = byId.get(String(entry.monsterId))
+    if (!record) throw new CombatLabSetupError(`Монстр ${entry.monsterId} отсутствует в каталоге D&D 2014`, 'UNKNOWN_COMBAT_LAB_MONSTER')
+    return record
+  })
+}
+
+function themeMatches(record, theme) {
+  if (theme === 'generic') return true
+  const id = String(record.id).split(':').at(-1)
+  const type = String(record.creature_type ?? '')
+  const subtypes = Array.isArray(record.subtypes) ? record.subtypes.map(String) : []
+  if (theme === 'goblinoids') return subtypes.includes('goblinoid') || /goblin|bugbear|hobgoblin|kobold/u.test(id)
+  if (theme === 'undead') return type === 'undead'
+  if (theme === 'beasts') return type === 'beast'
+  if (theme === 'raiders') return ['bandit', 'bandit-captain', 'guard', 'orc', 'veteran', 'gnoll'].includes(id)
+  if (theme === 'cultists') return ['cultist', 'cult-fanatic', 'acolyte', 'mage'].includes(id)
+  if (theme === 'dragons') return type === 'dragon'
+  if (theme === 'dungeon') return ['ooze', 'undead', 'monstrosity', 'elemental'].includes(type) || id === 'giant-spider'
+  return false
+}
+
+function themedMonsterRecords(records, theme) {
+  const selected = records.filter((record) => themeMatches(record, theme))
+  if (!selected.length) throw new CombatLabSetupError(`В теме «${theme}» нет доступных существ`, 'NO_COMBAT_LAB_THEME_MONSTERS')
+  return selected
+}
+
+function monsterBreakdown(records) {
+  const grouped = new Map()
+  for (const record of records) {
+    const id = String(record.id)
+    const previous = grouped.get(id)
+    grouped.set(id, {
+      id,
+      name: String(record.name_ru),
+      cr: String(record.challenge_rating),
+      xp: Number(record.xp),
+      count: (previous?.count ?? 0) + 1,
+    })
+  }
+  return [...grouped.values()].sort((left, right) => left.id.localeCompare(right.id))
+}
+
+function rosterCaveatWarnings(records, partyLevels) {
+  if (!records.length) return []
+  const challengeRatings = records.map((record) => challengeRatingValue(record.challenge_rating)).filter((value) => Number.isFinite(value))
+  const averagePartyLevel = partyLevels.reduce((sum, level) => sum + Number(level), 0) / partyLevels.length
+  const warnings = []
+  const highestChallengeRating = Math.max(...challengeRatings, 0)
+  if (highestChallengeRating > averagePartyLevel) {
+    warnings.push(`Существо с ПО ${highestChallengeRating} выше среднего уровня отряда (${averagePartyLevel.toFixed(1)}); одиночный удар может резко изменить бой.`)
+  }
+  const lowestChallengeRating = Math.min(...challengeRatings, highestChallengeRating)
+  if (highestChallengeRating >= 1 && lowestChallengeRating > 0 && highestChallengeRating / lowestChallengeRating >= 4) {
+    warnings.push('В ростере есть существа с сильно разным ПО: множитель посчитан по всем, но слабых существ по правилам можно не учитывать, если они не влияют на бой.')
+  }
+  return warnings
+}
+
+function assessmentForRecords(records, partyLevels, request, warnings = [], selection = null) {
+  const base = assessEncounterRoster({ records, partyLevels, difficulty: request.difficulty, seed: request.seed })
+  const resultWarnings = [...warnings, ...rosterCaveatWarnings(records, partyLevels)]
+  if (!records.length) resultWarnings.push('В стычке пока нет противников; добавьте существ или сгенерируйте состав.')
+  else if (request.difficultyProvided && !base.matched) resultWarnings.push(`Фактическая опасность «${COMBAT_LAB_ENCOUNTER_DIFFICULTY_NAMES[base.difficulty]}» не совпадает с запросом «${COMBAT_LAB_ENCOUNTER_DIFFICULTY_NAMES[request.difficulty]}».`)
+  const result = {
+    ...base,
+    theme: request.theme,
+    monsterBreakdown: monsterBreakdown(records),
+    warnings: resultWarnings,
+    source: clone(COMBAT_LAB_RULES_SOURCE_2014),
+    rulesetId: COMBAT_LAB_RULESET.id,
+    rulesetVersion: COMBAT_LAB_RULESET.version,
+  }
+  if (selection) {
+    result.selection = {
+      generated: true,
+      targetAdjustedXp: selection.target_adjusted_xp,
+      candidateCount: selection.candidate_count,
+      maximumCreatures: selection.maximum_creatures,
+    }
+  }
+  return result
+}
+
+export async function assessCombatLabEncounter(input = {}, options = {}) {
+  const request = normalizeEncounterRequest(input, options)
+  const resolvedParty = await resolveEncounterParty(request.config.party, options)
+  const loadedContent = await content()
+  const enemyEntries = normalizeEncounterEnemies(request.config.enemies)
+  const records = recordsForEnemyEntries(enemyEntries, loadedContent)
+  return assessmentForRecords(records, resolvedParty.levels, request, resolvedParty.warnings)
+}
+
+function passableMapCells(map) {
+  return legacyCellsFromTacticalMap(map).filter((entry) => cellAt(map, entry.x, entry.y)?.passable)
+}
+
+function authoredSpawnCells(map, role) {
+  return (map.spawnPoints ?? [])
+    .filter((point) => point.role === role && cellAt(map, point.x, point.y)?.passable)
+    .map((point) => ({ x: point.x, y: point.y }))
+}
+
+function positionPartyForGeneratedEncounter(map, entries) {
+  const occupied = new Set()
+  const candidates = [...authoredSpawnCells(map, 'party'), ...passableMapCells(map)]
+  return entries.map((entry, index) => {
+    const hasX = entry.x != null
+    const hasY = entry.y != null
+    if (hasX !== hasY) throw new CombatLabSetupError(`config.party[${index}] требует обе координаты`, 'INVALID_COMBAT_LAB_VALUE')
+    const position = hasX && hasY
+      ? validateMapPlacement(map, entry, `config.party[${index}]`, occupied)
+      : (() => {
+        const next = candidates.find((candidate) => !occupied.has(`${candidate.x},${candidate.y}`))
+        if (!next) throw new CombatLabSetupError('На карте нет свободной клетки для героя', 'NO_COMBAT_LAB_PLACEMENT')
+        return validateMapPlacement(map, next, `config.party[${index}]`, occupied)
+      })()
+    return { ...entry, ...position }
+  })
+}
+
+function enemyPositionsForGeneratedEncounter(map, party, count, seed) {
+  const occupied = new Set(party.map((entry) => `${entry.x},${entry.y}`))
+  const reachable = reachableCells(map, party[0].x, party[0].y)
+  if (party.some((entry) => !reachable.has(`${entry.x},${entry.y}`))) {
+    throw new CombatLabSetupError('Герои должны находиться в одной достижимой области карты', 'PLACEMENT_UNREACHABLE')
+  }
+  const authored = authoredSpawnCells(map, 'enemy')
+  const candidates = [...authored, ...passableMapCells(map)]
+    .filter((entry, index, all) => all.findIndex((candidate) => candidate.x === entry.x && candidate.y === entry.y) === index)
+    .filter((entry) => reachable.has(`${entry.x},${entry.y}`) && !occupied.has(`${entry.x},${entry.y}`))
+    .sort((left, right) => {
+      const leftDistance = Math.min(...party.map((member) => Math.abs(left.x - member.x) + Math.abs(left.y - member.y)))
+      const rightDistance = Math.min(...party.map((member) => Math.abs(right.x - member.x) + Math.abs(right.y - member.y)))
+      return rightDistance - leftDistance || `${seed}:${right.x},${right.y}`.localeCompare(`${seed}:${left.x},${left.y}`)
+    })
+  if (candidates.length < count) throw new CombatLabSetupError('На карте нет достаточного числа достижимых клеток для противников', 'NO_COMBAT_LAB_PLACEMENT')
+  return candidates.slice(0, count)
+}
+
+export async function generateCombatLabEncounter(input = {}, options = {}) {
+  const request = normalizeEncounterRequest(input, options)
+  const resolvedParty = await resolveEncounterParty(request.config.party, options)
+  const mapDefinitionValue = MAP_BY_ID.get(request.mapId)
+  const map = deserializeTacticalMap(mapDefinitionValue.map)
+  const party = positionPartyForGeneratedEncounter(map, resolvedParty.entries)
+  const loadedContent = await content()
+  const candidates = themedMonsterRecords(loadedContent.monsters, request.theme)
+  let selection
+  try {
+    selection = selectEncounterRoster({
+      records: candidates,
+      partyLevels: resolvedParty.levels,
+      difficulty: request.difficulty,
+      seed: request.seed,
+      maximumCreatures: COMBAT_LAB_LIMITS.enemies,
+    })
+  } catch (error) {
+    throw new CombatLabSetupError('В выбранной теме нет противников для этого уровня и опасности. Выберите другую тему или измените опасность.', 'NO_COMBAT_LAB_ROSTER')
+  }
+  const positions = enemyPositionsForGeneratedEncounter(map, party, selection.records.length, request.seed)
+  const enemies = selection.records.map((record, index) => ({
+    monsterId: String(record.id),
+    x: positions[index].x,
+    y: positions[index].y,
+  }))
+  const config = { mapId: request.mapId, party, enemies }
+  const assessment = assessmentForRecords(selection.records, resolvedParty.levels, request, resolvedParty.warnings, {
+    target_adjusted_xp: selection.target_adjusted_xp,
+    candidate_count: candidates.length,
+    maximum_creatures: Math.min(COMBAT_LAB_LIMITS.enemies, resolvedParty.levels.length * 2),
+  })
+  return { config, assessment }
 }
 
 export async function buildCombatLabState(config, { loadCampaign = null } = {}) {

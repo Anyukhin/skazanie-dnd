@@ -115,6 +115,21 @@ export class RollRegistry {
     return structuredClone(visible)
   }
 
+  pendingNarrationCheck({ campaignId, actorId, stateVersion } = {}) {
+    this.cleanup()
+    const entry = [...this.checks.values()].reverse().find(check => check.campaign_id === String(campaignId)
+      && check.actor_id === String(actorId) && check.invalidated_at == null
+      && ['free_action', 'ability_action'].includes(check.context?.kind) && check.context.action
+      && Number(check.context.state_version) === Number(stateVersion)
+      && (!check.issued_roll_id || !this.rolls.get(check.issued_roll_id)?.consumed_by))
+    if (!entry) return null
+    return { check_id: entry.check_id, label: entry.label, modifier: entry.modifier, difficulty: entry.difficulty,
+      sides: 20, ability: entry.ability, skill: entry.context.reading?.skill ?? entry.context.skill,
+      advantage: entry.advantage, disadvantage: entry.disadvantage,
+      action: entry.context.action, proposal: structuredClone(entry.context.proposal),
+    }
+  }
+
   issue({ checkId, check_id, campaignId, actorId, label = 'Проверка', modifier = 0, difficulty = 10, ability = null, advantage = false, disadvantage = false, visibility = 'public' }) {
     this.cleanup()
     const registeredId = checkId ?? check_id

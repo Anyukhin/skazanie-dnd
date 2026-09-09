@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -30,6 +30,7 @@ import test from 'node:test'
  * противника остаются закрытыми.
  */
 const buildDir = mkdtempSync(join(tmpdir(), 'skazanie-battle-text-'))
+test.after(() => rmSync(buildDir, { recursive: true, force: true }))
 const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
 const sharedPath = fileURLToPath(new URL('../src/app-shared.tsx', import.meta.url))
 const compiled = spawnSync(process.execPath, [
@@ -52,11 +53,15 @@ writeFileSync(
   ].join('\n'),
 )
 const modulePath = join(buildDir, 'app-shared.mjs')
-writeFileSync(modulePath, readFileSync(join(buildDir, 'app-shared.js'), 'utf8')
-  .replace(/from (["'])(?:react\/jsx-runtime|react|lucide-react)\1/gu, 'from "./ui-runtime.mjs"'))
+// Как в board-render.test: локальные зависимости tsc тоже загружаются через Node ESM.
+for (const name of readdirSync(buildDir)) {
+  if (!name.endsWith('.js')) continue
+  const source = readFileSync(join(buildDir, name), 'utf8')
+    .replace(/(from\s+["'])(\.\/[^"']+)(["'])/gu, '$1$2.mjs$3')
+    .replace(/from (["'])(?:react\/jsx-runtime|react|lucide-react)\1/gu, 'from "./ui-runtime.mjs"')
+  writeFileSync(join(buildDir, name.replace(/\.js$/u, '.mjs')), source)
+}
 const { DAMAGE_TYPE_LABELS, battleEventText, damageAmountText, damageTypeLabel } = await import(pathToFileURL(modulePath).href)
-
-test.after(() => rmSync(buildDir, { recursive: true, force: true }))
 
 /** Отряд из одного героя и опознанный союзник-противник рядом. */
 function state({ healthKnown = 'banded' } = {}) {

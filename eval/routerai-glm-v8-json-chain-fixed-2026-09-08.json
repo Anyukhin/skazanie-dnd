@@ -1,0 +1,27 @@
+{
+  "date": "2026-09-07T22:24:17.754Z",
+  "requested_models": [
+    "z-ai/glm-5.3-flash",
+    "google/gemini-2.5-flash-lite"
+  ],
+  "ok": true,
+  "model": "gemini-2.5-flash-lite",
+  "json": {
+    "door": "closed",
+    "resolved": false,
+    "items": []
+  },
+  "usage": {
+    "total_tokens": 87,
+    "prompt_tokens": 63,
+    "completion_tokens": 24,
+    "cost": 0.001781565903
+  },
+  "fallback_attempts": [
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "code": "LLM_RESPONSE_INVALID"
+    }
+  ],
+  "latency_ms": 3342
+}

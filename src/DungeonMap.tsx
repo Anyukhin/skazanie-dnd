@@ -23,7 +23,6 @@ import {
 } from 'lucide-react'
 import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, GuardResolution, LetterAddresseeKind, MapCell, MapFeedback, Merchant, Message, ParleyOutcome, PendingCheck, Player, PlayerRequestKind, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp, TavernDiceApproach } from './types'
 import { fetchWithTimeout, getAiHealth } from './ai-client'
-import type { NarrationPreview } from './ai-client'
 import {
   DAMAGE_TYPE_LABELS, HARMFUL_SPELL_KINDS, HeroFaceInitials, REPUTATION_TIER_LABELS, battleEventText,
   boardTrajectoryBlockReason, canonicalLocationKey, combatState, damageTypeLabel, hasHeroPortrait,
@@ -38,10 +37,9 @@ import { DiceTray } from './DiceTray'
 import { useGameSession, type BeastAction, type CaptiveAction, type CaptiveInterrogationSkill, type CommandOutcome, type ConnectionState, type EncounterAssemblyOptions, type ShopAssemblyOptions, type WeaponAttackChoice } from './useGameSession'
 import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
 import { CELL_FEET, currentTacticalTurn, mapGridDimensions } from './tactical-engine'
-import { TOKEN_CONDITION_PRIORITY, battleRollContext, battleRollPresentation, boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, levelIndicatorRows, levelTransitionHint, levelTransitionPresentation, mechanicsSupportPresentation, movementCellReason, movementCostLabel, tokenConditionGlyph, turnClockPresentation, type MovementPath } from './tactical-ui'
+import { TOKEN_CONDITION_PRIORITY, battleRollContext, battleRollPresentation, boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, levelIndicatorRows, levelTransitionHint, levelTransitionPresentation, mechanicsSupportPresentation, movementCellReason, tokenConditionGlyph, turnClockPresentation, type MovementPath } from './tactical-ui'
 import { fallbackCombatActions, fallbackCombatResources, featureResourceName } from './combat-actions'
 import { fallbackCombatSpells, fallbackSpellResources, spellNameById } from './combat-spells'
-import { MerchantScreen } from './MerchantView'
 import { CombatIcon } from './CombatIcon'
 import { TacticalBoard, type BoardAnimationActor, type BoardCellHint, type BoardCellNode } from './TacticalBoard'
 import { drawLingeringSpellEffects, type BoardAreaEffect, type BoardEffectRenderer, type BoardOverlayCell } from './board-render'
@@ -55,7 +53,8 @@ import {
 import { doorsReachableFrom, sceneTacticalMap } from './tactical-map-client'
 import { WorldMapView } from './WorldMapView'
 import { doorDirectionFromActor, doorOverlayCells, localizedQuestClockLabel, selectedAttackForecast, shouldAutoOpenCampaignModal } from './desktop-ui.mjs'
-import { boardMapArtForTheme, resolveSceneTheme, sceneIllustrationForTheme, type SceneArt, type SceneVisualTheme } from './scene-art'
+import { boardMapArtForMap, locationOverviewFor, resolveSceneTheme, sceneIllustrationForTheme, type SceneArt, type SceneVisualTheme } from './scene-art'
+import { LocationOverview } from './LocationOverview'
 import {
   createAtmosphereAudio,
   loadAtmosphereSettings,
@@ -74,6 +73,7 @@ import {
   recentDamageForTarget,
   reputationImpactForTier,
   sceneNpcsAt,
+  merchantForSceneNpc,
   visibleNpcStance,
   type ConfirmedLevelUp,
 } from './player-experience'
@@ -872,7 +872,7 @@ export function boardVisualTheme(theme: SceneVisualTheme) {
   return 'map-theme-wild'
 }
 
-export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, canConverse, dialogueBusy, dialogueDraft, dialogueContext, onCancelDialogue, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, visualBatch, onStartCombat, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, leaveLocationDisabled, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, playerHud, statusContent, children }: {
+export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, canConverse, dialogueBusy, dialogueDraft, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, visualBatch, onStartCombat, onNpcAttack, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, leaveLocationDisabled, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, playerHud, statusContent, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -887,6 +887,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   combatAnimations: boolean
   visualBatch: CombatVisualBatch | null
   onStartCombat: () => Promise<CommandOutcome>
+  onNpcAttack: (npcId: string) => Promise<CommandOutcome>
   onMove: (actorId: string, x: number, y: number) => Promise<CommandOutcome>
   onAttack: (actorId: string, enemyId: string, itemId?: string, choice?: WeaponAttackChoice) => Promise<CommandOutcome>
   onAreaAttack: (actorId: string, itemId: string, x: number, y: number, note?: string) => Promise<CommandOutcome>
@@ -903,8 +904,6 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   canConverse: boolean
   dialogueBusy: boolean
   dialogueDraft?: { id: number; text: string; kind: PlayerRequestKind } | null
-  dialogueContext?: { action: string; question: string } | null
-  onCancelDialogue: () => void
   onFreeAction: (text: string, kind?: PlayerRequestKind) => Promise<CommandOutcome>
   onNpcAction: (text: string, npcId: string) => Promise<CommandOutcome>
   onCaptiveAction: (captiveId: string, action: CaptiveAction, skill?: CaptiveInterrogationSkill) => Promise<CommandOutcome>
@@ -1016,6 +1015,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const [hoveredDoorId, setHoveredDoorId] = useState<string | null>(null)
   const [selectedSceneObjectId, setSelectedSceneObjectId] = useState<string | null>(null)
   const [hoveredSceneObjectId, setHoveredSceneObjectId] = useState<string | null>(null)
+  useDialogEscape(() => setSelectedSceneObjectId(null), Boolean(selectedSceneObjectId))
   useEffect(() => {
     const root = document.documentElement.style
     if (railHeight) root.setProperty('--ui-rail-height', `${railHeight}px`)
@@ -1339,7 +1339,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     ? state.social?.npcs?.find((npc) => npc.id === dossierSceneNpc.id) ?? null
     : null
   const dossierMerchant = dossierSceneNpc
-    ? state.merchants?.find((merchant) => merchant.id === dossierSceneNpc.id) ?? null
+    ? merchantForSceneNpc(state, dossierSceneNpc.id)
     : null
   const dossierRelationship = dossierSceneNpc
     ? state.social?.relationship_tiers?.[dossierSceneNpc.id]?.[typingActorId] ?? 'neutral'
@@ -1541,7 +1541,6 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     : []
   const selectedSceneObject = interactiveSceneObjects.find((prop) => prop.id === selectedSceneObjectId) ?? null
   const selectedSceneObjectAtHand = Boolean(selectedSceneObject && sceneObjectsAtHand.some((prop) => prop.id === selectedSceneObject.id))
-  const selectedSceneObjectVerbs = selectedSceneObject ? sceneObjectVerbs(selectedSceneObject) : []
   /* Благословения приезжают готовой карточкой: цена требы, СЛ молитвы и то,
      прошли ли сутки, посчитаны сервером (`server/blessings.mjs`). Своей
      арифметики суток здесь нет — иначе кнопка обещала бы одно, а движок делал
@@ -1590,8 +1589,12 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       })
     : null
   const sceneObjectByCell = new Map<string, TacticalProp>()
+  const sceneObjectAnchorById = new Map<string, string>()
   for (const prop of [...interactiveSceneObjects].sort((left, right) => left.zOrder - right.zOrder)) {
-    for (const cell of sceneObjectCells(prop)) sceneObjectByCell.set(boardPositionKey(cell.x, cell.y), prop)
+    const cells = sceneObjectCells(prop)
+    const anchor = cells[0]
+    if (anchor) sceneObjectAnchorById.set(prop.id, boardPositionKey(anchor.x, anchor.y))
+    for (const cell of cells) sceneObjectByCell.set(boardPositionKey(cell.x, cell.y), prop)
   }
   const movementLimit = combatActive ? remainingFeet : Number.POSITIVE_INFINITY
   const reachable = selected && active && movementAvailable
@@ -1771,7 +1774,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const sceneTheme = resolveSceneTheme(state)
   const fortressMap = boardMap?.generator?.id === 'ares-fortress'
   const visualTheme = fortressMap ? 'map-theme-fortress' : boardVisualTheme(sceneTheme)
-  const mapArt = boardMapArtForTheme(sceneTheme)
+  const mapArt = boardMapArtForMap(sceneTheme, boardMap)
 
   useEffect(() => {
     const defaultItem = combatItems.find((item) => item.equipped) ?? combatItems[0]
@@ -1996,6 +1999,13 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const boardCells: BoardCellNode[] = []
   const boardOverlay: BoardOverlayCell[] = []
   const visibleMapFeedback = useTransientMapFeedback(state.mapFeedback)
+  const doorHotspotsByCell = new Map<string, typeof doorsAtHand>()
+  for (const door of doorsAtHand) {
+    const key = boardPositionKey(door.x, door.y)
+    const doors = doorHotspotsByCell.get(key) ?? []
+    doors.push(door)
+    doorHotspotsByCell.set(key, doors)
+  }
   // Подсказки клеток без узла: причина недоступности обязана остаться на всех
   // клетках, а узел получает только активная.
   const boardHints = new Map<string, BoardCellHint>()
@@ -2007,7 +2017,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       ? sceneNpcs.find((item) => item.x === cell.x && item.y === cell.y)
       : undefined
     const sceneNpcStance = visibleNpcStance(sceneNpc?.stance ?? 'neutral')
-    const sceneNpcMerchant = sceneNpc ? state.merchants?.find((merchant) => merchant.id === sceneNpc.id) : undefined
+    const sceneNpcMerchant = sceneNpc ? merchantForSceneNpc(state, sceneNpc.id) : null
     const sceneNpcSocial = sceneNpc ? state.social?.npcs?.find((npc) => npc.id === sceneNpc.id) : undefined
     const sceneNpcGiftBlocked = Boolean(
       combatActive
@@ -2063,6 +2073,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       specialBlockReason: targetSpecialBlock,
     }) : null
     const cellKey = cell.x + ',' + cell.y
+    const doorHotspots = doorHotspotsByCell.get(cellKey) ?? []
     /* Добыча в этой клетке. Метка живёт обычным узлом клетки — там же, где
        фишки и след, — а не в холсте `board-render.ts`: у неё кнопка, подсказка
        и фокус клавиатуры, и всё это на холсте пришлось бы заводить заново. */
@@ -2161,10 +2172,110 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     // Метка добычи и павший — такой же повод завести узел клетки, как фишка:
     // без этой ветки тело в пустом углу зала не рисовалось бы вовсе.
     const hasLootLayer = Boolean(cell.revealed && (lootHere || lootGhostHere))
-    if (!stateClasses.length && !cellFeedback.length && !cellIsInteractive && !hasLootLayer) {
+    if (!stateClasses.length && !cellFeedback.length && !cellIsInteractive && !hasLootLayer && !doorHotspots.length) {
       if (cellTitle || cellLabel || moveBlockedHere) boardHints.set(cellKey, { title: cellTitle, ariaLabel: cellLabel, blocked: moveBlockedHere })
       continue
     }
+
+    const doorHotspot = doorHotspots.length > 0
+      ? <>{doorHotspots.map((door) => {
+          const direction = active ? doorDirectionFromActor(door, active) : ''
+          const locked = door.state === 'locked'
+          const label = locked
+            ? `Запертая дверь на ${direction}. Выберите отмычку или выломать в панели действий`
+            : `${door.state === 'open' ? 'Закрыть' : 'Открыть'} дверь на ${direction}`
+          return <button
+            key={door.id}
+            type="button"
+            className={`door-hotspot door-hotspot--${door.dir} door-hotspot--${door.state}`}
+            data-door-id={door.id}
+            aria-label={label}
+            title={locked ? `${label}. Щелчок не ломает дверь автоматически` : `${label}: свободное взаимодействие`}
+            disabled={!canAct || tacticalBusy}
+            onPointerDown={(event) => event.stopPropagation()}
+            onPointerUp={(event) => event.stopPropagation()}
+            onPointerEnter={() => setHoveredDoorId(door.id)}
+            onPointerLeave={() => setHoveredDoorId((current) => current === door.id ? null : current)}
+            onFocus={() => setHoveredDoorId(door.id)}
+            onBlur={() => setHoveredDoorId((current) => current === door.id ? null : current)}
+            onClick={(event) => {
+              event.stopPropagation()
+              if (locked || !selected) return
+              void onOperateDoor(selected, door.id, door.state === 'open' ? 'close' : 'open')
+            }}
+          />
+        })}</>
+      : undefined
+    const sceneObjectMenuOpen = Boolean(
+      sceneObject
+      && sceneObject.id === selectedSceneObjectId
+      && sceneObjectAnchorById.get(sceneObject.id) === cellKey,
+    )
+    const sceneObjectMenu = sceneObjectMenuOpen && sceneObject
+      ? <div
+          className="scene-object-menu"
+          role="group"
+          aria-label={`Действия: ${sceneObjectLabel(sceneObject)}`}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <header>
+            <span><b>{sceneObjectLabel(sceneObject)}</b><small>{selectedSceneObjectAtHand ? 'Выберите действие' : 'Подойдите к объекту на соседнюю клетку'}</small></span>
+            <button type="button" className="scene-object-menu-close" aria-label="Закрыть действия объекта" onClick={() => setSelectedSceneObjectId(null)}><X size={13} /></button>
+          </header>
+          {sceneObjectVerbs(sceneObject).map((intent) => {
+            const label = SCENE_OBJECT_VERB_LABELS[intent]
+            const unavailable = !selectedSceneObjectAtHand
+            const disabled = !canAct || tacticalBusy || unavailable
+              || (intent === 'pray' && (blessingHeld || !blessingAvailable || combatActive))
+              || (intent === 'lockpick' && !lockpickAllowed)
+            const title = unavailable
+              ? 'Подойдите к объекту на соседнюю клетку'
+              : intent === 'pray'
+                ? (combatActive ? 'Посреди боя благословений не раздают' : blessingPrayerHint)
+                : intent === 'lockpick'
+                  ? (lockpickAllowed
+                      ? 'Вскрыть замок отмычкой: Ловкость и владение воровскими инструментами. Тратит действие в бою. Замка может и не быть — тогда сервер откажет, и ход не пропадёт'
+                      : lockpickBlockedHint)
+                  : `${label}: ${sceneObjectLabel(sceneObject)}`
+            return <button
+              type="button"
+              key={`${sceneObject.id}:${intent}`}
+              className={`scene-object-menu-action intent-${intent}`}
+              disabled={disabled}
+              title={title}
+              onClick={() => {
+                if (!selected || disabled) return
+                void onOperateSceneObject(selected, sceneObject.id, intent).then((outcome) => {
+                  if (outcome.ok) setSelectedSceneObjectId(null)
+                })
+              }}
+            >
+              <CombatIcon id={`scene-object-${intent}`} kind={intent === 'take' ? 'item' : intent === 'inspect' ? 'spellbook' : 'action'} hint={intent === 'pray' ? `${label} святыня prayer divine` : `${label} объект сцены`} size={18} compact />
+              <span>{label}</span>
+            </button>
+          })}
+          {selectedSceneObject?.transition && <small className="scene-object-menu-lead">
+            {levelTransitionHint(selectedSceneObject.transition, knownSceneLevels)}
+          </small>}
+          {selectedLevelTransition && <button
+            type="button"
+            className={`scene-object-menu-action level-transition ${selectedLevelTransition.direction}`}
+            disabled={!canAct || tacticalBusy || selectedLevelTransition.disabled}
+            onClick={() => {
+              if (!selected || selectedLevelTransition.disabled) return
+              void onUseLevelTransition(selected, sceneObject.id).then((outcome) => {
+                if (outcome.ok) setSelectedSceneObjectId(null)
+              })
+            }}
+            title={selectedLevelTransition.title}
+          >
+            <CombatIcon id={`level-transition-${selectedLevelTransition.direction}`} kind="swap" hint={`${selectedLevelTransition.direction === 'up' ? 'подняться' : 'спуститься'} лестница этаж`} size={18} compact />
+            <span>{selectedLevelTransition.label}</span>
+          </button>}
+          {sceneObjectVerbs(sceneObject).length === 0 && !selectedLevelTransition && <span className="scene-object-menu-empty">Сервер не открыл доступных действий</span>}
+        </div>
+      : null
 
     boardCells.push({
       x: cell.x,
@@ -2195,7 +2306,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         }
         else setPendingMoveKey(cellKey)
       },
-      hotspot: sceneObject ? <span
+      hotspot: (doorHotspot || sceneObject) ? <>
+        {doorHotspot}
+        {sceneObject ? <span
           role="button"
           tabIndex={0}
           className="scene-object-hotspot"
@@ -2218,7 +2331,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             event.stopPropagation()
             setSelectedSceneObjectId((current) => current === sceneObject.id ? null : sceneObject.id)
           }}
-        /> : undefined,
+        /> : null}
+        {sceneObjectMenu}
+      </> : undefined,
       children: <>
         {routeStep && <span className="route-step-badge" aria-hidden="true">{routeStep}</span>}
         {/* След на клетке: лежит в плоскости доски, поэтому при любом повороте и
@@ -2296,6 +2411,24 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             <span><b>{sceneNpc.name}</b><small>{sceneNpc.role || 'Персонаж'} · {NPC_STANCE_LABELS[sceneNpcStance]}</small></span>
             <button
               type="button"
+              disabled={combatActive || !sceneNpc.alive || !sceneNpc.can_start_combat || narrating || tacticalBusy || !canAct}
+              title={combatActive
+                ? 'Бой уже идёт'
+                : !sceneNpc.alive
+                  ? 'Этот персонаж уже выбыл'
+                  : !sceneNpc.can_start_combat
+                    ? 'Бой с этим NPC пока недоступен: нет готового серверного профиля'
+                  : narrating
+                    ? 'Дождитесь ответа Рассказчика'
+                    : tacticalBusy
+                      ? 'Дождитесь завершения текущего действия'
+                      : !canAct
+                        ? 'Сейчас этот герой не может действовать'
+                        : `Начать бой с ${sceneNpc.name}. Инициатива определится случайно`}
+              onClick={() => { setOpenTokenLabelId(null); void onNpcAttack(sceneNpc.id) }}
+            ><Swords size={13} />Напасть</button>
+             <button
+              type="button"
               disabled={combatActive || !sceneNpc.alive || narrating}
               title={combatActive ? 'Разговор недоступен во время боя' : !sceneNpc.alive ? 'Собеседник недоступен' : narrating ? 'Дождитесь ответа Рассказчика' : 'Открыть адресованный разговор'}
               onClick={() => openNpcDossier(sceneNpc.id, 'talk')}
@@ -2368,8 +2501,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             {sceneNpcMerchant
               ? <button
                   type="button"
-                  disabled={combatActive || !sceneNpc.alive || !sceneNpcMerchant.available}
-                  title={combatActive ? 'Торговля недоступна во время боя' : !sceneNpc.alive || !sceneNpcMerchant.available ? 'Торговец сейчас недоступен' : 'Открыть существующее серверное окно торговли'}
+                  disabled={!canAct || narrating || tacticalBusy || dialogueBusy}
+                  title={!canAct ? 'Сейчас этот герой не может торговать' : narrating || tacticalBusy || dialogueBusy ? 'Дождитесь завершения текущего действия' : `Торговать с ${sceneNpc.name}`}
                   onClick={() => onOpenMerchant(sceneNpc.id)}
                 ><Store size={13} />Торговать</button>
               : null}
@@ -2437,7 +2570,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           >
             {!hasHeroPortrait(player) && <HeroFaceInitials hero={player} />}
             <TokenConditionIcons conditions={playerConditions} />
-            {openTokenLabelId === player.id && <span className="token-label">{player.character}<small>{player.hp} ОЗ · {combatActive ? `${remainingFeet} фт` : 'свободный ход'}</small></span>}
+            <span className="token-label">{player.character}</span>
           </button>
         })()}
         {summon && cell.revealed && (() => {
@@ -2475,7 +2608,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           >
             <Sparkles size={15} />
             <TokenConditionIcons conditions={summonConditions} />
-            {openTokenLabelId === summon.id && <span className="token-label">{summon.name}<small>{summon.hp} ОЗ · {remainingFeet} фт</small></span>}
+            <span className="token-label">{summon.name}</span>
           </button>
         })()}
         {visibleBattleRoll && (visibleBattleRoll.targetId ?? visibleBattleRoll.actorId) === (enemy?.id ?? player?.id ?? summon?.id) && (
@@ -2606,9 +2739,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         </section>
       </div>
       <div
-        className={`map-stage ${visualTheme} ${scenicBackdrop ? 'scenic-backdrop' : 'monotone-backdrop'}${truce ? ' truce-held' : ''}`}
-        data-map-source={mapArt.id}
-        style={{ '--board-art': `url("${mapArt.url}")` } as React.CSSProperties}
+        className={`map-stage ${visualTheme} ${scenicBackdrop ? 'scenic-backdrop' : 'monotone-backdrop'}${!mapArt ? ' native-board-stage' : ''}${truce ? ' truce-held' : ''}`}
+        data-map-source={mapArt?.id ?? boardMap?.tilesetId}
+        style={{ '--board-art': mapArt ? `url("${mapArt.url}")` : 'none' } as React.CSSProperties}
       >
       <div className="map-atmosphere map-atmosphere-one" />
       <div className="map-atmosphere map-atmosphere-two" />
@@ -2629,7 +2762,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         rows={rows}
         irregular={irregularMap}
         themeKey={visualTheme}
-        artUrl={scenicBackdrop && !fortressMap ? mapArt.url : null}
+        artUrl={mapArt && scenicBackdrop && (!fortressMap || mapArt.mode === 'map') ? mapArt.url : null}
+        artMode={mapArt?.mode}
         lighting={boardLighting}
         ariaLabel={`Тактическая карта, вид сверху. Колесо меняет масштаб, перетаскивание двигает полотно, двойной клик центрирует. Активный участник: ${activeName}`}
         cells={boardCells}
@@ -2643,12 +2777,13 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         conditions={state.mechanics?.conditions}
         conditionVersion={state.state_version}
         levelIndex={sceneLevelIndex}
-        onBackgroundActivate={() => setOpenTokenLabelId(null)}
+        onBackgroundActivate={() => { setOpenTokenLabelId(null); setSelectedSceneObjectId(null) }}
         decoration={trajectory
           ? <svg className="projectile-trajectory" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><line x1={trajectory.x1} y1={trajectory.y1} x2={trajectory.x2} y2={trajectory.y2} /></svg>
           : null}
       />
       <div className="map-scale-plate">1 клетка = 5 футов</div>
+      <LocationOverview overview={locationOverviewFor(state.scene.location_id)} map={boardMap} />
       {/* Индикатор этажей: появляется только там, где партия знает больше
           одного этажа. Не кликабельный — вид всегда следует за партией. */}
       {levelStackRows.length > 0 && <div className="map-level-stack" role="status" aria-label="Известные этажи локации">
@@ -2815,7 +2950,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             {dossierMerchant && npcDossier?.mode !== 'transfer' && <button
               className="npc-dialog-trade"
               type="button"
-              disabled={combatActive || !dossierSceneNpc.alive || !dossierMerchant.available}
+              disabled={!canAct || narrating || tacticalBusy || dialogueBusy}
               onClick={() => { setNpcDossier(null); onOpenMerchant(dossierSceneNpc.id) }}
             ><Store size={14} />Торговать</button>}
           </footer>
@@ -2837,10 +2972,6 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           <span className="turn-strip-actor">ходит <b className={activeHero || activeSummon ? 'ally' : 'enemy'}>{activeName}</b></span>
           {activeConditions.map((condition) => <span key={condition.id} className={`turn-strip-condition ${condition.status}`} title={`${condition.statusLabel}. ${condition.explanation}${condition.duration ? ` Длительность: ${condition.duration}` : ''}`}><i />{condition.label}</span>)}
           <CombatTurnClock clock={state.turn_clock} actorName={actorNameById(state.turn_clock?.actor_ids?.[0])} compact />
-        </div>}
-        {previewRoute && <div className={`movement-preview ${pendingMoveKey ? 'selected' : ''}`}>
-          <span><Footprints size={14} /><b>{movementCostLabel(previewRoute)}</b><small>{previewRoute.path.length} кл. · останется {Math.max(0, remainingFeet - previewRoute.costFeet)} фт</small></span>
-          {pendingMoveKey && selected && <div><button disabled={tacticalBusy} onClick={() => { const [x, y] = pendingMoveKey.split(',').map(Number); void onMove(selected, x, y).then((outcome) => { if (outcome.ok) setPendingMoveKey(null) }) }}><Check size={13} />Подтвердить</button><button onClick={() => setPendingMoveKey(null)} aria-label="Отменить маршрут"><X size={13} /></button></div>}
         </div>}
         {/* Ходы противников, прошедшие пока игрок ждал, — одной свёрнутой
             строкой со счётчиком, а не отдельной панелью: раскрывается по
@@ -3363,10 +3494,6 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           </div>
       </div>}
       <div className="dialogue-composer">
-      {dialogueContext && <div className="dialogue-context" role="status">
-        <div><small>Уточняем намерение</small><strong>{dialogueContext.action}</strong><span>{dialogueContext.question}</span></div>
-        <button type="button" disabled={narrating || dialogueBusy} onClick={onCancelDialogue}>Новая заявка</button>
-      </div>}
       <form
         className="rail-free-input"
         onSubmit={async (event) => {
@@ -3407,7 +3534,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                 event.currentTarget.form?.requestSubmit()
               }
             }}
-            placeholder={requestKind === 'question' ? 'Спросите о ситуации или возможном действии' : requestKind === 'discussion' ? 'Предложите план товарищам — герой пока не действует' : dialogueContext ? 'Ответьте ведущему — исходное намерение сохранено' : preparedLabel ? 'Добавьте слова к действию — или отправьте как есть' : 'Что делает ваш герой?'}
+            placeholder={requestKind === 'question' ? 'Спросите о ситуации или возможном действии' : requestKind === 'discussion' ? 'Предложите план товарищам — герой пока не действует' : preparedLabel ? 'Добавьте слова к действию — или отправьте как есть' : 'Что вы делаете?'}
             aria-label={requestKind === 'question' ? 'Вопрос ведущему' : requestKind === 'discussion' ? 'Обсуждение с отрядом' : 'Действие своими словами'}
             disabled={composerBlocked}
             title={narrating ? 'Рассказчик разрешает предыдущее действие' : combatActive && !canAct ? `Сейчас ходит ${activeName}` : 'Отправить намерение от имени выбранного героя'}
@@ -3508,13 +3635,11 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                 сказать почему, иначе она читается как «у героя ничего нет». */}
             {costFilter && !visibleTiles.length && orderedTiles.length > 0 && <div className="hotbar-empty"><LockKeyhole size={18} /><span>В этой колоде нет плиток стоимостью «{HOTBAR_COST_FILTER_LABELS[costFilter]}»</span></div>}
           </div>
-          {/* Кнопки шага: вне боя это подтверждение выбранной цели и двери под
-              рукой, в бою — ещё нокаут, смена оружия и завершение хода. Без
-              содержимого блок не рисуется, и плитки занимают всю карточку. */}
-          {(doorsAtHand.length > 0 || selectedSceneObject) && <div className="hotbar-turn-controls">
-            {/* Дверь рядом — единственное, что делается и вне боя: заперто это
-                или просто прикрыто, игрок видит по самой кнопке. */}
-            {doorsAtHand.map((door) => {
+          {/* Кнопки шага: запертая дверь сохраняет два явных пути, в бою — ещё
+              нокаут, смена оружия и завершение хода. Обычная дверь действует
+              прямо по своему полотну на карте, поэтому второй кнопки здесь нет. */}
+          {doorsAtHand.some((door) => door.state === 'locked') && <div className="hotbar-turn-controls">
+            {doorsAtHand.filter((door) => door.state === 'locked').map((door) => {
               const direction = active ? doorDirectionFromActor(door, active) : ''
               const lockDc = Math.max(10, door.lockDc)
               const hoverProps = {
@@ -3534,63 +3659,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                     <button {...hoverProps} className="door-control locked" disabled={!canAct || tacticalBusy || !lockpickAllowed} onClick={() => selected && onOperateDoor(selected, door.id, 'lockpick')} title={lockpickAllowed ? `Запертая дверь на ${direction}. Вскрыть замок отмычкой: Ловкость и владение воровскими инструментами. Дверь останется целой. Тратит действие` : lockpickBlockedHint}><CombatIcon id={`door-lockpick-${door.id}`} kind="action" hint="взломать замок отмычкой воровские инструменты" size={27} compact /><span>Взломать дверь ({direction})</span></button>
                     <button {...hoverProps} className="door-control locked" disabled={!canAct || tacticalBusy} onClick={() => selected && onOperateDoor(selected, door.id, 'force')} title={`Запертая дверь на ${direction}. Проверка Силы (Атлетика), СЛ ${lockDc}. Дверь будет сломана. Тратит действие`}><CombatIcon id={`door-force-${door.id}`} kind="action" hint="выломать запертую дверь замок" size={27} compact /><span>Выломать дверь ({direction}, СЛ {lockDc})</span></button>
                   </Fragment>
-                : <button {...hoverProps} key={door.id} className="door-control" disabled={!canAct || tacticalBusy} onClick={() => selected && onOperateDoor(selected, door.id, door.state === 'open' ? 'close' : 'open')} title={`${door.state === 'open' ? 'Закрыть' : 'Открыть'} дверь на ${direction}: свободное взаимодействие`}><CombatIcon id={`door-${door.id}`} kind="swap" hint="открыть закрыть дверь проём" size={27} compact /><span>{door.state === 'open' ? 'Закрыть' : 'Открыть'} дверь ({direction})</span></button>
+                : null
             })}
-            {selectedSceneObject && selectedSceneObjectVerbs.map((intent) => {
-              const label = SCENE_OBJECT_VERB_LABELS[intent]
-              const unavailable = !selectedSceneObjectAtHand
-              const hoverProps = {
-                onPointerEnter: () => setHoveredSceneObjectId(selectedSceneObject.id),
-                onPointerLeave: () => setHoveredSceneObjectId((current) => current === selectedSceneObject.id ? null : current),
-                onFocus: () => setHoveredSceneObjectId(selectedSceneObject.id),
-                onBlur: () => setHoveredSceneObjectId((current) => current === selectedSceneObject.id ? null : current),
-              }
-              return <button
-                {...hoverProps}
-                type="button"
-                key={`${selectedSceneObject.id}:${intent}`}
-                className={`scene-object-control intent-${intent}`}
-                disabled={!canAct || tacticalBusy || unavailable || (intent === 'pray' && (blessingHeld || !blessingAvailable || combatActive)) || (intent === 'lockpick' && !lockpickAllowed)}
-                onClick={() => selected && onOperateSceneObject(selected, selectedSceneObject.id, intent)}
-                title={unavailable
-                  ? 'Подойдите к объекту на соседнюю клетку'
-                  : intent === 'pray'
-                    ? (combatActive ? 'Посреди боя благословений не раздают' : blessingPrayerHint)
-                    /* Кнопка «Взломать» стоит у всякого сундука, потому что
-                       запертость сервер не объявляет: назови он её, игрок читал
-                       бы наличие замка, не притронувшись к крышке. Поэтому
-                       подсказка честна и про это тоже — замка может не быть. */
-                    : intent === 'lockpick'
-                      ? (lockpickAllowed
-                          ? 'Вскрыть замок отмычкой: Ловкость и владение воровскими инструментами. Тратит действие в бою. Замка может и не быть — тогда сервер откажет, и ход не пропадёт'
-                          : lockpickBlockedHint)
-                      : `${label}: ${sceneObjectLabel(selectedSceneObject)}`}
-              >
-                {/* `prayer` в подсказке — не мусор: тема иконки выводится из
-                    латинской сигнатуры (`abilityIconTheme`, `CombatIcon.tsx`), и
-                    без этого слова молитва получила бы утилитарную тему вместо
-                    божественной. */}
-                <CombatIcon id={`scene-object-${intent}`} kind={intent === 'take' ? 'item' : intent === 'inspect' ? 'spellbook' : 'action'} hint={intent === 'pray' ? `${label} святыня prayer divine` : `${label} объект сцены`} size={27} compact />
-                <span>{label}</span>
-              </button>
-            })}
-            {/* Куда ведёт выбранная лестница — строкой, а не только надписью
-                кнопки: кнопка закрыта в бою и вдали, а знать назначение
-                перехода игрок вправе всегда. */}
-            {selectedSceneObject?.transition && <span className="scene-object-lead">
-              {levelTransitionHint(selectedSceneObject.transition, knownSceneLevels)}
-            </span>}
-            {selectedSceneObject && selectedLevelTransition && <button
-              type="button"
-              className={`scene-object-control level-transition ${selectedLevelTransition.direction}`}
-              disabled={!canAct || tacticalBusy || selectedLevelTransition.disabled}
-              onClick={() => selected && onUseLevelTransition(selected, selectedSceneObject.id)}
-              title={selectedLevelTransition.title}
-            >
-              <CombatIcon id={`level-transition-${selectedLevelTransition.direction}`} kind="swap" hint={`${selectedLevelTransition.direction === 'up' ? 'подняться' : 'спуститься'} лестница этаж`} size={27} compact />
-              <span>{selectedLevelTransition.label}</span>
-            </button>}
-            {selectedSceneObject && selectedSceneObjectVerbs.length === 0 && !selectedLevelTransition && <button type="button" className="scene-object-control" disabled title="Сервер не открыл доступных действий для этого объекта"><span>Нет доступных действий</span></button>}
            </div>}
            </div>
            <div className="hotbar-hero-cluster player-resource-panel" aria-label={`Ресурсы героя: ${activeName}`}>

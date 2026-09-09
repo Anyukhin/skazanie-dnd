@@ -10,6 +10,8 @@ import {
   NPC_WORLD_POLICY_ID,
   npcCombatStanceEventDrafts,
   planSceneNpcPlacementEvents,
+  sceneNpcOccupiedCells,
+  sceneNpcTransitCells,
   sceneNpcsForViewer,
 } from '../server/npc-positioning.mjs'
 import {
@@ -18,6 +20,7 @@ import {
   normalizeCampaignState,
   replayEvents,
   resolveCommand,
+  shortestTacticalPath,
 } from '../server/rules-engine.mjs'
 import {
   addProp,
@@ -148,6 +151,124 @@ test('Scene Architect получает детерминированный сво
   assert.equal(Math.max(Math.abs(marta.payload.x - 7), Math.abs(marta.payload.y - 2)), 1)
   assert.equal(state.scene.cells.find((cell) => cell.x === marta.payload.x && cell.y === marta.payload.y)?.revealed, true)
   assert.equal(state.scene.cells.find((cell) => cell.x === marta.payload.x && cell.y === marta.payload.y)?.type, 'floor')
+})
+
+test('посты NPC не пересекаются с партией и друг с другом при начальной расстановке', () => {
+  const base = npcState({ npcs: [
+    { id: 'marta', name: 'Марта', role: 'трактирщица', location: 'Рынок', visibility: 'party', available: true },
+    { id: 'teren', name: 'Терен', role: 'писарь', location: 'Рынок', visibility: 'party', available: true },
+  ] })
+  const planned = planSceneNpcPlacementEvents(base)
+  assert.equal(planned.length, 2)
+  const positions = planned.map((event) => `${event.payload.x},${event.payload.y}`)
+  assert.equal(new Set(positions).size, positions.length, 'два NPC не должны получить один пост')
+  assert.ok(positions.every((position) => position !== '0,1'), 'пост NPC не должен занимать клетку героя')
+})
+
+test('MoveActor считает пост социального NPC занятой клеткой и сохраняет это после replay и projection', () => {
+  let state = npcState({ combat: true })
+  state = applyCommand(state, {
+    command_type: 'PlaceNpc',
+    command_id: 'place-terен-for-move',
+    npc_id: 'marta',
+    to: { x: 2, y: 1 },
+  }).state
+
+  assert.deepEqual([...sceneNpcOccupiedCells(state)], ['2,1'])
+  assert.equal(shortestTacticalPath(state, 'hero', { x: 2, y: 1 }), null)
+  assert.throws(
+    () => resolveCommand({
+      command_type: 'MoveActor',
+      command_id: 'hero-moves-onto-marta',
+      actor_id: 'hero',
+      to: { x: 2, y: 1 },
+      server_authoritative: true,
+    }, state, {
+      diceService: dice([]),
+      context: { serverAuthoritativeCombat: true, allowedActorIds: ['hero'] },
+    }),
+    (error) => error instanceof RulesValidationError && error.code === 'INVALID_DESTINATION',
+  )
+
+  const moved = resolveCommand({
+    command_type: 'MoveActor',
+    command_id: 'hero-moves-next-to-marta',
+    actor_id: 'hero',
+    to: { x: 1, y: 1 },
+    server_authoritative: true,
+  }, state, {
+    diceService: dice([]),
+    context: { serverAuthoritativeCombat: true, allowedActorIds: ['hero'] },
+  })
+  const next = moved.events.reduce(applyGameEvent, state)
+  assert.deepEqual(replayEvents(state, moved.events), next)
+  const projected = campaignStateForViewer(next, { role: 'player' }, 'hero')
+  assert.equal(shortestTacticalPath(projected, 'hero', { x: 2, y: 1 }), null, 'проекция должна учитывать пост NPC в маршруте')
+  const visibleCells = [
+    ...projected.players.map(({ x, y }) => `${x},${y}`),
+    ...projected.scene_npcs.map(({ x, y }) => `${x},${y}`),
+  ]
+  assert.equal(new Set(visibleCells).size, visibleCells.length, 'проекция не должна показывать двух участников на одной клетке')
+})
+
+test('мирный NPC пропускает транзит через узкий коридор, но не допускает остановку; враждебный блокирует путь', () => {
+  const map = createTacticalMap({ width: 5, height: 1, locationId: 'corridor', seed: 'corridor' })
+  for (let x = 0; x < 5; x += 1) setCell(map, x, 0, { passable: true, revealed: true })
+  const base = normalizeCampaignState({
+    sessionCode: 'NPC-CORRIDOR',
+    scene: { title: 'Коридор', location: 'Коридор', location_id: 'corridor', map: serializeTacticalMap(map) },
+    players: [{ id: 'hero', hp: 20, maxHp: 20, armor: 14, abilities: { str: 10, dex: 10 }, x: 0, y: 0 }],
+    enemies: [{ id: 'enemy', hp: 10, maxHp: 10, armor: 10, alive: true, x: 4, y: 0 }],
+    social: { npcs: [{ id: 'marta', name: 'Марта', role: 'житель', location: 'Коридор', visibility: 'party', available: true }], relationships: {}, conversations: [], promises: [] },
+    npc_world: { placements: [{ npc_id: 'marta', location_id: 'corridor', x: 2, y: 0 }], vitals: { marta: { hp: 4, max_hp: 4, alive: true } }, stances: { marta: { stance: 'neutral' } } },
+  })
+  assert.deepEqual([...sceneNpcOccupiedCells(base)], ['2,0'])
+  assert.deepEqual([...sceneNpcTransitCells(base)], ['2,0'])
+  assert.deepEqual(shortestTacticalPath(base, 'hero', { x: 3, y: 0 }), [{ x: 1, y: 0 }, { x: 2, y: 0 }, { x: 3, y: 0 }])
+  assert.equal(shortestTacticalPath(base, 'hero', { x: 2, y: 0 }), null)
+  const moved = resolveCommand({
+    command_type: 'MoveActor', command_id: 'corridor-move', actor_id: 'hero',
+    to: { x: 3, y: 0 }, server_authoritative: true,
+  }, base, { diceService: dice([]), context: { serverAuthoritativeCombat: true, allowedActorIds: ['hero'] } })
+  assert.deepEqual(moved.events.find((event) => event.event_type === 'ActorMoved')?.payload?.to, { x: 3, y: 0 })
+
+  const hostile = structuredClone(base)
+  hostile.npc_world.stances.marta.stance = 'hostile'
+  assert.deepEqual([...sceneNpcTransitCells(hostile)], [])
+  assert.equal(shortestTacticalPath(hostile, 'hero', { x: 3, y: 0 }), null)
+})
+
+test('автопост нового NPC резервирует существующий пост и клетку партии', () => {
+  const npcs = [
+    { id: 'marta', name: 'Марта', role: 'трактирщица', location: 'Рынок', visibility: 'party', available: true },
+    { id: 'teren', name: 'Терен', role: 'писарь', location: 'Рынок', visibility: 'party', available: true },
+  ]
+  let state = npcState({ npcs })
+  state = applyCommand(state, {
+    command_type: 'PlaceNpc',
+    command_id: 'place-marta-before-teren',
+    npc_id: 'marta',
+    to: { x: 6, y: 2 },
+  }).state
+  // Получаем кандидат для Терена, затем ставим героя ровно туда. Повторный
+  // план должен выбрать следующую клетку, сохранив и пост Марты, и героя.
+  const provisional = planSceneNpcPlacementEvents({
+    ...state,
+    social: { ...state.social, npcs: [npcs[1]] },
+  })[0]
+  assert.ok(provisional)
+  state.players[0] = { ...state.players[0], x: provisional.payload.x, y: provisional.payload.y }
+  state.mechanics.positions.hero = { x: provisional.payload.x, y: provisional.payload.y }
+  const placed = applyCommand(state, {
+    command_type: 'PlaceNpc',
+    command_id: 'place-teren-auto',
+    npc_id: 'teren',
+  }).state
+  const posts = placed.npc_world.placements
+    .filter((placement) => placement.location_id === 'market')
+    .map((placement) => `${placement.x},${placement.y}`)
+  assert.equal(new Set(posts).size, posts.length)
+  assert.ok(!posts.includes(`${state.players[0].x},${state.players[0].y}`), 'автопост не должен занимать клетку партии')
 })
 
 test('NpcPlaced и schema-ready NpcMoved доступны только системному контуру и восстанавливаются replay', () => {
@@ -445,6 +566,7 @@ test('проекция отдаёт bounded scene_npcs без серверных
     stance: 'neutral',
     alive: true,
     health_status: 'bloodied',
+    can_start_combat: false,
   }])
   assert.doesNotMatch(JSON.stringify(projected.scene_npcs), /hp|max_hp|goals|beliefs/iu)
 

@@ -2,6 +2,8 @@ import { interpretResolvedPartyDecision } from './scene-architect.mjs'
 import { abandonableQuest, detectPartyExitRequest } from './party-exit-intent.mjs'
 import { knownWorldLore, retrieveKnownWorldMemory, worldMemoryForViewer } from './world-memory.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'
+import { isSceneObservationRequest } from './intent-parser.mjs'
+import { sceneObjectLabelFor } from './scene-interactions.mjs'
 
 /**
  * Роли и — только там, где роль действительно исполняет модель — версионированный
@@ -16,11 +18,11 @@ import { campaignConceptForAgent } from './agent-context.mjs'
  */
 export const PLAYER_REQUEST_ROLES = Object.freeze({
   worldkeeper: { id: 'worldkeeper', purpose: 'Лор, память мира и знания героя' },
-  director: { id: 'director', prompt_id: ['director/v3_story', 'director/v3_chaos'], purpose: 'Темп, развилки, групповые решения и переходы сцен' },
+  director: { id: 'director', prompt_id: ['director/v4_story', 'director/v4_chaos'], purpose: 'Темп, развилки, групповые решения и переходы сцен' },
   game_master: { id: 'game_master', purpose: 'Правила, проверки, кубики и игровые инструменты' },
-  narrator: { id: 'narrator', prompt_id: 'narrator/v6', purpose: 'Финальное повествование из подтверждённых результатов' },
+  narrator: { id: 'narrator', prompt_id: 'narrator/v9', purpose: 'Финальное повествование из подтверждённых результатов' },
   map_architect: { id: 'map_architect', prompt_id: 'map_architect/v5', purpose: 'Динамическая архитектура новой локации и игровой карты' },
-  action_adjudicator: { id: 'action_adjudicator', prompt_id: 'action_adjudicator/v4', purpose: 'Разбор свободного действия: цель, средство, применимый навык и цена провала' },
+  action_adjudicator: { id: 'action_adjudicator', prompt_id: 'action_adjudicator/v6', purpose: 'Разбор свободного действия: цель, средство, применимый навык и цена провала' },
 })
 
 const LORE_REQUEST = /(?:лор|легенд|предани|истори[яию]|что\s+(?:я|мы)\s+зна|кто\s+так|что\s+так|расскажи\s+(?:мне\s+)?(?:о|об|про)|помню\s+ли)/iu
@@ -29,6 +31,79 @@ const DIRECTION_REQUEST = /(?:куда\s+(?:нам\s+)?(?:идти|пойти|у
 const FATE_REQUEST = /(?:пусть|пускай|давайте|может)\s+(?:решит|определит|бросим)\s+(?:кубик|кость)|кубик\s+судьбы/iu
 const RULES_REQUEST = /(?:правил|можно\s+ли|провер|брос|куб|атак|урон|заклин|спасброс|инициатив|класс\s+брони)/iu
 const NPC_SPEECH_REQUEST = /(?<![\p{L}\p{M}])(?:спрашиваю|спросим|расспрашиваю|расспросим|говорю|говорим|обращаюсь|обращаемся|прошу|просим)(?![\p{L}\p{M}])/iu
+const VISIBLE_SCENE_LIMIT = 8
+
+const visibleText = (value, maximum = 160) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
+
+function visibleSceneActorLabels(state = {}) {
+  const actors = [
+    ...(Array.isArray(state.scene_npcs) ? state.scene_npcs : []),
+    ...(Array.isArray(state.enemies) ? state.enemies : []),
+  ]
+  const labels = []
+  for (const actor of actors) {
+    if (actor?.alive === false) continue
+    const name = visibleText(actor?.name ?? actor?.character, 80)
+    if (!name) continue
+    const role = visibleText(actor?.role, 60)
+    const label = role ? `${name} (${role})` : name
+    if (!labels.includes(label)) labels.push(label)
+    if (labels.length >= VISIBLE_SCENE_LIMIT) break
+  }
+  return labels
+}
+
+function visibleScenePropLabels(state = {}) {
+  const props = Array.isArray(state?.scene?.map?.props) ? state.scene.map.props : []
+  const ranked = props.flatMap((prop, index) => {
+    if (['broken', 'destroyed'].includes(String(prop?.state ?? ''))) return []
+    const label = visibleText(sceneObjectLabelFor(prop?.assetId), 60)
+    return label ? [{ label, pointOfInterest: prop?.interaction?.pointOfInterest === true, index }] : []
+  }).sort((left, right) => Number(right.pointOfInterest) - Number(left.pointOfInterest) || left.index - right.index)
+  const labels = []
+  for (const entry of ranked) {
+    if (labels.includes(entry.label)) continue
+    labels.push(entry.label)
+    if (labels.length >= VISIBLE_SCENE_LIMIT) break
+  }
+  return labels
+}
+
+/**
+ * Ответ на вопрос о видимой части текущей сцены.
+ *
+ * `state` здесь уже должен быть viewer-проекцией: карта оставляет только
+ * раскрытые предметы, а `scene_npcs` — только присутствующих видимых NPC.
+ * Поэтому helper не читает авторитетную карту, ID или содержимое реквизита.
+ */
+export function answerVisibleScene(action, state = {}) {
+  if (!isSceneObservationRequest(action)) return null
+  const locationOnly = /^где\s/iu.test(visibleText(action))
+  const scene = state.scene ?? {}
+  const location = visibleText(scene.location || scene.title, 160)
+  const title = visibleText(scene.title, 160)
+  const mood = visibleText(scene.mood, 160)
+  const actors = visibleSceneActorLabels(state)
+  const props = visibleScenePropLabels(state)
+  const sentences = []
+  if (location) sentences.push(`Сейчас вы здесь: ${location}${!locationOnly && title && title !== location ? `, сцена «${title}»` : ''}.`)
+  else if (title) sentences.push(`Сейчас перед вами сцена «${title}».`)
+  if (!locationOnly) {
+    if (mood) sentences.push(`Обстановка: ${mood}.`)
+    if (actors.length) sentences.push(`В видимой части сцены находятся: ${actors.join(', ')}.`)
+    if (props.length) sentences.push(`Из заметного окружения видно: ${props.join(', ')}.`)
+    if (!actors.length && !props.length) sentences.push('В видимой части сцены пока нет заметных персонажей или реквизита.')
+  }
+  if (!sentences.length) sentences.push('Текущее место пока не названо.')
+  return {
+    narration: sentences.join(' '),
+    effects: { roll: null, reveal: [], spawn: [], objective: null, grantItems: [], scene: null, interaction: null },
+    provider: 'AgentWorldkeeper',
+    model: 'visible-scene',
+    turn_consumed: false,
+    action_kind: 'free',
+  }
+}
 
 export function selectAgentRole(action) {
   const text = String(action || '').normalize('NFKC')
@@ -83,7 +158,13 @@ export function proposeAgentInteraction(action, state = {}) {
       resolutionPrompt: 'Продолжи историю по результату общего броска и при уходе открой следующую сцену.',
     }
   }
-  const exit = detectPartyExitRequest(text)
+  // Индивидуальная фраза о дальнем пути предлагает решение всей группе.
+  // Тактическое «подхожу к Мире» сюда не попадает: нужен явно названный путь
+  // или сопровождение и пункт назначения, который узнаёт общий словарь мест.
+  const accompanied = /^(?:иду|следую|отправляюсь)\s+(?:рядом\s+с|вместе\s+с|за)\s+/iu.test(text)
+    && !/не\s+(?:покида|уход|выход)/iu.test(text)
+  const destination = accompanied ? /(?:\sк|\sв|\sна)\s+([^,.;!?]+?)(?=\s+(?:и|чтобы|затем)\s|[,.!?;]|$)/iu.exec(text)?.[1] : ''
+  const exit = detectPartyExitRequest(text) ?? (destination ? detectPartyExitRequest(`Отправиться к ${destination}`) : null)
   if (exit) {
     const destination = exit.destination
     const knownFrom = String(state.scene?.location || state.scene?.title || '').replace(/\s+/gu, ' ').trim().slice(0, 120)
@@ -111,6 +192,8 @@ export function proposeAgentInteraction(action, state = {}) {
 }
 
 export function answerKnownLore(action, state = {}, options = {}) {
+  const visibleScene = answerVisibleScene(action, state)
+  if (visibleScene) return visibleScene
   // Вопрос внутри реплики адресован собеседнику. Даже неизвестный NPC должен
   // пройти обычный разбор с уточнением цели, а не исчезнуть за справкой о мире.
   if (NPC_SPEECH_REQUEST.test(String(action || '').normalize('NFKC'))) return null
@@ -136,8 +219,8 @@ export function answerKnownLore(action, state = {}, options = {}) {
     const objective = String(scene.objective || adventure.currentHook || questObjective || '').trim()
     const hasNamedDestination = /(?:отправиться|путь|дорога|маршрут|следовать|идти)\s+(?:в|на|к)\s+[^,.!?;:]+/iu.test(objective)
     const narration = hasNamedDestination
-      ? `Из подтверждённых сведений направление связано с текущей задачей: ${objective}. Сейчас отряд находится здесь: ${location}.`
-      : `Подтверждённый пункт назначения пока не открыт. Текущая задача: ${objective || 'исследовать обстановку и найти новую зацепку'}. Отряд находится здесь: ${location}. Сначала нужно осмотреть место, поговорить со свидетелями или найти запись, которая откроет конкретный маршрут.`
+      ? `По текущей задаче вам нужно: ${objective}. Сейчас отряд находится здесь: ${location}.`
+      : `Пункт назначения пока не открыт. Текущая задача — ${objective || 'исследовать обстановку и найти новую зацепку'}. Сейчас вы здесь: ${location}. Чтобы понять маршрут, осмотритесь, расспросите свидетелей или найдите нужную запись.`
     return {
       narration,
       effects: { roll: null, reveal: [], spawn: [], objective: null, grantItems: [], scene: null, interaction: null },
@@ -153,7 +236,7 @@ export function answerKnownLore(action, state = {}, options = {}) {
     const subject = fact.entity?.name ? `${fact.entity.name}: ` : ''
     facts.push(subject + String(fact.summary || fact.object || fact.predicate))
   }
-  if (activeQuest?.title) facts.push(`Active quest "${activeQuest.title}": ${questObjective || 'objective pending'}`)
+  if (activeQuest?.title) facts.push(`Активное задание «${activeQuest.title}»: ${questObjective || 'цель пока не определена'}`)
   if (adventure.currentHook) facts.push(String(adventure.currentHook))
   if (scene.objective) facts.push('Сейчас с этим связана цель: ' + String(scene.objective))
   const history = Array.isArray(adventure.history) ? adventure.history.slice(-3) : []
@@ -163,8 +246,8 @@ export function answerKnownLore(action, state = {}, options = {}) {
   const visited = Array.isArray(adventure.visitedLocations) ? adventure.visitedLocations.filter(Boolean).slice(-4) : []
   if (visited.length) facts.push('Отряд уже бывал здесь: ' + visited.join(', '))
   const narration = facts.length
-    ? 'Из того, что уже известно героям: ' + [...new Set(facts)].join('. ') + '. Скрытых сведений сверх этой памяти у героя пока нет.'
-    : 'В общей памяти отряда пока нет подтверждённых сведений об этом. Герой может расспросить свидетеля, изучить записи или исследовать место — сам вопрос не расходует ход.'
+    ? 'Герои уже знают: ' + [...new Set(facts)].join('. ') + '.'
+    : 'Пока ничего подтверждённого об этом не известно. Можно расспросить свидетеля, изучить записи или осмотреть место; вопрос не расходует ход.'
   return {
     narration,
     effects: { roll: null, reveal: [], spawn: [], objective: null, grantItems: [], scene: null, interaction: null },

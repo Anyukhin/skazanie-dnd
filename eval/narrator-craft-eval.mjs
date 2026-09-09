@@ -143,7 +143,7 @@ function reasoningForModel(modelId) {
 }
 
 function productionChainClient() {
-  const primary = process.env.DND_AI_MODEL ?? 'deepseek/deepseek-v4-flash'
+  const primary = process.env.DND_AI_MODEL ?? 'z-ai/glm-5.3-flash'
   const fallbacks = String(process.env.DND_AI_FALLBACK_MODELS ?? '').split(',').map((id) => id.trim()).filter(Boolean)
   const timeoutMs = Number(process.env.DND_AI_MODEL_TIMEOUT_MS) || 9_000
   return new FallbackLLMClient({
@@ -430,6 +430,13 @@ function socialState() {
   }
 }
 
+// Экспорт синтетических сцен для сравнений моделей; сеть и storage не нужны.
+if (args.includes('--export-cases')) {
+  writeFileSync(OUTPUT, `${JSON.stringify(NARRATOR_CASES, null, 2)}\n`)
+  console.log(`Сценарии без provider-вызовов: ${OUTPUT}`)
+  process.exit(0)
+}
+
 const replayIndex = args.indexOf('--replay')
 if (replayIndex >= 0) {
   const sourcePathArgument = args[replayIndex + 1]
@@ -637,7 +644,7 @@ const report = {
   schema_version: 1,
   label: LABEL,
   date: new Date().toISOString(),
-  primary_model: process.env.DND_AI_MODEL ?? 'deepseek/deepseek-v4-flash',
+  primary_model: process.env.DND_AI_MODEL ?? 'z-ai/glm-5.3-flash',
   reasoning_effort: process.env.DND_AI_REASONING_EFFORT ?? 'по умолчанию модели',
   model_timeout_ms: Number(process.env.DND_AI_MODEL_TIMEOUT_MS) || 9_000,
   live_calls: meter.calls,

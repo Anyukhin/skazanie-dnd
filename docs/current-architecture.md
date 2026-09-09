@@ -181,7 +181,6 @@ Frontend является UI/read-model adapter. Он не отправляет 
 | Модуль | Реализовано и подключено | Остаточное ограничение |
 |---|---|---|
 | `contracts.mjs` | Общие LLM, rule, campaign, event и snapshot contracts | Не все доменные границы выражены отдельными интерфейсами |
-| `engine-mode.mjs` | Единственный исполняемый `enforce`; старые значения только нормализуются при чтении | Модуль сохранён для обратного чтения старых metadata |
 | `llm-client.mjs` | Timeout, error taxonomy, JSON/tool validation, allowlist; используется text paths | Image generation остаётся отдельным provider call |
 | `rule-pack.mjs` | Строгая загрузка, schema и numeric integrity | Один минимальный pack; нет подписанного registry packs |
 | `rule-retriever.mjs` | RU/EN lexical, aliases, typo tolerance, local vector/ontology и filters | Нет внешних embeddings, production metrics и полного корпуса |

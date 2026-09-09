@@ -1,6 +1,8 @@
 // Собран автоматически: pnpm items:manifest. Руками не править.
 // Конкретный предмет выбирается по id/catalog_id, затем используется рисунок
 // его вида. Файлы лежат в public/assets/items/<asset-id>.png.
+import starterPresentation from '../data/starter-item-presentation.json'
+
 export const ITEM_IMAGE_IDS: ReadonlySet<string> = new Set([
   'item-srd-5-2-1-acid',
   'item-srd-5-2-1-adamantine-chain-mail',
@@ -123,12 +125,19 @@ export const ITEM_TYPE_IMAGE_IDS = Object.freeze({
 }) satisfies Readonly<Partial<Record<'weapon' | 'armor' | 'consumable' | 'tool' | 'quest' | 'treasure' | 'document' | 'other', string>>>
 
 export type ItemImageInput = {
+  name?: string
   id?: string
   stock_id?: string
   catalog_id?: string
   type?: string
   image?: string
   imagePosition?: string
+}
+
+export function starterItemPresentationFor(item: ItemImageInput): { description: string; image: string; imagePosition?: string } | null {
+  if (item.catalog_id) return null
+  const entries = starterPresentation.items as Record<string, { description: string; image: string; imagePosition?: string }>
+  return entries[String(item.name ?? '').trim()] ?? null
 }
 
 const normalizeItemIdentifier = (value?: string) => String(value ?? '')
@@ -145,6 +154,8 @@ export function itemImageFor(item: ItemImageInput): string | null {
     const imageId = normalized ? `item-${normalized}` : ''
     if (imageId && ITEM_IMAGE_IDS.has(imageId)) return `/assets/items/${imageId}.png`
   }
+  const starter = starterItemPresentationFor(item)
+  if (starter?.image) return starter.image
   const typeId = ITEM_TYPE_IMAGE_IDS[item.type as keyof typeof ITEM_TYPE_IMAGE_IDS]
   return typeId ? `/assets/items/${typeId}.png` : null
 }

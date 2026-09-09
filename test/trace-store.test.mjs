@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { FileTraceStore, buildTurnExplanation, redactTrace } from '../server/trace-store.mjs'
+import { FileTraceStore, buildTurnExplanation, isMechanicalTrace, redactTrace } from '../server/trace-store.mjs'
 
 test('turn trace сохраняется, восстанавливается и объясняется через /why', () => {
   const store = new FileTraceStore({ rootDir: mkdtempSync(join(tmpdir(), 'skazanie-trace-')) })
@@ -38,6 +38,21 @@ test('recent возвращает ограниченное окно послед
 
   assert.deepEqual(store.recent('ROOM-RECENT', 3).map((trace) => trace.turn_id), ['turn-4', 'turn-3', 'turn-2'])
   assert.equal(store.latest('ROOM-RECENT').turn_id, 'turn-4')
+})
+
+test('latest с predicate пропускает бесплатные dialogue traces', () => {
+  const store = new FileTraceStore({ rootDir: mkdtempSync(join(tmpdir(), 'skazanie-trace-filter-')) })
+  store.save({
+    turn_id: 'turn-mechanics', campaign_id: 'ROOM-FILTER', created_at: '2026-07-29T20:00:01.000Z',
+    events: [{ event_type: 'DamageApplied' }], narration_result: { narration: 'Урон.' },
+  })
+  store.save({
+    turn_id: 'turn-question', campaign_id: 'ROOM-FILTER', created_at: '2026-07-29T20:00:02.000Z',
+    events: [], narration_result: { narration: 'Ответ.', verification: { response_plan: { mode: 'table_talk' } } },
+  })
+
+  assert.equal(store.latest('ROOM-FILTER').turn_id, 'turn-question')
+  assert.equal(store.latest('ROOM-FILTER', { predicate: isMechanicalTrace }).turn_id, 'turn-mechanics')
 })
 
 test('объяснение хода проецирует private knowledge для конкретного героя', () => {

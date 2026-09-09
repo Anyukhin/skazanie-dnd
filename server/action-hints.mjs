@@ -19,8 +19,6 @@ import { currencyToCopper } from './merchant-economy.mjs'
 import { sceneInteractionCatalogEntry, sceneInteractionRewardKinds, sceneObjectLabelFor } from './scene-interactions.mjs'
 import { MIN_BRIBE_CP } from './underworld.mjs'
 
-export const ACTION_HINTS_POLICY_ID = 'skazanie:action-hints-v1'
-
 /** Больше четырёх строк — это уже не подсказка, а инструкция. */
 export const MAX_ACTION_HINTS = 4
 

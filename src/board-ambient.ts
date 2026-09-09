@@ -1,6 +1,7 @@
 import type { TacticalDoorState, TacticalMap } from './types'
 import { LIGHT_SOURCE_ASSETS, lightSourceAssetId } from './board-lighting'
 import { cellAt, revealedAt } from './tactical-map-client'
+import { clipLightSource } from './board-render'
 import type { BoardContext2D, BoardScene, BoardViewport } from './board-render'
 
 /**
@@ -178,11 +179,25 @@ function drawFireFlicker(
     const radius = fire.radius * size * (1 + pulse * FIRE_FLICKER_AMPLITUDE)
     const centerX = (fire.x + 0.5) * size
     const centerY = (fire.y + 0.5) * size
+    context.save()
+    if (!clipLightSource(context, scene.map, { x: fire.x, y: fire.y, radius: fire.radius }, {
+      minX: Math.floor(fire.x - fire.radius),
+      minY: Math.floor(fire.y - fire.radius),
+      maxX: Math.ceil(fire.x + fire.radius),
+      maxY: Math.ceil(fire.y + fire.radius),
+      cellSize: size,
+      offsetX: 0,
+      offsetY: 0,
+    })) {
+      context.restore()
+      continue
+    }
     context.globalAlpha = Math.max(0, FIRE_HALO_ALPHA * (1 + pulse * 0.4))
     circlePath(context, centerX, centerY, radius)
     // Ядро у самого огня: там колебание заметнее, а размер меньше.
     context.globalAlpha = Math.max(0, FIRE_HALO_ALPHA * 1.4 * (1 + pulse * 0.6))
     circlePath(context, centerX, centerY, radius * 0.34)
+    context.restore()
   }
   context.globalAlpha = 1
 }

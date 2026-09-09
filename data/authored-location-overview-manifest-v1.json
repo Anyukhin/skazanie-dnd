@@ -1,0 +1,685 @@
+{
+  "schema_version": 1,
+  "kind": "skazanie:location-overview-manifest",
+  "generated_at": "2026-09-09",
+  "scope": [
+    "league-nine-tides",
+    "unfading-star-belt",
+    "astohan-plains",
+    "ashen-garden-bowl"
+  ],
+  "entries": [
+    {
+      "overviewId": "tides-veld-burg-overview-v1",
+      "locationId": "tides-veld-burg",
+      "worldId": "league-nine-tides",
+      "url": "/assets/maps/locations/skazanie/tides-veld-burg-v1.webp",
+      "name": "Вельдбург · Высокая пристань",
+      "firstPlayableZone": "Высокая пристань",
+      "focus": {
+        "x": 0.25,
+        "y": 0.6
+      }
+    },
+    {
+      "overviewId": "tides-grunvik-overview-v1",
+      "locationId": "tides-grunvik",
+      "worldId": "league-nine-tides",
+      "url": "/assets/maps/locations/skazanie/tides-grunvik-v1.webp",
+      "name": "Грунвик · Сухой центральный двор",
+      "firstPlayableZone": "Сухой центральный двор",
+      "focus": {
+        "x": 0.49,
+        "y": 0.52
+      }
+    },
+    {
+      "overviewId": "tides-salt-gates-overview-v1",
+      "locationId": "tides-salt-gates",
+      "worldId": "league-nine-tides",
+      "url": "/assets/maps/locations/skazanie/tides-salt-gates-v1.webp",
+      "name": "Солёные Ворота · Соляной двор",
+      "firstPlayableZone": "Соляной двор",
+      "focus": {
+        "x": 0.51,
+        "y": 0.56
+      }
+    },
+    {
+      "overviewId": "tides-three-koegs-overview-v1",
+      "locationId": "tides-three-koegs",
+      "worldId": "league-nine-tides",
+      "url": "/assets/maps/locations/skazanie/tides-three-koegs-v1.webp",
+      "name": "Три Кёга · Кирпичная дамба",
+      "firstPlayableZone": "Кирпичная дамба",
+      "focus": {
+        "x": 0.52,
+        "y": 0.48
+      }
+    },
+    {
+      "overviewId": "tides-sisters-hallig-overview-v1",
+      "locationId": "tides-sisters-hallig",
+      "worldId": "league-nine-tides",
+      "url": "/assets/maps/locations/skazanie/tides-sisters-hallig-v1.webp",
+      "name": "Халлиг Сестёр · Островной клуатр",
+      "firstPlayableZone": "Островной клуатр",
+      "focus": {
+        "x": 0.5,
+        "y": 0.55
+      }
+    },
+    {
+      "overviewId": "tides-broken-stars-lighthouse-overview-v1",
+      "locationId": "tides-broken-stars-lighthouse",
+      "worldId": "league-nine-tides",
+      "url": "/assets/maps/locations/skazanie/tides-broken-stars-lighthouse-v1.webp",
+      "name": "Маяк Ломаных Звёзд · Основание маяка",
+      "firstPlayableZone": "Основание маяка",
+      "focus": {
+        "x": 0.51,
+        "y": 0.52
+      }
+    },
+    {
+      "overviewId": "tides-black-dike-overview-v1",
+      "locationId": "tides-black-dike",
+      "worldId": "league-nine-tides",
+      "url": "/assets/maps/locations/skazanie/tides-black-dike-v1.webp",
+      "name": "Чёрная Дамба · Шлюзовой пролёт",
+      "firstPlayableZone": "Шлюзовой пролёт",
+      "focus": {
+        "x": 0.5,
+        "y": 0.35
+      }
+    },
+    {
+      "overviewId": "tides-cog-graveyard-overview-v1",
+      "locationId": "tides-cog-graveyard",
+      "worldId": "league-nine-tides",
+      "url": "/assets/maps/locations/skazanie/tides-cog-graveyard-v1.webp",
+      "name": "Кладбище Когов · Каменная отмель",
+      "firstPlayableZone": "Каменная отмель",
+      "focus": {
+        "x": 0.5,
+        "y": 0.43
+      }
+    },
+    {
+      "overviewId": "tides-north-watch-overview-v1",
+      "locationId": "tides-north-watch",
+      "worldId": "league-nine-tides",
+      "url": "/assets/maps/locations/skazanie/tides-north-watch-v1.webp",
+      "name": "Северный Дозор · Ворота поста",
+      "firstPlayableZone": "Ворота поста",
+      "focus": {
+        "x": 0.44,
+        "y": 0.55
+      }
+    },
+    {
+      "overviewId": "tides-reed-market-overview-v1",
+      "locationId": "tides-reed-market",
+      "worldId": "league-nine-tides",
+      "url": "/assets/maps/locations/skazanie/tides-reed-market-v1.webp",
+      "name": "Камышовый Рынок · Центральная платформа",
+      "firstPlayableZone": "Центральная платформа",
+      "focus": {
+        "x": 0.43,
+        "y": 0.4
+      }
+    },
+    {
+      "overviewId": "tides-drowned-bell-overview-v1",
+      "locationId": "tides-drowned-bell",
+      "worldId": "league-nine-tides",
+      "url": "/assets/maps/locations/skazanie/tides-drowned-bell-v1.webp",
+      "name": "Затонувшая Колокольня · Колокольный колодец",
+      "firstPlayableZone": "Колокольный колодец",
+      "focus": {
+        "x": 0.31,
+        "y": 0.23
+      }
+    },
+    {
+      "overviewId": "tides-archive-rift-overview-v1",
+      "locationId": "tides-archive-rift",
+      "worldId": "league-nine-tides",
+      "url": "/assets/maps/locations/skazanie/tides-archive-rift-v1.webp",
+      "name": "Архив Трещин · Мост над разломом",
+      "firstPlayableZone": "Мост над разломом",
+      "focus": {
+        "x": 0.51,
+        "y": 0.44
+      }
+    },
+    {
+      "overviewId": "tides-southern-firth-overview-v1",
+      "locationId": "tides-southern-firth",
+      "worldId": "league-nine-tides",
+      "url": "/assets/maps/locations/skazanie/tides-southern-firth-v1.webp",
+      "name": "Южный Фьорд · Корабельный двор",
+      "firstPlayableZone": "Корабельный двор",
+      "focus": {
+        "x": 0.53,
+        "y": 0.52
+      }
+    },
+    {
+      "overviewId": "tides-whisper-forest-overview-v1",
+      "locationId": "tides-whisper-forest",
+      "worldId": "league-nine-tides",
+      "url": "/assets/maps/locations/skazanie/tides-whisper-forest-v1.webp",
+      "name": "Шепчущий Лес · Старая береговая дорога",
+      "firstPlayableZone": "Старая береговая дорога",
+      "focus": {
+        "x": 0.5,
+        "y": 0.46
+      }
+    },
+    {
+      "overviewId": "star-nur-kesh-overview-v1",
+      "locationId": "star-nur-kesh",
+      "worldId": "unfading-star-belt",
+      "url": "/assets/maps/locations/skazanie/star-nur-kesh-v1.webp",
+      "name": "Нур-Кеш · Фонтанный двор",
+      "firstPlayableZone": "Фонтанный двор",
+      "focus": {
+        "x": 0.5,
+        "y": 0.5
+      }
+    },
+    {
+      "overviewId": "star-ark-tash-overview-v1",
+      "locationId": "star-ark-tash",
+      "worldId": "unfading-star-belt",
+      "url": "/assets/maps/locations/skazanie/star-ark-tash-v1.webp",
+      "name": "Арк-Таш · Ворота крепости",
+      "firstPlayableZone": "Ворота крепости",
+      "focus": {
+        "x": 0.52,
+        "y": 0.7
+      }
+    },
+    {
+      "overviewId": "star-mirhad-overview-v1",
+      "locationId": "star-mirhad",
+      "worldId": "unfading-star-belt",
+      "url": "/assets/maps/locations/skazanie/star-mirhad-v1.webp",
+      "name": "Мирхад · Садовый двор",
+      "firstPlayableZone": "Садовый двор",
+      "focus": {
+        "x": 0.5,
+        "y": 0.43
+      }
+    },
+    {
+      "overviewId": "star-meridian-rift-overview-v1",
+      "locationId": "star-meridian-rift",
+      "worldId": "unfading-star-belt",
+      "url": "/assets/maps/locations/skazanie/star-meridian-rift-v1.webp",
+      "name": "Разлом Меридиана · Двор меридиана",
+      "firstPlayableZone": "Двор меридиана",
+      "focus": {
+        "x": 0.49,
+        "y": 0.42
+      }
+    },
+    {
+      "overviewId": "star-forty-wells-overview-v1",
+      "locationId": "star-forty-wells",
+      "worldId": "unfading-star-belt",
+      "url": "/assets/maps/locations/skazanie/star-forty-wells-v1.webp",
+      "name": "Караван-сарай Сорока Колодцев · Большой двор",
+      "firstPlayableZone": "Большой двор",
+      "focus": {
+        "x": 0.5,
+        "y": 0.37
+      }
+    },
+    {
+      "overviewId": "star-mirror-lake-overview-v1",
+      "locationId": "star-mirror-lake",
+      "worldId": "unfading-star-belt",
+      "url": "/assets/maps/locations/skazanie/star-mirror-lake-v1.webp",
+      "name": "Озеро Зеркальных Кочевий · Кочевой стан",
+      "firstPlayableZone": "Кочевой стан",
+      "focus": {
+        "x": 0.49,
+        "y": 0.46
+      }
+    },
+    {
+      "overviewId": "star-nameless-mausoleum-overview-v1",
+      "locationId": "star-nameless-mausoleum",
+      "worldId": "unfading-star-belt",
+      "url": "/assets/maps/locations/skazanie/star-nameless-mausoleum-v1.webp",
+      "name": "Мавзолей Безымянного Счётчика · Погребальный двор",
+      "firstPlayableZone": "Погребальный двор",
+      "focus": {
+        "x": 0.5,
+        "y": 0.57
+      }
+    },
+    {
+      "overviewId": "star-dry-wind-gate-overview-v1",
+      "locationId": "star-dry-wind-gate",
+      "worldId": "unfading-star-belt",
+      "url": "/assets/maps/locations/skazanie/star-dry-wind-gate-v1.webp",
+      "name": "Врата Сухого Ветра · Горный проход",
+      "firstPlayableZone": "Горный проход",
+      "focus": {
+        "x": 0.52,
+        "y": 0.27
+      }
+    },
+    {
+      "overviewId": "star-red-caravanserai-overview-v1",
+      "locationId": "star-red-caravanserai",
+      "worldId": "unfading-star-belt",
+      "url": "/assets/maps/locations/skazanie/star-red-caravanserai-v1.webp",
+      "name": "Красный Двор · Караванный двор",
+      "firstPlayableZone": "Караванный двор",
+      "focus": {
+        "x": 0.51,
+        "y": 0.38
+      }
+    },
+    {
+      "overviewId": "star-sky-steppe-overview-v1",
+      "locationId": "star-sky-steppe",
+      "worldId": "unfading-star-belt",
+      "url": "/assets/maps/locations/skazanie/star-sky-steppe-v1.webp",
+      "name": "Небесная Степь · Центральный костровой круг",
+      "firstPlayableZone": "Центральный костровой круг",
+      "focus": {
+        "x": 0.5,
+        "y": 0.52
+      }
+    },
+    {
+      "overviewId": "star-old-river-ford-overview-v1",
+      "locationId": "star-old-river-ford",
+      "worldId": "unfading-star-belt",
+      "url": "/assets/maps/locations/skazanie/star-old-river-ford-v1.webp",
+      "name": "Старый Речной Брод · Каменный мост",
+      "firstPlayableZone": "Каменный мост",
+      "focus": {
+        "x": 0.5,
+        "y": 0.46
+      }
+    },
+    {
+      "overviewId": "star-salt-road-overview-v1",
+      "locationId": "star-salt-road",
+      "worldId": "unfading-star-belt",
+      "url": "/assets/maps/locations/skazanie/star-salt-road-v1.webp",
+      "name": "Соляной Провал · Караванная дорога",
+      "firstPlayableZone": "Караванная дорога",
+      "focus": {
+        "x": 0.36,
+        "y": 0.28
+      }
+    },
+    {
+      "overviewId": "star-broken-star-observatory-overview-v1",
+      "locationId": "star-broken-star-observatory",
+      "worldId": "unfading-star-belt",
+      "url": "/assets/maps/locations/skazanie/star-broken-star-observatory-v1.webp",
+      "name": "Башня Сломанной Звезды · Круглая башня",
+      "firstPlayableZone": "Круглая башня",
+      "focus": {
+        "x": 0.37,
+        "y": 0.29
+      }
+    },
+    {
+      "overviewId": "star-black-well-overview-v1",
+      "locationId": "star-black-well",
+      "worldId": "unfading-star-belt",
+      "url": "/assets/maps/locations/skazanie/star-black-well-v1.webp",
+      "name": "Чёрный Колодец · Двор колодца",
+      "firstPlayableZone": "Двор колодца",
+      "focus": {
+        "x": 0.5,
+        "y": 0.48
+      }
+    },
+    {
+      "overviewId": "astohan-stormberg-overview-v2",
+      "locationId": "astohan-stormberg",
+      "worldId": "astohan-plains",
+      "url": "/assets/maps/locations/skazanie/astohan-stormberg-v2.webp",
+      "name": "Штормберг · замок Ареса",
+      "firstPlayableZone": "Королевская галерея и два боковых кабинета",
+      "focus": {
+        "x": 0.49,
+        "y": 0.2
+      }
+    },
+    {
+      "overviewId": "astohan-ash-watch-overview-v1",
+      "locationId": "astohan-ash-watch",
+      "worldId": "astohan-plains",
+      "url": "/assets/maps/locations/skazanie/astohan-ash-watch-v1.webp",
+      "name": "Пепельная застава · Пепельный двор",
+      "firstPlayableZone": "Пепельный двор",
+      "focus": {
+        "x": 0.5,
+        "y": 0.44
+      }
+    },
+    {
+      "overviewId": "astohan-mirror-lake-overview-v1",
+      "locationId": "astohan-mirror-lake",
+      "worldId": "astohan-plains",
+      "url": "/assets/maps/locations/skazanie/astohan-mirror-lake-v1.webp",
+      "name": "Озеро Двух Отражений · Гладкий западный берег",
+      "firstPlayableZone": "Гладкий западный берег",
+      "focus": {
+        "x": 0.25,
+        "y": 0.74
+      }
+    },
+    {
+      "overviewId": "astohan-forgotten-cliffs-overview-v1",
+      "locationId": "astohan-forgotten-cliffs",
+      "worldId": "astohan-plains",
+      "url": "/assets/maps/locations/skazanie/astohan-forgotten-cliffs-v1.webp",
+      "name": "Замок Забытых Скал · Двор падающих звёзд",
+      "firstPlayableZone": "Двор падающих звёзд",
+      "focus": {
+        "x": 0.5,
+        "y": 0.45
+      }
+    },
+    {
+      "overviewId": "astohan-mittlayd-overview-v1",
+      "locationId": "astohan-mittlayd",
+      "worldId": "astohan-plains",
+      "url": "/assets/maps/locations/skazanie/astohan-mittlayd-v1.webp",
+      "name": "Миттлайд · Южная зерновая площадь",
+      "firstPlayableZone": "Южная зерновая площадь",
+      "focus": {
+        "x": 0.5,
+        "y": 0.74
+      }
+    },
+    {
+      "overviewId": "astohan-quiet-watch-camp-overview-v1",
+      "locationId": "astohan-quiet-watch-camp",
+      "worldId": "astohan-plains",
+      "url": "/assets/maps/locations/skazanie/astohan-quiet-watch-camp-v1.webp",
+      "name": "Лагерь Тихой Стражи · Центральный плац",
+      "firstPlayableZone": "Центральный плац",
+      "focus": {
+        "x": 0.5,
+        "y": 0.49
+      }
+    },
+    {
+      "overviewId": "astohan-cursed-woods-overview-v1",
+      "locationId": "astohan-cursed-woods",
+      "worldId": "astohan-plains",
+      "url": "/assets/maps/locations/skazanie/astohan-cursed-woods-v1.webp",
+      "name": "Проклятый лес · Каменная тропа обещаний",
+      "firstPlayableZone": "Каменная тропа обещаний",
+      "focus": {
+        "x": 0.51,
+        "y": 0.53
+      }
+    },
+    {
+      "overviewId": "astohan-redstone-overview-v1",
+      "locationId": "astohan-redstone",
+      "worldId": "astohan-plains",
+      "url": "/assets/maps/locations/skazanie/astohan-redstone-v1.webp",
+      "name": "Редстоуновка · Главная улица",
+      "firstPlayableZone": "Главная улица",
+      "focus": {
+        "x": 0.52,
+        "y": 0.42
+      }
+    },
+    {
+      "overviewId": "astohan-smugglers-cave-overview-v1",
+      "locationId": "astohan-smugglers-cave",
+      "worldId": "astohan-plains",
+      "url": "/assets/maps/locations/skazanie/astohan-smugglers-cave-v1.webp",
+      "name": "Пещера Чёрного Эха · Центральный штрек",
+      "firstPlayableZone": "Центральный штрек",
+      "focus": {
+        "x": 0.53,
+        "y": 0.51
+      }
+    },
+    {
+      "overviewId": "astohan-lomar-tower-overview-v1",
+      "locationId": "astohan-lomar-tower",
+      "worldId": "astohan-plains",
+      "url": "/assets/maps/locations/skazanie/astohan-lomar-tower-v1.webp",
+      "name": "Башня Ломара · Выжженный двор",
+      "firstPlayableZone": "Выжженный двор",
+      "focus": {
+        "x": 0.72,
+        "y": 0.47
+      }
+    },
+    {
+      "overviewId": "astohan-wild-forest-overview-v1",
+      "locationId": "astohan-wild-forest",
+      "worldId": "astohan-plains",
+      "url": "/assets/maps/locations/skazanie/astohan-wild-forest-v1.webp",
+      "name": "Дикий лес · Центральная поляна",
+      "firstPlayableZone": "Центральная поляна",
+      "focus": {
+        "x": 0.5,
+        "y": 0.43
+      }
+    },
+    {
+      "overviewId": "astohan-eldrin-heart-overview-v1",
+      "locationId": "astohan-eldrin-heart",
+      "worldId": "astohan-plains",
+      "url": "/assets/maps/locations/skazanie/astohan-eldrin-heart-v1.webp",
+      "name": "Сердце Элдрина · Поляна Великого Древа",
+      "firstPlayableZone": "Поляна Великого Древа",
+      "focus": {
+        "x": 0.5,
+        "y": 0.44
+      }
+    },
+    {
+      "overviewId": "astohan-obsidian-pass-overview-v1",
+      "locationId": "astohan-obsidian-pass",
+      "worldId": "astohan-plains",
+      "url": "/assets/maps/locations/skazanie/astohan-obsidian-pass-v1.webp",
+      "name": "Обсидиановый перевал · Серпантин перевала",
+      "firstPlayableZone": "Серпантин перевала",
+      "focus": {
+        "x": 0.55,
+        "y": 0.39
+      }
+    },
+    {
+      "overviewId": "astohan-vulkanis-brazier-overview-v1",
+      "locationId": "astohan-vulkanis-brazier",
+      "worldId": "astohan-plains",
+      "url": "/assets/maps/locations/skazanie/astohan-vulkanis-brazier-v1.webp",
+      "name": "Жаровня Вулканиса · Центральное логово",
+      "firstPlayableZone": "Центральное логово",
+      "focus": {
+        "x": 0.53,
+        "y": 0.41
+      }
+    },
+    {
+      "overviewId": "ash-limnara-overview-v1",
+      "locationId": "ash-limnara",
+      "worldId": "ashen-garden-bowl",
+      "url": "/assets/maps/locations/skazanie/ash-limnara-v1.webp",
+      "name": "Лимнара · порт у кальдеры",
+      "firstPlayableZone": "Причальная площадка",
+      "focus": {
+        "x": 0.72,
+        "y": 0.48
+      }
+    },
+    {
+      "overviewId": "ash-talass-akr-overview-v1",
+      "locationId": "ash-talass-akr",
+      "worldId": "ashen-garden-bowl",
+      "url": "/assets/maps/locations/skazanie/ash-talass-akr-v1.webp",
+      "name": "Таласс-Акр · улицы под пеплом",
+      "firstPlayableZone": "Двор раскопанного квартала",
+      "focus": {
+        "x": 0.53,
+        "y": 0.44
+      }
+    },
+    {
+      "overviewId": "ash-elefra-overview-v1",
+      "locationId": "ash-elefra",
+      "worldId": "ashen-garden-bowl",
+      "url": "/assets/maps/locations/skazanie/ash-elefra-v1.webp",
+      "name": "Элефра · святилище паломников",
+      "firstPlayableZone": "Двор святилища",
+      "focus": {
+        "x": 0.5,
+        "y": 0.28
+      }
+    },
+    {
+      "overviewId": "ash-port-somma-overview-v1",
+      "locationId": "ash-port-somma",
+      "worldId": "ashen-garden-bowl",
+      "url": "/assets/maps/locations/skazanie/ash-port-somma-v1.webp",
+      "name": "Порт Соммы · обсидиановая пристань",
+      "firstPlayableZone": "Обсидиановая пристань",
+      "focus": {
+        "x": 0.53,
+        "y": 0.67
+      }
+    },
+    {
+      "overviewId": "ash-black-cone-overview-v1",
+      "locationId": "ash-black-cone",
+      "worldId": "ashen-garden-bowl",
+      "url": "/assets/maps/locations/skazanie/ash-black-cone-v1.webp",
+      "name": "Чёрный Конус · край действующего вулкана",
+      "firstPlayableZone": "Обсидиановый уступ у кратера",
+      "focus": {
+        "x": 0.67,
+        "y": 0.36
+      }
+    },
+    {
+      "overviewId": "ash-three-torches-grotto-overview-v1",
+      "locationId": "ash-three-torches-grotto",
+      "worldId": "ashen-garden-bowl",
+      "url": "/assets/maps/locations/skazanie/ash-three-torches-grotto-v1.webp",
+      "name": "Грот Трёх Факелов",
+      "firstPlayableZone": "Входная камера грота",
+      "focus": {
+        "x": 0.29,
+        "y": 0.4
+      }
+    },
+    {
+      "overviewId": "ash-first-grain-terraces-overview-v1",
+      "locationId": "ash-first-grain-terraces",
+      "worldId": "ashen-garden-bowl",
+      "url": "/assets/maps/locations/skazanie/ash-first-grain-terraces-v1.webp",
+      "name": "Террасы Первого Зерна",
+      "firstPlayableZone": "Первая зерновая терраса",
+      "focus": {
+        "x": 0.48,
+        "y": 0.39
+      }
+    },
+    {
+      "overviewId": "ash-ash-gate-overview-v1",
+      "locationId": "ash-ash-gate",
+      "worldId": "ashen-garden-bowl",
+      "url": "/assets/maps/locations/skazanie/ash-ash-gate-v1.webp",
+      "name": "Пепельные Ворота",
+      "firstPlayableZone": "Ворота на горном тракте",
+      "focus": {
+        "x": 0.52,
+        "y": 0.67
+      }
+    },
+    {
+      "overviewId": "ash-returning-spring-overview-v1",
+      "locationId": "ash-returning-spring",
+      "worldId": "ashen-garden-bowl",
+      "url": "/assets/maps/locations/skazanie/ash-returning-spring-v1.webp",
+      "name": "Источник Возвращения",
+      "firstPlayableZone": "Чаша источника",
+      "focus": {
+        "x": 0.3,
+        "y": 0.35
+      }
+    },
+    {
+      "overviewId": "ash-white-harbor-overview-v1",
+      "locationId": "ash-white-harbor",
+      "worldId": "ashen-garden-bowl",
+      "url": "/assets/maps/locations/skazanie/ash-white-harbor-v1.webp",
+      "name": "Белая Гавань",
+      "firstPlayableZone": "Причал Белой Гавани",
+      "focus": {
+        "x": 0.23,
+        "y": 0.4
+      }
+    },
+    {
+      "overviewId": "ash-cinder-monastery-overview-v1",
+      "locationId": "ash-cinder-monastery",
+      "worldId": "ashen-garden-bowl",
+      "url": "/assets/maps/locations/skazanie/ash-cinder-monastery-v1.webp",
+      "name": "Монастырь Угольной Песни",
+      "firstPlayableZone": "Монастырский двор",
+      "focus": {
+        "x": 0.48,
+        "y": 0.39
+      }
+    },
+    {
+      "overviewId": "ash-pumice-quarries-overview-v1",
+      "locationId": "ash-pumice-quarries",
+      "worldId": "ashen-garden-bowl",
+      "url": "/assets/maps/locations/skazanie/ash-pumice-quarries-v1.webp",
+      "name": "Карьер Белой Пемзы",
+      "firstPlayableZone": "Выработка белой пемзы",
+      "focus": {
+        "x": 0.57,
+        "y": 0.53
+      }
+    },
+    {
+      "overviewId": "ash-underworld-cistern-overview-v1",
+      "locationId": "ash-underworld-cistern",
+      "worldId": "ashen-garden-bowl",
+      "url": "/assets/maps/locations/skazanie/ash-underworld-cistern-v1.webp",
+      "name": "Подземная Цистерна",
+      "firstPlayableZone": "Входная камера резервуара",
+      "focus": {
+        "x": 0.2,
+        "y": 0.72
+      }
+    },
+    {
+      "overviewId": "ash-three-sisters-isle-overview-v1",
+      "locationId": "ash-three-sisters-isle",
+      "worldId": "ashen-garden-bowl",
+      "url": "/assets/maps/locations/skazanie/ash-three-sisters-isle-v1.webp",
+      "name": "Остров Трёх Сестёр",
+      "firstPlayableZone": "Береговая площадка",
+      "focus": {
+        "x": 0.77,
+        "y": 0.72
+      }
+    }
+  ]
+}

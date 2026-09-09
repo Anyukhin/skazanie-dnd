@@ -33,6 +33,9 @@ function safeIntent(intent) {
         role: text(candidate?.role, 80),
       })),
     } : {}),
+    ...(Array.isArray(intent.action_steps) ? { action_steps: intent.action_steps.map((value) => text(value, 500)).filter(Boolean).slice(0, 6) } : {}),
+    ...(Array.isArray(intent.constraints) ? { constraints: intent.constraints.map((value) => text(value, 200)).filter(Boolean).slice(0, 6) } : {}),
+    ...(intent.pending_step == null ? {} : { pending_step: text(intent.pending_step, 500) }),
   }
 }
 
@@ -50,6 +53,7 @@ export class ClarificationRegistry {
     this.entries = new Map()
     this.revokedProposals = new Map()
     this.proposals = new Map()
+    this.dialogues = new Map()
     this.load()
     this.cleanup()
   }
@@ -70,6 +74,8 @@ export class ClarificationRegistry {
       .map(([key, entry]) => [String(key), entry]))
     this.proposals = new Map((Array.isArray(payload.proposals) ? payload.proposals : [])
       .map(([id, entry]) => [String(id), entry]))
+    this.dialogues = new Map((Array.isArray(payload.dialogues) ? payload.dialogues : [])
+      .map(([id, entry]) => [String(id), entry]))
   }
 
   persist() {
@@ -83,6 +89,7 @@ export class ClarificationRegistry {
         entries: [...this.entries.entries()],
         revoked_proposals: [...this.revokedProposals.entries()],
         proposals: [...this.proposals.entries()],
+        dialogues: [...this.dialogues.entries()],
       }), 'utf8')
     } finally {
       closeSync(descriptor)
@@ -111,6 +118,12 @@ export class ClarificationRegistry {
         changed = true
       }
     }
+    for (const [id, entry] of this.dialogues) {
+      if (Number(entry?.expires_at) <= cutoff) {
+        this.dialogues.delete(id)
+        changed = true
+      }
+    }
     if (changed) this.persist()
   }
 
@@ -121,7 +134,7 @@ export class ClarificationRegistry {
     const normalizedAction = text(action)
     const normalizedQuestion = text(question, 600)
     for (const [id, existing] of this.entries) {
-      if (existing.campaign_id === campaign
+      if (!existing.completed && existing.campaign_id === campaign
         && existing.actor_id === actor
         && Number(existing.state_version) === Number(stateVersion)
         && existing.action === normalizedAction
@@ -140,9 +153,63 @@ export class ClarificationRegistry {
     if (!entry.campaign_id || !entry.actor_id || !entry.question) {
       throw error('Недостаточно данных для сохранения уточнения', 'CLARIFICATION_INVALID')
     }
+    for (const previous of this.entries.values()) {
+      if (previous.campaign_id === campaign && previous.actor_id === actor) previous.completed = true
+    }
     this.entries.set(id, entry)
     this.persist()
     return this.public(id, entry)
+  }
+
+  rememberDialogue({ campaignId, actorId, question, answer, action = '', stateVersion = null } = {}) {
+    this.cleanup()
+    const campaign = text(campaignId, 120)
+    const actor = text(actorId, 120)
+    const normalizedQuestion = text(question, 600)
+    const normalizedAnswer = text(answer, 2_000)
+    if (!campaign || !actor || !normalizedQuestion || !normalizedAnswer) {
+      throw error('Недостаточно данных для сохранения диалога', 'CLARIFICATION_DIALOGUE_INVALID')
+    }
+    const id = `dialogue:${this.idFactory()}`
+    this.dialogues.set(id, {
+      campaign_id: campaign,
+      actor_id: actor,
+      question: normalizedQuestion,
+      answer: normalizedAnswer,
+      action: text(action, 2_000),
+      state_version: stateVersion == null ? null : (Number.isSafeInteger(Number(stateVersion)) ? Number(stateVersion) : null),
+      created_at: this.now(),
+      expires_at: this.now() + this.ttlMs,
+    })
+    const own = [...this.dialogues.entries()].filter(([, entry]) => entry.campaign_id === campaign && entry.actor_id === actor)
+    for (const [oldId] of own.slice(0, -6)) this.dialogues.delete(oldId)
+    this.persist()
+    return structuredClone({ id, ...this.dialogues.get(id) })
+  }
+
+  recentDialogue({ campaignId, actorId } = {}) {
+    this.cleanup()
+    const campaign = text(campaignId, 120)
+    const actor = text(actorId, 120)
+    return [...this.dialogues.entries()].reverse()
+      .filter(([, entry]) => entry.campaign_id === campaign && entry.actor_id === actor)
+      .slice(0, 6)
+      .map(([id, entry]) => structuredClone({ id, ...entry }))
+  }
+
+  resetDialogue({ campaignId, actorId } = {}) {
+    this.cleanup()
+    const campaign = text(campaignId, 120)
+    const actor = text(actorId, 120)
+    let removed = 0
+    for (const [id, entry] of this.dialogues) {
+      if (entry.campaign_id === campaign && entry.actor_id === actor) {
+        this.dialogues.delete(id)
+        removed += 1
+      }
+    }
+    if (removed) this.persist()
+    return removed
   }
 
   resolve(id, { campaignId, actorId, stateVersion = null } = {}) {
@@ -157,6 +224,20 @@ export class ClarificationRegistry {
       throw error('Обстановка изменилась, поэтому старое уточнение больше не действует. Отправьте заявку заново.', 'CLARIFICATION_STALE')
     }
     return structuredClone({ id: key, ...entry })
+  }
+
+  current({ campaignId, actorId, stateVersion } = {}) {
+    this.cleanup()
+    const found = [...this.entries.entries()].reverse().find(([, entry]) => !entry.completed
+      && entry.campaign_id === text(campaignId, 120) && entry.actor_id === text(actorId, 120)
+      && Number(entry.state_version) === Number(stateVersion))
+    return found ? this.public(...found) : null
+  }
+
+  complete(id, { campaignId, actorId } = {}) {
+    this.resolve(id, { campaignId, actorId })
+    this.entries.get(String(id)).completed = true
+    this.persist()
   }
 
   revokeProposal(proposalId, { campaignId, actorId } = {}) {
@@ -227,6 +308,7 @@ export class ClarificationRegistry {
       state_version: entry.state_version,
       action: entry.action,
       question: entry.question,
+      ...(entry.original_intent?.action_steps?.length || entry.original_intent?.pending_step === 'proposal' ? { confirmation_required: true } : {}),
     }
   }
 }

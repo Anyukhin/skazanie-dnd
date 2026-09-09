@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { normalizeDirectorIntent } from './autonomous-campaign.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'
 import { currentImprovMode, normalizeImprovMode } from './campaign-ai-context.mjs'
-import { campaignArcPosition } from './campaign-loop-policy.mjs'
+import { affirmativePlayerAction, campaignArcPosition, confirmedQuestProgress } from './campaign-loop-policy.mjs'
 import { npcMechanicsFor } from './npc-positioning.mjs'
 import { buildDataOnlyContext } from './security.mjs'
 import { worldClockForAgents } from './weather.mjs'
@@ -14,12 +14,12 @@ import { retrieveWorldMemory } from './world-memory.mjs'
 // обоих файлах один и тот же: allowlist намерений, запрет на числа и свободные
 // tool calls, UNTRUSTED_DATA как данные. Различаются только творческие
 // директивы. `v1.txt` остаётся на диске для чтения сохранённых трасс.
-const STORY_PROMPT = readFileSync(fileURLToPath(new URL('../prompts/director/v3_story.txt', import.meta.url)), 'utf8')
-const CHAOS_PROMPT = readFileSync(fileURLToPath(new URL('../prompts/director/v3_chaos.txt', import.meta.url)), 'utf8')
+const STORY_PROMPT = readFileSync(fileURLToPath(new URL('../prompts/director/v4_story.txt', import.meta.url)), 'utf8')
+const CHAOS_PROMPT = readFileSync(fileURLToPath(new URL('../prompts/director/v4_chaos.txt', import.meta.url)), 'utf8')
 
 const DIRECTOR_PROMPTS = Object.freeze({
-  story: { id: 'director/v3_story', text: STORY_PROMPT },
-  chaos: { id: 'director/v3_chaos', text: CHAOS_PROMPT },
+  story: { id: 'director/v4_story', text: STORY_PROMPT },
+  chaos: { id: 'director/v4_chaos', text: CHAOS_PROMPT },
 })
 const clean = (value, maximum = 240) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
 
@@ -122,14 +122,21 @@ function directorNarrativeMemory(state, playerAction) {
 }
 
 /** A server-owned progression policy used whenever the model is absent or invalid. */
-export function fallbackDirectorIntent(state = {}) {
+export function fallbackDirectorIntent(state = {}, playerAction = '') {
   const chapterHistory = currentChapterHistory(state)
   const types = new Set(chapterHistory.map((intent) => intent.type))
   const quest = firstActiveQuest(state)
   const npc = firstAvailableNpc(state)
+  const arc = campaignArcPosition(state)
   const encounter = state.mechanics?.encounter
   const outcomes = Array.isArray(state.autonomy?.encounter_outcomes) ? state.autonomy.encounter_outcomes : []
   const outcomeRecorded = encounter?.id && outcomes.some((entry) => entry.encounter_id === encounter.id)
+  if ((!encounter || encounter.status === 'ended') && affirmativePlayerAction(playerAction, 'encounter')) {
+    return normalizeDirectorIntent({ type: 'request_encounter', theme: 'beasts', difficulty: 'medium', reason: 'Игрок явно запросил столкновение; сервер проверит и соберёт встречу.' })
+  }
+  if (!state.mechanics?.combat?.active && affirmativePlayerAction(playerAction, 'transition')) {
+    return normalizeDirectorIntent({ type: 'end_scene', destination: `След ${Math.max(2, Number(state.adventure?.chapter || 1) + 1)}`, reason: 'Игрок явно подтвердил переход после разрешённого столкновения.' })
+  }
 
   if (encounter?.status === 'ended' && outcomeRecorded && !types.has('end_scene')) {
     return normalizeDirectorIntent({
@@ -140,16 +147,16 @@ export function fallbackDirectorIntent(state = {}) {
   }
   if (!types.has('continue_exploration')) return normalizeDirectorIntent({ type: 'continue_exploration', reason: 'Сначала отряд исследует текущую сцену.' })
   if (!types.has('open_social_scene') && npc) return normalizeDirectorIntent({ type: 'open_social_scene', npc_id: npc.id, reason: 'Доступный очевидец связывает исследование с квестом.' })
-  if (!types.has('advance_quest_clock') && quest) return normalizeDirectorIntent({ type: 'advance_quest_clock', quest_id: quest.id, reason: 'Подтверждённая зацепка продвигает активную цель.' })
-  if (Number(state.adventure?.chapter || 1) >= 2 && outcomes.length > 0 && !encounter && !types.has('end_scene')) {
+  if (!types.has('advance_quest_clock') && quest && confirmedQuestProgress(state, quest.id)) return normalizeDirectorIntent({ type: 'advance_quest_clock', quest_id: quest.id, reason: 'Подтверждённая зацепка продвигает активную цель.' })
+  if (arc?.is_final && !quest && !types.has('resolve_scene')) {
     return normalizeDirectorIntent({
-      type: 'end_scene',
-      destination: `След ${Number(state.adventure?.chapter || 1) + 1}`,
-      reason: 'После обязательного столкновения предыдущей главы подтверждённый прогресс позволяет избежать нового боя.',
+      type: 'resolve_scene',
+      resolution: 'decision',
+      reason: 'Сервер предлагает подтвердить достигнутую цель; завершение требует отдельного решения игроков.',
     })
   }
   if (!types.has('request_encounter') && !encounter) {
-    return normalizeDirectorIntent({ type: 'request_encounter', theme: 'beasts', difficulty: 'medium', reason: 'MVP-политика создаёт полноценное тактическое препятствие для всего отряда.' })
+    return normalizeDirectorIntent({ type: 'offer_next_hook', hook: clean(state.scene?.objective, 300) || 'Исследовать угрозу и выбрать способ разрешения', reason: 'Мир предлагает следующую угрозу или альтернативный путь без обязательного боя.' })
   }
   if (encounter?.status === 'ended' && !types.has('end_scene')) {
     return normalizeDirectorIntent({ type: 'offer_next_hook', hook: clean(state.scene?.objective, 300) || 'Осмыслить последствия столкновения', reason: 'Сервер ещё применяет последствия столкновения.' })
@@ -226,7 +233,8 @@ export class DirectorAgent {
   async choose({ state = {}, playerAction = '', improvMode = currentImprovMode() } = {}) {
     const improv = normalizeImprovMode(improvMode)
     const directorPrompt = DIRECTOR_PROMPTS[improv]
-    const fallback = fallbackDirectorIntent(state)
+    const fallback = fallbackDirectorIntent(state, playerAction)
+    if (fallback.type === 'request_encounter') return { intent: fallback, trace: { agent: 'DirectorAgent', mode: 'deterministic-explicit-player-request', improv_mode: improv, prompt_id: directorPrompt.id, reason: 'explicit combat request' } }
     if (!this.llmClient) return { intent: fallback, trace: { agent: 'DirectorAgent', mode: 'deterministic-fallback', improv_mode: improv, prompt_id: directorPrompt.id, reason: 'LLM is not configured' } }
     try {
       const result = await this.llmClient.completeJson({
@@ -236,7 +244,7 @@ export class DirectorAgent {
         ],
         temperature: 0.25,
         maxTokens: 500,
-      })
+      }, { timeoutMs: 12_000 })
       return { intent: normalizeDirectorIntent(result), trace: { agent: 'DirectorAgent', mode: 'model', improv_mode: improv, prompt_id: directorPrompt.id, model: this.llmClient.model ?? null } }
     } catch (error) {
       return { intent: fallback, trace: { agent: 'DirectorAgent', mode: 'deterministic-fallback', improv_mode: improv, prompt_id: directorPrompt.id, reason: error instanceof Error ? error.message : 'invalid model response' } }

@@ -379,20 +379,102 @@
       "type": "array"
     },
     "damage_resistances": {
-      "type": "array"
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "string",
+            "minLength": 1
+          },
+          {
+            "type": "object",
+            "properties": {
+              "types": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "condition": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "types",
+              "condition"
+            ],
+            "additionalProperties": true
+          }
+        ]
+      }
     },
     "damage_immunities": {
       "type": "array",
       "items": {
-        "type": "string",
-        "minLength": 1
+        "anyOf": [
+          {
+            "type": "string",
+            "minLength": 1
+          },
+          {
+            "type": "object",
+            "properties": {
+              "types": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "condition": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "types",
+              "condition"
+            ],
+            "additionalProperties": true
+          }
+        ]
       }
     },
     "damage_vulnerabilities": {
       "type": "array",
       "items": {
-        "type": "string",
-        "minLength": 1
+        "anyOf": [
+          {
+            "type": "string",
+            "minLength": 1
+          },
+          {
+            "type": "object",
+            "properties": {
+              "types": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "condition": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "types",
+              "condition"
+            ],
+            "additionalProperties": true
+          }
+        ]
       }
     },
     "condition_immunities": {

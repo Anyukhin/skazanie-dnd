@@ -3,6 +3,7 @@ import { authoredNpcCombatant } from './authored-npc.mjs'
 import { withBackgroundBenefits } from './backgrounds.mjs'
 import { PHB_STARTING_WEALTH } from './character-creation-wealth.mjs'
 import { parseDiceExpression } from './dice-service.mjs'
+import { monsterActionAvailable, monsterActionSpentMarker, monsterActionUsageKey, monsterAreaAction, monsterAttackTargetAllowed, monsterOnHitTargetAllowed, monsterRechargeMinimum, monsterMultiattackSequences, monsterMultiattackSequenceFor } from './monster-actions.mjs'
 import { DND_2014_RULESET_ID, INSTALLED_RULESET_IDS, LEGACY_DEFAULT_RULESET_ID, rulesetRuleId } from './ruleset-config.mjs'
 import { applyAutonomyEvent, normalizeAutonomyState } from './autonomous-campaign.mjs'
 import {
@@ -42,7 +43,7 @@ import {
   serializeTacticalMap,
   setCell as setTacticalCell,
   setDoor as setTacticalDoor,
-  doorBlocksStep,
+  movementStepBlocked,
   tacticalMapFromLegacyCells,
 } from './tactical-map.mjs'
 import {
@@ -59,6 +60,8 @@ import {
   campaignArcPlan,
 } from './campaign-loop-policy.mjs'
 import { normalizePartyDecision, normalizePartyDecisionPolicy } from './party-decision.mjs'
+
+const DOOR_BARRICADE_EVENT_SCHEMA_VERSION = 1
 import {
   WORLD_MEMORY_COMMAND_TYPES,
   WorldMemoryValidationError,
@@ -150,7 +153,6 @@ import {
   LAW_POLICY_ID,
   MAX_WANTED_LEVEL,
   WANTED_LEVEL_THRESHOLDS,
-  WANTED_TRADE_REFUSAL_REASON,
   applyLawEvent,
   currentRegionId,
   escapeSucceeded,
@@ -249,7 +251,10 @@ import {
   npcHarmEventDrafts,
   npcMissCollateralTarget,
   npcMechanicsFor,
+  npcInteractionTargetForViewer,
   npcPlacementFor,
+  sceneNpcOccupiedCells,
+  sceneNpcTransitCells,
   npcTargetsWithinArea,
   npcVitalFor,
   placedSceneNpcTargets,
@@ -291,7 +296,6 @@ import {
   findMerchantService,
   inventoryItemFromStock,
   inventoryStackKey,
-  merchantIsAtLocation,
   normalizeCurrency,
   normalizeInventoryItem,
   normalizeMerchant,
@@ -307,6 +311,7 @@ import {
   sellability,
   trustedItemAppraisalFor,
   trustedStockAppraisalFor,
+  merchantTradeAvailabilityFor,
 } from './merchant-economy.mjs'
 import {
   ammunitionBundleAmount,
@@ -604,6 +609,7 @@ const COMMAND_RULES = Object.freeze({
   MakeSavingThrow: [RULE_IDS.savingThrow],
   MakeAttack: [RULE_IDS.attack],
   MakeAreaAttack: [RULE_IDS.attack, RULE_IDS.damage],
+  UseMonsterAction: [RULE_IDS.actions, RULE_IDS.savingThrow, RULE_IDS.damage],
   ChangeWeapon: [RULE_IDS.actions],
   ApplyDamage: [RULE_IDS.damage],
   ApplyHealing: [RULE_IDS.healing],
@@ -627,8 +633,11 @@ const COMMAND_RULES = Object.freeze({
   // и то и другое живёт в экономике хода. Проверку Силы команда добавляет себе
   // сама, когда до неё доходит дело.
   OperateDoor: [RULE_IDS.turns],
+  BarricadeDoor: [RULE_IDS.turns],
+  ClearDoorBarricade: [RULE_IDS.turns],
   OperateSceneObject: [RULE_IDS.turns],
   StartCombat: [RULE_IDS.initiative],
+  AttackNpc: [RULE_IDS.initiative],
   EndCombat: [RULE_IDS.initiative, RULE_IDS.turns],
   EndTurn: [RULE_IDS.turns],
   AdvanceTime: [RULE_IDS.resource],
@@ -736,10 +745,11 @@ const COMMAND_RULES = Object.freeze({
 })
 
 export const ALLOWED_COMMAND_TYPES = new Set([
+  'UseMonsterAction',
   'DeclareAction', 'MakeAbilityCheck', 'MakeSavingThrow', 'MakeAttack', 'ApplyDamage', 'ApplyHealing', 'ReduceHitPointMaximum',
   'ResolveHeroDeath',
   'GrantTemporaryHitPoints', 'SpendResource', 'RestoreResource', 'AddCondition', 'RemoveCondition',
-  'CastSpell', 'UseLegendaryAction', 'PickpocketNpc', 'UseCombatAction', 'ResolveImprovisedAction', 'IdentifyEnemy', 'MoveActor', 'OperateDoor', 'OperateSceneObject', 'UseLevelTransition', 'StartCombat', 'EndCombat', 'EndTurn', 'ChangeWeapon', 'MakeAreaAttack', 'AdvanceTime', 'StartRest', 'SpendHitPointDie', 'CompleteRest',
+  'CastSpell', 'UseLegendaryAction', 'PickpocketNpc', 'UseCombatAction', 'ResolveImprovisedAction', 'IdentifyEnemy', 'MoveActor', 'OperateDoor', 'BarricadeDoor', 'ClearDoorBarricade', 'OperateSceneObject', 'UseLevelTransition', 'StartCombat', 'AttackNpc', 'EndCombat', 'EndTurn', 'ChangeWeapon', 'MakeAreaAttack', 'AdvanceTime', 'StartRest', 'SpendHitPointDie', 'CompleteRest',
   'StartConcentration', 'EndConcentration', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem',
   'RecordRuling', 'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
   'CreateMerchant', 'ConfigureMerchant', 'RestockMerchant', 'MoveMerchant', 'SetMerchantAvailability', 'CreateEncounter',
@@ -2244,7 +2254,7 @@ function setSceneDoorState(state, doorId, doorState) {
   // ребра. Раньше здесь стоял перенос — и открытая дверь оставалась стеной:
   // ребро продолжало держать и шаг, и взгляд, поэтому комната за распахнутой
   // дверью не открывалась, а клиент не строил в неё маршрут.
-  const blocks = doorEdgeBlocks(doorState)
+  const blocks = doorEdgeBlocks(doorState) || Boolean(door.barricade)
   setTacticalDoor(map, {
     ...door,
     state: String(doorState),
@@ -2534,7 +2544,37 @@ function occupiedPositions(state, exceptActorId = null) {
     const position = actorPosition(state, actorId(actor))
     if (position) occupied.add(positionKey(position))
   }
+  // Социальные NPC не входят в listActors, но их сохранённые посты занимают
+  // клетки. Перемещение, принудительное движение и прыжки используют один
+  // набор занятых клеток, чтобы герой не завершал движение поверх NPC.
+  for (const key of sceneNpcOccupiedCells(state)) occupied.add(key)
   return occupied
+}
+
+/**
+ * Клетки, занятые server-owned реквизитом. `blocksMove` — часть TacticalProp,
+ * поэтому она действует одинаково для игрока, NPC, forced movement и прыжка.
+ * Состояние пропса не подменяет этот server-owned флаг: если `blocksMove`
+ * установлен, клетка остаётся занятой до явного изменения самого флага в
+ * карте.
+ */
+function movementBlockedProp(prop) {
+  return prop?.blocksMove === true
+}
+
+/** @param {any} map @returns {Set<string>} */
+function propMovementPositions(map) {
+  const blocked = new Set()
+  for (const prop of map?.props ?? []) {
+    if (!movementBlockedProp(prop)) continue
+    const cells = Array.isArray(prop.footprint) && prop.footprint.length
+      ? prop.footprint
+      : [{ x: Math.floor(Number(prop.x)), y: Math.floor(Number(prop.y)) }]
+    for (const cell of cells) {
+      if (Number.isSafeInteger(Number(cell?.x)) && Number.isSafeInteger(Number(cell?.y))) blocked.add(`${Number(cell.x)},${Number(cell.y)}`)
+    }
+  }
+  return blocked
 }
 
 /**
@@ -2554,7 +2594,13 @@ export function shortestTacticalPath(state, actorIdValue, destination, {
   const cells = tacticalCellMap(state)
   const fromCell = cells.get(positionKey(from))
   if (!cells.size || !fromCell || fromCell.revealed === false || !isWalkableCell(cells.get(positionKey(to)))) return null
+  // Decode the map once for both doors and prop occupancy. Props with a
+  // `blocksMove` footprint are obstacles, even when their art is painted into
+  // a full-map background.
+  const map = tacticalMap === undefined ? sceneTacticalMap(state) : tacticalMap
+  const propOccupied = map ? propMovementPositions(map) : new Set()
   const occupied = occupiedPositions(state, actorIdValue)
+  const npcTransit = sceneNpcTransitCells(state)
   const mover = findActor(state, actorIdValue)
   const occupiedActors = new Map(listActors(state)
     .filter((candidate) => actorId(candidate) !== String(actorIdValue) && isLivingActor(candidate))
@@ -2564,15 +2610,16 @@ export function shortestTacticalPath(state, actorIdValue, destination, {
     const occupant = occupiedActors.get(key)
     return Boolean(occupant && creatureSizeRank(occupant) > creatureSizeRank(mover))
   }
+  const canPassNpc = (key) => npcTransit.has(key) && !occupiedActors.has(key)
   // Закрытая и запертая дверь останавливают шаг. Карта может отсутствовать у
   // состояния, сохранённого до перехода на слои, — тогда путь считается по
   // клеткам, как раньше.
   // Weighted search may inspect thousands of candidate steps. Decode the map
   // once before the loop (or reuse the caller's decoded instance), never from
   // the per-step cost predicate.
-  const map = tacticalMap === undefined ? sceneTacticalMap(state) : tacticalMap
   const start = positionKey(from)
   const target = positionKey(to)
+  if (sceneNpcOccupiedCells(state).has(target)) return null
   const previous = new Map([[start, null]])
   if (typeof stepCost !== 'function') {
     const queue = [start]
@@ -2583,8 +2630,12 @@ export function shortestTacticalPath(state, actorIdValue, destination, {
       for (const [nextX, nextY] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
         const next = `${nextX},${nextY}`
         if (previous.has(next) || !isWalkableCell(cells.get(next))) continue
-        if (occupied.has(next) && !(allowOccupiedDestination && next === target) && !canPassOccupied(next)) continue
-        if (map && doorBlocksStep(map, x, y, nextX, nextY)) continue
+        if (propOccupied.has(next)) continue
+        if (occupied.has(next)
+          && !canPassNpc(next)
+          && !(allowOccupiedDestination && next === target)
+          && !canPassOccupied(next)) continue
+        if (map && movementStepBlocked(map, x, y, nextX, nextY)) continue
         previous.set(next, current)
         queue.push(next)
       }
@@ -2630,8 +2681,12 @@ export function shortestTacticalPath(state, actorIdValue, destination, {
       for (const [nextX, nextY] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
         const next = `${nextX},${nextY}`
         if (!isWalkableCell(cells.get(next))) continue
-        if (occupied.has(next) && !(allowOccupiedDestination && next === target) && !canPassOccupied(next)) continue
-        if (map && doorBlocksStep(map, x, y, nextX, nextY)) continue
+        if (propOccupied.has(next)) continue
+        if (occupied.has(next)
+          && !canPassNpc(next)
+          && !(allowOccupiedDestination && next === target)
+          && !canPassOccupied(next)) continue
+        if (map && movementStepBlocked(map, x, y, nextX, nextY)) continue
         const weight = Math.max(1, Number(stepCost({ x: nextX, y: nextY }, map)) || 1)
         const nextCost = current.cost + weight
         if (nextCost >= (costs.get(next) ?? Number.POSITIVE_INFINITY)) continue
@@ -2674,12 +2729,15 @@ function forcedPushPath(state, moverId, origin, distanceFeet) {
     ? { x: Math.sign(dx), y: 0 }
     : { x: 0, y: Math.sign(dy) }
   const cells = tacticalCellMap(state)
+  const map = sceneTacticalMap(state)
+  const propOccupied = map ? propMovementPositions(map) : new Set()
   const occupied = occupiedPositions(state, moverId)
   const path = []
   let cursor = from
   for (let index = 0; index < Math.floor(Math.max(0, Number(distanceFeet) || 0) / 5); index += 1) {
     const next = { x: cursor.x + step.x, y: cursor.y + step.y }
-    if (!isWalkableCell(cells.get(positionKey(next))) || occupied.has(positionKey(next))) break
+    if (!isWalkableCell(cells.get(positionKey(next))) || propOccupied.has(positionKey(next)) || occupied.has(positionKey(next))) break
+    if (map && movementStepBlocked(map, cursor.x, cursor.y, next.x, next.y)) break
     path.push(next)
     cursor = next
   }
@@ -2690,6 +2748,8 @@ function farthestSafeDestinationAwayFrom(state, moverId, origin, distanceFeet) {
   const from = actorPosition(state, moverId)
   if (!from || !origin) return null
   const cells = tacticalCellMap(state)
+  const map = sceneTacticalMap(state)
+  const propOccupied = map ? propMovementPositions(map) : new Set()
   const occupied = occupiedPositions(state, moverId)
   const maximumSteps = Math.floor(Math.max(0, Number(distanceFeet) || 0) / 5)
   const start = positionKey(from)
@@ -2703,7 +2763,8 @@ function farthestSafeDestinationAwayFrom(state, moverId, origin, distanceFeet) {
     for (const [x, y] of [[current.position.x + 1, current.position.y], [current.position.x - 1, current.position.y], [current.position.x, current.position.y + 1], [current.position.x, current.position.y - 1]]) {
       const next = { x, y }
       const key = positionKey(next)
-      if (visited.has(key) || !isWalkableCell(cells.get(key)) || occupied.has(key)) continue
+      if (visited.has(key) || !isWalkableCell(cells.get(key)) || propOccupied.has(key) || occupied.has(key)) continue
+      if (map && movementStepBlocked(map, current.position.x, current.position.y, x, y)) continue
       if (activeAreaEffectsAt(state, next).some((effect) => effect.condition && effect.spell_id !== 'grease')) continue
       visited.add(key)
       queue.push({ position: next, path: [...current.path, next] })
@@ -2797,7 +2858,10 @@ function trustedAttackProfile(state, actor, actionId = null) {
     on_hit: profile.on_hit && typeof profile.on_hit === 'object' ? clone(profile.on_hit) : null,
     uses: Math.max(0, safeInteger(profile.uses, 0)),
     recharge: rechargeMinimumOf(profile),
+    recharge_group: profile.recharge_group ?? null,
     tactical_priority: safeInteger(profile.tactical_priority, 0),
+    target_condition: profile.target_condition ?? null,
+    target_any_conditions: profile.target_any_conditions ?? null,
   }
 }
 
@@ -2854,7 +2918,7 @@ function monkMartialArtsAttackProfile(actor) {
  * способность не восстанавливается броском вовсе.
  */
 function rechargeMinimumOf(profile) {
-  return Math.max(0, Math.min(6, safeInteger(profile?.recharge, 0)))
+  return monsterRechargeMinimum(profile)
 }
 
 /**
@@ -2863,10 +2927,6 @@ function rechargeMinimumOf(profile) {
  * только тем, снимается ли маркер: `uses` уходит на весь бой, `recharge`
  * возвращается броском в начале хода.
  */
-function monsterActionIsLimited(profile) {
-  return safeInteger(profile?.uses, 0) > 0 || rechargeMinimumOf(profile) > 0
-}
-
 function combatItem(actor, itemId) {
   return (Array.isArray(actor?.inventory) ? actor.inventory : []).find((item) => String(item?.id) === String(itemId) && Number(item?.quantity ?? 1) > 0) ?? null
 }
@@ -3849,6 +3909,11 @@ function normalizeCommand(input, state) {
   command.merchant_id = command.merchant_id == null && command.merchantId == null ? null : String(command.merchant_id ?? command.merchantId).slice(0, 120)
   command.stock_id = command.stock_id == null && command.stockId == null ? null : String(command.stock_id ?? command.stockId).slice(0, 120)
   command.item_id = command.item_id == null && command.itemId == null ? null : String(command.item_id ?? command.itemId).slice(0, 120)
+  if (['BarricadeDoor', 'ClearDoorBarricade'].includes(command.command_type)) {
+    command.material_item_id = command.material_item_id == null && command.materialItemId == null ? null : String(command.material_item_id ?? command.materialItemId).slice(0, 120)
+    command.door_id = command.door_id == null && command.doorId == null ? null : String(command.door_id ?? command.doorId).slice(0, 120)
+    command.force = command.force === true
+  }
   if (command.command_type === 'MakeAttack') {
     command.attack_mode = command.attack_mode == null && command.attackMode == null ? null : String(command.attack_mode ?? command.attackMode).slice(0, 40)
     command.attack_ability = command.attack_ability == null && command.attackAbility == null ? null : String(command.attack_ability ?? command.attackAbility).slice(0, 8)
@@ -3875,6 +3940,16 @@ function normalizeCommand(input, state) {
     command.difficulty = String(command.difficulty ?? '')
     command.theme = String(command.theme ?? '')
     command.seed = String(command.seed ?? '').slice(0, 120)
+  }
+  if (command.command_type === 'AttackNpc') {
+    command.npc_id = String(command.npc_id ?? command.npcId ?? '').slice(0, 120)
+    delete command.npcId
+    // Вход игрока выбирает только адресата. Encounter и его расположение
+    // выводятся ниже из серверного профиля и поста NPC.
+    delete command.encounter
+    delete command.seed
+    command.target_id = null
+    command.target_ids = []
   }
   if (command.command_type === 'AdvanceScene') {
     command.actor_id = null
@@ -4035,11 +4110,11 @@ function normalizeCommand(input, state) {
 }
 
 function needsActor(type) {
-  return new Set(['DeclareAction', 'MakeAbilityCheck', 'MakeSavingThrow', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'ApplyDamage', 'ApplyHealing', 'ReduceHitPointMaximum',
+  return new Set(['UseMonsterAction', 'DeclareAction', 'MakeAbilityCheck', 'MakeSavingThrow', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'ApplyDamage', 'ApplyHealing', 'ReduceHitPointMaximum',
     'ResolveHeroDeath',
     'GrantTemporaryHitPoints', 'SpendResource', 'RestoreResource', 'AddCondition', 'RemoveCondition', 'CastSpell',
-    'UseCombatAction', 'MoveActor', 'OperateSceneObject', 'UseLevelTransition', 'EndCombat', 'EndTurn', 'StartRest', 'SpendHitPointDie', 'CompleteRest', 'StartConcentration', 'EndConcentration', 'GrantItem',
-    'ProposeParley', 'SettleParley', 'ResolveGuardEncounter', 'LootContainer',
+    'UseCombatAction', 'MoveActor', 'BarricadeDoor', 'ClearDoorBarricade', 'OperateSceneObject', 'UseLevelTransition', 'EndCombat', 'EndTurn', 'StartRest', 'SpendHitPointDie', 'CompleteRest', 'StartConcentration', 'EndConcentration', 'GrantItem',
+    'ProposeParley', 'SettleParley', 'ResolveGuardEncounter', 'LootContainer', 'AttackNpc',
     'CalmBeast', 'FeedBeast', 'ScareWithBeast',
     'OpenTavernDiceRound', 'AnswerTavernDiceRound', 'LeaveTavernDiceRound', 'OrderTavernDrink',
     'SendLetter', 'ReceiveNpcBlessing',
@@ -4057,15 +4132,43 @@ function listedSkill(values, skill) {
 }
 
 /**
- * Единственный серверный источник бонуса владения для проверок навыка.
+ * Единственный серверный источник бонуса владения для проверки навыка.
  * Команда и модель могут назвать навык, но не могут выдать герою владение:
- * оно читается из нормализованного листа. Необязательные expertise-поля
- * поддерживают импортированные/legacy-листы без изменения обязательной схемы,
- * а точный total авторского NPC принимается только вместе с его server-owned
- * origin и совпадающим stat block.
+ * оно читается из нормализованного листа. Точные totals статблока принимает
+ * только фактический enemy из состояния с server-owned provenance; одного
+ * поля `provenance` у игрока для этого недостаточно.
  */
-export function skillProficiencyForActor(actor, skill) {
+function serverOwned2014StatBlockFor(actor, state) {
+  const provenance = actor?.provenance
+  const statBlockId = String(actor?.stat_block_id ?? '')
+  const enemies = Array.isArray(state?.enemies) ? state.enemies : []
+  const enemy = enemies.find((candidate) => candidate === actor)
+  if (!state || !enemy || state.ruleset_id !== DND_2014_RULESET_ID) return null
+  if (provenance?.kind !== 'server-owned-dnd-2014-stat-block'
+    || provenance.ruleset_id !== DND_2014_RULESET_ID
+    || String(provenance.stat_block_id ?? '') !== statBlockId
+    || !statBlockId.startsWith(`${DND_2014_RULESET_ID}:monster:`)) return null
+  return actor
+}
+
+export function skillProficiencyForActor(actor, skill, state = null) {
   const id = canonicalSkillId(skill)
+  const statBlock = serverOwned2014StatBlockFor(actor, state)
+  if (statBlock) {
+    const skills = statBlock.skills && typeof statBlock.skills === 'object' && !Array.isArray(statBlock.skills)
+      ? statBlock.skills
+      : {}
+    const skillKey = Object.keys(skills).find((key) => canonicalSkillId(key) === id)
+    if (!skillKey) {
+      return { skill: id, proficient: false, expertise: false, multiplier: 0, bonus: 0, stat_block: true }
+    }
+    const explicitTotal = Number(skills[skillKey])
+    if (Number.isSafeInteger(explicitTotal)) {
+      const ability = String(skillAbility(id) || 'str')
+      const bonus = Math.max(-30, Math.min(30, explicitTotal - abilityModifier(actor?.abilities?.[ability])))
+      return { skill: id, proficient: true, expertise: false, multiplier: 1, bonus, explicit_total: explicitTotal, stat_block: true }
+    }
+  }
   const authoredSheet = actor?.origin?.kind === 'authored-npc'
     && String(actor?.origin?.npc_id ?? '') === actorId(actor)
     && String(actor?.origin?.profile_id ?? '') === String(actor?.stat_block_id ?? '')
@@ -4112,8 +4215,18 @@ export function skillProficiencyForActor(actor, skill) {
   }
 }
 
-function savingThrowModifierForActor(actor, ability, currentModifier) {
+function savingThrowModifierForActor(actor, ability, currentModifier, state = null) {
   const id = String(ability ?? '').toLowerCase()
+  const statBlock = serverOwned2014StatBlockFor(actor, state)
+  if (statBlock && statBlock.saving_throws && typeof statBlock.saving_throws === 'object' && !Array.isArray(statBlock.saving_throws)
+    && Object.hasOwn(statBlock.saving_throws, id)) {
+    const explicitTotal = Number(statBlock.saving_throws[id])
+    if (Number.isSafeInteger(explicitTotal)) {
+      const baseline = abilityModifier(actor?.abilities?.[id])
+      const contextualDelta = Number.isSafeInteger(Number(currentModifier)) ? Number(currentModifier) - baseline : 0
+      return Math.max(-30, Math.min(30, explicitTotal + contextualDelta))
+    }
+  }
   const authoredSheet = actor?.origin?.kind === 'authored-npc'
     && String(actor?.origin?.npc_id ?? '') === actorId(actor)
     && String(actor?.origin?.profile_id ?? '') === String(actor?.stat_block_id ?? '')
@@ -4125,13 +4238,48 @@ function savingThrowModifierForActor(actor, ability, currentModifier) {
   return Math.max(-30, Math.min(30, baseline + Number(explicit) - abilityModifier(actor?.abilities?.[id])))
 }
 
-function skillProficiencyBonus(actor, skill) {
-  return skillProficiencyForActor(actor, skill).bonus
+function skillProficiencyBonus(actor, skill, state = null) {
+  return skillProficiencyForActor(actor, skill, state).bonus
 }
 
 function targetFor(command) {
   return command.target_id || command.target_ids[0] || command.actor_id
 }
+
+/** Предпросмотр штатного приёма статблока: форма и цели всегда считаются сервером. */
+export function previewMonsterAction(rawState, id, actionId, toward) {
+  const state = normalizeCampaignState(rawState)
+  const actor = findActor(state, String(id))
+  if (!serverOwned2014StatBlockFor(actor, state) || !isLivingActor(actor)) {
+    throw new RulesValidationError('Приём доступен только действующему существу из каталога 2014', 'MONSTER_ACTION_NOT_AVAILABLE')
+  }
+  const source = (Array.isArray(actor.special_actions) ? actor.special_actions : []).find(action => String(action.id) === String(actionId))
+  const action = monsterAreaAction(source)
+  if (!action) throw new RulesValidationError('Для особого действия ещё нет исполняемого обработчика', 'MONSTER_ACTION_UNSUPPORTED')
+  if (!monsterActionAvailable(action, conditionIdsFor(state, String(id)))) throw new RulesValidationError('Приём ещё не восстановился', 'MONSTER_ACTION_SPENT')
+  const origin = actorPosition(state, String(id))
+  const to = { x: Number(toward?.x ?? origin?.x), y: Number(toward?.y ?? origin?.y) }
+  if (!origin || !Number.isSafeInteger(to.x) || !Number.isSafeInteger(to.y)) throw new RulesValidationError('Нужно направление на карте', 'MAP_POSITION_REQUIRED')
+  if (action.shape !== 'sphere' && to.x === origin.x && to.y === origin.y) throw new RulesValidationError('Нужно направление от существа', 'MONSTER_ACTION_DIRECTION_REQUIRED')
+  const line = action.shape === 'line'
+    ? new Set(wallCells(state, { actor_id: String(id), to }, { areaOrigin: 'self', radius: action.length_feet }).map(positionKey))
+    : null
+  const affected = listActors(state).filter(target => {
+    const targetId = actorId(target)
+    if (targetId === String(id) || !isLivingActor(target) && !isDyingHero(state, targetId)) return false
+    const at = actorPosition(state, targetId)
+    if (!at || !hasClearTrajectory(state, origin, at)) return false
+    if (action.shape === 'cone') return positionInCone(at, origin, to, action.length_feet)
+    if (line) return line.has(positionKey(at))
+    return positionInArea(at, origin, action.length_feet)
+  })
+  if (!affected.length) throw new RulesValidationError('В области нет целей', 'MONSTER_ACTION_NO_TARGETS')
+  const charmer = (state.mechanics.conditions[String(id)] ?? []).find(condition => condition.id === 'charmed'
+    && affected.some(target => actorId(target) === String(condition.source_actor)))
+  if (charmer) throw new RulesValidationError('Очарованное существо не может навредить очаровавшему его', 'CHARMED_ATTACK_FORBIDDEN')
+  return { action, origin, to, affectedIds: affected.map(actorId) }
+}
+
 
 function playerActor(state, id) {
   return (Array.isArray(state?.players) ? state.players : []).find((player) => String(player.id) === String(id ?? '')) ?? null
@@ -4525,7 +4673,7 @@ function assertTurn(command, state, context = {}) {
   // посреди боя они доступны только к сломленному моралью зверю, но доступны —
   // и подойти к нему с открытой ладонью посреди чужого хода нельзя. Вне боя
   // функция выходит первой же проверкой, и там уговор ничего не стоит.
-  if (!combat.active || !['MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'UseItem', 'ActivateItem', 'IdentifyEnemy', 'ProposeParley', 'CalmBeast', 'FeedBeast', 'MoveActor', 'OperateSceneObject', 'LootContainer', 'EndCombat', 'EndTurn'].includes(command.command_type)) return
+  if (!combat.active || !['UseMonsterAction', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'UseItem', 'ActivateItem', 'IdentifyEnemy', 'ProposeParley', 'CalmBeast', 'FeedBeast', 'MoveActor', 'BarricadeDoor', 'ClearDoorBarricade', 'OperateSceneObject', 'LootContainer', 'EndCombat', 'EndTurn'].includes(command.command_type)) return
   if (context.reactionResolution && command.command_type === 'MakeAttack') return
   // Дополнительные лучи одного заклинания — часть уже совершённого действия,
   // а не новое применение: экономика хода за них не платит второй раз.
@@ -4673,12 +4821,12 @@ function assertTurn(command, state, context = {}) {
     if (economy?.bonus_action === false) {
       throw new RulesValidationError('Бонусное действие на этом ходу уже потрачено', 'BONUS_ACTION_SPENT')
     }
-  } else if (['MakeAttack', 'MakeAreaAttack', 'ChangeWeapon'].includes(command.command_type)) {
+  } else if (['UseMonsterAction', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon'].includes(command.command_type)) {
     const economy = combat.action_economy[command.actor_id]
     if (command.command_type === 'MakeAttack' && command.monster_ability === 'multiattack') {
       const actor = findActor(state, command.actor_id)
       const attacksUsed = Math.max(0, safeInteger(economy?.attacks_used, 0))
-      const sequence = monsterMultiattackActionIds(actor, command.action_id)
+      const sequence = monsterMultiattackActionIds(actor, command.action_id, economy?.multiattack_action_ids ?? [])
       const expectedActionId = sequence[attacksUsed]
       const multiattack = monsterTraitFor(actor, 'multiattack')
       const actionCounts = monsterMultiattackActionCounts(multiattack)
@@ -4793,21 +4941,71 @@ function assembleEncounterFromState(state, command) {
     const y = Number(entity?.y)
     if (Number.isSafeInteger(x) && Number.isSafeInteger(y)) creatureCells.add(`${x},${y}`)
   }
+  const blockedProps = propMovementPositions(sceneTacticalMap(state))
   const cells = (Array.isArray(state.scene?.cells) ? state.scene.cells : []).map((cell) => ({
     x: Number(cell?.x),
     y: Number(cell?.y),
     type: String(cell?.type ?? 'floor'),
     revealed: cell?.revealed === true,
     ...(cell?.feature == null ? {} : { feature: String(cell.feature) }),
-    ...(creatureCells.has(`${Number(cell?.x)},${Number(cell?.y)}`) ? { occupied: true } : {}),
+    ...(creatureCells.has(`${Number(cell?.x)},${Number(cell?.y)}`) || blockedProps.has(`${Number(cell?.x)},${Number(cell?.y)}`) ? { occupied: true } : {}),
   }))
   return assembleEncounter({
+    ruleset_id: state.ruleset_id,
     scene: { cells },
     party,
     difficulty: command.difficulty,
     theme: command.theme,
     seed: command.seed,
   })
+}
+
+/**
+ * Идемпотентность входа в бой с именованным NPC привязана к двум полям,
+ * которые выбирает игрок: своему герою и видимому NPC. Боевой лист, пост,
+  * ОЗ и расстановка в отпечаток не входят — это серверное состояние.
+ */
+export function npcCombatRequestFingerprint(command) {
+  const semantic = {
+    type: 'AttackNpc',
+    actor_id: String(command?.actor_id ?? ''),
+    npc_id: String(command?.npc_id ?? command?.npcId ?? ''),
+  }
+  return createHash('sha256').update(JSON.stringify(semantic)).digest('hex')
+}
+
+function validateAttackNpcCommand(command, state) {
+  if (state.mechanics.combat.active) {
+    throw new RulesValidationError('Нельзя начать новый бой во время активного боя', 'ENCOUNTER_DURING_COMBAT')
+  }
+  if (state.enemies.some(isLivingActor) || ['staged', 'active'].includes(String(state.mechanics.encounter?.status ?? ''))) {
+    throw new RulesValidationError('В текущей сцене уже есть незавершённое столкновение', 'ENCOUNTER_ALREADY_PRESENT')
+  }
+  const hero = playerActor(state, command.actor_id)
+  if (!hero) throw new RulesValidationError('Напасть может только герой отряда', 'ACTOR_FORBIDDEN')
+  if (!isLivingActor(hero)) throw new RulesValidationError('Герой без сознания не может начать бой', 'ACTOR_DEFEATED')
+
+  const npcId = String(command.npc_id ?? '').trim()
+  const npc = (state.social?.npcs ?? []).find((candidate) => String(candidate?.id ?? '') === npcId)
+  if (!npc) throw new RulesValidationError('Выбранный NPC отсутствует в текущей сцене', 'AUTHORED_NPC_NOT_PRESENT')
+  // Этот сторож повторяет проекцию игрока: скрытый профиль нельзя превратить
+  // в боевого участника, угадав его идентификатор.
+  if (!npcInteractionTargetForViewer(state, npcId)) {
+    throw new RulesValidationError('Выбранный NPC не виден этому игроку', 'AUTHORED_NPC_NOT_VISIBLE')
+  }
+  const mechanics = npcMechanicsFor(state, npcId)
+  if (!mechanics) throw new RulesValidationError('У NPC нет проверенного боевого листа', 'AUTHORED_NPC_PROFILE_MISSING')
+  if (mechanics.status === 'ruling-only') throw new RulesValidationError('Боевой профиль NPC требует решения ведущего', 'AUTHORED_NPC_PROFILE_UNVERIFIED')
+  const vital = npcVitalFor(state, npcId)
+  if (!vital?.alive) throw new RulesValidationError('NPC уже выбыл из истории', 'AUTHORED_NPC_NOT_ALIVE')
+  const present = presentSceneNpcs(state).some((candidate) => String(candidate.id) === npcId)
+  if (!present) throw new RulesValidationError('Выбранный NPC сейчас недоступен', 'AUTHORED_NPC_NOT_PRESENT')
+  const placement = npcPlacementFor(state, npcId)
+  if (!placement) throw new RulesValidationError('Авторский NPC ещё не размещён на карте сцены', 'AUTHORED_NPC_PLACEMENT_MISSING')
+
+  command.npc_id = npcId
+  command.request_fingerprint = npcCombatRequestFingerprint(command)
+  return command
 }
 
 /**
@@ -5304,6 +5502,11 @@ export function validateCommand(input, rawState, context = {}) {
   if (command.command_type === 'UseLegendaryAction') {
     Object.assign(command, validateLegendaryActionCommand(command, state, context))
   }
+  if (command.command_type === 'UseMonsterAction') {
+    if (context.isNpcScheduler !== true) throw new RulesValidationError('Особые приёмы существа выбирает только серверный планировщик', 'NPC_ACTION_FORBIDDEN')
+    if (!state.mechanics.combat.active) throw new RulesValidationError('Приём требует начатого боя', 'COMBAT_NOT_ACTIVE')
+    previewMonsterAction(state, command.actor_id, command.action_id, command.to)
+  }
   if (command.command_type === 'CastSpell' && monsterSpellcastingFor(findActor(state, command.actor_id))) {
     Object.assign(command, validateMonsterSpellCommand(command, state, context))
   }
@@ -5435,8 +5638,14 @@ export function validateCommand(input, rawState, context = {}) {
     command.scene_commerce = normalizeSceneCommerce(command.scene_commerce)
     command.party_decision = normalizePartyDecisionReference(command.party_decision, { required: context?.isDirector === true })
   }
+  if (command.command_type === 'AttackNpc') {
+    validateAttackNpcCommand(command, state)
+  }
   if (ENCOUNTER_LIFECYCLE_COMMAND_TYPES.has(command.command_type)) {
-    if (context?.isAdmin !== true && context?.isDirector !== true) {
+    const playerNpcEncounter = context?.allowPlayerNpcEncounter === true
+      && command.npc_id
+      && command.command_type === 'CreateEncounter'
+    if (context?.isAdmin !== true && context?.isDirector !== true && !playerNpcEncounter) {
       throw new RulesValidationError('Создать столкновение может только системный контур кампании', 'ENCOUNTER_MANAGEMENT_FORBIDDEN')
     }
     if (state.mechanics.combat.active) {
@@ -5496,6 +5705,11 @@ export function validateCommand(input, rawState, context = {}) {
   }
   assertActorPermission(command, context, state)
   assertTurn(command, state, context)
+
+  if (['BarricadeDoor', 'ClearDoorBarricade'].includes(command.command_type)
+    && (!isLivingActor(findActor(state, command.actor_id)) || incapacitatingConditionFor(state, command.actor_id))) {
+    throw new RulesValidationError('С баррикадой может работать только дееспособный живой герой', 'ACTOR_INCAPACITATED')
+  }
 
   const actorFate = command.actor_id ? state.mechanics.death.heroes[command.actor_id] : null
   if (actorFate?.status === 'dead' && !['ResolveHeroDeath', 'EndCombat', 'EndTurn'].includes(command.command_type)) {
@@ -5579,20 +5793,13 @@ export function validateCommand(input, rawState, context = {}) {
     const merchant = findMerchant(state, command.merchant_id)
     if (!actor) throw new RulesValidationError('Торговать может только герой кампании', 'ACTOR_FORBIDDEN')
     if (!merchant) throw new RulesValidationError('Торговец не найден', 'MERCHANT_NOT_FOUND')
-    if (merchant.available === false) throw new RulesValidationError('Торговец сейчас недоступен', 'MERCHANT_UNAVAILABLE')
     const serviceAllowsRemotePurchase = command.command_type === 'PurchaseMerchantService'
       && findMerchantService(merchant, command.service_id)?.requires_presence === false
-    if (!serviceAllowsRemotePurchase && !merchantIsAtLocation(merchant, state.scene)) {
-      throw new RulesValidationError('Торговец находится в другой локации', 'MERCHANT_NOT_PRESENT')
+    const merchantAvailability = merchantTradeAvailabilityFor(state, merchant, { allowRemote: serviceAllowsRemotePurchase })
+    if (!merchantAvailability.can_trade) {
+      throw new RulesValidationError(merchantAvailability.reason || 'Торговец сейчас недоступен', merchantAvailability.code || 'MERCHANT_UNAVAILABLE')
     }
     if (state.mechanics.combat.active) throw new RulesValidationError('Во время боя торговля недоступна', 'COMBAT_ACTIVE')
-    // Розыск закрывает лавку целиком, а не только услуги: продавший тем, кого
-    // ищет стража, отвечает перед той же стражей. Проверка стоит до всего
-    // остального, потому что при закрытой лавке ни цена, ни склад уже не важны,
-    // а причина отказа должна называться своим именем.
-    if (reputationStandingFor(state, merchant.id).trade_available === false) {
-      throw new RulesValidationError(WANTED_TRADE_REFUSAL_REASON, 'TRADE_REFUSED_BY_WANTED_LEVEL')
-    }
     if (command.command_type === 'BargainWithMerchant') {
       if (bargainFor(merchant, actor.id)) throw new RulesValidationError('Условия с этим торговцем уже согласованы', 'BARGAIN_ALREADY_RESOLVED')
     } else if (['BuyItem', 'SellItem'].includes(command.command_type) && (!Number.isSafeInteger(command.quantity) || command.quantity < 1 || command.quantity > MAX_TRANSACTION_QUANTITY)) {
@@ -5760,6 +5967,9 @@ export function validateCommand(input, rawState, context = {}) {
       : null
     if (command.item_id && !selectedItemProfile) throw new RulesValidationError('Выбранный режим или характеристика оружия недоступны', 'INVALID_WEAPON_PROFILE')
     const attackProfile = selectedItemProfile ?? trustedAttackProfile(state, actor, command.action_id)
+    if (!monsterAttackTargetAllowed(attackProfile, state.mechanics.conditions[targetFor(command)] ?? [], command.actor_id)) {
+      throw new RulesValidationError('Цель не соответствует условиям выбранного приёма', 'MONSTER_ACTION_TARGET_CONDITION')
+    }
     if (command.sneak_attack) {
       if (characterClassKey(actor) !== 'rogue') {
         throw new RulesValidationError('Коварная атака доступна только плуту', 'SNEAK_ATTACK_CLASS_REQUIRED')
@@ -5777,7 +5987,7 @@ export function validateCommand(input, rawState, context = {}) {
     if (command.action_id && isEnemyActor(state, command.actor_id)) {
       const monsterAction = monsterActionFor(actor, command.action_id)
       if (!monsterAction) throw new RulesValidationError('Выбранное действие отсутствует в блоке статистики существа', 'MONSTER_ACTION_NOT_AVAILABLE')
-      if (monsterActionIsLimited(monsterAction) && conditionIdsFor(state, command.actor_id).has(`monster-action-used:${monsterAction.id}`)) {
+      if (!monsterActionAvailable(monsterAction, conditionIdsFor(state, command.actor_id))) {
         throw new RulesValidationError('Ограниченное действие существа уже использовано', 'MONSTER_ACTION_SPENT')
       }
     }
@@ -6494,11 +6704,14 @@ function monsterRechargeAtTurnStart(state, command, actorIdValue, diceService) {
   if (!actor || !isEnemyActor(state, id) || !isLivingActor(actor)) return { events, rolls }
   const spent = conditionIdsFor(state, id)
   const rechargeCommand = { ...command, actor_id: id, visibility: 'gm_only' }
-  for (const action of (Array.isArray(actor.action_profiles) ? actor.action_profiles : [])) {
+  const checked = new Set()
+  for (const action of [...(Array.isArray(actor.action_profiles) ? actor.action_profiles : []), ...(Array.isArray(actor.special_actions) ? actor.special_actions : [])]) {
     const minimum = rechargeMinimumOf(action)
     const actionId = String(action?.id ?? '')
-    const condition = `monster-action-used:${actionId}`
-    if (!actionId || minimum <= 0 || !spent.has(condition)) continue
+    const usageKey = monsterActionUsageKey(action)
+    const condition = `monster-action-used:${usageKey}`
+    if (!actionId || minimum <= 0 || !spent.has(condition) || checked.has(usageKey)) continue
+    checked.add(usageKey)
     const roll = diceService.roll('1d6', `monster_recharge:${actionId}`, id, 'gm_only')
     rolls.push(roll)
     events.push(eventFrom(rechargeCommand, 'DieRolled', { ...roll, recharge_action_id: actionId }, []))
@@ -6506,7 +6719,7 @@ function monsterRechargeAtTurnStart(state, command, actorIdValue, diceService) {
     events.push(eventFrom(commandWithRules(rechargeCommand, RULE_IDS.conditions), 'ConditionRemoved', { condition, trigger: 'recharge' }, [id]))
     events.push(eventFrom(commandWithRules(rechargeCommand, RULE_IDS.turns), 'MonsterAbilityRecharged', {
       action_id: actionId,
-      name: String(action?.name ?? actionId).slice(0, 120),
+      name: String(action?.name ?? action?.name_ru ?? actionId).slice(0, 120),
       recharge_minimum: minimum,
     }, [id]))
   }
@@ -7177,7 +7390,7 @@ function scaledSpellDice(spell, actor, slotLevel) {
   // Мистический заряд на 11-м уровне бил бы тремя лучами по 3к10 вместо трёх
   // отдельных 1к10.
   if (spell.level === 0 && spell.beamScaling !== true) {
-    const level = Math.max(1, safeInteger(actor?.level, 1))
+    const level = Math.max(1, safeInteger(spell.monsterSpell?.casterLevel ?? actor?.level, 1))
     count += level >= 5 ? 1 : 0
     count += level >= 11 ? 1 : 0
   } else if (spell.upcastDicePerLevel && safeInteger(slotLevel, spell.level) > spell.level) {
@@ -7384,6 +7597,7 @@ function longJumpMovementFor(state, actorIdValue, destination, { runningStart = 
   }
   if (distanceFeet > budget) throw new RulesValidationError('Недостаточно свободной скорости для прыжка', 'SPEED_EXCEEDED')
   const occupied = occupiedPositions(state, actorIdValue)
+  const propOccupied = propMovementPositions(map)
   const path = []
   let previous = from
   for (let index = 1; index <= steps; index += 1) {
@@ -7396,10 +7610,10 @@ function longJumpMovementFor(state, actorIdValue, destination, { runningStart = 
     if (safeInteger(cell.elevation, 0) !== safeInteger(fromCell.elevation, 0)) {
       throw new RulesValidationError('Горизонтальный прыжок между разными высотами пока не поддерживается', 'JUMP_ELEVATION_UNSUPPORTED')
     }
-    if (String(cell.type) === 'wall' || doorBlocksStep(map, previous.x, previous.y, point.x, point.y)) {
+    if (String(cell.type) === 'wall' || movementStepBlocked(map, previous.x, previous.y, point.x, point.y)) {
       throw new RulesValidationError('Траекторию прыжка перекрывает стена или закрытая дверь', 'JUMP_PATH_BLOCKED')
     }
-    if (occupied.has(positionKey(point))) throw new RulesValidationError('Траектория или место приземления заняты', 'JUMP_OCCUPIED')
+    if (occupied.has(positionKey(point)) || propOccupied.has(positionKey(point))) throw new RulesValidationError('Траектория или место приземления заняты', 'JUMP_OCCUPIED')
     path.push(point)
     previous = point
   }
@@ -7480,7 +7694,8 @@ function areasOverlap(state, left, right) {
   return areaCellsOf(state, left).some((cell) => rightCells.has(`${cell.x}:${cell.y}`))
 }
 
-function spellTargetsAt(state, command, spell) {
+// Планировщики читают ту же геометрию, по которой затем разрешается заклинание.
+export function spellTargetsAt(state, command, spell) {
   if (spell.target === 'self' && ['area-save', 'area-damage'].includes(spell.kind)) {
     const center = actorPosition(state, command.actor_id)
     const radius = Math.max(0, safeInteger(spell.radius, 5))
@@ -7630,7 +7845,7 @@ function checkAdvantageConditionFor(state, id, ability) {
 function allowedWeaponAttacks(state, actor, id) {
   const multiattack = monsterTraitFor(actor, 'multiattack')
   const actionCount = [...monsterMultiattackActionCounts(multiattack).values()].reduce((sum, count) => sum + count, 0)
-  const sequenceCount = Array.isArray(multiattack?.sequence) ? multiattack.sequence.length : 0
+  const sequenceCount = Math.max(0, ...monsterMultiattackSequences(actor).map(sequence => sequence.length), Array.isArray(multiattack?.sequence) ? multiattack.sequence.length : 0)
   const monsterAttackCount = multiattack
     ? Math.max(1, Math.min(8, actionCount || sequenceCount || safeInteger(multiattack.attacks, 1)))
     : 1
@@ -7648,11 +7863,13 @@ function monsterMultiattackActionCounts(multiattack) {
     .sort(([left], [right]) => left.localeCompare(right)))
 }
 
-function monsterMultiattackActionIds(actor, fallbackActionId = null) {
+function monsterMultiattackActionIds(actor, fallbackActionId = null, usedActionIds = []) {
   const multiattack = monsterTraitFor(actor, 'multiattack')
   if (!multiattack) return []
   const actionCounts = monsterMultiattackActionCounts(multiattack)
   if (actionCounts.size) return [...actionCounts].flatMap(([id, count]) => Array.from({ length: count }, () => id)).slice(0, 8)
+  const chosen = monsterMultiattackSequenceFor(actor, fallbackActionId, usedActionIds)
+  if (chosen) return chosen
   const sequence = Array.isArray(multiattack.sequence)
     ? multiattack.sequence.map(String).filter(Boolean)
     : []
@@ -7708,7 +7925,7 @@ function completedStraightCharge(state, actorIdValue, targetIdValue, minimumDist
  */
 function beamCountFor(actor, spell, slotLevel = null) {
   if (spell?.beamScaling === true) {
-    const level = Math.max(1, safeInteger(actor?.level, 1))
+    const level = Math.max(1, safeInteger(spell.monsterSpell?.casterLevel ?? actor?.level, 1))
     return level >= 11 ? 3 : level >= 5 ? 2 : 1
   }
   const declared = safeInteger(spell?.beams, 0)
@@ -7719,6 +7936,23 @@ function beamCountFor(actor, spell, slotLevel = null) {
 
 /** Заклинание рассылает несколько лучей, каким бы способом их ни считали. */
 const hasMultipleBeams = (spell) => spell?.beamScaling === true || safeInteger(spell?.beams, 0) > 0
+
+function spellProjectileCount(spell, slotLevel) {
+  return Math.max(1, safeInteger(spell.projectileCount, 3)
+    + Math.max(0, safeInteger(slotLevel, spell.level) - spell.level) * Math.max(0, safeInteger(spell.upcastProjectilesPerLevel, 1)))
+}
+
+/** Средний урон до защиты и броска попадания; оценка не бросает кости и не меняет состояние. */
+export function spellDamageEstimate(actor, spell, slotLevel = spell?.level) {
+  if (!spell?.damage) return 0
+  const expression = spell.projectileCount ? spell.damage : scaledSpellDice(spell, actor, slotLevel)
+  let dice
+  try { dice = parseDiceExpression(expression) }
+  catch { return 0 }
+  const count = spell.projectileCount ? spellProjectileCount(spell, slotLevel) : beamCountFor(actor, spell, slotLevel)
+  const modifier = spell.addAbilityModifier ? abilityModifier(actor?.abilities?.[spell.spellcastingAbility || 'int']) : 0
+  return Math.max(0, dice.count * (dice.sides + 1) / 2 + dice.modifier + modifier) * count
+}
 
 /** Sum of every armour-class change the creature's conditions impose. */
 function conditionArmorClassBonus(state, id) {
@@ -7922,8 +8156,8 @@ function hitPointMaximumBonusOf(state, id) {
  * optional: without a tactical map the engine cannot tell reach from range, so
  * the rules that depend on it simply do not fire.
  */
-function passivePerception(actor) {
-  return 10 + abilityModifier(actor?.abilities?.wis) + skillProficiencyBonus(actor, 'perception') + Number(actor?.creationBenefits?.passive_skill_bonuses?.perception ?? 0)
+function passivePerception(actor, state = null) {
+  return 10 + abilityModifier(actor?.abilities?.wis) + skillProficiencyBonus(actor, 'perception', state) + Number(actor?.creationBenefits?.passive_skill_bonuses?.perception ?? 0)
 }
 
 /**
@@ -7935,7 +8169,7 @@ function passivePerception(actor) {
 function hiddenStealthTotal(state, id) {
   const hidden = (state.mechanics.conditions[String(id)] ?? []).find((condition) => String(condition?.id ?? condition) === 'hidden')
   const actor = findActor(state, id)
-  const passive = 10 + abilityModifier(actor?.abilities?.dex) + skillProficiencyBonus(actor, 'stealth')
+  const passive = 10 + abilityModifier(actor?.abilities?.dex) + skillProficiencyBonus(actor, 'stealth', state)
     + (conditionIdsFor(state, id).has('pass-without-trace') ? 10 : 0)
   return safeInteger(hidden?.check_total, passive)
 }
@@ -7956,7 +8190,7 @@ function surprisedParticipants(state, sides) {
   for (const [observerIds, threatIds] of [[sides.party, sides.enemies], [sides.enemies, sides.party]]) {
     if (!threatIds.length || !threatIds.every(unseen)) continue
     for (const observerId of observerIds) {
-      const perception = passivePerception(findActor(state, observerId))
+      const perception = passivePerception(findActor(state, observerId), state)
       if (threatIds.every((threatId) => hiddenStealthTotal(state, threatId) > perception)) surprised.push(observerId)
     }
   }
@@ -8193,6 +8427,7 @@ export function previewD20Check(state, { actorId, kind = 'check', ability = null
       actor,
       saveAbility,
       abilityModifier(actor?.abilities?.[saveAbility]) + (proficient ? safeInteger(actor?.proficiency, 0) : 0),
+      state,
     )
     const aura = savingThrowModifierWithAura(state, String(actorId), baseModifier)
     return {
@@ -8209,7 +8444,7 @@ export function previewD20Check(state, { actorId, kind = 'check', ability = null
   }
   const checkSkill = canonicalSkillId(skill)
   const checkAbility = String(skillAbility(checkSkill) || ability || 'str').toLowerCase()
-  const skillProficiency = checkSkill ? skillProficiencyForActor(actor, checkSkill) : null
+  const skillProficiency = checkSkill ? skillProficiencyForActor(actor, checkSkill, state) : null
   const modifier = abilityModifier(actor?.abilities?.[checkAbility])
     + (skillProficiency?.bonus ?? (proficient ? safeInteger(actor?.proficiency, 0) : 0))
     // Застолье — такая же прибавка к проверке, как погода к Восприятию, и
@@ -8491,7 +8726,7 @@ function blessingGrantedEvents(command, state, {
 function rollSavingThrowD20(state, diceService, targetId, options = {}) {
   const { avoid_or_end_condition: conditionContext, ...diceOptions } = options
   const actor = findActor(state, targetId)
-  const authoredModifier = savingThrowModifierForActor(actor, options.ability, options.modifier)
+  const authoredModifier = savingThrowModifierForActor(actor, options.ability, options.modifier, state)
   const auraProtection = savingThrowModifierWithAura(state, targetId, authoredModifier)
   const autoFailed = autoFailedSaveConditionFor(state, targetId, options.ability)
   // Преимущество от состояния приходит сюда же, где живёт автопровал: это
@@ -8528,7 +8763,7 @@ function rollSavingThrowD20(state, diceService, targetId, options = {}) {
 function rollSavingThrowCheck(state, diceService, targetId, options = {}) {
   const { avoid_or_end_condition: conditionContext, ...diceOptions } = options
   const actor = findActor(state, targetId)
-  const authoredModifier = savingThrowModifierForActor(actor, options.ability, options.modifier)
+  const authoredModifier = savingThrowModifierForActor(actor, options.ability, options.modifier, state)
   const auraProtection = savingThrowModifierWithAura(state, targetId, authoredModifier)
   const autoFailed = autoFailedSaveConditionFor(state, targetId, options.ability)
   const bloodiedFrenzy = bloodiedFrenzySaveAdvantage(state, targetId)
@@ -8906,8 +9141,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
   }) => {
     const resolvedTargetId = actorId(target)
     const resolvedSlotLevel = Math.max(spell.level, safeInteger(slotLevel, spell.level))
-    const projectileCount = Math.max(1, safeInteger(spell.projectileCount, 3)
-      + Math.max(0, resolvedSlotLevel - spell.level) * Math.max(0, safeInteger(spell.upcastProjectilesPerLevel, 1)))
+    const projectileCount = spellProjectileCount(spell, resolvedSlotLevel)
     const protectedByShield = conditionIdsFor(state, resolvedTargetId).has('shielded')
     const itemImmunitySources = activeItemMechanicEffects(target)
       .filter((effect) => effect.spell_immunities.includes(String(spell.id).toLowerCase()))
@@ -9002,7 +9236,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const actor = findActor(state, command.actor_id)
       const skill = canonicalSkillId(command.skill)
       const ability = String(skillAbility(skill) || command.ability || 'str').toLowerCase()
-      const skillProficiency = skill ? skillProficiencyForActor(actor, skill) : null
+      const skillProficiency = skill ? skillProficiencyForActor(actor, skill, state) : null
       // Прибавка застолья входит в базовый модификатор, а не поверх присланного
       // числа: команда с явным `modifier` приходит от серверных контуров,
       // которые уже посчитали своё, и складывать с ними ещё раз нельзя.
@@ -9092,6 +9326,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         Number.isSafeInteger(Number(command.modifier))
           ? Number(command.modifier)
           : abilityModifier(actor?.abilities?.[ability]) + (command.proficient ? safeInteger(actor?.proficiency, 0) : 0),
+        state,
       )
       const auraProtection = savingThrowModifierWithAura(state, command.actor_id, baseModifier)
       let modifier = auraProtection.modifier
@@ -9413,7 +9648,8 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       if (guidingBoltAdvantage) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'guiding-bolt-advantage' }, [targetId]))
       // Порог recharge в payload не кладётся: событие видно игроку, а порог —
       // строка стат-блока. Движок читает его из профиля существа, а не отсюда.
-      if (monsterActionIsLimited(profile)) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: `monster-action-used:${profile.id}`, source_actor: command.actor_id }, [command.actor_id]))
+      const usageMarker = monsterActionSpentMarker(profile, conditionIdsFor(state, command.actor_id))
+      if (usageMarker) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: usageMarker, source_actor: command.actor_id }, [command.actor_id]))
       // Стрела уходит из колчана и на промахе тоже: тратит её выстрел, а не
       // попадание. То же и с брошенным дротиком из пучка.
       const npcExpenditure = npcBinding ? npcAttackExpenditureFor(actor, npcBinding.action_id) : null
@@ -9543,7 +9779,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         let pendingCondition = null
         let secondaryDamage = null
         const onHit = profile?.on_hit
-        if (onHit) {
+        if (onHit && monsterOnHitTargetAllowed(onHit, target)) {
           let saved = false
           if (onHit.save_ability) {
             const saveAbility = String(onHit.save_ability)
@@ -9561,7 +9797,8 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
             events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'SavingThrowResolved', { ...save, ability: saveAbility, action_id: profile.id }, [targetId]))
           }
           if (onHit.damage_expression) {
-            const secondary = diceService.roll(String(onHit.damage_expression), 'monster_action_damage', command.actor_id, command.visibility ?? 'public')
+            const secondaryExpression = critical && usesDnd2014(state) && !onHit.save_ability ? criticalDamageExpression(String(onHit.damage_expression)) : String(onHit.damage_expression)
+            const secondary = diceService.roll(secondaryExpression, 'monster_action_damage', command.actor_id, command.visibility ?? 'public')
             rolls.push(secondary)
             events.push(eventFrom(command, 'DieRolled', { ...secondary, action_id: profile.id, damage_type: String(onHit.damage_type || damageType) }, []))
             secondaryDamage = {
@@ -9572,7 +9809,11 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           }
           const targetSizeAllowed = !onHit.target_size_max
             || creatureSizeRank(target) <= sizeRankByName(onHit.target_size_max)
-          if (onHit.condition && !saved && targetSizeAllowed) pendingCondition = { id: String(onHit.condition), duration: onHit.duration ?? null }
+          if (onHit.condition && !saved && targetSizeAllowed) pendingCondition = {
+            id: String(onHit.condition), duration: onHit.duration ?? null,
+            ...(onHit.duration_minutes > 0 ? { expires_at_minutes: Math.ceil(Number(state.mechanics.world_time?.elapsed_minutes ?? 0) + onHit.duration_minutes) } : {}),
+            ...(onHit.repeat_save_timing ? { repeat_save_timing: onHit.repeat_save_timing, save_ability: onHit.save_ability, save_dc: onHit.save_dc } : {}),
+          }
         }
         if (chargeActive) {
           if (chargeTrait.damage_expression) {
@@ -9753,10 +9994,22 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           events.push(eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', { ...retaliationPayload, condition, retaliation: true }, [command.actor_id]))
           if (retaliationPayload.hp_after === 0) events.push(eventFrom(commandWithRules(command, RULE_IDS.zeroHp), 'HitPointsReducedToZero', { condition: 'unconscious' }, [command.actor_id]))
         }
-        if (pendingCondition && finalPayload.hp_after > 0) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: pendingCondition.id, duration: pendingCondition.duration, source_actor: command.actor_id, action_id: profile?.id ?? null }, [targetId]))
+        if (pendingCondition && finalPayload.hp_after > 0) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { ...pendingCondition, condition: pendingCondition.id, source_actor: command.actor_id, action_id: profile?.id ?? null }, [targetId]))
         if (targetConditions.has('uncanny-dodge')) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'uncanny-dodge' }, [targetId]))
         if (steadyAim) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'steady-aim' }, [command.actor_id]))
-        events.push(...zeroHitPointDamageConsequences(state, attackCommand, targetId, damageOutcome, { critical }))
+        const poisonStabilizes = onHit?.poison_on_zero?.stable === true && secondaryDamage?.type === 'poison'
+          && payload.hp_after > 0 && finalPayload.hp_after === 0 && playerActor(state, targetId)
+        if (poisonStabilizes) {
+          events.push(eventFrom(commandWithRules(attackCommand, RULE_IDS.zeroHp), 'HitPointsReducedToZero', { condition: 'unconscious' }, [targetId]))
+          events.push(eventFrom(commandWithRules(attackCommand, RULE_IDS.zeroHp), 'HeroStabilized', { method: 'monster-poison' }, [targetId]))
+          const minutes = Math.max(1, safeInteger(onHit.poison_on_zero.poisoned_minutes, 60))
+          for (const condition of ['poisoned', ...(onHit.poison_on_zero.paralyzed_while_poisoned ? ['paralyzed'] : [])]) {
+            events.push(eventFrom(commandWithRules(attackCommand, RULE_IDS.conditions), 'ConditionAdded', {
+              condition, duration: `rounds:${minutes * 10}`, source_actor: command.actor_id,
+              expires_at_minutes: Math.ceil(Number(state.mechanics.world_time?.elapsed_minutes ?? 0) + minutes),
+            }, [targetId]))
+          }
+        } else events.push(...zeroHitPointDamageConsequences(state, attackCommand, targetId, damageOutcome, { critical }))
       }
       if (landed && pendingWeaponHitMatches && pendingWeaponHitCondition && pendingWeaponHitSpell) {
         const effectId = pendingWeaponHitCondition.effect_id ?? state.mechanics.concentration[command.actor_id]?.effect_id ?? null
@@ -9936,6 +10189,54 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       events.push(eventFrom(command, 'EquipmentChanged', { item_id: item.id, item_name: item.name, equipped: true, timing: 'action', turns_spent: 1 }, [command.actor_id]))
       break
     }
+    case 'UseMonsterAction': {
+      const preview = previewMonsterAction(state, command.actor_id, command.action_id, command.to)
+      const { action, affectedIds } = preview
+      events.push(eventFrom(commandWithRules(command, RULE_IDS.actions), 'CombatActionUsed', {
+        action_id: action.id, name: action.name, action_type: 'action', monster_action: true,
+      }, affectedIds))
+      const usageMarker = monsterActionSpentMarker(action, conditionIdsFor(state, command.actor_id))
+      if (usageMarker) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
+        condition: usageMarker, source_actor: command.actor_id,
+      }, [command.actor_id]))
+      // Для одной области бросок урона общий, а спасбросок и защиты — у каждой цели.
+      const damage = action.damage.map(component => {
+        if (!component.expression) return { ...component, rolled: component.amount }
+        const roll = diceService.roll(component.expression, 'monster_area_damage', command.actor_id, 'gm_only')
+        rolls.push(roll)
+        events.push(eventFrom({ ...command, visibility: 'gm_only' }, 'DieRolled', roll, []))
+        return { ...component, rolled: Math.max(0, roll.total) }
+      })
+      let workingState = replayEvents(state, events)
+      for (const targetId of affectedIds) {
+        const target = findActor(workingState, targetId)
+        const ability = action.save.ability
+        const save = rollSavingThrowD20(workingState, diceService, targetId, {
+          ability, modifier: abilityModifier(target?.abilities?.[ability]),
+          purpose: `monster_area_save:${action.id}:${ability}`, visibility: command.visibility,
+        })
+        rolls.push(save)
+        const saved = savingThrowSucceeded(save, action.save.dc)
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.savingThrow), 'SavingThrowResolved', {
+          ...save, ability, difficulty: action.save.dc, saved, success: saved, source: 'monster-action', action_id: action.id,
+        }, [targetId]))
+        for (const component of damage) {
+          const raw = saved ? action.save.success === 'half_damage' ? Math.floor(component.rolled / 2) : 0 : component.rolled
+          const before = workingState
+          const payload = resolveDamagePayload(before, targetId, raw, component.type)
+          const damageEvent = eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', {
+            ...payload, action_id: action.id, monster_action: true, saved,
+          }, [targetId])
+          events.push(damageEvent)
+          workingState = applyGameEvent(workingState, damageEvent)
+          const consequences = zeroHitPointDamageConsequences(before, command, targetId, payload, { critical: false })
+          events.push(...consequences)
+          for (const event of consequences) workingState = applyGameEvent(workingState, event)
+        }
+      }
+      break
+    }
+
     case 'MakeAreaAttack': {
       const actor = findActor(state, command.actor_id)
       const item = combatItem(actor, command.item_id)
@@ -10112,7 +10413,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const target = findActor(state, command.target_id)
       const lore = enemyLoreCheckFor(target)
       const ability = String(skillAbility(lore.skill) || 'int').toLowerCase()
-      const modifier = abilityModifier(actor?.abilities?.[ability]) + skillProficiencyBonus(actor, lore.skill)
+      const modifier = abilityModifier(actor?.abilities?.[ability]) + skillProficiencyBonus(actor, lore.skill, state)
       // Действие тратится независимо от исхода: попытка стоит хода, даже если
       // герой ничего не вспомнил. Вне боя экономии хода нет, и событие не нужно.
       if (state.mechanics.combat.active) {
@@ -10626,7 +10927,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition, duration: 'until-next-turn' }, [command.actor_id]))
         events.push(actionEvent())
       } else if (action.id === 'hide') {
-        const modifier = abilityModifier(actor?.abilities?.dex) + skillProficiencyBonus(actor, 'stealth')
+        const modifier = abilityModifier(actor?.abilities?.dex) + skillProficiencyBonus(actor, 'stealth', state)
           + (conditionIdsFor(state, command.actor_id).has('pass-without-trace') ? 10 : 0)
         const check = diceService.rollCheck({ modifier, difficulty: 12, purpose: 'combat_hide', actorId: command.actor_id, disadvantage: armorStealthDisadvantage(actor), visibility: command.visibility })
         rolls.push(check)
@@ -10641,7 +10942,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       } else if (action.id === 'stabilize') {
         if (!isUnstableDyingHero(state, actionTargetId)) throw new RulesValidationError('Стабилизация нужна только союзнику с 0 ОЗ, который ещё делает спасброски от смерти', 'STABILIZATION_NOT_REQUIRED')
         const difficulty = 10
-        const modifier = abilityModifier(actor?.abilities?.wis) + skillProficiencyBonus(actor, 'medicine')
+        const modifier = abilityModifier(actor?.abilities?.wis) + skillProficiencyBonus(actor, 'medicine', state)
         const check = diceService.rollCheck({ modifier, difficulty, purpose: 'stabilize:medicine', actorId: command.actor_id, visibility: command.visibility })
         rolls.push(check)
         events.push(eventFrom(commandWithRules(command, RULE_IDS.abilityCheck), 'AbilityCheckResolved', { ability: 'wis', skill: 'medicine', ...check }, [actionTargetId]))
@@ -10658,7 +10959,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           throw new RulesValidationError('Первая помощь нужна только нокаутированному существу', 'FIRST_AID_NOT_REQUIRED')
         }
         const difficulty = 10
-        const modifier = abilityModifier(actor?.abilities?.wis) + skillProficiencyBonus(actor, 'medicine')
+        const modifier = abilityModifier(actor?.abilities?.wis) + skillProficiencyBonus(actor, 'medicine', state)
         const check = diceService.rollCheck({ modifier, difficulty, purpose: 'first-aid:medicine', actorId: command.actor_id, visibility: command.visibility })
         rolls.push(check)
         events.push(eventFrom(commandWithRules(command, RULE_IDS.abilityCheck), 'AbilityCheckResolved', { ability: 'wis', skill: 'medicine', ...check }, [actionTargetId]))
@@ -10727,10 +11028,10 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         events.push(actionEvent({ affected: affected.map(actorId), damage: damageRoll.total, difficulty }))
       } else if (action.id === 'shove') {
         const target = findActor(state, actionTargetId)
-        const attackerModifier = abilityModifier(actor?.abilities?.str) + skillProficiencyBonus(actor, 'athletics')
+        const attackerModifier = abilityModifier(actor?.abilities?.str) + skillProficiencyBonus(actor, 'athletics', state)
         const defenderModifier = Math.max(
-          abilityModifier(target?.abilities?.str) + skillProficiencyBonus(target, 'athletics'),
-          abilityModifier(target?.abilities?.dex) + skillProficiencyBonus(target, 'acrobatics'),
+          abilityModifier(target?.abilities?.str) + skillProficiencyBonus(target, 'athletics', state),
+          abilityModifier(target?.abilities?.dex) + skillProficiencyBonus(target, 'acrobatics', state),
         )
         const attackerRoll = diceService.rollD20({ modifier: attackerModifier, purpose: 'shove:athletics', actorId: command.actor_id, visibility: command.visibility })
         const defenderRoll = diceService.rollD20({ modifier: defenderModifier, purpose: 'shove:defense', actorId: actionTargetId, visibility: command.visibility })
@@ -10827,7 +11128,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       } else if (action.effect?.kind === 'check') {
         spendActionResource()
         const ability = String(action.effect.ability ?? 'wis')
-        const modifier = abilityModifier(actor?.abilities?.[ability]) + skillProficiencyBonus(actor, action.effect.skill)
+        const modifier = abilityModifier(actor?.abilities?.[ability]) + skillProficiencyBonus(actor, action.effect.skill, state)
         const check = diceService.rollCheck({ modifier, difficulty: safeInteger(action.effect.difficulty, 12), purpose: `combat_check:${action.id}`, actorId: command.actor_id, visibility: command.visibility })
         rolls.push(check)
         events.push(eventFrom(commandWithRules(command, RULE_IDS.abilityCheck), 'AbilityCheckResolved', { ability, skill: action.effect.skill, ...check }, [command.actor_id]))
@@ -10836,8 +11137,8 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       } else if (action.effect?.kind === 'contest') {
         spendActionResource()
         const target = findActor(state, actionTargetId)
-        const attackerRoll = diceService.rollD20({ modifier: abilityModifier(actor?.abilities?.str) + skillProficiencyBonus(actor, 'athletics'), purpose: `${action.id}:athletics`, actorId: command.actor_id, visibility: command.visibility })
-        const defenderRoll = diceService.rollD20({ modifier: Math.max(abilityModifier(target?.abilities?.str) + skillProficiencyBonus(target, 'athletics'), abilityModifier(target?.abilities?.dex) + skillProficiencyBonus(target, 'acrobatics')), purpose: `${action.id}:defense`, actorId: actionTargetId, visibility: command.visibility })
+        const attackerRoll = diceService.rollD20({ modifier: abilityModifier(actor?.abilities?.str) + skillProficiencyBonus(actor, 'athletics', state), purpose: `${action.id}:athletics`, actorId: command.actor_id, visibility: command.visibility })
+        const defenderRoll = diceService.rollD20({ modifier: Math.max(abilityModifier(target?.abilities?.str) + skillProficiencyBonus(target, 'athletics', state), abilityModifier(target?.abilities?.dex) + skillProficiencyBonus(target, 'acrobatics', state)), purpose: `${action.id}:defense`, actorId: actionTargetId, visibility: command.visibility })
         rolls.push(attackerRoll, defenderRoll)
         const success = attackerRoll.total >= defenderRoll.total
         events.push(eventFrom(commandWithRules(command, RULE_IDS.abilityCheck), 'ContestedCheckResolved', { attacker: attackerRoll, defender: defenderRoll, success }, [actionTargetId]))
@@ -12352,7 +12653,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           })
           const checkOptions = {
             modifier: abilityModifier(actor?.abilities?.[details.profile.check.ability])
-              + skillProficiencyBonus(actor, details.profile.check.skill),
+              + skillProficiencyBonus(actor, details.profile.check.skill, state),
             difficulty: details.profile.check.difficulty,
             purpose: 'scene_swing:athletics',
             actorId: command.actor_id,
@@ -12404,7 +12705,9 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           movementCost = jump.distanceFeet
           movementSpent = jump.movementSpent
         } else {
-          if (!isWalkableCell(cells.get(positionKey(to))) || occupiedPositions(state, command.actor_id).has(positionKey(to))) {
+          const movementMap = sceneTacticalMap(state)
+          const blockedByProp = movementMap && propMovementPositions(movementMap).has(positionKey(to))
+          if (!isWalkableCell(cells.get(positionKey(to))) || blockedByProp || occupiedPositions(state, command.actor_id).has(positionKey(to))) {
             throw new RulesValidationError('Клетка назначения недоступна', 'INVALID_DESTINATION')
           }
           const { map, stepCost } = movementStepCostFor(state, command.actor_id)
@@ -12615,6 +12918,51 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
      * поэтому запертая дверь открывается силой. Не дать никакого способа было
      * нельзя: цель склепа лежит за такой дверью, и сцена стала бы непроходимой.
      */
+    case 'BarricadeDoor': {
+      const map = ensureSceneTacticalMap(state)
+      if (!map) throw new RulesValidationError('Для баррикады нужна тактическая карта', 'TACTICAL_MAP_REQUIRED')
+      const door = doorById(map, command.door_id)
+      if (!door) throw new RulesValidationError('Такой двери нет на карте', 'DOOR_NOT_FOUND')
+      if (cellAt(map, door.x, door.y)?.revealed === false) throw new RulesValidationError('Дверь скрыта туманом войны', 'DOOR_HIDDEN')
+      if (!['open', 'closed'].includes(String(door.state))) throw new RulesValidationError('Баррикаду нельзя поставить на сломанную дверь', 'DOOR_BARRICADE_INVALID_STATE')
+      if (door.barricade) throw new RulesValidationError('Дверь уже забаррикадирована', 'DOOR_ALREADY_BARRICADED')
+      const at = actorPosition(state, command.actor_id)
+      if (!at || !doorsReachableFrom(map, at.x, at.y).some((entry) => entry.id === door.id)) throw new RulesValidationError('До двери нужно дотянуться: встаньте вплотную', 'DOOR_OUT_OF_REACH')
+      const actor = findActor(state, command.actor_id)
+      const item = inventoryItem(actor, command.material_item_id)
+      if (item && (item.equipped || item.attuned_to || item.quest_item || item.tags?.includes?.('quest'))) throw new RulesValidationError('Сначала снимите обычный материал: надетая, настроенная или сюжетная вещь не расходуется на баррикаду', 'BARRICADE_MATERIAL_PROTECTED')
+      const materialText = `${item?.name ?? ''} ${(Array.isArray(item?.tags) ? item.tags : []).join(' ')} ${item?.material ?? ''}`.toLocaleLowerCase('ru')
+      if (!item || Number(item.quantity ?? 0) < 1 || !/(доск|дерев|бревн|верёв|верев|канат|скамь|баррикад|plank|wood|rope|bench)/iu.test(materialText)) throw new RulesValidationError('Нужен настоящий материал для баррикады: доски, верёвка или подходящая скамья', 'BARRICADE_MATERIAL_REQUIRED')
+      const economy = state.mechanics.combat.action_economy[command.actor_id]
+      if (state.mechanics.combat.active && economy && economy.action === false) throw new RulesValidationError('Действие на этом ходу уже потрачено', 'ACTION_SPENT')
+      events.push(eventFrom(command, 'DoorBarricaded', { schema_version: DOOR_BARRICADE_EVENT_SCHEMA_VERSION, door_id: door.id, material_item_id: item.id, previous_state: door.state, side_x: at.x, side_y: at.y }, []))
+      events.push(eventFrom(command, 'ItemConsumed', { item_id: item.id, quantity: 1, reason: 'door-barricade' }, [command.actor_id]))
+      break
+    }
+    case 'ClearDoorBarricade': {
+      const map = ensureSceneTacticalMap(state)
+      const door = map && doorById(map, command.door_id)
+      if (!door) throw new RulesValidationError('Такой двери нет на карте', 'DOOR_NOT_FOUND')
+      if (cellAt(map, door.x, door.y)?.revealed === false) throw new RulesValidationError('Дверь скрыта туманом войны', 'DOOR_HIDDEN')
+      if (!door.barricade) throw new RulesValidationError('На двери нет баррикады', 'DOOR_NOT_BARRICADED')
+      const clearer = findActor(state, command.actor_id)
+      if (!clearer || !isLivingActor(clearer)) throw new RulesValidationError('Баррикаду может снять только живой герой', 'BARRICADE_ACTOR_INVALID')
+      const at = actorPosition(state, command.actor_id)
+      if (!at || !doorsReachableFrom(map, at.x, at.y).some((entry) => entry.id === door.id)) throw new RulesValidationError('До баррикады нужно дотянуться: встаньте вплотную', 'DOOR_OUT_OF_REACH')
+      const wrongSide = Number(at.x) !== Number(door.barricade.side_x) || Number(at.y) !== Number(door.barricade.side_y)
+      if (wrongSide && command.force !== true) throw new RulesValidationError('Баррикада закрыта с другой стороны; требуется выбивание', 'BARRICADE_WRONG_SIDE')
+      const clearEconomy = state.mechanics.combat.action_economy[command.actor_id]
+      if (state.mechanics.combat.active && clearEconomy && clearEconomy.action === false) throw new RulesValidationError('Действие на этом ходу уже потрачено', 'ACTION_SPENT')
+      if (wrongSide) {
+        const check = diceService.rollCheck({ modifier: abilityModifier(clearer?.abilities?.str) + skillProficiencyBonus(clearer, 'athletics', state), difficulty: 15, purpose: 'door:barricade-force', actorId: command.actor_id, visibility: command.visibility })
+        rolls.push(check)
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.abilityCheck), 'AbilityCheckResolved', { ability: 'str', skill: 'athletics', ...check }, []))
+        events.push(eventFrom(command, 'DoorBarricadeForced', { schema_version: DOOR_BARRICADE_EVENT_SCHEMA_VERSION, door_id: door.id, success: check.success }, []))
+        if (!check.success) break
+      }
+      events.push(eventFrom(command, 'DoorBarricadeCleared', { schema_version: DOOR_BARRICADE_EVENT_SCHEMA_VERSION, door_id: door.id, restored_state: door.barricade.previous_state ?? 'open' }, []))
+      break
+    }
     case 'OperateDoor': {
       const map = ensureSceneTacticalMap(state)
       if (!map) throw new RulesValidationError('Для двери нужна тактическая карта', 'TACTICAL_MAP_REQUIRED')
@@ -12626,6 +12974,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         throw new RulesValidationError('До двери нужно дотянуться: встаньте вплотную', 'DOOR_OUT_OF_REACH')
       }
       const intent = ['open', 'close', 'force', 'lockpick'].includes(String(command.intent)) ? String(command.intent) : 'open'
+      if (door.barricade) throw new RulesValidationError('Дверь забаррикадирована: сначала снимите или выбейте баррикаду', 'DOOR_BARRICADED')
       const before = String(door.state)
       // Распахнутый проём обязан открыть то, что за ним: пока раскрытия не
       // было, соседнее помещение оставалось чёрным пятном, в которое вдобавок
@@ -12694,7 +13043,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       }
       const actor = findActor(state, command.actor_id)
       const difficulty = Math.max(10, safeInteger(door.lockDc, 0))
-      const modifier = abilityModifier(actor?.abilities?.str) + skillProficiencyBonus(actor, 'athletics')
+      const modifier = abilityModifier(actor?.abilities?.str) + skillProficiencyBonus(actor, 'athletics', state)
       const check = diceService.rollCheck({ modifier, difficulty, purpose: 'door:athletics', actorId: command.actor_id, visibility: command.visibility })
       rolls.push(check)
       events.push(eventFrom(commandWithRules(command, RULE_IDS.abilityCheck), 'AbilityCheckResolved', { ability: 'str', skill: 'athletics', ...check }, []))
@@ -12739,7 +13088,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       // бонус даёт владение инструментом, а не навык (`lockpickCheckModifier`).
       const resolveSceneCheck = (checkDefinition, modifierOverride = null) => {
         const modifier = modifierOverride == null
-          ? abilityModifier(actor?.abilities?.[checkDefinition.ability]) + skillProficiencyBonus(actor, checkDefinition.skill)
+          ? abilityModifier(actor?.abilities?.[checkDefinition.ability]) + skillProficiencyBonus(actor, checkDefinition.skill, state)
           : modifierOverride
         const check = diceService.rollCheck({
           modifier,
@@ -13224,6 +13573,44 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       }, partyPositions.map((position) => position.actor_id)))
       break
     }
+    case 'AttackNpc': {
+      // Команда игрока намеренно остаётся узкой возможностью. Разворачиваем её
+      // внутри Rules Engine, чтобы публичный маршрут не принимал сырой
+      // `CreateEncounter` и не принимал от клиента статблок или координату.
+      const encounterCommand = {
+        ...command,
+        command_type: 'CreateEncounter',
+        command_id: `${command.command_id}:encounter`,
+        actor_id: null,
+        target_id: null,
+        target_ids: [],
+        seed: '',
+        expected_state_version: state.state_version,
+      }
+      const encounterResult = resolveCommand(encounterCommand, state, {
+        diceService,
+        context: { ...context, allowPlayerNpcEncounter: true },
+      })
+      events.push(...encounterResult.events)
+      rolls.push(...encounterResult.rolls)
+      const encounterState = encounterResult.events.reduce(applyGameEvent, state)
+      const startCommand = {
+        ...command,
+        command_type: 'StartCombat',
+        command_id: `${command.command_id}:combat`,
+        target_id: null,
+        target_ids: [],
+        server_authoritative: true,
+        expected_state_version: encounterState.state_version,
+      }
+      const startResult = resolveCommand(startCommand, encounterState, {
+        diceService,
+        context: { ...context, serverAuthoritativeCombat: true },
+      })
+      events.push(...startResult.events)
+      rolls.push(...startResult.rolls)
+      break
+    }
     case 'CreateEncounter': {
       const encounterId = String(command.encounter.proposal_id).replace(/^encounter-proposal-/u, 'encounter-')
       const encounter = {
@@ -13322,7 +13709,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       })))
       for (const surprisedId of surprised) {
         events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
-          condition: 'surprised', duration: 'until-own-turn-end', passive_perception: passivePerception(findActor(state, surprisedId)),
+          condition: 'surprised', duration: 'until-own-turn-end', passive_perception: passivePerception(findActor(state, surprisedId), state),
         }, [surprisedId]))
       }
       if (initiative.length) events.push(eventFrom(commandWithRules(command, RULE_IDS.turns), 'TurnStarted', { round: 1, active_index: 0 }, [initiative[0].actor_id]))
@@ -13770,7 +14157,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const declared = command.pickpocket
       const actor = playerActor(state, command.actor_id)
       const npcId = declared.npc_id
-      const modifier = abilityModifier(actor?.abilities?.[PICKPOCKET_ABILITY]) + skillProficiencyBonus(actor, PICKPOCKET_SKILL)
+      const modifier = abilityModifier(actor?.abilities?.[PICKPOCKET_ABILITY]) + skillProficiencyBonus(actor, PICKPOCKET_SKILL, state)
       const rollOptions = {
         modifier,
         difficulty: declared.difficulty,
@@ -17604,6 +17991,9 @@ export function applyGameEvent(rawState, event) {
       if (authoredNpcIds.size) state.social.npcs = state.social.npcs.map((npc) => (
         authoredNpcIds.has(String(npc.id)) ? { ...npc, available: false } : npc
       ))
+      if (authoredNpcIds.size) state.merchants = state.merchants.map((merchant) => (
+        authoredNpcIds.has(String(merchant.id)) ? { ...merchant, available: false } : merchant
+      ))
       for (const enemy of state.enemies) {
         state.mechanics.positions[actorId(enemy)] = { x: safeInteger(enemy.x, 0), y: safeInteger(enemy.y, 0) }
       }
@@ -18040,6 +18430,30 @@ export function applyGameEvent(rawState, event) {
     case 'DoorStateChanged':
       setSceneDoorState(state, payload.door_id, payload.state)
       break
+    case 'DoorBarricaded': {
+      const map = ensureSceneTacticalMap(state)
+      const door = map && doorById(map, payload.door_id)
+      if (door) {
+        setTacticalDoor(map, { ...door, barricade: { material_item_id: String(payload.material_item_id ?? ''), actor_id: String(event.actor_id ?? ''), previous_state: String(payload.previous_state ?? 'open'), side_x: safeInteger(payload.side_x, door.x), side_y: safeInteger(payload.side_y, door.y) }, blocksMove: true, blocksSight: true })
+        writeSceneTacticalMap(state, map)
+      }
+      spendCombatEconomy(state, event.actor_id, 'action')
+      break
+    }
+    case 'DoorBarricadeCleared': {
+      const map = ensureSceneTacticalMap(state)
+      const door = map && doorById(map, payload.door_id)
+      if (door) {
+        setTacticalDoor(map, { ...door, barricade: null, state: String(payload.restored_state ?? 'open'), blocksMove: doorEdgeBlocks(payload.restored_state), blocksSight: doorEdgeBlocks(payload.restored_state) })
+        writeSceneTacticalMap(state, map)
+      }
+      spendCombatEconomy(state, event.actor_id, 'action')
+      break
+    }
+    case 'DoorBarricadeForced': {
+      spendCombatEconomy(state, event.actor_id, 'action')
+      break
+    }
     case 'DoorForced':
       // Ход тратится и на неудачную попытку: замок либо поддался, либо нет, а
       // время ушло одинаково.

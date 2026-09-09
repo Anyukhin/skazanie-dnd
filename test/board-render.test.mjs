@@ -50,6 +50,8 @@ function recordingContext() {
     translate(x, y) { ops.push({ op: 'translate', x, y }) },
     rotate(angle) { ops.push({ op: 'rotate', angle }) },
     beginPath() { ops.push({ op: 'beginPath' }) },
+    clip() { ops.push({ op: 'clip' }) },
+    rect(x, y, width, height) { ops.push({ op: 'rect', x, y, width, height }) },
     closePath() {},
     moveTo(x, y) { ops.push({ op: 'moveTo', x, y }) },
     lineTo(x, y) { ops.push({ op: 'lineTo', x, y }) },
@@ -61,7 +63,7 @@ function recordingContext() {
     fillText(text, x, y) { ops.push({ op: 'fillText', text, x, y, value: styles.fillStyle }) },
     clearRect() { ops.push({ op: 'clearRect' }) },
     setLineDash() {},
-    drawImage(...args) { ops.push({ op: 'drawImage', args }) },
+    drawImage(...args) { ops.push({ op: 'drawImage', args, alpha: context.globalAlpha, composite: context.globalCompositeOperation }) },
     font: '',
     textAlign: 'start',
     textBaseline: 'alphabetic',
@@ -87,6 +89,32 @@ function decoded(map) {
   assert.ok(decodedMap, 'карта должна декодироваться')
   return decodedMap
 }
+
+test('готовый рисунок сохраняет координаты неровной карты и меняет кэш при смене режима', () => {
+  const source = createTacticalMap({ width: 3, height: 2, locationId: 'painted-floor', seed: 'painted-floor' })
+  setCell(source, 0, 0, { passable: true, revealed: true })
+  setCell(source, 2, 1, { passable: true, revealed: true })
+  const art = { image: {}, width: 1200, height: 800 }
+  const scene = {
+    map: decoded(source), palette: render.DEFAULT_BOARD_PALETTE, cellSize: 40,
+    art, artKey: '/assets/maps/locations/skazanie/painted-floor-v1.webp', artMode: 'map',
+  }
+  const tile = { tileX: 0, tileY: 0 }
+  const context = recordingContext()
+  render.drawFloorTiles(context, scene, tile)
+  const painted = context.ops.filter((op) => op.op === 'drawImage' && op.args[0] === art.image)
+  assert.deepEqual(painted.map((op) => op.args.slice(1)), [
+    [0, 0, 400, 400, 0, 0, 40, 40],
+    [800, 400, 400, 400, 80, 40, 40, 40],
+  ], 'иллюстрация нарезается в общей системе координат и не закрашивает отсутствующие клетки')
+  assert.ok(painted.every((op) => op.alpha === 1 && op.composite === 'source-over'), 'готовая карта не смешивается с другой планировкой')
+  assert.notEqual(render.tileKey(scene, tile), render.tileKey({ ...scene, artMode: 'backdrop' }, tile))
+  setCell(source, 2, 1, { surface: 'water', passable: false })
+  const flooded = recordingContext()
+  render.drawFloorTiles(flooded, { ...scene, map: decoded(source) }, tile)
+  assert.equal(flooded.ops.filter((op) => op.op === 'drawImage' && op.args[0] === art.image).length, 2,
+    'непроходимая вода также берётся из согласованного рисунка')
+})
 
 function sampleMap() {
   const map = createTacticalMap({ width: 5, height: 4, locationId: 'loc-1', seed: 'seed-1', theme: 'keep' })
@@ -787,6 +815,54 @@ test('свет запекается в тайл: тьма по сетке, те�
   const atTorch = render.lightShadowAlpha(grid[2 * 16 + 2])
   const far = render.lightShadowAlpha(grid[14 * 16 + 14])
   assert.ok(atTorch < far, `у факела альфа тьмы ${atTorch} обязана быть меньше дальней ${far}`)
+})
+
+test('ореол источника не пересекает стену и проходит через открытую дверь', () => {
+  const sceneFor = (doorState) => {
+    const map = createTacticalMap({ width: 7, height: 3, locationId: 'light-occlusion', seed: doorState, theme: 'crypt' })
+    for (let y = 0; y < 3; y += 1) {
+      for (let x = 0; x < 7; x += 1) setCell(map, x, y, { passable: true, revealed: true, material: 'stone' })
+      setEdge(map, 2, y, 3, y, { kind: 'wall', blocksMove: true, blocksSight: true })
+    }
+    setDoor(map, { id: 'door', x: 2, y: 1, dir: 'e', state: doorState })
+    addProp(map, { id: 'torch', assetId: 'torch_wall', x: 1.5, y: 1.5, footprint: [{ x: 1, y: 1 }] })
+    return { map: decoded(map), palette: render.DEFAULT_BOARD_PALETTE, cellSize: 20 }
+  }
+  const pathCells = (context, size) => {
+    const clipIndex = context.ops.findIndex((item) => item.op === 'clip')
+    assert.notEqual(clipIndex, -1, 'ореол обязан рисоваться в маске видимости')
+    return context.ops.slice(0, clipIndex)
+      .filter((item) => item.op === 'rect')
+      .map((item) => [item.x / size, item.y / size])
+  }
+
+  const closed = recordingContext()
+  const closedScene = sceneFor('closed')
+  render.drawLightShading(closed, closedScene, { tileX: 0, tileY: 0 })
+  assert.equal(pathCells(closed, closedScene.cellSize).some(([x]) => x >= 4), false,
+    'закрытая дверь не должна давать ореолу в дальней комнате')
+
+  const open = recordingContext()
+  const openScene = sceneFor('open')
+  render.drawLightShading(open, openScene, { tileX: 0, tileY: 0 })
+  assert.ok(pathCells(open, openScene.cellSize).some(([x]) => x >= 4),
+    'через открытую дверь ореол должен доходить до дальней комнаты')
+
+  const edgeMap = createTacticalMap({ width: 7, height: 3, locationId: 'light-boundary', seed: 'boundary', theme: 'crypt' })
+  for (let y = 0; y < 3; y += 1) {
+    for (let x = 0; x < 7; x += 1) setCell(edgeMap, x, y, { passable: true, revealed: true, material: 'stone' })
+  }
+  setCell(edgeMap, 3, 2, { passable: false, revealed: true })
+  addProp(edgeMap, { id: 'edge-torch', assetId: 'torch_wall', x: 3.5, y: 1.5, footprint: [{ x: 3, y: 1 }] })
+  const edgeScene = { map: decoded(edgeMap), palette: render.DEFAULT_BOARD_PALETTE, cellSize: 20 }
+  const edge = recordingContext()
+  render.drawLightShading(edge, edgeScene, { tileX: 0, tileY: 0 })
+  assert.equal(pathCells(edge, edgeScene.cellSize).some(([x, y]) => x === 3 && y === 2), false,
+    'непроходимая клетка стены не должна получать декоративный ореол')
+
+  const live = recordingContext()
+  ambient.drawAmbientEffects(live, closedScene, { timeMs: 1_000 })
+  assert.ok(live.ops.some((item) => item.op === 'clip'), 'живое мерцание обязано использовать ту же окклюзию')
 })
 
 test('тайл со светом рисуется целиком и в отсутствие арта', () => {

@@ -1,4 +1,4 @@
-import { classifyNpcSocialCheck } from './npc-social-check.mjs'
+import { affirmativeActionText, classifyNpcSocialCheck } from './npc-social-check.mjs'
 
 const FREE_ACTION_PATTERNS = Object.freeze([
   ['physically_impossible', /(взлет\w*|взлета\w*|парю\w*|телепорт\w*|останавлива\w*\s+время|дыш\w*\s+под\s+водой|становлюсь\s+невидим\w*|путешеств\w*\s+во\s+времени|fly\b|teleport\w*|stop\s+time|breathe\s+underwater)/iu],
@@ -17,19 +17,25 @@ export function normalizeRequestKind(value) {
   return REQUEST_KINDS.includes(kind) ? kind : 'action'
 }
 
-const DIRECT_QUESTION_PATTERN = /^(?:можно\s+ли|могу\s+ли|есть\s+ли|как\s+далеко|что\s+будет|почему|зачем|где\s+(?:наход|стоит|леж)|кто\s+так|сколько|как\s+(?:это|мне|нам))(?:\s|$)/iu
+const DIRECT_QUESTION_PATTERN = /^(?:а\s+если|что\s+если|можно\s+ли|могу\s+ли|есть\s+ли|как\s+далеко|что\s+будет|почему|зачем|где\s+(?:наход|стоит|леж)|кто\s+так|сколько|как\s+(?:это|мне|нам))(?:\s|$)/iu
+const SCENE_OBSERVATION_PATTERN = /^(?:где\s+(?:я|мы)(?:\s+сейчас)?(?:\s+наход(?:имся|юсь))?(?:\s+сейчас)?|что\s+(?:я\s+)?вижу(?:\s+(?:здесь|вокруг|перед\s+собой))?|что\s+(?:здесь|вокруг)\s+есть|что\s+находится\s+(?:здесь|вокруг|перед\s+собой)|что\s+вокруг\s+(?:меня|нас)|кто\s+(?:здесь|рядом)|опиши\s+(?:сцену|место|обстановку))\s*[?!]?$/iu
 const PARTY_PROPOSAL_PATTERN = /^(?:давайте|предлагаю|может\s+(?:нам|мы)|стоит\s+(?:ли\s+)?нам)(?:\s|$)/iu
 const EXPLICIT_NPC_SPEECH_PATTERN = /^(?:спрашиваю|спрашиваем|говорю|говорим|обращаюсь|обращаемся|прошу|просим)(?:\s|$)/iu
 const ACTION_LIKE_GROUP_PATTERN = /(?:покида|покин|уходим|уйти|маршрут|голосован|переговор|перемир|сдавайт)/iu
-const EXPLICIT_CHECK_PATTERN = /(?:провер\p{L}*|спасброс\p{L}*|\bcheck\b|\bsave\b)/iu
+const EXPLICIT_CHECK_PATTERN = /(?<![\p{L}\p{M}])(?:проверк[ауи]|спасброс\p{L}*|check|save)(?![\p{L}\p{M}])|проверяю\s+(?:сил|ловк|мудр|интел|харизм|телослож|скрыт|атлет|акробат)/iu
 
 /** Безопасный fallback для клиентов, которые ещё не передают request_kind. */
 export function inferRequestKind(value) {
   const text = normalizedText(value)
   if (!text || EXPLICIT_NPC_SPEECH_PATTERN.test(text)) return 'action'
-  if (DIRECT_QUESTION_PATTERN.test(text)) return 'question'
+  if (DIRECT_QUESTION_PATTERN.test(text) || SCENE_OBSERVATION_PATTERN.test(text)) return 'question'
   if (PARTY_PROPOSAL_PATTERN.test(text) && !ACTION_LIKE_GROUP_PATTERN.test(text)) return 'discussion'
   return 'action'
+}
+
+/** Явный вопрос о видимой части текущей сцены, без проверки или траты хода. */
+export function isSceneObservationRequest(value) {
+  return SCENE_OBSERVATION_PATTERN.test(normalizedText(value))
 }
 
 // Шаблоны намерений тоже привязаны к началу слова: без границы `долг` ловил
@@ -70,6 +76,17 @@ export function classifyFreeActionKind(value) {
 
 function normalizedText(value) {
   return String(value ?? '').normalize('NFKC').trim().slice(0, 2000)
+}
+
+/** Явный порядок шагов сохраняется до подтверждения; результат шага нельзя угадать. */
+export function actionSequence(value) {
+  const text = normalizedText(value)
+  const parts = text.split(/\s*(?:[;.]\s*|,?\s+)(?:затем|потом|после\s+этого)\s+/iu)
+    .map(part => part.replace(/^сначала\s+/iu, '').trim())
+    .flatMap(part => /^(?:подхожу|иду|приближаюсь)\s+к\s+/iu.test(part)
+      ? part.split(/\s+и\s+(?=(?:спрашиваю|прошу|расспрашиваю|открываю|закрываю|передаю|сверяю)\s)/iu) : [part])
+    .filter(Boolean)
+  return parts.length > 1 && parts.length <= 6 ? parts : []
 }
 
 function uniqueActorsById(candidates) {
@@ -197,8 +214,13 @@ export function resolvePresentSocialActors(message, visibleState) {
   const scored = presentSocialActors(visibleState).map((actor) => {
     const properNames = namesFor(actor)
     const roleAliases = socialAliasesFor(actor).filter((alias) => !properNames.includes(alias))
-    const score = properNames.some((name) => mentionsName(lower, name))
-      ? 2
+    const fullNames = [actor.name, actor.character, actor.label].filter(Boolean)
+    const firstNames = fullNames.map(name => wordTokens(name)).filter(words => words.length > 1).map(words => words[0])
+    const score = fullNames.some(name => mentionsName(lower, name))
+      ? 3
+      : properNames.some((name) => mentionsName(lower, name))
+        ? 2
+        : firstNames.some(name => mentionsName(lower, name)) ? 1.5
       : roleAliases.some((alias) => mentionsName(lower, alias))
         ? 1
         : 0
@@ -206,6 +228,19 @@ export function resolvePresentSocialActors(message, visibleState) {
   }).filter((entry) => entry.score > 0)
   const best = Math.max(0, ...scored.map((entry) => entry.score))
   return scored.filter((entry) => entry.score === best).map((entry) => entry.actor)
+}
+
+function directlyAddressedActors(message, visibleState) {
+  const address = /^([\p{L}\p{M} -]{2,80})[:,]\s*\S/iu.exec(message)?.[1]
+  if (!address) return []
+  const words = wordTokens(address)
+  return presentSocialActors(visibleState).filter(actor => {
+    const names = [...socialAliasesFor(actor), wordTokens(actor.name)[0]].filter(Boolean)
+    return names.some(name => {
+      const tokens = wordTokens(name)
+      return tokens.length === words.length && tokens.every((token, index) => sameNameToken(token, words[index]))
+    })
+  })
 }
 
 /**
@@ -236,13 +271,17 @@ export class IntentParser {
       mentioned_entities: [], missing_information: ['message'], requires_clarification: true, confidence: 0,
       free_action_kind: null,
     }
+    const operativeText = affirmativeActionText(text)
     const socialSkill = classifyNpcSocialCheck(text)
-    const freeActionKind = classifyFreeActionKind(text)
-    const detectedIntent = freeActionKind === 'compound_maneuver' ? 'compound_maneuver'
+    const freeActionKind = classifyFreeActionKind(operativeText)
+    const addressedActors = directlyAddressedActors(text, visibleState)
+    const spoken = addressedActors.length > 0 || EXPLICIT_NPC_SPEECH_PATTERN.test(text) || /^расспрашиваю\s/iu.test(text)
+    const detectedIntent = spoken ? 'social'
+      : freeActionKind === 'compound_maneuver' ? 'compound_maneuver'
       : freeActionKind === 'compound_ranged_attack' ? 'improvised_action'
       : freeActionKind === 'approach_attack' ? 'approach_attack'
-      : socialSkill ? 'social' : INTENT_PATTERNS.find(([, pattern]) => pattern.test(text))?.[0] ?? 'improvised_action'
-    const approach = socialSkill ?? inferApproach(text)
+      : socialSkill ? 'social' : INTENT_PATTERNS.find(([, pattern]) => pattern.test(operativeText))?.[0] ?? 'improvised_action'
+    const approach = socialSkill ?? inferApproach(operativeText)
     // Свободная задумка вроде «пытаюсь поймать шишку ртом» не должна
     // превращаться в проверку Мудрости только из-за глагола «пытаюсь».
     // Явно запрошенная проверка сохраняет обычный маршрут арбитра.
@@ -251,7 +290,7 @@ export class IntentParser {
       && !EXPLICIT_CHECK_PATTERN.test(text)
       ? 'improvised_action'
       : detectedIntent
-    const socialTargets = intent === 'social' ? resolvePresentSocialActors(text, visibleState) : []
+    const socialTargets = intent === 'social' ? addressedActors.length ? addressedActors : resolvePresentSocialActors(text, visibleState) : []
     const mentioned = intent === 'social' && socialTargets.length ? socialTargets : mentionedActors(text, visibleState)
     const targets = mentioned.map((actor) => String(actor.id)).filter((id) => id !== String(playerId ?? ''))
     const requiresTarget = intent === 'attack' || intent === 'damage' || intent === 'approach_attack' || intent === 'compound_maneuver'
@@ -274,6 +313,7 @@ export class IntentParser {
       requires_clarification: missing.length > 0,
       confidence: intent === 'improvised_action' ? 0.45 : missing.length ? 0.55 : 0.86,
       free_action_kind: freeActionKind,
+      ...( /нелеталь|не\s+убив|не\s+убива|без\s+убийств/iu.test(text) || /оглуш|нокаут/iu.test(operativeText) ? { knock_out: true } : {}),
       ...(ambiguousSocialTarget ? {
         target_candidates: socialTargets.map((actor) => ({
           id: String(actor.id),

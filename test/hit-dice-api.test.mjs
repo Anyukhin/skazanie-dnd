@@ -113,6 +113,15 @@ function restCommand(baseUrl, cookieValue, key, command) {
   })
 }
 
+function assertRestNarration(result, pattern) {
+  assert.match(String(result.body?.narration ?? ''), pattern, 'команда отдыха обязана вернуть deterministic narration')
+  assert.ok(result.body?.narration_message_id, 'команда отдыха обязана вернуть id записи летописи')
+  assert.ok(
+    (result.body?.authoritative_state?.messages ?? []).some((message) => pattern.test(String(message?.text ?? ''))),
+    'подтверждённый текст отдыха обязан сохраниться в messages',
+  )
+}
+
 test('HTTP-отдых санитизирует поля, защищает героя и идемпотентно тратит кости хитов', { timeout: runnerTimeout(60_000) }, async (t) => {
   const storage = mkdtempSync(join(tmpdir(), 'skazanie-hit-dice-api-'))
   let logs = ''
@@ -228,11 +237,13 @@ test('HTTP-отдых санитизирует поля, защищает гер
   assert.equal(start.body.authoritative_state.players.find((hero) => hero.id === 'fighter').hp, 1)
   assert.equal(start.body.authoritative_state.mechanics.hit_point_dice.fighter.die_size, 10)
   assert.equal(start.body.authoritative_state.mechanics.hit_point_dice.wizard, undefined)
+  assertRestNarration(start, /Бран начинает короткий отдых/u)
 
   const startRetry = await restCommand(baseUrl, ownerCookie, 'rest-start-short', { command_type: 'StartRest', actor_id: 'fighter' })
   assert.equal(startRetry.status, 200, startRetry.text)
   assert.equal(startRetry.body.state_version, start.body.state_version)
   assert.equal(startRetry.body.authoritative_state.mechanics.world_time.elapsed_minutes, 60)
+  assert.equal(startRetry.body.narration, start.body.narration, 'повтор отдыха обязан вернуть ту же запись летописи')
   const semanticCollision = await restCommand(baseUrl, ownerCookie, 'rest-start-short', { command_type: 'SpendHitPointDie', actor_id: 'fighter' })
   assert.equal(semanticCollision.status, 409, semanticCollision.text)
   assert.equal(semanticCollision.body.code, 'IDEMPOTENCY_CONFLICT')
@@ -267,6 +278,7 @@ test('HTTP-отдых санитизирует поля, защищает гер
 
   const longRest = await restCommand(baseUrl, ownerCookie, 'rest-start-long', { command_type: 'StartRest', actor_id: 'fighter', kind: 'long' })
   assert.equal(longRest.status, 200, `${longRest.text}\n${logs}`)
+  assertRestNarration(longRest, /Бран завершает продолжительный отдых/u)
   // Восемь часов сна всегда пересекают границу времени суток, и мировые часы
   // пишут об этом своё событие (`server/weather.mjs`). В списке оно остаётся на
   // своём месте — вычеркнуть небо значило бы перестать замечать задвоенное
@@ -314,6 +326,9 @@ test('HTTP-отдых санитизирует поля, защищает гер
   assert.equal(durableRetry.status, 200, `${durableRetry.text}\n${logs}`)
   assert.equal(durableRetry.body.idempotent_replay, true)
   assert.equal(durableRetry.body.authoritative_state.mechanics.world_time.elapsed_minutes, 540)
+  assert.equal(durableRetry.body.narration, longRest.body.narration, 'replay после restart обязан вернуть ту же запись летописи')
+  assert.ok((reopened.body.state.messages ?? []).some((message) => /Бран начинает короткий отдых/u.test(String(message?.text ?? ''))))
+  assert.ok((reopened.body.state.messages ?? []).some((message) => /Бран завершает продолжительный отдых/u.test(String(message?.text ?? ''))))
 
   const secondShort = await restCommand(baseUrl, ownerCookie, 'rest-start-short-two', { command_type: 'StartRest', actor_id: 'fighter', kind: 'short' })
   assert.equal(secondShort.status, 200, `${secondShort.text}\n${logs}`)

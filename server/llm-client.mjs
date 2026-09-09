@@ -190,7 +190,12 @@ function normalizeAssistantMessage(message, request, defaults) {
   const content = message.content == null ? '' : typeof message.content === 'string' ? message.content : JSON.stringify(message.content)
   const normalized = { role: 'assistant', content, tool_calls: toolCalls }
   if (!content.trim() && !toolCalls.length) throw new LLMResponseError('LLM returned an empty assistant response', 'LLM_RESPONSE_INVALID')
-  if (wantsJson(request)) normalized.json = strictJsonParse(content, { label: 'JSON content', expected: request.jsonExpected ?? 'object' })
+  if (wantsJson(request)) {
+    normalized.json = strictJsonParse(content, { label: 'JSON content', expected: request.jsonExpected ?? 'object' })
+    if ((request.jsonExpected ?? 'object') === 'object' && Object.keys(normalized.json).length === 0) {
+      throw new LLMResponseError('LLM вернул пустой объект вместо результата роли', 'LLM_RESPONSE_INVALID')
+    }
+  }
   return normalized
 }
 
@@ -391,7 +396,7 @@ export class RouterAIClient extends LLMClient {
   constructor({
     apiKey = process.env.ROUTERAI_API_KEY ?? '',
     baseUrl = process.env.ROUTERAI_BASE_URL ?? 'https://routerai.ru/api/v1',
-    model = process.env.DND_AI_MODEL ?? 'deepseek/deepseek-v4-flash',
+    model = process.env.DND_AI_MODEL ?? 'z-ai/glm-5.3-flash',
     maxTokens = Number(process.env.DND_AI_MAX_TOKENS) || 1200,
     reasoning = null,
     timeoutMs = DEFAULT_TIMEOUT_MS,
@@ -433,7 +438,19 @@ export class RouterAIClient extends LLMClient {
     }
     const reasoning = request.reasoning && typeof request.reasoning === 'object' ? request.reasoning : this.reasoning
     if (reasoning) body.reasoning = reasoning
-    if (wantsJson(request)) body.response_format = { type: 'json_object' }
+    // У маршрута GLM Flash наблюдались {} в JSON mode. Совместимый вариант
+    // без response_format и с явной инструкцией формата проверен 2026-09-08.
+    // Строгий parser ответа сохраняется.
+    if (wantsJson(request)) {
+      if (body.model !== 'z-ai/glm-5.3-flash') body.response_format = { type: 'json_object' }
+      else {
+        const directive = 'Верни только полное JSON-значение, соответствующее запрошенной схеме. Без Markdown, кодовых блоков, вступления и пояснений.'
+        const systemIndex = body.messages.findIndex(message => message.role === 'system' && typeof message.content === 'string')
+        body.messages = systemIndex < 0
+          ? [{ role: 'system', content: directive }, ...body.messages]
+          : body.messages.map((message, index) => index === systemIndex ? { ...message, content: `${message.content}\n${directive}` } : message)
+      }
+    }
     const streaming = typeof request.onDelta === 'function'
     if (streaming) {
       if (wantsJson(request)) throw new TypeError('Streaming JSON responses are not supported')
@@ -559,34 +576,80 @@ export class FallbackLLMClient extends LLMClient {
     const validateResponse = options.validateResponse ?? (input && !Array.isArray(input) ? input.validateResponse : null)
     const requestedDelta = options.onDelta ?? (input && !Array.isArray(input) ? input.onDelta : null)
     const attempts = []
-    for (const client of this._candidates()) {
-      let emitted = false
-      const onDelta = typeof requestedDelta === 'function'
-        ? async (delta) => {
-            emitted = true
-            await requestedDelta(delta)
-          }
-        : null
-      try {
-        const result = await client.complete(input, {
-          ...options,
-          ...(onDelta ? { onDelta } : {}),
-        })
-        if (typeof validateResponse === 'function' && await validateResponse(result) === false) {
-          throw new LLMResponseError(`Model ${client.model} returned an unusable response`, 'LLM_RESPONSE_INVALID')
-        }
-        this._markSuccess(client)
-        return { ...result, fallback_attempts: attempts, fallback_used: attempts.length > 0 }
-      } catch (error) {
-        if (!this._retryable(error)) throw error
-        this._markFailure(client, error)
-        attempts.push({ model: String(client.model ?? 'unknown-model'), code: String(error?.code ?? error?.name ?? 'LLM_ERROR') })
-        // После первой показанной дельты другой провайдер не может продолжить
-        // текст без склейки двух независимо сгенерированных ответов.
-        if (emitted) throw error
-      }
+    const requestedTimeout = Number(options.timeoutMs ?? input?.timeoutMs)
+    const hasDeadline = Number.isFinite(requestedTimeout) && requestedTimeout > 0
+    const deadline = hasDeadline ? Date.now() + requestedTimeout : null
+    const deadlineController = hasDeadline ? new AbortController() : null
+    const timer = deadlineController ? setTimeout(() => deadlineController.abort(new LLMTimeoutError(requestedTimeout)), requestedTimeout) : null
+    const externalSignal = options.signal ?? input?.signal
+    const abortFromExternal = () => deadlineController.abort(externalSignal.reason ?? new LLMError('LLM-запрос отменён', 'LLM_ABORTED'))
+    if (deadlineController && externalSignal) {
+      if (externalSignal.aborted) abortFromExternal()
+      else externalSignal.addEventListener('abort', abortFromExternal, { once: true })
     }
-    throw new LLMError('All configured RouterAI models failed', 'LLM_FALLBACK_EXHAUSTED', { attempts })
+    const sharedSignal = deadlineController?.signal ?? externalSignal
+    try {
+      const candidates = this._candidates()
+      for (const [candidateIndex, client] of candidates.entries()) {
+        let emitted = false
+        const onDelta = typeof requestedDelta === 'function'
+          ? async (delta) => {
+              emitted = true
+              await requestedDelta(delta)
+            }
+          : null
+        try {
+          const remaining = deadline == null ? null : deadline - Date.now()
+          if (remaining != null && remaining <= 0) throw new LLMTimeoutError(requestedTimeout)
+          // Оставляем время резервной модели: зависший основной запрос
+          // иначе израсходует весь общий бюджет до переключения.
+          const configuredLimit = Number(client.timeoutMs)
+          const attemptBudget = remaining == null
+            ? null
+            : Math.max(1, Math.min(remaining,
+              Number.isFinite(configuredLimit) && configuredLimit > 0 ? configuredLimit : remaining,
+              candidateIndex === 0 && candidates.length > 1 ? Math.floor(requestedTimeout * 0.6) : remaining))
+          const attemptScope = attemptBudget == null ? null : makeAbortScope(attemptBudget, sharedSignal)
+          try {
+            const request = {
+              ...options,
+              ...(attemptBudget != null ? { timeoutMs: attemptBudget } : {}),
+              ...(attemptScope ? { signal: attemptScope.signal } : sharedSignal ? { signal: sharedSignal } : {}),
+              ...(onDelta ? { onDelta } : {}),
+            }
+            const operation = client.complete(input, request)
+            const result = attemptScope
+              ? await raceWithSignal(operation, attemptScope.signal)
+              : await operation
+            if (typeof validateResponse === 'function' && await validateResponse(result) === false) {
+              throw new LLMResponseError(`Model ${client.model} returned an unusable response`, 'LLM_RESPONSE_INVALID')
+            }
+            this._markSuccess(client)
+            return { ...result, fallback_attempts: attempts, fallback_used: attempts.length > 0 }
+          } finally {
+            attemptScope?.close()
+          }
+        } catch (error) {
+          if (deadlineController?.signal.aborted) throw error
+          if (!this._retryable(error)) throw error
+          this._markFailure(client, error)
+          attempts.push({ model: String(client.model ?? 'unknown-model'), code: String(error?.code ?? error?.name ?? 'LLM_ERROR') })
+          // После первой показанной дельты другой провайдер не может продолжить
+          // текст без склейки двух независимо сгенерированных ответов.
+          if (emitted) throw error
+        }
+      }
+      // Таймер попытки может сработать раньше общего на долю миллисекунды.
+      // Если все попытки истекли, причина остаётся timeout, а не случайный
+      // FALLBACK_EXHAUSTED из-за порядка очереди таймеров.
+      if (hasDeadline && attempts.length && attempts.every(attempt => attempt.code === 'LLM_TIMEOUT')) {
+        throw new LLMTimeoutError(requestedTimeout)
+      }
+      throw new LLMError('All configured RouterAI models failed', 'LLM_FALLBACK_EXHAUSTED', { attempts })
+    } finally {
+      if (timer) clearTimeout(timer)
+      externalSignal?.removeEventListener('abort', abortFromExternal)
+    }
   }
 
   async completeJson(input, options = {}) {

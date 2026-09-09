@@ -1,0 +1,89 @@
+{
+  "schema_version": "skazanie:astohan-castle-hd-v1",
+  "generated_at": "2026-09-08",
+  "status": "complete",
+  "source_image": "C:/Users/anton/.codex/generated_images/01a07e05-706e-7d53-904f-47902e0f5121/exec-91dcce49-20c2-4f76-9c3b-a95272a4cc65.png",
+  "source_dimensions": [1536, 1024],
+  "source_grid": { "columns": 3, "rows": 2, "cell_px": 16, "tile_source_px": 512 },
+  "tileSize": 1254,
+  "width": 3762,
+  "height": 2508,
+  "grid": [3, 2],
+  "preview": "tmp/authored-maps/ares-hd-preview-all-six.png",
+  "prompt_contract": [
+    "Use case: precise-object-edit",
+    "Enhance fine material detail only inside the supplied 512×512 crop.",
+    "Preserve exact crop bounds, room geometry, walls, open thresholds, furniture and edge registration.",
+    "No new or shifted walls, rooms, doors, objects, people, animals, tokens, text, labels, grid or watermark.",
+    "True 90-degree orthographic top-down view; whole-castle image is a supporting color/lighting reference only.",
+    "Request square 2048×2048; ImageGen returned the usable native square 1254×1254 for each tile."
+  ],
+  "tiles": [
+    {
+      "column": 0,
+      "row": 0,
+      "source_rect": [0, 0, 512, 512],
+      "input_crop": "tmp/authored-maps/ares-hd-crops/c0-r0.png",
+      "source": "C:/Users/anton/.codex/generated_images/01a07e0a-fdcf-7670-b159-ad5bdc24e866/exec-6e0d8ee0-ae69-4e64-9ead-20acb71128a1.png",
+      "production": "public/assets/maps/locations/skazanie/astohan-stormberg-hd/c0-r0.webp",
+      "width": 1254,
+      "height": 1254,
+      "qa": { "status": "pass", "notes": "Западная прибрежная куртина, башни, оружейные и библиотечные помещения сохранены; границы crop стабильны, людей/текста/grid нет." }
+    },
+    {
+      "column": 1,
+      "row": 0,
+      "source_rect": [512, 0, 512, 512],
+      "input_crop": "tmp/authored-maps/ares-hd-crops/c1-r0.png",
+      "source": "C:/Users/anton/.codex/generated_images/01a07e0a-fdcf-7670-b159-ad5bdc24e866/exec-71213130-5a36-4110-a8ed-a67eb60e1ebc.png",
+      "production": "public/assets/maps/locations/skazanie/astohan-stormberg-hd/c1-r0.webp",
+      "width": 1254,
+      "height": 1254,
+      "qa": { "status": "pass", "notes": "Центральная галерея, королевский стол, колонны и верхний дворевой край сохранены; это первый проверенный HD edit." }
+    },
+    {
+      "column": 2,
+      "row": 0,
+      "source_rect": [1024, 0, 512, 512],
+      "input_crop": "tmp/authored-maps/ares-hd-crops/c2-r0.png",
+      "source": "C:/Users/anton/.codex/generated_images/01a07e0a-fdcf-7670-b159-ad5bdc24e866/exec-c5f6f66d-45a0-4272-a253-9969b9965d91.png",
+      "production": "public/assets/maps/locations/skazanie/astohan-stormberg-hd/c2-r0.webp",
+      "width": 1254,
+      "height": 1254,
+      "qa": { "status": "pass", "notes": "Восточные королевские комнаты, столовая, круглая башня, обходная дорожка и край города сохранены; существенного drift нет." }
+    },
+    {
+      "column": 0,
+      "row": 1,
+      "source_rect": [0, 512, 512, 512],
+      "input_crop": "tmp/authored-maps/ares-hd-crops/c0-r1.png",
+      "source": "C:/Users/anton/.codex/generated_images/01a07e0a-fdcf-7670-b159-ad5bdc24e866/exec-a241cee9-055a-42f2-b959-c283b14dea5f.png",
+      "production": "public/assets/maps/locations/skazanie/astohan-stormberg-hd/c0-r1.webp",
+      "width": 1254,
+      "height": 1254,
+      "qa": { "status": "pass", "notes": "Нижняя западная куртина, оружейная, тренировочный зал, башенка и морской край сохранены без новых игровых сущностей." }
+    },
+    {
+      "column": 1,
+      "row": 1,
+      "source_rect": [512, 512, 512, 512],
+      "input_crop": "tmp/authored-maps/ares-hd-crops/c1-r1.png",
+      "source": "C:/Users/anton/.codex/generated_images/01a07e0a-fdcf-7670-b159-ad5bdc24e866/exec-7713643b-935d-41cf-a517-df3979023138.png",
+      "production": "public/assets/maps/locations/skazanie/astohan-stormberg-hd/c1-r1.webp",
+      "width": 1254,
+      "height": 1254,
+      "qa": { "status": "pass", "notes": "Центральный двор, четыре сада, фонтан, церемониальная дорожка и нижние башни совпадают с исходным crop." }
+    },
+    {
+      "column": 2,
+      "row": 1,
+      "source_rect": [1024, 512, 512, 512],
+      "input_crop": "tmp/authored-maps/ares-hd-crops/c2-r1.png",
+      "source": "C:/Users/anton/.codex/generated_images/01a07e0a-fdcf-7670-b159-ad5bdc24e866/exec-de11eef8-9677-4e82-9a9a-3f1c51540abd.png",
+      "production": "public/assets/maps/locations/skazanie/astohan-stormberg-hd/c2-r1.webp",
+      "width": 1254,
+      "height": 1254,
+      "qa": { "status": "pass", "notes": "Нижнее восточное крыло, хозяйственные помещения, склады, конюшни, башни и городская кромка сохранены; drift не превышает одной source-клетки." }
+    }
+  ]
+}

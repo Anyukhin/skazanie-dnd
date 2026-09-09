@@ -6,11 +6,13 @@ export { serverEncounterLoot } from './loot-tables.mjs'
 export { freezeEncounterOutcomePlan, serverRewardForEncounter } from './encounter-rewards.mjs'
 
 export const DIRECTOR_INTENT_VERSION = 'skazanie:director-intent-v1'
+export const SCENE_RESOLUTION_EVENT_SCHEMA_VERSION = 1
 export const DIRECTOR_INTENT_TYPES = Object.freeze([
   'continue_exploration',
   'open_social_scene',
   'advance_quest_clock',
   'request_encounter',
+  'resolve_scene',
   'end_scene',
   'offer_next_hook',
 ])
@@ -24,7 +26,8 @@ const DIFFICULTIES = new Set(['easy', 'medium', 'hard', 'deadly'])
  * один, и новая тема в сборщике сразу доступна Директору.
  */
 const THEMES = new Set(ENCOUNTER_THEMES)
-const TOP_LEVEL_FIELDS = new Set(['version', 'type', 'theme', 'difficulty', 'quest_id', 'npc_id', 'hook', 'destination', 'reason'])
+const SCENE_RESOLUTIONS = new Set(['negotiation', 'objective', 'decision'])
+const TOP_LEVEL_FIELDS = new Set(['version', 'type', 'theme', 'difficulty', 'quest_id', 'npc_id', 'hook', 'destination', 'resolution', 'reason'])
 /**
  * Написание ключа значения не имеет: `max_hp`, `maxHp` и `MAX-HP` — одно и то
  * же поле, и модель придёт к верблюжьему написанию не реже, чем к змеиному.
@@ -85,6 +88,10 @@ export function normalizeDirectorIntent(input = {}) {
   if (type === 'open_social_scene' && input.npc_id != null) intent.npc_id = safeId(input.npc_id, 'npc_id')
   if (type === 'offer_next_hook') intent.hook = clean(input.hook, 300)
   if (type === 'end_scene') intent.destination = clean(input.destination, 160)
+  if (type === 'resolve_scene') {
+    if (!SCENE_RESOLUTIONS.has(input.resolution)) throw new DirectorIntentError('Способ завершения сцены не входит в server allowlist', 'DIRECTOR_SCENE_RESOLUTION_NOT_ALLOWED')
+    intent.resolution = input.resolution
+  }
   if (input.reason != null) intent.reason = clean(input.reason, 240)
   return Object.freeze(intent)
 }
@@ -115,6 +122,7 @@ export function normalizeAutonomyState(input = {}) {
     hooks: (Array.isArray(source.hooks) ? clone(source.hooks) : []).slice(-100),
     transitions: (Array.isArray(source.transitions) ? clone(source.transitions) : []).slice(-100),
     encounter_outcomes: (Array.isArray(source.encounter_outcomes) ? clone(source.encounter_outcomes) : []).slice(-200),
+    scene_resolutions: (Array.isArray(source.scene_resolutions) ? clone(source.scene_resolutions) : []).slice(-100),
     reputations,
     witness_graph: (Array.isArray(source.witness_graph) ? clone(source.witness_graph) : []).slice(-500),
     npc_schedules: source.npc_schedules && typeof source.npc_schedules === 'object' && !Array.isArray(source.npc_schedules) ? clone(source.npc_schedules) : {},
@@ -198,6 +206,7 @@ export function applyAutonomyEvent(input, event) {
   if (event.event_type === 'NextHookOffered') autonomy.hooks = [...autonomy.hooks.filter((hook) => hook.id !== payload.hook?.id), clone(payload.hook)]
   if (event.event_type === 'TransitionUnlocked') autonomy.transitions.push(clone(payload.transition))
   if (event.event_type === 'EncounterOutcomeRecorded') autonomy.encounter_outcomes.push(clone(payload))
+  if (event.event_type === 'SceneResolutionRecorded') autonomy.scene_resolutions.push(clone(payload))
   if (event.event_type === 'FactionReputationAdjusted') {
     const id = clean(payload.faction_id, 120)
     autonomy.reputations[id] = Math.max(-100, Math.min(100, (autonomy.reputations[id] ?? 0) + Number(payload.delta || 0)))

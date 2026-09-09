@@ -1,5 +1,6 @@
 export function canIssueUiTacticalCommand(combat, command, currentActorId) {
   if (!combat?.active) return true
+  if (command?.command_type === 'AttackNpc') return false
   if (['StartCombat', 'ResolveHeroDeath'].includes(command?.command_type)) return true
   // Уговор на переговорах заключает отряд, а не тот, на ком стоит указатель
   // инициативы: перемирие эту очередь уже заморозило. Сервер проверяет то же

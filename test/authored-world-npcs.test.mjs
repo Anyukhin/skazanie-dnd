@@ -27,8 +27,9 @@ import {
   sceneNpcsForViewer,
 } from '../server/npc-positioning.mjs'
 import { buildNpcSocialCheckPolicy } from '../server/npc-social-check.mjs'
+import { NPC_PORTRAIT_CHARACTER_ASSETS } from '../server/npc-portraits.mjs'
 import { planNpcTurn } from '../server/npc-turn-scheduler.mjs'
-import { applyGameEvent, normalizeCampaignState, previewD20Check, resolveCommand, resolveCommands } from '../server/rules-engine.mjs'
+import { applyGameEvent, normalizeCampaignState, npcCombatRequestFingerprint, previewD20Check, replayEvents, resolveCommand, resolveCommands } from '../server/rules-engine.mjs'
 import { campaignStateForViewer, mechanicsForViewer } from '../server/viewer-projection.mjs'
 import { getWorldTemplate } from '../server/world-template-catalog.mjs'
 
@@ -36,6 +37,24 @@ const NPC_IDS = [
   'astohan-ares', 'astohan-ivara', 'astohan-oren', 'astohan-mira',
   'astohan-lomar', 'astohan-eldrin', 'astohan-kaelan', 'astohan-sargat',
 ]
+
+const REQUIRED_INVENTORY_NAMES = Object.freeze({
+  'astohan-ares': ['Клятвенный клинок', 'Сапфировый венец Валедора', 'Сине-золотая мантия короля', 'Гравированный латный доспех'],
+  'astohan-ivara': ['Меч маршала', 'Тяжёлый арбалет', 'Арбалетные болты', 'Стальной полудоспех маршала', 'Синий военный плащ'],
+  'astohan-oren': ['Архивный кинжал', 'Архивная мантия', 'Круглые архивные очки'],
+  'astohan-mira': ['Дорожный лук', 'Короткий меч', 'Дорожный кожаный доспех', 'Колчан стрел'],
+  'astohan-lomar': ['Рунический посох', 'Сине-зелёная мантия чародея'],
+  'astohan-kaelan': ['Лунный Судья', 'Потёртые чёрно-серебряные латы'],
+})
+
+const PHYSICAL_ACTION_INVENTORY_NAMES = Object.freeze({
+  'astohan-ares': ['Клятвенный клинок'],
+  'astohan-ivara': ['Меч маршала', 'Тяжёлый арбалет'],
+  'astohan-oren': ['Архивный кинжал'],
+  'astohan-mira': ['Дорожный лук', 'Короткий меч'],
+  'astohan-lomar': ['Рунический посох'],
+  'astohan-kaelan': ['Лунный Судья'],
+})
 
 const hero = {
   id: 'hero', character: 'Испытатель', name: 'Игрок', role: 'Воин · ур. 8',
@@ -102,6 +121,30 @@ test('Асстоханские равнины содержат восемь ст
   }
 })
 
+test('инвентарь авторских NPC называет видимое снаряжение и не объявляет природных атак оружием', () => {
+  const npcs = getWorldTemplate('astohan-plains').opening.npcs
+  for (const [npcId, names] of Object.entries(REQUIRED_INVENTORY_NAMES)) {
+    const npc = npcs.find((candidate) => candidate.id === npcId)
+    assert.ok(npc, npcId)
+    const inventoryNames = new Set(npc.inventory.map((item) => item.name))
+    for (const name of names) assert.ok(inventoryNames.has(name), `${npc.name}: нет «${name}»`)
+  }
+  for (const [npcId, names] of Object.entries(PHYSICAL_ACTION_INVENTORY_NAMES)) {
+    const npc = npcs.find((candidate) => candidate.id === npcId)
+    const inventoryNames = new Set(npc.inventory.map((item) => item.name))
+    for (const name of names) assert.ok(inventoryNames.has(name), `${npc.name}: action fallback не совпадает с «${name}»`)
+  }
+  for (const npcId of ['astohan-eldrin', 'astohan-sargat']) {
+    const npc = npcs.find((candidate) => candidate.id === npcId)
+    assert.ok(npc)
+    assert.equal(
+      npc.inventory.some((item) => /меч|арбалет|кинжал|лук|копь[её]|клинок|оруж/iu.test(item.name)),
+      false,
+      `${npc.name}: природный stat block не должен получать искусственное оружие`,
+    )
+  }
+})
+
 test('неподдержанное поле, trait и заклинание не становятся авторской механикой', () => {
   const valid = getWorldTemplate('astohan-plains').opening.npcs[0].mechanics
   assert.throws(
@@ -132,6 +175,9 @@ test('bootstrap размещает только четырёх героев пе
   assert.deepEqual(presentSceneNpcs(state).map((npc) => npc.id).sort(), [
     'astohan-ares', 'astohan-ivara', 'astohan-mira', 'astohan-oren',
   ])
+  const projected = sceneNpcsForViewer(state)
+  assert.equal(projected.length, 4)
+  assert.ok(projected.every((npc) => npc.can_start_combat === true), 'все четыре NPC первой сцены имеют готовый боевой профиль')
   assert.equal(npcVitalFor(state, 'astohan-ares').max_hp, 168)
   assert.equal(npcVitalFor(state, 'astohan-sargat').max_hp, 189)
   const atTower = {
@@ -198,6 +244,7 @@ test('все восемь боевых профилей понятны суще�
   for (const npc of state.social.npcs) {
     const mechanics = npcMechanicsFor(state, npc.id)
     const actor = combatActor(npc, mechanics)
+    assert.equal(actor.image, NPC_PORTRAIT_CHARACTER_ASSETS[npc.id], npc.name)
     assert.deepEqual(monsterSpellcastingIssues(actor), [], npc.name)
     if (mechanics.legendary) assert.ok(legendaryProfileFor(actor), npc.name)
     const plan = planNpcTurn(combatState(actor), actor.id)
@@ -252,6 +299,7 @@ test('Режиссёр материализует присутствующего
   const created = result.events[0].payload.encounter
   assert.equal(created.difficulty, 'deadly', 'сложность берётся из листа, а не из intent')
   assert.equal(created.theme, 'generic')
+  assert.equal(created.enemies[0].image, NPC_PORTRAIT_CHARACTER_ASSETS['astohan-sargat'])
   assert.equal(created.enemies[0].stat_block_id, 'astohan:sargat-v1')
   assert.equal(created.enemies[0].hp, 189)
   assert.equal(created.enemies[0].legendary.actions.length, 3)
@@ -309,6 +357,70 @@ test('именованный encounter закрыт для игрока и дл�
     () => resolveCommand(command, state, { diceService: dice([]), context: { isDirector: true } }),
     (error) => error.code === 'AUTHORED_NPC_NOT_PRESENT',
   )
+})
+
+test('игрок может начать бой с видимым авторским NPC без подмены профиля и позиции', async () => {
+  const initial = await campaign()
+  const beforeMap = structuredClone(initial.scene.map)
+  const beforeHeroPosition = structuredClone(initial.mechanics?.positions?.hero ?? { x: initial.players[0].x, y: initial.players[0].y })
+  const beforeNpcPosition = structuredClone(initial.npc_world.placements.find((entry) => entry.npc_id === 'astohan-ares'))
+  const command = { command_type: 'AttackNpc', command_id: 'attack-ares', actor_id: 'hero', npc_id: 'astohan-ares' }
+  const result = resolveCommands([command], initial, {
+    diceService: dice([1, 20]),
+    context: { allowedActorIds: ['hero'] },
+  })
+
+  assert.deepEqual(result.events.slice(0, 2).map((event) => event.event_type), ['EncounterCreated', 'CombatStarted'])
+  const encounter = result.events.find((event) => event.event_type === 'EncounterCreated')
+  assert.equal(encounter?.payload?.request_fingerprint, npcCombatRequestFingerprint(command))
+  assert.equal(encounter?.payload?.encounter?.enemies?.[0]?.id, 'astohan-ares')
+  assert.equal(encounter?.payload?.encounter?.enemies?.[0]?.stat_block_id, 'astohan:ares-v1')
+
+  assert.equal(result.state.mechanics.combat.active, true)
+  assert.deepEqual(result.state.mechanics.positions.hero, beforeHeroPosition)
+  assert.deepEqual(result.state.mechanics.positions['astohan-ares'], { x: beforeNpcPosition.x, y: beforeNpcPosition.y })
+  assert.deepEqual(result.state.scene.map, beforeMap)
+  assert.equal(result.state.social.npcs.find((npc) => npc.id === 'astohan-ares')?.available, false)
+
+  const visibleEvents = mechanicsForViewer(result.events, { role: 'player' }, 'hero', result.state)
+  const visibleEncounter = visibleEvents.find((event) => event.event_type === 'EncounterCreated')?.payload?.encounter
+  assert.doesNotMatch(JSON.stringify(visibleEncounter), /stat_block_id|action_profiles|authored_features|provenance/u)
+  assert.deepEqual(replayEvents(initial, result.events), result.state)
+})
+
+test('вход в бой с NPC проверяет героя, видимость, живость и наличие боевого профиля', async () => {
+  const initial = await campaign()
+  const command = { command_type: 'AttackNpc', command_id: 'attack-ares-validation', actor_id: 'hero', npc_id: 'astohan-ares' }
+  const reject = (state, context, code) => assert.throws(
+    () => resolveCommand(command, state, { diceService: dice([]), context }),
+    (error) => error.code === code,
+  )
+
+  reject(initial, { allowedActorIds: ['other'] }, 'ACTOR_FORBIDDEN')
+  reject(normalizeCampaignState({
+    ...initial,
+    social: { ...initial.social, npcs: initial.social.npcs.map((npc) => npc.id === 'astohan-ares' ? { ...npc, visibility: 'gm_only', reveal_on_presence: false } : npc) },
+  }), { allowedActorIds: ['hero'] }, 'AUTHORED_NPC_NOT_VISIBLE')
+  reject(normalizeCampaignState({
+    ...initial,
+    npc_world: { ...initial.npc_world, vitals: { ...initial.npc_world.vitals, 'astohan-ares': { hp: 0, max_hp: 168, alive: false } } },
+  }), { allowedActorIds: ['hero'] }, 'AUTHORED_NPC_NOT_ALIVE')
+  reject(normalizeCampaignState({
+    ...initial,
+    npc_world: { ...initial.npc_world, profiles: Object.fromEntries(Object.entries(initial.npc_world.profiles).filter(([id]) => id !== 'astohan-ares')) },
+  }), { allowedActorIds: ['hero'] }, 'AUTHORED_NPC_PROFILE_MISSING')
+  const rulingOnly = normalizeCampaignState({
+    ...initial,
+    npc_world: {
+      ...initial.npc_world,
+      profiles: { ...initial.npc_world.profiles, 'astohan-ares': { ...initial.npc_world.profiles['astohan-ares'], status: 'ruling-only' } },
+    },
+  })
+  assert.equal(sceneNpcsForViewer(rulingOnly).find((npc) => npc.id === 'astohan-ares')?.can_start_combat, false)
+  reject(rulingOnly, { allowedActorIds: ['hero'] }, 'AUTHORED_NPC_PROFILE_UNVERIFIED')
+
+  const active = resolveCommands([command], initial, { diceService: dice([1, 20]), context: { allowedActorIds: ['hero'] } }).state
+  reject(active, { allowedActorIds: ['hero'] }, 'ENCOUNTER_DURING_COMBAT')
 })
 
 test('модель свободного мира не может подделать авторский ID, СЛ или боевой лист', async () => {

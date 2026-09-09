@@ -1,0 +1,1590 @@
+{
+  "schema_version": "skazanie:authored-map-art-v1",
+  "generated_at": "2026-09-08",
+  "status": "complete",
+  "scope": [
+    "league-nine-tides",
+    "unfading-star-belt"
+  ],
+  "workflow": {
+    "generator": "built-in imagegen",
+    "source_policy": "Оригинальные PNG-ответы сохранены в generated_images; исходники не изменяются.",
+    "production_policy": "Сгенерированные PNG сохранены как provenance; production WebP приведены к 1536×1024 с ffmpeg/libwebp q94. Эти 3:2 изображения являются overview-слоем места; малые боевые тактические карты ведутся отдельным native-grid каталогом.",
+    "map_policy": "Большая иллюстрация показывает место целиком как overview и не является источником коллизий. Боевые клетки, двери и движение задаются отдельным компактным TacticalMap.",
+    "qa_policy": [
+      "строгий top-down 90° без перспективы",
+      "плотная компактная игровая зона, а не миниатюра целого города",
+      "крыши сняты у интерьеров, комнаты и проходы читаются",
+      "открытые дверные проёмы без створок и листьев ворот",
+      "нет текста, подписей, сетки, людей, животных, токенов и миниатюр"
+    ]
+  },
+  "prompt_common": [
+    "Use case: stylized-concept",
+    "Asset type: finished wide 3:2 top-down location overview illustration for a tabletop RPG, a compact district reference rather than a production battlemap",
+    "Style/medium: premium hand-painted dark-fantasy game map at the quality of a polished roofless cutaway fortress plan, strict true 90-degree orthographic overhead view with almost no perspective, crisp readable 5-foot spaces, rich natural materials and dense but practical furnishing",
+    "Composition/framing: dense irregular or rounded location footprint filling the frame, several connected rooms, courtyards and approach lanes, multiple clearly visible OPEN doorways with no door leaves or gate panels, varied cover and small furniture; no decorative border",
+    "Lighting/mood: atmospheric location-specific maritime light, high local contrast, readable at tactical zoom",
+    "Constraints: no text, letters, numbers, labels, map legends, grid lines, compass, watermark, people, creatures, animals, tokens, miniatures, silhouettes; no secret clues or written documents; do not depict a giant city in miniature; keep one compact playable district; doors are empty open thresholds because the game engine adds real doors; no closed door slabs or gate leaves"
+  ],
+  "assets": [
+    {
+      "id": "tides-veld-burg",
+      "world": "league-nine-tides",
+      "name": "Вельдбург",
+      "summary": "Купеческий город на высокой стороне нового пролива.",
+      "history": "Построен выжившими после Великого Нырка и разбогател на контроле над картами прилива.",
+      "prompt_specific": "A compact high-side merchant quarter on a raised coastal terrace: a roofless stone counting house, a chart archive room, a small customs yard, salt-stained slate paving, rope and crate storage, narrow irregular lanes, a visible approach from the new strait; include a few tiny flat tide-chart tables and shelves as set dressing, but no readable writing. Materials: slate blue-gray, weathered ochre, salt white, muted teal, warm timber.",
+      "source": {
+        "path": "C:/Users/anton/.codex/generated_images/01a07e0a-fdcf-7670-b159-ad5bdc24e866/exec-d586d6ac-e861-47c4-9bfc-48a5646c5162.png",
+        "format": "png",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "production": {
+        "path": "public/assets/maps/locations/skazanie/tides-veld-burg-v1.webp",
+        "format": "webp",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "qa": {
+        "status": "pass",
+        "checks": {
+          "top_down": true,
+          "compact_playable": true,
+          "roofless_cutaway": true,
+          "open_thresholds": true,
+          "no_text_grid_people_tokens": true
+        },
+        "notes": "Портовый торговый квартал с архивом карт, складом, двором и несколькими подходами; вода и причал ограничены краем сцены. Текста и фишек нет."
+      },
+      "layout_hint": {
+        "approximate_for_follow_up": true,
+        "zones": [
+          {
+            "id": "counting-house",
+            "polygon": [
+              [
+                0.3,
+                0.04
+              ],
+              [
+                0.78,
+                0.04
+              ],
+              [
+                0.78,
+                0.39
+              ],
+              [
+                0.3,
+                0.39
+              ]
+            ]
+          },
+          {
+            "id": "customs-yard",
+            "polygon": [
+              [
+                0.08,
+                0.2
+              ],
+              [
+                0.3,
+                0.2
+              ],
+              [
+                0.3,
+                0.78
+              ],
+              [
+                0.08,
+                0.78
+              ]
+            ]
+          },
+          {
+            "id": "open-quay",
+            "polygon": [
+              [
+                0.2,
+                0.76
+              ],
+              [
+                0.96,
+                0.76
+              ],
+              [
+                0.96,
+                0.99
+              ],
+              [
+                0.2,
+                0.99
+              ]
+            ]
+          }
+        ],
+        "entrances": [
+          {
+            "id": "landward",
+            "x": 0.06,
+            "y": 0.42
+          },
+          {
+            "id": "strait-quay",
+            "x": 0.82,
+            "y": 0.96
+          }
+        ]
+      }
+    },
+    {
+      "id": "tides-grunvik",
+      "world": "league-nine-tides",
+      "name": "Грунвик",
+      "summary": "Сетка мощёных улиц, видимая во время необычно долгого отлива.",
+      "history": "Исчез под водой четыреста тридцать лет назад вместе с шестнадцатью приходами.",
+      "prompt_specific": "A compact exposed section of a drowned old city at extreme low tide: roofless cutaway street junction with several half-flooded stone rooms, a submerged-looking but walkable archive basement, broken paving, shallow reflective wet patches, a bell chamber entrance and a hidden lower stair; use dense old cobbles and algae-stained masonry, while keeping every playable floor and doorway readable. Materials: wet charcoal stone, blue-gray slate, kelp green, tarnished bronze, silver reflections.",
+      "source": {
+        "path": "C:/Users/anton/.codex/generated_images/01a07e0a-fdcf-7670-b159-ad5bdc24e866/exec-539cf8db-1c2a-40d1-80d3-86f360c7fbe9.png",
+        "format": "png",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "production": {
+        "path": "public/assets/maps/locations/skazanie/tides-grunvik-v1.webp",
+        "format": "webp",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "qa": {
+        "status": "pass",
+        "checks": {
+          "top_down": true,
+          "compact_playable": true,
+          "roofless_cutaway": true,
+          "open_thresholds": true,
+          "no_text_grid_people_tokens": true
+        },
+        "notes": "Затонувший перекрёсток с комнатами, библиотекой, колокольной камерой, лестницей и водой вокруг; корабельная деталь остаётся декором, маршруты читаются."
+      },
+      "layout_hint": {
+        "approximate_for_follow_up": true,
+        "zones": [
+          {
+            "id": "drowned-crossroads",
+            "polygon": [
+              [
+                0.3,
+                0.25
+              ],
+              [
+                0.7,
+                0.25
+              ],
+              [
+                0.7,
+                0.78
+              ],
+              [
+                0.3,
+                0.78
+              ]
+            ]
+          },
+          {
+            "id": "bell-chamber",
+            "polygon": [
+              [
+                0.48,
+                0.02
+              ],
+              [
+                0.86,
+                0.02
+              ],
+              [
+                0.86,
+                0.32
+              ],
+              [
+                0.48,
+                0.32
+              ]
+            ]
+          },
+          {
+            "id": "archive-rooms",
+            "polygon": [
+              [
+                0.68,
+                0.28
+              ],
+              [
+                0.99,
+                0.28
+              ],
+              [
+                0.99,
+                0.86
+              ],
+              [
+                0.68,
+                0.86
+              ]
+            ]
+          }
+        ],
+        "entrances": [
+          {
+            "id": "low-tide-west",
+            "x": 0.05,
+            "y": 0.54
+          },
+          {
+            "id": "old-street",
+            "x": 0.95,
+            "y": 0.16
+          },
+          {
+            "id": "lower-stair",
+            "x": 0.54,
+            "y": 0.58
+          }
+        ]
+      }
+    },
+    {
+      "id": "tides-salt-gates",
+      "world": "league-nine-tides",
+      "name": "Солёные Ворота",
+      "summary": "Порт складов, солеварен и таможенных башен.",
+      "history": "Стал главным рынком соли после того, как старые пристани Грунвика ушли под воду.",
+      "prompt_specific": "A compact salt-port encounter district: roofless cutaway salt warehouse and customs office, a working salt-yard with low evaporation beds, stacked sacks and barrels, a short timber quay beside shallow sea water, one irregular stone approach from inland, and open thresholds between rooms; a dense trading chokepoint without crowds. Materials: chalky salt white, warm ochre clay, blue-gray stone, aged timber, restrained teal water.",
+      "source": {
+        "path": "C:/Users/anton/.codex/generated_images/01a07e0a-fdcf-7670-b159-ad5bdc24e866/exec-49239183-1803-4c70-b3bc-877507ee1767.png",
+        "format": "png",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "production": {
+        "path": "public/assets/maps/locations/skazanie/tides-salt-gates-v1.webp",
+        "format": "webp",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "qa": {
+        "status": "pass",
+        "checks": {
+          "top_down": true,
+          "compact_playable": true,
+          "roofless_cutaway": true,
+          "open_thresholds": true,
+          "no_text_grid_people_tokens": true
+        },
+        "notes": "Солеварня, склад, таможенное помещение, двор, причал и вода; белые соляные пласты различают рабочие зоны."
+      },
+      "layout_hint": {
+        "approximate_for_follow_up": true,
+        "zones": [
+          {
+            "id": "salt-warehouse",
+            "polygon": [
+              [
+                0.3,
+                0.02
+              ],
+              [
+                0.7,
+                0.02
+              ],
+              [
+                0.7,
+                0.33
+              ],
+              [
+                0.3,
+                0.33
+              ]
+            ]
+          },
+          {
+            "id": "salt-yard",
+            "polygon": [
+              [
+                0.3,
+                0.34
+              ],
+              [
+                0.77,
+                0.95
+              ],
+              [
+                0.15,
+                0.95
+              ],
+              [
+                0.15,
+                0.42
+              ]
+            ]
+          },
+          {
+            "id": "customs-office",
+            "polygon": [
+              [
+                0.7,
+                0.02
+              ],
+              [
+                0.98,
+                0.02
+              ],
+              [
+                0.98,
+                0.48
+              ],
+              [
+                0.7,
+                0.48
+              ]
+            ]
+          }
+        ],
+        "entrances": [
+          {
+            "id": "inland-road",
+            "x": 0.04,
+            "y": 0.12
+          },
+          {
+            "id": "quay",
+            "x": 0.89,
+            "y": 0.91
+          }
+        ]
+      }
+    },
+    {
+      "id": "tides-three-koegs",
+      "world": "league-nine-tides",
+      "name": "Три Кёга",
+      "summary": "Три поселения, соединённые одной кирпичной дамбой.",
+      "history": "После катастрофы жители сами восстановили первые безопасные переходы через соляные поля.",
+      "prompt_specific": "A compact three-lobed settlement encounter map joined by one broad old brick dyke: three roofless small homes and work yards, a central maintenance court, low sluice channels and salt flats, a few footbridges and open archways, with the brick causeway forming tactical lanes; a practical lived-in rescue settlement, not a whole village. Materials: muted red brick, sun-bleached salt, pale sand, weathered wood, blue-green tidal channels.",
+      "source": {
+        "path": "C:/Users/anton/.codex/generated_images/01a07e0a-fdcf-7670-b159-ad5bdc24e866/exec-38b95093-11b7-4c08-a796-e8cf349e88b3.png",
+        "format": "png",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "production": {
+        "path": "public/assets/maps/locations/skazanie/tides-three-koegs-v1.webp",
+        "format": "webp",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "qa": {
+        "status": "pass",
+        "checks": {
+          "top_down": true,
+          "compact_playable": true,
+          "roofless_cutaway": true,
+          "open_thresholds": true,
+          "no_text_grid_people_tokens": true
+        },
+        "notes": "Три отдельные жилые/рабочие секции связаны широкой кирпичной дамбой, каналами и переходами; форма не прямоугольная."
+      },
+      "layout_hint": {
+        "approximate_for_follow_up": true,
+        "zones": [
+          {
+            "id": "north-settlement",
+            "polygon": [
+              [
+                0.04,
+                0.05
+              ],
+              [
+                0.35,
+                0.05
+              ],
+              [
+                0.35,
+                0.42
+              ],
+              [
+                0.04,
+                0.42
+              ]
+            ]
+          },
+          {
+            "id": "central-dyke",
+            "polygon": [
+              [
+                0,
+                0.39
+              ],
+              [
+                1,
+                0.39
+              ],
+              [
+                1,
+                0.58
+              ],
+              [
+                0,
+                0.58
+              ]
+            ]
+          },
+          {
+            "id": "south-settlement",
+            "polygon": [
+              [
+                0.2,
+                0.55
+              ],
+              [
+                0.84,
+                0.55
+              ],
+              [
+                0.84,
+                0.99
+              ],
+              [
+                0.2,
+                0.99
+              ]
+            ]
+          }
+        ],
+        "entrances": [
+          {
+            "id": "west-dyke",
+            "x": 0.03,
+            "y": 0.48
+          },
+          {
+            "id": "east-dyke",
+            "x": 0.97,
+            "y": 0.5
+          },
+          {
+            "id": "south-road",
+            "x": 0.51,
+            "y": 0.98
+          }
+        ]
+      }
+    },
+    {
+      "id": "tides-sisters-hallig",
+      "world": "league-nine-tides",
+      "name": "Халлиг Сестёр",
+      "summary": "Острова с монастырями и сигнальными колокольнями.",
+      "history": "Хранители островов записывают имена погибших и каждый год сверяют часы прилива.",
+      "prompt_specific": "A compact island monastery encounter map on a rocky but playable low island: roofless cutaway cloister, small chapel, archive room with blank parchment surfaces, open central courtyard, a separate signal-bell platform and narrow paths between rooms, with water surrounding the island and no tall city; all thresholds are empty open doorways. Materials: pale limestone, sea-salt white, faded blue plaster, dark wet rock, muted green moss.",
+      "source": {
+        "path": "C:/Users/anton/.codex/generated_images/01a07e0a-fdcf-7670-b159-ad5bdc24e866/exec-fab0a268-8257-4650-aa0c-33e66fcd7932.png",
+        "format": "png",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "production": {
+        "path": "public/assets/maps/locations/skazanie/tides-sisters-hallig-v1.webp",
+        "format": "webp",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "qa": {
+        "status": "pass",
+        "checks": {
+          "top_down": true,
+          "compact_playable": true,
+          "roofless_cutaway": true,
+          "open_thresholds": true,
+          "no_text_grid_people_tokens": true
+        },
+        "notes": "Островной монастырь с часовней, кельями, архивом, внутренним двором, отдельной сигнальной башней и путями к воде."
+      },
+      "layout_hint": {
+        "approximate_for_follow_up": true,
+        "zones": [
+          {
+            "id": "chapel",
+            "polygon": [
+              [
+                0.13,
+                0.04
+              ],
+              [
+                0.44,
+                0.04
+              ],
+              [
+                0.44,
+                0.4
+              ],
+              [
+                0.13,
+                0.4
+              ]
+            ]
+          },
+          {
+            "id": "cloister-court",
+            "polygon": [
+              [
+                0.36,
+                0.3
+              ],
+              [
+                0.83,
+                0.3
+              ],
+              [
+                0.83,
+                0.72
+              ],
+              [
+                0.36,
+                0.72
+              ]
+            ]
+          },
+          {
+            "id": "archive-and-cells",
+            "polygon": [
+              [
+                0.63,
+                0.11
+              ],
+              [
+                0.98,
+                0.11
+              ],
+              [
+                0.98,
+                0.79
+              ],
+              [
+                0.63,
+                0.79
+              ]
+            ]
+          }
+        ],
+        "entrances": [
+          {
+            "id": "island-landing",
+            "x": 0.06,
+            "y": 0.73
+          },
+          {
+            "id": "bell-platform",
+            "x": 0.04,
+            "y": 0.29
+          }
+        ]
+      }
+    },
+    {
+      "id": "tides-broken-stars-lighthouse",
+      "world": "league-nine-tides",
+      "name": "Маяк Ломаных Звёзд",
+      "summary": "Высокий маяк на скале, где морская пена светится по ночам.",
+      "history": "Его фундамент старше Лиги; линза маяка сделана из стекла, найденного в Грунвике.",
+      "prompt_specific": "A compact rounded lighthouse-island tactical map: a roofless circular lighthouse base with readable interior rooms, open stairwell and open thresholds, keeper quarters, a lens chamber with a blank glass centerpiece, a small service yard and seawall walkway, glowing sea foam around the island edge; make the circular geometry and playable lanes clear. Materials: dark basalt, pale moonlit stone, deep teal sea, faint phosphorescent turquoise, weathered bronze.",
+      "source": {
+        "path": "C:/Users/anton/.codex/generated_images/01a07e0a-fdcf-7670-b159-ad5bdc24e866/exec-a4b22133-452c-421b-a074-2c9e3db8ce6b.png",
+        "format": "png",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "production": {
+        "path": "public/assets/maps/locations/skazanie/tides-broken-stars-lighthouse-v1.webp",
+        "format": "webp",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "qa": {
+        "status": "pass",
+        "checks": {
+          "top_down": true,
+          "compact_playable": true,
+          "roofless_cutaway": true,
+          "open_thresholds": true,
+          "open_stairwell": true,
+          "no_text_grid_people_tokens": true
+        },
+        "notes": "Круглый островной маяк с центральной линзой, спиральной лестницей, каютами, мастерской и круговой дорожкой; водный край не скрывает игровую форму."
+      },
+      "layout_hint": {
+        "approximate_for_follow_up": true,
+        "zones": [
+          {
+            "id": "lens-chamber",
+            "polygon": [
+              [
+                0.28,
+                0.03
+              ],
+              [
+                0.74,
+                0.03
+              ],
+              [
+                0.74,
+                0.46
+              ],
+              [
+                0.28,
+                0.46
+              ]
+            ]
+          },
+          {
+            "id": "keeper-quarters",
+            "polygon": [
+              [
+                0.34,
+                0.45
+              ],
+              [
+                0.75,
+                0.45
+              ],
+              [
+                0.75,
+                0.91
+              ],
+              [
+                0.34,
+                0.91
+              ]
+            ]
+          },
+          {
+            "id": "service-yard",
+            "polygon": [
+              [
+                0.03,
+                0.25
+              ],
+              [
+                0.3,
+                0.25
+              ],
+              [
+                0.3,
+                0.78
+              ],
+              [
+                0.03,
+                0.78
+              ]
+            ]
+          }
+        ],
+        "entrances": [
+          {
+            "id": "sea-walkway",
+            "x": 0.07,
+            "y": 0.87
+          },
+          {
+            "id": "island-landing",
+            "x": 0.93,
+            "y": 0.86
+          }
+        ]
+      }
+    },
+    {
+      "id": "tides-black-dike",
+      "world": "league-nine-tides",
+      "name": "Чёрная Дамба",
+      "summary": "Укреплённый шлюз, удерживающий солёную воду у дельты.",
+      "history": "Сложена из обугленных кирпичей старого города и считается последней линией обороны.",
+      "prompt_specific": "A compact fortified sluice-gate encounter: a broad blackened-brick dam crossing the frame, roofless maintenance rooms on both sides, a central mechanical water gate, control platform, narrow walkways above brackish channels and a landward approach; show charred masonry and practical levers/cranks, but every doorway and gate opening is empty with no leaves. Materials: soot-black brick, wet iron, salt white, dark brown timber, deep green-blue water.",
+      "source": {
+        "path": "C:/Users/anton/.codex/generated_images/01a07e0a-fdcf-7670-b159-ad5bdc24e866/exec-13ea8088-05a4-481f-ac8b-3e967a6aaa8a.png",
+        "format": "png",
+        "dimensions": [
+          1536,
+          1024
+        ],
+        "note": "Targeted edit of exec-4d47032d-d897-4fe5-9f07-1d8f1b631dfb.png: central gate leaves removed."
+      },
+      "production": {
+        "path": "public/assets/maps/locations/skazanie/tides-black-dike-v1.webp",
+        "format": "webp",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "qa": {
+        "status": "pass",
+        "checks": {
+          "top_down": true,
+          "compact_playable": true,
+          "roofless_cutaway": true,
+          "open_thresholds": true,
+          "central_gate_open": true,
+          "no_text_grid_people_tokens": true
+        },
+        "notes": "После targeted edit центральные створки удалены; остались открытый водный проход, боковые комнаты, рабочие механизмы, дамба и подходы."
+      },
+      "layout_hint": {
+        "approximate_for_follow_up": true,
+        "zones": [
+          {
+            "id": "north-maintenance",
+            "polygon": [
+              [
+                0.06,
+                0.04
+              ],
+              [
+                0.36,
+                0.04
+              ],
+              [
+                0.36,
+                0.42
+              ],
+              [
+                0.06,
+                0.42
+              ]
+            ]
+          },
+          {
+            "id": "sluice-control",
+            "polygon": [
+              [
+                0.39,
+                0.22
+              ],
+              [
+                0.64,
+                0.22
+              ],
+              [
+                0.64,
+                0.72
+              ],
+              [
+                0.39,
+                0.72
+              ]
+            ]
+          },
+          {
+            "id": "south-maintenance",
+            "polygon": [
+              [
+                0.67,
+                0.04
+              ],
+              [
+                0.96,
+                0.04
+              ],
+              [
+                0.96,
+                0.72
+              ],
+              [
+                0.67,
+                0.72
+              ]
+            ]
+          }
+        ],
+        "entrances": [
+          {
+            "id": "landward",
+            "x": 0.5,
+            "y": 0.97
+          },
+          {
+            "id": "east-walkway",
+            "x": 0.98,
+            "y": 0.78
+          },
+          {
+            "id": "west-walkway",
+            "x": 0.02,
+            "y": 0.8
+          }
+        ]
+      }
+    },
+    {
+      "id": "tides-cog-graveyard",
+      "world": "league-nine-tides",
+      "name": "Кладбище Когов",
+      "summary": "Опасная отмель с мачтами и корпусами старых кораблей.",
+      "history": "Здесь застряли конвои во время Великого Нырка, а их трюмы стали убежищем для контрабандистов.",
+      "prompt_specific": "Compact shipwreck graveyard on a tidal shoal: broken hull shelters, shallow pools, plank causeways, a beacon fragment, cargo and rigging debris.",
+      "source": {
+        "path": "C:/Users/anton/.codex/generated_images/01a07e08-8050-7000-b432-049da44ba201/exec-b317495e-27b4-4d39-8068-6b5a0ee0511a.png",
+        "format": "png",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "production": {
+        "path": "public/assets/maps/locations/skazanie/tides-cog-graveyard-v1.webp",
+        "format": "webp",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "qa": {
+        "status": "pass",
+        "checks": {
+          "top_down": true,
+          "compact_playable": true,
+          "roofless_cutaway": true,
+          "open_thresholds": true,
+          "no_text_grid_people_tokens": true
+        },
+        "notes": "Связанная отмель с несколькими корпусами, смугглерским укрытием, водой по краям и широким восточным настилом; людей, текста и сетки нет."
+      }
+    },
+    {
+      "id": "tides-north-watch",
+      "world": "league-nine-tides",
+      "name": "Северный Дозор",
+      "summary": "Пограничная башня, наблюдающая за дальними штормами.",
+      "history": "Поставлен Лигой после серии пиратских рейдов, но теперь гарнизон получает приказы только от Совета.",
+      "prompt_specific": "Compact storm-facing border watchtower: roofless barracks, gate court, wall walk, signal platform and squat octagonal tower on a rocky coast.",
+      "source": {
+        "path": "C:/Users/anton/.codex/generated_images/01a07e08-8050-7000-b432-049da44ba201/exec-5d68ee5d-45ba-424f-8883-1d892fcd3c30.png",
+        "format": "png",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "production": {
+        "path": "public/assets/maps/locations/skazanie/tides-north-watch-v1.webp",
+        "format": "webp",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "qa": {
+        "status": "pass",
+        "checks": {
+          "top_down": true,
+          "compact_playable": true,
+          "roofless_cutaway": true,
+          "open_thresholds": true,
+          "no_text_grid_people_tokens": true
+        },
+        "notes": "Крепостной пост с пустыми проёмами, казармой, площадкой сигнала, стеной и морем за краем; без персонажей и надписей."
+      }
+    },
+    {
+      "id": "tides-reed-market",
+      "world": "league-nine-tides",
+      "name": "Камышовый Рынок",
+      "summary": "Плавучий рынок в месте слияния речных рукавов.",
+      "history": "Возник из лагеря беженцев и сохранил обычай решать споры при всех лодочниках.",
+      "prompt_specific": "Compact floating reed-market overview: three linked timber and reed decks around a river junction, empty stalls, warehouse, repair platform and broad plank bridges to the dry bank.",
+      "source": {
+        "path": "C:/Users/anton/.codex/generated_images/01a07e08-8050-7000-b432-049da44ba201/exec-7f4a7e4d-6298-4373-b9a4-198ac5f9b5a7.png",
+        "format": "png",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "production": {
+        "path": "public/assets/maps/locations/skazanie/tides-reed-market-v1.webp",
+        "format": "webp",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "qa": {
+        "status": "pass",
+        "checks": {
+          "top_down": true,
+          "compact_playable": true,
+          "roofless_cutaway": true,
+          "open_thresholds": true,
+          "no_text_grid_people_tokens": true
+        },
+        "notes": "Три связанные платформы и сухой берег читаются целиком; мелкая вода разделяет настилы, мосты открыты, людей и текста нет."
+      }
+    },
+    {
+      "id": "tides-drowned-bell",
+      "world": "league-nine-tides",
+      "name": "Затонувшая Колокольня",
+      "summary": "Вертикальный спуск из колокольного колодца к древнему затвору.",
+      "history": "Колокольня исчезла во время первого удара волны, но её нижние уровни стоят на каменном основании.",
+      "prompt_specific": "Compact drowned bell-tower ruin: circular masonry bell well with open stair descent, broken lower chapel, wet stone causeways and flooded relics around one central platform.",
+      "source": {
+        "path": "C:/Users/anton/.codex/generated_images/01a07e08-8050-7000-b432-049da44ba201/exec-c9b468d4-f34c-4fb7-b2e9-57e6357c2d81.png",
+        "format": "png",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "production": {
+        "path": "public/assets/maps/locations/skazanie/tides-drowned-bell-v1.webp",
+        "format": "webp",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "qa": {
+        "status": "pass",
+        "checks": {
+          "top_down": true,
+          "compact_playable": true,
+          "roofless_cutaway": true,
+          "open_thresholds": true,
+          "no_text_grid_people_tokens": true
+        },
+        "notes": "Круглый колокольный колодец, открытая лестница, центральный двор и водные проломы образуют ясный overview; нет створок, людей и сетки."
+      }
+    },
+    {
+      "id": "tides-archive-rift",
+      "world": "league-nine-tides",
+      "name": "Архив Трещин",
+      "summary": "Полузатопленный архив картографов и инженеров.",
+      "history": "Сюда свозили документы после катастрофы, пока Совет не приказал замуровать нижние залы.",
+      "prompt_specific": "Compact half-flooded cartographers archive split by a deep structural rift: two roofless halls, a timber bridge, blank map tables, wet engineering room and open courtyard landing.",
+      "source": {
+        "path": "C:/Users/anton/.codex/generated_images/01a07e08-8050-7000-b432-049da44ba201/exec-02833952-0528-4f40-af8a-3ebdb687f521.png",
+        "format": "png",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "production": {
+        "path": "public/assets/maps/locations/skazanie/tides-archive-rift-v1.webp",
+        "format": "webp",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "qa": {
+        "status": "pass",
+        "checks": {
+          "top_down": true,
+          "compact_playable": true,
+          "roofless_cutaway": true,
+          "open_thresholds": true,
+          "no_text_grid_people_tokens": true
+        },
+        "notes": "Западный и восточный архивы соединены широким мостом над водой; столы и свитки абстрактны, текста в изображении нет."
+      }
+    },
+    {
+      "id": "tides-southern-firth",
+      "world": "league-nine-tides",
+      "name": "Южный Фьорд",
+      "summary": "Глубокая гавань, где речная вода встречается с морской.",
+      "history": "Сюда переселились корабелы Грунвика; в доках до сих пор используют его меру досок.",
+      "prompt_specific": "Compact shipwright harbor yard: roofless workshop, timber slipway, stone quay, sail-and-rope yard, dry dock and two open piers over deep teal water.",
+      "source": {
+        "path": "C:/Users/anton/.codex/generated_images/01a07e08-8050-7000-b432-049da44ba201/exec-25170c8a-4482-4deb-b2b8-ed61446c0f9b.png",
+        "format": "png",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "production": {
+        "path": "public/assets/maps/locations/skazanie/tides-southern-firth-v1.webp",
+        "format": "webp",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "qa": {
+        "status": "pass",
+        "checks": {
+          "top_down": true,
+          "compact_playable": true,
+          "roofless_cutaway": true,
+          "open_thresholds": true,
+          "no_text_grid_people_tokens": true
+        },
+        "notes": "Корабельная мастерская, сухой док, причал и вода разделены читаемыми рабочими зонами; без людей, текста и воротных полотен."
+      }
+    },
+    {
+      "id": "tides-whisper-forest",
+      "world": "league-nine-tides",
+      "name": "Шепчущий Лес",
+      "summary": "Тёмный лес на сухом краю дельты, где деревья растут из соляной корки.",
+      "history": "Лес появился на насыпи, оставленной отступившей водой, и скрывает камни старой береговой дороги.",
+      "prompt_specific": "Compact dark forest edge: an S-shaped old coastal road, roofless roadside shrine, salt-crust clearing, twisted trees, boulders and reed marsh at the delta edge.",
+      "source": {
+        "path": "C:/Users/anton/.codex/generated_images/01a07e08-8050-7000-b432-049da44ba201/exec-a4b32696-e294-4d76-8646-a9954a2f9617.png",
+        "format": "png",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "production": {
+        "path": "public/assets/maps/locations/skazanie/tides-whisper-forest-v1.webp",
+        "format": "webp",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "qa": {
+        "status": "pass",
+        "checks": {
+          "top_down": true,
+          "compact_playable": true,
+          "roofless_cutaway": true,
+          "open_thresholds": true,
+          "no_text_grid_people_tokens": true
+        },
+        "notes": "Старая дорога и святилище видны среди корней, соли и камней; водный край не скрывает форму, людей и сетки нет."
+      }
+    },
+    {
+      "id": "star-nur-kesh",
+      "world": "unfading-star-belt",
+      "name": "Нур-Кеш",
+      "summary": "Оазисная столица с рынком, фонтанами и закрытой школой астрономов.",
+      "history": "Построен на новом русле реки после того, как старые города Пояса начали пересыхать.",
+      "prompt_specific": "Compact oasis-capital district: fountain court, roofless bazaar, garden courts, shallow channels and a roofless circular astronomers school with brass instruments.",
+      "source": {
+        "path": "C:/Users/anton/.codex/generated_images/01a07e08-8050-7000-b432-049da44ba201/exec-789ae6e4-6f71-4efb-96da-0c1efdfd6681.png",
+        "format": "png",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "production": {
+        "path": "public/assets/maps/locations/skazanie/star-nur-kesh-v1.webp",
+        "format": "webp",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "qa": {
+        "status": "pass",
+        "checks": {
+          "top_down": true,
+          "compact_playable": true,
+          "roofless_cutaway": true,
+          "open_thresholds": true,
+          "no_text_grid_people_tokens": true
+        },
+        "notes": "Фонтан, сады, рынок, каналы и круглая школа образуют плотный overview-участок; инструменты без знаков, людей и текста нет."
+      }
+    },
+    {
+      "id": "star-ark-tash",
+      "world": "unfading-star-belt",
+      "name": "Арк-Таш",
+      "summary": "Красная крепость на стыке пустыни и караванной дороги.",
+      "history": "Когда-то охраняла западную границу речного царства, теперь взимает плату за каждый бурдюк.",
+      "prompt_specific": "Compact red-desert fortress gate district: open arched gate court, roofless barracks, cistern room, inner wall walk and caravan inspection yard among red rock.",
+      "source": {
+        "path": "C:/Users/anton/.codex/generated_images/01a07e08-8050-7000-b432-049da44ba201/exec-8010bece-fd53-4413-ae1d-3bbeb9ef68a8.png",
+        "format": "png",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "production": {
+        "path": "public/assets/maps/locations/skazanie/star-ark-tash-v1.webp",
+        "format": "webp",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "qa": {
+        "status": "pass",
+        "checks": {
+          "top_down": true,
+          "compact_playable": true,
+          "roofless_cutaway": true,
+          "open_thresholds": true,
+          "no_text_grid_people_tokens": true
+        },
+        "notes": "Краснокаменная крепость с открытыми воротами, двором, казармой, цистерной и караванным проездом; без толпы, текста и сетки."
+      }
+    },
+    {
+      "id": "star-mirhad",
+      "world": "unfading-star-belt",
+      "name": "Мирхад",
+      "summary": "Город семи ворот, окружённый садами и спорящими каналами.",
+      "history": "Потерял старый источник после смещения реки, но сохранил лучшие мастерские водяных часов.",
+      "prompt_specific": "Compact Mirhad canal district: roofless water-clock workshop, fountain garden court, artisan rooms, stone bridges and competing turquoise channels.",
+      "source": {
+        "path": "C:/Users/anton/.codex/generated_images/01a07e08-8050-7000-b432-049da44ba201/exec-531733b2-4990-4ae0-9e12-172af4a1626d.png",
+        "format": "png",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "production": {
+        "path": "public/assets/maps/locations/skazanie/star-mirhad-v1.webp",
+        "format": "webp",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "qa": {
+        "status": "pass",
+        "checks": {
+          "top_down": true,
+          "compact_playable": true,
+          "roofless_cutaway": true,
+          "open_thresholds": true,
+          "no_text_grid_people_tokens": true
+        },
+        "notes": "Мастерская часов, сады, мосты и каналы образуют связный городской фрагмент; водяные механизмы не несут текста."
+      }
+    },
+    {
+      "id": "star-meridian-rift",
+      "world": "unfading-star-belt",
+      "name": "Разлом Меридиана",
+      "summary": "Разрушенная обсерватория с гигантской каменной дугой.",
+      "history": "Основана Арслан-беком и закрыта после дворцового переворота пять с половиной веков назад.",
+      "prompt_specific": "Compact mountain observatory ruin around a giant broken meridian arch: circular star courtyard, roofless instrument room, cliff gallery and fractured granite ledges.",
+      "source": {
+        "path": "C:/Users/anton/.codex/generated_images/01a07e08-8050-7000-b432-049da44ba201/exec-ceeacffd-04a5-4cb3-a771-a621e1a42ace.png",
+        "format": "png",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "production": {
+        "path": "public/assets/maps/locations/skazanie/star-meridian-rift-v1.webp",
+        "format": "webp",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "qa": {
+        "status": "pass",
+        "checks": {
+          "top_down": true,
+          "compact_playable": true,
+          "roofless_cutaway": true,
+          "open_thresholds": true,
+          "no_text_grid_people_tokens": true
+        },
+        "notes": "Центральная каменная дуга, круглый двор, обсерватория и уступы читаются сверху; декоративные линии не являются сеткой или надписями."
+      }
+    },
+    {
+      "id": "star-forty-wells",
+      "world": "unfading-star-belt",
+      "name": "Караван-сарай Сорока Колодцев",
+      "summary": "Старый двор с колодцами, большинство которых давно засыпано.",
+      "history": "Был узлом западного пути до того, как река и караванные налоги изменили направление торговли.",
+      "prompt_specific": "Compact fortified caravanserai courtyard with a deliberate handful of distinct old wells, roofless guest rooms, stable yard, bath and open gate.",
+      "source": {
+        "path": "C:/Users/anton/.codex/generated_images/01a07e08-8050-7000-b432-049da44ba201/exec-a20e315d-a177-4014-8caf-0a23659e02c4.png",
+        "format": "png",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "production": {
+        "path": "public/assets/maps/locations/skazanie/star-forty-wells-v1.webp",
+        "format": "webp",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "qa": {
+        "status": "pass",
+        "checks": {
+          "top_down": true,
+          "compact_playable": true,
+          "roofless_cutaway": true,
+          "open_thresholds": true,
+          "no_text_grid_people_tokens": true
+        },
+        "notes": "Один двор, комнаты, стойла, купальня и несколько крупных колодцев образуют небольшой участок; без повторяющегося поля, людей и текста."
+      }
+    },
+    {
+      "id": "star-mirror-lake",
+      "world": "unfading-star-belt",
+      "name": "Озеро Зеркальных Кочевий",
+      "summary": "Мелкое солёное озеро, отражающее чужие созвездия.",
+      "history": "Возникло в чаше старого русла; кочевники считают его местом встречи с памятью земли.",
+      "prompt_specific": "Compact crescent nomad shore camp: reflective salt lake edge, roofless felt shelters, hearth court, low stone rings, carts and a short observation jetty.",
+      "source": {
+        "path": "C:/Users/anton/.codex/generated_images/01a07e08-8050-7000-b432-049da44ba201/exec-368e8621-fc6e-4d1e-b617-9ee55097f086.png",
+        "format": "png",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "production": {
+        "path": "public/assets/maps/locations/skazanie/star-mirror-lake-v1.webp",
+        "format": "webp",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "qa": {
+        "status": "pass",
+        "checks": {
+          "top_down": true,
+          "compact_playable": true,
+          "roofless_cutaway": true,
+          "open_thresholds": true,
+          "no_text_grid_people_tokens": true
+        },
+        "notes": "Стан и серебряная кромка озера занимают один компактный берег; костёр, настилы и шатры читаются без людей, текста и сетки."
+      }
+    },
+    {
+      "id": "star-nameless-mausoleum",
+      "world": "unfading-star-belt",
+      "name": "Мавзолей Безымянного Счётчика",
+      "summary": "Погребальная башня над старым архивом астрономов.",
+      "history": "Здесь спрятали последнюю часть каталога и стёрли имя учёного, который её сохранил.",
+      "prompt_specific": "Compact funerary tower compound: roofless octagonal burial tower with open stairwell, courtyard, side crypt rooms and a low underground archive antechamber.",
+      "source": {
+        "path": "C:/Users/anton/.codex/generated_images/01a07e08-8050-7000-b432-049da44ba201/exec-00627856-8e69-44ef-9836-82bb7f0bd2c7.png",
+        "format": "png",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "production": {
+        "path": "public/assets/maps/locations/skazanie/star-nameless-mausoleum-v1.webp",
+        "format": "webp",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "qa": {
+        "status": "pass",
+        "checks": {
+          "top_down": true,
+          "compact_playable": true,
+          "roofless_cutaway": true,
+          "open_thresholds": true,
+          "no_text_grid_people_tokens": true
+        },
+        "notes": "Башня, склепы и архив образуют ясный небольшой двор; каменные фигуры и плиты без читаемых надписей, людей и сетки нет."
+      }
+    },
+    {
+      "id": "star-dry-wind-gate",
+      "world": "unfading-star-belt",
+      "name": "Врата Сухого Ветра",
+      "summary": "Горная крепость, контролирующая восточный перевал.",
+      "history": "Построена на древней тропе, по которой первые астрономы пришли к разлому.",
+      "prompt_specific": "Compact snowy mountain pass fortress: roofless gatehouse, empty arched pass, barracks, wall walk and switchback ledges over a deep chasm.",
+      "source": {
+        "path": "C:/Users/anton/.codex/generated_images/01a07e08-8050-7000-b432-049da44ba201/exec-00a2c7e0-905f-440c-9c47-2b50cc41d9d2.png",
+        "format": "png",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "production": {
+        "path": "public/assets/maps/locations/skazanie/star-dry-wind-gate-v1.webp",
+        "format": "webp",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "qa": {
+        "status": "pass",
+        "checks": {
+          "top_down": true,
+          "compact_playable": true,
+          "roofless_cutaway": true,
+          "open_thresholds": true,
+          "no_text_grid_people_tokens": true
+        },
+        "notes": "Снежная крепость с открытым проходом, казармой и уступами; горный обрыв за краем, без людей, текста и воротных створок."
+      }
+    },
+    {
+      "id": "star-red-caravanserai",
+      "world": "unfading-star-belt",
+      "name": "Красный Двор",
+      "summary": "Караванная стоянка под красными скалами.",
+      "history": "Появилась вокруг колодца, который проложили ученики обсерватории.",
+      "prompt_specific": "Compact red-cliff caravan stop: horseshoe courtyard, roofless inn, repair and storage rooms, stone well, carts and empty arch thresholds.",
+      "source": {
+        "path": "C:/Users/anton/.codex/generated_images/01a07e08-8050-7000-b432-049da44ba201/exec-5b5c8ebb-92a0-4597-953d-f950e4f4d5bd.png",
+        "format": "png",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "production": {
+        "path": "public/assets/maps/locations/skazanie/star-red-caravanserai-v1.webp",
+        "format": "webp",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "qa": {
+        "status": "pass",
+        "checks": {
+          "top_down": true,
+          "compact_playable": true,
+          "roofless_cutaway": true,
+          "open_thresholds": true,
+          "no_text_grid_people_tokens": true
+        },
+        "notes": "Красные скалы обрамляют караванный двор с колодцем, навесами и комнатами; животных, людей, текста и сетки нет."
+      }
+    },
+    {
+      "id": "star-sky-steppe",
+      "world": "unfading-star-belt",
+      "name": "Небесная Степь",
+      "summary": "Сезонный стан кочевников у северного рукава реки.",
+      "history": "Союз Красных Кочевий собирается здесь, когда птицы возвращаются с озёр.",
+      "prompt_specific": "Compact seasonal nomad riverbank camp: roofless felt rings, central fire court, lookout platform, dry paths and a north river footbridge.",
+      "source": {
+        "path": "C:/Users/anton/.codex/generated_images/01a07e08-8050-7000-b432-049da44ba201/exec-198cb034-52f4-470f-a1d5-167d048fd813.png",
+        "format": "png",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "production": {
+        "path": "public/assets/maps/locations/skazanie/star-sky-steppe-v1.webp",
+        "format": "webp",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "qa": {
+        "status": "pass",
+        "checks": {
+          "top_down": true,
+          "compact_playable": true,
+          "roofless_cutaway": true,
+          "open_thresholds": true,
+          "no_text_grid_people_tokens": true
+        },
+        "notes": "Овальный стан, кострище, стоянки и речной мост собраны в один компактный участок; нет людей, животных, текста и сетки."
+      }
+    },
+    {
+      "id": "star-old-river-ford",
+      "world": "unfading-star-belt",
+      "name": "Старый Речной Брод",
+      "summary": "Каменный мост над руслом, которое высохло поколение назад.",
+      "history": "На его арках сохранились отметки разливов и первые условные знаки каталога.",
+      "prompt_specific": "Compact dry river ford: broad old stone bridge, shallow remaining channel, roofless tollhouse ruin, alternate ford and winding banks.",
+      "source": {
+        "path": "C:/Users/anton/.codex/generated_images/01a07e08-8050-7000-b432-049da44ba201/exec-c1165a56-4e77-4878-8b2b-746ce4d9e40d.png",
+        "format": "png",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "production": {
+        "path": "public/assets/maps/locations/skazanie/star-old-river-ford-v1.webp",
+        "format": "webp",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "qa": {
+        "status": "pass",
+        "checks": {
+          "top_down": true,
+          "compact_playable": true,
+          "roofless_cutaway": true,
+          "open_thresholds": true,
+          "no_text_grid_people_tokens": true
+        },
+        "notes": "Мост, брод, застава и мелкие водные рукава образуют читаемый overview; отметки на арках не превращены в текст, людей нет."
+      }
+    },
+    {
+      "id": "star-salt-road",
+      "world": "unfading-star-belt",
+      "name": "Соляной Провал",
+      "summary": "Провал в бывшую соляную шахту под караванной дорогой.",
+      "history": "Шахта обрушилась после первых странных землетрясений, совпавших с появлением синей звезды.",
+      "prompt_specific": "Compact collapsed salt-mine entrance: roofless survey room, timber-supported galleries, open stair into a salt shaft, crystal outcrops and safe road ledges.",
+      "source": {
+        "path": "C:/Users/anton/.codex/generated_images/01a07e08-8050-7000-b432-049da44ba201/exec-fc1caba6-757b-4a16-84ce-f3cd880902bb.png",
+        "format": "png",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "production": {
+        "path": "public/assets/maps/locations/skazanie/star-salt-road-v1.webp",
+        "format": "webp",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "qa": {
+        "status": "pass",
+        "checks": {
+          "top_down": true,
+          "compact_playable": true,
+          "roofless_cutaway": true,
+          "open_thresholds": true,
+          "no_text_grid_people_tokens": true
+        },
+        "notes": "Шахтная дорога, кристаллы, открытый провал и небольшие рабочие камеры читаются без огромного подземелья, людей, текста и сетки."
+      }
+    },
+    {
+      "id": "star-broken-star-observatory",
+      "world": "unfading-star-belt",
+      "name": "Башня Сломанной Звезды",
+      "summary": "Одинокая башня наблюдателей над обрывом.",
+      "history": "Здесь прятался последний ученик Арслан-бека, пока не исчез вместе с ключом от главной дуги.",
+      "prompt_specific": "Compact lone mountain observatory: round roofless tower chamber, broken dome ring, instrument room, keeper room and cliffside gallery with open stair.",
+      "source": {
+        "path": "C:/Users/anton/.codex/generated_images/01a07e08-8050-7000-b432-049da44ba201/exec-8673616c-0ebd-4af1-a3c9-cb9abf551862.png",
+        "format": "png",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "production": {
+        "path": "public/assets/maps/locations/skazanie/star-broken-star-observatory-v1.webp",
+        "format": "webp",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "qa": {
+        "status": "pass",
+        "checks": {
+          "top_down": true,
+          "compact_playable": true,
+          "roofless_cutaway": true,
+          "open_thresholds": true,
+          "no_text_grid_people_tokens": true
+        },
+        "notes": "Круглая башня и клиффовая галерея образуют небольшой горный overview; инструменты без символов, людей, текста и сетки нет."
+      }
+    },
+    {
+      "id": "star-black-well",
+      "world": "unfading-star-belt",
+      "name": "Чёрный Колодец",
+      "summary": "Глубокий колодец с тёмной водой у восточной дороги.",
+      "history": "Недавно вода стала подниматься сама, хотя соседние каналы пересыхают.",
+      "prompt_specific": "Compact dark-water well compound: central black stone well, roofless pump house, canal-control room, roadside shrine, bridge and connected dry paths.",
+      "source": {
+        "path": "C:/Users/anton/.codex/generated_images/01a07e08-8050-7000-b432-049da44ba201/exec-d6a41d3e-9311-4342-a357-3e58464b6610.png",
+        "format": "png",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "production": {
+        "path": "public/assets/maps/locations/skazanie/star-black-well-v1.webp",
+        "format": "webp",
+        "dimensions": [
+          1536,
+          1024
+        ]
+      },
+      "qa": {
+        "status": "pass",
+        "checks": {
+          "top_down": true,
+          "compact_playable": true,
+          "roofless_cutaway": true,
+          "open_thresholds": true,
+          "no_text_grid_people_tokens": true
+        },
+        "notes": "Центральный колодец, насосная, канал и святилище собраны в один небольшой двор; пустые проёмы, без людей и текста."
+      }
+    }
+  ]
+}

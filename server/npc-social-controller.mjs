@@ -2,15 +2,15 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import { ensureNpcSocialState, npcProfileAtWorldTime, relationshipTier } from './npc-social.mjs'
+import { ensureNpcSocialState, npcProfileAtWorldTime, relationshipTier, npcBehaviorPolicy } from './npc-social.mjs'
 import { campaignConceptForAgent, sceneContextForAgent } from './agent-context.mjs'
 import { promptForModel } from './model-style-profiles.mjs'
 import { buildDataOnlyContext } from './security.mjs'
 import { tavernTableMood } from './tavern-life.mjs'
 import { retrieveWorldMemory } from './world-memory.mjs'
 
-export const NPC_SOCIAL_PROMPT_VERSION = 'npc_controller/social-v4'
-const prompt = readFileSync(fileURLToPath(new URL('../prompts/npc_controller/social_v4.txt', import.meta.url)), 'utf8')
+export const NPC_SOCIAL_PROMPT_VERSION = 'npc_controller/social-v5'
+const prompt = readFileSync(fileURLToPath(new URL('../prompts/npc_controller/social_v5.txt', import.meta.url)), 'utf8')
 const STANCES = new Set(['friendly', 'neutral', 'guarded', 'hostile'])
 const DIRECTIONS = new Set(['npc_to_party', 'party_to_npc'])
 export const NPC_SOCIAL_MEMORY_LIMIT = 8
@@ -83,6 +83,24 @@ function conversationVisibleTo(entry, playerId) {
     || (entry.visibility === 'specific_player' && String(entry.hero_id) === String(playerId))
 }
 
+function memoryTerms(value) {
+  return new Set(clean(value, 1_000).toLocaleLowerCase('ru').match(/[\p{L}\p{N}]{4,}/gu) ?? [])
+}
+
+function relevantNpcMemory(social, profile, playerId, message) {
+  const query = memoryTerms(message)
+  const score = (text) => [...memoryTerms(text)].filter((term) => query.has(term)).length
+  const conversations = social.conversations
+    .filter((entry) => entry.npc_id === profile.id && conversationVisibleTo(entry, playerId))
+    .map((entry, index) => ({ entry, relevance: score(`${entry.player_message} ${entry.npc_reply}`), recency: index }))
+  const dossiers = (profile.dossier ?? [])
+    .filter((entry) => entry.visibility === 'party' || (entry.visibility === 'specific_player' && String(entry.hero_id) === String(playerId)))
+    .map((entry, index) => ({ entry, relevance: score(entry.summary), recency: index, dossier: true }))
+  return [...conversations, ...dossiers].sort((a, b) => b.relevance - a.relevance || b.recency - a.recency).slice(0, 8).map(({ entry, dossier }) => dossier
+    ? { kind: 'dossier', id: entry.id, hero_id: entry.hero_id, summary: entry.summary, stance: entry.stance }
+    : { kind: 'conversation', id: entry.id, hero_id: entry.hero_id, player_message: entry.player_message, npc_reply: entry.npc_reply, stance: entry.stance })
+}
+
 function briefFor(state, profile, playerId, message, checkOutcome = null) {
   const social = ensureNpcSocialState(state.social, state)
   return {
@@ -101,6 +119,7 @@ function briefFor(state, profile, playerId, message, checkOutcome = null) {
       id: profile.id, name: profile.name, role: profile.role,
       public_summary: profile.public_summary, voice: profile.voice,
       speech_profile: profile.speech_profile,
+      behavior_policy: npcBehaviorPolicy(profile, social.relationships[profile.id]?.[playerId] ?? 0),
     },
     relationship: {
       score: social.relationships[profile.id]?.[playerId] ?? 0,
@@ -128,6 +147,9 @@ function briefFor(state, profile, playerId, message, checkOutcome = null) {
         && conversationVisibleTo(entry, playerId))
       .slice(-4)
       .map((entry) => ({ hero: heroName(state, entry.hero_id), player_message: entry.player_message, npc_reply: entry.npc_reply, stance: entry.stance })),
+    // Релевантный архив дополняет короткое окно последних реплик; visibility
+    // проверяется до ранжирования, поэтому чужая личная беседа не просачивается.
+    relevant_memory: relevantNpcMemory(social, profile, playerId, message),
     speakable_facts: npcFacts(state, profile, message),
     speakable_claims: npcClaims(state, profile, message),
     player_message: clean(message, 1_000),
@@ -150,10 +172,18 @@ function briefFor(state, profile, playerId, message, checkOutcome = null) {
  *
  * @returns {{ reply: string, claimIds: string[] }}
  */
-function fallbackDisclosure(profile, facts, claims, checkOutcome = null) {
+function fallbackDisclosure(profile, facts, claims, checkOutcome = null, memory = [], message = '') {
   // Исход проверки — механика, а не разговор: раскрывать по нему нечего.
   if (checkOutcome?.skill === 'insight') return { reply: checkOutcome.success ? `${profile.name}: the hero notices a meaningful reaction.` : `${profile.name}: the hero cannot read the NPC's motives.`, claimIds: [] }
   if (checkOutcome) return { reply: checkOutcome.success ? `${profile.name} accepts the hero's approach.` : `${profile.name} is not convinced.`, claimIds: [] }
+  const request = clean(message, 1_000).toLocaleLowerCase('ru')
+  if (/(?:пообещ|обещани|помоги|проведи|передай|открой)/iu.test(request)) {
+    return { reply: 'Нового обещания пока нет; уточним конкретную помощь.', claimIds: [] }
+  }
+  if (/(?:напомни|вспомни|сигнал|договор|обещал|что мы)/iu.test(request)) {
+    const remembered = memory.find((entry) => entry.kind === 'conversation' && entry.npc_reply)
+    if (remembered) return { reply: `${profile.name} напоминает: «${clean(remembered.npc_reply, 500)}»`, claimIds: [] }
+  }
   if (facts.length) return { reply: `${profile.name} отвечает: «${facts[0].summary}»`, claimIds: [] }
   const rumor = claims.find((claim) => claim.kind === 'rumor')
   if (rumor) return { reply: `${profile.name} понижает голос: «${rumor.summary}»`, claimIds: [rumor.id] }
@@ -162,15 +192,24 @@ function fallbackDisclosure(profile, facts, claims, checkOutcome = null) {
   return { reply: `${profile.name} выслушивает героя, но не сообщает ничего нового.`, claimIds: [] }
 }
 
+function promiseWithinBoundary(promise, profile) {
+  const text = clean(promise?.text, 500).toLocaleLowerCase('ru')
+  const policy = npcBehaviorPolicy(profile).boundaries
+  if (policy.protects_people && /убить|убью|напад|пытк|погуб|выдам\s+людей/iu.test(text)) return false
+  if (policy.keeps_secrets && /раскро|выдам|расскажу|сообщу\s+тайн|открою\s+секрет/iu.test(text)) return false
+  return true
+}
+
 function normalizedResult(raw, profile, state, playerId, message, turnId, checkOutcome = null) {
   const facts = npcFacts(state, profile, message)
+  const memory = relevantNpcMemory(ensureNpcSocialState(state.social, state), profile, playerId, message)
   const allowedFactIds = new Set(npcSpeakableFactRecords(state, profile).map((fact) => String(fact.id)))
   const disclosedFactIds = [...new Set((Array.isArray(raw?.disclosed_fact_ids) ? raw.disclosed_fact_ids : [])
     .map(String).filter((factId) => allowedFactIds.has(factId)))].slice(0, 20)
   const claims = npcClaims(state, profile, message)
   const allowedClaimIds = new Set(npcSpeakableClaimRecords(state, profile).map((claim) => String(claim.id)))
   const modelReply = clean(raw?.reply, 1_000)
-  const fallback = fallbackDisclosure(profile, facts, claims, checkOutcome)
+  const fallback = fallbackDisclosure(profile, facts, claims, checkOutcome, memory, message)
   // Раскрытие фолбэка добавляется только тогда, когда прозвучала его реплика:
   // иначе провенанс обещал бы то, чего NPC не говорил.
   const disclosedClaimIds = [...new Set([
@@ -183,7 +222,7 @@ function normalizedResult(raw, profile, state, playerId, message, turnId, checkO
   let promise = null
   if (raw?.promise && typeof raw.promise === 'object' && !Array.isArray(raw.promise) && DIRECTIONS.has(raw.promise.direction)) {
     const promiseText = clean(raw.promise.text, 500)
-    if (promiseText) promise = {
+    if (promiseText && promiseWithinBoundary({ ...raw.promise, text: promiseText }, profile)) promise = {
       id: stableId('promise', turnId, profile.id, playerId, promiseText),
       direction: raw.promise.direction,
       text: promiseText,
@@ -248,7 +287,7 @@ export class NpcSocialController {
         ],
         temperature: 0.7,
         maxTokens: 700,
-      })
+      }, { timeoutMs: 20_000 })
       return {
         ...normalizedResult(result, profile, state, String(playerId), message, turnId, checkOutcome),
         provider: this.llmClient.constructor?.name ?? 'llm',

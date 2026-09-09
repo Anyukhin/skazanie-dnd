@@ -23,6 +23,9 @@
 
 ## Этап 1. Interfaces, adapters и feature flags — подключено, частично
 
+> Исторический этап: переключение legacy/shadow/enforce уже удалено. Runtime
+> работает только в `enforce`, прежний endpoint возвращает `410 ENGINE_MODE_RETIRED`.
+
 **Что было.** `server/index.mjs` напрямую вызывал RouterAI и не имел формальных контрактов или режимов двигателя.
 
 **Что изменено.** Добавлены contracts, `RouterAIClient`, версии role prompts и resolver `legacy/shadow/enforce`. `server/index.mjs` создаёт эти компоненты; `/api/narrate` разрешает режим, а администратор может менять campaign mode через `PATCH /api/campaigns/:id/engine-mode`.

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
@@ -9,7 +10,7 @@ const boardSource = await readFile(new URL('../src/TacticalBoard.tsx', import.me
 const sessionSource = await readFile(new URL('../src/useGameSession.ts', import.meta.url), 'utf8')
 const mapClientSource = await readFile(new URL('../src/tactical-map-client.ts', import.meta.url), 'utf8')
 const typesSource = await readFile(new URL('../src/types.ts', import.meta.url), 'utf8')
-const narratorPrompt = await readFile(new URL('../prompts/narrator/v6.txt', import.meta.url), 'utf8')
+const narratorPrompt = await readFile(new URL('../prompts/narrator/v9.txt', import.meta.url), 'utf8')
 
 test('клиент отправляет типизированную команду объекта сцены через общий путь тактических команд', () => {
   assert.match(sessionSource, /command_type: 'OperateSceneObject'; actor_id: string; prop_id: string; intent: SceneObjectIntent/)
@@ -59,15 +60,21 @@ test('клик выбирает интерактивный prop, а его кн�
   // после отказа.
   // Взлом добавляет к общим условиям своё: без владения воровскими
   // инструментами движок откажет, и кнопка обязана погаснуть до клика.
-  assert.match(appSource, /disabled=\{!canAct \|\| tacticalBusy \|\| unavailable \|\| \(intent === 'pray' && \(blessingHeld \|\| !blessingAvailable \|\| combatActive\)\) \|\| \(intent === 'lockpick' && !lockpickAllowed\)\}/u)
+  assert.match(appSource, /const disabled = !canAct \|\| tacticalBusy \|\| unavailable[\s\S]*intent === 'pray'[\s\S]*intent === 'lockpick'/u)
+  assert.match(appSource, /disabled=\{disabled\}/u)
   assert.match(appSource, /sceneObjectsAtHand\.find/u)
   assert.match(appSource, /boardOverlay\.push\(\{ \.\.\.cell, kind: 'command-range' \}\)/u)
   assert.match(boardSource, /hotspot\?: React\.ReactNode/u)
   assert.match(boardSource, /className="board-hotspots"/u)
-  assert.match(appSource, /hotspot: sceneObject \? <span/u)
+  assert.match(appSource, /hotspot: \(doorHotspot \|\| sceneObject\) \? <>\s*\{doorHotspot\}\s*\{sceneObject \? <span/u)
+  assert.match(appSource, /className="scene-object-menu"/u)
+  assert.match(appSource, /onOperateSceneObject\(selected, sceneObject\.id, intent\)/u)
+  assert.doesNotMatch(appSource, /className="scene-object-control/u, 'нижние дублирующие кнопки объекта удалены')
   assert.match(appSource, /tabIndex=\{0\}/u)
   assert.doesNotMatch(appSource, /tabIndex=\{cellIsInteractive \? -1 : 0\}/u)
   assert.doesNotMatch(appSource, /style=\{\{\s*position: 'absolute',\s*inset: '12%'/u)
+  assert.match(boardSource, /scene-object-hotspot, \.scene-object-menu/u)
+  assert.match(readFileSync(new URL('../src/tactical-board.css', import.meta.url), 'utf8'), /\.scene-object-menu\s*\{[\s\S]*counter-scale/u)
 })
 
 test('адрес иллюстрации локации строится и у игрока: id берётся из карты мира, когда сцена его не несёт', () => {

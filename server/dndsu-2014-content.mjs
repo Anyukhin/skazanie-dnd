@@ -72,7 +72,13 @@ function validateDamage(damage, label) {
   array(damage,label)
   for (const d of damage) {
     requireThat(DAMAGE_TYPES.has(d.type), `${label}: unknown damage type`)
-    requireThat(diceAverage(d.expression) === d.average, `${label}: incorrect average for ${d.expression}`)
+    if (d.expression != null) {
+      requireThat(d.amount == null, `${label}: damage cannot be both fixed and rolled`)
+      requireThat(diceAverage(d.expression) === d.average, `${label}: incorrect average for ${d.expression}`)
+    } else {
+      integer(d.amount,0,10000,`${label}: fixed damage`)
+      requireThat(d.amount === d.average, `${label}: incorrect fixed damage average`)
+    }
   }
 }
 function validateMonster(m) {
@@ -97,7 +103,13 @@ function validateMonster(m) {
   requireThat(/^(?:0|1\/8|1\/4|1\/2|[1-9]|[12]\d|30)$/u.test(m.challenge_rating),'Invalid CR')
   integer(m.xp,0,200000,'XP'); integer(m.proficiency_bonus,2,9,'proficiency')
   for (const k of ['traits','actions','bonus_actions','reactions','legendary_actions','lair_actions','damage_resistances','damage_immunities','damage_vulnerabilities','condition_immunities','habitats','field_notes']) array(m[k],k)
-  for (const k of ['damage_immunities','damage_vulnerabilities']) m[k].forEach(t => requireThat(DAMAGE_TYPES.has(t),'Unknown damage type'))
+  for (const k of ['damage_resistances','damage_immunities','damage_vulnerabilities']) m[k].forEach(entry => {
+    if (typeof entry === 'string') requireThat(DAMAGE_TYPES.has(entry),'Unknown damage type')
+    else {
+      object(entry,`${m.id}.${k}`); strings(entry.types,'conditional damage types'); string(entry.condition,'damage condition')
+      requireThat(entry.types.length > 0 && entry.types.every(type => DAMAGE_TYPES.has(type)),'Unknown conditional damage type')
+    }
+  })
   const actionIds = new Set(m.actions.map(a => a.id))
   requireThat(actionIds.size === m.actions.length,'Duplicate local action ID')
   for (const a of m.actions) {
@@ -123,8 +135,17 @@ function validateMonster(m) {
   if (m.spellcasting) {
     const s=m.spellcasting
     requireThat(ABILITIES.includes(s.ability),'Spellcasting ability missing'); integer(s.save_dc,1,40,'spell save DC')
-    integer(s.caster_level,1,20,'caster level'); integer(s.attack_modifier,-10,30,'spell attack')
+    if (s.casting_mode !== 'innate' || s.caster_level != null) integer(s.caster_level,1,20,'caster level')
+    if (s.casting_mode !== 'innate' || s.attack_modifier != null) integer(s.attack_modifier,-10,30,'spell attack')
     array(s.spell_slots,'spell slots')
+    if (s.innate_spells != null) {
+      array(s.innate_spells,'innate spell groups')
+      for (const group of s.innate_spells) {
+        if (group.uses !== 'at-will') integer(group.uses,1,100,'innate spell uses')
+        array(group.spells,'innate spells')
+        group.spells.forEach(spell => { string(spell.key,'innate spell key'); string(spell.name_ru,'innate spell name') })
+      }
+    }
     const levels=new Set()
     for (const level of s.spell_slots) {
       integer(level.level,0,9,'spell level'); requireThat(!levels.has(level.level),'Duplicate slot level'); levels.add(level.level)

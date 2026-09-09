@@ -108,9 +108,17 @@ function secondArcBrief({ includeTransition = true } = {}) {
 test('few-shot корпус содержит 36 размеченных примеров и выбирает три из одного пресета', () => {
   assert.equal(NARRATOR_FEW_SHOT_CORPUS.length, 36)
   assert.equal(new Set(NARRATOR_FEW_SHOT_CORPUS.map((example) => example.id)).size, 36)
+  for (const example of NARRATOR_FEW_SHOT_CORPUS) {
+    assert.ok(example.player_message.trim(), example.id)
+    assert.ok(example.allowed_facts.length && example.allowed_facts.every(fact => fact.trim()), example.id)
+    assert.ok(example.response_goal.trim(), example.id)
+    assert.ok(example.text.trim(), example.id)
+  }
   for (const style of ['neutral', 'formal', 'ironic']) {
     assert.equal(NARRATOR_FEW_SHOT_CORPUS.filter((example) => example.style === style).length, 12)
-    const selected = selectNarratorFewShotExamples(experienceBrief(), { style })
+    const brief = experienceBrief()
+    brief.visible_events = [{ event_type: 'DoorStateChanged', visibility: 'public', payload: { state: 'open' } }]
+    const selected = selectNarratorFewShotExamples(brief, { style })
     assert.equal(selected.length, 3)
     assert.ok(selected.every((example) => example.style === style))
     assert.ok(selected.filter((example) => example.moment === 'action').length >= 2)
@@ -274,6 +282,7 @@ test('post-hoc alignment не ослабляет fail-closed content boundaries'
 
 test('сенсорные якоря стабильны для локации и переиспользуются в fallback и prompt', async () => {
   const brief = experienceBrief()
+  brief.visible_events = [{ event_type: 'WorldFactRevealed', payload: {}, visibility: 'public' }]
   const first = sensoryAnchorsFor(brief)
   const second = sensoryAnchorsFor(structuredClone(brief))
   assert.deepEqual(second, first)

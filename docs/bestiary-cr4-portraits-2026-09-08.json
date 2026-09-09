@@ -1,0 +1,193 @@
+{
+  "schema_version": 1,
+  "ruleset_id": "dnd_5e_2014",
+  "book_code": "MM14",
+  "scope": "cr4_selected_10",
+  "generated_at": "2026-09-08",
+  "tool": "imagegen_builtin",
+  "style": "original hand-painted dark-fantasy portrait; square-safe composition; no text, logos or watermark",
+  "rights_note_ru": "Портреты сгенерированы отдельно от dnd.su; галерея источника не копировалась. Root должен зарегистрировать staged PNG в data/asset-rights.json после снятия production freeze.",
+  "assets": [
+    {
+      "slug": "banshee",
+      "name_ru": "Баньши",
+      "challenge_rating": "4",
+      "status": "generated_staged",
+      "generated_path": "C:\\Users\\anton\\.codex\\generated_images\\01a07e2c-1778-7e20-8bc0-fdfef9ddbf59\\exec-949cf415-025a-4a11-80de-d1bfd445e876.png",
+      "staging_path": "tmp/bestiary-expansion/cr4-portraits/banshee.png",
+      "target_path": "public/assets/enemies/dnd-2014/banshee.png",
+      "dimensions": {
+        "width": 512,
+        "height": 512
+      },
+      "sha256": "0ad225678d4ae1ed291f5882803642720cdae335a862e841a8d4f782fa142bdd",
+      "prompt": "Use case: stylized-concept\nAsset type: square tabletop battlemap enemy token portrait for a dark-fantasy game UI\nPrimary request: an original fantasy portrait of a D&D 5e 2014 banshee, one sorrowful spectral elven woman with long windblown hair and a translucent trailing gown\nScene/backdrop: a ruined chapel interior with a dim moonlit arch and no other figures\nStyle/medium: premium hand-painted dark fantasy game illustration, grounded materials, subtle ink-and-gouache texture, original design\nComposition/framing: centered subject, strong readable silhouette, circular-safe center crop, generous edge padding, square composition, no border\nLighting/mood: cold silver rim through deep blue-violet shadow, ominous and mournful\nColor palette: smoke white, desaturated blue, charcoal and pale lavender\nMaterials/textures: wispy hair, translucent cloth, worn stone\nConstraints: exactly one creature; no text, letters, numbers, logo, UI frame, watermark, blood, gore or extra limbs\nAvoid: copyrighted character likeness, comedy, anime, chibi, bright cartoon colors, branded iconography, busy scenery",
+      "production_path": "public/assets/enemies/dnd-2014/banshee.png",
+      "installed": true,
+      "production_sha256": "0ad225678d4ae1ed291f5882803642720cdae335a862e841a8d4f782fa142bdd"
+    },
+    {
+      "slug": "black-pudding",
+      "name_ru": "Чёрная слизь",
+      "challenge_rating": "4",
+      "status": "generated_staged",
+      "generated_path": "C:\\Users\\anton\\.codex\\generated_images\\01a07e2c-1778-7e20-8bc0-fdfef9ddbf59\\exec-1fa6db92-5ead-4a97-a07e-386436cbb98b.png",
+      "staging_path": "tmp/bestiary-expansion/cr4-portraits/black-pudding.png",
+      "target_path": "public/assets/enemies/dnd-2014/black-pudding.png",
+      "dimensions": {
+        "width": 512,
+        "height": 512
+      },
+      "sha256": "c4853db0b24af7fb1e878b87860d8c674dcf636c91b7419c9535a78354a787de",
+      "prompt": "Use case: stylized-concept\nAsset type: square tabletop battlemap enemy token portrait for a dark-fantasy game UI\nPrimary request: an original fantasy portrait of a D&D 5e 2014 black pudding, one amorphous glossy black ooze with a heavy rounded silhouette and subtle reflective surface\nScene/backdrop: a dark dungeon floor with a few quiet stones, no objects inside the creature\nStyle/medium: premium hand-painted dark fantasy game illustration, grounded materials, subtle ink-and-gouache texture, original design\nComposition/framing: centered subject, strong readable silhouette, circular-safe center crop, generous edge padding, square composition, no border\nLighting/mood: low cold rim with a faint oily reflection, ominous\nColor palette: near-black, graphite, muted violet and steel gray\nMaterials/textures: wet viscous surface, soft folds, dusty stone\nConstraints: exactly one creature; no text, letters, numbers, logo, UI frame, watermark, blood, gore or extra limbs\nAvoid: copyrighted character likeness, comedy, anime, chibi, bright cartoon colors, branded iconography, busy scenery",
+      "production_path": "public/assets/enemies/dnd-2014/black-pudding.png",
+      "installed": true,
+      "production_sha256": "c4853db0b24af7fb1e878b87860d8c674dcf636c91b7419c9535a78354a787de"
+    },
+    {
+      "slug": "ghost",
+      "name_ru": "Привидение",
+      "challenge_rating": "4",
+      "status": "generated_staged",
+      "generated_path": "C:\\Users\\anton\\.codex\\generated_images\\01a07e2c-1778-7e20-8bc0-fdfef9ddbf59\\exec-7e45a0a3-6f10-49f9-979d-de6dab3cf325.png",
+      "staging_path": "tmp/bestiary-expansion/cr4-portraits/ghost.png",
+      "target_path": "public/assets/enemies/dnd-2014/ghost.png",
+      "dimensions": {
+        "width": 512,
+        "height": 512
+      },
+      "sha256": "52d6b693d238b1f435fe091c04da5dd9960755145d54548a5e53a5a65759ef08",
+      "prompt": "Use case: stylized-concept\nAsset type: square tabletop battlemap enemy token portrait for a dark-fantasy game UI\nPrimary request: an original fantasy portrait of a D&D 5e 2014 ghost, one translucent human ghost with a calm but ominous face and trailing vapor-like lower body\nScene/backdrop: a dark abandoned manor corridor with soft window moonlight\nStyle/medium: premium hand-painted dark fantasy game illustration, grounded materials, subtle ink-and-gouache texture, original design\nComposition/framing: centered subject, strong readable silhouette, circular-safe center crop, generous edge padding, square composition, no border\nLighting/mood: pale cyan rim over deep charcoal and blue shadow, eerie and restrained\nColor palette: smoke white, cool blue, charcoal and muted silver\nMaterials/textures: transparent vapor, faint cloth shapes, old wood\nConstraints: exactly one creature; no text, letters, numbers, logo, UI frame, watermark, blood, gore or extra limbs\nAvoid: copyrighted character likeness, comedy, anime, chibi, bright cartoon colors, branded iconography, busy scenery",
+      "production_path": "public/assets/enemies/dnd-2014/ghost.png",
+      "installed": true,
+      "production_sha256": "52d6b693d238b1f435fe091c04da5dd9960755145d54548a5e53a5a65759ef08"
+    },
+    {
+      "slug": "succubus",
+      "name_ru": "Суккуб / Инкуб",
+      "challenge_rating": "4",
+      "status": "generated_staged",
+      "generated_path": "C:\\Users\\anton\\.codex\\generated_images\\01a07e2c-1778-7e20-8bc0-fdfef9ddbf59\\exec-4a7ae3cd-8808-411c-8dd1-9c547735ac33.png",
+      "staging_path": "tmp/bestiary-expansion/cr4-portraits/succubus.png",
+      "target_path": "public/assets/enemies/dnd-2014/succubus.png",
+      "dimensions": {
+        "width": 512,
+        "height": 512
+      },
+      "sha256": "87068875def9d66d5ecef666ed088f4b51607fd5ae21ec481300bc12f969717b",
+      "prompt": "Use case: stylized-concept\nAsset type: square tabletop battlemap enemy token portrait for a dark-fantasy game UI\nPrimary request: an original fantasy portrait of a D&D 5e 2014 succubus, one elegant fiendish humanoid with small bat wings, curved horns and a commanding poised expression, nonsexualized\nScene/backdrop: a shadowed ruined chamber with one restrained crimson magical glow\nStyle/medium: premium hand-painted dark fantasy game illustration, grounded materials, subtle ink-and-gouache texture, original design\nComposition/framing: centered subject, strong readable silhouette, circular-safe center crop, generous edge padding, square composition, no border\nLighting/mood: deep violet rim with a small warm red edge, confident and ominous\nColor palette: charcoal, muted crimson, dusky violet and tarnished gold\nMaterials/textures: dark leather, leathery wings, horn texture, old stone\nConstraints: exactly one creature; no text, letters, numbers, logo, UI frame, watermark, blood, gore or extra limbs; nonsexualized\nAvoid: copyrighted character likeness, comedy, anime, chibi, bright cartoon colors, branded iconography, busy scenery",
+      "production_path": "public/assets/enemies/dnd-2014/succubus.png",
+      "installed": true,
+      "production_sha256": "87068875def9d66d5ecef666ed088f4b51607fd5ae21ec481300bc12f969717b"
+    },
+    {
+      "slug": "red-dragon-wyrmling",
+      "name_ru": "Вирмлинг красного дракона",
+      "challenge_rating": "4",
+      "status": "generated_staged",
+      "generated_path": "C:\\Users\\anton\\.codex\\generated_images\\01a07e2c-1778-7e20-8bc0-fdfef9ddbf59\\exec-0f291afe-5212-4c03-b448-8fc8a4c2466b.png",
+      "staging_path": "tmp/bestiary-expansion/cr4-portraits/red-dragon-wyrmling.png",
+      "target_path": "public/assets/enemies/dnd-2014/red-dragon-wyrmling.png",
+      "dimensions": {
+        "width": 512,
+        "height": 512
+      },
+      "sha256": "4656ae4c04ce56b4380783d5d79de05484ad0496e4007d5c774eb3c849ed6709",
+      "prompt": "Use case: stylized-concept\nAsset type: square tabletop battlemap enemy token portrait for a dark-fantasy game UI\nPrimary request: an original fantasy portrait of a D&D 5e 2014 red dragon wyrmling, one small crimson dragon with short horns, folded wings, claws and a visible ember glow in the throat\nScene/backdrop: a volcanic cave ledge with soft smoke and no hoard or other creature\nStyle/medium: premium hand-painted dark fantasy game illustration, grounded materials, subtle ink-and-gouache texture, original design\nComposition/framing: centered subject, strong readable silhouette, circular-safe center crop, generous edge padding, square composition, no border\nLighting/mood: restrained orange ember rim over deep basalt shadow, dangerous and alert\nColor palette: deep crimson, blackened red, charcoal and ember orange\nMaterials/textures: fine scales, leathery wings, horn texture, volcanic rock\nConstraints: exactly one creature; no text, letters, numbers, logo, UI frame, watermark, blood, gore or extra limbs\nAvoid: copyrighted character likeness, comedy, anime, chibi, bright cartoon colors, branded iconography, busy scenery",
+      "production_path": "public/assets/enemies/dnd-2014/red-dragon-wyrmling.png",
+      "installed": true,
+      "production_sha256": "4656ae4c04ce56b4380783d5d79de05484ad0496e4007d5c774eb3c849ed6709"
+    },
+    {
+      "slug": "chuul",
+      "name_ru": "Чууль",
+      "challenge_rating": "4",
+      "status": "generated_staged",
+      "generated_path": "C:\\Users\\anton\\.codex\\generated_images\\01a07e2c-1778-7e20-8bc0-fdfef9ddbf59\\exec-789e3eea-5d24-47e6-8178-b9cc297a5792.png",
+      "staging_path": "tmp/bestiary-expansion/cr4-portraits/chuul.png",
+      "target_path": "public/assets/enemies/dnd-2014/chuul.png",
+      "dimensions": {
+        "width": 512,
+        "height": 512
+      },
+      "sha256": "269b2d25fae19afc4ed27611e7b676e22c06e0c7f088af7540c5bd5841f4bbb9",
+      "prompt": "Use case: stylized-concept\nAsset type: square tabletop battlemap enemy token portrait for a dark-fantasy game UI\nPrimary request: an original fantasy portrait of a D&D 5e 2014 chuul, one large aberrant crustacean with heavy pincers, eyestalks and tentacles\nScene/backdrop: a flooded underground ruin with dark water kept quiet behind the subject\nStyle/medium: premium hand-painted dark fantasy game illustration, grounded materials, subtle ink-and-gouache texture, original design\nComposition/framing: centered subject, strong readable silhouette, circular-safe center crop, generous edge padding, square composition, no border\nLighting/mood: cold green underwater rim against deep blue stone shadow, ancient and predatory\nColor palette: moss green, rusted bronze, slate blue and charcoal\nMaterials/textures: wet shell, chitin plates, pincers, submerged stone\nConstraints: exactly one creature; no text, letters, numbers, logo, UI frame, watermark, blood, gore or extra limbs\nAvoid: copyrighted character likeness, comedy, anime, chibi, bright cartoon colors, branded iconography, busy scenery",
+      "production_path": "public/assets/enemies/dnd-2014/chuul.png",
+      "installed": true,
+      "production_sha256": "269b2d25fae19afc4ed27611e7b676e22c06e0c7f088af7540c5bd5841f4bbb9"
+    },
+    {
+      "slug": "couatl",
+      "name_ru": "Коатль",
+      "challenge_rating": "4",
+      "status": "generated_staged",
+      "generated_path": "C:\\Users\\anton\\.codex\\generated_images\\01a07e2c-1778-7e20-8bc0-fdfef9ddbf59\\exec-e1938cf4-c6d4-4ff1-94ee-6ce3fbb37c0b.png",
+      "staging_path": "tmp/bestiary-expansion/cr4-portraits/couatl.png",
+      "target_path": "public/assets/enemies/dnd-2014/couatl.png",
+      "dimensions": {
+        "width": 512,
+        "height": 512
+      },
+      "sha256": "7aedf3a128dc25d74a9de66a7c6d9ba178f1912282443e87fa915c98d31cbc22",
+      "prompt": "Use case: stylized-concept\nAsset type: square tabletop battlemap enemy token portrait for a dark-fantasy game UI\nPrimary request: an original fantasy portrait of a D&D 5e 2014 couatl, one feathered serpentine celestial with a long coiled body, broad wings and a wise face\nScene/backdrop: a dark jungle temple chamber with one soft shaft of light and no other creature\nStyle/medium: premium hand-painted dark fantasy game illustration, grounded materials, subtle ink-and-gouache texture, original design\nComposition/framing: centered subject, strong readable silhouette, circular-safe center crop, generous edge padding, square composition, no border\nLighting/mood: restrained teal and amber rim over deep green shadow, noble and mysterious\nColor palette: muted turquoise, old gold, cream feathers and jungle green\nMaterials/textures: iridescent scales, layered feathers, weathered temple stone\nConstraints: exactly one creature; no text, letters, numbers, logo, UI frame, watermark, blood, gore or extra limbs\nAvoid: copyrighted character likeness, comedy, anime, chibi, bright cartoon colors, branded iconography, busy scenery",
+      "production_path": "public/assets/enemies/dnd-2014/couatl.png",
+      "installed": true,
+      "production_sha256": "7aedf3a128dc25d74a9de66a7c6d9ba178f1912282443e87fa915c98d31cbc22"
+    },
+    {
+      "slug": "flameskull",
+      "name_ru": "Пылающий череп",
+      "challenge_rating": "4",
+      "status": "generated_staged",
+      "generated_path": "C:\\Users\\anton\\.codex\\generated_images\\01a07e2c-1778-7e20-8bc0-fdfef9ddbf59\\exec-f96b2323-aa8e-4c41-91ec-6c0aa5eb7c88.png",
+      "staging_path": "tmp/bestiary-expansion/cr4-portraits/flameskull.png",
+      "target_path": "public/assets/enemies/dnd-2014/flameskull.png",
+      "dimensions": {
+        "width": 512,
+        "height": 512
+      },
+      "sha256": "f7cb9960530ad865b550367c62cdf7a617ffffe7d1f638052d92d05d136b39b2",
+      "prompt": "Use case: stylized-concept\nAsset type: square tabletop battlemap enemy token portrait for a dark-fantasy game UI\nPrimary request: an original fantasy portrait of a D&D 5e 2014 flameskull, one floating undead skull wreathed in controlled blue-green magical flame, with no body or gore\nScene/backdrop: a dark crypt alcove with soft ash and uncluttered stone\nStyle/medium: premium hand-painted dark fantasy game illustration, grounded materials, subtle ink-and-gouache texture, original design\nComposition/framing: centered subject, strong readable silhouette, circular-safe center crop, generous edge padding, square composition, no border\nLighting/mood: eerie cyan-green flame rim over deep charcoal shadow, watchful and sinister\nColor palette: bone cream, teal flame, charcoal and muted violet\nMaterials/textures: aged bone, magical fire, dusty stone without gore\nConstraints: exactly one creature; no text, letters, numbers, logo, UI frame, watermark, blood, gore or extra limbs\nAvoid: copyrighted character likeness, comedy, anime, chibi, bright cartoon colors, branded iconography, busy scenery",
+      "production_path": "public/assets/enemies/dnd-2014/flameskull.png",
+      "installed": true,
+      "production_sha256": "f7cb9960530ad865b550367c62cdf7a617ffffe7d1f638052d92d05d136b39b2"
+    },
+    {
+      "slug": "helmed-horror",
+      "name_ru": "Шлемоносный ужас",
+      "challenge_rating": "4",
+      "status": "generated_staged",
+      "generated_path": "C:\\Users\\anton\\.codex\\generated_images\\01a07e2c-1778-7e20-8bc0-fdfef9ddbf59\\exec-b980fc13-676b-45f7-9f38-b4e3d96f49c2.png",
+      "staging_path": "tmp/bestiary-expansion/cr4-portraits/helmed-horror.png",
+      "target_path": "public/assets/enemies/dnd-2014/helmed-horror.png",
+      "dimensions": {
+        "width": 512,
+        "height": 512
+      },
+      "sha256": "9d3f2fbbe5629e3d2ff977cf64eb612c400f86d8c497245f2dcf63132cd69250",
+      "prompt": "Use case: stylized-concept\nAsset type: square tabletop battlemap enemy token portrait for a dark-fantasy game UI\nPrimary request: an original fantasy portrait of a D&D 5e 2014 helmed horror, one imposing empty suit of animated plate armor with a closed horned helmet, shield and longsword\nScene/backdrop: a dark keep corridor with quiet stone and no other figures\nStyle/medium: premium hand-painted dark fantasy game illustration, grounded materials, subtle ink-and-gouache texture, original design\nComposition/framing: centered subject, strong readable silhouette, circular-safe center crop, generous edge padding, square composition, no border\nLighting/mood: cold steel rim over deep charcoal shadow, disciplined and menacing\nColor palette: gunmetal, tarnished silver, muted blue and black\nMaterials/textures: scratched plate armor, aged shield, dark steel blade and stone\nConstraints: exactly one creature; no text, letters, numbers, logo, UI frame, watermark, blood, gore or extra limbs; the armor is empty with no visible person\nAvoid: copyrighted character likeness, comedy, anime, chibi, bright cartoon colors, branded iconography, busy scenery",
+      "production_path": "public/assets/enemies/dnd-2014/helmed-horror.png",
+      "installed": true,
+      "production_sha256": "9d3f2fbbe5629e3d2ff977cf64eb612c400f86d8c497245f2dcf63132cd69250"
+    },
+    {
+      "slug": "ettin",
+      "name_ru": "Эттин",
+      "challenge_rating": "4",
+      "status": "existing",
+      "generated_path": null,
+      "staging_path": null,
+      "target_path": "public/assets/enemies/ettin.png",
+      "dimensions": {
+        "width": 512,
+        "height": 512
+      },
+      "sha256": "78152bc8fa4468d2dfb511aade5c3916603630bfabfd51388d3fdf8133fa88c5",
+      "prompt": null,
+      "note_ru": "Существующий оригинальный ассет проверен; не перезаписывался.",
+      "production_path": "public/assets/enemies/ettin.png",
+      "installed": true,
+      "production_sha256": "78152bc8fa4468d2dfb511aade5c3916603630bfabfd51388d3fdf8133fa88c5"
+    }
+  ]
+}

@@ -93,6 +93,25 @@ test('взаимодействие со сценой попадает в лет�
   assert.equal(hasCombatNarrationEvent([event('SceneObjectLootRevealed')]), true)
 })
 
+test('обычный короткий отдых попадает в летопись из RestStarted', () => {
+  const text = combatNarration([
+    event('RestStarted', { kind: 'short', minimum_duration_minutes: 60 }, ['hero']),
+    event('TimeAdvanced', { amount: 60, unit: 'minute', elapsed_minutes: 60 }),
+  ], state)
+  assert.match(text, /Лира начинает короткий отдых/u)
+  assert.doesNotMatch(text, /Взаимодействие с объектом завершено/u)
+  assert.equal(hasCombatNarrationEvent([event('RestStarted')]), true)
+})
+
+test('обычный долгий отдых попадает в летопись из RestCompleted', () => {
+  const text = combatNarration([
+    event('RestStarted', { kind: 'long', minimum_duration_minutes: 480 }, ['hero']),
+    event('RestCompleted', { kind: 'long', duration_minutes: 480 }, ['hero']),
+  ], state)
+  assert.match(text, /Лира завершает продолжительный отдых/u)
+  assert.doesNotMatch(text, /Взаимодействие с объектом завершено/u)
+})
+
 test('поднятый максимум ОЗ получает свою строку и держит ту же границу, что и снижение', () => {
   // «Подмога» пишет `HitPointMaximumIncreased`, а рассказчик его не знал — ход
   // с поднятым пределом уходил в ленту без единой строки про то, что случилось.

@@ -1,6 +1,6 @@
 // @ts-check
 import { encounterDifficultyLabel } from './encounter-assembler.mjs'
-import { merchantIsAtLocation, publicMerchantFor } from './merchant-economy.mjs'
+import { merchantTradeAvailabilityFor, publicMerchantFor } from './merchant-economy.mjs'
 import { PRIVATE_ITEM_ORIGIN_KINDS, itemViewerCapabilities } from './item-catalog.mjs'
 import { npcProfileForViewerAt, npcSocialForViewer } from './npc-social.mjs'
 import { suggestedActionsFor } from './action-hints.mjs'
@@ -29,6 +29,7 @@ import { weatherForViewer } from './weather.mjs'
 import { WORLD_DEEDS_SCHEMA_VERSION, worldDeedsFeed } from './world-deeds.mjs'
 import { worldMemoryForViewer } from './world-memory.mjs'
 import { normalizeCityOverview, normalizeWorldMapBackground, normalizeWorldMapLocationLore } from './world-map.mjs'
+import { NPC_PORTRAIT_CHARACTER_ASSETS } from './npc-portraits.mjs'
 
 /**
  * Модуль принимает внутреннее состояние кампании — произвольные объекты из
@@ -39,6 +40,7 @@ import { normalizeCityOverview, normalizeWorldMapBackground, normalizeWorldMapLo
  * @typedef {Record<string, any>} Loose произвольный объект внутреннего состояния
  * @typedef {Loose & { enemies?: Loose[], merchants?: Loose[] }} LooseState состояние кампании; названы только поля, по которым модуль итерирует
  * @typedef {import('./dynamic-map.mjs').SceneCell} SceneCell
+ * @typedef {SceneCell & {movementBlocked?: boolean}} PublicSceneCell
  * @typedef {import('./dynamic-map.mjs').SceneCellType} SceneCellType
  * @typedef {import('./dynamic-map.mjs').SceneCellMaterial} SceneCellMaterial
  * @typedef {import('./dynamic-map.mjs').SceneCellPattern} SceneCellPattern
@@ -73,7 +75,9 @@ function integer(value, fallback = 0) {
  */
 function publicEnemyImage(value) {
   const candidate = text(value, 180)
-  return /^\/assets\/enemies\/[a-z0-9][a-z0-9-]*\.png$/u.test(candidate) ? candidate : ''
+  if (/^\/assets\/enemies\/(?:dnd-2014\/)?[a-z0-9][a-z0-9-]*\.png$/u.test(candidate)) return candidate
+  const assets = /** @type {Record<string, string>} */ (NPC_PORTRAIT_CHARACTER_ASSETS)
+  return Object.values(assets).includes(candidate) ? candidate : ''
 }
 
 /**
@@ -178,7 +182,9 @@ const PUBLIC_CELL_PATTERNS = new Set(['small-room', 'great-hall', 'keep', 'court
 /**
  * Сужает клетки до публичной формы. `feature`, материал и вариант тайла
  * отдаются **только** с раскрытой клетки — это часть модели видимости, а не
- * косметика; сторож — `test/viewer-projection.test.mjs`.
+ * косметика; сторож — `test/viewer-projection.test.mjs`. Единственное
+ * дополнительное поле `movementBlocked` — обезличенный маркер видимой части
+ * скрытого blocking prop для предпросмотра движения.
  *
  * Правила обязаны совпадать с `publicTacticalMapFor`: массив клеток и карта —
  * две проекции одного состояния, и если они расходятся, у видимости появляется
@@ -194,18 +200,19 @@ const PUBLIC_CELL_PATTERNS = new Set(['small-room', 'great-hall', 'keep', 'court
  * каждую из 10 000 клеток карты `region`.
  *
  * @param {unknown} value
- * @returns {SceneCell[]}
+ * @param {Set<string>} [movementBlockedCells]
+ * @returns {PublicSceneCell[]}
  */
-function publicCellsFor(value) {
+function publicCellsFor(value, movementBlockedCells = new Set()) {
   const cells = Array.isArray(value) ? value : []
   const length = Math.min(cells.length, SIZE_CLASSES.region.maxCells)
-  /** @type {SceneCell[]} */
+  /** @type {PublicSceneCell[]} */
   const output = new Array(length)
   for (let index = 0; index < length; index += 1) {
     const cell = cells[index] && typeof cells[index] === 'object' ? cells[index] : {}
     const revealed = cell.revealed === true
     const rawType = String(cell.type ?? '')
-    /** @type {SceneCell} */
+    /** @type {PublicSceneCell} */
     const projected = {
       x: integer(cell.x),
       y: integer(cell.y),
@@ -222,9 +229,27 @@ function publicCellsFor(value) {
     if (revealed && Number.isSafeInteger(variant)) projected.variant = Math.max(0, Math.min(5, variant))
     if (typeof cell.edge_mask === 'string' && /^[nesw]{0,4}$/.test(cell.edge_mask)) projected.edge_mask = cell.edge_mask
     if (revealed && cell.feature != null) projected.feature = text(cell.feature, 40)
+    if (revealed && movementBlockedCells.has(`${projected.x},${projected.y}`)) projected.movementBlocked = true
     output[index] = projected
   }
   return output
+}
+
+/**
+ * Видимая часть blocking prop, который сам скрыт до полного раскрытия footprint.
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {(x: number, y: number) => boolean} revealedAt
+ * @returns {Set<string>}
+ */
+function partiallyBlockedCellsFor(map, revealedAt) {
+  const movementBlockedCells = new Set()
+  for (const prop of map.props) {
+    if (prop.blocksMove !== true || prop.footprint.length < 2) continue
+    const visible = prop.footprint.filter((cell) => revealedAt(cell.x, cell.y))
+    if (!visible.length || visible.length === prop.footprint.length) continue
+    for (const cell of visible) movementBlockedCells.add(`${cell.x},${cell.y}`)
+  }
+  return movementBlockedCells
 }
 
 /**
@@ -239,9 +264,9 @@ function publicCellsFor(value) {
  * карты совпал бы у двух игроков с разным раскрытием.
  *
  * @param {unknown} value сериализованная карта из `scene.map`
- * @returns {{map: Record<string, unknown>, hash: string} | null}
+ * @returns {{map: Record<string, unknown>, hash: string, movementBlockedCells: Set<string>} | null}
  */
-export function publicTacticalMapWithHashFor(value) {
+function projectPublicTacticalMap(value) {
   if (!value || typeof value !== 'object') return null
   let map
   try {
@@ -258,6 +283,7 @@ export function publicTacticalMapWithHashFor(value) {
     const index = y * map.width + x
     return (revealedBits[index >> 3] & (1 << (index & 7))) !== 0
   }
+  const movementBlockedCells = partiallyBlockedCellsFor(map, revealedAt)
   const cellCount = map.width * map.height
   for (let index = 0; index < cellCount; index += 1) {
     if ((revealedBits[index >> 3] & (1 << (index & 7))) !== 0) continue
@@ -311,16 +337,36 @@ export function publicTacticalMapWithHashFor(value) {
       delete map.edges[key]
     }
   }
-  map.doors = map.doors
+  const visibleDoors = map.doors
     .filter((door) => visibleEdges.has(`${door.x},${door.y},${door.dir}`))
-    .map((door) => ({ ...door, keyItemId: null }))
+    .map((door) => ({
+      ...door,
+      keyItemId: null,
+      ...(door.barricade ? {
+        // Баррикада сама по себе публична, её материал и установивший герой — нет.
+        barricade: {
+          side_x: door.barricade.side_x,
+          side_y: door.barricade.side_y,
+        },
+      } : {}),
+    }))
   const projectedMap = serializeTacticalMap(map)
+  projectedMap.doors = visibleDoors
   // Авторитетный serializer ради map budget хранит полную metadata только у
   // 2–4 POI, а обычным словарным объектам восстанавливает её из каталога.
   // Публичная карта материализует affordance для каждого видимого предмета,
   // но ни при каких условиях не переносит ключи детали и награды.
   materializePropMetadataForTransport(projectedMap, map.props)
-  return { map: projectedMap, hash: serializedTacticalMapHash(projectedMap) }
+  return { map: projectedMap, hash: serializedTacticalMapHash(projectedMap), movementBlockedCells }
+}
+
+/**
+ * @param {unknown} value сериализованная карта из `scene.map`
+ * @returns {{map: Record<string, unknown>, hash: string} | null}
+ */
+export function publicTacticalMapWithHashFor(value) {
+  const projected = projectPublicTacticalMap(value)
+  return projected ? { map: projected.map, hash: projected.hash } : null
 }
 
 /**
@@ -426,10 +472,10 @@ function publicKnownLevelsFor(value) {
 /**
  * @param {Loose} [scene]
  * @param {unknown} [knownLevels] известные партии этажи текущей локации
- * @returns {Loose & { cells: SceneCell[] }}
+ * @returns {Loose & { cells: PublicSceneCell[] }}
  */
 export function publicSceneFor(scene = {}, knownLevels = undefined) {
-  const projected = publicTacticalMapWithHashFor(scene.map)
+  const projected = projectPublicTacticalMap(scene.map)
   const levels = publicKnownLevelsFor(knownLevels)
   const levelIndex = Number(scene.level?.index)
   const locationId = text(scene.location_id ?? scene.locationId ?? scene.map?.locationId, 180)
@@ -440,7 +486,7 @@ export function publicSceneFor(scene = {}, knownLevels = undefined) {
     mood: text(scene.mood, 500),
     objective: text(scene.objective, 500),
     turn: Math.max(0, integer(scene.turn, 0)),
-    cells: publicCellsFor(scene.cells),
+    cells: publicCellsFor(scene.cells, projected?.movementBlockedCells),
     ...(Number.isSafeInteger(levelIndex)
       ? { level: { index: levelIndex, label: text(scene.level?.label, 120) } }
       : {}),
@@ -1188,6 +1234,11 @@ export function campaignStateForViewer(state, user, actorId = '') {
   if (!state || typeof state !== 'object') return state
   if (user?.role === 'admin') return {
     ...state,
+    // Список лавок нужен для управления, а доступность сделки — для общей доски.
+    merchants: (state.merchants ?? []).map((/** @type {Loose} */ merchant) => ({
+      ...merchant,
+      can_trade: merchantTradeAvailabilityFor(state, merchant).can_trade,
+    })),
     scene: adminSceneFor(state.scene),
     // Ведущий тоже играет на общей доске: renderer читает scene_npcs, а не
     // внутренний npc_world. Фишки собираются тем же путём, что и для игрока.
@@ -1302,9 +1353,8 @@ export function campaignStateForViewer(state, user, actorId = '') {
   } = visible
   const currentLocationId = String(state.scene?.location_id ?? state.scene?.locationId ?? state.worldMap?.currentLocationId ?? '')
   const scene = publicSceneFor(state.scene, state.locationLevels?.[currentLocationId])
-  const location = scene.location
   const merchants = (Array.isArray(visible.merchants) ? visible.merchants : [])
-    .filter((/** @type {Loose} */ merchant) => merchant.available !== false && merchantIsAtLocation(merchant, state?.scene ?? location))
+    .filter((/** @type {Loose} */ merchant) => merchantTradeAvailabilityFor(state, merchant).can_trade)
     .map(publicMerchantFor)
   const enemies = (Array.isArray(visible.enemies) ? visible.enemies : []).map((/** @type {Loose} */ enemy) => publicEnemyFor(enemy, state, actorId))
   const enemyIds = new Set((state?.enemies ?? []).map((/** @type {Loose} */ enemy) => text(enemy?.id ?? enemy?.actor_id, 120)))
@@ -1457,6 +1507,7 @@ function eventForViewer(event, user, actorId, state = {}) {
       payload.map_hash = projectedLevel.hash
     } else delete payload.map
   }
+  if (visible.event_type === 'DoorBarricaded') delete payload.material_item_id
   if (visible.event_type === 'MerchantCreated' && payload.merchant) {
     payload.merchant = publicMerchantFor(payload.merchant)
   }

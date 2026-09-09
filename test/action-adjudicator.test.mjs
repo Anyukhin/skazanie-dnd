@@ -7,6 +7,7 @@ import test from 'node:test'
 import { ActionAdjudicator, adjudicationBrief } from '../server/action-adjudicator.mjs'
 import { interpretFreeAction } from '../server/free-action-adjudication.mjs'
 import { normalizeCampaignState } from '../server/rules-engine.mjs'
+import { addProp, createTacticalMap, serializeTacticalMap, setEdge } from '../server/tactical-map.mjs'
 
 function scene() {
   return normalizeCampaignState({
@@ -32,6 +33,31 @@ function scene() {
 
 const stub = (payload, { fail = false } = {}) => new ActionAdjudicator({
   llmClient: { completeJson: async () => { if (fail) throw new Error('LLM_PROVIDER_ERROR'); return payload } },
+})
+
+function sceneWithContact({ fire = false, wall = false } = {}) {
+  const map = createTacticalMap({
+    width: 3, height: 1, locationId: 'contact-preview', seed: 'contact-preview',
+    fill: { passable: true, revealed: true, material: 'stone' },
+  })
+  if (fire) addProp(map, { id: 'campfire-preview', assetId: 'campfire', x: 1.5, y: .5, footprint: [{ x: 1, y: 0 }] })
+  if (wall) setEdge(map, 0, 0, 1, 0, { kind: 'wall', blocksMove: true, blocksSight: true })
+  const current = scene()
+  return normalizeCampaignState({
+    ...current,
+    scene: { ...current.scene, map: serializeTacticalMap(map), cells: [] },
+    mechanics: { ...current.mechanics, combat: { ...current.mechanics.combat, active: false } },
+  })
+}
+
+test('скрытый NPC не попадает в бриф и не привязывается по угаданному имени', async () => {
+  const state = scene()
+  state.social.npcs.push({ id: 'secret', name: 'Тайный наблюдатель', location: state.scene.location, visibility: 'gm_only', available: true })
+  assert.doesNotMatch(JSON.stringify(adjudicationBrief(state, 'hero', 'Осматриваюсь')), /Тайный наблюдатель|"secret"/u)
+  const response = await stub({ target_id: 'secret', effect_target: 'secret', effect: 'distract' })
+    .read(state, 'hero', 'Отвлекаю Тайного наблюдателя', interpretFreeAction('Отвлекаю Тайного наблюдателя'))
+  assert.notEqual(response.target_id, 'secret')
+  assert.notEqual(response.effect_target, 'secret')
 })
 
 test('бриф даёт агенту лист, сцену, участников и экономию хода — и ничего сверх', () => {
@@ -150,4 +176,49 @@ test('без ключа модели арбитр вообще не вмешив
   assert.equal(reading.proficiency, 'proficient')
   assert.equal(reading.proficiency_bonus, 2)
   assert.deepEqual(reading.reference_ambiguities, [])
+})
+
+test('вопрос о прямом контакте с подтверждённым огнём не наследует прошлое сальто и не вызывает модель', async () => {
+  const state = sceneWithContact({ fire: true })
+  const calls = { count: 0 }
+  const adjudicator = new ActionAdjudicator({ llmClient: {
+    completeJson: async () => { calls.count += 1; return { ability: 'dex', skill: 'acrobatics' } },
+  } })
+  const before = { hp: state.players[0].hp, minutes: state.mechanics.world_time.elapsed_minutes }
+  const result = await adjudicator.discuss(state, 'hero', 'Что будет, если я сяду жопой на огонь?', {
+    action: 'делаю двойное сальто', recent: [{ question: 'Что будет при провале?', answer: 'Проверка Акробатики.' }],
+  })
+  assert.equal(calls.count, 0)
+  assert.match(result.narration, /огненный урон/u)
+  assert.match(result.narration, /Акробатика не отменяет ожог/u)
+  assert.match(result.narration, /только вопрос/u)
+  assert.doesNotMatch(result.narration, /Предварительно подходит/u)
+  assert.deepEqual({ hp: state.players[0].hp, minutes: state.mechanics.world_time.elapsed_minutes }, before)
+})
+
+test('вопрос без доступного огня не объявляет безопасность и ничего не исполняет', async () => {
+  const state = sceneWithContact()
+  const result = await new ActionAdjudicator({ llmClient: {
+    completeJson: async () => { throw new Error('модель не должна вызываться') },
+  } }).discuss(state, 'hero', 'Что будет, если я сяду жопой на огонь?')
+  assert.match(result.narration, /не подтверждена рядом|урон не применяется/u)
+  assert.doesNotMatch(result.narration, /огненный урон|безопасно|ничего не случится/u)
+})
+
+test('отрицательный вопрос о контакте с огнём не создаёт ожог', async () => {
+  const state = sceneWithContact({ fire: true })
+  const result = await new ActionAdjudicator({ llmClient: {
+    completeJson: async () => { throw new Error('модель не должна вызываться') },
+  } }).discuss(state, 'hero', 'А если я не сяду жопой на огонь?')
+  assert.match(result.narration, /не касается опасности|не наносит урон/u)
+  assert.doesNotMatch(result.narration, /огненный урон|ожог/u)
+})
+
+test('вопрос о столкновении со стеной использует read-only wall helper', async () => {
+  const state = sceneWithContact({ wall: true })
+  const result = await new ActionAdjudicator({ llmClient: {
+    completeJson: async () => { throw new Error('модель не должна вызываться') },
+  } }).discuss(state, 'hero', 'Что будет, если я врежусь в стену?')
+  assert.match(result.narration, /стеной|дробящий урон/u)
+  assert.match(result.narration, /только вопрос/u)
 })

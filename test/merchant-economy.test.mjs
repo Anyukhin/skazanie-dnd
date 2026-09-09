@@ -11,6 +11,7 @@ import {
   copperToCurrency,
   currencyToCopper,
   locationsMatch,
+  merchantTradeAvailabilityFor,
   merchantIsAtLocation,
   merchantViewFor,
   normalizeCurrency,
@@ -126,6 +127,68 @@ test('merchant view выдаёт только публичный stock и server
   assert.equal(view.sell_quotes.find((quote) => quote.item_id === 'hero-dagger').unit_price_cp, 100)
   assert.equal(view.sell_quotes.find((quote) => quote.item_id === 'hero-dagger').can_afford, true)
   assert.equal(view.sell_quotes.find((quote) => quote.item_id === 'quest-letter').can_sell, false)
+})
+
+test('merchant availability follows the live NPC before any trade quote or command', () => {
+  const base = merchantState()
+  assert.deepEqual(merchantTradeAvailabilityFor(base, 'marten'), { can_trade: true, code: null, reason: null })
+
+  const dead = merchantState({ npc_world: { vitals: { marten: { hp: 0, max_hp: 4, alive: false } } } })
+  assert.deepEqual(merchantTradeAvailabilityFor(dead, 'marten'), {
+    can_trade: false, code: 'MERCHANT_UNAVAILABLE', reason: 'Торговец сейчас недоступен',
+  })
+  assert.throws(
+    () => resolveCommand({ command_type: 'BuyItem', actor_id: 'hero', merchant_id: 'marten', stock_id: 'potion-stock', quantity: 1 }, dead, { diceService: dice([]) }),
+    (error) => error instanceof RulesValidationError && error.code === 'MERCHANT_UNAVAILABLE',
+  )
+
+  const unavailable = {
+    ...base,
+    social: { npcs: [{ id: 'marten', name: 'Мартен', location: 'рыночная площадь', available: false }] },
+  }
+  assert.deepEqual(merchantTradeAvailabilityFor(unavailable, 'marten'), {
+    can_trade: false, code: 'MERCHANT_UNAVAILABLE', reason: 'Торговец сейчас недоступен',
+  })
+
+  const captive = merchantState({ captives: { captives: [{ id: 'captive:marten', npc_id: 'marten', status: 'held' }] } })
+  assert.deepEqual(merchantTradeAvailabilityFor(captive, 'marten'), {
+    can_trade: false, code: 'MERCHANT_UNAVAILABLE', reason: 'Торговец сейчас недоступен',
+  })
+
+  const scheduledAway = merchantState({
+    mechanics: { world_time: { elapsed_minutes: 60 } },
+    social: { npcs: [{
+      id: 'marten', name: 'Мартен', role: 'купец', location: 'рыночная площадь', available: true,
+      schedule: [{ id: 'away', days: [], start_minute: 0, end_minute: 120, location: 'Склад', available: false }],
+    }] },
+  })
+  assert.deepEqual(merchantTradeAvailabilityFor(scheduledAway, 'marten'), {
+    can_trade: false, code: 'MERCHANT_UNAVAILABLE', reason: 'Торговец сейчас недоступен',
+  })
+  assert.throws(
+    () => resolveCommand({ command_type: 'BuyItem', actor_id: 'hero', merchant_id: 'marten', stock_id: 'potion-stock', quantity: 1 }, scheduledAway, { diceService: dice([]) }),
+    (error) => error instanceof RulesValidationError && error.code === 'MERCHANT_UNAVAILABLE',
+  )
+
+  const encounter = applyGameEvent(base, {
+    event_type: 'EncounterCreated', event_id: 'encounter-marten', target_ids: [],
+    payload: { encounter: { id: 'encounter-marten', enemies: [{
+      id: 'marten', name: 'Мартен', hp: 4, maxHp: 4, alive: true,
+      stat_block_id: 'srd:test:merchant', origin: { npc_id: 'marten' },
+    }] } },
+  })
+  assert.equal(encounter.merchants[0].available, false)
+  assert.equal(merchantTradeAvailabilityFor(encounter, 'marten').can_trade, false)
+  assert.throws(
+    () => resolveCommand({ command_type: 'BuyItem', actor_id: 'hero', merchant_id: 'marten', stock_id: 'potion-stock', quantity: 1 }, encounter, { diceService: dice([]) }),
+    (error) => error instanceof RulesValidationError && error.code === 'MERCHANT_UNAVAILABLE',
+  )
+  const reopened = normalizeCampaignState(applyGameEvent(encounter, {
+    event_type: 'MerchantAvailabilityChanged', event_id: 'reopen-marten', target_ids: [],
+    payload: { merchant_id: 'marten', available_before: false, available_after: true },
+  }))
+  assert.equal(reopened.merchants[0].available, true)
+  assert.equal(reopened.social.npcs.find((npc) => npc.id === 'marten').available, true)
 })
 
 test('покупка атомарно списывает деньги, переносит trusted item, уменьшает stock и пишет economyLog', () => {

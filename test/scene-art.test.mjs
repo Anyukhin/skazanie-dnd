@@ -8,6 +8,9 @@ import {
   SCENE_ART_LIBRARY,
   SCENE_THEMES,
   boardMapArtForTheme,
+  boardMapArtForMap,
+  locationOverviewFor,
+  tacticalOverviewFocus,
   resolveSceneTheme,
   sceneIllustrationForTheme,
   stableSceneHash,
@@ -26,6 +29,28 @@ function state(scene = {}) {
     },
   }
 }
+
+test('готовая карта выбирается по сохранённой версии без подмены старых сцен и этажей', () => {
+  const map = { tilesetId: 'authored-location:astohan-stormberg:v1', locationId: 'astohan-stormberg', levelIndex: 0 }
+  assert.deepEqual(boardMapArtForMap('building', map), {
+    id: map.tilesetId, url: '/assets/maps/locations/skazanie/astohan-stormberg-v1.webp', mode: 'map',
+  })
+  for (const invalid of [
+    null, { ...map, tilesetId: '' }, { ...map, locationId: 'another-location' },
+    { ...map, levelIndex: 1 }, { ...map, tilesetId: 'authored-location:../../private:v1' },
+  ]) assert.deepEqual(boardMapArtForMap('building', invalid), BOARD_MAP_LIBRARY.tavern)
+})
+
+test('отметка участка на общем плане относится только к соответствующей готовой малой сцене', () => {
+  const overview = locationOverviewFor('astohan-stormberg')
+  const map = { tilesetId: 'authored-tactical:astohan-stormberg:v1', locationId: 'astohan-stormberg', levelIndex: 0 }
+  assert.deepEqual(tacticalOverviewFocus(overview, map), { x: .49, y: .20 })
+  for (const other of [null, { ...map, locationId: 'other' }, { ...map, levelIndex: 1 }, { ...map, tilesetId: 'authored-location:astohan-stormberg:v1' }, { ...map, tilesetId: 'authored-tactical:astohan-stormberg:v2' }]) {
+    assert.equal(tacticalOverviewFocus(overview, other), null)
+  }
+  assert.equal(tacticalOverviewFocus({ ...overview, focus: { x: -1, y: .5 } }, map), null)
+  assert.equal(tacticalOverviewFocus({ ...overview, focus: { x: .5, y: Infinity } }, map), null)
+})
 
 function webpDimensions(bytes) {
   assert.equal(bytes.subarray(0, 4).toString('ascii'), 'RIFF')
@@ -54,6 +79,27 @@ function webpDimensions(bytes) {
   }
   assert.fail(`неподдержанный WebP chunk ${chunk}`)
 }
+
+test('точная тактическая сцена использует клеточные фактуры без большого рисунка', () => {
+  assert.equal(boardMapArtForMap('building', { tilesetId: 'authored-tactical:astohan-stormberg:v1', locationId: 'astohan-stormberg', levelIndex: 0 }), null)
+})
+
+test('все 56 готовых локаций имеют свой общий план и проверенную привязку текущего участка', () => {
+  const worlds = JSON.parse(readFileSync(new URL('../data/campaign-worlds-v1.json', import.meta.url), 'utf8'))
+  const ids = worlds.templates.flatMap((world) => world.world_map.locations.map((location) => location.id))
+  assert.equal(new Set(ids).size, 56)
+  const hashes = new Set()
+  for (const id of ids) {
+    const overview = locationOverviewFor(id)
+    assert.ok(overview, id)
+    assert.ok(tacticalOverviewFocus(overview, { locationId: id, levelIndex: 0, tilesetId: `authored-tactical:${id}:v1` }), `${id}: нет привязки участка`)
+    assert.match(overview.url, /^\/assets\/maps\/locations\/skazanie\/[a-z0-9-]+-v[1-9][0-9]*\.webp$/u)
+    const bytes = readFileSync(new URL(`../public${overview.url}`, import.meta.url))
+    assert.deepEqual(webpDimensions(bytes), { width: 1536, height: 1024 }, id)
+    hashes.add(createHash('sha256').update(bytes).digest('hex'))
+  }
+  assert.equal(hashes.size, 56, 'разные локации не должны ссылаться на одну картинку')
+})
 
 test('каталог владеет пятью собственными подложками и всеми 17 иллюстрациями', () => {
   assert.equal(Object.keys(BOARD_MAP_LIBRARY).length, 5)

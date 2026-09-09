@@ -25,3 +25,11 @@ test('клиент сливает presence в текущий state и не по�
   assert.match(appSource, /filter\(\(actorId\) => actorId !== activePlayer\.id\)/u)
   assert.match(appSource, /typingActorIds=\{visibleTypingActorIds\}/u)
 })
+
+test('меню видимого NPC даёт узкий серверный вход «Напасть»', () => {
+  assert.match(sessionSource, /command_type: 'AttackNpc'/u)
+  assert.match(appSource, /onNpcAttack=\{\(npcId\) => attackNpc\(activePlayer\.id, npcId\)\}/u)
+  assert.match(appSource, /<Swords size=\{13\} \/>Напасть/u)
+  assert.match(appSource, /!sceneNpc\.can_start_combat/u)
+  assert.match(appSource, /нет готового серверного профиля/u)
+})

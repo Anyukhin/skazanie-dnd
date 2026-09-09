@@ -189,12 +189,45 @@ test('neutral-фишка строится только из viewer-safe scene_np
 })
 
 test('merchant token открывает существующий MerchantScreen по точному общему id и не создаёт торговую механику', () => {
-  assert.match(appSource, /state\.merchants\?\.find\(\(merchant\) => merchant\.id === sceneNpc\.id\)/u)
+  assert.match(appSource, /merchantForSceneNpc\(state, sceneNpc\.id\)/u)
   assert.match(appSource, /onClick=\{\(\) => onOpenMerchant\(sceneNpc\.id\)\}/u)
-  assert.match(appSource, /merchantScreenMerchants/u)
-  assert.match(appSource, /<MerchantScreen merchants=\{merchantScreenMerchants\}/u)
-  assert.match(appSource, /Торговля недоступна во время боя/u)
+  assert.match(appSource, /<MerchantScreen key=\{[^}]+\} merchant=\{selectedMerchant\}/u)
+  assert.doesNotMatch(appSource, /scene-merchant|openMerchant\(\)|merchantScreenMerchants/u)
+  assert.match(appSource, /disabled=\{!canAct \|\| narrating \|\| tacticalBusy \|\| dialogueBusy\}/u)
   assert.match(appSource, /onClick=\{\(\) => openNpcDossier\(sceneNpc\.id, 'transfer'\)\}/u)
+})
+
+test('лавка открывается только у живого доступного NPC на раскрытой клетке текущей сцены', () => {
+  const state = {
+    scene: { location_id: 'market', location: 'Рынок', cells: [{ x: 2, y: 1, revealed: true }] },
+    scene_npcs: [{ id: 'marta', alive: true, location_id: 'market', x: 2, y: 1 }],
+    merchants: [{ id: 'marta', available: true, location_id: 'market', location: 'Рынок' }],
+    social: { npcs: [{ id: 'marta', available: true }] },
+  }
+  assert.equal(experience.merchantForSceneNpc(state, 'marta'), state.merchants[0])
+  assert.equal(experience.merchantForSceneNpc(state, 'stranger'), null)
+  for (const change of [
+    (copy) => { copy.scene_npcs = [] },
+    (copy) => { copy.scene_npcs[0].alive = false },
+    (copy) => { copy.scene_npcs[0].location_id = 'inn' },
+    (copy) => { copy.scene_npcs[0].x = 9 },
+    (copy) => { copy.scene.cells[0].revealed = false },
+    (copy) => { copy.merchants[0].available = false },
+    (copy) => { copy.merchants[0].can_trade = false },
+    (copy) => { copy.merchants[0].location_id = 'inn' },
+    (copy) => { copy.social.npcs[0].available = false },
+    (copy) => { copy.mechanics = { combat: { active: true } } },
+  ]) {
+    const copy = structuredClone(state)
+    change(copy)
+    assert.equal(experience.merchantForSceneNpc(copy, 'marta'), null)
+  }
+  const legacy = structuredClone(state)
+  delete legacy.scene.location_id
+  delete legacy.merchants[0].location_id
+  legacy.scene_npcs[0].location_id = 'Рынок'
+  legacy.merchants[0].location = '  РЫНОК  '
+  assert.equal(experience.merchantForSceneNpc(legacy, 'marta'), legacy.merchants[0])
 })
 
 test('сводка NPC берётся из синхронизируемого battleLog и прекращается после действия героя', () => {
@@ -239,23 +272,15 @@ test('история урона использует только записан
   assert.match(appSource, /История урона/u)
 })
 
-test('новый committed-текст показывается целиком поверх сцены и остаётся в журнале', () => {
-  assert.match(appSource, /setCinematicNarration\(latestNarratorMessage\)/u)
-  assert.match(appSource, /<p>\{cinematicNarrationText \|\| 'Сцена складывается…'\}<\/p>/u)
-  assert.match(appSource, /Сохранено в журнале кампании/u)
+test('новый committed-текст остаётся только в хронике без всплывающей карточки', () => {
+  assert.doesNotMatch(appSource, /cinematicNarration|РАССКАЗЧИК|Сохранено в журнале кампании/u)
   assert.match(appSource, /state\.messages\.map/u)
-  assert.match(stylesSource, /\.cinematic-narration/u)
+  assert.doesNotMatch(stylesSource, /\.cinematic-narration\b/u)
 })
 
-test('stream preview заменяет текст целым snapshot и не показывает replay/aborted/replaced', () => {
-  assert.match(appSource, /import type \{ NarrationPreview \} from '\.\/ai-client'/u)
-  assert.match(appSource, /merchantNarration, narrationPreview, clearTacticalError/u)
-  assert.doesNotMatch(appSource, /as typeof gameSession/u)
-  assert.match(appSource, /visibleNarrationPreview\?\.text \?\? cinematicNarration\?\.text/u)
-  assert.match(appSource, /narrationPreview\.replayed !== true/u)
-  assert.match(appSource, /narrationPreview\.phase !== 'aborted'/u)
-  assert.match(appSource, /narrationPreview\.phase !== 'replaced'/u)
-  assert.doesNotMatch(appSource, /cinematicNarrationText\s*\+=|narrationPreview\.text\.slice/u)
+test('stream preview infrastructure remains bounded but has no floating UI consumer', () => {
+  assert.doesNotMatch(appSource, /NarrationPreview|narrationPreview|cinematicNarration/u)
+  assert.match(stylesSource, /\.scene-overlay-layer \{/u)
 })
 
 test('ожидание генерации меняет свет и аудиошину без десятого профиля', () => {

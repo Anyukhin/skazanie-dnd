@@ -254,7 +254,7 @@ function actorOccupiedCells(state) {
 
 function preferredAssets(npc = {}) {
   const role = `${text(npc.role, 160)} ${(Array.isArray(npc.tags) ? npc.tags : []).join(' ')}`.toLocaleLowerCase('ru')
-  if (/корол|правител|king|ruler|marshal|archivist|messenger/iu.test(role)) return ['table_long', 'table_small', 'table_round', 'bookshelf']
+  if (/корол|правител|king|ruler|marshal|archivist|messenger/iu.test(role)) return ['table_royal', 'table_long', 'table_small', 'table_round', 'bookshelf']
   if (/торгов|merchant|трактир|innkeep|бармен|barkeep/iu.test(role)) return ['bar_counter', 'table_long', 'table_round', 'stall', 'counter']
   if (/жрец|priest|свящ|cleric/iu.test(role)) return ['altar', 'shrine', 'candle', 'fireplace']
   if (/лекар|healer|травник|herbal/iu.test(role)) return ['table_long', 'fireplace', 'campfire', 'shelf']
@@ -354,10 +354,18 @@ export function planSceneNpcPlacementEvents(state = {}) {
   const locationId = sceneLocationId(state)
   if (!map || !locationId) return []
   const world = normalizeNpcWorldState(state.npc_world)
+  const present = presentSceneNpcs(state)
+  const presentIds = new Set(present.map((npc) => String(npc.id)))
   const occupied = actorOccupiedCells(state)
   const propOccupied = new Set(map.props.flatMap(propCells).map(keyOf))
+  // PlaceNpc планирует только выбранного NPC. Резервируем остальные посты
+  // этой локации, иначе новый житель может оказаться поверх прежнего.
+  for (const placement of world.placements) {
+    if (placement.location_id !== locationId || presentIds.has(placement.npc_id)) continue
+    if (placementCellAllowed(map, placement, occupied, propOccupied)) occupied.add(keyOf(placement))
+  }
   const events = []
-  for (const npc of presentSceneNpcs(state)) {
+  for (const npc of present) {
     const existing = world.placements.find((placement) => placement.npc_id === String(npc.id) && placement.location_id === locationId)
     if (existing && placementCellAllowed(map, existing, occupied, propOccupied)) {
       occupied.add(keyOf(existing))
@@ -470,6 +478,41 @@ export function placedSceneNpcTargets(state) {
     .map((npc) => ({ npc, placement: npcPlacementFor(state, npc.id, locationId) }))
     .filter(({ placement }) => placement)
     .sort((left, right) => String(left.npc.id).localeCompare(String(right.npc.id)))
+}
+
+/**
+ * Клетки присутствующих социальных NPC. Это тот же набор, который уходит в
+ * `scene_npcs`: Rules Engine использует его как server-owned занятость, чтобы
+ * обычное перемещение героя не могло встать поверх мирного NPC.
+ */
+export function sceneNpcOccupiedCells(state = {}) {
+  const placed = placedSceneNpcTargets(state)
+  if (placed.length) return new Set(placed.map(({ placement }) => keyOf(placement)))
+  // Проекции игрока намеренно не несут `npc_world`, но сохраняют авторитетные
+  // координаты в `scene_npcs`. Запасной путь держит preview маршрута в том же
+  // ритме с серверной занятостью, не превращая координаты проекции в источник
+  // истины для проверки команды.
+  return new Set((Array.isArray(state.scene_npcs) ? state.scene_npcs : [])
+    .filter((npc) => npc?.alive !== false)
+    .map((npc) => keyOf(npc)))
+}
+
+/**
+ * Клетки, через которые можно пройти, но на которых нельзя закончить ход.
+ * Мирный NPC соблюдает своё место в сцене, однако не превращает узкий проход
+ * в невидимую стену. Враждебный NPC остаётся полным блокером.
+ */
+export function sceneNpcTransitCells(state = {}) {
+  const placed = placedSceneNpcTargets(state)
+  if (placed.length) {
+    const world = normalizeNpcWorldState(state.npc_world)
+    return new Set(placed
+      .filter(({ npc }) => world.stances[String(npc.id)]?.stance !== 'hostile')
+      .map(({ placement }) => keyOf(placement)))
+  }
+  return new Set((Array.isArray(state.scene_npcs) ? state.scene_npcs : [])
+    .filter((npc) => npc?.alive !== false && String(npc?.stance ?? 'neutral') !== 'hostile')
+    .map((npc) => keyOf(npc)))
 }
 
 export function npcTargetsWithinArea(state, center, radiusFeet) {
@@ -780,6 +823,8 @@ export function sceneNpcsForViewer(state = {}) {
       if (!placement) return null
       const vital = world.vitals[String(npc.id)] ?? initialNpcVital(npc)
       const stance = world.stances[String(npc.id)]?.stance ?? 'neutral'
+      const mechanics = world.profiles[String(npc.id)]
+      const canStartCombat = Boolean(mechanics && mechanics.status !== 'ruling-only') && npc.available !== false && vital.alive
       return {
         id: String(npc.id),
         name: text(npc.name, 160),
@@ -791,6 +836,9 @@ export function sceneNpcsForViewer(state = {}) {
         stance,
         alive: vital.alive,
         health_status: publicHealthStatus(vital),
+        // Флаг говорит только о доступности входа в бой. Сам профиль и его
+        // характеристики остаются закрытыми серверной проекцией.
+        can_start_combat: canStartCombat,
       }
     })
     .filter(Boolean)

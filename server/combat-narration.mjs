@@ -60,7 +60,7 @@ const DAMAGE_TYPE_LABELS = Object.freeze({
   radiant: 'Свет', slashing: 'Рубящий удар', thunder: 'Грохот',
 })
 
-function damageTypeLabel(damageType) {
+export function damageTypeLabel(damageType) {
   return DAMAGE_TYPE_LABELS[String(damageType ?? '').toLowerCase()] ?? 'Этот урон'
 }
 
@@ -134,6 +134,13 @@ function tacticalNarrationLines(events, state) {
   const turns = []
   /** Строки про небо: дописываются последними и не вытесняют события хода. */
   const sky = []
+  // Долгий отдых приходит одной атомарной командой: в ней есть и начало, и
+  // подтверждённое завершение. В летописи достаточно итоговой строки; короткий
+  // отдых остаётся видимым по одному `RestStarted`, пока герой не завершит его
+  // отдельной командой.
+  const completedRestActors = new Set((events ?? [])
+    .filter((event) => event?.event_type === 'RestCompleted' && !event?.payload?.source_prop_id)
+    .map((event) => String(event?.actor_id ?? '')))
   const sceneInteraction = sceneInteractionNarration(events)
   if (sceneInteraction) meaningful.push(sceneInteraction)
   const partyFailed = (events ?? []).some((event) => event?.event_type === 'CampaignFailed')
@@ -237,6 +244,8 @@ function tacticalNarrationLines(events, state) {
       meaningful.push(`${target}: «${String(payload.name || payload.action_id || 'особый приём')}» снова наготове.`)
     } else if (event.event_type === 'AreaAttackResolved') {
       meaningful.push(`${actor} бросает ${payload.item_name || 'снаряд'} в область радиусом ${Number(payload.radius_feet) || 0} фт.`)
+    } else if (event.event_type === 'CombatActionUsed' && payload.monster_action === true) {
+      meaningful.push(`${actor} использует приём «${String(payload.name || 'особая атака')}».`)
     } else if (event.event_type === 'SpellCast') {
       meaningful.push(`${actor} творит заклинание «${payload.name || payload.spell_id || 'магия'}».`)
     } else if (event.event_type === 'SummonedCreatureCreated') {
@@ -269,6 +278,11 @@ function tacticalNarrationLines(events, state) {
       meaningful.push(`${target} приходит в сознание после успешной первой помощи.`)
     } else if (event.event_type === 'RestCompleted' && payload.reason === 'knockout') {
       meaningful.push(`${target} приходит в сознание после завершения короткого отдыха.`)
+    } else if (event.event_type === 'RestStarted' && !payload.source_prop_id
+      && !completedRestActors.has(String(event.actor_id ?? ''))) {
+      meaningful.push(`${actor} начинает ${payload.kind === 'long' ? 'продолжительный' : 'короткий'} отдых.`)
+    } else if (event.event_type === 'RestCompleted' && !payload.source_prop_id) {
+      meaningful.push(`${actor} завершает ${payload.kind === 'long' ? 'продолжительный' : 'короткий'} отдых.`)
     } else if (event.event_type === 'HitPointsReducedToZero') {
       meaningful.push(`${target} падает без сознания и начинает делать спасброски от смерти.`)
     } else if (event.event_type === 'DeathSavingThrowRolled') {
@@ -492,7 +506,7 @@ export const COMBAT_NARRATION_EVENT_TYPES = Object.freeze(new Set([
   'NpcEquipmentSpent', 'NpcItemUsed',
   'DoorLockpicked', 'LockpickNoticed',
   'KnockoutEnded', 'MapLevelChanged', 'ParleyProposed', 'ParleyRejected', 'ParleySettled',
-  'ReadiedActionExpired', 'RestCompleted', 'ShrinePrayerResolved', 'SpellCast',
+  'ReadiedActionExpired', 'RestCompleted', 'RestStarted', 'ShrinePrayerResolved', 'SpellCast',
   'SceneObjectCheckResolved', 'SceneObjectEffectApplied', 'SceneObjectInspected', 'SceneObjectLootRevealed',
   'SceneObjectKnowledgeRevealed', 'SceneObjectLootGranted', 'SceneObjectOperated',
   'SceneObjectStateChanged',

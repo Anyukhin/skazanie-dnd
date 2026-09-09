@@ -28,6 +28,9 @@ test('UI turn guard permits only the reaction owner to answer an off-turn reacti
 
 test('UI turn guard continues to reject ordinary off-turn commands', () => {
   assert.equal(canIssueUiTacticalCommand(combat, {
+    command_type: 'AttackNpc', actor_id: 'hero-active', npc_id: 'astohan-ares',
+  }, 'hero-active'), false)
+  assert.equal(canIssueUiTacticalCommand(combat, {
     command_type: 'MoveActor', actor_id: 'hero-guest', to: { x: 1, y: 1 },
   }, 'enemy-active'), false)
   assert.equal(canIssueUiTacticalCommand(combat, {

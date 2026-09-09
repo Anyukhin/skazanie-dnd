@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
+import { ITEM_CATALOG } from '../server/item-catalog.mjs'
 
 async function freePort() {
   const probe = createNetServer()
@@ -78,7 +79,7 @@ test('non-admin room and Director response cannot expose private world memory', 
   const initialState = {
     sessionCode: 'VIEWER-API', campaign: 'Visibility', partyMemberIds: ['hero'], activePlayerId: 'hero',
     isNarrating: false, pendingCheck: null, suggestions: [], messages: [], enemies: [], entities: [], economyLog: [],
-    players: [{ id: 'hero', character: 'Лира', hp: 18, maxHp: 18, armor: 14, abilities: { cha: 14 }, inventory: [], currency: { gold: 20 }, online: true }],
+    players: [{ id: 'hero', character: 'Лира', hp: 18, maxHp: 18, armor: 14, abilities: { cha: 14 }, inventory: [{ id: 'keepsake', catalog_id: 'srd_5_2_1:torch', name: 'Факел деда', description: 'Подарок перед дорогой.', type: 'tool', quantity: 1 }], currency: { gold: 20 }, online: true }],
     scene: {
       title: 'Склеп', location: 'Склеп', mood: 'Тихо', objective: 'Выйти', turn: 1,
       cells: [{ x: 0, y: 0, type: 'floor', revealed: false, feature: 'enemy', secret: privateMarker }],
@@ -109,6 +110,9 @@ test('non-admin room and Director response cannot expose private world memory', 
   assert.equal(playerRoom.body.state.scene.cells[0].feature, undefined)
   assert.equal(playerRoom.body.state.merchants[0].bargains, undefined)
   assert.equal(playerRoom.body.state.merchants[0].pricing.agent_adjustment_bps, undefined)
+  const keepsake = playerRoom.body.state.players[0].inventory[0]
+  assert.equal(keepsake.description, 'Подарок перед дорогой.', 'каталог не переписывает историю экземпляра')
+  assert.equal(keepsake.capabilities.catalog_description, ITEM_CATALOG['srd_5_2_1:torch'].description)
 
   const transitioned = await request(baseUrl, '/api/narrate', {
     method: 'POST', cookie: playerCookie,

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { campaignStateForViewer, mechanicsForViewer, publicEnemyFor, publicWorldMapFor, turnExplanationForViewer, turnResultForViewer } from '../server/viewer-projection.mjs'
+import { campaignStateForViewer, mechanicsForViewer, publicEnemyFor, publicSceneFor, publicTacticalMapFor, publicWorldMapFor, turnExplanationForViewer, turnResultForViewer } from '../server/viewer-projection.mjs'
 
 const user = { role: 'player', heroIds: ['hero'] }
 
@@ -39,6 +39,17 @@ test('ответ на действие администратора не сти�
   assert.deepEqual((response.authoritative_state.scene_npcs ?? []).map(npc => npc.id), ['brom'])
   assert.deepEqual(response.debug, { trace: 'admin-only' })
   assert.equal(state.scene_npcs, undefined, 'проекция не переписывает сохранённое состояние')
+})
+
+test('администратор видит закрытую лавку в списке, но не может открыть торговлю с погибшим NPC', () => {
+  const state = placedNpcState()
+  state.merchants = [{ id: 'brom', name: 'Бром', location: 'Трактир', available: true, stock: [], pricing: {} }]
+  state.npc_world.vitals = { brom: { hp: 0, max_hp: 4, alive: false } }
+  const projected = campaignStateForViewer(state, { role: 'admin' }, 'hero')
+  assert.equal(projected.merchants.length, 1)
+  assert.equal(projected.merchants[0].available, true, 'настройка лавки не переписывается проекцией')
+  assert.equal(projected.merchants[0].can_trade, false)
+  assert.equal(state.merchants[0].can_trade, undefined, 'вычисленное поле не хранится в состоянии')
 })
 
 test('admin projection восстанавливает affordance каталожных props из compact map', async () => {
@@ -208,8 +219,12 @@ test('player campaign projection hides private memory, fog features and remote m
 test('enemy projection exposes only repository-owned illustration paths', () => {
   const common = { id: 'enemy', name: 'Враг', hp: 5, maxHp: 5, x: 1, y: 2 }
   assert.equal(publicEnemyFor({ ...common, image: '/assets/enemies/wolf.png' }).image, '/assets/enemies/wolf.png')
+  assert.equal(publicEnemyFor({ ...common, image: '/assets/enemies/dnd-2014/troll.png' }).image, '/assets/enemies/dnd-2014/troll.png')
+  assert.equal(publicEnemyFor({ ...common, image: '/assets/npcs/astohan/astohan-sargat-v1.png' }).image, '/assets/npcs/astohan/astohan-sargat-v1.png')
   assert.equal(publicEnemyFor({ ...common, image: 'https://tracker.invalid/pixel.png' }).image, undefined)
   assert.equal(publicEnemyFor({ ...common, image: '/assets/enemies/../party-portraits.png' }).image, undefined)
+  assert.equal(publicEnemyFor({ ...common, image: '/assets/enemies/dnd-2014/../wolf.png' }).image, undefined)
+  assert.equal(publicEnemyFor({ ...common, image: '/assets/enemies/dnd-2014/troll.png?tracking=1' }).image, undefined)
 })
 
 /**
@@ -710,6 +725,33 @@ test('карта в проекции игрока не выдаёт нераск
   assert.ok(edges.includes('0,0,e'), 'ребро у раскрытой клетки видно')
   assert.equal(edges.includes('0,2,e'), false, 'ребро между двумя нераскрытыми клетками не передаётся')
   assert.deepEqual(visible.doors, [], 'дверь на нераскрытом ребре не передаётся')
+})
+
+test('проекция игрока скрывает материал баррикады, сохраняя публичную геометрию', async () => {
+  const { createTacticalMap, serializeTacticalMap, setDoor } = await import('../server/tactical-map.mjs')
+  const map = createTacticalMap({ width: 2, height: 1, fill: { passable: true, revealed: true } })
+  setDoor(map, {
+    id: 'barricaded-door', x: 0, y: 0, dir: 'e', state: 'open',
+    barricade: { material_item_id: 'private-plank-instance', actor_id: 'hero', previous_state: 'open', side_x: 0, side_y: 0 },
+  })
+  const serialized = serializeTacticalMap(map)
+  const publicMap = publicTacticalMapFor(serialized)
+  assert.ok(publicMap)
+  const publicBarricade = publicMap.doors[0].barricade
+  assert.deepEqual(publicBarricade, { side_x: 0, side_y: 0 })
+  assert.equal('material_item_id' in publicBarricade, false)
+  assert.equal('actor_id' in publicBarricade, false)
+  assert.doesNotMatch(JSON.stringify(publicMap), /private-plank-instance/u)
+
+  const rawEvent = {
+    event_type: 'DoorBarricaded', actor_id: 'hero', visibility: 'public',
+    payload: { door_id: 'barricaded-door', material_item_id: 'private-plank-instance', previous_state: 'open', side_x: 0, side_y: 0 },
+  }
+  const projectedEvent = mechanicsForViewer([rawEvent], user, 'hero')[0]
+  assert.equal(projectedEvent.payload.material_item_id, undefined)
+  assert.deepEqual({ side_x: projectedEvent.payload.side_x, side_y: projectedEvent.payload.side_y }, { side_x: 0, side_y: 0 })
+  assert.doesNotMatch(JSON.stringify(projectedEvent), /private-plank-instance/u)
+  assert.equal(mechanicsForViewer([rawEvent], { role: 'admin' }, 'hero')[0].payload.material_item_id, 'private-plank-instance')
 })
 
 test('проекция карты скрывает зоны, частичный реквизит, точки появления и ключи дверей', async () => {

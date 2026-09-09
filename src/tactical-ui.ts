@@ -1,4 +1,4 @@
-import { cellAt, doorBlocksStep } from './tactical-map-client'
+import { cellAt, movementStepBlocked } from './tactical-map-client'
 import type { BattleEvent, GameEvent, GameState, MapCell, MechanicsSupport, TacticalMap } from './types'
 
 export const boardPositionKey = (x: number, y: number) => `${x},${y}`
@@ -23,7 +23,7 @@ export type MovementPath = {
  * а сервер к тому моменту шаг уже разрешал. Разведка снимает туман по мере
  * движения; стены и вода остаются непроходимыми независимо от него.
  */
-const isWalkable = (cell?: MapCell) => Boolean(cell && (cell.type === 'floor' || cell.type === 'door'))
+const isWalkable = (cell?: MapCell) => Boolean(cell && !cell.movementBlocked && (cell.type === 'floor' || cell.type === 'door'))
 
 type AreaEffectWithCells = NonNullable<NonNullable<GameState['mechanics']>['active_effects']>[number] & {
   cells?: Array<{ x: number; y: number }>
@@ -90,6 +90,9 @@ export function occupiedBoardPositions(state: GameState, exceptId?: string) {
   ;(state.actors ?? []).forEach((actor) => {
     if (actor.id !== exceptId && actor.alive) occupied.add(boardPositionKey(actor.x, actor.y))
   })
+  ;(state.scene_npcs ?? []).forEach((npc) => {
+    if (npc.alive !== false) occupied.add(boardPositionKey(npc.x, npc.y))
+  })
   return occupied
 }
 
@@ -102,6 +105,14 @@ export function occupiedBoardPositions(state: GameState, exceptId?: string) {
 export function buildMovementPaths(state: GameState, actor: BoardActor, cellFeet = 5, map?: TacticalMap | null) {
   const cells = new Map(state.scene.cells.map((cell) => [boardPositionKey(cell.x, cell.y), cell]))
   const blocked = occupiedBoardPositions(state, actor.id)
+  const npcTransit = new Set((state.scene_npcs ?? [])
+    .filter((npc) => npc.alive !== false && npc.stance !== 'hostile')
+    .map((npc) => boardPositionKey(npc.x, npc.y)))
+  for (const prop of map?.props ?? []) {
+    if (!prop.blocksMove) continue
+    const footprint = prop.footprint.length ? prop.footprint : [{ x: Math.floor(prop.x), y: Math.floor(prop.y) }]
+    for (const cell of footprint) blocked.add(boardPositionKey(cell.x, cell.y))
+  }
   const conditionIds = new Set((state.mechanics?.conditions?.[actor.id] ?? []).map((condition) => String(condition.id)))
   const crawling = conditionIds.has('prone')
   const ignoresDifficultTerrain = conditionIds.has('freedom-of-movement')
@@ -145,10 +156,10 @@ export function buildMovementPaths(state: GameState, actor: BoardActor, cellFeet
     const [x, y] = current.key.split(',').map(Number)
     for (const [nextX, nextY] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
       const next = boardPositionKey(nextX, nextY)
-      if (blocked.has(next) || !isWalkable(cells.get(next))) continue
+      if ((blocked.has(next) && !npcTransit.has(next)) || !isWalkable(cells.get(next))) continue
       // Закрытая и запертая дверь останавливают шаг ровно так же, как на
       // сервере: иначе предпросмотр вёл бы маршрут сквозь запертую дверь.
-      if (map && doorBlocksStep(map, x, y, nextX, nextY)) continue
+      if (map && movementStepBlocked(map, x, y, nextX, nextY)) continue
       const difficultTerrain = !ignoresDifficultTerrain && isDifficultTerrain(state, { x: nextX, y: nextY }, map)
       const nextCost = current.cost + cellFeet * (1 + (difficultTerrain ? 1 : 0) + (crawling ? 1 : 0))
       if (nextCost >= (costs.get(next) ?? Number.POSITIVE_INFINITY)) continue
@@ -160,7 +171,7 @@ export function buildMovementPaths(state: GameState, actor: BoardActor, cellFeet
 
   const result = new Map<string, MovementPath>()
   for (const destination of previous.keys()) {
-    if (destination === start) continue
+    if (destination === start || blocked.has(destination)) continue
     const path: Array<{ x: number; y: number }> = []
     let cursor: string | null = destination
     while (cursor && cursor !== start) {
@@ -183,7 +194,7 @@ export function movementCellReason(state: GameState, actor: BoardActor, cell: Ma
   if (cell.type !== 'floor' && cell.type !== 'door') return 'Клетка непроходима'
   if (occupiedBoardPositions(state, actor.id).has(boardPositionKey(cell.x, cell.y))) return 'Клетка занята'
   const route = paths.get(boardPositionKey(cell.x, cell.y))
-  if (!route) return 'Нет доступного маршрута: возможно, путь перекрыт закрытой дверью'
+  if (!route) return 'Нет доступного маршрута: путь перекрыт стеной, дверью или предметом'
   if (route.costFeet > remainingFeet) return `Нужно ${route.costFeet} фт, осталось ${Math.max(0, remainingFeet)} фт`
   return null
 }

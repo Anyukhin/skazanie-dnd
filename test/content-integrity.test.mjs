@@ -42,7 +42,11 @@ test('content integrity gate verifies hashes, references, counts and the complet
   // (`public/assets/maps/world/skazanie/*.webp`).
   // + 4 авторских плана стартовых городов (`public/assets/maps/city/skazanie/*.webp`).
   // + 10 портретов рас мастера создания, включая отдельный портрет дроу.
-  assert.equal(report.integrity.assets, 1381)
+  // + 9 портретов бестиария 2014 и 20 иллюстраций стартового снаряжения.
+  // + 4 портрета бестиария, 11 готовых карт локаций и 8 портретов Асстохана.
+  // + 41 портрет расширенного бестиария CR 0–6 (четыре предыдущих учтены выше).
+  // + 52 файла общих планов локаций и дополнительных изображений замка.
+  assert.equal(report.integrity.assets, 1526)
   assert.equal(report.integrity.coverage.find((entry) => entry.id === 'feats').coverage, 'missing')
 })
 

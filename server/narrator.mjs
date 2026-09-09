@@ -12,9 +12,10 @@ import { findNarratorCliches } from './narrator-craft-quality.mjs'
 import { promptForModelRole } from './model-style-profiles.mjs'
 import { npcDossiersForNarrator } from './npc-social.mjs'
 import { worldClockNarration } from './weather.mjs'
+import { ABILITY_LABELS_RU, SKILL_LABELS_RU } from './free-action-adjudication.mjs'
 
-export const NARRATOR_PROMPT_VERSION = 'narrator/v6'
-export const NARRATOR_FEW_SHOT_VERSION = 'narrator-few-shot/v1'
+export const NARRATOR_PROMPT_VERSION = 'narrator/v9'
+export const NARRATOR_FEW_SHOT_VERSION = 'narrator-few-shot/v2'
 export const NARRATOR_RECENT_TEXT_LIMIT = 3
 /**
  * Порог пересечения 3-грамм с недавним текстом, выше которого нарация считается
@@ -33,10 +34,11 @@ export const NARRATOR_CLICHE_REMINDER_LIMIT = 6
 export const NARRATOR_FEEDBACK_MEMORY_LIMIT = 128
 export const NARRATOR_ARC_RECAP_MEMORY_LIMIT = 128
 export const NARRATOR_STREAM_MAX_BYTES = 12 * 1024
+export const NARRATOR_DEFAULT_TIMEOUT_MS = 12_000
 const NARRATOR_ARC_RECAP_OVERRIDE = Symbol('narrator-arc-recap-override')
-const promptPath = fileURLToPath(new URL('../prompts/narrator/v6.txt', import.meta.url))
+const promptPath = fileURLToPath(new URL('../prompts/narrator/v9.txt', import.meta.url))
 const narratorPrompt = readFileSync(promptPath, 'utf8')
-const fewShotPath = fileURLToPath(new URL('../prompts/narrator/few-shot-v1.json', import.meta.url))
+const fewShotPath = fileURLToPath(new URL('../prompts/narrator/few-shot-v2.json', import.meta.url))
 const fewShotDocument = JSON.parse(readFileSync(fewShotPath, 'utf8'))
 
 if (fewShotDocument?.version !== NARRATOR_FEW_SHOT_VERSION || !Array.isArray(fewShotDocument?.examples)) {
@@ -48,6 +50,9 @@ export const NARRATOR_FEW_SHOT_CORPUS = Object.freeze(fewShotDocument.examples.m
   style: String(example?.style ?? ''),
   moment: String(example?.moment ?? ''),
   tones: Object.freeze((Array.isArray(example?.tones) ? example.tones : []).map(String)),
+  player_message: String(example?.player_message ?? ''),
+  allowed_facts: Object.freeze((Array.isArray(example?.allowed_facts) ? example.allowed_facts : []).map(String)),
+  response_goal: String(example?.response_goal ?? ''),
   text: String(example?.text ?? ''),
 })))
 
@@ -178,10 +183,44 @@ function narratorToneTags(brief) {
   return tags.length ? tags : ['grounded']
 }
 
+// Декларация и число броска не разрешают рассказчику завершить само действие.
+const DECLARATION_EVENTS = new Set(['ActionDeclared', 'RulingRecorded', 'ObjectiveUpdated'])
+
+export function narratorResponsePlan(brief) {
+  const events = Array.isArray(brief?.visible_events) ? brief.visible_events : []
+  const hasReactions = (brief?.permitted_npc_reactions ?? []).length > 0
+  const declarationOnly = events.length > 0 && events.every(event => DECLARATION_EVENTS.has(event?.event_type)) && !hasReactions
+  const thinResult = events.length > 0 && events.every(event => DECLARATION_EVENTS.has(event?.event_type)
+    || ['AbilityCheckResolved', 'DieRolled', 'RollResolved', 'DamageApplied', 'HealingApplied'].includes(event?.event_type)
+    || (['DoorLockpicked', 'DoorForced'].includes(event?.event_type) && event?.payload?.success !== true)
+    || (event?.event_type === 'DoorStateChanged' && event?.payload?.state !== 'open')) && !hasReactions
+  const moment = narratorMomentFor(brief)
+  const speechAct = declarationOnly ? 'acknowledge_intent' : events.length || hasReactions ? 'report_result' : 'describe_scene'
+  return {
+    version: 'narrator-response-plan/v1',
+    mode: 'world_narration',
+    speech_act: speechAct,
+    must_answer: declarationOnly
+      ? 'Кратко пояснить, что намерение ещё не стало выполненным действием.'
+      : events.length || hasReactions
+        ? 'Сначала передать исход текущего шага по видимым событиям и разрешённым реакциям.'
+        : 'Кратко описать уже известную обстановку без нового события.',
+    include_scene_detail: !thinResult,
+    include_memory: !thinResult,
+    max_questions: 0,
+    soft_sentence_limit: thinResult ? 1 : moment === 'transition' ? 4 : 2,
+    stop_after: speechAct,
+    delivery: thinResult ? 'after_validation' : 'sentence_buffered',
+  }
+}
+
 export function selectNarratorFewShotExamples(brief, {
   style = currentNarratorStyle(),
   count = 3,
 } = {}) {
+  // Бросок и декларация сами по себе не задают физическое действие:
+  // модель переносила сюда открытый засов из action-примера.
+  if (!narratorResponsePlan(brief).include_scene_detail) return []
   const selectedStyle = ['neutral', 'formal', 'ironic'].includes(String(style)) ? String(style) : 'neutral'
   const moment = narratorMomentFor(brief)
   const tones = new Set(narratorToneTags(brief))
@@ -199,11 +238,12 @@ export function selectNarratorFewShotExamples(brief, {
 }
 
 function narratorPromptWithExamples(examples) {
+  if (!examples.length) return narratorPrompt
   const fragments = examples.map((example, index) => (
-    `${index + 1}. [${example.style}; ${example.moment}; ${example.tones.join(', ')}] ${example.text}`
+    `${index + 1}. [${example.style}; ${example.moment}; ${example.tones.join(', ')}]\nОбращение: ${example.player_message}\nРазрешённые факты: ${example.allowed_facts.join(' ')}\nЗадача ответа: ${example.response_goal}\nОтвет: ${example.text}`
   ))
   const marker = '\nВерни только готовое повествование обычным текстом.'
-  const exampleSection = `\nCURATED_STYLE_EXAMPLES (${NARRATOR_FEW_SHOT_VERSION}):\n${fragments.join('\n')}\n`
+  const exampleSection = `\nCURATED_STYLE_EXAMPLES (${NARRATOR_FEW_SHOT_VERSION}):\nЭто отдельные вымышленные сцены для ритма фразы, не факты текущего хода.\n${fragments.join('\n')}\nСобытия и предметы этих примеров нельзя переносить в ответ без собственных оснований в NarrationBrief.\n`
   return narratorPrompt.includes(marker)
     ? narratorPrompt.replace(marker, `${exampleSection}${marker}`)
     : `${narratorPrompt}${exampleSection}`
@@ -476,6 +516,10 @@ function briefForNarratorPrompt(brief) {
       ...environment,
       story_context: {
         ...promptStory,
+        // Нерелевантная память подталкивала GLM к новым причинным связям.
+        // Полная память остаётся в исходном brief и в серверной проверке.
+        recent_summaries: (Array.isArray(story.recent_summaries) ? story.recent_summaries : []).filter(entry => !focus || (focus.kind === 'summary' && sceneText(entry?.summary, 500) === focus.cue)),
+        recent_decisions: (Array.isArray(story.recent_decisions) ? story.recent_decisions : []).filter(entry => !focus || (focus.kind === 'decision' && sceneText(entry?.outcome || entry?.objective, 500) === focus.cue)),
         present_npcs: (Array.isArray(story.present_npcs) ? story.present_npcs : []).map((npc) => ({
           id: sceneText(npc?.id, 120),
           name: sceneText(npc?.name, 120),
@@ -491,6 +535,7 @@ function briefForNarratorPrompt(brief) {
         })),
         open_promises: (Array.isArray(story.open_promises) ? story.open_promises : [])
           .filter(visibleSocialRecord)
+          .filter(promise => !focus || (focus.kind === 'promise' && sceneText(promise?.text, 500) === focus.cue))
           .map((promise) => ({
             id: sceneText(promise?.id, 120),
             npc: sceneText(promise?.npc, 120),
@@ -502,6 +547,7 @@ function briefForNarratorPrompt(brief) {
           })),
         recent_interactions: (Array.isArray(story.recent_interactions) ? story.recent_interactions : [])
           .filter(visibleSocialRecord)
+          .filter(interaction => !focus || (focus.kind === 'interaction' && sceneText(interaction?.npc_reply, 500) === focus.cue))
           .map((interaction) => ({
             npc: sceneText(interaction?.npc, 120),
             hero: sceneText(interaction?.hero, 120),
@@ -512,6 +558,27 @@ function briefForNarratorPrompt(brief) {
           })),
       },
     },
+  }
+  if (!narratorResponsePlan(brief).include_memory) {
+    // Короткому рассказу достаточно качественного исхода из серверных сводок.
+    // Числа остаются в исходном brief для verifier и в механическом журнале.
+    const outcomeFields = ['ability', 'skill', 'success', 'saved', 'hit', 'state', 'damage_type', 'immune', 'resistant', 'vulnerable']
+    promptBrief.visible_events = brief.visible_events.map(event => ({
+      event_type: event.event_type,
+      actor_id: event.actor_id,
+      target_ids: event.target_ids,
+      payload: Object.fromEntries(outcomeFields.filter(key => event.payload?.[key] != null)
+        .map(key => [key, event.payload[key]])),
+    }))
+    promptBrief.visible_state_changes = []
+    delete promptBrief.known_environment.world_memory
+    const { sensory_anchors: _sensoryAnchors, ...scene } = promptBrief.known_environment.scene ?? {}
+    promptBrief.known_environment.scene = scene
+    promptBrief.known_environment.story_context = {
+      heroes: Array.isArray(story.heroes) ? story.heroes : [],
+      present_npcs: promptBrief.known_environment.story_context.present_npcs,
+    }
+    return promptBrief
   }
   if (!focus) return promptBrief
   const { score: _score, order: _order, ...promptFocus } = focus
@@ -574,12 +641,12 @@ const CURRENT_REACTION_VERBS = [
   'доста[её]т', 'переда[её]т', 'поднима(?:ет|ют)', 'опуска(?:ет|ют)',
 ].join('|')
 const PERMITTED_REACTION_PHRASES = [
-  'встревожен\\w*', 'принима(?:ет|ют)\\s+довод\\w*',
+  'встревожен[а-яё]*', 'принима(?:ет|ют)\\s+довод[а-яё]*',
   'оста[её]тся\\s+при\\s+сво[её]м', 'молча\\s+наблюда(?:ет|ют)',
-  'держится\\s+(?:приветлив\\w*|насторож\\w*|холодн\\w*)',
+  'держится\\s+(?:приветлив[а-яё]*|насторож[а-яё]*|холодн[а-яё]*)',
   'наблюда(?:ет|ют)', 'след(?:ит|ят)',
 ].join('|')
-const NPC_REACTION_MARKERS = `(?:${CURRENT_REACTION_VERBS}|${PERMITTED_REACTION_PHRASES})`
+const NPC_REACTION_MARKERS = `(?:${CURRENT_REACTION_VERBS}|${PERMITTED_REACTION_PHRASES})(?![\\p{L}\\p{N}_])`
 const NPC_REACTION_MATCHERS = Object.freeze({
   alarmed: /(?:встревож|тревож|вздрог|испуг)/iu,
   persuaded: /(?:принима\w*\s+довод|соглаша|убежд)/iu,
@@ -604,8 +671,8 @@ const HERO_AGENCY_VERBS = [
 ].join('|')
 const MECHANICAL_TERM = '(?:брос\\w*|выпал\\w*|итог\\w*|СЛ|HP|ОЗ|КД|урон\\w*|лечен\\w*|цен\\w*|монет\\w*|фт\\.?|фут\\w*|метр\\w*|минут\\w*|час\\w*|ресурс\\w*|заряд\\w*|ячейк\\w*)'
 const MECHANICAL_NUMBER_PATTERN = new RegExp(`(?:${MECHANICAL_TERM})[^.!?\\d]{0,24}\\d|\\d[^.!?]{0,24}(?:${MECHANICAL_TERM})`, 'iu')
-const OPEN_PROMISE_RESOLUTION_PATTERN = /обещан\w*[^.!?]{0,50}(?:на\s+месте|лежит|видне|торчит|найден|нашл|получен|передан|забра|доста)/iu
-const PROMISED_OBJECT_STATE_PATTERN = /(?:леж(?:ит|ат|ал[аои]?|али)|наход(?:ит(?:ся)?|ятся|ился|илась|илось|ились)|видне(?:ется|ются|лся|лась|лись)|торч(?:ит|ат|ал[аои]?|али)|спрятан\w*|оставлен\w*|готов\w*|жд[её]т|найден\w*|на\s+месте)/iu
+const OPEN_PROMISE_RESOLUTION_PATTERN = /обещан[а-яё]*[^.!?]{0,50}(?<![а-яё])(?<!не\s+)(?<!не\s+был[аои]?\s+)(?:на\s+месте|найден[а-яё]*|нашл[а-яё]*|получен[а-яё]*|передан[а-яё]*|забра[а-яё]*|доста[её]т)(?![а-яё])/iu
+const PROMISED_OBJECT_STATE_PATTERN = /(?<![а-яё])(?:леж(?:ит|ат|ал[аои]?|али)|наход(?:ит(?:ся)?|ятся|ился|илась|илось|ились)|видне(?:ется|ются|лся|лась|лись)|вид(?:ен|на|но|ны)|торч(?:ит|ат|ал[аои]?|али)|спрятан[а-яё]*|оставлен[а-яё]*|готов[а-яё]*|жд[её]т|найден[а-яё]*|замечен[а-яё]*|обнаружен[а-яё]*|выявлен[а-яё]*|оказал(?:ся|ась|ось|ись)|замеча(?:ет|ют|л[аои]?|ли)|нащуп(?:ал[аои]?|али|ывает|ывают)|обнаруж(?:ил[аои]?|или|ивает|ивают)|наш[её]л|нашл[аои]|на\s+месте)(?![а-яё])/iu
 const PROMISE_GENERIC_ROOT_PREFIXES = [
   'обещ', 'остав', 'принес', 'покаж', 'показ', 'переда', 'получ',
   'исполн', 'выполн', 'сдерж', 'слов', 'открыт', 'прежн',
@@ -636,7 +703,7 @@ function promiseHasResolutionEvent(brief, promise) {
   const events = (brief.visible_events ?? []).filter((event) => event?.event_type === 'NpcPromiseResolved')
   if (!events.length) return false
   const promiseId = String(promise?.id ?? '').trim()
-  if (!promiseId) return true
+  if (!promiseId) return false
   return events.some((event) => String(event?.payload?.promise_id ?? '') === promiseId)
 }
 
@@ -649,6 +716,14 @@ function promiseAnchorMatches(sentence, promise) {
   const sentenceRoots = suggestionRoots(sentence)
   if (anchors.length) return anchors.some((root) => sentenceRoots.has(root))
   return sharedRootCount(sentence, [promise?.npc, promise?.text]) >= 2
+}
+
+function promisedObjectAssertion(sentence) {
+  return [...sentence.matchAll(new RegExp(PROMISED_OBJECT_STATE_PATTERN.source, 'giu'))].some(match => {
+    const before = sentence.slice(Math.max(0, match.index - 32), match.index)
+    // «Не видно» и «пока не найдена» не утверждают получения вещи.
+    return !/(?:не\s+(?:был[аои]?\s+)?|никогда\s+не\s*)$/iu.test(before)
+  })
 }
 
 const CONTENT_BOUNDARY_CATEGORIES = Object.freeze([
@@ -930,8 +1005,10 @@ export function verifyNarratorCraft(narration, brief, verification, recentNarrat
   const heroNames = (Array.isArray(story.heroes) ? story.heroes : []).map((hero) => hero?.name).filter(Boolean)
   if (heroNames.length) {
     const heroAgency = new RegExp(`(?:${heroNames.map(escapePattern).join('|')})[^.!?]{0,48}(?:${HERO_AGENCY_VERBS})`, 'iu')
-    if (heroAgency.test(currentText)) {
-      add('HERO_AGENCY_NOT_IN_BRIEF', 'Рассказчик приписал герою новое действие, мысль или решение', heroAgency.exec(currentText)?.[0])
+    for (const sentence of currentText.split(/[.!?]/u)) {
+      if (heroAgency.test(sentence) && !confirmedHeroDoorAction(sentence, brief, story.heroes)) {
+        add('HERO_AGENCY_NOT_IN_BRIEF', 'Рассказчик приписал герою новое действие, мысль или решение', heroAgency.exec(sentence)?.[0])
+      }
     }
   }
 
@@ -974,11 +1051,11 @@ export function verifyNarratorCraft(narration, brief, verification, recentNarrat
 
   const openPromises = (Array.isArray(story.open_promises) ? story.open_promises : [])
     .filter((promise) => !promiseHasResolutionEvent(brief, promise))
-  const promiseStateAssertion = (currentText.match(/[^.!?]+[.!?]?/gu) ?? []).find((sentence) => (
-    PROMISED_OBJECT_STATE_PATTERN.test(sentence)
-    && openPromises.some((promise) => promiseAnchorMatches(sentence, promise))
+  const promiseStateAssertion = currentText.split(/[.!?]|[,;—]\s*(?:но|зато|однако)\s+/iu).find(sentence => (
+    OPEN_PROMISE_RESOLUTION_PATTERN.test(sentence)
+    || (promisedObjectAssertion(sentence) && openPromises.some(promise => promiseAnchorMatches(sentence, promise)))
   ))
-  if (openPromises.length && (OPEN_PROMISE_RESOLUTION_PATTERN.test(currentText) || promiseStateAssertion)) {
+  if (openPromises.length && promiseStateAssertion) {
     add('PROMISE_RESOLUTION_NOT_IN_BRIEF', 'Рассказчик объявил обещанное полученным или находящимся на месте без события')
   }
 
@@ -999,6 +1076,20 @@ export function verifyNarratorCraft(narration, brief, verification, recentNarrat
     valid: violations.length === 0,
     violations,
   }
+}
+
+// Разрешение узкое: одно предложение, тот же герой и направление изменения.
+// Событие двери не разрешает ни следующий поступок, ни действие с другим предметом.
+function confirmedHeroDoorAction(sentence, brief, heroes) {
+  for (const hero of heroes) {
+    if (!hero?.id || !hero?.name) continue
+    const match = new RegExp(`^\\s*${escapePattern(hero.name)}\\s+(открывает|закрывает)\\s+дверь\\s*$`, 'iu').exec(sentence)
+    if (!match) continue
+    const state = match[1].toLocaleLowerCase('ru') === 'открывает' ? 'open' : 'closed'
+    return brief.visible_events.some(event => event?.actor_id === hero.id
+      && event.event_type === 'DoorStateChanged' && event.payload?.state === state)
+  }
+  return false
 }
 
 function sensoryAnchorIsPresent(narration, sensoryAnchors) {
@@ -1034,7 +1125,11 @@ export function verifyNarratorFeedback(narration, brief, {
     message: `Повествование использует клише из production-каталога: «${cliche.label}»`,
     match: sceneText(cliche.match, 120),
   }))
-  const focus = narratorMemoryFocus(brief)
+  const responsePlan = narratorResponsePlan(brief)
+  const focus = responsePlan.include_memory ? narratorMemoryFocus(brief) : null
+  if (responsePlan.max_questions === 0 && /\?\s*$/u.test(text)) {
+    add('UNNECESSARY_FOLLOWUP_QUESTION', 'После сообщения исхода добавлен вопрос, которого не требовал план ответа')
+  }
   if (!memoryFocusIsRecalled(narration, focus)) {
     add(
       'LINKED_MEMORY_OMITTED',
@@ -1050,7 +1145,7 @@ export function verifyNarratorFeedback(narration, brief, {
       repetition.shared,
     )
   }
-  if (Object.values(sensoryAnchors ?? {}).filter(Boolean).length >= 3
+  if (responsePlan.include_scene_detail && Object.values(sensoryAnchors ?? {}).filter(Boolean).length >= 3
     && !sensoryAnchorIsPresent(text, sensoryAnchors)) {
     add(
       'SENSORY_ANCHOR_OMITTED',
@@ -1192,10 +1287,11 @@ function briefNameResolver(brief) {
 function confirmedOutcome(payload, field = 'success') {
   if (payload?.[field] === true) return 'успехом'
   if (payload?.[field] === false) return 'неудачей'
-  if (Number.isFinite(Number(payload?.total)) && Number.isFinite(Number(payload?.difficulty))) {
+  if (payload?.total != null && payload?.difficulty != null
+    && Number.isFinite(Number(payload.total)) && Number.isFinite(Number(payload.difficulty))) {
     return Number(payload.total) >= Number(payload.difficulty) ? 'успехом' : 'неудачей'
   }
-  return 'подтверждённым исходом'
+  return null
 }
 
 /**
@@ -1210,12 +1306,20 @@ function qualitativeEventSummary(event, resolveName) {
   switch (event?.event_type) {
     case 'DieRolled':
       return 'Бросок завершён'
-    case 'AbilityCheckResolved':
-      return `Проверка ${sceneText(payload.skill || payload.ability || 'способности', 48)} завершилась ${confirmedOutcome(payload)}`
-    case 'SavingThrowResolved':
-      return `Спасбросок ${actor} завершился ${confirmedOutcome(payload, payload.saved == null ? 'success' : 'saved')}`
-    case 'SpellSavingThrowResolved':
-      return `Спасбросок ${target} от ${sceneText(payload.spell_name || payload.spell_id || 'заклинания', 64)} завершился ${confirmedOutcome(payload, 'saved')}`
+    case 'AbilityCheckResolved': {
+      const label = SKILL_LABELS_RU[String(payload.skill ?? '').replace(/_/gu, '-')]
+        ?? ABILITY_LABELS_RU[payload.ability]
+      const outcome = confirmedOutcome(payload)
+      return `Проверка${label ? ` «${label}»` : ''}${outcome ? ` завершилась ${outcome}` : ' завершена; её исход пока неизвестен'}`
+    }
+    case 'SavingThrowResolved': {
+      const outcome = confirmedOutcome(payload, payload.saved == null ? 'success' : 'saved')
+      return `${actor}: спасбросок ${outcome ? `завершился ${outcome}` : 'завершён; его исход пока неизвестен'}`
+    }
+    case 'SpellSavingThrowResolved': {
+      const outcome = confirmedOutcome(payload, 'saved')
+      return `${target}: спасбросок от ${sceneText(payload.spell_name || payload.spell_id || 'заклинания', 64)} ${outcome ? `завершился ${outcome}` : 'завершён; его исход пока неизвестен'}`
+    }
     case 'ConcentrationSavingThrowResolved':
       return payload.saved === true ? `${actor} сохраняет концентрацию` : `${actor} теряет концентрацию`
     case 'AttackResolved':
@@ -1223,11 +1327,12 @@ function qualitativeEventSummary(event, resolveName) {
     case 'AreaAttackResolved':
       return `${sceneText(payload.item_name || 'Атака', 64)} поражает указанную область`
     case 'DamageApplied':
-      return payload.death_ward_triggered
+      return payload.applied_amount === 0 ? `${target} не получает урона`
+        : payload.death_ward_triggered
         ? `Защита от смерти удерживает ${target} в бою`
-        : `${target} получает подтверждённый урон`
+        : `${target} получает урон`
     case 'HealingApplied':
-      return `${target} получает подтверждённое лечение`
+      return `${target} получает лечение`
     case 'HitPointMaximumReduced':
       return `Запас сил ${target} ограничен`
     case 'ActorMoved':
@@ -1246,8 +1351,10 @@ function qualitativeEventSummary(event, resolveName) {
       return `Продажа «${sceneText(payload.item?.name || payload.catalog_id || 'предмета', 64)}» завершена`
     case 'ResourceSpent':
       return `${actor} расходует ${sceneText(payload.resource || 'ресурс', 64)}`
-    case 'DeathSavingThrowRolled':
-      return `Спасбросок от смерти ${target} завершился ${confirmedOutcome(payload)}`
+    case 'DeathSavingThrowRolled': {
+      const outcome = confirmedOutcome(payload)
+      return `${target}: спасбросок от смерти ${outcome ? `завершился ${outcome}` : 'завершён; его исход пока неизвестен'}`
+    }
     case 'DeathSaveFailureRecorded':
       return `${target} получает провал спасброска от смерти`
     case 'KnockoutRecoveryProgressed':
@@ -1265,8 +1372,24 @@ function qualitativeEventSummary(event, resolveName) {
       return `Отношение NPC меняется с ${sceneText(payload.tier_before || 'нейтрального', 32)} на ${sceneText(payload.tier_after || 'новое', 32)}`
     case 'QuestClockAdvanced':
       return `Развитие квеста ${sceneText(payload.quest_id || 'отряда', 72)} продвинулось`
+    case 'ActionDeclared':
+      return 'Действие пока только намечено'
+    case 'DoorStateChanged':
+      return payload.state === 'open' ? 'Дверь открыта' : payload.state === 'closed' ? 'Дверь закрыта' : 'Положение двери изменено'
+    case 'DoorLockpicked':
+      return payload.success === true ? 'Замок вскрыт, дверь открыта' : 'Вскрыть замок не удалось, дверь остаётся запертой'
+    case 'DoorForced':
+      return payload.success === true ? 'Дверь выломана' : 'Выломать дверь не удалось'
+    case 'DoorBarricadeCleared':
+      return payload.restored_state === 'open' ? 'Баррикада снята, проход открыт' : 'Баррикада снята'
+    case 'WorldFactRecorded':
+      return sceneText(payload.fact?.summary || payload.fact?.object || 'Отряду открыт новый факт', 600)
+    case 'NpcConversationRecorded':
+      return `${named(payload.conversation?.npc_id, 'Собеседник')}: «${sceneText(payload.conversation?.npc_reply || 'Ответ сохранён', 500)}»`
+    case 'RulingRecorded':
+      return 'Действие ещё не выполнено'
     case 'WorldFactRevealed':
-      return 'Отряду открывается подтверждённый факт'
+      return 'Отряду становится известно кое-что новое'
     case 'TimeOfDayChanged':
     case 'WeatherChanged':
       // Готовая строка модуля погоды, а не сводка события: сводка несёт часы и
@@ -1293,38 +1416,36 @@ function withoutVisibleNumbers(value) {
 }
 
 function deterministicNarrationCandidate(brief, resolve, variant, arcRecap) {
-  const summaries = brief.visible_events
+  const responsePlan = narratorResponsePlan(brief)
+  const outcomeEvents = brief.visible_events.filter(event => !DECLARATION_EVENTS.has(event?.event_type))
+  const summaries = (outcomeEvents.length ? outcomeEvents : brief.visible_events)
     .map((event) => withoutVisibleNumbers(qualitativeEventSummary(event, resolve)))
     .filter(Boolean)
-  const { opening, quest } = deterministicFraming(brief, variant)
-  const memory = withoutVisibleNumbers(memoryFocusReminder(narratorMemoryFocus(brief), variant))
+  const { opening, quest } = responsePlan.include_scene_detail ? deterministicFraming(brief, variant) : {}
+  const memory = responsePlan.include_memory ? withoutVisibleNumbers(memoryFocusReminder(narratorMemoryFocus(brief), variant)) : ''
   const recapText = withoutVisibleNumbers(sceneText(arcRecap?.epilogue, 480))
   const recap = recapText
     ? `В прошлый раз: ${recapText.replace(/[.!?]+$/u, '')}. Теперь:`
     : ''
-  const body = summaries.length
+  const body = responsePlan.speech_act === 'acknowledge_intent'
+    ? 'Действие ещё не выполнено.'
+    : summaries.length
     ? `${summaries.slice(0, 4).join('. ').replace(/\.+$/u, '')}.`
     : quest
       ? [
           `Пока ничего не меняется: «${quest}» ждёт решения отряда.`,
           `Решение по линии «${quest}» пока остаётся за отрядом.`,
-          `В задаче «${quest}» ещё нет нового подтверждённого исхода.`,
-          `События не изменились; следующий выбор по «${quest}» делает партия.`,
+          `Пока нет новых сведений о задаче «${quest}».`,
+          `Как поступить с задачей «${quest}», решает отряд.`,
         ][variant % 4]
       : [
           'Пока ничего не меняется: следующий шаг за отрядом.',
-          'Нового подтверждённого исхода нет; решение остаётся за отрядом.',
-          'Состояние сцены прежнее, и партия выбирает следующий шаг.',
-          'Мир не изменился; дальнейшее намерение определяет отряд.',
+          'Пока нет ничего нового.',
+          'Здесь всё по-прежнему.',
+          'Здесь всё по-прежнему.',
         ][variant % 4]
   const memorySentence = memory ? `${memory.replace(/\.+$/u, '')}.` : ''
-  const orders = [
-    [opening, body, memorySentence],
-    [body, opening, memorySentence],
-    [opening, memorySentence, body],
-    [memorySentence, opening, body],
-  ]
-  return [recap, ...orders[variant % 4]].filter(Boolean).join(' ')
+  return [recap, body, opening, memorySentence].filter(Boolean).join(' ')
 }
 
 export function deterministicNarration(brief, resolveName, { recentNarrations = [] } = {}) {
@@ -1354,6 +1475,23 @@ function completeSentencePrefix(value) {
     end = (match.index ?? 0) + match[0].length
   }
   return end ? text.slice(0, end).trim() : ''
+}
+
+function awaitNarrationDeadline(operation, signal) {
+  const promise = Promise.resolve(operation)
+  if (!signal) return promise
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason ?? new Error('Нарация отменена'))
+      return
+    }
+    const onAbort = () => reject(signal.reason ?? new Error('Нарация отменена'))
+    signal.addEventListener('abort', onAbort, { once: true })
+    promise.then(
+      (value) => { signal.removeEventListener('abort', onAbort); resolve(value) },
+      (error) => { signal.removeEventListener('abort', onAbort); reject(error) },
+    )
+  })
 }
 
 function provisionalNarrationIsSafe(text, brief, verifier, knownRuleIds, recentNarrations) {
@@ -1483,6 +1621,7 @@ export class Narrator {
     priorFeedback,
     examples,
     provider,
+    startedAt,
   }) {
     const arcRecap = narratorArcRecap(brief, { recentNarrations: recent })
     if (arcRecap) {
@@ -1500,6 +1639,15 @@ export class Narrator {
       narration,
       verification: {
         ...verification,
+        response_plan: narratorResponsePlan(brief),
+        origin: {
+          source: provider.startsWith('deterministic') ? 'template' : 'llm',
+          reason: provider === 'deterministic' ? 'no_provider'
+            : verification.provider_error ? 'provider_error'
+              : provider === 'deterministic-fallback' ? (verification.repaired_from?.length ? 'verification_rejected' : 'empty_response')
+                : 'generated',
+          elapsed_ms: Math.max(0, Date.now() - startedAt),
+        },
         feedback_mode: this.asyncFeedback ? 'async-next-turn' : 'disabled',
         feedback_pending: this.asyncFeedback,
         ...(priorFeedback.length ? { feedback_applied: priorFeedback } : {}),
@@ -1524,6 +1672,7 @@ export class Narrator {
     recentNarrations = [],
     onProgress = null,
   } = {}) {
+    const startedAt = Date.now()
     assertNarrationBrief(brief)
     const campaignStyle = currentNarratorStyleInstruction()
     if (campaignStyle) style = `${campaignStyle}\n${style}`
@@ -1535,13 +1684,21 @@ export class Narrator {
       recappedArcKeys: this.arcRecapMemory,
     })
     brief = withArcRecapOverride(brief, arcRecap)
-    const sensoryAnchors = sensoryAnchorsFor(brief)
+    const responsePlan = narratorResponsePlan(brief)
+    const sensoryAnchors = responsePlan.include_scene_detail ? sensoryAnchorsFor(brief) : {}
     const contentDirectives = narratorContentDirectives(brief)
-    const npcDossiers = npcDossiersForNarrator(brief)
+    const npcDossiers = responsePlan.include_memory ? npcDossiersForNarrator(brief) : []
     const examples = selectNarratorFewShotExamples(brief)
+    const finish = (input) => {
+      const result = this._result({ ...input, startedAt })
+      if (responsePlan.delivery === 'after_validation' && result.verification.valid && typeof onProgress === 'function') {
+        onProgress(result.narration)
+      }
+      return result
+    }
     if (!this.llmClient) {
       const fallback = deterministicNarration(brief, undefined, { recentNarrations: recent })
-      return this._result({
+      return finish({
         narration: fallback.narration,
         brief,
         recent,
@@ -1559,7 +1716,7 @@ export class Narrator {
       })
     }
 
-    const requestedTimeout = Number(timeoutMs)
+    const requestedTimeout = timeoutMs == null ? NARRATOR_DEFAULT_TIMEOUT_MS : Number(timeoutMs)
     const deadlineController = Number.isFinite(requestedTimeout) && requestedTimeout > 0
       ? new AbortController()
       : null
@@ -1580,6 +1737,11 @@ export class Narrator {
             role: 'user',
             content: buildDataOnlyContext({
               narration_brief: briefForNarratorPrompt(brief),
+              response_plan: responsePlan,
+              confirmed_event_summaries: (brief.visible_events ?? []).map(event => ({
+                event_type: event.event_type,
+                text: withoutVisibleNumbers(qualitativeEventSummary(event, briefNameResolver(brief))),
+              })),
               style,
               content_preferences: contentDirectives,
               sensory_anchors: sensoryAnchors,
@@ -1591,33 +1753,34 @@ export class Narrator {
           },
         ],
         ...generation,
+        ...(deadlineController ? { timeoutMs: requestedTimeout } : {}),
         signal: deadlineController?.signal,
       }
       let narration = ''
       try {
         if (typeof this.llmClient.complete === 'function') {
-          const completion = await this.llmClient.complete({
+          const completion = await awaitNarrationDeadline(this.llmClient.complete({
             ...request,
             onDelta: narrationProgressBuffer({
               brief,
               verifier: this.verifier,
               knownRuleIds,
               recentNarrations: recent,
-              onProgress,
+              onProgress: responsePlan.delivery === 'after_validation' ? null : onProgress,
             }),
-          })
+          }), deadlineController?.signal)
           narration = String(completion?.content ?? '').trim()
         } else {
           // Совместимость с узкими тестовыми fake-клиентами старого контракта.
-          const output = await this.llmClient.completeJson({
+          const output = await awaitNarrationDeadline(this.llmClient.completeJson({
             ...request,
             jsonExpected: 'object',
-          })
+          }), deadlineController?.signal)
           narration = String(output?.narration ?? '').trim()
         }
       } catch (error) {
         const fallback = deterministicNarration(brief, undefined, { recentNarrations: recent })
-        return this._result({
+        return finish({
           narration: fallback.narration,
           brief,
           recent,
@@ -1644,7 +1807,7 @@ export class Narrator {
         recent,
       )
       if (safetyVerification.valid && narration) {
-        return this._result({
+        return finish({
           narration,
           brief,
           recent,
@@ -1657,7 +1820,7 @@ export class Narrator {
         })
       }
       const fallback = deterministicNarration(brief, undefined, { recentNarrations: recent })
-      return this._result({
+      return finish({
         narration: fallback.narration,
         brief,
         recent,

@@ -85,10 +85,10 @@ import {
   campaignRulesetMetadata,
   campaignRulesetSettings,
 } from './campaign-ruleset.mjs'
-import { GAME_STATE_PROJECTOR_VERSION, RulesEngine, actorNameResolver, applyGameEvent, assertSendLetterAllowed, attackForecast, normalizeCampaignState } from './rules-engine.mjs'
+import { GAME_STATE_PROJECTOR_VERSION, RulesEngine, actorNameResolver, applyGameEvent, assertSendLetterAllowed, attackForecast, normalizeCampaignState, npcCombatRequestFingerprint } from './rules-engine.mjs'
 import { runNpcTurnScheduler } from './npc-turn-scheduler.mjs'
 import { CombatTurnCoordinator, combatTurnClockForState } from './combat-turn-coordinator.mjs'
-import { FileTraceStore, buildTurnExplanation } from './trace-store.mjs'
+import { FileTraceStore, buildTurnExplanation, isMechanicalTrace } from './trace-store.mjs'
 import { createSceneTransition } from './adventure-director.mjs'
 import { SCENE_ARCHITECT_AGENT_ID, SceneArchitectAgent } from './scene-architect.mjs'
 import { proposeAgentInteraction, resolvePartyDecision } from './player-request-router.mjs'
@@ -103,7 +103,7 @@ import {
   MAX_CURRENCY_CP,
   findMerchant,
   merchantEconomyClockEventFromPlan,
-  merchantIsAtLocation,
+  merchantTradeAvailabilityFor,
   merchantRestockCommandFromPlan,
   merchantViewFor,
   planMerchantEconomyClock,
@@ -180,8 +180,8 @@ const port = Number(process.env.AGENT_PORT || 8787)
 const host = process.env.AGENT_HOST || '0.0.0.0'
 const apiKey = process.env.ROUTERAI_API_KEY || ''
 const baseUrl = (process.env.ROUTERAI_BASE_URL || 'https://routerai.ru/api/v1').replace(/\/$/, '')
-const model = process.env.DND_AI_MODEL || 'deepseek/deepseek-v4-flash'
-const fallbackModels = [...new Set(String(process.env.DND_AI_FALLBACK_MODELS || 'z-ai/glm-5.3-flash,z-ai/glm-5.2,deepseek/deepseek-v4-flash,google/gemini-2.5-flash-lite,openai/gpt-4.1-nano')
+const model = process.env.DND_AI_MODEL || 'z-ai/glm-5.3-flash'
+const fallbackModels = [...new Set(String(process.env.DND_AI_FALLBACK_MODELS || 'google/gemini-2.5-flash-lite,deepseek/deepseek-v4-flash,z-ai/glm-5.2,openai/gpt-4.1-nano')
   .split(',').map((value) => value.trim()).filter((value) => value && value !== model))].slice(0, 5)
 const allowedAiModels = Object.freeze([model, ...fallbackModels])
 const maxTokens = Number(process.env.DND_AI_MAX_TOKENS || 1200)
@@ -434,7 +434,8 @@ const PUBLIC_DIE_SIDES = new Set([4, 6, 8, 10, 12, 20, 100])
 // Парлей стоит здесь же: переговоры посреди боя — такое же действие на доске,
 // как опознание врага, и после уговора бой обязан продолжиться тем же
 // `settleCombatContinuation`, который двигает очередь после любой боевой команды.
-const PLAYER_COMBAT_COMMANDS = new Set(['StartCombat', 'MoveActor', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'IdentifyEnemy', 'ProposeParley', 'SettleParley', 'OperateDoor', 'OperateSceneObject', 'UseLevelTransition', 'EndTurn', 'ResolveHeroDeath'])
+const PLAYER_COMBAT_COMMANDS = new Set(['StartCombat', 'AttackNpc', 'MoveActor', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'IdentifyEnemy', 'ProposeParley', 'SettleParley', 'OperateDoor', 'OperateSceneObject', 'UseLevelTransition', 'EndTurn', 'ResolveHeroDeath'])
+const PLAYER_NPC_COMBAT_COMMANDS = new Set(['AttackNpc'])
 const PLAYER_REST_COMMANDS = new Set(['StartRest', 'SpendHitPointDie', 'CompleteRest'])
 const PLAYER_CHARACTER_COMMANDS = new Set(['SetCharacterChoices', 'SetSpellSelections'])
 const PLAYER_CHARACTER_LIFECYCLE_COMMANDS = new Set(['LevelUp', 'ImportCharacter', 'RollCharacterAbilities', 'RollCharacterWealth'])
@@ -682,6 +683,57 @@ function assertMakeAttackResultFingerprint(result, commands) {
     .map(String)
   if (actual.length !== expected.length || expected.some((fingerprint, index) => actual[index] !== fingerprint)) {
     throw commandPolicyError('Результат атаки не соответствует исходному запросу', 'IDEMPOTENCY_CONFLICT')
+  }
+}
+
+function assertNpcCombatActorPermission(user, state, input) {
+  const actor = String(input?.actor_id ?? input?.actorId ?? '')
+  if (!actor || !canUseHero(user, actor, state.sessionCode)) {
+    throw commandPolicyError('Напасть можно только своим героем', 'ACTOR_FORBIDDEN')
+  }
+  if (!(state.players ?? []).some((candidate) => String(candidate?.id) === actor)) {
+    throw commandPolicyError('Напасть может только герой отряда', 'ACTOR_FORBIDDEN')
+  }
+  return actor
+}
+
+function sanitizePlayerNpcCombatCommand(user, state, input) {
+  const type = commandType(input)
+  if (!PLAYER_NPC_COMBAT_COMMANDS.has(type)) throw commandPolicyError('Игроку доступен только безопасный вход в бой с NPC', 'PLAYER_COMMAND_FORBIDDEN')
+  const actorId = assertNpcCombatActorPermission(user, state, input)
+  const npcId = String(input?.npc_id ?? input?.npcId ?? '').trim().slice(0, 120)
+  if (!npcId || !/^[A-Za-z0-9._:-]+$/u.test(npcId)) throw commandPolicyError('Некорректный npc_id', 'NPC_ID_INVALID')
+  return {
+    command_type: 'AttackNpc',
+    actor_id: actorId,
+    npc_id: npcId,
+    server_authoritative: true,
+    ...(input?.expected_state_version == null && input?.expectedStateVersion == null
+      ? {}
+      : { expected_state_version: input.expected_state_version ?? input.expectedStateVersion }),
+    request_fingerprint: npcCombatRequestFingerprint({ actor_id: actorId, npc_id: npcId }),
+  }
+}
+
+const NPC_COMBAT_PRIMARY_EVENT_TYPES = new Set(['EncounterCreated'])
+
+async function assertNpcCombatIdempotency(campaignId, idempotencyKey, command) {
+  const duplicate = await eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
+  if (!duplicate) return
+  const fingerprints = new Set((duplicate.events ?? [])
+    .filter((event) => NPC_COMBAT_PRIMARY_EVENT_TYPES.has(event.event_type))
+    .map((event) => event.payload?.request_fingerprint)
+    .filter(Boolean)
+    .map(String))
+  if (fingerprints.size !== 1 || !fingerprints.has(npcCombatRequestFingerprint(command))) {
+    throw commandPolicyError('Этот ключ идемпотентности уже использован для другого входа в бой', 'IDEMPOTENCY_CONFLICT')
+  }
+}
+
+function assertNpcCombatResultFingerprint(result, command) {
+  const event = (result?.mechanics ?? []).find((candidate) => NPC_COMBAT_PRIMARY_EVENT_TYPES.has(candidate?.event_type))
+  if (!event || String(event.payload?.request_fingerprint ?? '') !== npcCombatRequestFingerprint(command)) {
+    throw commandPolicyError('Результат входа в бой не соответствует исходному запросу', 'IDEMPOTENCY_CONFLICT')
   }
 }
 
@@ -3262,6 +3314,18 @@ const server = createServer((req, res) => {
     try { return json(res, 200, await combatLabRuns.catalog()) }
     catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : 'Не удалось загрузить каталог боевого стенда', code: error?.code }) }
   }
+  if (['/api/admin/combat-lab/encounter/assess', '/api/admin/combat-lab/encounter/generate'].includes(requestPath) && req.method === 'POST') {
+    const admin = requireAdmin(req, res); if (!admin) return
+    try {
+      const body = await readBody(req)
+      const result = requestPath.endsWith('/generate')
+        ? await combatLabRuns.generateEncounter(body)
+        : await combatLabRuns.assessEncounter(body)
+      return json(res, 200, result)
+    } catch (error) {
+      return json(res, 400, { error: error instanceof Error ? error.message : 'Не удалось рассчитать стычку', code: error?.code })
+    }
+  }
   if (requestPath === '/api/admin/combat-lab/runs' && req.method === 'GET') {
     const admin = requireAdmin(req, res); if (!admin) return
     return json(res, 200, { activeRun: combatLabRuns.active() })
@@ -4049,6 +4113,36 @@ const server = createServer((req, res) => {
     }
   }
 
+  const dialogueMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/dialogue$/)
+  if (dialogueMatch && ['GET', 'DELETE'].includes(req.method ?? '')) {
+    const user = requireUser(req, res); if (!user) return
+    try {
+      const campaignId = dialogueMatch[1].toUpperCase()
+      const room = await reconcileCampaignProjection(campaignId)
+      if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
+      if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
+      const actorId = String(parsedUrl.searchParams.get('actor_id') ?? ownedViewerActorId(room.state, user, campaignId))
+      if (!canUseHero(user, actorId, campaignId)) return json(res, 403, { error: 'Этот герой не принадлежит вашему аккаунту' })
+      const registry = gameOrchestrator.clarificationRegistry
+      if (req.method === 'DELETE') {
+        const body = await readBody(req)
+        if (body.clarification_id) registry.complete(String(body.clarification_id), { campaignId, actorId })
+        registry.resetDialogue({ campaignId, actorId })
+        return json(res, 200, { cleared: true })
+      }
+      const stateVersion = room.state.state_version
+      const clarification = registry.current({ campaignId, actorId, stateVersion })
+      const check = rollRegistry.pendingNarrationCheck({ campaignId, actorId, stateVersion })
+      if (clarification && check) {
+        const stored = registry.resolve(clarification.id, { campaignId, actorId, stateVersion })
+        if (stored.original_intent?.action_steps?.[0] === check.action) check.clarification_id = clarification.id
+      }
+      return json(res, 200, { actor_id: actorId, clarification, check })
+    } catch (error) {
+      return json(res, 400, { error: error instanceof Error ? error.message : 'Не удалось восстановить диалог', code: error?.code })
+    }
+  }
+
   const campaignControlMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/controls$/)
   if (campaignControlMatch && req.method === 'POST') {
     const user = requireUser(req, res); if (!user) return
@@ -4227,9 +4321,21 @@ const server = createServer((req, res) => {
       const key = String(body.idempotency_key ?? req.headers['x-idempotency-key'] ?? '').slice(0, 120)
       if (!key) return json(res, 400, { error: 'Нужен idempotency_key', code: 'IDEMPOTENCY_KEY_REQUIRED' })
       const duplicate = await eventStore.getByIdempotencyKey(campaignId, `${key}:intent`)
+      let replayedIntent = null
       if (duplicate) {
         const current = await autonomousCampaign.load(campaignId)
-        return json(res, 200, { duplicate: true, state_version: current.state_version, admin_commands: 0, state: viewerStateFor(current.state, user, ownedViewerActorId(current.state, user, campaignId)) })
+        const decisionCommit = await eventStore.getByIdempotencyKey(campaignId, `${key}:custom`)
+        const openedDecision = decisionCommit?.events?.find((event) => event.event_type === 'PartyDecisionOpened')?.payload?.interaction
+        // Намерение и голосование записаны отдельными коммитами. Тот же ключ
+        // после кворума продолжает именно открытый им переход; завершённый
+        // переход или другое голосование повторно не исполняются.
+        const currentDecision = current.state.agentInteraction
+        const canContinue = openedDecision && currentDecision?.id === openedDecision.id
+          && currentDecision.status === 'resolved' && currentDecision.resolvedOptionId === 'continue'
+        if (!canContinue) {
+          return json(res, 200, { duplicate: true, state_version: current.state_version, admin_commands: 0, state: viewerStateFor(current.state, user, ownedViewerActorId(current.state, user, campaignId)) })
+        }
+        replayedIntent = duplicate.events.find((event) => event.event_type === 'DirectorIntentRecorded')?.payload?.intent ?? null
       }
       let loaded = await autonomousCampaign.load(campaignId)
       assertCampaignPlayable(loaded.state)
@@ -4251,12 +4357,14 @@ const server = createServer((req, res) => {
         loaded = await autonomousCampaign.load(campaignId)
       }
       if (loaded.state.mechanics?.combat?.active) return json(res, 409, { error: 'Сначала завершите активный бой через тактический интерфейс', code: 'COMBAT_ACTIVE' })
-      const decision = await directorAgent.choose({
-        state: loaded.state,
-        playerAction: body.player_action,
-        improvMode: currentImprovMode(),
-      })
-      const result = await autonomousCampaign.runIntent({ campaignId, intent: decision.intent, idempotencyKey: key })
+      const decision = replayedIntent
+        ? { intent: replayedIntent, trace: { mode: 'idempotent-pending-transition' } }
+        : await directorAgent.choose({
+          state: loaded.state,
+          playerAction: body.player_action,
+          improvMode: currentImprovMode(),
+        })
+      const result = await autonomousCampaign.runIntent({ campaignId, intent: decision.intent, idempotencyKey: key, playerAction: body.player_action })
       for (const stage of result.results ?? []) events.push(...(stage.events ?? []))
       warnOnDeadlyEncounter(campaignId, events)
       const authoritative = await autonomousCampaign.load(campaignId)
@@ -4290,7 +4398,9 @@ const server = createServer((req, res) => {
     const user = requireUser(req, res); if (!user) return
     const room = getRoom(explanationMatch[1])
     if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
-    const trace = explanationMatch[2] === 'latest' ? traceStore.latest(explanationMatch[1]) : traceStore.get(explanationMatch[1], explanationMatch[2])
+    const trace = explanationMatch[2] === 'latest'
+      ? traceStore.latest(explanationMatch[1], { predicate: isMechanicalTrace })
+      : traceStore.get(explanationMatch[1], explanationMatch[2])
     const playerId = campaignHeroIds(user, explanationMatch[1]).map(String)
       .find((id) => room.state?.players?.some((player) => String(player.id) === id)) ?? ''
     const explanation = buildTurnExplanation(trace, {
@@ -4521,9 +4631,10 @@ const server = createServer((req, res) => {
     const state = await latestCampaignState(merchantMatch[1], room.state)
     const view = merchantViewFor(state, routeMerchantId, actor)
     if (!view) return json(res, 404, { error: 'Торговец или герой не найден', code: 'MERCHANT_NOT_FOUND' })
-    if (view.merchant.available === false) return json(res, 409, { error: 'Торговец сейчас недоступен', code: 'MERCHANT_UNAVAILABLE' })
-    if (!merchantIsAtLocation(view.merchant, state.scene)) {
-      return json(res, 409, { error: 'Торговец находится в другой локации', code: 'MERCHANT_NOT_PRESENT' })
+    const merchantAvailability = merchantTradeAvailabilityFor(state, view.merchant)
+    if (!merchantAvailability.can_trade) {
+      const status = merchantAvailability.code === 'MERCHANT_NOT_FOUND' ? 404 : 409
+      return json(res, status, { error: merchantAvailability.reason || 'Торговец сейчас недоступен', code: merchantAvailability.code || 'MERCHANT_UNAVAILABLE' })
     }
     return json(res, 200, { merchant_view: view, room_version: room.version })
   }
@@ -4606,6 +4717,12 @@ const server = createServer((req, res) => {
       }
       const authoritativeBefore = await latestCampaignState(commandMatch[1], room.state)
       const idempotencyKey = String(body.idempotency_key || req.headers['x-idempotency-key'] || randomUUID())
+      const requestedNpcCombat = commands.filter((command) => PLAYER_NPC_COMBAT_COMMANDS.has(commandType(command)))
+      if (requestedNpcCombat.length && commands.length !== 1) {
+        throw commandPolicyError('Вход в бой с NPC должен быть отдельной атомарной командой', 'PLAYER_COMMAND_FORBIDDEN')
+      }
+      const preflightNpcCombat = requestedNpcCombat.map((command) => sanitizePlayerNpcCombatCommand(user, authoritativeBefore, command))
+      if (preflightNpcCombat.length) await assertNpcCombatIdempotency(commandMatch[1], idempotencyKey, preflightNpcCombat[0])
       const requestedMakeAttacks = commands.filter((command) => commandType(command) === 'MakeAttack')
       if (requestedMakeAttacks.length && requestedMakeAttacks.length !== commands.length) {
         throw commandPolicyError('Атаки нельзя смешивать с другими командами в одном атомарном batch', 'PLAYER_COMMAND_FORBIDDEN')
@@ -4656,6 +4773,7 @@ const server = createServer((req, res) => {
         if (PLAYER_TAVERN_COMMANDS.has(type)) return sanitizePlayerTavernCommand(user, authoritativeBefore, command)
         if (PLAYER_LETTER_COMMANDS.has(type)) return sanitizePlayerLetterCommand(user, authoritativeBefore, command)
         if (PLAYER_BLESSING_COMMANDS.has(type)) return sanitizePlayerBlessingCommand(user, authoritativeBefore, command)
+        if (PLAYER_NPC_COMBAT_COMMANDS.has(type)) return sanitizePlayerNpcCombatCommand(user, authoritativeBefore, command)
         // Права администратора меняют авторизацию MakeAttack, но не делают
         // клиентские поля или request_fingerprint авторитетными. Ограничение
         // player→enemy остаётся только в player sanitizer.
@@ -4797,13 +4915,14 @@ const server = createServer((req, res) => {
       if (lootCommands.length) assertLootResultFingerprint(result, lootCommands[0])
       if (restCommands.length) assertRestResultFingerprint(result, restCommands[0])
       if (makeAttackCommands.length) assertMakeAttackResultFingerprint(result, makeAttackCommands)
+      if (preflightNpcCombat.length) assertNpcCombatResultFingerprint(result, preflightNpcCombat[0])
       if (result.authoritative_state) {
         const originalVersion = Number(result.state_version ?? result.authoritative_state.state_version ?? 0)
         const shouldSettleCombat = [...types].some((type) => PLAYER_COMBAT_COMMANDS.has(type))
           || ((types.has('UseItem') || types.has('LootContainer')) && Boolean(result.authoritative_state.mechanics?.combat?.active))
         const scheduler = shouldSettleCombat
           ? await settleCombatContinuation(commandMatch[1], {
-            advanceNpc: types.has('StartCombat') || types.has('EndTurn') || resolvesReaction,
+            advanceNpc: types.has('StartCombat') || types.has('AttackNpc') || types.has('EndTurn') || resolvesReaction,
           })
           : { turns: [], events: [] }
         const latest = await eventStore.load(commandMatch[1])
@@ -4864,7 +4983,7 @@ const server = createServer((req, res) => {
       const responsePayload = { ...result, authoritative_state: responseState, ...(merchantView ? { merchant_view: merchantView } : {}), room_version: projected?.version ?? room.version }
       return json(res, 200, turnResultForViewer(responsePayload, user, actor))
     } catch (error) {
-      const status = ['STATE_VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT'].includes(error?.code) ? 409 : ['ACTOR_FORBIDDEN', 'PLAYER_COMMAND_FORBIDDEN'].includes(error?.code) ? 403 : 400
+      const status = ['STATE_VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT', 'ENCOUNTER_ALREADY_PRESENT', 'ENCOUNTER_DURING_COMBAT'].includes(error?.code) ? 409 : ['ACTOR_FORBIDDEN', 'PLAYER_COMMAND_FORBIDDEN'].includes(error?.code) ? 403 : 400
       // Двое потянулись за одним кинжалом: первый его забрал, второй пришёл к
       // уже пустому месту. Отказа мало — без свежего списка его карточка так и
       // осталась бы с уже взятой вещью, и он бил бы в ту же стену. Список идёт
@@ -5153,6 +5272,10 @@ const server = createServer((req, res) => {
           validateContext: (context) => {
             if (context?.kind === 'free_action') assertFreeActionConfirmation(context, body.action,
               previousCommit?.events?.[0]?.state_version_before ?? trustedState.state_version)
+            if (context?.kind === 'ability_action' && (context.action !== action
+              || context.state_version !== (previousCommit?.events?.[0]?.state_version_before ?? trustedState.state_version))) {
+              throw commandPolicyError('Проверка относится к другой заявке или прежней обстановке. Согласуйте её заново.', 'ROLL_CONTEXT_MISMATCH')
+            }
           },
         })
       } else if (body.roll && mode === 'enforce') {

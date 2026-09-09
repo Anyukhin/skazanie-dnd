@@ -21,8 +21,8 @@ const baseState = {
   mechanics: { world_time: { elapsed_minutes: 120 }, death: { heroes: {} } },
   worldMemory: {
     entities: [{ id: 'wardens', kind: 'faction' }],
-    facts: [{ id: 'fact-1', status: 'active', visibility: 'party' }],
-    quests: [{ id: 'quest-1', status: 'active', clock: { current: 5, max: 6 } }],
+      facts: [{ id: 'fact-1', predicate: 'discovery', subject_id: 'wardens', source_event_ids: ['event-1'], status: 'active', visibility: 'party' }],
+      quests: [{ id: 'quest-1', status: 'active', entity_ids: ['wardens'], clock: { current: 0, max: 6 } }],
   },
   autonomy: { pacing: { beat: 4, phase: 'escalation', tension: 82 } },
 }
@@ -43,7 +43,7 @@ test('server pacing derives bounded tension from a narrative-only intent', () =>
 test('Rules policy replaces repeated and phase-incompatible Director intents', () => {
   const state = structuredClone(baseState)
   state.autonomy.director_history = [{ intent: { type: 'open_social_scene' } }]
-  state.autonomy.director_outcomes = [{ intent_type: 'open_social_scene', state_changed: false }]
+  state.autonomy.director_outcomes = [{ intent_type: 'open_social_scene', state_changed: false }, { state_changed: true, progress_before: 'a', progress_after: 'b' }]
   state.autonomy.pacing = { beat: 7, phase: 'escalation', tension: 68 }
 
   const authorized = authorizeDirectorIntent(state, { type: 'open_social_scene' })
@@ -117,7 +117,7 @@ test('one-evening arc is seed-stable, bounded to 3-5 scenes and leaves legacy pa
   assert.equal(pacingForDirectorIntent(baseState, { type: 'advance_quest_clock' }).policy, 'campaign-pacing-v1')
 })
 
-test('one-evening policy closes a resolved chapter and forces a hard final encounter', () => {
+test('one-evening policy preserves player pacing and allows a non-combat final resolution', () => {
   const plan = buildCampaignArcPlan('forced-evening')
   const state = structuredClone(baseState)
   state.campaignConcept = { arc: plan }
@@ -132,9 +132,8 @@ test('one-evening policy closes a resolved chapter and forces a hard final encou
   ]
 
   const clock = authorizeDirectorIntent(state, { type: 'offer_next_hook', hook: 'stall' })
-  assert.equal(clock.intent.type, 'advance_quest_clock')
-  assert.equal(clock.intent.quest_id, 'quest:chapter:1')
-  assert.equal(clock.reason, 'one_evening_scene_clock')
+  assert.equal(clock.intent.type, 'offer_next_hook')
+  assert.equal(clock.reason, 'intent_allowed')
 
   state.worldMemory.quests[0].clock.current = 1
   const openingEncounter = authorizeDirectorIntent(state, {
@@ -142,14 +141,14 @@ test('one-evening policy closes a resolved chapter and forces a hard final encou
     theme: 'beasts',
     difficulty: 'medium',
   })
-  assert.equal(openingEncounter.intent.type, 'request_encounter')
-  assert.equal(openingEncounter.reason, 'one_evening_opening_encounter')
+  assert.notEqual(openingEncounter.intent.type, 'advance_quest_clock')
+  assert.notEqual(openingEncounter.intent.difficulty, 'hard')
 
   state.worldMemory.quests[0].status = 'completed'
   state.worldMemory.quests[0].clock.triggered = true
   const transition = authorizeDirectorIntent(state, { type: 'offer_next_hook', hook: 'stall again' })
-  assert.equal(transition.intent.type, 'end_scene')
-  assert.equal(transition.reason, 'one_evening_scene_transition')
+  assert.equal(transition.intent.type, 'offer_next_hook')
+  assert.equal(transition.reason, 'intent_allowed')
 
   state.adventure.chapter = plan.target_scenes
   state.worldMemory.quests[0] = {
@@ -162,10 +161,8 @@ test('one-evening policy closes a resolved chapter and forces a hard final encou
     { intent: { type: 'advance_quest_clock' } },
   ]
   const climax = authorizeDirectorIntent(state, { type: 'request_encounter', theme: 'undead', difficulty: 'medium' })
-  assert.equal(climax.intent.type, 'request_encounter')
-  assert.equal(climax.intent.theme, 'undead')
-  assert.equal(climax.intent.difficulty, 'hard')
-  assert.equal(climax.reason, 'one_evening_climax_encounter')
+  assert.ok(['request_encounter', 'continue_exploration', 'offer_next_hook', 'resolve_scene'].includes(climax.intent.type))
+  assert.notEqual(climax.intent.difficulty, 'hard')
   assert.equal(campaignArcPosition(state).phase, 'climax')
 })
 
