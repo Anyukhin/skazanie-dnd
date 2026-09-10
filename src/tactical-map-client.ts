@@ -35,6 +35,7 @@ const MAX_WIDTH = 100
 const MAX_HEIGHT = 100
 /** Зеркало `MAX_LEVEL_OFFSET` из `server/tactical-map.mjs`. */
 const MAX_LEVEL_OFFSET = 3
+const SAFE_CATALOG_REVISION = /^[a-z0-9][a-z0-9_-]{0,95}$/u
 
 // --- битсеты и базовые преобразования ------------------------------------
 
@@ -505,6 +506,10 @@ export function decodeTacticalMap(value: unknown): TacticalMap | null {
     const map = emptyMap(width, height)
     map.version = text(raw.version, 60)
     map.locationId = text(raw.locationId, 120)
+    if (raw.catalogRevision !== undefined) {
+      if (typeof raw.catalogRevision !== 'string' || !SAFE_CATALOG_REVISION.test(raw.catalogRevision)) return null
+      map.catalogRevision = raw.catalogRevision
+    }
     // Отсутствие полей этажа — карта, сохранённая до появления этажей, то есть
     // этаж входа. Отдельной ветки совместимости для неё не нужно.
     map.levelIndex = boundedInteger(raw.levelIndex, 0, -MAX_LEVEL_OFFSET, MAX_LEVEL_OFFSET)

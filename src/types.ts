@@ -927,6 +927,8 @@ export type TacticalLayers = {
 export type TacticalMap = {
   version: string
   locationId: string
+  /** Выпуск каталога окружения, закреплённый за картой при создании. */
+  catalogRevision?: string
   /** Этаж карты: 0 — этаж входа, +1 вверх, −1 подвал. */
   levelIndex: number
   /** Подпись этажа для игрока: «Второй этаж», «Винный погреб». */
@@ -962,7 +964,10 @@ export type TacticalMap = {
  * Сериализованная карта из проекции сервера: слои сжаты в base64 либо в одно
  * число, рёбра упакованы. Разбирается `decodeTacticalMap`.
  */
-export type SerializedTacticalMap = Record<string, unknown>
+export type SerializedTacticalMap = Record<string, unknown> & {
+  /** Необязательный выпуск каталога; отсутствие означает совместимый pr79. */
+  catalogRevision?: string
+}
 
 /**
  * Дельта раскрытия из `server/reveal-delta.mjs`: интервалы индексов `[начало,
