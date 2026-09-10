@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 
 import {
@@ -6,6 +9,27 @@ import {
   verifyContentIntegrity,
   verifyDeclaredArtifact,
 } from '../server/content-integrity.mjs'
+
+// Выпуски добавляются целиком через models:publish. Считаем объявленный состав
+// их manifest, а не реальные файлы или строки реестра: лишний файл по-прежнему
+// нарушает гейт, остальные 1664 исходных ассета остаются фиксированной базой.
+function declaredEnvironmentReleaseFiles() {
+  const directory = fileURLToPath(new URL('../public/assets/models/environment/releases', import.meta.url))
+  if (!existsSync(directory)) return 0
+  let count = 0
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    assert.ok(entry.isDirectory() && /^[a-f0-9]{24}$/u.test(entry.name), 'каталог опубликованного выпуска имеет неизменяемый ID')
+    const manifest = JSON.parse(readFileSync(join(directory, entry.name, 'manifest.json'), 'utf8'))
+    assert.equal(manifest.release?.schema, 'environment-release/v1')
+    assert.equal(manifest.release.id, entry.name)
+    assert.ok(Array.isArray(manifest.release.files))
+    const paths = manifest.release.files.map((file) => file.path)
+    assert.equal(new Set(paths).size, paths.length, 'состав выпуска не содержит повторов')
+    assert.ok(paths.every((path) => typeof path === 'string' && path !== 'manifest.json' && !path.startsWith('/') && !path.split('/').includes('..')))
+    count += 1 + paths.length
+  }
+  return count
+}
 
 test('content integrity gate verifies hashes, references, counts and the complete asset registry', async () => {
   const report = await verifyContentIntegrity()
@@ -47,7 +71,7 @@ test('content integrity gate verifies hashes, references, counts and the complet
   // + 41 портрет расширенного бестиария CR 0–6 (четыре предыдущих учтены выше).
   // + 52 файла общих планов локаций и дополнительных изображений замка.
   // + 125 GLB окружения, 4 файла происхождения/лицензий, каталог и парный 2D-атлас.
-  assert.equal(report.integrity.assets, 1664)
+  assert.equal(report.integrity.assets, 1664 + declaredEnvironmentReleaseFiles())
   assert.equal(report.integrity.coverage.find((entry) => entry.id === 'feats').coverage, 'missing')
 })
 
