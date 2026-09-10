@@ -51,6 +51,7 @@ import {
   systemPrefersReducedMotion,
 } from './spell-effects'
 import { doorsReachableFrom, sceneTacticalMap } from './tactical-map-client'
+import { sceneMapContentSignature } from './scene-map-cache'
 import { WorldMapView } from './WorldMapView'
 import { doorDirectionFromActor, doorOverlayCells, localizedQuestClockLabel, selectedAttackForecast, shouldAutoOpenCampaignModal } from './desktop-ui.mjs'
 import { boardMapArtForMap, locationOverviewFor, resolveSceneTheme, sceneIllustrationForTheme, type SceneArt, type SceneVisualTheme } from './scene-art'
@@ -1094,7 +1095,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const [npcGroupOpen, setNpcGroupOpen] = useState(false)
   const { columns: cellColumns, rows: cellRows } = mapGridDimensions(state.scene.cells)
   // Канон сцены — `scene.map`; старая проекция без него собирается из клеток.
-  const boardMap = useMemo(() => sceneTacticalMap(state.scene), [state.scene])
+  const boardMapContent = sceneMapContentSignature(state.scene)
+  const boardMap = useMemo(() => sceneTacticalMap(state.scene), [
+    boardMapContent, state.scene.location_id, state.scene.location, state.scene.title,
+  ])
   // Этаж входит в сброс наравне с локацией: лестница, у которой стоял герой,
   // на новом этаже не существует, а идентификаторы предметов у карт свои.
   useEffect(() => setSelectedSceneObjectId(null), [boardMap?.locationId, boardMap?.levelIndex])

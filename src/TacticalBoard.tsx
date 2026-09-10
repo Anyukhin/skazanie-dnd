@@ -112,7 +112,8 @@ const loadedTextures = new Map<string, BoardTexture>()
 const loadedArt = new Map<string, BoardTexture>()
 let propAtlas: PropAtlas | null = null
 let propAtlasAsked = false
-type ModelPropAtlas = { catalog: PropModelCatalog; texture: BoardTexture; key: string }
+type ModelPropAtlas = { catalog: PropModelCatalog; texture: BoardTexture; key: string; url: string }
+const MODEL_ATLAS_CACHE_LIMIT = 12
 const modelPropAtlases = new Map<string, ModelPropAtlas>()
 const pendingModelPropAtlases = new Map<string, Promise<ModelPropAtlas | null>>()
 const modelPropAtlasListeners = new Map<string, Set<() => void>>()
@@ -216,13 +217,19 @@ function loadModelTexture(url: string): Promise<BoardTexture | null> {
   const request = new Promise<BoardTexture | null>((resolve) => {
     const image = new Image()
     image.decoding = 'async'
-    image.onload = () => {
-      if (!image.naturalWidth || !image.naturalHeight) { resolve(null); return }
-      const texture = { image, width: image.naturalWidth, height: image.naturalHeight }
-      loadedTextures.set(url, texture)
+    const finish = (texture: BoardTexture | null) => {
+      clearTimeout(timeout)
+      image.onload = null; image.onerror = null
       resolve(texture)
     }
-    image.onerror = () => resolve(null)
+    const timeout = setTimeout(() => { finish(null); image.src = '' }, 15_000)
+    image.onload = () => {
+      if (!image.naturalWidth || !image.naturalHeight) { finish(null); return }
+      const texture = { image, width: image.naturalWidth, height: image.naturalHeight }
+      loadedTextures.set(url, texture)
+      finish(texture)
+    }
+    image.onerror = () => finish(null)
     image.src = url
   }).catch(() => null)
   const tracked = request.then((texture) => {
@@ -245,7 +252,11 @@ function notifyModelPropAtlasListeners(revision: string) {
  * pending-кэша, поэтому следующая карта или монтирование может повторить её.
  */
 function loadPropModelAtlas(revision: string, onReady: () => void): () => void {
-  if (modelPropAtlases.has(revision)) { onReady(); return () => {} }
+  const cached = modelPropAtlases.get(revision)
+  if (cached) {
+    modelPropAtlases.delete(revision); modelPropAtlases.set(revision, cached)
+    onReady(); return () => {}
+  }
   let listeners = modelPropAtlasListeners.get(revision)
   if (!listeners) {
     listeners = new Set()
@@ -260,14 +271,22 @@ function loadPropModelAtlas(revision: string, onReady: () => void): () => void {
       if (!catalog?.atlas) return null
       const url = `${catalog.atlas.image}?v=${encodeURIComponent(catalog.atlas.key)}`
       return loadModelTexture(url).then((texture) => texture
-        ? { catalog, texture, key: `${url}:${texture.width}x${texture.height}` }
+        ? { catalog, texture, url, key: `${url}:${texture.width}x${texture.height}` }
         : null)
     })
     .catch(() => null)
   pendingModelPropAtlases.set(revision, pending)
   void pending.then((atlas) => {
     if (pendingModelPropAtlases.get(revision) === pending) pendingModelPropAtlases.delete(revision)
-    if (atlas) modelPropAtlases.set(revision, atlas)
+    if (atlas) {
+      modelPropAtlases.set(revision, atlas)
+      while (modelPropAtlases.size > MODEL_ATLAS_CACHE_LIMIT) {
+        const oldest = modelPropAtlases.keys().next().value!
+        const removed = modelPropAtlases.get(oldest)!
+        modelPropAtlases.delete(oldest)
+        if (![...modelPropAtlases.values()].some((value) => value.url === removed.url)) loadedTextures.delete(removed.url)
+      }
+    }
     notifyModelPropAtlasListeners(revision)
   })
   return () => modelPropAtlasListeners.get(revision)?.delete(onReady)
@@ -475,9 +494,18 @@ function TacticalBoard2D({
     loadTerrainManifest(notify)
   }, [])
   const modelCatalogRevision = map?.catalogRevision ?? LEGACY_CATALOG_REVISION
-  const modelPropAtlas = modelPropAtlases.get(modelCatalogRevision) ?? null
+  // Открытая доска держит собственную ссылку: вытеснение из LRU не меняет её
+  // рисунок, а уход с доски освобождает последнего потребителя старого атласа.
+  const [modelAtlasState, setModelAtlasState] = useState(() => ({
+    revision: modelCatalogRevision, atlas: modelPropAtlases.get(modelCatalogRevision) ?? null,
+  }))
+  const modelPropAtlas = modelAtlasState.revision === modelCatalogRevision
+    ? modelAtlasState.atlas : modelPropAtlases.get(modelCatalogRevision) ?? null
   useEffect(() => {
-    const notify = () => setAssetsVersion((value) => value + 1)
+    const notify = () => {
+      setModelAtlasState({ revision: modelCatalogRevision, atlas: modelPropAtlases.get(modelCatalogRevision) ?? null })
+      setAssetsVersion((value) => value + 1)
+    }
     return loadPropModelAtlas(modelCatalogRevision, notify)
   }, [modelCatalogRevision])
   useEffect(() => {
@@ -1114,6 +1142,8 @@ function TacticalBoard2D({
     <div
       className={'map-scroll tactical-scroll ' + (dragging ? 'dragging' : '')}
       data-overview={cellPixels * zoom < 24 ? 'true' : undefined}
+      data-catalog-revision={modelCatalogRevision}
+      data-model-atlas-ready={modelPropAtlas ? 'true' : 'false'}
       style={{
         transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
         '--counter-scale': 1 / zoom,

@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import test from 'node:test'
-import { Box3 } from 'three'
+import { Box3, BoxGeometry, Group, Mesh, MeshBasicMaterial } from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 
 // Сборка должна жить внутри репозитория: с временным каталогом за его
@@ -323,4 +323,150 @@ test('обновление каталога и GLB перепроверяет HT
   assert.equal(requests.length, 2)
   assert.ok(requests.every((request) => request.cache === 'no-cache'))
   actor.dispose()
+})
+
+test('общий кэш GLB разделяет fetch между consumers и оставляет его после отмены одного', async () => {
+  models.clearActorModelCache()
+  models.resetModelAssetDiagnostics()
+  const bytes = glbWithJson({ asset: { version: '2.0' }, scenes: [{ nodes: [] }] })
+  const url = '/assets/models/shared-consumers.glb'
+  let calls = 0
+  let release
+  let startedResolve
+  const started = new Promise((resolve) => { startedResolve = resolve })
+  const fetcher = async (_url, init) => {
+    calls += 1
+    startedResolve()
+    await new Promise((resolve, reject) => {
+      release = resolve
+      init.signal.addEventListener('abort', () => reject(init.signal.reason), { once: true })
+    })
+    return new Response(bytes, { status: 200, headers: { 'content-length': String(bytes.byteLength) } })
+  }
+  const firstController = new AbortController()
+  const secondController = new AbortController()
+  const first = models.loadSharedModelBuffer(url, { fetcher, signal: firstController.signal, timeoutMs: 2_000, maxBytes: 1024 })
+  const second = models.loadSharedModelBuffer(url, { fetcher, signal: secondController.signal, timeoutMs: 2_000, maxBytes: 1024 })
+  await started
+  firstController.abort(new Error('first consumer cancelled'))
+  await assert.rejects(first, /first consumer cancelled/u)
+  assert.equal(calls, 1, 'отмена первого consumer не должна запускать новый fetch')
+  release()
+  assert.deepEqual(new Uint8Array(await second), new Uint8Array(bytes))
+  assert.deepEqual(new Uint8Array(await models.loadSharedModelBuffer(url, { fetcher, timeoutMs: 2_000, maxBytes: 1024 })), new Uint8Array(bytes))
+  const diagnostics = models.getModelAssetDiagnostics()
+  assert.equal(diagnostics.fetches, 1)
+  assert.ok(diagnostics.cacheHits >= 2, 'повторный consumer и cache hit должны быть видны в диагностике')
+  models.clearActorModelCache()
+})
+
+test('общий fetch вызывается без привязки к записи кэша', async () => {
+  models.clearActorModelCache()
+  const bytes = glbWithJson({ asset: { version: '2.0' }, scenes: [{ nodes: [] }] })
+  const fetcher = async function (_url, _init) {
+    assert.equal(this, undefined, 'native fetch нельзя вызывать с this=entry кэша')
+    return new Response(bytes, { status: 200 })
+  }
+  await models.loadSharedModelBuffer('/assets/models/detached-fetch.glb', { fetcher, timeoutMs: 2_000, maxBytes: 1024 })
+  models.clearActorModelCache()
+})
+
+test('общий fetch отменяется после последнего consumer, а failed и invalid GLB retry', async () => {
+  models.clearActorModelCache()
+  const abortUrl = '/assets/models/all-consumers-cancel.glb'
+  let commonAborts = 0
+  const abortFetcher = async (_url, init) => {
+    await new Promise((_resolve, reject) => init.signal.addEventListener('abort', () => {
+      commonAborts += 1
+      reject(init.signal.reason)
+    }, { once: true }))
+  }
+  const firstController = new AbortController()
+  const secondController = new AbortController()
+  const first = models.loadSharedModelBuffer(abortUrl, { fetcher: abortFetcher, signal: firstController.signal, timeoutMs: 2_000, maxBytes: 1024 })
+  const second = models.loadSharedModelBuffer(abortUrl, { fetcher: abortFetcher, signal: secondController.signal, timeoutMs: 2_000, maxBytes: 1024 })
+  await new Promise((resolve) => setImmediate(resolve))
+  firstController.abort(new Error('first cancelled'))
+  await assert.rejects(first, /first cancelled/u)
+  assert.equal(commonAborts, 0)
+  secondController.abort(new Error('last cancelled'))
+  await assert.rejects(second, /last cancelled/u)
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(commonAborts, 1, 'последняя отмена должна прервать общий fetch ровно один раз')
+
+  const retryUrl = '/assets/models/failed-retry.glb'
+  let attempts = 0
+  const retryGlb = glbWithJson({ asset: { version: '2.0' }, scenes: [{ nodes: [] }] })
+  const retryFetcher = async () => {
+    attempts += 1
+    if (attempts === 1) throw new Error('temporary failure')
+    return new Response(retryGlb, { status: 200 })
+  }
+  await assert.rejects(models.loadSharedModelBuffer(retryUrl, { fetcher: retryFetcher, timeoutMs: 2_000, maxBytes: 1024 }), /temporary failure/u)
+  assert.deepEqual(new Uint8Array(await models.loadSharedModelBuffer(retryUrl, { fetcher: retryFetcher, timeoutMs: 2_000, maxBytes: 1024 })), new Uint8Array(retryGlb))
+  assert.equal(attempts, 2, 'ошибка не должна застревать в кэше')
+
+  const invalidUrl = '/assets/models/invalid-retry.glb'
+  let invalidAttempts = 0
+  const validGlb = glbWithJson({ asset: { version: '2.0' }, scenes: [{ nodes: [] }] })
+  const invalidFetcher = async () => {
+    invalidAttempts += 1
+    return new Response(glbWithJson({ asset: { version: invalidAttempts === 1 ? '1.0' : '2.0' }, scenes: [{ nodes: [] }] }), { status: 200 })
+  }
+  await assert.rejects(models.loadSharedModelBuffer(invalidUrl, { fetcher: invalidFetcher, timeoutMs: 2_000, maxBytes: 1024 }), /asset.version/u)
+  assert.equal((await models.loadSharedModelBuffer(invalidUrl, { fetcher: invalidFetcher, timeoutMs: 2_000, maxBytes: 1024 })).byteLength, validGlb.byteLength)
+  assert.equal(invalidAttempts, 2, 'ошибка validation не должна сохранять битый байт-кэш')
+  models.clearActorModelCache()
+})
+
+test('байтовый кэш ограничен общим бюджетом после множества разных GLB', async () => {
+  models.clearActorModelCache()
+  models.resetModelAssetDiagnostics()
+  const bytes = glbWithJson({ asset: { version: '2.0' }, scenes: [{ nodes: [] }] }, new Uint8Array(700_000))
+  const fetcher = async () => new Response(bytes, { status: 200 })
+  for (let index = 0; index < 50; index += 1) {
+    await models.loadSharedModelBuffer(`/assets/models/lru-${index}.glb`, { fetcher, timeoutMs: 2_000, maxBytes: 2_000_000 })
+  }
+  const diagnostics = models.getModelAssetDiagnostics()
+  assert.ok(diagnostics.cachedBytes <= 32 * 1024 * 1024, `кэш занял ${diagnostics.cachedBytes} байт`)
+  assert.ok(diagnostics.entries < 50, `LRU не вытеснил старые записи: ${diagnostics.entries}`)
+  assert.equal(diagnostics.pending, 0)
+  models.clearActorModelCache()
+})
+
+test('отмена после parse освобождает поздно пришедший ActorModel', async () => {
+  models.clearActorModelCache()
+  models.resetModelAssetDiagnostics()
+  const url = '/assets/models/abort-during-parse.glb'
+  const bytes = glbWithJson({ asset: { version: '2.0' }, scenes: [{ nodes: [] }] })
+  const controller = new AbortController()
+  const geometry = new BoxGeometry(1, 1, 1)
+  const material = new MeshBasicMaterial()
+  const scene = new Group()
+  scene.add(new Mesh(geometry, material))
+  let geometryDisposed = 0
+  let materialDisposed = 0
+  geometry.addEventListener('dispose', () => { geometryDisposed += 1 })
+  material.addEventListener('dispose', () => { materialDisposed += 1 })
+  const loader = {
+    register() {},
+    parse(_buffer, _path, onLoad) {
+      queueMicrotask(() => {
+        controller.abort(new Error('parse cancelled'))
+        onLoad({ scene, animations: [] })
+      })
+    },
+  }
+  const manifest = {
+    version: 1,
+    models: [{ key: 'abort-model', profile: 'warrior', actorIds: [], archetypes: [], url, rights: { source: 'test', license: 'test' } }],
+  }
+  await assert.rejects(models.createActorModel({ id: 'abort-actor', label: 'Воин', kind: 'hero', modelKey: 'abort-model' }, {
+    manifest, signal: controller.signal, loader,
+    fetcher: async () => new Response(bytes, { status: 200 }),
+  }), /parse cancelled/u)
+  assert.equal(geometryDisposed, 1, 'поздняя геометрия должна быть освобождена')
+  assert.equal(materialDisposed, 1, 'поздний material должен быть освобождён')
+  assert.equal(models.getModelAssetDiagnostics().parses, 1)
+  models.clearActorModelCache()
 })

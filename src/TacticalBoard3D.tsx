@@ -11,7 +11,10 @@ import { createCombatEffect3D } from './board3d-effects'
 import { createBoard3DScene } from './board3d-scene'
 import { boardCameraFitZoom } from './board3d-camera'
 import { createTerrainSurfaceGeometry, terrainHeightAt, visibleTerrainHeightRange } from './board3d-terrain'
-import { createActorModel, createProceduralActorModel, loadActorModelManifest, availableActorModels, resolveModelProfile, DEFAULT_ACTOR_MODEL_MANIFEST, type ActorModel, type ActorModelManifest, type ActorPose } from './actor-models'
+import { createActorModel, createProceduralActorModel, getModelAssetDiagnostics, loadActorModelManifest, availableActorModels, resolveModelProfile, DEFAULT_ACTOR_MODEL_MANIFEST, type ActorModel, type ActorModelManifest, type ActorPose } from './actor-models'
+import { LEGACY_CATALOG_REVISION } from './prop-model-catalog'
+import { mapSignaturesFor } from './board3d-scene-signature'
+import type { TacticalMap } from './types'
 
 type Props = TacticalBoardProps & { onUnavailable: (message: string) => void }
 type CameraState = { position: THREE.Vector3; target: THREE.Vector3; zoom: number }
@@ -83,7 +86,6 @@ export default function TacticalBoard3D(props: Props) {
   useEffect(() => {
     if (!host.current || !latest.current.map) return
     const element = host.current
-    const modelAbort = new AbortController()
     let disposed = false
     let frameId = 0
     let previousTime = 0
@@ -129,10 +131,36 @@ export default function TacticalBoard3D(props: Props) {
     sun.shadow.camera.far = 90
     sun.shadow.normalBias = .025
     scene.add(hemisphere, sun, sun.target)
-    const actorViews = new Map<string, { root: THREE.Group; model: ActorModel; key: string; defeated: boolean; ring: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial> }>()
+    type ActorView = { root: THREE.Group; model: ActorModel; key: string; defeated: boolean; ring: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>; abort: AbortController }
+    const actorViews = new Map<string, ActorView>()
     let terrain: ReturnType<typeof createBoard3DScene> | null = null
-    let terrainMap: Props['map'] = null
+    let terrainSignature = ''
     let terrainStyle = ''
+    let lastMap: TacticalMap | null = null
+    // created/disposed — логические экземпляры карты, overlay и actor-view;
+    // объём GPU читается отдельно через renderer.info.memory.
+    const diagnostics = { rebuilds: 0, rebuildReason: 'none', syncReason: 'none', prepMs: 0, created: 0, disposed: 0, referenceSame: 0, contentChanged: 0 }
+    const publishModelDiagnostics = () => {
+      const model = getModelAssetDiagnostics()
+      renderer.domElement.dataset.modelFetches = String(model.fetches)
+      renderer.domElement.dataset.modelCacheHits = String(model.cacheHits)
+      renderer.domElement.dataset.modelParses = String(model.parses)
+      renderer.domElement.dataset.modelCachedBytes = String(model.cachedBytes)
+      renderer.domElement.dataset.modelEntries = String(model.entries)
+      renderer.domElement.dataset.modelPending = String(model.pending)
+    }
+    const publishDiagnostics = (catalogRevision: string) => {
+      renderer.domElement.dataset.rebuilds = String(diagnostics.rebuilds)
+      renderer.domElement.dataset.rebuildReason = diagnostics.rebuildReason
+      renderer.domElement.dataset.syncReason = diagnostics.syncReason
+      renderer.domElement.dataset.prepMs = diagnostics.prepMs.toFixed(2)
+      renderer.domElement.dataset.created = String(diagnostics.created)
+      renderer.domElement.dataset.disposed = String(diagnostics.disposed)
+      renderer.domElement.dataset.referenceSame = String(diagnostics.referenceSame)
+      renderer.domElement.dataset.contentChanged = String(diagnostics.contentChanged)
+      renderer.domElement.dataset.catalogRevision = catalogRevision
+      publishModelDiagnostics()
+    }
     let palette = DEFAULT_BOARD_PALETTE
     let pending: CombatAnimationCue[] = []
     let active: { cue: CombatAnimationCue; started: number; effect: ReturnType<typeof createCombatEffect3D> | null } | null = null
@@ -159,10 +187,16 @@ export default function TacticalBoard3D(props: Props) {
       const mesh = new THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>(new THREE.BufferGeometry(), material)
       mesh.position.y = height
       scene.add(mesh)
-      return { canvas, texture, mesh, map: null as Props['map'], dispose() { texture.dispose(); material.dispose(); mesh.geometry.dispose() } }
+      diagnostics.created += 1
+      return { canvas, texture, mesh, geometryKey: '', dispose() { texture.dispose(); material.dispose(); mesh.geometry.dispose() } }
     }
     const overlay = makeLayer(.022)
     const spell = makeLayer(.038)
+    const disposeActorView = (id: string, view: ActorView) => {
+      view.abort.abort()
+      view.model.dispose(); view.ring.geometry.dispose(); view.ring.material.dispose(); scene.remove(view.root); actorViews.delete(id)
+      diagnostics.disposed += 1
+    }
     const projected = new THREE.Vector3()
     const projectedNext = new THREE.Vector3()
     const pointOnScreen = (point: THREE.Vector3, width = element.clientWidth, height = element.clientHeight) => {
@@ -374,6 +408,10 @@ export default function TacticalBoard3D(props: Props) {
           renderer.domElement.dataset.renderMs = (measuredRenderMs / measuredFrames).toFixed(1)
           renderer.domElement.dataset.drawCalls = String(renderer.info.render.calls)
           renderer.domElement.dataset.triangles = String(renderer.info.render.triangles)
+          renderer.domElement.dataset.memoryGeometries = String(renderer.info.memory.geometries)
+          renderer.domElement.dataset.memoryTextures = String(renderer.info.memory.textures)
+          renderer.domElement.dataset.queueLength = String(pending.length + (active ? 1 : 0))
+          publishModelDiagnostics()
           measuredFrames = 0; measuredRenderMs = 0; measuredSince = now
         }
         if (active || pending.length) invalidate()
@@ -411,13 +449,22 @@ export default function TacticalBoard3D(props: Props) {
       sun.target.position.copy(controls.target)
       invalidate()
     }
-    let lastModels = settings.current.models, lastCatalog = settings.current.catalog
+    let lastCatalog = settings.current.catalog
     function sync() {
       const current = latest.current, map = current.map
       if (!map || disposed) return
       labelsDirty = true
       const style = `${current.lighting}:${current.artUrl}:${current.artMode}:${current.themeKey}`
-      if (terrainMap !== map || terrainStyle !== style) {
+      const signatures = mapSignaturesFor(map)
+      const referenceSame = lastMap === map
+      const contentChanged = Boolean(terrainSignature && terrainSignature !== signatures.staticKey)
+      if (referenceSame) diagnostics.referenceSame += 1
+      if (contentChanged) diagnostics.contentChanged += 1
+      lastMap = map
+      const mapChanged = terrainSignature !== signatures.staticKey
+      const styleChanged = terrainStyle !== style
+      if (mapChanged || styleChanged) {
+        const preparedAt = performance.now()
         const css = getComputedStyle(element)
         palette = boardPaletteFrom((name) => css.getPropertyValue(name))
         // Свежая проекция той же сцены не отменяет уже начатое действие.
@@ -427,39 +474,47 @@ export default function TacticalBoard3D(props: Props) {
           active.effect = systemPrefersReducedMotion() ? null : createCombatEffect3D(active.cue, current.animationActors ?? [], map)
           if (active.effect) scene.add(active.effect.group)
         }
-        terrain?.dispose()
+        if (terrain) { terrain.dispose(); diagnostics.disposed += 1 }
         terrain = createBoard3DScene(map, { palette, lighting: current.lighting, artUrl: current.artUrl, artMode: current.artMode, onReady: invalidate })
+        diagnostics.created += 1
+        diagnostics.rebuilds += 1
+        diagnostics.rebuildReason = !terrainSignature ? 'initial' : mapChanged ? 'content-changed' : 'style-changed'
+        diagnostics.syncReason = !terrainSignature ? 'initial' : mapChanged ? 'content-changed' : 'style-changed'
+        diagnostics.prepMs = performance.now() - preparedAt
         scene.add(terrain.group)
-        terrainMap = map; terrainStyle = style
-      }
+        terrainSignature = signatures.staticKey; terrainStyle = style
+      } else diagnostics.syncReason = referenceSame ? 'reference-same' : 'content-same'
       sun.castShadow = current.lighting !== false
-      const modelsChanged = lastModels !== settings.current.models || lastCatalog !== settings.current.catalog
-      lastModels = settings.current.models; lastCatalog = settings.current.catalog
+      const catalogChanged = lastCatalog !== settings.current.catalog
+      lastCatalog = settings.current.catalog
       const visibleActors = (current.animationActors ?? []).filter((actor) => revealedAt(map, actor.x, actor.y))
-      for (const [id, view] of actorViews) if (!visibleActors.some((actor) => actor.id === id) || modelsChanged) {
-        view.model.dispose(); view.ring.geometry.dispose(); view.ring.material.dispose(); scene.remove(view.root); actorViews.delete(id)
+      for (const [id, view] of actorViews) if (!visibleActors.some((actor) => actor.id === id) || catalogChanged) {
+        disposeActorView(id, view)
       }
       for (const actor of visibleActors) {
-        const key = `${actor.modelKey}:${actor.archetype}:${actor.kind}:${actor.label}`
+        const modelKey = settings.current.models[actor.id] ?? actor.modelKey
+        const key = `${modelKey}:${actor.archetype}:${actor.kind}:${actor.label}`
         let view = actorViews.get(actor.id)
         if (view && view.key !== key) {
-          view.model.dispose(); view.ring.geometry.dispose(); view.ring.material.dispose(); scene.remove(view.root); actorViews.delete(actor.id); view = undefined
+          disposeActorView(actor.id, view); view = undefined
         }
         if (!view) {
-          const input = { ...actor, modelKey: settings.current.models[actor.id] ?? actor.modelKey }
+          const input = { ...actor, modelKey }
           const model = createProceduralActorModel(input, settings.current.catalog)
           const root = new THREE.Group()
           root.add(model)
           const ring = new THREE.Mesh(new THREE.RingGeometry(.37, .405, 40), new THREE.MeshBasicMaterial({ color: actor.color ?? '#e2bb72', transparent: true, opacity: .85, side: THREE.DoubleSide }))
           ring.rotation.x = -Math.PI / 2; ring.position.y = .045
           root.add(ring); scene.add(root)
-          view = { root, model, ring, key, defeated: Boolean(actor.defeated) }; actorViews.set(actor.id, view)
+          view = { root, model, ring, key, defeated: Boolean(actor.defeated), abort: new AbortController() }; actorViews.set(actor.id, view)
+          diagnostics.created += 1
           const entry = resolveModelProfile(input, settings.current.catalog)
           if (entry.url) {
             const expected = view
-            void createActorModel(input, { manifest: settings.current.catalog, signal: modelAbort.signal }).then((loaded) => {
-              if (disposed || actorViews.get(actor.id) !== expected) { loaded.dispose(); return }
-              root.remove(expected.model); expected.model.dispose()
+            void createActorModel(input, { manifest: settings.current.catalog, signal: view.abort.signal }).then((loaded) => {
+              diagnostics.created += 1
+              if (disposed || actorViews.get(actor.id) !== expected) { loaded.dispose(); diagnostics.disposed += 1; return }
+              root.remove(expected.model); expected.model.dispose(); diagnostics.disposed += 1
               expected.model = loaded; root.add(loaded)
               labelsDirty = true
               const defeated = latest.current.animationActors?.find((item) => item.id === actor.id)?.defeated
@@ -479,10 +534,12 @@ export default function TacticalBoard3D(props: Props) {
         view.defeated = Boolean(actor.defeated)
       }
       for (const layer of [overlay, spell]) {
-        if (layer.map !== map) {
+        if (layer.geometryKey !== signatures.geometryKey) {
           layer.mesh.geometry.dispose()
+          diagnostics.disposed += 1
           layer.mesh.geometry = createTerrainSurfaceGeometry(map)
-          layer.map = map
+          layer.geometryKey = signatures.geometryKey
+          diagnostics.created += 1
         }
       }
       const fresh: CombatAnimationCue[] = []
@@ -496,6 +553,7 @@ export default function TacticalBoard3D(props: Props) {
       if (current.animationsEnabled === false || document.hidden) skip()
       else if (unseen.length) { pending = [...pending, ...unseen].slice(-COMBAT_ANIMATION_QUEUE_LIMIT); setPlaying(true) }
       paintOverlay()
+      publishDiagnostics(map.catalogRevision ?? LEGACY_CATALOG_REVISION)
       invalidate()
     }
     function resize() {
@@ -597,7 +655,6 @@ export default function TacticalBoard3D(props: Props) {
     try { sync() } catch { latest.current.onUnavailable('Не удалось подготовить 3D-карту.') }
     return () => {
       disposed = true
-      modelAbort.abort()
       if (frameId) cancelAnimationFrame(frameId)
       cameras.set(cameraKey, { position: camera.position.clone(), target: controls.target.clone(), zoom: camera.zoom })
       if (cameras.size > 100) cameras.delete(cameras.keys().next().value!)
@@ -605,8 +662,10 @@ export default function TacticalBoard3D(props: Props) {
       observer.disconnect(); controls.dispose()
       document.removeEventListener('visibilitychange', visibility)
       renderer.domElement.removeEventListener('webglcontextlost', contextLost)
-      active?.effect?.dispose(); terrain?.dispose()
-      for (const view of actorViews.values()) { view.model.dispose(); view.ring.geometry.dispose(); view.ring.material.dispose() }
+      active?.effect?.dispose()
+      if (terrain) { terrain.dispose(); diagnostics.disposed += 1 }
+      for (const [id, view] of actorViews) disposeActorView(id, view)
+      diagnostics.disposed += 2
       overlay.dispose(); spell.dispose(); sun.shadow.dispose()
       renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove(); floating.remove()
     }

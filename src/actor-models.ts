@@ -153,8 +153,31 @@ export const DEFAULT_ACTOR_MODEL_MANIFEST: ActorModelManifest = {
 }
 
 const manifestCache = new Map<string, Promise<ActorModelManifest>>()
-const glbBufferCache = new Map<string, Promise<ArrayBuffer>>()
 const cspSafeTextureLoaders = new WeakSet<GLTFLoader>()
+
+type ModelBufferCacheEntry = { url: string; buffer: ArrayBuffer; bytes: number }
+type ModelBufferConsumer = { active: boolean; maxBytes: number }
+type PendingModelBuffer = {
+  key: string
+  url: string
+  fetcher: typeof fetch
+  controller: AbortController
+  consumers: Set<ModelBufferConsumer>
+  maxBytes: number
+  cancelled: boolean
+  promise: Promise<ArrayBuffer>
+}
+
+export type ModelAssetDiagnostics = Readonly<{ fetches: number; cacheHits: number; parses: number; cachedBytes: number; entries: number; pending: number }>
+export type SharedModelBufferOptions = { signal?: AbortSignal; timeoutMs: number; maxBytes: number; fetcher?: typeof fetch }
+
+const modelBufferCache = new Map<string, ModelBufferCacheEntry>()
+const pendingModelBuffers = new Map<string, PendingModelBuffer>()
+const fetcherIds = new WeakMap<object, number>()
+const MODEL_BUFFER_CACHE_BUDGET = 32 * 1024 * 1024
+let nextFetcherId = 1
+let cachedModelBufferBytes = 0
+const modelAssetDiagnostics = { fetches: 0, cacheHits: 0, parses: 0 }
 
 function objectLike(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value))
@@ -170,6 +193,202 @@ function slug(value: string): string {
 
 function finitePositive(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback
+}
+
+function modelBufferKey(url: string, fetcher: typeof fetch): string {
+  const owner = fetcher as unknown as object
+  let id = fetcherIds.get(owner)
+  if (!id) { id = nextFetcherId; nextFetcherId += 1; fetcherIds.set(owner, id) }
+  return `${id}:${url}`
+}
+
+function modelAbortReason(signal?: AbortSignal): unknown {
+  return signal?.reason ?? new Error('Загрузка модели отменена')
+}
+
+function touchModelBuffer(key: string, entry: ModelBufferCacheEntry): void {
+  modelBufferCache.delete(key)
+  modelBufferCache.set(key, entry)
+}
+
+function dropModelBuffer(key: string): void {
+  const entry = modelBufferCache.get(key)
+  if (!entry) return
+  modelBufferCache.delete(key)
+  cachedModelBufferBytes -= entry.bytes
+}
+
+function cacheModelBuffer(entry: PendingModelBuffer, buffer: ArrayBuffer): void {
+  if (entry.cancelled || entry.controller.signal.aborted || buffer.byteLength > MODEL_BUFFER_CACHE_BUDGET) return
+  dropModelBuffer(entry.key)
+  const cached = { url: entry.url, buffer, bytes: buffer.byteLength }
+  modelBufferCache.set(entry.key, cached)
+  cachedModelBufferBytes += cached.bytes
+  while (cachedModelBufferBytes > MODEL_BUFFER_CACHE_BUDGET) {
+    const oldest = modelBufferCache.entries().next().value as [string, ModelBufferCacheEntry] | undefined
+    if (!oldest) break
+    dropModelBuffer(oldest[0])
+  }
+}
+
+async function fetchModelBuffer(entry: PendingModelBuffer): Promise<ArrayBuffer> {
+  if (entry.cancelled || entry.controller.signal.aborted) throw modelAbortReason(entry.controller.signal)
+  const timer = setTimeout(() => entry.controller.abort(new Error('Превышено время загрузки модели')), 30_000)
+  try {
+    modelAssetDiagnostics.fetches += 1
+    const fetcher = entry.fetcher
+    const response = await fetcher(entry.url, { signal: entry.controller.signal, cache: 'no-cache' })
+    if (entry.cancelled || entry.controller.signal.aborted) throw modelAbortReason(entry.controller.signal)
+    if (!response.ok) throw new Error(`Не удалось загрузить ${entry.url}: HTTP ${response.status}`)
+    const declared = Number(response.headers.get('content-length'))
+    if (Number.isFinite(declared) && declared > entry.maxBytes) throw new Error(`Файл ${entry.url} превышает лимит размера`)
+    const buffer = await response.arrayBuffer()
+    if (entry.cancelled || entry.controller.signal.aborted) throw modelAbortReason(entry.controller.signal)
+    if (buffer.byteLength > entry.maxBytes) throw new Error(`Файл ${entry.url} превышает лимит размера`)
+    return buffer
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+function finishPendingModelBuffer(entry: PendingModelBuffer): void {
+  if (pendingModelBuffers.get(entry.key) === entry) pendingModelBuffers.delete(entry.key)
+}
+
+function cancelPendingModelBuffer(entry: PendingModelBuffer, reason: unknown): void {
+  if (entry.cancelled) return
+  entry.cancelled = true
+  if (pendingModelBuffers.get(entry.key) === entry) pendingModelBuffers.delete(entry.key)
+  entry.controller.abort(reason)
+}
+
+function subscribeModelBuffer(entry: PendingModelBuffer, options: SharedModelBufferOptions): Promise<ArrayBuffer> {
+  const { signal, maxBytes, timeoutMs } = options
+  if (signal?.aborted) return Promise.reject(modelAbortReason(signal))
+  return new Promise<ArrayBuffer>((resolve, reject) => {
+    let consumer: ModelBufferConsumer
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const cleanup = () => {
+      signal?.removeEventListener('abort', onAbort)
+      if (timer) clearTimeout(timer)
+    }
+    const release = () => { consumer.active = false; cleanup(); entry.consumers.delete(consumer) }
+    const abort = (reason: unknown) => {
+      if (!consumer.active) return
+      release()
+      reject(reason)
+      if (!entry.consumers.size) cancelPendingModelBuffer(entry, reason)
+    }
+    const onAbort = () => abort(modelAbortReason(signal))
+    consumer = { active: true, maxBytes }
+    entry.consumers.add(consumer)
+    signal?.addEventListener('abort', onAbort, { once: true })
+    timer = setTimeout(() => abort(new Error('Превышено время загрузки модели')), Math.max(1, timeoutMs))
+    entry.promise.then((buffer) => {
+      if (!consumer.active) return
+      if (buffer.byteLength > consumer.maxBytes) {
+        release()
+        reject(new Error('Файл модели превышает лимит размера'))
+        return
+      }
+      release()
+      resolve(buffer)
+    }, (error) => {
+      if (!consumer.active) return
+      release()
+      reject(error)
+    })
+  })
+}
+
+function resolveCachedModelBuffer(buffer: ArrayBuffer, signal?: AbortSignal): Promise<ArrayBuffer> {
+  if (!signal) return Promise.resolve(buffer)
+  if (signal.aborted) return Promise.reject(modelAbortReason(signal))
+  return new Promise<ArrayBuffer>((resolve, reject) => {
+    let active = true
+    const onAbort = () => {
+      if (!active) return
+      active = false
+      signal.removeEventListener('abort', onAbort)
+      reject(modelAbortReason(signal))
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+    queueMicrotask(() => {
+      if (!active) return
+      active = false
+      signal.removeEventListener('abort', onAbort)
+      resolve(buffer)
+    })
+  })
+}
+
+/** Общий fetch/кэш GLB для акторов и предметов окружения. */
+export function loadSharedModelBuffer(url: string, options: SharedModelBufferOptions): Promise<ArrayBuffer> {
+  const fetcher = options.fetcher ?? (typeof fetch === 'function' ? fetch : undefined)
+  if (!fetcher) return Promise.reject(new Error('В браузере недоступен fetch'))
+  if (options.signal?.aborted) return Promise.reject(modelAbortReason(options.signal))
+  const key = modelBufferKey(url, fetcher)
+  const maxBytes = Number.isFinite(options.maxBytes) ? Math.max(0, options.maxBytes) : 0
+  const timeoutMs = Number.isFinite(options.timeoutMs) ? Math.max(1, options.timeoutMs) : 30_000
+  const cached = modelBufferCache.get(key)
+  if (cached && cached.bytes <= maxBytes) {
+    try { validateGlbContainer(cached.buffer, MODEL_BUFFER_CACHE_BUDGET) } catch (error) {
+      dropModelBuffer(key)
+      return Promise.reject(error)
+    }
+    modelAssetDiagnostics.cacheHits += 1
+    touchModelBuffer(key, cached)
+    return resolveCachedModelBuffer(cached.buffer, options.signal)
+  }
+  let entry = pendingModelBuffers.get(key)
+  if (entry?.cancelled) entry = undefined
+  if (!entry) {
+    const created = {
+      key, url, fetcher, controller: new AbortController(), consumers: new Set<ModelBufferConsumer>(),
+      maxBytes, cancelled: false, promise: Promise.resolve(new ArrayBuffer(0)),
+    }
+    created.promise = Promise.resolve()
+      .then(() => fetchModelBuffer(created))
+      .then((buffer) => {
+        validateGlbContainer(buffer, MODEL_BUFFER_CACHE_BUDGET)
+        cacheModelBuffer(created, buffer)
+        return buffer
+      })
+    entry = created
+    pendingModelBuffers.set(key, entry)
+    void entry.promise.then(() => finishPendingModelBuffer(entry!), () => finishPendingModelBuffer(entry!))
+  } else {
+    modelAssetDiagnostics.cacheHits += 1
+    entry.maxBytes = Math.max(entry.maxBytes, maxBytes)
+  }
+  return subscribeModelBuffer(entry, options)
+}
+
+export function clearSharedModelBufferCache(url?: string): void {
+  const matches = (entry: { url: string }) => url === undefined || entry.url === url
+  for (const [key, entry] of [...pendingModelBuffers]) {
+    if (!matches(entry)) continue
+    cancelPendingModelBuffer(entry, new Error('Кэш моделей очищен'))
+    if (pendingModelBuffers.get(key) === entry) pendingModelBuffers.delete(key)
+  }
+  for (const [key, entry] of [...modelBufferCache]) if (matches(entry)) dropModelBuffer(key)
+}
+
+export function recordModelAssetParse(): void { modelAssetDiagnostics.parses += 1 }
+
+export function getModelAssetDiagnostics(): ModelAssetDiagnostics {
+  return {
+    ...modelAssetDiagnostics,
+    cachedBytes: cachedModelBufferBytes,
+    entries: modelBufferCache.size,
+    pending: pendingModelBuffers.size,
+  }
+}
+
+export function resetModelAssetDiagnostics(): void {
+  modelAssetDiagnostics.fetches = 0
+  modelAssetDiagnostics.cacheHits = 0
+  modelAssetDiagnostics.parses = 0
 }
 
 function isProfile(value: unknown): value is ActorModelProfile {
@@ -334,6 +553,7 @@ async function boundedFetch(fetcher: typeof fetch, url: string, options: { signa
   try {
     // Каталог и GLB имеют постоянные имена. Перепроверяем ETag после загрузки
     // страницы, чтобы новая модель не оставалась в часовом кеше public/.
+    modelAssetDiagnostics.fetches += 1
     const response = await fetcher(url, { signal: controller.signal, cache: 'no-cache' })
     if (controller.signal.aborted) throw controller.signal.reason ?? new Error('Загрузка отменена')
     if (!response.ok) throw new Error(`Не удалось загрузить ${url}: HTTP ${response.status}`)
@@ -357,6 +577,7 @@ export async function loadActorModelManifest(options: Pick<ActorModelOptions, 'm
   const timeoutMs = Math.max(250, Math.min(30_000, options.timeoutMs ?? 5_000))
   const cacheable = !options.fetcher && !options.signal
   let promise = cacheable ? manifestCache.get(url) : undefined
+  if (promise) modelAssetDiagnostics.cacheHits += 1
   if (!promise) {
     promise = boundedFetch(fetcher, url, { signal: options.signal, timeoutMs, maxBytes })
       .then((buffer) => validateModelManifest(JSON.parse(new TextDecoder().decode(buffer))))
@@ -420,20 +641,12 @@ export function validateGlbContainer(value: ArrayBuffer | Uint8Array, maxBytes =
 }
 
 async function loadGlbBuffer(url: string, options: ActorModelOptions): Promise<ArrayBuffer> {
-  const fetcher = options.fetcher ?? fetch
   const timeoutMs = Math.max(250, Math.min(30_000, options.timeoutMs ?? 8_000))
   const maxBytes = options.maxGlbBytes ?? DEFAULT_MAX_GLB_BYTES
-  const cacheable = !options.fetcher && !options.signal
-  let promise = cacheable ? glbBufferCache.get(url) : undefined
-  if (!promise) {
-    promise = boundedFetch(fetcher, url, { signal: options.signal, timeoutMs, maxBytes })
-      .then((buffer) => { validateGlbContainer(buffer, maxBytes); return buffer })
-    if (cacheable) glbBufferCache.set(url, promise)
-  }
-  try { return await promise } catch (error) {
-    if (cacheable && glbBufferCache.get(url) === promise) glbBufferCache.delete(url)
-    throw error
-  }
+  const fetcher = options.fetcher ?? (typeof fetch === 'function' ? fetch : undefined)
+  const buffer = await loadSharedModelBuffer(url, { signal: options.signal, timeoutMs, maxBytes, fetcher })
+  if (options.signal?.aborted) throw modelAbortReason(options.signal)
+  return buffer
 }
 
 /** Очищает кэш байтов; уже созданные фигурки продолжают владеть своими ресурсами. */
@@ -441,10 +654,10 @@ export function clearActorModelCache(url?: string): void {
   if (url) {
     const modelUrl = safeModelUrl(url)
     const manifestUrl = safeManifestUrl(url)
-    if (modelUrl) glbBufferCache.delete(modelUrl)
+    if (modelUrl) clearSharedModelBufferCache(modelUrl)
     if (manifestUrl) manifestCache.delete(manifestUrl)
   } else {
-    glbBufferCache.clear()
+    clearSharedModelBufferCache()
     manifestCache.clear()
   }
 }
@@ -933,9 +1146,9 @@ function parseGltf(loader: GLTFLoader, buffer: ArrayBuffer): Promise<GLTF> {
 
 async function createGlbModel(input: NormalizedActorModelInput, entry: ActorModelManifestEntry, options: ActorModelOptions, targetHeight: number): Promise<ActorModel> {
   const buffer = await loadGlbBuffer(entry.url!, options)
-  validateGlbContainer(buffer, options.maxGlbBytes ?? DEFAULT_MAX_GLB_BYTES)
   const loader = options.loader ?? new GLTFLoader()
   registerCspSafeEmbeddedTextureLoader(loader)
+  recordModelAssetParse()
   const gltf = await parseGltf(loader, buffer)
   const root = new Group()
   root.name = `glb-${entry.key}-${input.id}`
