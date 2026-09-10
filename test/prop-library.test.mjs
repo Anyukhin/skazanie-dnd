@@ -262,6 +262,28 @@ test('2D предпочитает preview выбранной 3D-модели и 
   assert.notEqual(withModelAtlas, withoutModelAtlas, 'смена preview-атласа должна обесценить кэш тайла')
 })
 
+test('ревизия каталога обесценивает тайл отдельно от общего PNG-атласа', () => {
+  const map = mapWithProp({ assetId: 'barrel', x: 1.5, y: 1.5, footprint: [{ x: 1, y: 1 }] })
+  const texture = { image: 'shared-preview', width: 128, height: 128 }
+  const atlas = (revision, modelKey) => ({
+    catalog: {
+      version: 1, revision,
+      models: [{ key: modelKey, label: modelKey, category: 'prop', url: `/assets/models/environment/${modelKey}.glb`, assetIds: ['barrel'], yaw: 0 }],
+    },
+    texture,
+    key: 'same-atlas-image',
+  })
+  const keyFor = (revision, modelKey) => render.tileKey({
+    map: { ...map, catalogRevision: revision }, palette: render.DEFAULT_BOARD_PALETTE, cellSize: 48,
+    modelPropAtlas: atlas(revision, modelKey),
+  }, { tileX: 0, tileY: 0 })
+
+  const v1 = keyFor('release-v1', 'barrel-v1')
+  const v2 = keyFor('release-v2', 'barrel-v2')
+  assert.notEqual(v1, v2, 'разные mapping каталога обязаны обесценить тайл при том же PNG')
+  assert.equal(keyFor('release-v1', 'barrel-v1'), v1, 'возврат к уже загруженной ревизии должен вернуть тот же ключ')
+})
+
 test('старые значения feature продолжают рисоваться по таблице соответствия', () => {
   // Список повторяет объединение `MapCell['feature']` в `src/types.ts` без
   // 'enemy': сущности в карту не входят и предметом не становятся.

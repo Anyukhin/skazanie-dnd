@@ -679,7 +679,7 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
   const propAbort = new AbortController()
   if (typeof window !== 'undefined') {
     const visibleProps = map.props.filter((prop) => Number.isFinite(prop.x) && Number.isFinite(prop.y) && revealedAt(map, Math.floor(prop.x), Math.floor(prop.y)))
-    void loadPropModelAssets(visibleProps, propAbort.signal).then((assets) => {
+    void loadPropModelAssets(visibleProps, propAbort.signal, map.catalogRevision).then((assets) => {
       if (!assets) return
       if (disposed) { assets.dispose(); return }
       const replacement = addProps(map, group, options.lighting !== false, palette, assets)

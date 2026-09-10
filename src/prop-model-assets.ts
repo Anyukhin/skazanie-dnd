@@ -51,8 +51,8 @@ function disposeModels(models: Map<string, THREE.Group>) {
   models.clear()
 }
 
-export async function loadPropModelAssets(props: readonly TacticalProp[], signal: AbortSignal): Promise<PropModelAssets | null> {
-  const catalog = await loadPropModelCatalog()
+export async function loadPropModelAssets(props: readonly TacticalProp[], signal: AbortSignal, catalogRevision?: string): Promise<PropModelAssets | null> {
+  const catalog = await loadPropModelCatalog(catalogRevision)
   if (!catalog || signal.aborted) return null
   const models = new Map<string, THREE.Group>()
   const entries = new Map(props.flatMap((prop) => {

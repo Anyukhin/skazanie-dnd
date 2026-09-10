@@ -11,11 +11,13 @@ export type PropModelEntry = {
 
 export type PropModelCatalog = {
   version: 1
+  revision?: string
   models: PropModelEntry[]
   atlas?: { image: string; key: string }
 }
 
 const ROOT = '/assets/models/environment/'
+export const LEGACY_CATALOG_REVISION = 'pr79'
 const KEY = /^[a-z0-9][a-z0-9_-]{0,95}$/
 const LOCAL_FILE = /^\/assets\/models\/environment\/[a-zA-Z0-9_/-]+\.(glb|png)$/
 
@@ -43,6 +45,7 @@ export function validatePropModelCatalog(value: unknown): PropModelCatalog {
     return result
   })
   const result: PropModelCatalog = { version: 1, models }
+  if (typeof input.revision === 'string' && KEY.test(input.revision)) result.revision = input.revision
   const atlas = input.atlas as Record<string, unknown> | undefined
   if (atlas && typeof atlas.image === 'string' && LOCAL_FILE.test(atlas.image) && atlas.image.endsWith('.png')
     && typeof atlas.key === 'string' && atlas.key.length <= 128) result.atlas = { image: atlas.image, key: atlas.key }
@@ -57,14 +60,36 @@ export function propModelFor(catalog: PropModelCatalog | null | undefined, asset
   return choices[seed % choices.length]
 }
 
-let pending: Promise<PropModelCatalog | null> | null = null
-export function loadPropModelCatalog(): Promise<PropModelCatalog | null> {
+const catalogs = new Map<string, { promise: Promise<PropModelCatalog | null>; settled: boolean }>()
+const CATALOG_CACHE_LIMIT = 12
+
+export function loadPropModelCatalog(revision = LEGACY_CATALOG_REVISION): Promise<PropModelCatalog | null> {
   if (typeof window === 'undefined' || typeof fetch !== 'function') return Promise.resolve(null)
-  pending ??= fetch(`${ROOT}manifest.json`, { cache: 'no-cache', signal: AbortSignal.timeout(10_000) })
+  if (typeof revision !== 'string' || !KEY.test(revision)) return Promise.resolve(null)
+  const cached = catalogs.get(revision)
+  if (cached) { catalogs.delete(revision); catalogs.set(revision, cached); return cached.promise }
+  const url = revision === LEGACY_CATALOG_REVISION
+    ? `${ROOT}baseline-pr79.json` : `${ROOT}releases/${revision}/manifest.json`
+  const entry = { promise: Promise.resolve<PropModelCatalog | null>(null), settled: false }
+  entry.promise = Promise.resolve().then(() => fetch(url, { cache: 'no-cache', signal: AbortSignal.timeout(10_000) }))
     .then(async (response) => {
       if (!response.ok || Number(response.headers.get('content-length')) > 512_000) return null
       const text = await response.text()
-      return text.length <= 512_000 ? validatePropModelCatalog(JSON.parse(text)) : null
-    }).catch(() => null).then((catalog) => { if (!catalog) pending = null; return catalog })
-  return pending
+      if (text.length > 512_000) return null
+      const raw = JSON.parse(text)
+      const declared = revision === LEGACY_CATALOG_REVISION ? raw?.revision : raw?.release?.id
+      if (declared !== revision) return null
+      return { ...validatePropModelCatalog(raw), revision }
+    }).catch(() => null).then((catalog) => {
+      entry.settled = true
+      if (!catalog && catalogs.get(revision) === entry) catalogs.delete(revision)
+      // Незавершённые загрузки не вытесняются: новый потребитель разделяет запрос.
+      for (const [key, value] of catalogs) {
+        if (catalogs.size <= CATALOG_CACHE_LIMIT) break
+        if (value.settled) catalogs.delete(key)
+      }
+      return catalog
+    })
+  catalogs.set(revision, entry)
+  return entry.promise
 }

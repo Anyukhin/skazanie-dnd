@@ -26,7 +26,7 @@ import {
   hasAmbientMotion,
   type BoardDoorSwing,
 } from './board-ambient'
-import { loadPropModelCatalog, type PropModelCatalog } from './prop-model-catalog'
+import { LEGACY_CATALOG_REVISION, loadPropModelCatalog, type PropModelCatalog } from './prop-model-catalog'
 import { boardCameraKey } from './tactical-ui'
 import './tactical-board.css'
 import './board3d.css'
@@ -112,8 +112,11 @@ const loadedTextures = new Map<string, BoardTexture>()
 const loadedArt = new Map<string, BoardTexture>()
 let propAtlas: PropAtlas | null = null
 let propAtlasAsked = false
-let modelPropAtlas: { catalog: PropModelCatalog; texture: BoardTexture; key: string } | null = null
-let modelPropAtlasAsked = false
+type ModelPropAtlas = { catalog: PropModelCatalog; texture: BoardTexture; key: string }
+const modelPropAtlases = new Map<string, ModelPropAtlas>()
+const pendingModelPropAtlases = new Map<string, Promise<ModelPropAtlas | null>>()
+const modelPropAtlasListeners = new Map<string, Set<() => void>>()
+const pendingModelTextures = new Map<string, Promise<BoardTexture | null>>()
 let terrainManifest: TerrainManifest | null = null
 let terrainAsked = false
 
@@ -202,20 +205,72 @@ function loadPropAtlas(onReady: () => void) {
     .catch(() => {})
 }
 
-/** Отдельный атлас preview моделей: при ошибке 2D остаётся на старом атласе. */
-function loadPropModelAtlas(onReady: () => void) {
-  if (modelPropAtlasAsked) return
-  modelPropAtlasAsked = true
-  void loadPropModelCatalog().then((catalog) => {
-    if (!catalog?.atlas) return
-    const url = `${catalog.atlas.image}?v=${encodeURIComponent(catalog.atlas.key)}`
-    loadImage(url, loadedTextures, () => {
-      const texture = loadedTextures.get(url)
-      if (!texture) return
-      modelPropAtlas = { catalog, texture, key: `${url}:${texture.width}x${texture.height}` }
-      onReady()
-    })
+/** Картинка атласа моделей разделяется между ревизиями, даже если путь совпал. */
+function loadModelTexture(url: string): Promise<BoardTexture | null> {
+  const loaded = loadedTextures.get(url)
+  if (loaded) return Promise.resolve(loaded)
+  const pending = pendingModelTextures.get(url)
+  if (pending) return pending
+  if (typeof Image !== 'function') return Promise.resolve(null)
+
+  const request = new Promise<BoardTexture | null>((resolve) => {
+    const image = new Image()
+    image.decoding = 'async'
+    image.onload = () => {
+      if (!image.naturalWidth || !image.naturalHeight) { resolve(null); return }
+      const texture = { image, width: image.naturalWidth, height: image.naturalHeight }
+      loadedTextures.set(url, texture)
+      resolve(texture)
+    }
+    image.onerror = () => resolve(null)
+    image.src = url
+  }).catch(() => null)
+  const tracked = request.then((texture) => {
+    if (pendingModelTextures.get(url) === tracked) pendingModelTextures.delete(url)
+    return texture
   })
+  pendingModelTextures.set(url, tracked)
+  return tracked
+}
+
+function notifyModelPropAtlasListeners(revision: string) {
+  const listeners = modelPropAtlasListeners.get(revision)
+  if (!listeners) return
+  modelPropAtlasListeners.delete(revision)
+  for (const listener of listeners) listener()
+}
+
+/**
+ * Preview-атлас привязан к ревизии карты. Неудачная попытка убирается из
+ * pending-кэша, поэтому следующая карта или монтирование может повторить её.
+ */
+function loadPropModelAtlas(revision: string, onReady: () => void): () => void {
+  if (modelPropAtlases.has(revision)) { onReady(); return () => {} }
+  let listeners = modelPropAtlasListeners.get(revision)
+  if (!listeners) {
+    listeners = new Set()
+    modelPropAtlasListeners.set(revision, listeners)
+  }
+  listeners.add(onReady)
+  if (pendingModelPropAtlases.has(revision)) return () => listeners?.delete(onReady)
+
+  const pending = Promise.resolve()
+    .then(() => loadPropModelCatalog(revision))
+    .then((catalog) => {
+      if (!catalog?.atlas) return null
+      const url = `${catalog.atlas.image}?v=${encodeURIComponent(catalog.atlas.key)}`
+      return loadModelTexture(url).then((texture) => texture
+        ? { catalog, texture, key: `${url}:${texture.width}x${texture.height}` }
+        : null)
+    })
+    .catch(() => null)
+  pendingModelPropAtlases.set(revision, pending)
+  void pending.then((atlas) => {
+    if (pendingModelPropAtlases.get(revision) === pending) pendingModelPropAtlases.delete(revision)
+    if (atlas) modelPropAtlases.set(revision, atlas)
+    notifyModelPropAtlasListeners(revision)
+  })
+  return () => modelPropAtlasListeners.get(revision)?.delete(onReady)
 }
 
 /**
@@ -417,9 +472,14 @@ function TacticalBoard2D({
   useEffect(() => {
     const notify = () => setAssetsVersion((value) => value + 1)
     loadPropAtlas(notify)
-    loadPropModelAtlas(notify)
     loadTerrainManifest(notify)
   }, [])
+  const modelCatalogRevision = map?.catalogRevision ?? LEGACY_CATALOG_REVISION
+  const modelPropAtlas = modelPropAtlases.get(modelCatalogRevision) ?? null
+  useEffect(() => {
+    const notify = () => setAssetsVersion((value) => value + 1)
+    return loadPropModelAtlas(modelCatalogRevision, notify)
+  }, [modelCatalogRevision])
   useEffect(() => {
     if (artUrl) loadImage(artUrl, loadedArt, () => setAssetsVersion((value) => value + 1))
   }, [artUrl])

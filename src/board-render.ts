@@ -7,7 +7,7 @@ import {
   LIGHT_FULL, lightAt, lightGridFor, lightSourceVisibilityFor, lightSourcesOf,
   type LightSource,
 } from './board-lighting'
-import { propModelFor, type PropModelCatalog } from './prop-model-catalog'
+import { LEGACY_CATALOG_REVISION, propModelFor, type PropModelCatalog } from './prop-model-catalog'
 import { cellAt, cellIndex, doorStates, edgeBetween, edgeList, edgeNeighbor, passableAt, revealedAt } from './tactical-map-client'
 
 /**
@@ -496,8 +496,9 @@ export function tileRevealSignature(map: TacticalMap, tile: BoardTile) {
 }
 
 /**
- * Ключ тайла: отпечаток местности, этаж, размер клетки, координаты тайла и
- * раскрытие внутри него. Тайл перерисовывается только при смене своего ключа.
+ * Ключ тайла: отпечаток местности, выпуск каталога, этаж, размер клетки,
+ * координаты тайла и раскрытие внутри него. Тайл перерисовывается только при
+ * смене своего ключа.
  *
  * Этаж входит в ключ из-за запечённого света (`src/board-lighting.ts`):
  * `terrainHash` считается без `levelIndex`, а у подвала амбиент свой. Всё
@@ -510,12 +511,13 @@ export function tileKey(scene: BoardScene, tile: BoardTile) {
   const art = scene.art ? `${scene.artKey ?? 'art'}:${scene.artMode ?? 'backdrop'}` : ''
   const textures = texturesAvailableIn(scene) ? 't' : 'f'
   const stamps = scene.propAtlas?.key ?? ''
+  const modelCatalogRevision = scene.map.catalogRevision ?? LEGACY_CATALOG_REVISION
   const modelStamps = scene.modelPropAtlas?.key ?? ''
   const tiles = scene.terrain?.key ?? ''
   // Свет запечён в тайл, поэтому его выключение обязано обесценить кэш: без
   // этой буквы тумблер настроек не менял бы уже нарисованные тайлы вовсе.
   const light = scene.lighting === false ? 'n' : 'l'
-  return `${scene.map.terrainHash}:${scene.map.levelIndex}:${scene.cellSize}:${textures}:${art}:${stamps}:${modelStamps}:${tiles}:${light}:${tile.tileX}:${tile.tileY}:${tileRevealSignature(scene.map, tile)}`
+  return `${scene.map.terrainHash}:${scene.map.levelIndex}:${scene.cellSize}:${textures}:${art}:${stamps}:${modelCatalogRevision}:${modelStamps}:${tiles}:${light}:${tile.tileX}:${tile.tileY}:${tileRevealSignature(scene.map, tile)}`
 }
 
 /**
