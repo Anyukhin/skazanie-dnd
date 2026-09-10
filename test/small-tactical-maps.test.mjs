@@ -222,7 +222,11 @@ test('builder детерминирован, не вызывает LLM и не з
     assert.deepEqual(a, b)
     assert.equal(JSON.parse(readFileSync(output, 'utf8')).maps.length, 56)
     const main = JSON.parse(readFileSync(CATALOG_FILE, 'utf8'))
-    assert.deepEqual(JSON.parse(readFileSync(output, 'utf8')).maps, main.maps, 'повторная сборка не должна дрейфовать относительно основного каталога')
+    // Старый каталог не переписывается: новый выпуск оформления добавляется
+    // при сборке, а геометрия и взаимодействия остаются прежними.
+    const withoutRevision = ({ catalogRevision: _revision, ...map }) => map
+    assert.deepEqual(a.map(withoutRevision), main.maps.map(withoutRevision), 'повторная сборка не должна менять геометрию основного каталога')
+    assert.ok(a.every((map) => map.catalogRevision === first.catalogRevision))
   } finally {
     rmSync(temp, { recursive: true, force: true })
   }

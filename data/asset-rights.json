@@ -1666,7 +1666,8 @@
     ["models/environment/quaternius/whetstone.glb", "1ebed904717f1501cc2638233d5a58ea81e7e9131116d813844a2cc6e7d433a3", 1227348],
     ["models/environment/quaternius/workbench.glb", "1985bf4c20f6b147129c9113939179d273ed20de60c0d1d41d2d7de1637ed99f", 771588],
     ["models/environment/quaternius/workbench_drawers.glb", "dbfb6fcc1580391d8e753782f9f8520783db6930fe4d392cee3717ebd35d6087", 724992],
-    ["models/environment/topdown.png", "2ad6481c40530f4aa6f0d7677abc022ff22db8d8ebd96185d2f6112760932ad0", 3499551]
+    ["models/environment/topdown.png", "2ad6481c40530f4aa6f0d7677abc022ff22db8d8ebd96185d2f6112760932ad0", 3499551],
+    ["models/environment/baseline-pr79.json", "fbf2d6740eb17902abfda0832efb68baaa0d196cc446d5fc81fa46185e5ce8ac", 43967]
   ],
   "rights_status": "review_required",
   "distribution": "blocked",
