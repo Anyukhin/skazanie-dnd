@@ -41,6 +41,19 @@ for (const path of emittedFiles(buildDir).filter((candidate) => candidate.endsWi
 }
 
 const { default: TacticalBoard3D } = await import(pathToFileURL(join(buildDir, 'src', 'TacticalBoard3D.mjs')).href)
+const quality = await import(pathToFileURL(join(buildDir, 'src', 'board3d-quality.mjs')).href)
+
+test('профиль качества сохраняет событие и не повышает уже ограниченную детализацию', () => {
+  const cue = Object.freeze({ id: 'committed-hit', kind: 'strike', actorId: 'hero', targetId: 'enemy', hit: true, amount: 8, durationMs: 800, detail: 'minimal' })
+  for (const profile of ['low', 'balanced', 'high']) {
+    assert.deepEqual(quality.cueForQuality(cue, profile), cue)
+    assert.notEqual(quality.cueForQuality(cue, profile), cue)
+  }
+  const full = { ...cue, detail: 'full' }
+  assert.equal(quality.cueForQuality(full, 'low').detail, 'minimal')
+  assert.equal(full.detail, 'full')
+  assert.equal(quality.board3DQuality('corrupt-setting'), 'balanced')
+})
 
 function mapForUi(width = 20, height = 20) {
   const map = createTacticalMap({ width, height, locationId: 'board3d-ui', seed: 'board3d-ui' })

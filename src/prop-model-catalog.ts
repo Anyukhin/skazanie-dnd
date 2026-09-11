@@ -21,9 +21,21 @@ export const LEGACY_CATALOG_REVISION = 'pr79'
 const KEY = /^[a-z0-9][a-z0-9_-]{0,95}$/
 const LOCAL_FILE = /^\/assets\/models\/environment\/[a-zA-Z0-9_/-]+\.(glb|png)$/
 
-export function validatePropModelCatalog(value: unknown): PropModelCatalog {
+function releaseFilePrefix(revision: string) {
+  return `${ROOT}releases/${revision}/`
+}
+
+export function validatePropModelCatalog(value: unknown, revision?: string): PropModelCatalog {
+  if (revision !== undefined && !KEY.test(revision)) throw new Error('Некорректная ревизия каталога окружения')
   if (!value || typeof value !== 'object') throw new Error('Нет каталога окружения')
   const input = value as Record<string, unknown>
+  const release = input.release && typeof input.release === 'object' && !Array.isArray(input.release)
+    ? input.release as Record<string, unknown> : undefined
+  const declaredRelease = release?.id
+  if (declaredRelease !== undefined && (typeof declaredRelease !== 'string' || !KEY.test(declaredRelease))) {
+    throw new Error('Некорректная ревизия каталога окружения')
+  }
+  const pinnedRevision = revision ?? (typeof declaredRelease === 'string' ? declaredRelease : undefined)
   if (input.version !== 1 || !Array.isArray(input.models) || input.models.length > 512) throw new Error('Некорректный каталог окружения')
   const keys = new Set<string>()
   const models = input.models.map((raw: unknown): PropModelEntry => {
@@ -33,6 +45,7 @@ export function validatePropModelCatalog(value: unknown): PropModelCatalog {
       || typeof entry.label !== 'string' || !entry.label.trim() || entry.label.length > 160
       || typeof entry.category !== 'string' || entry.category.length > 80
       || typeof entry.url !== 'string' || !LOCAL_FILE.test(entry.url) || !entry.url.endsWith('.glb')
+      || (pinnedRevision !== undefined && pinnedRevision !== LEGACY_CATALOG_REVISION && !entry.url.startsWith(releaseFilePrefix(pinnedRevision)))
       || !Array.isArray(entry.assetIds) || entry.assetIds.some((id) => typeof id !== 'string' || !KEY.test(id))) throw new Error('Некорректная запись модели окружения')
     keys.add(entry.key)
     const result: PropModelEntry = { key: entry.key, label: entry.label, category: entry.category, url: entry.url,
@@ -47,8 +60,15 @@ export function validatePropModelCatalog(value: unknown): PropModelCatalog {
   const result: PropModelCatalog = { version: 1, models }
   if (typeof input.revision === 'string' && KEY.test(input.revision)) result.revision = input.revision
   const atlas = input.atlas as Record<string, unknown> | undefined
-  if (atlas && typeof atlas.image === 'string' && LOCAL_FILE.test(atlas.image) && atlas.image.endsWith('.png')
-    && typeof atlas.key === 'string' && atlas.key.length <= 128) result.atlas = { image: atlas.image, key: atlas.key }
+  const atlasImage = typeof atlas?.image === 'string' ? atlas.image : ''
+  const atlasKey = typeof atlas?.key === 'string' ? atlas.key : ''
+  const atlasValid = Boolean(atlas && typeof atlas.key === 'string' && LOCAL_FILE.test(atlasImage) && atlasImage.endsWith('.png')
+    && (pinnedRevision === undefined || pinnedRevision === LEGACY_CATALOG_REVISION || atlasImage.startsWith(releaseFilePrefix(pinnedRevision)))
+    && atlasKey.length <= 128)
+  if (pinnedRevision !== undefined && pinnedRevision !== LEGACY_CATALOG_REVISION && !atlasValid) {
+    throw new Error('Некорректная запись атласа окружения')
+  }
+  if (atlasValid) result.atlas = { image: atlasImage, key: atlasKey }
   return result
 }
 
@@ -79,7 +99,7 @@ export function loadPropModelCatalog(revision = LEGACY_CATALOG_REVISION): Promis
       const raw = JSON.parse(text)
       const declared = revision === LEGACY_CATALOG_REVISION ? raw?.revision : raw?.release?.id
       if (declared !== revision) return null
-      return { ...validatePropModelCatalog(raw), revision }
+      return { ...validatePropModelCatalog(raw, revision), revision }
     }).catch(() => null).then((catalog) => {
       entry.settled = true
       if (!catalog && catalogs.get(revision) === entry) catalogs.delete(revision)

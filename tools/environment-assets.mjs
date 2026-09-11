@@ -6,6 +6,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
 import { importEnvironmentModels, validateCandidateOutputDir } from './import-environment-models.mjs'
+import { addInteriorModelsToCandidate } from './build-interior-models.mjs'
 import { startPropModelAtlas } from './render-prop-model-atlas.mjs'
 import { validateEnvironmentCandidate } from './environment-candidate.mjs'
 import { registerAssets } from './register-asset-rights.mjs'
@@ -49,12 +50,13 @@ export async function sealEnvironmentCandidate(directory) {
 }
 
 export async function prepareEnvironmentAssets(options, {
-  importModels = importEnvironmentModels, startAtlas = startPropModelAtlas,
+  importModels = importEnvironmentModels, addInteriors = addInteriorModelsToCandidate, startAtlas = startPropModelAtlas,
 } = {}) {
   if (!options.outputDir) throw new Error('Укажите --out для каталога кандидата')
   if (options.port != null && (!Number.isInteger(options.port) || options.port < 0 || options.port > 65535)) throw new Error('Порт должен быть целым числом от 0 до 65535')
   const imported = await importModels(options)
   const directory = resolve(imported.directory ?? options.outputDir)
+  await addInteriors(directory)
   let resolveDone, rejectDone
   const done = new Promise((resolveValue, rejectValue) => { resolveDone = resolveValue; rejectDone = rejectValue })
   const server = await startAtlas({

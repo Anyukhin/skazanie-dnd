@@ -412,12 +412,18 @@ function decodeProp(value: unknown): TacticalProp | null {
     ? { toLevel, ...(text(rawTransition?.label, 120) ? { label: text(rawTransition?.label, 120) } : {}) }
     : null
   const legacyInteractionKind = text(raw.interactionKind, 60)
+  const rawMount = raw.mount && typeof raw.mount === 'object' ? raw.mount as Record<string, unknown> : null
+  const mount: TacticalProp['mount'] = rawMount?.kind === 'surface' && text(rawMount.propId, 120)
+    ? { kind: 'surface', propId: text(rawMount.propId, 120) }
+    : rawMount?.kind === 'wall' && ['n', 'e', 's', 'w'].includes(String(rawMount.side))
+      ? { kind: 'wall', side: rawMount.side as 'n' | 'e' | 's' | 'w' } : undefined
   const legacyInteractionVerbs = Array.isArray(raw.interactionVerbs)
     ? [...new Set(raw.interactionVerbs.filter((verb): verb is SceneObjectIntent => SCENE_OBJECT_INTENTS.includes(verb as SceneObjectIntent)))]
     : []
   return {
     id,
     assetId: text(raw.assetId, 120),
+    ...(text(raw.label, 120) ? { label: text(raw.label, 120) } : {}),
     x: Number(raw.x) || 0,
     y: Number(raw.y) || 0,
     rotation: Number.isFinite(Number(raw.rotation)) ? Number(raw.rotation) : 0,
@@ -427,6 +433,7 @@ function decodeProp(value: unknown): TacticalProp | null {
       y: boundedInteger((cell as Record<string, unknown>)?.y, 0, -1_000, 1_000),
     })),
     zOrder: boundedInteger(raw.zOrder, 0, -1_000, 1_000),
+    ...(mount ? { mount } : {}),
     blocksMove: raw.blocksMove === true,
     blocksSight: raw.blocksSight === true,
     cover: (COVER_LEVELS.includes(raw.cover as TacticalCover) ? raw.cover : 'none') as TacticalCover,

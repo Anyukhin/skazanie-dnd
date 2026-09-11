@@ -2,6 +2,7 @@ import {
   AnimationAction,
   AnimationClip,
   AnimationMixer,
+  type Skeleton,
   Box3,
   BoxGeometry,
   BufferGeometry,
@@ -23,14 +24,16 @@ import {
   Vector3,
 } from 'three'
 import { GLTFLoader, type GLTF, type GLTFParser } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import type { ActorAppearance } from './types'
 
 /**
  * Визуальная модель участника боя. Это слой отображения: `actorId` никогда не
  * используется для принятия решения о допустимости хода.
  */
 export type ActorKind = 'hero' | 'enemy' | 'summon' | 'neutral'
-export type ActorPose = 'idle' | 'walk' | 'attack' | 'cast' | 'hit' | 'death'
+export type ActorPose = 'idle' | 'walk' | 'attack' | 'ranged-attack' | 'cast' | 'hit' | 'death'
 export type ActorModelProfile = 'warrior' | 'mage' | 'rogue' | 'goblin' | 'skeleton' | 'beast'
+export type ActorEquipment = ActorAppearance['equipment']
 
 export type ActorModelInput = {
   id: string
@@ -40,12 +43,15 @@ export type ActorModelInput = {
   archetype?: string
   /** Локальный акцент игрока из карточки персонажа. */
   color?: string
+  /** Разрешённая сервером внешность; при наличии имеет приоритет над fuzzy. */
+  appearance?: ActorAppearance
 }
 
-export type NormalizedActorModelInput = Omit<ActorModelInput, 'modelKey' | 'archetype' | 'color'> & {
+export type NormalizedActorModelInput = Omit<ActorModelInput, 'modelKey' | 'archetype' | 'color' | 'appearance'> & {
   modelKey?: string
   archetype?: string
   color?: string
+  appearance?: ActorAppearance
 }
 
 export type ModelRights = {
@@ -94,8 +100,12 @@ export type ActorModel = Group & {
   source: 'glb' | 'procedural'
   /** Высота после нормализации. Нижняя точка модели находится на y = 0. */
   modelHeight: number
+  /** Последнее явно установленное снаряжение; у legacy-модели может быть undefined. */
+  equipment?: ActorEquipment
   /** Останавливает анимацию и освобождает геометрию, материалы и текстуры. */
   dispose: () => void
+  /** Меняет только видимые аксессуары; undefined возвращает legacy-снаряжение. */
+  setEquipment: (equipment: ActorEquipment | undefined) => void
   /** Устанавливает нормализованную позу; для GLB можно передать progress 0..1. */
   setPose: (pose: ActorPose, progress?: number) => void
   /** Продвигает GLB mixer; у процедурной модели это безопасная пустая операция. */
@@ -103,6 +113,7 @@ export type ActorModel = Group & {
   idle?: (progress?: number) => void
   walk?: (progress?: number) => void
   attack?: (progress?: number) => void
+  rangedAttack?: (progress?: number) => void
   cast?: (progress?: number) => void
   hit?: (progress?: number) => void
   death?: (progress?: number) => void
@@ -132,6 +143,7 @@ const MODEL_ROOT = '/assets/models/'
 const MODEL_KEY_PATTERN = /^[a-z0-9][a-z0-9._-]*$/u
 const ACTOR_PROFILES: readonly ActorModelProfile[] = ['warrior', 'mage', 'rogue', 'goblin', 'skeleton', 'beast']
 const ACTOR_KINDS: readonly ActorKind[] = ['hero', 'enemy', 'summon', 'neutral']
+const ACTOR_EQUIPMENT: readonly ActorEquipment[] = ['unknown', 'unarmed', 'sword', 'sword-shield', 'bow', 'staff', 'dagger']
 
 const profileLabels: Record<ActorModelProfile, string> = {
   warrior: 'Воин', mage: 'Волшебник', rogue: 'Плут / следопыт', goblin: 'Гоблин', skeleton: 'Скелет', beast: 'Зверь',
@@ -399,6 +411,15 @@ function isActorKind(value: unknown): value is ActorKind {
   return typeof value === 'string' && (ACTOR_KINDS as readonly string[]).includes(value)
 }
 
+function isEquipment(value: unknown): value is ActorEquipment {
+  return typeof value === 'string' && (ACTOR_EQUIPMENT as readonly string[]).includes(value)
+}
+
+function normalizeAppearance(value: unknown): ActorAppearance | undefined {
+  if (!objectLike(value) || value.version !== 1 || !isProfile(value.profile)) return undefined
+  return { version: 1, profile: value.profile, equipment: isEquipment(value.equipment) ? value.equipment : 'unknown' }
+}
+
 /**
  * Проверяет путь до модели до того, как он попадёт в fetch. Внешние CDN,
  * data-URL и `..` намеренно запрещены: каталог ассетов должен быть локальным.
@@ -473,6 +494,7 @@ export function normalizeActorInput(input: ActorModelInput): NormalizedActorMode
   if (!objectLike(input)) throw new Error('Для фигурки нужен объект участника')
   const id = text(input.id)
   if (!id) throw new Error('Для фигурки нужен actor id')
+  const appearance = normalizeAppearance(input.appearance)
   return {
     id,
     label: text(input.label) || id,
@@ -480,6 +502,7 @@ export function normalizeActorInput(input: ActorModelInput): NormalizedActorMode
     ...(text(input.modelKey) ? { modelKey: text(input.modelKey) } : {}),
     ...(text(input.archetype) ? { archetype: text(input.archetype) } : {}),
     ...(text(input.color) ? { color: text(input.color) } : {}),
+    ...(appearance ? { appearance } : {}),
   }
 }
 
@@ -508,6 +531,16 @@ export function resolveModelProfile(input: ActorModelInput, manifest: ActorModel
   const catalog = validateModelManifest(manifest)
   const explicit = actor.modelKey ? catalog.models.find((entry) => entry.key === actor.modelKey) : undefined
   if (explicit) return explicit
+  // Серверная внешность уже прошла проверку прав. Она должна предшествовать
+  // actorIds/archetype: иначе локальный каталог может раскрыть замаскированный
+  // профиль по прежнему идентификатору или классу.
+  const serverProfile = actor.appearance?.profile
+  if (serverProfile) {
+    const byServerProfile = catalog.models.find((entry) => entry.profile === serverProfile)
+    if (byServerProfile) return byServerProfile
+    const fallback = DEFAULT_ACTOR_MODEL_MANIFEST.models.find((entry) => entry.profile === serverProfile)
+    if (fallback) return fallback
+  }
   const byActorId = catalog.models.find((entry) => entry.actorIds?.includes(actor.id))
   if (byActorId) return byActorId
   const requestedArchetype = slug(actor.archetype ?? '')
@@ -780,6 +813,13 @@ function applyProceduralPose(rig: Rig, pose: ActorPose, progress: number): void 
     if (leftArm) leftArm.rotation.z = .18 - swing * .2
     if (torso) torso.rotation.y = -.22 + swing * .42
     rig.motion.position.z = -swing * .045
+  } else if (pose === 'ranged-attack') {
+    // У процедурной фигурки нет отдельного клипа: короткая сдержанная
+    // натяжка читается по двум рукам и не подменяется мечевой атакой.
+    const draw = p === 0 ? 1 : Math.sin(MathUtils.clamp(p, 0, 1) * Math.PI)
+    if (leftArm) { leftArm.rotation.z = .42 - draw * .18; leftArm.rotation.x = -.55 - draw * .16 }
+    if (rightArm) { rightArm.rotation.z = -.42 + draw * .1; rightArm.rotation.x = -.62 - draw * .2 }
+    if (torso) torso.rotation.y = -.08 + draw * .1
   } else if (pose === 'cast') {
     const lift = Math.sin(MathUtils.clamp(p, 0, 1) * Math.PI)
     if (leftArm) { leftArm.rotation.z = .7 - lift * .9; leftArm.rotation.x = -.35 }
@@ -855,6 +895,189 @@ function addBow(parent: Object3D, wood: Material, string: Material) {
   return bow
 }
 
+/** Имена комплектов, присутствие которых подтверждено подготовленными KayKit GLB. */
+const KAYKIT_EQUIPMENT_NAMES = new Set([
+  '1H_Sword_Offhand', '1H_Sword', '2H_Sword',
+  'Badge_Shield', 'Rectangle_Shield', 'Round_Shield', 'Spike_Shield',
+  'Spellbook', 'Spellbook_open', '1H_Wand', '2H_Staff',
+  'Knife_Offhand', 'Knife', '1H_Crossbow', '2H_Crossbow', 'Throwable',
+])
+
+function objectByName(root: Group, ...names: string[]): Object3D | undefined {
+  for (const name of names) {
+    const exact = root.getObjectByName(name)
+    if (exact) return exact
+  }
+  const compact = new Set(names.map((name) => name.replace(/[^a-z\d]/giu, '').toLocaleLowerCase('en-US')))
+  let result: Object3D | undefined
+  root.traverse((object) => {
+    if (!result && compact.has(object.name.replace(/[^a-z\d]/giu, '').toLocaleLowerCase('en-US'))) result = object
+  })
+  return result
+}
+
+type AccessoryController = {
+  equipment: ActorEquipment | undefined
+  setEquipment: (equipment: ActorEquipment | undefined) => void
+  dispose: () => void
+}
+
+type AccessoryControllerOptions = {
+  root: Group
+  palette: Palette
+  leftParent?: Object3D
+  rightParent?: Object3D
+  /** Процедурная фигурка сохраняет старый комплект при отсутствии appearance. */
+  legacy?: () => Group[]
+  /** Сокеты Quaternius используют forward +Z; KayKit уже задаёт orientation в socket. */
+  socketKind?: 'kaykit' | 'quaternius' | 'procedural'
+}
+
+function accessoryTransform(accessory: Group, kind: 'sword' | 'shield' | 'bow' | 'staff' | 'dagger', socketKind: AccessoryControllerOptions['socketKind']): void {
+  if (socketKind === 'procedural') {
+    const position: Record<typeof kind, [number, number, number]> = {
+      sword: [0, -.39, -.02], shield: [0, -.3, -.04], bow: [0, -.28, -.035], staff: [0, -.37, .04], dagger: [0, -.37, -.02],
+    }
+    accessory.position.set(...position[kind])
+    if (kind === 'sword') accessory.rotation.z = -.12
+    if (kind === 'bow') accessory.rotation.z = -.26
+    if (kind === 'staff') accessory.rotation.z = -.12
+    if (kind === 'dagger') accessory.rotation.z = -.12
+    return
+  }
+  accessory.position.set(0, socketKind === 'quaternius' ? 0 : .03, 0)
+  // Quaternius assembled actors declare +Z as forward. The recipes use +Y as
+  // their grip axis, so rotate the local accessory frame once at the socket.
+  if (socketKind === 'quaternius') accessory.rotation.x = Math.PI / 2
+}
+
+function hideKayKitEquipment(root: Group, hidden: Map<Object3D, boolean>, value: boolean): void {
+  root.traverse((object) => {
+    if (!KAYKIT_EQUIPMENT_NAMES.has(object.name)) return
+    if (value) {
+      if (!hidden.has(object)) hidden.set(object, object.visible)
+      object.visible = false
+    } else if (hidden.has(object)) object.visible = hidden.get(object)!
+  })
+}
+
+function createAccessoryController(options: AccessoryControllerOptions): AccessoryController {
+  const active: Group[] = []
+  const hidden = new Map<Object3D, boolean>()
+  let current: ActorEquipment | undefined
+  let initialized = false
+  let disposed = false
+
+  const clearActive = () => {
+    for (const accessory of active.splice(0)) {
+      accessory.removeFromParent()
+      disposeObject(accessory)
+    }
+  }
+  const attach = (parent: Object3D | undefined, accessory: Group, kind: 'sword' | 'shield' | 'bow' | 'staff' | 'dagger') => {
+    if (!parent) { accessory.removeFromParent(); disposeObject(accessory); return }
+    accessoryTransform(accessory, kind, options.socketKind)
+    active.push(accessory)
+  }
+  const addSwordAccessory = (side: 'left' | 'right', name = 'sword', kind: 'sword' | 'dagger' = 'sword') => {
+    const parent = side === 'left' ? options.leftParent : options.rightParent
+    const sword = addSword(parent ?? options.root, material(options.palette.metal, { metalness: .48, roughness: .52 }), material(options.palette.leather), name)
+    if (kind === 'dagger') sword.scale.set(.72, .72, .72)
+    attach(parent, sword, kind)
+  }
+  const addShieldAccessory = () => {
+    const parent = options.leftParent
+    const shield = addShield(parent ?? options.root, material('#475b66'), material(options.palette.metal, { metalness: .48, roughness: .52 }))
+    attach(parent, shield, 'shield')
+  }
+  const addBowAccessory = () => {
+    const parent = options.rightParent
+    const bow = addBow(parent ?? options.root, material(options.palette.wood), material('#af9b7a'))
+    attach(parent, bow, 'bow')
+  }
+  const addStaffAccessory = () => {
+    const parent = options.leftParent ?? options.rightParent
+    const staff = addStaff(parent ?? options.root, material(options.palette.wood), material(options.palette.accent, { emissive: options.palette.accent, roughness: .42 }))
+    attach(parent, staff, 'staff')
+  }
+  const addEquipment = (equipment: ActorEquipment) => {
+    if (equipment === 'sword') addSwordAccessory('right')
+    else if (equipment === 'sword-shield') { addSwordAccessory('right'); addShieldAccessory() }
+    else if (equipment === 'bow') addBowAccessory()
+    else if (equipment === 'staff') addStaffAccessory()
+    else if (equipment === 'dagger') addSwordAccessory('right', 'dagger', 'dagger')
+  }
+  const setEquipment = (requested: ActorEquipment | undefined) => {
+    if (disposed) return
+    const equipment = requested === undefined || isEquipment(requested) ? requested : 'unknown'
+    if (initialized && current === equipment) return
+    clearActive()
+    if (equipment === undefined) {
+      hideKayKitEquipment(options.root, hidden, false)
+      active.push(...(options.legacy?.() ?? []))
+    } else {
+      hideKayKitEquipment(options.root, hidden, true)
+      addEquipment(equipment)
+    }
+    current = equipment
+    initialized = true
+  }
+  const result: AccessoryController = {
+    get equipment() { return current },
+    setEquipment,
+    dispose: () => {
+      if (disposed) return
+      disposed = true
+      clearActive()
+      hideKayKitEquipment(options.root, hidden, false)
+      hidden.clear()
+    },
+  }
+  return result
+}
+
+function createProceduralEquipment(rig: Rig, profile: ActorModelProfile, palette: Palette, input: NormalizedActorModelInput): AccessoryController {
+  const leftParent = rig.parts.get('leftArm')
+  const rightParent = rig.parts.get('rightArm')
+  const legacy = () => {
+    const added: Group[] = []
+    if (profile === 'warrior') {
+      const sword = addSword(rightParent ?? rig.motion, material(palette.metal, { metalness: .48, roughness: .52 }), material(palette.leather))
+      accessoryTransform(sword, 'sword', 'procedural')
+      added.push(sword)
+      const shield = addShield(leftParent ?? rig.motion, material('#475b66'), material(palette.metal, { metalness: .48, roughness: .52 }))
+      accessoryTransform(shield, 'shield', 'procedural')
+      added.push(shield)
+    } else if (profile === 'mage') {
+      const staff = addStaff(leftParent ?? rig.motion, material(palette.wood), material(palette.accent, { emissive: palette.accent, roughness: .42 }))
+      accessoryTransform(staff, 'staff', 'procedural')
+      added.push(staff)
+    } else if (profile === 'rogue') {
+      const bow = addBow(rightParent ?? rig.motion, material(palette.wood), material('#af9b7a'))
+      accessoryTransform(bow, 'bow', 'procedural')
+      added.push(bow)
+      const dagger = addSword(leftParent ?? rig.motion, material(palette.metal, { metalness: .48, roughness: .52 }), material(palette.leather), 'short-blade')
+      accessoryTransform(dagger, 'dagger', 'procedural')
+      dagger.rotation.z = 0
+      added.push(dagger)
+    } else if (profile === 'goblin') {
+      const cleaver = addSword(rightParent ?? rig.motion, material(palette.metal, { metalness: .48, roughness: .52 }), material(palette.leather), 'rusty-cleaver')
+      accessoryTransform(cleaver, 'sword', 'procedural')
+      cleaver.rotation.z = -.28
+      cleaver.scale.set(1.05, .9, 1)
+      added.push(cleaver)
+    } else if (profile === 'skeleton') {
+      const sword = addSword(rightParent ?? rig.motion, material(palette.metal, { metalness: .48, roughness: .52 }), material(palette.leather))
+      accessoryTransform(sword, 'sword', 'procedural')
+      added.push(sword)
+    }
+    return added
+  }
+  const controller = createAccessoryController({ root: rig.motion.parent as Group, palette, leftParent, rightParent, legacy, socketKind: 'procedural' })
+  controller.setEquipment(input.appearance?.equipment)
+  return controller
+}
+
 function addHumanoidParts(root: Group, profile: ActorModelProfile, palette: Palette, input: NormalizedActorModelInput): Rig {
   const rig = newRig(root)
   const torso = part(rig, 'torso', [0, .69, 0])
@@ -871,7 +1094,6 @@ function addHumanoidParts(root: Group, profile: ActorModelProfile, palette: Pale
   const leather = material(palette.leather)
   const metal = material(palette.metal, { metalness: .48, roughness: .52 })
   const bone = material(palette.bone, { roughness: .86 })
-  const wood = material(palette.wood)
 
   if (profile === 'mage') {
     mesh(torso, new ConeGeometry(.28, .58, 9), bodySurface, 'mage-robe', [0, 0, 0])
@@ -899,31 +1121,19 @@ function addHumanoidParts(root: Group, profile: ActorModelProfile, palette: Pale
     cylinder(head, 'helmet', .16, .19, .13, metal, [0, .06, 0], undefined, 10)
     mesh(head, new TorusGeometry(.15, .018, 5, 16), metal, 'helmet-rim', [0, 0, 0])
     cone(head, 'helmet-crest', .035, .14, material(palette.accent), [0, .17, 0], [0, 0, 0])
-    const sword = addSword(rightArm, metal, leather)
-    sword.position.set(0, -.39, -.02)
-    sword.rotation.z = -.12
-    const shield = addShield(leftArm, material('#475b66'), metal)
-    shield.position.set(0, -.3, -.04)
   } else if (profile === 'mage') {
     mesh(head, new ConeGeometry(.2, .24, 9), bodySurface, 'mage-hood', [0, .08, 0])
     cylinder(head, 'mage-hood-band', .15, .16, .035, leather, [0, -.015, 0], undefined, 10)
-    const staff = addStaff(leftArm, wood, material(palette.accent, { emissive: palette.accent, roughness: .42 }))
-    staff.position.set(0, -.37, .04); staff.rotation.z = -.12
     sphere(rightArm, 'spell-focus', .045, material(palette.accent, { emissive: palette.accent, roughness: .35 }), [0, -.42, -.02])
   } else if (profile === 'rogue') {
     mesh(head, new ConeGeometry(.175, .21, 8), darkSurface, 'rogue-hood', [0, .045, .01])
     cube(head, 'rogue-scarf', [.18, .055, .18], material('#6e503a'), [0, -.09, -.03])
-    const bow = addBow(rightArm, wood, material('#af9b7a'))
-    bow.position.set(0, -.28, -.035); bow.rotation.z = -.26
-    addSword(leftArm, metal, leather, 'short-blade').position.set(0, -.37, -.02)
     cube(torso, 'quiver', [.07, .22, .07], leather, [-.19, .02, .08], [.2, 0, -.18])
   } else if (profile === 'goblin') {
     const earSurface = skin
     cone(head, 'goblin-ear-left', .065, .2, earSurface, [-.12, .05, 0], [0, 0, -.85], 7)
     cone(head, 'goblin-ear-right', .065, .2, earSurface, [.12, .05, 0], [0, 0, .85], 7)
     sphere(head, 'goblin-nose', .055, skin, [0, -.015, -.135], [1, .8, 1.4])
-    const cleaver = addSword(rightArm, metal, leather, 'rusty-cleaver')
-    cleaver.position.set(0, -.39, -.02); cleaver.rotation.z = -.28; cleaver.scale.set(1.05, .9, 1)
     pelvis.rotation.x = .12; torso.rotation.x = -.08; head.rotation.x = .06
   } else if (profile === 'skeleton') {
     cube(head, 'skull-jaw', [.16, .075, .14], bone, [0, -.1, -.015])
@@ -931,9 +1141,6 @@ function addHumanoidParts(root: Group, profile: ActorModelProfile, palette: Pale
     sphere(head, 'eye-left', .018, material('#9e5960', { emissive: '#d63f48' }), [-.048, .025, -.13])
     sphere(head, 'eye-right', .018, material('#9e5960', { emissive: '#d63f48' }), [.048, .025, -.13])
     for (const y of [-.08, .02, .12]) mesh(torso, new TorusGeometry(.14 - y * .08, .012, 5, 14), bone, `rib-${y}`, [0, y, -.005], [Math.PI / 2, 0, 0])
-    const sword = addSword(rightArm, metal, leather)
-    sword.position.set(0, -.39, -.02)
-    sword.rotation.z = -.12
     pelvis.rotation.x = -.08
   }
 
@@ -1011,11 +1218,47 @@ function clipPose(clip: AnimationClip): ActorPose | null {
   const name = slug(clip.name)
   if (name.includes('idle') || name.includes('stand') || name.includes('rest')) return 'idle'
   if (name.includes('walk') || name.includes('run') || name.includes('move')) return 'walk'
-  if (name.includes('attack') || name.includes('strike') || name.includes('slash')) return 'attack'
   if (name.includes('cast') || name.includes('spell') || name.includes('magic')) return 'cast'
+  // Bow/Archery/Arrow должны победить общий Attack matcher, но generic
+  // Shoot нельзя считать луком: Pistol_Shoot и crossbow-клипы для этого
+  // контракта не подходят. `ranged` принимаем только без огнестрельного
+  // маркера и сохраняем canonical ranged-attack.
+  const firearm = name.includes('pistol') || name.includes('rifle') || name.includes('gun') || name.includes('crossbow')
+  if (!firearm && (name.includes('bow') || name.includes('archery') || name.includes('arrow') || name.includes('ranged'))) return 'ranged-attack'
+  if (name.includes('attack') || name.includes('strike') || name.includes('slash')) return 'attack'
   if (name.includes('hit') || name.includes('hurt') || name.includes('damage')) return 'hit'
   if (name.includes('death') || name.includes('die') || name.includes('dead')) return 'death'
   return null
+}
+
+type AimBoneRest = { bone: Object3D; rotation: { x: number; y: number; z: number } }
+
+/** Небольшая локальная замена отсутствующему bow-клипу у известных humanoid rig. */
+function createGlbAimPose(root: Group): { apply: (progress?: number) => void; reset: () => void; available: boolean } {
+  const find = (...names: string[]) => objectByName(root, ...names)
+  const leftUpper = find('upperarm.l', 'upperarm_l')
+  const rightUpper = find('upperarm.r', 'upperarm_r')
+  const leftLower = find('lowerarm.l', 'lowerarm_l')
+  const rightLower = find('lowerarm.r', 'lowerarm_r')
+  const chest = find('chest', 'spine_03', 'spine_02')
+  const rest: AimBoneRest[] = [leftUpper, rightUpper, leftLower, rightLower, chest]
+    .filter((bone): bone is Object3D => Boolean(bone))
+    .map((bone) => ({ bone, rotation: { x: bone.rotation.x, y: bone.rotation.y, z: bone.rotation.z } }))
+  const reset = () => {
+    for (const item of rest) item.bone.rotation.set(item.rotation.x, item.rotation.y, item.rotation.z)
+  }
+  const apply = (progress?: number) => {
+    if (!rest.length) return
+    reset()
+    const p = progress == null ? 0 : MathUtils.clamp(progress, 0, 1)
+    const draw = progress == null || p === 0 ? 1 : Math.sin(p * Math.PI)
+    if (leftUpper) leftUpper.rotation.set(leftUpper.rotation.x - .28 - draw * .12, leftUpper.rotation.y, leftUpper.rotation.z + .3 - draw * .08)
+    if (rightUpper) rightUpper.rotation.set(rightUpper.rotation.x - .34 - draw * .1, rightUpper.rotation.y, rightUpper.rotation.z - .32 + draw * .08)
+    if (leftLower) leftLower.rotation.x -= .22 + draw * .15
+    if (rightLower) rightLower.rotation.x -= .18 + draw * .12
+    if (chest) chest.rotation.y += .06 * draw
+  }
+  return { apply, reset, available: rest.length > 0 }
 }
 
 function disposeMaterial(surface: Material, materials: Set<Material>, textures: Set<{ dispose: () => void }>, images: Set<{ close: () => void }>) {
@@ -1034,6 +1277,7 @@ function disposeMaterial(surface: Material, materials: Set<Material>, textures: 
 function disposeObject(root: Group) {
   const geometries = new Set<BufferGeometry>()
   const materials = new Set<Material>()
+  const skeletons = new Set<Skeleton>()
   const textures = new Set<{ dispose: () => void }>()
   const images = new Set<{ close: () => void }>()
   root.traverse((object) => {
@@ -1041,7 +1285,10 @@ function disposeObject(root: Group) {
     if (candidate.geometry && !geometries.has(candidate.geometry)) { geometries.add(candidate.geometry); candidate.geometry.dispose() }
     const surfaces = Array.isArray(candidate.material) ? candidate.material : candidate.material ? [candidate.material] : []
     surfaces.forEach((surface) => disposeMaterial(surface, materials, textures, images))
+    const skinned = object as Mesh<BufferGeometry, Material> & { isSkinnedMesh?: boolean; skeleton?: Skeleton }
+    if (skinned.isSkinnedMesh && skinned.skeleton) skeletons.add(skinned.skeleton)
   })
+  skeletons.forEach((skeleton) => skeleton.dispose())
   images.forEach((image) => image.close())
   textures.forEach((texture) => texture.dispose())
   root.clear()
@@ -1064,12 +1311,13 @@ function addProceduralMethods(model: ActorModel, rig: Rig) {
   model.idle = (progress = 0) => applyProceduralPose(rig, 'idle', progress - Math.floor(progress))
   model.walk = (progress = 0) => applyProceduralPose(rig, 'walk', progress - Math.floor(progress))
   model.attack = (progress = 0) => setPose('attack', progress)
+  model.rangedAttack = (progress = 0) => setPose('ranged-attack', progress)
   model.cast = (progress = 0) => setPose('cast', progress)
   model.hit = (progress = 0) => setPose('hit', progress)
   model.death = (progress = 0) => setPose('death', progress)
 }
 
-function decorateModel(root: Group, input: NormalizedActorModelInput, entry: ActorModelManifestEntry, source: 'glb' | 'procedural', targetHeight: number, rig?: Rig, mixer?: AnimationMixer, actions?: Map<ActorPose, AnimationAction>): ActorModel {
+function decorateModel(root: Group, input: NormalizedActorModelInput, entry: ActorModelManifestEntry, source: 'glb' | 'procedural', targetHeight: number, rig?: Rig, mixer?: AnimationMixer, actions?: Map<ActorPose, AnimationAction>, equipmentController?: AccessoryController, aimPose?: { apply: (progress?: number) => void; reset: () => void; available: boolean }): ActorModel {
   const model = root as ActorModel
   model.actorId = input.id
   model.actorLabel = input.label
@@ -1077,12 +1325,25 @@ function decorateModel(root: Group, input: NormalizedActorModelInput, entry: Act
   model.profile = entry.profile
   model.source = source
   model.modelHeight = targetHeight
+  model.equipment = equipmentController?.equipment
   let disposed = false
   let activeAction: AnimationAction | null = null
+  model.setEquipment = (equipment: ActorEquipment | undefined) => {
+    if (disposed || !equipmentController) return
+    equipmentController.setEquipment(equipment)
+    model.equipment = equipmentController.equipment
+  }
   const setGlbPose = (pose: ActorPose, progress?: number) => {
-    if (disposed || !mixer || !actions) return
-    const action = actions.get(pose)
-    if (!action) return
+    if (disposed) return
+    const action = actions?.get(pose)
+    if (!action) {
+      activeAction?.stop()
+      activeAction = null
+      if (pose === 'ranged-attack') aimPose?.apply(progress)
+      else aimPose?.reset()
+      return
+    }
+    aimPose?.reset()
     if (activeAction !== action) {
       activeAction?.stop()
       activeAction = action.reset().setLoop(pose === 'death' ? LoopOnce : LoopRepeat, pose === 'death' ? 1 : Infinity).play()
@@ -1097,19 +1358,27 @@ function decorateModel(root: Group, input: NormalizedActorModelInput, entry: Act
     if (!disposed && mixer && Number.isFinite(deltaSeconds) && deltaSeconds > 0) mixer.update(Math.min(deltaSeconds, .25))
   }
   if (source === 'glb' && actions) {
-    for (const pose of ACTOR_POSES) if (actions.has(pose)) model[pose] = (progress?: number) => setGlbPose(pose, progress)
+    for (const pose of ACTOR_POSES) if (actions.has(pose)) {
+      if (pose === 'ranged-attack') model.rangedAttack = (progress?: number) => setGlbPose(pose, progress)
+      else model[pose] = (progress?: number) => setGlbPose(pose, progress)
+    }
+  }
+  if (source === 'glb') {
+    model.rangedAttack = (progress?: number) => setGlbPose('ranged-attack', progress)
   }
   model.dispose = () => {
     if (disposed) return
     disposed = true
     mixer?.stopAllAction()
     mixer?.uncacheRoot(root)
+    equipmentController?.dispose()
+    aimPose?.reset()
     disposeObject(root)
   }
   return model
 }
 
-const ACTOR_POSES: readonly ActorPose[] = ['idle', 'walk', 'attack', 'cast', 'hit', 'death']
+const ACTOR_POSES: readonly ActorPose[] = ['idle', 'walk', 'attack', 'ranged-attack', 'cast', 'hit', 'death']
 
 /**
  * В Chromium ImageBitmapLoader получает embedded картинку через fetch(blob:),
@@ -1167,7 +1436,18 @@ async function createGlbModel(input: NormalizedActorModelInput, entry: ActorMode
     const pose = clipPose(clip)
     if (pose && !actions.has(pose)) actions.set(pose, mixer.clipAction(clip))
   }
-  return decorateModel(root, input, entry, 'glb', targetHeight, undefined, mixer, actions)
+  const kaykitLeft = objectByName(root, 'handslot.l', 'handslotl')
+  const kaykitRight = objectByName(root, 'handslot.r', 'handslotr')
+  const quaterniusLeft = objectByName(root, 'hand_l')
+  const quaterniusRight = objectByName(root, 'hand_r')
+  const socketKind = kaykitLeft || kaykitRight ? 'kaykit' : quaterniusLeft || quaterniusRight ? 'quaternius' : 'kaykit'
+  const equipmentController = createAccessoryController({
+    root, palette: PALETTES[entry.profile],
+    leftParent: kaykitLeft ?? quaterniusLeft, rightParent: kaykitRight ?? quaterniusRight, socketKind,
+  })
+  equipmentController.setEquipment(input.appearance?.equipment)
+  const aimPose = createGlbAimPose(root)
+  return decorateModel(root, input, entry, 'glb', targetHeight, undefined, mixer, actions, equipmentController, aimPose)
 }
 
 /** Создаёт фигурку синхронно; удобно для первого кадра и fallback без сети. */
@@ -1176,8 +1456,9 @@ export function createProceduralActorModel(input: ActorModelInput, manifest: Act
   const entry = resolveModelProfile(normalized, manifest)
   const targetHeight = finitePositive(height, entry.height ?? DEFAULT_HEIGHT)
   const built = entry.profile === 'beast' ? buildBeast(normalized) : buildHumanoid(normalized, entry.profile)
+  const equipmentController = createProceduralEquipment(built.rig, entry.profile, PALETTES[entry.profile], normalized)
   fitToHeight(built.root, targetHeight)
-  const model = decorateModel(built.root, normalized, entry, 'procedural', targetHeight, built.rig)
+  const model = decorateModel(built.root, normalized, entry, 'procedural', targetHeight, built.rig, undefined, undefined, equipmentController)
   addProceduralMethods(model, built.rig)
   return model
 }

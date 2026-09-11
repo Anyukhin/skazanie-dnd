@@ -53,14 +53,17 @@ function setRoute(revision, raw, options = {}) {
   })
 }
 
-function model(key, assetId = 'barrel') {
+function model(key, assetId = 'barrel', revision = 'v1') {
   return {
-    key, label: key, category: 'test', url: `${rootUrl}quaternius/${key}.glb`, assetIds: [assetId], yaw: 0,
+    key, label: key, category: 'test', url: `${rootUrl}releases/${revision}/${key}.glb`, assetIds: [assetId], yaw: 0,
   }
 }
 
 function releaseCatalog(revision, models) {
-  return { version: 1, release: { id: revision }, models }
+  return {
+    version: 1, release: { id: revision }, models,
+    atlas: { image: `${rootUrl}releases/${revision}/topdown.png`, key: 'a'.repeat(64) },
+  }
 }
 
 async function fakeFetch(url) {
@@ -102,12 +105,14 @@ test('загрузка по revision pin-ит выбор, дедуплициру
   const modified = structuredClone(baselineRaw)
   delete modified.revision
   modified.release = { id: 'v2' }
+  modified.models = modified.models.map((entry) => ({ ...entry, url: `${rootUrl}releases/v2/${entry.url.slice(rootUrl.length)}` }))
+  modified.atlas = { ...modified.atlas, image: `${rootUrl}releases/v2/topdown.png` }
   const barrel = modified.models.filter(({ assetIds }) => assetIds.includes('barrel'))
   assert.ok(barrel.length >= 2)
   modified.models = modified.models.filter(({ assetIds }) => !assetIds.includes('barrel'))
   modified.models.push(...barrel.reverse(), { ...barrel[0], key: 'v2-added-barrel' })
 
-  const v1Raw = releaseCatalog('v1', [model('v1-a'), model('v1-b')])
+  const v1Raw = releaseCatalog('v1', [model('v1-a', 'barrel', 'v1'), model('v1-b', 'barrel', 'v1')])
   let releaseV1
   const v1Gate = new Promise((resolve) => { releaseV1 = resolve })
   let releaseV2
@@ -149,11 +154,11 @@ test('загрузка по revision pin-ит выбор, дедуплициру
 })
 
 test('неизвестный или некорректный revision не откатывается к active manifest', async () => {
-  const mismatch = releaseCatalog('else', [model('mismatch')])
+  const mismatch = releaseCatalog('else', [model('mismatch', 'barrel', 'else')])
   setRoute('bad-release', mismatch)
   const failed = await catalogModule.loadPropModelCatalog('bad-release')
   assert.equal(failed, null)
-  setRoute('bad-release', releaseCatalog('bad-release', [model('recovered')]))
+  setRoute('bad-release', releaseCatalog('bad-release', [model('recovered', 'barrel', 'bad-release')]))
   const recovered = await catalogModule.loadPropModelCatalog('bad-release')
   assert.equal(recovered?.revision, 'bad-release')
   assert.equal(requests.filter((url) => url === catalogUrl('bad-release')).length, 2)
@@ -168,6 +173,21 @@ test('неизвестный или некорректный revision не от�
   assert.equal(missing, null)
   assert.equal(requests.at(-1), catalogUrl('missing'))
   assert.equal(requests.includes(`${rootUrl}manifest.json`), false)
+})
+
+test('release отклоняет GLB и atlas вне собственного immutable prefix, legacy остаётся совместимым', () => {
+  const valid = releaseCatalog('v9', [model('valid', 'barrel', 'v9')])
+  assert.doesNotThrow(() => catalogModule.validatePropModelCatalog(valid))
+
+  const mutableModel = structuredClone(valid)
+  mutableModel.models[0].url = `${rootUrl}quaternius/valid.glb`
+  assert.throws(() => catalogModule.validatePropModelCatalog(mutableModel), /Некорректная запись модели/u)
+
+  const mutableAtlas = structuredClone(valid)
+  mutableAtlas.atlas.image = `${rootUrl}topdown.png`
+  assert.throws(() => catalogModule.validatePropModelCatalog(mutableAtlas), /Некорректная запись атласа/u)
+
+  assert.doesNotThrow(() => catalogModule.validatePropModelCatalog(baselineRaw, 'pr79'))
 })
 
 process.on('exit', () => {

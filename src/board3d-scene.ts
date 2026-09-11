@@ -9,6 +9,7 @@ import {
   drawFog,
   drawGrid,
   terrainKeysFor,
+  visiblePropsOnBoard,
   TILE_CELLS,
   type BoardPalette,
   type BoardScene,
@@ -27,16 +28,49 @@ import { createTerrainSideGeometry, createTerrainSurfaceGeometry, propTerrainHei
 export const BOARD3D_WALL_HEIGHT = 0.68
 /** Граница стены совпадает с границей клеток, как и в 2D-доске. */
 export const BOARD3D_WALL_THICKNESS = 1 / 6
+/** Небольшая отделка среза стены не меняет её игровую границу. */
+const BOARD3D_WALL_CAP_HEIGHT = 0.045
+const BOARD3D_WALL_DETAIL_LIMIT = 24
 /** Canvas-фактура не должна занимать больше этого размера по стороне. */
 export const BOARD3D_MAX_GROUND_CANVAS = 4096
 const TERRAIN_MANIFEST_URL = '/assets/maps/terrain/terrain-tiles.json'
 
-type Board3DOptions = {
+export type Board3DOptions = {
   lighting?: boolean
+  pointLightShadows?: boolean
   palette?: BoardPalette
   artUrl?: string | null
   artMode?: 'map' | 'backdrop'
   onReady?: () => void
+}
+
+export type Board3DPropPickTarget = {
+  propId: string
+  zOrder: number
+  object: THREE.Object3D
+  bounds: THREE.Box3
+}
+
+/** Выбирает ближайший видимый prop по его предбатчевому Box3. */
+export function nearestPropPickTarget(ray: THREE.Ray, targets: readonly Board3DPropPickTarget[]) {
+  let selected: Board3DPropPickTarget | null = null
+  let distance = Number.POSITIVE_INFINITY
+  const point = new THREE.Vector3()
+  for (const target of targets) {
+    let visible = true
+    for (let current: THREE.Object3D | null = target.object; current; current = current.parent) {
+      if (!current.visible) { visible = false; break }
+    }
+    if (!visible) continue
+    const hit = ray.intersectBox(target.bounds, point)
+    if (!hit) continue
+    const nextDistance = ray.origin.distanceToSquared(hit)
+    if (nextDistance < distance || (nextDistance === distance && target.zOrder > (selected?.zOrder ?? -Infinity))) {
+      selected = target
+      distance = nextDistance
+    }
+  }
+  return selected
 }
 
 type TerrainManifest = {
@@ -292,6 +326,16 @@ function edgeCenter(edge: TacticalEdge) {
     : { x: edge.x + 0.5, z: edge.y + 1 }
 }
 
+function wallEdgeEndpoints(edge: TacticalEdge) {
+  return edge.dir === 'e'
+    ? [{ x: edge.x + 1, z: edge.y }, { x: edge.x + 1, z: edge.y + 1 }]
+    : [{ x: edge.x, z: edge.y + 1 }, { x: edge.x + 1, z: edge.y + 1 }]
+}
+
+function wallEndpointKey(x: number, z: number) {
+  return `${x},${z}`
+}
+
 /** Высота ребра принадлежит только раскрытым соседям, никогда туманной клетке. */
 function edgeFloorHeight(map: TacticalMap, edge: TacticalEdge) {
   const neighbor = edgeNeighbor(edge)
@@ -306,8 +350,43 @@ function addEdgeScene(resources: OwnedResources, map: TacticalMap, parent: THREE
   const wallPieces: EdgePiece[] = []
   const lowPieces: EdgePiece[] = []
   const framePieces: EdgePiece[] = []
+  const wallCapPieces: EdgePiece[] = []
+  const wallBeamPieces: EdgePiece[] = []
+  const wallCutPieces: EdgePiece[] = []
+  const cornerPostPieces: EdgePiece[] = []
   const doorGroup = new THREE.Group()
   doorGroup.name = 'doors'
+  const doorTrimGroup = new THREE.Group()
+  doorTrimGroup.name = 'door-trims'
+
+  const visibleWallEdges = edgeList(map).filter((edge) => edge.kind === 'wall' && edgeVisible(map, edge))
+  const endpoints = new Map<string, { x: number; z: number; count: number; directions: Set<TacticalEdge['dir']>; floorY: number }>()
+  for (const edge of visibleWallEdges) {
+    const floorY = edgeFloorHeight(map, edge)
+    for (const endpoint of wallEdgeEndpoints(edge)) {
+      const key = wallEndpointKey(endpoint.x, endpoint.z)
+      const current = endpoints.get(key) ?? { ...endpoint, count: 0, directions: new Set(), floorY }
+      current.count += 1
+      current.directions.add(edge.dir)
+      current.floorY = Math.max(current.floorY, floorY)
+      endpoints.set(key, current)
+    }
+  }
+  for (const endpoint of endpoints.values()) {
+    // Прямой ряд стен получает только конечные стойки; повороты и Т-образные
+    // стыки получают стойку в вершине. Срезанные рёбра берутся только из
+    // уже видимого набора, поэтому туман не порождает геометрию.
+    if (endpoint.count !== 1 && endpoint.directions.size < 2) continue
+    const height = BOARD3D_WALL_HEIGHT + BOARD3D_WALL_CAP_HEIGHT
+    cornerPostPieces.push({ x: endpoint.x, y: endpoint.floorY + height / 2, z: endpoint.z, sx: 0.14, sy: height, sz: 0.14, color: palette.ledge })
+  }
+
+  const exposedWallCount = visibleWallEdges.filter((edge) => {
+    const neighbor = edgeNeighbor(edge)
+    return revealedAt(map, edge.x, edge.y) !== revealedAt(map, neighbor.x, neighbor.y)
+  }).length
+  const detailStride = Math.max(1, Math.ceil(exposedWallCount / BOARD3D_WALL_DETAIL_LIMIT))
+  let exposedWallIndex = 0
 
   for (const edge of edgeList(map)) {
     if (!edgeVisible(map, edge) || edge.kind === 'none') continue
@@ -329,6 +408,34 @@ function addEdgeScene(resources: OwnedResources, map: TacticalMap, parent: THREE
 
     if (edge.kind === 'wall') {
       wallPieces.push(piece(BOARD3D_WALL_HEIGHT))
+      const cap = piece(BOARD3D_WALL_CAP_HEIGHT, 1, BOARD3D_WALL_THICKNESS)
+      cap.y = floorY + BOARD3D_WALL_HEIGHT + BOARD3D_WALL_CAP_HEIGHT / 2
+      cap.color = palette.ledge
+      wallCapPieces.push(cap)
+
+      const isExposed = revealedAt(map, edge.x, edge.y) !== revealedAt(map, neighbor.x, neighbor.y)
+      if (isExposed) {
+        const detailIndex = exposedWallIndex++
+        if (detailIndex % detailStride === 0 && wallBeamPieces.length < BOARD3D_WALL_DETAIL_LIMIT) {
+          const beam = piece(0.05, 0.82, 0.055)
+          beam.y = floorY + BOARD3D_WALL_HEIGHT - 0.055
+          const ownerRevealed = revealedAt(map, edge.x, edge.y)
+          const towardVisible = ownerRevealed ? -1 : 1
+          if (horizontal) beam.z += towardVisible * (BOARD3D_WALL_THICKNESS / 2 + 0.028)
+          else beam.x += towardVisible * (BOARD3D_WALL_THICKNESS / 2 + 0.028)
+          beam.color = palette.wall
+          wallBeamPieces.push(beam)
+
+          // Короткий лицевой срез подчёркивает открытый край, не выходя за
+          // плоскость уже существующей стены и не занимая соседнюю клетку.
+          const cut = piece(0.22, 0.72, 0.025)
+          if (horizontal) cut.z += towardVisible * (BOARD3D_WALL_THICKNESS / 2 + 0.014)
+          else cut.x += towardVisible * (BOARD3D_WALL_THICKNESS / 2 + 0.014)
+          cut.y = floorY + BOARD3D_WALL_HEIGHT - 0.13
+          cut.color = palette.ledge
+          wallCutPieces.push(cut)
+        }
+      }
       continue
     }
 
@@ -382,6 +489,23 @@ function addEdgeScene(resources: OwnedResources, map: TacticalMap, parent: THREE
       : new THREE.BoxGeometry(0.12, 0.09, 0.64)
     mesh(resources, doorGroup, `door-lintel:${edge.x},${edge.y},${edge.dir}`, lintel, frameMaterial, [baseX, floorY + BOARD3D_WALL_HEIGHT - 0.045, baseZ])
 
+    // Отделка лежит на видимой стороне уже существующей рамы. Она тоньше
+    // рамы и не сдвигает границу проёма, которой пользуется сервер.
+    const trimMaterial = material(resources, palette.ledge)
+    const trimHeight = BOARD3D_WALL_HEIGHT - 0.08
+    const trimOffset = BOARD3D_WALL_THICKNESS / 2 + 0.018
+    const towardVisible = revealedAt(map, edge.x, edge.y) ? -1 : 1
+    const trim = new THREE.BoxGeometry(0.035, trimHeight, 0.035)
+    const trimY = floorY + trimHeight / 2 + 0.02
+    const trimPositions: Array<[number, number, number]> = horizontal
+      ? [[baseX + towardVisible * trimOffset, trimY, edge.y + 0.22], [baseX + towardVisible * trimOffset, trimY, edge.y + 0.78]]
+      : [[edge.x + 0.22, trimY, baseZ + towardVisible * trimOffset], [edge.x + 0.78, trimY, baseZ + towardVisible * trimOffset]]
+    for (const position of trimPositions) mesh(resources, doorTrimGroup, `door-trim:${edge.x},${edge.y},${edge.dir}`, trim, trimMaterial, position)
+    const trimLintel = horizontal
+      ? new THREE.BoxGeometry(0.64, 0.035, 0.035)
+      : new THREE.BoxGeometry(0.035, 0.035, 0.64)
+    mesh(resources, doorTrimGroup, `door-trim:${edge.x},${edge.y},${edge.dir}`, trimLintel, trimMaterial, [baseX, floorY + BOARD3D_WALL_HEIGHT - 0.08, baseZ])
+
     if (state === 'open') {
       // Петля стоит на краю проёма: створка уходит в соседнюю клетку и оставляет
       // середину прохода свободной.
@@ -411,7 +535,25 @@ function addEdgeScene(resources: OwnedResources, map: TacticalMap, parent: THREE
   addInstancedPieces(resources, walls, 'wall-segments', wallPieces)
   addInstancedPieces(resources, walls, 'edge-segments', lowPieces)
   addInstancedPieces(resources, walls, 'opening-frames', framePieces)
+
+  const wallCaps = new THREE.Group()
+  wallCaps.name = 'wall-caps'
+  addInstancedPieces(resources, wallCaps, 'wall-cap', wallCapPieces)
+  if (wallCaps.children.length) walls.add(wallCaps)
+  const cornerPosts = new THREE.Group()
+  cornerPosts.name = 'corner-posts'
+  addInstancedPieces(resources, cornerPosts, 'corner-post', cornerPostPieces)
+  if (cornerPosts.children.length) walls.add(cornerPosts)
+  const wallBeams = new THREE.Group()
+  wallBeams.name = 'wall-beams'
+  addInstancedPieces(resources, wallBeams, 'wall-beam', wallBeamPieces)
+  if (wallBeams.children.length) walls.add(wallBeams)
+  const wallCuts = new THREE.Group()
+  wallCuts.name = 'wall-cuts'
+  addInstancedPieces(resources, wallCuts, 'wall-cut', wallCutPieces)
+  if (wallCuts.children.length) walls.add(wallCuts)
   if (walls.children.length) parent.add(walls)
+  if (doorTrimGroup.children.length) doorGroup.add(doorTrimGroup)
   if (doorGroup.children.length) parent.add(doorGroup)
 }
 
@@ -513,19 +655,30 @@ function paintTerrainCanvas(resources: OwnedResources, map: TacticalMap, palette
   }
 }
 
-function addProps(map: TacticalMap, parent: THREE.Group, lighting: boolean, palette: BoardPalette, assets?: PropModelAssets | null) {
+function addProps(map: TacticalMap, parent: THREE.Group, lighting: boolean, pointLightShadows: boolean, palette: BoardPalette, assets?: PropModelAssets | null) {
   const library = createEnvironmentModels(palette, assets)
   const propsGroup = new THREE.Group()
   propsGroup.name = 'props'
   const lightGroup = new THREE.Group()
   lightGroup.name = 'local-lights'
   const lights: THREE.PointLight[] = []
-  for (const prop of map.props) {
-    if (!Number.isFinite(prop.x) || !Number.isFinite(prop.y) || !revealedAt(map, Math.floor(prop.x), Math.floor(prop.y))) continue
-    const model = library.create(prop)
+  const visibleProps = visiblePropsOnBoard(map)
+  const models = new Map(visibleProps.map((prop) => [prop.id, library.create(prop)]))
+  const propsById = new Map(visibleProps.map((prop) => [prop.id, prop]))
+  for (const prop of visibleProps) {
+    const model = models.get(prop.id)!
     // Высота предмета следует за раскрытым футпринтом; батчер ниже увидит уже
     // установленную мировую матрицу, поэтому возвышенные предметы не упадут на Y=0.
     model.position.y = propTerrainHeight(map, prop)
+    if (prop.mount?.kind === 'surface') {
+      const support = models.get(prop.mount.propId), supportProp = propsById.get(prop.mount.propId)
+      if (support && supportProp && !['toppled', 'burned', 'broken'].includes(supportProp.state)) {
+        model.position.y = propTerrainHeight(map, supportProp) + Number(support.userData.surfaceHeight ?? 0) * support.scale.y
+      } else {
+        // Упавшая утварь остаётся оформлением: никакого второго предмета добычи.
+        model.rotation.z = .8
+      }
+    }
     propsGroup.add(model)
     const sourceId = lightSourceAssetId(prop.assetId)
     if (!lighting || !sourceId || lights.length >= 4) continue
@@ -534,19 +687,42 @@ function addProps(map: TacticalMap, parent: THREE.Group, lighting: boolean, pale
     light.name = 'fire-light'
     light.position.copy(model.position)
     light.position.y += (Number(model.userData.lightHeight) || .55) * model.scale.y
-    light.castShadow = true
+    light.castShadow = pointLightShadows
     light.shadow.mapSize.set(256, 256)
     light.shadow.camera.near = .1
     light.shadow.camera.far = Math.min(8, profile.radius)
     lightGroup.add(light)
     lights.push(light)
   }
+  propsGroup.updateMatrixWorld(true)
+  const pickTargets: Board3DPropPickTarget[] = visibleProps.flatMap((prop) => {
+    if (!prop.interactive) return []
+    const object = models.get(prop.id)
+    if (!object) return []
+    object.userData.propId = prop.id
+    object.updateMatrixWorld(true)
+    const bounds = new THREE.Box3().setFromObject(object)
+    return bounds.isEmpty() ? [] : [{ propId: prop.id, zOrder: prop.zOrder, object, bounds }]
+  })
   const batches = batchEnvironmentMeshes(propsGroup)
   propsGroup.userData.originalDrawCalls = batches.originalDrawCalls
   propsGroup.userData.batchedDrawCalls = batches.batchedDrawCalls
   if (propsGroup.children.length) parent.add(propsGroup)
   if (lightGroup.children.length) parent.add(lightGroup)
-  return { group: propsGroup, dispose() { propsGroup.removeFromParent(); lightGroup.removeFromParent(); batches.dispose(); library.dispose(); lights.forEach((light) => light.shadow.dispose()) } }
+  return {
+    group: propsGroup,
+    pickTargets,
+    dispose() {
+      pickTargets.length = 0
+      propsGroup.removeFromParent()
+      lightGroup.removeFromParent()
+      batches.dispose()
+      library.dispose()
+      for (const light of lights) {
+        light.shadow.dispose()
+      }
+    },
+  }
 }
 
 function resizeTextureIfNeeded(resources: OwnedResources, texture: THREE.Texture) {
@@ -674,15 +850,15 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
   addTerrainSides(resources, map, groundGroup, palette)
 
   addEdgeScene(resources, map, group, palette)
-  let props = addProps(map, group, options.lighting !== false, palette)
+  let props = addProps(map, group, options.lighting !== false, options.pointLightShadows !== false, palette)
   let propAssets: PropModelAssets | null = null
   const propAbort = new AbortController()
   if (typeof window !== 'undefined') {
-    const visibleProps = map.props.filter((prop) => Number.isFinite(prop.x) && Number.isFinite(prop.y) && revealedAt(map, Math.floor(prop.x), Math.floor(prop.y)))
+    const visibleProps = visiblePropsOnBoard(map)
     void loadPropModelAssets(visibleProps, propAbort.signal, map.catalogRevision).then((assets) => {
       if (!assets) return
       if (disposed) { assets.dispose(); return }
-      const replacement = addProps(map, group, options.lighting !== false, palette, assets)
+      const replacement = addProps(map, group, options.lighting !== false, options.pointLightShadows !== false, palette, assets)
       props.dispose()
       props = replacement
       propAssets = assets
@@ -759,5 +935,5 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     resources.textures.clear()
   }
 
-  return { group, dispose }
+  return { group, getPropPickTargets: () => disposed ? [] : props.pickTargets, dispose }
 }

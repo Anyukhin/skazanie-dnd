@@ -864,6 +864,8 @@ export type SceneObjectIntent = 'inspect' | 'open' | 'lockpick' | 'take' | 'use'
 export type TacticalProp = {
   id: string
   assetId: string
+  /** Публичная подпись из серверного словаря, без скрытого содержимого. */
+  label?: string
   /** Дробная координата в клетках. */
   x: number
   y: number
@@ -872,6 +874,8 @@ export type TacticalProp = {
   /** Занимаемые клетки; отделён от визуального размера, может быть пустым. */
   footprint: Array<{ x: number; y: number }>
   zOrder: number
+  /** Опора только для оформления; не меняет проходимость или дальность. */
+  mount?: { kind: 'surface'; propId: string } | { kind: 'wall'; side: 'n' | 'e' | 's' | 'w' }
   blocksMove: boolean
   blocksSight: boolean
   cover: TacticalCover
@@ -1125,6 +1129,11 @@ export type BattleEvent = {
    * поля нет, и строка остаётся прежней нейтральной «атакует».
    */
   attackKind?: 'melee' | 'ranged' | 'thrown'
+  /** Снимок снаряжения в момент подтверждённой атаки; у старых записей отсутствует. */
+  attackVisual?: {
+    version: 1
+    equipment: 'unknown' | 'unarmed' | 'sword' | 'sword-shield' | 'bow' | 'staff' | 'dagger'
+  }
   /** Выстрел за пределы обычной дальности: он же помеха на бросок. */
   longRange?: boolean
   /** Насколько реакция срезала урон и было ли перебито заклинание. */
@@ -1375,6 +1384,12 @@ export type AssetPreparationReport = {
   items_note: string
 }
 
+export type ActorAppearance = {
+  version: 1
+  profile: 'warrior' | 'mage' | 'rogue' | 'goblin' | 'skeleton' | 'beast'
+  equipment: 'unknown' | 'unarmed' | 'sword' | 'sword-shield' | 'bow' | 'staff' | 'dagger'
+}
+
 export type GameState = {
   sessionCode: string
   campaign: string
@@ -1386,6 +1401,8 @@ export type GameState = {
   partyMemberIds?: string[]
   partyDecisionPolicy?: PartyDecisionPolicy
   players: Player[]
+  /** Серверное оформление только разрешённых участников текущей проекции. */
+  actor_appearances?: Record<string, ActorAppearance>
   presence?: {
     transport: 'sse'
     connected_users: number

@@ -1,0 +1,317 @@
+{
+  "version": 1,
+  "schema": "skazanie-actor-candidate/v1",
+  "sources": [
+    {
+      "id": "universal-base-characters-standard",
+      "author": "Quaternius",
+      "url": "https://quaternius.com/packs/universalbasecharacters.html",
+      "archive": "Universal-Base-Characters-Standard.zip",
+      "license": "CC0-1.0",
+      "archiveFile": "Universal-Base-Characters-Standard.zip",
+      "bytes": 128968391,
+      "sha256": "fdbf1804c90dfc1ea03e992bff7da2dfd1a79318e13270a660180f9308455f40",
+      "archiveSha256": "fdbf1804c90dfc1ea03e992bff7da2dfd1a79318e13270a660180f9308455f40"
+    },
+    {
+      "id": "modular-character-outfits-fantasy-standard",
+      "author": "Quaternius",
+      "url": "https://quaternius.com/packs/modularcharacteroutfitsfantasy.html",
+      "archive": "Modular-Character-Outfits-Fantasy-Standard.zip",
+      "license": "CC0-1.0",
+      "archiveFile": "Modular-Character-Outfits-Fantasy-Standard.zip",
+      "bytes": 294347394,
+      "sha256": "c3468b18871cc8c8f05ab14df7712baf22cb9f389cbd870babf130e595187f70",
+      "archiveSha256": "c3468b18871cc8c8f05ab14df7712baf22cb9f389cbd870babf130e595187f70"
+    },
+    {
+      "id": "universal-animation-library-standard",
+      "author": "Quaternius",
+      "url": "https://quaternius.itch.io/universal-animation-library",
+      "archive": "Universal-Animation-Library-Standard.zip",
+      "license": "CC0-1.0",
+      "archiveFile": "Universal-Animation-Library-Standard.zip",
+      "bytes": 15904933,
+      "sha256": "cc73fc4e495b82958207316596317a3f40b9fa38065bde1027937452da537724",
+      "archiveSha256": "cc73fc4e495b82958207316596317a3f40b9fa38065bde1027937452da537724"
+    }
+  ],
+  "build": {
+    "importer": "tools/import-quaternius-actors.mjs",
+    "importerVersion": 1,
+    "textureMaxSide": 512,
+    "animationPack": "UAL1_Standard.glb",
+    "rootMotion": false,
+    "rig": {
+      "root": "root",
+      "head": "Head",
+      "handSockets": [
+        "hand_l",
+        "hand_r"
+      ],
+      "forwardAxis": "+Z"
+    },
+    "ranged": null,
+    "sourceInputs": [
+      {
+        "path": "actors/quaternius-actors-standard-20260911/extracted/Modular-Character-Outfits-Fantasy-Standard/Modular_Character_Outfits_-_Fantasy_Standard_/Exports/glTF_Godot-Unreal_/Outfits/Male_Peasant.bin",
+        "sha256": "e46bde795f7b69b351d322d7a5628e07131cfb48ed0afe366293f1b3f530433c",
+        "bytes": 674764
+      },
+      {
+        "path": "actors/quaternius-actors-standard-20260911/extracted/Modular-Character-Outfits-Fantasy-Standard/Modular_Character_Outfits_-_Fantasy_Standard_/Exports/glTF_Godot-Unreal_/Outfits/Male_Peasant.gltf",
+        "sha256": "8f5a6cf6c1cf96e0a0f8e1a861b4245d42b7f88d44e5076da3d48f3fc52f4e76",
+        "bytes": 32681
+      },
+      {
+        "path": "actors/quaternius-actors-standard-20260911/extracted/Modular-Character-Outfits-Fantasy-Standard/Modular_Character_Outfits_-_Fantasy_Standard_/Exports/glTF_Godot-Unreal_/Outfits/Male_Ranger.bin",
+        "sha256": "5bbb0d42cb324c6c27ce00417e68a876d92978f07d161f83590f0d7c0570eff6",
+        "bytes": 1746884
+      },
+      {
+        "path": "actors/quaternius-actors-standard-20260911/extracted/Modular-Character-Outfits-Fantasy-Standard/Modular_Character_Outfits_-_Fantasy_Standard_/Exports/glTF_Godot-Unreal_/Outfits/Male_Ranger.gltf",
+        "sha256": "e1033a212332d84d98c19bc4927c621635478d0aa15d13c79da68d3ba9e0196f",
+        "bytes": 41447
+      },
+      {
+        "path": "actors/quaternius-actors-standard-20260911/extracted/Modular-Character-Outfits-Fantasy-Standard/Modular_Character_Outfits_-_Fantasy_Standard_/Exports/glTF_Godot-Unreal_/Outfits/T_Peasant_BaseColor.png",
+        "sha256": "a43635628d95571cd62fd4db0cc3a6ea32778b2bc02f242dda224c89d07f1ade",
+        "bytes": 5055760
+      },
+      {
+        "path": "actors/quaternius-actors-standard-20260911/extracted/Modular-Character-Outfits-Fantasy-Standard/Modular_Character_Outfits_-_Fantasy_Standard_/Exports/glTF_Godot-Unreal_/Outfits/T_Peasant_Normal.png",
+        "sha256": "7598fa7b63e46fd4dac29708bf5a81e05eb9a67280f7b13c61e28a9110eeb679",
+        "bytes": 14110336
+      },
+      {
+        "path": "actors/quaternius-actors-standard-20260911/extracted/Modular-Character-Outfits-Fantasy-Standard/Modular_Character_Outfits_-_Fantasy_Standard_/Exports/glTF_Godot-Unreal_/Outfits/T_Peasant_ORM.png",
+        "sha256": "e1932f5f91104afca89c501416a5fec09069b8552734237fc09045fabc4ca9b4",
+        "bytes": 9903835
+      },
+      {
+        "path": "actors/quaternius-actors-standard-20260911/extracted/Modular-Character-Outfits-Fantasy-Standard/Modular_Character_Outfits_-_Fantasy_Standard_/Exports/glTF_Godot-Unreal_/Outfits/T_Ranger_BaseColor.png",
+        "sha256": "846ef2170b04ee584ad83bb8a1e86dab57a9a43b1193204505912c274d949925",
+        "bytes": 6630927
+      },
+      {
+        "path": "actors/quaternius-actors-standard-20260911/extracted/Modular-Character-Outfits-Fantasy-Standard/Modular_Character_Outfits_-_Fantasy_Standard_/Exports/glTF_Godot-Unreal_/Outfits/T_Ranger_Normal.png",
+        "sha256": "dd64da2af3180f0c8f0b721cfc5f0d2720c351b97da8285c6cf49e7717c84147",
+        "bytes": 12713653
+      },
+      {
+        "path": "actors/quaternius-actors-standard-20260911/extracted/Modular-Character-Outfits-Fantasy-Standard/Modular_Character_Outfits_-_Fantasy_Standard_/Exports/glTF_Godot-Unreal_/Outfits/T_Ranger_ORM.png",
+        "sha256": "aca03d2fba12508ef07d5968ca22267fb207ea26ae898b6b2def8a296bd44f1c",
+        "bytes": 10792085
+      },
+      {
+        "path": "actors/quaternius-actors-standard-20260911/extracted/Modular-Character-Outfits-Fantasy-Standard/Modular_Character_Outfits_-_Fantasy_Standard_/Exports/glTF_Godot-Unreal_/Outfits/T_Regular_Male_Dark_BaseColor.png",
+        "sha256": "b4dcc0f4139aab548d7c070c4655bd2080ef16caeaaabee6c4aeb693c524e802",
+        "bytes": 1316151
+      },
+      {
+        "path": "actors/quaternius-actors-standard-20260911/extracted/Modular-Character-Outfits-Fantasy-Standard/Modular_Character_Outfits_-_Fantasy_Standard_/Exports/glTF_Godot-Unreal_/Outfits/T_Regular_Male_Normal.png",
+        "sha256": "10cd71e2453e577fdd43e912b6016a99baf64964f0593e524bdd304855e15e2a",
+        "bytes": 4064184
+      },
+      {
+        "path": "actors/quaternius-actors-standard-20260911/extracted/Modular-Character-Outfits-Fantasy-Standard/Modular_Character_Outfits_-_Fantasy_Standard_/Exports/glTF_Godot-Unreal_/Outfits/T_Regular_Male_Roughness.png",
+        "sha256": "086c2eb25bddfdb77d8e639ccbffb8df723ef4a1910d8e1b217e852f8668bfe5",
+        "bytes": 3160102
+      },
+      {
+        "path": "actors/quaternius-actors-standard-20260911/extracted/Universal-Animation-Library-Standard/Universal_Animation_Library_Standard_/Unreal-Godot/UAL1_Standard.glb",
+        "sha256": "69591853d817488edaa8fd9bf8fc1d821eaeaf789f8627b3cd23b41c4ed67997",
+        "bytes": 7618436
+      },
+      {
+        "path": "actors/quaternius-actors-standard-20260911/extracted/Universal-Base-Characters-Standard/Universal_Base_Characters_Standard_/Base_Characters/Godot_-_UE/Superhero_Male_FullBody.bin",
+        "sha256": "459003f9745853ae562a85506a2b94dd56515c1f37728f9fa3d2ce1a3e4cd92f",
+        "bytes": 720076
+      },
+      {
+        "path": "actors/quaternius-actors-standard-20260911/extracted/Universal-Base-Characters-Standard/Universal_Base_Characters_Standard_/Base_Characters/Godot_-_UE/Superhero_Male_FullBody.gltf",
+        "sha256": "e7fcea214ecf8855afbf910b50de6f9c7d1decfb71ca28bad8a4481452dafeb4",
+        "bytes": 30989
+      },
+      {
+        "path": "actors/quaternius-actors-standard-20260911/extracted/Universal-Base-Characters-Standard/Universal_Base_Characters_Standard_/Base_Characters/Godot_-_UE/T_Eye_Brown.png",
+        "sha256": "d08e3356a83211bc6ca21fe3a8e39f4b5c1a3b8f85457fc2c0fb57be09935025",
+        "bytes": 35958
+      },
+      {
+        "path": "actors/quaternius-actors-standard-20260911/extracted/Universal-Base-Characters-Standard/Universal_Base_Characters_Standard_/Base_Characters/Godot_-_UE/T_Eye_Normal.png",
+        "sha256": "9ed61f7726a54fe346a78b9e5a18905d8e2b88f86235d97f53cd207a26f3f8c7",
+        "bytes": 15099
+      },
+      {
+        "path": "actors/quaternius-actors-standard-20260911/extracted/Universal-Base-Characters-Standard/Universal_Base_Characters_Standard_/Base_Characters/Godot_-_UE/T_Hair_1_BaseColor.png",
+        "sha256": "bc7aa863bd22ab0a995cd838cceb4d3a5186ee54ee2fb0108fad85d20c057e6e",
+        "bytes": 1570376
+      },
+      {
+        "path": "actors/quaternius-actors-standard-20260911/extracted/Universal-Base-Characters-Standard/Universal_Base_Characters_Standard_/Base_Characters/Godot_-_UE/T_Hair_1_Normal.png",
+        "sha256": "57fd0ad8c96a4d01b38769637e066cecaa285b456f6e48ce00863754a457affb",
+        "bytes": 4326126
+      },
+      {
+        "path": "actors/quaternius-actors-standard-20260911/extracted/Universal-Base-Characters-Standard/Universal_Base_Characters_Standard_/Base_Characters/Godot_-_UE/T_Superhero_Male_Dark.png",
+        "sha256": "df680cbc1967a61e85998bfafb8f7bc0a36dd604bb3266486c4b06b1a184bb45",
+        "bytes": 1384380
+      },
+      {
+        "path": "actors/quaternius-actors-standard-20260911/extracted/Universal-Base-Characters-Standard/Universal_Base_Characters_Standard_/Base_Characters/Godot_-_UE/T_Superhero_Male_Normal.png",
+        "sha256": "9b25cf9200216eb754b79cf4c63b5380c419780788322f3c57cdd2b3e02679a6",
+        "bytes": 4252937
+      },
+      {
+        "path": "actors/quaternius-actors-standard-20260911/extracted/Universal-Base-Characters-Standard/Universal_Base_Characters_Standard_/Base_Characters/Godot_-_UE/T_Superhero_Male_Roughness.png",
+        "sha256": "c70dabf48574cda55644d556beae1ee7cf1bdcf68a50d259d20f2f2358f27991",
+        "bytes": 3152049
+      }
+    ],
+    "profiles": [
+      {
+        "bytes": 3595128,
+        "sha256": "77c0b0bb92290c98ea1a7d0da0197dba7341bb046eda9bda27c4ca244d50ec0f",
+        "box": {
+          "min": [
+            -0.8994146396161853,
+            -0.003967432418810608,
+            -0.184477243029628
+          ],
+          "max": [
+            0.8994147614420107,
+            1.8100766650860056,
+            0.16754125185883864
+          ],
+          "size": [
+            1.798829401058196,
+            1.8140440975048162,
+            0.35201849488846665
+          ]
+        },
+        "animations": [
+          "Idle_Loop",
+          "Walk_Loop",
+          "Sword_Attack",
+          "Spell_Simple_Shoot",
+          "Hit_Chest",
+          "Death01"
+        ],
+        "meshes": 8,
+        "key": "traveler",
+        "label": "Путник",
+        "file": "traveler.glb",
+        "outfit": "Male_Peasant.gltf",
+        "head": {
+          "source": "SuperHero_Male",
+          "weight": ">0.5",
+          "triangles": 2478,
+          "vertices": 1368
+        }
+      },
+      {
+        "bytes": 4751420,
+        "sha256": "f4660fae2b1e6ab37b9eda7ee86169898301495125fe79cca93913ded5953b8e",
+        "box": {
+          "min": [
+            -0.8994147588255287,
+            -0.003967432202026576,
+            -0.2059538978661002
+          ],
+          "max": [
+            0.8994147614420107,
+            1.8650402572744877,
+            0.1675412485865414
+          ],
+          "size": [
+            1.7988295202675393,
+            1.8690076894765144,
+            0.3734951464526416
+          ]
+        },
+        "animations": [
+          "Idle_Loop",
+          "Walk_Loop",
+          "Sword_Attack",
+          "Spell_Simple_Shoot",
+          "Hit_Chest",
+          "Death01"
+        ],
+        "meshes": 13,
+        "key": "ranger",
+        "label": "Следопыт",
+        "file": "ranger.glb",
+        "outfit": "Male_Ranger.gltf",
+        "head": {
+          "source": "SuperHero_Male",
+          "weight": ">0.5",
+          "triangles": 2478,
+          "vertices": 1368
+        }
+      }
+    ]
+  },
+  "profiles": [
+    {
+      "key": "traveler",
+      "label": "Путник",
+      "file": "traveler.glb",
+      "outfit": "Male_Peasant.gltf",
+      "clips": [
+        "Idle_Loop",
+        "Walk_Loop",
+        "Sword_Attack",
+        "Spell_Simple_Shoot",
+        "Hit_Chest",
+        "Death01"
+      ],
+      "ranged": null,
+      "head": {
+        "source": "SuperHero_Male",
+        "weight": ">0.5",
+        "triangles": 2478,
+        "vertices": 1368
+      },
+      "provenance": {
+        "sources": [
+          "universal-base-characters-standard",
+          "modular-character-outfits-fantasy-standard",
+          "universal-animation-library-standard"
+        ],
+        "license": "CC0-1.0",
+        "attribution": "Quaternius"
+      }
+    },
+    {
+      "key": "ranger",
+      "label": "Следопыт",
+      "file": "ranger.glb",
+      "outfit": "Male_Ranger.gltf",
+      "clips": [
+        "Idle_Loop",
+        "Walk_Loop",
+        "Sword_Attack",
+        "Spell_Simple_Shoot",
+        "Hit_Chest",
+        "Death01"
+      ],
+      "ranged": null,
+      "head": {
+        "source": "SuperHero_Male",
+        "weight": ">0.5",
+        "triangles": 2478,
+        "vertices": 1368
+      },
+      "provenance": {
+        "sources": [
+          "universal-base-characters-standard",
+          "modular-character-outfits-fantasy-standard",
+          "universal-animation-library-standard"
+        ],
+        "license": "CC0-1.0",
+        "attribution": "Quaternius"
+      }
+    }
+  ]
+}

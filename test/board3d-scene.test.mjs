@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import test from 'node:test'
 
 import { addProp, createTacticalMap, serializeTacticalMap, setCell, setDoor, setEdge } from '../server/tactical-map.mjs'
+import { publicTacticalMapFor } from '../server/viewer-projection.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const buildDir = mkdtempSync(join(root, 'tmp', 'board3d-scene-test-'))
@@ -183,6 +184,27 @@ test('дверь в открытом состоянии уходит в стор
   broken.dispose()
 })
 
+test('отделка среза есть только у видимых стен и не закрывает дверной проём', () => {
+  const map = mapOf({ revealed: [{ x: 1, y: 1 }, { x: 2, y: 1 }] })
+  setEdge(map, 1, 1, 2, 1, { kind: 'wall', blocksMove: true, blocksSight: true })
+  setEdge(map, 1, 1, 1, 0, { kind: 'wall', blocksMove: true, blocksSight: true })
+  setEdge(map, 0, 0, 1, 0, { kind: 'wall', blocksMove: true, blocksSight: true })
+  setDoor(map, { id: 'trim-door', x: 2, y: 1, dir: 'e', state: 'open' })
+  const scene = scene3d.createBoard3DScene(map)
+  try {
+    const caps = objectsNamed(scene.group, 'wall-cap:')
+    const posts = objectsNamed(scene.group, 'corner-post:')
+    const beams = objectsNamed(scene.group, 'wall-beam:')
+    const cuts = objectsNamed(scene.group, 'wall-cut:')
+    assert.equal(caps.reduce((sum, mesh) => sum + mesh.count, 0), 2, 'срезы видимых стен получают верхние caps')
+    assert.ok(posts.length > 0, 'стык видимой стены получает corner post')
+    assert.equal(beams.reduce((sum, mesh) => sum + mesh.count, 0), 1, 'ограниченная балка появляется на открытом срезе')
+    assert.equal(cuts.reduce((sum, mesh) => sum + mesh.count, 0), 1, 'лицевой срез появляется на открытом срезе')
+    assert.equal(objectsNamed(scene.group, 'door-trim:').length, 3, 'дверная отделка состоит из двух стоек и притолоки')
+    assert.ok(objectsNamed(scene.group, 'door-leaf:2,1,e:open').length > 0, 'открытый проём сохраняет створку вне прохода')
+  } finally { scene.dispose() }
+})
+
 test('распознаваемый реквизит и локальный свет создаются только для видимой опоры', () => {
   const map = mapOf({ revealed: [{ x: 1, y: 1 }] })
   addProp(map, { id: 'crate', assetId: 'crate', x: 1.5, y: 1.5 })
@@ -200,6 +222,53 @@ test('распознаваемый реквизит и локальный све
   assert.ok(fireLight.position.y > 0 && fireLight.position.y < 1, 'локальный свет поднят над костром')
   assert.equal(fireLight.position.z, 1.5, 'локальный свет стоит над костром по Z')
   scene.dispose()
+})
+
+test('pointLightShadows управляет только тенями локальных PointLight', () => {
+  const map = mapOf({ revealed: [{ x: 1, y: 1 }] })
+  addProp(map, { id: 'shadow-fire', assetId: 'campfire', x: 1.5, y: 1.5 })
+  const enabled = scene3d.createBoard3DScene(map, { lighting: true })
+  const disabled = scene3d.createBoard3DScene(map, { lighting: true, pointLightShadows: false })
+  try {
+    const on = objectsNamed(enabled.group, 'fire-light')[0]
+    const off = objectsNamed(disabled.group, 'fire-light')[0]
+    assert.equal(on.castShadow, true)
+    assert.equal(off.castShadow, false)
+    assert.equal(enabled.group.getObjectByName('ground-plane').castShadow, false)
+    assert.equal(disabled.group.getObjectByName('ground-plane').castShadow, false)
+  } finally { enabled.dispose(); disabled.dispose() }
+})
+
+test('picker возвращает propId ближайшего интерактивного реквизита и скрытый не выбирается', () => {
+  const source = createTacticalMap({ width: 4, height: 2, seed: 'prop-picker' })
+  for (let y = 0; y < 2; y += 1) for (let x = 0; x < 4; x += 1) setCell(source, x, y, { passable: true, revealed: true })
+  setCell(source, 3, 0, { revealed: false })
+  addProp(source, { id: 'visible-chest', assetId: 'chest', x: 1.5, y: .5, footprint: [{ x: 1, y: 0 }] })
+  addProp(source, { id: 'hidden-chest', assetId: 'chest', x: 3.5, y: .5, footprint: [{ x: 3, y: 0 }] })
+  const map = mapClient.decodeTacticalMap(publicTacticalMapFor(serializeTacticalMap(source)))
+  assert.ok(map)
+  const scene = scene3d.createBoard3DScene(map)
+  try {
+    const targets = scene.getPropPickTargets()
+    assert.deepEqual(targets.map((target) => target.propId), ['visible-chest'])
+    const ray = new THREE.Ray(new THREE.Vector3(1.5, 10, .5), new THREE.Vector3(0, -1, 0))
+    assert.equal(scene3d.nearestPropPickTarget(ray, targets)?.propId, 'visible-chest')
+    assert.equal(targets[0].object.userData.propId, 'visible-chest')
+  } finally { scene.dispose() }
+})
+
+test('процедурные chest и sarcophagus показывают open/taken как откинутую крышку', () => {
+  const map = mapOf({ width: 4, height: 2, revealed: [{ x: 1, y: 0 }, { x: 2, y: 0 }] })
+  addProp(map, { id: 'closed-chest', assetId: 'chest', x: 1.5, y: .5, footprint: [{ x: 1, y: 0 }], state: 'closed' })
+  addProp(map, { id: 'open-sarcophagus', assetId: 'sarcophagus', x: 2.5, y: .5, footprint: [{ x: 2, y: 0 }], state: 'taken' })
+  const scene = scene3d.createBoard3DScene(map)
+  try {
+    const closedHinge = scene.group.getObjectByName('prop:closed-chest')?.getObjectByName('hinge-lid')
+    const openHinge = scene.group.getObjectByName('prop:open-sarcophagus')?.getObjectByName('hinge-lid')
+    assert.ok(closedHinge && openHinge)
+    assert.equal(closedHinge.rotation.x, 0)
+    assert.equal(openHinge.rotation.x, -Math.PI / 2)
+  } finally { scene.dispose() }
 })
 
 test('палитра темы проходит в 3D-пол, стены и двери', () => {
@@ -311,6 +380,8 @@ test('3D-фактура не печатает высоту на уже подн�
 
 test('dispose освобождает созданные ресурсы и отменяет готовность поздней текстуры', () => {
   const map = mapOf({ revealed: [{ x: 1, y: 1 }] })
+  setEdge(map, 1, 1, 1, 0, { kind: 'wall', blocksMove: true, blocksSight: true })
+  setDoor(map, { id: 'dispose-door', x: 1, y: 1, dir: 'e', state: 'open' })
   const scene = scene3d.createBoard3DScene(map)
   const resources = []
   scene.group.traverse((object) => {

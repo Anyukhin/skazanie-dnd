@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -117,6 +117,26 @@ test('текущий выпуск читается из release.id, а отсу�
     writeFileSync(manifest, JSON.stringify({ version: 1 }))
     assert.equal(currentEnvironmentCatalogRevision(manifest), LEGACY_CATALOG_REVISION)
     assert.equal(currentEnvironmentCatalogRevision(join(root, 'missing.json')), LEGACY_CATALOG_REVISION)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('в Docker layout берётся dist manifest, но dev public имеет приоритет', () => {
+  const root = mkdtempSync(join(tmpdir(), 'skazanie-map-catalog-runtime-layout-'))
+  try {
+    const publicManifest = join(root, 'public', 'assets', 'models', 'environment', 'manifest.json')
+    const distManifest = join(root, 'dist', 'assets', 'models', 'environment', 'manifest.json')
+    mkdirSync(join(root, 'dist', 'assets', 'models', 'environment'), { recursive: true })
+    writeFileSync(distManifest, JSON.stringify({ version: 1, release: { id: 'docker-release' } }))
+    assert.equal(currentEnvironmentCatalogRevision(publicManifest, distManifest), 'docker-release')
+
+    mkdirSync(join(root, 'public', 'assets', 'models', 'environment'), { recursive: true })
+    writeFileSync(publicManifest, JSON.stringify({ version: 1 }))
+    assert.equal(currentEnvironmentCatalogRevision(publicManifest, distManifest), LEGACY_CATALOG_REVISION)
+
+    writeFileSync(publicManifest, JSON.stringify({ version: 1, release: { id: 'dev-release' } }))
+    assert.equal(currentEnvironmentCatalogRevision(publicManifest, distManifest), 'dev-release')
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

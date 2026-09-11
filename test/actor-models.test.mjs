@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import test from 'node:test'
-import { Box3, BoxGeometry, Group, Mesh, MeshBasicMaterial } from 'three'
+import { AnimationClip, Bone, Box3, BoxGeometry, Float32BufferAttribute, Group, Mesh, MeshBasicMaterial, NumberKeyframeTrack, Skeleton, SkinnedMesh, Uint16BufferAttribute } from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 
 // Сборка должна жить внутри репозитория: с временным каталогом за его
@@ -74,10 +74,12 @@ test('пути GLB ограничены локальным каталогом', 
 
 test('процедурные фигурки различимы, стоят на y=0 и освобождают ресурсы', () => {
   for (const profile of ['warrior', 'mage', 'rogue', 'goblin', 'skeleton', 'beast']) {
-    const actor = models.createProceduralActorModel({ id: `actor-${profile}`, label: profile, kind: 'enemy', archetype: profile }, manifest)
+    const input = { id: `actor-${profile}`, label: profile, kind: 'enemy', archetype: profile }
+    const selected = models.resolveModelProfile(input, manifest)
+    const actor = models.createProceduralActorModel(input, manifest)
     assert.equal(actor.source, 'procedural')
     assert.equal(actor.profile, profile)
-    assert.ok(Math.abs(actor.modelHeight - (profile === 'goblin' || profile === 'beast' ? 1.18 : 1.4)) < 1e-8)
+    assert.ok(Math.abs(actor.modelHeight - (selected.height ?? 1.4)) < 1e-8, `${profile}: высота должна соответствовать выбранной записи каталога`)
     assert.ok(actor.children.length > 0)
     const bounds = new Box3().setFromObject(actor)
     assert.ok(bounds.min.y >= -.0001, `${profile}: feet должны начинаться на y=0`)
@@ -469,4 +471,270 @@ test('отмена после parse освобождает поздно приш
   assert.equal(materialDisposed, 1, 'поздний material должен быть освобождён')
   assert.equal(models.getModelAssetDiagnostics().parses, 1)
   models.clearActorModelCache()
+})
+
+const appearance = (profile, equipment) => ({ version: 1, profile, equipment })
+const accessoryNames = new Set(['sword', 'shield', 'bow', 'staff', 'dagger', 'short-blade', 'rusty-cleaver'])
+function isAccessory(object, actor) {
+  for (let current = object; current && current !== actor; current = current.parent) if (accessoryNames.has(current.name)) return true
+  return false
+}
+function bodySignature(actor) {
+  const result = []
+  actor.traverse((object) => {
+    if (isAccessory(object, actor)) return
+    result.push({ object, name: object.name, position: object.position.toArray(), rotation: object.rotation.toArray(), visible: object.visible })
+  })
+  return result
+}
+function resourceDisposalWatch(group) {
+  let geometries = 0
+  let materials = 0
+  const watchedGeometries = new Set()
+  const watchedMaterials = new Set()
+  group.traverse((object) => {
+    if (object.geometry && !watchedGeometries.has(object.geometry)) {
+      watchedGeometries.add(object.geometry)
+      object.geometry.addEventListener('dispose', () => { geometries += 1 })
+    }
+    const surfaces = Array.isArray(object.material) ? object.material : object.material ? [object.material] : []
+    for (const surface of surfaces) if (!watchedMaterials.has(surface)) {
+      watchedMaterials.add(surface)
+      surface.addEventListener('dispose', () => { materials += 1 })
+    }
+  })
+  return { get geometries() { return geometries }, get materials() { return materials } }
+}
+
+test('appearance server profile wins over automatic identity, local modelKey wins over server profile', () => {
+  const catalog = {
+    version: 1,
+    models: [
+      { key: 'masked-warrior', profile: 'warrior', actorIds: ['masked-1'], archetypes: ['fighter'], rights: { source: 'test', license: 'original' } },
+      { key: 'masked-rogue', profile: 'rogue', actorIds: [], archetypes: [], rights: { source: 'test', license: 'original' } },
+    ],
+  }
+  assert.equal(models.resolveModelProfile({ id: 'masked-1', label: 'Кто-то', kind: 'hero', archetype: 'fighter', appearance: appearance('rogue', 'unknown') }, catalog).key, 'masked-rogue')
+  assert.equal(models.resolveModelProfile({ id: 'masked-1', label: 'Кто-то', kind: 'hero', modelKey: 'masked-warrior', appearance: appearance('rogue', 'unknown') }, catalog).key, 'masked-warrior')
+  assert.deepEqual(models.normalizeActorInput({ id: 'x', label: 'x', kind: 'hero', appearance: appearance('warrior', 'unarmed') }).appearance, appearance('warrior', 'unarmed'))
+})
+
+test('undefined appearance сохраняет legacy-комплект procedural', () => {
+  const actor = models.createProceduralActorModel({ id: 'legacy-equipment', label: 'Воин', kind: 'hero', archetype: 'warrior' }, manifest)
+  assert.ok(actor.getObjectByName('sword'))
+  assert.ok(actor.getObjectByName('shield'))
+  actor.setEquipment(undefined)
+  assert.ok(actor.getObjectByName('sword'))
+  assert.ok(actor.getObjectByName('shield'))
+  actor.dispose()
+})
+
+test('sword-shield → bow → unarmed меняет только аксессуары процедурной модели', () => {
+  const actor = models.createProceduralActorModel({ id: 'equipment-procedural', label: 'Воин', kind: 'hero', appearance: appearance('warrior', 'sword-shield') }, manifest)
+  assert.equal(actor.equipment, 'sword-shield')
+  assert.ok(actor.getObjectByName('sword'))
+  assert.ok(actor.getObjectByName('shield'))
+  const before = bodySignature(actor)
+  const swordResources = resourceDisposalWatch(actor.getObjectByName('sword'))
+  const shieldResources = resourceDisposalWatch(actor.getObjectByName('shield'))
+
+  actor.setEquipment('bow')
+  assert.equal(actor.equipment, 'bow')
+  assert.equal(actor.getObjectByName('sword'), undefined)
+  assert.equal(actor.getObjectByName('shield'), undefined)
+  assert.ok(actor.getObjectByName('bow'))
+  assert.ok(swordResources.geometries > 0 && swordResources.materials > 0, 'смена должна освободить sword')
+  assert.ok(shieldResources.geometries > 0 && shieldResources.materials > 0, 'смена должна освободить shield')
+  const afterBow = bodySignature(actor)
+  assert.deepEqual(afterBow.map((item) => item.object), before.map((item) => item.object), 'объекты тела не должны пересоздаваться')
+  assert.deepEqual(afterBow.map(({ name, position, rotation, visible }) => ({ name, position, rotation, visible })), before.map(({ name, position, rotation, visible }) => ({ name, position, rotation, visible })), 'тело и его поза не должны меняться')
+
+  const bowResources = resourceDisposalWatch(actor.getObjectByName('bow'))
+  actor.setEquipment('unarmed')
+  assert.equal(actor.equipment, 'unarmed')
+  assert.equal(actor.getObjectByName('bow'), undefined)
+  assert.ok(bowResources.geometries > 0 && bowResources.materials > 0, 'уход с bow должен освободить ресурсы')
+  actor.setEquipment('unknown')
+  assert.equal(actor.getObjectByName('sword'), undefined)
+  assert.equal(actor.getObjectByName('shield'), undefined)
+  assert.equal(actor.getObjectByName('bow'), undefined)
+  actor.dispose()
+})
+
+test('KayKit equipment скрывает проверенные комплекты и крепит новые к handslot', async () => {
+  const bytes = readFileSync(join(kaykitRoot, 'knight.glb'))
+  const input = { id: 'equipment-kaykit', label: 'Воин', kind: 'hero', modelKey: 'warrior', appearance: appearance('warrior', 'bow') }
+  const previousSelf = globalThis.self
+  const previousCreateImageBitmap = globalThis.createImageBitmap
+  globalThis.self = globalThis
+  globalThis.createImageBitmap = async () => ({ width: 4, height: 4, close() {} })
+  try {
+    const actor = await models.createActorModel(input, {
+      manifest,
+      fetcher: async () => new Response(bytes, { status: 200, headers: { 'content-type': 'model/gltf-binary' } }),
+    })
+    assert.equal(actor.source, 'glb')
+    for (const name of ['1H_Sword_Offhand', '1H_Sword', '2H_Sword', 'Badge_Shield', 'Rectangle_Shield', 'Round_Shield', 'Spike_Shield']) assert.equal(actor.getObjectByName(name)?.visible, false, `${name} должен быть скрыт`)
+    const bow = actor.getObjectByName('bow')
+    assert.ok(bow)
+    assert.ok(['handslot.r', 'handslotr'].includes(bow.parent?.name), 'bow должен быть на правом KayKit socket')
+    const bonesBefore = bodySignature(actor).filter((item) => item.object.isBone).map(({ name, position, rotation }) => ({ name, position, rotation }))
+    actor.setEquipment('unarmed')
+    assert.equal(actor.getObjectByName('bow'), undefined)
+    assert.equal(actor.getObjectByName('1H_Sword')?.visible, false)
+    const bonesAfter = bodySignature(actor).filter((item) => item.object.isBone).map(({ name, position, rotation }) => ({ name, position, rotation }))
+    assert.deepEqual(bonesAfter, bonesBefore, 'смена оружия не должна трогать skeleton/skin')
+    actor.dispose()
+  } finally {
+    if (previousSelf === undefined) delete globalThis.self
+    else globalThis.self = previousSelf
+    if (previousCreateImageBitmap === undefined) delete globalThis.createImageBitmap
+    else globalThis.createImageBitmap = previousCreateImageBitmap
+  }
+})
+
+test('две GLB-копии имеют независимые аксессуары, а late ranged pose не вызывает melee', async () => {
+  const bytes = glbWithJson({ asset: { version: '2.0' }, scenes: [{ nodes: [] }] })
+  const loader = {
+    register() {},
+    parse(_buffer, _path, onLoad) {
+      const scene = new Group()
+      scene.add(new Mesh(new BoxGeometry(1, 1, 1), new MeshBasicMaterial()))
+      const hand = new Group(); hand.name = 'hand_r'; scene.add(hand)
+      const bowClip = new AnimationClip('Bow_Shoot', 1, [new NumberKeyframeTrack('hand_r.position[x]', [0, 1], [0, 1])])
+      const meleeClip = new AnimationClip('Attack', 1, [new NumberKeyframeTrack('hand_r.position[z]', [0, 1], [0, 1])])
+      queueMicrotask(() => onLoad({ scene, animations: [bowClip, meleeClip] }))
+    },
+  }
+  const catalog = {
+    version: 1,
+    models: [{ key: 'late-ranger', profile: 'rogue', actorIds: [], archetypes: [], url: '/assets/models/late-ranger.glb', rights: { source: 'test', license: 'original' } }],
+  }
+  const make = (id) => models.createActorModel({ id, label: 'Следопыт', kind: 'hero', modelKey: 'late-ranger', appearance: appearance('rogue', 'bow') }, { manifest: catalog, loader, fetcher: async () => new Response(bytes, { status: 200 }) })
+  const first = await make('late-ranger-1')
+  const second = await make('late-ranger-2')
+  assert.notEqual(first.getObjectByName('bow'), second.getObjectByName('bow'))
+  assert.equal(first.getObjectByName('bow')?.parent?.name, 'hand_r')
+  assert.ok(Math.abs(first.getObjectByName('bow').rotation.x - Math.PI / 2) < 1e-8, 'Quaternius bow должен учитывать forward +Z')
+  assert.notEqual(first.getObjectByName('bow')?.children[0]?.geometry, second.getObjectByName('bow')?.children[0]?.geometry)
+  const firstHand = first.getObjectByName('hand_r')
+  first.setPose('ranged-attack')
+  first.update(.5)
+  assert.ok(firstHand.position.x > 0, 'Bow/Shoot должен попасть в ranged-attack')
+  assert.equal(firstHand.position.z, 0, 'ranged-attack не должен запускать melee Attack')
+  first.setEquipment('unarmed')
+  assert.equal(first.getObjectByName('bow'), undefined)
+  first.dispose(); second.dispose()
+})
+
+function aimLoader({ socketName, upperLeft, upperRight, lowerLeft, lowerRight, probePrefix, clips }) {
+  return {
+    register() {},
+    parse(_buffer, _path, onLoad) {
+      const scene = new Group()
+      scene.add(new Mesh(new BoxGeometry(1, 1, 1), new MeshBasicMaterial()))
+      const socket = new Group(); socket.name = socketName; scene.add(socket)
+      for (const name of [upperLeft, upperRight, lowerLeft, lowerRight, `${probePrefix}-pistol`, `${probePrefix}-melee`, `${probePrefix}-spell`]) {
+        const object = new Group(); object.name = name; scene.add(object)
+      }
+      const animations = clips.map((name) => {
+        const probe = name === 'Pistol_Shoot' ? `${probePrefix}-pistol.position[x]` : name === 'Attack' ? `${probePrefix}-melee.position[z]` : `${probePrefix}-spell.position[x]`
+        return new AnimationClip(name, 1, name === 'idle' ? [] : [new NumberKeyframeTrack(probe, [0, 1], [0, 1])])
+      })
+      queueMicrotask(() => onLoad({ scene, animations }))
+    },
+  }
+}
+
+test('Pistol_Shoot не становится bow, Spell_Simple_Shoot остаётся cast, aim fallback работает на двух rig-схемах', async () => {
+  const bytes = glbWithJson({ asset: { version: '2.0' }, scenes: [{ nodes: [] }] })
+  const catalog = {
+    version: 1,
+    models: [{ key: 'aim-ranger', profile: 'rogue', actorIds: [], archetypes: [], url: '/assets/models/aim-ranger.glb', rights: { source: 'test', license: 'original' } }],
+  }
+  const schemas = [
+    { socketName: 'handslot.r', upperLeft: 'upperarm.l', upperRight: 'upperarm.r', lowerLeft: 'lowerarm.l', lowerRight: 'lowerarm.r', probePrefix: 'kaykit', socketParent: 'handslot.r' },
+    { socketName: 'hand_r', upperLeft: 'upperarm_l', upperRight: 'upperarm_r', lowerLeft: 'lowerarm_l', lowerRight: 'lowerarm_r', probePrefix: 'quaternius', socketParent: 'hand_r' },
+  ]
+  for (const schema of schemas) {
+    const actor = await models.createActorModel({ id: `pistol-${schema.probePrefix}`, label: 'Следопыт', kind: 'hero', modelKey: 'aim-ranger', appearance: appearance('rogue', 'bow') }, {
+      manifest: catalog,
+      loader: aimLoader({ ...schema, clips: ['idle', 'Pistol_Shoot', 'Attack'] }),
+      fetcher: async () => new Response(bytes, { status: 200 }),
+    })
+    const upper = actor.getObjectByName(schema.upperRight)
+    const pistolProbe = actor.getObjectByName(`${schema.probePrefix}-pistol`)
+    const meleeProbe = actor.getObjectByName(`${schema.probePrefix}-melee`)
+    const before = upper.rotation.x
+    actor.setPose('ranged-attack')
+    actor.update(.5)
+    assert.notEqual(upper.rotation.x, before, `${schema.probePrefix}: должен примениться aim fallback`)
+    assert.equal(pistolProbe.position.x, 0, `${schema.probePrefix}: Pistol_Shoot нельзя выбирать для лука`)
+    assert.equal(meleeProbe.position.z, 0, `${schema.probePrefix}: ranged не должен запускать melee`)
+    assert.equal(actor.getObjectByName('bow')?.parent?.name, schema.socketParent)
+    actor.dispose()
+
+    const spell = await models.createActorModel({ id: `spell-${schema.probePrefix}`, label: 'Следопыт', kind: 'hero', modelKey: 'aim-ranger', appearance: appearance('rogue', 'bow') }, {
+      manifest: catalog,
+      loader: aimLoader({ ...schema, clips: ['idle', 'Spell_Simple_Shoot', 'Attack'] }),
+      fetcher: async () => new Response(bytes, { status: 200 }),
+    })
+    const spellProbe = spell.getObjectByName(`${schema.probePrefix}-spell`)
+    const spellUpper = spell.getObjectByName(schema.upperRight)
+    const spellBefore = spellUpper.rotation.x
+    spell.setPose('ranged-attack')
+    spell.update(.5)
+    assert.notEqual(spellUpper.rotation.x, spellBefore, `${schema.probePrefix}: spell shoot тоже должен получить aim fallback`)
+    assert.equal(spellProbe.position.x, 0, `${schema.probePrefix}: Spell_Simple_Shoot нельзя считать bow`)
+    assert.equal(typeof spell.cast, 'function', `${schema.probePrefix}: Spell_Simple_Shoot должен быть cast`)
+    spell.setPose('cast')
+    spell.update(.5)
+    assert.ok(spellProbe.position.x > 0, `${schema.probePrefix}: cast-клип должен проигрываться отдельно`)
+    spell.dispose()
+  }
+})
+
+test('dispose GLB освобождает boneTexture общего Skeleton ровно один раз', async () => {
+  const bone = new Bone(); bone.name = 'root'
+  const skeleton = new Skeleton([bone])
+  skeleton.computeBoneTexture()
+  const boneTexture = skeleton.boneTexture
+  let skeletonDisposals = 0
+  let textureDisposals = 0
+  const originalDispose = skeleton.dispose.bind(skeleton)
+  skeleton.dispose = () => { skeletonDisposals += 1; originalDispose() }
+  boneTexture.addEventListener('dispose', () => { textureDisposals += 1 })
+
+  const createSkinnedMesh = (name) => {
+    const geometry = new BoxGeometry(1, 1, 1)
+    const vertices = geometry.getAttribute('position').count
+    geometry.setAttribute('skinIndex', new Uint16BufferAttribute(new Uint16Array(vertices * 4), 4))
+    const weights = new Float32Array(vertices * 4)
+    for (let index = 0; index < vertices; index += 1) weights[index * 4] = 1
+    geometry.setAttribute('skinWeight', new Float32BufferAttribute(weights, 4))
+    const mesh = new SkinnedMesh(geometry, new MeshBasicMaterial())
+    mesh.name = name
+    mesh.bind(skeleton)
+    return mesh
+  }
+  const scene = new Group()
+  scene.add(createSkinnedMesh('body-a'), createSkinnedMesh('body-b'))
+  const loader = {
+    register() {},
+    parse(_buffer, _path, onLoad) { queueMicrotask(() => onLoad({ scene, animations: [] })) },
+  }
+  const catalog = {
+    version: 1,
+    models: [{ key: 'skinned-test', profile: 'warrior', actorIds: [], archetypes: [], url: '/assets/models/skinned-test.glb', rights: { source: 'test', license: 'original' } }],
+  }
+  const bytes = glbWithJson({ asset: { version: '2.0' }, scenes: [{ nodes: [] }] })
+  const actor = await models.createActorModel({ id: 'skinned-test', label: 'Скелет', kind: 'enemy', modelKey: 'skinned-test' }, {
+    manifest: catalog, loader, fetcher: async () => new Response(bytes, { status: 200 }),
+  })
+  assert.equal(actor.source, 'glb')
+  actor.dispose()
+  actor.dispose()
+  assert.equal(skeletonDisposals, 1)
+  assert.equal(textureDisposals, 1)
+  assert.equal(skeleton.boneTexture, null)
 })

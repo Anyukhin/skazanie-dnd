@@ -166,6 +166,7 @@ export class TacticalMapError extends Error {
  * @property {number} scale
  * @property {Array<{x: number, y: number}>} footprint занимаемые клетки, может быть пустым
  * @property {number} zOrder
+ * @property {{kind: 'surface', propId: string}|{kind: 'wall', side: 'n'|'e'|'s'|'w'}} [mount] Визуальная опора, без изменения проходимости.
  * @property {boolean} blocksMove
  * @property {boolean} blocksSight
  * @property {string} cover
@@ -909,6 +910,7 @@ export function addProp(map, prop) {
     : null
   const assetId = boundedText(prop.assetId, 120)
   const transition = normalizeTransition(map, assetId, prop.transition)
+  const mount = normalizePropMount(prop.mount)
   /** @type {TacticalProp} */
   const record = {
     id: boundedText(prop.id, 120),
@@ -922,6 +924,7 @@ export function addProp(map, prop) {
       y: boundedInteger(cell?.y, 0, -1_000, 1_000),
     })),
     zOrder: boundedInteger(prop.zOrder, 0, -1_000, 1_000),
+    ...(mount ? { mount } : {}),
     blocksMove: prop.blocksMove === true,
     blocksSight: prop.blocksSight === true,
     cover,
@@ -937,6 +940,19 @@ export function addProp(map, prop) {
   if (!record.id) throw new TacticalMapError('У предмета должен быть идентификатор', 'PROP_ID_REQUIRED')
   map.props.push(record)
   return record
+}
+
+/** @param {unknown} value @returns {TacticalProp['mount']|null} */
+function normalizePropMount(value) {
+  if (!value || typeof value !== 'object') return null
+  const mount = /** @type {Record<string, unknown>} */ (value)
+  if (mount.kind === 'surface' && typeof mount.propId === 'string' && mount.propId.trim() && mount.propId.length <= 120) {
+    return { kind: 'surface', propId: mount.propId }
+  }
+  if (mount.kind === 'wall' && ['n', 'e', 's', 'w'].includes(String(mount.side))) {
+    return { kind: 'wall', side: /** @type {'n'|'e'|'s'|'w'} */ (mount.side) }
+  }
+  return null
 }
 
 /**
@@ -1338,6 +1354,7 @@ function compactProp(prop) {
   if (prop.scale !== 1) result.scale = prop.scale
   if (prop.footprint.length) result.footprint = prop.footprint.map((cell) => ({ ...cell }))
   if (prop.zOrder !== 0) result.zOrder = prop.zOrder
+  if (prop.mount) result.mount = { ...prop.mount }
   if (prop.blocksMove) result.blocksMove = true
   if (prop.blocksSight) result.blocksSight = true
   if (prop.cover !== 'none') result.cover = prop.cover

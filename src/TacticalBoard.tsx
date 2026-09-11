@@ -1,5 +1,5 @@
 import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { BattleEvent, CombatVisualBatch, TacticalMap } from './types'
+import type { ActorAppearance, BattleEvent, CombatVisualBatch, TacticalMap } from './types'
 import {
   DEFAULT_BOARD_PALETTE, TILE_CELLS, boardPaletteFrom, createTileCache, drawBoardEffects, drawBoardOverlay, drawMapDecorations,
   syncTileCache, terrainKeysFor, visibleTiles,
@@ -340,6 +340,7 @@ export type BoardAnimationActor = {
   /** Только внешний вид; не влияет на размеры и правила существа. */
   modelKey?: string
   archetype?: string
+  appearance?: ActorAppearance
   defeated?: boolean
 }
 
@@ -392,6 +393,10 @@ export type TacticalBoardProps = {
   conditions?: BoardConditionState
   conditionVersion?: number
   onBackgroundActivate?: () => void
+  /** Выбор видимого интерактивного предмета из 3D или DOM-слоя. */
+  onPropActivate?: (propId: string) => void
+  /** Запасной обработчик для 3D-выбора участника без отдельной команды. */
+  onActorActivate?: (actorId: string) => void
   /** Активный этаж локации: своя камера и кроссфейд при смене. */
   levelIndex?: number
   /**

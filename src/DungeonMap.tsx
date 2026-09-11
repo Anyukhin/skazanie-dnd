@@ -396,7 +396,7 @@ export function sceneObjectVerbs(prop: TacticalProp): SceneObjectIntent[] {
 }
 
 export function sceneObjectLabel(prop: TacticalProp) {
-  return prop.interaction?.pointOfInterest ? 'Точка интереса' : 'Объект сцены'
+  return prop.label?.trim() || (prop.interaction?.pointOfInterest ? 'Точка интереса' : 'Объект сцены')
 }
 
 export function hasClearBoardTrajectory(state: GameState, from: { x: number; y: number }, to: { x: number; y: number }) {
@@ -1169,7 +1169,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     ...(state.enemies ?? []).map((enemy) => ({ id: enemy.id, x: enemy.x, y: enemy.y, label: enemy.name, color: '#c86c5d', kind: 'enemy' as const, archetype: enemy.creature_type, defeated: enemy.alive === false })),
     ...(state.actors ?? []).map((actor) => ({ id: actor.id, x: actor.x, y: actor.y, label: actor.name, color: '#70a78b', kind: 'summon' as const, defeated: actor.alive === false })),
     ...sceneNpcs.filter((npc) => npc.alive).map((npc) => ({ id: npc.id, x: npc.x, y: npc.y, label: npc.name, color: '#9d8f72', kind: 'neutral' as const })),
-  ]
+  ].map((actor) => ({ ...actor, appearance: state.actor_appearances?.[actor.id] }))
   const npcSummaryEvents = latestNpcTurnEvents(state.battleLog ?? [])
   // Пленные приезжают отдельной серверной веткой проекции: на доске связанный
   // выглядит обычным NPC сцены, и без этого списка отличить его было бы нечем.
@@ -1540,6 +1540,11 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     ? doorsReachableFrom(boardMap, active.x, active.y).filter((door) => door.state !== 'broken')
     : []
   const interactiveSceneObjects = (boardMap?.props ?? []).filter((prop) => prop.interactive)
+  const onPropActivate = (propId: string) => {
+    if (!interactiveSceneObjects.some((prop) => prop.id === propId)) return
+    setSelectedSceneObjectId((current) => current === propId ? null : propId)
+  }
+  const sceneObjectOpen = (prop: TacticalProp | undefined) => Boolean(prop && ['open', 'taken', 'looted'].includes(prop.state))
   const sceneObjectsAtHand = active
     ? interactiveSceneObjects.filter((prop) => sceneObjectCells(prop).some((cell) => chebyshevFeet(active, cell) <= CELL_FEET))
     : []
@@ -2095,7 +2100,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     /* Тултип лестницы (`docs/multilevel-map-plan.md`, 7.4). Кнопка перехода
        появляется только у подошедшего вплотную персонажа, а «куда ведёт эта
        лестница» игрок спрашивает раньше — наведением с другого конца зала. */
-    const sceneObjectHint = [sceneObject ? `Выбрать: ${sceneObjectLabel(sceneObject)}` : '',
+    const sceneObjectHint = [sceneObject ? `Выбрать: ${sceneObjectLabel(sceneObject)}${sceneObjectOpen(sceneObject) ? ' · открыто' : ''}` : '',
       levelTransitionHint(sceneObject?.transition, knownSceneLevels) ?? ''].filter(Boolean).join(' · ')
     const canMoveHere = reachable.has(cellKey)
     const route = movementPaths.get(cellKey)
@@ -2161,6 +2166,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       inBlastArea ? 'blast-area' : '',
       pendingPoint?.x === cell.x && pendingPoint?.y === cell.y ? 'command-center' : '',
       sceneObject ? 'scene-object-target' : '',
+      sceneObjectOpen(sceneObject) ? 'scene-object-open' : '',
       sceneObject?.id === selectedSceneObjectId ? 'scene-object-selected' : '',
       // Подсветка добычи закрыта туманом наравне с самой меткой (`hasLootLayer`)
       // и остальными украшениями клетки: `.board-cell.loot-here` рисуется поверх
@@ -2317,6 +2323,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           tabIndex={0}
           className="scene-object-hotspot"
           data-selected={sceneObject.id === selectedSceneObjectId ? 'true' : undefined}
+          data-state={sceneObject.state || undefined}
           aria-label={sceneObjectHint}
           aria-pressed={sceneObject.id === selectedSceneObjectId}
           title={sceneObjectHint}
@@ -2329,11 +2336,11 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           onKeyDown={(event) => {
             if (event.key !== 'Enter' && event.key !== ' ') return
             event.preventDefault()
-            setSelectedSceneObjectId((current) => current === sceneObject.id ? null : sceneObject.id)
+            onPropActivate(sceneObject.id)
           }}
           onClick={(event) => {
             event.stopPropagation()
-            setSelectedSceneObjectId((current) => current === sceneObject.id ? null : sceneObject.id)
+            onPropActivate(sceneObject.id)
           }}
         /> : null}
         {sceneObjectMenu}
@@ -2781,6 +2788,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         conditions={state.mechanics?.conditions}
         trajectory={trajectory}
         conditionVersion={state.state_version}
+        onPropActivate={onPropActivate}
         levelIndex={sceneLevelIndex}
         onBackgroundActivate={() => { setOpenTokenLabelId(null); setSelectedSceneObjectId(null) }}
         decoration={trajectory

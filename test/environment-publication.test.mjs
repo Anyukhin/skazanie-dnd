@@ -130,6 +130,7 @@ test('отказ приёмки завершает prepare ошибкой и з�
   let closed = 0
   await assert.rejects(prepareEnvironmentAssets({ outputDir: f.candidate }, {
     importModels: async () => ({ directory: f.candidate }),
+    addInteriors: async () => {},
     startAtlas: async ({ onSaved }) => {
       queueMicrotask(() => { void onSaved().catch(() => {}) })
       return { url: 'fixture://atlas', close: async () => { closed += 1 } }

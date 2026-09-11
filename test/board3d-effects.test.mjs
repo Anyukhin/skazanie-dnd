@@ -41,6 +41,59 @@ function map(hidden = []) {
 const actors = [{ id: 'mage', x: 1, y: 2 }, { id: 'target', x: 6, y: 2 }]
 const projectile = { id: 'spell-confirmed', kind: 'projectile', actorId: 'mage', targetIds: ['target'], spellId: 'fire-bolt', school: 'evocation', projectileCount: 2, durationMs: 500 }
 
+test('3D ranged strike летит физической стрелой по event trajectory', () => {
+  const cue = {
+    id: 'attack-bow', kind: 'strike', actorId: 'mage', targetId: 'target', hit: true, amount: 5,
+    attackKind: 'ranged', equipment: 'bow', from: { x: 0, y: 0 }, to: { x: 5, y: 3 }, durationMs: 480, detail: 'full',
+  }
+  // Позиции участников намеренно не совпадают с событием: cue обязан вести
+  // стрелу по замороженной траектории, а не по текущему снимку актёров.
+  const effect = createCombatEffect3D(cue, [{ id: 'mage', x: 7, y: 4 }, { id: 'target', x: 1, y: 4 }], map())
+  const arrow = effect.group.children.find((child) => child.type === 'Group')
+  assert.ok(arrow)
+  assert.equal(arrow.children.length, 2, 'стрела состоит из древка и наконечника, а не из melee beam-сегментов')
+  effect.update(.36)
+  assert.ok(arrow.visible)
+  assert.ok(arrow.position.x > 1 && arrow.position.x < 5, 'стрела должна быть между концами trajectory')
+  effect.update(.73)
+  assert.equal(arrow.visible, false, 'к моменту impact стрела уже прилетела')
+  effect.dispose()
+})
+
+test('3D thrown strike создаёт физический снаряд, а не луч', () => {
+  const cue = {
+    id: 'attack-thrown', kind: 'strike', actorId: 'mage', targetId: 'target', hit: false, amount: 0,
+    attackKind: 'thrown', equipment: 'dagger', from: { x: 1, y: 2 }, to: { x: 6, y: 2 }, durationMs: 480, detail: 'reduced',
+  }
+  const effect = createCombatEffect3D(cue, actors, map())
+  const projectileMesh = effect.group.children.find((child) => child.type === 'Group')
+  assert.ok(projectileMesh)
+  assert.equal(projectileMesh.children.length, 1)
+  effect.update(.35)
+  assert.ok(projectileMesh.visible)
+  effect.dispose()
+})
+
+test('3D physical strike не выпускается по скрытой траектории', () => {
+  const cue = {
+    id: 'attack-hidden', kind: 'strike', actorId: 'mage', targetId: 'target', hit: true, amount: 5,
+    attackKind: 'ranged', equipment: 'bow', from: { x: 1, y: 2 }, to: { x: 6, y: 2 }, durationMs: 480,
+  }
+  const effect = createCombatEffect3D(cue, actors, map([{ x: 3, y: 2 }]))
+  assert.equal(effect.group.children.length, 0)
+  effect.dispose()
+})
+
+test('cue.detail и внешний более строгий detail уменьшают sparks и beam segments', () => {
+  const base = { id: 'detail-strike', kind: 'strike', actorId: 'mage', targetId: 'target', hit: true, amount: 5, attackKind: 'melee', from: { x: 1, y: 2 }, to: { x: 6, y: 2 }, durationMs: 480 }
+  const full = createCombatEffect3D({ ...base, detail: 'full' }, actors, map())
+  const reduced = createCombatEffect3D({ ...base, detail: 'reduced' }, actors, map())
+  const minimal = createCombatEffect3D({ ...base, detail: 'full' }, actors, map(), 'minimal')
+  assert.ok(full.group.children.length > reduced.group.children.length)
+  assert.ok(reduced.group.children.length > minimal.group.children.length)
+  full.dispose(); reduced.dispose(); minimal.dispose()
+})
+
 test('3D-снаряды не рисуют скрытую цель и скрытые участки траектории', () => {
   const hiddenTarget = createCombatEffect3D(projectile, actors, map([{ x: 6, y: 2 }]))
   assert.equal(hiddenTarget.group.children.length, 0)

@@ -277,6 +277,7 @@ import {
   npcUsableItemFor,
   npcWeaponBindingFor,
 } from './npc-equipment.mjs'
+import { attackVisualFor, normalizeAttackVisual } from './actor-appearance.mjs'
 import { applyEncounterRewardsDistribution } from './encounter-rewards.mjs'
 import {
   ECONOMY_CATALOG_VERSION,
@@ -9570,6 +9571,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       // урона, никаких последствий попадания.
       const landed = hit && !interceptedByImage
       const attackResolvedEventId = `attack-resolved:${String(command.command_id).slice(0, 96)}`
+      const attackKind = attackKindFor(selectedProfile, profile, npcBinding)
+      const attackVisual = attackVisualFor({
+        item: selectedProfile?.item,
+        items: selectedProfile ? actor?.inventory : undefined,
+        attackKind,
+        actionName: profile?.name,
+      })
       events.push({
         ...eventFrom(attackCommand, 'AttackResolved', {
         ...attack,
@@ -9602,7 +9610,8 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         // `thrown` описывает только режим оружия героя и у действия существа
         // не заполняется вовсе; `attack_kind` отвечает за обоих, поэтому
         // хроника берёт глагол отсюда, а не достраивает его сама.
-        attack_kind: attackKindFor(selectedProfile, profile, npcBinding),
+        attack_kind: attackKind,
+        attack_visual: attackVisual,
         ...(selectedProfile?.two_handed ? { two_handed: true } : {}),
         ...(selectedProfile?.thrown ? { thrown: true } : {}),
         ...(sneakAttackRequested ? {
@@ -11306,6 +11315,9 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         const hit = critical || (roll.kept !== 1 && roll.total >= armorClass)
         events.push(eventFrom(commandWithRules(command, RULE_IDS.attack), 'AttackResolved', {
           ...roll, target_id: targetId, armor_class: armorClass, hit, critical, legendary_action_id: action.id,
+          // Имя легендарного действия здесь не является публичным action_name;
+          // неизвестная экипировка безопаснее догадки по закрытому стат-блоку.
+          attack_visual: attackVisualFor(),
         }, [targetId]))
         if (hit && action.damageExpression) {
           const damageRoll = diceService.roll(action.damageExpression, `legendary_damage:${action.id}`, command.actor_id, command.visibility ?? 'public')
@@ -11743,6 +11755,11 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
             ...(spellHighGround !== 'level' ? { high_ground: spellHighGround } : {}),
             range_feet: effectiveRange, damage_expression: weaponProfile?.damage_expression ?? damageExpression, damage_type: weaponProfile?.damage_type ?? damageType,
             spell_id: spell.id, spell_name: spell.name,
+            attack_visual: attackVisualFor({
+              item: weaponProfile?.item,
+              items: weaponProfile?.item ? actor?.inventory : undefined,
+              attackKind: weaponProfile?.kind ?? (effectiveRange > 5 ? 'ranged' : 'melee'),
+            }),
           }, [resolvedTargetId]))
           if (attackDisadvantage) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'disadvantage-next-attack' }, [command.actor_id]))
           if (trueStrike) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'true-strike' }, [command.actor_id]))
@@ -16238,7 +16255,9 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     }
   }
 
-  if (resolveDepth === 0 && context.indomitableResume !== true) {
+  // Без failed-save события окно «Несгибаемого» заведомо не появится, поэтому
+  // повторно проигрывать карту для проверки реакции не нужно.
+  if (resolveDepth === 0 && context.indomitableResume !== true && events.some(failedSavingThrowEvent)) {
     const opportunityState = replayEvents(state, events)
     const opportunities = indomitableOpportunitiesFor(opportunityState, events, context.indomitable_bypass_actor_ids)
     const opportunity = opportunities[0]
@@ -16513,6 +16532,18 @@ function addInventoryItem(inventory, incoming) {
 
 function eventJournalId(state, event) {
   return String(event.event_id ?? `${event.command_id ?? 'command'}:${event.event_type}:${state.state_version + 1}`)
+}
+
+function attackEndpointsFor(value) {
+  if (!Array.isArray(value) || value.length < 2) return null
+  const first = value[0]
+  const last = value.at(-1)
+  if (!first || typeof first !== 'object' || Array.isArray(first)
+    || !last || typeof last !== 'object' || Array.isArray(last)) return null
+  const fromX = Number(first.x); const fromY = Number(first.y)
+  const toX = Number(last.x); const toY = Number(last.y)
+  if (![fromX, fromY, toX, toY].every(Number.isSafeInteger)) return null
+  return { from: { x: fromX, y: fromY }, to: { x: toX, y: toY } }
 }
 
 function appendBattleLog(state, event, entry) {
@@ -17455,6 +17486,8 @@ export function applyGameEvent(rawState, event) {
           }
         }
       }
+      const attackVisual = normalizeAttackVisual(payload.attack_visual)
+      const attackEndpoints = attackVisual ? attackEndpointsFor(payload.trajectory) : null
       appendBattleLog(state, event, {
         sceneTurn: safeInteger(state.scene?.turn, state.mechanics.combat.round),
         round: state.mechanics.combat.round,
@@ -17484,6 +17517,8 @@ export function applyGameEvent(rawState, event) {
         // сыгранного до этой правки, их в событии нет, и хроника печатает
         // прежнюю нейтральную строку, а не выдумывает глагол.
         attackKind: ['melee', 'ranged', 'thrown'].includes(String(payload.attack_kind)) ? String(payload.attack_kind) : undefined,
+        ...(attackVisual ? { attackVisual } : {}),
+        ...(attackEndpoints ? attackEndpoints : {}),
         distanceFeet: Number.isFinite(Number(payload.distance_feet)) ? Math.max(0, safeInteger(payload.distance_feet, 0)) : undefined,
         ...(payload.long_range === true ? { longRange: true } : {}),
         // Почему удар случился именно так. Признаки уже посчитал сервер и уже

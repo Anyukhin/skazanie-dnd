@@ -493,7 +493,7 @@ function writeGlb(json, binary) {
   return Buffer.concat([header, jsonHeader, paddedJson, binaryHeader, paddedBinary])
 }
 
-async function convert(sourceFile, outputFile, { tracker, normalizeMaterials = false } = {}) {
+export async function convert(sourceFile, outputFile, { tracker, normalizeMaterials = false } = {}) {
   const source = await readSource(sourceFile, tracker)
   const json = structuredClone(source.json)
   if (normalizeMaterials) normalizeKenneyMaterials(json, sourceFile)

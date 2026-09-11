@@ -53,7 +53,8 @@ test('декодер карты сохраняет только публичны
 
 test('клик выбирает интерактивный prop, а его кнопки блокируются вдали, не в свой ход и во время команды', () => {
   assert.match(appSource, /const sceneObject = sceneObjectByCell\.get\(cellKey\)/u)
-  assert.match(appSource, /setSelectedSceneObjectId\(\(current\) => current === sceneObject\.id \? null : sceneObject\.id\)/u)
+  assert.match(appSource, /onPropActivate\(sceneObject\.id\)/u)
+  assert.match(appSource, /setSelectedSceneObjectId\(\(current\) => current === propId \? null : propId\)/u)
   // Молитва добавляет к общим условиям свои: суточный слот героя уже мог быть
   // закрыт, полученное благословение — ещё не израсходовано, а в бою обращение
   // к богам движок не принимает вовсе. Кнопка обязана погаснуть до клика, а не

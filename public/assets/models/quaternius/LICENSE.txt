@@ -1,0 +1,3 @@
+universal-base-characters-standard: CC0-1.0; Quaternius; https://quaternius.com/packs/universalbasecharacters.html; archive Universal-Base-Characters-Standard.zip SHA-256 fdbf1804c90dfc1ea03e992bff7da2dfd1a79318e13270a660180f9308455f40
+modular-character-outfits-fantasy-standard: CC0-1.0; Quaternius; https://quaternius.com/packs/modularcharacteroutfitsfantasy.html; archive Modular-Character-Outfits-Fantasy-Standard.zip SHA-256 c3468b18871cc8c8f05ab14df7712baf22cb9f389cbd870babf130e595187f70
+universal-animation-library-standard: CC0-1.0; Quaternius; https://quaternius.itch.io/universal-animation-library; archive Universal-Animation-Library-Standard.zip SHA-256 cc73fc4e495b82958207316596317a3f40b9fa38065bde1027937452da537724

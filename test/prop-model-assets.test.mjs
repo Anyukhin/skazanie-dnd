@@ -147,6 +147,27 @@ test('клоны GLB участвуют в batching, но не освобожд�
   assert.equal(materialDisposed, 0)
 })
 
+test('владелец prop GLB освобождает boneTexture skinned-модели ровно один раз', () => {
+  const bone = new THREE.Bone()
+  const skeleton = new THREE.Skeleton([bone])
+  skeleton.computeBoneTexture()
+  const boneTexture = skeleton.boneTexture
+  let boneTextureDisposals = 0
+  const dispose = boneTexture.dispose.bind(boneTexture)
+  boneTexture.dispose = () => { boneTextureDisposals += 1; return dispose() }
+  const geometry = new THREE.BoxGeometry(1, 1, 1)
+  const material = new THREE.MeshStandardMaterial({ color: '#c59a62' })
+  const root = new THREE.Group()
+  const skinned = new THREE.SkinnedMesh(geometry, material)
+  skinned.bind(skeleton, new THREE.Matrix4())
+  root.add(skinned)
+  const clone = root.clone(true)
+  assert.equal(clone.getObjectByProperty('isSkinnedMesh', true).skeleton, skeleton)
+  assetsModule.disposePropModelAssets(new Map([['skinned', root], ['shared', clone]]))
+  assert.equal(boneTextureDisposals, 1)
+  assert.equal(skeleton.boneTexture, null)
+})
+
 test('загрузка ассетов без browser window безопасно возвращает fallback', async () => {
   assert.equal(await assetsModule.loadPropModelAssets([], new AbortController().signal), null)
 })

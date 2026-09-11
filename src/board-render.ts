@@ -529,10 +529,17 @@ export function tileKey(scene: BoardScene, tile: BoardTile) {
  * срезало бы ровно по шву кэша. Раскрытие при этом спрашивается у якорной
  * клетки — предмет либо виден целиком, либо не виден вовсе.
  */
+export function visiblePropsOnBoard(map: TacticalMap): TacticalProp[] {
+  const visible = map.props.filter((prop) => Number.isFinite(prop.x) && Number.isFinite(prop.y)
+    && cellAt(map, Math.floor(prop.x), Math.floor(prop.y))?.revealed === true)
+  const supports = new Set(visible.filter((prop) => prop.footprint.every((cell) => revealedAt(map, cell.x, cell.y))).map((prop) => prop.id))
+  return visible.filter((prop) => prop.mount?.kind !== 'surface' || supports.has(prop.mount.propId))
+}
+
 export function propsInTile(map: TacticalMap, tile: BoardTile, cellSize: number): TacticalProp[] {
   const minX = tile.tileX * TILE_CELLS
   const minY = tile.tileY * TILE_CELLS
-  const inside = map.props.filter((prop) => {
+  const inside = visiblePropsOnBoard(map).filter((prop) => {
     const reach = propReach(prop)
     if (reach.x + reach.radius <= minX || reach.x - reach.radius >= minX + TILE_CELLS) return false
     if (reach.y + reach.radius <= minY || reach.y - reach.radius >= minY + TILE_CELLS) return false
@@ -3305,9 +3312,10 @@ export function propVisualLayout(prop: TacticalProp, drawing = propDrawingFor(pr
   // локальную систему предмета, иначе стойка окажется поперёк себя.
   const quarter = Math.round((((prop.rotation % 360) + 360) % 360) / 90) % 4
   const swap = span.fromFootprint && quarter % 2 === 1
+  const side = prop.mount?.kind === 'wall' ? prop.mount.side : null
   return {
-    x: span.centerX,
-    y: span.centerY,
+    x: span.centerX + (side === 'w' ? -.4 : side === 'e' ? .4 : 0),
+    y: span.centerY + (side === 'n' ? -.4 : side === 's' ? .4 : 0),
     width: swap ? span.h : span.w,
     depth: swap ? span.w : span.h,
     scale,
@@ -3378,6 +3386,20 @@ function drawStamp(context: BoardContext2D, box: PropBox, texture: BoardTexture,
  * остаются читаемыми даже на общем плане.
  */
 const ART_ONLY_PROP_ASSETS = new Set(['torch_wall', 'stairs_up', 'stairs_down'])
+const OPEN_CONTAINER_STATES = new Set(['open', 'taken', 'looted'])
+
+function drawOpenContainerMark(context: BoardContext2D, box: PropBox, palette: BoardPalette) {
+  const size = Math.min(box.hw, box.hh)
+  context.save()
+  context.strokeStyle = palette.propAccent
+  context.lineWidth = Math.max(1, size * 0.08)
+  context.beginPath()
+  context.moveTo(-box.hw * 0.56, box.hh * 0.34)
+  context.lineTo(0, -box.hh * 0.52)
+  context.lineTo(box.hw * 0.56, box.hh * 0.34)
+  context.stroke()
+  context.restore()
+}
 
 /** Слой 5: предметы по `zOrder`, с поворотом, масштабом и футпринтом. */
 export function drawProps(context: BoardContext2D, scene: BoardScene, tile: BoardTile) {
@@ -3418,6 +3440,9 @@ export function drawProps(context: BoardContext2D, scene: BoardScene, tile: Boar
     else if (level === 'full') drawing.paint(context, placement.box, scene.palette)
     else if (level === 'simple') drawSilhouette(context, placement.box, scene.palette, drawing)
     else drawMark(context, placement.box, scene.palette, drawing)
+    if (['chest', 'sarcophagus'].includes(resolvePropAssetId(prop.assetId)) && OPEN_CONTAINER_STATES.has(prop.state)) {
+      drawOpenContainerMark(context, placement.box, scene.palette)
+    }
     if (drawing.flat) context.globalAlpha = 1
     context.restore()
   }

@@ -157,6 +157,70 @@ test('живой пакет создаёт projectile, burst, beam, aura, channe
   assert.ok(cues.some((cue) => cue.kind === 'channel' && cue.channelType === 'summon' && cue.position.x === 4))
 })
 
+test('AttackResolved передаёт вид атаки, снимок снаряжения и концы серверной траектории', () => {
+  const [cue] = animation.combatAnimationCuesFromEvents([{
+    event_id: 'attack-bow', command_id: 'attack-bow', event_type: 'AttackResolved', actor_id: 'hero', target_ids: ['goblin'],
+    payload: {
+      hit: true,
+      attack_kind: 'ranged',
+      attack_visual: { version: 1, equipment: 'bow' },
+      trajectory: [{ x: 1, y: 2 }, { x: 2, y: 2 }, { x: 5, y: 3 }],
+    },
+  }])
+  assert.equal(cue.kind, 'strike')
+  assert.equal(cue.attackKind, 'ranged')
+  assert.equal(cue.equipment, 'bow')
+  assert.deepEqual(cue.from, { x: 1, y: 2 })
+  assert.deepEqual(cue.to, { x: 5, y: 3 })
+  assert.equal(animation.strikeImpactProgress(cue), .72)
+})
+
+test('старый AttackResolved остаётся generic strike и не угадывает дальний бой по дальности', () => {
+  const [cue] = animation.combatAnimationCuesFromEvents([{
+    event_id: 'attack-old', command_id: 'attack-old', event_type: 'AttackResolved', actor_id: 'goblin', target_ids: ['hero'],
+    payload: { hit: true, range_feet: 60, item_name: 'Метательное копьё' },
+  }])
+  assert.equal(cue.kind, 'strike')
+  assert.equal(cue.attackKind, undefined)
+  assert.equal(cue.equipment, undefined)
+  assert.equal(cue.from, undefined)
+  assert.equal(cue.to, undefined)
+  assert.equal(animation.strikeImpactProgress(cue), .3)
+})
+
+test('итоговая поза смерти ждёт начала своего клипа и не опережает удар', () => {
+  const cues = animation.combatAnimationCuesFromEvents([
+    {
+      event_id: 'attack-defeat', command_id: 'attack-defeat', event_type: 'AttackResolved', actor_id: 'hero', target_ids: ['goblin'],
+      payload: { hit: true, attack_kind: 'ranged', attack_visual: { version: 1, equipment: 'bow' }, trajectory: [{ x: 1, y: 1 }, { x: 5, y: 1 }] },
+    },
+    {
+      event_id: 'damage-defeat', command_id: 'attack-defeat', event_type: 'DamageApplied', actor_id: 'hero', target_ids: ['goblin'],
+      payload: { applied_amount: 9, hp_after: 0, damage_type: 'piercing' },
+    },
+  ])
+  assert.deepEqual(cues.map((cue) => cue.kind), ['strike', 'death'])
+  assert.equal(animation.shouldDeferDefeat('goblin', undefined, cues), true)
+  assert.equal(animation.shouldDeferDefeat('goblin', cues[0], [cues[1]]), true)
+  assert.equal(animation.shouldDeferDefeat('goblin', undefined, [cues[1]]), true, 'между ударом и началом death клипа труп не мелькает на один кадр')
+  assert.equal(animation.shouldDeferDefeat('goblin', cues[1], []), false)
+  assert.equal(animation.shouldDeferDefeat('goblin', undefined, [{ id: 'impact', kind: 'impact', targetId: 'goblin', amount: 4, tone: 'damage', durationMs: 360 }, cues[1]]), true)
+  assert.equal(animation.shouldDeferDefeat('goblin', undefined, []), false)
+})
+
+test('резервный журнал доставляет те же поля атаки без чтения текущего инвентаря', () => {
+  const [cue] = animation.combatAnimationCuesFromBattleLog([{
+    id: 'attack-thrown', type: 'attack', actorId: 'hero', targetId: 'goblin',
+    roll: { total: 17, difficulty: 12, hit: true }, damage: 4,
+    attackKind: 'thrown', attackVisual: { version: 1, equipment: 'dagger' },
+    trajectory: [{ x: 2, y: 1 }, { x: 6, y: 1 }],
+  }])
+  assert.equal(cue.attackKind, 'thrown')
+  assert.equal(cue.equipment, 'dagger')
+  assert.deepEqual(cue.from, { x: 2, y: 1 })
+  assert.deepEqual(cue.to, { x: 6, y: 1 })
+})
+
 test('лечение без величины доходит до клетки словом: пакет отдаёт отсутствие, а не ноль', () => {
   // У чужого лечения санитайзер снимает `applied_amount` целиком
   // (`eventForViewer`, `server/viewer-projection.mjs`), и «ноль вместо

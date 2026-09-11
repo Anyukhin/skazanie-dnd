@@ -2,6 +2,49 @@
   "version": 1,
   "models": [
     {
+      "key": "traveler",
+      "name_ru": "Путник",
+      "profile": "warrior",
+      "actorIds": [],
+      "archetypes": [
+        "warrior",
+        "fighter",
+        "barbarian",
+        "paladin",
+        "воин"
+      ],
+      "url": "/assets/models/quaternius/traveler-77c0b0bb.glb",
+      "height": 1.25,
+      "rights": {
+        "source": "https://quaternius.com/packs/modularcharacteroutfitsfantasy.html",
+        "license": "CC0-1.0",
+        "attribution": "Quaternius",
+        "notes": "Outfits Standard + голова Base Characters Standard + 6 клипов UAL1 Standard. Происхождение и хеши — quaternius/NOTICE.json."
+      }
+    },
+    {
+      "key": "ranger",
+      "name_ru": "Следопыт",
+      "profile": "rogue",
+      "actorIds": [],
+      "archetypes": [
+        "rogue",
+        "ranger",
+        "scout",
+        "thief",
+        "плут",
+        "следопыт"
+      ],
+      "url": "/assets/models/quaternius/ranger-f4660fae.glb",
+      "height": 1.25,
+      "rights": {
+        "source": "https://quaternius.com/packs/modularcharacteroutfitsfantasy.html",
+        "license": "CC0-1.0",
+        "attribution": "Quaternius",
+        "notes": "Outfits Standard + голова Base Characters Standard + 6 клипов UAL1 Standard. Происхождение и хеши — quaternius/NOTICE.json."
+      }
+    },
+    {
       "key": "warrior",
       "name_ru": "Рыцарь",
       "profile": "warrior",

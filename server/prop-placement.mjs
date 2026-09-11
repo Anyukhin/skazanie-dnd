@@ -15,7 +15,7 @@ import { addProp, cellAt, edgeBetween, edgeNeighbor } from './tactical-map.mjs'
  * повороты и масштабы.
  */
 
-export const PROP_PLACEMENT_VERSION = 'skazanie:prop-placement-v2'
+export const PROP_PLACEMENT_VERSION = 'skazanie:prop-placement-v3'
 
 /**
  * Ограниченный словарь назначений комнаты. Это намеренно не новый формат карты:
@@ -755,6 +755,56 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
       for (const cell of chosen.footprint) occupied.add(`${cell.x},${cell.y}`)
       placed.push({ assetId: asset.id, x: chosen.cell.x, y: chosen.cell.y, zoneId: plan.zoneId })
     }
+  }
+  attachPropSupports(map)
+  return map
+}
+
+const TABLEWARE = new Set(['mug', 'plate', 'bowl_stew', 'bottle', 'jug', 'bread_loaf', 'cheese_wheel', 'candle', 'dice_cup', 'coin_pile', 'cutting_board', 'offering_bowl'])
+const SURFACES = new Set(['table_round', 'table_long', 'table_royal', 'table_small', 'bar_counter', 'night_table', 'altar'])
+const WALL_MOUNTS = new Set(['torch_wall', 'lantern_wall', 'banner'])
+const SURFACE_SLOTS = [[-.2, -.2], [.2, .2], [-.2, .2], [.2, -.2], [0, 0], [0, -.25], [0, .25], [.25, 0]]
+
+/**
+ * Завершает только новую расстановку. Мелочь без игровой площади получает
+ * явную опору; сохранённые карты на чтении не переоформляются. После поломки
+ * опоры рендер опускает утварь на пол, не создавая добычи или нового укрытия.
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ */
+export function attachPropSupports(map) {
+  const surfaces = map.props.filter((prop) => SURFACES.has(prop.assetId) && prop.footprint.length && !['toppled', 'broken', 'burned'].includes(prop.state))
+    .map((prop) => {
+      const minX = Math.min(...prop.footprint.map((cell) => cell.x)), maxX = Math.max(...prop.footprint.map((cell) => cell.x)) + 1
+      const minY = Math.min(...prop.footprint.map((cell) => cell.y)), maxY = Math.max(...prop.footprint.map((cell) => cell.y)) + 1
+      return { prop, x: (minX + maxX) / 2, y: (minY + maxY) / 2, width: maxX - minX, depth: maxY - minY,
+        zone: cellAt(map, Math.floor(prop.x), Math.floor(prop.y))?.zone }
+    })
+  /** @type {Map<string, number>} */
+  const used = new Map()
+  for (const prop of map.props) if (prop.mount?.kind === 'surface') used.set(prop.mount.propId, (used.get(prop.mount.propId) ?? 0) + 1)
+  for (const prop of map.props) {
+    if (prop.mount) continue
+    if (WALL_MOUNTS.has(prop.assetId)) {
+      const sides = wallSidesAt(map, Math.floor(prop.x), Math.floor(prop.y))
+      const side = sides.find((candidate) => candidate.facing === prop.rotation) ?? sides[0]
+      if (side) prop.mount = { kind: 'wall', side: side.dy < 0 ? 'n' : side.dx > 0 ? 'e' : side.dy > 0 ? 's' : 'w' }
+      continue
+    }
+    if (!TABLEWARE.has(prop.assetId) || prop.footprint.length || prop.interactive || prop.blocksMove || prop.blocksSight) continue
+    const zone = cellAt(map, Math.floor(prop.x), Math.floor(prop.y))?.zone
+    const candidates = surfaces.filter((surface) => surface.zone === zone
+      && Math.max(Math.abs(surface.x - prop.x), Math.abs(surface.y - prop.y)) <= 4
+      && (used.get(surface.prop.id) ?? 0) < Math.min(SURFACE_SLOTS.length, Math.max(2, surface.prop.footprint.length * 2)))
+    candidates.sort((a, b) => Math.hypot(a.x - prop.x, a.y - prop.y) - Math.hypot(b.x - prop.x, b.y - prop.y) || a.prop.id.localeCompare(b.prop.id))
+    const surface = candidates[0]
+    if (!surface) continue
+    const slot = used.get(surface.prop.id) ?? 0
+    const [dx, dy] = SURFACE_SLOTS[slot]
+    prop.x = Number((surface.x + dx * surface.width * surface.prop.scale).toFixed(3))
+    prop.y = Number((surface.y + dy * surface.depth * surface.prop.scale).toFixed(3))
+    prop.zOrder = Math.max(prop.zOrder, surface.prop.zOrder + 1)
+    prop.mount = { kind: 'surface', propId: surface.prop.id }
+    used.set(surface.prop.id, slot + 1)
   }
   return map
 }

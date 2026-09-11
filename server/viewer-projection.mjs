@@ -5,6 +5,8 @@ import { PRIVATE_ITEM_ORIGIN_KINDS, itemViewerCapabilities } from './item-catalo
 import { npcProfileForViewerAt, npcSocialForViewer } from './npc-social.mjs'
 import { suggestedActionsFor } from './action-hints.mjs'
 import { sceneNpcsForViewer } from './npc-positioning.mjs'
+import { sceneObjectLabelFor } from './scene-interactions.mjs'
+import { actorAppearanceFor, normalizeAttackVisual, publicAppearanceRecord } from './actor-appearance.mjs'
 import { reputationTier } from './reputation-policy.mjs'
 import { projectVisibleState } from './security.mjs'
 import { RULE_IDS, hitPointDicePoolForActor } from './rules-engine.mjs'
@@ -316,6 +318,9 @@ function projectPublicTacticalMap(value) {
   map.props = map.props.filter((prop) => prop.footprint.length === 0
     ? revealedAt(Math.floor(prop.x), Math.floor(prop.y))
     : prop.footprint.every((cell) => revealedAt(cell.x, cell.y)))
+  // Утварь не выдаёт ещё не раскрытый стол или полку ни рисунком, ни ID опоры.
+  const visiblePropIds = new Set(map.props.map((prop) => prop.id))
+  map.props = map.props.filter((prop) => prop.mount?.kind !== 'surface' || visiblePropIds.has(prop.mount.propId))
   // Игроку нужна только affordance-часть интерактивного предмета. Ключи
   // скрытой детали и награды остаются в авторитетной карте до подтверждённого
   // события осмотра/открытия; иначе Рассказчик увидит тайник вместе с картой.
@@ -383,6 +388,8 @@ function materializePropMetadataForTransport(projectedMap, props) {
   for (const prop of Array.isArray(props) ? props : []) {
     const projectedProp = projectedPropById.get(String(prop.id ?? ''))
     if (!projectedProp) continue
+    const label = sceneObjectLabelFor(prop.assetId)
+    if (label) projectedProp.label = label[0].toLocaleUpperCase('ru-RU') + label.slice(1)
     if (prop.interactive === true) projectedProp.interactive = true
     if (!prop.interaction) continue
     projectedProp.interactive = true
@@ -640,17 +647,65 @@ const TARGET_ROLL_EVENT_TYPES = new Set([
 /** Записи журнала, где бросок принадлежит цели, а не действующему лицу. */
 const TARGET_ROLL_BATTLE_LOG_TYPES = new Set(['spell-save', 'concentration-save'])
 
+/** @param {unknown} value @returns {{x: number, y: number} | null} */
+function publicPoint(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const point = /** @type {Loose} */ (value)
+  const x = Number(point.x)
+  const y = Number(point.y)
+  return Number.isSafeInteger(x) && Number.isSafeInteger(y) ? { x, y } : null
+}
+
+/** @param {{x: number, y: number}} point @returns {string} */
+function pointKey(point) {
+  return `${point.x},${point.y}`
+}
+
+/** @param {Loose | null | undefined} scene @returns {Set<string>} */
+function publicRevealedCellKeys(scene) {
+  return new Set(publicCellsFor(scene?.cells)
+    .filter((cell) => cell.revealed === true)
+    .map(pointKey))
+}
+
 /**
  * @param {Loose} entry
  * @param {LooseState | null | undefined} state
  * @param {string} [actorId]
+ * @param {{visibleActorIds?: Set<string>, visibleCellKeys?: Set<string>}} [visibility]
  * @returns {any}
  */
-function publicBattleEventFor(entry, state, actorId = '') {
+function publicBattleEventFor(entry, state, actorId = '', visibility = {}) {
   if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return entry
   const result = { ...entry }
+  const attackVisual = Object.hasOwn(entry, 'attackVisual') || Object.hasOwn(entry, 'attack_visual')
+    ? normalizeAttackVisual(entry.attackVisual ?? entry.attack_visual)
+    : undefined
+  if (Object.hasOwn(entry, 'attackVisual') || Object.hasOwn(entry, 'attack_visual')) {
+    delete result.attack_visual
+    if (attackVisual) result.attackVisual = attackVisual
+    else delete result.attackVisual
+  }
+  // BattleLog хранит только концы траектории. Они остаются публичными лишь
+  // когда событие и обе клетки уже принадлежат текущей проекции зрителя.
+  if (entry.type === 'attack') delete result.trajectory
   const targetId = text(entry.targetId ?? entry.target_id, 120)
   const actingId = text(entry.actorId ?? entry.actor_id, 120)
+  if (entry.type === 'attack' && (Object.hasOwn(entry, 'from') || Object.hasOwn(entry, 'to'))) {
+    const from = publicPoint(entry.from)
+    const to = publicPoint(entry.to)
+    const visibleActorIds = visibility.visibleActorIds ?? new Set()
+    const visibleCellKeys = visibility.visibleCellKeys ?? new Set()
+    if (!attackVisual || !from || !to
+      || !visibleActorIds.has(actingId) || !visibleActorIds.has(targetId)
+      || !visibleCellKeys.has(pointKey(from)) || !visibleCellKeys.has(pointKey(to))) {
+      delete result.from
+      delete result.to
+    } else {
+      result.from = from
+      result.to = to
+    }
+  }
   const enemyIds = new Set((state?.enemies ?? []).map((enemy) => text(enemy?.id ?? enemy?.actor_id, 120)))
   if (enemyIds.has(targetId) && !exactEnemyHealthKnown(state, targetId, actorId)) {
     delete result.hpBefore
@@ -1162,6 +1217,9 @@ export const PROJECTED_STATE_KEYS = Object.freeze([
   // комнаты и существуют только в проекции. Решение осознанное — скрытого в
   // них быть не может, потому что вход у них тот же, что уехал игроку.
   'suggested_actions',
+  // Только оформление из уже разрешённых акторов. Сырой выбор внешности и
+  // закрытый инвентарь заменяются bounded-профилем в actorAppearancesForViewer.
+  'actor_appearances',
   // Отдаются как есть: общий контекст отряда без скрытого.
   'sessionCode', 'campaign', 'partyName', 'partyMemberIds', 'partyDecisionPolicy',
   'campaignConcept', 'character_start_level', 'state_version', 'ruleset_id', 'ruleset_version',
@@ -1222,6 +1280,29 @@ function playerItemsWithCapabilities(players, viewerId = '', rulesetId = '') {
 }
 
 /**
+ * Внешность строится только из уже разрешённых записей. Отдельный закрытый
+ * инвентарь NPC сюда не попадает; неизвестное оружие не превращается в меч
+ * из-за выбранного профиля модели. Словарь не задаёт расу, размеры или правила.
+ * @param {Loose} visible
+ * @returns {Record<string, {version: 1, profile: string, equipment: string}>}
+ */
+export function actorAppearancesForViewer(visible = {}) {
+  /** @type {Record<string, {version: 1, profile: string, equipment: string}>} */
+  const appearances = Object.create(null)
+  for (const [kind, records] of [
+    ['hero', visible.players], ['enemy', visible.enemies], ['summon', visible.actors], ['neutral', visible.scene_npcs],
+  ]) for (const actor of Array.isArray(records) ? records : []) {
+    // Обычные вызовы передают уже спроецированную комнату. На этой границе
+    // тоже закрываемся по умолчанию, чтобы прямой вызов не добавил скрытого актора.
+    if (!publicAppearanceRecord(actor)) continue
+    const id = text(actor?.id, 120)
+    if (!id) continue
+    appearances[id] = actorAppearanceFor(kind, actor)
+  }
+  return appearances
+}
+
+/**
  * Produces a non-admin campaign projection shared by room, command and narration
  * responses. It is deliberately stricter than the internal event-sourced state.
  *
@@ -1234,6 +1315,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
   if (!state || typeof state !== 'object') return state
   if (user?.role === 'admin') return {
     ...state,
+    actor_appearances: actorAppearancesForViewer({ ...state, scene_npcs: sceneNpcsForViewer(state) }),
     // Список лавок нужен для управления, а доступность сделки — для общей доски.
     merchants: (state.merchants ?? []).map((/** @type {Loose} */ merchant) => ({
       ...merchant,
@@ -1357,6 +1439,14 @@ export function campaignStateForViewer(state, user, actorId = '') {
     .filter((/** @type {Loose} */ merchant) => merchantTradeAvailabilityFor(state, merchant).can_trade)
     .map(publicMerchantFor)
   const enemies = (Array.isArray(visible.enemies) ? visible.enemies : []).map((/** @type {Loose} */ enemy) => publicEnemyFor(enemy, state, actorId))
+  const sceneNpcs = sceneNpcsForViewer(state)
+  const visibleActorIds = new Set([
+    ...(Array.isArray(publicState.players) ? publicState.players : []).map((/** @type {Loose} */ actor) => text(actor?.id, 120)),
+    ...enemies.map((/** @type {Loose} */ actor) => text(actor?.id, 120)),
+    ...(Array.isArray(visible.actors) ? visible.actors : []).map((/** @type {Loose} */ actor) => text(actor?.id, 120)),
+    ...sceneNpcs.map((/** @type {Loose} */ actor) => text(actor?.id, 120)),
+  ].filter(Boolean))
+  const visibleCellKeys = publicRevealedCellKeys(scene)
   const enemyIds = new Set((state?.enemies ?? []).map((/** @type {Loose} */ enemy) => text(enemy?.id ?? enemy?.actor_id, 120)))
   const mechanics = visible.mechanics && typeof visible.mechanics === 'object'
     ? (() => {
@@ -1424,7 +1514,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
       isPartyMember: true,
       state,
     }),
-    scene_npcs: sceneNpcsForViewer(state),
+    scene_npcs: sceneNpcs,
     captives: captivesForViewer(state, { isAdmin: false }),
     // Контейнер виден в доступной сцене; содержимое — только тому, чей герой
     // стоит рядом. Просмотр при этом бесплатен: он приходит проекцией, а не
@@ -1464,7 +1554,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
     merchants,
     enemies,
     mechanics,
-    battleLog: (Array.isArray(visible.battleLog) ? visible.battleLog : []).map((/** @type {Loose} */ entry) => publicBattleEventFor(entry, state, actorId)),
+    battleLog: (Array.isArray(visible.battleLog) ? visible.battleLog : []).map((/** @type {Loose} */ entry) => publicBattleEventFor(entry, state, actorId, { visibleActorIds, visibleCellKeys })),
     messages: (Array.isArray(visible.messages) ? visible.messages : []).map(publicCombatMessageFor),
     ...(publicAutonomyFor(state.autonomy) ? { autonomy: publicAutonomyFor(state.autonomy) } : {}),
   }
@@ -1476,7 +1566,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
   // везёт строку на каждого героя отряда (досягаемость зверя), подсказка обязана
   // читать строку **этого** героя. Без него она задавала строкам партийный
   // вопрос и расходилась с кнопкой на том же экране.
-  return { ...room, suggested_actions: suggestedActionsFor(room, actorId) }
+  return { ...room, actor_appearances: actorAppearancesForViewer(room), suggested_actions: suggestedActionsFor(room, actorId) }
 }
 
 /**
@@ -1492,6 +1582,13 @@ function eventForViewer(event, user, actorId, state = {}) {
   const payload = visible.payload && typeof visible.payload === 'object' && !Array.isArray(visible.payload)
     ? { ...visible.payload }
     : {}
+  // Payload события расширяем, поэтому вложенное оформление получает свой
+  // whitelist и не проходит через общий проектор видимости без проверки.
+  if (Object.hasOwn(payload, 'attack_visual')) {
+    const attackVisual = normalizeAttackVisual(payload.attack_visual)
+    if (attackVisual) payload.attack_visual = attackVisual
+    else delete payload.attack_visual
+  }
   if (visible.event_type === 'SceneAdvanced') {
     payload.scene = publicSceneFor(payload.scene)
     payload.adventure = publicAdventureFor(payload.adventure)

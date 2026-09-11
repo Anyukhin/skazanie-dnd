@@ -148,14 +148,16 @@ const DECLARED = Object.freeze([
   // (`scene-hazards.mjs`) объявил его тяжёлым или горючим, а каталог
   // взаимодействий (`scene-interactions.mjs`) знает его вид. Флаг и каталог
   // обязаны совпадать — сторож `test/scene-hazards.test.mjs`.
-  entry('table_round', { baseFootprint: { w: 2, h: 2 }, blocksMove: true, cover: 'half', destructible: true, hp: 12, interactive: true, scaleRange: { min: 0.85, max: 1.15 } }),
-  entry('table_long', { baseFootprint: { w: 3, h: 1 }, blocksMove: true, cover: 'half', destructible: true, hp: 15, interactive: true }),
+  // Масштаб рисунка сохраняется в новой карте отдельно от игровой площади.
+  // Размеры мебели согласованы с человеческой фигуркой высотой около 1.2 клетки.
+  entry('table_round', { baseFootprint: { w: 2, h: 2 }, blocksMove: true, cover: 'half', destructible: true, hp: 12, interactive: true, scaleRange: { min: 0.65, max: 0.75 } }),
+  entry('table_long', { baseFootprint: { w: 3, h: 1 }, blocksMove: true, cover: 'half', destructible: true, hp: 15, interactive: true, scaleRange: { min: 0.90, max: 1.0 } }),
   entry('table_royal', { themes: ['royal'], baseFootprint: { w: 5, h: 2 }, blocksMove: true, cover: 'half', destructible: true, hp: 30, interactive: true }),
   entry('royal_throne', { themes: ['royal'], baseFootprint: { w: 2, h: 2 }, blocksMove: true, cover: 'half', destructible: true, hp: 25, interactive: true }),
-  entry('table_small', { blocksMove: true, cover: 'half', destructible: true, hp: 8, interactive: true }),
+  entry('table_small', { blocksMove: true, cover: 'half', destructible: true, hp: 8, interactive: true, scaleRange: { min: 0.75, max: 0.85 } }),
   entry('bench', { baseFootprint: { w: 2, h: 1 }, anchor: 'wall', destructible: true, hp: 8, interactive: true }),
-  entry('chair', { destructible: true, hp: 5, scaleRange: { min: 0.85, max: 1.1 } }),
-  entry('stool', { destructible: true, hp: 4, scaleRange: { min: 0.8, max: 1.1 } }),
+  entry('chair', { destructible: true, hp: 5, scaleRange: { min: 0.42, max: 0.50 } }),
+  entry('stool', { destructible: true, hp: 4, scaleRange: { min: 0.33, max: 0.42 } }),
   entry('bar_counter', { baseFootprint: { w: 4, h: 1 }, anchor: 'wall', blocksMove: true, cover: 'three_quarters', destructible: true, hp: 25, interactive: true }),
   entry('bar_shelf', { baseFootprint: { w: 3, h: 1 }, anchor: 'wall', blocksMove: true, blocksSight: true, cover: 'three_quarters', interactive: true }),
   entry('fireplace', { baseFootprint: { w: 2, h: 1 }, anchor: 'wall', blocksMove: true, blocksSight: true, cover: 'three_quarters', interactive: true }),
@@ -180,10 +182,10 @@ const DECLARED = Object.freeze([
   entry('broom', { anchor: 'corner', interactive: true, scaleRange: { min: 0.9, max: 1.05 } }),
 
   // --- Мелочь на столах: футпринт пуст, предмет ничего не занимает -----
-  entry('mug', { baseFootprint: { w: 0, h: 0 }, scaleRange: { min: 0.7, max: 1.1 } }),
-  entry('plate', { baseFootprint: { w: 0, h: 0 }, scaleRange: { min: 0.8, max: 1.1 } }),
+  entry('mug', { baseFootprint: { w: 0, h: 0 }, scaleRange: { min: 0.35, max: 0.48 } }),
+  entry('plate', { baseFootprint: { w: 0, h: 0 }, scaleRange: { min: 0.65, max: 0.85 } }),
   entry('bowl_stew', { baseFootprint: { w: 0, h: 0 }, scaleRange: { min: 0.8, max: 1.1 } }),
-  entry('bottle', { baseFootprint: { w: 0, h: 0 }, scaleRange: { min: 0.75, max: 1.15 } }),
+  entry('bottle', { baseFootprint: { w: 0, h: 0 }, scaleRange: { min: 0.24, max: 0.34 } }),
   entry('jug', { baseFootprint: { w: 0, h: 0 }, scaleRange: { min: 0.8, max: 1.15 } }),
   entry('bread_loaf', { baseFootprint: { w: 0, h: 0 }, scaleRange: { min: 0.8, max: 1.2 } }),
   entry('cheese_wheel', { baseFootprint: { w: 0, h: 0 }, scaleRange: { min: 0.8, max: 1.15 } }),
