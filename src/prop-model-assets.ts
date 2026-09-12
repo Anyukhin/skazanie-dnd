@@ -4,7 +4,7 @@ import {
   loadSharedModelBuffer,
   recordModelAssetParse,
   registerCspSafeEmbeddedTextureLoader,
-} from './actor-models'
+} from './model-assets'
 import { loadPropModelCatalog, propModelFor, type PropModelCatalog } from './prop-model-catalog'
 import { resolvePropAssetId } from './board-render'
 import type { TacticalProp } from './types'

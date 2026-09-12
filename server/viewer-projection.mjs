@@ -1370,10 +1370,10 @@ function publicActorWithFootprint(actor = {}, options = {}) {
  * инвентарь NPC сюда не попадает; неизвестное оружие не превращается в меч
  * из-за выбранного профиля модели. Словарь не задаёт расу, размеры или правила.
  * @param {Loose} visible
- * @returns {Record<string, {version: 1, profile: string, equipment: string}>}
+ * @returns {Record<string, {version: 2, profile: string, equipment: string, loadout: Record<string, object|null>}>}
  */
 export function actorAppearancesForViewer(visible = {}) {
-  /** @type {Record<string, {version: 1, profile: string, equipment: string}>} */
+  /** @type {Record<string, {version: 2, profile: string, equipment: string, loadout: Record<string, object|null>}>} */
   const appearances = Object.create(null)
   for (const [kind, records] of [
     ['hero', visible.players], ['enemy', visible.enemies], ['summon', visible.actors], ['neutral', visible.scene_npcs],

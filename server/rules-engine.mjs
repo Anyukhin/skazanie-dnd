@@ -9991,7 +9991,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const attackKind = attackKindFor(selectedProfile, profile, npcBinding)
       const attackVisual = attackVisualFor({
         item: selectedProfile?.item,
-        items: selectedProfile ? actor?.inventory : undefined,
+        items: state.players.some((hero) => actorId(hero) === command.actor_id) ? actor?.inventory : undefined,
         attackKind,
         actionName: profile?.name,
       })
@@ -12183,7 +12183,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
              trajectory: spellActorAt && spellTargetAt ? [spellActorAt, ...lineCells(spellActorAt, spellTargetAt)] : [],
              attack_visual: attackVisualFor({
               item: weaponProfile?.item,
-              items: weaponProfile?.item ? actor?.inventory : undefined,
+              items: state.players.some((hero) => actorId(hero) === command.actor_id) ? actor?.inventory : undefined,
               attackKind: weaponProfile?.kind ?? (effectiveRange > 5 ? 'ranged' : 'melee'),
             }),
           }, [resolvedTargetId]))

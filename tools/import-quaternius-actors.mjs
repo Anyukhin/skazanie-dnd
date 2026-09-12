@@ -375,25 +375,35 @@ function assembleProfile(outfit, base, animation, spec) {
   const resources = createResourceCopier(state, base)
   const outfitRoot = json.scenes?.[json.scene ?? 0]?.nodes?.[0]
   if (!Number.isInteger(outfitRoot) || json.nodes[outfitRoot]?.name !== 'Armature') throw new Error(`У ${spec.outfit} нет корня Armature`)
+  for (const region of spec.regionNodes ?? []) {
+    if (!region || typeof region.source !== 'string' || typeof region.output !== 'string') throw new Error(`${spec.key}: некорректное имя региона`)
+    const sourceIndex = json.nodes.findIndex((node) => node.name === region.source)
+    if (sourceIndex < 0) throw new Error(`${spec.key}: не найден регион ${region.source}`)
+    json.nodes[sourceIndex].name = region.output
+    const meshIndex = json.nodes[sourceIndex].mesh
+    if (Number.isInteger(meshIndex) && json.meshes[meshIndex]) json.meshes[meshIndex].name = region.output
+  }
   const nodeIndexes = new Map(json.nodes.map((node, index) => [node.name, index]))
   const baseHeadJoint = jointNames(base).indexOf('Head')
   if (baseHeadJoint < 0) throw new Error('В base rig нет Head')
-  const body = nodeByName(base, 'SuperHero_Male').node
+  const bodySource = spec.bodySource ?? 'SuperHero_Male'
+  const body = nodeByName(base, bodySource).node
   const bodyMesh = base.json.meshes[body.mesh]
   const bodyPrimitive = bodyMesh?.primitives?.[0]
-  if (!bodyMesh || !bodyPrimitive) throw new Error('У SuperHero_Male нет primitive')
+  if (!bodyMesh || !bodyPrimitive) throw new Error(`У ${bodySource} нет primitive`)
   const bodyJoints = readAccessor(base, bodyPrimitive.attributes.JOINTS_0)
   const bodyWeights = readAccessor(base, bodyPrimitive.attributes.WEIGHTS_0)
   const isHeadVertex = (index) => bodyJoints[index].some((joint, slot) => joint === baseHeadJoint && bodyWeights[index][slot] > .5)
   const headStats = { triangles: 0, vertices: 0 }
+  const headOutputs = spec.headOutputs ?? {}
   const headParts = [
-    { source: 'Eyebrows', output: `${spec.key}_Head_Eyebrows`, keep: () => true },
-    { source: 'Eyes', output: `${spec.key}_Head_Eyes`, keep: () => true },
-    { source: 'SuperHero_Male', output: `${spec.key}_Head_Face`, keep: isHeadVertex },
+    { source: 'Eyebrows', output: headOutputs.eyebrows ?? `${spec.key}_Head_Eyebrows`, keep: () => true },
+    { source: 'Eyes', output: headOutputs.eyes ?? `${spec.key}_Head_Eyes`, keep: () => true },
+    { source: bodySource, output: headOutputs.face ?? `${spec.key}_Head_Face`, keep: isHeadVertex },
   ]
   for (const part of headParts) {
     const sourceNode = nodeByName(base, part.source).node
-    const mesh = copyMesh(state, base, base.json.meshes[sourceNode.mesh], resources, part.keep, part.output, part.source === 'SuperHero_Male' ? headStats : undefined)
+    const mesh = copyMesh(state, base, base.json.meshes[sourceNode.mesh], resources, part.keep, part.output, part.source === bodySource ? headStats : undefined)
     if (mesh == null) throw new Error(`${part.source}: не выделилась геометрия головы`)
     const node = { name: part.output, mesh, skin: 0 }
     const nodeIndex = json.nodes.push(node) - 1
@@ -649,6 +659,164 @@ export async function importQuaterniusActors(options = {}) {
     const manifest = candidateManifest(sources, reports, tracker)
     await writeFile(join(output, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
     await writeFile(join(output, 'LICENSE.txt'), `${sources.map((source) => `${source.id}: ${source.license}; ${source.author}; ${source.url}; archive ${source.archive} SHA-256 ${source.sha256}`).join('\n')}\n`)
+    return { ok: true, output, sources, profiles: reports, manifest }
+  } finally {
+    await rm(work, { recursive: true, force: true })
+  }
+}
+
+const EQUIPMENT_BASE_PROFILES = Object.freeze([
+  {
+    key: 'human-male', label: 'Человек · мужская основа', gender: 'male',
+    base: 'Superhero_Male_FullBody.gltf', bodySource: 'SuperHero_Male', outfit: 'Male_Peasant.gltf', file: 'human-male.glb',
+    regionNodes: [
+      { source: 'Male_Peasant_Arms', output: 'Arms' },
+      { source: 'Male_Peasant_Body', output: 'Body' },
+      { source: 'Male_Peasant_Feet', output: 'Feet' },
+      { source: 'Male_Peasant_Legs', output: 'Legs' },
+    ],
+  },
+  {
+    key: 'human-female', label: 'Человек · женская основа', gender: 'female',
+    base: 'Superhero_Female_FullBody.gltf', bodySource: 'Superhero_Female', outfit: 'Female_Peasant.gltf', file: 'human-female.glb',
+    regionNodes: [
+      { source: 'Female_Peasant_Arms', output: 'Arms' },
+      { source: 'Female_Peasant_Body', output: 'Body' },
+      { source: 'Female_Peasant_Feet', output: 'Feet' },
+      { source: 'Female_Peasant_Legs', output: 'Legs' },
+    ],
+  },
+])
+
+function stableEquipmentBaseJson(ready, spec, feetOffset) {
+  const armature = ready.json.scenes?.[ready.json.scene ?? 0]?.nodes?.[0]
+  if (!Number.isInteger(armature) || ready.json.nodes[armature]?.name !== 'Armature') throw new Error(`${spec.key}: не найден Armature для нормализации`)
+  const node = ready.json.nodes[armature]
+  const translation = Array.isArray(node.translation) ? [...node.translation] : [0, 0, 0]
+  translation[1] = Number(translation[1] ?? 0) + feetOffset
+  node.translation = translation
+  ready.json.asset = { ...ready.json.asset, generator: 'skazanie-equipment-base-candidate/v1' }
+  ready.json.extras = {
+    ...(ready.json.extras ?? {}),
+    skazanie: {
+      ...(ready.json.extras?.skazanie ?? {}),
+      gearBase: {
+        version: 1,
+        profile: spec.key,
+        gender: spec.gender,
+        rig: { root: 'root', head: 'Head', handSockets: ['hand_l', 'hand_r'], bones: 65 },
+        forwardAxis: '+Z',
+        feetOrigin: 'minY=0',
+        feetOffset,
+        regions: { arms: 'Arms', body: 'Body', legs: 'Legs', feet: 'Feet', head: 'Head_Face' },
+        headMeshes: { face: 'Head_Face', eyes: 'Head_Eyes', eyebrows: 'Head_Eyebrows' },
+        outfit: 'neutral-peasant',
+        armor: 'none-baked',
+      },
+    },
+  }
+  return ready
+}
+
+/**
+ * Собирает две нейтральные основы для слоя предметов, используя тот же
+ * packer, что и готовые traveler/ranger. Модели остаются кандидатами в tmp/.
+ */
+export async function importQuaterniusEquipmentBases(options = {}) {
+  const values = { ...DEFAULTS, ...options, out: options.out ?? join(TMP_ROOT, 'equipment-bases') }
+  const output = resolve(values.out)
+  const outside = relative(resolve(TMP_ROOT), output)
+  if (isAbsolute(outside) || outside === '..' || outside.startsWith(`..${sep}`)) throw new Error('Кандидат должен лежать внутри tmp/')
+  await validateCandidateOutputDir(output, { requireEmpty: true })
+  await mkdir(output, { recursive: true })
+  for (const [path, label] of [[values.baseDir, 'baseDir'], [values.outfitDir, 'outfitDir']]) {
+    const info = await lstat(path).catch((error) => { if (error?.code === 'ENOENT') return null; throw error })
+    if (!info?.isDirectory() || info.isSymbolicLink()) throw new Error(`${label}: нужен обычный каталог ${path}`)
+  }
+  await existingFile(values.ualFile, 'ualFile')
+  const sources = []
+  for (const [path, source] of [[values.baseArchive, SOURCE_ARCHIVES.base], [values.outfitArchive, SOURCE_ARCHIVES.outfits], [values.animationArchive, SOURCE_ARCHIVES.animations]]) {
+    sources.push(await verifyArchive(path, source))
+  }
+  const work = await mkdtemp(join(TMP_ROOT, 'quaternius-equipment-work-'))
+  try {
+    const tracker = sourceTracker()
+    const animationBytes = await readFile(values.ualFile)
+    trackInput(tracker, values.ualFile, animationBytes)
+    const animation = parseGlb(animationBytes, values.ualFile)
+    assertNoRootMotion(animation, CLIP_NAMES)
+    const baseCache = new Map()
+    const reports = []
+    for (const spec of EQUIPMENT_BASE_PROFILES) {
+      let base = baseCache.get(spec.gender)
+      if (!base) {
+        const baseFile = join(values.baseDir, spec.base)
+        base = await converted(baseFile, join(work, `${spec.gender}-base.glb`), tracker, work)
+        baseCache.set(spec.gender, base)
+      }
+      const outfit = await converted(join(values.outfitDir, spec.outfit), join(work, `${spec.key}-outfit.glb`), tracker, work)
+      const ready = assembleProfile(outfit, base, animation, {
+        ...spec,
+        headOutputs: { eyebrows: 'Head_Eyebrows', eyes: 'Head_Eyes', face: 'Head_Face' },
+      })
+      const raw = writeGlb(ready.json, ready.binary)
+      const parsed = await parseWithLoader(raw, spec.key)
+      const feetOffset = -parsed.box.min[1]
+      disposeResources(parsed.gltf.scene)
+      stableEquipmentBaseJson(ready, spec, feetOffset)
+      const outputFile = join(output, spec.file)
+      await writeFile(outputFile, writeGlb(ready.json, ready.binary))
+      const report = await inspectOutput(outputFile, spec)
+      reports.push({
+        ...report,
+        key: spec.key,
+        label: spec.label,
+        file: spec.file,
+        gender: spec.gender,
+        outfit: spec.outfit,
+        regions: { arms: 'Arms', body: 'Body', legs: 'Legs', feet: 'Feet', head: 'Head_Face' },
+        rig: { root: 'root', head: 'Head', handSockets: ['hand_l', 'hand_r'], bones: 65 },
+        forwardAxis: '+Z',
+        feetOrigin: 'minY=0',
+        feetOffset,
+        armor: 'none-baked',
+      })
+    }
+    const manifest = {
+      version: 1,
+      schema: 'skazanie-equipment-base-candidate/v1',
+      sources: sources.map(({ path, bytes, sha256, ...source }) => ({ ...source, archiveFile: path, bytes, sha256, archiveSha256: sha256 })),
+      build: {
+        importer: 'tools/build-equipment-bases.mjs', importerVersion: 1,
+        packer: 'tools/import-quaternius-actors.mjs',
+        textureMaxSide: MAX_TEXTURE_SIDE, animationPack: 'UAL1_Standard.glb', rootMotion: false,
+        rig: { root: 'root', head: 'Head', handSockets: ['hand_l', 'hand_r'], bones: 65, forwardAxis: '+Z' },
+        feetOrigin: 'minY=0', regions: { arms: 'Arms', body: 'Body', legs: 'Legs', feet: 'Feet', head: 'Head_Face' },
+        sourceInputs: sourceInputRecords(tracker), profiles: reports,
+      },
+      profiles: reports,
+    }
+    await writeFile(join(output, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
+    const notice = {
+      version: 1,
+      schema: 'skazanie-equipment-base-notice/v1',
+      outputs: reports,
+      stableRegions: { arms: 'Arms', body: 'Body', legs: 'Legs', feet: 'Feet', head: 'Head_Face' },
+      rig: { root: 'root', head: 'Head', handSockets: ['hand_l', 'hand_r'], bones: 65, forwardAxis: '+Z' },
+      bakedArmor: false,
+      safeHideableAccessories: {
+        quaterniusRanger: ['Male_Ranger_Acc_Pauldron', 'Male_Ranger_Arms_Bracer', 'Male_Ranger_Body_Belt_1', 'Male_Ranger_Body_Belt_2', 'Male_Ranger_Feet_Boots', 'Male_Ranger_Head_Hood'],
+        quaterniusMage: ['Male_Ranger_Acc_Pauldron', 'Male_Ranger_Arms_Bracer', 'Male_Ranger_Body_Belt_1', 'Male_Ranger_Body_Belt_2', 'Male_Ranger_Feet_Boots', 'Male_Ranger_Head_Hood'],
+        kaykitKnight: ['Knight_Helmet', 'Knight_Cape', '1H_Sword', 'Round_Shield'],
+        kaykitMage: ['Mage_Hat', 'Mage_Cape', '2H_Staff', 'Spellbook'],
+        kaykitRogue: ['Rogue_Cape', 'Knife_Offhand'],
+        kaykitSkeleton: ['Skeleton_Warrior_Helmet', 'Skeleton_Warrior_Cloak'],
+      },
+      neverHide: ['Head', 'Head_Face', 'Head_Eyes', 'Head_Eyebrows', 'ranger_Head_Face', 'traveler_Head_Face', 'Male_Peasant_Body', 'Female_Peasant_Body'],
+      provenance: sources,
+    }
+    await writeFile(join(output, 'NOTICE.json'), `${JSON.stringify(notice, null, 2)}\n`)
+    await writeFile(join(output, 'LICENSE.txt'), `${sources.map((source) => `${source.id}: ${source.license}; ${source.author}; ${source.url}; archive ${source.archive} SHA-256 ${source.sha256}`).join('\n')}\nМодели состоят из лицензированной Quaternius-геометрии; проект «Сказание» сохраняет neutral Peasant outfit и нормализует только сцену/имена регионов.\n`)
     return { ok: true, output, sources, profiles: reports, manifest }
   } finally {
     await rm(work, { recursive: true, force: true })

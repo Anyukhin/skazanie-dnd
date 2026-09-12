@@ -12,7 +12,7 @@ import {
 
 // Выпуски добавляются целиком через models:publish. Считаем объявленный состав
 // их manifest, а не реальные файлы или строки реестра: лишний файл по-прежнему
-// нарушает гейт, остальные 1681 исходных ассетов остаются фиксированной базой.
+// нарушает гейт, исходные ассеты остаются фиксированной базой.
 function declaredEnvironmentReleaseFiles() {
   const directory = fileURLToPath(new URL('../public/assets/models/environment/releases', import.meta.url))
   if (!existsSync(directory)) return 0
@@ -27,6 +27,18 @@ function declaredEnvironmentReleaseFiles() {
     assert.equal(new Set(paths).size, paths.length, 'состав выпуска не содержит повторов')
     assert.ok(paths.every((path) => typeof path === 'string' && path !== 'manifest.json' && !path.startsWith('/') && !path.split('/').includes('..')))
     count += 1 + paths.length
+  }
+  return count
+}
+
+function declaredEquipmentReleaseFiles() {
+  const directory = fileURLToPath(new URL('../public/assets/models/equipment/', import.meta.url))
+  let count = 1 // активный каталог
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue
+    assert.match(entry.name, /^equipment-[a-f0-9]{24}$/u)
+    const manifest = JSON.parse(readFileSync(join(directory, entry.name, 'manifest.json'), 'utf8'))
+    count += new Set(manifest.models.map((model) => model.url)).size + 3 // GLB, каталог, NOTICE, LICENSE
   }
   return count
 }
@@ -73,7 +85,8 @@ test('content integrity gate verifies hashes, references, counts and the complet
   // + 125 GLB окружения, 4 файла происхождения/лицензий, каталог и парный 2D-атлас.
   // + замороженный baseline-pr79.json для карт без catalogRevision.
   // + два персонажа Quaternius и их LICENSE/NOTICE.
-  assert.equal(report.integrity.assets, 1681 + declaredEnvironmentReleaseFiles())
+  // + 4 файла нейтральных основ и объявленные неизменяемые выпуски экипировки.
+  assert.equal(report.integrity.assets, 1685 + declaredEnvironmentReleaseFiles() + declaredEquipmentReleaseFiles())
   assert.equal(report.integrity.coverage.find((entry) => entry.id === 'feats').coverage, 'missing')
 })
 

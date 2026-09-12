@@ -13,7 +13,7 @@ const root = fileURLToPath(new URL('..', import.meta.url))
 mkdirSync(join(root, 'tmp'), { recursive: true })
 const buildDir = mkdtempSync(join(root, 'tmp', 'prop-model-assets-'))
 const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
-const sources = ['../src/prop-model-catalog.ts', '../src/prop-model-assets.ts', '../src/board3d-props.ts', '../src/board3d-batching.ts', '../src/board-render.ts']
+const sources = ['../src/prop-model-catalog.ts', '../src/prop-model-assets.ts', '../src/model-assets.ts', '../src/actor-models.ts', '../src/board3d-props.ts', '../src/board3d-batching.ts', '../src/board-render.ts']
   .map((relative) => fileURLToPath(new URL(relative, import.meta.url)))
 const compiled = spawnSync(process.execPath, [
   compiler, '--ignoreConfig', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler',
@@ -29,7 +29,10 @@ function emittedFiles(directory) {
 for (const path of emittedFiles(buildDir).filter((candidate) => candidate.endsWith('.js'))) {
   const source = readFileSync(path, 'utf8')
     .replace(/(from\s+["'])(\.\.?\/[^"']+\.json)(["'])/gu, '$1$2$3 with { type: "json" }')
-    .replace(/(from\s+["'])(\.\.?\/[^"']+)(["'])/gu, (match, before, specifier, after) => /\.(json|mjs|js)$/u.test(specifier) ? match : `${before}${specifier}.mjs${after}`)
+    .replace(/(from\s+["'])(\.\.?\/[^"']+)(["'])/gu, (match, before, specifier, after) => {
+      if (specifier.startsWith('../server/') && specifier.endsWith('.mjs')) return `${before}${new URL(specifier, new URL('../src/', import.meta.url)).href}${after}`
+      return /\.(json|mjs|js)$/u.test(specifier) ? match : `${before}${specifier}.mjs${after}`
+    })
   writeFileSync(path, source)
   renameSync(path, path.replace(/\.js$/u, '.mjs'))
 }

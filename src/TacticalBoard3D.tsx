@@ -5,7 +5,7 @@ import type { BoardAnimationActor, TacticalBoardProps } from './TacticalBoard'
 import { actorFootprintSize, actorPresentationCenter, actorPresentationSize, boardCameraKey } from './tactical-ui'
 import { cellAt, revealedAt } from './tactical-map-client'
 import { DEFAULT_BOARD_PALETTE, boardPaletteFrom, drawBoardEffects, drawBoardOverlay, type BoardScene } from './board-render'
-import { COMBAT_ANIMATION_QUEUE_LIMIT, combatAnimationCuesFromBattleLog, combatAnimationCuesFromEvents, shouldDeferDefeat, strikeImpactProgress, type CombatAnimationCue } from './combat-animation'
+import { COMBAT_ANIMATION_QUEUE_LIMIT, combatAnimationCuesFromBattleLog, combatAnimationCuesFromEvents, shouldDeferDefeat, strikeImpactProgress, strikeUsesProjectile, type CombatAnimationCue } from './combat-animation'
 import { createSpellEffectRenderer, isSpellAnimationCue, systemPrefersReducedMotion } from './spell-effects'
 import { createCombatEffect3D } from './board3d-effects'
 import { createBoard3DScene, nearestPropPickTarget } from './board3d-scene'
@@ -54,9 +54,17 @@ function readModels(key: string): Record<string, string> {
 
 function poseForCue(cue: CombatAnimationCue): ActorPose {
   if (cue.kind === 'move') return 'walk'
-  if (cue.kind === 'strike') return cue.attackKind === 'ranged' || cue.attackKind === 'thrown' || (cue.attackKind == null && cue.equipment === 'bow') ? 'ranged-attack' : 'attack'
+  if (cue.kind === 'strike') return strikeUsesProjectile(cue) ? 'ranged-attack' : 'attack'
   if (cue.kind === 'death') return 'death'
   return isSpellAnimationCue(cue) ? 'cast' : 'hit'
+}
+
+/** Для атаки берётся экипировка на момент события, затем возвращается текущая. */
+function applyStrikeAppearance(model: ActorModel, cue: Extract<CombatAnimationCue, { kind: 'strike' }>): void {
+  if (cue.loadout !== undefined) model.setAppearance({
+    version: 2, profile: model.profile, equipment: cue.equipment ?? 'unknown', loadout: cue.loadout,
+  })
+  else if (cue.equipment !== undefined) model.setEquipment(cue.equipment)
 }
 
 function cueActsOnActor(cue: CombatAnimationCue | undefined, actorId: string): boolean {
@@ -383,7 +391,7 @@ export default function TacticalBoard3D(props: Props) {
         const center = actorPresentationCenter(latest.current.map, actor)
         view.root.position.set(center.x, actorGround(latest.current.map, actor), center.y)
         view.root.visible = true
-        view.model.setEquipment(actor.appearance?.equipment)
+        view.model.setAppearance(actor.appearance)
         const deferDeath = actor.defeated && shouldDeferDefeat(actor.id, active?.cue, pending)
         view.model.setPose(deferDeath ? 'idle' : actor.defeated ? 'death' : 'idle', deferDeath ? 0 : actor.defeated ? 1 : undefined)
         view.model.update(.001)
@@ -416,7 +424,7 @@ export default function TacticalBoard3D(props: Props) {
         if (active.effect) scene.add(active.effect.group)
         const actorId = 'actorId' in cue ? cue.actorId : 'targetId' in cue ? cue.targetId : ''
         const model = actorViews.get(actorId)?.model
-        if (cue.kind === 'strike' && cue.equipment !== undefined) model?.setEquipment(cue.equipment)
+        if (cue.kind === 'strike' && model) applyStrikeAppearance(model, cue)
         model?.setPose(poseForCue(cue), 0)
       }
       if (!active) return
@@ -447,7 +455,7 @@ export default function TacticalBoard3D(props: Props) {
           const targetCenter = target ? actorPresentationCenter(current.map, target, to) : { x: to.x + .5, y: to.y + .5 }
           const dx = targetCenter.x - sourceCenter.x, dy = targetCenter.y - sourceCenter.y
           const length = Math.max(1, Math.hypot(dx, dy))
-          const lunge = cue.attackKind === 'ranged' || cue.attackKind === 'thrown' || (cue.attackKind == null && cue.equipment === 'bow') ? 0 : Math.sin(progress * Math.PI) * .23
+          const lunge = strikeUsesProjectile(cue) ? 0 : Math.sin(progress * Math.PI) * .23
           view.root.visible = Boolean(current.map && revealedAt(current.map, from.x, from.y))
             && (!actor || actorPresentationSize(current.map, actor, from) === actorFootprintSize(actor))
           view.root.position.set(sourceCenter.x + dx / length * lunge, actor ? actorGround(current.map, actor, { ...actor, ...from }) : terrainHeightAt(current.map, from.x, from.y), sourceCenter.y + dy / length * lunge)
@@ -634,7 +642,7 @@ export default function TacticalBoard3D(props: Props) {
       for (const actor of visibleActors) {
         const modelKey = settings.current.models[actor.id] ?? actor.modelKey
         const side = actorPresentationSize(map, actor)
-        const key = `${modelKey}:${actor.appearance?.profile ?? ''}:${actor.archetype}:${actor.kind}:${actor.label}:${actor.color}:${side}`
+        const key = `${modelKey}:${actor.appearance?.version ?? ''}:${actor.appearance?.profile ?? ''}:${actor.archetype}:${actor.kind}:${actor.label}:${actor.color}:${side}`
         let view = actorViews.get(actor.id)
         if (view && view.key !== key) {
           disposeActorView(actor.id, view); view = undefined
@@ -643,8 +651,9 @@ export default function TacticalBoard3D(props: Props) {
           const input = { ...actor, modelKey }
           const height = actorHeight(map, input, settings.current.catalog)
           const model = createProceduralActorModel(input, settings.current.catalog, height)
+          model.onEquipmentChange = invalidate
           const cue = active?.cue
-          if (cue?.kind === 'strike' && cue.actorId === actor.id && cue.equipment !== undefined) model.setEquipment(cue.equipment)
+          if (cue?.kind === 'strike' && cue.actorId === actor.id) applyStrikeAppearance(model, cue)
           const root = new THREE.Group()
           root.add(model)
           const ring = new THREE.Mesh(new THREE.RingGeometry(.405 * side - .035, .405 * side, 40), new THREE.MeshBasicMaterial({ color: actor.color ?? '#e2bb72', transparent: true, opacity: .85, side: THREE.DoubleSide }))
@@ -660,6 +669,7 @@ export default function TacticalBoard3D(props: Props) {
               if (disposed || actorViews.get(actor.id) !== expected) { loaded.dispose(); diagnostics.disposed += 1; return }
               root.remove(expected.model); expected.model.dispose(); diagnostics.disposed += 1
               expected.model = loaded; root.add(loaded)
+              loaded.onEquipmentChange = invalidate
               labelsDirty = true
               const currentActor = latest.current.animationActors?.find((item) => item.id === actor.id)
               const cue = active?.cue
@@ -669,7 +679,8 @@ export default function TacticalBoard3D(props: Props) {
               const targetImpact = cue?.kind === 'impact' && cue.targetId === actor.id ? cue : undefined
               const progress = active ? Math.min(1, (performance.now() - active.started) / Math.max(1, active.cue.durationMs)) : 0
               const deferDeath = Boolean(defeated && shouldDeferDefeat(actor.id, cue, pending))
-              loaded.setEquipment(acting && cue?.kind === 'strike' && cue.equipment !== undefined ? cue.equipment : currentActor?.appearance?.equipment)
+              if (acting && cue?.kind === 'strike') applyStrikeAppearance(loaded, cue)
+              else loaded.setAppearance(currentActor?.appearance)
               if (targetStrike) {
                 const impact = strikeImpactProgress(targetStrike)
                 const hit = targetStrike.hit && progress >= impact
@@ -689,7 +700,7 @@ export default function TacticalBoard3D(props: Props) {
             }).catch(() => { /* Отмена при уходе с карты не является ошибкой игрока. */ })
           }
         }
-        if (!(active?.cue.kind === 'strike' && active.cue.actorId === actor.id)) view.model.setEquipment(actor.appearance?.equipment)
+        if (!(active?.cue.kind === 'strike' && active.cue.actorId === actor.id)) view.model.setAppearance(actor.appearance)
         view.root.visible = true
         if (!active || !('actorId' in active.cue) || active.cue.actorId !== actor.id) {
           const center = actorPresentationCenter(map, actor)

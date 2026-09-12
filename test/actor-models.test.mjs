@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -13,13 +13,24 @@ const testTempRoot = fileURLToPath(new URL('../tmp/', import.meta.url))
 mkdirSync(testTempRoot, { recursive: true })
 const buildDir = mkdtempSync(join(testTempRoot, 'actor-models-'))
 const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
-const source = fileURLToPath(new URL('../src/actor-models.ts', import.meta.url))
+const sources = [
+  fileURLToPath(new URL('../src/actor-models.ts', import.meta.url)),
+  fileURLToPath(new URL('../src/model-assets.ts', import.meta.url)),
+]
 const compiled = spawnSync(process.execPath, [
   compiler, '--ignoreConfig', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler',
-  '--lib', 'ES2022,DOM', '--strict', '--skipLibCheck', '--outDir', buildDir, source,
+  '--lib', 'ES2022,DOM', '--strict', '--skipLibCheck', '--outDir', buildDir, ...sources,
 ], { encoding: 'utf8' })
 assert.equal(compiled.status, 0, compiled.stderr || compiled.stdout)
-renameSync(join(buildDir, 'actor-models.js'), join(buildDir, 'actor-models.mjs'))
+for (const name of readdirSync(buildDir).filter((name) => name.endsWith('.js'))) {
+  const path = join(buildDir, name)
+  const source = readFileSync(path, 'utf8').replace(/(from\s+["'])(\.\.?\/[^"']+)(["'])/gu, (match, before, specifier, after) => {
+    if (specifier.startsWith('../server/')) return `${before}${new URL(specifier, new URL('../src/', import.meta.url)).href}${after}`
+    return /\.(json|mjs|js)$/u.test(specifier) ? match : `${before}${specifier}.mjs${after}`
+  })
+  writeFileSync(path, source)
+  renameSync(path, path.replace(/\.js$/u, '.mjs'))
+}
 const models = await import(pathToFileURL(join(buildDir, 'actor-models.mjs')).href)
 const manifest = JSON.parse(readFileSync(new URL('../public/assets/models/manifest.json', import.meta.url), 'utf8'))
 const kaykitRoot = fileURLToPath(new URL('../public/assets/models/kaykit/', import.meta.url))
@@ -189,6 +200,65 @@ test('все KayKit GLB проходят loader lifecycle, позы, тени и
       assert.equal(actor.children.length, 0, `${file}: dispose должен очистить Group`)
     }
   } finally {
+    if (previousSelf === undefined) delete globalThis.self
+    else globalThis.self = previousSelf
+    if (previousCreateImageBitmap === undefined) delete globalThis.createImageBitmap
+    else globalThis.createImageBitmap = previousCreateImageBitmap
+  }
+})
+
+test('v2 использует нейтральную основу и меняет настоящие GLB вещей без замены тела', async () => {
+  const previousSelf = globalThis.self
+  const previousCreateImageBitmap = globalThis.createImageBitmap
+  globalThis.self = globalThis
+  globalThis.createImageBitmap = async () => ({ width: 4, height: 4, close() {} })
+  let actor
+  try {
+    const requests = []
+    const fetcher = async (url) => {
+      assert.ok(String(url).startsWith('/assets/models/'))
+      requests.push(String(url))
+      return new Response(readFileSync(new URL(`../public${url}`, import.meta.url)), { status: 200 })
+    }
+    const empty = { version: 2, profile: 'warrior', equipment: 'unarmed', loadout: {} }
+    actor = await models.createActorModel({ id: 'wardrobe-test', label: 'Герой', kind: 'hero', modelKey: 'traveler', appearance: empty }, { manifest, fetcher })
+    assert.equal(actor.source, 'glb')
+    assert.equal(requests[0], manifest.models.find((entry) => entry.key === 'traveler').equipmentUrl)
+    const body = actor.getObjectByName('Body')
+    const originalGeometry = body.geometry
+    const rightHand = actor.getObjectByName('hand_r')
+    actor.setPose('idle', .42)
+    actor.updateMatrixWorld(true)
+    const idleHand = rightHand.getWorldPosition(new Vector3())
+    actor.setPose('idle', .42)
+    actor.updateMatrixWorld(true)
+    assert.ok(idleHand.distanceTo(rightHand.getWorldPosition(new Vector3())) < 1e-7, 'повторное отображение idle не возвращает руки в bind-позу')
+    actor.setAppearance({ ...empty, equipment: 'sword-shield', loadout: {
+      body: { model_key: 'armor-plate' }, main_hand: { model_key: 'longsword' }, off_hand: { model_key: 'shield' },
+    } })
+    await actor.equipmentReady
+    assert.equal(actor.equipmentStatus, 'ready', actor.equipmentError?.message)
+    assert.equal(actor.getObjectByName('Body'), body)
+    assert.equal(body.geometry, originalGeometry, 'маска не мутирует исходную геометрию')
+    const pieces = []
+    actor.traverse((object) => { if (/^part:?/u.test(object.name) && object.parent?.isBone) pieces.push(object) })
+    assert.ok(pieces.length >= 12, `отдельно закреплено ${pieces.length} частей вместо полного доспеха`)
+    const held = actor.getObjectByName('equipment-main_hand-longsword-default')
+    assert.ok(held, 'реальный длинный меч загружен')
+    let parent = held.parent
+    while (parent && parent !== rightHand) parent = parent.parent
+    assert.equal(parent, rightHand, 'меч следует правой кисти')
+    actor.setPose('walk', .65)
+    actor.update(.001)
+    actor.setAppearance(empty)
+    await actor.equipmentReady
+    assert.equal(actor.getObjectByName('Body'), body)
+    assert.equal(body.visible, true, 'снятие брони восстанавливает базовую одежду')
+    assert.equal(body.geometry, originalGeometry)
+    assert.equal(actor.getObjectByName('equipment-main_hand-longsword-default'), undefined)
+    assert.equal(actor.getObjectByName('hand_r'), rightHand)
+  } finally {
+    actor?.dispose()
     if (previousSelf === undefined) delete globalThis.self
     else globalThis.self = previousSelf
     if (previousCreateImageBitmap === undefined) delete globalThis.createImageBitmap

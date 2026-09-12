@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { strikeImpactProgress, type AttackKind, type CombatAnimationCue, type BoardPoint } from './combat-animation'
+import { strikeImpactProgress, type CombatAnimationCue, type BoardPoint } from './combat-animation'
 import type { TacticalMap } from './types'
 import { revealedAt } from './tactical-map-client'
 import { SPELL_SCHOOL_STYLES, spellBurstCells, type SpellEffectDetail } from './spell-effects'
@@ -8,6 +8,11 @@ import { actorPresentationCenter } from './tactical-ui'
 import type { ActorFootprint } from './types'
 
 type CombatVisualActor = BoardPoint & { id: string; footprint?: ActorFootprint }
+type PhysicalProjectileKind = 'arrow' | 'bolt' | 'bullet' | 'stone' | 'dart' | 'thrown'
+const RANGED_MODEL_KEYS = new Set([
+  'shortbow', 'longbow', 'light-crossbow', 'hand-crossbow', 'heavy-crossbow',
+  'sling', 'blowgun', 'musket', 'pistol',
+])
 
 /** Возвращает центр площади существа, сохраняя один клеточный якорь в тумане. */
 function visualCenter(map: TacticalMap, point: BoardPoint, actor?: CombatVisualActor | null) {
@@ -102,40 +107,57 @@ export function createCombatEffect3D(
   const projectile = (
     from: BoardPoint,
     to: BoardPoint,
-    kind: 'arrow' | 'thrown',
+    kind: PhysicalProjectileKind,
     fromActor?: CombatVisualActor | null,
     toActor?: CombatVisualActor | null,
   ) => {
     if (!visible(from) || !visible(to) || !trajectoryVisible(from, to, fromActor, toActor)) return false
     const root = new THREE.Group()
-    const start = vector(from, kind === 'arrow' ? .92 : .8, fromActor)
-    const finish = vector(to, kind === 'arrow' ? .84 : .72, toActor)
-    if (kind === 'arrow') {
-      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(.026, .026, .72, 6), material)
-      const head = new THREE.Mesh(new THREE.ConeGeometry(.09, .2, 6), material)
+    root.userData.projectileKind = kind
+    const isArrow = kind === 'arrow'
+    const isBolt = kind === 'bolt'
+    const isDart = kind === 'dart'
+    const isBullet = kind === 'bullet'
+    const isStone = kind === 'stone'
+    const startHeight = isArrow ? .92 : isBolt ? .88 : isDart ? .84 : isBullet ? .78 : isStone ? .8 : .8
+    const finishHeight = isArrow ? .84 : isBolt ? .8 : isDart ? .78 : isBullet ? .75 : isStone ? .72 : .72
+    const start = vector(from, startHeight, fromActor)
+    const finish = vector(to, finishHeight, toActor)
+    if (isArrow || isBolt || isDart) {
+      const shaftLength = isArrow ? .72 : isBolt ? .56 : .44
+      const shaftRadius = isArrow ? .026 : isBolt ? .031 : .022
+      const headRadius = isArrow ? .09 : isBolt ? .075 : .055
+      const headLength = isArrow ? .2 : isBolt ? .15 : .13
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(shaftRadius, shaftRadius, shaftLength, 6), material)
+      const head = new THREE.Mesh(new THREE.ConeGeometry(headRadius, headLength, 6), material)
       shaft.position.y = .02
-      head.position.y = .47
+      head.position.y = shaftLength / 2 + headLength / 2
       root.add(shaft, head)
       geometries.add(shaft.geometry)
       geometries.add(head.geometry)
+    } else if (isBullet) {
+      const bullet = new THREE.Mesh(new THREE.CylinderGeometry(.045, .045, .14, 8), material)
+      root.add(bullet)
+      geometries.add(bullet.geometry)
+    } else if (isStone) {
+      const stone = new THREE.Mesh(new THREE.IcosahedronGeometry(.065, 1), material)
+      root.add(stone)
+      geometries.add(stone.geometry)
     } else {
       const mesh = new THREE.Mesh(sphere, material)
       mesh.scale.setScalar(1.45)
+      geometries.add(mesh.geometry)
       root.add(mesh)
     }
     group.add(root)
-    projectiles.push({ root, from: start, to: finish, phase: 0, arrival: cue.kind === 'strike' ? strikeImpactProgress(cue) : 1, arc: kind === 'arrow' ? .28 : .5 })
-    if (kind === 'thrown') {
+    const arc = isArrow ? .28 : isBolt ? .2 : isDart ? .32 : isBullet ? .08 : isStone ? .38 : .5
+    projectiles.push({ root, from: start, to: finish, phase: 0, arrival: cue.kind === 'strike' ? strikeImpactProgress(cue) : 1, arc })
+    if (kind === 'thrown' || isStone) {
       const trailCount = detail === 'full' ? 5 : detail === 'reduced' ? 3 : 1
       const arrival = cue.kind === 'strike' ? strikeImpactProgress(cue) : 1
       for (let index = 0; index < trailCount; index += 1) spark(start, finish, index * .035, 1.1 - index * .14, arrival)
     }
     return true
-  }
-  const attackProjectileKind = (attackKind: AttackKind | undefined, equipment: string | undefined) => {
-    if (attackKind === 'thrown') return 'thrown' as const
-    if (attackKind === 'ranged' || (attackKind == null && equipment === 'bow')) return 'arrow' as const
-    return null
   }
   let travel = false
   if (cue.kind === 'projectile') {
@@ -175,7 +197,20 @@ export function createCombatEffect3D(
     const targetActor = at(cue.targetId)
     const from = cue.from ?? sourceActor
     const to = cue.to ?? targetActor
-    const projectileKind = attackProjectileKind(cue.attackKind, cue.equipment)
+    const modelKey = cue.loadout?.main_hand?.model_key
+    const projectileKind = cue.attackKind === 'thrown'
+      ? 'thrown' as const
+      : cue.attackKind === 'ranged' || (cue.attackKind == null && (cue.equipment === 'bow' || RANGED_MODEL_KEYS.has(String(modelKey ?? ''))))
+        ? modelKey === 'light-crossbow' || modelKey === 'hand-crossbow' || modelKey === 'heavy-crossbow'
+          ? 'bolt' as const
+          : modelKey === 'musket' || modelKey === 'pistol'
+            ? 'bullet' as const
+            : modelKey === 'sling'
+              ? 'stone' as const
+              : modelKey === 'blowgun' || modelKey === 'dart'
+                ? 'dart' as const
+                : 'arrow' as const
+        : null
     let launched = false
     if (projectileKind) {
       // Явный дальний/метательный удар рисуется только по зафиксированной

@@ -1,0 +1,223 @@
+{
+  "version": 1,
+  "schema": "skazanie-equipment-base-notice/v1",
+  "outputs": [
+    {
+      "bytes": 3595468,
+      "sha256": "e721357b81b7bdbb944e1341aad32f7638119d846a7f09c7c88bd0c5ba0255fc",
+      "box": {
+        "min": [
+          -0.8994146396161853,
+          -1.1823871742810965e-10,
+          -0.184477243029628
+        ],
+        "max": [
+          0.8994147614420107,
+          1.8140440975048162,
+          0.16754125185883864
+        ],
+        "size": [
+          1.798829401058196,
+          1.814044097623055,
+          0.35201849488846665
+        ]
+      },
+      "animations": [
+        "Idle_Loop",
+        "Walk_Loop",
+        "Sword_Attack",
+        "Spell_Simple_Shoot",
+        "Hit_Chest",
+        "Death01"
+      ],
+      "meshes": 8,
+      "key": "human-male",
+      "label": "Человек · мужская основа",
+      "file": "human-male.glb",
+      "gender": "male",
+      "outfit": "Male_Peasant.gltf",
+      "regions": {
+        "arms": "Arms",
+        "body": "Body",
+        "legs": "Legs",
+        "feet": "Feet",
+        "head": "Head_Face"
+      },
+      "rig": {
+        "root": "root",
+        "head": "Head",
+        "handSockets": [
+          "hand_l",
+          "hand_r"
+        ],
+        "bones": 65
+      },
+      "forwardAxis": "+Z",
+      "feetOrigin": "minY=0",
+      "feetOffset": 0.003967432418810608,
+      "armor": "none-baked"
+    },
+    {
+      "bytes": 3257208,
+      "sha256": "57e61f7b0db5e63d596a502526c5fa5fd416435d502dca2d29d5f50757e314f0",
+      "box": {
+        "min": [
+          -0.8319412525304033,
+          -5.551115123125783e-17,
+          -0.16725511568811305
+        ],
+        "max": [
+          0.8319412587279007,
+          1.7733873879562496,
+          0.16754120560168187
+        ],
+        "size": [
+          1.663882511258304,
+          1.7733873879562496,
+          0.3347963212897949
+        ]
+      },
+      "animations": [
+        "Idle_Loop",
+        "Walk_Loop",
+        "Sword_Attack",
+        "Spell_Simple_Shoot",
+        "Hit_Chest",
+        "Death01"
+      ],
+      "meshes": 7,
+      "key": "human-female",
+      "label": "Человек · женская основа",
+      "file": "human-female.glb",
+      "gender": "female",
+      "outfit": "Female_Peasant.gltf",
+      "regions": {
+        "arms": "Arms",
+        "body": "Body",
+        "legs": "Legs",
+        "feet": "Feet",
+        "head": "Head_Face"
+      },
+      "rig": {
+        "root": "root",
+        "head": "Head",
+        "handSockets": [
+          "hand_l",
+          "hand_r"
+        ],
+        "bones": 65
+      },
+      "forwardAxis": "+Z",
+      "feetOrigin": "minY=0",
+      "feetOffset": 0.006743536157802599,
+      "armor": "none-baked"
+    }
+  ],
+  "stableRegions": {
+    "arms": "Arms",
+    "body": "Body",
+    "legs": "Legs",
+    "feet": "Feet",
+    "head": "Head_Face"
+  },
+  "rig": {
+    "root": "root",
+    "head": "Head",
+    "handSockets": [
+      "hand_l",
+      "hand_r"
+    ],
+    "bones": 65,
+    "forwardAxis": "+Z"
+  },
+  "bakedArmor": false,
+  "safeHideableAccessories": {
+    "quaterniusRanger": [
+      "Male_Ranger_Acc_Pauldron",
+      "Male_Ranger_Arms_Bracer",
+      "Male_Ranger_Body_Belt_1",
+      "Male_Ranger_Body_Belt_2",
+      "Male_Ranger_Feet_Boots",
+      "Male_Ranger_Head_Hood"
+    ],
+    "quaterniusMage": [
+      "Male_Ranger_Acc_Pauldron",
+      "Male_Ranger_Arms_Bracer",
+      "Male_Ranger_Body_Belt_1",
+      "Male_Ranger_Body_Belt_2",
+      "Male_Ranger_Feet_Boots",
+      "Male_Ranger_Head_Hood"
+    ],
+    "kaykitKnight": [
+      "Knight_Helmet",
+      "Knight_Cape",
+      "1H_Sword",
+      "Round_Shield"
+    ],
+    "kaykitMage": [
+      "Mage_Hat",
+      "Mage_Cape",
+      "2H_Staff",
+      "Spellbook"
+    ],
+    "kaykitRogue": [
+      "Rogue_Cape",
+      "Knife_Offhand"
+    ],
+    "kaykitSkeleton": [
+      "Skeleton_Warrior_Helmet",
+      "Skeleton_Warrior_Cloak"
+    ]
+  },
+  "neverHide": [
+    "Head",
+    "Head_Face",
+    "Head_Eyes",
+    "Head_Eyebrows",
+    "ranger_Head_Face",
+    "traveler_Head_Face",
+    "Male_Peasant_Body",
+    "Female_Peasant_Body"
+  ],
+  "provenance": [
+    {
+      "id": "universal-base-characters-standard",
+      "author": "Quaternius",
+      "url": "https://quaternius.com/packs/universalbasecharacters.html",
+      "archive": "Universal-Base-Characters-Standard.zip",
+      "sha256": "fdbf1804c90dfc1ea03e992bff7da2dfd1a79318e13270a660180f9308455f40",
+      "license": "CC0-1.0",
+      "bytes": 128968391,
+      "path": "Universal-Base-Characters-Standard.zip"
+    },
+    {
+      "id": "modular-character-outfits-fantasy-standard",
+      "author": "Quaternius",
+      "url": "https://quaternius.com/packs/modularcharacteroutfitsfantasy.html",
+      "archive": "Modular-Character-Outfits-Fantasy-Standard.zip",
+      "sha256": "c3468b18871cc8c8f05ab14df7712baf22cb9f389cbd870babf130e595187f70",
+      "license": "CC0-1.0",
+      "bytes": 294347394,
+      "path": "Modular-Character-Outfits-Fantasy-Standard.zip"
+    },
+    {
+      "id": "universal-animation-library-standard",
+      "author": "Quaternius",
+      "url": "https://quaternius.itch.io/universal-animation-library",
+      "archive": "Universal-Animation-Library-Standard.zip",
+      "sha256": "cc73fc4e495b82958207316596317a3f40b9fa38065bde1027937452da537724",
+      "license": "CC0-1.0",
+      "bytes": 15904933,
+      "path": "Universal-Animation-Library-Standard.zip"
+    }
+  ],
+  "immutableRelease": {
+    "id": "equipment-bases-40520897dfea4af085180fc82b0083baa",
+    "glbConcatSha256": "40520897dfea4af085180fc82b0083baa9e15ba3dcd1160b140f5eb42fa1d879",
+    "files": [
+      "human-male.glb",
+      "human-female.glb"
+    ],
+    "candidate": "tmp/equipment-bases"
+  }
+}

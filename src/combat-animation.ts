@@ -1,15 +1,38 @@
-import type { BattleEvent, GameEvent } from './types'
+import { normalizePublicLoadout } from '../server/equipment-visuals.mjs'
+import type { BattleEvent, GameEvent, PublicLoadout } from './types'
 import { spellIdFromEffect, spellVisualProfile, systemPrefersReducedMotion, type MagicSchool, type SpellEffectDetail } from './spell-effects'
 
 export type BoardPoint = { x: number; y: number }
 
 export type AttackKind = 'melee' | 'ranged' | 'thrown'
 export type AttackEquipment = 'unknown' | 'unarmed' | 'sword' | 'sword-shield' | 'bow' | 'staff' | 'dagger'
-export type AttackVisualSnapshot = { version: 1; equipment: AttackEquipment }
+export type AttackVisualSnapshot = {
+  version: 1
+  equipment: AttackEquipment
+} | {
+  version: 2
+  equipment: AttackEquipment
+  loadout: PublicLoadout
+}
+
+const RANGED_WEAPON_MODEL_KEYS = new Set([
+  'shortbow', 'longbow', 'light-crossbow', 'hand-crossbow', 'heavy-crossbow',
+  'sling', 'blowgun', 'musket', 'pistol',
+])
+
+function cueUsesRangedModel(cue: Extract<CombatAnimationCue, { kind: 'strike' }>): boolean {
+  const modelKey = cue.loadout?.main_hand?.model_key
+  return typeof modelKey === 'string' && RANGED_WEAPON_MODEL_KEYS.has(modelKey)
+}
 
 /** Доля такта, после которой снаряд достигает цели и можно включать hit pose. */
+export function strikeUsesProjectile(cue: Extract<CombatAnimationCue, { kind: 'strike' }>): boolean {
+  return cue.attackKind === 'ranged' || cue.attackKind === 'thrown'
+    || (cue.attackKind == null && (cue.equipment === 'bow' || cueUsesRangedModel(cue)))
+}
+
 export function strikeImpactProgress(cue: Extract<CombatAnimationCue, { kind: 'strike' }>): number {
-  return cue.attackKind === 'ranged' || cue.attackKind === 'thrown' || (cue.attackKind == null && cue.equipment === 'bow') ? .72 : .3
+  return strikeUsesProjectile(cue) ? .72 : .3
 }
 
 type CombatAnimationPresentation = {
@@ -40,6 +63,8 @@ type PhysicalAnimationCue =
       attackKind?: AttackKind
       /** Снимок снаряжения на момент удара; не читается из текущего инвентаря. */
       equipment?: AttackEquipment
+      /** Полный публичный snapshot v2; v1 cues сохраняют отсутствие поля. */
+      loadout?: PublicLoadout
       /** Концы серверной траектории, если она была в событии. */
       from?: BoardPoint
       to?: BoardPoint
@@ -236,9 +261,16 @@ function attackEquipment(value: unknown): AttackEquipment | undefined {
 
 function attackVisualSnapshot(value: unknown): AttackVisualSnapshot | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
-  const snapshot = value as { version?: unknown; equipment?: unknown }
-  if (snapshot.version !== 1) return null
-  return { version: 1, equipment: attackEquipment(snapshot.equipment) ?? 'unknown' }
+  const snapshot = value as { version?: unknown; equipment?: unknown; loadout?: unknown }
+  if (snapshot.version === 1) return { version: 1, equipment: attackEquipment(snapshot.equipment) ?? 'unknown' }
+  if (snapshot.version === 2) {
+    return {
+      version: 2,
+      equipment: attackEquipment(snapshot.equipment) ?? 'unknown',
+      loadout: normalizePublicLoadout(snapshot.loadout),
+    }
+  }
+  return null
 }
 
 function trajectoryEnds(value: unknown): { from: BoardPoint; to: BoardPoint } | null {
@@ -248,7 +280,7 @@ function trajectoryEnds(value: unknown): { from: BoardPoint; to: BoardPoint } | 
   return { from: trajectory[0]!, to: trajectory.at(-1)! }
 }
 
-type AttackCueFields = Pick<Extract<PhysicalAnimationCue, { kind: 'strike' }>, 'attackKind' | 'equipment' | 'from' | 'to'>
+type AttackCueFields = Pick<Extract<PhysicalAnimationCue, { kind: 'strike' }>, 'attackKind' | 'equipment' | 'loadout' | 'from' | 'to'>
 
 function attackCueFieldsFromEvent(payload: Record<string, unknown>): AttackCueFields {
   const visual = attackVisualSnapshot(payload.attack_visual ?? payload.attackVisual)
@@ -256,6 +288,7 @@ function attackCueFieldsFromEvent(payload: Record<string, unknown>): AttackCueFi
   return {
     ...(attackKind(payload.attack_kind ?? payload.attackKind) ? { attackKind: attackKind(payload.attack_kind ?? payload.attackKind) } : {}),
     ...(visual ? { equipment: visual.equipment } : {}),
+    ...(visual?.version === 2 ? { loadout: visual.loadout } : {}),
     ...(ends ?? {}),
   }
 }
@@ -277,6 +310,7 @@ function attackCueFieldsFromBattleLog(event: BattleEvent): AttackCueFields {
   return {
     ...(attackKind(value.attackKind ?? value.attack_kind) ? { attackKind: attackKind(value.attackKind ?? value.attack_kind) } : {}),
     ...(visual ? { equipment: visual.equipment } : attackEquipment(value.attackEquipment ?? value.equipment) ? { equipment: attackEquipment(value.attackEquipment ?? value.equipment) } : {}),
+    ...(visual?.version === 2 ? { loadout: visual.loadout } : {}),
     ...(ends ?? fallbackEnds),
   }
 }

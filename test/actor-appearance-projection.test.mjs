@@ -27,9 +27,12 @@ test('два игрока получают одинаковое публично
   const a = campaignStateForViewer(source, { id: 'a', role: 'player' }, 'hero-a')
   const b = campaignStateForViewer(source, { id: 'b', role: 'player' }, 'hero-b')
   assert.deepEqual(a.actor_appearances, b.actor_appearances)
-  assert.deepEqual(a.actor_appearances['hero-a'], { version: 1, profile: 'warrior', equipment: 'sword-shield' })
-  assert.deepEqual(a.actor_appearances['hero-b'], { version: 1, profile: 'mage', equipment: 'unarmed' })
-  assert.deepEqual(a.actor_appearances.seen, { version: 1, profile: 'skeleton', equipment: 'unknown' })
+  assert.deepEqual(a.actor_appearances['hero-a'], {
+    version: 2, profile: 'warrior', equipment: 'sword-shield',
+    loadout: { main_hand: { model_key: 'longsword' }, off_hand: { model_key: 'shield' } },
+  })
+  assert.deepEqual(a.actor_appearances['hero-b'], { version: 2, profile: 'mage', equipment: 'unarmed', loadout: {} })
+  assert.deepEqual(a.actor_appearances.seen, { version: 2, profile: 'skeleton', equipment: 'unknown', loadout: {} })
   assert.equal(a.actor_appearances.hidden, undefined)
   assert.doesNotMatch(JSON.stringify(a.actor_appearances), /Тайный|inventory|item_id|armor|hp/u)
   assert.equal(JSON.stringify(source), before)
@@ -65,6 +68,6 @@ test('замаскированная личность не восстанавл�
       inventory: [{ id: 'secret-bow', name: 'Лук', type: 'weapon', equipped: true, visibility: 'gm_only' }],
     }, { id: 'hidden', name: 'Гоблин', visibility: 'gm_only' }],
   })
-  assert.deepEqual(appearances.masked, { version: 1, profile: 'warrior', equipment: 'unknown' })
+  assert.deepEqual(appearances.masked, { version: 2, profile: 'warrior', equipment: 'unknown', loadout: {} })
   assert.equal(appearances.hidden, undefined)
 })

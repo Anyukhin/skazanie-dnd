@@ -1,3 +1,9 @@
+import {
+  EQUIPMENT_VISUAL_SCHEMA_VERSION,
+  normalizePublicLoadout,
+  publicLoadoutForItems,
+} from './equipment-visuals.mjs'
+
 const PROFILES = Object.freeze(['warrior', 'mage', 'rogue', 'goblin', 'skeleton', 'beast'])
 const EQUIPMENT = Object.freeze(['unknown', 'unarmed', 'sword', 'sword-shield', 'bow', 'staff', 'dagger'])
 const HIDDEN_VISIBILITIES = new Set(['gm_only', 'npc_private'])
@@ -6,10 +12,11 @@ const VISIBILITY_KEYS = Object.freeze(['visibility', 'visibility_level', 'visibi
 const PRIVATE_FLAGS = Object.freeze(['hidden', 'private', 'gm_only', 'npc_private', 'secret', 'unrevealed', 'private_notes', 'gm_notes'])
 
 /**
- * Оформление намеренно выводится из небольшого публичного словаря. Модулю
- * никогда не нужны стат-блок существа или инвентарь NPC.
+ * Оформление выводится из небольшого публичного словаря. Модулю никогда не
+ * нужны стат-блок существа или закрытый инвентарь NPC.
  */
-export const ACTOR_APPEARANCE_SCHEMA_VERSION = 1
+export const ACTOR_APPEARANCE_SCHEMA_VERSION = EQUIPMENT_VISUAL_SCHEMA_VERSION
+export const ACTOR_APPEARANCE_LEGACY_SCHEMA_VERSION = 1
 export const ACTOR_APPEARANCE_PROFILES = PROFILES
 export const ACTOR_APPEARANCE_EQUIPMENT = EQUIPMENT
 
@@ -53,16 +60,15 @@ function equipmentForItem(item) {
   return 'unknown'
 }
 
-/**
- * @param {unknown} items
- * @returns {boolean}
- */
+/** @param {unknown} items @returns {boolean} */
 function publicShieldIn(items) {
   return (Array.isArray(items) ? items : []).some((item) => item?.equipped === true && itemIsShield(item))
 }
 
 /**
- * Классифицирует снимок снаряжения по публичным записям вещей.
+ * Классифицирует публичный снимок экипировки по старому coarse-словарю.
+ * Подробные модели находятся в `equipment-visuals.mjs` и не заменяют этот
+ * alias: старые клиенты продолжают отрисовывать семь прежних вариантов.
  *
  * @param {unknown} items
  * @returns {'unknown'|'unarmed'|'sword'|'sword-shield'|'bow'|'staff'|'dagger'}
@@ -77,20 +83,52 @@ export function equipmentForPublicItems(items) {
 }
 
 /**
+ * Сохраняет старый attack_visual v1 без изменения формы и принимает новый
+ * snapshot v2 с безопасной loadout map.
+ *
  * @param {unknown} value
- * @returns {{version: 1, equipment: string}|undefined}
+ * @returns {{version: 1, equipment: string}|{version: 2, equipment: string, loadout: Record<string, object|null>}|undefined}
  */
 export function normalizeAttackVisual(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value) || value.version !== 1 || !EQUIPMENT.includes(String(value.equipment))) return undefined
-  return { version: 1, equipment: String(value.equipment) }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  if (value.version === ACTOR_APPEARANCE_LEGACY_SCHEMA_VERSION) {
+    if (!EQUIPMENT.includes(String(value.equipment))) return undefined
+    return { version: 1, equipment: String(value.equipment) }
+  }
+  if (value.version !== ACTOR_APPEARANCE_SCHEMA_VERSION || !EQUIPMENT.includes(String(value.equipment))) return undefined
+  return {
+    version: ACTOR_APPEARANCE_SCHEMA_VERSION,
+    equipment: String(value.equipment),
+    loadout: normalizePublicLoadout(value.loadout),
+  }
+}
+
+function attackItemsWithSelected(items, item) {
+  const source = Array.isArray(items) ? items : []
+  if (!item) return source
+  const selectedSlots = Object.keys(publicLoadoutForItems([{ ...item, equipped: true }]))
+  const remaining = source.map((candidate) => {
+    if (!candidate?.equipped) return candidate
+    const slots = publicLoadoutForItems([candidate])
+    return selectedSlots.some((slot) => Object.hasOwn(slots, slot)) ? { ...candidate, equipped: false } : candidate
+  })
+  const itemId = String(item.id ?? item.item_id ?? '')
+  if (!itemId) return [...remaining, { ...item, equipped: true }]
+  let replaced = false
+  const next = remaining.map((candidate) => {
+    if (String(candidate?.id ?? candidate?.item_id ?? '') !== itemId) return candidate
+    replaced = true
+    return { ...candidate, equipped: true }
+  })
+  return replaced ? next : [...next, { ...item, equipped: true }]
 }
 
 /**
- * Снимок события строится из авторитетной вещи или публичного текста действия
- * NPC. Закрытая привязка оружия NPC этим API намеренно не принимается.
+ * Снимок строится из авторитетной вещи или публичного текста действия NPC.
+ * Закрытая привязка оружия NPC этим API намеренно не принимается.
  *
  * @param {{item?: object|null, items?: unknown, attackKind?: unknown, itemName?: unknown, actionName?: unknown, unarmed?: boolean}} [input]
- * @returns {{version: 1, equipment: string}}
+ * @returns {{version: 2, equipment: string, loadout: Record<string, object|null>}}
  */
 export function attackVisualFor(input = {}) {
   const item = input.item && typeof input.item === 'object' && !Array.isArray(input.item) ? input.item : null
@@ -99,8 +137,22 @@ export function attackVisualFor(input = {}) {
     : input.unarmed === true
       ? 'unarmed'
       : equipmentForAction(input.actionName ?? input.itemName, input.attackKind)
-  if (item && equipment === 'sword' && publicShieldIn(input.items)) equipment = 'sword-shield'
-  return { version: ACTOR_APPEARANCE_SCHEMA_VERSION, equipment }
+  const items = attackItemsWithSelected(input.items, item)
+  if (item && equipment === 'sword' && publicShieldIn(items)) equipment = 'sword-shield'
+  let loadout = publicLoadoutForItems(items)
+  if (!item && !Array.isArray(input.items)) {
+    // Для NPC допустимо только точное публичное название действия. Закрытый
+    // инвентарь не нужен; когти, укус и неоднозначное имя не создают оружие.
+    const publicAction = publicLoadoutForItems([{
+      id: 'public-action', name: input.actionName ?? input.itemName, type: 'weapon', equipped: true,
+    }])
+    if (publicAction.main_hand?.model_key) loadout = publicAction
+  }
+  return {
+    version: ACTOR_APPEARANCE_SCHEMA_VERSION,
+    equipment,
+    loadout,
+  }
 }
 
 function equipmentForAction(actionName, attackKind) {
@@ -152,7 +204,7 @@ export function actorProfileFor(actor = {}) {
 /**
  * @param {unknown} kind
  * @param {unknown} actor
- * @returns {{version: 1, profile: string, equipment: string}}
+ * @returns {{version: 2, profile: string, equipment: string, loadout: Record<string, object|null>}}
  */
 export function actorAppearanceFor(kind, actor = {}) {
   const source = actor && typeof actor === 'object' && !Array.isArray(actor) ? actor : {}
@@ -173,5 +225,6 @@ export function actorAppearanceFor(kind, actor = {}) {
     identity_known: source.identity_known,
   })
   const equipment = appearanceKind === 'hero' ? equipmentForPublicItems(source.inventory) : 'unknown'
-  return { version: ACTOR_APPEARANCE_SCHEMA_VERSION, profile, equipment }
+  const loadout = appearanceKind === 'hero' ? publicLoadoutForItems(source.inventory) : {}
+  return { version: ACTOR_APPEARANCE_SCHEMA_VERSION, profile, equipment, loadout }
 }

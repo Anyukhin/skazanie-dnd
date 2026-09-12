@@ -1,3 +1,6 @@
+import type { PublicLoadout } from '../server/equipment-visuals.mjs'
+export type { PublicLoadout } from '../server/equipment-visuals.mjs'
+
 export type Speaker = 'narrator' | 'player' | 'system'
 
 export type Message = {
@@ -1136,10 +1139,7 @@ export type BattleEvent = {
    */
   attackKind?: 'melee' | 'ranged' | 'thrown'
   /** Снимок снаряжения в момент подтверждённой атаки; у старых записей отсутствует. */
-  attackVisual?: {
-    version: 1
-    equipment: 'unknown' | 'unarmed' | 'sword' | 'sword-shield' | 'bow' | 'staff' | 'dagger'
-  }
+  attackVisual?: AttackVisualSnapshot
   /** Выстрел за пределы обычной дальности: он же помеха на бросок. */
   longRange?: boolean
   /** Насколько реакция срезала урон и было ли перебито заклинание. */
@@ -1390,10 +1390,30 @@ export type AssetPreparationReport = {
   items_note: string
 }
 
-export type ActorAppearance = {
+export type ActorAppearanceV1 = {
   version: 1
   profile: 'warrior' | 'mage' | 'rogue' | 'goblin' | 'skeleton' | 'beast'
   equipment: 'unknown' | 'unarmed' | 'sword' | 'sword-shield' | 'bow' | 'staff' | 'dagger'
+}
+
+export type ActorAppearanceV2 = {
+  version: 2
+  profile: ActorAppearanceV1['profile']
+  /** Coarse v1 alias для старых компонентов и нейтрального fallback. */
+  equipment: ActorAppearanceV1['equipment']
+  /** Серверная map только видимых надетых слотов; missing означает «не надето». */
+  loadout: PublicLoadout
+}
+
+export type ActorAppearance = ActorAppearanceV1 | ActorAppearanceV2
+
+export type AttackVisualSnapshot = {
+  version: 1
+  equipment: ActorAppearanceV1['equipment']
+} | {
+  version: 2
+  equipment: ActorAppearanceV1['equipment']
+  loadout: PublicLoadout
 }
 
 /**

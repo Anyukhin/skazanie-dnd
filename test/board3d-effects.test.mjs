@@ -12,6 +12,7 @@ mkdirSync(join(repositoryRoot, 'tmp'), { recursive: true })
 const buildDir = mkdtempSync(join(repositoryRoot, 'tmp', 'board3d-effects-'))
 mkdirSync(join(buildDir, 'server'), { recursive: true })
 copyFileSync(join(repositoryRoot, 'server', 'actor-footprint.mjs'), join(buildDir, 'server', 'actor-footprint.mjs'))
+copyFileSync(join(repositoryRoot, 'server', 'equipment-visuals.mjs'), join(buildDir, 'server', 'equipment-visuals.mjs'))
 process.on('exit', () => rmSync(buildDir, { recursive: true, force: true }))
 const compiled = spawnSync(process.execPath, [
   join(repositoryRoot, 'node_modules/typescript/bin/tsc'), '--ignoreConfig', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler',
@@ -60,6 +61,29 @@ test('3D ranged strike летит физической стрелой по event
   effect.update(.73)
   assert.equal(arrow.visible, false, 'к моменту impact стрела уже прилетела')
   effect.dispose()
+})
+
+test('3D ranged strike выбирает bolt, bullet, stone и dart по v2 loadout', () => {
+  const base = {
+    kind: 'strike', actorId: 'mage', targetId: 'target', hit: true, amount: 5,
+    attackKind: 'ranged', equipment: 'unknown', from: { x: 1, y: 2 }, to: { x: 6, y: 2 }, durationMs: 480,
+  }
+  for (const [modelKey, expected] of [
+    ['light-crossbow', 'bolt'], ['heavy-crossbow', 'bolt'], ['pistol', 'bullet'],
+    ['musket', 'bullet'], ['sling', 'stone'], ['blowgun', 'dart'],
+  ]) {
+    const effect = createCombatEffect3D({
+      ...base,
+      loadout: { main_hand: { model_key: modelKey } },
+    }, actors, map())
+    const projectile = effect.group.children.find((child) => child.type === 'Group')
+    assert.ok(projectile, modelKey)
+    assert.equal(projectile.userData.projectileKind, expected, modelKey)
+    effect.dispose()
+  }
+  const fallback = createCombatEffect3D(base, actors, map())
+  assert.equal(fallback.group.children.find((child) => child.type === 'Group')?.userData.projectileKind, 'arrow')
+  fallback.dispose()
 })
 
 test('3D thrown strike создаёт физический снаряд, а не луч', () => {

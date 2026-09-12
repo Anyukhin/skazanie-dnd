@@ -10,12 +10,13 @@ import { fallbackCombatSpells, spellNameById, spellSelectionRules } from './comb
 import { classSkillRulesFor, featureChoiceGroupsFor, normalizedSelectedFeatures } from './character-progression'
 import { itemImageFor, starterItemPresentationFor } from './item-images'
 import type { FeatureChoiceGroup } from './character-progression'
-import type { InventoryItem, ItemUseOptions, Player } from './types'
+import type { ActorAppearance, InventoryItem, ItemUseOptions, Player } from './types'
 import { playerRoleLabel } from './player-experience'
 import { CombatIcon } from './CombatIcon'
 import { PhbCharacterOptions } from './PhbCharacterOptions'
 import type { PhbCharacterOptionsCatalog, PhbCharacterOptionsValue } from './phb-character-types'
 import { resolveCharacterCreationFeat } from '../server/character-creation-feats.mjs'
+import { EquipmentPreview } from './EquipmentPreview'
 
 // Сокращения характеристик общие с боевой хроникой: словарь один, и лист героя
 // с журналом боя не разъезжаются в подписях.
@@ -698,6 +699,8 @@ export function InventoryView({
   onAttune,
   onActivate,
   onCreateHero,
+  campaignId = '',
+  appearance,
 }: {
   player: Player
   party: Player[]
@@ -713,6 +716,8 @@ export function InventoryView({
   onAttune: (itemId: string, attuned: boolean) => void
   onActivate: (itemId: string, activated: boolean) => void
   onCreateHero?: () => void
+  campaignId?: string
+  appearance?: ActorAppearance
 }) {
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState<InventoryCategory>('all')
@@ -864,6 +869,7 @@ export function InventoryView({
       <div className="inventory-currency-summary"><Coins size={19} /><span><b>{player.currency.gold} зм</b><small>{player.currency.platinum} пл · {player.currency.silver} см · {player.currency.copper} мм</small></span></div>
       <div><Shield size={19} /><span><b>{attunedCount}</b><small>настроено · лимит {player.inventoryLoad?.attunement_limit ?? 3}</small></span></div>
     </div>
+    {campaignId && !setupRequired && <EquipmentPreview player={player} campaignId={campaignId} appearance={appearance} />}
     <nav className="inventory-categories" aria-label="Категории инвентаря">
       {inventoryCategoryOptions.map(({ id, label }) => {
         const count = categoryCountFor(id)

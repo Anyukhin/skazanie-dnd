@@ -12,6 +12,7 @@ const buildDir = mkdtempSync(join(tmpdir(), 'skazanie-spell-effects-'))
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url))
 mkdirSync(join(buildDir, 'server'), { recursive: true })
 copyFileSync(join(repositoryRoot, 'server', 'actor-footprint.mjs'), join(buildDir, 'server', 'actor-footprint.mjs'))
+copyFileSync(join(repositoryRoot, 'server', 'equipment-visuals.mjs'), join(buildDir, 'server', 'equipment-visuals.mjs'))
 const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
 const sources = ['src/spell-effects.ts', 'src/combat-animation.ts', 'src/area-geometry.ts', 'src/tactical-map-client.ts', 'src/board-render.ts']
   .map((relative) => join(repositoryRoot, relative))
@@ -200,6 +201,25 @@ test('AttackResolved передаёт вид атаки, снимок снаря
   assert.equal(cue.equipment, 'bow')
   assert.deepEqual(cue.from, { x: 1, y: 2 })
   assert.deepEqual(cue.to, { x: 5, y: 3 })
+  assert.equal(animation.strikeImpactProgress(cue), .72)
+})
+
+test('v2 attack snapshot доносит loadout в strike cue и сохраняет старый anchor trajectory', () => {
+  const [cue] = animation.combatAnimationCuesFromEvents([{
+    event_id: 'attack-crossbow', command_id: 'attack-crossbow', event_type: 'AttackResolved', actor_id: 'hero', target_ids: ['goblin'],
+    payload: {
+      hit: true,
+      attack_visual: {
+        version: 2,
+        equipment: 'unknown',
+        loadout: { main_hand: { model_key: 'heavy-crossbow', variant: 'default' }, off_hand: null },
+      },
+      trajectory: [{ x: 2, y: 1 }, { x: 6, y: 1 }],
+    },
+  }])
+  assert.deepEqual(cue.loadout, { main_hand: { model_key: 'heavy-crossbow' }, off_hand: null })
+  assert.deepEqual(cue.from, { x: 2, y: 1 })
+  assert.deepEqual(cue.to, { x: 6, y: 1 })
   assert.equal(animation.strikeImpactProgress(cue), .72)
 })
 

@@ -13,6 +13,18 @@ const SHIELD = {
   id: 'shield', catalog_id: 'srd_5_2_1:shield', name: 'Щит', type: 'armor', quantity: 1, equipped: true,
 }
 
+test('снимок выбранного оружия заменяет прежнюю руку, сохраняя щит и доспех', () => {
+  const dagger = { id: 'dagger', catalog_id: 'srd_5_2_1:dagger', type: 'weapon', quantity: 1, equipped: false }
+  const plate = { id: 'plate', catalog_id: 'srd_5_2_1:plate-armor', type: 'armor', quantity: 1, equipped: true }
+  const items = [SWORD, SHIELD, dagger, plate]
+  const visual = attackVisualFor({ item: dagger, items, attackKind: 'melee' })
+  assert.deepEqual(visual.loadout, {
+    main_hand: { model_key: 'dagger' }, off_hand: { model_key: 'shield' }, body: { model_key: 'armor-plate' },
+  })
+  assert.equal(dagger.equipped, false)
+  assert.equal(SWORD.equipped, true, 'снимок не мутирует авторитетный инвентарь')
+})
+
 function state() {
   return normalizeCampaignState({
     sessionCode: 'ATTACK-VISUAL',
@@ -69,11 +81,37 @@ test('неизвестная версия или equipment не проходят
   const initial = state()
   const invalid = event({
     kept: 1, modifier: 0, total: 1, armor_class: 12, hit: false,
-    attack_visual: { version: 2, equipment: 'sword', url: 'https://private.invalid/model.glb' },
+    attack_visual: { version: 3, equipment: 'sword', url: 'https://private.invalid/model.glb' },
   })
   const after = applyGameEvent(initial, invalid)
   assert.equal(after.battleLog.at(-1).attackVisual, undefined)
   assert.equal(mechanicsForViewer([invalid], { role: 'player' }, 'hero', initial)[0].payload.attack_visual, undefined)
+})
+
+test('v2 attack snapshot принимает только безопасную loadout map', () => {
+  const initial = state()
+  const after = applyGameEvent(initial, event({
+    kept: 15, modifier: 5, total: 20, armor_class: 12, hit: true,
+    attack_visual: {
+      version: 2,
+      equipment: 'sword-shield',
+      loadout: {
+        main_hand: { model_key: 'longsword', variant: 'flaming', item_id: 'secret' },
+        off_hand: { model_key: 'shield', variant: 'unknown' },
+        body: { model_key: 'https://private.invalid/model.glb' },
+        url: 'https://private.invalid/model.glb',
+      },
+    },
+  }))
+  assert.deepEqual(after.battleLog.at(-1).attackVisual, {
+    version: 2,
+    equipment: 'sword-shield',
+    loadout: {
+      main_hand: { model_key: 'longsword', variant: 'flaming' },
+      off_hand: null,
+      body: null,
+    },
+  })
 })
 
 test('новая проекция атаки не удаляет прежние координаты движения и заклинания', () => {
@@ -132,19 +170,46 @@ test('новая атака героя фиксирует выбранный м�
     context: { serverAuthoritativeCombat: true },
   })
   const attack = result.events.find((candidate) => candidate.event_type === 'AttackResolved')
-  assert.deepEqual(attack.payload.attack_visual, { version: 1, equipment: 'sword-shield' })
+  assert.deepEqual(attack.payload.attack_visual, {
+    version: 2,
+    equipment: 'sword-shield',
+    loadout: { main_hand: { model_key: 'longsword' }, off_hand: { model_key: 'shield' } },
+  })
+})
+
+test('базовая атака без item_id сохраняет видимые вещи героя в снимке', () => {
+  const initial = state()
+  initial.players[0].inventory.push({ id: 'plate', catalog_id: 'srd_5_2_1:plate-armor', type: 'armor', quantity: 1, equipped: true })
+  const result = resolveCommand({
+    campaign_id: 'campaign-1', command_id: 'base-attack', command_type: 'MakeAttack',
+    actor_id: 'hero', target_id: 'enemy', server_authoritative: true,
+  }, initial, {
+    diceService: new DiceService({ rng: new SequenceDiceRng([12, 4]), idFactory: () => 'base-roll' }),
+    context: { serverAuthoritativeCombat: true },
+  })
+  assert.deepEqual(result.events.find((event) => event.event_type === 'AttackResolved')?.payload.attack_visual.loadout, {
+    main_hand: { model_key: 'longsword' }, off_hand: { model_key: 'shield' }, body: { model_key: 'armor-plate' },
+  })
 })
 
 test('закрытый щит не меняет публичный snapshot, а старый replay не получает поле', () => {
   const initial = state()
   const hiddenShield = { ...SHIELD, visibility: 'gm_only' }
   initial.players[0].inventory = [SWORD, hiddenShield]
-  assert.deepEqual(attackVisualFor({ item: SWORD, items: initial.players[0].inventory }), { version: 1, equipment: 'sword' })
+  assert.deepEqual(attackVisualFor({ item: SWORD, items: initial.players[0].inventory }), {
+    version: 2, equipment: 'sword', loadout: { main_hand: { model_key: 'longsword' } },
+  })
   for (const key of ['visibility_level', 'visibilityLevel']) {
-    assert.deepEqual(attackVisualFor({ item: SWORD, items: [SWORD, { ...SHIELD, [key]: 'gm_only' }] }), { version: 1, equipment: 'sword' })
-    assert.deepEqual(attackVisualFor({ item: SWORD, items: [SWORD, { ...SHIELD, [key]: 'specific_player' }] }), { version: 1, equipment: 'sword' })
+    assert.deepEqual(attackVisualFor({ item: SWORD, items: [SWORD, { ...SHIELD, [key]: 'gm_only' }] }), {
+      version: 2, equipment: 'sword', loadout: { main_hand: { model_key: 'longsword' } },
+    })
+    assert.deepEqual(attackVisualFor({ item: SWORD, items: [SWORD, { ...SHIELD, [key]: 'specific_player' }] }), {
+      version: 2, equipment: 'sword', loadout: { main_hand: { model_key: 'longsword' } },
+    })
   }
-  assert.deepEqual(attackVisualFor({ item: SWORD, items: [SWORD, { ...SHIELD, visibility: 'party' }] }), { version: 1, equipment: 'sword-shield' })
+  assert.deepEqual(attackVisualFor({ item: SWORD, items: [SWORD, { ...SHIELD, visibility: 'party' }] }), {
+    version: 2, equipment: 'sword-shield', loadout: { main_hand: { model_key: 'longsword' }, off_hand: { model_key: 'shield' } },
+  })
   const raw = event({ kept: 15, modifier: 5, total: 20, armor_class: 12, hit: true, attack_visual: { version: 1, equipment: 'sword' } })
   assert.deepEqual(applyGameEvent(initial, raw).battleLog.at(-1).attackVisual, { version: 1, equipment: 'sword' })
 
@@ -157,12 +222,25 @@ test('закрытый щит не меняет публичный snapshot, а 
   assert.equal(legacy.battleLog.at(-1).to, undefined)
 })
 
+test('магический attack snapshot не раскрывает неидентифицированный или погашенный вариант', () => {
+  const flame = { id: 'flame', catalog_id: 'srd_5_2_1:flame-tongue-longsword', type: 'weapon', name: 'Огненный длинный меч', equipped: true }
+  assert.deepEqual(attackVisualFor({ item: { ...flame, identified: false, activated: true }, items: [{ ...flame, identified: false, activated: true }] }), {
+    version: 2, equipment: 'sword', loadout: { main_hand: { model_key: 'longsword' } },
+  })
+  assert.deepEqual(attackVisualFor({ item: { ...flame, identified: true, activated: false }, items: [{ ...flame, identified: true, activated: false }] }), {
+    version: 2, equipment: 'sword', loadout: { main_hand: { model_key: 'longsword', variant: 'enchanted' } },
+  })
+  assert.deepEqual(attackVisualFor({ item: { ...flame, identified: true, activated: true }, items: [{ ...flame, identified: true, activated: true }] }), {
+    version: 2, equipment: 'sword', loadout: { main_hand: { model_key: 'longsword', variant: 'flaming' } },
+  })
+})
+
 test('NPC visual берётся из публичного действия, а не из скрытой привязки', () => {
   assert.deepEqual(attackVisualFor({
     actionName: 'Дальний удар', attackKind: 'ranged',
     npcBinding: { catalog_id: 'srd_5_2_1:longbow', item_instance_id: 'secret-bow' },
-  }), { version: 1, equipment: 'unknown' })
-  assert.deepEqual(attackVisualFor({ actionName: 'Короткий лук', attackKind: 'ranged' }), { version: 1, equipment: 'bow' })
-  assert.deepEqual(attackVisualFor({ actionName: 'crossbow', attackKind: 'ranged' }), { version: 1, equipment: 'unknown' })
-  assert.deepEqual(attackVisualFor({ actionName: 'Арбалет', attackKind: 'ranged' }), { version: 1, equipment: 'unknown' })
+  }), { version: 2, equipment: 'unknown', loadout: {} })
+  assert.deepEqual(attackVisualFor({ actionName: 'Короткий лук', attackKind: 'ranged' }), { version: 2, equipment: 'bow', loadout: { main_hand: { model_key: 'shortbow' } } })
+  assert.deepEqual(attackVisualFor({ actionName: 'crossbow', attackKind: 'ranged' }), { version: 2, equipment: 'unknown', loadout: {} })
+  assert.deepEqual(attackVisualFor({ actionName: 'Арбалет', attackKind: 'ranged' }), { version: 2, equipment: 'unknown', loadout: {} })
 })

@@ -1701,6 +1701,8 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           onCreateHero={accessibleHeroIds.includes(activePlayer.id) ? () => openHeroEditor(activePlayer.id) : undefined}
           player={activePlayer}
           party={partyPlayers}
+          campaignId={state.sessionCode}
+          appearance={state.actor_appearances?.[activePlayer.id]}
           enemyTargets={(state.enemies ?? []).filter((candidate) => candidate.alive && (candidate.hp == null || candidate.hp > 0)).map((candidate) => ({ id: candidate.id, label: candidate.name }))}
           combatActive={combatActive}
           combatItemTurnAvailable={canAct && turnActorId === activePlayer.id}
