@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { spawnSync } from 'node:child_process'
@@ -10,6 +10,8 @@ import { createTacticalMap, serializeTacticalMap, setCell } from '../server/tact
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url))
 mkdirSync(join(repositoryRoot, 'tmp'), { recursive: true })
 const buildDir = mkdtempSync(join(repositoryRoot, 'tmp', 'board3d-effects-'))
+mkdirSync(join(buildDir, 'server'), { recursive: true })
+copyFileSync(join(repositoryRoot, 'server', 'actor-footprint.mjs'), join(buildDir, 'server', 'actor-footprint.mjs'))
 process.on('exit', () => rmSync(buildDir, { recursive: true, force: true }))
 const compiled = spawnSync(process.execPath, [
   join(repositoryRoot, 'node_modules/typescript/bin/tsc'), '--ignoreConfig', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler',
@@ -82,6 +84,29 @@ test('3D physical strike не выпускается по скрытой тра�
   const effect = createCombatEffect3D(cue, actors, map([{ x: 3, y: 2 }]))
   assert.equal(effect.group.children.length, 0)
   effect.dispose()
+})
+
+test('3D combat center использует центр footprint, но возвращается к anchor в тумане', () => {
+  const largeActors = [
+    { id: 'mage', x: 1, y: 1, footprint: { version: 1, size: 2 } },
+    { id: 'target', x: 5, y: 1, footprint: { version: 1, size: 2 } },
+  ]
+  const cue = {
+    id: 'large-arrow', kind: 'strike', actorId: 'mage', targetId: 'target', hit: true, amount: 5,
+    attackKind: 'ranged', equipment: 'bow', from: { x: 1, y: 1 }, to: { x: 5, y: 1 }, durationMs: 480, detail: 'full',
+  }
+  const full = createCombatEffect3D(cue, largeActors, map())
+  const fullArrow = full.group.children.find((child) => child.type === 'Group')
+  assert.ok(fullArrow)
+  full.update(0)
+  assert.equal(fullArrow.position.x, 2, 'полный footprint начинается из центра большой клетки')
+  assert.equal(fullArrow.position.z, 2, 'полный footprint центрируется по Z')
+  full.dispose()
+
+  const partialBoard = map([{ x: 2, y: 1 }])
+  const partial = createCombatEffect3D(cue, largeActors, partialBoard)
+  assert.equal(partial.group.children.length, 0, 'скрытая часть footprint блокирует физическую траекторию')
+  partial.dispose()
 })
 
 test('cue.detail и внешний более строгий detail уменьшают sparks и beam segments', () => {

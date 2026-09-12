@@ -43,6 +43,7 @@ import {
   npcWeaponBindingFor,
 } from './npc-equipment.mjs'
 import { truceHolds } from './parley.mjs'
+import { footprintCellsFor, footprintDistanceFeet } from './actor-footprint.mjs'
 
 const CELL_FEET = 5
 
@@ -108,9 +109,32 @@ function livingEnemies(state) {
 }
 
 function gridDistance(left, right) {
-  const a = actorPosition(left.state, left.id)
-  const b = actorPosition(right.state, right.id)
-  return a && b ? Math.abs(a.x - b.x) + Math.abs(a.y - b.y) : Number.MAX_SAFE_INTEGER
+  const feet = distanceFeetBetweenActors(left.state, left.id, right.id)
+  return Number.isFinite(feet) ? feet / CELL_FEET : Number.MAX_SAFE_INTEGER
+}
+
+function distanceFeetBetweenActors(state, leftId, rightId, leftPosition = actorPosition(state, leftId), rightPosition = actorPosition(state, rightId)) {
+  return footprintDistanceFeet(
+    findActor(state, leftId),
+    findActor(state, rightId),
+    leftPosition,
+    rightPosition,
+  ) ?? Number.POSITIVE_INFINITY
+}
+
+function distanceFeetToPoint(state, actorIdValue, actorPositionValue, point) {
+  return footprintDistanceFeet(findActor(state, actorIdValue), [point], actorPositionValue) ?? Number.POSITIVE_INFINITY
+}
+
+function hasClearActorTrajectory(state, attackerId, targetId, from, to) {
+  const starts = footprintCellsFor(findActor(state, attackerId), from)
+  const ends = footprintCellsFor(findActor(state, targetId), to)
+  return starts.some((start) => ends.some((end) => hasClearTrajectory(state, start, end)))
+}
+
+function hasClearActorToPoint(state, actorId, from, to) {
+  return footprintCellsFor(findActor(state, actorId), from)
+    .some((start) => hasClearTrajectory(state, start, to))
 }
 
 function conditionIds(state, id) {
@@ -171,12 +195,10 @@ function actionProfiles(state, enemy) {
 }
 
 function inAttackRange(state, attackerId, targetId, profile = attackProfileFor(state, attackerId), from = actorPosition(state, attackerId)) {
-  const attacker = actorPosition(state, attackerId)
   const target = actorPosition(state, targetId)
-  const origin = from ?? attacker
-  if (!origin || !target || !profile) return false
-  const distance = Math.max(Math.abs(origin.x - target.x), Math.abs(origin.y - target.y)) * CELL_FEET
-  return distance >= CELL_FEET && distance <= profile.range_feet && (profile.range_feet <= CELL_FEET || hasClearTrajectory(state, origin, target))
+  if (!from || !target || !profile) return false
+  const distance = distanceFeetBetweenActors(state, attackerId, targetId, from, target)
+  return distance >= CELL_FEET && distance <= profile.range_feet && (profile.range_feet <= CELL_FEET || hasClearActorTrajectory(state, attackerId, targetId, from, target))
 }
 
 function averageDamage(expression, flat = 0) {
@@ -186,19 +208,13 @@ function averageDamage(expression, flat = 0) {
 }
 
 function adjacentEnemyAlly(state, enemy, target) {
-  const targetAt = actorPosition(state, actorId(target))
-  return targetAt && livingEnemies(state).some((ally) => actorId(ally) !== actorId(enemy) && (() => {
-    const at = actorPosition(state, actorId(ally))
-    return at && Math.max(Math.abs(at.x - targetAt.x), Math.abs(at.y - targetAt.y)) === 1
-  })())
+  const targetId = actorId(target)
+  return livingEnemies(state).some((ally) => actorId(ally) !== actorId(enemy)
+    && distanceFeetBetweenActors(state, actorId(ally), targetId) === CELL_FEET)
 }
 
 function adjacentPartyMember(state, enemy) {
-  const enemyAt = actorPosition(state, actorId(enemy))
-  return Boolean(enemyAt && livingParty(state).some((member) => {
-    const at = actorPosition(state, actorId(member))
-    return at && Math.max(Math.abs(at.x - enemyAt.x), Math.abs(at.y - enemyAt.y)) === 1
-  }))
+  return livingParty(state).some((member) => distanceFeetBetweenActors(state, actorId(member), actorId(enemy)) === CELL_FEET)
 }
 
 /**
@@ -211,12 +227,8 @@ function adjacentPartyMember(state, enemy) {
  * на ход раньше, чем позволить себя достать.
  */
 function meleeThreatWithinReach(state, enemy) {
-  const enemyAt = actorPosition(state, actorId(enemy))
-  if (!enemyAt) return false
   return livingParty(state).some((member) => {
-    const at = actorPosition(state, actorId(member))
-    if (!at) return false
-    const feet = Math.max(Math.abs(at.x - enemyAt.x), Math.abs(at.y - enemyAt.y)) * CELL_FEET
+    const feet = distanceFeetBetweenActors(state, actorId(member), actorId(enemy))
     const speed = Math.max(0, Number(member.speed) || 30)
     return feet <= speed + CELL_FEET
   })
@@ -267,8 +279,8 @@ function rangedThreats(state, enemy) {
   return livingParty(state)
     .filter((hero) => rangedProfileFor(state, hero) && actorPosition(state, actorId(hero)))
     .map((hero) => ({ hero, at: actorPosition(state, actorId(hero)) }))
-    .sort((left, right) => (Math.max(Math.abs(left.at.x - from.x), Math.abs(left.at.y - from.y)))
-      - (Math.max(Math.abs(right.at.x - from.x), Math.abs(right.at.y - from.y)))
+    .sort((left, right) => distanceFeetBetweenActors(state, actorId(left.hero), actorId(enemy), left.at, from)
+      - distanceFeetBetweenActors(state, actorId(right.hero), actorId(enemy), right.at, from)
       || actorId(left.hero).localeCompare(actorId(right.hero)))
     .slice(0, MAX_COVER_THREATS)
     .map((entry) => entry.hero)
@@ -287,7 +299,7 @@ function ownCoverScore(state, enemy, position, threats) {
   for (const threat of threats) {
     const threatAt = actorPosition(state, actorId(threat))
     const level = targetCoverLevel(state, actorId(threat), actorId(enemy), threatAt, position)
-    total += level === 'none' && !hasClearTrajectory(state, threatAt, position)
+    total += level === 'none' && !hasClearActorTrajectory(state, actorId(threat), actorId(enemy), threatAt, position)
       ? OWN_COVER_BONUS['three-quarters']
       : OWN_COVER_BONUS[level] ?? 0
   }
@@ -300,9 +312,11 @@ function ownCoverScore(state, enemy, position, threats) {
  * ближний бой высоту не считает. Начислять её мечнику значило бы гнать его на
  * уступ ради преимущества, которого он там не получит.
  */
-function highGroundBonus(state, from, to) {
+function highGroundBonus(state, from, to, attackerId = null, targetId = null) {
   if (!from || !to) return 0
-  const distanceFeet = Math.max(Math.abs(from.x - to.x), Math.abs(from.y - to.y)) * CELL_FEET
+  const distanceFeet = attackerId && targetId
+    ? distanceFeetBetweenActors(state, attackerId, targetId, from, to)
+    : Math.max(Math.abs(from.x - to.x), Math.abs(from.y - to.y)) * CELL_FEET
   return highGroundBetween(state, from, to, distanceFeet) === 'higher' ? HIGH_GROUND_BONUS : 0
 }
 
@@ -316,14 +330,17 @@ function candidatePositions(state, enemy, budgetFeet, anchor, prefer = 'near') {
   const maximumSteps = Math.max(0, Math.floor(budgetFeet / CELL_FEET))
   if (!from || !maximumSteps) return []
   const occupied = new Set([...livingParty(state), ...livingEnemies(state)]
-    .map((actor) => actorPosition(state, actorId(actor)))
-    .filter(Boolean)
+    .flatMap((actor) => footprintCellsFor(actor, actorPosition(state, actorId(actor))))
     .map((position) => `${position.x}:${position.y}`))
+  const cellByKey = new Map((state.scene?.cells ?? []).map((cell) => [`${Number(cell.x)}:${Number(cell.y)}`, cell]))
   const reachable = (state.scene?.cells ?? [])
     .filter((cell) => cell.revealed && ['floor', 'door'].includes(cell.type))
     .map((cell) => ({ x: Number(cell.x), y: Number(cell.y) }))
-    .filter((cell) => Math.max(Math.abs(cell.x - from.x), Math.abs(cell.y - from.y)) <= maximumSteps
-      && !occupied.has(`${cell.x}:${cell.y}`))
+    .filter((cell) => Math.max(Math.abs(cell.x - from.x), Math.abs(cell.y - from.y)) <= maximumSteps)
+    .filter((cell) => footprintCellsFor(enemy, cell).every((point) => {
+      const key = `${point.x}:${point.y}`
+      return cellByKey.get(key)?.revealed && ['floor', 'door'].includes(cellByKey.get(key)?.type) && !occupied.has(key)
+    }))
   const reference = anchor ?? from
   const toReference = (cell) => Math.max(Math.abs(cell.x - reference.x), Math.abs(cell.y - reference.y))
   // Отступающему нужны клетки подальше от якоря, стрелку — поближе к цели.
@@ -363,14 +380,14 @@ function firingPositionFor(state, enemy, target, profile) {
   const budgetFeet = remainingMovementFeet(state, enemy)
   const threats = rangedThreats(state, enemy)
   const positionScore = (position) => {
-    const distanceFeet = Math.max(Math.abs(position.x - targetAt.x), Math.abs(position.y - targetAt.y)) * CELL_FEET
+    const distanceFeet = distanceFeetBetweenActors(state, actorId(enemy), actorId(target), position, targetAt)
     if (distanceFeet < CELL_FEET || distanceFeet > profile.range_feet) return null
-    if (!hasClearTrajectory(state, position, targetAt)) return null
+    if (!hasClearActorTrajectory(state, actorId(enemy), actorId(target), position, targetAt)) return null
     const cover = targetCoverLevel(state, actorId(enemy), actorId(target), position, targetAt)
     return (cover === 'none' ? CLEAR_SHOT_BONUS : 0)
       - (COVER_TARGET_PENALTY[cover] ?? 0)
       + ownCoverScore(state, enemy, position, threats)
-      + highGroundBonus(state, position, targetAt)
+      + highGroundBonus(state, position, targetAt, actorId(enemy), actorId(target))
       // Стрельба в упор наказана тем же весом, что и в выборе цели.
       - (distanceFeet <= CELL_FEET ? 70 : 0)
   }
@@ -447,8 +464,8 @@ function underRangedFire(state, enemy) {
   return rangedThreats(state, enemy).some((hero) => {
     const heroAt = actorPosition(state, actorId(hero))
     const profile = rangedProfileFor(state, hero)
-    const distanceFeet = Math.max(Math.abs(heroAt.x - at.x), Math.abs(heroAt.y - at.y)) * CELL_FEET
-    return distanceFeet <= (profile?.range_feet ?? 0) && hasClearTrajectory(state, heroAt, at)
+    const distanceFeet = distanceFeetBetweenActors(state, actorId(hero), actorId(enemy), heroAt, at)
+    return distanceFeet <= (profile?.range_feet ?? 0) && hasClearActorTrajectory(state, actorId(hero), actorId(enemy), heroAt, at)
   })
 }
 
@@ -465,22 +482,23 @@ function bloodiedRetreatFor(state, enemy) {
     .filter((hero) => hero.at)
   const allies = livingEnemies(state)
     .filter((ally) => actorId(ally) !== actorId(enemy))
-    .map((ally) => actorPosition(state, actorId(ally)))
-    .filter(Boolean)
+    .map((ally) => ({ id: actorId(ally), at: actorPosition(state, actorId(ally)) }))
+    .filter((ally) => ally.at)
   const positionScore = (position) => {
     let score = 0
     for (const hero of heroes) {
       const reachFeet = Math.max(CELL_FEET, Number(hero.profile?.kind === 'melee' ? hero.profile?.range_feet : CELL_FEET) || CELL_FEET)
-      const distanceFeet = Math.max(Math.abs(position.x - hero.at.x), Math.abs(position.y - hero.at.y)) * CELL_FEET
+      const distanceFeet = distanceFeetBetweenActors(state, actorId(enemy), hero.id, position, hero.at)
       if (distanceFeet > reachFeet) score += 60
       score += Math.min(120, distanceFeet * 2)
       const level = targetCoverLevel(state, hero.id, actorId(enemy), hero.at, position)
-      score += level === 'none' && !hasClearTrajectory(state, hero.at, position)
+      score += level === 'none' && !hasClearActorTrajectory(state, hero.id, actorId(enemy), hero.at, position)
         ? OWN_COVER_BONUS['three-quarters']
         : OWN_COVER_BONUS[level] ?? 0
     }
     // Рядом со своими отход осмысленнее, чем в одиночку в угол.
-    const nearestAlly = allies.reduce((best, ally) => Math.min(best, Math.max(Math.abs(position.x - ally.x), Math.abs(position.y - ally.y))), Number.MAX_SAFE_INTEGER)
+    const nearestAlly = allies.reduce((best, ally) => Math.min(best,
+      distanceFeetBetweenActors(state, actorId(enemy), ally.id, position, ally.at) / CELL_FEET), Number.MAX_SAFE_INTEGER)
     if (allies.length) score += Math.max(0, 60 - nearestAlly * 12)
     return score
   }
@@ -488,8 +506,8 @@ function bloodiedRetreatFor(state, enemy) {
   // него: отступают от угрозы, а не в первое попавшееся соседнее окно.
   const nearestHero = heroes
     .slice()
-    .sort((left, right) => Math.max(Math.abs(left.at.x - from.x), Math.abs(left.at.y - from.y))
-      - Math.max(Math.abs(right.at.x - from.x), Math.abs(right.at.y - from.y))
+    .sort((left, right) => distanceFeetBetweenActors(state, actorId(enemy), left.id, from, left.at)
+      - distanceFeetBetweenActors(state, actorId(enemy), right.id, from, right.at)
       || left.id.localeCompare(right.id))[0]
   const ranked = rankedPositions(state, enemy, budgetFeet, nearestHero?.at ?? from, positionScore, positionScore(from), 'far')
   return firstAffordable(state, enemy, ranked, budgetFeet)?.destination ?? null
@@ -517,22 +535,22 @@ function targetCandidates(state, enemy) {
       // держать её «на потом» смысла нет: следующий бросок вернёт её сам, а
       // непотраченная она не стоит ничего. Разряженная сюда не доходит вовсе.
       const rechargeValue = Number(profile.recharge) > 0 ? RECHARGE_READY_BONUS : 0
-      const rangedAtMeleePenalty = profile.kind === 'ranged' && enemyAt && targetAt && Math.max(Math.abs(enemyAt.x - targetAt.x), Math.abs(enemyAt.y - targetAt.y)) === 1 ? 70 : 0
+      const distanceFeet = enemyAt && targetAt
+        ? distanceFeetBetweenActors(state, actorId(enemy), actorId(target), enemyAt, targetAt)
+        : Number.POSITIVE_INFINITY
+      const rangedAtMeleePenalty = profile.kind === 'ranged' && distanceFeet === CELL_FEET ? 70 : 0
       // Укрытие и высота считаются движковыми функциями и только для стрельбы:
       // вплотную укрытия нет, а высота в ближнем бою движком не учитывается.
       const coverLevel = profile.kind === 'ranged' ? targetCoverLevel(state, actorId(enemy), actorId(target), enemyAt, targetAt) : 'none'
       const coverPenalty = COVER_TARGET_PENALTY[coverLevel] ?? 0
-      const highGround = profile.kind === 'ranged' ? highGroundBonus(state, enemyAt, targetAt) : 0
+      const highGround = profile.kind === 'ranged' ? highGroundBonus(state, enemyAt, targetAt, actorId(enemy), actorId(target)) : 0
       // Перекрытая линия удара — это полное укрытие: стрелять нельзя вовсе,
       // и такая цель выбирается только вместе со сменой позиции. Дистанцию
       // считаем отдельно от `inAttackRange`: тот уже учёл линию огня и вернул
       // «не достать», а нам нужно отличить «далеко» от «закрыто».
-      const distanceFeet = enemyAt && targetAt
-        ? Math.max(Math.abs(enemyAt.x - targetAt.x), Math.abs(enemyAt.y - targetAt.y)) * CELL_FEET
-        : Number.MAX_SAFE_INTEGER
       const blockedShot = profile.kind === 'ranged'
         && distanceFeet >= CELL_FEET && distanceFeet <= profile.range_feet
-        && !hasClearTrajectory(state, enemyAt, targetAt)
+        && !hasClearActorTrajectory(state, actorId(enemy), actorId(target), enemyAt, targetAt)
       const relentlessPursuit = hasTrait(enemy, NPC_BEHAVIOR_POLICIES.relentlessPursuit)
       const score = Number(inRange && !blockedShot) * 1_000 + Number(Boolean(path)) * 400 + Math.min(300, damage * 12)
         + (relentlessPursuit
@@ -588,8 +606,8 @@ function retreatDestination(state, enemy, target, profile) {
     // маршрута проверяется той же формулой, что применит `MoveActor`.
     if (path.reduce((total, step) => total + stepCost(step), 0) > budgetFeet) continue
     const destination = path.at(-1)
-    const distance = Math.max(Math.abs(destination.x - targetAt.x), Math.abs(destination.y - targetAt.y)) * CELL_FEET
-    if (distance > profile.range_feet || distance < CELL_FEET || !hasClearTrajectory(state, destination, targetAt)) continue
+    const distance = distanceFeetBetweenActors(state, actorId(enemy), actorId(target), destination, targetAt)
+    if (distance > profile.range_feet || distance < CELL_FEET || !hasClearActorTrajectory(state, actorId(enemy), actorId(target), destination, targetAt)) continue
     const score = Math.min(distance, profile.normal_range_feet) * 10 + path.length
     if (!best
       || score > best.score
@@ -726,8 +744,8 @@ function thrownFlaskCommandFor(state, enemy, usable, economy, from) {
   const target = livingParty(state)
     .map((hero) => ({ id: actorId(hero), at: actorPosition(state, actorId(hero)) }))
     .filter((hero) => hero.at)
-    .map((hero) => ({ ...hero, feet: Math.max(Math.abs(hero.at.x - from.x), Math.abs(hero.at.y - from.y)) * CELL_FEET }))
-    .filter((hero) => hero.feet >= CELL_FEET && hero.feet <= rangeFeet && hasClearTrajectory(state, from, hero.at))
+    .map((hero) => ({ ...hero, feet: distanceFeetBetweenActors(state, actorId(enemy), hero.id, from, hero.at) }))
+    .filter((hero) => hero.feet >= CELL_FEET && hero.feet <= rangeFeet && hasClearActorTrajectory(state, actorId(enemy), hero.id, from, hero.at))
     .sort((left, right) => left.feet - right.feet || left.id.localeCompare(right.id))[0]
   return target ? { ...equipmentItemCommand(enemy, flask), target_id: target.id } : null
 }
@@ -737,10 +755,6 @@ const NPC_SPELL_HEAL_HP_PERCENT = 50
 
 /** Виды заклинаний, которые движок действительно исполняет по стат-блоку. */
 const EXECUTABLE_SPELL_SUPPORT = new Set(['verified', 'partial'])
-
-const spellDistanceFeet = (from, to) => from && to
-  ? Math.max(Math.abs(from.x - to.x), Math.abs(from.y - to.y)) * CELL_FEET
-  : Number.MAX_SAFE_INTEGER
 
 /**
  * 2014-блок хранит общие ячейки круга, а не отдельный запас на каждое
@@ -807,8 +821,15 @@ function monsterSpellPlanFor(state, enemy, candidate, economy) {
   const id = actorId(enemy)
   const from = actorPosition(state, id)
   if (!from) return null
-  const inRange = (spell, at) => spellDistanceFeet(from, at) <= Math.max(CELL_FEET, spell.range)
-    && (spellDistanceFeet(from, at) <= CELL_FEET || hasClearTrajectory(state, from, at))
+  const inRange = (spell, at, targetId = null) => {
+    const distance = targetId
+      ? distanceFeetBetweenActors(state, id, targetId, from, at)
+      : distanceFeetToPoint(state, id, from, at)
+    const clear = targetId
+      ? hasClearActorTrajectory(state, id, targetId, from, at)
+      : hasClearActorToPoint(state, id, from, at)
+    return distance <= Math.max(CELL_FEET, spell.range) && (distance <= CELL_FEET || clear)
+  }
   const activeConcentration = Boolean(state.mechanics?.concentration?.[id])
   const validateSpellPlan = (spell, extra) => {
     const command = spellCastCommand(enemy, spell, extra)
@@ -839,7 +860,7 @@ function monsterSpellPlanFor(state, enemy, candidate, economy) {
     .filter((ally) => ally.at && ally.hp > 0 && ally.hp * 100 <= ally.maximum * NPC_SPELL_HEAL_HP_PERCENT)
     .sort((left, right) => left.hp / left.maximum - right.hp / right.maximum || left.id.localeCompare(right.id))[0]
   const healing = wounded
-    ? spells.find((spell) => spell.kind === 'healing' && spell.target === 'ally' && inRange(spell, wounded.at))
+    ? spells.find((spell) => spell.kind === 'healing' && spell.target === 'ally' && inRange(spell, wounded.at, wounded.id))
     : null
   if (healing && wounded) {
     const command = validateSpellPlan(healing, { target_id: wounded.id })
@@ -854,7 +875,7 @@ function monsterSpellPlanFor(state, enemy, candidate, economy) {
     && Array.isArray(spell.conditions) && spell.conditions.length
     && spell.conditions.every((condition) => !targetConditions.has(String(condition)))
     && (!spell.concentration || !activeConcentration)
-    && inRange(spell, targetAt))
+    && inRange(spell, targetAt, targetId))
   for (const spell of controlCandidates) {
     const command = validateSpellPlan(spell, { target_id: targetId })
     if (!command) continue
@@ -920,7 +941,7 @@ function monsterSpellPlanFor(state, enemy, candidate, economy) {
 
   const damaging = []
   for (const spell of spells) {
-    if (spell.target !== 'enemy' || !spell.damage || (spell.concentration && activeConcentration) || !inRange(spell, targetAt)) continue
+    if (spell.target !== 'enemy' || !spell.damage || (spell.concentration && activeConcentration) || !inRange(spell, targetAt, targetId)) continue
     const command = validateSpellPlan(spell, { target_id: targetId })
     if (!command) continue
     const targets = plannedTargets(spell, command)
@@ -955,7 +976,7 @@ export function planLegendaryAction(rawState, bossId) {
   const targets = livingParty(state)
     .map((hero) => ({ id: actorId(hero), at: actorPosition(state, actorId(hero)) }))
     .filter((hero) => hero.at)
-    .map((hero) => ({ id: hero.id, distanceFeet: spellDistanceFeet(from, hero.at) }))
+    .map((hero) => ({ id: hero.id, distanceFeet: distanceFeetBetweenActors(state, bossId, hero.id, from, hero.at) }))
   const chosen = chooseLegendaryAction({ actor: boss, remainingUses: remaining, targets })
   if (!chosen) return null
   return {
@@ -1086,7 +1107,7 @@ export function planNpcTurn(rawState, enemyId) {
   const profile = candidate.profile
   const enemyAt = actorPosition(state, enemyId)
   const targetAt = actorPosition(state, targetId)
-  const adjacent = enemyAt && targetAt && Math.max(Math.abs(enemyAt.x - targetAt.x), Math.abs(enemyAt.y - targetAt.y)) === 1
+  const adjacent = distanceFeetBetweenActors(state, enemyId, targetId, enemyAt, targetAt) === CELL_FEET
   let movementOnlyPhase = false
   let plannedMovementFeet = 0
   let plannedPosition = null
@@ -1168,9 +1189,10 @@ export function planNpcTurn(rawState, enemyId) {
     const steps = reach.steps
     const destination = steps > 0 ? candidate.path[steps - 1] : actorPosition(state, enemyId)
     const distanceAfterMove = destination && targetAt
-      ? Math.max(Math.abs(destination.x - targetAt.x), Math.abs(destination.y - targetAt.y)) * CELL_FEET
+      ? distanceFeetBetweenActors(state, enemyId, targetId, destination, targetAt)
       : Number.MAX_SAFE_INTEGER
-    if (profile && distanceAfterMove >= CELL_FEET && distanceAfterMove <= profile.range_feet && (profile.range_feet <= CELL_FEET || hasClearTrajectory(state, destination, targetAt))) {
+    if (profile && distanceAfterMove >= CELL_FEET && distanceAfterMove <= profile.range_feet
+      && (profile.range_feet <= CELL_FEET || hasClearActorTrajectory(state, enemyId, targetId, destination, targetAt))) {
       commands.push(...attackCommands(state, enemy, targetId, profile))
     }
   } else if (candidate.inRange) {

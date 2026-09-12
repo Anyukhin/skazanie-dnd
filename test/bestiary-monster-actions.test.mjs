@@ -36,10 +36,15 @@ const breath = dragon => ({ command_type: 'UseMonsterAction', command_id: 'drago
 
 function duel(slug, heroPatch = {}) {
   const initial = arena().state
-  const monster = enemyFrom2014(records.find(record => record.id.endsWith(`:${slug}`)), { x: 3, y: 2 })
+  const record = records.find(record => record.id.endsWith(`:${slug}`))
+  const footprintProbe = enemyFrom2014(record, { x: 0, y: 2 })
+  // Large/huge 2014 creatures use an upper-left anchor. Keep the hero one
+  // cell beyond the complete body so the melee fixture remains legal after
+  // server-side footprint enforcement.
+  const monster = enemyFrom2014(record, { x: 4 - (footprintProbe.footprint?.size ?? 1), y: 2 })
   initial.enemies = [monster]
   Object.assign(initial.players[0], { armor: 10 }, heroPatch)
-  initial.mechanics.positions = { hero: { x: 4, y: 2 }, [monster.id]: { x: 3, y: 2 } }
+  initial.mechanics.positions = { hero: { x: 4, y: 2 }, [monster.id]: { x: monster.x, y: monster.y } }
   initial.mechanics.combat.initiative[0].actor_id = monster.id
   initial.mechanics.combat.action_economy[monster.id] = { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 }
   return { state: normalizeCampaignState(initial), monster }

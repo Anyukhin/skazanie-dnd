@@ -25,6 +25,7 @@ import { buildDataOnlyContext } from './security.mjs'
 import { cellAt, deserializeTacticalMap } from './tactical-map.mjs'
 import { campaignStateForViewer } from './viewer-projection.mjs'
 import { npcSocialForViewer } from './npc-social.mjs'
+import { footprintDistanceFeet } from './actor-footprint.mjs'
 
 /**
  * Арбитр свободного действия. Единственная роль модели здесь — **понять
@@ -154,6 +155,7 @@ export function revealedPropPredicate(state) {
  */
 function scenePropsBrief(state, actorId) {
   const at = heroPosition(state, actorId)
+  const hero = (state?.players ?? []).find((actor) => String(actor?.id) === String(actorId))
   const revealed = revealedPropPredicate(state)
   const props = Array.isArray(state?.scene?.map?.props) ? state.scene.map.props : []
   return props
@@ -170,7 +172,7 @@ function scenePropsBrief(state, actorId) {
         state: clean(state?.mechanics?.scene_interactions?.[id]?.state || prop?.state, 40) || 'idle',
         verbs,
         at: cell,
-        distance_feet: at && cell ? Math.max(Math.abs(cell.x - at.x), Math.abs(cell.y - at.y)) * 5 : null,
+        distance_feet: at && cell ? footprintDistanceFeet(hero, [cell], at) : null,
       }]
     })
     // Ближнее — первым: досягаемость всё равно проверит движок, но выбирать

@@ -13,6 +13,7 @@ import {
 } from './rules-engine.mjs'
 import { combatActionsFor } from './combat-actions.mjs'
 import { combatSpellsFor } from './combat-spells.mjs'
+import { footprintCellsFor, footprintDistanceFeet } from './actor-footprint.mjs'
 
 /**
  * Тактика автономного героя — серверная политика, а не решение модели.
@@ -49,8 +50,9 @@ const idOf = (actor) => String(actor?.id ?? actor?.actor_id ?? '')
 const hpOf = (actor) => Number(actor?.hp ?? actor?.hitPoints ?? 0) || 0
 const maxHpOf = (actor) => Math.max(1, Number(actor?.maxHp ?? actor?.max_hp ?? 0) || 1)
 
-function feetBetween(from, to) {
-  return from && to ? Math.max(Math.abs(from.x - to.x), Math.abs(from.y - to.y)) * 5 : Number.MAX_SAFE_INTEGER
+function actorDistanceFeet(state, leftId, rightId, leftPosition = actorPosition(state, leftId), rightPosition = actorPosition(state, rightId)) {
+  return footprintDistanceFeet(findActor(state, leftId), findActor(state, rightId), leftPosition, rightPosition)
+    ?? Number.POSITIVE_INFINITY
 }
 
 /** Герой мёртв окончательно — лечить его нельзя, это отдельная механика. */
@@ -152,12 +154,12 @@ export function planHeroTurn(state, actorIdValue) {
     const allyId = idOf(woundedAlly)
     const commands = []
     let position = from
-    if (feetBetween(position, actorPosition(state, allyId)) > HEALING_RANGE_FEET && allyId !== actorIdValue) {
+    if (actorDistanceFeet(state, actorIdValue, allyId, position) > HEALING_RANGE_FEET && allyId !== actorIdValue) {
       const approach = approachCommands(state, actorIdValue, actor, allyId, HEALING_RANGE_FEET, standing.movementCost)
       commands.push(...approach.commands)
       position = approach.position
     }
-    if (allyId === actorIdValue || feetBetween(position, actorPosition(state, allyId)) <= HEALING_RANGE_FEET) {
+    if (allyId === actorIdValue || actorDistanceFeet(state, actorIdValue, allyId, position) <= HEALING_RANGE_FEET) {
       commands.push({ command_type: 'UseItem', actor_id: actorIdValue, item_id: String(potion.id), target_id: allyId })
       return { rule: allyId === actorIdValue ? 'heal-self' : 'heal-ally', commands: [...standing.commands, ...commands, end] }
     }
@@ -188,7 +190,7 @@ export function planHeroTurn(state, actorIdValue) {
   //    карту к более раненой цели значит подставиться под атаку по
   //    возможности ради цели, до которой ещё надо дожить.
   const adjacent = livingEnemies
-    .filter((enemy) => feetBetween(from, actorPosition(state, idOf(enemy))) <= HEALING_RANGE_FEET)
+    .filter((enemy) => actorDistanceFeet(state, actorIdValue, idOf(enemy), from) <= HEALING_RANGE_FEET)
     .sort((left, right) => hpOf(left) - hpOf(right) || idOf(left).localeCompare(idOf(right)))[0]
   if (adjacent) {
     return {
@@ -202,12 +204,12 @@ export function planHeroTurn(state, actorIdValue) {
   const targetId = idOf(target)
   const commands = []
   let position = from
-  if (feetBetween(position, actorPosition(state, targetId)) > attackRangeFeet) {
+  if (actorDistanceFeet(state, actorIdValue, targetId, position) > attackRangeFeet) {
     const approach = approachCommands(state, actorIdValue, actor, targetId, attackRangeFeet, standing.movementCost)
     commands.push(...approach.commands)
     position = approach.position
   }
-  if (feetBetween(position, actorPosition(state, targetId)) <= attackRangeFeet) {
+  if (actorDistanceFeet(state, actorIdValue, targetId, position) <= attackRangeFeet) {
     commands.push(attackCommand(targetId))
     return { rule: commands.length > 1 ? 'close-and-attack' : 'attack-focus', commands: [...standing.commands, ...commands, end] }
   }
@@ -311,7 +313,7 @@ const combatId = (actor) => String(actor?.id ?? actor?.actor_id ?? '')
 const combatHp = (actor) => Number.isFinite(Number(actor?.hp)) ? Number(actor.hp) : null
 const combatMaxHp = (actor) => Math.max(1, Number(actor?.maxHp ?? actor?.max_hp) || 1)
 const combatPosition = (state, id) => actorPosition(state, id)
-const combatDistance = (state, leftId, rightId) => feetBetween(combatPosition(state, leftId), combatPosition(state, rightId))
+const combatDistance = (state, leftId, rightId) => actorDistanceFeet(state, leftId, rightId, combatPosition(state, leftId), combatPosition(state, rightId))
 const economyFor = (state, actorIdValue) => state?.mechanics?.combat?.action_economy?.[String(actorIdValue)] ?? {}
 const attackAvailable = economy => economy.action !== false || Number(economy.attacks_used) > 0 && Number(economy.attacks_used) < Number(economy.attacks_allowed)
 const resourceFor = (state, actorIdValue, resource) => state?.mechanics?.resources?.[String(actorIdValue)]?.[String(resource)] ?? null
@@ -612,7 +614,7 @@ function spellCandidatesFor(state, actorIdValue, actor, add) {
 
 function combatDistanceToPosition(state, actorIdValue, position) {
   const from = combatPosition(state, actorIdValue)
-  return from && position ? Math.max(Math.abs(from.x - position.x), Math.abs(from.y - position.y)) * 5 : Number.MAX_SAFE_INTEGER
+  return from && position ? footprintDistanceFeet(findActor(state, actorIdValue), [position], from) ?? Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER
 }
 
 function pathThroughOccupiedCells(actorIdValue, targetIdValue, validationState) {
@@ -636,11 +638,8 @@ function freePathPrefix(state, path, actorIdValue, targetIdValue) {
   const targetId = String(targetIdValue)
   const occupied = new Set([...(state?.players ?? []), ...(state?.actors ?? []), ...(state?.enemies ?? [])]
     .filter((actor) => combatId(actor) !== actorId && combatId(actor) !== targetId && actor.alive !== false && Number(actor.hp ?? 1) > 0)
-    .map((actor) => {
-      const at = combatPosition(state, combatId(actor))
-      return at ? `${at.x},${at.y}` : null
-    })
-    .filter(Boolean))
+    .flatMap((actor) => footprintCellsFor(actor, combatPosition(state, combatId(actor))))
+    .map((at) => `${at.x},${at.y}`))
   const firstBlocked = path.findIndex((at) => occupied.has(`${at.x},${at.y}`))
   return firstBlocked >= 0 ? path.slice(0, firstBlocked) : path
 }
@@ -667,12 +666,13 @@ function movementCandidateFor(state, actorIdValue, targetIdValue, itemId = null)
   // повод остаться в досягаемости, пока не выполнен безопасный Отход.
   const adjacentThreats = protectedMovement ? [] : enemiesForTactics(state)
     .filter(enemy => combatDistance(state, actorIdValue, combatId(enemy)) <= 5 && economyFor(state, combatId(enemy)).reaction !== false)
-    .map(enemy => combatPosition(state, combatId(enemy)))
+    .map((enemy) => ({ id: combatId(enemy), at: combatPosition(state, combatId(enemy)) }))
+    .filter((entry) => entry.at)
   let chosen = null
   let chosenCost = 0
   let spent = 0
   for (const step of path) {
-    if (adjacentThreats.some(at => feetBetween(at, step) > 5)) break
+    if (adjacentThreats.some((threat) => actorDistanceFeet(state, threat.id, actorIdValue, threat.at, step) > 5)) break
     const stepCost = movementCostOfPath(validationState, actorIdValue, [step])
     if (spent + stepCost > budget) break
     spent += stepCost

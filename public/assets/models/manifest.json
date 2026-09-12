@@ -2,6 +2,95 @@
   "version": 1,
   "models": [
     {
+      "key": "hooded-mage",
+      "name_ru": "Маг в капюшоне",
+      "profile": "mage",
+      "actorIds": [],
+      "archetypes": [
+        "mage",
+        "wizard",
+        "sorcerer",
+        "warlock",
+        "cleric",
+        "druid",
+        "bard",
+        "маг",
+        "волшебник"
+      ],
+      "url": "/assets/models/quaternius/actors-b892de8fd4f015796032/mage.glb",
+      "height": 1.25,
+      "rights": {
+        "source": "https://quaternius.com/packs/modularcharacteroutfitsfantasy.html",
+        "license": "CC0-1.0",
+        "attribution": "Quaternius",
+        "notes": "Подготовлено tools/build-character-models.mjs. Исходники, хеши и лицензии: /assets/models/quaternius/actors-b892de8fd4f015796032/NOTICE.json."
+      }
+    },
+    {
+      "key": "wolf",
+      "name_ru": "Волк",
+      "profile": "beast",
+      "actorIds": [],
+      "archetypes": [
+        "beast",
+        "wolf",
+        "bear",
+        "boar",
+        "lion",
+        "tiger",
+        "summon",
+        "зверь"
+      ],
+      "url": "/assets/models/quaternius/actors-b892de8fd4f015796032/beast.glb",
+      "height": 0.8,
+      "rights": {
+        "source": "https://quaternius.com/packs/ultimateanimatedanimals.html",
+        "license": "CC0-1.0",
+        "attribution": "Quaternius",
+        "notes": "Подготовлено tools/build-character-models.mjs. Исходники, хеши и лицензии: /assets/models/quaternius/actors-b892de8fd4f015796032/NOTICE.json."
+      }
+    },
+    {
+      "key": "goblin-quaternius",
+      "name_ru": "Гоблин",
+      "profile": "goblin",
+      "actorIds": [],
+      "archetypes": [
+        "goblin",
+        "goblinoid",
+        "гоблин"
+      ],
+      "url": "/assets/models/quaternius/actors-b892de8fd4f015796032/goblin.glb",
+      "height": 0.95,
+      "rights": {
+        "source": "https://quaternius.com/packs/ultimatedanimatedcharacter.html",
+        "license": "CC0-1.0",
+        "attribution": "Quaternius",
+        "notes": "Подготовлено tools/build-character-models.mjs. Исходники, хеши и лицензии: /assets/models/quaternius/actors-b892de8fd4f015796032/NOTICE.json."
+      }
+    },
+    {
+      "key": "skeleton-quaternius",
+      "name_ru": "Скелет",
+      "profile": "skeleton",
+      "actorIds": [],
+      "archetypes": [
+        "skeleton",
+        "undead",
+        "zombie",
+        "скелет",
+        "нежить"
+      ],
+      "url": "/assets/models/quaternius/actors-b892de8fd4f015796032/skeleton.glb",
+      "height": 1.25,
+      "rights": {
+        "source": "https://quaternius.itch.io/lowpoly-animated-monsters",
+        "license": "CC0-1.0",
+        "attribution": "Quaternius",
+        "notes": "Подготовлено tools/build-character-models.mjs. Исходники, хеши и лицензии: /assets/models/quaternius/actors-b892de8fd4f015796032/NOTICE.json."
+      }
+    },
+    {
       "key": "traveler",
       "name_ru": "Путник",
       "profile": "warrior",

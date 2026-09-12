@@ -1,15 +1,17 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 
-import { createTacticalMap, serializeTacticalMap } from '../server/tactical-map.mjs'
+import { createTacticalMap, serializeTacticalMap, setCell } from '../server/tactical-map.mjs'
 
 const buildDir = mkdtempSync(join(tmpdir(), 'skazanie-spell-effects-'))
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url))
+mkdirSync(join(buildDir, 'server'), { recursive: true })
+copyFileSync(join(repositoryRoot, 'server', 'actor-footprint.mjs'), join(buildDir, 'server', 'actor-footprint.mjs'))
 const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
 const sources = ['src/spell-effects.ts', 'src/combat-animation.ts', 'src/area-geometry.ts', 'src/tactical-map-client.ts', 'src/board-render.ts']
   .map((relative) => join(repositoryRoot, relative))
@@ -45,13 +47,14 @@ const render = await import(pathToFileURL(join(buildDir, 'src/board-render.mjs')
 const client = await import(pathToFileURL(join(buildDir, 'src/tactical-map-client.mjs')).href)
 process.on('exit', () => rmSync(buildDir, { recursive: true, force: true }))
 
-function scene(width = 8, height = 8) {
+function scene(width = 8, height = 8, hidden = []) {
   const tactical = createTacticalMap({
     width,
     height,
     locationId: 'spell-test',
     fill: { passable: true, revealed: true, material: 'stone' },
   })
+  hidden.forEach(({ x, y }) => setCell(tactical, x, y, { revealed: false }))
   return {
     map: client.decodeTacticalMap(JSON.parse(JSON.stringify(serializeTacticalMap(tactical)))),
     palette: render.DEFAULT_BOARD_PALETTE,
@@ -101,6 +104,31 @@ function recordingContext() {
 }
 
 const actor = (id, x, y) => ({ id, x, y })
+
+test('2D combat endpoint центрирует large actor и безопасно возвращается к anchor в неполном тумане', () => {
+  const actors = [
+    { id: 'mage', x: 1, y: 1, footprint: { version: 1, size: 2 } },
+    { id: 'target', x: 4, y: 1, footprint: { version: 1, size: 2 } },
+  ]
+  const cue = {
+    id: 'large-channel', kind: 'channel', actorId: 'mage', targetId: 'target',
+    spellId: 'healing-word', school: 'evocation', channelType: 'healing', amount: 4,
+    durationMs: 480,
+  }
+  const fullContext = recordingContext()
+  render.drawBoardEffects(fullContext, scene(), [effects.createSpellEffectRenderer({ cue, progress: .5, actors })])
+  const fullArc = fullContext.ops.find((operation) => operation.op === 'arc')
+  assert.equal(fullArc.x, 120, 'полностью раскрытая 2×2 цель получает центр x+1')
+  assert.equal(fullArc.y, 48, 'полностью раскрытая 2×2 цель получает центр y+1')
+
+  const partialContext = recordingContext()
+  render.drawBoardEffects(partialContext, scene(8, 8, [{ x: 5, y: 1 }]), [
+    effects.createSpellEffectRenderer({ cue, progress: .5, actors }),
+  ])
+  const partialArc = partialContext.ops.find((operation) => operation.op === 'arc')
+  assert.equal(partialArc.x, 108, 'неполный footprint остаётся на одноклеточном anchor')
+  assert.equal(partialArc.y, 36, 'неполный footprint не раскрывает вторую строку')
+})
 
 test('каталог выбирает школу, геометрию и характер ключевых заклинаний', () => {
   assert.deepEqual(

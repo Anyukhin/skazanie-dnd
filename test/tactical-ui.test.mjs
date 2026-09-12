@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, renameSync, rmSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -8,14 +8,20 @@ import test from 'node:test'
 import { addProp, createTacticalMap, legacyCellsFromTacticalMap, serializeTacticalMap, setCell, setDoor } from '../server/tactical-map.mjs'
 import { publicSceneFor } from '../server/viewer-projection.mjs'
 
-const buildDir = mkdtempSync(join(tmpdir(), 'skazanie-tactical-ui-'))
+const testRoot = mkdtempSync(join(tmpdir(), 'skazanie-tactical-ui-'))
+const buildDir = join(testRoot, 'build')
+const runtimeServerDir = join(testRoot, 'server')
+mkdirSync(buildDir, { recursive: true })
+mkdirSync(runtimeServerDir, { recursive: true })
+copyFileSync(new URL('../server/actor-footprint.mjs', import.meta.url), join(runtimeServerDir, 'actor-footprint.mjs'))
 const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
 const source = fileURLToPath(new URL('../src/tactical-ui.ts', import.meta.url))
 // Предпросмотр маршрута спрашивает у карты состояние дверей, поэтому её чтение
 // компилируется рядом: без второго модуля импорт из собранного файла не
 // разрешится, и тест упадёт ещё до первой проверки.
 const mapClientSource = fileURLToPath(new URL('../src/tactical-map-client.ts', import.meta.url))
-const compiled = spawnSync(process.execPath, [compiler, '--ignoreConfig', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler', '--skipLibCheck', '--outDir', buildDir, source, mapClientSource], { encoding: 'utf8' })
+const areaGeometrySource = fileURLToPath(new URL('../src/area-geometry.ts', import.meta.url))
+const compiled = spawnSync(process.execPath, [compiler, '--ignoreConfig', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler', '--skipLibCheck', '--outDir', buildDir, source, mapClientSource, areaGeometrySource], { encoding: 'utf8' })
 assert.equal(compiled.status, 0, compiled.stderr || compiled.stdout)
 const jsFile = join(buildDir, 'tactical-ui.js')
 const moduleFile = join(buildDir, 'tactical-ui.mjs')
@@ -23,10 +29,11 @@ const moduleFile = join(buildDir, 'tactical-ui.mjs')
 // расширения — Node такой путь не разрешает, поэтому сосед переименовывается в
 // точности под него.
 renameSync(join(buildDir, 'tactical-map-client.js'), join(buildDir, 'tactical-map-client'))
+renameSync(join(buildDir, 'area-geometry.js'), join(buildDir, 'area-geometry'))
 renameSync(jsFile, moduleFile)
 const tacticalUi = await import(pathToFileURL(moduleFile).href)
 const mapClient = await import(pathToFileURL(join(buildDir, 'tactical-map-client')).href)
-process.on('exit', () => rmSync(buildDir, { recursive: true, force: true }))
+process.on('exit', () => rmSync(testRoot, { recursive: true, force: true }))
 
 function state() {
   const cells = Array.from({ length: 15 }, (_, index) => ({
@@ -65,6 +72,83 @@ test('предпросмотр огибает весь размер предме
   assert.equal(paths.has('3,1'), false)
   assert.equal(paths.get('4,1').costFeet, 30)
   assert.ok(paths.get('4,1').path.every((cell) => cell.y !== 1 || ![2, 3].includes(cell.x)))
+})
+
+test('площадь актора читается из versioned metadata и центрируется по anchor', () => {
+  const actor = { id: 'ogre', x: 2, y: 3, footprint: { version: 1, size: 2 } }
+  assert.equal(tacticalUi.actorFootprintSize(actor), 2)
+  assert.deepEqual(tacticalUi.actorFootprintCells(actor), [
+    { x: 2, y: 3 }, { x: 3, y: 3 }, { x: 2, y: 4 }, { x: 3, y: 4 },
+  ])
+  assert.deepEqual(tacticalUi.actorFootprintLayout(actor), {
+    cells: [
+      { x: 2, y: 3 }, { x: 3, y: 3 }, { x: 2, y: 4 }, { x: 3, y: 4 },
+    ],
+    minX: 2, minY: 3, maxX: 3, maxY: 4,
+    width: 2, height: 2, center: { x: 3, y: 4 }, size: 2,
+  })
+  assert.equal(tacticalUi.actorFootprintSize({ id: 'legacy', x: 0, y: 0, size: 'huge' }), 1)
+  assert.deepEqual(tacticalUi.actorFootprintCells({ id: 'legacy', x: 0, y: 0, footprint: { version: 2, size: 4 } }), [{ x: 0, y: 0 }])
+})
+
+test('полная площадь актора и видимые клетки не проходят сквозь туман', () => {
+  const map = createTacticalMap({ width: 4, height: 4, fill: { passable: true, revealed: true } })
+  const actor = { id: 'ogre', x: 1, y: 1, footprint: { version: 1, size: 2 } }
+  assert.equal(tacticalUi.actorFootprintFullyRevealed(map, actor), true)
+  assert.deepEqual(tacticalUi.actorFootprintVisibleCells(map, actor), tacticalUi.actorFootprintCells(actor))
+  setCell(map, 2, 2, { revealed: false })
+  assert.equal(tacticalUi.actorFootprintFullyRevealed(map, actor), false)
+  assert.deepEqual(tacticalUi.actorFootprintVisibleCells(map, actor), [{ x: 1, y: 1 }, { x: 2, y: 1 }, { x: 1, y: 2 }])
+})
+
+test('размер и центр презентации уменьшаются до anchor при частичном тумане', () => {
+  const map = createTacticalMap({ width: 6, height: 6, fill: { passable: true, revealed: true } })
+  const actor = { id: 'giant', x: 1, y: 2, footprint: { version: 1, size: 3 } }
+  assert.equal(tacticalUi.actorPresentationSize(map, actor), 3)
+  assert.deepEqual(tacticalUi.actorPresentationCenter(map, actor), { x: 2.5, y: 3.5 })
+  assert.deepEqual(tacticalUi.actorPresentationCenter(map, actor, { x: 1.25, y: 2.5 }), { x: 2.75, y: 4 })
+  setCell(map, 3, 4, { revealed: false })
+  assert.equal(tacticalUi.actorPresentationSize(map, actor), 1)
+  assert.deepEqual(tacticalUi.actorPresentationCenter(map, actor), { x: 1.5, y: 2.5 })
+})
+
+test('дальность до цели считается от ближайших краёв площадей', () => {
+  const large = { id: 'large', x: 0, y: 0, footprint: { version: 1, size: 2 } }
+  const huge = { id: 'huge', x: 2, y: 0, footprint: { version: 1, size: 3 } }
+  assert.equal(tacticalUi.actorDistanceFeet(large, { x: 2, y: 0 }), 5)
+  assert.equal(tacticalUi.actorDistanceFeet(large, huge), 5)
+  assert.equal(tacticalUi.actorDistanceFeet({ id: 'legacy', x: 0, y: 0 }, { x: 1, y: 0 }), 5)
+})
+
+test('площадной предпросмотр выпускается из каждой открытой клетки крупного актора', () => {
+  const map = createTacticalMap({ width: 8, height: 4, fill: { passable: true, revealed: true } })
+  const actor = { id: 'large', x: 0, y: 1, footprint: { version: 1, size: 2 } }
+  const preview = tacticalUi.areaCellsForActor({
+    shape: 'cube', origin: actor, target: { x: 6, y: 1 }, originMode: 'self', sizeFeet: 10,
+    cellFeet: 5, bounds: { minX: 0, minY: 0, maxX: 7, maxY: 3 },
+  }, actor, map)
+  assert.ok(preview.some((point) => point.x === 3 && point.y === 1), 'вторая клетка 2×2 должна дать свой край области')
+
+  const huge = { id: 'huge', x: 0, y: 1, footprint: { version: 1, size: 3 } }
+  const hugePreview = tacticalUi.areaCellsForActor({
+    shape: 'cube', origin: huge, target: { x: 7, y: 1 }, originMode: 'self', sizeFeet: 10,
+    cellFeet: 5, bounds: { minX: 0, minY: 0, maxX: 7, maxY: 3 },
+  }, huge, map)
+  assert.ok(hugePreview.some((point) => point.x === 4 && point.y === 1), 'третья клетка 3×3 должна дать свой край области')
+})
+
+test('предпросмотр занимает все клетки footprint другого актора', () => {
+  const current = state()
+  current.scene.cells = Array.from({ length: 20 }, (_, index) => ({
+    x: index % 5, y: Math.floor(index / 5), type: 'floor', revealed: true,
+  }))
+  current.players = [{ id: 'hero', x: 0, y: 0, hp: 10, footprint: { version: 1, size: 1 } }]
+  current.enemies = [{ id: 'ogre', x: 2, y: 0, alive: true, footprint: { version: 1, size: 2 } }]
+  const paths = tacticalUi.buildMovementPaths(current, current.players[0], 5)
+  assert.equal(paths.has('1,0'), true)
+  assert.equal(paths.has('2,0'), false)
+  assert.equal(paths.has('3,0'), false)
+  assert.equal(paths.get('4,0')?.path.some((point) => point.y > 0), true)
 })
 
 test('предпросмотр не пересекает стену между клетками пола и пропускает открытую дверь', () => {

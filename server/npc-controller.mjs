@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { actorPosition, findActor, isEnemyActor, isLivingActor, shortestTacticalPath } from './rules-engine.mjs'
+import { footprintDistanceFeet } from './actor-footprint.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'
 import { buildDataOnlyContext } from './security.mjs'
 
@@ -107,7 +108,10 @@ function farthestReachableDestination(state, enemyId) {
   if (!enemy || !from) return null
   const speed = Number(enemy.speed)
   const maximumSteps = Math.max(1, Math.floor((Number.isFinite(speed) ? speed : 30) / 5))
-  const heroes = (state.players ?? []).filter(isLivingActor).map((hero) => actorPosition(state, actorId(hero))).filter(Boolean)
+  const heroes = (state.players ?? []).filter(isLivingActor).map((hero) => ({
+    actor: hero,
+    at: actorPosition(state, actorId(hero)),
+  })).filter((hero) => hero.at)
   const candidates = (state.scene?.cells ?? []).filter((cell) => cell.revealed === true && (cell.type === 'floor' || cell.type === 'door'))
   let best = null
   for (const cell of candidates) {
@@ -115,7 +119,7 @@ function farthestReachableDestination(state, enemyId) {
     if (!path?.length || path.length > maximumSteps) continue
     const destination = path[path.length - 1]
     const heroDistance = heroes.length
-      ? Math.min(...heroes.map((hero) => Math.max(Math.abs(destination.x - hero.x), Math.abs(destination.y - hero.y))))
+      ? Math.min(...heroes.map((hero) => (footprintDistanceFeet(enemy, hero.actor, destination, hero.at) ?? Number.MAX_SAFE_INTEGER) / 5))
       : path.length
     const edgeDistance = Math.min(destination.x, destination.y, Math.max(0, Number(state.scene?.grid?.width ?? 0) - 1 - destination.x), Math.max(0, Number(state.scene?.grid?.height ?? 0) - 1 - destination.y))
     const score = heroDistance * 100 + path.length * 4 - edgeDistance

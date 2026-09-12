@@ -72,6 +72,19 @@ test('catalog валидирует локальные GLB и детермини�
   const first = catalogModule.propModelFor(catalog, 'bar_counter', 'counter-prop')
   assert.equal(first?.key, catalogModule.propModelFor(catalog, 'bar_counter', 'counter-prop')?.key)
   assert.equal(catalogModule.propModelFor(catalog, 'unknown', 'counter-prop'), null)
+  assert.ok(catalogModule.ENVIRONMENT_MODEL_FAMILIES.includes('kenney-dungeon'))
+  const dungeon = catalogModule.validatePropModelCatalog({
+    version: 1,
+    models: [{ ...entry('dungeon-stairs', ['stairs_up', 'stairs_down']), url: '/assets/models/environment/kenney-dungeon/stairs.glb' }],
+  })
+  assert.equal(dungeon.models[0].url, '/assets/models/environment/kenney-dungeon/stairs.glb')
+  const releasedDungeon = catalogModule.validatePropModelCatalog({
+    version: 1,
+    release: { id: 'release-1' },
+    models: [{ ...entry('released-dungeon-stairs', ['stairs_up']), url: '/assets/models/environment/releases/release-1/kenney-dungeon/stairs.glb' }],
+    atlas: { image: '/assets/models/environment/releases/release-1/topdown.png', key: '0'.repeat(64) },
+  }, 'release-1')
+  assert.equal(releasedDungeon.models[0].url, '/assets/models/environment/releases/release-1/kenney-dungeon/stairs.glb')
   for (const invalid of [
     [{ ...entry('bad', ['bar_counter']), url: 'https://cdn.invalid/model.glb' }],
     [entry('duplicate', ['bar_counter']), entry('duplicate', ['bar_counter'])],

@@ -101,6 +101,25 @@ test('staged renderer serves candidate and atomically saves validated output', a
   assert.deepEqual(await readdir(directory), ['manifest.json', 'quaternius', 'topdown.png'])
 })
 
+test('staged renderer принимает четвёртое семейство kenney-dungeon', async (t) => {
+  const { directory } = await makeCandidate()
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  await mkdir(join(directory, 'kenney-dungeon'))
+  await writeFile(join(directory, 'kenney-dungeon', 'stairs.glb'), Buffer.from('stairs'))
+  const manifestPath = join(directory, 'manifest.json')
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+  manifest.models.push({ key: 'dungeon-stairs', label: 'Лестница', category: 'Переходы', url: '/assets/models/environment/kenney-dungeon/stairs.glb', assetIds: ['stairs_up', 'stairs_down'], yaw: 0 })
+  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+
+  const started = await startPropModelAtlas({ directory, port: 0 })
+  t.after(() => started.close())
+  const home = await (await fetch(started.url)).text()
+  assert.match(home, /kenney-dungeon\/stairs\.glb/u)
+  const model = await fetch(`${started.url}/assets/models/environment/kenney-dungeon/stairs.glb`)
+  assert.equal(model.status, 200)
+  assert.deepEqual(Buffer.from(await model.arrayBuffer()), Buffer.from('stairs'))
+})
+
 test('renderer не затирает manifest, изменённый после запуска', async (t) => {
   const { directory } = await makeCandidate()
   t.after(() => rm(directory, { recursive: true, force: true }))

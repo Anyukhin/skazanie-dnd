@@ -276,6 +276,8 @@ export type Player = {
   online: boolean
   x: number
   y: number
+  /** Серверная квадратная площадь; в старых акторах отсутствие поля означает 1×1. */
+  footprint?: ActorFootprint
 }
 
 export type AbilityScores = {
@@ -1049,6 +1051,8 @@ export type Enemy = {
   attack_profile?: MonsterActionProfile
   x: number
   y: number
+  /** Серверная квадратная площадь; в старых акторах отсутствие поля означает 1×1. */
+  footprint?: ActorFootprint
   alive: boolean
 }
 
@@ -1065,6 +1069,8 @@ export type SummonedCreature = {
   speed: number
   x: number
   y: number
+  /** Серверная квадратная площадь; в старых акторах отсутствие поля означает 1×1. */
+  footprint?: ActorFootprint
   alive: boolean
   sourceSpellId: string
   sourceEffectId?: string
@@ -1390,6 +1396,16 @@ export type ActorAppearance = {
   equipment: 'unknown' | 'unarmed' | 'sword' | 'sword-shield' | 'bow' | 'staff' | 'dagger'
 }
 
+/**
+ * Серверная квадратная площадь, которую актор занимает на тактической сетке.
+ * `x`/`y` остаются верхним левым anchor, сторона равна 1–4 клеткам. В старых
+ * снимках метаданных нет, поэтому сохраняется историческая площадь 1×1.
+ */
+export type ActorFootprint = {
+  version: 1
+  size: 1 | 2 | 3 | 4
+}
+
 export type GameState = {
   sessionCode: string
   campaign: string
@@ -1590,6 +1606,8 @@ export type SceneNpcProjection = {
   x: number
   y: number
   anchor_prop_id: string | null
+  /** Серверная квадратная площадь; старые записи без поля занимают 1×1. */
+  footprint?: ActorFootprint
   /** Unknown future values render with the neutral fallback, never as enemies. */
   stance: SceneNpcStance | (string & {})
   alive: boolean

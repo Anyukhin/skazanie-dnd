@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { spawnSync } from 'node:child_process'
@@ -12,6 +12,8 @@ import { createTacticalMap, setCell } from '../server/tactical-map.mjs'
 const root = fileURLToPath(new URL('..', import.meta.url))
 mkdirSync(join(root, 'tmp'), { recursive: true })
 const buildDir = mkdtempSync(join(root, 'tmp', 'board3d-ui-'))
+mkdirSync(join(buildDir, 'server'), { recursive: true })
+copyFileSync(join(root, 'server', 'actor-footprint.mjs'), join(buildDir, 'server', 'actor-footprint.mjs'))
 test.after(() => rmSync(buildDir, { recursive: true, force: true }))
 const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
 const sourcePath = fileURLToPath(new URL('../src/TacticalBoard3D.tsx', import.meta.url))

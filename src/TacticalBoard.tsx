@@ -1,5 +1,5 @@
 import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ActorAppearance, BattleEvent, CombatVisualBatch, TacticalMap } from './types'
+import type { ActorAppearance, ActorFootprint, BattleEvent, CombatVisualBatch, TacticalMap } from './types'
 import {
   DEFAULT_BOARD_PALETTE, TILE_CELLS, boardPaletteFrom, createTileCache, drawBoardEffects, drawBoardOverlay, drawMapDecorations,
   syncTileCache, terrainKeysFor, visibleTiles,
@@ -27,7 +27,7 @@ import {
   type BoardDoorSwing,
 } from './board-ambient'
 import { LEGACY_CATALOG_REVISION, loadPropModelCatalog, type PropModelCatalog } from './prop-model-catalog'
-import { boardCameraKey } from './tactical-ui'
+import { actorPresentationCenter, boardCameraKey } from './tactical-ui'
 import './tactical-board.css'
 import './board3d.css'
 
@@ -341,6 +341,8 @@ export type BoardAnimationActor = {
   modelKey?: string
   archetype?: string
   appearance?: ActorAppearance
+  /** Серверная квадратная площадь; отсутствие у старых акторов означает 1×1. */
+  footprint?: ActorFootprint
   defeated?: boolean
 }
 
@@ -734,10 +736,13 @@ function TacticalBoard2D({
     }
   }, [boardScene, columns])
 
-  const screenPoint = (position: BoardPoint, cellSize: number) => ({
-    x: (position.x + .5) * cellSize,
-    y: (position.y + .5) * cellSize,
-  })
+  const screenPoint = (position: BoardPoint, cellSize: number, actorId?: string) => {
+    const actor = actorId ? actorAt(actorId) : undefined
+    const center = actor && map
+      ? actorPresentationCenter(map, actor, position)
+      : { x: position.x + .5, y: position.y + .5 }
+    return { x: center.x * cellSize, y: center.y * cellSize }
+  }
 
   const animationColor = (cue: CombatAnimationCue) => {
     if (cue.kind === 'impact') {
@@ -755,7 +760,7 @@ function TacticalBoard2D({
 
   const drawActor = (context: CanvasRenderingContext2D, position: BoardPoint, cellSize: number, actorId: string, alpha = 1) => {
     const actor = actorAt(actorId)
-    const center = screenPoint(position, cellSize)
+    const center = screenPoint(position, cellSize, actorId)
     const radius = Math.max(7, cellSize * .29)
     const color = actor?.color || (actor?.kind === 'enemy' ? '#bd6256' : actor?.kind === 'summon' ? '#70a78b' : actor?.kind === 'neutral' ? '#9d8f72' : '#d6a55a')
     context.save()
@@ -789,8 +794,9 @@ function TacticalBoard2D({
     text: string,
     color: string,
     progress: number,
+    actorId?: string,
   ) => {
-    const center = screenPoint(position, cellSize)
+    const center = screenPoint(position, cellSize, actorId)
     context.save()
     context.globalAlpha = Math.min(1, progress * 5) * Math.max(0, 1 - Math.max(0, progress - .72) / .28)
     context.fillStyle = color
@@ -873,7 +879,7 @@ function TacticalBoard2D({
           const lunge = Math.sin(Math.min(1, progress / .58) * Math.PI) * .34
           drawActor(context, { x: actor.x + dx / length * lunge, y: actor.y + dy / length * lunge }, cellSize, activeAnimation.actorId)
           if (progress > .18) {
-            const targetCenter = screenPoint(target, cellSize)
+            const targetCenter = screenPoint(target, cellSize, activeAnimation.targetId)
             context.save()
             context.globalAlpha = Math.max(0, 1 - progress) * .9
             context.beginPath()
@@ -887,14 +893,14 @@ function TacticalBoard2D({
             const label = activeAnimation.hit
               ? activeAnimation.amount != null && activeAnimation.amount > 0 ? `−${activeAnimation.amount}` : 'ПОПАДАНИЕ'
               : 'МИМО'
-            drawFloatingText(context, target, cellSize, label, activeAnimation.hit ? '#ef8b78' : '#d7cec2', progress)
+            drawFloatingText(context, target, cellSize, label, activeAnimation.hit ? '#ef8b78' : '#d7cec2', progress, activeAnimation.targetId)
           }
         }
       } else if (activeAnimation.kind === 'impact') {
         const target = actorAt(activeAnimation.targetId)
         if (target) {
           const color = animationColor(activeAnimation)
-          const center = screenPoint(target, cellSize)
+          const center = screenPoint(target, cellSize, activeAnimation.targetId)
           context.save()
           context.globalAlpha = Math.max(0, 1 - progress)
           context.beginPath()
@@ -908,7 +914,7 @@ function TacticalBoard2D({
           const label = activeAnimation.tone === 'healing'
             ? `+${activeAnimation.amount ?? 0}`
             : activeAnimation.tone === 'miss' ? 'МИМО' : `−${activeAnimation.amount ?? 0}`
-          drawFloatingText(context, target, cellSize, label, color, progress)
+          drawFloatingText(context, target, cellSize, label, color, progress, activeAnimation.targetId)
         }
       } else if (activeAnimation.kind === 'death') {
         const target = actorAt(activeAnimation.targetId)
@@ -927,12 +933,12 @@ function TacticalBoard2D({
           context.lineTo(center.x - radius, center.y + radius)
           context.stroke()
           context.restore()
-          drawFloatingText(context, target, cellSize, 'ВЫБЫЛ', '#e2c6ba', progress)
+          drawFloatingText(context, target, cellSize, 'ВЫБЫЛ', '#e2c6ba', progress, activeAnimation.targetId)
         }
       } else if (activeAnimation.kind === 'condition') {
         const target = actorAt(activeAnimation.targetId)
         if (target) {
-          const center = screenPoint(target, cellSize)
+          const center = screenPoint(target, cellSize, activeAnimation.targetId)
           context.save()
           context.globalAlpha = Math.max(0, 1 - Math.max(0, progress - .65) / .35)
           context.beginPath()
@@ -944,7 +950,7 @@ function TacticalBoard2D({
           context.shadowColor = '#9e71bd'
           context.stroke()
           context.restore()
-          drawFloatingText(context, target, cellSize, activeAnimation.label.toLocaleUpperCase('ru'), '#d8b9e8', progress)
+          drawFloatingText(context, target, cellSize, activeAnimation.label.toLocaleUpperCase('ru'), '#d8b9e8', progress, activeAnimation.targetId)
         }
       }
 

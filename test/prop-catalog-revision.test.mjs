@@ -55,7 +55,7 @@ function setRoute(revision, raw, options = {}) {
 
 function model(key, assetId = 'barrel', revision = 'v1') {
   return {
-    key, label: key, category: 'test', url: `${rootUrl}releases/${revision}/${key}.glb`, assetIds: [assetId], yaw: 0,
+    key, label: key, category: 'test', url: `${rootUrl}releases/${revision}/quaternius/${key}.glb`, assetIds: [assetId], yaw: 0,
   }
 }
 

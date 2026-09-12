@@ -263,7 +263,8 @@ import {
   planSceneNpcPlacementEvents,
   validateNpcWorldCommand,
 } from './npc-positioning.mjs'
-import { ENCOUNTER_PROPOSAL_VERSION, assembleEncounter, encounterDifficultyLabel } from './encounter-assembler.mjs'
+import { ENCOUNTER_PROPOSAL_VERSION, EncounterAssemblyError, assembleEncounter, encounterDifficultyLabel } from './encounter-assembler.mjs'
+import { footprintCellsFor, footprintDistanceFeet, footprintMetadataForSize, footprintSizeFor, normalizeFootprintMetadata } from './actor-footprint.mjs'
 import { normalizeEnemyLoadout } from './enemy-loadouts.mjs'
 import {
   NPC_ACTION_UNAVAILABLE_MESSAGES,
@@ -423,7 +424,6 @@ import {
   SCENE_INTERACTION_POLICY_ID,
   isSceneShrineAsset,
   sceneInteractionDefinition,
-  sceneObjectDistance,
   sceneObjectLabelFor,
   sceneObjectLoot,
 } from './scene-interactions.mjs'
@@ -1792,9 +1792,10 @@ export function normalizeCampaignState(input = {}) {
       // Old snapshots without a supported class remain replayable; the
       // normalized sheet becomes available once the build is migrated.
     }
-    return { ...normalizedActor, inventoryLoad: inventoryLoadFor(normalizedActor), characterSheet }
+    const normalizedWithFootprint = normalizeActorFootprintFields({ ...normalizedActor, inventoryLoad: inventoryLoadFor(normalizedActor), characterSheet })
+    return normalizedWithFootprint
   }) : []
-  state.actors = Array.isArray(state.actors) ? state.actors.map((actor) => ({
+  state.actors = Array.isArray(state.actors) ? state.actors.map((actor) => normalizeActorFootprintFields({
     ...actor,
     id: String(actor.id ?? actor.actor_id ?? ''),
     hp: Math.max(0, safeInteger(actor.hp, 0)),
@@ -1805,7 +1806,7 @@ export function normalizeCampaignState(input = {}) {
   state.partyName = String(state.partyName || 'Отряд героев').slice(0, 120)
   state.partyMemberIds = uniqueStrings(state.partyMemberIds).filter((id) => playerIds.has(id))
   if (!state.partyMemberIds.length) state.partyMemberIds = [...playerIds]
-  state.enemies = Array.isArray(state.enemies) ? state.enemies.map((enemy) => ({
+  state.enemies = Array.isArray(state.enemies) ? state.enemies.map((enemy) => normalizeActorFootprintFields({
     ...enemy,
     hp: Math.max(0, safeInteger(enemy.hp, 0)),
     maxHp: Math.max(1, safeInteger(enemy.maxHp ?? enemy.max_hp, 1)),
@@ -1899,6 +1900,70 @@ export function actorPosition(state, id) {
 
 function positionKey(position) {
   return `${position.x},${position.y}`
+}
+
+/**
+ * Служебный адаптер между состоянием и чистой геометрией footprint. Размер
+ * читается только из `actor.footprint.version === 1`; старые актёры остаются
+ * одной клеткой даже при сохранённом текстовом `size`.
+ */
+function actorFootprintCellsAt(state, id, position = actorPosition(state, id)) {
+  return footprintCellsFor(findActor(state, id), position)
+}
+
+function actorFootprintVisible(state, id, position = actorPosition(state, id)) {
+  const cells = tacticalCellMap(state)
+  if (!cells.size) return true
+  const footprint = actorFootprintCellsAt(state, id, position)
+  return footprint.length > 0 && footprint.some((cell) => {
+    const sceneCell = cells.get(positionKey(cell))
+    return sceneCell?.revealed === true && isWalkableCell(sceneCell)
+  })
+}
+
+function actorObjectDistanceCells(state, actorIdValue, object, position = actorPosition(state, actorIdValue)) {
+  const objectCells = Array.isArray(object?.footprint) && object.footprint.length ? object.footprint : [object]
+  const distanceFeet = footprintDistanceFeet(findActor(state, actorIdValue), objectCells, position)
+  return distanceFeet == null ? Number.POSITIVE_INFINITY : distanceFeet / 5
+}
+
+function blindTargetAllowed(command, context = {}) {
+  return command?.blind_target === true
+    && (context.allowBlindTarget === true || context.isAdmin === true || context.isDirector === true || context.isNpcScheduler === true)
+}
+
+function distanceBetweenActorPositions(state, firstActorId, firstPosition, secondActorId, secondPosition) {
+  return footprintDistanceFeet(
+    findActor(state, firstActorId),
+    findActor(state, secondActorId),
+    firstPosition,
+    secondPosition,
+  )
+}
+
+/** Некорректная явная метадата замыкается на запасной размер в одну клетку. */
+function normalizeActorFootprintFields(actor) {
+  if (!actor || typeof actor !== 'object' || Array.isArray(actor) || !Object.hasOwn(actor, 'footprint')) return actor
+  return {
+    ...actor,
+    footprint: normalizeFootprintMetadata(actor.footprint) ?? footprintMetadataForSize(1),
+  }
+}
+
+/**
+ * Штампует только server-owned порождения из каталога или профиля. Поля
+ * клиента не становятся источником: все вызовы передают статблок, авторский
+ * профиль или описание заклинания, уже выбранные движком.
+ */
+function stampActorFootprint(actor, authoritativeSize = undefined) {
+  if (!actor || typeof actor !== 'object' || Array.isArray(actor)) return actor
+  const { footprint: _clientFootprint, ...withoutFootprint } = actor
+  const size = authoritativeSize
+    ?? actor.size
+    ?? actor.creature_size
+    ?? actor.creatureSize
+    ?? 'medium'
+  return { ...withoutFootprint, footprint: footprintMetadataForSize(size) }
 }
 
 /**
@@ -2108,13 +2173,18 @@ function levelArrivalPositions(state, map, arrivalProp) {
   const targetStash = state.levelEntities && typeof state.levelEntities === 'object'
     ? state.levelEntities[targetKey]
     : null
-  const occupied = new Set(Object.values(targetStash?.positions ?? {}).flatMap((position) => {
+  const stashedActors = [...(targetStash?.enemies ?? []), ...(targetStash?.summons ?? [])]
+  const stashedById = new Map(stashedActors.map((actor) => [actorId(actor), actor]))
+  const occupied = new Set(Object.entries(targetStash?.positions ?? {}).flatMap(([id, position]) => {
     const x = Number(position?.x)
     const y = Number(position?.y)
-    return Number.isSafeInteger(x) && Number.isSafeInteger(y) ? [`${x},${y}`] : []
+    if (!Number.isSafeInteger(x) || !Number.isSafeInteger(y)) return []
+    return footprintCellsFor(stashedById.get(String(id)), { x, y }).map(positionKey)
   }))
-  const cells = [...reachableCells(map, anchor.x, anchor.y)]
-    .filter((key) => !occupied.has(key))
+  for (const placement of targetStash?.npc_placements ?? []) {
+    for (const cell of footprintCellsFor({ footprint: placement?.footprint }, placement)) occupied.add(positionKey(cell))
+  }
+  const candidates = [...reachableCells(map, anchor.x, anchor.y)]
     .map((key) => {
       const [x, y] = key.split(',').map(Number)
       return { x, y }
@@ -2124,10 +2194,36 @@ function levelArrivalPositions(state, map, arrivalProp) {
       || left.y - right.y
       || left.x - right.x
     ))
-  if (cells.length < partyIds.length) {
-    throw new RulesValidationError('На целевом этаже недостаточно проходимых клеток для отряда', 'SCENE_ENTRANCE_CAPACITY_EXCEEDED')
+  // Сохраняем быстрый legacy-путь для обычной партии. Полная проверка площади
+  // нужна только когда в ней действительно есть крупный герой; иначе переход
+  // на посещённый этаж дважды обходит тот же список клеток.
+  if (!partyIds.some((id) => footprintSizeFor(findActor(state, id)) > 1)) {
+    const available = candidates.filter((candidate) => !occupied.has(positionKey(candidate)))
+    if (available.length < partyIds.length) {
+      throw new RulesValidationError('На целевом этаже недостаточно проходимых клеток для отряда', 'SCENE_ENTRANCE_CAPACITY_EXCEEDED')
+    }
+    return partyIds.map((id, index) => ({ actor_id: id, x: available[index].x, y: available[index].y }))
   }
-  return partyIds.map((id, index) => ({ actor_id: id, x: cells[index].x, y: cells[index].y }))
+  const placements = []
+  for (const id of partyIds) {
+    const actor = findActor(state, id)
+    const selected = candidates.find((candidate) => {
+      const footprint = footprintCellsFor(actor, candidate)
+      return footprint.length > 0
+        && !footprintPlacementEdgesBlocked(map, actor, candidate)
+        && footprint.every((cell) => {
+          const key = positionKey(cell)
+          const mapCell = cellAt(map, cell.x, cell.y)
+          return mapCell?.passable === true && !occupied.has(key)
+        })
+    })
+    if (!selected) {
+      throw new RulesValidationError('На целевом этаже недостаточно площади для отряда', 'SCENE_ENTRANCE_CAPACITY_EXCEEDED')
+    }
+    for (const cell of footprintCellsFor(actor, selected)) occupied.add(positionKey(cell))
+    placements.push({ actor_id: id, x: selected.x, y: selected.y })
+  }
+  return placements
 }
 
 /**
@@ -2480,8 +2576,7 @@ function syncCombatBounds(state, actorIds) {
   const map = ensureSceneTacticalMap(state)
   if (!map || !combatBoundsUseful(map)) return state
   const points = (Array.isArray(actorIds) ? actorIds : [])
-    .map((id) => actorPosition(state, String(id)))
-    .filter(Boolean)
+    .flatMap((id) => actorFootprintCellsAt(state, String(id)))
   if (!points.length) return state
   applyCombatBounds(map, points)
   return writeSceneTacticalMap(state, map)
@@ -2491,14 +2586,18 @@ function syncCombatBounds(state, actorIds) {
  * Раздвигает подрайон, если участник вышел за границу. Ничего не запрещает —
  * запрет означал бы невидимую стену.
  */
-function growCombatBounds(state, position) {
-  const x = Number(position?.x)
-  const y = Number(position?.y)
-  if (!Number.isSafeInteger(x) || !Number.isSafeInteger(y)) return state
+function growCombatBounds(state, position, actorIdValue = null) {
+  const points = actorIdValue
+    ? actorFootprintCellsAt(state, String(actorIdValue), position)
+    : [{ x: Number(position?.x), y: Number(position?.y) }]
+  if (!points.length || points.some((point) => !Number.isSafeInteger(point.x) || !Number.isSafeInteger(point.y))) return state
   if (!state?.mechanics?.combat?.active) return state
   const map = sceneTacticalMap(state)
-  if (!map?.combatBounds || combatBoundsContain(map.combatBounds, x, y)) return state
-  map.combatBounds = expandCombatBounds(map, map.combatBounds, x, y)
+  if (!map?.combatBounds) return state
+  for (const point of points) {
+    if (combatBoundsContain(map.combatBounds, point.x, point.y)) continue
+    map.combatBounds = expandCombatBounds(map, map.combatBounds, point.x, point.y)
+  }
   return writeSceneTacticalMap(state, map)
 }
 
@@ -2542,14 +2641,62 @@ function occupiedPositions(state, exceptActorId = null) {
   const occupied = new Set()
   for (const actor of listActors(state)) {
     if (actorId(actor) === String(exceptActorId ?? '') || !isLivingActor(actor)) continue
-    const position = actorPosition(state, actorId(actor))
-    if (position) occupied.add(positionKey(position))
+    for (const cell of actorFootprintCellsAt(state, actorId(actor))) occupied.add(positionKey(cell))
   }
   // Социальные NPC не входят в listActors, но их сохранённые посты занимают
   // клетки. Перемещение, принудительное движение и прыжки используют один
   // набор занятых клеток, чтобы герой не завершал движение поверх NPC.
-  for (const key of sceneNpcOccupiedCells(state)) occupied.add(key)
+  if (state?.npc_world?.placements?.length || state?.scene_npcs?.length) {
+    for (const key of sceneNpcOccupiedCells(state)) occupied.add(key)
+  }
   return occupied
+}
+
+/** Внутренние рёбра площади тоже должны быть проходимыми для тела. */
+function footprintPlacementEdgesBlocked(map, actor, anchor) {
+  if (!map) return false
+  if (footprintSizeFor(actor) <= 1) return false
+  const cells = footprintCellsFor(actor, anchor)
+  const keys = new Set(cells.map(positionKey))
+  for (const cell of cells) {
+    for (const [dx, dy] of [[1, 0], [0, 1]]) {
+      const next = { x: cell.x + dx, y: cell.y + dy }
+      if (keys.has(positionKey(next)) && movementStepBlocked(map, cell.x, cell.y, next.x, next.y)) return true
+    }
+  }
+  return false
+}
+
+/** Проверяет каждый пересечённый край при сдвиге anchor на одну клетку. */
+function footprintStepBlocked(map, actor, from, to) {
+  if (!map) return false
+  if (footprintSizeFor(actor) <= 1) return movementStepBlocked(map, from.x, from.y, to.x, to.y)
+  if (footprintPlacementEdgesBlocked(map, actor, from) || footprintPlacementEdgesBlocked(map, actor, to)) return true
+  const cells = footprintCellsFor(actor, from)
+  for (const cell of cells) {
+    const next = { x: cell.x + (to.x - from.x), y: cell.y + (to.y - from.y) }
+    if (movementStepBlocked(map, cell.x, cell.y, next.x, next.y)) return true
+  }
+  return false
+}
+
+/** Проверка anchor без учета движения: вся площадь должна иметь пол и рёбра. */
+function actorFootprintFits(state, actorIdValue, anchor, {
+  map = sceneTacticalMap(state),
+  cells: cellMap = tacticalCellMap(state),
+  occupied = occupiedPositions(state, actorIdValue),
+  propOccupied = map ? propMovementPositions(map) : new Set(),
+  allowOccupied = false,
+} = {}) {
+  const actor = findActor(state, actorIdValue)
+  const cells = actorFootprintCellsAt(state, actorIdValue, anchor)
+  if (!cells.length || map && footprintPlacementEdgesBlocked(map, actor, anchor)) return false
+  for (const cell of cells) {
+    const key = positionKey(cell)
+    if (!isWalkableCell(cellMap.get(key)) || propOccupied.has(key)) return false
+    if (!allowOccupied && occupied.has(key)) return false
+  }
+  return true
 }
 
 /**
@@ -2594,33 +2741,76 @@ export function shortestTacticalPath(state, actorIdValue, destination, {
   if (from.x === to.x && from.y === to.y) return []
   const cells = tacticalCellMap(state)
   const fromCell = cells.get(positionKey(from))
-  if (!cells.size || !fromCell || fromCell.revealed === false || !isWalkableCell(cells.get(positionKey(to)))) return null
+  if (!cells.size || !fromCell || fromCell.revealed === false) return null
   // Decode the map once for both doors and prop occupancy. Props with a
   // `blocksMove` footprint are obstacles, even when their art is painted into
   // a full-map background.
   const map = tacticalMap === undefined ? sceneTacticalMap(state) : tacticalMap
   const propOccupied = map ? propMovementPositions(map) : new Set()
   const occupied = occupiedPositions(state, actorIdValue)
-  const npcTransit = sceneNpcTransitCells(state)
+  const hasSceneNpcs = Boolean(state?.npc_world?.placements?.length || state?.scene_npcs?.length)
+  const npcTransit = hasSceneNpcs ? sceneNpcTransitCells(state) : new Set()
+  const npcOccupied = hasSceneNpcs ? sceneNpcOccupiedCells(state) : new Set()
+  const start = positionKey(from)
+  const target = positionKey(to)
   const mover = findActor(state, actorIdValue)
-  const occupiedActors = new Map(listActors(state)
-    .filter((candidate) => actorId(candidate) !== String(actorIdValue) && isLivingActor(candidate))
-    .map((candidate) => [positionKey(actorPosition(state, actorId(candidate)) ?? {}), candidate]))
-  const canPassOccupied = (key) => {
-    if (key === target || mover?.speciesBenefits?.mechanics?.move_through_larger !== true) return false
-    const occupant = occupiedActors.get(key)
-    return Boolean(occupant && creatureSizeRank(occupant) > creatureSizeRank(mover))
+  const canMoveThroughLarger = mover?.speciesBenefits?.mechanics?.move_through_larger === true
+  const occupiedActors = canMoveThroughLarger ? new Map() : null
+  if (occupiedActors) {
+    for (const candidate of listActors(state)) {
+      if (actorId(candidate) === String(actorIdValue) || !isLivingActor(candidate)) continue
+      for (const cell of actorFootprintCellsAt(state, actorId(candidate))) {
+        const key = positionKey(cell)
+        const occupants = occupiedActors.get(key) ?? []
+        occupants.push(candidate)
+        occupiedActors.set(key, occupants)
+      }
+    }
   }
-  const canPassNpc = (key) => npcTransit.has(key) && !occupiedActors.has(key)
+  const moverFootprintSide = footprintSizeFor(mover)
+  const canPassOccupied = (position) => {
+    if (positionKey(position) === target || !canMoveThroughLarger || !occupiedActors) return false
+    if (moverFootprintSide === 1) {
+      const occupants = occupiedActors.get(positionKey(position)) ?? []
+      return occupants.length > 0 && occupants.every((occupant) => creatureSizeRank(occupant) > creatureSizeRank(mover))
+    }
+    const occupants = new Map()
+    for (const cell of footprintCellsFor(mover, position)) {
+      for (const occupant of occupiedActors.get(positionKey(cell)) ?? []) occupants.set(actorId(occupant), occupant)
+    }
+    return occupants.size > 0 && [...occupants.values()].every((occupant) => creatureSizeRank(occupant) > creatureSizeRank(mover))
+  }
   // Закрытая и запертая дверь останавливают шаг. Карта может отсутствовать у
   // состояния, сохранённого до перехода на слои, — тогда путь считается по
   // клеткам, как раньше.
   // Weighted search may inspect thousands of candidate steps. Decode the map
   // once before the loop (or reuse the caller's decoded instance), never from
   // the per-step cost predicate.
-  const start = positionKey(from)
-  const target = positionKey(to)
-  if (sceneNpcOccupiedCells(state).has(target)) return null
+  const canOccupyAnchor = (position, { allowTarget = false } = {}) => {
+    if (moverFootprintSide === 1) {
+      const key = positionKey(position)
+      if (!isWalkableCell(cells.get(key)) || propOccupied.has(key)) return false
+      if (npcOccupied.has(key) && (key === target || !npcTransit.has(key))) return false
+      if (allowTarget) return true
+      if (key === target && occupied.has(key)) return false
+      return !occupied.has(key) || npcTransit.has(key) || canPassOccupied(position)
+    }
+    const footprint = footprintCellsFor(mover, position)
+    if (!footprint.length) return false
+    if (map && footprintPlacementEdgesBlocked(map, mover, position)) return false
+    const passThroughLarger = canPassOccupied(position)
+    for (const cell of footprint) {
+      const key = positionKey(cell)
+      if (!isWalkableCell(cells.get(key)) || propOccupied.has(key)) return false
+      if (npcOccupied.has(key) && (key === target || !npcTransit.has(key))) return false
+      if (!occupied.has(key)) continue
+      if (npcTransit.has(key)) continue
+      if (allowTarget) continue
+      if (!passThroughLarger) return false
+    }
+    return true
+  }
+  if (!canOccupyAnchor(to, { allowTarget: allowOccupiedDestination })) return null
   const previous = new Map([[start, null]])
   if (typeof stepCost !== 'function') {
     const queue = [start]
@@ -2630,13 +2820,11 @@ export function shortestTacticalPath(state, actorIdValue, destination, {
       const [x, y] = current.split(',').map(Number)
       for (const [nextX, nextY] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
         const next = `${nextX},${nextY}`
-        if (previous.has(next) || !isWalkableCell(cells.get(next))) continue
-        if (propOccupied.has(next)) continue
-        if (occupied.has(next)
-          && !canPassNpc(next)
-          && !(allowOccupiedDestination && next === target)
-          && !canPassOccupied(next)) continue
-        if (map && movementStepBlocked(map, x, y, nextX, nextY)) continue
+        const nextPosition = { x: nextX, y: nextY }
+        if (previous.has(next) || !canOccupyAnchor(nextPosition, { allowTarget: allowOccupiedDestination && next === target })) continue
+        if (map && (moverFootprintSide > 1
+          ? footprintStepBlocked(map, mover, { x, y }, nextPosition)
+          : movementStepBlocked(map, x, y, nextX, nextY))) continue
         previous.set(next, current)
         queue.push(next)
       }
@@ -2681,13 +2869,11 @@ export function shortestTacticalPath(state, actorIdValue, destination, {
       const [x, y] = current.key.split(',').map(Number)
       for (const [nextX, nextY] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
         const next = `${nextX},${nextY}`
-        if (!isWalkableCell(cells.get(next))) continue
-        if (propOccupied.has(next)) continue
-        if (occupied.has(next)
-          && !canPassNpc(next)
-          && !(allowOccupiedDestination && next === target)
-          && !canPassOccupied(next)) continue
-        if (map && movementStepBlocked(map, x, y, nextX, nextY)) continue
+        const nextPosition = { x: nextX, y: nextY }
+        if (!canOccupyAnchor(nextPosition, { allowTarget: allowOccupiedDestination && next === target })) continue
+        if (map && (moverFootprintSide > 1
+          ? footprintStepBlocked(map, mover, { x, y }, nextPosition)
+          : movementStepBlocked(map, x, y, nextX, nextY))) continue
         const weight = Math.max(1, Number(stepCost({ x: nextX, y: nextY }, map)) || 1)
         const nextCost = current.cost + weight
         if (nextCost >= (costs.get(next) ?? Number.POSITIVE_INFINITY)) continue
@@ -2737,8 +2923,8 @@ function forcedPushPath(state, moverId, origin, distanceFeet) {
   let cursor = from
   for (let index = 0; index < Math.floor(Math.max(0, Number(distanceFeet) || 0) / 5); index += 1) {
     const next = { x: cursor.x + step.x, y: cursor.y + step.y }
-    if (!isWalkableCell(cells.get(positionKey(next))) || propOccupied.has(positionKey(next)) || occupied.has(positionKey(next))) break
-    if (map && movementStepBlocked(map, cursor.x, cursor.y, next.x, next.y)) break
+    if (!actorFootprintFits(state, moverId, next, { map, cells, occupied, propOccupied })) break
+    if (map && footprintStepBlocked(map, findActor(state, moverId), cursor, next)) break
     path.push(next)
     cursor = next
   }
@@ -2764,14 +2950,14 @@ function farthestSafeDestinationAwayFrom(state, moverId, origin, distanceFeet) {
     for (const [x, y] of [[current.position.x + 1, current.position.y], [current.position.x - 1, current.position.y], [current.position.x, current.position.y + 1], [current.position.x, current.position.y - 1]]) {
       const next = { x, y }
       const key = positionKey(next)
-      if (visited.has(key) || !isWalkableCell(cells.get(key)) || propOccupied.has(key) || occupied.has(key)) continue
-      if (map && movementStepBlocked(map, current.position.x, current.position.y, x, y)) continue
-      if (activeAreaEffectsAt(state, next).some((effect) => effect.condition && effect.spell_id !== 'grease')) continue
+      if (visited.has(key) || !actorFootprintFits(state, moverId, next, { map, cells, occupied, propOccupied })) continue
+      if (map && footprintStepBlocked(map, findActor(state, moverId), current.position, next)) continue
+      if (activeAreaEffectsAt(state, next, findActor(state, moverId)).some((effect) => effect.condition && effect.spell_id !== 'grease')) continue
       visited.add(key)
       queue.push({ position: next, path: [...current.path, next] })
     }
   }
-  const distanceFromOrigin = (position) => Math.max(Math.abs(position.x - origin.x), Math.abs(position.y - origin.y))
+  const distanceFromOrigin = (position) => (footprintDistanceFeet(findActor(state, moverId), [origin], position) ?? 0) / 5
   return candidates.sort((left, right) => distanceFromOrigin(right.position) - distanceFromOrigin(left.position)
     || right.path.length - left.path.length
     || positionKey(left.position).localeCompare(positionKey(right.position)))[0] ?? null
@@ -3113,13 +3299,82 @@ function lineCells(from, to) {
 function assertClearTrajectory(state, from, to) {
   const cells = tacticalCellMap(state)
   const trajectory = lineCells(from, to)
-  if (trajectory.slice(0, -1).some((point) => {
+  const map = sceneTacticalMap(state)
+  const endpoint = cells.get(positionKey(to))
+  if (!endpoint || String(endpoint.type) === 'wall') {
+    throw new RulesValidationError('Траектория заканчивается за стеной или краем карты', 'TRAJECTORY_BLOCKED')
+  }
+  if (trajectory.slice(0, -1).some((point, index) => {
     const cell = cells.get(positionKey(point))
-    return !cell || String(cell.type) === 'wall'
+    const previous = index === 0 ? from : trajectory[index - 1]
+    const edge = map && Math.abs(previous.x - point.x) + Math.abs(previous.y - point.y) === 1
+      ? edgeBetween(map, previous.x, previous.y, point.x, point.y)
+      : null
+    const blockedDoor = edge?.kind === 'door'
+      && movementStepBlocked(map, previous.x, previous.y, point.x, point.y)
+    return !cell || String(cell.type) === 'wall' || blockedDoor || edge?.blocksSight === true
   })) {
     throw new RulesValidationError('Траекторию перекрывает стена или граница карты', 'TRAJECTORY_BLOCKED')
   }
   return trajectory
+}
+
+/** Подробности одной линии: нужна для выбора свободного края большой цели. */
+function trajectoryDetails(state, from, to) {
+  const cells = tacticalCellMap(state)
+  const map = sceneTacticalMap(state)
+  const trajectory = lineCells(from, to)
+  const endpoint = cells.get(positionKey(to))
+  const blocked = !endpoint || String(endpoint.type) === 'wall' || trajectory.slice(0, -1).some((point, index) => {
+    const cell = cells.get(positionKey(point))
+    const previous = index === 0 ? from : trajectory[index - 1]
+    const edge = map && Math.abs(previous.x - point.x) + Math.abs(previous.y - point.y) === 1
+      ? edgeBetween(map, previous.x, previous.y, point.x, point.y)
+      : null
+    const blockedDoor = edge?.kind === 'door'
+      && movementStepBlocked(map, previous.x, previous.y, point.x, point.y)
+    return !cell || String(cell.type) === 'wall' || blockedDoor || edge?.blocksSight === true
+  })
+  return { trajectory, blocked }
+}
+
+/** Все пары клеток, которыми можно соединить площади двух существ. */
+function actorTrajectoryDetails(state, attackerId, targetId, from, to, { allowHiddenTarget = false } = {}) {
+  const starts = footprintCellsFor(findActor(state, attackerId), from)
+  const ends = footprintCellsFor(findActor(state, targetId), to)
+  const cells = tacticalCellMap(state)
+  const visibleStarts = cells.size ? starts.filter((cell) => cells.get(positionKey(cell))?.revealed === true) : starts
+  const visibleEnds = cells.size ? ends.filter((cell) => cells.get(positionKey(cell))?.revealed === true) : ends
+  const sourceCells = visibleStarts.length ? visibleStarts : allowHiddenTarget ? starts : []
+  const targetCells = visibleEnds.length ? visibleEnds : allowHiddenTarget ? ends : []
+  return sourceCells.flatMap((start) => targetCells.map((end) => ({
+    start,
+    end,
+    ...trajectoryDetails(state, start, end),
+  })))
+}
+
+function hasClearActorTrajectory(state, attackerId, targetId, from, to, options = {}) {
+  return actorTrajectoryDetails(state, attackerId, targetId, from, to, options).some((entry) => !entry.blocked)
+}
+
+function assertClearActorTrajectory(state, attackerId, targetId, from, to, options = {}) {
+  const clear = actorTrajectoryDetails(state, attackerId, targetId, from, to, options).find((entry) => !entry.blocked)
+  if (!clear) throw new RulesValidationError('Траекторию перекрывает стена или граница карты', 'TRAJECTORY_BLOCKED')
+  return clear.trajectory
+}
+
+function hasClearActorToPoint(state, actorId, from, to) {
+  const starts = footprintCellsFor(findActor(state, actorId), from)
+  return starts.some((start) => !trajectoryDetails(state, start, to).blocked)
+}
+
+function assertClearActorToPoint(state, actorId, from, to) {
+  const clear = footprintCellsFor(findActor(state, actorId), from)
+    .map((start) => trajectoryDetails(state, start, to))
+    .find((entry) => !entry.blocked)
+  if (!clear) throw new RulesValidationError('Траекторию перекрывает стена или граница карты', 'TRAJECTORY_BLOCKED')
+  return clear.trajectory
 }
 
 /**
@@ -3170,35 +3425,43 @@ export function highGroundBetween(state, from, to, distanceFeet) {
 export function coverBetween(state, attackerId, targetId, from, to) {
   const none = { level: 'none', armorClassBonus: 0, blockers: [] }
   if (!from || !to) return none
-  if (Math.max(Math.abs(from.x - to.x), Math.abs(from.y - to.y)) <= 1) return none
-  const line = lineCells(from, to).slice(0, -1)
-  if (!line.length) return none
-  const inLine = new Set(line.map(positionKey))
-
-  const blockers = listActors(state)
-    .filter((candidate) => {
-      const id = actorId(candidate)
-      if (id === String(attackerId) || id === String(targetId) || !isLivingActor(candidate)) return false
-      const at = actorPosition(state, id)
-      return Boolean(at && inLine.has(positionKey(at)))
+  const distance = footprintDistanceFeet(findActor(state, attackerId), findActor(state, targetId), from, to)
+  if (distance == null || distance <= 5) return none
+  const candidates = actorTrajectoryDetails(state, attackerId, targetId, from, to)
+    .filter((entry) => !entry.blocked)
+    .map((entry) => {
+      const line = entry.trajectory.slice(0, -1)
+      if (!line.length) return { level: 'none', armorClassBonus: 0, blockers: [], scenery: [] }
+      const inLine = new Set(line.map(positionKey))
+      const blockers = listActors(state)
+        .filter((candidate) => {
+          const id = actorId(candidate)
+          if (id === String(attackerId) || id === String(targetId) || !isLivingActor(candidate)) return false
+          return actorFootprintCellsAt(state, id).some((cell) => inLine.has(positionKey(cell)))
+        })
+        .map(actorId)
+      const cells = tacticalCellMap(state)
+      const scenery = line
+        .map((point) => cells.get(positionKey(point)))
+        .filter((cell) => cell && TERRAIN_COVER[String(cell.feature ?? '')])
+      const bestScenery = scenery.some((cell) => TERRAIN_COVER[String(cell.feature)] === 'three-quarters')
+        ? 'three-quarters'
+        : scenery.length ? 'half' : 'none'
+      const level = bestScenery === 'three-quarters' ? 'three-quarters' : blockers.length || bestScenery === 'half' ? 'half' : 'none'
+      return {
+        level,
+        armorClassBonus: COVER_BONUS[level],
+        blockers,
+        scenery: [...new Set(scenery.map((cell) => String(cell.feature)))],
+      }
     })
-    .map(actorId)
-
-  const cells = tacticalCellMap(state)
-  const scenery = line
-    .map((point) => cells.get(positionKey(point)))
-    .filter((cell) => cell && TERRAIN_COVER[String(cell.feature ?? '')])
-  const bestScenery = scenery.some((cell) => TERRAIN_COVER[String(cell.feature)] === 'three-quarters')
-    ? 'three-quarters'
-    : scenery.length ? 'half' : 'none'
-
-  const level = bestScenery === 'three-quarters' ? 'three-quarters' : blockers.length || bestScenery === 'half' ? 'half' : 'none'
-  if (level === 'none') return none
+  const best = candidates.sort((left, right) => left.armorClassBonus - right.armorClassBonus)[0]
+  if (!best || best.level === 'none') return none
   return {
-    level,
-    armorClassBonus: COVER_BONUS[level],
-    blockers,
-    ...(scenery.length ? { scenery: [...new Set(scenery.map((cell) => String(cell.feature)))] } : {}),
+    level: best.level,
+    armorClassBonus: best.armorClassBonus,
+    blockers: best.blockers,
+    ...(best.scenery.length ? { scenery: best.scenery } : {}),
   }
 }
 
@@ -3231,13 +3494,14 @@ function attackSwingShape(state, attackerIdValue, targetIdValue, profile, {
   const attacker = findActor(state, attackerIdValue)
   const attackerConditions = conditionIdsFor(state, attackerIdValue)
   const targetConditions = conditionIdsFor(state, targetIdValue)
-  const adjacentTo = (at, other) => Boolean(at && other && Math.max(Math.abs(at.x - other.x), Math.abs(at.y - other.y)) === 1)
+  const adjacentTo = (candidateId, at, otherId, other) => Boolean(at && other
+    && distanceBetweenActorPositions(state, candidateId, at, otherId, other) === 5)
   const enemyAdjacent = profile?.kind === 'ranged' && listActors(state).some((candidate) => isEnemyActor(state, actorId(candidate)) !== isEnemyActor(state, attackerIdValue)
-    && isLivingActor(candidate) && adjacentTo(actorPosition(state, actorId(candidate)), actorAt))
+    && isLivingActor(candidate) && adjacentTo(actorId(candidate), actorPosition(state, actorId(candidate)), attackerIdValue, actorAt))
   const longRange = Boolean(profile && distanceFeet != null && distanceFeet > profile.normal_range_feet)
   const alliedSupport = listActors(state).some((candidate) => actorId(candidate) !== String(attackerIdValue)
     && isEnemyActor(state, actorId(candidate)) === isEnemyActor(state, attackerIdValue)
-    && isLivingActor(candidate) && adjacentTo(actorPosition(state, actorId(candidate)), targetAt))
+    && isLivingActor(candidate) && adjacentTo(actorId(candidate), actorPosition(state, actorId(candidate)), targetIdValue, targetAt))
   const packTactics = Boolean(monsterTraitFor(attacker, 'pack-tactics') && alliedSupport)
   const highGround = highGroundBetween(state, actorAt, targetAt, distanceFeet)
   const compelledAgainstOther = (state.mechanics?.conditions?.[attackerIdValue] ?? []).some((condition) => String(condition?.id ?? condition) === 'compelled-duel'
@@ -3310,7 +3574,7 @@ function assertVoluntaryMovementPath(state, actorIdValue, from, to, path) {
   const commandFlee = movementConditions.find((condition) => String(condition?.id ?? condition) === 'command:flee')
   const distanceTo = (position, sourceActor) => {
     const source = actorPosition(state, sourceActor)
-    return source ? Math.max(Math.abs(position.x - source.x), Math.abs(position.y - source.y)) : null
+    return source ? (distanceBetweenActorPositions(state, actorIdValue, position, sourceActor, source) ?? 0) / 5 : null
   }
   if (frightened) {
     let previousDistance = distanceTo(from, frightened.source_actor)
@@ -3358,7 +3622,7 @@ export function previewApproachAttack(rawState, actorIdValue, targetIdValue) {
   for (let x = targetAt.x - radius; x <= targetAt.x + radius; x += 1) {
     for (let y = targetAt.y - radius; y <= targetAt.y + radius; y += 1) {
       const to = { x, y }
-      if (!isWalkableCell(cells.get(positionKey(to))) || occupied.has(positionKey(to))) continue
+      if (!actorFootprintFits(state, actorIdValue, to, { map, cells, occupied })) continue
       const path = shortestTacticalPath(state, actorIdValue, to, { tacticalMap: map, stepCost })
       if (!path || path.some((step) => cells.get(positionKey(step))?.revealed === false)) continue
       try { if (path.length) assertVoluntaryMovementPath(state, actorIdValue, from, to, path) }
@@ -3388,7 +3652,9 @@ export function previewApproachAttack(rawState, actorIdValue, targetIdValue) {
 function creatureHeightFeet(actor) {
   const explicit = Number(actor?.height_feet ?? actor?.heightFeet)
   if (Number.isFinite(explicit) && explicit > 0) return Math.max(1, Math.min(30, explicit))
-  return ({ tiny: 2, small: 4, medium: 6, large: 8, huge: 15, gargantuan: 25 })[String(actor?.size ?? 'medium').toLowerCase()] ?? 6
+  const declared = actor?.size ?? actor?.creature_size ?? actor?.creatureSize
+    ?? ({ 2: 'large', 3: 'huge', 4: 'gargantuan' }[footprintSizeFor(actor)] ?? 'medium')
+  return ({ tiny: 2, small: 4, medium: 6, large: 8, huge: 15, gargantuan: 25 })[String(declared).toLowerCase()] ?? 6
 }
 
 function swingDetailsFor(state, actorIdValue, propId, { runningStart = false } = {}) {
@@ -3409,7 +3675,7 @@ function swingDetailsFor(state, actorIdValue, propId, { runningStart = false } =
   const actor = findActor(state, actorIdValue)
   const from = actorPosition(state, actorIdValue)
   if (!actor || !from) throw new RulesValidationError('Герой должен находиться на карте', 'MAP_POSITION_REQUIRED')
-  const reachDistance = Math.max(Math.abs(from.x - anchor.x), Math.abs(from.y - anchor.y)) * 5
+  const reachDistance = footprintDistanceFeet(actor, [anchor], from)
   if (reachDistance > profile.reach_feet) {
     throw new RulesValidationError('До люстры нужно подойти вплотную', 'SWING_PROP_OUT_OF_REACH')
   }
@@ -3478,6 +3744,7 @@ export function previewSwingAttack(rawState, actorIdValue, targetIdValue, propId
   if (!profile || profile.kind !== 'melee') throw new RulesValidationError('Для swing с атакой нужно оружие ближнего боя', 'MELEE_WEAPON_REQUIRED')
   const targetAt = actorPosition(state, targetIdValue)
   const cells = tacticalCellMap(state)
+  const map = sceneTacticalMap(state)
   const targetCell = targetAt ? cells.get(positionKey(targetAt)) : null
   if (!targetAt || !targetCell) throw new RulesValidationError('Противник должен находиться на карте', 'MAP_POSITION_REQUIRED')
   if (targetCell.revealed === false) throw new RulesValidationError('Цель находится в нераскрытой части карты', 'TARGET_NOT_VISIBLE')
@@ -3488,7 +3755,7 @@ export function previewSwingAttack(rawState, actorIdValue, targetIdValue, propId
   for (let x = targetAt.x - radius; x <= targetAt.x + radius; x += 1) {
     for (let y = targetAt.y - radius; y <= targetAt.y + radius; y += 1) {
       const to = { x, y }
-      if (!isWalkableCell(cells.get(positionKey(to))) || occupied.has(positionKey(to))) continue
+      if (!actorFootprintFits(state, actorIdValue, to, { map, cells, occupied })) continue
       let route
       try { route = longJumpMovementFor(state, actorIdValue, to, { runningStart, minimumDistanceFeet: 5 }) }
       catch (error) { if (error instanceof RulesValidationError) continue; throw error }
@@ -3569,7 +3836,7 @@ export function previewLongJumpAttack(rawState, actorIdValue, targetIdValue, { r
   for (let x = targetAt.x - radius; x <= targetAt.x + radius; x += 1) {
     for (let y = targetAt.y - radius; y <= targetAt.y + radius; y += 1) {
       const to = { x, y }
-      if (!isWalkableCell(cells.get(positionKey(to))) || occupied.has(positionKey(to))) continue
+      if (!actorFootprintFits(state, actorIdValue, to, { map: sceneTacticalMap(state), cells, occupied })) continue
       let jump
       try { jump = longJumpMovementFor(state, actorIdValue, to, { runningStart }) }
       catch (error) { if (error instanceof RulesValidationError) continue; throw error }
@@ -3607,7 +3874,7 @@ export function attackForecast(state, attackerIdValue, targetIdValue, { actionId
   const actorAt = actorPosition(state, attackerIdValue)
   const targetAt = actorPosition(state, targetIdValue)
   const distanceFeet = actorAt && targetAt
-    ? Math.max(Math.abs(actorAt.x - targetAt.x), Math.abs(actorAt.y - targetAt.y)) * 5
+    ? distanceBetweenActorPositions(state, attackerIdValue, actorAt, targetIdValue, targetAt)
     : null
   const cover = coverBetween(state, attackerIdValue, targetIdValue, actorAt, targetAt)
   const armorClass = effectiveArmorClass(state, target, targetIdValue) + cover.armorClassBonus
@@ -3616,7 +3883,7 @@ export function attackForecast(state, attackerIdValue, targetIdValue, { actionId
   // Цель вне досягаемости движок отвергает до броска, поэтому и прогноз обязан
   // сказать «не достать», а не считать шанс с надуманной помехой за дальность.
   const inRange = distanceFeet != null && distanceFeet >= 5 && distanceFeet <= rangeFeet
-  const blockedTrajectory = inRange && rangeFeet > 5 && !hasClearTrajectory(state, actorAt, targetAt)
+  const blockedTrajectory = inRange && rangeFeet > 5 && !hasClearActorTrajectory(state, attackerIdValue, targetIdValue, actorAt, targetAt)
   const swing = attackSwingShape(state, attackerIdValue, targetIdValue, profile, { actorAt, targetAt, distanceFeet })
   const hitChance = d20HitChance(armorClass - modifier, swing)
   // Крит по обездвиженной цели в упор гарантирован правилами, а не костью.
@@ -3678,7 +3945,9 @@ export function weaponAttackProfileFor(state, actorIdValue, itemId, options = {}
 function distanceBetweenActors(state, firstActorId, secondActorId) {
   const first = actorPosition(state, firstActorId)
   const second = actorPosition(state, secondActorId)
-  return first && second ? Math.max(Math.abs(first.x - second.x), Math.abs(first.y - second.y)) * 5 : null
+  return first && second
+    ? distanceBetweenActorPositions(state, firstActorId, first, secondActorId, second)
+    : null
 }
 
 /**
@@ -3876,9 +4145,9 @@ function opportunityAttackers(state, moverId, from, path) {
       const position = actorPosition(state, candidateId)
       const opportunity = opportunityAttackProfile(state, candidate)
       if (!opportunity || !position) return false
-      const reachCells = Math.max(1, Math.floor(safeInteger(opportunity.profile.range_feet, 5) / 5))
-      if (Math.max(Math.abs(position.x - from.x), Math.abs(position.y - from.y)) > reachCells) return false
-      return path.some((step) => Math.max(Math.abs(position.x - step.x), Math.abs(position.y - step.y)) > reachCells)
+      const reachFeet = Math.max(5, safeInteger(opportunity.profile.range_feet, 5))
+      if ((footprintDistanceFeet(candidate, findActor(state, moverId), position, from) ?? Number.POSITIVE_INFINITY) > reachFeet) return false
+      return path.some((step) => (footprintDistanceFeet(candidate, findActor(state, moverId), position, step) ?? 0) > reachFeet)
     })
     .sort((left, right) => (initiativeOrder.get(actorId(left)) ?? Number.MAX_SAFE_INTEGER) - (initiativeOrder.get(actorId(right)) ?? Number.MAX_SAFE_INTEGER)
       || actorId(left).localeCompare(actorId(right)))
@@ -4269,10 +4538,11 @@ export function previewMonsterAction(rawState, id, actionId, toward) {
     const targetId = actorId(target)
     if (targetId === String(id) || !isLivingActor(target) && !isDyingHero(state, targetId)) return false
     const at = actorPosition(state, targetId)
-    if (!at || !hasClearTrajectory(state, origin, at)) return false
-    if (action.shape === 'cone') return positionInCone(at, origin, to, action.length_feet)
-    if (line) return line.has(positionKey(at))
-    return positionInArea(at, origin, action.length_feet)
+    if (!at || !hasClearActorTrajectory(state, String(id), targetId, origin, at)) return false
+    const targetCells = actorFootprintCellsAt(state, targetId, at)
+    if (action.shape === 'cone') return actorInArea(state, targetId, at, to, action.length_feet, 'cone', String(id), origin)
+    if (line) return targetCells.some((cell) => line.has(positionKey(cell)))
+    return actorInArea(state, targetId, at, origin, action.length_feet, 'sphere', String(id), origin)
   })
   if (!affected.length) throw new RulesValidationError('В области нет целей', 'MONSTER_ACTION_NO_TARGETS')
   const charmer = (state.mechanics.conditions[String(id)] ?? []).find(condition => condition.id === 'charmed'
@@ -4425,7 +4695,7 @@ function validateNpcItemUseCommand(command, state, context = {}) {
       throw new RulesValidationError('Цель находится вне дальности броска склянки', 'ITEM_TARGET_OUT_OF_RANGE')
     }
     if (item.use.requires_line_of_sight === true) {
-      assertClearTrajectory(state, actorPosition(state, command.actor_id), actorPosition(state, result.target_id))
+      assertClearActorTrajectory(state, command.actor_id, result.target_id, actorPosition(state, command.actor_id), actorPosition(state, result.target_id))
     }
   }
   if (item.tactic === 'coat') {
@@ -4875,6 +5145,42 @@ function assertTurn(command, state, context = {}) {
 }
 
 function assembleEncounterFromState(state, command) {
+  /**
+   * Проверка размещения после сборщика нужна потому, что сборщик получает
+   * производный список клеток и не знает о рёбрах TacticalMap. Если каталог
+   * выбрал крупное существо, его площадь не может пересекать внутреннюю стену
+   * или блокирующий реквизит, даже если сами клетки выглядят проходимыми.
+   */
+  const validateEncounterPlacements = (proposal) => {
+    const map = sceneTacticalMap(state)
+    const cells = tacticalCellMap(state)
+    const propOccupied = map ? propMovementPositions(map) : new Set()
+    const occupied = new Set()
+    for (const enemy of proposal?.enemies ?? []) {
+      const anchor = { x: Number(enemy?.x), y: Number(enemy?.y) }
+      const footprint = footprintCellsFor(enemy, anchor)
+      if (!footprint.length || !Number.isSafeInteger(anchor.x) || !Number.isSafeInteger(anchor.y)) {
+        throw new EncounterAssemblyError('Встреча содержит недопустимую расстановку', 'ENCOUNTER_INVALID_PLACEMENT')
+      }
+      // Старые авторские сцены иногда хранят пост NPC в координатах другого
+      // представления карты. Для них сохранение старого поведения важнее
+      // повторной проверки отсутствующих клеток; проверяем площадь только
+      // когда вся её геометрия представлена текущей сценой.
+      if (!footprint.every((cell) => cells.has(positionKey(cell)))) continue
+      if (map && footprintPlacementEdgesBlocked(map, enemy, anchor)) {
+        throw new EncounterAssemblyError('Площадь существа пересекает внутреннюю преграду', 'ENCOUNTER_FOOTPRINT_BLOCKED')
+      }
+      for (const cell of footprint) {
+        const key = positionKey(cell)
+        if (!isWalkableCell(cells.get(key)) || propOccupied.has(key) || occupied.has(key)) {
+          throw new EncounterAssemblyError('Площадь существа заняла недоступную клетку', 'ENCOUNTER_FOOTPRINT_BLOCKED')
+        }
+        occupied.add(key)
+      }
+    }
+    return proposal
+  }
+
   const authoredNpcId = String(command.npc_id ?? command.authored_npc_id ?? '').trim()
   if (authoredNpcId) {
     const npc = presentSceneNpcs(state).find((candidate) => String(candidate.id) === authoredNpcId)
@@ -4889,12 +5195,13 @@ function assembleEncounterFromState(state, command) {
     const vital = npcVitalFor(state, authoredNpcId)
     const enemy = {
       ...authoredNpcCombatant({ npc, mechanics, position: placement }),
+      footprint: footprintMetadataForSize(mechanics.size),
       hp: vital.hp,
       maxHp: vital.max_hp,
       alive: vital.alive,
     }
     const difficulty = mechanics.encounter_difficulty
-    return {
+    return validateEncounterPlacements({
       proposal_id: `encounter-proposal-${fingerprint.slice(0, 24)}`,
       version: ENCOUNTER_PROPOSAL_VERSION,
       difficulty,
@@ -4912,7 +5219,7 @@ function assembleEncounterFromState(state, command) {
       },
       enemies: [enemy],
       source: { kind: 'server-owned-authored-npc-profile', profile_id: mechanics.profile_id },
-    }
+    })
   }
   const memberIds = new Set(state.partyMemberIds?.length ? state.partyMemberIds.map(String) : state.players.map(actorId))
   const party = state.players.filter((actor) => memberIds.has(actorId(actor)) && isLivingActor(actor)).map((actor) => {
@@ -4931,16 +5238,17 @@ function assembleEncounterFromState(state, command) {
   // минимальной дистанции. Лишняя пометка сдвинула бы расстановку, не изменив
   // допустимости ни одной клетки.
   const partyPositionIds = new Set(party.map((member) => member.id))
-  const creatureCells = new Set(listActors(state)
-    .filter((actor) => isLivingActor(actor) && !partyPositionIds.has(actorId(actor)))
-    .map((actor) => actorPosition(state, actorId(actor)))
-    .filter(Boolean)
-    .map((position) => `${position.x},${position.y}`))
+  const creatureCells = new Set()
+  for (const actor of listActors(state).filter((candidate) => isLivingActor(candidate) && !partyPositionIds.has(actorId(candidate)))) {
+    for (const cell of actorFootprintCellsAt(state, actorId(actor))) creatureCells.add(positionKey(cell))
+  }
   for (const entity of Array.isArray(state.entities) ? state.entities : []) {
     if (!CREATURE_ENTITY_KINDS.has(String(entity?.kind))) continue
     const x = Number(entity?.x)
     const y = Number(entity?.y)
-    if (Number.isSafeInteger(x) && Number.isSafeInteger(y)) creatureCells.add(`${x},${y}`)
+    if (Number.isSafeInteger(x) && Number.isSafeInteger(y)) {
+      for (const cell of footprintCellsFor(entity, { x, y })) creatureCells.add(positionKey(cell))
+    }
   }
   const blockedProps = propMovementPositions(sceneTacticalMap(state))
   const cells = (Array.isArray(state.scene?.cells) ? state.scene.cells : []).map((cell) => ({
@@ -4951,14 +5259,14 @@ function assembleEncounterFromState(state, command) {
     ...(cell?.feature == null ? {} : { feature: String(cell.feature) }),
     ...(creatureCells.has(`${Number(cell?.x)},${Number(cell?.y)}`) || blockedProps.has(`${Number(cell?.x)},${Number(cell?.y)}`) ? { occupied: true } : {}),
   }))
-  return assembleEncounter({
+  return validateEncounterPlacements(assembleEncounter({
     ruleset_id: state.ruleset_id,
     scene: { cells },
     party,
     difficulty: command.difficulty,
     theme: command.theme,
     seed: command.seed,
-  })
+  }))
 }
 
 /**
@@ -5529,7 +5837,7 @@ export function validateCommand(input, rawState, context = {}) {
         throw new RulesValidationError('Цель находится слишком далеко для использования предмета', 'ITEM_TARGET_OUT_OF_RANGE')
       }
       if (command.use_profile?.requires_line_of_sight === true && distance > 5) {
-        assertClearTrajectory(state, actorPosition(state, command.actor_id), actorPosition(state, command.target_id))
+        assertClearActorTrajectory(state, command.actor_id, command.target_id, actorPosition(state, command.actor_id), actorPosition(state, command.target_id))
       }
     }
     if (command.command_type === 'UseItem') {
@@ -5910,7 +6218,7 @@ export function validateCommand(input, rawState, context = {}) {
     const actorAt = actorPosition(state, command.actor_id)
     const npcPlacement = npcPlacementFor(state, npcId)
     const distanceFeet = actorAt && npcPlacement
-      ? Math.max(Math.abs(actorAt.x - npcPlacement.x), Math.abs(actorAt.y - npcPlacement.y)) * 5
+      ? footprintDistanceFeet(actor, [npcPlacement], actorAt)
       : Number.POSITIVE_INFINITY
     if (distanceFeet > 5) {
       throw new RulesValidationError('До кармана надо дойти: встаньте вплотную, в пределах 5 футов', 'PICKPOCKET_OUT_OF_REACH')
@@ -6080,10 +6388,18 @@ export function validateCommand(input, rawState, context = {}) {
       if (!Number.isSafeInteger(to.x) || !Number.isSafeInteger(to.y)) throw new RulesValidationError('Нужно выбрать клетку для заклинания', 'INVALID_DESTINATION')
       const cell = tacticalCellMap(state).get(positionKey(to))
       const needsEmptyCell = ['summon', 'teleport'].includes(spell.kind)
-      if (!isWalkableCell(cell) || (needsEmptyCell && occupiedPositions(state).has(positionKey(to)))) throw new RulesValidationError('Выбранная клетка недоступна', 'INVALID_DESTINATION')
-      const distance = Math.max(Math.abs(from.x - to.x), Math.abs(from.y - to.y)) * 5
+      if (!isWalkableCell(cell) || needsEmptyCell && !actorFootprintFits(state, command.actor_id, to)) throw new RulesValidationError('Выбранная клетка недоступна', 'INVALID_DESTINATION')
+      const teleportWithoutSight = spell.kind === 'teleport' && String(spell.id) === 'dimension-door'
+      if (!teleportWithoutSight && cell.revealed !== true && !blindTargetAllowed(command, context)) {
+        throw new RulesValidationError('Точка находится в нераскрытой части карты', 'TARGET_NOT_VISIBLE')
+      }
+      const distance = footprintDistanceFeet(findActor(state, command.actor_id), [to], from)
       if (distance > maximumSpellRange) throw new RulesValidationError('Клетка находится вне дальности заклинания', 'TARGET_OUT_OF_RANGE')
-      assertClearTrajectory(state, from, to)
+      // Dimension Door не требует линии взгляда: закрытая дверь не является
+      // причиной отказа. Сам endpoint всё равно проходит проверку проходимой
+      // клетки и полной площади выше. Остальные teleport-эффекты сохраняют
+      // требование видимой точки из своего каталожного описания.
+      if (!teleportWithoutSight) assertClearActorToPoint(state, command.actor_id, from, to)
     } else if (spell.target !== 'self') {
       const requestedIds = command.target_ids?.length ? uniqueStrings(command.target_ids) : [targetFor(command)]
       const requestedSlotLevel = Math.max(spell.level, safeInteger(command.slot_level ?? command.slotLevel, spell.level))
@@ -6106,9 +6422,15 @@ export function validateCommand(input, rawState, context = {}) {
         }
         const to = actorPosition(state, actorId(target))
         if (!to) throw new RulesValidationError('Цель должна находиться на карте', 'MAP_POSITION_REQUIRED')
-        const distance = Math.max(Math.abs(from.x - to.x), Math.abs(from.y - to.y)) * 5
+        if (tacticalCellMap(state).size > 0 && !actorFootprintVisible(state, requestedId, to)
+          && !blindTargetAllowed(command, context)) {
+          throw new RulesValidationError('Цель находится в нераскрытой части карты', 'TARGET_NOT_VISIBLE')
+        }
+        const distance = distanceBetweenActorPositions(state, command.actor_id, from, requestedId, to)
         if (distance > maximumSpellRange) throw new RulesValidationError('Цель находится вне дальности заклинания', 'TARGET_OUT_OF_RANGE')
-        if (distance > 5) assertClearTrajectory(state, from, to)
+        if (distance > 5) assertClearActorTrajectory(state, command.actor_id, requestedId, from, to, {
+          allowHiddenTarget: blindTargetAllowed(command, context),
+        })
       }
     }
     // Дополнительный луч — часть уже оплаченного применения, а не новое
@@ -6219,9 +6541,9 @@ export function validateCommand(input, rawState, context = {}) {
       if (!from || !to) throw new RulesValidationError('Участники должны находиться на карте', 'MAP_POSITION_REQUIRED')
       const profile = action.requiresWeapon && command.item_id ? itemAttackProfile(state, actor, command.item_id) : action.requiresWeapon ? trustedAttackProfile(state, actor) : null
       const maximumRange = action.requiresWeapon ? Math.min(action.range, profile?.range_feet ?? 5) : action.range
-      const distance = Math.max(Math.abs(from.x - to.x), Math.abs(from.y - to.y)) * 5
+      const distance = distanceBetweenActorPositions(state, command.actor_id, from, actorId(target), to)
       if (distance < 5 || distance > maximumRange) throw new RulesValidationError('Цель находится вне дальности действия', 'TARGET_OUT_OF_RANGE')
-      if (distance > 5) assertClearTrajectory(state, from, to)
+      if (distance > 5) assertClearActorTrajectory(state, command.actor_id, actorId(target), from, to)
     }
   }
   if (command.command_type === 'MoveActor') {
@@ -6664,8 +6986,8 @@ function areaEntryConsequences(state, command, movedId, from, to, { diceService,
   const moved = findActor(state, movedId)
   const events = []
   for (const effect of (state.mechanics.active_effects ?? []).filter((candidate) => candidate.trigger_on_enter === true
-    && positionInEffect(state, to, candidate)
-    && !positionInEffect(state, from, candidate))) {
+    && positionInEffect(state, to, candidate, moved)
+    && !positionInEffect(state, from, candidate, moved))) {
     // Не всякая длящаяся область даёт спасбросок: облако кинжалов режет
     // всякого, кто в него вошёл, без всякой проверки.
     const ability = effect.save_ability ? String(effect.save_ability) : null
@@ -7008,7 +7330,7 @@ function spilledZoneEvents(state, command, { item, use }) {
   const cell = tacticalCellMap(state).get(`${to.x},${to.y}`)
   if (!cell || cell.revealed === false || cell.type === 'wall') throw new RulesValidationError('В эту клетку нельзя высыпать предмет', 'INVALID_DESTINATION')
   const rangeFeet = Math.max(5, safeInteger(spill.range_feet ?? use.range_feet, 5))
-  if (Math.max(Math.abs(from.x - to.x), Math.abs(from.y - to.y)) * 5 > rangeFeet) {
+  if ((footprintDistanceFeet(findActor(state, command.actor_id), [to], from) ?? Number.POSITIVE_INFINITY) > rangeFeet) {
     throw new RulesValidationError('Клетка находится слишком далеко', 'ITEM_TARGET_OUT_OF_RANGE')
   }
   const identifier = `item-zone:${String(zone.id)}:${String(command.command_id).slice(0, 140)}`
@@ -7267,7 +7589,7 @@ function sneakAttackSupportingAlly(state, attackerIdValue, targetIdValue) {
     if (isEnemyActor(state, candidateId) !== attackerIsEnemy || isEnemyActor(state, candidateId) === targetIsEnemy) return false
     if (!isLivingActor(candidate) || incapacitatingConditionFor(state, candidateId)) return false
     const at = actorPosition(state, candidateId)
-    return Boolean(at) && Math.max(Math.abs(at.x - targetAt.x), Math.abs(at.y - targetAt.y)) <= 1
+    return Boolean(at) && footprintDistanceFeet(candidate, findActor(state, targetIdValue), at, targetAt) <= 5
   }) ?? null
 }
 
@@ -7313,7 +7635,7 @@ function counterspellReactionFor(state, casterId) {
       const distance = distanceBetweenActors(state, actorId(candidate), casterId)
       const from = actorPosition(state, actorId(candidate))
       const to = actorPosition(state, casterId)
-      if (!spell || !slot || distance == null || distance > spell.range || !from || !to || !hasClearTrajectory(state, from, to)) return null
+      if (!spell || !slot || distance == null || distance > spell.range || !from || !to || !hasClearActorTrajectory(state, actorId(candidate), casterId, from, to)) return null
       return { actor: candidate, spell, slot }
     })
     .filter(Boolean)
@@ -7331,7 +7653,7 @@ function silveryBarbsReactionFor(state, sourceActorId, preferredActorId = null) 
       const distance = distanceBetweenActors(state, actorId(candidate), sourceActorId)
       const from = actorPosition(state, actorId(candidate))
       const to = actorPosition(state, sourceActorId)
-      if (!spell || !slot || distance == null || distance > 60 || !from || !to || !hasClearTrajectory(state, from, to)) return null
+      if (!spell || !slot || distance == null || distance > 60 || !from || !to || !hasClearActorTrajectory(state, actorId(candidate), sourceActorId, from, to)) return null
       return { actor: candidate, spell, slot }
     })
     .filter(Boolean)
@@ -7463,8 +7785,19 @@ function positionInDirectedCube(position, origin, toward, edgeFeet) {
   return forward >= 1 && forward <= cells && Math.abs(targetX) <= halfWidth
 }
 
-function activeAreaEffectsAt(state, position) {
-  return (state.mechanics.active_effects ?? []).filter((effect) => positionInEffect(state, position, effect))
+function actorInArea(state, actorIdValue, position, center, radiusFeet, shape = 'sphere', originActorId = null, originAnchor = center) {
+  const points = footprintCellsFor(findActor(state, actorIdValue), position)
+  const origins = originActorId == null
+    ? [center]
+    : actorFootprintCellsAt(state, originActorId, originAnchor)
+  if (!points.length || !origins.length) return false
+  if (shape === 'cone') return origins.some((origin) => points.some((point) => positionInCone(point, origin, center, radiusFeet)))
+  if (shape === 'cube') return origins.some((origin) => points.some((point) => positionInDirectedCube(point, origin, center, radiusFeet)))
+  return origins.some((origin) => points.some((point) => positionInArea(point, origin, radiusFeet, shape)))
+}
+
+function activeAreaEffectsAt(state, position, actor = null) {
+  return (state.mechanics.active_effects ?? []).filter((effect) => positionInEffect(state, position, effect, actor))
 }
 
 /**
@@ -7498,20 +7831,25 @@ function difficultTerrainLookupFor(state) {
 }
 
 /** Причины труднопроходимости клетки: паутина отдельно, всё остальное вместе. */
-function difficultTerrainKindsAt(state, position, map, lookup = null) {
-  const mapCell = map ? cellAt(map, Number(position?.x), Number(position?.y)) : null
-  const staticTerrain = Number(mapCell?.moveCost ?? 1) > 1
+function difficultTerrainKindsAt(state, position, map, lookup = null, actor = null) {
+  const points = actor ? footprintCellsFor(actor, position) : [position]
+  const inspected = points.length ? points : [position]
+  const staticTerrain = inspected.some((point) => {
+    const mapCell = map ? cellAt(map, Number(point?.x), Number(point?.y)) : null
+    return Number(mapCell?.moveCost ?? 1) > 1
+  })
   if (!lookup) {
-    const effects = activeAreaEffectsAt(state, position).filter((effect) => effect.difficult_terrain === true)
+    const effects = activeAreaEffectsAt(state, position, actor)
     return {
       web: effects.some((effect) => String(effect.spell_id ?? '').toLowerCase() === 'web'),
       other: staticTerrain || effects.some((effect) => String(effect.spell_id ?? '').toLowerCase() !== 'web'),
     }
   }
-  const key = positionKey(position)
   return {
-    web: lookup.webCells.has(key) || lookup.webAreas.some((effect) => positionInEffect(state, position, effect)),
-    other: staticTerrain || lookup.otherCells.has(key) || lookup.otherAreas.some((effect) => positionInEffect(state, position, effect)),
+    web: inspected.some((point) => lookup.webCells.has(positionKey(point)))
+      || lookup.webAreas.some((effect) => positionInEffect(state, position, effect, actor)),
+    other: staticTerrain || inspected.some((point) => lookup.otherCells.has(positionKey(point)))
+      || lookup.otherAreas.some((effect) => positionInEffect(state, position, effect, actor)),
   }
 }
 
@@ -7530,7 +7868,11 @@ export function movementStepCostFor(state, actorIdValue, { tacticalMap } = {}) {
   const webWalker = Boolean(monsterTraitFor(findActor(state, actorIdValue), 'web-walker'))
   const crawling = conditionIdsFor(state, actorIdValue).has('prone')
   const difficultTerrain = difficultTerrainLookupFor(state)
-  const difficultKindsAt = (step, pathMap = map) => difficultTerrainKindsAt(state, step, pathMap, difficultTerrain)
+  const mover = findActor(state, actorIdValue)
+  const moverFootprintSide = footprintSizeFor(mover)
+  const difficultKindsAt = (step, pathMap = map) => difficultTerrainKindsAt(
+    state, step, pathMap, difficultTerrain, moverFootprintSide > 1 ? mover : null,
+  )
   const difficultAt = (step, pathMap = map) => {
     const terrain = difficultKindsAt(step, pathMap)
     return terrain.web || terrain.other
@@ -7565,8 +7907,9 @@ function longJumpMovementFor(state, actorIdValue, destination, { runningStart = 
   const fromCell = cells.get(positionKey(from))
   const toCell = cells.get(positionKey(to))
   if (!fromCell || fromCell.revealed === false) throw new RulesValidationError('Герой находится в нераскрытой части карты', 'JUMP_START_NOT_VISIBLE')
+  if (!actorFootprintFits(state, actorIdValue, from, { map, cells, occupied: occupiedPositions(state, actorIdValue) })) throw new RulesValidationError('Тело прыгающего занимает недоступную площадь', 'JUMP_START_BLOCKED')
   if (!toCell || toCell.revealed === false) throw new RulesValidationError('Клетка приземления не раскрыта', 'JUMP_LANDING_NOT_VISIBLE')
-  if (!isWalkableCell(toCell)) throw new RulesValidationError('В клетку приземления нельзя войти', 'INVALID_DESTINATION')
+  if (!actorFootprintFits(state, actorIdValue, to, { map, cells })) throw new RulesValidationError('В клетку приземления нельзя войти', 'INVALID_DESTINATION')
   if (safeInteger(fromCell.elevation, 0) !== safeInteger(toCell.elevation, 0)) {
     throw new RulesValidationError('Горизонтальный прыжок между разными высотами пока не поддерживается', 'JUMP_ELEVATION_UNSUPPORTED')
   }
@@ -7606,15 +7949,16 @@ function longJumpMovementFor(state, actorIdValue, destination, { runningStart = 
       x: from.x + Math.sign(dx) * (dx === 0 ? 0 : index),
       y: from.y + Math.sign(dy) * (dy === 0 ? 0 : index),
     }
+    const footprint = actorFootprintCellsAt(state, actorIdValue, point)
     const cell = cells.get(positionKey(point))
-    if (!cell || cell.revealed === false) throw new RulesValidationError('Траектория прыжка проходит по нераскрытой клетке', 'JUMP_PATH_NOT_VISIBLE')
-    if (safeInteger(cell.elevation, 0) !== safeInteger(fromCell.elevation, 0)) {
+    if (!cell || cell.revealed === false || footprint.some((entry) => cells.get(positionKey(entry))?.revealed === false)) throw new RulesValidationError('Траектория прыжка проходит по нераскрытой клетке', 'JUMP_PATH_NOT_VISIBLE')
+    if (footprint.some((entry) => safeInteger(cells.get(positionKey(entry))?.elevation, 0) !== safeInteger(fromCell.elevation, 0))) {
       throw new RulesValidationError('Горизонтальный прыжок между разными высотами пока не поддерживается', 'JUMP_ELEVATION_UNSUPPORTED')
     }
-    if (String(cell.type) === 'wall' || movementStepBlocked(map, previous.x, previous.y, point.x, point.y)) {
+    if (footprint.some((entry) => String(cells.get(positionKey(entry))?.type) === 'wall') || footprintStepBlocked(map, actor, previous, point)) {
       throw new RulesValidationError('Траекторию прыжка перекрывает стена или закрытая дверь', 'JUMP_PATH_BLOCKED')
     }
-    if (occupied.has(positionKey(point)) || propOccupied.has(positionKey(point))) throw new RulesValidationError('Траектория или место приземления заняты', 'JUMP_OCCUPIED')
+    if (!actorFootprintFits(state, actorIdValue, point, { map, cells, occupied, propOccupied })) throw new RulesValidationError('Траектория или место приземления заняты', 'JUMP_OCCUPIED')
     path.push(point)
     previous = point
   }
@@ -7662,10 +8006,14 @@ function wallCells(state, command, spell) {
 }
 
 /** Is the position inside this lingering effect, wall or otherwise? */
-function positionInEffect(state, position, effect) {
+function positionInEffect(state, position, effect, actor = null) {
   if (!position) return false
-  if (Array.isArray(effect?.cells)) return effect.cells.some((cell) => Number(cell.x) === position.x && Number(cell.y) === position.y)
-  return positionInArea(position, areaCenterOf(state, effect), effect.radius_feet, effect.area_shape)
+  const points = actor ? footprintCellsFor(actor, position) : [position]
+  if (Array.isArray(effect?.cells)) return points.some((point) => effect.cells.some((cell) => Number(cell.x) === point.x && Number(cell.y) === point.y))
+  const center = areaCenterOf(state, effect)
+  const sourceId = effect?.follows_source === true ? String(effect.source_actor ?? '') : ''
+  const origins = sourceId ? actorFootprintCellsAt(state, sourceId, center) : [center]
+  return points.some((point) => origins.some((origin) => positionInArea(point, origin, effect.radius_feet, effect.area_shape)))
 }
 
 /**
@@ -7704,7 +8052,7 @@ export function spellTargetsAt(state, command, spell) {
     return listActors(state).filter((candidate) => {
       if (!isLivingActor(candidate) || actorId(candidate) === command.actor_id) return false
       const at = actorPosition(state, actorId(candidate))
-      return at && Math.max(Math.abs(at.x - center.x), Math.abs(at.y - center.y)) * 5 <= radius
+      return at && actorInArea(state, actorId(candidate), at, center, radius, 'sphere', command.actor_id, center)
     })
   }
   if (spell.target === 'self') return [findActor(state, command.actor_id)].filter(Boolean)
@@ -7719,12 +8067,20 @@ export function spellTargetsAt(state, command, spell) {
   if (spell.areaShape === 'cone' && spell.areaOrigin === 'self') {
     const origin = actorPosition(state, command.actor_id)
     if (!origin) return []
-    return listActors(state).filter((actor) => isLivingActor(actor) && actorId(actor) !== command.actor_id && positionInCone(actorPosition(state, actorId(actor)), origin, to, radius))
+    return listActors(state).filter((actor) => {
+      const at = actorPosition(state, actorId(actor))
+      return isLivingActor(actor) && actorId(actor) !== command.actor_id && at
+        && actorInArea(state, actorId(actor), at, to, radius, 'cone', command.actor_id, origin)
+    })
   }
   if (spell.areaShape === 'cube' && spell.areaOrigin === 'self') {
     const origin = actorPosition(state, command.actor_id)
     if (!origin) return []
-    return listActors(state).filter((actor) => isLivingActor(actor) && actorId(actor) !== command.actor_id && positionInDirectedCube(actorPosition(state, actorId(actor)), origin, to, radius))
+    return listActors(state).filter((actor) => {
+      const at = actorPosition(state, actorId(actor))
+      return isLivingActor(actor) && actorId(actor) !== command.actor_id && at
+        && actorInArea(state, actorId(actor), at, to, radius, 'cube', command.actor_id, origin)
+    })
   }
   if (spell.areaShape === 'line') {
     const wall = new Set(wallCells(state, command, spell).map(positionKey))
@@ -7732,13 +8088,13 @@ export function spellTargetsAt(state, command, spell) {
     return listActors(state).filter((actor) => {
       if (!isLivingActor(actor) || actorId(actor) === command.actor_id) return false
       const at = actorPosition(state, actorId(actor))
-      return Boolean(at && wall.has(positionKey(at)))
+      return Boolean(at && actorFootprintCellsAt(state, actorId(actor), at).some((cell) => wall.has(positionKey(cell))))
     })
   }
   return listActors(state).filter((actor) => {
     if (!isLivingActor(actor)) return false
     const at = actorPosition(state, actorId(actor))
-    return at && Math.max(Math.abs(at.x - to.x), Math.abs(at.y - to.y)) * 5 <= radius
+    return at && actorFootprintCellsAt(state, actorId(actor), at).some((cell) => positionInArea(cell, to, radius))
   })
 }
 
@@ -7748,24 +8104,30 @@ function npcSpellTargetsAt(state, command, spell) {
   if (spell.target === 'self') {
     const center = actorPosition(state, command.actor_id)
     const radius = Math.max(0, safeInteger(spell.radius, 5))
-    return center ? candidates.filter(({ placement }) => Math.max(Math.abs(placement.x - center.x), Math.abs(placement.y - center.y)) * 5 <= radius) : []
+    return center ? candidates.filter(({ placement }) => footprintDistanceFeet(
+      { footprint: placement.footprint }, findActor(state, command.actor_id), placement, center,
+    ) <= radius) : []
   }
   if (spell.target !== 'point') return []
   const to = { x: Number(command.to?.x), y: Number(command.to?.y) }
   const radius = Math.max(0, Math.min(600, safeInteger(spell.radius, 5)))
   if (spell.areaShape === 'cone' && spell.areaOrigin === 'self') {
     const origin = actorPosition(state, command.actor_id)
-    return origin ? candidates.filter(({ placement }) => positionInCone(placement, origin, to, radius)) : []
+    return origin ? candidates.filter(({ placement }) => footprintCellsFor({ footprint: placement.footprint }, placement)
+      .some((cell) => actorFootprintCellsAt(state, command.actor_id, origin).some((source) => positionInCone(cell, source, to, radius)))) : []
   }
   if (spell.areaShape === 'cube' && spell.areaOrigin === 'self') {
     const origin = actorPosition(state, command.actor_id)
-    return origin ? candidates.filter(({ placement }) => positionInDirectedCube(placement, origin, to, radius)) : []
+    return origin ? candidates.filter(({ placement }) => footprintCellsFor({ footprint: placement.footprint }, placement)
+      .some((cell) => actorFootprintCellsAt(state, command.actor_id, origin).some((source) => positionInDirectedCube(cell, source, to, radius)))) : []
   }
   if (spell.areaShape === 'line') {
     const wall = new Set(wallCells(state, command, spell).map(positionKey))
-    return candidates.filter(({ placement }) => wall.has(positionKey(placement)))
+    return candidates.filter(({ placement }) => footprintCellsFor({ footprint: placement.footprint }, placement)
+      .some((cell) => wall.has(positionKey(cell))))
   }
-  return candidates.filter(({ placement }) => Math.max(Math.abs(placement.x - to.x), Math.abs(placement.y - to.y)) * 5 <= radius)
+  return candidates.filter(({ placement }) => footprintCellsFor({ footprint: placement.footprint }, placement)
+    .some((cell) => positionInArea(cell, to, radius)))
 }
 
 /**
@@ -7881,7 +8243,9 @@ function monsterMultiattackActionIds(actor, fallbackActionId = null, usedActionI
 }
 
 function creatureSizeRank(actor) {
-  const raw = String(actor?.size ?? actor?.creature_size ?? actor?.creatureSize ?? 'medium').toLocaleLowerCase('ru')
+  const declared = actor?.size ?? actor?.creature_size ?? actor?.creatureSize
+  if (declared == null && footprintSizeFor(actor) > 1) return footprintSizeFor(actor) + 1
+  const raw = String(declared ?? 'medium').toLocaleLowerCase('ru')
   if (raw.includes('gargantuan') || raw.includes('громад')) return 5
   if (raw.includes('huge') || raw.includes('огром')) return 4
   if (raw.includes('large') || raw.includes('больш')) return 3
@@ -8638,7 +9002,7 @@ export function shrinePrayerRefusalFor(state, { actorId = '', propId = '' } = {}
   }
   const at = actorPosition(state, actorId)
   if (!at) return refuse('MAP_POSITION_REQUIRED', 'Участник должен находиться на карте')
-  if (sceneObjectDistance(prop, at) > 1) return refuse('SCENE_OBJECT_OUT_OF_REACH', 'До объекта нужно дотянуться: встаньте вплотную')
+  if (actorObjectDistanceCells(state, actorId, prop, at) > 1) return refuse('SCENE_OBJECT_OUT_OF_REACH', 'До объекта нужно дотянуться: встаньте вплотную')
   if (!isLivingActor(findActor(state, actorId))) return refuse('ACTOR_DEFEATED', 'Взаимодействовать может только дееспособный участник')
   // Сутки закрывает любое обращение — и молитва, и жрец. Считается по попытке,
   // а не по успеху: иначе неудачную молитву повторяли бы до двадцатки, у алтаря
@@ -8800,23 +9164,50 @@ function sceneAdvancePartyIds(state) {
   return uniqueStrings(requested).filter((id) => playerIds.has(id))
 }
 
+function partyFootprintFits(actor, anchor, cellsByKey, map, occupied) {
+  const footprint = footprintCellsFor(actor, anchor)
+  if (!footprint.length || map && footprintPlacementEdgesBlocked(map, actor, anchor)) return false
+  return footprint.every((cell) => {
+    const key = positionKey(cell)
+    const sceneCell = cellsByKey.get(key)
+    return sceneCell
+      && ['floor', 'door'].includes(String(sceneCell.type || 'floor').toLowerCase())
+      && (!map || cellAt(map, cell.x, cell.y)?.passable === true)
+      && !occupied.has(key)
+  })
+}
+
+function acceptedPartyPlacementEntries(state, rawEntries, cells, map, { occupiedCells = [] } = {}) {
+  const partyIds = new Set(sceneAdvancePartyIds(state))
+  const cellsByKey = new Map((Array.isArray(cells) ? cells : []).map((cell) => [positionKey(cell), cell]))
+  const usedActors = new Set()
+  const usedCells = new Set(occupiedCells)
+  const positions = new Map()
+  for (const entry of Array.isArray(rawEntries) ? rawEntries : []) {
+    const id = String(entry?.actor_id ?? '')
+    const x = Number(entry?.x)
+    const y = Number(entry?.y)
+    if (!partyIds.has(id) || usedActors.has(id) || !Number.isSafeInteger(x) || !Number.isSafeInteger(y)) continue
+    const actor = findActor(state, id)
+    if (!partyFootprintFits(actor, { x, y }, cellsByKey, map, usedCells)) continue
+    usedActors.add(id)
+    for (const cell of footprintCellsFor(actor, { x, y })) usedCells.add(positionKey(cell))
+    positions.set(id, { x, y })
+  }
+  return { positions, usedCells }
+}
+
 function sceneAdvancePartyPositions(state, transition) {
   const partyIds = sceneAdvancePartyIds(state)
   const entrance = {
     x: safeInteger(transition?.entrance?.x, 0),
     y: safeInteger(transition?.entrance?.y, 0),
   }
-  const seen = new Set()
   const cells = (Array.isArray(transition?.scene?.cells) ? transition.scene.cells : [])
-    .filter((cell) => {
-      const x = Number(cell?.x)
-      const y = Number(cell?.y)
-      const key = `${x},${y}`
-      if (!Number.isSafeInteger(x) || !Number.isSafeInteger(y) || seen.has(key)) return false
-      if (!['floor', 'door'].includes(String(cell?.type || 'floor').toLowerCase())) return false
-      seen.add(key)
-      return true
-    })
+    .filter((cell) => Number.isSafeInteger(Number(cell?.x)) && Number.isSafeInteger(Number(cell?.y)))
+    .map((cell) => ({ ...cell, x: Number(cell.x), y: Number(cell.y) }))
+    .filter((cell, index, all) => all.findIndex((candidate) => positionKey(candidate) === positionKey(cell)) === index)
+    .filter((cell) => ['floor', 'door'].includes(String(cell?.type || 'floor').toLowerCase()))
     .sort((left, right) => {
       const leftDistance = Math.abs(Number(left.x) - entrance.x) + Math.abs(Number(left.y) - entrance.y)
       const rightDistance = Math.abs(Number(right.x) - entrance.x) + Math.abs(Number(right.y) - entrance.y)
@@ -8825,10 +9216,23 @@ function sceneAdvancePartyPositions(state, transition) {
         || Number(left.y) - Number(right.y)
         || Number(left.x) - Number(right.x)
     })
-  if (cells.length < partyIds.length) {
-    throw new RulesValidationError('На входе новой сцены недостаточно проходимых клеток для отряда', 'SCENE_ENTRANCE_CAPACITY_EXCEEDED')
+  let map = null
+  if (transition?.scene?.map) {
+    try { map = deserializeTacticalMap(transition.scene.map) } catch { /* Проверим хотя бы производные клетки. */ }
   }
-  return partyIds.map((id, index) => ({ actor_id: id, x: Number(cells[index].x), y: Number(cells[index].y) }))
+  const cellsByKey = new Map(cells.map((cell) => [positionKey(cell), cell]))
+  const occupied = new Set()
+  const positions = []
+  for (const id of partyIds) {
+    const actor = findActor(state, id)
+    const selected = cells.find((candidate) => partyFootprintFits(actor, candidate, cellsByKey, map, occupied))
+    if (!selected) {
+      throw new RulesValidationError('На входе новой сцены недостаточно площади для отряда', 'SCENE_ENTRANCE_CAPACITY_EXCEEDED')
+    }
+    for (const cell of footprintCellsFor(actor, selected)) occupied.add(positionKey(cell))
+    positions.push({ actor_id: id, x: selected.x, y: selected.y })
+  }
+  return positions
 }
 
 function recordingDiceService(base, transcript) {
@@ -9396,18 +9800,28 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const targetAt = command.reaction_attack && command.reaction_target_position
         ? { x: Number(command.reaction_target_position.x), y: Number(command.reaction_target_position.y) }
         : actorPosition(state, targetId)
+      const hasTacticalMap = tacticalCellMap(state).size > 0
+      if (authoritative && state.mechanics.combat.active && hasTacticalMap
+        && !actorFootprintVisible(state, targetId, targetAt)
+        && !blindTargetAllowed(command, context)) {
+        throw new RulesValidationError('Цель находится в нераскрытой части карты', 'TARGET_NOT_VISIBLE')
+      }
       const cover = coverBetween(state, command.actor_id, targetId, actorAt, targetAt)
       const armorClass = bareArmorClass + cover.armorClassBonus
-      const hasTacticalMap = tacticalCellMap(state).size > 0
       let distanceFeet = null
       if (authoritative && state.mechanics.combat.active && hasTacticalMap) {
         if (!actorAt || !targetAt) throw new RulesValidationError('Участники боя должны находиться на карте', 'MAP_POSITION_REQUIRED')
-        distanceFeet = Math.max(Math.abs(actorAt.x - targetAt.x), Math.abs(actorAt.y - targetAt.y)) * 5
+        distanceFeet = distanceBetweenActorPositions(state, command.actor_id, actorAt, targetId, targetAt)
         if (distanceFeet < 5 || distanceFeet > profile.range_feet) throw new RulesValidationError('Цель находится вне дальности атаки', 'TARGET_OUT_OF_RANGE')
-        if (profile.range_feet > 5) assertClearTrajectory(state, actorAt, targetAt)
+         if (profile.range_feet > 5) assertClearActorTrajectory(state, command.actor_id, targetId, actorAt, targetAt, {
+           allowHiddenTarget: blindTargetAllowed(command, context),
+         })
       }
       let modifier = profile?.modifier ?? safeInteger(command.attack_modifier, 0)
-      const enemyAdjacent = profile?.kind === 'ranged' && listActors(state).some((candidate) => isEnemyActor(state, actorId(candidate)) !== isEnemyActor(state, command.actor_id) && isLivingActor(candidate) && (() => { const at = actorPosition(state, actorId(candidate)); return at && actorAt && Math.max(Math.abs(at.x - actorAt.x), Math.abs(at.y - actorAt.y)) === 1 })())
+      const enemyAdjacent = profile?.kind === 'ranged' && listActors(state).some((candidate) => isEnemyActor(state, actorId(candidate)) !== isEnemyActor(state, command.actor_id) && isLivingActor(candidate) && (() => {
+        const at = actorPosition(state, actorId(candidate))
+        return at && actorAt && footprintDistanceFeet(candidate, actor, at, actorAt) === 5
+      })())
       const longRange = profile && distanceFeet != null && distanceFeet > profile.normal_range_feet
       const actorConditions = conditionIdsFor(state, command.actor_id)
       const targetConditions = conditionIdsFor(state, targetId)
@@ -9448,7 +9862,10 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const alliedSupport = listActors(state).some((candidate) => actorId(candidate) !== command.actor_id
         && isEnemyActor(state, actorId(candidate)) === isEnemyActor(state, command.actor_id)
         && isLivingActor(candidate)
-        && (() => { const at = actorPosition(state, actorId(candidate)); return at && targetAt && Math.max(Math.abs(at.x - targetAt.x), Math.abs(at.y - targetAt.y)) === 1 })())
+        && (() => {
+          const at = actorPosition(state, actorId(candidate))
+          return at && targetAt && footprintDistanceFeet(candidate, target, at, targetAt) === 5
+        })())
       const helped = actorConditions.has('helped')
       const hidden = actorConditions.has('hidden')
       const dodging = targetConditions.has('dodging')
@@ -9629,7 +10046,10 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         pack_tactics: packTactics,
         bloodied_frenzy: bloodiedFrenzy,
         charge: chargeActive,
-        trajectory: actorAt && targetAt ? lineCells(actorAt, targetAt) : [],
+         // `trajectory` начинается с anchor тела. Клиент двигает модель
+         // внутри footprint и не должен принимать первую клетку луча за новый
+         // anchor источника.
+         trajectory: actorAt && targetAt ? [actorAt, ...lineCells(actorAt, targetAt)] : [],
         long_range: Boolean(longRange),
         reaction_attack: command.reaction_attack === true,
         }, [targetId]),
@@ -10102,7 +10522,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           const burstTargets = targetPosition ? listActors(hitEffectState).filter((candidate) => {
             if (!isLivingActor(candidate)) return false
             const position = actorPosition(hitEffectState, actorId(candidate))
-            return position && Math.max(Math.abs(position.x - targetPosition.x), Math.abs(position.y - targetPosition.y)) * 5 <= Math.max(0, safeInteger(burst.radius, 5))
+            return position && footprintDistanceFeet(candidate, findActor(hitEffectState, targetId), position, targetPosition) <= Math.max(0, safeInteger(burst.radius, 5))
           }) : []
           const expression = scaledDiceExpression(burst.damage, extraLevels, burst.upcastDicePerLevel, burst.maximumDice)
           const burstRoll = diceService.roll(expression, `spell:next-weapon-hit-burst:${pendingWeaponHitSpell.id}`, command.actor_id, command.visibility ?? 'public')
@@ -10253,13 +10673,13 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       const from = actorPosition(state, command.actor_id)
       const to = { x: Number(command.to.x), y: Number(command.to.y) }
       if (!from) throw new RulesValidationError('Метатель должен находиться на карте', 'MAP_POSITION_REQUIRED')
-      const distanceFeet = Math.max(Math.abs(from.x - to.x), Math.abs(from.y - to.y)) * 5
+      const distanceFeet = footprintDistanceFeet(findActor(state, command.actor_id), [to], from)
       if (distanceFeet > safeInteger(combat.normalRange, 20)) throw new RulesValidationError('Клетка находится вне дальности броска', 'TARGET_OUT_OF_RANGE')
-      const trajectory = assertClearTrajectory(state, from, to)
+      const trajectory = assertClearActorToPoint(state, command.actor_id, from, to)
       const radiusFeet = Math.max(5, Math.min(30, safeInteger(combat.radius, 5)))
       const affected = listActors(state).filter((candidate) => actorId(candidate) !== command.actor_id && isLivingActor(candidate) && (() => {
         const at = actorPosition(state, actorId(candidate))
-        return at && Math.max(Math.abs(at.x - to.x), Math.abs(at.y - to.y)) * 5 <= radiusFeet
+        return at && actorFootprintCellsAt(state, actorId(candidate), at).some((cell) => positionInArea(cell, to, radiusFeet))
       })())
       const npcAffected = npcTargetsWithinArea(state, to, radiusFeet)
       const affectedIds = [...affected.map(actorId), ...npcAffected.map(({ npc }) => String(npc.id))]
@@ -11303,6 +11723,8 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         uses_max: declared.uses_max,
       }, [command.actor_id]))
       if (action.kind === 'attack') {
+        const attackerAt = actorPosition(state, command.actor_id)
+        const targetAt = actorPosition(state, targetId)
         const roll = diceService.rollD20({
           modifier: action.attackModifier,
           purpose: `legendary_attack:${action.id}`,
@@ -11317,6 +11739,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           ...roll, target_id: targetId, armor_class: armorClass, hit, critical, legendary_action_id: action.id,
           // Имя легендарного действия здесь не является публичным action_name;
           // неизвестная экипировка безопаснее догадки по закрытому стат-блоку.
+          trajectory: attackerAt && targetAt ? [attackerAt, ...lineCells(attackerAt, targetAt)] : [],
           attack_visual: attackVisualFor(),
         }, [targetId]))
         if (hit && action.damageExpression) {
@@ -11345,7 +11768,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
             const at = actorPosition(state, actorId(candidate))
             return isLivingActor(candidate)
               && isEnemyActor(state, actorId(candidate)) !== isEnemyActor(state, command.actor_id)
-              && at && centre && Math.max(Math.abs(at.x - centre.x), Math.abs(at.y - centre.y)) * 5 <= action.radiusFeet
+              && at && centre && footprintDistanceFeet(candidate, actor, at, centre) <= action.radiusFeet
           })
           : [target].filter(Boolean)
         const damageRoll = action.damageExpression
@@ -11654,7 +12077,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
             // она превращается в горящую зону, и урон приходит уже оттуда.
             const burnExpression = web.flammable.damage ? String(web.flammable.damage) : web.ignites_into ? null : '2d4'
             let burnState = events.reduce(applyGameEvent, state)
-            for (const caught of (burnExpression ? listActors(burnState) : []).filter((candidate) => isLivingActor(candidate) && positionInEffect(burnState, actorPosition(burnState, actorId(candidate)), web))) {
+            for (const caught of (burnExpression ? listActors(burnState) : []).filter((candidate) => isLivingActor(candidate) && positionInEffect(burnState, actorPosition(burnState, actorId(candidate)), web, candidate))) {
               const caughtId = actorId(caught)
               const burnRoll = diceService.roll(burnExpression, `spell_area_burn:${web.spell_id}`, command.actor_id, command.visibility ?? 'public')
               rolls.push(burnRoll)
@@ -11706,10 +12129,12 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         } else if (spell.kind === 'attack') {
           const target = affected[0]
           const resolvedTargetId = actorId(target)
-          const equippedMelee = spell.requiresWeaponAttack ? (actor?.inventory ?? []).find((item) => item?.equipped && item?.combat?.kind === 'melee' && Number(item?.quantity ?? 1) > 0) : null
-          const weaponProfile = equippedMelee ? itemAttackProfile(state, actor, equippedMelee.id) : spell.requiresWeaponAttack ? trustedAttackProfile(state, actor) : null
-          if (spell.requiresWeaponAttack && (!weaponProfile || weaponProfile.kind !== 'melee')) throw new RulesValidationError('Для этого заговора требуется экипированное рукопашное оружие', 'MELEE_WEAPON_REQUIRED')
-          const spellCover = coverBetween(state, command.actor_id, resolvedTargetId, actorPosition(state, command.actor_id), actorPosition(state, resolvedTargetId))
+           const equippedMelee = spell.requiresWeaponAttack ? (actor?.inventory ?? []).find((item) => item?.equipped && item?.combat?.kind === 'melee' && Number(item?.quantity ?? 1) > 0) : null
+           const weaponProfile = equippedMelee ? itemAttackProfile(state, actor, equippedMelee.id) : spell.requiresWeaponAttack ? trustedAttackProfile(state, actor) : null
+           if (spell.requiresWeaponAttack && (!weaponProfile || weaponProfile.kind !== 'melee')) throw new RulesValidationError('Для этого заговора требуется экипированное рукопашное оружие', 'MELEE_WEAPON_REQUIRED')
+           const spellActorAt = actorPosition(state, command.actor_id)
+           const spellTargetAt = actorPosition(state, resolvedTargetId)
+           const spellCover = coverBetween(state, command.actor_id, resolvedTargetId, spellActorAt, spellTargetAt)
           const armorClass = effectiveArmorClass(state, target, resolvedTargetId) + spellCover.armorClassBonus
           const spellAttackConditions = conditionIdsFor(state, command.actor_id)
           const compelledAgainstOther = (state.mechanics.conditions[command.actor_id] ?? []).some((condition) => String(condition?.id ?? condition) === 'compelled-duel' && String(condition.source_actor ?? '') !== resolvedTargetId)
@@ -11754,8 +12179,9 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
             ...(spellCover.armorClassBonus > 0 ? { cover: spellCover.level, cover_bonus: spellCover.armorClassBonus, cover_blockers: spellCover.blockers, ...(spellCover.scenery ? { cover_scenery: spellCover.scenery } : {}) } : {}),
             ...(spellHighGround !== 'level' ? { high_ground: spellHighGround } : {}),
             range_feet: effectiveRange, damage_expression: weaponProfile?.damage_expression ?? damageExpression, damage_type: weaponProfile?.damage_type ?? damageType,
-            spell_id: spell.id, spell_name: spell.name,
-            attack_visual: attackVisualFor({
+             spell_id: spell.id, spell_name: spell.name,
+             trajectory: spellActorAt && spellTargetAt ? [spellActorAt, ...lineCells(spellActorAt, spellTargetAt)] : [],
+             attack_visual: attackVisualFor({
               item: weaponProfile?.item,
               items: weaponProfile?.item ? actor?.inventory : undefined,
               attackKind: weaponProfile?.kind ?? (effectiveRange > 5 ? 'ranged' : 'melee'),
@@ -11853,7 +12279,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
                 .filter((candidate) => isEnemyActor(state, actorId(candidate)) !== isEnemyActor(state, command.actor_id))
                 .filter((candidate) => {
                   const at = actorPosition(state, actorId(candidate))
-                  return at && Math.max(Math.abs(at.x - targetAt.x), Math.abs(at.y - targetAt.y)) === 1
+                  return at && footprintDistanceFeet(candidate, findActor(state, resolvedTargetId), at, targetAt) === 5
                 })
                 .sort((left, right) => actorId(left).localeCompare(actorId(right)))[0] : null
               if (secondTarget) {
@@ -11959,7 +12385,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
             const center = actorPosition(burstState, resolvedTargetId) ?? actorPosition(state, resolvedTargetId)
             const burstTargets = listActors(burstState).filter((candidate) => {
               const at = actorPosition(burstState, actorId(candidate))
-              return at && center && Math.max(Math.abs(at.x - center.x), Math.abs(at.y - center.y)) * 5 <= Math.max(0, safeInteger(burst.radius, 5))
+              return at && center && footprintDistanceFeet(candidate, findActor(burstState, resolvedTargetId), at, center) <= Math.max(0, safeInteger(burst.radius, 5))
                 && (isLivingActor(candidate) || actorId(candidate) === resolvedTargetId)
             })
             for (const burstTarget of burstTargets) {
@@ -12329,7 +12755,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           const door = map ? doorsReachableFrom(map, at.x, at.y).find((entry) => String(entry.state) === 'locked') : null
           const prop = map && !door
             ? (map.props ?? []).find((candidate) => {
-              if (candidate.interactive !== true || sceneObjectDistance(candidate, at) > 1) return false
+               if (candidate.interactive !== true || actorObjectDistanceCells(state, command.actor_id, candidate, at) > 1) return false
               const definition = sceneInteractionDefinition({ mapSeed: map.seed, props: map.props, propId: candidate.id })
               return Boolean(definition) && sceneObjectState(state, candidate, definition).state === 'locked'
             })
@@ -12434,9 +12860,16 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
             // Превращение: лист существа подменяется целиком и запоминается,
             // чтобы возврат был точным.
             if (spell.polymorphForm) {
+              const form = clone(spell.polymorphForm)
+              // Площадь новой формы входит в событие только у свежего
+              // authoritative-пути. Старое ShapeChanged без этой метадаты не
+              // должно внезапно превратить legacy 1×1 актёра в крупного.
+              if (Object.hasOwn(form, 'size') && !normalizeFootprintMetadata(form.footprint)) {
+                form.footprint = footprintMetadataForSize(form.size)
+              }
               events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ShapeChanged', {
                 spell_id: spell.id,
-                form: clone(spell.polymorphForm),
+                form,
               }, [resolvedTargetId]))
             }
             // Прибавка к максимуму хитов: «Подмога» поднимает и предел, и
@@ -12516,7 +12949,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
             const caught = listActors(state).filter((candidate) => {
               if (!isLivingActor(candidate) || actorId(candidate) === command.actor_id) return false
               const at = actorPosition(state, actorId(candidate))
-              return at && Math.max(Math.abs(at.x - from.x), Math.abs(at.y - from.y)) * 5 <= radiusFeet
+              return at && footprintDistanceFeet(candidate, actor, at, from) <= radiusFeet
             })
             if (caught.length) {
               const blastExpression = scaledSpellDice(spell, actor, command.slot_level) ?? spell.damage
@@ -12563,20 +12996,23 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           // Занятые и непроходимые пропускаются, поэтому в тесноте фишек встанет
           // меньше заявленного — и это честнее, чем ставить их друг на друга.
           const placed = []
-          const taken = new Set(listActors(state).map((candidate) => {
-            const at = actorPosition(state, actorId(candidate))
-            return at ? positionKey(at) : ''
-          }))
+          const taken = new Set()
+          for (const candidate of listActors(state)) {
+            for (const cell of actorFootprintCellsAt(state, actorId(candidate))) taken.add(positionKey(cell))
+          }
+          for (const key of propMovementPositions(sceneTacticalMap(state))) taken.add(key)
           const cells = tacticalCellMap(state)
+          const summonFootprint = { footprint: footprintMetadataForSize(definition.size) }
           for (let ring = 0; placed.length < summonCount && ring <= 4; ring += 1) {
             for (let dy = -ring; dy <= ring && placed.length < summonCount; dy += 1) {
               for (let dx = -ring; dx <= ring && placed.length < summonCount; dx += 1) {
                 if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue
                 const spot = { x: to.x + dx, y: to.y + dy }
-                const key = positionKey(spot)
-                if (taken.has(key)) continue
-                if (cells.size && !isWalkableCell(cells.get(key))) continue
-                taken.add(key)
+                const footprint = footprintCellsFor(summonFootprint, spot)
+                if (!footprint.length || footprint.some((cell) => taken.has(positionKey(cell)) || cells.size && !isWalkableCell(cells.get(positionKey(cell))))) continue
+                const map = sceneTacticalMap(state)
+                if (map && footprintPlacementEdgesBlocked(map, summonFootprint, spot)) continue
+                for (const cell of footprint) taken.add(positionKey(cell))
                 placed.push(spot)
               }
             }
@@ -12607,6 +13043,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
                 damage_type: definition.damageType,
                 range_feet: definition.range,
               },
+              footprint: footprintMetadataForSize(definition.size),
             }
             events.push(eventFrom(commandWithRules(command, RULE_IDS.initiative), 'SummonedCreatureCreated', { summon, turn_rule: 'after-owner', summon_index: index + 1, summon_count: placed.length }, [summonId]))
           }
@@ -12723,8 +13160,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           movementSpent = jump.movementSpent
         } else {
           const movementMap = sceneTacticalMap(state)
-          const blockedByProp = movementMap && propMovementPositions(movementMap).has(positionKey(to))
-          if (!isWalkableCell(cells.get(positionKey(to))) || blockedByProp || occupiedPositions(state, command.actor_id).has(positionKey(to))) {
+          if (!actorFootprintFits(state, command.actor_id, to, { map: movementMap, cells })) {
             throw new RulesValidationError('Клетка назначения недоступна', 'INVALID_DESTINATION')
           }
           const { map, stepCost } = movementStepCostFor(state, command.actor_id)
@@ -12834,7 +13270,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       // нераскрытую клетку непроходимой — то есть отряд запирался в том
       // пятне, которое досталось ему при создании сцены, и внутрь здания
       // пройти было нельзя вовсе.
-      const scoutedMap = ensureSceneTacticalMap(state)
+      const scoutedMap = !isEnemyActor(state, command.actor_id) ? ensureSceneTacticalMap(state) : null
       if (scoutedMap) {
         const scouted = cellsVisibleFrom(scoutedMap, to, { radius: MOVEMENT_SIGHT_CELLS })
           .filter((cell) => cellAt(scoutedMap, cell.x, cell.y)?.revealed !== true)
@@ -12866,8 +13302,8 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
             const opportunity = opportunityAttackProfile(state, candidate)
             if (!opportunity) return false
             const reach = Math.max(5, safeInteger(opportunity.profile.range_feet, 5))
-            const before = Math.max(Math.abs(at.x - from.x), Math.abs(at.y - from.y)) * 5
-            const leavesReach = path?.some((step) => Math.max(Math.abs(at.x - step.x), Math.abs(at.y - step.y)) * 5 > reach)
+            const before = footprintDistanceFeet(candidate, actor, at, from)
+            const leavesReach = path?.some((step) => (footprintDistanceFeet(candidate, actor, at, step) ?? 0) > reach)
             return before <= reach && leavesReach
           })
           .sort((left, right) => (initiativeOrder.get(actorId(left)) ?? Number.MAX_SAFE_INTEGER) - (initiativeOrder.get(actorId(right)) ?? Number.MAX_SAFE_INTEGER)
@@ -12901,8 +13337,10 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           .filter(([readyId]) => {
             const at = actorPosition(state, readyId)
             if (!at || !destination) return false
-            const before = Math.max(Math.abs(at.x - from.x), Math.abs(at.y - from.y)) * 5
-            const after = Math.max(Math.abs(at.x - destination.x), Math.abs(at.y - destination.y)) * 5
+            const readyActor = findActor(state, readyId)
+            const moverActor = findActor(state, command.actor_id)
+            const before = footprintDistanceFeet(readyActor, moverActor, at, from)
+            const after = footprintDistanceFeet(readyActor, moverActor, at, destination)
             // Именно «подошёл»: был дальше досягаемости, стал в её пределах.
             return before > 5 && after <= 5
           })
@@ -13086,7 +13524,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       }
       const at = actorPosition(state, command.actor_id)
       if (!at) throw new RulesValidationError('Участник должен находиться на карте', 'MAP_POSITION_REQUIRED')
-      if (sceneObjectDistance(prop, at) > 1) {
+       if (actorObjectDistanceCells(state, command.actor_id, prop, at) > 1) {
         throw new RulesValidationError('До объекта нужно дотянуться: встаньте вплотную', 'SCENE_OBJECT_OUT_OF_REACH')
       }
       const actor = findActor(state, command.actor_id)
@@ -13544,7 +13982,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       }
       const at = actorPosition(state, command.actor_id)
       if (!at) throw new RulesValidationError('Участник должен находиться на карте', 'MAP_POSITION_REQUIRED')
-      if (sceneObjectDistance(prop, at) > 1) {
+       if (actorObjectDistanceCells(state, command.actor_id, prop, at) > 1) {
         throw new RulesValidationError('До перехода нужно дойти: встаньте вплотную', 'TRANSITION_TOO_FAR')
       }
 
@@ -13639,6 +14077,9 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         location: String(state.scene?.location ?? '').slice(0, 180),
         enemy_ids: command.encounter.enemies.map((enemy) => String(enemy.id)),
       }
+      encounter.enemies = encounter.enemies.map((enemy) => normalizeFootprintMetadata(enemy?.footprint)
+        ? normalizeActorFootprintFields(enemy)
+        : stampActorFootprint(enemy, enemy?.size))
       events.push(eventFrom(command, 'EncounterCreated', {
         encounter,
         encounter_id: encounterId,
@@ -13764,7 +14205,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       }
       const endingActor = findActor(state, command.actor_id)
       const endingPosition = actorPosition(state, command.actor_id)
-      for (const effect of (state.mechanics.active_effects ?? []).filter((candidate) => candidate.trigger_on_turn_end === true && positionInEffect(state, endingPosition, candidate))) {
+      for (const effect of (state.mechanics.active_effects ?? []).filter((candidate) => candidate.trigger_on_turn_end === true && positionInEffect(state, endingPosition, candidate, endingActor))) {
         const ability = effect.save_ability ? String(effect.save_ability) : null
         let saved = false
         if (ability) {
@@ -16838,24 +17279,10 @@ export function applyGameEvent(rawState, event) {
         ...publicAdventureMemory(plainObject(payload.adventure) ? payload.adventure : state.adventure),
       }
       const partyIds = new Set(state.partyMemberIds ?? [])
-      const walkable = new Set((Array.isArray(state.scene.cells) ? state.scene.cells : [])
-        .filter((cell) => ['floor', 'door'].includes(String(cell?.type || 'floor').toLowerCase()))
-        .map((cell) => `${Number(cell.x)},${Number(cell.y)}`))
-      const usedActors = new Set()
-      const usedCells = new Set()
-      const positions = new Map()
-      for (const entry of Array.isArray(payload.party_positions) ? payload.party_positions : []) {
-        const id = String(entry?.actor_id ?? '')
-        const x = Number(entry?.x)
-        const y = Number(entry?.y)
-        const key = `${x},${y}`
-        if (!partyIds.has(id) || usedActors.has(id) || usedCells.has(key)
-          || !Number.isSafeInteger(x) || !Number.isSafeInteger(y) || !walkable.has(key)) continue
-        usedActors.add(id)
-        usedCells.add(key)
-        positions.set(id, { x, y })
-      }
-      ensureSceneTacticalMap(state)
+      const sceneMap = ensureSceneTacticalMap(state)
+      const accepted = acceptedPartyPlacementEntries(state, payload.party_positions, state.scene.cells, sceneMap)
+      const positions = accepted.positions
+      const usedCells = accepted.usedCells
       revealSceneCells(state, [...usedCells].map((key) => {
         const [x, y] = key.split(',').map(Number)
         return { x, y }
@@ -16927,24 +17354,23 @@ export function applyGameEvent(rawState, event) {
       restoreLevelEntities(state, levelKey(locationId, toLevel))
 
       // 4. Расстановка партии и раскрытие вокруг прибытия.
-      const levelPartyIds = new Set(state.partyMemberIds ?? [])
-      const levelWalkable = new Set((Array.isArray(state.scene.cells) ? state.scene.cells : [])
-        .filter((cell) => ['floor', 'door'].includes(String(cell?.type || 'floor').toLowerCase()))
-        .map((cell) => `${Number(cell.x)},${Number(cell.y)}`))
-      const levelUsedActors = new Set()
-      const levelUsedCells = new Set()
-      const levelPositions = new Map()
-      for (const entry of Array.isArray(payload.party_positions) ? payload.party_positions : []) {
-        const id = String(entry?.actor_id ?? '')
-        const x = Number(entry?.x)
-        const y = Number(entry?.y)
-        const key = `${x},${y}`
-        if (!levelPartyIds.has(id) || levelUsedActors.has(id) || levelUsedCells.has(key)
-          || !Number.isSafeInteger(x) || !Number.isSafeInteger(y) || !levelWalkable.has(key)) continue
-        levelUsedActors.add(id)
-        levelUsedCells.add(key)
-        levelPositions.set(id, { x, y })
+      const levelMap = sceneTacticalMap(state)
+      const restoredOccupied = new Set(sceneNpcOccupiedCells(state))
+      for (const actor of [...(state.enemies ?? []), ...(state.actors ?? []).filter((candidate) => isPartySummon(candidate))]) {
+        for (const cell of actorFootprintCellsAt(state, actorId(actor))) restoredOccupied.add(positionKey(cell))
       }
+      for (const entity of state.entities ?? []) {
+        if (!CREATURE_ENTITY_KINDS.has(String(entity?.kind))) continue
+        const x = Number(entity?.x)
+        const y = Number(entity?.y)
+        if (!Number.isSafeInteger(x) || !Number.isSafeInteger(y)) continue
+        for (const cell of footprintCellsFor(entity, { x, y })) restoredOccupied.add(positionKey(cell))
+      }
+      const accepted = acceptedPartyPlacementEntries(state, payload.party_positions, state.scene.cells, levelMap, {
+        occupiedCells: restoredOccupied,
+      })
+      const levelPositions = accepted.positions
+      const levelUsedCells = accepted.usedCells
       revealSceneCells(state, [...levelUsedCells].map((key) => {
         const [x, y] = key.split(',').map(Number)
         return { x, y }
@@ -17879,6 +18305,7 @@ export function applyGameEvent(rawState, event) {
       if (!form) break
       const actor = findActor(state, target)
       if (!actor) break
+      const formFootprint = normalizeFootprintMetadata(form.footprint)
       state.mechanics.shapes[target] = {
         spell_id: payload.spell_id ?? null,
         form,
@@ -17888,6 +18315,7 @@ export function applyGameEvent(rawState, event) {
           armor: safeInteger(actor.armor ?? actor.armorClass, 10),
           speed: safeInteger(actor.speed, 30),
           attack_profile: actor.attack_profile ? clone(actor.attack_profile) : null,
+          ...(Object.hasOwn(actor, 'footprint') ? { footprint: clone(actor.footprint) } : {}),
         },
       }
       replaceActor(state, target, (current) => ({
@@ -17897,6 +18325,7 @@ export function applyGameEvent(rawState, event) {
         armor: Math.max(1, safeInteger(form.armor, 10)),
         speed: Math.max(0, safeInteger(form.speed, 30)),
         attack_profile: form.attack_profile ? clone(form.attack_profile) : null,
+         ...(formFootprint ? { footprint: formFootprint } : {}),
       }))
       break
     }
@@ -17905,14 +18334,18 @@ export function applyGameEvent(rawState, event) {
       if (!shape) break
       delete state.mechanics.shapes[target]
       const excess = Math.max(0, safeInteger(payload.excess_damage, 0))
-      replaceActor(state, target, (current) => ({
-        ...current,
+      replaceActor(state, target, (current) => {
+        const { footprint: _currentFootprint, ...withoutFootprint } = current
+        return {
+        ...withoutFootprint,
         hp: Math.max(0, safeInteger(shape.original.hp, 1) - excess),
         maxHp: Math.max(1, safeInteger(shape.original.maxHp, 1)),
         armor: Math.max(1, safeInteger(shape.original.armor, 10)),
         speed: Math.max(0, safeInteger(shape.original.speed, 30)),
         ...(shape.original.attack_profile ? { attack_profile: clone(shape.original.attack_profile) } : {}),
-      }))
+        ...(Object.hasOwn(shape.original, 'footprint') ? { footprint: clone(shape.original.footprint) } : {}),
+      }
+      })
       break
     }
     case 'SpellAreaCreated': {
@@ -17991,7 +18424,7 @@ export function applyGameEvent(rawState, event) {
       appendBattleLog(state, event, { sceneTurn: safeInteger(state.scene?.turn, state.mechanics.combat.round), round: state.mechanics.combat.round, type: 'spell', actorId: event.actor_id, actorKind: combatActorKind(state, event.actor_id), targetId: target, spellId: payload.spell_id, spellName: payload.name })
       break
     case 'SummonedCreatureCreated': {
-      const summon = clone(payload.summon ?? {})
+      const summon = normalizeActorFootprintFields(clone(payload.summon ?? {}))
       if (!actorId(summon) || findActor(state, actorId(summon))) break
       state.actors = [...(state.actors ?? []), summon]
       state.mechanics.positions[actorId(summon)] = { x: safeInteger(summon.x, 0), y: safeInteger(summon.y, 0) }
@@ -18021,7 +18454,7 @@ export function applyGameEvent(rawState, event) {
       const oldEnemyIds = new Set(state.enemies.map(actorId))
       state.mechanics.positions = Object.fromEntries(Object.entries(state.mechanics.positions ?? {}).filter(([id]) => !oldEnemyIds.has(String(id))))
       state.enemies = (Array.isArray(encounter.enemies) ? encounter.enemies : [])
-        .map((enemy) => ({ ...clone(enemy), alive: true, loadout: normalizeEnemyLoadout(enemy?.loadout) }))
+        .map((enemy) => normalizeActorFootprintFields({ ...clone(enemy), alive: true, loadout: normalizeEnemyLoadout(enemy?.loadout) }))
       const authoredNpcIds = new Set(state.enemies.map((enemy) => String(enemy?.origin?.npc_id ?? '')).filter(Boolean))
       if (authoredNpcIds.size) state.social.npcs = state.social.npcs.map((npc) => (
         authoredNpcIds.has(String(npc.id)) ? { ...npc, available: false } : npc
@@ -18356,7 +18789,7 @@ export function applyGameEvent(rawState, event) {
       state.mechanics.positions[target] = clone(payload.to)
       // Выход за подрайон боя раздвигает его, а не запрещается: невидимых стен
       // принципы не допускают (`docs/tactical-map-plan.md`, 11.4).
-      growCombatBounds(state, payload.to)
+      growCombatBounds(state, payload.to, target)
       replaceActor(state, target, (actor) => payload.to && Number.isFinite(Number(payload.to.x)) && Number.isFinite(Number(payload.to.y))
         ? { ...actor, x: Number(payload.to.x), y: Number(payload.to.y) }
         : actor)

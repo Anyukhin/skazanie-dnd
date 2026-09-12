@@ -12,7 +12,7 @@ import {
 
 // Выпуски добавляются целиком через models:publish. Считаем объявленный состав
 // их manifest, а не реальные файлы или строки реестра: лишний файл по-прежнему
-// нарушает гейт, остальные 1669 исходных ассетов остаются фиксированной базой.
+// нарушает гейт, остальные 1681 исходных ассетов остаются фиксированной базой.
 function declaredEnvironmentReleaseFiles() {
   const directory = fileURLToPath(new URL('../public/assets/models/environment/releases', import.meta.url))
   if (!existsSync(directory)) return 0
@@ -73,7 +73,7 @@ test('content integrity gate verifies hashes, references, counts and the complet
   // + 125 GLB окружения, 4 файла происхождения/лицензий, каталог и парный 2D-атлас.
   // + замороженный baseline-pr79.json для карт без catalogRevision.
   // + два персонажа Quaternius и их LICENSE/NOTICE.
-  assert.equal(report.integrity.assets, 1669 + declaredEnvironmentReleaseFiles())
+  assert.equal(report.integrity.assets, 1681 + declaredEnvironmentReleaseFiles())
   assert.equal(report.integrity.coverage.find((entry) => entry.id === 'feats').coverage, 'missing')
 })
 

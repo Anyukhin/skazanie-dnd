@@ -7,7 +7,8 @@ import {
   normalizeInventoryItem,
 } from './merchant-economy.mjs'
 import { factionIdsForNpc } from './reputation-policy.mjs'
-import { cellAt, deserializeTacticalMap } from './tactical-map.mjs'
+import { cellAt, deserializeTacticalMap, movementStepBlocked } from './tactical-map.mjs'
+import { footprintCellsFor, footprintDistanceFeet, footprintMetadataForSize, normalizeFootprintMetadata } from './actor-footprint.mjs'
 
 export const NPC_WORLD_POLICY_ID = 'skazanie:npc-world-v1'
 export const NPC_WORLD_COMMAND_TYPES = new Set(['PlaceNpc', 'MoveNpc', 'HarmNpc'])
@@ -41,11 +42,13 @@ function safePlacement(value = {}) {
   const x = integer(value.x, Number.NaN)
   const y = integer(value.y, Number.NaN)
   if (!npcId || !locationId || !Number.isSafeInteger(x) || !Number.isSafeInteger(y)) return null
+  const footprint = normalizeFootprintMetadata(value.footprint)
   return {
     npc_id: npcId,
     location_id: locationId,
     x,
     y,
+    ...(footprint ? { footprint } : {}),
     anchor_prop_id: text(value.anchor_prop_id, 120),
     placement_reason: text(value.placement_reason, 80) || 'deterministic-post',
     policy_id: NPC_WORLD_POLICY_ID,
@@ -241,13 +244,17 @@ function actorOccupiedCells(state) {
     const position = state.mechanics?.positions?.[id] ?? actor
     const x = Number(position?.x)
     const y = Number(position?.y)
-    if (Number.isSafeInteger(x) && Number.isSafeInteger(y)) occupied.add(`${x},${y}`)
+    if (Number.isSafeInteger(x) && Number.isSafeInteger(y)) {
+      for (const cell of footprintCellsFor(actor, { x, y })) occupied.add(keyOf(cell))
+    }
   }
   for (const entity of state.entities ?? []) {
     if (!['creature', 'npc', 'enemy'].includes(String(entity?.kind))) continue
     const x = Number(entity?.x)
     const y = Number(entity?.y)
-    if (Number.isSafeInteger(x) && Number.isSafeInteger(y)) occupied.add(`${x},${y}`)
+    if (Number.isSafeInteger(x) && Number.isSafeInteger(y)) {
+      for (const cell of footprintCellsFor(entity, { x, y })) occupied.add(keyOf(cell))
+    }
   }
   return occupied
 }
@@ -277,15 +284,41 @@ function suitableProps(map, npc) {
   })
 }
 
-function placementCellAllowed(map, position, occupied, propOccupied) {
+function placementCellAllowed(map, position, occupied, propOccupied, footprint = null) {
   const x = Number(position?.x)
   const y = Number(position?.y)
   if (!Number.isSafeInteger(x) || !Number.isSafeInteger(y)) return false
-  const cell = cellAt(map, x, y)
-  return Boolean(cell?.passable && cell?.revealed && !occupied.has(`${x},${y}`) && !propOccupied.has(`${x},${y}`))
+  const cells = footprintCellsFor({ footprint }, { x, y })
+  if (!cells.length || cells.some((cell) => {
+    const key = keyOf(cell)
+    return !cellAt(map, cell.x, cell.y)?.passable
+      || !cellAt(map, cell.x, cell.y)?.revealed
+      || occupied.has(key)
+      || propOccupied.has(key)
+  })) return false
+  for (const cell of cells) {
+    for (const [dx, dy] of [[1, 0], [0, 1]]) {
+      const next = { x: cell.x + dx, y: cell.y + dy }
+      if (!cells.some((candidate) => candidate.x === next.x && candidate.y === next.y)) continue
+       if (movementStepBlocked(map, cell.x, cell.y, next.x, next.y)) return false
+    }
+  }
+  return true
 }
 
-function candidateCells(map, npc, occupied, propOccupied) {
+function npcFootprintFor(state, npcId) {
+  const placement = npcPlacementFor(state, npcId)
+  if (placement?.footprint) return placement.footprint
+  return null
+}
+
+function npcSpawnFootprintFor(state, npcId) {
+  const profile = normalizeNpcWorldState(state.npc_world).profiles[String(npcId ?? '')]
+  const footprint = profile?.size ? footprintMetadataForSize(profile.size) : null
+  return footprint?.size > 1 ? footprint : null
+}
+
+function candidateCells(map, npc, occupied, propOccupied, footprint = null) {
   const preferred = preferredAssets(npc)
   const post = (npc.tags ?? []).find((tag) => String(tag).startsWith('post:'))?.slice(5)
   const assignedZone = map.zones.find((zone) => zone.id === post)
@@ -296,7 +329,7 @@ function candidateCells(map, npc, occupied, propOccupied) {
   for (let y = 0; y < map.height; y += 1) {
     for (let x = 0; x < map.width; x += 1) {
       const position = { x, y }
-      if (!placementCellAllowed(map, position, occupied, propOccupied)) continue
+      if (!placementCellAllowed(map, position, occupied, propOccupied, footprint)) continue
       if (assignedZone && cellAt(map, x, y)?.zone !== assignedZone.id) continue
       let anchor = null
       let anchorDistance = Number.MAX_SAFE_INTEGER
@@ -341,8 +374,10 @@ export function isValidNpcPost(state, position, { occupied = actorOccupiedCells(
   const propOccupied = new Set(map.props.flatMap(propCells).map(keyOf))
   const otherNpcs = normalizeNpcWorldState(state.npc_world).placements
     .filter((placement) => placement.location_id === sceneLocationId(state) && placement.npc_id !== String(exceptNpcId))
-  for (const placement of otherNpcs) occupied.add(keyOf(placement))
-  return placementCellAllowed(map, position, occupied, propOccupied)
+  for (const placement of otherNpcs) {
+    for (const cell of footprintCellsFor({ footprint: placement.footprint }, placement)) occupied.add(keyOf(cell))
+  }
+  return placementCellAllowed(map, position, occupied, propOccupied, npcFootprintFor(state, exceptNpcId) ?? npcSpawnFootprintFor(state, exceptNpcId))
 }
 
 /**
@@ -362,18 +397,21 @@ export function planSceneNpcPlacementEvents(state = {}) {
   // этой локации, иначе новый житель может оказаться поверх прежнего.
   for (const placement of world.placements) {
     if (placement.location_id !== locationId || presentIds.has(placement.npc_id)) continue
-    if (placementCellAllowed(map, placement, occupied, propOccupied)) occupied.add(keyOf(placement))
+    if (placementCellAllowed(map, placement, occupied, propOccupied, placement.footprint)) {
+      for (const cell of footprintCellsFor({ footprint: placement.footprint }, placement)) occupied.add(keyOf(cell))
+    }
   }
   const events = []
   for (const npc of present) {
     const existing = world.placements.find((placement) => placement.npc_id === String(npc.id) && placement.location_id === locationId)
-    if (existing && placementCellAllowed(map, existing, occupied, propOccupied)) {
-      occupied.add(keyOf(existing))
+    const footprint = existing ? existing.footprint ?? null : npcSpawnFootprintFor(state, npc.id)
+    if (existing && placementCellAllowed(map, existing, occupied, propOccupied, footprint)) {
+      for (const cell of footprintCellsFor({ footprint }, existing)) occupied.add(keyOf(cell))
       continue
     }
-    const selected = candidateCells(map, npc, occupied, propOccupied)[0]
+    const selected = candidateCells(map, npc, occupied, propOccupied, footprint)[0]
     if (!selected) continue
-    occupied.add(keyOf(selected))
+    for (const cell of footprintCellsFor({ footprint }, selected)) occupied.add(keyOf(cell))
     const placement = {
       npc_id: String(npc.id),
       npc_name: text(npc.name, 160),
@@ -382,6 +420,7 @@ export function planSceneNpcPlacementEvents(state = {}) {
       x: selected.x,
       y: selected.y,
       anchor_prop_id: selected.anchor_prop_id,
+      ...(footprint ? { footprint } : {}),
       placement_reason: existing ? 'relocated-invalid-post' : 'role-suitable-post',
       policy_id: NPC_WORLD_POLICY_ID,
       ...(existing ? { from: { x: existing.x, y: existing.y } } : {
@@ -487,7 +526,7 @@ export function placedSceneNpcTargets(state) {
  */
 export function sceneNpcOccupiedCells(state = {}) {
   const placed = placedSceneNpcTargets(state)
-  if (placed.length) return new Set(placed.map(({ placement }) => keyOf(placement)))
+  if (placed.length) return new Set(placed.flatMap(({ placement }) => footprintCellsFor({ footprint: placement.footprint }, placement).map(keyOf)))
   // Проекции игрока намеренно не несут `npc_world`, но сохраняют авторитетные
   // координаты в `scene_npcs`. Запасной путь держит preview маршрута в том же
   // ритме с серверной занятостью, не превращая координаты проекции в источник
@@ -508,17 +547,19 @@ export function sceneNpcTransitCells(state = {}) {
     const world = normalizeNpcWorldState(state.npc_world)
     return new Set(placed
       .filter(({ npc }) => world.stances[String(npc.id)]?.stance !== 'hostile')
-      .map(({ placement }) => keyOf(placement)))
+      .flatMap(({ placement }) => footprintCellsFor({ footprint: placement.footprint }, placement).map(keyOf)))
   }
   return new Set((Array.isArray(state.scene_npcs) ? state.scene_npcs : [])
     .filter((npc) => npc?.alive !== false && String(npc?.stance ?? 'neutral') !== 'hostile')
-    .map((npc) => keyOf(npc)))
+    .flatMap((npc) => footprintCellsFor(npc).map(keyOf)))
 }
 
 export function npcTargetsWithinArea(state, center, radiusFeet) {
-  const maximumCells = Math.max(0, Math.floor(Number(radiusFeet) / 5))
   return placedSceneNpcTargets(state)
-    .filter(({ placement }) => distance(placement, center) <= maximumCells)
+    .filter(({ placement }) => {
+      const distanceFeet = footprintDistanceFeet({ footprint: placement.footprint }, [center], placement)
+      return distanceFeet != null && distanceFeet <= Math.max(0, Number(radiusFeet) || 0)
+    })
     .sort((left, right) => String(left.npc.id).localeCompare(String(right.npc.id)))
 }
 
@@ -532,8 +573,10 @@ function nearbyPlacedNpcs(state, origin, radiusCells, excluded = new Set()) {
   if (!origin) return []
   return presentSceneNpcs(state)
     .map((npc) => ({ npc, placement: npcPlacementFor(state, npc.id) }))
-    .filter(({ npc, placement }) => placement && !excluded.has(String(npc.id)) && distance(origin, placement) <= radiusCells)
-    .sort((left, right) => distance(origin, left.placement) - distance(origin, right.placement)
+    .filter(({ npc, placement }) => placement && !excluded.has(String(npc.id))
+      && footprintDistanceFeet({ footprint: placement.footprint }, [origin], placement) <= radiusCells * 5)
+    .sort((left, right) => (footprintDistanceFeet({ footprint: left.placement.footprint }, [origin], left.placement) ?? Number.MAX_SAFE_INTEGER)
+      - (footprintDistanceFeet({ footprint: right.placement.footprint }, [origin], right.placement) ?? Number.MAX_SAFE_INTEGER)
       || String(left.npc.id).localeCompare(String(right.npc.id)))
 }
 
@@ -714,11 +757,14 @@ export function npcCombatStanceEventDrafts(state, { sourceEventId = '', particip
     .filter((position) => Number.isSafeInteger(Number(position?.x)) && Number.isSafeInteger(Number(position?.y)))
   if (!origins.length) return []
   const present = presentSceneNpcs(state).map((npc) => ({ npc, placement: npcPlacementFor(state, npc.id) })).filter((entry) => entry.placement)
-  const direct = present.filter(({ placement }) => origins.some((origin) => distance(origin, placement) <= 6)).slice(0, 12)
+  const direct = present.filter(({ placement }) => origins.some((origin) => (
+    footprintDistanceFeet({ footprint: placement.footprint }, [origin], placement) ?? Number.POSITIVE_INFINITY
+  ) <= 30)).slice(0, 12)
   const directIds = new Set(direct.map(({ npc }) => String(npc.id)))
   const propagated = []
   for (const witness of direct) {
-    for (const neighbor of present.filter(({ npc, placement }) => !directIds.has(String(npc.id)) && distance(witness.placement, placement) <= 3)) {
+    for (const neighbor of present.filter(({ npc, placement }) => !directIds.has(String(npc.id))
+      && (footprintDistanceFeet({ footprint: placement?.footprint }, { footprint: witness.placement?.footprint }, placement, witness.placement) ?? Number.POSITIVE_INFINITY) <= 15)) {
       if (propagated.some(({ npc }) => String(npc.id) === String(neighbor.npc.id))) continue
       propagated.push(neighbor)
       if (direct.length + propagated.length >= MAX_PROPAGATED_NPCS) break
@@ -825,6 +871,7 @@ export function sceneNpcsForViewer(state = {}) {
       const stance = world.stances[String(npc.id)]?.stance ?? 'neutral'
       const mechanics = world.profiles[String(npc.id)]
       const canStartCombat = Boolean(mechanics && mechanics.status !== 'ruling-only') && npc.available !== false && vital.alive
+      const footprint = normalizeFootprintMetadata(placement.footprint)
       return {
         id: String(npc.id),
         name: text(npc.name, 160),
@@ -833,6 +880,7 @@ export function sceneNpcsForViewer(state = {}) {
         x: placement.x,
         y: placement.y,
         anchor_prop_id: placement.anchor_prop_id || null,
+        ...(footprint ? { footprint } : {}),
         stance,
         alive: vital.alive,
         health_status: publicHealthStatus(vital),

@@ -10,12 +10,17 @@ import { inspectModelFile } from '../tools/import-environment-models.mjs'
 import { decodePng } from '../tools/png-codec.mjs'
 import {
   addInteriorModelsToCandidate,
+  AUTHORED_MODELS,
   createInteriorModel,
+  createAuthoredModel,
   disposeInteriorModel,
   exportInteriorModel,
   GENERATOR_SHA256,
+  GENERATOR_VERSION,
+  HOUSEHOLD_GENERATOR_SHA256,
   INTERIOR_MODELS,
   mergeStaticInteriorMeshes,
+  SETTLEMENT_GENERATOR_SHA256,
 } from '../tools/build-interior-models.mjs'
 
 const URL_ROOT = '/assets/models/environment/'
@@ -122,6 +127,22 @@ test('12 интерьерных рецептов имеют детали, нат
   }
 })
 
+test('42 авторские рецепта имеют объединённый каталог и отдельные фабрики extras', () => {
+  assert.equal(AUTHORED_MODELS.length, 42)
+  assert.equal(new Set(AUTHORED_MODELS.map((item) => item.assetId)).size, 42)
+  for (const item of AUTHORED_MODELS) {
+    const model = createAuthoredModel(item.assetId)
+    assert.ok(model, `${item.assetId}: авторская фабрика вернула пустой результат`)
+    model.updateMatrixWorld(true)
+    const bounds = new THREE.Box3().setFromObject(model)
+    assert.ok(!bounds.isEmpty(), `${item.assetId}: авторская модель пустая`)
+    assert.ok(bounds.min.y >= -0.001, `${item.assetId}: авторская модель ниже пола`)
+    assert.ok(bounds.max.x - bounds.min.x <= item.footprint.w + 0.02, `${item.assetId}: ширина вышла за footprint`)
+    assert.ok(bounds.max.z - bounds.min.z <= item.footprint.h + 0.02, `${item.assetId}: глубина вышла за footprint`)
+    disposeInteriorModel(model)
+  }
+})
+
 test('экспорт GLB детерминирован и сохраняет extras/иерархию узлов', async () => {
   const first = await exportInteriorModel('bar_counter')
   const second = await exportInteriorModel('bar_counter')
@@ -150,6 +171,35 @@ test('экспорт GLB детерминирован и сохраняет extr
   assert.ok(sarcophagusJson.nodes.some((node) => node.name === 'lid-carving-cross'))
   assert.equal(sarcophagusJson.images?.length, 1)
   assert.equal(sarcophagusJson.images[0].uri, undefined)
+})
+
+test('extras получают текстуры по имени материала без древесного fallback', async () => {
+  const bowlBytes = await exportInteriorModel('bowl_stew')
+  const bowlParts = glbParts(bowlBytes)
+  const bowl = bowlParts.json
+  const bowlMaterials = new Set(bowl.materials.map((material) => material.name))
+  assert.ok(bowlMaterials.has('food'))
+  assert.equal(bowlMaterials.has('wood'), false)
+  const foodIndex = bowl.materials.find((material) => material.name === 'food')?.pbrMetallicRoughness?.baseColorTexture?.index
+  assert.equal(bowl.textures[foodIndex]?.name, 'skazanie-food-grain-v4')
+  const foodImage = bowl.images[bowl.textures[foodIndex].source]
+  const foodView = bowl.bufferViews[foodImage.bufferView]
+  const foodTexture = decodePng(bowlParts.binary.subarray(foodView.byteOffset, foodView.byteOffset + foodView.byteLength))
+  for (let index = 0; index < foodTexture.data.length; index += 4) {
+    assert.equal(foodTexture.data[index], foodTexture.data[index + 1])
+    assert.equal(foodTexture.data[index + 1], foodTexture.data[index + 2])
+  }
+  assert.ok(bowl.materials.filter((material) => material.name === 'stone').every((material) => material.pbrMetallicRoughness?.baseColorTexture?.index === bowl.textures.findIndex((texture) => texture.name === 'skazanie-stone-grain-v4')))
+
+  const trough = glbJson(await exportInteriorModel('water_trough'))
+  const water = trough.materials.find((material) => material.name === 'water')
+  assert.equal(water?.pbrMetallicRoughness?.baseColorTexture, undefined)
+  assert.equal(trough.textures?.some((texture) => texture.name === 'skazanie-water-grain-v4'), false)
+
+  const lamp = glbJson(await exportInteriorModel('lamp_post'))
+  const glass = lamp.materials.find((material) => material.name === 'glass')
+  assert.equal(glass?.pbrMetallicRoughness?.baseColorTexture, undefined)
+  assert.equal(lamp.textures?.some((texture) => texture.name === 'skazanie-glass-grain-v4'), false)
 })
 
 test('экспортный merge оставляет узлы опор и подвижной крышки отдельными', () => {
@@ -198,22 +248,29 @@ test('экспортированный GLB проходит GLTFLoader round-tri
   }
 })
 
-test('добавление в candidate пишет все 12 GLB, provenance и hash генератора идемпотентно', async (t) => {
+test('добавление в candidate пишет все 42 GLB, provenance фабрик и hash идемпотентно', async (t) => {
   const directory = await candidateFixture(t)
   const first = await addInteriorModelsToCandidate(directory)
-  assert.equal(first.added.length, 12)
+  assert.equal(first.added.length, 42)
   assert.equal(first.receiptStale, false)
-  assert.equal(first.manifest.models.length, 13)
+  assert.equal(first.manifest.models.length, 43)
   assert.match(await readFile(join(directory, 'skazanie', 'LICENSE.txt'), 'utf8'), /Оригинальные/u)
   assert.match(await readFile(join(directory, 'skazanie', 'NOTICE.txt'), 'utf8'), /GLTFExporter/u)
-  assert.equal(first.manifest.build.interiorBuilderVersion, 3)
+  assert.equal(first.manifest.build.interiorBuilderVersion, GENERATOR_VERSION)
   assert.equal(first.manifest.build.interiorGeneratorSha256, GENERATOR_SHA256)
+  assert.equal(first.manifest.build.interiorModels.length, 42)
   assert.ok(first.manifest.sources.some((source) => source.url === 'internal://skazanie/interior-models'))
   const sourceInput = first.manifest.build.sourceInputs.find((source) => source.path === 'skazanie/build-interior-models.mjs')
   assert.deepEqual(sourceInput, { path: 'skazanie/build-interior-models.mjs', sha256: GENERATOR_SHA256, bytes: expectPositiveInteger(sourceInput?.bytes) })
+  assert.deepEqual(first.manifest.build.sourceInputs.find((source) => source.path === 'skazanie/household-prop-models.mjs'), {
+    path: 'skazanie/household-prop-models.mjs', sha256: HOUSEHOLD_GENERATOR_SHA256, bytes: expectPositiveInteger(first.manifest.build.sourceInputs.find((source) => source.path === 'skazanie/household-prop-models.mjs')?.bytes),
+  })
+  assert.deepEqual(first.manifest.build.sourceInputs.find((source) => source.path === 'skazanie/settlement-prop-models.mjs'), {
+    path: 'skazanie/settlement-prop-models.mjs', sha256: SETTLEMENT_GENERATOR_SHA256, bytes: expectPositiveInteger(first.manifest.build.sourceInputs.find((source) => source.path === 'skazanie/settlement-prop-models.mjs')?.bytes),
+  })
 
   const before = new Map()
-  for (const item of INTERIOR_MODELS) {
+  for (const item of AUTHORED_MODELS) {
     const entry = first.manifest.models.find((model) => model.key === item.key)
     assert.deepEqual(entry?.assetIds, [item.assetId])
     assert.equal(entry?.yaw, item.yaw)
@@ -225,7 +282,7 @@ test('добавление в candidate пишет все 12 GLB, provenance и 
   }
   const second = await addInteriorModelsToCandidate(directory)
   assert.deepEqual(second.added, [])
-  assert.equal(second.manifest.models.length, 13)
+  assert.equal(second.manifest.models.length, 43)
   for (const [path, bytes] of before) assert.deepEqual(await readFile(path), bytes, path)
 })
 

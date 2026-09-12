@@ -4,7 +4,8 @@ import { areaCells, type AreaPoint, type AreaShape } from './area-geometry'
 import type { BoardContext2D, BoardEffectRenderer, BoardScene } from './board-render'
 import type { BoardPoint, CombatAnimationCue, SpellAnimationCue } from './combat-animation'
 import { revealedAt } from './tactical-map-client'
-import type { TacticalMap } from './types'
+import { actorPresentationCenter } from './tactical-ui'
+import type { ActorFootprint, TacticalMap } from './types'
 
 export type MagicSchool =
   | 'abjuration'
@@ -303,6 +304,8 @@ export function createSpellEffectBudgetController(options: {
 
 export type SpellEffectActor = BoardPoint & {
   id: string
+  /** Серверная площадь существа; x/y остаются верхним левым якорем. */
+  footprint?: ActorFootprint
 }
 
 export type SpellEffectRenderInput = {
@@ -429,12 +432,39 @@ function actorPoint(actors: readonly SpellEffectActor[], actorId: string | undef
   return actorId ? actors.find((actor) => actor.id === actorId) ?? null : null
 }
 
-function pointCenter(point: BoardPoint, cellSize: number) {
-  return { x: (point.x + .5) * cellSize, y: (point.y + .5) * cellSize }
+function pointCenter(
+  point: BoardPoint,
+  cellSize: number,
+  scene?: BoardScene,
+  actor?: SpellEffectActor | null,
+) {
+  const center = actor && scene
+    ? actorPresentationCenter(scene.map, actor, { x: point.x, y: point.y })
+    : { x: point.x + .5, y: point.y + .5 }
+  return { x: center.x * cellSize, y: center.y * cellSize }
 }
 
 function visiblePoint(scene: BoardScene, point: BoardPoint | null | undefined): point is BoardPoint {
   return Boolean(point && revealedAt(scene.map, Math.floor(point.x), Math.floor(point.y)))
+}
+
+function trajectoryVisible(
+  scene: BoardScene,
+  from: BoardPoint,
+  to: BoardPoint,
+  fromActor?: SpellEffectActor | null,
+  toActor?: SpellEffectActor | null,
+) {
+  const start = pointCenter(from, 1, scene, fromActor)
+  const finish = pointCenter(to, 1, scene, toActor)
+  const steps = Math.max(1, Math.ceil(Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y))))
+  for (let index = 0; index <= steps; index += 1) {
+    const progress = index / steps
+    const x = start.x + (finish.x - start.x) * progress
+    const y = start.y + (finish.y - start.y) * progress
+    if (!revealedAt(scene.map, Math.floor(x), Math.floor(y))) return false
+  }
+  return true
 }
 
 function envelope(style: SpellSchoolStyle, progress: number) {
@@ -486,10 +516,12 @@ function drawRing(
 }
 
 function projectileEndpoints(cue: Extract<SpellAnimationCue, { kind: 'projectile' }>, actors: readonly SpellEffectActor[]) {
+  const fromActor = actorPoint(actors, cue.actorId)
   const from = cue.from ?? actorPoint(actors, cue.actorId)
   const targetId = cue.targetIds[0]
+  const toActor = actorPoint(actors, targetId)
   const to = cue.to ?? actorPoint(actors, targetId)
-  return { from, to }
+  return { from, to, fromActor, toActor }
 }
 
 function drawProjectile(
@@ -499,12 +531,12 @@ function drawProjectile(
   input: SpellEffectRenderInput,
   detail: SpellEffectDetail,
 ) {
-  const { from, to } = projectileEndpoints(cue, input.actors)
-  if (!visiblePoint(scene, from) || !visiblePoint(scene, to)) return
+  const { from, to, fromActor, toActor } = projectileEndpoints(cue, input.actors)
+  if (!visiblePoint(scene, from) || !visiblePoint(scene, to) || !trajectoryVisible(scene, from, to, fromActor, toActor)) return
   const style = spellStyle(cue)
   const progress = input.reducedMotion || cue.motion === 'reduced' ? 1 : clamp01(input.progress)
-  const start = pointCenter(from, scene.cellSize)
-  const end = pointCenter(to, scene.cellSize)
+  const start = pointCenter(from, scene.cellSize, scene, fromActor)
+  const end = pointCenter(to, scene.cellSize, scene, toActor)
   if (detail === 'minimal') {
     drawRing(context, end, scene.cellSize * .28, style.primary, .78, Math.max(2, scene.cellSize * .055))
     return
@@ -609,15 +641,18 @@ function drawBurst(
   context.restore()
 }
 
+type BeamPoint = { point: BoardPoint; actor?: SpellEffectActor | null }
+
 function beamPoints(cue: Extract<SpellAnimationCue, { kind: 'beam' }>, actors: readonly SpellEffectActor[]) {
-  const result: BoardPoint[] = []
-  const origin = cue.from ?? actorPoint(actors, cue.actorId)
-  if (origin) result.push(origin)
-  if (cue.points?.length) result.push(...cue.points)
+  const result: BeamPoint[] = []
+  const originActor = actorPoint(actors, cue.actorId)
+  const origin = cue.from ?? originActor
+  if (origin) result.push({ point: origin, actor: originActor })
+  if (cue.points?.length) result.push(...cue.points.map((point, index) => ({ point, actor: actorPoint(actors, cue.targetIds[index]) })))
   else {
     for (const targetId of cue.targetIds) {
       const target = actorPoint(actors, targetId)
-      if (target && !result.some((point) => pointKey(point) === pointKey(target))) result.push(target)
+      if (target && !result.some((entry) => pointKey(entry.point) === pointKey(target))) result.push({ point: target, actor: target })
     }
   }
   return result
@@ -630,14 +665,14 @@ function drawBeam(
   input: SpellEffectRenderInput,
   detail: SpellEffectDetail,
 ) {
-  const points = beamPoints(cue, input.actors).filter((point) => visiblePoint(scene, point))
+  const points = beamPoints(cue, input.actors).filter((entry) => visiblePoint(scene, entry.point))
   if (points.length < 2) return
   const style = spellStyle(cue)
   const progress = input.reducedMotion || cue.motion === 'reduced' ? 1 : clamp01(input.progress)
   const segmentProgress = progress * (points.length - 1)
   const completeSegments = Math.floor(segmentProgress)
   const local = segmentProgress - completeSegments
-  const screen = points.map((point) => pointCenter(point, scene.cellSize))
+  const screen = points.map((entry) => pointCenter(entry.point, scene.cellSize, scene, entry.actor))
   const drawPath = (color: string, width: number, alpha: number) => {
     context.save()
     context.globalAlpha = alpha
@@ -673,9 +708,10 @@ function drawAura(
   input: SpellEffectRenderInput,
   detail: SpellEffectDetail,
 ) {
-  const carrier = cue.center ?? actorPoint(input.actors, cue.actorId)
+  const carrierActor = actorPoint(input.actors, cue.actorId)
+  const carrier = cue.center ?? carrierActor
   if (!visiblePoint(scene, carrier)) return
-  const center = pointCenter(carrier, scene.cellSize)
+  const center = pointCenter(carrier, scene.cellSize, scene, cue.center ? null : carrierActor)
   const style = spellStyle(cue)
   const progress = input.reducedMotion || cue.motion === 'reduced' ? .72 : clamp01(input.progress)
   const activeRadius = cue.auraType === 'concentration'
@@ -707,9 +743,10 @@ function drawChannel(
   input: SpellEffectRenderInput,
   detail: SpellEffectDetail,
 ) {
-  const target = cue.position ?? actorPoint(input.actors, cue.targetId) ?? actorPoint(input.actors, cue.actorId)
+  const targetActor = actorPoint(input.actors, cue.targetId) ?? actorPoint(input.actors, cue.actorId)
+  const target = cue.position ?? targetActor
   if (!visiblePoint(scene, target)) return
-  const center = pointCenter(target, scene.cellSize)
+  const center = pointCenter(target, scene.cellSize, scene, cue.position ? null : targetActor)
   const style = spellStyle(cue)
   const progress = input.reducedMotion || cue.motion === 'reduced' ? .72 : clamp01(input.progress)
   const motion = envelope(style, progress)

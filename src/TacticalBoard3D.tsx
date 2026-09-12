@@ -2,13 +2,14 @@ import { Children, Fragment, isValidElement, useEffect, useRef, useState, type R
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import type { BoardAnimationActor, TacticalBoardProps } from './TacticalBoard'
-import { boardCameraKey } from './tactical-ui'
+import { actorFootprintSize, actorPresentationCenter, actorPresentationSize, boardCameraKey } from './tactical-ui'
 import { cellAt, revealedAt } from './tactical-map-client'
 import { DEFAULT_BOARD_PALETTE, boardPaletteFrom, drawBoardEffects, drawBoardOverlay, type BoardScene } from './board-render'
 import { COMBAT_ANIMATION_QUEUE_LIMIT, combatAnimationCuesFromBattleLog, combatAnimationCuesFromEvents, shouldDeferDefeat, strikeImpactProgress, type CombatAnimationCue } from './combat-animation'
 import { createSpellEffectRenderer, isSpellAnimationCue, systemPrefersReducedMotion } from './spell-effects'
 import { createCombatEffect3D } from './board3d-effects'
 import { createBoard3DScene, nearestPropPickTarget } from './board3d-scene'
+import type { Board3DRoofMode } from './board3d-roofs'
 import { boardCameraFitZoom } from './board3d-camera'
 import { createTerrainSurfaceGeometry, terrainHeightAt, visibleTerrainHeightRange } from './board3d-terrain'
 import { createActorModel, createProceduralActorModel, getModelAssetDiagnostics, loadActorModelManifest, availableActorModels, resolveModelProfile, DEFAULT_ACTOR_MODEL_MANIFEST, type ActorModel, type ActorModelManifest, type ActorPose } from './actor-models'
@@ -22,6 +23,11 @@ type CameraState = { position: THREE.Vector3; target: THREE.Vector3; zoom: numbe
 const cameras = new Map<string, CameraState>()
 const FPS_STORAGE_KEY = 'skazanie-3d-fps'
 const QUALITY_STORAGE_KEY = 'skazanie-3d-quality'
+const ROOF_STORAGE_KEY = 'skazanie-3d-roofs'
+
+function roofModeValue(value: unknown): Board3DRoofMode {
+  return value === 'full' || value === 'hidden' ? value : 'cutaway'
+}
 
 function hasBoardContent(children: ReactNode): boolean {
   return Children.toArray(children).some((child) => isValidElement<{ children?: ReactNode }>(child) && child.type === Fragment
@@ -59,6 +65,22 @@ function cueActsOnActor(cue: CombatAnimationCue | undefined, actorId: string): b
   return (cue.kind === 'death' || cue.kind === 'impact') && cue.targetId === actorId
 }
 
+/** Подошва стоит на верхней раскрытой клетке занимаемой площади. */
+function actorGround(map: TacticalMap | null | undefined, actor: BoardAnimationActor, anchor: { x: number; y: number } = actor): number {
+  const side = actorPresentationSize(map, actor, anchor)
+  let height = terrainHeightAt(map ?? null, anchor.x, anchor.y)
+  for (let y = 0; y < side; y++) for (let x = 0; x < side; x++) {
+    height = Math.max(height, terrainHeightAt(map ?? null, anchor.x + x, anchor.y + y))
+  }
+  return height
+}
+
+function actorHeight(map: TacticalMap, actor: BoardAnimationActor, catalog: ActorModelManifest): number {
+  // Площадь — правило, рост — представление: существо 4×4 не обязано быть
+  // вчетверо выше человека. Модель сохраняет пропорции своего профиля.
+  return (resolveModelProfile(actor, catalog).height ?? 1.25) * (1 + .4 * (actorPresentationSize(map, actor) - 1))
+}
+
 /** Только представление. Обработчики клеток и целей принадлежат общему DungeonMap. */
 export default function TacticalBoard3D(props: Props) {
   const host = useRef<HTMLDivElement>(null)
@@ -71,8 +93,11 @@ export default function TacticalBoard3D(props: Props) {
   const [quality, setQuality] = useState<Board3DQuality>(() => {
     try { return board3DQuality(localStorage.getItem(QUALITY_STORAGE_KEY)) } catch { return 'balanced' }
   })
-  const settings = useRef({ models, catalog, quality })
-  settings.current = { models, catalog, quality }
+  const [roofMode, setRoofMode] = useState<Board3DRoofMode>(() => {
+    try { return roofModeValue(localStorage.getItem(ROOF_STORAGE_KEY)) } catch { return 'cutaway' }
+  })
+  const settings = useRef({ models, catalog, quality, roofMode })
+  settings.current = { models, catalog, quality, roofMode }
   const [playing, setPlaying] = useState(false)
   const [modelActor, setModelActor] = useState('')
   const [modelWarning, setModelWarning] = useState('')
@@ -312,6 +337,13 @@ export default function TacticalBoard3D(props: Props) {
       clipVisible(context, board)
       drawBoardOverlay(context, board, current.overlayCells)
       drawBoardEffects(context, board, current.effectRenderers ?? [])
+      for (const actor of current.animationActors ?? []) {
+        const side = actorPresentationSize(current.map, actor)
+        if (side <= 1) continue
+        context.strokeStyle = actor.color ?? '#c6b889'
+        context.lineWidth = 1.5
+        context.strokeRect(actor.x * size + 2, actor.y * size + 2, side * size - 4, side * size - 4)
+      }
       for (const node of current.cells) {
         const classes = node.className.split(' ')
         const blast = classes.includes('blast-area')
@@ -348,7 +380,8 @@ export default function TacticalBoard3D(props: Props) {
       for (const actor of latest.current.animationActors ?? []) {
         const view = actorViews.get(actor.id)
         if (!view) continue
-        view.root.position.set(actor.x + .5, terrainHeightAt(latest.current.map, actor.x, actor.y), actor.y + .5)
+        const center = actorPresentationCenter(latest.current.map, actor)
+        view.root.position.set(center.x, actorGround(latest.current.map, actor), center.y)
         view.root.visible = true
         view.model.setEquipment(actor.appearance?.equipment)
         const deferDeath = actor.defeated && shouldDeferDefeat(actor.id, active?.cue, pending)
@@ -398,18 +431,27 @@ export default function TacticalBoard3D(props: Props) {
         const index = Math.min(route.length - 2, Math.floor(travel))
         const from = route[index], to = route[index + 1]
         const x = from.x + (to.x - from.x) * (travel - index), y = from.y + (to.y - from.y) * (travel - index)
+        const actor = actorAt(cue.actorId)
         view.root.visible = revealedAt(current.map, Math.floor(x), Math.floor(y))
-        const fromHeight = terrainHeightAt(current.map, from.x, from.y), toHeight = terrainHeightAt(current.map, to.x, to.y)
-        view.root.position.set(x + .5, fromHeight + (toHeight - fromHeight) * (travel - index), y + .5)
+          && (!actor || actorPresentationSize(current.map, actor, { x, y }) === actorFootprintSize(actor))
+        const center = actor ? actorPresentationCenter(current.map, actor, { x, y }) : { x: x + .5, y: y + .5 }
+        const fromHeight = actor ? actorGround(current.map, actor, { ...actor, ...from }) : terrainHeightAt(current.map, from.x, from.y)
+        const toHeight = actor ? actorGround(current.map, actor, { ...actor, ...to }) : terrainHeightAt(current.map, to.x, to.y)
+        view.root.position.set(center.x, fromHeight + (toHeight - fromHeight) * (travel - index), center.y)
         if (to.x !== from.x || to.y !== from.y) view.root.rotation.y = Math.atan2(to.x - from.x, to.y - from.y)
       } else if (!reduced && cue.kind === 'strike' && view) {
         const from = cue.from ?? actorAt(cue.actorId), to = cue.to ?? actorAt(cue.targetId)
         if (from && to) {
-          const length = Math.max(1, Math.hypot(to.x - from.x, to.y - from.y))
+          const actor = actorAt(cue.actorId), target = actorAt(cue.targetId)
+          const sourceCenter = actor ? actorPresentationCenter(current.map, actor, from) : { x: from.x + .5, y: from.y + .5 }
+          const targetCenter = target ? actorPresentationCenter(current.map, target, to) : { x: to.x + .5, y: to.y + .5 }
+          const dx = targetCenter.x - sourceCenter.x, dy = targetCenter.y - sourceCenter.y
+          const length = Math.max(1, Math.hypot(dx, dy))
           const lunge = cue.attackKind === 'ranged' || cue.attackKind === 'thrown' || (cue.attackKind == null && cue.equipment === 'bow') ? 0 : Math.sin(progress * Math.PI) * .23
           view.root.visible = Boolean(current.map && revealedAt(current.map, from.x, from.y))
-          view.root.position.set(from.x + .5 + (to.x - from.x) / length * lunge, terrainHeightAt(current.map, from.x, from.y), from.y + .5 + (to.y - from.y) / length * lunge)
-          view.root.rotation.y = Math.atan2(to.x - from.x, to.y - from.y)
+            && (!actor || actorPresentationSize(current.map, actor, from) === actorFootprintSize(actor))
+          view.root.position.set(sourceCenter.x + dx / length * lunge, actor ? actorGround(current.map, actor, { ...actor, ...from }) : terrainHeightAt(current.map, from.x, from.y), sourceCenter.y + dy / length * lunge)
+          view.root.rotation.y = Math.atan2(dx, dy)
         }
       }
       const pose = poseForCue(cue)
@@ -432,7 +474,9 @@ export default function TacticalBoard3D(props: Props) {
           : cue.kind === 'channel' && cue.amount != null ? `+${cue.amount}` : cue.kind === 'condition' ? cue.label : ''
       floating.textContent = message
       if (resultActor && current.map && revealedAt(current.map, resultActor.x, resultActor.y)) {
-        const screen = pointOnScreen(new THREE.Vector3(resultActor.x + .5, terrainHeightAt(current.map, resultActor.x, resultActor.y) + 1.8 + progress * .5, resultActor.y + .5))
+        const center = actorPresentationCenter(current.map, resultActor)
+        const height = actorViews.get(resultActor.id)?.model.modelHeight ?? 1.25
+        const screen = pointOnScreen(new THREE.Vector3(center.x, actorGround(current.map, resultActor) + height + .55 + progress * .5, center.y))
         floating.style.left = `${screen.x}px`; floating.style.top = `${screen.y}px`
         floating.style.opacity = String(Math.min(1, (1 - progress) * 4))
       } else floating.textContent = ''
@@ -570,7 +614,7 @@ export default function TacticalBoard3D(props: Props) {
         const css = getComputedStyle(element)
         palette = boardPaletteFrom((name) => css.getPropertyValue(name))
         if (terrain) { terrain.dispose(); diagnostics.disposed += 1 }
-        terrain = createBoard3DScene(map, { palette, lighting: current.lighting, pointLightShadows: profile.pointLightShadows, artUrl: current.artUrl, artMode: current.artMode, onReady: invalidate })
+        terrain = createBoard3DScene(map, { palette, lighting: current.lighting, pointLightShadows: profile.pointLightShadows, roofMode: settings.current.roofMode, artUrl: current.artUrl, artMode: current.artMode, onReady: invalidate })
         diagnostics.created += 1
         diagnostics.rebuilds += 1
         diagnostics.rebuildReason = !terrainSignature ? 'initial' : mapChanged ? 'content-changed' : 'style-changed'
@@ -579,6 +623,7 @@ export default function TacticalBoard3D(props: Props) {
         scene.add(terrain.group)
         terrainSignature = signatures.staticKey; terrainStyle = style
       } else diagnostics.syncReason = referenceSame ? 'reference-same' : 'content-same'
+      terrain?.setRoofMode(settings.current.roofMode)
       sun.castShadow = current.lighting !== false && profile.shadows
       const catalogChanged = lastCatalog !== settings.current.catalog
       lastCatalog = settings.current.catalog
@@ -588,19 +633,21 @@ export default function TacticalBoard3D(props: Props) {
       }
       for (const actor of visibleActors) {
         const modelKey = settings.current.models[actor.id] ?? actor.modelKey
-        const key = `${modelKey}:${actor.appearance?.profile ?? ''}:${actor.archetype}:${actor.kind}:${actor.label}:${actor.color}`
+        const side = actorPresentationSize(map, actor)
+        const key = `${modelKey}:${actor.appearance?.profile ?? ''}:${actor.archetype}:${actor.kind}:${actor.label}:${actor.color}:${side}`
         let view = actorViews.get(actor.id)
         if (view && view.key !== key) {
           disposeActorView(actor.id, view); view = undefined
         }
         if (!view) {
           const input = { ...actor, modelKey }
-          const model = createProceduralActorModel(input, settings.current.catalog)
+          const height = actorHeight(map, input, settings.current.catalog)
+          const model = createProceduralActorModel(input, settings.current.catalog, height)
           const cue = active?.cue
           if (cue?.kind === 'strike' && cue.actorId === actor.id && cue.equipment !== undefined) model.setEquipment(cue.equipment)
           const root = new THREE.Group()
           root.add(model)
-          const ring = new THREE.Mesh(new THREE.RingGeometry(.37, .405, 40), new THREE.MeshBasicMaterial({ color: actor.color ?? '#e2bb72', transparent: true, opacity: .85, side: THREE.DoubleSide }))
+          const ring = new THREE.Mesh(new THREE.RingGeometry(.405 * side - .035, .405 * side, 40), new THREE.MeshBasicMaterial({ color: actor.color ?? '#e2bb72', transparent: true, opacity: .85, side: THREE.DoubleSide }))
           ring.rotation.x = -Math.PI / 2; ring.position.y = .045
           root.add(ring); scene.add(root)
           view = { root, model, ring, key, defeated: Boolean(actor.defeated), abort: new AbortController() }; actorViews.set(actor.id, view)
@@ -608,7 +655,7 @@ export default function TacticalBoard3D(props: Props) {
           const entry = resolveModelProfile(input, settings.current.catalog)
           if (entry.url) {
             const expected = view
-            void createActorModel(input, { manifest: settings.current.catalog, signal: AbortSignal.any([sceneAbort.signal, view.abort.signal]) }).then((loaded) => {
+            void createActorModel(input, { manifest: settings.current.catalog, height, signal: AbortSignal.any([sceneAbort.signal, view.abort.signal]) }).then((loaded) => {
               diagnostics.created += 1
               if (disposed || actorViews.get(actor.id) !== expected) { loaded.dispose(); diagnostics.disposed += 1; return }
               root.remove(expected.model); expected.model.dispose(); diagnostics.disposed += 1
@@ -644,7 +691,10 @@ export default function TacticalBoard3D(props: Props) {
         }
         if (!(active?.cue.kind === 'strike' && active.cue.actorId === actor.id)) view.model.setEquipment(actor.appearance?.equipment)
         view.root.visible = true
-        if (!active || !('actorId' in active.cue) || active.cue.actorId !== actor.id) view.root.position.set(actor.x + .5, terrainHeightAt(map, actor.x, actor.y), actor.y + .5)
+        if (!active || !('actorId' in active.cue) || active.cue.actorId !== actor.id) {
+          const center = actorPresentationCenter(map, actor)
+          view.root.position.set(center.x, actorGround(map, actor), center.y)
+        }
         if (actor.defeated || view.defeated !== Boolean(actor.defeated)) {
           view.model.setPose(actor.defeated ? 'death' : 'idle', actor.defeated ? 1 : undefined)
           view.model.update(.001)
@@ -712,7 +762,18 @@ export default function TacticalBoard3D(props: Props) {
       for (const [id, view] of actorViews) {
         const actor = latest.current.animationActors?.find((candidate) => candidate.id === id)
         if (!actor || !view.root.visible || !revealedAt(map, actor.x, actor.y)) continue
-        const hit = raycaster.ray.intersectBox(new THREE.Box3().setFromObject(view.root), point)
+        const bounds = new THREE.Box3().setFromObject(view.root)
+        const side = actorPresentationSize(map, actor)
+        if (side > 1) {
+          // Углы занятого квадрата выбирают ту же цель, даже если сама фигура
+          // уже площади. Высота бокса остаётся высотой видимой модели.
+          const center = view.root.position
+          bounds.min.x = Math.min(bounds.min.x, center.x - side / 2)
+          bounds.max.x = Math.max(bounds.max.x, center.x + side / 2)
+          bounds.min.z = Math.min(bounds.min.z, center.z - side / 2)
+          bounds.max.z = Math.max(bounds.max.z, center.z + side / 2)
+        }
+        const hit = raycaster.ray.intersectBox(bounds, point)
         if (!hit) continue
         const distance = raycaster.ray.origin.distanceToSquared(hit)
         if (!selected || distance < selected.distance) selected = { id, distance }
@@ -828,7 +889,7 @@ export default function TacticalBoard3D(props: Props) {
     }
   }, [cameraKey, props.onUnavailable])
 
-  useEffect(() => { runtime.current?.sync() }, [props, models, catalog, quality])
+  useEffect(() => { runtime.current?.sync() }, [props, models, catalog, quality, roofMode])
   useEffect(() => { if (props.viewResetKey !== undefined) runtime.current?.reset() }, [props.viewResetKey])
   const chooseModel = (value: string) => {
     const next = { ...models }
@@ -855,6 +916,15 @@ export default function TacticalBoard3D(props: Props) {
         setQuality(next)
         try { localStorage.setItem(QUALITY_STORAGE_KEY, next) } catch { /* Профиль работает без сохранения. */ }
       }}>{Object.entries(BOARD3D_QUALITY).map(([key, profile]) => <option key={key} value={key}>{profile.label}</option>)}</select>
+      <select className="board3d-roof-mode" aria-label="Крыша" title="Отображение крыши и сводов" value={roofMode} onChange={(event) => {
+        const next = roofModeValue(event.target.value)
+        setRoofMode(next)
+        try { localStorage.setItem(ROOF_STORAGE_KEY, next) } catch { /* Режим работает без сохранения. */ }
+      }}>
+        <option value="cutaway">Срез крыши</option>
+        <option value="full">Полная крыша</option>
+        <option value="hidden">Без крыши</option>
+      </select>
       <details className="board3d-models">
         <summary>Фигурки</summary>
         <div>

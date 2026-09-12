@@ -18,8 +18,20 @@ export type PropModelCatalog = {
 
 const ROOT = '/assets/models/environment/'
 export const LEGACY_CATALOG_REVISION = 'pr79'
+export const ENVIRONMENT_MODEL_FAMILIES = Object.freeze(['quaternius', 'kenney', 'kenney-dungeon', 'skazanie'] as const)
 const KEY = /^[a-z0-9][a-z0-9_-]{0,95}$/
 const LOCAL_FILE = /^\/assets\/models\/environment\/[a-zA-Z0-9_/-]+\.(glb|png)$/
+const MODEL_FILE = /^\/assets\/models\/environment\/[a-zA-Z0-9_/-]+\.glb$/
+
+function supportedModelUrl(url: string) {
+  if (!MODEL_FILE.test(url)) return false
+  const parts = url.slice(ROOT.length).split('/')
+  if (parts.length === 1) return true
+  const family = parts[0] === 'releases' ? parts[2] : parts[0]
+  const expectedLength = parts[0] === 'releases' ? 4 : 2
+  return parts.length === expectedLength && typeof family === 'string'
+    && (ENVIRONMENT_MODEL_FAMILIES as readonly string[]).includes(family)
+}
 
 function releaseFilePrefix(revision: string) {
   return `${ROOT}releases/${revision}/`
@@ -44,7 +56,7 @@ export function validatePropModelCatalog(value: unknown, revision?: string): Pro
     if (typeof entry.key !== 'string' || !KEY.test(entry.key) || keys.has(entry.key)
       || typeof entry.label !== 'string' || !entry.label.trim() || entry.label.length > 160
       || typeof entry.category !== 'string' || entry.category.length > 80
-      || typeof entry.url !== 'string' || !LOCAL_FILE.test(entry.url) || !entry.url.endsWith('.glb')
+      || typeof entry.url !== 'string' || !supportedModelUrl(entry.url)
       || (pinnedRevision !== undefined && pinnedRevision !== LEGACY_CATALOG_REVISION && !entry.url.startsWith(releaseFilePrefix(pinnedRevision)))
       || !Array.isArray(entry.assetIds) || entry.assetIds.some((id) => typeof id !== 'string' || !KEY.test(id))) throw new Error('Некорректная запись модели окружения')
     keys.add(entry.key)

@@ -262,6 +262,7 @@ async function main() {
     out: { type: 'string' }, dir: { type: 'string' }, port: { type: 'string' }, 'dry-run': { type: 'boolean' },
     'quaternius-dir': { type: 'string' }, 'kenney-dir': { type: 'string' },
     'quaternius-archive': { type: 'string' }, 'kenney-archive': { type: 'string' },
+    'dungeon-dir': { type: 'string' }, 'dungeon-archive': { type: 'string' },
   }, allowPositionals: true })
   const command = positionals[0]
   if (positionals.length !== 1) throw new Error('Нужна одна команда: prepare, check или publish')
@@ -270,6 +271,7 @@ async function main() {
     result = await prepareEnvironmentAssets({ outputDir: values.out, port: values.port ? Number(values.port) : 0,
       quaterniusDir: values['quaternius-dir'], kenneyDir: values['kenney-dir'],
       quaterniusArchive: values['quaternius-archive'], kenneyArchive: values['kenney-archive'],
+      dungeonDir: values['dungeon-dir'], dungeonArchive: values['dungeon-archive'],
     })
     result = { ready: true, directory: resolve(values.out), fingerprint: result.fingerprint, models: result.manifest.models.length }
   } else if ((command === 'publish' || command === 'check') && values.dir) {

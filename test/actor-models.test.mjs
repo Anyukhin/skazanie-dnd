@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import test from 'node:test'
-import { AnimationClip, Bone, Box3, BoxGeometry, Float32BufferAttribute, Group, Mesh, MeshBasicMaterial, NumberKeyframeTrack, Skeleton, SkinnedMesh, Uint16BufferAttribute } from 'three'
+import { AnimationClip, Bone, Box3, BoxGeometry, Float32BufferAttribute, Group, Mesh, MeshBasicMaterial, NumberKeyframeTrack, Quaternion, Skeleton, SkinnedMesh, Uint16BufferAttribute, Vector3 } from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 
 // Сборка должна жить внутри репозитория: с временным каталогом за его
@@ -83,7 +83,9 @@ test('процедурные фигурки различимы, стоят на 
     assert.ok(actor.children.length > 0)
     const bounds = new Box3().setFromObject(actor)
     assert.ok(bounds.min.y >= -.0001, `${profile}: feet должны начинаться на y=0`)
-    assert.ok(bounds.max.y > 1, `${profile}: фигурка должна быть объёмной`)
+    assert.ok(bounds.max.y > actor.modelHeight * .9, `${profile}: фигурка должна быть объёмной по высоте`)
+    assert.ok(bounds.max.x - bounds.min.x > actor.modelHeight * .3, `${profile}: фигурка должна иметь ширину относительно роста`)
+    assert.ok(bounds.max.z - bounds.min.z > actor.modelHeight * .3, `${profile}: фигурка должна иметь глубину относительно роста`)
     for (const pose of ['idle', 'walk', 'attack', 'cast', 'hit', 'death']) actor[pose]?.(.5)
     actor.dispose()
     actor.dispose()
@@ -194,6 +196,110 @@ test('все KayKit GLB проходят loader lifecycle, позы, тени и
   }
 })
 
+const productionProfiles = ['mage', 'goblin', 'beast', 'skeleton'].map((profile) => manifest.models.find((entry) => entry.profile === profile))
+
+test('опубликованные Quaternius actor GLB проходят семь поз, rig aliases и fit после idle', async () => {
+  const previousSelf = globalThis.self
+  const previousCreateImageBitmap = globalThis.createImageBitmap
+  globalThis.self = globalThis
+  globalThis.createImageBitmap = async () => ({ width: 4, height: 4, close() {} })
+  try {
+    for (const entry of productionProfiles) {
+      assert.ok(entry?.url)
+      const bytes = readFileSync(join(fileURLToPath(new URL('../public/', import.meta.url)), entry.url.slice(1)))
+      const report = models.validateGlbContainer(bytes)
+      assert.ok(report.json.animations?.length, `${entry.profile}: должны быть реальные clips`)
+      assert.equal(report.json.animations?.some((animation) => animation.channels?.some((channel) => channel.target?.path === 'scale')), false, `${entry.profile}: scale channels не должны отменять fitToHeight`)
+      const expectedClip = { mage: 'Spell_Simple_Shoot', goblin: 'RecieveHit', beast: 'Idle_HitReact1', skeleton: 'SkeletonArmature|Skeleton_Running' }[entry.profile]
+      assert.ok(report.json.animations.some((animation) => animation.name === expectedClip), `${entry.profile}: отсутствует source clip ${expectedClip}`)
+      const actor = await models.createActorModel({ id: `production-${entry.profile}`, label: entry.name_ru ?? entry.profile, kind: entry.profile === 'mage' ? 'hero' : 'enemy', modelKey: entry.key }, {
+        manifest,
+        fetcher: async () => new Response(bytes, { status: 200, headers: { 'content-type': 'model/gltf-binary' } }),
+      })
+      assert.equal(actor.source, 'glb', `${entry.profile}: должен использовать production GLB`)
+      assert.equal(actor.profile, entry.profile)
+      const bones = []
+      actor.traverse((object) => { if (object.isBone) bones.push(object) })
+      assert.ok(bones.length > 0, `${entry.profile}: rig`)
+      const poseSignature = () => JSON.stringify(bones.map((bone) => ({ position: bone.position.toArray(), quaternion: bone.quaternion.toArray() })))
+      if (entry.profile === 'beast') {
+        const body = actor.getObjectByName('Body')
+        const head = actor.getObjectByName('Head')
+        assert.ok(body && head, 'beast: Body/Head forward anchors')
+        const forwardAngle = () => {
+          const bodyPosition = body.getWorldPosition(new Vector3())
+          const headPosition = head.getWorldPosition(new Vector3())
+          return Math.atan2(headPosition.x - bodyPosition.x, headPosition.z - bodyPosition.z)
+        }
+        actor.idle?.(0)
+        actor.update(.001)
+        const idleForward = forwardAngle()
+        actor.walk?.(0)
+        actor.update(.001)
+        const walkForward = forwardAngle()
+        assert.ok(Math.abs(idleForward) < .08 && Math.abs(walkForward) < .08, 'beast: Body→Head должен смотреть в +Z после idle/walk')
+      }
+      actor.idle?.(0)
+      actor.update(.001)
+      const idleStart = poseSignature()
+      actor.idle?.(.5)
+      actor.update(.001)
+      assert.notEqual(poseSignature(), idleStart, `${entry.profile}: idle должен вращать кости`)
+      for (const pose of ['idle', 'walk', 'attack', 'rangedAttack', 'cast', 'hit', 'death']) {
+        assert.equal(typeof actor[pose], 'function', `${entry.profile}: pose API ${pose}`)
+        actor[pose](.5)
+        actor.update(.001)
+      }
+      actor.idle?.()
+      actor.update(.2)
+      const bounds = new Box3().setFromObject(actor)
+      assert.ok(bounds.min.y >= -.0001 && bounds.max.y > bounds.min.y, `${entry.profile}: finite floor bounds after idle`)
+      if (entry.profile === 'goblin') {
+        actor.setEquipment('sword')
+        const sword = actor.getObjectByName('sword')
+        assert.ok(sword && ['hand_r', 'hand_l', 'FistR', 'FistL'].includes(sword.parent?.name ?? ''), 'goblin: sword должен быть на native fist socket')
+        assert.ok(Math.abs(sword.rotation.x) < 1e-6, 'goblin: native socket не должен получать Quaternius rotation')
+        const swordBounds = new Box3().setFromObject(sword).getSize(new Vector3())
+        assert.ok(Math.max(...swordBounds.toArray()) > actor.modelHeight * .25, 'goblin: sword должен иметь production world size')
+        const swordExtent = Math.max(...swordBounds.toArray())
+        actor.setEquipment('dagger')
+        const dagger = actor.getObjectByName('dagger')
+        const daggerExtent = dagger ? Math.max(...new Box3().setFromObject(dagger).getSize(new Vector3()).toArray()) : 0
+        assert.ok(daggerExtent > swordExtent * .6 && daggerExtent < swordExtent * .8, 'goblin: dagger scale .72 не должна стираться world-scale компенсацией')
+      }
+      if (entry.profile === 'mage') {
+        actor.setEquipment('staff')
+        const staff = actor.getObjectByName('staff')
+        assert.ok(staff && ['hand_l', 'hand_r'].includes(staff.parent?.name ?? ''), 'mage: staff socket')
+        const shaft = actor.getObjectByName('staff-shaft')
+        const staffAxis = shaft ? new Vector3(0, 1, 0).applyQuaternion(shaft.getWorldQuaternion(new Quaternion())).normalize() : new Vector3()
+        const staffBounds = staff ? new Box3().setFromObject(staff).getSize(new Vector3()) : new Vector3()
+        assert.ok(Math.abs(staffAxis.y) > .8 && staffBounds.y > actor.modelHeight * .3, 'mage: staff должен быть вертикальным и видимым в world units')
+        actor.idle?.(0)
+        actor.update(.001)
+        const grip = staff?.parent?.getWorldPosition(new Vector3())
+        const crystal = actor.getObjectByName('staff-crystal')?.getWorldPosition(new Vector3())
+        assert.ok(grip && crystal && crystal.y > grip.y, 'mage: crystal должен быть над хватом в idle')
+      }
+      if (entry.profile === 'skeleton') {
+        actor.setEquipment('sword-shield')
+        const sword = actor.getObjectByName('sword')
+        const shield = actor.getObjectByName('shield')
+        assert.ok(sword && ['hand_l', 'hand_r'].includes(sword.parent?.name ?? ''), 'skeleton: sword должен быть на end-bone socket')
+        assert.ok(shield && ['hand_l', 'hand_r'].includes(shield.parent?.name ?? ''), 'skeleton: shield должен быть на end-bone socket')
+        assert.ok(Math.abs(sword.rotation.x) < 1e-6 && Math.abs(shield.rotation.x) < 1e-6, 'skeleton: native sockets не получают Quaternius rotation')
+        assert.ok(Math.max(...new Box3().setFromObject(sword).getSize(new Vector3()).toArray()) > actor.modelHeight * .25, 'skeleton: sword должен иметь production world size')
+        assert.ok(Math.max(...new Box3().setFromObject(shield).getSize(new Vector3()).toArray()) > actor.modelHeight * .18, 'skeleton: shield должен иметь production world size')
+      }
+      actor.dispose()
+      assert.equal(actor.children.length, 0, `${entry.profile}: disposal`)
+    }
+  } finally {
+    if (previousSelf === undefined) delete globalThis.self; else globalThis.self = previousSelf
+    if (previousCreateImageBitmap === undefined) delete globalThis.createImageBitmap; else globalThis.createImageBitmap = previousCreateImageBitmap
+  }
+})
+
 test('embedded-текстура GLB в браузерном пути идёт через HTML Image, а не fetch(blob:)', async () => {
   const previousSelf = globalThis.self
   const previousCreateImageBitmap = globalThis.createImageBitmap
@@ -266,7 +372,8 @@ test('self-contained GLB загружается через loader и освоб�
   actor.traverse((object) => { if (object.isMesh) renderables.push(object) })
   assert.ok(renderables.length > 0)
   assert.ok(renderables.every((object) => object.castShadow && object.receiveShadow), 'GLB mesh должен отбрасывать и принимать тени')
-  assert.equal(typeof actor.idle, 'undefined', 'у GLB без idle-клипа метод не обязан появляться')
+  assert.equal(typeof actor.idle, 'function', 'GLB должен безопасно отвечать на idle даже без idle-клипа')
+  for (const pose of ['walk', 'attack', 'rangedAttack', 'cast', 'hit', 'death']) assert.equal(typeof actor[pose], 'function', `${pose}: безопасный pose API`)
   actor.dispose()
   assert.equal(actor.children.length, 0)
 })

@@ -222,7 +222,7 @@ test('enemy output carries engine-compatible actions, traits, image and server p
   assert.ok(enemy)
   assert.deepEqual(Object.keys(enemy), [
     'id', 'name', 'hp', 'maxHp', 'armor', 'speed', 'initiativeBonus', 'attackBonus', 'damageDice',
-    'damageBonus', 'abilities', 'creature_type', 'image', 'source_url', 'traits', 'action_profiles',
+    'damageBonus', 'abilities', 'creature_type', 'footprint', 'image', 'source_url', 'traits', 'action_profiles',
     'attack_profile', 'x', 'y', 'alive', 'stat_block_id', 'loadout', 'provenance',
   ])
   assert.equal(enemy.stat_block_id, 'srd_5_2_1:wolf')

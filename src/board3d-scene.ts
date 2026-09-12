@@ -23,6 +23,7 @@ import { loadPropModelAssets, type PropModelAssets } from './prop-model-assets'
 import { LIGHT_SOURCE_ASSETS, lightSourceAssetId } from './board-lighting'
 import { batchEnvironmentMeshes } from './board3d-batching'
 import { createTerrainSideGeometry, createTerrainSurfaceGeometry, propTerrainHeight, terrainHeightAt } from './board3d-terrain'
+import { createBoard3DRoofs, type Board3DRoofMode } from './board3d-roofs'
 
 /** Высота срезанной стены в мировых единицах клетки. */
 export const BOARD3D_WALL_HEIGHT = 0.68
@@ -39,6 +40,8 @@ export type Board3DOptions = {
   lighting?: boolean
   pointLightShadows?: boolean
   palette?: BoardPalette
+  /** Режим видимости только визуального слоя крыш; по умолчанию — cutaway. */
+  roofMode?: Board3DRoofMode
   artUrl?: string | null
   artMode?: 'map' | 'backdrop'
   onReady?: () => void
@@ -849,6 +852,8 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
   groundGroup.add(ground)
   addTerrainSides(resources, map, groundGroup, palette)
 
+  const roofs = createBoard3DRoofs(map, palette, { wallHeight: BOARD3D_WALL_HEIGHT, mode: options.roofMode })
+  group.add(roofs.group)
   addEdgeScene(resources, map, group, palette)
   let props = addProps(map, group, options.lighting !== false, options.pointLightShadows !== false, palette)
   let propAssets: PropModelAssets | null = null
@@ -926,6 +931,7 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     propAbort.abort()
     props.dispose()
     propAssets?.dispose()
+    roofs.dispose()
     group.clear()
     for (const materialValue of resources.materials) materialValue.dispose()
     for (const geometry of resources.geometries) geometry.dispose()
@@ -935,5 +941,11 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     resources.textures.clear()
   }
 
-  return { group, getPropPickTargets: () => disposed ? [] : props.pickTargets, dispose }
+  return {
+    group,
+    getPropPickTargets: () => disposed ? [] : props.pickTargets,
+    setRoofMode: (mode: Board3DRoofMode) => roofs.setMode(mode),
+    getRoofMode: () => roofs.getMode(),
+    dispose,
+  }
 }

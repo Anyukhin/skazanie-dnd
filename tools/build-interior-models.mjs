@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // @ts-check
-/** Детерминированные оригинальные интерьерные GLB для кандидата выпуска. */
+/** Детерминированные оригинальные GLB окружения для кандидата выпуска. */
 import { createHash, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { lstat, mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises'
@@ -14,15 +14,29 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 
 import { validateCandidateOutputDir } from './import-environment-models.mjs'
 import { encodePng } from './png-codec.mjs'
+import { createExtraModel as createHouseholdModel, EXTRA_MODELS as HOUSEHOLD_MODELS } from './household-prop-models.mjs'
+import { createExtraModel as createSettlementModel, EXTRA_MODELS as SETTLEMENT_MODELS } from './settlement-prop-models.mjs'
 
 const URL_ROOT = '/assets/models/environment/'
 const FAMILY = 'skazanie'
-export const GENERATOR_VERSION = 3
+export const GENERATOR_VERSION = 4
 const SOURCE_FILE = fileURLToPath(import.meta.url)
 const SOURCE_BYTES = readFileSync(SOURCE_FILE)
 export const GENERATOR_SHA256 = createHash('sha256').update(SOURCE_BYTES).digest('hex')
 const GENERATOR_SOURCE = Object.freeze({
   path: `${FAMILY}/build-interior-models.mjs`, sha256: GENERATOR_SHA256, bytes: SOURCE_BYTES.length,
+})
+const HOUSEHOLD_SOURCE_FILE = fileURLToPath(new URL('./household-prop-models.mjs', import.meta.url))
+const HOUSEHOLD_SOURCE_BYTES = readFileSync(HOUSEHOLD_SOURCE_FILE)
+export const HOUSEHOLD_GENERATOR_SHA256 = createHash('sha256').update(HOUSEHOLD_SOURCE_BYTES).digest('hex')
+const HOUSEHOLD_GENERATOR_SOURCE = Object.freeze({
+  path: `${FAMILY}/household-prop-models.mjs`, sha256: HOUSEHOLD_GENERATOR_SHA256, bytes: HOUSEHOLD_SOURCE_BYTES.length,
+})
+const SETTLEMENT_SOURCE_FILE = fileURLToPath(new URL('./settlement-prop-models.mjs', import.meta.url))
+const SETTLEMENT_SOURCE_BYTES = readFileSync(SETTLEMENT_SOURCE_FILE)
+export const SETTLEMENT_GENERATOR_SHA256 = createHash('sha256').update(SETTLEMENT_SOURCE_BYTES).digest('hex')
+const SETTLEMENT_GENERATOR_SOURCE = Object.freeze({
+  path: `${FAMILY}/settlement-prop-models.mjs`, sha256: SETTLEMENT_GENERATOR_SHA256, bytes: SETTLEMENT_SOURCE_BYTES.length,
 })
 
 /** GLTFExporter собирает binary GLB через browser FileReader; Node уже умеет Blob. */
@@ -82,7 +96,15 @@ export const INTERIOR_MODELS = Object.freeze([
   spec('reliquary', 'sk-reliquary', 'Реликварий', 'Склеп', { w: 1, h: 1 }),
 ])
 
-const SPEC_BY_ASSET = new Map(INTERIOR_MODELS.map((item) => [item.assetId, item]))
+/** Все авторские GLB-рецепты окружения: 12 интерьерных + 18 household + 12 settlement. */
+export const AUTHORED_MODELS = Object.freeze([
+  ...INTERIOR_MODELS,
+  ...HOUSEHOLD_MODELS,
+  ...SETTLEMENT_MODELS,
+])
+
+const INTERIOR_SPEC_BY_ASSET = new Map(INTERIOR_MODELS.map((item) => [item.assetId, item]))
+const SPEC_BY_ASSET = new Map(AUTHORED_MODELS.map((item) => [item.assetId, item]))
 
 function material(name, color, options = {}) {
   const value = new THREE.MeshStandardMaterial({ color, roughness: 0.86, metalness: 0.04, ...options })
@@ -435,7 +457,7 @@ function buildReliquary() {
 
 /** @param {string} assetId @returns {THREE.Group} */
 export function createInteriorModel(assetId) {
-  if (!SPEC_BY_ASSET.has(assetId)) throw new Error(`Неизвестная интерьерная модель: ${assetId}`)
+  if (!INTERIOR_SPEC_BY_ASSET.has(assetId)) throw new Error(`Неизвестная интерьерная модель: ${assetId}`)
   switch (assetId) {
     case 'bar_counter': return buildBarCounter()
     case 'bar_shelf': return buildBarShelf()
@@ -451,6 +473,12 @@ export function createInteriorModel(assetId) {
     case 'reliquary': return buildReliquary()
     default: throw new Error(`Нет рецепта интерьерной модели: ${assetId}`)
   }
+}
+
+/** Создаёт любую авторскую модель из объединённого каталога. */
+export function createAuthoredModel(assetId) {
+  if (!SPEC_BY_ASSET.has(assetId)) throw new Error(`Неизвестная авторская модель: ${assetId}`)
+  return createHouseholdModel(assetId) ?? createSettlementModel(assetId) ?? createInteriorModel(assetId)
 }
 
 /** @param {THREE.Object3D} object */
@@ -544,6 +572,37 @@ function texturePng(kind) {
   return encodePng({ width, height, data })
 }
 
+function align4(value) {
+  return (value + 3) & ~3
+}
+
+const AUTHORED_TEXTURE_BASE = Object.freeze({
+  wood: 210, stone: 190, metal: 205, fabric: 220, food: 220,
+  water: 255, glass: 255, straw: 210, rope: 205, earth: 190,
+  bone: 220, dark: 210, ember: 220,
+})
+const FLAT_AUTHORED_MATERIALS = new Set(['water', 'glass'])
+
+/** Текстуры авторских фабрик различают материал, а не первый mesh в сцене. */
+function authoredTexturePng(kind) {
+  const width = 128
+  const height = 128
+  const base = AUTHORED_TEXTURE_BASE[kind] ?? 220
+  const data = new Uint8Array(width * height * 4)
+  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
+    const grain = 1 + 2.5 * Math.sin((x + y * 0.7) / 13) + 1.5 * Math.sin((x * 0.4 - y) / 29)
+    const seam = kind === 'wood' && y % 32 < 2 ? -3 : kind === 'stone' && (x % 43 < 1 || y % 37 < 1) ? -2 : 0
+    const spot = kind === 'food' && ((x * 11 + y * 7) % 47 < 3) ? 3 : 0
+    const value = Math.max(0, Math.min(255, Math.round(base + grain + seam + spot)))
+    const index = (y * width + x) * 4
+    data[index] = value
+    data[index + 1] = value
+    data[index + 2] = value
+    data[index + 3] = 255
+  }
+  return encodePng({ width, height, data })
+}
+
 function textureMaterial(name, kind) {
   if (kind === 'wood') return /wood|^table-(?:round|small)/iu.test(name)
   return /stone|trim|^altar-top|sarcophagus-(?:lid|carving)|pillar-(?:capital|groove)|niche-recess/iu.test(name)
@@ -567,6 +626,68 @@ function glbParts(bytes) {
   }
   if (!json || !binary) throw new Error('GLB должен иметь JSON и BIN chunk')
   return { json, binary }
+}
+
+function writeGlb(json, binary) {
+  const jsonChunk = Buffer.from(JSON.stringify(json))
+  const jsonPadded = Buffer.concat([jsonChunk, Buffer.alloc((4 - jsonChunk.length % 4) % 4, 0x20)])
+  const binaryPadded = Buffer.concat([binary, Buffer.alloc((4 - binary.length % 4) % 4)])
+  const binHeader = Buffer.alloc(8)
+  binHeader.writeUInt32LE(binaryPadded.length, 0)
+  binHeader.writeUInt32LE(0x004e4942, 4)
+  const jsonHeader = Buffer.alloc(8)
+  jsonHeader.writeUInt32LE(jsonPadded.length, 0)
+  jsonHeader.writeUInt32LE(0x4e4f534a, 4)
+  const header = Buffer.alloc(12)
+  header.writeUInt32LE(0x46546c67, 0)
+  header.writeUInt32LE(2, 4)
+  header.writeUInt32LE(12 + jsonHeader.length + jsonPadded.length + binHeader.length + binaryPadded.length, 8)
+  return Buffer.concat([header, jsonHeader, jsonPadded, binHeader, binaryPadded])
+}
+
+function appendTextureSet(bytes, kinds, { strictMaterials = false } = {}) {
+  const { json, binary } = glbParts(bytes)
+  const allowed = [...new Set(kinds.filter((kind) => typeof kind === 'string' && kind))]
+  if (!allowed.length) return bytes
+  const materials = json.materials ?? []
+  const materialKinds = materials.map((value) => String(value.name ?? ''))
+  const unknown = materialKinds.filter((kind) => kind && !allowed.includes(kind))
+  if (strictMaterials && unknown.length) throw new Error(`Неизвестный материал авторской модели: ${unknown.join(', ')}`)
+  const used = allowed.filter((kind) => materialKinds.includes(kind) && !FLAT_AUTHORED_MATERIALS.has(kind))
+  if (!used.length) return bytes
+
+  const declaredLength = Number(json.buffers?.[0]?.byteLength)
+  let rawLength = Number.isSafeInteger(declaredLength) ? Math.max(declaredLength, binary.length) : binary.length
+  const chunks = [binary]
+  if (rawLength > binary.length) chunks.push(Buffer.alloc(rawLength - binary.length))
+  json.buffers ??= [{}]
+  json.bufferViews ??= []
+  json.images ??= []
+  json.textures ??= []
+  const texturesByKind = new Map()
+  for (const kind of used) {
+    const image = authoredTexturePng(kind)
+    const offset = align4(rawLength)
+    if (offset > rawLength) chunks.push(Buffer.alloc(offset - rawLength))
+    chunks.push(image)
+    rawLength = offset + image.length
+    const imageView = json.bufferViews.length
+    json.bufferViews.push({ buffer: 0, byteOffset: offset, byteLength: image.length })
+    const imageIndex = json.images.length
+    json.images.push({ name: `skazanie-${kind}-grain-v${GENERATOR_VERSION}`, bufferView: imageView, mimeType: 'image/png' })
+    const textureIndex = json.textures.length
+    json.textures.push({ name: `skazanie-${kind}-grain-v${GENERATOR_VERSION}`, source: imageIndex })
+    texturesByKind.set(kind, textureIndex)
+  }
+  json.buffers[0].byteLength = rawLength
+  for (const materialValue of materials) {
+    const kind = String(materialValue.name ?? '')
+    const textureIndex = texturesByKind.get(kind)
+    if (textureIndex === undefined) continue
+    materialValue.pbrMetallicRoughness ??= {}
+    materialValue.pbrMetallicRoughness.baseColorTexture = { index: textureIndex }
+  }
+  return writeGlb(json, Buffer.concat(chunks))
 }
 
 /** @param {Buffer} bytes @param {'wood'|'stone'} kind */
@@ -616,10 +737,15 @@ export function embedInteriorTexture(bytes, kind) {
   return Buffer.concat([header, jsonHeader, jsonPadded, binHeader, nextBinary])
 }
 
+/** Экспортирует extras с отдельным каналом на каждый именованный материал. */
+export function embedAuthoredTextures(bytes, kinds) {
+  return appendTextureSet(bytes, kinds, { strictMaterials: true })
+}
+
 /** @param {string} assetId @returns {Promise<Buffer>} */
 export async function exportInteriorModel(assetId) {
   ensureFileReader()
-  const model = createInteriorModel(assetId)
+  const model = createAuthoredModel(assetId)
   const scene = new THREE.Scene()
   scene.name = 'skazanie-interior-export'
   mergeStaticInteriorMeshes(model)
@@ -627,7 +753,11 @@ export async function exportInteriorModel(assetId) {
   try {
     const output = await new GLTFExporter().parseAsync(scene, { binary: true, onlyVisible: true, trs: true })
     if (!(output instanceof ArrayBuffer)) throw new Error('GLTFExporter вернул текст вместо GLB')
-    return embedInteriorTexture(Buffer.from(output), TEXTURE_KIND[assetId])
+    const bytes = Buffer.from(output)
+    const legacyKind = TEXTURE_KIND[assetId]
+    if (legacyKind) return embedInteriorTexture(bytes, legacyKind)
+    const specValue = SPEC_BY_ASSET.get(assetId)
+    return embedAuthoredTextures(bytes, specValue?.textures ?? [])
   } finally {
     disposeInteriorModel(scene)
   }
@@ -712,13 +842,13 @@ export async function addInteriorModelsToCandidate(directory) {
   const modelUrls = new Set(models.flatMap((value) => object(value)?.url).filter((value) => typeof value === 'string'))
   const familyDir = join(candidate, FAMILY)
   await assertCandidateDirectory(familyDir, 'Каталог skazanie')
-  const familyFiles = ['LICENSE.txt', 'NOTICE.txt', ...INTERIOR_MODELS.map((item) => item.file)]
+  const familyFiles = ['LICENSE.txt', 'NOTICE.txt', ...AUTHORED_MODELS.map((item) => item.file)]
   await Promise.all(familyFiles.map((file) => assertWritableFile(join(familyDir, file), `Файл ${file}`)))
-  const generated = await Promise.all(INTERIOR_MODELS.map(async (item) => ({ item, bytes: await exportInteriorModel(item.assetId) })))
+  const generated = await Promise.all(AUTHORED_MODELS.map(async (item) => ({ item, bytes: await exportInteriorModel(item.assetId) })))
   await mkdir(familyDir, { recursive: true })
   await assertCandidateDirectory(familyDir, 'Каталог skazanie')
   await writeIfAbsent(join(familyDir, 'LICENSE.txt'), Buffer.from('Оригинальные процедурные модели проекта «Сказание».\nИсточник: tools/build-interior-models.mjs.\nУсловия использования определяет владелец проекта; это не сторонний набор CC0.\n'))
-  await writeIfAbsent(join(familyDir, 'NOTICE.txt'), Buffer.from(`Созданы из собственных геометрических рецептов проекта.\nГенератор: ${GENERATOR_VERSION}; SHA-256: ${GENERATOR_SHA256}.\nЭкспорт: Three.js r${THREE.REVISION}, GLTFExporter.\nМодели Quaternius и Kenney не изменяются и сохраняют собственные лицензии.\n`))
+  await writeIfAbsent(join(familyDir, 'NOTICE.txt'), Buffer.from(`Созданы из собственных геометрических рецептов проекта.\nГенератор: ${GENERATOR_VERSION}; SHA-256: ${GENERATOR_SHA256}.\nФабрика household: SHA-256: ${HOUSEHOLD_GENERATOR_SHA256}.\nФабрика settlement: SHA-256: ${SETTLEMENT_GENERATOR_SHA256}.\nЭкспорт: Three.js r${THREE.REVISION}, GLTFExporter.\nМодели Quaternius и Kenney не изменяются и сохраняют собственные лицензии.\n`))
   const added = []
   for (const { item, bytes } of generated) {
     const url = `${URL_ROOT}${FAMILY}/${item.file}`
@@ -741,9 +871,10 @@ export async function addInteriorModelsToCandidate(directory) {
   if (!sources.some((value) => object(value)?.url === 'internal://skazanie/interior-models')) {
     sources.push({ url: 'internal://skazanie/interior-models', license: 'ORIGINAL', author: 'Сказание' })
   }
+  const authoredSources = [GENERATOR_SOURCE, HOUSEHOLD_GENERATOR_SOURCE, SETTLEMENT_GENERATOR_SOURCE]
   const sourceInputs = build.sourceInputs
-    .filter((value) => object(value)?.path !== GENERATOR_SOURCE.path)
-    .concat([GENERATOR_SOURCE])
+    .filter((value) => !authoredSources.some((source) => source.path === object(value)?.path))
+    .concat(authoredSources)
     .sort((left, right) => String(object(left)?.path ?? '').localeCompare(String(object(right)?.path ?? '')))
   manifest.sources = sources
   manifest.models = models
@@ -751,7 +882,7 @@ export async function addInteriorModelsToCandidate(directory) {
     ...build,
     interiorBuilderVersion: GENERATOR_VERSION,
     interiorGeneratorSha256: GENERATOR_SHA256,
-    interiorModels: INTERIOR_MODELS.map(({ assetId, key }) => ({ assetId, key })),
+    interiorModels: AUTHORED_MODELS.map(({ assetId, key }) => ({ assetId, key })),
     sourceInputs,
   }
   await replaceFileAtomically(manifestPath, Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`))
@@ -766,7 +897,7 @@ async function main() {
   const { values, positionals } = parseArgs({ options: { dir: { type: 'string' } }, allowPositionals: true })
   if (positionals.length || !values.dir) throw new Error('Используйте --dir <каталог-кандидат>')
   const result = await addInteriorModelsToCandidate(values.dir)
-  process.stdout.write(`${JSON.stringify({ directory: result.directory, added: result.added, models: INTERIOR_MODELS.length, generatorSha256: GENERATOR_SHA256, receiptStale: result.receiptStale }, null, 2)}\n`)
+  process.stdout.write(`${JSON.stringify({ directory: result.directory, added: result.added, models: AUTHORED_MODELS.length, generatorSha256: GENERATOR_SHA256, receiptStale: result.receiptStale }, null, 2)}\n`)
 }
 
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {

@@ -6,6 +6,7 @@ import { SIZE_CLASSES } from './tactical-map.mjs'
 import { loadDndsu2014Content } from './dndsu-2014-content.mjs'
 import { enemyFrom2014 } from './combat-lab-monsters.mjs'
 import { selectEncounterRoster } from './combat-lab-encounter-math.mjs'
+import { footprintCellsFor, footprintMetadataForSize } from './actor-footprint.mjs'
 
 const classicContent = await loadDndsu2014Content()
 
@@ -679,6 +680,60 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
   },
 })
 
+/** Размеры SRD-профилей: источник площади, а не вход сборщика. */
+const SRD_5_2_1_MONSTER_SIZES = deepFreeze({
+  'srd_5_2_1:goblin-minion': 'small',
+  'srd_5_2_1:goblin-warrior': 'small',
+  'srd_5_2_1:skeleton': 'medium',
+  'srd_5_2_1:zombie': 'medium',
+  'srd_5_2_1:wolf': 'medium',
+  'srd_5_2_1:giant-rat': 'small',
+  'srd_5_2_1:giant-wolf-spider': 'medium',
+  'srd_5_2_1:giant-spider': 'large',
+  'srd_5_2_1:orc': 'medium',
+  'srd_5_2_1:hobgoblin': 'medium',
+  'srd_5_2_1:kobold': 'small',
+  'srd_5_2_1:bugbear': 'medium',
+  'srd_5_2_1:bandit': 'medium',
+  'srd_5_2_1:dire-wolf': 'large',
+  'srd_5_2_1:ghoul': 'medium',
+  'srd_5_2_1:gnoll-warrior': 'medium',
+  'srd_5_2_1:ogre': 'large',
+  'srd_5_2_1:owlbear': 'large',
+  'srd_5_2_1:scout': 'medium',
+  'srd_5_2_1:spy': 'medium',
+  'srd_5_2_1:giant-centipede': 'small',
+  'srd_5_2_1:violet-fungus': 'medium',
+  'srd_5_2_1:minotaur-skeleton': 'large',
+  'srd_5_2_1:ankylosaurus': 'huge',
+  'srd_5_2_1:berserker': 'medium',
+  'srd_5_2_1:lion': 'large',
+  'srd_5_2_1:brown-bear': 'large',
+  'srd_5_2_1:giant-boar': 'large',
+  'srd_5_2_1:tiger': 'large',
+  'srd_5_2_1:sahuagin-warrior': 'medium',
+  'srd_5_2_1:bandit-captain': 'medium',
+  'srd_5_2_1:warrior-veteran': 'medium',
+  'srd_5_2_1:ettin': 'large',
+  'srd_5_2_1:guard-captain': 'medium',
+  'srd_5_2_1:awakened-tree': 'huge',
+  'srd_5_2_1:giant-elk': 'large',
+  'srd_5_2_1:ogre-zombie': 'large',
+  'srd_5_2_1:knight': 'medium',
+  'srd_5_2_1:hippopotamus': 'large',
+  'srd_5_2_1:earth-elemental': 'large',
+  'srd_5_2_1:hill-giant': 'huge',
+  'srd_5_2_1:xorn': 'large',
+  'srd_5_2_1:animated-armor': 'medium',
+  'srd_5_2_1:ochre-jelly': 'large',
+  'srd_5_2_1:barbed-devil': 'large',
+  'srd_5_2_1:gladiator': 'medium',
+  'srd_5_2_1:giant-scorpion': 'large',
+  'srd_5_2_1:wyvern': 'large',
+  'srd_5_2_1:manticore': 'large',
+  'srd_5_2_1:tough-boss': 'medium',
+})
+
 /**
  * Темы — это состав ростера, а не отдельный бестиарий: каждая перечисляет
  * подмножество того же server-owned allowlist. Их двенадцать вместо прежних
@@ -1043,6 +1098,37 @@ function deterministicOrder(values, seed, label) {
   })
 }
 
+function placementKeysFor(actor, position) {
+  return footprintCellsFor(actor, position).map((cell) => `${cell.x},${cell.y}`)
+}
+
+function placementFits(cellsByKey, actor, position, occupied) {
+  const keys = placementKeysFor(actor, position)
+  return keys.length > 0 && keys.every((key) => {
+    const cell = cellsByKey.get(key)
+    return Boolean(cell)
+      && cell.revealed
+      && WALKABLE_TYPES.has(cell.type)
+      && cell.feature == null
+      && cell.occupied !== true
+      && !occupied.has(key)
+  })
+}
+
+/** Ставит врагов по одному, резервируя все клетки их площади. */
+function deterministicEnemyPlacements(cells, party, enemies, orderedCandidates) {
+  const cellsByKey = new Map(cells.map((cell) => [positionKey(cell), cell]))
+  const occupied = new Set(party.map(positionKey))
+  const positions = []
+  for (const enemy of enemies) {
+    const position = orderedCandidates.find((candidate) => placementFits(cellsByKey, enemy, candidate, occupied))
+    if (!position) throw new EncounterAssemblyError('Нет безопасной клетки для площади существа', 'NO_SAFE_PLACEMENT_CELLS')
+    positions.push(position)
+    for (const key of placementKeysFor(enemy, position)) occupied.add(key)
+  }
+  return positions
+}
+
 function enemyFrom(statBlockId, position, proposalHash, index, ordinal, proposalId) {
   const block = SRD_5_2_1_MONSTER_ALLOWLIST[statBlockId]
   const slug = statBlockId.split(':').at(-1)
@@ -1060,6 +1146,7 @@ function enemyFrom(statBlockId, position, proposalHash, index, ordinal, proposal
     damageBonus: block.damageBonus,
     abilities: cloneCatalogValue(block.abilities ?? {}),
     creature_type: block.creature_type,
+    footprint: footprintMetadataForSize(SRD_5_2_1_MONSTER_SIZES[statBlockId] ?? 'medium'),
     // Пустые строки стат-блока не превращаются в пустые массивы: запись врага
     // остаётся той же формы, что и была, пока у существа нечего объявлять.
     ...(block.damage_vulnerabilities?.length ? { damage_vulnerabilities: cloneCatalogValue(block.damage_vulnerabilities) } : {}),
@@ -1144,21 +1231,39 @@ export class EncounterAssembler {
     }
     if (validated.ruleset_id === 'dnd_5e_2014') {
       const quantityCap = Math.min(ENCOUNTER_ASSEMBLER_LIMITS.maximum_creatures, validated.party.length * 2, availableCells.length)
-      const records = classicMonstersForTheme(validated.theme)
-      const selection = selectEncounterRoster({ records, partyLevels: validated.party.map(member => member.level), difficulty: validated.difficulty, seed: proposalHash, maximumCreatures: quantityCap })
-      const positions = deterministicOrder(availableCells, proposalHash, 'placement')
+      let records = classicMonstersForTheme(validated.theme)
+      let selection = selectEncounterRoster({ records, partyLevels: validated.party.map(member => member.level), difficulty: validated.difficulty, seed: proposalHash, maximumCreatures: quantityCap })
       const proposalId = `encounter-proposal-${proposalHash.slice(0, 24)}`
       const counts = new Map()
-      const enemies = selection.records.map((record, index) => {
-        const slug = record.id.split(':').at(-1)
-        const ordinal = (counts.get(record.id) ?? 0) + 1
-        counts.set(record.id, ordinal)
-        const enemy = enemyFrom2014(record, positions[index], index)
-        enemy.id = `encounter-${proposalHash.slice(0, 16)}-${slug}-${index + 1}`.slice(0, 120)
-        enemy.name = `${record.name_ru} ${ordinal}`
-        enemy.loadout = enemyLoadoutFor({ statBlockId: record.id, block: enemy, ownerId: enemy.id, seed: proposalHash, sourceId: proposalId })
-        return enemy
-      })
+      const buildPrototypes = () => selection.records.map((record, index) => {
+          const slug = record.id.split(':').at(-1)
+          const ordinal = (counts.get(record.id) ?? 0) + 1
+          counts.set(record.id, ordinal)
+          const enemy = {
+            ...enemyFrom2014(record, { x: 0, y: 0 }, index),
+            footprint: footprintMetadataForSize(record.size),
+          }
+          enemy.id = `encounter-${proposalHash.slice(0, 16)}-${slug}-${index + 1}`.slice(0, 120)
+          enemy.name = `${record.name_ru} ${ordinal}`
+          enemy.loadout = enemyLoadoutFor({ statBlockId: record.id, block: enemy, ownerId: enemy.id, seed: proposalHash, sourceId: proposalId })
+          return enemy
+        })
+      let prototypes = buildPrototypes()
+      const candidates = deterministicOrder(availableCells, proposalHash, 'placement')
+      let placements
+      try {
+        placements = deterministicEnemyPlacements(validated.cells, validated.party, prototypes, candidates)
+      } catch (error) {
+        if (!(error instanceof EncounterAssemblyError) || error.code !== 'NO_SAFE_PLACEMENT_CELLS') throw error
+        records = records.filter((record) => footprintMetadataForSize(record.size).size === 1)
+        const fallback = selectEncounterRoster({ records, partyLevels: validated.party.map(member => member.level), difficulty: validated.difficulty, seed: proposalHash, maximumCreatures: quantityCap })
+        if (fallback.records.length < prototypes.length) throw error
+        selection = fallback
+        counts.clear()
+        prototypes = buildPrototypes()
+        placements = deterministicEnemyPlacements(validated.cells, validated.party, prototypes, candidates)
+      }
+      const enemies = prototypes.map((enemy, index) => ({ ...enemy, x: placements[index].x, y: placements[index].y }))
       const budgetXp = Number.isFinite(selection.interval.upper) ? selection.interval.upper : selection.target_adjusted_xp
       return deepFreeze({
         proposal_id: proposalId, version: ENCOUNTER_PROPOSAL_VERSION, difficulty: validated.difficulty,
@@ -1183,19 +1288,42 @@ export class EncounterAssembler {
       ENCOUNTER_ASSEMBLER_LIMITS.maximum_creatures_per_character * validated.party.length,
       availableCells.length,
     )
-    const allocation = spendBudget(THEMES[validated.theme], budgetXp, quantityCap, proposalHash)
+    let allocation = spendBudget(THEMES[validated.theme], budgetXp, quantityCap, proposalHash)
     if (!allocation.stat_block_ids.length) {
       throw new EncounterAssemblyError('Бюджет не позволяет собрать столкновение выбранной темы', 'BUDGET_CANNOT_FUND_ENCOUNTER')
     }
 
-    const positions = deterministicOrder(availableCells, proposalHash, 'placement')
-    const counts = new Map()
     const proposalId = `encounter-proposal-${proposalHash.slice(0, 24)}`
-    const enemies = allocation.stat_block_ids.map((statBlockId, index) => {
-      const ordinal = (counts.get(statBlockId) ?? 0) + 1
-      counts.set(statBlockId, ordinal)
-      return enemyFrom(statBlockId, positions[index], proposalHash, index, ordinal, proposalId)
-    })
+    const candidates = deterministicOrder(availableCells, proposalHash, 'placement')
+    const buildPrototypes = (statBlockIds) => {
+      const prototypeCounts = new Map()
+      return statBlockIds.map((statBlockId, index) => {
+        const ordinal = (prototypeCounts.get(statBlockId) ?? 0) + 1
+        prototypeCounts.set(statBlockId, ordinal)
+        const enemy = enemyFrom(statBlockId, { x: 0, y: 0 }, proposalHash, index, ordinal, proposalId)
+        return enemy
+      })
+    }
+    let prototypes = buildPrototypes(allocation.stat_block_ids)
+    let placements
+    try {
+      placements = deterministicEnemyPlacements(validated.cells, validated.party, prototypes, candidates)
+    } catch (error) {
+      if (!(error instanceof EncounterAssemblyError) || error.code !== 'NO_SAFE_PLACEMENT_CELLS') throw error
+      // Узкое поле может вместить 12 одноклеточных существ, хотя выбранный
+      // XP-план содержит крупных. Пересобираем состав в том же бюджете,
+      // сохраняя количество, если у темы есть безопасный одноклеточный ростер.
+      const oneCellIds = THEMES[validated.theme].filter((statBlockId) => {
+        const size = footprintMetadataForSize(SRD_5_2_1_MONSTER_SIZES[statBlockId])
+        return size.size === 1
+      })
+      const fallback = spendBudget(oneCellIds, budgetXp, quantityCap, proposalHash)
+      if (fallback.stat_block_ids.length < prototypes.length) throw error
+      allocation = fallback
+      prototypes = buildPrototypes(allocation.stat_block_ids)
+      placements = deterministicEnemyPlacements(validated.cells, validated.party, prototypes, candidates)
+    }
+    const enemies = prototypes.map((enemy, index) => ({ ...enemy, x: placements[index].x, y: placements[index].y }))
     const spentXp = allocation.spent_xp
     const proposal = {
       proposal_id: proposalId,

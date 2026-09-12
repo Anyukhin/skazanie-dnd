@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { campaignStateForViewer, mechanicsForViewer, publicEnemyFor, publicSceneFor, publicTacticalMapFor, publicWorldMapFor, turnExplanationForViewer, turnResultForViewer } from '../server/viewer-projection.mjs'
+import { campaignStateForViewer, mechanicsForViewer, publicActorFootprintFor, publicEnemyFor, publicSceneFor, publicTacticalMapFor, publicWorldMapFor, turnExplanationForViewer, turnResultForViewer } from '../server/viewer-projection.mjs'
 
 const user = { role: 'player', heroIds: ['hero'] }
 
@@ -225,6 +225,42 @@ test('enemy projection exposes only repository-owned illustration paths', () => 
   assert.equal(publicEnemyFor({ ...common, image: '/assets/enemies/../party-portraits.png' }).image, undefined)
   assert.equal(publicEnemyFor({ ...common, image: '/assets/enemies/dnd-2014/../wolf.png' }).image, undefined)
   assert.equal(publicEnemyFor({ ...common, image: '/assets/enemies/dnd-2014/troll.png?tracking=1' }).image, undefined)
+})
+
+test('проекция передаёт только валидную публичную площадь актора и скрывает её у замаскированных врагов', () => {
+  const footprint = { version: 1, size: 2, cells: [{ x: 9, y: 9 }] }
+  assert.deepEqual(publicActorFootprintFor({ footprint }), { version: 1, size: 2 })
+  assert.equal(publicActorFootprintFor({ footprint, masked: true }), undefined)
+  assert.equal(publicActorFootprintFor({ footprint: { version: 2, size: 4 } }), undefined)
+  assert.equal(publicActorFootprintFor({ footprint: { version: 1, size: 9 } }), undefined)
+
+  const sceneCells = []
+  for (let y = 0; y < 3; y += 1) for (let x = 0; x < 11; x += 1) {
+    sceneCells.push({ x, y, type: 'floor', revealed: true })
+  }
+  const source = {
+    sessionCode: 'FOOTPRINT-PROJECTION', partyMemberIds: ['hero'],
+    players: [{ id: 'hero', character: 'Лира', hp: 10, maxHp: 10, x: 0, y: 0, inventory: [], footprint }],
+    actors: [{ id: 'summon', name: 'Зверь', ownerId: 'hero', controllerId: 'hero', faction: 'party', hp: 4, maxHp: 4, x: 3, y: 0, alive: true, footprint }],
+    enemies: [
+      { id: 'ogre', name: 'Огр', hp: 68, maxHp: 68, x: 5, y: 0, alive: true, footprint },
+      { id: 'masked', name: 'Неизвестное существо', hp: 68, maxHp: 68, x: 8, y: 0, alive: true, masked: true, footprint },
+    ],
+    scene: { title: 'Поле', location: 'Поле', cells: sceneCells },
+  }
+  const projected = campaignStateForViewer(source, user, 'hero')
+
+  assert.deepEqual(projected.players[0].footprint, { version: 1, size: 2 })
+  assert.deepEqual(projected.actors[0].footprint, { version: 1, size: 2 })
+  assert.deepEqual(projected.enemies.find((enemy) => enemy.id === 'ogre').footprint, { version: 1, size: 2 })
+  assert.equal(projected.enemies.find((enemy) => enemy.id === 'masked').footprint, undefined)
+
+  const partialSource = structuredClone(source)
+  partialSource.scene.cells.find((cell) => cell.x === 6 && cell.y === 1).revealed = false
+  const partial = campaignStateForViewer(partialSource, user, 'hero')
+  assert.equal(partial.enemies.find((enemy) => enemy.id === 'ogre').footprint, undefined, 'скрытый угол врага не должен раскрывать его площадь')
+  assert.deepEqual(partial.players[0].footprint, { version: 1, size: 2 }, 'размер собственного героя остаётся доступен при тумане')
+  assert.doesNotMatch(JSON.stringify(projected), /"cells"\s*:\s*\[\s*\{\s*"x"\s*:\s*9/u)
 })
 
 /**
@@ -683,7 +719,7 @@ test('turn result projection covers authoritative state, mechanics and effects.s
 
 test('карта в проекции игрока не выдаёт нераскрытую часть', async () => {
   const { publicSceneFor } = await import('../server/viewer-projection.mjs')
-  const { cellAt, deserializeTacticalMap, edgeList, tacticalMapFromLegacyCells, addProp, serializeTacticalMap, setDoor, setEdge } =
+  const { cellAt, deserializeTacticalMap, edgeList, tacticalMapFromLegacyCells, addProp, serializeTacticalMap, setCell, setDoor, setEdge } =
     await import('../server/tactical-map.mjs')
 
   const cells = []
@@ -693,6 +729,8 @@ test('карта в проекции игрока не выдаёт нераск
     }
   }
   const map = tacticalMapFromLegacyCells(cells)
+  setCell(map, 1, 0, { moveCost: 2, elevation: 10 })
+  setCell(map, 1, 2, { moveCost: 2, elevation: 15 })
   addProp(map, {
     id: 'seen', assetId: 'table', x: 1.5, y: 0.5, footprint: [{ x: 1, y: 0 }],
     interaction: {
@@ -718,6 +756,10 @@ test('карта в проекции игрока не выдаёт нераск
   assert.equal(cellAt(visible, 1, 0)?.variant, 3)
   assert.equal(cellAt(visible, 1, 2)?.material, 'stone', 'нераскрытая клетка теряет материал')
   assert.equal(cellAt(visible, 1, 2)?.variant, 0, 'нераскрытая клетка теряет вариант тайла')
+  assert.equal(cellAt(visible, 1, 0)?.moveCost, 2, 'раскрытая клетка сохраняет стоимость перемещения')
+  assert.equal(cellAt(visible, 1, 0)?.elevation, 10, 'раскрытая клетка сохраняет высоту')
+  assert.equal(cellAt(visible, 1, 2)?.moveCost, 1, 'нераскрытая клетка получает безопасную стоимость перемещения')
+  assert.equal(cellAt(visible, 1, 2)?.elevation, 0, 'нераскрытая клетка получает безопасную высоту')
   assert.ok(cellAt(visible, 1, 2), 'форма карты обязана сохраниться целиком')
 
   assert.deepEqual(visible.props.map((prop) => prop.assetId), ['table'], 'предмет на нераскрытой клетке не передаётся')
@@ -809,8 +851,8 @@ test('массив клеток и карта скрывают одно и то 
     await import('../server/tactical-map.mjs')
 
   const cells = [
-    { x: 0, y: 0, type: 'floor', revealed: true, material: 'wood', variant: 4, pattern: 'small-room' },
-    { x: 1, y: 0, type: 'floor', revealed: false, material: 'marble', variant: 5, pattern: 'small-room' },
+    { x: 0, y: 0, type: 'floor', revealed: true, material: 'wood', variant: 4, pattern: 'small-room', edge_mask: 'e', moveCost: 2, elevation: 10 },
+    { x: 1, y: 0, type: 'floor', revealed: false, material: 'marble', variant: 5, pattern: 'small-room', edge_mask: 'n', moveCost: 2, elevation: 15 },
   ]
   const projected = publicSceneFor({ cells, map: serializeTacticalMap(tacticalMapFromLegacyCells(cells)) })
   const visible = deserializeTacticalMap(projected.map)
@@ -819,8 +861,12 @@ test('массив клеток и карта скрывают одно и то 
   const hiddenCell = projected.cells.find((cell) => cell.x === 1)
   assert.equal(openCell.material, 'wood')
   assert.equal(openCell.variant, 4)
+  assert.equal(openCell.pattern, 'small-room')
+  assert.equal(openCell.edge_mask, 'e')
   assert.equal('material' in hiddenCell, false, 'нераскрытая клетка не должна отдавать материал')
   assert.equal('variant' in hiddenCell, false, 'нераскрытая клетка не должна отдавать вариант тайла')
+  assert.equal('pattern' in hiddenCell, false, 'нераскрытая клетка не должна отдавать pattern')
+  assert.equal('edge_mask' in hiddenCell, false, 'нераскрытая клетка не должна отдавать edge_mask')
 
   // Обе проекции обязаны сходиться: расхождение означало бы второй набор
   // правил видимости, и игрок увидел бы через более щедрый из них.

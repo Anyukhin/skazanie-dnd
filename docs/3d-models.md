@@ -4,7 +4,7 @@
 участника и рисует его поверх клетки. Если каталог или файл модели недоступны,
 остаётся встроенная миниатюра. При ошибке WebGL вся доска возвращается в 2D.
 
-## Готовые модели — 11 сентября 2026
+## Готовые модели — 12 сентября 2026
 
 Путник (`traveler`, Peasant) и следопыт (`ranger`, Ranger) собраны из бесплатных
 Standard-наборов Quaternius Universal Base Characters, Modular Character
@@ -33,6 +33,35 @@ node tools/import-quaternius-actors.mjs --out tmp/quaternius-actor-candidate
 Он не меняет действующий каталог. Принятые файлы получают новые имена с хешем,
 после чего их записи и права добавляются в общий каталог.
 
+### Новые production-актеры
+
+Первые записи профилей в `public/assets/models/manifest.json` используют
+локальный immutable-набор
+`/assets/models/quaternius/actors-b892de8fd4f015796032/`. Старые восемь
+ключей сохранены как ручной выбор и fallback. Источники, хеши производных GLB,
+лицензии и runtime-проверки находятся в
+`public/assets/models/quaternius/actors-b892de8fd4f015796032/NOTICE.json`.
+
+| Ключ | Профиль и рост | Модель и rig | Реальные клипы / sockets |
+| --- | --- | --- | --- |
+| `hooded-mage` | mage · 1.25 | Ranger Quaternius с капюшоном; палитра одежды blue-violet | шесть UAL1-клипов; `hand_l`, `hand_r` |
+| `wolf` | beast · 0.8 | Ultimate Animated Animal Pack; 51 bone | `Attack`, `Death`, `Idle`, `Walk`, hit-react и дополнительные; sockets нет |
+| `goblin-quaternius` | goblin · 0.95 | Ultimate Animated Character Pack; 23 bone | `Idle`, `Walk`, `SwordSlash`, `RecieveHit`, `Death`; native `FistL/FistR` aliases |
+| `skeleton-quaternius` | skeleton · 1.25 | Animated Monster Pack; 17 bone | `SkeletonArmature|Skeleton_Attack/Death/Running/Spawn/Idle`; native sockets на `_end` |
+
+Все четыре GLB самодостаточны. В source animation удалены scale-каналы,
+способные отменить `fitToHeight`; root-motion X/Z заморожен в рамках исходного
+rig, статическое положение модели сохранено. У мага цвет меняется только в
+зелёной области `MI_Ranger` baseColor PNG; яркость складок сохраняется, skin,
+metal, boots, normal и ORM остаются исходными. У гоблина и скелета голова
+уменьшена геометрически в bind pose до 0.78 и 0.65 соответственно.
+
+Проверка production-набора выполняется частью `test/actor-models.test.mjs`:
+
+```bash
+node --test test/actor-models.test.mjs
+```
+
 Подключены четыре модели Kay Lousberg / KayKit из официальных наборов
 [Adventurers](https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0)
 и [Skeletons](https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Skeletons-1.0).
@@ -46,10 +75,10 @@ node tools/import-quaternius-actors.mjs --out tmp/quaternius-actor-candidate
 | `rogue` | `kaykit/rogue.glb` | Плут с двумя кинжалами |
 | `skeleton` | `kaykit/skeleton-warrior.glb` | Скелет в шлеме; без оружия |
 
-Модели KayKit остаются в каталоге и доступны в меню «Фигурки»; волшебник и
-скелет по-прежнему назначаются автоматически соответствующим профилям.
-Гоблин и зверь пока используют встроенную геометрию. Все модели обслуживаются
-локально; обращения к автору или GitHub во время игры не нужны.
+Модели KayKit остаются в каталоге и доступны в меню «Фигурки». Новые Quaternius
+записи выбираются автоматически первыми по соответствующим профилям; старые
+KayKit-записи доступны как ручной выбор. Все модели обслуживаются локально;
+обращения к автору или GitHub во время игры не нужны.
 
 Исходные версии закреплены: Adventurers —
 `672074b73ba276876a19e8816ecdc5241817ab47`, Skeletons —
@@ -96,10 +125,12 @@ actor.dispose() // перед удалением из сцены
 
 `ActorModel` — это `THREE.Group` с feet-origin: после нормализации нижняя точка
 находится на `y = 0`, центр по X/Z — в начале группы. Высота по умолчанию —
-1.4 единицы клетки; Quaternius задаёт 1.25, гоблин и зверь — 1.18.
-У procedural-модели есть `idle`, `walk`, `attack`, `ranged-attack`, `cast`, `hit`, `death`. У GLB методы клипов появляются
-только для найденных клипов с такими именами (например, `Idle`, `Attack_01`,
-`CastSpell`, `Death`).
+1.4 единицы клетки; production Quaternius задаёт 1.25 для мага и скелета,
+0.95 для гоблина и 0.8 для волка. У procedural-модели есть `idle`, `walk`,
+`attack`, `ranged-attack`, `cast`, `hit`, `death`. У GLB доступны все семь
+методов: найденный source clip проигрывается напрямую, а для отсутствующего
+клипа используется idle-поза; `ranged-attack` использует локальное прицеливание
+при наличии подходящего rig. Выдуманные bow/cast-клипы не добавляются.
 
 Для списка выбора используется чистая функция:
 
@@ -149,9 +180,9 @@ JSON chunk и отсутствие внешних ресурсов до пере
 
 Резервные шесть процедурных профилей — оригинальная low-poly стилизация с оружием,
 головными деталями, конечностями, цветовым кольцом и базовыми позами. Это
-визуальный fallback, а не ассеты Baldur's Gate 3. GLB без нужного клипа остаётся
-статичным для этой позы; WebGL-ошибка обрабатывается внешней доской и переводит
-весь вид обратно в 2D.
+визуальный fallback, а не ассеты Baldur's Gate 3. GLB без нужного клипа сохраняет
+idle-позу для этой команды; WebGL-ошибка обрабатывается внешней доской и
+переводит весь вид обратно в 2D.
 
 После добавления GLB нужно зарегистрировать каждый файл в общем реестре
 идентичности (права в manifest не заменяют хеш):

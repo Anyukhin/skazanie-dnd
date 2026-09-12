@@ -18,6 +18,7 @@ import {
   Mesh,
   MeshStandardMaterial,
   Object3D,
+  Quaternion,
   SphereGeometry,
   TextureLoader,
   TorusGeometry,
@@ -879,9 +880,11 @@ function addShield(parent: Object3D, surface: Material, rim: Material) {
 
 function addStaff(parent: Object3D, wood: Material, crystal: Material) {
   const staff = new Group(); staff.name = 'staff'
-  cylinder(staff, 'staff-shaft', .018, .026, .68, wood, [0, .18, 0], undefined, 7)
-  sphere(staff, 'staff-crystal', .065, crystal, [0, .54, 0], [.85, 1.2, .85])
-  mesh(staff, new TorusGeometry(.078, .008, 5, 12), crystal, 'staff-ring', [0, .54, 0], [Math.PI / 2, 0, 0])
+  // Хват находится в начале координат, древко идёт от -.55 до +.65.
+  // Кристалл остаётся над ладонью, когда сокет направлен вверх по мировой Y.
+  cylinder(staff, 'staff-shaft', .018, .026, 1.2, wood, [0, .05, 0], undefined, 7)
+  sphere(staff, 'staff-crystal', .065, crystal, [0, .70, 0], [.85, 1.2, .85])
+  mesh(staff, new TorusGeometry(.078, .008, 5, 12), crystal, 'staff-ring', [0, .70, 0], [Math.PI / 2, 0, 0])
   parent.add(staff)
   return staff
 }
@@ -919,6 +922,7 @@ function objectByName(root: Group, ...names: string[]): Object3D | undefined {
 type AccessoryController = {
   equipment: ActorEquipment | undefined
   setEquipment: (equipment: ActorEquipment | undefined) => void
+  refresh: () => void
   dispose: () => void
 }
 
@@ -930,10 +934,18 @@ type AccessoryControllerOptions = {
   /** Процедурная фигурка сохраняет старый комплект при отсутствии appearance. */
   legacy?: () => Group[]
   /** Сокеты Quaternius используют forward +Z; KayKit уже задаёт orientation в socket. */
-  socketKind?: 'kaykit' | 'quaternius' | 'procedural'
+  socketKind?: 'kaykit' | 'quaternius' | 'native' | 'procedural'
+  /** Размер рецепта в world units; задаётся только для уже вписанного GLB. */
+  worldScale?: number
 }
 
-function accessoryTransform(accessory: Group, kind: 'sword' | 'shield' | 'bow' | 'staff' | 'dagger', socketKind: AccessoryControllerOptions['socketKind']): void {
+function orientStaffToWorldUp(accessory: Group, parent: Object3D): void {
+  const parentRotation = parent.getWorldQuaternion(new Quaternion()).invert()
+  const localUp = new Vector3(0, 1, 0).applyQuaternion(parentRotation).normalize()
+  accessory.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), localUp)
+}
+
+function accessoryTransform(accessory: Group, kind: 'sword' | 'shield' | 'bow' | 'staff' | 'dagger', socketKind: AccessoryControllerOptions['socketKind'], parent?: Object3D): void {
   if (socketKind === 'procedural') {
     const position: Record<typeof kind, [number, number, number]> = {
       sword: [0, -.39, -.02], shield: [0, -.3, -.04], bow: [0, -.28, -.035], staff: [0, -.37, .04], dagger: [0, -.37, -.02],
@@ -945,10 +957,24 @@ function accessoryTransform(accessory: Group, kind: 'sword' | 'shield' | 'bow' |
     if (kind === 'dagger') accessory.rotation.z = -.12
     return
   }
+  if (socketKind === 'native') {
+    // Кости Fist у гоблина уже ориентированы под хват. Повторная поправка
+    // Quaternius +Z разворачивает опущенный клинок поперёк руки.
+    // У моделей без рук `attach` освобождает аксессуар до его показа.
+    accessory.position.set(0, 0, 0)
+    return
+  }
   accessory.position.set(0, socketKind === 'quaternius' ? 0 : .03, 0)
   // Quaternius assembled actors declare +Z as forward. The recipes use +Y as
   // their grip axis, so rotate the local accessory frame once at the socket.
-  if (socketKind === 'quaternius') accessory.rotation.x = Math.PI / 2
+  if (socketKind === 'quaternius') {
+    if (kind === 'staff' && parent) {
+      // Посох держится вертикально. Исходный поворот сокета следопыта
+      // отличается от KayKit: фиксированная поправка оставляла кристалл
+      // повёрнутым вбок у ног.
+      orientStaffToWorldUp(accessory, parent)
+    } else accessory.rotation.x = Math.PI / 2
+  }
 }
 
 function hideKayKitEquipment(root: Group, hidden: Map<Object3D, boolean>, value: boolean): void {
@@ -976,7 +1002,15 @@ function createAccessoryController(options: AccessoryControllerOptions): Accesso
   }
   const attach = (parent: Object3D | undefined, accessory: Group, kind: 'sword' | 'shield' | 'bow' | 'staff' | 'dagger') => {
     if (!parent) { accessory.removeFromParent(); disposeObject(accessory); return }
-    accessoryTransform(accessory, kind, options.socketKind)
+    accessoryTransform(accessory, kind, options.socketKind, parent)
+    if (options.worldScale && options.worldScale > 0) {
+      const parentScale = parent.getWorldScale(new Vector3())
+      accessory.scale.set(
+        accessory.scale.x * (parentScale.x > 1e-6 ? options.worldScale / parentScale.x : options.worldScale),
+        accessory.scale.y * (parentScale.y > 1e-6 ? options.worldScale / parentScale.y : options.worldScale),
+        accessory.scale.z * (parentScale.z > 1e-6 ? options.worldScale / parentScale.z : options.worldScale),
+      )
+    }
     active.push(accessory)
   }
   const addSwordAccessory = (side: 'left' | 'right', name = 'sword', kind: 'sword' | 'dagger' = 'sword') => {
@@ -1025,6 +1059,10 @@ function createAccessoryController(options: AccessoryControllerOptions): Accesso
   const result: AccessoryController = {
     get equipment() { return current },
     setEquipment,
+    refresh: () => {
+      if (options.socketKind !== 'quaternius') return
+      for (const accessory of active) if (accessory.name === 'staff' && accessory.parent) orientStaffToWorldUp(accessory, accessory.parent)
+    },
     dispose: () => {
       if (disposed) return
       disposed = true
@@ -1216,6 +1254,9 @@ function fitToHeight(root: Group, targetHeight: number, centerHorizontal = true)
 
 function clipPose(clip: AnimationClip): ActorPose | null {
   const name = slug(clip.name)
+  // `Idle_HitReact*` — настоящая реакция Quaternius на попадание. Проверяем её до
+  // общего idle-маркера, иначе wolf никогда не получает pose `hit`.
+  if (name.includes('hit') || name.includes('hurt') || name.includes('damage') || name.includes('react')) return 'hit'
   if (name.includes('idle') || name.includes('stand') || name.includes('rest')) return 'idle'
   if (name.includes('walk') || name.includes('run') || name.includes('move')) return 'walk'
   if (name.includes('cast') || name.includes('spell') || name.includes('magic')) return 'cast'
@@ -1226,7 +1267,6 @@ function clipPose(clip: AnimationClip): ActorPose | null {
   const firearm = name.includes('pistol') || name.includes('rifle') || name.includes('gun') || name.includes('crossbow')
   if (!firearm && (name.includes('bow') || name.includes('archery') || name.includes('arrow') || name.includes('ranged'))) return 'ranged-attack'
   if (name.includes('attack') || name.includes('strike') || name.includes('slash')) return 'attack'
-  if (name.includes('hit') || name.includes('hurt') || name.includes('damage')) return 'hit'
   if (name.includes('death') || name.includes('die') || name.includes('dead')) return 'death'
   return null
 }
@@ -1335,36 +1375,39 @@ function decorateModel(root: Group, input: NormalizedActorModelInput, entry: Act
   }
   const setGlbPose = (pose: ActorPose, progress?: number) => {
     if (disposed) return
-    const action = actions?.get(pose)
+    const requestedAction = actions?.get(pose)
+    const aimFallback = pose === 'ranged-attack' && Boolean(aimPose?.available)
+    const action = requestedAction ?? (aimFallback ? undefined : actions?.get('idle'))
     if (!action) {
       activeAction?.stop()
       activeAction = null
-      if (pose === 'ranged-attack') aimPose?.apply(progress)
+      if (aimFallback) aimPose?.apply(progress)
       else aimPose?.reset()
       return
     }
     aimPose?.reset()
+    const targetTime = progress == null ? undefined : MathUtils.clamp(progress, 0, 1) * action.getClip().duration
+    if (targetTime != null && activeAction === action && action.paused && Math.abs(action.time - targetTime) < 1e-8) return
     if (activeAction !== action) {
       activeAction?.stop()
-      activeAction = action.reset().setLoop(pose === 'death' ? LoopOnce : LoopRepeat, pose === 'death' ? 1 : Infinity).play()
+      const isDeath = pose === 'death' && requestedAction === action
+      activeAction = action.reset().setLoop(isDeath ? LoopOnce : LoopRepeat, isDeath ? 1 : Infinity).play()
     }
     if (progress != null) {
       action.paused = true
-      action.time = MathUtils.clamp(progress, 0, 1) * action.getClip().duration
+      action.time = targetTime!
+      mixer?.update(0)
+      equipmentController?.refresh()
     } else action.paused = false
   }
   model.setPose = source === 'glb' ? setGlbPose : model.setPose
   model.update = (deltaSeconds: number) => {
     if (!disposed && mixer && Number.isFinite(deltaSeconds) && deltaSeconds > 0) mixer.update(Math.min(deltaSeconds, .25))
+    equipmentController?.refresh()
   }
-  if (source === 'glb' && actions) {
-    for (const pose of ACTOR_POSES) if (actions.has(pose)) {
-      if (pose === 'ranged-attack') model.rangedAttack = (progress?: number) => setGlbPose(pose, progress)
-      else model[pose] = (progress?: number) => setGlbPose(pose, progress)
-    }
-  }
-  if (source === 'glb') {
-    model.rangedAttack = (progress?: number) => setGlbPose('ranged-attack', progress)
+  if (source === 'glb') for (const pose of ACTOR_POSES) {
+    if (pose === 'ranged-attack') model.rangedAttack = (progress?: number) => setGlbPose(pose, progress)
+    else model[pose] = (progress?: number) => setGlbPose(pose, progress)
   }
   model.dispose = () => {
     if (disposed) return
@@ -1430,24 +1473,44 @@ async function createGlbModel(input: NormalizedActorModelInput, entry: ActorMode
     disposeObject(root)
     throw options.signal.reason ?? new Error('Загрузка модели отменена')
   }
+  const kaykitLeft = objectByName(root, 'handslot.l', 'handslotl')
+  const kaykitRight = objectByName(root, 'handslot.r', 'handslotr')
+  const quaterniusLeft = objectByName(root, 'hand_l', 'Fist.L', 'FistL')
+  const quaterniusRight = objectByName(root, 'hand_r', 'Fist.R', 'FistR')
+  const socketKind = kaykitLeft || kaykitRight ? 'kaykit' : entry.profile === 'goblin' || entry.profile === 'skeleton' ? 'native' : quaterniusLeft || quaterniusRight ? 'quaternius' : 'native'
+  const idleClip = gltf.animations?.find((clip) => clipPose(clip) === 'idle')
+  const calibrationMixer = idleClip ? new AnimationMixer(root) : undefined
+  const calibrationAction = calibrationMixer && idleClip ? calibrationMixer.clipAction(idleClip).reset().setLoop(LoopOnce, 1).play() : undefined
+  if (calibrationMixer && calibrationAction) {
+    // Сокеты калибруются по видимой стойке ожидания. Временный mixer полностью
+    // останавливается до создания рабочего, поэтому калибровка не смешивается
+    // с анимациями атаки и заклинания.
+    calibrationAction.paused = true
+    calibrationAction.time = 0
+    calibrationMixer.update(0)
+    root.updateMatrixWorld(true)
+  }
+  const equipmentController = createAccessoryController({
+    root, palette: PALETTES[entry.profile],
+    leftParent: kaykitLeft ?? quaterniusLeft, rightParent: kaykitRight ?? quaterniusRight, socketKind,
+    worldScale: targetHeight / DEFAULT_HEIGHT,
+  })
+  try {
+    equipmentController.setEquipment(input.appearance?.equipment)
+  } finally {
+    calibrationAction?.stop()
+    calibrationMixer?.uncacheRoot(root)
+  }
   const mixer = gltf.animations?.length ? new AnimationMixer(root) : undefined
   const actions = mixer ? new Map<ActorPose, AnimationAction>() : undefined
   if (mixer && actions) for (const clip of gltf.animations) {
     const pose = clipPose(clip)
     if (pose && !actions.has(pose)) actions.set(pose, mixer.clipAction(clip))
   }
-  const kaykitLeft = objectByName(root, 'handslot.l', 'handslotl')
-  const kaykitRight = objectByName(root, 'handslot.r', 'handslotr')
-  const quaterniusLeft = objectByName(root, 'hand_l')
-  const quaterniusRight = objectByName(root, 'hand_r')
-  const socketKind = kaykitLeft || kaykitRight ? 'kaykit' : quaterniusLeft || quaterniusRight ? 'quaternius' : 'kaykit'
-  const equipmentController = createAccessoryController({
-    root, palette: PALETTES[entry.profile],
-    leftParent: kaykitLeft ?? quaterniusLeft, rightParent: kaykitRight ?? quaterniusRight, socketKind,
-  })
-  equipmentController.setEquipment(input.appearance?.equipment)
   const aimPose = createGlbAimPose(root)
-  return decorateModel(root, input, entry, 'glb', targetHeight, undefined, mixer, actions, equipmentController, aimPose)
+  const model = decorateModel(root, input, entry, 'glb', targetHeight, undefined, mixer, actions, equipmentController, aimPose)
+  if (calibrationAction) { model.setPose('idle', 0); model.update(.001) }
+  return model
 }
 
 /** Создаёт фигурку синхронно; удобно для первого кадра и fallback без сети. */

@@ -109,9 +109,9 @@ function modelFilePath(candidate, value) {
   }
   if (pathname.includes('\0')) throw new Error(`Некорректный URL модели: ${value}`)
   const parts = pathname.split(/[\\/]/u)
-  if (parts.length < 2 || !['quaternius', 'kenney', 'skazanie'].includes(parts[0])
+  if (parts.length < 2 || !['quaternius', 'kenney', 'kenney-dungeon', 'skazanie'].includes(parts[0])
     || parts.some((part) => !part || part === '.' || part === '..')) {
-    throw new Error(`Модель должна лежать в quaternius, kenney или skazanie: ${value}`)
+    throw new Error(`Модель должна лежать в quaternius, kenney, kenney-dungeon или skazanie: ${value}`)
   }
   const file = parts.at(-1)
   if (!file || extname(file).toLowerCase() !== '.glb') throw new Error(`Ожидается GLB-модель: ${value}`)
