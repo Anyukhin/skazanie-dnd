@@ -1322,7 +1322,8 @@ export type WorldMapRoute = {
 
 export type WorldMapState = {
   version: number
-  seed: string
+  /** Внутренний seed отсутствует в проекции обычного игрока. */
+  seed?: string
   name: string
   width: number
   height: number

@@ -45,14 +45,15 @@ function routePath(route: WorldMapRoute, byId: Map<string, WorldMapLocation>) {
 function Terrain({ state, showOrnaments = true }: { state: GameState; showOrnaments?: boolean }) {
   const map = state.worldMap!
   const ornaments = useMemo(() => showOrnaments ? map.regions.flatMap((region) => {
-    const random = randomFor(`${map.seed}:${region.id}:terrain`)
+    // Орнаменты опираются на публичные поля: внутренний seed скрыт от игрока.
+    const random = randomFor(`${map.name}:${region.id}:terrain`)
     const count = region.biome === 'forest' ? 34 : region.biome === 'mountains' ? 22 : region.biome === 'marsh' ? 18 : 10
     return Array.from({ length: count }, (_, index) => {
       const angle = random() * Math.PI * 2
       const radius = Math.sqrt(random()) * region.radius * .72
       return { id: `${region.id}-${index}`, biome: region.biome, x: region.x + Math.cos(angle) * radius, y: region.y + Math.sin(angle) * radius, scale: .65 + random() * .65 }
     })
-  }) : [], [map.seed, map.regions, showOrnaments])
+  }) : [], [map.name, map.regions, showOrnaments])
   return <g className="world-terrain" aria-hidden="true">
     {showOrnaments && map.regions.map((region) => <ellipse key={region.id} className={`world-region-fill biome-${region.biome}`} cx={region.x} cy={region.y} rx={region.radius} ry={region.radius * .72} />)}
     {ornaments.map((item) => item.biome === 'mountains' || item.biome === 'tundra'
@@ -192,7 +193,7 @@ export function WorldMapView({ state, busy, onTravel }: { state: GameState; busy
           }}
         >
           <defs>
-            <filter id="paper-grain"><feTurbulence baseFrequency=".72" numOctaves="3" seed={seedNumber(map.seed) % 97}/><feColorMatrix values="0 0 0 0 .25 0 0 0 0 .2 0 0 0 0 .12 0 0 0 .15 0"/><feBlend in="SourceGraphic" mode="multiply"/></filter>
+            <filter id="paper-grain"><feTurbulence baseFrequency=".72" numOctaves="3" seed={seedNumber(map.name) % 97}/><feColorMatrix values="0 0 0 0 .25 0 0 0 0 .2 0 0 0 0 .12 0 0 0 .15 0"/><feBlend in="SourceGraphic" mode="multiply"/></filter>
             <pattern id="map-dots" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="2" cy="3" r=".7"/><circle cx="14" cy="12" r=".5"/></pattern>
           </defs>
           {backgroundImage
