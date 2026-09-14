@@ -1,13 +1,61 @@
 import { createHash } from 'node:crypto'
 
 import { normalizeDirectorIntent } from './autonomous-campaign.mjs'
-import { CLOSED_QUEST_STATUSES } from './world-memory.mjs'
+import { CLOSED_QUEST_STATUSES, QUEST_ABANDONMENT_NEXT_OBJECTIVE } from './world-memory.mjs'
+
+export { QUEST_ABANDONMENT_NEXT_OBJECTIVE }
 
 const clean = (value, maximum = 240) => String(value ?? '')
   .normalize('NFKC')
   .replace(/\s+/gu, ' ')
   .trim()
   .slice(0, maximum)
+
+/**
+ * Краткий список уже оставленных заданий для brief Директора. Статус нужен
+ * отдельно от списка активных квестов: одной фильтрации active недостаточно,
+ * когда старая цель всё ещё написана в текущем objective.
+ */
+export function abandonedQuestsForDirector(state = {}) {
+  return (Array.isArray(state.worldMemory?.quests) ? state.worldMemory.quests : [])
+    .filter((quest) => quest?.status === 'abandoned')
+    .slice(-12)
+    .map((quest) => ({
+      id: clean(quest.id, 120),
+      title: clean(quest.title, 180),
+      summary: clean(quest.summary, 360),
+      status: 'abandoned',
+      ...(quest.clock ? {
+        clock: {
+          current: Math.max(0, Number(quest.clock.current) || 0),
+          max: Math.max(1, Number(quest.clock.max) || 1),
+        },
+      } : {}),
+    }))
+    .filter((quest) => quest.id && quest.title)
+}
+
+/**
+ * Возвращает цель для продолжения после отказа. Если активной нити нет,
+ * старое objective нельзя передавать дальше: оно часто дословно повторяет
+ * оставленное задание и подталкивает модель вернуть к нему отряд.
+ */
+export function directorObjectiveAfterQuestAbandonment(state = {}, fallback = 'Исследовать текущую локацию и выбрать следующий шаг') {
+  const active = (Array.isArray(state.worldMemory?.quests) ? state.worldMemory.quests : [])
+    .find((quest) => quest?.status === 'active' && quest.clock?.triggered !== true)
+  if (active) return clean(state.scene?.objective, 300) || `Продолжить: ${clean(active.title, 180)}`
+  if (abandonedQuestsForDirector(state).length) return QUEST_ABANDONMENT_NEXT_OBJECTIVE
+  return clean(state.scene?.objective, 300) || clean(fallback, 300)
+}
+
+/**
+ * У отказа «остаться в локации» есть отдельная семантика для финального
+ * предиката. Старые события не содержат этот маркер и продолжают читаться по
+ * прежним правилам.
+ */
+export function questWasAbandonedInPlace(quest = {}) {
+  return quest?.status === 'abandoned' && quest.stay_in_location === true
+}
 
 const hashNumber = (value) => Number.parseInt(
   createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 8),
@@ -132,9 +180,17 @@ export function confirmedQuestProgress(state = {}, questId = '') {
   return evidence.length > Number(quest?.clock?.current ?? 0)
 }
 
-function mainQuestFor(state = {}) {
-  const quests = state.worldMemory?.quests ?? []
-  return quests.find((quest) => !String(quest.id || '').startsWith('quest:chapter:')) ?? quests[0] ?? null
+/**
+ * Главная нить для проверки финала. Отказ без ухода исключает поручение из
+ * кандидатов; следующая настоящая цель может занять его место. Если кандидатов
+ * больше нет, возвращаем null. Старые отказы без `stay_in_location` сохраняют
+ * прежнее поведение, чтобы не менять смысл записанной истории.
+ */
+export function mainQuestFor(state = {}) {
+  const quests = Array.isArray(state.worldMemory?.quests) ? state.worldMemory.quests : []
+  const nonScene = quests.filter((quest) => !String(quest?.id ?? '').startsWith('quest:chapter:'))
+  if (nonScene.length) return nonScene.find((quest) => !questWasAbandonedInPlace(quest)) ?? null
+  return quests.find((quest) => !questWasAbandonedInPlace(quest)) ?? null
 }
 
 function chapterQuestFor(state = {}, chapter = Math.max(1, Number(state.adventure?.chapter) || 1)) {
@@ -204,7 +260,7 @@ function availableIntentTypes(state = {}) {
   // Брошенный квест главы закрыт: сцену после него завершать можно, иначе отказ
   // отряда останавливал бы Режиссёра на этой главе навсегда.
   const chapterQuestResolved = Boolean(chapterQuest && CLOSED_QUEST_STATUSES.includes(chapterQuest.status))
-  const mainQuest = quests.find((quest) => !String(quest.id || '').startsWith('quest:chapter:')) ?? quests[0]
+  const mainQuest = mainQuestFor(state)
   const mainQuestOpen = Boolean(mainQuest && ['active', 'hidden'].includes(mainQuest.status))
   const chapterHistory = currentChapterIntents(state)
   const peacefulSecondChapterExit = chapter === 2
@@ -308,7 +364,16 @@ export function authorizeDirectorIntent(state = {}, proposedIntent = {}, context
     ...(explicitTransition ? ['end_scene'] : []),
   ])].filter((type) => !blocked.has(type))
   const candidates = allowed.length ? allowed : availability.types
-  const accepted = candidates.includes(proposed.type)
+  const proposedQuest = proposed.type === 'advance_quest_clock'
+    ? (state.worldMemory?.quests ?? []).find((quest) => String(quest?.id ?? '') === String(proposed.quest_id ?? ''))
+    : null
+  // Модель может повторить id уже оставленного задания из старого контекста.
+  // Такой intent нельзя принимать даже тогда, когда другой активный квест
+  // делает сам тип advance_quest_clock допустимым: иначе исполнитель заменит
+  // цель молча и причина отказа исчезнет из поведения Директора.
+  const staleQuestIntent = proposed.type === 'advance_quest_clock'
+    && (!proposedQuest || proposedQuest.status !== 'active' || proposedQuest.clock?.triggered === true)
+  const accepted = candidates.includes(proposed.type) && !staleQuestIntent
   const replacementType = accepted ? proposed.type : candidates[0] ?? 'continue_exploration'
   let intent = accepted ? proposed : intentForType(replacementType, state, availability.openQuest)
   return {
@@ -319,6 +384,8 @@ export function authorizeDirectorIntent(state = {}, proposedIntent = {}, context
     allowed_types: availability.types,
     reason: accepted
       ? 'intent_allowed'
+      : staleQuestIntent
+        ? 'closed_quest_replacement'
       : blocked.has(proposed.type)
         ? 'anti_stall_replacement'
         : 'phase_incompatible_replacement',

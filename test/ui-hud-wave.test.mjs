@@ -309,7 +309,7 @@ test('герой без портрета показывает инициалы �
   assert.match(appSource, /if \(hasHeroPortrait\(hero\)\) \{\s+return \{ \.\.\.extra, backgroundImage: `url\(\$\{hero\?\.portrait\}\)`/u)
   assert.match(appSource, /return \{ \.\.\.extra, \['--face-color' as string\]: hero\?\.color \|\| '#6d5b45' \}/u)
   // Все четыре места из претензии владельца переведены на общий помощник.
-  assert.match(appSource, /style=\{heroFaceStyle\(player, \{ '--token': player\.color \} as React\.CSSProperties\)\}/u, 'фишка героя на доске')
+  assert.match(appSource, /style=\{\{\s*\.\.\.heroFaceStyle\(player, \{ '--token': player\.color \} as React\.CSSProperties\),\s*\.\.\.actorTokenStyle\s*\}\}/u, 'фишка героя на доске сохраняет цвет и footprint-геометрию')
   assert.match(appSource, /className="avatar portrait-avatar" data-face=\{heroFaceMode\(player\)\} style=\{heroFaceStyle\(player, \{ '--avatar': player\.color \}/u, 'аватар отряда в сайдбаре')
   assert.match(appSource, /className="initiative-active-avatar portrait" data-face=\{heroFaceMode\(activeHero\)\}/u, 'лента инициативы: активный')
   assert.match(appSource, /className="initiative-avatar portrait" data-face=\{heroFaceMode\(hero\)\}/u, 'лента инициативы: очередь')

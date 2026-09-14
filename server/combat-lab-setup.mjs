@@ -1,9 +1,10 @@
 import { getRoom, listRoomCodes } from './store.mjs'
 import { loadDndsu2014Content } from './dndsu-2014-content.mjs'
 import { normalizeCampaignState } from './rules-engine.mjs'
-import { deserializeTacticalMap, reachableCells, cellAt, legacyCellsFromTacticalMap, serializeTacticalMap, tacticalMapFromLegacyCells } from './tactical-map.mjs'
+import { deserializeTacticalMap, reachableCells, cellAt, movementStepBlocked, legacyCellsFromTacticalMap, serializeTacticalMap, tacticalMapFromLegacyCells } from './tactical-map.mjs'
 import { starterEquipmentCatalogFor, withStarterKit } from './starter-kit.mjs'
 import { enemyFrom2014, monsterCatalogEntry } from './combat-lab-monsters.mjs'
+import { footprintCellsFor, footprintMetadataForSize, normalizeFootprintMetadata } from './actor-footprint.mjs'
 import { COMBAT_LAB_MAPS } from './combat-lab-maps.mjs'
 import {
   COMBAT_LAB_ENCOUNTER_DIFFICULTIES,
@@ -250,14 +251,23 @@ function heroFromCampaign(source, state, entry, position, arenaId) {
   return copy
 }
 
-function validateMapPlacement(map, entry, label, occupied) {
+function validateMapPlacement(map, entry, label, occupied, actor = null) {
   const x = integer(entry.x, `${label}.x`, 0, map.width - 1)
   const y = integer(entry.y, `${label}.y`, 0, map.height - 1)
-  const cell = cellAt(map, x, y)
-  if (!cell?.passable) throw new CombatLabSetupError(`${label} стоит на стене`, 'PLACEMENT_BLOCKED')
-  const key = `${x},${y}`
-  if (occupied.has(key)) throw new CombatLabSetupError(`${label} занимает уже занятую клетку`, 'PLACEMENT_OCCUPIED')
-  occupied.add(key)
+  const cells = footprintCellsFor(actor, { x, y })
+  if (!cells.length || cells.some((position) => !cellAt(map, position.x, position.y)?.passable)) {
+    throw new CombatLabSetupError(`${label} стоит на стене или выходит за карту`, 'PLACEMENT_BLOCKED')
+  }
+  const keys = new Set(cells.map((position) => `${position.x},${position.y}`))
+  if (cells.some((position) => [[1, 0], [0, 1]].some(([dx, dy]) => {
+    const next = { x: position.x + dx, y: position.y + dy }
+      return keys.has(`${next.x},${next.y}`) && movementStepBlocked(map, position.x, position.y, next.x, next.y)
+  }))) {
+    throw new CombatLabSetupError(`${label} занимает перекрытую внутренним ребром площадь`, 'PLACEMENT_BLOCKED')
+  }
+  const occupiedKeys = cells.map((position) => `${position.x},${position.y}`)
+  if (occupiedKeys.some((key) => occupied.has(key))) throw new CombatLabSetupError(`${label} занимает уже занятую клетку`, 'PLACEMENT_OCCUPIED')
+  for (const key of occupiedKeys) occupied.add(key)
   return { x, y }
 }
 
@@ -446,7 +456,8 @@ async function resolveEncounterParty(party, { loadCampaign = null } = {}) {
     if (entry.level != null && entry.level !== level) {
       warnings.push(`Уровень героя «${String(original.name || original.character || heroId)}» взят из кампании: ${level}.`)
     }
-    canonical.push({ ...entry, campaignId: source, heroId, level })
+    const footprint = normalizeFootprintMetadata(original.footprint)
+    canonical.push({ ...entry, campaignId: source, heroId, level, ...(footprint ? { footprint } : {}) })
     levels.push(level)
   }
   return { entries: canonical, levels, warnings }
@@ -565,18 +576,27 @@ function positionPartyForGeneratedEncounter(map, entries) {
     const hasX = entry.x != null
     const hasY = entry.y != null
     if (hasX !== hasY) throw new CombatLabSetupError(`config.party[${index}] требует обе координаты`, 'INVALID_COMBAT_LAB_VALUE')
+    const footprint = entry.footprint ? { footprint: entry.footprint } : null
     const position = hasX && hasY
-      ? validateMapPlacement(map, entry, `config.party[${index}]`, occupied)
+      ? validateMapPlacement(map, entry, `config.party[${index}]`, occupied, footprint)
       : (() => {
-        const next = candidates.find((candidate) => !occupied.has(`${candidate.x},${candidate.y}`))
-        if (!next) throw new CombatLabSetupError('На карте нет свободной клетки для героя', 'NO_COMBAT_LAB_PLACEMENT')
-        return validateMapPlacement(map, next, `config.party[${index}]`, occupied)
+        const next = candidates.find((candidate) => {
+          try {
+            validateMapPlacement(map, candidate, `config.party[${index}]`, new Set(occupied), footprint)
+            return true
+          } catch (error) {
+            if (error instanceof CombatLabSetupError) return false
+            throw error
+          }
+        })
+        if (!next) throw new CombatLabSetupError('На карте нет свободной площади для героя', 'NO_COMBAT_LAB_PLACEMENT')
+        return validateMapPlacement(map, next, `config.party[${index}]`, occupied, footprint)
       })()
     return { ...entry, ...position }
   })
 }
 
-function enemyPositionsForGeneratedEncounter(map, party, count, seed) {
+function enemyPositionsForGeneratedEncounter(map, party, records, seed) {
   const occupied = new Set(party.map((entry) => `${entry.x},${entry.y}`))
   const reachable = reachableCells(map, party[0].x, party[0].y)
   if (party.some((entry) => !reachable.has(`${entry.x},${entry.y}`))) {
@@ -591,8 +611,24 @@ function enemyPositionsForGeneratedEncounter(map, party, count, seed) {
       const rightDistance = Math.min(...party.map((member) => Math.abs(right.x - member.x) + Math.abs(right.y - member.y)))
       return rightDistance - leftDistance || `${seed}:${right.x},${right.y}`.localeCompare(`${seed}:${left.x},${left.y}`)
     })
-  if (candidates.length < count) throw new CombatLabSetupError('На карте нет достаточного числа достижимых клеток для противников', 'NO_COMBAT_LAB_PLACEMENT')
-  return candidates.slice(0, count)
+  const positions = []
+  for (const [index, record] of records.entries()) {
+    const footprint = { footprint: footprintMetadataForSize(record.size) }
+    const candidate = candidates.find((entry) => {
+      const preview = new Set(occupied)
+      try {
+        validateMapPlacement(map, entry, `generated.enemies[${index}]`, preview, footprint)
+        return true
+      } catch (error) {
+        if (error instanceof CombatLabSetupError) return false
+        throw error
+      }
+    })
+    if (!candidate) throw new CombatLabSetupError('На карте нет достаточной площади для противников', 'NO_COMBAT_LAB_PLACEMENT')
+    const position = validateMapPlacement(map, candidate, `generated.enemies[${index}]`, occupied, footprint)
+    positions.push(position)
+  }
+  return positions
 }
 
 export async function generateCombatLabEncounter(input = {}, options = {}) {
@@ -615,13 +651,17 @@ export async function generateCombatLabEncounter(input = {}, options = {}) {
   } catch (error) {
     throw new CombatLabSetupError('В выбранной теме нет противников для этого уровня и опасности. Выберите другую тему или измените опасность.', 'NO_COMBAT_LAB_ROSTER')
   }
-  const positions = enemyPositionsForGeneratedEncounter(map, party, selection.records.length, request.seed)
+  const positions = enemyPositionsForGeneratedEncounter(map, party, selection.records, request.seed)
   const enemies = selection.records.map((record, index) => ({
     monsterId: String(record.id),
     x: positions[index].x,
     y: positions[index].y,
   }))
-  const config = { mapId: request.mapId, party, enemies }
+  const config = {
+    mapId: request.mapId,
+    party: party.map(({ footprint: _privateFootprint, ...entry }) => entry),
+    enemies,
+  }
   const assessment = assessmentForRecords(selection.records, resolvedParty.levels, request, resolvedParty.warnings, {
     target_adjusted_xp: selection.target_adjusted_xp,
     candidate_count: candidates.length,
@@ -638,15 +678,20 @@ export async function buildCombatLabState(config, { loadCampaign = null } = {}) 
   const party = []
   const usedSourceHeroes = new Set()
   for (const [index, entry] of config.party.entries()) {
-    const position = validateMapPlacement(mapValue, entry, `config.party[${index}]`, occupied)
     let hero
-    if (entry.source === 'class') hero = trainingHero(String(entry.classId), entry.level ?? 1, position, index)
-    else {
+    let position
+    if (entry.source === 'class') {
+      position = validateMapPlacement(mapValue, entry, `config.party[${index}]`, occupied)
+      hero = trainingHero(String(entry.classId), entry.level ?? 1, position, index)
+    } else {
       const source = String(entry.campaignId).toUpperCase()
       const sourceKey = `${source}:${entry.heroId}`
       if (usedSourceHeroes.has(sourceKey)) throw new CombatLabSetupError('Один герой не может быть добавлен дважды', 'DUPLICATE_HERO_SOURCE')
       usedSourceHeroes.add(sourceKey)
       const loaded = await loadSourceCampaign(source, loadCampaign)
+      const original = (loaded.players ?? []).find((candidate) => String(candidate.id) === String(entry.heroId))
+      const placementActor = original?.footprint ? { footprint: normalizeFootprintMetadata(original.footprint) } : null
+      position = validateMapPlacement(mapValue, entry, `config.party[${index}]`, occupied, placementActor)
       hero = heroFromCampaign(source, loaded, entry, position, `hero-${index + 1}`)
     }
     party.push(hero)
@@ -654,9 +699,9 @@ export async function buildCombatLabState(config, { loadCampaign = null } = {}) 
   const loadedContent = await content()
   const byMonsterId = new Map(loadedContent.monsters.map((record) => [record.id, record]))
   const enemies = config.enemies.map((entry, index) => {
-    const position = validateMapPlacement(mapValue, entry, `config.enemies[${index}]`, occupied)
     const record = byMonsterId.get(String(entry.monsterId))
     if (!record) throw new CombatLabSetupError(`Монстр ${entry.monsterId} отсутствует в каталоге D&D 2014`, 'UNKNOWN_COMBAT_LAB_MONSTER')
+    const position = validateMapPlacement(mapValue, entry, `config.enemies[${index}]`, occupied, { footprint: footprintMetadataForSize(record.size) })
     return enemyFrom2014(record, position, index)
   })
   const start = party[0]

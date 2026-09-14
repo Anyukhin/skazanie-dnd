@@ -10,6 +10,7 @@
  */
 
 import { actorPosition } from './rules-engine.mjs'
+import { footprintDistanceFeet } from './actor-footprint.mjs'
 
 const clean = (value, maximum = 120) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
 
@@ -158,9 +159,14 @@ function actorSide(state, actorIdValue) {
 
 /** Расстояние берётся из той же серверной позиции, по которой ходит движок. */
 function distanceInFeet(state, firstActorId, secondActorId) {
-  const first = actorPosition(state, clean(firstActorId, 120))
-  const second = actorPosition(state, clean(secondActorId, 120))
-  return first && second ? Math.max(Math.abs(first.x - second.x), Math.abs(first.y - second.y)) * 5 : null
+  const leftId = clean(firstActorId, 120)
+  const rightId = clean(secondActorId, 120)
+  const first = actorPosition(state, leftId)
+  const second = actorPosition(state, rightId)
+  const actors = [...(state?.players ?? []), ...(state?.actors ?? []), ...(state?.enemies ?? [])]
+  const left = actors.find((actor) => String(actor?.id ?? '') === leftId)
+  const right = actors.find((actor) => String(actor?.id ?? '') === rightId)
+  return first && second ? footprintDistanceFeet(left, right, first, second) : null
 }
 
 function isAlive(state, actorIdValue) {

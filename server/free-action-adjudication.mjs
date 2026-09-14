@@ -8,6 +8,7 @@ import { npcSocialForViewer } from './npc-social.mjs'
 import { campaignStateForViewer } from './viewer-projection.mjs'
 import { ENVIRONMENT_HAZARD_IDS, ENVIRONMENT_HAZARDS } from './improvised-effects.mjs'
 import { hazardPropCells, sceneHazardTagsFor } from './scene-hazards.mjs'
+import { footprintDistanceFeet } from './actor-footprint.mjs'
 import {
   LOOT_CONTAINER_REACH_FEET,
   lootContainerList,
@@ -135,6 +136,11 @@ function visibleMapForHazards(state) {
 function nearestHazardAt(state, actorId) {
   const at = actorPosition(state, actorId)
   if (!at) return []
+  const actor = findActor(state, actorId)
+  const distanceToCell = (cell) => {
+    const feet = footprintDistanceFeet(actor, [cell], at)
+    return feet == null ? Number.POSITIVE_INFINITY : feet / 5
+  }
   const map = visibleMapForHazards(state)
   const candidates = []
   if (map) {
@@ -146,7 +152,7 @@ function nearestHazardAt(state, actorId) {
       const cell = cellAt(map, x, y)
       const hazardId = canonicalEnvironmentHazardId(rawHazard)
       if (!cell?.revealed || !hazardId) continue
-      candidates.push({ hazard_id: hazardId, source: { kind: 'cell', x, y, cells: [{ x, y }], hazard_id: String(rawHazard) }, distance: Math.max(Math.abs(x - at.x), Math.abs(y - at.y)) })
+      candidates.push({ hazard_id: hazardId, source: { kind: 'cell', x, y, cells: [{ x, y }], hazard_id: String(rawHazard) }, distance: distanceToCell({ x, y }) })
     }
     for (const prop of map.props ?? []) {
       const propVisibility = String(prop?.visibility ?? prop?.interaction?.visibility ?? '').toLowerCase()
@@ -157,7 +163,7 @@ function nearestHazardAt(state, actorId) {
       const visible = cells.some((cell) => cellAt(map, cell.x, cell.y)?.revealed === true)
       const inactiveFire = ['extinguished', 'unlit', 'cold', 'out', 'burned', 'off', 'disabled'].includes(stateId)
       if (!visible || inactiveFire || (!tags.fireSource && !(tags.flammable && stateId === 'burning'))) continue
-      const distance = Math.min(...cells.map((cell) => Math.max(Math.abs(cell.x - at.x), Math.abs(cell.y - at.y))), Number.POSITIVE_INFINITY)
+      const distance = Math.min(...cells.map(distanceToCell), Number.POSITIVE_INFINITY)
       candidates.push({ hazard_id: 'fire', source: { kind: 'prop', id: String(prop?.id ?? ''), asset_id: String(prop?.assetId ?? ''), cells }, distance })
     }
   }
@@ -166,7 +172,7 @@ function nearestHazardAt(state, actorId) {
     const hazardId = canonicalEnvironmentHazardId(cell?.hazardId ?? cell?.hazard_id)
     const x = Math.floor(Number(cell?.x)); const y = Math.floor(Number(cell?.y))
     if (!hazardId || cell?.revealed !== true || !Number.isSafeInteger(x) || !Number.isSafeInteger(y)) continue
-    candidates.push({ hazard_id: hazardId, source: { kind: 'cell', x, y, cells: [{ x, y }], hazard_id: String(cell.hazardId ?? cell.hazard_id) }, distance: Math.max(Math.abs(x - at.x), Math.abs(y - at.y)) })
+    candidates.push({ hazard_id: hazardId, source: { kind: 'cell', x, y, cells: [{ x, y }], hazard_id: String(cell.hazardId ?? cell.hazard_id) }, distance: distanceToCell({ x, y }) })
   }
   for (const hazard of Array.isArray(state?.mechanics?.hazards?.[String(actorId)]) ? state.mechanics.hazards[String(actorId)] : []) {
     const hazardId = canonicalEnvironmentHazardId(hazard?.id ?? hazard?.hazard_id ?? hazard?.type)
@@ -774,10 +780,12 @@ export function resolveExplorationCommand(state, actorId, text) {
   const candidates = namedActors(partyActors(state, actorId), value)
   if (candidates.length !== 1) return { status: 'clarification', narration: 'К кому именно подойти? Назовите одного видимого собеседника или выберите клетку на карте.' }
   const target = candidates[0]
-  const at = npcPlacementFor(state, target.id) ?? actorPosition(state, target.id)
+  const placement = npcPlacementFor(state, target.id)
+  const at = placement ?? actorPosition(state, target.id)
   if (!Number.isFinite(at?.x) || !Number.isFinite(at?.y)) return { status: 'clarification', narration: 'Положение собеседника на карте пока не определено. Можно обратиться к нему словами, не объявляя перемещение.' }
-  const distance = Math.max(Math.abs(at.x - actorAt.x), Math.abs(at.y - actorAt.y))
-  if (distance <= 1) return { status: 'clarification', narration: 'Вы уже рядом с собеседником. Можно заговорить или выбрать другое действие.' }
+  const targetGeometry = placement ? { footprint: placement.footprint } : target
+  const distanceFeet = footprintDistanceFeet(findActor(state, actorId), targetGeometry, actorAt, at)
+  if (distanceFeet != null && distanceFeet <= 5) return { status: 'clarification', narration: 'Вы уже рядом с собеседником. Можно заговорить или выбрать другое действие.' }
   const routes = []
   for (const dx of [-1, 0, 1]) for (const dy of [-1, 0, 1]) {
     if (!dx && !dy) continue

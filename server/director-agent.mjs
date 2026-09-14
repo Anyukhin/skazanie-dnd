@@ -4,7 +4,14 @@ import { fileURLToPath } from 'node:url'
 import { normalizeDirectorIntent } from './autonomous-campaign.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'
 import { currentImprovMode, normalizeImprovMode } from './campaign-ai-context.mjs'
-import { affirmativePlayerAction, campaignArcPosition, confirmedQuestProgress } from './campaign-loop-policy.mjs'
+import {
+  QUEST_ABANDONMENT_NEXT_OBJECTIVE,
+  abandonedQuestsForDirector,
+  affirmativePlayerAction,
+  campaignArcPosition,
+  confirmedQuestProgress,
+  directorObjectiveAfterQuestAbandonment,
+} from './campaign-loop-policy.mjs'
 import { npcMechanicsFor } from './npc-positioning.mjs'
 import { buildDataOnlyContext } from './security.mjs'
 import { worldClockForAgents } from './weather.mjs'
@@ -126,6 +133,8 @@ export function fallbackDirectorIntent(state = {}, playerAction = '') {
   const chapterHistory = currentChapterHistory(state)
   const types = new Set(chapterHistory.map((intent) => intent.type))
   const quest = firstActiveQuest(state)
+  const abandonedQuests = abandonedQuestsForDirector(state)
+  const nextObjective = directorObjectiveAfterQuestAbandonment(state)
   const npc = firstAvailableNpc(state)
   const arc = campaignArcPosition(state)
   const encounter = state.mechanics?.encounter
@@ -148,7 +157,10 @@ export function fallbackDirectorIntent(state = {}, playerAction = '') {
   if (!types.has('continue_exploration')) return normalizeDirectorIntent({ type: 'continue_exploration', reason: 'Сначала отряд исследует текущую сцену.' })
   if (!types.has('open_social_scene') && npc) return normalizeDirectorIntent({ type: 'open_social_scene', npc_id: npc.id, reason: 'Доступный очевидец связывает исследование с квестом.' })
   if (!types.has('advance_quest_clock') && quest && confirmedQuestProgress(state, quest.id)) return normalizeDirectorIntent({ type: 'advance_quest_clock', quest_id: quest.id, reason: 'Подтверждённая зацепка продвигает активную цель.' })
-  if (arc?.is_final && !quest && !types.has('resolve_scene')) {
+  // Оставленное в текущей сцене задание не является доказательством развязки.
+  // Пока игрок не подтвердил новую цель, Директор должен предложить занятие,
+  // а не превратить один отказ в финал арки.
+  if (arc?.is_final && !quest && !abandonedQuests.length && !types.has('resolve_scene')) {
     return normalizeDirectorIntent({
       type: 'resolve_scene',
       resolution: 'decision',
@@ -156,12 +168,18 @@ export function fallbackDirectorIntent(state = {}, playerAction = '') {
     })
   }
   if (!types.has('request_encounter') && !encounter) {
-    return normalizeDirectorIntent({ type: 'offer_next_hook', hook: clean(state.scene?.objective, 300) || 'Исследовать угрозу и выбрать способ разрешения', reason: 'Мир предлагает следующую угрозу или альтернативный путь без обязательного боя.' })
+    return normalizeDirectorIntent({ type: 'offer_next_hook', hook: nextObjective || QUEST_ABANDONMENT_NEXT_OBJECTIVE, reason: abandonedQuests.length
+      ? 'После отказа Директор предлагает выбрать новое занятие в текущей локации.'
+      : 'Мир предлагает следующую угрозу или альтернативный путь без обязательного боя.' })
   }
   if (encounter?.status === 'ended' && !types.has('end_scene')) {
-    return normalizeDirectorIntent({ type: 'offer_next_hook', hook: clean(state.scene?.objective, 300) || 'Осмыслить последствия столкновения', reason: 'Сервер ещё применяет последствия столкновения.' })
+    return normalizeDirectorIntent({ type: 'offer_next_hook', hook: nextObjective || 'Осмыслить последствия столкновения', reason: abandonedQuests.length
+      ? 'После отказа Директор сохраняет место и предлагает новую цель.'
+      : 'Сервер ещё применяет последствия столкновения.' })
   }
-  return normalizeDirectorIntent({ type: 'offer_next_hook', hook: clean(state.scene?.objective, 300) || 'Продолжить расследование', reason: 'Сохраняется доступная сюжетная зацепка.' })
+  return normalizeDirectorIntent({ type: 'offer_next_hook', hook: nextObjective || 'Продолжить расследование', reason: abandonedQuests.length
+    ? 'Оставленное задание не возвращается; требуется новый следующий шаг.'
+    : 'Сохраняется доступная сюжетная зацепка.' })
 }
 
 function publicDirectorBrief(state = {}, playerAction = '') {
@@ -201,6 +219,11 @@ function publicDirectorBrief(state = {}, playerAction = '') {
         id: clean(quest.id, 120), title: clean(quest.title, 160), objectives: (quest.objectives ?? []).map((item) => clean(item, 180)).slice(0, 8),
         clock: quest.clock ? { current: Number(quest.clock.current) || 0, max: Number(quest.clock.max) || 1 } : null,
       })),
+      abandoned_quests: abandonedQuestsForDirector(state),
+      quest_policy: {
+        never_reopen_abandoned: true,
+        next_objective_after_abandonment: directorObjectiveAfterQuestAbandonment(state),
+      },
       available_npcs: (state.social?.npcs ?? []).filter((npc) => {
         if (npc.available === false) return false
         const currentId = clean(state.scene?.location_id ?? state.scene?.locationId, 120)

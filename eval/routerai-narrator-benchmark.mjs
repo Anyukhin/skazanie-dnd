@@ -7,6 +7,9 @@
  * common,production,no-examples,craft,craft-no-examples; --models принимает ID
  * через запятую. --case-file задаёт отдельный набор, --addendum — добавку;
  * --probe-only проверяет JSON вместо повествования.
+ * --catalog выбирает снимок каталога; --repeats повторяет каждую сцену;
+ * --reasoning принимает JSON-карту model -> { effort } / { enabled: false };
+ * --budget-rub ограничивает сумму консервативных резервов одного отчёта.
  */
 import dotenv from 'dotenv'
 import assert from 'node:assert/strict'
@@ -30,10 +33,20 @@ const models = option('--models', [
 ].join(',')).split(',')
 const maxCalls = Number(option('--max-calls', '120'))
 const timeoutMs = Number(option('--timeout-ms', '45000'))
+const repeats = Number(option('--repeats', '1'))
+const budgetRub = Number(option('--budget-rub', '30'))
+const reasoningOverrides = JSON.parse(option('--reasoning', '{}'))
 assert.ok(Number.isSafeInteger(maxCalls) && maxCalls > 0 && maxCalls <= 150)
 assert.ok(Number.isSafeInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= 60000)
+assert.ok(Number.isSafeInteger(repeats) && repeats > 0 && repeats <= 5)
+assert.ok(Number.isFinite(budgetRub) && budgetRub > 0 && budgetRub <= 150)
+assert.ok(reasoningOverrides && typeof reasoningOverrides === 'object' && !Array.isArray(reasoningOverrides))
+for (const value of Object.values(reasoningOverrides)) {
+  assert.ok(value && typeof value === 'object' && !Array.isArray(value))
+  assert.ok(Object.keys(value).length === 1 && (value.enabled === false || ['minimal', 'low', 'medium', 'high', 'xhigh'].includes(value.effort)))
+}
 assert.ok(profiles.every(profile => ['common', 'production', 'craft', 'no-examples', 'craft-no-examples'].includes(profile)))
-const catalogPath = resolve('eval/routerai-catalog-2026-09-07.json')
+const catalogPath = resolve(option('--catalog', 'eval/routerai-catalog-2026-09-07.json'))
 const catalog = JSON.parse(readFileSync(catalogPath, 'utf8'))
 const cases = JSON.parse(readFileSync(resolve(option('--case-file', 'eval/routerai-cases-2026-09-07.json')), 'utf8'))
 const hash = value => createHash('sha256').update(value).digest('hex')
@@ -90,7 +103,7 @@ if (!args.includes('--live')) {
   assert.ok(!validProbe({ door: 'open', resolved: false, items: [] }))
   assert.ok(!validProbe({ door: 'closed', resolved: true, items: ['key'] }))
   assert.ok(!validProbe({}))
-  console.log(JSON.stringify({ offline: true, cases: cases.length, models: models.length, source_hashes: sourceHashes }))
+  console.log(JSON.stringify({ offline: true, cases: cases.length, models: models.length, repeats, budget_rub: budgetRub, source_hashes: sourceHashes }))
   process.exit(0)
 }
 assert.ok(process.env.ROUTERAI_API_KEY, 'Не настроен ROUTERAI_API_KEY')
@@ -103,21 +116,24 @@ const report = existsSync(output) ? JSON.parse(readFileSync(output, 'utf8')) : {
   schema_version: 1, created_at: new Date().toISOString(), endpoint: baseUrl,
   source_hashes: sourceHashes, runner_sha256: hash(readFileSync(new URL(import.meta.url))),
   craft_sha256: hash(craft), cases, samples: [], probes: [],
+  run_config: { repeats, reasoning_overrides: reasoningOverrides, catalog_sha256: hash(readFileSync(catalogPath)) },
   note: 'Синтетические сцены. Независимые вызовы, без истории ответов и каскада. common/craft не включают модельные добавки. Сырые ответы отделены от fallback; deadline 12s вычислен по полному ответу, не по первому токену.',
 }
 assert.deepEqual(report.source_hashes, sourceHashes, 'Код изменился; используй новый файл отчёта')
 assert.deepEqual(report.cases, cases, 'Сценарии изменились; используй новый файл отчёта')
 assert.equal(report.craft_sha256, hash(craft), 'Промпт изменился; используй новый файл отчёта')
+if (report.run_config) assert.deepEqual(report.run_config, { repeats, reasoning_overrides: reasoningOverrides, catalog_sha256: hash(readFileSync(catalogPath)) }, 'Параметры изменились; используй новый файл отчёта')
+else assert.ok(repeats === 1 && Object.keys(reasoningOverrides).length === 0, 'Для новых параметров нужен новый отчёт')
 const save = () => writeFileSync(output, `${JSON.stringify(report, null, 2)}\n`)
 let calls = report.samples.length + report.probes.length
 const totalEstimate = () => [...report.samples, ...report.probes].reduce((sum, sample) => sum + (sample.catalog_cost_rub ?? 0), 0)
-let reservedEstimate = report.samples.reduce((sum, sample) => sum + (sample.cost_ceiling_rub ?? 0), 0)
+let reservedEstimate = [...report.samples, ...report.probes].reduce((sum, sample) => sum + (sample.cost_ceiling_rub ?? 0), 0)
 function reserve(model, messages) {
   assert.ok(calls < maxCalls, 'Достигнут лимит запросов')
   const pricing = catalog.data.find(entry => entry.id === model).pricing
   // Консервативный запас: вход не длиннее числа UTF-8 байт; выход <= max_tokens.
   const ceiling = (Buffer.byteLength(JSON.stringify(messages)) + 1024) * pricing.prompt + 1200 * pricing.completion
-  assert.ok(reservedEstimate + ceiling < 30, 'Достигнут оценочный лимит 30 рублей')
+  assert.ok(reservedEstimate + ceiling < budgetRub, `Достигнут оценочный лимит ${budgetRub} рублей`)
   reservedEstimate += ceiling
   calls += 1
   return { pricing, ceiling }
@@ -126,22 +142,28 @@ function cost(usage, pricing) {
   if (!(Number(usage?.prompt_tokens) > 0) || !Number.isFinite(Number(usage?.completion_tokens))) return null
   return (Number(usage.prompt_tokens) || 0) * pricing.prompt + (Number(usage.completion_tokens) || 0) * pricing.completion
 }
+for (const repeat of Array.from({ length: repeats }, (_, index) => index + 1)) {
 for (const profile of args.includes('--probe-only') ? [] : profiles) {
   // Чередуем модели внутри каждой сцены, чтобы не смешать модель с временем запуска.
   for (const [caseIndex, entry] of cases.entries()) {
-    const order = [...models.slice(caseIndex % models.length), ...models.slice(0, caseIndex % models.length)]
+    const offset = (caseIndex + repeat - 1) % models.length
+    const order = [...models.slice(offset), ...models.slice(0, offset)]
     for (const model of order) {
-      if (report.samples.some(sample => sample.profile === profile && sample.model === model && sample.case_id === entry.id)) continue
-      const reasoning = reasoningProfileFor(model) ?? (/qwen|mercury/.test(model) ? { enabled: false } : null)
+      if (report.samples.some(sample => sample.profile === profile && sample.model === model && sample.case_id === entry.id && (sample.repeat ?? 1) === repeat)) continue
+      const reasoning = reasoningOverrides[model] ?? reasoningProfileFor(model) ?? (/qwen|mercury/.test(model) ? { enabled: false } : null)
       const client = new RouterAIClient({ model, baseUrl, maxTokens: 1200, timeoutMs, reasoning })
       let captured = null
+      let reservationError = null
       const wrapper = {
         model: profile === 'production' ? model : 'benchmark-common-prompt',
         async complete(request) {
           const messages = structuredClone(request.messages)
           if (profile.endsWith('no-examples')) messages[0].content = messages[0].content.replace(/CURATED_STYLE_EXAMPLES[^]*?(?=Верни только готовое повествование)/u, '')
           if (profile.startsWith('craft')) messages[0].content += `\n${craft}`
-          const { pricing, ceiling } = reserve(model, messages)
+          let reservation
+          try { reservation = reserve(model, messages) }
+          catch (error) { reservationError = error; throw error }
+          const { pricing, ceiling } = reservation
           const start = performance.now()
           captured = { requested_at: new Date().toISOString(), messages, parameters: {
             temperature: request.temperature, frequency_penalty: request.frequencyPenalty,
@@ -164,25 +186,38 @@ for (const profile of args.includes('--probe-only') ? [] : profiles) {
         },
       }
       const narrator = new Narrator({ llmClient: wrapper })
-      const result = await narrator.render(entry.brief, { knownRuleIds: ['srd:ability-check'], timeoutMs: timeoutMs + 1000 })
+      const renderStart = performance.now()
+      const progress = []
+      const result = await narrator.render(entry.brief, { knownRuleIds: ['srd:ability-check'], timeoutMs: timeoutMs + 1000,
+        onProgress: text => progress.push({ elapsed_ms: Math.round(performance.now() - renderStart), text }),
+      })
+      const renderMs = Math.round(performance.now() - renderStart)
+      if (reservationError) throw reservationError
       assert.ok(captured, 'Narrator не вызвал модель')
       const feedback = await narrator.awaitFeedback(result.narration)
       const accepted = captured.ok && !result.provider.startsWith('deterministic')
-      report.samples.push({ model, profile, case_id: entry.id, ...captured,
+      report.samples.push({ model, profile, repeat, case_id: entry.id, ...captured, render_ms: renderMs, progress,
+        first_verified_text_ms: progress[0]?.elapsed_ms ?? (result.verification.valid ? renderMs : null),
         accepted, fits_default_deadline: captured.ok && captured.latency_ms < 12000,
         final_text: result.narration, final_provider: result.provider, verification: result.verification, feedback })
       save()
-      console.log(JSON.stringify({ call: calls, model, profile, case: entry.id, ok: captured.ok,
+      console.log(JSON.stringify({ call: calls, model, profile, repeat, case: entry.id, ok: captured.ok,
         ms: captured.latency_ms, accepted, cost_rub: captured.catalog_cost_rub ?? null }))
+      const lastThree = report.samples.slice(-3)
+      if (lastThree.length === 3 && lastThree.every(sample => !sample.ok
+        && (sample.error_code === 'LLM_PROVIDER_UNAVAILABLE' || [401, 402, 403].includes(sample.status)))) {
+        throw new Error('Три ошибки доступа или соединения подряд: серия остановлена, ответы сохранены')
+      }
     }
   }
+}
 }
 if (args.includes('--probe-only')) {
   const messages = [
     { role: 'system', content: 'Верни только JSON-объект с полями door (строка), resolved (boolean), items (массив). Извлеки только явно известное. Намерение не является результатом.' },
     { role: 'user', content: 'Дверь закрыта. Герой только объявил намерение найти ключ. Событий открытия или получения предметов нет. door должен описывать известное состояние двери, resolved — завершено ли действие, items — полученные предметы.' },
   ]
-  const variants = models.map(model => ({ model, id: 'json', reasoning: reasoningProfileFor(model) ?? (/qwen|mercury/.test(model) ? { enabled: false } : null) }))
+  const variants = models.map(model => ({ model, id: 'json', reasoning: reasoningOverrides[model] ?? reasoningProfileFor(model) ?? (/qwen|mercury/.test(model) ? { enabled: false } : null) }))
   if (models.includes('z-ai/glm-5.3-flash')) variants.push({ model: 'z-ai/glm-5.3-flash', id: 'json-reasoning-off', reasoning: { enabled: false } })
   for (const variant of variants) {
     if (report.probes.some(probe => probe.model === variant.model && probe.id === variant.id)) continue

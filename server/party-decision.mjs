@@ -1,3 +1,5 @@
+import { QUEST_ABANDONMENT_NEXT_OBJECTIVE, validateWorldMemoryCommand, worldMemoryEvent } from './world-memory.mjs'
+
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/u
 const TYPES = new Set(['vote', 'roll', 'choice'])
 
@@ -158,11 +160,61 @@ export function normalizePartyDecision(value, { policy = null } = {}) {
     ...(type === 'roll' ? { difficulty: Math.max(5, Math.min(25, safeNumber(value.difficulty, 12))) } : {}),
     ...(value.roll && typeof value.roll === 'object' ? { roll: structuredClone(value.roll) } : {}),
     ...(destinationLocationId ? { destinationLocationId } : {}),
+    ...(value.questAbandonment?.schemaVersion === 1 ? { questAbandonment: {
+      schemaVersion: 1,
+      questId: id(value.questAbandonment.questId, 'Задание'),
+    } } : {}),
     resolutionPrompt: text(value.resolutionPrompt, 360),
     createdAt,
     expiresAt,
     ...(value.resolutionReason ? { resolutionReason: text(value.resolutionReason, 80) } : {}),
   }
+}
+
+/** Исполнимый исход сохранённого решения; подпись кнопки не задаёт механику. */
+export function questDecisionEvents(command, state, context = {}) {
+  if (context.isDirector !== true) throw new PartyDecisionError('Решение исполняет только сервер', 'QUEST_DECISION_FORBIDDEN')
+  const interaction = state.agentInteraction
+  if (!interaction?.questAbandonment || interaction.status !== 'resolved'
+    || interaction.id !== command.interaction_id) {
+    throw new PartyDecisionError('Нет завершённого решения по этому заданию', 'PARTY_DECISION_REQUIRED')
+  }
+  if (!['keep', 'abandon'].includes(interaction.resolvedOptionId)) {
+    throw new PartyDecisionError('Неизвестный исход решения', 'PARTY_DECISION_CONFLICT')
+  }
+  const questId = interaction.questAbandonment.questId
+  const quest = state.worldMemory?.quests?.find((entry) => entry.id === questId)
+  const events = []
+  if (interaction.resolvedOptionId === 'abandon' && quest?.status === 'active'
+    && ['public', 'party'].includes(quest.visibility)) {
+    const nextObjective = QUEST_ABANDONMENT_NEXT_OBJECTIVE
+    const questTexts = new Set([quest.title, quest.summary, ...(quest.objectives ?? [])].map((entry) => text(entry, 1_000).toLocaleLowerCase('ru')).filter(Boolean))
+    const replacesObjective = [state.scene?.objective, state.adventure?.currentHook]
+      .some((entry) => questTexts.has(text(entry, 1_000).toLocaleLowerCase('ru')))
+    const resolved = validateWorldMemoryCommand({
+      ...command, command_type: 'ResolveQuest', quest_id: questId, outcome: 'abandoned',
+      summary: `Отряд отказался от задания «${quest.title}» и остался в текущей локации.`,
+      next_objective: nextObjective,
+    }, state, context)
+    const draft = worldMemoryEvent(resolved)
+    events.push({ ...draft, visibility: quest.visibility, payload: {
+      ...draft.payload, event_schema_version: 2, stay_in_location: true, updates_scene_objective: replacesObjective,
+      party_decision: { interaction_id: interaction.id, resolved_option_id: interaction.resolvedOptionId },
+    } })
+    // Служебный квест зеркалит цель сцены; он не должен возвращать оставленное
+    // поручение в brief и в журнал под видом отдельного активного задания.
+    const sceneQuest = state.worldMemory?.quests?.find((entry) => entry.id === `quest:chapter:${state.adventure?.chapter}`)
+    if (replacesObjective && sceneQuest?.status === 'active' && sceneQuest.id !== questId) {
+      events.push({ event_type: 'QuestUpserted', visibility: sceneQuest.visibility, target_ids: [], payload: {
+        quest: { ...sceneQuest, title: nextObjective, summary: nextObjective, objectives: [nextObjective] },
+      } })
+    }
+  }
+  events.push({ event_type: 'PartyDecisionConsumed', visibility: 'party', target_ids: [], payload: {
+    interaction_id: interaction.id, resolved_option_id: interaction.resolvedOptionId,
+    quest_id: questId,
+  } })
+  return events
 }
 
 function partyIds(state) {

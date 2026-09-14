@@ -360,7 +360,11 @@ test('инвентарь живого противника не виден иг�
   const roomJson = JSON.stringify(room)
   assert.equal(roomJson.includes('item_instance_id'), false, 'экземпляры не уезжают игроку состоянием')
   assert.equal(roomJson.includes('purse_cp'), false)
-  assert.equal(roomJson.includes('"loadout"'), false)
+  // Публичная внешность v2 использует то же слово для закрытой карты моделей.
+  // Пустая карта не раскрывает внутренний loot-loadout противника.
+  for (const appearance of Object.values(room.actor_appearances ?? {})) assert.deepEqual(appearance.loadout, {})
+  const { actor_appearances, ...roomWithoutAppearance } = room
+  assert.equal(JSON.stringify(roomWithoutAppearance).includes('"loadout"'), false)
 
   const projected = publicEnemyFor(enemy, state, 'hero-1')
   assert.equal(projected.loadout, undefined)

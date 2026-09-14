@@ -1,6 +1,7 @@
 import { canonicalCombatSpellFor } from './combat-spells.mjs'
 import { NPC_PORTRAIT_CHARACTER_ASSETS } from './npc-portraits.mjs'
 import { legendaryProfileFor } from './legendary-actions.mjs'
+import { footprintMetadataForSize } from './actor-footprint.mjs'
 
 export const AUTHORED_NPC_MECHANICS_STATUSES = Object.freeze(['verified', 'partial', 'ruling-only'])
 
@@ -337,6 +338,7 @@ export function authoredNpcCombatant({ npc, mechanics: rawMechanics, position } 
     savingThrowModifiers: clone(mechanics.saving_throws),
     creature_type: mechanics.creature_type,
     size: mechanics.size,
+    footprint: footprintMetadataForSize(mechanics.size),
     damage_vulnerabilities: clone(mechanics.damage_vulnerabilities),
     damage_resistances: clone(mechanics.damage_resistances),
     damage_immunities: clone(mechanics.damage_immunities),

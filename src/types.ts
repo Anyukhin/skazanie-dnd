@@ -1,3 +1,6 @@
+import type { PublicLoadout } from '../server/equipment-visuals.mjs'
+export type { PublicLoadout } from '../server/equipment-visuals.mjs'
+
 export type Speaker = 'narrator' | 'player' | 'system'
 
 export type Message = {
@@ -184,6 +187,7 @@ export type AgentInteraction = {
   difficulty?: number
   roll?: DiceRollEvent
   destinationLocationId?: string
+  questAbandonment?: { schemaVersion: 1; questId: string }
   resolutionPrompt: string
   createdAt: number
   expiresAt?: number
@@ -276,6 +280,8 @@ export type Player = {
   online: boolean
   x: number
   y: number
+  /** Серверная квадратная площадь; в старых акторах отсутствие поля означает 1×1. */
+  footprint?: ActorFootprint
 }
 
 export type AbilityScores = {
@@ -864,6 +870,8 @@ export type SceneObjectIntent = 'inspect' | 'open' | 'lockpick' | 'take' | 'use'
 export type TacticalProp = {
   id: string
   assetId: string
+  /** Публичная подпись из серверного словаря, без скрытого содержимого. */
+  label?: string
   /** Дробная координата в клетках. */
   x: number
   y: number
@@ -872,6 +880,8 @@ export type TacticalProp = {
   /** Занимаемые клетки; отделён от визуального размера, может быть пустым. */
   footprint: Array<{ x: number; y: number }>
   zOrder: number
+  /** Опора только для оформления; не меняет проходимость или дальность. */
+  mount?: { kind: 'surface'; propId: string } | { kind: 'wall'; side: 'n' | 'e' | 's' | 'w' }
   blocksMove: boolean
   blocksSight: boolean
   cover: TacticalCover
@@ -927,6 +937,8 @@ export type TacticalLayers = {
 export type TacticalMap = {
   version: string
   locationId: string
+  /** Выпуск каталога окружения, закреплённый за картой при создании. */
+  catalogRevision?: string
   /** Этаж карты: 0 — этаж входа, +1 вверх, −1 подвал. */
   levelIndex: number
   /** Подпись этажа для игрока: «Второй этаж», «Винный погреб». */
@@ -962,7 +974,10 @@ export type TacticalMap = {
  * Сериализованная карта из проекции сервера: слои сжаты в base64 либо в одно
  * число, рёбра упакованы. Разбирается `decodeTacticalMap`.
  */
-export type SerializedTacticalMap = Record<string, unknown>
+export type SerializedTacticalMap = Record<string, unknown> & {
+  /** Необязательный выпуск каталога; отсутствие означает совместимый pr79. */
+  catalogRevision?: string
+}
 
 /**
  * Дельта раскрытия из `server/reveal-delta.mjs`: интервалы индексов `[начало,
@@ -1040,6 +1055,8 @@ export type Enemy = {
   attack_profile?: MonsterActionProfile
   x: number
   y: number
+  /** Серверная квадратная площадь; в старых акторах отсутствие поля означает 1×1. */
+  footprint?: ActorFootprint
   alive: boolean
 }
 
@@ -1056,6 +1073,8 @@ export type SummonedCreature = {
   speed: number
   x: number
   y: number
+  /** Серверная квадратная площадь; в старых акторах отсутствие поля означает 1×1. */
+  footprint?: ActorFootprint
   alive: boolean
   sourceSpellId: string
   sourceEffectId?: string
@@ -1120,6 +1139,8 @@ export type BattleEvent = {
    * поля нет, и строка остаётся прежней нейтральной «атакует».
    */
   attackKind?: 'melee' | 'ranged' | 'thrown'
+  /** Снимок снаряжения в момент подтверждённой атаки; у старых записей отсутствует. */
+  attackVisual?: AttackVisualSnapshot
   /** Выстрел за пределы обычной дальности: он же помеха на бросок. */
   longRange?: boolean
   /** Насколько реакция срезала урон и было ли перебито заклинание. */
@@ -1302,7 +1323,8 @@ export type WorldMapRoute = {
 
 export type WorldMapState = {
   version: number
-  seed: string
+  /** Внутренний seed отсутствует в проекции обычного игрока. */
+  seed?: string
   name: string
   width: number
   height: number
@@ -1370,6 +1392,42 @@ export type AssetPreparationReport = {
   items_note: string
 }
 
+export type ActorAppearanceV1 = {
+  version: 1
+  profile: 'warrior' | 'mage' | 'rogue' | 'goblin' | 'skeleton' | 'beast'
+  equipment: 'unknown' | 'unarmed' | 'sword' | 'sword-shield' | 'bow' | 'staff' | 'dagger'
+}
+
+export type ActorAppearanceV2 = {
+  version: 2
+  profile: ActorAppearanceV1['profile']
+  /** Coarse v1 alias для старых компонентов и нейтрального fallback. */
+  equipment: ActorAppearanceV1['equipment']
+  /** Серверная map только видимых надетых слотов; missing означает «не надето». */
+  loadout: PublicLoadout
+}
+
+export type ActorAppearance = ActorAppearanceV1 | ActorAppearanceV2
+
+export type AttackVisualSnapshot = {
+  version: 1
+  equipment: ActorAppearanceV1['equipment']
+} | {
+  version: 2
+  equipment: ActorAppearanceV1['equipment']
+  loadout: PublicLoadout
+}
+
+/**
+ * Серверная квадратная площадь, которую актор занимает на тактической сетке.
+ * `x`/`y` остаются верхним левым anchor, сторона равна 1–4 клеткам. В старых
+ * снимках метаданных нет, поэтому сохраняется историческая площадь 1×1.
+ */
+export type ActorFootprint = {
+  version: 1
+  size: 1 | 2 | 3 | 4
+}
+
 export type GameState = {
   sessionCode: string
   campaign: string
@@ -1381,6 +1439,8 @@ export type GameState = {
   partyMemberIds?: string[]
   partyDecisionPolicy?: PartyDecisionPolicy
   players: Player[]
+  /** Серверное оформление только разрешённых участников текущей проекции. */
+  actor_appearances?: Record<string, ActorAppearance>
   presence?: {
     transport: 'sse'
     connected_users: number
@@ -1568,6 +1628,8 @@ export type SceneNpcProjection = {
   x: number
   y: number
   anchor_prop_id: string | null
+  /** Серверная квадратная площадь; старые записи без поля занимают 1×1. */
+  footprint?: ActorFootprint
   /** Unknown future values render with the neutral fallback, never as enemies. */
   stance: SceneNpcStance | (string & {})
   alive: boolean
@@ -1637,6 +1699,7 @@ export type WorldMemoryProjection = {
     summary?: string
     status?: string
     objectives?: string[]
+    visibility?: 'public' | 'party' | 'gm_only'
     clock?: { current: number; max: number; label?: string } | null
   }>
   threads?: Array<{ id: string; title: string; summary?: string; status?: string }>

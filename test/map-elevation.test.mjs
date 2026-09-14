@@ -63,11 +63,15 @@ test('на карте прямо из генератора выстрел с у�
   for (const candidate of raised(cells)) {
     ground = cells.find((cell) => cell.type === 'floor'
       && !Number(cell.elevation ?? 0)
+      && cell.revealed === true
       && Math.abs(cell.x - candidate.x) + Math.abs(cell.y - candidate.y) >= 3
       && clearLine(candidate, cell))
     if (ground) { ledge = candidate; break }
   }
   assert.ok(ledge && ground, 'на карте нашлись уступ и ровная клетка на чистой линии огня')
+  // Боевой fixture ставит героя в найденный уступ вручную, поэтому эта клетка
+  // должна быть раскрыта так же, как была бы раскрыта передвижением игрока.
+  ledge.revealed = true
 
   const state = normalizeCampaignState({
     sessionCode: 'ELEV-1',

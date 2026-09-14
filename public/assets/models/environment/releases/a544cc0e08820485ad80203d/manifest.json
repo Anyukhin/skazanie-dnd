@@ -1,0 +1,4050 @@
+{
+  "version": 1,
+  "sources": [
+    {
+      "url": "https://quaternius.com/packs/fantasypropsmegakit.html",
+      "license": "CC0-1.0",
+      "author": "Quaternius",
+      "archive": "fantasy_props_megakitstandard.zip",
+      "archiveSha256": "0bc1e5843c9f245c44bda82f97f738b09f88fe51bb34d2a69a7847a969f868e3"
+    },
+    {
+      "url": "https://kenney.nl/assets/nature-kit",
+      "license": "CC0-1.0",
+      "author": "Kenney",
+      "archive": "kenney_nature-kit.zip",
+      "archiveSha256": "fa7974a0d342bfe63c38664ba9f8ec1a4aab8ea25f099bdc56870e33588c4d9d"
+    },
+    {
+      "url": "internal://skazanie/interior-models",
+      "license": "ORIGINAL",
+      "author": "Сказание"
+    }
+  ],
+  "models": [
+    {
+      "key": "q-anvil",
+      "label": "Наковальня",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/anvil.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 0,
+        "y": 0,
+        "w": 246,
+        "h": 92
+      }
+    },
+    {
+      "key": "q-anvil_log",
+      "label": "Наковальня на колоде",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/anvil_log.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 256,
+        "y": 0,
+        "w": 246,
+        "h": 218
+      }
+    },
+    {
+      "key": "q-axe_bronze",
+      "label": "Бронзовый топор",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/axe_bronze.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 512,
+        "y": 0,
+        "w": 246,
+        "h": 40
+      }
+    },
+    {
+      "key": "q-bag",
+      "label": "Мешок",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/bag.glb",
+      "assetIds": [
+        "sack"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 768,
+        "y": 0,
+        "w": 246,
+        "h": 206
+      }
+    },
+    {
+      "key": "q-banner_1",
+      "label": "Знамя",
+      "category": "Освещение и декор",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/banner_1.glb",
+      "assetIds": [
+        "banner"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1024,
+        "y": 0,
+        "w": 246,
+        "h": 30
+      }
+    },
+    {
+      "key": "q-banner_1_cloth",
+      "label": "Полотнище знамени",
+      "category": "Освещение и декор",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/banner_1_cloth.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1280,
+        "y": 0,
+        "w": 223,
+        "h": 18
+      }
+    },
+    {
+      "key": "q-banner_2",
+      "label": "Знамя, вариант 2",
+      "category": "Освещение и декор",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/banner_2.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1536,
+        "y": 0,
+        "w": 246,
+        "h": 30
+      }
+    },
+    {
+      "key": "q-banner_2_cloth",
+      "label": "Полотнище знамени, вариант 2",
+      "category": "Освещение и декор",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/banner_2_cloth.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1792,
+        "y": 0,
+        "w": 222,
+        "h": 18
+      }
+    },
+    {
+      "key": "q-barrel",
+      "label": "Бочка",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/barrel.glb",
+      "assetIds": [
+        "barrel",
+        "keg"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 0,
+        "y": 256,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-barrel_apples",
+      "label": "Бочка с яблоками",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/barrel_apples.glb",
+      "assetIds": [
+        "barrel"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 256,
+        "y": 256,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-barrel_holder",
+      "label": "Подставка для бочки",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/barrel_holder.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 512,
+        "y": 256,
+        "w": 246,
+        "h": 134
+      }
+    },
+    {
+      "key": "q-bed_twin1",
+      "label": "Кровать",
+      "category": "Мебель",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/bed_twin1.glb",
+      "assetIds": [
+        "bed"
+      ],
+      "yaw": 90,
+      "preview": {
+        "x": 768,
+        "y": 256,
+        "w": 246,
+        "h": 192
+      }
+    },
+    {
+      "key": "q-bed_twin2",
+      "label": "Кровать, вариант",
+      "category": "Мебель",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/bed_twin2.glb",
+      "assetIds": [
+        "bed"
+      ],
+      "yaw": 90,
+      "preview": {
+        "x": 1024,
+        "y": 256,
+        "w": 246,
+        "h": 192
+      }
+    },
+    {
+      "key": "q-bench",
+      "label": "Скамья",
+      "category": "Мебель",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/bench.glb",
+      "assetIds": [
+        "bench"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1280,
+        "y": 256,
+        "w": 246,
+        "h": 48
+      }
+    },
+    {
+      "key": "q-book_group_medium_1",
+      "label": "Большой ряд книг",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/book_group_medium_1.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1536,
+        "y": 256,
+        "w": 246,
+        "h": 58
+      }
+    },
+    {
+      "key": "q-book_group_medium_2",
+      "label": "Большой ряд книг, вариант 2",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/book_group_medium_2.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1792,
+        "y": 256,
+        "w": 246,
+        "h": 56
+      }
+    },
+    {
+      "key": "q-book_group_medium_3",
+      "label": "Большой ряд книг, вариант 3",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/book_group_medium_3.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 0,
+        "y": 512,
+        "w": 246,
+        "h": 60
+      }
+    },
+    {
+      "key": "q-book_group_small_1",
+      "label": "Небольшой ряд книг",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/book_group_small_1.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 256,
+        "y": 512,
+        "w": 246,
+        "h": 192
+      }
+    },
+    {
+      "key": "q-book_group_small_2",
+      "label": "Небольшой ряд книг, вариант 2",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/book_group_small_2.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 512,
+        "y": 512,
+        "w": 236,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-book_group_small_3",
+      "label": "Небольшой ряд книг, вариант 3",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/book_group_small_3.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 768,
+        "y": 512,
+        "w": 246,
+        "h": 240
+      }
+    },
+    {
+      "key": "q-book_stand",
+      "label": "Подставка для книги",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/book_stand.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1024,
+        "y": 512,
+        "w": 244,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-book_5",
+      "label": "Книга в синем переплёте",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/book_5.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1280,
+        "y": 512,
+        "w": 184,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-book_7",
+      "label": "Книга в красном переплёте",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/book_7.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1536,
+        "y": 512,
+        "w": 184,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-book_simplified_single",
+      "label": "Книга",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/book_simplified_single.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1792,
+        "y": 512,
+        "w": 76,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-book_stack_1",
+      "label": "Стопка книг",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/book_stack_1.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 0,
+        "y": 768,
+        "w": 246,
+        "h": 196
+      }
+    },
+    {
+      "key": "q-book_stack_2",
+      "label": "Стопка книг, вариант 2",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/book_stack_2.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 256,
+        "y": 768,
+        "w": 246,
+        "h": 204
+      }
+    },
+    {
+      "key": "q-bookcase_2",
+      "label": "Книжный шкаф",
+      "category": "Мебель",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/bookcase_2.glb",
+      "assetIds": [
+        "bookshelf"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 512,
+        "y": 768,
+        "w": 246,
+        "h": 74
+      }
+    },
+    {
+      "key": "q-bottle_1",
+      "label": "Бутылка",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/bottle_1.glb",
+      "assetIds": [
+        "bottle"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 768,
+        "y": 768,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-bucket_metal",
+      "label": "Металлическое ведро",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/bucket_metal.glb",
+      "assetIds": [
+        "bucket"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1024,
+        "y": 768,
+        "w": 246,
+        "h": 228
+      }
+    },
+    {
+      "key": "q-bucket_wooden_1",
+      "label": "Деревянное ведро",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/bucket_wooden_1.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1280,
+        "y": 768,
+        "w": 246,
+        "h": 218
+      }
+    },
+    {
+      "key": "q-cabinet",
+      "label": "Шкаф",
+      "category": "Мебель",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/cabinet.glb",
+      "assetIds": [
+        "cupboard"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1536,
+        "y": 768,
+        "w": 246,
+        "h": 66
+      }
+    },
+    {
+      "key": "q-cage_small",
+      "label": "Небольшая клетка",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/cage_small.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1792,
+        "y": 768,
+        "w": 238,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-candle_stick",
+      "label": "Подсвечник",
+      "category": "Освещение и декор",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/candle_stick.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 0,
+        "y": 1024,
+        "w": 246,
+        "h": 170
+      }
+    },
+    {
+      "key": "q-candle_stick_stand",
+      "label": "Напольный подсвечник",
+      "category": "Освещение и декор",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/candle_stick_stand.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 256,
+        "y": 1024,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-candle_stick_triple",
+      "label": "Тройной подсвечник",
+      "category": "Освещение и декор",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/candle_stick_triple.glb",
+      "assetIds": [
+        "candelabra"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 512,
+        "y": 1024,
+        "w": 246,
+        "h": 76
+      }
+    },
+    {
+      "key": "q-candle_1",
+      "label": "Свеча",
+      "category": "Освещение и декор",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/candle_1.glb",
+      "assetIds": [
+        "candle"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 768,
+        "y": 1024,
+        "w": 214,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-candle_2",
+      "label": "Свеча, вариант 2",
+      "category": "Освещение и декор",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/candle_2.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1024,
+        "y": 1024,
+        "w": 238,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-carrot",
+      "label": "Морковь",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/carrot.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1280,
+        "y": 1024,
+        "w": 200,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-cauldron",
+      "label": "Котёл",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/cauldron.glb",
+      "assetIds": [
+        "cauldron"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1536,
+        "y": 1024,
+        "w": 246,
+        "h": 236
+      }
+    },
+    {
+      "key": "q-chain_coil",
+      "label": "Смотанная цепь",
+      "category": "Предметы",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/chain_coil.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1792,
+        "y": 1024,
+        "w": 246,
+        "h": 210
+      }
+    },
+    {
+      "key": "q-chair_1",
+      "label": "Стул",
+      "category": "Мебель",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/chair_1.glb",
+      "assetIds": [
+        "chair"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 0,
+        "y": 1280,
+        "w": 246,
+        "h": 234
+      }
+    },
+    {
+      "key": "q-chalice",
+      "label": "Кубок",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/chalice.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 256,
+        "y": 1280,
+        "w": 234,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-chandelier",
+      "label": "Люстра",
+      "category": "Освещение и декор",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/chandelier.glb",
+      "assetIds": [
+        "chandelier"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 512,
+        "y": 1280,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-chest_wood",
+      "label": "Деревянный сундук",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/chest_wood.glb",
+      "assetIds": [
+        "chest"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 768,
+        "y": 1280,
+        "w": 246,
+        "h": 146
+      }
+    },
+    {
+      "key": "q-coin",
+      "label": "Монета",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/coin.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1024,
+        "y": 1280,
+        "w": 246,
+        "h": 52
+      }
+    },
+    {
+      "key": "q-coin_pile",
+      "label": "Стопка монет",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/coin_pile.glb",
+      "assetIds": [
+        "coin_pile"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1280,
+        "y": 1280,
+        "w": 246,
+        "h": 192
+      }
+    },
+    {
+      "key": "q-coin_pile_2",
+      "label": "Россыпь монет",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/coin_pile_2.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1536,
+        "y": 1280,
+        "w": 246,
+        "h": 178
+      }
+    },
+    {
+      "key": "q-crate_metal",
+      "label": "Окованный ящик",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/crate_metal.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1792,
+        "y": 1280,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-crate_wooden",
+      "label": "Деревянный ящик",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/crate_wooden.glb",
+      "assetIds": [
+        "crate"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 0,
+        "y": 1536,
+        "w": 229,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-dummy",
+      "label": "Тренировочное чучело",
+      "category": "Предметы",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/dummy.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 256,
+        "y": 1536,
+        "w": 246,
+        "h": 178
+      }
+    },
+    {
+      "key": "q-farm_crate_apple",
+      "label": "Ящик с яблоками",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/farm_crate_apple.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 512,
+        "y": 1536,
+        "w": 246,
+        "h": 144
+      }
+    },
+    {
+      "key": "q-farm_crate_carrot",
+      "label": "Ящик с морковью",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/farm_crate_carrot.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 768,
+        "y": 1536,
+        "w": 246,
+        "h": 196
+      }
+    },
+    {
+      "key": "q-farm_crate_empty",
+      "label": "Овощной ящик",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/farm_crate_empty.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1024,
+        "y": 1536,
+        "w": 246,
+        "h": 144
+      }
+    },
+    {
+      "key": "q-key_gold",
+      "label": "Золотой ключ",
+      "category": "Предметы",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/key_gold.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1280,
+        "y": 1536,
+        "w": 118,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-key_metal",
+      "label": "Железный ключ",
+      "category": "Предметы",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/key_metal.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1536,
+        "y": 1536,
+        "w": 107,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-lantern_wall",
+      "label": "Настенный фонарь",
+      "category": "Освещение и декор",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/lantern_wall.glb",
+      "assetIds": [
+        "lantern_wall"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1792,
+        "y": 1536,
+        "w": 68,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-mug",
+      "label": "Кружка",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/mug.glb",
+      "assetIds": [
+        "mug"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 0,
+        "y": 1792,
+        "w": 246,
+        "h": 188
+      }
+    },
+    {
+      "key": "q-nightstand_shelf",
+      "label": "Прикроватная тумба",
+      "category": "Мебель",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/nightstand_shelf.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 256,
+        "y": 1792,
+        "w": 246,
+        "h": 140
+      }
+    },
+    {
+      "key": "q-peg_rack",
+      "label": "Вешалка с крючками",
+      "category": "Мебель",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/peg_rack.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 512,
+        "y": 1792,
+        "w": 246,
+        "h": 20
+      }
+    },
+    {
+      "key": "q-pickaxe_bronze",
+      "label": "Бронзовая кирка",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/pickaxe_bronze.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 768,
+        "y": 1792,
+        "w": 246,
+        "h": 42
+      }
+    },
+    {
+      "key": "q-pot_1",
+      "label": "Горшок",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/pot_1.glb",
+      "assetIds": [
+        "pot"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1024,
+        "y": 1792,
+        "w": 246,
+        "h": 222
+      }
+    },
+    {
+      "key": "q-pot_1_lid",
+      "label": "Крышка горшка",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/pot_1_lid.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1280,
+        "y": 1792,
+        "w": 246,
+        "h": 222
+      }
+    },
+    {
+      "key": "q-potion_1",
+      "label": "Зелье в зелёной бутылке",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/potion_1.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1536,
+        "y": 1792,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-potion_2",
+      "label": "Зелье в красной бутылке",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/potion_2.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1792,
+        "y": 1792,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-potion_4",
+      "label": "Зелье в фиолетовой бутылке",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/potion_4.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 0,
+        "y": 2048,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-pouch_large",
+      "label": "Большой кошель",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/pouch_large.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 256,
+        "y": 2048,
+        "w": 246,
+        "h": 132
+      }
+    },
+    {
+      "key": "q-rope_1",
+      "label": "Моток верёвки",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/rope_1.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 512,
+        "y": 2048,
+        "w": 227,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-rope_2",
+      "label": "Моток верёвки, вариант 2",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/rope_2.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 768,
+        "y": 2048,
+        "w": 236,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-rope_3",
+      "label": "Моток верёвки, вариант 3",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/rope_3.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1024,
+        "y": 2048,
+        "w": 246,
+        "h": 192
+      }
+    },
+    {
+      "key": "q-scroll_1",
+      "label": "Свиток с зелёной лентой",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/scroll_1.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1280,
+        "y": 2048,
+        "w": 246,
+        "h": 64
+      }
+    },
+    {
+      "key": "q-scroll_2",
+      "label": "Свиток с красной лентой",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/scroll_2.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1536,
+        "y": 2048,
+        "w": 246,
+        "h": 68
+      }
+    },
+    {
+      "key": "q-shelf_arch",
+      "label": "Арочная полка",
+      "category": "Мебель",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/shelf_arch.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1792,
+        "y": 2048,
+        "w": 246,
+        "h": 62
+      }
+    },
+    {
+      "key": "q-shelf_simple",
+      "label": "Настенная полка",
+      "category": "Мебель",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/shelf_simple.glb",
+      "assetIds": [
+        "shelf_wall"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 0,
+        "y": 2304,
+        "w": 246,
+        "h": 62
+      }
+    },
+    {
+      "key": "q-shelf_small_bottles",
+      "label": "Полка с бутылками",
+      "category": "Мебель",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/shelf_small_bottles.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 256,
+        "y": 2304,
+        "w": 246,
+        "h": 62
+      }
+    },
+    {
+      "key": "q-shield_wooden",
+      "label": "Деревянный щит",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/shield_wooden.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 512,
+        "y": 2304,
+        "w": 246,
+        "h": 72
+      }
+    },
+    {
+      "key": "q-small_bottle",
+      "label": "Маленькая бутылка",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/small_bottle.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 768,
+        "y": 2304,
+        "w": 246,
+        "h": 202
+      }
+    },
+    {
+      "key": "q-small_bottles_1",
+      "label": "Маленькие бутылки",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/small_bottles_1.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1024,
+        "y": 2304,
+        "w": 246,
+        "h": 64
+      }
+    },
+    {
+      "key": "q-stall_cart_empty",
+      "label": "Торговая тележка",
+      "category": "Мебель",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/stall_cart_empty.glb",
+      "assetIds": [
+        "cart"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1280,
+        "y": 2304,
+        "w": 246,
+        "h": 88
+      }
+    },
+    {
+      "key": "q-stall_empty",
+      "label": "Торговая стойка",
+      "category": "Мебель",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/stall_empty.glb",
+      "assetIds": [
+        "market_stall"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1536,
+        "y": 2304,
+        "w": 246,
+        "h": 126
+      }
+    },
+    {
+      "key": "q-stool",
+      "label": "Табурет",
+      "category": "Мебель",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/stool.glb",
+      "assetIds": [
+        "stool"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1792,
+        "y": 2304,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-sword_bronze",
+      "label": "Бронзовый меч",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/sword_bronze.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 0,
+        "y": 2560,
+        "w": 246,
+        "h": 60
+      }
+    },
+    {
+      "key": "q-table_fork",
+      "label": "Вилка",
+      "category": "Мебель",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/table_fork.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 256,
+        "y": 2560,
+        "w": 48,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-table_knife",
+      "label": "Столовый нож",
+      "category": "Мебель",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/table_knife.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 512,
+        "y": 2560,
+        "w": 36,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-table_large",
+      "label": "Длинный стол",
+      "category": "Мебель",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/table_large.glb",
+      "assetIds": [
+        "table_long"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 768,
+        "y": 2560,
+        "w": 246,
+        "h": 96
+      }
+    },
+    {
+      "key": "q-table_plate",
+      "label": "Тарелка",
+      "category": "Мебель",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/table_plate.glb",
+      "assetIds": [
+        "plate"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1024,
+        "y": 2560,
+        "w": 244,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-table_spoon",
+      "label": "Ложка",
+      "category": "Мебель",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/table_spoon.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1280,
+        "y": 2560,
+        "w": 42,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-torch_metal",
+      "label": "Настенный факел",
+      "category": "Освещение и декор",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/torch_metal.glb",
+      "assetIds": [
+        "torch_wall"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1536,
+        "y": 2560,
+        "w": 142,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-vase_2",
+      "label": "Глиняная ваза",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/vase_2.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1792,
+        "y": 2560,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-vase_4",
+      "label": "Глиняная ваза, вариант 2",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/vase_4.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 0,
+        "y": 2816,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "q-vase_rubble_medium",
+      "label": "Черепки вазы",
+      "category": "Хранилища",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/vase_rubble_medium.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 256,
+        "y": 2816,
+        "w": 246,
+        "h": 186
+      }
+    },
+    {
+      "key": "q-weapon_stand",
+      "label": "Стойка для оружия",
+      "category": "Мебель",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/weapon_stand.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 512,
+        "y": 2816,
+        "w": 246,
+        "h": 176
+      }
+    },
+    {
+      "key": "q-whetstone",
+      "label": "Точильный круг",
+      "category": "Утварь",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/whetstone.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 768,
+        "y": 2816,
+        "w": 246,
+        "h": 196
+      }
+    },
+    {
+      "key": "q-workbench",
+      "label": "Верстак",
+      "category": "Мебель",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/workbench.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1024,
+        "y": 2816,
+        "w": 246,
+        "h": 126
+      }
+    },
+    {
+      "key": "q-workbench_drawers",
+      "label": "Верстак с ящиками",
+      "category": "Мебель",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/quaternius/workbench_drawers.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1280,
+        "y": 2816,
+        "w": 246,
+        "h": 174
+      }
+    },
+    {
+      "key": "k-tree_default",
+      "label": "Лиственное дерево",
+      "category": "Природа",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/kenney/tree_default.glb",
+      "assetIds": [
+        "tree_birch"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1536,
+        "y": 2816,
+        "w": 246,
+        "h": 214
+      }
+    },
+    {
+      "key": "k-tree_oak",
+      "label": "Дуб",
+      "category": "Природа",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/kenney/tree_oak.glb",
+      "assetIds": [
+        "tree_oak"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1792,
+        "y": 2816,
+        "w": 214,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-tree_pine_default_a",
+      "label": "Сосна",
+      "category": "Природа",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/kenney/tree_pine_default_a.glb",
+      "assetIds": [
+        "tree_pine"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 0,
+        "y": 3072,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-tree_pine_round_a",
+      "label": "Круглая сосна",
+      "category": "Природа",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/kenney/tree_pine_round_a.glb",
+      "assetIds": [
+        "tree_spruce"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 256,
+        "y": 3072,
+        "w": 214,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-tree_pine_tall_a_detailed",
+      "label": "Высокая сосна",
+      "category": "Природа",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/kenney/tree_pine_tall_a_detailed.glb",
+      "assetIds": [
+        "tree_pine"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 512,
+        "y": 3072,
+        "w": 244,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-tree_simple",
+      "label": "Молодое дерево",
+      "category": "Природа",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/kenney/tree_simple.glb",
+      "assetIds": [
+        "tree_birch"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 768,
+        "y": 3072,
+        "w": 214,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-tree_default_fall",
+      "label": "Осеннее дерево",
+      "category": "Природа",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/kenney/tree_default_fall.glb",
+      "assetIds": [],
+      "yaw": 0,
+      "preview": {
+        "x": 1024,
+        "y": 3072,
+        "w": 246,
+        "h": 214
+      }
+    },
+    {
+      "key": "k-stump_old",
+      "label": "Старый пень",
+      "category": "Природа",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/kenney/stump_old.glb",
+      "assetIds": [
+        "tree_stump"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1280,
+        "y": 3072,
+        "w": 238,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-stump_round_detailed",
+      "label": "Круглый пень",
+      "category": "Природа",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/kenney/stump_round_detailed.glb",
+      "assetIds": [
+        "tree_stump"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1536,
+        "y": 3072,
+        "w": 238,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-stump_square_detailed_wide",
+      "label": "Широкий пень",
+      "category": "Природа",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/kenney/stump_square_detailed_wide.glb",
+      "assetIds": [
+        "tree_stump"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1792,
+        "y": 3072,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-log",
+      "label": "Бревно",
+      "category": "Природа",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/kenney/log.glb",
+      "assetIds": [
+        "fallen_log"
+      ],
+      "yaw": 90,
+      "preview": {
+        "x": 0,
+        "y": 3328,
+        "w": 246,
+        "h": 82
+      }
+    },
+    {
+      "key": "k-log_large",
+      "label": "Большое бревно",
+      "category": "Природа",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/kenney/log_large.glb",
+      "assetIds": [
+        "fallen_log"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 256,
+        "y": 3328,
+        "w": 246,
+        "h": 136
+      }
+    },
+    {
+      "key": "k-log_stack",
+      "label": "Стопка брёвен",
+      "category": "Природа",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/kenney/log_stack.glb",
+      "assetIds": [
+        "woodpile"
+      ],
+      "yaw": 90,
+      "preview": {
+        "x": 512,
+        "y": 3328,
+        "w": 246,
+        "h": 148
+      }
+    },
+    {
+      "key": "k-log_stack_large",
+      "label": "Большая стопка брёвен",
+      "category": "Природа",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/kenney/log_stack_large.glb",
+      "assetIds": [
+        "woodpile"
+      ],
+      "yaw": 90,
+      "preview": {
+        "x": 768,
+        "y": 3328,
+        "w": 246,
+        "h": 220
+      }
+    },
+    {
+      "key": "k-rock_small_a",
+      "label": "Небольшой камень",
+      "category": "Природа",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/kenney/rock_small_a.glb",
+      "assetIds": [
+        "rock_small"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1024,
+        "y": 3328,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-rock_small_b",
+      "label": "Камень округлой формы",
+      "category": "Природа",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/kenney/rock_small_b.glb",
+      "assetIds": [
+        "rock_small"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1280,
+        "y": 3328,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-rock_small_flat_a",
+      "label": "Плоский камень",
+      "category": "Природа",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/kenney/rock_small_flat_a.glb",
+      "assetIds": [
+        "rock_small"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1536,
+        "y": 3328,
+        "w": 246,
+        "h": 214
+      }
+    },
+    {
+      "key": "k-rock_large_a",
+      "label": "Валун",
+      "category": "Природа",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/kenney/rock_large_a.glb",
+      "assetIds": [
+        "boulder"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1792,
+        "y": 3328,
+        "w": 190,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-rock_tall_a",
+      "label": "Высокий валун",
+      "category": "Природа",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/kenney/rock_tall_a.glb",
+      "assetIds": [
+        "boulder"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 0,
+        "y": 3584,
+        "w": 246,
+        "h": 172
+      }
+    },
+    {
+      "key": "k-plant_bush",
+      "label": "Куст",
+      "category": "Природа",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/kenney/plant_bush.glb",
+      "assetIds": [
+        "bush"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 256,
+        "y": 3584,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-plant_bush_detailed",
+      "label": "Густой куст",
+      "category": "Природа",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/kenney/plant_bush_detailed.glb",
+      "assetIds": [
+        "bush"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 512,
+        "y": 3584,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-plant_bush_large",
+      "label": "Большой куст",
+      "category": "Природа",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/kenney/plant_bush_large.glb",
+      "assetIds": [
+        "bush"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 768,
+        "y": 3584,
+        "w": 246,
+        "h": 222
+      }
+    },
+    {
+      "key": "k-plant_bush_small",
+      "label": "Маленький куст",
+      "category": "Природа",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/kenney/plant_bush_small.glb",
+      "assetIds": [
+        "shrub"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1024,
+        "y": 3584,
+        "w": 246,
+        "h": 216
+      }
+    },
+    {
+      "key": "k-mushroom_red",
+      "label": "Красный гриб",
+      "category": "Природа",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/kenney/mushroom_red.glb",
+      "assetIds": [
+        "mushroom_cluster"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1280,
+        "y": 3584,
+        "w": 214,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-mushroom_red_group",
+      "label": "Группа красных грибов",
+      "category": "Природа",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/kenney/mushroom_red_group.glb",
+      "assetIds": [
+        "mushroom_cluster"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1536,
+        "y": 3584,
+        "w": 246,
+        "h": 232
+      }
+    },
+    {
+      "key": "k-mushroom_tan_group",
+      "label": "Группа светлых грибов",
+      "category": "Природа",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/kenney/mushroom_tan_group.glb",
+      "assetIds": [
+        "mushroom_cluster"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1792,
+        "y": 3584,
+        "w": 246,
+        "h": 232
+      }
+    },
+    {
+      "key": "k-grass",
+      "label": "Пучок травы",
+      "category": "Природа",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/kenney/grass.glb",
+      "assetIds": [
+        "grass_tuft"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 0,
+        "y": 3840,
+        "w": 240,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-grass_large",
+      "label": "Высокая трава",
+      "category": "Природа",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/kenney/grass_large.glb",
+      "assetIds": [
+        "grass_tuft"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 256,
+        "y": 3840,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-flower_red_a",
+      "label": "Красный цветок",
+      "category": "Природа",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/kenney/flower_red_a.glb",
+      "assetIds": [
+        "flowers"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 512,
+        "y": 3840,
+        "w": 217,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-flower_yellow_a",
+      "label": "Жёлтый цветок",
+      "category": "Природа",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/kenney/flower_yellow_a.glb",
+      "assetIds": [
+        "flowers"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 768,
+        "y": 3840,
+        "w": 217,
+        "h": 246
+      }
+    },
+    {
+      "key": "k-campfire_logs",
+      "label": "Костёр на брёвнах",
+      "category": "Природа",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/kenney/campfire_logs.glb",
+      "assetIds": [
+        "campfire"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1024,
+        "y": 3840,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "sk-bar-counter",
+      "label": "Барная стойка",
+      "category": "Таверна",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/skazanie/sk-bar-counter.glb",
+      "assetIds": [
+        "bar_counter"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1280,
+        "y": 3840,
+        "w": 246,
+        "h": 60
+      }
+    },
+    {
+      "key": "sk-bar-shelf",
+      "label": "Полка с бутылками",
+      "category": "Таверна",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/skazanie/sk-bar-shelf.glb",
+      "assetIds": [
+        "bar_shelf"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1536,
+        "y": 3840,
+        "w": 246,
+        "h": 36
+      }
+    },
+    {
+      "key": "sk-fireplace",
+      "label": "Камин с кладкой",
+      "category": "Таверна",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/skazanie/sk-fireplace.glb",
+      "assetIds": [
+        "fireplace"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1792,
+        "y": 3840,
+        "w": 246,
+        "h": 94
+      }
+    },
+    {
+      "key": "sk-hearth-fire",
+      "label": "Очаг с углями",
+      "category": "Таверна",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/skazanie/sk-hearth-fire.glb",
+      "assetIds": [
+        "hearth_fire"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 0,
+        "y": 4096,
+        "w": 246,
+        "h": 200
+      }
+    },
+    {
+      "key": "sk-table-round",
+      "label": "Круглый стол",
+      "category": "Таверна",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/skazanie/sk-table-round.glb",
+      "assetIds": [
+        "table_round"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 256,
+        "y": 4096,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "sk-table-small",
+      "label": "Малый стол",
+      "category": "Таверна",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/skazanie/sk-table-small.glb",
+      "assetIds": [
+        "table_small"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 512,
+        "y": 4096,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "sk-altar",
+      "label": "Каменный алтарь",
+      "category": "Склеп",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/skazanie/sk-altar.glb",
+      "assetIds": [
+        "altar"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 768,
+        "y": 4096,
+        "w": 246,
+        "h": 108
+      }
+    },
+    {
+      "key": "sk-pillar",
+      "label": "Каменная колонна",
+      "category": "Склеп",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/skazanie/sk-pillar.glb",
+      "assetIds": [
+        "pillar"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1024,
+        "y": 4096,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "sk-sarcophagus",
+      "label": "Саркофаг с крышкой",
+      "category": "Склеп",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/skazanie/sk-sarcophagus.glb",
+      "assetIds": [
+        "sarcophagus"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1280,
+        "y": 4096,
+        "w": 246,
+        "h": 110
+      }
+    },
+    {
+      "key": "sk-crypt-niche",
+      "label": "Ниша склепа",
+      "category": "Склеп",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/skazanie/sk-crypt-niche.glb",
+      "assetIds": [
+        "crypt_niche"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1536,
+        "y": 4096,
+        "w": 246,
+        "h": 102
+      }
+    },
+    {
+      "key": "sk-brazier",
+      "label": "Каменная жаровня",
+      "category": "Склеп",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/skazanie/sk-brazier.glb",
+      "assetIds": [
+        "brazier"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 1792,
+        "y": 4096,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "key": "sk-reliquary",
+      "label": "Реликварий",
+      "category": "Склеп",
+      "url": "/assets/models/environment/releases/a544cc0e08820485ad80203d/skazanie/sk-reliquary.glb",
+      "assetIds": [
+        "reliquary"
+      ],
+      "yaw": 0,
+      "preview": {
+        "x": 0,
+        "y": 4352,
+        "w": 246,
+        "h": 174
+      }
+    }
+  ],
+  "build": {
+    "schema": "environment-candidate/v1",
+    "importerVersion": 2,
+    "normalizationVersion": 1,
+    "selectionVersion": 1,
+    "sourceInputs": [
+      {
+        "path": "kenney/License.txt",
+        "sha256": "cb96b75e3560ac78d7a53ce6f083f4cdb5c53faea6141b62d63458dcfe1e4b9d",
+        "bytes": 611
+      },
+      {
+        "path": "kenney/Models/GLTF_format/campfire_logs.glb",
+        "sha256": "98d87cdcf9095b94fd348d0946e911dd4ca6c0956bac3318cfd2b0030b86055a",
+        "bytes": 9284
+      },
+      {
+        "path": "kenney/Models/GLTF_format/flower_redA.glb",
+        "sha256": "171930b7789ddbf735af3745576b5393750beb9133b9ff4a444bb6bb2986c020",
+        "bytes": 7104
+      },
+      {
+        "path": "kenney/Models/GLTF_format/flower_yellowA.glb",
+        "sha256": "8a3b08cd2ca411c21f9c581d5bda651d78b13c50cba45ad8fa0389398ead6d1d",
+        "bytes": 7120
+      },
+      {
+        "path": "kenney/Models/GLTF_format/grass_large.glb",
+        "sha256": "af49a595624abca7249824eeefb944d4baf974abeeb5b16110d175da3563d6cd",
+        "bytes": 18504
+      },
+      {
+        "path": "kenney/Models/GLTF_format/grass.glb",
+        "sha256": "260e41d3e5f2472492ed7b475c5b92a30b13ce2bad408535b5ff50574d4575e7",
+        "bytes": 11496
+      },
+      {
+        "path": "kenney/Models/GLTF_format/log_large.glb",
+        "sha256": "e7a92369062d491e5a31a163d390e07db04ee573605bbfa84c00660d18896b4c",
+        "bytes": 7924
+      },
+      {
+        "path": "kenney/Models/GLTF_format/log_stack.glb",
+        "sha256": "90eaae4a01ba1f25c2f0c6d83087e4a7a8fac684f2452615245333968d118d68",
+        "bytes": 10896
+      },
+      {
+        "path": "kenney/Models/GLTF_format/log_stackLarge.glb",
+        "sha256": "58dc0ce3321b3b57f7b8c5aea47e1a212a5f462822af57a26f9ba5c4d48e65ab",
+        "bytes": 17604
+      },
+      {
+        "path": "kenney/Models/GLTF_format/log.glb",
+        "sha256": "8c8fe8f6adfc03a3c0cd6cb24961ff74be96c2da284d70322f05797d049972d6",
+        "bytes": 14288
+      },
+      {
+        "path": "kenney/Models/GLTF_format/mushroom_red.glb",
+        "sha256": "843e2de43dce78920a5675a67bac4b72f500e6220315e713fe08381642cfc571",
+        "bytes": 6364
+      },
+      {
+        "path": "kenney/Models/GLTF_format/mushroom_redGroup.glb",
+        "sha256": "29f02df0589dd2b09e8d2aff6a4662394dac5cfcf1fec701640dcbd6127e0802",
+        "bytes": 14960
+      },
+      {
+        "path": "kenney/Models/GLTF_format/mushroom_tanGroup.glb",
+        "sha256": "2dc979485f164d7dce34329096271f44e0c9ea329c104251d94bcfbc8f8fe05e",
+        "bytes": 14956
+      },
+      {
+        "path": "kenney/Models/GLTF_format/plant_bush.glb",
+        "sha256": "ae7b1beb39e242b13f5f29e3ec23ef21034b814f82297b8aa00a9bf4e1b09590",
+        "bytes": 4396
+      },
+      {
+        "path": "kenney/Models/GLTF_format/plant_bushDetailed.glb",
+        "sha256": "2e0487020d68ccf664435db9d829c78ae00e6d2785ee3ec10b9f89cc70a10406",
+        "bytes": 10172
+      },
+      {
+        "path": "kenney/Models/GLTF_format/plant_bushLarge.glb",
+        "sha256": "10e1d9fbf29d96d1d1a56fb2ce25ae66537505101759229afe01ae22c6c45e02",
+        "bytes": 6436
+      },
+      {
+        "path": "kenney/Models/GLTF_format/plant_bushSmall.glb",
+        "sha256": "a9620a7d1fb165ae68d323676f80dbb2a9e3aafb21110d18d18d90b07026b91d",
+        "bytes": 3212
+      },
+      {
+        "path": "kenney/Models/GLTF_format/rock_largeA.glb",
+        "sha256": "6dd15390fd96501dcd1454765a17ba61dbbd8d47705dfe5149c8dd92b353ce25",
+        "bytes": 7552
+      },
+      {
+        "path": "kenney/Models/GLTF_format/rock_smallA.glb",
+        "sha256": "df9fff9d711e61370e8df0caa2514c89b8f8a8dc6c6fafaf4eb2ec79c5ae07c1",
+        "bytes": 3044
+      },
+      {
+        "path": "kenney/Models/GLTF_format/rock_smallB.glb",
+        "sha256": "11b26bc0a12e971a3b69df1401e530e24432d528c262df94b99c412e7f372763",
+        "bytes": 3528
+      },
+      {
+        "path": "kenney/Models/GLTF_format/rock_smallFlatA.glb",
+        "sha256": "40ceafacfaabb0f04f93688fd8696c1464c65512bef219e1459c1f238cbbbe21",
+        "bytes": 3300
+      },
+      {
+        "path": "kenney/Models/GLTF_format/rock_tallA.glb",
+        "sha256": "88250f236a3b75f8b55c1d8afb6af020f8a91b1e81f9fb51f7ef513420d45a2d",
+        "bytes": 12072
+      },
+      {
+        "path": "kenney/Models/GLTF_format/stump_old.glb",
+        "sha256": "4c2d2da34804c1662c6a776a9d60fe4449e6f6fdd50914bfec7d5cca3e9ceddb",
+        "bytes": 9564
+      },
+      {
+        "path": "kenney/Models/GLTF_format/stump_roundDetailed.glb",
+        "sha256": "3017359bd0bdf84fa137f8aca33b31b1a54c3a3f11d36e1d0995868dedd53768",
+        "bytes": 8188
+      },
+      {
+        "path": "kenney/Models/GLTF_format/stump_squareDetailedWide.glb",
+        "sha256": "fee070370d60a2d6cf5868c3b994b002b2772c35602f6d6b2396b9049d6256c0",
+        "bytes": 7536
+      },
+      {
+        "path": "kenney/Models/GLTF_format/tree_default_fall.glb",
+        "sha256": "f8e90ed7f7771644998a7c361302213af04350150b3ea0631e8384d26506efa2",
+        "bytes": 16940
+      },
+      {
+        "path": "kenney/Models/GLTF_format/tree_default.glb",
+        "sha256": "562d29638c902de3c7bee465d3a53bb77117efbc392ae04ed894faf6b5dc691d",
+        "bytes": 9428
+      },
+      {
+        "path": "kenney/Models/GLTF_format/tree_oak.glb",
+        "sha256": "d7fd8773674928c50c11b66d12c636d49bdcc15a8b1c7fbb98e6f63a3439a3f3",
+        "bytes": 14644
+      },
+      {
+        "path": "kenney/Models/GLTF_format/tree_pineDefaultA.glb",
+        "sha256": "60d8f352fa3659ed275e06cbddfecf8f92c8effe2977c2f2d7b29b6c9b582e46",
+        "bytes": 17220
+      },
+      {
+        "path": "kenney/Models/GLTF_format/tree_pineRoundA.glb",
+        "sha256": "7dc9711f31585eafdcb965d0649c30af5e19f2def1955f7a915081d30759ef8e",
+        "bytes": 14488
+      },
+      {
+        "path": "kenney/Models/GLTF_format/tree_pineTallA_detailed.glb",
+        "sha256": "9ba6337460e718b8baf165b23c02f39455e3d5757b1911505410c46bc88a86b5",
+        "bytes": 10708
+      },
+      {
+        "path": "kenney/Models/GLTF_format/tree_simple.glb",
+        "sha256": "93891ea740447634930de19c31a7c1c9f4add94122e6db03aca9f75aea32f9d6",
+        "bytes": 6500
+      },
+      {
+        "path": "quaternius/Exports/glTF/Anvil_Log.bin",
+        "sha256": "7d3d078f1be72c9c56abc0ee2fc5dfa23826b8a03beaaa756d27054a7443919c",
+        "bytes": 130880
+      },
+      {
+        "path": "quaternius/Exports/glTF/Anvil_Log.gltf",
+        "sha256": "878f803a0d8d7a4db5ad31f4839bc87ac03fd409cb69e30aa078c00729a38df2",
+        "bytes": 5580
+      },
+      {
+        "path": "quaternius/Exports/glTF/Anvil.bin",
+        "sha256": "d52a9ab436577e8ee8ca00b2929b15595a60b0294c6275a39ecfe1f27408bfcf",
+        "bytes": 24020
+      },
+      {
+        "path": "quaternius/Exports/glTF/Anvil.gltf",
+        "sha256": "29e0a6a19f9a579ffe8d463c2a8d445c531a39271ba4eab9754d3f5d9f9d9ce1",
+        "bytes": 3189
+      },
+      {
+        "path": "quaternius/Exports/glTF/Axe_Bronze.bin",
+        "sha256": "d608e8dea796ae8a200cd78bb1836d2705944f628abb6ac2e03c76e6637187b2",
+        "bytes": 31156
+      },
+      {
+        "path": "quaternius/Exports/glTF/Axe_Bronze.gltf",
+        "sha256": "338ce6e6947b8849774aac2deb9d2bf3a1cb14dc869effb7be0a91053e67b64f",
+        "bytes": 2591
+      },
+      {
+        "path": "quaternius/Exports/glTF/Bag.bin",
+        "sha256": "6bf8ad99d0048264aa37157a92f394ab32aeeb5270dab2f3f76282b1eda4e012",
+        "bytes": 27188
+      },
+      {
+        "path": "quaternius/Exports/glTF/Bag.gltf",
+        "sha256": "ccbf22a9162a2a2173caa7346e796b8f92a86dbbbe02a196530bf5642293e545",
+        "bytes": 4318
+      },
+      {
+        "path": "quaternius/Exports/glTF/Banner_1_Cloth.bin",
+        "sha256": "30cc64edb6898f378dbcc573acbff6ab7731f448025b13ff884541348fce5ea5",
+        "bytes": 6636
+      },
+      {
+        "path": "quaternius/Exports/glTF/Banner_1_Cloth.gltf",
+        "sha256": "ab59fad1699f4d04993e6bd3b3c2e909de8b5255b023b061cca22c4400196ffc",
+        "bytes": 4670
+      },
+      {
+        "path": "quaternius/Exports/glTF/Banner_1.bin",
+        "sha256": "7d98308055e39b01192ec5fe9a44688f9ba549ec1d2b12c94d6e5fc4f094cf32",
+        "bytes": 20976
+      },
+      {
+        "path": "quaternius/Exports/glTF/Banner_1.gltf",
+        "sha256": "a00162c8ef35912d0fe9137b0ee53f94752a1b61fcd8033d4f1e50bd2c54eca1",
+        "bytes": 6789
+      },
+      {
+        "path": "quaternius/Exports/glTF/Banner_2_Cloth.bin",
+        "sha256": "258fa990f109353326ff14f71581fa71f3a2bd5aaa3b62c0cddf05d0b55d3dc0",
+        "bytes": 4940
+      },
+      {
+        "path": "quaternius/Exports/glTF/Banner_2_Cloth.gltf",
+        "sha256": "fd5e8d3ededb8404bec7b872a569d12025ed5e3bca617a7432674ffe746ffea7",
+        "bytes": 4671
+      },
+      {
+        "path": "quaternius/Exports/glTF/Banner_2.bin",
+        "sha256": "bb694e19ced6d0a7da5d6d8c1f6b518f3cecdb751b8dea69a21a47fdd798d4e3",
+        "bytes": 19280
+      },
+      {
+        "path": "quaternius/Exports/glTF/Banner_2.gltf",
+        "sha256": "c759b5da84c6b7b9d10ee69f498f4ac9022a6f7003e4deb7f6cd49f4fa6f29df",
+        "bytes": 6788
+      },
+      {
+        "path": "quaternius/Exports/glTF/Barrel_Apples.bin",
+        "sha256": "774c97d9b2b2faa04ef40c681540ca3be74a3942ab8bbbd8c8d260b66121f8c8",
+        "bytes": 104600
+      },
+      {
+        "path": "quaternius/Exports/glTF/Barrel_Apples.gltf",
+        "sha256": "07520279b51bd1cc75b6db88b572b5ec445fc7decf0b115fba5c9e20f8caa111",
+        "bytes": 6241
+      },
+      {
+        "path": "quaternius/Exports/glTF/Barrel_Holder.bin",
+        "sha256": "a4aa5eb66d4261565dea3389f73005b6c5cac1f6b226d090cecbc5791d5a418a",
+        "bytes": 161816
+      },
+      {
+        "path": "quaternius/Exports/glTF/Barrel_Holder.gltf",
+        "sha256": "aa318d71e8d5ebcae5f7aff76ed2046eec3d398d2b71f474a04150fa845859c3",
+        "bytes": 4347
+      },
+      {
+        "path": "quaternius/Exports/glTF/Barrel.bin",
+        "sha256": "d8f963e2975b6bbd4b631b5cd7ade2d5dfc76dfb9f8387e2d398935f5405cf20",
+        "bytes": 57144
+      },
+      {
+        "path": "quaternius/Exports/glTF/Barrel.gltf",
+        "sha256": "cececb2da345addb21567e3ce1b30a9da071b689bcec59d85cd7a4446f531e87",
+        "bytes": 4311
+      },
+      {
+        "path": "quaternius/Exports/glTF/Bed_Twin1.bin",
+        "sha256": "72bdaa973e348dea5429ea2ecf465e25b4a1ae834de068d14ace57ad5def6421",
+        "bytes": 77360
+      },
+      {
+        "path": "quaternius/Exports/glTF/Bed_Twin1.gltf",
+        "sha256": "fcb79a79d71d1b24b74113f83684d4e4f0c69e9dacc8b5c9078ca88d286d253e",
+        "bytes": 6217
+      },
+      {
+        "path": "quaternius/Exports/glTF/Bed_Twin2.bin",
+        "sha256": "57131a881f542545644676b26fc547cc35488f903183898c3a0a6fbae81bfea2",
+        "bytes": 76624
+      },
+      {
+        "path": "quaternius/Exports/glTF/Bed_Twin2.gltf",
+        "sha256": "339511be568ed72a8a1f3af9890675d99ad7bc3a60396cd883c22bba0fd7e4c4",
+        "bytes": 6217
+      },
+      {
+        "path": "quaternius/Exports/glTF/Bench.bin",
+        "sha256": "08d6976112645dc1f6a554019e2fc965d0bceba7a01c4f6013615ac46520b418",
+        "bytes": 19304
+      },
+      {
+        "path": "quaternius/Exports/glTF/Bench.gltf",
+        "sha256": "0184d3b128a8a3bcc828d7bc6aa867038e2a85a339130ed015f2727e739f9ab7",
+        "bytes": 4298
+      },
+      {
+        "path": "quaternius/Exports/glTF/Book_5.bin",
+        "sha256": "32060c5c94d297a4409a02f93c73fc86b221311bfa0bee627626e050023836f5",
+        "bytes": 5856
+      },
+      {
+        "path": "quaternius/Exports/glTF/Book_5.gltf",
+        "sha256": "10b082a9984c355bb68e288362bb5e39c62d037ae5a24e3fcec2a5ded4a3b1ec",
+        "bytes": 2403
+      },
+      {
+        "path": "quaternius/Exports/glTF/Book_7.bin",
+        "sha256": "0716b65db72ba78e157b0cac3c2d05283e95a9255dec1863539be70d642ec56c",
+        "bytes": 32664
+      },
+      {
+        "path": "quaternius/Exports/glTF/Book_7.gltf",
+        "sha256": "7f12a3d7a0d8d108dbdd467695129cb9ff1da11ddcfa78122e10e5f1db849e24",
+        "bytes": 4290
+      },
+      {
+        "path": "quaternius/Exports/glTF/Book_Simplified_Single.bin",
+        "sha256": "22aeb14e052eb5ffffa30a2565fa7e075dab1742f3d12c8ebf3646218d62cad1",
+        "bytes": 3192
+      },
+      {
+        "path": "quaternius/Exports/glTF/Book_Simplified_Single.gltf",
+        "sha256": "70c50a7dd573f49e17a2767c9eabe249f82d72098d5080c553538eecbba814bf",
+        "bytes": 2428
+      },
+      {
+        "path": "quaternius/Exports/glTF/Book_Stack_1.bin",
+        "sha256": "cdbe0b7f468ac1713989e0c7f67c93dd83a899825d518b4911d56f4613c85fb7",
+        "bytes": 12768
+      },
+      {
+        "path": "quaternius/Exports/glTF/Book_Stack_1.gltf",
+        "sha256": "aac90f5a6859acb1edf12b248e12a914f652e8a0a0af0fa6cee6dda3225a7fd2",
+        "bytes": 2418
+      },
+      {
+        "path": "quaternius/Exports/glTF/Book_Stack_2.bin",
+        "sha256": "3f3e48b029bb932c2169fd40d603ddb587e475ea9724275c9bed3f76396c5860",
+        "bytes": 23956
+      },
+      {
+        "path": "quaternius/Exports/glTF/Book_Stack_2.gltf",
+        "sha256": "5c0fdceea92115521460a568cd3e0841adafb8da004110cb6be8c65204ebbe8c",
+        "bytes": 4309
+      },
+      {
+        "path": "quaternius/Exports/glTF/Bookcase_2.bin",
+        "sha256": "2d61ba836ecd93e3c0ac9d590b183c600bcb9e1bd32a84960e83b5f77520f2bb",
+        "bytes": 92968
+      },
+      {
+        "path": "quaternius/Exports/glTF/Bookcase_2.gltf",
+        "sha256": "58bb7dcdc7f0a9e49b4edb6b9d6d142999133104965bd5ab1d0237dd3b5c1b55",
+        "bytes": 4329
+      },
+      {
+        "path": "quaternius/Exports/glTF/BookGroup_Medium_1.bin",
+        "sha256": "cd8cefe75031456ef5418de5476faab904325a7c950b58b95294b839e31d9553",
+        "bytes": 25536
+      },
+      {
+        "path": "quaternius/Exports/glTF/BookGroup_Medium_1.gltf",
+        "sha256": "4c6977e7e3f3380001a2b855255f35fe8bd11a740cf72316a440d1dd861c73cd",
+        "bytes": 2429
+      },
+      {
+        "path": "quaternius/Exports/glTF/BookGroup_Medium_2.bin",
+        "sha256": "ebb1753b10d01163eb0eba391943352a9f2b036783c3984487d4847779ceaf62",
+        "bytes": 28728
+      },
+      {
+        "path": "quaternius/Exports/glTF/BookGroup_Medium_2.gltf",
+        "sha256": "d59e653417907c5ac964597a4cd9f077da02f8ab2ddb64fa6f810e30133a8a2b",
+        "bytes": 2431
+      },
+      {
+        "path": "quaternius/Exports/glTF/BookGroup_Medium_3.bin",
+        "sha256": "0a1b75cf436490ed03e9ba99bd59b15d443344e9706e4d19f07540a6d1580119",
+        "bytes": 28728
+      },
+      {
+        "path": "quaternius/Exports/glTF/BookGroup_Medium_3.gltf",
+        "sha256": "9ed38c0df898d9e84e903cf02855a1dd06388b53ffcd7de96c91293aab25b38a",
+        "bytes": 2432
+      },
+      {
+        "path": "quaternius/Exports/glTF/BookGroup_Small_1.bin",
+        "sha256": "0c76ff8480fadbee859acff78fdec4e0c693f2a5055e0b6dd6cdbb4ccfd20cb3",
+        "bytes": 6384
+      },
+      {
+        "path": "quaternius/Exports/glTF/BookGroup_Small_1.gltf",
+        "sha256": "81228320dc30d9cb447627fae0405f77cabfac011267fb3cc62e106948536a37",
+        "bytes": 2423
+      },
+      {
+        "path": "quaternius/Exports/glTF/BookGroup_Small_2.bin",
+        "sha256": "6bf51789b559ff21f78fff8c4e92570d1d2306cbc3cafc48620a34c6b75861b6",
+        "bytes": 6384
+      },
+      {
+        "path": "quaternius/Exports/glTF/BookGroup_Small_2.gltf",
+        "sha256": "1dec2d5166936357d4358ab083a0bda86037b5a688fe0844a8a8a0668ae80cec",
+        "bytes": 2426
+      },
+      {
+        "path": "quaternius/Exports/glTF/BookGroup_Small_3.bin",
+        "sha256": "007557c58c3bdde0beb467e2ea4dffd9c0a8c699c51b77e81c9b7f70c4e206a8",
+        "bytes": 7980
+      },
+      {
+        "path": "quaternius/Exports/glTF/BookGroup_Small_3.gltf",
+        "sha256": "07e7c65cd831fde0b3d7704e6d04d4048b329215ec38fb31669d193e3a2763d3",
+        "bytes": 2424
+      },
+      {
+        "path": "quaternius/Exports/glTF/BookStand.bin",
+        "sha256": "153aa58a6296d61d39832600c80ceeb2f00011d90c7da477c3f326f4744140dd",
+        "bytes": 62020
+      },
+      {
+        "path": "quaternius/Exports/glTF/BookStand.gltf",
+        "sha256": "c7b717e6388bc151cb026256aee8a0b611bf759d294f5070a1c11157483eb07e",
+        "bytes": 2223
+      },
+      {
+        "path": "quaternius/Exports/glTF/Bottle_1.bin",
+        "sha256": "9f4147c9184b86c92f7cc290e525815ad5728141b59bb2a02dc4f0547273c68d",
+        "bytes": 13952
+      },
+      {
+        "path": "quaternius/Exports/glTF/Bottle_1.gltf",
+        "sha256": "d23c52823303be9d7bbe068b069b8c470294f5c5a40986948ff35bc0d0d48d60",
+        "bytes": 2413
+      },
+      {
+        "path": "quaternius/Exports/glTF/Bucket_Metal.bin",
+        "sha256": "21ed9b3699a07707180d980c9b9e16a8f19924268e199e7ba17b8b5c06c4f35f",
+        "bytes": 18824
+      },
+      {
+        "path": "quaternius/Exports/glTF/Bucket_Metal.gltf",
+        "sha256": "0601c71ce5291f7cc23e33278d3cb70817b3a4410b44588298dbef606c8efb48",
+        "bytes": 2206
+      },
+      {
+        "path": "quaternius/Exports/glTF/Bucket_Wooden_1.bin",
+        "sha256": "be608473cd78557d466be9b9e2f6ff15f1edf1e4f5fcdd27be75d494f52578f2",
+        "bytes": 32544
+      },
+      {
+        "path": "quaternius/Exports/glTF/Bucket_Wooden_1.gltf",
+        "sha256": "b4f93568d96d38dca162098e75fb3eb4ffaf5ff6e41f8f788476abd3be4984cf",
+        "bytes": 3911
+      },
+      {
+        "path": "quaternius/Exports/glTF/Cabinet.bin",
+        "sha256": "dcfed47cc915564061483171ea8b8a4b4563177a4692e37ea91308b8b6f41450",
+        "bytes": 114768
+      },
+      {
+        "path": "quaternius/Exports/glTF/Cabinet.gltf",
+        "sha256": "43df513943cde0590ca1925c3920ace9d08e4694d51282a1f5ab70b42e79fe44",
+        "bytes": 4324
+      },
+      {
+        "path": "quaternius/Exports/glTF/Cage_Small.bin",
+        "sha256": "bdee89659cd0bf76c480c822ad2d5c05bb7d6f943fd0059f4f59cd8d68009523",
+        "bytes": 171848
+      },
+      {
+        "path": "quaternius/Exports/glTF/Cage_Small.gltf",
+        "sha256": "17c14a9f1f6d1d332f8c3b71f0a31e829a879fab04476e75c8abfb6b74d41506",
+        "bytes": 2207
+      },
+      {
+        "path": "quaternius/Exports/glTF/Candle_1.bin",
+        "sha256": "18ce193bb732642969a897b709dd2aa5b59c7fdb87ddc330152794e48b9d981b",
+        "bytes": 6200
+      },
+      {
+        "path": "quaternius/Exports/glTF/Candle_1.gltf",
+        "sha256": "9539cc17bdc7b774ae7adbfe9c148e89f81e3eba09079d7310f0b789113b6cad",
+        "bytes": 2191
+      },
+      {
+        "path": "quaternius/Exports/glTF/Candle_2.bin",
+        "sha256": "0d7edbc4ddb7bff3939fb6285b3a2311e4839c823196b44a83786d023a755fe5",
+        "bytes": 6124
+      },
+      {
+        "path": "quaternius/Exports/glTF/Candle_2.gltf",
+        "sha256": "4856167e1e1c6c039d9f6d162e7cf6e98586640a04d57ccb759c631d91deab39",
+        "bytes": 2191
+      },
+      {
+        "path": "quaternius/Exports/glTF/CandleStick_Stand.bin",
+        "sha256": "8d3300e0ab2563b72f4f7ae7f1c7032f9f7c8a0f13f37177b43689a61e5568b2",
+        "bytes": 226228
+      },
+      {
+        "path": "quaternius/Exports/glTF/CandleStick_Stand.gltf",
+        "sha256": "4255072b144deb6abadaa604cdb52d09a64dfee2df690cd0f1c71c829454380b",
+        "bytes": 4347
+      },
+      {
+        "path": "quaternius/Exports/glTF/CandleStick_Triple.bin",
+        "sha256": "35bf25557f28b7c6b4824d6f876698485b3131f09d619c994787573166a4309c",
+        "bytes": 74368
+      },
+      {
+        "path": "quaternius/Exports/glTF/CandleStick_Triple.gltf",
+        "sha256": "a65eea34c6af2372ce4490341481d48a17a2611e9815229bac060b6d5e13fa08",
+        "bytes": 3900
+      },
+      {
+        "path": "quaternius/Exports/glTF/CandleStick.bin",
+        "sha256": "45ad392961f6389aa7616f5efa03b5f7edf7285866743b1c704670d01f7284cd",
+        "bytes": 21436
+      },
+      {
+        "path": "quaternius/Exports/glTF/CandleStick.gltf",
+        "sha256": "f57eaff5b2b61bda1c3b17460295b9fc708e9700e5070aee6e3afd0c297131a3",
+        "bytes": 2199
+      },
+      {
+        "path": "quaternius/Exports/glTF/Carrot.bin",
+        "sha256": "a551591fc5f300e4fc9df6b872492860ade722d1c585ae899f9441b77ec865ab",
+        "bytes": 22244
+      },
+      {
+        "path": "quaternius/Exports/glTF/Carrot.gltf",
+        "sha256": "7554921323c16180f3fdc35891042a031e1a671eb34e005213370f8330d6b20b",
+        "bytes": 2411
+      },
+      {
+        "path": "quaternius/Exports/glTF/Cauldron.bin",
+        "sha256": "63fd1b9d8d44a12fcb421f74a4f3d806f023b4aa1be9391a7c313a996a8f7f4b",
+        "bytes": 62712
+      },
+      {
+        "path": "quaternius/Exports/glTF/Cauldron.gltf",
+        "sha256": "3937dcadb9b920ae88d7674009b73e2da6c6d9f73d0f4fe6e79408a04dbffec1",
+        "bytes": 2195
+      },
+      {
+        "path": "quaternius/Exports/glTF/Chain_Coil.bin",
+        "sha256": "ee403f5a0068cbadcf002231985668993c8231007ef59e06087e4c2cb902ace9",
+        "bytes": 193664
+      },
+      {
+        "path": "quaternius/Exports/glTF/Chain_Coil.gltf",
+        "sha256": "a1ddf045b66e6433459a68b871ea9a31162c55fa1d5fc5f6ea1685bac3225c97",
+        "bytes": 2424
+      },
+      {
+        "path": "quaternius/Exports/glTF/Chair_1.bin",
+        "sha256": "dc16da2a14704460a4050ef08782bb46b56b911eb161965b3f2676a1b24c201d",
+        "bytes": 28096
+      },
+      {
+        "path": "quaternius/Exports/glTF/Chair_1.gltf",
+        "sha256": "9c3e659f25c850990cbf8a4d850b6222110248cd5c1419a2c0f548a312dd8457",
+        "bytes": 4312
+      },
+      {
+        "path": "quaternius/Exports/glTF/Chalice.bin",
+        "sha256": "5e71580a7eb8e26254edcdcb95ca5d5f4412354e7fb2124a0d1e9331bcf7e7f9",
+        "bytes": 15644
+      },
+      {
+        "path": "quaternius/Exports/glTF/Chalice.gltf",
+        "sha256": "435d3f90c2be5f1d76cfd8a5d2f478ee9d384370f0a583e7c2d1e14fa870d271",
+        "bytes": 2197
+      },
+      {
+        "path": "quaternius/Exports/glTF/Chandelier.bin",
+        "sha256": "6ee3fc5a8dcd4b5ff5e7fa9a5d057f1744c8f0721d9b878e245fa9136f8c4bbd",
+        "bytes": 266680
+      },
+      {
+        "path": "quaternius/Exports/glTF/Chandelier.gltf",
+        "sha256": "2fa74c8bb413a86430aa0be69ef2d82cc6cdc6d9505567410dc0abf34b37e272",
+        "bytes": 6259
+      },
+      {
+        "path": "quaternius/Exports/glTF/Chest_Wood.bin",
+        "sha256": "e4aea6f99587b8ad9ac08fac82013c55111a748c2e3febedbc4de3e301253901",
+        "bytes": 184356
+      },
+      {
+        "path": "quaternius/Exports/glTF/Chest_Wood.gltf",
+        "sha256": "b2022f69b76526fcbbc7f7a8855848beeefa6e8a6f55337d923bce38ed03b2b6",
+        "bytes": 21402
+      },
+      {
+        "path": "quaternius/Exports/glTF/Coin_Pile_2.bin",
+        "sha256": "24f55251a466526ded6ec0d3445bbfba066f75adb90dd9a9a01fbacb5a96aff3",
+        "bytes": 52612
+      },
+      {
+        "path": "quaternius/Exports/glTF/Coin_Pile_2.gltf",
+        "sha256": "13e3fcf52255db66e22b09ea8279fe88162ab0b06e5797cb0daf89f0856089e4",
+        "bytes": 2429
+      },
+      {
+        "path": "quaternius/Exports/glTF/Coin_Pile.bin",
+        "sha256": "e18ad9b7cfe2304f2476662b43079f2f2d273fc845aa5ca0b41a6f84bd0f3a20",
+        "bytes": 47520
+      },
+      {
+        "path": "quaternius/Exports/glTF/Coin_Pile.gltf",
+        "sha256": "aec9db3acc8a8011e0287e9a4b29b6d7ff25234f12387ba8899a6622d52487bd",
+        "bytes": 2424
+      },
+      {
+        "path": "quaternius/Exports/glTF/Coin.bin",
+        "sha256": "090091faeeb77273e3ca18daaddfd7f8d12ed690508c8ec0e1ce6684ad4ba54a",
+        "bytes": 14464
+      },
+      {
+        "path": "quaternius/Exports/glTF/Coin.gltf",
+        "sha256": "79c3f75e5d8d56c8f7bcc2d095ebdbb6d4f649701880414ab463fc0f98ef7124",
+        "bytes": 2408
+      },
+      {
+        "path": "quaternius/Exports/glTF/Crate_Metal.bin",
+        "sha256": "cb52d28715b6a9089447ca9ed828a5ab2d5e8f1453502d52df6698269e083f92",
+        "bytes": 126828
+      },
+      {
+        "path": "quaternius/Exports/glTF/Crate_Metal.gltf",
+        "sha256": "55fd4a7f499cededac939eade7a842353ed4764a49cd8e586d8bf733668d4456",
+        "bytes": 4335
+      },
+      {
+        "path": "quaternius/Exports/glTF/Crate_Wooden.bin",
+        "sha256": "7ae016386790e5998fbdf1656a5dc53a3f1374c3525b22798d84397a36ae937b",
+        "bytes": 66496
+      },
+      {
+        "path": "quaternius/Exports/glTF/Crate_Wooden.gltf",
+        "sha256": "fb06d4b7b9bbfbb9dc51fa56ecff3fe7ba8e9142d643cabedd17a55d7ea46ee5",
+        "bytes": 4412
+      },
+      {
+        "path": "quaternius/Exports/glTF/Dummy.bin",
+        "sha256": "a8c0897c085b0cee9ef3f7f2f88bc37fd29d9cde1cc281f45d936f620adb98c1",
+        "bytes": 80988
+      },
+      {
+        "path": "quaternius/Exports/glTF/Dummy.gltf",
+        "sha256": "e7acf49819a78d0ff8ebf8982ee6e9fa1f56e61adb98355743ead4d180d4ba30",
+        "bytes": 5570
+      },
+      {
+        "path": "quaternius/Exports/glTF/FarmCrate_Apple.bin",
+        "sha256": "9f764bf2f2e960ec32ff31198f6b54787391e71bec166da59372f596299d24e6",
+        "bytes": 134488
+      },
+      {
+        "path": "quaternius/Exports/glTF/FarmCrate_Apple.gltf",
+        "sha256": "56de7097ddbf22801537f38b77335b2d85a4e2d24bdcbe9ceb1b3bc666a24997",
+        "bytes": 6263
+      },
+      {
+        "path": "quaternius/Exports/glTF/FarmCrate_Carrot.bin",
+        "sha256": "18858970c67b1e6fb2d174a4b4a946787cdde12b42d88cce9d846fc4ede50e19",
+        "bytes": 204292
+      },
+      {
+        "path": "quaternius/Exports/glTF/FarmCrate_Carrot.gltf",
+        "sha256": "6aaa750a27ee652c8090fe7415f1bdd1d66b17d6cfecafc0767559afaef3248c",
+        "bytes": 6273
+      },
+      {
+        "path": "quaternius/Exports/glTF/FarmCrate_Empty.bin",
+        "sha256": "9c380c8ff9314aa5ca94deaf816527be4aae60802c8bba42d30978f1685b520d",
+        "bytes": 54704
+      },
+      {
+        "path": "quaternius/Exports/glTF/FarmCrate_Empty.gltf",
+        "sha256": "7dccd0a93f29a31ffc05b8b5d39704b2d6c65eb477c895325ecf19c6dc17c644",
+        "bytes": 3915
+      },
+      {
+        "path": "quaternius/Exports/glTF/Key_Gold.bin",
+        "sha256": "d610e8bafb8a2e4a7836f649deec0b4f044bc29391b9d8606b2c4c20681885e4",
+        "bytes": 58636
+      },
+      {
+        "path": "quaternius/Exports/glTF/Key_Gold.gltf",
+        "sha256": "12decc702c2933e5d7519ac82e397a076867278f61bd44a4196a7abdca60755c",
+        "bytes": 2424
+      },
+      {
+        "path": "quaternius/Exports/glTF/Key_Metal.bin",
+        "sha256": "18ba4046bfb0c97a99b36be0ac28ce5fd104b66c96d20c796532c104b4261c99",
+        "bytes": 19340
+      },
+      {
+        "path": "quaternius/Exports/glTF/Key_Metal.gltf",
+        "sha256": "e77faacb776d80829be581e6238724dc57b210d2185f1198769b6858dfbd7767",
+        "bytes": 2197
+      },
+      {
+        "path": "quaternius/Exports/glTF/Lantern_Wall.bin",
+        "sha256": "fe9f3816130587308b73bb8b4b28031b71fe9405a111f115463022709fa04b2e",
+        "bytes": 120036
+      },
+      {
+        "path": "quaternius/Exports/glTF/Lantern_Wall.gltf",
+        "sha256": "9e7623e1d3a16f9212ff7cb41c939746435187f0071bd94849ee7bc6a59785a2",
+        "bytes": 2203
+      },
+      {
+        "path": "quaternius/Exports/glTF/Mug.bin",
+        "sha256": "bbf61011611387a248b9107b13f40a9cddb31e605f677b2102b236147bf31691",
+        "bytes": 12488
+      },
+      {
+        "path": "quaternius/Exports/glTF/Mug.gltf",
+        "sha256": "73c4cb7e575685d0220a5d1dd40f1a68de9e64bfd34a54bcba6085b62a119a9d",
+        "bytes": 3881
+      },
+      {
+        "path": "quaternius/Exports/glTF/Nightstand_Shelf.bin",
+        "sha256": "8b3be7b1a3ae6e30ef2c263df48677304c4f4d224f866fbb1fb919b4e496e4a9",
+        "bytes": 21412
+      },
+      {
+        "path": "quaternius/Exports/glTF/Nightstand_Shelf.gltf",
+        "sha256": "31d1a892ebfc4221c945c703cb5ad4f9d29968003fc6c5526a84a09a5b58e092",
+        "bytes": 2447
+      },
+      {
+        "path": "quaternius/Exports/glTF/Peg_Rack.bin",
+        "sha256": "47cc2c0d449f96c7db4ea5b1f32df7d8a0ea2a1cb6848fc80bd647236d070ae0",
+        "bytes": 26672
+      },
+      {
+        "path": "quaternius/Exports/glTF/Peg_Rack.gltf",
+        "sha256": "7fa0747b6225a259c5cd0b38d1c3d73cc7561bbfb02d9f07b130505714662709",
+        "bytes": 3879
+      },
+      {
+        "path": "quaternius/Exports/glTF/Pickaxe_Bronze.bin",
+        "sha256": "df51d6075a9d1a8c44ed1b1596796c1b301546c8c2607ddbc88c82d691121bef",
+        "bytes": 30736
+      },
+      {
+        "path": "quaternius/Exports/glTF/Pickaxe_Bronze.gltf",
+        "sha256": "2a934389f82610fc7702e45dcac859b75181633befad409de238932f5f8f2c7f",
+        "bytes": 2425
+      },
+      {
+        "path": "quaternius/Exports/glTF/Pot_1_Lid.bin",
+        "sha256": "5c125852b29cf3afa17ec2f0a28585651cb9fbc6b1dd84339288a3a0d504ec8a",
+        "bytes": 46120
+      },
+      {
+        "path": "quaternius/Exports/glTF/Pot_1_Lid.gltf",
+        "sha256": "b8455f37f1eee179893d08a396aff3b6e715878d1a2bedcdaa4ea6b596d9b5b2",
+        "bytes": 2196
+      },
+      {
+        "path": "quaternius/Exports/glTF/Pot_1.bin",
+        "sha256": "eebe6918dbdc743501bdcb2d9f576a52028eb3451bdcf95d92674b97918cafc9",
+        "bytes": 37160
+      },
+      {
+        "path": "quaternius/Exports/glTF/Pot_1.gltf",
+        "sha256": "d925a5e5541d83d2d1885b9d3928fbf553cf4a37ff902cf22d33280805efcf6f",
+        "bytes": 2185
+      },
+      {
+        "path": "quaternius/Exports/glTF/Potion_1.bin",
+        "sha256": "6838b7e7a740a91f3bbdce0c79482638f095a79f90e2e1a59158c9750171665c",
+        "bytes": 18200
+      },
+      {
+        "path": "quaternius/Exports/glTF/Potion_1.gltf",
+        "sha256": "fc53caca616741a21790b54a742a4fe3b4b3dfc88f4d50716fa8f65eece5c2ef",
+        "bytes": 2418
+      },
+      {
+        "path": "quaternius/Exports/glTF/Potion_2.bin",
+        "sha256": "f1eb3a0b72839076d0836f6fd0ae28c79a2b7759ba5aec09260aae1dccfc5d33",
+        "bytes": 19672
+      },
+      {
+        "path": "quaternius/Exports/glTF/Potion_2.gltf",
+        "sha256": "42d889170fdad73d6f3f38070ecb0ae1b928de96ce71d78856dcebdbec7d3a15",
+        "bytes": 2418
+      },
+      {
+        "path": "quaternius/Exports/glTF/Potion_4.bin",
+        "sha256": "e656d1279c6e010cf6330f1b690f8de083c90255d945aa69cfd7506881ab3050",
+        "bytes": 22536
+      },
+      {
+        "path": "quaternius/Exports/glTF/Potion_4.gltf",
+        "sha256": "1040842ccc81da5f3204ed14bbae38e84e73c63abc899ab0e43a29e969bfdd2d",
+        "bytes": 2418
+      },
+      {
+        "path": "quaternius/Exports/glTF/Pouch_Large.bin",
+        "sha256": "e83904bdef5ea9b4038f0005a76d5e47367900b4af2bdd44e9869af6e042967b",
+        "bytes": 31580
+      },
+      {
+        "path": "quaternius/Exports/glTF/Pouch_Large.gltf",
+        "sha256": "9af4639dfbf39f07142e3491e62e80161164ec0729dc92e9cb0d00abc50d3358",
+        "bytes": 4306
+      },
+      {
+        "path": "quaternius/Exports/glTF/Rope_1.bin",
+        "sha256": "950d7977e2dcd8fa40c6103f7cd6d4bc9eb93dbc2da37bd3a3b092868efd61c4",
+        "bytes": 41624
+      },
+      {
+        "path": "quaternius/Exports/glTF/Rope_1.gltf",
+        "sha256": "b4722ec5baf1313b654d2500ba36e2a2b512bbd9b037f304b94b6665d2286313",
+        "bytes": 2223
+      },
+      {
+        "path": "quaternius/Exports/glTF/Rope_2.bin",
+        "sha256": "412afce0c7a43f3b8d87ade3298ef4d76b2124937ec8bc1809fe471a6b7b56cb",
+        "bytes": 34904
+      },
+      {
+        "path": "quaternius/Exports/glTF/Rope_2.gltf",
+        "sha256": "2df33e9eef473315c9c65abf63152c2ee264c53391e244e1a5cebe77cb0826bf",
+        "bytes": 2223
+      },
+      {
+        "path": "quaternius/Exports/glTF/Rope_3.bin",
+        "sha256": "8c647df0b8dce95ed0a3310ff5f42c7c38dc9b20298f74bed9833abf077dd7ec",
+        "bytes": 41624
+      },
+      {
+        "path": "quaternius/Exports/glTF/Rope_3.gltf",
+        "sha256": "b87badbc1eeff6905b5f89d7d4096e57eb80378239e74f4b4b925701dca6a874",
+        "bytes": 2225
+      },
+      {
+        "path": "quaternius/Exports/glTF/Scroll_1.bin",
+        "sha256": "884fe80cb3075c274acbac22d44e1cb6dba63ac3e62d7df167ccbf52f8f35308",
+        "bytes": 20112
+      },
+      {
+        "path": "quaternius/Exports/glTF/Scroll_1.gltf",
+        "sha256": "f8b03860718121bfe6975b31996a0bb36e978e208a7df5a52fe4b0f3efbb14aa",
+        "bytes": 3954
+      },
+      {
+        "path": "quaternius/Exports/glTF/Scroll_2.bin",
+        "sha256": "5e1dfa4c4eaa03b3841f6f2cc1948e4a54b17b3a1e165890981e4186b4e30427",
+        "bytes": 28392
+      },
+      {
+        "path": "quaternius/Exports/glTF/Scroll_2.gltf",
+        "sha256": "4dfb8f44b30afdbe1f65f922484484c6a41ecc3ae2a9ccc6a4f5f6a7314bba1d",
+        "bytes": 3968
+      },
+      {
+        "path": "quaternius/Exports/glTF/Shelf_Arch.bin",
+        "sha256": "4e1d171e1a4c1ad593e0aea94f89ba29cff757a4f385043a1ef01a0f7633004c",
+        "bytes": 64836
+      },
+      {
+        "path": "quaternius/Exports/glTF/Shelf_Arch.gltf",
+        "sha256": "f8fb72e169162f99e47abbf530307f4a70e967b8b5eaf3844295cc9a212a574f",
+        "bytes": 4332
+      },
+      {
+        "path": "quaternius/Exports/glTF/Shelf_Simple.bin",
+        "sha256": "0064b2a3fc0f3252c55587ec582a49e085b2aa05dca2aa33e9e6a313f88139c6",
+        "bytes": 22016
+      },
+      {
+        "path": "quaternius/Exports/glTF/Shelf_Simple.gltf",
+        "sha256": "aaddd9bf393cf4ed685a810f1d03cfe2a27dba98c060f889e09a968f91d91106",
+        "bytes": 2224
+      },
+      {
+        "path": "quaternius/Exports/glTF/Shelf_Small_Bottles.bin",
+        "sha256": "af17c1712a12f1ca7b1fa15462605848a379cec403ebf76eedc42fdf43d63221",
+        "bytes": 229484
+      },
+      {
+        "path": "quaternius/Exports/glTF/Shelf_Small_Bottles.gltf",
+        "sha256": "acc121bf8385e8cf4a928a7ce0ac73dc2639ef89fc5f71e3b52a83c6eec51f93",
+        "bytes": 6266
+      },
+      {
+        "path": "quaternius/Exports/glTF/Shield_Wooden.bin",
+        "sha256": "98b663ab52b6e72bb796363feef172eebbf6316594d1737d8546078664680452",
+        "bytes": 64184
+      },
+      {
+        "path": "quaternius/Exports/glTF/Shield_Wooden.gltf",
+        "sha256": "57d46c4a5f34cad7b8a391805d6d4def373778a7b84ef3e4184f83f791082209",
+        "bytes": 6243
+      },
+      {
+        "path": "quaternius/Exports/glTF/SmallBottle.bin",
+        "sha256": "b94056fc489201a821cb474a54e1ee455e990c1ac52a5617f6d26520d2ce1c09",
+        "bytes": 5700
+      },
+      {
+        "path": "quaternius/Exports/glTF/SmallBottle.gltf",
+        "sha256": "70447d0fe55cbbf87ba61caafca816cf26133a57326a462dc575c1d45b72f10c",
+        "bytes": 2392
+      },
+      {
+        "path": "quaternius/Exports/glTF/SmallBottles_1.bin",
+        "sha256": "723e7877365cec968535bc92d5c1c905ae52d8c09b60e7799ba097c2c1173010",
+        "bytes": 20556
+      },
+      {
+        "path": "quaternius/Exports/glTF/SmallBottles_1.gltf",
+        "sha256": "dd4b7672bd0faccd8ca6da0d7a70b7689127ece17c255e49a448dafe3fc6d4fd",
+        "bytes": 2423
+      },
+      {
+        "path": "quaternius/Exports/glTF/Stall_Cart_Empty.bin",
+        "sha256": "d70b989c539d9883e9e83f0428390857bf846bb109715a60cb5d526753c33deb",
+        "bytes": 237264
+      },
+      {
+        "path": "quaternius/Exports/glTF/Stall_Cart_Empty.gltf",
+        "sha256": "aaeda0ad9ffe8c317909d7450c994b28b1e608fdf04690fa07726b810fb64c88",
+        "bytes": 6857
+      },
+      {
+        "path": "quaternius/Exports/glTF/Stall_Empty.bin",
+        "sha256": "9ddececa6f5e0922ee32b064c400abea4dd068be2bfc78891017fca334158826",
+        "bytes": 88176
+      },
+      {
+        "path": "quaternius/Exports/glTF/Stall_Empty.gltf",
+        "sha256": "b0e6b4f6cb6b9dc0b35d92eceb89ebc27addac167fe56fe38cfc77e3afd62af9",
+        "bytes": 6804
+      },
+      {
+        "path": "quaternius/Exports/glTF/Stool.bin",
+        "sha256": "6ca3a6bc9b415409d842a338a74c174d0efe4d4972bf8a924fda87c8bda40191",
+        "bytes": 11472
+      },
+      {
+        "path": "quaternius/Exports/glTF/Stool.gltf",
+        "sha256": "55a111d97463adb71a59eddb8bbee777c5743e66a58403b06e869cc35e4da670",
+        "bytes": 2423
+      },
+      {
+        "path": "quaternius/Exports/glTF/Sword_Bronze.bin",
+        "sha256": "01a7a7136344687330f4f2c6109b13a229092e105a4245114f2b68733381645c",
+        "bytes": 69920
+      },
+      {
+        "path": "quaternius/Exports/glTF/Sword_Bronze.gltf",
+        "sha256": "fcfbcee736bc6b0408e49922a2eefc11d9131f60777e6053e92d262c1ea37a98",
+        "bytes": 2436
+      },
+      {
+        "path": "quaternius/Exports/glTF/Table_Fork.bin",
+        "sha256": "ea1fab5b06e061cca6e5d50c5900d701f29b165cd3a66cca1a9455b82261c72f",
+        "bytes": 4936
+      },
+      {
+        "path": "quaternius/Exports/glTF/Table_Fork.gltf",
+        "sha256": "f64b0048d2f2facfc96508ee94296ddd4b27c1403d9f89076785b3804970fd02",
+        "bytes": 2189
+      },
+      {
+        "path": "quaternius/Exports/glTF/Table_Knife.bin",
+        "sha256": "88c0560af9520d919c3d673487dd888e8319d0e6f4a49980b97a37a077df18a8",
+        "bytes": 2180
+      },
+      {
+        "path": "quaternius/Exports/glTF/Table_Knife.gltf",
+        "sha256": "df21830a582ba5c1d39573ef6c3014280a315f312ee112f2652f473196e191f1",
+        "bytes": 2186
+      },
+      {
+        "path": "quaternius/Exports/glTF/Table_Large.bin",
+        "sha256": "af7bfe0cbf0532e01543e4fd5d6d710df70106a7d938c4d74a50c8911ee9bf35",
+        "bytes": 56396
+      },
+      {
+        "path": "quaternius/Exports/glTF/Table_Large.gltf",
+        "sha256": "ffd4e5b803f38f02922c2b0303ae3b5a602f7c239e717b725c0553019be8fcf2",
+        "bytes": 4316
+      },
+      {
+        "path": "quaternius/Exports/glTF/Table_Plate.bin",
+        "sha256": "23c73317b3936f395002c7be5089c4e70ee1cbdcf9f1abdb49af314faf7fe7dc",
+        "bytes": 6792
+      },
+      {
+        "path": "quaternius/Exports/glTF/Table_Plate.gltf",
+        "sha256": "306bf85a1b02df6dda78a13b47ad2c1cf0646aac47818ec937e0be0c5f2997a3",
+        "bytes": 2199
+      },
+      {
+        "path": "quaternius/Exports/glTF/Table_Spoon.bin",
+        "sha256": "e48524e0b974fb0c251c804ce82fb00ec58c6f372041e10ff1f4254af95902c0",
+        "bytes": 4856
+      },
+      {
+        "path": "quaternius/Exports/glTF/Table_Spoon.gltf",
+        "sha256": "f6bde9a1928e169af7a3b9e773f5c815577da837904e3f16d6edc5e4394e55f5",
+        "bytes": 2191
+      },
+      {
+        "path": "quaternius/Exports/glTF/Torch_Metal.bin",
+        "sha256": "522de8798b4c2e0db9ba640d69a5c6e506b558f22b98e95c0cfc95ba2d7b79e7",
+        "bytes": 39100
+      },
+      {
+        "path": "quaternius/Exports/glTF/Torch_Metal.gltf",
+        "sha256": "f28978f4f351030766996ccb5585f258882b6892f3944bbf06609a761ffb01a5",
+        "bytes": 2203
+      },
+      {
+        "path": "quaternius/Exports/glTF/Vase_2.bin",
+        "sha256": "1dce19b5d65d83c271b4ca1340446a482aefbd4a03dac61bb2a94ca3c71f99ea",
+        "bytes": 21188
+      },
+      {
+        "path": "quaternius/Exports/glTF/Vase_2.gltf",
+        "sha256": "92218a88b02bac2bf4b3855dff452f209068cbfd58724585b7bf20556ac17ab5",
+        "bytes": 2407
+      },
+      {
+        "path": "quaternius/Exports/glTF/Vase_4.bin",
+        "sha256": "3348683b971156e44965efbcec6008970adc73d9efe97a5131965e216cac892f",
+        "bytes": 22028
+      },
+      {
+        "path": "quaternius/Exports/glTF/Vase_4.gltf",
+        "sha256": "bfc60358ab3bab21ff6fed8141ea9bc910877f752ef2bb5a22f6215086aa17e3",
+        "bytes": 2412
+      },
+      {
+        "path": "quaternius/Exports/glTF/Vase_Rubble_Medium.bin",
+        "sha256": "0667be3cbda69ec6659d680344994ea16bc7d912843627a8f888df9f31389313",
+        "bytes": 85960
+      },
+      {
+        "path": "quaternius/Exports/glTF/Vase_Rubble_Medium.gltf",
+        "sha256": "e6177cb94c8eca55e3eead68d485fc66081b17fe4107fd027357ca4e1945f60e",
+        "bytes": 2453
+      },
+      {
+        "path": "quaternius/Exports/glTF/WeaponStand.bin",
+        "sha256": "ac76bb8f6a511179842ecf0610ceabd96486e9cc5ca8dfa7639118f9796e4441",
+        "bytes": 76312
+      },
+      {
+        "path": "quaternius/Exports/glTF/WeaponStand.gltf",
+        "sha256": "039675f0ea79a8615a27e544eb9ec7799a2a1a94e070858dc400cb50be9a76f9",
+        "bytes": 3903
+      },
+      {
+        "path": "quaternius/Exports/glTF/Whetstone.bin",
+        "sha256": "c3aae752f1a92cc58d8ca0ca033c8d5d9f90b00238c0e369f835198c0f9cbb6a",
+        "bytes": 59280
+      },
+      {
+        "path": "quaternius/Exports/glTF/Whetstone.gltf",
+        "sha256": "ec0f5173ac53dba3bf112b384b7c88efb6e8814f22b4092cafd1c38345f3001c",
+        "bytes": 6212
+      },
+      {
+        "path": "quaternius/Exports/glTF/Workbench_Drawers.bin",
+        "sha256": "1c59f665e4c12ee9de34ba9d22f48c3c6ba7086c3ee483883ff5881fab3dd87f",
+        "bytes": 16824
+      },
+      {
+        "path": "quaternius/Exports/glTF/Workbench_Drawers.gltf",
+        "sha256": "f7f5a88b34e29dbc58402dce54b80d0404f4b6eb1042f4002479b712e36fa10f",
+        "bytes": 4313
+      },
+      {
+        "path": "quaternius/Exports/glTF/Workbench.bin",
+        "sha256": "d26f2a0ba01b4a8db8d6820d1bd0d281297fea30e48c9952484167d18a637b39",
+        "bytes": 63408
+      },
+      {
+        "path": "quaternius/Exports/glTF/Workbench.gltf",
+        "sha256": "518fc5c955def18cfcb781b3b955da0e8edcf4f37830a21561ef32c03ad0397e",
+        "bytes": 4318
+      },
+      {
+        "path": "quaternius/Textures/T_Page_Noise.png",
+        "sha256": "4d4069a8d588dab3dcd36f9ea309fc617815b766ce225b78bcd487751585e312",
+        "bytes": 7486734
+      },
+      {
+        "path": "quaternius/Textures/T_Trim_Cloth_BaseColor.png",
+        "sha256": "c4d0e14506e05cc56e7ca62ebeeb2d45de055296a55e5a8e9c1330ff8ff1833a",
+        "bytes": 1936754
+      },
+      {
+        "path": "quaternius/Textures/T_Trim_Cloth_Normal.png",
+        "sha256": "e91a490f94bc00707fb5be08045e316b4a18962f07a3b6e3d9d7c2058cfc51c0",
+        "bytes": 3920858
+      },
+      {
+        "path": "quaternius/Textures/T_Trim_Cloth_ORM.png",
+        "sha256": "9bdaa0d1be8c393b07d6185165d73c7cddc058d5c123ad49449945f45a7e0c0d",
+        "bytes": 623426
+      },
+      {
+        "path": "quaternius/Textures/T_Trim_Furniture_BaseColor.png",
+        "sha256": "075fbc9ec2fabc15732bd4025b6f63a0b25762df38440d06bf30437565d39bab",
+        "bytes": 2232961
+      },
+      {
+        "path": "quaternius/Textures/T_Trim_Furniture_Normal.png",
+        "sha256": "3340c4cc47ff06d5e94a2dbe2a2a12d914d0ef055fcf66f63d876666bd160e42",
+        "bytes": 3485710
+      },
+      {
+        "path": "quaternius/Textures/T_Trim_Furniture_ORM.png",
+        "sha256": "7bf417e82baf313793c5791bf48cdc8e573f1f7136197785bf0eb235cb0f8153",
+        "bytes": 2064585
+      },
+      {
+        "path": "quaternius/Textures/T_Trim_Metal_BaseColor.png",
+        "sha256": "50422bbda9661effc259caf8b386224cac4b5ca811d2c5b3b8b25ae8efc714db",
+        "bytes": 1361221
+      },
+      {
+        "path": "quaternius/Textures/T_Trim_Metal_Normal.png",
+        "sha256": "ab7315c864c9a9e6d716c940a599928506e1569d3b0c9085f8f1a64ec520d790",
+        "bytes": 3625541
+      },
+      {
+        "path": "quaternius/Textures/T_Trim_Metal_ORM.png",
+        "sha256": "7407bccfc39ca74ecd68a61217395959bf56ac2063e6c93b384b11f07f5687c5",
+        "bytes": 1871475
+      },
+      {
+        "path": "quaternius/Textures/T_Trim_Props_BaseColor.png",
+        "sha256": "75225a4ccfd8cc358c871de7a7a3cab7118ef197419a88464e807b81716215c8",
+        "bytes": 2263132
+      },
+      {
+        "path": "quaternius/Textures/T_Trim_Props_Normal.png",
+        "sha256": "c4b28a8ba8efe3108cd11356ecab67e8bf75a10cebf29c78ee7724552c305a3e",
+        "bytes": 4441458
+      },
+      {
+        "path": "quaternius/Textures/T_Trim_Props_ORM.png",
+        "sha256": "2d83d8df79aca2c8f630d389b43f09113afee98e746dfd42ddc3ce3302a136a2",
+        "bytes": 3017151
+      },
+      {
+        "path": "skazanie/build-interior-models.mjs",
+        "sha256": "d8a6b233e87421712ec13e333fafdc6a56c4a2cc6d30a6a347bc27209d6235ba",
+        "bytes": 37976
+      }
+    ],
+    "interiorBuilderVersion": 3,
+    "interiorGeneratorSha256": "d8a6b233e87421712ec13e333fafdc6a56c4a2cc6d30a6a347bc27209d6235ba",
+    "interiorModels": [
+      {
+        "assetId": "bar_counter",
+        "key": "sk-bar-counter"
+      },
+      {
+        "assetId": "bar_shelf",
+        "key": "sk-bar-shelf"
+      },
+      {
+        "assetId": "fireplace",
+        "key": "sk-fireplace"
+      },
+      {
+        "assetId": "hearth_fire",
+        "key": "sk-hearth-fire"
+      },
+      {
+        "assetId": "table_round",
+        "key": "sk-table-round"
+      },
+      {
+        "assetId": "table_small",
+        "key": "sk-table-small"
+      },
+      {
+        "assetId": "altar",
+        "key": "sk-altar"
+      },
+      {
+        "assetId": "pillar",
+        "key": "sk-pillar"
+      },
+      {
+        "assetId": "sarcophagus",
+        "key": "sk-sarcophagus"
+      },
+      {
+        "assetId": "crypt_niche",
+        "key": "sk-crypt-niche"
+      },
+      {
+        "assetId": "brazier",
+        "key": "sk-brazier"
+      },
+      {
+        "assetId": "reliquary",
+        "key": "sk-reliquary"
+      }
+    ],
+    "atlasRendererVersion": 1,
+    "threeVersion": "0.186.0"
+  },
+  "atlas": {
+    "image": "/assets/models/environment/releases/a544cc0e08820485ad80203d/topdown.png",
+    "key": "ee285715cb66bf36ecb3c9f18a698c31395d792a843ecdf0e7aef83a9213a75e"
+  },
+  "release": {
+    "schema": "environment-release/v1",
+    "id": "a544cc0e08820485ad80203d",
+    "fingerprint": "a544cc0e08820485ad80203d687220a93c16a8aa876545fb5d89b0b318547301",
+    "files": [
+      {
+        "path": "kenney/LICENSE.txt",
+        "sha256": "cb96b75e3560ac78d7a53ce6f083f4cdb5c53faea6141b62d63458dcfe1e4b9d",
+        "bytes": 611
+      },
+      {
+        "path": "kenney/NOTICE.txt",
+        "sha256": "7bef5808d71a6ff11e348f3d90d6929327d2584aecca63e2659543ccb8cbc63b",
+        "bytes": 526
+      },
+      {
+        "path": "kenney/campfire_logs.glb",
+        "sha256": "8e0d07909ee36af355632cf0f4ccb08a45832039233193337ff5658d6fcb80f5",
+        "bytes": 9348
+      },
+      {
+        "path": "kenney/flower_red_a.glb",
+        "sha256": "28527f3e5aba773efb35da6d9f2892dce842dd641679bf86bb6aea44b26e3395",
+        "bytes": 7160
+      },
+      {
+        "path": "kenney/flower_yellow_a.glb",
+        "sha256": "a0e1e469d7454bfd1e723cb4347cda14fb9351207dc750c2529ee704096446de",
+        "bytes": 7168
+      },
+      {
+        "path": "kenney/grass.glb",
+        "sha256": "bf4d6a181d3a19e3c7b9eded812276c661f9b331d6ff4e006c3e6446bcb390c4",
+        "bytes": 11520
+      },
+      {
+        "path": "kenney/grass_large.glb",
+        "sha256": "ed254ed7510eccd764c30f3c63e46ac6674564737428b7a7758677c9ba6bf73b",
+        "bytes": 18528
+      },
+      {
+        "path": "kenney/log.glb",
+        "sha256": "475e223ff31b1d176f322c8247fb3b6f925693bd30f01ad2f6ca2abea81a6625",
+        "bytes": 14348
+      },
+      {
+        "path": "kenney/log_large.glb",
+        "sha256": "57328b68a4c69c3d36e0f0601aa7af9b22002d26267fa78febfa604c51dc74c5",
+        "bytes": 7984
+      },
+      {
+        "path": "kenney/log_stack.glb",
+        "sha256": "3aefc223fb8916cd08e0c9b27de32e29a50bcb93e89187a1dfb62d25f77e1f03",
+        "bytes": 10952
+      },
+      {
+        "path": "kenney/log_stack_large.glb",
+        "sha256": "b3c05c1165a50d3d4cb27b3850b1efa9ba253c13d71c115db3426b1027930e49",
+        "bytes": 17684
+      },
+      {
+        "path": "kenney/mushroom_red.glb",
+        "sha256": "d074842fd25779b52216c0888ed29602de585c9e1048bb8c11e7fa50c65eb077",
+        "bytes": 6448
+      },
+      {
+        "path": "kenney/mushroom_red_group.glb",
+        "sha256": "3a44e4e8e737d9424f1d8274a46ff8107c612e296ac41c5a06a25f621a82ea5a",
+        "bytes": 15044
+      },
+      {
+        "path": "kenney/mushroom_tan_group.glb",
+        "sha256": "ea6e9e5f27a06da828e177df9ee91e12c867cdd5b77b7432927a71e47157323d",
+        "bytes": 15044
+      },
+      {
+        "path": "kenney/plant_bush.glb",
+        "sha256": "5d907b6a3a63467d272e0ffa4a87c7ebe14d28f4d130c628cc82c28a06222b7a",
+        "bytes": 4420
+      },
+      {
+        "path": "kenney/plant_bush_detailed.glb",
+        "sha256": "1ba9a1a8ab76e4164330c3b699faf1f0b3c00a8e2cd6dab97810d27e1ea6b204",
+        "bytes": 10196
+      },
+      {
+        "path": "kenney/plant_bush_large.glb",
+        "sha256": "ac46430c3f315e41084e6aefd4cad0340b8f4dbe5031374f3a8a89a24e667e2f",
+        "bytes": 6460
+      },
+      {
+        "path": "kenney/plant_bush_small.glb",
+        "sha256": "7f00f2a26ef1f6f80ccb16a3df8bb7dacd1ce69727d0a3da75d97dae0d783bf8",
+        "bytes": 3236
+      },
+      {
+        "path": "kenney/rock_large_a.glb",
+        "sha256": "7eeed6bc935f079c4a218d56a4e36fe4f1ba4dd2ddb4e217bdff7ad57b52111d",
+        "bytes": 7604
+      },
+      {
+        "path": "kenney/rock_small_a.glb",
+        "sha256": "ebfec28d7d333b7afe9106f7bfad36581fa1f6a812e1a3b06fdadf12ad8e1d5d",
+        "bytes": 3096
+      },
+      {
+        "path": "kenney/rock_small_b.glb",
+        "sha256": "9a17203597fc928d55f2927597633fc63a637538fe6b372c8d5f53d469763c91",
+        "bytes": 3580
+      },
+      {
+        "path": "kenney/rock_small_flat_a.glb",
+        "sha256": "df9082f49652890e5d428061444edffda94723f592be457994d971c2e3b939da",
+        "bytes": 3352
+      },
+      {
+        "path": "kenney/rock_tall_a.glb",
+        "sha256": "06fb6b50727641add6cec4926e633aad1eb80b1116eaae6eb571fcda0c5bc81d",
+        "bytes": 12180
+      },
+      {
+        "path": "kenney/stump_old.glb",
+        "sha256": "f5e101b1a9777f2a1b3fc45d5c55876799b16fcc92b326576c10d6c32aa43592",
+        "bytes": 9592
+      },
+      {
+        "path": "kenney/stump_round_detailed.glb",
+        "sha256": "68566b431aa2e15e286ea8f4da581958ffabe8d338939eaca5d3b80db45888d3",
+        "bytes": 8244
+      },
+      {
+        "path": "kenney/stump_square_detailed_wide.glb",
+        "sha256": "271590b4535422b43d5d32bbaacbf9c79b69fce5f3587f3542d18fdf9b4ffeab",
+        "bytes": 7596
+      },
+      {
+        "path": "kenney/tree_default.glb",
+        "sha256": "db46cb7d478f96f170c915f157d728ed245ba68aab553b3da409ff7a7fc90a55",
+        "bytes": 9484
+      },
+      {
+        "path": "kenney/tree_default_fall.glb",
+        "sha256": "f7485299eb7b06835cb99b25d9bccfe38fe811fd5a893c59d655474a64cc7d52",
+        "bytes": 17008
+      },
+      {
+        "path": "kenney/tree_oak.glb",
+        "sha256": "469b7bcf2f495ff782232757f2cf1721a79a64a3cc66ed6ecd54b5792517e9f5",
+        "bytes": 14700
+      },
+      {
+        "path": "kenney/tree_pine_default_a.glb",
+        "sha256": "edfcc298896020bef94b7e1a77fb5857ec68d19b0f1a45e75f990e1ed6db086b",
+        "bytes": 17284
+      },
+      {
+        "path": "kenney/tree_pine_round_a.glb",
+        "sha256": "45433b93384f2d0afa9beaef61d0657a3de1d6f548a12a7d5164cf12f5c5f58a",
+        "bytes": 14552
+      },
+      {
+        "path": "kenney/tree_pine_tall_a_detailed.glb",
+        "sha256": "e4be83226ce8986ea4e8373d15b4907fb3c6c7730e51330185473e770d19a513",
+        "bytes": 10772
+      },
+      {
+        "path": "kenney/tree_simple.glb",
+        "sha256": "30321bbdcf6e511e9932c11d6fdaa965dc05abc3c3c0f542f034474baedb6c2d",
+        "bytes": 6556
+      },
+      {
+        "path": "quaternius/LICENSE.txt",
+        "sha256": "c2616004032547a8cb0bf8ce4b7a844f124d092308e5d54b015680f904d42ee0",
+        "bytes": 187
+      },
+      {
+        "path": "quaternius/NOTICE.txt",
+        "sha256": "cd74e4062717a2dfe231c1e5064b6e0b90b68cff3331be32e3ddadbe8b926728",
+        "bytes": 312
+      },
+      {
+        "path": "quaternius/anvil.glb",
+        "sha256": "85c48ea0c59973e6f00d0496944d0249f59faaacf70fe194839c102ddda8d9bb",
+        "bytes": 359872
+      },
+      {
+        "path": "quaternius/anvil_log.glb",
+        "sha256": "901a7e102e341e90d8ed44a3e234a17ea5ad89a5e99241c97f1e01d8cc8c4b77",
+        "bytes": 1298480
+      },
+      {
+        "path": "quaternius/axe_bronze.glb",
+        "sha256": "b9ac14b27560f44e959a990229e432f6d572b57beac16f16671b793769825813",
+        "bytes": 491552
+      },
+      {
+        "path": "quaternius/bag.glb",
+        "sha256": "6e924ff4eac685e846b0ef07280d73e283756c4367eb32f1bbac6c85b0006cd8",
+        "bytes": 658164
+      },
+      {
+        "path": "quaternius/banner_1.glb",
+        "sha256": "adef85b4fad28722bcbb3617729131bc73131b191ed983ab746311eed62b8313",
+        "bytes": 987280
+      },
+      {
+        "path": "quaternius/banner_1_cloth.glb",
+        "sha256": "8850d589bf271b3d31feb0a5c583ea6071616575dc85c556964fe264f360f78f",
+        "bytes": 599888
+      },
+      {
+        "path": "quaternius/banner_2.glb",
+        "sha256": "80dfc33db1bcc997cc37ad859fbc92d88b119bfce911e863cc86f7a08b08f7da",
+        "bytes": 985580
+      },
+      {
+        "path": "quaternius/banner_2_cloth.glb",
+        "sha256": "a082a4b93e199e656bba624a0633132246375e4a247b0954c79cd3d23ed254e6",
+        "bytes": 598192
+      },
+      {
+        "path": "quaternius/barrel.glb",
+        "sha256": "3c8e8f177489b7d76f464f5c85e0d8d14f2a9e9565a5f729f0691967064c887a",
+        "bytes": 765320
+      },
+      {
+        "path": "quaternius/barrel_apples.glb",
+        "sha256": "a8283fb3c0733c744a603856ecc0e7b238f17de181d34ab0bc7dd40d97d9c505",
+        "bytes": 1272692
+      },
+      {
+        "path": "quaternius/barrel_holder.glb",
+        "sha256": "0a4804f58bcc5314a01cec9658f8ebb2f72eced818962148851e5cad88b28cdb",
+        "bytes": 870020
+      },
+      {
+        "path": "quaternius/bed_twin1.glb",
+        "sha256": "62b6ed129e1b4f0ce0b6f6c5dccda05cbaa222486cda91c81e8d308245ba3e87",
+        "bytes": 1043248
+      },
+      {
+        "path": "quaternius/bed_twin2.glb",
+        "sha256": "0e8b0a28b711cb67169dcac4623bce76773657a95fb33eb820923569dc6d625a",
+        "bytes": 1042512
+      },
+      {
+        "path": "quaternius/bench.glb",
+        "sha256": "7299688ef636fe4dd1fe7d957890831ee7aae570be2c924264f228ef8580c09f",
+        "bytes": 727468
+      },
+      {
+        "path": "quaternius/book_5.glb",
+        "sha256": "68db08a9689e4446727918b93c800bdbc2a6f484bf213c6998be159415653eb8",
+        "bytes": 466120
+      },
+      {
+        "path": "quaternius/book_7.glb",
+        "sha256": "8668766e4548a7db3c0e9bf4f4c6090e4efb714d3c07439266ff26ecbdba8af6",
+        "bytes": 827832
+      },
+      {
+        "path": "quaternius/book_group_medium_1.glb",
+        "sha256": "ce812c65e8e08c06d4cc6945ba4f42272c2c42ae9dba4d8cf3070d023fe973cf",
+        "bytes": 485816
+      },
+      {
+        "path": "quaternius/book_group_medium_2.glb",
+        "sha256": "cad0a9fd5c984cca21c923fb81c4fecf9da6aca1ed4d92ed9e0b5bd514304fa1",
+        "bytes": 489008
+      },
+      {
+        "path": "quaternius/book_group_medium_3.glb",
+        "sha256": "2748d900cfff1d0789eed6f7cff57213f33caa4d252e7a37f174d88bbf8f6216",
+        "bytes": 489008
+      },
+      {
+        "path": "quaternius/book_group_small_1.glb",
+        "sha256": "1f4149024489bf1e365bb9c9db673359ffe238d1fc947068e6181cf45e0cca4d",
+        "bytes": 466656
+      },
+      {
+        "path": "quaternius/book_group_small_2.glb",
+        "sha256": "b5aa98541f756330a922ea88d79deb4b8ed9fba96d34022ac0e2569fc1ad0fba",
+        "bytes": 466660
+      },
+      {
+        "path": "quaternius/book_group_small_3.glb",
+        "sha256": "124867f2f6dac3b5f70d9490cb9f9d390625e47901488ffdc6f2d6d8a658f129",
+        "bytes": 468256
+      },
+      {
+        "path": "quaternius/book_simplified_single.glb",
+        "sha256": "b1647ee661e96884fa0e324be9b758f3ff7b7c9d7edfc2f02e564a5770d19008",
+        "bytes": 463464
+      },
+      {
+        "path": "quaternius/book_stack_1.glb",
+        "sha256": "533486cf2c83a68b7101722d2b76c660fb2f3246e855162b9ef7890aadfc1053",
+        "bytes": 473040
+      },
+      {
+        "path": "quaternius/book_stack_2.glb",
+        "sha256": "b87f2667d2b19f9f7d29bd4bb3389184c6f1086532931ac885bf0ef939d7acae",
+        "bytes": 819136
+      },
+      {
+        "path": "quaternius/book_stand.glb",
+        "sha256": "2b93ac1fcea7ee91898446865326e45c48114c12abc266905da3b1dce4d8b746",
+        "bytes": 435144
+      },
+      {
+        "path": "quaternius/bookcase_2.glb",
+        "sha256": "9b8e03b8bbd4aee928f56f3cc13bef86e31efb126ec6e48c0e70365665a3ee05",
+        "bytes": 801160
+      },
+      {
+        "path": "quaternius/bottle_1.glb",
+        "sha256": "f50091e43f66c2a6b420d9a52f703194b107bb940dbb53d6df9a6464cca9c279",
+        "bytes": 474224
+      },
+      {
+        "path": "quaternius/bucket_metal.glb",
+        "sha256": "b6b549733c33661abfd90116f2324476be4c9b79a5020e6f7a851939b7cb5bd6",
+        "bytes": 353964
+      },
+      {
+        "path": "quaternius/bucket_wooden_1.glb",
+        "sha256": "881b2f8fcb10fcb4ce57b052cf5e8c609e895889f0729cfc021abe528ea18844",
+        "bytes": 740420
+      },
+      {
+        "path": "quaternius/cabinet.glb",
+        "sha256": "e6316ee7997dfbc4993bf3359402069995e146e87059ecc96ff48a3ee32589de",
+        "bytes": 822956
+      },
+      {
+        "path": "quaternius/cage_small.glb",
+        "sha256": "8a5ce2b876af0a148274a1c2df76ef0bbd7e23b8d10a498dca379469973c1fd5",
+        "bytes": 506992
+      },
+      {
+        "path": "quaternius/candle_1.glb",
+        "sha256": "c853587dbebf78ceed83cd75b30599ab8ca784c96ddf79268a43416423ce2956",
+        "bytes": 466304
+      },
+      {
+        "path": "quaternius/candle_2.glb",
+        "sha256": "b9419f4eb4585cbe35e5d361b19edd4f9d2e81db2c88b61bfaff9f771caa7877",
+        "bytes": 466228
+      },
+      {
+        "path": "quaternius/candle_stick.glb",
+        "sha256": "44724d9c281767ce5ff7d040f5a1ae78b19316c48ce784979509ee3832443850",
+        "bytes": 356568
+      },
+      {
+        "path": "quaternius/candle_stick_stand.glb",
+        "sha256": "95785a34c94aac2af121d9897ae02a49fec4aa8bae2e3e105a939ff52a692ed7",
+        "bytes": 1021444
+      },
+      {
+        "path": "quaternius/candle_stick_triple.glb",
+        "sha256": "5e3391a71e09b6e6a9b3c549a0a21a453e0cf5681660a8f6944717151ce9160d",
+        "bytes": 869244
+      },
+      {
+        "path": "quaternius/carrot.glb",
+        "sha256": "6abf98d97746090e883301168f676b1d0364c002e554353484c94cc97692c881",
+        "bytes": 482516
+      },
+      {
+        "path": "quaternius/cauldron.glb",
+        "sha256": "e111014071a8f197df0988edf2dbcadf8e30de6c6ea4bd96d5969ec02cd43e79",
+        "bytes": 397844
+      },
+      {
+        "path": "quaternius/chain_coil.glb",
+        "sha256": "98b0a2c7483b2f65cd09e73a86beb1fab3714be84a963237d5de2044e3744b06",
+        "bytes": 528968
+      },
+      {
+        "path": "quaternius/chair_1.glb",
+        "sha256": "33cad1f5274d460dfe7b055a3c85bec20350022b23f26000fd6013510cbc4a18",
+        "bytes": 736272
+      },
+      {
+        "path": "quaternius/chalice.glb",
+        "sha256": "5413697cf64e6ee07870437d6d9ac28bee8881b207a510b6d4db85d60d20defc",
+        "bytes": 350780
+      },
+      {
+        "path": "quaternius/chandelier.glb",
+        "sha256": "9d81f284933e5d36ff24dc73bcd0aa203a75cba65b0284eaa1dd513527851ebe",
+        "bytes": 1434796
+      },
+      {
+        "path": "quaternius/chest_wood.glb",
+        "sha256": "338cfd9b5ba93f80b3af234aaa064e2f849215b5a9736bfda0117f5ca8edb31e",
+        "bytes": 904076
+      },
+      {
+        "path": "quaternius/coin.glb",
+        "sha256": "cabd0560ff329790cd1dca7f0398008fd95e66110f10042c18165199e16951b0",
+        "bytes": 349760
+      },
+      {
+        "path": "quaternius/coin_pile.glb",
+        "sha256": "f38717089a96d86b798201d90ba3197689d533b9b9d8b0900edc887f544ba9d7",
+        "bytes": 382824
+      },
+      {
+        "path": "quaternius/coin_pile_2.glb",
+        "sha256": "16380f7926e3601343087ad85e6a5c9d769d20e783fcc1e21ce56a015366edd1",
+        "bytes": 387920
+      },
+      {
+        "path": "quaternius/crate_metal.glb",
+        "sha256": "558ddf4e1d60f96bda28f3b19b6fe4b986279cf893a7968eeb4b1f422975f804",
+        "bytes": 835024
+      },
+      {
+        "path": "quaternius/crate_wooden.glb",
+        "sha256": "d5affc6767a55301a88afba0fb2c26e2fa5255a33e2226917101f62224324e10",
+        "bytes": 774744
+      },
+      {
+        "path": "quaternius/dummy.glb",
+        "sha256": "66dae4a98785de159cea64da9a30435a1304974285b439e49ce243c8fca59092",
+        "bytes": 1046396
+      },
+      {
+        "path": "quaternius/farm_crate_apple.glb",
+        "sha256": "b6e1991d72558c9d0ff982ab662b7d573d86041bc46d457a288c23a20d40ea03",
+        "bytes": 1302600
+      },
+      {
+        "path": "quaternius/farm_crate_carrot.glb",
+        "sha256": "e912bee52adca66f1f6d8a13d05d5ed3357a5085772a914ab72157430fac73dd",
+        "bytes": 1372416
+      },
+      {
+        "path": "quaternius/farm_crate_empty.glb",
+        "sha256": "59c9047fb42856f25d255886f076283cfa9c9a9c62876f92a1dc62e00c2106dc",
+        "bytes": 762584
+      },
+      {
+        "path": "quaternius/key_gold.glb",
+        "sha256": "e9001616ffa703106ff2ee53a415d5aba3c11fa00013f07237671f0d1eb11a17",
+        "bytes": 393944
+      },
+      {
+        "path": "quaternius/key_metal.glb",
+        "sha256": "af61b0dcd98d4dc6703ecab537d3f66e7321d0c3d67f5d635e14a2a78dec4258",
+        "bytes": 354472
+      },
+      {
+        "path": "quaternius/lantern_wall.glb",
+        "sha256": "aa6178f7061c9a24431a58ce7cd88f7ae4244a0e5971338ef2b59ac7e01563cc",
+        "bytes": 455172
+      },
+      {
+        "path": "quaternius/mug.glb",
+        "sha256": "91ce60f9344a2153b25941cb345087d1642f45fec60d0be9b3ba638d3872b37c",
+        "bytes": 720344
+      },
+      {
+        "path": "quaternius/nightstand_shelf.glb",
+        "sha256": "cf0d98b4c6bfbbda4d741f0371f007c2c4ea61e299aa55b7883ae533afa969d0",
+        "bytes": 394696
+      },
+      {
+        "path": "quaternius/peg_rack.glb",
+        "sha256": "fafbf38ad5632b560436130292613d0bd0b105ba506c289bdc64f862a76cbf7f",
+        "bytes": 734524
+      },
+      {
+        "path": "quaternius/pickaxe_bronze.glb",
+        "sha256": "53d64cd69163a8406819681d2f6fff43e36fbdb9e61a656867b598fad25764b0",
+        "bytes": 491016
+      },
+      {
+        "path": "quaternius/pot_1.glb",
+        "sha256": "64078b318025d4a9152bfae1597bc202584c5584d4158538a940fa7b291dc5c4",
+        "bytes": 372284
+      },
+      {
+        "path": "quaternius/pot_1_lid.glb",
+        "sha256": "0a77e544dab10fdde09966edc5b7774a71156eb10d3d7e8de6d62c259ee6e073",
+        "bytes": 381252
+      },
+      {
+        "path": "quaternius/potion_1.glb",
+        "sha256": "0c4674d783e5c5c901430e2a6b5f4d95eeaa322dc1d171632cdc3142a8e3d333",
+        "bytes": 478476
+      },
+      {
+        "path": "quaternius/potion_2.glb",
+        "sha256": "f040fc0f0a621a3e3dcaa0c70e01497d184548d4569e1ccd7bfbcc25198d6d74",
+        "bytes": 479948
+      },
+      {
+        "path": "quaternius/potion_4.glb",
+        "sha256": "02720a5a2401bb7f70fb70b873f4603c7e2d7870e73788bb8492ed0ccaa60ac6",
+        "bytes": 482812
+      },
+      {
+        "path": "quaternius/pouch_large.glb",
+        "sha256": "59cf80ab56d4e7d398f430747d7350369d74cfbf2568a9d1e7bac564f03f8cdb",
+        "bytes": 826760
+      },
+      {
+        "path": "quaternius/rope_1.glb",
+        "sha256": "889b8301956055c324951fca69e83a5657d944b79ec3866d0123c4aee9b9c9c7",
+        "bytes": 414752
+      },
+      {
+        "path": "quaternius/rope_2.glb",
+        "sha256": "b5c8b088d46a2e0220e679120bfaae5e5232993f52d23e90b1e7ff0935e36210",
+        "bytes": 408032
+      },
+      {
+        "path": "quaternius/rope_3.glb",
+        "sha256": "55cf863df6111e19d4274e69b28ee75cfdb02742c9c064816bb0754cbb39cba9",
+        "bytes": 414752
+      },
+      {
+        "path": "quaternius/scroll_1.glb",
+        "sha256": "c6e246321ea1eae7b0ff40ec85f9ccbed8dcdaaa8e56266e293c200e43cc2d07",
+        "bytes": 616304
+      },
+      {
+        "path": "quaternius/scroll_2.glb",
+        "sha256": "1817e1160cff287b06c2f7cce67c0122315de814718f3f77ff87d43ca18b97c2",
+        "bytes": 624600
+      },
+      {
+        "path": "quaternius/shelf_arch.glb",
+        "sha256": "f847c8b345ad33a439cd10a55a900ac3325504355675064126640f4e5da65f31",
+        "bytes": 773028
+      },
+      {
+        "path": "quaternius/shelf_simple.glb",
+        "sha256": "4f9d708a1ff5a731b70668fde7cce9849760e9db8a743261bccb5146e0a99aaf",
+        "bytes": 395136
+      },
+      {
+        "path": "quaternius/shelf_small_bottles.glb",
+        "sha256": "769c83801483f535e6b916274ea6283205fdf5e05944fa390a9a5072753c0890",
+        "bytes": 1397596
+      },
+      {
+        "path": "quaternius/shield_wooden.glb",
+        "sha256": "b50d299c28753fb2e3d2015bd596ce3c75a1d99fa686c4d3fb378f1a89ee2988",
+        "bytes": 1232280
+      },
+      {
+        "path": "quaternius/small_bottle.glb",
+        "sha256": "8c9ec9e632e8d8dc7d47878a4372dcc65af62588de9f8f88ca80e37251e359fa",
+        "bytes": 465948
+      },
+      {
+        "path": "quaternius/small_bottles_1.glb",
+        "sha256": "39ab41f9a0de103a41a51a0c924f36c8b3ac3ebc7cb67585022b9f823ddf3a1f",
+        "bytes": 480832
+      },
+      {
+        "path": "quaternius/stall_cart_empty.glb",
+        "sha256": "271d3c618734e8611f94efa5db8703f255dce6dec5342be1555458680d6c7ce5",
+        "bytes": 1203632
+      },
+      {
+        "path": "quaternius/stall_empty.glb",
+        "sha256": "6cdccb86a59553521689427185f70e96e243b691727e229fdcf4ccdfce045f82",
+        "bytes": 1054496
+      },
+      {
+        "path": "quaternius/stool.glb",
+        "sha256": "257c56cdb83380c65349e3334b6d99089af189a354046d5797f9f565d2343c5b",
+        "bytes": 384744
+      },
+      {
+        "path": "quaternius/sword_bronze.glb",
+        "sha256": "3982e70e115ec5bd33c0c154da42e622d0d6e992a884d2b47a88840e0bc6e787",
+        "bytes": 530212
+      },
+      {
+        "path": "quaternius/table_fork.glb",
+        "sha256": "a55854b153305cd9c6e6f0bd55cf6b0e6b413d8f9d6fbae0f7f9fe78896253f1",
+        "bytes": 340060
+      },
+      {
+        "path": "quaternius/table_knife.glb",
+        "sha256": "fdf8a5e26a45f34a05443b50c68890dca3cf69fc5d35ba734b3f12851673f7af",
+        "bytes": 337300
+      },
+      {
+        "path": "quaternius/table_large.glb",
+        "sha256": "9f777a5525e49b6b909417303a9d417575e37ef3e6434e33a4022531aa01f2d6",
+        "bytes": 764572
+      },
+      {
+        "path": "quaternius/table_plate.glb",
+        "sha256": "191e7042bd2960ffa8cbb8e1fcb7d169f755979c3d801c83f741499f9199b053",
+        "bytes": 341924
+      },
+      {
+        "path": "quaternius/table_spoon.glb",
+        "sha256": "d22c3820ec4cd4dff01cd027d9bf1b96fb4e9d234398828cb284daaee4d3a231",
+        "bytes": 339980
+      },
+      {
+        "path": "quaternius/torch_metal.glb",
+        "sha256": "e89c35032a812bf9fae62f2f6663bc63a14e31a1c078e8af6c0ba01be1fe5183",
+        "bytes": 374240
+      },
+      {
+        "path": "quaternius/vase_2.glb",
+        "sha256": "dd0e9db02c4d5a4866c8973ba2fcf19c732977bb2025f524a6341b306b3d866d",
+        "bytes": 481456
+      },
+      {
+        "path": "quaternius/vase_4.glb",
+        "sha256": "bdc5499eff1fadd53a7cc670c07a0777fe6c9230b42a5e2c1597bcf5e22d148f",
+        "bytes": 482300
+      },
+      {
+        "path": "quaternius/vase_rubble_medium.glb",
+        "sha256": "94908502f9c542e18ec0e2c136974e18284f7d1edb64383b070ffd081deb95d3",
+        "bytes": 546264
+      },
+      {
+        "path": "quaternius/weapon_stand.glb",
+        "sha256": "5b62bd885e28337da3dff9ae74df11d0b17ea8803ed22036ee81eef9afa3037c",
+        "bytes": 784184
+      },
+      {
+        "path": "quaternius/whetstone.glb",
+        "sha256": "1ebed904717f1501cc2638233d5a58ea81e7e9131116d813844a2cc6e7d433a3",
+        "bytes": 1227348
+      },
+      {
+        "path": "quaternius/workbench.glb",
+        "sha256": "1985bf4c20f6b147129c9113939179d273ed20de60c0d1d41d2d7de1637ed99f",
+        "bytes": 771588
+      },
+      {
+        "path": "quaternius/workbench_drawers.glb",
+        "sha256": "dbfb6fcc1580391d8e753782f9f8520783db6930fe4d392cee3717ebd35d6087",
+        "bytes": 724992
+      },
+      {
+        "path": "skazanie/LICENSE.txt",
+        "sha256": "56ee0ae8ca0417de0488ad4afdf15b7f5ab6207db413d032f5c752ea25c435bf",
+        "bytes": 292
+      },
+      {
+        "path": "skazanie/NOTICE.txt",
+        "sha256": "7d3ef4d6fef02792d1424a4ab807d5b12f42ca1e618094bf78d1314eeeeb3ff8",
+        "bytes": 371
+      },
+      {
+        "path": "skazanie/sk-altar.glb",
+        "sha256": "7b04003d74497577f429cad86d8f99a95ebc6178904a253653bf387378e4528a",
+        "bytes": 100524
+      },
+      {
+        "path": "skazanie/sk-bar-counter.glb",
+        "sha256": "9eaf9bc5e4d44177cdaf2c632baddae840c93702f3391f6fb4693b218839b78b",
+        "bytes": 138340
+      },
+      {
+        "path": "skazanie/sk-bar-shelf.glb",
+        "sha256": "d4ba263407b776d7e0c31ff305dbc007000d120ab45d444a98108f601e534120",
+        "bytes": 227376
+      },
+      {
+        "path": "skazanie/sk-brazier.glb",
+        "sha256": "2ea69b98ad0134c2ea486c064d491aea86920ac33749ae4a00f6ddfef95cdafc",
+        "bytes": 95904
+      },
+      {
+        "path": "skazanie/sk-crypt-niche.glb",
+        "sha256": "a85a0d4d93bc76fe8eb6e3818760b10896e947968005d695e0e4b074f83b2194",
+        "bytes": 34140
+      },
+      {
+        "path": "skazanie/sk-fireplace.glb",
+        "sha256": "b93e14b7b1fb5facc1c63b0559136d40a10d3a6245027c2d7aa4f8f4f1eca7bd",
+        "bytes": 82648
+      },
+      {
+        "path": "skazanie/sk-hearth-fire.glb",
+        "sha256": "2856b0205b35e8881bd4f7079029f7b50651b08cd0f1915ebb52a0608c02ff94",
+        "bytes": 28520
+      },
+      {
+        "path": "skazanie/sk-pillar.glb",
+        "sha256": "aa58f83176a07df13ba09df9947a28afc45838f75533993964339417e1935aa0",
+        "bytes": 23868
+      },
+      {
+        "path": "skazanie/sk-reliquary.glb",
+        "sha256": "fe443f7c61478c50abbb9d51b48e73e87c7ad475ff74e9c0341b278b275485b5",
+        "bytes": 18652
+      },
+      {
+        "path": "skazanie/sk-sarcophagus.glb",
+        "sha256": "377c680dbf6ba867ab3eef0cb9e20b03c5da2758979135ee3f75311d8a9de992",
+        "bytes": 307156
+      },
+      {
+        "path": "skazanie/sk-table-round.glb",
+        "sha256": "338e2618b94b84432fc92437486d0b23bcf8db2df93cbc3b8b789fb37fc37515",
+        "bytes": 30964
+      },
+      {
+        "path": "skazanie/sk-table-small.glb",
+        "sha256": "508db6def9558d4edb03adf74406a81d23c9f86d61883a0cc315264a332cdb1b",
+        "bytes": 100052
+      },
+      {
+        "path": "topdown.png",
+        "sha256": "ee285715cb66bf36ecb3c9f18a698c31395d792a843ecdf0e7aef83a9213a75e",
+        "bytes": 3664798
+      }
+    ]
+  }
+}

@@ -13,7 +13,7 @@ const root = fileURLToPath(new URL('..', import.meta.url))
 mkdirSync(join(root, 'tmp'), { recursive: true })
 const buildDir = mkdtempSync(join(root, 'tmp', 'prop-model-assets-'))
 const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
-const sources = ['../src/prop-model-catalog.ts', '../src/prop-model-assets.ts', '../src/board3d-props.ts', '../src/board3d-batching.ts', '../src/board-render.ts']
+const sources = ['../src/prop-model-catalog.ts', '../src/prop-model-assets.ts', '../src/model-assets.ts', '../src/actor-models.ts', '../src/board3d-props.ts', '../src/board3d-batching.ts', '../src/board-render.ts']
   .map((relative) => fileURLToPath(new URL(relative, import.meta.url)))
 const compiled = spawnSync(process.execPath, [
   compiler, '--ignoreConfig', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler',
@@ -29,7 +29,10 @@ function emittedFiles(directory) {
 for (const path of emittedFiles(buildDir).filter((candidate) => candidate.endsWith('.js'))) {
   const source = readFileSync(path, 'utf8')
     .replace(/(from\s+["'])(\.\.?\/[^"']+\.json)(["'])/gu, '$1$2$3 with { type: "json" }')
-    .replace(/(from\s+["'])(\.\.?\/[^"']+)(["'])/gu, (match, before, specifier, after) => /\.(json|mjs|js)$/u.test(specifier) ? match : `${before}${specifier}.mjs${after}`)
+    .replace(/(from\s+["'])(\.\.?\/[^"']+)(["'])/gu, (match, before, specifier, after) => {
+      if (specifier.startsWith('../server/') && specifier.endsWith('.mjs')) return `${before}${new URL(specifier, new URL('../src/', import.meta.url)).href}${after}`
+      return /\.(json|mjs|js)$/u.test(specifier) ? match : `${before}${specifier}.mjs${after}`
+    })
   writeFileSync(path, source)
   renameSync(path, path.replace(/\.js$/u, '.mjs'))
 }
@@ -72,6 +75,19 @@ test('catalog валидирует локальные GLB и детермини�
   const first = catalogModule.propModelFor(catalog, 'bar_counter', 'counter-prop')
   assert.equal(first?.key, catalogModule.propModelFor(catalog, 'bar_counter', 'counter-prop')?.key)
   assert.equal(catalogModule.propModelFor(catalog, 'unknown', 'counter-prop'), null)
+  assert.ok(catalogModule.ENVIRONMENT_MODEL_FAMILIES.includes('kenney-dungeon'))
+  const dungeon = catalogModule.validatePropModelCatalog({
+    version: 1,
+    models: [{ ...entry('dungeon-stairs', ['stairs_up', 'stairs_down']), url: '/assets/models/environment/kenney-dungeon/stairs.glb' }],
+  })
+  assert.equal(dungeon.models[0].url, '/assets/models/environment/kenney-dungeon/stairs.glb')
+  const releasedDungeon = catalogModule.validatePropModelCatalog({
+    version: 1,
+    release: { id: 'release-1' },
+    models: [{ ...entry('released-dungeon-stairs', ['stairs_up']), url: '/assets/models/environment/releases/release-1/kenney-dungeon/stairs.glb' }],
+    atlas: { image: '/assets/models/environment/releases/release-1/topdown.png', key: '0'.repeat(64) },
+  }, 'release-1')
+  assert.equal(releasedDungeon.models[0].url, '/assets/models/environment/releases/release-1/kenney-dungeon/stairs.glb')
   for (const invalid of [
     [{ ...entry('bad', ['bar_counter']), url: 'https://cdn.invalid/model.glb' }],
     [entry('duplicate', ['bar_counter']), entry('duplicate', ['bar_counter'])],
@@ -145,6 +161,27 @@ test('клоны GLB участвуют в batching, но не освобожд�
   result.dispose(); result.dispose(); environment.dispose()
   assert.equal(geometryDisposed, 0)
   assert.equal(materialDisposed, 0)
+})
+
+test('владелец prop GLB освобождает boneTexture skinned-модели ровно один раз', () => {
+  const bone = new THREE.Bone()
+  const skeleton = new THREE.Skeleton([bone])
+  skeleton.computeBoneTexture()
+  const boneTexture = skeleton.boneTexture
+  let boneTextureDisposals = 0
+  const dispose = boneTexture.dispose.bind(boneTexture)
+  boneTexture.dispose = () => { boneTextureDisposals += 1; return dispose() }
+  const geometry = new THREE.BoxGeometry(1, 1, 1)
+  const material = new THREE.MeshStandardMaterial({ color: '#c59a62' })
+  const root = new THREE.Group()
+  const skinned = new THREE.SkinnedMesh(geometry, material)
+  skinned.bind(skeleton, new THREE.Matrix4())
+  root.add(skinned)
+  const clone = root.clone(true)
+  assert.equal(clone.getObjectByProperty('isSkinnedMesh', true).skeleton, skeleton)
+  assetsModule.disposePropModelAssets(new Map([['skinned', root], ['shared', clone]]))
+  assert.equal(boneTextureDisposals, 1)
+  assert.equal(skeleton.boneTexture, null)
 })
 
 test('загрузка ассетов без browser window безопасно возвращает fallback', async () => {

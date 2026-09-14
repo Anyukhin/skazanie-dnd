@@ -126,7 +126,9 @@ test('метка тела рисуется слоем клетки, а не в �
   assert.match(board, /<LootCellMarker/u)
   assert.match(board, /const fallenEnemy = /u)
   const render = readFileSync(new URL('../src/board-render.ts', import.meta.url), 'utf8')
-  assert.equal(/loot/iu.test(render), false, 'холст доски про добычу знать не обязан')
+  // `looted` — сохранённое визуальное состояние крышки реквизита. Реестр
+  // тел, состав добычи и их метки по-прежнему принадлежат отдельному слою.
+  assert.equal(/loot/iu.test(render.replaceAll("'looted'", '')), false, 'холст доски про добычу знать не обязан')
   assert.match(styles, /\.loot-cell-mark \{/u)
   assert.match(styles, /\.fallen-token \{/u)
   assert.match(styles, /@keyframes loot-fade/u)

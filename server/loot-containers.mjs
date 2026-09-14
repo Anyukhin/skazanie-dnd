@@ -76,6 +76,7 @@ import { normalizeItemInstance } from './item-instances.mjs'
 import { carryingCapacity, inventoryWeight } from './item-lifecycle.mjs'
 import { MAX_STOCK_QUANTITY, inventoryStackKey, normalizeInventoryItem, resolveCatalogBasePriceCp } from './merchant-economy.mjs'
 import { campaignElapsedMinutes } from './npc-social.mjs'
+import { footprintDistanceFeet, normalizeFootprintMetadata } from './actor-footprint.mjs'
 
 export const LOOT_CONTAINERS_SCHEMA_VERSION = 1
 export const LOOT_CONTAINERS_POLICY_ID = 'skazanie:loot-containers-v1'
@@ -157,6 +158,7 @@ export function normalizeLootContainer(value = {}) {
     seen.add(key)
     return true
   })
+  const footprint = normalizeFootprintMetadata(source.footprint)
   return {
     schema_version: LOOT_CONTAINERS_SCHEMA_VERSION,
     policy_id: LOOT_CONTAINERS_POLICY_ID,
@@ -171,6 +173,7 @@ export function normalizeLootContainer(value = {}) {
     location_name: text(source.location_name ?? source.locationName, 180),
     x: coordinate(source.x),
     y: coordinate(source.y),
+    ...(footprint ? { footprint } : {}),
     // Пустой контейнер — всегда опустошённый, каким бы ни был сохранённый
     // статус: иначе повреждённая запись висела бы на доске приманкой.
     status: unique.length === 0
@@ -320,6 +323,7 @@ function containerDraft({ kind, enemies, sourceIds, state, minutes, locationKey,
   // Пустой контейнер не создаётся: см. границы в шапке модуля.
   if (!items.length) return null
   const anchor = positionOf(state, anchorId)
+  const footprint = enemies.length === 1 ? normalizeFootprintMetadata(enemies[0]?.footprint) : null
   return {
     event_type: 'LootContainerCreated',
     event_schema_version: LOOT_CONTAINER_CREATED_EVENT_SCHEMA_VERSION,
@@ -337,6 +341,7 @@ function containerDraft({ kind, enemies, sourceIds, state, minutes, locationKey,
         location_name: locationName,
         x: anchor.x,
         y: anchor.y,
+        ...(footprint ? { footprint } : {}),
         status: 'available',
         created_at_minutes: minutes,
         items,
@@ -534,8 +539,8 @@ function reachable(state, actor, container) {
   if (container.x == null || container.y == null) return true
   const position = positionOf(state, actorIdOf(actor))
   if (position.x == null || position.y == null) return false
-  const distance = Math.max(Math.abs(position.x - container.x), Math.abs(position.y - container.y)) * 5
-  return distance <= LOOT_CONTAINER_REACH_FEET
+  const distanceFeet = footprintDistanceFeet(actor, container, position, container)
+  return distanceFeet != null && distanceFeet <= LOOT_CONTAINER_REACH_FEET
 }
 
 /**
@@ -919,7 +924,7 @@ function distanceFeetTo(state, actor, container) {
   if (!actor || container?.x == null || container?.y == null) return null
   const position = positionOf(state, actorIdOf(actor))
   if (position.x == null || position.y == null) return null
-  return Math.max(Math.abs(position.x - container.x), Math.abs(position.y - container.y)) * 5
+  return footprintDistanceFeet(actor, container, position, container)
 }
 
 /**

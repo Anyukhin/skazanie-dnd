@@ -92,13 +92,14 @@ export function promptForModelRole(basePrompt, llmClient, role = 'shared') {
  * не даёт качества, а хвост задержки без него исчезает. Для GLM-5.3-Flash
  * оставлен проверенный в живых запросах effort `low`; это настройка нашего
  * маршрута, а не утверждение, что провайдер запрещает другие режимы.
+ * Muse Spark 1.3 использует low из сравнительного прогона 2026-09-11.
  * Незнакомая модель остаётся на умолчании провайдера.
  *
  * @param {string | null | undefined} modelId
  * @returns {{ enabled: false } | { effort: 'low' } | null}
  */
 export function reasoningProfileFor(modelId) {
-  if (String(modelId ?? '') === 'z-ai/glm-5.3-flash') return { effort: 'low' }
+  if (['z-ai/glm-5.3-flash', 'meta/muse-spark-1.3'].includes(String(modelId ?? ''))) return { effort: 'low' }
   const known = new Set([
     'z-ai/glm-5.2',
     'deepseek/deepseek-v4-flash',

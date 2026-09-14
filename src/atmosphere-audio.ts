@@ -21,7 +21,7 @@ export type AtmosphereSettings = {
 
 export const DEFAULT_ATMOSPHERE_SETTINGS: Readonly<AtmosphereSettings> = Object.freeze({
   ambientVolume: 0.28,
-  muted: false,
+  muted: true,
 })
 
 type StorageLike = Pick<Storage, 'getItem' | 'setItem'>
@@ -69,7 +69,7 @@ export function normalizeAtmosphereSettings(value: unknown): AtmosphereSettings 
     : {}
   return {
     ambientVolume: clampAtmosphereVolume(source.ambientVolume, DEFAULT_ATMOSPHERE_SETTINGS.ambientVolume),
-    muted: source.muted === true,
+    muted: source.muted !== false,
   }
 }
 

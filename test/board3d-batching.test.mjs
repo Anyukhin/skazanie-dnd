@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import test from 'node:test'
 
 import { buildThemedScene } from '../server/scene-themes.mjs'
+import { createInteriorModel, disposeInteriorModel, mergeStaticInteriorMeshes } from '../tools/build-interior-models.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 mkdirSync(join(root, 'tmp'), { recursive: true })
@@ -55,8 +56,15 @@ function matrixValues(rootGroup, expanded = false) {
 
 function assertSameMatrices(before, after) {
   assert.equal(after.length, before.length, 'число исходных и итоговых экземпляров совпадает')
-  for (let index = 0; index < before.length; index += 1) for (let part = 0; part < 16; part += 1) {
-    assert.ok(Math.abs(before[index][part] - after[index][part]) < 1e-5, `матрица ${index}, элемент ${part} изменился`)
+  const remaining = after.slice()
+  for (let index = 0; index < before.length; index += 1) {
+    let match = -1, bestDelta = Number.POSITIVE_INFINITY
+    for (let candidate = 0; candidate < remaining.length; candidate += 1) {
+      const delta = Math.max(...before[index].map((value, part) => Math.abs(value - remaining[candidate][part])))
+      if (delta < bestDelta) { bestDelta = delta; match = candidate }
+    }
+    assert.ok(bestDelta < 1e-5, `матрица ${index} изменилась (max delta ${bestDelta})`)
+    remaining.splice(match, 1)
   }
 }
 
@@ -72,6 +80,8 @@ test('batch сохраняет матрицы мира и пропускает �
   const hidden = make('hidden'); hidden.visible = false
   const negative = make('negative'); negative.scale.x = -1
   const animated = make('animated'); animated.userData.animated = true
+  const animatedParent = new THREE.Group(); animatedParent.name = 'animated-parent'; animatedParent.userData.animated = true
+  const animatedChild = make('animated-child'); animatedParent.add(animatedChild); rootGroup.add(animatedParent)
   const skinned = new THREE.SkinnedMesh(geometry, opaque); skinned.name = 'skinned'; rootGroup.add(skinned)
   const before = matrixValues(rootGroup)
   const result = batch.batchEnvironmentMeshes(rootGroup)
@@ -79,7 +89,7 @@ test('batch сохраняет матрицы мира и пропускает �
   assert.equal(result.batches[0].count, 2)
   assert.ok(result.batchedDrawCalls < result.originalDrawCalls)
   assertSameMatrices(before, matrixValues(rootGroup, true))
-  for (const name of ['transparent', 'array', 'hidden', 'negative', 'animated', 'skinned']) assert.ok(rootGroup.getObjectByName(name), `${name} не должен удаляться`)
+  for (const name of ['transparent', 'array', 'hidden', 'negative', 'animated', 'animated-parent', 'animated-child', 'skinned']) assert.ok(rootGroup.getObjectByName(name), `${name} не должен удаляться`)
   assert.equal(rootGroup.getObjectByName('eligible-a'), undefined)
   assert.equal(rootGroup.getObjectByName('eligible-b'), undefined)
   let geometryDisposals = 0, materialDisposals = 0
@@ -89,6 +99,23 @@ test('batch сохраняет матрицы мира и пропускает �
   assert.equal(geometryDisposals, 0, 'batch не владеет общей геометрией')
   assert.equal(materialDisposals, 0, 'batch не владеет общим материалом')
   assert.equal(result.batches[0].parent, null)
+})
+
+test('batch не извлекает дочерние meshes из animated GLB hinge-группы', () => {
+  const parsed = createInteriorModel('sarcophagus')
+  mergeStaticInteriorMeshes(parsed)
+  const hinge = parsed.getObjectByName('hinge-lid')
+  assert.ok(hinge)
+  assert.equal(hinge.userData.animated, true)
+  assert.equal(hinge.userData.pivotRole, 'rear-hinge')
+  const children = hinge.children.map((child) => child.name)
+  const rootGroup = new THREE.Group()
+  rootGroup.add(parsed)
+  const result = batch.batchEnvironmentMeshes(rootGroup)
+  assert.deepEqual(hinge.children.map((child) => child.name), children)
+  assert.equal(hinge.parent, parsed)
+  result.dispose()
+  disposeInteriorModel(parsed)
 })
 
 test('лесная сцена получает существенное сокращение draw calls', () => {

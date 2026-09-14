@@ -8,28 +8,49 @@
  * 512 px по длинной стороне и кладутся в новый BIN chunk.
  */
 import { createHash } from 'node:crypto'
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, readFile, readdir, realpath, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
 import { decodePng, encodePng } from './png-codec.mjs'
 import { resampleImage } from './build-prop-atlas.mjs'
 import { listAssets } from '../server/asset-registry.mjs'
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url))
-const OUTPUT = join(ROOT, 'public/assets/models/environment')
 const QUATERNIUS_DIR = join(ROOT, 'tmp/quaternius-fantasy-props-extracted/Exports/glTF')
 const KENNEY_DIR = join(ROOT, 'tmp/kenney-nature-kit-extracted/Models/GLTF format')
 const QUATERNIUS_ARCHIVE = join(ROOT, 'tmp/fantasy_props_megakitstandard.zip')
 const KENNEY_ARCHIVE = join(ROOT, 'tmp/kenney_nature-kit.zip')
+const DUNGEON_FAMILY = 'kenney-dungeon'
 const MAX_TEXTURE_SIDE = 512
+export const REDUCED_BASE_COLOR_SIDE = 256
+export const REDUCED_BASE_COLOR_MODELS = Object.freeze([
+  'Chandelier', 'Shelf_Small_Bottles', 'FarmCrate_Carrot', 'FarmCrate_Apple',
+  'Anvil_Log', 'Barrel_Apples', 'Shield_Wooden', 'Whetstone',
+  'Stall_Cart_Empty', 'Stall_Empty', 'Bed_Twin1', 'Bed_Twin2',
+])
+const REDUCED_BASE_COLOR_MODEL_SET = new Set(REDUCED_BASE_COLOR_MODELS)
+export const TEXTURE_POLICY = Object.freeze({
+  baseColorMaxSide: MAX_TEXTURE_SIDE,
+  normalOrmMaxSide: REDUCED_BASE_COLOR_SIDE,
+  reducedBaseColorSide: REDUCED_BASE_COLOR_SIDE,
+  reducedBaseColorModels: REDUCED_BASE_COLOR_MODELS,
+})
 const MAX_FILE_BYTES = 8_000_000
 const MAX_TOTAL_BYTES = 64 * 1024 * 1024
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+const FORBIDDEN_OUTPUT_ROOTS = [
+  join(ROOT, 'public/assets'),
+  join(ROOT, 'data'),
+  join(ROOT, 'storage'),
+  join(ROOT, 'node_modules'),
+  join(ROOT, '.git'),
+]
+const PALETTE_NOTICE = 'Палитра материалов нормализована для «Сказания»: листва тёмно-зелёная/оливковая, кора коричневая, камни серо-бурые, осенняя листва охристая; metallicFactor=0, roughnessFactor=1.'
 
 /** Имена материалов Nature Kit фиксированы исходным набором. */
-const MATERIAL_SRGB = Object.freeze({
+export const MATERIAL_SRGB = Object.freeze({
   leafsGreen: '#435b2a',
   leafsDark: '#344729',
   leafsFall: '#a4772b',
@@ -41,13 +62,15 @@ const MATERIAL_SRGB = Object.freeze({
   woodDark: '#4b3024',
   grass: '#4a682c',
   dirt: '#6d604f',
+  stone: '#6b6d68',
+  stoneDark: '#40433f',
   _defaultMat: '#6f6453',
   colorRed: '#8b3426',
   colorYellow: '#ad832a',
   colorTan: '#8b6a42',
 })
 
-const SOURCES = [
+export const SOURCES = Object.freeze([
   {
     url: 'https://quaternius.com/packs/fantasypropsmegakit.html',
     license: 'CC0-1.0',
@@ -62,12 +85,21 @@ const SOURCES = [
     archive: 'kenney_nature-kit.zip',
     archiveSha256: 'fa7974a0d342bfe63c38664ba9f8ec1a4aab8ea25f099bdc56870e33588c4d9d',
   },
-]
+])
+
+/** Не включается автоматически: источник должен быть передан явными CLI-путями. */
+export const DUNGEON_SOURCE = Object.freeze({
+  url: 'https://kenney.nl/assets/modular-dungeon',
+  license: 'CC0-1.0',
+  author: 'Kenney',
+  archive: 'kenney_modular-dungeon-kit_1.0.zip',
+  archiveSha256: 'dd0aa6776db8912283cdca60161dee6a8839bbda3558eba2ea501419eb5b4623',
+})
 
 /** У выбранных вариантов есть осмысленная связь с каноническим assetId. */
 const ASSET_IDS = {
   Table_Large: ['table_long'],
-  Bench: ['bench'],
+  Bench: ['bench', 'prayer_bench'],
   Chair_1: ['chair'],
   Stool: ['stool'],
   Bed_Twin1: ['bed'],
@@ -80,6 +112,7 @@ const ASSET_IDS = {
   Bucket_Metal: ['bucket'],
   Cabinet: ['cupboard'],
   Bookcase_2: ['bookshelf'],
+  Nightstand_Shelf: ['night_table'],
   Shelf_Simple: ['shelf_wall'],
   Mug: ['mug'],
   Table_Plate: ['plate'],
@@ -103,8 +136,8 @@ const YAW = {
   Bed_Twin2: 90,
 }
 
-/** Около тридцати форм из Nature Kit: деревья, пни, древесина, камни и трава. */
-const KENNEY_SELECTION = [
+/** Выбранные формы Nature Kit: природа плюс точечные staged-представления пропов. */
+export const KENNEY_SELECTION = Object.freeze([
   ['tree_default', 'Природа', 'Лиственное дерево', ['tree_birch'], 0],
   ['tree_oak', 'Природа', 'Дуб', ['tree_oak'], 0],
   ['tree_pineDefaultA', 'Природа', 'Сосна', ['tree_pine'], 0],
@@ -117,8 +150,8 @@ const KENNEY_SELECTION = [
   ['stump_squareDetailedWide', 'Природа', 'Широкий пень', ['tree_stump'], 0],
   ['log', 'Природа', 'Бревно', ['fallen_log'], 90],
   ['log_large', 'Природа', 'Большое бревно', ['fallen_log'], 0],
-  ['log_stack', 'Природа', 'Стопка брёвен', ['woodpile'], 90],
-  ['log_stackLarge', 'Природа', 'Большая стопка брёвен', ['woodpile'], 90],
+  ['log_stack', 'Природа', 'Стопка брёвен', ['woodpile', 'firewood_stack'], 90],
+  ['log_stackLarge', 'Природа', 'Большая стопка брёвен', ['woodpile', 'firewood_stack'], 90],
   ['rock_smallA', 'Природа', 'Небольшой камень', ['rock_small'], 0],
   ['rock_smallB', 'Природа', 'Камень округлой формы', ['rock_small'], 0],
   ['rock_smallFlatA', 'Природа', 'Плоский камень', ['rock_small'], 0],
@@ -136,7 +169,23 @@ const KENNEY_SELECTION = [
   ['flower_redA', 'Природа', 'Красный цветок', ['flowers'], 0],
   ['flower_yellowA', 'Природа', 'Жёлтый цветок', ['flowers'], 0],
   ['campfire_logs', 'Природа', 'Костёр на брёвнах', ['campfire'], 0],
-]
+  ['sign', 'Поселение', 'Указатель', ['signpost'], 0],
+  ['fence_simple', 'Поселение', 'Простая изгородь', ['village_fence'], 0],
+  ['fence_planks', 'Поселение', 'Дощатая изгородь', ['village_fence'], 0],
+  ['statue_head', 'Храм', 'Каменная статуя', ['statue'], 0],
+  ['statue_obelisk', 'Храм', 'Каменный обелиск', ['statue'], 0],
+  ['statue_column', 'Храм', 'Статуя-колонна', ['statue'], 0],
+  ['rock_tallC', 'Пещера', 'Остроконечный сталагмит', ['stalagmite'], 0],
+  ['rock_tallD', 'Пещера', 'Сталагмит, вариант 2', ['stalagmite'], 0],
+  ['rock_tallJ', 'Пещера', 'Сталагмит, вариант 3', ['stalagmite'], 0],
+])
+
+const KENNEY_CORE_SELECTION_COUNT = 31
+
+/** Явно включается только через --dungeon-dir и --dungeon-archive. */
+export const DUNGEON_SELECTION = Object.freeze([
+  ['stairs', 'Переходы', 'Лестница', ['stairs_up', 'stairs_down'], 0],
+])
 
 const PNG_CACHE = new Map()
 
@@ -146,6 +195,105 @@ function align4(value) {
 
 function hash(bytes) {
   return createHash('sha256').update(bytes).digest('hex')
+}
+
+function isPathInside(path, root) {
+  const outside = relative(root, path)
+  return outside === '' || (!isAbsolute(outside) && outside !== '..' && !outside.startsWith(`..${sep}`))
+}
+
+async function resolveThroughExisting(path) {
+  const candidate = resolve(path)
+  const missing = []
+  let current = candidate
+  while (true) {
+    try {
+      const resolved = await realpath(current)
+      return missing.reduceRight((value, part) => join(value, part), resolved)
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error
+      const parent = dirname(current)
+      if (parent === current) return candidate
+      missing.push(basename(current))
+      current = parent
+    }
+  }
+}
+
+/**
+ * Проверяет каталог-кандидат до любых записей. Путь через симлинк запрещён:
+ * это сохраняет границу назначения очевидной даже при смене содержимого.
+ */
+export async function validateCandidateOutputDir(outputDir, { requireEmpty = false, requireExisting = false } = {}) {
+  if (typeof outputDir !== 'string' || !outputDir.trim()) throw new Error('Требуется outputDir-кандидат')
+  const candidate = resolve(outputDir)
+  const resolvedCandidate = await resolveThroughExisting(candidate)
+  const forbidden = await Promise.all(FORBIDDEN_OUTPUT_ROOTS.map((root) => resolveThroughExisting(root)))
+  if (forbidden.some((root) => isPathInside(resolvedCandidate, root))) {
+    throw new Error(`Каталог-кандидат запрещён: ${candidate}`)
+  }
+
+  let info = null
+  try {
+    info = await lstat(candidate)
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error
+  }
+  if (info?.isSymbolicLink()) throw new Error(`Каталог-кандидат не может быть симлинком: ${candidate}`)
+  if (info && !info.isDirectory()) throw new Error(`Каталог-кандидат не является каталогом: ${candidate}`)
+  if (requireExisting && !info) throw new Error(`Каталог-кандидат не найден: ${candidate}`)
+  if (requireEmpty && info && (await readdir(candidate)).length > 0) {
+    throw new Error(`Каталог-кандидат должен быть пустым: ${candidate}`)
+  }
+  return candidate
+}
+
+function sourceRootFor(directory) {
+  const resolved = resolve(directory)
+  const name = basename(resolved).toLowerCase()
+  const parent = basename(dirname(resolved)).toLowerCase()
+  return (name === 'gltf' && parent === 'exports') || (name === 'gltf format' && parent === 'models')
+    ? resolve(resolved, '..', '..')
+    : resolved
+}
+
+function createInputTracker(family, directory) {
+  return { family, root: sourceRootFor(directory), inputs: new Map() }
+}
+
+function sourceInputPath(file, tracker) {
+  let path = relative(tracker.root, resolve(file)).split(sep).join('/')
+  if (!path || path === '..' || path.startsWith('../') || isAbsolute(path)) path = `external/${basename(file)}`
+  path = path.split('/').map((part) => {
+    const safe = part.replace(/[^A-Za-z0-9._-]+/gu, '_')
+    return safe && safe !== '.' && safe !== '..' ? safe : '_'
+  }).join('/')
+  return `${tracker.family}/${path}`
+}
+
+function trackInput(file, bytes, tracker) {
+  if (!tracker) return
+  const key = resolve(file)
+  if (tracker.inputs.has(key)) return
+  let path = sourceInputPath(file, tracker)
+  if ([...tracker.inputs.values()].some((input) => input.path === path)) {
+    const name = basename(file).replace(/[^A-Za-z0-9._-]+/gu, '_') || 'input'
+    path = `${tracker.family}/external/${hash(bytes).slice(0, 16)}-${name}`
+  }
+  tracker.inputs.set(key, { path, sha256: hash(bytes), bytes: bytes.length })
+}
+
+async function readTracked(file, tracker) {
+  const bytes = await readFile(file)
+  trackInput(file, bytes, tracker)
+  return bytes
+}
+
+function sourceInputRecords(trackers) {
+  return trackers
+    .flatMap((tracker) => [...tracker.inputs.values()])
+    .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+    .map(({ path, sha256, bytes }) => ({ path, sha256, bytes }))
 }
 
 function srgbToLinear(value) {
@@ -159,17 +307,21 @@ function linearColor(hex) {
   return [srgbToLinear(value.slice(0, 2)), srgbToLinear(value.slice(2, 4)), srgbToLinear(value.slice(4, 6)), 1]
 }
 
-function normalizeKenneyMaterials(json, file) {
+export function normalizeKenneyMaterials(json, file = '<Kenney model>') {
   let changed = 0
   for (const material of json.materials ?? []) {
     const name = String(material.name ?? '')
     const hex = MATERIAL_SRGB[name]
     if (!hex) throw new Error(`Неизвестный материал Kenney ${name} в ${file}`)
     const pbr = material.pbrMetallicRoughness ?? (material.pbrMetallicRoughness = {})
-    pbr.baseColorFactor = linearColor(hex)
+    const baseColorFactor = linearColor(hex)
+    const sameColor = Array.isArray(pbr.baseColorFactor)
+      && pbr.baseColorFactor.length === baseColorFactor.length
+      && pbr.baseColorFactor.every((value, index) => value === baseColorFactor[index])
+    if (!sameColor || pbr.metallicFactor !== 0 || pbr.roughnessFactor !== 1) changed += 1
+    pbr.baseColorFactor = baseColorFactor
     pbr.metallicFactor = 0
     pbr.roughnessFactor = 1
-    changed += 1
   }
   return changed
 }
@@ -265,7 +417,7 @@ function externalPath(sourceFile, uri) {
   return candidate
 }
 
-async function readExternal(sourceFile, uri) {
+async function readExternal(sourceFile, uri, tracker) {
   const direct = externalPath(sourceFile, uri)
   const name = basename(decodeURIComponent(uri))
   const directory = dirname(sourceFile)
@@ -277,7 +429,7 @@ async function readExternal(sourceFile, uri) {
     join(directory, '..', '..', 'Textures', name),
     join(directory, '..', '..', '..', 'Textures', name),
   ]
-  for (const candidate of candidates) if (existsSync(candidate)) return readFile(candidate)
+  for (const candidate of candidates) if (existsSync(candidate)) return readTracked(candidate, tracker)
   throw new Error(`Не найден внешний ресурс ${uri} рядом с ${sourceFile}`)
 }
 
@@ -301,17 +453,19 @@ function parseGlb(source, sourceFile) {
     offset = end
   }
   if (!json || !Array.isArray(json.buffers) || json.buffers.length !== 1) throw new Error(`Некорректный JSON GLB: ${sourceFile}`)
-  return { json, binary: binary.subarray(0, json.buffers[0].byteLength ?? binary.length) }
+  const byteLength = json.buffers[0].byteLength ?? binary.length
+  if (!Number.isInteger(byteLength) || byteLength < 0 || binary.length < byteLength) throw new Error(`Обрезанный BIN GLB: ${sourceFile}`)
+  return { json, binary: binary.subarray(0, byteLength) }
 }
 
-async function readSource(file) {
-  if (extname(file).toLowerCase() === '.glb') return parseGlb(await readFile(file), file)
-  const json = JSON.parse(await readFile(file, 'utf8'))
+async function readSource(file, tracker) {
+  if (extname(file).toLowerCase() === '.glb') return parseGlb(await readTracked(file, tracker), file)
+  const json = JSON.parse((await readTracked(file, tracker)).toString('utf8'))
   if (!Array.isArray(json.buffers) || !json.buffers.length) throw new Error(`В glTF нет buffers: ${file}`)
   const buffers = []
   for (const buffer of json.buffers) {
     if (!buffer.uri) throw new Error(`Внешний .gltf buffer не имеет URI: ${file}`)
-    const bytes = buffer.uri.startsWith('data:') ? decodeDataUri(buffer.uri) : await readExternal(file, buffer.uri)
+    const bytes = buffer.uri.startsWith('data:') ? decodeDataUri(buffer.uri) : await readExternal(file, buffer.uri, tracker)
     if (bytes.length < (buffer.byteLength ?? 0)) throw new Error(`Buffer короче заявленного: ${file}`)
     buffers.push(Buffer.from(bytes.subarray(0, buffer.byteLength ?? bytes.length)))
   }
@@ -337,21 +491,22 @@ async function readSource(file) {
 
 function resizedPng(bytes, cacheKey, maxSide) {
   if (!PNG_SIGNATURE.equals(bytes.subarray(0, 8))) return bytes
-  const cached = PNG_CACHE.get(cacheKey)
+  const cacheKeyWithSide = `${cacheKey}:${maxSide}`
+  const cached = PNG_CACHE.get(cacheKeyWithSide)
   if (cached) return cached
   const image = decodePng(bytes)
   const scale = Math.min(1, maxSide / Math.max(image.width, image.height))
   const output = scale < 1
     ? encodePng(resampleImage(image, Math.max(1, Math.round(image.width * scale)), Math.max(1, Math.round(image.height * scale))))
     : bytes
-  PNG_CACHE.set(cacheKey, output)
+  PNG_CACHE.set(cacheKeyWithSide, output)
   return output
 }
 
-async function imageBytes(image, sourceFile, binary, sourceJson) {
+async function imageBytes(image, sourceFile, binary, sourceJson, tracker, { baseColorMaxSide = MAX_TEXTURE_SIDE } = {}) {
   let bytes
   if (typeof image.uri === 'string') {
-    bytes = image.uri.startsWith('data:') ? decodeDataUri(image.uri) : await readExternal(sourceFile, image.uri)
+    bytes = image.uri.startsWith('data:') ? decodeDataUri(image.uri) : await readExternal(sourceFile, image.uri, tracker)
   } else if (Number.isInteger(image.bufferView)) {
     const view = sourceJson.bufferViews?.[image.bufferView]
     if (!view || (view.byteOffset ?? 0) + view.byteLength > binary.length) throw new Error(`Некорректная текстура: ${sourceFile}`)
@@ -360,7 +515,10 @@ async function imageBytes(image, sourceFile, binary, sourceJson) {
     throw new Error(`У изображения нет uri или bufferView: ${sourceFile}`)
   }
   const mime = image.mimeType ?? (PNG_SIGNATURE.equals(bytes.subarray(0, 8)) ? 'image/png' : '')
-  const maxSide = /(?:normal|orm)/iu.test(String(image.name ?? image.uri ?? '')) ? 256 : MAX_TEXTURE_SIDE
+  const imageName = String(image.name ?? image.uri ?? '')
+  const maxSide = /(?:normal|orm)/iu.test(imageName)
+    ? REDUCED_BASE_COLOR_SIDE
+    : /base[_-]?color/iu.test(imageName) ? baseColorMaxSide : MAX_TEXTURE_SIDE
   return { bytes: mime === 'image/png' ? resizedPng(Buffer.from(bytes), hash(bytes), maxSide) : Buffer.from(bytes), mime }
 }
 
@@ -381,9 +539,10 @@ function writeGlb(json, binary) {
   return Buffer.concat([header, jsonHeader, paddedJson, binaryHeader, paddedBinary])
 }
 
-async function convert(sourceFile, outputFile) {
-  const source = await readSource(sourceFile)
+export async function convert(sourceFile, outputFile, { tracker, normalizeMaterials = false, baseColorMaxSide = MAX_TEXTURE_SIDE } = {}) {
+  const source = await readSource(sourceFile, tracker)
   const json = structuredClone(source.json)
+  if (normalizeMaterials) normalizeKenneyMaterials(json, sourceFile)
   const chunks = [source.binary]
   let binaryLength = source.binary.length
   const originalViews = structuredClone(json.bufferViews ?? [])
@@ -391,7 +550,7 @@ async function convert(sourceFile, outputFile) {
   json.bufferViews = originalViews
   json.buffers = [{ byteLength: 0 }]
   for (const image of json.images ?? []) {
-    const prepared = await imageBytes(image, sourceFile, source.binary, sourceJson)
+    const prepared = await imageBytes(image, sourceFile, source.binary, sourceJson, tracker, { baseColorMaxSide })
     const aligned = align4(binaryLength)
     if (aligned > binaryLength) chunks.push(Buffer.alloc(aligned - binaryLength))
     image.bufferView = json.bufferViews.length
@@ -412,69 +571,164 @@ async function convert(sourceFile, outputFile) {
 function assertModelJson(json, binary, file) {
   if (json.buffers?.some((buffer) => buffer.uri) || json.images?.some((image) => image.uri)) throw new Error(`Внешний ресурс в результате: ${file}`)
   if (!json.meshes?.length) throw new Error(`В модели нет mesh: ${file}`)
+  if (!json.buffers?.[0] || binary.length < (json.buffers[0].byteLength ?? 0)) throw new Error(`BIN короче заявленного: ${file}`)
   for (const image of json.images ?? []) {
     const view = json.bufferViews?.[image.bufferView]
-    if (!view || view.buffer !== 0 || view.byteOffset + view.byteLength > json.buffers[0].byteLength) throw new Error(`Изображение вне BIN: ${file}`)
+    const byteOffset = view?.byteOffset ?? 0
+    const byteLength = view?.byteLength ?? -1
+    if (!view || view.buffer !== 0 || byteOffset < 0 || byteLength < 0 || byteOffset + byteLength > json.buffers[0].byteLength || byteOffset + byteLength > binary.length) throw new Error(`Изображение вне BIN: ${file}`)
     if (image.mimeType === 'image/png') {
-      const bytes = binary.subarray(view.byteOffset, view.byteOffset + view.byteLength)
+      const bytes = binary.subarray(byteOffset, byteOffset + byteLength)
       const decoded = decodePng(bytes)
       if (Math.max(decoded.width, decoded.height) > MAX_TEXTURE_SIDE) throw new Error(`PNG больше 512 px: ${file}`)
     }
   }
 }
 
-async function archiveHash(file, fallback) {
-  if (!existsSync(file)) return fallback
-  return hash(await readFile(file))
+/** Проверяет самодостаточный GLB-кандидат и возвращает его воспроизводимые метаданные. */
+export async function inspectModelFile(file) {
+  const bytes = await readFile(file)
+  if (bytes.length > MAX_FILE_BYTES) throw new Error(`${file} превышает ${MAX_FILE_BYTES} байт`)
+  const parsed = parseGlb(bytes, file)
+  assertModelJson(parsed.json, parsed.binary, file)
+  return { sha256: hash(bytes), bytes: bytes.length, json: parsed.json }
 }
 
-function sourceWithArchiveHashes(hashes) {
-  return SOURCES.map((source, index) => ({ ...source, archiveSha256: hashes[index] }))
+function requiredPath(value, label) {
+  if (typeof value !== 'string' || !value.trim()) throw new Error(`Не указан путь: ${label}`)
+  return resolve(value)
+}
+
+export async function verifySourceArchive(file, source = SOURCES[0]) {
+  if (typeof file !== 'string' || !file.trim()) throw new Error(`Не указан архив источника ${source.archive}`)
+  let bytes
+  try {
+    bytes = await readFile(file)
+  } catch (error) {
+    if (error?.code === 'ENOENT') throw new Error(`Не найден архив источника: ${file}`)
+    throw error
+  }
+  const actual = hash(bytes)
+  if (actual !== source.archiveSha256) {
+    throw new Error(`Хеш архива ${file} не совпадает: ожидался ${source.archiveSha256}, получен ${actual}`)
+  }
+  return actual
+}
+
+export async function verifySourceArchives({ quaterniusArchive = QUATERNIUS_ARCHIVE, kenneyArchive = KENNEY_ARCHIVE } = {}) {
+  return Promise.all([
+    verifySourceArchive(requiredPath(quaterniusArchive, SOURCES[0].archive), SOURCES[0]),
+    verifySourceArchive(requiredPath(kenneyArchive, SOURCES[1].archive), SOURCES[1]),
+  ])
+}
+
+function sourceWithArchiveHashes(hashes, dungeonHash) {
+  const sources = SOURCES.map((source, index) => ({ ...source, archiveSha256: hashes[index] }))
+  if (dungeonHash) sources.push({ ...DUNGEON_SOURCE, archiveSha256: dungeonHash })
+  return sources
 }
 
 async function writeNotice(directory, text) {
   await writeFile(join(directory, 'NOTICE.txt'), `${text.trim()}\n`)
 }
 
-async function normalizeKenneyOutput() {
-  const directory = join(OUTPUT, 'kenney')
-  const files = KENNEY_SELECTION.map(([sourceName]) => join(directory, `${slug(sourceName)}.glb`))
-  if (files.some((file) => !existsSync(file))) throw new Error('Палитра Kenney: сначала соберите библиотеку моделей')
+export async function normalizeKenneyOutput(options = {}) {
+  const outputDir = typeof options === 'string' ? options : options.outputDir
+  const candidate = await validateCandidateOutputDir(outputDir, { requireExisting: true })
+  const directory = join(candidate, 'kenney')
+  const directoryInfo = await lstat(directory).catch((error) => {
+    if (error?.code === 'ENOENT') return null
+    throw error
+  })
+  if (!directoryInfo?.isDirectory() || directoryInfo.isSymbolicLink()) throw new Error(`Каталог Kenney не найден: ${directory}`)
+  const coreFiles = KENNEY_SELECTION
+    .slice(0, KENNEY_CORE_SELECTION_COUNT)
+    .map(([sourceName]) => join(directory, `${slug(sourceName)}.glb`))
+  if (coreFiles.some((file) => !existsSync(file))) throw new Error('Палитра Kenney: сначала соберите библиотеку моделей')
+  // Старые candidates (до расширения selection) остаются нормализуемыми;
+  // новый импорт всё равно требует весь расширенный набор ниже.
+  const files = KENNEY_SELECTION
+    .map(([sourceName]) => join(directory, `${slug(sourceName)}.glb`))
+    .filter((file) => existsSync(file))
   let changedMaterials = 0
   let changedFiles = 0
+  const prepared = []
   for (const file of files) {
+    const info = await lstat(file)
+    if (!info.isFile() || info.isSymbolicLink()) throw new Error(`Файл Kenney недопустим: ${file}`)
     const original = await readFile(file)
     const parsed = parseGlb(original, file)
     assertModelJson(parsed.json, parsed.binary, file)
     changedMaterials += normalizeKenneyMaterials(parsed.json, file)
     const normalized = writeGlb(parsed.json, parsed.binary)
-    if (!normalized.equals(original)) changedFiles += 1
-    await writeFile(file, normalized)
+    const changed = !normalized.equals(original)
+    if (changed) changedFiles += 1
+    prepared.push({ file, normalized, changed })
   }
   const noticeFile = join(directory, 'NOTICE.txt')
+  const noticeInfo = await lstat(noticeFile).catch((error) => {
+    if (error?.code === 'ENOENT') return null
+    throw error
+  })
+  if (noticeInfo?.isSymbolicLink()) throw new Error(`Файл NOTICE недопустим: ${noticeFile}`)
   const notice = existsSync(noticeFile) ? await readFile(noticeFile, 'utf8') : ''
-  const paletteNotice = 'Палитра материалов нормализована для «Сказания»: листва тёмно-зелёная/оливковая, кора коричневая, камни серо-бурые, осенняя листва охристая; metallicFactor=0, roughnessFactor=1.'
-  if (!notice.includes(paletteNotice)) await writeFile(noticeFile, `${notice.trim()}\n${paletteNotice}\n`)
-  process.stdout.write(`${JSON.stringify({ ok: true, files: files.length, changedFiles, changedMaterials, manifest: 'не изменён' }, null, 2)}\n`)
+  const nextNotice = notice.includes(PALETTE_NOTICE) ? notice : `${notice.trim()}\n${PALETTE_NOTICE}\n`
+  for (const { file, normalized, changed } of prepared) if (changed) await writeFile(file, normalized)
+  if (nextNotice !== notice) await writeFile(noticeFile, nextNotice)
+  return { ok: true, directory: candidate, files: files.length, changedFiles, changedMaterials, manifest: 'не изменён' }
 }
 
-async function main() {
-  const qDir = resolve(process.argv.includes('--quaternius-dir') ? process.argv[process.argv.indexOf('--quaternius-dir') + 1] : QUATERNIUS_DIR)
-  const kDir = resolve(process.argv.includes('--kenney-dir') ? process.argv[process.argv.indexOf('--kenney-dir') + 1] : KENNEY_DIR)
-  if (!existsSync(qDir) || !existsSync(kDir)) throw new Error(`Не найдены исходники. Нужны каталоги ${qDir} и ${kDir}`)
+/**
+ * `dungeonDir` и `dungeonArchive` образуют явную опциональную пару. Без неё
+ * источник Modular Dungeon не читается и в manifest не попадает.
+ */
+export async function importEnvironmentModels(options = {}) {
+  const candidate = await validateCandidateOutputDir(options.outputDir, { requireEmpty: true })
+  const qDir = requiredPath(options.quaterniusDir ?? QUATERNIUS_DIR, 'quaterniusDir')
+  const kDir = requiredPath(options.kenneyDir ?? KENNEY_DIR, 'kenneyDir')
+  const dungeonRequested = options.dungeonDir !== undefined || options.dungeonArchive !== undefined
+  if (dungeonRequested && (options.dungeonDir === undefined || options.dungeonArchive === undefined)) {
+    throw new Error('Для Modular Dungeon укажите одновременно dungeonDir и dungeonArchive')
+  }
+  const dungeonDir = dungeonRequested ? requiredPath(options.dungeonDir, 'dungeonDir') : null
+  const hashes = await verifySourceArchives({
+    quaterniusArchive: options.quaterniusArchive ?? QUATERNIUS_ARCHIVE,
+    kenneyArchive: options.kenneyArchive ?? KENNEY_ARCHIVE,
+  })
+  const dungeonHash = dungeonRequested
+    ? await verifySourceArchive(requiredPath(options.dungeonArchive, DUNGEON_SOURCE.archive), DUNGEON_SOURCE)
+    : undefined
+  const sourceDirectories = [[qDir, 'Quaternius'], [kDir, 'Kenney']]
+  if (dungeonDir) sourceDirectories.push([dungeonDir, 'Kenney Modular Dungeon'])
+  for (const [directory, label] of sourceDirectories) {
+    const info = await lstat(directory).catch((error) => {
+      if (error?.code === 'ENOENT') return null
+      throw error
+    })
+    if (!info?.isDirectory()) throw new Error(`Не найден каталог исходников ${label}: ${directory}`)
+  }
+
   const available = new Set(listAssets().map((asset) => asset.id))
   for (const [source, ids] of Object.entries(ASSET_IDS)) for (const id of ids) if (!available.has(id)) throw new Error(`Неизвестный assetId ${id} у ${source}`)
   for (const [, , , ids] of KENNEY_SELECTION) for (const id of ids) if (!available.has(id)) throw new Error(`Неизвестный assetId ${id} у Kenney`)
+  for (const [, , , ids] of DUNGEON_SELECTION) for (const id of ids) if (!available.has(id)) throw new Error(`Неизвестный assetId ${id} у Modular Dungeon`)
 
   const qNames = (await readdir(qDir)).filter((name) => name.toLowerCase().endsWith('.gltf')).sort()
   if (qNames.length !== 94) throw new Error(`Ожидалось 94 Quaternius glTF, найдено ${qNames.length}`)
   const kNames = new Set(await readdir(kDir))
   for (const [name] of KENNEY_SELECTION) if (!kNames.has(`${name}.glb`)) throw new Error(`Не найден Kenney GLB: ${name}`)
+  if (dungeonDir) {
+    const dungeonNames = new Set(await readdir(dungeonDir))
+    for (const [name] of DUNGEON_SELECTION) if (!dungeonNames.has(`${name}.glb`)) throw new Error(`Не найден Modular Dungeon GLB: ${name}`)
+  }
 
-  const qOut = join(OUTPUT, 'quaternius')
-  const kOut = join(OUTPUT, 'kenney')
+  const qOut = join(candidate, 'quaternius')
+  const kOut = join(candidate, 'kenney')
   await mkdir(qOut, { recursive: true })
   await mkdir(kOut, { recursive: true })
+  const qInputs = createInputTracker('quaternius', qDir)
+  const kInputs = createInputTracker('kenney', kDir)
+  const dungeonInputs = dungeonDir ? createInputTracker(DUNGEON_FAMILY, dungeonDir) : null
   /** @type {Array<Record<string, unknown>>} */
   const models = []
   let totalBytes = 0
@@ -484,10 +738,12 @@ async function main() {
     const key = `q-${slug(sourceName)}`
     const fileName = `${slug(sourceName)}.glb`
     const outputFile = join(qOut, fileName)
-    const result = await convert(join(qDir, name), outputFile)
-    const binary = await readFile(outputFile)
-    assertModelJson(result.json, parseGlb(binary, outputFile).binary, outputFile)
-    const bytes = result.bytes
+    const result = await convert(join(qDir, name), outputFile, {
+      tracker: qInputs,
+      baseColorMaxSide: REDUCED_BASE_COLOR_MODEL_SET.has(sourceName) ? REDUCED_BASE_COLOR_SIDE : MAX_TEXTURE_SIDE,
+    })
+    const inspection = await inspectModelFile(outputFile)
+    const bytes = inspection.bytes
     totalBytes += bytes
     built.push({ key, file: outputFile, bytes, source: 'Quaternius', sourceName })
     models.push({ key, label: labelOf(sourceName), category: categoryOf(sourceName), url: `/assets/models/environment/quaternius/${fileName}`, assetIds: [...(ASSET_IDS[sourceName] ?? [])], yaw: YAW[sourceName] ?? 0 })
@@ -496,29 +752,107 @@ async function main() {
     const key = `k-${slug(sourceName)}`
     const fileName = `${slug(sourceName)}.glb`
     const outputFile = join(kOut, fileName)
-    const result = await convert(join(kDir, `${sourceName}.glb`), outputFile)
-    const binary = await readFile(outputFile)
-    assertModelJson(result.json, parseGlb(binary, outputFile).binary, outputFile)
-    totalBytes += result.bytes
+    const result = await convert(join(kDir, `${sourceName}.glb`), outputFile, { tracker: kInputs, normalizeMaterials: true })
+    const inspection = await inspectModelFile(outputFile)
+    totalBytes += inspection.bytes
     built.push({ key, file: outputFile, bytes: result.bytes, source: 'Kenney', sourceName })
     models.push({ key, label, category, url: `/assets/models/environment/kenney/${fileName}`, assetIds: [...assetIds], yaw })
   }
+  if (dungeonDir && dungeonInputs) {
+    const dungeonOut = join(candidate, DUNGEON_FAMILY)
+    await mkdir(dungeonOut, { recursive: true })
+    for (const [sourceName, category, label, assetIds, yaw] of DUNGEON_SELECTION) {
+      const key = `kd-${slug(sourceName)}`
+      const fileName = `${slug(sourceName)}.glb`
+      const outputFile = join(dungeonOut, fileName)
+      const result = await convert(join(dungeonDir, `${sourceName}.glb`), outputFile, { tracker: dungeonInputs })
+      const inspection = await inspectModelFile(outputFile)
+      totalBytes += inspection.bytes
+      built.push({ key, file: outputFile, bytes: result.bytes, source: 'Kenney Modular Dungeon', sourceName })
+      models.push({ key, label, category, url: `/assets/models/environment/${DUNGEON_FAMILY}/${fileName}`, assetIds: [...assetIds], yaw })
+    }
+  }
   if (totalBytes > MAX_TOTAL_BYTES) throw new Error(`Библиотека превышает бюджет 64 МиБ: ${totalBytes}`)
 
-  const hashes = await Promise.all([archiveHash(QUATERNIUS_ARCHIVE, SOURCES[0].archiveSha256), archiveHash(KENNEY_ARCHIVE, SOURCES[1].archiveSha256)])
-  await writeFile(join(OUTPUT, 'manifest.json'), `${JSON.stringify({ version: 1, sources: sourceWithArchiveHashes(hashes), models }, null, 2)}\n`)
-  await writeFile(join(qOut, 'LICENSE.txt'), 'Fantasy Props MegaKit Standard — Quaternius\nLicense: CC0 1.0 Universal.\nhttps://creativecommons.org/publicdomain/zero/1.0/\nSource: https://quaternius.com/packs/fantasypropsmegakit.html\n')
-  await writeNotice(qOut, `Fantasy Props MegaKit Standard by Quaternius.\nSource archive: ${SOURCES[0].archive}; SHA-256: ${hashes[0]}.\nGenerated from all 94 glTF files. External .bin files and PNG textures were embedded; PNG textures were reduced to at most 512 px per side.`)
   const kenneyLicenseFile = join(kDir, '..', '..', 'License.txt')
   const kenneyLicense = existsSync(kenneyLicenseFile)
-    ? await readFile(kenneyLicenseFile, 'utf8')
+    ? (await readTracked(kenneyLicenseFile, kInputs)).toString('utf8')
     : 'Nature Kit (2.1) — Kenney\nLicense: Creative Commons Zero (CC0).\nhttps://creativecommons.org/publicdomain/zero/1.0/\nSource: https://kenney.nl/assets/nature-kit\n'
+  let resolvedDungeonLicense = null
+  if (dungeonDir && dungeonInputs) {
+    const dungeonLicenseFile = join(dungeonDir, '..', '..', 'License.txt')
+    resolvedDungeonLicense = existsSync(dungeonLicenseFile)
+      ? (await readTracked(dungeonLicenseFile, dungeonInputs)).toString('utf8')
+      : 'Modular Dungeon Kit (2.1) — Kenney\nLicense: Creative Commons Zero (CC0).\nhttps://creativecommons.org/publicdomain/zero/1.0/\nSource: https://kenney.nl/assets/modular-dungeon\n'
+  }
+  const manifest = {
+    version: 1,
+    sources: sourceWithArchiveHashes(hashes, dungeonHash),
+    models,
+    build: {
+      schema: 'environment-candidate/v1',
+      importerVersion: 2,
+      normalizationVersion: 1,
+      selectionVersion: 2,
+      texturePolicy: TEXTURE_POLICY,
+      sourceInputs: sourceInputRecords([qInputs, kInputs, ...(dungeonInputs ? [dungeonInputs] : [])]),
+    },
+  }
+  await writeFile(join(candidate, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
+  await writeFile(join(qOut, 'LICENSE.txt'), 'Fantasy Props MegaKit Standard — Quaternius\nLicense: CC0 1.0 Universal.\nhttps://creativecommons.org/publicdomain/zero/1.0/\nSource: https://quaternius.com/packs/fantasypropsmegakit.html\n')
+  await writeNotice(qOut, `Fantasy Props MegaKit Standard by Quaternius.\nSource archive: ${SOURCES[0].archive}; SHA-256: ${hashes[0]}.\nGenerated from all 94 glTF files. External .bin files and PNG textures were embedded. BaseColor PNGs are limited to ${MAX_TEXTURE_SIDE} px, except ${REDUCED_BASE_COLOR_MODELS.join(', ')} at ${REDUCED_BASE_COLOR_SIDE} px; Normal/ORM PNGs are limited to ${REDUCED_BASE_COLOR_SIDE} px.`)
   await writeFile(join(kOut, 'LICENSE.txt'), kenneyLicense)
-  await writeNotice(kOut, `Nature Kit (2.1) by Kenney.\nSource archive: ${SOURCES[1].archive}; SHA-256: ${hashes[1]}.\nSelected ${KENNEY_SELECTION.length} GLB files from the official GLTF export. No DAE or FBX files are imported.`)
-  process.stdout.write(`${JSON.stringify({ ok: true, quaternius: qNames.length, kenney: KENNEY_SELECTION.length, models: models.length, mappedAssetIds: [...new Set(models.flatMap((model) => model.assetIds))].sort(), bytes: totalBytes, largest: built.sort((a, b) => b.bytes - a.bytes).slice(0, 5) }, null, 2)}\n`)
+  await writeNotice(kOut, `Nature Kit (2.1) by Kenney.\nSource archive: ${SOURCES[1].archive}; SHA-256: ${hashes[1]}.\nSelected ${KENNEY_SELECTION.length} GLB files from the official GLTF export. No DAE or FBX files are imported.\n${PALETTE_NOTICE}`)
+  if (dungeonDir && dungeonInputs) {
+    const dungeonOut = join(candidate, DUNGEON_FAMILY)
+    await writeFile(join(dungeonOut, 'LICENSE.txt'), resolvedDungeonLicense)
+    await writeNotice(dungeonOut, `Modular Dungeon Kit (2.1) by Kenney.\nSource archive: ${DUNGEON_SOURCE.archive}; SHA-256: ${dungeonHash}.\nSelected ${DUNGEON_SELECTION.length} GLB files from the official GLB export. External resources were embedded by the importer.`)
+  }
+  return {
+    ok: true,
+    directory: candidate,
+    manifest,
+    quaternius: qNames.length,
+    kenney: KENNEY_SELECTION.length,
+    dungeon: dungeonDir ? DUNGEON_SELECTION.length : 0,
+    models: models.length,
+    mappedAssetIds: [...new Set(models.flatMap((model) => model.assetIds))].sort(),
+    bytes: totalBytes,
+    largest: built.sort((a, b) => b.bytes - a.bytes).slice(0, 5),
+  }
+}
+
+function cliValue(args, name) {
+  const index = args.indexOf(name)
+  if (index < 0) return undefined
+  const value = args[index + 1]
+  if (!value || value.startsWith('--')) throw new Error(`${name} требует значения`)
+  return value
+}
+
+async function main() {
+  const args = process.argv.slice(2)
+  const outputDir = cliValue(args, '--out')
+  if (!outputDir) throw new Error('CLI требует --out с каталогом-кандидатом')
+  const options = {
+    outputDir,
+    quaterniusDir: cliValue(args, '--quaternius-dir'),
+    kenneyDir: cliValue(args, '--kenney-dir'),
+    quaterniusArchive: cliValue(args, '--quaternius-archive'),
+    kenneyArchive: cliValue(args, '--kenney-archive'),
+    dungeonDir: cliValue(args, '--dungeon-dir'),
+    dungeonArchive: cliValue(args, '--dungeon-archive'),
+  }
+  const result = args.includes('--palette-only')
+    ? await normalizeKenneyOutput(options)
+    : await importEnvironmentModels(options)
+  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+  return result
 }
 
 if (process.argv[1] && process.argv[1].endsWith('import-environment-models.mjs')) {
-  if (process.argv.includes('--palette-only')) await normalizeKenneyOutput()
-  else await main()
+  main().catch((error) => {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
+    process.exitCode = 1
+  })
 }

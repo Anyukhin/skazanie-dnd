@@ -17,6 +17,8 @@
  * а не назвать люстру в тексте.
  */
 
+import { footprintDistanceFeet } from './actor-footprint.mjs'
+
 export const SCENE_SWING_POLICY_ID = 'skazanie:scene-swing-v1'
 
 const SWING_PROPS = Object.freeze({
@@ -200,7 +202,7 @@ export function fireSourceNear(props, actorPosition, actor) {
   if (Number.isFinite(at.x) && Number.isFinite(at.y)) {
     for (const prop of Array.isArray(props) ? props : []) {
       if (!sceneHazardTagsFor(prop?.assetId).fireSource) continue
-      const near = hazardPropCells(prop).some((cell) => Math.max(Math.abs(cell.x - at.x), Math.abs(cell.y - at.y)) <= 1)
+      const near = hazardPropCells(prop).some((cell) => (footprintDistanceFeet(actor, [cell], at) ?? Number.POSITIVE_INFINITY) <= 5)
       if (near) return { kind: 'prop', id: clean(prop?.id, 120) }
     }
   }

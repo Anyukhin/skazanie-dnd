@@ -250,7 +250,12 @@ function buildCrate(resources: Resources, parent: THREE.Group, layout: Layout, t
   if (shape === 'chest') {
     const w = Math.min(1.4, width * 0.84), d = Math.min(0.75, depth * 0.76)
     cube(resources, parent, 'chest-body', wood, [w, 0.38, d], [0, 0.22, 0])
-    cube(resources, parent, 'chest-lid', wood, [w * 1.04, 0.12, d * 1.05], [0, 0.46, 0])
+    const hinge = new THREE.Group()
+    hinge.name = 'hinge-lid'
+    hinge.position.set(0, 0.46, -d * 0.525)
+    hinge.userData = { animated: true, pivotRole: 'rear-hinge' }
+    parent.add(hinge)
+    cube(resources, hinge, 'chest-lid', wood, [w * 1.04, 0.12, d * 1.05], [0, 0, d * 0.525])
     cube(resources, parent, 'chest-band', dark, [0.06, 0.45, d * 1.05], [0, 0.25, 0], undefined, false)
     cube(resources, parent, 'chest-latch', material(resources, 'brass', t.woodLight, { metalness: 0.35 }), [0.1, 0.12, 0.06], [0, 0.37, d * 0.56], undefined, false)
   } else { add(0, 0, 1, 'crate'); if (shape === 'stack') { add(-0.22, 0.08, 0.76, 'crate'); add(0.23, 0.12, 0.76, 'crate') } }
@@ -387,7 +392,18 @@ function buildTempleCrypt(resources: Resources, parent: THREE.Group, layout: Lay
   else if (kind === 'offering-bowl' || kind === 'urn') { cone(resources, parent, kind, stone, kind === 'urn' ? 0.4 : 0.48, kind === 'urn' ? 0.45 : 0.2, [0, kind === 'urn' ? 0.23 : 0.1, 0]); ring(resources, parent, `${kind}-rim`, lightStone, kind === 'urn' ? 0.36 : 0.44, 0.04, [0, kind === 'urn' ? 0.46 : 0.21, 0]) }
   else if (kind === 'prayer-bench') buildSeat(resources, parent, layout, t, 'prayer')
   else if (kind === 'reliquary') { cube(resources, parent, 'reliquary-body', stone, [0.55, 0.58, 0.4], [0, 0.29, 0]); cone(resources, parent, 'reliquary-roof', lightStone, 0.62, 0.24, [0, 0.7, 0]); cube(resources, parent, 'reliquary-lock', metal, [0.08, 0.12, 0.04], [0, 0.29, 0.22], undefined, false) }
-  else if (kind === 'sarcophagus' || kind === 'grave') { cube(resources, parent, `${kind}-slab`, stone, [Math.min(1.7, width * 0.86), 0.22, Math.min(0.78, depth * 0.76)], [0, 0.11, 0]); if (kind === 'sarcophagus') { cube(resources, parent, 'sarcophagus-lid', lightStone, [width * 0.78, 0.16, depth * 0.66], [0, 0.3, 0]); cone(resources, parent, 'sarcophagus-crest', stone, 0.26, 0.14, [0, 0.45, -0.02]) } else cube(resources, parent, 'grave-marker', stone, [0.16, 0.5, 0.08], [0, 0.34, -depth * 0.3]) }
+  else if (kind === 'sarcophagus' || kind === 'grave') {
+    cube(resources, parent, `${kind}-slab`, stone, [Math.min(1.7, width * 0.86), 0.22, Math.min(0.78, depth * 0.76)], [0, 0.11, 0])
+    if (kind === 'sarcophagus') {
+      const hinge = new THREE.Group()
+      hinge.name = 'hinge-lid'
+      hinge.position.set(0, 0.3, -depth * 0.33)
+      hinge.userData = { animated: true, pivotRole: 'rear-hinge' }
+      parent.add(hinge)
+      cube(resources, hinge, 'sarcophagus-lid', lightStone, [width * 0.78, 0.16, depth * 0.66], [0, 0, depth * 0.33])
+      cone(resources, hinge, 'sarcophagus-crest', stone, 0.26, 0.14, [0, 0.15, depth * 0.05])
+    } else cube(resources, parent, 'grave-marker', stone, [0.16, 0.5, 0.08], [0, 0.34, -depth * 0.3])
+  }
   else if (kind === 'bone-pile') { for (const [x, z, angle] of [[-0.14, 0, 0.6], [0.13, 0.04, -0.6], [0, 0.14, 0.1]] as Array<[number, number, number]>) cube(resources, parent, 'bone', lightStone, [0.06, 0.06, 0.42], [x, 0.09, z], [angle, 0, angle], false) }
   else if (kind === 'crypt-niche') { for (const x of [-0.36, 0.36]) cube(resources, parent, 'niche-pillar', stone, [0.16, 0.8, 0.18], [x, 0.4, 0]); cube(resources, parent, 'niche-lintel', lightStone, [0.88, 0.16, 0.2], [0, 0.82, 0]) }
   else if (kind === 'mushroom-cluster') { for (const [x, z, s] of [[-0.18, 0, 0.7], [0.12, 0.04, 0.9], [0, -0.12, 0.58]] as Array<[number, number, number]>) { round(resources, parent, 'mushroom-stem', lightStone, 0.08 * s, 0.3 * s, [x, 0.15 * s, z]); sphere(resources, parent, 'mushroom-cap', cloth, [0.3 * s, 0.12 * s, 0.3 * s], [x, 0.34 * s, z], false) } }
@@ -466,6 +482,30 @@ function buildUnknown(resources: Resources, parent: THREE.Group, t: Tones) {
   cube(resources, parent, 'unknown-cross-x', marker, [0.32, 0.025, 0.025], [0, 0.09, 0], [0, 0.7, 0], false)
 }
 
+const OPEN_CONTAINER_STATES = new Set(['open', 'taken', 'looted'])
+
+function openContainerState(state: string) {
+  return OPEN_CONTAINER_STATES.has(state)
+}
+
+function animatedHingeOf(parent: THREE.Object3D | null | undefined) {
+  if (!parent) return undefined
+  let hinge: THREE.Object3D | undefined
+  parent.traverse((object) => {
+    if (!hinge && (object.name === 'hinge-lid'
+      || (object.userData?.animated === true && typeof object.userData?.pivotRole === 'string'))) hinge = object
+  })
+  return hinge
+}
+
+function applyContainerState(parent: THREE.Group, kind: string, state: string) {
+  if (kind !== 'chest' && kind !== 'sarcophagus') return
+  const hinge = animatedHingeOf(parent)
+  if (!hinge) return
+  hinge.rotation.x = openContainerState(state) ? -Math.PI / 2 : 0
+  parent.userData.containerVisualState = openContainerState(state) ? 'open' : 'closed'
+}
+
 function applyState(resources: Resources, parent: THREE.Group, layout: Layout, t: Tones, state: string) {
   if (state === 'toppled') {
     // Поворот вокруг основания оставляет авторитетные XY и футпринт нетронутыми.
@@ -503,17 +543,26 @@ export function createEnvironmentModels(palette: BoardPalette, assets?: PropMode
       group.userData.state = prop.state
       const lightHeight = LIGHT_HEIGHTS[kind]
       if (lightHeight !== undefined) group.userData.lightHeight = lightHeight
+      if (['table-round', 'table-long', 'table-royal', 'table-small', 'counter'].includes(kind)) group.userData.surfaceHeight = .73
+      if (kind === 'altar') group.userData.surfaceHeight = .52
+      if (kind === 'night-table') group.userData.surfaceHeight = .58
       group.position.set(layout.x, 0, layout.y)
       group.rotation.y = -layout.rotation * Math.PI / 180
       group.scale.setScalar(layout.scale)
       const entry = propModelFor(assets?.catalog, canonical, prop.id)
       const template = entry ? assets?.models.get(entry.key) : null
-      if (template) {
+      const templateHinge = animatedHingeOf(template)
+      const useTemplate = Boolean(template) && (!openContainerState(prop.state) || Boolean(templateHinge))
+      if (useTemplate && template) {
         const model = template.clone(true)
         model.updateMatrixWorld(true)
         const box = new THREE.Box3().setFromObject(model)
         const size = box.getSize(new THREE.Vector3())
         const fit = Math.min(layout.width / Math.max(.01, size.x), layout.depth / Math.max(.01, size.z)) * PROP_FOOTPRINT_FILL
+        if (group.userData.surfaceHeight !== undefined) {
+          const top = model.getObjectByName('surface-top')
+          group.userData.surfaceHeight = ((top ? top.getWorldPosition(new THREE.Vector3()).y : box.max.y) - box.min.y) * fit
+        }
         const fitted = new THREE.Group()
         model.position.set(-(box.min.x + box.max.x) / 2, -box.min.y, -(box.min.z + box.max.z) / 2)
         fitted.add(model)
@@ -524,6 +573,7 @@ export function createEnvironmentModels(palette: BoardPalette, assets?: PropMode
         if (lightHeight !== undefined) group.userData.lightHeight = size.y * fit * .8
       } else if (kind === 'unknown') buildUnknown(owned, group, t)
       else buildModel(owned, group, layout, t, kind)
+      applyContainerState(group, kind, prop.state)
       if (prop.state === 'toppled' || prop.state === 'burned' || prop.state === 'broken') applyState(owned, group, layout, t, prop.state)
       return group
     },

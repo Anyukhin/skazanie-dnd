@@ -1,5 +1,5 @@
 import { reputationTier } from './reputation-policy.mjs'
-import { MAX_CAMPAIGN_ARCS, campaignArcClimaxSatisfied, campaignArcPlan } from './campaign-loop-policy.mjs'
+import { MAX_CAMPAIGN_ARCS, campaignArcClimaxSatisfied, campaignArcPlan, mainQuestFor } from './campaign-loop-policy.mjs'
 import { CLOSED_QUEST_STATUSES } from './world-memory.mjs'
 
 const STATUSES = new Set(['setup', 'active', 'paused', 'completed', 'failed', 'archived'])
@@ -345,14 +345,9 @@ export function campaignCanAutoComplete(state = {}) {
   const lifecycle = normalizeCampaignLifecycle(state?.mechanics?.campaign_lifecycle, state?.mechanics?.death?.campaign_status)
   if (lifecycle.status !== 'active' || state?.mechanics?.combat?.active) return false
   if (state?.autonomy?.pacing?.phase !== 'climax') return false
-  const quests = Array.isArray(state?.worldMemory?.quests) ? state.worldMemory.quests : []
-  // Bootstrap creates a scene-support quest (`quest:chapter:*`) alongside the
-  // campaign premise quest. The first non-scene quest is the main thread; old
-  // streams without that distinction fall back to their first quest.
-  const mainQuest = quests.find((quest) => !String(quest.id || '').startsWith('quest:chapter:')) ?? quests[0]
-  // Отказ отряда закрывает главную нить наравне с провалом. Иначе брошенный
-  // главный квест запирал кампанию: остаться активным он уже не может, а
-  // условие финала на него больше никогда не сходилось бы.
+  // Общий выбор главной нити пропускает новые отказы без ухода: следующая
+  // самостоятельная цель сможет завершить кампанию по обычным условиям.
+  const mainQuest = mainQuestFor(state)
   if (!mainQuest || !CLOSED_QUEST_STATUSES.includes(mainQuest.status)) return false
   return campaignArcPlan(state) ? campaignArcClimaxSatisfied(state) : true
 }

@@ -1695,12 +1695,20 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         {view === 'world-map' && <WorldMapView state={state} busy={travelBlocked} onTravel={(action) => {
           void submitAction(action, activePlayer.id).then((outcome) => { if (outcome.ok) navigate('room') })
         }} />}
-        {view === 'journal' && <JournalView state={state} />}
+        {view === 'journal' && <JournalView state={state} questBusy={gameSession.questDecisionBusy}
+          canAbandonQuest={canAct && !combatActive}
+          onAbandonQuest={(questId) => {
+            void gameSession.requestQuestAbandonment(activePlayer.id, questId).then((opened) => {
+              if (opened) navigate('room')
+            })
+          }} />}
         {view === 'characters' && <CharactersView players={partyPlayers} selectedId={activePlayer.id} turnId={turnActorId} combatActive={combatActive} accessibleHeroIds={accessibleHeroIds} onSelect={setSelectedHeroId} onEdit={openHeroEditor} />}
         {view === 'inventory' && <InventoryView
           onCreateHero={accessibleHeroIds.includes(activePlayer.id) ? () => openHeroEditor(activePlayer.id) : undefined}
           player={activePlayer}
           party={partyPlayers}
+          campaignId={state.sessionCode}
+          appearance={state.actor_appearances?.[activePlayer.id]}
           enemyTargets={(state.enemies ?? []).filter((candidate) => candidate.alive && (candidate.hp == null || candidate.hp > 0)).map((candidate) => ({ id: candidate.id, label: candidate.name }))}
           combatActive={combatActive}
           combatItemTurnAvailable={canAct && turnActorId === activePlayer.id}

@@ -1,0 +1,384 @@
+{
+  "created_at": "2026-09-11T17:37:21.617Z",
+  "samples": 144,
+  "generated": 143,
+  "case_count": 12,
+  "repeats": 2,
+  "prompt": "narrator/v9",
+  "common_messages_equal_for_every_case": true,
+  "source_hashes_unchanged": true,
+  "files": [
+    "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "eval/narrator-comparison-muse-medium-2026-09-11.json",
+    "eval/narrator-comparison-glm-production-2026-09-11.json"
+  ],
+  "groups": [
+    {
+      "key": "meta/muse-spark-1.3|common|{\"effort\":\"low\"}",
+      "model": "meta/muse-spark-1.3",
+      "profile": "common",
+      "reasoning_requested": {
+        "effort": "low"
+      },
+      "calls": 24,
+      "generated": 24,
+      "accepted": 23,
+      "accepted_full_under_12s": 22,
+      "accepted_first_verified_under_12s": 22,
+      "median_completion_ms": 5250.5,
+      "median_first_verified_model_text_ms": 5242,
+      "min_completion_ms": 2968,
+      "max_completion_ms": 20042,
+      "mean_prompt_tokens": 1824.166667,
+      "mean_completion_tokens": 356.25,
+      "reported_reasoning_tokens": [
+        127,
+        115,
+        145,
+        204,
+        746,
+        224,
+        671,
+        267,
+        242,
+        195,
+        234,
+        384,
+        239,
+        173,
+        191,
+        238,
+        488,
+        584,
+        668,
+        350,
+        191,
+        369,
+        237,
+        365
+      ],
+      "catalog_cost_rub_cache_adjusted": 9.390647,
+      "catalog_cost_rub_no_cache": 9.985553,
+      "estimated_rub_per_1000_metered": 391.276966,
+      "unknown_usage_count": 0,
+      "reported_usage_cost_unit_unspecified": 9.390647,
+      "response_models": [
+        "meta/muse-spark-1.3"
+      ],
+      "errors": [],
+      "rejected": [
+        {
+          "case_id": "holdout-recorded-dialogue",
+          "repeat": 1,
+          "codes": [
+            "NPC_REACTION_MISMATCH"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "z-ai/glm-5.3-flash|common|{\"effort\":\"low\"}",
+      "model": "z-ai/glm-5.3-flash",
+      "profile": "common",
+      "reasoning_requested": {
+        "effort": "low"
+      },
+      "calls": 24,
+      "generated": 24,
+      "accepted": 24,
+      "accepted_full_under_12s": 24,
+      "accepted_first_verified_under_12s": 24,
+      "median_completion_ms": 5676,
+      "median_first_verified_model_text_ms": 5473.5,
+      "min_completion_ms": 3510,
+      "max_completion_ms": 10517,
+      "mean_prompt_tokens": 1952.166667,
+      "mean_completion_tokens": 36.208333,
+      "reported_reasoning_tokens": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        24,
+        0,
+        null,
+        null,
+        null,
+        null,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        14
+      ],
+      "catalog_cost_rub_cache_adjusted": 0.324534,
+      "catalog_cost_rub_no_cache": 0.450057,
+      "estimated_rub_per_1000_metered": 13.522239,
+      "unknown_usage_count": 0,
+      "reported_usage_cost_unit_unspecified": 0.649067,
+      "response_models": [
+        "z-ai/glm-5.3-flash"
+      ],
+      "errors": [],
+      "rejected": []
+    },
+    {
+      "key": "deepseek/deepseek-v4.1-flash|common|{\"enabled\":false}",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "profile": "common",
+      "reasoning_requested": {
+        "enabled": false
+      },
+      "calls": 24,
+      "generated": 24,
+      "accepted": 21,
+      "accepted_full_under_12s": 21,
+      "accepted_first_verified_under_12s": 21,
+      "median_completion_ms": 3375,
+      "median_first_verified_model_text_ms": 3629,
+      "min_completion_ms": 1663,
+      "max_completion_ms": 10083,
+      "mean_prompt_tokens": 2338.25,
+      "mean_completion_tokens": 271.583333,
+      "reported_reasoning_tokens": [
+        207,
+        198,
+        236,
+        112,
+        618,
+        0,
+        506,
+        92,
+        37,
+        47,
+        57,
+        153,
+        80,
+        279,
+        196,
+        186,
+        531,
+        197,
+        1061,
+        269,
+        158,
+        39,
+        76,
+        179
+      ],
+      "catalog_cost_rub_cache_adjusted": 0.765346,
+      "catalog_cost_rub_no_cache": 1.487084,
+      "estimated_rub_per_1000_metered": 31.889407,
+      "unknown_usage_count": 0,
+      "reported_usage_cost_unit_unspecified": 0.765346,
+      "response_models": [
+        "deepseek-flash"
+      ],
+      "errors": [],
+      "rejected": [
+        {
+          "case_id": "enemy-survives",
+          "repeat": 1,
+          "codes": [
+            "HERO_AGENCY_NOT_IN_BRIEF"
+          ]
+        },
+        {
+          "case_id": "declared-not-done",
+          "repeat": 1,
+          "codes": [
+            "UNCONFIRMED_DISCLOSURE"
+          ]
+        },
+        {
+          "case_id": "enemy-survives",
+          "repeat": 2,
+          "codes": [
+            "HERO_AGENCY_NOT_IN_BRIEF"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "qwen/qwen3.8-flash|common|{\"enabled\":false}",
+      "model": "qwen/qwen3.8-flash",
+      "profile": "common",
+      "reasoning_requested": {
+        "enabled": false
+      },
+      "calls": 24,
+      "generated": 24,
+      "accepted": 24,
+      "accepted_full_under_12s": 19,
+      "accepted_first_verified_under_12s": 19,
+      "median_completion_ms": 2885.5,
+      "median_first_verified_model_text_ms": 2886,
+      "min_completion_ms": 1294,
+      "max_completion_ms": 21254,
+      "mean_prompt_tokens": 1972.75,
+      "mean_completion_tokens": 20,
+      "reported_reasoning_tokens": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "catalog_cost_rub_cache_adjusted": 0.397247,
+      "catalog_cost_rub_no_cache": 0.803505,
+      "estimated_rub_per_1000_metered": 16.551976,
+      "unknown_usage_count": 0,
+      "reported_usage_cost_unit_unspecified": 0.397247,
+      "response_models": [
+        "qwen3.8-flash"
+      ],
+      "errors": [],
+      "rejected": []
+    },
+    {
+      "key": "meta/muse-spark-1.3|common|{\"effort\":\"medium\"}",
+      "model": "meta/muse-spark-1.3",
+      "profile": "common",
+      "reasoning_requested": {
+        "effort": "medium"
+      },
+      "calls": 24,
+      "generated": 23,
+      "accepted": 23,
+      "accepted_full_under_12s": 22,
+      "accepted_first_verified_under_12s": 22,
+      "median_completion_ms": 7763,
+      "median_first_verified_model_text_ms": 7764,
+      "min_completion_ms": 5364,
+      "max_completion_ms": 13468,
+      "mean_prompt_tokens": 1834.391304,
+      "mean_completion_tokens": 660.26087,
+      "reported_reasoning_tokens": [
+        526,
+        351,
+        484,
+        585,
+        1005,
+        573,
+        1050,
+        680,
+        458,
+        529,
+        411,
+        817,
+        427,
+        355,
+        466,
+        376,
+        904,
+        644,
+        908,
+        718,
+        303,
+        545,
+        906
+      ],
+      "catalog_cost_rub_cache_adjusted": 11.437163,
+      "catalog_cost_rub_no_cache": 12.860378,
+      "estimated_rub_per_1000_metered": 497.267972,
+      "unknown_usage_count": 1,
+      "reported_usage_cost_unit_unspecified": 11.437163,
+      "response_models": [
+        "meta/muse-spark-1.3"
+      ],
+      "errors": [
+        {
+          "case_id": "declared-not-done",
+          "repeat": 2,
+          "code": "LLM_RESPONSE_INVALID",
+          "status": null
+        }
+      ],
+      "rejected": []
+    },
+    {
+      "key": "z-ai/glm-5.3-flash|production|{\"effort\":\"low\"}",
+      "model": "z-ai/glm-5.3-flash",
+      "profile": "production",
+      "reasoning_requested": {
+        "effort": "low"
+      },
+      "calls": 24,
+      "generated": 24,
+      "accepted": 24,
+      "accepted_full_under_12s": 24,
+      "accepted_first_verified_under_12s": 24,
+      "median_completion_ms": 6011,
+      "median_first_verified_model_text_ms": 5971,
+      "min_completion_ms": 4141,
+      "max_completion_ms": 7846,
+      "mean_prompt_tokens": 2283.833333,
+      "mean_completion_tokens": 39.833333,
+      "reported_reasoning_tokens": [
+        22,
+        0,
+        11,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        15,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "catalog_cost_rub_cache_adjusted": 0.335712,
+      "catalog_cost_rub_no_cache": 0.524692,
+      "estimated_rub_per_1000_metered": 13.987989,
+      "unknown_usage_count": 0,
+      "reported_usage_cost_unit_unspecified": 0.671423,
+      "response_models": [
+        "z-ai/glm-5.3-flash"
+      ],
+      "errors": [],
+      "rejected": []
+    }
+  ],
+  "note": "Задержка — прямой вызов Narrator до 30 секунд, без HTTP/браузера. Принятие guard не равно фактической точности. Стоимость по свежему каталогу с учётом reported cached_tokens; фактический backend не закреплён. Валюта usage.cost текстового API не объявлена."
+}

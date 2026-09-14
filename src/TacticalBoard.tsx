@@ -1,5 +1,5 @@
 import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { BattleEvent, CombatVisualBatch, TacticalMap } from './types'
+import type { ActorAppearance, ActorFootprint, BattleEvent, CombatVisualBatch, TacticalMap } from './types'
 import {
   DEFAULT_BOARD_PALETTE, TILE_CELLS, boardPaletteFrom, createTileCache, drawBoardEffects, drawBoardOverlay, drawMapDecorations,
   syncTileCache, terrainKeysFor, visibleTiles,
@@ -26,8 +26,8 @@ import {
   hasAmbientMotion,
   type BoardDoorSwing,
 } from './board-ambient'
-import { loadPropModelCatalog, type PropModelCatalog } from './prop-model-catalog'
-import { boardCameraKey } from './tactical-ui'
+import { LEGACY_CATALOG_REVISION, loadPropModelCatalog, type PropModelCatalog } from './prop-model-catalog'
+import { actorPresentationCenter, boardCameraKey } from './tactical-ui'
 import './tactical-board.css'
 import './board3d.css'
 
@@ -112,8 +112,12 @@ const loadedTextures = new Map<string, BoardTexture>()
 const loadedArt = new Map<string, BoardTexture>()
 let propAtlas: PropAtlas | null = null
 let propAtlasAsked = false
-let modelPropAtlas: { catalog: PropModelCatalog; texture: BoardTexture; key: string } | null = null
-let modelPropAtlasAsked = false
+type ModelPropAtlas = { catalog: PropModelCatalog; texture: BoardTexture; key: string; url: string }
+const MODEL_ATLAS_CACHE_LIMIT = 12
+const modelPropAtlases = new Map<string, ModelPropAtlas>()
+const pendingModelPropAtlases = new Map<string, Promise<ModelPropAtlas | null>>()
+const modelPropAtlasListeners = new Map<string, Set<() => void>>()
+const pendingModelTextures = new Map<string, Promise<BoardTexture | null>>()
 let terrainManifest: TerrainManifest | null = null
 let terrainAsked = false
 
@@ -202,20 +206,90 @@ function loadPropAtlas(onReady: () => void) {
     .catch(() => {})
 }
 
-/** Отдельный атлас preview моделей: при ошибке 2D остаётся на старом атласе. */
-function loadPropModelAtlas(onReady: () => void) {
-  if (modelPropAtlasAsked) return
-  modelPropAtlasAsked = true
-  void loadPropModelCatalog().then((catalog) => {
-    if (!catalog?.atlas) return
-    const url = `${catalog.atlas.image}?v=${encodeURIComponent(catalog.atlas.key)}`
-    loadImage(url, loadedTextures, () => {
-      const texture = loadedTextures.get(url)
-      if (!texture) return
-      modelPropAtlas = { catalog, texture, key: `${url}:${texture.width}x${texture.height}` }
-      onReady()
-    })
+/** Картинка атласа моделей разделяется между ревизиями, даже если путь совпал. */
+function loadModelTexture(url: string): Promise<BoardTexture | null> {
+  const loaded = loadedTextures.get(url)
+  if (loaded) return Promise.resolve(loaded)
+  const pending = pendingModelTextures.get(url)
+  if (pending) return pending
+  if (typeof Image !== 'function') return Promise.resolve(null)
+
+  const request = new Promise<BoardTexture | null>((resolve) => {
+    const image = new Image()
+    image.decoding = 'async'
+    const finish = (texture: BoardTexture | null) => {
+      clearTimeout(timeout)
+      image.onload = null; image.onerror = null
+      resolve(texture)
+    }
+    const timeout = setTimeout(() => { finish(null); image.src = '' }, 15_000)
+    image.onload = () => {
+      if (!image.naturalWidth || !image.naturalHeight) { finish(null); return }
+      const texture = { image, width: image.naturalWidth, height: image.naturalHeight }
+      loadedTextures.set(url, texture)
+      finish(texture)
+    }
+    image.onerror = () => finish(null)
+    image.src = url
+  }).catch(() => null)
+  const tracked = request.then((texture) => {
+    if (pendingModelTextures.get(url) === tracked) pendingModelTextures.delete(url)
+    return texture
   })
+  pendingModelTextures.set(url, tracked)
+  return tracked
+}
+
+function notifyModelPropAtlasListeners(revision: string) {
+  const listeners = modelPropAtlasListeners.get(revision)
+  if (!listeners) return
+  modelPropAtlasListeners.delete(revision)
+  for (const listener of listeners) listener()
+}
+
+/**
+ * Preview-атлас привязан к ревизии карты. Неудачная попытка убирается из
+ * pending-кэша, поэтому следующая карта или монтирование может повторить её.
+ */
+function loadPropModelAtlas(revision: string, onReady: () => void): () => void {
+  const cached = modelPropAtlases.get(revision)
+  if (cached) {
+    modelPropAtlases.delete(revision); modelPropAtlases.set(revision, cached)
+    onReady(); return () => {}
+  }
+  let listeners = modelPropAtlasListeners.get(revision)
+  if (!listeners) {
+    listeners = new Set()
+    modelPropAtlasListeners.set(revision, listeners)
+  }
+  listeners.add(onReady)
+  if (pendingModelPropAtlases.has(revision)) return () => listeners?.delete(onReady)
+
+  const pending = Promise.resolve()
+    .then(() => loadPropModelCatalog(revision))
+    .then((catalog) => {
+      if (!catalog?.atlas) return null
+      const url = `${catalog.atlas.image}?v=${encodeURIComponent(catalog.atlas.key)}`
+      return loadModelTexture(url).then((texture) => texture
+        ? { catalog, texture, url, key: `${url}:${texture.width}x${texture.height}` }
+        : null)
+    })
+    .catch(() => null)
+  pendingModelPropAtlases.set(revision, pending)
+  void pending.then((atlas) => {
+    if (pendingModelPropAtlases.get(revision) === pending) pendingModelPropAtlases.delete(revision)
+    if (atlas) {
+      modelPropAtlases.set(revision, atlas)
+      while (modelPropAtlases.size > MODEL_ATLAS_CACHE_LIMIT) {
+        const oldest = modelPropAtlases.keys().next().value!
+        const removed = modelPropAtlases.get(oldest)!
+        modelPropAtlases.delete(oldest)
+        if (![...modelPropAtlases.values()].some((value) => value.url === removed.url)) loadedTextures.delete(removed.url)
+      }
+    }
+    notifyModelPropAtlasListeners(revision)
+  })
+  return () => modelPropAtlasListeners.get(revision)?.delete(onReady)
 }
 
 /**
@@ -266,6 +340,9 @@ export type BoardAnimationActor = {
   /** Только внешний вид; не влияет на размеры и правила существа. */
   modelKey?: string
   archetype?: string
+  appearance?: ActorAppearance
+  /** Серверная квадратная площадь; отсутствие у старых акторов означает 1×1. */
+  footprint?: ActorFootprint
   defeated?: boolean
 }
 
@@ -318,6 +395,10 @@ export type TacticalBoardProps = {
   conditions?: BoardConditionState
   conditionVersion?: number
   onBackgroundActivate?: () => void
+  /** Выбор видимого интерактивного предмета из 3D или DOM-слоя. */
+  onPropActivate?: (propId: string) => void
+  /** Запасной обработчик для 3D-выбора участника без отдельной команды. */
+  onActorActivate?: (actorId: string) => void
   /** Активный этаж локации: своя камера и кроссфейд при смене. */
   levelIndex?: number
   /**
@@ -417,9 +498,23 @@ function TacticalBoard2D({
   useEffect(() => {
     const notify = () => setAssetsVersion((value) => value + 1)
     loadPropAtlas(notify)
-    loadPropModelAtlas(notify)
     loadTerrainManifest(notify)
   }, [])
+  const modelCatalogRevision = map?.catalogRevision ?? LEGACY_CATALOG_REVISION
+  // Открытая доска держит собственную ссылку: вытеснение из LRU не меняет её
+  // рисунок, а уход с доски освобождает последнего потребителя старого атласа.
+  const [modelAtlasState, setModelAtlasState] = useState(() => ({
+    revision: modelCatalogRevision, atlas: modelPropAtlases.get(modelCatalogRevision) ?? null,
+  }))
+  const modelPropAtlas = modelAtlasState.revision === modelCatalogRevision
+    ? modelAtlasState.atlas : modelPropAtlases.get(modelCatalogRevision) ?? null
+  useEffect(() => {
+    const notify = () => {
+      setModelAtlasState({ revision: modelCatalogRevision, atlas: modelPropAtlases.get(modelCatalogRevision) ?? null })
+      setAssetsVersion((value) => value + 1)
+    }
+    return loadPropModelAtlas(modelCatalogRevision, notify)
+  }, [modelCatalogRevision])
   useEffect(() => {
     if (artUrl) loadImage(artUrl, loadedArt, () => setAssetsVersion((value) => value + 1))
   }, [artUrl])
@@ -641,10 +736,13 @@ function TacticalBoard2D({
     }
   }, [boardScene, columns])
 
-  const screenPoint = (position: BoardPoint, cellSize: number) => ({
-    x: (position.x + .5) * cellSize,
-    y: (position.y + .5) * cellSize,
-  })
+  const screenPoint = (position: BoardPoint, cellSize: number, actorId?: string) => {
+    const actor = actorId ? actorAt(actorId) : undefined
+    const center = actor && map
+      ? actorPresentationCenter(map, actor, position)
+      : { x: position.x + .5, y: position.y + .5 }
+    return { x: center.x * cellSize, y: center.y * cellSize }
+  }
 
   const animationColor = (cue: CombatAnimationCue) => {
     if (cue.kind === 'impact') {
@@ -662,7 +760,7 @@ function TacticalBoard2D({
 
   const drawActor = (context: CanvasRenderingContext2D, position: BoardPoint, cellSize: number, actorId: string, alpha = 1) => {
     const actor = actorAt(actorId)
-    const center = screenPoint(position, cellSize)
+    const center = screenPoint(position, cellSize, actorId)
     const radius = Math.max(7, cellSize * .29)
     const color = actor?.color || (actor?.kind === 'enemy' ? '#bd6256' : actor?.kind === 'summon' ? '#70a78b' : actor?.kind === 'neutral' ? '#9d8f72' : '#d6a55a')
     context.save()
@@ -696,8 +794,9 @@ function TacticalBoard2D({
     text: string,
     color: string,
     progress: number,
+    actorId?: string,
   ) => {
-    const center = screenPoint(position, cellSize)
+    const center = screenPoint(position, cellSize, actorId)
     context.save()
     context.globalAlpha = Math.min(1, progress * 5) * Math.max(0, 1 - Math.max(0, progress - .72) / .28)
     context.fillStyle = color
@@ -780,7 +879,7 @@ function TacticalBoard2D({
           const lunge = Math.sin(Math.min(1, progress / .58) * Math.PI) * .34
           drawActor(context, { x: actor.x + dx / length * lunge, y: actor.y + dy / length * lunge }, cellSize, activeAnimation.actorId)
           if (progress > .18) {
-            const targetCenter = screenPoint(target, cellSize)
+            const targetCenter = screenPoint(target, cellSize, activeAnimation.targetId)
             context.save()
             context.globalAlpha = Math.max(0, 1 - progress) * .9
             context.beginPath()
@@ -794,14 +893,14 @@ function TacticalBoard2D({
             const label = activeAnimation.hit
               ? activeAnimation.amount != null && activeAnimation.amount > 0 ? `−${activeAnimation.amount}` : 'ПОПАДАНИЕ'
               : 'МИМО'
-            drawFloatingText(context, target, cellSize, label, activeAnimation.hit ? '#ef8b78' : '#d7cec2', progress)
+            drawFloatingText(context, target, cellSize, label, activeAnimation.hit ? '#ef8b78' : '#d7cec2', progress, activeAnimation.targetId)
           }
         }
       } else if (activeAnimation.kind === 'impact') {
         const target = actorAt(activeAnimation.targetId)
         if (target) {
           const color = animationColor(activeAnimation)
-          const center = screenPoint(target, cellSize)
+          const center = screenPoint(target, cellSize, activeAnimation.targetId)
           context.save()
           context.globalAlpha = Math.max(0, 1 - progress)
           context.beginPath()
@@ -815,7 +914,7 @@ function TacticalBoard2D({
           const label = activeAnimation.tone === 'healing'
             ? `+${activeAnimation.amount ?? 0}`
             : activeAnimation.tone === 'miss' ? 'МИМО' : `−${activeAnimation.amount ?? 0}`
-          drawFloatingText(context, target, cellSize, label, color, progress)
+          drawFloatingText(context, target, cellSize, label, color, progress, activeAnimation.targetId)
         }
       } else if (activeAnimation.kind === 'death') {
         const target = actorAt(activeAnimation.targetId)
@@ -834,12 +933,12 @@ function TacticalBoard2D({
           context.lineTo(center.x - radius, center.y + radius)
           context.stroke()
           context.restore()
-          drawFloatingText(context, target, cellSize, 'ВЫБЫЛ', '#e2c6ba', progress)
+          drawFloatingText(context, target, cellSize, 'ВЫБЫЛ', '#e2c6ba', progress, activeAnimation.targetId)
         }
       } else if (activeAnimation.kind === 'condition') {
         const target = actorAt(activeAnimation.targetId)
         if (target) {
-          const center = screenPoint(target, cellSize)
+          const center = screenPoint(target, cellSize, activeAnimation.targetId)
           context.save()
           context.globalAlpha = Math.max(0, 1 - Math.max(0, progress - .65) / .35)
           context.beginPath()
@@ -851,7 +950,7 @@ function TacticalBoard2D({
           context.shadowColor = '#9e71bd'
           context.stroke()
           context.restore()
-          drawFloatingText(context, target, cellSize, activeAnimation.label.toLocaleUpperCase('ru'), '#d8b9e8', progress)
+          drawFloatingText(context, target, cellSize, activeAnimation.label.toLocaleUpperCase('ru'), '#d8b9e8', progress, activeAnimation.targetId)
         }
       }
 
@@ -1054,6 +1153,8 @@ function TacticalBoard2D({
     <div
       className={'map-scroll tactical-scroll ' + (dragging ? 'dragging' : '')}
       data-overview={cellPixels * zoom < 24 ? 'true' : undefined}
+      data-catalog-revision={modelCatalogRevision}
+      data-model-atlas-ready={modelPropAtlas ? 'true' : 'false'}
       style={{
         transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
         '--counter-scale': 1 / zoom,

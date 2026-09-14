@@ -225,6 +225,54 @@ test('automatic completion requires climax and a fully resolved main thread', ()
   assert.equal(campaignCanAutoComplete(state), false)
 })
 
+test('отказ в текущей локации не завершает кампанию, а следующая реальная цель может её завершить', () => {
+  const abandoned = {
+    id: 'quest:abandoned-in-place',
+    title: 'Старая цель',
+    summary: 'Отряд решил остаться и заняться другим делом.',
+    status: 'abandoned',
+    stay_in_location: true,
+    visibility: 'party',
+    entity_ids: [],
+    objectives: [],
+    clock: { current: 1, max: 4, triggered: false },
+  }
+  const completed = {
+    id: 'quest:new-objective',
+    title: 'Новая цель',
+    summary: 'Новая цель выполнена.',
+    status: 'completed',
+    visibility: 'party',
+    entity_ids: [],
+    objectives: [],
+    clock: { current: 2, max: 2, triggered: true },
+  }
+
+  const legacy = campaign()
+  legacy.autonomy.pacing = { beat: 8, phase: 'climax', tension: 84 }
+  legacy.worldMemory.quests = [abandoned]
+  assert.equal(campaignCanAutoComplete(legacy), false)
+  legacy.worldMemory.quests.push(completed)
+  assert.equal(campaignCanAutoComplete(legacy), true)
+
+  const arcState = campaign()
+  const arc = buildCampaignArcPlan('abandonment-does-not-finish')
+  arcState.campaignConcept = { arc }
+  arcState.adventure.chapter = arc.target_scenes
+  arcState.autonomy.pacing = { beat: 9, phase: 'climax', tension: 90 }
+  arcState.worldMemory.quests = [structuredClone(abandoned)]
+  arcState.mechanics.encounter = {
+    id: 'encounter:climax',
+    status: 'ended',
+    difficulty: 'hard',
+    created_in_chapter: arc.target_scenes,
+  }
+  arcState.autonomy.encounter_outcomes = [{ encounter_id: 'encounter:climax', outcome: 'enemies_defeated' }]
+  assert.equal(campaignCanAutoComplete(arcState), false)
+  arcState.worldMemory.quests.push(structuredClone(completed))
+  assert.equal(campaignCanAutoComplete(arcState), true)
+})
+
 test('вечерняя кампания завершается только после hard-боя в целевой сцене', () => {
   const state = campaign()
   const arc = buildCampaignArcPlan('lifecycle-evening-seed')

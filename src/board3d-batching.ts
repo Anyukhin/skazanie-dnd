@@ -16,10 +16,18 @@ function visibleIn(root: THREE.Object3D, object: THREE.Object3D) {
   return root.visible
 }
 
+function markedAnimated(root: THREE.Object3D, object: THREE.Object3D) {
+  for (let current: THREE.Object3D | null = object; current; current = current.parent) {
+    if (current.userData?.animated === true || current.userData?.static === false || current.userData?.mixer) return true
+    if (current === root) break
+  }
+  return false
+}
+
 function eligible(mesh: THREE.Mesh, root: THREE.Object3D) {
   const value = mesh as MeshLike
   if (!visibleIn(root, mesh) || value.isInstancedMesh || value.isSkinnedMesh || value.morphTargetInfluences) return false
-  if (mesh.userData?.animated === true || mesh.userData?.static === false || mesh.userData?.mixer) return false
+  if (markedAnimated(root, mesh)) return false
   if (Array.isArray(mesh.material) || !mesh.geometry) return false
   const material = mesh.material
   if (material.transparent || material.opacity < 1 || material.alphaTest > 0) return false

@@ -27,6 +27,29 @@ const CACHE_LIMIT = 12
 
 const maps = new Map<string, SerializedTacticalMap>()
 let latestHash = ''
+const objectIds = new WeakMap<object, number>()
+let nextObjectId = 1
+
+function objectId(value: object) {
+  const known = objectIds.get(value)
+  if (known) return known
+  const id = nextObjectId++
+  objectIds.set(value, id)
+  return id
+}
+
+/**
+ * Подпись для повторного использования карты. Серверный `map_hash` — авторитетный
+ * ключ содержимого; для старых сцен без него остаётся идентичность входного map или
+ * cells. Это позволяет map_unchanged менять оболочку Scene без нового decode.
+ */
+export function sceneMapContentSignature(scene: Pick<Scene, 'map' | 'map_hash' | 'cells'> | null | undefined) {
+  const hash = typeof scene?.map_hash === 'string' ? scene.map_hash : ''
+  if (hash) return `hash:${hash}`
+  if (scene?.map && typeof scene.map === 'object') return `map:${objectId(scene.map)}`
+  if (Array.isArray(scene?.cells)) return `cells:${objectId(scene.cells)}`
+  return ''
+}
 
 export function rememberSceneMap(hash: string, map: SerializedTacticalMap | undefined) {
   if (!hash || !map) return

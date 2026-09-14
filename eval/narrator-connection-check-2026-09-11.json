@@ -1,0 +1,18 @@
+{
+  "ok": true,
+  "model": "z-ai/glm-5.3-flash",
+  "raw_text": "Ада, прищурившись, доверилась чутью следопыта — и не ошиблась.",
+  "usage": {
+    "total_tokens": 1956,
+    "prompt_tokens": 1933,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    },
+    "completion_tokens": 23,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "text_tokens": 23
+    },
+    "cost": 0.0363613945838
+  }
+}

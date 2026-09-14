@@ -1,9 +1,121 @@
-import { cellAt, movementStepBlocked } from './tactical-map-client'
-import type { BattleEvent, GameEvent, GameState, MapCell, MechanicsSupport, TacticalMap } from './types'
+import { cellAt, movementStepBlocked, revealedAt } from './tactical-map-client'
+import {
+  footprintCellsFor as serverFootprintCellsFor,
+  footprintDistanceFeet as serverFootprintDistanceFeet,
+  footprintSizeFor as serverFootprintSizeFor,
+} from '../server/actor-footprint.mjs'
+import { areaCells, type AreaGeometry, type AreaPoint } from './area-geometry'
+import type { ActorFootprint, BattleEvent, GameEvent, GameState, MapCell, MechanicsSupport, TacticalMap } from './types'
 
 export const boardPositionKey = (x: number, y: number) => `${x},${y}`
 
-type BoardActor = { id: string; x: number; y: number }
+type BoardActor = { id?: string; x: number; y: number; footprint?: ActorFootprint }
+
+export type ActorFootprintCell = { x: number; y: number }
+
+export type ActorFootprintLayout = {
+  cells: ActorFootprintCell[]
+  minX: number
+  minY: number
+  maxX: number
+  maxY: number
+  width: number
+  height: number
+  center: { x: number; y: number }
+  size: number
+}
+
+/**
+ * Разворачивает серверную площадь для отображения и предпросмотра. Серверный
+ * лист владеет проверкой версии и расширением квадрата, а этот адаптер только
+ * даёт клиенту типизированную поверхность представления.
+ */
+export function actorFootprintCells(actor: BoardActor, anchor?: { x: number; y: number }): ActorFootprintCell[] {
+  return serverFootprintCellsFor(actor, anchor ?? actor)
+}
+
+export function actorFootprintSize(actor: BoardActor): number {
+  return serverFootprintSizeFor(actor)
+}
+
+/**
+ * Возвращает общий центр и габарит для 2D- и 3D-рендереров. Контракт использует
+ * верхний левый anchor, поэтому центр актора 2×2 находится в x+1/y+1.
+ */
+export function actorFootprintLayout(actor: BoardActor, anchor?: { x: number; y: number }): ActorFootprintLayout | null {
+  const cells = actorFootprintCells(actor, anchor)
+  if (!cells.length) return null
+  const minX = Math.min(...cells.map((cell) => cell.x))
+  const minY = Math.min(...cells.map((cell) => cell.y))
+  const maxX = Math.max(...cells.map((cell) => cell.x))
+  const maxY = Math.max(...cells.map((cell) => cell.y))
+  return {
+    cells,
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width: maxX - minX + 1,
+    height: maxY - minY + 1,
+    center: { x: (minX + maxX + 1) / 2, y: (minY + maxY + 1) / 2 },
+    size: actorFootprintSize(actor),
+  }
+}
+
+/** Полную площадь безопасно рисовать только после раскрытия всех её клеток. */
+export function actorFootprintFullyRevealed(map: TacticalMap | null | undefined, actor: BoardActor): boolean {
+  if (!map) return false
+  return actorFootprintCells(actor).every((cell) => revealedAt(map, cell.x, cell.y))
+}
+
+/**
+ * Размер представления во время движения выбирается консервативно: дробный
+ * anchor анимации проверяется по текущей клетке пола, а крупная модель
+ * используется только пока раскрыты все занятые клетки.
+ */
+export function actorPresentationSize(map: TacticalMap | null | undefined, actor: BoardActor, anchor: { x: number; y: number } = actor): number {
+  const size = actorFootprintSize(actor)
+  if (size <= 1 || !map) return 1
+  const x = Math.floor(Number(anchor.x)), y = Math.floor(Number(anchor.y))
+  if (!Number.isSafeInteger(x) || !Number.isSafeInteger(y)) return 1
+  return actorFootprintFullyRevealed(map, { ...actor, x, y }) ? size : 1
+}
+
+/** Общий центр модели для DOM-фишек, 3D-моделей, подписей и колец на полу. */
+export function actorPresentationCenter(map: TacticalMap | null | undefined, actor: BoardActor, anchor: { x: number; y: number } = actor) {
+  const size = actorPresentationSize(map, actor, anchor)
+  return { x: Number(anchor.x) + size / 2, y: Number(anchor.y) + size / 2 }
+}
+
+/** Минимальная чебышёвская дистанция между площадями двух акторов. */
+export function actorDistanceFeet(left: BoardActor, right: BoardActor | ActorFootprintCell): number {
+  return serverFootprintDistanceFeet(left, right) ?? Number.POSITIVE_INFINITY
+}
+
+/**
+ * Объединяет предпросмотр области для каждой клетки, занятой источником. Это
+ * повторяет серверную проверку крупного заклинателя и сворачивает площадь до
+ * одной клетки, если туман не позволяет безопасно показать её целиком.
+ */
+export function areaCellsForActor(geometry: AreaGeometry, actor: BoardActor, map?: TacticalMap | null): AreaPoint[] {
+  const side = actorPresentationSize(map, actor)
+  const previewActor = side === actorFootprintSize(actor) ? actor : { ...actor, footprint: undefined }
+  const unique = new Map<string, AreaPoint>()
+  for (const origin of actorFootprintCells(previewActor)) {
+    for (const point of areaCells({ ...geometry, origin })) unique.set(`${point.x},${point.y}`, point)
+  }
+  return [...unique.values()].sort((left, right) => left.y - right.y || left.x - right.x)
+}
+
+/**
+ * Клетки представления никогда не включают скрытые координаты. Если площадь
+ * раскрыта частично, вызывающий код может оставить видимый anchor старой
+ * одноклеточной меткой и не показывать большую площадь.
+ */
+export function actorFootprintVisibleCells(map: TacticalMap | null | undefined, actor: BoardActor): ActorFootprintCell[] {
+  if (!map) return []
+  return actorFootprintCells(actor).filter((cell) => revealedAt(map, cell.x, cell.y))
+}
 
 export type MovementPath = {
   path: Array<{ x: number; y: number }>
@@ -81,14 +193,18 @@ export function turnClockPresentation(clock: GameState['turn_clock'], now = Date
 
 export function occupiedBoardPositions(state: GameState, exceptId?: string) {
   const occupied = new Set<string>()
+  const addActor = (actor: BoardActor, living: boolean) => {
+    if (actor.id === exceptId || !living) return
+    for (const cell of actorFootprintCells(actor)) occupied.add(boardPositionKey(cell.x, cell.y))
+  }
   state.players.forEach((actor) => {
-    if (actor.id !== exceptId && actor.hp > 0) occupied.add(boardPositionKey(actor.x, actor.y))
+    addActor(actor, actor.hp > 0)
   })
   ;(state.enemies ?? []).forEach((actor) => {
-    if (actor.id !== exceptId && actor.alive) occupied.add(boardPositionKey(actor.x, actor.y))
+    addActor(actor, actor.alive)
   })
   ;(state.actors ?? []).forEach((actor) => {
-    if (actor.id !== exceptId && actor.alive) occupied.add(boardPositionKey(actor.x, actor.y))
+    addActor(actor, actor.alive)
   })
   ;(state.scene_npcs ?? []).forEach((npc) => {
     if (npc.alive !== false) occupied.add(boardPositionKey(npc.x, npc.y))
@@ -105,18 +221,75 @@ export function occupiedBoardPositions(state: GameState, exceptId?: string) {
 export function buildMovementPaths(state: GameState, actor: BoardActor, cellFeet = 5, map?: TacticalMap | null) {
   const cells = new Map(state.scene.cells.map((cell) => [boardPositionKey(cell.x, cell.y), cell]))
   const blocked = occupiedBoardPositions(state, actor.id)
+  const occupiedActorsByCell = new Map<string, BoardActor[]>()
+  const addOccupiedActor = (candidate: BoardActor, living: boolean) => {
+    if (candidate.id === actor.id || !living) return
+    for (const cell of actorFootprintCells(candidate)) {
+      const key = boardPositionKey(cell.x, cell.y)
+      const occupants = occupiedActorsByCell.get(key) ?? []
+      occupants.push(candidate)
+      occupiedActorsByCell.set(key, occupants)
+    }
+  }
+  state.players.forEach((candidate) => addOccupiedActor(candidate, candidate.hp > 0))
+  ;(state.enemies ?? []).forEach((candidate) => addOccupiedActor(candidate, candidate.alive))
+  ;(state.actors ?? []).forEach((candidate) => addOccupiedActor(candidate, candidate.alive))
   const npcTransit = new Set((state.scene_npcs ?? [])
     .filter((npc) => npc.alive !== false && npc.stance !== 'hostile')
     .map((npc) => boardPositionKey(npc.x, npc.y)))
+  const propBlocked = new Set<string>()
   for (const prop of map?.props ?? []) {
     if (!prop.blocksMove) continue
     const footprint = prop.footprint.length ? prop.footprint : [{ x: Math.floor(prop.x), y: Math.floor(prop.y) }]
-    for (const cell of footprint) blocked.add(boardPositionKey(cell.x, cell.y))
+    for (const cell of footprint) {
+      const key = boardPositionKey(cell.x, cell.y)
+      propBlocked.add(key)
+      blocked.add(key)
+    }
   }
-  const conditionIds = new Set((state.mechanics?.conditions?.[actor.id] ?? []).map((condition) => String(condition.id)))
+  const footprintPlacementEdgesBlocked = (footprint: ActorFootprintCell[]) => {
+    if (!map) return false
+    const keys = new Set(footprint.map((cell) => boardPositionKey(cell.x, cell.y)))
+    for (const cell of footprint) {
+      for (const [dx, dy] of [[1, 0], [0, 1]]) {
+        const next = { x: cell.x + dx, y: cell.y + dy }
+        if (keys.has(boardPositionKey(next.x, next.y)) && movementStepBlocked(map, cell.x, cell.y, next.x, next.y)) return true
+      }
+    }
+    return false
+  }
+  const footprintStepBlocked = (from: { x: number; y: number }, to: { x: number; y: number }) => {
+    if (!map) return false
+    const footprint = actorFootprintCells(actor, from)
+    if (footprintPlacementEdgesBlocked(footprint) || footprintPlacementEdgesBlocked(actorFootprintCells(actor, to))) return true
+    const dx = to.x - from.x, dy = to.y - from.y
+    return footprint.some((cell) => movementStepBlocked(map, cell.x, cell.y, cell.x + dx, cell.y + dy))
+  }
+  const canOccupyAnchor = (position: { x: number; y: number }) => {
+    const footprint = actorFootprintCells(actor, position)
+    if (!footprint.length || footprintPlacementEdgesBlocked(footprint)) return false
+    return footprint.every((cell) => {
+      const key = boardPositionKey(cell.x, cell.y)
+      if (!isWalkable(cells.get(key))) return false
+      if (propBlocked.has(key)) return false
+      // A peaceful NPC may be crossed in transit, but it cannot be a final
+      // destination. A species trait may also allow passing through a larger
+      // creature; the candidate must still fit around every occupied cell.
+      if (blocked.has(key) && !npcTransit.has(key)) {
+        const mechanics = (actor as { speciesBenefits?: { mechanics?: Record<string, unknown> } | null }).speciesBenefits?.mechanics
+        const canPassThroughLarger = mechanics?.move_through_larger === true
+        const occupants = occupiedActorsByCell.get(key) ?? []
+        if (!canPassThroughLarger || !occupants.length || !occupants.every((occupant) => actorFootprintSize(occupant) > actorFootprintSize(actor))) return false
+      }
+      return true
+    })
+  }
+  const actorConditions = actor.id ? state.mechanics?.conditions?.[actor.id] ?? [] : []
+  const conditionIds = new Set(actorConditions.map((condition) => String(condition.id)))
   const crawling = conditionIds.has('prone')
   const ignoresDifficultTerrain = conditionIds.has('freedom-of-movement')
   const start = boardPositionKey(actor.x, actor.y)
+  if (!canOccupyAnchor(actor) || !cells.has(start)) return new Map<string, MovementPath>()
   const costs = new Map<string, number>([[start, 0]])
   const previous = new Map<string, string | null>([[start, null]])
   const frontier: Array<{ key: string; cost: number }> = [{ key: start, cost: 0 }]
@@ -156,10 +329,15 @@ export function buildMovementPaths(state: GameState, actor: BoardActor, cellFeet
     const [x, y] = current.key.split(',').map(Number)
     for (const [nextX, nextY] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
       const next = boardPositionKey(nextX, nextY)
-      if ((blocked.has(next) && !npcTransit.has(next)) || !isWalkable(cells.get(next))) continue
+      if (!canOccupyAnchor({ x: nextX, y: nextY })) continue
+      if (blocked.has(next) && !npcTransit.has(next)) {
+        const mechanics = (actor as { speciesBenefits?: { mechanics?: Record<string, unknown> } | null }).speciesBenefits?.mechanics
+        const occupants = occupiedActorsByCell.get(next) ?? []
+        if (mechanics?.move_through_larger !== true || !occupants.length || !occupants.every((occupant) => actorFootprintSize(occupant) > actorFootprintSize(actor))) continue
+      }
       // Закрытая и запертая дверь останавливают шаг ровно так же, как на
       // сервере: иначе предпросмотр вёл бы маршрут сквозь запертую дверь.
-      if (map && movementStepBlocked(map, x, y, nextX, nextY)) continue
+      if (footprintStepBlocked({ x, y }, { x: nextX, y: nextY })) continue
       const difficultTerrain = !ignoresDifficultTerrain && isDifficultTerrain(state, { x: nextX, y: nextY }, map)
       const nextCost = current.cost + cellFeet * (1 + (difficultTerrain ? 1 : 0) + (crawling ? 1 : 0))
       if (nextCost >= (costs.get(next) ?? Number.POSITIVE_INFINITY)) continue

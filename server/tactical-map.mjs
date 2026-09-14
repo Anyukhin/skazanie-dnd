@@ -1,6 +1,7 @@
 // @ts-check
 import { createHash } from 'node:crypto'
 import { assetById } from './asset-registry.mjs'
+import { currentEnvironmentCatalogRevision, isSafeCatalogRevision } from './environment-catalog-revision.mjs'
 import {
   interactionMetadataForProp,
   sceneInteractionMetadata,
@@ -165,6 +166,7 @@ export class TacticalMapError extends Error {
  * @property {number} scale
  * @property {Array<{x: number, y: number}>} footprint занимаемые клетки, может быть пустым
  * @property {number} zOrder
+ * @property {{kind: 'surface', propId: string}|{kind: 'wall', side: 'n'|'e'|'s'|'w'}} [mount] Визуальная опора, без изменения проходимости.
  * @property {boolean} blocksMove
  * @property {boolean} blocksSight
  * @property {string} cover
@@ -206,6 +208,7 @@ export class TacticalMapError extends Error {
  * @typedef {object} TacticalMap
  * @property {string} version
  * @property {string} locationId
+ * @property {string} [catalogRevision] выпуск каталога окружения, зафиксированный при создании
  * @property {number} levelIndex этаж этой карты: 0 — этаж входа, +1 вверх, −1 подвал
  * @property {string} levelLabel подпись этажа для игрока
  * @property {string} seed
@@ -291,6 +294,17 @@ function boundedText(value, maximum, fallback = '') {
 }
 
 /**
+ * @param {unknown} value
+ * @returns {string}
+ */
+function requireCatalogRevision(value) {
+  if (!isSafeCatalogRevision(value)) {
+    throw new TacticalMapError('catalogRevision должен быть безопасным идентификатором', 'CATALOG_REVISION_INVALID')
+  }
+  return value
+}
+
+/**
  * Выбирает наименьший класс размера, в который помещается карта.
  * @param {number} width
  * @param {number} height
@@ -320,6 +334,7 @@ export function sizeClassFor(width, height) {
  * @param {string} [options.theme]
  * @param {string} [options.tilesetId]
  * @param {string} [options.sizeClass]
+ * @param {string|null} [options.catalogRevision] выпуск каталога; null оставляет карту без поля для legacy-конверсии
  * @param {Partial<TacticalCell>} [options.fill] если задано, все координаты становятся существующими клетками с этими значениями
  * @returns {TacticalMap}
  */
@@ -334,15 +349,22 @@ export function createTacticalMap({
   theme = '',
   tilesetId = '',
   sizeClass = '',
+  catalogRevision,
   fill,
 } = /** @type {any} */ ({})) {
   const safeWidth = boundedInteger(width, 1, 1, SIZE_CLASSES.region.maxWidth)
   const safeHeight = boundedInteger(height, 1, 1, SIZE_CLASSES.region.maxHeight)
   const length = safeWidth * safeHeight
+  const stampedCatalogRevision = catalogRevision === null
+    ? undefined
+    : catalogRevision === undefined
+      ? currentEnvironmentCatalogRevision()
+      : requireCatalogRevision(catalogRevision)
   /** @type {TacticalMap} */
   const map = {
     version: TACTICAL_MAP_VERSION,
     locationId: boundedText(locationId, 120),
+    ...(stampedCatalogRevision === undefined ? {} : { catalogRevision: stampedCatalogRevision }),
     levelIndex: boundedInteger(levelIndex, 0, -MAX_LEVEL_OFFSET, MAX_LEVEL_OFFSET),
     levelLabel: boundedText(levelLabel, 120),
     seed: boundedText(seed, 200),
@@ -888,6 +910,7 @@ export function addProp(map, prop) {
     : null
   const assetId = boundedText(prop.assetId, 120)
   const transition = normalizeTransition(map, assetId, prop.transition)
+  const mount = normalizePropMount(prop.mount)
   /** @type {TacticalProp} */
   const record = {
     id: boundedText(prop.id, 120),
@@ -901,6 +924,7 @@ export function addProp(map, prop) {
       y: boundedInteger(cell?.y, 0, -1_000, 1_000),
     })),
     zOrder: boundedInteger(prop.zOrder, 0, -1_000, 1_000),
+    ...(mount ? { mount } : {}),
     blocksMove: prop.blocksMove === true,
     blocksSight: prop.blocksSight === true,
     cover,
@@ -916,6 +940,19 @@ export function addProp(map, prop) {
   if (!record.id) throw new TacticalMapError('У предмета должен быть идентификатор', 'PROP_ID_REQUIRED')
   map.props.push(record)
   return record
+}
+
+/** @param {unknown} value @returns {TacticalProp['mount']|null} */
+function normalizePropMount(value) {
+  if (!value || typeof value !== 'object') return null
+  const mount = /** @type {Record<string, unknown>} */ (value)
+  if (mount.kind === 'surface' && typeof mount.propId === 'string' && mount.propId.trim() && mount.propId.length <= 120) {
+    return { kind: 'surface', propId: mount.propId }
+  }
+  if (mount.kind === 'wall' && ['n', 'e', 's', 'w'].includes(String(mount.side))) {
+    return { kind: 'wall', side: /** @type {'n'|'e'|'s'|'w'} */ (mount.side) }
+  }
+  return null
 }
 
 /**
@@ -1317,6 +1354,7 @@ function compactProp(prop) {
   if (prop.scale !== 1) result.scale = prop.scale
   if (prop.footprint.length) result.footprint = prop.footprint.map((cell) => ({ ...cell }))
   if (prop.zOrder !== 0) result.zOrder = prop.zOrder
+  if (prop.mount) result.mount = { ...prop.mount }
   if (prop.blocksMove) result.blocksMove = true
   if (prop.blocksSight) result.blocksSight = true
   if (prop.cover !== 'none') result.cover = prop.cover
@@ -1356,9 +1394,11 @@ function compactProp(prop) {
  * @returns {Record<string, unknown>}
  */
 export function serializeTacticalMap(map) {
+  const catalogRevision = map.catalogRevision === undefined ? undefined : requireCatalogRevision(map.catalogRevision)
   return {
     version: map.version,
     locationId: map.locationId,
+    ...(catalogRevision === undefined ? {} : { catalogRevision }),
     // Этаж входа — умолчание, и в записи он не появляется: одноэтажные карты,
     // сохранённые до появления этажей, сериализуются байт в байт как раньше.
     ...(map.levelIndex ? { levelIndex: map.levelIndex } : {}),
@@ -1412,10 +1452,14 @@ export function deserializeTacticalMap(value) {
   const length = width * height
   const bitsetLength = Math.ceil(length / 8)
   const layers = raw.layers ?? {}
+  const catalogRevision = Object.prototype.hasOwnProperty.call(raw, 'catalogRevision')
+    ? requireCatalogRevision(raw.catalogRevision)
+    : undefined
   /** @type {TacticalMap} */
   const map = {
     version: boundedText(raw.version, 60, TACTICAL_MAP_VERSION),
     locationId: boundedText(raw.locationId, 120),
+    ...(catalogRevision === undefined ? {} : { catalogRevision }),
     // Читается до предметов: `addProp` сверяет `transition.toLevel` с этажом
     // карты, и на не заполненном ещё поле сверка была бы ложной.
     levelIndex: boundedInteger(raw.levelIndex, 0, -MAX_LEVEL_OFFSET, MAX_LEVEL_OFFSET),
@@ -1535,6 +1579,10 @@ export function validateTacticalMap(map) {
   const errors = []
   /** @param {string} code @param {string} message @param {string} [at] */
   const fail = (code, message, at) => errors.push(at ? { code, message, at } : { code, message })
+
+  if (map.catalogRevision !== undefined && !isSafeCatalogRevision(map.catalogRevision)) {
+    fail('CATALOG_REVISION_INVALID', 'catalogRevision должен быть безопасным идентификатором', 'catalogRevision')
+  }
 
   const length = map.width * map.height
   const bitsetLength = Math.ceil(length / 8)
@@ -1690,6 +1738,9 @@ export function tacticalMapFromLegacyCells(cells, options = {}) {
     generator: options.generator ?? { id: 'dynamic-map', version: '1' },
     theme: patterns.size === 1 ? [...patterns][0] : '',
     tilesetId: options.tilesetId ?? '',
+    // Реконструкция сохранённой legacy-сцены не должна начать зависеть от
+    // активного каталога и менять её hash после публикации нового выпуска.
+    catalogRevision: null,
   })
   map.legacyShape = LEGACY_OPTIONAL_FIELDS.filter((field) => source.some((cell) => (
     Object.prototype.hasOwnProperty.call(cell, field) && /** @type {any} */ (cell)[field] != null

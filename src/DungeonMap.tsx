@@ -21,7 +21,7 @@ import {
   Gavel, Soup, Unlink, UserLock, Handshake, ShieldAlert, Beer, Ear, Eye,
   Mail, MailOpen, MailX, HandHeart,
 } from 'lucide-react'
-import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, GuardResolution, LetterAddresseeKind, MapCell, MapFeedback, Merchant, Message, ParleyOutcome, PendingCheck, Player, PlayerRequestKind, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp, TavernDiceApproach } from './types'
+import type { Account, ActorFootprint, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, GuardResolution, LetterAddresseeKind, MapCell, MapFeedback, Merchant, Message, ParleyOutcome, PendingCheck, Player, PlayerRequestKind, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp, TavernDiceApproach } from './types'
 import { fetchWithTimeout, getAiHealth } from './ai-client'
 import {
   DAMAGE_TYPE_LABELS, HARMFUL_SPELL_KINDS, HeroFaceInitials, REPUTATION_TIER_LABELS, battleEventText,
@@ -37,13 +37,12 @@ import { DiceTray } from './DiceTray'
 import { useGameSession, type BeastAction, type CaptiveAction, type CaptiveInterrogationSkill, type CommandOutcome, type ConnectionState, type EncounterAssemblyOptions, type ShopAssemblyOptions, type WeaponAttackChoice } from './useGameSession'
 import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
 import { CELL_FEET, currentTacticalTurn, mapGridDimensions } from './tactical-engine'
-import { TOKEN_CONDITION_PRIORITY, battleRollContext, battleRollPresentation, boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, levelIndicatorRows, levelTransitionHint, levelTransitionPresentation, mechanicsSupportPresentation, movementCellReason, tokenConditionGlyph, turnClockPresentation, type MovementPath } from './tactical-ui'
+import { TOKEN_CONDITION_PRIORITY, actorDistanceFeet, actorFootprintCells, actorFootprintLayout, actorFootprintSize, actorPresentationCenter, actorPresentationSize, areaCellsForActor, battleRollContext, battleRollPresentation, boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, levelIndicatorRows, levelTransitionHint, levelTransitionPresentation, mechanicsSupportPresentation, movementCellReason, tokenConditionGlyph, turnClockPresentation, type MovementPath } from './tactical-ui'
 import { fallbackCombatActions, fallbackCombatResources, featureResourceName } from './combat-actions'
 import { fallbackCombatSpells, fallbackSpellResources, spellNameById } from './combat-spells'
 import { CombatIcon } from './CombatIcon'
 import { TacticalBoard, type BoardAnimationActor, type BoardCellHint, type BoardCellNode } from './TacticalBoard'
 import { drawLingeringSpellEffects, type BoardAreaEffect, type BoardEffectRenderer, type BoardOverlayCell } from './board-render'
-import { areaCells } from './area-geometry'
 import {
   createPersistentSpellEffectsRenderer,
   persistentSpellEffectsFromProjection,
@@ -51,6 +50,7 @@ import {
   systemPrefersReducedMotion,
 } from './spell-effects'
 import { doorsReachableFrom, sceneTacticalMap } from './tactical-map-client'
+import { sceneMapContentSignature } from './scene-map-cache'
 import { WorldMapView } from './WorldMapView'
 import { doorDirectionFromActor, doorOverlayCells, localizedQuestClockLabel, selectedAttackForecast, shouldAutoOpenCampaignModal } from './desktop-ui.mjs'
 import { boardMapArtForMap, locationOverviewFor, resolveSceneTheme, sceneIllustrationForTheme, type SceneArt, type SceneVisualTheme } from './scene-art'
@@ -395,11 +395,25 @@ export function sceneObjectVerbs(prop: TacticalProp): SceneObjectIntent[] {
 }
 
 export function sceneObjectLabel(prop: TacticalProp) {
-  return prop.interaction?.pointOfInterest ? 'Точка интереса' : 'Объект сцены'
+  return prop.label?.trim() || (prop.interaction?.pointOfInterest ? 'Точка интереса' : 'Объект сцены')
 }
 
-export function hasClearBoardTrajectory(state: GameState, from: { x: number; y: number }, to: { x: number; y: number }) {
-  return boardTrajectoryBlockReason(state, from, to) == null
+type BoardTrajectoryActor = { x: number; y: number; footprint?: ActorFootprint }
+
+function actorTrajectoryBlockReason(state: GameState, from: BoardTrajectoryActor, to: BoardTrajectoryActor) {
+  const starts = actorFootprintCells(from)
+  const ends = actorFootprintCells(to)
+  let firstReason: string | null = null
+  for (const start of starts) for (const end of ends) {
+    const reason = boardTrajectoryBlockReason(state, start, end)
+    if (reason == null) return null
+    firstReason ??= reason
+  }
+  return firstReason ?? 'Траектория недоступна'
+}
+
+export function hasClearBoardTrajectory(state: GameState, from: BoardTrajectoryActor, to: BoardTrajectoryActor) {
+  return actorTrajectoryBlockReason(state, from, to) == null
 }
 
 export function inferredCombatItem(item: Player['inventory'][number]) {
@@ -1094,7 +1108,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const [npcGroupOpen, setNpcGroupOpen] = useState(false)
   const { columns: cellColumns, rows: cellRows } = mapGridDimensions(state.scene.cells)
   // Канон сцены — `scene.map`; старая проекция без него собирается из клеток.
-  const boardMap = useMemo(() => sceneTacticalMap(state.scene), [state.scene])
+  const boardMapContent = sceneMapContentSignature(state.scene)
+  const boardMap = useMemo(() => sceneTacticalMap(state.scene), [
+    boardMapContent, state.scene.location_id, state.scene.location, state.scene.title,
+  ])
   // Этаж входит в сброс наравне с локацией: лестница, у которой стоял герой,
   // на новом этаже не существует, а идентификаторы предметов у карт свои.
   useEffect(() => setSelectedSceneObjectId(null), [boardMap?.locationId, boardMap?.levelIndex])
@@ -1161,11 +1178,11 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       })()
     : null
   const animationActors: BoardAnimationActor[] = [
-    ...players.map((player) => ({ id: player.id, x: player.x, y: player.y, label: player.character, color: player.color, kind: 'hero' as const, archetype: player.characterClass ?? player.role, defeated: player.hp <= 0 })),
-    ...(state.enemies ?? []).map((enemy) => ({ id: enemy.id, x: enemy.x, y: enemy.y, label: enemy.name, color: '#c86c5d', kind: 'enemy' as const, archetype: enemy.creature_type, defeated: enemy.alive === false })),
-    ...(state.actors ?? []).map((actor) => ({ id: actor.id, x: actor.x, y: actor.y, label: actor.name, color: '#70a78b', kind: 'summon' as const, defeated: actor.alive === false })),
-    ...sceneNpcs.filter((npc) => npc.alive).map((npc) => ({ id: npc.id, x: npc.x, y: npc.y, label: npc.name, color: '#9d8f72', kind: 'neutral' as const })),
-  ]
+    ...players.map((player) => ({ id: player.id, x: player.x, y: player.y, label: player.character, color: player.color, kind: 'hero' as const, archetype: player.characterClass ?? player.role, footprint: player.footprint, defeated: player.hp <= 0 })),
+    ...(state.enemies ?? []).map((enemy) => ({ id: enemy.id, x: enemy.x, y: enemy.y, label: enemy.name, color: '#c86c5d', kind: 'enemy' as const, archetype: enemy.creature_type, footprint: enemy.footprint, defeated: enemy.alive === false })),
+    ...(state.actors ?? []).map((actor) => ({ id: actor.id, x: actor.x, y: actor.y, label: actor.name, color: '#70a78b', kind: 'summon' as const, footprint: actor.footprint, defeated: actor.alive === false })),
+    ...sceneNpcs.filter((npc) => npc.alive).map((npc) => ({ id: npc.id, x: npc.x, y: npc.y, label: npc.name, color: '#9d8f72', kind: 'neutral' as const, footprint: npc.footprint })),
+  ].map((actor) => ({ ...actor, appearance: state.actor_appearances?.[actor.id] }))
   const npcSummaryEvents = latestNpcTurnEvents(state.battleLog ?? [])
   // Пленные приезжают отдельной серверной веткой проекции: на доске связанный
   // выглядит обычным NPC сцены, и без этого списка отличить его было бы нечем.
@@ -1536,8 +1553,13 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     ? doorsReachableFrom(boardMap, active.x, active.y).filter((door) => door.state !== 'broken')
     : []
   const interactiveSceneObjects = (boardMap?.props ?? []).filter((prop) => prop.interactive)
+  const onPropActivate = (propId: string) => {
+    if (!interactiveSceneObjects.some((prop) => prop.id === propId)) return
+    setSelectedSceneObjectId((current) => current === propId ? null : propId)
+  }
+  const sceneObjectOpen = (prop: TacticalProp | undefined) => Boolean(prop && ['open', 'taken', 'looted'].includes(prop.state))
   const sceneObjectsAtHand = active
-    ? interactiveSceneObjects.filter((prop) => sceneObjectCells(prop).some((cell) => chebyshevFeet(active, cell) <= CELL_FEET))
+    ? interactiveSceneObjects.filter((prop) => sceneObjectCells(prop).some((cell) => actorDistanceFeet(active, cell) <= CELL_FEET))
     : []
   const selectedSceneObject = interactiveSceneObjects.find((prop) => prop.id === selectedSceneObjectId) ?? null
   const selectedSceneObjectAtHand = Boolean(selectedSceneObject && sceneObjectsAtHand.some((prop) => prop.id === selectedSceneObject.id))
@@ -1728,7 +1750,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         return reactionAvailable
           && range <= CELL_FEET
           && !['incapacitated', 'unconscious', 'stunned', 'paralyzed'].some((condition) => conditions.has(condition))
-          && chebyshevFeet(active, enemy) === CELL_FEET
+          && actorDistanceFeet(active, enemy) === CELL_FEET
       })
     : []
   const showStartCombat = aliveEnemies.length > 0 && !combatActive
@@ -1749,7 +1771,17 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     : null
   const projectileTarget = pendingPoint ?? aimCell
   const projectileEnd = pendingTarget ?? projectileTarget
-  const trajectory = active && projectileEnd ? { x1: (active.x + .5) / columns * 100, y1: (active.y + .5) / rows * 100, x2: (projectileEnd.x + .5) / columns * 100, y2: (projectileEnd.y + .5) / rows * 100 } : null
+  const trajectoryStart = active
+    ? boardMap ? actorPresentationCenter(boardMap, active) : { x: active.x + .5, y: active.y + .5 }
+    : null
+  const trajectoryEnd = projectileEnd
+    ? pendingTarget && boardMap
+      ? actorPresentationCenter(boardMap, pendingTarget)
+      : { x: projectileEnd.x + .5, y: projectileEnd.y + .5 }
+    : null
+  const trajectory = trajectoryStart && trajectoryEnd
+    ? { x1: trajectoryStart.x / columns * 100, y1: trajectoryStart.y / rows * 100, x2: trajectoryEnd.x / columns * 100, y2: trajectoryEnd.y / rows * 100 }
+    : null
   const activeConditions = (state.mechanics?.conditions?.[turnActorId] ?? []).map(conditionPresentation)
   const pendingTargetName = pendingTarget
     ? ('character' in pendingTarget ? pendingTarget.character : pendingTarget.name)
@@ -1942,7 +1974,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         .map((cell) => boardPositionKey(cell.x, cell.y)),
     )
     return new Set(
-      areaCells({
+      areaCellsForActor({
         shape: previewBlastShape,
         origin: active,
         target: previewBlastCenter,
@@ -1951,11 +1983,12 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         cellFeet: CELL_FEET,
         bounds: { minX: 0, minY: 0, maxX: columns - 1, maxY: rows - 1 },
         isWalkable: (point) => previewWalkableKeys.has(boardPositionKey(point.x, point.y)),
-      }).map((point) => boardPositionKey(point.x, point.y)),
+      }, active, boardMap).map((point) => boardPositionKey(point.x, point.y)),
     )
   }, [
-    active?.id, active?.x, active?.y, columns, previewBlastCenter?.x, previewBlastCenter?.y,
-    previewBlastShape, previewBlastSizeFeet, rows, selectedSpell?.areaOrigin, state.scene.cells,
+    active?.id, active?.x, active?.y, active?.footprint?.version, active?.footprint?.size, boardMap,
+    columns, previewBlastCenter?.x, previewBlastCenter?.y, previewBlastShape, previewBlastSizeFeet,
+    rows, selectedSpell?.areaOrigin, state.scene.cells,
   ])
 
   const openNpcDossier = (npcId: string, mode: 'talk' | 'inspect' | 'transfer') => {
@@ -2009,12 +2042,46 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   // Подсказки клеток без узла: причина недоступности обязана остаться на всех
   // клетках, а узел получает только активная.
   const boardHints = new Map<string, BoardCellHint>()
+  /**
+   * Один индекс используется и для подсветки всех клеток крупного участника,
+   * и для выбора по любой из них. Полная площадь попадает в индекс только
+   * после раскрытия всех её клеток; иначе на экране остаётся безопасный
+   * одноклеточный anchor и туман не превращается в подсказку о скрытой части.
+   */
+  const actorByCell = new Map<string, BoardAnimationActor>()
+  const actorLayoutById = new Map<string, ReturnType<typeof actorFootprintLayout>>()
+  const fullActorIds = new Set<string>()
+  const sceneCellByKey = new Map(state.scene.cells.map((sceneCell) => [boardPositionKey(sceneCell.x, sceneCell.y), sceneCell]))
+  for (const actor of animationActors) {
+    if (actor.defeated) continue
+    const rawLayout = actorFootprintLayout(actor)
+    if (!rawLayout) continue
+    const rawSize = actorFootprintSize(actor)
+    const sceneFullyRevealed = rawLayout.cells.every((point) => {
+      const sceneCell = sceneCellByKey.get(boardPositionKey(point.x, point.y))
+      return Boolean(sceneCell && sceneCell.revealed !== false)
+    })
+    const presentationSize = boardMap ? actorPresentationSize(boardMap, actor) : sceneFullyRevealed ? rawSize : 1
+    const fullyRevealed = presentationSize === rawSize
+    const layout = fullyRevealed ? rawLayout : actorFootprintLayout({ ...actor, footprint: undefined })
+    const cells = layout?.cells ?? []
+    for (const point of cells) {
+      if (sceneCellByKey.get(boardPositionKey(point.x, point.y))?.revealed === false) continue
+      const key = boardPositionKey(point.x, point.y)
+      if (!actorByCell.has(key)) actorByCell.set(key, actor)
+    }
+    actorLayoutById.set(actor.id, layout)
+    if (fullyRevealed) fullActorIds.add(actor.id)
+  }
   for (const cell of state.scene.cells) {
-    const player = players.find((item) => item.x === cell.x && item.y === cell.y && item.hp > 0)
-    const enemy = state.enemies?.find((item) => item.x === cell.x && item.y === cell.y && item.alive)
-    const summon = state.actors?.find((item) => item.x === cell.x && item.y === cell.y && item.alive)
+    const actorAtCell = actorByCell.get(boardPositionKey(cell.x, cell.y))
+    const player = actorAtCell?.kind === 'hero' ? players.find((item) => item.id === actorAtCell.id && item.hp > 0) : undefined
+    const enemy = actorAtCell?.kind === 'enemy' ? state.enemies?.find((item) => item.id === actorAtCell.id && item.alive) : undefined
+    const summon = actorAtCell?.kind === 'summon' ? state.actors?.find((item) => item.id === actorAtCell.id && item.alive) : undefined
     const sceneNpc = !player && !enemy && !summon
-      ? sceneNpcs.find((item) => item.x === cell.x && item.y === cell.y)
+      ? actorAtCell?.kind === 'neutral'
+        ? sceneNpcs.find((item) => item.id === actorAtCell.id)
+        : sceneNpcs.find((item) => item.x === cell.x && item.y === cell.y)
       : undefined
     const sceneNpcStance = visibleNpcStance(sceneNpc?.stance ?? 'neutral')
     const sceneNpcMerchant = sceneNpc ? merchantForSceneNpc(state, sceneNpc.id) : null
@@ -2030,10 +2097,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     )
     const sceneNpcMenuId = sceneNpc ? `scene-npc:${sceneNpc.id}` : ''
     const attackDistanceFeet = enemy && active
-      ? chebyshevFeet(active, enemy)
+      ? actorDistanceFeet(active, enemy)
       : Number.POSITIVE_INFINITY
-    const spellDistanceFeet = enemy && active ? chebyshevFeet(active, enemy) : Number.POSITIVE_INFINITY
-    const trajectoryBlockReason = enemy && active ? boardTrajectoryBlockReason(state, active, enemy) : null
+    const spellDistanceFeet = enemy && active ? actorDistanceFeet(active, enemy) : Number.POSITIVE_INFINITY
+    const trajectoryBlockReason = enemy && active ? actorTrajectoryBlockReason(state, active, enemy) : null
     const clearTrajectory = Boolean(enemy && active && trajectoryBlockReason == null)
     const enemyForecast = enemy
       ? selectedAttackForecast(state.combatForecast?.targets, enemy.id, selectedItem?.id ?? null)
@@ -2043,7 +2110,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     const canWeaponTargetEnemy = Boolean(combatActive && selected && combatMode === 'weapon' && weaponAttackReady && enemyInWeaponRange && selectedItem?.combat?.kind !== 'thrown-area' && !needsWeaponChange)
     const canSpellTargetEnemy = Boolean(combatActive && selected && combatMode === 'magic' && selectedSpell && ['enemy', 'creature'].includes(selectedSpell.target) && spellEconomyReady && enemyInSpellRange)
     const selectedActionRange = selectedCombatAction?.requiresWeapon ? attackRangeFeet : Number(selectedCombatAction?.range ?? 0)
-    const enemyInActionRange = Boolean(enemy && active && chebyshevFeet(active, enemy) <= selectedActionRange && (selectedActionRange <= CELL_FEET || clearTrajectory))
+    const enemyInActionRange = Boolean(enemy && active && actorDistanceFeet(active, enemy) <= selectedActionRange && (selectedActionRange <= CELL_FEET || clearTrajectory))
     const enemyKnockedOut = Boolean(enemy && state.mechanics?.resting?.[enemy.id]?.reason === 'knockout')
     const canActionTargetEnemy = Boolean(combatActive && selected && combatMode === 'action' && selectedCombatAction && ['enemy', 'creature'].includes(selectedCombatAction.target) && selectedActionEconomyReady && enemyInActionRange && (selectedCombatAction.id !== 'first-aid' || enemyKnockedOut))
     const targetRangeFeet = combatMode === 'magic' ? selectedSpellRange : combatMode === 'action' ? selectedActionRange : selectedItem?.combat?.kind === 'thrown-area' ? normalRangeFeet : attackRangeFeet
@@ -2091,29 +2158,68 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     /* Тултип лестницы (`docs/multilevel-map-plan.md`, 7.4). Кнопка перехода
        появляется только у подошедшего вплотную персонажа, а «куда ведёт эта
        лестница» игрок спрашивает раньше — наведением с другого конца зала. */
-    const sceneObjectHint = [sceneObject ? `Выбрать: ${sceneObjectLabel(sceneObject)}` : '',
+    const sceneObjectHint = [sceneObject ? `Выбрать: ${sceneObjectLabel(sceneObject)}${sceneObjectOpen(sceneObject) ? ' · открыто' : ''}` : '',
       levelTransitionHint(sceneObject?.transition, knownSceneLevels) ?? ''].filter(Boolean).join(' · ')
     const canMoveHere = reachable.has(cellKey)
     const route = movementPaths.get(cellKey)
     const moveReason = active ? movementCellReason(state, active, cell, movementLimit, movementPaths) : null
     const routeStep = previewRouteSteps.get(cellKey)
-    const opportunityRisk = Boolean(canMoveHere && opportunityThreats.some((threat) => chebyshevFeet(threat, cell) > CELL_FEET))
-    const canThrowHere = Boolean(combatActive && selected && combatMode === 'weapon' && actionReady && selectedItem?.combat?.kind === 'thrown-area' && active && chebyshevFeet(active, cell) <= normalRangeFeet && hasClearBoardTrajectory(state, active, cell) && cell.revealed && cell.type !== 'wall')
-    const occupied = Boolean(player || enemy || summon || sceneNpc)
+    const opportunityRisk = Boolean(canMoveHere && opportunityThreats.some((threat) => actorDistanceFeet(threat, cell) > CELL_FEET))
+    const canThrowHere = Boolean(combatActive && selected && combatMode === 'weapon' && actionReady && selectedItem?.combat?.kind === 'thrown-area' && active && actorDistanceFeet(active, cell) <= normalRangeFeet && hasClearBoardTrajectory(state, active, cell) && cell.revealed && cell.type !== 'wall')
+    const actorIsAnchor = Boolean(actorAtCell && actorAtCell.x === cell.x && actorAtCell.y === cell.y)
+    const actorLayout = actorAtCell ? actorLayoutById.get(actorAtCell.id) ?? null : null
+    const actorHasFullArea = Boolean(actorAtCell && fullActorIds.has(actorAtCell.id) && actorLayout && actorLayout.width > 1)
+    const actorTokenStyle = actorHasFullArea && actorLayout
+      ? {
+          '--actor-footprint-width': actorLayout.width,
+          '--actor-footprint-height': actorLayout.height,
+          '--actor-footprint-center-x': actorLayout.width / 2,
+          '--actor-footprint-center-y': actorLayout.height / 2,
+        } as React.CSSProperties
+      : undefined
+    const occupied = Boolean(actorAtCell || player || enemy || summon || sceneNpc)
     const commandRangeVisible = Boolean(selected && targetRangeFeet > 0 && (combatActive || spellEconomyReady))
-    const cellInCommandRange = Boolean(commandRangeVisible && active && cell.revealed && (cell.type === 'floor' || cell.type === 'door') && chebyshevFeet(active, cell) <= targetRangeFeet && (targetRangeFeet <= CELL_FEET || hasClearBoardTrajectory(state, active, cell)))
+    const cellInCommandRange = Boolean(commandRangeVisible && active && cell.revealed && (cell.type === 'floor' || cell.type === 'door') && actorDistanceFeet(active, cell) <= targetRangeFeet && (targetRangeFeet <= CELL_FEET || hasClearBoardTrajectory(state, active, cell)))
     const moveUnavailable = Boolean(selected && movementAvailable && active && cell.revealed && (cell.type === 'floor' || cell.type === 'door') && !occupied && !canMoveHere && moveReason)
-    const canPointSpellHere = Boolean(selected && combatMode === 'magic' && selectedSpell?.target === 'point' && spellEconomyReady && active && chebyshevFeet(active, cell) <= selectedSpellRange && hasClearBoardTrajectory(state, active, cell) && cell.revealed && (cell.type === 'floor' || cell.type === 'door') && (!['summon', 'teleport'].includes(selectedSpellKind ?? '') || !occupied))
+    const canPointSpellHere = Boolean(selected && combatMode === 'magic' && selectedSpell?.target === 'point' && spellEconomyReady && active && actorDistanceFeet(active, cell) <= selectedSpellRange && hasClearBoardTrajectory(state, active, cell) && cell.revealed && (cell.type === 'floor' || cell.type === 'door') && (!['summon', 'teleport'].includes(selectedSpellKind ?? '') || !occupied))
     const canSummonHere = Boolean(canPointSpellHere && selectedSpellKind === 'summon')
     const canAimHere = canThrowHere || canPointSpellHere
+    const actorTargetDistance = actorAtCell && active
+      ? actorDistanceFeet(active, actorAtCell)
+      : Number.POSITIVE_INFINITY
+    const canHealActorHere = Boolean(
+      actorAtCell
+      && (actorAtCell.kind === 'hero' || actorAtCell.kind === 'summon')
+      && selected
+      && combatMode === 'magic'
+      && selectedSpell
+      && ['ally', 'creature'].includes(selectedSpell.target)
+      && spellEconomyReady
+      && actorTargetDistance <= selectedSpellRange,
+    )
+    const canAidActorHere = Boolean(
+      actorAtCell
+      && (actorAtCell.kind === 'hero' || actorAtCell.kind === 'summon')
+      && combatActive
+      && selected
+      && combatMode === 'action'
+      && selectedCombatAction
+      && ['ally', 'creature'].includes(selectedCombatAction.target)
+      && selectedActionEconomyReady
+      && actorAtCell.id !== selected
+      && actorTargetDistance <= selectedCombatAction.range,
+    )
+    const actorCanActivate = Boolean(actorAtCell && (canAimHere || canActionTargetEnemy || canSpellTargetEnemy || canWeaponTargetEnemy || canHealActorHere || canAidActorHere))
     const inBlastArea = previewBlastKeys.has(cellKey)
     const inPersistentSpellArea = Boolean((state.mechanics?.active_effects ?? []).some((effect) => effect.center && chebyshevFeet(effect.center, cell) <= Number(effect.radius_feet ?? 0)))
     // У объекта собственная hotspot-зона в соседнем слое поверх клетки. Клетка
     // маршрута и предмет поэтому остаются двумя отдельными элементами, и оба
     // доступны мышью и клавиатурой.
-    const cellIsInteractive = Boolean((canMoveHere || canAimHere) && !occupied)
+    const cellIsInteractive = Boolean(((canMoveHere || canAimHere) && !occupied) || (!actorIsAnchor && actorCanActivate))
     const cellFeedback = visibleMapFeedback.filter((item) => item.x === cell.x && item.y === cell.y)
-    const cellLabel = canPointSpellHere
+    const cellLabel = actorAtCell && !actorIsAnchor && actorCanActivate
+      ? `Выбрать ${actorAtCell.label}`
+      : canPointSpellHere
       ? `Наложить ${selectedSpell?.name} в клетку ${cell.x}, ${cell.y}`
       : canThrowHere
         ? `Бросить ${selectedItem?.name ?? 'предмет'} в клетку ${cell.x}, ${cell.y}`
@@ -2157,6 +2263,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       inBlastArea ? 'blast-area' : '',
       pendingPoint?.x === cell.x && pendingPoint?.y === cell.y ? 'command-center' : '',
       sceneObject ? 'scene-object-target' : '',
+      sceneObjectOpen(sceneObject) ? 'scene-object-open' : '',
       sceneObject?.id === selectedSceneObjectId ? 'scene-object-selected' : '',
       // Подсветка добычи закрыта туманом наравне с самой меткой (`hasLootLayer`)
       // и остальными украшениями клетки: `.board-cell.loot-here` рисуется поверх
@@ -2164,7 +2271,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       // ровно там, где лежит невзятое тело.
       cell.revealed && lootHere ? 'loot-here' : '',
       cell.revealed && lootHere && focusedLootId === lootHere.id ? 'loot-focused' : '',
-      occupied ? player ? 'occupied-by-hero' : summon ? 'occupied-by-summon' : sceneNpc ? 'occupied-by-neutral' : 'occupied-by-enemy' : '',
+      occupied ? actorAtCell?.kind === 'hero' ? 'occupied-by-hero' : actorAtCell?.kind === 'summon' ? 'occupied-by-summon' : actorAtCell?.kind === 'neutral' ? 'occupied-by-neutral' : 'occupied-by-enemy' : '',
+      actorHasFullArea && actorIsAnchor ? 'actor-footprint-anchor' : '',
     ].filter(Boolean)
     const cellTitle = opportunityRisk && !canAimHere
       ? 'Опасная клетка: выход из ближнего боя вызовет атаку по возможности'
@@ -2296,6 +2404,17 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         if (hoveredMoveKey === cellKey) setHoveredMoveKey(null)
       },
       onActivate: () => {
+        if (actorAtCell && !actorIsAnchor) {
+          if (!selected || !actorCanActivate) return
+          if (canPointSpellHere) castAtCell(cell.x, cell.y)
+          else if (canThrowHere) chooseArea(cell.x, cell.y)
+          else if (enemy && canActionTargetEnemy) useActionAtTarget(enemy.id)
+          else if (enemy && canSpellTargetEnemy) castAtTarget(enemy.id)
+          else if (enemy && canWeaponTargetEnemy) chooseTarget(enemy.id)
+          else if (canAidActorHere) useActionAtTarget(actorAtCell.id)
+          else if (canHealActorHere) castAtTarget(actorAtCell.id)
+          return
+        }
         if (!selected || (!canMoveHere && !canAimHere)) return
         if (canPointSpellHere) castAtCell(cell.x, cell.y)
         else if (canThrowHere) chooseArea(cell.x, cell.y)
@@ -2313,6 +2432,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           tabIndex={0}
           className="scene-object-hotspot"
           data-selected={sceneObject.id === selectedSceneObjectId ? 'true' : undefined}
+          data-state={sceneObject.state || undefined}
           aria-label={sceneObjectHint}
           aria-pressed={sceneObject.id === selectedSceneObjectId}
           title={sceneObjectHint}
@@ -2325,11 +2445,11 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           onKeyDown={(event) => {
             if (event.key !== 'Enter' && event.key !== ' ') return
             event.preventDefault()
-            setSelectedSceneObjectId((current) => current === sceneObject.id ? null : sceneObject.id)
+            onPropActivate(sceneObject.id)
           }}
           onClick={(event) => {
             event.stopPropagation()
-            setSelectedSceneObjectId((current) => current === sceneObject.id ? null : sceneObject.id)
+            onPropActivate(sceneObject.id)
           }}
         /> : null}
         {sceneObjectMenu}
@@ -2351,11 +2471,11 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             До раскрытия используется предельно скупое кольцо качественной
             ступени: без цифр и текста, чтобы не вернуть перегрузку фишек,
             из-за которой здоровье убрали в PR #7. */}
-        {enemy && cell.revealed && enemyHealth && !enemyHealth.exact && enemyHealth.status !== 'unharmed' && (
+        {enemy && cell.revealed && actorIsAnchor && enemyHealth && !enemyHealth.exact && enemyHealth.status !== 'unharmed' && (
           <span className="enemy-health-ring" data-status={enemyHealth.status} aria-hidden="true" />
         )}
-        {enemy && cell.revealed && enemyHealth?.exact && <TokenHealthBar fill={enemyHealth.fill} label={enemyHealth.barLabel} className={`enemy-health ${enemyHealth.status}`} />}
-        {enemy && cell.revealed && (enemyForecast?.cover_bonus || enemyHighGround || trajectoryBlockReason) && (
+        {enemy && cell.revealed && actorIsAnchor && enemyHealth?.exact && <TokenHealthBar fill={enemyHealth.fill} label={enemyHealth.barLabel} className={`enemy-health ${enemyHealth.status}`} />}
+        {enemy && cell.revealed && actorIsAnchor && (enemyForecast?.cover_bonus || enemyHighGround || trajectoryBlockReason) && (
           <span className="token-tactical-badges" aria-label="Тактические модификаторы цели">
             {enemyForecast && enemyForecast.cover_bonus > 0 && (
               <i className="cover" title={`${enemyForecast.cover_label ?? 'Укрытие'}: +${enemyForecast.cover_bonus} к КД. Союзники и реквизит на линии дают лучшее, а не суммарное укрытие.`}>
@@ -2367,11 +2487,14 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             {trajectoryBlockReason && <i className="blocked" title={trajectoryBlockReason}>×</i>}
           </span>
         )}
-        {enemy && cell.revealed && (
+        {actorHasFullArea && actorIsAnchor && <span className="actor-footprint-area" style={actorTokenStyle} aria-hidden="true" />}
+        {enemy && cell.revealed && actorIsAnchor && (
           <button
-            className={`enemy-token ${focusedParticipantId === enemy.id ? 'initiative-focus' : ''} ${linkedParticipantIds.includes(enemy.id) ? 'journal-linked' : ''} ${enemy.id === turnActorId ? 'active-turn' : ''} ${enemyCommandAllowed ? 'targetable' : combatActive ? 'unavailable-target' : ''} ${pendingTargetId === enemy.id ? 'command-selected' : ''}`}
+            className={`enemy-token ${actorHasFullArea ? 'large-actor' : ''} ${focusedParticipantId === enemy.id ? 'initiative-focus' : ''} ${linkedParticipantIds.includes(enemy.id) ? 'journal-linked' : ''} ${enemy.id === turnActorId ? 'active-turn' : ''} ${enemyCommandAllowed ? 'targetable' : combatActive ? 'unavailable-target' : ''} ${pendingTargetId === enemy.id ? 'command-selected' : ''}`}
             data-actor-id={enemy.id}
             data-enemy-kind={enemyKind}
+            data-footprint-size={actorHasFullArea ? actorLayout?.size : undefined}
+            style={actorTokenStyle}
             onPointerDown={(event) => event.stopPropagation()}
             onPointerUp={(event) => event.stopPropagation()}
             onMouseEnter={(event) => { setLinkedParticipantIds([enemy.id]); setInspectedAnchor(tokenAnchor(event.currentTarget)); setAimCell({ x: enemy.x, y: enemy.y }); setInspectedTarget({ id: enemy.id, name: enemy.name, team: 'enemy', ...(enemyHealth?.exact ? { hp: enemy.hp, maxHp: enemy.maxHp } : { healthLabel: enemyHealth?.label }), distanceFeet: attackDistanceFeet, allowed: enemyCommandAllowed, reason: enemyTargetReason }) }}
@@ -2389,12 +2512,15 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             <TokenConditionIcons conditions={enemyConditions} />
           </button>
         )}
-        {sceneNpc && cell.revealed && <>
+        {sceneNpc && cell.revealed && actorIsAnchor && <>
+          {actorHasFullArea && <span className="actor-footprint-area" style={actorTokenStyle} aria-hidden="true" />}
           <button
             type="button"
-            className={`map-token neutral-token stance-${sceneNpcStance} ${sceneNpc.alive ? '' : 'dead'} ${openTokenLabelId === sceneNpcMenuId ? 'label-open' : ''}`}
+            className={`map-token neutral-token ${actorHasFullArea ? 'large-actor' : ''} stance-${sceneNpcStance} ${sceneNpc.alive ? '' : 'dead'} ${openTokenLabelId === sceneNpcMenuId ? 'label-open' : ''}`}
             data-actor-id={sceneNpc.id}
             data-token-role="neutral"
+            data-footprint-size={actorHasFullArea ? actorLayout?.size : undefined}
+            style={actorTokenStyle}
             aria-expanded={openTokenLabelId === sceneNpcMenuId}
             aria-label={`${sceneNpc.name}, ${sceneNpc.role || 'персонаж'}. Отношение: ${NPC_STANCE_LABELS[sceneNpcStance]}`}
             onPointerDown={(event) => event.stopPropagation()}
@@ -2530,8 +2656,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               : null}
           </div>}
         </>}
-        {player && cell.revealed && (() => {
-          const healingDistance = active ? chebyshevFeet(active, player) : Number.POSITIVE_INFINITY
+        {player && cell.revealed && actorIsAnchor && (() => {
+          const healingDistance = active ? actorDistanceFeet(active, player) : Number.POSITIVE_INFINITY
           // `combatActive` здесь больше нет: вне боя мирное заклинание на союзника
           // разрешено, и решает это `spellEconomyReady`, повторяющий правило движка.
           const canHeal = Boolean(selected && combatMode === 'magic' && selectedSpell && ['ally', 'creature'].includes(selectedSpell.target) && spellEconomyReady && healingDistance <= selectedSpellRange)
@@ -2553,10 +2679,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           const playerTargetReason = playerCommandAllowed ? 'Допустимая цель' : playerTargetCheck.reason ?? 'Выбранная команда не подходит для союзника'
           const playerConditions = (state.mechanics?.conditions?.[player.id] ?? []).map(conditionPresentation)
           return <button
-            className={'map-token hero-token ' + (focusedParticipantId === player.id ? 'initiative-focus ' : '') + (linkedParticipantIds.includes(player.id) ? 'journal-linked ' : '') + (selected === player.id ? 'selected' : '') + ' ' + (openTokenLabelId === player.id ? 'label-open' : '') + ' ' + (player.id === turnActorId ? 'active-turn' : '') + ' ' + (canHeal || canAid ? 'targetable healing-target' : combatActive && selected && player.id !== turnActorId ? 'unavailable-target' : '') + ' ' + (pendingTargetId === player.id ? 'command-selected' : '') + ' ' + (player.maxHp > 0 && player.hp / player.maxHp <= .25 ? 'critical' : player.maxHp > 0 && player.hp / player.maxHp <= .5 ? 'wounded' : '')}
+             className={'map-token hero-token ' + (actorHasFullArea ? 'large-actor ' : '') + (focusedParticipantId === player.id ? 'initiative-focus ' : '') + (linkedParticipantIds.includes(player.id) ? 'journal-linked ' : '') + (selected === player.id ? 'selected' : '') + ' ' + (openTokenLabelId === player.id ? 'label-open' : '') + ' ' + (player.id === turnActorId ? 'active-turn' : '') + ' ' + (canHeal || canAid ? 'targetable healing-target' : combatActive && selected && player.id !== turnActorId ? 'unavailable-target' : '') + ' ' + (pendingTargetId === player.id ? 'command-selected' : '') + ' ' + (player.maxHp > 0 && player.hp / player.maxHp <= .25 ? 'critical' : player.maxHp > 0 && player.hp / player.maxHp <= .5 ? 'wounded' : '')}
             data-actor-id={player.id}
             data-face={heroFaceMode(player)}
-            style={heroFaceStyle(player, { '--token': player.color } as React.CSSProperties)}
+             style={{ ...heroFaceStyle(player, { '--token': player.color } as React.CSSProperties), ...actorTokenStyle }}
             onPointerDown={(event) => event.stopPropagation()}
             onPointerUp={(event) => event.stopPropagation()}
             onMouseEnter={(event) => { setLinkedParticipantIds([player.id]); setInspectedAnchor(tokenAnchor(event.currentTarget)); if (canHeal) setAimCell({ x: player.x, y: player.y }); setInspectedTarget({ id: player.id, name: player.character, team: 'ally', hp: player.hp, maxHp: player.maxHp, distanceFeet: healingDistance, allowed: playerCommandAllowed, reason: playerTargetReason }) }}
@@ -2573,8 +2699,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             <span className="token-label">{player.character}</span>
           </button>
         })()}
-        {summon && cell.revealed && (() => {
-          const healingDistance = active ? chebyshevFeet(active, summon) : Number.POSITIVE_INFINITY
+        {summon && cell.revealed && actorIsAnchor && (() => {
+           const healingDistance = active ? actorDistanceFeet(active, summon) : Number.POSITIVE_INFINITY
           // `combatActive` здесь больше нет: вне боя мирное заклинание на союзника
           // разрешено, и решает это `spellEconomyReady`, повторяющий правило движка.
           const canHeal = Boolean(selected && combatMode === 'magic' && selectedSpell && ['ally', 'creature'].includes(selectedSpell.target) && spellEconomyReady && healingDistance <= selectedSpellRange)
@@ -2592,9 +2718,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           const summonTargetReason = summonCommandAllowed ? 'Допустимая цель' : summonTargetCheck.reason ?? 'Выбранная команда не подходит для призыва'
           const summonConditions = (state.mechanics?.conditions?.[summon.id] ?? []).map(conditionPresentation)
           return <button
-            className={'map-token summon-token ' + (focusedParticipantId === summon.id ? 'initiative-focus ' : '') + (linkedParticipantIds.includes(summon.id) ? 'journal-linked ' : '') + (selected === summon.id ? 'selected ' : '') + (summon.id === turnActorId ? 'active-turn ' : '') + (openTokenLabelId === summon.id ? 'label-open' : '') + ' ' + (canHeal || canAid ? 'targetable healing-target' : combatActive && selected ? 'unavailable-target' : '') + ' ' + (pendingTargetId === summon.id ? 'command-selected' : '')}
+             className={'map-token summon-token ' + (actorHasFullArea ? 'large-actor ' : '') + (focusedParticipantId === summon.id ? 'initiative-focus ' : '') + (linkedParticipantIds.includes(summon.id) ? 'journal-linked ' : '') + (selected === summon.id ? 'selected ' : '') + (summon.id === turnActorId ? 'active-turn ' : '') + (openTokenLabelId === summon.id ? 'label-open' : '') + ' ' + (canHeal || canAid ? 'targetable healing-target' : combatActive && selected ? 'unavailable-target' : '') + ' ' + (pendingTargetId === summon.id ? 'command-selected' : '')}
             data-actor-id={summon.id}
-            style={{ '--token': '#70a78b' } as React.CSSProperties}
+             style={{ '--token': '#70a78b', ...actorTokenStyle } as React.CSSProperties}
             onPointerDown={(event) => event.stopPropagation()}
             onPointerUp={(event) => event.stopPropagation()}
             onMouseEnter={(event) => { setLinkedParticipantIds([summon.id]); setInspectedAnchor(tokenAnchor(event.currentTarget)); if (canHeal) setAimCell({ x: summon.x, y: summon.y }); setInspectedTarget({ id: summon.id, name: summon.name, team: 'ally', hp: summon.hp, maxHp: summon.maxHp, distanceFeet: healingDistance, allowed: summonCommandAllowed, reason: summonTargetReason }) }}
@@ -2611,7 +2737,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             <span className="token-label">{summon.name}</span>
           </button>
         })()}
-        {visibleBattleRoll && (visibleBattleRoll.targetId ?? visibleBattleRoll.actorId) === (enemy?.id ?? player?.id ?? summon?.id) && (
+        {visibleBattleRoll && actorIsAnchor && (visibleBattleRoll.targetId ?? visibleBattleRoll.actorId) === (enemy?.id ?? player?.id ?? summon?.id) && (
           <BattleRollTokenCallout event={visibleBattleRoll} context={visibleBattleRollContext} />
         )}
         {cellFeedback.map((item) => <span key={item.id} className={'map-feedback ' + item.kind}>{item.text}</span>)}
@@ -2777,6 +2903,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         conditions={state.mechanics?.conditions}
         trajectory={trajectory}
         conditionVersion={state.state_version}
+        onPropActivate={onPropActivate}
         levelIndex={sceneLevelIndex}
         onBackgroundActivate={() => { setOpenTokenLabelId(null); setSelectedSceneObjectId(null) }}
         decoration={trajectory

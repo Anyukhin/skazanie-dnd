@@ -646,10 +646,10 @@ const PERMITTED_REACTION_PHRASES = [
   'держится\\s+(?:приветлив[а-яё]*|насторож[а-яё]*|холодн[а-яё]*)',
   'наблюда(?:ет|ют)', 'след(?:ит|ят)',
 ].join('|')
-const NPC_REACTION_MARKERS = `(?:${CURRENT_REACTION_VERBS}|${PERMITTED_REACTION_PHRASES})(?![\\p{L}\\p{N}_])`
+const NPC_REACTION_MARKERS = `(?<![\\p{L}\\p{N}_])(?:${CURRENT_REACTION_VERBS}|${PERMITTED_REACTION_PHRASES})(?![\\p{L}\\p{N}_])`
 const NPC_REACTION_MATCHERS = Object.freeze({
   alarmed: /(?:встревож|тревож|вздрог|испуг)/iu,
-  persuaded: /(?:принима\w*\s+довод|соглаша|убежд)/iu,
+  persuaded: /(?:принима[а-яё]*\s+довод|соглаша|убежд)/iu,
   unconvinced: /(?:оста[её]тся\s+при\s+сво[её]м|не\s+соглаша|не\s+убежд|отверга)/iu,
   welcoming: /(?:держится\s+приветлив|приветлив|радуш|доброжел)/iu,
   attentive: /(?:молча[^.!?]{0,24}(?:наблюда|смотр)|вниматель[^.!?]{0,24}(?:наблюда|смотр|слуша)|наблюда\w*\s+за\s+разговор)/iu,
@@ -657,6 +657,7 @@ const NPC_REACTION_MATCHERS = Object.freeze({
   cold: /(?:держится\s+холодн|холодно|отстран|сухо)/iu,
 })
 const HERO_AGENCY_VERBS = [
+  'попытал(?:ся|ась|ись)\\s+разглядеть', '(?:не\\s+)?смог(?:ла|ли)?\\s+удержать\\s+равновесие',
   'подход(?:ит|ят)', 'приседа(?:ет|ют)', 'склоня(?:ется|ются)',
   'наклоня(?:ется|ются)', 'проверя(?:ет|ют)', 'сравнива(?:ет|ют)',
   'складыва(?:ет|ют)', 'дума(?:ет|ют)', 'реша(?:ет|ют)',
@@ -669,6 +670,8 @@ const HERO_AGENCY_VERBS = [
   'бер[её]т', 'клад[её]т', 'доста[её]т', 'переда[её]т',
   'поднима(?:ет|ют)', 'опуска(?:ет|ют)',
 ].join('|')
+const CHECK_ONLY_OUTCOME_PATTERN = /(?<![а-яё])(?:ловушк[а-яё]*[^.!?]{0,24}(?:удал[а-яё]*|уда[её]тся)|(?:взгляд|взор)[^.!?]{0,24}наш[её]л\s+то,?\s+что\s+искал)(?![а-яё])/iu
+const ITEM_HIDING_PATTERN = /(?<![а-яё])(?:спрятан[а-яё]*|спрятал[а-яё]*)(?![а-яё])/iu
 const MECHANICAL_TERM = '(?:брос\\w*|выпал\\w*|итог\\w*|СЛ|HP|ОЗ|КД|урон\\w*|лечен\\w*|цен\\w*|монет\\w*|фт\\.?|фут\\w*|метр\\w*|минут\\w*|час\\w*|ресурс\\w*|заряд\\w*|ячейк\\w*)'
 const MECHANICAL_NUMBER_PATTERN = new RegExp(`(?:${MECHANICAL_TERM})[^.!?\\d]{0,24}\\d|\\d[^.!?]{0,24}(?:${MECHANICAL_TERM})`, 'iu')
 const OPEN_PROMISE_RESOLUTION_PATTERN = /обещан[а-яё]*[^.!?]{0,50}(?<![а-яё])(?<!не\s+)(?<!не\s+был[аои]?\s+)(?:на\s+месте|найден[а-яё]*|нашл[а-яё]*|получен[а-яё]*|передан[а-яё]*|забра[а-яё]*|доста[её]т)(?![а-яё])/iu
@@ -694,9 +697,25 @@ function actorReactionClauses(text, actor) {
 
 function reactionMatchesPermit(clause, permit) {
   const reaction = String(permit?.reaction ?? '').trim()
+  const refusal = /не\s+(?:соглаша[а-яё]*|убежд[её]н[а-яё]*|принима[а-яё]*\s+довод)|отверга[а-яё]*/iu.test(clause)
+  if (reaction === 'persuaded' && refusal) return false
+  if (reaction === 'unconvinced' && !refusal && NPC_REACTION_MATCHERS.persuaded.test(clause)) return false
   const matcher = NPC_REACTION_MATCHERS[reaction]
   if (matcher?.test(clause)) return true
   return sharedRootCount(clause, permit?.description) >= 2
+}
+
+// «Пропускает» — отдельное действие, а не совпадение суффикса «опускает».
+// Разрешается лишь отказ с тем же условием из записанной реплики этого NPC.
+function npcAccessIsPermitted(clause, permit) {
+  const speech = sceneText(permit?.text || permit?.dialogue || permit?.speech || permit?.description, 1000)
+  const conditionPattern = /(?<![а-яё])без\s+([^.!?,;]+?)(?=\s+(?:доступ|проход)\s|[.!?,;]|$)/iu
+  const condition = conditionPattern.exec(speech)?.[1]?.trim().toLocaleLowerCase('ru')
+  const statedCondition = conditionPattern.exec(clause)?.[1]?.trim().toLocaleLowerCase('ru')
+  const denial = new RegExp(`^${escapePattern(permit?.name)}\\s+не\\s+пропус(?:ка(?:ет|ют|л[аио]?)|тил[аио]?)(?![а-яё])`, 'iu')
+  return denial.test(clause)
+    && /(?:доступ|проход)\s+закрыт(?![а-яё])/iu.test(speech)
+    && Boolean(condition) && condition === statedCondition
 }
 
 function promiseHasResolutionEvent(brief, promise) {
@@ -1001,12 +1020,40 @@ export function verifyNarratorCraft(narration, brief, verification, recentNarrat
   if (MECHANICAL_NUMBER_PATTERN.test(text)) {
     add('VISIBLE_MECHANICAL_NUMBER', 'Повествование повторяет механическое число, уже показанное интерфейсом')
   }
+  const onlyCheck = brief.visible_events?.some(event => event?.event_type === 'AbilityCheckResolved')
+    && brief.visible_events.every(event => DECLARATION_EVENTS.has(event?.event_type)
+      || ['AbilityCheckResolved', 'DieRolled', 'RollResolved'].includes(event?.event_type))
+  if (onlyCheck && CHECK_ONLY_OUTCOME_PATTERN.test(currentText)) {
+    add('CHECK_OUTCOME_NOT_IN_BRIEF', 'Результат проверки подменён неподтверждённым действием или находкой', CHECK_ONLY_OUTCOME_PATTERN.exec(currentText)?.[0])
+  }
+  if (ITEM_HIDING_PATTERN.test(currentText)
+    && brief.visible_events?.some(event => /Item|Loot|Inventory/u.test(String(event?.event_type)))) {
+    const items = brief.visible_events.filter(event => /Item|Loot|Inventory/u.test(String(event?.event_type)))
+      .flatMap(event => Array.isArray(event?.payload?.items) ? event.payload.items : [event?.payload?.item]).filter(Boolean)
+    const memoryFacts = brief.known_environment?.world_memory?.facts
+    const facts = [
+      ...(Array.isArray(memoryFacts) ? memoryFacts : []),
+      ...brief.visible_events.filter(event => event?.event_type === 'WorldFactRecorded').map(event => event.payload?.fact),
+    ]
+    const hasHistory = currentText.split(/[.!?]/u).filter(sentence => ITEM_HIDING_PATTERN.test(sentence)).every(sentence => {
+      const namedItems = items.filter(item => sharedRootCount(item.name, sentence) >= 2)
+      const referencedItems = namedItems.length ? namedItems : items.length === 1 ? items : []
+      return referencedItems.length > 0 && referencedItems.every(item => facts.some(fact => (
+        ITEM_HIDING_PATTERN.test(sceneText(fact?.summary || fact?.object, 1000))
+        && Boolean(item.id) && (fact?.subject_id || fact?.subject) === item.id
+      )))
+    })
+    if (!hasHistory) {
+      add('ITEM_HISTORY_NOT_IN_BRIEF', 'Получение вещи не подтверждает, что её кто-то прятал', ITEM_HIDING_PATTERN.exec(currentText)?.[0])
+    }
+  }
 
   const heroNames = (Array.isArray(story.heroes) ? story.heroes : []).map((hero) => hero?.name).filter(Boolean)
   if (heroNames.length) {
     const heroAgency = new RegExp(`(?:${heroNames.map(escapePattern).join('|')})[^.!?]{0,48}(?:${HERO_AGENCY_VERBS})`, 'iu')
     for (const sentence of currentText.split(/[.!?]/u)) {
-      if (heroAgency.test(sentence) && !confirmedHeroDoorAction(sentence, brief, story.heroes)) {
+      if (heroAgency.test(sentence) && !confirmedHeroDoorAction(sentence, brief, story.heroes)
+        && !confirmedHeroDamageAction(sentence, brief, story)) {
         add('HERO_AGENCY_NOT_IN_BRIEF', 'Рассказчик приписал герою новое действие, мысль или решение', heroAgency.exec(sentence)?.[0])
       }
     }
@@ -1022,9 +1069,21 @@ export function verifyNarratorCraft(narration, brief, verification, recentNarrat
   const genericActors = ['стража', 'стражи', 'посетители', 'толпа', 'люди']
   const currentActors = [...new Set([...npcNames, ...permits.map((entry) => entry?.name), ...genericActors].filter(Boolean))]
   for (const actor of currentActors) {
+    const permit = permitsByName.get(normalizedActorName(actor))
+    if (permit?.reaction) {
+      const stance = new RegExp(`(?<![\\p{L}\\p{N}_])${escapePattern(actor)}\\s+(?:не\\s+)?(?:соглаша(?:ется|ются)|убежд[её]н[аыо]?)(?![а-яё])`, 'giu')
+      for (const match of currentText.matchAll(stance)) {
+        if (!reactionMatchesPermit(match[0], permit)) add('NPC_REACTION_MISMATCH', 'Согласие NPC не соответствует разрешённой реакции', match[0])
+      }
+    }
+    const access = new RegExp(`(?<![\\p{L}\\p{N}_])${escapePattern(actor)}\\s+(?:не\\s+)?пропус(?:ка(?:ет|ют|л[аио]?)|тил[аио]?)(?![а-яё])[^.!?,;]{0,180}`, 'giu')
+    for (const match of currentText.matchAll(access)) {
+      if (!npcAccessIsPermitted(match[0], permitsByName.get(normalizedActorName(actor)))) {
+        add('NPC_REACTION_MISMATCH', 'Допуск или отказ NPC не соответствует записанной реплике', match[0])
+      }
+    }
     const clauses = actorReactionClauses(currentText, actor)
     if (!clauses.length) continue
-    const permit = permitsByName.get(normalizedActorName(actor))
     if (!permit) {
       add('NPC_REACTION_NOT_PERMITTED', 'Повествование добавило текущую реакцию NPC вне allowlist', clauses[0])
       continue
@@ -1088,6 +1147,26 @@ function confirmedHeroDoorAction(sentence, brief, heroes) {
     const state = match[1].toLocaleLowerCase('ru') === 'открывает' ? 'open' : 'closed'
     return brief.visible_events.some(event => event?.actor_id === hero.id
       && event.event_type === 'DoorStateChanged' && event.payload?.state === state)
+  }
+  return false
+}
+
+// Узкий боевой оборот «достаёт ... ударом» не означает получение предмета.
+// Полное предложение связывается с DamageApplied того же героя и той же цели.
+function confirmedHeroDamageAction(sentence, brief, story) {
+  const heroes = Array.isArray(story.heroes) ? story.heroes : []
+  const participants = [...heroes, ...(Array.isArray(story.present_npcs) ? story.present_npcs : [])]
+  for (const event of brief.visible_events) {
+    if (event?.event_type !== 'DamageApplied') continue
+    if (event.payload?.applied_amount != null && Number(event.payload.applied_amount) <= 0) continue
+    const hero = heroes.find(hero => hero?.id === event.actor_id)
+    const target = participants.find(actor => actor?.id === (event.target_ids?.[0] || event.payload?.target_id))
+    if (!hero?.name || !target?.name) continue
+    const damageAdjective = { slashing: 'рубящим', piercing: 'колющим', bludgeoning: 'дробящим' }[event.payload?.damage_type]
+    if (!damageAdjective) continue
+    const pattern = new RegExp(`^\\s*${escapePattern(hero.name)}\\s+доста[её]т\\s+${escapePattern(target.name)}[а-яё]{0,2}\\s+${damageAdjective}\\s+ударом(?:\\s+[—–-]\\s+(тот получает урон(?:, но оста[её]тся жив)?))?\\s*$`, 'iu')
+    const match = pattern.exec(sentence)
+    if (match && (!/жив/iu.test(match[1] ?? '') || Number(event.payload?.hp_after) > 0)) return true
   }
   return false
 }
@@ -1215,6 +1294,12 @@ function deterministicNarrationVariant(brief) {
   return 0
 }
 
+function narrationSentence(value) {
+  const text = String(value ?? '').trim()
+  if (!text) return ''
+  return /[.!?…][»"')\]]*$/u.test(text) ? text : `${text}.`
+}
+
 function deterministicFraming(brief, variant = 0) {
   const environment = brief.known_environment ?? {}
   const scene = environment.scene ?? {}
@@ -1226,14 +1311,18 @@ function deterministicFraming(brief, variant = 0) {
     .map((npc) => sceneText(npc?.name, 60)).filter(Boolean).slice(0, 2)
   const opening = []
   if (location) {
+    const moodIsSentence = /^[А-ЯЁ]/u.test(mood) || /[.!?…]$/u.test(mood)
+    const description = moodIsSentence
+      ? `${narrationSentence(location)} ${narrationSentence(mood)}`
+      : narrationSentence(`${location}, ${mood}`)
     const locationVariants = mood
       ? [
-          `${location}, ${mood}.`,
-          `${location}.`,
-          `${location}; обстановка — ${mood}.`,
-          `${location}.`,
+          description,
+          narrationSentence(location),
+          moodIsSentence ? description : narrationSentence(`${location}; обстановка — ${mood}`),
+          narrationSentence(location),
         ]
-      : [`${location}.`, `${location}.`, `${location}.`, `${location}.`]
+      : Array(4).fill(narrationSentence(location))
     opening.push(locationVariants[variant % 4])
   }
   const sensory = [
@@ -1242,7 +1331,7 @@ function deterministicFraming(brief, variant = 0) {
     sensoryAnchors.smell,
     sensoryAnchors.touch,
   ][variant % 4]
-  if (sensory) opening.push(`${sensory[0].toLocaleUpperCase('ru')}${sensory.slice(1)}.`)
+  if (sensory) opening.push(narrationSentence(`${sensory[0].toLocaleUpperCase('ru')}${sensory.slice(1)}`))
   if (names.length) {
     const reversedNames = [...names].reverse()
     opening.push([
@@ -1430,7 +1519,7 @@ function deterministicNarrationCandidate(brief, resolve, variant, arcRecap) {
   const body = responsePlan.speech_act === 'acknowledge_intent'
     ? 'Действие ещё не выполнено.'
     : summaries.length
-    ? `${summaries.slice(0, 4).join('. ').replace(/\.+$/u, '')}.`
+    ? summaries.slice(0, 4).map(narrationSentence).join(' ')
     : quest
       ? [
           `Пока ничего не меняется: «${quest}» ждёт решения отряда.`,
@@ -1444,8 +1533,9 @@ function deterministicNarrationCandidate(brief, resolve, variant, arcRecap) {
           'Здесь всё по-прежнему.',
           'Здесь всё по-прежнему.',
         ][variant % 4]
-  const memorySentence = memory ? `${memory.replace(/\.+$/u, '')}.` : ''
-  return [recap, body, opening, memorySentence].filter(Boolean).join(' ')
+  const memorySentence = narrationSentence(memory)
+  const dialogueOnly = outcomeEvents.length > 0 && outcomeEvents.every(event => event?.event_type === 'NpcConversationRecorded')
+  return [recap, body, dialogueOnly ? '' : opening, dialogueOnly ? '' : memorySentence].filter(Boolean).join(' ')
 }
 
 export function deterministicNarration(brief, resolveName, { recentNarrations = [] } = {}) {

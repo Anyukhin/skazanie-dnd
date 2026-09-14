@@ -18,6 +18,7 @@ export const WORLD_MEMORY_COMMAND_TYPES = new Set([
 
 /** Закрытые статусы квеста: изменять часы и разрешать повторно уже нельзя. */
 export const CLOSED_QUEST_STATUSES = Object.freeze(['completed', 'failed', 'abandoned'])
+export const QUEST_ABANDONMENT_NEXT_OBJECTIVE = 'Выбрать дальнейшее занятие в текущей локации'
 
 /**
  * Статус квеста по исходу его развязки. Одна таблица на команду, на событие и на
@@ -133,6 +134,7 @@ function safeQuest(value = {}) {
     visibility: VISIBILITIES.has(value.visibility) ? value.visibility : 'party',
     entity_ids: strings(value.entity_ids, 120, 30), objectives: strings(value.objectives, 300, 20),
     clock: clock(value.clock), recorded_at_minutes: recordedAt(value.recorded_at_minutes),
+    ...(value.stay_in_location === true ? { stay_in_location: true } : {}),
   }
 }
 
@@ -565,6 +567,7 @@ export function applyWorldMemoryEvent(input, event) {
       ...quest,
       status: questStatusForOutcome(payload.outcome),
       summary: text(payload.summary, 1_000) || quest.summary,
+      ...(payload.stay_in_location === true && payload.event_schema_version === 2 ? { stay_in_location: true } : {}),
     } : quest)
   }
   if (event.event_type === 'NarrativeThreadUpserted') {

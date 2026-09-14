@@ -1,5 +1,6 @@
 import { MONSTER_SPELL_AT_WILL, canonicalCombatSpellFor } from './combat-spells.mjs'
 import { monsterAreaAction } from './monster-actions.mjs'
+import { footprintMetadataForSize } from './actor-footprint.mjs'
 
 // Портрет привязан к полному ID проверенного статблока. Имена файлов
 // не выводятся из пользовательского ввода или другой редакции.
@@ -487,6 +488,7 @@ export function enemyFrom2014(record, position, index = 0) {
     creature_type: String(record.creature_type),
     subtypes: CLONE(record.subtypes ?? []),
     size: String(record.size),
+    footprint: footprintMetadataForSize(record.size),
     roles,
     attack_modes: attackModes,
     habitats: unique(record.habitats ?? []),

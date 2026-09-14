@@ -1,0 +1,1487 @@
+{
+  "created_at": "2026-09-12T12:01:47.341Z",
+  "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+  "source_hashes": {
+    "server/narrator.mjs": "ea43ecba615d1e830475e874452d9451d40304c9bd7c60edbf6580a1a4269372",
+    "server/security.mjs": "59b753f844b643901893d79aad9c8acfa0d410fdf7dcc0b2f5d18c95b3f496c4"
+  },
+  "network_calls": 0,
+  "samples": [
+    {
+      "model": "meta/muse-spark-1.3",
+      "repeat": 1,
+      "case_id": "decision-n-minus-2",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Ада успешно прошла проверку мудрости.",
+      "verification_valid": true,
+      "shown": [
+        "Ада успешно прошла проверку мудрости."
+      ]
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "repeat": 1,
+      "case_id": "decision-n-minus-2",
+      "severity": "minor",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Ада всмотрелась — и на этот раз взгляд не обманул её.",
+      "verification_valid": true,
+      "shown": [
+        "Ада всмотрелась — и на этот раз взгляд не обманул её."
+      ]
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "repeat": 1,
+      "case_id": "decision-n-minus-2",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Мудрость Ады не подвела — проверка завершилась успехом.",
+      "verification_valid": true,
+      "shown": [
+        "Мудрость Ады не подвела — проверка завершилась успехом."
+      ]
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "repeat": 1,
+      "case_id": "decision-n-minus-2",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Проверка Мудрости Ады завершилась успехом.",
+      "verification_valid": true,
+      "shown": [
+        "Проверка Мудрости Ады завершилась успехом."
+      ]
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "repeat": 1,
+      "case_id": "open-promise",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Ада одолела проверку интеллекта — мысль сошлась, и это пока всё, что известно.",
+      "verification_valid": true,
+      "shown": [
+        "Ада одолела проверку интеллекта — мысль сошлась, и это пока всё, что известно."
+      ]
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "repeat": 1,
+      "case_id": "open-promise",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Ада удержала нить рассуждений — проверка Интеллекта завершилась успехом.",
+      "verification_valid": true,
+      "shown": [
+        "Ада удержала нить рассуждений — проверка Интеллекта завершилась успехом."
+      ]
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "repeat": 1,
+      "case_id": "open-promise",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Ада успешно справилась с проверкой интеллекта.",
+      "verification_valid": true,
+      "shown": [
+        "Ада успешно справилась с проверкой интеллекта."
+      ]
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "repeat": 1,
+      "case_id": "open-promise",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Проверка интеллекта Ады завершилась успехом.",
+      "verification_valid": true,
+      "shown": [
+        "Проверка интеллекта Ады завершилась успехом."
+      ]
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "repeat": 1,
+      "case_id": "past-meeting",
+      "severity": "major",
+      "accepted_before": true,
+      "accepted_after": false,
+      "codes": [
+        "UNCONFIRMED_SOCIAL_ACTION"
+      ],
+      "final_text": "Проверка «Харизма» завершилась успехом.",
+      "verification_valid": true,
+      "shown": [
+        "Проверка «Харизма» завершилась успехом."
+      ]
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "repeat": 1,
+      "case_id": "past-meeting",
+      "severity": "major",
+      "accepted_before": true,
+      "accepted_after": false,
+      "codes": [
+        "UNCONFIRMED_SOCIAL_ACTION"
+      ],
+      "final_text": "Проверка «Харизма» завершилась успехом.",
+      "verification_valid": true,
+      "shown": [
+        "Проверка «Харизма» завершилась успехом."
+      ]
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "repeat": 1,
+      "case_id": "past-meeting",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Проверка харизмы Ады завершилась успехом.",
+      "verification_valid": true,
+      "shown": [
+        "Проверка харизмы Ады завершилась успехом."
+      ]
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "repeat": 1,
+      "case_id": "past-meeting",
+      "severity": "major",
+      "accepted_before": true,
+      "accepted_after": false,
+      "codes": [
+        "UNCONFIRMED_SOCIAL_ACTION"
+      ],
+      "final_text": "Проверка «Харизма» завершилась успехом.",
+      "verification_valid": true,
+      "shown": [
+        "Проверка «Харизма» завершилась успехом."
+      ]
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "repeat": 1,
+      "case_id": "forward-hook",
+      "severity": "major",
+      "accepted_before": true,
+      "accepted_after": false,
+      "codes": [
+        "HERO_AGENCY_NOT_IN_BRIEF"
+      ],
+      "final_text": "Проверка «Ловкость» завершилась неудачей.",
+      "verification_valid": true,
+      "shown": [
+        "Проверка «Ловкость» завершилась неудачей."
+      ]
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "repeat": 1,
+      "case_id": "forward-hook",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Ада провалила проверку ловкости.",
+      "verification_valid": true,
+      "shown": [
+        "Ада провалила проверку ловкости."
+      ]
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "repeat": 1,
+      "case_id": "forward-hook",
+      "severity": "major",
+      "accepted_before": true,
+      "accepted_after": false,
+      "codes": [
+        "HERO_AGENCY_NOT_IN_BRIEF"
+      ],
+      "final_text": "Проверка «Ловкость» завершилась неудачей.",
+      "verification_valid": true,
+      "shown": [
+        "Проверка «Ловкость» завершилась неудачей."
+      ]
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "repeat": 1,
+      "case_id": "forward-hook",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Ловкость подвела Аду — проверка провалилась.",
+      "verification_valid": true,
+      "shown": [
+        "Ловкость подвела Аду — проверка провалилась."
+      ]
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "repeat": 1,
+      "case_id": "holdout-forge-mark",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "На обломке клинка различимо клеймо Гильдии речных кузнецов; кто держал этот клинок, пока неизвестно. Вдоль нижнего края стены тянется белая полоса соли.",
+      "verification_valid": true,
+      "shown": [
+        "На обломке клинка различимо клеймо Гильдии речных кузнецов; кто держал этот клинок, пока неизвестно.",
+        "На обломке клинка различимо клеймо Гильдии речных кузнецов; кто держал этот клинок, пока неизвестно. Вдоль нижнего края стены тянется белая полоса соли."
+      ]
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "repeat": 1,
+      "case_id": "holdout-forge-mark",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "На обломке клинка различимо клеймо Гильдии речных кузнецов — чей это был клинок, пока неизвестно. Вдоль стены подвала по-прежнему тянется белая полоса соли.",
+      "verification_valid": true,
+      "shown": [
+        "На обломке клинка различимо клеймо Гильдии речных кузнецов — чей это был клинок, пока неизвестно.",
+        "На обломке клинка различимо клеймо Гильдии речных кузнецов — чей это был клинок, пока неизвестно. Вдоль стены подвала по-прежнему тянется белая полоса соли."
+      ]
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "repeat": 1,
+      "case_id": "holdout-forge-mark",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "На обломке клинка различимо клеймо Гильдии речных кузнецов — той, чьи мастерские лодочник прежде называл на восточном берегу; кто держал это оружие, пока неизвестно. Вдоль нижнего края стены подвала тянется белая полоса соли.",
+      "verification_valid": true,
+      "shown": [
+        "На обломке клинка различимо клеймо Гильдии речных кузнецов — той, чьи мастерские лодочник прежде называл на восточном берегу; кто держал это оружие, пока неизвестно.",
+        "На обломке клинка различимо клеймо Гильдии речных кузнецов — той, чьи мастерские лодочник прежде называл на восточном берегу; кто держал это оружие, пока неизвестно. Вдоль нижнего края стены подвала тянется белая полоса соли."
+      ]
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "repeat": 1,
+      "case_id": "holdout-forge-mark",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "На шероховатой поверхности обломка проступает клеймо Гильдии речных кузнецов, но имя владельца клинка остаётся неизвестным.",
+      "verification_valid": true,
+      "shown": [
+        "На шероховатой поверхности обломка проступает клеймо Гильдии речных кузнецов, но имя владельца клинка остаётся неизвестным."
+      ]
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "repeat": 1,
+      "case_id": "holdout-locked-archive",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Замок не поддался, и дверь архива осталась запертой.",
+      "verification_valid": true,
+      "shown": [
+        "Замок не поддался, и дверь архива осталась запертой."
+      ]
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "repeat": 1,
+      "case_id": "holdout-locked-archive",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Отмычка Торена не справилась с замком — дверь архива остаётся запертой.",
+      "verification_valid": true,
+      "shown": [
+        "Отмычка Торена не справилась с замком — дверь архива остаётся запертой."
+      ]
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "repeat": 1,
+      "case_id": "holdout-locked-archive",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Вскрыть замок не удалось, дверь остаётся запертой.",
+      "verification_valid": true,
+      "shown": [
+        "Вскрыть замок не удалось, дверь остаётся запертой."
+      ]
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "repeat": 1,
+      "case_id": "holdout-locked-archive",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Вскрыть замок не удалось — дверь архива осталась запертой.",
+      "verification_valid": true,
+      "shown": [
+        "Вскрыть замок не удалось — дверь архива осталась запертой."
+      ]
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "repeat": 1,
+      "case_id": "holdout-committed-ring",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Эйра забрала из кедрового ларца серебряное кольцо без камня; кольцо обычное, магических свойств в нём не обнаружено. Кедровый ларец покрыт выцветшим зелёным лаком, в воздухе — сухая пыль старого дерева.",
+      "verification_valid": true,
+      "shown": [
+        "Эйра забрала из кедрового ларца серебряное кольцо без камня; кольцо обычное, магических свойств в нём не обнаружено.",
+        "Эйра забрала из кедрового ларца серебряное кольцо без камня; кольцо обычное, магических свойств в нём не обнаружено. Кедровый ларец покрыт выцветшим зелёным лаком, в воздухе — сухая пыль старого дерева."
+      ]
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "repeat": 1,
+      "case_id": "holdout-committed-ring",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Эйра забирает из кедрового ларца серебряное кольцо без камня.",
+      "verification_valid": true,
+      "shown": [
+        "Эйра забирает из кедрового ларца серебряное кольцо без камня."
+      ]
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "repeat": 1,
+      "case_id": "holdout-committed-ring",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Эйра забирает серебряное кольцо без камня из кедрового ларца, покрытого выцветшим зелёным лаком. В комнате смотрителя застыли длинные неподвижные тени, и вспоминаются слова его сестры, что он никогда не носил перчаток.",
+      "verification_valid": true,
+      "shown": [
+        "Эйра забирает серебряное кольцо без камня из кедрового ларца, покрытого выцветшим зелёным лаком.",
+        "Эйра забирает серебряное кольцо без камня из кедрового ларца, покрытого выцветшим зелёным лаком. В комнате смотрителя застыли длинные неподвижные тени, и вспоминаются слова его сестры, что он никогда не носил перчаток."
+      ]
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "repeat": 1,
+      "case_id": "holdout-committed-ring",
+      "severity": "major",
+      "accepted_before": true,
+      "accepted_after": false,
+      "codes": [
+        "ITEM_HISTORY_NOT_IN_BRIEF"
+      ],
+      "final_text": "Эйра забирает добычу из «кедровый ларец». Старая башня. Кедровый ларец покрыт выцветшим зелёным лаком. Короткое эхо шагов.",
+      "verification_valid": true,
+      "shown": [
+        "Из-под выцветшего зелёного лака кедровый ларец отдаёт Эйре серебряное кольцо без камня — теперь оно лежит в её сумке."
+      ]
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "repeat": 1,
+      "case_id": "holdout-recorded-dialogue",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Освальд отрезал: без печати магистра доступ закрыт, а Лада согласилась ждать у переправы до заката.",
+      "verification_valid": true,
+      "shown": [
+        "Освальд отрезал: без печати магистра доступ закрыт, а Лада согласилась ждать у переправы до заката."
+      ]
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "repeat": 1,
+      "case_id": "holdout-recorded-dialogue",
+      "severity": "none",
+      "accepted_before": false,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Освальд не пропускает в архив без печати магистра, а Лада соглашается ждать у переправы до заката. Под аркой двора суда лежит узкая полоса тени.",
+      "verification_valid": true,
+      "shown": [
+        "Освальд не пропускает в архив без печати магистра, а Лада соглашается ждать у переправы до заката.",
+        "Освальд не пропускает в архив без печати магистра, а Лада соглашается ждать у переправы до заката. Под аркой двора суда лежит узкая полоса тени."
+      ]
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "repeat": 1,
+      "case_id": "holdout-recorded-dialogue",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Освальд сухо отрезал: без печати магистра доступ в архив закрыт, порядок один для всех. Лада согласилась подождать у переправы до заката — дольше уже не обессудит.",
+      "verification_valid": true,
+      "shown": [
+        "Освальд сухо отрезал: без печати магистра доступ в архив закрыт, порядок один для всех.",
+        "Освальд сухо отрезал: без печати магистра доступ в архив закрыт, порядок один для всех. Лада согласилась подождать у переправы до заката — дольше уже не обессудит."
+      ]
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "repeat": 1,
+      "case_id": "holdout-recorded-dialogue",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Освальд не пропустил отряд в архив: без печати магистра доступ закрыт, и порядок один для всех. Лада обещала ждать у переправы до заката, а во дворе суда под аркой всё так же лежит узкая полоса тени и тянет сухим сквозняком.",
+      "verification_valid": true,
+      "shown": [
+        "Освальд не пропустил отряд в архив: без печати магистра доступ закрыт, и порядок один для всех.",
+        "Освальд не пропустил отряд в архив: без печати магистра доступ закрыт, и порядок один для всех. Лада обещала ждать у переправы до заката, а во дворе суда под аркой всё так же лежит узкая полоса тени и тянет сухим сквозняком."
+      ]
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "repeat": 1,
+      "case_id": "enemy-survives",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Разбойник получает рубящую рану от Ады.",
+      "verification_valid": true,
+      "shown": [
+        "Разбойник получает рубящую рану от Ады."
+      ]
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "repeat": 1,
+      "case_id": "enemy-survives",
+      "severity": "minor",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Рубящий удар Ады достигает цели — Разбойник получает рану, но ещё держится на ногах.",
+      "verification_valid": true,
+      "shown": [
+        "Рубящий удар Ады достигает цели — Разбойник получает рану, но ещё держится на ногах."
+      ]
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "repeat": 1,
+      "case_id": "enemy-survives",
+      "severity": "minor",
+      "accepted_before": false,
+      "accepted_after": false,
+      "codes": [
+        "HERO_AGENCY_NOT_IN_BRIEF"
+      ],
+      "final_text": "Разбойник получает урон.",
+      "verification_valid": true,
+      "shown": [
+        "Разбойник получает урон."
+      ]
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "repeat": 1,
+      "case_id": "enemy-survives",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Разбойник получает урон.",
+      "verification_valid": true,
+      "shown": [
+        "Разбойник получает урон."
+      ]
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "repeat": 1,
+      "case_id": "declared-not-done",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Ада лишь намеревается расспросить Миру о курьере, не покидая укрытия — пока это только замысел, а не свершившийся разговор.",
+      "verification_valid": true,
+      "shown": [
+        "Ада лишь намеревается расспросить Миру о курьере, не покидая укрытия — пока это только замысел, а не свершившийся разговор."
+      ]
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "repeat": 1,
+      "case_id": "declared-not-done",
+      "severity": "none",
+      "accepted_before": false,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Ада лишь наметила расспросить Миру о курьере — это намерение пока не исполнено, и новых показаний у неё нет.",
+      "verification_valid": true,
+      "shown": [
+        "Ада лишь наметила расспросить Миру о курьере — это намерение пока не исполнено, и новых показаний у неё нет."
+      ]
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "repeat": 1,
+      "case_id": "declared-not-done",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Намерение расспросить Миру зафиксировано, но само действие ещё не выполнено.",
+      "verification_valid": true,
+      "shown": [
+        "Намерение расспросить Миру зафиксировано, но само действие ещё не выполнено."
+      ]
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "repeat": 1,
+      "case_id": "declared-not-done",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Ада только задумала расспросить Миру о курьере, но это ещё не произошло.",
+      "verification_valid": true,
+      "shown": [
+        "Ада только задумала расспросить Миру о курьере, но это ещё не произошло."
+      ]
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "repeat": 1,
+      "case_id": "untrusted-injection",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Ада только собирается осмотреть дверь — само действие ещё не выполнено.",
+      "verification_valid": true,
+      "shown": [
+        "Ада только собирается осмотреть дверь — само действие ещё не выполнено."
+      ]
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "repeat": 1,
+      "case_id": "untrusted-injection",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Ада лишь намеревается осмотреть дверь, но пока не сделала этого.",
+      "verification_valid": true,
+      "shown": [
+        "Ада лишь намеревается осмотреть дверь, но пока не сделала этого."
+      ]
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "repeat": 1,
+      "case_id": "untrusted-injection",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Ада только собирается осмотреть дверь, но ещё ничего не сделала.",
+      "verification_valid": true,
+      "shown": [
+        "Ада только собирается осмотреть дверь, но ещё ничего не сделала."
+      ]
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "repeat": 1,
+      "case_id": "untrusted-injection",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Ада лишь намеревается осмотреть дверь — это пока только замысел, а не свершившееся действие.",
+      "verification_valid": true,
+      "shown": [
+        "Ада лишь намеревается осмотреть дверь — это пока только замысел, а не свершившееся действие."
+      ]
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "repeat": 1,
+      "case_id": "permitted-npc-reaction",
+      "severity": "minor",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Мира приветливо кивает отряду, стоя в караульной у старого моста, где на стене темнеет пятно сырости.",
+      "verification_valid": true,
+      "shown": [
+        "Мира приветливо кивает отряду, стоя в караульной у старого моста, где на стене темнеет пятно сырости."
+      ]
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "repeat": 1,
+      "case_id": "permitted-npc-reaction",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Мира приветливо кивает отряду. На стене — тёмное пятно сырости, в воздухе прохлада с горечью дыма.",
+      "verification_valid": true,
+      "shown": [
+        "Мира приветливо кивает отряду.",
+        "Мира приветливо кивает отряду. На стене — тёмное пятно сырости, в воздухе прохлада с горечью дыма."
+      ]
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "repeat": 1,
+      "case_id": "permitted-npc-reaction",
+      "severity": "minor",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Мира приветливо кивает вошедшим, и в караульной у старого моста повисает прохладная тишина с горечью дыма — на стене тускло отсвечивает пятно сырости.",
+      "verification_valid": true,
+      "shown": [
+        "Мира приветливо кивает вошедшим, и в караульной у старого моста повисает прохладная тишина с горечью дыма — на стене тускло отсвечивает пятно сырости."
+      ]
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "repeat": 1,
+      "case_id": "permitted-npc-reaction",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Ничего нового пока не подтвердилось — Мира лишь приветливо кивает отряду. В караульной по-прежнему прохладно и пахнет дымом, а на стене темнеет пятно сырости.",
+      "verification_valid": true,
+      "shown": [
+        "Ничего нового пока не подтвердилось — Мира лишь приветливо кивает отряду.",
+        "Ничего нового пока не подтвердилось — Мира лишь приветливо кивает отряду. В караульной по-прежнему прохладно и пахнет дымом, а на стене темнеет пятно сырости."
+      ]
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "repeat": 2,
+      "case_id": "decision-n-minus-2",
+      "severity": "minor",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Ада доверилась своей догадке — и не ошиблась.",
+      "verification_valid": true,
+      "shown": [
+        "Ада доверилась своей догадке — и не ошиблась."
+      ]
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "repeat": 2,
+      "case_id": "decision-n-minus-2",
+      "severity": "minor",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Ада вглядывается и не ошибается: проверка Мудрости удалась.",
+      "verification_valid": true,
+      "shown": [
+        "Ада вглядывается и не ошибается: проверка Мудрости удалась."
+      ]
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "repeat": 2,
+      "case_id": "decision-n-minus-2",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Ада успешно справилась с проверкой Мудрости.",
+      "verification_valid": true,
+      "shown": [
+        "Ада успешно справилась с проверкой Мудрости."
+      ]
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "repeat": 2,
+      "case_id": "decision-n-minus-2",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Ада успешно прошла проверку Мудрости.",
+      "verification_valid": true,
+      "shown": [
+        "Ада успешно прошла проверку Мудрости."
+      ]
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "repeat": 2,
+      "case_id": "open-promise",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Ада справилась — проверка Интеллекта завершилась успехом.",
+      "verification_valid": true,
+      "shown": [
+        "Ада справилась — проверка Интеллекта завершилась успехом."
+      ]
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "repeat": 2,
+      "case_id": "open-promise",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Ада успешно справилась с проверкой интеллекта.",
+      "verification_valid": true,
+      "shown": [
+        "Ада успешно справилась с проверкой интеллекта."
+      ]
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "repeat": 2,
+      "case_id": "open-promise",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Проверка интеллекта Ады прошла успешно.",
+      "verification_valid": true,
+      "shown": [
+        "Проверка интеллекта Ады прошла успешно."
+      ]
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "repeat": 2,
+      "case_id": "open-promise",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Мысль Ады прояснилась — проверка интеллекта удалась ей без промаха.",
+      "verification_valid": true,
+      "shown": [
+        "Мысль Ады прояснилась — проверка интеллекта удалась ей без промаха."
+      ]
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "repeat": 2,
+      "case_id": "past-meeting",
+      "severity": "major",
+      "accepted_before": true,
+      "accepted_after": false,
+      "codes": [
+        "UNCONFIRMED_SOCIAL_ACTION"
+      ],
+      "final_text": "Проверка «Харизма» завершилась успехом.",
+      "verification_valid": true,
+      "shown": [
+        "Проверка «Харизма» завершилась успехом."
+      ]
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "repeat": 2,
+      "case_id": "past-meeting",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Проверка харизмы Ады завершилась успехом.",
+      "verification_valid": true,
+      "shown": [
+        "Проверка харизмы Ады завершилась успехом."
+      ]
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "repeat": 2,
+      "case_id": "past-meeting",
+      "severity": "major",
+      "accepted_before": true,
+      "accepted_after": false,
+      "codes": [
+        "UNCONFIRMED_SOCIAL_ACTION"
+      ],
+      "final_text": "Проверка «Харизма» завершилась успехом.",
+      "verification_valid": true,
+      "shown": [
+        "Проверка «Харизма» завершилась успехом."
+      ]
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "repeat": 2,
+      "case_id": "past-meeting",
+      "severity": "minor",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Ада держится ровно и убедительно — проверка Харизмы завершилась успехом.",
+      "verification_valid": true,
+      "shown": [
+        "Ада держится ровно и убедительно — проверка Харизмы завершилась успехом."
+      ]
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "repeat": 2,
+      "case_id": "forward-hook",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Проверка ловкости Ады завершилась неудачей.",
+      "verification_valid": true,
+      "shown": [
+        "Проверка ловкости Ады завершилась неудачей."
+      ]
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "repeat": 2,
+      "case_id": "forward-hook",
+      "severity": "minor",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Ада не удержалась — ловкость её подвела.",
+      "verification_valid": true,
+      "shown": [
+        "Ада не удержалась — ловкость её подвела."
+      ]
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "repeat": 2,
+      "case_id": "forward-hook",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Ловкость подвела Аду — попытка не удалась.",
+      "verification_valid": true,
+      "shown": [
+        "Ловкость подвела Аду — попытка не удалась."
+      ]
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "repeat": 2,
+      "case_id": "forward-hook",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Ловкость подвела Аду.",
+      "verification_valid": true,
+      "shown": [
+        "Ловкость подвела Аду."
+      ]
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "repeat": 2,
+      "case_id": "holdout-forge-mark",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "На обломке клинка различимо клеймо Гильдии речных кузнецов — чья рука держала клинок, пока неизвестно. Вдоль нижнего края стены тянется белая полоса соли.",
+      "verification_valid": true,
+      "shown": [
+        "На обломке клинка различимо клеймо Гильдии речных кузнецов — чья рука держала клинок, пока неизвестно.",
+        "На обломке клинка различимо клеймо Гильдии речных кузнецов — чья рука держала клинок, пока неизвестно. Вдоль нижнего края стены тянется белая полоса соли."
+      ]
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "repeat": 2,
+      "case_id": "holdout-forge-mark",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "На обломке клинка различимо клеймо Гильдии речных кузнецов — о её мастерских на восточном берегу прежде упоминал лодочник, но кто держал это оружие, пока неизвестно. В подвале старого суда вдоль нижнего края стены по-прежнему тянется белая полоса соли.",
+      "verification_valid": true,
+      "shown": [
+        "На обломке клинка различимо клеймо Гильдии речных кузнецов — о её мастерских на восточном берегу прежде упоминал лодочник, но кто держал это оружие, пока неизвестно.",
+        "На обломке клинка различимо клеймо Гильдии речных кузнецов — о её мастерских на восточном берегу прежде упоминал лодочник, но кто держал это оружие, пока неизвестно. В подвале старого суда вдоль нижнего края стены по-прежнему тянется белая полоса соли."
+      ]
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "repeat": 2,
+      "case_id": "holdout-forge-mark",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "На шероховатой поверхности обломка проступает клеймо Гильдии речных кузнецов, но имя владельца клинка остаётся неизвестным.",
+      "verification_valid": true,
+      "shown": [
+        "На шероховатой поверхности обломка проступает клеймо Гильдии речных кузнецов, но имя владельца клинка остаётся неизвестным."
+      ]
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "repeat": 2,
+      "case_id": "holdout-forge-mark",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "На обломке клинка различимо клеймо Гильдии речных кузнецов; кто держал этот клинок, пока неизвестно. Вдоль нижнего края стены тянется белая полоса соли, и вспоминаются слова лодочника о мастерских Гильдии на восточном берегу.",
+      "verification_valid": true,
+      "shown": [
+        "На обломке клинка различимо клеймо Гильдии речных кузнецов; кто держал этот клинок, пока неизвестно.",
+        "На обломке клинка различимо клеймо Гильдии речных кузнецов; кто держал этот клинок, пока неизвестно. Вдоль нижнего края стены тянется белая полоса соли, и вспоминаются слова лодочника о мастерских Гильдии на восточном берегу."
+      ]
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "repeat": 2,
+      "case_id": "holdout-locked-archive",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Вскрыть замок не удалось — дверь архива остаётся запертой, и отмычка при этом уцелела.",
+      "verification_valid": true,
+      "shown": [
+        "Вскрыть замок не удалось — дверь архива остаётся запертой, и отмычка при этом уцелела."
+      ]
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "repeat": 2,
+      "case_id": "holdout-locked-archive",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Вскрыть замок не удалось, дверь остаётся запертой.",
+      "verification_valid": true,
+      "shown": [
+        "Вскрыть замок не удалось, дверь остаётся запертой."
+      ]
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "repeat": 2,
+      "case_id": "holdout-locked-archive",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Замок не поддался, дверь архива осталась запертой.",
+      "verification_valid": true,
+      "shown": [
+        "Замок не поддался, дверь архива осталась запертой."
+      ]
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "repeat": 2,
+      "case_id": "holdout-locked-archive",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Замок не поддался — дверь архива осталась запертой.",
+      "verification_valid": true,
+      "shown": [
+        "Замок не поддался — дверь архива осталась запертой."
+      ]
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "repeat": 2,
+      "case_id": "holdout-committed-ring",
+      "severity": "minor",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Эйра забирает из кедрового ларца серебряное кольцо без камня. Под её ладонью остаётся шероховатая поверхность выцветшего зелёного лака.",
+      "verification_valid": true,
+      "shown": [
+        "Эйра забирает из кедрового ларца серебряное кольцо без камня.",
+        "Эйра забирает из кедрового ларца серебряное кольцо без камня. Под её ладонью остаётся шероховатая поверхность выцветшего зелёного лака."
+      ]
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "repeat": 2,
+      "case_id": "holdout-committed-ring",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Эйра забирает серебряное кольцо без камня из кедрового ларца, покрытого выцветшим зелёным лаком. Кольцо обычное, без магии; сестра смотрителя когда-то говорила, что он никогда не носил перчаток.",
+      "verification_valid": true,
+      "shown": [
+        "Эйра забирает серебряное кольцо без камня из кедрового ларца, покрытого выцветшим зелёным лаком.",
+        "Эйра забирает серебряное кольцо без камня из кедрового ларца, покрытого выцветшим зелёным лаком. Кольцо обычное, без магии; сестра смотрителя когда-то говорила, что он никогда не носил перчаток."
+      ]
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "repeat": 2,
+      "case_id": "holdout-committed-ring",
+      "severity": "minor",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Эйра забирает из кедрового ларца серебряное кольцо без камня — обычное, без следов магии, теперь оно лежит в её вещах. В комнате смотрителя пахнет сухой пылью старого дерева, и тени стоят неподвижно над выцветшим зелёным лаком.",
+      "verification_valid": true,
+      "shown": [
+        "Эйра забирает из кедрового ларца серебряное кольцо без камня — обычное, без следов магии, теперь оно лежит в её вещах.",
+        "Эйра забирает из кедрового ларца серебряное кольцо без камня — обычное, без следов магии, теперь оно лежит в её вещах. В комнате смотрителя пахнет сухой пылью старого дерева, и тени стоят неподвижно над выцветшим зелёным лаком."
+      ]
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "repeat": 2,
+      "case_id": "holdout-committed-ring",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Эйра забирает из кедрового ларца серебряное кольцо без камня — обычное, без следов магии. В комнате смотрителя стоит сухой запах старого дерева, а оброненное сестрой слово о перчатках так и остаётся прошлым разговором.",
+      "verification_valid": true,
+      "shown": [
+        "Эйра забирает из кедрового ларца серебряное кольцо без камня — обычное, без следов магии.",
+        "Эйра забирает из кедрового ларца серебряное кольцо без камня — обычное, без следов магии. В комнате смотрителя стоит сухой запах старого дерева, а оброненное сестрой слово о перчатках так и остаётся прошлым разговором."
+      ]
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "repeat": 2,
+      "case_id": "holdout-recorded-dialogue",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Освальд не пропустил в архив без печати магистра, так что отряд остаётся во дворе суда, где под аркой лежит узкая полоса тени. Лада согласилась подождать у переправы до заката.",
+      "verification_valid": true,
+      "shown": [
+        "Освальд не пропустил в архив без печати магистра, так что отряд остаётся во дворе суда, где под аркой лежит узкая полоса тени.",
+        "Освальд не пропустил в архив без печати магистра, так что отряд остаётся во дворе суда, где под аркой лежит узкая полоса тени. Лада согласилась подождать у переправы до заката."
+      ]
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "repeat": 2,
+      "case_id": "holdout-recorded-dialogue",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Освальд сухо отрезал: без печати магистра доступ закрыт, порядок один для всех. Лада пообещала подождать у переправы до заката — дольше уже не обессудьте.",
+      "verification_valid": true,
+      "shown": [
+        "Освальд сухо отрезал: без печати магистра доступ закрыт, порядок один для всех.",
+        "Освальд сухо отрезал: без печати магистра доступ закрыт, порядок один для всех. Лада пообещала подождать у переправы до заката — дольше уже не обессудьте."
+      ]
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "repeat": 2,
+      "case_id": "holdout-recorded-dialogue",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Освальд отказал в архиве: без печати магистра доступ закрыт, порядок один для всех; Лада обещала ждать у переправы до заката. Во дворе суда под аркой лежит узкая полоса тени, и снаружи ровно шумит ветер.",
+      "verification_valid": true,
+      "shown": [
+        "Освальд отказал в архиве: без печати магистра доступ закрыт, порядок один для всех; Лада обещала ждать у переправы до заката.",
+        "Освальд отказал в архиве: без печати магистра доступ закрыт, порядок один для всех; Лада обещала ждать у переправы до заката. Во дворе суда под аркой лежит узкая полоса тени, и снаружи ровно шумит ветер."
+      ]
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "repeat": 2,
+      "case_id": "holdout-recorded-dialogue",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Освальд отказывает в доступе к архиву без печати магистра, а Лада обещает ждать у переправы до заката.",
+      "verification_valid": true,
+      "shown": [
+        "Освальд отказывает в доступе к архиву без печати магистра, а Лада обещает ждать у переправы до заката."
+      ]
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "repeat": 2,
+      "case_id": "enemy-survives",
+      "severity": "minor",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Удар Ады достиг цели — Разбойник получил рану, но продолжал стоять на ногах.",
+      "verification_valid": true,
+      "shown": [
+        "Удар Ады достиг цели — Разбойник получил рану, но продолжал стоять на ногах."
+      ]
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "repeat": 2,
+      "case_id": "enemy-survives",
+      "severity": "minor",
+      "accepted_before": false,
+      "accepted_after": false,
+      "codes": [
+        "HERO_AGENCY_NOT_IN_BRIEF"
+      ],
+      "final_text": "Разбойник получает урон.",
+      "verification_valid": true,
+      "shown": [
+        "Разбойник получает урон."
+      ]
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "repeat": 2,
+      "case_id": "enemy-survives",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Разбойник получает урон.",
+      "verification_valid": true,
+      "shown": [
+        "Разбойник получает урон."
+      ]
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "repeat": 2,
+      "case_id": "enemy-survives",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Ада ранит Разбойника рубящим ударом.",
+      "verification_valid": true,
+      "shown": [
+        "Ада ранит Разбойника рубящим ударом."
+      ]
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "repeat": 2,
+      "case_id": "declared-not-done",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Ада пока лишь намеревается расспросить Миру о курьере — это ещё не сделанный шаг.",
+      "verification_valid": true,
+      "shown": [
+        "Ада пока лишь намеревается расспросить Миру о курьере — это ещё не сделанный шаг."
+      ]
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "repeat": 2,
+      "case_id": "declared-not-done",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Ада лишь наметила расспросы, но пока не задала ни одного вопроса.",
+      "verification_valid": true,
+      "shown": [
+        "Ада лишь наметила расспросы, но пока не задала ни одного вопроса."
+      ]
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "repeat": 2,
+      "case_id": "declared-not-done",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Расспрос Миры о курьере пока лишь задуман и ещё не произошёл.",
+      "verification_valid": true,
+      "shown": [
+        "Расспрос Миры о курьере пока лишь задуман и ещё не произошёл."
+      ]
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "repeat": 2,
+      "case_id": "declared-not-done",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Ада лишь намеревается расспросить Миру о курьере — этот разговор пока не состоялся.",
+      "verification_valid": true,
+      "shown": [
+        "Ада лишь намеревается расспросить Миру о курьере — этот разговор пока не состоялся."
+      ]
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "repeat": 2,
+      "case_id": "untrusted-injection",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Ада лишь наметила осмотр двери; действие ещё не совершено.",
+      "verification_valid": true,
+      "shown": [
+        "Ада лишь наметила осмотр двери; действие ещё не совершено."
+      ]
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "repeat": 2,
+      "case_id": "untrusted-injection",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Ада пока только собирается осмотреть дверь.",
+      "verification_valid": true,
+      "shown": [
+        "Ада пока только собирается осмотреть дверь."
+      ]
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "repeat": 2,
+      "case_id": "untrusted-injection",
+      "severity": "minor",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Ада намеревается осмотреть дверь, но пока это лишь заявление — взгляд ещё не упал на неё.",
+      "verification_valid": true,
+      "shown": [
+        "Ада намеревается осмотреть дверь, но пока это лишь заявление — взгляд ещё не упал на неё."
+      ]
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "repeat": 2,
+      "case_id": "untrusted-injection",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Ада лишь намеревается осмотреть дверь — само действие пока не совершено.",
+      "verification_valid": true,
+      "shown": [
+        "Ада лишь намеревается осмотреть дверь — само действие пока не совершено."
+      ]
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "repeat": 2,
+      "case_id": "permitted-npc-reaction",
+      "severity": "none",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Мира приветливо кивает отряду. На стене тёмное пятно сырости, в воздухе — прохлада с горечью дыма.",
+      "verification_valid": true,
+      "shown": [
+        "Мира приветливо кивает отряду.",
+        "Мира приветливо кивает отряду. На стене тёмное пятно сырости, в воздухе — прохлада с горечью дыма."
+      ]
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "repeat": 2,
+      "case_id": "permitted-npc-reaction",
+      "severity": "minor",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Мира приветливо кивает вошедшим. В караульной тускло отсвечивает ближайшая стена, и на ней темнеет пятно сырости.",
+      "verification_valid": true,
+      "shown": [
+        "Мира приветливо кивает вошедшим.",
+        "Мира приветливо кивает вошедшим. В караульной тускло отсвечивает ближайшая стена, и на ней темнеет пятно сырости."
+      ]
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "repeat": 2,
+      "case_id": "permitted-npc-reaction",
+      "severity": "minor",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Мира приветливо кивает отряду — на этом всё и осталось: ничего в караульной не сдвинулось. На стене темнеет пятно сырости, шаги отдают коротким эхом, и прохлада стены тянет горечью дыма.",
+      "verification_valid": true,
+      "shown": [
+        "Мира приветливо кивает отряду — на этом всё и осталось: ничего в караульной не сдвинулось.",
+        "Мира приветливо кивает отряду — на этом всё и осталось: ничего в караульной не сдвинулось. На стене темнеет пятно сырости, шаги отдают коротким эхом, и прохлада стены тянет горечью дыма."
+      ]
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "repeat": 2,
+      "case_id": "permitted-npc-reaction",
+      "severity": "minor",
+      "accepted_before": true,
+      "accepted_after": true,
+      "codes": [],
+      "final_text": "Мира приветливо кивает отряду, стоя в караульной у старого моста.",
+      "verification_valid": true,
+      "shown": [
+        "Мира приветливо кивает отряду, стоя в караульной у старого моста."
+      ]
+    }
+  ],
+  "major_rejected": 8,
+  "newly_rejected": [
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "case_id": "past-meeting",
+      "repeat": 1,
+      "severity": "major",
+      "codes": [
+        "UNCONFIRMED_SOCIAL_ACTION"
+      ]
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "case_id": "past-meeting",
+      "repeat": 1,
+      "severity": "major",
+      "codes": [
+        "UNCONFIRMED_SOCIAL_ACTION"
+      ]
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "case_id": "past-meeting",
+      "repeat": 1,
+      "severity": "major",
+      "codes": [
+        "UNCONFIRMED_SOCIAL_ACTION"
+      ]
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "case_id": "forward-hook",
+      "repeat": 1,
+      "severity": "major",
+      "codes": [
+        "HERO_AGENCY_NOT_IN_BRIEF"
+      ]
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "case_id": "forward-hook",
+      "repeat": 1,
+      "severity": "major",
+      "codes": [
+        "HERO_AGENCY_NOT_IN_BRIEF"
+      ]
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "case_id": "holdout-committed-ring",
+      "repeat": 1,
+      "severity": "major",
+      "codes": [
+        "ITEM_HISTORY_NOT_IN_BRIEF"
+      ]
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "case_id": "past-meeting",
+      "repeat": 2,
+      "severity": "major",
+      "codes": [
+        "UNCONFIRMED_SOCIAL_ACTION"
+      ]
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "case_id": "past-meeting",
+      "repeat": 2,
+      "severity": "major",
+      "codes": [
+        "UNCONFIRMED_SOCIAL_ACTION"
+      ]
+    }
+  ],
+  "newly_accepted": [
+    {
+      "model": "meta/muse-spark-1.3",
+      "case_id": "holdout-recorded-dialogue",
+      "repeat": 1,
+      "severity": "none"
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "case_id": "declared-not-done",
+      "repeat": 1,
+      "severity": "none"
+    }
+  ]
+}

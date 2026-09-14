@@ -30,7 +30,7 @@ import {
  * стены можно будет убрать, а рёбра останутся на месте.
  */
 
-export const BUILDING_GENERATOR = Object.freeze({ id: 'building-with-yard', version: '2' })
+export const BUILDING_GENERATOR = Object.freeze({ id: 'building-with-yard', version: '3' })
 
 /** Генератор authored-крепости: геометрия одна на все столы, seed меняет только отделку. */
 export const ARES_FORTRESS_GENERATOR = Object.freeze({ id: 'ares-fortress', version: '1' })
@@ -248,7 +248,7 @@ export function generateBuildingScene({
       seed: `${seed}:props`,
       maxProps: SIZE_CLASSES[/** @type {keyof typeof SIZE_CLASSES} */ (map.sizeClass)].maxProps,
       zones: [
-        { zoneId: 'hall', purpose: 'hall', theme: 'interior', density: 22, require: ['bar_counter', 'fireplace', 'table_round', 'table_long', 'stairs_up', 'chandelier'] },
+        { zoneId: 'hall', purpose: 'hall', theme: 'interior', density: 22, require: ['bar_counter', 'bar_shelf', 'fireplace', 'table_round', 'table_small', 'table_long', 'stairs_up', 'chandelier', 'lantern_wall'] },
         { zoneId: 'kitchen', purpose: 'kitchen', theme: 'interior', density: 26, require: ['cupboard', 'barrel', 'crate', 'shelf_wall'] },
         { zoneId: 'store', purpose: 'store', theme: 'interior', density: 30, require: ['crate_stack', 'barrel_stack', 'sack', 'chest'] },
         // Двор наполняется крупным и узнаваемым: деревья, кусты, поленница,

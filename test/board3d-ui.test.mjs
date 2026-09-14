@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { spawnSync } from 'node:child_process'
@@ -12,6 +12,9 @@ import { createTacticalMap, setCell } from '../server/tactical-map.mjs'
 const root = fileURLToPath(new URL('..', import.meta.url))
 mkdirSync(join(root, 'tmp'), { recursive: true })
 const buildDir = mkdtempSync(join(root, 'tmp', 'board3d-ui-'))
+mkdirSync(join(buildDir, 'server'), { recursive: true })
+copyFileSync(join(root, 'server', 'actor-footprint.mjs'), join(buildDir, 'server', 'actor-footprint.mjs'))
+copyFileSync(join(root, 'server', 'equipment-visuals.mjs'), join(buildDir, 'server', 'equipment-visuals.mjs'))
 test.after(() => rmSync(buildDir, { recursive: true, force: true }))
 const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
 const sourcePath = fileURLToPath(new URL('../src/TacticalBoard3D.tsx', import.meta.url))
@@ -41,6 +44,19 @@ for (const path of emittedFiles(buildDir).filter((candidate) => candidate.endsWi
 }
 
 const { default: TacticalBoard3D } = await import(pathToFileURL(join(buildDir, 'src', 'TacticalBoard3D.mjs')).href)
+const quality = await import(pathToFileURL(join(buildDir, 'src', 'board3d-quality.mjs')).href)
+
+test('профиль качества сохраняет событие и не повышает уже ограниченную детализацию', () => {
+  const cue = Object.freeze({ id: 'committed-hit', kind: 'strike', actorId: 'hero', targetId: 'enemy', hit: true, amount: 8, durationMs: 800, detail: 'minimal' })
+  for (const profile of ['low', 'balanced', 'high']) {
+    assert.deepEqual(quality.cueForQuality(cue, profile), cue)
+    assert.notEqual(quality.cueForQuality(cue, profile), cue)
+  }
+  const full = { ...cue, detail: 'full' }
+  assert.equal(quality.cueForQuality(full, 'low').detail, 'minimal')
+  assert.equal(full.detail, 'full')
+  assert.equal(quality.board3DQuality('corrupt-setting'), 'balanced')
+})
 
 function mapForUi(width = 20, height = 20) {
   const map = createTacticalMap({ width, height, locationId: 'board3d-ui', seed: 'board3d-ui' })

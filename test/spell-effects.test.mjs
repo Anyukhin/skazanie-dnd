@@ -1,15 +1,18 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 
-import { createTacticalMap, serializeTacticalMap } from '../server/tactical-map.mjs'
+import { createTacticalMap, serializeTacticalMap, setCell } from '../server/tactical-map.mjs'
 
 const buildDir = mkdtempSync(join(tmpdir(), 'skazanie-spell-effects-'))
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url))
+mkdirSync(join(buildDir, 'server'), { recursive: true })
+copyFileSync(join(repositoryRoot, 'server', 'actor-footprint.mjs'), join(buildDir, 'server', 'actor-footprint.mjs'))
+copyFileSync(join(repositoryRoot, 'server', 'equipment-visuals.mjs'), join(buildDir, 'server', 'equipment-visuals.mjs'))
 const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
 const sources = ['src/spell-effects.ts', 'src/combat-animation.ts', 'src/area-geometry.ts', 'src/tactical-map-client.ts', 'src/board-render.ts']
   .map((relative) => join(repositoryRoot, relative))
@@ -45,13 +48,14 @@ const render = await import(pathToFileURL(join(buildDir, 'src/board-render.mjs')
 const client = await import(pathToFileURL(join(buildDir, 'src/tactical-map-client.mjs')).href)
 process.on('exit', () => rmSync(buildDir, { recursive: true, force: true }))
 
-function scene(width = 8, height = 8) {
+function scene(width = 8, height = 8, hidden = []) {
   const tactical = createTacticalMap({
     width,
     height,
     locationId: 'spell-test',
     fill: { passable: true, revealed: true, material: 'stone' },
   })
+  hidden.forEach(({ x, y }) => setCell(tactical, x, y, { revealed: false }))
   return {
     map: client.decodeTacticalMap(JSON.parse(JSON.stringify(serializeTacticalMap(tactical)))),
     palette: render.DEFAULT_BOARD_PALETTE,
@@ -101,6 +105,31 @@ function recordingContext() {
 }
 
 const actor = (id, x, y) => ({ id, x, y })
+
+test('2D combat endpoint центрирует large actor и безопасно возвращается к anchor в неполном тумане', () => {
+  const actors = [
+    { id: 'mage', x: 1, y: 1, footprint: { version: 1, size: 2 } },
+    { id: 'target', x: 4, y: 1, footprint: { version: 1, size: 2 } },
+  ]
+  const cue = {
+    id: 'large-channel', kind: 'channel', actorId: 'mage', targetId: 'target',
+    spellId: 'healing-word', school: 'evocation', channelType: 'healing', amount: 4,
+    durationMs: 480,
+  }
+  const fullContext = recordingContext()
+  render.drawBoardEffects(fullContext, scene(), [effects.createSpellEffectRenderer({ cue, progress: .5, actors })])
+  const fullArc = fullContext.ops.find((operation) => operation.op === 'arc')
+  assert.equal(fullArc.x, 120, 'полностью раскрытая 2×2 цель получает центр x+1')
+  assert.equal(fullArc.y, 48, 'полностью раскрытая 2×2 цель получает центр y+1')
+
+  const partialContext = recordingContext()
+  render.drawBoardEffects(partialContext, scene(8, 8, [{ x: 5, y: 1 }]), [
+    effects.createSpellEffectRenderer({ cue, progress: .5, actors }),
+  ])
+  const partialArc = partialContext.ops.find((operation) => operation.op === 'arc')
+  assert.equal(partialArc.x, 108, 'неполный footprint остаётся на одноклеточном anchor')
+  assert.equal(partialArc.y, 36, 'неполный footprint не раскрывает вторую строку')
+})
 
 test('каталог выбирает школу, геометрию и характер ключевых заклинаний', () => {
   assert.deepEqual(
@@ -155,6 +184,89 @@ test('живой пакет создаёт projectile, burst, beam, aura, channe
   assert.ok(cues.some((cue) => cue.kind === 'channel' && cue.channelType === 'healing' && cue.amount === 7))
   assert.equal(cues.some((cue) => cue.kind === 'impact' && cue.tone === 'healing'), false)
   assert.ok(cues.some((cue) => cue.kind === 'channel' && cue.channelType === 'summon' && cue.position.x === 4))
+})
+
+test('AttackResolved передаёт вид атаки, снимок снаряжения и концы серверной траектории', () => {
+  const [cue] = animation.combatAnimationCuesFromEvents([{
+    event_id: 'attack-bow', command_id: 'attack-bow', event_type: 'AttackResolved', actor_id: 'hero', target_ids: ['goblin'],
+    payload: {
+      hit: true,
+      attack_kind: 'ranged',
+      attack_visual: { version: 1, equipment: 'bow' },
+      trajectory: [{ x: 1, y: 2 }, { x: 2, y: 2 }, { x: 5, y: 3 }],
+    },
+  }])
+  assert.equal(cue.kind, 'strike')
+  assert.equal(cue.attackKind, 'ranged')
+  assert.equal(cue.equipment, 'bow')
+  assert.deepEqual(cue.from, { x: 1, y: 2 })
+  assert.deepEqual(cue.to, { x: 5, y: 3 })
+  assert.equal(animation.strikeImpactProgress(cue), .72)
+})
+
+test('v2 attack snapshot доносит loadout в strike cue и сохраняет старый anchor trajectory', () => {
+  const [cue] = animation.combatAnimationCuesFromEvents([{
+    event_id: 'attack-crossbow', command_id: 'attack-crossbow', event_type: 'AttackResolved', actor_id: 'hero', target_ids: ['goblin'],
+    payload: {
+      hit: true,
+      attack_visual: {
+        version: 2,
+        equipment: 'unknown',
+        loadout: { main_hand: { model_key: 'heavy-crossbow', variant: 'default' }, off_hand: null },
+      },
+      trajectory: [{ x: 2, y: 1 }, { x: 6, y: 1 }],
+    },
+  }])
+  assert.deepEqual(cue.loadout, { main_hand: { model_key: 'heavy-crossbow' }, off_hand: null })
+  assert.deepEqual(cue.from, { x: 2, y: 1 })
+  assert.deepEqual(cue.to, { x: 6, y: 1 })
+  assert.equal(animation.strikeImpactProgress(cue), .72)
+})
+
+test('старый AttackResolved остаётся generic strike и не угадывает дальний бой по дальности', () => {
+  const [cue] = animation.combatAnimationCuesFromEvents([{
+    event_id: 'attack-old', command_id: 'attack-old', event_type: 'AttackResolved', actor_id: 'goblin', target_ids: ['hero'],
+    payload: { hit: true, range_feet: 60, item_name: 'Метательное копьё' },
+  }])
+  assert.equal(cue.kind, 'strike')
+  assert.equal(cue.attackKind, undefined)
+  assert.equal(cue.equipment, undefined)
+  assert.equal(cue.from, undefined)
+  assert.equal(cue.to, undefined)
+  assert.equal(animation.strikeImpactProgress(cue), .3)
+})
+
+test('итоговая поза смерти ждёт начала своего клипа и не опережает удар', () => {
+  const cues = animation.combatAnimationCuesFromEvents([
+    {
+      event_id: 'attack-defeat', command_id: 'attack-defeat', event_type: 'AttackResolved', actor_id: 'hero', target_ids: ['goblin'],
+      payload: { hit: true, attack_kind: 'ranged', attack_visual: { version: 1, equipment: 'bow' }, trajectory: [{ x: 1, y: 1 }, { x: 5, y: 1 }] },
+    },
+    {
+      event_id: 'damage-defeat', command_id: 'attack-defeat', event_type: 'DamageApplied', actor_id: 'hero', target_ids: ['goblin'],
+      payload: { applied_amount: 9, hp_after: 0, damage_type: 'piercing' },
+    },
+  ])
+  assert.deepEqual(cues.map((cue) => cue.kind), ['strike', 'death'])
+  assert.equal(animation.shouldDeferDefeat('goblin', undefined, cues), true)
+  assert.equal(animation.shouldDeferDefeat('goblin', cues[0], [cues[1]]), true)
+  assert.equal(animation.shouldDeferDefeat('goblin', undefined, [cues[1]]), true, 'между ударом и началом death клипа труп не мелькает на один кадр')
+  assert.equal(animation.shouldDeferDefeat('goblin', cues[1], []), false)
+  assert.equal(animation.shouldDeferDefeat('goblin', undefined, [{ id: 'impact', kind: 'impact', targetId: 'goblin', amount: 4, tone: 'damage', durationMs: 360 }, cues[1]]), true)
+  assert.equal(animation.shouldDeferDefeat('goblin', undefined, []), false)
+})
+
+test('резервный журнал доставляет те же поля атаки без чтения текущего инвентаря', () => {
+  const [cue] = animation.combatAnimationCuesFromBattleLog([{
+    id: 'attack-thrown', type: 'attack', actorId: 'hero', targetId: 'goblin',
+    roll: { total: 17, difficulty: 12, hit: true }, damage: 4,
+    attackKind: 'thrown', attackVisual: { version: 1, equipment: 'dagger' },
+    trajectory: [{ x: 2, y: 1 }, { x: 6, y: 1 }],
+  }])
+  assert.equal(cue.attackKind, 'thrown')
+  assert.equal(cue.equipment, 'dagger')
+  assert.deepEqual(cue.from, { x: 2, y: 1 })
+  assert.deepEqual(cue.to, { x: 6, y: 1 })
 })
 
 test('лечение без величины доходит до клетки словом: пакет отдаёт отсутствие, а не ноль', () => {

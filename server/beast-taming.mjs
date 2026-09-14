@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 
 import { campaignElapsedMinutes } from './npc-social.mjs'
 import { sceneLocationId } from './npc-positioning.mjs'
+import { footprintDistanceFeet } from './actor-footprint.mjs'
 
 /**
  * Приручение зверя: «мы его не убили и не прогнали, а увели с собой».
@@ -331,7 +332,9 @@ function actorCell(state = {}, id = '') {
 export function beastDistanceFeet(state = {}, heroId = '', enemyId = '') {
   const from = actorCell(state, heroId)
   const to = actorCell(state, enemyId)
-  return from && to ? Math.max(Math.abs(from.x - to.x), Math.abs(from.y - to.y)) * 5 : null
+  const hero = (state.players ?? []).find((actor) => String(actor?.id ?? '') === String(heroId ?? ''))
+  const enemy = (state.enemies ?? []).find((actor) => String(actor?.id ?? '') === String(enemyId ?? ''))
+  return from && to ? footprintDistanceFeet(hero, enemy, from, to) : null
 }
 
 /**

@@ -114,3 +114,30 @@ test('Director получает bounded-память незакрытых нит
   assert.match(content, /Проводник должен был вернуться до заката/u)
   assert.match(content, /"status":"broken"/u)
 })
+
+test('после отказа Директор видит оставленное задание и предлагает новый шаг', async () => {
+  const inputState = state([{ type: 'continue_exploration' }])
+  inputState.scene.objective = 'Найти пропавший караван'
+  inputState.social.npcs = []
+  inputState.worldMemory.quests = [{
+    id: 'quest:abandoned-caravan',
+    title: 'Пропавший караван',
+    summary: 'Отряд отказался от этой цели.',
+    status: 'abandoned',
+    visibility: 'party',
+    objectives: ['Найти след'],
+    clock: { current: 1, max: 4 },
+  }]
+
+  const fallback = fallbackDirectorIntent(inputState, 'Продолжить')
+  assert.equal(fallback.type, 'offer_next_hook')
+  assert.equal(fallback.hook, 'Выбрать дальнейшее занятие в текущей локации')
+  assert.doesNotMatch(JSON.stringify(fallback), /Пропавший караван/u)
+
+  const llm = new FakeLLM({ response: { type: 'offer_next_hook', hook: 'Осмотреть площадь' } })
+  await new DirectorAgent({ llmClient: llm }).choose({ state: inputState, playerAction: 'Продолжить' })
+  const content = llm.requests[0].messages[1].content
+  assert.match(content, /abandoned_quests/u)
+  assert.match(content, /quest:abandoned-caravan/u)
+  assert.match(content, /never_reopen_abandoned/u)
+})

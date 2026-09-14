@@ -426,6 +426,9 @@ export function useGameSession() {
   const merchantBusyRef = useRef(false)
   const merchantEpoch = useRef(0)
   const freeRollBusy = useRef(false)
+  const questRequestBusy = useRef(false)
+  const pendingQuestRequest = useRef<{ campaignId: string; playerId: string; questId: string; key: string } | null>(null)
+  const [questDecisionBusy, setQuestDecisionBusy] = useState(false)
   const fullRoomRequest = useRef<Promise<boolean> | null>(null)
   const actionEpoch = useRef(0)
   // Вторая фаза ручного броска для команд доски. `rollPendingCheck` объявлен
@@ -1143,6 +1146,43 @@ export function useGameSession() {
     }
   }, [applyRemote, state.sessionCode])
 
+  const requestQuestAbandonment = useCallback(async (playerId: string, questId: string): Promise<boolean> => {
+    if (questRequestBusy.current) return false
+    questRequestBusy.current = true
+    setQuestDecisionBusy(true)
+    setDirectorError(null)
+    const campaignId = stateRef.current.sessionCode
+    const pending = pendingQuestRequest.current
+    if (!pending || pending.campaignId !== campaignId || pending.playerId !== playerId || pending.questId !== questId) {
+      pendingQuestRequest.current = { campaignId, playerId, questId, key: commandId() }
+    }
+    const key = pendingQuestRequest.current!.key
+    try {
+      const response = await fetchWithTimeout(`/api/campaigns/${encodeURIComponent(campaignId)}/quests/abandon`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actor_id: playerId, quest_id: questId, idempotency_key: key }),
+      })
+      const result = await response.json() as { version?: number; state?: GameState; error?: string; code?: string }
+      if (!response.ok) {
+        if (response.status < 500) pendingQuestRequest.current = null
+        throw await responseCommandError(response, result, 'Не удалось предложить отказ от задания')
+      }
+      if (!result.state) throw new Error('Сервер не вернул состояние решения')
+      pendingQuestRequest.current = null
+      if (stateRef.current.sessionCode !== campaignId) return false
+      roomVersion.current = latestRoomVersion(roomVersion.current, result.version)
+      applyRemote(result.state)
+      return true
+    } catch (error) {
+      // При потере ответа повтор использует тот же ключ и читает прежний commit.
+      if (stateRef.current.sessionCode === campaignId) setDirectorError(error instanceof Error ? error.message : 'Не удалось предложить отказ от задания')
+      return false
+    } finally {
+      questRequestBusy.current = false
+      setQuestDecisionBusy(false)
+    }
+  }, [applyRemote, responseCommandError])
+
   const voteAgentInteraction = useCallback(async (playerId: string, optionId: string) => {
     const current = stateRef.current
     const interaction = current.agentInteraction
@@ -1215,6 +1255,8 @@ export function useGameSession() {
   const continueAgentInteraction = useCallback((playerId?: string) => {
     const interaction = state.agentInteraction
     if (!interaction || interaction.status !== 'resolved') return
+    // Типизированное решение исполняет сервер и восстанавливает при reconnect.
+    if (interaction.questAbandonment) return
     const winner = interaction.options.find((option) => option.id === interaction.resolvedOptionId)
     if (!winner) return
     void submitAction(`[РЕШЕНИЕ ГРУППЫ] ${interaction.title}: ${winner.label}. ${interaction.resolutionPrompt}`, playerId)
@@ -2074,6 +2116,8 @@ export function useGameSession() {
     cancelPendingCheck,
     rollFreeDie,
     voteAgentInteraction,
+    requestQuestAbandonment,
+    questDecisionBusy,
     abstainAgentInteraction,
     rollAgentInteraction,
     continueAgentInteraction,

@@ -593,6 +593,20 @@ test('проекция отдаёт bounded scene_npcs без серверных
   assert.equal(turn.mechanics[0].payload.applied_amount, 2)
 })
 
+test('публичная проекция NPC сохраняет только нормализованную серверную площадь', () => {
+  const state = npcState({ npcs: [
+    { id: 'marta', name: 'Марта', role: 'трактирщица', location: 'Рынок', visibility: 'party', available: true },
+  ] })
+  state.npc_world.placements = [{
+    npc_id: 'marta', location_id: 'market', x: 3, y: 2,
+    footprint: { version: 1, size: 3, cells: [{ x: 99, y: 99 }], internal: 'hidden' },
+  }]
+
+  const projected = campaignStateForViewer(state, { role: 'player' }, 'hero')
+  assert.deepEqual(projected.scene_npcs?.[0]?.footprint, { version: 1, size: 3 })
+  assert.doesNotMatch(JSON.stringify(projected.scene_npcs), /cells|internal/iu)
+})
+
 test('повтор commit с тем же idempotency_key не применяет NpcHarmed дважды', async (t) => {
   const rootDir = mkdtempSync(join(tmpdir(), 'skazanie-npc-world-'))
   t.after(() => rmSync(rootDir, { recursive: true, force: true }))

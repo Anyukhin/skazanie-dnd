@@ -11,17 +11,43 @@ export type PropModelEntry = {
 
 export type PropModelCatalog = {
   version: 1
+  revision?: string
   models: PropModelEntry[]
   atlas?: { image: string; key: string }
 }
 
 const ROOT = '/assets/models/environment/'
+export const LEGACY_CATALOG_REVISION = 'pr79'
+export const ENVIRONMENT_MODEL_FAMILIES = Object.freeze(['quaternius', 'kenney', 'kenney-dungeon', 'skazanie'] as const)
 const KEY = /^[a-z0-9][a-z0-9_-]{0,95}$/
 const LOCAL_FILE = /^\/assets\/models\/environment\/[a-zA-Z0-9_/-]+\.(glb|png)$/
+const MODEL_FILE = /^\/assets\/models\/environment\/[a-zA-Z0-9_/-]+\.glb$/
 
-export function validatePropModelCatalog(value: unknown): PropModelCatalog {
+function supportedModelUrl(url: string) {
+  if (!MODEL_FILE.test(url)) return false
+  const parts = url.slice(ROOT.length).split('/')
+  if (parts.length === 1) return true
+  const family = parts[0] === 'releases' ? parts[2] : parts[0]
+  const expectedLength = parts[0] === 'releases' ? 4 : 2
+  return parts.length === expectedLength && typeof family === 'string'
+    && (ENVIRONMENT_MODEL_FAMILIES as readonly string[]).includes(family)
+}
+
+function releaseFilePrefix(revision: string) {
+  return `${ROOT}releases/${revision}/`
+}
+
+export function validatePropModelCatalog(value: unknown, revision?: string): PropModelCatalog {
+  if (revision !== undefined && !KEY.test(revision)) throw new Error('Некорректная ревизия каталога окружения')
   if (!value || typeof value !== 'object') throw new Error('Нет каталога окружения')
   const input = value as Record<string, unknown>
+  const release = input.release && typeof input.release === 'object' && !Array.isArray(input.release)
+    ? input.release as Record<string, unknown> : undefined
+  const declaredRelease = release?.id
+  if (declaredRelease !== undefined && (typeof declaredRelease !== 'string' || !KEY.test(declaredRelease))) {
+    throw new Error('Некорректная ревизия каталога окружения')
+  }
+  const pinnedRevision = revision ?? (typeof declaredRelease === 'string' ? declaredRelease : undefined)
   if (input.version !== 1 || !Array.isArray(input.models) || input.models.length > 512) throw new Error('Некорректный каталог окружения')
   const keys = new Set<string>()
   const models = input.models.map((raw: unknown): PropModelEntry => {
@@ -30,7 +56,8 @@ export function validatePropModelCatalog(value: unknown): PropModelCatalog {
     if (typeof entry.key !== 'string' || !KEY.test(entry.key) || keys.has(entry.key)
       || typeof entry.label !== 'string' || !entry.label.trim() || entry.label.length > 160
       || typeof entry.category !== 'string' || entry.category.length > 80
-      || typeof entry.url !== 'string' || !LOCAL_FILE.test(entry.url) || !entry.url.endsWith('.glb')
+      || typeof entry.url !== 'string' || !supportedModelUrl(entry.url)
+      || (pinnedRevision !== undefined && pinnedRevision !== LEGACY_CATALOG_REVISION && !entry.url.startsWith(releaseFilePrefix(pinnedRevision)))
       || !Array.isArray(entry.assetIds) || entry.assetIds.some((id) => typeof id !== 'string' || !KEY.test(id))) throw new Error('Некорректная запись модели окружения')
     keys.add(entry.key)
     const result: PropModelEntry = { key: entry.key, label: entry.label, category: entry.category, url: entry.url,
@@ -43,9 +70,17 @@ export function validatePropModelCatalog(value: unknown): PropModelCatalog {
     return result
   })
   const result: PropModelCatalog = { version: 1, models }
+  if (typeof input.revision === 'string' && KEY.test(input.revision)) result.revision = input.revision
   const atlas = input.atlas as Record<string, unknown> | undefined
-  if (atlas && typeof atlas.image === 'string' && LOCAL_FILE.test(atlas.image) && atlas.image.endsWith('.png')
-    && typeof atlas.key === 'string' && atlas.key.length <= 128) result.atlas = { image: atlas.image, key: atlas.key }
+  const atlasImage = typeof atlas?.image === 'string' ? atlas.image : ''
+  const atlasKey = typeof atlas?.key === 'string' ? atlas.key : ''
+  const atlasValid = Boolean(atlas && typeof atlas.key === 'string' && LOCAL_FILE.test(atlasImage) && atlasImage.endsWith('.png')
+    && (pinnedRevision === undefined || pinnedRevision === LEGACY_CATALOG_REVISION || atlasImage.startsWith(releaseFilePrefix(pinnedRevision)))
+    && atlasKey.length <= 128)
+  if (pinnedRevision !== undefined && pinnedRevision !== LEGACY_CATALOG_REVISION && !atlasValid) {
+    throw new Error('Некорректная запись атласа окружения')
+  }
+  if (atlasValid) result.atlas = { image: atlasImage, key: atlasKey }
   return result
 }
 
@@ -57,14 +92,36 @@ export function propModelFor(catalog: PropModelCatalog | null | undefined, asset
   return choices[seed % choices.length]
 }
 
-let pending: Promise<PropModelCatalog | null> | null = null
-export function loadPropModelCatalog(): Promise<PropModelCatalog | null> {
+const catalogs = new Map<string, { promise: Promise<PropModelCatalog | null>; settled: boolean }>()
+const CATALOG_CACHE_LIMIT = 12
+
+export function loadPropModelCatalog(revision = LEGACY_CATALOG_REVISION): Promise<PropModelCatalog | null> {
   if (typeof window === 'undefined' || typeof fetch !== 'function') return Promise.resolve(null)
-  pending ??= fetch(`${ROOT}manifest.json`, { cache: 'no-cache', signal: AbortSignal.timeout(10_000) })
+  if (typeof revision !== 'string' || !KEY.test(revision)) return Promise.resolve(null)
+  const cached = catalogs.get(revision)
+  if (cached) { catalogs.delete(revision); catalogs.set(revision, cached); return cached.promise }
+  const url = revision === LEGACY_CATALOG_REVISION
+    ? `${ROOT}baseline-pr79.json` : `${ROOT}releases/${revision}/manifest.json`
+  const entry = { promise: Promise.resolve<PropModelCatalog | null>(null), settled: false }
+  entry.promise = Promise.resolve().then(() => fetch(url, { cache: 'no-cache', signal: AbortSignal.timeout(10_000) }))
     .then(async (response) => {
       if (!response.ok || Number(response.headers.get('content-length')) > 512_000) return null
       const text = await response.text()
-      return text.length <= 512_000 ? validatePropModelCatalog(JSON.parse(text)) : null
-    }).catch(() => null).then((catalog) => { if (!catalog) pending = null; return catalog })
-  return pending
+      if (text.length > 512_000) return null
+      const raw = JSON.parse(text)
+      const declared = revision === LEGACY_CATALOG_REVISION ? raw?.revision : raw?.release?.id
+      if (declared !== revision) return null
+      return { ...validatePropModelCatalog(raw, revision), revision }
+    }).catch(() => null).then((catalog) => {
+      entry.settled = true
+      if (!catalog && catalogs.get(revision) === entry) catalogs.delete(revision)
+      // Незавершённые загрузки не вытесняются: новый потребитель разделяет запрос.
+      for (const [key, value] of catalogs) {
+        if (catalogs.size <= CATALOG_CACHE_LIMIT) break
+        if (value.settled) catalogs.delete(key)
+      }
+      return catalog
+    })
+  catalogs.set(revision, entry)
+  return entry.promise
 }

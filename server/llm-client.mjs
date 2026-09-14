@@ -506,17 +506,21 @@ export class RouterAIClient extends LLMClient {
 export class FallbackLLMClient extends LLMClient {
   constructor({
     clients = [],
+    selectableClients = [],
     failureCooldownMs = 120_000,
     probeTimeoutMs = 8_000,
     now = () => Date.now(),
   } = {}) {
     super()
-    if (!Array.isArray(clients) || !clients.length || clients.some((client) => !client || typeof client.complete !== 'function')) {
+    if (!Array.isArray(clients) || !clients.length || !Array.isArray(selectableClients)
+      || [...clients, ...selectableClients].some((client) => !client || typeof client.complete !== 'function')) {
       throw new TypeError('FallbackLLMClient requires at least one LLM client')
     }
     this.clients = [...clients]
+    // Ручные варианты участвуют только в выбранной кампании, без фоновых probe.
+    this.selectableClients = [...selectableClients]
     this.model = String(this.clients[0].model ?? 'fallback-cascade')
-    this.models = this.clients.map((client) => String(client.model ?? 'unknown-model'))
+    this.models = [...this.clients, ...this.selectableClients].map((client) => String(client.model ?? 'unknown-model'))
     this.failureCooldownMs = positiveInteger(failureCooldownMs, 120_000, 'failureCooldownMs')
     this.probeTimeoutMs = positiveInteger(probeTimeoutMs, 8_000, 'probeTimeoutMs')
     this.now = now
@@ -563,9 +567,11 @@ export class FallbackLLMClient extends LLMClient {
 
   _candidates() {
     const now = this.now()
-    const ready = this.clients.filter((client) => this._status(client).disabledUntil <= now)
-    const candidates = ready.length ? ready : [...this.clients].sort((left, right) => this._status(left).disabledUntil - this._status(right).disabledUntil)
     const preferredModel = currentCampaignModel()
+    const selected = this.selectableClients.find(client => client.model === preferredModel)
+    const pool = selected ? [selected, ...this.clients] : this.clients
+    const ready = pool.filter((client) => this._status(client).disabledUntil <= now)
+    const candidates = ready.length ? ready : [...pool].sort((left, right) => this._status(left).disabledUntil - this._status(right).disabledUntil)
     if (!preferredModel) return candidates
     const preferredIndex = candidates.findIndex((client) => String(client.model ?? '') === preferredModel)
     if (preferredIndex <= 0) return candidates

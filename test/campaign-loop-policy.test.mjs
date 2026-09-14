@@ -2,12 +2,14 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  QUEST_ABANDONMENT_NEXT_OBJECTIVE,
   authorizeDirectorIntent,
   assembleSocialNpc,
   buildCampaignArcPlan,
   campaignArcClimaxSatisfied,
   campaignArcPosition,
   completedDowntime,
+  directorObjectiveAfterQuestAbandonment,
   pacingForDirectorIntent,
   planServerTravel,
 } from '../server/campaign-loop-policy.mjs'
@@ -187,4 +189,35 @@ test('one-evening climax requires a matching recorded hard encounter outcome', (
   state.mechanics.encounter.created_in_chapter = plan.target_scenes
   state.autonomy.encounter_outcomes = [{ encounter_id: 'other-encounter', outcome: 'enemies_defeated' }]
   assert.equal(campaignArcClimaxSatisfied(state), false)
+})
+
+test('закрытый квест не возвращается в intent, когда другой квест ещё активен', () => {
+  const state = structuredClone(baseState)
+  state.worldMemory.quests = [
+    { id: 'quest:abandoned', title: 'Старая цель', status: 'abandoned', clock: { current: 1, max: 4 } },
+    { id: 'quest:open', title: 'Новая цель', status: 'active', entity_ids: ['wardens'], objectives: ['Найти след'], clock: { current: 0, max: 4 } },
+  ]
+  state.worldMemory.facts = [{
+    id: 'fact:trail', predicate: 'discovery', subject_id: 'wardens', source_event_ids: ['event:trail'],
+    summary: 'Найден след.', status: 'active', visibility: 'party',
+  }]
+
+  const authorized = authorizeDirectorIntent(state, { type: 'advance_quest_clock', quest_id: 'quest:abandoned' })
+  assert.equal(authorized.replaced, true)
+  assert.equal(authorized.reason, 'closed_quest_replacement')
+  assert.equal(authorized.intent.type, 'advance_quest_clock')
+  assert.equal(authorized.intent.quest_id, 'quest:open')
+})
+
+test('отказ в текущей локации даёт нейтральную цель для продолжения', () => {
+  const state = structuredClone(baseState)
+  const arc = buildCampaignArcPlan('in-place-abandonment')
+  state.campaignConcept = { arc }
+  state.adventure.chapter = arc.target_scenes
+  state.autonomy.pacing = { beat: 9, phase: 'climax', tension: 90 }
+  state.worldMemory.quests = [{
+    id: 'quest:main', title: 'Старая цель', status: 'abandoned', stay_in_location: true,
+    clock: { current: 1, max: arc.target_scenes },
+  }]
+  assert.equal(directorObjectiveAfterQuestAbandonment(state), QUEST_ABANDONMENT_NEXT_OBJECTIVE)
 })

@@ -2,6 +2,141 @@
   "version": 1,
   "models": [
     {
+      "key": "hooded-mage",
+      "name_ru": "Маг в капюшоне",
+      "profile": "mage",
+      "actorIds": [],
+      "archetypes": [
+        "mage",
+        "wizard",
+        "sorcerer",
+        "warlock",
+        "cleric",
+        "druid",
+        "bard",
+        "маг",
+        "волшебник"
+      ],
+      "url": "/assets/models/quaternius/actors-b892de8fd4f015796032/mage.glb",
+      "equipmentUrl": "/assets/models/quaternius/equipment-bases-40520897dfea4af085180fc82b0083baa/human-male.glb",
+      "height": 1.25,
+      "rights": {
+        "source": "https://quaternius.com/packs/modularcharacteroutfitsfantasy.html",
+        "license": "CC0-1.0",
+        "attribution": "Quaternius",
+        "notes": "Подготовлено tools/build-character-models.mjs. Исходники, хеши и лицензии: /assets/models/quaternius/actors-b892de8fd4f015796032/NOTICE.json."
+      }
+    },
+    {
+      "key": "wolf",
+      "name_ru": "Волк",
+      "profile": "beast",
+      "actorIds": [],
+      "archetypes": [
+        "beast",
+        "wolf",
+        "bear",
+        "boar",
+        "lion",
+        "tiger",
+        "summon",
+        "зверь"
+      ],
+      "url": "/assets/models/quaternius/actors-b892de8fd4f015796032/beast.glb",
+      "height": 0.8,
+      "rights": {
+        "source": "https://quaternius.com/packs/ultimateanimatedanimals.html",
+        "license": "CC0-1.0",
+        "attribution": "Quaternius",
+        "notes": "Подготовлено tools/build-character-models.mjs. Исходники, хеши и лицензии: /assets/models/quaternius/actors-b892de8fd4f015796032/NOTICE.json."
+      }
+    },
+    {
+      "key": "goblin-quaternius",
+      "name_ru": "Гоблин",
+      "profile": "goblin",
+      "actorIds": [],
+      "archetypes": [
+        "goblin",
+        "goblinoid",
+        "гоблин"
+      ],
+      "url": "/assets/models/quaternius/actors-b892de8fd4f015796032/goblin.glb",
+      "height": 0.95,
+      "rights": {
+        "source": "https://quaternius.com/packs/ultimatedanimatedcharacter.html",
+        "license": "CC0-1.0",
+        "attribution": "Quaternius",
+        "notes": "Подготовлено tools/build-character-models.mjs. Исходники, хеши и лицензии: /assets/models/quaternius/actors-b892de8fd4f015796032/NOTICE.json."
+      }
+    },
+    {
+      "key": "skeleton-quaternius",
+      "name_ru": "Скелет",
+      "profile": "skeleton",
+      "actorIds": [],
+      "archetypes": [
+        "skeleton",
+        "undead",
+        "zombie",
+        "скелет",
+        "нежить"
+      ],
+      "url": "/assets/models/quaternius/actors-b892de8fd4f015796032/skeleton.glb",
+      "height": 1.25,
+      "rights": {
+        "source": "https://quaternius.itch.io/lowpoly-animated-monsters",
+        "license": "CC0-1.0",
+        "attribution": "Quaternius",
+        "notes": "Подготовлено tools/build-character-models.mjs. Исходники, хеши и лицензии: /assets/models/quaternius/actors-b892de8fd4f015796032/NOTICE.json."
+      }
+    },
+    {
+      "key": "traveler",
+      "name_ru": "Путник",
+      "profile": "warrior",
+      "actorIds": [],
+      "archetypes": [
+        "warrior",
+        "fighter",
+        "barbarian",
+        "paladin",
+        "воин"
+      ],
+      "url": "/assets/models/quaternius/traveler-77c0b0bb.glb",
+      "equipmentUrl": "/assets/models/quaternius/equipment-bases-40520897dfea4af085180fc82b0083baa/human-male.glb",
+      "height": 1.25,
+      "rights": {
+        "source": "https://quaternius.com/packs/modularcharacteroutfitsfantasy.html",
+        "license": "CC0-1.0",
+        "attribution": "Quaternius",
+        "notes": "Outfits Standard + голова Base Characters Standard + 6 клипов UAL1 Standard. Происхождение и хеши — quaternius/NOTICE.json."
+      }
+    },
+    {
+      "key": "ranger",
+      "name_ru": "Следопыт",
+      "profile": "rogue",
+      "actorIds": [],
+      "archetypes": [
+        "rogue",
+        "ranger",
+        "scout",
+        "thief",
+        "плут",
+        "следопыт"
+      ],
+      "url": "/assets/models/quaternius/ranger-f4660fae.glb",
+      "equipmentUrl": "/assets/models/quaternius/equipment-bases-40520897dfea4af085180fc82b0083baa/human-male.glb",
+      "height": 1.25,
+      "rights": {
+        "source": "https://quaternius.com/packs/modularcharacteroutfitsfantasy.html",
+        "license": "CC0-1.0",
+        "attribution": "Quaternius",
+        "notes": "Outfits Standard + голова Base Characters Standard + 6 клипов UAL1 Standard. Происхождение и хеши — quaternius/NOTICE.json."
+      }
+    },
+    {
       "key": "warrior",
       "name_ru": "Рыцарь",
       "profile": "warrior",
@@ -14,6 +149,7 @@
         "воин"
       ],
       "url": "/assets/models/kaykit/knight.glb",
+      "equipmentUrl": "/assets/models/quaternius/equipment-bases-40520897dfea4af085180fc82b0083baa/human-male.glb",
       "height": 1.4,
       "rights": {
         "source": "https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0/tree/672074b73ba276876a19e8816ecdc5241817ab47",
@@ -39,6 +175,7 @@
         "волшебник"
       ],
       "url": "/assets/models/kaykit/mage.glb",
+      "equipmentUrl": "/assets/models/quaternius/equipment-bases-40520897dfea4af085180fc82b0083baa/human-male.glb",
       "height": 1.4,
       "rights": {
         "source": "https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0/tree/672074b73ba276876a19e8816ecdc5241817ab47",
@@ -61,6 +198,7 @@
         "следопыт"
       ],
       "url": "/assets/models/kaykit/rogue.glb",
+      "equipmentUrl": "/assets/models/quaternius/equipment-bases-40520897dfea4af085180fc82b0083baa/human-male.glb",
       "height": 1.4,
       "rights": {
         "source": "https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0/tree/672074b73ba276876a19e8816ecdc5241817ab47",
@@ -100,6 +238,7 @@
         "нежить"
       ],
       "url": "/assets/models/kaykit/skeleton-warrior.glb",
+      "equipmentUrl": "/assets/models/quaternius/actors-b892de8fd4f015796032/skeleton.glb",
       "height": 1.4,
       "rights": {
         "source": "https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Skeletons-1.0/tree/15b62b9bad122f72926c10fb14d622c73819fa54",
@@ -129,6 +268,22 @@
         "source": "Процедурная модель проекта «Сказание»",
         "license": "original",
         "attribution": "Проект «Сказание»"
+      }
+    },
+    {
+      "key": "human-female",
+      "name_ru": "Человек · женская основа",
+      "profile": "warrior",
+      "actorIds": [],
+      "archetypes": [],
+      "url": "/assets/models/quaternius/equipment-bases-40520897dfea4af085180fc82b0083baa/human-female.glb",
+      "equipmentUrl": "/assets/models/quaternius/equipment-bases-40520897dfea4af085180fc82b0083baa/human-female.glb",
+      "height": 1.25,
+      "rights": {
+        "source": "https://quaternius.com/packs/modularcharacteroutfitsfantasy.html",
+        "license": "CC0-1.0",
+        "attribution": "Quaternius",
+        "notes": "Нейтральная female Peasant-основа для gear layer; provenance и SHA-256: equipment-bases-40520897dfea4af085180fc82b0083baa/NOTICE.json. Не участвует в автоматическом выборе archetype."
       }
     }
   ]
