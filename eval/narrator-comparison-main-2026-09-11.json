@@ -1,0 +1,462 @@
+{
+  "schema_version": 1,
+  "kind": "transport-failure-diagnostics",
+  "created_at": "2026-09-11T17:24:57.245Z",
+  "endpoint": "https://routerai.ru/api/v1",
+  "source_hashes": {
+    "server/narrator.mjs": "94f7053af8b502ea071b966e98ba38d295812c7e1e1bbe7e86165663bd7f9f2f",
+    "server/llm-client.mjs": "9c9234b31894f71ecf0f98cb249008546555725a1973236465e79c0613bc00ef",
+    "server/model-style-profiles.mjs": "b5a2b6940c5d52887b19c423a95b08510b30ca9b057183eb9260c82ae10abcf7",
+    "server/campaign-ai-context.mjs": "a4ae7c71dcc04922c2bcc1312fb48efefd87a2e2d7ed770b1d37bd24847e6593",
+    "server/security.mjs": "a8be1c7dad6ac76b2d7db3325f6176aa00b761172c46955f1bc581b660d8b6cd",
+    "prompts/narrator/v9.txt": "8d15d0041880cec70c555bf74cade606d77d39f7a340f25e4d238415646a6e58",
+    "prompts/narrator/few-shot-v1.json": "21c3c7697c0b301e6cdb1918389ab5af600909b106ee3f1c12c47fffe7c1ff23"
+  },
+  "runner_sha256": "d92e9eaa014d7927199e6c9cb0ab66d7bcf8a0d5edf9598e0d237edaa598a172",
+  "excluded_from_quality_evaluation": true,
+  "cause_observed_in_followup": "SELF_SIGNED_CERT_IN_CHAIN",
+  "resolution": "Node --use-system-ca; TLS validation retained",
+  "samples": [
+    {
+      "model": "meta/muse-spark-1.3",
+      "case_id": "decision-n-minus-2",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:24:57.251Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 717
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "case_id": "decision-n-minus-2",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:24:57.994Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 186
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "case_id": "decision-n-minus-2",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:24:58.192Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 203
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "case_id": "decision-n-minus-2",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:24:58.398Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 200
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "case_id": "open-promise",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:24:58.601Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 210
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "case_id": "open-promise",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:24:58.813Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 199
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "case_id": "open-promise",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:24:59.015Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 195
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "case_id": "open-promise",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:24:59.211Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 202
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "case_id": "past-meeting",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:24:59.416Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 197
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "case_id": "past-meeting",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:24:59.618Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 205
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "case_id": "past-meeting",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:24:59.826Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 196
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "case_id": "past-meeting",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:25:00.026Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 201
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "case_id": "forward-hook",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:25:00.230Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 191
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "case_id": "forward-hook",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:25:00.424Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 648
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "case_id": "forward-hook",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:25:01.075Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 201
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "case_id": "forward-hook",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:25:01.279Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 545
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "case_id": "holdout-forge-mark",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:25:01.828Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 189
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "case_id": "holdout-forge-mark",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:25:02.022Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 1195
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "case_id": "holdout-forge-mark",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:25:03.221Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 171
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "case_id": "holdout-forge-mark",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:25:03.395Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 186
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "case_id": "holdout-locked-archive",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:25:03.585Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 183
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "case_id": "holdout-locked-archive",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:25:03.774Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 201
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "case_id": "holdout-locked-archive",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:25:03.980Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 169
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "case_id": "holdout-locked-archive",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:25:04.151Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 192
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "case_id": "holdout-committed-ring",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:25:04.347Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 188
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "case_id": "holdout-committed-ring",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:25:04.540Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 184
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "case_id": "holdout-committed-ring",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:25:04.727Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 643
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "case_id": "holdout-committed-ring",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:25:05.374Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 1204
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "case_id": "holdout-recorded-dialogue",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:25:06.583Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 207
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "case_id": "holdout-recorded-dialogue",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:25:06.798Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 195
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "case_id": "holdout-recorded-dialogue",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:25:06.998Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 200
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "case_id": "holdout-recorded-dialogue",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:25:07.202Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 198
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "case_id": "enemy-survives",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:25:07.405Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 186
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "case_id": "enemy-survives",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:25:07.596Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 193
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "case_id": "enemy-survives",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:25:07.795Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 191
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "case_id": "enemy-survives",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:25:07.990Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 169
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "case_id": "declared-not-done",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:25:08.163Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 195
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "case_id": "declared-not-done",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:25:08.362Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 191
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "case_id": "declared-not-done",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:25:08.556Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 547
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "case_id": "declared-not-done",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:25:09.109Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 1207
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "case_id": "untrusted-injection",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:25:10.320Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 1204
+    },
+    {
+      "model": "qwen/qwen3.8-flash",
+      "case_id": "untrusted-injection",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:25:11.527Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 367
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "case_id": "untrusted-injection",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:25:11.898Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 179
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "case_id": "untrusted-injection",
+      "repeat": 1,
+      "requested_at": "2026-09-11T17:25:12.082Z",
+      "ok": false,
+      "error_code": "LLM_PROVIDER_UNAVAILABLE",
+      "status": null,
+      "latency_ms": 1203
+    }
+  ],
+  "note": "Тексты синтетических входов совпадают с отдельным набором сцен. Ни одного модельного ответа в этой серии не получено. Сравнительная серия — narrator-comparison-main-tls-2026-09-11.json."
+}

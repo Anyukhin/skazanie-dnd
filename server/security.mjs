@@ -537,14 +537,18 @@ const DISCLOSURE_ASSERTION_PATTERN = new RegExp(
 )
 
 // Наблюдавшиеся безличные результаты не требуют имени NPC или player_intent.
-const SOCIAL_OUTCOME_ASSERTION_PATTERN = /(?:(?:довод|аргумент)[а-яё]*[^.!?]{0,100}|слова\s+|(?:люди|собеседник[а-яё]*)\s+(?:начинают\s+)?)(?<![а-яё])(принят[а-яё]*|сработал[а-яё]*|нашли\s+отклик|(?:прозвучали|звучат)\s+убедительно|отвеча[а-яё]*\s+охотнее)(?![а-яё])/iu
+const SOCIAL_OUTCOME_ASSERTION_PATTERN = /(?:(?:довод|аргумент)[а-яё]*[^.!?]{0,100}|слова\s+[^.!?]{0,48}?|(?:люди|собеседник[а-яё]*)\s+(?:начинают\s+)?)(?<![а-яё])(принят[а-яё]*|сработал[а-яё]*|нашли\s+отклик|(?:прозвучали|звучат)\s+убедительно|отвеча[а-яё]*\s+охотнее|(?:попал[аио]?|легл[аио]?)\s+(?:куда\s+нужно|в\s+цель))(?![а-яё])/iu
+const SOCIAL_COMPLETED_ACTION_PATTERN = /(?<![а-яё])(убедил[аио]?|убедили|расположил[аио]?\s+к\s+себе|(?:сумел[аио]?|смог[лаои]*)\s+расположить\s+к\s+себе|взять\s+верх[^.!?]{0,24}уда[её]тся|вед[её]т\s+разговор)(?![а-яё])/iu
 const DOOR_OPENING_ASSERTION_PATTERN = /(?:двер[а-яё]*|створк[а-яё]*|ворот[а-яё]*|засов[а-яё]*)[^.!?]{0,48}(?<![а-яё])(открыва(?:ется|ются|лась|лись)|открыл(?:ась|ись)|открыт[а-яё]*|распах(?:ивается|иваются|нулась|нулись|нут[а-яё]*)|отход(?:ит|ят)|подда[её]тся|поддал(?:ся|ась|ось|ись))(?![а-яё])/iu
 
 function positiveOutcomeAssertion(pattern, text) {
   return [...text.matchAll(new RegExp(pattern.source, 'giu'))].some(match => {
     const verbStart = match.index + match[0].length - match[1].length
-    const before = text.slice(Math.max(0, verbStart - 32), verbStart)
+    const before = text.slice(Math.max(0, verbStart - 96), verbStart)
     const after = text.slice(match.index + match[0].length, match.index + match[0].length + 24)
+    // «Проверка не означает, что ...» сохраняет неопределённость результата.
+    const clauseBefore = before.split(/[,;—]\s*(?:но|зато|однако|а|и)\s+/iu).at(-1)
+    if (/(?:не\s+(?:означает|подтверждает|доказывает))\s*,?\s*что\s+[^.!?;]{0,48}$/iu.test(clauseBefore)) return false
     return !/не\s+(?:был[аои]?\s+)?$/iu.test(before) && !/^\s+не\s+был[аои]?(?![а-яё])/iu.test(after)
   })
 }
@@ -569,6 +573,12 @@ function positiveAssertion(pattern, text) {
   for (const match of String(text).matchAll(new RegExp(pattern.source, pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`))) {
     const prefix = String(text).slice(Math.max(0, match.index - 24), match.index)
     if (/(?:не|если|когда)\s*$/iu.test(prefix)) continue
+    if (pattern === DISCLOSURE_ASSERTION_PATTERN) {
+      const suffix = String(text).slice(match.index + match[0].length).split(/[.!?,;—]/u)[0]
+      // Отрицается именно этот факт, а не любое слово «нет» дальше в абзаце.
+      if (/нет\s+(?:(?:новых|никаких)\s+)?$/iu.test(prefix)
+        || /^\s+(?:(?:пока|ещ[её])\s+)?(?:у\s+[а-яё]+\s+)?(?:(?:пока|ещ[её])\s+)?нет(?![а-яё])/iu.test(suffix)) continue
+    }
     return true
   }
   return false
@@ -630,7 +640,8 @@ export function verifyNarration(narration, brief, {
   }
   const hasSocialAuthority = evidence.hasSocialInteraction || evidence.hasMerchantEvent
   const permitsPersuasion = (brief?.permitted_npc_reactions ?? []).some(reaction => reaction?.reaction === 'persuaded')
-  if (positiveOutcomeAssertion(SOCIAL_OUTCOME_ASSERTION_PATTERN, text) && !hasSocialAuthority && !permitsPersuasion) {
+  if ((positiveOutcomeAssertion(SOCIAL_OUTCOME_ASSERTION_PATTERN, text)
+    || positiveOutcomeAssertion(SOCIAL_COMPLETED_ACTION_PATTERN, text)) && !hasSocialAuthority && !permitsPersuasion) {
     addViolation(violations, 'UNCONFIRMED_SOCIAL_ACTION', 'Рассказчик вывел согласие собеседника из проверки без подтверждённого социального результата')
   }
   if (positiveOutcomeAssertion(DOOR_OPENING_ASSERTION_PATTERN, text) && !evidence.hasDoorOpening) {

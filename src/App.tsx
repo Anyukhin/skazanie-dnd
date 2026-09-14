@@ -1695,7 +1695,13 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         {view === 'world-map' && <WorldMapView state={state} busy={travelBlocked} onTravel={(action) => {
           void submitAction(action, activePlayer.id).then((outcome) => { if (outcome.ok) navigate('room') })
         }} />}
-        {view === 'journal' && <JournalView state={state} />}
+        {view === 'journal' && <JournalView state={state} questBusy={gameSession.questDecisionBusy}
+          canAbandonQuest={canAct && !combatActive}
+          onAbandonQuest={(questId) => {
+            void gameSession.requestQuestAbandonment(activePlayer.id, questId).then((opened) => {
+              if (opened) navigate('room')
+            })
+          }} />}
         {view === 'characters' && <CharactersView players={partyPlayers} selectedId={activePlayer.id} turnId={turnActorId} combatActive={combatActive} accessibleHeroIds={accessibleHeroIds} onSelect={setSelectedHeroId} onEdit={openHeroEditor} />}
         {view === 'inventory' && <InventoryView
           onCreateHero={accessibleHeroIds.includes(activePlayer.id) ? () => openHeroEditor(activePlayer.id) : undefined}

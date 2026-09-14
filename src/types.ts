@@ -187,6 +187,7 @@ export type AgentInteraction = {
   difficulty?: number
   roll?: DiceRollEvent
   destinationLocationId?: string
+  questAbandonment?: { schemaVersion: 1; questId: string }
   resolutionPrompt: string
   createdAt: number
   expiresAt?: number
@@ -1698,6 +1699,7 @@ export type WorldMemoryProjection = {
     summary?: string
     status?: string
     objectives?: string[]
+    visibility?: 'public' | 'party' | 'gm_only'
     clock?: { current: number; max: number; label?: string } | null
   }>
   threads?: Array<{ id: string; title: string; summary?: string; status?: string }>

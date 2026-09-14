@@ -12,6 +12,7 @@ import {
   strictJsonParse,
 } from '../server/llm-client.mjs'
 import { currentCampaignModel, runWithCampaignAiSettings } from '../server/campaign-ai-context.mjs'
+import { reasoningProfileFor } from '../server/model-style-profiles.mjs'
 import { PROMPT_DESCRIPTORS } from '../server/prompt-descriptors.mjs'
 import {
   DATA_ONLY_INSTRUCTION,
@@ -440,6 +441,44 @@ test('fallback cascade prioritizes the model selected for the current campaign o
   assert.equal(isolated.model, 'primary')
   assert.deepEqual(calls.sort(), ['primary', 'secondary'])
   assert.equal(currentCampaignModel(), '')
+})
+
+test('Muse вызывается с low только после выбора кампанией и не попадает в автоматический резерв', async () => {
+  const calls = []
+  const primary = { model: 'primary', async complete(input) {
+    calls.push('primary')
+    if (input.json) return { content: '{"ok":true}', json: { ok: true } }
+    throw new LLMTimeoutError(10)
+  } }
+  const muse = new RouterAIClient({ model: 'meta/muse-spark-1.3', apiKey: 'test',
+    reasoning: reasoningProfileFor('meta/muse-spark-1.3'),
+    fetchImpl: async (_url, request) => {
+      const body = JSON.parse(request.body)
+      calls.push(body.model)
+      assert.deepEqual(body.reasoning, { effort: 'low' })
+      return { ok: true, json: async () => ({ model: body.model, choices: [{ message: { role: 'assistant', content: 'Действие ещё не выполнено.' } }] }) }
+    },
+  })
+  const cascade = new FallbackLLMClient({ clients: [primary], selectableClients: [muse] })
+  await cascade.probe()
+  assert.deepEqual(calls, ['primary'], 'Ручная модель не получает фоновый probe')
+  await assert.rejects(cascade.complete({ messages }), error => error.code === 'LLM_FALLBACK_EXHAUSTED')
+  assert.deepEqual(calls, ['primary', 'primary'])
+  const result = await runWithCampaignAiSettings({ model: muse.model }, () => cascade.complete({ messages }))
+  assert.equal(result.model, muse.model)
+  assert.equal(cascade.model, 'primary')
+  assert.equal(cascade.health().find(entry => entry.model === muse.model).primary, false)
+  await assert.rejects(cascade.complete({ messages }), error => error.code === 'LLM_FALLBACK_EXHAUSTED')
+  assert.equal(calls.filter(model => model === muse.model).length, 1, 'Выбор не протекает в следующую кампанию')
+})
+
+test('ошибка выбранной вручную модели сохраняет обычный резерв', async () => {
+  const primary = { model: 'primary', async complete() { return { content: 'Резервный ответ.', model: 'primary' } } }
+  const muse = { model: 'meta/muse-spark-1.3', async complete() { throw new LLMTimeoutError(10) } }
+  const cascade = new FallbackLLMClient({ clients: [primary], selectableClients: [muse] })
+  const result = await runWithCampaignAiSettings({ model: muse.model }, () => cascade.complete({ messages }))
+  assert.equal(result.model, 'primary')
+  assert.deepEqual(result.fallback_attempts, [{ model: muse.model, code: 'LLM_TIMEOUT' }])
 })
 
 test('fallback cascade rejects a formally successful but unusable model response', async () => {

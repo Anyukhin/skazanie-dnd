@@ -235,6 +235,20 @@
   border-bottom: 0;
 }
 
+.quest-abandon-button {
+  margin-top: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--gold-bright);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.quest-abandon-button:hover:not(:disabled) { border-color: var(--gold); }
+.quest-abandon-button:disabled { opacity: .45; cursor: default; }
+
 .campaign-journal-page .quest-card p,
 .campaign-journal-page .quest-card li {
   line-height: 1.45;

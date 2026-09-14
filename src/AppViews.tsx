@@ -572,7 +572,12 @@ const normalizeJournalText = (value: unknown) => String(value ?? '')
   .trim()
   .toLocaleLowerCase('ru')
 
-export function JournalView({ state }: { state: GameState }) {
+export function JournalView({ state, onAbandonQuest, questBusy = false, canAbandonQuest = false }: {
+  state: GameState
+  onAbandonQuest?: (questId: string) => void
+  questBusy?: boolean
+  canAbandonQuest?: boolean
+}) {
   const narratorCount = state.messages.filter((message) => message.speaker === 'narrator').length
   const battleLog = state.battleLog ?? []
   const completedChapters = state.adventure?.history ?? []
@@ -581,6 +586,7 @@ export function JournalView({ state }: { state: GameState }) {
   // но игрок её нигде не видел: квесты, нити и резюме прошлых сцен доезжали
   // до клиента и молча пропадали.
   const quests = (state.worldMemory?.quests ?? []).filter((quest) => quest.status === 'active')
+  const abandonedQuests = (state.worldMemory?.quests ?? []).filter((quest) => quest.status === 'abandoned')
   const threads = (state.worldMemory?.threads ?? []).filter((thread) => thread.status === 'active')
   const summaries = (state.worldMemory?.summaries ?? []).slice(-4).reverse()
   return (
@@ -591,7 +597,7 @@ export function JournalView({ state }: { state: GameState }) {
         <div><Sparkles size={18} /><span><b>{narratorCount}</b><small>сцен рассказчика</small></span></div>
         <div><History size={18} /><span><b>{state.scene.turn}</b><small>текущий ход</small></span></div>
       </div>
-      {(quests.length > 0 || threads.length > 0 || summaries.length > 0) && <section className="quest-board" aria-label="Задачи и нити">
+      {(quests.length > 0 || abandonedQuests.length > 0 || threads.length > 0 || summaries.length > 0) && <section className="quest-board" aria-label="Задачи и нити">
         {quests.length > 0 && <div className="quest-column">
           <header><ScrollText size={15} /><strong>Задачи отряда</strong><span>{quests.length}</span></header>
           {quests.map((quest) => {
@@ -618,8 +624,18 @@ export function JournalView({ state }: { state: GameState }) {
                 <i>{Array.from({ length: Math.min(12, quest.clock.max) }, (_, index) => <u key={index} className={index < quest.clock!.current ? 'filled' : ''} />)}</i>
                 <b>{quest.clock.current}/{quest.clock.max}</b>
               </div>}
+              {onAbandonQuest && quest.visibility !== 'gm_only' && !quest.id.startsWith('quest:chapter:') && <button className="quest-abandon-button"
+                disabled={!canAbandonQuest || questBusy || Boolean(state.agentInteraction)}
+                aria-label={`Предложить отказ от задания «${quest.title}»`}
+                onClick={() => onAbandonQuest(quest.id)}>Предложить отказ</button>}
             </article>
           })}
+        </div>}
+        {abandonedQuests.length > 0 && <div className="quest-column">
+          <header><ScrollText size={15} /><strong>Оставленные задания</strong><span>{abandonedQuests.length}</span></header>
+          {abandonedQuests.map((quest) => <article className="quest-card" key={quest.id}>
+            <b>{quest.title}</b>{quest.summary && <p>{quest.summary}</p>}
+          </article>)}
         </div>}
         {(threads.length > 0 || summaries.length > 0) && <div className="quest-column">
           {threads.length > 0 && <>
@@ -1208,7 +1224,7 @@ export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiErr
             {campaignAi?.ruleset.current.availability === 'preview' && <small className="secure-note"><Shield size={13} />Редакция 2014 доступна как честно ограниченный preview; текущие ограничения перечислены в выборе мира.</small>}
           </label>
           <label className="ui-scale-setting">
-            <span><b>Модель для группы</b><small>Сервер разрешает только модели из настроенного основного и резервного списка</small></span>
+            <span><b>Модель для группы</b><small>Выбранная модель применяется к новым ответам этой кампании</small></span>
             <select
               value={campaignAi?.settings.model ?? health?.model ?? ''}
               disabled={!campaignAi?.canManage || campaignAiBusy}

@@ -1,0 +1,338 @@
+[
+  {
+    "id": "sample-b0daee838822",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "meta/muse-spark-1.3",
+    "repeat": 1,
+    "case_id": "decision-n-minus-2"
+  },
+  {
+    "id": "sample-148db07185e5",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "z-ai/glm-5.3-flash",
+    "repeat": 1,
+    "case_id": "decision-n-minus-2"
+  },
+  {
+    "id": "sample-5261924eaa03",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "repeat": 1,
+    "case_id": "decision-n-minus-2"
+  },
+  {
+    "id": "sample-7be3dce6cc19",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "qwen/qwen3.8-flash",
+    "repeat": 1,
+    "case_id": "decision-n-minus-2"
+  },
+  {
+    "id": "sample-bba87530dea6",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "z-ai/glm-5.3-flash",
+    "repeat": 1,
+    "case_id": "open-promise"
+  },
+  {
+    "id": "sample-a7d2a747daae",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "repeat": 1,
+    "case_id": "open-promise"
+  },
+  {
+    "id": "sample-fde160d0da41",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "qwen/qwen3.8-flash",
+    "repeat": 1,
+    "case_id": "open-promise"
+  },
+  {
+    "id": "sample-9e63c6d20259",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "meta/muse-spark-1.3",
+    "repeat": 1,
+    "case_id": "open-promise"
+  },
+  {
+    "id": "sample-bf40fb24f828",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "repeat": 1,
+    "case_id": "past-meeting"
+  },
+  {
+    "id": "sample-7a3f8b8c8162",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "qwen/qwen3.8-flash",
+    "repeat": 1,
+    "case_id": "past-meeting"
+  },
+  {
+    "id": "sample-4d2c8b7af84c",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "meta/muse-spark-1.3",
+    "repeat": 1,
+    "case_id": "past-meeting"
+  },
+  {
+    "id": "sample-8b9fc8b83b52",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "z-ai/glm-5.3-flash",
+    "repeat": 1,
+    "case_id": "past-meeting"
+  },
+  {
+    "id": "sample-66d6a7991a88",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "qwen/qwen3.8-flash",
+    "repeat": 1,
+    "case_id": "forward-hook"
+  },
+  {
+    "id": "sample-fdd1e7ca6f23",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "meta/muse-spark-1.3",
+    "repeat": 1,
+    "case_id": "forward-hook"
+  },
+  {
+    "id": "sample-4ddf6123d9af",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "z-ai/glm-5.3-flash",
+    "repeat": 1,
+    "case_id": "forward-hook"
+  },
+  {
+    "id": "sample-20a7e9913726",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "repeat": 1,
+    "case_id": "forward-hook"
+  },
+  {
+    "id": "sample-d8c8b1a6dba7",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "meta/muse-spark-1.3",
+    "repeat": 1,
+    "case_id": "holdout-forge-mark"
+  },
+  {
+    "id": "sample-ee23f087aa2d",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "z-ai/glm-5.3-flash",
+    "repeat": 1,
+    "case_id": "holdout-forge-mark"
+  },
+  {
+    "id": "sample-c1d47c300954",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "repeat": 1,
+    "case_id": "holdout-forge-mark"
+  },
+  {
+    "id": "sample-e525f387213b",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "qwen/qwen3.8-flash",
+    "repeat": 1,
+    "case_id": "holdout-forge-mark"
+  },
+  {
+    "id": "sample-08829be51653",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "z-ai/glm-5.3-flash",
+    "repeat": 1,
+    "case_id": "holdout-locked-archive"
+  },
+  {
+    "id": "sample-60c091aa5fa4",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "repeat": 1,
+    "case_id": "holdout-locked-archive"
+  },
+  {
+    "id": "sample-a57fd5aba8b8",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "qwen/qwen3.8-flash",
+    "repeat": 1,
+    "case_id": "holdout-locked-archive"
+  },
+  {
+    "id": "sample-f5ae8d79f7e7",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "meta/muse-spark-1.3",
+    "repeat": 1,
+    "case_id": "holdout-locked-archive"
+  },
+  {
+    "id": "sample-7026625123e7",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "repeat": 1,
+    "case_id": "holdout-committed-ring"
+  },
+  {
+    "id": "sample-eaf852aafffd",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "qwen/qwen3.8-flash",
+    "repeat": 1,
+    "case_id": "holdout-committed-ring"
+  },
+  {
+    "id": "sample-3beb1cae97c9",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "meta/muse-spark-1.3",
+    "repeat": 1,
+    "case_id": "holdout-committed-ring"
+  },
+  {
+    "id": "sample-fdada1dfa198",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "z-ai/glm-5.3-flash",
+    "repeat": 1,
+    "case_id": "holdout-committed-ring"
+  },
+  {
+    "id": "sample-a7b18cd83f30",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "qwen/qwen3.8-flash",
+    "repeat": 1,
+    "case_id": "holdout-recorded-dialogue"
+  },
+  {
+    "id": "sample-5312f706a9a1",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "meta/muse-spark-1.3",
+    "repeat": 1,
+    "case_id": "holdout-recorded-dialogue"
+  },
+  {
+    "id": "sample-84e7dd912d11",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "z-ai/glm-5.3-flash",
+    "repeat": 1,
+    "case_id": "holdout-recorded-dialogue"
+  },
+  {
+    "id": "sample-93f88c374ef8",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "repeat": 1,
+    "case_id": "holdout-recorded-dialogue"
+  },
+  {
+    "id": "sample-4ad36dcbc13c",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "meta/muse-spark-1.3",
+    "repeat": 1,
+    "case_id": "enemy-survives"
+  },
+  {
+    "id": "sample-ad4035e8764f",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "z-ai/glm-5.3-flash",
+    "repeat": 1,
+    "case_id": "enemy-survives"
+  },
+  {
+    "id": "sample-964008cbed86",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "repeat": 1,
+    "case_id": "enemy-survives"
+  },
+  {
+    "id": "sample-fef761542535",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "qwen/qwen3.8-flash",
+    "repeat": 1,
+    "case_id": "enemy-survives"
+  },
+  {
+    "id": "sample-0c5dde6d3acc",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "z-ai/glm-5.3-flash",
+    "repeat": 1,
+    "case_id": "declared-not-done"
+  },
+  {
+    "id": "sample-79b40a252013",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "repeat": 1,
+    "case_id": "declared-not-done"
+  },
+  {
+    "id": "sample-03ef71df2adf",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "qwen/qwen3.8-flash",
+    "repeat": 1,
+    "case_id": "declared-not-done"
+  },
+  {
+    "id": "sample-d26d411b5ecc",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "meta/muse-spark-1.3",
+    "repeat": 1,
+    "case_id": "declared-not-done"
+  },
+  {
+    "id": "sample-5ac283e8cf6b",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "repeat": 1,
+    "case_id": "untrusted-injection"
+  },
+  {
+    "id": "sample-b6249592b700",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "qwen/qwen3.8-flash",
+    "repeat": 1,
+    "case_id": "untrusted-injection"
+  },
+  {
+    "id": "sample-80b39e202f66",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "meta/muse-spark-1.3",
+    "repeat": 1,
+    "case_id": "untrusted-injection"
+  },
+  {
+    "id": "sample-1e952350425a",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "z-ai/glm-5.3-flash",
+    "repeat": 1,
+    "case_id": "untrusted-injection"
+  },
+  {
+    "id": "sample-8864e19e5ea2",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "qwen/qwen3.8-flash",
+    "repeat": 1,
+    "case_id": "permitted-npc-reaction"
+  },
+  {
+    "id": "sample-661e22eef5c0",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "meta/muse-spark-1.3",
+    "repeat": 1,
+    "case_id": "permitted-npc-reaction"
+  },
+  {
+    "id": "sample-781aa6357076",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "z-ai/glm-5.3-flash",
+    "repeat": 1,
+    "case_id": "permitted-npc-reaction"
+  },
+  {
+    "id": "sample-f6f7468a53c2",
+    "source": "eval/narrator-comparison-main-tls-2026-09-11.json",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "repeat": 1,
+    "case_id": "permitted-npc-reaction"
+  }
+]

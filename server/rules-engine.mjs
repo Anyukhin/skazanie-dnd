@@ -59,7 +59,7 @@ import {
   buildCampaignArcPlan,
   campaignArcPlan,
 } from './campaign-loop-policy.mjs'
-import { normalizePartyDecision, normalizePartyDecisionPolicy } from './party-decision.mjs'
+import { normalizePartyDecision, normalizePartyDecisionPolicy, questDecisionEvents } from './party-decision.mjs'
 
 const DOOR_BARRICADE_EVENT_SCHEMA_VERSION = 1
 import {
@@ -771,7 +771,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   ...BLESSING_COMMAND_TYPES,
   'SetCharacterChoices', 'SetSpellSelections',
   'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'LevelUp', 'ImportCharacter', 'RollCharacterAbilities', 'RollCharacterWealth',
-  'CompleteCampaign', 'AdvanceCampaignArc',
+  'CompleteCampaign', 'AdvanceCampaignArc', 'ResolveQuestDecision',
 ])
 
 const MERCHANT_LIFECYCLE_COMMAND_TYPES = new Set([
@@ -5898,6 +5898,10 @@ export function validateCommand(input, rawState, context = {}) {
   }
   if (['completed', 'failed', 'archived'].includes(lifecycleStatus) && command.command_type !== 'EndCombat') {
     throw new RulesValidationError('Завершённая или архивная кампания доступна только для чтения', 'CAMPAIGN_READ_ONLY')
+  }
+  if (command.command_type === 'ResolveQuestDecision') {
+    // Проверка сохранённой ссылки повторяется при каждом optimistic retry.
+    questDecisionEvents(command, state, context)
   }
   if (command.command_type === 'CompleteCampaign') {
     if (context?.isDirector !== true) {
@@ -16266,6 +16270,11 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       events.push(eventFrom(command, 'AreaRevealed', { cells }, []))
       break
     }
+    case 'ResolveQuestDecision':
+      for (const draft of questDecisionEvents(command, state, context)) {
+        events.push(eventFrom({ ...command, visibility: draft.visibility }, draft.event_type, draft.payload, draft.target_ids))
+      }
+      break
     case 'UpdateObjective':
       events.push(eventFrom(command, 'ObjectiveUpdated', { objective: String(command.objective || '').slice(0, 120) }, []))
       break
@@ -19269,7 +19278,6 @@ export function applyGameEvent(rawState, event) {
     case 'WorldRelationshipRecorded':
     case 'QuestUpserted':
     case 'QuestClockAdvanced':
-    case 'QuestResolved':
     case 'NarrativeThreadUpserted':
     case 'NarrativeThreadClockAdvanced':
     case 'NpcBeliefRecorded':
@@ -19277,6 +19285,14 @@ export function applyGameEvent(rawState, event) {
     case 'EpistemicClaimTruthResolved':
     case 'NarrativeSummaryRecorded':
       state.worldMemory = applyWorldMemoryEvent(state.worldMemory, event)
+      break
+    case 'QuestResolved':
+      state.worldMemory = applyWorldMemoryEvent(state.worldMemory, event)
+      if (payload.stay_in_location === true && payload.event_schema_version === 2 && payload.updates_scene_objective === true) {
+        state.scene.objective = String(payload.next_objective || '')
+        state.adventure.currentHook = state.scene.objective
+        state.suggestions = []
+      }
       break
     case 'NpcPlaced':
     case 'NpcMoved':

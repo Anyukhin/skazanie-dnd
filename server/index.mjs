@@ -94,6 +94,7 @@ import { SCENE_ARCHITECT_AGENT_ID, SceneArchitectAgent } from './scene-architect
 import { proposeAgentInteraction, resolvePartyDecision } from './player-request-router.mjs'
 import { planHeroCombatCommand } from './party-tactics.mjs'
 import { abandonableQuest, classifyPartyDecision } from './party-exit-intent.mjs'
+import { finishQuestAbandonment, questAbandonmentChronicleEntry, requestQuestAbandonment } from './quest-abandonment.mjs'
 import { CampaignBootstrapper } from './campaign-bootstrap.mjs'
 import { listWorldTemplates } from './world-template-catalog.mjs'
 import { AutonomousCampaignOrchestrator } from './autonomous-orchestrator.mjs'
@@ -183,7 +184,8 @@ const baseUrl = (process.env.ROUTERAI_BASE_URL || 'https://routerai.ru/api/v1').
 const model = process.env.DND_AI_MODEL || 'z-ai/glm-5.3-flash'
 const fallbackModels = [...new Set(String(process.env.DND_AI_FALLBACK_MODELS || 'google/gemini-2.5-flash-lite,deepseek/deepseek-v4-flash,z-ai/glm-5.2,openai/gpt-4.1-nano')
   .split(',').map((value) => value.trim()).filter((value) => value && value !== model))].slice(0, 5)
-const allowedAiModels = Object.freeze([model, ...fallbackModels])
+const automaticAiModels = [model, ...fallbackModels]
+const allowedAiModels = Object.freeze([...new Set([...automaticAiModels, 'meta/muse-spark-1.3'])])
 const maxTokens = Number(process.env.DND_AI_MAX_TOKENS || 1200)
 const modelTimeoutMs = Number(process.env.DND_AI_MODEL_TIMEOUT_MS || 9_000)
 const modelProbeTimeoutMs = Number(process.env.DND_AI_PROBE_TIMEOUT_MS || 15_000)
@@ -244,14 +246,16 @@ const rollRegistry = new RollRegistry({
   diceService,
   storageFile: join(storageDir, 'engine', 'roll-registry.json'),
 })
+const configuredLlmClients = allowedAiModels.map((modelId) => new MeteredLLMClient({
+  client: new RouterAIClient({
+    apiKey, baseUrl, model: modelId, maxTokens, timeoutMs: modelTimeoutMs,
+    reasoning: reasoningProfileFor(modelId),
+  }),
+  ledger: usageLedger,
+}))
 const llmClient = new FallbackLLMClient({
-  clients: [model, ...fallbackModels].map((modelId) => new MeteredLLMClient({
-    client: new RouterAIClient({
-      apiKey, baseUrl, model: modelId, maxTokens, timeoutMs: modelTimeoutMs,
-      reasoning: reasoningProfileFor(modelId),
-    }),
-    ledger: usageLedger,
-  })),
+  clients: configuredLlmClients.filter(client => automaticAiModels.includes(client.model)),
+  selectableClients: configuredLlmClients.filter(client => !automaticAiModels.includes(client.model)),
   probeTimeoutMs: modelProbeTimeoutMs,
   failureCooldownMs: modelFailureCooldownMs,
 })
@@ -2924,7 +2928,7 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
     // подход к зверю приходит и с доски, и второй фазой ручного броска, а
     // идентификатор карточки детерминирован (`chronicle:<зверь>:<ступень>`),
     // поэтому повторная проекция того же события её не удваивает.
-    for (const candidate of [...eventsForChronicle.map(offscreenChronicleEntry), ...eventsForChronicle.map(courierLetterChronicleEntry), ...eventsForChronicle.map(beastChronicleEntry), journalMessage].flat()) {
+    for (const candidate of [...eventsForChronicle.map(offscreenChronicleEntry), ...eventsForChronicle.map(courierLetterChronicleEntry), ...eventsForChronicle.map(beastChronicleEntry), ...eventsForChronicle.map(questAbandonmentChronicleEntry), journalMessage].flat()) {
       if (!candidate?.id || !String(candidate.text ?? '').trim()) continue
       if (messages.some((message) => String(message.id) === String(candidate.id))) continue
       messages.push(journalEntry(candidate))
@@ -2969,7 +2973,9 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
 async function reconcileCampaignProjection(campaignId) {
   try {
     await expirePartyDecisionIfNeeded(campaignId)
-    const authoritative = await eventStore.load(campaignId)
+    let authoritative = await eventStore.load(campaignId)
+    const questResolution = await finishQuestAbandonment({ executor: authoritativeExecutor, campaignId, state: authoritative.state })
+    if (questResolution) authoritative = await eventStore.load(campaignId)
     const pending = await eventStore.pendingProjection(campaignId)
     const room = getRoom(campaignId)
     const projectedVersion = Number(room.state?.state_version ?? -1)
@@ -3648,6 +3654,33 @@ const server = createServer((req, res) => {
     broadcastCampaignRoom(campaignId)
     return
   }
+  const questAbandonMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/quests\/abandon$/)
+  if (questAbandonMatch && req.method === 'POST') {
+    const user = requireUser(req, res); if (!user) return
+    const campaignId = questAbandonMatch[1].toUpperCase()
+    try {
+      const room = await reconcileCampaignProjection(campaignId)
+      if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
+      if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
+      const body = await readBody(req)
+      if (!canUseHero(user, body.actor_id, campaignId)) return json(res, 403, { error: 'Этот герой не принадлежит вашему аккаунту', code: 'ACTOR_FORBIDDEN' })
+      await requestQuestAbandonment({
+        executor: authoritativeExecutor, campaignId, actorId: body.actor_id, questId: body.quest_id,
+        idempotencyKey: body.idempotency_key ?? req.headers['x-idempotency-key'],
+        voterSnapshot: (state) => {
+          const eligibleHeroIds = partyHeroIds(state)
+          return { eligibleHeroIds, ...partyVoterSnapshot(campaignId, state, eligibleHeroIds) }
+        },
+      })
+      const latest = await reconcileCampaignProjection(campaignId)
+      return json(res, 200, { version: latest.version, updatedAt: latest.updatedAt,
+        state: viewerStateFor(stateWithLivePresence(latest.state, campaignId), user, body.actor_id) })
+    } catch (error) {
+      const status = ['IDEMPOTENCY_CONFLICT', 'PARTY_DECISION_CONFLICT', 'WORLD_QUEST_CLOSED', 'CAMPAIGN_NOT_ACTIVE', 'QUEST_DECISION_DURING_COMBAT'].includes(error?.code) ? 409
+        : error?.code === 'ACTOR_FORBIDDEN' ? 403 : 400
+      return json(res, status, { error: error.message || 'Не удалось предложить отказ от задания', code: error?.code })
+    }
+  }
   const partyVoteMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/party-decisions\/([A-Za-z0-9._:-]+)\/votes$/)
   if (partyVoteMatch && req.method === 'POST') {
     const user = requireUser(req, res); if (!user) return
@@ -3687,8 +3720,15 @@ const server = createServer((req, res) => {
           producerCapability: PARTY_DECISION_CAPABILITY,
         })
       }
+      // Возврат по ключу проверяется и после гонки, а не только до commit.
+      const expectedType = body.abstain === true ? 'PartyDecisionAbstained' : 'PartyVoteCast'
+      const recordedVote = committed.events.find((event) => event.event_type === expectedType
+        && event.payload?.interaction_id === partyVoteMatch[2] && event.payload?.hero_id === heroId)
+      if (!recordedVote || (body.abstain !== true && recordedVote.payload.option_id !== body.option_id)) {
+        throw commandPolicyError('Ключ уже использован для другого голоса', 'IDEMPOTENCY_CONFLICT')
+      }
       const projected = persistAuthoritativeProjection(campaignId, committed.state, committed.events)
-      const latestRoom = projected ?? getRoom(campaignId)
+      const latestRoom = await reconcileCampaignProjection(campaignId) ?? projected ?? getRoom(campaignId)
       return json(res, 200, {
         version: latestRoom.version,
         updatedAt: latestRoom.updatedAt,
@@ -3697,7 +3737,7 @@ const server = createServer((req, res) => {
         state_version: committed.state_version,
       })
     } catch (error) {
-      const status = ['STATE_VERSION_CONFLICT', 'PARTY_DECISION_CONFLICT', 'PARTY_DECISION_CLOSED', 'PARTY_DECISION_ABSTAINED'].includes(error?.code) ? 409
+      const status = ['STATE_VERSION_CONFLICT', 'PARTY_DECISION_CONFLICT', 'PARTY_DECISION_CLOSED', 'PARTY_DECISION_ABSTAINED', 'IDEMPOTENCY_CONFLICT'].includes(error?.code) ? 409
         : error?.code === 'ACTOR_FORBIDDEN' ? 403 : 400
       return json(res, status, { error: error instanceof Error ? error.message : 'Не удалось записать голос', code: error?.code })
     }

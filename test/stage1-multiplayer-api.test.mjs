@@ -26,6 +26,7 @@ function startServer(port, storage, appendLog) {
       AGENT_HOST: '127.0.0.1',
       AGENT_PORT: String(port),
       DND_STORAGE_DIR: storage,
+      DND_AI_MODEL: 'z-ai/glm-5.3-flash',
       ROUTERAI_API_KEY: '',
       ADMIN_SETUP_TOKEN: 'stage1-setup',
       GAME_ENGINE_MODE: 'enforce',
@@ -229,6 +230,9 @@ test('этап 1: два игрока получают SSE presence, комми�
   const guestSettings = await request(baseUrl, '/api/campaigns/STAGE1/settings', { cookie: guestCookie })
   assert.equal(guestSettings.status, 200, guestSettings.text)
   assert.equal(guestSettings.body.canManage, false)
+  assert.ok(guestSettings.body.availableModels.includes('meta/muse-spark-1.3'))
+  assert.equal(guestSettings.body.settings.model, 'z-ai/glm-5.3-flash')
+  assert.notEqual(guestSettings.body.settings.model, 'meta/muse-spark-1.3')
   assert.equal((await request(baseUrl, '/api/campaigns/STAGE1/settings', {
     method: 'PATCH',
     cookie: guestCookie,
@@ -238,7 +242,9 @@ test('этап 1: два игрока получают SSE presence, комми�
   const ownerSettings = await request(baseUrl, '/api/campaigns/STAGE1/settings', { cookie: ownerCookie })
   assert.equal(ownerSettings.status, 200, ownerSettings.text)
   assert.equal(ownerSettings.body.canManage, true)
-  const selectedModel = ownerSettings.body.availableModels.at(-1)
+  assert.ok(ownerSettings.body.availableModels.includes('meta/muse-spark-1.3'))
+  assert.equal(ownerSettings.body.settings.model, 'z-ai/glm-5.3-flash')
+  const selectedModel = 'meta/muse-spark-1.3'
   const savedSettings = await request(baseUrl, '/api/campaigns/STAGE1/settings', {
     method: 'PATCH',
     cookie: ownerCookie,
