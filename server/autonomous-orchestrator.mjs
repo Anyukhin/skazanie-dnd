@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { campaignModeFor, PERSISTENT_WORLD_OBJECTIVE } from './campaign-stories.mjs'
 
 import { revealedPropPredicate } from './action-adjudicator.mjs'
 import { normalizeDirectorIntent, SCENE_RESOLUTION_EVENT_SCHEMA_VERSION, serverReputationDelta } from './autonomous-campaign.mjs'
@@ -465,6 +466,7 @@ export class AutonomousCampaignOrchestrator {
     const commands = []
     for (const quest of triggered) {
       const resolution = questResolutionFor(quest)
+      const nextObjective = campaignModeFor(loaded.state) === 'persistent' ? PERSISTENT_WORLD_OBJECTIVE : resolution.nextObjective
       let subject = (loaded.state.worldMemory?.entities ?? []).find((entity) => quest.entity_ids?.includes(entity.id))
         ?? currentSubject(loaded.state)
       if (!subject) {
@@ -484,7 +486,7 @@ export class AutonomousCampaignOrchestrator {
         quest_id: quest.id,
         outcome: resolution.outcome,
         summary: resolution.summary,
-        next_objective: resolution.nextObjective,
+        next_objective: nextObjective,
         source_event_ids: sourceEventIds,
       })
       commands.push({ command_type: 'RecordWorldFact', fact: {
@@ -496,7 +498,9 @@ export class AutonomousCampaignOrchestrator {
         visibility: quest.visibility === 'gm_only' ? 'gm_only' : 'party',
         source_event_ids: sourceEventIds,
       } })
-      commands.push({ command_type: 'UpdateObjective', objective: resolution.nextObjective })
+      // В постоянном мире цель меняет только подтверждённое завершение основной
+      // истории. Развязка стороннего поручения не подменяет текущую цель.
+      if (campaignModeFor(loaded.state) !== 'persistent') commands.push({ command_type: 'UpdateObjective', objective: nextObjective })
     }
     return this.runCommands(campaignId, `${idempotencyKey}:quest-resolution`, commands)
   }

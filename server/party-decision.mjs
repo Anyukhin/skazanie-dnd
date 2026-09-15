@@ -1,4 +1,5 @@
 import { QUEST_ABANDONMENT_NEXT_OBJECTIVE, validateWorldMemoryCommand, worldMemoryEvent } from './world-memory.mjs'
+import { campaignModeFor, persistentStoryQuest } from './campaign-stories.mjs'
 
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/u
 const TYPES = new Set(['vote', 'roll', 'choice'])
@@ -164,6 +165,10 @@ export function normalizePartyDecision(value, { policy = null } = {}) {
       schemaVersion: 1,
       questId: id(value.questAbandonment.questId, 'Задание'),
     } } : {}),
+    ...(value.questAcceptance?.schemaVersion === 1 ? { questAcceptance: {
+      schemaVersion: 1,
+      questId: id(value.questAcceptance.questId, 'Задание'),
+    } } : {}),
     resolutionPrompt: text(value.resolutionPrompt, 360),
     createdAt,
     expiresAt,
@@ -175,16 +180,29 @@ export function normalizePartyDecision(value, { policy = null } = {}) {
 export function questDecisionEvents(command, state, context = {}) {
   if (context.isDirector !== true) throw new PartyDecisionError('Решение исполняет только сервер', 'QUEST_DECISION_FORBIDDEN')
   const interaction = state.agentInteraction
-  if (!interaction?.questAbandonment || interaction.status !== 'resolved'
+  const acceptance = interaction?.questAcceptance
+  if ((!interaction?.questAbandonment && !acceptance) || interaction.status !== 'resolved'
     || interaction.id !== command.interaction_id) {
     throw new PartyDecisionError('Нет завершённого решения по этому заданию', 'PARTY_DECISION_REQUIRED')
   }
-  if (!['keep', 'abandon'].includes(interaction.resolvedOptionId)) {
+  if (!(acceptance ? ['later', 'accept'] : ['keep', 'abandon']).includes(interaction.resolvedOptionId)) {
     throw new PartyDecisionError('Неизвестный исход решения', 'PARTY_DECISION_CONFLICT')
   }
-  const questId = interaction.questAbandonment.questId
+  const questId = (acceptance ?? interaction.questAbandonment).questId
   const quest = state.worldMemory?.quests?.find((entry) => entry.id === questId)
   const events = []
+  if (acceptance && interaction.resolvedOptionId === 'accept'
+    && ['offered', 'active'].includes(quest?.status) && ['public', 'party'].includes(quest?.visibility)
+    && !questId.startsWith('quest:chapter:')) {
+    events.push({ event_type: 'QuestAccepted', visibility: quest.visibility, target_ids: [], payload: {
+      schema_version: 1, quest_id: questId,
+      selection_only: quest.status === 'active',
+      selected_as_story: campaignModeFor(state) === 'persistent' && !persistentStoryQuest(state),
+      objective: text(quest.objectives?.[0] || quest.title, 300),
+      summary: quest.status === 'active' ? `Отряд выбрал основной историей задание «${quest.title}».` : `Отряд принял задание «${quest.title}».`,
+      party_decision: { interaction_id: interaction.id, resolved_option_id: interaction.resolvedOptionId },
+    } })
+  }
   if (interaction.resolvedOptionId === 'abandon' && quest?.status === 'active'
     && ['public', 'party'].includes(quest.visibility)) {
     const nextObjective = QUEST_ABANDONMENT_NEXT_OBJECTIVE

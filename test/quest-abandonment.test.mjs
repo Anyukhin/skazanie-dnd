@@ -7,7 +7,7 @@ import { AuthoritativeExecutor, PARTY_DECISION_CAPABILITY } from '../server/auth
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { FileEventStore } from '../server/event-store.mjs'
 import { resolvePartyVote } from '../server/party-decision.mjs'
-import { requestQuestAbandonment, finishQuestAbandonment } from '../server/quest-abandonment.mjs'
+import { requestQuestDecision as requestQuestAbandonment, finishQuestDecision as finishQuestAbandonment } from '../server/quest-decisions.mjs'
 import { RulesEngine, applyGameEvent, normalizeCampaignState } from '../server/rules-engine.mjs'
 
 const campaignId = 'QUEST-CHOICE'

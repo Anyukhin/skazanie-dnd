@@ -1,5 +1,7 @@
 import type { PublicLoadout } from '../server/equipment-visuals.mjs'
 export type { PublicLoadout } from '../server/equipment-visuals.mjs'
+import type { CampaignMode, CampaignStory } from '../server/campaign-stories.d.mts'
+export type { CampaignMode, CampaignStory } from '../server/campaign-stories.d.mts'
 
 export type Speaker = 'narrator' | 'player' | 'system'
 
@@ -188,6 +190,7 @@ export type AgentInteraction = {
   roll?: DiceRollEvent
   destinationLocationId?: string
   questAbandonment?: { schemaVersion: 1; questId: string }
+  questAcceptance?: { schemaVersion: 1; questId: string }
   resolutionPrompt: string
   createdAt: number
   expiresAt?: number
@@ -1350,6 +1353,8 @@ export type SceneTransition = {
 
 export type CampaignConcept = {
   preset?: string
+  /** Формат кампании; старые сохранения считаются приключением. */
+  campaign_mode?: CampaignMode
   era: string
   genre: string
   tone: string
@@ -1374,6 +1379,10 @@ export type CampaignConcept = {
     epilogue?: string
     concluded_at?: string | null
   }>
+  /** Завершённые истории постоянного мира; полный список хранится сервером. */
+  story_sequence?: number
+  story_quest_id?: string | null
+  story_history?: CampaignStory[]
 }
 
 /**

@@ -60,6 +60,7 @@ import {
   campaignArcPlan,
 } from './campaign-loop-policy.mjs'
 import { normalizePartyDecision, normalizePartyDecisionPolicy, questDecisionEvents } from './party-decision.mjs'
+import { campaignModeFor, campaignStoryCompletionDraft, persistentStoryQuest, PERSISTENT_WORLD_OBJECTIVE } from './campaign-stories.mjs'
 
 const DOOR_BARRICADE_EVENT_SCHEMA_VERSION = 1
 import {
@@ -1853,6 +1854,9 @@ export function normalizeCampaignState(input = {}) {
   if (sceneMap) syncSceneCells(state, sceneMap)
   rememberCurrentSceneMap(state)
   state.worldMemory = ensureSceneWorldMemory(state.worldMemory, state)
+  if (campaignModeFor(state) === 'persistent' && state.campaignConcept.story_quest_id === undefined) {
+    state.campaignConcept = { ...state.campaignConcept, story_quest_id: persistentStoryQuest(state)?.id ?? null }
+  }
   state.social = ensureNpcSocialState(state.social, state)
   state.npc_world = normalizeNpcWorldState(state.npc_world)
   state.world_deeds = normalizeWorldDeedsState(state.world_deeds)
@@ -16790,6 +16794,10 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       })
     }
   }
+  if (resolveDepth === 0) {
+    const story = campaignStoryCompletionDraft(state, resolvedEvents)
+    if (story) resolvedEvents.push(eventFrom({ ...command, visibility: story.visibility }, story.event_type, story.payload, story.target_ids))
+  }
   return { command, events: resolvedEvents, rolls }
 }
 
@@ -17127,6 +17135,23 @@ export function applyGameEvent(rawState, event) {
         changed_by: payload.changed_by ?? event.actor_id ?? null,
       }
       break
+    case 'CampaignStoryCompleted': {
+      if (campaignModeFor(state) !== 'persistent' || payload.schema_version !== 1
+        || !Number.isSafeInteger(payload.story_number)
+        || payload.story_number !== Number(state.campaignConcept?.story_sequence ?? 0) + 1) break
+      const history = state.campaignConcept?.story_history ?? []
+      state.campaignConcept = {
+        ...state.campaignConcept,
+        story_sequence: payload.story_number,
+        story_quest_id: null,
+        // Сокращается только выборка UI/LLM. Подтверждённые итоги не стираются.
+        story_history: [...history, { ...clone(payload), concluded_at: event.created_at ?? event.occurred_at ?? null }],
+      }
+      state.scene.objective = PERSISTENT_WORLD_OBJECTIVE
+      state.adventure.currentHook = PERSISTENT_WORLD_OBJECTIVE
+      state.suggestions = []
+      break
+    }
     case 'CampaignArcChainSet':
       state.campaignConcept = { ...(state.campaignConcept ?? {}), arc_chain: payload.enabled === true }
       break
@@ -19276,7 +19301,6 @@ export function applyGameEvent(rawState, event) {
     case 'WorldFactRevealed':
     case 'KnowledgeRevealed':
     case 'WorldRelationshipRecorded':
-    case 'QuestUpserted':
     case 'QuestClockAdvanced':
     case 'NarrativeThreadUpserted':
     case 'NarrativeThreadClockAdvanced':
@@ -19285,6 +19309,29 @@ export function applyGameEvent(rawState, event) {
     case 'EpistemicClaimTruthResolved':
     case 'NarrativeSummaryRecorded':
       state.worldMemory = applyWorldMemoryEvent(state.worldMemory, event)
+      break
+    case 'QuestUpserted': {
+      const isNew = !state.worldMemory.quests.some((quest) => quest.id === payload.quest?.id)
+      state.worldMemory = applyWorldMemoryEvent(state.worldMemory, event)
+      const accepted = state.worldMemory.quests.find((quest) => quest.id === payload.quest?.id)
+      // Старый replay сохраняет прежний выбор новой записи. Начиная с v2
+      // обновление квеста техническое; основная история выбирается QuestAccepted.
+      if ((payload.schema_version == null || payload.schema_version === 1) && campaignModeFor(state) === 'persistent' && state.campaignConcept.story_quest_id == null
+        && isNew && accepted?.status === 'active' && ['public', 'party'].includes(accepted.visibility)
+        && !accepted.id.startsWith('quest:chapter:')) {
+        state.campaignConcept.story_quest_id = accepted.id
+      }
+      break
+    }
+    case 'QuestAccepted':
+      if (payload.schema_version !== 1) break
+      state.worldMemory = applyWorldMemoryEvent(state.worldMemory, event)
+      if (payload.selected_as_story === true && campaignModeFor(state) === 'persistent') {
+        state.campaignConcept.story_quest_id = payload.quest_id
+        state.scene.objective = String(payload.objective || '')
+        state.adventure.currentHook = state.scene.objective
+        state.suggestions = []
+      }
       break
     case 'QuestResolved':
       state.worldMemory = applyWorldMemoryEvent(state.worldMemory, event)

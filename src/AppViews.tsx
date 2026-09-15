@@ -18,7 +18,7 @@ import type { AtmosphereSettings } from './atmosphere-audio'
 import type {
   Account, AgentInteraction, AiHealth, AssetPreparationReport, BeastChronicleCard,
   CampaignAiSettings, CampaignAiSettingsResponse,
-  CampaignSummary, EncounterProposal, GameState, LetterChronicleCard, Merchant, Message,
+  CampaignMode, CampaignStory, CampaignSummary, EncounterProposal, GameState, LetterChronicleCard, Merchant, Message,
   OffscreenChronicleCard, Player, RulesetProfileDescriptor,
 } from './types'
 import { useGameSession, type EncounterAssemblyOptions, type ShopAssemblyOptions } from './useGameSession'
@@ -92,6 +92,7 @@ export function CampaignModal({ state, rulesets = RULESET_FALLBACK, onSwitch, on
   // сядет за стол; лишние места иначе висят пустыми и блокируют ход.
   const [slotCount, setSlotCount] = useState(1)
   const [startLevel, setStartLevel] = useState(1)
+  const [campaignMode, setCampaignMode] = useState<CampaignMode>('adventure')
   // Режим импровизации выбирается при старте, но записывается тем же
   // settings-эндпоинтом, что и потом: второго пути записи настроек нет.
   const [improvMode, setImprovMode] = useState<CampaignAiSettings['improvMode']>('story')
@@ -159,7 +160,7 @@ export function CampaignModal({ state, rulesets = RULESET_FALLBACK, onSwitch, on
     setError('')
     try {
       const resolvedCode = code || `WORLD-${(globalThis.crypto?.randomUUID?.() ?? Date.now().toString(36)).replace(/-/g, '').slice(0, 8).toUpperCase()}`
-      const response = await fetch('/api/campaigns', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: resolvedCode, name: name.trim(), bootstrap: { partyName: partyName.trim(), world, worldTemplateId: worldTemplateId || undefined, slotCount, startLevel, rulesetId } }) })
+      const response = await fetch('/api/campaigns', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: resolvedCode, name: name.trim(), bootstrap: { partyName: partyName.trim(), world, worldTemplateId: worldTemplateId || undefined, slotCount, startLevel, rulesetId, campaignMode } }) })
       const body = await response.json() as { version?: number; state?: GameState | null; error?: string }
       if (!response.ok) throw new Error(body.error || 'Не удалось создать кампанию')
       // «Сюжет» — серверный дефолт, поэтому лишний PATCH не отправляем: он
@@ -260,6 +261,13 @@ export function CampaignModal({ state, rulesets = RULESET_FALLBACK, onSwitch, on
               </select>
               <small>Режим можно поменять и позже, на экране настроек кампании.</small>
             </label>
+            <label><span>Формат кампании</span>
+              <select value={campaignMode} onChange={(event) => setCampaignMode(event.currentTarget.value as CampaignMode)} aria-label="Формат кампании">
+                <option value="adventure">Приключение — отдельная история с финалом</option>
+                <option value="persistent">Постоянный мир — завершённые истории и свободное продолжение</option>
+              </select>
+              <small>В постоянном мире завершение одной истории оставляет мир открытым для следующей цели.</small>
+            </label>
           </div>}
           {step === 2 && <div className="hero-creator slot-creator">
             <div className="world-auto-note"><Users size={17} /><span><b>Сколько игроков сядет за стол?</b> Первое место всегда ваше, остальные заполнят приглашённые друзья при входе по ссылке. Пустых мест не останется.</span></div>
@@ -271,7 +279,7 @@ export function CampaignModal({ state, rulesets = RULESET_FALLBACK, onSwitch, on
             </div>
             <div className="hero-library">{Array.from({ length: slotCount }, (_, index) => index + 1).map((slot) => <div className="hero-slot-preview" key={slot}><span>{slot}</span><div><b>{slot === 1 ? 'Ваш герой' : `Герой друга ${slot - 1}`}</b><small>Класс, вид, характеристики и история ещё не выбраны</small></div><ShieldCheck size={16} /></div>)}</div>
           </div>}
-          {step === 3 && <div className="campaign-review"><span><Sparkles size={22} /></span><h3>Рассказчик готов создать мир</h3><p>Сначала появятся мир, первая сцена и места героев. Затем каждый игрок создаст собственного героя через серверно проверяемый мастер.</p><dl><div><dt>Кампания</dt><dd>{name.trim() || (selectedWorldTemplate ? selectedWorldTemplate.name : 'Название придумает рассказчик')}{partyName.trim() ? ` · отряд «${partyName.trim()}»` : ''}</dd></div><div><dt>Мир</dt><dd>{selectedWorldTemplate?.name || [world.preset, world.era, world.genre].filter(Boolean).join(' · ') || 'Полная автоматическая генерация'}</dd></div>{selectedWorldTemplate ? <><div><dt>Основа</dt><dd>{selectedWorldTemplate.description}</dd></div><div><dt>Карта</dt><dd>{selectedWorldTemplate.regionCount ?? 0} регионов · {selectedWorldTemplate.locationCount ?? 0} мест · {selectedWorldTemplate.routeCount ?? 0} путей{selectedWorldTemplate.cityOverviewCount ? ' · план столицы' : ''}</dd></div></> : world.premise.trim() && <div><dt>Основа</dt><dd>{world.premise.trim()}</dd></div>}<div><dt>Начало</dt><dd>{selectedWorldTemplate?.world?.startingLocation || world.openingSituation || 'Придумает рассказчик'}</dd></div><div><dt>Герои</dt><dd>{slotCount === 1 ? 'одно место · соло-кампания' : `${slotCount} места · первый герой ваш`} · старт с {startLevel}-го уровня</dd></div><div><dt>Правила</dt><dd>{rulesets.find((profile) => profile.id === rulesetId)?.label ?? rulesetId}</dd></div><div><dt>Импровизация</dt><dd>{IMPROV_MODE_FALLBACK.find((improv) => improv.id === improvMode)?.label ?? 'Сюжет'}</dd></div></dl><small>Ни один игрок не сможет сделать первый ход, пока не завершит создание закреплённого за ним героя и поэтапную подготовку до стартового уровня.</small></div>}
+          {step === 3 && <div className="campaign-review"><span><Sparkles size={22} /></span><h3>Рассказчик готов создать мир</h3><p>Сначала появятся мир, первая сцена и места героев. Затем каждый игрок создаст собственного героя через серверно проверяемый мастер.</p><dl><div><dt>Кампания</dt><dd>{name.trim() || (selectedWorldTemplate ? selectedWorldTemplate.name : 'Название придумает рассказчик')}{partyName.trim() ? ` · отряд «${partyName.trim()}»` : ''}</dd></div><div><dt>Мир</dt><dd>{selectedWorldTemplate?.name || [world.preset, world.era, world.genre].filter(Boolean).join(' · ') || 'Полная автоматическая генерация'}</dd></div>{selectedWorldTemplate ? <><div><dt>Основа</dt><dd>{selectedWorldTemplate.description}</dd></div><div><dt>Карта</dt><dd>{selectedWorldTemplate.regionCount ?? 0} регионов · {selectedWorldTemplate.locationCount ?? 0} мест · {selectedWorldTemplate.routeCount ?? 0} путей{selectedWorldTemplate.cityOverviewCount ? ' · план столицы' : ''}</dd></div></> : world.premise.trim() && <div><dt>Основа</dt><dd>{world.premise.trim()}</dd></div>}<div><dt>Начало</dt><dd>{selectedWorldTemplate?.world?.startingLocation || world.openingSituation || 'Придумает рассказчик'}</dd></div><div><dt>Герои</dt><dd>{slotCount === 1 ? 'одно место · соло-кампания' : `${slotCount} места · первый герой ваш`} · старт с {startLevel}-го уровня</dd></div><div><dt>Правила</dt><dd>{rulesets.find((profile) => profile.id === rulesetId)?.label ?? rulesetId}</dd></div><div><dt>Импровизация</dt><dd>{IMPROV_MODE_FALLBACK.find((improv) => improv.id === improvMode)?.label ?? 'Сюжет'}</dd></div><div><dt>Формат</dt><dd>{campaignMode === 'persistent' ? 'Постоянный мир' : 'Приключение'}</dd></div></dl><small>Ни один игрок не сможет сделать первый ход, пока не завершит создание закреплённого за ним героя и поэтапную подготовку до стартового уровня.</small></div>}
           <div className="campaign-wizard-actions"><button onClick={() => step === 1 ? setWizard(false) : setStep((current) => current - 1)}>{step === 1 ? 'К списку кампаний' : 'Назад'}</button>{step < 3 ? <button className="primary" onClick={() => { if (validateStep()) setStep((current) => current + 1) }}>Продолжить<ChevronRight size={14} /></button> : <button className="primary" onClick={() => { void create() }} disabled={busy}><Sparkles size={14} />{busy ? 'Рассказчик создаёт мир…' : 'Создать мир и написать пролог'}</button>}</div>
         </>}
         {error && <div className="admin-error">{error}</div>}
@@ -572,9 +580,10 @@ const normalizeJournalText = (value: unknown) => String(value ?? '')
   .trim()
   .toLocaleLowerCase('ru')
 
-export function JournalView({ state, onAbandonQuest, questBusy = false, canAbandonQuest = false }: {
+export function JournalView({ state, onAbandonQuest, onAcceptQuest, questBusy = false, canAbandonQuest = false }: {
   state: GameState
   onAbandonQuest?: (questId: string) => void
+  onAcceptQuest?: (questId: string) => void
   questBusy?: boolean
   canAbandonQuest?: boolean
 }) {
@@ -586,9 +595,12 @@ export function JournalView({ state, onAbandonQuest, questBusy = false, canAband
   // но игрок её нигде не видел: квесты, нити и резюме прошлых сцен доезжали
   // до клиента и молча пропадали.
   const quests = (state.worldMemory?.quests ?? []).filter((quest) => quest.status === 'active')
+  const offers = (state.worldMemory?.quests ?? []).filter((quest) => quest.status === 'offered')
+  const canChooseStory = state.campaignConcept?.campaign_mode === 'persistent' && !state.campaignConcept.story_quest_id
   const abandonedQuests = (state.worldMemory?.quests ?? []).filter((quest) => quest.status === 'abandoned')
   const threads = (state.worldMemory?.threads ?? []).filter((thread) => thread.status === 'active')
   const summaries = (state.worldMemory?.summaries ?? []).slice(-4).reverse()
+  const storyHistory: CampaignStory[] = (state.campaignConcept?.story_history ?? []).slice(-12).reverse()
   return (
     <section className="section-page campaign-journal-page">
       <PageHeader eyebrow="ЛЕТОПИСЬ ПРИКЛЮЧЕНИЯ" title="Журнал кампании" description="Общая память отряда: реплики, решения, броски и последствия." />
@@ -597,7 +609,16 @@ export function JournalView({ state, onAbandonQuest, questBusy = false, canAband
         <div><Sparkles size={18} /><span><b>{narratorCount}</b><small>сцен рассказчика</small></span></div>
         <div><History size={18} /><span><b>{state.scene.turn}</b><small>текущий ход</small></span></div>
       </div>
-      {(quests.length > 0 || abandonedQuests.length > 0 || threads.length > 0 || summaries.length > 0) && <section className="quest-board" aria-label="Задачи и нити">
+      {(quests.length > 0 || offers.length > 0 || abandonedQuests.length > 0 || threads.length > 0 || summaries.length > 0 || storyHistory.length > 0) && <section className="quest-board" aria-label="Задачи и нити">
+        {offers.length > 0 && <div className="quest-column">
+          <header><ScrollText size={15} /><strong>Предложенные задания</strong><span>{offers.length}</span></header>
+          {offers.map((quest) => <article className="quest-card" key={quest.id}>
+            <b>{quest.title}</b>{quest.summary && <p>{quest.summary}</p>}
+            {onAcceptQuest && quest.visibility !== 'gm_only' && <button className="quest-abandon-button"
+              disabled={!canAbandonQuest || questBusy || Boolean(state.agentInteraction)}
+              aria-label={`Принять задание «${quest.title}»`} onClick={() => onAcceptQuest(quest.id)}>Принять задание</button>}
+          </article>)}
+        </div>}
         {quests.length > 0 && <div className="quest-column">
           <header><ScrollText size={15} /><strong>Задачи отряда</strong><span>{quests.length}</span></header>
           {quests.map((quest) => {
@@ -628,6 +649,9 @@ export function JournalView({ state, onAbandonQuest, questBusy = false, canAband
                 disabled={!canAbandonQuest || questBusy || Boolean(state.agentInteraction)}
                 aria-label={`Предложить отказ от задания «${quest.title}»`}
                 onClick={() => onAbandonQuest(quest.id)}>Предложить отказ</button>}
+              {onAcceptQuest && canChooseStory && quest.visibility !== 'gm_only' && !quest.id.startsWith('quest:chapter:') && <button className="quest-abandon-button"
+                disabled={!canAbandonQuest || questBusy || Boolean(state.agentInteraction)}
+                aria-label={`Выбрать основной историей «${quest.title}»`} onClick={() => onAcceptQuest(quest.id)}>Выбрать основной историей</button>}
             </article>
           })}
         </div>}
@@ -650,6 +674,14 @@ export function JournalView({ state, onAbandonQuest, questBusy = false, canAband
               <b>{summary.title}</b><p>{summary.summary}</p>
             </article>)}
           </>}
+        </div>}
+        {storyHistory.length > 0 && <div className="quest-column" aria-label="Завершённые истории">
+          <header><History size={15} /><strong>Завершённые истории</strong><span>{storyHistory.length}</span></header>
+          {storyHistory.map((story) => <article className="quest-card summary" key={story.story_id}>
+            <b>{story.story_number}. {story.title}</b>
+            {story.summary && <p>{story.summary}</p>}
+            <small>{story.outcome === 'success' ? 'завершена' : story.outcome === 'failure' ? 'завершилась неудачей' : 'оставлена'}{story.location ? ` · ${story.location}` : ''}</small>
+          </article>)}
         </div>}
       </section>}
       <div className="journal-layout">

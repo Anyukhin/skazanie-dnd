@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 
 import { normalizeDirectorIntent } from './autonomous-campaign.mjs'
 import { CLOSED_QUEST_STATUSES, QUEST_ABANDONMENT_NEXT_OBJECTIVE } from './world-memory.mjs'
+import { campaignModeFor, persistentStoryQuest } from './campaign-stories.mjs'
 
 export { QUEST_ABANDONMENT_NEXT_OBJECTIVE }
 
@@ -144,6 +145,7 @@ export function buildCampaignArcPlan(seed = '', arcNumber = 1) {
 }
 
 export function campaignArcPlan(state = {}) {
+  if (campaignModeFor(state) === 'persistent') return null
   const raw = state.campaignConcept?.arc
   if (!raw || raw.version !== ONE_EVENING_ARC_VERSION || raw.preset !== ONE_EVENING_PRESET) return null
   // Арка без номера — сохранение до цепочки арок: это первая арка по определению.
@@ -187,6 +189,7 @@ export function confirmedQuestProgress(state = {}, questId = '') {
  * прежнее поведение, чтобы не менять смысл записанной истории.
  */
 export function mainQuestFor(state = {}) {
+  if (campaignModeFor(state) === 'persistent') return persistentStoryQuest(state)
   const quests = Array.isArray(state.worldMemory?.quests) ? state.worldMemory.quests : []
   const nonScene = quests.filter((quest) => !String(quest?.id ?? '').startsWith('quest:chapter:'))
   if (nonScene.length) return nonScene.find((quest) => !questWasAbandonedInPlace(quest)) ?? null

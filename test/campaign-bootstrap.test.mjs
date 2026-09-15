@@ -300,3 +300,30 @@ test('свой портрет героя сильнее подбора по ме
   // картинка приходит целым файлом.
   assert.equal(state.players[0].portraitPosition, '50% 50%')
 })
+
+test('постоянный мир сохраняет стартовый квест без one-evening арки', async () => {
+  const state = await new CampaignBootstrapper().create({
+    code: 'PERSISTENT-1', name: 'Постоянный мир', partyName: 'Путники', campaignMode: 'persistent',
+    world: { premise: 'Границы мира меняются от решений героев.' }, players: [hero],
+  })
+
+  assert.equal(state.campaignConcept.campaign_mode, 'persistent')
+  assert.equal(state.campaignConcept.arc, undefined)
+  assert.equal(state.campaignConcept.story_sequence, 0)
+  assert.deepEqual(state.campaignConcept.story_history, [])
+  const starterQuest = state.worldMemory.quests.find((quest) => quest.status === 'active')
+  assert.ok(starterQuest)
+  assert.equal(String(starterQuest.id).startsWith('quest:chapter:'), false)
+  assert.equal(starterQuest.clock.max, 4)
+})
+
+test('недопустимый режим отклоняется до вызова рассказчика', async () => {
+  const llm = new FakeLLM([{ content: '{}' }])
+  await assert.rejects(
+    () => new CampaignBootstrapper({ llmClient: llm }).create({
+      code: 'BAD-MODE', campaignMode: 'sandbox', world: {}, players: [hero],
+    }),
+    (error) => error.code === 'INVALID_CAMPAIGN_MODE',
+  )
+  assert.equal(llm.requests.length, 0)
+})

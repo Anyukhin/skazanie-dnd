@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 
 import { campaignArcPlan } from './campaign-loop-policy.mjs'
 import { normalizeWorldMemory } from './world-memory.mjs'
+import { campaignModeFor } from './campaign-stories.mjs'
 
 const clone = (value) => structuredClone(value)
 const clean = (value, maximum = 500) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
@@ -80,7 +81,7 @@ export function ensureSceneWorldMemory(input, state = {}) {
 
   const chapter = chapterNumber(state.adventure?.chapter, 1)
   const questId = `quest:chapter:${chapter}`
-  if (!memory.quests.some((quest) => quest.id === questId) && clean(state.scene?.objective, 300)) {
+  if (campaignModeFor(state) !== 'persistent' && !memory.quests.some((quest) => quest.id === questId) && clean(state.scene?.objective, 300)) {
     memory.quests.push(sceneQuest({ chapter, scene: state.scene, adventure: state.adventure, locationId: location.id, clockMax }))
   }
   return normalizeWorldMemory(memory)
@@ -120,13 +121,13 @@ export function sceneWorldMemoryEvents(state, transition, { commandId = '', sour
   const previousQuest = memory.quests.find((quest) => quest.id === previousQuestId)
     ?? sceneQuest({ chapter: previousChapter, scene: previousScene, adventure: state.adventure, locationId: previousLocation.id, clockMax })
   const previousStatus = outcome.status === 'abandoned' ? 'abandoned' : outcome.status === 'completed' ? 'completed' : 'active'
-  add('QuestUpserted', { quest: {
+  if (campaignModeFor(state) !== 'persistent') add('QuestUpserted', { quest: {
     ...clone(previousQuest),
     summary: clean(outcome.outcome || previousQuest.summary, 1_000),
     status: previousStatus,
   } })
 
-  if (clean(nextScene.objective, 300)) {
+  if (campaignModeFor(state) !== 'persistent' && clean(nextScene.objective, 300)) {
     const nextQuest = sceneQuest({ chapter: nextChapter, scene: nextScene, adventure: nextAdventure, locationId: nextLocation.id, clockMax })
     add('QuestUpserted', { quest: nextQuest })
   }

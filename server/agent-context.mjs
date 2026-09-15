@@ -1,4 +1,5 @@
 import { cellAt, deserializeTacticalMap } from './tactical-map.mjs'
+import { campaignModeFor } from './campaign-stories.mjs'
 
 const clean = (value, maximum) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
 
@@ -77,6 +78,15 @@ export function campaignConceptForAgent(state = {}) {
     .filter((entry) => entry.title && entry.summary)
   return {
     preset: clean(concept.preset, 160),
+    ...(campaignModeFor(state) === 'persistent' ? {
+      campaign_mode: 'persistent',
+      quests_optional: true,
+      wait_for_player_after_story: true,
+      completed_stories: (Array.isArray(concept.story_history) ? concept.story_history : []).slice(-3).map((story) => ({
+        story_id: clean(story.story_id, 120), title: clean(story.title, 180),
+        outcome: clean(story.outcome, 30), summary: clean(story.summary, 600),
+      })),
+    } : {}),
     era: clean(concept.era, 80),
     genre: clean(concept.genre, 100),
     tone: clean(concept.tone, 160),

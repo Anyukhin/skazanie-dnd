@@ -1,6 +1,7 @@
 import { reputationTier } from './reputation-policy.mjs'
 import { MAX_CAMPAIGN_ARCS, campaignArcClimaxSatisfied, campaignArcPlan, mainQuestFor } from './campaign-loop-policy.mjs'
 import { CLOSED_QUEST_STATUSES } from './world-memory.mjs'
+import { campaignModeFor } from './campaign-stories.mjs'
 
 const STATUSES = new Set(['setup', 'active', 'paused', 'completed', 'failed', 'archived'])
 const TERMINAL = new Set(['completed', 'failed', 'archived'])
@@ -226,6 +227,11 @@ export function lifecycleEventForAction(action, state, { actorId, reason, now = 
   // закрывает арку автоматически, и спрашивать стол в этот момент уже поздно —
   // финал успел бы наступить. Владелец объявляет намерение, пока кампания идёт.
   if (['chain_arcs', 'conclude_after_arc'].includes(normalizedAction)) {
+    if (campaignModeFor(state) === 'persistent') {
+      const error = new Error('Постоянный мир продолжается без цепочки конечных арок')
+      error.code = 'INVALID_CAMPAIGN_TRANSITION'
+      throw error
+    }
     if (!['active', 'paused'].includes(lifecycle.status)) {
       const error = new Error(`Продолжение кампании настраивается только в активной кампании, а не в "${lifecycle.status}"`)
       error.code = 'INVALID_CAMPAIGN_TRANSITION'
@@ -342,6 +348,7 @@ export function buildDeterministicEpilogue(state, outcomeOrOptions = undefined) 
 }
 
 export function campaignCanAutoComplete(state = {}) {
+  if (campaignModeFor(state) === 'persistent') return false
   const lifecycle = normalizeCampaignLifecycle(state?.mechanics?.campaign_lifecycle, state?.mechanics?.death?.campaign_status)
   if (lifecycle.status !== 'active' || state?.mechanics?.combat?.active) return false
   if (state?.autonomy?.pacing?.phase !== 'climax') return false
