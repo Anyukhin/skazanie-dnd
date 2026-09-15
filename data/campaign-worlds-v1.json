@@ -3667,6 +3667,49 @@
           }
         },
         "hook": "Саргат разоряет равнины и собирает сведения о героях, а три свежих донесения связывают его охоту с забытым походом самого короля.",
+        "world_rules": {
+          "schema_version": 1,
+          "offices": [
+            {
+              "id": "office:astohan-crown",
+              "title": "Корона Валедора",
+              "faction_id": "astohan-crown",
+              "holder_npc_id": "astohan-ares",
+              "visibility": "party",
+              "defender_npc_ids": [
+                "astohan-ivara",
+                "astohan-oren"
+              ],
+              "successor": {
+                "npc_id": "astohan-ivara",
+                "delay_minutes": 1440,
+                "required_tags": [
+                  "marshal"
+                ]
+              }
+            }
+          ],
+          "starter_responsibility": {
+            "type": "npc",
+            "npc_id": "astohan-ares",
+            "death_policy": "impossible"
+          },
+          "offered_quests": [
+            {
+              "id": "quest:astohan-crown-report",
+              "title": "Вернуть донесение короне",
+              "summary": "Доставить донесение уполномоченному представителю Короны Валедора.",
+              "status": "offered",
+              "visibility": "party",
+              "giver_npc_id": "astohan-ares",
+              "responsibility": {
+                "type": "office",
+                "office_id": "office:astohan-crown",
+                "death_policy": "transfer"
+              }
+            }
+          ]
+        },
         "npcs": [
           {
             "id": "astohan-ares",

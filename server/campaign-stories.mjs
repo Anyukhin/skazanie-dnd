@@ -32,7 +32,7 @@ export function persistentStoryQuest(state = {}) {
 export function campaignStoryCompletionDraft(state, events) {
   if (campaignModeFor(state) !== 'persistent') return null
   const quest = persistentStoryQuest(state)
-  const resolution = quest && events.find((event) => event.event_type === 'QuestResolved'
+  const resolution = quest && events.find((event) => ['QuestResolved', 'QuestInvalidated'].includes(event.event_type)
     && event.payload?.quest_id === quest.id && ['success', 'failure', 'abandoned'].includes(event.payload.outcome))
   if (!resolution) return null
   const previous = state.campaignConcept?.story_sequence ?? 0

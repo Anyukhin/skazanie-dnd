@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 
 import { normalizeAuthoredNpcMechanics } from './authored-npc.mjs'
 import { SCENE_THEME_IDS } from './scene-themes.mjs'
+import { validateOfficeConfiguration } from './world-offices.mjs'
 
 /**
  * Каталог заранее написанных миров. В отличие от `campaign-inspiration.mjs`
@@ -15,6 +16,7 @@ import { SCENE_THEME_IDS } from './scene-themes.mjs'
  */
 
 export const WORLD_TEMPLATE_SCHEMA_VERSION = 1
+export const WORLD_RULES_SCHEMA_VERSION = 1
 export const WORLD_TEMPLATE_IMAGE_PATTERN = /^\/assets\/maps\/world\/skazanie\/[a-z0-9][a-z0-9-]*-v[1-9][0-9]*\.webp$/u
 export const CITY_OVERVIEW_IMAGE_PATTERN = /^\/assets\/maps\/city\/skazanie\/[a-z0-9][a-z0-9-]*-v[1-9][0-9]*\.webp$/u
 
@@ -32,6 +34,8 @@ const DANGERS = new Set(['низкая', 'средняя', 'высокая'])
 const SCENE_MAP_PATTERNS = new Set(['small-room', 'great-hall', 'keep', 'courtyard', 'crypt', 'temple', 'cave-cluster', 'village', 'bridge', 'natural'])
 const CITY_PLACE_KINDS = new Set(['civic', 'harbor', 'market', 'temple', 'archive', 'gate', 'tower', 'garden', 'workshop', 'infrastructure', 'inn', 'other'])
 const ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,79}$/u
+const WORLD_RULE_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,79}(?::[a-z0-9][a-z0-9_-]{0,79})?$/u
+const WORLD_RULE_TAG_PATTERN = /^[a-z0-9][a-z0-9_-]{0,79}$/u
 const TEXT_LIMITS = Object.freeze({
   id: 80,
   name: 160,
@@ -103,6 +107,18 @@ function boolean(value, path, fallback = undefined) {
 function id(value, path, maximum = TEXT_LIMITS.id) {
   const result = text(value, path, maximum)
   if (!ID_PATTERN.test(result)) throw new WorldTemplateCatalogError(`${path} должен быть безопасным ASCII-идентификатором`)
+  return result
+}
+
+function worldRuleId(value, path) {
+  const result = text(value, path, TEXT_LIMITS.id)
+  if (!WORLD_RULE_ID_PATTERN.test(result)) throw new WorldTemplateCatalogError(`${path} должен быть безопасным ASCII-идентификатором`)
+  return result
+}
+
+function worldRuleTag(value, path) {
+  const result = text(value, path, TEXT_LIMITS.id)
+  if (!WORLD_RULE_TAG_PATTERN.test(result)) throw new WorldTemplateCatalogError(`${path} должен быть безопасным ASCII-тегом`)
   return result
 }
 
@@ -496,6 +512,139 @@ function validateOpening(raw, path, worldMap, defaults = {}) {
   }
 }
 
+function validateWorldRules(raw, path, openingNpcs, factions) {
+  if (raw == null) return null
+  const source = object(raw, path)
+  const schemaVersion = integer(source.schema_version, `${path}.schema_version`, WORLD_RULES_SCHEMA_VERSION, WORLD_RULES_SCHEMA_VERSION)
+  const npcIds = new Set(openingNpcs.map((npc) => npc.id).filter(Boolean))
+  const factionIds = new Set(factions.map((faction) => id(field(faction, 'id', 'faction_id'), `${path}.factions.id`)))
+  const rawOffices = array(source.offices, `${path}.offices`)
+  if (rawOffices.length > 12) throw new WorldTemplateCatalogError(`${path}.offices не должен содержать больше двенадцати записей`)
+  const officeIds = new Set()
+  const offices = rawOffices.map((rawOffice, index) => {
+    const officePath = `${path}.offices[${index}]`
+    const office = object(rawOffice, officePath)
+    const officeId = worldRuleId(office.id, `${officePath}.id`)
+    if (officeIds.has(officeId)) throw new WorldTemplateCatalogError(`${path}.offices содержит повторяющийся id «${officeId}»`)
+    officeIds.add(officeId)
+    const factionId = id(field(office, 'faction_id', 'factionId'), `${officePath}.faction_id`)
+    if (!factionIds.has(factionId)) throw new WorldTemplateCatalogError(`${officePath}.faction_id ссылается на неизвестную фракцию «${factionId}»`)
+    const holderNpcId = id(field(office, 'holder_npc_id', 'holderNpcId'), `${officePath}.holder_npc_id`)
+    if (!npcIds.has(holderNpcId)) throw new WorldTemplateCatalogError(`${officePath}.holder_npc_id ссылается на неизвестного NPC «${holderNpcId}»`)
+    const visibility = text(office.visibility, `${officePath}.visibility`, 20)
+    if (!['public', 'party', 'gm_only'].includes(visibility)) throw new WorldTemplateCatalogError(`${officePath}.visibility имеет недопустимое значение`)
+    const rawDefenders = field(office, 'defender_npc_ids', 'defenderNpcIds')
+    if (!Array.isArray(rawDefenders)) throw new WorldTemplateCatalogError(`${officePath}.defender_npc_ids должен быть массивом`)
+    if (rawDefenders.length > 12) throw new WorldTemplateCatalogError(`${officePath}.defender_npc_ids не должен содержать больше двенадцати записей`)
+    const defenderIds = new Set()
+    const defenderNpcIds = rawDefenders.map((value, defenderIndex) => {
+      const defenderId = id(value, `${officePath}.defender_npc_ids[${defenderIndex}]`)
+      if (!npcIds.has(defenderId)) throw new WorldTemplateCatalogError(`${officePath}.defender_npc_ids[${defenderIndex}] ссылается на неизвестного NPC «${defenderId}»`)
+      if (defenderIds.has(defenderId)) throw new WorldTemplateCatalogError(`${officePath}.defender_npc_ids содержит повторяющийся id «${defenderId}»`)
+      defenderIds.add(defenderId)
+      return defenderId
+    })
+    const successorPath = `${officePath}.successor`
+    const successor = object(field(office, 'successor'), successorPath)
+    const successorNpcId = id(field(successor, 'npc_id', 'npcId'), `${successorPath}.npc_id`)
+    if (!npcIds.has(successorNpcId)) throw new WorldTemplateCatalogError(`${successorPath}.npc_id ссылается на неизвестного NPC «${successorNpcId}»`)
+    const delayMinutes = integer(field(successor, 'delay_minutes', 'delayMinutes'), `${successorPath}.delay_minutes`, 1, 10_000_000)
+    const rawRequiredTags = field(successor, 'required_tags', 'requiredTags')
+    if (!Array.isArray(rawRequiredTags) || rawRequiredTags.length < 1) throw new WorldTemplateCatalogError(`${successorPath}.required_tags должен содержать хотя бы один тег`)
+    if (rawRequiredTags.length > 12) throw new WorldTemplateCatalogError(`${successorPath}.required_tags не должен содержать больше двенадцати тегов`)
+    const requiredTagIds = new Set()
+    const requiredTags = rawRequiredTags.map((value, tagIndex) => {
+      const tag = worldRuleTag(value, `${successorPath}.required_tags[${tagIndex}]`)
+      if (requiredTagIds.has(tag)) throw new WorldTemplateCatalogError(`${successorPath}.required_tags содержит повторяющийся тег «${tag}»`)
+      requiredTagIds.add(tag)
+      return tag
+    })
+    const configuration = {
+      id: officeId,
+      title: text(office.title, `${officePath}.title`, TEXT_LIMITS.name),
+      faction_id: factionId,
+      holder_npc_id: holderNpcId,
+      visibility,
+      defender_npc_ids: defenderNpcIds,
+      successor: {
+        npc_id: successorNpcId,
+        delay_minutes: delayMinutes,
+        required_tags: requiredTags,
+      },
+    }
+    // Каталог проверяет ссылки своего шаблона; допустимые поля и пределы
+    // должности окончательно определяет тот же модуль, что читает сохранение.
+    try { return validateOfficeConfiguration(configuration, { knownNpcIds: [...npcIds], knownFactionIds: [...factionIds] }) }
+    catch (error) { throw new WorldTemplateCatalogError(`${officePath}: ${error instanceof Error ? error.message : 'некорректная должность'}`) }
+  })
+
+  const starterPath = `${path}.starter_responsibility`
+  const starterResponsibility = validateWorldResponsibility(
+    field(source, 'starter_responsibility', 'starterResponsibility'),
+    starterPath,
+    { npcIds, officeIds, expectedType: 'npc', expectedDeathPolicy: 'impossible' },
+  )
+  const rawOfferedQuests = array(field(source, 'offered_quests', 'offeredQuests'), `${path}.offered_quests`)
+  if (rawOfferedQuests.length > 12) throw new WorldTemplateCatalogError(`${path}.offered_quests не должен содержать больше двенадцати записей`)
+  const questIds = new Set()
+  const offeredQuests = rawOfferedQuests.map((rawQuest, index) => {
+    const questPath = `${path}.offered_quests[${index}]`
+    const quest = object(rawQuest, questPath)
+    const questId = worldRuleId(quest.id, `${questPath}.id`)
+    if (questIds.has(questId)) throw new WorldTemplateCatalogError(`${path}.offered_quests содержит повторяющийся id «${questId}»`)
+    questIds.add(questId)
+    const status = text(quest.status, `${questPath}.status`, 20)
+    if (status !== 'offered') throw new WorldTemplateCatalogError(`${questPath}.status должен быть offered`)
+    const visibility = text(quest.visibility, `${questPath}.visibility`, 20)
+    if (!['public', 'party', 'gm_only'].includes(visibility)) throw new WorldTemplateCatalogError(`${questPath}.visibility имеет недопустимое значение`)
+    const giverNpcId = id(field(quest, 'giver_npc_id', 'giverNpcId'), `${questPath}.giver_npc_id`)
+    if (!npcIds.has(giverNpcId)) throw new WorldTemplateCatalogError(`${questPath}.giver_npc_id ссылается на неизвестного NPC «${giverNpcId}»`)
+    const responsibility = validateWorldResponsibility(
+      quest.responsibility,
+      `${questPath}.responsibility`,
+      { npcIds, officeIds, expectedType: 'office', expectedDeathPolicy: 'transfer' },
+    )
+    const office = offices.find((entry) => entry.id === responsibility.office_id)
+    if (!office) throw new WorldTemplateCatalogError(`${questPath}.responsibility.office_id ссылается на неизвестную должность`)
+    if (giverNpcId !== office.holder_npc_id) throw new WorldTemplateCatalogError(`${questPath}.giver_npc_id должен быть текущим держателем должности`)
+    return {
+      ...clone(quest),
+      id: questId,
+      title: text(quest.title, `${questPath}.title`, TEXT_LIMITS.name),
+      ...(quest.summary == null ? {} : { summary: optionalText(quest.summary, `${questPath}.summary`, TEXT_LIMITS.short) }),
+      status,
+      visibility,
+      giver_npc_id: giverNpcId,
+      responsibility,
+    }
+  })
+  return {
+    ...clone(source),
+    schema_version: schemaVersion,
+    offices,
+    starter_responsibility: starterResponsibility,
+    offered_quests: offeredQuests,
+  }
+}
+
+function validateWorldResponsibility(raw, path, { npcIds, officeIds, expectedType = '', expectedDeathPolicy = '' } = {}) {
+  const source = object(raw, path)
+  const type = text(source.type, `${path}.type`, 20)
+  if (!['npc', 'office'].includes(type)) throw new WorldTemplateCatalogError(`${path}.type имеет недопустимое значение`)
+  if (expectedType && type !== expectedType) throw new WorldTemplateCatalogError(`${path}.type должен быть ${expectedType}`)
+  const deathPolicy = text(source.death_policy, `${path}.death_policy`, 20)
+  if (!['impossible', 'transfer'].includes(deathPolicy)) throw new WorldTemplateCatalogError(`${path}.death_policy имеет недопустимое значение`)
+  if (expectedDeathPolicy && deathPolicy !== expectedDeathPolicy) throw new WorldTemplateCatalogError(`${path}.death_policy должен быть ${expectedDeathPolicy}`)
+  if (type === 'npc') {
+    const npcId = id(field(source, 'npc_id', 'npcId'), `${path}.npc_id`)
+    if (!npcIds.has(npcId)) throw new WorldTemplateCatalogError(`${path}.npc_id ссылается на неизвестного NPC «${npcId}»`)
+    return { ...clone(source), schema_version: 1, type, npc_id: npcId, death_policy: deathPolicy }
+  }
+  const officeId = worldRuleId(field(source, 'office_id', 'officeId'), `${path}.office_id`)
+  if (!officeIds.has(officeId)) throw new WorldTemplateCatalogError(`${path}.office_id ссылается на неизвестную должность «${officeId}»`)
+  return { ...clone(source), schema_version: 1, type, office_id: officeId, death_policy: deathPolicy }
+}
+
 function validateGraph(worldMap, startId, path) {
   const adjacency = new Map(worldMap.locations.map((location) => [location.id, new Set()]))
   for (const route of worldMap.routes) {
@@ -552,6 +701,8 @@ function validateTemplate(raw, index) {
   })))
   const timeline = validateRichCollection(source.timeline, `${path}.timeline`)
   const factions = validateRichCollection(source.factions, `${path}.factions`, true)
+  const worldRules = validateWorldRules(field(opening, 'world_rules', 'worldRules'), `${path}.opening.world_rules`, opening.npcs, factions)
+  if (worldRules) opening.world_rules = worldRules
   const factionIds = new Set(factions.map((faction) => id(field(faction, 'id', 'faction_id'), `${path}.factions.id`)))
   const profileIds = new Set()
   for (const npc of opening.npcs) {
@@ -702,6 +853,7 @@ export function worldTemplateOpening(templateValue, overrides = {}) {
   scene.locationId = template.world_map.locations.find((location) => location.id === scene.locationId)?.id ?? scene.locationId
   scene.location_id = scene.locationId
   scene.location = template.world_map.locations.find((location) => location.id === scene.locationId)?.name ?? scene.location
+  const worldRules = opening.world_rules == null ? null : clone(opening.world_rules)
   return {
     campaignName,
     partyName,
@@ -712,6 +864,7 @@ export function worldTemplateOpening(templateValue, overrides = {}) {
     scene,
     hook: opening.hook,
     npcs: clone(opening.npcs),
+    ...(worldRules ? { worldRules, world_rules: clone(worldRules) } : {}),
   }
 }
 

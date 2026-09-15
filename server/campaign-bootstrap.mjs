@@ -17,6 +17,7 @@ import { validateCampaignMode } from './campaign-stories.mjs'
 import { drawCampaignInspiration, inspirationPromptSeed } from './campaign-inspiration.mjs'
 import { LEGACY_DEFAULT_RULESET_ID, rulesetLock } from './ruleset-config.mjs'
 import { getWorldTemplate, worldTemplateConcept, worldTemplateOpening } from './world-template-catalog.mjs'
+import { normalizeWorldOfficesState } from './world-offices.mjs'
 import { isLiveTheme, resolveSceneTheme, SCENE_THEME_IDS } from './scene-themes.mjs'
 
 const prompt = readFileSync(fileURLToPath(new URL('../prompts/campaign_creator/v4.txt', import.meta.url)), 'utf8')
@@ -297,6 +298,13 @@ function normalizeOpening(input, fallback, { authored = false } = {}) {
   const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
   const scene = source.scene && typeof source.scene === 'object' && !Array.isArray(source.scene) ? source.scene : {}
   const map = scene.map && typeof scene.map === 'object' && !Array.isArray(scene.map) ? scene.map : {}
+  // Правила мира берутся из авторского шаблона сервера. Одноимённый блок
+  // свободного ответа модели не является конфигурацией.
+  const worldRules = authored && (source.worldRules ?? source.world_rules)
+    && typeof (source.worldRules ?? source.world_rules) === 'object'
+    && !Array.isArray(source.worldRules ?? source.world_rules)
+    ? structuredClone(source.worldRules ?? source.world_rules)
+    : null
   const layouts = new Set(['rooms', 'streets', 'open', 'winding', 'cavern', 'ruins', 'radial'])
   const danger = new Set(['низкая', 'средняя', 'высокая'])
   const scale = MAP_SCALES.has(map.scale) ? map.scale : fallback.scene.map.scale
@@ -335,6 +343,7 @@ function normalizeOpening(input, fallback, { authored = false } = {}) {
     },
     hook: clean(source.hook, 500) || fallback.hook,
     npcs: normalizeOpeningNpcs(source.npcs, fallback.npcs, { authored }),
+    ...(worldRules ? { worldRules } : {}),
   }
 }
 
@@ -523,6 +532,38 @@ export class CampaignBootstrapper {
       available: true,
       tags: [...new Set([...(npc.tags ?? []), `faction:${factionIdByTemplateId.get(npc.factionId) ?? starterFactionId}`])],
     }))
+    const authoredOfficeConfigurations = Array.isArray(opening.worldRules?.offices)
+      ? opening.worldRules.offices.map((office) => ({
+          ...structuredClone(office),
+          faction_id: factionIdByTemplateId.get(office.faction_id) ?? office.faction_id,
+        }))
+      : null
+    const worldOffices = authoredOfficeConfigurations
+      ? normalizeWorldOfficesState(
+          { schema_version: 1, offices: authoredOfficeConfigurations },
+          { knownNpcIds: openingNpcs.map((npc) => npc.id), knownFactionIds: factionEntities.map((faction) => faction.id) },
+        )
+      : null
+    const officesById = new Map((worldOffices?.offices ?? []).map((office) => [office.id, office]))
+    const starterResponsibility = opening.worldRules?.starter_responsibility
+      ? structuredClone(opening.worldRules.starter_responsibility)
+      : null
+    const offeredQuests = Array.isArray(opening.worldRules?.offered_quests)
+      ? opening.worldRules.offered_quests.map((quest) => {
+          const office = officesById.get(quest.responsibility?.office_id)
+          return {
+            id: quest.id,
+            title: quest.title,
+            summary: quest.summary || quest.title,
+            status: 'offered',
+            visibility: quest.visibility || 'party',
+            entity_ids: office?.faction_id ? [office.faction_id] : [],
+            objectives: Array.isArray(quest.objectives) ? structuredClone(quest.objectives) : [],
+            responsibility: structuredClone(quest.responsibility),
+            giver_npc_id: quest.giver_npc_id || office?.holder_npc_id || null,
+          }
+        })
+      : []
     const starterNpcId = openingNpcs[0].id
     // Токены собеседников появляются уже в первой сцене. Раньше расстановка
     // выполнялась только при переходе сцены (`AdvanceScene`), и в свежесозданной
@@ -595,7 +636,8 @@ export class CampaignBootstrapper {
         status: 'active', visibility: 'party', entity_ids: [starterFactionId],
         objectives: [opening.scene.objective],
         clock: { current: 0, max: arc?.target_scenes ?? 4, label: 'Прогресс расследования' },
-      }],
+        ...(starterResponsibility ? { responsibility: starterResponsibility, giver_npc_id: starterResponsibility.npc_id ?? null } : {}),
+      }, ...offeredQuests],
     }
     return {
       sessionCode: campaignCode,
@@ -623,6 +665,7 @@ export class CampaignBootstrapper {
       ruleset_locked_at: new Date().toISOString(), engine_mode: 'enforce',
       players: positionedHeroes,
       merchants,
+      ...(worldOffices ? { world_offices: worldOffices } : {}),
       enemies: [], entities: [], mapFeedback: [], battleLog: [], mechanics: {}, rulings: [],
       activePlayerId: positionedHeroes[0].id,
       tacticalTurn: { sceneTurn: 1, actorId: positionedHeroes[0].id, movementSpent: 0, actionUsed: false },

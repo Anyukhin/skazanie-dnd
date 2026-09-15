@@ -453,11 +453,16 @@ function courierLetterContext(state = {}) {
   let present = null
   let origin = null
   let table = null
+  let profileState = null
   const leagues = new Map()
   const originOnce = () => (origin ??= partyLocationId(state))
+  const vitalsOnce = () => (vitals ??= normalizeNpcWorldState(state?.npc_world).vitals)
   return {
     social: () => (social ??= ensureNpcSocialState(state?.social, state)),
-    vitals: () => (vitals ??= normalizeNpcWorldState(state?.npc_world).vitals),
+    vitals: vitalsOnce,
+    profileAtTime: (profile) => npcProfileAtWorldTime(profile, profileState ??= {
+      mechanics: state.mechanics, enemies: state.enemies, actors: state.actors, npc_world: { vitals: vitalsOnce() },
+    }),
     present: () => (present ??= new Set(presentSceneNpcs(state).map((npc) => String(npc.id)))),
     leaguesTo: (targetId) => {
       const target = text(targetId, 120)
@@ -555,7 +560,7 @@ export function courierAddresseeFor(state = {}, kind, id, context = courierLette
   }
   const persisted = context.social().npcs.find((npc) => npc.id === wantedId)
   if (!persisted || !visibleToParty(persisted.visibility)) return null
-  const profile = npcProfileAtWorldTime(persisted, state)
+  const profile = context.profileAtTime(persisted)
   if (context.vitals()[wantedId]?.alive === false) return null
   const targetId = locationIdByName(map, profile.location)
   // Место известно — считается дорога, и ноль переходов означает ровно ноль:
@@ -784,7 +789,7 @@ function deliveryFailureFor(state, letter, context = courierLetterContext(state)
   if (context.vitals()[letter.addressee_id]?.alive === false) return 'dead'
   const profile = context.social().npcs.find((npc) => npc.id === letter.addressee_id)
   if (!profile) return 'gone'
-  return npcProfileAtWorldTime(profile, state).available === false ? 'gone' : ''
+  return context.profileAtTime(profile).available === false ? 'gone' : ''
 }
 
 const RETURN_SUMMARY = Object.freeze({

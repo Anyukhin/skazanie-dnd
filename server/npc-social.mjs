@@ -477,8 +477,29 @@ export function npcScheduleEntryAt(profile = {}, stateOrElapsedMinutes = {}) {
 export function npcProfileAtWorldTime(profile = {}, stateOrElapsedMinutes = {}) {
   const normalized = safeProfile(profile)
   const activeSchedule = npcScheduleEntryAt(normalized, stateOrElapsedMinutes)
-  if (!activeSchedule) return normalized
-  return { ...normalized, location: activeSchedule.location, available: activeSchedule.available }
+  const current = activeSchedule
+    ? { ...normalized, location: activeSchedule.location, available: activeSchedule.available }
+    : normalized
+  // `npc_world` уже нормализованная, принадлежащая серверу часть состояния
+  // кампании. Импортировать `npc-positioning.mjs` сюда нельзя: тот модуль
+  // импортирует merchant-economy, а merchant-economy импортирует этот модуль.
+  // Смерть важнее расписания: мёртвый NPC не возвращается к разговору в часы
+  // своей смены.
+  const world = stateOrElapsedMinutes && typeof stateOrElapsedMinutes === 'object' && !Array.isArray(stateOrElapsedMinutes)
+    ? stateOrElapsedMinutes.npc_world
+    : null
+  const vital = world?.vitals && typeof world.vitals === 'object' && !Array.isArray(world.vitals)
+    ? world.vitals[normalized.id]
+    : null
+  const combatNpcIds = stateOrElapsedMinutes?.mechanics?.combat?.active === true
+    ? new Set([
+        ...(Array.isArray(stateOrElapsedMinutes.enemies) ? stateOrElapsedMinutes.enemies : []),
+        ...(Array.isArray(stateOrElapsedMinutes.actors) ? stateOrElapsedMinutes.actors : []),
+      ].map((actor) => String(actor?.origin?.npc_id ?? '')).filter(Boolean))
+    : new Set()
+  return vital?.alive === false || Number(vital?.hp) <= 0 || combatNpcIds.has(normalized.id)
+    ? { ...current, available: false }
+    : current
 }
 
 /**

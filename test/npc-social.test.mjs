@@ -177,6 +177,41 @@ test('a scheduled unavailable NPC cannot be addressed even when their private de
   )
 })
 
+test('persisted death overrides an available schedule in every social projection and command', () => {
+  const initial = campaign()
+  const scheduled = {
+    ...initial.social.npcs[0],
+    schedule: [{ id: 'market-shift', days: [], start_minute: 0, end_minute: 1_440, location: 'Market Square', available: true }],
+  }
+  const state = normalizeCampaignState({
+    ...initial,
+    social: { ...initial.social, npcs: [scheduled] },
+    npc_world: { vitals: { marta: { hp: 0, max_hp: 4, alive: false } } },
+    mechanics: { ...initial.mechanics, world_time: { elapsed_minutes: 600 } },
+  })
+
+  const current = npcProfileAtWorldTime(state.social.npcs[0], state)
+  assert.equal(current.location, 'Market Square', 'расписание всё ещё определяет последний адрес')
+  assert.equal(current.available, false, 'смерть сильнее доступной смены')
+  assert.equal(npcSocialForViewer(state.social, { playerId: 'hero', isPartyMember: true, state }).npcs[0].available, false)
+  assert.throws(
+    () => resolveCommand(socialCommand(), state, { diceService: dice(), context: { isSocialController: true } }),
+    (error) => error instanceof RulesValidationError && error.code === 'NPC_SOCIAL_NPC_UNAVAILABLE',
+  )
+})
+
+test('NPC participating in active combat is unavailable until combat ends', () => {
+  const initial = campaign()
+  const active = normalizeCampaignState({
+    ...initial,
+    enemies: [{ id: 'marta', hp: 4, maxHp: 4, alive: true, origin: { kind: 'authored-npc', npc_id: 'marta' } }],
+    mechanics: { ...initial.mechanics, combat: { ...initial.mechanics.combat, active: true } },
+  })
+  assert.equal(npcProfileAtWorldTime(active.social.npcs[0], active).available, false)
+  const ended = normalizeCampaignState({ ...active, mechanics: { ...active.mechanics, combat: { ...active.mechanics.combat, active: false } } })
+  assert.equal(npcProfileAtWorldTime(ended.social.npcs[0], ended).available, true)
+})
+
 test('a server-confirmed social turn is event sourced and replayable with relationship and promise', () => {
   const initial = campaign()
   const result = resolveCommand(socialCommand(), initial, {

@@ -27,6 +27,7 @@ import {
   sceneNpcsForViewer,
 } from '../server/npc-positioning.mjs'
 import { buildNpcSocialCheckPolicy } from '../server/npc-social-check.mjs'
+import { npcProfileAtWorldTime } from '../server/npc-social.mjs'
 import { NPC_PORTRAIT_CHARACTER_ASSETS } from '../server/npc-portraits.mjs'
 import { planNpcTurn } from '../server/npc-turn-scheduler.mjs'
 import { applyGameEvent, normalizeCampaignState, npcCombatRequestFingerprint, previewD20Check, replayEvents, resolveCommand, resolveCommands } from '../server/rules-engine.mjs'
@@ -307,7 +308,7 @@ test('Режиссёр материализует присутствующего
   const active = result.events.reduce(applyGameEvent, state)
   assert.equal(active.mechanics.combat.active, true)
   assert.equal(active.enemies[0].id, 'astohan-sargat')
-  assert.equal(active.social.npcs.find((npc) => npc.id === 'astohan-sargat').available, false)
+  assert.equal(npcProfileAtWorldTime(active.social.npcs.find((npc) => npc.id === 'astohan-sargat'), active).available, false)
   assert.equal(previewD20Check(active, { actorId: 'astohan-sargat', kind: 'check', skill: 'perception', difficulty: 10 }).modifier, 9)
   assert.equal(previewD20Check(active, { actorId: 'astohan-sargat', kind: 'save', ability: 'con', difficulty: 10 }).modifier, 9)
   const perception = resolveCommand({
@@ -366,7 +367,7 @@ test('игрок может начать бой с видимым авторск
   const beforeNpcPosition = structuredClone(initial.npc_world.placements.find((entry) => entry.npc_id === 'astohan-ares'))
   const command = { command_type: 'AttackNpc', command_id: 'attack-ares', actor_id: 'hero', npc_id: 'astohan-ares' }
   const result = resolveCommands([command], initial, {
-    diceService: dice([1, 20]),
+    diceService: dice([1, 20, 10, 10]),
     context: { allowedActorIds: ['hero'] },
   })
 
@@ -375,12 +376,13 @@ test('игрок может начать бой с видимым авторск
   assert.equal(encounter?.payload?.request_fingerprint, npcCombatRequestFingerprint(command))
   assert.equal(encounter?.payload?.encounter?.enemies?.[0]?.id, 'astohan-ares')
   assert.equal(encounter?.payload?.encounter?.enemies?.[0]?.stat_block_id, 'astohan:ares-v1')
+  assert.deepEqual(encounter.payload.encounter.enemies.map((enemy) => enemy.id).sort(), ['astohan-ares', 'astohan-ivara', 'astohan-oren'])
 
   assert.equal(result.state.mechanics.combat.active, true)
   assert.deepEqual(result.state.mechanics.positions.hero, beforeHeroPosition)
   assert.deepEqual(result.state.mechanics.positions['astohan-ares'], { x: beforeNpcPosition.x, y: beforeNpcPosition.y })
   assert.deepEqual(result.state.scene.map, beforeMap)
-  assert.equal(result.state.social.npcs.find((npc) => npc.id === 'astohan-ares')?.available, false)
+  assert.equal(npcProfileAtWorldTime(result.state.social.npcs.find((npc) => npc.id === 'astohan-ares'), result.state).available, false)
 
   const visibleEvents = mechanicsForViewer(result.events, { role: 'player' }, 'hero', result.state)
   const visibleEncounter = visibleEvents.find((event) => event.event_type === 'EncounterCreated')?.payload?.encounter
@@ -419,7 +421,7 @@ test('вход в бой с NPC проверяет героя, видимост�
   assert.equal(sceneNpcsForViewer(rulingOnly).find((npc) => npc.id === 'astohan-ares')?.can_start_combat, false)
   reject(rulingOnly, { allowedActorIds: ['hero'] }, 'AUTHORED_NPC_PROFILE_UNVERIFIED')
 
-  const active = resolveCommands([command], initial, { diceService: dice([1, 20]), context: { allowedActorIds: ['hero'] } }).state
+  const active = resolveCommands([command], initial, { diceService: dice([1, 20, 10, 10]), context: { allowedActorIds: ['hero'] } }).state
   reject(active, { allowedActorIds: ['hero'] }, 'ENCOUNTER_DURING_COMBAT')
 })
 

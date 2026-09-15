@@ -58,9 +58,12 @@ import {
   authorizeDirectorIntent,
   buildCampaignArcPlan,
   campaignArcPlan,
+  mainQuestFor,
 } from './campaign-loop-policy.mjs'
 import { normalizePartyDecision, normalizePartyDecisionPolicy, questDecisionEvents } from './party-decision.mjs'
 import { campaignModeFor, campaignStoryCompletionDraft, persistentStoryQuest, PERSISTENT_WORLD_OBJECTIVE } from './campaign-stories.mjs'
+import { normalizeWorldOfficesState, planOfficeVacancyDrafts, planOfficeSuccessionDrafts, applyWorldOfficeEvent } from './world-offices.mjs'
+import { planQuestConsequenceDrafts } from './quest-consequences.mjs'
 
 const DOOR_BARRICADE_EVENT_SCHEMA_VERSION = 1
 import {
@@ -249,6 +252,8 @@ import {
   applyNpcWorldEvent,
   initialNpcVital,
   npcCombatStanceEventDrafts,
+  npcCombatActorFor,
+  planAuthoredNpcWorldEvents,
   npcHarmEventDrafts,
   npcMissCollateralTarget,
   npcMechanicsFor,
@@ -668,6 +673,7 @@ const COMMAND_RULES = Object.freeze({
   UpsertQuest: [],
   AdvanceQuestClock: [],
   ResolveQuest: [],
+  InvalidateQuest: [],
   CompleteCampaign: [],
   UpsertNarrativeThread: [],
   AdvanceNarrativeThreadClock: [],
@@ -757,7 +763,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   'CreateMerchant', 'ConfigureMerchant', 'RestockMerchant', 'MoveMerchant', 'SetMerchantAvailability', 'CreateEncounter',
   'AdvanceScene',
   'UpsertWorldEntity', 'RecordWorldFact', 'RevealWorldFact', 'RecordKnowledgeRevelation',
-  'RecordWorldRelationship', 'UpsertQuest', 'AdvanceQuestClock', 'ResolveQuest',
+  'RecordWorldRelationship', 'UpsertQuest', 'AdvanceQuestClock', 'ResolveQuest', 'InvalidateQuest',
   'UpsertNarrativeThread', 'AdvanceNarrativeThreadClock',
   'RecordNpcBelief', 'RecordRumor', 'ResolveEpistemicClaim', 'RecordNarrativeSummary',
   'UpsertNpcSocialProfile', 'RecordNpcSocialTurn', 'ResolveNpcPromise',
@@ -1859,6 +1865,7 @@ export function normalizeCampaignState(input = {}) {
   }
   state.social = ensureNpcSocialState(state.social, state)
   state.npc_world = normalizeNpcWorldState(state.npc_world)
+  if (state.world_offices) state.world_offices = normalizeWorldOfficesState(state.world_offices)
   state.world_deeds = normalizeWorldDeedsState(state.world_deeds)
   state.offscreen_world = normalizeOffscreenWorldState(state.offscreen_world)
   state.courier_letters = normalizeCourierLetterState(state.courier_letters)
@@ -5148,6 +5155,11 @@ function assertTurn(command, state, context = {}) {
   }
 }
 
+function authoredOfficeParticipants(state, npcId) {
+  const office = state.world_offices?.offices?.find((entry) => entry.holder_npc_id === npcId || entry.defender_npc_ids?.includes(npcId))
+  return uniqueStrings([npcId, office?.holder_npc_id, ...(office?.defender_npc_ids ?? [])])
+}
+
 function assembleEncounterFromState(state, command) {
   /**
    * Проверка размещения после сборщика нужна потому, что сборщик получает
@@ -5205,23 +5217,28 @@ function assembleEncounterFromState(state, command) {
       alive: vital.alive,
     }
     const difficulty = mechanics.encounter_difficulty
+    const defenders = authoredOfficeParticipants(state, authoredNpcId).filter((id) => id !== authoredNpcId
+      && presentSceneNpcs(state).some((candidate) => candidate.id === id) && npcMechanicsFor(state, id)?.status !== 'ruling-only'
+      && npcMechanicsFor(state, id) && npcPlacementFor(state, id)).map((id) => npcCombatActorFor(state, id))
+    const enemies = [enemy, ...defenders]
+    const xp = enemies.reduce((sum, entry) => sum + Math.max(0, Number(npcMechanicsFor(state, entry.id)?.xp) || 0), 0)
     return validateEncounterPlacements({
       proposal_id: `encounter-proposal-${fingerprint.slice(0, 24)}`,
       version: ENCOUNTER_PROPOSAL_VERSION,
       difficulty,
       difficulty_label: encounterDifficultyLabel(difficulty),
       theme: 'generic',
-      xp_budget: mechanics.xp,
-      xp_spent: mechanics.xp,
+      xp_budget: xp,
+      xp_spent: xp,
       threat: {
-        budget_xp: mechanics.xp,
-        spent_xp: mechanics.xp,
+        budget_xp: xp,
+        spent_xp: xp,
         unspent_xp: 0,
         utilization_bps: 10_000,
-        quantity: 1,
-        quantity_cap: 1,
+        quantity: enemies.length,
+        quantity_cap: enemies.length,
       },
-      enemies: [enemy],
+      enemies,
       source: { kind: 'server-owned-authored-npc-profile', profile_id: mechanics.profile_id },
     })
   }
@@ -8108,7 +8125,7 @@ export function spellTargetsAt(state, command, spell) {
 
 function npcSpellTargetsAt(state, command, spell) {
   if (!['area-save', 'area-damage'].includes(spell.kind)) return []
-  const candidates = placedSceneNpcTargets(state)
+  const candidates = placedSceneNpcTargets(state).filter(({ npc }) => !findActor(state, String(npc.id)))
   if (spell.target === 'self') {
     const center = actorPosition(state, command.actor_id)
     const radius = Math.max(0, safeInteger(spell.radius, 5))
@@ -8136,6 +8153,17 @@ function npcSpellTargetsAt(state, command, spell) {
   }
   return candidates.filter(({ placement }) => footprintCellsFor({ footprint: placement.footprint }, placement)
     .some((cell) => positionInArea(cell, to, radius)))
+}
+
+/** Социальный NPC использует те же спасброски и защиты, что его боевая форма. */
+function npcDamageContext(state, npcId) {
+  if (findActor(state, npcId)) return state
+  const actor = npcCombatActorFor(state, npcId)
+  if (!actor) return state
+  const position = npcPlacementFor(state, npcId)
+  return { ...state, actors: [...(state.actors ?? []), actor], mechanics: { ...state.mechanics,
+    positions: { ...state.mechanics.positions, ...(position ? { [npcId]: position } : {}) },
+  } }
 }
 
 /**
@@ -10689,7 +10717,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         const at = actorPosition(state, actorId(candidate))
         return at && actorFootprintCellsAt(state, actorId(candidate), at).some((cell) => positionInArea(cell, to, radiusFeet))
       })())
-      const npcAffected = npcTargetsWithinArea(state, to, radiusFeet)
+      const npcAffected = npcTargetsWithinArea(state, to, radiusFeet).filter(({ npc }) => !findActor(state, String(npc.id)))
       const affectedIds = [...affected.map(actorId), ...npcAffected.map(({ npc }) => String(npc.id))]
       const areaEventId = `area-attack:${String(command.command_id).slice(0, 100)}`
       events.push({
@@ -10722,8 +10750,10 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
       let npcDamageState = replayEvents(state, events)
       for (const { npc } of npcAffected) {
         const npcId = String(npc.id)
-        const save = diceService.rollD20({
-          modifier: 0,
+        const npcContext = npcDamageContext(npcDamageState, npcId)
+        const save = rollSavingThrowD20(npcContext, diceService, npcId, {
+          ability: combat.saveAbility || 'dex',
+          modifier: abilityModifier(findActor(npcContext, npcId)?.abilities?.[combat.saveAbility || 'dex']),
           purpose: `npc_area_save:${combat.saveAbility || 'dex'}`,
           actorId: npcId,
           visibility: command.visibility,
@@ -10742,7 +10772,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         const raw = saved && combat.halfOnSave ? Math.floor(damageRoll.total / 2) : saved ? 0 : damageRoll.total
         const harmEvents = npcWorldEventsFrom(commandWithRules(command, RULE_IDS.damage), npcHarmEventDrafts(npcDamageState, {
           npcId,
-          amount: raw,
+          amount: resolveDamagePayload(npcContext, npcId, raw, String(combat.damageType || 'fire')).applied_amount,
           damageType: String(combat.damageType || 'fire'),
           sourceEventId: areaEventId,
           sourceActorId: command.actor_id,
@@ -12623,8 +12653,10 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
           for (const { npc } of npcAffected) {
             if (!sharedDamageRoll && !bonusDamageRoll) continue
             const npcId = String(npc.id)
-            const save = diceService.rollD20({
-              modifier: 0,
+            const npcContext = npcDamageContext(npcSpellState, npcId)
+            const save = rollSavingThrowD20(npcContext, diceService, npcId, {
+              ability: saveAbility,
+              modifier: abilityModifier(findActor(npcContext, npcId)?.abilities?.[saveAbility]),
               purpose: `npc_spell_save:${spell.id}:${saveAbility}`,
               actorId: npcId,
               disadvantage: metamagic.has('metamagic-heightened'),
@@ -12650,7 +12682,8 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
               : 0
             const harmEvents = npcWorldEventsFrom(commandWithRules(command, RULE_IDS.damage), npcHarmEventDrafts(npcSpellState, {
               npcId,
-              amount: baseAmount + bonusAmount,
+              amount: resolveDamagePayload(npcContext, npcId, baseAmount, damageType).applied_amount
+                + (bonusDamageRoll ? resolveDamagePayload(npcContext, npcId, bonusAmount, bonusDamageType).applied_amount : 0),
               damageType: bonusDamageRoll ? 'mixed' : damageType,
               sourceEventId: spellCastEventId,
               sourceActorId: command.actor_id,
@@ -12676,7 +12709,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
               const npcId = String(npc.id)
               const harmEvents = npcWorldEventsFrom(commandWithRules(command, RULE_IDS.damage), npcHarmEventDrafts(npcSpellState, {
                 npcId,
-                amount: damageRoll.total,
+                amount: resolveDamagePayload(npcDamageContext(npcSpellState, npcId), npcId, damageRoll.total, damageType).applied_amount,
                 damageType,
                 sourceEventId: spellCastEventId,
                 sourceActorId: command.actor_id,
@@ -14090,6 +14123,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
         : stampActorFootprint(enemy, enemy?.size))
       events.push(eventFrom(command, 'EncounterCreated', {
         encounter,
+        authored_npc_identity_schema_version: 1,
         encounter_id: encounterId,
         proposal_id: command.encounter.proposal_id,
         request_fingerprint: command.request_fingerprint ?? null,
@@ -16299,6 +16333,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     case 'UpsertQuest':
     case 'AdvanceQuestClock':
     case 'ResolveQuest':
+    case 'InvalidateQuest':
     case 'UpsertNarrativeThread':
     case 'AdvanceNarrativeThreadClock':
     case 'RecordNpcBelief':
@@ -16776,6 +16811,24 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
   }
 
   const resolvedEvents = withoutImmuneConditions(state, command, events)
+  if (resolveDepth === 0 && resolvedEvents.some((event) => ['DamageApplied', 'ActorMoved'].includes(event.event_type))) {
+    resolvedEvents.push(...npcWorldEventsFrom(command, planAuthoredNpcWorldEvents(state, replayEvents(state, resolvedEvents), resolvedEvents,
+      { commandId: command.command_id, actorId: command.actor_id })))
+  }
+  if (resolveDepth === 0 && resolvedEvents.some((event) => ['NpcDied', 'TimeAdvanced'].includes(event.event_type))) {
+    let projected = replayEvents(state, resolvedEvents)
+    const append = (drafts) => {
+      for (const draft of drafts) {
+        const event = { ...eventFrom({ ...command, visibility: draft.visibility }, draft.event_type, draft.payload, draft.target_ids),
+          event_id: draft.event_id || `world-consequence:${createHash('sha256').update(`${command.command_id}:${draft.event_type}:${draft.payload.office_id || draft.payload.quest_id}`).digest('hex').slice(0, 32)}` }
+        resolvedEvents.push(event)
+        projected = applyGameEvent(projected, event)
+      }
+    }
+    append(planOfficeVacancyDrafts(projected, resolvedEvents))
+    append(planOfficeSuccessionDrafts(projected))
+    append(planQuestConsequenceDrafts(projected, resolvedEvents, { primaryQuestId: mainQuestFor(state)?.id }))
+  }
   // Контейнеры добычи — последний шаг фиксации и часть **той же** записи.
   //
   // Место выбрано не для удобства: выбытие противника фиксируют полтора десятка
@@ -18490,10 +18543,10 @@ export function applyGameEvent(rawState, event) {
       state.enemies = (Array.isArray(encounter.enemies) ? encounter.enemies : [])
         .map((enemy) => normalizeActorFootprintFields({ ...clone(enemy), alive: true, loadout: normalizeEnemyLoadout(enemy?.loadout) }))
       const authoredNpcIds = new Set(state.enemies.map((enemy) => String(enemy?.origin?.npc_id ?? '')).filter(Boolean))
-      if (authoredNpcIds.size) state.social.npcs = state.social.npcs.map((npc) => (
+      if (authoredNpcIds.size && payload.authored_npc_identity_schema_version !== 1) state.social.npcs = state.social.npcs.map((npc) => (
         authoredNpcIds.has(String(npc.id)) ? { ...npc, available: false } : npc
       ))
-      if (authoredNpcIds.size) state.merchants = state.merchants.map((merchant) => (
+      if (authoredNpcIds.size && payload.authored_npc_identity_schema_version !== 1) state.merchants = state.merchants.map((merchant) => (
         authoredNpcIds.has(String(merchant.id)) ? { ...merchant, available: false } : merchant
       ))
       for (const enemy of state.enemies) {
@@ -19302,6 +19355,7 @@ export function applyGameEvent(rawState, event) {
     case 'KnowledgeRevealed':
     case 'WorldRelationshipRecorded':
     case 'QuestClockAdvanced':
+    case 'QuestAssignmentChanged':
     case 'NarrativeThreadUpserted':
     case 'NarrativeThreadClockAdvanced':
     case 'NpcBeliefRecorded':
@@ -19334,12 +19388,18 @@ export function applyGameEvent(rawState, event) {
       }
       break
     case 'QuestResolved':
+    case 'QuestInvalidated':
       state.worldMemory = applyWorldMemoryEvent(state.worldMemory, event)
-      if (payload.stay_in_location === true && payload.event_schema_version === 2 && payload.updates_scene_objective === true) {
+      if ((payload.stay_in_location === true && payload.event_schema_version === 2 || event.event_type === 'QuestInvalidated' && payload.schema_version === 1) && payload.updates_scene_objective === true) {
         state.scene.objective = String(payload.next_objective || '')
         state.adventure.currentHook = state.scene.objective
         state.suggestions = []
       }
+      break
+    case 'OfficeVacated':
+    case 'OfficeHolderInstalled':
+    case 'OfficeSuccessionSkipped':
+      state.world_offices = applyWorldOfficeEvent(state.world_offices, event)
       break
     case 'NpcPlaced':
     case 'NpcMoved':
@@ -19488,6 +19548,11 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'QuestUpserted': return `Quest updated: ${payload.quest?.title || payload.quest?.id}`
     case 'QuestClockAdvanced': return `Quest clock ${payload.quest_id} advanced by ${payload.amount}`
     case 'QuestResolved': return `Квест ${payload.quest_id} завершён: ${payload.summary || payload.outcome}`
+    case 'QuestInvalidated':
+    case 'QuestAssignmentChanged': return String(payload.summary || '')
+    case 'OfficeVacated': return `Должность «${payload.title}» освободилась`
+    case 'OfficeHolderInstalled': return `Должность «${payload.title}» получила нового держателя`
+    case 'OfficeSuccessionSkipped': return ''
     case 'CampaignPacingAdvanced': return `Темп кампании: ${payload.phase || 'development'}, напряжение ${payload.tension_after ?? 0}`
     case 'TravelResolved': return `Отряд завершил путь из ${payload.from || 'предыдущей локации'} в ${payload.to || 'новую локацию'} за ${payload.duration_minutes || 0} мин.`
     case 'DowntimeResolved': return `Передышка завершена: ${payload.kind || 'downtime'}, ${payload.duration_minutes || 0} мин.`

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 
-import { safeAuthoredNpcMechanics } from './authored-npc.mjs'
+import { authoredNpcCombatant, safeAuthoredNpcMechanics } from './authored-npc.mjs'
 import {
   inventoryStackKey,
   MAX_STOCK_QUANTITY,
@@ -59,7 +59,9 @@ function safePlacement(value = {}) {
 function safeVital(value = {}) {
   const maximum = Math.max(1, Math.min(500, integer(value.max_hp, 4)))
   const hp = Math.max(0, Math.min(maximum, integer(value.hp, maximum)))
-  return { hp, max_hp: maximum, alive: value.alive !== false && hp > 0 }
+  // Явный `alive: true` нужен для нокаута: такой NPC уже не действует, но
+  // ещё не погиб и может вернуться в историю после восстановления.
+  return { hp, max_hp: maximum, alive: value.alive === true || value.alive !== false && hp > 0 }
 }
 
 function safeStance(value = {}) {
@@ -169,7 +171,7 @@ export function presentSceneNpcs(state = {}) {
   const world = normalizeNpcWorldState(state.npc_world)
   return (Array.isArray(state.social?.npcs) ? state.social.npcs : [])
     .filter((npc) => npc?.id && npc?.name && npcAtCurrentLocation(npc, state))
-    .filter((npc) => world.vitals[String(npc.id)]?.alive !== false)
+    .filter((npc) => world.vitals[String(npc.id)]?.alive !== false && Number(world.vitals[String(npc.id)]?.hp ?? 1) > 0)
     .sort((left, right) => String(left.id).localeCompare(String(right.id)))
     .slice(0, MAX_VISIBLE_NPCS)
 }
@@ -193,6 +195,51 @@ export function npcVitalFor(state = {}, npcId) {
 
 export function npcMechanicsFor(state = {}, npcId) {
   return clone(normalizeNpcWorldState(state.npc_world).profiles[String(npcId ?? '')] ?? null)
+}
+
+/**
+ * Один боевой снимок NPC из его долговременного профиля.
+ *
+ * Авторский NPC не должен получать второй лист при входе в бой: социальная
+ * запись, сохранённый профиль, текущая живучесть и пост должны описывать одного
+ * человека. Для обычного NPC без профиля остаётся прежний безопасный снимок —
+ * он пригоден для геометрии и мягких серверных последствий, но не объявляет
+ * авторскую боевую механику.
+ */
+export function npcCombatActorFor(state = {}, npcId) {
+  const id = text(npcId, 120)
+  const npc = (Array.isArray(state.social?.npcs) ? state.social.npcs : [])
+    .find((candidate) => String(candidate?.id ?? '') === id)
+  if (!npc) return null
+  const vital = npcVitalFor(state, id)
+  const placement = npcPlacementFor(state, id)
+  const mechanics = npcMechanicsFor(state, id)
+  if (mechanics && placement) {
+    try {
+      return {
+        ...authoredNpcCombatant({ npc, mechanics, position: placement }),
+        hp: vital.hp,
+        maxHp: vital.max_hp,
+        alive: vital.alive,
+      }
+    } catch {
+      // Повреждённый профиль не должен превращать обычную социальную запись
+      // в недоступную кампанию. В этом случае ниже остаётся fallback.
+    }
+  }
+  return {
+    ...clone(npc),
+    id,
+    name: text(npc.name, 160),
+    hp: vital.hp,
+    maxHp: vital.max_hp,
+    alive: vital.alive,
+    ...(placement ? {
+      x: placement.x,
+      y: placement.y,
+      ...(placement.footprint ? { footprint: clone(placement.footprint) } : {}),
+    } : {}),
+  }
 }
 
 /**
@@ -750,6 +797,158 @@ export function npcHarmEventDrafts(state, {
   return events
 }
 
+function actorIdOf(value) {
+  return text(value?.id ?? value?.actor_id, 120)
+}
+
+function actorPositionOf(state, actor) {
+  const id = actorIdOf(actor)
+  const stored = state?.mechanics?.positions?.[id] ?? actor
+  const x = integer(stored?.x, Number.NaN)
+  const y = integer(stored?.y, Number.NaN)
+  return Number.isSafeInteger(x) && Number.isSafeInteger(y) ? { x, y } : null
+}
+
+function eventTargetsActor(event, actorId) {
+  return (Array.isArray(event?.target_ids) ? event.target_ids : []).map(String).includes(String(actorId))
+}
+
+function eventSourceId(event, commandId, suffix) {
+  return text(event?.event_id ?? event?.command_id, 120) || text(commandId, 120) + ':' + suffix
+}
+
+function hasNpcWorldOutcome(events, npcId) {
+  return (Array.isArray(events) ? events : []).some((event) => (
+    ['NpcHarmed', 'NpcDied'].includes(event?.event_type)
+      && String(event?.payload?.npc_id ?? '') === String(npcId)
+  ))
+}
+
+function nonLethalOutcome(events, actorId) {
+  return (Array.isArray(events) ? events : []).some((event) => {
+    if (!eventTargetsActor(event, actorId)) return false
+    if (event?.event_type === 'CreatureKnockedOut') return true
+    if (event?.event_type === 'ConditionAdded') return ['surrendered', 'fled'].includes(String(event.payload?.condition ?? ''))
+    return event?.payload?.knock_out === true || event?.payload?.surrendered === true
+  })
+}
+
+function nonLethalHarmDrafts(events) {
+  return events.flatMap((event) => {
+    if (
+      event.event_type === 'NpcDied'
+      || event.event_type === 'NpcStanceChanged' && String(event.payload?.stance ?? '') === 'dead'
+      || event.event_type === 'WorldFactRecorded' && String(event.payload?.fact?.predicate ?? '') === 'died'
+      || event.event_type === 'WorldEntityUpserted'
+    ) return []
+    if (event.event_type !== 'NpcHarmed') return [event]
+    return [{
+      ...event,
+      payload: {
+        ...event.payload,
+        // Нокаут сохраняет тело в мире с нулевыми ОЗ, но не записывает смерть.
+        schema_version: 2,
+        alive: true,
+        non_lethal: true,
+      },
+    }]
+  })
+}
+
+/**
+ * Переносит боевую копию авторского NPC обратно в постоянный пост мира.
+ *
+ * `after` — состояние после применения `events`. Урон намеренно считается от
+ * `before`: `npcHarmEventDrafts` использует абсолютные ОЗ и старый пост, чтобы
+ * replay и выбор свидетелей оставались стабильными. `HealingApplied` уже
+ * синхронизирует vitality авторского NPC в основном редьюсере, поэтому для
+ * лечения отдельное событие здесь не требуется.
+ */
+export function planAuthoredNpcWorldEvents(before = {}, after = {}, events = [], {
+  commandId = '',
+  actorId = '',
+} = {}) {
+  const eventList = Array.isArray(events) ? events : []
+  const actors = new Map()
+  for (const actor of [
+    ...(Array.isArray(before.players) ? before.players : []),
+    ...(Array.isArray(before.enemies) ? before.enemies : []),
+    ...(Array.isArray(before.actors) ? before.actors : []),
+    ...(Array.isArray(after.players) ? after.players : []),
+    ...(Array.isArray(after.enemies) ? after.enemies : []),
+    ...(Array.isArray(after.actors) ? after.actors : []),
+  ]) {
+    const id = actorIdOf(actor)
+    const npcId = text(actor?.origin?.npc_id, 120)
+    if (id && npcId && !actors.has(npcId)) actors.set(npcId, id)
+  }
+
+  const drafts = []
+  for (const [npcId, combatActorId] of actors) {
+    const beforeActor = [
+      ...(Array.isArray(before.players) ? before.players : []),
+      ...(Array.isArray(before.enemies) ? before.enemies : []),
+      ...(Array.isArray(before.actors) ? before.actors : []),
+    ].find((candidate) => actorIdOf(candidate) === combatActorId) ?? npcCombatActorFor(before, npcId)
+    const afterActor = [
+      ...(Array.isArray(after.players) ? after.players : []),
+      ...(Array.isArray(after.enemies) ? after.enemies : []),
+      ...(Array.isArray(after.actors) ? after.actors : []),
+    ].find((candidate) => actorIdOf(candidate) === combatActorId) ?? npcCombatActorFor(after, npcId)
+    if (!beforeActor || !afterActor) continue
+
+    const beforePlacement = npcPlacementFor(before, npcId)
+    const afterPlacement = npcPlacementFor(after, npcId)
+    const beforePosition = actorPositionOf(before, beforeActor)
+    const afterPosition = actorPositionOf(after, afterActor)
+    const movement = eventList.filter((event) => event?.event_type === 'ActorMoved' && eventTargetsActor(event, combatActorId))
+    if (beforePlacement && afterPosition && (!beforePosition || beforePosition.x !== afterPosition.x || beforePosition.y !== afterPosition.y)
+      && !eventList.some((event) => event?.event_type === 'NpcMoved' && String(event?.payload?.npc_id ?? '') === npcId)) {
+      const source = eventSourceId(movement.at(-1), commandId, `move:${npcId}`)
+      drafts.push({
+        event_type: 'NpcMoved',
+        event_id: `npc-moved:${stableId(commandId, npcId, source, afterPosition.x, afterPosition.y)}`,
+        payload: {
+          npc_id: npcId,
+          npc_name: text((after.social?.npcs ?? []).find((npc) => String(npc.id) === npcId)?.name, 160),
+          location_id: beforePlacement.location_id,
+          x: afterPosition.x,
+          y: afterPosition.y,
+          ...(afterPlacement?.footprint ?? beforePlacement.footprint ? { footprint: clone(afterPlacement?.footprint ?? beforePlacement.footprint) } : {}),
+          anchor_prop_id: afterPlacement?.anchor_prop_id ?? beforePlacement.anchor_prop_id,
+          from: beforePosition,
+          placement_reason: 'authored-actor-sync',
+          policy_id: NPC_WORLD_POLICY_ID,
+          source_event_id: source,
+        },
+        target_ids: [npcId],
+        visibility: 'party',
+      })
+    }
+
+    const damageEvents = eventList.filter((event) => event?.event_type === 'DamageApplied'
+      && eventTargetsActor(event, combatActorId) && Number.isSafeInteger(Number(event.payload?.hp_after)))
+    if (!damageEvents.length || hasNpcWorldOutcome(eventList, npcId)) continue
+    const beforeVital = npcVitalFor(before, npcId)
+    const afterHp = Math.max(0, integer(afterActor.hp, integer(after?.npc_world?.vitals?.[npcId]?.hp, beforeVital.hp)))
+    const damage = Math.max(0, beforeVital.hp - afterHp)
+    if (!damage || beforeVital.alive === false) continue
+    const sourceEvent = damageEvents.at(-1)
+    const source = eventSourceId(sourceEvent, commandId, `damage:${npcId}`)
+    const harm = npcHarmEventDrafts(before, {
+      npcId,
+      amount: damage,
+      damageType: sourceEvent.payload?.damage_type ?? 'untyped',
+      sourceEventId: source,
+      sourceActorId: sourceEvent.payload?.source_actor_id ?? sourceEvent.actor_id ?? actorId,
+      trigger: sourceEvent.payload?.trigger ?? 'actor-damage',
+      commandId: text(commandId, 120) || text(sourceEvent.command_id, 120),
+    })
+    drafts.push(...(nonLethalOutcome(eventList, combatActorId) ? nonLethalHarmDrafts(harm) : harm))
+  }
+  return drafts
+}
+
 export function npcCombatStanceEventDrafts(state, { sourceEventId = '', participantIds = [] } = {}) {
   const origins = participantIds
     .map((id) => state.mechanics?.positions?.[String(id)]
@@ -797,7 +996,7 @@ export function applyNpcWorldEvent(input, event) {
     world.vitals[npcId] = safeVital({
       hp: payload.hp_after,
       max_hp: payload.max_hp,
-      alive: Number(payload.hp_after) > 0,
+      alive: payload.schema_version === 2 && payload.non_lethal === true && payload.alive === true || Number(payload.hp_after) > 0,
     })
   }
   if (event?.event_type === 'NpcDied' && npcId) {
@@ -862,7 +1061,14 @@ function publicHealthStatus(vital) {
 export function sceneNpcsForViewer(state = {}) {
   const world = normalizeNpcWorldState(state.npc_world)
   const locationId = sceneLocationId(state)
+  const combatNpcIds = state.mechanics?.combat?.active === true
+    ? new Set([
+        ...(Array.isArray(state.enemies) ? state.enemies : []),
+        ...(Array.isArray(state.actors) ? state.actors : []),
+      ].map((actor) => String(actor?.origin?.npc_id ?? '')).filter(Boolean))
+    : new Set()
   return presentSceneNpcs({ ...state, npc_world: { ...world, vitals: {} } })
+    .filter((npc) => !combatNpcIds.has(String(npc.id)))
     .filter((npc) => npc.visibility !== 'gm_only' || npc.reveal_on_presence === true)
     .map((npc) => {
       const placement = world.placements.find((entry) => entry.npc_id === String(npc.id) && entry.location_id === locationId)
@@ -870,7 +1076,7 @@ export function sceneNpcsForViewer(state = {}) {
       const vital = world.vitals[String(npc.id)] ?? initialNpcVital(npc)
       const stance = world.stances[String(npc.id)]?.stance ?? 'neutral'
       const mechanics = world.profiles[String(npc.id)]
-      const canStartCombat = Boolean(mechanics && mechanics.status !== 'ruling-only') && npc.available !== false && vital.alive
+      const canStartCombat = Boolean(mechanics && mechanics.status !== 'ruling-only') && npc.available !== false && vital.alive && vital.hp > 0
       const footprint = normalizeFootprintMetadata(placement.footprint)
       return {
         id: String(npc.id),

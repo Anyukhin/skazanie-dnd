@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { normalizeQuestResponsibility, questGiverId, questIsImpossible, questInvalidationDraft } from './quest-consequences.mjs'
 
 const ENTITY_KINDS = new Set(['location', 'npc', 'faction', 'item', 'event', 'concept'])
 const QUEST_STATUSES = new Set(['hidden', 'offered', 'active', 'completed', 'failed', 'abandoned'])
@@ -11,7 +12,7 @@ const VISIBILITIES = new Set(['public', 'party', 'gm_only'])
 
 export const WORLD_MEMORY_COMMAND_TYPES = new Set([
   'UpsertWorldEntity', 'RecordWorldFact', 'RevealWorldFact', 'RecordKnowledgeRevelation',
-  'RecordWorldRelationship', 'UpsertQuest', 'AdvanceQuestClock', 'ResolveQuest',
+  'RecordWorldRelationship', 'UpsertQuest', 'AdvanceQuestClock', 'ResolveQuest', 'InvalidateQuest',
   'UpsertNarrativeThread', 'AdvanceNarrativeThreadClock',
   'RecordNpcBelief', 'RecordRumor', 'ResolveEpistemicClaim', 'RecordNarrativeSummary',
 ])
@@ -128,6 +129,7 @@ function safeRelationship(value = {}) {
 }
 
 function safeQuest(value = {}) {
+  const responsibility = normalizeQuestResponsibility(value.responsibility)
   return {
     id: text(value.id, 120), title: text(value.title, 180), summary: text(value.summary, 1_000),
     status: QUEST_STATUSES.has(value.status) ? value.status : 'active',
@@ -135,6 +137,7 @@ function safeQuest(value = {}) {
     entity_ids: strings(value.entity_ids, 120, 30), objectives: strings(value.objectives, 300, 20),
     clock: clock(value.clock), recorded_at_minutes: recordedAt(value.recorded_at_minutes),
     ...(value.stay_in_location === true ? { stay_in_location: true } : {}),
+    ...(responsibility ? { responsibility, giver_npc_id: text(value.giver_npc_id, 120) || null } : {}),
   }
 }
 
@@ -308,7 +311,7 @@ function normalizeRelationshipInput(input, memory, commandId, state = {}) {
 
 function normalizeQuestInput(input, memory, state = {}) {
   const value = plainObject(input, 'quest')
-  assertFields(value, new Set(['id', 'title', 'summary', 'status', 'visibility', 'entity_ids', 'objectives', 'clock']), 'quest')
+  assertFields(value, new Set(['id', 'title', 'summary', 'status', 'visibility', 'entity_ids', 'objectives', 'clock', 'responsibility', 'giver_npc_id']), 'quest')
   if (value.clock != null) {
     plainObject(value.clock, 'quest.clock')
     assertFields(value.clock, new Set(['current', 'max', 'label']), 'quest.clock')
@@ -322,6 +325,19 @@ function normalizeQuestInput(input, memory, state = {}) {
   if (!QUEST_STATUSES.has(result.status)) throw new WorldMemoryValidationError('Неизвестный статус квеста', 'WORLD_QUEST_STATUS_INVALID')
   if (!result.title) throw new WorldMemoryValidationError('У квеста должен быть заголовок', 'WORLD_QUEST_TITLE_REQUIRED')
   if (result.entity_ids.some((entityId) => !memory.entities.some((entity) => entity.id === entityId))) throw new WorldMemoryValidationError('Квест ссылается на неизвестную сущность', 'WORLD_ENTITY_NOT_FOUND')
+  // Техническое обновление старого поручения не снимает его зависимость.
+  const previous = memory.quests.find((quest) => quest.id === result.id)
+  const responsibility = normalizeQuestResponsibility(value.responsibility ?? previous?.responsibility)
+  if (value.responsibility != null && !responsibility) throw new WorldMemoryValidationError('Неизвестная политика ответственности по поручению', 'WORLD_QUEST_RESPONSIBILITY_INVALID')
+  if (responsibility) {
+    const exists = responsibility.type === 'npc'
+      ? state.social?.npcs?.some((npc) => npc.id === responsibility.npc_id)
+      : state.world_offices?.offices?.some((office) => office.id === responsibility.office_id)
+    if (!exists) throw new WorldMemoryValidationError('Ответственный за поручение не найден', 'WORLD_QUEST_RESPONSIBILITY_INVALID')
+    result.responsibility = responsibility
+    result.giver_npc_id = questGiverId(state, responsibility)
+    if (['active', 'offered'].includes(result.status) && questIsImpossible(state, result)) throw new WorldMemoryValidationError('Поручение невозможно: необходимый NPC погиб', 'WORLD_QUEST_IMPOSSIBLE')
+  }
   return result
 }
 
@@ -445,6 +461,14 @@ export function validateWorldMemoryCommand(command, state, context = {}) {
     result.source_event_ids = strings(command.source_event_ids, 120, 30)
     result.visibility = quest.visibility
   }
+  if (command.command_type === 'InvalidateQuest') {
+    result.quest_id = id(command.quest_id, 'quest_id')
+    const quest = memory.quests.find((entry) => entry.id === result.quest_id)
+    const draft = questInvalidationDraft(state, quest, { primaryQuestId: state.campaignConcept?.story_quest_id })
+    if (!draft) throw new WorldMemoryValidationError('Нет подтверждённой причины невозможности поручения', 'WORLD_QUEST_INVALIDATION_UNPROVEN')
+    result.invalidation = draft.payload
+    result.visibility = draft.visibility
+  }
   if (command.command_type === 'UpsertNarrativeThread') {
     result.thread = normalizeThreadInput(command.thread, memory, command.command_id, state)
     result.visibility = result.thread.visibility
@@ -480,6 +504,7 @@ export function validateWorldMemoryCommand(command, state, context = {}) {
 }
 
 export function worldMemoryEvent(command) {
+  if (command.command_type === 'InvalidateQuest') return { event_type: 'QuestInvalidated', payload: clone(command.invalidation), target_ids: [] }
   if (command.command_type === 'UpsertWorldEntity') return { event_type: 'WorldEntityUpserted', payload: { entity: clone(command.entity) }, target_ids: [] }
   if (command.command_type === 'RecordWorldFact') return { event_type: 'WorldFactRecorded', payload: { fact: clone(command.fact) }, target_ids: [] }
   // Kept for existing event streams. The reducer now also records an immutable
@@ -563,12 +588,17 @@ export function applyWorldMemoryEvent(input, event) {
       return { ...quest, clock: { ...quest.clock, current, triggered: current >= quest.clock.max } }
     })
   }
-  if (event.event_type === 'QuestResolved') {
+  if (event.event_type === 'QuestResolved' || event.event_type === 'QuestInvalidated' && payload.schema_version === 1) {
     memory.quests = memory.quests.map((quest) => quest.id === payload.quest_id ? {
       ...quest,
       status: questStatusForOutcome(payload.outcome),
       summary: text(payload.summary, 1_000) || quest.summary,
       ...(payload.stay_in_location === true && payload.event_schema_version === 2 ? { stay_in_location: true } : {}),
+    } : quest)
+  }
+  if (event.event_type === 'QuestAssignmentChanged' && payload.schema_version === 1) {
+    memory.quests = memory.quests.map((quest) => quest.id === payload.quest_id ? {
+      ...quest, giver_npc_id: text(payload.giver_npc_id, 120) || null,
     } : quest)
   }
   if (event.event_type === 'QuestAccepted' && payload.schema_version === 1) {

@@ -1,5 +1,6 @@
 import { QUEST_ABANDONMENT_NEXT_OBJECTIVE, validateWorldMemoryCommand, worldMemoryEvent } from './world-memory.mjs'
 import { campaignModeFor, persistentStoryQuest } from './campaign-stories.mjs'
+import { questIsImpossible } from './quest-consequences.mjs'
 
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/u
 const TYPES = new Set(['vote', 'roll', 'choice'])
@@ -192,6 +193,7 @@ export function questDecisionEvents(command, state, context = {}) {
   const quest = state.worldMemory?.quests?.find((entry) => entry.id === questId)
   const events = []
   if (acceptance && interaction.resolvedOptionId === 'accept'
+    && !questIsImpossible(state, quest)
     && ['offered', 'active'].includes(quest?.status) && ['public', 'party'].includes(quest?.visibility)
     && !questId.startsWith('quest:chapter:')) {
     events.push({ event_type: 'QuestAccepted', visibility: quest.visibility, target_ids: [], payload: {

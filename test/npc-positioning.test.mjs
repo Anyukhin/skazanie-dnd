@@ -8,12 +8,15 @@ import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { FileEventStore } from '../server/event-store.mjs'
 import {
   NPC_WORLD_POLICY_ID,
+  npcCombatActorFor,
   npcCombatStanceEventDrafts,
+  planAuthoredNpcWorldEvents,
   planSceneNpcPlacementEvents,
   sceneNpcOccupiedCells,
   sceneNpcTransitCells,
   sceneNpcsForViewer,
 } from '../server/npc-positioning.mjs'
+import { npcProfileAtWorldTime } from '../server/npc-social.mjs'
 import {
   RulesValidationError,
   applyGameEvent,
@@ -29,6 +32,7 @@ import {
   setCell,
 } from '../server/tactical-map.mjs'
 import { campaignStateForViewer, turnResultForViewer } from '../server/viewer-projection.mjs'
+import { getWorldTemplate } from '../server/world-template-catalog.mjs'
 
 function dice(values) {
   let id = 0
@@ -136,6 +140,51 @@ function npcState({
 function applyCommand(state, command, context = { isDirector: true }) {
   const result = resolveCommand(command, state, { diceService: dice([]), context })
   return { result, state: result.events.reduce(applyGameEvent, state) }
+}
+
+function authoredNpcState({ hp = 20 } = {}) {
+  let state = npcState({ combat: true })
+  state = applyCommand(state, {
+    command_type: 'PlaceNpc',
+    command_id: 'place-authored-marta',
+    npc_id: 'marta',
+    to: { x: 6, y: 2 },
+  }).state
+  const mechanics = structuredClone(getWorldTemplate('astohan-plains').opening.npcs[0].mechanics)
+  state.npc_world = {
+    ...state.npc_world,
+    vitals: { ...state.npc_world.vitals, marta: { hp, max_hp: mechanics.hp, alive: hp > 0 } },
+    profiles: { ...state.npc_world.profiles, marta: mechanics },
+  }
+  const actor = npcCombatActorFor(state, 'marta')
+  state.enemies = [...state.enemies, actor]
+  state.mechanics.positions.marta = { x: 6, y: 2 }
+  return normalizeCampaignState(state)
+}
+
+function authoredNpcAfter(state, { hp, alive = hp > 0, position = { x: 6, y: 2 } } = {}) {
+  const after = structuredClone(state)
+  after.enemies = after.enemies.map((actor) => actor.id === 'marta' ? { ...actor, hp, alive, x: position.x, y: position.y } : actor)
+  after.mechanics.positions.marta = { ...position }
+  return normalizeCampaignState(after)
+}
+
+function authoredDamageEvent({ hpBefore, hpAfter, eventId = 'damage-authored-marta', commandId = 'cast-authored-marta' } = {}) {
+  return {
+    event_type: 'DamageApplied',
+    event_id: eventId,
+    command_id: commandId,
+    actor_id: 'hero',
+    target_ids: ['marta'],
+    payload: {
+      hp_before: hpBefore,
+      hp_after: hpAfter,
+      applied_amount: Math.max(0, hpBefore - hpAfter),
+      raw_amount: Math.max(0, hpBefore - hpAfter),
+      damage_type: 'fire',
+    },
+    visibility: 'party',
+  }
 }
 
 test('Scene Architect получает детерминированный свободный пост у подходящего предмета', () => {
@@ -693,4 +742,138 @@ test('профиль NPC из другой локации поста в теку
   }, state, { diceService: dice([]), context: { isAdmin: true, isDirector: true } })
   assert.equal(resolved.events.some((event) => event.event_type === 'NpcPlaced'), false,
     'NPC чужой локации не должен занимать клетку текущей сцены')
+})
+
+test('npcCombatActorFor строит авторский actor из профиля, vitality и post, а обычному NPC оставляет fallback', () => {
+  const authored = authoredNpcState()
+  const actor = npcCombatActorFor(authored, 'marta')
+  assert.equal(actor.id, 'marta')
+  assert.equal(actor.origin.kind, 'authored-npc')
+  assert.equal(actor.stat_block_id, 'astohan:ares-v1')
+  assert.equal(actor.hp, 20)
+  assert.equal(actor.maxHp, 168)
+  assert.deepEqual({ x: actor.x, y: actor.y }, { x: 6, y: 2 })
+  assert.equal(actor.action_profiles[0].id, 'royal-greatsword')
+
+  const ordinary = applyCommand(npcState(), {
+    command_type: 'PlaceNpc', command_id: 'place-ordinary-marta', npc_id: 'marta', to: { x: 6, y: 2 },
+  }).state
+  const fallback = npcCombatActorFor(ordinary, 'marta')
+  assert.equal(fallback.id, 'marta')
+  assert.equal(fallback.origin, undefined)
+  assert.equal(fallback.hp, 4)
+  assert.deepEqual({ x: fallback.x, y: fallback.y }, { x: 6, y: 2 })
+})
+
+test('sceneNpcsForViewer исключает только боевую копию NPC в активном бою', () => {
+  const state = authoredNpcState()
+  const active = normalizeCampaignState({
+    ...state,
+    mechanics: {
+      ...state.mechanics,
+      combat: { ...state.mechanics.combat, active: true },
+    },
+  })
+  assert.equal(sceneNpcsForViewer(active).some((npc) => npc.id === 'marta'), false)
+  const ended = normalizeCampaignState({
+    ...active,
+    mechanics: { ...active.mechanics, combat: { ...active.mechanics.combat, active: false } },
+  })
+  assert.equal(sceneNpcsForViewer(ended).some((npc) => npc.id === 'marta'), true)
+})
+
+test('planAuthoredNpcWorldEvents synchronizes actor damage and movement with one absolute HP bridge', () => {
+  const before = authoredNpcState()
+  const damage = authoredDamageEvent({ hpBefore: 20, hpAfter: 7 })
+  const after = authoredNpcAfter(before, { hp: 7, position: { x: 5, y: 2 } })
+  const bridge = planAuthoredNpcWorldEvents(before, after, [damage, {
+    event_type: 'ActorMoved', event_id: 'move-authored-marta', command_id: 'cast-authored-marta',
+    actor_id: 'marta', target_ids: ['marta'], payload: { from: { x: 6, y: 2 }, to: { x: 5, y: 2 } },
+  }], { commandId: 'cast-authored-marta', actorId: 'hero' })
+
+  const harm = bridge.find((event) => event.event_type === 'NpcHarmed')
+  const moved = bridge.find((event) => event.event_type === 'NpcMoved')
+  assert.ok(harm)
+  assert.equal(bridge.filter((event) => event.event_type === 'NpcHarmed').length, 1)
+  assert.equal(bridge.filter((event) => event.event_type === 'NpcDied').length, 0)
+  assert.deepEqual({ hp_before: harm.payload.hp_before, hp_after: harm.payload.hp_after, applied_amount: harm.payload.applied_amount }, { hp_before: 20, hp_after: 7, applied_amount: 13 })
+  assert.deepEqual({ x: moved.payload.x, y: moved.payload.y }, { x: 5, y: 2 })
+
+  const replayed = replayEvents(before, [damage, ...bridge])
+  assert.equal(replayed.enemies.find((actor) => actor.id === 'marta').hp, 7)
+  assert.deepEqual(replayed.npc_world.vitals.marta, { hp: 7, max_hp: 168, alive: true })
+  assert.deepEqual(replayed.npc_world.placements.find((placement) => placement.npc_id === 'marta'), {
+    npc_id: 'marta', location_id: 'market', x: 5, y: 2, anchor_prop_id: '', placement_reason: 'authored-actor-sync',
+    policy_id: NPC_WORLD_POLICY_ID, source_event_id: moved.event_id,
+  })
+  assert.equal(replayed.world_deeds.deeds.at(-1)?.kind, 'violence')
+  assert.deepEqual(replayEvents(before, [damage, ...bridge]), replayed)
+})
+
+test('planAuthoredNpcWorldEvents resolves an authored actor materialized in the same commit', () => {
+  const populated = authoredNpcState()
+  const before = normalizeCampaignState({ ...populated, enemies: populated.enemies.filter((actor) => actor.id !== 'marta') })
+  const materialized = npcCombatActorFor(before, 'marta')
+  const after = normalizeCampaignState({
+    ...before,
+    enemies: [...before.enemies, { ...materialized, hp: 7, alive: true }],
+    mechanics: { ...before.mechanics, positions: { ...before.mechanics.positions, marta: { x: 6, y: 2 } } },
+  })
+  const bridge = planAuthoredNpcWorldEvents(before, after, [authoredDamageEvent({ hpBefore: 20, hpAfter: 7, commandId: 'materialize-and-harm' })], {
+    commandId: 'materialize-and-harm', actorId: 'hero',
+  })
+  assert.deepEqual(
+    bridge.find((event) => event.event_type === 'NpcHarmed')?.payload && {
+      hp_before: bridge.find((event) => event.event_type === 'NpcHarmed').payload.hp_before,
+      hp_after: bridge.find((event) => event.event_type === 'NpcHarmed').payload.hp_after,
+    },
+    { hp_before: 20, hp_after: 7 },
+  )
+  assert.equal(bridge.filter((event) => event.event_type === 'NpcHarmed').length, 1)
+})
+
+test('planAuthoredNpcWorldEvents writes death facts once and respects knockout or surrender', () => {
+  const before = authoredNpcState()
+  const death = authoredDamageEvent({ hpBefore: 20, hpAfter: 0, eventId: 'damage-authored-death', commandId: 'kill-authored-marta' })
+  const deadAfter = authoredNpcAfter(before, { hp: 0, alive: false })
+  const deathBridge = planAuthoredNpcWorldEvents(before, deadAfter, [death, {
+    event_type: 'HitPointsReducedToZero', event_id: 'zero-authored-marta', command_id: 'kill-authored-marta',
+    actor_id: 'hero', target_ids: ['marta'], payload: { condition: 'unconscious' },
+  }], { commandId: 'kill-authored-marta', actorId: 'hero' })
+  assert.equal(deathBridge.filter((event) => event.event_type === 'NpcHarmed').length, 1)
+  assert.equal(deathBridge.filter((event) => event.event_type === 'NpcDied').length, 1)
+  const dead = replayEvents(before, [death, ...deathBridge])
+  assert.deepEqual(dead.npc_world.vitals.marta, { hp: 0, max_hp: 168, alive: false })
+  assert.equal(dead.world_deeds.deeds.at(-1)?.kind, 'murder')
+  assert.ok(deathBridge.some((event) => event.event_type === 'WorldFactRecorded'))
+
+  const knockedOut = authoredNpcAfter(before, { hp: 1 })
+  const knockoutBridge = planAuthoredNpcWorldEvents(before, knockedOut, [
+    authoredDamageEvent({ hpBefore: 20, hpAfter: 1, eventId: 'damage-authored-knockout', commandId: 'knockout-authored-marta' }),
+    { event_type: 'CreatureKnockedOut', event_id: 'knockout-authored-marta', command_id: 'knockout-authored-marta', actor_id: 'hero', target_ids: ['marta'], payload: { recovery_minutes: 60 } },
+  ], { commandId: 'knockout-authored-marta', actorId: 'hero' })
+  assert.equal(knockoutBridge.filter((event) => event.event_type === 'NpcHarmed').length, 1)
+  assert.equal(knockoutBridge.filter((event) => event.event_type === 'NpcDied').length, 0)
+
+  // Даже если боевой редьюсер довёл ОЗ до нуля, выбор «нокаут» сохраняет NPC
+  // живым в мире и только закрывает его до восстановления.
+  const zeroHpAfter = authoredNpcAfter(before, { hp: 0, alive: true })
+  const zeroHpEvents = [
+    authoredDamageEvent({ hpBefore: 20, hpAfter: 0, eventId: 'damage-authored-zero-knockout', commandId: 'zero-knockout-authored-marta' }),
+    { event_type: 'CreatureKnockedOut', event_id: 'zero-knockout-authored-marta', command_id: 'zero-knockout-authored-marta', actor_id: 'hero', target_ids: ['marta'], payload: { recovery_minutes: 60 } },
+  ]
+  const zeroHpBridge = planAuthoredNpcWorldEvents(before, zeroHpAfter, zeroHpEvents, {
+    commandId: 'zero-knockout-authored-marta', actorId: 'hero',
+  })
+  const zeroHpState = replayEvents(before, [zeroHpEvents[0], ...zeroHpBridge])
+  assert.equal(zeroHpBridge.find((event) => event.event_type === 'NpcHarmed').payload.schema_version, 2)
+  assert.deepEqual(zeroHpState.npc_world.vitals.marta, { hp: 0, max_hp: 168, alive: true })
+  assert.equal(npcProfileAtWorldTime(zeroHpState.social.npcs.find((npc) => npc.id === 'marta'), zeroHpState).available, false)
+
+  const surrendered = authoredNpcAfter(before, { hp: 20, alive: false })
+  const surrenderBridge = planAuthoredNpcWorldEvents(before, surrendered, [{
+    event_type: 'ConditionAdded', event_id: 'surrender-authored-marta', command_id: 'surrender-authored-marta',
+    actor_id: 'hero', target_ids: ['marta'], payload: { condition: 'surrendered' },
+  }], { commandId: 'surrender-authored-marta', actorId: 'hero' })
+  assert.equal(surrenderBridge.some((event) => event.event_type === 'NpcDied'), false)
 })

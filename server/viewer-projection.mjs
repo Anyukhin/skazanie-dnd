@@ -32,6 +32,7 @@ import { weatherForViewer } from './weather.mjs'
 import { footprintCellsFor, footprintSizeFor } from './actor-footprint.mjs'
 import { WORLD_DEEDS_SCHEMA_VERSION, worldDeedsFeed } from './world-deeds.mjs'
 import { worldMemoryForViewer } from './world-memory.mjs'
+import { officesForViewer } from './world-offices.mjs'
 import { normalizeCityOverview, normalizeWorldMapBackground, normalizeWorldMapLocationLore } from './world-map.mjs'
 import { NPC_PORTRAIT_CHARACTER_ASSETS } from './npc-portraits.mjs'
 
@@ -1401,6 +1402,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
   if (!state || typeof state !== 'object') return state
   if (user?.role === 'admin') return {
     ...state,
+    ...(state.world_offices ? { world_offices: officesForViewer(state, { isAdmin: true }) } : {}),
     actor_appearances: actorAppearancesForViewer({ ...state, scene_npcs: sceneNpcsForViewer(state) }),
     // Список лавок нужен для управления, а доступность сделки — для общей доски.
     merchants: (state.merchants ?? []).map((/** @type {Loose} */ merchant) => ({
@@ -1510,6 +1512,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
   const {
     locationMaps: _locationMaps,
     npc_world: _npcWorld,
+    world_offices: _worldOffices,
     levelEntities: _levelEntities,
     world_deeds: _worldDeeds,
     law: _law,
@@ -1604,6 +1607,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
       state,
     }),
     scene_npcs: sceneNpcs,
+    ...(state.world_offices ? { world_offices: officesForViewer(state, { isPartyMember: true }) } : {}),
     captives: captivesForViewer(state, { isAdmin: false }),
     // Контейнер виден в доступной сцене; содержимое — только тому, чей герой
     // стоит рядом. Просмотр при этом бесплатен: он приходит проекцией, а не
@@ -1816,8 +1820,14 @@ function eventForViewer(event, user, actorId, state = {}) {
   // `WANTED_LEVEL_LABELS`, `server/law-and-order.mjs`).
   if (visible.event_type === 'MerchantDenouncedThief') delete payload.wanted_level
   if (visible.event_type === 'NpcPlaced') delete payload.vitality
+  if (['OfficeVacated', 'OfficeHolderInstalled', 'OfficeSuccessionSkipped'].includes(visible.event_type)) {
+    for (const key of ['succession_id', 'due_at_minutes', 'reason', 'source_event_id']) delete payload[key]
+  }
   if (visible.event_type === 'NpcHarmed') {
     for (const key of ['hp', 'max_hp', 'hp_before', 'hp_after', 'raw_amount']) delete payload[key]
+  }
+  if (visible.event_type === 'NpcSavingThrowResolved') {
+    for (const key of ['modifier', 'kept', 'dice', 'roll_id', 'expression']) delete payload[key]
   }
   // Профиль NPC. До ревью 2026-08-09 ветки здесь не было вовсе, и
   // `NpcSocialProfileUpserted` уезжал игроку сырым: `goals`, `beliefs`,
@@ -2073,6 +2083,7 @@ export function mechanicsForViewer(events, user, actorId = '', state = {}) {
  */
 function rollVisibleFor(roll, user) {
   if (user?.role === 'admin') return true
+  if (/^npc_(?:spell|area)_save:/u.test(String(roll?.purpose ?? ''))) return false
   return !['gm_only', 'npc_private'].includes(String(roll?.visibility ?? 'public'))
 }
 

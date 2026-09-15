@@ -96,6 +96,7 @@ import { planHeroCombatCommand } from './party-tactics.mjs'
 import { abandonableQuest, classifyPartyDecision } from './party-exit-intent.mjs'
 import { finishQuestDecision, questDecisionChronicleEntry, requestQuestDecision } from './quest-decisions.mjs'
 import { campaignStoryChronicleEntry, validateCampaignMode } from './campaign-stories.mjs'
+import { officeChronicleEntry } from './world-offices.mjs'
 import { CampaignBootstrapper } from './campaign-bootstrap.mjs'
 import { listWorldTemplates } from './world-template-catalog.mjs'
 import { AutonomousCampaignOrchestrator } from './autonomous-orchestrator.mjs'
@@ -2929,7 +2930,7 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
     // подход к зверю приходит и с доски, и второй фазой ручного броска, а
     // идентификатор карточки детерминирован (`chronicle:<зверь>:<ступень>`),
     // поэтому повторная проекция того же события её не удваивает.
-    for (const candidate of [...eventsForChronicle.map(offscreenChronicleEntry), ...eventsForChronicle.map(courierLetterChronicleEntry), ...eventsForChronicle.map(beastChronicleEntry), ...eventsForChronicle.map(questDecisionChronicleEntry), ...eventsForChronicle.map(campaignStoryChronicleEntry), journalMessage].flat()) {
+    for (const candidate of [...eventsForChronicle.map(offscreenChronicleEntry), ...eventsForChronicle.map(courierLetterChronicleEntry), ...eventsForChronicle.map(beastChronicleEntry), ...eventsForChronicle.map(questDecisionChronicleEntry), ...eventsForChronicle.map(campaignStoryChronicleEntry), ...eventsForChronicle.map((event) => officeChronicleEntry(event)), journalMessage].flat()) {
       if (!candidate?.id || !String(candidate.text ?? '').trim()) continue
       if (messages.some((message) => String(message.id) === String(candidate.id))) continue
       messages.push(journalEntry(candidate))
