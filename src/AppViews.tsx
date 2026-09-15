@@ -598,6 +598,12 @@ export function JournalView({ state, onAbandonQuest, onAcceptQuest, questBusy = 
   const offers = (state.worldMemory?.quests ?? []).filter((quest) => quest.status === 'offered')
   const canChooseStory = state.campaignConcept?.campaign_mode === 'persistent' && !state.campaignConcept.story_quest_id
   const abandonedQuests = (state.worldMemory?.quests ?? []).filter((quest) => quest.status === 'abandoned')
+  const failedQuests = (state.worldMemory?.quests ?? []).filter((quest) => quest.status === 'failed')
+  const offices = state.world_offices ?? []
+  const npcName = (id: string | null | undefined) => state.social?.npcs?.find((npc) => npc.id === id)?.name || 'Назначенный представитель'
+  const questGiver = (quest: NonNullable<NonNullable<GameState['worldMemory']>['quests']>[number]) => quest.responsibility
+    ? quest.giver_npc_id ? `Обратиться: ${npcName(quest.giver_npc_id)}` : 'Ожидает назначения нового представителя'
+    : ''
   const threads = (state.worldMemory?.threads ?? []).filter((thread) => thread.status === 'active')
   const summaries = (state.worldMemory?.summaries ?? []).slice(-4).reverse()
   const storyHistory: CampaignStory[] = (state.campaignConcept?.story_history ?? []).slice(-12).reverse()
@@ -609,11 +615,12 @@ export function JournalView({ state, onAbandonQuest, onAcceptQuest, questBusy = 
         <div><Sparkles size={18} /><span><b>{narratorCount}</b><small>сцен рассказчика</small></span></div>
         <div><History size={18} /><span><b>{state.scene.turn}</b><small>текущий ход</small></span></div>
       </div>
-      {(quests.length > 0 || offers.length > 0 || abandonedQuests.length > 0 || threads.length > 0 || summaries.length > 0 || storyHistory.length > 0) && <section className="quest-board" aria-label="Задачи и нити">
+      {(quests.length > 0 || offers.length > 0 || abandonedQuests.length > 0 || failedQuests.length > 0 || offices.length > 0 || threads.length > 0 || summaries.length > 0 || storyHistory.length > 0) && <section className="quest-board" aria-label="Задачи и нити">
         {offers.length > 0 && <div className="quest-column">
           <header><ScrollText size={15} /><strong>Предложенные задания</strong><span>{offers.length}</span></header>
           {offers.map((quest) => <article className="quest-card" key={quest.id}>
             <b>{quest.title}</b>{quest.summary && <p>{quest.summary}</p>}
+            {questGiver(quest) && <p>{questGiver(quest)}</p>}
             {onAcceptQuest && quest.visibility !== 'gm_only' && <button className="quest-abandon-button"
               disabled={!canAbandonQuest || questBusy || Boolean(state.agentInteraction)}
               aria-label={`Принять задание «${quest.title}»`} onClick={() => onAcceptQuest(quest.id)}>Принять задание</button>}
@@ -637,6 +644,7 @@ export function JournalView({ state, onAbandonQuest, onAcceptQuest, questBusy = 
             return <article className="quest-card" key={quest.id}>
               <b>{quest.title}</b>
               {quest.summary && summaryKey !== titleKey && <p>{quest.summary}</p>}
+              {questGiver(quest) && <p>{questGiver(quest)}</p>}
               {objectives.length > 0 && <ul>{objectives.map((objective) => <li key={objective}>{objective}</li>)}</ul>}
               {/* Часы квеста — server-owned счётчик давления, а не украшение:
                   когда он заполнится, ситуация изменится сама. */}
@@ -654,6 +662,18 @@ export function JournalView({ state, onAbandonQuest, onAcceptQuest, questBusy = 
                 aria-label={`Выбрать основной историей «${quest.title}»`} onClick={() => onAcceptQuest(quest.id)}>Выбрать основной историей</button>}
             </article>
           })}
+        </div>}
+        {failedQuests.length > 0 && <div className="quest-column">
+          <header><ScrollText size={15} /><strong>Невыполненные задания</strong><span>{failedQuests.length}</span></header>
+          {failedQuests.map((quest) => <article className="quest-card" key={quest.id}>
+            <b>{quest.title}</b>{quest.summary && <p>{quest.summary}</p>}
+          </article>)}
+        </div>}
+        {offices.length > 0 && <div className="quest-column">
+          <header><History size={15} /><strong>Должности мира</strong></header>
+          {offices.map((office) => <article className="quest-card" key={office.office_id}>
+            <b>{office.title}</b><p>{office.holder_npc_id ? npcName(office.holder_npc_id) : 'Должность свободна'}</p>
+          </article>)}
         </div>}
         {abandonedQuests.length > 0 && <div className="quest-column">
           <header><ScrollText size={15} /><strong>Оставленные задания</strong><span>{abandonedQuests.length}</span></header>

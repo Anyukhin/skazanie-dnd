@@ -291,7 +291,8 @@ test('все producer-path TimeAdvanced используют один resolver �
   assert.match(source, /actionType === 'long_cast'[\s\S]{0,350}appendTimeAdvance\(/u)
   assert.match(source, /case 'AdvanceTime'[\s\S]{0,350}appendWorldTimeConsequences\(/u)
   assert.match(source, /if \(definition\.kind === 'campfire'\)[\s\S]{0,1600}appendWorldTimeConsequences\(/u)
-  assert.equal([...source.matchAll(/'TimeAdvanced'/gu)].length, 3, 'producer не должен обходить общий appendTimeAdvance')
+  const producers = [...source.matchAll(/eventFrom\([^\n]*'TimeAdvanced'/gu)]
+  assert.equal(producers.length, 1, 'только общий appendTimeAdvance создаёт событие времени')
 })
 
 test('проекция комнаты больше не зависит от списка типов событий', () => {

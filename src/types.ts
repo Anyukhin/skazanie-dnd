@@ -1513,6 +1513,7 @@ export type GameState = {
   entities?: Array<Record<string, unknown>>
   adventure?: AdventureState
   worldMemory?: WorldMemoryProjection
+  world_offices?: Array<{ office_id: string; title: string; status: 'held' | 'vacant'; holder_npc_id: string | null }>
   /**
    * Летопись поступков отряда. Приходит **только администратору**: игрок
    * узнаёт о молве в игре, из уст NPC, а серверная проекция вырезает эту
@@ -1708,6 +1709,9 @@ export type WorldMemoryProjection = {
     summary?: string
     status?: string
     objectives?: string[]
+    giver_npc_id?: string | null
+    responsibility?: { schema_version: 1; type: 'npc'; npc_id: string; death_policy: 'impossible' }
+      | { schema_version: 1; type: 'office'; office_id: string; death_policy: 'transfer' }
     visibility?: 'public' | 'party' | 'gm_only'
     clock?: { current: number; max: number; label?: string } | null
   }>

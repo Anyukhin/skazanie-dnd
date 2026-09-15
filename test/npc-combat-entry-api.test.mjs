@@ -154,7 +154,7 @@ test('обычный игрок начинает бой с видимым NPC ч
 
   const created = await request(baseUrl, '/api/campaigns', {
     method: 'POST', cookie,
-    body: { code: SESSION, name: 'NPC combat entry', bootstrap: { partyName: 'Тестовый отряд', worldTemplateId: 'astohan-plains', players: [hero()] } },
+    body: { code: SESSION, name: 'NPC combat entry', bootstrap: { partyName: 'Тестовый отряд', worldTemplateId: 'astohan-plains', players: [hero(), { ...hero(), id: 'npc-entry-companion', character: 'Спутник' }] } },
   })
   assert.equal(created.status, 201, created.text)
   const initial = await request(baseUrl, `/api/rooms/${SESSION}`, { cookie })

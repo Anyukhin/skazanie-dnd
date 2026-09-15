@@ -22,6 +22,24 @@ test('deterministic narrator описывает только подтвержд�
   assert.doesNotMatch(result.narration, /\d/u, 'механические числа остаются в интерфейсе, а не в повествовании')
 })
 
+test('без LLM огненный шар называет подтверждённую смерть NPC и не выводит технические ключи', () => {
+  const deathBrief = buildNarrationBrief({
+    visible_events: [
+      { event_type: 'ResourceSpent', actor_id: 'hero', payload: { resource: 'spell_slots_3' } },
+      { event_type: 'SpellCast', actor_id: 'hero', payload: { spell_id: 'fireball', name: 'Огненный шар' } },
+      { event_type: 'DieRolled', payload: { total: 30 } },
+      { event_type: 'SpellSavingThrowResolved', target_ids: ['king'], payload: { spell_id: 'fireball', saved: true } },
+      { event_type: 'DamageApplied', target_ids: ['king'], payload: { applied_amount: 15, hp_after: 0 } },
+      { event_type: 'NpcDied', payload: { npc_id: 'king', npc_name: 'Король Арес' } },
+    ].map((event) => ({ ...event, visibility: 'party', source_rule_ids: [] })),
+    known_environment: { location: 'Дворец' }, permitted_npc_reactions: [], visible_state_changes: [],
+  })
+  const text = deterministicNarration(deathBrief, (id) => id === 'hero' ? 'Лира' : 'Король Арес').narration
+  assert.match(text, /Король Арес погибает/u)
+  assert.match(text, /Огненный шар/u)
+  assert.doesNotMatch(text, /SpellCast|spell_slots|fireball|\d/u)
+})
+
 test('Narrator не тратит второй вызов на неподтверждённую механику и использует безопасный fallback', async () => {
   const llm = new FakeLLM([
     { content: JSON.stringify({ narration: 'Выпало 20, и герой получает 1000 HP.', suggestions: [] }) },

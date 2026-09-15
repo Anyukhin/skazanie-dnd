@@ -238,6 +238,15 @@ test('an available candidate participating in active combat is not installed', (
   assert.equal(skipped[0].visibility, 'gm_only')
 })
 
+test('пленный кандидат не назначается держателем должности', () => {
+  const { initial, vacant } = vacancyState({ minute: 0 })
+  const drafts = planOfficeSuccessionDrafts({ ...initial, world_offices: vacant,
+    captives: { captives: [{ npc_id: MARSHAL_ID, actor_id: MARSHAL_ID, status: 'held' }] },
+  }, { worldMinute: 1_440 })
+  assert.equal(drafts[0].event_type, 'OfficeSuccessionSkipped')
+  assert.equal(drafts[0].payload.reason, 'candidate_unavailable')
+})
+
 test('occupied office consumes a stale pending succession without replacing the current holder', () => {
   const { initial, vacant } = vacancyState({ minute: 0 })
   const pending = vacant.offices[0].pending

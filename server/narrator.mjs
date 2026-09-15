@@ -1405,10 +1405,12 @@ function qualitativeEventSummary(event, resolveName) {
       const outcome = confirmedOutcome(payload, payload.saved == null ? 'success' : 'saved')
       return `${actor}: спасбросок ${outcome ? `завершился ${outcome}` : 'завершён; его исход пока неизвестен'}`
     }
+    case 'NpcSavingThrowResolved':
     case 'SpellSavingThrowResolved': {
       const outcome = confirmedOutcome(payload, 'saved')
-      return `${target}: спасбросок от ${sceneText(payload.spell_name || payload.spell_id || 'заклинания', 64)} ${outcome ? `завершился ${outcome}` : 'завершён; его исход пока неизвестен'}`
+      return `${target}: спасбросок от ${sceneText(payload.spell_name || 'заклинания', 64)} ${outcome ? `завершился ${outcome}` : 'завершён; его исход пока неизвестен'}`
     }
+    case 'SpellCast': return `${actor} применяет ${payload.name ? `«${sceneText(payload.name, 120)}»` : 'заклинание'}`
     case 'ConcentrationSavingThrowResolved':
       return payload.saved === true ? `${actor} сохраняет концентрацию` : `${actor} теряет концентрацию`
     case 'AttackResolved':
@@ -1439,7 +1441,8 @@ function qualitativeEventSummary(event, resolveName) {
     case 'MerchantSaleCompleted':
       return `Продажа «${sceneText(payload.item?.name || payload.catalog_id || 'предмета', 64)}» завершена`
     case 'ResourceSpent':
-      return `${actor} расходует ${sceneText(payload.resource || 'ресурс', 64)}`
+      return /^spell_slots_\d+$/u.test(String(payload.resource)) ? `${actor} расходует ячейку заклинания`
+        : `${actor} расходует ${sceneText(payload.resource || 'ресурс', 64)}`
     case 'DeathSavingThrowRolled': {
       const outcome = confirmedOutcome(payload)
       return `${target}: спасбросок от смерти ${outcome ? `завершился ${outcome}` : 'завершён; его исход пока неизвестен'}`
@@ -1459,7 +1462,12 @@ function qualitativeEventSummary(event, resolveName) {
       return payload.schema_version === 1 ? 'История завершена, кампания продолжается' : ''
     case 'QuestAccepted':
     case 'QuestResolved':
+    case 'QuestInvalidated':
+    case 'QuestAssignmentChanged':
       return sceneText(payload.summary, 1_000)
+    case 'OfficeVacated': return `Должность «${sceneText(payload.title, 180)}» освободилась`
+    case 'OfficeHolderInstalled': return `Должность «${sceneText(payload.title, 180)}» получила нового держателя`
+    case 'OfficeSuccessionSkipped': return ''
     case 'DirectorIntentRecorded':
     case 'DirectorIntentOutcomeRecorded':
     case 'CampaignPacingAdvanced':
@@ -1516,7 +1524,9 @@ function withoutVisibleNumbers(value) {
 function deterministicNarrationCandidate(brief, resolve, variant, arcRecap) {
   const responsePlan = narratorResponsePlan(brief)
   const outcomeEvents = brief.visible_events.filter(event => !DECLARATION_EVENTS.has(event?.event_type))
-  const summaries = (outcomeEvents.length ? outcomeEvents : brief.visible_events)
+  const summaries = [...(outcomeEvents.length ? outcomeEvents : brief.visible_events)]
+    // Подтверждённая судьба NPC не должна исчезнуть за расходом ячейки и бросками.
+    .sort((left, right) => Number(right.event_type === 'NpcDied') - Number(left.event_type === 'NpcDied'))
     .map((event) => withoutVisibleNumbers(qualitativeEventSummary(event, resolve)))
     .filter(Boolean)
   const { opening, quest } = responsePlan.include_scene_detail ? deterministicFraming(brief, variant) : {}

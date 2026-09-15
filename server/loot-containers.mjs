@@ -1,13 +1,12 @@
 /**
  * Контейнеры добычи: куда девается вещь, когда её хозяин выбыл.
  *
- * До этого модуля инвентарь противника (`server/enemy-loadouts.mjs`) был вещью
- * в один конец: гоблин приходил в бой со скимитаром, гоблин погибал — и
- * скимитар исчезал вместе с записью `state.enemies[].loadout`. Награда после
- * встречи выдавалась отдельной таблицей (`server/loot-tables.mjs`) и с телом
- * никак не связана. Здесь замыкается середина: у выбывшего появляется
- * **контейнер**, и это единственное место, где отряд может взять именно то,
- * чем противник действительно дрался.
+ * До этого модуля инвентарь противника (`server/enemy-loadouts.mjs`) и вещи,
+ * накопленные мирным NPC, были вещами в один конец: актор погибал — и предметы
+ * исчезали вместе с его закрытой записью. Награда после встречи выдавалась
+ * отдельной таблицей (`server/loot-tables.mjs`) и с телом никак не связана.
+ * Здесь замыкается середина: у выбывшего появляется **контейнер**, и это
+ * единственное место, где отряд может получить фактический остаток имущества.
  *
  * ## Четыре решения, которые здесь нельзя обойти
  *
@@ -72,7 +71,13 @@
 import { createHash } from 'node:crypto'
 
 import { levelKey, sceneLevelIndex, sceneLocationId } from './adventure-director.mjs'
-import { normalizeItemInstance } from './item-instances.mjs'
+import { ITEM_ORIGIN_KINDS, catalogItem } from './item-catalog.mjs'
+import {
+  ITEM_INSTANCE_SCHEMA_VERSION,
+  MAX_ITEM_INSTANCE_QUANTITY,
+  itemInstanceSnapshot,
+  normalizeItemInstance,
+} from './item-instances.mjs'
 import { carryingCapacity, inventoryWeight } from './item-lifecycle.mjs'
 import { MAX_STOCK_QUANTITY, inventoryStackKey, normalizeInventoryItem, resolveCatalogBasePriceCp } from './merchant-economy.mjs'
 import { campaignElapsedMinutes } from './npc-social.mjs'
@@ -82,6 +87,9 @@ export const LOOT_CONTAINERS_SCHEMA_VERSION = 1
 export const LOOT_CONTAINERS_POLICY_ID = 'skazanie:loot-containers-v1'
 export const LOOT_CONTAINER_CREATED_EVENT_SCHEMA_VERSION = 1
 export const LOOT_CONTAINER_TAKEN_EVENT_SCHEMA_VERSION = 1
+/** Версия payload для тела из server-owned инвентаря NPC. */
+export const NPC_LOOT_PAYLOAD_SCHEMA_VERSION = 1
+export const NPC_LOOT_SOURCE = 'npc_world.inventories'
 
 /**
  * Виды контейнеров. `corpse` — тело, `captive` — снятое с пленного оружие,
@@ -167,6 +175,9 @@ export function normalizeLootContainer(value = {}) {
     source_enemy_id: text(source.source_enemy_id ?? source.sourceEnemyId, 120),
     source_enemy_ids: [...new Set((Array.isArray(source.source_enemy_ids) ? source.source_enemy_ids : [])
       .map((entry) => text(entry, 120)).filter(Boolean))].slice(0, 12),
+    ...(text(source.source_npc_id ?? source.sourceNpcId, 120)
+      ? { source_npc_id: text(source.source_npc_id ?? source.sourceNpcId, 120) }
+      : {}),
     encounter_id: text(source.encounter_id ?? source.encounterId, 160),
     name: text(source.name, 160) || 'Добыча',
     location_id: text(source.location_id ?? source.locationId, 180),
@@ -314,16 +325,38 @@ function positionOf(state, actorId) {
   return { x: coordinate(stored?.x), y: coordinate(stored?.y) }
 }
 
-function containerDraft({ kind, enemies, sourceIds, state, minutes, locationKey, locationName, encounterId, weaponsOnly = false, anchorId }) {
-  const containerId = lootContainerIdFor(kind, sourceIds, { encounterId, locationKey, minutes })
-  const items = enemies
-    .flatMap((enemy) => lootableItemsOf(enemy, { weaponsOnly }))
+function containerDraft({
+  kind,
+  enemies = [],
+  sourceIds = [],
+  state,
+  minutes,
+  locationKey,
+  locationName,
+  encounterId,
+  weaponsOnly = false,
+  anchorId,
+  anchorPosition = null,
+  prebuiltItems = null,
+  sourceNpcId = '',
+  nameOverride = '',
+  idParts = null,
+  targetIds = null,
+  payloadExtra = {},
+  footprintOverride,
+}) {
+  const containerId = lootContainerIdFor(kind, idParts ?? sourceIds, { encounterId, locationKey, minutes })
+  const items = (prebuiltItems ?? enemies
+    .flatMap((enemy) => lootableItemsOf(enemy, { weaponsOnly })))
     .slice(0, MAX_LOOT_CONTAINER_ITEMS)
     .map((item) => itemForContainer(item, containerId))
   // Пустой контейнер не создаётся: см. границы в шапке модуля.
   if (!items.length) return null
-  const anchor = positionOf(state, anchorId)
-  const footprint = enemies.length === 1 ? normalizeFootprintMetadata(enemies[0]?.footprint) : null
+  const anchor = anchorPosition ?? positionOf(state, anchorId)
+  const footprint = footprintOverride !== undefined
+    ? normalizeFootprintMetadata(footprintOverride)
+    : enemies.length === 1 ? normalizeFootprintMetadata(enemies[0]?.footprint) : null
+  const name = nameOverride || containerName(kind, enemies.length === 1 ? enemies[0]?.name : '')
   return {
     event_type: 'LootContainerCreated',
     event_schema_version: LOOT_CONTAINER_CREATED_EVENT_SCHEMA_VERSION,
@@ -335,8 +368,9 @@ function containerDraft({ kind, enemies, sourceIds, state, minutes, locationKey,
         kind,
         source_enemy_id: sourceIds.length === 1 ? sourceIds[0] : '',
         source_enemy_ids: sourceIds,
+        ...(sourceNpcId ? { source_npc_id: sourceNpcId } : {}),
         encounter_id: encounterId,
-        name: containerName(kind, enemies.length === 1 ? enemies[0]?.name : ''),
+        name,
         location_id: locationKey,
         location_name: locationName,
         x: anchor.x,
@@ -346,10 +380,243 @@ function containerDraft({ kind, enemies, sourceIds, state, minutes, locationKey,
         created_at_minutes: minutes,
         items,
       }),
+      ...payloadExtra,
     },
-    target_ids: sourceIds,
+    target_ids: targetIds ?? sourceIds,
     visibility: 'party',
   }
+}
+
+function npcInventoryOf(state, npcId) {
+  const inventories = state?.npc_world?.inventories
+  if (!inventories || typeof inventories !== 'object' || Array.isArray(inventories)) return []
+  return Array.isArray(inventories[String(npcId ?? '')]) ? inventories[String(npcId ?? '')] : []
+}
+
+function npcAnchorOf(state, npcId, actor = null) {
+  const expectedNpcId = String(npcId ?? '')
+  const authored = actor?.origin?.kind === 'authored-npc'
+    || String(actor?.origin?.npc_id ?? '') === expectedNpcId
+  const stored = positionOf(state, expectedNpcId)
+  const actorPosition = { x: coordinate(actor?.x), y: coordinate(actor?.y) }
+  const locationId = sceneLocationId(state)
+  const placement = (Array.isArray(state?.npc_world?.placements) ? state.npc_world.placements : [])
+    .find((entry) => String(entry?.npc_id ?? '') === expectedNpcId
+      && String(entry?.location_id ?? '') === String(locationId ?? ''))
+  if (authored && stored.x != null && stored.y != null) {
+    return { position: stored, footprint: normalizeFootprintMetadata(actor?.footprint) }
+  }
+  if (authored && actorPosition.x != null && actorPosition.y != null) {
+    return { position: actorPosition, footprint: normalizeFootprintMetadata(actor?.footprint) }
+  }
+  if (placement) {
+    return {
+      position: { x: coordinate(placement.x), y: coordinate(placement.y) },
+      footprint: normalizeFootprintMetadata(placement.footprint),
+    }
+  }
+  return {
+    position: stored.x != null && stored.y != null ? stored : actorPosition,
+    footprint: normalizeFootprintMetadata(actor?.footprint),
+  }
+}
+
+function npcNameOf(state, npcId, actor, event) {
+  const social = (Array.isArray(state?.social?.npcs) ? state.social.npcs : [])
+    .find((npc) => String(npc?.id ?? '') === String(npcId ?? ''))
+  return text(social?.name ?? actor?.name ?? event?.payload?.npc_name ?? npcId, 160)
+}
+
+function npcLootSourceKey(raw, normalized, index) {
+  const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
+  const explicit = text(source.item_instance_id ?? source.itemInstanceId ?? source.id ?? source.item_id, 160)
+  if (explicit) return `${explicit}:${index}`
+  return `${text(source.catalog_id ?? source.catalogId, 120)}:${text(normalized?.name, 120)}:${index}`
+}
+
+function npcLootOrigin(raw, normalized) {
+  const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
+  const declared = typeof source.origin === 'string' ? source.origin
+    : source.origin && typeof source.origin === 'object' && !Array.isArray(source.origin)
+      ? source.origin.kind
+      : normalized?.origin
+  const kind = ITEM_ORIGIN_KINDS.includes(String(declared ?? '')) ? String(declared) : 'unknown'
+  const object = source.origin && typeof source.origin === 'object' && !Array.isArray(source.origin) ? source.origin : {}
+  return {
+    kind,
+    template_id: text(object.template_id ?? object.templateId, 120),
+    source_id: text(object.source_id ?? object.sourceId, 160),
+  }
+}
+
+function npcLootSnapshotField(value, fallback, field) {
+  if (value == null || typeof value === 'string' && !value.trim()) return fallback
+  if (field === 'name' && value === 'Предмет' && fallback && fallback !== 'Предмет') return fallback
+  if (field === 'type' && value === 'other' && fallback && fallback !== 'other') return fallback
+  if (field === 'weight' && Number(value) === 0 && Number(fallback) > 0) return fallback
+  return value
+}
+
+function npcLootSnapshot(raw, normalized, catalogId) {
+  const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
+  const supplied = source.snapshot && typeof source.snapshot === 'object' && !Array.isArray(source.snapshot)
+    ? source.snapshot
+    : normalized?.snapshot && typeof normalized.snapshot === 'object' && !Array.isArray(normalized.snapshot)
+      ? normalized.snapshot
+      : null
+  if (supplied && Object.keys(supplied).length) return { ...supplied, catalog_id: catalogId }
+  if (catalogItem(catalogId)) {
+    const catalogSnapshot = itemInstanceSnapshot(catalogId)
+    const fields = Object.fromEntries(Object.entries(catalogSnapshot).map(([field, value]) => [
+      field,
+      npcLootSnapshotField(normalized?.[field], value, field),
+    ]))
+    return { ...fields, catalog_id: catalogId }
+  }
+  // Неизвестная пользовательская вещь остаётся явной: каталог не придумывает
+  // для неё оружие или другую механику.
+  return {
+    catalog_id: catalogId,
+    ...(normalized?.catalog_schema_version ? { catalog_schema_version: normalized.catalog_schema_version } : {}),
+    name: normalized?.name,
+    type: normalized?.type,
+    weight: normalized?.weight,
+    description: normalized?.description,
+    properties: normalized?.properties,
+    base_price_cp: normalized?.base_price_cp,
+    mechanics_status: normalized?.mechanics_status,
+    rarity: normalized?.rarity,
+    combat: normalized?.combat,
+    passive_effects: normalized?.passive_effects,
+    charges: normalized?.charges,
+    recharge: normalized?.recharge,
+    requires_attunement: normalized?.requires_attunement,
+    image: normalized?.image,
+  }
+}
+
+/**
+ * Приведение инвентаря NPC к экземпляру без чтения каталога при replay.
+ * Каталог используется только как fallback для старой raw-записи без снимка;
+ * созданный payload уже несёт этот снимок целиком.
+ */
+function normalizeNpcLootSources(state, npcId) {
+  return npcInventoryOf(state, npcId).flatMap((raw, index) => {
+    const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
+    const normalized = normalizeInventoryItem({ ...source, equipped: false, attuned_to: null }, { preserveUnknown: true })
+    const catalogId = text(normalized.catalog_id ?? source.catalog_id ?? source.catalogId, 120)
+    const sourceKey = npcLootSourceKey(source, normalized, index)
+    const effectiveCatalogId = catalogId || `npc-raw:${digest(npcId, sourceKey).slice(0, 24)}`
+    const quantity = Math.max(1, integer(normalized.quantity, 1))
+    const rawInstanceId = text(source.item_instance_id ?? source.itemInstanceId, 160)
+    return [{
+      source_key: sourceKey,
+      source_item_instance_id: rawInstanceId,
+      catalog_id: effectiveCatalogId,
+      quantity,
+      snapshot: npcLootSnapshot(source, normalized, effectiveCatalogId),
+      charges: source.charges ?? normalized.charges ?? null,
+      origin: npcLootOrigin(source, normalized),
+      unknown_catalog: !catalogId || !catalogItem(catalogId),
+    }]
+  })
+}
+
+function npcLootInstanceId(npcId, source, partIndex, usedIds) {
+  const preferred = source.source_item_instance_id && partIndex === 0
+    ? source.source_item_instance_id
+    : `npc:${digest(npcId, source.source_key, partIndex).slice(0, 40)}`
+  if (!usedIds.has(preferred)) return preferred
+  let collision = 1
+  let fallback = `npc:${digest(npcId, source.source_key, partIndex, collision).slice(0, 40)}`
+  while (usedIds.has(fallback)) {
+    collision += 1
+    fallback = `npc:${digest(npcId, source.source_key, partIndex, collision).slice(0, 40)}`
+  }
+  return fallback
+}
+
+function npcLootDrafts({ state, inventoryState = state, npcId, event, minutes, locationKey, locationName, encounterId }) {
+  const sources = normalizeNpcLootSources(inventoryState, npcId)
+  if (!sources.length) return []
+  const segments = []
+  for (const source of sources) {
+    let left = source.quantity
+    let partIndex = 0
+    while (left > 0) {
+      const quantity = Math.min(MAX_ITEM_INSTANCE_QUANTITY, left)
+      segments.push({ source, quantity, part_index: partIndex })
+      left -= quantity
+      partIndex += 1
+    }
+  }
+  const partCount = Math.ceil(segments.length / MAX_LOOT_CONTAINER_ITEMS)
+  if (partCount > MAX_LOOT_CONTAINERS) {
+    reject('Инвентарь NPC не помещается в ограниченное число контейнеров', 'NPC_LOOT_CONTAINER_LIMIT')
+  }
+  const actor = (Array.isArray(state?.enemies) ? state.enemies : [])
+    .find((candidate) => actorIdOf(candidate) === String(npcId)
+      || String(candidate?.origin?.npc_id ?? '') === String(npcId))
+  const anchor = npcAnchorOf(state, npcId, actor)
+  const name = containerName('corpse', npcNameOf(state, npcId, actor, event))
+  const drafts = []
+  const usedInstanceIds = new Set()
+  for (let part = 0; part < partCount; part += 1) {
+    const containerParts = [`npc:${npcId}`, `part:${part}`]
+    const containerId = lootContainerIdFor('corpse', containerParts, { encounterId, locationKey, minutes })
+    const chunk = segments.slice(part * MAX_LOOT_CONTAINER_ITEMS, (part + 1) * MAX_LOOT_CONTAINER_ITEMS)
+    const items = chunk.map((segment) => {
+      const itemInstanceId = npcLootInstanceId(npcId, segment.source, segment.part_index, usedInstanceIds)
+      usedInstanceIds.add(itemInstanceId)
+      return normalizeItemInstance({
+        schema_version: ITEM_INSTANCE_SCHEMA_VERSION,
+        item_instance_id: itemInstanceId,
+        catalog_id: segment.source.catalog_id,
+        snapshot: segment.source.snapshot,
+        quantity: segment.quantity,
+        ...(segment.source.charges || (!segment.source.source_item_instance_id && segment.source.snapshot?.charges)
+          ? { charges: clone(segment.source.charges ?? segment.source.snapshot.charges) }
+          : {}),
+        equipped: false,
+        owner: { kind: 'container', actor_id: containerId },
+        origin: clone(segment.source.origin),
+        lootable: true,
+      })
+    }).filter(Boolean)
+    if (items.length !== chunk.length) {
+      reject('Часть инвентаря NPC не удалось сохранить как экземпляр', 'NPC_LOOT_ITEM_INVALID')
+    }
+    const unknownItems = [...new Set(chunk.filter((segment) => segment.source.unknown_catalog)
+      .map((segment) => digest(npcId, segment.source.source_key).slice(0, 16)))]
+    drafts.push(containerDraft({
+      kind: 'corpse',
+      sourceIds: [],
+      state,
+      minutes,
+      locationKey,
+      locationName,
+      encounterId,
+      anchorPosition: anchor.position,
+      footprintOverride: anchor.footprint,
+      prebuiltItems: items,
+      sourceNpcId: npcId,
+      nameOverride: name,
+      idParts: containerParts,
+      targetIds: [npcId],
+      payloadExtra: {
+        npc_loot: {
+          schema_version: NPC_LOOT_PAYLOAD_SCHEMA_VERSION,
+          source: NPC_LOOT_SOURCE,
+          npc_id: String(npcId),
+          part_index: part,
+          part_count: partCount,
+          clear_inventory: part === 0,
+          ...(unknownItems.length ? { unknown_items: unknownItems } : {}),
+        },
+      },
+    }))
+  }
+  return drafts.filter(Boolean)
 }
 
 /**
@@ -362,8 +629,9 @@ function containerDraft({ kind, enemies, sourceIds, state, minutes, locationKey,
  *
  * Проверяется ровно то, без чего контейнера быть не может: есть ли у кого
  * отбирать и случилось ли в потоке событие, способное вывести противника из
- * боя. Обнуление ОЗ ловится по самому payload (`hp_after: 0`), а не по списку
- * типов событий: писать ОЗ умеют несколько разных событий, а поле у них одно.
+ * боя или убить NPC. Обнуление ОЗ ловится по самому payload (`hp_after: 0`),
+ * а смерть NPC — по `NpcDied`: писать ОЗ умеют несколько разных событий, а
+ * поле у них одно.
  *
  * Обнулиться при этом может кто угодно, и герой падает в бою куда чаще, чем
  * гибнет вооружённый противник. Поэтому мало найти `hp_after: 0` — нужно, чтобы
@@ -377,11 +645,19 @@ export function lootCommitTouchesContainers(before = {}, events = []) {
       .some((item) => item?.lootable === true))
     .map((enemy) => actorIdOf(enemy))
     .filter(Boolean))
-  if (!lootable.size) return false
-  return (Array.isArray(events) ? events : []).some((event) => event?.event_type === 'CaptiveTaken'
-    || (event?.event_type === 'ParleySettled' && String(event?.payload?.outcome ?? '') === 'tribute')
+  const npcInventories = before?.npc_world?.inventories
+  const npcIds = new Set(npcInventories && typeof npcInventories === 'object' && !Array.isArray(npcInventories)
+    ? Object.entries(npcInventories)
+      .filter(([, inventory]) => Array.isArray(inventory) && inventory.length)
+      .map(([npcId]) => String(npcId))
+    : [])
+  if (!lootable.size && !npcIds.size) return false
+  return (Array.isArray(events) ? events : []).some((event) => (event?.event_type === 'CaptiveTaken' && lootable.size > 0)
+    || (event?.event_type === 'ParleySettled' && String(event?.payload?.outcome ?? '') === 'tribute' && lootable.size > 0)
     || (event?.payload?.hp_after === 0
-      && (Array.isArray(event?.target_ids) ? event.target_ids : []).some((id) => lootable.has(String(id)))))
+      && (Array.isArray(event?.target_ids) ? event.target_ids : []).some((id) => lootable.has(String(id))))
+    || (event?.event_type === 'NpcDied'
+      && npcIds.has(String(event?.payload?.npc_id ?? event?.target_ids?.[0] ?? ''))))
 }
 
 /**
@@ -409,6 +685,23 @@ export function planLootContainerDrafts(before = {}, after = {}, events = []) {
   const encounterId = text(after?.mechanics?.encounter?.id ?? after?.mechanics?.encounter?.encounter_id, 160)
   const enemiesBefore = new Map((Array.isArray(before?.enemies) ? before.enemies : []).map((enemy) => [actorIdOf(enemy), enemy]))
   const enemiesAfter = new Map((Array.isArray(after?.enemies) ? after.enemies : []).map((enemy) => [actorIdOf(enemy), enemy]))
+  const npcDeathEvents = eventList
+    .filter((event) => event?.event_type === 'NpcDied')
+    .map((event) => [String(event?.payload?.npc_id ?? event?.target_ids?.[0] ?? ''), event])
+    .filter(([npcId]) => npcId)
+    .sort((left, right) => left[0].localeCompare(right[0]))
+  const socialNpcIds = new Set((Array.isArray(before?.social?.npcs) ? before.social.npcs : [])
+    .map((npc) => text(npc?.id, 120)).filter(Boolean))
+  const authoredNpcIds = new Set(enemiesBefore.values()
+    .filter((enemy) => enemy?.origin?.kind === 'authored-npc' || enemy?.origin?.npc_id)
+    .flatMap((enemy) => [actorIdOf(enemy), text(enemy?.origin?.npc_id, 120)])
+    .filter(Boolean))
+  const npcOwnerIds = new Set(npcDeathEvents
+    .map(([npcId]) => npcId)
+    .filter((npcId) => npcInventoryOf(before, npcId).length || socialNpcIds.has(npcId) || authoredNpcIds.has(npcId)))
+  const npcDeaths = new Map(npcDeathEvents
+    .filter(([npcId]) => npcInventoryOf(before, npcId).length))
+  const npcDeathIds = new Set(npcDeaths.keys())
 
   // Плен фиксируется собственным событием и в том же коммите: разоружение
   // обязано ехать рядом с ним, а не «когда-нибудь потом».
@@ -423,8 +716,32 @@ export function planLootContainerDrafts(before = {}, after = {}, events = []) {
   const tributeIds = new Set((Array.isArray(tribute?.payload?.enemy_ids) ? tribute.payload.enemy_ids : []).map(String))
 
   const drafts = []
+  for (const [npcId, death] of npcDeaths) {
+    for (const draft of npcLootDrafts({
+      // Позиция берётся из состояния после событий этой фиксации: authored NPC
+      // мог переместиться вместе с последним ударом. Сам loot всё ещё строится
+      // только из фактического server-owned inventory, который ещё не очищен.
+      state: after,
+      inventoryState: before,
+      npcId,
+      event: death,
+      minutes,
+      locationKey,
+      locationName,
+      encounterId,
+    })) {
+      const id = draft.payload?.container?.id
+      if (!id || existing.has(id)) continue
+      existing.add(id)
+      drafts.push(draft)
+    }
+  }
   const abandoned = []
   for (const [enemyId, enemyBefore] of [...enemiesBefore.entries()].sort((left, right) => left[0].localeCompare(right[0]))) {
+    // Авторский боевой NPC и его social-запись — один и тот же владелец. Если
+    // у него есть фактический `npc_world` инвентарь, тело уже планируется выше;
+    // старый enemy-loadout путь не должен создать вторую добычу.
+    if (npcOwnerIds.has(enemyId)) continue
     const enemyAfter = enemiesAfter.get(enemyId)
     // Противника заменили новым составом встречи в этом же коммите — тела на
     // этой доске уже нет, и выдумывать его здесь нельзя.
@@ -821,9 +1138,27 @@ export function applyLootContainerEvent(state, event) {
     && Number(payload.schema_version) === LOOT_CONTAINER_CREATED_EVENT_SCHEMA_VERSION) {
     const container = normalizeLootContainer(payload.container)
     if (!container) return []
+    const current = lootContainerFor(state, container.id)
+    const alreadyApplied = current ? sameInstanceQuantities(current.items, container.items) : false
     state.loot_containers = withContainer(state, container)
-    // Вещь переезжает, а не копируется: инвентарь противника теряет ровно те
-    // экземпляры, которые легли в контейнер.
+    const npcLoot = payload.npc_loot && typeof payload.npc_loot === 'object' && !Array.isArray(payload.npc_loot)
+      ? payload.npc_loot
+      : null
+    if (!alreadyApplied
+      && Number(npcLoot?.schema_version) === NPC_LOOT_PAYLOAD_SCHEMA_VERSION
+      && npcLoot?.source === NPC_LOOT_SOURCE
+      && npcLoot?.clear_inventory === true) {
+      const npcId = text(npcLoot.npc_id ?? container.source_npc_id, 120)
+      const inventories = state?.npc_world?.inventories
+      if (npcId && inventories && typeof inventories === 'object' && !Array.isArray(inventories)
+        && Object.hasOwn(inventories, npcId)) {
+        const nextInventories = { ...inventories }
+        delete nextInventories[npcId]
+        state.npc_world = { ...(state.npc_world ?? {}), inventories: nextInventories }
+      }
+    }
+    // Вещь переезжает, а не копируется: закрытый инвентарь владельца теряет
+    // ровно тот остаток, который лёг в контейнер.
     const movedIds = new Set(container.items.map((item) => String(item.item_instance_id)))
     const sourceIds = new Set([container.source_enemy_id, ...container.source_enemy_ids].filter(Boolean).map(String))
     if (sourceIds.size && Array.isArray(state.enemies)) {
@@ -988,6 +1323,7 @@ export function lootContainerForViewer(container = {}, { withContents = false, d
     // ключ ничего нового не открывает — в отличие от `origin.template_id`,
     // который снимается вместе с остальным закрытым учётом.
     source_enemy_id: normalized.source_enemy_id,
+    ...(normalized.source_npc_id ? { source_npc_id: normalized.source_npc_id } : {}),
     x: normalized.x,
     y: normalized.y,
     cell_revealed: cellRevealed !== false,

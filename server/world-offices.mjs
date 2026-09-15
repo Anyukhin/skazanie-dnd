@@ -16,7 +16,6 @@ import { npcVitalFor } from './npc-positioning.mjs'
 export const WORLD_OFFICES_SCHEMA_VERSION = 1
 export const WORLD_OFFICES_POLICY_ID = 'skazanie:world-offices-v1'
 export const OFFICE_EVENT_SCHEMA_VERSION = 1
-export const WORLD_OFFICES_EVENT_SCHEMA_VERSION = OFFICE_EVENT_SCHEMA_VERSION
 
 export const WORLD_OFFICE_EVENT_TYPES = Object.freeze([
   'OfficeVacated', 'OfficeHolderInstalled', 'OfficeSuccessionSkipped',
@@ -238,9 +237,8 @@ function safeOfficeState(raw, context = {}) {
   const holder = status === 'vacant'
     ? null
     : (optionalId(raw.holder_npc_id) || config.holder_npc_id || null)
-  // A pending operation may outlive an external holder update. Keeping it on a
-  // held office lets the succession planner consume that stale operation with
-  // `office_occupied` instead of retrying it forever.
+  // Отложенное назначение может пережить внешнюю смену держателя. Сохраняем
+  // его и у занятой должности, чтобы планировщик закрыл его с office_occupied.
   const pending = safePending(raw.pending)
   return {
     ...config,
@@ -275,9 +273,6 @@ export function normalizeWorldOfficesState(input = {}, options = {}) {
   return { schema_version: WORLD_OFFICES_SCHEMA_VERSION, offices }
 }
 
-// Короткое имя для bootstrap-пути. Оба имени описывают одну нормализацию;
-// отдельной реализации или второго источника конфигурации здесь нет.
-export const normalizeWorldOffices = normalizeWorldOfficesState
 
 function officeStateFrom(value, options = {}) {
   if (value?.world_offices && typeof value.world_offices === 'object') {
@@ -319,9 +314,8 @@ function eventDraft(office, eventType, payload) {
       ...payload,
     },
     target_ids: [],
-    // A skipped attempt is an internal eligibility decision. Revealing the
-    // candidate or the reason through the event stream would expose policy
-    // that the public office projection deliberately omits.
+    // Причина отклонения кандидата — закрытая проверка; поток событий
+    // не должен раскрывать политику, скрытую публичной проекцией должности.
     visibility: eventType === 'OfficeSuccessionSkipped' ? 'gm_only' : office.visibility,
   }
 }
@@ -373,6 +367,8 @@ function candidateProfile(state, candidateId, atMinutes) {
   const profile = (state?.social?.npcs ?? []).find((npc) => String(npc?.id ?? '') === candidateId)
   if (!profile) return { profile: null, reason: 'candidate_missing' }
   if (!npcVitalFor(state, candidateId)?.alive) return { profile, reason: 'candidate_dead' }
+  if ((state.captives?.captives ?? []).some((captive) => captive.status === 'held'
+    && [captive.npc_id, captive.actor_id].includes(candidateId))) return { profile, reason: 'candidate_unavailable' }
   // Перепроверяем производные факты на той же авторитетной минуте, но
   // сохраняем весь снимок мира. В частности, расписание не должно сделать
   // доступным кандидата, который в этот момент участвует в бою.
@@ -530,8 +526,8 @@ export function applyWorldOfficeEvent(input = {}, event = {}, options = {}) {
     const reason = SKIP_REASONS.has(text(payload.reason, 60)) ? text(payload.reason, 60) : 'candidate_missing'
     next = {
       ...office,
-      // A stale skip may arrive after another holder was installed. Preserve
-      // that holder while consuming only the old pending operation.
+      // Устаревший отказ не снимает нового держателя: закрываем только
+      // прежнюю отложенную попытку.
       status: office.status === 'held' && office.holder_npc_id ? 'held' : 'vacant',
       holder_npc_id: office.status === 'held' && office.holder_npc_id ? office.holder_npc_id : null,
       pending: null,
