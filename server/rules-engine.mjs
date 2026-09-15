@@ -19314,13 +19314,25 @@ export function applyGameEvent(rawState, event) {
       const isNew = !state.worldMemory.quests.some((quest) => quest.id === payload.quest?.id)
       state.worldMemory = applyWorldMemoryEvent(state.worldMemory, event)
       const accepted = state.worldMemory.quests.find((quest) => quest.id === payload.quest?.id)
-      if (campaignModeFor(state) === 'persistent' && state.campaignConcept.story_quest_id == null
+      // Старый replay сохраняет прежний выбор новой записи. Начиная с v2
+      // обновление квеста техническое; основная история выбирается QuestAccepted.
+      if ((payload.schema_version == null || payload.schema_version === 1) && campaignModeFor(state) === 'persistent' && state.campaignConcept.story_quest_id == null
         && isNew && accepted?.status === 'active' && ['public', 'party'].includes(accepted.visibility)
         && !accepted.id.startsWith('quest:chapter:')) {
         state.campaignConcept.story_quest_id = accepted.id
       }
       break
     }
+    case 'QuestAccepted':
+      if (payload.schema_version !== 1) break
+      state.worldMemory = applyWorldMemoryEvent(state.worldMemory, event)
+      if (payload.selected_as_story === true && campaignModeFor(state) === 'persistent') {
+        state.campaignConcept.story_quest_id = payload.quest_id
+        state.scene.objective = String(payload.objective || '')
+        state.adventure.currentHook = state.scene.objective
+        state.suggestions = []
+      }
+      break
     case 'QuestResolved':
       state.worldMemory = applyWorldMemoryEvent(state.worldMemory, event)
       if (payload.stay_in_location === true && payload.event_schema_version === 2 && payload.updates_scene_objective === true) {

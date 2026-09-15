@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 
 const ENTITY_KINDS = new Set(['location', 'npc', 'faction', 'item', 'event', 'concept'])
-const QUEST_STATUSES = new Set(['hidden', 'active', 'completed', 'failed', 'abandoned'])
+const QUEST_STATUSES = new Set(['hidden', 'offered', 'active', 'completed', 'failed', 'abandoned'])
 const THREAD_STATUSES = new Set(['hidden', 'active', 'resolved', 'failed', 'abandoned'])
 const RELATION_STATUSES = new Set(['active', 'superseded'])
 const EPISTEMIC_KINDS = new Set(['belief', 'rumor'])
@@ -419,6 +419,7 @@ export function validateWorldMemoryCommand(command, state, context = {}) {
     result.quest_id = id(command.quest_id, 'quest_id')
     const quest = memory.quests.find((item) => item.id === result.quest_id)
     if (!quest) throw new WorldMemoryValidationError('Квест не найден', 'WORLD_QUEST_NOT_FOUND')
+    if (quest.status === 'offered') throw new WorldMemoryValidationError('Отряд ещё не принял это поручение', 'WORLD_QUEST_NOT_ACCEPTED')
     if (['completed', 'failed', 'abandoned'].includes(quest.status)) throw new WorldMemoryValidationError('Часы завершённого квеста нельзя изменять', 'WORLD_QUEST_CLOSED')
     result.amount = integer(command.amount, 1)
     if (result.amount < 1 || result.amount > 20) throw new WorldMemoryValidationError('Шаг часов должен быть от 1 до 20', 'WORLD_QUEST_CLOCK_INVALID')
@@ -486,7 +487,7 @@ export function worldMemoryEvent(command) {
   if (command.command_type === 'RevealWorldFact') return { event_type: 'WorldFactRevealed', payload: { fact_id: command.fact_id, source_event_ids: clone(command.source_event_ids ?? []) }, target_ids: clone(command.target_ids) }
   if (command.command_type === 'RecordKnowledgeRevelation') return { event_type: 'KnowledgeRevealed', payload: { fact_id: command.fact_id, source_event_ids: clone(command.source_event_ids ?? []) }, target_ids: clone(command.target_ids) }
   if (command.command_type === 'RecordWorldRelationship') return { event_type: 'WorldRelationshipRecorded', payload: { relationship: clone(command.relationship) }, target_ids: [] }
-  if (command.command_type === 'UpsertQuest') return { event_type: 'QuestUpserted', payload: { quest: clone(command.quest) }, target_ids: [] }
+  if (command.command_type === 'UpsertQuest') return { event_type: 'QuestUpserted', payload: { schema_version: 2, quest: clone(command.quest) }, target_ids: [] }
   if (command.command_type === 'AdvanceQuestClock') return { event_type: 'QuestClockAdvanced', payload: { quest_id: command.quest_id, amount: command.amount }, target_ids: [] }
   if (command.command_type === 'ResolveQuest') return { event_type: 'QuestResolved', payload: {
     quest_id: command.quest_id,
@@ -569,6 +570,9 @@ export function applyWorldMemoryEvent(input, event) {
       summary: text(payload.summary, 1_000) || quest.summary,
       ...(payload.stay_in_location === true && payload.event_schema_version === 2 ? { stay_in_location: true } : {}),
     } : quest)
+  }
+  if (event.event_type === 'QuestAccepted' && payload.schema_version === 1) {
+    memory.quests = memory.quests.map((quest) => quest.id === payload.quest_id ? { ...quest, status: 'active' } : quest)
   }
   if (event.event_type === 'NarrativeThreadUpserted') {
     const thread = safeThread(payload.thread)

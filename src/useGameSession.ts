@@ -427,7 +427,7 @@ export function useGameSession() {
   const merchantEpoch = useRef(0)
   const freeRollBusy = useRef(false)
   const questRequestBusy = useRef(false)
-  const pendingQuestRequest = useRef<{ campaignId: string; playerId: string; questId: string; key: string } | null>(null)
+  const pendingQuestRequest = useRef<{ campaignId: string; playerId: string; questId: string; action: 'accept' | 'abandon'; key: string } | null>(null)
   const [questDecisionBusy, setQuestDecisionBusy] = useState(false)
   const fullRoomRequest = useRef<Promise<boolean> | null>(null)
   const actionEpoch = useRef(0)
@@ -1146,26 +1146,26 @@ export function useGameSession() {
     }
   }, [applyRemote, state.sessionCode])
 
-  const requestQuestAbandonment = useCallback(async (playerId: string, questId: string): Promise<boolean> => {
+  const requestQuestDecision = useCallback(async (playerId: string, questId: string, action: 'accept' | 'abandon'): Promise<boolean> => {
     if (questRequestBusy.current) return false
     questRequestBusy.current = true
     setQuestDecisionBusy(true)
     setDirectorError(null)
     const campaignId = stateRef.current.sessionCode
     const pending = pendingQuestRequest.current
-    if (!pending || pending.campaignId !== campaignId || pending.playerId !== playerId || pending.questId !== questId) {
-      pendingQuestRequest.current = { campaignId, playerId, questId, key: commandId() }
+    if (!pending || pending.campaignId !== campaignId || pending.playerId !== playerId || pending.questId !== questId || pending.action !== action) {
+      pendingQuestRequest.current = { campaignId, playerId, questId, action, key: commandId() }
     }
     const key = pendingQuestRequest.current!.key
     try {
-      const response = await fetchWithTimeout(`/api/campaigns/${encodeURIComponent(campaignId)}/quests/abandon`, {
+      const response = await fetchWithTimeout(`/api/campaigns/${encodeURIComponent(campaignId)}/quests/${action}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ actor_id: playerId, quest_id: questId, idempotency_key: key }),
       })
       const result = await response.json() as { version?: number; state?: GameState; error?: string; code?: string }
       if (!response.ok) {
         if (response.status < 500) pendingQuestRequest.current = null
-        throw await responseCommandError(response, result, 'Не удалось предложить отказ от задания')
+        throw await responseCommandError(response, result, 'Не удалось предложить решение по заданию')
       }
       if (!result.state) throw new Error('Сервер не вернул состояние решения')
       pendingQuestRequest.current = null
@@ -1175,7 +1175,7 @@ export function useGameSession() {
       return true
     } catch (error) {
       // При потере ответа повтор использует тот же ключ и читает прежний commit.
-      if (stateRef.current.sessionCode === campaignId) setDirectorError(error instanceof Error ? error.message : 'Не удалось предложить отказ от задания')
+      if (stateRef.current.sessionCode === campaignId) setDirectorError(error instanceof Error ? error.message : 'Не удалось предложить решение по заданию')
       return false
     } finally {
       questRequestBusy.current = false
@@ -1256,7 +1256,7 @@ export function useGameSession() {
     const interaction = state.agentInteraction
     if (!interaction || interaction.status !== 'resolved') return
     // Типизированное решение исполняет сервер и восстанавливает при reconnect.
-    if (interaction.questAbandonment) return
+    if (interaction.questAbandonment || interaction.questAcceptance) return
     const winner = interaction.options.find((option) => option.id === interaction.resolvedOptionId)
     if (!winner) return
     void submitAction(`[РЕШЕНИЕ ГРУППЫ] ${interaction.title}: ${winner.label}. ${interaction.resolutionPrompt}`, playerId)
@@ -2116,7 +2116,7 @@ export function useGameSession() {
     cancelPendingCheck,
     rollFreeDie,
     voteAgentInteraction,
-    requestQuestAbandonment,
+    requestQuestDecision,
     questDecisionBusy,
     abstainAgentInteraction,
     rollAgentInteraction,

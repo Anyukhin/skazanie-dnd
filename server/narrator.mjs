@@ -1455,6 +1455,15 @@ function qualitativeEventSummary(event, resolveName) {
       return 'Бой начинается; порядок действий определён'
     case 'CampaignArcCompleted':
       return 'Завершённая история уступает место новой арке'
+    case 'CampaignStoryCompleted':
+      return payload.schema_version === 1 ? 'История завершена, кампания продолжается' : ''
+    case 'QuestAccepted':
+    case 'QuestResolved':
+      return sceneText(payload.summary, 1_000)
+    case 'DirectorIntentRecorded':
+    case 'DirectorIntentOutcomeRecorded':
+    case 'CampaignPacingAdvanced':
+      return ''
     case 'TurnStarted':
       return `Начинается ход ${target}`
     case 'NpcRelationshipAdjusted':

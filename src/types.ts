@@ -190,6 +190,7 @@ export type AgentInteraction = {
   roll?: DiceRollEvent
   destinationLocationId?: string
   questAbandonment?: { schemaVersion: 1; questId: string }
+  questAcceptance?: { schemaVersion: 1; questId: string }
   resolutionPrompt: string
   createdAt: number
   expiresAt?: number

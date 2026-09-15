@@ -17,6 +17,8 @@ import { applyGameEvent, normalizeCampaignState, replayEvents, resolveCommands, 
 import { FileEventStore } from '../server/event-store.mjs'
 import { lifecycleEventForAction } from '../server/campaign-lifecycle.mjs'
 import { buildCampaignArcPlan, MAX_CAMPAIGN_ARCS } from '../server/campaign-loop-policy.mjs'
+import { partyDecisionOpenedEvent, resolvePartyVote } from '../server/party-decision.mjs'
+import { deterministicNarration } from '../server/narrator.mjs'
 
 const CAMPAIGN_ID = 'PERSISTENT-STORIES'
 const LOCATION_ID = 'ford'
@@ -120,6 +122,19 @@ function abandonInteraction(questId = 'quest:main') {
 
 function resolvePlan(state, commands, context = { isDirector: true }) {
   return resolveCommands(commands, state, { diceService: diceService(), context })
+}
+
+function acceptQuest(state, questId, decisionId = `accept:${questId}`) {
+  const opened = partyDecisionOpenedEvent({ id: decisionId, type: 'vote', title: 'Принять задание?',
+    options: [{ id: 'later', label: 'Пока не брать' }, { id: 'accept', label: 'Принять' }],
+    questAcceptance: { schemaVersion: 1, questId }, createdAt: 1_800_000_000_000,
+  }, 'hero', { eligibleHeroIds: ['hero'] })
+  const openingState = applyGameEvent(state, opened)
+  const votes = resolvePartyVote(openingState, { interactionId: decisionId, heroId: 'hero', optionId: 'accept' }).events
+  const votedState = replayEvents(openingState, votes)
+  const accepted = resolvePlan(votedState, [{ command_type: 'ResolveQuestDecision', interaction_id: decisionId,
+    house_rule_id: 'skazanie:quest-decision:v1' }])
+  return { state: accepted.state, events: [opened, ...votes, ...accepted.events] }
 }
 
 function stableWorldMap(map) {
@@ -244,6 +259,10 @@ test('persistent story history keeps 13 completed stories while the agent brief 
       }])
       state = added.state
       events.push(...added.events)
+      assert.equal(state.campaignConcept.story_quest_id, null, 'создание записи ещё не выбор истории')
+      const accepted = acceptQuest(state, `quest:story:${number}`)
+      state = accepted.state
+      events.push(...accepted.events)
     }
     const resolved = resolvePlan(state, [resolveQuestCommand({
       id: number === 1 ? 'quest:main' : `quest:story:${number}`,
@@ -298,6 +317,48 @@ test('persistent mode does not synthesize chapter quests when a scene has no que
   assert.equal(transitioned.events.some((event) => event.event_type === 'QuestUpserted'), false)
   assert.equal(transitioned.state.worldMemory.quests.some((quest) => quest.id.startsWith('quest:chapter:')), false)
   assert.equal(transitioned.state.campaignConcept.story_sequence ?? 0, 0)
+})
+
+test('раскрытие существующей задачи не выбирает историю, явное принятие связывает вторую историю', () => {
+  const second = { ...mainQuest({ id: 'quest:existing', title: 'Уже существующая задача', status: 'hidden', triggered: true }), visibility: 'gm_only' }
+  const initial = persistentCampaign({ quests: [mainQuest({ triggered: true }), second] })
+  const first = resolvePlan(initial, [resolveQuestCommand()])
+  const revealed = resolvePlan(first.state, [{ command_type: 'UpsertQuest', quest: { ...second, status: 'offered', visibility: 'party' } }])
+  assert.equal(revealed.state.campaignConcept.story_quest_id, null)
+  assert.throws(() => resolvePlan(revealed.state, [{ command_type: 'AdvanceQuestClock', quest_id: second.id, amount: 1 }]), { code: 'WORLD_QUEST_NOT_ACCEPTED' })
+  const accepted = acceptQuest(revealed.state, second.id)
+  assert.equal(accepted.state.campaignConcept.story_quest_id, second.id)
+  assert.equal(accepted.state.worldMemory.quests.find((quest) => quest.id === second.id).status, 'active')
+  const finished = resolvePlan(accepted.state, [resolveQuestCommand({ id: second.id })])
+  assert.equal(finished.state.campaignConcept.story_sequence, 2)
+  assert.equal(finished.state.campaignConcept.story_history[1].quest_id, second.id)
+  assert.equal(finished.state.scene.location_id, initial.scene.location_id)
+  assert.deepEqual(finished.state.mechanics.world_time, initial.mechanics.world_time)
+  assert.deepEqual(replayEvents(initial, [...first.events, ...revealed.events, ...accepted.events, ...finished.events]), finished.state)
+})
+
+test('техническая правка активного поручения не назначает историю; старый replay остаётся совместимым', () => {
+  const initial = persistentCampaign({ quests: [], concept: { story_quest_id: null } })
+  const quest = mainQuest({ id: 'quest:side', triggered: false })
+  const added = resolvePlan(initial, [{ command_type: 'UpsertQuest', quest }])
+  assert.equal(added.state.campaignConcept.story_quest_id, null)
+  const edited = resolvePlan(added.state, [{ command_type: 'UpsertQuest', quest: { ...quest, summary: 'Уточнили описание' } }])
+  assert.equal(edited.state.campaignConcept.story_quest_id, null)
+  const accepted = acceptQuest(edited.state, quest.id)
+  assert.equal(accepted.state.campaignConcept.story_quest_id, quest.id)
+  const legacy = applyGameEvent(initial, { event_type: 'QuestUpserted', payload: { quest } })
+  assert.equal(legacy.campaignConcept.story_quest_id, quest.id)
+})
+
+test('запасной рассказчик описывает итог истории без имён внутренних событий и ID заданий', () => {
+  const result = deterministicNarration({ visible_events: [
+    { event_type: 'QuestResolved', payload: { quest_id: 'quest:private-key', summary: 'Письмо доставлено.' } },
+    { event_type: 'CampaignStoryCompleted', payload: { schema_version: 1 } },
+    { event_type: 'DirectorIntentOutcomeRecorded', payload: { state_changed: true } },
+  ], visible_state_changes: [], known_environment: {}, permitted_npc_reactions: [] })
+  assert.match(result.narration, /Письмо доставлено/u)
+  assert.match(result.narration, /кампания продолжается/u)
+  assert.doesNotMatch(result.narration, /CampaignStoryCompleted|DirectorIntentOutcomeRecorded|quest:private-key/u)
 })
 
 test('adventure mode retains the 12-arc limit and does not emit persistent story events', () => {

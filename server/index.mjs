@@ -94,7 +94,7 @@ import { SCENE_ARCHITECT_AGENT_ID, SceneArchitectAgent } from './scene-architect
 import { proposeAgentInteraction, resolvePartyDecision } from './player-request-router.mjs'
 import { planHeroCombatCommand } from './party-tactics.mjs'
 import { abandonableQuest, classifyPartyDecision } from './party-exit-intent.mjs'
-import { finishQuestAbandonment, questAbandonmentChronicleEntry, requestQuestAbandonment } from './quest-abandonment.mjs'
+import { finishQuestDecision, questDecisionChronicleEntry, requestQuestDecision } from './quest-decisions.mjs'
 import { campaignStoryChronicleEntry, validateCampaignMode } from './campaign-stories.mjs'
 import { CampaignBootstrapper } from './campaign-bootstrap.mjs'
 import { listWorldTemplates } from './world-template-catalog.mjs'
@@ -2929,7 +2929,7 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
     // подход к зверю приходит и с доски, и второй фазой ручного броска, а
     // идентификатор карточки детерминирован (`chronicle:<зверь>:<ступень>`),
     // поэтому повторная проекция того же события её не удваивает.
-    for (const candidate of [...eventsForChronicle.map(offscreenChronicleEntry), ...eventsForChronicle.map(courierLetterChronicleEntry), ...eventsForChronicle.map(beastChronicleEntry), ...eventsForChronicle.map(questAbandonmentChronicleEntry), ...eventsForChronicle.map(campaignStoryChronicleEntry), journalMessage].flat()) {
+    for (const candidate of [...eventsForChronicle.map(offscreenChronicleEntry), ...eventsForChronicle.map(courierLetterChronicleEntry), ...eventsForChronicle.map(beastChronicleEntry), ...eventsForChronicle.map(questDecisionChronicleEntry), ...eventsForChronicle.map(campaignStoryChronicleEntry), journalMessage].flat()) {
       if (!candidate?.id || !String(candidate.text ?? '').trim()) continue
       if (messages.some((message) => String(message.id) === String(candidate.id))) continue
       messages.push(journalEntry(candidate))
@@ -2975,7 +2975,7 @@ async function reconcileCampaignProjection(campaignId) {
   try {
     await expirePartyDecisionIfNeeded(campaignId)
     let authoritative = await eventStore.load(campaignId)
-    const questResolution = await finishQuestAbandonment({ executor: authoritativeExecutor, campaignId, state: authoritative.state })
+    const questResolution = await finishQuestDecision({ executor: authoritativeExecutor, campaignId, state: authoritative.state })
     if (questResolution) authoritative = await eventStore.load(campaignId)
     const pending = await eventStore.pendingProjection(campaignId)
     const room = getRoom(campaignId)
@@ -3655,7 +3655,7 @@ const server = createServer((req, res) => {
     broadcastCampaignRoom(campaignId)
     return
   }
-  const questAbandonMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/quests\/abandon$/)
+  const questAbandonMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/quests\/(abandon|accept)$/)
   if (questAbandonMatch && req.method === 'POST') {
     const user = requireUser(req, res); if (!user) return
     const campaignId = questAbandonMatch[1].toUpperCase()
@@ -3665,8 +3665,9 @@ const server = createServer((req, res) => {
       if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
       const body = await readBody(req)
       if (!canUseHero(user, body.actor_id, campaignId)) return json(res, 403, { error: 'Этот герой не принадлежит вашему аккаунту', code: 'ACTOR_FORBIDDEN' })
-      await requestQuestAbandonment({
+      await requestQuestDecision({
         executor: authoritativeExecutor, campaignId, actorId: body.actor_id, questId: body.quest_id,
+        action: questAbandonMatch[2],
         idempotencyKey: body.idempotency_key ?? req.headers['x-idempotency-key'],
         voterSnapshot: (state) => {
           const eligibleHeroIds = partyHeroIds(state)
@@ -3677,9 +3678,9 @@ const server = createServer((req, res) => {
       return json(res, 200, { version: latest.version, updatedAt: latest.updatedAt,
         state: viewerStateFor(stateWithLivePresence(latest.state, campaignId), user, body.actor_id) })
     } catch (error) {
-      const status = ['IDEMPOTENCY_CONFLICT', 'PARTY_DECISION_CONFLICT', 'WORLD_QUEST_CLOSED', 'CAMPAIGN_NOT_ACTIVE', 'QUEST_DECISION_DURING_COMBAT'].includes(error?.code) ? 409
+      const status = ['IDEMPOTENCY_CONFLICT', 'PARTY_DECISION_CONFLICT', 'WORLD_QUEST_CLOSED', 'WORLD_QUEST_ALREADY_ACCEPTED', 'CAMPAIGN_NOT_ACTIVE', 'QUEST_DECISION_DURING_COMBAT'].includes(error?.code) ? 409
         : error?.code === 'ACTOR_FORBIDDEN' ? 403 : 400
-      return json(res, status, { error: error.message || 'Не удалось предложить отказ от задания', code: error?.code })
+      return json(res, status, { error: error.message || 'Не удалось предложить решение по заданию', code: error?.code })
     }
   }
   const partyVoteMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/party-decisions\/([A-Za-z0-9._:-]+)\/votes$/)

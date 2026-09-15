@@ -7,6 +7,11 @@ import { join } from 'node:path'
 import test from 'node:test'
 
 import { PERSISTENT_WORLD_OBJECTIVE } from '../server/campaign-stories.mjs'
+import { AuthoritativeExecutor } from '../server/authoritative-executor.mjs'
+import { FileEventStore } from '../server/event-store.mjs'
+import { MapStore } from '../server/map-store.mjs'
+import { DiceService } from '../server/dice-service.mjs'
+import { applyGameEvent, normalizeCampaignState, RulesEngine, GAME_STATE_PROJECTOR_VERSION } from '../server/rules-engine.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 const CAMPAIGN = 'PERSIST-API'
@@ -127,6 +132,19 @@ test('обычный игрок создаёт persistent кампанию, за
   const port = await freePort()
   const baseUrl = `http://127.0.0.1:${port}`
   const log = () => logs
+  const existingQuest = { id: 'quest:already-existed', title: 'Старое поручение у переправы', summary: 'Найти след на берегу',
+    status: 'hidden', visibility: 'gm_only', entity_ids: [], objectives: ['Найти след на берегу'], clock: { current: 1, max: 1, label: 'След' } }
+  async function worldCommand(command, key) {
+    await stopServer(child)
+    child = null
+    const rootDir = join(storage, 'engine')
+    const eventStore = new FileEventStore({ rootDir, reducer: applyGameEvent, normalizeState: normalizeCampaignState,
+      snapshotProjectorVersion: GAME_STATE_PROJECTOR_VERSION, mapStore: new MapStore({ rootDir }) })
+    const executor = new AuthoritativeExecutor({ eventStore, rulesEngine: new RulesEngine({ diceService: new DiceService() }) })
+    await executor.executeCommands({ campaignId: CAMPAIGN, idempotencyKey: key, commands: [command], context: { isDirector: true } })
+    child = startServer(port, storage, (chunk) => { logs += chunk })
+    await waitForHealth(baseUrl, child, log)
+  }
   child = startServer(port, storage, (chunk) => { logs += chunk })
   await waitForHealth(baseUrl, child, log)
 
@@ -183,6 +201,7 @@ test('обычный игрок создаёт persistent кампанию, за
   assert.ok(initialQuest)
   assert.equal(initialQuest.clock.max, 4)
   assert.equal(initial.worldMemory.quests.filter((quest) => quest.status === 'active').length, 1)
+  await worldCommand({ command_type: 'UpsertQuest', quest: existingQuest }, 'existing-quest-hidden')
 
   const invite = await request(baseUrl, `/api/campaigns/${CAMPAIGN}/invites`, { method: 'POST', cookie: ownerCookie, body: {} })
   assert.equal(invite.status, 201, invite.text)
@@ -276,6 +295,47 @@ test('обычный игрок создаёт persistent кампанию, за
     body: { idempotency_key: 'persistent-move-after-story', command: { command_type: 'MoveActor', actor_id: 'hero-slot-1', to: { x: destination.x, y: destination.y } } },
   })
   assert.equal(move.status, 200, `${move.text}\n${log()}`)
+
+  const hiddenAcceptance = await request(baseUrl, `/api/campaigns/${CAMPAIGN}/quests/accept`, {
+    method: 'POST', cookie: ownerCookie,
+    body: { actor_id: 'hero-slot-1', quest_id: existingQuest.id, idempotency_key: 'accept-hidden' },
+  })
+  assert.equal(hiddenAcceptance.body.code, 'WORLD_QUEST_NOT_FOUND')
+  assert.ok(!hiddenAcceptance.text.includes(existingQuest.title))
+  await worldCommand({ command_type: 'UpsertQuest', quest: { ...existingQuest, status: 'offered', visibility: 'party' } }, 'existing-quest-offered')
+  const offered = await request(baseUrl, `/api/rooms/${CAMPAIGN}`, { cookie: ownerCookie })
+  assert.equal(offered.body.state.campaignConcept.story_quest_id, null)
+  assert.equal(offered.body.state.worldMemory.quests.find((entry) => entry.id === existingQuest.id).status, 'offered')
+  const acceptance = await request(baseUrl, `/api/campaigns/${CAMPAIGN}/quests/accept`, {
+    method: 'POST', cookie: ownerCookie,
+    body: { actor_id: 'hero-slot-1', quest_id: existingQuest.id, idempotency_key: 'accept-existing' },
+  })
+  assert.equal(acceptance.status, 200, acceptance.text)
+  const acceptanceId = acceptance.body.state.agentInteraction.id
+  const duplicateAcceptance = await request(baseUrl, `/api/campaigns/${CAMPAIGN}/quests/accept`, {
+    method: 'POST', cookie: ownerCookie,
+    body: { actor_id: 'hero-slot-1', quest_id: existingQuest.id, idempotency_key: 'accept-existing' },
+  })
+  assert.equal(duplicateAcceptance.body.state.agentInteraction.id, acceptanceId)
+  for (const [session, actor] of [[ownerCookie, 'hero-slot-1'], [guestCookie, 'hero-slot-2']]) {
+    const vote = await request(baseUrl, `/api/campaigns/${CAMPAIGN}/party-decisions/${acceptanceId}/votes`, {
+      method: 'POST', cookie: session, body: { actor_id: actor, option_id: 'accept', idempotency_key: `accept-vote-${actor}` },
+    })
+    assert.equal(vote.status, 200, vote.text)
+    if (actor === 'hero-slot-1') assert.equal(vote.body.state.campaignConcept.story_quest_id, null)
+    else {
+      assert.equal(vote.body.state.campaignConcept.story_quest_id, existingQuest.id)
+      assert.equal(vote.body.state.worldMemory.quests.find((entry) => entry.id === existingQuest.id).status, 'active')
+      assert.equal(vote.body.state.scene.location_id, offered.body.state.scene.location_id)
+      assert.deepEqual(vote.body.state.mechanics.world_time, offered.body.state.mechanics.world_time)
+    }
+  }
+  await worldCommand({ command_type: 'ResolveQuest', quest_id: existingQuest.id, outcome: 'success',
+    summary: 'След найден.', next_objective: PERSISTENT_WORLD_OBJECTIVE }, 'existing-quest-completed')
+  const secondStory = await request(baseUrl, `/api/rooms/${CAMPAIGN}`, { cookie: guestCookie })
+  assert.equal(secondStory.body.state.campaignConcept.story_sequence, 2)
+  assert.equal(secondStory.body.state.campaignConcept.story_history[1].quest_id, existingQuest.id)
+  assert.equal(secondStory.body.state.mechanics.campaign_lifecycle.status, 'active')
 
   const guestPause = await request(baseUrl, `/api/campaigns/${CAMPAIGN}/lifecycle`, {
     method: 'POST', cookie: guestCookie,

@@ -1700,7 +1700,12 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         {view === 'journal' && <JournalView state={state} questBusy={gameSession.questDecisionBusy}
           canAbandonQuest={canAct && !combatActive}
           onAbandonQuest={(questId) => {
-            void gameSession.requestQuestAbandonment(activePlayer.id, questId).then((opened) => {
+            void gameSession.requestQuestDecision(activePlayer.id, questId, 'abandon').then((opened) => {
+              if (opened) navigate('room')
+            })
+          }}
+          onAcceptQuest={(questId) => {
+            void gameSession.requestQuestDecision(activePlayer.id, questId, 'accept').then((opened) => {
               if (opened) navigate('room')
             })
           }} />}

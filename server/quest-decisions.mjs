@@ -1,10 +1,14 @@
 import { createHash } from 'node:crypto'
 import { PARTY_DECISION_CAPABILITY } from './authoritative-executor.mjs'
 import { PartyDecisionError, partyDecisionOpenedEvent } from './party-decision.mjs'
+import { campaignModeFor, persistentStoryQuest } from './campaign-stories.mjs'
 
 const safeId = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/u
 
-export function questAbandonmentChronicleEntry(event) {
+export function questDecisionChronicleEntry(event) {
+  if (event?.event_type === 'QuestAccepted' && event.payload?.schema_version === 1) return {
+    id: `quest-accepted:${event.event_id}`, speaker: 'narrator', author: 'Рассказчик', text: String(event.payload.summary || ''), turnConsumed: false,
+  }
   if (event?.event_type !== 'QuestResolved' || event.payload?.stay_in_location !== true) return null
   return { id: `quest-resolution:${event.event_id}`, speaker: 'narrator', author: 'Рассказчик',
     text: String(event.payload.summary || ''), turnConsumed: false }
@@ -26,11 +30,13 @@ function assertSameRequest(committed, fingerprint) {
 }
 
 /** HTTP передаёт намерение и снимок участников; правила решения живут на сервере. */
-export async function requestQuestAbandonment({
-  executor, campaignId, actorId, questId, idempotencyKey, voterSnapshot, now = Date.now(),
+export async function requestQuestDecision({
+  executor, campaignId, actorId, questId, idempotencyKey, voterSnapshot, now = Date.now(), action = 'abandon',
 }) {
   assertRequest({ actorId, questId, idempotencyKey })
-  const fingerprint = createHash('sha256').update(JSON.stringify(['quest-abandonment/v1', campaignId, actorId, questId])).digest('hex')
+  if (!['abandon', 'accept'].includes(action)) throw new PartyDecisionError('Неизвестное решение по заданию', 'INVALID_QUEST_REQUEST')
+  const acceptance = action === 'accept'
+  const fingerprint = createHash('sha256').update(JSON.stringify([acceptance ? 'quest-acceptance/v1' : 'quest-abandonment/v1', campaignId, actorId, questId])).digest('hex')
   const previous = await executor.eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
   if (previous) return assertSameRequest(previous, fingerprint)
   const interactionId = `quest-${createHash('sha256').update(`${campaignId}\0${idempotencyKey}`).digest('hex').slice(0, 24)}`
@@ -47,18 +53,23 @@ export async function requestQuestAbandonment({
         throw new PartyDecisionError('Этот герой пока не может действовать', 'ACTOR_UNAVAILABLE')
       }
       const quest = state.worldMemory?.quests?.find((entry) => entry.id === questId
-        && ['public', 'party'].includes(entry.visibility))
+        && entry.status !== 'hidden' && ['public', 'party'].includes(entry.visibility))
       if (!quest) throw new PartyDecisionError('Задание недоступно отряду', 'WORLD_QUEST_NOT_FOUND')
       if (quest.id.startsWith('quest:chapter:')) throw new PartyDecisionError('Это цель текущей сцены, а не отдельное поручение', 'WORLD_QUEST_NOT_ABANDONABLE')
-      if (quest.status !== 'active') throw new PartyDecisionError('Это задание уже закрыто', 'WORLD_QUEST_CLOSED')
+      if (!(acceptance ? ['offered', 'active'] : ['active']).includes(quest.status)) throw new PartyDecisionError('Это задание нельзя сейчас изменить', 'WORLD_QUEST_CLOSED')
+      if (acceptance && quest.status === 'active'
+        && (campaignModeFor(state) !== 'persistent' || persistentStoryQuest(state))) {
+        throw new PartyDecisionError('Задание уже принято; основная история пока занята', 'WORLD_QUEST_ALREADY_ACCEPTED')
+      }
       if (state.agentInteraction) throw new PartyDecisionError('Сначала завершите текущее решение отряда', 'PARTY_DECISION_CONFLICT')
       const opened = partyDecisionOpenedEvent({
         id: interactionId, type: 'vote', createdAt: now,
-        title: 'Отказаться от задания?',
-        description: `Задание «${quest.title}» будет оставлено. Отряд останется в текущей локации.`,
+        title: acceptance ? quest.status === 'active' ? 'Выбрать основную историю?' : 'Принять задание?' : 'Отказаться от задания?',
+        description: acceptance ? `Отряд ${quest.status === 'active' ? 'выбирает основной историей' : 'принимает'} задание «${quest.title}». Место и время не меняются.` : `Задание «${quest.title}» будет оставлено. Отряд останется в текущей локации.`,
         // При истечении без голосов сохраняем задание по общей политике стола.
-        options: [{ id: 'keep', label: 'Продолжить задание' }, { id: 'abandon', label: 'Отказаться от задания' }],
-        questAbandonment: { schemaVersion: 1, questId },
+        options: acceptance ? [{ id: 'later', label: 'Решить позже' }, { id: 'accept', label: quest.status === 'active' ? 'Выбрать основной историей' : 'Принять задание' }]
+          : [{ id: 'keep', label: 'Продолжить задание' }, { id: 'abandon', label: 'Отказаться от задания' }],
+        ...(acceptance ? { questAcceptance: { schemaVersion: 1, questId } } : { questAbandonment: { schemaVersion: 1, questId } }),
       }, actorId, { ...voterSnapshot(state), policy: state.partyDecisionPolicy })
       opened.payload.request_fingerprint = fingerprint
       return [opened]
@@ -69,10 +80,10 @@ export async function requestQuestAbandonment({
 }
 
 /** Сохранённое решение само служит возобновляемой работой после сбоя. */
-export async function finishQuestAbandonment({ executor, campaignId, state }) {
+export async function finishQuestDecision({ executor, campaignId, state }) {
   const current = state ?? (await executor.eventStore.load(campaignId)).state
   const interaction = current.agentInteraction
-  if (!interaction?.questAbandonment || interaction.status !== 'resolved'
+  if ((!interaction?.questAbandonment && !interaction?.questAcceptance) || interaction.status !== 'resolved'
     || current.mechanics?.campaign_lifecycle?.status !== 'active') return null
   const key = `quest-decision:${interaction.id}`
   try {

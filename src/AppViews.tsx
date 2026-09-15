@@ -580,9 +580,10 @@ const normalizeJournalText = (value: unknown) => String(value ?? '')
   .trim()
   .toLocaleLowerCase('ru')
 
-export function JournalView({ state, onAbandonQuest, questBusy = false, canAbandonQuest = false }: {
+export function JournalView({ state, onAbandonQuest, onAcceptQuest, questBusy = false, canAbandonQuest = false }: {
   state: GameState
   onAbandonQuest?: (questId: string) => void
+  onAcceptQuest?: (questId: string) => void
   questBusy?: boolean
   canAbandonQuest?: boolean
 }) {
@@ -594,6 +595,8 @@ export function JournalView({ state, onAbandonQuest, questBusy = false, canAband
   // но игрок её нигде не видел: квесты, нити и резюме прошлых сцен доезжали
   // до клиента и молча пропадали.
   const quests = (state.worldMemory?.quests ?? []).filter((quest) => quest.status === 'active')
+  const offers = (state.worldMemory?.quests ?? []).filter((quest) => quest.status === 'offered')
+  const canChooseStory = state.campaignConcept?.campaign_mode === 'persistent' && !state.campaignConcept.story_quest_id
   const abandonedQuests = (state.worldMemory?.quests ?? []).filter((quest) => quest.status === 'abandoned')
   const threads = (state.worldMemory?.threads ?? []).filter((thread) => thread.status === 'active')
   const summaries = (state.worldMemory?.summaries ?? []).slice(-4).reverse()
@@ -606,7 +609,16 @@ export function JournalView({ state, onAbandonQuest, questBusy = false, canAband
         <div><Sparkles size={18} /><span><b>{narratorCount}</b><small>сцен рассказчика</small></span></div>
         <div><History size={18} /><span><b>{state.scene.turn}</b><small>текущий ход</small></span></div>
       </div>
-      {(quests.length > 0 || abandonedQuests.length > 0 || threads.length > 0 || summaries.length > 0 || storyHistory.length > 0) && <section className="quest-board" aria-label="Задачи и нити">
+      {(quests.length > 0 || offers.length > 0 || abandonedQuests.length > 0 || threads.length > 0 || summaries.length > 0 || storyHistory.length > 0) && <section className="quest-board" aria-label="Задачи и нити">
+        {offers.length > 0 && <div className="quest-column">
+          <header><ScrollText size={15} /><strong>Предложенные задания</strong><span>{offers.length}</span></header>
+          {offers.map((quest) => <article className="quest-card" key={quest.id}>
+            <b>{quest.title}</b>{quest.summary && <p>{quest.summary}</p>}
+            {onAcceptQuest && quest.visibility !== 'gm_only' && <button className="quest-abandon-button"
+              disabled={!canAbandonQuest || questBusy || Boolean(state.agentInteraction)}
+              aria-label={`Принять задание «${quest.title}»`} onClick={() => onAcceptQuest(quest.id)}>Принять задание</button>}
+          </article>)}
+        </div>}
         {quests.length > 0 && <div className="quest-column">
           <header><ScrollText size={15} /><strong>Задачи отряда</strong><span>{quests.length}</span></header>
           {quests.map((quest) => {
@@ -637,6 +649,9 @@ export function JournalView({ state, onAbandonQuest, questBusy = false, canAband
                 disabled={!canAbandonQuest || questBusy || Boolean(state.agentInteraction)}
                 aria-label={`Предложить отказ от задания «${quest.title}»`}
                 onClick={() => onAbandonQuest(quest.id)}>Предложить отказ</button>}
+              {onAcceptQuest && canChooseStory && quest.visibility !== 'gm_only' && !quest.id.startsWith('quest:chapter:') && <button className="quest-abandon-button"
+                disabled={!canAbandonQuest || questBusy || Boolean(state.agentInteraction)}
+                aria-label={`Выбрать основной историей «${quest.title}»`} onClick={() => onAcceptQuest(quest.id)}>Выбрать основной историей</button>}
             </article>
           })}
         </div>}
