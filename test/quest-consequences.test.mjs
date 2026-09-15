@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { palaceFixture } from './shared-npc-consequence-fixture.mjs'
 import { validateWorldMemoryCommand, worldMemoryEvent, applyWorldMemoryEvent } from '../server/world-memory.mjs'
-import { campaignStateForViewer, mechanicsForViewer } from '../server/viewer-projection.mjs'
+import { campaignStateForViewer, mechanicsForViewer, turnResultForViewer, turnExplanationForViewer } from '../server/viewer-projection.mjs'
 import { normalizeQuestResponsibility } from '../server/quest-consequences.mjs'
 
 test('невозможность поручения требует системных прав и сохранённой причины, часы не заполняются', async () => {
@@ -54,4 +54,19 @@ test('проекция должности и её события не раскр
   } }], { role: 'player' }, heroId, state)
   assert.equal(events.length, 1)
   assert.doesNotMatch(JSON.stringify(events), /due_at_minutes|secret-plan|internal-death/u)
+})
+
+test('спасбросок социального NPC показывает исход, но не его приватный модификатор через события или броски', async () => {
+  const { state, heroId, kingId } = await palaceFixture()
+  const roll = { actor_id: kingId, purpose: 'npc_spell_save:fireball:dex', roll_id: 'private-npc-die',
+    modifier: 5, kept: 8, dice: [8], expression: '1d20+5', total: 13, visibility: 'public' }
+  const event = { event_type: 'NpcSavingThrowResolved', actor_id: heroId, target_ids: [kingId], visibility: 'party',
+    payload: { ...roll, npc_id: kingId, saved: false, difficulty: 15 } }
+  const result = turnResultForViewer({ mechanics: [event], rolls: [roll], authoritative_state: state }, { role: 'player' }, heroId)
+  assert.deepEqual(result.rolls, [])
+  assert.equal(result.mechanics[0].payload.saved, false)
+  assert.equal(result.mechanics[0].payload.total, 13)
+  assert.doesNotMatch(JSON.stringify(result.mechanics), /modifier|kept|dice|expression|private-npc-die/u)
+  assert.deepEqual(turnExplanationForViewer({ rolls: [roll], events: [event] }, { role: 'player' }, heroId, state).rolls, [])
+  assert.equal(turnResultForViewer({ rolls: [roll] }, { role: 'admin' }, heroId).rolls[0].modifier, 5)
 })

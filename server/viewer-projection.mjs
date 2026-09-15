@@ -1826,6 +1826,9 @@ function eventForViewer(event, user, actorId, state = {}) {
   if (visible.event_type === 'NpcHarmed') {
     for (const key of ['hp', 'max_hp', 'hp_before', 'hp_after', 'raw_amount']) delete payload[key]
   }
+  if (visible.event_type === 'NpcSavingThrowResolved') {
+    for (const key of ['modifier', 'kept', 'dice', 'roll_id', 'expression']) delete payload[key]
+  }
   // Профиль NPC. До ревью 2026-08-09 ветки здесь не было вовсе, и
   // `NpcSocialProfileUpserted` уезжал игроку сырым: `goals`, `beliefs`,
   // `known_fact_ids` и `social_dcs` — то есть и СЛ социальных проверок, которые
@@ -2080,6 +2083,7 @@ export function mechanicsForViewer(events, user, actorId = '', state = {}) {
  */
 function rollVisibleFor(roll, user) {
   if (user?.role === 'admin') return true
+  if (/^npc_(?:spell|area)_save:/u.test(String(roll?.purpose ?? ''))) return false
   return !['gm_only', 'npc_private'].includes(String(roll?.visibility ?? 'public'))
 }
 
