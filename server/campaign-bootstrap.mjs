@@ -13,6 +13,7 @@ import { createCampaignWorldMap } from './world-map.mjs'
 import { DEFAULT_PARTY_DECISION_POLICY } from './party-decision.mjs'
 import { buildDataOnlyContext } from './security.mjs'
 import { buildCampaignArcPlan } from './campaign-loop-policy.mjs'
+import { validateCampaignMode } from './campaign-stories.mjs'
 import { drawCampaignInspiration, inspirationPromptSeed } from './campaign-inspiration.mjs'
 import { LEGACY_DEFAULT_RULESET_ID, rulesetLock } from './ruleset-config.mjs'
 import { getWorldTemplate, worldTemplateConcept, worldTemplateOpening } from './world-template-catalog.mjs'
@@ -361,12 +362,15 @@ export class CampaignBootstrapper {
     this.diceService = diceService
   }
 
-  async create({ code, name, partyName, world: rawWorld, worldTemplateId, world_template_id, players: rawPlayers, merchants: rawMerchants, rulesetId, ruleset_id, startLevel, start_level } = {}) {
+  async create({ code, name, partyName, world: rawWorld, worldTemplateId, world_template_id, players: rawPlayers, merchants: rawMerchants, rulesetId, ruleset_id, startLevel, start_level, campaignMode } = {}) {
     const campaignCode = clean(code, 24).toUpperCase()
     const campaignName = clean(name, 120) || 'Новая кампания'
     const groupName = clean(partyName, 120) || 'Новый отряд'
     if (!/^[A-Z0-9-]{3,24}$/.test(campaignCode)) throw new Error('Некорректный код кампании')
     if (!Array.isArray(rawPlayers) || rawPlayers.length < 1 || rawPlayers.length > 12) throw new Error('Для новой кампании выберите от 1 до 12 героев')
+    // Проверяем режим до любого вызова LLM: недопустимый профиль не должен
+    // успеть потратить бюджет или создать частично подготовленную кампанию.
+    const selectedCampaignMode = validateCampaignMode(campaignMode)
     const campaignStartLevel = startingLevel(start_level ?? startLevel)
     const selectedRuleset = rulesetLock(ruleset_id ?? rulesetId, { fallback: LEGACY_DEFAULT_RULESET_ID, requireCreation: true })
     const heroes = rawPlayers.map(normalizeHero).map((hero) => hero.characterSetupRequired
@@ -417,7 +421,7 @@ export class CampaignBootstrapper {
       worldTemplate: worldTemplate ? `${worldTemplate.id}@${worldTemplate.version}` : '',
       heroes: heroes.map((hero) => hero.id),
     })).digest('hex').slice(0, 24)
-    const arc = buildCampaignArcPlan(seed)
+    const arc = selectedCampaignMode === 'adventure' ? buildCampaignArcPlan(seed) : null
     // Пролог — необязательное украшение: письмо-завязка, которое владелец
     // зачитает перед первым вечером. Отказ летописца кампанию не задерживает.
     const prologue = this.loreAuthor && !worldTemplate
@@ -435,7 +439,9 @@ export class CampaignBootstrapper {
       worldHistory: opening.worldHistory,
       ...(prologue ? { prologue } : {}),
       generatedBy,
-      arc,
+      campaign_mode: selectedCampaignMode,
+      ...(arc ? { arc } : {}),
+      ...(selectedCampaignMode === 'persistent' ? { story_sequence: 0, story_history: [] } : {}),
     }
     // Через тот же выбор генератора, что и переходы Режиссёра: первая сцена
     // кампании — такая же локация, и таверна в её начале обязана быть таверной,
@@ -498,6 +504,7 @@ export class CampaignBootstrapper {
         }]
     const starterFactionId = factionEntities[0].id
     const starterQuestId = `quest-${seed.slice(0, 12)}`
+    if (selectedCampaignMode === 'persistent') campaignConcept.story_quest_id = starterQuestId
     const openingNpcs = opening.npcs.map((npc, index) => ({
       id: npc.id || `npc-${seed.slice(0, 12)}-${index + 1}`,
       name: npc.name,
@@ -587,7 +594,7 @@ export class CampaignBootstrapper {
         summary: opening.scene.objective,
         status: 'active', visibility: 'party', entity_ids: [starterFactionId],
         objectives: [opening.scene.objective],
-        clock: { current: 0, max: arc.target_scenes, label: 'Прогресс расследования' },
+        clock: { current: 0, max: arc?.target_scenes ?? 4, label: 'Прогресс расследования' },
       }],
     }
     return {

@@ -95,6 +95,7 @@ import { proposeAgentInteraction, resolvePartyDecision } from './player-request-
 import { planHeroCombatCommand } from './party-tactics.mjs'
 import { abandonableQuest, classifyPartyDecision } from './party-exit-intent.mjs'
 import { finishQuestAbandonment, questAbandonmentChronicleEntry, requestQuestAbandonment } from './quest-abandonment.mjs'
+import { campaignStoryChronicleEntry, validateCampaignMode } from './campaign-stories.mjs'
 import { CampaignBootstrapper } from './campaign-bootstrap.mjs'
 import { listWorldTemplates } from './world-template-catalog.mjs'
 import { AutonomousCampaignOrchestrator } from './autonomous-orchestrator.mjs'
@@ -2928,7 +2929,7 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
     // подход к зверю приходит и с доски, и второй фазой ручного броска, а
     // идентификатор карточки детерминирован (`chronicle:<зверь>:<ступень>`),
     // поэтому повторная проекция того же события её не удваивает.
-    for (const candidate of [...eventsForChronicle.map(offscreenChronicleEntry), ...eventsForChronicle.map(courierLetterChronicleEntry), ...eventsForChronicle.map(beastChronicleEntry), ...eventsForChronicle.map(questAbandonmentChronicleEntry), journalMessage].flat()) {
+    for (const candidate of [...eventsForChronicle.map(offscreenChronicleEntry), ...eventsForChronicle.map(courierLetterChronicleEntry), ...eventsForChronicle.map(beastChronicleEntry), ...eventsForChronicle.map(questAbandonmentChronicleEntry), ...eventsForChronicle.map(campaignStoryChronicleEntry), journalMessage].flat()) {
       if (!candidate?.id || !String(candidate.text ?? '').trim()) continue
       if (messages.some((message) => String(message.id) === String(candidate.id))) continue
       messages.push(journalEntry(candidate))
@@ -3891,6 +3892,7 @@ const server = createServer((req, res) => {
         players: bootstrapPlayers,
         rulesetId: body.bootstrap.rulesetId ?? body.bootstrap.ruleset_id,
         startLevel: body.bootstrap.startLevel ?? body.bootstrap.start_level,
+        campaignMode: body.bootstrap.campaignMode,
       }) : null
       let initialState = generatedState ?? body.state ?? {
         sessionCode: code,
@@ -3903,6 +3905,7 @@ const server = createServer((req, res) => {
       // is locked immediately: changing editions after importing populated
       // state would mix catalogs without any replayable migration.
       if (!generatedState) {
+        validateCampaignMode(initialState.campaignConcept?.campaign_mode)
         const requestedRuleset = body.state?.ruleset_id ?? body.state?.rulesetId ?? LEGACY_DEFAULT_RULESET_ID
         const lock = rulesetLock(requestedRuleset, { fallback: LEGACY_DEFAULT_RULESET_ID })
         const suppliedVersion = body.state?.ruleset_version ?? body.state?.rulesetVersion

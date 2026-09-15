@@ -197,7 +197,7 @@ function Sidebar({
   deathSavesByHero, statusByHero, onSelect, collapsed, onToggle, view, onNavigate,
   campaignName, partyName, sessionCode, connectionState, pacing, progression, reputationStanding = [],
   canManageLifecycle, lifecycleStatus, lifecycleBusy, onChangeLifecycle, inviteEnabled, onInvite,
-  masterMenuOpen, masterMenuRef, campaignControlBusy, arcChainEnabled, onToggleMasterMenu,
+  masterMenuOpen, masterMenuRef, campaignControlBusy, arcChainEnabled, persistentCampaign, onToggleMasterMenu,
   onRunCampaignControl, onOpenNewbieGuide, newbieGuideOpen, accountName, activeHeroName, onLogout,
   onOpenCampaigns, onOpenLevelUp,
 }: {
@@ -209,7 +209,7 @@ function Sidebar({
   progression?: SidebarProgression | null; reputationStanding: SidebarReputation[]
   canManageLifecycle: boolean; lifecycleStatus: string; lifecycleBusy: boolean; onChangeLifecycle: (action: SidebarLifecycleAction) => void
   inviteEnabled: boolean; onInvite: () => void; masterMenuOpen: boolean; masterMenuRef: React.RefObject<HTMLDivElement | null>
-  campaignControlBusy: boolean; arcChainEnabled: boolean; onToggleMasterMenu: () => void
+  campaignControlBusy: boolean; arcChainEnabled: boolean; persistentCampaign: boolean; onToggleMasterMenu: () => void
   onRunCampaignControl: (action: 'rewind_turn' | 'replay_scene') => void; onOpenNewbieGuide: () => void; newbieGuideOpen: boolean
   accountName: string; activeHeroName: string; onLogout: () => void; onOpenCampaigns: () => void; onOpenLevelUp: () => void
 }) {
@@ -255,9 +255,9 @@ function Sidebar({
               {canManageLifecycle && ['active', 'paused'].includes(lifecycleStatus) && <button type="button" role="menuitem" onClick={() => { onToggleMasterMenu(); onRunCampaignControl('rewind_turn') }} disabled={campaignControlBusy || lifecycleBusy} title="Вернуть состояние к началу последней серверной команды"><RotateCcw size={15} />Откатить ход</button>}
               {canManageLifecycle && ['active', 'paused'].includes(lifecycleStatus) && <button type="button" role="menuitem" onClick={() => { onToggleMasterMenu(); onRunCampaignControl('replay_scene') }} disabled={campaignControlBusy || lifecycleBusy} title="Вернуть состояние к началу текущей сцены"><History size={15} />Переиграть сцену</button>}
               <small>Кампания</small>
-              {arcChainEnabled
+              {!persistentCampaign && (arcChainEnabled
                 ? <button type="button" role="menuitem" onClick={() => { onToggleMasterMenu(); onChangeLifecycle('conclude_after_arc') }} disabled={lifecycleBusy} title="Развязка текущей арки закончит кампанию эпилогом">Закончить на этой арке</button>
-                : <button type="button" role="menuitem" onClick={() => { onToggleMasterMenu(); onChangeLifecycle('chain_arcs') }} disabled={lifecycleBusy} title="Развязка арки откроет следующую теми же героями: снаряжение, слава и незакрытые нити переезжают">Играть дальше арками</button>}
+                : <button type="button" role="menuitem" onClick={() => { onToggleMasterMenu(); onChangeLifecycle('chain_arcs') }} disabled={lifecycleBusy} title="Развязка арки откроет следующую теми же героями: снаряжение, слава и незакрытые нити переезжают">Играть дальше арками</button>)}
               <button type="button" role="menuitem" className="danger" onClick={() => { onToggleMasterMenu(); if (window.confirm('Завершить кампанию и создать эпилог? Это действие необратимо.')) onChangeLifecycle('complete') }} disabled={lifecycleBusy}>Завершить кампанию</button>
             </div>}
           </div>}
@@ -994,7 +994,8 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const progression = state.mechanics?.progression
   const reputationStanding = state.autonomy?.reputation_standing ?? []
   const canManageLifecycle = isAdmin || currentMembership?.role === 'owner'
-  const arcChainEnabled = state.campaignConcept?.arc_chain === true
+  const persistentCampaign = state.campaignConcept?.campaign_mode === 'persistent'
+  const arcChainEnabled = !persistentCampaign && state.campaignConcept?.arc_chain === true
   const accessibleHeroIds = isAdmin
     ? partyPlayers.map((player) => player.id)
     : (currentMembership?.heroIds ?? account.heroIds).filter((id) => partyIdSet.has(id))
@@ -1600,6 +1601,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         masterMenuRef={masterMenuRef}
         campaignControlBusy={campaignControlBusy}
         arcChainEnabled={arcChainEnabled}
+        persistentCampaign={persistentCampaign}
         onToggleMasterMenu={() => setMasterMenuOpen((value) => !value)}
         onRunCampaignControl={(action) => { void runCampaignControl(action) }}
         onOpenNewbieGuide={() => setNewbieGuideOpen(true)}
