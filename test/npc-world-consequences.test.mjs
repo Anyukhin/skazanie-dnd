@@ -33,12 +33,19 @@ function independentQuest() {
 
 async function combatFixture(options = {}) {
   const fixture = await palaceFixture(options)
+  if (options.extraOfficeQuest) {
+    const officeQuest = fixture.state.worldMemory.quests.find((quest) => quest.responsibility?.type === 'office')
+    fixture.state.worldMemory.quests.push({ ...structuredClone(officeQuest), id: 'quest:second-office-task' })
+  }
   if (options.inventory) fixture.state.npc_world.inventories[fixture.kingId] = structuredClone(options.inventory)
   fixture.state = normalizeCampaignState({
     ...fixture.state,
     worldMemory: {
       ...fixture.state.worldMemory,
-      quests: [...fixture.state.worldMemory.quests, independentQuest()],
+      quests: [...fixture.state.worldMemory.quests, independentQuest(), {
+        ...independentQuest(), id: 'quest:discover-king-fate', title: 'Установить судьбу короля',
+        entity_ids: [fixture.kingId], objectives: ['Получить подтверждение судьбы короля'],
+      }],
     },
   })
   const random = dice([20, 1, 1, 1, ...Array(200).fill(1)])
@@ -54,6 +61,18 @@ async function combatFixture(options = {}) {
   const after = replayEvents(active, cast.events)
   return { fixture, initial: fixture.state, started, active, beforeClock, cast, after, diceService: random }
 }
+
+test('у последствий двух поручений одной должности разные устойчивые ID и ссылки на причину', async () => {
+  const { cast } = await combatFixture({ kingHp: 1, extraOfficeQuest: true })
+  const changed = cast.events.filter((event) => event.event_type === 'QuestAssignmentChanged')
+  assert.equal(changed.length, 2)
+  assert.equal(new Set(changed.map((event) => event.event_id)).size, 2)
+  for (const event of changed) {
+    assert.ok(event.payload.dependency_id.includes(event.payload.quest_id))
+    assert.equal(event.payload.policy_id, 'skazanie:quest-consequences-v2')
+    assert.ok(event.payload.source_event_ids.every((id) => cast.events.some((cause) => cause.event_id === id)))
+  }
+})
 
 test('штатный wizard CastSpell fireball повреждает короля и сохраняет его живым при достаточном HP', async () => {
   const result = await combatFixture({ kingHp: 20, witnesses: true })
@@ -78,6 +97,8 @@ test('смерть короля через fireball инвалидирует л�
   assert.equal(invalidated.payload.quest_id, result.after.worldMemory.quests.find((quest) => quest.responsibility?.type === 'npc')?.id)
   assert.deepEqual(result.after.worldMemory.quests.find((quest) => quest.responsibility?.type === 'npc')?.clock, result.beforeClock)
   assert.equal(result.after.worldMemory.quests.find((quest) => quest.id === 'quest:independent-road')?.status, 'active')
+  assert.equal(result.after.worldMemory.quests.find((quest) => quest.id === 'quest:discover-king-fate')?.status, 'active')
+  assert.equal(result.after.worldMemory.quests.find((quest) => quest.id === 'quest:discover-king-fate')?.clock.current, 1)
   assert.deepEqual(result.after.worldMemory.quests.find((quest) => quest.id === 'quest:independent-road')?.clock, {
     ...independentQuest().clock,
     triggered: false,

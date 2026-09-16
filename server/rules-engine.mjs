@@ -64,6 +64,7 @@ import { normalizePartyDecision, normalizePartyDecisionPolicy, questDecisionEven
 import { campaignModeFor, campaignStoryCompletionDraft, persistentStoryQuest, PERSISTENT_WORLD_OBJECTIVE } from './campaign-stories.mjs'
 import { normalizeWorldOfficesState, planOfficeVacancyDrafts, planOfficeSuccessionDrafts, applyWorldOfficeEvent } from './world-offices.mjs'
 import { planQuestConsequenceDrafts } from './quest-consequences.mjs'
+import { RETENTION_REDUCER_VERSION, retentionContextActive, retentionMode, withRetentionMode } from './retention-context.mjs'
 
 const DOOR_BARRICADE_EVENT_SCHEMA_VERSION = 1
 import {
@@ -522,6 +523,12 @@ const MONK_BONUS_ATTACK_TOKEN = Object.freeze({})
 // Старый снимок отбрасывается, чтобы профиль из initial-state события не
 // исчезал после restart и последующего проигрывания только хвоста журнала.
 export const GAME_STATE_PROJECTOR_VERSION = 14
+
+// 15: новые commits получают reducer_version и используют бессрочную
+// retention-политику. Старые commits без маркера replay-ятся через legacy
+// retention, поэтому смена нормализации сама по себе не восстанавливает
+// отсечённые проекции без явной recovery-операции.
+export const GAME_REDUCER_VERSION = RETENTION_REDUCER_VERSION
 
 /**
  * Сколько раз один ход может начать отсчёт заново из-за окна реакции. Ноль
@@ -16820,7 +16827,7 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     const append = (drafts) => {
       for (const draft of drafts) {
         const event = { ...eventFrom({ ...command, visibility: draft.visibility }, draft.event_type, draft.payload, draft.target_ids),
-          event_id: draft.event_id || `world-consequence:${createHash('sha256').update(`${command.command_id}:${draft.event_type}:${draft.payload.office_id || draft.payload.quest_id}`).digest('hex').slice(0, 32)}` }
+          event_id: draft.event_id || `world-consequence:${createHash('sha256').update(`${command.command_id}:${draft.event_type}:${draft.payload.quest_id || draft.payload.office_id}`).digest('hex').slice(0, 32)}` }
         resolvedEvents.push(event)
         projected = applyGameEvent(projected, event)
       }
@@ -16848,6 +16855,11 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
     }
   }
   if (resolveDepth === 0) {
+    for (const event of resolvedEvents) {
+      if (['QuestInvalidated', 'QuestAssignmentChanged'].includes(event.event_type) && event.payload?.schema_version === 2 && !event.event_id) {
+        event.event_id = `world-consequence:${createHash('sha256').update(`${command.command_id}:${event.event_type}:${event.payload.quest_id}`).digest('hex').slice(0, 32)}`
+      }
+    }
     const story = campaignStoryCompletionDraft(state, resolvedEvents)
     if (story) resolvedEvents.push(eventFrom({ ...command, visibility: story.visibility }, story.event_type, story.payload, story.target_ids))
   }
@@ -17124,7 +17136,7 @@ function synchronizeTacticalTurn(state) {
   }
 }
 
-export function applyGameEvent(rawState, event) {
+function applyGameEventCurrent(rawState, event) {
   if (event?.event_type === 'LegacyStateImported' && event.payload?.state && typeof event.payload.state === 'object') {
     const imported = normalizeCampaignState(event.payload.state)
     imported.state_version = Number.isSafeInteger(event.state_version_after) ? event.state_version_after : 1
@@ -17189,7 +17201,7 @@ export function applyGameEvent(rawState, event) {
       }
       break
     case 'CampaignStoryCompleted': {
-      if (campaignModeFor(state) !== 'persistent' || payload.schema_version !== 1
+      if (campaignModeFor(state) !== 'persistent' || ![1, 2].includes(payload.schema_version)
         || !Number.isSafeInteger(payload.story_number)
         || payload.story_number !== Number(state.campaignConcept?.story_sequence ?? 0) + 1) break
       const history = state.campaignConcept?.story_history ?? []
@@ -19390,7 +19402,7 @@ export function applyGameEvent(rawState, event) {
     case 'QuestResolved':
     case 'QuestInvalidated':
       state.worldMemory = applyWorldMemoryEvent(state.worldMemory, event)
-      if ((payload.stay_in_location === true && payload.event_schema_version === 2 || event.event_type === 'QuestInvalidated' && payload.schema_version === 1) && payload.updates_scene_objective === true) {
+      if ((payload.stay_in_location === true && payload.event_schema_version === 2 || event.event_type === 'QuestInvalidated' && [1, 2].includes(payload.schema_version)) && payload.updates_scene_objective === true) {
         state.scene.objective = String(payload.next_objective || '')
         state.adventure.currentHook = state.scene.objective
         state.suggestions = []
@@ -19457,8 +19469,34 @@ export function applyGameEvent(rawState, event) {
   return state
 }
 
+/** Применяет событие в явном retention-контексте replay. */
+export function applyGameEvent(rawState, event) {
+  const rawMarker = event?.reducer_version
+  const marker = rawMarker == null ? 0 : Number(rawMarker)
+  if (!Number.isSafeInteger(marker) || marker < 0) {
+    const error = new Error(`Некорректная версия reducer: ${String(rawMarker)}`)
+    error.code = 'INVALID_REDUCER_VERSION'
+    throw error
+  }
+  if (marker > RETENTION_REDUCER_VERSION) {
+    const error = new Error(`Версия reducer ${marker} не поддерживается; текущая версия ${RETENTION_REDUCER_VERSION}`)
+    error.code = 'UNSUPPORTED_REDUCER_VERSION'
+    throw error
+  }
+  const mode = retentionContextActive()
+    ? retentionMode()
+    : (marker > 0 && marker < RETENTION_REDUCER_VERSION || marker === 0 && Number.isSafeInteger(event?.state_version_after)) ? 'legacy' : 'current'
+  return withRetentionMode(mode, () => applyGameEventCurrent(rawState, event))
+}
+
 export function replayEvents(initialState, events) {
-  return (Array.isArray(events) ? events : []).reduce((state, event) => applyGameEvent(state, event), normalizeCampaignState(initialState))
+  const stream = Array.isArray(events) ? events : []
+  const firstMarker = Number(stream[0]?.reducer_version ?? 0)
+  const mode = retentionContextActive() ? retentionMode()
+    : (firstMarker > 0 && firstMarker < RETENTION_REDUCER_VERSION || firstMarker === 0 && Number.isSafeInteger(stream[0]?.state_version_after)) ? 'legacy' : 'current'
+  let state = withRetentionMode(mode, () => normalizeCampaignState(initialState))
+  for (const event of stream) state = applyGameEvent(state, event)
+  return state
 }
 
 export function resolveCommands(commands, initialState, options) {

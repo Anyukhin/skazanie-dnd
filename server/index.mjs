@@ -85,7 +85,7 @@ import {
   campaignRulesetMetadata,
   campaignRulesetSettings,
 } from './campaign-ruleset.mjs'
-import { GAME_STATE_PROJECTOR_VERSION, RulesEngine, actorNameResolver, applyGameEvent, assertSendLetterAllowed, attackForecast, normalizeCampaignState, npcCombatRequestFingerprint } from './rules-engine.mjs'
+import { GAME_REDUCER_VERSION, GAME_STATE_PROJECTOR_VERSION, RulesEngine, actorNameResolver, applyGameEvent, assertSendLetterAllowed, attackForecast, normalizeCampaignState, npcCombatRequestFingerprint } from './rules-engine.mjs'
 import { runNpcTurnScheduler } from './npc-turn-scheduler.mjs'
 import { CombatTurnCoordinator, combatTurnClockForState } from './combat-turn-coordinator.mjs'
 import { FileTraceStore, buildTurnExplanation, isMechanicalTrace } from './trace-store.mjs'
@@ -285,6 +285,7 @@ const eventStore = new FileEventStore({
   reducer: applyGameEvent,
   normalizeState: normalizeCampaignState,
   snapshotProjectorVersion: GAME_STATE_PROJECTOR_VERSION,
+  reducerVersion: GAME_REDUCER_VERSION,
   mapStore,
 })
 const combatLabRuns = new CombatLabRuns({
@@ -1995,7 +1996,7 @@ function journalBeast(beast) {
   }
 }
 
-function journalEntry({ id, speaker, author, text, turnConsumed = false, roll = null, stakes = null, offscreen = null, letter = null, beast = null }) {
+function journalEntry({ id, speaker, author, text, turnConsumed = false, roll = null, stakes = null, offscreen = null, letter = null, beast = null, knowledge_gate = null }) {
   const storedRoll = journalRoll(roll)
   const storedStakes = journalStakes(stakes)
   const storedOffscreen = journalOffscreen(offscreen)
@@ -2008,6 +2009,7 @@ function journalEntry({ id, speaker, author, text, turnConsumed = false, roll = 
     timestamp: new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' }).format(new Date()),
     text: String(text).slice(0, 2000),
     turnConsumed: Boolean(turnConsumed),
+    ...(knowledge_gate ? { knowledge_gate: structuredClone(knowledge_gate) } : {}),
     ...(storedRoll ? { roll: storedRoll } : {}),
     ...(storedStakes ? { stakes: storedStakes } : {}),
     ...(storedOffscreen ? { offscreen: storedOffscreen } : {}),
@@ -2895,7 +2897,7 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
     if (!room.state) return null
     const currentStateVersion = Number(room.state.state_version ?? 0)
     if (proposedStateVersion < currentStateVersion) return room
-    if (!forceProjectorRefresh && proposedStateVersion === currentStateVersion) {
+    if (!forceProjectorRefresh && proposedStateVersion === currentStateVersion && !journalMessage) {
       void eventStore.acknowledgeProjection(campaignId, proposedStateVersion).catch(() => {})
       return room
     }
@@ -5449,10 +5451,15 @@ const server = createServer((req, res) => {
       // Служебные команды (`/why`) — не часть истории отряда: реплику игрока не
       // сохраняем, а ответ подписываем разбором правил, а не Рассказчиком.
       const metaCommand = /^\s*\//u.test(action)
+      // Ответ из личной памяти получает только спрашивающий. HTTP уже доставит
+      // его адресату; общая SSE-рассылка и журнал не расширяют аудиторию.
+      const privateNarration = metaCommand || requestKind === 'question' || result.provider === 'AgentWorldkeeper' || result.narration_visibility === 'specific_player'
+      const journalKey = privateNarration ? `${idempotencyKey}:private:${playerId}` : idempotencyKey
+      const narrationGate = privateNarration ? { visibility: 'specific_player', player_ids: [playerId], fact_ids: [], source_event_ids: [] } : null
       // Приглашение к броску не является событием истории: в летопись попадёт
       // только завершённый ход, когда игрок бросит кубик и сервер его примет.
       const checkRequired = Boolean(result.check || result.action_proposal)
-      const journalNarrationId = !checkRequired && String(result.narration ?? '').trim() ? narrationMessageId(idempotencyKey) : null
+      const journalNarrationId = !checkRequired && String(result.narration ?? '').trim() ? narrationMessageId(journalKey) : null
       const narrationEntry = journalNarrationId ? {
         id: journalNarrationId,
         text: result.narration,
@@ -5461,6 +5468,7 @@ const server = createServer((req, res) => {
         turnConsumed: result.turn_consumed !== false && !metaCommand,
         roll: result.effects?.roll ?? null,
         stakes: result.stakes ?? null,
+        ...(narrationGate ? { knowledge_gate: narrationGate } : {}),
       } : null
       // Вторая фаза ручного броска приходит с тем же текстом действия: реплика
       // игрока уже записана первой фазой, второй раз её не повторяем.
@@ -5494,7 +5502,7 @@ const server = createServer((req, res) => {
         // locking cursor backwards and make it lose the completed turn.
         room_version: getRoom(campaignId).version,
       }
-      if (journalNarrationId) {
+      if (journalNarrationId && !privateNarration) {
         const finalText = String(responsePayload.narration ?? '')
         const phase = narrationTransport.lastProgress
           && !finalText.startsWith(narrationTransport.lastProgress)

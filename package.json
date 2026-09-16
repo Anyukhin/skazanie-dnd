@@ -22,6 +22,7 @@
     "spells:verify": "node tools/verify-spell-overrides.mjs",
     "release:verify": "node tools/verify-content-integrity.mjs --release",
     "cutover:audit": "node tools/audit-cutover.mjs",
+    "world-memory:recover": "node tools/recover-world-memory.mjs",
     "cutover:verify": "node tools/audit-cutover.mjs --strict",
     "backup": "node tools/storage-backup.mjs",
     "rules:audit": "node tools/audit-ruleset-cutover.mjs",

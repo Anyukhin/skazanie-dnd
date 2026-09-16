@@ -2,14 +2,15 @@ import { createHash } from 'node:crypto'
 import { PARTY_DECISION_CAPABILITY } from './authoritative-executor.mjs'
 import { PartyDecisionError, partyDecisionOpenedEvent } from './party-decision.mjs'
 import { campaignModeFor, persistentStoryQuest } from './campaign-stories.mjs'
-import { questIsImpossible } from './quest-consequences.mjs'
+import { questIsImpossible, questForKnowledge } from './quest-consequences.mjs'
 
 const safeId = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/u
 
 export function questDecisionChronicleEntry(event) {
-  if (['QuestInvalidated', 'QuestAssignmentChanged'].includes(event?.event_type) && event.payload?.schema_version === 1
+  if (['QuestInvalidated', 'QuestAssignmentChanged'].includes(event?.event_type) && [1, 2].includes(event.payload?.schema_version)
     && ['public', 'party'].includes(event.visibility)) return {
     id: `quest-consequence:${event.event_id}`, speaker: 'narrator', author: 'Рассказчик', text: String(event.payload.summary || ''), turnConsumed: false,
+    ...(event.payload.knowledge_gate ? { knowledge_gate: structuredClone(event.payload.knowledge_gate) } : {}),
   }
   if (event?.event_type === 'QuestAccepted' && event.payload?.schema_version === 1) return {
     id: `quest-accepted:${event.event_id}`, speaker: 'narrator', author: 'Рассказчик', text: String(event.payload.summary || ''), turnConsumed: false,
@@ -60,6 +61,10 @@ export async function requestQuestDecision({
       const quest = state.worldMemory?.quests?.find((entry) => entry.id === questId
         && entry.status !== 'hidden' && ['public', 'party'].includes(entry.visibility))
       if (!quest) throw new PartyDecisionError('Задание недоступно отряду', 'WORLD_QUEST_NOT_FOUND')
+      const knownQuest = questForKnowledge(quest, state.worldMemory, { playerId: actorId, isPartyMember: true })
+      if (knownQuest.status !== quest.status || knownQuest.giver_npc_id !== quest.giver_npc_id) {
+        throw new PartyDecisionError('Сейчас решение по этому поручению недоступно. Уточните его условия в мире.', 'QUEST_DECISION_UNAVAILABLE')
+      }
       if (acceptance && questIsImpossible(state, quest)) throw new PartyDecisionError('Необходимый для поручения NPC погиб', 'WORLD_QUEST_IMPOSSIBLE')
       if (quest.id.startsWith('quest:chapter:')) throw new PartyDecisionError('Это цель текущей сцены, а не отдельное поручение', 'WORLD_QUEST_NOT_ABANDONABLE')
       if (!(acceptance ? ['offered', 'active'] : ['active']).includes(quest.status)) throw new PartyDecisionError('Это задание нельзя сейчас изменить', 'WORLD_QUEST_CLOSED')

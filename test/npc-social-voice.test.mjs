@@ -120,7 +120,7 @@ test('бриф NPC не раскрывает specific_player разговор д
     llmClient: { completeJson: async (input) => { requests.push(input); return { reply: 'Слушаю.', stance: 'neutral' } } },
   })
 
-  await controller.respond({
+  const result = await controller.respond({
     state, playerId: 'hero', npcId: 'npc:mira', message: 'Что ты помнишь?', turnId: 'voice-private',
   })
 
@@ -128,6 +128,7 @@ test('бриф NPC не раскрывает specific_player разговор д
   assert.ok(brief.recent_conversation.some((entry) => entry.player_message === 'МОЙ СКРЫТЫЙ ВОПРОС'))
   assert.ok(brief.recent_party_conversation.some((entry) => entry.player_message === 'Что слышно у ворот?'))
   assert.doesNotMatch(JSON.stringify(brief), /ЧУЖОЙ СКРЫТЫЙ ВОПРОС|ЧУЖОЙ СКРЫТЫЙ ОТВЕТ/u)
+  assert.equal(result.conversation.visibility, 'specific_player', 'ответ, использующий личную историю героя, не становится общепартийным')
 })
 
 test('два NPC одной сцены получают разные server-owned речевые профили', async () => {
@@ -224,4 +225,24 @@ test('fallback на вопрос о сигнале вспоминает види
   const result = await controller.respond({ state, playerId: 'hero', npcId: 'npc:mira', message: 'Напомни сигнал', turnId: 'fallback-memory' })
   assert.match(result.reply, /Три коротких удара/u)
   assert.doesNotMatch(result.reply, /ЧУЖОЙ СЕКРЕТНЫЙ СИГНАЛ/u)
+})
+
+test('структурно неверный ответ NPC не становится прямой речью', async () => {
+  const invalidResponses = [
+    { reply: 42, stance: 'friendly' },
+    { reply: 'Подтверждено.', stance: 'surprised' },
+    { reply: 'Подтверждено.', disclosed_fact_ids: [42] },
+    { reply: 'Подтверждено.', promise: { direction: 'sideways', text: 'Обещание', due_hint: 'завтра' } },
+    {},
+  ]
+  for (const [index, response] of invalidResponses.entries()) {
+    const result = await new NpcSocialController({
+      llmClient: { completeJson: async () => response },
+    }).respond({
+      state: dialogueState(), playerId: 'hero', npcId: 'npc:mira', message: 'Что известно?', turnId: `invalid-${index}`,
+    })
+    assert.equal(result.provider, 'deterministic-social-fallback')
+    assert.notEqual(result.reply, 'Подтверждено.')
+    assert.notEqual(result.reply, '42')
+  }
 })

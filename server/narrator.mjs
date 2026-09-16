@@ -656,6 +656,43 @@ const NPC_REACTION_MATCHERS = Object.freeze({
   watchful: /(?:держится\s+насторож|настороже|насторожен|следит)/iu,
   cold: /(?:держится\s+холодн|холодно|отстран|сухо)/iu,
 })
+
+// Это bounded guard для рассинхронизации судьбы NPC: он ловит только прямое
+// предложение, начинающееся именем подтверждённо погибшего NPC и глаголом
+// текущего действия. Он не пытается разбирать произвольную прозу, поэтому
+// цитаты и убеждения другого NPC остаются допустимыми.
+const DEAD_NPC_CURRENT_ACTION_VERBS = [
+  'ид[её]т', 'ход[иы]т', 'стоит', 'сидит', 'жд[её]т', 'жив[её]т',
+  'возвраща(?:ется|ются)', 'появля(?:ется|ются)', 'наход(?:ится|ятся)',
+  'держит', 'нес[её]т', 'читает', 'пишет', 'смотрит', 'глядит',
+  'открыва(?:ет|ют)', 'закрыва(?:ет|ют)', 'вход(?:ит|ят)', 'выход(?:ит|ят)',
+  'подход(?:ит|ят)', 'уход(?:ит|ят)', 'покида(?:ет|ют)', 'говорит',
+  'отвеча(?:ет|ют)', 'произнос(?:ит|ят)', 'шепчет', 'кричит',
+  'спрашива(?:ет|ют)', 'рассказыва(?:ет|ют)', 'сообща(?:ет|ют)',
+  'улыба(?:ется|ются)', 'кива(?:ет|ют)', 'помога(?:ет|ют)',
+  'атак(?:ует|уют)', 'сража(?:ется|ются)', 'переда[её]т', 'бер[её]т',
+  'клад[её]т', 'поднима(?:ет|ют)', 'опуска(?:ет|ют)',
+].join('|')
+const DEAD_NPC_HISTORICAL_CUE = /(?:в\s+памят|в\s+запис|из\s+прошл|прежде|когда[-\s]?то|по\s+слов|вспомин|стар(?:ой|ую)\s+запис)/iu
+const DEAD_NPC_NEGATED_ACTION = /(?:^|\s)(?:не|никогда|уже\s+не|больше\s+не)\s*$/iu
+
+function deadNpcCurrentActionAssertion(text, npc) {
+  const name = sceneText(npc?.name, 120)
+  if (!name) return ''
+  const pattern = new RegExp(
+    `^(?:(?:и|но|а|теперь|сейчас)\\s+)?${escapePattern(name)}\\s+([^.!?]{0,96}?)(${DEAD_NPC_CURRENT_ACTION_VERBS})(?![а-яё])`,
+    'iu',
+  )
+  for (const sentence of String(text ?? '').split(/(?<=[.!?])\s+/u)) {
+    const candidate = sentence.trim()
+    // Начало кавычки/реплики меняет говорящего: это может быть чужая цитата.
+    if (!candidate || /^[«"„“—–-]/u.test(candidate)) continue
+    const match = pattern.exec(candidate)
+    if (!match || DEAD_NPC_NEGATED_ACTION.test(match[1]) || DEAD_NPC_HISTORICAL_CUE.test(match[1])) continue
+    return match[0]
+  }
+  return ''
+}
 const HERO_AGENCY_VERBS = [
   'попытал(?:ся|ась|ись)\\s+разглядеть', '(?:не\\s+)?смог(?:ла|ли)?\\s+удержать\\s+равновесие',
   'подход(?:ит|ят)', 'приседа(?:ет|ют)', 'склоня(?:ется|ются)',
@@ -683,6 +720,16 @@ const PROMISE_GENERIC_ROOT_PREFIXES = [
 
 function normalizedActorName(value) {
   return sceneText(value, 120).toLocaleLowerCase('ru').replace(/[«»"'’.,:;!?()[\]{}]/gu, '').trim()
+}
+
+function deadNpcNameIsAmbiguous(deadNpc, presentNpcs) {
+  const deadName = normalizedActorName(deadNpc?.name)
+  if (!deadName) return true
+  const deadId = sceneText(deadNpc?.id, 120)
+  return (Array.isArray(presentNpcs) ? presentNpcs : []).some((npc) => (
+    normalizedActorName(npc?.name) === deadName
+      && (!deadId || !sceneText(npc?.id, 120) || sceneText(npc?.id, 120) !== deadId)
+  ))
 }
 
 function actorReactionClauses(text, actor) {
@@ -1056,6 +1103,21 @@ export function verifyNarratorCraft(narration, brief, verification, recentNarrat
         && !confirmedHeroDamageAction(sentence, brief, story)) {
         add('HERO_AGENCY_NOT_IN_BRIEF', 'Рассказчик приписал герою новое действие, мысль или решение', heroAgency.exec(sentence)?.[0])
       }
+    }
+  }
+
+  const presentNpcs = Array.isArray(story.present_npcs) ? story.present_npcs : []
+  for (const deadNpc of Array.isArray(story.known_dead_npcs) ? story.known_dead_npcs : []) {
+    // Одинаковое имя не идентифицирует NPC: при живом тёзке этот guard не
+    // может безопасно приписать фразу именно погибшему персонажу.
+    if (deadNpcNameIsAmbiguous(deadNpc, presentNpcs)) continue
+    const assertion = deadNpcCurrentActionAssertion(currentText, deadNpc)
+    if (assertion) {
+      add(
+        'DEAD_NPC_CURRENT_ACTION_NOT_IN_BRIEF',
+        'Повествование приписало подтверждённо погибшему NPC текущее действие или реплику',
+        assertion,
+      )
     }
   }
 

@@ -98,8 +98,12 @@ test('Director получает bounded-память незакрытых нит
   }]
   inputState.social = {
     npcs: [], relationships: {}, conversations: [], promises: [{
-      id: 'promise:broken', npc_id: 'guide', hero_id: 'hero', direction: 'npc_to_party',
+      id: 'promise:broken-private', npc_id: 'guide', hero_id: 'hero', direction: 'npc_to_party',
       text: 'Проводник должен был вернуться до заката.', due_hint: 'сегодня', status: 'broken', visibility: 'specific_player',
+      resolution_reason: 'deadline', consequence_delta: -8,
+    }, {
+      id: 'promise:broken-public', npc_id: 'guide', hero_id: 'hero', direction: 'npc_to_party',
+      text: 'Караван должен был вернуться до рассвета.', due_hint: 'сегодня', status: 'broken', visibility: 'party',
       resolution_reason: 'deadline', consequence_delta: -8,
     }],
   }
@@ -110,8 +114,8 @@ test('Director получает bounded-память незакрытых нит
   assert.match(content, /<<<UNTRUSTED_DATA:director_brief>>>/u)
   assert.match(content, /thread:missing-caravan/u)
   assert.match(content, /Последствия задержки ещё не разрешены/u)
-  assert.match(content, /promise:broken/u)
-  assert.match(content, /Проводник должен был вернуться до заката/u)
+  assert.match(content, /promise:broken-public/u)
+  assert.doesNotMatch(content, /promise:broken-private|Проводник должен был вернуться до заката/u)
   assert.match(content, /"status":"broken"/u)
 })
 

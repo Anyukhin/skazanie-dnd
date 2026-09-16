@@ -14,6 +14,7 @@ import {
 import { campaignStateForViewer } from '../server/viewer-projection.mjs'
 import {
   applyWorldMemoryEvent,
+  diagnoseWorldMemory,
   normalizeWorldMemory,
   retrieveKnownWorldMemory,
   retrieveWorldMemory,
@@ -337,6 +338,191 @@ test('superseding a fact preserves history but retires the old assertion', () =>
 
   assert.equal(state.worldMemory.facts.find((fact) => fact.id === 'fact:fox-route').status, 'superseded')
   assert.equal(state.worldMemory.facts.find((fact) => fact.id === 'fact:fox-route-new').status, 'active')
+})
+
+test('нормализация сохраняет память за прежними пределами коллекций', () => {
+  const entities = Array.from({ length: 501 }, (_, index) => ({
+    id: `npc:long-${index}`,
+    kind: 'npc',
+    name: `Long NPC ${index}`,
+    visibility: 'gm_only',
+  }))
+  const facts = Array.from({ length: 2_001 }, (_, index) => ({
+    id: `fact:long-${index}`,
+    subject_id: `npc:long-${index % entities.length}`,
+    predicate: 'remembered',
+    object: `Fact ${index}`,
+    visibility: 'gm_only',
+  }))
+  const relationships = Array.from({ length: 2_001 }, (_, index) => ({
+    id: `relationship:long-${index}`,
+    from_entity_id: `npc:long-${index % entities.length}`,
+    relation: 'knows',
+    to_entity_id: `npc:long-${(index + 1) % entities.length}`,
+    summary: `Relationship ${index}`,
+    visibility: 'gm_only',
+  }))
+  const quests = Array.from({ length: 301 }, (_, index) => ({
+    id: `quest:long-${index}`,
+    title: `Quest ${index}`,
+    summary: `Quest summary ${index}`,
+    status: 'active',
+    visibility: 'gm_only',
+  }))
+  const threads = Array.from({ length: 501 }, (_, index) => ({
+    id: `thread:long-${index}`,
+    title: `Thread ${index}`,
+    summary: `Thread summary ${index}`,
+    status: 'active',
+    visibility: 'gm_only',
+  }))
+  const claims = Array.from({ length: 2_001 }, (_, index) => ({
+    id: `belief:long-${index}`,
+    holder_entity_id: `npc:long-${index % entities.length}`,
+    claim: `Belief ${index}`,
+    visibility: 'gm_only',
+  }))
+  const summaries = Array.from({ length: 1_001 }, (_, index) => ({
+    id: `summary:long-${index}`,
+    kind: 'scene',
+    title: `Summary ${index}`,
+    summary: `Summary text ${index}`,
+    visibility: 'gm_only',
+  }))
+  const knowledge_ledger = Array.from({ length: 5_001 }, (_, index) => ({
+    id: `knowledge:long-${index}`,
+    hero_id: 'hero',
+    fact_id: `fact:long-${index % facts.length}`,
+    source_kind: 'knowledge_revealed',
+  }))
+
+  const normalized = normalizeWorldMemory({ entities, facts, relationships, quests, threads, epistemic_claims: claims, summaries, knowledge_ledger })
+
+  assert.equal(normalized.entities.length, entities.length)
+  assert.equal(normalized.facts.length, facts.length)
+  assert.equal(normalized.relationships.length, relationships.length)
+  assert.equal(normalized.quests.length, quests.length)
+  assert.equal(normalized.threads.length, threads.length)
+  assert.equal(normalized.epistemic_claims.length, claims.length)
+  assert.equal(normalized.summaries.length, summaries.length)
+  assert.equal(normalized.knowledge_ledger.length, knowledge_ledger.length)
+  assert.ok(normalized.entities.some((entry) => entry.id === 'npc:long-500'))
+  assert.ok(normalized.facts.some((entry) => entry.id === 'fact:long-2000'))
+  assert.ok(normalized.relationships.some((entry) => entry.id === 'relationship:long-2000'))
+  assert.ok(normalized.quests.some((entry) => entry.id === 'quest:long-300'))
+  assert.ok(normalized.threads.some((entry) => entry.id === 'thread:long-500'))
+  assert.ok(normalized.epistemic_claims.some((entry) => entry.id === 'belief:long-2000'))
+  assert.ok(normalized.summaries.some((entry) => entry.id === 'summary:long-1000'))
+  assert.ok(normalized.knowledge.hero.includes(`fact:long-${5_000 % facts.length}`))
+
+  const legacy = normalizeWorldMemory({ entities, facts, knowledge: {
+    hero: facts.map((fact) => fact.id),
+  } })
+  assert.equal(legacy.knowledge_ledger.length, facts.length)
+  assert.equal(legacy.knowledge_ledger.at(-1).fact_id, 'fact:long-2000')
+})
+
+test('нормализация сохраняет замещённый и новый факт и диагностирует битые ссылки', () => {
+  const input = {
+    entities: [{ id: 'npc:keeper', kind: 'npc', name: 'Keeper', visibility: 'gm_only' }],
+    facts: [
+      { id: 'fact:old', subject_id: 'npc:keeper', predicate: 'holds', object: 'old', status: 'superseded', visibility: 'gm_only' },
+      { id: 'fact:new', subject_id: 'npc:keeper', predicate: 'holds', object: 'new', supersedes_fact_id: 'fact:old', visibility: 'gm_only' },
+      { id: 'fact:broken', subject_id: 'npc:missing', predicate: 'holds', object: 'unknown', visibility: 'gm_only' },
+    ],
+    relationships: [{ id: 'relationship:broken', from_entity_id: 'npc:keeper', relation: 'knows', to_entity_id: 'npc:missing', summary: 'Unknown target', visibility: 'gm_only' }],
+    quests: [{ id: 'quest:broken', title: 'Broken quest', summary: 'Unknown entity', entity_ids: ['npc:missing'], visibility: 'gm_only' }],
+    threads: [{ id: 'thread:broken', title: 'Broken thread', summary: 'Unknown quest', entity_ids: ['npc:keeper'], quest_ids: ['quest:missing'], visibility: 'gm_only' }],
+    epistemic_claims: [{ id: 'belief:broken', holder_entity_id: 'npc:keeper', subject_entity_id: 'npc:missing', claim: 'Unknown target', visibility: 'gm_only' }],
+    summaries: [{ id: 'summary:broken', kind: 'scene', title: 'Broken summary', summary: 'Unknown references', entity_ids: ['npc:missing'], thread_ids: ['thread:missing'], visibility: 'gm_only' }],
+    knowledge_ledger: [{ id: 'knowledge:broken', hero_id: 'hero', fact_id: 'fact:missing' }],
+  }
+
+  const normalized = normalizeWorldMemory(input)
+  assert.deepEqual(normalized.facts.map((entry) => entry.id), ['fact:old', 'fact:new', 'fact:broken'])
+  assert.equal(normalized.facts.find((entry) => entry.id === 'fact:old').status, 'superseded')
+  assert.equal(normalized.facts.find((entry) => entry.id === 'fact:new').supersedes_fact_id, 'fact:old')
+  assert.equal(normalized.relationships.length, 1)
+  assert.equal(normalized.quests.length, 1)
+  assert.equal(normalized.threads.length, 1)
+  assert.equal(normalized.epistemic_claims.length, 1)
+  assert.equal(normalized.summaries.length, 1)
+  assert.equal(normalized.knowledge_ledger.length, 1)
+
+  const diagnostics = diagnoseWorldMemory(normalized)
+  assert.ok(diagnostics.some((issue) => issue.collection === 'facts' && issue.id === 'fact:broken' && issue.field === 'subject_id'))
+  assert.ok(diagnostics.some((issue) => issue.collection === 'relationships' && issue.id === 'relationship:broken' && issue.field === 'to_entity_id'))
+  assert.ok(diagnostics.some((issue) => issue.collection === 'quests' && issue.id === 'quest:broken' && issue.field === 'entity_ids'))
+  assert.ok(diagnostics.some((issue) => issue.collection === 'threads' && issue.id === 'thread:broken' && issue.field === 'quest_ids'))
+  assert.ok(diagnostics.some((issue) => issue.collection === 'epistemic_claims' && issue.id === 'belief:broken' && issue.field === 'subject_entity_id'))
+  assert.ok(diagnostics.some((issue) => issue.collection === 'summaries' && issue.id === 'summary:broken' && issue.field === 'entity_ids'))
+  assert.ok(diagnostics.some((issue) => issue.collection === 'knowledge_ledger' && issue.id === 'knowledge:broken' && issue.field === 'fact_id'))
+})
+
+test('нормализация идемпотентна для корректной памяти и диагностики', () => {
+  const input = {
+    entities: [{ id: 'npc:keeper', kind: 'npc', name: 'Keeper', visibility: 'gm_only' }],
+    facts: [{ id: 'fact:keeper', subject_id: 'npc:keeper', predicate: 'waits', object: 'Here', visibility: 'gm_only' }],
+    relationships: [], quests: [], threads: [], epistemic_claims: [], summaries: [],
+    knowledge_ledger: [{ id: 'knowledge:keeper', hero_id: 'hero', fact_id: 'fact:keeper' }],
+  }
+  const once = normalizeWorldMemory(input)
+  assert.deepEqual(normalizeWorldMemory(once), once)
+  assert.deepEqual(diagnoseWorldMemory(once), diagnoseWorldMemory(normalizeWorldMemory(once)))
+})
+
+test('редьюсеры памяти добавляют знание и сводки без вытеснения старых записей', () => {
+  const memory = normalizeWorldMemory({
+    entities: [{ id: 'npc:keeper', kind: 'npc', name: 'Keeper', visibility: 'gm_only' }],
+    facts: [{ id: 'fact:keeper', subject_id: 'npc:keeper', predicate: 'waits', object: 'Here', visibility: 'gm_only' }],
+    summaries: Array.from({ length: 1_000 }, (_, index) => ({
+      id: `summary:old-${index}`, kind: 'scene', title: `Old ${index}`, summary: `Old summary ${index}`, visibility: 'gm_only',
+    })),
+    knowledge_ledger: Array.from({ length: 5_000 }, (_, index) => ({
+      id: `knowledge:old-${index}`, hero_id: 'hero', fact_id: 'fact:keeper', source_kind: 'knowledge_revealed',
+    })),
+  })
+  const afterKnowledge = applyWorldMemoryEvent(memory, {
+    event_type: 'KnowledgeRevealed', event_id: 'knowledge:new', target_ids: ['hero'],
+    payload: { fact_id: 'fact:keeper' },
+  })
+  const afterSummary = applyWorldMemoryEvent(afterKnowledge, {
+    event_type: 'NarrativeSummaryRecorded', event_id: 'summary:new',
+    payload: { summary: { id: 'summary:new', kind: 'scene', title: 'New', summary: 'New summary', visibility: 'gm_only' } },
+  })
+  assert.equal(afterKnowledge.knowledge_ledger.length, 5_001)
+  assert.equal(afterKnowledge.knowledge_ledger[0].id, 'knowledge:old-0')
+  assert.equal(afterSummary.summaries.length, 1_001)
+  assert.equal(afterSummary.summaries[0].id, 'summary:old-0')
+})
+
+test('историческая проекция игрока скрывает последствие до раскрытия знания', () => {
+  const memory = normalizeWorldMemory({
+    entities: [{ id: 'npc:keeper', kind: 'npc', name: 'Keeper', visibility: 'party' }],
+    facts: [{
+      id: 'fact:keeper-dead', subject_id: 'npc:keeper', predicate: 'died', object: 'North Gate',
+      summary: 'Keeper died at the North Gate.', visibility: 'gm_only', recorded_at_minutes: 100, source_event_ids: ['event:death'],
+    }],
+    quests: [{
+      id: 'quest:keeper', title: 'Meet the keeper', summary: 'Find the keeper.', status: 'failed', visibility: 'party',
+      knowledge_history: [{
+        schema_version: 1, event_id: 'event:quest-invalidated',
+        previous: { status: 'active', summary: 'Find the keeper.' },
+        knowledge_gate: { visibility: 'gm_only', recorded_at_minutes: 100, source_event_ids: ['event:death'], fact_ids: ['fact:keeper-dead'] },
+      }],
+    }],
+    knowledge_ledger: [{
+      id: 'knowledge:death', hero_id: 'hero', fact_id: 'fact:keeper-dead', recorded_at_minutes: 200,
+      source_kind: 'knowledge_revealed',
+    }],
+  })
+  const beforeReveal = worldMemoryForViewer(memory, { playerId: 'hero', isPartyMember: true, asOfMinutes: 150 })
+  const afterReveal = worldMemoryForViewer(memory, { playerId: 'hero', isPartyMember: true, asOfMinutes: 250 })
+  const admin = worldMemoryForViewer(memory, { isAdmin: true })
+  assert.equal(beforeReveal.quests.find((quest) => quest.id === 'quest:keeper').status, 'active')
+  assert.equal(afterReveal.quests.find((quest) => quest.id === 'quest:keeper').status, 'failed')
+  assert.equal(admin.quests.find((quest) => quest.id === 'quest:keeper').knowledge_history.length, 1)
+  assert.equal(Object.hasOwn(beforeReveal.quests[0], 'knowledge_history'), false)
 })
 
 test('Worldkeeper answers only from the viewer projection and uses no LLM turn', async () => {

@@ -77,6 +77,7 @@ import { planImprovisedEffect, resolveActionCost, scenePropIntentFor } from './i
 import { npcProfileAtWorldTime } from './npc-social.mjs'
 import { sceneHazardNarration } from './scene-hazard-narration.mjs'
 import { nearestSceneObjectCommand, sceneInteractionNarration } from './scene-interactions.mjs'
+import { agentContextMetadata } from './agent-context.mjs'
 
 const clone = (value) => structuredClone(value)
 const encounterCompletionLocks = new Map()
@@ -427,10 +428,16 @@ export class AutonomousCampaignOrchestrator {
     throw new Error('Encounter reward stage exhausted its retry budget')
   }
 
-  async runCommands(campaignId, idempotencyKey, commands, context = {}) {
+  async runCommands(campaignId, idempotencyKey, commands, context = {}, expectedStateVersion = null) {
     const duplicate = await this.eventStore.getByIdempotencyKey?.(campaignId, idempotencyKey)
     if (duplicate) return { ...duplicate, duplicate: true, commands: [] }
     const loaded = await this.load(campaignId)
+    const expected = expectedStateVersion == null ? loaded.state_version : Number(expectedStateVersion)
+    if (expected !== loaded.state_version) {
+      const error = new Error('Обстановка изменилась до сохранения свободного действия')
+      error.code = 'STATE_VERSION_CONFLICT'
+      throw error
+    }
     const proposed = commands.map((command, index) => ({
       ...command,
       campaign_id: campaignId,
@@ -445,7 +452,7 @@ export class AutonomousCampaignOrchestrator {
     if (!resolved.events.length) throw new Error('Autonomous command batch produced no events')
     const committed = await this.eventStore.commit({
       campaign_id: campaignId,
-      expected_state_version: loaded.state_version,
+      expected_state_version: expected,
       idempotency_key: idempotencyKey,
       command_id: idempotencyKey,
       events: resolved.events,
@@ -805,27 +812,24 @@ export class AutonomousCampaignOrchestrator {
       ? await this.eventStore.load(campaignId, { atVersion: previousCommit.events[0].state_version_before })
       : await this.load(campaignId)
     const actorId = clean(playerId, 120)
+    const actionContextMetadata = agentContextMetadata(loaded.state, { role: 'action_adjudicator', actorId, contractVersion: 'action_adjudicator/v6' })
     const declaration = declaredActionCommand(actorId, text)
+    let actionStateVersion = loaded.state_version
     const run = async (commands) => {
       const actualCommands = commands.filter(Boolean)
       if (!actualCommands.length) return { state: loaded.state, state_version: loaded.state_version, events: [], commands: [], rolls: [], duplicate: false }
-      for (let attempt = 0; attempt < 3; attempt += 1) {
-        try {
-          const committed = await this.runCommands(campaignId, idempotencyKey, actualCommands, { allowedActorIds: [actorId] })
-          const memoryCommands = materialConsequenceCommands(committed.state ?? loaded.state, {
-            succeeded: true, committedEvents: committed.events ?? [],
-          })
-          if (!memoryCommands.length) return committed
-          const memory = await this.runCommands(campaignId, `${idempotencyKey}:material-memory`, memoryCommands)
-          return { ...committed, state: memory.state, state_version: memory.state_version,
-            events: [...(committed.events ?? []), ...(memory.events ?? [])],
-            commands: [...(committed.commands ?? []), ...(memory.commands ?? [])],
-          }
-        } catch (error) {
-          if (error?.code !== 'STATE_VERSION_CONFLICT' || attempt === 2) throw error
-        }
+      const committed = await this.runCommands(campaignId, idempotencyKey, actualCommands, { allowedActorIds: [actorId] }, actionStateVersion)
+      actionStateVersion = committed.state_version ?? actionStateVersion
+      const memoryCommands = materialConsequenceCommands(committed.state ?? loaded.state, {
+        succeeded: true, committedEvents: committed.events ?? [],
+      })
+      if (!memoryCommands.length) return committed
+      const memory = await this.runCommands(campaignId, `${idempotencyKey}:material-memory`, memoryCommands, {}, actionStateVersion)
+      actionStateVersion = memory.state_version ?? actionStateVersion
+      return { ...committed, state: memory.state, state_version: memory.state_version,
+        events: [...(committed.events ?? []), ...(memory.events ?? [])],
+        commands: [...(committed.commands ?? []), ...(memory.commands ?? [])],
       }
-      throw new Error('Свободное действие не удалось сохранить')
     }
     const verifyDuplicate = (commit, { requiresRuling = false } = {}) => {
       if (!commit?.duplicate) return
@@ -1060,17 +1064,42 @@ export class AutonomousCampaignOrchestrator {
       ? verifiedRoll.context.reading ?? null
       : null
     if (verifiedRoll) assertFreeActionConfirmation(verifiedRoll.context, text, loaded.state_version)
-    const proposedReading = storedReading ?? harmlessFreeActionReading(loaded.state, actorId, text)
+    const harmlessReading = harmlessFreeActionReading(loaded.state, actorId, text)
+    const proposedReading = storedReading ?? harmlessReading
       ?? (this.actionAdjudicator
         ? await this.actionAdjudicator.read(loaded.state, actorId, text, deterministicReading)
         : deterministicReading)
+    // Бриф свободного действия мог быть собран до параллельного коммита. Не
+    // применяем прочтение к уже изменившейся сцене: это защищает цель, средства
+    // и цену хода даже тогда, когда следующий commit сам смог бы принять новые
+    // команды без конфликта версии.
+    const adjudicationMayAwait = !storedReading && !harmlessReading && Boolean(this.actionAdjudicator?.llmClient?.completeJson)
+    const afterAdjudication = adjudicationMayAwait ? await this.load(campaignId) : loaded
+    if (adjudicationMayAwait && Number(afterAdjudication.state_version) !== Number(loaded.state_version)) {
+      return {
+        context_metadata: actionContextMetadata,
+        kind: 'clarification',
+        narration: 'Обстановка изменилась, пока ведущий разбирал действие. Отправьте его ещё раз: цель и цена будут проверены заново.',
+        turn_consumed: false,
+        admin_commands: 0,
+        state: afterAdjudication.state,
+        state_version: afterAdjudication.state_version,
+        events: [],
+        commands: [],
+        rolls: [],
+        duplicate: false,
+      }
+    }
     const reading = bindFreeActionReadingToState(loaded.state, actorId, text, proposedReading, { preserveActionProfile: Boolean(storedReading) })
     if (reading.reference_ambiguities.length) {
       return {
+        context_metadata: actionContextMetadata,
         kind: 'clarification',
         narration: reading.reference_ambiguities.includes('item_id')
-          ? 'В действии подходят несколько предметов. Назовите конкретную вещь.'
-          : 'В действии подходят несколько целей. Назовите конкретного участника.',
+          ? 'В действии подходит несколько или не подтверждён предмет. Назовите конкретную вещь.'
+          : reading.reference_ambiguities.includes('prop_id')
+            ? 'Назовите конкретный видимый предмет обстановки из текущей сцены.'
+            : 'В действии подходят несколько или не подтверждена цель. Назовите конкретного участника.',
         turn_consumed: false,
         admin_commands: 0,
         state: loaded.state,
@@ -1105,6 +1134,7 @@ export class AutonomousCampaignOrchestrator {
         const hazardEvents = commit.events ?? []
         const hazardState = commit.state ?? loaded.state
         return {
+          context_metadata: actionContextMetadata,
           kind: 'scene_interaction',
           narration: sceneHazardNarration(hazardEvents, hazardState)
             || sceneInteractionNarration(hazardEvents)
@@ -1126,6 +1156,7 @@ export class AutonomousCampaignOrchestrator {
         // игроку от правил, а не ошибка запроса. Ход не тратится, событий не
         // остаётся: коммит атомарен и целиком откатился.
         return {
+          context_metadata: actionContextMetadata,
           kind: 'clarification',
           narration: `${error.message}.`,
           turn_consumed: false,
@@ -1152,6 +1183,7 @@ export class AutonomousCampaignOrchestrator {
       const commit = await run([declaration])
       verifyDuplicate(commit)
       return {
+        context_metadata: actionContextMetadata,
         kind: 'counter_offer',
         narration: hazardMeans.missing.length
           ? `Для этого способа не хватает подтверждённых средств: ${hazardMeans.missing.join(', ')}. Можно выбрать имеющуюся вещь или описать другой подход.`
@@ -1168,6 +1200,7 @@ export class AutonomousCampaignOrchestrator {
       const commit = await run([declaration])
       verifyDuplicate(commit)
       return {
+        context_metadata: actionContextMetadata,
         kind: 'clarification',
         narration: `${hazardContact.reason} Уточните место или сначала подойдите ближе; действие пока не выполнено.`,
         turn_consumed: false,
@@ -1185,6 +1218,7 @@ export class AutonomousCampaignOrchestrator {
         const commit = await run([declaration])
         verifyDuplicate(commit)
         return {
+          context_metadata: actionContextMetadata,
           kind: 'clarification',
           narration: `На этом ходу ${actionCost.slot} уже потрачено. Контакт с опасностью не выполнен.`,
           turn_consumed: false,
@@ -1234,6 +1268,7 @@ export class AutonomousCampaignOrchestrator {
       const cause = String(hazardContact.source?.kind ?? '').startsWith('wall-') ? 'Удар о стену: '
         : hazardContact.hazard_id === 'fire' ? 'Ожог: ' : ''
       return {
+        context_metadata: actionContextMetadata,
         kind: 'hazard_contact', ruling, reading,
         narration: amount > 0
           ? `${cause}${name} получает ${amount} ${damageTypeLabelRu(hazardContact.damage_type)} урона.`
@@ -1250,6 +1285,7 @@ export class AutonomousCampaignOrchestrator {
     const pickpocket = resolvePickpocket(loaded.state, actorId, text, reading)
     if (pickpocket?.status === 'clarification') {
       return {
+        context_metadata: actionContextMetadata,
         kind: 'clarification',
         narration: pickpocket.narration,
         turn_consumed: false,
@@ -1266,6 +1302,7 @@ export class AutonomousCampaignOrchestrator {
       const commit = await run([declaration, pickpocket.command])
       verifyDuplicate(commit)
       return {
+        context_metadata: actionContextMetadata,
         kind: 'pickpocket',
         narration: pickpocket.narration,
         turn_consumed: false,
@@ -1281,6 +1318,7 @@ export class AutonomousCampaignOrchestrator {
     const corpseSearch = resolveCorpseSearch(loaded.state, actorId, text, reading)
     if (corpseSearch) {
       return {
+        context_metadata: actionContextMetadata,
         kind: 'clarification',
         narration: corpseSearch.narration,
         turn_consumed: false,
@@ -1296,6 +1334,7 @@ export class AutonomousCampaignOrchestrator {
     const inventoryTransfer = resolveInventoryTransfer(loaded.state, actorId, text, reading)
     if (inventoryTransfer?.status === 'clarification') {
       return {
+        context_metadata: actionContextMetadata,
         kind: 'clarification',
         narration: inventoryTransfer.narration,
         turn_consumed: false,
@@ -1312,6 +1351,7 @@ export class AutonomousCampaignOrchestrator {
       const commit = await run([declaration, inventoryTransfer.command])
       verifyDuplicate(commit)
       return {
+        context_metadata: actionContextMetadata,
         kind: 'item_transfer',
         narration: inventoryTransfer.narration,
         turn_consumed: false,
@@ -1328,6 +1368,7 @@ export class AutonomousCampaignOrchestrator {
       && String(reading.source ?? '').startsWith('deterministic-default')
       && !hasRecognizedFreeActionApproach(text)) {
       return {
+        context_metadata: actionContextMetadata,
         kind: 'clarification',
         clarification_question: 'Я не понял способ действия. Опишите, что именно делает герой, с чем или с кем он взаимодействует и какого результата хочет добиться.',
         narration: 'Я не понял способ действия. Опишите, что именно делает герой, с чем или с кем он взаимодействует и какого результата хочет добиться. Попытка ничего не расходует.',
@@ -1354,6 +1395,7 @@ export class AutonomousCampaignOrchestrator {
       const commit = await run([declaration])
       verifyDuplicate(commit)
       return {
+        context_metadata: actionContextMetadata,
         kind: 'clarification',
         narration: `Этот способ уже не сработал, и обстановка с тех пор не изменилась. Нужен другой подход к препятствию «${reading.obstacle}».`,
         turn_consumed: false,
@@ -1372,6 +1414,7 @@ export class AutonomousCampaignOrchestrator {
       const commit = await run([declaration])
       verifyDuplicate(commit)
       return {
+        context_metadata: actionContextMetadata,
         kind: 'counter_offer',
         narration: means.missing.length
           ? `Для этого способа не хватает подтверждённых средств: ${means.missing.join(', ')}. Можно выбрать имеющуюся вещь или описать другой подход к препятствию «${reading.obstacle}».`
@@ -1436,6 +1479,7 @@ export class AutonomousCampaignOrchestrator {
       ])
       verifyDuplicate(commit, { requiresRuling: true })
       return {
+        context_metadata: actionContextMetadata,
         kind: 'auto_success',
         ruling,
         reading,
@@ -1457,6 +1501,7 @@ export class AutonomousCampaignOrchestrator {
     const actionCost = inCombat ? resolveActionCost(loaded.state, actorId, reading.action_cost) : { cost: 'free', available: true }
     if (inCombat && actionCost.cost === 'action' && loaded.state.mechanics.combat.action_economy?.[actorId]?.surged_action_only) {
       return {
+        context_metadata: actionContextMetadata,
         kind: 'clarification', narration: 'Дополнительное действие от Всплеска действий нельзя потратить на импровизацию. Выберите другое доступное действие.',
         turn_consumed: false, admin_commands: 0,
         state: loaded.state, state_version: loaded.state_version,
@@ -1467,6 +1512,7 @@ export class AutonomousCampaignOrchestrator {
       const commit = await run([declaration])
       verifyDuplicate(commit)
       return {
+        context_metadata: actionContextMetadata,
         kind: 'clarification',
         narration: `На этом ходу ${actionCost.slot} уже потрачено. Импровизация обойдётся в него же — попробуйте на следующем ходу или опишите что-то, что укладывается в оставшееся.`,
         turn_consumed: false,
@@ -1491,6 +1537,7 @@ export class AutonomousCampaignOrchestrator {
       : null
     if (effectPreview?.rejected) {
       return {
+        context_metadata: actionContextMetadata,
         kind: 'clarification',
         narration: `Этот результат пока недоступен: ${effectPreview.rejected}. Уточните цель или способ действия. Попытка ничего не расходует.`,
         turn_consumed: false, admin_commands: 0,
@@ -1541,6 +1588,7 @@ export class AutonomousCampaignOrchestrator {
         },
       })
       return {
+        context_metadata: actionContextMetadata,
         kind: 'check_required',
         check: { ...check, sides: 20, skill: preview.skill, proposal },
         reading,
@@ -1624,6 +1672,7 @@ export class AutonomousCampaignOrchestrator {
     const failureText = consequence.damage_expression
       ? `Неудачное движение. Герой получает ${injuryAmount} ${damageTypeLabelRu(consequence.damage_type)} урона.` : consequence.summary
     return {
+      context_metadata: actionContextMetadata,
       kind: succeeded ? 'check_success' : 'check_failure',
       ruling: outcomeRuling,
       reading,

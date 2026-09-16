@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { knowledgeGateForEvent } from './quest-consequences.mjs'
 
 export const CAMPAIGN_MODES = Object.freeze(['adventure', 'persistent'])
 export const PERSISTENT_WORLD_OBJECTIVE = 'Исследовать мир или выбрать собственную цель'
@@ -46,7 +47,19 @@ export function campaignStoryCompletionDraft(state, events) {
   return {
     event_type: 'CampaignStoryCompleted', visibility: 'party', target_ids: [],
     payload: {
-      schema_version: 1,
+      schema_version: resolution.payload.knowledge_gate ? 2 : 1,
+      ...(resolution.payload.knowledge_gate ? {
+        knowledge_gate: knowledgeGateForEvent(state, resolution),
+        source_event_ids: [resolution.event_id].filter(Boolean),
+        dependency_id: resolution.payload.dependency_id,
+        policy_id: resolution.payload.policy_id,
+        previous_view: {
+          story_quest_id: quest.id, location_id: String(state.scene?.location_id || ''),
+          objective: state.scene?.objective || '', current_hook: state.adventure?.currentHook || '',
+          replaced_objective: PERSISTENT_WORLD_OBJECTIVE,
+          suggestions: structuredClone(state.suggestions ?? []),
+        },
+      } : {}),
       story_id: `story:${campaign}:${sequence}`, story_number: sequence,
       quest_id: quest.id, title: String(quest.title).slice(0, 180),
       outcome: resolution.payload.outcome,
@@ -59,10 +72,11 @@ export function campaignStoryCompletionDraft(state, events) {
 }
 
 export function campaignStoryChronicleEntry(event) {
-  if (event?.event_type !== 'CampaignStoryCompleted' || event.payload?.schema_version !== 1) return null
+  if (event?.event_type !== 'CampaignStoryCompleted' || ![1, 2].includes(event.payload?.schema_version)) return null
   return {
     id: `story-completed:${event.payload.story_id}`, speaker: 'narrator', author: 'Рассказчик',
     text: `История «${event.payload.title}» завершена. ${event.payload.summary} Мир остаётся открытым для ваших действий.`,
     turnConsumed: false,
+    ...(event.payload.knowledge_gate ? { knowledge_gate: structuredClone(event.payload.knowledge_gate) } : {}),
   }
 }

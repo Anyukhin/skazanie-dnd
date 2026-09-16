@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { normalizeDirectorIntent } from './autonomous-campaign.mjs'
-import { campaignConceptForAgent } from './agent-context.mjs'
+import { agentContextMetadata, boundedSelectionMetadata, campaignConceptForAgent } from './agent-context.mjs'
 import { currentImprovMode, normalizeImprovMode } from './campaign-ai-context.mjs'
 import {
   QUEST_ABANDONMENT_NEXT_OBJECTIVE,
@@ -13,6 +13,8 @@ import {
   directorObjectiveAfterQuestAbandonment,
 } from './campaign-loop-policy.mjs'
 import { npcMechanicsFor } from './npc-positioning.mjs'
+import { npcSocialForViewer } from './npc-social.mjs'
+import { questStateForViewer } from './quest-consequences.mjs'
 import { buildDataOnlyContext } from './security.mjs'
 import { worldClockForAgents } from './weather.mjs'
 import { retrieveWorldMemory } from './world-memory.mjs'
@@ -29,6 +31,16 @@ const DIRECTOR_PROMPTS = Object.freeze({
   chaos: { id: 'director/v4_chaos', text: CHAOS_PROMPT },
 })
 const clean = (value, maximum = 240) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
+
+function selectionFields(metadata, prefix) {
+  return {
+    [`${prefix}_scope`]: metadata.scope,
+    [`${prefix}_status`]: metadata.status,
+    [`${prefix}_availability`]: metadata.availability,
+    [`${prefix}_complete_within_scope`]: metadata.complete_within_scope,
+    ...(metadata.truncation_reason ? { [`${prefix}_truncation_reason`]: metadata.truncation_reason } : {}),
+  }
+}
 
 export const DIRECTOR_MEMORY_RECORD_LIMIT = 6
 const DIRECTOR_THREAD_LIMIT = 6
@@ -104,8 +116,8 @@ function directorMemoryRecord(record) {
   return result
 }
 
-function directorNarrativeMemory(state, playerAction) {
-  const records = retrieveWorldMemory(state.worldMemory, { isAdmin: true }, {
+function directorNarrativeMemory(state, playerAction, viewer = { isPartyMember: true }) {
+  const records = retrieveWorldMemory(state.worldMemory, viewer, {
     query: directorMemoryQuery(state, playerAction),
     limit: DIRECTOR_MEMORY_RECORD_LIMIT,
     asOfMinutes: state.mechanics?.world_time?.elapsed_minutes,
@@ -182,29 +194,47 @@ export function fallbackDirectorIntent(state = {}, playerAction = '') {
     : 'Сохраняется доступная сюжетная зацепка.' })
 }
 
-function publicDirectorBrief(state = {}, playerAction = '') {
-  const arc = campaignArcPosition(state)
-  const levelLine = sceneLevelLine(state)
+function publicDirectorBrief(state = {}, playerAction = '', contractVersion = 'director/v4') {
+  // Режиссёр предлагает следующий шаг всей партии. Его контекст не может
+  // зависеть от личного знания одного героя или от скрытого результата квеста.
+  const visibleState = questStateForViewer(state, { isPartyMember: true })
+  const arc = campaignArcPosition(visibleState)
+  const levelLine = sceneLevelLine(visibleState)
+  const activeQuestCandidates = (visibleState.worldMemory?.quests ?? []).filter((quest) => quest.status === 'active')
+  const activeQuests = activeQuestCandidates.slice(0, 12)
+  const social = npcSocialForViewer(visibleState.social, { state: visibleState, isPartyMember: true })
+  const publicPromises = (visibleState.social?.promises ?? [])
+    .filter((promise) => !promise.visibility || promise.visibility === 'party')
+  const publicState = { ...visibleState, social: { ...social, promises: publicPromises } }
+  const availableNpcCandidates = social.npcs.filter((npc) => {
+    if (npc.available === false) return false
+    const currentId = clean(visibleState.scene?.location_id ?? visibleState.scene?.locationId, 120)
+    const npcLocationId = clean(npc.location_id ?? npc.locationId, 120)
+    if (currentId && npcLocationId) return currentId === npcLocationId
+    return clean(npc.location, 160).toLocaleLowerCase('ru') === clean(visibleState.scene?.location, 160).toLocaleLowerCase('ru')
+  })
+  const availableNpcs = availableNpcCandidates.slice(0, 12)
   return {
+    context_metadata: agentContextMetadata(visibleState, { role: 'director', actorId: visibleState.activePlayerId ?? null, contractVersion }),
     WORLD_STATE: {
-      campaign_premise: campaignConceptForAgent(state),
+      campaign_premise: campaignConceptForAgent(visibleState),
       scene: {
-        title: clean(state.scene?.title, 100), location: clean(state.scene?.location, 160),
-        objective: clean(state.scene?.objective, 240), turn: Number(state.scene?.turn) || 0,
+        title: clean(visibleState.scene?.title, 100), location: clean(visibleState.scene?.location, 160),
+        objective: clean(visibleState.scene?.objective, 240), turn: Number(visibleState.scene?.turn) || 0,
         // Строка про этаж стоит здесь, чтобы модель не выдумывала географию
         // многоэтажной локации. Она собирается из уже применённых событий и
         // отдельного вызова не стоит; у одноэтажной локации поля нет вовсе.
         ...(levelLine ? { level: levelLine } : {}),
       },
-      chapter: Math.max(1, Number(state.adventure?.chapter) || 1),
+      chapter: Math.max(1, Number(visibleState.adventure?.chapter) || 1),
       // Час, время суток и погода — данные для темпа: ночной привал и гроза
       // читаются иначе, чем полдень на тракте. Решает Режиссёр, но решает по
       // тому же небу, что видит игрок в шапке сцены.
-      world_clock: worldClockForAgents(state),
+      world_clock: worldClockForAgents(visibleState),
       pacing: {
-        phase: clean(state.autonomy?.pacing?.phase, 30) || 'breather',
-        tension: Math.max(0, Math.min(100, Number(state.autonomy?.pacing?.tension) || 0)),
-        beat: Math.max(0, Number(state.autonomy?.pacing?.beat) || 0),
+        phase: clean(visibleState.autonomy?.pacing?.phase, 30) || 'breather',
+        tension: Math.max(0, Math.min(100, Number(visibleState.autonomy?.pacing?.tension) || 0)),
+        beat: Math.max(0, Number(visibleState.autonomy?.pacing?.beat) || 0),
       },
       ...(arc ? { arc: {
         preset: arc.preset,
@@ -215,30 +245,26 @@ function publicDirectorBrief(state = {}, playerAction = '') {
         phase: arc.phase,
         climax_required: arc.climax,
       } } : {}),
-      active_quests: (state.worldMemory?.quests ?? []).filter((quest) => quest.status === 'active').slice(0, 12).map((quest) => ({
+      active_quests: activeQuests.map((quest) => ({
         id: clean(quest.id, 120), title: clean(quest.title, 160), objectives: (quest.objectives ?? []).map((item) => clean(item, 180)).slice(0, 8),
         clock: quest.clock ? { current: Number(quest.clock.current) || 0, max: Number(quest.clock.max) || 1 } : null,
       })),
-      abandoned_quests: abandonedQuestsForDirector(state),
+      ...selectionFields(boundedSelectionMetadata({ scope: 'party_visible_active_quests', candidateCount: activeQuestCandidates.length, limit: 12 }), 'active_quests'),
+      abandoned_quests: abandonedQuestsForDirector(visibleState),
       quest_policy: {
         never_reopen_abandoned: true,
-        next_objective_after_abandonment: directorObjectiveAfterQuestAbandonment(state),
+        next_objective_after_abandonment: directorObjectiveAfterQuestAbandonment(visibleState),
       },
-      available_npcs: (state.social?.npcs ?? []).filter((npc) => {
-        if (npc.available === false) return false
-        const currentId = clean(state.scene?.location_id ?? state.scene?.locationId, 120)
-        const npcLocationId = clean(npc.location_id ?? npc.locationId, 120)
-        if (currentId && npcLocationId) return currentId === npcLocationId
-        return clean(npc.location, 160).toLocaleLowerCase('ru') === clean(state.scene?.location, 160).toLocaleLowerCase('ru')
-      }).slice(0, 12).map((npc) => ({
+      available_npcs: availableNpcs.map((npc) => ({
         id: clean(npc.id, 120), name: clean(npc.name, 120), role: clean(npc.role, 120), location: clean(npc.location, 160),
-        combat_ready: Boolean(npcMechanicsFor(state, npc.id)),
+        combat_ready: Boolean(npcMechanicsFor(visibleState, npc.id)),
       })),
-      encounter: state.mechanics?.encounter ? { status: clean(state.mechanics.encounter.status, 40), outcome: clean(state.mechanics.encounter.outcome, 80) } : null,
-      narrative_memory: directorNarrativeMemory(state, playerAction),
+      ...selectionFields(boundedSelectionMetadata({ scope: 'party_visible_available_npcs_in_current_location', candidateCount: availableNpcCandidates.length, limit: 12 }), 'available_npcs'),
+      encounter: visibleState.mechanics?.encounter ? { status: clean(visibleState.mechanics.encounter.status, 40), outcome: clean(visibleState.mechanics.encounter.outcome, 80) } : null,
+      narrative_memory: directorNarrativeMemory(publicState, playerAction, { isPartyMember: true }),
     },
-    RECENT_EVENTS: currentChapterHistory(state).slice(-12).map((intent) => ({ type: clean(intent.type, 40), reason: clean(intent.reason, 180) })),
-    RECENT_OUTCOMES: (state.autonomy?.director_outcomes ?? []).slice(-12).map((outcome) => ({
+    RECENT_EVENTS: currentChapterHistory(visibleState).slice(-12).map((intent) => ({ type: clean(intent.type, 40), reason: clean(intent.reason, 180) })),
+    RECENT_OUTCOMES: (visibleState.autonomy?.director_outcomes ?? []).slice(-12).map((outcome) => ({
       intent_type: clean(outcome.intent_type, 40),
       state_changed: outcome.state_changed === true,
     })),
@@ -256,21 +282,22 @@ export class DirectorAgent {
   async choose({ state = {}, playerAction = '', improvMode = currentImprovMode() } = {}) {
     const improv = normalizeImprovMode(improvMode)
     const directorPrompt = DIRECTOR_PROMPTS[improv]
+    const contextMetadata = agentContextMetadata(state, { role: 'director', actorId: state.activePlayerId ?? null, contractVersion: directorPrompt.id })
     const fallback = fallbackDirectorIntent(state, playerAction)
-    if (fallback.type === 'request_encounter') return { intent: fallback, trace: { agent: 'DirectorAgent', mode: 'deterministic-explicit-player-request', improv_mode: improv, prompt_id: directorPrompt.id, reason: 'explicit combat request' } }
-    if (!this.llmClient) return { intent: fallback, trace: { agent: 'DirectorAgent', mode: 'deterministic-fallback', improv_mode: improv, prompt_id: directorPrompt.id, reason: 'LLM is not configured' } }
+    if (fallback.type === 'request_encounter') return { intent: fallback, trace: { agent: 'DirectorAgent', mode: 'deterministic-explicit-player-request', improv_mode: improv, prompt_id: directorPrompt.id, context_metadata: contextMetadata, reason: 'explicit combat request' } }
+    if (!this.llmClient) return { intent: fallback, trace: { agent: 'DirectorAgent', mode: 'deterministic-fallback', improv_mode: improv, prompt_id: directorPrompt.id, context_metadata: contextMetadata, reason: 'LLM is not configured' } }
     try {
       const result = await this.llmClient.completeJson({
         messages: [
           { role: 'system', content: directorPrompt.text },
-          { role: 'user', content: buildDataOnlyContext({ director_brief: publicDirectorBrief(state, playerAction) }) },
+          { role: 'user', content: buildDataOnlyContext({ director_brief: publicDirectorBrief(state, playerAction, directorPrompt.id) }) },
         ],
         temperature: 0.25,
         maxTokens: 500,
       }, { timeoutMs: 12_000 })
-      return { intent: normalizeDirectorIntent(result), trace: { agent: 'DirectorAgent', mode: 'model', improv_mode: improv, prompt_id: directorPrompt.id, model: this.llmClient.model ?? null } }
+      return { intent: normalizeDirectorIntent(result), trace: { agent: 'DirectorAgent', mode: 'model', improv_mode: improv, prompt_id: directorPrompt.id, context_metadata: contextMetadata, model: this.llmClient.model ?? null } }
     } catch (error) {
-      return { intent: fallback, trace: { agent: 'DirectorAgent', mode: 'deterministic-fallback', improv_mode: improv, prompt_id: directorPrompt.id, reason: error instanceof Error ? error.message : 'invalid model response' } }
+      return { intent: fallback, trace: { agent: 'DirectorAgent', mode: 'deterministic-fallback', improv_mode: improv, prompt_id: directorPrompt.id, context_metadata: contextMetadata, reason: error instanceof Error ? error.message : 'invalid model response' } }
     }
   }
 }

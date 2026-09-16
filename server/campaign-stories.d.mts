@@ -1,6 +1,6 @@
 export type CampaignMode = 'adventure' | 'persistent'
 export type CampaignStory = {
-  schema_version: 1
+  schema_version: 1 | 2
   story_id: string
   story_number: number
   quest_id: string

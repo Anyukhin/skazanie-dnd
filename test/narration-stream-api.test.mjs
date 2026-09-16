@@ -190,6 +190,12 @@ function campaignState(code) {
     activePlayerId: 'hero-1',
     partyMemberIds: ['hero-1', 'hero-2'],
     messages: [],
+    worldMemory: {
+      entities: [{ id: 'npc:secret-keeper', kind: 'npc', name: 'Хранитель печати', visibility: 'party' }],
+      facts: [{ id: 'fact:private-seal', subject_id: 'npc:secret-keeper', predicate: 'seal', object: 'тайная печать',
+        summary: 'Личная печать спрятана за синей плитой.', visibility: 'gm_only', status: 'active' }],
+      knowledge_ledger: [{ id: 'knowledge:private-seal', hero_id: 'hero-1', fact_id: 'fact:private-seal', recorded_at_minutes: 0 }],
+    },
     players: [
       hero('hero-1', 'Ада'),
       hero('hero-2', 'Бранн'),
@@ -496,4 +502,18 @@ test('HTTP/SSE повествование изолировано, восстан
   }
   assert.ok(disconnectedJournal, 'разрыв HTTP-клиента не отменяет финальную запись летописи')
   assert.equal(disconnectedJournal.text, disconnectedFinal.payload.text)
+
+  const privateQuestion = { campaign_id: 'STREAMA', actor_id: 'hero-1', request_kind: 'question',
+    action: 'Что я знаю о тайной печати?', idempotency_key: 'private-lore-question' }
+  const privateAnswer = await request(baseUrl, '/api/narrate', { method: 'POST', cookie: ownerCookie, body: privateQuestion })
+  assert.equal(privateAnswer.status, 200, privateAnswer.text)
+  assert.match(privateAnswer.body.narration, /синей плитой/u)
+  const guestRoom = await request(baseUrl, '/api/rooms/STREAMA', { cookie: guestCookie })
+  assert.doesNotMatch(JSON.stringify(guestRoom.body.state.messages), /синей плитой/u)
+  await assert.rejects(nextNarration(guestStream, privateAnswer.body.narration_message_id, null, 250), /SSE timeout/u)
+  const sameKeyOtherHero = await request(baseUrl, '/api/narrate', { method: 'POST', cookie: guestCookie,
+    body: { ...privateQuestion, actor_id: 'hero-2' } })
+  assert.equal(sameKeyOtherHero.status, 200, sameKeyOtherHero.text)
+  assert.doesNotMatch(sameKeyOtherHero.body.narration, /синей плитой/u)
+  assert.notEqual(sameKeyOtherHero.body.narration_message_id, privateAnswer.body.narration_message_id)
 })

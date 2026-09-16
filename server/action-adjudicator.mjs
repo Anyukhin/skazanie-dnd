@@ -5,6 +5,9 @@ import {
   FREE_ACTION_CONSEQUENCE_TYPES,
   FREE_ACTION_ACTIVITY_KINDS,
   FREE_ACTION_DURATION_CLASSES,
+  FREE_ACTION_SKILLS,
+  PLAUSIBILITY_LEVELS,
+  RISK_LEVELS,
   FREE_ACTION_PROFICIENCY_LEVELS,
   bindFreeActionReadingToState,
   normalizeFreeActionReading,
@@ -26,6 +29,7 @@ import { cellAt, deserializeTacticalMap } from './tactical-map.mjs'
 import { campaignStateForViewer } from './viewer-projection.mjs'
 import { npcSocialForViewer } from './npc-social.mjs'
 import { footprintDistanceFeet } from './actor-footprint.mjs'
+import { agentContextMetadata, boundedSelectionMetadata } from './agent-context.mjs'
 
 /**
  * Арбитр свободного действия. Единственная роль модели здесь — **понять
@@ -43,10 +47,53 @@ const prompt = readFileSync(fileURLToPath(new URL('../prompts/action_adjudicator
 const clean = (value, maximum = 240) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
 const list = (value) => Array.isArray(value) ? value : []
 
+const FREE_ACTION_RESPONSE_FIELDS = new Set([
+  'goal_summary', 'approach_summary', 'obstacle', 'activity_kind', 'duration_class',
+  'ability', 'skill', 'plausibility', 'risk', 'required_means', 'action_cost',
+  'effect', 'effect_target', 'hazard', 'prop_id', 'target_id', 'item_id',
+  'proficiency', 'consequence_type',
+])
+
+const ABILITIES = new Set(['str', 'dex', 'con', 'int', 'wis', 'cha'])
+const ACTION_COSTS = new Set(['action', 'bonus_action', 'free'])
+
+function nonEmptyString(value) {
+  return typeof value === 'string' && value.trim().length > 0
+}
+
+function validStringField(value, values, { allowEmpty = false, normalize = (entry) => entry } = {}) {
+  return typeof value === 'string'
+    && (allowEmpty && value === '' || values.has(normalize(value)))
+}
+
+function structurallyValidFreeActionResponse(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+    || Object.keys(value).some((key) => !FREE_ACTION_RESPONSE_FIELDS.has(key))) return false
+  const requiredText = ['goal_summary', 'approach_summary', 'obstacle']
+  if (requiredText.some((key) => !nonEmptyString(value[key]))) return false
+  if (!validStringField(value.ability, ABILITIES)
+    || !validStringField(value.skill, new Set(FREE_ACTION_SKILLS), { normalize: (entry) => entry.toLowerCase().replace(/_/gu, '-') })
+    || !validStringField(value.plausibility, new Set(PLAUSIBILITY_LEVELS))
+    || !validStringField(value.risk, new Set(RISK_LEVELS))
+    || !validStringField(value.action_cost, ACTION_COSTS)
+    || !validStringField(value.effect, new Set(IMPROVISED_EFFECT_IDS))
+    || !validStringField(value.proficiency, new Set(FREE_ACTION_PROFICIENCY_LEVELS))
+    || !validStringField(value.consequence_type, new Set(FREE_ACTION_CONSEQUENCE_TYPES))) return false
+  if (Object.hasOwn(value, 'activity_kind') && !validStringField(value.activity_kind, new Set(FREE_ACTION_ACTIVITY_KINDS))) return false
+  if (Object.hasOwn(value, 'duration_class') && !validStringField(value.duration_class, new Set(FREE_ACTION_DURATION_CLASSES))) return false
+  if (Object.hasOwn(value, 'required_means') && (!Array.isArray(value.required_means) || !value.required_means.every(nonEmptyString))) return false
+  for (const key of ['effect_target', 'hazard', 'prop_id', 'target_id', 'item_id']) {
+    if (Object.hasOwn(value, key) && typeof value[key] !== 'string') return false
+  }
+  if (Object.hasOwn(value, 'hazard') && value.hazard !== '' && !ENVIRONMENT_HAZARD_IDS.includes(value.hazard)) return false
+  return true
+}
+
 /** Лист героя в том объёме, который нужен для выбора кубика, и не шире. */
 function heroBrief(state, actorId) {
   const hero = (state?.players ?? []).find((actor) => String(actor?.id) === String(actorId)) ?? {}
   const sheet = hero.characterSheet ?? {}
+  const inventory = list(hero.inventory)
   return {
     id: String(hero.id ?? actorId),
     name: clean(hero.character ?? hero.name, 80),
@@ -62,25 +109,32 @@ function heroBrief(state, actorId) {
     prepared_spells: list(hero.preparedSpellIds).map((entry) => clean(entry, 60)).slice(0, 20),
     known_spells: list(hero.knownSpellIds).map((entry) => clean(entry, 60)).slice(0, 20),
     features: list(hero.selectedFeatureIds).map((entry) => clean(entry, 60)).slice(0, 20),
-    inventory: list(hero.inventory).map((item) => ({
+    inventory: inventory.slice(0, 30).map((item) => ({
       id: clean(item?.id, 120), name: clean(item?.name, 80), equipped: item?.equipped === true,
-    })).slice(0, 30),
+    })),
+    inventory_scope: 'items_owned_by_active_hero',
+    inventory_status: inventory.length > 30 ? 'truncated' : inventory.length ? 'complete' : 'empty',
+    inventory_availability: 'available',
+    inventory_complete_within_scope: inventory.length <= 30,
+    ...(inventory.length > 30 ? { inventory_truncation_reason: 'item_limit' } : {}),
     speed: Number(hero.speed) || 30,
   }
 }
 
 /** Кто на поле. Без этого модель не может назвать корректный `effect_target`. */
-function participantsBrief(state, actorId = '') {
+function participantCandidates(state, actorId = '') {
   const position = (actor) => (Number.isFinite(Number(actor?.x)) ? { x: Number(actor.x), y: Number(actor.y) } : null)
   const location = clean(state?.scene?.location, 180).toLocaleLowerCase('ru')
   const social = npcSocialForViewer(state.social, { state, playerId: actorId, isPartyMember: true }).npcs.filter((actor) => {
     const actorLocation = clean(actor?.location, 180).toLocaleLowerCase('ru')
     return actor?.available !== false && (!location || !actorLocation || location === actorLocation)
   })
+  let visibleEnemies = []
+  try { visibleEnemies = campaignStateForViewer(state, { role: 'player' }, actorId)?.enemies ?? [] } catch { /* broken map: no enemy oracle */ }
   return [
     ...(state?.players ?? []).map((actor) => ({ id: String(actor.id), name: clean(actor.character ?? actor.name, 80), role: clean(actor.role, 80), aliases: [], side: 'party', at: position(actor) })),
     ...(state?.actors ?? []).map((actor) => ({ id: String(actor.id), name: clean(actor.name, 80), role: clean(actor.role, 80), aliases: [], side: 'party', at: position(actor) })),
-    ...(campaignStateForViewer(state, { role: 'player' }, actorId)?.enemies ?? []).filter((actor) => actor?.alive !== false && Number(actor?.hp ?? 1) > 0)
+    ...visibleEnemies.filter((actor) => actor?.alive !== false && Number(actor?.hp ?? 1) > 0)
       .map((actor) => ({ id: String(actor.id), name: clean(actor.name, 80), role: clean(actor.role, 80), aliases: [], side: 'enemy', at: position(actor) })),
     ...social.map((actor) => ({
       id: String(actor.id),
@@ -90,7 +144,15 @@ function participantsBrief(state, actorId = '') {
       side: 'npc',
       at: position(actor),
     })),
-  ].filter((actor, index, all) => all.findIndex((candidate) => candidate.id === actor.id) === index).slice(0, 24)
+  ].filter((actor, index, all) => all.findIndex((candidate) => candidate.id === actor.id) === index)
+}
+
+function participantsBrief(state, actorId = '') {
+  const candidates = participantCandidates(state, actorId)
+  return {
+    items: candidates.slice(0, 24),
+    metadata: boundedSelectionMetadata({ scope: 'visible_living_participants_in_current_scene', candidateCount: candidates.length, limit: 24 }),
+  }
 }
 
 /**
@@ -156,9 +218,26 @@ export function revealedPropPredicate(state) {
 function scenePropsBrief(state, actorId) {
   const at = heroPosition(state, actorId)
   const hero = (state?.players ?? []).find((actor) => String(actor?.id) === String(actorId))
+  const serialized = state?.scene?.map
+  if (!serialized || typeof serialized !== 'object') return {
+    items: [],
+    metadata: boundedSelectionMetadata({ scope: 'visible_interactable_objects_in_current_area', sourceAvailable: false }),
+  }
+  try {
+    if (serialized.layers?.present instanceof Uint8Array) {
+      const requiredLayers = ['present', 'passable', 'revealed', 'moveCost', 'surface', 'material', 'variant', 'elevation', 'zoneId']
+      if (!Number.isSafeInteger(serialized.width) || !Number.isSafeInteger(serialized.height)
+        || !requiredLayers.every((name) => ArrayBuffer.isView(serialized.layers?.[name]))) throw new Error('MAP_LAYERS_INVALID')
+    } else deserializeTacticalMap(serialized)
+  } catch {
+    return {
+      items: [],
+      metadata: boundedSelectionMetadata({ scope: 'visible_interactable_objects_in_current_area', sourceAvailable: false }),
+    }
+  }
   const revealed = revealedPropPredicate(state)
   const props = Array.isArray(state?.scene?.map?.props) ? state.scene.map.props : []
-  return props
+  const candidates = props
     .flatMap((prop) => {
       const id = clean(prop?.id, 120)
       const verbs = sceneHazardVerbsFor(prop?.assetId)
@@ -178,7 +257,20 @@ function scenePropsBrief(state, actorId) {
     // Ближнее — первым: досягаемость всё равно проверит движок, но выбирать
     // модели проще из упорядоченного списка, а порядок обязан быть устойчивым.
     .sort((left, right) => (left.distance_feet ?? 10_000) - (right.distance_feet ?? 10_000) || left.id.localeCompare(right.id))
-    .slice(0, 12)
+  return {
+    items: candidates.slice(0, 12),
+    metadata: boundedSelectionMetadata({ scope: 'visible_interactable_objects_in_current_area', candidateCount: candidates.length, limit: 12 }),
+  }
+}
+
+function selectionFields(metadata, prefix) {
+  return {
+    [`${prefix}_scope`]: metadata.scope,
+    [`${prefix}_status`]: metadata.status,
+    [`${prefix}_availability`]: metadata.availability,
+    [`${prefix}_complete_within_scope`]: metadata.complete_within_scope,
+    ...(metadata.truncation_reason ? { [`${prefix}_truncation_reason`]: metadata.truncation_reason } : {}),
+  }
 }
 
 function economyBrief(state, actorId) {
@@ -229,7 +321,10 @@ function directContactQuestion(state, actorId, text) {
 }
 
 export function adjudicationBrief(state, actorId, text, dialogue = {}) {
+  const participants = participantsBrief(state, actorId)
+  const sceneProps = scenePropsBrief(state, actorId)
   return {
+    context_metadata: agentContextMetadata(state, { role: 'action_adjudicator', actorId, contractVersion: 'action_adjudicator/v6' }),
     player_action: clean(text, 1_000),
     ...(dialogue.recent?.length || dialogue.action ? { dialogue: {
       request_kind: dialogue.request_kind ?? 'action',
@@ -243,8 +338,10 @@ export function adjudicationBrief(state, actorId, text, dialogue = {}) {
       mood: clean(state?.scene?.mood, 160),
       objective: clean(state?.scene?.objective, 160),
     },
-    participants: participantsBrief(state, actorId),
-    scene_props: scenePropsBrief(state, actorId),
+    participants: participants.items,
+    scene_props: sceneProps.items,
+    ...selectionFields(participants.metadata, 'participants'),
+    ...selectionFields(sceneProps.metadata, 'scene_props'),
     turn_economy: economyBrief(state, actorId),
     allowed: {
       effects: [...IMPROVISED_EFFECT_IDS],
@@ -268,40 +365,62 @@ export class ActionAdjudicator {
    * возврат к детерминированной таблице, а не сломанный ход.
    */
   async read(state, actorId, text, fallbackReading, dialogue = {}) {
+    const contextMetadata = agentContextMetadata(state, { role: 'action_adjudicator', actorId, contractVersion: 'action_adjudicator/v6' })
     const harmless = harmlessFreeActionReading(state, actorId, text)
-    if (harmless) return bindFreeActionReadingToState(state, actorId, text, harmless)
-    if (!this.llmClient?.completeJson) return bindFreeActionReadingToState(state, actorId, text, fallbackReading)
+    if (harmless) return { ...bindFreeActionReadingToState(state, actorId, text, harmless), context_metadata: contextMetadata }
+    if (!this.llmClient?.completeJson) return { ...bindFreeActionReadingToState(state, actorId, text, fallbackReading), context_metadata: contextMetadata }
     try {
+      const brief = adjudicationBrief(state, actorId, text, dialogue)
       const result = await this.llmClient.completeJson({
         messages: [
           { role: 'system', content: prompt },
-          { role: 'user', content: buildDataOnlyContext({ free_action_brief: adjudicationBrief(state, actorId, text, dialogue) }) },
+          { role: 'user', content: buildDataOnlyContext({ free_action_brief: brief }) },
         ],
         temperature: 0.2,
         maxTokens: 700,
       }, { timeoutMs: this.timeoutMs })
+      if (!structurallyValidFreeActionResponse(result)) throw new Error('ACTION_ADJUDICATOR_RESPONSE_INVALID_SHAPE')
+      const participantIds = new Set(brief.participants.map((entry) => entry.id))
+      const propsById = new Map(brief.scene_props.map((entry) => [entry.id, entry]))
+      const propIntent = scenePropIntentFor(result.effect)
+      const unknownReferences = [
+        result.target_id && !participantIds.has(String(result.target_id)) ? 'target_id' : null,
+        result.effect_target && !participantIds.has(String(result.effect_target)) ? 'effect_target' : null,
+        result.item_id && !brief.hero.inventory.some((item) => item.id === String(result.item_id)) ? 'item_id' : null,
+        result.prop_id && (!propsById.has(String(result.prop_id)) || !propIntent) ? 'prop_id' : null,
+      ].filter(Boolean)
+      if (unknownReferences.length) {
+        const error = new Error('ACTION_ADJUDICATOR_REFERENCE_NOT_IN_CONTEXT')
+        error.code = 'ACTION_ADJUDICATOR_REFERENCE_NOT_IN_CONTEXT'
+        error.reference_fields = unknownReferences
+        throw error
+      }
       const reading = normalizeFreeActionReading({ ...result, source: 'agent-adjudicator' }, text)
       // Модель могла назвать эффект, которого нет в каталоге. Оставлять такой
       // ключ нельзя: дальше он всё равно превратится в «ничего не произошло»,
       // но в трассе выглядел бы как решение агента.
       if (!IMPROVISED_EFFECT_IDS.includes(reading.effect)) reading.effect = 'none'
       if (reading.hazard && !ENVIRONMENT_HAZARD_IDS.includes(reading.hazard)) reading.hazard = ''
-      const participantIds = new Set(participantsBrief(state, actorId).map((entry) => entry.id))
       if (reading.effect_target && !participantIds.has(reading.effect_target)) reading.effect_target = ''
       // Предмет обстановки — только из переданного списка и только с тем
       // глаголом, который у него действительно есть. Иначе «поджигаю бочку с
       // порохом» превратилось бы в поджог придуманной бочки.
-      const propsById = new Map(scenePropsBrief(state, actorId).map((entry) => [entry.id, entry]))
-      const propIntent = scenePropIntentFor(reading.effect)
+      const normalizedPropIntent = scenePropIntentFor(reading.effect)
       const namedProp = propsById.get(reading.prop_id) ?? null
-      if (!namedProp || !propIntent || !namedProp.verbs.includes(propIntent)) reading.prop_id = ''
-      if (propIntent && !reading.prop_id) reading.effect = 'none'
-      return bindFreeActionReadingToState(state, actorId, text, reading)
-    } catch {
-      return bindFreeActionReadingToState(state, actorId, text, {
+      if (!namedProp || !normalizedPropIntent || !namedProp.verbs.includes(normalizedPropIntent)) reading.prop_id = ''
+      if (normalizedPropIntent && !reading.prop_id) reading.effect = 'none'
+      return { ...bindFreeActionReadingToState(state, actorId, text, reading), context_metadata: contextMetadata }
+    } catch (error) {
+      const bound = bindFreeActionReadingToState(state, actorId, text, {
         ...fallbackReading,
         source: `${fallbackReading.source}-after-agent-error`,
       })
+      if (error?.code === 'ACTION_ADJUDICATOR_REFERENCE_NOT_IN_CONTEXT') {
+        bound.reference_ambiguities = [...new Set([
+          ...(bound.reference_ambiguities ?? []), ...(error.reference_fields ?? []),
+        ])]
+      }
+      return { ...bound, context_metadata: contextMetadata }
     }
   }
 
@@ -329,7 +448,7 @@ export class ActionAdjudicator {
     if (resolution.mode === 'counter_offer') return { narration: 'Обычной проверки здесь недостаточно: назовите заклинание, предмет или способность, которые дают нужную возможность. После этого можно обсудить безопасный способ.', reading }
     const uncertain = String(reading.source).startsWith('deterministic-default') && !hasRecognizedFreeActionApproach(question)
     if (uncertain) {
-      const props = scenePropsBrief(state, actorId).slice(0, 3).map(prop => prop.name).join(', ')
+      const props = scenePropsBrief(state, actorId).items.slice(0, 3).map(prop => prop.name).join(', ')
       return { narration: `Чтобы оценить этот вариант, уточним, чем герой действует и какой результат ему нужен.${action ? ` Сохраняю исходную заявку: «${clean(action, 300)}».` : ''}${props ? ` Из доступной обстановки можно использовать: ${props}.` : ''} Вопрос ничего не расходует.`, reading }
     }
     const label = d20CheckLabel({ kind: 'check', ability: reading.ability, skill: reading.skill })
