@@ -208,21 +208,23 @@ function safeKnowledgeEntry(value = {}) {
 }
 
 function indexKnowledge(entries) {
-  const result = {}
+  const byHero = new Map()
   for (const entry of entries) {
     if (!entry.hero_id || !entry.fact_id) continue
-    result[entry.hero_id] = [...new Set([...(result[entry.hero_id] ?? []), entry.fact_id])]
+    let known = byHero.get(entry.hero_id)
+    if (!known) byHero.set(entry.hero_id, known = new Set())
+    known.add(entry.fact_id)
   }
-  return result
+  return Object.fromEntries([...byHero].map(([heroId, known]) => [heroId, [...known]]))
 }
 
-function currentLegacyKnowledgeEntries(source) {
+function currentLegacyKnowledgeEntries(source, persistedKeys) {
   const entries = []
   for (const [heroId, raw] of Object.entries(source.knowledge ?? {})) {
     const hero = text(heroId, 120)
     const ids = Array.isArray(raw) ? raw : raw?.fact_ids
     for (const factId of persistedStrings(ids, 120)) {
-      if (!hero) continue
+      if (!hero || persistedKeys.has(`${hero}\0${factId}`)) continue
       entries.push(safeKnowledgeEntry({
         id: stableId('knowledge-legacy', hero, factId), hero_id: hero, fact_id: factId,
         summary: '', source_event_ids: [], source_command_id: 'legacy-world-memory', source_kind: 'legacy',
@@ -247,7 +249,6 @@ function normalizeWorldMemoryCurrent(input = {}) {
   const epistemic_claims = (Array.isArray(source.epistemic_claims) ? source.epistemic_claims : []).map(safeEpistemicClaim)
   const summaries = (Array.isArray(source.summaries) ? source.summaries : []).map(safeSummary)
 
-  const legacyEntries = currentLegacyKnowledgeEntries(source)
   const persistedLedger = Array.isArray(source.knowledge_ledger)
     ? source.knowledge_ledger
     // An explicitly absent v2 ledger means that a legacy snapshot is being
@@ -260,7 +261,7 @@ function normalizeWorldMemoryCurrent(input = {}) {
   // Some in-flight v1→v2 migrations can contain both a new empty ledger and
   // the old index. Preserve any old entry not yet represented by the ledger.
   const persistedKeys = new Set(persistedLedger.map((entry) => `${text(entry?.hero_id, 120)}\0${text(entry?.fact_id, 120)}`))
-  const rawLedger = [...persistedLedger, ...legacyEntries.filter((entry) => !persistedKeys.has(`${entry.hero_id}\0${entry.fact_id}`))]
+  const rawLedger = [...persistedLedger, ...currentLegacyKnowledgeEntries(source, persistedKeys)]
   const knownEntries = rawLedger.map(safeKnowledgeEntry)
   const knowledge_revealed = knownEntries
   return {
@@ -748,9 +749,11 @@ function appendKnowledge(memory, event, factId, targetIds, payload = {}) {
   return memory
 }
 
-export function applyWorldMemoryEvent(input, event) {
+/** prepared разрешён только владельцу уже нормализованной приватной копии. */
+export function applyWorldMemoryEvent(input, event, { prepared = false } = {}) {
+  const owned = prepared && retentionMode() !== 'legacy'
   const normalize = retentionMode() === 'legacy' ? normalizeWorldMemoryLegacy : normalizeWorldMemory
-  const memory = normalize(input)
+  const memory = owned ? input : normalize(input)
   const payload = event.payload ?? {}
   if (event.event_type === 'WorldEntityUpserted') {
     const entity = safeEntity(payload.entity)
@@ -827,7 +830,7 @@ export function applyWorldMemoryEvent(input, event) {
     memory.summaries = [...memory.summaries.filter((item) => item.id !== summary.id), summary]
     if (retentionMode() === 'legacy') memory.summaries = memory.summaries.slice(-1_000)
   }
-  return normalize(memory)
+  return owned ? memory : normalize(memory)
 }
 
 function normallyVisible(item, viewer) {
@@ -888,10 +891,11 @@ export function worldMemoryForViewer(input, viewer = {}) {
   const epistemic_claims = memory.epistemic_claims.filter((claim) => inTime(claim, maximum) && normallyVisible(claim, viewer)
     && visibleEntityIds.has(claim.holder_entity_id) && (!claim.subject_entity_id || visibleEntityIds.has(claim.subject_entity_id)))
   const summaries = memory.summaries.filter((summary) => inTime(summary, maximum) && normallyVisible(summary, viewer))
-  const knowledge_revealed = playerKnowledge.filter((entry) => facts.some((fact) => fact.id === entry.fact_id))
+  const visibleFactIds = new Set(facts.map((fact) => fact.id))
+  const knowledge_revealed = playerKnowledge.filter((entry) => visibleFactIds.has(entry.fact_id))
   return {
     schema_version: 2, entities: clone(entities), facts: clone(facts), relationships: clone(relationships), quests: clone(quests), threads: clone(threads),
-    epistemic_claims: clone(epistemic_claims), summaries: clone(summaries), knowledge: playerId ? { [playerId]: [...known].filter((factId) => facts.some((fact) => fact.id === factId)) } : {},
+    epistemic_claims: clone(epistemic_claims), summaries: clone(summaries), knowledge: playerId ? { [playerId]: [...known].filter((factId) => visibleFactIds.has(factId)) } : {},
     knowledge_revealed: clone(knowledge_revealed), knowledge_ledger: clone(knowledge_revealed),
   }
 }

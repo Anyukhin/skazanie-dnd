@@ -124,6 +124,35 @@ test('повтор того же ключа отдаёт прежний комм
   assert.equal((await store.load('EXECUTOR')).state_version, versionAfterFirst)
 })
 
+test('гонка с тем же ключом помечает ответ как replayed', async (t) => {
+  const store = await storeFor(t)
+  let raced = false
+  const racingStore = new Proxy(store, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver)
+      if (property !== 'commit' || typeof value !== 'function') {
+        return typeof value === 'function' ? value.bind(target) : value
+      }
+      return async (input) => {
+        if (!raced) {
+          raced = true
+          await target.commit(input)
+        }
+        return target.commit(input)
+      }
+    },
+  })
+  const executor = new AuthoritativeExecutor({ eventStore: racingStore, rulesEngine: engine() })
+
+  const result = await executor.executeCommands({
+    campaignId: 'EXECUTOR', idempotencyKey: 'same-key-race', commands: [objectiveCommand],
+  })
+
+  assert.equal(result.duplicate, true)
+  assert.equal(result.replayed, true)
+  assert.equal((await store.getEvents('EXECUTOR')).length, 1)
+})
+
 test('пустой набор команд не коммитится', async (t) => {
   const store = await storeFor(t)
   const executor = new AuthoritativeExecutor({ eventStore: store, rulesEngine: engine() })

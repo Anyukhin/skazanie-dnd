@@ -1642,7 +1642,11 @@ function encounterWithoutLoadouts(encounter) {
 }
 
 export function normalizeCampaignState(input = {}) {
-  const state = clone(input && typeof input === 'object' ? input : {})
+  const source = input && typeof input === 'object' ? input : {}
+  // Память ниже полностью пересоздаёт собственный normalizer. Её первая
+  // полная копия здесь не нужна; остальные области по-прежнему изолированы.
+  const plain = Object.getPrototypeOf(source) === Object.prototype || Object.getPrototypeOf(source) === null
+  const state = clone(plain ? { ...source, worldMemory: undefined } : source)
   // Старые снимки не знают о подготовке героев на повышенный стартовый
   // уровень. Для них сохраняется прежний первый уровень; новое значение
   // ограничивается тем же каталогом, что и обычный LevelUp.
@@ -1866,7 +1870,7 @@ export function normalizeCampaignState(input = {}) {
   const sceneMap = reconcileSceneTacticalMap(state)
   if (sceneMap) syncSceneCells(state, sceneMap)
   rememberCurrentSceneMap(state)
-  state.worldMemory = ensureSceneWorldMemory(state.worldMemory, state)
+  state.worldMemory = ensureSceneWorldMemory(plain ? source.worldMemory : state.worldMemory, state)
   if (campaignModeFor(state) === 'persistent' && state.campaignConcept.story_quest_id === undefined) {
     state.campaignConcept = { ...state.campaignConcept, story_quest_id: persistentStoryQuest(state)?.id ?? null }
   }
@@ -19374,11 +19378,11 @@ function applyGameEventCurrent(rawState, event) {
     case 'RumorRecorded':
     case 'EpistemicClaimTruthResolved':
     case 'NarrativeSummaryRecorded':
-      state.worldMemory = applyWorldMemoryEvent(state.worldMemory, event)
+      state.worldMemory = applyWorldMemoryEvent(state.worldMemory, event, { prepared: true })
       break
     case 'QuestUpserted': {
       const isNew = !state.worldMemory.quests.some((quest) => quest.id === payload.quest?.id)
-      state.worldMemory = applyWorldMemoryEvent(state.worldMemory, event)
+      state.worldMemory = applyWorldMemoryEvent(state.worldMemory, event, { prepared: true })
       const accepted = state.worldMemory.quests.find((quest) => quest.id === payload.quest?.id)
       // Старый replay сохраняет прежний выбор новой записи. Начиная с v2
       // обновление квеста техническое; основная история выбирается QuestAccepted.
@@ -19391,7 +19395,7 @@ function applyGameEventCurrent(rawState, event) {
     }
     case 'QuestAccepted':
       if (payload.schema_version !== 1) break
-      state.worldMemory = applyWorldMemoryEvent(state.worldMemory, event)
+      state.worldMemory = applyWorldMemoryEvent(state.worldMemory, event, { prepared: true })
       if (payload.selected_as_story === true && campaignModeFor(state) === 'persistent') {
         state.campaignConcept.story_quest_id = payload.quest_id
         state.scene.objective = String(payload.objective || '')
@@ -19401,7 +19405,7 @@ function applyGameEventCurrent(rawState, event) {
       break
     case 'QuestResolved':
     case 'QuestInvalidated':
-      state.worldMemory = applyWorldMemoryEvent(state.worldMemory, event)
+      state.worldMemory = applyWorldMemoryEvent(state.worldMemory, event, { prepared: true })
       if ((payload.stay_in_location === true && payload.event_schema_version === 2 || event.event_type === 'QuestInvalidated' && [1, 2].includes(payload.schema_version)) && payload.updates_scene_objective === true) {
         state.scene.objective = String(payload.next_objective || '')
         state.adventure.currentHook = state.scene.objective

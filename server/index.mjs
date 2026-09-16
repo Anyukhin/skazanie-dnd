@@ -284,6 +284,9 @@ const eventStore = new FileEventStore({
   rootDir: join(storageDir, 'engine'),
   reducer: applyGameEvent,
   normalizeState: normalizeCampaignState,
+  // Rules Engine сам нормализует вход каждого события; хранилище сохраняет
+  // JSON-границу между событиями и проверяет итог всего пакета.
+  reducerNormalizesInput: true,
   snapshotProjectorVersion: GAME_STATE_PROJECTOR_VERSION,
   reducerVersion: GAME_REDUCER_VERSION,
   mapStore,

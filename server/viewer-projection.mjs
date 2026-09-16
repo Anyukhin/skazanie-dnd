@@ -1477,6 +1477,10 @@ export function campaignStateForViewer(state, user, actorId = '') {
   const {
     locationMaps: _privateLocationMaps,
     scene: _privateScene,
+    // Эти области ниже пересобирают специализированные проекторы. Общий
+    // рекурсивный обход лишь создавал копии, отбрасываемые при сборке `room`.
+    worldMemory: _privateWorldMemory,
+    social: _privateSocial,
     ...projectableState
   } = state
   const visible = projectVisibleState(projectableState, viewerFor(state, user, actorId), { forNarrator: true }) ?? {}

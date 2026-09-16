@@ -828,6 +828,7 @@ export async function measureProductionStorage(options = {}) {
   let idSequence = 0
   const store = new FileEventStore({
     rootDir, reducer: applyGameEvent, normalizeState: normalizeCampaignState,
+    reducerNormalizesInput: true,
     initialStateFactory: () => clone(initialState), snapshotEvery, maxEventsPerCommit: tailCount,
     clock: FIXED_CLOCK, idFactory: () => `production-measurement-id-${String(++idSequence).padStart(8, '0')}`,
   })
@@ -929,6 +930,8 @@ export {
   embeddingCapability,
   generatedMemory,
   memoryState,
+  materializeLongState,
+  productionTailEvents,
   normalizeWorldMemoryState,
   phaseEvents,
   aggregateCaseMetrics as summarizeCaseMetrics,
