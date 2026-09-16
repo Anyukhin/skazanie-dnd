@@ -42,7 +42,8 @@ import './scene-narration.mjs'
 import './scene-hazard-narration.mjs'
 import { buildNarrationBrief, projectVisibleState, redactTrace, validateAllowedCommands, verifyNarration } from './security.mjs'
 import { campaignStateForViewer, mechanicsForViewer, publicAdventureFor, turnExplanationForViewer } from './viewer-projection.mjs'
-import { campaignConceptForAgent, sceneContextForAgent } from './agent-context.mjs'
+import { agentContextMetadata, campaignConceptForAgent, sceneContextForAgent } from './agent-context.mjs'
+import { questStateForViewer, knowledgeGateVisible } from './quest-consequences.mjs'
 import { worldClockForAgents } from './weather.mjs'
 import { buildTurnExplanation } from './trace-store.mjs'
 import { retrieveWorldMemory } from './world-memory.mjs'
@@ -83,6 +84,11 @@ function dialogueVerification(mode, upstream = '') {
  */
 export const NARRATION_WORLD_FACT_LIMIT = 3
 const memoryText = (value, maximum = 500) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
+
+function sharedNarrationEvents(events, state) {
+  return events.filter((event) => ['public', 'party'].includes(String(event.visibility ?? 'public'))
+    && knowledgeGateVisible(event.payload?.knowledge_gate, state.worldMemory, { isPartyMember: true }))
+}
 
 function narrationMemoryQuery(state, message, events) {
   return [
@@ -144,6 +150,8 @@ function narrationQuestClock(clock) {
 }
 
 export function narrationStoryContext(state, viewer = {}, events = []) {
+  // Общий рассказ не наследует личное раскрытие одного героя.
+  state = questStateForViewer(state, { isPartyMember: true })
   const memory = state.worldMemory ?? {}
   const active_quests = (memory.quests ?? [])
     .filter((quest) => quest.status === 'active' && partyVisibleRecord(quest))
@@ -212,6 +220,8 @@ export function narrationStoryContext(state, viewer = {}, events = []) {
   const sceneLocation = memoryText(state.scene?.location, 180).toLocaleLowerCase('ru')
   const viewerSocial = npcSocialForViewer(social, {
     ...viewer,
+    playerId: '',
+    isPartyMember: true,
     isAdmin: false,
     state,
   })
@@ -242,8 +252,7 @@ export function narrationStoryContext(state, viewer = {}, events = []) {
   })).filter((npc) => npc.id && npc.name)
   const presentIds = new Set(presentProfiles.map((npc) => String(npc.id)))
   const npcNames = new Map(presentProfiles.map((npc) => [String(npc.id), npc.name]))
-  const promiseVisible = (promise) => promise.visibility === 'party'
-    || (promise.visibility === 'specific_player' && String(promise.hero_id) === String(viewer?.playerId ?? ''))
+  const promiseVisible = (promise) => partyVisibleRecord(promise)
   const open_promises = (social.promises ?? [])
     .filter((promise) => promise.status === 'open' && promiseVisible(promise) && presentIds.has(String(promise.npc_id)))
     .slice(-NARRATION_STORY_LIMITS.promises)
@@ -282,8 +291,7 @@ export function narrationStoryContext(state, viewer = {}, events = []) {
         npc_id: currentNpcId,
         name: memoryText(currentProfile.name, 120),
         relationship: {
-          tier: viewerSocial.relationship_tiers?.[currentNpcId]?.[viewerId]
-            ?? relationshipTier(viewerSocial.relationships?.[currentNpcId]?.[viewerId] ?? 0),
+          tier: present_npcs.find((npc) => npc.id === currentNpcId)?.relationship ?? 'neutral',
           provenance: { source_event_ids: [] },
         },
         interactions: priorDossier,
@@ -293,6 +301,9 @@ export function narrationStoryContext(state, viewer = {}, events = []) {
     : []
   return {
     active_quests,
+    known_dead_npcs: (memory.facts ?? []).filter((fact) => fact.status === 'active' && fact.predicate === 'died' && partyVisibleRecord(fact))
+      .slice(-12).map((fact) => ({ id: fact.subject_id, name: memoryText((memory.entities ?? []).find((entity) => entity.id === fact.subject_id)?.name, 120) }))
+      .filter((npc) => npc.id && npc.name),
     active_threads,
     recent_summaries,
     recent_decisions,
@@ -518,7 +529,9 @@ function recentCampaignNarrations(traceStore, campaignId) {
   if (!traceStore || !campaignId) return []
   const isNarrationMemoryTrace = (trace) => {
     const mode = trace?.narration_result?.verification?.response_plan?.mode
-    return !['table_talk', 'silence'].includes(String(mode ?? ''))
+    return ['public', 'party'].includes(String(trace?.narration_result?.visibility ?? 'party'))
+      && !(trace?.events ?? []).some((event) => event.event_type === 'NpcConversationRecorded' && event.visibility === 'specific_player')
+      && !['table_talk', 'silence'].includes(String(mode ?? ''))
   }
   const traces = typeof traceStore.recent === 'function'
     ? traceStore.recent(campaignId, NARRATOR_RECENT_TEXT_LIMIT, { predicate: isNarrationMemoryTrace })
@@ -1401,7 +1414,7 @@ export class GameOrchestrator {
       }
     }
     const committedEvents = Array.isArray(freeAction.events) ? freeAction.events : []
-    const publicCommittedEvents = mechanicsForViewer(committedEvents, { isPartyMember: true }, playerId, state)
+    const publicCommittedEvents = mechanicsForViewer(sharedNarrationEvents(committedEvents, state), { isPartyMember: true }, playerId, state)
     const constraints = [
       ...(Array.isArray(plan?.narration_constraints) ? plan.narration_constraints : []),
       ...(noWorldChangeConstraint(plan) ? ['no-unconfirmed-world-changes'] : []),
@@ -1412,6 +1425,7 @@ export class GameOrchestrator {
       visible_events: publicCommittedEvents,
       visible_state_changes: visibleChanges(publicCommittedEvents),
       known_environment: {
+        context_metadata: agentContextMetadata(state, { role: 'narrator', actorId: playerId, contractVersion: NARRATOR_PROMPT_VERSION }),
         scene: sceneContextForAgent(state, playerId),
         campaign_premise: campaignConceptForAgent(state),
         player_intent: {
@@ -1594,6 +1608,7 @@ export class GameOrchestrator {
           ruling_required: Boolean(freeAction.ruling),
           ruling_draft: freeAction.ruling ?? null,
           narration_constraints: constraints,
+          ...(freeAction.context_metadata ? { agent_contexts: [freeAction.context_metadata] } : {}),
         },
         engineResult: { commands: freeAction.commands ?? [], events: committedEvents, rolls: freeAction.rolls ?? [] },
         stateBefore: authoritativeState.state_version,
@@ -2630,6 +2645,7 @@ export class GameOrchestrator {
         }
         plan = {
           ...plan, proposed_commands: validateAllowedCommands([socialCommand]),
+          ...(socialTurn.context_metadata ? { agent_contexts: [socialTurn.context_metadata] } : {}),
           confidence: socialTurn.confidence,
           social_check: policy ? { check_id: policy.check_id, skill: policy.skill } : null,
         }
@@ -2671,7 +2687,7 @@ export class GameOrchestrator {
 
     const mainEvents = committed.events ?? engineResult.events
     const committedEvents = [...precedingEvents, ...mainEvents]
-    const publicCommittedEvents = mechanicsForViewer(committedEvents, input.user ?? {}, playerId, committed.state)
+    const publicCommittedEvents = mechanicsForViewer(sharedNarrationEvents(committedEvents, committed.state), input.user ?? {}, playerId, committed.state)
     engineResult = {
       ...engineResult,
       commands: [...precedingCommands, ...(engineResult.commands ?? [])],
@@ -2684,6 +2700,7 @@ export class GameOrchestrator {
       visible_events: publicCommittedEvents,
       visible_state_changes: visibleChanges(publicCommittedEvents),
       known_environment: {
+        context_metadata: agentContextMetadata(committed.state, { role: 'narrator', actorId: playerId, contractVersion: NARRATOR_PROMPT_VERSION }),
         scene: sceneContextForAgent(committed.state, playerId),
         player_intent: { action: message, constraints: message.match(/(?:не\s+|без\s+)[^,.;!?]+/giu)?.slice(0, 6) ?? [] },
         campaign_premise: campaignConceptForAgent(committed.state),
@@ -2705,6 +2722,7 @@ export class GameOrchestrator {
       ? requestTrace ?? this.traceStore.get(campaignId, turnId)
       : null
     const storedSocialNarration = npcConversationNarration(committedEvents, committed.state)
+    const privateSocialNarration = committedEvents.some((event) => event.event_type === 'NpcConversationRecorded' && event.visibility === 'specific_player')
     const resolveActorName = actorNameResolver(committed.state)
     // Кто рассказывает про эти события, знает реестр. Раньше выбор был записан
     // лестницей `?:` дважды — здесь и в ветке повтора, — и расходились они
@@ -2755,9 +2773,10 @@ export class GameOrchestrator {
               recentNarrations: this.recentNarrationsFor(campaignId),
               onProgress: onNarrationProgress,
             }))
-    if (!idempotentReplay) this.rememberNarration(campaignId, narration.narration)
+    if (!idempotentReplay && !privateSocialNarration) this.rememberNarration(campaignId, narration.narration)
     const response = {
       narration: narration.narration,
+      ...(privateSocialNarration ? { narration_visibility: 'specific_player' } : {}),
       ...(narration.journal_author ? { journal_author: narration.journal_author } : {}),
       effects: eventsToClientEffects(committedEvents, engineResult.rolls),
       provider: narration.provider,
@@ -2776,7 +2795,7 @@ export class GameOrchestrator {
       ...(storedSocialNarration ? { turn_consumed: true, action_kind: 'social' } : {}),
     }
     if (!idempotentReplay) {
-      this.saveTrace({ turnId, campaignId, idempotencyKey, requestFingerprint, mode, intent, retrievalQueries, retrievedRules, plan, engineResult: { ...engineResult, events: committedEvents }, stateBefore: authoritativeState.state_version, stateAfter: committed.state_version, verification: narration.verification, latency: this.now() - started, narration, ruling: plan.ruling_draft })
+      this.saveTrace({ turnId, campaignId, idempotencyKey, requestFingerprint, mode, intent, retrievalQueries, retrievedRules, plan, engineResult: { ...engineResult, events: committedEvents }, stateBefore: authoritativeState.state_version, stateAfter: committed.state_version, verification: narration.verification, latency: this.now() - started, narration: { ...narration, visibility: privateSocialNarration ? 'specific_player' : 'party' }, ruling: plan.ruling_draft })
     }
     return response
   }
@@ -2800,6 +2819,10 @@ export class GameOrchestrator {
       // были ярлыками несуществующих файлов — долг, отмеченный в AGENTS.md.
       prompt_versions: turnPromptVersions(narration),
       model_identifiers: modelIdentifiers(narration),
+      agent_contexts: [
+        ...(plan.agent_contexts ?? []),
+        ...(narration ? [agentContextMetadata({ sessionCode: campaignId, state_version: stateAfter }, { role: 'narrator', actorId: intent?.actor_id, contractVersion: narration.prompt_version ?? null })] : []),
+      ],
       intent,
       retrieval_queries: retrievalQueries,
       retrieved_rule_ids: [...new Set([...(plan.rule_ids ?? []), ...(retrievedRules.results?.map((result) => result.rule_id) ?? []), ...(engineResult.events ?? []).flatMap((event) => event.source_rule_ids ?? [])])],
@@ -2814,6 +2837,7 @@ export class GameOrchestrator {
       token_usage: {},
       narration_result: narration ? {
         narration: narration.narration,
+        visibility: narration.visibility ?? 'party',
         // Редактор трасс помечает один и тот же объект во второй ветке как цикл.
         // Копия сохраняет провенанс диалога читаемым в обеих ветках.
         verification: structuredClone(narration.verification ?? verification),

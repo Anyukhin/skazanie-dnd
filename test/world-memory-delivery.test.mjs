@@ -53,7 +53,7 @@ async function runNarration(state, playerId, proposedCommand) {
     state, campaignId: state.sessionCode, playerId, message: 'Продолжаю искать след каравана',
     idempotencyKey: `delivery-${playerId}-${proposedCommand.command_type}`,
     user: { role: 'player' },
-    ...(proposedCommand.command_type === 'AdvanceTime' ? { commandCapability: DIRECTOR_COMMAND_CAPABILITY } : {}),
+    ...(['AdvanceTime', 'RecordKnowledgeRevelation'].includes(proposedCommand.command_type) ? { commandCapability: DIRECTOR_COMMAND_CAPABILITY } : {}),
   })
   assert.equal(response.provider, 'test')
   assert.ok(brief)
@@ -99,6 +99,27 @@ test('NarrationBrief получает только публичную/групп
   }
 })
 
+test('само событие личного раскрытия тоже не попадает в общий NarrationBrief', async () => {
+  const state = campaign({ worldMemory: { ...memoryWithFacts(), knowledge_ledger: [] } })
+  const { brief, response } = await runNarration(state, 'hero', {
+    command_type: 'RecordKnowledgeRevelation', actor_id: 'hero', target_ids: ['hero'], fact_id: 'fact:hero-secret',
+  })
+  assert.ok(response.mechanics.some((event) => event.event_type === 'KnowledgeRevealed'))
+  assert.doesNotMatch(JSON.stringify(brief), /fact:hero-secret|СЕКРЕТ ТОЛЬКО ДЛЯ HERO|KnowledgeRevealed/u)
+})
+
+test('общая память последних рассказов после restart исключает личные реплики NPC', () => {
+  const orchestrator = new GameOrchestrator({
+    rulesEngine: new RulesEngine({ diceService: new DiceService({ rng: new SequenceDiceRng([]) }) }), eventStore: {}, unknownActionHandler: {},
+    traceStore: { recent: () => [
+      { narration_result: { narration: 'Личная тайна NPC', visibility: 'specific_player' } },
+      { narration_result: { narration: 'Старая личная тайна NPC' }, events: [{ event_type: 'NpcConversationRecorded', visibility: 'specific_player' }] },
+      { narration_result: { narration: 'Отряд прибыл к воротам.', visibility: 'party' } },
+    ] },
+  })
+  assert.deepEqual(orchestrator.recentNarrationsFor('campaign'), ['Отряд прибыл к воротам.'])
+})
+
 test('нарушенное обещание из AdvanceTime доходит до NarrationBrief как подтверждённое последствие', async () => {
   const state = campaign({
     social: {
@@ -106,7 +127,11 @@ test('нарушенное обещание из AdvanceTime доходит до
       relationships: { marta: { hero: 5 } }, conversations: [],
       promises: [{
         id: 'promise:late', npc_id: 'marta', hero_id: 'hero', direction: 'npc_to_party',
-        text: 'Марта принесёт карту к рассвету.', due_hint: 'через 1 минуту', status: 'open', visibility: 'specific_player',
+        text: 'Марта принесёт карту к рассвету.', due_hint: 'через 1 минуту', status: 'open', visibility: 'party',
+        source_conversation_id: '', created_at_minutes: 0, deadline_minutes: 1,
+      }, {
+        id: 'promise:private', npc_id: 'marta', hero_id: 'hero', direction: 'npc_to_party',
+        text: 'Личная улика героя.', status: 'open', visibility: 'specific_player',
         source_conversation_id: '', created_at_minutes: 0, deadline_minutes: 1,
       }],
     },
@@ -120,6 +145,7 @@ test('нарушенное обещание из AdvanceTime доходит до
     text: 'Марта принесёт карту к рассвету.', consequence_delta: -8,
   })
   assert.ok(brief.visible_events.some((event) => event.event_type === 'NpcPromiseResolved' && event.payload.status === 'broken'))
+  assert.doesNotMatch(JSON.stringify(brief), /promise:private|Личная улика/u)
 
   const directorRequests = []
   await new DirectorAgent({ llmClient: { completeJson: async (input) => {
@@ -128,6 +154,7 @@ test('нарушенное обещание из AdvanceTime доходит до
   } } }).choose({ state: response.authoritative_state, playerAction: 'Продолжить путь после задержки Марты' })
   assert.match(directorRequests[0].messages[1].content, /promise:late/u)
   assert.match(directorRequests[0].messages[1].content, /Марта принесёт карту к рассвету/u)
+  assert.doesNotMatch(directorRequests[0].messages[1].content, /promise:private|Личная улика/u)
 })
 
 test('retrieval памяти сохраняет один и тот же порядок на фиксированном наборе фактов', () => {

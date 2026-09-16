@@ -1,0 +1,5441 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-16T22:36:28.193Z",
+  "fixture_clock": "2026-09-16T00:00:00.000Z",
+  "command": [
+    "--reps=20",
+    "--endpoint-reps=20",
+    "--mixed",
+    "--endpoint",
+    "--output=eval/large-campaign-performance-final.json"
+  ],
+  "total_elapsed_ms": 387796.077,
+  "environment": {
+    "node": "v24.19.0",
+    "platform": "win32",
+    "arch": "x64",
+    "cpu_count": 16,
+    "no_llm": true,
+    "storage": "temporary"
+  },
+  "fixture": {
+    "counts": {
+      "entities": 600,
+      "facts": 2501,
+      "relationships": 2501,
+      "quests": 400,
+      "threads": 600,
+      "epistemic_claims": 2501,
+      "summaries": 1200,
+      "knowledge_ledger": 6001
+    },
+    "base_tail_events": 10,
+    "state_version_before_benchmark": 10,
+    "state_bytes": 8601236,
+    "source": "eval/world-data-measurements.mjs:measureProductionStorage"
+  },
+  "seed": {
+    "elapsed_ms": 3712.706,
+    "timings": {
+      "initialize_ms": 195.262,
+      "commit_ms": 954.227,
+      "load_ms": 163,
+      "normalize_ms": 35.381,
+      "replay_full_ms": 872.913,
+      "replay_snapshot_ms": 161.143
+    },
+    "retention": {
+      "expected": {
+        "entities": 600,
+        "facts": 2511,
+        "relationships": 2501,
+        "quests": 400,
+        "threads": 600,
+        "epistemic_claims": 2501,
+        "summaries": 1200,
+        "knowledge_ledger": 6001
+      },
+      "actual": {
+        "entities": 600,
+        "facts": 2511,
+        "relationships": 2501,
+        "quests": 400,
+        "threads": 600,
+        "epistemic_claims": 2501,
+        "summaries": 1200,
+        "knowledge_ledger": 6001
+      },
+      "missing": {},
+      "extra": {},
+      "passed": true,
+      "exact": true
+    },
+    "replay_identical": true,
+    "snapshot_replay_identical": true
+  },
+  "cpu_profile": {
+    "samples": 583,
+    "sampled_cpu_us": 1064343,
+    "indexKnowledge_cpu_us": 1518,
+    "indexKnowledge_cpu_percent": 0.14,
+    "world_memory_cpu_us": 259449,
+    "world_memory_cpu_percent": 24.38,
+    "top": [
+      {
+        "function": "JSON.stringify",
+        "url": "file:///C:/Users/anton/PycharmProjects/Dnd/eval/large-campaign-performance.mjs",
+        "self_us": 236295,
+        "self_percent": 22.2
+      },
+      {
+        "function": "post",
+        "url": "node:inspector",
+        "self_us": 195733,
+        "self_percent": 18.39
+      },
+      {
+        "function": "JSON.parse",
+        "url": "file:///C:/Users/anton/PycharmProjects/Dnd/eval/large-campaign-performance.mjs",
+        "self_us": 160826,
+        "self_percent": 15.11
+      },
+      {
+        "function": "text",
+        "url": "file:///C:/Users/anton/PycharmProjects/Dnd/server/world-memory.mjs",
+        "self_us": 127416,
+        "self_percent": 11.97
+      },
+      {
+        "function": "(garbage collector)",
+        "url": "",
+        "self_us": 76454,
+        "self_percent": 7.18
+      },
+      {
+        "function": "normalizeWorldMemoryCurrent",
+        "url": "file:///C:/Users/anton/PycharmProjects/Dnd/server/world-memory.mjs",
+        "self_us": 27454,
+        "self_percent": 2.58
+      },
+      {
+        "function": "clean",
+        "url": "file:///C:/Users/anton/PycharmProjects/Dnd/server/npc-social.mjs",
+        "self_us": 22888,
+        "self_percent": 2.15
+      },
+      {
+        "function": "structuredClone",
+        "url": "node:internal/worker/js_transferable",
+        "self_us": 21496,
+        "self_percent": 2.02
+      },
+      {
+        "function": "sortObject",
+        "url": "file:///C:/Users/anton/PycharmProjects/Dnd/server/event-store.mjs",
+        "self_us": 20149,
+        "self_percent": 1.89
+      },
+      {
+        "function": "safeRelationship",
+        "url": "file:///C:/Users/anton/PycharmProjects/Dnd/server/world-memory.mjs",
+        "self_us": 19721,
+        "self_percent": 1.85
+      },
+      {
+        "function": "persistedStrings",
+        "url": "file:///C:/Users/anton/PycharmProjects/Dnd/server/world-memory.mjs",
+        "self_us": 19201,
+        "self_percent": 1.8
+      },
+      {
+        "function": "readFileUtf8",
+        "url": "",
+        "self_us": 17365,
+        "self_percent": 1.63
+      },
+      {
+        "function": "safeEpistemicClaim",
+        "url": "file:///C:/Users/anton/PycharmProjects/Dnd/server/world-memory.mjs",
+        "self_us": 12958,
+        "self_percent": 1.22
+      },
+      {
+        "function": "safeSummary",
+        "url": "file:///C:/Users/anton/PycharmProjects/Dnd/server/world-memory.mjs",
+        "self_us": 12888,
+        "self_percent": 1.21
+      },
+      {
+        "function": "safeFact",
+        "url": "file:///C:/Users/anton/PycharmProjects/Dnd/server/world-memory.mjs",
+        "self_us": 11237,
+        "self_percent": 1.06
+      },
+      {
+        "function": "fsync",
+        "url": "",
+        "self_us": 9653,
+        "self_percent": 0.91
+      },
+      {
+        "function": "safeProfile",
+        "url": "file:///C:/Users/anton/PycharmProjects/Dnd/server/npc-social.mjs",
+        "self_us": 8711,
+        "self_percent": 0.82
+      },
+      {
+        "function": "readFileSync",
+        "url": "node:fs",
+        "self_us": 7782,
+        "self_percent": 0.73
+      },
+      {
+        "function": "(anonymous)",
+        "url": "file:///C:/Users/anton/PycharmProjects/Dnd/server/world-memory.mjs",
+        "self_us": 7525,
+        "self_percent": 0.71
+      },
+      {
+        "function": "safeThread",
+        "url": "file:///C:/Users/anton/PycharmProjects/Dnd/server/world-memory.mjs",
+        "self_us": 6082,
+        "self_percent": 0.57
+      },
+      {
+        "function": "update",
+        "url": "node:internal/crypto/hash",
+        "self_us": 5604,
+        "self_percent": 0.53
+      },
+      {
+        "function": "strings",
+        "url": "file:///C:/Users/anton/PycharmProjects/Dnd/server/npc-social.mjs",
+        "self_us": 4916,
+        "self_percent": 0.46
+      },
+      {
+        "function": "safeEntity",
+        "url": "file:///C:/Users/anton/PycharmProjects/Dnd/server/world-memory.mjs",
+        "self_us": 4640,
+        "self_percent": 0.44
+      },
+      {
+        "function": "safeQuest",
+        "url": "file:///C:/Users/anton/PycharmProjects/Dnd/server/world-memory.mjs",
+        "self_us": 4630,
+        "self_percent": 0.44
+      },
+      {
+        "function": "currentLegacyKnowledgeEntries",
+        "url": "file:///C:/Users/anton/PycharmProjects/Dnd/server/world-memory.mjs",
+        "self_us": 4179,
+        "self_percent": 0.39
+      },
+      {
+        "function": "update",
+        "url": "",
+        "self_us": 3122,
+        "self_percent": 0.29
+      },
+      {
+        "function": "open",
+        "url": "",
+        "self_us": 2646,
+        "self_percent": 0.25
+      },
+      {
+        "function": "dispatch",
+        "url": "",
+        "self_us": 1633,
+        "self_percent": 0.15
+      },
+      {
+        "function": "mkdir",
+        "url": "",
+        "self_us": 1555,
+        "self_percent": 0.15
+      },
+      {
+        "function": "(program)",
+        "url": "",
+        "self_us": 1551,
+        "self_percent": 0.15
+      }
+    ],
+    "counters": {
+      "calls": {
+        "_readCommits": 1,
+        "_readSnapshot": 1,
+        "full_normalize": 2,
+        "_normalizeState": 2,
+        "_applyEvents": 2,
+        "_load": 1,
+        "reducer": 10,
+        "_applyEvent": 10,
+        "_commitFile": 1,
+        "_writeMetadata": 1
+      },
+      "elapsed_ms": {
+        "_readCommits": 3.551300000000083,
+        "_readSnapshot": 82.4952000000003,
+        "full_normalize": 57.938499999999294,
+        "_normalizeState": 161.0691999999999,
+        "_applyEvents": 679.5118000000002,
+        "_load": 168.85369999999966,
+        "reducer": 287.9861000000001,
+        "_applyEvent": 601.1138000000001,
+        "_commitFile": 5.524799999999232,
+        "_writeMetadata": 3.3680999999996857
+      },
+      "events_applied": 10,
+      "commits_read": 1,
+      "snapshots_read": 1,
+      "snapshots_written": 0,
+      "full_normalize_calls": 2,
+      "full_normalize_ms": 57.938,
+      "store_full_normalize_calls": 2,
+      "store_full_normalize_ms": 57.938,
+      "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+      "state_copy_units_estimate": 14
+    },
+    "state_transfers": {
+      "scope": "global JSON/structuredClone boundaries containing worldMemory; CPU probe only, outside latency series",
+      "json_parses": 15,
+      "json_serializations": 15
+    }
+  },
+  "journal_read": {
+    "definition": "isolated FileEventStore._readCommits validation over synthetic contiguous commit files; no replay or reducer application",
+    "measurements": [
+      {
+        "log_files": 1,
+        "commits": 1,
+        "bytes": 823,
+        "elapsed_ms": 0.28
+      },
+      {
+        "log_files": 100,
+        "commits": 100,
+        "bytes": 82664,
+        "elapsed_ms": 6.027
+      },
+      {
+        "log_files": 500,
+        "commits": 500,
+        "bytes": 415064,
+        "elapsed_ms": 29.827
+      }
+    ],
+    "cache_freshness": "Each call uses a new FileEventStore and reads the directory from disk; no process cache is used or introduced."
+  },
+  "cases": [
+    {
+      "kind": "cold_commit",
+      "definition": "new store, no pre-load, snapshotEvery=0",
+      "summary": {
+        "count": 20,
+        "min_ms": 777.565,
+        "p50_ms": 806.867,
+        "p95_ms": 888.03,
+        "max_ms": 897.679,
+        "mean_ms": 815.032
+      },
+      "measurements": [
+        {
+          "repeat": 1,
+          "elapsed_ms": 817.91,
+          "response_ms": 11.949,
+          "response_bytes": 8619010,
+          "full_normalize_ms_outside_store": 23.819,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 161.015,
+            "apply_events_ms": 643.891,
+            "store_normalize_ms": 67.508,
+            "commit_write_ms": 6.162,
+            "response_serialize_ms": 11.949
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.412999999999556,
+              "_readSnapshot": 75.40780000000086,
+              "full_normalize": 67.50799999999981,
+              "_normalizeState": 161.09220000000096,
+              "_applyEvents": 643.8911000000007,
+              "_load": 161.01460000000043,
+              "reducer": 313.5686000000014,
+              "_applyEvent": 565.276899999998,
+              "_commitFile": 2.8778000000002066,
+              "_writeMetadata": 3.2843000000002576
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 67.508,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 67.508,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 2,
+          "elapsed_ms": 815.454,
+          "response_ms": 12.327,
+          "response_bytes": 8619010,
+          "full_normalize_ms_outside_store": 29.92,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 161.972,
+            "apply_events_ms": 639.673,
+            "store_normalize_ms": 71.706,
+            "commit_write_ms": 6.719,
+            "response_serialize_ms": 12.327
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.2818999999999505,
+              "_readSnapshot": 73.83249999999953,
+              "full_normalize": 71.70550000000003,
+              "_normalizeState": 161.3742000000011,
+              "_applyEvents": 639.6727000000001,
+              "_load": 161.97180000000026,
+              "reducer": 277.0434000000005,
+              "_applyEvent": 563.2688999999991,
+              "_commitFile": 2.4411999999992986,
+              "_writeMetadata": 4.277799999999843
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 71.706,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 71.706,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 3,
+          "elapsed_ms": 806.867,
+          "response_ms": 11.541,
+          "response_bytes": 8619010,
+          "full_normalize_ms_outside_store": 27.365,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 152.803,
+            "apply_events_ms": 638.113,
+            "store_normalize_ms": 55.465,
+            "commit_write_ms": 8.384,
+            "response_serialize_ms": 11.541
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.5859999999993306,
+              "_readSnapshot": 76.04100000000108,
+              "full_normalize": 55.46479999999974,
+              "_normalizeState": 152.34040000000095,
+              "_applyEvents": 638.1125999999986,
+              "_load": 152.80299999999988,
+              "reducer": 266.56630000000223,
+              "_applyEvent": 559.4033999999992,
+              "_commitFile": 4.9408000000003085,
+              "_writeMetadata": 3.4431000000004133
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 55.465,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 55.465,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 4,
+          "elapsed_ms": 790.305,
+          "response_ms": 11.777,
+          "response_bytes": 8619010,
+          "full_normalize_ms_outside_store": 27.737,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 156.945,
+            "apply_events_ms": 617.221,
+            "store_normalize_ms": 63.437,
+            "commit_write_ms": 8.747,
+            "response_serialize_ms": 11.777
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.546699999998964,
+              "_readSnapshot": 73.44680000000153,
+              "full_normalize": 63.436799999999494,
+              "_normalizeState": 156.3074000000015,
+              "_applyEvents": 617.2212,
+              "_load": 156.94490000000042,
+              "reducer": 264.6168000000016,
+              "_applyEvent": 541.7010999999984,
+              "_commitFile": 5.353399999999965,
+              "_writeMetadata": 3.393899999999121
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 63.437,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 63.437,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 5,
+          "elapsed_ms": 777.565,
+          "response_ms": 11.527,
+          "response_bytes": 8619010,
+          "full_normalize_ms_outside_store": 28.022,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 155.917,
+            "apply_events_ms": 606.686,
+            "store_normalize_ms": 67.608,
+            "commit_write_ms": 7.638,
+            "response_serialize_ms": 11.527
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.4320999999999913,
+              "_readSnapshot": 75.65570000000116,
+              "full_normalize": 67.60789999999906,
+              "_normalizeState": 175.5122999999985,
+              "_applyEvents": 606.6859000000004,
+              "_load": 155.91749999999956,
+              "reducer": 273.17119999999886,
+              "_applyEvent": 508.32120000000214,
+              "_commitFile": 4.25669999999991,
+              "_writeMetadata": 3.3812999999991007
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 67.608,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 67.608,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 6,
+          "elapsed_ms": 827.227,
+          "response_ms": 16.71,
+          "response_bytes": 8619010,
+          "full_normalize_ms_outside_store": 23.912,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 180.336,
+            "apply_events_ms": 629.524,
+            "store_normalize_ms": 68.003,
+            "commit_write_ms": 10.108,
+            "response_serialize_ms": 16.71
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.350800000000163,
+              "_readSnapshot": 85.30339999999887,
+              "full_normalize": 68.0028000000002,
+              "_normalizeState": 170.59520000000157,
+              "_applyEvents": 629.5242999999991,
+              "_load": 180.33570000000145,
+              "reducer": 298.46500000000196,
+              "_applyEvent": 550.9299999999967,
+              "_commitFile": 6.89850000000115,
+              "_writeMetadata": 3.2091999999993277
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 68.003,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 68.003,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 7,
+          "elapsed_ms": 802.749,
+          "response_ms": 12.048,
+          "response_bytes": 8619010,
+          "full_normalize_ms_outside_store": 27.547,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 171.561,
+            "apply_events_ms": 616.388,
+            "store_normalize_ms": 56.493,
+            "commit_write_ms": 7.74,
+            "response_serialize_ms": 12.048
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.312099999999191,
+              "_readSnapshot": 74.37039999999979,
+              "full_normalize": 56.49330000000191,
+              "_normalizeState": 169.92549999999937,
+              "_applyEvents": 616.3881000000001,
+              "_load": 171.5612000000001,
+              "reducer": 262.1243999999988,
+              "_applyEvent": 540.595600000006,
+              "_commitFile": 4.471700000000055,
+              "_writeMetadata": 3.2679000000007363
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 56.493,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 56.493,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 8,
+          "elapsed_ms": 808.612,
+          "response_ms": 12.082,
+          "response_bytes": 8619010,
+          "full_normalize_ms_outside_store": 24.673,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 159.056,
+            "apply_events_ms": 635.637,
+            "store_normalize_ms": 55.169,
+            "commit_write_ms": 6.405,
+            "response_serialize_ms": 12.082
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.326199999999517,
+              "_readSnapshot": 75.11030000000028,
+              "full_normalize": 55.169200000000274,
+              "_normalizeState": 180.96500000000015,
+              "_applyEvents": 635.6373999999996,
+              "_load": 159.05559999999969,
+              "reducer": 276.58660000000236,
+              "_applyEvent": 535.575200000003,
+              "_commitFile": 2.9065000000009604,
+              "_writeMetadata": 3.498599999998987
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 55.169,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 55.169,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 9,
+          "elapsed_ms": 789.316,
+          "response_ms": 11.691,
+          "response_bytes": 8619010,
+          "full_normalize_ms_outside_store": 28.113,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 152.453,
+            "apply_events_ms": 621.35,
+            "store_normalize_ms": 59.475,
+            "commit_write_ms": 7.962,
+            "response_serialize_ms": 11.691
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.667300000000978,
+              "_readSnapshot": 74.1935999999987,
+              "full_normalize": 59.47469999999885,
+              "_normalizeState": 152.9133000000038,
+              "_applyEvents": 621.3497000000025,
+              "_load": 152.45340000000215,
+              "reducer": 285.3803999999982,
+              "_applyEvent": 543.0036,
+              "_commitFile": 4.591800000001967,
+              "_writeMetadata": 3.3704999999972642
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 59.475,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 59.475,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 10,
+          "elapsed_ms": 801.067,
+          "response_ms": 12.669,
+          "response_bytes": 8619142,
+          "full_normalize_ms_outside_store": 26.565,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 169.592,
+            "apply_events_ms": 615.422,
+            "store_normalize_ms": 54.658,
+            "commit_write_ms": 8.287,
+            "response_serialize_ms": 12.669
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.8825999999971827,
+              "_readSnapshot": 75.46759999999995,
+              "full_normalize": 54.65759999999864,
+              "_normalizeState": 166.15929999999935,
+              "_applyEvents": 615.4223999999995,
+              "_load": 169.59249999999884,
+              "reducer": 267.05709999999453,
+              "_applyEvent": 540.4321999999956,
+              "_commitFile": 4.873600000002625,
+              "_writeMetadata": 3.413199999999051
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 54.658,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 54.658,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 11,
+          "elapsed_ms": 814.171,
+          "response_ms": 12.959,
+          "response_bytes": 8619142,
+          "full_normalize_ms_outside_store": 25.308,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 158.628,
+            "apply_events_ms": 639.028,
+            "store_normalize_ms": 58.101,
+            "commit_write_ms": 8.973,
+            "response_serialize_ms": 12.959
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.447600000003149,
+              "_readSnapshot": 74.2345000000023,
+              "full_normalize": 58.10069999999905,
+              "_normalizeState": 194.6582999999955,
+              "_applyEvents": 639.0282999999981,
+              "_load": 158.62810000000172,
+              "reducer": 270.33350000000064,
+              "_applyEvent": 524.4006999999947,
+              "_commitFile": 5.27469999999812,
+              "_writeMetadata": 3.698599999999715
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 58.101,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 58.101,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 12,
+          "elapsed_ms": 888.03,
+          "response_ms": 11.787,
+          "response_bytes": 8619142,
+          "full_normalize_ms_outside_store": 25.453,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 167.516,
+            "apply_events_ms": 707.247,
+            "store_normalize_ms": 61.263,
+            "commit_write_ms": 6.354,
+            "response_serialize_ms": 11.787
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.3136000000013155,
+              "_readSnapshot": 86.06040000000212,
+              "full_normalize": 61.263200000001234,
+              "_normalizeState": 159.57589999999982,
+              "_applyEvents": 707.2471000000005,
+              "_load": 167.51580000000104,
+              "reducer": 319.10050000000047,
+              "_applyEvent": 625.9616000000024,
+              "_commitFile": 2.9965999999985797,
+              "_writeMetadata": 3.357799999997951
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 61.263,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 61.263,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 13,
+          "elapsed_ms": 897.679,
+          "response_ms": 12.975,
+          "response_bytes": 8619142,
+          "full_normalize_ms_outside_store": 29.013,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 180.518,
+            "apply_events_ms": 688.705,
+            "store_normalize_ms": 57.788,
+            "commit_write_ms": 6.245,
+            "response_serialize_ms": 12.975
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 18.56260000000111,
+              "_readSnapshot": 76.70379999999932,
+              "full_normalize": 57.78779999999824,
+              "_normalizeState": 179.3793000000005,
+              "_applyEvents": 688.7054000000026,
+              "_load": 180.51770000000033,
+              "reducer": 295.18980000000374,
+              "_applyEvent": 609.283200000009,
+              "_commitFile": 2.8840000000018335,
+              "_writeMetadata": 3.361300000000483
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 57.788,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 57.788,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 14,
+          "elapsed_ms": 834.69,
+          "response_ms": 12.3,
+          "response_bytes": 8619142,
+          "full_normalize_ms_outside_store": 24.455,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 161.119,
+            "apply_events_ms": 657.693,
+            "store_normalize_ms": 54.221,
+            "commit_write_ms": 8.461,
+            "response_serialize_ms": 12.3
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.561200000000099,
+              "_readSnapshot": 76.53220000000147,
+              "full_normalize": 54.22100000000137,
+              "_normalizeState": 180.82849999999962,
+              "_applyEvents": 657.6932999999954,
+              "_load": 161.119200000001,
+              "reducer": 280.47619999999006,
+              "_applyEvent": 558.3725000000013,
+              "_commitFile": 3.691000000002532,
+              "_writeMetadata": 4.770400000001246
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 54.221,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 54.221,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 15,
+          "elapsed_ms": 829.172,
+          "response_ms": 11.518,
+          "response_bytes": 8619142,
+          "full_normalize_ms_outside_store": 28.409,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 152.272,
+            "apply_events_ms": 661.427,
+            "store_normalize_ms": 59.708,
+            "commit_write_ms": 8.516,
+            "response_serialize_ms": 11.518
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.361000000000786,
+              "_readSnapshot": 73.70769999999902,
+              "full_normalize": 59.70829999999842,
+              "_normalizeState": 154.78989999999976,
+              "_applyEvents": 661.4265999999952,
+              "_load": 152.27239999999802,
+              "reducer": 303.79509999999937,
+              "_applyEvent": 582.0684000000037,
+              "_commitFile": 5.151700000002165,
+              "_writeMetadata": 3.36449999999968
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 59.708,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 59.708,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 16,
+          "elapsed_ms": 799.164,
+          "response_ms": 11.836,
+          "response_bytes": 8619142,
+          "full_normalize_ms_outside_store": 26.707,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 171.482,
+            "apply_events_ms": 614.538,
+            "store_normalize_ms": 56.013,
+            "commit_write_ms": 6.11,
+            "response_serialize_ms": 11.836
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.181300000000192,
+              "_readSnapshot": 74.73400000000038,
+              "full_normalize": 56.01310000000012,
+              "_normalizeState": 169.47259999999733,
+              "_applyEvents": 614.5377000000044,
+              "_load": 171.48229999999967,
+              "reducer": 263.55769999999757,
+              "_applyEvent": 538.7261999999937,
+              "_commitFile": 2.797899999997753,
+              "_writeMetadata": 3.312100000002829
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 56.013,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 56.013,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 17,
+          "elapsed_ms": 789.223,
+          "response_ms": 12.691,
+          "response_bytes": 8619142,
+          "full_normalize_ms_outside_store": 25.32,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 156.054,
+            "apply_events_ms": 618.044,
+            "store_normalize_ms": 56.835,
+            "commit_write_ms": 7.913,
+            "response_serialize_ms": 12.691
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.231999999999971,
+              "_readSnapshot": 72.93499999999767,
+              "full_normalize": 56.83499999999913,
+              "_normalizeState": 182.68009999999776,
+              "_applyEvents": 618.0444000000025,
+              "_load": 156.0538000000015,
+              "reducer": 263.26099999999497,
+              "_applyEvent": 515.0809999999947,
+              "_commitFile": 4.5807999999960884,
+              "_writeMetadata": 3.3321000000069034
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 56.835,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 56.835,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 18,
+          "elapsed_ms": 793.655,
+          "response_ms": 11.818,
+          "response_bytes": 8619142,
+          "full_normalize_ms_outside_store": 27.676,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 152.506,
+            "apply_events_ms": 626.584,
+            "store_normalize_ms": 60.227,
+            "commit_write_ms": 7.812,
+            "response_serialize_ms": 11.818
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.274199999999837,
+              "_readSnapshot": 73.5702999999994,
+              "full_normalize": 60.2271000000037,
+              "_normalizeState": 154.82719999999972,
+              "_applyEvents": 626.5838000000076,
+              "_load": 152.50600000000122,
+              "reducer": 287.7324000000008,
+              "_applyEvent": 548.0030000000188,
+              "_commitFile": 4.46650000000227,
+              "_writeMetadata": 3.345500000003085
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 60.227,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 60.227,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 19,
+          "elapsed_ms": 813.184,
+          "response_ms": 12.309,
+          "response_bytes": 8619142,
+          "full_normalize_ms_outside_store": 27.103,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 170.621,
+            "apply_events_ms": 630.202,
+            "store_normalize_ms": 54.303,
+            "commit_write_ms": 5.504,
+            "response_serialize_ms": 12.309
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.382099999995262,
+              "_readSnapshot": 73.14580000000569,
+              "full_normalize": 54.302999999999884,
+              "_normalizeState": 171.26650000000518,
+              "_applyEvents": 630.2015000000029,
+              "_load": 170.62099999999919,
+              "reducer": 267.9061999999976,
+              "_applyEvent": 553.3109999999942,
+              "_commitFile": 2.396499999995285,
+              "_writeMetadata": 3.107300000003306
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 54.303,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 54.303,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 20,
+          "elapsed_ms": 804.604,
+          "response_ms": 12.36,
+          "response_bytes": 8619142,
+          "full_normalize_ms_outside_store": 25.239,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 158.384,
+            "apply_events_ms": 631.195,
+            "store_normalize_ms": 55.276,
+            "commit_write_ms": 7.806,
+            "response_serialize_ms": 12.36
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.3577000000004773,
+              "_readSnapshot": 74.11649999999645,
+              "full_normalize": 55.275500000003376,
+              "_normalizeState": 185.67730000000302,
+              "_applyEvents": 631.1947,
+              "_load": 158.38420000000042,
+              "reducer": 268.6180000000022,
+              "_applyEvent": 526.8004000000001,
+              "_commitFile": 4.596499999999651,
+              "_writeMetadata": 3.209999999999127
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 55.276,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 55.276,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        }
+      ]
+    },
+    {
+      "kind": "warm_commit",
+      "definition": "load once before timed commit",
+      "summary": {
+        "count": 20,
+        "min_ms": 777.909,
+        "p50_ms": 823.027,
+        "p95_ms": 1338.225,
+        "max_ms": 1544.868,
+        "mean_ms": 918.621
+      },
+      "measurements": [
+        {
+          "repeat": 1,
+          "elapsed_ms": 801.226,
+          "response_ms": 11.423,
+          "response_bytes": 8619010,
+          "full_normalize_ms_outside_store": 26.608,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 147.779,
+            "apply_events_ms": 640.315,
+            "store_normalize_ms": 52.787,
+            "commit_write_ms": 7.899,
+            "response_serialize_ms": 11.423
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.2969999999986612,
+              "_readSnapshot": 72.03740000000107,
+              "full_normalize": 52.78689999999915,
+              "_normalizeState": 151.23869999999442,
+              "_applyEvents": 640.3147999999928,
+              "_load": 147.77949999999691,
+              "reducer": 262.3076000000001,
+              "_applyEvent": 564.2745999999825,
+              "_commitFile": 4.587699999996403,
+              "_writeMetadata": 3.311699999998382
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 52.787,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 52.787,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 2,
+          "elapsed_ms": 783.291,
+          "response_ms": 11.912,
+          "response_bytes": 8619010,
+          "full_normalize_ms_outside_store": 29.194,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 147.121,
+            "apply_events_ms": 623.308,
+            "store_normalize_ms": 54.685,
+            "commit_write_ms": 8.193,
+            "response_serialize_ms": 11.912
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.29799999999522697,
+              "_readSnapshot": 68.52339999999822,
+              "full_normalize": 54.68450000000303,
+              "_normalizeState": 149.74319999998988,
+              "_applyEvents": 623.3082000000068,
+              "_load": 147.1209000000017,
+              "reducer": 266.9175000000032,
+              "_applyEvent": 551.6614000000045,
+              "_commitFile": 4.930799999994633,
+              "_writeMetadata": 3.2624999999970896
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 54.685,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 54.685,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 3,
+          "elapsed_ms": 796.416,
+          "response_ms": 12.533,
+          "response_bytes": 8619010,
+          "full_normalize_ms_outside_store": 25.015,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 149.342,
+            "apply_events_ms": 636.378,
+            "store_normalize_ms": 64.728,
+            "commit_write_ms": 6.714,
+            "response_serialize_ms": 12.533
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.32119999999849824,
+              "_readSnapshot": 73.65550000000076,
+              "full_normalize": 64.72829999999522,
+              "_normalizeState": 154.76810000000114,
+              "_applyEvents": 636.3777999999947,
+              "_load": 149.3420000000042,
+              "reducer": 312.4665999999852,
+              "_applyEvent": 556.7577999999921,
+              "_commitFile": 3.4244000000035157,
+              "_writeMetadata": 3.2892999999967287
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 64.728,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 64.728,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 4,
+          "elapsed_ms": 817.297,
+          "response_ms": 11.646,
+          "response_bytes": 8619010,
+          "full_normalize_ms_outside_store": 24.014,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 173.616,
+            "apply_events_ms": 631.452,
+            "store_normalize_ms": 64.975,
+            "commit_write_ms": 6.959,
+            "response_serialize_ms": 11.646
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.30270000000018626,
+              "_readSnapshot": 76.09779999999591,
+              "full_normalize": 64.97540000000299,
+              "_normalizeState": 175.47090000000026,
+              "_applyEvents": 631.4519999999975,
+              "_load": 173.61639999999898,
+              "reducer": 295.42600000000675,
+              "_applyEvent": 552.9006000000008,
+              "_commitFile": 3.5561999999990803,
+              "_writeMetadata": 3.40230000000156
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 64.975,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 64.975,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 5,
+          "elapsed_ms": 789.331,
+          "response_ms": 12.379,
+          "response_bytes": 8619010,
+          "full_normalize_ms_outside_store": 27.592,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 154.502,
+            "apply_events_ms": 620.783,
+            "store_normalize_ms": 62.3,
+            "commit_write_ms": 8.84,
+            "response_serialize_ms": 12.379
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.3070999999981723,
+              "_readSnapshot": 75.59549999999581,
+              "full_normalize": 62.29950000000099,
+              "_normalizeState": 156.12970000000496,
+              "_applyEvents": 620.7832000000053,
+              "_load": 154.50239999999758,
+              "reducer": 289.098699999995,
+              "_applyEvent": 542.9800000000032,
+              "_commitFile": 5.475099999996019,
+              "_writeMetadata": 3.3646999999982654
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 62.3,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 62.3,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 6,
+          "elapsed_ms": 807.613,
+          "response_ms": 12.028,
+          "response_bytes": 8619010,
+          "full_normalize_ms_outside_store": 29.889,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 151.174,
+            "apply_events_ms": 645.766,
+            "store_normalize_ms": 65.93,
+            "commit_write_ms": 6.695,
+            "response_serialize_ms": 12.028
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.3363000000026659,
+              "_readSnapshot": 71.15499999999884,
+              "full_normalize": 65.9297000000006,
+              "_normalizeState": 158.498599999999,
+              "_applyEvents": 645.7660999999935,
+              "_load": 151.17429999999877,
+              "reducer": 281.2319000000134,
+              "_applyEvent": 566.7984000000142,
+              "_commitFile": 3.4914999999964493,
+              "_writeMetadata": 3.2032000000035623
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 65.93,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 65.93,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 7,
+          "elapsed_ms": 810.466,
+          "response_ms": 12.202,
+          "response_bytes": 8619010,
+          "full_normalize_ms_outside_store": 27.937,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 155.45,
+            "apply_events_ms": 642.075,
+            "store_normalize_ms": 58.482,
+            "commit_write_ms": 7.194,
+            "response_serialize_ms": 12.202
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.3087999999988824,
+              "_readSnapshot": 71.4403999999995,
+              "full_normalize": 58.48210000000108,
+              "_normalizeState": 160.1362999999983,
+              "_applyEvents": 642.0754000000015,
+              "_load": 155.4502999999968,
+              "reducer": 318.8539999999921,
+              "_applyEvent": 565.4346000000223,
+              "_commitFile": 3.7316000000064378,
+              "_writeMetadata": 3.4627999999938766
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 58.482,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 58.482,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 8,
+          "elapsed_ms": 835.741,
+          "response_ms": 11.918,
+          "response_bytes": 8619010,
+          "full_normalize_ms_outside_store": 29.801,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 155.882,
+            "apply_events_ms": 666.176,
+            "store_normalize_ms": 59.477,
+            "commit_write_ms": 8.233,
+            "response_serialize_ms": 11.918
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.33540000000357395,
+              "_readSnapshot": 76.67119999999704,
+              "full_normalize": 59.47660000000178,
+              "_normalizeState": 155.99459999999817,
+              "_applyEvents": 666.1758000000045,
+              "_load": 155.8816999999981,
+              "reducer": 311.92989999999554,
+              "_applyEvent": 588.7887999999948,
+              "_commitFile": 4.861499999999069,
+              "_writeMetadata": 3.371399999996356
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 59.477,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 59.477,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 9,
+          "elapsed_ms": 852.404,
+          "response_ms": 11.982,
+          "response_bytes": 8619010,
+          "full_normalize_ms_outside_store": 44.554,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 153.674,
+            "apply_events_ms": 688.597,
+            "store_normalize_ms": 62.069,
+            "commit_write_ms": 5.997,
+            "response_serialize_ms": 11.982
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.3261999999958789,
+              "_readSnapshot": 75.51940000000468,
+              "full_normalize": 62.06919999999809,
+              "_normalizeState": 155.18509999999515,
+              "_applyEvents": 688.5968000000066,
+              "_load": 153.6739000000016,
+              "reducer": 300.0564999999988,
+              "_applyEvent": 611.0156000000061,
+              "_commitFile": 2.6851999999998952,
+              "_writeMetadata": 3.311699999998382
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 62.069,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 62.069,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 10,
+          "elapsed_ms": 877.019,
+          "response_ms": 12.665,
+          "response_bytes": 8619142,
+          "full_normalize_ms_outside_store": 25.575,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 177.142,
+            "apply_events_ms": 686.248,
+            "store_normalize_ms": 70.431,
+            "commit_write_ms": 7.499,
+            "response_serialize_ms": 12.665
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.34790000000066357,
+              "_readSnapshot": 88.17510000000038,
+              "full_normalize": 70.43059999999969,
+              "_normalizeState": 179.51880000000529,
+              "_applyEvents": 686.2479999999996,
+              "_load": 177.14249999999447,
+              "reducer": 318.37340000000404,
+              "_applyEvent": 595.1586000000098,
+              "_commitFile": 3.0846999999994296,
+              "_writeMetadata": 4.414199999999255
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 70.431,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 70.431,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 11,
+          "elapsed_ms": 848.373,
+          "response_ms": 12.438,
+          "response_bytes": 8619142,
+          "full_normalize_ms_outside_store": 31.326,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 152.765,
+            "apply_events_ms": 683.55,
+            "store_normalize_ms": 65.834,
+            "commit_write_ms": 7.042,
+            "response_serialize_ms": 12.438
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.3260999999984051,
+              "_readSnapshot": 74.32010000000446,
+              "full_normalize": 65.83419999999751,
+              "_normalizeState": 183.86720000000787,
+              "_applyEvents": 683.5499999999956,
+              "_load": 152.76510000000417,
+              "reducer": 311.09539999999834,
+              "_applyEvent": 577.6419999999998,
+              "_commitFile": 2.718300000000454,
+              "_writeMetadata": 4.32390000000305
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 65.834,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 65.834,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 12,
+          "elapsed_ms": 1544.868,
+          "response_ms": 15.687,
+          "response_bytes": 8619142,
+          "full_normalize_ms_outside_store": 38.379,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 189.798,
+            "apply_events_ms": 780.959,
+            "store_normalize_ms": 72.632,
+            "commit_write_ms": 569.861,
+            "response_serialize_ms": 15.687
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.3528999999980442,
+              "_readSnapshot": 95.90789999999834,
+              "full_normalize": 72.63220000000001,
+              "_normalizeState": 185.5604999999996,
+              "_applyEvents": 780.9585999999981,
+              "_load": 189.7983000000022,
+              "reducer": 366.54639999999927,
+              "_applyEvent": 688.805600000007,
+              "_commitFile": 566.4179000000004,
+              "_writeMetadata": 3.443200000001525
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 72.632,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 72.632,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 13,
+          "elapsed_ms": 1042.438,
+          "response_ms": 12.188,
+          "response_bytes": 8619142,
+          "full_normalize_ms_outside_store": 38.923,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 182.728,
+            "apply_events_ms": 846.78,
+            "store_normalize_ms": 82.961,
+            "commit_write_ms": 7.702,
+            "response_serialize_ms": 12.188
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.39029999999911524,
+              "_readSnapshot": 81.79739999999583,
+              "full_normalize": 82.96149999999761,
+              "_normalizeState": 205.57849999999598,
+              "_applyEvents": 846.7804000000033,
+              "_load": 182.72789999999804,
+              "reducer": 405.038899999985,
+              "_applyEvent": 741.6448000000091,
+              "_commitFile": 3.1621999999988475,
+              "_writeMetadata": 4.539600000003702
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 82.961,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 82.961,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 14,
+          "elapsed_ms": 1338.225,
+          "response_ms": 15.303,
+          "response_bytes": 8619142,
+          "full_normalize_ms_outside_store": 37.496,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 206.732,
+            "apply_events_ms": 792.844,
+            "store_normalize_ms": 78.945,
+            "commit_write_ms": 333.378,
+            "response_serialize_ms": 15.303
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.38580000000365544,
+              "_readSnapshot": 93.92059999999765,
+              "full_normalize": 78.94450000000506,
+              "_normalizeState": 196.5905999999959,
+              "_applyEvents": 792.8441999999995,
+              "_load": 206.73180000000139,
+              "reducer": 357.0572000000029,
+              "_applyEvent": 708.580200000004,
+              "_commitFile": 329.71949999999924,
+              "_writeMetadata": 3.658400000000256
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 78.945,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 78.945,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 15,
+          "elapsed_ms": 1042.689,
+          "response_ms": 13.922,
+          "response_bytes": 8619142,
+          "full_normalize_ms_outside_store": 37.072,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 202.621,
+            "apply_events_ms": 827.211,
+            "store_normalize_ms": 78.062,
+            "commit_write_ms": 7.035,
+            "response_serialize_ms": 13.922
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.3840000000054715,
+              "_readSnapshot": 99.97520000000077,
+              "full_normalize": 78.0620000000199,
+              "_normalizeState": 207.97329999999783,
+              "_applyEvents": 827.2108999999909,
+              "_load": 202.6206000000093,
+              "reducer": 397.9920000000275,
+              "_applyEvent": 721.3877999999968,
+              "_commitFile": 2.7281000000075437,
+              "_writeMetadata": 4.306899999995949
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 78.062,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 78.062,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 16,
+          "elapsed_ms": 906.435,
+          "response_ms": 16.298,
+          "response_bytes": 8619142,
+          "full_normalize_ms_outside_store": 33.497,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 183.016,
+            "apply_events_ms": 710,
+            "store_normalize_ms": 79.006,
+            "commit_write_ms": 8.422,
+            "response_serialize_ms": 16.298
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.3110000000015134,
+              "_readSnapshot": 80.89979999999923,
+              "full_normalize": 79.00550000001385,
+              "_normalizeState": 197.507099999988,
+              "_applyEvents": 710.0002999999997,
+              "_load": 183.0158000000083,
+              "reducer": 348.8272000000143,
+              "_applyEvent": 614.1456999999646,
+              "_commitFile": 3.4523000000044703,
+              "_writeMetadata": 4.969800000006217
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 79.006,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 79.006,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 17,
+          "elapsed_ms": 1068.939,
+          "response_ms": 13.523,
+          "response_bytes": 8619142,
+          "full_normalize_ms_outside_store": 35.534,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 220.312,
+            "apply_events_ms": 836.56,
+            "store_normalize_ms": 77.188,
+            "commit_write_ms": 7.348,
+            "response_serialize_ms": 13.523
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.32259999999951106,
+              "_readSnapshot": 113.49270000000251,
+              "full_normalize": 77.18839999999909,
+              "_normalizeState": 215.74770000000717,
+              "_applyEvents": 836.5603999999876,
+              "_load": 220.3116999999911,
+              "reducer": 377.6293999999907,
+              "_applyEvent": 727.127899999934,
+              "_commitFile": 2.8341999999975087,
+              "_writeMetadata": 4.514199999990524
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 77.188,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 77.188,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 18,
+          "elapsed_ms": 808.715,
+          "response_ms": 12.822,
+          "response_bytes": 8619142,
+          "full_normalize_ms_outside_store": 23.864,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 181.799,
+            "apply_events_ms": 614.955,
+            "store_normalize_ms": 65.059,
+            "commit_write_ms": 7.437,
+            "response_serialize_ms": 12.822
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.3774999999877764,
+              "_readSnapshot": 90.306700000001,
+              "full_normalize": 65.05910000001313,
+              "_normalizeState": 172.6808000000019,
+              "_applyEvents": 614.9545999999973,
+              "_load": 181.7994999999937,
+              "reducer": 272.40190000001166,
+              "_applyEvent": 533.1460000000079,
+              "_commitFile": 2.8687000000063563,
+              "_writeMetadata": 4.568700000003446
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 65.059,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 65.059,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 19,
+          "elapsed_ms": 777.909,
+          "response_ms": 11.999,
+          "response_bytes": 8619142,
+          "full_normalize_ms_outside_store": 23.891,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 153.5,
+            "apply_events_ms": 612.915,
+            "store_normalize_ms": 62.026,
+            "commit_write_ms": 6.59,
+            "response_serialize_ms": 11.999
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.31880000000819564,
+              "_readSnapshot": 75.09950000001118,
+              "full_normalize": 62.025699999998324,
+              "_normalizeState": 160.1591999999946,
+              "_applyEvents": 612.915399999998,
+              "_load": 153.4997999999905,
+              "reducer": 295.4012000000075,
+              "_applyEvent": 530.6292000000249,
+              "_commitFile": 3.252699999997276,
+              "_writeMetadata": 3.3368000000045868
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 62.026,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 62.026,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 20,
+          "elapsed_ms": 823.027,
+          "response_ms": 13.144,
+          "response_bytes": 8619142,
+          "full_normalize_ms_outside_store": 27.747,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 177.662,
+            "apply_events_ms": 634.099,
+            "store_normalize_ms": 62.534,
+            "commit_write_ms": 5.965,
+            "response_serialize_ms": 13.144
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.37730000000738073,
+              "_readSnapshot": 89.28500000000349,
+              "full_normalize": 62.533600000009756,
+              "_normalizeState": 166.4887000000017,
+              "_applyEvents": 634.0985000000073,
+              "_load": 177.66230000001087,
+              "reducer": 274.81810000000405,
+              "_applyEvent": 555.3658999999898,
+              "_commitFile": 2.5297999999893364,
+              "_writeMetadata": 3.4355999999970663
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 62.534,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 62.534,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        }
+      ]
+    },
+    {
+      "kind": "snapshot_commit",
+      "definition": "snapshotEvery=10 writes a snapshot during the timed commit",
+      "summary": {
+        "count": 20,
+        "min_ms": 841.185,
+        "p50_ms": 886.951,
+        "p95_ms": 1028.388,
+        "max_ms": 1046.502,
+        "mean_ms": 907.353
+      },
+      "measurements": [
+        {
+          "repeat": 1,
+          "elapsed_ms": 904.591,
+          "response_ms": 15.951,
+          "response_bytes": 8619538,
+          "full_normalize_ms_outside_store": 31.404,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 166.958,
+            "apply_events_ms": 636.851,
+            "store_normalize_ms": 55.417,
+            "commit_write_ms": 93.518,
+            "response_serialize_ms": 15.951
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeSnapshot": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.29660000000149,
+              "_readSnapshot": 80.8914999999979,
+              "full_normalize": 55.41680000000633,
+              "_normalizeState": 171.14390000001004,
+              "_applyEvents": 636.8508000000002,
+              "_load": 166.95819999999367,
+              "reducer": 284.31779999997525,
+              "_applyEvent": 548.6086000000068,
+              "_commitFile": 3.051899999991292,
+              "_writeSnapshot": 85.78870000000461,
+              "_writeMetadata": 4.677700000000186
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 1,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 55.417,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 55.417,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 2,
+          "elapsed_ms": 893.611,
+          "response_ms": 17.103,
+          "response_bytes": 8619538,
+          "full_normalize_ms_outside_store": 23.933,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 193.922,
+            "apply_events_ms": 614.013,
+            "store_normalize_ms": 75.9,
+            "commit_write_ms": 77.993,
+            "response_serialize_ms": 17.103
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeSnapshot": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.701199999995879,
+              "_readSnapshot": 99.64280000000144,
+              "full_normalize": 75.89999999999418,
+              "_normalizeState": 168.84670000000915,
+              "_applyEvents": 614.0132999999914,
+              "_load": 193.9219000000012,
+              "reducer": 285.9630000000034,
+              "_applyEvent": 536.3989000000001,
+              "_commitFile": 5.080000000001746,
+              "_writeSnapshot": 68.50410000000556,
+              "_writeMetadata": 4.408699999999953
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 1,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 75.9,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 75.9,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 3,
+          "elapsed_ms": 928.96,
+          "response_ms": 13.304,
+          "response_bytes": 8619538,
+          "full_normalize_ms_outside_store": 29.627,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 166.289,
+            "apply_events_ms": 671.307,
+            "store_normalize_ms": 61.616,
+            "commit_write_ms": 81.413,
+            "response_serialize_ms": 13.304
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeSnapshot": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 4.980100000000675,
+              "_readSnapshot": 86.01309999999648,
+              "full_normalize": 61.616399999998976,
+              "_normalizeState": 159.49770000000717,
+              "_applyEvents": 671.306899999996,
+              "_load": 166.2893999999942,
+              "reducer": 277.08050000001094,
+              "_applyEvent": 589.1527999999962,
+              "_commitFile": 3.8231999999989057,
+              "_writeSnapshot": 73.221000000005,
+              "_writeMetadata": 4.369000000006054
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 1,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 61.616,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 61.616,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 4,
+          "elapsed_ms": 944.62,
+          "response_ms": 13.22,
+          "response_bytes": 8619538,
+          "full_normalize_ms_outside_store": 31.674,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 168.481,
+            "apply_events_ms": 683.396,
+            "store_normalize_ms": 78.119,
+            "commit_write_ms": 85.12,
+            "response_serialize_ms": 13.22
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeSnapshot": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.508799999995972,
+              "_readSnapshot": 78.6368999999977,
+              "full_normalize": 78.11859999998705,
+              "_normalizeState": 192.92750000000524,
+              "_applyEvents": 683.3958999999886,
+              "_load": 168.48120000000927,
+              "reducer": 279.23339999996824,
+              "_applyEvent": 577.3279000000039,
+              "_commitFile": 5.577799999999115,
+              "_writeSnapshot": 75.2219999999943,
+              "_writeMetadata": 4.32050000000163
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 1,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 78.119,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 78.119,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 5,
+          "elapsed_ms": 921.383,
+          "response_ms": 17.238,
+          "response_bytes": 8619538,
+          "full_normalize_ms_outside_store": 32.425,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 161.779,
+            "apply_events_ms": 666.523,
+            "store_normalize_ms": 57.205,
+            "commit_write_ms": 86.229,
+            "response_serialize_ms": 17.238
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeSnapshot": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.1889000000082888,
+              "_readSnapshot": 79.11219999998866,
+              "full_normalize": 57.2048000000068,
+              "_normalizeState": 172.74230000001262,
+              "_applyEvents": 666.5234999999957,
+              "_load": 161.7786999999953,
+              "reducer": 280.49430000000575,
+              "_applyEvent": 573.357399999979,
+              "_commitFile": 3.3242000000027474,
+              "_writeSnapshot": 78.44109999999637,
+              "_writeMetadata": 4.463799999997718
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 1,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 57.205,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 57.205,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 6,
+          "elapsed_ms": 1028.388,
+          "response_ms": 15.096,
+          "response_bytes": 8619538,
+          "full_normalize_ms_outside_store": 32.619,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 164.482,
+            "apply_events_ms": 767.186,
+            "store_normalize_ms": 58.91,
+            "commit_write_ms": 89.458,
+            "response_serialize_ms": 15.096
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeSnapshot": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.4899999999906868,
+              "_readSnapshot": 80.64549999999872,
+              "full_normalize": 58.90969999998924,
+              "_normalizeState": 170.35059999999066,
+              "_applyEvents": 767.1860000000015,
+              "_load": 164.4817999999941,
+              "reducer": 349.96710000000894,
+              "_applyEvent": 677.3066999999864,
+              "_commitFile": 2.892200000002049,
+              "_writeSnapshot": 82.1649999999936,
+              "_writeMetadata": 4.400800000003073
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 1,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 58.91,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 58.91,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 7,
+          "elapsed_ms": 981.101,
+          "response_ms": 17.936,
+          "response_bytes": 8619538,
+          "full_normalize_ms_outside_store": 32.991,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 186.564,
+            "apply_events_ms": 696.348,
+            "store_normalize_ms": 56.19,
+            "commit_write_ms": 90.267,
+            "response_serialize_ms": 17.936
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeSnapshot": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 4.069199999998091,
+              "_readSnapshot": 87.21949999999197,
+              "full_normalize": 56.18959999999788,
+              "_normalizeState": 178.2334000000119,
+              "_applyEvents": 696.3484999999928,
+              "_load": 186.56440000000293,
+              "reducer": 287.4809000000241,
+              "_applyEvent": 614.1021000000183,
+              "_commitFile": 6.292000000001281,
+              "_writeSnapshot": 79.54200000000128,
+              "_writeMetadata": 4.43300000000454
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 1,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 56.19,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 56.19,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 8,
+          "elapsed_ms": 1046.502,
+          "response_ms": 17.159,
+          "response_bytes": 8619538,
+          "full_normalize_ms_outside_store": 30.681,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 217.964,
+            "apply_events_ms": 742.948,
+            "store_normalize_ms": 74.965,
+            "commit_write_ms": 78.367,
+            "response_serialize_ms": 17.159
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeSnapshot": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.6128000000026077,
+              "_readSnapshot": 105.8402999999962,
+              "full_normalize": 74.96450000000186,
+              "_normalizeState": 183.5784999999887,
+              "_applyEvents": 742.9483999999939,
+              "_load": 217.96429999999236,
+              "reducer": 359.4627000000037,
+              "_applyEvent": 667.9245000000083,
+              "_commitFile": 4.02620000000752,
+              "_writeSnapshot": 69.69180000000051,
+              "_writeMetadata": 4.648700000005192
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 1,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 74.965,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 74.965,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 9,
+          "elapsed_ms": 875.428,
+          "response_ms": 15.258,
+          "response_bytes": 8619538,
+          "full_normalize_ms_outside_store": 29.428,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 157.41,
+            "apply_events_ms": 630.42,
+            "store_normalize_ms": 52.515,
+            "commit_write_ms": 79.988,
+            "response_serialize_ms": 15.258
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeSnapshot": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.7651000000041677,
+              "_readSnapshot": 74.68769999999495,
+              "full_normalize": 52.515199999994365,
+              "_normalizeState": 156.31110000000626,
+              "_applyEvents": 630.4198000000033,
+              "_load": 157.41049999999814,
+              "reducer": 259.3667000000132,
+              "_applyEvent": 553.9268000000011,
+              "_commitFile": 3.1736999999993714,
+              "_writeSnapshot": 72.59249999999884,
+              "_writeMetadata": 4.221699999994598
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 1,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 52.515,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 52.515,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 10,
+          "elapsed_ms": 850.651,
+          "response_ms": 13.393,
+          "response_bytes": 8619670,
+          "full_normalize_ms_outside_store": 28.932,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 157.837,
+            "apply_events_ms": 606.001,
+            "store_normalize_ms": 60.815,
+            "commit_write_ms": 78.313,
+            "response_serialize_ms": 13.393
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeSnapshot": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.627299999992829,
+              "_readSnapshot": 78.64930000000459,
+              "full_normalize": 60.815199999997276,
+              "_normalizeState": 158.21289999999863,
+              "_applyEvents": 606.0011999999842,
+              "_load": 157.83669999999984,
+              "reducer": 292.52019999998447,
+              "_applyEvent": 523.7065000000148,
+              "_commitFile": 5.055900000006659,
+              "_writeSnapshot": 68.90670000000682,
+              "_writeMetadata": 4.350600000005215
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 1,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 60.815,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 60.815,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 11,
+          "elapsed_ms": 863.327,
+          "response_ms": 12.973,
+          "response_bytes": 8619670,
+          "full_normalize_ms_outside_store": 32.645,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 149.717,
+            "apply_events_ms": 625.781,
+            "store_normalize_ms": 59.037,
+            "commit_write_ms": 81.034,
+            "response_serialize_ms": 12.973
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeSnapshot": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.260900000008405,
+              "_readSnapshot": 71.52739999999176,
+              "full_normalize": 59.036800000001676,
+              "_normalizeState": 152.7261000000144,
+              "_applyEvents": 625.7809999999881,
+              "_load": 149.71659999999974,
+              "reducer": 285.8990999999951,
+              "_applyEvent": 548.3855999999796,
+              "_commitFile": 4.995699999999488,
+              "_writeSnapshot": 71.76390000000538,
+              "_writeMetadata": 4.2739999999903375
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 1,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 59.037,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 59.037,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 12,
+          "elapsed_ms": 880.916,
+          "response_ms": 12.771,
+          "response_bytes": 8619670,
+          "full_normalize_ms_outside_store": 29.169,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 159.738,
+            "apply_events_ms": 634.085,
+            "store_normalize_ms": 53.84,
+            "commit_write_ms": 80.297,
+            "response_serialize_ms": 12.771
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeSnapshot": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.206899999990128,
+              "_readSnapshot": 74.24629999999888,
+              "full_normalize": 53.84030000001076,
+              "_normalizeState": 156.82799999999406,
+              "_applyEvents": 634.0846999999922,
+              "_load": 159.7381000000023,
+              "reducer": 262.5868999999948,
+              "_applyEvent": 559.7190000000119,
+              "_commitFile": 5.061699999991106,
+              "_writeSnapshot": 70.91100000000733,
+              "_writeMetadata": 4.324399999997695
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 1,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 53.84,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 53.84,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 13,
+          "elapsed_ms": 869.769,
+          "response_ms": 12.713,
+          "response_bytes": 8619670,
+          "full_normalize_ms_outside_store": 31.351,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 156.038,
+            "apply_events_ms": 626.088,
+            "store_normalize_ms": 80.56,
+            "commit_write_ms": 80.607,
+            "response_serialize_ms": 12.713
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeSnapshot": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.620100000000093,
+              "_readSnapshot": 73.56359999999404,
+              "full_normalize": 80.56009999998787,
+              "_normalizeState": 184.16599999999744,
+              "_applyEvents": 626.0875000000087,
+              "_load": 156.03800000000047,
+              "reducer": 262.73909999997704,
+              "_applyEvent": 521.3007000000216,
+              "_commitFile": 2.808099999994738,
+              "_writeSnapshot": 73.4479999999894,
+              "_writeMetadata": 4.351199999990058
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 1,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 80.56,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 80.56,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 14,
+          "elapsed_ms": 841.185,
+          "response_ms": 14.389,
+          "response_bytes": 8619670,
+          "full_normalize_ms_outside_store": 24.261,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 156.66,
+            "apply_events_ms": 598.69,
+            "store_normalize_ms": 53.109,
+            "commit_write_ms": 78.796,
+            "response_serialize_ms": 14.389
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeSnapshot": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.402799999996205,
+              "_readSnapshot": 78.34910000000673,
+              "full_normalize": 53.10929999999644,
+              "_normalizeState": 155.07559999999648,
+              "_applyEvents": 598.6901999999973,
+              "_load": 156.65950000000885,
+              "reducer": 277.20359999999346,
+              "_applyEvent": 518.9380999999994,
+              "_commitFile": 3.5759000000107335,
+              "_writeSnapshot": 70.85679999999411,
+              "_writeMetadata": 4.363099999987753
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 1,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 53.109,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 53.109,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 15,
+          "elapsed_ms": 883.396,
+          "response_ms": 15.07,
+          "response_bytes": 8619670,
+          "full_normalize_ms_outside_store": 29.864,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 174.937,
+            "apply_events_ms": 620.67,
+            "store_normalize_ms": 78.217,
+            "commit_write_ms": 80.701,
+            "response_serialize_ms": 15.07
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeSnapshot": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.4312000000063563,
+              "_readSnapshot": 75.05460000000312,
+              "full_normalize": 78.21719999999914,
+              "_normalizeState": 172.24950000000536,
+              "_applyEvents": 620.6695999999938,
+              "_load": 174.9374000000098,
+              "reducer": 268.81819999999425,
+              "_applyEvent": 545.4504000000161,
+              "_commitFile": 4.432300000000396,
+              "_writeSnapshot": 72.06399999999849,
+              "_writeMetadata": 4.204500000007101
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 1,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 78.217,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 78.217,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 16,
+          "elapsed_ms": 911.653,
+          "response_ms": 16.238,
+          "response_bytes": 8619670,
+          "full_normalize_ms_outside_store": 30.359,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 177.423,
+            "apply_events_ms": 642.636,
+            "store_normalize_ms": 57.204,
+            "commit_write_ms": 84.724,
+            "response_serialize_ms": 16.238
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeSnapshot": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.255300000004354,
+              "_readSnapshot": 80.02419999999984,
+              "full_normalize": 57.203999999997905,
+              "_normalizeState": 177.64600000000792,
+              "_applyEvents": 642.6364999999932,
+              "_load": 177.42269999999553,
+              "reducer": 273.17260000000533,
+              "_applyEvent": 559.2687000000151,
+              "_commitFile": 2.7796000000089407,
+              "_writeSnapshot": 78.64400000000023,
+              "_writeMetadata": 3.3004000000073574
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 1,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 57.204,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 57.204,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 17,
+          "elapsed_ms": 898.299,
+          "response_ms": 13.301,
+          "response_bytes": 8619670,
+          "full_normalize_ms_outside_store": 33.24,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 173.541,
+            "apply_events_ms": 639.018,
+            "store_normalize_ms": 60.313,
+            "commit_write_ms": 78.628,
+            "response_serialize_ms": 13.301
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeSnapshot": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.6576999999961117,
+              "_readSnapshot": 90.02400000000489,
+              "full_normalize": 60.31349999998929,
+              "_normalizeState": 162.00830000000133,
+              "_applyEvents": 639.0177999999869,
+              "_load": 173.54129999999714,
+              "reducer": 313.5042000000394,
+              "_applyEvent": 557.5784999999742,
+              "_commitFile": 5.728799999997136,
+              "_writeSnapshot": 68.72310000000289,
+              "_writeMetadata": 4.176500000001397
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 1,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 60.313,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 60.313,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 18,
+          "elapsed_ms": 886.951,
+          "response_ms": 12.591,
+          "response_bytes": 8619670,
+          "full_normalize_ms_outside_store": 31.939,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 151.191,
+            "apply_events_ms": 649.826,
+            "store_normalize_ms": 61.472,
+            "commit_write_ms": 78.864,
+            "response_serialize_ms": 12.591
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeSnapshot": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.467900000003283,
+              "_readSnapshot": 72.58410000000731,
+              "full_normalize": 61.47159999998985,
+              "_normalizeState": 156.7992999999842,
+              "_applyEvents": 649.8263999999908,
+              "_load": 151.19130000000587,
+              "reducer": 300.5854000000254,
+              "_applyEvent": 568.5338000000047,
+              "_commitFile": 2.671300000001793,
+              "_writeSnapshot": 71.943299999999,
+              "_writeMetadata": 4.248999999996158
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 1,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 61.472,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 61.472,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 19,
+          "elapsed_ms": 873.687,
+          "response_ms": 12.426,
+          "response_bytes": 8619670,
+          "full_normalize_ms_outside_store": 29.151,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 159.93,
+            "apply_events_ms": 627.405,
+            "store_normalize_ms": 53.43,
+            "commit_write_ms": 79.379,
+            "response_serialize_ms": 12.426
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeSnapshot": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.3171000000002095,
+              "_readSnapshot": 73.69099999999162,
+              "full_normalize": 53.43039999999746,
+              "_normalizeState": 158.41309999999066,
+              "_applyEvents": 627.4050000000134,
+              "_load": 159.93039999999746,
+              "reducer": 265.31389999999374,
+              "_applyEvent": 552.2560999999987,
+              "_commitFile": 2.4962999999988824,
+              "_writeSnapshot": 72.09010000000126,
+              "_writeMetadata": 4.792700000005425
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 1,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 53.43,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 53.43,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        },
+        {
+          "repeat": 20,
+          "elapsed_ms": 862.638,
+          "response_ms": 13.179,
+          "response_bytes": 8619670,
+          "full_normalize_ms_outside_store": 34.488,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 157.022,
+            "apply_events_ms": 615.42,
+            "store_normalize_ms": 72.476,
+            "commit_write_ms": 81.777,
+            "response_serialize_ms": 13.179
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "_applyEvents": 2,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeSnapshot": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.8663000000087777,
+              "_readSnapshot": 74.97019999999611,
+              "full_normalize": 72.47640000001411,
+              "_normalizeState": 173.35589999999502,
+              "_applyEvents": 615.420100000003,
+              "_load": 157.021900000007,
+              "reducer": 266.97299999999814,
+              "_applyEvent": 521.1293999999762,
+              "_commitFile": 4.918000000005122,
+              "_writeSnapshot": 72.32940000000235,
+              "_writeMetadata": 4.529099999999744
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 1,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 72.476,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 72.476,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          }
+        }
+      ]
+    },
+    {
+      "kind": "idempotent_replay",
+      "definition": "duplicate commit with the same idempotency key",
+      "summary": {
+        "count": 20,
+        "min_ms": 761.473,
+        "p50_ms": 781.305,
+        "p95_ms": 872.728,
+        "max_ms": 917.406,
+        "mean_ms": 793.201
+      },
+      "measurements": [
+        {
+          "repeat": 1,
+          "elapsed_ms": 798.234,
+          "response_ms": 11.697,
+          "response_bytes": 8619688,
+          "full_normalize_ms_outside_store": 28.018,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 793.263,
+            "apply_events_ms": 643.376,
+            "store_normalize_ms": 61.537,
+            "commit_write_ms": 0,
+            "response_serialize_ms": 11.697
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": true,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_applyEvents": 1,
+              "_load": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.5816999999951804,
+              "_readSnapshot": 71.76630000000296,
+              "full_normalize": 61.53749999999127,
+              "_normalizeState": 153.21490000002086,
+              "reducer": 293.6578000000154,
+              "_applyEvent": 567.6675000000396,
+              "_applyEvents": 643.376099999994,
+              "_load": 793.2632000000012
+            },
+            "events_applied": 10,
+            "commits_read": 2,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 61.537,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 61.537,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          },
+          "first_commit_state_version": 20
+        },
+        {
+          "repeat": 2,
+          "elapsed_ms": 765.191,
+          "response_ms": 12.421,
+          "response_bytes": 8619688,
+          "full_normalize_ms_outside_store": 23.734,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 760.288,
+            "apply_events_ms": 610.603,
+            "store_normalize_ms": 59.253,
+            "commit_write_ms": 0,
+            "response_serialize_ms": 12.421
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": true,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_applyEvents": 1,
+              "_load": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.4683999999979278,
+              "_readSnapshot": 73.98910000000615,
+              "full_normalize": 59.25289999999222,
+              "_normalizeState": 154.23489999999583,
+              "reducer": 298.38760000000184,
+              "_applyEvent": 531.5334999999905,
+              "_applyEvents": 610.602899999998,
+              "_load": 760.2880000000005
+            },
+            "events_applied": 10,
+            "commits_read": 2,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 59.253,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 59.253,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          },
+          "first_commit_state_version": 20
+        },
+        {
+          "repeat": 3,
+          "elapsed_ms": 798.427,
+          "response_ms": 11.457,
+          "response_bytes": 8619688,
+          "full_normalize_ms_outside_store": 27.319,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 793.286,
+            "apply_events_ms": 642.822,
+            "store_normalize_ms": 51.935,
+            "commit_write_ms": 0,
+            "response_serialize_ms": 11.457
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": true,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_applyEvents": 1,
+              "_load": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.3991000000096392,
+              "_readSnapshot": 74.91710000000603,
+              "full_normalize": 51.93529999999737,
+              "_normalizeState": 149.13289999999688,
+              "reducer": 272.0016000000178,
+              "_applyEvent": 568.6362000000081,
+              "_applyEvents": 642.8218999999954,
+              "_load": 793.2859000000026
+            },
+            "events_applied": 10,
+            "commits_read": 2,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 51.935,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 51.935,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          },
+          "first_commit_state_version": 20
+        },
+        {
+          "repeat": 4,
+          "elapsed_ms": 764.804,
+          "response_ms": 11.954,
+          "response_bytes": 8619688,
+          "full_normalize_ms_outside_store": 23.679,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 759.75,
+            "apply_events_ms": 589.972,
+            "store_normalize_ms": 77.691,
+            "commit_write_ms": 0,
+            "response_serialize_ms": 11.954
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": true,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_applyEvents": 1,
+              "_load": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.5899000000063097,
+              "_readSnapshot": 73.28850000000966,
+              "full_normalize": 77.69069999999192,
+              "_normalizeState": 176.2109000000055,
+              "reducer": 277.0054000000091,
+              "_applyEvent": 509.6661000000022,
+              "_applyEvents": 589.9723999999987,
+              "_load": 759.75
+            },
+            "events_applied": 10,
+            "commits_read": 2,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 77.691,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 77.691,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          },
+          "first_commit_state_version": 20
+        },
+        {
+          "repeat": 5,
+          "elapsed_ms": 917.406,
+          "response_ms": 12.601,
+          "response_bytes": 8619688,
+          "full_normalize_ms_outside_store": 34.921,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 912.48,
+            "apply_events_ms": 747.552,
+            "store_normalize_ms": 63.183,
+            "commit_write_ms": 0,
+            "response_serialize_ms": 12.601
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": true,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_applyEvents": 1,
+              "_load": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.40670000000682194,
+              "_readSnapshot": 71.26340000001073,
+              "full_normalize": 63.18330000000424,
+              "_normalizeState": 181.34850000000733,
+              "reducer": 338.8469999999652,
+              "_applyEvent": 659.2054000000207,
+              "_applyEvents": 747.5522999999957,
+              "_load": 912.4799999999959
+            },
+            "events_applied": 10,
+            "commits_read": 2,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 63.183,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 63.183,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          },
+          "first_commit_state_version": 20
+        },
+        {
+          "repeat": 6,
+          "elapsed_ms": 790.82,
+          "response_ms": 12.531,
+          "response_bytes": 8619688,
+          "full_normalize_ms_outside_store": 45.983,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 786.547,
+            "apply_events_ms": 637.025,
+            "store_normalize_ms": 61.893,
+            "commit_write_ms": 0,
+            "response_serialize_ms": 12.531
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": true,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_applyEvents": 1,
+              "_load": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.41069999999308493,
+              "_readSnapshot": 70.33829999998852,
+              "full_normalize": 61.892699999996694,
+              "_normalizeState": 156.37820000000647,
+              "reducer": 270.77479999999923,
+              "_applyEvent": 559.2523999999685,
+              "_applyEvents": 637.0249999999942,
+              "_load": 786.5472000000009
+            },
+            "events_applied": 10,
+            "commits_read": 2,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 61.893,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 61.893,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          },
+          "first_commit_state_version": 20
+        },
+        {
+          "repeat": 7,
+          "elapsed_ms": 808.997,
+          "response_ms": 11.631,
+          "response_bytes": 8619688,
+          "full_normalize_ms_outside_store": 23.857,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 803.769,
+            "apply_events_ms": 651.665,
+            "store_normalize_ms": 65.934,
+            "commit_write_ms": 0,
+            "response_serialize_ms": 11.631
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": true,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_applyEvents": 1,
+              "_load": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.4190999999991618,
+              "_readSnapshot": 72.66300000000047,
+              "full_normalize": 65.93350000001374,
+              "_normalizeState": 158.1304999999993,
+              "reducer": 265.12369999999646,
+              "_applyEvent": 572.416200000036,
+              "_applyEvents": 651.6652999999933,
+              "_load": 803.7686000000103
+            },
+            "events_applied": 10,
+            "commits_read": 2,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 65.934,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 65.934,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          },
+          "first_commit_state_version": 20
+        },
+        {
+          "repeat": 8,
+          "elapsed_ms": 762.368,
+          "response_ms": 12.467,
+          "response_bytes": 8619688,
+          "full_normalize_ms_outside_store": 24.256,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 757.176,
+            "apply_events_ms": 604.462,
+            "store_normalize_ms": 55.67,
+            "commit_write_ms": 0,
+            "response_serialize_ms": 12.467
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": true,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_applyEvents": 1,
+              "_load": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.4070999999967171,
+              "_readSnapshot": 70.43579999999201,
+              "full_normalize": 55.6702999999834,
+              "_normalizeState": 161.58699999999953,
+              "reducer": 266.8875999999873,
+              "_applyEvent": 524.4398999999685,
+              "_applyEvents": 604.4616999999998,
+              "_load": 757.1763999999966
+            },
+            "events_applied": 10,
+            "commits_read": 2,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 55.67,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 55.67,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          },
+          "first_commit_state_version": 20
+        },
+        {
+          "repeat": 9,
+          "elapsed_ms": 772.474,
+          "response_ms": 11.639,
+          "response_bytes": 8619688,
+          "full_normalize_ms_outside_store": 41.573,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 767.254,
+            "apply_events_ms": 620.253,
+            "store_normalize_ms": 62.693,
+            "commit_write_ms": 0,
+            "response_serialize_ms": 11.639
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": true,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_applyEvents": 1,
+              "_load": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.42640000001119915,
+              "_readSnapshot": 69.6478000000061,
+              "full_normalize": 62.69300000001385,
+              "_normalizeState": 153.43910000000324,
+              "reducer": 263.60070000000997,
+              "_applyEvent": 543.5941999999777,
+              "_applyEvents": 620.2534999999916,
+              "_load": 767.2544999999955
+            },
+            "events_applied": 10,
+            "commits_read": 2,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 62.693,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 62.693,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          },
+          "first_commit_state_version": 20
+        },
+        {
+          "repeat": 10,
+          "elapsed_ms": 764.498,
+          "response_ms": 11.236,
+          "response_bytes": 8619820,
+          "full_normalize_ms_outside_store": 27.909,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 759.243,
+            "apply_events_ms": 611.833,
+            "store_normalize_ms": 53.833,
+            "commit_write_ms": 0,
+            "response_serialize_ms": 11.236
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": true,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_applyEvents": 1,
+              "_load": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.41319999999541324,
+              "_readSnapshot": 71.77099999999336,
+              "full_normalize": 53.833499999993364,
+              "_normalizeState": 148.63320000001113,
+              "reducer": 286.6542999999947,
+              "_applyEvent": 538.2669000000315,
+              "_applyEvents": 611.8328000000038,
+              "_load": 759.242900000012
+            },
+            "events_applied": 10,
+            "commits_read": 2,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 53.833,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 53.833,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          },
+          "first_commit_state_version": 20
+        },
+        {
+          "repeat": 11,
+          "elapsed_ms": 790.457,
+          "response_ms": 11.621,
+          "response_bytes": 8619820,
+          "full_normalize_ms_outside_store": 27.767,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 785.312,
+            "apply_events_ms": 633.52,
+            "store_normalize_ms": 86.988,
+            "commit_write_ms": 0,
+            "response_serialize_ms": 11.621
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": true,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_applyEvents": 1,
+              "_load": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.44980000000214204,
+              "_readSnapshot": 71.80950000000303,
+              "full_normalize": 86.9881000000023,
+              "_normalizeState": 179.2143999999971,
+              "reducer": 262.8260999999766,
+              "_applyEvent": 533.7618000000075,
+              "_applyEvents": 633.5200000000041,
+              "_load": 785.3116999999911
+            },
+            "events_applied": 10,
+            "commits_read": 2,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 86.988,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 86.988,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          },
+          "first_commit_state_version": 20
+        },
+        {
+          "repeat": 12,
+          "elapsed_ms": 781.305,
+          "response_ms": 12.015,
+          "response_bytes": 8619820,
+          "full_normalize_ms_outside_store": 27.298,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 776.115,
+            "apply_events_ms": 618.116,
+            "store_normalize_ms": 60.289,
+            "commit_write_ms": 0,
+            "response_serialize_ms": 12.015
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": true,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_applyEvents": 1,
+              "_load": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.3977000000013504,
+              "_readSnapshot": 80.54400000000896,
+              "full_normalize": 60.28879999999481,
+              "_normalizeState": 153.43880000000354,
+              "reducer": 288.8556000000244,
+              "_applyEvent": 541.5610999999772,
+              "_applyEvents": 618.1164999999892,
+              "_load": 776.1146000000008
+            },
+            "events_applied": 10,
+            "commits_read": 2,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 60.289,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 60.289,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          },
+          "first_commit_state_version": 20
+        },
+        {
+          "repeat": 13,
+          "elapsed_ms": 761.473,
+          "response_ms": 11.603,
+          "response_bytes": 8619820,
+          "full_normalize_ms_outside_store": 27.672,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 756.626,
+            "apply_events_ms": 609.068,
+            "store_normalize_ms": 57.829,
+            "commit_write_ms": 0,
+            "response_serialize_ms": 11.603
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": true,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_applyEvents": 1,
+              "_load": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.40279999998165295,
+              "_readSnapshot": 71.94330000001355,
+              "full_normalize": 57.828999999997905,
+              "_normalizeState": 151.88990000000922,
+              "reducer": 300.0108000000182,
+              "_applyEvent": 532.2420000000566,
+              "_applyEvents": 609.0682000000088,
+              "_load": 756.6257000000041
+            },
+            "events_applied": 10,
+            "commits_read": 2,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 57.829,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 57.829,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          },
+          "first_commit_state_version": 20
+        },
+        {
+          "repeat": 14,
+          "elapsed_ms": 801.427,
+          "response_ms": 11.711,
+          "response_bytes": 8619820,
+          "full_normalize_ms_outside_store": 27.462,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 796.453,
+            "apply_events_ms": 647.248,
+            "store_normalize_ms": 53.42,
+            "commit_write_ms": 0,
+            "response_serialize_ms": 11.711
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": true,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_applyEvents": 1,
+              "_load": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.41120000000228174,
+              "_readSnapshot": 69.97750000000815,
+              "full_normalize": 53.42029999999795,
+              "_normalizeState": 153.53689999997732,
+              "reducer": 266.8824999999779,
+              "_applyEvent": 572.3597000000009,
+              "_applyEvents": 647.2478000000119,
+              "_load": 796.4530000000086
+            },
+            "events_applied": 10,
+            "commits_read": 2,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 53.42,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 53.42,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          },
+          "first_commit_state_version": 20
+        },
+        {
+          "repeat": 15,
+          "elapsed_ms": 764.685,
+          "response_ms": 11.466,
+          "response_bytes": 8619820,
+          "full_normalize_ms_outside_store": 27.503,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 759.871,
+            "apply_events_ms": 612.497,
+            "store_normalize_ms": 60.695,
+            "commit_write_ms": 0,
+            "response_serialize_ms": 11.466
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": true,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_applyEvents": 1,
+              "_load": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.41550000000279397,
+              "_readSnapshot": 68.02460000000428,
+              "full_normalize": 60.69539999999688,
+              "_normalizeState": 155.50960000001942,
+              "reducer": 302.0968999999459,
+              "_applyEvent": 535.7929000000586,
+              "_applyEvents": 612.497000000003,
+              "_load": 759.8711000000185
+            },
+            "events_applied": 10,
+            "commits_read": 2,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 60.695,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 60.695,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          },
+          "first_commit_state_version": 20
+        },
+        {
+          "repeat": 16,
+          "elapsed_ms": 791.81,
+          "response_ms": 11.524,
+          "response_bytes": 8619820,
+          "full_normalize_ms_outside_store": 26.851,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 786.821,
+            "apply_events_ms": 638.309,
+            "store_normalize_ms": 51.997,
+            "commit_write_ms": 0,
+            "response_serialize_ms": 11.524
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": true,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_applyEvents": 1,
+              "_load": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.47920000000158325,
+              "_readSnapshot": 72.83580000000075,
+              "full_normalize": 51.997300000017276,
+              "_normalizeState": 148.43570000000182,
+              "reducer": 265.47749999997905,
+              "_applyEvent": 565.0332999998936,
+              "_applyEvents": 638.3090000000084,
+              "_load": 786.8206000000064
+            },
+            "events_applied": 10,
+            "commits_read": 2,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 51.997,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 51.997,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          },
+          "first_commit_state_version": 20
+        },
+        {
+          "repeat": 17,
+          "elapsed_ms": 770.777,
+          "response_ms": 11.919,
+          "response_bytes": 8619820,
+          "full_normalize_ms_outside_store": 28.027,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 765.762,
+            "apply_events_ms": 618.06,
+            "store_normalize_ms": 59.715,
+            "commit_write_ms": 0,
+            "response_serialize_ms": 11.919
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": true,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_applyEvents": 1,
+              "_load": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.40499999999883585,
+              "_readSnapshot": 69.43630000000121,
+              "full_normalize": 59.71499999999651,
+              "_normalizeState": 155.01949999999488,
+              "reducer": 300.4314000000013,
+              "_applyEvent": 540.7375000000175,
+              "_applyEvents": 618.059900000022,
+              "_load": 765.7619999999879
+            },
+            "events_applied": 10,
+            "commits_read": 2,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 59.715,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 59.715,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          },
+          "first_commit_state_version": 20
+        },
+        {
+          "repeat": 18,
+          "elapsed_ms": 872.728,
+          "response_ms": 11.977,
+          "response_bytes": 8619820,
+          "full_normalize_ms_outside_store": 28.153,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 868.816,
+            "apply_events_ms": 699.824,
+            "store_normalize_ms": 55.416,
+            "commit_write_ms": 0,
+            "response_serialize_ms": 11.977
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": true,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_applyEvents": 1,
+              "_load": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.40380000000004657,
+              "_readSnapshot": 85.54389999998966,
+              "full_normalize": 55.41579999998794,
+              "_normalizeState": 159.32499999998254,
+              "reducer": 286.7825999999768,
+              "_applyEvent": 623.3802999999607,
+              "_applyEvents": 699.8239999999932,
+              "_load": 868.8159999999916
+            },
+            "events_applied": 10,
+            "commits_read": 2,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 55.416,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 55.416,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          },
+          "first_commit_state_version": 20
+        },
+        {
+          "repeat": 19,
+          "elapsed_ms": 808.836,
+          "response_ms": 11.939,
+          "response_bytes": 8619820,
+          "full_normalize_ms_outside_store": 23.444,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 803.877,
+            "apply_events_ms": 655.041,
+            "store_normalize_ms": 61.595,
+            "commit_write_ms": 0,
+            "response_serialize_ms": 11.939
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": true,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_applyEvents": 1,
+              "_load": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.46709999997983687,
+              "_readSnapshot": 70.07810000001336,
+              "full_normalize": 61.595000000001164,
+              "_normalizeState": 157.00199999997858,
+              "reducer": 308.63219999996363,
+              "_applyEvent": 576.2505999999703,
+              "_applyEvents": 655.0411000000022,
+              "_load": 803.8771999999881
+            },
+            "events_applied": 10,
+            "commits_read": 2,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 61.595,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 61.595,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          },
+          "first_commit_state_version": 20
+        },
+        {
+          "repeat": 20,
+          "elapsed_ms": 777.305,
+          "response_ms": 13.639,
+          "response_bytes": 8619820,
+          "full_normalize_ms_outside_store": 24.597,
+          "state_version": 20,
+          "stages": {
+            "prepare_command_ms": null,
+            "load_ms": 772.228,
+            "apply_events_ms": 623.159,
+            "store_normalize_ms": 54.606,
+            "commit_write_ms": 0,
+            "response_serialize_ms": 13.639
+          },
+          "record_counts": {
+            "entities": 600,
+            "facts": 2521,
+            "relationships": 2501,
+            "quests": 400,
+            "threads": 600,
+            "epistemic_claims": 2501,
+            "summaries": 1200,
+            "knowledge_ledger": 6001
+          },
+          "replayed": true,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 2,
+              "_normalizeState": 2,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_applyEvents": 1,
+              "_load": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.4039999999804422,
+              "_readSnapshot": 72.5229999999865,
+              "full_normalize": 54.60569999998552,
+              "_normalizeState": 159.02819999997155,
+              "reducer": 289.57649999993737,
+              "_applyEvent": 540.133300000045,
+              "_applyEvents": 623.1589000000095,
+              "_load": 772.2284000000218
+            },
+            "events_applied": 10,
+            "commits_read": 2,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 2,
+            "full_normalize_ms": 54.606,
+            "store_full_normalize_calls": 2,
+            "store_full_normalize_ms": 54.606,
+            "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+            "state_copy_units_estimate": 14
+          },
+          "first_commit_state_version": 20
+        }
+      ]
+    }
+  ],
+  "mixed": {
+    "definition": "large production commit and one ordinary small production commit scheduled in the same event loop turn",
+    "large_elapsed_ms": 808.228,
+    "small_elapsed_ms": 824.208,
+    "large_queue_delay_ms": 0.144,
+    "small_queue_delay_ms": 808.251,
+    "large_operation_ms": 808.091,
+    "small_operation_ms": 15.958,
+    "event_loop_delay_samples": 3,
+    "event_loop_delay_ms": {
+      "min": 12.255,
+      "mean": 284.109,
+      "p50": 15.63,
+      "p95": 824.705,
+      "max": 824.705
+    },
+    "state_versions": {
+      "large": 20,
+      "small": 1
+    }
+  },
+  "limitations": [
+    "Профиль CPU захватывает один production FileEventStore.commit для 10 событий; sampled self CPU не является wall time.",
+    "Warm означает предварительный load в том же процессе; FileEventStore не имеет общего кэша состояния.",
+    "cases измеряет persistence/reducer без подготовки команды; HTTP опубликован отдельным исправленным прогоном."
+  ],
+  "excluded_measurements": [
+    {
+      "section": "endpoint",
+      "reason": "The expansion snapshot used projector version 1 instead of the production projector version 14. Corrected HTTP fixture results are reported separately in large-campaign-http-final.json. Storage, journal and mixed measurements are unchanged."
+    }
+  ]
+}

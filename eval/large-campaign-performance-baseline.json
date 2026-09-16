@@ -1,0 +1,517 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-16T00:00:00.000Z",
+  "command": [
+    "--reps=1",
+    "--output=C:\\Users\\anton\\AppData\\Local\\Temp\\large-performance-baseline-ff37f62809bc4e0493cb199fa7698b4b.json"
+  ],
+  "environment": {
+    "node": "v24.19.0",
+    "platform": "win32",
+    "arch": "x64",
+    "cpu_count": 16,
+    "no_llm": true,
+    "storage": "temporary"
+  },
+  "fixture": {
+    "counts": {
+      "entities": 600,
+      "facts": 2501,
+      "relationships": 2501,
+      "quests": 400,
+      "threads": 600,
+      "epistemic_claims": 2501,
+      "summaries": 1200,
+      "knowledge_ledger": 6001
+    },
+    "base_tail_events": 10,
+    "state_version_before_benchmark": 10,
+    "state_bytes": 8601236,
+    "source": "eval/world-data-measurements.mjs:measureProductionStorage",
+    "source_commit": "f074372",
+    "reducer_normalizes_input": false
+  },
+  "seed": {
+    "total_duration_ms": 139974.069,
+    "timings": {
+      "initialize_ms": 809.232,
+      "commit_ms": 12867.8,
+      "load_ms": 982.176,
+      "normalize_ms": 447.271,
+      "replay_full_ms": 11618.098,
+      "replay_snapshot_ms": 756.769
+    },
+    "retention": {
+      "expected": {
+        "entities": 600,
+        "facts": 2511,
+        "relationships": 2501,
+        "quests": 400,
+        "threads": 600,
+        "epistemic_claims": 2501,
+        "summaries": 1200,
+        "knowledge_ledger": 6001
+      },
+      "actual": {
+        "entities": 600,
+        "facts": 2511,
+        "relationships": 2501,
+        "quests": 400,
+        "threads": 600,
+        "epistemic_claims": 2501,
+        "summaries": 1200,
+        "knowledge_ledger": 6001
+      },
+      "missing": {},
+      "extra": {},
+      "passed": true,
+      "exact": true
+    },
+    "replay_identical": true,
+    "snapshot_replay_identical": true
+  },
+  "cpu_profile": {
+    "samples": 8343,
+    "sampled_cpu_us": 12497830,
+    "indexKnowledge_cpu_us": 7050569,
+    "indexKnowledge_cpu_percent": 56.41,
+    "world_memory_cpu_us": 10411482,
+    "world_memory_cpu_percent": 83.31,
+    "top": [
+      {
+        "function": "indexKnowledge",
+        "url": "file:///C:/Users/anton/AppData/Local/Temp/skazanie-performance-baseline-e97e7ef6-e29e-4b58-b5d6-e9d79a71d354/server/world-memory.mjs",
+        "self_us": 7050569,
+        "self_percent": 56.41
+      },
+      {
+        "function": "normalizeWorldMemoryCurrent",
+        "url": "file:///C:/Users/anton/AppData/Local/Temp/skazanie-performance-baseline-e97e7ef6-e29e-4b58-b5d6-e9d79a71d354/server/world-memory.mjs",
+        "self_us": 2452896,
+        "self_percent": 19.63
+      },
+      {
+        "function": "text",
+        "url": "file:///C:/Users/anton/AppData/Local/Temp/skazanie-performance-baseline-e97e7ef6-e29e-4b58-b5d6-e9d79a71d354/server/world-memory.mjs",
+        "self_us": 670698,
+        "self_percent": 5.37
+      },
+      {
+        "function": "jsonClone",
+        "url": "file:///C:/Users/anton/AppData/Local/Temp/skazanie-performance-baseline-e97e7ef6-e29e-4b58-b5d6-e9d79a71d354/server/event-store.mjs",
+        "self_us": 669062,
+        "self_percent": 5.35
+      },
+      {
+        "function": "clone",
+        "url": "file:///C:/Users/anton/AppData/Local/Temp/skazanie-performance-baseline-e97e7ef6-e29e-4b58-b5d6-e9d79a71d354/server/rules-engine.mjs",
+        "self_us": 541103,
+        "self_percent": 4.33
+      },
+      {
+        "function": "(garbage collector)",
+        "url": "",
+        "self_us": 457781,
+        "self_percent": 3.66
+      },
+      {
+        "function": "post",
+        "url": "node:inspector",
+        "self_us": 119311,
+        "self_percent": 0.95
+      },
+      {
+        "function": "clean",
+        "url": "file:///C:/Users/anton/AppData/Local/Temp/skazanie-performance-baseline-e97e7ef6-e29e-4b58-b5d6-e9d79a71d354/server/npc-social.mjs",
+        "self_us": 62401,
+        "self_percent": 0.5
+      },
+      {
+        "function": "persistedStrings",
+        "url": "file:///C:/Users/anton/AppData/Local/Temp/skazanie-performance-baseline-e97e7ef6-e29e-4b58-b5d6-e9d79a71d354/server/world-memory.mjs",
+        "self_us": 57801,
+        "self_percent": 0.46
+      },
+      {
+        "function": "(anonymous)",
+        "url": "file:///C:/Users/anton/AppData/Local/Temp/skazanie-performance-baseline-e97e7ef6-e29e-4b58-b5d6-e9d79a71d354/server/world-memory.mjs",
+        "self_us": 41262,
+        "self_percent": 0.33
+      },
+      {
+        "function": "safeKnowledgeEntry",
+        "url": "file:///C:/Users/anton/AppData/Local/Temp/skazanie-performance-baseline-e97e7ef6-e29e-4b58-b5d6-e9d79a71d354/server/world-memory.mjs",
+        "self_us": 30178,
+        "self_percent": 0.24
+      },
+      {
+        "function": "safeEpistemicClaim",
+        "url": "file:///C:/Users/anton/AppData/Local/Temp/skazanie-performance-baseline-e97e7ef6-e29e-4b58-b5d6-e9d79a71d354/server/world-memory.mjs",
+        "self_us": 24386,
+        "self_percent": 0.2
+      },
+      {
+        "function": "structuredClone",
+        "url": "node:internal/worker/js_transferable",
+        "self_us": 24015,
+        "self_percent": 0.19
+      },
+      {
+        "function": "(program)",
+        "url": "",
+        "self_us": 22257,
+        "self_percent": 0.18
+      },
+      {
+        "function": "Hash",
+        "url": "",
+        "self_us": 21196,
+        "self_percent": 0.17
+      },
+      {
+        "function": "readFileUtf8",
+        "url": "",
+        "self_us": 18701,
+        "self_percent": 0.15
+      },
+      {
+        "function": "update",
+        "url": "",
+        "self_us": 17554,
+        "self_percent": 0.14
+      },
+      {
+        "function": "safeRelationship",
+        "url": "file:///C:/Users/anton/AppData/Local/Temp/skazanie-performance-baseline-e97e7ef6-e29e-4b58-b5d6-e9d79a71d354/server/world-memory.mjs",
+        "self_us": 16727,
+        "self_percent": 0.13
+      },
+      {
+        "function": "sortObject",
+        "url": "file:///C:/Users/anton/AppData/Local/Temp/skazanie-performance-baseline-e97e7ef6-e29e-4b58-b5d6-e9d79a71d354/server/event-store.mjs",
+        "self_us": 16592,
+        "self_percent": 0.13
+      },
+      {
+        "function": "stableJson",
+        "url": "file:///C:/Users/anton/AppData/Local/Temp/skazanie-performance-baseline-e97e7ef6-e29e-4b58-b5d6-e9d79a71d354/server/event-store.mjs",
+        "self_us": 15330,
+        "self_percent": 0.12
+      },
+      {
+        "function": "safeFact",
+        "url": "file:///C:/Users/anton/AppData/Local/Temp/skazanie-performance-baseline-e97e7ef6-e29e-4b58-b5d6-e9d79a71d354/server/world-memory.mjs",
+        "self_us": 14794,
+        "self_percent": 0.12
+      },
+      {
+        "function": "safeEntity",
+        "url": "file:///C:/Users/anton/AppData/Local/Temp/skazanie-performance-baseline-e97e7ef6-e29e-4b58-b5d6-e9d79a71d354/server/world-memory.mjs",
+        "self_us": 12711,
+        "self_percent": 0.1
+      },
+      {
+        "function": "readJson",
+        "url": "file:///C:/Users/anton/AppData/Local/Temp/skazanie-performance-baseline-e97e7ef6-e29e-4b58-b5d6-e9d79a71d354/server/event-store.mjs",
+        "self_us": 12179,
+        "self_percent": 0.1
+      },
+      {
+        "function": "safeSummary",
+        "url": "file:///C:/Users/anton/AppData/Local/Temp/skazanie-performance-baseline-e97e7ef6-e29e-4b58-b5d6-e9d79a71d354/server/world-memory.mjs",
+        "self_us": 11095,
+        "self_percent": 0.09
+      },
+      {
+        "function": "safeThread",
+        "url": "file:///C:/Users/anton/AppData/Local/Temp/skazanie-performance-baseline-e97e7ef6-e29e-4b58-b5d6-e9d79a71d354/server/world-memory.mjs",
+        "self_us": 10373,
+        "self_percent": 0.08
+      },
+      {
+        "function": "safeQuest",
+        "url": "file:///C:/Users/anton/AppData/Local/Temp/skazanie-performance-baseline-e97e7ef6-e29e-4b58-b5d6-e9d79a71d354/server/world-memory.mjs",
+        "self_us": 10330,
+        "self_percent": 0.08
+      },
+      {
+        "function": "readFileSync",
+        "url": "node:fs",
+        "self_us": 10307,
+        "self_percent": 0.08
+      },
+      {
+        "function": "digest",
+        "url": "",
+        "self_us": 10181,
+        "self_percent": 0.08
+      },
+      {
+        "function": "stableId",
+        "url": "file:///C:/Users/anton/AppData/Local/Temp/skazanie-performance-baseline-e97e7ef6-e29e-4b58-b5d6-e9d79a71d354/server/world-memory.mjs",
+        "self_us": 7662,
+        "self_percent": 0.06
+      },
+      {
+        "function": "fsync",
+        "url": "",
+        "self_us": 7119,
+        "self_percent": 0.06
+      }
+    ],
+    "counters": {
+      "calls": {
+        "_readCommits": 1,
+        "_readSnapshot": 1,
+        "full_normalize": 13,
+        "_normalizeState": 13,
+        "_load": 1,
+        "reducer": 10,
+        "_applyEvent": 10,
+        "_commitFile": 1,
+        "_writeMetadata": 1
+      },
+      "elapsed_ms": {
+        "_readCommits": 3.4415999999982887,
+        "_readSnapshot": 112.40099999999802,
+        "full_normalize": 3718.3237999999983,
+        "_normalizeState": 4373.467299999993,
+        "_load": 762.1666000000005,
+        "reducer": 7870.755000000023,
+        "_applyEvent": 11242.492499999982,
+        "_commitFile": 4.623999999996158,
+        "_writeMetadata": 3.500899999999092
+      },
+      "events_applied": 10,
+      "commits_read": 1,
+      "snapshots_read": 1,
+      "snapshots_written": 0,
+      "full_normalize_calls": 13,
+      "full_normalize_ms": 3718.324,
+      "normalize_scope": "FileEventStore.normalizeState wrapper only; internal Rules Engine normalizers are not counted",
+      "state_copy_units_estimate": 36
+    }
+  },
+  "cases": [
+    {
+      "kind": "cold_commit",
+      "definition": "new store, no pre-load, snapshotEvery=0",
+      "summary": {
+        "count": 1,
+        "min_ms": 11835.885,
+        "p50_ms": 11835.885,
+        "p95_ms": 11835.885,
+        "max_ms": 11835.885,
+        "mean_ms": 11835.885
+      },
+      "measurements": [
+        {
+          "repeat": 1,
+          "elapsed_ms": 11835.885,
+          "response_ms": 14.748,
+          "response_bytes": 8619010,
+          "full_normalize_ms_outside_store": 276.97,
+          "state_version": 20,
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 13,
+              "_normalizeState": 13,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 2.975299999998242,
+              "_readSnapshot": 110.65400000000227,
+              "full_normalize": 3612.6633000000147,
+              "_normalizeState": 4255.126599999989,
+              "_load": 773.0231000000058,
+              "reducer": 7450.198999999993,
+              "_applyEvent": 10717.625399999997,
+              "_commitFile": 5.033400000000256,
+              "_writeMetadata": 3.6952000000019325
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 13,
+            "full_normalize_ms": 3612.663,
+            "state_copy_units_estimate": 36
+          }
+        }
+      ]
+    },
+    {
+      "kind": "warm_commit",
+      "definition": "load once before timed commit",
+      "summary": {
+        "count": 1,
+        "min_ms": 12027.78,
+        "p50_ms": 12027.78,
+        "p95_ms": 12027.78,
+        "max_ms": 12027.78,
+        "mean_ms": 12027.78
+      },
+      "measurements": [
+        {
+          "repeat": 1,
+          "elapsed_ms": 12027.78,
+          "response_ms": 11.714,
+          "response_bytes": 8619010,
+          "full_normalize_ms_outside_store": 263.915,
+          "state_version": 20,
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 13,
+              "_normalizeState": 13,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.32039999999688007,
+              "_readSnapshot": 101.25230000000738,
+              "full_normalize": 3602.11510000001,
+              "_normalizeState": 4214.074900000007,
+              "_load": 735.6965000000055,
+              "reducer": 7699.820599999992,
+              "_applyEvent": 10962.299800000008,
+              "_commitFile": 4.428400000004331,
+              "_writeMetadata": 3.158500000005006
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 13,
+            "full_normalize_ms": 3602.115,
+            "state_copy_units_estimate": 36
+          }
+        }
+      ]
+    },
+    {
+      "kind": "snapshot_commit",
+      "definition": "snapshotEvery=10 writes a snapshot during the timed commit",
+      "summary": {
+        "count": 1,
+        "min_ms": 12252.638,
+        "p50_ms": 12252.638,
+        "p95_ms": 12252.638,
+        "max_ms": 12252.638,
+        "mean_ms": 12252.638
+      },
+      "measurements": [
+        {
+          "repeat": 1,
+          "elapsed_ms": 12252.638,
+          "response_ms": 16.24,
+          "response_bytes": 8619538,
+          "full_normalize_ms_outside_store": 277.385,
+          "state_version": 20,
+          "replayed": false,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 14,
+              "_normalizeState": 14,
+              "_load": 1,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_commitFile": 1,
+              "_writeSnapshot": 1,
+              "_writeMetadata": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 3.418599999989965,
+              "_readSnapshot": 102.35259999999835,
+              "full_normalize": 3822.4520000000484,
+              "_normalizeState": 4487.412599999996,
+              "_load": 740.5185000000056,
+              "reducer": 7530.210199999958,
+              "_applyEvent": 10715.28340000003,
+              "_commitFile": 4.8554000000003725,
+              "_writeSnapshot": 451.2783000000054,
+              "_writeMetadata": 3.387699999992037
+            },
+            "events_applied": 10,
+            "commits_read": 1,
+            "snapshots_read": 1,
+            "snapshots_written": 1,
+            "full_normalize_calls": 14,
+            "full_normalize_ms": 3822.452,
+            "state_copy_units_estimate": 38
+          }
+        }
+      ]
+    },
+    {
+      "kind": "idempotent_replay",
+      "definition": "duplicate commit with the same idempotency key",
+      "summary": {
+        "count": 1,
+        "min_ms": 11314.383,
+        "p50_ms": 11314.383,
+        "p95_ms": 11314.383,
+        "max_ms": 11314.383,
+        "mean_ms": 11314.383
+      },
+      "measurements": [
+        {
+          "repeat": 1,
+          "elapsed_ms": 11314.383,
+          "response_ms": 12.257,
+          "response_bytes": 8619688,
+          "full_normalize_ms_outside_store": 310.869,
+          "state_version": 20,
+          "replayed": true,
+          "counters": {
+            "calls": {
+              "_readCommits": 1,
+              "_readSnapshot": 1,
+              "full_normalize": 12,
+              "_normalizeState": 12,
+              "reducer": 10,
+              "_applyEvent": 10,
+              "_load": 1
+            },
+            "elapsed_ms": {
+              "_readCommits": 0.44539999999688007,
+              "_readSnapshot": 104.19770000000426,
+              "full_normalize": 3264.6306999999942,
+              "_normalizeState": 3821.6184999999823,
+              "reducer": 7382.343799999988,
+              "_applyEvent": 10565.19250000002,
+              "_load": 11309.0677
+            },
+            "events_applied": 10,
+            "commits_read": 2,
+            "snapshots_read": 1,
+            "snapshots_written": 0,
+            "full_normalize_calls": 12,
+            "full_normalize_ms": 3264.631,
+            "state_copy_units_estimate": 34
+          },
+          "first_commit_state_version": 20
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Профиль CPU захватывает один production FileEventStore.commit для 10 событий; sampled self CPU не является wall time.",
+    "Warm означает предварительный load в том же процессе; FileEventStore не имеет общего кэша состояния.",
+    "Подготовка Rules Engine и HTTP/SSE не входит: это persistence/reducer harness без LLM."
+  ]
+}

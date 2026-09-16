@@ -14,6 +14,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
+import { RETENTION_REDUCER_VERSION, withRetentionMode } from './retention-context.mjs'
 
 const STORE_SCHEMA_VERSION = 1
 const EVENT_FILE = /^(\d{16})-(\d{16})-([a-zA-Z0-9-]+)\.json$/
@@ -98,6 +99,14 @@ function sha256(value) {
   return createHash('sha256').update(typeof value === 'string' ? value : stableJson(value)).digest('hex')
 }
 
+/** Только для снимков: их состояние уже разобрано или проверено JSON-границей. */
+function snapshotChecksum(state) {
+  // Общий sha256 по-прежнему проверяет произвольный вход. Здесь лишняя
+  // сериализация с последующим разбором копировала весь снимок ещё раз.
+  if (!state || typeof state !== 'object') return sha256(state)
+  return createHash('sha256').update(JSON.stringify(sortObject(state))).digest('hex')
+}
+
 function assertPlainState(state) {
   if (!state || typeof state !== 'object' || Array.isArray(state)) {
     throw new EventStoreError('Campaign state must be a JSON object', 'INVALID_CAMPAIGN_STATE')
@@ -132,14 +141,14 @@ function nowIso(clock) {
   return date.toISOString()
 }
 
-function atomicWrite(file, value, { exclusive = false } = {}) {
+function atomicWrite(file, value, { exclusive = false, compact = false } = {}) {
   mkdirSync(dirname(file), { recursive: true })
   if (exclusive && existsSync(file)) throw new EventStoreError(`Immutable file already exists: ${file}`, 'IMMUTABLE_FILE_EXISTS', { file })
   const temporary = join(dirname(file), `.${basename(file)}.${randomUUID()}.tmp`)
   let descriptor
   try {
     descriptor = openSync(temporary, 'wx', 0o600)
-    writeFileSync(descriptor, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
+    writeFileSync(descriptor, `${JSON.stringify(value, null, compact ? 0 : 2)}\n`, 'utf8')
     fsyncSync(descriptor)
     closeSync(descriptor)
     descriptor = undefined
@@ -195,6 +204,8 @@ export class FileEventStore {
     clock = () => new Date(),
     idFactory = () => randomUUID(),
     mapStore = null,
+    reducerVersion = RETENTION_REDUCER_VERSION,
+    reducerNormalizesInput = false,
   } = {}) {
     if (!rootDir) throw new EventStoreError('rootDir is required', 'INVALID_CONFIGURATION')
     if (typeof reducer !== 'function') throw new EventStoreError('A synchronous reducer(state, event) is required', 'INVALID_CONFIGURATION')
@@ -202,12 +213,19 @@ export class FileEventStore {
     if (typeof initialStateFactory !== 'function') throw new EventStoreError('initialStateFactory must be a function', 'INVALID_CONFIGURATION')
     const projectorVersion = Number(snapshotProjectorVersion)
     if (!Number.isSafeInteger(projectorVersion) || projectorVersion < 1) throw new EventStoreError('snapshotProjectorVersion must be a positive safe integer', 'INVALID_CONFIGURATION')
+    const normalizedReducerVersion = Number(reducerVersion)
+    if (!Number.isSafeInteger(normalizedReducerVersion) || normalizedReducerVersion < 1) throw new EventStoreError('reducerVersion must be a positive safe integer', 'INVALID_CONFIGURATION')
+    if (typeof reducerNormalizesInput !== 'boolean') throw new EventStoreError('reducerNormalizesInput must be a boolean', 'INVALID_CONFIGURATION')
     this.rootDir = resolve(rootDir)
     this.reducer = reducer
     this.normalizeState = normalizeState
     this.initialStateFactory = initialStateFactory
     this.snapshotEvery = Math.max(0, Number(snapshotEvery) || 0)
     this.snapshotProjectorVersion = projectorVersion
+    this.reducerVersion = normalizedReducerVersion
+    // Доверенный reducer сам нормализует вход каждого события; legacy и
+    // смешанные потоки всё равно проходят обычный путь.
+    this.reducerNormalizesInput = reducerNormalizesInput
     this.maxEventsPerCommit = Math.max(1, Number(maxEventsPerCommit) || 100)
     this.staleLockMs = Math.max(1_000, Number(staleLockMs) || 30_000)
     this.clock = clock
@@ -279,26 +297,61 @@ export class FileEventStore {
     }
   }
 
-  _normalizeState(state, version) {
-    const normalized = this.normalizeState(jsonClone(state, 'campaign state'))
+  _retentionMode(version, currentVersion = this.reducerVersion) {
+    const normalized = version == null ? 0 : Number(version)
+    if (!Number.isSafeInteger(normalized) || normalized < 0) {
+      throw new EventStoreError(`Некорректная версия reducer: ${String(version)}`, 'INVALID_REDUCER_VERSION')
+    }
+    if (normalized === 0 || normalized < Number(currentVersion)) return 'legacy'
+    if (normalized === Number(currentVersion)) return 'current'
+    throw new EventStoreError(`Версия reducer ${normalized} не поддерживается; текущая версия ${currentVersion}`, 'UNSUPPORTED_REDUCER_VERSION', {
+      reducer_version: normalized, current_reducer_version: Number(currentVersion),
+    })
+  }
+
+  _normalizeState(state, version, reducerVersion = this.reducerVersion) {
+    const normalized = withRetentionMode(this._retentionMode(reducerVersion), () => this.normalizeState(jsonClone(state, 'campaign state')))
     if (normalized && typeof normalized.then === 'function') {
       throw new EventStoreError('normalizeState must be synchronous', 'ASYNC_REDUCER_NOT_SUPPORTED')
     }
     return versionedState(normalized, version)
   }
 
-  _applyEvent(state, event) {
+  _applyEvent(state, event, forcedReducerVersion = null, skipOutputNormalization = false) {
+    const reducerVersion = forcedReducerVersion == null ? Number(event.reducer_version ?? 0) : Number(forcedReducerVersion)
+    const mode = this._retentionMode(reducerVersion, forcedReducerVersion == null ? this.reducerVersion : forcedReducerVersion)
     if (event.event_type === 'LegacyStateImported' && event.payload?.state) {
-      return this._normalizeState(event.payload.state, event.state_version_after)
+      return withRetentionMode(mode, () => this._normalizeState(event.payload.state, event.state_version_after, reducerVersion))
     }
     // Оба вызывающих пути передают приватное JSON-состояние от _normalizeState
     // и больше его не используют. Событие ещё войдёт в журнал — его копия нужна.
-    const reduced = this.reducer(state, jsonClone(event, 'event'))
+    const reduced = withRetentionMode(mode, () => this.reducer(state, jsonClone(event, 'event')))
     if (reduced && typeof reduced.then === 'function') {
       throw new EventStoreError('Reducer must be synchronous', 'ASYNC_REDUCER_NOT_SUPPORTED')
     }
     if (reduced === undefined) throw new EventStoreError(`Reducer returned undefined for ${event.event_type}`, 'INVALID_REDUCER_RESULT')
-    return this._normalizeState(reduced, event.state_version_after)
+    if (skipOutputNormalization && this.reducerNormalizesInput && reducerVersion === RETENTION_REDUCER_VERSION && mode === 'current') {
+      return versionedState(reduced, event.state_version_after)
+    }
+    return this._normalizeState(reduced, event.state_version_after, reducerVersion)
+  }
+
+  _canUseTrustedReducerFastPath(events, forcedReducerVersion = null) {
+    if (!this.reducerNormalizesInput || !events.length) return false
+    if (forcedReducerVersion !== null) return forcedReducerVersion === RETENTION_REDUCER_VERSION
+    if (this.reducerVersion !== RETENTION_REDUCER_VERSION) return false
+    return events.every((event) => Number(event.reducer_version ?? 0) === RETENTION_REDUCER_VERSION)
+  }
+
+  _applyEvents(state, events, forcedReducerVersion = null) {
+    if (!events.length) return state
+    const fastPath = this._canUseTrustedReducerFastPath(events, forcedReducerVersion)
+    let nextState = state
+    for (const event of events) nextState = this._applyEvent(nextState, event, forcedReducerVersion, fastPath)
+    if (!fastPath) return nextState
+    const lastEvent = events.at(-1)
+    const reducerVersion = forcedReducerVersion ?? Number(lastEvent.reducer_version ?? 0)
+    return this._normalizeState(nextState, lastEvent.state_version_after, reducerVersion)
   }
 
   _readCommits(layout) {
@@ -389,7 +442,7 @@ export class FileEventStore {
       if (snapshot.campaign_id !== layout.campaignId || snapshot.state_version !== version) {
         throw new CorruptEventLogError(layout.campaignId, `invalid snapshot ${candidate.name}`)
       }
-      if (snapshot.checksum !== sha256(snapshot.state)) {
+      if (snapshot.checksum !== snapshotChecksum(snapshot.state)) {
         throw new CorruptEventLogError(layout.campaignId, `snapshot checksum mismatch ${candidate.name}`)
       }
       const projectorVersion = Number(snapshot.projector_version ?? 1)
@@ -405,9 +458,15 @@ export class FileEventStore {
     return null
   }
 
-  _writeSnapshot(layout, state, stateVersion) {
+  _writeSnapshot(layout, state, stateVersion, reducerVersion = this.reducerVersion) {
     const file = join(layout.snapshots, `${padVersion(stateVersion)}.json`)
-    const projected = this._normalizeState(state, stateVersion)
+    // Все внутренние вызывающие пути передают уже проверенное состояние:
+    // `_normalizeState` завершается до этого метода. Повторная нормализация
+    // здесь только копирует весь мир ещё раз.
+    // `MapStore` удерживает переданный объект в своём bounded cache. Отдельная
+    // JSON-копия здесь не даёт ответу commit разделить ссылку с этим cache;
+    // нормализация домена при этом по-прежнему не повторяется.
+    const projected = this.mapStore ? jsonClone(state, 'campaign state') : state
     // Если задано хранилище карт, снимок хранит ссылку вместо карты и не
     // хранит производные клетки: замер 2026-07-26 дал 125.8 КБ против 0.4 КБ
     // на сцене 30×30 (`docs/tactical-map-plan.md`, 11.2).
@@ -415,10 +474,11 @@ export class FileEventStore {
     const snapshot = {
       schema_version: STORE_SCHEMA_VERSION,
       projector_version: this.snapshotProjectorVersion,
+      reducer_version: Number(reducerVersion) || 0,
       campaign_id: layout.campaignId,
       state_version: stateVersion,
       created_at: nowIso(this.clock),
-      checksum: sha256(normalized),
+      checksum: snapshotChecksum(normalized),
       state: normalized,
     }
     if (existsSync(file)) {
@@ -426,39 +486,49 @@ export class FileEventStore {
       if (existing.checksum !== snapshot.checksum) throw new CorruptEventLogError(layout.campaignId, `conflicting immutable snapshot ${basename(file)}`)
       return existing
     }
-    atomicWrite(file, snapshot, { exclusive: true })
+    // Снимок — машинный кэш: отступы занимали мегабайты на большой кампании.
+    // Формат JSON, контрольная сумма состояния и fsync остаются прежними.
+    atomicWrite(file, snapshot, { exclusive: true, compact: true })
     return snapshot
   }
 
   // Проверенные записи передаются только внутри _withLock. Внешние чтения
   // всегда перечитывают журнал, чтобы видеть коммиты другого процесса.
-  _load(layout, { atVersion, useSnapshots = true } = {}, knownCommits = null) {
+  _load(layout, { atVersion, useSnapshots = true, reducerVersion = null, fromInitial = false } = {}, knownCommits = null) {
     const commits = knownCommits ?? this._readCommits(layout)
     if (!this._exists(layout)) throw new CampaignNotFoundError(layout.campaignId)
     const currentVersion = commits.at(-1)?.state_version_after ?? 0
     const targetVersion = atVersion === undefined ? currentVersion : safeVersion(atVersion, 'atVersion')
     if (targetVersion > currentVersion) throw new VersionConflictError(layout.campaignId, targetVersion, currentVersion)
 
-    const snapshot = this._readSnapshot(layout, targetVersion, useSnapshots)
+    const forcedReducerVersion = reducerVersion == null ? null : safeVersion(reducerVersion, 'reducerVersion')
+    const snapshot = fromInitial ? null : this._readSnapshot(layout, targetVersion, useSnapshots)
     let state
     let fromVersion
+    let selectedReducerVersion
     if (snapshot) {
-      state = this._normalizeState(snapshot.state, snapshot.state_version)
+      selectedReducerVersion = forcedReducerVersion ?? Number(snapshot.reducer_version ?? 0)
+      state = this._normalizeState(snapshot.state, snapshot.state_version, selectedReducerVersion)
       fromVersion = snapshot.state_version
     } else {
-      state = this._normalizeState(this.initialStateFactory(layout.campaignId), 0)
+      const firstEvent = commits.flatMap((commit) => commit.events).find((event) => event.state_version_after <= targetVersion)
+      selectedReducerVersion = forcedReducerVersion ?? Number(firstEvent?.reducer_version ?? 0)
+      state = this._normalizeState(this.initialStateFactory(layout.campaignId), 0, selectedReducerVersion)
       fromVersion = 0
     }
 
     const events = commits.flatMap((commit) => commit.events)
       .filter((event) => event.state_version_after > fromVersion && event.state_version_after <= targetVersion)
-    for (const event of events) state = this._applyEvent(state, event)
+    state = this._applyEvents(state, events, forcedReducerVersion)
 
+    const lastEvent = events.at(-1)
+    const finalReducerVersion = forcedReducerVersion ?? (lastEvent ? Number(lastEvent.reducer_version ?? 0) : selectedReducerVersion)
     return {
       campaign_id: layout.campaignId,
       state_version: targetVersion,
       current_state_version: currentVersion,
-      state: this._normalizeState(state, targetVersion),
+      state,
+      reducer_version: finalReducerVersion,
       metadata: this._readMetadata(layout, currentVersion),
       events_applied: events.length,
     }
@@ -475,6 +545,7 @@ export class FileEventStore {
       command_id: commandId,
       idempotency_key: idempotencyKey,
       event_type: type,
+      reducer_version: this.reducerVersion,
       actor_id: input.actor_id ?? null,
       target_ids: uniqueStrings(input.target_ids),
       payload: jsonClone(input.payload ?? {}, 'event payload'),
@@ -590,6 +661,7 @@ export class FileEventStore {
         state_version_before: 0,
         state_version_after: 1,
         created_at: timestamp,
+        reducer_version: this.reducerVersion,
         events: [event],
         projection_outbox: {
           schema_version: 1,
@@ -678,10 +750,8 @@ export class FileEventStore {
         actual + index,
         timestamp,
       ))
-      let nextState = current.state
-      for (const event of normalizedEvents) nextState = this._applyEvent(nextState, event)
+      const nextState = this._applyEvents(current.state, normalizedEvents)
       const nextVersion = actual + normalizedEvents.length
-      nextState = this._normalizeState(nextState, nextVersion)
 
       const commit = {
         schema_version: STORE_SCHEMA_VERSION,
@@ -694,6 +764,7 @@ export class FileEventStore {
         state_version_after: nextVersion,
         created_at: timestamp,
         events: normalizedEvents,
+        reducer_version: this.reducerVersion,
         projection_outbox: {
           schema_version: 1,
           target: 'compatibility-room',
@@ -741,10 +812,12 @@ export class FileEventStore {
     }
   }
 
-  async replay(campaignId, { atVersion, at_version, useSnapshots = true, use_snapshots } = {}) {
+  async replay(campaignId, { atVersion, at_version, useSnapshots = true, use_snapshots, reducerVersion, reducer_version, fromInitial = false, from_initial } = {}) {
     return this._load(this._layout(campaignId), {
       atVersion: atVersion ?? at_version,
       useSnapshots: use_snapshots ?? useSnapshots,
+      reducerVersion: reducer_version ?? reducerVersion,
+      fromInitial: from_initial ?? fromInitial,
     })
   }
 
@@ -767,7 +840,7 @@ export class FileEventStore {
     const layout = this._layout(campaignId)
     return this._withLock(layout, () => {
       const loaded = this._load(layout)
-      const snapshot = this._writeSnapshot(layout, loaded.state, loaded.state_version)
+      const snapshot = this._writeSnapshot(layout, loaded.state, loaded.state_version, loaded.reducer_version)
       return { campaign_id: layout.campaignId, state_version: loaded.state_version, snapshot: jsonClone(snapshot) }
     })
   }

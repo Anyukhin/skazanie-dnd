@@ -7,6 +7,7 @@ import {
   normalizeInventoryItem,
 } from './merchant-economy.mjs'
 import { factionIdsForNpc } from './reputation-policy.mjs'
+import { retentionMode } from './retention-context.mjs'
 import { cellAt, deserializeTacticalMap, movementStepBlocked } from './tactical-map.mjs'
 import { footprintCellsFor, footprintDistanceFeet, footprintMetadataForSize, normalizeFootprintMetadata } from './actor-footprint.mjs'
 
@@ -19,6 +20,14 @@ const STANCES = new Set(['neutral', 'guarded', 'frightened', 'hostile', 'fleeing
 const MAX_PLACEMENTS = 5_000
 const MAX_VISIBLE_NPCS = 100
 const MAX_PROPAGATED_NPCS = 24
+
+/** Текущее состояние сохраняет принятые записи NPC; legacy replay включает старые пределы. */
+function legacyRetention(options = {}) {
+  const context = options && typeof options === 'object' ? options : {}
+  if (Object.hasOwn(context, 'isLegacy')) return context.isLegacy === true
+  if (Object.hasOwn(context, 'retention')) return context.retention === 'legacy'
+  return retentionMode() === 'legacy'
+}
 
 const clone = (value) => structuredClone(value)
 const text = (value, maximum = 180) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
@@ -74,7 +83,7 @@ function safeStance(value = {}) {
   }
 }
 
-function safeNpcInventory(value) {
+function safeNpcInventory(value, options = {}) {
   const inventory = []
   const stackIndexes = new Map()
   for (const raw of Array.isArray(value) ? value : []) {
@@ -96,14 +105,15 @@ function safeNpcInventory(value) {
       }
       continue
     }
-    if (inventory.length >= MAX_NPC_INVENTORY_ITEMS) continue
+    if (legacyRetention(options) && inventory.length >= MAX_NPC_INVENTORY_ITEMS) continue
     stackIndexes.set(stackKey, inventory.length)
     inventory.push(item)
   }
   return inventory
 }
 
-export function normalizeNpcWorldState(input = {}) {
+export function normalizeNpcWorldState(input = {}, options = {}) {
+  const legacy = legacyRetention(options)
   const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
   const placements = []
   const placementKeys = new Set()
@@ -114,35 +124,43 @@ export function normalizeNpcWorldState(input = {}) {
     placementKeys.add(key)
     placements.push(placement)
   }
-  const vitals = Object.fromEntries(Object.entries(source.vitals ?? {}).slice(0, 500)
+  const vitalEntries = Object.entries(source.vitals ?? {})
+  const vitals = Object.fromEntries((legacy ? vitalEntries.slice(0, 500) : vitalEntries)
     .map(([npcId, value]) => [text(npcId, 120), safeVital(value)])
     .filter(([npcId]) => npcId))
-  const stances = Object.fromEntries(Object.entries(source.stances ?? {}).slice(0, 500)
+  const stanceEntries = Object.entries(source.stances ?? {})
+  const stances = Object.fromEntries((legacy ? stanceEntries.slice(0, 500) : stanceEntries)
     .map(([npcId, value]) => [text(npcId, 120), safeStance(value)])
     .filter(([npcId]) => npcId))
   const inventoryEntries = []
   const inventoryIds = new Set()
   for (const [rawNpcId, value] of Object.entries(source.inventories ?? {})) {
-    if (inventoryEntries.length >= MAX_NPC_INVENTORY_OWNERS) break
+    if (legacy && inventoryEntries.length >= MAX_NPC_INVENTORY_OWNERS) break
     const npcId = text(rawNpcId, 120)
     if (!npcId || inventoryIds.has(npcId)) continue
-    const inventory = safeNpcInventory(value)
+    const inventory = safeNpcInventory(value, options)
     if (!inventory.length) continue
     inventoryIds.add(npcId)
     inventoryEntries.push([npcId, inventory])
   }
   const inventories = Object.fromEntries(inventoryEntries)
-  const profiles = Object.fromEntries(Object.entries(source.profiles ?? {}).slice(0, 500)
+  const profileEntries = Object.entries(source.profiles ?? {})
+  const profiles = Object.fromEntries((legacy ? profileEntries.slice(0, 500) : profileEntries)
     .map(([npcId, value]) => [text(npcId, 120), safeAuthoredNpcMechanics(value)])
     .filter(([npcId, profile]) => npcId && profile))
   return {
     schema_version: 3,
-    placements: placements.slice(-MAX_PLACEMENTS),
+    placements: legacy ? placements.slice(-MAX_PLACEMENTS) : placements,
     vitals,
     stances,
     inventories,
     profiles,
   }
+}
+
+/** Воспроизводит ограниченный reducer мира NPC для legacy-состояния коммита. */
+export function normalizeNpcWorldStateLegacy(input = {}) {
+  return normalizeNpcWorldState(input, { isLegacy: true })
 }
 
 export function sceneLocationId(state = {}) {
@@ -976,17 +994,19 @@ export function npcCombatStanceEventDrafts(state, { sourceEventId = '', particip
   ]
 }
 
-export function applyNpcWorldEvent(input, event) {
-  const world = normalizeNpcWorldState(input)
+export function applyNpcWorldEvent(input, event, options = {}) {
+  const legacy = legacyRetention(options)
+  const world = normalizeNpcWorldState(input, options)
   const payload = event?.payload ?? {}
   const npcId = text(payload.npc_id, 120)
   if (event?.event_type === 'NpcPlaced' || event?.event_type === 'NpcMoved') {
     const placement = safePlacement({ ...payload, source_event_id: event.event_id })
     if (placement) {
-      world.placements = [
+      const placements = [
         ...world.placements.filter((entry) => entry.npc_id !== placement.npc_id || entry.location_id !== placement.location_id),
         placement,
-      ].slice(-MAX_PLACEMENTS)
+      ]
+      world.placements = legacy ? placements.slice(-MAX_PLACEMENTS) : placements
     }
     if (event.event_type === 'NpcPlaced' && payload.vitality && npcId && !world.vitals[npcId]) {
       world.vitals[npcId] = safeVital(payload.vitality)
@@ -1018,7 +1038,7 @@ export function applyNpcWorldEvent(input, event) {
       quantity: Math.max(1, integer(payload.quantity, 1)),
       equipped: false,
       attuned_to: null,
-    }])[0]
+    }], options)[0]
     if (recipientId && incoming) {
       const inventory = Object.hasOwn(world.inventories, recipientId)
         ? world.inventories[recipientId]
@@ -1048,7 +1068,7 @@ export function applyNpcWorldEvent(input, event) {
       }
     }
   }
-  return normalizeNpcWorldState(world)
+  return normalizeNpcWorldState(world, options)
 }
 
 function publicHealthStatus(vital) {

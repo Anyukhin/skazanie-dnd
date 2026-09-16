@@ -63,6 +63,7 @@ export class FileTraceStore {
       engine_mode: 'enforce',
       prompt_versions: input.prompt_versions ?? {},
       model_identifiers: input.model_identifiers ?? {},
+      ...(Array.isArray(input.agent_contexts) ? { agent_contexts: input.agent_contexts } : {}),
       intent: input.intent ?? {},
       retrieval_queries: input.retrieval_queries ?? [],
       retrieved_rule_ids: input.retrieved_rule_ids ?? [],

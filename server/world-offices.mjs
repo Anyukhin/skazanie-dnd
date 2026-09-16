@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { factionIdsForNpc } from './reputation-policy.mjs'
 import { npcProfileAtWorldTime } from './npc-social.mjs'
 import { npcVitalFor } from './npc-positioning.mjs'
+import { knowledgeGateForEvent, knowledgeGateVisible } from './quest-consequences.mjs'
 
 /**
  * Небольшой событийный реестр должностей мира.
@@ -14,8 +15,10 @@ import { npcVitalFor } from './npc-positioning.mjs'
  */
 
 export const WORLD_OFFICES_SCHEMA_VERSION = 1
-export const WORLD_OFFICES_POLICY_ID = 'skazanie:world-offices-v1'
-export const OFFICE_EVENT_SCHEMA_VERSION = 1
+export const WORLD_OFFICES_POLICY_ID = 'skazanie:world-offices-v2'
+export const WORLD_OFFICES_LEGACY_POLICY_ID = 'skazanie:world-offices-v1'
+export const OFFICE_EVENT_SCHEMA_VERSION = 2
+export const OFFICE_EVENT_LEGACY_SCHEMA_VERSION = 1
 
 export const WORLD_OFFICE_EVENT_TYPES = Object.freeze([
   'OfficeVacated', 'OfficeHolderInstalled', 'OfficeSuccessionSkipped',
@@ -40,6 +43,7 @@ const MAX_REQUIRED_TAGS = 12
 const MAX_DEFENDERS = 24
 const MAX_DELAY_MINUTES = 525_600
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/u
+const KNOWLEDGE_VISIBILITIES = new Set(['public', 'party', 'specific_player', 'gm_only'])
 
 const clone = (value) => structuredClone(value)
 const text = (value, maximum = 180) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
@@ -53,6 +57,13 @@ function validId(value) {
 function optionalId(value) {
   const result = text(value, 120)
   return result && ID_PATTERN.test(result) ? result : ''
+}
+
+function safeKnowledgeGate(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const visibility = text(value.visibility, 20)
+  if (!KNOWLEDGE_VISIBILITIES.has(visibility)) return null
+  return clone(value)
 }
 
 function idList(value, maximum, label, { strict = false } = {}) {
@@ -186,12 +197,18 @@ function safePending(value) {
   const successionId = optionalId(value.succession_id)
   const candidateId = optionalId(value.candidate_npc_id)
   if (!successionId || !Number.isSafeInteger(Number(value.due_at_minutes))) return null
+  const previousStatus = OFFICE_STATUSES.has(text(value.previous_status, 20)) ? text(value.previous_status, 20) : ''
+  const hasPreviousHolder = Object.hasOwn(value, 'previous_holder_npc_id')
+  const knowledgeGate = safeKnowledgeGate(value.knowledge_gate)
   return {
     succession_id: successionId,
     candidate_npc_id: candidateId || null,
     due_at_minutes: nonNegativeInteger(value.due_at_minutes),
     vacated_at_minutes: nonNegativeInteger(value.vacated_at_minutes, value.due_at_minutes),
     source_event_id: optionalId(value.source_event_id),
+    ...(previousStatus ? { previous_status: previousStatus } : {}),
+    ...(hasPreviousHolder ? { previous_holder_npc_id: optionalId(value.previous_holder_npc_id) || null } : {}),
+    ...(knowledgeGate ? { knowledge_gate: knowledgeGate } : {}),
   }
 }
 
@@ -203,6 +220,9 @@ function safeHistory(value) {
     const successionId = optionalId(raw.succession_id)
     if (!successionId || seen.has(successionId) || !SUCCESSION_OUTCOMES.has(text(raw.outcome, 20))) continue
     seen.add(successionId)
+    const previousStatus = OFFICE_STATUSES.has(text(raw.previous_status, 20)) ? text(raw.previous_status, 20) : ''
+    const hasPreviousHolder = Object.hasOwn(raw, 'previous_holder_npc_id')
+    const knowledgeGate = safeKnowledgeGate(raw.knowledge_gate)
     history.push({
       succession_id: successionId,
       outcome: text(raw.outcome, 20),
@@ -210,6 +230,9 @@ function safeHistory(value) {
       candidate_npc_id: optionalId(raw.candidate_npc_id) || null,
       at_minutes: nonNegativeInteger(raw.at_minutes),
       source_event_id: optionalId(raw.source_event_id),
+      ...(previousStatus ? { previous_status: previousStatus } : {}),
+      ...(hasPreviousHolder ? { previous_holder_npc_id: optionalId(raw.previous_holder_npc_id) || null } : {}),
+      ...(knowledgeGate ? { knowledge_gate: knowledgeGate } : {}),
     })
   }
   return history.slice(-MAX_SUCCESSION_HISTORY)
@@ -303,16 +326,25 @@ function successionId(officeId, causeEventId, atMinutes) {
   return `succession:${digest}`
 }
 
+function officeKnowledgeGate(state, event) {
+  if (!state?.worldMemory && !event?.payload?.knowledge_gate && !event?.visibility) return null
+  return safeKnowledgeGate(knowledgeGateForEvent(state, event))
+}
+
 function eventDraft(office, eventType, payload) {
+  const knowledgeGate = safeKnowledgeGate(payload.knowledge_gate)
+  const eventPayload = {
+    schema_version: OFFICE_EVENT_SCHEMA_VERSION,
+    policy_id: WORLD_OFFICES_POLICY_ID,
+    office_id: office.id,
+    title: office.title,
+    ...payload,
+    ...(knowledgeGate ? { knowledge_gate: knowledgeGate } : {}),
+  }
+  if (!knowledgeGate) delete eventPayload.knowledge_gate
   return {
     event_type: eventType,
-    payload: {
-      schema_version: OFFICE_EVENT_SCHEMA_VERSION,
-      policy_id: WORLD_OFFICES_POLICY_ID,
-      office_id: office.id,
-      title: office.title,
-      ...payload,
-    },
+    payload: eventPayload,
     target_ids: [],
     // Причина отклонения кандидата — закрытая проверка; поток событий
     // не должен раскрывать политику, скрытую публичной проекцией должности.
@@ -349,6 +381,7 @@ export function planOfficeVacancyDrafts(state = {}, events = [], options = {}) {
       const causeEventId = eventIdentity(event)
       const id = successionId(office.id, causeEventId, atMinutes)
       const delay = office.successor?.delay_minutes ?? 0
+      const knowledgeGate = officeKnowledgeGate(state, event)
       drafts.push(eventDraft(office, 'OfficeVacated', {
         status: 'vacant',
         holder_npc_id: null,
@@ -357,6 +390,7 @@ export function planOfficeVacancyDrafts(state = {}, events = [], options = {}) {
         vacated_at_minutes: atMinutes,
         due_at_minutes: atMinutes + delay,
         source_event_id: causeEventId,
+        ...(knowledgeGate ? { knowledge_gate: knowledgeGate } : {}),
       }))
     }
   }
@@ -423,6 +457,7 @@ export function planOfficeSuccessionDrafts(state = {}, options = {}) {
         skipped_at_minutes: atMinutes,
         reason: 'office_occupied',
         source_event_id: pending.source_event_id,
+        ...(pending.knowledge_gate ? { knowledge_gate: pending.knowledge_gate } : {}),
       }))
       continue
     }
@@ -435,6 +470,7 @@ export function planOfficeSuccessionDrafts(state = {}, options = {}) {
         skipped_at_minutes: atMinutes,
         reason: SKIP_REASONS.has(eligibility.reason) ? eligibility.reason : 'candidate_missing',
         source_event_id: pending.source_event_id,
+        ...(pending.knowledge_gate ? { knowledge_gate: pending.knowledge_gate } : {}),
       }))
       continue
     }
@@ -445,6 +481,7 @@ export function planOfficeSuccessionDrafts(state = {}, options = {}) {
       succession_id: pending.succession_id,
       installed_at_minutes: atMinutes,
       source_event_id: pending.source_event_id,
+      ...(pending.knowledge_gate ? { knowledge_gate: pending.knowledge_gate } : {}),
     }))
   }
   return drafts
@@ -461,7 +498,17 @@ function withHistory(office, entry) {
 
 function eventSchemaIsSupported(event) {
   return EVENT_TYPES.has(String(event?.event_type ?? ''))
-    && Number(event?.payload?.schema_version) === OFFICE_EVENT_SCHEMA_VERSION
+    && [OFFICE_EVENT_LEGACY_SCHEMA_VERSION, OFFICE_EVENT_SCHEMA_VERSION].includes(Number(event?.payload?.schema_version))
+}
+
+function eventUsesKnowledge(event) {
+  return Number(event?.payload?.schema_version) === OFFICE_EVENT_SCHEMA_VERSION
+    && Boolean(safeKnowledgeGate(event?.payload?.knowledge_gate))
+}
+
+function pendingKnowledgeGate(event, pending) {
+  if (Number(event?.payload?.schema_version) !== OFFICE_EVENT_SCHEMA_VERSION) return null
+  return pending?.knowledge_gate ?? safeKnowledgeGate(event?.payload?.knowledge_gate)
 }
 
 /**
@@ -487,6 +534,7 @@ export function applyWorldOfficeEvent(input = {}, event = {}, options = {}) {
     if (office.status !== 'held' || !office.holder_npc_id || office.holder_npc_id !== previousHolder) return current
     if (office.pending?.succession_id === succession || historyHas(office, succession)) return current
     const due = nonNegativeInteger(payload.due_at_minutes, nonNegativeInteger(payload.vacated_at_minutes))
+    const knowledgeGate = safeKnowledgeGate(payload.knowledge_gate)
     next = {
       ...office,
       status: 'vacant',
@@ -497,6 +545,13 @@ export function applyWorldOfficeEvent(input = {}, event = {}, options = {}) {
         due_at_minutes: due,
         vacated_at_minutes: nonNegativeInteger(payload.vacated_at_minutes, due),
         source_event_id: optionalId(payload.source_event_id),
+        ...(eventUsesKnowledge(event) && knowledgeGate
+          ? {
+            previous_status: office.status,
+            previous_holder_npc_id: office.holder_npc_id,
+            knowledge_gate: knowledgeGate,
+          }
+          : {}),
       },
     }
   }
@@ -505,6 +560,7 @@ export function applyWorldOfficeEvent(input = {}, event = {}, options = {}) {
     const holder = optionalId(payload.holder_npc_id)
     if (!holder || office.successor?.npc_id !== holder || office.pending?.succession_id !== succession) return current
     if (office.status !== 'vacant' || office.holder_npc_id) return current
+    const knowledgeGate = pendingKnowledgeGate(event, office.pending)
     next = {
       ...office,
       status: 'held',
@@ -517,6 +573,13 @@ export function applyWorldOfficeEvent(input = {}, event = {}, options = {}) {
         candidate_npc_id: holder,
         at_minutes: nonNegativeInteger(payload.installed_at_minutes),
         source_event_id: optionalId(payload.source_event_id),
+        ...(knowledgeGate ? {
+          previous_status: office.pending.previous_status || 'held',
+          previous_holder_npc_id: Object.hasOwn(office.pending, 'previous_holder_npc_id')
+            ? office.pending.previous_holder_npc_id
+            : null,
+          knowledge_gate: knowledgeGate,
+        } : {}),
       }),
     }
   }
@@ -524,6 +587,7 @@ export function applyWorldOfficeEvent(input = {}, event = {}, options = {}) {
   if (event.event_type === 'OfficeSuccessionSkipped') {
     if (office.pending?.succession_id !== succession) return current
     const reason = SKIP_REASONS.has(text(payload.reason, 60)) ? text(payload.reason, 60) : 'candidate_missing'
+    const knowledgeGate = pendingKnowledgeGate(event, office.pending)
     next = {
       ...office,
       // Устаревший отказ не снимает нового держателя: закрываем только
@@ -538,6 +602,13 @@ export function applyWorldOfficeEvent(input = {}, event = {}, options = {}) {
         candidate_npc_id: office.successor?.npc_id ?? null,
         at_minutes: nonNegativeInteger(payload.skipped_at_minutes),
         source_event_id: optionalId(payload.source_event_id),
+        ...(knowledgeGate ? {
+          previous_status: office.pending.previous_status || 'held',
+          previous_holder_npc_id: Object.hasOwn(office.pending, 'previous_holder_npc_id')
+            ? office.pending.previous_holder_npc_id
+            : null,
+          knowledge_gate: knowledgeGate,
+        } : {}),
       }),
     }
   }
@@ -548,22 +619,65 @@ export function applyWorldOfficeEvent(input = {}, event = {}, options = {}) {
   return { schema_version: WORLD_OFFICES_SCHEMA_VERSION, offices: result }
 }
 
+function officeViewer(input, options = {}) {
+  const state = input?.world_offices && typeof input.world_offices === 'object' ? input : {}
+  const memory = options.memory ?? state.worldMemory ?? {}
+  return {
+    ...options,
+    role: options.role || (options.isAdmin === true ? 'admin' : 'player'),
+    playerId: String(options.playerId ?? ''),
+    isPartyMember: options.isPartyMember !== false,
+    isAdmin: options.isAdmin === true || options.role === 'admin',
+    memory,
+  }
+}
+
+function gateVisibleForOffice(gate, viewer) {
+  return knowledgeGateVisible(gate, viewer.memory, viewer)
+}
+
+function projectedOfficeStatus(office, viewer) {
+  let status = office.status
+  let holder = office.holder_npc_id
+  const pending = office.pending
+  if (pending?.knowledge_gate && !gateVisibleForOffice(pending.knowledge_gate, viewer)) {
+    if (pending.previous_status) {
+      status = pending.previous_status
+      holder = Object.hasOwn(pending, 'previous_holder_npc_id') ? pending.previous_holder_npc_id : null
+    }
+  } else if (pending) {
+    return { status, holder }
+  }
+
+  for (const entry of [...office.succession_history].reverse()) {
+    if (!entry.knowledge_gate || gateVisibleForOffice(entry.knowledge_gate, viewer)) break
+    if (!entry.previous_status) continue
+    status = entry.previous_status
+    holder = Object.hasOwn(entry, 'previous_holder_npc_id') ? entry.previous_holder_npc_id : null
+  }
+  return { status, holder }
+}
+
 /**
  * Игровая проекция должностей. Она намеренно не содержит successor,
  * defender_npc_ids, pending, history или причин пропуска.
  */
 export function officesForViewer(input = {}, options = {}) {
   const state = officeStateFrom(input, options)
-  const isAdmin = options.isAdmin === true || options.role === 'admin'
-  const isPartyMember = options.isPartyMember !== false
+  const viewer = officeViewer(input, options)
+  const isAdmin = viewer.isAdmin
+  const isPartyMember = viewer.isPartyMember
   return state.offices
     .filter((office) => isAdmin || office.visibility === 'party' && isPartyMember)
-    .map((office) => ({
-      office_id: office.id,
-      title: office.title,
-      status: office.status,
-      holder_npc_id: office.holder_npc_id,
-    }))
+    .map((office) => {
+      const projected = isAdmin ? office : projectedOfficeStatus(office, viewer)
+      return {
+        office_id: office.id,
+        title: office.title,
+        status: projected.status,
+        holder_npc_id: projected.holder,
+      }
+    })
 }
 
 /**
@@ -582,11 +696,13 @@ export function officeChronicleEntry(event = {}, options = {}) {
   const textByStatus = status === 'held'
     ? `Должность «${title || officeId}» получила нового держателя.`
     : `Должность «${title || officeId}» остаётся вакантной.`
+  const knowledgeGate = safeKnowledgeGate(payload.knowledge_gate)
   return {
     id: `office:${event.event_type}:${event.event_id || event.command_id || officeId}`,
     speaker: 'narrator',
     author: 'Летопись мира',
     text: textByStatus,
     turnConsumed: false,
+    ...(knowledgeGate ? { knowledge_gate: knowledgeGate } : {}),
   }
 }

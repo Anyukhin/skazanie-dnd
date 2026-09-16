@@ -1,0 +1,208 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-16T00:00:00.000Z",
+  "command": [
+    "--storage",
+    "--production-tail=10",
+    "--output=eval/world-data-storage-report-2026-09-16.json"
+  ],
+  "storage": {
+    "production": {
+      "schema_version": 1,
+      "generated_at": "2026-09-16T00:00:00.000Z",
+      "environment": {
+        "node": "v24.19.0",
+        "platform": "win32",
+        "os_release": "10.0.26200",
+        "arch": "x64",
+        "cpu_count": 16,
+        "system_memory_bytes": 33346146304,
+        "max_rss_bytes": 840728576,
+        "run_shape": "single synthetic measurement; not a p95 or concurrent load test"
+      },
+      "campaign_id": "world-data-measurement",
+      "storage_root": "temporary_cleaned_after_run",
+      "config": {
+        "initial_counts": {
+          "entities": 600,
+          "facts": 2501,
+          "relationships": 2501,
+          "quests": 400,
+          "threads": 600,
+          "epistemic_claims": 2501,
+          "summaries": 1200,
+          "knowledge_ledger": 6001
+        },
+        "expected_final_counts": {
+          "entities": 600,
+          "facts": 2511,
+          "relationships": 2501,
+          "quests": 400,
+          "threads": 600,
+          "epistemic_claims": 2501,
+          "summaries": 1200,
+          "knowledge_ledger": 6001
+        },
+        "old_limits": {
+          "entities": 500,
+          "facts": 2000,
+          "relationships": 2000,
+          "quests": 300,
+          "threads": 500,
+          "epistemic_claims": 2000,
+          "summaries": 1000,
+          "knowledge_ledger": 5000
+        },
+        "tail_events": 10,
+        "snapshot_every": 10,
+        "reducer_mode": "production_applyGameEvent_normalizeCampaignState"
+      },
+      "initial": {
+        "state_bytes": 8601236,
+        "counts": {
+          "entities": 600,
+          "facts": 2501,
+          "relationships": 2501,
+          "quests": 400,
+          "threads": 600,
+          "epistemic_claims": 2501,
+          "summaries": 1200,
+          "knowledge_ledger": 6001
+        },
+        "files": {
+          "files": 2,
+          "bytes": 12621016,
+          "event_log_bytes": 0,
+          "snapshot_bytes": 12620640,
+          "metadata_bytes": 376,
+          "other_bytes": 0
+        },
+        "memory": {
+          "rss_bytes": 397484032,
+          "heap_used_bytes": 213275144,
+          "heap_total_bytes": 335163392,
+          "external_bytes": 4725817,
+          "array_buffers_bytes": 143611
+        }
+      },
+      "final": {
+        "state_bytes": 8605172,
+        "state_counts": {
+          "entities": 600,
+          "facts": 2511,
+          "relationships": 2501,
+          "quests": 400,
+          "threads": 600,
+          "epistemic_claims": 2501,
+          "summaries": 1200,
+          "knowledge_ledger": 6001
+        },
+        "files": {
+          "files": 4,
+          "bytes": 25258342,
+          "event_log_bytes": 11007,
+          "snapshot_bytes": 25246957,
+          "metadata_bytes": 378,
+          "other_bytes": 0
+        },
+        "memory": {
+          "rss_bytes": 812634112,
+          "heap_used_bytes": 606285280,
+          "heap_total_bytes": 693268480,
+          "external_bytes": 4723140,
+          "array_buffers_bytes": 143611
+        },
+        "peak_memory": {
+          "rss_bytes": 812634112,
+          "heap_used_bytes": 606285280,
+          "heap_total_bytes": 693268480,
+          "external_bytes": 4725857,
+          "array_buffers_bytes": 143611
+        },
+        "contexts": {
+          "client_projection": {
+            "bytes": 6103943,
+            "counts": {
+              "entities": 600,
+              "facts": 2511,
+              "relationships": 250,
+              "quests": 400,
+              "threads": 600,
+              "epistemic_claims": 250,
+              "summaries": 1200,
+              "knowledge_ledger": 6001
+            }
+          },
+          "admin_projection": {
+            "bytes": 8242201,
+            "counts": {
+              "entities": 600,
+              "facts": 2511,
+              "relationships": 2501,
+              "quests": 400,
+              "threads": 600,
+              "epistemic_claims": 2501,
+              "summaries": 1200,
+              "knowledge_ledger": 6001
+            }
+          },
+          "role_contexts": {
+            "worldkeeper": {
+              "bytes": 8176,
+              "record_count": 8
+            },
+            "npc": {
+              "bytes": 8521,
+              "record_count": 8
+            },
+            "director": {
+              "bytes": 5643,
+              "record_count": 8
+            },
+            "narrator": {
+              "bytes": 1400,
+              "record_count": 0
+            }
+          }
+        }
+      },
+      "timings": {
+        "initialize_ms": 909.784,
+        "commit_ms": 13697.711,
+        "load_ms": 836.273,
+        "normalize_ms": 318.141,
+        "replay_full_ms": 13379.619,
+        "replay_snapshot_ms": 814.589
+      },
+      "retention": {
+        "expected": {
+          "entities": 600,
+          "facts": 2511,
+          "relationships": 2501,
+          "quests": 400,
+          "threads": 600,
+          "epistemic_claims": 2501,
+          "summaries": 1200,
+          "knowledge_ledger": 6001
+        },
+        "actual": {
+          "entities": 600,
+          "facts": 2511,
+          "relationships": 2501,
+          "quests": 400,
+          "threads": 600,
+          "epistemic_claims": 2501,
+          "summaries": 1200,
+          "knowledge_ledger": 6001
+        },
+        "missing": {},
+        "extra": {},
+        "passed": true,
+        "exact": true
+      },
+      "replay_identical": true,
+      "snapshot_replay_identical": true,
+      "limitation": "Initial state is materialized synthetically, while tail commit, load and replay use the production campaign reducer and normalizer. The separate synthetic growth run measures append-only persistence throughput."
+    }
+  }
+}

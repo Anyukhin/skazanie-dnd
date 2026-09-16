@@ -1,5 +1,4 @@
 import { IdempotencyConflictError } from './event-store.mjs'
-import { normalizeCampaignState } from './rules-engine.mjs'
 
 /**
  * Единственный исполнитель записи в журнал — шаг 3
@@ -185,7 +184,9 @@ export class AuthoritativeExecutor {
     if (duplicate) return { ...duplicate, replayed: true }
 
     let loaded = await this.eventStore.load(campaignId)
-    let state = normalizeCampaignState(loaded.state)
+    // `load` отдаёт каноническое состояние; Rules Engine нормализует его на
+    // своей границе перед разрешением плана.
+    let state = loaded.state
     let lastError = null
     for (let attempt = 0; attempt < this.maxAttempts; attempt += 1) {
       const resolved = this.rulesEngine.resolvePlan({ proposed_commands: commands }, state, {
@@ -204,12 +205,12 @@ export class AuthoritativeExecutor {
           command_id: key,
           events: resolved.events,
         })
-        return { ...committed, replayed: false, resolved }
+        return { ...committed, replayed: Boolean(committed.duplicate), resolved }
       } catch (error) {
         lastError = error
         if (error?.code === 'STATE_VERSION_CONFLICT' && attempt < this.maxAttempts - 1) {
           loaded = await this.eventStore.load(campaignId)
-          state = normalizeCampaignState(loaded.state)
+          state = loaded.state
           continue
         }
         if (error instanceof IdempotencyConflictError || error?.code === 'IDEMPOTENCY_CONFLICT') {
@@ -312,7 +313,7 @@ export class AuthoritativeExecutor {
           })),
           ...(preparedMetadata && Object.keys(preparedMetadata).length ? { metadata: preparedMetadata } : {}),
         })
-        return { ...committed, replayed: false }
+        return { ...committed, replayed: Boolean(committed.duplicate) }
       } catch (error) {
         if (error?.code === 'STATE_VERSION_CONFLICT' && attempt < this.maxAttempts - 1) continue
         if (error instanceof IdempotencyConflictError || error?.code === 'IDEMPOTENCY_CONFLICT') {
@@ -359,7 +360,7 @@ export class AuthoritativeExecutor {
       events: [{ ...event, campaign_id: campaignId }],
       ...(forceSnapshot ? { forceSnapshot: true } : {}),
     })
-    return { ...committed, replayed: false }
+    return { ...committed, replayed: Boolean(committed.duplicate) }
   }
 }
 

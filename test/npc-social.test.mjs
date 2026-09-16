@@ -233,7 +233,7 @@ test('a server-confirmed social turn is event sourced and replayable with relati
   })
 })
 
-test('NPC dossier is bounded, deduplicated, visibility-safe and survives replay plus arc carry-over', () => {
+test('NPC dossier retains canonical history, bounds player projection, and survives replay plus arc carry-over', () => {
   const initial = campaign()
   const privateConversation = {
     event_id: 'event:private-conversation',
@@ -285,8 +285,11 @@ test('NPC dossier is bounded, deduplicated, visibility-safe and survives replay 
       visibility: 'party',
     })
   }
-  assert.equal(accumulated.social.npcs[0].dossier.length, NPC_DOSSIER_PROFILE_LIMIT)
-  assert.equal(new Set(accumulated.social.npcs[0].dossier.map((entry) => entry.id)).size, NPC_DOSSIER_PROFILE_LIMIT)
+  const canonicalDossierCount = 1 + NPC_DOSSIER_PROFILE_LIMIT + 4
+  assert.equal(accumulated.social.npcs[0].dossier.length, canonicalDossierCount)
+  assert.equal(new Set(accumulated.social.npcs[0].dossier.map((entry) => entry.id)).size, canonicalDossierCount)
+  const accumulatedHeroView = npcSocialForViewer(accumulated.social, { playerId: 'hero', isPartyMember: true })
+  assert.equal(accumulatedHeroView.npcs[0].dossier.length, NPC_DOSSIER_PROFILE_LIMIT)
 
   const heroView = npcSocialForViewer(once.social, { playerId: 'hero', isPartyMember: true })
   const rogueView = npcSocialForViewer(once.social, { playerId: 'rogue', isPartyMember: true })
@@ -451,6 +454,51 @@ test('NPC receives only its structured beliefs and rumors, keeps them separate f
   assert.doesNotMatch(sent, /belief:other|Another private belief/u)
   assert.deepEqual(result.disclosed_fact_ids, [])
   assert.deepEqual(result.disclosed_claim_ids, ['rumor:marta-key'])
+})
+
+test('first private NPC fact disclosure keeps the reply and knowledge reveal with the active hero', async () => {
+  const state = campaign()
+  state.worldMemory = {
+    ...state.worldMemory,
+    entities: [
+      ...(state.worldMemory.entities ?? []),
+      { id: 'marta', kind: 'npc', name: 'Marta', summary: 'Trader', visibility: 'party', aliases: [], tags: [] },
+    ],
+    facts: [{
+      id: 'fact:private-archive', subject_id: 'marta', predicate: 'knows',
+      object: 'The sealed archive is beneath the east tower.',
+      summary: 'Запечатанный архив находится под восточной башней.',
+      visibility: 'gm_only', source_event_ids: [], source_command_id: '',
+      supersedes_fact_id: '', status: 'active', recorded_at_minutes: 0,
+    }],
+  }
+  state.social.npcs[0].known_fact_ids = ['fact:private-archive']
+  let request = null
+  const controller = new NpcSocialController({
+    llmClient: { completeJson: async (input) => {
+      request = input
+      return {
+        reply: 'Под восточной башней есть запечатанный архив.',
+        disclosed_fact_ids: ['fact:private-archive'], disclosed_claim_ids: [], relationship_delta: 0,
+      }
+    } },
+  })
+
+  const social = await controller.respond({
+    state, playerId: 'hero', npcId: 'marta', message: 'Что известно о запечатанном архиве?', turnId: 'private-first-fact',
+  })
+  assert.equal(social.visibility, 'specific_player')
+  assert.equal(social.conversation.visibility, 'specific_player')
+  assert.match(request.messages[1].content, /fact:private-archive/u)
+
+  const resolved = resolveCommand({
+    command_type: 'RecordNpcSocialTurn', actor_id: 'hero', conversation: social.conversation,
+  }, state, { diceService: dice(), context: { isSocialController: true } })
+  const conversationEvent = resolved.events.find((event) => event.event_type === 'NpcConversationRecorded')
+  const knowledgeEvent = resolved.events.find((event) => event.event_type === 'KnowledgeRevealed')
+  assert.equal(conversationEvent.visibility, 'specific_player')
+  assert.deepEqual(knowledgeEvent.target_ids, ['hero'])
+  assert.equal(knowledgeEvent.visibility, 'specific_player')
 })
 
 test('NPC retrieval ranks facts by the player message deterministically without expanding the disclosure allowlist', async () => {

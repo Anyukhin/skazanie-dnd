@@ -54,10 +54,15 @@ test('скрытый NPC не попадает в бриф и не привяз�
   const state = scene()
   state.social.npcs.push({ id: 'secret', name: 'Тайный наблюдатель', location: state.scene.location, visibility: 'gm_only', available: true })
   assert.doesNotMatch(JSON.stringify(adjudicationBrief(state, 'hero', 'Осматриваюсь')), /Тайный наблюдатель|"secret"/u)
-  const response = await stub({ target_id: 'secret', effect_target: 'secret', effect: 'distract' })
+  const response = await stub({
+    goal_summary: 'Отвлечь наблюдателя', approach_summary: 'Шумом переключить внимание', obstacle: 'наблюдатель',
+    ability: 'cha', skill: 'performance', plausibility: 'plausible', risk: 'minor', action_cost: 'action',
+    effect: 'distract', effect_target: 'secret', target_id: 'secret', proficiency: 'none', consequence_type: 'noise',
+  })
     .read(state, 'hero', 'Отвлекаю Тайного наблюдателя', interpretFreeAction('Отвлекаю Тайного наблюдателя'))
   assert.notEqual(response.target_id, 'secret')
   assert.notEqual(response.effect_target, 'secret')
+  assert.ok(response.reference_ambiguities.includes('target_id'), 'неподтверждённая цель должна перейти в уточнение до расхода')
 })
 
 test('бриф даёт агенту лист, сцену, участников и экономию хода — и ничего сверх', () => {
@@ -165,6 +170,22 @@ test('отказ модели возвращает игру к детермин�
   assert.equal(reading.ability, fallback.ability)
   assert.equal(reading.skill, fallback.skill)
   assert.match(reading.source, /after-agent-error$/)
+})
+
+test('структурно неполный или типологически неверный ответ Арбитра уходит в безопасный fallback', async () => {
+  const valid = {
+    goal_summary: 'Проверить проход', approach_summary: 'Осмотреть замок', obstacle: 'замок',
+    ability: 'wis', skill: 'perception', plausibility: 'plausible', risk: 'minor', action_cost: 'action',
+    effect: 'none', proficiency: 'none', consequence_type: 'time', required_means: [],
+  }
+  for (const payload of [
+    { ...valid, required_means: ['верёвка', 4] },
+    { ...valid, risk: 'reckless' },
+    {},
+  ]) {
+    const result = await stub(payload).read(scene(), 'hero', 'Осматриваю замок', interpretFreeAction('Осматриваю замок'))
+    assert.match(result.source, /after-agent-error$/u)
+  }
 })
 
 test('без ключа модели арбитр вообще не вмешивается', async () => {

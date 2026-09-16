@@ -1,5 +1,14 @@
 import { createHash } from 'node:crypto'
-import { normalizeQuestResponsibility, questGiverId, questIsImpossible, questInvalidationDraft } from './quest-consequences.mjs'
+import {
+  normalizeQuestKnowledgeHistory,
+  normalizeQuestResponsibility,
+  questForKnowledge,
+  questGiverId,
+  questIsImpossible,
+  questInvalidationDraft,
+  recordQuestKnowledge,
+} from './quest-consequences.mjs'
+import { retentionMode } from './retention-context.mjs'
 
 const ENTITY_KINDS = new Set(['location', 'npc', 'faction', 'item', 'event', 'concept'])
 const QUEST_STATUSES = new Set(['hidden', 'offered', 'active', 'completed', 'failed', 'abandoned'])
@@ -48,6 +57,11 @@ const clone = (value) => structuredClone(value)
 const text = (value, maximum = 500) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
 const strings = (value, maximum = 120, limit = 30) => [...new Set((Array.isArray(value) ? value : [])
   .map((item) => text(item, maximum)).filter(Boolean))].slice(0, limit)
+// Пределы относятся к проверке команды. После принятия записи её списковые
+// поля являются частью долговечного состояния и не должны укорачиваться при
+// нормализации снимка или replay.
+const persistedStrings = (value, maximum = 120) => [...new Set((Array.isArray(value) ? value : [])
+  .map((item) => text(item, maximum)).filter(Boolean))]
 const integer = (value, fallback = 0) => Number.isSafeInteger(Number(value)) ? Number(value) : fallback
 
 function stableId(namespace, ...parts) {
@@ -100,8 +114,8 @@ function safeEntity(value = {}) {
   const kind = ENTITY_KINDS.has(text(value.kind, 30)) ? text(value.kind, 30) : 'concept'
   return {
     id: text(value.id, 120), kind, name: text(value.name, 160), summary: text(value.summary, 1_000),
-    aliases: strings(value.aliases, 120, 20), visibility: VISIBILITIES.has(value.visibility) ? value.visibility : 'gm_only',
-    tags: strings(value.tags, 60, 20),
+    aliases: persistedStrings(value.aliases, 120), visibility: VISIBILITIES.has(value.visibility) ? value.visibility : 'gm_only',
+    tags: persistedStrings(value.tags, 60),
   }
 }
 
@@ -110,7 +124,7 @@ function safeFact(value = {}) {
     id: text(value.id, 120), subject_id: text(value.subject_id, 120), predicate: text(value.predicate, 120),
     object: text(value.object, 1_000), summary: text(value.summary, 1_000),
     visibility: VISIBILITIES.has(value.visibility) ? value.visibility : 'gm_only',
-    source_event_ids: strings(value.source_event_ids, 120, 30), source_command_id: text(value.source_command_id, 160),
+    source_event_ids: persistedStrings(value.source_event_ids, 120), source_command_id: text(value.source_command_id, 160),
     supersedes_fact_id: text(value.supersedes_fact_id, 120), status: value.status === 'superseded' ? 'superseded' : 'active',
     recorded_at_minutes: recordedAt(value.recorded_at_minutes),
   }
@@ -121,7 +135,7 @@ function safeRelationship(value = {}) {
     id: text(value.id, 120), from_entity_id: text(value.from_entity_id, 120), relation: text(value.relation, 120),
     to_entity_id: text(value.to_entity_id, 120), summary: text(value.summary, 1_000),
     visibility: VISIBILITIES.has(value.visibility) ? value.visibility : 'gm_only',
-    source_event_ids: strings(value.source_event_ids, 120, 30), source_command_id: text(value.source_command_id, 160),
+    source_event_ids: persistedStrings(value.source_event_ids, 120), source_command_id: text(value.source_command_id, 160),
     supersedes_relationship_id: text(value.supersedes_relationship_id, 120),
     status: RELATION_STATUSES.has(value.status) ? value.status : 'active',
     recorded_at_minutes: recordedAt(value.recorded_at_minutes),
@@ -134,10 +148,11 @@ function safeQuest(value = {}) {
     id: text(value.id, 120), title: text(value.title, 180), summary: text(value.summary, 1_000),
     status: QUEST_STATUSES.has(value.status) ? value.status : 'active',
     visibility: VISIBILITIES.has(value.visibility) ? value.visibility : 'party',
-    entity_ids: strings(value.entity_ids, 120, 30), objectives: strings(value.objectives, 300, 20),
+    entity_ids: persistedStrings(value.entity_ids, 120), objectives: persistedStrings(value.objectives, 300),
     clock: clock(value.clock), recorded_at_minutes: recordedAt(value.recorded_at_minutes),
     ...(value.stay_in_location === true ? { stay_in_location: true } : {}),
     ...(responsibility ? { responsibility, giver_npc_id: text(value.giver_npc_id, 120) || null } : {}),
+    ...(value.knowledge_history != null ? { knowledge_history: normalizeQuestKnowledgeHistory(value.knowledge_history) } : {}),
   }
 }
 
@@ -146,8 +161,8 @@ function safeThread(value = {}) {
     id: text(value.id, 120), title: text(value.title, 180), summary: text(value.summary, 1_000),
     status: THREAD_STATUSES.has(value.status) ? value.status : 'active',
     visibility: VISIBILITIES.has(value.visibility) ? value.visibility : 'party',
-    entity_ids: strings(value.entity_ids, 120, 30), quest_ids: strings(value.quest_ids, 120, 30),
-    clock: clock(value.clock), source_event_ids: strings(value.source_event_ids, 120, 30),
+    entity_ids: persistedStrings(value.entity_ids, 120), quest_ids: persistedStrings(value.quest_ids, 120),
+    clock: clock(value.clock), source_event_ids: persistedStrings(value.source_event_ids, 120),
     source_command_id: text(value.source_command_id, 160), recorded_at_minutes: recordedAt(value.recorded_at_minutes),
   }
 }
@@ -159,8 +174,8 @@ function safeEpistemicClaim(value = {}) {
     predicate: text(value.predicate, 120), claim: text(value.claim, 1_000), summary: text(value.summary, 1_000),
     visibility: VISIBILITIES.has(value.visibility) ? value.visibility : 'gm_only',
     truth_status: TRUTH_STATUSES.has(value.truth_status) ? value.truth_status : 'unknown',
-    source_event_ids: strings(value.source_event_ids, 120, 30), source_command_id: text(value.source_command_id, 160),
-    truth_source_event_ids: strings(value.truth_source_event_ids, 120, 30),
+    source_event_ids: persistedStrings(value.source_event_ids, 120), source_command_id: text(value.source_command_id, 160),
+    truth_source_event_ids: persistedStrings(value.truth_source_event_ids, 120),
     truth_source_command_id: text(value.truth_source_command_id, 160),
     recorded_at_minutes: recordedAt(value.recorded_at_minutes),
   }
@@ -171,8 +186,8 @@ function safeSummary(value = {}) {
     id: text(value.id, 120), kind: SUMMARY_KINDS.has(value.kind) ? value.kind : 'scene',
     title: text(value.title, 180), summary: text(value.summary, 2_000),
     visibility: VISIBILITIES.has(value.visibility) ? value.visibility : 'party',
-    entity_ids: strings(value.entity_ids, 120, 30), thread_ids: strings(value.thread_ids, 120, 30),
-    source_event_ids: strings(value.source_event_ids, 120, 50), source_command_id: text(value.source_command_id, 160),
+    entity_ids: persistedStrings(value.entity_ids, 120), thread_ids: persistedStrings(value.thread_ids, 120),
+    source_event_ids: persistedStrings(value.source_event_ids, 120), source_command_id: text(value.source_command_id, 160),
     recorded_at_minutes: recordedAt(value.recorded_at_minutes),
   }
 }
@@ -186,28 +201,30 @@ function safeKnowledgeEntry(value = {}) {
   return {
     id: text(value.id || stableId('knowledge', heroId, factId, value.revealed_event_id), 120),
     hero_id: heroId, fact_id: factId, summary: text(value.summary, 1_000),
-    source_event_ids: strings(value.source_event_ids, 120, 30), source_command_id: text(value.source_command_id, 160),
+    source_event_ids: persistedStrings(value.source_event_ids, 120), source_command_id: text(value.source_command_id, 160),
     revealed_event_id: text(value.revealed_event_id, 120), source_kind: sourceKind,
     recorded_at_minutes: recordedAt(value.recorded_at_minutes),
   }
 }
 
 function indexKnowledge(entries) {
-  const result = {}
+  const byHero = new Map()
   for (const entry of entries) {
     if (!entry.hero_id || !entry.fact_id) continue
-    result[entry.hero_id] = [...new Set([...(result[entry.hero_id] ?? []), entry.fact_id])]
+    let known = byHero.get(entry.hero_id)
+    if (!known) byHero.set(entry.hero_id, known = new Set())
+    known.add(entry.fact_id)
   }
-  return result
+  return Object.fromEntries([...byHero].map(([heroId, known]) => [heroId, [...known]]))
 }
 
-function legacyKnowledgeEntries(source, factIds) {
+function currentLegacyKnowledgeEntries(source, persistedKeys) {
   const entries = []
-  for (const [heroId, raw] of Object.entries(source.knowledge ?? {}).slice(0, 100)) {
+  for (const [heroId, raw] of Object.entries(source.knowledge ?? {})) {
     const hero = text(heroId, 120)
     const ids = Array.isArray(raw) ? raw : raw?.fact_ids
-    for (const factId of strings(ids, 120, 2_000)) {
-      if (!hero || !factIds.has(factId)) continue
+    for (const factId of persistedStrings(ids, 120)) {
+      if (!hero || persistedKeys.has(`${hero}\0${factId}`)) continue
       entries.push(safeKnowledgeEntry({
         id: stableId('knowledge-legacy', hero, factId), hero_id: hero, fact_id: factId,
         summary: '', source_event_ids: [], source_command_id: 'legacy-world-memory', source_kind: 'legacy',
@@ -222,27 +239,16 @@ function legacyKnowledgeEntries(source, factIds) {
  * `knowledge_revealed` entries. Canonical truth remains in `facts`; NPC beliefs
  * and rumours deliberately live in the separate `epistemic_claims` collection.
  */
-export function normalizeWorldMemory(input = {}) {
+function normalizeWorldMemoryCurrent(input = {}) {
   const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
-  const entities = (Array.isArray(source.entities) ? source.entities : []).map(safeEntity).filter((item) => item.id && item.name).slice(0, 500)
-  const entityIds = new Set(entities.map((item) => item.id))
+  const entities = (Array.isArray(source.entities) ? source.entities : []).map(safeEntity)
   const facts = (Array.isArray(source.facts) ? source.facts : []).map(safeFact)
-    .filter((item) => item.id && item.subject_id && item.predicate && entityIds.has(item.subject_id)).slice(0, 2_000)
-  const factIds = new Set(facts.map((item) => item.id))
   const relationships = (Array.isArray(source.relationships) ? source.relationships : []).map(safeRelationship)
-    .filter((item) => item.id && item.from_entity_id && item.relation && item.to_entity_id && entityIds.has(item.from_entity_id) && entityIds.has(item.to_entity_id)).slice(0, 2_000)
-  const quests = (Array.isArray(source.quests) ? source.quests : []).map(safeQuest).filter((item) => item.id && item.title).slice(0, 300)
-  const questIds = new Set(quests.map((item) => item.id))
+  const quests = (Array.isArray(source.quests) ? source.quests : []).map(safeQuest)
   const threads = (Array.isArray(source.threads) ? source.threads : []).map(safeThread)
-    .filter((item) => item.id && item.title && item.entity_ids.every((entityId) => entityIds.has(entityId)) && item.quest_ids.every((questId) => questIds.has(questId))).slice(0, 500)
-  const threadIds = new Set(threads.map((item) => item.id))
   const epistemic_claims = (Array.isArray(source.epistemic_claims) ? source.epistemic_claims : []).map(safeEpistemicClaim)
-    .filter((item) => item.id && item.holder_entity_id && item.claim && entityIds.has(item.holder_entity_id)
-      && (!item.subject_entity_id || entityIds.has(item.subject_entity_id))).slice(0, 2_000)
   const summaries = (Array.isArray(source.summaries) ? source.summaries : []).map(safeSummary)
-    .filter((item) => item.id && item.title && item.summary && item.entity_ids.every((entityId) => entityIds.has(entityId)) && item.thread_ids.every((threadId) => threadIds.has(threadId))).slice(-1_000)
 
-  const legacyEntries = legacyKnowledgeEntries(source, factIds)
   const persistedLedger = Array.isArray(source.knowledge_ledger)
     ? source.knowledge_ledger
     // An explicitly absent v2 ledger means that a legacy snapshot is being
@@ -255,14 +261,200 @@ export function normalizeWorldMemory(input = {}) {
   // Some in-flight v1→v2 migrations can contain both a new empty ledger and
   // the old index. Preserve any old entry not yet represented by the ledger.
   const persistedKeys = new Set(persistedLedger.map((entry) => `${text(entry?.hero_id, 120)}\0${text(entry?.fact_id, 120)}`))
-  const rawLedger = [...persistedLedger, ...legacyEntries.filter((entry) => !persistedKeys.has(`${entry.hero_id}\0${entry.fact_id}`))]
+  const rawLedger = [...persistedLedger, ...currentLegacyKnowledgeEntries(source, persistedKeys)]
   const knownEntries = rawLedger.map(safeKnowledgeEntry)
+  const knowledge_revealed = knownEntries
+  return {
+    schema_version: 2, entities, facts, relationships, quests, threads, epistemic_claims, summaries,
+    knowledge: indexKnowledge(knowledge_revealed), knowledge_revealed, knowledge_ledger: knowledge_revealed,
+  }
+}
+
+const legacyList = (value, maximum, limit) => persistedStrings(value, maximum).slice(0, limit)
+
+function legacyEntity(value = {}) {
+  const item = safeEntity(value)
+  return { ...item, aliases: item.aliases.slice(0, 20), tags: item.tags.slice(0, 20) }
+}
+
+function legacyFact(value = {}) {
+  const item = safeFact(value)
+  return { ...item, source_event_ids: item.source_event_ids.slice(0, 30) }
+}
+
+function legacyRelationship(value = {}) {
+  const item = safeRelationship(value)
+  return { ...item, source_event_ids: item.source_event_ids.slice(0, 30) }
+}
+
+function legacyQuest(value = {}) {
+  const item = safeQuest(value)
+  const { knowledge_history: _knowledgeHistory, ...withoutHistory } = item
+  return {
+    ...withoutHistory,
+    entity_ids: item.entity_ids.slice(0, 30), objectives: item.objectives.slice(0, 20),
+  }
+}
+
+function legacyThread(value = {}) {
+  const item = safeThread(value)
+  return {
+    ...item, entity_ids: item.entity_ids.slice(0, 30), quest_ids: item.quest_ids.slice(0, 30),
+    source_event_ids: item.source_event_ids.slice(0, 30),
+  }
+}
+
+function legacyClaim(value = {}) {
+  const item = safeEpistemicClaim(value)
+  return {
+    ...item, source_event_ids: item.source_event_ids.slice(0, 30), truth_source_event_ids: item.truth_source_event_ids.slice(0, 30),
+  }
+}
+
+function legacySummary(value = {}) {
+  const item = safeSummary(value)
+  return {
+    ...item, entity_ids: item.entity_ids.slice(0, 30), thread_ids: item.thread_ids.slice(0, 30), source_event_ids: item.source_event_ids.slice(0, 50),
+  }
+}
+
+function legacyKnowledgeEntry(value = {}) {
+  const item = safeKnowledgeEntry(value)
+  return { ...item, source_event_ids: item.source_event_ids.slice(0, 30) }
+}
+
+function legacyKnowledgeEntries(source, factIds) {
+  const entries = []
+  for (const [heroId, raw] of Object.entries(source.knowledge ?? {}).slice(0, 100)) {
+    const hero = text(heroId, 120)
+    const ids = Array.isArray(raw) ? raw : raw?.fact_ids
+    for (const factId of legacyList(ids, 120, 2_000)) {
+      if (!hero || !factIds.has(factId)) continue
+      entries.push(legacyKnowledgeEntry({
+        id: stableId('knowledge-legacy', hero, factId), hero_id: hero, fact_id: factId,
+        summary: '', source_event_ids: [], source_command_id: 'legacy-world-memory', source_kind: 'legacy',
+      }))
+    }
+  }
+  return entries
+}
+
+/** Воспроизводит нормализацию до перехода на бессрочное хранение памяти. */
+export function normalizeWorldMemoryLegacy(input = {}) {
+  const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
+  const entities = (Array.isArray(source.entities) ? source.entities : []).map(legacyEntity).filter((item) => item.id && item.name).slice(0, 500)
+  const entityIds = new Set(entities.map((item) => item.id))
+  const facts = (Array.isArray(source.facts) ? source.facts : []).map(legacyFact)
+    .filter((item) => item.id && item.subject_id && item.predicate && entityIds.has(item.subject_id)).slice(0, 2_000)
+  const factIds = new Set(facts.map((item) => item.id))
+  const relationships = (Array.isArray(source.relationships) ? source.relationships : []).map(legacyRelationship)
+    .filter((item) => item.id && item.from_entity_id && item.relation && item.to_entity_id && entityIds.has(item.from_entity_id) && entityIds.has(item.to_entity_id)).slice(0, 2_000)
+  const quests = (Array.isArray(source.quests) ? source.quests : []).map(legacyQuest).filter((item) => item.id && item.title).slice(0, 300)
+  const questIds = new Set(quests.map((item) => item.id))
+  const threads = (Array.isArray(source.threads) ? source.threads : []).map(legacyThread)
+    .filter((item) => item.id && item.title && item.entity_ids.every((entityId) => entityIds.has(entityId)) && item.quest_ids.every((questId) => questIds.has(questId))).slice(0, 500)
+  const threadIds = new Set(threads.map((item) => item.id))
+  const epistemic_claims = (Array.isArray(source.epistemic_claims) ? source.epistemic_claims : []).map(legacyClaim)
+    .filter((item) => item.id && item.holder_entity_id && item.claim && entityIds.has(item.holder_entity_id)
+      && (!item.subject_entity_id || entityIds.has(item.subject_entity_id))).slice(0, 2_000)
+  const summaries = (Array.isArray(source.summaries) ? source.summaries : []).map(legacySummary)
+    .filter((item) => item.id && item.title && item.summary && item.entity_ids.every((entityId) => entityIds.has(entityId)) && item.thread_ids.every((threadId) => threadIds.has(threadId))).slice(-1_000)
+  const legacyEntries = legacyKnowledgeEntries(source, factIds)
+  const persistedLedger = Array.isArray(source.knowledge_ledger)
+    ? source.knowledge_ledger
+    : Object.hasOwn(source, 'knowledge_ledger')
+      ? []
+      : Array.isArray(source.knowledge_revealed)
+        ? source.knowledge_revealed
+        : []
+  const persistedKeys = new Set(persistedLedger.map((entry) => `${text(entry?.hero_id, 120)}\0${text(entry?.fact_id, 120)}`))
+  const rawLedger = [...persistedLedger, ...legacyEntries.filter((entry) => !persistedKeys.has(`${entry.hero_id}\0${entry.fact_id}`))]
+  const knownEntries = rawLedger.map(legacyKnowledgeEntry)
     .filter((item) => item.id && item.hero_id && factIds.has(item.fact_id)).slice(-5_000)
   const knowledge_revealed = [...new Map(knownEntries.map((item) => [item.id, item])).values()]
   return {
     schema_version: 2, entities, facts, relationships, quests, threads, epistemic_claims, summaries,
     knowledge: indexKnowledge(knowledge_revealed), knowledge_revealed, knowledge_ledger: knowledge_revealed,
   }
+}
+
+export function normalizeWorldMemory(input = {}) {
+  return retentionMode() === 'legacy' ? normalizeWorldMemoryLegacy(input) : normalizeWorldMemoryCurrent(input)
+}
+
+function memoryIssue(issues, collection, record, field, targetId, code = 'WORLD_MEMORY_BROKEN_REFERENCE', index = null) {
+  issues.push({
+    code, collection, id: text(record?.id, 120), field,
+    ...(targetId == null ? {} : { target_id: text(targetId, 120) }),
+    ...(index == null ? {} : { index }),
+  })
+}
+
+/**
+ * Возвращает детерминированную диагностику целостности, не изменяя каноническую
+ * память. Битые записи остаются в нормализованном состоянии, чтобы оператор
+ * мог исправить или восстановить их по ID, а не потерять при чтении.
+ */
+export function diagnoseWorldMemory(input = {}) {
+  const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
+  const memory = normalizeWorldMemoryCurrent(source)
+  const issues = []
+  const collections = ['entities', 'facts', 'relationships', 'quests', 'threads', 'epistemic_claims', 'summaries', 'knowledge_ledger']
+  for (const collection of collections) {
+    if (Object.hasOwn(source, collection) && !Array.isArray(source[collection])) {
+      memoryIssue(issues, collection, {}, null, null, 'WORLD_MEMORY_COLLECTION_INVALID')
+    }
+  }
+  const ids = Object.fromEntries(collections.map((collection) => [collection, new Set()]))
+  for (const collection of collections) {
+    for (const [index, record] of memory[collection].entries()) {
+      if (!record.id) memoryIssue(issues, collection, record, 'id', null, 'WORLD_MEMORY_RECORD_ID_INVALID', index)
+      else if (ids[collection].has(record.id)) memoryIssue(issues, collection, record, 'id', record.id, 'WORLD_MEMORY_DUPLICATE_ID', index)
+      else ids[collection].add(record.id)
+    }
+  }
+  const checkRefs = (collection, records, field, targetCollection, getTargets) => {
+    for (const [index, record] of records.entries()) {
+      for (const targetId of getTargets(record)) {
+        if (!targetId || !ids[targetCollection].has(targetId)) memoryIssue(issues, collection, record, field, targetId, undefined, index)
+      }
+    }
+  }
+  checkRefs('facts', memory.facts, 'subject_id', 'entities', (record) => [record.subject_id])
+  checkRefs('facts', memory.facts, 'supersedes_fact_id', 'facts', (record) => record.supersedes_fact_id ? [record.supersedes_fact_id] : [])
+  checkRefs('relationships', memory.relationships, 'from_entity_id', 'entities', (record) => [record.from_entity_id])
+  checkRefs('relationships', memory.relationships, 'to_entity_id', 'entities', (record) => [record.to_entity_id])
+  checkRefs('relationships', memory.relationships, 'supersedes_relationship_id', 'relationships', (record) => record.supersedes_relationship_id ? [record.supersedes_relationship_id] : [])
+  checkRefs('quests', memory.quests, 'entity_ids', 'entities', (record) => record.entity_ids)
+  checkRefs('threads', memory.threads, 'entity_ids', 'entities', (record) => record.entity_ids)
+  checkRefs('threads', memory.threads, 'quest_ids', 'quests', (record) => record.quest_ids)
+  checkRefs('epistemic_claims', memory.epistemic_claims, 'holder_entity_id', 'entities', (record) => [record.holder_entity_id])
+  checkRefs('epistemic_claims', memory.epistemic_claims, 'subject_entity_id', 'entities', (record) => record.subject_entity_id ? [record.subject_entity_id] : [])
+  checkRefs('summaries', memory.summaries, 'entity_ids', 'entities', (record) => record.entity_ids)
+  checkRefs('summaries', memory.summaries, 'thread_ids', 'threads', (record) => record.thread_ids)
+  checkRefs('knowledge_ledger', memory.knowledge_ledger, 'fact_id', 'facts', (record) => [record.fact_id])
+  for (const [index, entity] of memory.entities.entries()) {
+    if (!entity.name) memoryIssue(issues, 'entities', entity, 'name', null, 'WORLD_MEMORY_ENTITY_NAME_INVALID', index)
+  }
+  for (const [index, fact] of memory.facts.entries()) {
+    if (!fact.predicate || (!fact.object && !fact.summary)) memoryIssue(issues, 'facts', fact, 'content', null, 'WORLD_MEMORY_FACT_CONTENT_INVALID', index)
+  }
+  for (const [index, relationship] of memory.relationships.entries()) {
+    if (!relationship.relation || !relationship.summary) memoryIssue(issues, 'relationships', relationship, 'content', null, 'WORLD_MEMORY_RELATIONSHIP_CONTENT_INVALID', index)
+  }
+  for (const [index, quest] of memory.quests.entries()) {
+    if (!quest.title) memoryIssue(issues, 'quests', quest, 'title', null, 'WORLD_MEMORY_QUEST_TITLE_INVALID', index)
+  }
+  for (const [index, thread] of memory.threads.entries()) {
+    if (!thread.title) memoryIssue(issues, 'threads', thread, 'title', null, 'WORLD_MEMORY_THREAD_TITLE_INVALID', index)
+  }
+  for (const [index, claim] of memory.epistemic_claims.entries()) {
+    if (!claim.claim) memoryIssue(issues, 'epistemic_claims', claim, 'claim', null, 'WORLD_MEMORY_CLAIM_INVALID', index)
+  }
+  for (const [index, summary] of memory.summaries.entries()) {
+    if (!summary.title || !summary.summary) memoryIssue(issues, 'summaries', summary, 'content', null, 'WORLD_MEMORY_SUMMARY_INVALID', index)
+  }
+  return issues
 }
 
 function normalizeEntityInput(input) {
@@ -551,14 +743,17 @@ function appendKnowledge(memory, event, factId, targetIds, payload = {}) {
     })
     if (!entries.some((candidate) => candidate.id === entry.id)) entries.push(entry)
   }
-  memory.knowledge_revealed = entries.slice(-5_000)
+  memory.knowledge_revealed = retentionMode() === 'legacy' ? entries.slice(-5_000) : entries
   memory.knowledge_ledger = memory.knowledge_revealed
   memory.knowledge = indexKnowledge(memory.knowledge_revealed)
   return memory
 }
 
-export function applyWorldMemoryEvent(input, event) {
-  const memory = normalizeWorldMemory(input)
+/** prepared разрешён только владельцу уже нормализованной приватной копии. */
+export function applyWorldMemoryEvent(input, event, { prepared = false } = {}) {
+  const owned = prepared && retentionMode() !== 'legacy'
+  const normalize = retentionMode() === 'legacy' ? normalizeWorldMemoryLegacy : normalizeWorldMemory
+  const memory = owned ? input : normalize(input)
   const payload = event.payload ?? {}
   if (event.event_type === 'WorldEntityUpserted') {
     const entity = safeEntity(payload.entity)
@@ -579,30 +774,35 @@ export function applyWorldMemoryEvent(input, event) {
   }
   if (event.event_type === 'QuestUpserted') {
     const quest = safeQuest(payload.quest)
-    memory.quests = [...memory.quests.filter((item) => item.id !== quest.id), quest]
+    const previous = memory.quests.find((item) => item.id === quest.id)
+    const history = previous ? recordQuestKnowledge(previous, event).knowledge_history : null
+    memory.quests = [...memory.quests.filter((item) => item.id !== quest.id), {
+      ...quest,
+      ...(history ? { knowledge_history: history } : {}),
+    }]
   }
   if (event.event_type === 'QuestClockAdvanced') {
     memory.quests = memory.quests.map((quest) => {
       if (quest.id !== payload.quest_id) return quest
       const current = Math.min(quest.clock.max, quest.clock.current + Math.max(1, integer(payload.amount, 1)))
-      return { ...quest, clock: { ...quest.clock, current, triggered: current >= quest.clock.max } }
+      return { ...recordQuestKnowledge(quest, event), clock: { ...quest.clock, current, triggered: current >= quest.clock.max } }
     })
   }
-  if (event.event_type === 'QuestResolved' || event.event_type === 'QuestInvalidated' && payload.schema_version === 1) {
+  if (event.event_type === 'QuestResolved' || event.event_type === 'QuestInvalidated' && [1, 2].includes(payload.schema_version)) {
     memory.quests = memory.quests.map((quest) => quest.id === payload.quest_id ? {
-      ...quest,
+      ...recordQuestKnowledge(quest, event),
       status: questStatusForOutcome(payload.outcome),
       summary: text(payload.summary, 1_000) || quest.summary,
       ...(payload.stay_in_location === true && payload.event_schema_version === 2 ? { stay_in_location: true } : {}),
     } : quest)
   }
-  if (event.event_type === 'QuestAssignmentChanged' && payload.schema_version === 1) {
+  if (event.event_type === 'QuestAssignmentChanged' && [1, 2].includes(payload.schema_version)) {
     memory.quests = memory.quests.map((quest) => quest.id === payload.quest_id ? {
-      ...quest, giver_npc_id: text(payload.giver_npc_id, 120) || null,
+      ...recordQuestKnowledge(quest, event), giver_npc_id: text(payload.giver_npc_id, 120) || null,
     } : quest)
   }
-  if (event.event_type === 'QuestAccepted' && payload.schema_version === 1) {
-    memory.quests = memory.quests.map((quest) => quest.id === payload.quest_id ? { ...quest, status: 'active' } : quest)
+  if (event.event_type === 'QuestAccepted' && [1, 2].includes(payload.schema_version)) {
+    memory.quests = memory.quests.map((quest) => quest.id === payload.quest_id ? { ...recordQuestKnowledge(quest, event), status: 'active' } : quest)
   }
   if (event.event_type === 'NarrativeThreadUpserted') {
     const thread = safeThread(payload.thread)
@@ -622,14 +822,15 @@ export function applyWorldMemoryEvent(input, event) {
   if (event.event_type === 'EpistemicClaimTruthResolved') {
     memory.epistemic_claims = memory.epistemic_claims.map((claim) => claim.id === payload.claim_id ? {
       ...claim, truth_status: TRUTH_STATUSES.has(payload.truth_status) ? payload.truth_status : claim.truth_status,
-      truth_source_event_ids: strings(payload.source_event_ids, 120, 30), truth_source_command_id: text(event.command_id, 160),
+      truth_source_event_ids: persistedStrings(payload.source_event_ids, 120), truth_source_command_id: text(event.command_id, 160),
     } : claim)
   }
   if (event.event_type === 'NarrativeSummaryRecorded') {
     const summary = safeSummary(payload.summary)
-    memory.summaries = [...memory.summaries.filter((item) => item.id !== summary.id), summary].slice(-1_000)
+    memory.summaries = [...memory.summaries.filter((item) => item.id !== summary.id), summary]
+    if (retentionMode() === 'legacy') memory.summaries = memory.summaries.slice(-1_000)
   }
-  return normalizeWorldMemory(memory)
+  return owned ? memory : normalize(memory)
 }
 
 function normallyVisible(item, viewer) {
@@ -669,7 +870,18 @@ export function worldMemoryForViewer(input, viewer = {}) {
     .filter((entry) => entry.hero_id === playerId && inTime(entry, maximum))
   const known = new Set(playerKnowledge.map((entry) => entry.fact_id))
   const facts = memory.facts.filter((fact) => fact.status === 'active' && inTime(fact, maximum) && (normallyVisible(fact, viewer) || known.has(fact.id)))
-  const quests = memory.quests.filter((quest) => quest.status !== 'hidden' && inTime(quest, maximum) && normallyVisible(quest, viewer))
+  // История последствий разрешается относительно знания, существовавшего в
+  // запрошенный момент. Будущее раскрытие не должно менять старый скрытый
+  // статус в исторической проекции.
+  const knowledgeMemory = {
+    ...memory,
+    facts: memory.facts.filter((fact) => inTime(fact, maximum)),
+    knowledge_ledger: playerKnowledge,
+    knowledge_revealed: playerKnowledge,
+  }
+  const quests = memory.quests
+    .map((quest) => questForKnowledge(quest, knowledgeMemory, viewer))
+    .filter((quest) => quest.status !== 'hidden' && inTime(quest, maximum) && normallyVisible(quest, viewer))
   const threads = memory.threads.filter((thread) => thread.status !== 'hidden' && inTime(thread, maximum) && normallyVisible(thread, viewer))
   const referenced = new Set([...facts.map((fact) => fact.subject_id), ...quests.flatMap((quest) => quest.entity_ids), ...threads.flatMap((thread) => thread.entity_ids)])
   const entities = memory.entities.filter((entity) => normallyVisible(entity, viewer) || referenced.has(entity.id))
@@ -679,10 +891,11 @@ export function worldMemoryForViewer(input, viewer = {}) {
   const epistemic_claims = memory.epistemic_claims.filter((claim) => inTime(claim, maximum) && normallyVisible(claim, viewer)
     && visibleEntityIds.has(claim.holder_entity_id) && (!claim.subject_entity_id || visibleEntityIds.has(claim.subject_entity_id)))
   const summaries = memory.summaries.filter((summary) => inTime(summary, maximum) && normallyVisible(summary, viewer))
-  const knowledge_revealed = playerKnowledge.filter((entry) => facts.some((fact) => fact.id === entry.fact_id))
+  const visibleFactIds = new Set(facts.map((fact) => fact.id))
+  const knowledge_revealed = playerKnowledge.filter((entry) => visibleFactIds.has(entry.fact_id))
   return {
     schema_version: 2, entities: clone(entities), facts: clone(facts), relationships: clone(relationships), quests: clone(quests), threads: clone(threads),
-    epistemic_claims: clone(epistemic_claims), summaries: clone(summaries), knowledge: playerId ? { [playerId]: [...known].filter((factId) => facts.some((fact) => fact.id === factId)) } : {},
+    epistemic_claims: clone(epistemic_claims), summaries: clone(summaries), knowledge: playerId ? { [playerId]: [...known].filter((factId) => visibleFactIds.has(factId)) } : {},
     knowledge_revealed: clone(knowledge_revealed), knowledge_ledger: clone(knowledge_revealed),
   }
 }

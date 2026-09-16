@@ -1,4 +1,5 @@
 import { UNDERWORLD_PRIVATE_TAGS } from './underworld.mjs'
+import { retentionMode } from './retention-context.mjs'
 
 const PROFILE_VISIBILITIES = new Set(['public', 'party', 'gm_only'])
 const DOSSIER_VISIBILITIES = new Set(['public', 'party', 'specific_player', 'gm_only'])
@@ -15,6 +16,7 @@ const SOCIAL_CHECK_DEGREES = new Set(['strong_success', 'success', 'failure', 's
 const WEEK_DAYS = new Set([0, 1, 2, 3, 4, 5, 6])
 
 export const NPC_DOSSIER_PROFILE_LIMIT = 12
+const NPC_DOSSIER_LEGACY_LIMIT = NPC_DOSSIER_PROFILE_LIMIT
 export const NPC_NARRATOR_DOSSIER_LIMITS = Object.freeze({
   npcs: 1,
   interactions: 3,
@@ -24,6 +26,17 @@ export const NPC_NARRATOR_DOSSIER_LIMITS = Object.freeze({
 export const NPC_SOCIAL_COMMAND_TYPES = new Set([
   'UpsertNpcSocialProfile', 'RecordNpcSocialTurn', 'ResolveNpcPromise',
 ])
+
+/**
+ * Текущее состояние сохраняет принятую историю. Legacy replay явно включает
+ * прежний ограниченный reducer, чтобы старые хеши коммитов воспроизводились.
+ */
+function legacyRetention(options = {}) {
+  const context = options && typeof options === 'object' ? options : {}
+  if (Object.hasOwn(context, 'isLegacy')) return context.isLegacy === true
+  if (Object.hasOwn(context, 'retention')) return context.retention === 'legacy'
+  return retentionMode() === 'legacy'
+}
 
 export class NpcSocialValidationError extends Error {
   constructor(message, code = 'NPC_SOCIAL_INVALID') {
@@ -100,7 +113,7 @@ function safeInventoryEntry(value = {}) {
   }
 }
 
-function safeInventory(value) {
+function safeInventory(value, options = {}) {
   const inventory = []
   const ids = new Set()
   for (const item of Array.isArray(value) ? value : []) {
@@ -108,7 +121,7 @@ function safeInventory(value) {
     if (!safe || ids.has(safe.id)) continue
     ids.add(safe.id)
     inventory.push(safe)
-    if (inventory.length >= 100) break
+    if (legacyRetention(options) && inventory.length >= 100) break
   }
   return inventory
 }
@@ -249,17 +262,18 @@ export function npcBehaviorPolicy(profile = {}, relationship = 0) {
   })
 }
 
-function safeNpcDossierEntry(value = {}) {
+function safeNpcDossierEntry(value = {}, options = {}) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const id = clean(value.id, 120)
   const sourceConversationId = clean(value.provenance?.source_conversation_id, 120)
   const summary = clean(value.summary, 600)
   if (!id || !sourceConversationId || !summary) return null
+  const idLimit = legacyRetention(options) ? 12 : Number.MAX_SAFE_INTEGER
   const disclosedClaimIds = strings(
     (Array.isArray(value.disclosed_claims) ? value.disclosed_claims : [])
       .map((claim) => claim?.id),
     120,
-    12,
+    idLimit,
   )
   return {
     id,
@@ -271,7 +285,7 @@ function safeNpcDossierEntry(value = {}) {
     epistemic_status: disclosedClaimIds.length
       ? 'contains_unverified_claims'
       : 'recorded_dialogue_not_world_fact',
-    disclosed_fact_ids: strings(value.disclosed_fact_ids, 120, 12),
+    disclosed_fact_ids: strings(value.disclosed_fact_ids, 120, idLimit),
     disclosed_claims: disclosedClaimIds.map((claimId) => ({
       id: claimId,
       truth_status: 'unknown',
@@ -279,23 +293,24 @@ function safeNpcDossierEntry(value = {}) {
     provenance: {
       source_kind: 'NpcConversationRecorded',
       source_conversation_id: sourceConversationId,
-      source_event_ids: strings(value.provenance?.source_event_ids, 120, 8),
+      source_event_ids: strings(value.provenance?.source_event_ids, 120, legacyRetention(options) ? 8 : Number.MAX_SAFE_INTEGER),
     },
   }
 }
 
-function safeNpcDossier(value) {
+function safeNpcDossier(value, options = {}) {
   const entries = new Map()
   for (const candidate of Array.isArray(value) ? value : []) {
-    const entry = safeNpcDossierEntry(candidate)
+    const entry = safeNpcDossierEntry(candidate, options)
     if (!entry) continue
     entries.delete(entry.id)
     entries.set(entry.id, entry)
   }
-  return [...entries.values()].slice(-NPC_DOSSIER_PROFILE_LIMIT)
+  const normalized = [...entries.values()]
+  return legacyRetention(options) ? normalized.slice(-NPC_DOSSIER_LEGACY_LIMIT) : normalized
 }
 
-function safeProfile(value = {}) {
+function safeProfile(value = {}, options = {}) {
   return {
     id: clean(value.id, 120),
     name: clean(value.name, 160),
@@ -307,15 +322,15 @@ function safeProfile(value = {}) {
     speech_profile: npcSpeechProfile(value),
     goals: strings(value.goals, 300, 12),
     beliefs: strings(value.beliefs, 300, 20),
-    known_fact_ids: strings(value.known_fact_ids, 120, 100),
+    known_fact_ids: strings(value.known_fact_ids, 120, legacyRetention(options) ? 100 : Number.MAX_SAFE_INTEGER),
     social_dcs: safeSocialDcs(value.social_dcs),
     visibility: PROFILE_VISIBILITIES.has(value.visibility) ? value.visibility : 'party',
     ...(value.reveal_on_presence === true ? { reveal_on_presence: true } : {}),
     available: value.available !== false,
     tags: strings(value.tags, 60, 20),
     schedule: safeSchedule(value.schedule),
-    inventory: safeInventory(value.inventory),
-    dossier: safeNpcDossier(value.dossier),
+    inventory: safeInventory(value.inventory, options),
+    dossier: safeNpcDossier(value.dossier, options),
   }
 }
 
@@ -357,7 +372,8 @@ function safeSocialCheck(value) {
   }
 }
 
-function safeConversation(value = {}) {
+function safeConversation(value = {}, options = {}) {
+  const idLimit = legacyRetention(options) ? 20 : Number.MAX_SAFE_INTEGER
   return {
     id: clean(value.id, 120),
     npc_id: clean(value.npc_id, 120),
@@ -365,14 +381,14 @@ function safeConversation(value = {}) {
     player_message: clean(value.player_message, 1_000),
     npc_reply: clean(value.npc_reply, 1_000),
     stance: STANCES.has(value.stance) ? value.stance : 'neutral',
-    disclosed_fact_ids: strings(value.disclosed_fact_ids, 120, 20),
-    disclosed_claim_ids: strings(value.disclosed_claim_ids, 120, 20),
+    disclosed_fact_ids: strings(value.disclosed_fact_ids, 120, idLimit),
+    disclosed_claim_ids: strings(value.disclosed_claim_ids, 120, idLimit),
     visibility: value.visibility === 'specific_player' ? 'specific_player' : 'party',
     ...(safeSocialCheck(value.check) ? { check: safeSocialCheck(value.check) } : {}),
   }
 }
 
-function dossierEntryFromConversation(conversation, event = {}) {
+function dossierEntryFromConversation(conversation, event = {}, options = {}) {
   const heroLine = clean(conversation.player_message, 240)
   const npcLine = clean(conversation.npc_reply, 320)
   return safeNpcDossierEntry({
@@ -390,26 +406,36 @@ function dossierEntryFromConversation(conversation, event = {}) {
       source_conversation_id: conversation.id,
       source_event_ids: [event.event_id],
     },
-  })
+  }, options)
 }
 
-export function normalizeNpcSocialState(input = {}) {
+export function normalizeNpcSocialState(input = {}, options = {}) {
+  const legacy = legacyRetention(options)
   const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
-  const npcs = (Array.isArray(source.npcs) ? source.npcs : []).map(safeProfile).filter((npc) => npc.id && npc.name).slice(0, 500)
+  const normalizedNpcs = (Array.isArray(source.npcs) ? source.npcs : []).map((npc) => safeProfile(npc, options)).filter((npc) => npc.id && npc.name)
+  const npcs = legacy ? normalizedNpcs.slice(0, 500) : normalizedNpcs
   const npcIds = new Set(npcs.map((npc) => npc.id))
-  const relationships = Object.fromEntries(Object.entries(source.relationships ?? {}).slice(0, 500)
+  const relationshipEntries = Object.entries(source.relationships ?? {})
+  const relationships = Object.fromEntries((legacy ? relationshipEntries.slice(0, 500) : relationshipEntries)
     .filter(([npcId, value]) => npcIds.has(clean(npcId, 120)) && value && typeof value === 'object' && !Array.isArray(value))
-    .map(([npcId, value]) => [clean(npcId, 120), Object.fromEntries(Object.entries(value).slice(0, 100)
+    .map(([npcId, value]) => [clean(npcId, 120), Object.fromEntries((legacy ? Object.entries(value).slice(0, 100) : Object.entries(value))
       .map(([heroId, score]) => [clean(heroId, 120), Math.max(-100, Math.min(100, integer(score, 0)))])
       .filter(([heroId]) => heroId))]))
-  const conversations = (Array.isArray(source.conversations) ? source.conversations : []).map(safeConversation)
-    .filter((item) => item.id && npcIds.has(item.npc_id) && item.hero_id && item.npc_reply).slice(-500)
+  const normalizedConversations = (Array.isArray(source.conversations) ? source.conversations : []).map((item) => safeConversation(item, options))
+    .filter((item) => item.id && npcIds.has(item.npc_id) && item.hero_id && item.npc_reply)
+  const conversations = legacy ? normalizedConversations.slice(-500) : normalizedConversations
   const conversationIds = new Set(conversations.map((item) => item.id))
-  const promises = (Array.isArray(source.promises) ? source.promises : []).map(safePromise)
-    .filter((item) => item.id && npcIds.has(item.npc_id) && item.text && (!item.source_conversation_id || conversationIds.has(item.source_conversation_id))).slice(-500)
+  const normalizedPromises = (Array.isArray(source.promises) ? source.promises : []).map(safePromise)
+    .filter((item) => item.id && npcIds.has(item.npc_id) && item.text && (!item.source_conversation_id || conversationIds.has(item.source_conversation_id)))
+  const promises = legacy ? normalizedPromises.slice(-500) : normalizedPromises
   const relationship_tiers = Object.fromEntries(Object.entries(relationships).map(([npcId, heroes]) => [npcId,
     Object.fromEntries(Object.entries(heroes).map(([heroId, score]) => [heroId, relationshipTier(score)]))]))
   return { schema_version: 4, npcs, relationships, relationship_tiers, conversations, promises }
+}
+
+/** Воспроизводит ограниченный social reducer для legacy-состояния коммита. */
+export function normalizeNpcSocialStateLegacy(input = {}) {
+  return normalizeNpcSocialState(input, { isLegacy: true })
 }
 
 function profileFromMerchant(merchant = {}) {
@@ -427,8 +453,8 @@ function profileFromMerchant(merchant = {}) {
 }
 
 /** Adds safe profiles for persistent merchants and canonical NPC entities. */
-export function ensureNpcSocialState(input, state = {}) {
-  const social = normalizeNpcSocialState(input)
+export function ensureNpcSocialState(input, state = {}, options = {}) {
+  const social = normalizeNpcSocialState(input, options)
   const profiles = new Map(social.npcs.map((npc) => [npc.id, npc]))
   for (const merchant of state.merchants ?? []) {
     const profile = profileFromMerchant(merchant)
@@ -445,7 +471,7 @@ export function ensureNpcSocialState(input, state = {}) {
       tags: entity.tags,
     }))
   }
-  return normalizeNpcSocialState({ ...social, npcs: [...profiles.values()] })
+  return normalizeNpcSocialState({ ...social, npcs: [...profiles.values()] }, options)
 }
 
 function elapsedMinutesFor(value = {}) {
@@ -545,7 +571,8 @@ export function npcProfileForViewerAt(profile, viewer = {}) {
       .map((entry) => {
         const { visibility: _visibility, ...visible } = entry
         return clone(visible)
-      }),
+      })
+      .slice(-NPC_DOSSIER_PROFILE_LIMIT),
   }
 }
 
@@ -602,6 +629,14 @@ function strictInventoryInput(value) {
   return normalized
 }
 
+function strictIdListInput(value, maximum, field) {
+  if (value == null) return []
+  if (!Array.isArray(value) || value.length > maximum) {
+    throw new NpcSocialValidationError(`${field} must contain at most ${maximum} entries`, 'NPC_SOCIAL_INPUT_LIMIT')
+  }
+  return strings(value, 120, maximum)
+}
+
 function strictSpeechProfileInput(value) {
   if (value == null) return null
   const profile = object(value, 'npc.speech_profile')
@@ -627,9 +662,11 @@ function normalizeProfileInput(input) {
   // спроецированного профиля через админское редактирование: присланные записи
   // игнорируются, а reducer сохраняет событийную историю самого NPC.
   const { dossier: _untrustedDossier, ...editable } = value
+  const knownFactIds = strictIdListInput(editable.known_fact_ids, 100, 'npc.known_fact_ids')
   const result = safeProfile({
     ...editable,
     id: identifier(editable.id, 'npc.id'),
+    known_fact_ids: knownFactIds,
     ...(editable.speech_profile == null ? {} : { speech_profile: strictSpeechProfileInput(editable.speech_profile) }),
     schedule: strictScheduleInput(editable.schedule),
     inventory: strictInventoryInput(editable.inventory),
@@ -666,12 +703,12 @@ function normalizeConversationInput(input, state, command, context = {}) {
   const stance = STANCES.has(value.stance) ? value.stance : 'neutral'
   const known = new Set(npc.known_fact_ids)
   for (const fact of state.worldMemory?.facts ?? []) if (['public', 'party'].includes(fact.visibility)) known.add(String(fact.id))
-  const disclosed = strings(value.disclosed_fact_ids, 120, 20)
+  const disclosed = strictIdListInput(value.disclosed_fact_ids, 20, 'conversation.disclosed_fact_ids')
   const activeFacts = new Set((state.worldMemory?.facts ?? []).filter((fact) => fact.status === 'active').map((fact) => String(fact.id)))
   if (disclosed.some((factId) => !known.has(factId) || !activeFacts.has(factId))) {
     throw new NpcSocialValidationError('NPC попытался раскрыть неизвестный или неактуальный факт', 'NPC_SOCIAL_FACT_FORBIDDEN')
   }
-  const disclosedClaims = strings(value.disclosed_claim_ids, 120, 20)
+  const disclosedClaims = strictIdListInput(value.disclosed_claim_ids, 20, 'conversation.disclosed_claim_ids')
   const speakableClaims = new Set((state.worldMemory?.epistemic_claims ?? [])
     .filter((claim) => String(claim.holder_entity_id) === npcId)
     .map((claim) => String(claim.id)))
@@ -848,18 +885,20 @@ export function npcPromiseDeadlineEvents(state = {}, elapsedMinutes = 0) {
   return events
 }
 
-export function applyNpcSocialEvent(input, event, state = {}) {
-  const social = ensureNpcSocialState(input, state)
+export function applyNpcSocialEvent(input, event, state = {}, options = {}) {
+  const legacy = legacyRetention(options)
+  const social = ensureNpcSocialState(input, state, options)
   const payload = event.payload ?? {}
   if (event.event_type === 'NpcSocialProfileUpserted') {
     const previous = social.npcs.find((candidate) => candidate.id === clean(payload.npc?.id, 120))
-    const npc = safeProfile({ ...payload.npc, dossier: previous?.dossier })
+    const npc = safeProfile({ ...payload.npc, dossier: previous?.dossier }, options)
     social.npcs = [...social.npcs.filter((candidate) => candidate.id !== npc.id), npc]
   }
   if (event.event_type === 'NpcConversationRecorded') {
-    const conversation = safeConversation(payload.conversation)
-    social.conversations = [...social.conversations.filter((candidate) => candidate.id !== conversation.id), conversation].slice(-500)
-    const dossierEntry = dossierEntryFromConversation(conversation, event)
+    const conversation = safeConversation(payload.conversation, options)
+    const conversations = [...social.conversations.filter((candidate) => candidate.id !== conversation.id), conversation]
+    social.conversations = legacy ? conversations.slice(-500) : conversations
+    const dossierEntry = dossierEntryFromConversation(conversation, event, options)
     if (dossierEntry) {
       social.npcs = social.npcs.map((npc) => npc.id === conversation.npc_id
         ? safeProfile({
@@ -868,7 +907,7 @@ export function applyNpcSocialEvent(input, event, state = {}) {
               ...npc.dossier.filter((entry) => entry.id !== dossierEntry.id),
               dossierEntry,
             ],
-          })
+          }, options)
         : npc)
     }
   }
@@ -880,7 +919,8 @@ export function applyNpcSocialEvent(input, event, state = {}) {
   }
   if (event.event_type === 'NpcPromiseRecorded') {
     const promise = safePromise(payload.promise)
-    social.promises = [...social.promises.filter((candidate) => candidate.id !== promise.id), promise].slice(-500)
+    const promises = [...social.promises.filter((candidate) => candidate.id !== promise.id), promise]
+    social.promises = legacy ? promises.slice(-500) : promises
   }
   if (event.event_type === 'NpcPromiseResolved') {
     social.promises = social.promises.map((promise) => promise.id === payload.promise_id && promise.status === 'open' ? safePromise({

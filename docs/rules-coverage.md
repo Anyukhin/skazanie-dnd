@@ -202,17 +202,28 @@ restart и replay дают ту же карту.
 с прежней семантикой.
 
 Явная `quest.responsibility` задаёт личную зависимость (`npc/impossible`) либо
-обязательство учреждения (`office/transfer`). `QuestInvalidated/v1` требует
+обязательство учреждения (`office/transfer`). `QuestInvalidated/v2` требует
 подтверждённой смерти, закрывает только зависимое поручение и не меняет часы;
 для основной истории persistent вместе с ним сохраняется `CampaignStoryCompleted`.
-`QuestAssignmentChanged/v1` меняет получателя институционального поручения,
+`QuestAssignmentChanged/v2` меняет получателя институционального поручения,
 сохраняя его статус. Упоминание NPC в `entity_ids` само по себе не является
-зависимостью. В новом Асстохане должность освобождается через `OfficeVacated/v1`;
-после 1440 игровых минут `OfficeHolderInstalled/v1` или `OfficeSuccessionSkipped/v1`
+зависимостью. В новом Асстохане должность освобождается через `OfficeVacated/v2`;
+после 1440 игровых минут `OfficeHolderInstalled/v2` или `OfficeSuccessionSkipped/v2`
 фиксирует проверку вакансии, живости, доступности, фракции и тега преемника.
 План преемства закрыт от игрока. Проверки: `test/world-offices.test.mjs`,
 `test/campaign-world-offices.test.mjs`, `test/npc-world-consequences.test.mjs`,
 `test/npc-world-consequences-api.test.mjs` и `test/npc-loot-containers.test.mjs`.
+
+События v1 сохраняют прежний replay. Новые последствия содержат версию политики,
+идентификатор зависимости и ссылку на причину. До раскрытия факта герой получает
+прежнее представление поручения, должности, цели сцены и истории; скрыты также
+производные записи летописи и события в объяснении хода. `KnowledgeRevealed`
+обновляет представление только соответствующего героя, без повторного исполнения
+последствия. Общий контекст Рассказчика остаётся в пределах знаний отряда.
+Сторожа: `test/quest-consequence-knowledge.test.mjs`,
+`test/world-offices-knowledge.test.mjs`, `test/world-data-flow-api.test.mjs`.
+Последний проверяет обычный HTTP `CastSpell`, добычу, повтор, уход, возврат и
+перезапуск на состоянии с записями сверх прежних лимитов памяти.
 
 Глобальная карта показывает versioned WebP только из внутреннего пути
 `/assets/maps/world/skazanie/*-vN.webp`; внешний URL, query и traversal

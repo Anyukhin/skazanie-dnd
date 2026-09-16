@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { ensureNpcSocialState, npcProfileAtWorldTime, relationshipTier, npcBehaviorPolicy } from './npc-social.mjs'
-import { campaignConceptForAgent, sceneContextForAgent } from './agent-context.mjs'
+import { agentContextMetadata, boundedSelectionMetadata, campaignConceptForAgent, sceneContextForAgent } from './agent-context.mjs'
 import { promptForModel } from './model-style-profiles.mjs'
 import { buildDataOnlyContext } from './security.mjs'
 import { tavernTableMood } from './tavern-life.mjs'
@@ -15,7 +15,46 @@ const STANCES = new Set(['friendly', 'neutral', 'guarded', 'hostile'])
 const DIRECTIONS = new Set(['npc_to_party', 'party_to_npc'])
 export const NPC_SOCIAL_MEMORY_LIMIT = 8
 
+const NPC_SOCIAL_RESPONSE_FIELDS = new Set([
+  'npc_id', 'reply', 'stance', 'disclosed_fact_ids', 'disclosed_claim_ids',
+  'relationship_delta', 'promise', 'confidence',
+])
+
 const clean = (value, maximum = 500) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
+
+function structurallyValidSocialResponse(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+    || Object.keys(value).some((key) => !NPC_SOCIAL_RESPONSE_FIELDS.has(key))) return false
+  if (typeof value.reply !== 'string' || value.reply.trim() === '') return false
+  if (Object.hasOwn(value, 'npc_id') && typeof value.npc_id !== 'string') return false
+  if (Object.hasOwn(value, 'stance') && !STANCES.has(value.stance)) return false
+  for (const key of ['disclosed_fact_ids', 'disclosed_claim_ids']) {
+    if (Object.hasOwn(value, key) && (!Array.isArray(value[key]) || !value[key].every((entry) => typeof entry === 'string'))) return false
+  }
+  if (Object.hasOwn(value, 'relationship_delta')
+    && (typeof value.relationship_delta !== 'number' || !Number.isFinite(value.relationship_delta))) return false
+  if (Object.hasOwn(value, 'confidence')
+    && (typeof value.confidence !== 'number' || !Number.isFinite(value.confidence))) return false
+  if (Object.hasOwn(value, 'promise') && value.promise !== null) {
+    const promise = value.promise
+    if (!promise || typeof promise !== 'object' || Array.isArray(promise)
+      || Object.keys(promise).some((key) => !['direction', 'text', 'due_hint'].includes(key))
+      || !DIRECTIONS.has(promise.direction)
+      || typeof promise.text !== 'string' || promise.text.trim() === ''
+      || typeof promise.due_hint !== 'string' || promise.due_hint.trim() === '') return false
+  }
+  return true
+}
+
+function selectionFields(metadata, prefix) {
+  return {
+    [`${prefix}_scope`]: metadata.scope,
+    [`${prefix}_status`]: metadata.status,
+    [`${prefix}_availability`]: metadata.availability,
+    [`${prefix}_complete_within_scope`]: metadata.complete_within_scope,
+    ...(metadata.truncation_reason ? { [`${prefix}_truncation_reason`]: metadata.truncation_reason } : {}),
+  }
+}
 
 function stableId(namespace, ...parts) {
   const digest = createHash('sha256').update(parts.map((part) => clean(part, 1_000)).join('\0')).digest('hex').slice(0, 24)
@@ -72,6 +111,19 @@ function npcClaims(state, profile, message = '') {
   }))
 }
 
+function privateKnowledgeUsed(state, profile, facts, claims, disclosedFactIds = [], disclosedClaimIds = []) {
+  const privateFactIds = new Set(npcSpeakableFactRecords(state, profile)
+    .filter((fact) => !['public', 'party'].includes(fact.visibility))
+    .map((fact) => String(fact.id)))
+  const privateClaimIds = new Set(npcSpeakableClaimRecords(state, profile)
+    .filter((claim) => !['public', 'party'].includes(claim.visibility))
+    .map((claim) => String(claim.id)))
+  return facts.some((fact) => privateFactIds.has(String(fact.id)))
+    || claims.some((claim) => privateClaimIds.has(String(claim.id)))
+    || disclosedFactIds.some((factId) => privateFactIds.has(String(factId)))
+    || disclosedClaimIds.some((claimId) => privateClaimIds.has(String(claimId)))
+}
+
 function heroName(state, heroId) {
   const expected = String(heroId ?? '')
   const hero = (state.players ?? []).find((player) => String(player?.id ?? '') === expected)
@@ -101,9 +153,41 @@ function relevantNpcMemory(social, profile, playerId, message) {
     : { kind: 'conversation', id: entry.id, hero_id: entry.hero_id, player_message: entry.player_message, npc_reply: entry.npc_reply, stance: entry.stance })
 }
 
+function privateNpcContextUsed(social, profile, playerId) {
+  return social.conversations.some((entry) => entry.npc_id === profile.id
+    && entry.hero_id === playerId && entry.visibility === 'specific_player')
+    || (profile.dossier ?? []).some((entry) => entry.visibility === 'specific_player'
+      && String(entry.hero_id) === String(playerId))
+}
+
 function briefFor(state, profile, playerId, message, checkOutcome = null) {
   const social = ensureNpcSocialState(state.social, state)
+  const currentConversation = social.conversations
+    .filter((entry) => entry.npc_id === profile.id
+      && entry.hero_id === playerId
+      && conversationVisibleTo(entry, playerId))
+  const partyConversation = social.conversations
+    .filter((entry) => entry.npc_id === profile.id
+      && entry.hero_id !== playerId
+      && conversationVisibleTo(entry, playerId))
+  const openPromises = social.promises
+    .filter((entry) => entry.npc_id === profile.id && entry.hero_id === playerId && entry.status === 'open')
+  const relevantMemory = relevantNpcMemory(social, profile, playerId, message)
+  const speakableFacts = npcFacts(state, profile, message)
+  const speakableClaims = npcClaims(state, profile, message)
+  const relevantMemoryCandidateCount = currentConversation.length
+    + (profile.dossier ?? []).filter((entry) => entry.visibility === 'party'
+      || (entry.visibility === 'specific_player' && String(entry.hero_id) === String(playerId))).length
+  const speakableFactCount = npcSpeakableFactRecords(state, profile).length
+  const speakableClaimCount = npcSpeakableClaimRecords(state, profile).length
+  const factSelection = boundedSelectionMetadata({ scope: 'facts_known_to_npc_and_available_for_dialogue', candidateCount: speakableFactCount, limit: NPC_SOCIAL_MEMORY_LIMIT })
+  const claimSelection = boundedSelectionMetadata({ scope: 'claims_held_by_npc_and_available_for_dialogue', candidateCount: speakableClaimCount, limit: NPC_SOCIAL_MEMORY_LIMIT })
+  const promiseSelection = boundedSelectionMetadata({ scope: 'open_promises_between_npc_and_active_hero', candidateCount: openPromises.length, limit: 10 })
+  const conversationSelection = boundedSelectionMetadata({ scope: 'visible_conversation_with_active_hero', candidateCount: currentConversation.length, limit: 6 })
+  const partyConversationSelection = boundedSelectionMetadata({ scope: 'party_visible_conversation_with_other_heroes', candidateCount: partyConversation.length, limit: 4 })
+  const memorySelection = boundedSelectionMetadata({ scope: 'visible_relevant_npc_memory', candidateCount: relevantMemoryCandidateCount, limit: NPC_SOCIAL_MEMORY_LIMIT })
   return {
+    context_metadata: agentContextMetadata(state, { role: 'npc_social', actorId: playerId, targetId: profile.id, contractVersion: NPC_SOCIAL_PROMPT_VERSION }),
     campaign_premise: campaignConceptForAgent(state),
     // NPC знает, где идёт разговор: сцена делает реплику местной, а не общей.
     scene: {
@@ -129,29 +213,28 @@ function briefFor(state, profile, playerId, message, checkOutcome = null) {
     // этого другой. Данными, а не числом в СЛ — проверку это не подменяет, её
     // считает Rules Engine той же прибавкой, что показал ручной бросок.
     table: tavernTableMood(state, playerId),
-    open_promises: social.promises
-      .filter((entry) => entry.npc_id === profile.id && entry.hero_id === playerId && entry.status === 'open')
+    open_promises: openPromises
       .slice(-10)
       .map((entry) => ({ id: entry.id, direction: entry.direction, text: entry.text, due_hint: entry.due_hint })),
-    recent_conversation: social.conversations
-      .filter((entry) => entry.npc_id === profile.id
-        && entry.hero_id === playerId
-        && conversationVisibleTo(entry, playerId))
+    recent_conversation: currentConversation
       .slice(-6)
       .map((entry) => ({ player_message: entry.player_message, npc_reply: entry.npc_reply, stance: entry.stance, ...(entry.check ? { check: { skill: entry.check.skill, success: entry.check.success, degree: entry.check.degree } } : {}) })),
     // NPC помнит отряд, а не одно лицо: последние разговоры с другими героями
     // видимы группе (visibility: party) и приходят с именем собеседника.
-    recent_party_conversation: social.conversations
-      .filter((entry) => entry.npc_id === profile.id
-        && entry.hero_id !== playerId
-        && conversationVisibleTo(entry, playerId))
+    recent_party_conversation: partyConversation
       .slice(-4)
       .map((entry) => ({ hero: heroName(state, entry.hero_id), player_message: entry.player_message, npc_reply: entry.npc_reply, stance: entry.stance })),
     // Релевантный архив дополняет короткое окно последних реплик; visibility
     // проверяется до ранжирования, поэтому чужая личная беседа не просачивается.
-    relevant_memory: relevantNpcMemory(social, profile, playerId, message),
-    speakable_facts: npcFacts(state, profile, message),
-    speakable_claims: npcClaims(state, profile, message),
+    relevant_memory: relevantMemory,
+    speakable_facts: speakableFacts,
+    speakable_claims: speakableClaims,
+    ...selectionFields(conversationSelection, 'recent_conversation'),
+    ...selectionFields(partyConversationSelection, 'recent_party_conversation'),
+    ...selectionFields(memorySelection, 'relevant_memory'),
+    ...selectionFields(factSelection, 'speakable_facts'),
+    ...selectionFields(claimSelection, 'speakable_claims'),
+    ...selectionFields(promiseSelection, 'open_promises'),
     player_message: clean(message, 1_000),
     resolved_check: checkOutcome ? { skill: checkOutcome.skill, ability: checkOutcome.ability, success: checkOutcome.success, degree: checkOutcome.degree } : null,
   }
@@ -201,14 +284,15 @@ function promiseWithinBoundary(promise, profile) {
 }
 
 function normalizedResult(raw, profile, state, playerId, message, turnId, checkOutcome = null) {
+  const social = ensureNpcSocialState(state.social, state)
   const facts = npcFacts(state, profile, message)
-  const memory = relevantNpcMemory(ensureNpcSocialState(state.social, state), profile, playerId, message)
+  const memory = relevantNpcMemory(social, profile, playerId, message)
+  const claims = npcClaims(state, profile, message)
   const allowedFactIds = new Set(npcSpeakableFactRecords(state, profile).map((fact) => String(fact.id)))
   const disclosedFactIds = [...new Set((Array.isArray(raw?.disclosed_fact_ids) ? raw.disclosed_fact_ids : [])
     .map(String).filter((factId) => allowedFactIds.has(factId)))].slice(0, 20)
-  const claims = npcClaims(state, profile, message)
   const allowedClaimIds = new Set(npcSpeakableClaimRecords(state, profile).map((claim) => String(claim.id)))
-  const modelReply = clean(raw?.reply, 1_000)
+  const modelReply = typeof raw?.reply === 'string' ? clean(raw.reply, 1_000) : ''
   const fallback = fallbackDisclosure(profile, facts, claims, checkOutcome, memory, message)
   // Раскрытие фолбэка добавляется только тогда, когда прозвучала его реплика:
   // иначе провенанс обещал бы то, чего NPC не говорил.
@@ -216,18 +300,23 @@ function normalizedResult(raw, profile, state, playerId, message, turnId, checkO
     ...(Array.isArray(raw?.disclosed_claim_ids) ? raw.disclosed_claim_ids : []).map(String),
     ...(modelReply ? [] : fallback.claimIds),
   ].filter((claimId) => allowedClaimIds.has(claimId)))].slice(0, 20)
+  const responseVisibility = privateNpcContextUsed(social, profile, playerId)
+    || privateKnowledgeUsed(state, profile, facts, claims, disclosedFactIds, disclosedClaimIds)
+    ? 'specific_player'
+    : 'party'
   const reply = modelReply || fallback.reply
   const stance = STANCES.has(raw?.stance) ? raw.stance : 'neutral'
   let relationshipDelta = Math.max(-2, Math.min(2, Number.isSafeInteger(Number(raw?.relationship_delta)) ? Number(raw.relationship_delta) : 0))
   let promise = null
   if (raw?.promise && typeof raw.promise === 'object' && !Array.isArray(raw.promise) && DIRECTIONS.has(raw.promise.direction)) {
     const promiseText = clean(raw.promise.text, 500)
-    if (promiseText && promiseWithinBoundary({ ...raw.promise, text: promiseText }, profile)) promise = {
+    const dueHint = clean(raw.promise.due_hint, 240)
+    if (promiseText && dueHint && promiseWithinBoundary({ ...raw.promise, text: promiseText }, profile)) promise = {
       id: stableId('promise', turnId, profile.id, playerId, promiseText),
       direction: raw.promise.direction,
       text: promiseText,
-      due_hint: clean(raw.promise.due_hint, 240),
-      visibility: 'party',
+      due_hint: dueHint,
+      visibility: responseVisibility,
     }
   }
   if (checkOutcome?.skill === 'insight') {
@@ -246,6 +335,7 @@ function normalizedResult(raw, profile, state, playerId, message, turnId, checkO
     relationship_delta: relationshipDelta,
     promise,
     confidence: Math.max(0, Math.min(1, Number(raw?.confidence) || 0)),
+    visibility: responseVisibility,
     conversation: {
       id: stableId('conversation', turnId, profile.id, playerId),
       npc_id: profile.id,
@@ -256,7 +346,7 @@ function normalizedResult(raw, profile, state, playerId, message, turnId, checkO
       disclosed_fact_ids: disclosedFactIds,
       disclosed_claim_ids: disclosedClaimIds,
       relationship_delta: relationshipDelta,
-      visibility: 'party',
+      visibility: responseVisibility,
       ...(promise ? { promise } : {}),
       ...(checkOutcome ? { check: checkOutcome } : {}),
     },
@@ -273,9 +363,11 @@ export class NpcSocialController {
     const persistedProfile = social.npcs.find((npc) => npc.id === String(npcId))
     const profile = persistedProfile ? npcProfileAtWorldTime(persistedProfile, state) : null
     if (!profile || profile.available === false) return null
+    const contextMetadata = agentContextMetadata(state, { role: 'npc_social', actorId: playerId, targetId: profile.id, contractVersion: NPC_SOCIAL_PROMPT_VERSION })
     const facts = npcFacts(state, profile, message)
     if (!this.llmClient) return {
       ...normalizedResult({}, profile, state, String(playerId), message, turnId, checkOutcome),
+      context_metadata: contextMetadata,
       provider: 'deterministic-social-fallback',
       prompt_version: NPC_SOCIAL_PROMPT_VERSION,
     }
@@ -288,14 +380,17 @@ export class NpcSocialController {
         temperature: 0.7,
         maxTokens: 700,
       }, { timeoutMs: 20_000 })
+      if (!structurallyValidSocialResponse(result)) throw new Error('NPC_SOCIAL_RESPONSE_INVALID_SHAPE')
       return {
         ...normalizedResult(result, profile, state, String(playerId), message, turnId, checkOutcome),
+        context_metadata: contextMetadata,
         provider: this.llmClient.constructor?.name ?? 'llm',
         prompt_version: NPC_SOCIAL_PROMPT_VERSION,
       }
     } catch (error) {
       return {
         ...normalizedResult({}, profile, state, String(playerId), message, turnId, checkOutcome),
+        context_metadata: contextMetadata,
         provider: 'deterministic-social-fallback',
         prompt_version: NPC_SOCIAL_PROMPT_VERSION,
         provider_error: clean(error?.code ?? error?.name ?? 'LLM_PROVIDER_ERROR', 80),

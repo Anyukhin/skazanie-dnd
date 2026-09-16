@@ -1,0 +1,830 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-16T00:00:00.000Z",
+  "command": [
+    "--retrieval",
+    "--trained",
+    "--output=eval/world-data-retrieval-report-2026-09-16.json"
+  ],
+  "retrieval": {
+    "schema_version": 1,
+    "generated_at": "2026-09-16T00:00:00.000Z",
+    "environment": {
+      "node": "v24.19.0",
+      "platform": "win32",
+      "os_release": "10.0.26200",
+      "arch": "x64",
+      "cpu_count": 16,
+      "system_memory_bytes": 33346146304,
+      "run_shape": "single synthetic measurement; not a p95 or concurrent load test"
+    },
+    "corpus_version": "world-data-ru-v1",
+    "corpus": {
+      "rules_documents": 23,
+      "memory_records": {
+        "entities": 5,
+        "facts": 9,
+        "relationships": 0,
+        "quests": 0,
+        "threads": 0,
+        "epistemic_claims": 1,
+        "summaries": 0,
+        "knowledge_ledger": 1
+      },
+      "labeled_cases": {
+        "rules": 5,
+        "memory": 8,
+        "campaign_isolation": 2
+      },
+      "limitation": "Небольшой фиксированный синтетический набор; эти метрики не являются production quality или общей оценкой модели."
+    },
+    "domain_separation": {
+      "rules": "RuleRetriever",
+      "memory": "retrieveWorldMemory + worldMemoryForViewer"
+    },
+    "embedding_capability": {
+      "status": "configured",
+      "measured_by_default": false,
+      "protocol": "OpenAI-compatible POST /embeddings",
+      "endpoint_configured": true,
+      "model_configured": true,
+      "credential_configured": true,
+      "endpoint_source": "RouterAI /embeddings",
+      "model": "baai/bge-m3"
+    },
+    "baseline": {
+      "rules": {
+        "summary": {
+          "case_count": 5,
+          "recall_at_k": 1,
+          "top1_accuracy": 1,
+          "mean_irrelevant_count": 3.6,
+          "obsolete_hits": 0,
+          "privacy_violations": 0,
+          "no_answer_expected": 1,
+          "no_answer_correct": 0,
+          "no_answer_rate": 0,
+          "latency": {
+            "count": 5,
+            "min_ms": 0.81,
+            "p50_ms": 1.122,
+            "p95_ms": 1.964,
+            "max_ms": 1.964,
+            "mean_ms": 1.265
+          }
+        },
+        "cases": [
+          {
+            "id": "rule-direct-advantage",
+            "category": "direct",
+            "query": "Как работает помеха?",
+            "expected_ids": [
+              "srd_5_2_1:core:advantage-disadvantage"
+            ],
+            "result_ids": [
+              "srd_5_2_1:core:advantage-disadvantage",
+              "srd_5_2_1:conditions:common",
+              "srd_5_2_1:checks:saving-throw",
+              "srd_5_2_1:combat:attack-roll",
+              "srd_5_2_1:checks:ability-check"
+            ],
+            "recall_at_k": 1,
+            "top1_correct": true,
+            "irrelevant_count": 4,
+            "obsolete_hits": [],
+            "privacy_violations": [],
+            "no_answer_expected": false,
+            "no_answer_returned": false,
+            "latency_ms": 1.964
+          },
+          {
+            "id": "rule-paraphrase-advantage",
+            "category": "paraphrase",
+            "query": "Бросаю два d20 и беру худший результат.",
+            "expected_ids": [
+              "srd_5_2_1:core:advantage-disadvantage"
+            ],
+            "result_ids": [
+              "srd_5_2_1:core:advantage-disadvantage",
+              "srd_5_2_1:combat:attack-roll",
+              "srd_5_2_1:checks:saving-throw",
+              "srd_5_2_1:checks:ability-check",
+              "srd_5_2_1:combat:damage"
+            ],
+            "recall_at_k": 1,
+            "top1_correct": true,
+            "irrelevant_count": 4,
+            "obsolete_hits": [],
+            "privacy_violations": [],
+            "no_answer_expected": false,
+            "no_answer_returned": false,
+            "latency_ms": 1.587
+          },
+          {
+            "id": "rule-dialogue-reaction",
+            "category": "old_dialogue",
+            "query": "После атаки врага можно ответить реакцией?",
+            "expected_ids": [
+              "srd_5_2_1:combat:reaction"
+            ],
+            "result_ids": [
+              "srd_5_2_1:combat:reaction",
+              "srd_5_2_1:combat:turn-economy",
+              "srd_5_2_1:combat:attack-roll",
+              "srd_5_2_1:combat:critical-hit",
+              "srd_5_2_1:combat:armor-class"
+            ],
+            "recall_at_k": 1,
+            "top1_correct": true,
+            "irrelevant_count": 4,
+            "obsolete_hits": [],
+            "privacy_violations": [],
+            "no_answer_expected": false,
+            "no_answer_returned": false,
+            "latency_ms": 1.122
+          },
+          {
+            "id": "rule-ambiguity-combat",
+            "category": "ambiguity",
+            "query": "Преимущество или реакция после атаки в бою?",
+            "expected_ids": [
+              "srd_5_2_1:core:advantage-disadvantage",
+              "srd_5_2_1:combat:reaction"
+            ],
+            "result_ids": [
+              "srd_5_2_1:core:advantage-disadvantage",
+              "srd_5_2_1:combat:reaction",
+              "srd_5_2_1:combat:turn-economy",
+              "srd_5_2_1:combat:attack-roll",
+              "srd_5_2_1:combat:critical-hit"
+            ],
+            "recall_at_k": 1,
+            "top1_correct": true,
+            "irrelevant_count": 3,
+            "obsolete_hits": [],
+            "privacy_violations": [],
+            "no_answer_expected": false,
+            "no_answer_returned": false,
+            "latency_ms": 0.84
+          },
+          {
+            "id": "rule-no-answer",
+            "category": "no_answer",
+            "query": "Правила для фиолетовых драконов на Луне.",
+            "expected_ids": [],
+            "result_ids": [
+              "srd_5_2_1:combat:zero-hit-points",
+              "srd_5_2_1:combat:healing",
+              "srd_5_2_1:combat:attack-roll"
+            ],
+            "recall_at_k": null,
+            "top1_correct": null,
+            "irrelevant_count": 3,
+            "obsolete_hits": [],
+            "privacy_violations": [],
+            "no_answer_expected": true,
+            "no_answer_returned": false,
+            "latency_ms": 0.81
+          }
+        ]
+      },
+      "memory": {
+        "summary": {
+          "case_count": 8,
+          "recall_at_k": 1,
+          "top1_accuracy": 1,
+          "mean_irrelevant_count": 2.625,
+          "obsolete_hits": 1,
+          "privacy_violations": 0,
+          "no_answer_expected": 2,
+          "no_answer_correct": 0,
+          "no_answer_rate": 0,
+          "latency": {
+            "count": 8,
+            "min_ms": 0.317,
+            "p50_ms": 0.415,
+            "p95_ms": 1.394,
+            "max_ms": 1.394,
+            "mean_ms": 0.544
+          }
+        },
+        "cases": [
+          {
+            "id": "memory-npc-description",
+            "category": "npc_description",
+            "query": "Кто из замаскированных курьеров пользуется древним водоводом?",
+            "expected_ids": [
+              "fact:ashen-route"
+            ],
+            "result_ids": [
+              "fact:ashen-route"
+            ],
+            "recall_at_k": 1,
+            "top1_correct": true,
+            "irrelevant_count": 0,
+            "obsolete_hits": [],
+            "privacy_violations": [],
+            "no_answer_expected": false,
+            "no_answer_returned": false,
+            "latency_ms": 1.394
+          },
+          {
+            "id": "memory-promise-paraphrase",
+            "category": "paraphrase",
+            "query": "Она дала слово выручить нас у переправы.",
+            "expected_ids": [
+              "fact:vela-promise"
+            ],
+            "result_ids": [
+              "fact:vela-promise",
+              "fact:current-route",
+              "fact:fire-tower",
+              "rumor:old-smugglers"
+            ],
+            "recall_at_k": 1,
+            "top1_correct": true,
+            "irrelevant_count": 3,
+            "obsolete_hits": [],
+            "privacy_violations": [],
+            "no_answer_expected": false,
+            "no_answer_returned": false,
+            "latency_ms": 0.512
+          },
+          {
+            "id": "memory-old-dialogue",
+            "category": "old_dialogue",
+            "query": "Что Вела говорила о дамбе до рассвета?",
+            "expected_ids": [
+              "fact:old-dialogue"
+            ],
+            "result_ids": [
+              "fact:old-dialogue",
+              "fact:private-seal",
+              "fact:vela-promise",
+              "rumor:old-smugglers"
+            ],
+            "recall_at_k": 1,
+            "top1_correct": true,
+            "irrelevant_count": 3,
+            "obsolete_hits": [],
+            "privacy_violations": [],
+            "no_answer_expected": false,
+            "no_answer_returned": false,
+            "latency_ms": 0.415
+          },
+          {
+            "id": "memory-obsolete-rumor",
+            "category": "obsolete",
+            "query": "Слух про контрабандистов на старом тракте.",
+            "expected_ids": [
+              "rumor:old-smugglers"
+            ],
+            "result_ids": [
+              "rumor:old-smugglers",
+              "fact:current-route",
+              "fact:old-dialogue",
+              "fact:fire-tower",
+              "fact:ashen-route"
+            ],
+            "recall_at_k": 1,
+            "top1_correct": true,
+            "irrelevant_count": 4,
+            "obsolete_hits": [
+              "rumor:old-smugglers"
+            ],
+            "privacy_violations": [],
+            "no_answer_expected": false,
+            "no_answer_returned": false,
+            "latency_ms": 0.447
+          },
+          {
+            "id": "memory-ambiguity-edrik",
+            "category": "ambiguity",
+            "query": "Где находится Эдрик у ворот?",
+            "expected_ids": [
+              "fact:edrik-north",
+              "fact:edrik-south"
+            ],
+            "result_ids": [
+              "fact:edrik-north",
+              "fact:edrik-south"
+            ],
+            "recall_at_k": 1,
+            "top1_correct": true,
+            "irrelevant_count": 0,
+            "obsolete_hits": [],
+            "privacy_violations": [],
+            "no_answer_expected": false,
+            "no_answer_returned": false,
+            "latency_ms": 0.561
+          },
+          {
+            "id": "memory-private-known",
+            "category": "private_known",
+            "query": "Какая тайна Велы связана с печатью?",
+            "expected_ids": [
+              "fact:private-seal"
+            ],
+            "result_ids": [
+              "fact:private-seal",
+              "fact:vela-promise",
+              "fact:old-dialogue",
+              "rumor:old-smugglers"
+            ],
+            "recall_at_k": 1,
+            "top1_correct": true,
+            "irrelevant_count": 3,
+            "obsolete_hits": [],
+            "privacy_violations": [],
+            "no_answer_expected": false,
+            "no_answer_returned": false,
+            "latency_ms": 0.383
+          },
+          {
+            "id": "memory-private-hidden",
+            "category": "private_hidden",
+            "query": "Какая тайна Велы связана с печатью?",
+            "expected_ids": [],
+            "result_ids": [
+              "fact:vela-promise",
+              "fact:old-dialogue",
+              "rumor:old-smugglers"
+            ],
+            "recall_at_k": null,
+            "top1_correct": null,
+            "irrelevant_count": 3,
+            "obsolete_hits": [],
+            "privacy_violations": [],
+            "no_answer_expected": true,
+            "no_answer_returned": false,
+            "latency_ms": 0.317
+          },
+          {
+            "id": "memory-no-answer",
+            "category": "no_answer",
+            "query": "Когда прилетят фиолетовые драконы?",
+            "expected_ids": [],
+            "result_ids": [
+              "fact:ashen-route",
+              "fact:current-route",
+              "fact:edrik-north",
+              "fact:edrik-south",
+              "fact:fire-tower"
+            ],
+            "recall_at_k": null,
+            "top1_correct": null,
+            "irrelevant_count": 5,
+            "obsolete_hits": [],
+            "privacy_violations": [],
+            "no_answer_expected": true,
+            "no_answer_returned": false,
+            "latency_ms": 0.321
+          }
+        ],
+        "campaign_isolation": {
+          "case_count": 2,
+          "own_hits": 2,
+          "foreign_leaks": 0,
+          "cases": [
+            {
+              "campaign": "A",
+              "query": "маркер кампании А северный",
+              "result_ids": [
+                "fact:campaign-a"
+              ],
+              "own_id_found": true,
+              "foreign_id_found": false,
+              "latency_ms": 0.372
+            },
+            {
+              "campaign": "B",
+              "query": "маркер кампании Б южный",
+              "result_ids": [
+                "fact:campaign-b"
+              ],
+              "own_id_found": true,
+              "foreign_id_found": false,
+              "latency_ms": 0.323
+            }
+          ]
+        }
+      }
+    },
+    "trained_embeddings": {
+      "status": "measured",
+      "model": "baai/bge-m3",
+      "minimum_score": 0.35,
+      "usage": {
+        "request_count": 20,
+        "totals": {
+          "total_tokens": 4318,
+          "prompt_tokens": 4318
+        }
+      },
+      "indexing": {
+        "rules": {
+          "document_count": 23,
+          "indexing_ms": 3434.283
+        },
+        "memory": [
+          {
+            "viewer": {
+              "playerId": "hero-1",
+              "isPartyMember": true
+            },
+            "document_count": 9,
+            "indexing_ms": 1322.165
+          },
+          {
+            "viewer": {
+              "playerId": "rogue-1",
+              "isPartyMember": true
+            },
+            "document_count": 8,
+            "indexing_ms": 1431.419
+          }
+        ],
+        "total_ms": 6187.867
+      },
+      "query_latency_ms": {
+        "rules": {
+          "count": 5,
+          "min_ms": 615.175,
+          "p50_ms": 790.059,
+          "p95_ms": 1107.511,
+          "max_ms": 1107.511,
+          "mean_ms": 817.483
+        },
+        "memory": {
+          "count": 8,
+          "min_ms": 541.655,
+          "p50_ms": 599.36,
+          "p95_ms": 1030.924,
+          "max_ms": 1030.924,
+          "mean_ms": 724.894
+        }
+      },
+      "rules": {
+        "summary": {
+          "case_count": 5,
+          "recall_at_k": 1,
+          "top1_accuracy": 1,
+          "mean_irrelevant_count": 4,
+          "obsolete_hits": 0,
+          "privacy_violations": 0,
+          "no_answer_expected": 1,
+          "no_answer_correct": 0,
+          "no_answer_rate": 0,
+          "latency": {
+            "count": 5,
+            "min_ms": 615.175,
+            "p50_ms": 790.059,
+            "p95_ms": 1107.511,
+            "max_ms": 1107.511,
+            "mean_ms": 817.483
+          }
+        },
+        "cases": [
+          {
+            "id": "rule-direct-advantage",
+            "category": "direct",
+            "query": "Как работает помеха?",
+            "expected_ids": [
+              "srd_5_2_1:core:advantage-disadvantage"
+            ],
+            "result_ids": [
+              "srd_5_2_1:core:advantage-disadvantage",
+              "srd_5_2_1:conditions:common",
+              "srd_5_2_1:combat:reaction",
+              "srd_5_2_1:combat:temporary-hit-points",
+              "srd_5_2_1:spells:concentration"
+            ],
+            "recall_at_k": 1,
+            "top1_correct": true,
+            "irrelevant_count": 4,
+            "obsolete_hits": [],
+            "privacy_violations": [],
+            "no_answer_expected": false,
+            "no_answer_returned": false,
+            "latency_ms": 882.73
+          },
+          {
+            "id": "rule-paraphrase-advantage",
+            "category": "paraphrase",
+            "query": "Бросаю два d20 и беру худший результат.",
+            "expected_ids": [
+              "srd_5_2_1:core:advantage-disadvantage"
+            ],
+            "result_ids": [
+              "srd_5_2_1:core:advantage-disadvantage",
+              "srd_5_2_1:combat:critical-hit",
+              "srd_5_2_1:combat:initiative",
+              "srd_5_2_1:checks:ability-check",
+              "srd_5_2_1:combat:attack-roll"
+            ],
+            "recall_at_k": 1,
+            "top1_correct": true,
+            "irrelevant_count": 4,
+            "obsolete_hits": [],
+            "privacy_violations": [],
+            "no_answer_expected": false,
+            "no_answer_returned": false,
+            "latency_ms": 615.175
+          },
+          {
+            "id": "rule-dialogue-reaction",
+            "category": "old_dialogue",
+            "query": "После атаки врага можно ответить реакцией?",
+            "expected_ids": [
+              "srd_5_2_1:combat:reaction"
+            ],
+            "result_ids": [
+              "srd_5_2_1:combat:reaction",
+              "srd_5_2_1:combat:damage-modifiers",
+              "srd_5_2_1:combat:attack-roll",
+              "srd_5_2_1:spells:concentration",
+              "srd_5_2_1:combat:armor-class"
+            ],
+            "recall_at_k": 1,
+            "top1_correct": true,
+            "irrelevant_count": 4,
+            "obsolete_hits": [],
+            "privacy_violations": [],
+            "no_answer_expected": false,
+            "no_answer_returned": false,
+            "latency_ms": 1107.511
+          },
+          {
+            "id": "rule-ambiguity-combat",
+            "category": "ambiguity",
+            "query": "Преимущество или реакция после атаки в бою?",
+            "expected_ids": [
+              "srd_5_2_1:core:advantage-disadvantage",
+              "srd_5_2_1:combat:reaction"
+            ],
+            "result_ids": [
+              "srd_5_2_1:combat:reaction",
+              "srd_5_2_1:core:advantage-disadvantage",
+              "srd_5_2_1:combat:attack-roll",
+              "srd_5_2_1:combat:damage-modifiers",
+              "srd_5_2_1:combat:damage"
+            ],
+            "recall_at_k": 1,
+            "top1_correct": true,
+            "irrelevant_count": 3,
+            "obsolete_hits": [],
+            "privacy_violations": [],
+            "no_answer_expected": false,
+            "no_answer_returned": false,
+            "latency_ms": 691.942
+          },
+          {
+            "id": "rule-no-answer",
+            "category": "no_answer",
+            "query": "Правила для фиолетовых драконов на Луне.",
+            "expected_ids": [],
+            "result_ids": [
+              "srd_5_2_1:spells:concentration",
+              "srd_5_2_1:classes:paladin-aura-of-protection",
+              "srd_5_2_1:environment:swimming",
+              "srd_5_2_1:combat:reaction",
+              "srd_5_2_1:environment:suffocation"
+            ],
+            "recall_at_k": null,
+            "top1_correct": null,
+            "irrelevant_count": 5,
+            "obsolete_hits": [],
+            "privacy_violations": [],
+            "no_answer_expected": true,
+            "no_answer_returned": false,
+            "latency_ms": 790.059
+          }
+        ]
+      },
+      "memory": {
+        "summary": {
+          "case_count": 8,
+          "recall_at_k": 1,
+          "top1_accuracy": 1,
+          "mean_irrelevant_count": 2.5,
+          "obsolete_hits": 1,
+          "privacy_violations": 0,
+          "no_answer_expected": 2,
+          "no_answer_correct": 1,
+          "no_answer_rate": 0.5,
+          "latency": {
+            "count": 8,
+            "min_ms": 541.655,
+            "p50_ms": 599.36,
+            "p95_ms": 1030.924,
+            "max_ms": 1030.924,
+            "mean_ms": 724.894
+          }
+        },
+        "cases": [
+          {
+            "id": "memory-npc-description",
+            "category": "npc_description",
+            "query": "Кто из замаскированных курьеров пользуется древним водоводом?",
+            "expected_ids": [
+              "fact:ashen-route"
+            ],
+            "result_ids": [
+              "fact:ashen-route",
+              "rumor:old-smugglers",
+              "fact:current-route",
+              "fact:vela-promise",
+              "fact:old-dialogue"
+            ],
+            "recall_at_k": 1,
+            "top1_correct": true,
+            "irrelevant_count": 4,
+            "obsolete_hits": [],
+            "privacy_violations": [],
+            "no_answer_expected": false,
+            "no_answer_returned": false,
+            "latency_ms": 568.818
+          },
+          {
+            "id": "memory-promise-paraphrase",
+            "category": "paraphrase",
+            "query": "Она дала слово выручить нас у переправы.",
+            "expected_ids": [
+              "fact:vela-promise"
+            ],
+            "result_ids": [
+              "fact:vela-promise",
+              "fact:old-dialogue",
+              "fact:fire-tower",
+              "fact:current-route",
+              "rumor:old-smugglers"
+            ],
+            "recall_at_k": 1,
+            "top1_correct": true,
+            "irrelevant_count": 4,
+            "obsolete_hits": [],
+            "privacy_violations": [],
+            "no_answer_expected": false,
+            "no_answer_returned": false,
+            "latency_ms": 599.36
+          },
+          {
+            "id": "memory-old-dialogue",
+            "category": "old_dialogue",
+            "query": "Что Вела говорила о дамбе до рассвета?",
+            "expected_ids": [
+              "fact:old-dialogue"
+            ],
+            "result_ids": [
+              "fact:old-dialogue",
+              "fact:vela-promise",
+              "rumor:old-smugglers",
+              "fact:private-seal",
+              "fact:fire-tower"
+            ],
+            "recall_at_k": 1,
+            "top1_correct": true,
+            "irrelevant_count": 4,
+            "obsolete_hits": [],
+            "privacy_violations": [],
+            "no_answer_expected": false,
+            "no_answer_returned": false,
+            "latency_ms": 592.425
+          },
+          {
+            "id": "memory-obsolete-rumor",
+            "category": "obsolete",
+            "query": "Слух про контрабандистов на старом тракте.",
+            "expected_ids": [
+              "rumor:old-smugglers"
+            ],
+            "result_ids": [
+              "rumor:old-smugglers",
+              "fact:ashen-route",
+              "fact:current-route",
+              "fact:fire-tower",
+              "fact:old-dialogue"
+            ],
+            "recall_at_k": 1,
+            "top1_correct": true,
+            "irrelevant_count": 4,
+            "obsolete_hits": [
+              "rumor:old-smugglers"
+            ],
+            "privacy_violations": [],
+            "no_answer_expected": false,
+            "no_answer_returned": false,
+            "latency_ms": 878.585
+          },
+          {
+            "id": "memory-ambiguity-edrik",
+            "category": "ambiguity",
+            "query": "Где находится Эдрик у ворот?",
+            "expected_ids": [
+              "fact:edrik-north",
+              "fact:edrik-south"
+            ],
+            "result_ids": [
+              "fact:edrik-north",
+              "fact:edrik-south"
+            ],
+            "recall_at_k": 1,
+            "top1_correct": true,
+            "irrelevant_count": 0,
+            "obsolete_hits": [],
+            "privacy_violations": [],
+            "no_answer_expected": false,
+            "no_answer_returned": false,
+            "latency_ms": 804.735
+          },
+          {
+            "id": "memory-private-known",
+            "category": "private_known",
+            "query": "Какая тайна Велы связана с печатью?",
+            "expected_ids": [
+              "fact:private-seal"
+            ],
+            "result_ids": [
+              "fact:private-seal",
+              "fact:old-dialogue",
+              "fact:vela-promise"
+            ],
+            "recall_at_k": 1,
+            "top1_correct": true,
+            "irrelevant_count": 2,
+            "obsolete_hits": [],
+            "privacy_violations": [],
+            "no_answer_expected": false,
+            "no_answer_returned": false,
+            "latency_ms": 782.65
+          },
+          {
+            "id": "memory-private-hidden",
+            "category": "private_hidden",
+            "query": "Какая тайна Велы связана с печатью?",
+            "expected_ids": [],
+            "result_ids": [
+              "fact:old-dialogue",
+              "fact:vela-promise"
+            ],
+            "recall_at_k": null,
+            "top1_correct": null,
+            "irrelevant_count": 2,
+            "obsolete_hits": [],
+            "privacy_violations": [],
+            "no_answer_expected": true,
+            "no_answer_returned": false,
+            "latency_ms": 541.655
+          },
+          {
+            "id": "memory-no-answer",
+            "category": "no_answer",
+            "query": "Когда прилетят фиолетовые драконы?",
+            "expected_ids": [],
+            "result_ids": [],
+            "recall_at_k": null,
+            "top1_correct": null,
+            "irrelevant_count": 0,
+            "obsolete_hits": [],
+            "privacy_violations": [],
+            "no_answer_expected": true,
+            "no_answer_returned": true,
+            "latency_ms": 1030.924
+          }
+        ]
+      },
+      "campaign_isolation": {
+        "case_count": 2,
+        "own_hits": 2,
+        "foreign_leaks": 0,
+        "cases": [
+          {
+            "campaign": "A",
+            "query": "маркер кампании А северный",
+            "result_ids": [
+              "fact:campaign-a",
+              "fact:edrik-north",
+              "fact:ashen-route"
+            ],
+            "own_id_found": true,
+            "foreign_id_found": false,
+            "latency_ms": 606.327
+          },
+          {
+            "campaign": "B",
+            "query": "маркер кампании Б южный",
+            "result_ids": [
+              "fact:campaign-b",
+              "fact:current-route",
+              "fact:edrik-south",
+              "fact:edrik-north"
+            ],
+            "own_id_found": true,
+            "foreign_id_found": false,
+            "latency_ms": 631.266
+          }
+        ]
+      }
+    }
+  }
+}

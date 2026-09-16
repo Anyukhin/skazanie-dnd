@@ -11,7 +11,9 @@ import { AuthoritativeExecutor } from '../server/authoritative-executor.mjs'
 import { FileEventStore } from '../server/event-store.mjs'
 import { MapStore } from '../server/map-store.mjs'
 import { DiceService } from '../server/dice-service.mjs'
-import { applyGameEvent, normalizeCampaignState, RulesEngine, GAME_STATE_PROJECTOR_VERSION } from '../server/rules-engine.mjs'
+import { applyGameEvent, normalizeCampaignState, RulesEngine, GAME_STATE_PROJECTOR_VERSION, shortestTacticalPath } from '../server/rules-engine.mjs'
+import { addProp, createTacticalMap, legacyCellsFromTacticalMap, serializeTacticalMap } from '../server/tactical-map.mjs'
+import { publicSceneFor } from '../server/viewer-projection.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 const CAMPAIGN = 'PERSIST-API'
@@ -116,9 +118,34 @@ function findWalkableStep(state, actorId) {
   assert.ok(actor && Number.isInteger(actor.x) && Number.isInteger(actor.y), 'у героя должна быть позиция на карте')
   const occupied = new Set(state.players.map((player) => `${player.x},${player.y}`))
   return state.scene.cells.find((cell) => cell.type === 'floor' && cell.revealed === true
-    && !cell.feature && Math.abs(cell.x - actor.x) + Math.abs(cell.y - actor.y) === 1
-    && !occupied.has(`${cell.x},${cell.y}`))
+    && !cell.feature && cell.movementBlocked !== true && Math.abs(cell.x - actor.x) + Math.abs(cell.y - actor.y) === 1
+    && !occupied.has(`${cell.x},${cell.y}`)
+    && Array.isArray(shortestTacticalPath(state, actorId, { x: cell.x, y: cell.y })))
 }
+
+test('findWalkableStep пропускает публично заблокированный соседний шаг', () => {
+  const makeState = (cells) => ({
+    players: [{ id: 'hero-slot-1', x: 0, y: 0 }],
+    scene: { cells: [{ x: 0, y: 0, type: 'floor', revealed: true }, ...cells] },
+  })
+  const blocked = { x: 1, y: 0, type: 'floor', revealed: true, movementBlocked: true }
+  const walkable = { x: 0, y: 1, type: 'floor', revealed: true }
+
+  assert.deepEqual(findWalkableStep(makeState([blocked, walkable]), 'hero-slot-1'), walkable)
+  assert.equal(findWalkableStep(makeState([blocked]), 'hero-slot-1'), undefined)
+})
+
+test('findWalkableStep пропускает полностью видимый предмет, блокирующий движение', () => {
+  const map = createTacticalMap({ width: 3, height: 2, fill: { passable: true, revealed: true } })
+  addProp(map, {
+    id: 'visible-table', assetId: 'table_long', x: 1.5, y: 0.5, blocksMove: true,
+    footprint: [{ x: 1, y: 0 }, { x: 1, y: 1 }],
+  })
+  const scene = publicSceneFor({ cells: legacyCellsFromTacticalMap(map), map: serializeTacticalMap(map) })
+  const state = { players: [{ id: 'hero-slot-1', x: 0, y: 0 }], scene }
+
+  assert.deepEqual(findWalkableStep(state, 'hero-slot-1'), scene.cells.find((cell) => cell.x === 0 && cell.y === 1))
+})
 
 test('обычный игрок создаёт persistent кампанию, завершает стартовую историю и сохраняет её после restart', { timeout: runnerTimeout(90_000) }, async (t) => {
   const storage = mkdtempSync(join(tmpdir(), 'skazanie-persistent-api-'))

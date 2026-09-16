@@ -8,6 +8,10 @@ import {
   IdempotencyConflictError,
   VersionConflictError,
 } from '../server/event-store.mjs'
+import { MapStore } from '../server/map-store.mjs'
+import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
+import { applyGameEvent, normalizeCampaignState, replayEvents, resolveCommand } from '../server/rules-engine.mjs'
+import { palaceFixture } from './shared-npc-consequence-fixture.mjs'
 
 function temporaryStore(t, options = {}) {
   const rootDir = mkdtempSync(join(tmpdir(), 'skazanie-event-store-'))
@@ -28,6 +32,47 @@ function campaignDirectory(rootDir) {
   const names = readdirSync(campaigns)
   assert.equal(names.length, 1)
   return join(campaigns, names[0])
+}
+
+async function liveCurrentBatch() {
+  const fixture = await palaceFixture({ kingHp: 1, witnesses: false })
+  let rollId = 0
+  const diceService = new DiceService({
+    rng: new SequenceDiceRng([20, 1, 1, 1, ...Array(200).fill(1)]),
+    idFactory: () => `event-store-fast-roll-${++rollId}`,
+    now: () => '2026-09-16T12:00:00.000Z',
+  })
+  const context = { allowedActorIds: [fixture.heroId] }
+  const started = resolveCommand({
+    command_type: 'AttackNpc', command_id: 'event-store-fast-attack', actor_id: fixture.heroId, npc_id: fixture.kingId,
+  }, fixture.state, { diceService, context })
+  const active = replayEvents(fixture.state, started.events)
+  const cast = resolveCommand({
+    command_type: 'CastSpell', command_id: 'event-store-fast-fireball', actor_id: fixture.heroId,
+    spell_id: 'fireball', to: fixture.kingPoint, server_authoritative: true,
+  }, active, { diceService, context: { ...context, serverAuthoritativeCombat: true } })
+  assert.ok(cast.events.some((event) => event.event_type === 'NpcDied'))
+  assert.ok(cast.events.some((event) => event.event_type === 'QuestInvalidated'))
+  return { initialState: fixture.state, events: cast.events }
+}
+
+function liveStore(t, initialState, { reducerNormalizesInput, normalizeCalls, idPrefix }) {
+  const rootDir = mkdtempSync(join(tmpdir(), `skazanie-event-store-${idPrefix}-`))
+  t.after(() => rmSync(rootDir, { recursive: true, force: true }))
+  let nextId = 0
+  return new FileEventStore({
+    rootDir,
+    reducer: applyGameEvent,
+    normalizeState: (state) => {
+      if (normalizeCalls) normalizeCalls.count += 1
+      return normalizeCampaignState(state)
+    },
+    initialStateFactory: () => structuredClone(initialState),
+    snapshotEvery: 0,
+    idFactory: () => `${idPrefix}-${++nextId}`,
+    clock: () => new Date('2026-09-16T12:00:00.000Z'),
+    ...(reducerNormalizesInput === undefined ? {} : { reducerNormalizesInput }),
+  })
 }
 
 test('imports a legacy snapshot once and can replay it without using snapshots', async (t) => {
@@ -171,6 +216,146 @@ test('snapshotEvery=0 выключает автоматические снимк
   const loaded = await store.load('manual-snapshots')
   assert.equal(loaded.events_applied, 5)
   assert.equal(loaded.state.hp, 16)
+})
+
+test('повторное создание уже нормализованного снимка сохраняет его байты и checksum', async (t) => {
+  let normalizeCalls = 0
+  const { rootDir, store } = temporaryStore(t, {
+    snapshotEvery: 1,
+    normalizeState: (state) => { normalizeCalls += 1; return state },
+  })
+  await store.initializeCampaign({ campaign_id: 'stable-snapshot', initial_state: { hp: 10 } })
+  normalizeCalls = 0
+  await store.commit({
+    campaign_id: 'stable-snapshot', expected_state_version: 0, idempotency_key: 'stable-snapshot-1',
+    events: [{ event_type: 'HealingApplied', payload: { amount: 2 } }],
+  })
+  assert.equal(normalizeCalls, 2, 'commit не должен повторно нормализовать snapshot и финальный state')
+
+  const snapshotFile = join(campaignDirectory(rootDir), 'snapshots', '0000000000000001.json')
+  const before = readFileSync(snapshotFile, 'utf8')
+  const persisted = JSON.parse(before)
+  const recreated = await store.createSnapshot('stable-snapshot')
+
+  assert.equal(readFileSync(snapshotFile, 'utf8'), before)
+  assert.equal(recreated.snapshot.checksum, persisted.checksum)
+  assert.deepEqual(recreated.snapshot.state, persisted.state)
+  assert.deepEqual((await store.load('stable-snapshot')).state, persisted.state)
+})
+
+test('ответ commit не разделяет ссылку карты с cache снимка', async (t) => {
+  const { rootDir } = temporaryStore(t)
+  const mapStore = new MapStore({ rootDir: join(rootDir, 'maps') })
+  const store = new FileEventStore({
+    rootDir,
+    reducer: (state) => state,
+    normalizeState: (state) => state,
+    mapStore,
+    snapshotEvery: 1,
+  })
+  await store.initializeCampaign({
+    campaign_id: 'snapshot-map-isolation',
+    initial_state: { scene: { map: { width: 1, height: 1, cells: [{ x: 0, y: 0, terrain: 'floor' }] } } },
+  })
+
+  const committed = await store.commit({
+    campaign_id: 'snapshot-map-isolation', expected_state_version: 0, idempotency_key: 'map-isolation-1',
+    events: [{ event_type: 'Noop', payload: {} }],
+  })
+  const snapshot = JSON.parse(readFileSync(join(campaignDirectory(rootDir), 'snapshots', '0000000000000001.json'), 'utf8'))
+  const mapHash = snapshot.state.scene.map.hash
+  committed.state.scene.map.cells[0].terrain = 'corrupted'
+
+  assert.equal(mapStore.get(mapHash).cells[0].terrain, 'floor')
+})
+
+test('trusted current reducer даёт тот же batch state для зависимых NPC и квеста', async (t) => {
+  const { initialState, events } = await liveCurrentBatch()
+  const normalCalls = { count: 0 }
+  const fastCalls = { count: 0 }
+  const normal = liveStore(t, initialState, { normalizeCalls: normalCalls, idPrefix: 'normal' })
+  const fast = liveStore(t, initialState, { reducerNormalizesInput: true, normalizeCalls: fastCalls, idPrefix: 'normal' })
+  await normal.initializeCampaign({ campaign_id: 'live-fast', initial_state: initialState })
+  await fast.initializeCampaign({ campaign_id: 'live-fast', initial_state: initialState })
+  normalCalls.count = 0
+  fastCalls.count = 0
+
+  const normalCommit = await normal.commit({
+    campaign_id: 'live-fast', expected_state_version: 0, idempotency_key: 'live-fast-1', events,
+  })
+  const fastCommit = await fast.commit({
+    campaign_id: 'live-fast', expected_state_version: 0, idempotency_key: 'live-fast-1', events,
+  })
+
+  assert.deepEqual(fastCommit.state, normalCommit.state)
+  assert.deepEqual(fastCommit.events, normalCommit.events)
+  assert.ok(fastCalls.count < normalCalls.count, `fast normalizations ${fastCalls.count}, normal ${normalCalls.count}`)
+  assert.deepEqual(
+    (await fast.replay('live-fast', { use_snapshots: false })).state,
+    (await normal.replay('live-fast', { use_snapshots: false })).state,
+  )
+})
+
+test('trusted reducer failure не сохраняет частичный batch', async (t) => {
+  const initialState = { counter: 0 }
+  const rootDir = mkdtempSync(join(tmpdir(), 'skazanie-event-store-fast-failure-'))
+  t.after(() => rmSync(rootDir, { recursive: true, force: true }))
+  const reducer = (state, event) => {
+    const next = normalizeCampaignState(state)
+    next.counter = Number(next.counter || 0) + 1
+    if (event.event_type === 'Failure') throw new Error('trusted reducer rejected event')
+    return next
+  }
+  const store = new FileEventStore({
+    rootDir,
+    reducer,
+    normalizeState: normalizeCampaignState,
+    initialStateFactory: () => structuredClone(initialState),
+    reducerNormalizesInput: true,
+  })
+  await store.initializeCampaign({ campaign_id: 'fast-failure', initial_state: initialState })
+
+  await assert.rejects(store.commit({
+    campaign_id: 'fast-failure', expected_state_version: 0, idempotency_key: 'fast-failure-1',
+    events: [{ event_type: 'Increment', payload: {} }, { event_type: 'Failure', payload: {} }],
+  }), /trusted reducer rejected event/u)
+  assert.equal((await store.load('fast-failure')).state.counter, 0)
+  assert.deepEqual(await store.getEvents('fast-failure'), [])
+})
+
+test('trusted reducer сохраняет старый и mixed replay per-event normalization', async (t) => {
+  const rootDir = mkdtempSync(join(tmpdir(), 'skazanie-event-store-fast-retention-'))
+  t.after(() => rmSync(rootDir, { recursive: true, force: true }))
+  const calls = { count: 0 }
+  const reducer = (state, event) => ({ ...state, seen: [...(state.seen ?? []), event.event_type] })
+  const normalize = (state) => { calls.count += 1; return { ...state } }
+  const legacy = new FileEventStore({
+    rootDir, reducer, normalizeState: normalize, reducerVersion: 14, snapshotEvery: 0,
+    initialStateFactory: () => ({ seen: [] }),
+  })
+  await legacy.initializeCampaign({ campaign_id: 'fast-retention', initial_state: { seen: [] } })
+  await legacy.commit({
+    campaign_id: 'fast-retention', expected_state_version: 0, idempotency_key: 'legacy-event',
+    events: [{ event_type: 'LegacyStep', payload: {} }],
+  })
+
+  const current = new FileEventStore({
+    rootDir, reducer, normalizeState: normalize, reducerVersion: 15, reducerNormalizesInput: true,
+    snapshotEvery: 0, initialStateFactory: () => ({ seen: [] }),
+  })
+  calls.count = 0
+  const oldReplay = await current.replay('fast-retention', { use_snapshots: false })
+  assert.deepEqual(oldReplay.state.seen, ['LegacyStep'])
+  assert.equal(calls.count, 2, 'legacy replay остаётся initial normalize + per-event normalize')
+
+  await current.commit({
+    campaign_id: 'fast-retention', expected_state_version: 1, idempotency_key: 'current-event',
+    events: [{ event_type: 'CurrentStep', payload: {} }],
+  })
+  calls.count = 0
+  const mixedReplay = await current.replay('fast-retention', { use_snapshots: false })
+  assert.deepEqual(mixedReplay.state.seen, ['LegacyStep', 'CurrentStep'])
+  assert.equal(calls.count, 3, 'mixed replay не должен включать trusted fast path')
 })
 
 test('новый вызов видит чужой коммит и проверяет журнал даже при готовом снимке', async (t) => {

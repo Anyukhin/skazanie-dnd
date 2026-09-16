@@ -33,6 +33,7 @@ import { footprintCellsFor, footprintSizeFor } from './actor-footprint.mjs'
 import { WORLD_DEEDS_SCHEMA_VERSION, worldDeedsFeed } from './world-deeds.mjs'
 import { worldMemoryForViewer } from './world-memory.mjs'
 import { officesForViewer } from './world-offices.mjs'
+import { questStateForViewer, knowledgeGateVisible } from './quest-consequences.mjs'
 import { normalizeCityOverview, normalizeWorldMapBackground, normalizeWorldMapLocationLore } from './world-map.mjs'
 import { NPC_PORTRAIT_CHARACTER_ASSETS } from './npc-portraits.mjs'
 
@@ -1468,6 +1469,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
       hit_point_dice: Object.fromEntries((state.players ?? []).map((/** @type {Loose} */ player) => [String(player.id), hitPointDicePoolForActor(state, player.id)])),
     },
   }
+  state = questStateForViewer(state, viewerFor(state, user, actorId))
   // `locationMaps` содержит ещё одну полную копию каждой тактической карты, а
   // `scene` ниже всё равно пересобирается строгим whitelist-проектором.
   // Не копируем одни и те же 10 000 клеток рекурсивно, чтобы тут же заменить
@@ -1475,6 +1477,10 @@ export function campaignStateForViewer(state, user, actorId = '') {
   const {
     locationMaps: _privateLocationMaps,
     scene: _privateScene,
+    // Эти области ниже пересобирают специализированные проекторы. Общий
+    // рекурсивный обход лишь создавал копии, отбрасываемые при сборке `room`.
+    worldMemory: _privateWorldMemory,
+    social: _privateSocial,
     ...projectableState
   } = state
   const visible = projectVisibleState(projectableState, viewerFor(state, user, actorId), { forNarrator: true }) ?? {}
@@ -1607,7 +1613,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
       state,
     }),
     scene_npcs: sceneNpcs,
-    ...(state.world_offices ? { world_offices: officesForViewer(state, { isPartyMember: true }) } : {}),
+    ...(state.world_offices ? { world_offices: officesForViewer(state, { isPartyMember: true, playerId: String(actorId ?? '') }) } : {}),
     captives: captivesForViewer(state, { isAdmin: false }),
     // Контейнер виден в доступной сцене; содержимое — только тому, чей герой
     // стоит рядом. Просмотр при этом бесплатен: он приходит проекцией, а не
@@ -1670,11 +1676,19 @@ export function campaignStateForViewer(state, user, actorId = '') {
  * @returns {Loose | null}
  */
 function eventForViewer(event, user, actorId, state = {}) {
+  if (!knowledgeGateVisible(event.payload?.knowledge_gate, state.worldMemory, viewerFor(state, user, actorId))) return null
   const visible = projectVisibleState(event, viewerFor(state, user, actorId), { forNarrator: true })
   if (!visible) return null
   const payload = visible.payload && typeof visible.payload === 'object' && !Array.isArray(visible.payload)
     ? { ...visible.payload }
     : {}
+  delete payload.knowledge_gate
+  delete payload.previous_view
+  if (visible.event_type === 'CampaignStoryCompleted') {
+    const knownStory = questStateForViewer(state, viewerFor(state, user, actorId)).campaignConcept?.story_history
+      ?.find((/** @type {Loose} */ story) => story.story_id === payload.story_id)
+    if (knownStory) payload.story_number = knownStory.story_number
+  }
   // Payload события расширяем, поэтому вложенное оформление получает свой
   // whitelist и не проходит через общий проектор видимости без проверки.
   if (Object.hasOwn(payload, 'attack_visual')) {
