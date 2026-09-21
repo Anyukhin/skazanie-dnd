@@ -524,7 +524,44 @@ function resetRig(rig: Rig) {
   }
 }
 
-function applyProceduralPose(rig: Rig, pose: ActorPose, progress: number): void {
+function mainHandModelKey(appearance: ActorAppearance | undefined): string {
+  return appearance?.version === 2 ? String(appearance.loadout.main_hand?.model_key ?? '').toLocaleLowerCase('en-US') : ''
+}
+
+type GlbAttackStyle = 'slash' | 'pierce' | 'bludgeon' | 'natural' | 'unarmed'
+type GlbRangedStyle = 'bow' | 'crossbow' | 'thrown'
+
+function glbAttackStyle(appearance: ActorAppearance | undefined): GlbAttackStyle {
+  const key = mainHandModelKey(appearance)
+  if (appearance?.profile === 'beast') return 'natural'
+  if (appearance?.equipment === 'unarmed') return 'unarmed'
+  if (['club', 'greatclub', 'light-hammer', 'mace', 'quarterstaff', 'flail', 'maul', 'warhammer'].includes(key)
+    || appearance?.equipment === 'staff') return 'bludgeon'
+  if (['dagger', 'javelin', 'spear', 'lance', 'pike', 'rapier', 'shortsword', 'trident', 'morningstar', 'war-pick'].includes(key)
+    || appearance?.equipment === 'dagger') return 'pierce'
+  return 'slash'
+}
+
+function glbRangedStyle(appearance: ActorAppearance | undefined): GlbRangedStyle {
+  const key = mainHandModelKey(appearance)
+  if (key.includes('crossbow')) return 'crossbow'
+  if (appearance?.equipment === 'dagger' || ['dagger', 'javelin', 'spear', 'trident', 'lance', 'pike', 'handaxe', 'battleaxe', 'greataxe', 'net'].includes(key)) return 'thrown'
+  return 'bow'
+}
+
+function attackPoseProgress(progress: number): number {
+  const contact = .3
+  return progress < contact
+    ? progress / contact * .5
+    : .5 + (progress - contact) / (1 - contact) * .5
+}
+
+function rangedReleaseProgress(progress: number): number {
+  const launch = .2
+  return progress < launch ? progress / launch : Math.max(0, 1 - (progress - launch) / (1 - launch))
+}
+
+function applyProceduralPose(rig: Rig, pose: ActorPose, progress: number, appearance?: ActorAppearance, profile?: ActorModelProfile): void {
   resetRig(rig)
   const p = MathUtils.clamp(progress, 0, 1)
   const wave = Math.sin(p * Math.PI * 2)
@@ -547,18 +584,61 @@ function applyProceduralPose(rig: Rig, pose: ActorPose, progress: number): void 
     if (rightArm) rightArm.rotation.x = stride * .3
     rig.motion.position.y = Math.abs(stride) * .025
   } else if (pose === 'attack') {
-    const swing = Math.sin(MathUtils.clamp(p, 0, 1) * Math.PI)
-    if (rightArm) rightArm.rotation.z = -1.05 + swing * 1.7
-    if (leftArm) leftArm.rotation.z = .18 - swing * .2
-    if (torso) torso.rotation.y = -.22 + swing * .42
-    rig.motion.position.z = -swing * .045
+    const swing = Math.sin(attackPoseProgress(p) * Math.PI)
+    const equipment = appearance?.equipment ?? 'unknown'
+    if (profile === 'beast' || appearance?.profile === 'beast') {
+      const frontLeft = rig.parts.get('leftArm')
+      const frontRight = rig.parts.get('rightArm')
+      if (frontLeft) frontLeft.rotation.x = -swing * .72
+      if (frontRight) frontRight.rotation.x = swing * .72
+      if (head) head.rotation.x = -swing * .16
+      rig.motion.position.z = -swing * .06
+    } else if (equipment === 'unarmed') {
+      if (rightArm) { rightArm.rotation.z = -.72 + swing * 1.22; rightArm.rotation.x = -.14 - swing * .2 }
+      if (leftArm) { leftArm.rotation.z = .48 - swing * .72; leftArm.rotation.x = -.08 - swing * .16 }
+      if (torso) torso.rotation.y = -.1 + swing * .24
+      rig.motion.position.z = -swing * .075
+    } else if (equipment === 'dagger') {
+      // Короткий клинок читается как выпад, а не как широкий замах мечом.
+      if (rightArm) { rightArm.rotation.z = -.64 + swing * .5; rightArm.rotation.x = -.48 - swing * .22 }
+      if (leftArm) leftArm.rotation.z = .16 - swing * .1
+      if (torso) torso.rotation.y = -.12 + swing * .22
+      rig.motion.position.z = -swing * .085
+    } else if (equipment === 'staff') {
+      // Посох/дробящий удар проходит ниже и тяжелее, с заметным возвратом.
+      if (rightArm) { rightArm.rotation.z = -.92 + swing * 1.18; rightArm.rotation.x = .12 + swing * .18 }
+      if (leftArm) { leftArm.rotation.z = .3 - swing * .35; leftArm.rotation.x = .08 + swing * .12 }
+      if (torso) torso.rotation.y = -.2 + swing * .34
+      rig.motion.position.z = -swing * .055
+    } else {
+      // Меч и неизвестное оружие сохраняют широкий рубящий профиль.
+      if (rightArm) rightArm.rotation.z = -1.05 + swing * 1.7
+      if (leftArm) leftArm.rotation.z = .18 - swing * .2
+      if (torso) torso.rotation.y = -.22 + swing * .42
+      rig.motion.position.z = -swing * .045
+    }
   } else if (pose === 'ranged-attack') {
-    // У процедурной фигурки нет отдельного клипа: короткая сдержанная
-    // натяжка читается по двум рукам и не подменяется мечевой атакой.
-    const draw = p === 0 ? 1 : Math.sin(MathUtils.clamp(p, 0, 1) * Math.PI)
-    if (leftArm) { leftArm.rotation.z = .42 - draw * .18; leftArm.rotation.x = -.55 - draw * .16 }
-    if (rightArm) { rightArm.rotation.z = -.42 + draw * .1; rightArm.rotation.x = -.62 - draw * .2 }
-    if (torso) torso.rotation.y = -.08 + draw * .1
+    const modelKey = mainHandModelKey(appearance)
+    const thrownModel = ['dagger', 'javelin', 'spear', 'trident', 'lance', 'pike', 'handaxe', 'battleaxe', 'greataxe', 'net'].includes(modelKey)
+    const thrown = (appearance?.equipment === 'dagger' || thrownModel) && !modelKey.includes('bow') && !modelKey.includes('crossbow')
+    const crossbow = modelKey.includes('crossbow')
+    // У процедурной фигурки нет отдельного клипа: натяжка лука, постановка
+    // арбалета и бросок короткого клинка имеют разные силуэты.
+    const draw = rangedReleaseProgress(p)
+    if (thrown) {
+      if (rightArm) { rightArm.rotation.z = -.74 + draw * 1.1; rightArm.rotation.x = -.15 - draw * .55 }
+      if (leftArm) leftArm.rotation.z = .2 - draw * .15
+      if (torso) torso.rotation.y = -.16 + draw * .28
+      rig.motion.position.z = -draw * .08
+    } else if (crossbow) {
+      if (leftArm) { leftArm.rotation.z = .22 - draw * .1; leftArm.rotation.x = -.48 - draw * .14 }
+      if (rightArm) { rightArm.rotation.z = -.56 + draw * .18; rightArm.rotation.x = -.5 - draw * .12 }
+      if (torso) torso.rotation.y = -.03 + draw * .08
+    } else {
+      if (leftArm) { leftArm.rotation.z = .42 - draw * .18; leftArm.rotation.x = -.55 - draw * .16 }
+      if (rightArm) { rightArm.rotation.z = -.42 + draw * .1; rightArm.rotation.x = -.62 - draw * .2 }
+      if (torso) torso.rotation.y = -.08 + draw * .1
+    }
   } else if (pose === 'cast') {
     const lift = Math.sin(MathUtils.clamp(p, 0, 1) * Math.PI)
     if (leftArm) { leftArm.rotation.z = .7 - lift * .9; leftArm.rotation.x = -.35 }
@@ -567,9 +647,10 @@ function applyProceduralPose(rig: Rig, pose: ActorPose, progress: number): void 
     rig.motion.position.y = lift * .02
   } else if (pose === 'hit') {
     const recoil = Math.sin(MathUtils.clamp(p, 0, 1) * Math.PI)
-    rig.motion.rotation.z = recoil * .12
-    rig.motion.position.z = recoil * .07
-    if (head) head.rotation.x = recoil * .12
+    rig.motion.rotation.z = recoil * .18
+    rig.motion.position.z = recoil * .11
+    if (torso) torso.rotation.x = recoil * .1
+    if (head) head.rotation.x = recoil * .18
   } else if (pose === 'death') {
     const fall = MathUtils.clamp(p, 0, 1)
     rig.motion.rotation.z = fall * 1.32
@@ -1010,9 +1091,14 @@ function clipPose(clip: AnimationClip): ActorPose | null {
 }
 
 type AimBoneRest = { bone: Object3D; rotation: { x: number; y: number; z: number } }
+type GlbPoseOverlay = {
+  apply: (progress?: number, style?: string) => void
+  reset: () => void
+  available: boolean
+}
 
 /** Небольшая локальная замена отсутствующему bow-клипу у известных humanoid rig. */
-function createGlbAimPose(root: Group): { apply: (progress?: number) => void; reset: () => void; available: boolean } {
+function createGlbAimPose(root: Group): GlbPoseOverlay {
   const find = (...names: string[]) => objectByName(root, ...names)
   const leftUpper = find('upperarm.l', 'upperarm_l')
   const rightUpper = find('upperarm.r', 'upperarm_r')
@@ -1028,16 +1114,79 @@ function createGlbAimPose(root: Group): { apply: (progress?: number) => void; re
     for (const item of rest) item.bone.rotation.set(item.rotation.x, item.rotation.y, item.rotation.z)
     applied = false
   }
-  const apply = (progress?: number) => {
+  const apply = (progress?: number, style: string = 'bow') => {
     if (!rest.length) return
     reset()
     const p = progress == null ? 0 : MathUtils.clamp(progress, 0, 1)
-    const draw = progress == null || p === 0 ? 1 : Math.sin(p * Math.PI)
-    if (leftUpper) leftUpper.rotation.set(leftUpper.rotation.x - .28 - draw * .12, leftUpper.rotation.y, leftUpper.rotation.z + .3 - draw * .08)
-    if (rightUpper) rightUpper.rotation.set(rightUpper.rotation.x - .34 - draw * .1, rightUpper.rotation.y, rightUpper.rotation.z - .32 + draw * .08)
-    if (leftLower) leftLower.rotation.x -= .22 + draw * .15
-    if (rightLower) rightLower.rotation.x -= .18 + draw * .12
-    if (chest) chest.rotation.y += .06 * draw
+    const draw = progress == null ? 1 : rangedReleaseProgress(p)
+    if (style === 'thrown') {
+      if (rightUpper) rightUpper.rotation.set(rightUpper.rotation.x - .12 - draw * .5, rightUpper.rotation.y, rightUpper.rotation.z - .38 + draw * 1.05)
+      if (leftUpper) leftUpper.rotation.set(leftUpper.rotation.x - .08 - draw * .12, leftUpper.rotation.y, leftUpper.rotation.z + .2 - draw * .12)
+      if (rightLower) rightLower.rotation.x -= .12 + draw * .35
+      if (chest) chest.rotation.y += .05 * draw
+    } else if (style === 'crossbow') {
+      if (leftUpper) leftUpper.rotation.set(leftUpper.rotation.x - .3 - draw * .1, leftUpper.rotation.y, leftUpper.rotation.z + .2 - draw * .08)
+      if (rightUpper) rightUpper.rotation.set(rightUpper.rotation.x - .35 - draw * .08, rightUpper.rotation.y, rightUpper.rotation.z - .28 + draw * .06)
+      if (leftLower) leftLower.rotation.x -= .18 + draw * .12
+      if (rightLower) rightLower.rotation.x -= .16 + draw * .1
+      if (chest) chest.rotation.y += .04 * draw
+    } else {
+      if (leftUpper) leftUpper.rotation.set(leftUpper.rotation.x - .28 - draw * .12, leftUpper.rotation.y, leftUpper.rotation.z + .3 - draw * .08)
+      if (rightUpper) rightUpper.rotation.set(rightUpper.rotation.x - .34 - draw * .1, rightUpper.rotation.y, rightUpper.rotation.z - .32 + draw * .08)
+      if (leftLower) leftLower.rotation.x -= .22 + draw * .15
+      if (rightLower) rightLower.rotation.x -= .18 + draw * .12
+      if (chest) chest.rotation.y += .06 * draw
+    }
+    applied = true
+  }
+  return { apply, reset, available: rest.length > 0 }
+}
+
+/** Безопасный fallback для GLB без собственного attack/strike клипа. */
+function createGlbAttackPose(root: Group): GlbPoseOverlay {
+  const find = (...names: string[]) => objectByName(root, ...names)
+  const leftUpper = find('upperarm.l', 'upperarm_l')
+  const rightUpper = find('upperarm.r', 'upperarm_r')
+  const leftLower = find('lowerarm.l', 'lowerarm_l')
+  const rightLower = find('lowerarm.r', 'lowerarm_r')
+  const chest = find('chest', 'spine_03', 'spine_02')
+  const rest: AimBoneRest[] = [leftUpper, rightUpper, leftLower, rightLower, chest]
+    .filter((bone): bone is Object3D => Boolean(bone))
+    .map((bone) => ({ bone, rotation: { x: bone.rotation.x, y: bone.rotation.y, z: bone.rotation.z } }))
+  let applied = false
+  const reset = () => {
+    if (!applied) return
+    for (const item of rest) item.bone.rotation.set(item.rotation.x, item.rotation.y, item.rotation.z)
+    applied = false
+  }
+  const apply = (progress?: number, style = 'slash') => {
+    if (!rest.length) return
+    reset()
+    const p = MathUtils.clamp(progress == null ? 0 : progress, 0, 1)
+    const motion = attackPoseProgress(p)
+    const swing = Math.sin(motion * Math.PI)
+    if (style === 'natural') {
+      if (rightUpper) rightUpper.rotation.x -= swing * .5
+      if (leftUpper) leftUpper.rotation.x += swing * .45
+      if (rightLower) rightLower.rotation.x -= swing * .2
+      if (chest) chest.rotation.y += swing * .12
+    } else if (style === 'unarmed') {
+      if (rightUpper) rightUpper.rotation.z += -.18 + swing * 1.05
+      if (leftUpper) leftUpper.rotation.z += .22 - swing * .65
+      if (rightLower) rightLower.rotation.x -= swing * .16
+    } else if (style === 'pierce') {
+      if (rightUpper) { rightUpper.rotation.z += -.1 + swing * .35; rightUpper.rotation.x -= swing * .45 }
+      if (rightLower) rightLower.rotation.x -= swing * .22
+      if (chest) chest.rotation.y += swing * .18
+    } else if (style === 'bludgeon') {
+      if (rightUpper) { rightUpper.rotation.z += -.42 + swing * 1.15; rightUpper.rotation.x += swing * .12 }
+      if (leftUpper) leftUpper.rotation.z += .12 - swing * .25
+      if (chest) chest.rotation.y += swing * .28
+    } else {
+      if (rightUpper) rightUpper.rotation.z += -.65 + swing * 1.55
+      if (leftUpper) leftUpper.rotation.z += .12 - swing * .16
+      if (chest) chest.rotation.y += -.08 + swing * .38
+    }
     applied = true
   }
   return { apply, reset, available: rest.length > 0 }
@@ -1087,11 +1236,11 @@ function enableActorShadows(root: Group): void {
 }
 
 function addProceduralMethods(model: ActorModel, rig: Rig) {
-  const setPose = (pose: ActorPose, progress?: number) => applyProceduralPose(rig, pose, progress == null ? 0 : progress)
+  const setPose = (pose: ActorPose, progress?: number) => applyProceduralPose(rig, pose, progress == null ? 0 : progress, model.appearance, model.profile)
   model.setPose = setPose
   model.update = () => undefined
-  model.idle = (progress = 0) => applyProceduralPose(rig, 'idle', progress - Math.floor(progress))
-  model.walk = (progress = 0) => applyProceduralPose(rig, 'walk', progress - Math.floor(progress))
+  model.idle = (progress = 0) => applyProceduralPose(rig, 'idle', progress - Math.floor(progress), model.appearance, model.profile)
+  model.walk = (progress = 0) => applyProceduralPose(rig, 'walk', progress - Math.floor(progress), model.appearance, model.profile)
   model.attack = (progress = 0) => setPose('attack', progress)
   model.rangedAttack = (progress = 0) => setPose('ranged-attack', progress)
   model.cast = (progress = 0) => setPose('cast', progress)
@@ -1099,7 +1248,7 @@ function addProceduralMethods(model: ActorModel, rig: Rig) {
   model.death = (progress = 0) => setPose('death', progress)
 }
 
-function decorateModel(root: Group, input: NormalizedActorModelInput, entry: ActorModelManifestEntry, source: 'glb' | 'procedural', targetHeight: number, rig?: Rig, mixer?: AnimationMixer, actions?: Map<ActorPose, AnimationAction>, equipmentController?: AccessoryController, aimPose?: { apply: (progress?: number) => void; reset: () => void; available: boolean }, loadoutController?: ReturnType<typeof createEquipmentController>): ActorModel {
+function decorateModel(root: Group, input: NormalizedActorModelInput, entry: ActorModelManifestEntry, source: 'glb' | 'procedural', targetHeight: number, rig?: Rig, mixer?: AnimationMixer, actions?: Map<ActorPose, AnimationAction>, equipmentController?: AccessoryController, aimPose?: GlbPoseOverlay, attackPose?: GlbPoseOverlay, loadoutController?: ReturnType<typeof createEquipmentController>): ActorModel {
   const model = root as ActorModel
   model.actorId = input.id
   model.actorLabel = input.label
@@ -1133,15 +1282,25 @@ function decorateModel(root: Group, input: NormalizedActorModelInput, entry: Act
     if (disposed) return
     const requestedAction = actions?.get(pose)
     const aimFallback = pose === 'ranged-attack' && Boolean(aimPose?.available)
-    const action = requestedAction ?? (aimFallback ? undefined : actions?.get('idle'))
+    const attackFallback = pose === 'attack' && Boolean(attackPose?.available)
+    const action = requestedAction ?? (aimFallback || attackFallback ? undefined : actions?.get('idle'))
     if (!action) {
       activeAction?.stop()
       activeAction = null
-      if (aimFallback) aimPose?.apply(progress)
-      else aimPose?.reset()
+      if (aimFallback) {
+        attackPose?.reset()
+        aimPose?.apply(progress, glbRangedStyle(model.appearance))
+      } else if (attackFallback) {
+        aimPose?.reset()
+        attackPose?.apply(progress, glbAttackStyle(model.appearance))
+      } else {
+        aimPose?.reset()
+        attackPose?.reset()
+      }
       return
     }
     aimPose?.reset()
+    attackPose?.reset()
     const targetTime = progress == null ? undefined : MathUtils.clamp(progress, 0, 1) * action.getClip().duration
     if (targetTime != null && activeAction === action && action.paused && Math.abs(action.time - targetTime) < 1e-8) return
     if (activeAction !== action) {
@@ -1173,6 +1332,7 @@ function decorateModel(root: Group, input: NormalizedActorModelInput, entry: Act
     wardrobe.dispose()
     equipmentController?.dispose()
     aimPose?.reset()
+    attackPose?.reset()
     disposeObject(root)
   }
   model.setAppearance(input.appearance)
@@ -1242,7 +1402,8 @@ async function createGlbModel(input: NormalizedActorModelInput, entry: ActorMode
     if (pose && !actions.has(pose)) actions.set(pose, mixer.clipAction(clip))
   }
   const aimPose = createGlbAimPose(root)
-  const model = decorateModel(root, input, entry, 'glb', targetHeight, undefined, mixer, actions, equipmentController, aimPose, loadoutController)
+  const attackPose = createGlbAttackPose(root)
+  const model = decorateModel(root, input, entry, 'glb', targetHeight, undefined, mixer, actions, equipmentController, aimPose, attackPose, loadoutController)
   if (calibrationAction) { model.setPose('idle', 0); model.update(.001) }
   return model
 }

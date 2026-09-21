@@ -6,6 +6,7 @@ const overridePayload = JSON.parse(readFileSync(new URL('../data/dndsu-spell-mec
 const SPELL_OVERRIDES = overridePayload.spells ?? {}
 const DEFAULT_PARTIAL_NOTE = 'Сервер исполняет формализованную часть карточки; полный набор исключений и взаимодействий ещё не подтверждён.'
 const DEFAULT_RULING_NOTE = 'Карточка известна каталогу, но для её эффекта ещё нет исполняемого серверного решения.'
+const DND_2014_RULESET_ID = 'dnd_5e_2014'
 const SPELLS = Object.freeze(payload.spells.map((spell) => {
   const mechanicsOverride = SPELL_OVERRIDES[spell.id]
   const mechanicsSupport = mechanicsOverride?.mechanicsSupport
@@ -22,6 +23,25 @@ const SPELLS = Object.freeze(payload.spells.map((spell) => {
 const SPELLS_BY_ID = new Map(SPELLS.map((spell) => [spell.id, spell]))
 
 const clone = (value) => structuredClone(value)
+const rulesetIdOf = (options) => String(typeof options === 'string' ? options : options?.rulesetId ?? options?.ruleset_id ?? 'srd_5_2_1')
+const spellForRuleset = (spell, rulesetId) => {
+  if (!spell) return spell
+  if (rulesetId !== DND_2014_RULESET_ID) {
+    const { components, ...legacy } = spell
+    return legacy
+  }
+  if (spell.id !== 'resistance') return spell
+  return {
+    ...spell,
+    spellOptions: [],
+    concentration: true,
+    durationRounds: 10,
+    resistanceSavingThrow: true,
+    resistanceBonusExpression: '1d4',
+    description: 'Коснитесь согласного существа. Один раз до окончания заклинания цель может добавить 1к4 к одному спасброску по своему выбору, после чего заклинание заканчивается.',
+    supportNote: 'Вариант D&D 2014: концентрация до 1 минуты; цель сама выбирает один спасбросок для бонуса 1к4.',
+  }
+}
 const roleText = (actor) => `${actor?.role ?? ''} ${actor?.class ?? ''} ${actor?.characterClass ?? ''}`.toLocaleLowerCase('ru')
 
 const FULL_CASTER_SLOTS = Object.freeze([
@@ -120,6 +140,24 @@ function slotResourceForProfile(profile, spell) {
   return `spell_slots_${spell.level}`
 }
 
+/**
+ * Фиксированный круг специального ресурса. Rules Engine использует этот
+ * helper, чтобы не копировать таблицу pact magic в отдельном валидаторе.
+ * `null` означает обычную ячейку, которую можно выбрать по запросу игрока.
+ */
+export function fixedSpellSlotLevelFor(actor, spell) {
+  if (!spell || spell.level === 0) return null
+  const resource = String(spell.slotResource ?? '')
+  if (resource === 'mystic_arcanum_6') return 6
+  if (resource === 'pact_slots') {
+    const profile = casterProfile(actor)
+    if (profile?.progression === 'pact') return WARLOCK_PACT[boundedLevel(actor)]?.level ?? spell.level
+    return spell.level
+  }
+  if (resource.startsWith('species_spell_')) return Math.max(spell.level, Number(spell.innateCastLevel) || spell.level)
+  return null
+}
+
 function selectedSpellIds(actor, camel, snake) {
   const hasSelection = Object.hasOwn(actor ?? {}, camel) || Object.hasOwn(actor ?? {}, snake)
   const source = actor?.[camel] ?? actor?.[snake]
@@ -140,7 +178,7 @@ function boundedSelection(actor, profile, level, rules) {
   return { known, prepared }
 }
 
-export function normalizedSpellSelectionsFor(actor) {
+export function normalizedSpellSelectionsFor(actor, options = {}) {
   const profile = casterProfile(actor)
   if (!profile) return { knownSpellIds: [], preparedSpellIds: [] }
   const level = boundedLevel(actor)
@@ -172,7 +210,8 @@ export function spellSelectionRulesFor(actor) {
   }
 }
 
-export function combatSpellsFor(actor) {
+export function combatSpellsFor(actor, options = {}) {
+  const rulesetId = rulesetIdOf(options)
   const profile = casterProfile(actor)
   const level = boundedLevel(actor)
   const classSpells = profile ? (() => {
@@ -186,7 +225,16 @@ export function combatSpellsFor(actor) {
         : rules.mode === 'known' ? (known ? known.has(spell.id) : true)
           : rules.mode === 'spellbook' ? (known ? known.has(spell.id) : true) && (prepared ? prepared.has(spell.id) : true)
             : prepared ? prepared.has(spell.id) : true
-      return { ...clone(spell), slotResource: slotResourceForProfile(profile, spell), spellcastingAbility: profile.ability, prepared: isPrepared }
+      const slotResource = slotResourceForProfile(profile, spell)
+      const slotProfile = { ...spell, slotResource }
+      return {
+        ...clone(spellForRuleset(spell, rulesetId)),
+        slotResource,
+        slotLevel: fixedSpellSlotLevelFor(actor, slotProfile) ?? spell.level,
+        spellcastingAbility: profile.ability,
+        spellcastingClass: profile.key,
+        prepared: isPrepared,
+      }
       })
   })() : []
   const innate = [...(Array.isArray(actor?.speciesBenefits?.innate_spells) ? actor.speciesBenefits.innate_spells : []), ...(actor?.creationSpellGrants ?? [])]
@@ -195,13 +243,17 @@ export function combatSpellsFor(actor) {
       const spell = SPELLS_BY_ID.get(String(entry?.id ?? ''))
       if (!spell) return null
       const limited = Number.isFinite(Number(entry?.uses)) && Number(entry.uses) > 0
+      const innateCastLevel = Math.max(spell.level, Number(entry?.cast_level) || spell.level)
+      const slotResource = limited ? `species_spell_${spell.id}` : null
+      const slotProfile = { ...spell, slotResource, innateCastLevel }
       return {
-        ...clone(spell),
+        ...clone(spellForRuleset(spell, rulesetId)),
         prepared: true,
         innateSpell: true,
-        innateCastLevel: Math.max(spell.level, Number(entry?.cast_level) || spell.level),
+        innateCastLevel,
         spellcastingAbility: String(entry?.ability ?? 'cha'),
-        slotResource: limited ? `species_spell_${spell.id}` : null,
+        slotResource,
+        slotLevel: fixedSpellSlotLevelFor(actor, slotProfile) ?? spell.level,
         source: entry.source ?? 'species',
       }
     })
@@ -211,22 +263,22 @@ export function combatSpellsFor(actor) {
     const classVersion = byId.get(spell.id)
     byId.set(spell.id, {
       ...spell,
-      ...(classVersion?.prepared !== false && classVersion?.slotResource ? { fallbackSlotResource: classVersion.slotResource } : {}),
+      ...(classVersion?.prepared !== false && classVersion?.slotResource ? { fallbackSlotResource: classVersion.slotResource, fallbackSpellcastingClass: classVersion.spellcastingClass } : {}),
     })
   }
   return [...byId.values()]
 }
 
-export function combatSpellFor(actor, spellId) {
+export function combatSpellFor(actor, spellId, options = {}) {
   const id = String(spellId ?? '')
   if (!SPELLS_BY_ID.has(id)) return null
-  const spell = combatSpellsFor(actor).find((entry) => entry.id === id) ?? null
+  const spell = combatSpellsFor(actor, options).find((entry) => entry.id === id) ?? null
   return spell?.prepared === false ? null : spell
 }
 
-export function canonicalCombatSpellFor(spellId) {
+export function canonicalCombatSpellFor(spellId, options = {}) {
   const spell = SPELLS_BY_ID.get(String(spellId ?? ''))
-  return spell ? clone(spell) : null
+  return spell ? clone(spellForRuleset(spell, rulesetIdOf(options))) : null
 }
 
 /**
@@ -260,6 +312,11 @@ export const MONSTER_SPELL_AT_WILL = 'at-will'
 export const MONSTER_SPELL_USE_CONDITION_PREFIX = 'monster-spell-used:'
 
 const SPELL_ABILITIES = Object.freeze(['str', 'dex', 'con', 'int', 'wis', 'cha'])
+const SPELL_COMPONENT_KEYS = Object.freeze(['verbal', 'somatic', 'material'])
+
+function declaredComponents(entry, key) {
+  return Array.isArray(entry?.[key]) ? SPELL_COMPONENT_KEYS.filter((part) => entry[key].includes(part)) : []
+}
 
 /** Нормализованный блок стат-блока либо `null`, если существо не заклинатель. */
 export function monsterSpellcastingFor(actor) {
@@ -298,6 +355,8 @@ export function monsterSpellcastingFor(actor) {
       return {
         id,
         perDay,
+        componentsRequired: declaredComponents(entry, 'components_required'),
+        componentsNotRequired: declaredComponents(entry, 'components_not_required'),
         ...(sharedSlot ? { level, slotResource: `spell_slots_${level}` } : {}),
       }
     })
@@ -308,6 +367,9 @@ export function monsterSpellcastingFor(actor) {
     saveDc: Math.max(1, Math.trunc(Number(raw.save_dc ?? raw.saveDc) || 10)),
     attackBonus: Math.trunc(Number(raw.attack_bonus ?? raw.attackBonus) || 0),
     casterLevel: Math.max(1, Math.trunc(Number(raw.caster_level ?? actor?.level) || 1)),
+    spellcastingClass: casterProfile({ characterClass: raw.class })?.key,
+    componentsRequired: declaredComponents(raw, 'components_required'),
+    componentsNotRequired: declaredComponents(raw, 'components_not_required'),
     spells,
     ...(hasSharedSlots ? { slotMaximums } : {}),
   }
@@ -329,18 +391,32 @@ export function monsterSpellEntryFor(actor, spellId) {
  * разных отказа разводит `monsterSpellRefusalFor` ниже — движку нужен честный
  * код, а не общее «нельзя».
  */
-export function monsterCombatSpellFor(actor, spellId) {
+export function monsterCombatSpellFor(actor, spellId, options = {}) {
+  const rulesetId = rulesetIdOf(options)
   const block = monsterSpellcastingFor(actor)
   if (!block) return null
   const entry = block.spells.find((candidate) => candidate.id === String(spellId ?? ''))
   const spell = entry ? SPELLS_BY_ID.get(entry.id) : null
   if (!entry || !spell) return null
+  const components = rulesetId === DND_2014_RULESET_ID ? clone(spell.components) : undefined
+  if (rulesetId === DND_2014_RULESET_ID && components) {
+    const required = entry.componentsRequired.length ? entry.componentsRequired : block.componentsRequired
+    const waived = entry.componentsNotRequired.length ? entry.componentsNotRequired : block.componentsNotRequired
+    for (const part of ['verbal', 'somatic']) {
+      if (required.includes(part)) components[part] = true
+      else if (waived.includes(part)) components[part] = false
+    }
+    if (waived.includes('material') && !required.includes('material')) components.material = null
+  }
   return {
-    ...clone(spell),
+    ...clone(spellForRuleset(spell, rulesetId)),
+    ...(components ? { components } : {}),
     // В 2014-блоке `slotResource` указывает на общий пул круга. В legacy-блоке
     // он отсутствует, и расход идёт маркером `monster-spell-used:*`.
     slotResource: entry.slotResource ?? null,
+    slotLevel: entry.slotResource ? fixedSpellSlotLevelFor(actor, { ...spell, slotResource: entry.slotResource }) ?? entry.level ?? spell.level : spell.level,
     spellcastingAbility: block.ability,
+    spellcastingClass: block.spellcastingClass,
     prepared: true,
     monsterSpell: {
       id: entry.id,

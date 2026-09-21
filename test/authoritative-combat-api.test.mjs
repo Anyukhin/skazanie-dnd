@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
+import { materializeCatalogItem } from '../server/item-catalog.mjs'
 import {
   cellAt,
   deserializeTacticalMap,
@@ -95,7 +96,7 @@ function sessionCookie(result) {
 }
 
 function assertStatus(result, expected, log) {
-  assert.equal(result.status, expected, `${result.text}\n${log()}`)
+  assert.equal(result.status, expected, `${result.text.slice(0, 2000)}\n${log().slice(-2000)}`)
   assert.ok(result.body && typeof result.body === 'object', `Expected JSON, received: ${result.text}`)
 }
 
@@ -605,4 +606,221 @@ test('player combat API is server-authoritative, bounded, and durable across res
   const roomAfterReplay = await request(baseUrl, '/api/rooms/AUTH-COMBAT', { cookie: playerCookie })
   assertStatus(roomAfterReplay, 200, log)
   assert.deepEqual(stableCombatProjection(roomAfterReplay.body.state), stableCombatProjection(finalState))
+})
+
+test('CastSpell игрока сохраняет список целей, вариант и ячейку через HTTP и идемпотентный повтор', { timeout: runnerTimeout(30_000) }, async (t) => {
+  const storage = mkdtempSync(join(tmpdir(), 'skazanie-spell-targets-api-'))
+  const setupToken = 'spell-targets-fixture-token'
+  let logs = ''
+  const log = () => logs
+  const port = await freePort()
+  const baseUrl = `http://127.0.0.1:${port}`
+  const child = startServer({ port, storage, setupToken, appendLog: (chunk) => { logs += chunk } })
+  t.after(async () => { await stopServer(child); rmSync(storage, { recursive: true, force: true }) })
+  await waitForHealth(baseUrl, child, log)
+  const setup = await request(baseUrl, '/api/auth/setup-admin', { method: 'POST', body: {
+    name: 'Мастер стенда', email: 'admin@spell-targets.test', password: 'spell-targets-admin-password', setupToken,
+  } })
+  assertStatus(setup, 201, log)
+  const adminCookie = sessionCookie(setup)
+  const registration = await request(baseUrl, '/api/auth/register', { method: 'POST', body: {
+    name: 'Игрок стенда', email: 'player@spell-targets.test', password: 'spell-targets-player-password',
+  } })
+  assertStatus(registration, 201, log)
+  const playerCookie = sessionCookie(registration)
+  const initial = {
+    sessionCode: 'AUTH-COMBAT', campaign: 'Проверка целей', partyMemberIds: ['hero'], activePlayerId: 'hero',
+    ruleset_id: 'dnd_5e_2014', ruleset_version: '2014.1.0', enabled_house_rules: ['skazanie:2014-preview-legacy-catalogs-v1'],
+    players: [{ id: 'hero', name: 'Маг', character: 'Маг', characterClass: 'wizard', level: 5,
+      hp: 100, maxHp: 100, armor: 20, speed: 30, proficiency: 3,
+      abilities: { str: 10, dex: 14, con: 14, int: 18, wis: 12, cha: 10 },
+      inventory: [
+        materializeCatalogItem('srd_5_2_1:component-pouch', { id: 'hero-component-pouch', quantity: 1 }),
+        materializeCatalogItem('srd_5_2_1:diamond-50gp', { id: 'hero-chromatic-orb-diamond', quantity: 1 }),
+      ], x: 1, y: 1,
+      knownSpellIds: ['acid-splash', 'chromatic-orb'], preparedSpellIds: ['acid-splash', 'chromatic-orb'] }],
+    enemies: ['first', 'second', 'far'].map((id, index) => ({ id, name: id, hp: 100, maxHp: 100,
+      armor: 12, speed: 30, attackBonus: 0, damageDice: 4, damageBonus: 0, attackRange: 5,
+      abilities: { str: 10, dex: 10, con: 10, int: 8, wis: 8, cha: 8 }, x: [3, 4, 6][index], y: 1, alive: true })),
+    scene: { turn: 1, title: 'Полигон', location: 'spell-targets', cells: cells().map((cell) => ({ ...cell, type: 'floor' })) },
+    mechanics: { combat: { active: true, round: 1, active_index: 0,
+      initiative: [{ actor_id: 'hero', total: 20 }],
+      action_economy: { hero: { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 } } } },
+    engine_mode: 'enforce',
+  }
+  const created = await request(baseUrl, '/api/campaigns', { method: 'POST', cookie: adminCookie,
+    body: { code: 'AUTH-COMBAT', name: initial.campaign, state: initial } })
+  assertStatus(created, 201, log)
+  const users = await request(baseUrl, '/api/admin/users', { cookie: adminCookie })
+  const playerUser = users.body.users.find((entry) => entry.email === 'player@spell-targets.test')
+  const assigned = await request(baseUrl, `/api/admin/users/${playerUser.id}`, { method: 'PATCH', cookie: adminCookie, body: { heroIds: ['hero'] } })
+  assertStatus(assigned, 200, log)
+  const before = await request(baseUrl, '/api/rooms/AUTH-COMBAT', { cookie: playerCookie })
+  assert.equal(before.body.state.ruleset_id, 'dnd_5e_2014')
+  const cast = { command_type: 'CastSpell', actor_id: 'hero', spell_id: 'acid-splash', target_ids: ['first', 'second'] }
+  const forgedActor = await command(baseUrl, playerCookie, 'forged-spell-owner', { ...cast, actor_id: 'first' })
+  assertStatus(forgedActor, 403, log)
+  for (const [key, targets] of [['empty', []], ['wrong-shape', 'first'], ['distant', ['first', 'far']], ['too-many', ['first', 'second', 'far']]]) {
+    const denied = await command(baseUrl, playerCookie, `spell-targets-${key}`, { ...cast, target_ids: targets, maxTargets: 99, maxTargetSeparationFeet: 1000 })
+    assertStatus(denied, 400, log)
+  }
+  const afterRefusals = await request(baseUrl, '/api/rooms/AUTH-COMBAT', { cookie: playerCookie })
+  assert.equal(afterRefusals.body.state.state_version, before.body.state.state_version)
+  for (const slotLevel of [0, 1.5, 9]) {
+    const denied = await command(baseUrl, playerCookie, `invalid-orb-slot-${slotLevel}`, {
+      command_type: 'CastSpell', actor_id: 'hero', spell_id: 'chromatic-orb', target_id: 'first', slot_level: slotLevel,
+    })
+    assertStatus(denied, 400, log)
+    assert.equal(denied.body.code, 'INVALID_SPELL_SLOT_LEVEL')
+  }
+  const afterInvalidSlots = await request(baseUrl, '/api/rooms/AUTH-COMBAT', { cookie: playerCookie })
+  assert.equal(afterInvalidSlots.body.state.state_version, before.body.state.state_version)
+  const applied = await command(baseUrl, playerCookie, 'two-acid-targets', cast)
+  assertStatus(applied, 200, log)
+  assert.deepEqual(events(applied.body, 'SpellSavingThrowResolved').flatMap((entry) => entry.target_ids).sort(), ['first', 'second'])
+  assert.equal(events(applied.body, 'SpellSavingThrowResolved').some((entry) => entry.target_ids.includes('hero')), false)
+  const duplicate = await command(baseUrl, playerCookie, 'two-acid-targets', cast)
+  assertStatus(duplicate, 200, log)
+  assert.equal(duplicate.body.idempotent_replay, true)
+  assert.equal(duplicate.body.authoritative_state.state_version, applied.body.authoritative_state.state_version)
+  const altered = await command(baseUrl, playerCookie, 'two-acid-targets', { ...cast, target_ids: ['first'] })
+  assertStatus(altered, 200, log)
+  assert.equal(altered.body.idempotent_replay, true)
+  assert.deepEqual(event(altered.body, 'SpellCast').target_ids, ['first', 'second'], 'повтор ключа возвращает исходный commit, не новую цель')
+  const next = await command(baseUrl, playerCookie, 'spell-next-turn', { command_type: 'EndTurn', actor_id: 'hero' })
+  assertStatus(next, 200, log)
+  const chosen = await command(baseUrl, playerCookie, 'cold-orb-upcast', {
+    command_type: 'CastSpell', actor_id: 'hero', spell_id: 'chromatic-orb', target_id: 'first', spell_option: 'cold', slot_level: 2,
+  })
+  assertStatus(chosen, 200, log)
+  const castEvent = event(chosen.body, 'SpellCast')
+  assert.equal(castEvent.payload.spell_option, 'cold')
+  assert.equal(castEvent.payload.damage_type, 'cold')
+  assert.equal(castEvent.payload.slot_level, 2)
+})
+
+for (const withResistance of [false, true]) test(`площадной урон${withResistance ? ' с Resistance после броска' : ''}: restart, права и однократность реакции`, { timeout: runnerTimeout(45_000) }, async (t) => {
+  const storage = mkdtempSync(join(tmpdir(), 'skazanie-elemental-reaction-api-'))
+  const setupToken = 'elemental-reaction-api-setup'
+  const port = await freePort()
+  const baseUrl = `http://127.0.0.1:${port}`
+  let logs = ''
+  const log = () => logs
+  let child = startServer({ port, storage, setupToken, appendLog: (chunk) => { logs += chunk } })
+  t.after(async () => { await stopServer(child); rmSync(storage, { recursive: true, force: true }) })
+  await waitForHealth(baseUrl, child, log)
+  const admin = await request(baseUrl, '/api/auth/setup-admin', { method: 'POST', body: {
+    name: 'Мастер', email: 'admin@elemental-api.test', password: 'elemental-admin-password', setupToken,
+  } })
+  assertStatus(admin, 201, log)
+  const adminCookie = sessionCookie(admin)
+  const cookies = {}
+  for (const id of ['caster', 'target']) {
+    const account = await request(baseUrl, '/api/auth/register', { method: 'POST', body: {
+      name: id, email: `${id}@elemental-api.test`, password: `elemental-${id}-password`,
+    } })
+    assertStatus(account, 201, log)
+    cookies[id] = sessionCookie(account)
+  }
+  const initial = {
+    sessionCode: 'AUTH-COMBAT', campaign: 'Защита от области', partyMemberIds: ['caster', 'target'], activePlayerId: 'caster',
+    ruleset_id: 'dnd_5e_2014', ruleset_version: '2014.1.0', enabled_house_rules: ['skazanie:2014-preview-legacy-catalogs-v1'],
+    players: ['caster', 'target'].map((id) => ({
+      id, name: id, character: id, characterClass: 'wizard', level: 5,
+      hp: 100, maxHp: 100, armor: 14, speed: 30, proficiency: 3,
+      abilities: { str: 10, dex: 10, con: 14, int: 18, wis: 10, cha: 10 },
+      inventory: id === 'caster'
+        ? [materializeCatalogItem('srd_5_2_1:component-pouch', { id: 'caster-component-pouch', quantity: 1 })]
+        : [],
+      x: id === 'caster' ? 0 : 6, y: 1,
+      knownSpellIds: id === 'caster' ? ['fireball'] : ['absorb-elements'],
+      preparedSpellIds: id === 'caster' ? ['fireball'] : ['absorb-elements'],
+    })),
+    enemies: [{ id: 'distant-enemy', name: 'Дальний противник', hp: 100, maxHp: 100, alive: true, armor: 12, speed: 30,
+      abilities: { str: 10, dex: 10, con: 10 }, attackBonus: 0, damageDice: 4, damageBonus: 0, x: 11, y: 1 }],
+    scene: { turn: 1, title: 'Полигон', location: 'elemental-api', cells: Array.from({ length: 36 }, (_, index) => ({ x: index % 12, y: Math.floor(index / 12), type: 'floor', revealed: true })) },
+    mechanics: { combat: { active: true, round: 1, active_index: 0,
+      initiative: [{ actor_id: 'caster', total: 20 }, { actor_id: 'target', total: 10 }],
+      action_economy: Object.fromEntries(['caster', 'target'].map((id) => [id, { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 }])),
+    } }, engine_mode: 'enforce',
+  }
+  if (withResistance) {
+    initial.mechanics.conditions = { target: [{ id: 'resistance-d4', effect_id: 'resistance:api', source_actor: 'distant-enemy', duration: 'concentration' }] }
+    initial.mechanics.concentration = { 'distant-enemy': { effect_id: 'resistance:api', spell_id: 'resistance' } }
+  }
+  const created = await request(baseUrl, '/api/campaigns', { method: 'POST', cookie: adminCookie, body: { code: 'AUTH-COMBAT', name: initial.campaign, state: initial } })
+  assertStatus(created, 201, log)
+  const users = await request(baseUrl, '/api/admin/users', { cookie: adminCookie })
+  for (const id of ['caster', 'target']) {
+    const user = users.body.users.find((entry) => entry.email === `${id}@elemental-api.test`)
+    const assigned = await request(baseUrl, `/api/admin/users/${user.id}`, { method: 'PATCH', cookie: adminCookie, body: { heroIds: [id] } })
+    assertStatus(assigned, 200, log)
+  }
+  const original = await request(baseUrl, '/api/rooms/AUTH-COMBAT', { cookie: cookies.target })
+  const originalResources = original.body.state.mechanics.resources
+  const opened = await command(baseUrl, cookies.caster, 'elemental-fireball', { command_type: 'CastSpell', actor_id: 'caster', spell_id: 'fireball', to: { x: 6, y: 1 } })
+  assertStatus(opened, 200, log)
+  assert.equal(events(opened.body, 'DamageApplied').length, 0, 'урон не подтверждается до защитной реакции')
+  let pending = await request(baseUrl, '/api/rooms/AUTH-COMBAT', { cookie: cookies.target })
+  let resistedRollId = null
+  if (withResistance) {
+    const beforeWindow = pending.body.state.mechanics.combat.reaction_window
+    assert.equal(beforeWindow.trigger, 'saving-throw-bonus-choice')
+    assert.equal(beforeWindow.resistance_phase, 'before-roll')
+    const afterRoll = await command(baseUrl, cookies.target, 'resistance-first-roll', {
+      command_type: 'UseCombatAction', actor_id: 'target', action_id: 'roll-first-resistance',
+    })
+    assertStatus(afterRoll, 200, log)
+    const afterWindow = afterRoll.body.authoritative_state.mechanics.combat.reaction_window
+    assert.equal(afterWindow.resistance_phase, 'after-roll')
+    assert.equal(typeof afterWindow.trigger_roll.kept, 'number', 'свой d20 виден и при чужом источнике Resistance')
+    assert.equal(typeof afterWindow.trigger_roll.modifier, 'number')
+    resistedRollId = afterWindow.trigger_roll.roll_id
+    assert.ok(resistedRollId)
+    const bonus = await command(baseUrl, cookies.target, 'resistance-after-roll', {
+      command_type: 'UseCombatAction', actor_id: 'target', action_id: 'use-resistance',
+    })
+    assertStatus(bonus, 200, log)
+    pending = await request(baseUrl, '/api/rooms/AUTH-COMBAT', { cookie: cookies.target })
+  }
+  const window = pending.body.state.mechanics.combat.reaction_window
+  assert.equal(window?.trigger, 'spell-area-damage')
+  assert.equal(window.actor_id, 'target')
+  assert.deepEqual(window.action_ids, ['cast:absorb-elements'])
+  assert.equal(actor(pending.body.state, 'target').hp, 100)
+  for (const response of [opened, pending]) {
+    assert.equal(JSON.stringify(response.body).includes('pending_command'), false, 'серверное продолжение скрыто от клиента')
+    assert.equal(JSON.stringify(response.body).includes('pending_dice_transcript'), false, 'внутренний транскрипт не передаётся')
+  }
+  const reaction = { command_type: 'UseCombatAction', actor_id: 'target', action_id: 'cast:absorb-elements' }
+  const forbidden = await command(baseUrl, cookies.caster, 'foreign-elemental-reaction', reaction)
+  assertStatus(forbidden, 403, log)
+  await stopServer(child)
+  child = startServer({ port, storage, setupToken, appendLog: (chunk) => { logs += chunk } })
+  await waitForHealth(baseUrl, child, log)
+  const restored = await request(baseUrl, '/api/rooms/AUTH-COMBAT', { cookie: cookies.target })
+  assert.deepEqual(restored.body.state.mechanics.combat.reaction_window, window, 'после restart сохранены то же окно и тот же ожидаемый урон')
+  const resolved = await command(baseUrl, cookies.target, 'take-elemental-reaction', reaction)
+  assertStatus(resolved, 200, log)
+  assert.equal(resolved.body.authoritative_state.mechanics.combat.reaction_window?.trigger ?? null, null,
+    'сделанные решения Resistance и Absorb не должны спрашиваться заново')
+  const expectedDamage = Math.floor(window.damage.raw_amount / 2)
+  assert.equal(actor(resolved.body.authoritative_state, 'target').hp, 100 - expectedDamage)
+  assert.equal(events(resolved.body, 'DamageApplied').filter((entry) => entry.target_ids.includes('target')).length, 1)
+  if (withResistance) {
+    const save = events(resolved.body, 'SpellSavingThrowResolved').find((entry) => entry.target_ids.includes('target'))
+    assert.equal(save?.payload.roll_id, resistedRollId, 'защитная реакция не меняет уже показанный d20')
+    assert.equal(resolved.body.authoritative_state.mechanics.conditions.target?.some((condition) => condition.id === 'resistance-d4'), false)
+  }
+  const resources = resolved.body.authoritative_state.mechanics.resources
+  assert.equal(resources.caster.spell_slots_3.current, originalResources.caster.spell_slots_3.current - 1)
+  assert.equal(resources.target.spell_slots_1.current, originalResources.target.spell_slots_1.current - 1)
+  assert.equal(resolved.body.authoritative_state.mechanics.combat.action_economy.target.reaction, false)
+  const repeated = await command(baseUrl, cookies.target, 'take-elemental-reaction', reaction)
+  assertStatus(repeated, 200, log)
+  assert.equal(repeated.body.idempotent_replay, true)
+  assert.equal(repeated.body.authoritative_state.state_version, resolved.body.authoritative_state.state_version)
+  assert.equal(actor(repeated.body.authoritative_state, 'target').hp, 100 - expectedDamage)
+  const casterView = await request(baseUrl, '/api/rooms/AUTH-COMBAT', { cookie: cookies.caster })
+  assert.equal(actor(casterView.body.state, 'target').hp, 100 - expectedDamage)
 })

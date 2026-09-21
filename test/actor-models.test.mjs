@@ -98,10 +98,45 @@ test('процедурные фигурки различимы, стоят на 
     assert.ok(bounds.max.x - bounds.min.x > actor.modelHeight * .3, `${profile}: фигурка должна иметь ширину относительно роста`)
     assert.ok(bounds.max.z - bounds.min.z > actor.modelHeight * .3, `${profile}: фигурка должна иметь глубину относительно роста`)
     for (const pose of ['idle', 'walk', 'attack', 'cast', 'hit', 'death']) actor[pose]?.(.5)
+    if (profile === 'beast') {
+      actor.setPose('attack', .3)
+      assert.notEqual(actor.getObjectByName('rig-leftArm')?.rotation.x, 0, 'зверь должен получать natural front-limb pose без appearance')
+    }
     actor.dispose()
     actor.dispose()
     assert.equal(actor.children.length, 0)
   }
+})
+
+test('процедурный владелец поз различает рубящий, колющий, дробящий, безоружный и бросок', () => {
+  const snapshot = (appearance, pose) => {
+    const actor = models.createProceduralActorModel({ id: `pose-${pose}-${appearance.equipment}`, label: 'Атакующий', kind: 'hero', modelKey: 'warrior', appearance }, manifest)
+    const rightArm = actor.getObjectByName('rig-rightArm')
+    const leftArm = actor.getObjectByName('rig-leftArm')
+    const motion = actor.getObjectByName('actor-motion')
+    actor.setPose(pose, .5)
+    const result = { right: rightArm?.rotation.toArray(), left: leftArm?.rotation.toArray(), z: motion?.position.z }
+    actor.dispose()
+    return result
+  }
+  const sword = snapshot({ version: 1, profile: 'warrior', equipment: 'sword' }, 'attack')
+  const dagger = snapshot({ version: 1, profile: 'warrior', equipment: 'dagger' }, 'attack')
+  const staff = snapshot({ version: 1, profile: 'warrior', equipment: 'staff' }, 'attack')
+  const unarmed = snapshot({ version: 1, profile: 'warrior', equipment: 'unarmed' }, 'attack')
+  const beast = snapshot({ version: 1, profile: 'beast', equipment: 'unknown' }, 'attack')
+  assert.notDeepEqual(sword, dagger)
+  assert.notDeepEqual(sword, staff)
+  assert.notDeepEqual(sword, unarmed)
+  assert.notDeepEqual(sword, beast)
+  const thrown = snapshot({ version: 2, profile: 'warrior', equipment: 'dagger', loadout: { main_hand: { model_key: 'dagger' } } }, 'ranged-attack')
+  const javelin = snapshot({ version: 2, profile: 'warrior', equipment: 'unknown', loadout: { main_hand: { model_key: 'javelin' } } }, 'ranged-attack')
+  const net = snapshot({ version: 2, profile: 'warrior', equipment: 'unknown', loadout: { main_hand: { model_key: 'net' } } }, 'ranged-attack')
+  const bow = snapshot({ version: 2, profile: 'warrior', equipment: 'bow', loadout: { main_hand: { model_key: 'longbow' } } }, 'ranged-attack')
+  const crossbow = snapshot({ version: 2, profile: 'warrior', equipment: 'bow', loadout: { main_hand: { model_key: 'light-crossbow' } } }, 'ranged-attack')
+  assert.notDeepEqual(thrown, bow)
+  assert.notDeepEqual(javelin, bow)
+  assert.notDeepEqual(net, bow)
+  assert.notDeepEqual(bow, crossbow)
 })
 
 function glbWithJson(json, binary = new Uint8Array()) {
@@ -802,6 +837,33 @@ test('две GLB-копии имеют независимые аксессуар
   first.setEquipment('unarmed')
   assert.equal(first.getObjectByName('bow'), undefined)
   first.dispose(); second.dispose()
+})
+
+test('GLB без собственного attack клипа получает безопасный procedural overlay', async () => {
+  const bytes = glbWithJson({ asset: { version: '2.0' }, scenes: [{ nodes: [] }] })
+  const loader = {
+    register() {},
+    parse(_buffer, _path, onLoad) {
+      const scene = new Group()
+      scene.add(new Mesh(new BoxGeometry(1, 1, 1), new MeshBasicMaterial()))
+      for (const name of ['upperarm.r', 'upperarm.l', 'lowerarm.r', 'lowerarm.l', 'chest', 'hand_r']) {
+        const bone = new Group(); bone.name = name; scene.add(bone)
+      }
+      queueMicrotask(() => onLoad({ scene, animations: [] }))
+    },
+  }
+  const catalog = {
+    version: 1,
+    models: [{ key: 'overlay-warrior', profile: 'warrior', actorIds: [], archetypes: [], url: '/assets/models/overlay-warrior.glb', rights: { source: 'test', license: 'original' } }],
+  }
+  const actor = await models.createActorModel({ id: 'overlay-warrior', label: 'Воин', kind: 'hero', modelKey: 'overlay-warrior', appearance: appearance('warrior', 'sword') }, {
+    manifest: catalog, loader, fetcher: async () => new Response(bytes, { status: 200 }),
+  })
+  const right = actor.getObjectByName('upperarm.r')
+  const before = right.rotation.z
+  actor.setPose('attack', .3)
+  assert.notEqual(right.rotation.z, before)
+  actor.dispose()
 })
 
 function aimLoader({ socketName, upperLeft, upperRight, lowerLeft, lowerRight, probePrefix, clips }) {

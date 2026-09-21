@@ -3798,6 +3798,7 @@ export type BoardAreaEffect = {
   cells?: readonly { x: number; y: number }[]
   center?: { x: number; y: number }
   radiusFeet?: number
+  areaSideFeet?: number
   areaShape?: AreaShape
   spellId?: string
   label?: string
@@ -3817,6 +3818,7 @@ export function boardAreaEffectCells(effect: BoardAreaEffect, map?: TacticalMap)
     origin: effect.center,
     target: effect.center,
     sizeFeet,
+    ...(effect.areaSideFeet ? { sideFeet: effect.areaSideFeet } : {}),
     ...(map ? {
       bounds: { minX: 0, minY: 0, maxX: map.width - 1, maxY: map.height - 1 },
       isWalkable: (point) => Boolean(cellAt(map, point.x, point.y)),

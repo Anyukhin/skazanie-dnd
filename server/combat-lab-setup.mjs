@@ -4,6 +4,7 @@ import { normalizeCampaignState } from './rules-engine.mjs'
 import { deserializeTacticalMap, reachableCells, cellAt, movementStepBlocked, legacyCellsFromTacticalMap, serializeTacticalMap, tacticalMapFromLegacyCells } from './tactical-map.mjs'
 import { starterEquipmentCatalogFor, withStarterKit } from './starter-kit.mjs'
 import { enemyFrom2014, monsterCatalogEntry } from './combat-lab-monsters.mjs'
+import { enemyLoadoutFor } from './enemy-loadouts.mjs'
 import { footprintCellsFor, footprintMetadataForSize, normalizeFootprintMetadata } from './actor-footprint.mjs'
 import { COMBAT_LAB_MAPS } from './combat-lab-maps.mjs'
 import {
@@ -702,7 +703,15 @@ export async function buildCombatLabState(config, { loadCampaign = null } = {}) 
     const record = byMonsterId.get(String(entry.monsterId))
     if (!record) throw new CombatLabSetupError(`Монстр ${entry.monsterId} отсутствует в каталоге D&D 2014`, 'UNKNOWN_COMBAT_LAB_MONSTER')
     const position = validateMapPlacement(mapValue, entry, `config.enemies[${index}]`, occupied, { footprint: footprintMetadataForSize(record.size) })
-    return enemyFrom2014(record, position, index)
+    const enemy = enemyFrom2014(record, position, index)
+    enemy.loadout = enemyLoadoutFor({
+      statBlockId: record.id,
+      block: enemy,
+      ownerId: enemy.id,
+      seed: `combat-lab:${mapDefinitionValue.id}:${record.id}:${index}`,
+      sourceId: 'combat-lab',
+    })
+    return enemy
   })
   const start = party[0]
   const reachable = reachableCells(mapValue, start.x, start.y)

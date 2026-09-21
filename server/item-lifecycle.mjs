@@ -51,6 +51,30 @@ function profileFor(item, rulesetId = '') {
   return profile
 }
 
+/**
+ * Ручное взаимодействие с предметом в бою пока ограничено тем, что герой
+ * действительно может достать из руки: обычным оружием, фокусом или
+ * инструментом-фокусом. Доспех, щит, кольца и носимые фокусы не проходят этот
+ * гейт. Каталог является источником истины; поля экземпляра используются лишь
+ * для старых сохранений оружия без catalog_id.
+ *
+ * @param {Record<string, any>} item
+ * @param {Record<string, any>} profile
+ * @returns {boolean}
+ */
+function combatHeldItem(item, profile) {
+  const slot = String(profile?.equip_slot ?? '')
+  if (!['main_hand', 'off_hand'].includes(slot)) return false
+  const catalog = catalogItem(String(item?.catalog_id ?? item?.catalogId ?? ''))
+  if (catalog?.type === 'weapon' && catalog?.combat) return true
+  if (catalog?.focus_mode === 'held' && Array.isArray(catalog?.spellcasting_focus)
+    && catalog.spellcasting_focus.length > 0) return true
+  // До каталожного инвентаря проект уже сохранял оружие с combat-профилем на
+  // самом экземпляре. Сохраняем этот путь только для weapon, чтобы не принять
+  // недоверенное поле «focus» за возможность держать вещь в бою.
+  return !catalog && item?.type === 'weapon' && item?.combat && typeof item.combat === 'object'
+}
+
 function chargeStateFor(item, profile) {
   if (!profile?.charges) return null
   const maximum = Math.max(0, integer(profile.charges.max, 0))
@@ -322,7 +346,55 @@ export function validateItemLifecycleCommand(command, state, context = {}) {
   if (command.command_type === 'EquipItem') {
     const equipped = command.equipped !== false
     if (!profile.equip_slot) throw new ItemLifecycleValidationError('Этот предмет нельзя экипировать', 'ITEM_NOT_EQUIPPABLE')
-    if (state.mechanics?.combat?.active) throw new ItemLifecycleValidationError('Общую экипировку нельзя менять во время боя', 'ITEM_EQUIP_DURING_COMBAT')
+    // Отсутствующее поле — старый снимок неэкипированного экземпляра, а не
+    // отдельное третье состояние. Иначе повторное `equipped:false` обходило бы
+    // защиту от лишнего взаимодействия.
+    if ((item.equipped === true) === equipped) {
+      throw new ItemLifecycleValidationError(
+        equipped ? 'Предмет уже экипирован' : 'Предмет уже снят',
+        'ITEM_EQUIP_UNCHANGED',
+      )
+    }
+    if (state.mechanics?.combat?.active) {
+      if (!combatHeldItem(item, profile)) {
+        throw new ItemLifecycleValidationError(
+          'В бою сейчас можно убрать или достать только оружие, ручной фокус или инструмент-фокус',
+          'ITEM_EQUIP_DURING_COMBAT_UNSUPPORTED',
+        )
+      }
+      const catalog = catalogItem(String(item?.catalog_id ?? item?.catalogId ?? ''))
+      const twoHanded = catalog?.combat?.twoHanded === true
+        || catalog?.combat?.properties?.includes?.('two-handed')
+      const equippedShield = (owner.inventory ?? []).find((candidate) => {
+        if (candidate?.equipped !== true) return false
+        const candidateCatalog = catalogItem(String(candidate?.catalog_id ?? candidate?.catalogId ?? ''))
+        return candidateCatalog?.equip?.armor?.kind === 'shield'
+          || candidate?.armor_profile?.kind === 'shield'
+      })
+      if (equipped && twoHanded && equippedShield) {
+        throw new ItemLifecycleValidationError(
+          'Для двуручного оружия нужно снять щит вне боя',
+          'TWO_HANDED_WITH_SHIELD',
+        )
+      }
+      if (equipped) {
+        const occupyingItem = (owner.inventory ?? []).find((candidate) => {
+          if (String(candidate?.id) === itemId || candidate?.equipped !== true) return false
+          return String(profileFor(candidate, state?.ruleset_id)?.equip_slot ?? '') === String(profile.equip_slot)
+        })
+        if (occupyingItem) {
+          throw new ItemLifecycleValidationError(
+            `Сначала снимите «${occupyingItem.name ?? 'предмет'}»: две вещи нельзя достать из одного слота одним взаимодействием`,
+            'ITEM_COMBAT_SLOT_OCCUPIED',
+          )
+        }
+      }
+      // В D&D 2014 первое взаимодействие с объектом в своём ходу бесплатно,
+      // второе требует действия. Старые снимки не содержат флага — отсутствие
+      // поля означает доступное первое взаимодействие.
+      const economy = state.mechanics?.combat?.action_economy?.[ownerId] ?? {}
+      result.combat_action = economy.object_interaction === false ? 'action' : 'object_interaction'
+    }
     result.equipped = equipped
     result.equip_slot = profile.equip_slot
   }
@@ -518,7 +590,12 @@ export function itemLifecycleEvents(command) {
   if (command.command_type === 'EquipItem') {
     return [{
       event_type: command.equipped ? 'ItemEquipped' : 'ItemUnequipped',
-      payload: { item_id: command.item_id, equip_slot: command.equip_slot, request_fingerprint: command.request_fingerprint ?? null },
+      payload: {
+        item_id: command.item_id,
+        equip_slot: command.equip_slot,
+        ...(command.combat_action ? { combat_action: command.combat_action } : {}),
+        request_fingerprint: command.request_fingerprint ?? null,
+      },
       target_ids: [command.actor_id],
     }]
   }

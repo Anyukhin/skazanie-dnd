@@ -63,8 +63,8 @@ test('content integrity gate verifies hashes, references, counts and the complet
     bonus_source: 'species',
   })
   assert.equal(report.integrity.character_creation_catalogs.srd_5_2_1.bonus_source, 'background')
-  assert.deepEqual(report.integrity.item_catalog, { entries: 107, shop_entries: 12 })
-  assert.equal(report.integrity.coverage.find((entry) => entry.id === 'equipment').count, 107)
+  assert.deepEqual(report.integrity.item_catalog, { entries: 145, shop_entries: 50 })
+  assert.equal(report.integrity.coverage.find((entry) => entry.id === 'equipment').count, 145)
   // 1222 + 7 петель атмосферы (`public/assets/audio/ambience/*.ogg`)
   // + 2 дорожки музыки мастеров создания мира и героя
   // + 102 индивидуальных item-art и отдельный портрет гоблина-налётчика.
@@ -86,7 +86,9 @@ test('content integrity gate verifies hashes, references, counts and the complet
   // + замороженный baseline-pr79.json для карт без catalogRevision.
   // + два персонажа Quaternius и их LICENSE/NOTICE.
   // + 4 файла нейтральных основ и объявленные неизменяемые выпуски экипировки.
-  assert.equal(report.integrity.assets, 1685 + declaredEnvironmentReleaseFiles() + declaredEquipmentReleaseFiles())
+  // + 53 записанных боевых звука и их фазовый manifest.
+  // + 38 карточек фокусов, инструментов барда и дорогих компонентов.
+  assert.equal(report.integrity.assets, 1777 + declaredEnvironmentReleaseFiles() + declaredEquipmentReleaseFiles())
   assert.equal(report.integrity.coverage.find((entry) => entry.id === 'feats').coverage, 'missing')
 })
 

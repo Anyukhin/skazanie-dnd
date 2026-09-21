@@ -2,6 +2,7 @@ export type EquipmentVisualSlot =
   | 'body'
   | 'main_hand'
   | 'off_hand'
+  | 'focus'
   | 'cloak'
   | 'brooch'
   | 'ring-protection'

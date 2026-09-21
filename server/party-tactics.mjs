@@ -12,7 +12,7 @@ import {
   weaponAttackProfileFor,
 } from './rules-engine.mjs'
 import { combatActionsFor } from './combat-actions.mjs'
-import { combatSpellsFor } from './combat-spells.mjs'
+import { combatSpellsFor, fixedSpellSlotLevelFor } from './combat-spells.mjs'
 import { footprintCellsFor, footprintDistanceFeet } from './actor-footprint.mjs'
 
 /**
@@ -243,6 +243,13 @@ function reactionDamageTaken(reactionWindow) {
   return Math.max(0, Number(damage.applied_amount) || 0) + Math.max(0, Number(damage.temporary_hp_absorbed) || 0)
 }
 
+function reactionDamagePending(reactionWindow) {
+  const trigger = String(reactionWindow?.trigger ?? '')
+  return (trigger === 'attack-shield-choice' || trigger === 'attack-protective-choice')
+    && reactionWindow?.damage && typeof reactionWindow.damage === 'object'
+    && reactionWindow.damage.applied_amount == null
+}
+
 /**
  * Ответ автономного героя на **уже открытое** сервером окно реакции.
  *
@@ -284,11 +291,12 @@ export function planHeroReaction(state, reactionWindow = null) {
   const decline = { rule: 'decline-reaction', commands: [command('decline-reaction')] }
   if (!window || !actorIdValue) return decline
   const offered = new Set((Array.isArray(window.action_ids) ? window.action_ids : []).map(String))
+  const damagePending = reactionDamagePending(window)
   const chosen = AUTONOMOUS_REACTION_PRIORITY.find((actionId) => {
     if (!offered.has(actionId)) return false
     if (actionId !== 'uncanny-dodge') return true
     const actor = findActor(state, actorIdValue)
-    return reactionDamageTaken(window) * 100 >= maxHpOf(actor) * UNCANNY_DODGE_DAMAGE_PERCENT
+    return damagePending || reactionDamageTaken(window) * 100 >= maxHpOf(actor) * UNCANNY_DODGE_DAMAGE_PERCENT
   })
   return chosen ? { rule: chosen, commands: [command(chosen)] } : decline
 }
@@ -398,6 +406,7 @@ function planExpandedCombatReaction(state, window) {
   const offered = new Set((Array.isArray(window?.action_ids) ? window.action_ids : []).map(String))
   if (!actorIdValue || !offered.size) return null
   const damage = reactionDamageTaken(window)
+  const damagePending = reactionDamagePending(window)
   const damageType = String(window?.damage?.damage_type ?? '').toLowerCase()
   const elemental = new Set(['acid', 'cold', 'fire', 'lightning', 'thunder']).has(damageType)
   const trigger = String(window?.trigger ?? '')
@@ -416,13 +425,18 @@ function planExpandedCombatReaction(state, window) {
   const indomitable = choose('indomitable', 'Перебросить проваленный спасбросок Несгибаемостью')
   if (indomitable) return indomitable
 
-  // Щит отменяет весь удар. Стихийное поглощение и Парирование уменьшают
-  // подтверждённый урон; Ответный удар разумен только после промаха.
+  // Щит отменяет весь удар. В новом pre-damage окне урон ещё неизвестен, но
+  // предложенная защитная реакция уже является авторитетным выбором движка.
+  // Ответный удар разумен только после промаха.
   const shield = choose('cast:shield', 'Отменить попавший удар реакцией «Щит»')
   if (shield) return shield
-  if (elemental && damage > 0) {
+  if (elemental && (damage > 0 || damagePending)) {
     const absorb = choose('cast:absorb-elements', `Снизить ${damageType}-урон «Поглощением стихий»`)
     if (absorb) return absorb
+  }
+  if (damagePending) {
+    const uncanny = choose('uncanny-dodge', 'Снизить ещё не разрешённый удар Невероятным уклонением')
+    if (uncanny) return uncanny
   }
   if (damage > 0 && damage * 100 >= Math.max(1, combatMaxHp(actor)) * 10) {
     const parry = choose('parry', 'Снизить крупный удар Парированием')
@@ -474,7 +488,9 @@ function spellSlotsForTactics(state, actorIdValue, spell) {
   if (Number(spell.level) <= 0) return [null]
   if (['pact_slots', 'mystic_arcanum_6'].includes(spell.slotResource) || String(spell.slotResource ?? '').startsWith('species_spell_')) {
     const resource = resourceFor(state, actorIdValue, spell.slotResource)
-    return resource?.current > 0 ? [{ resource: spell.slotResource, level: Math.max(Number(spell.level), Number(spell.innateCastLevel) || Number(spell.level)) }] : []
+    const actor = findActor(state, actorIdValue)
+    const level = fixedSpellSlotLevelFor(actor, spell) ?? Math.max(Number(spell.level), Number(spell.innateCastLevel) || Number(spell.level))
+    return resource?.current > 0 ? [{ resource: spell.slotResource, level }] : []
   }
   const slots = []
   const first = Math.max(1, Number(spell.level) || 1)
@@ -533,7 +549,7 @@ function spellCandidatesFor(state, actorIdValue, actor, add) {
   const enemies = enemiesForTactics(state)
   const allies = partyActorsForTactics(state)
   const validationState = cloneForTacticValidation(state)
-  for (const spell of combatSpellsFor(actor)) {
+  for (const spell of combatSpellsFor(actor, { rulesetId: state?.ruleset_id })) {
     if (!COMBAT_POLICY_SUPPORT.has(spell.mechanicsSupport ?? '') || spell.prepared === false) continue
     if (!['action', 'bonus_action'].includes(spell.actionType) || economy[spell.actionType] === false) continue
     if (spell.concentration && state?.mechanics?.concentration?.[String(actorIdValue)]) continue

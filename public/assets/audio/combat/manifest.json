@@ -1,0 +1,947 @@
+{
+  "version": 1,
+  "clips": {
+    "attack-blunt-impact": {
+      "url": "/assets/audio/combat/attack-blunt-impact.ogg",
+      "durationMs": 649,
+      "sourceId": "kenney-impact-sounds-cc0"
+    },
+    "attack-bow-draw": {
+      "url": "/assets/audio/combat/attack-bow-draw.ogg",
+      "durationMs": 933,
+      "sourceId": "oga-jc-fantasy-sfx-vol1-ccby4"
+    },
+    "attack-bow-impact": {
+      "url": "/assets/audio/combat/attack-bow-impact.ogg",
+      "durationMs": 167,
+      "sourceId": "oga-jc-fantasy-sfx-vol1-ccby4"
+    },
+    "attack-bow-launch": {
+      "url": "/assets/audio/combat/attack-bow-launch.ogg",
+      "durationMs": 333,
+      "sourceId": "oga-jc-fantasy-sfx-vol1-ccby4"
+    },
+    "attack-crossbow-impact": {
+      "url": "/assets/audio/combat/attack-crossbow-impact.ogg",
+      "durationMs": 272,
+      "sourceId": "kenney-impact-sounds-cc0"
+    },
+    "attack-crossbow-launch": {
+      "url": "/assets/audio/combat/attack-crossbow-launch.ogg",
+      "durationMs": 355,
+      "sourceId": "oga-various-sfx-cc0"
+    },
+    "attack-firearm-shot": {
+      "url": "/assets/audio/combat/attack-firearm-shot.ogg",
+      "durationMs": 799,
+      "sourceId": "oga-various-sfx-cc0"
+    },
+    "attack-miss": {
+      "url": "/assets/audio/combat/attack-miss.ogg",
+      "durationMs": 650,
+      "sourceId": "oga-various-sfx-cc0"
+    },
+    "attack-net-cloth": {
+      "url": "/assets/audio/combat/attack-net-cloth.ogg",
+      "durationMs": 661,
+      "sourceId": "kenney-rpg-audio-cc0"
+    },
+    "attack-sling-impact": {
+      "url": "/assets/audio/combat/attack-sling-impact.ogg",
+      "durationMs": 534,
+      "sourceId": "oga-various-sfx-cc0"
+    },
+    "attack-sword-impact": {
+      "url": "/assets/audio/combat/attack-sword-impact.ogg",
+      "durationMs": 667,
+      "sourceId": "oga-jc-fantasy-sfx-vol1-ccby4"
+    },
+    "attack-sword-launch": {
+      "url": "/assets/audio/combat/attack-sword-launch.ogg",
+      "durationMs": 633,
+      "sourceId": "oga-jc-fantasy-sfx-vol1-ccby4"
+    },
+    "attack-throw-impact": {
+      "url": "/assets/audio/combat/attack-throw-impact.ogg",
+      "durationMs": 1100,
+      "sourceId": "oga-various-sfx-cc0"
+    },
+    "attack-throw-launch": {
+      "url": "/assets/audio/combat/attack-throw-launch.ogg",
+      "durationMs": 489,
+      "sourceId": "oga-various-sfx-cc0"
+    },
+    "attack-thrust-impact": {
+      "url": "/assets/audio/combat/attack-thrust-impact.ogg",
+      "durationMs": 1100,
+      "sourceId": "oga-various-sfx-cc0"
+    },
+    "attack-thrust-launch": {
+      "url": "/assets/audio/combat/attack-thrust-launch.ogg",
+      "durationMs": 489,
+      "sourceId": "oga-various-sfx-cc0"
+    },
+    "attack-unarmed-impact": {
+      "url": "/assets/audio/combat/attack-unarmed-impact.ogg",
+      "durationMs": 431,
+      "sourceId": "kenney-impact-sounds-cc0"
+    },
+    "spell-acid-cast": {
+      "url": "/assets/audio/combat/spell-acid-cast.ogg",
+      "durationMs": 500,
+      "sourceId": "kenney-sci-fi-sounds-cc0"
+    },
+    "spell-acid-impact": {
+      "url": "/assets/audio/combat/spell-acid-impact.ogg",
+      "durationMs": 1000,
+      "sourceId": "kenney-sci-fi-sounds-cc0"
+    },
+    "spell-earth-cast": {
+      "url": "/assets/audio/combat/spell-earth-cast.ogg",
+      "durationMs": 1000,
+      "sourceId": "oga-earth-element-cc0"
+    },
+    "spell-earth-impact": {
+      "url": "/assets/audio/combat/spell-earth-impact.ogg",
+      "durationMs": 1400,
+      "sourceId": "oga-various-sfx-cc0"
+    },
+    "spell-electric-cast": {
+      "url": "/assets/audio/combat/spell-electric-cast.ogg",
+      "durationMs": 1433,
+      "sourceId": "oga-jc-fantasy-sfx-vol1-ccby4"
+    },
+    "spell-electric-impact": {
+      "url": "/assets/audio/combat/spell-electric-impact.ogg",
+      "durationMs": 833,
+      "sourceId": "oga-jc-fantasy-sfx-vol1-ccby4"
+    },
+    "spell-electric-launch": {
+      "url": "/assets/audio/combat/spell-electric-launch.ogg",
+      "durationMs": 1067,
+      "sourceId": "oga-jc-fantasy-sfx-vol1-ccby4"
+    },
+    "spell-flame-cast": {
+      "url": "/assets/audio/combat/spell-flame-cast.ogg",
+      "durationMs": 1200,
+      "sourceId": "oga-jc-fantasy-sfx-vol1-ccby4"
+    },
+    "spell-flame-impact": {
+      "url": "/assets/audio/combat/spell-flame-impact.ogg",
+      "durationMs": 1233,
+      "sourceId": "oga-jc-fantasy-sfx-vol1-ccby4"
+    },
+    "spell-flame-launch": {
+      "url": "/assets/audio/combat/spell-flame-launch.ogg",
+      "durationMs": 1567,
+      "sourceId": "oga-jc-fantasy-sfx-vol1-ccby4"
+    },
+    "spell-force-cast": {
+      "url": "/assets/audio/combat/spell-force-cast.ogg",
+      "durationMs": 954,
+      "sourceId": "kenney-sci-fi-sounds-cc0"
+    },
+    "spell-force-impact": {
+      "url": "/assets/audio/combat/spell-force-impact.ogg",
+      "durationMs": 355,
+      "sourceId": "oga-various-sfx-cc0"
+    },
+    "spell-frost-cast": {
+      "url": "/assets/audio/combat/spell-frost-cast.ogg",
+      "durationMs": 1200,
+      "sourceId": "oga-jc-fantasy-sfx-vol1-ccby4"
+    },
+    "spell-frost-impact": {
+      "url": "/assets/audio/combat/spell-frost-impact.ogg",
+      "durationMs": 1567,
+      "sourceId": "oga-jc-fantasy-sfx-vol1-ccby4"
+    },
+    "spell-frost-launch": {
+      "url": "/assets/audio/combat/spell-frost-launch.ogg",
+      "durationMs": 2167,
+      "sourceId": "oga-jc-fantasy-sfx-vol1-ccby4"
+    },
+    "spell-healing-cast": {
+      "url": "/assets/audio/combat/spell-healing-cast.ogg",
+      "durationMs": 4700,
+      "sourceId": "oga-jc-fantasy-sfx-vol1-ccby4"
+    },
+    "spell-healing-impact": {
+      "url": "/assets/audio/combat/spell-healing-impact.ogg",
+      "durationMs": 4700,
+      "sourceId": "oga-jc-fantasy-sfx-vol1-ccby4"
+    },
+    "spell-necrotic-cast": {
+      "url": "/assets/audio/combat/spell-necrotic-cast.ogg",
+      "durationMs": 1800,
+      "sourceId": "oga-jc-fantasy-sfx-vol1-ccby4"
+    },
+    "spell-necrotic-impact": {
+      "url": "/assets/audio/combat/spell-necrotic-impact.ogg",
+      "durationMs": 2067,
+      "sourceId": "oga-jc-fantasy-sfx-vol1-ccby4"
+    },
+    "spell-poison-cast": {
+      "url": "/assets/audio/combat/spell-poison-cast.ogg",
+      "durationMs": 1073,
+      "sourceId": "oga-various-sfx-cc0"
+    },
+    "spell-psychic-cast": {
+      "url": "/assets/audio/combat/spell-psychic-cast.ogg",
+      "durationMs": 1200,
+      "sourceId": "oga-fantasy-magic-cc0"
+    },
+    "spell-psychic-impact": {
+      "url": "/assets/audio/combat/spell-psychic-impact.ogg",
+      "durationMs": 1142,
+      "sourceId": "oga-magic-words-cc0"
+    },
+    "spell-summon-cast": {
+      "url": "/assets/audio/combat/spell-summon-cast.ogg",
+      "durationMs": 1400,
+      "sourceId": "oga-various-sfx-cc0"
+    },
+    "spell-summon-impact": {
+      "url": "/assets/audio/combat/spell-summon-impact.ogg",
+      "durationMs": 1400,
+      "sourceId": "oga-various-sfx-cc0"
+    },
+    "spell-swarm-cast": {
+      "url": "/assets/audio/combat/spell-swarm-cast.ogg",
+      "durationMs": 844,
+      "sourceId": "oga-various-sfx-cc0"
+    },
+    "spell-swarm-impact": {
+      "url": "/assets/audio/combat/spell-swarm-impact.ogg",
+      "durationMs": 1073,
+      "sourceId": "oga-various-sfx-cc0"
+    },
+    "spell-teleport-in": {
+      "url": "/assets/audio/combat/spell-teleport-in.ogg",
+      "durationMs": 1633,
+      "sourceId": "oga-jc-fantasy-sfx-vol1-ccby4"
+    },
+    "spell-teleport-out": {
+      "url": "/assets/audio/combat/spell-teleport-out.ogg",
+      "durationMs": 1633,
+      "sourceId": "oga-jc-fantasy-sfx-vol1-ccby4"
+    },
+    "spell-thunder-cast": {
+      "url": "/assets/audio/combat/spell-thunder-cast.ogg",
+      "durationMs": 1500,
+      "sourceId": "oga-various-sfx-cc0"
+    },
+    "spell-thunder-impact": {
+      "url": "/assets/audio/combat/spell-thunder-impact.ogg",
+      "durationMs": 1723,
+      "sourceId": "oga-various-sfx-cc0"
+    },
+    "spell-ward-cast": {
+      "url": "/assets/audio/combat/spell-ward-cast.ogg",
+      "durationMs": 5400,
+      "sourceId": "oga-jc-fantasy-sfx-vol1-ccby4"
+    },
+    "spell-ward-impact": {
+      "url": "/assets/audio/combat/spell-ward-impact.ogg",
+      "durationMs": 5400,
+      "sourceId": "oga-jc-fantasy-sfx-vol1-ccby4"
+    },
+    "spell-water-cast": {
+      "url": "/assets/audio/combat/spell-water-cast.ogg",
+      "durationMs": 1163,
+      "sourceId": "oga-various-sfx-cc0"
+    },
+    "spell-water-impact": {
+      "url": "/assets/audio/combat/spell-water-impact.ogg",
+      "durationMs": 1400,
+      "sourceId": "oga-various-sfx-cc0"
+    },
+    "spell-wind-cast": {
+      "url": "/assets/audio/combat/spell-wind-cast.ogg",
+      "durationMs": 1200,
+      "sourceId": "oga-short-wind-cc0"
+    },
+    "spell-wind-impact": {
+      "url": "/assets/audio/combat/spell-wind-impact.ogg",
+      "durationMs": 900,
+      "sourceId": "oga-various-sfx-cc0"
+    }
+  },
+  "profiles": {
+    "spell:flame": {
+      "cast": [
+        "spell-flame-cast"
+      ],
+      "launch": [
+        "spell-flame-launch"
+      ],
+      "impact": [
+        "spell-flame-impact"
+      ],
+      "miss": [
+        "attack-miss"
+      ]
+    },
+    "spell:frost": {
+      "cast": [
+        "spell-frost-cast"
+      ],
+      "launch": [
+        "spell-frost-launch"
+      ],
+      "impact": [
+        "spell-frost-impact"
+      ],
+      "miss": [
+        "attack-miss"
+      ]
+    },
+    "spell:electric": {
+      "cast": [
+        "spell-electric-cast"
+      ],
+      "launch": [
+        "spell-electric-launch"
+      ],
+      "impact": [
+        "spell-electric-impact"
+      ],
+      "miss": [
+        "attack-miss"
+      ]
+    },
+    "spell:thunder": {
+      "cast": [
+        "spell-thunder-cast"
+      ],
+      "launch": [
+        "spell-thunder-cast"
+      ],
+      "impact": [
+        "spell-thunder-impact"
+      ],
+      "miss": [
+        "attack-miss"
+      ]
+    },
+    "spell:acid": {
+      "cast": [
+        "spell-acid-cast"
+      ],
+      "launch": [
+        "spell-acid-cast"
+      ],
+      "impact": [
+        "spell-acid-impact"
+      ],
+      "miss": [
+        "attack-miss"
+      ]
+    },
+    "spell:poison": {
+      "cast": [
+        "spell-poison-cast"
+      ],
+      "launch": [
+        "spell-poison-cast"
+      ],
+      "impact": [
+        "spell-acid-impact"
+      ],
+      "miss": [
+        "attack-miss"
+      ]
+    },
+    "spell:necrotic": {
+      "cast": [
+        "spell-necrotic-cast"
+      ],
+      "launch": [
+        "spell-necrotic-cast"
+      ],
+      "impact": [
+        "spell-necrotic-impact"
+      ],
+      "miss": [
+        "attack-miss"
+      ]
+    },
+    "spell:radiant": {
+      "cast": [
+        "spell-healing-cast"
+      ],
+      "launch": [
+        "spell-healing-cast"
+      ],
+      "impact": [
+        "spell-healing-impact"
+      ],
+      "miss": [
+        "attack-miss"
+      ]
+    },
+    "spell:force": {
+      "cast": [
+        "spell-force-cast"
+      ],
+      "launch": [
+        "spell-force-cast"
+      ],
+      "impact": [
+        "spell-force-impact"
+      ],
+      "miss": [
+        "attack-miss"
+      ]
+    },
+    "spell:psychic": {
+      "cast": [
+        "spell-psychic-cast"
+      ],
+      "launch": [
+        "spell-psychic-cast"
+      ],
+      "impact": [
+        "spell-psychic-impact"
+      ],
+      "miss": [
+        "attack-miss"
+      ]
+    },
+    "spell:healing": {
+      "cast": [
+        "spell-healing-cast"
+      ],
+      "launch": [
+        "spell-healing-cast"
+      ],
+      "impact": [
+        "spell-healing-impact"
+      ]
+    },
+    "spell:ward": {
+      "cast": [
+        "spell-ward-cast"
+      ],
+      "launch": [
+        "spell-ward-cast"
+      ],
+      "impact": [
+        "spell-ward-impact"
+      ]
+    },
+    "spell:control": {
+      "cast": [
+        "spell-psychic-cast"
+      ],
+      "launch": [
+        "spell-psychic-cast"
+      ],
+      "impact": [
+        "spell-necrotic-impact"
+      ],
+      "miss": [
+        "attack-miss"
+      ]
+    },
+    "spell:teleport": {
+      "cast": [
+        "spell-teleport-out"
+      ],
+      "launch": [
+        "spell-teleport-out"
+      ],
+      "impact": [
+        "spell-teleport-in"
+      ]
+    },
+    "spell:summon": {
+      "cast": [
+        "spell-summon-cast"
+      ],
+      "launch": [
+        "spell-summon-cast"
+      ],
+      "impact": [
+        "spell-summon-impact"
+      ]
+    },
+    "spell:environment": {
+      "cast": [
+        "spell-wind-cast"
+      ],
+      "launch": [
+        "spell-wind-cast"
+      ],
+      "impact": [
+        "spell-wind-impact"
+      ]
+    },
+    "spell:earth": {
+      "cast": [
+        "spell-earth-cast"
+      ],
+      "launch": [
+        "spell-earth-cast"
+      ],
+      "impact": [
+        "spell-earth-impact"
+      ]
+    },
+    "spell:wind": {
+      "cast": [
+        "spell-wind-cast"
+      ],
+      "launch": [
+        "spell-wind-cast"
+      ],
+      "impact": [
+        "spell-wind-impact"
+      ]
+    },
+    "spell:water": {
+      "cast": [
+        "spell-water-cast"
+      ],
+      "launch": [
+        "spell-water-cast"
+      ],
+      "impact": [
+        "spell-water-impact"
+      ]
+    },
+    "spell:swarm": {
+      "cast": [
+        "spell-swarm-cast"
+      ],
+      "launch": [
+        "spell-swarm-cast"
+      ],
+      "impact": [
+        "spell-swarm-impact"
+      ]
+    },
+    "spell:weapon": {
+      "cast": [
+        "attack-sword-launch"
+      ],
+      "launch": [
+        "attack-sword-launch"
+      ],
+      "impact": [
+        "attack-sword-impact"
+      ],
+      "miss": [
+        "attack-miss"
+      ]
+    },
+    "spell:utility": {
+      "cast": [
+        "spell-psychic-cast"
+      ],
+      "launch": [
+        "spell-force-cast"
+      ],
+      "impact": [
+        "spell-force-impact"
+      ],
+      "miss": [
+        "attack-miss"
+      ]
+    },
+    "spell:light": {
+      "cast": [
+        "spell-healing-cast"
+      ],
+      "launch": [
+        "spell-healing-cast"
+      ],
+      "impact": [
+        "spell-healing-impact"
+      ]
+    },
+    "spell:darkness": {
+      "cast": [
+        "spell-necrotic-cast"
+      ],
+      "launch": [
+        "spell-necrotic-cast"
+      ],
+      "impact": [
+        "spell-necrotic-impact"
+      ]
+    },
+    "spell:illusion": {
+      "cast": [
+        "spell-psychic-cast"
+      ],
+      "launch": [
+        "spell-psychic-cast"
+      ],
+      "impact": [
+        "spell-psychic-impact"
+      ]
+    },
+    "spell:divination": {
+      "cast": [
+        "spell-psychic-cast"
+      ],
+      "launch": [
+        "spell-psychic-cast"
+      ],
+      "impact": [
+        "spell-psychic-impact"
+      ]
+    },
+    "spell:enchantment": {
+      "cast": [
+        "spell-psychic-cast"
+      ],
+      "launch": [
+        "spell-psychic-cast"
+      ],
+      "impact": [
+        "spell-psychic-impact"
+      ]
+    },
+    "spell:restoration": {
+      "cast": [
+        "spell-healing-cast"
+      ],
+      "launch": [
+        "spell-healing-cast"
+      ],
+      "impact": [
+        "spell-healing-impact"
+      ]
+    },
+    "spell:invisibility": {
+      "cast": [
+        "spell-ward-cast"
+      ],
+      "launch": [
+        "spell-ward-cast"
+      ],
+      "impact": [
+        "spell-ward-impact"
+      ]
+    },
+    "spell:mobility": {
+      "cast": [
+        "spell-teleport-out"
+      ],
+      "launch": [
+        "spell-teleport-out"
+      ],
+      "impact": [
+        "spell-teleport-in"
+      ]
+    },
+    "spell:flight": {
+      "cast": [
+        "spell-wind-cast"
+      ],
+      "launch": [
+        "spell-wind-cast"
+      ],
+      "impact": [
+        "spell-wind-impact"
+      ]
+    },
+    "spell:transmutation": {
+      "cast": [
+        "spell-earth-cast"
+      ],
+      "launch": [
+        "spell-earth-cast"
+      ],
+      "impact": [
+        "spell-earth-impact"
+      ]
+    },
+    "spell:communication": {
+      "cast": [
+        "spell-psychic-cast"
+      ],
+      "launch": [
+        "spell-psychic-cast"
+      ],
+      "impact": [
+        "spell-psychic-impact"
+      ]
+    },
+    "spell:school": {
+      "cast": [
+        "spell-psychic-cast"
+      ],
+      "launch": [
+        "spell-psychic-cast"
+      ],
+      "impact": [
+        "spell-psychic-impact"
+      ]
+    },
+    "spell:silence": {
+      "cast": [],
+      "launch": [],
+      "impact": [],
+      "silentPhases": [
+        "cast",
+        "launch",
+        "impact"
+      ],
+      "silenceReason": "Намеренная тишина без звукового события"
+    },
+    "attack:slash": {
+      "cast": [
+        "attack-sword-launch"
+      ],
+      "launch": [
+        "attack-sword-launch"
+      ],
+      "impact": [
+        "attack-sword-impact"
+      ],
+      "miss": [
+        "attack-miss"
+      ],
+      "critical": [
+        "attack-sword-impact"
+      ],
+      "blocked": [
+        "attack-blunt-impact"
+      ]
+    },
+    "attack:pierce": {
+      "cast": [
+        "attack-thrust-launch",
+        "attack-throw-launch"
+      ],
+      "launch": [
+        "attack-thrust-launch",
+        "attack-throw-launch"
+      ],
+      "impact": [
+        "attack-thrust-impact",
+        "attack-throw-impact"
+      ],
+      "miss": [
+        "attack-miss"
+      ],
+      "critical": [
+        "attack-thrust-impact",
+        "attack-throw-impact"
+      ],
+      "blocked": [
+        "attack-blunt-impact"
+      ]
+    },
+    "attack:bludgeon": {
+      "cast": [],
+      "launch": [],
+      "impact": [
+        "attack-blunt-impact"
+      ],
+      "miss": [
+        "attack-miss"
+      ],
+      "critical": [
+        "attack-blunt-impact"
+      ],
+      "blocked": [
+        "attack-unarmed-impact"
+      ],
+      "silentPhases": [
+        "cast",
+        "launch"
+      ],
+      "silenceReason": "Замах молчит до подтверждённого контакта"
+    },
+    "attack:unarmed": {
+      "cast": [],
+      "launch": [],
+      "impact": [
+        "attack-unarmed-impact"
+      ],
+      "miss": [
+        "attack-miss"
+      ],
+      "critical": [
+        "attack-unarmed-impact"
+      ],
+      "blocked": [
+        "attack-blunt-impact"
+      ],
+      "silentPhases": [
+        "cast",
+        "launch"
+      ],
+      "silenceReason": "Удар тела звучит только при контакте"
+    },
+    "attack:bow": {
+      "cast": [
+        "attack-bow-draw"
+      ],
+      "launch": [
+        "attack-bow-launch"
+      ],
+      "impact": [
+        "attack-bow-impact"
+      ],
+      "miss": [
+        "attack-miss"
+      ],
+      "critical": [
+        "attack-bow-impact"
+      ]
+    },
+    "attack:crossbow": {
+      "cast": [],
+      "launch": [
+        "attack-crossbow-launch"
+      ],
+      "impact": [
+        "attack-crossbow-impact"
+      ],
+      "miss": [
+        "attack-miss"
+      ],
+      "critical": [
+        "attack-crossbow-impact"
+      ],
+      "silentPhases": [
+        "cast"
+      ],
+      "silenceReason": "Арбалет стреляет только на launch"
+    },
+    "attack:thrown": {
+      "cast": [],
+      "launch": [
+        "attack-throw-launch"
+      ],
+      "impact": [
+        "attack-throw-impact"
+      ],
+      "miss": [
+        "attack-miss"
+      ],
+      "critical": [
+        "attack-throw-impact"
+      ],
+      "silentPhases": [
+        "cast"
+      ],
+      "silenceReason": "Метательное оружие выпускается только на launch"
+    },
+    "attack:net": {
+      "cast": [],
+      "launch": [
+        "attack-net-cloth"
+      ],
+      "impact": [
+        "attack-net-cloth"
+      ],
+      "miss": [
+        "attack-miss"
+      ],
+      "critical": [
+        "attack-net-cloth"
+      ],
+      "silentPhases": [
+        "cast"
+      ],
+      "silenceReason": "Сеть шуршит при броске и падении без металлического удара"
+    },
+    "attack:natural": {
+      "cast": [
+        "attack-sword-launch"
+      ],
+      "launch": [
+        "attack-sword-launch"
+      ],
+      "impact": [
+        "attack-unarmed-impact"
+      ],
+      "miss": [
+        "attack-miss"
+      ],
+      "critical": [
+        "attack-unarmed-impact"
+      ]
+    },
+    "attack:dart": {
+      "cast": [],
+      "launch": [
+        "attack-throw-launch"
+      ],
+      "impact": [
+        "attack-throw-impact"
+      ],
+      "miss": [
+        "attack-miss"
+      ],
+      "critical": [
+        "attack-throw-impact"
+      ],
+      "silentPhases": [
+        "cast"
+      ],
+      "silenceReason": "Дротик выпускается только на launch"
+    },
+    "attack:sling": {
+      "cast": [],
+      "launch": [
+        "attack-throw-launch"
+      ],
+      "impact": [
+        "attack-sling-impact"
+      ],
+      "miss": [
+        "attack-miss"
+      ],
+      "critical": [
+        "attack-sling-impact"
+      ],
+      "silentPhases": [
+        "cast"
+      ],
+      "silenceReason": "Камень покидает пращу только на launch"
+    },
+    "attack:firearm": {
+      "cast": [],
+      "launch": [
+        "attack-firearm-shot"
+      ],
+      "impact": [
+        "attack-crossbow-impact"
+      ],
+      "miss": [
+        "attack-miss"
+      ],
+      "critical": [
+        "attack-crossbow-impact"
+      ],
+      "silentPhases": [
+        "cast"
+      ],
+      "silenceReason": "Выстрел звучит только на launch"
+    },
+    "attack:wand": {
+      "cast": [
+        "spell-psychic-cast"
+      ],
+      "launch": [
+        "spell-force-cast"
+      ],
+      "impact": [
+        "spell-force-impact"
+      ],
+      "miss": [
+        "attack-miss"
+      ],
+      "critical": [
+        "spell-force-impact"
+      ]
+    }
+  }
+}

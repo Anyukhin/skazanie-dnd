@@ -61,19 +61,21 @@ function leafSpecs() {
 }
 
 const LEAF_SPECS = Object.freeze(leafSpecs())
+const CATALOG_EQUIPPABLE_COUNT = Object.values(ITEM_CATALOG)
+  .filter((entry) => entry.lifecycle?.equippable === true).length
 
 function visualEntries(key) {
   return Object.entries(EQUIPMENT_ITEM_VISUALS)
     .filter(([, visual]) => visual.model_key === key)
 }
 
-function exactCatalogIds(spec, slot) {
+function exactCatalogIds(spec, slot, variant = null) {
   // Сеть живёт в PHB starter-kit как описательная вещь и намеренно не
   // получает выдуманный catalog id. Для остальных ключей маппинг экипировки
   // является единственным источником вариантов и магических alias.
   if (spec.key === 'net') return []
   const mapped = visualEntries(spec.key)
-    .filter(([, visual]) => visual.slot === slot)
+    .filter(([, visual]) => visual.slot === slot && (variant === null || (visual.variant ?? 'default') === variant))
     .map(([catalogId]) => catalogId)
   return [...new Set(mapped.length ? mapped : spec.catalogIds)].sort()
 }
@@ -120,24 +122,23 @@ function variantsForSpec(spec, slot) {
 function manifestSpecs(spec, model) {
   const parts = partsForModel(spec, model)
   const slots = slotsForSpec(spec)
-  return slots.map((slot) => {
+  return slots.flatMap((slot) => {
     const variants = variantsForSpec(spec, slot)
-    const catalogIds = exactCatalogIds(spec, slot)
-    const value = {
+    const emittedVariants = spec.key === 'wand' ? variants : [variants[0]]
+    return emittedVariants.map((variant) => ({
       key: spec.key,
       label: spec.label,
       category: spec.category,
       slot,
-      variant: variants[0],
-      ...(variants.length > 1 ? { variants } : {}),
+      variant,
+      ...(spec.key !== 'wand' && variants.length > 1 ? { variants } : {}),
       ...(spec.kind ? { kind: spec.kind } : {}),
       ...(spec.handedness ? { handedness: spec.handedness } : {}),
       parts,
       ...(spec.coverage ? { coverage: [...spec.coverage] } : {}),
-      url: `${URL_ROOT}${spec.key}.glb`,
-      catalogIds,
-    }
-    return value
+      url: `${URL_ROOT}${spec.key}${spec.key === 'wand' && variant !== 'default' ? `-${variant}` : ''}.glb`,
+      catalogIds: exactCatalogIds(spec, slot, spec.key === 'wand' ? variant : null),
+    }))
   })
 }
 
@@ -221,7 +222,7 @@ function assertCatalogCoverage(models) {
   const missing = equippable.filter((catalogId) => !coveredSet.has(catalogId))
   const extra = [...coveredSet].filter((catalogId) => !equippable.includes(catalogId))
   if (missing.length || extra.length) throw new Error(`Покрытие экипировки расходится: missing=${missing.join(',')} extra=${extra.join(',')}`)
-  if (coveredSet.size !== 61) throw new Error(`Ожидалось 61 catalog id экипировки, получено ${coveredSet.size}`)
+  if (coveredSet.size !== CATALOG_EQUIPPABLE_COUNT) throw new Error(`Ожидалось ${CATALOG_EQUIPPABLE_COUNT} catalog id экипировки, получено ${coveredSet.size}`)
 }
 
 function noticeText(manifest, releaseId = null) {
@@ -256,14 +257,11 @@ export async function buildEquipmentModels({ out = DEFAULT_OUTPUT } = {}) {
     const model = modelForCategory(leaf.category, leaf.key)
     if (!model) throw new Error(`Фабрика не создала ${leaf.category}:${leaf.key}`)
     const manifestModels = manifestSpecs(leaf, model)
-    const bytes = await exportEquipmentModel(leaf)
-    const outputName = `${leaf.key}.glb`
-    await writeFile(join(directory, outputName), bytes)
-    for (const manifestModel of manifestModels) prepared.push({
-      ...manifestModel,
-      bytes: bytes.length,
-      sha256: digest(bytes),
-    })
+    for (const manifestModel of manifestModels) {
+      const bytes = await exportEquipmentModel(leaf.key === 'wand' ? { ...leaf, variant: manifestModel.variant } : leaf)
+      await writeFile(join(directory, basename(manifestModel.url)), bytes)
+      prepared.push({ ...manifestModel, bytes: bytes.length, sha256: digest(bytes) })
+    }
     dispose(model)
   }
   assertCatalogCoverage(prepared)
@@ -277,7 +275,7 @@ export async function buildEquipmentModels({ out = DEFAULT_OUTPUT } = {}) {
       generatorSha256: digest(generatorBytes),
       threeRevision: THREE.REVISION,
       canonicalHumanHeight: 1.4,
-      catalogEquippableCount: 61,
+      catalogEquippableCount: CATALOG_EQUIPPABLE_COUNT,
       sourceInputs: SOURCE_INPUTS,
     },
     models: prepared,
@@ -318,7 +316,8 @@ async function checkedCandidate(directory) {
   for (const model of manifest.models) {
     const value = model && typeof model === 'object' ? model : null
     const name = basename(String(value?.url ?? ''))
-    if (!name || name !== `${value?.key}.glb` || name.includes('..') || /[\\/:]/u.test(name)) throw new Error(`Небезопасное имя GLB: ${name}`)
+    const expectedName = value?.key === 'wand' && value?.variant === 'enchanted' ? 'wand-enchanted.glb' : `${value?.key}.glb`
+    if (!name || name !== expectedName || name.includes('..') || /[\\/:]/u.test(name)) throw new Error(`Небезопасное имя GLB: ${name}`)
     const bytes = files.get(name) ?? await readFile(join(candidate, name))
     if (bytes.length !== Number(value?.bytes) || digest(bytes) !== value?.sha256) throw new Error(`Кандидат изменился: ${name}`)
     files.set(name, bytes)

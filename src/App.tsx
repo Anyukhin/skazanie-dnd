@@ -14,7 +14,7 @@ import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettin
 import { fetchWithTimeout, getAiHealth, getCharacterCreationCatalog } from './ai-client'
 import {
   ABILITY_LABELS, DIFFICULTY_LABELS, ErrorToasts, HeroFaceInitials, PageHeader, SKILL_LABELS, UI_SCALE_MAX, UI_SCALE_MIN,
-  REPUTATION_TIER_LABELS, UI_SCALE_PRESETS, battleEventText, canonicalLocationKey, clampUiScale,
+  REPUTATION_TIER_LABELS, UI_SCALE_PRESETS, battleEventText, canonicalLocationKey, clampUiScale, damageTypeLabel,
   combatState, hasHeroPortrait, heroFaceMode, heroFaceStyle, locationsMatch, useDialogEscape,
 } from './app-shared'
 import type { BoardCombatant } from './app-shared'
@@ -30,6 +30,7 @@ import { useGameSession, type CommandOutcome, type ConnectionState, type Encount
 import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
 import { atmosphereScreenAttenuation, atmosphereScreenFor } from './atmosphere-screen.mjs'
 import { createScreenMusic, type ScreenMusicPlayer } from './screen-music'
+import { createCombatAudio, DEFAULT_COMBAT_AUDIO_SETTINGS, normalizeCombatAudioSettings, type CombatAudio } from './combat-audio'
 import { normalizeVoiceMode, pickNarrationVoice, shouldAutoSpeak, type NarrationVoiceMode } from './narration-tts.mjs'
 import { cancelNarration, observeVoices, russianVoiceAvailable, speakNarration } from './narration-speech'
 import { CELL_FEET, currentTacticalTurn, mapGridDimensions } from './tactical-engine'
@@ -651,20 +652,30 @@ function WaitingForHero({ account, onRefresh, onLogout }: { account: Account; on
 
 function ReactionPrompt({ actorName, sourceName, window, busy, beneficiaries, onChoose, onDecline }: { actorName: string; sourceName: string; window: CombatReactionWindow; busy: boolean; beneficiaries: Array<{ id: string; name: string }>; onChoose: (actionId: string, beneficiaryId?: string) => void; onDecline: () => void }) {
   const hit = ['attack-hit', 'spell-attack-hit'].includes(window.trigger)
+  const protectiveAttack = ['attack-shield-choice', 'attack-protective-choice'].includes(window.trigger)
+  const magicMissile = ['magic-missile-targeted', 'magic-missile-shield-choice'].includes(window.trigger)
   const opportunity = window.trigger === 'enemy-left-reach'
   const spellCast = window.trigger === 'spell-cast'
   const failedSave = window.trigger === 'failed-saving-throw'
+  const savingThrowBonus = window.trigger === 'saving-throw-bonus-choice'
+  const savingThrowBonusAfter = savingThrowBonus && window.resistance_phase === 'after-roll'
+  const savingThrowBonusText = savingThrowBonusAfter
+    ? `${actorName} уже бросил d20: ${window.trigger_roll?.kept ?? '—'} ${(window.trigger_roll?.modifier ?? 0) >= 0 ? '+' : ''}${window.trigger_roll?.modifier ?? 0} = ${window.trigger_roll?.total ?? '—'}. Можно добавить 1к4 к этому результату.`
+    : `${actorName} совершает спасбросок. Можно добавить 1к4 сейчас или сначала увидеть бросок.`
+  const elementalDamage = window.trigger === 'spell-area-damage'
+  const elementalDamageLabel = elementalDamage ? damageTypeLabel(window.damage?.damage_type) : ''
   const failedSaveText = failedSave
     ? `${actorName} проваливает спасбросок: d20 ${window.trigger_roll?.kept ?? '—'} ${(window.trigger_roll?.modifier ?? 0) >= 0 ? '+' : ''}${window.trigger_roll?.modifier ?? 0} = ${window.trigger_roll?.total ?? '—'} против СЛ ${window.trigger_roll?.difficulty ?? '—'}.`
     : ''
   const [beneficiaryId, setBeneficiaryId] = useState(beneficiaries[0]?.id ?? window.actor_id)
   const needsBeneficiary = window.action_options.some((option) => option.requires_beneficiary)
-  return <div className="reaction-backdrop"><section className="reaction-prompt" role="dialog" aria-modal="true" aria-label="Выбор реакции">
-    <header><div><RefreshCw size={21} /><span><small>{failedSave ? 'ПРОВАЛЕННЫЙ СПАСБРОСОК' : 'ПРЕРЫВАЮЩАЯ РЕАКЦИЯ'}</small><strong>{failedSave ? `${actorName}, использовать особенность?` : `${actorName}, реагировать?`}</strong></span></div><em>{failedSave ? 'Спасбросок' : spellCast ? 'Заклинание' : opportunity ? 'Движение' : hit ? 'Попадание' : 'Промах'}</em></header>
-    <p>{failedSave ? failedSaveText : spellCast ? `${sourceName} начинает накладывать «${window.pending_spell?.name ?? 'заклинание'}»${window.pending_spell?.slot_level ? ` ячейкой ${window.pending_spell.slot_level} уровня` : ''}.` : opportunity ? `${sourceName} покидает досягаемость героя.` : hit ? `${sourceName} попадает по герою${window.damage?.applied_amount ? ` и наносит ${window.damage.applied_amount} урона` : ''}.` : `${sourceName} промахивается в ближнем бою.`} {failedSave ? 'Выберите «Несгибаемый» или оставьте исходный провал.' : 'Выберите одну доступную реакцию или продолжите бой без неё.'}</p>
+  return <div className="reaction-backdrop"><section className="reaction-prompt" role="dialog" aria-modal="true" aria-label={savingThrowBonus ? 'Выбор бонуса спасброска' : 'Выбор реакции'}>
+    <header><div><RefreshCw size={21} /><span><small>{savingThrowBonus ? 'БОНУС СПАСБРОСКА' : failedSave ? 'ПРОВАЛЕННЫЙ СПАСБРОСОК' : 'ПРЕРЫВАЮЩАЯ РЕАКЦИЯ'}</small><strong>{savingThrowBonus ? `${actorName}, добавить бонус?` : failedSave ? `${actorName}, использовать особенность?` : `${actorName}, реагировать?`}</strong></span></div><em>{savingThrowBonus ? 'Сопротивление' : failedSave ? 'Спасбросок' : elementalDamage ? elementalDamageLabel || 'Стихийный урон' : spellCast || magicMissile ? 'Заклинание' : opportunity ? 'Движение' : hit || protectiveAttack ? 'Попадание' : 'Промах'}</em></header>
+    <p>{savingThrowBonus ? savingThrowBonusText : failedSave ? failedSaveText : elementalDamage ? `${actorName} может защититься от стихийного урона. Последствия будут определены после выбора реакции.` : magicMissile ? `${sourceName} направляет «Волшебную стрелу» на героя. Щит может полностью остановить её урон.` : protectiveAttack ? `${sourceName} попадает по герою. Можно защититься до применения урона.` : spellCast ? `${sourceName} начинает накладывать «${window.pending_spell?.name ?? 'заклинание'}»${window.pending_spell?.slot_level ? ` ячейкой ${window.pending_spell.slot_level} уровня` : ''}.` : opportunity ? `${sourceName} покидает досягаемость героя.` : hit ? `${sourceName} попадает по герою${window.damage?.applied_amount ? ` и наносит ${window.damage.applied_amount} урона` : ''}.` : `${sourceName} промахивается в ближнем бою.`} {savingThrowBonus ? 'Выберите, использовать ли бонус сейчас.' : failedSave ? 'Выберите «Несгибаемый» или оставьте исходный провал.' : 'Выберите одну доступную реакцию или продолжите бой без неё.'}</p>
     {needsBeneficiary && <label className="reaction-beneficiary"><span>Преимущество получит</span><select value={beneficiaryId} disabled={busy} onChange={(event) => setBeneficiaryId(event.target.value)}>{beneficiaries.map((beneficiary) => <option key={beneficiary.id} value={beneficiary.id}>{beneficiary.name}</option>)}</select></label>}
     <div className="reaction-options">{window.action_options.map((option) => <button key={option.id} disabled={busy || (option.requires_beneficiary && !beneficiaryId)} onClick={() => onChoose(option.id, option.requires_beneficiary ? beneficiaryId : undefined)}><i><CombatIcon id={option.id} kind={option.id.startsWith('cast:') ? 'spell' : 'reaction'} hint={`${option.name} ${option.description}`} size={35} /></i><span><strong>{option.name}</strong><small>{option.description}</small></span>{option.resource && <em>{option.cost ?? 1}</em>}</button>)}</div>
-    <footer><button disabled={busy} onClick={onDecline}>{busy ? 'Применяем…' : failedSave ? 'Оставить провал' : 'Не реагировать'}</button><span>{failedSave ? 'Несгибаемый не расходует реакцию и восстанавливается после продолжительного отдыха.' : 'Реакция восстановится в начале следующего хода героя.'}</span></footer>
+    {!savingThrowBonus && <footer><button disabled={busy} onClick={onDecline}>{busy ? 'Применяем…' : failedSave ? 'Оставить провал' : 'Не реагировать'}</button><span>{failedSave ? 'Несгибаемый не расходует реакцию и восстанавливается после продолжительного отдыха.' : 'Реакция восстановится в начале следующего хода героя.'}</span></footer>}
+    {savingThrowBonus && <footer><span>Этот выбор не расходует реакцию.</span></footer>}
   </section></div>
 }
 
@@ -926,6 +937,13 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const [boardLighting, setBoardLighting] = useState(loadBoardLighting)
   const [combatAnimations, setCombatAnimations] = useState(() => window.localStorage.getItem(COMBAT_ANIMATIONS_KEY) !== 'false')
   const [atmosphereSettings, setAtmosphereSettings] = useState(loadAtmosphereSettings)
+  const [combatAudio, setCombatAudio] = useState<CombatAudio | null>(null)
+  const [combatEffectsVolume, setCombatEffectsVolume] = useState(() => {
+    try {
+      const saved = window.localStorage.getItem('skazanie-combat-effects-volume-v1')
+      return saved == null ? DEFAULT_COMBAT_AUDIO_SETTINGS.effectsVolume : normalizeCombatAudioSettings({ effectsVolume: saved }).effectsVolume
+    } catch { return DEFAULT_COMBAT_AUDIO_SETTINGS.effectsVolume }
+  })
   const [voiceMode, setVoiceMode] = useState<NarrationVoiceMode>(() => normalizeVoiceMode(window.localStorage.getItem(NARRATION_VOICE_KEY)))
   // Подсказки по умолчанию включены: их и просили ради новичков за столом.
   // Выключенные не доезжают до панели вовсе, а не прячутся стилем.
@@ -1280,6 +1298,24 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     }
   }, [])
   useEffect(() => {
+    const audio = createCombatAudio({ volume: combatEffectsVolume, muted: atmosphereSettings.muted })
+    setCombatAudio(audio)
+    const unlock = () => { void audio.unlock() }
+    window.addEventListener('pointerdown', unlock)
+    window.addEventListener('keydown', unlock)
+    return () => {
+      window.removeEventListener('pointerdown', unlock)
+      window.removeEventListener('keydown', unlock)
+      void audio.dispose()
+    }
+  }, [])
+  useEffect(() => {
+    combatAudio?.setMuted(atmosphereSettings.muted)
+    combatAudio?.setVolume(combatEffectsVolume)
+    try { window.localStorage.setItem('skazanie-combat-effects-volume-v1', String(combatEffectsVolume)) } catch { /* Настройка необязательна. */ }
+  }, [combatAudio, combatEffectsVolume, atmosphereSettings.muted])
+  useEffect(() => { combatAudio?.cancel() }, [combatAudio, view, state.sessionCode])
+  useEffect(() => {
     const cursor = turnAlertCursor.current
     if (cursor.sessionCode !== state.sessionCode) {
       cursor.sessionCode = state.sessionCode
@@ -1425,6 +1461,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     setAtmosphereSettings(next)
   }
   const changeAtmosphereMuted = (muted: boolean) => {
+    combatAudio?.setMuted(muted)
     const next = atmosphereAudioRef.current?.setMuted(muted)
       ?? saveAtmosphereSettings({ ...atmosphereSettings, muted })
     setAtmosphereSettings(next)
@@ -1456,7 +1493,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   // занимал демо-мир, и новый аккаунт попадал в чужую историю. Проверка стоит
   // после всех хуков и до первого обращения к activePlayer.
   if (!state.sessionCode || !activePlayer) {
-    if (isAdmin && view === 'combat-lab') return <div className="app no-campaign"><main className="game-main"><button className="combat-lab-back" onClick={() => navigate('room')}>Вернуться к кампаниям</button><CombatLabView /></main></div>
+    if (isAdmin && view === 'combat-lab') return <div className="app no-campaign"><main className="game-main"><button className="combat-lab-back" onClick={() => navigate('room')}>Вернуться к кампаниям</button><CombatLabView combatAudio={combatAudio ?? undefined} soundMuted={atmosphereSettings.muted} onSoundMutedChange={changeAtmosphereMuted} /></main></div>
     return (
       <div className="app no-campaign">
         <main className="game-main">
@@ -1652,6 +1689,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             scenicBackdrop={scenicBackdrop}
             boardLighting={boardLighting}
             combatAnimations={combatAnimations}
+            combatAudio={combatAudio ?? undefined}
             visualBatch={combatVisualBatch}
             onStartCombat={() => startCombat(activePlayer.id)}
             onNpcAttack={(npcId) => attackNpc(activePlayer.id, npcId)}
@@ -1717,9 +1755,11 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           campaignId={state.sessionCode}
           appearance={state.actor_appearances?.[activePlayer.id]}
           enemyTargets={(state.enemies ?? []).filter((candidate) => candidate.alive && (candidate.hp == null || candidate.hp > 0)).map((candidate) => ({ id: candidate.id, label: candidate.name }))}
-          combatActive={combatActive}
-          combatItemTurnAvailable={canAct && turnActorId === activePlayer.id}
-          combatBonusActionAvailable={state.mechanics?.combat?.action_economy?.[activePlayer.id]?.bonus_action !== false}
+           combatActive={combatActive}
+           combatItemTurnAvailable={canAct && turnActorId === activePlayer.id}
+           combatActionAvailable={state.mechanics?.combat?.action_economy?.[activePlayer.id]?.action !== false}
+           combatObjectInteractionAvailable={state.mechanics?.combat?.action_economy?.[activePlayer.id]?.object_interaction !== false}
+           combatBonusActionAvailable={state.mechanics?.combat?.action_economy?.[activePlayer.id]?.bonus_action !== false}
           busy={tacticalBusy}
           error={tacticalError}
           onEquip={(itemId, equipped) => equipItem(activePlayer.id, itemId, equipped)}
@@ -1728,9 +1768,9 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           onAttune={(itemId, attuned) => attuneItem(activePlayer.id, itemId, attuned)}
           onActivate={(itemId, activated) => activateItem(activePlayer.id, itemId, activated)}
         />}
-        {view === 'settings' && <SettingsView health={aiHealth} campaignAi={campaignAi} campaignAiBusy={campaignAiBusy} campaignAiError={campaignAiError} uiScale={uiScale} autoAttackRoll={autoAttackRoll} scenicBackdrop={scenicBackdrop} boardLighting={boardLighting} combatAnimations={combatAnimations} atmosphereSettings={atmosphereSettings} notificationPermission={notificationPermission} voiceMode={voiceMode} voiceSupported={voiceSupported} onVoiceModeChange={setVoiceMode} actionHintsEnabled={actionHintsEnabled} onActionHintsEnabledChange={setActionHintsEnabled} onCampaignAiChange={(patch) => { void updateCampaignAi(patch) }} onCampaignRulesetChange={(rulesetId) => { void updateCampaignRuleset(rulesetId) }} onUiScaleChange={setUiScale} onAutoAttackRollChange={setAutoAttackRoll} onScenicBackdropChange={setScenicBackdrop} onBoardLightingChange={setBoardLighting} onCombatAnimationsChange={setCombatAnimations} onAmbientVolumeChange={changeAmbientVolume} onAtmosphereMutedChange={changeAtmosphereMuted} onRequestNotifications={() => { void requestTurnNotifications() }} />}
+        {view === 'settings' && <SettingsView combatEffectsVolume={combatEffectsVolume} onCombatEffectsVolumeChange={setCombatEffectsVolume} health={aiHealth} campaignAi={campaignAi} campaignAiBusy={campaignAiBusy} campaignAiError={campaignAiError} uiScale={uiScale} autoAttackRoll={autoAttackRoll} scenicBackdrop={scenicBackdrop} boardLighting={boardLighting} combatAnimations={combatAnimations} atmosphereSettings={atmosphereSettings} notificationPermission={notificationPermission} voiceMode={voiceMode} voiceSupported={voiceSupported} onVoiceModeChange={setVoiceMode} actionHintsEnabled={actionHintsEnabled} onActionHintsEnabledChange={setActionHintsEnabled} onCampaignAiChange={(patch) => { void updateCampaignAi(patch) }} onCampaignRulesetChange={(rulesetId) => { void updateCampaignRuleset(rulesetId) }} onUiScaleChange={setUiScale} onAutoAttackRollChange={setAutoAttackRoll} onScenicBackdropChange={setScenicBackdrop} onBoardLightingChange={setBoardLighting} onCombatAnimationsChange={setCombatAnimations} onAmbientVolumeChange={changeAmbientVolume} onAtmosphereMutedChange={changeAtmosphereMuted} onRequestNotifications={() => { void requestTurnNotifications() }} />}
         {view === 'admin' && isAdmin && <AdminView account={account} state={state} onUpdateWorld={updateWorld} onAssembleEncounter={assembleEncounter} onAssembleMerchant={assembleMerchant} onMoveMerchant={moveMerchant} onSetMerchantAvailability={setMerchantAvailability} />}
-        {view === 'combat-lab' && isAdmin && <CombatLabView />}
+        {view === 'combat-lab' && isAdmin && <CombatLabView combatAudio={combatAudio ?? undefined} soundMuted={atmosphereSettings.muted} onSoundMutedChange={changeAtmosphereMuted} />}
       </main>
       {/* Рассказчик и требование броска стоят поверх ЛЮБОГО раздела, а не
           только комнаты: игрок, ушедший в инвентарь или журнал, до этого не

@@ -10,15 +10,38 @@ import {
   createAccessoryModel,
 } from '../tools/equipment-accessory-models.mjs'
 
-const EXPECTED_KEYS = ['wand', 'cloak', 'brooch', 'ring']
+const EXPECTED_KEYS = [
+  'wand', 'cloak', 'brooch', 'ring',
+  'arcane-crystal', 'arcane-orb', 'arcane-rod', 'druidic-mistletoe', 'druidic-totem',
+  'holy-amulet', 'holy-emblem', 'holy-reliquary',
+  'bagpipes', 'drum', 'dulcimer', 'flute', 'lute', 'lyre', 'horn', 'pan-flute', 'shawm', 'viol',
+]
 const EXPECTED_CATALOG_IDS = [
   'srd_5_2_1:wand-of-magic-missiles',
   'srd_5_2_1:cloak-of-protection',
   'srd_5_2_1:brooch-of-shielding',
   'srd_5_2_1:ring-of-protection',
   'srd_5_2_1:ring-of-fire-resistance',
+  'srd_5_2_1:arcane-focus-crystal',
+  'srd_5_2_1:arcane-focus-orb',
+  'srd_5_2_1:arcane-focus-rod',
+  'srd_5_2_1:druidic-focus-mistletoe',
+  'srd_5_2_1:druidic-focus-totem',
+  'srd_5_2_1:holy-symbol-amulet',
+  'srd_5_2_1:holy-symbol-emblem',
+  'srd_5_2_1:holy-symbol-reliquary',
+  'srd_5_2_1:bagpipes',
+  'srd_5_2_1:drum',
+  'srd_5_2_1:dulcimer',
+  'srd_5_2_1:flute',
+  'srd_5_2_1:lute',
+  'srd_5_2_1:lyre',
+  'srd_5_2_1:horn',
+  'srd_5_2_1:pan-flute',
+  'srd_5_2_1:shawm',
+  'srd_5_2_1:viol',
 ]
-const MATERIALS = new Set(['cloth', 'leather', 'steel', 'wood', 'brass', 'gem'])
+const MATERIALS = new Set(['cloth', 'leather', 'steel', 'wood', 'bone', 'brass', 'gem'])
 
 function nodesOf(root) {
   const names = new Set()
@@ -38,11 +61,11 @@ function dispose(root) {
   for (const value of geometries) value.dispose()
 }
 
-test('реестр содержит четыре базовых ключа и все пять equippable catalogId', () => {
+test('реестр содержит 22 ключа и все 23 accessory catalogId', () => {
   assert.deepEqual(ACCESSORY_MODELS.map((item) => item.key), EXPECTED_KEYS)
   const catalogIds = ACCESSORY_MODELS.flatMap((item) => item.catalogIds)
   assert.deepEqual([...catalogIds].sort(), [...EXPECTED_CATALOG_IDS].sort())
-  assert.equal(new Set(catalogIds).size, 5)
+  assert.equal(new Set(catalogIds).size, 23)
   for (const item of ACCESSORY_MODELS) {
     assert.equal(item.source, 'original')
     assert.ok(item.label.length > 2)
@@ -59,7 +82,7 @@ test('реестр содержит четыре базовых ключа и в
 test('кольца используют одну geometry key, но имеют два материальных варианта', () => {
   const ring = ACCESSORY_MODELS.find((item) => item.key === 'ring')
   assert.ok(ring)
-  assert.deepEqual(ring.catalogIds, EXPECTED_CATALOG_IDS.slice(3))
+  assert.deepEqual(ring.catalogIds, EXPECTED_CATALOG_IDS.slice(3, 5))
   assert.deepEqual(ACCESSORY_RING_VARIANTS.map((item) => item.key), ['protection', 'fire-resistance'])
   assert.deepEqual(ring.variants.map((item) => item.key), ['protection', 'fire-resistance'])
   assert.notEqual(ring.variants[0].materialVariant, ring.variants[1].materialVariant)
@@ -111,7 +134,10 @@ test('жезл, плащ, брошь и кольцо имеют конечную
     })
     assert.ok(meshCount >= 4, `${spec.key}: силуэт слишком простой`)
     assert.ok(materialNames.size >= 1)
-    for (const name of required.get(spec.key)) assert.ok(nodesOf(model).has(name), `${spec.key}: отсутствует ${name}`)
+    for (const name of required.get(spec.key) ?? spec.parts) {
+      const bare = name.replace(/^part:/u, '')
+      assert.ok(nodesOf(model).has(name) || nodesOf(model).has(bare), `${spec.key}: отсутствует ${name}`)
+    }
     dispose(model)
   }
 })

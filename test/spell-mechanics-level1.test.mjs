@@ -93,12 +93,13 @@ test('Щит открывается реакцией на Волшебную с�
   const normalized = normalizeCampaignState(initial)
   normalized.mechanics.combat.active_index = 2
   const cast = resolveCommand({ command_type: 'CastSpell', actor_id: 'strong', spell_id: 'magic-missile', target_id: 'caster', target_ids: ['caster'], server_authoritative: true }, normalized, { diceService: dice([3]), context: { serverAuthoritativeCombat: true } })
-  const damaged = applyAll(normalized, cast.events)
-  assert.equal(damaged.players[0].hp, 8)
-  assert.ok(damaged.mechanics.combat.reaction_window.action_ids.includes('cast:shield'))
+  const waiting = applyAll(normalized, cast.events)
+  assert.equal(waiting.players[0].hp, 20, 'Щит решается до применения урона Волшебной стрелы')
+  assert.equal(waiting.mechanics.combat.reaction_window.trigger, 'magic-missile-shield-choice')
+  assert.ok(waiting.mechanics.combat.reaction_window.action_ids.includes('cast:shield'))
 
-  const shield = resolveCommand({ command_type: 'UseCombatAction', actor_id: 'caster', action_id: 'cast:shield', server_authoritative: true }, damaged, { diceService: dice(), context: { serverAuthoritativeCombat: true } })
-  const after = applyAll(damaged, shield.events)
+  const shield = resolveCommand({ command_type: 'UseCombatAction', actor_id: 'caster', action_id: 'cast:shield', server_authoritative: true }, waiting, { diceService: dice(), context: { serverAuthoritativeCombat: true } })
+  const after = applyAll(waiting, shield.events)
   assert.equal(after.players[0].hp, 20)
   assert.ok(after.mechanics.conditions.caster.some((condition) => condition.id === 'shielded'))
 })
@@ -147,8 +148,12 @@ test('Доспехи мага и Щит веры участвуют в серв�
   const armored = applyAll(initial, mageArmor.events)
   armored.mechanics.combat.active_index = 1
   const attack = resolveCommand({ command_type: 'MakeAttack', actor_id: 'weak', target_id: 'caster', server_authoritative: true }, armored, { diceService: dice([11, 1]), context: { serverAuthoritativeCombat: true } })
-  assert.equal(attack.events.find((event) => event.event_type === 'AttackResolved').payload.armor_class, 15)
-  assert.equal(attack.events.find((event) => event.event_type === 'AttackResolved').payload.hit, true)
+  const waiting = applyAll(armored, attack.events)
+  assert.equal(waiting.mechanics.combat.reaction_window.trigger, 'attack-shield-choice')
+  const declined = resolveCommand({ command_type: 'UseCombatAction', actor_id: 'caster', action_id: 'decline-reaction', server_authoritative: true }, waiting, { diceService: dice([1]), context: { serverAuthoritativeCombat: true } })
+  const resolvedAttack = declined.events.find((event) => event.event_type === 'AttackResolved')
+  assert.equal(resolvedAttack.payload.armor_class, 15)
+  assert.equal(resolvedAttack.payload.hit, true)
 
   armored.mechanics.conditions.caster.push({ id: 'shield-of-faith', duration: 'concentration' })
   const protectedAttack = resolveCommand({ command_type: 'MakeAttack', actor_id: 'weak', target_id: 'caster', server_authoritative: true }, armored, { diceService: dice([11]), context: { serverAuthoritativeCombat: true } })
@@ -158,7 +163,14 @@ test('Доспехи мага и Щит веры участвуют в серв�
 
 test('Скольжение создаёт постоянную труднопроходимую область и повторяет спасбросок при входе', () => {
   const initial = stateFor('wizard', 3)
-  const cast = resolveCommand({ command_type: 'CastSpell', actor_id: 'caster', spell_id: 'grease', to: { x: 3, y: 1 }, server_authoritative: true }, initial, { diceService: dice([1, 20]), context: { serverAuthoritativeCombat: true } })
+  // «Скольжение» — квадрат 10 фт. При детерминированном якоре чётного куба
+  // точка (1,1) покрывает x=1..2: weak внутри, strong на x=3 снаружи.
+  // Союзник оставлен за пределами квадрата, чтобы последующее перемещение
+  // действительно было входом в область; weak в (2,1) остаётся внутри.
+  initial.players.find((actor) => actor.id === 'ally').x = 1
+  initial.players.find((actor) => actor.id === 'ally').y = 3
+  initial.mechanics.positions.ally = { x: 1, y: 3 }
+  const cast = resolveCommand({ command_type: 'CastSpell', actor_id: 'caster', spell_id: 'grease', to: { x: 1, y: 1 }, server_authoritative: true }, initial, { diceService: dice([1, 1, 1]), context: { serverAuthoritativeCombat: true } })
   const greased = applyAll(initial, cast.events)
   assert.ok(greased.mechanics.active_effects.some((effect) => effect.spell_id === 'grease' && effect.difficult_terrain))
   assert.ok(greased.mechanics.conditions.weak.some((condition) => condition.id === 'prone'))
@@ -167,7 +179,7 @@ test('Скольжение создаёт постоянную труднопр�
   greased.mechanics.combat.initiative = [{ actor_id: 'ally', total: 18 }, { actor_id: 'weak', total: 12 }]
   greased.mechanics.combat.active_index = 0
   greased.mechanics.combat.action_economy.ally = { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 }
-  const move = resolveCommand({ command_type: 'MoveActor', actor_id: 'ally', to: { x: 2, y: 2 }, server_authoritative: true }, greased, { diceService: dice([1]), context: { serverAuthoritativeCombat: true } })
+  const move = resolveCommand({ command_type: 'MoveActor', actor_id: 'ally', to: { x: 1, y: 2 }, server_authoritative: true }, greased, { diceService: dice([1]), context: { serverAuthoritativeCombat: true } })
   const afterMove = applyAll(greased, move.events)
   assert.equal(afterMove.mechanics.combat.action_economy.ally.movement_spent, 10)
   assert.ok(afterMove.mechanics.conditions.ally.some((condition) => condition.id === 'prone'))
@@ -180,7 +192,9 @@ test('Скольжение создаёт постоянную труднопр�
 
 test('Опутывание создаёт концентрационную труднопроходимую область и снимается вместе с концентрацией', () => {
   const initial = stateFor('druid', 3)
-  const cast = resolveCommand({ command_type: 'CastSpell', actor_id: 'caster', spell_id: 'entangle', to: { x: 3, y: 1 }, server_authoritative: true }, initial, { diceService: dice([20, 20, 1, 20]), context: { serverAuthoritativeCombat: true } })
+  // Квадрат 20 фт закрепляется на клетку западнее и севернее выбранной точки;
+  // точка (2,1) оставляет обоих соседних врагов внутри области источника.
+  const cast = resolveCommand({ command_type: 'CastSpell', actor_id: 'caster', spell_id: 'entangle', to: { x: 2, y: 1 }, server_authoritative: true }, initial, { diceService: dice([20, 20, 1, 20]), context: { serverAuthoritativeCombat: true } })
   const entangled = applyAll(initial, cast.events)
   assert.ok(entangled.mechanics.conditions.weak.some((condition) => condition.id === 'restrained'))
   assert.ok(entangled.mechanics.active_effects.some((effect) => effect.spell_id === 'entangle' && effect.concentration))
@@ -201,7 +215,7 @@ test('Огонь фей даёт преимущество следующей а�
   const initial = stateFor('wizard', 3)
   initial.players[0].characterClass = 'bard'
   const normalized = normalizeCampaignState(initial)
-  const cast = resolveCommand({ command_type: 'CastSpell', actor_id: 'caster', spell_id: 'faerie-fire', to: { x: 3, y: 1 }, server_authoritative: true }, normalized, { diceService: dice([20, 20, 1, 20]), context: { serverAuthoritativeCombat: true } })
+  const cast = resolveCommand({ command_type: 'CastSpell', actor_id: 'caster', spell_id: 'faerie-fire', to: { x: 2, y: 1 }, server_authoritative: true }, normalized, { diceService: dice([20, 20, 1, 20]), context: { serverAuthoritativeCombat: true } })
   const illuminated = applyAll(normalized, cast.events)
   assert.ok(illuminated.mechanics.conditions.weak.some((condition) => condition.id === 'faerie-fire'))
   illuminated.mechanics.combat.action_economy.caster.action = true
@@ -347,7 +361,11 @@ test('Огненные ладони и Ледяные пальцы исполь�
 
 test('Руки Хадара поражают всех вокруг и запрещают реакции только провалившим спасбросок', () => {
   const initial = stateFor('warlock', 3)
-  const result = resolveCommand({ command_type: 'CastSpell', actor_id: 'caster', spell_id: 'arms-of-hadar', target_id: 'caster', server_authoritative: true }, initial, { diceService: dice([3, 3, 20, 1, 20]), context: { serverAuthoritativeCombat: true } })
+  // Колдун 3-го уровня накладывает заклинание ячейкой 2-го круга: 3к6,
+  // затем спасброски союзника и двух врагов.
+  const result = resolveCommand({ command_type: 'CastSpell', actor_id: 'caster', spell_id: 'arms-of-hadar', target_id: 'caster', server_authoritative: true }, initial, { diceService: dice([3, 3, 3, 20, 1, 20]), context: { serverAuthoritativeCombat: true } })
+  assert.equal(result.events.find((event) => event.event_type === 'SpellCast').payload.slot_level, 2)
+  assert.ok(result.events.some((event) => event.event_type === 'DieRolled' && event.payload.expression === '3d6'))
   const after = applyAll(initial, result.events)
   assert.ok(after.mechanics.conditions.weak.some((condition) => condition.id === 'no-reactions'))
   assert.equal(after.mechanics.combat.action_economy.weak.reaction, false)

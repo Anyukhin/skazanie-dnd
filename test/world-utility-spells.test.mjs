@@ -361,6 +361,8 @@ test('Рассеивание магии убирает чужую область
 
 test('эффект круга выше ячейки требует серверной проверки против СЛ 10 + круг', () => {
   const wizard = field({ characterClass: 'wizard', level: 7 })
+  wizard.players[0].knownSpellIds = ['ice-storm', 'dispel-magic']
+  wizard.players[0].preparedSpellIds = ['ice-storm', 'dispel-magic']
   const storm = refreshed(replayEvents(wizard, cast(wizard, { command_type: 'CastSpell', actor_id: 'caster', spell_id: 'ice-storm', to: { x: 5, y: 5 } }, Array.from({ length: 40 }, () => 4)).events))
   assert.ok(storm.mechanics.active_effects.some((effect) => effect.spell_id === 'ice-storm'))
 

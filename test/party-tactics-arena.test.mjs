@@ -159,6 +159,7 @@ test('колдун накладывает Сглаз на врага перед 
   const plan = planHeroCombatCommand(state, 'hero')
   assert.equal(plan.command.spell_id, 'hex')
   assert.equal(plan.command.target_id, 'enemy')
+  assert.equal(plan.command.slot_level, 3, 'pact magic planner must pass the fixed WARLOCK_PACT circle')
   const after = resolvePlan(state, plan)
   assert.equal(planHeroCombatCommand(after, 'hero').command.spell_id, 'eldritch-blast')
 })

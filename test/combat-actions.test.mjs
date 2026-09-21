@@ -189,11 +189,12 @@ test('Щит восстанавливает временные хиты, пог�
   normalized.mechanics.combat.active_index = 1
   normalized.mechanics.combat.action_economy.goblin = { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 }
   const attack = resolveCommand({ command_type: 'MakeAttack', actor_id: 'goblin', target_id: 'fighter', server_authoritative: true }, normalized, { diceService: dice([18, 6]), context: { serverAuthoritativeCombat: true } })
-  const afterAttack = applyAll(normalized, attack.events)
-  assert.equal(afterAttack.mechanics.temporary_hp.fighter, 0)
-  assert.equal(afterAttack.players[0].hp, 20)
-  const shield = resolveCommand({ command_type: 'UseCombatAction', actor_id: 'fighter', action_id: 'cast:shield', server_authoritative: true }, afterAttack, { diceService: dice(), context: { serverAuthoritativeCombat: true } })
-  const afterShield = applyAll(afterAttack, shield.events)
+  const waiting = applyAll(normalized, attack.events)
+  assert.equal(waiting.mechanics.combat.reaction_window.trigger, 'attack-shield-choice')
+  assert.equal(waiting.mechanics.temporary_hp.fighter, 5)
+  assert.equal(waiting.players[0].hp, 20)
+  const shield = resolveCommand({ command_type: 'UseCombatAction', actor_id: 'fighter', action_id: 'cast:shield', server_authoritative: true }, waiting, { diceService: dice(), context: { serverAuthoritativeCombat: true } })
+  const afterShield = applyAll(waiting, shield.events)
   assert.equal(afterShield.mechanics.temporary_hp.fighter, 5)
   assert.equal(afterShield.players[0].hp, 20)
 })
@@ -252,11 +253,15 @@ test('отказ от Контрзаклинания возобновляет о
   const waiting = applyAll(initial, cast.events)
   const decline = resolveCommand({ command_type: 'UseCombatAction', actor_id: 'fighter', action_id: 'decline-reaction', server_authoritative: true }, waiting, { diceService: dice([15, 6, 6, 6]), context: { serverAuthoritativeCombat: true } })
   const after = applyAll(waiting, decline.events)
-  assert.ok(after.players[0].hp < initial.players[0].hp)
-  assert.equal(after.mechanics.combat.reaction_window.trigger, 'spell-attack-hit')
+  assert.equal(after.players[0].hp, initial.players[0].hp)
+  assert.equal(after.mechanics.combat.reaction_window.trigger, 'attack-shield-choice')
   assert.ok(after.mechanics.combat.reaction_window.action_ids.includes('cast:shield'))
   assert.equal(after.mechanics.combat.action_economy.fighter.reaction, true)
-  assert.equal(after.mechanics.combat.action_economy.goblin.action, false)
+  const finish = resolveCommand({ command_type: 'UseCombatAction', actor_id: 'fighter', action_id: 'decline-reaction', server_authoritative: true }, after, { diceService: dice([6, 6, 6, 6]), context: { serverAuthoritativeCombat: true } })
+  const completed = applyAll(after, finish.events)
+  assert.ok(completed.players[0].hp < initial.players[0].hp)
+  assert.equal(completed.mechanics.combat.reaction_window, null)
+  assert.equal(completed.mechanics.combat.action_economy.goblin.action, false)
 })
 
 test('Контрзаклинание меньшего уровня делает проверку характеристики и при провале пропускает заклинание', () => {
@@ -318,7 +323,10 @@ test('игрок видит у Искусной остроты выбор пол
   normalized.mechanics.combat.active_index = 1
   normalized.mechanics.combat.action_economy.goblin = { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 }
   const attack = resolveCommand({ command_type: 'MakeAttack', actor_id: 'goblin', target_id: 'fighter', server_authoritative: true }, normalized, { diceService: dice([18, 6]), context: { serverAuthoritativeCombat: true } })
-  const afterAttack = applyAll(normalized, attack.events)
+  const waiting = applyAll(normalized, attack.events)
+  assert.equal(waiting.mechanics.combat.reaction_window.trigger, 'attack-shield-choice')
+  const shieldDecline = resolveCommand({ command_type: 'UseCombatAction', actor_id: 'fighter', action_id: 'decline-reaction', server_authoritative: true }, waiting, { diceService: dice([6]), context: { serverAuthoritativeCombat: true } })
+  const afterAttack = applyAll(waiting, shieldDecline.events)
 
   const authoritative = afterAttack.mechanics.combat.reaction_window.action_options
     .find((option) => option.id === 'cast:silvery-barbs')
@@ -337,14 +345,11 @@ test('игрок видит у Искусной остроты выбор пол
   assert.equal(projected.name, authoritative.name)
   assert.equal(projected.cost, 1)
 
-  // Обычной реакции признак не выдумывается: список получателей над «Щитом»
-  // был бы ложным выбором — цель у него одна и это сам игрок.
+  // Решение о Щите уже принято в предыдущем окне, поэтому второй список
+  // содержит только оставшуюся реакцию Искусной остроты.
   const projectedOptions = campaignStateForViewer(afterAttack, { role: 'player', heroIds: ['fighter'] }, 'fighter')
     .mechanics.combat.reaction_window.action_options
-  assert.deepEqual(projectedOptions.map((option) => option.id), ['cast:shield', 'cast:silvery-barbs'])
-  const plain = projectedOptions.find((option) => option.id === 'cast:shield')
-  assert.ok(plain, 'в окне обязана быть и вторая, обычная реакция — иначе проверка ниже пуста')
-  assert.deepEqual(Object.keys(plain).sort(), ['cost', 'description', 'id', 'name', 'resource', 'slot_level'])
+  assert.deepEqual(projectedOptions.map((option) => option.id), ['cast:silvery-barbs'])
 })
 
 test('Поглощение стихий даёт сопротивление подходящему урону и сохраняет его до следующего хода', () => {
@@ -355,12 +360,13 @@ test('Поглощение стихий даёт сопротивление по
   normalized.mechanics.combat.active_index = 1
   normalized.mechanics.combat.action_economy.goblin = { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 }
   const attack = resolveCommand({ command_type: 'MakeAttack', actor_id: 'goblin', target_id: 'fighter', server_authoritative: true }, normalized, { diceService: dice([18, 8]), context: { serverAuthoritativeCombat: true } })
-  const afterAttack = applyAll(normalized, attack.events)
-  assert.ok(afterAttack.mechanics.combat.reaction_window.action_ids.includes('cast:absorb-elements'))
-  const damagedHp = afterAttack.players[0].hp
-  const reaction = resolveCommand({ command_type: 'UseCombatAction', actor_id: 'fighter', action_id: 'cast:absorb-elements', server_authoritative: true }, afterAttack, { diceService: dice(), context: { serverAuthoritativeCombat: true } })
-  const afterReaction = applyAll(afterAttack, reaction.events)
-  assert.equal(afterReaction.players[0].hp, damagedHp + 4)
+  const waiting = applyAll(normalized, attack.events)
+  assert.equal(waiting.mechanics.combat.reaction_window.trigger, 'attack-protective-choice')
+  assert.ok(waiting.mechanics.combat.reaction_window.action_ids.includes('cast:absorb-elements'))
+  assert.equal(waiting.players[0].hp, 20)
+  const reaction = resolveCommand({ command_type: 'UseCombatAction', actor_id: 'fighter', action_id: 'cast:absorb-elements', server_authoritative: true }, waiting, { diceService: dice([8]), context: { serverAuthoritativeCombat: true } })
+  const afterReaction = applyAll(waiting, reaction.events)
+  assert.equal(afterReaction.players[0].hp, 16)
   assert.ok(afterReaction.mechanics.conditions.fighter.some((condition) => condition.id === 'absorbing-element:fire'))
 })
 

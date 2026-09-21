@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import test from 'node:test'
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
@@ -55,7 +55,7 @@ function dispose(scene) {
   for (const geometry of geometries) geometry.dispose()
 }
 
-test('кандидат содержит все модели слотов и ровно 61 каталожный id', async (t) => {
+test('кандидат содержит все модели слотов и ровно 83 каталожных id', async (t) => {
   const firstDir = await mkdtemp(join(TMP_ROOT, 'equipment-model-test-'))
   const secondDir = await mkdtemp(join(TMP_ROOT, 'equipment-model-test-'))
   t.after(async () => Promise.all([
@@ -71,25 +71,25 @@ test('кандидат содержит все модели слотов и ро
   assert.equal(manifest.schema, 'skazanie-equipment-model-candidate/v1')
   assert.equal(manifest.version, 1)
   assert.equal(manifest.build.canonicalHumanHeight, 1.4)
-  assert.equal(manifest.build.catalogEquippableCount, 61)
-  assert.equal(manifest.models.length, 57)
+  assert.equal(manifest.build.catalogEquippableCount, 83)
+  assert.equal(manifest.models.length, 76)
   assert.deepEqual(Object.fromEntries(manifest.models.reduce((map, model) => map.set(model.category, (map.get(model.category) ?? 0) + 1), new Map())), {
     weapon: 39,
     armor: 12,
     shield: 1,
-    accessory: 5,
+    accessory: 24,
   })
   const equippableIds = Object.values(ITEM_CATALOG)
     .filter((entry) => entry.lifecycle?.equippable === true)
     .map((entry) => entry.catalog_id)
   const manifestIds = manifest.models.flatMap((model) => model.catalogIds)
-  assert.equal(manifestIds.length, 61)
+  assert.equal(manifestIds.length, 83)
   assert.deepEqual([...new Set(manifestIds)].sort(), [...equippableIds].sort())
   assert.deepEqual([...first.manifest.models].map((model) => ({ ...model, bytes: undefined, sha256: undefined })),
     [...second.manifest.models].map((model) => ({ ...model, bytes: undefined, sha256: undefined })))
   assert.deepEqual(manifest.models.map((model) => model.sha256), twinManifest.models.map((model) => model.sha256))
   assert.ok(manifest.build.sourceInputs.every((input) => input.bytes > 0 && /^[a-f0-9]{64}$/u.test(input.sha256)))
-  assert.match(await readFile(join(firstDir, 'NOTICE.txt'), 'utf8'), /каталожных id: 61/u)
+  assert.match(await readFile(join(firstDir, 'NOTICE.txt'), 'utf8'), /каталожных id: 83/u)
   assert.ok(existsSync(join(firstDir, 'LICENSE.txt')))
 
   const shield = manifest.models.find((model) => model.key === 'shield')
@@ -100,6 +100,11 @@ test('кандидат содержит все модели слотов и ро
     assert.equal(model.coverage.includes('chest') || model.coverage.includes('waist'), true)
   }
   assert.equal(manifest.models.find((model) => model.key === 'net').catalogIds.length, 0)
+  const wands = manifest.models.filter((model) => model.key === 'wand')
+  assert.deepEqual(wands.map((model) => model.variant), ['default', 'enchanted'])
+  assert.deepEqual(wands[0].catalogIds, ['srd_5_2_1:arcane-focus-wand', 'srd_5_2_1:druidic-focus-yew-wand'])
+  assert.deepEqual(wands[1].catalogIds, ['srd_5_2_1:wand-of-magic-missiles'])
+  assert.notEqual(wands[0].sha256, wands[1].sha256)
 })
 
 test('все GLB проходят загрузку обратно, имеют конечные границы и точки крепления', async (t) => {
@@ -108,7 +113,7 @@ test('все GLB проходят загрузку обратно, имеют к
   const { manifest } = await buildEquipmentModels({ out: directory })
   const ranged = new Set(['bow', 'crossbow', 'sling', 'net', 'dart', 'blowgun', 'firearm'])
   for (const spec of manifest.models) {
-    const file = join(directory, `${spec.key}.glb`)
+    const file = join(directory, basename(spec.url))
     const bytes = await readFile(file)
     assert.equal(bytes.length, spec.bytes, `${spec.key}: размер в manifest`)
     assert.equal(digest(bytes), spec.sha256, `${spec.key}: SHA в manifest`)
@@ -160,17 +165,17 @@ test('публикация создаёт новый неизменяемый в
   const release = JSON.parse(await readFile(join(releaseRoot, 'manifest.json'), 'utf8'))
   assert.equal(active.release.id, published.releaseId)
   assert.equal(release.release.fingerprint, published.fingerprint)
-  assert.equal(active.models.length, 57)
+  assert.equal(active.models.length, 76)
   assert.deepEqual(active.models, release.models)
   for (const model of active.models) {
-    const file = join(releaseRoot, `${model.key}.glb`)
+    const file = join(releaseRoot, basename(model.url))
     const bytes = await readFile(file)
     assert.equal(bytes.length, model.bytes, `${model.key}: опубликованный размер`)
     assert.equal(digest(bytes), model.sha256, `${model.key}: опубликованный SHA`)
   }
   const rights = JSON.parse(await readFile(join(root, 'data', 'asset-rights.json'), 'utf8'))
   const byPath = new Map(rights.assets.map((entry) => [entry[0], entry]))
-  for (const name of ['manifest.json', 'NOTICE.txt', 'LICENSE.txt', ...active.models.map((model) => `${model.key}.glb`)]) {
+  for (const name of ['manifest.json', 'NOTICE.txt', 'LICENSE.txt', ...new Set(active.models.map((model) => basename(model.url)))]) {
     const path = `models/equipment/${published.releaseId}/${name}`
     const bytes = await readFile(join(releaseRoot, name))
     assert.deepEqual(byPath.get(path)?.slice(1), [digest(bytes), bytes.length], `${path}: запись прав`)

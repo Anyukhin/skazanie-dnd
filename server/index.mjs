@@ -1228,10 +1228,26 @@ function sanitizePlayerCombatCommand(user, state, input, { skipAttackTargetPolic
     const spellId = String(input?.spell_id ?? input?.spellId ?? '').slice(0, 120)
     if (!spellId) throw commandPolicyError('Не выбрано заклинание', 'SPELL_NOT_AVAILABLE')
     const target = String(input?.target_id ?? input?.targetId ?? '')
+    const suppliedTargets = input?.target_ids ?? input?.targetIds
+    if (suppliedTargets != null && (!Array.isArray(suppliedTargets) || suppliedTargets.length === 0 || suppliedTargets.length > 64
+      || suppliedTargets.some((id) => typeof id !== 'string' || !id.trim() || id.length > 120))) {
+      throw commandPolicyError('Нужен непустой список идентификаторов целей заклинания', 'INVALID_SPELL_TARGETS')
+    }
+    const targets = suppliedTargets == null ? null : [...new Set(suppliedTargets.map((id) => id.trim()))]
+    const spellOption = input?.spell_option ?? input?.spellOption
+    if (spellOption != null && (typeof spellOption !== 'string' || spellOption.length > 120)) {
+      throw commandPolicyError('Неверный вариант заклинания', 'INVALID_SPELL_OPTION')
+    }
+    const slotLevel = input?.slot_level ?? input?.slotLevel
+    if (slotLevel != null && (!Number.isSafeInteger(slotLevel) || slotLevel < 1 || slotLevel > 9)) {
+      throw commandPolicyError('Неверный уровень ячейки', 'INVALID_SPELL_SLOT_LEVEL')
+    }
     return {
       ...base,
       spell_id: spellId,
-      ...(target ? { target_id: target } : {}),
+      ...(targets ? { target_ids: targets } : target ? { target_id: target } : {}),
+      ...(spellOption ? { spell_option: spellOption } : {}),
+      ...(slotLevel == null ? {} : { slot_level: slotLevel }),
       ...(input?.to ? { to: { x: input.to.x, y: input.to.y } } : {}),
       ...(input?.knock_out === true ? { knock_out: true } : {}),
     }
@@ -1240,10 +1256,15 @@ function sanitizePlayerCombatCommand(user, state, input, { skipAttackTargetPolic
     const actionId = String(input?.action_id ?? input?.actionId ?? '').slice(0, 120)
     if (!actionId) throw commandPolicyError('Не выбрано боевое действие', 'COMBAT_ACTION_NOT_AVAILABLE')
     const target = String(input?.target_id ?? input?.targetId ?? '').slice(0, 120)
+    const beneficiary = input?.beneficiary_id ?? input?.beneficiaryId
+    if (beneficiary != null && (typeof beneficiary !== 'string' || !beneficiary.trim() || beneficiary.length > 120)) {
+      throw commandPolicyError('Неверный получатель бонуса реакции', 'INVALID_REACTION_BENEFICIARY')
+    }
     return {
       ...base,
       action_id: actionId,
       ...(target ? { target_id: target } : {}),
+      ...(actionId === 'cast:silvery-barbs' && beneficiary != null ? { beneficiary_id: beneficiary.trim() } : {}),
       ...(input?.item_id ? { item_id: String(input.item_id).slice(0, 120) } : {}),
     }
   }

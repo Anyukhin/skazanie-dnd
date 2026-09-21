@@ -70,8 +70,22 @@ test('в тесноте встаёт столько, сколько помест
 })
 
 test('ячейка выше добавляет призванных, где это по правилу', () => {
-  const base = created(summonAt(field({ casterClass: 'warlock' }), 'summon-lesser-demons')).length
-  const upcast = created(summonAt(field({ casterClass: 'warlock' }), 'summon-lesser-demons', { x: 7, y: 2 }, { slot_level: 5 })).length
+  // Wizard uses ordinary levelled slots, so the baseline is an actual third-
+  // circle cast. Warlock pact magic at level 12 is already fifth circle and
+  // would make an omitted slot look like an upcast.
+  const baseState = field({ casterClass: 'wizard' })
+  const baseResult = summonAt(baseState, 'summon-lesser-demons')
+  const base = created(baseResult).length
+  const baseAfter = replayEvents(baseState, baseResult.events)
+  assert.equal(baseAfter.mechanics.resources.mage.spell_slots_3.current, 2)
+  assert.equal(baseResult.events.find((event) => event.event_type === 'ResourceSpent')?.payload.resource, 'spell_slots_3')
+
+  const upcastState = field({ casterClass: 'wizard' })
+  const upcastResult = summonAt(upcastState, 'summon-lesser-demons', { x: 7, y: 2 }, { slot_level: 5 })
+  const upcast = created(upcastResult).length
+  const upcastAfter = replayEvents(upcastState, upcastResult.events)
+  assert.equal(upcastAfter.mechanics.resources.mage.spell_slots_5.current, 2)
+  assert.deepEqual(replayEvents(upcastState, upcastResult.events), upcastAfter)
   assert.equal(base, 4)
   assert.equal(upcast, 8, 'две ячейки сверх третьей дают четырёх лишних')
 })

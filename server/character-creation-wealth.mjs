@@ -147,6 +147,27 @@ const PHB_MISSING_EQUIPMENT = Object.freeze([
   { id: 'net', name: 'Сеть', type: 'weapon', price_cp: 100, weight: 3 },
 ])
 
+// Старые формы PHB 2014 присылали короткие ids для фокусов. Они остаются
+// допустимыми входными алиасами, но материализация всегда направляет их в
+// авторитетный catalog_id, чтобы компонентные метаданные не терялись.
+const PHB_COMPONENT_ALIASES = Object.freeze({
+  'component-pouch': 'srd_5_2_1:component-pouch',
+  crystal: 'srd_5_2_1:arcane-focus-crystal',
+  orb: 'srd_5_2_1:arcane-focus-orb',
+  rod: 'srd_5_2_1:arcane-focus-rod',
+  staff: 'srd_5_2_1:arcane-focus-staff',
+  wand: 'srd_5_2_1:arcane-focus-wand',
+  'sprig-of-mistletoe': 'srd_5_2_1:druidic-focus-mistletoe',
+  totem: 'srd_5_2_1:druidic-focus-totem',
+  'wooden-staff': 'srd_5_2_1:druidic-focus-wooden-staff',
+  'yew-wand': 'srd_5_2_1:druidic-focus-yew-wand',
+  amulet: 'srd_5_2_1:holy-symbol-amulet',
+  emblem: 'srd_5_2_1:holy-symbol-emblem',
+  reliquary: 'srd_5_2_1:holy-symbol-reliquary',
+  diamond: 'srd_5_2_1:diamond-50gp',
+  'diamond-50gp': 'srd_5_2_1:diamond-50gp',
+})
+
 const WEALTH_CLASS_IDS = Object.freeze(Object.keys(PHB_STARTING_WEALTH))
 const WEALTH_CLASS_SET = new Set(WEALTH_CLASS_IDS)
 
@@ -218,6 +239,7 @@ function buildPurchaseCatalog() {
     if (purchase && !existingIds.has(purchase.catalog_id) && !entries.some((entry) => entry.id === purchase.id)) entries.push(purchase)
   }
   for (const item of PHB_MISSING_EQUIPMENT) {
+    if (PHB_COMPONENT_ALIASES[item.id] && catalogItem(PHB_COMPONENT_ALIASES[item.id])) continue
     const catalogId = `phb_2014:equipment:${item.id}`
     if (existingIds.has(catalogId) || entries.some((entry) => entry.id === item.id)) continue
     entries.push({
@@ -263,6 +285,10 @@ for (const tool of PHB_2014_TOOL_CATALOG) {
   const knownCatalogId = toolCatalogId(tool.id)
   const entry = PURCHASE_BY_ID.get(knownCatalogId)
   if (entry && !PURCHASE_BY_ID.has(tool.id)) PURCHASE_BY_ID.set(tool.id, entry)
+}
+for (const [alias, catalogId] of Object.entries(PHB_COMPONENT_ALIASES)) {
+  const entry = PURCHASE_BY_ID.get(catalogId)
+  if (entry && !PURCHASE_BY_ID.has(alias)) PURCHASE_BY_ID.set(alias, entry)
 }
 
 export function startingPurchaseCatalog() {

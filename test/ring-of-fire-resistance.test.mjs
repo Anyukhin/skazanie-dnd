@@ -97,6 +97,7 @@ test('Кольцо сопротивления (огонь) имеет точны
     catalog_description: entry.description,
     equippable: true,
     equip_slot: 'ring-fire-resistance',
+    combat_equip: false,
     usable: false,
     use: null,
     charges: null,

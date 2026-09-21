@@ -182,7 +182,7 @@ export function CharacterEditor({ player, rulesetId, phbCatalog, targetLevel = p
   const selectedClassSkills = draft.classSkillProficiencies ?? []
   const featureChoiceGroups = featureChoiceGroupsFor(draft)
   const selectedFeatureIds = draft.selectedFeatureIds ?? []
-  const developmentSpells = fallbackCombatSpells(draft)
+  const developmentSpells = fallbackCombatSpells(draft, rulesetId)
   const knownSpellIds = draft.knownSpellIds ?? []
   const preparedSpellIds = draft.preparedSpellIds ?? []
   const availableSpellIds = new Set(developmentSpells.map((spell) => spell.id))
@@ -690,6 +690,8 @@ export function InventoryView({
   enemyTargets = [],
   combatActive = false,
   combatItemTurnAvailable = false,
+  combatActionAvailable = true,
+  combatObjectInteractionAvailable = true,
   combatBonusActionAvailable = true,
   busy = false,
   error,
@@ -707,6 +709,8 @@ export function InventoryView({
   enemyTargets?: Array<{ id: string; label: string }>
   combatActive?: boolean
   combatItemTurnAvailable?: boolean
+  combatActionAvailable?: boolean
+  combatObjectInteractionAvailable?: boolean
   combatBonusActionAvailable?: boolean
   busy?: boolean
   error?: string | null
@@ -827,7 +831,24 @@ export function InventoryView({
     if (item.capabilities?.charges && item.capabilities.charges.current < (chargesToSpendFor(item) ?? use.charges_per_use ?? 0)) return 'Недостаточно зарядов.'
     return ''
   }
-  const equipDisabledReasonFor = () => combatActive ? 'Во время боя экипировку менять нельзя.' : ''
+  const equipDisabledReasonFor = (item: InventoryItem) => {
+    if (!combatActive) return ''
+    const combatEquipAllowed = item.capabilities?.combat_equip === true
+      || (!item.catalog_id && item.type === 'weapon' && Boolean(item.combat))
+    if (!combatEquipAllowed) return 'В бою сейчас можно убрать или достать только оружие, ручной фокус или инструмент-фокус.'
+    if (!combatItemTurnAvailable) return 'Убрать или достать предмет можно только в свой ход.'
+    if (!combatObjectInteractionAvailable && !combatActionAvailable) return 'Взаимодействие с предметом и действие на этом ходу уже потрачены.'
+    return ''
+  }
+  const equipCostHintFor = (item: InventoryItem) => {
+    if (!combatActive) return ''
+    const combatEquipAllowed = item.capabilities?.combat_equip === true
+      || (!item.catalog_id && item.type === 'weapon' && Boolean(item.combat))
+    if (!combatEquipAllowed) return 'Этот предмет можно сменить только вне боя.'
+    return combatObjectInteractionAvailable
+      ? 'Первое взаимодействие с предметом в этом ходу — бесплатно.'
+      : 'Первое взаимодействие уже использовано: операция требует действия.'
+  }
   const activationDisabledReasonFor = (item: InventoryItem) => {
     const activation = item.capabilities?.activation
     if (!activation) return 'Для этого предмета нет доступной активации.'
@@ -924,7 +945,8 @@ export function InventoryView({
         </details>}
         {item.capabilities?.charges && <div className="item-charge-state">Применения: <b>{item.capabilities.charges.current}/{item.capabilities.charges.max}</b></div>}
         <div className="item-actions">
-          {item.capabilities?.equippable && <button disabled={busy || Boolean(equipDisabledReasonFor())} title={equipDisabledReasonFor() || undefined} onClick={() => onEquip(item.id, !item.equipped)}>{item.equipped ? 'Снять' : 'Экипировать'}</button>}
+          {item.capabilities?.equippable && <button disabled={busy || Boolean(equipDisabledReasonFor(item))} title={equipDisabledReasonFor(item) || equipCostHintFor(item) || undefined} onClick={() => onEquip(item.id, !item.equipped)}>{item.equipped ? 'Снять' : 'Экипировать'}{combatActive && !equipDisabledReasonFor(item) ? (combatObjectInteractionAvailable ? ' · бесплатно' : ' · действие') : ''}</button>}
+          {item.capabilities?.equippable && combatActive && <small className="item-use-hint" role="status">{equipDisabledReasonFor(item) || equipCostHintFor(item)}</small>}
           {item.capabilities?.usable && item.capabilities.use?.use_modes && <label className="item-use-target">
             <span>Режим</span>
             <select value={useModeFor(item)} disabled={busy} aria-label={`Режим использования: ${item.name}`} onChange={(event) => setUseModes((current) => ({ ...current, [item.id]: event.target.value as 'target' | 'spill' }))}>

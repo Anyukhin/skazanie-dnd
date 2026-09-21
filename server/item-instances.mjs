@@ -84,6 +84,10 @@ const SNAPSHOT_FIELDS = Object.freeze([
   'rarity',
   'combat',
   'passive_effects',
+  'spellcasting_focus',
+  'component_pouch',
+  'material_component',
+  'focus_mode',
   'charges',
   'recharge',
   'requires_attunement',
@@ -212,6 +216,31 @@ function normalizeSnapshot(input) {
     const effects = normalizeInventoryPassiveEffects(snapshot.passive_effects)
     if (effects.length) snapshot.passive_effects = effects
     else delete snapshot.passive_effects
+  }
+  if (snapshot.spellcasting_focus != null) {
+    const focusClasses = Array.isArray(snapshot.spellcasting_focus)
+      ? [...new Set(snapshot.spellcasting_focus.map((entry) => text(entry, 40).toLowerCase()).filter(Boolean))].slice(0, 16)
+      : []
+    if (focusClasses.length) snapshot.spellcasting_focus = focusClasses
+    else delete snapshot.spellcasting_focus
+  }
+  if (snapshot.component_pouch != null) snapshot.component_pouch = snapshot.component_pouch === true
+  if (snapshot.material_component != null) {
+    const material = snapshot.material_component && typeof snapshot.material_component === 'object' && !Array.isArray(snapshot.material_component)
+      ? snapshot.material_component
+      : null
+    const kind = text(material?.kind, 40).toLowerCase()
+    const valueCp = integer(material?.value_cp, 0)
+    const spellIds = Array.isArray(material?.spell_ids)
+      ? [...new Set(material.spell_ids.map((entry) => text(entry, 80).toLowerCase()).filter(Boolean))].slice(0, 32)
+      : []
+    if (kind && valueCp > 0) snapshot.material_component = { kind, value_cp: valueCp, ...(spellIds.length ? { spell_ids: spellIds } : {}) }
+    else delete snapshot.material_component
+  }
+  if (snapshot.focus_mode != null) {
+    const mode = text(snapshot.focus_mode, 40).toLowerCase()
+    if (mode === 'held' || mode === 'worn') snapshot.focus_mode = mode
+    else delete snapshot.focus_mode
   }
   if (snapshot.charges != null) {
     const charges = normalizeCharges(snapshot.charges)

@@ -186,16 +186,28 @@ const integer = (value, fallback = 0) => Number.isSafeInteger(Number(value)) ? N
  * в `server/item-catalog.mjs`). Это и есть сторож инварианта «доспехов в
  * инвентарях нет» — проверяемый, а не декларативный.
  */
-export function assertEnemyLoadoutItem(catalogId, { verifiedOnly = false } = {}) {
+export function assertEnemyLoadoutItem(catalogId, { verifiedOnly = false, allowSpellcastingComponent = false } = {}) {
   const entry = catalogItem(catalogId)
   if (!entry) throw new EnemyLoadoutError(`Предмета ${catalogId} нет в каталоге`, 'ENEMY_LOADOUT_CATALOG_UNKNOWN')
-  if (!entry.enemy_loadout_eligible) {
+  const spellcastingComponent = allowSpellcastingComponent && entry.component_pouch === true
+  if (!entry.enemy_loadout_eligible && !spellcastingComponent) {
     throw new EnemyLoadoutError(`Предмет ${catalogId} не разрешён в инвентарях противников`, 'ENEMY_LOADOUT_ITEM_NOT_ELIGIBLE')
   }
   if (verifiedOnly && entry.mechanics_status !== 'verified') {
     throw new EnemyLoadoutError(`Расходник ${catalogId} не имеет статуса verified`, 'ENEMY_LOADOUT_CONSUMABLE_NOT_VERIFIED')
   }
   return entry
+}
+
+function spellcasterNeedsComponentPouch(block) {
+  const spellcasting = block?.spellcasting
+  if (!spellcasting || typeof spellcasting !== 'object' || Array.isArray(spellcasting)) return false
+  if (spellcasting.component_pouch === false || spellcasting.requires_component_pouch === false) return false
+  if (Array.isArray(spellcasting.components_not_required) && spellcasting.components_not_required.includes('material')) return false
+  const spells = Array.isArray(spellcasting.spells) ? spellcasting.spells : []
+  if (spells.length > 0 && spells.every((spell) => Array.isArray(spell?.components_not_required)
+    && spell.components_not_required.includes('material'))) return false
+  return true
 }
 
 /**
@@ -255,7 +267,11 @@ export function enemyLoadoutFor({ statBlockId, block, ownerId, seed, sourceId = 
   const classicAliases = { goblin: 'goblin-warrior', veteran: 'warrior-veteran' }
   const template = TEMPLATES[templateId] ?? (classicSlug ? TEMPLATES[id(classicAliases[classicSlug] ?? classicSlug)] : null)
   const owner = text(ownerId, 120)
-  if (!template || !owner) return clone(EMPTY_LOADOUT)
+  const fallbackSpellcasterTemplate = classicSlug && spellcasterNeedsComponentPouch(block)
+    ? { ammunition: [1, 1], purse_cp: [0, 0], consumables: [] }
+    : null
+  if ((!template && !fallbackSpellcasterTemplate) || !owner) return clone(EMPTY_LOADOUT)
+  const resolvedTemplate = template ?? fallbackSpellcasterTemplate
   const loadoutSeed = createHash('sha256').update(`${ENEMY_LOADOUT_POLICY_ID} ${seed ?? ''} ${owner}`).digest('hex')
   const { primary, ordered } = weaponCatalogIdsFor(block)
   const items = []
@@ -266,12 +282,14 @@ export function enemyLoadoutFor({ statBlockId, block, ownerId, seed, sourceId = 
    *
    * `optional` разводит два разных отказа — см. `optionalEnemyLoadoutItem`.
    */
-  const push = (catalogId, { quantity = 1, equipped = false, optional = false } = {}) => {
-    if (items.length >= MAX_ENEMY_LOADOUT_ITEMS) return false
+  const reserveComponentSlot = spellcasterNeedsComponentPouch(block)
+  const push = (catalogId, { quantity = 1, equipped = false, optional = false, spellcastingComponent = false } = {}) => {
+    const itemLimit = reserveComponentSlot && !spellcastingComponent ? MAX_ENEMY_LOADOUT_ITEMS - 1 : MAX_ENEMY_LOADOUT_ITEMS
+    if (items.length >= itemLimit) return false
     if (optional) {
       if (!optionalEnemyLoadoutItem(catalogId)) return false
     } else {
-      assertEnemyLoadoutItem(catalogId)
+      assertEnemyLoadoutItem(catalogId, { allowSpellcastingComponent: spellcastingComponent })
     }
     items.push(createItemInstance({
       catalogId,
@@ -290,7 +308,7 @@ export function enemyLoadoutFor({ statBlockId, block, ownerId, seed, sourceId = 
     push(catalogId, { quantity, equipped: catalogId === primary })
   }
 
-  const [ammunitionMinimum, ammunitionMaximum] = template.ammunition
+  const [ammunitionMinimum, ammunitionMaximum] = resolvedTemplate.ammunition
   const ammunitionSeen = new Set()
   for (const catalogId of ordered) {
     const ammunitionId = AMMUNITION_BY_WEAPON[catalogId]
@@ -301,14 +319,18 @@ export function enemyLoadoutFor({ statBlockId, block, ownerId, seed, sourceId = 
     })
   }
 
+  if (reserveComponentSlot) {
+    push(id('component-pouch'), { spellcastingComponent: true })
+  }
+
   // Бросок делается до проверки границы и не зависит от её исхода: снятая
   // eligibility не должна сдвигать сид и переписывать чужие карманы.
-  for (const candidate of template.consumables) {
+  for (const candidate of resolvedTemplate.consumables) {
     const roll = seededInteger(loadoutSeed, `consumable:${candidate.catalog_id}`, 0, 99)
     if (roll < candidate.chance) push(candidate.catalog_id, { optional: true })
   }
 
-  const [purseMinimum, purseMaximum] = template.purse_cp
+  const [purseMinimum, purseMaximum] = resolvedTemplate.purse_cp
   return {
     schema_version: ENEMY_LOADOUT_SCHEMA_VERSION,
     policy_id: ENEMY_LOADOUT_POLICY_ID,

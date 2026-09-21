@@ -313,6 +313,15 @@ function monsterSpellcasting(record) {
   const source = record.spellcasting
   if (!source) return null
   const spells = new Map()
+  const componentRules = (field) => {
+    const traits = record.traits ?? []
+    const trait = (traits.find((entry) => entry.mechanics?.spellcasting_field === field)
+      ?? traits.find((entry) => entry.mechanics?.spellcasting_field === 'spellcasting'))?.mechanics
+    return trait ? {
+      components_required: CLONE(trait.components_required ?? []),
+      components_not_required: CLONE(trait.components_not_required ?? []),
+    } : {}
+  }
   for (const slot of source.spell_slots ?? []) {
     const uses = slot.level === 0 ? MONSTER_SPELL_AT_WILL : Number(slot.slots ?? 0)
     for (const spell of slot.spells ?? []) {
@@ -320,14 +329,14 @@ function monsterSpellcasting(record) {
       if (!id) continue
       const previous = spells.get(id)
       if (!previous || (previous.uses !== MONSTER_SPELL_AT_WILL && uses !== MONSTER_SPELL_AT_WILL && uses > previous.uses)) {
-        spells.set(id, { id, uses, level: Number(slot.level) })
+        spells.set(id, { id, uses, level: Number(slot.level), ...componentRules('spellcasting.spell_slots') })
       }
     }
   }
   for (const group of source.innate_spells ?? []) {
     for (const spell of group.spells ?? []) {
       const id = String(spell.key ?? '')
-      if (id) spells.set(id, { id, uses: group.uses === 'at-will' ? MONSTER_SPELL_AT_WILL : Number(group.uses) })
+      if (id) spells.set(id, { id, uses: group.uses === 'at-will' ? MONSTER_SPELL_AT_WILL : Number(group.uses), ...componentRules('spellcasting.innate_spells') })
     }
   }
   return {

@@ -807,9 +807,49 @@ test('окно реакции не выносит наружу ни ключа �
   const coated = commit(battleState(spy, { heroX: 0, heroArmor: 5, heroClass: 'rogue' }), {
     command_type: 'UseItem', actor_id: 'foe', item_id: poisonId, npc_tactic: 'coat', weapon_id: swordId,
   })
-  const hit = commit(coated.state, { command_type: 'MakeAttack', actor_id: 'foe', target_id: 'hero', action_id: 'shortsword' })
+  const pendingHit = commit(coated.state, { command_type: 'MakeAttack', actor_id: 'foe', target_id: 'hero', action_id: 'shortsword' })
+  const pendingWindow = pendingHit.state.mechanics.combat.reaction_window
+  assert.ok(pendingWindow?.action_ids.includes('uncanny-dodge'), 'реальное предуроновое окно должно открыться')
+  assert.equal(pendingHit.events.some((event) => event.event_type === 'DamageApplied'), false)
+  const pendingRoom = campaignStateForViewer(pendingHit.state, viewer, 'hero')
+  const pendingEvents = mechanicsForViewer(pendingHit.events, viewer, 'hero', pendingHit.state)
+  for (const serialized of [JSON.stringify(pendingRoom), JSON.stringify(pendingEvents)]) {
+    assert.equal(serialized.includes(swordId), false)
+    assert.equal(serialized.includes(poisonId), false)
+    assert.equal(serialized.includes('pending_command'), false)
+    assert.equal(serialized.includes('pending_dice_transcript'), false)
+  }
 
-  // Сторож самой развилки: без открытого окна проверки ниже зелены впустую.
+  // Исторические окна уже содержали рассчитанные слагаемые урона. Сохраняем
+  // проверку их проекции на реальном payload продолженной атаки: новый producer
+  // не обязан снова применять урон до того, как игрок решил, защищаться ли.
+  const resolved = commit(pendingHit.state, { command_type: 'UseCombatAction', actor_id: 'hero', action_id: 'decline-reaction' })
+  const applied = resolved.events.filter((event) => event.event_type === 'DamageApplied' && event.target_ids.includes('hero'))
+  assert.ok(applied.length > 1)
+  const damageComponents = applied.map(({ payload }) => ({
+    ...payload,
+    source: payload.item_damage_rider ? 'magic-item' : payload.secondary_damage ? 'secondary' : 'weapon',
+  }))
+  const legacyDamage = {
+    ...applied.at(-1).payload,
+    hp_before: applied[0].payload.hp_before,
+    temporary_hp_before: applied[0].payload.temporary_hp_before,
+    raw_amount: damageComponents.reduce((sum, component) => sum + component.raw_amount, 0),
+    applied_amount: damageComponents.reduce((sum, component) => sum + component.applied_amount, 0),
+    temporary_hp_absorbed: damageComponents.reduce((sum, component) => sum + component.temporary_hp_absorbed, 0),
+    damage_components: damageComponents,
+  }
+  const legacyWindow = {
+    id: 'legacy-poisoned-attack-window', trigger: 'attack-hit', actor_id: 'hero', source_actor_id: 'foe', target_id: 'hero',
+    action_ids: ['uncanny-dodge'], action_options: pendingWindow.action_options,
+    damage: legacyDamage, trigger_roll: pendingWindow.trigger_roll,
+  }
+  const legacyState = structuredClone(resolved.state)
+  legacyState.mechanics.combat.reaction_window = legacyWindow
+  const opened = pendingHit.events.find((event) => event.event_type === 'ReactionWindowOpened')
+  const hit = { state: legacyState, events: [{ ...opened, payload: legacyWindow }] }
+
+  // Новое окно выше получено командой; здесь проверяется совместимость старой формы.
   const authoritative = hit.state.mechanics.combat.reaction_window
   assert.ok(authoritative, 'окно реакции обязано открыться — иначе тест ничего не проверяет')
   assert.ok(authoritative.action_ids.includes('uncanny-dodge'))

@@ -34,6 +34,7 @@ for (const path of emittedFiles(buildDir).filter((candidate) => candidate.endsWi
   renameSync(path, path.replace(/\.js$/u, '.mjs'))
 }
 const { createCombatEffect3D } = await import(pathToFileURL(join(buildDir, 'src/board3d-effects.mjs')).href)
+const { attackOutcome, attackVisualStyle, attackVisualStyleForModelKey, combatAnimationCuesFromEvents, strikeImpactProgress, strikeLaunchProgress, strikeMotionProgress } = await import(pathToFileURL(join(buildDir, 'src/combat-animation.mjs')).href)
 const { spellBurstCells } = await import(pathToFileURL(join(buildDir, 'src/spell-effects.mjs')).href)
 const { decodeTacticalMap, revealedAt } = await import(pathToFileURL(join(buildDir, 'src/tactical-map-client.mjs')).href)
 function map(hidden = []) {
@@ -98,6 +99,105 @@ test('3D thrown strike создаёт физический снаряд, а не
   effect.update(.35)
   assert.ok(projectileMesh.visible)
   effect.dispose()
+})
+
+test('snapshot loadout различает силуэт брошенного клинка, копья и топора', () => {
+  const base = {
+    kind: 'strike', actorId: 'mage', targetId: 'target', hit: true, amount: 5, attackKind: 'thrown', equipment: 'dagger',
+    from: { x: 1, y: 2 }, to: { x: 6, y: 2 }, durationMs: 480,
+  }
+  for (const [modelKey, expected] of [['dagger', 'thrown-dagger'], ['javelin', 'thrown-spear'], ['handaxe', 'thrown-axe'], ['net', 'thrown-net'], ['unknown', 'thrown']]) {
+    const effect = createCombatEffect3D({ ...base, id: `thrown-${modelKey}`, loadout: { main_hand: { model_key: modelKey } } }, actors, map())
+    assert.equal(effect.group.children.find((child) => child.type === 'Group')?.userData.projectileKind, expected)
+    if (modelKey === 'net') {
+      effect.update(.74)
+      assert.ok(effect.group.children.some((child) => child.userData.netContour && child.visible), 'сеть должна кратко раскрыться на цели')
+    }
+    effect.dispose()
+  }
+})
+
+test('физический профиль атаки различает slash, thrust, blunt и outcomes', () => {
+  const base = { kind: 'strike', actorId: 'mage', targetId: 'target', hit: true, amount: 5, attackKind: 'melee', from: { x: 1, y: 2 }, to: { x: 6, y: 2 }, durationMs: 480 }
+  assert.equal(attackVisualStyle({ ...base, equipment: 'sword' }), 'slash')
+  assert.equal(attackVisualStyle({ ...base, equipment: 'dagger' }), 'pierce')
+  assert.equal(attackVisualStyle({ ...base, equipment: 'staff' }), 'bludgeon')
+  assert.equal(attackVisualStyle({ ...base, equipment: 'unarmed' }), 'unarmed')
+  assert.equal(attackOutcome({ ...base, equipment: 'sword', critical: true }), 'critical')
+  assert.equal(attackOutcome({ ...base, equipment: 'sword', hit: false, blocked: true }), 'blocked')
+  assert.equal(strikeMotionProgress(base, strikeImpactProgress(base)), .5)
+  assert.equal(strikeLaunchProgress(base), 0)
+  assert.equal(strikeLaunchProgress({ ...base, attackKind: 'ranged' }), .2)
+
+  for (const [equipment, expected] of [['sword', 'slash'], ['dagger', 'pierce'], ['staff', 'bludgeon'], ['unarmed', 'unarmed']]) {
+    const effect = createCombatEffect3D({ ...base, id: `profile-${equipment}`, equipment }, actors, map())
+    const arc = effect.group.children.find((child) => child.userData.attackStyle === expected)
+    assert.ok(arc, `${equipment}: отсутствует профиль ${expected}`)
+    effect.dispose()
+  }
+  const critical = createCombatEffect3D({ ...base, id: 'critical', equipment: 'sword', critical: true }, actors, map())
+  assert.ok(critical.group.children.filter((child) => child.userData.attackOutcome === 'critical').length >= 2)
+  critical.dispose()
+  const blocked = createCombatEffect3D({ ...base, id: 'blocked', equipment: 'sword', hit: false, blocked: true }, actors, map())
+  assert.ok(blocked.group.children.filter((child) => child.userData.attackOutcome === 'blocked').length >= 2)
+  blocked.dispose()
+})
+
+test('полный каталог боевого оружия получает визуальный профиль', () => {
+  const expected = {
+    club: 'bludgeon', dagger: 'pierce', greatclub: 'bludgeon', handaxe: 'slash', javelin: 'pierce',
+    'light-hammer': 'bludgeon', mace: 'bludgeon', quarterstaff: 'bludgeon', sickle: 'slash', spear: 'pierce',
+    dart: 'dart', 'light-crossbow': 'crossbow', shortbow: 'bow', sling: 'sling', battleaxe: 'slash', flail: 'bludgeon',
+    glaive: 'slash', greataxe: 'slash', greatsword: 'slash', halberd: 'slash', lance: 'pierce', longsword: 'slash',
+    maul: 'bludgeon', morningstar: 'pierce', pike: 'pierce', rapier: 'pierce', scimitar: 'slash', shortsword: 'pierce',
+    trident: 'pierce', warhammer: 'bludgeon', 'war-pick': 'pierce', whip: 'slash', blowgun: 'dart',
+    'hand-crossbow': 'crossbow', 'heavy-crossbow': 'crossbow', longbow: 'bow', musket: 'firearm', pistol: 'firearm',
+    wand: 'wand', net: 'net',
+  }
+  assert.equal(Object.keys(expected).length, 40)
+  for (const [modelKey, style] of Object.entries(expected)) assert.equal(attackVisualStyleForModelKey(modelKey), style, modelKey)
+  assert.equal(attackVisualStyle({ kind: 'strike', actorId: 'mage', targetId: 'target', hit: true, amount: 1, attackKind: 'thrown', loadout: { main_hand: { model_key: 'handaxe' } } }), 'thrown')
+  assert.equal(attackVisualStyle({ kind: 'strike', actorId: 'mage', targetId: 'target', hit: true, amount: 1, attackKind: 'melee', loadout: { main_hand: { model_key: 'wand' } } }), 'bludgeon')
+  assert.equal(attackVisualStyle({ kind: 'strike', actorId: 'mage', targetId: 'target', hit: true, amount: 1, attackKind: 'ranged', loadout: { main_hand: { model_key: 'wand' } } }), 'wand')
+  assert.equal(attackVisualStyle({ kind: 'strike', actorId: 'mage', targetId: 'target', hit: true, amount: 1, attackKind: 'thrown', loadout: { main_hand: { model_key: 'net' } } }), 'net')
+})
+
+test('публичный beast metadata даёт natural claws и не рисует weapon arc', () => {
+  const effect = createCombatEffect3D({
+    id: 'wolf-bite', kind: 'strike', actorId: 'wolf', targetId: 'target', hit: true, amount: 4,
+    attackKind: 'melee', equipment: 'unknown', damageType: 'piercing', from: { x: 1, y: 2 }, to: { x: 6, y: 2 }, durationMs: 480,
+  }, [{ id: 'wolf', x: 1, y: 2, kind: 'enemy', archetype: 'wolf' }, { id: 'target', x: 6, y: 2 }], map())
+  assert.ok(effect.group.children.some((child) => child.userData.attackStyle === 'natural'))
+  effect.dispose()
+})
+
+test('брошенное оружие вращается по frozen trajectory', () => {
+  const effect = createCombatEffect3D({
+    id: 'spin-thrown', kind: 'strike', actorId: 'mage', targetId: 'target', hit: true, amount: 5,
+    attackKind: 'thrown', equipment: 'dagger', from: { x: 1, y: 2 }, to: { x: 6, y: 2 }, durationMs: 480,
+  }, actors, map())
+  const projectileMesh = effect.group.children.find((child) => child.type === 'Group')
+  assert.ok(projectileMesh)
+  effect.update(.24)
+  const first = projectileMesh.quaternion.clone()
+  effect.update(.38)
+  assert.notDeepEqual(projectileMesh.quaternion.toArray(), first.toArray())
+  effect.dispose()
+})
+
+test('physical cue сохраняет только подтверждённые critical и block markers', () => {
+  const [critical] = combatAnimationCuesFromEvents([{
+    event_id: 'critical-event', event_type: 'AttackResolved', actor_id: 'mage', target_ids: ['target'],
+    payload: { hit: true, critical: true, attack_kind: 'melee', attack_visual: { version: 1, equipment: 'sword' } },
+  }])
+  assert.equal(critical.critical, true)
+  assert.equal(critical.blocked, undefined)
+  const [blocked] = combatAnimationCuesFromEvents([{
+    event_id: 'blocked-event', event_type: 'AttackResolved', actor_id: 'mage', target_ids: ['target'],
+    payload: { hit: false, mirror_image_intercepted: true, attack_kind: 'ranged', attack_visual: { version: 1, equipment: 'bow' } },
+  }])
+  assert.equal(blocked.blocked, true)
+  assert.equal(blocked.critical, undefined)
 })
 
 test('3D physical strike не выпускается по скрытой траектории', () => {

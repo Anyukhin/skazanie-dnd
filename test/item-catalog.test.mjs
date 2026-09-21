@@ -38,6 +38,44 @@ const SHOP_PRICES = Object.freeze({
   'srd_5_2_1:rope-hempen-50-feet': 100,
   'srd_5_2_1:torch': 1,
   'srd_5_2_1:arrows-20': 100,
+  'srd_5_2_1:component-pouch': 2_500,
+  'srd_5_2_1:arcane-focus-crystal': 1_000,
+  'srd_5_2_1:arcane-focus-orb': 2_000,
+  'srd_5_2_1:arcane-focus-rod': 1_000,
+  'srd_5_2_1:arcane-focus-staff': 500,
+  'srd_5_2_1:arcane-focus-wand': 1_000,
+  'srd_5_2_1:druidic-focus-mistletoe': 100,
+  'srd_5_2_1:druidic-focus-totem': 100,
+  'srd_5_2_1:druidic-focus-wooden-staff': 500,
+  'srd_5_2_1:druidic-focus-yew-wand': 1_000,
+  'srd_5_2_1:holy-symbol-amulet': 500,
+  'srd_5_2_1:holy-symbol-emblem': 500,
+  'srd_5_2_1:holy-symbol-reliquary': 500,
+  'srd_5_2_1:diamond-50gp': 5_000,
+  'srd_5_2_1:material-summon-beast-200gp': 20_000,
+  'srd_5_2_1:material-summon-undead-300gp': 30_000,
+  'srd_5_2_1:material-summon-shadowspawn-300gp': 30_000,
+  'srd_5_2_1:material-summon-fey-300gp': 30_000,
+  'srd_5_2_1:material-shadow-of-moil-150gp': 15_000,
+  'srd_5_2_1:material-summon-aberration-400gp': 40_000,
+  'srd_5_2_1:material-summon-construct-400gp': 40_000,
+  'srd_5_2_1:material-summon-elemental-400gp': 40_000,
+  'srd_5_2_1:material-summon-draconic-spirit-500gp': 50_000,
+  'srd_5_2_1:material-summon-celestial-500gp': 50_000,
+  'srd_5_2_1:material-dawn-100gp': 10_000,
+  'srd_5_2_1:material-circle-of-death-500gp': 50_000,
+  'srd_5_2_1:material-summon-fiend-600gp': 60_000,
+  'srd_5_2_1:material-diamond-dust-100gp': 10_000,
+  'srd_5_2_1:bagpipes': 3_000,
+  'srd_5_2_1:drum': 600,
+  'srd_5_2_1:dulcimer': 2_500,
+  'srd_5_2_1:flute': 200,
+  'srd_5_2_1:lute': 3_500,
+  'srd_5_2_1:lyre': 3_000,
+  'srd_5_2_1:horn': 300,
+  'srd_5_2_1:pan-flute': 1_200,
+  'srd_5_2_1:shawm': 200,
+  'srd_5_2_1:viol': 3_000,
 })
 
 function dice(values) {
@@ -49,14 +87,14 @@ function dice(values) {
   })
 }
 
-test('manifest содержит ровно согласованные 107 записей и полную provenance', () => {
+test('manifest содержит ровно согласованные 145 записей и полную provenance', () => {
   const entries = Object.values(ITEM_CATALOG)
-  assert.equal(entries.length, 107)
-  assert.equal(new Set(entries.map((entry) => entry.catalog_id)).size, 107)
+  assert.equal(entries.length, 145)
+  assert.equal(new Set(entries.map((entry) => entry.catalog_id)).size, 145)
   assert.deepEqual(
-    Object.fromEntries(['weapon', 'armor', 'ammunition', 'artisan-tool', 'other-tool', 'practical-gear', 'magic-item']
+    Object.fromEntries(['weapon', 'armor', 'ammunition', 'artisan-tool', 'other-tool', 'practical-gear', 'spellcasting-component', 'spell-material', 'magic-item']
       .map((section) => [section, entries.filter((entry) => entry.manifest_section === section).length])),
-    { weapon: 38, armor: 13, ammunition: 5, 'artisan-tool': 17, 'other-tool': 1, 'practical-gear': 23, 'magic-item': 10 },
+    { weapon: 38, armor: 13, ammunition: 5, 'artisan-tool': 17, 'other-tool': 1, 'practical-gear': 23, 'spellcasting-component': 24, 'spell-material': 14, 'magic-item': 10 },
   )
   assert.deepEqual(ITEM_MECHANICS_STATUSES, ['verified', 'partial', 'ruling-only'])
   // Магическая добыча — отдельный канал доступности: запись в manifest сама
@@ -83,9 +121,16 @@ test('manifest содержит ровно согласованные 107 зап
     assert.ok(Number.isInteger(entry.source_page) && entry.source_page > 0)
     assert.deepEqual(Object.keys(entry.availability).sort(), [...ITEM_AVAILABILITY_CHANNELS].sort())
     assert.ok(Object.values(entry.availability).every((value) => typeof value === 'boolean'))
-    assert.equal(entry.provenance.source_url, ITEM_CATALOG_SOURCE.source_url)
-    assert.equal(entry.provenance.source_sha256, ITEM_CATALOG_SOURCE.source_sha256)
-    assert.equal(entry.provenance.attribution, EXPECTED_ATTRIBUTION)
+    if (entry.manifest_section === 'spellcasting-component' || entry.manifest_section === 'spell-material') {
+      assert.match(entry.provenance.source_url, /(?:5e14\.dnd\.su|www\.dnd\.su\/spells)/u)
+      assert.match(entry.provenance.source_version, /D&D 5e 2014/u)
+      assert.match(entry.provenance.secondary_source_url, /basic-rules-2014\/spellcasting|basic-rules-2014\/equipment/u)
+      assert.match(entry.provenance.attribution, /парафраз/u)
+    } else {
+      assert.equal(entry.provenance.source_url, ITEM_CATALOG_SOURCE.source_url)
+      assert.equal(entry.provenance.source_sha256, ITEM_CATALOG_SOURCE.source_sha256)
+      assert.equal(entry.provenance.attribution, EXPECTED_ATTRIBUTION)
+    }
     assert.equal(entry.provenance.source_page, entry.source_page)
     for (const hook of entry.crafting.hooks) {
       assert.ok(Object.hasOwn(ITEM_CATALOG, hook), `${catalogId}: неизвестный crafting hook ${hook}`)
@@ -197,6 +242,7 @@ test('shop, loot и crafting используют отдельные fail-closed
   assert.equal(ITEM_LOOT_CATALOG_IDS.includes('srd_5_2_1:wand-of-magic-missiles'), false)
   assert.equal(ITEM_CRAFTING_CATALOG_IDS.includes('srd_5_2_1:wand-of-magic-missiles'), false)
 
+  const requestedShopIds = ITEM_SHOP_CATALOG_IDS.slice(0, 12)
   const shop = assembleShop({
     location: 'Рыночная площадь',
     settlement_type: 'city',
@@ -204,11 +250,11 @@ test('shop, loot и crafting используют отдельные fail-closed
     seed: 'item-catalog-allowlist',
     budget_cp: 1_000_000,
     director_intent: {
-      stock: ITEM_SHOP_CATALOG_IDS.map((catalog_id) => ({ catalog_id, quantity: 1 })),
+      stock: requestedShopIds.map((catalog_id) => ({ catalog_id, quantity: 1 })),
       agent_adjustment_bps: 0,
     },
   })
-  assert.deepEqual(shop.merchant.stock.map((entry) => entry.catalog_id).sort(), [...ITEM_SHOP_CATALOG_IDS].sort())
+  assert.deepEqual(shop.merchant.stock.map((entry) => entry.catalog_id).sort(), [...requestedShopIds].sort())
   assert.ok(shop.merchant.stock.every((entry) => entry.catalog_schema_version === ITEM_CATALOG_SCHEMA_VERSION))
   assert.throws(() => assembleShop({
     location: 'Рыночная площадь',

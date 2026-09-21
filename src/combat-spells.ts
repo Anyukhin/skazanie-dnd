@@ -79,9 +79,10 @@ export function spellNameById(id: string | null | undefined): string | null {
   return spell?.name ?? null
 }
 
-export function fallbackCombatSpells(player?: Player): CombatSpell[] {
+export function fallbackCombatSpells(player?: Player, rulesetId = 'srd_5_2_1'): CombatSpell[] {
   const profile = caster(player)
   if (!profile) return []
+  const sourceBackedComponents = rulesetId === 'dnd_5e_2014'
   const level = Math.max(1, Math.min(12, Number(player?.level) || 1))
   const maximum = profile.progression === 'full' ? fullSlots[level].length : profile.progression === 'half' ? halfSlots[level].length : level >= 11 ? 6 : pactSlots[level]?.[1] ?? 0
   const known = selectedIds(player, 'knownSpellIds')
@@ -96,17 +97,27 @@ export function fallbackCombatSpells(player?: Player): CombatSpell[] {
           : rules?.mode === 'spellbook' ? (known ? known.has(spell.id) : true) && (prepared ? prepared.has(spell.id) : true)
             : prepared ? prepared.has(spell.id) : true
       const mechanicsOverride = overrides[spell.id]
+      /* Fallback-каталог может дать описание компонентов, но никогда не
+         должен превращать старое клиентское состояние в авторитетный ответ о
+         наличии предмета. Такое решение приходит только в projection spell. */
+      const { componentAvailability: _catalogAvailability, components: catalogComponents, ...catalogSpell } = spell
+      const { componentAvailability: _overrideAvailability, components: overrideComponents, ...overrideProfile } = mechanicsOverride ?? {}
+      const components = sourceBackedComponents ? (overrideComponents ?? catalogComponents) : undefined
       const mechanicsSupport = mechanicsOverride?.mechanicsSupport
         ?? (mechanicsOverride ? 'partial' : 'heuristic')
+      const slotResource = spell.level === 0 ? undefined : profile.progression === 'pact' ? spell.level === 6 ? 'mystic_arcanum_6' : 'pact_slots' : `spell_slots_${spell.level}`
+      const slotLevel = spell.level === 0 ? 0 : profile.progression === 'pact' ? spell.level === 6 ? 6 : pactSlots[level]?.[1] ?? spell.level : spell.level
       return {
-        ...spell,
-        ...(mechanicsOverride ?? {}),
+        ...catalogSpell,
+        ...overrideProfile,
+        ...(components ? { components } : {}),
         description: spell.description,
         mechanicsAccuracy: mechanicsOverride?.mechanicsAccuracy ?? (mechanicsOverride ? 'verified-dndsu' : 'heuristic'),
         mechanicsSupport,
         ...((mechanicsOverride?.supportNote || mechanicsSupport === 'partial' || mechanicsSupport === 'ruling-only') ? { supportNote: mechanicsOverride?.supportNote ?? (mechanicsSupport === 'partial' ? defaultPartialNote : defaultRulingNote) } : {}),
         prepared: isPrepared, spellcastingAbility: profile.ability,
-        slotResource: spell.level === 0 ? undefined : profile.progression === 'pact' ? spell.level === 6 ? 'mystic_arcanum_6' : 'pact_slots' : `spell_slots_${spell.level}`,
+        slotResource,
+        slotLevel,
       }
     })
 }

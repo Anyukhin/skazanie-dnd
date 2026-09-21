@@ -305,6 +305,36 @@ export type Currency = {
 
 export type MechanicsSupport = 'verified' | 'partial' | 'heuristic' | 'ruling-only'
 
+export type SpellMaterialComponent = {
+  description: string
+  costGp: number | null
+  consumed: boolean
+  focusSubstitutable: boolean
+  /** Требование есть в источнике, но его точный runtime-расчёт ещё не обещан. */
+  unresolved?: boolean
+  /** Пояснение для карточки, когда одного короткого описания недостаточно. */
+  requirementNote?: string
+}
+
+export type SpellSpecialComponent = {
+  kind: 'royalty'
+  description: string
+}
+
+export type SpellComponents = {
+  verbal: boolean
+  somatic: boolean
+  material: SpellMaterialComponent | null
+  /** Авторское требование источника; не является материальным компонентом. */
+  special?: SpellSpecialComponent[]
+}
+
+export type SpellComponentAvailability = {
+  available: boolean
+  code?: string
+  reason?: string
+}
+
 export type CombatSpell = {
   id: string
   name: string
@@ -316,9 +346,19 @@ export type CombatSpell = {
   range: number
   actionType: 'action' | 'bonus_action' | 'reaction' | 'long_cast'
   slotResource?: string
+  /** Врождённое заклинание с отдельным суточным/видовым ресурсом. */
+  innateSpell?: boolean
+  /** Круг, на котором врождённое заклинание всегда срабатывает. */
+  innateCastLevel?: number
+  /** Обычная ячейка класса после исчерпания врождённого ресурса. */
+  fallbackSlotResource?: string
   spellcastingAbility: 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha'
   concentration?: boolean
   description?: string
+  /** Материалы из профиля источника; это описание, а не клиентская проверка инвентаря. */
+  components?: SpellComponents
+  /** Авторитетное решение сервера о доступности компонентов в текущем состоянии. */
+  componentAvailability?: SpellComponentAvailability
   damage?: string | null
   damageType?: string
   damageTypes?: string[]
@@ -329,6 +369,8 @@ export type CombatSpell = {
   conditions?: string[]
   radius?: number
   areaShape?: 'sphere' | 'cone' | 'line' | 'cube' | 'cylinder'
+  /** Для куба сторона в футах; `radius` остаётся радиусом круглых областей. */
+  areaSideFeet?: number
   duration?: string
   durationRounds?: number
   castingTime?: string
@@ -347,6 +389,8 @@ export type CombatSpell = {
   projectileCount?: number
   upcastProjectilesPerLevel?: number
   maxTargets?: number
+  /** Максимальный разлёт выбранных целей; проверяет сервер, UI только предупреждает. */
+  maxTargetSeparationFeet?: number
   upcastTargetsPerLevel?: number
   armorClassBonus?: number
   armorClassBase?: number
@@ -443,6 +487,176 @@ export type CombatSpell = {
   action_type?: 'action' | 'bonus_action' | 'reaction'
 }
 
+export type SpellComponentsPresentation = {
+  markers: Array<'В' | 'С' | 'М' | 'А'>
+  markerLabels: string[]
+  materialText: string | null
+  specialText: string | null
+  text: string
+  ariaLabel: string
+}
+
+/**
+ * Человеческая подпись компонентов для уже существующих карточек заклинаний.
+ * Функция форматирует профиль, но намеренно не смотрит в инвентарь или ресурсы:
+ * возможность применения сообщает только `componentAvailability` сервера.
+ */
+export function spellComponentsPresentation(components?: SpellComponents | null): SpellComponentsPresentation | null {
+  if (!components) return null
+  // Компоненты приходят из источника и иногда заканчиваются точкой. Вложенная
+  // подпись в aria-label сама ставит финальную точку, поэтому нормализуем только
+  // отображаемый текст, не меняя сохранённое описание.
+  const trimTerminalPunctuation = (value: string) => value.trim().replace(/[.!?]+$/u, '')
+  const markers: SpellComponentsPresentation['markers'] = []
+  const markerLabels: string[] = []
+  if (components.verbal) {
+    markers.push('В')
+    markerLabels.push('вербальный')
+  }
+  if (components.somatic) {
+    markers.push('С')
+    markerLabels.push('соматический')
+  }
+  if (components.material) {
+    markers.push('М')
+    markerLabels.push('материальный')
+  }
+  const specialDescriptions = (components.special ?? [])
+    .filter((entry) => entry.kind === 'royalty' && entry.description.trim())
+    .map((entry) => trimTerminalPunctuation(entry.description))
+  const specialText = specialDescriptions.length ? `Авторские отчисления: ${specialDescriptions.join('; ')}` : null
+  if (specialText) {
+    markers.push('А')
+    markerLabels.push('авторские отчисления')
+  }
+  if (!markers.length) return null
+
+  const material = components.material
+  const materialParts = material ? [
+    trimTerminalPunctuation(material.description),
+    material.requirementNote ? trimTerminalPunctuation(material.requirementNote) : null,
+    material.unresolved && !material.requirementNote?.trim() ? 'требование уточняется' : null,
+    material.costGp == null ? null : `${new Intl.NumberFormat('ru-RU').format(material.costGp)} зм`,
+    material.consumed && !material.unresolved ? 'расходуется' : null,
+    material.focusSubstitutable && !material.unresolved ? 'можно заменить фокусом' : null,
+  ].filter((part): part is string => Boolean(part)) : []
+  const materialText = materialParts.length ? materialParts.join(' · ') : null
+  const text = [markers.join(' '), materialText, specialText].filter(Boolean).join(' · ')
+  const ariaLabel = `Компоненты: ${markerLabels.join(', ')}${materialText ? `. Материал: ${materialText}` : ''}${specialText ? ` ${specialText}` : ''}.`
+  return { markers, markerLabels, materialText, specialText, text, ariaLabel }
+}
+
+/**
+ * Доступность компонентов не выводится из клиентского профиля. Отсутствие
+ * серверного поля сохраняет совместимость со старыми проекциями и не блокирует
+ * заклинание; блокировка возникает только при явном `available: false`.
+ */
+export function spellComponentAvailabilityFor(spell?: Pick<CombatSpell, 'componentAvailability'> | null) {
+  const availability = spell?.componentAvailability
+  if (!availability || availability.available !== false) return { blocked: false, reason: null as string | null }
+  return {
+    blocked: true,
+    reason: availability.reason?.trim() || 'Недоступны необходимые компоненты заклинания',
+  }
+}
+
+/** Лимит целей берётся из server-owned профиля; отсутствие поля означает одну цель. */
+export function combatSpellTargetLimit(spell?: Pick<CombatSpell, 'maxTargets'> | null): number {
+  return Math.max(1, Math.floor(Number(spell?.maxTargets) || 1))
+}
+
+/** Обычные ячейки для upcast: специальные ресурсы намеренно не попадают сюда. */
+export function normalSpellSlotLevelsFor(
+  spellLevel: number,
+  slotResource: string | null | undefined,
+  resources: Readonly<Record<string, { current?: number }>>,
+): number[] {
+  if (!slotResource || !/^spell_slots_\d+$/u.test(slotResource)) return []
+  return Object.keys(resources)
+    .map((key) => /^spell_slots_(\d+)$/u.exec(key)?.[1])
+    .filter((level): level is string => Boolean(level))
+    .map(Number)
+    .filter((level) => level <= 6 && level >= Math.max(1, Math.floor(Number(spellLevel) || 1)) && Number(resources[`spell_slots_${level}`]?.current ?? 0) > 0)
+    .sort((left, right) => left - right)
+}
+
+export type SpellSlotAvailability = {
+  /** Ресурс, который будет потрачен без выбора обычной ячейки. */
+  resource: string | null
+  /** Доступные обычные ячейки, начиная с круга самого заклинания. */
+  levels: number[]
+  /** Фиксированный круг для pact/arcanum/живого врождённого ресурса. */
+  fixedLevel: number | null
+  /** Нужно ли блокировать карточку в текущем снимке ресурсов. */
+  ready: boolean
+  /** Врождённый ресурс исчерпан, выбран class-slot fallback. */
+  usingFallback: boolean
+}
+
+/**
+ * Решает только отображение доступности ячейки. Сервер повторяет проверку и
+ * остаётся авторитетом по фактическому расходу ресурса.
+ *
+ * Врождённое заклинание сначала использует свой фиксированный ресурс. Пока
+ * он жив, обычные ячейки не должны превращаться в ложный upcast и не должны
+ * отправлять несовместимый `slot_level`. После исчерпания разрешён только
+ * явно объявленный сервером fallbackSlotResource.
+ */
+export function spellSlotAvailabilityFor(
+  spell: Pick<CombatSpell, 'level' | 'slotResource' | 'slotLevel' | 'innateSpell' | 'innateCastLevel' | 'fallbackSlotResource'> | null | undefined,
+  resources: Readonly<Record<string, { current?: number }>>,
+): SpellSlotAvailability {
+  const level = Math.max(0, Math.floor(Number(spell?.level) || 0))
+  const resource = String(spell?.slotResource ?? '')
+  if (level === 0 || !resource) return { resource: null, levels: [], fixedLevel: null, ready: true, usingFallback: false }
+
+  const current = (key: string) => Number(resources[key]?.current ?? 0)
+  const fixedLevel = Math.max(level, Math.floor(Number(spell?.innateCastLevel ?? spell?.slotLevel) || level))
+
+  if (resource.startsWith('species_spell_')) {
+    if (current(resource) > 0) return { resource, levels: [], fixedLevel, ready: true, usingFallback: false }
+
+    const fallback = String(spell?.fallbackSlotResource ?? '')
+    if (!fallback) return { resource, levels: [], fixedLevel, ready: false, usingFallback: false }
+    if (fallback === 'pact_slots' || fallback === 'mystic_arcanum_6') {
+      return { resource: fallback, levels: [], fixedLevel: null, ready: current(fallback) > 0, usingFallback: true }
+    }
+    const levels = normalSpellSlotLevelsFor(level, fallback, resources)
+    return { resource: fallback, levels, fixedLevel: null, ready: levels.length > 0, usingFallback: true }
+  }
+
+  if (resource === 'pact_slots' || resource === 'mystic_arcanum_6') {
+    return { resource, levels: [], fixedLevel, ready: current(resource) > 0, usingFallback: false }
+  }
+
+  const levels = normalSpellSlotLevelsFor(level, resource, resources)
+  return { resource, levels, fixedLevel: null, ready: levels.length > 0, usingFallback: false }
+}
+
+/** Состояние выбора цели: повторный клик снимает цель, лишняя не добавляется. */
+export function toggleCombatSpellTargetIds(current: readonly string[], targetId: string, maximum: number, canAdd = true): string[] {
+  const id = String(targetId)
+  if (current.includes(id)) return current.filter((candidate) => candidate !== id)
+  if (!canAdd || current.length >= Math.max(1, Math.floor(Number(maximum) || 1))) return [...current]
+  return [...current, id]
+}
+
+/** Сервер всё равно проверяет разлёт; helper нужен только для честного UI-предупреждения. */
+export function combatSpellTargetsWithinSeparation(
+  points: ReadonlyArray<{ x: number; y: number }>,
+  maximumFeet?: number,
+): boolean {
+  const limit = Math.max(0, Number(maximumFeet) || 0)
+  if (!limit || points.length < 2) return true
+  for (let first = 0; first < points.length; first += 1) {
+    for (let second = first + 1; second < points.length; second += 1) {
+      const distance = Math.max(Math.abs(Number(points[first].x) - Number(points[second].x)), Math.abs(Number(points[first].y) - Number(points[second].y))) * 5
+      if (distance > limit) return false
+    }
+  }
+  return true
+}
+
 export type ItemRechargeProfile = {
   schema_version: 1
   trigger: 'dawn'
@@ -490,6 +704,8 @@ export type InventoryItem = {
   capabilities?: {
     equippable: boolean
     equip_slot: string | null
+    /** Ручной предмет, доступный для Equip/Unequip в бою этой волны. */
+    combat_equip?: boolean
     usable: boolean
     use: {
       kind: string
@@ -1123,6 +1339,8 @@ export type BattleEvent = {
   theme?: string
   from?: { x: number; y: number }
   to?: { x: number; y: number }
+  /** Уточняет, что перемещение было телепортацией; отсутствует в старом журнале. */
+  teleport?: boolean
   /** Клиент может достроить путь для анимации; старые проекции журнала его не содержат. */
   path?: Array<{ x: number; y: number }>
   distanceFeet?: number
@@ -1149,6 +1367,8 @@ export type BattleEvent = {
   /** Насколько реакция срезала урон и было ли перебито заклинание. */
   preventedDamage?: number
   countered?: boolean
+  /** Подтверждённый щитом блок Magic Missile; не общий признак иммунитета. */
+  blocked?: boolean
   /** СЛ спасброска у областной атаки: своя вещь героя, число с её карточки. */
   savingThrowDifficulty?: number
   damage?: number
@@ -2311,6 +2531,8 @@ export type CombatActionEconomy = {
   bonus_action?: boolean
   reaction?: boolean
   movement?: boolean
+  /** Первое взаимодействие с предметом в текущем ходу (D&D 2014). */
+  object_interaction?: boolean
   movement_spent?: number
   movement_remaining?: number
   movement_bonus?: number
@@ -2327,6 +2549,10 @@ export type CombatActionEconomy = {
 export type CombatReactionWindow = {
   id: string
   trigger: 'attack-hit' | 'attack-missed' | string
+  /** Окно выбора, которое не тратит реакцию (например, Resistance 2014). */
+  free_choice?: boolean
+  choice_kind?: string
+  resistance_phase?: 'before-roll' | 'after-roll'
   actor_id: string
   source_actor_id: string
   target_id: string
@@ -2335,7 +2561,7 @@ export type CombatReactionWindow = {
   action_options: Array<{ id: string; name: string; description?: string; resource?: string | null; slot_level?: number; cost?: number; requires_beneficiary?: boolean }>
   damage?: { raw_amount?: number; applied_amount?: number; damage_type?: string; resistant?: boolean; temporary_hp_before?: number; temporary_hp_after?: number; temporary_hp_absorbed?: number; hp_before?: number; hp_after?: number } | null
   pending_spell?: { id: string; name: string; level: number; slot_level?: number; source_url?: string }
-  trigger_roll?: { kept?: number; modifier?: number; total?: number; armor_class?: number; difficulty?: number; ability?: string; save_event_type?: string; hit?: boolean; critical?: boolean }
+  trigger_roll?: { roll_id?: string; kept?: number; modifier?: number; total?: number; armor_class?: number; difficulty?: number; ability?: string; save_event_type?: string; hit?: boolean; critical?: boolean }
   fighter_level?: number
 }
 
@@ -2449,6 +2675,7 @@ export type GameMechanics = Record<string, unknown> & {
     center?: { x: number; y: number }
     cells?: Array<{ x: number; y: number }>
     radius_feet?: number
+    area_side_feet?: number
     area_shape?: string
     difficult_terrain?: boolean
     trigger_on_enter?: boolean

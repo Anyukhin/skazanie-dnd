@@ -9,7 +9,7 @@ import { sceneObjectLabelFor } from './scene-interactions.mjs'
 import { actorAppearanceFor, normalizeAttackVisual, publicAppearanceRecord } from './actor-appearance.mjs'
 import { reputationTier } from './reputation-policy.mjs'
 import { projectVisibleState } from './security.mjs'
-import { RULE_IDS, hitPointDicePoolForActor } from './rules-engine.mjs'
+import { RULE_IDS, hitPointDicePoolForActor, spellComponentAvailabilityFor } from './rules-engine.mjs'
 import {
   MATERIALS,
   SIZE_CLASSES,
@@ -748,6 +748,39 @@ function publicBattleEventFor(entry, state, actorId = '', visibility = {}) {
       result.to = to
     }
   }
+  if (entry.type === 'spell' && (Object.hasOwn(entry, 'from') || Object.hasOwn(entry, 'to') || Object.hasOwn(entry, 'area'))) {
+    const from = publicPoint(entry.from)
+    const to = publicPoint(entry.to)
+    const area = publicPoint(entry.area)
+    const visibleActorIds = visibility.visibleActorIds ?? new Set()
+    const visibleCellKeys = visibility.visibleCellKeys ?? new Set()
+    const sourceVisible = actingId && visibleActorIds.has(actingId)
+    if (!from || !sourceVisible || !visibleCellKeys.has(pointKey(from))) delete result.from
+    else result.from = from
+    if (!to || !visibleCellKeys.has(pointKey(to))) {
+      delete result.to
+      delete result.area
+    } else {
+      result.to = to
+      if (area && visibleCellKeys.has(pointKey(area)) && Number.isFinite(Number(entry.area?.radiusFeet))) {
+        result.area = { ...area, radiusFeet: Math.max(0, integer(entry.area.radiusFeet, 0)) }
+      } else delete result.area
+    }
+  }
+  if (entry.type === 'move' && (Object.hasOwn(entry, 'from') || Object.hasOwn(entry, 'to'))) {
+    const from = publicPoint(entry.from)
+    const to = publicPoint(entry.to)
+    const visibleActorIds = visibility.visibleActorIds ?? new Set()
+    const visibleCellKeys = visibility.visibleCellKeys ?? new Set()
+    if (!from || !to || !visibleActorIds.has(actingId)
+      || !visibleCellKeys.has(pointKey(from)) || !visibleCellKeys.has(pointKey(to))) {
+      delete result.from
+      delete result.to
+    } else {
+      result.from = from
+      result.to = to
+    }
+  }
   const enemyIds = new Set((state?.enemies ?? []).map((enemy) => text(enemy?.id ?? enemy?.actor_id, 120)))
   if (enemyIds.has(targetId) && !exactEnemyHealthKnown(state, targetId, actorId)) {
     delete result.hpBefore
@@ -924,6 +957,25 @@ function publicActorKeyedMapFor(value, enemyIds, known) {
 }
 
 /**
+ * Координаты, добавленные в SpellCast только для визуального прицела, можно
+ * отдавать игроку лишь для уже раскрытых клеток.
+ *
+ * @param {Loose} payload
+ * @param {LooseState} state
+ * @returns {Loose}
+ */
+function redactSpellVisualPayload(payload, state) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload
+  const visibleCellKeys = publicRevealedCellKeys(publicSceneFor(state?.scene))
+  for (const key of ['from', 'to', 'origin', 'center']) {
+    if (!Object.hasOwn(payload, key)) continue
+    const point = publicPoint(payload[key])
+    if (!point || !visibleCellKeys.has(pointKey(point))) delete payload[key]
+  }
+  return payload
+}
+
+/**
  * @param {Loose} message
  * @returns {any}
  */
@@ -1056,10 +1108,14 @@ function publicReactionWindowFor(window, state = {}, actorId = '') {
     }
     : null
   if (triggerRoll && enemyTarget) delete triggerRoll.difficulty
-  if (triggerRoll && enemySource) {
+  const ownSavingThrow = !enemyIds.has(text(window.actor_id, 120))
+    && ['saving-throw-bonus-choice', 'failed-saving-throw'].includes(String(window.trigger))
+  if (triggerRoll && enemySource && !ownSavingThrow) {
     delete triggerRoll.kept
     delete triggerRoll.modifier
   }
+  if (triggerRoll && window.trigger_roll.roll_id) triggerRoll.roll_id = text(window.trigger_roll.roll_id, 160)
+  if (triggerRoll && window.resistance_phase === 'after-roll' && window.trigger_roll.difficulty == null) delete triggerRoll.difficulty
   const damage = window.damage && typeof window.damage === 'object' && !Array.isArray(window.damage)
     ? publicReactionDamageFor(window.damage)
     : null
@@ -1097,6 +1153,7 @@ function publicReactionWindowFor(window, state = {}, actorId = '') {
   return {
     id: text(window.id, 160),
     trigger: text(window.trigger, 80),
+    ...(['before-roll', 'after-roll'].includes(window.resistance_phase) ? { resistance_phase: window.resistance_phase } : {}),
     actor_id: text(window.actor_id, 120),
     source_actor_id: text(window.source_actor_id, 120),
     target_id: text(window.target_id, 120),
@@ -1302,15 +1359,22 @@ function viewerFor(state, user, actorId) {
  * @param {Loose[]} players
  * @param {string} [viewerId]
  * @param {string} [rulesetId]
+ * @param {LooseState|null} [state]
  * @returns {Loose[]}
  */
-function playerItemsWithCapabilities(players, viewerId = '', rulesetId = '') {
+function playerItemsWithCapabilities(players, viewerId = '', rulesetId = '', state = null) {
   const viewer = String(viewerId ?? '')
   return (Array.isArray(players) ? players : []).map((player) => {
     const own = !viewer || String(player?.id ?? '') === viewer
     const publicPlayer = publicActorWithFootprint(player, { hideMasked: false })
     return {
       ...publicPlayer,
+      ...(own && state && rulesetId === 'dnd_5e_2014' && Array.isArray(publicPlayer.combatSpells) ? {
+        combatSpells: publicPlayer.combatSpells.map((/** @type {Loose} */ spell) => ({
+          ...spell,
+          componentAvailability: spellComponentAvailabilityFor(state, player, spell),
+        })),
+      } : {}),
       inventory: (Array.isArray(publicPlayer?.inventory) ? publicPlayer.inventory : []).map((item) => {
         const capabilities = itemViewerCapabilities(item, { rulesetId })
         const withCapabilities = capabilities ? { ...item, capabilities } : item
@@ -1414,7 +1478,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
     // Ведущий тоже играет на общей доске: renderer читает scene_npcs, а не
     // внутренний npc_world. Фишки собираются тем же путём, что и для игрока.
     scene_npcs: sceneNpcsForViewer(state),
-    players: playerItemsWithCapabilities(state.players, '', String(state.ruleset_id ?? '')),
+    players: playerItemsWithCapabilities(state.players, '', String(state.ruleset_id ?? ''), state),
     // Летопись поступков уезжает ведущему уже лентой: свежие сверху, с русской
     // подписью вида и числом свидетелей. Сортировка и таблица подписей живут в
     // одном месте — на сервере, рядом с `DEED_KINDS`. Карточка админки раньше
@@ -1596,7 +1660,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
     : visible.mechanics
   const room = {
     ...publicState,
-    players: playerItemsWithCapabilities(publicState.players, actorId, String(state.ruleset_id ?? '')),
+    players: playerItemsWithCapabilities(publicState.players, actorId, String(state.ruleset_id ?? ''), state),
     actors,
     scene,
     adventure: publicAdventureFor(visible.adventure),
@@ -1684,6 +1748,7 @@ function eventForViewer(event, user, actorId, state = {}) {
     : {}
   delete payload.knowledge_gate
   delete payload.previous_view
+  if (visible.event_type === 'SpellCast') redactSpellVisualPayload(payload, state)
   if (visible.event_type === 'CampaignStoryCompleted') {
     const knownStory = questStateForViewer(state, viewerFor(state, user, actorId)).campaignConcept?.story_history
       ?.find((/** @type {Loose} */ story) => story.story_id === payload.story_id)

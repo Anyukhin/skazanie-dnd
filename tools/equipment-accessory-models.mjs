@@ -19,6 +19,8 @@ const COLORS = Object.freeze({
   steelLight: '#d0d6d0',
   wood: '#6e4a30',
   woodLight: '#a8784c',
+  woodDark: '#35251c',
+  bone: '#d1c39f',
   brass: '#b0823e',
   gemBlue: '#4a9bd4',
   gemRed: '#a83b36',
@@ -32,6 +34,7 @@ export const ACCESSORY_PART_POSES = Object.freeze({
   collar: Object.freeze([0, 1.04, -0.08]),
   front: Object.freeze([0, 0, 0]),
   pin: Object.freeze([0, 0, 0]),
+  brooch: Object.freeze([0, 0, 0]),
 })
 
 const RING_VARIANTS = Object.freeze([
@@ -64,6 +67,17 @@ export const ACCESSORY_MODELS = Object.freeze([
   spec('cloak', ITEM_CATALOG[catalogId('cloak-of-protection')]?.name ?? 'Плащ защиты', [catalogId('cloak-of-protection')], ['back', 'collar'], ['default', 'enchanted']),
   spec('brooch', ITEM_CATALOG[catalogId('brooch-of-shielding')]?.name ?? 'Брошь защиты', [catalogId('brooch-of-shielding')], ['front', 'pin'], ['default', 'enchanted']),
   spec('ring', 'Кольцо', RING_VARIANTS.flatMap((variant) => variant.catalogIds), ['band', 'stone'], RING_VARIANTS),
+  spec('arcane-crystal', ITEM_CATALOG[catalogId('arcane-focus-crystal')]?.name ?? 'Кристалл', [catalogId('arcane-focus-crystal')], ['grip']),
+  spec('arcane-orb', ITEM_CATALOG[catalogId('arcane-focus-orb')]?.name ?? 'Сфера', [catalogId('arcane-focus-orb')], ['grip']),
+  spec('arcane-rod', ITEM_CATALOG[catalogId('arcane-focus-rod')]?.name ?? 'Скипетр', [catalogId('arcane-focus-rod')], ['grip']),
+  spec('druidic-mistletoe', ITEM_CATALOG[catalogId('druidic-focus-mistletoe')]?.name ?? 'Веточка омелы', [catalogId('druidic-focus-mistletoe')], ['grip']),
+  spec('druidic-totem', ITEM_CATALOG[catalogId('druidic-focus-totem')]?.name ?? 'Тотем', [catalogId('druidic-focus-totem')], ['grip']),
+  spec('holy-amulet', ITEM_CATALOG[catalogId('holy-symbol-amulet')]?.name ?? 'Амулет', [catalogId('holy-symbol-amulet')], ['brooch']),
+  spec('holy-emblem', ITEM_CATALOG[catalogId('holy-symbol-emblem')]?.name ?? 'Эмблема', [catalogId('holy-symbol-emblem')], ['grip']),
+  spec('holy-reliquary', ITEM_CATALOG[catalogId('holy-symbol-reliquary')]?.name ?? 'Реликварий', [catalogId('holy-symbol-reliquary')], ['grip']),
+  ...['bagpipes', 'drum', 'dulcimer', 'flute', 'lute', 'lyre', 'horn', 'pan-flute', 'shawm', 'viol'].map((key) => (
+    spec(key, ITEM_CATALOG[catalogId(key)]?.name ?? key, [catalogId(key)], ['grip'])
+  )),
 ])
 
 export const ACCESSORY_RING_VARIANTS = RING_VARIANTS
@@ -85,6 +99,7 @@ function material(name, color, options = {}) {
 
 function palette(variant = 'default') {
   const fire = variant === 'fire-resistance'
+  const enchanted = variant === 'enchanted'
   return {
     cloth: material('cloth', COLORS.cloth),
     clothLight: material('cloth', COLORS.clothLight),
@@ -97,8 +112,14 @@ function palette(variant = 'default') {
     steelLight: material('steel', COLORS.steelLight, { metalness: 0.86, roughness: 0.3 }),
     wood: material('wood', COLORS.wood),
     woodLight: material('wood', COLORS.woodLight),
-    brass: material('brass', fire ? '#d08a38' : COLORS.brass, { metalness: 0.82, roughness: 0.34 }),
-    gem: material('gem', fire ? COLORS.gemRed : COLORS.gemBlue, { metalness: 0.04, roughness: 0.23 }),
+    woodDark: material('wood', COLORS.woodDark),
+    bone: material('bone', COLORS.bone),
+    brass: material('brass', fire ? '#d08a38' : enchanted ? '#d2aa58' : COLORS.brass, { metalness: 0.82, roughness: 0.34 }),
+    gem: material('gem', fire ? COLORS.gemRed : enchanted ? '#70d8ff' : COLORS.gemBlue, {
+      metalness: 0.04,
+      roughness: 0.23,
+      ...(enchanted ? { emissive: '#247da5', emissiveIntensity: 1.15 } : {}),
+    }),
   }
 }
 
@@ -187,6 +208,13 @@ function buildWand(variant) {
   torus(grip, 'wand-grip-wrap', 0.034, 0.008, [0, 0.12, 0], p.leather)
   cylinder(grip, 'wand-collar', 0.046, 0.038, 0.035, [0, 0.32, 0], p.brass, 8)
   dodecahedron(grip, 'wand-focus', [0.055, 0.055, 0.055], [0, 0.37, 0], p.gem)
+  if (variant === 'enchanted') {
+    torus(grip, 'wand-enchanted-halo', 0.075, 0.007, [0, 0.37, 0], p.brass)
+    for (let index = 0; index < 4; index += 1) {
+      const angle = index * Math.PI / 2
+      dodecahedron(grip, 'wand-enchanted-spark', [.018, .018, .018], [Math.cos(angle) * .075, .37, Math.sin(angle) * .075], p.gem)
+    }
+  }
   coneWandTip(grip, p, 0.44)
   return finish(root, 'wand', variant)
 }
@@ -271,6 +299,133 @@ function buildRing(variant) {
   return finish(root, 'ring', variant)
 }
 
+function heldRoot(key) {
+  const root = new THREE.Group()
+  const grip = new THREE.Group()
+  grip.name = 'grip'
+  grip.userData = { role: 'primary-grip', origin: [0, 0, 0], axis: '+Y' }
+  root.add(grip)
+  return { root, grip }
+}
+
+function solarRune(parent, prefix, center, radius, value) {
+  const [cx, cy, cz] = center
+  sphere(parent, `${prefix}-center`, [radius * .35, radius * .35, .018], center, value)
+  for (let index = 0; index < 8; index += 1) {
+    const angle = index * Math.PI / 4
+    box(parent, `${prefix}-ray`, [radius * .14, radius * .34, .014], [
+      cx + Math.sin(angle) * radius * .7,
+      cy + Math.cos(angle) * radius * .7,
+      cz,
+    ], value, [0, 0, -angle])
+  }
+}
+
+function buildFocus(key, variant) {
+  const p = palette(variant)
+  if (key === 'holy-amulet') {
+    const root = new THREE.Group()
+    part(root, 'brooch', (front) => {
+      torus(front, 'amulet-chain', 0.12, 0.008, [0, 0.05, 0], p.brass, [0, 0, 0])
+      cylinder(front, 'amulet-medallion', 0.055, 0.055, 0.018, [0, -0.075, 0.02], p.brass, 16, [Math.PI / 2, 0, 0])
+      solarRune(front, 'amulet-sun', [0, -0.075, 0.045], .047, p.steelLight)
+    })
+    return finish(root, key, variant)
+  }
+  const { root, grip } = heldRoot(key)
+  if (key === 'arcane-crystal') {
+    cylinder(grip, 'crystal-handle', 0.027, 0.033, 0.18, [0, 0.09, 0], p.leather, 8)
+    dodecahedron(grip, 'crystal-focus', [0.12, 0.2, 0.1], [0, 0.27, 0], p.gem)
+    for (const side of [-1, 1]) dodecahedron(grip, 'crystal-splinter', [0.05, 0.13, 0.05], [side * 0.07, 0.23, 0], p.gem)
+  } else if (key === 'arcane-orb') {
+    cylinder(grip, 'orb-handle', 0.03, 0.038, 0.17, [0, 0.085, 0], p.leather, 10)
+    torus(grip, 'orb-cradle', 0.1, 0.014, [0, 0.25, 0], p.brass, [0, 0, 0])
+    for (const side of [-1, 1]) cylinder(grip, 'orb-cradle-arm', .012, .012, .16, [side * .075, .2, 0], p.brass, 6, [0, 0, side * .5])
+    sphere(grip, 'orb-focus', [0.18, 0.18, 0.18], [0, 0.25, 0], p.gem)
+  } else if (key === 'arcane-rod') {
+    cylinder(grip, 'rod-shaft', 0.035, 0.045, 0.48, [0, 0.24, 0], p.wood, 10)
+    for (const y of [0.04, 0.18, 0.36]) torus(grip, 'rod-band', 0.042, 0.009, [0, y, 0], p.brass)
+    dodecahedron(grip, 'rod-focus', [0.09, 0.12, 0.09], [0, 0.52, 0], p.gem)
+  } else if (key === 'druidic-mistletoe') {
+    tube(grip, 'mistletoe-stem', [[0, 0, 0], [0, 0.17, 0], [-0.05, 0.31, 0.01], [0, 0.43, 0]], 0.018, p.wood, 10, 6)
+    for (const [x, y, angle] of [[-.09, .2, -.65], [.08, .27, .7], [-.07, .36, -.6], [.08, .4, .65]]) {
+      mesh(grip, 'mistletoe-leaf', new THREE.SphereGeometry(0.5, 8, 5), p.clothLight, [x, y, 0], [0, 0, angle], [.12, .035, .055])
+    }
+    for (const x of [-.035, 0, .035]) sphere(grip, 'mistletoe-berry', [.025, .025, .025], [x, .32, .035], p.steelLight)
+  } else if (key === 'druidic-totem') {
+    cylinder(grip, 'totem-handle', 0.035, 0.045, 0.25, [0, 0.125, 0], p.woodDark, 8)
+    cylinder(grip, 'totem-body', 0.08, 0.065, 0.21, [0, 0.35, 0], p.wood, 8)
+    sphere(grip, 'totem-head', [.09, .085, .08], [0, .49, 0], p.woodLight)
+    for (const side of [-1, 1]) mesh(grip, 'totem-antler', new THREE.ConeGeometry(.025, .13, 6), p.bone, [side * .075, .57, 0], [0, 0, side * .45])
+  } else if (key === 'holy-emblem') {
+    cylinder(grip, 'emblem-handle', .035, .045, .18, [0, .09, 0], p.leather, 8)
+    cylinder(grip, 'emblem-disc', .17, .17, .025, [0, .28, 0], p.steel, 16, [Math.PI / 2, 0, 0])
+    torus(grip, 'emblem-rim', .145, .015, [0, .28, .02], p.brass, [0, 0, 0])
+    solarRune(grip, 'emblem-mark', [0, .28, .045], .115, p.steelLight)
+  } else if (key === 'holy-reliquary') {
+    cylinder(grip, 'reliquary-handle', .035, .045, .18, [0, .09, 0], p.leather, 8)
+    box(grip, 'reliquary-case', [.2, .25, .11], [0, .3, 0], p.brass)
+    box(grip, 'reliquary-door', [.14, .18, .015], [0, .3, .063], p.steelDark)
+    solarRune(grip, 'reliquary-sun', [0, .3, .085], .08, p.steelLight)
+    dodecahedron(grip, 'reliquary-relic', [.055, .075, .035], [0, .3, .085], p.gem)
+    mesh(grip, 'reliquary-roof', new THREE.ConeGeometry(.15, .12, 4), p.brass, [0, .485, 0], [0, Math.PI / 4, 0])
+  }
+  return finish(root, key, variant)
+}
+
+function stringLine(parent, name, from, to, value) {
+  return tube(parent, name, [from, to], 0.004, value, 3, 4)
+}
+
+function buildInstrument(key, variant) {
+  const p = palette(variant)
+  const { root, grip } = heldRoot(key)
+  if (key === 'bagpipes') {
+    sphere(grip, 'bagpipes-bag', [.18, .25, .13], [0, .23, 0], p.cloth)
+    for (const [index, x] of [-.1, 0, .1].entries()) cylinder(grip, `bagpipes-drone-${index + 1}`, .018, .025, .48 + index * .05, [x, .52, 0], p.wood, 8)
+    tube(grip, 'bagpipes-blowpipe', [[.13, .29, 0], [.25, .4, 0], [.28, .52, 0]], .018, p.woodLight, 8, 6)
+  } else if (key === 'drum') {
+    cylinder(grip, 'drum-shell', .18, .18, .24, [0, .2, 0], p.wood, 16, [Math.PI / 2, 0, 0])
+    for (const z of [-.12, .12]) cylinder(grip, 'drum-head', .175, .175, .018, [0, .2, z], p.bone, 16, [Math.PI / 2, 0, 0])
+    for (const x of [-.13, 0, .13]) stringLine(grip, 'drum-lacing', [x, .04, -.13], [-x, .36, .13], p.leather)
+  } else if (key === 'dulcimer') {
+    extrudedShape(grip, 'dulcimer-body', [[-.2, 0], [.2, 0], [.14, .34], [-.14, .34]], .08, p.wood, [0, .08, 0])
+    for (const x of [-.1, -.05, 0, .05, .1]) stringLine(grip, 'dulcimer-string', [x, .1, .05], [x * .7, .37, .05], p.steelLight)
+  } else if (key === 'flute') {
+    cylinder(grip, 'flute-body', .022, .022, .62, [0, .31, 0], p.steelLight, 12)
+    for (const y of [.12, .2, .28, .36, .44, .52]) sphere(grip, 'flute-hole', [.012, .007, .012], [0, y, .022], p.steelDark)
+  } else if (key === 'lute' || key === 'viol') {
+    const bowed = key === 'viol'
+    sphere(grip, `${key}-body`, [.2, .25, .085], [0, .2, 0], bowed ? p.woodDark : p.wood)
+    sphere(grip, `${key}-waist`, [.13, .16, .09], [0, .4, 0], p.woodLight)
+    cylinder(grip, `${key}-neck`, .035, .045, .38, [0, .65, 0], p.woodDark, 8)
+    box(grip, `${key}-pegbox`, [.1, .14, .08], [0, .88, 0], p.wood)
+    for (const x of [-.025, 0, .025]) stringLine(grip, `${key}-string`, [x, .08, .09], [x, .9, .045], p.steelLight)
+  } else if (key === 'lyre') {
+    cylinder(grip, 'lyre-base', .05, .07, .24, [0, .12, 0], p.woodDark, 8)
+    tube(grip, 'lyre-frame-left', [[0, .2, 0], [-.18, .35, 0], [-.16, .65, 0]], .035, p.wood, 10, 7)
+    tube(grip, 'lyre-frame-right', [[0, .2, 0], [.18, .35, 0], [.16, .65, 0]], .035, p.wood, 10, 7)
+    cylinder(grip, 'lyre-crossbar', .03, .03, .36, [0, .65, 0], p.brass, 8, [0, 0, Math.PI / 2])
+    for (const x of [-.1, -.05, 0, .05, .1]) stringLine(grip, 'lyre-string', [x * .5, .24, 0], [x, .65, 0], p.steelLight)
+  } else if (key === 'horn') {
+    tube(grip, 'horn-body', [[0, 0, 0], [0, .18, 0], [.08, .34, 0], [.24, .44, 0]], .035, p.brass, 12, 8)
+    torus(grip, 'horn-bell', .09, .025, [.25, .45, 0], p.brass, [0, Math.PI / 2, 0])
+    cylinder(grip, 'horn-mouthpiece', .018, .026, .09, [0, -.035, 0], p.steelLight, 8)
+    torus(grip, 'horn-grip-band', .045, .009, [0, .13, 0], p.leather)
+  } else if (key === 'pan-flute') {
+    for (let index = 0; index < 7; index += 1) {
+      const x = (index - 3) * .045
+      cylinder(grip, 'pan-flute-pipe', .018, .018, .26 + index * .035, [x, .13 + index * .0175, 0], p.woodLight, 8)
+    }
+    box(grip, 'pan-flute-bind', [.34, .055, .055], [0, .12, 0], p.leather)
+  } else if (key === 'shawm') {
+    cylinder(grip, 'shawm-body', .025, .035, .52, [0, .26, 0], p.wood, 10)
+    mesh(grip, 'shawm-bell', new THREE.ConeGeometry(.085, .15, 12, 1, true), p.woodLight, [0, .59, 0])
+    for (const y of [.16, .24, .32, .4]) sphere(grip, 'shawm-hole', [.014, .008, .014], [0, y, .03], p.steelDark)
+  }
+  return finish(root, key, variant)
+}
+
 function normalizeVariant(key, variant) {
   const value = String(variant ?? 'default')
   if (key === 'ring') {
@@ -292,6 +447,24 @@ export function createAccessoryModel(key, variant = 'default') {
     case 'cloak': model = buildCloak(selectedVariant); break
     case 'brooch': model = buildBrooch(selectedVariant); break
     case 'ring': model = buildRing(selectedVariant); break
+    case 'arcane-crystal':
+    case 'arcane-orb':
+    case 'arcane-rod':
+    case 'druidic-mistletoe':
+    case 'druidic-totem':
+    case 'holy-amulet':
+    case 'holy-emblem':
+    case 'holy-reliquary': model = buildFocus(key, selectedVariant); break
+    case 'bagpipes':
+    case 'drum':
+    case 'dulcimer':
+    case 'flute':
+    case 'lute':
+    case 'lyre':
+    case 'horn':
+    case 'pan-flute':
+    case 'shawm':
+    case 'viol': model = buildInstrument(key, selectedVariant); break
     default: return null
   }
   model.updateMatrixWorld(true)

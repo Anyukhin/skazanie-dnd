@@ -60,6 +60,10 @@ const DAMAGE_TYPE_LABELS = Object.freeze({
   radiant: 'Свет', slashing: 'Рубящий удар', thunder: 'Грохот',
 })
 
+const CONCENTRATION_END_REASON_LABELS = Object.freeze({
+  'resistance-used': 'бонус спасброска использован',
+})
+
 export function damageTypeLabel(damageType) {
   return DAMAGE_TYPE_LABELS[String(damageType ?? '').toLowerCase()] ?? 'Этот урон'
 }
@@ -306,7 +310,8 @@ function tacticalNarrationLines(events, state) {
         ? `${target} пытается удержать концентрацию — ${payload.saved ? 'успех' : 'провал'}.`
         : `${target} проверяет концентрацию: ${rollText} против СЛ ${Number(payload.difficulty) || 10} — ${payload.saved ? 'успех' : 'провал'}.${auraText}`)
     } else if (event.event_type === 'ConcentrationEnded') {
-      meaningful.push(`Концентрация ${target} прекращается (${String(payload.reason ?? 'эффект завершён')}).`)
+      const reason = String(payload.reason ?? '')
+      meaningful.push(`Концентрация ${target} прекращается (${CONCENTRATION_END_REASON_LABELS[reason] ?? (reason || 'эффект завершён')}).`)
     } else if (event.event_type === 'ActionReadied') {
       meaningful.push(`${target} замирает с оружием наготове и ждёт, когда ${String(payload.trigger_label ?? 'сработает выбранный триггер')}.`)
     } else if (event.event_type === 'ReadiedActionExpired') {

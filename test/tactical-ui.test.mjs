@@ -421,6 +421,8 @@ test('проверка цели блокирует ошибочную UI-ком�
 
   assert.deepEqual(tacticalUi.evaluateCombatTarget(base), { allowed: true, reason: null })
   assert.match(tacticalUi.evaluateCombatTarget({ ...base, economyReady: false }).reason, /экономики хода/)
+  assert.deepEqual(tacticalUi.evaluateCombatTarget({ ...base, economyReady: false, unavailableReason: 'Нужна свободная рука' }), { allowed: false, reason: 'Нужна свободная рука' })
+  assert.equal(tacticalUi.evaluateCombatTarget({ ...base, selected: false, economyReady: false, unavailableReason: 'Нужна свободная рука' }).reason, 'Сейчас этим участником нельзя командовать')
   assert.equal(tacticalUi.evaluateCombatTarget({ ...base, distanceFeet: 35 }).reason, 'Цель в 35 фт: дальность 30 фт')
   assert.equal(tacticalUi.evaluateCombatTarget({ ...base, clearTrajectory: false }).reason, 'Линию до цели перекрывает стена')
   assert.equal(tacticalUi.evaluateCombatTarget({ ...base, targetTeam: 'ally' }).reason, 'Это действие требует противника')
@@ -429,6 +431,14 @@ test('проверка цели блокирует ошибочную UI-ком�
 test('состояния честно помечаются как работающие, частичные или marker-only', () => {
   assert.equal(tacticalUi.conditionPresentation({ id: 'unconscious' }).status, 'implemented')
   assert.equal(tacticalUi.conditionPresentation({ id: 'prone' }).status, 'partial')
+  const resistance = tacticalUi.conditionPresentation({ id: 'resistance-d4', duration: 'concentration' })
+  assert.equal(resistance.label, 'Бонус спасброска: 1к4')
+  assert.match(resistance.explanation, /к одному спасброску.*до или после броска/u)
+  const elementalCharge = tacticalUi.conditionPresentation({ id: 'absorbing-element-rider:fire', duration: 'until-next-own-turn-end' })
+  assert.equal(elementalCharge.label, 'Стихийный заряд: огня')
+  assert.equal(elementalCharge.duration, 'до конца следующего собственного хода')
+  assert.match(elementalCharge.explanation, /Следующая собственная ближняя атака.*до конца следующего собственного хода/u)
+  assert.doesNotMatch(`${elementalCharge.label} ${elementalCharge.explanation}`, /absorbing-element/u)
   const unknown = tacticalUi.conditionPresentation({ id: 'homebrew-omen', duration: 'rounds:3' })
   assert.equal(unknown.status, 'marker')
   assert.match(unknown.explanation, /пока не применяются/)
@@ -496,6 +506,20 @@ test('срок состояния подписан по-русски, а нез�
   )
   // Незнакомый срок теряться не должен: показать сырым честнее, чем скрыть.
   assert.equal(tacticalUi.conditionPresentation({ id: 'bless', duration: 'until-dawn' }).duration, 'until-dawn')
+})
+
+test('клиентская длящаяся point-cube держит явную сторону 20 футов', () => {
+  const effect = {
+    id: 'entangle',
+    center: { x: 4, y: 4 },
+    radius_feet: 10,
+    area_side_feet: 20,
+    area_shape: 'cube',
+  }
+  assert.equal(tacticalUi.pointInAreaEffect(effect, { x: 3, y: 3 }), true)
+  assert.equal(tacticalUi.pointInAreaEffect(effect, { x: 6, y: 6 }), true)
+  assert.equal(tacticalUi.pointInAreaEffect(effect, { x: 2, y: 4 }), false)
+  assert.equal(tacticalUi.pointInAreaEffect(effect, { x: 7, y: 4 }), false)
 })
 
 test('поддержка механики честно блокирует эвристику и ruling-only карточки', () => {
