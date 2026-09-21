@@ -595,6 +595,16 @@ test('обход уважает рёбра и состояние двери', ()
   assert.equal(reachableCells(map, 0, 0).size, 2, 'запертая дверь не пропускает')
 })
 
+test('обход с временными препятствиями исключает отрезанные клетки и не меняет карту', () => {
+  const map = createTacticalMap({ width: 3, height: 1, fill: { passable: true } })
+  const before = serializeTacticalMap(map)
+  const blockedCells = new Set(['1,0'])
+  assert.deepEqual([...reachableCells(map, 0, 0, { blockedCells })], ['0,0'])
+  assert.equal(reachableCells(map, 1, 0, { blockedCells }).size, 0, 'занятая стартовая клетка не является входом')
+  assert.equal(reachableCells(map, 0, 0).size, 3, 'геометрический обход без ограничений совместим с прежним')
+  assert.deepEqual(serializeTacticalMap(map), before)
+})
+
 test('несуществующая клетка отличается от непроходимой', () => {
   const map = createTacticalMap({ width: 3, height: 1 })
   setCell(map, 0, 0, { passable: true })

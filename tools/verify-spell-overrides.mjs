@@ -1,10 +1,11 @@
 import { auditSpellOverrides } from '../server/spell-override-audit.mjs'
+import { auditSpellAcceptance } from '../server/spell-acceptance-audit.mjs'
 
 const verbose = process.argv.includes('--details')
 
 try {
-  const report = auditSpellOverrides()
-  const { details, ...summary } = report
+  const report = process.argv.includes('--acceptance') ? auditSpellAcceptance() : auditSpellOverrides()
+  const { details, spells, ...summary } = report
   process.stdout.write(`${JSON.stringify(verbose ? report : summary, null, 2)}\n`)
   if (!report.ok) process.exitCode = 1
 } catch (error) {

@@ -31,12 +31,44 @@ test('MVP diagnostics скрывает секреты в JSON и Bearer, огр�
   assert.equal(redactedMvpTail('a'.repeat(5000)).length, 4000)
 })
 
-function mvpDiagnostics() {
-  const trace = mvpTrace
+function mvpCommandTrace(command) {
+  if (!command || typeof command.command_type !== 'string') return null
+  const summary = {}
+  for (const key of ['command_type', 'command_id', 'actor_id', 'target_id', 'action_id', 'spell_id', 'item_id', 'slot_level']) {
+    if (typeof command[key] === 'string') summary[key] = command[key].slice(0, 120)
+    else if (Number.isFinite(command[key])) summary[key] = command[key]
+  }
+  if (Array.isArray(command.target_ids)) summary.target_ids = command.target_ids.slice(0, 12).map((id) => String(id).slice(0, 120))
+  if (Number.isInteger(command.to?.x) && Number.isInteger(command.to?.y)) summary.to = { x: command.to.x, y: command.to.y }
+  return summary
+}
+
+function mvpStateTrace(state) {
+  if (!state || typeof state !== 'object') return null
+  const combat = state.mechanics?.combat
+  const reaction = combat?.reaction_window
+  const decision = state.agentInteraction
+  const check = state.pendingCheck
+  const activeActor = combat?.initiative?.[combat?.active_index]?.actor_id ?? '-'
+  const expectedDecision = reaction
+    ? { kind: 'reaction', id: reaction.id, actor_id: reaction.actor_id, action_ids: reaction.action_ids?.slice(0, 12) }
+    : decision?.status === 'open'
+      ? { kind: 'party-decision', id: decision.id, option_ids: decision.options?.slice(0, 12).map((option) => option.id) }
+      : check
+        ? { kind: 'check', id: check.id, actor_id: check.actorId ?? check.actor_id, ability: check.ability }
+        : { kind: combat?.active ? 'turn' : 'advance', actor_id: combat?.active ? activeActor : state.activePlayerId }
+  return {
+    version: state.state_version ?? '?', combatActive: combat?.active ?? false,
+    activeActor, reactionTrigger: reaction?.trigger ?? '-', reactionOwner: reaction?.actor_id ?? '-',
+    decisionStatus: decision?.status ?? '-', worldSeed: state.worldMap?.seed ?? null, expectedDecision,
+  }
+}
+
+function mvpDiagnostics(trace = mvpTrace) {
   if (!trace) return '[MVP-DIAG] trace unavailable'
   const elapsed = Date.now() - trace.startedAt
   const request = trace.lastRequest
-    ? `${trace.lastRequest.method} ${trace.lastRequest.path} ${trace.lastRequest.status ?? 'pending'} ${trace.lastRequest.elapsedMs}ms`
+    ? `${trace.lastRequest.method} ${trace.lastRequest.path} ${trace.lastRequest.status ?? 'pending'} ${trace.lastRequest.status === 'pending' ? Date.now() - trace.lastRequest.startedAt : trace.lastRequest.elapsedMs}ms`
     : 'none'
   const state = trace.lastState
     ? `v=${trace.lastState.version} combat=${trace.lastState.combatActive} active=${trace.lastState.activeActor} reaction=${trace.lastState.reactionTrigger}/${trace.lastState.reactionOwner} decision=${trace.lastState.decisionStatus}`
@@ -47,9 +79,36 @@ function mvpDiagnostics() {
   return [
     `[MVP-DIAG] stage=${trace.stage} elapsedMs=${elapsed} last=${request}`,
     `[MVP-DIAG] state=${state} server=${process}`,
+    // Сервер использует CryptoDiceRng: seed карты не воспроизводит боевые кости.
+    `[MVP-DIAG] world-seed=${redactedMvpTail(JSON.stringify(trace.lastState?.worldSeed ?? null))} dice-seed=unavailable(CryptoDiceRng)`,
+    `[MVP-DIAG] command=${redactedMvpTail(JSON.stringify(trace.lastCommand ?? null))}`,
+    `[MVP-DIAG] expected=${redactedMvpTail(JSON.stringify(trace.lastState?.expectedDecision ?? null))}`,
     `[MVP-DIAG] server-log-tail:\n${redactedMvpTail(trace.logs?.())}`,
   ].join('\n')
 }
+
+test('MVP diagnostics сохраняет команду, seed карты, ожидание и причину выхода без приватного ввода', () => {
+  const lastCommand = mvpCommandTrace({ command_type: 'MoveActor', actor_id: 'hero', to: { x: 2, y: 3 },
+    document: { password: 'private-document' }, token: 'private-token', message: 'private-message' })
+  assert.deepEqual(lastCommand, { command_type: 'MoveActor', actor_id: 'hero', to: { x: 2, y: 3 } })
+  const lastState = mvpStateTrace({ state_version: 17, worldMap: { seed: 'world-test-seed' },
+    mechanics: { combat: { active: true, reaction_window: { id: 'reaction-1', actor_id: 'hero', trigger: 'attack-shield-choice', action_ids: ['cast:shield'] } } },
+    agentInteraction: { status: 'open', prompt: 'private-prompt', options: [] },
+  })
+  const diagnostics = mvpDiagnostics({ startedAt: Date.now(), stage: 'player combat loop', lastCommand, lastState,
+    lastRequest: { method: 'POST', path: '/commands', status: 'pending', startedAt: Date.now() - 50 },
+    childExit: { code: 1, signal: 'SIGTERM' }, logs: () => 'x'.repeat(5_000) + '\nAuthorization: Bearer private-auth',
+  })
+  assert.match(diagnostics, /v=17/u)
+  assert.match(diagnostics, /world-seed="world-test-seed" dice-seed=unavailable\(CryptoDiceRng\)/u)
+  assert.match(diagnostics, /expected=.*"kind":"reaction".*"action_ids":\["cast:shield"\]/u)
+  assert.match(diagnostics, /exit=1 signal=SIGTERM/u)
+  assert.match(diagnostics, /POST \/commands pending \d+ms/u)
+  assert.doesNotMatch(diagnostics, /private-|x{4001}/u)
+  assert.deepEqual(mvpStateTrace({ agentInteraction: { id: 'vote-1', status: 'open', prompt: 'private-prompt',
+    options: [{ id: 'continue', text: 'private-option' }] } }).expectedDecision,
+  { kind: 'party-decision', id: 'vote-1', option_ids: ['continue'] })
+})
 
 async function freePort() {
   const probe = createNetServer()
@@ -86,16 +145,21 @@ async function stopServer(child) {
 
 async function waitForHealth(baseUrl, child, logs) {
   for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Test server exited\n${logs()}`)
+    if (child.exitCode != null || child.signalCode != null) throw new Error(`Test server exited: code=${child.exitCode} signal=${child.signalCode}\n${redactedMvpTail(logs())}`)
     try { const response = await fetch(`${baseUrl}/api/health`); if (response.ok) return }
     catch { /* starting */ }
     await new Promise((resolve) => setTimeout(resolve, 50))
   }
-  throw new Error(`Test server did not become healthy\n${logs()}`)
+  throw new Error(`Test server did not become healthy: code=${child.exitCode} signal=${child.signalCode}\n${redactedMvpTail(logs())}`)
 }
 
 async function request(baseUrl, path, { method = 'GET', cookie = '', body, key = '' } = {}) {
   const startedAt = Date.now()
+  if (mvpTrace) {
+    mvpTrace.lastRequest = { method, path, status: 'pending', startedAt, elapsedMs: 0 }
+    const command = mvpCommandTrace(body?.command)
+    if (command) mvpTrace.lastCommand = command
+  }
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), MVP_REQUEST_TIMEOUT_MS)
   try {
@@ -114,18 +178,8 @@ async function request(baseUrl, path, { method = 'GET', cookie = '', body, key =
     try { parsed = text ? JSON.parse(text) : null } catch { /* assertion reports text */ }
     if (mvpTrace) {
       const state = parsed?.authoritative_state ?? parsed?.state
-      const combat = state?.mechanics?.combat
-      const reaction = combat?.reaction_window
-      const decision = state?.agentInteraction
       mvpTrace.lastRequest = { method, path, status: response.status, elapsedMs: Date.now() - startedAt }
-      if (state && combat) mvpTrace.lastState = {
-        version: state.state_version ?? '?',
-        combatActive: combat.active,
-        activeActor: combat.initiative?.[combat.active_index]?.actor_id ?? '-',
-        reactionTrigger: reaction?.trigger ?? '-',
-        reactionOwner: reaction?.actor_id ?? '-',
-        decisionStatus: decision?.status ?? '-',
-      }
+      if (state) mvpTrace.lastState = mvpStateTrace(state)
     }
     return { response, status: response.status, body: parsed, text }
   } catch (error) {
@@ -863,6 +917,7 @@ test('обычные игроки проходят автономную камп
     startedAt: Date.now(),
     stage: 'startup',
     lastRequest: null,
+    lastCommand: null,
     lastState: null,
     childExit: null,
     logs: () => '',

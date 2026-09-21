@@ -118,7 +118,7 @@ function findWalkableStep(state, actorId) {
   assert.ok(actor && Number.isInteger(actor.x) && Number.isInteger(actor.y), 'у героя должна быть позиция на карте')
   const occupied = new Set(state.players.map((player) => `${player.x},${player.y}`))
   return state.scene.cells.find((cell) => cell.type === 'floor' && cell.revealed === true
-    && !cell.feature && cell.movementBlocked !== true && Math.abs(cell.x - actor.x) + Math.abs(cell.y - actor.y) === 1
+    && cell.movementBlocked !== true && Math.abs(cell.x - actor.x) + Math.abs(cell.y - actor.y) === 1
     && !occupied.has(`${cell.x},${cell.y}`)
     && Array.isArray(shortestTacticalPath(state, actorId, { x: cell.x, y: cell.y })))
 }
@@ -145,6 +145,14 @@ test('findWalkableStep пропускает полностью видимый п
   const state = { players: [{ id: 'hero-slot-1', x: 0, y: 0 }], scene }
 
   assert.deepEqual(findWalkableStep(state, 'hero-slot-1'), scene.cells.find((cell) => cell.x === 0 && cell.y === 1))
+})
+
+test('findWalkableStep разрешает декоративный feature на единственном проходимом шаге', () => {
+  const map = createTacticalMap({ width: 2, height: 1, fill: { passable: true, revealed: true } })
+  const scene = publicSceneFor({ cells: legacyCellsFromTacticalMap(map), map: serializeTacticalMap(map) })
+  scene.cells.find((cell) => cell.x === 1).feature = 'chair'
+  const state = { players: [{ id: 'hero-slot-1', x: 0, y: 0 }], scene }
+  assert.deepEqual(findWalkableStep(state, 'hero-slot-1'), scene.cells.find((cell) => cell.x === 1))
 })
 
 test('обычный игрок создаёт persistent кампанию, завершает стартовую историю и сохраняет её после restart', { timeout: runnerTimeout(90_000) }, async (t) => {

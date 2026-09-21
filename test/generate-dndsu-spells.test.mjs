@@ -147,3 +147,34 @@ test('подпись строки и особый А-компонент не т�
   })
   assert.equal(componentsFromPage('<div itemprop="description">Нет строки компонентов.</div><h2>Комментарии</h2><li><strong>Компоненты:</strong> В, С</li>'), null)
 })
+
+test('монета и отчисления Джима разбираются как независимые M и А', () => {
+  const expected = {
+    verbal: false, somatic: true,
+    material: { description: 'монетка', costGp: null, consumed: false, focusSubstitutable: true },
+    special: [{ kind: 'royalty', description: '2 зм' }],
+  }
+  assert.deepEqual(parseComponents('С, М (монетка), А (2 зм)'), expected)
+  assert.deepEqual(parseComponents('S, A (2 зм), M (монетка)'), expected)
+  assert.deepEqual(componentsFromPage('<li><strong>Компоненты:</strong> С, М (монетка), А (2 зм)</li>'), expected)
+  const costly = parseComponents('В, М (алмаз стоимостью 50 зм), А (2 зм)')
+  assert.equal(costly.material.costGp, 50, 'авторские отчисления не меняют стоимость вещи')
+  assert.equal(costly.material.unresolved, undefined)
+  assert.deepEqual(costly.special, [{ kind: 'royalty', description: '2 зм' }])
+})
+
+test('отчисления в source-форме Подарка болтуна не становятся материальной вещью', () => {
+  assert.deepEqual(parseComponents('В, С, М (А 2 зм)'), {
+    verbal: true, somatic: true, material: null,
+    special: [{ kind: 'royalty', description: '2 зм' }],
+  })
+  assert.equal(parseComponents('В, М (алмаз стоимостью 2 зм)').material.costGp, 2)
+  assert.equal(parseComponents('В, М (А 2 камня)').material.description, 'А 2 камня')
+})
+
+test('вложенное пояснение и запятые остаются внутри материала, повреждённая строка отвергается', () => {
+  assert.equal(parseComponents('В, М (веточка (дуба), нить)').material.description, 'веточка (дуба), нить')
+  for (const source of ['В, М (монетка), А (2 зм', 'М (монетка)), А (2 зм)', 'В, С,', 'В, В', 'В, М (монетка), неизвестный компонент', 'В, М (А 2 зм), А (2 зм)']) {
+    assert.equal(parseComponents(source), null, source)
+  }
+})

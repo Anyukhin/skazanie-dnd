@@ -123,8 +123,8 @@
     },
     {
       "path": "data/dndsu-spells-0-6.json",
-      "sha256": "d01da33cc4032c91c6207ec12723e430ba1604073ce2709caeacbfc766aed97c",
-      "size_bytes": 693779,
+      "sha256": "b3de6808b454e48d3411b15126150c11e64827710763949ac09a35585b9932d5",
+      "size_bytes": 693879,
       "source_id": "dndsu-compatibility-index",
       "rights_status": "review_required"
     },
