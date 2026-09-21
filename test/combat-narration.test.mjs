@@ -62,6 +62,14 @@ test('спасбросок концентрации врага не раскры
   assert.match(own, /9 \+ 4 = 13/, 'свой бросок герой видит целиком')
 })
 
+test('причина использования Resistance локализуется в боевой ленте', () => {
+  const text = combatNarration([
+    event('ConcentrationEnded', { reason: 'resistance-used' }, ['hero']),
+  ], state)
+  assert.equal(text, 'Концентрация Лира прекращается (бонус спасброска использован).')
+  assert.doesNotMatch(text, /resistance-used/u)
+})
+
 test('пустой поток не даёт текста', () => {
   assert.equal(combatNarration([], state), '')
   assert.equal(combatNarrator.narrate([], state), null)

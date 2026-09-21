@@ -164,6 +164,7 @@ test('каталог и viewer дают только авторитетный va
     catalog_description: item.description,
     equippable: true,
     equip_slot: 'main_hand',
+    combat_equip: false,
     usable: true,
     use: {
       kind: 'cast_spell',

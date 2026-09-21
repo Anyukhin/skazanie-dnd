@@ -13,9 +13,9 @@ import { normalizeAttackVisual } from '../server/actor-appearance.mjs'
 import { ITEM_CATALOG } from '../server/item-catalog.mjs'
 import { applyGameEvent, normalizeCampaignState, replayEvents } from '../server/rules-engine.mjs'
 
-test('все 61 экипируемая каталожная карточка имеет стабильную модель и слот', () => {
+test('все 83 экипируемые каталожные карточки имеют стабильную модель и слот', () => {
   const equippable = Object.values(ITEM_CATALOG).filter((entry) => entry.lifecycle?.equippable === true)
-  assert.equal(equippable.length, 61)
+  assert.equal(equippable.length, 83)
   assert.equal(Object.keys(EQUIPMENT_ITEM_VISUALS).length, equippable.length)
   for (const entry of equippable) {
     const visual = itemVisualForCatalogId(entry.catalog_id)
@@ -26,7 +26,16 @@ test('все 61 экипируемая каталожная карточка и�
   assert.equal(itemVisualForCatalogId('srd_5_2_1:longsword-plus-1').model_key, 'longsword')
   assert.equal(itemVisualForCatalogId('srd_5_2_1:adamantine-chain-mail').model_key, 'armor-chainmail')
   assert.equal(itemVisualForCatalogId('srd_5_2_1:flame-tongue-longsword').variant, 'flaming')
+  assert.deepEqual(itemVisualForCatalogId('srd_5_2_1:holy-symbol-amulet'), { slot: 'focus', model_key: 'holy-amulet' })
+  assert.deepEqual(itemVisualForCatalogId('srd_5_2_1:holy-symbol-emblem'), { slot: 'off_hand', model_key: 'holy-emblem' })
+  assert.deepEqual(itemVisualForCatalogId('srd_5_2_1:lute'), { slot: 'main_hand', model_key: 'lute' })
   assert.equal(EQUIPMENT_VISUAL_SCHEMA_VERSION, 2)
+})
+
+test('авторская сеть проходит публичную main_hand loadout без каталожной карточки', () => {
+  assert.equal(itemVisualForCatalogId('srd_5_2_1:net'), null)
+  assert.deepEqual(normalizePublicLoadout({ main_hand: { model_key: 'net' } }), { main_hand: { model_key: 'net' } })
+  assert.deepEqual(publicLoadoutForItems([{ id: 'net', type: 'weapon', name: 'Сеть', equipped: true }]), { main_hand: { model_key: 'net' } })
 })
 
 test('публичная loadout строится по надетым предметам и magic-вариантам', () => {

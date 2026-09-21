@@ -1,6 +1,11 @@
 import { Vector3, type OrthographicCamera } from 'three'
 import type { TacticalBounds } from './types'
 
+/** Первый fit ждёт реальный layout и не перезаписывает восстановленную камеру. */
+export function shouldInitialFitBoardCamera(width: number, height: number, alreadyFit: boolean, hasSavedCamera: boolean) {
+  return width > 1 && height > 1 && !alreadyFit && !hasSavedCamera
+}
+
 /** Вписывает объём сцены в реальную проекцию, включая пропорции окна и высоту фигурок. */
 export function boardCameraFitZoom(
   camera: OrthographicCamera,

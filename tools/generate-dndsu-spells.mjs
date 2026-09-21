@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 const BASE_URL = 'https://www.dnd.su'
 const LIST_URL = `${BASE_URL}/piece/spells/index-list/`
@@ -86,21 +87,140 @@ function extractJsonList(html) {
   return JSON.parse(match[1]).cards
 }
 
-function field(html, label) {
+export function field(html, label) {
   const escaped = label.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
-  return plainText(String(html).match(new RegExp(`<li><strong>${escaped}:<\\/strong>\\s*([^<]*(?:<(?!\\/li>)[^>]*>[^<]*)*)<\\/li>`, 'iu'))?.[1])
+  const whitespace = '(?:\\s|&nbsp;|&#160;)*'
+  const marker = `<strong\\b[^>]*>\\s*${escaped}${whitespace}:${whitespace}</strong>`
+  const source = String(html)
+
+  // Most pages use list items. A few older/exceptional cards wrap the same
+  // label in a paragraph or a div, so do not make the parser depend on one
+  // exact tag or attribute order.
+  for (const container of ['li', 'p', 'div']) {
+    const match = source.match(new RegExp(`<${container}\\b[^>]*>\\s*${marker}([\\s\\S]*?)<\\/${container}\\s*>`, 'iu'))
+    if (match) return plainText(match[1])
+  }
+
+  // Last-resort fallback for a label inside a custom container. Stop at the
+  // next common row boundary instead of consuming the whole document.
+  const match = source.match(new RegExp(marker, 'iu'))
+  if (!match || match.index == null) return ''
+  const rest = source.slice(match.index + match[0].length)
+  const boundary = rest.search(/<\/(?:li|p|div)\s*>/iu)
+  return plainText(boundary < 0 ? rest : rest.slice(0, boundary))
 }
 
-function descriptionText(html) {
-  return plainText(String(html).match(/<div itemprop="description">([\s\S]*?)<\/div>/iu)?.[1])
+export function descriptionText(html) {
+  return plainText(String(html).match(/<div\b[^>]*itemprop=["']description["'][^>]*>([\s\S]*?)<\/div>/iu)?.[1])
 }
 
-function numberFromFeet(text, fallback = 60) {
+const COMPONENT_MARKER = /^(?:\s*)([ВСМАVSMA](?:\s*,\s*[ВСМАVSMA])*)(?:\s*\(([\s\S]*)\))?\s*$/iu
+const COMPONENT_COST = /(?<![\d])([\d]+(?:[\s,]\d{3})*(?:[.,]\d+)?)\s*(зм|см|мм|золот(?:ых|ые|ой)?(?:\s+монет)?|серебрян(?:ых|ые|ой)?(?:\s+монет)?|gp|sp|cp)(?![\p{L}])/giu
+const COMPONENT_CONSUMED = /(?:расходу[а-яё]*|потребля(?:ется|ются)|поглощ(?:ается|аются)|consum(?:e|ed|es|ing)|destroy(?:ed|s)?\s+by\s+the\s+spell)/iu
+
+function componentField(html) {
+  const beforeComments = String(html ?? '').split(/##\s*Комментарии|<h[1-6][^>]*>\s*Комментарии/iu)[0]
+  const descriptionStart = beforeComments.search(/<div\b[^>]*itemprop=["']description["']/iu)
+  const source = descriptionStart < 0 ? beforeComments : beforeComments.slice(0, descriptionStart)
+  const htmlValue = field(source, 'Компоненты')
+  if (htmlValue) return htmlValue
+
+  // Кэш аудита может содержать Markdown; читаем только подписанную строку,
+  // а не слова о компонентах в произвольном описании или комментарии.
+  const marker = '**Компоненты:**'
+  const markerIndex = source.indexOf(marker)
+  if (markerIndex < 0) return ''
+  const rest = source.slice(markerIndex + marker.length)
+  const boundary = rest.search(/\r?\n\s*\*\s+\*\*/u)
+  return plainText(boundary < 0 ? rest : rest.slice(0, boundary))
+}
+
+function requirementNoteForMaterial(description, costMatches, consumed) {
+  const text = String(description ?? '').trim()
+  if (!text) return 'В источнике не указано содержимое материального компонента.'
+  // Количество и альтернативы обычного нерасходуемого M не мешают замене фокусом.
+  if (!costMatches.length && !consumed) return null
+  const notes = []
+  if (costMatches.length > 1) notes.push('Указано несколько стоимостей или предметов; одна сумма не описывает весь набор.')
+  if (/(?:кажд(?:ый|ого|ому|ом|ые|ых)|пара|два|две|несколько|for each|each|pair|two)/iu.test(text)) {
+    notes.push('Источник задаёт количество или повторяемое требование, которого нет в компактной схеме.')
+  }
+  if (/(?:либо|или|either|\bor\b|зависит|var(?:ies|y)|according)/iu.test(text)) {
+    notes.push('Источник содержит альтернативный или зависящий от варианта компонент.')
+  }
+  if (/(?:может быть|при желании|optional|optionally)/iu.test(text)) {
+    notes.push('Условие компонента зависит от выбора или варианта применения.')
+  }
+  if (consumed && /(?:расход|потребл|поглощ|consum|destroy)/iu.test(text) && /(?:часть|some|частично|part)/iu.test(text)) {
+    notes.push('Расходование описано для части составного компонента.')
+  }
+  if (consumed && /расходу[^,;]*[,;]\s*(?:и|а также)\s/iu.test(text)) {
+    notes.push('Часть набора расходуется, а следующий предмет имеет отдельное требование.')
+  }
+  return notes.length ? notes.join(' ') : null
+}
+
+/**
+ * Разбирает отдельную строку компонентов dnd.su. Описание заклинания не
+ * заменяет отсутствующую строку источника.
+ */
+export function parseComponents(sourceText) {
+  const source = String(sourceText ?? '').trim().replace(/^\*?\s*Компоненты:\s*/iu, '')
+  const match = source.match(COMPONENT_MARKER)
+  if (!match) return null
+  const tokens = match[1].split(',').map((token) => token.trim().toLocaleUpperCase('ru'))
+  const verbal = tokens.includes('В') || tokens.includes('V')
+  const somatic = tokens.includes('С') || tokens.includes('S')
+  const hasMaterial = tokens.includes('М') || tokens.includes('M')
+  if (tokens.includes('А') || tokens.includes('A')) {
+    return { verbal, somatic, material: null, special: [{ kind: 'royalty', description: String(match[2] ?? '').trim() }] }
+  }
+  if (!hasMaterial) return { verbal, somatic, material: null }
+
+  const description = String(match[2] ?? '').trim()
+  const costMatches = [...description.matchAll(COMPONENT_COST)]
+  const numericCosts = costMatches
+    .map((item) => {
+      const digits = String(item[1]).replace(/\s/gu, '')
+      const normalized = /^\d{1,3}(?:,\d{3})+(?:\.\d+)?$/u.test(digits) ? digits.replace(/,/gu, '') : digits.replace(',', '.')
+      const unit = item[2].toLocaleLowerCase('ru')
+      const multiplier = /^(?:см|серебр|sp)/u.test(unit) ? 0.1 : /^(?:мм|cp)/u.test(unit) ? 0.01 : 1
+      return Number(normalized) * multiplier
+    })
+    .filter((value) => Number.isFinite(value))
+  const consumed = COMPONENT_CONSUMED.test(description) && !/(?:не\s+расходу|not\s+consum)/iu.test(description)
+  const requirementNote = requirementNoteForMaterial(description, costMatches, consumed)
+  const costGp = numericCosts.length === 1 && !requirementNote
+    ? numericCosts[0]
+    : null
+  const unresolved = Boolean(requirementNote) || (numericCosts.length > 1 && costGp == null)
+  return {
+    verbal,
+    somatic,
+    material: {
+      description,
+      costGp,
+      consumed,
+      focusSubstitutable: !unresolved && costGp == null && !consumed,
+      ...(requirementNote ? { requirementNote } : {}),
+      ...(unresolved ? { unresolved: true } : {}),
+    },
+  }
+}
+
+export function componentsFromPage(html) {
+  return parseComponents(componentField(html))
+}
+
+export function numberFromFeet(text, fallback = 60) {
   const normalized = String(text ?? '').toLocaleLowerCase('ru')
   if (/на себя|касание/u.test(normalized)) return /касание/u.test(normalized) ? 5 : 0
+  // A range written only as a shape (for example «15-футовый конус») starts
+  // at the caster. It is an area size, not a 15-foot point range.
+  if (/(?:конус|линия|куб|цилиндр|сфер|радиус)/u.test(normalized)) return 0
   const miles = normalized.match(/(\d+)\s*(?:мил|миль|мили)/u)
   if (miles) return Number(miles[1]) * 5280
-  const feet = normalized.match(/(\d+)\s*(?:фут|фт)/u)
+  const feet = normalized.match(/(\d+)\s*(?:-\s*)?(?:фут|фт)/u)
   if (feet) return Number(feet[1])
   if (/видимост/u.test(normalized)) return 600
   if (/без ограничен|неогранич/u.test(normalized)) return 99999
@@ -132,23 +252,38 @@ function actionType(card, castingTime) {
   return /бонусн/u.test(castingTime) ? 'bonus_action' : /реакц/u.test(castingTime) ? 'reaction' : /минут|час/u.test(castingTime) ? 'long_cast' : 'action'
 }
 
-function areaFacts(text) {
+export function areaFacts(text) {
   const normalized = String(text).toLocaleLowerCase('ru')
+  const distance = '(\\d+)\\s*(?:-\\s*)?(?:фут|фт)'
+  const between = '[^.!?]{0,40}?'
   const patterns = [
-    ['sphere', /(?:сфер|радиус)[^.!?]{0,30}?(\d+)\s*(?:фут|фт)/u],
-    ['cone', /конус[^.!?]{0,25}?(\d+)\s*(?:фут|фт)/u],
-    ['line', /лини[^.!?]{0,25}?(\d+)\s*(?:фут|фт)/u],
-    ['cube', /куб[^.!?]{0,25}?(\d+)\s*(?:фут|фт)/u],
-    ['cylinder', /цилиндр[^.!?]{0,25}?(\d+)\s*(?:фут|фт)/u],
+    ['cone', new RegExp(`(?:конус\\p{L}*)${between}${distance}|${distance}${between}(?:конус\\p{L}*)`, 'iu')],
+    ['line', new RegExp(`(?:лини\\p{L}*)${between}${distance}|${distance}${between}(?:лини\\p{L}*)`, 'iu')],
+    ['cube', new RegExp(`(?:куб\\p{L}*)${between}${distance}|${distance}${between}(?:куб\\p{L}*)`, 'iu')],
+    ['cylinder', new RegExp(`(?:цилиндр\\p{L}*)${between}${distance}|${distance}${between}(?:цилиндр\\p{L}*)`, 'iu')],
+    ['sphere', new RegExp(`(?:сфер\\p{L}*|радиус\\p{L}*)${between}${distance}|${distance}${between}(?:сфер\\p{L}*|радиус\\p{L}*)`, 'iu')],
   ]
   for (const [shape, pattern] of patterns) {
     const match = normalized.match(pattern)
-    if (match) return { areaShape: shape, radius: Number(match[1]) }
+    if (match) {
+      const value = match[1] ?? match[2]
+      return { areaShape: shape, radius: Number(value) }
+    }
   }
   return {}
 }
 
-function classify(card, facts) {
+export function pageFacts(html) {
+  const duration = field(html, 'Длительность').toLocaleLowerCase('ru')
+  return {
+    castingTime: field(html, 'Время накладывания'),
+    rangeText: field(html, 'Дистанция'),
+    duration,
+    description: descriptionText(html),
+  }
+}
+
+export function classify(card, facts) {
   const text = facts.description.toLocaleLowerCase('ru')
   const castingTime = facts.castingTime.toLocaleLowerCase('ru')
   const rangeText = facts.rangeText.toLocaleLowerCase('ru')
@@ -256,13 +391,9 @@ async function main() {
     const level = card.level === 'Заговор' ? 0 : Number(card.level)
     const id = slugify(card.title_en) || `dndsu-${String(card.link).match(/\d+/u)?.[0] ?? index}`
     const classes = [...new Set([...(card.filter_class ?? []), ...(card.filter_class_tce ?? [])].map((id) => CLASS_IDS[id]).filter(Boolean))].sort()
-    const facts = {
-      castingTime: field(html, 'Время накладывания'),
-      rangeText: field(html, 'Дистанция'),
-      duration: field(html, 'Длительность').toLocaleLowerCase('ru'),
-      description: descriptionText(html),
-    }
+    const facts = pageFacts(html)
     const mechanics = classify(card, facts)
+    const components = componentsFromPage(html)
     if ((index + 1) % 50 === 0 || index + 1 === cards.length) process.stdout.write(`\r${index + 1}/${cards.length}`)
     return {
       id,
@@ -279,6 +410,7 @@ async function main() {
       duration: facts.duration,
       sourceUrl,
       slotResource: level > 0 ? `spell_slots_${level}` : null,
+      components,
       ...mechanics,
       description: descriptions[id],
     }
@@ -288,11 +420,14 @@ async function main() {
   if (missingDescriptions.length) {
     throw new Error(`Spell description dictionary is missing: ${missingDescriptions.map((spell) => spell.id).join(', ')}`)
   }
+  const missingComponents = spells.filter((spell) => !spell.components)
+  if (missingComponents.length) throw new Error(`Не прочитана строка компонентов: ${missingComponents.map((spell) => spell.id).join(', ')}`)
 
   spells.sort((a, b) => a.level - b.level || a.name.localeCompare(b.name, 'ru'))
   await mkdir(resolve('data'), { recursive: true })
   await writeFile(OUTPUT, `${JSON.stringify({
     schemaVersion: 1,
+    componentsSchemaVersion: 1,
     generatedAt: new Date().toISOString(),
     source: LIST_URL,
     scope: 'Официальные заклинания dnd.su уровней 0–6 для базовых классов D&D 5e',
@@ -302,4 +437,5 @@ async function main() {
   process.stdout.write(`\nSaved ${spells.length} spells to ${OUTPUT}\n`)
 }
 
-await main()
+const invokedPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : null
+if (invokedPath === import.meta.url) await main()

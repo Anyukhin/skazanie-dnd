@@ -254,12 +254,14 @@ function starterGear(heroId, gearKey) {
 function classicStarterItem(heroId, item, index, prefix = 'class', { complete = false } = {}) {
   const entry = catalogItem(item.catalog_id)
   if (!entry) throw new TypeError(`Стартовый набор 2014 ссылается на неизвестный предмет ${item.catalog_id}`)
+  const presentation = starterPresentationForCatalogEntry(entry)
   const materialized = materializeCatalogItem(item.catalog_id, {
     id: `${heroId}-starter-${prefix}-${index + 1}`.slice(0, 120),
     quantity: Math.max(1, Math.trunc(Number(item.quantity) || 1)),
     equipped: item.equipped === true,
     rarity: 'обычный',
-    image: '',
+    image: String(presentation.image ?? ''),
+    ...(presentation.imagePosition ? { imagePosition: String(presentation.imagePosition) } : {}),
     imageStatus: 'ready',
   })
   return complete && PHB_PACK_CONTENTS[item.catalog_id]
@@ -340,6 +342,16 @@ function phbWeaponOption(weaponId, { quantity = 1, equipped = true, optionId = w
 
 function phbWeaponOptions(source, { equipped = true, optionPrefix = 'phb' } = {}) {
   return source.map((weaponId) => phbWeaponOption(weaponId, { equipped, optionId: `${optionPrefix}-${weaponId}` }))
+}
+
+function starterPresentationForCatalogEntry(entry) {
+  if (entry?.component_pouch === true) return narrativeItemPresentation('Мешочек с компонентами')
+  const classes = new Set(Array.isArray(entry?.spellcasting_focus) ? entry.spellcasting_focus : [])
+  if (classes.has('cleric') || classes.has('paladin')) return narrativeItemPresentation('Священный символ')
+  if (classes.has('druid')) return narrativeItemPresentation('Друидический фокус')
+  if (classes.has('sorcerer') || classes.has('warlock') || classes.has('wizard')) return narrativeItemPresentation('Магическая фокусировка')
+  if (classes.has('bard')) return narrativeItemPresentation(entry.name)
+  return {}
 }
 
 function combineWeaponOption(first, second, optionId, label) {

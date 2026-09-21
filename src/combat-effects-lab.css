@@ -1,0 +1,439 @@
+.combat-effects-lab {
+  --effects-line: rgba(222, 201, 171, .14);
+  --effects-muted: #a79c90;
+  --effects-faint: #766d64;
+  --effects-surface: #171512;
+  --effects-surface-soft: #1d1a17;
+  --effects-accent: #c99556;
+  --effects-accent-bright: #f0ca8a;
+  margin-top: 22px;
+  padding-top: 22px;
+  border-top: 1px solid var(--effects-line);
+}
+
+.combat-effects-lab h2,
+.combat-effects-lab h3,
+.combat-effects-lab p {
+  overflow-wrap: anywhere;
+}
+
+.combat-effects-lab-header,
+.combat-effects-lab-stage-head,
+.combat-effects-lab-stage-meta {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.combat-effects-lab-header {
+  margin-bottom: 18px;
+}
+
+.combat-effects-lab-header h2,
+.combat-effects-lab-stage-head h3 {
+  margin: 0;
+  color: #e7ddd0;
+  font-family: Spectral, Georgia, serif;
+  font-weight: 600;
+}
+
+.combat-effects-lab-header h2 {
+  font-size: var(--fs-2xl);
+  line-height: 1.12;
+}
+
+.combat-effects-lab-header p,
+.combat-effects-lab-stage-head p {
+  max-width: 680px;
+  margin: 6px 0 0;
+  color: var(--effects-muted);
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+}
+
+.combat-effects-lab-header-count {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 4px;
+  color: var(--effects-faint);
+  font-size: var(--fs-xs);
+  text-align: right;
+}
+
+.combat-effects-lab-header-count strong {
+  color: var(--effects-accent-bright);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.combat-effects-lab-layout {
+  display: grid;
+  grid-template-columns: minmax(245px, 300px) minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+
+.combat-effects-lab-catalog {
+  min-width: 0;
+  border-right: 1px solid var(--effects-line);
+  padding-right: 18px;
+}
+
+.combat-effects-lab-mode-tabs {
+  display: flex;
+  gap: 18px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--effects-line);
+}
+
+.combat-effects-lab button {
+  font: inherit;
+}
+
+.combat-effects-lab-mode-tabs button,
+.combat-effects-lab-list button {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--effects-muted);
+}
+
+.combat-effects-lab-mode-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 0 0 8px;
+  border-bottom: 2px solid transparent;
+}
+
+.combat-effects-lab-mode-tabs button[aria-selected='true'] {
+  border-bottom-color: var(--effects-accent);
+  color: var(--effects-accent-bright);
+}
+
+.combat-effects-lab-mode-tabs button:hover,
+.combat-effects-lab-list button:hover {
+  color: #e5d8ca;
+}
+
+.combat-effects-lab-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid #665747;
+  border-radius: 6px;
+  background: #100f0d;
+  color: var(--effects-faint);
+}
+
+.combat-effects-lab-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #e6ddd2;
+  font: inherit;
+  font-size: var(--fs-sm);
+}
+
+.combat-effects-lab-search input::placeholder {
+  color: var(--effects-faint);
+}
+
+.combat-effects-lab-filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.combat-effects-lab-filters label {
+  display: grid;
+  gap: 5px;
+  color: var(--effects-faint);
+  font-size: var(--fs-xs);
+}
+
+.combat-effects-lab-filters select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #665747;
+  border-radius: 6px;
+  background: #100f0d;
+  color: #ded4c7;
+  padding: 7px 6px;
+  font: inherit;
+  font-size: var(--fs-xs);
+}
+
+.combat-effects-lab-list {
+  display: grid;
+  max-height: 600px;
+  margin-top: 10px;
+  overflow: auto;
+  border-top: 1px solid rgba(222, 201, 171, .08);
+}
+
+.combat-effects-lab-list button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 50px;
+  padding: 8px 5px 8px 8px;
+  border-bottom: 1px solid rgba(222, 201, 171, .08);
+  text-align: left;
+}
+
+.combat-effects-lab-list button.selected {
+  border-left: 2px solid var(--effects-accent);
+  padding-left: 6px;
+  background: rgba(185, 126, 62, .1);
+  color: #f0dfc9;
+}
+
+.combat-effects-lab-list-main {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.combat-effects-lab-list-main strong {
+  overflow: hidden;
+  color: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.combat-effects-lab-list-main small {
+  overflow: hidden;
+  color: var(--effects-faint);
+  font-size: var(--fs-xxs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.combat-effects-lab-support {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  color: var(--effects-faint);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.combat-effects-lab-support.verified { color: #a8c99e; }
+.combat-effects-lab-support.partial { color: var(--effects-accent-bright); }
+.combat-effects-lab-support.heuristic,
+.combat-effects-lab-support.ruling-only { color: #d6968a; }
+
+.combat-effects-lab-empty {
+  margin: 0;
+  padding: 20px 8px;
+  color: var(--effects-faint);
+  font-size: var(--fs-sm);
+}
+
+.combat-effects-lab-stage {
+  min-width: 0;
+}
+
+.combat-effects-lab-stage-head {
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.combat-effects-lab-stage-head h3 {
+  font-size: var(--fs-xl);
+}
+
+.combat-effects-lab-stage-head p {
+  max-width: 640px;
+}
+
+.combat-effects-lab-stage-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+}
+
+.combat-effects-lab-stage-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  border: 1px solid #665747;
+  border-radius: 6px;
+  background: var(--effects-surface-soft);
+  color: #ded4c7;
+  padding: 7px 11px;
+}
+
+.combat-effects-lab-stage-actions button:hover:not(:disabled) {
+  border-color: var(--effects-accent);
+}
+
+.combat-effects-lab-stage-actions .combat-effects-lab-play {
+  border-color: var(--effects-accent);
+  background: #573d24;
+  color: #fff0db;
+}
+
+.combat-effects-lab-stage-actions .combat-effects-lab-sound {
+  width: 36px;
+  padding: 7px;
+}
+
+.combat-effects-lab-stage-actions .combat-effects-lab-sound.muted {
+  color: var(--effects-faint);
+}
+
+.combat-effects-lab-board-shell {
+  position: relative;
+  min-height: 490px;
+  overflow: hidden;
+  container-type: inline-size;
+  border: 1px solid var(--effects-line);
+  background: #12110f;
+}
+
+.combat-effects-lab-board-shell .map-scroll {
+  width: fit-content;
+  margin: 0 auto;
+}
+
+.combat-effects-lab-board-shell .board-frame {
+  box-shadow: 0 10px 0 #17120d, 0 20px 35px rgba(0, 0, 0, .45);
+}
+
+.combat-effects-lab-board-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  pointer-events: none;
+  color: var(--effects-muted);
+  font-size: var(--fs-sm);
+}
+
+.combat-effects-lab-stage-meta {
+  flex-wrap: wrap;
+  margin-top: 10px;
+  color: var(--effects-faint);
+  font-size: var(--fs-xs);
+}
+
+.combat-effects-lab :is(button, input, select):focus-visible {
+  outline: 2px solid var(--effects-accent-bright);
+  outline-offset: 3px;
+}
+
+.combat-effects-lab-token {
+  display: grid;
+  place-items: center;
+  width: min(calc(var(--cell) * .64), 42px);
+  height: min(calc(var(--cell) * .64), 42px);
+  border: 2px solid #ddcfba;
+  border-radius: 50%;
+  background: #3f644b;
+  color: #f5e9d7;
+  font-family: Spectral, Georgia, serif;
+  font-size: clamp(11px, calc(var(--cell) * .24), 18px);
+}
+
+.combat-effects-lab-token.enemy { background: #713e38; border-color: #e0a198; }
+.combat-effects-lab-token.summon { background: #39735d; border-color: #a1d4ae; }
+.combat-effects-lab-token b { font-weight: 700; }
+
+.combat-effects-lab .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 980px) {
+  .combat-effects-lab-layout { grid-template-columns: 1fr; }
+  .combat-effects-lab-catalog { border-right: 0; border-bottom: 1px solid var(--effects-line); padding: 0 0 16px; }
+  .combat-effects-lab-list { max-height: 280px; }
+}
+
+@media (max-width: 620px) {
+  .combat-effects-lab-header,
+  .combat-effects-lab-stage-head { display: block; }
+  .combat-effects-lab-header-count { margin-top: 10px; text-align: left; }
+  .combat-effects-lab-stage-actions { margin-top: 12px; }
+  .combat-effects-lab-board-shell { min-height: 360px; }
+  .combat-effects-lab-filters { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .combat-effects-lab * { scroll-behavior: auto !important; }
+}
+
+/* CombatLab has broad form/button rules. Keep the production board controls
+   at their own compact size when the gallery is mounted inside that shell. */
+.combat-lab-page .combat-effects-lab .combat-effects-lab-list button {
+  display: grid;
+  width: 100%;
+  min-height: 50px;
+  padding: 8px 5px 8px 8px;
+  border: 0;
+  border-bottom: 1px solid rgba(222, 201, 171, .08);
+  border-radius: 0;
+  background: transparent;
+}
+
+.combat-lab-page .combat-effects-lab .combat-effects-lab-list button.selected {
+  border-left: 2px solid var(--effects-accent);
+  padding-left: 6px;
+  background: rgba(185, 126, 62, .1);
+}
+
+.combat-lab-page .combat-effects-lab .board-view-controls button,
+.combat-lab-page .combat-effects-lab .board3d-tools > button,
+.combat-lab-page .combat-effects-lab .board3d-models summary,
+.combat-lab-page .combat-effects-lab .board3d-skip {
+  min-height: 32px;
+  width: auto;
+  padding: 5px 10px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: #242119;
+  color: #e7dcc8;
+  font-size: 12px;
+}
+
+.combat-lab-page .combat-effects-lab .board3d :is(.board3d-quality, .board3d-roof-mode) {
+  width: auto;
+  min-width: 0;
+  max-width: 130px;
+  min-height: 32px;
+  padding: 4px 7px;
+  border: 1px solid #675940;
+  border-radius: 3px;
+  background: #242119;
+  color: #e7dcc8;
+  font-size: 12px;
+}

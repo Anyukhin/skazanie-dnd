@@ -69,7 +69,7 @@ test('Аура защиты добавляет лучший бонус Хари�
 
   const far = resolveCommand({ command_type: 'MakeSavingThrow', actor_id: 'far', ability: 'dex', difficulty: 12 }, state, { diceService: dice([8]), context: { isAdmin: true } })
   const farEvent = far.events.find((candidate) => candidate.event_type === 'SavingThrowResolved')
-  assert.equal(farEvent.payload.modifier, 4)
+  assert.equal(farEvent.payload.modifier, 7, 'Рogue владеет спасброском Ловкости: +3 proficiency плюс +4 вне ауры не меняет базовую арифметику')
   assert.equal(farEvent.payload.aura_of_protection_source, undefined)
 
   const hostile = resolveCommand({ command_type: 'MakeSavingThrow', actor_id: 'enemy', ability: 'dex', difficulty: 12 }, state, { diceService: dice([8]), context: { isAdmin: true } })

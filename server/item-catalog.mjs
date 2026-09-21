@@ -10,6 +10,17 @@ export const ITEM_CATALOG_SOURCE = Object.freeze({
   attribution: 'This work includes material from the System Reference Document 5.2.1 (“SRD 5.2.1”) by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.',
 })
 
+// Компоненты этой волны сверены по профилю D&D 5e 2014. Не приписываем их
+// механические факты SRD 5.2.1: собственные русские формулировки остаются
+// парафразом, а ссылки ведут на dnd.su и официальный Basic Rules 2014.
+const SPELLCASTING_COMPONENT_SOURCE = Object.freeze({
+  source_url: 'https://5e14.dnd.su/articles/inventory/98-equipment/',
+  source_version: 'D&D 5e 2014 Basic Rules',
+  secondary_source_url: 'https://www.dndbeyond.com/sources/dnd/basic-rules-2014/equipment',
+  license: 'ORIGINAL-PARAPHRASE',
+  attribution: 'Краткие формулировки предметов и их ценностей — самостоятельный парафраз правил D&D 5e 2014; источники: 5e14.dnd.su и Basic Rules 2014.',
+})
+
 export const ITEM_MECHANICS_STATUSES = Object.freeze(['verified', 'partial', 'ruling-only'])
 
 /**
@@ -155,6 +166,47 @@ const SHOP_IDS = new Set([
   'srd_5_2_1:rope-hempen-50-feet',
   'srd_5_2_1:torch',
   'srd_5_2_1:arrows-20',
+  // Компоненты заклинаний продаются обычным торговцем как снаряжение.
+  // Наличие записи в каталоге само по себе не выдаёт её старым героям:
+  // покупка или новый стартовый выбор всё равно создают экземпляр явно.
+  'srd_5_2_1:component-pouch',
+  'srd_5_2_1:arcane-focus-crystal',
+  'srd_5_2_1:arcane-focus-orb',
+  'srd_5_2_1:arcane-focus-rod',
+  'srd_5_2_1:arcane-focus-staff',
+  'srd_5_2_1:arcane-focus-wand',
+  'srd_5_2_1:druidic-focus-mistletoe',
+  'srd_5_2_1:druidic-focus-totem',
+  'srd_5_2_1:druidic-focus-wooden-staff',
+  'srd_5_2_1:druidic-focus-yew-wand',
+  'srd_5_2_1:holy-symbol-amulet',
+  'srd_5_2_1:holy-symbol-emblem',
+  'srd_5_2_1:holy-symbol-reliquary',
+  'srd_5_2_1:diamond-50gp',
+  'srd_5_2_1:bagpipes',
+  'srd_5_2_1:drum',
+  'srd_5_2_1:dulcimer',
+  'srd_5_2_1:flute',
+  'srd_5_2_1:lute',
+  'srd_5_2_1:lyre',
+  'srd_5_2_1:horn',
+  'srd_5_2_1:pan-flute',
+  'srd_5_2_1:shawm',
+  'srd_5_2_1:viol',
+  'srd_5_2_1:material-summon-beast-200gp',
+  'srd_5_2_1:material-summon-undead-300gp',
+  'srd_5_2_1:material-summon-shadowspawn-300gp',
+  'srd_5_2_1:material-summon-fey-300gp',
+  'srd_5_2_1:material-shadow-of-moil-150gp',
+  'srd_5_2_1:material-summon-aberration-400gp',
+  'srd_5_2_1:material-summon-construct-400gp',
+  'srd_5_2_1:material-summon-elemental-400gp',
+  'srd_5_2_1:material-summon-draconic-spirit-500gp',
+  'srd_5_2_1:material-summon-celestial-500gp',
+  'srd_5_2_1:material-dawn-100gp',
+  'srd_5_2_1:material-circle-of-death-500gp',
+  'srd_5_2_1:material-summon-fiend-600gp',
+  'srd_5_2_1:material-diamond-dust-100gp',
 ])
 
 /**
@@ -243,9 +295,9 @@ function availability(catalogId) {
   }
 }
 
-function provenance(sourcePage, { sourcePages = null, mechanicsSourcePage = null } = {}) {
+function provenance(sourcePage, { sourcePages = null, mechanicsSourcePage = null, sourceBase = ITEM_CATALOG_SOURCE } = {}) {
   return {
-    ...ITEM_CATALOG_SOURCE,
+    ...sourceBase,
     source_page: sourcePage,
     ...(sourcePages ? { source_pages: sourcePages } : {}),
     ...(mechanicsSourcePage ? { mechanics_source_page: mechanicsSourcePage } : {}),
@@ -510,6 +562,107 @@ function gearEntry({
     ...(mechanicsSourcePage ? { mechanics_source_page: mechanicsSourcePage } : {}),
     ...(dndsuReferenceUrl ? { dndsu_reference_url: dndsuReferenceUrl } : {}),
     provenance: provenance(95, { sourcePages, mechanicsSourcePage }),
+  }
+}
+
+/**
+ * Материальные предметы заклинателя живут в том же каталоге, что и обычное
+ * снаряжение. Их механические поля намеренно плоские и каталожные: валидатор
+ * заклинания читает их по `catalog_id`, а имя/описание экземпляра не являются
+ * доказательством наличия фокуса или дорогого компонента.
+ */
+function spellcastingComponentEntry({
+  id,
+  name,
+  description,
+  itemType = 'other',
+  price,
+  weight,
+  spellcastingFocus = null,
+  componentPouch = false,
+  materialComponent = null,
+  equipSlot = null,
+  focusMode = null,
+}) {
+  const catalogId = `srd_5_2_1:${id}`
+  return {
+    catalog_id: catalogId,
+    ...SPELLCASTING_COMPONENT_SOURCE,
+    display_name: name,
+    name,
+    manifest_section: 'spellcasting-component',
+    description,
+    category: 'focus',
+    type: itemType,
+    price_cp: price,
+    base_price_cp: price,
+    weight,
+    lifecycle: { equippable: equipSlot != null, equip_slot: equipSlot, transferable: true, stackable: false },
+    equip: equipSlot != null ? { slot: equipSlot, ...(focusMode ? { focus_mode: focusMode } : {}) } : null,
+    combat: null,
+    use: null,
+    attunement: { required: false },
+    charges: null,
+    recharge: null,
+    crafting: { implemented: false, hooks: [] },
+    ...(spellcastingFocus ? { spellcasting_focus: [...spellcastingFocus] } : {}),
+    ...(componentPouch ? { component_pouch: true } : {}),
+    ...(materialComponent ? { material_component: { ...materialComponent } } : {}),
+    ...(focusMode ? { focus_mode: focusMode } : {}),
+    mechanics_status: 'partial',
+    limitation: 'Наличие и пригодность компонента проверяются по каталогу экземпляра; название вещи и монеты сами по себе не заменяют фокус или дорогой материал.',
+    availability: availability(catalogId),
+    source_page: 95,
+    provenance: provenance(95, { sourceBase: SPELLCASTING_COMPONENT_SOURCE }),
+  }
+}
+
+function spellMaterialEntry({
+  id,
+  name,
+  description,
+  costCp,
+  kind,
+  spellIds,
+  sourceUrl,
+  sourceUrls = [sourceUrl],
+  stackable = false,
+}) {
+  const catalogId = `srd_5_2_1:material-${id}`
+  const source = {
+    source_url: sourceUrl,
+    source_urls: [...new Set(sourceUrls)],
+    source_version: 'D&D 5e 2014 spell card · dnd.su',
+    secondary_source_url: 'https://www.dndbeyond.com/sources/dnd/basic-rules-2014/spellcasting',
+    license: 'ORIGINAL-PARAPHRASE',
+    attribution: 'Краткая формулировка материального компонента — самостоятельный парафраз карточки заклинания D&D 5e 2014; источник: dnd.su.',
+  }
+  return {
+    catalog_id: catalogId,
+    ...source,
+    display_name: name,
+    name,
+    manifest_section: 'spell-material',
+    description,
+    category: 'material-component',
+    type: 'other',
+    price_cp: costCp,
+    base_price_cp: costCp,
+    weight: 0,
+    lifecycle: { equippable: false, equip_slot: null, transferable: true, stackable },
+    equip: null,
+    combat: null,
+    use: null,
+    attunement: { required: false },
+    charges: null,
+    recharge: null,
+    crafting: { implemented: false, hooks: [] },
+    material_component: { kind, value_cp: costCp, spell_ids: [...spellIds] },
+    mechanics_status: 'partial',
+    limitation: 'Наличие настоящего компонента проверяется по каталогу экземпляра; расходование порции выполняет обработчик заклинания после успешной проверки.',
+    availability: availability(catalogId),
+    source_page: 1,
+    provenance: provenance(1, { sourceBase: { ...source, source_ref: `dndsu:spell:${spellIds.join(',')}` } }),
   }
 }
 
@@ -819,6 +972,349 @@ const GEAR = [
   { id: 'torch', name: 'Факел', weight: 1, price: 1, description: 'Деревянная рукоять с горючей обмоткой на конце. Зажжённый факел даёт обычный огонь и позволяет освещать путь в темноте.', limitation: 'Время горения, свет и импровизированная атака не автоматизированы.' },
   { id: 'waterskin', name: 'Бурдюк', weight: 5, price: 20, description: 'Мягкая дорожная ёмкость с закрывающимся горлышком. Позволяет нести воду в пути; указанный вес относится к наполненному бурдюку.', limitation: 'Вода, вместимость и обезвоживание не моделируются.' },
 ]
+
+// Таблица снаряжения 2014 и правила материальных компонентов. Это обычные
+// покупаемые предметы; существующим инвентарям они не добавляются.
+const SPELLCASTING_COMPONENTS = [
+  {
+    id: 'component-pouch',
+    name: 'Мешочек с компонентами',
+    description: 'Небольшой мешочек с обычными материальными компонентами для заклинаний без указанной цены или расходования.',
+    price: 2_500,
+    weight: 2,
+    componentPouch: true,
+  },
+  {
+    id: 'arcane-focus-crystal',
+    name: 'Кристалл арканного фокуса',
+    description: 'Кристалл, используемый как арканный фокус заклинателя.',
+    price: 1_000,
+    weight: 1,
+    spellcastingFocus: ['sorcerer', 'warlock', 'wizard'],
+    equipSlot: 'main_hand',
+    focusMode: 'held',
+  },
+  {
+    id: 'arcane-focus-orb',
+    name: 'Сфера арканного фокуса',
+    description: 'Сфера, используемая как арканный фокус заклинателя.',
+    price: 2_000,
+    weight: 3,
+    spellcastingFocus: ['sorcerer', 'warlock', 'wizard'],
+    equipSlot: 'main_hand',
+    focusMode: 'held',
+  },
+  {
+    id: 'arcane-focus-rod',
+    name: 'Жезл арканного фокуса',
+    description: 'Жезл, используемый как арканный фокус заклинателя.',
+    price: 1_000,
+    weight: 2,
+    spellcastingFocus: ['sorcerer', 'warlock', 'wizard'],
+    equipSlot: 'main_hand',
+    focusMode: 'held',
+  },
+  {
+    id: 'arcane-focus-staff',
+    name: 'Посох арканного фокуса',
+    description: 'Посох, используемый как арканный фокус заклинателя.',
+    price: 500,
+    weight: 4,
+    spellcastingFocus: ['sorcerer', 'warlock', 'wizard'],
+    equipSlot: 'main_hand',
+    focusMode: 'held',
+  },
+  {
+    id: 'arcane-focus-wand',
+    name: 'Волшебная палочка арканного фокуса',
+    description: 'Волшебная палочка, используемая как арканный фокус заклинателя.',
+    price: 1_000,
+    weight: 1,
+    spellcastingFocus: ['sorcerer', 'warlock', 'wizard'],
+    equipSlot: 'main_hand',
+    focusMode: 'held',
+  },
+  {
+    id: 'druidic-focus-mistletoe',
+    name: 'Веточка омелы друидического фокуса',
+    description: 'Веточка омелы, используемая друидом как друидический фокус.',
+    price: 100,
+    weight: 0,
+    spellcastingFocus: ['druid'],
+    equipSlot: 'main_hand',
+    focusMode: 'held',
+  },
+  {
+    id: 'druidic-focus-totem',
+    name: 'Тотем друидического фокуса',
+    description: 'Тотем, используемый друидом как друидический фокус.',
+    price: 100,
+    weight: 0,
+    spellcastingFocus: ['druid'],
+    equipSlot: 'main_hand',
+    focusMode: 'held',
+  },
+  {
+    id: 'druidic-focus-wooden-staff',
+    name: 'Деревянный посох друидического фокуса',
+    description: 'Деревянный посох, используемый друидом как друидический фокус.',
+    price: 500,
+    weight: 4,
+    spellcastingFocus: ['druid'],
+    equipSlot: 'main_hand',
+    focusMode: 'held',
+  },
+  {
+    id: 'druidic-focus-yew-wand',
+    name: 'Тисовая палочка друидического фокуса',
+    description: 'Тисовая палочка, используемая друидом как друидический фокус.',
+    price: 1_000,
+    weight: 1,
+    spellcastingFocus: ['druid'],
+    equipSlot: 'main_hand',
+    focusMode: 'held',
+  },
+  {
+    id: 'holy-symbol-amulet',
+    name: 'Священный символ',
+    description: 'Амулет с изображением символа божества, используемый как святой символ.',
+    price: 500,
+    weight: 1,
+    spellcastingFocus: ['cleric', 'paladin'],
+    equipSlot: 'focus',
+    focusMode: 'worn',
+  },
+  {
+    id: 'holy-symbol-emblem',
+    name: 'Эмблема святого символа',
+    description: 'Эмблема святого символа, которую можно носить или держать как фокус.',
+    price: 500,
+    weight: 0,
+    spellcastingFocus: ['cleric', 'paladin'],
+    equipSlot: 'off_hand',
+    focusMode: 'held',
+  },
+  {
+    id: 'holy-symbol-reliquary',
+    name: 'Реликварий святого символа',
+    description: 'Реликварий с останками или святыней, используемый как святой символ.',
+    price: 500,
+    weight: 2,
+    spellcastingFocus: ['cleric', 'paladin'],
+    equipSlot: 'main_hand',
+    focusMode: 'held',
+  },
+  {
+    id: 'diamond-50gp',
+    name: 'Алмаз стоимостью 50 зм',
+    description: 'Настоящий алмаз стоимостью не менее 50 зм. Монеты, фокус или другой камень не заменяют этот материальный компонент.',
+    price: 5_000,
+    weight: 0,
+    materialComponent: { kind: 'diamond', value_cp: 5_000 },
+  },
+  {
+    id: 'bagpipes',
+    name: 'Волынка',
+    description: 'Духовой музыкальный инструмент с мехом и несколькими трубками. Бард может держать волынку как фокус при накладывании заклинания.',
+    itemType: 'tool',
+    price: 3_000,
+    weight: 6,
+    spellcastingFocus: ['bard'],
+    equipSlot: 'main_hand',
+    focusMode: 'held',
+  },
+  {
+    id: 'drum',
+    name: 'Барабан',
+    description: 'Переносной барабан с натянутой мембраной для ритма и сигналов. Бард может держать его как фокус при накладывании заклинания.',
+    itemType: 'tool',
+    price: 600,
+    weight: 3,
+    spellcastingFocus: ['bard'],
+    equipSlot: 'main_hand',
+    focusMode: 'held',
+  },
+  {
+    id: 'dulcimer',
+    name: 'Цимбалы',
+    description: 'Струнный музыкальный инструмент, по струнам которого ударяют палочками. Бард может держать цимбалы как фокус при накладывании заклинания.',
+    itemType: 'tool',
+    price: 2_500,
+    weight: 10,
+    spellcastingFocus: ['bard'],
+    equipSlot: 'main_hand',
+    focusMode: 'held',
+  },
+  {
+    id: 'flute',
+    name: 'Флейта',
+    description: 'Небольшой духовой музыкальный инструмент с отверстиями для пальцев. Бард может держать флейту как фокус при накладывании заклинания.',
+    itemType: 'tool',
+    price: 200,
+    weight: 1,
+    spellcastingFocus: ['bard'],
+    equipSlot: 'main_hand',
+    focusMode: 'held',
+  },
+  {
+    id: 'lute',
+    name: 'Лютня',
+    description: 'Струнный музыкальный инструмент с округлым корпусом и коротким грифом. Бард может держать лютню как фокус при накладывании заклинания.',
+    itemType: 'tool',
+    price: 3_500,
+    weight: 2,
+    spellcastingFocus: ['bard'],
+    equipSlot: 'main_hand',
+    focusMode: 'held',
+  },
+  {
+    id: 'lyre',
+    name: 'Лира',
+    description: 'Струнный музыкальный инструмент с открытой рамой и рядом струн. Бард может держать лиру как фокус при накладывании заклинания.',
+    itemType: 'tool',
+    price: 3_000,
+    weight: 2,
+    spellcastingFocus: ['bard'],
+    equipSlot: 'main_hand',
+    focusMode: 'held',
+  },
+  {
+    id: 'horn',
+    name: 'Рожок',
+    description: 'Изогнутый духовой музыкальный инструмент для мелодий и дальних сигналов. Бард может держать рожок как фокус при накладывании заклинания.',
+    itemType: 'tool',
+    price: 300,
+    weight: 2,
+    spellcastingFocus: ['bard'],
+    equipSlot: 'main_hand',
+    focusMode: 'held',
+  },
+  {
+    id: 'pan-flute',
+    name: 'Свирель',
+    description: 'Духовой музыкальный инструмент из ряда трубок разной длины. Бард может держать свирель как фокус при накладывании заклинания.',
+    itemType: 'tool',
+    price: 1_200,
+    weight: 2,
+    spellcastingFocus: ['bard'],
+    equipSlot: 'main_hand',
+    focusMode: 'held',
+  },
+  {
+    id: 'shawm',
+    name: 'Шалмей',
+    description: 'Громкий духовой музыкальный инструмент с двойной тростью и раструбом. Бард может держать шалмей как фокус при накладывании заклинания.',
+    itemType: 'tool',
+    price: 200,
+    weight: 1,
+    spellcastingFocus: ['bard'],
+    equipSlot: 'main_hand',
+    focusMode: 'held',
+  },
+  {
+    id: 'viol',
+    name: 'Виола',
+    description: 'Смычковый струнный музыкальный инструмент с мягким низким тембром. Бард может держать виолу как фокус при накладывании заклинания.',
+    itemType: 'tool',
+    price: 3_000,
+    weight: 1,
+    spellcastingFocus: ['bard'],
+    equipSlot: 'main_hand',
+    focusMode: 'held',
+  },
+].map(spellcastingComponentEntry)
+
+// Материалы с указанной стоимостью берутся с карточек dnd.su. Они не
+// экипируются и не заменяются деньгами; `spell_ids` связывает вещь с теми
+// заклинаниями, которым её может предъявить общий matcher компонентов.
+const SPELL_MATERIAL_COMPONENTS = [
+  {
+    id: 'summon-beast-200gp', spellIds: ['summon-beast'], kind: 'summon-beast-200gp', costCp: 20_000,
+    name: 'Позолоченный жёлудь',
+    description: 'перо, пучок меха и рыбий хвост внутри позолоченного жёлудя стоимостью не менее 200 зм',
+    sourceUrl: 'https://www.dnd.su/spells/3063-summon-beast/',
+  },
+  {
+    id: 'summon-undead-300gp', spellIds: ['summon-undead'], kind: 'summon-undead-300gp', costCp: 30_000,
+    name: 'Позолоченный череп',
+    description: 'Позолоченный череп стоимостью не менее 300 зм — материальный компонент заклинания «Призыв духа нежити».',
+    sourceUrl: 'https://www.dnd.su/spells/3067-summon-undead/',
+  },
+  {
+    id: 'summon-shadowspawn-300gp', spellIds: ['summon-shadowspawn'], kind: 'summon-shadowspawn-300gp', costCp: 30_000,
+    name: 'Камень со слезами',
+    description: 'слезы внутри драгоценного камня стоимостью не менее 300 зм',
+    sourceUrl: 'https://www.dnd.su/spells/3069-summon-shadowspawn/',
+  },
+  {
+    id: 'summon-fey-300gp', spellIds: ['summon-fey'], kind: 'summon-fey-300gp', costCp: 30_000,
+    name: 'Позолоченный цветок',
+    description: 'Позолоченный цветок стоимостью не менее 300 зм — материальный компонент заклинания «Призыв духа феи».',
+    sourceUrl: 'https://www.dnd.su/spells/3070-summon-fey/',
+  },
+  {
+    id: 'shadow-of-moil-150gp', spellIds: ['shadow-of-moil'], kind: 'shadow-of-moil-150gp', costCp: 15_000,
+    name: 'Камень с глазом нежити',
+    description: 'глазное яблоко Нежити, заключенное в драгоценный камень стоимостью не менее 150 зм',
+    sourceUrl: 'https://www.dnd.su/spells/478-shadow-of-moil/',
+  },
+  {
+    id: 'summon-aberration-400gp', spellIds: ['summon-aberration'], kind: 'summon-aberration-400gp', costCp: 40_000,
+    name: 'Сосуд с глазом и щупальцем',
+    description: 'заспиртованные щупальце и глазное яблоко в сосуде с платиновой инкрустацией стоимостью не менее 400 зм',
+    sourceUrl: 'https://www.dnd.su/spells/3062-summon-aberration/',
+  },
+  {
+    id: 'summon-construct-400gp', spellIds: ['summon-construct'], kind: 'summon-construct-400gp', costCp: 40_000,
+    name: 'Каменно-металлическая шкатулка',
+    description: 'затейливая шкатулка с замком, сделанная из камня и металла, стоимостью не менее 400 зм',
+    sourceUrl: 'https://www.dnd.su/spells/3065-summon-construct/',
+  },
+  {
+    id: 'summon-elemental-400gp', spellIds: ['summon-elemental'], kind: 'summon-elemental-400gp', costCp: 40_000,
+    name: 'Флакон четырёх стихий',
+    description: 'воздух, галька, пепел и вода во флаконе с золотой инкрустацией стоимостью не менее 400 зм',
+    sourceUrl: 'https://www.dnd.su/spells/3068-summon-elemental/',
+  },
+  {
+    id: 'summon-draconic-spirit-500gp', spellIds: ['summon-draconic-spirit'], kind: 'summon-draconic-spirit-500gp', costCp: 50_000,
+    name: 'Драконья гравировка',
+    description: 'предмет с выгравированным на нём изображением дракона стоимостью не менее 500 зм',
+    sourceUrl: 'https://www.dnd.su/spells/3819-summon-draconic-spirit/',
+  },
+  {
+    id: 'summon-celestial-500gp', spellIds: ['summon-celestial'], kind: 'summon-celestial-500gp', costCp: 50_000,
+    name: 'Золотой реликварий',
+    description: 'Золотой реликварий стоимостью не менее 500 зм — материальный компонент заклинания «Призыв небожителя».',
+    sourceUrl: 'https://www.dnd.su/spells/3066-summon-celestial/',
+  },
+  {
+    id: 'dawn-100gp', spellIds: ['dawn'], kind: 'dawn-100gp', costCp: 10_000,
+    name: 'Кулон солнечных лучей',
+    description: 'Кулон солнечных лучей стоимостью не менее 100 зм — материальный компонент заклинания «Рассвет».',
+    sourceUrl: 'https://www.dnd.su/spells/489-dawn/',
+  },
+  {
+    id: 'circle-of-death-500gp', spellIds: ['circle-of-death'], kind: 'circle-of-death-500gp', costCp: 50_000,
+    name: 'Порошок чёрной жемчужины',
+    description: 'порошок растолчённой чёрной жемчужины, стоящей как минимум 500 зм',
+    sourceUrl: 'https://www.dnd.su/spells/136-circle-of-death/',
+  },
+  {
+    id: 'summon-fiend-600gp', spellIds: ['summon-fiend'], kind: 'summon-fiend-600gp', costCp: 60_000,
+    name: 'Рубиновый флакон с кровью',
+    description: 'кровь Гуманоида внутри рубинового флакона стоимостью не менее 600 зм',
+    sourceUrl: 'https://www.dnd.su/spells/3064-summon-fiend/',
+  },
+  {
+    id: 'diamond-dust-100gp', spellIds: ['greater-restoration', 'stoneskin'], kind: 'diamond-dust', costCp: 10_000,
+    name: 'Бриллиантовая пыль',
+    description: 'бриллиантовая пыль, стоящая как минимум 100 зм, расходуемая заклинанием',
+    sourceUrl: 'https://www.dnd.su/spells/39-greater-restoration/',
+    sourceUrls: ['https://www.dnd.su/spells/39-greater-restoration/', 'https://www.dnd.su/spells/129-stoneskin/'],
+    stackable: true,
+  },
+].map(spellMaterialEntry)
 
 const MAGIC_ITEMS = [
   {
@@ -1318,11 +1814,13 @@ const ENTRIES = [
   ...TOOLS.map(toolEntry),
   ...OTHER_TOOLS.map(toolEntry),
   ...GEAR.map(gearEntry),
+  ...SPELLCASTING_COMPONENTS,
+  ...SPELL_MATERIAL_COMPONENTS,
   ...MAGIC_ITEMS,
 ].map((entry) => ({ ...entry, ...lootMetadata(entry) }))
 
-if (ENTRIES.length !== 107) {
-  throw new Error(`Item catalog manifest must contain 107 entries, got ${ENTRIES.length}`)
+if (ENTRIES.length !== 145) {
+  throw new Error(`Item catalog manifest must contain 145 entries, got ${ENTRIES.length}`)
 }
 
 {
@@ -1493,6 +1991,10 @@ export function materializeCatalogItem(catalogId, instance = {}) {
     ...(entry.rarity ? { rarity: entry.rarity } : {}),
     ...(entry.combat ? { combat: clone(entry.combat) } : {}),
     ...(entry.passive_effects ? { passive_effects: clone(entry.passive_effects) } : {}),
+    ...(Array.isArray(entry.spellcasting_focus) ? { spellcasting_focus: [...entry.spellcasting_focus] } : {}),
+    ...(entry.component_pouch === true ? { component_pouch: true } : {}),
+    ...(entry.material_component ? { material_component: clone(entry.material_component) } : {}),
+    ...(entry.focus_mode ? { focus_mode: entry.focus_mode } : {}),
     ...(entry.charges ? { charges: catalogChargeState(entry, source) } : {}),
     ...(entry.activation ? { activated: source.activated === true } : {}),
     ...(normalizeItemRechargeProfile(entry.recharge) ? { recharge: normalizeItemRechargeProfile(entry.recharge) } : {}),
@@ -1522,6 +2024,7 @@ export function itemViewerCapabilities(item = {}, { rulesetId = '' } = {}) {
     return {
       equippable: Boolean(equipSlot),
       equip_slot: equipSlot,
+      combat_equip: Boolean(equipSlot && item?.type === 'weapon' && item?.combat),
       usable: false,
       use: null,
       charges: recharge && maximum > 0 ? { current, max: maximum } : null,
@@ -1579,6 +2082,12 @@ export function itemViewerCapabilities(item = {}, { rulesetId = '' } = {}) {
   return clone({
     equippable: entry.lifecycle?.equippable === true,
     equip_slot: entry.lifecycle?.equip_slot ?? null,
+    // Единственная клиентская подсказка для боевого инвентаря строится из того
+    // же каталожного профиля, что и серверный `combatHeldItem`: броня, щит,
+    // носимый фокус и магические предметы в этот список не попадают.
+    combat_equip: ['main_hand', 'off_hand'].includes(String(entry.lifecycle?.equip_slot ?? ''))
+      && (entry.type === 'weapon' && Boolean(entry.combat)
+        || entry.focus_mode === 'held' && Array.isArray(entry.spellcasting_focus) && entry.spellcasting_focus.length > 0),
     usable: Boolean(use),
     catalog_description: entry.description,
     use,

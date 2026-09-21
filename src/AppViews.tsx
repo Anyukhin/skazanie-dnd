@@ -1216,7 +1216,7 @@ export function AtmosphereRange({ label, description, value, onChange }: { label
   </label>
 }
 
-export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiError, uiScale, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, atmosphereSettings, notificationPermission, voiceMode, voiceSupported, actionHintsEnabled, onCampaignAiChange, onCampaignRulesetChange, onUiScaleChange, onAutoAttackRollChange, onScenicBackdropChange, onBoardLightingChange, onCombatAnimationsChange, onAmbientVolumeChange, onAtmosphereMutedChange, onRequestNotifications, onVoiceModeChange, onActionHintsEnabledChange }: {
+export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiError, uiScale, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, atmosphereSettings, combatEffectsVolume, onCombatEffectsVolumeChange, notificationPermission, voiceMode, voiceSupported, actionHintsEnabled, onCampaignAiChange, onCampaignRulesetChange, onUiScaleChange, onAutoAttackRollChange, onScenicBackdropChange, onBoardLightingChange, onCombatAnimationsChange, onAmbientVolumeChange, onAtmosphereMutedChange, onRequestNotifications, onVoiceModeChange, onActionHintsEnabledChange }: {
   health: AiHealth | null
   campaignAi: CampaignAiSettingsResponse | null
   campaignAiBusy: boolean
@@ -1227,6 +1227,8 @@ export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiErr
   boardLighting: boolean
   combatAnimations: boolean
   atmosphereSettings: AtmosphereSettings
+  combatEffectsVolume: number
+  onCombatEffectsVolumeChange: (value: number) => void
   notificationPermission: NotificationPermission | 'unsupported'
   voiceMode: NarrationVoiceMode
   voiceSupported: boolean
@@ -1359,6 +1361,7 @@ export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiErr
           <div className="atmosphere-settings" role="group" aria-label="Звук и музыка">
             <div className="atmosphere-settings-title"><Volume2 size={17} /><span><b>Звук и музыка</b><small>Записанная атмосфера места и музыка мастеров</small></span></div>
             <AtmosphereRange label="Фоновая атмосфера" description="Записанный звук текущего места и музыка мастеров" value={atmosphereSettings.ambientVolume} onChange={onAmbientVolumeChange} />
+            <AtmosphereRange label="Звуки боя" description="Удары, выстрелы и магия" value={combatEffectsVolume} onChange={onCombatEffectsVolumeChange} />
             <ToggleRow icon={atmosphereSettings.muted ? <VolumeX size={17} /> : <Volume2 size={17} />} title="Выключить весь звук" description="Настройки громкости сохранятся на этом устройстве" value={atmosphereSettings.muted} onChange={() => onAtmosphereMutedChange(!atmosphereSettings.muted)} />
             <button
               className={`notification-permission ${notificationPermission}`}

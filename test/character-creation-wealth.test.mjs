@@ -38,7 +38,7 @@ test('каталог покупки содержит обычные предме
   assert.ok(catalog.length > 150)
   assert.ok(catalog.some((entry) => entry.id === 'srd_5_2_1:longsword' && entry.price_cp === 1_500 && entry.weight === 3))
   assert.ok(catalog.some((entry) => entry.id === 'srd_5_2_1:chain-mail' && entry.price_cp === 7_500 && entry.weight === 55))
-  assert.ok(catalog.some((entry) => entry.id === 'lute' && entry.price_cp === 3_500 && entry.weight === 2))
+  assert.ok(catalog.some((entry) => entry.id === 'srd_5_2_1:lute' && entry.price_cp === 3_500 && entry.weight === 2))
   assert.ok(catalog.some((entry) => entry.id === 'dragonchess' && entry.price_cp === 100 && entry.weight === 0.5))
   assert.ok(catalog.some((entry) => entry.id === 'srd_5_2_1:cobblers-tools' && entry.price_cp === 500 && entry.weight === 5))
   assert.ok(catalog.some((entry) => entry.id === 'srd_5_2_1:potion-of-healing' && entry.price_cp === 5_000 && entry.weight === 0.5 && entry.mechanics_status === 'verified'))
@@ -70,9 +70,11 @@ test('покупки считают стоимость в медных моне�
   assert.equal(result.inventory[0].quantity, 1)
   assert.equal(result.inventory[0].weight, 3)
   assert.equal(result.inventory[0].price_cp, 1_500)
-  assert.equal(result.inventory[1].catalog_id, 'phb_2014:tool:lute')
+  assert.equal(result.inventory[1].catalog_id, 'srd_5_2_1:lute')
   assert.equal(result.inventory[1].type, 'tool')
   assert.equal(result.inventory[1].weight, 2)
+  assert.deepEqual(result.inventory[1].spellcasting_focus, ['bard'])
+  assert.equal(result.inventory[1].focus_mode, 'held')
   const rope = resolveStartingPurchases('fighter', {
     class_id: 'fighter', total_gp: 10, id: 'wealth-roll-rope',
   }, [{ id: 'srd_5_2_1:rope-hempen-50-feet', quantity: 1 }])

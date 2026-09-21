@@ -14,6 +14,7 @@ export const EQUIPMENT_VISUAL_SLOTS = Object.freeze([
   'body',
   'main_hand',
   'off_hand',
+  'focus',
   'cloak',
   'brooch',
   'ring-protection',
@@ -47,16 +48,32 @@ const ARMOR_MODEL_KEYS = Object.freeze([
 
 const MISC_MODEL_KEYS = Object.freeze(['cloak', 'ring', 'brooch', 'wand', 'shield'])
 
+const FOCUS_MODEL_KEYS = Object.freeze([
+  'arcane-crystal', 'arcane-orb', 'arcane-rod', 'druidic-mistletoe',
+  'druidic-totem', 'holy-amulet', 'holy-emblem', 'holy-reliquary',
+])
+
+const INSTRUMENT_MODEL_KEYS = Object.freeze([
+  'bagpipes', 'drum', 'dulcimer', 'flute', 'lute', 'lyre', 'horn',
+  'pan-flute', 'shawm', 'viol',
+])
+
 const MODEL_KEYS = new Set([
   ...WEAPON_MODEL_KEYS,
+  // Сеть — авторская модель из tools/equipment-weapon-models. У неё нет
+  // каталожной карточки, но открытая main_hand loadout должна её пропускать.
+  'net',
   ...ARMOR_MODEL_KEYS,
   ...MISC_MODEL_KEYS,
+  ...FOCUS_MODEL_KEYS,
+  ...INSTRUMENT_MODEL_KEYS,
 ])
 
 const SLOT_MODEL_KEYS = Object.freeze({
   body: new Set(ARMOR_MODEL_KEYS),
-  main_hand: new Set([...WEAPON_MODEL_KEYS, 'wand']),
-  off_hand: new Set(['shield']),
+  main_hand: new Set([...WEAPON_MODEL_KEYS, 'wand', 'net', ...FOCUS_MODEL_KEYS.filter((key) => !['holy-amulet', 'holy-emblem'].includes(key)), ...INSTRUMENT_MODEL_KEYS]),
+  off_hand: new Set(['shield', 'holy-emblem']),
+  focus: new Set(['holy-amulet']),
   cloak: new Set(['cloak']),
   brooch: new Set(['brooch']),
   'ring-protection': new Set(['ring']),
@@ -86,6 +103,19 @@ const entries = [
   ['srd_5_2_1:splint-armor', descriptor('body', 'armor-splint')],
   ['srd_5_2_1:plate-armor', descriptor('body', 'armor-plate')],
   ['srd_5_2_1:shield', descriptor('off_hand', 'shield')],
+  ['srd_5_2_1:arcane-focus-crystal', descriptor('main_hand', 'arcane-crystal')],
+  ['srd_5_2_1:arcane-focus-orb', descriptor('main_hand', 'arcane-orb')],
+  ['srd_5_2_1:arcane-focus-rod', descriptor('main_hand', 'arcane-rod')],
+  ['srd_5_2_1:arcane-focus-staff', descriptor('main_hand', 'quarterstaff')],
+  ['srd_5_2_1:arcane-focus-wand', descriptor('main_hand', 'wand')],
+  ['srd_5_2_1:druidic-focus-mistletoe', descriptor('main_hand', 'druidic-mistletoe')],
+  ['srd_5_2_1:druidic-focus-totem', descriptor('main_hand', 'druidic-totem')],
+  ['srd_5_2_1:druidic-focus-wooden-staff', descriptor('main_hand', 'quarterstaff')],
+  ['srd_5_2_1:druidic-focus-yew-wand', descriptor('main_hand', 'wand')],
+  ['srd_5_2_1:holy-symbol-amulet', descriptor('focus', 'holy-amulet')],
+  ['srd_5_2_1:holy-symbol-emblem', descriptor('off_hand', 'holy-emblem')],
+  ['srd_5_2_1:holy-symbol-reliquary', descriptor('main_hand', 'holy-reliquary')],
+  ...INSTRUMENT_MODEL_KEYS.map((key) => [catalog(key), descriptor('main_hand', key)]),
   ['srd_5_2_1:cloak-of-protection', descriptor('cloak', 'cloak', 'enchanted')],
   ['srd_5_2_1:ring-of-protection', descriptor('ring-protection', 'ring', 'enchanted')],
   ['srd_5_2_1:ring-of-fire-resistance', descriptor('ring-fire-resistance', 'ring', 'enchanted')],
@@ -102,8 +132,8 @@ const entries = [
 
 const ITEM_VISUALS = Object.freeze(Object.fromEntries(entries))
 
-if (Object.keys(ITEM_VISUALS).length !== 61) {
-  throw new Error(`Каталог визуальной экипировки должен содержать 61 запись, получено ${Object.keys(ITEM_VISUALS).length}`)
+if (Object.keys(ITEM_VISUALS).length !== 83) {
+  throw new Error(`Каталог визуальной экипировки должен содержать 83 записи, получено ${Object.keys(ITEM_VISUALS).length}`)
 }
 
 export const EQUIPMENT_ITEM_VISUALS = ITEM_VISUALS
@@ -122,6 +152,8 @@ const LEGACY_NAME_MODELS = Object.freeze({
   rapier: descriptor('main_hand', 'rapier'),
   кинжал: descriptor('main_hand', 'dagger'),
   dagger: descriptor('main_hand', 'dagger'),
+  сеть: descriptor('main_hand', 'net'),
+  net: descriptor('main_hand', 'net'),
   'длинный лук': descriptor('main_hand', 'longbow'),
   longbow: descriptor('main_hand', 'longbow'),
   'короткий лук': descriptor('main_hand', 'shortbow'),

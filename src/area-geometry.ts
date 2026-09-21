@@ -12,15 +12,20 @@ export type AreaGeometry = {
   shape: AreaShape
   /** Для конуса, линии и направленного куба — клетка заклинателя. */
   origin: AreaPoint
-  /** Точка прицеливания; для сферы, цилиндра и point-cube это центр области. */
+  /** Точка прицеливания; для сферы, цилиндра и point-cube это якорь области. */
   target?: AreaPoint
   /**
    * `self` делает куб направленным от заклинателя и трактует размер как ребро.
-   * `point` делает куб центрированным в target и трактует размер как радиус.
+   * `point` делает куб центрированным вокруг target и трактует sizeFeet как
+   * половину стороны — так же, как `radius` в серверном профиле. У чётной
+   * стороны target является северо-западной из двух центральных клеток, а
+   * лишняя строка и колонка уходят на восток и юг.
    */
   originMode?: 'self' | 'point'
   /** Радиус либо длина/ребро области — в футах, как в серверном профиле. */
   sizeFeet: number
+  /** Явная сторона point-cube; старые профили используют `sizeFeet * 2`. */
+  sideFeet?: number
   cellFeet?: number
   bounds?: AreaBounds
   /** Та же проверка проходимости, которую сервер применяет к клеткам луча/стены. */
@@ -74,6 +79,17 @@ function directedCubeContains(point: AreaPoint, origin: AreaPoint, target: AreaP
   return forward >= 1 && forward <= edgeCells && Math.abs(x) <= halfWidth
 }
 
+/**
+ * Point-cube profiles keep the historical `radius` field, although the source
+ * describes a side length. Convert that half-side into the exact number of
+ * five-foot cells instead of using an inclusive Chebyshev radius (which adds
+ * one extra row and column).
+ */
+function pointCubeCellCount(sizeFeet: number, cellFeet: number, sideFeet?: number) {
+  const side = Number(sideFeet) > 0 ? Number(sideFeet) : Math.max(0, Number(sizeFeet) || 0) * 2
+  return Math.max(1, Math.floor(side / cellFeet))
+}
+
 function lineCells(
   origin: AreaPoint,
   target: AreaPoint | undefined,
@@ -119,7 +135,11 @@ export function areaCells(geometry: AreaGeometry): AreaPoint[] {
   const cellFeet = Math.max(1, Number(geometry.cellFeet) || 5)
   const sizeFeet = Math.max(0, Number(geometry.sizeFeet) || 0)
   if (sizeFeet <= 0) return []
-  const cells = Math.max(0, Math.floor(sizeFeet / cellFeet))
+  const selfCube = geometry.shape === 'cube' && geometry.originMode === 'self'
+  const pointCube = geometry.shape === 'cube' && !selfCube
+  const cells = pointCube
+    ? pointCubeCellCount(sizeFeet, cellFeet, geometry.sideFeet)
+    : Math.max(0, Math.floor(sizeFeet / cellFeet))
 
   let result: AreaPoint[] = []
   if (geometry.shape === 'line') {
@@ -131,7 +151,6 @@ export function areaCells(geometry: AreaGeometry): AreaPoint[] {
       geometry.isWalkable ?? ((point) => inBounds(point, geometry.bounds)),
     )
   } else {
-    const selfCube = geometry.shape === 'cube' && geometry.originMode === 'self'
     const directedCube = selfCube
       && Boolean(geometry.target && key(geometry.target) !== key(geometry.origin))
     if (selfCube && !directedCube) return []
@@ -139,8 +158,10 @@ export function areaCells(geometry: AreaGeometry): AreaPoint[] {
       || geometry.shape === 'cube' && !selfCube
       ? geometry.target ?? geometry.origin
       : geometry.origin
-    for (let y = center.y - cells; y <= center.y + cells; y += 1) {
-      for (let x = center.x - cells; x <= center.x + cells; x += 1) {
+    const minOffset = pointCube ? -Math.floor((cells - 1) / 2) : -cells
+    const maxOffset = pointCube ? minOffset + cells - 1 : cells
+    for (let y = center.y + minOffset; y <= center.y + maxOffset; y += 1) {
+      for (let x = center.x + minOffset; x <= center.x + maxOffset; x += 1) {
         const point = { x, y }
         if (geometry.shape === 'cone' && !coneContains(point, geometry.origin, geometry.target, cells)) continue
         if (directedCube) {

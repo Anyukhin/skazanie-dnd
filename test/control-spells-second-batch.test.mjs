@@ -44,12 +44,21 @@ const cast = (state, spellId, values, extra = {}) => resolveCommand(
 const conditionsAdded = (result) => result.events.filter((event) => event.event_type === 'ConditionAdded').map((event) => event.payload.condition)
 const damageOf = (result) => result.events.find((event) => event.event_type === 'DamageApplied').payload
 
-test('Тошнотворное облако лишает действия и повторяет спасбросок', () => {
-  const result = cast(field(), 'stinking-cloud', [2], { to: { x: 8, y: 2 }, target_id: undefined })
-  const stunned = result.events.find((event) => event.event_type === 'ConditionAdded' && event.payload.condition === 'incapacitated')
-  assert.ok(stunned, 'провал спасброска Телосложения лишает хода')
-  assert.equal(stunned.payload.repeat_save_timing, 'turn-end')
-  assert.equal(result.events.find((event) => event.event_type === 'SpellAreaCreated').payload.effect.condition, 'incapacitated')
+test('Тошнотворное облако лишает действия в начале хода цели', () => {
+  const state = field()
+  const castResult = cast(state, 'stinking-cloud', [], { to: { x: 8, y: 2 }, target_id: undefined })
+  assert.equal(castResult.events.some((event) => event.event_type === 'SpellSavingThrowResolved'), false)
+  const result = resolveCommand(
+    authoritative({ command_type: 'EndTurn', actor_id: 'mage' }),
+    replayEvents(state, castResult.events),
+    options(dice([2])),
+  )
+  const spent = result.events.find((event) => event.event_type === 'CombatActionUsed' && event.payload.normal_action_only === true)
+  assert.ok(spent, 'провал спасброска Телосложения тратит обычное действие')
+  assert.equal(result.events.some((event) => event.event_type === 'ConditionAdded' && event.payload.condition === 'incapacitated'), false)
+  const area = castResult.events.find((event) => event.event_type === 'SpellAreaCreated').payload.effect
+  assert.equal(area.condition, null)
+  assert.equal(area.spend_action_on_fail, true)
 })
 
 test('Приливная волна бьёт и сбивает с ног', () => {

@@ -1493,6 +1493,8 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .spellbook-spell small { overflow: hidden; color: #8d857b; font: var(--fs-md) Manrope, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
 .spellbook-spell em { display: block; color: #c4b8aa; font: normal var(--fs-md)/1.45 Spectral, serif; }
 .spellbook-spell:disabled { opacity: 1; cursor: not-allowed; }
+.spellbook-spell .spellbook-availability { display: block; min-width: 0; overflow: hidden; color: #d28a7f; font: 600 var(--fs-sm)/1.25 Manrope, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+.spellbook-grid article.components-blocked { border-color: rgba(197,116,96,.38); }
 .pin-spell { align-self: stretch; border-left: 1px solid rgba(255,255,255,.055) !important; color: #719d87 !important; }
 .spellbook-tag { position: absolute; top: 4px; left: 4px; width: 13px; height: 13px; display: grid; place-items: center; border-radius: 50%; background: #263b32; color: #9cc4af; font: normal 700 var(--fs-xs) Manrope, sans-serif; }
 .spellbook-tag.unavailable { inset: auto 34px 4px auto; width: auto; height: 14px; padding: 0 5px; border-radius: 3px; background: rgba(82,58,50,.92); color: #c9a99c; font-size: var(--fs-xs); letter-spacing: .06em; }
@@ -1746,6 +1748,7 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .combat-hotbar .action-tile.item { color: #c49167; }
 .combat-hotbar .action-tile:disabled { opacity: .32; cursor: not-allowed; }
 .combat-hotbar .action-tile.support-heuristic:disabled, .combat-hotbar .action-tile.support-ruling-only:disabled { opacity: .5; }
+.combat-hotbar .action-tile.components-blocked { opacity: .62; border-color: rgba(197,116,96,.4); }
 /* Название и подпись остаются в разметке — их читает скринридер и берёт `title`
    браузера, — но на слоте не рисуются. Скрывать через display: none нельзя:
    тогда у кнопки не останется доступного имени. */
@@ -1788,6 +1791,17 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .combat-hotbar .action-tile .action-cost::before { position: absolute; right: 4px; bottom: 7px; width: 10px; height: 10px; filter: drop-shadow(0 0 2px rgba(0,0,0,.95)) drop-shadow(0 1px 1px rgba(0,0,0,.8)); }
 /* Поддержка механики — точка в углу вместо слова: цвет статуса тот же. */
 .combat-hotbar .action-tile .mechanics-support-badge { top: auto; right: auto; bottom: 3px; left: 3px; width: 7px; height: 7px; max-width: none; padding: 0; border: 0; border-radius: 50%; background: currentColor; font-size: 0; }
+.spell-components { min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 8px; color: #bba994; font: 600 var(--fs-sm)/1.35 Manrope, sans-serif; }
+.spell-components.compact { display: inline-flex; align-items: center; gap: 3px; color: #d2b27d; font: 700 var(--fs-xxs)/1 Manrope, sans-serif; }
+.spell-component-markers { display: inline-flex; flex: 0 0 auto; gap: 3px; color: #e0bc84; letter-spacing: .08em; }
+.spell-component-marker { font: inherit; font-style: normal; }
+.spell-component-material, .spell-component-special { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spell-component-material b { color: #d5b17a; }
+.spell-component-reason { flex-basis: 100%; color: #d18a7e; font-size: var(--fs-xs); }
+.spell-components.compact .spell-component-compact-reason { color: #df8c7e; font-size: var(--fs-sm); line-height: 1; }
+.hotbar-detail .spell-components { color: #c5b4a1; }
+.combat-hotbar .action-tile .spell-components.compact { position: absolute; left: 4px; bottom: 7px; z-index: 4; width: auto; height: auto; max-width: calc(100% - 8px); overflow: visible; white-space: normal; pointer-events: none; }
+.spell-component-lock { position: absolute; top: 3px; left: 3px; z-index: 5; width: 16px; height: 16px; display: grid; place-items: center; border: 1px solid rgba(222,151,131,.55); border-radius: 4px; background: rgba(18,12,11,.9); color: #e0a08d; cursor: help; }
 /* Выбранный слот: кольцо внутрь, чтобы рамка не съезжала на соседей. */
 .combat-hotbar .action-tile.selected { box-shadow: inset 0 0 0 2px #e0b47a, 0 0 10px rgba(224,180,122,.32); }
 
@@ -1879,6 +1893,8 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .knockout-toggle.active { border-color: rgba(220,157,84,.68); background: rgba(126,72,31,.42); color: #e0b47e; }
 .combat-hotbar .hotbar-turn-controls .knockout-turn-toggle.active { border-color: rgba(220,157,84,.72); background: linear-gradient(145deg, rgba(126,76,36,.72), rgba(78,47,29,.82)); color: #edbd82; box-shadow: inset 0 0 0 1px rgba(238,183,111,.12); }
 .spell-option-picker { display: flex; flex-wrap: wrap; gap: 3px; }
+.spell-slot-picker { display: inline-flex; align-items: center; gap: 6px; width: fit-content; min-height: 24px; padding: 2px 6px; border: 1px solid rgba(202,164,105,.2); border-radius: 4px; background: rgba(29,22,18,.88); color: #b8a58d; font: 600 var(--fs-xs) Manrope, sans-serif; }
+.spell-slot-picker select { min-width: 132px; border: 0; background: transparent; color: #f0d3a6; font: inherit; cursor: pointer; }
 /* Вариант заклинания, режим атаки и характеристика — это чипы в строку, а не
    ряд кнопок. Класс панели в селекторе не украшение: общее правило
    `.tactical-control button` той же силы (0,1,1) объявлено ниже по файлу и
@@ -2732,6 +2748,7 @@ button.campaign-title:hover strong { color: #edc996; }
 .route-step-badge{position:absolute;z-index:3;display:grid;place-items:center;width:15px;height:15px;border:1px solid rgba(194,235,180,.8);border-radius:50%;background:rgba(35,91,51,.88);color:#e1f3d9;font:700 var(--fs-sm) Manrope,sans-serif;box-shadow:0 2px 6px #000}
 .enemy-token.unavailable-target,.map-token.unavailable-target{cursor:help;filter:grayscale(.35) brightness(.78);box-shadow:0 4px 9px #000,0 0 0 3px rgba(125,63,57,.42)}
 .enemy-token.command-selected,.map-token.command-selected{filter:none;box-shadow:0 4px 9px #000,0 0 0 3px rgba(229,169,91,.9),0 0 22px rgba(218,137,53,.72);animation:target-lock-pulse 1.4s ease-in-out infinite}@keyframes target-lock-pulse{50%{box-shadow:0 4px 9px #000,0 0 0 4px rgba(236,187,118,.98),0 0 30px rgba(218,137,53,.88)}}
+.enemy-token.multi-target-selected,.map-token.multi-target-selected{filter:none;box-shadow:0 4px 9px #000,0 0 0 4px rgba(116,202,219,.96),0 0 24px rgba(74,177,204,.78);animation:multi-target-pulse 1.2s ease-in-out infinite}@keyframes multi-target-pulse{50%{box-shadow:0 4px 9px #000,0 0 0 5px rgba(159,226,236,.98),0 0 32px rgba(74,177,204,.94)}}
 .enemy-token.initiative-focus,.map-token.initiative-focus{filter:brightness(1.18);box-shadow:0 0 0 4px rgba(236,187,118,.96),0 0 34px rgba(218,137,53,.92);animation:initiative-focus-pulse 1.2s ease-in-out infinite}
 .board-cell.command-center{box-shadow:inset 0 0 0 3px rgba(238,176,91,.96),inset 0 0 28px rgba(205,118,39,.5)}.board-cell.command-center::after{content:'◎';position:absolute;z-index:4;display:grid;place-items:center;width:22px;height:22px;border:1px solid rgba(248,203,139,.88);border-radius:50%;background:rgba(117,63,26,.72);color:#ffe0b1;font:700 var(--fs-sm) Manrope,sans-serif;box-shadow:0 0 16px rgba(226,135,54,.82)}
 .enemy-token[aria-disabled="true"],.map-token[aria-disabled="true"]{cursor:help}

@@ -10,6 +10,47 @@ import { addProp, createTacticalMap, legacyCellsFromTacticalMap, serializeTactic
 import { actorPosition, findActor, shortestTacticalPath } from '../server/rules-engine.mjs'
 import { publicSceneFor } from '../server/viewer-projection.mjs'
 
+const MVP_REQUEST_TIMEOUT_MS = 30_000
+let mvpTrace = null
+
+function mvpStage(stage) {
+  if (mvpTrace) mvpTrace.stage = String(stage)
+}
+
+function redactedMvpTail(value) {
+  return String(value ?? '').slice(-4_000)
+    .replace(/\bBearer\s+[^\s"',;]+/giu, 'Bearer <REDACTED>')
+    .replace(/(["']?(?:password|token|secret|api[_-]?key|authorization|cookie)["']?\s*[=:]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;]+)/giu, '$1<REDACTED>')
+}
+
+test('MVP diagnostics скрывает секреты в JSON и Bearer, ограничивает хвост', () => {
+  const log = 'prefix\n' + JSON.stringify({ password: 'synthetic-password', token: 'synthetic-token', ROUTERAI_API_KEY: 'synthetic-key' })
+    + '\nAuthorization: Bearer synthetic-auth\nsecret=synthetic-secret\ncookie="synthetic-cookie"'
+  assert.doesNotMatch(redactedMvpTail(log), /synthetic-/u)
+  assert.match(redactedMvpTail(log), /<REDACTED>/u)
+  assert.equal(redactedMvpTail('a'.repeat(5000)).length, 4000)
+})
+
+function mvpDiagnostics() {
+  const trace = mvpTrace
+  if (!trace) return '[MVP-DIAG] trace unavailable'
+  const elapsed = Date.now() - trace.startedAt
+  const request = trace.lastRequest
+    ? `${trace.lastRequest.method} ${trace.lastRequest.path} ${trace.lastRequest.status ?? 'pending'} ${trace.lastRequest.elapsedMs}ms`
+    : 'none'
+  const state = trace.lastState
+    ? `v=${trace.lastState.version} combat=${trace.lastState.combatActive} active=${trace.lastState.activeActor} reaction=${trace.lastState.reactionTrigger}/${trace.lastState.reactionOwner} decision=${trace.lastState.decisionStatus}`
+    : 'none'
+  const process = trace.childExit
+    ? `exit=${trace.childExit.code ?? 'null'} signal=${trace.childExit.signal ?? 'null'}`
+    : 'running'
+  return [
+    `[MVP-DIAG] stage=${trace.stage} elapsedMs=${elapsed} last=${request}`,
+    `[MVP-DIAG] state=${state} server=${process}`,
+    `[MVP-DIAG] server-log-tail:\n${redactedMvpTail(trace.logs?.())}`,
+  ].join('\n')
+}
+
 async function freePort() {
   const probe = createNetServer()
   await new Promise((resolve, reject) => { probe.once('error', reject); probe.listen(0, '127.0.0.1', resolve) })
@@ -29,8 +70,12 @@ function startServer(port, storage, appendLog) {
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
+  if (mvpTrace) mvpTrace.childExit = null
   child.stdout.on('data', (chunk) => appendLog(String(chunk)))
   child.stderr.on('data', (chunk) => appendLog(String(chunk)))
+  child.once('exit', (code, signal) => {
+    if (mvpTrace) mvpTrace.childExit = { code, signal }
+  })
   return child
 }
 
@@ -50,19 +95,45 @@ async function waitForHealth(baseUrl, child, logs) {
 }
 
 async function request(baseUrl, path, { method = 'GET', cookie = '', body, key = '' } = {}) {
-  const response = await fetch(`${baseUrl}${path}`, {
-    method,
-    headers: {
-      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
-      ...(cookie ? { Cookie: cookie } : {}),
-      ...(key ? { 'X-Idempotency-Key': key } : {}),
-    },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  })
-  const text = await response.text()
-  let parsed = null
-  try { parsed = text ? JSON.parse(text) : null } catch { /* assertion reports text */ }
-  return { response, status: response.status, body: parsed, text }
+  const startedAt = Date.now()
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), MVP_REQUEST_TIMEOUT_MS)
+  try {
+    const response = await fetch(`${baseUrl}${path}`, {
+      method,
+      headers: {
+        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        ...(cookie ? { Cookie: cookie } : {}),
+        ...(key ? { 'X-Idempotency-Key': key } : {}),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      signal: controller.signal,
+    })
+    const text = await response.text()
+    let parsed = null
+    try { parsed = text ? JSON.parse(text) : null } catch { /* assertion reports text */ }
+    if (mvpTrace) {
+      const state = parsed?.authoritative_state ?? parsed?.state
+      const combat = state?.mechanics?.combat
+      const reaction = combat?.reaction_window
+      const decision = state?.agentInteraction
+      mvpTrace.lastRequest = { method, path, status: response.status, elapsedMs: Date.now() - startedAt }
+      if (state && combat) mvpTrace.lastState = {
+        version: state.state_version ?? '?',
+        combatActive: combat.active,
+        activeActor: combat.initiative?.[combat.active_index]?.actor_id ?? '-',
+        reactionTrigger: reaction?.trigger ?? '-',
+        reactionOwner: reaction?.actor_id ?? '-',
+        decisionStatus: decision?.status ?? '-',
+      }
+    }
+    return { response, status: response.status, body: parsed, text }
+  } catch (error) {
+    if (mvpTrace) mvpTrace.lastRequest = { method, path, status: error?.name ?? 'error', elapsedMs: Date.now() - startedAt }
+    throw new Error(`MVP HTTP ${method} ${path} failed after ${Date.now() - startedAt}ms: ${error?.name ?? error}\n${mvpDiagnostics()}`, { cause: error })
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 const cookie = (result) => result.response.headers.get('set-cookie')?.split(';')[0]
@@ -207,9 +278,11 @@ test('MVP helper follows the public movement marker around a partially hidden pr
 const SHARED_RUNNER = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true'
 const MVP_TIMEOUT_MS = SHARED_RUNNER ? 1_200_000 : 600_000
 
-test('обычные игроки проходят автономную кампанию, полный бой, награды и три сцены', { timeout: MVP_TIMEOUT_MS }, async (t) => {
+async function runMvpScenario(t) {
+  mvpStage('startup')
   const storage = mkdtempSync(join(tmpdir(), 'skazanie-mvp-player-cycle-'))
   let logs = ''
+  if (mvpTrace) mvpTrace.logs = () => logs
   let child = null
   t.after(async () => { await stopServer(child); rmSync(storage, { recursive: true, force: true }) })
 
@@ -344,6 +417,7 @@ test('обычные игроки проходят автономную камп
   assert.equal(equippedItem.status, 200, equippedItem.text)
   assert.equal(equippedItem.body.authoritative_state.players.find((player) => player.id === 'mvp-hero-1').inventory.find((item) => item.id === 'mvp-hero-1-starter-longsword').equipped, true)
 
+  mvpStage('character import and choices')
   const importDocument = characterDocument('Герой 1', 225)
   const importedCharacter = await playerCommand(baseUrl, ownerCookie, 'character-import-1', {
     command_type: 'ImportCharacter', actor_id: 'mvp-hero-1', document: importDocument,
@@ -367,6 +441,7 @@ test('обычные игроки проходят автономную камп
   })
   assert.equal(forgedIntent.status, 403, forgedIntent.text)
 
+  mvpStage('autonomy pre-combat')
   const intentTypes = []
   let resolvedChecks = 0
   for (let turn = 1; turn <= 4; turn += 1) {
@@ -426,6 +501,7 @@ test('обычные игроки проходят автономную камп
   assert.equal(intentTypes[1], 'open_social_scene')
   assert.ok(intentTypes.includes('request_encounter'), `explicit combat request should produce encounter: ${intentTypes.join(',')}`)
 
+  mvpStage('combat setup and restart')
   const combatRoom = await request(baseUrl, '/api/rooms/PLAYER-MVP', { cookie: guestCookie })
   assert.equal(combatRoom.status, 200, combatRoom.text)
   assert.equal(combatRoom.body.state.players.length, 4)
@@ -449,6 +525,7 @@ test('обычные игроки проходят автономную камп
   assert.equal(repeatedRead.body.version, restored.body.version, 'GET must not mutate the room projection')
   assert.deepEqual(repeatedRead.body.state.mechanics.combat, restored.body.state.mechanics.combat)
 
+  mvpStage('player combat loop')
   let battleState = restored.body.state
   const combatEvents = []
   let midCombatRestarted = false
@@ -653,6 +730,7 @@ test('обычные игроки проходят автономную камп
     assert.ok(event.source_rule_ids.length > 0, `HP event ${event.event_id} has no rule provenance`)
   }
 
+  mvpStage('post-combat transition')
   const continued = await request(baseUrl, '/api/campaigns/PLAYER-MVP/autonomy/advance', {
     method: 'POST', cookie: ownerCookie, key: 'player-after-combat',
     body: { idempotency_key: 'player-after-combat', player_action: 'Забрать добычу, восстановиться и продолжить путь' },
@@ -717,6 +795,7 @@ test('обычные игроки проходят автономную камп
   assert.equal(leveledHero.proficiency, 2)
   assert.ok(leveled.body.mechanics.some((event) => event.event_type === 'CharacterLeveledUp'))
 
+  mvpStage('peaceful chapter three')
   const peacefulIntents = []
   let peacefulState = leveled.body.authoritative_state
   for (let step = 1; step <= 6 && peacefulState.adventure.chapter < 3; step += 1) {
@@ -752,6 +831,7 @@ test('обычные игроки проходят автономную камп
   assert.equal(finalGuestRoom.body.state.adventure.chapter, 3)
   assert.equal(finalGuestRoom.body.state.state_version, peacefulState.state_version)
 
+  mvpStage('lifecycle completion')
   const completed = await request(baseUrl, '/api/campaigns/PLAYER-MVP/lifecycle', {
     method: 'POST', cookie: ownerCookie, key: 'complete-player-mvp',
     body: { action: 'complete', idempotency_key: 'complete-player-mvp' },
@@ -776,4 +856,29 @@ test('обычные игроки проходят автономную камп
   assert.equal(archived.status, 200, archived.text)
   assert.equal(archived.body.lifecycle.status, 'archived')
   assert.equal((await request(baseUrl, '/api/rooms/PLAYER-MVP', { cookie: guestCookie })).status, 200)
+}
+
+test('обычные игроки проходят автономную кампанию, полный бой, награды и три сцены', { timeout: MVP_TIMEOUT_MS }, async (t) => {
+  mvpTrace = {
+    startedAt: Date.now(),
+    stage: 'startup',
+    lastRequest: null,
+    lastState: null,
+    childExit: null,
+    logs: () => '',
+  }
+  const watchdog = setTimeout(() => {
+    const message = mvpDiagnostics()
+    if (typeof t.diagnostic === 'function') t.diagnostic(message)
+    if (typeof t.fail === 'function') t.fail(message)
+  }, Math.max(1_000, MVP_TIMEOUT_MS - 1_000))
+  watchdog.unref?.()
+  try {
+    await runMvpScenario(t)
+  } catch (error) {
+    throw new Error(`${error instanceof Error ? error.message : String(error)}\n${mvpDiagnostics()}`, { cause: error })
+  } finally {
+    clearTimeout(watchdog)
+    mvpTrace = null
+  }
 })

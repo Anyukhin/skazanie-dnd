@@ -5,12 +5,13 @@ import type { BoardAnimationActor, TacticalBoardProps } from './TacticalBoard'
 import { actorFootprintSize, actorPresentationCenter, actorPresentationSize, boardCameraKey } from './tactical-ui'
 import { cellAt, revealedAt } from './tactical-map-client'
 import { DEFAULT_BOARD_PALETTE, boardPaletteFrom, drawBoardEffects, drawBoardOverlay, type BoardScene } from './board-render'
-import { COMBAT_ANIMATION_QUEUE_LIMIT, combatAnimationCuesFromBattleLog, combatAnimationCuesFromEvents, shouldDeferDefeat, strikeImpactProgress, strikeUsesProjectile, type CombatAnimationCue } from './combat-animation'
+import { COMBAT_ANIMATION_QUEUE_LIMIT, combatAnimationCuesFromBattleLog, combatAnimationCuesFromEvents, shouldDeferDefeat, attackOutcome, strikeImpactProgress, strikeMotionProgress, strikeUsesProjectile, type CombatAnimationCue } from './combat-animation'
 import { createSpellEffectRenderer, isSpellAnimationCue, systemPrefersReducedMotion } from './spell-effects'
 import { createCombatEffect3D } from './board3d-effects'
+import { createSpellEffect3D } from './board3d-spell-effects'
 import { createBoard3DScene, nearestPropPickTarget } from './board3d-scene'
 import type { Board3DRoofMode } from './board3d-roofs'
-import { boardCameraFitZoom } from './board3d-camera'
+import { boardCameraFitZoom, shouldInitialFitBoardCamera } from './board3d-camera'
 import { createTerrainSurfaceGeometry, terrainHeightAt, visibleTerrainHeightRange } from './board3d-terrain'
 import { createActorModel, createProceduralActorModel, getModelAssetDiagnostics, loadActorModelManifest, availableActorModels, resolveModelProfile, DEFAULT_ACTOR_MODEL_MANIFEST, type ActorModel, type ActorModelManifest, type ActorPose } from './actor-models'
 import { LEGACY_CATALOG_REVISION } from './prop-model-catalog'
@@ -92,6 +93,7 @@ function actorHeight(map: TacticalMap, actor: BoardAnimationActor, catalog: Acto
 /** Только представление. Обработчики клеток и целей принадлежат общему DungeonMap. */
 export default function TacticalBoard3D(props: Props) {
   const host = useRef<HTMLDivElement>(null)
+  const targetHintElement = useRef<HTMLSpanElement>(null)
   const runtime = useRef<Runtime | null>(null)
   const latest = useRef(props)
   latest.current = props
@@ -178,6 +180,8 @@ export default function TacticalBoard3D(props: Props) {
     controls.maxZoom = 5
     controls.screenSpacePanning = false
     controls.enableDamping = false
+    const saved = cameras.get(cameraKey)
+    let initialCameraFit = Boolean(saved)
     const hemisphere = new THREE.HemisphereLight('#e7e8de', '#51402b', 2.5)
     const sun = new THREE.DirectionalLight('#ffe7bd', 3)
     sun.position.set(-8, 18, 8)
@@ -242,7 +246,11 @@ export default function TacticalBoard3D(props: Props) {
       }
     }
     let pending: CombatAnimationCue[] = []
-    let active: { cue: CombatAnimationCue; started: number; effect: ReturnType<typeof createCombatEffect3D> | null } | null = null
+    let active: {
+      cue: CombatAnimationCue
+      started: number
+      effect: ReturnType<typeof createCombatEffect3D> | null
+    } | null = null
     let knownBatch = latest.current.visualBatch?.id
     const seen = new Set(combatAnimationCuesFromBattleLog(latest.current.battleLog ?? []).map((cue) => cue.id))
     for (const cue of combatAnimationCuesFromEvents(latest.current.visualBatch?.events ?? [])) seen.add(cue.id)
@@ -314,7 +322,20 @@ export default function TacticalBoard3D(props: Props) {
       const buttonsByActor = new Map([...element.querySelectorAll<HTMLElement>('[data-actor-id]')].map((node) => [node.dataset.actorId, node]))
       for (const [id, view] of actorViews) {
         const button = buttonsByActor.get(id)
-        view.ring.material.color.set(button?.classList.contains('active-turn') || button?.classList.contains('selected') ? '#f2d489' : current.animationActors?.find((actor) => actor.id === id)?.color ?? '#9cafb0')
+        const cell = button?.closest<HTMLElement>('[data-board3d-cell]')
+        const spellColor = cell?.classList.contains('spell-affected-ally') ? '#ffd277'
+          : cell?.classList.contains('spell-affected-enemy') ? '#ff867a'
+            : cell?.classList.contains('spell-affected-neutral') ? '#e3d9bb' : null
+        const selected = button?.classList.contains('active-turn') || button?.classList.contains('selected')
+        view.ring.material.color.set(selected ? '#f2d489' : spellColor ?? current.animationActors?.find((actor) => actor.id === id)?.color ?? '#9cafb0')
+        view.ring.material.opacity = spellColor && !selected ? .96 : .85
+      }
+      const hint = current.targetHint
+      if (hint && targetHintElement.current) {
+        const screen = pointOnScreen(new THREE.Vector3(hint.point.x + .5, terrainHeightAt(current.map, hint.point.x, hint.point.y), hint.point.y + .5), width, height)
+        targetHintElement.current.style.left = `${Math.max(112, Math.min(width - 112, screen.x))}px`
+        targetHintElement.current.style.top = `${Math.min(height - 32, screen.y + 22)}px`
+        targetHintElement.current.style.visibility = screen.visible ? 'visible' : 'hidden'
       }
       labelsDirty = false
     }
@@ -354,7 +375,9 @@ export default function TacticalBoard3D(props: Props) {
       }
       for (const node of current.cells) {
         const classes = node.className.split(' ')
-        const blast = classes.includes('blast-area')
+        const spellPreview = classes.includes('spell-preview-cell')
+        if (spellPreview) continue
+        const blast = classes.includes('blast-area') && !spellPreview
         const route = classes.some((entry) => /^(move-path|route|pending-move|move-selected)/.test(entry))
         const reachable = classes.includes('reachable') || classes.includes('move-reachable')
         const hover = hoverKey === `${node.x},${node.y}`
@@ -392,12 +415,13 @@ export default function TacticalBoard3D(props: Props) {
         view.root.position.set(center.x, actorGround(latest.current.map, actor), center.y)
         view.root.visible = true
         view.model.setAppearance(actor.appearance)
-        const deferDeath = actor.defeated && shouldDeferDefeat(actor.id, active?.cue, pending)
+        const deferDeath = latest.current.animationsEnabled !== false && actor.defeated && shouldDeferDefeat(actor.id, active?.cue, pending)
         view.model.setPose(deferDeath ? 'idle' : actor.defeated ? 'death' : 'idle', deferDeath ? 0 : actor.defeated ? 1 : undefined)
         view.model.update(.001)
       }
     }
     function deferQueuedDefeats() {
+      if (latest.current.animationsEnabled === false) return
       for (const actor of latest.current.animationActors ?? []) {
         if (!actor.defeated || !shouldDeferDefeat(actor.id, active?.cue, pending)) continue
         const model = actorViews.get(actor.id)?.model
@@ -406,6 +430,7 @@ export default function TacticalBoard3D(props: Props) {
       }
     }
     function skip() {
+      latest.current.combatAudio?.cancel()
       pending = []
       active?.effect?.dispose()
       active = null
@@ -420,17 +445,36 @@ export default function TacticalBoard3D(props: Props) {
       const current = latest.current
       if (!active && pending.length && current.map) {
         const cue = cueForQuality(pending.shift()!, settings.current.quality)
-        active = { cue, started: now, effect: systemPrefersReducedMotion() ? null : createCombatEffect3D(cue, current.animationActors ?? [], current.map) }
+        const audioActor = cue.kind === 'strike'
+          ? current.animationActors?.find((actor) => actor.id === cue.actorId)
+          : undefined
+        current.combatAudio?.schedule(
+          { ...cue, durationMs: systemPrefersReducedMotion() ? Math.max(120, cue.durationMs) : cue.durationMs },
+          audioActor ? { actor: audioActor } : undefined,
+        )
+        active = {
+          cue,
+          started: now,
+          effect: current.animationsEnabled === false || systemPrefersReducedMotion() ? null : createSpellEffect3D(cue, current.animationActors ?? [], current.map)
+            ?? createCombatEffect3D(cue, current.animationActors ?? [], current.map),
+        }
         if (active.effect) scene.add(active.effect.group)
         const actorId = 'actorId' in cue ? cue.actorId : 'targetId' in cue ? cue.targetId : ''
         const model = actorViews.get(actorId)?.model
-        if (cue.kind === 'strike' && model) applyStrikeAppearance(model, cue)
-        model?.setPose(poseForCue(cue), 0)
+        if (current.animationsEnabled !== false && cue.kind === 'strike' && model) applyStrikeAppearance(model, cue)
+        if (current.animationsEnabled !== false) model?.setPose(poseForCue(cue), 0)
       }
       if (!active) return
       const { cue } = active
       const reduced = systemPrefersReducedMotion()
       const progress = Math.min(1, (now - active.started) / (reduced ? 120 : Math.max(1, cue.durationMs)))
+      if (current.animationsEnabled === false) {
+        active.effect?.dispose()
+        active.effect = null
+        floating.textContent = ''
+        if (progress >= 1) { active = null; if (!pending.length) setPlaying(false) }
+        return
+      }
       const actorAt = (id: string) => current.animationActors?.find((actor) => actor.id === id)
       const view = 'actorId' in cue ? actorViews.get(cue.actorId) : null
       if (!reduced && cue.kind === 'move' && view && current.map) {
@@ -447,6 +491,14 @@ export default function TacticalBoard3D(props: Props) {
         const toHeight = actor ? actorGround(current.map, actor, { ...actor, ...to }) : terrainHeightAt(current.map, to.x, to.y)
         view.root.position.set(center.x, fromHeight + (toHeight - fromHeight) * (travel - index), center.y)
         if (to.x !== from.x || to.y !== from.y) view.root.rotation.y = Math.atan2(to.x - from.x, to.y - from.y)
+      } else if (cue.kind === 'channel' && cue.channelType === 'teleport' && view && current.map) {
+        const position = reduced || progress >= .6 ? cue.position : cue.from
+        view.root.visible = Boolean(position && (reduced || progress < .4 || progress >= .6) && revealedAt(current.map, position.x, position.y))
+        if (position) {
+          const actor = actorAt(cue.actorId)
+          const center = actor ? actorPresentationCenter(current.map, actor, position) : { x: position.x + .5, y: position.y + .5 }
+          view.root.position.set(center.x, actor ? actorGround(current.map, actor, position) : terrainHeightAt(current.map, position.x, position.y), center.y)
+        }
       } else if (!reduced && cue.kind === 'strike' && view) {
         const from = cue.from ?? actorAt(cue.actorId), to = cue.to ?? actorAt(cue.targetId)
         if (from && to) {
@@ -455,7 +507,7 @@ export default function TacticalBoard3D(props: Props) {
           const targetCenter = target ? actorPresentationCenter(current.map, target, to) : { x: to.x + .5, y: to.y + .5 }
           const dx = targetCenter.x - sourceCenter.x, dy = targetCenter.y - sourceCenter.y
           const length = Math.max(1, Math.hypot(dx, dy))
-          const lunge = strikeUsesProjectile(cue) ? 0 : Math.sin(progress * Math.PI) * .23
+          const lunge = strikeUsesProjectile(cue) ? 0 : Math.sin(strikeMotionProgress(cue, progress) * Math.PI) * .23
           view.root.visible = Boolean(current.map && revealedAt(current.map, from.x, from.y))
             && (!actor || actorPresentationSize(current.map, actor, from) === actorFootprintSize(actor))
           view.root.position.set(sourceCenter.x + dx / length * lunge, actor ? actorGround(current.map, actor, { ...actor, ...from }) : terrainHeightAt(current.map, from.x, from.y), sourceCenter.y + dy / length * lunge)
@@ -478,7 +530,7 @@ export default function TacticalBoard3D(props: Props) {
       }
       const resultActor = 'targetId' in cue && cue.targetId ? actorAt(cue.targetId) : 'actorId' in cue ? actorAt(cue.actorId) : null
       const message = cue.kind === 'impact' ? cue.tone === 'miss' ? 'Промах' : cue.amount == null ? '' : `${cue.tone === 'healing' ? '+' : '−'}${cue.amount}`
-        : cue.kind === 'strike' ? progress < strikeImpactProgress(cue) ? '' : !cue.hit ? 'Промах' : cue.amount == null ? '' : `−${cue.amount}`
+        : cue.kind === 'strike' ? progress < strikeImpactProgress(cue) ? '' : attackOutcome(cue) === 'blocked' ? 'Перехвачено' : !cue.hit ? 'Промах' : `${cue.critical ? 'Крит! ' : ''}${cue.amount == null ? '' : `−${cue.amount}`}`
           : cue.kind === 'channel' && cue.amount != null ? `+${cue.amount}` : cue.kind === 'condition' ? cue.label : ''
       floating.textContent = message
       if (resultActor && current.map && revealedAt(current.map, resultActor.x, resultActor.y)) {
@@ -507,7 +559,7 @@ export default function TacticalBoard3D(props: Props) {
         const motionAllowed = latest.current.animationsEnabled !== false && !systemPrefersReducedMotion()
         animate(now)
         if (motionAllowed) {
-          const cue = active?.cue
+          const cue = latest.current.animationsEnabled === false ? undefined : active?.cue
           for (const [id, actor] of actorViews) {
             if (BOARD3D_QUALITY[settings.current.quality].idle || (cue && (
               ('actorId' in cue && cue.actorId === id) || ('targetId' in cue && cue.targetId === id)
@@ -614,7 +666,8 @@ export default function TacticalBoard3D(props: Props) {
       if (active && (mapChanged || styleChanged || qualityChanged)) {
         active.effect?.dispose()
         active.cue = cueForQuality(active.cue, qualityKey)
-        active.effect = systemPrefersReducedMotion() ? null : createCombatEffect3D(active.cue, current.animationActors ?? [], map)
+        active.effect = current.animationsEnabled === false || systemPrefersReducedMotion() ? null : createSpellEffect3D(active.cue, current.animationActors ?? [], map)
+          ?? createCombatEffect3D(active.cue, current.animationActors ?? [], map)
         if (active.effect) scene.add(active.effect.group)
       }
       if (mapChanged || styleChanged) {
@@ -652,7 +705,7 @@ export default function TacticalBoard3D(props: Props) {
           const height = actorHeight(map, input, settings.current.catalog)
           const model = createProceduralActorModel(input, settings.current.catalog, height)
           model.onEquipmentChange = invalidate
-          const cue = active?.cue
+          const cue = latest.current.animationsEnabled === false ? undefined : active?.cue
           if (cue?.kind === 'strike' && cue.actorId === actor.id) applyStrikeAppearance(model, cue)
           const root = new THREE.Group()
           root.add(model)
@@ -672,13 +725,13 @@ export default function TacticalBoard3D(props: Props) {
               loaded.onEquipmentChange = invalidate
               labelsDirty = true
               const currentActor = latest.current.animationActors?.find((item) => item.id === actor.id)
-              const cue = active?.cue
+              const cue = latest.current.animationsEnabled === false ? undefined : active?.cue
               const defeated = currentActor?.defeated
               const acting = cueActsOnActor(cue, actor.id)
               const targetStrike = cue?.kind === 'strike' && cue.targetId === actor.id ? cue : undefined
               const targetImpact = cue?.kind === 'impact' && cue.targetId === actor.id ? cue : undefined
               const progress = active ? Math.min(1, (performance.now() - active.started) / Math.max(1, active.cue.durationMs)) : 0
-              const deferDeath = Boolean(defeated && shouldDeferDefeat(actor.id, cue, pending))
+              const deferDeath = Boolean(latest.current.animationsEnabled !== false && defeated && shouldDeferDefeat(actor.id, cue, pending))
               if (acting && cue?.kind === 'strike') applyStrikeAppearance(loaded, cue)
               else loaded.setAppearance(currentActor?.appearance)
               if (targetStrike) {
@@ -700,9 +753,9 @@ export default function TacticalBoard3D(props: Props) {
             }).catch(() => { /* Отмена при уходе с карты не является ошибкой игрока. */ })
           }
         }
-        if (!(active?.cue.kind === 'strike' && active.cue.actorId === actor.id)) view.model.setAppearance(actor.appearance)
+        if (current.animationsEnabled === false || !(active?.cue.kind === 'strike' && active.cue.actorId === actor.id)) view.model.setAppearance(actor.appearance)
         view.root.visible = true
-        if (!active || !('actorId' in active.cue) || active.cue.actorId !== actor.id) {
+        if (current.animationsEnabled === false || !active || !('actorId' in active.cue) || active.cue.actorId !== actor.id) {
           const center = actorPresentationCenter(map, actor)
           view.root.position.set(center.x, actorGround(map, actor), center.y)
         }
@@ -729,7 +782,7 @@ export default function TacticalBoard3D(props: Props) {
       fresh.push(...combatAnimationCuesFromBattleLog(current.battleLog ?? []))
       const unseen = fresh.filter((cue) => { if (seen.has(cue.id)) return false; seen.add(cue.id); return true })
       if (seen.size > 1500) { const recent = [...seen].slice(-750); seen.clear(); recent.forEach((id) => seen.add(id)) }
-      if (current.animationsEnabled === false || document.hidden) skip()
+      if (document.hidden || (current.animationsEnabled === false && (!current.combatAudio || current.combatAudio.getSettings().muted))) skip()
       else if (unseen.length) { pending = [...pending, ...unseen].slice(-COMBAT_ANIMATION_QUEUE_LIMIT); setPlaying(true) }
       deferQueuedDefeats()
       paintOverlay()
@@ -743,6 +796,13 @@ export default function TacticalBoard3D(props: Props) {
       const aspect = width / height
       camera.left = -7 * aspect; camera.right = 7 * aspect; camera.top = 7; camera.bottom = -7
       camera.updateProjectionMatrix()
+      if (latest.current.map && shouldInitialFitBoardCamera(width, height, initialCameraFit, Boolean(saved))) {
+        // Первый ResizeObserver часто приходит после создания canvas. Только
+        // переход из нулевого layout в настоящий выполняет fit; дальнейшие
+        // изменения размера сохраняют панораму и zoom игрока.
+        initialCameraFit = true
+        reset()
+      }
       invalidate()
     }
     const observer = new ResizeObserver(resize)
@@ -804,6 +864,7 @@ export default function TacticalBoard3D(props: Props) {
       const cells = latest.current.cells
       cells.find((node) => `${node.x},${node.y}` === hoverKey)?.onPointerLeave?.()
       hoverKey = key
+      latest.current.onCellHover?.(x >= 0 && y >= 0 ? { x, y } : null)
       const node = cells.find((entry) => entry.x === x && entry.y === y)
       node?.onPointerEnter?.()
       renderer.domElement.title = node?.title ?? latest.current.cellHints?.get(key)?.title ?? ''
@@ -827,12 +888,12 @@ export default function TacticalBoard3D(props: Props) {
     const click = (event: MouseEvent) => {
       if (down?.moved || (down && down.button !== 0)) { down = null; return }
       down = null
-      if (active) { skip(); return }
+      if (active && latest.current.animationsEnabled !== false) { skip(); return }
       pointerRay(event)
       const actorId = actorAtPointer()
       if (actorId) { activateActor(actorId); return }
       const propId = propAtPointer()
-      if (propId) { latest.current.onPropActivate?.(propId); return }
+      if (propId && latest.current.onPropActivate) { latest.current.onPropActivate(propId); return }
       const cell = pointerCell(event)
       latest.current.onBackgroundActivate?.()
       if (cell) latest.current.cells.find((node) => node.x === cell.x && node.y === cell.y && node.interactive)?.onActivate?.()
@@ -848,12 +909,24 @@ export default function TacticalBoard3D(props: Props) {
         else hover(-1, -1)
       } else if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault()
+        event.stopPropagation()
+        if (event.repeat) return
         const node = latest.current.cells.find((entry) => `${entry.x},${entry.y}` === hoverKey && entry.interactive)
-        if (active) skip(); else node?.onActivate?.()
+        const [x, y] = hoverKey.split(',').map(Number)
+        const actor = latest.current.animationActors?.find((candidate) => {
+          const size = actorPresentationSize(latest.current.map, candidate)
+          return !candidate.defeated && x >= candidate.x && x < candidate.x + size && y >= candidate.y && y < candidate.y + size
+        })
+        if (active && latest.current.animationsEnabled !== false) skip()
+        else if (actor && latest.current.map && revealedAt(latest.current.map, x, y)) activateActor(actor.id)
+        else node?.onActivate?.()
       } else if (event.key === 'Escape') skip()
     }
     const leave = () => { hover(-1, -1) }
-    const contextMenu = (event: Event) => event.preventDefault()
+    const contextMenu = (event: Event) => {
+      event.preventDefault()
+      if (!down?.moved) latest.current.onCancelAiming?.()
+    }
     const wheelGuard = (event: WheelEvent) => { controls.enableZoom = !latest.current.wheelZoomRequiresAltKey || event.altKey }
     const visibility = () => {
       measuredFrames = 0; measuredRenderMs = 0; measuredSince = performance.now()
@@ -875,8 +948,7 @@ export default function TacticalBoard3D(props: Props) {
       turn(angle) { camera.position.sub(controls.target).applyAxisAngle(new THREE.Vector3(0, 1, 0), angle).add(controls.target); controls.update(); invalidate() },
       zoom(factor) { labelsDirty = true; camera.zoom = THREE.MathUtils.clamp(camera.zoom * factor, controls.minZoom, controls.maxZoom); camera.updateProjectionMatrix(); invalidate() },
     }
-    resize(); reset()
-    const saved = cameras.get(cameraKey)
+    resize()
     if (saved) { camera.position.copy(saved.position); camera.zoom = saved.zoom; controls.target.copy(saved.target); camera.updateProjectionMatrix(); controls.update() }
     const first = latest.current.animationActors?.find((actor) => latest.current.map && revealedAt(latest.current.map, actor.x, actor.y))
     if (first) keyboardCell = { x: first.x, y: first.y }
@@ -885,9 +957,11 @@ export default function TacticalBoard3D(props: Props) {
       disposed = true
       sceneAbort.abort()
       if (frameId) cancelAnimationFrame(frameId)
-      cameras.set(cameraKey, { position: camera.position.clone(), target: controls.target.clone(), zoom: camera.zoom })
+      if (initialCameraFit) cameras.set(cameraKey, { position: camera.position.clone(), target: controls.target.clone(), zoom: camera.zoom })
+      else cameras.delete(cameraKey)
       if (cameras.size > 100) cameras.delete(cameras.keys().next().value!)
       runtime.current = null
+      latest.current.combatAudio?.cancel()
       observer.disconnect(); controls.dispose()
       document.removeEventListener('visibilitychange', visibility)
       renderer.domElement.removeEventListener('webglcontextlost', contextLost)
@@ -908,8 +982,10 @@ export default function TacticalBoard3D(props: Props) {
     setModels(next)
     try { localStorage.setItem(modelStorageKey, JSON.stringify(next)) } catch { /* Выбор работает и без сохранения. */ }
   }
-  return <div className="board3d" ref={host} role="group" aria-label="Тактическая карта 3D" onClickCapture={(event) => {
-    if (playing && (event.target as HTMLElement).closest('.board3d-labels')) { event.preventDefault(); event.stopPropagation(); runtime.current?.skip() }
+  return <div className="board3d" ref={host} data-animation-playing={props.animationsEnabled !== false && playing} role="group" aria-label="Тактическая карта 3D" onContextMenu={(event) => {
+    if (props.onCancelAiming && !(event.target as HTMLElement).closest('canvas')) { event.preventDefault(); props.onCancelAiming() }
+  }} onClickCapture={(event) => {
+    if (props.animationsEnabled !== false && playing && (event.target as HTMLElement).closest('.board3d-labels')) { event.preventDefault(); event.stopPropagation(); runtime.current?.skip() }
   }}>
     <div className="board3d-tools" role="group" aria-label="Камера 3D">
       <button type="button" onClick={() => runtime.current?.turn(-Math.PI / 4)} aria-label="Повернуть камеру влево">↶</button>
@@ -954,7 +1030,8 @@ export default function TacticalBoard3D(props: Props) {
         {node.hotspot && <div className="board3d-hotspot">{node.hotspot}</div>}
       </div>)}
     </div>
-    {playing && <button type="button" className="board3d-skip" onClick={() => runtime.current?.skip()}>Пропустить анимацию</button>}
+    {props.targetHint && <span ref={targetHintElement} className={`board-target-hint ${props.targetHint.tone}`} role="status">{props.targetHint.text}</span>}
+    {props.animationsEnabled !== false && playing && <button type="button" className="board3d-skip" onClick={() => runtime.current?.skip()}>Пропустить анимацию</button>}
     <p className="board3d-help">Перетащить — сдвиг · Правая кнопка — поворот · {props.wheelZoomRequiresAltKey ? 'Alt + колесо' : 'Колесо'} — масштаб</p>
   </div>
 }

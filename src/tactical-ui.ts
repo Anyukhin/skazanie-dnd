@@ -139,13 +139,24 @@ const isWalkable = (cell?: MapCell) => Boolean(cell && !cell.movementBlocked && 
 
 type AreaEffectWithCells = NonNullable<NonNullable<GameState['mechanics']>['active_effects']>[number] & {
   cells?: Array<{ x: number; y: number }>
+  area_side_feet?: number
 }
 
-function pointInAreaEffect(effect: AreaEffectWithCells, point: { x: number; y: number }) {
+export function pointInAreaEffect(effect: AreaEffectWithCells, point: { x: number; y: number }) {
   if (Array.isArray(effect.cells)) {
     return effect.cells.some((cell) => Number(cell.x) === point.x && Number(cell.y) === point.y)
   }
   if (!effect.center) return false
+  if (String(effect.area_shape ?? '').toLowerCase() === 'cube') {
+    const radiusFeet = Math.max(0, Number(effect.radius_feet) || 0)
+    if (radiusFeet <= 0) return false
+    const sideFeet = Number(effect.area_side_feet) > 0 ? Number(effect.area_side_feet) : radiusFeet * 2
+    const cells = Math.max(1, Math.floor(sideFeet / 5))
+    const minOffset = -Math.floor((cells - 1) / 2)
+    const minX = Number(effect.center.x) + minOffset
+    const minY = Number(effect.center.y) + minOffset
+    return point.x >= minX && point.x < minX + cells && point.y >= minY && point.y < minY + cells
+  }
   const radiusCells = Math.max(0, Math.floor((Number(effect.radius_feet) || 0) / 5))
   return Math.max(Math.abs(point.x - effect.center.x), Math.abs(point.y - effect.center.y)) <= radiusCells
 }
@@ -380,6 +391,7 @@ export function movementCellReason(state: GameState, actor: BoardActor, cell: Ma
 export type CombatTargetCheck = {
   selected: boolean
   economyReady: boolean
+  unavailableReason?: string | null
   targetAlive?: boolean
   targetTeam: 'ally' | 'enemy'
   acceptedTarget: 'ally' | 'enemy' | 'creature'
@@ -394,7 +406,7 @@ export type CombatTargetCheck = {
 export function evaluateCombatTarget(check: CombatTargetCheck) {
   let reason: string | null = null
   if (!check.selected) reason = 'Сейчас этим участником нельзя командовать'
-  else if (!check.economyReady) reason = 'Нужная часть экономики хода уже потрачена'
+  else if (!check.economyReady) reason = check.unavailableReason || 'Нужная часть экономики хода уже потрачена'
   else if (check.resourceReady === false) reason = 'Не хватает ресурса'
   else if (check.equipmentReady === false) reason = 'Сначала смените экипированное оружие'
   else if (check.targetAlive === false) reason = 'Цель уже выбыла из боя'
@@ -547,6 +559,7 @@ const CONDITION_LABELS: Record<string, string> = {
   incapacitated: 'Недееспособен',
   stunned: 'Ошеломлён',
   paralyzed: 'Парализован',
+  petrified: 'Окаменел',
   restrained: 'Опутан',
   grappled: 'Схвачен',
   prone: 'Сбит с ног',
@@ -568,6 +581,7 @@ const CONDITION_LABELS: Record<string, string> = {
   'aura-of-protection': 'Аура защиты',
   bless: 'Благословение',
   'bless-d4': 'Благословение',
+  'resistance-d4': 'Бонус спасброска: 1к4',
   /* Малое благословение алтаря или жреца (`server/blessings.mjs`). Имя у него
      своё, отдельное от заклинания «Благословение»: у того кость на каждый
      бросок и концентрация, у этого — плоская единица до первой атаки. */
@@ -591,9 +605,24 @@ const IMPLEMENTED_CONDITIONS = new Set([
 ])
 
 const PARTIAL_CONDITIONS = new Set([
-  'incapacitated', 'stunned', 'paralyzed', 'restrained', 'grappled', 'prone',
+  'incapacitated', 'stunned', 'paralyzed', 'petrified', 'restrained', 'grappled', 'prone',
   'invisible', 'dodging', 'helped', 'raging', 'reckless', 'favored-foe', 'hunters-mark',
 ])
+
+const ELEMENT_DAMAGE_LABELS: Record<string, string> = {
+  acid: 'кислоты',
+  cold: 'холода',
+  fire: 'огня',
+  lightning: 'молнии',
+  thunder: 'грома',
+}
+
+function absorbingElementLabel(id: string) {
+  const rider = id.startsWith('absorbing-element-rider:')
+  const prefix = rider ? 'absorbing-element-rider:' : 'absorbing-element:'
+  const damageType = ELEMENT_DAMAGE_LABELS[id.slice(prefix.length).toLocaleLowerCase('ru')] ?? 'стихии'
+  return rider ? `Стихийный заряд: ${damageType}` : `Стихийная защита: ${damageType}`
+}
 
 function humanizeConditionId(id: string) {
   return id.split('-').filter(Boolean).map((part) => part.charAt(0).toLocaleUpperCase('ru') + part.slice(1)).join(' ')
@@ -611,6 +640,8 @@ const CONDITION_DURATION_LABELS: Record<string, string> = {
   'until-long-rest': 'до продолжительного отдыха',
   'until-short-rest': 'до короткого отдыха',
   'until-next-turn': 'до начала следующего хода',
+  'until-next-own-turn-end': 'до конца следующего собственного хода',
+  'until-removed': 'до снятия состояния',
   // Срок «пока держится концентрация» движок пишет одним словом.
   concentration: 'пока держится концентрация',
 }
@@ -622,20 +653,28 @@ function conditionDurationLabel(duration: string) {
 export function conditionPresentation(condition: { id: string; duration?: string | null } | string) {
   const id = String(typeof condition === 'string' ? condition : condition.id)
   const duration = typeof condition === 'string' ? null : condition.duration
-  const status: ConditionRuleStatus = id.startsWith('resistance-') || id.startsWith('weapon-coated') || IMPLEMENTED_CONDITIONS.has(id)
+  const isAbsorbingElement = id.startsWith('absorbing-element:') || id.startsWith('absorbing-element-rider:')
+  const status: ConditionRuleStatus = id.startsWith('resistance-') || isAbsorbingElement || id.startsWith('weapon-coated') || IMPLEMENTED_CONDITIONS.has(id)
     ? 'implemented'
     : PARTIAL_CONDITIONS.has(id) ? 'partial' : 'marker'
   const statusLabel = status === 'implemented' ? 'эффект работает' : status === 'partial' ? 'эффект частичный' : 'только маркер'
-  const explanation = status === 'implemented'
-    ? 'Эффект применяется движком в текущем боевом срезе.'
-    : status === 'partial'
-      ? 'Часть эффекта применяется, но полные правила состояния ещё не реализованы.'
-      : 'Состояние хранится и отображается, но его отдельные правила пока не применяются.'
+  const explanation = id === 'resistance-d4'
+    ? 'Добавляет 1к4 к одному спасброску — до или после броска.'
+    : id.startsWith('absorbing-element-rider:')
+      ? `Следующая собственная ближняя атака может израсходовать ${absorbingElementLabel(id).replace('Стихийный заряд: ', 'заряд ')}; заряд действует до конца следующего собственного хода.`
+      : id.startsWith('absorbing-element:')
+        ? `Сопротивление урону ${absorbingElementLabel(id).replace('Стихийная защита: ', '')} действует до начала следующего собственного хода.`
+        : status === 'implemented'
+          ? 'Эффект применяется движком в текущем боевом срезе.'
+          : status === 'partial'
+            ? 'Часть эффекта применяется, но полные правила состояния ещё не реализованы.'
+            : 'Состояние хранится и отображается, но его отдельные правила пока не применяются.'
   return {
     id,
     label: CONDITION_LABELS[id]
       ?? (id.startsWith('weapon-coated:') ? 'Оружие смазано ядом'
-        : id.startsWith('resistance-') ? `Сопротивление: ${humanizeConditionId(id.slice('resistance-'.length))}`
+        : isAbsorbingElement ? absorbingElementLabel(id)
+          : id.startsWith('resistance-') ? `Бонус спасброска: ${humanizeConditionId(id.slice('resistance-'.length))}`
           : humanizeConditionId(id)),
     status,
     statusLabel,

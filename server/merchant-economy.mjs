@@ -296,6 +296,7 @@ export function normalizeInventoryItem(input = {}, { idFallback = 'item', preser
   const original = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
   const source = hydrateCatalog ? hydrateCatalogRecord(original) : original
   const catalogId = cleanId(source.catalog_id ?? source.catalogId)
+  const catalog = catalogId ? catalogItem(catalogId) : null
   const resolvedPrice = resolveCatalogBasePriceCp({ ...source, catalog_id: catalogId })
   const maxCharges = clampInteger(source.charges?.max, 0, 1_000_000, 0)
   const passiveEffects = normalizePassiveEffects(source.passive_effects)
@@ -326,6 +327,10 @@ export function normalizeInventoryItem(input = {}, { idFallback = 'item', preser
     ...(source.imagePrompt == null ? {} : { imagePrompt: cleanText(source.imagePrompt, 1_000) }),
     ...(source.imageStatus == null ? {} : { imageStatus: cleanText(source.imageStatus, 40) }),
     ...(source.combat && typeof source.combat === 'object' ? { combat: clone(source.combat) } : {}),
+    ...(Array.isArray(catalog?.spellcasting_focus) ? { spellcasting_focus: [...catalog.spellcasting_focus] } : {}),
+    ...(catalog?.component_pouch === true ? { component_pouch: true } : {}),
+    ...(catalog?.material_component ? { material_component: clone(catalog.material_component) } : {}),
+    ...(catalog?.focus_mode ? { focus_mode: catalog.focus_mode } : {}),
     ...(passiveEffects.length ? { passive_effects: passiveEffects } : {}),
     ...(source.charges && typeof source.charges === 'object' ? {
       charges: { current: clampInteger(source.charges.current, 0, maxCharges, 0), max: maxCharges },
@@ -343,6 +348,12 @@ export function normalizeInventoryItem(input = {}, { idFallback = 'item', preser
     // старых сохранений обязаны называть это прямо, а не притворяться купленными.
     origin: normalizeItemOriginKind(source.origin),
   }
+  // Метаданные компонентов принадлежат каталогу, а не произвольному полю
+  // импорта или клиентскому payload.
+  if (!Array.isArray(catalog?.spellcasting_focus)) delete item.spellcasting_focus
+  if (catalog?.component_pouch !== true) delete item.component_pouch
+  if (!catalog?.material_component) delete item.material_component
+  if (!catalog?.focus_mode) delete item.focus_mode
   if (!passiveEffects.length) delete item.passive_effects
   if (!recharge) delete item.recharge
   item.stack_key = inventoryStackKey(item)

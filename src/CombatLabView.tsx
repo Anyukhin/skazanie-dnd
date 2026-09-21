@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, Pause, Play, Square } from 'lucide-react'
 import { CombatLabSetup, type ArenaConfig } from './CombatLabSetup'
 import { CombatLabBoard } from './CombatLabBoard'
+import { CombatEffectsLab } from './CombatEffectsLab'
+import type { CombatAudio } from './combat-audio'
 import { LabRequestError, labRequest as request } from './combat-lab-client'
 import { heroResourceLabel } from './DungeonMap'
 import { conditionPresentation } from './tactical-ui'
@@ -76,7 +78,11 @@ function arsenalStatus(status: string) {
   return status
 }
 
-export function CombatLabView() {
+export function CombatLabView({ combatAudio, soundMuted, onSoundMutedChange }: {
+  combatAudio?: CombatAudio
+  soundMuted?: boolean
+  onSoundMutedChange?: (muted: boolean) => void
+} = {}) {
   const [scenarios, setScenarios] = useState<Scenario[]>([])
   const [mode, setMode] = useState<'custom' | 'scenarios'>('custom')
   const [config, setConfig] = useState<ArenaConfig | null>(null)
@@ -92,6 +98,7 @@ export function CombatLabView() {
   const [error, setError] = useState('')
   const [selectedActorId, setSelectedActorId] = useState<string | null>(null)
   const [journalFilter, setJournalFilter] = useState<JournalFilter>('all')
+  const [labView, setLabView] = useState<'battle' | 'effects'>('battle')
   const journal = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -260,14 +267,20 @@ export function CombatLabView() {
     </header>
 
     <nav className="combat-lab-observer-view-tabs" role="tablist" aria-label="Раздел боевого стенда">
-      <button type="button" role="tab" aria-selected={setupOpen} aria-controls="combat-lab-setup-panel" onClick={() => setSetupOpen(true)}>
+      <button type="button" role="tab" aria-selected={labView === 'battle' && setupOpen} aria-controls="combat-lab-setup-panel" onClick={() => { setLabView('battle'); setSetupOpen(true) }}>
         Настройка
       </button>
-      <button type="button" role="tab" aria-selected={!setupOpen} aria-controls="combat-lab-battle-panel" disabled={!runId} onClick={() => setSetupOpen(false)}>
+      <button type="button" role="tab" aria-selected={labView === 'battle' && !setupOpen} aria-controls="combat-lab-battle-panel" disabled={!runId} onClick={() => { setLabView('battle'); setSetupOpen(false) }}>
         Бой{run?.status === 'running' ? ' идёт' : ''}
+      </button>
+      <button type="button" role="tab" aria-selected={labView === 'effects'} aria-controls="combat-lab-effects-panel" onClick={() => setLabView('effects')}>
+        Эффекты
       </button>
     </nav>
 
+    {labView === 'effects' ? <section id="combat-lab-effects-panel" role="tabpanel" aria-label="Галерея боевых эффектов">
+      <CombatEffectsLab combatAudio={combatAudio} soundMuted={soundMuted} onSoundMutedChange={onSoundMutedChange} />
+    </section> : <>
     <div className="combat-lab-observer-runbar">
       <div className="combat-lab-observer-runbar-fields">
         {mode === 'scenarios' ? <label>Сценарий
@@ -397,5 +410,6 @@ export function CombatLabView() {
         <p className="combat-lab-note combat-lab-observer-note">Момент {cursor + 1} из {run?.frames.length}. Пауза останавливает только просмотр; расчёт боя продолжается.</p>
       </>}
     </section>}
+    </>}
   </section>
 }

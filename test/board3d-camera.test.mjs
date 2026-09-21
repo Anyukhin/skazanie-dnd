@@ -13,7 +13,7 @@ process.on('exit', () => rmSync(output, { recursive: true, force: true }))
 const compiled = spawnSync(process.execPath, [join(root, 'node_modules/typescript/bin/tsc'), '--ignoreConfig', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler', '--lib', 'ES2022,DOM', '--strict', '--skipLibCheck', '--outDir', output, join(root, 'src/board3d-camera.ts')], { encoding: 'utf8' })
 assert.equal(compiled.status, 0, compiled.stderr || compiled.stdout)
 renameSync(join(output, 'board3d-camera.js'), join(output, 'board3d-camera.mjs'))
-const { boardCameraFitZoom } = await import(pathToFileURL(join(output, 'board3d-camera.mjs')).href)
+const { boardCameraFitZoom, shouldInitialFitBoardCamera } = await import(pathToFileURL(join(output, 'board3d-camera.mjs')).href)
 
 function cameraFor(width, height, columns, rows, heightRange) {
   const camera = new OrthographicCamera(-7 * width / height, 7 * width / height, 7, -7, .1, 500)
@@ -90,4 +90,11 @@ test('явный диапазон 0…0 сохраняет четырёхарг�
     boardCameraFitZoom(legacy, bounds, 1280, 720),
     boardCameraFitZoom(explicit, bounds, 1280, 720, { min: 0, max: 0 }),
   )
+})
+
+test('начальный fit ждёт реальный layout и не сбрасывает сохранённую камеру', () => {
+  assert.equal(shouldInitialFitBoardCamera(1, 1, false, false), false)
+  assert.equal(shouldInitialFitBoardCamera(320, 240, false, false), true)
+  assert.equal(shouldInitialFitBoardCamera(320, 240, true, false), false)
+  assert.equal(shouldInitialFitBoardCamera(320, 240, false, true), false)
 })

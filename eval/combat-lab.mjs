@@ -16,6 +16,7 @@ import { RulesEngine, applyGameEvent, normalizeCampaignState, actorPosition, eve
 import { campaignStateForViewer } from '../server/viewer-projection.mjs'
 import { withStarterKit } from '../server/starter-kit.mjs'
 import { canonicalCombatSpellFor } from '../server/combat-spells.mjs'
+import { materializeCatalogItem } from '../server/item-catalog.mjs'
 import { cellAt, deserializeTacticalMap, legacyCellsFromTacticalMap, serializeTacticalMap, setCell, tacticalMapFromLegacyCells } from '../server/tactical-map.mjs'
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
@@ -54,6 +55,7 @@ function fixture(scenario) {
   if (scenario === 'concentration') {
     Object.assign(players[0], { characterClass: 'cleric', level: 3,
       preparedSpellIds: ['bless', 'sacred-flame'], abilities: { ...players[0].abilities, wis: 16 } })
+    players[0].inventory.push(materializeCatalogItem('srd_5_2_1:holy-symbol-amulet', { id: 'cleric-focus', quantity: 1, equipped: true }))
     enemies[0].hp = enemies[0].maxHp = 30
   }
   const cells = Array.from({ length: 50 }, (_, i) => ({ x: i % 10, y: Math.floor(i / 10), type: 'floor', revealed: true }))

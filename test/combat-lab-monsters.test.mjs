@@ -7,11 +7,18 @@ import { DiceService } from '../server/dice-service.mjs'
 import { monsterCombatSpellFor, monsterSpellcastingFor } from '../server/combat-spells.mjs'
 import { DND_2014_MONSTER_IMAGES, enemyFrom2014, monsterAttackModesFor, monsterCatalogEntry, monsterRolesFor } from '../server/combat-lab-monsters.mjs'
 import { planNpcTurn } from '../server/npc-turn-scheduler.mjs'
+import { enemyLoadoutFor } from '../server/enemy-loadouts.mjs'
 import { applyGameEvent, normalizeCampaignState, replayEvents, resolveCommand } from '../server/rules-engine.mjs'
 
 const records = JSON.parse(readFileSync(new URL('../data/compendia/dnd_5e_2014/monsters.json', import.meta.url), 'utf8')).monsters
 const record = (slug) => records.find((candidate) => candidate.id.endsWith(`:${slug}`))
 const NPC_CONTEXT = Object.freeze({ isNpcScheduler: true, isAdmin: true, serverAuthoritativeCombat: true })
+
+test('Flameskull сохраняет явно объявленное освобождение от жестов и материалов', () => {
+  const enemy = enemyFrom2014(record('flameskull'), { x: 1, y: 1 })
+  const spell = monsterCombatSpellFor(enemy, 'fireball', { rulesetId: 'dnd_5e_2014' })
+  assert.deepEqual(spell.components, { verbal: true, somatic: false, material: null })
+})
 
 function cells(width = 12, height = 6) {
   return Array.from({ length: width * height }, (_, index) => ({
@@ -295,6 +302,7 @@ test('гоблин выбирает дальний лук через тот же
 
 test('маг получает CastSpell через monsterSpellcastingFor, а не через класс героя', () => {
   const enemy = enemyFrom2014(record('mage'), { x: 5, y: 0 }, 0)
+  enemy.loadout = enemyLoadoutFor({ statBlockId: record('mage').id, block: enemy, ownerId: enemy.id, seed: 'mage-components' })
   const block = monsterSpellcastingFor(enemy)
   assert.equal(block.ability, 'int')
   assert.equal(block.saveDc, 14)
@@ -323,6 +331,7 @@ test('прислужник и фанатик сохраняют 2014 списо�
 
 test('две разные заклинания 2014 делят один общий пул ячеек', () => {
   const enemy = enemyFrom2014(record('mage'), { x: 5, y: 0 }, 0)
+  enemy.loadout = enemyLoadoutFor({ statBlockId: record('mage').id, block: enemy, ownerId: enemy.id, seed: 'mage-components' })
   let state = arenaState(enemy, [hero()], { enemyFirst: true })
   assert.equal(state.mechanics.resources[enemy.id].spell_slots_1.max, 4)
   assert.equal(state.mechanics.resources[enemy.id].spell_slots_3.max, 3)

@@ -6,6 +6,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 
+import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
+import { applyGameEvent, normalizeCampaignState, resolveCommand } from '../server/rules-engine.mjs'
 import { createTacticalMap, serializeTacticalMap, setCell } from '../server/tactical-map.mjs'
 
 const buildDir = mkdtempSync(join(tmpdir(), 'skazanie-spell-effects-'))
@@ -151,6 +153,151 @@ test('каталог выбирает школу, геометрию и хара
   assert.equal(effects.spellVisualProfile('summon-beast').school, 'conjuration')
   assert.equal(effects.spellVisualProfile('fireball').areaShape, 'sphere')
   assert.equal(effects.spellVisualProfile('fireball').sizeFeet, 20)
+})
+
+test('геометрия важнее названия: молния остаётся линией, луч холода — снарядом', () => {
+  assert.equal(effects.spellVisualProfile('lightning-bolt').kind, 'burst')
+  assert.equal(effects.spellVisualProfile('lightning-bolt').areaShape, 'line')
+  assert.equal(effects.spellVisualProfile('ray-of-frost').kind, 'projectile')
+  assert.equal(effects.spellVisualProfile('ray-of-enfeeblement').kind, 'beam')
+  assert.notEqual(effects.spellEffectPalette('fireball').primary, effects.SPELL_SCHOOL_STYLES.evocation.primary)
+  assert.equal(effects.spellEffectPalette('healing-word', { kind: 'healing' }).primary, '#75c993')
+})
+
+test('семантические исключения сохраняют фазу и форму действующего эффекта', () => {
+  assert.equal(effects.spellVisualProfile('investiture-of-ice').kind, 'channel')
+  assert.equal(effects.spellVisualProfile('investiture-of-ice').family, 'cold')
+  assert.equal(effects.spellVisualProfile('investiture-of-flame').kind, 'channel')
+  assert.equal(effects.spellVisualProfile('investiture-of-flame').family, 'fire')
+  assert.equal(effects.spellVisualProfile('dispel-evil-and-good').visualVariant, 'cancellation')
+  assert.equal(effects.spellVisualProfile('counterspell').visualVariant, 'cancellation')
+  assert.equal(effects.spellVisualProfile('mordenkainen-s-private-sanctum').kind, 'burst')
+  assert.equal(effects.spellVisualProfile('mordenkainen-s-private-sanctum').areaShape, 'cube')
+  assert.equal(effects.spellVisualProfile('mordenkainen-s-private-sanctum').sizeFeet, 100)
+  const forbiddance = effects.spellVisualProfile('forbiddance')
+  assert.equal(forbiddance.kind, 'channel')
+  assert.match(forbiddance.familyNote, /не передал/u)
+})
+
+test('семантические семьи покрывают каталог, а школа остаётся только fallback', () => {
+  const catalog = JSON.parse(readFileSync(join(repositoryRoot, 'data', 'dndsu-spells-0-6.json'), 'utf8')).spells
+  const overrides = JSON.parse(readFileSync(join(repositoryRoot, 'data', 'dndsu-spell-mechanics-overrides.json'), 'utf8')).spells
+  const allowed = new Set(['fire', 'cold', 'lightning', 'thunder', 'acid', 'poison', 'necrotic', 'radiant', 'force', 'psychic', 'healing', 'protection', 'control', 'teleport', 'summon', 'earth', 'wind', 'water', 'swarm', 'weapon', 'illusion', 'divination', 'light', 'darkness', 'environment', 'enchantment', 'restoration', 'invisibility', 'flight', 'mobility', 'transmutation', 'communication', 'utility', 'school'])
+  const families = new Set(catalog.map((spell) => effects.spellEffectPalette(spell.id).family))
+  const isExecutable = (spell) => overrides[spell.id] && ['partial', 'verified'].includes(overrides[spell.id].mechanicsSupport ?? 'partial')
+  const executable = catalog.filter(isExecutable)
+  const schoolFallback = executable.filter((spell) => effects.spellEffectPalette(spell.id).family === 'school').map((spell) => spell.id)
+  const unsupported = catalog.filter((spell) => !isExecutable(spell))
+  assert.ok(catalog.length > 400)
+  assert.equal(executable.length, 240, 'исполняемый набор должен совпадать с partial/verified override-карточками')
+  assert.equal(unsupported.length, 199, 'heuristic/ruling-only карточки не входят в реализованный набор')
+  assert.ok(catalog.every((spell) => allowed.has(effects.spellEffectPalette(spell.id).family)))
+  assert.deepEqual(schoolFallback, [], 'каждая executable-карточка должна иметь semantic family')
+  for (const family of ['fire', 'cold', 'lightning', 'thunder', 'acid', 'poison', 'necrotic', 'radiant', 'force', 'psychic', 'healing', 'protection', 'control', 'teleport', 'summon', 'earth', 'wind', 'water', 'swarm', 'weapon', 'illusion', 'divination', 'light', 'darkness', 'environment', 'enchantment', 'restoration', 'invisibility', 'flight', 'mobility', 'transmutation', 'communication', 'utility']) {
+    assert.ok(families.has(family), `каталог не дал семейство ${family}`)
+  }
+  assert.equal([...families].includes('school'), false, 'каталог не должен молча падать в школьный fallback')
+  const expected = {
+    fireball: 'fire', 'ice-storm': 'cold', 'lightning-bolt': 'lightning', 'thunderwave': 'thunder',
+    'melf-s-acid-arrow': 'acid', 'poison-spray': 'poison', 'inflict-wounds': 'necrotic', 'guiding-bolt': 'radiant',
+    'magic-missile': 'force', 'vicious-mockery': 'psychic', 'healing-word': 'healing', shield: 'protection',
+    web: 'control', 'silence': 'control', 'misty-step': 'teleport', 'summon-beast': 'summon', 'minor-illusion': 'illusion',
+    catapult: 'earth', 'gust-of-wind': 'wind', maelstrom: 'water', 'insect-plague': 'swarm', 'cloud-of-daggers': 'weapon', knock: 'thunder',
+  }
+  for (const [spellId, family] of Object.entries(expected)) assert.equal(effects.spellEffectPalette(spellId).family, family, spellId)
+  const soundExpected = {
+    'shape-water': 'water', 'create-or-destroy-water': 'water', 'wall-of-water': 'water', 'water-breathing': 'water',
+    'mold-earth': 'earth', 'move-earth': 'earth', 'stone-shape': 'earth', 'wall-of-stone': 'earth',
+    'gust-of-wind': 'wind', 'air-bubble': 'wind', 'fog-cloud': 'wind', infestation: 'swarm', 'insect-plague': 'swarm',
+  }
+  for (const [spellId, soundFamily] of Object.entries(soundExpected)) assert.equal(effects.spellEffectPalette(spellId).soundFamily, soundFamily, spellId)
+  const audit = effects.spellVisualAudit()
+  assert.equal(audit.length, 439)
+  assert.equal(new Set(audit.map((entry) => entry.id)).size, audit.length)
+  assert.ok(audit.every((entry) => ['projectile', 'burst', 'beam', 'aura', 'channel'].includes(entry.kind)))
+  assert.ok(audit.every((entry) => entry.family !== 'school' && entry.note && entry.soundFamily && entry.kind))
+})
+
+test('каждое семейство имеет читаемый Canvas-след в общей burst-отрисовке', () => {
+  const representatives = {
+    fire: 'fireball', cold: 'ice-storm', lightning: 'lightning-bolt', thunder: 'thunderwave', acid: 'melf-s-acid-arrow',
+    poison: 'cloudkill', necrotic: 'inflict-wounds', radiant: 'guiding-bolt', force: 'magic-missile', psychic: 'vicious-mockery',
+    healing: 'healing-word', protection: 'shield', control: 'web', teleport: 'misty-step', summon: 'summon-beast',
+    earth: 'catapult', wind: 'gust-of-wind', water: 'maelstrom', swarm: 'insect-plague', weapon: 'cloud-of-daggers',
+    illusion: 'minor-illusion', divination: 'detect-magic', light: 'light', darkness: 'darkness', environment: 'mold-earth',
+    enchantment: 'charm-person', restoration: 'lesser-restoration', invisibility: 'invisibility', flight: 'fly', mobility: 'longstrider',
+    transmutation: 'polymorph', communication: 'message', utility: 'mage-hand', silence: 'silence', school: 'unknown-arcane-spell',
+  }
+  for (const [family, spellId] of Object.entries(representatives)) {
+    const context = recordingContext()
+    const line = family === 'lightning'
+    effects.drawSpellEffect(context, scene(), {
+      cue: {
+        id: `family-${family}`, kind: 'burst', actorId: 'mage', targetIds: [], spellId, school: 'evocation',
+        origin: { x: 1, y: 1 }, center: { x: 3, y: 3 }, shape: line ? 'line' : 'sphere', sizeFeet: 10, durationMs: 480,
+      }, actors: [actor('mage', 1, 1)], progress: .75, detail: 'full', reducedMotion: false,
+    })
+    assert.ok(
+      context.ops.some((operation) => operation.op === 'lineTo' || operation.op === 'arc' || operation.op === 'strokeRect'),
+      `${family} (${spellId}) не оставил читаемого Canvas-следа`,
+    )
+  }
+})
+
+test('cue Fireball читает точку из реального SpellCast engine event', () => {
+  const target = { x: 6, y: 2 }
+  const cells = Array.from({ length: 12 * 8 }, (_, index) => ({
+    x: index % 12, y: Math.floor(index / 12), type: 'floor', revealed: true,
+  }))
+  const state = normalizeCampaignState({
+    players: [{ id: 'mage', character: 'Маг', role: 'Волшебник', level: 5, hp: 30, maxHp: 30, armor: 12, speed: 30, proficiency: 3, abilities: { int: 18, dex: 12 }, inventory: [], x: 1, y: 2 }],
+    enemies: [{ id: 'goblin', name: 'Гоблин', hp: 20, maxHp: 20, armor: 10, speed: 30, abilities: { dex: 8 }, x: target.x, y: target.y, alive: true }],
+    scene: { turn: 1, cells },
+    mechanics: {
+      resources: { mage: { spell_slots_3: { current: 2, max: 2 } } },
+      combat: {
+        active: true, round: 1, initiative: [{ actor_id: 'mage', total: 20 }, { actor_id: 'goblin', total: 8 }], active_index: 0,
+        action_economy: {
+          mage: { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 },
+          goblin: { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 },
+        },
+      },
+    },
+  })
+  const dice = new DiceService({ rng: new SequenceDiceRng(Array(30).fill(2)), idFactory: (() => { let id = 0; return () => `spell-effect-roll-${++id}` })(), now: () => '2026-09-17T12:00:00.000Z' })
+  const result = resolveCommand({ command_type: 'CastSpell', command_id: 'engine-fireball', actor_id: 'mage', spell_id: 'fireball', to: target, server_authoritative: true }, state, {
+    diceService: dice,
+    context: { serverAuthoritativeCombat: true, isAdmin: true },
+  })
+  const event = result.events.find((entry) => entry.event_type === 'SpellCast')
+  assert.deepEqual(event?.payload?.to, target, 'engine должен записать авторитетную точку заклинания')
+  const [cue] = animation.combatAnimationCuesFromEvents([event])
+  assert.equal(cue.kind, 'burst')
+  assert.deepEqual(cue.center, target, '3D и 2D cue должны лететь к точке, а не к первой цели')
+})
+
+test('реальный Misty Step становится одним teleport channel без walk cue', () => {
+  const target = { x: 4, y: 2 }
+  const cells = Array.from({ length: 8 * 6 }, (_, index) => ({ x: index % 8, y: Math.floor(index / 8), type: 'floor', revealed: true }))
+  const state = normalizeCampaignState({
+    players: [{ id: 'mage', character: 'Маг', role: 'Волшебник', level: 5, hp: 30, maxHp: 30, armor: 12, speed: 30, proficiency: 3, abilities: { int: 18, dex: 12 }, inventory: [], x: 1, y: 2 }],
+    enemies: [], scene: { turn: 1, cells },
+    mechanics: {
+      resources: { mage: { spell_slots_2: { current: 2, max: 2 } } },
+      combat: { active: true, round: 1, initiative: [{ actor_id: 'mage', total: 20 }], active_index: 0, action_economy: { mage: { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 } } },
+    },
+  })
+  const result = resolveCommand({ command_type: 'CastSpell', command_id: 'engine-misty-step', actor_id: 'mage', spell_id: 'misty-step', to: target, server_authoritative: true }, state, {
+    diceService: new DiceService({ rng: new SequenceDiceRng([]), idFactory: (() => { let id = 0; return () => `teleport-roll-${++id}` })(), now: () => '2026-09-18T12:00:00.000Z' }),
+    context: { serverAuthoritativeCombat: true, isAdmin: true },
+  })
+  assert.ok(result.events.some((event) => event.event_type === 'ActorMoved' && event.payload?.teleport === true))
+  const cues = animation.combatAnimationCuesFromEvents(result.events)
+  const teleport = cues.filter((cue) => cue.kind === 'channel' && cue.channelType === 'teleport')
+  assert.equal(teleport.length, 1)
+  assert.equal(cues.filter((cue) => cue.kind === 'move').length, 0)
+  assert.deepEqual(teleport[0].from, { x: 1, y: 2 })
+  assert.deepEqual(teleport[0].position, target)
 })
 
 test('шесть основных школ различаются и цветом, и поведением', () => {
@@ -353,6 +500,177 @@ test('резервный боевой журнал сохраняет типы �
   assert.equal(cues[3].active, false)
 })
 
+test('observer battle log Misty Step объединяет spell и teleport move в один channel', () => {
+  const cues = animation.combatAnimationCuesFromBattleLog([
+    {
+      id: 'misty-spell', type: 'spell', actorId: 'mage', spellId: 'misty-step', spellName: 'Туманный шаг',
+      from: { x: 1, y: 2 }, to: { x: 4, y: 2 }, sceneTurn: 3, commandId: 'misty-command',
+    },
+    {
+      id: 'misty-move', type: 'move', actorId: 'mage', from: { x: 1, y: 2 }, to: { x: 4, y: 2 },
+      path: [{ x: 4, y: 2 }], sceneTurn: 3, commandId: 'misty-command', teleport: true,
+    },
+  ])
+  const teleport = cues.filter((cue) => cue.kind === 'channel' && cue.channelType === 'teleport')
+  assert.equal(teleport.length, 1)
+  assert.equal(cues.some((cue) => cue.kind === 'move'), false)
+  assert.deepEqual(teleport[0].from, { x: 1, y: 2 })
+  assert.deepEqual(teleport[0].position, { x: 4, y: 2 })
+})
+
+test('Thunder Step даёт departure thunder burst перед teleport channel и уроном', () => {
+  const cues = animation.combatAnimationCuesFromEvents([
+    {
+      event_id: 'thunder-cast', command_id: 'thunder-command', event_type: 'SpellCast', actor_id: 'mage', target_ids: [],
+      payload: { spell_id: 'thunder-step', kind: 'teleport', damage_type: 'thunder', from: { x: 1, y: 2 }, to: { x: 8, y: 2 } },
+    },
+    {
+      event_id: 'thunder-move', command_id: 'thunder-command', event_type: 'ActorMoved', actor_id: 'mage', target_ids: ['mage'],
+      payload: { from: { x: 1, y: 2 }, to: { x: 8, y: 2 }, teleport: true },
+    },
+    {
+      event_id: 'thunder-damage', command_id: 'thunder-command', event_type: 'DamageApplied', actor_id: 'mage', target_ids: ['goblin'],
+      payload: { applied_amount: 12, damage_type: 'thunder', hp_after: 8 },
+    },
+  ])
+  const departure = cues.find((cue) => cue.kind === 'burst' && cue.presentationPhase === 'departure')
+  const teleport = cues.find((cue) => cue.kind === 'channel' && cue.channelType === 'teleport')
+  const impact = cues.find((cue) => cue.kind === 'impact' && cue.targetId === 'goblin')
+  assert.ok(departure)
+  assert.equal(departure.visualFamily, 'thunder')
+  assert.deepEqual(departure.center, { x: 1, y: 2 })
+  assert.ok(teleport)
+  assert.equal(teleport.presentationPhase, 'arrival')
+  assert.deepEqual(teleport.from, { x: 1, y: 2 })
+  assert.deepEqual(teleport.position, { x: 8, y: 2 })
+  assert.ok(impact)
+  assert.equal(cues.some((cue) => cue.kind === 'move'), false)
+  assert.equal(new Set(cues.map((cue) => cue.id)).size, cues.length)
+  assert.ok(cues.indexOf(teleport) < cues.indexOf(departure))
+  assert.ok(cues.indexOf(departure) < cues.indexOf(impact))
+})
+
+test('observer Thunder Step связывает departure с teleport move и не создаёт walk', () => {
+  const cues = animation.combatAnimationCuesFromBattleLog([
+    {
+      id: 'thunder-spell', type: 'spell', actorId: 'mage', spellId: 'thunder-step', spellName: 'Громовой шаг',
+      from: { x: 1, y: 2 }, to: { x: 8, y: 2 }, sceneTurn: 4, commandId: 'thunder-command', damageType: 'thunder',
+    },
+    {
+      id: 'thunder-move', type: 'move', actorId: 'mage', from: { x: 1, y: 2 }, to: { x: 8, y: 2 },
+      path: [{ x: 8, y: 2 }], sceneTurn: 4, commandId: 'thunder-command', teleport: true,
+    },
+  ])
+  const departure = cues.find((cue) => cue.kind === 'burst' && cue.presentationPhase === 'departure')
+  const teleport = cues.find((cue) => cue.kind === 'channel' && cue.channelType === 'teleport')
+  assert.ok(departure)
+  assert.equal(departure.visualFamily, 'thunder')
+  assert.deepEqual(departure.center, { x: 1, y: 2 })
+  assert.ok(teleport)
+  assert.equal(teleport.presentationPhase, 'arrival')
+  assert.equal(cues.some((cue) => cue.kind === 'move'), false)
+})
+
+test('обычная spell attack не дублируется physical strike, а weapon cantrip сохраняет его', () => {
+  const hitCues = animation.combatAnimationCuesFromEvents([
+    { event_id: 'bolt-cast', command_id: 'bolt-command', event_type: 'SpellCast', actor_id: 'mage', target_ids: ['goblin'], payload: { spell_id: 'fire-bolt', kind: 'attack', damage_type: 'fire' } },
+    { event_id: 'bolt-attack', command_id: 'bolt-command', event_type: 'AttackResolved', actor_id: 'mage', target_ids: ['goblin'], payload: { spell_id: 'fire-bolt', hit: true, critical: false, target_id: 'goblin' } },
+    { event_id: 'bolt-damage', command_id: 'bolt-command', event_type: 'DamageApplied', actor_id: 'mage', target_ids: ['goblin'], payload: { spell_id: 'fire-bolt', applied_amount: 7, damage_type: 'fire', hp_after: 13 } },
+  ])
+  assert.equal(hitCues.filter((cue) => cue.kind === 'strike').length, 0)
+  assert.deepEqual(hitCues.find((cue) => cue.kind === 'projectile')?.targetOutcomes, { goblin: 'hit' })
+  assert.equal(hitCues.filter((cue) => cue.kind === 'impact' && cue.tone === 'damage').length, 1)
+
+  const missCues = animation.combatAnimationCuesFromEvents([
+    { event_id: 'bolt-miss-cast', command_id: 'bolt-miss-command', event_type: 'SpellCast', actor_id: 'mage', target_ids: ['goblin'], payload: { spell_id: 'fire-bolt', kind: 'attack', damage_type: 'fire' } },
+    { event_id: 'bolt-miss-attack', command_id: 'bolt-miss-command', event_type: 'AttackResolved', actor_id: 'mage', target_ids: ['goblin'], payload: { spell_id: 'fire-bolt', hit: false, target_id: 'goblin' } },
+  ])
+  assert.equal(missCues.filter((cue) => cue.kind === 'strike').length, 0)
+  assert.equal(missCues.find((cue) => cue.kind === 'impact')?.tone, 'miss')
+
+  const cantripCues = animation.combatAnimationCuesFromEvents([
+    { event_id: 'blade-cast', command_id: 'blade-command', event_type: 'SpellCast', actor_id: 'mage', target_ids: ['goblin'], payload: { spell_id: 'booming-blade', kind: 'attack', damage_type: 'thunder' } },
+    { event_id: 'blade-attack', command_id: 'blade-command', event_type: 'AttackResolved', actor_id: 'mage', target_ids: ['goblin'], payload: { spell_id: 'booming-blade', hit: true, attack_kind: 'melee', attack_visual: { version: 1, equipment: 'sword' }, target_id: 'goblin' } },
+    { event_id: 'blade-damage', command_id: 'blade-command', event_type: 'DamageApplied', actor_id: 'mage', target_ids: ['goblin'], payload: { spell_id: 'booming-blade', applied_amount: 8, damage_type: 'slashing', hp_after: 12 } },
+  ])
+  assert.equal(cantripCues.filter((cue) => cue.kind === 'strike').length, 1)
+})
+
+test('Shield блокирует Magic Missile в presentation path без impact flash', () => {
+  const events = [
+    { event_id: 'shield-mm-cast', command_id: 'shield-mm', event_type: 'SpellCast', actor_id: 'mage', target_ids: ['goblin'], payload: { spell_id: 'magic-missile', kind: 'damage', damage_type: 'force' } },
+    { event_id: 'shield-mm-damage', command_id: 'shield-mm', event_type: 'DamageApplied', actor_id: 'mage', target_ids: ['goblin'], payload: { spell_id: 'magic-missile', blocked_by_shield: true, applied_amount: 0, hp_before: 20, hp_after: 20, damage_type: 'force' } },
+  ]
+  const cues = animation.combatAnimationCuesFromEvents(events)
+  const projectile = cues.find((cue) => cue.kind === 'projectile')
+  assert.deepEqual(projectile?.targetOutcomes, { goblin: 'blocked' })
+  assert.equal(cues.some((cue) => cue.kind === 'impact'), false)
+})
+
+test('обычное попадание Magic Missile сохраняет damage impact, а shield marker блокирует только miss', () => {
+  const hitCues = animation.combatAnimationCuesFromEvents([
+    { event_id: 'mm-hit-cast', command_id: 'mm-hit', event_type: 'SpellCast', actor_id: 'mage', target_ids: ['goblin'], payload: { spell_id: 'magic-missile', kind: 'damage', damage_type: 'force' } },
+    { event_id: 'mm-hit-damage', command_id: 'mm-hit', event_type: 'DamageApplied', actor_id: 'mage', target_ids: ['goblin'], payload: { spell_id: 'magic-missile', blocked_by_shield: false, applied_amount: 5, hp_before: 20, hp_after: 15, damage_type: 'force' } },
+  ])
+  assert.equal(hitCues.find((cue) => cue.kind === 'projectile')?.targetOutcomes, undefined)
+  assert.equal(hitCues.filter((cue) => cue.kind === 'impact' && cue.tone === 'damage').length, 1)
+
+  const blocked = animation.combatAnimationCuesFromEvents([
+    { event_id: 'blade-shielded-cast', command_id: 'blade-shielded', event_type: 'SpellCast', actor_id: 'mage', target_ids: ['goblin'], payload: { spell_id: 'booming-blade', kind: 'attack', damage_type: 'thunder' } },
+    { event_id: 'blade-shielded-attack', command_id: 'blade-shielded', event_type: 'AttackResolved', actor_id: 'mage', target_ids: ['goblin'], payload: { spell_id: 'booming-blade', hit: false, shielded_by_reaction: true, target_id: 'goblin' } },
+  ])
+  const blockedStrike = blocked.find((cue) => cue.kind === 'strike')
+  assert.equal(blockedStrike?.blocked, true)
+  assert.equal(animation.attackOutcome(blockedStrike), 'blocked')
+
+  const realHit = animation.combatAnimationCuesFromEvents([
+    { event_id: 'blade-hit-cast', command_id: 'blade-hit', event_type: 'SpellCast', actor_id: 'mage', target_ids: ['goblin'], payload: { spell_id: 'booming-blade', kind: 'attack', damage_type: 'thunder' } },
+    { event_id: 'blade-hit-attack', command_id: 'blade-hit', event_type: 'AttackResolved', actor_id: 'mage', target_ids: ['goblin'], payload: { spell_id: 'booming-blade', hit: true, critical: true, shielded_by_reaction: true, target_id: 'goblin' } },
+  ])
+  const hitStrike = realHit.find((cue) => cue.kind === 'strike')
+  assert.equal(hitStrike?.blocked, undefined)
+  assert.equal(animation.attackOutcome(hitStrike), 'critical')
+})
+
+test('battle log сохраняет только shield-blocked marker и не создаёт impact cue', () => {
+  const initial = normalizeCampaignState({
+    players: [{ id: 'mage', character: 'Маг', hp: 20, maxHp: 20, armor: 12, abilities: { int: 16 }, x: 1, y: 1 }],
+    enemies: [{ id: 'goblin', name: 'Гоблин', hp: 20, maxHp: 20, armor: 12, abilities: { dex: 10 }, x: 3, y: 1, alive: true }],
+    scene: { turn: 1, cells: Array.from({ length: 24 }, (_, index) => ({ x: index % 8, y: Math.floor(index / 8), type: 'floor', revealed: true })) },
+    battleLog: [],
+  })
+  const cast = { event_id: 'battle-mm-cast', command_id: 'battle-mm', event_type: 'SpellCast', actor_id: 'mage', target_ids: ['goblin'], payload: { spell_id: 'magic-missile', name: 'Волшебная стрела', kind: 'damage', damage_type: 'force' } }
+  const damage = { event_id: 'battle-mm-damage', command_id: 'battle-mm', event_type: 'DamageApplied', actor_id: 'mage', target_ids: ['goblin'], payload: { spell_id: 'magic-missile', blocked_by_shield: true, applied_amount: 0, raw_amount: 15, hp_before: 20, hp_after: 20, damage_type: 'force' } }
+  const after = applyGameEvent(applyGameEvent(initial, cast), damage)
+  assert.equal(after.battleLog.find((entry) => entry.type === 'spell')?.blocked, true)
+  const cues = animation.combatAnimationCuesFromBattleLog(after.battleLog)
+  assert.deepEqual(cues.find((cue) => cue.kind === 'projectile')?.targetOutcomes, { goblin: 'blocked' })
+  assert.equal(cues.some((cue) => cue.kind === 'impact'), false)
+})
+
+test('observer spell attack outcomes не превращаются в physical strike, weapon cantrip остаётся ударом', () => {
+  const cues = animation.combatAnimationCuesFromBattleLog([
+    { id: 'observer-bolt', type: 'spell', actorId: 'mage', targetId: 'goblin', spellId: 'fire-bolt', commandId: 'observer-bolt-command', from: { x: 1, y: 2 }, to: { x: 5, y: 2 }, damageType: 'fire' },
+    { id: 'observer-bolt-attack', type: 'attack', actorId: 'mage', targetId: 'goblin', spellId: 'fire-bolt', commandId: 'observer-bolt-command', roll: { total: 8, hit: true }, damage: 5, damageType: 'fire' },
+    { id: 'observer-bolt-damage', type: 'spell-damage', actorId: 'mage', targetId: 'goblin', damage: 5, damageType: 'fire', hpAfter: 15 },
+    { id: 'observer-blade', type: 'spell', actorId: 'mage', targetId: 'goblin', spellId: 'booming-blade', commandId: 'observer-blade-command', from: { x: 1, y: 2 }, to: { x: 2, y: 2 }, damageType: 'thunder' },
+    { id: 'observer-blade-attack', type: 'attack', actorId: 'mage', targetId: 'goblin', spellId: 'booming-blade', commandId: 'observer-blade-command', attackKind: 'melee', attackVisual: { version: 1, equipment: 'sword' }, roll: { total: 18, hit: true }, damage: 6, damageType: 'slashing' },
+  ])
+  assert.equal(cues.filter((cue) => cue.kind === 'strike').length, 1)
+  assert.deepEqual(cues.find((cue) => cue.kind === 'projectile')?.targetOutcomes, { goblin: 'hit' })
+})
+
+test('observer battle log сохраняет фактическую форму и радиус области', () => {
+  const [cue] = animation.combatAnimationCuesFromBattleLog([{
+    id: 'area-observer', type: 'spell', actorId: 'mage', spellId: 'burning-hands', spellName: 'Огненные ладони',
+    from: { x: 1, y: 2 }, to: { x: 4, y: 2 }, area: { x: 4, y: 2, radiusFeet: 15, shape: 'cube', area_origin: 'point' },
+  }])
+  assert.equal(cue.kind, 'burst')
+  assert.deepEqual(cue.center, { x: 4, y: 2 })
+  assert.equal(cue.shape, 'cube')
+  assert.equal(cue.sizeFeet, 15)
+})
+
 test('burst renderer получает клетки из общей areaCells и проходит через drawBoardEffects', () => {
   const context = recordingContext()
   const boardScene = scene()
@@ -371,11 +689,122 @@ test('burst renderer получает клетки из общей areaCells и 
     motion: 'full',
     detail: 'full',
   }
-  const renderer = effects.createSpellEffectRenderer({ cue, progress: .45, actors: [actor('mage', 0, 0)], reducedMotion: false })
+  const renderer = effects.createSpellEffectRenderer({ cue, progress: .75, actors: [actor('mage', 0, 0)], reducedMotion: false })
   render.drawBoardEffects(context, boardScene, [renderer])
-  assert.equal(context.ops.filter((operation) => operation.op === 'fillRect').length, 9)
-  assert.equal(context.ops.filter((operation) => operation.op === 'strokeRect').length, 9)
+  assert.equal(context.ops.filter((operation) => operation.op === 'fillRect').length, 0)
+  assert.equal(context.ops.filter((operation) => operation.op === 'strokeRect').length, 0)
+  assert.ok(context.ops.some((operation) => operation.op === 'fill'))
+  assert.ok(context.ops.some((operation) => operation.op === 'lineTo'))
   assert.equal(context.ops.filter((operation) => operation.op === 'save').length, context.ops.filter((operation) => operation.op === 'restore').length)
+})
+
+test('spellBurstCells переиспользует union области крупного заклинателя и умеет вернуть fog footprint', () => {
+  const board = scene(10, 8)
+  setCell(board.map, 3, 1, { revealed: false })
+  const cue = {
+    id: 'large-line', kind: 'burst', actorId: 'mage', targetIds: [], spellId: 'lightning-bolt', school: 'evocation',
+    origin: { x: 1, y: 1 }, center: { x: 6, y: 1 }, shape: 'line', originMode: 'self', sizeFeet: 10, durationMs: 480,
+  }
+  const actors = [{ id: 'mage', x: 1, y: 1, footprint: { version: 1, size: 2 } }]
+  const all = effects.spellBurstCells(board.map, cue, actors, { includeHidden: true })
+  const visible = effects.spellBurstCells(board.map, cue, actors)
+  assert.ok(all.some((cell) => cell.x === 4 && cell.y === 1), 'вторая клетка footprint должна продлить линию')
+  assert.ok(all.length > visible.length, 'fog footprint должен быть доступен 3D-проверке, но не 2D рисунку')
+  assert.equal(visible.some((cell) => cell.x === 3 && cell.y === 1), false)
+})
+
+test('огненный шар летит к подтверждённой точке и только затем раскрывает площадь', () => {
+  const [cue] = animation.combatAnimationCuesFromEvents([{
+    event_id: 'cast-fireball-flight', command_id: 'fireball-flight', event_type: 'SpellCast', actor_id: 'mage', target_ids: ['goblin'],
+    payload: { spell_id: 'fireball', kind: 'area-save', damage_type: 'fire' },
+  }])
+  const actors = [actor('mage', 1, 1), actor('goblin', 5, 1)]
+  const flight = recordingContext()
+  render.drawBoardEffects(flight, scene(), [effects.createSpellEffectRenderer({ cue, progress: .25, actors, reducedMotion: false })])
+  assert.ok(flight.ops.some((operation) => operation.op === 'lineTo'), 'снаряд должен иметь видимую траекторию')
+  assert.equal(flight.ops.some((operation) => operation.op === 'fillRect'), false, 'площадь не должна появляться до взрыва')
+
+  const explosion = recordingContext()
+  render.drawBoardEffects(explosion, scene(), [effects.createSpellEffectRenderer({ cue, progress: .9, actors, reducedMotion: false })])
+  assert.ok(explosion.ops.some((operation) => operation.op === 'fill'), 'после полёта должна быть видна площадь взрыва')
+})
+
+test('огненный burst рисует движущиеся клубы, а не одинаковые стрелки по клеткам', () => {
+  const cue = {
+    id: 'fireball-clouds', kind: 'burst', actorId: 'mage', targetIds: [], spellId: 'fireball', school: 'evocation',
+    origin: { x: 1, y: 1 }, center: { x: 4, y: 3 }, shape: 'sphere', sizeFeet: 20, durationMs: 850,
+  }
+  const actors = [actor('mage', 1, 1)]
+  const context = recordingContext()
+  effects.drawSpellEffect(context, scene(), { cue, actors, progress: 1, detail: 'full', reducedMotion: false })
+  const clouds = context.ops.filter((operation) => operation.op === 'arc')
+  assert.ok(clouds.length >= 16, 'у огненной волны должно быть несколько клубов и ядер')
+  assert.ok(new Set(clouds.map((operation) => `${operation.x}:${operation.y}`)).size >= 8, 'клубы должны иметь разные движущиеся центры')
+  assert.ok(Math.max(...clouds.map((operation) => operation.y)) - Math.min(...clouds.map((operation) => operation.y)) > 4 * 24,
+    'клубы охватывают область, а не собираются в первых двух рядах клеток')
+  assert.ok(context.ops.some((operation) => operation.op === 'set' && operation.property === 'fillStyle' && operation.value === '#e85b2f'))
+  assert.ok(context.ops.some((operation) => operation.op === 'set' && operation.property === 'fillStyle' && operation.value === '#ffd27a'))
+  assert.equal(context.ops.some((operation) => operation.op === 'strokeRect'), false)
+})
+
+test('явные miss и blocked не получают 2D вспышку попадания', () => {
+  const actors = [actor('mage', 1, 1), actor('target', 5, 1), actor('other', 5, 3)]
+  const projectile = {
+    id: 'miss-projectile', kind: 'projectile', actorId: 'mage', targetIds: ['target'], from: { x: 1, y: 1 }, to: { x: 5, y: 1 },
+    projectileCount: 1, spellId: 'fire-bolt', school: 'evocation', durationMs: 520, targetOutcomes: { target: 'miss' },
+  }
+  const projectileContext = recordingContext()
+  effects.drawSpellEffect(projectileContext, scene(), { cue: projectile, actors, progress: 1, detail: 'full', reducedMotion: false })
+  assert.equal(projectileContext.ops.some((operation) => operation.op === 'arc'), false)
+
+  const beam = {
+    id: 'blocked-beam', kind: 'beam', actorId: 'mage', targetIds: ['other'], from: { x: 1, y: 1 }, points: [{ x: 5, y: 3 }],
+    spellId: 'chain-lightning', school: 'evocation', durationMs: 560, chain: true, targetOutcomes: { other: 'blocked' },
+  }
+  const beamContext = recordingContext()
+  effects.drawSpellEffect(beamContext, scene(), { cue: beam, actors, progress: 1, detail: 'full', reducedMotion: false })
+  assert.equal(beamContext.ops.some((operation) => operation.op === 'arc'), false)
+})
+
+test('линия молнии, лёд и паутина получают собственный рисунок по реальным клеткам', () => {
+  const actors = [actor('mage', 1, 4), actor('goblin', 6, 4)]
+  const lightningContext = recordingContext()
+  render.drawBoardEffects(lightningContext, scene(), [effects.createSpellEffectRenderer({
+    cue: {
+      id: 'bolt', kind: 'burst', actorId: 'mage', targetIds: ['goblin'], spellId: 'lightning-bolt', school: 'evocation',
+      shape: 'line', originMode: 'self', sizeFeet: 100, durationMs: 480,
+    }, progress: .8, actors, reducedMotion: false,
+  })])
+  assert.ok(lightningContext.ops.some((operation) => operation.op === 'lineTo'))
+  assert.equal(lightningContext.ops.some((operation) => operation.op === 'fillRect'), false)
+
+  const wallContext = recordingContext()
+  render.drawBoardEffects(wallContext, scene(), [effects.createSpellEffectRenderer({
+    cue: {
+      id: 'wall', kind: 'burst', actorId: 'mage', targetIds: ['goblin'], spellId: 'wall-of-fire', school: 'evocation',
+      shape: 'line', sizeFeet: 10, damageType: 'fire', durationMs: 480,
+    }, progress: .8, actors, reducedMotion: false,
+  })])
+  assert.ok(wallContext.ops.some((operation) => operation.op === 'fill'), 'стена остаётся клеточной line-областью')
+  assert.ok(wallContext.ops.some((operation) => operation.op === 'arc'), 'огненная line-область получает bounded flame clouds')
+
+  const coldContext = recordingContext()
+  render.drawBoardEffects(coldContext, scene(), [effects.createSpellEffectRenderer({
+    cue: {
+      id: 'ice', kind: 'burst', actorId: 'mage', targetIds: ['goblin'], spellId: 'ice-storm', school: 'evocation',
+      shape: 'sphere', sizeFeet: 10, durationMs: 480,
+    }, progress: .7, actors, reducedMotion: false,
+  })])
+  assert.ok(coldContext.ops.some((operation) => operation.op === 'closePath'), 'лёд должен читаться кристаллической формой')
+
+  const webContext = recordingContext()
+  render.drawBoardEffects(webContext, scene(), [effects.createSpellEffectRenderer({
+    cue: {
+      id: 'web', kind: 'burst', actorId: 'mage', targetIds: [], spellId: 'web', school: 'conjuration', cells: [{ x: 2, y: 2 }, { x: 3, y: 2 }, { x: 2, y: 3 }],
+      center: { x: 2, y: 2 }, shape: 'cube', sizeFeet: 10, durationMs: 480,
+    }, progress: .7, actors, reducedMotion: false,
+  })])
+  assert.ok(webContext.ops.filter((operation) => operation.op === 'lineTo').length >= 6, 'паутина должна иметь нити, а не только заливку')
 })
 
 test('projectile, цепной beam, aura, лечение и призыв остаются читаемыми без частиц', () => {
@@ -416,6 +845,31 @@ test('projectile, цепной beam, aura, лечение и призыв ост
     ])
     assert.ok(entry.expected(context.ops), `${entry.cue.kind} не получил читаемый рисунок`)
   }
+})
+
+test('лечение поднимается мягкими потоками вверх', () => {
+  const context = recordingContext()
+  render.drawBoardEffects(context, scene(), [effects.createSpellEffectRenderer({
+    cue: { id: 'heal-rise', kind: 'channel', actorId: 'cleric', targetId: 'cleric', channelType: 'healing', amount: 6, spellId: 'healing-word', school: 'evocation', durationMs: 480 },
+    progress: .65, actors: [actor('cleric', 3, 3)], reducedMotion: false,
+  })])
+  assert.ok(context.ops.some((operation) => operation.op === 'lineTo'))
+})
+
+test('teleport channel рисует departure и arrival portals без физического луча', () => {
+  const cue = {
+    id: 'teleport', kind: 'channel', actorId: 'mage', targetId: undefined, from: { x: 1, y: 1 }, position: { x: 4, y: 1 },
+    channelType: 'teleport', spellId: 'misty-step', school: 'conjuration', durationMs: 480,
+  }
+  const actors = [actor('mage', 1, 1)]
+  const departure = recordingContext()
+  effects.drawSpellEffect(departure, scene(), { cue, actors, progress: .2, detail: 'full', reducedMotion: false })
+  assert.ok(departure.ops.some((operation) => operation.op === 'arc' && operation.x === 36), 'портал должен начинаться у from')
+  assert.equal(departure.ops.some((operation) => operation.op === 'lineTo' && operation.x > 60), false, 'телепорт не должен рисовать луч через стены')
+
+  const arrival = recordingContext()
+  effects.drawSpellEffect(arrival, scene(), { cue, actors, progress: .8, detail: 'full', reducedMotion: false })
+  assert.ok(arrival.ops.some((operation) => operation.op === 'arc' && operation.x === 108), 'портал должен появляться у position')
 })
 
 test('постоянный renderer показывает радиус ауры и метку концентрации', () => {
@@ -520,6 +974,18 @@ test('reduced motion превращает пакет и projectile в стати
   ])
   assert.equal(context.ops.some((operation) => operation.op === 'lineTo'), false, 'снаряд не должен лететь при reduced motion')
   assert.ok(context.ops.some((operation) => operation.op === 'arc'), 'статическая точка попадания остаётся видимой')
+})
+
+test('молния, направленная влево, начинает раскрываться у заклинателя', () => {
+  const context = recordingContext()
+  effects.drawSpellEffect(context, scene(), {
+    cue: { id: 'left-bolt', kind: 'burst', actorId: 'mage', targetIds: [], spellId: 'lightning-bolt', school: 'evocation',
+      origin: { x: 6, y: 3 }, center: { x: 5, y: 3 }, shape: 'line', originMode: 'self', sizeFeet: 25, durationMs: 480 },
+    actors: [actor('mage', 6, 3)], progress: .3, reducedMotion: false, detail: 'reduced',
+  })
+  const start = context.ops.find((operation) => operation.op === 'moveTo')
+  assert.equal(start.x, 5.5 * 24)
+  assert.equal(start.y, 3.5 * 24)
 })
 
 test('системная prefers-reduced-motion применяется без отдельной настройки приложения', () => {

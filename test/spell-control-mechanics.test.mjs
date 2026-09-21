@@ -327,18 +327,28 @@ test('Ледяной шторм роняет ничком и делает обл
   // Радиус 20 футов — четыре клетки, поэтому центр вынесен за спину врагам:
   // иначе шторм накрыл бы и заклинателя.
   const cast = castArea(state, 'sleet-storm', [3, 4], { x: 8, y: 1 })
-  const prone = cast.events.filter((event) => event.event_type === 'ConditionAdded' && event.payload.condition === 'prone')
-  assert.equal(prone.length, 2, 'область обязана накрыть обоих врагов и не задеть заклинателя')
+  assert.equal(cast.events.some((event) => event.event_type === 'SpellSavingThrowResolved'), false, 'шторм не проверяет цель в момент создания области')
+  assert.equal(cast.events.some((event) => event.event_type === 'ConditionAdded' && event.payload.condition === 'prone'), false, 'проверка перенесена на вход или начало хода')
   const area = cast.events.find((event) => event.event_type === 'SpellAreaCreated')
   assert.equal(area.payload.effect.difficult_terrain, true)
   assert.equal(area.payload.effect.trigger_on_enter, true)
-  assert.equal(area.payload.effect.trigger_on_turn_end, true)
+  assert.equal(area.payload.effect.trigger_on_turn_start, true)
+  assert.equal(area.payload.effect.trigger_on_turn_end, false)
   assert.equal(area.payload.effect.condition, 'prone')
+
+  // Первый враг начинает ход в области после хода заклинателя, второй — после
+  // первого врага. Вызов EndTurn должен дать каждому ровно одну проверку.
+  const stormed = replayEvents(state, cast.events)
+  const firstTurn = resolveCommand(authoritative({ command_type: 'EndTurn', actor_id: 'mage' }), stormed, options(dice([3])))
+  const afterFirst = replayEvents(stormed, firstTurn.events)
+  assert.equal(firstTurn.events.filter((event) => event.event_type === 'ConditionAdded' && event.payload.condition === 'prone').length, 1)
+  const secondTurn = resolveCommand(authoritative({ command_type: 'EndTurn', actor_id: 'thug' }), afterFirst, options(dice([4])))
+  const afterSecond = replayEvents(afterFirst, secondTurn.events)
+  assert.equal(secondTurn.events.filter((event) => event.event_type === 'ConditionAdded' && event.payload.condition === 'prone').length, 1)
 
   // Ползание удваивает цену шага, а труднопроходимость добавляет ещё пять футов,
   // поэтому перемещение упавшего внутри шторма обязано упереться в скорость.
-  const stormed = replayEvents(state, cast.events)
-  const thugsTurn = { ...stormed, mechanics: { ...stormed.mechanics, combat: { ...stormed.mechanics.combat, active_index: 1 } } }
+  const thugsTurn = { ...afterSecond, mechanics: { ...afterSecond.mechanics, combat: { ...afterSecond.mechanics.combat, active_index: 1 } } }
   assert.throws(
     () => resolveCommand(authoritative({ command_type: 'MoveActor', actor_id: 'thug', to: { x: 1, y: 3 } }), thugsTurn, options(dice())),
     (error) => error.code === 'SPEED_EXCEEDED',

@@ -395,6 +395,7 @@ function slotParts(loaded: LoadedModel): Array<{ object: THREE.Object3D; key: st
     return parts.length ? parts : entry.parts.length ? [] : [{ object: root, key: 'back' }]
   }
   if (entry.slot === 'brooch') return [{ object: root, key: 'brooch' }]
+  if (entry.slot === 'focus') return [{ object: root, key: 'brooch' }]
   if (entry.slot === 'ring-protection') return [{ object: root, key: 'rings-right' }]
   if (entry.slot === 'ring-fire-resistance') return [{ object: root, key: 'rings-left' }]
   return []
@@ -431,6 +432,7 @@ function findEntry(index: Map<string, EquipmentModelManifestEntry>, slot: Equipm
 function rolesForPlan(plan: MountPlan): string[] {
   if (plan.loaded.entry.slot === 'body' || plan.loaded.entry.slot === 'cloak') return plan.parts.map((part) => part.key)
   if (plan.loaded.entry.slot === 'brooch') return ['brooch']
+  if (plan.loaded.entry.slot === 'focus') return ['brooch']
   if (plan.loaded.entry.slot === 'ring-protection') return ['rings-right']
   if (plan.loaded.entry.slot === 'ring-fire-resistance') return ['rings-left']
   return []

@@ -57,7 +57,8 @@ test('предпросмотр области использует общий м
   assert.match(appSource, /import \{ areaCells \} from '\.\/area-geometry'/u)
   assert.match(appSource, /const previewBlastKeys = useMemo\(\(\) => \{/u)
   assert.match(appSource, /if \(!previewBlastCenter \|\| !active \|\| previewBlastSizeFeet <= 0\) return new Set<string>\(\)/u)
-  assert.match(appSource, /const inBlastArea = previewBlastKeys\.has\(cellKey\)/u)
+  assert.match(appSource, /const inBlastArea = Boolean\(cell\.revealed && previewBlastKeys\.has\(cellKey\)\)/u)
+  assert.match(appSource, /createSpellTargetRenderer\(\{ cells: previewBlastKeys/u)
   assert.doesNotMatch(appSource, /function boardCellInCone/u)
   assert.doesNotMatch(appSource, /function boardCellInDirectedCube/u)
 })
@@ -102,7 +103,7 @@ test('правая колонка — лента и две полоски: ко�
   assert.match(appSource, /<span>Пока вы ждали<\/span><b>\{npcSummaryEvents\.length\}<\/b>/u)
   // Инспектор цели — поповер у фишки, с якорем от самой фишки, а не в колонке.
   assert.match(appSource, /export function targetPopoverStyle\(anchor: TokenAnchor/u)
-  assert.match(appSource, /\{inspectedTarget && inspectedAnchor && <div className="combat-target-popover" style=\{targetPopoverStyle\(inspectedAnchor\)\}/u)
+  assert.match(appSource, /\{combatMode !== 'magic' && inspectedTarget && inspectedAnchor && <div className="combat-target-popover" style=\{targetPopoverStyle\(inspectedAnchor\)\}/u)
   assert.match(appSource, /setInspectedAnchor\(tokenAnchor\(event\.currentTarget\)\)/u)
   assert.match(stylesSource, /\.combat-target-popover \{[^}]*pointer-events: none;/u, 'поповер не перехватывает наведение на фишку')
   // Чипы экономики над картой ушли: то же показывает кластер панели действий.

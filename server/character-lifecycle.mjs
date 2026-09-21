@@ -383,7 +383,7 @@ export function characterCreationCatalog(rulesetId = LEGACY_DEFAULT_RULESET_ID) 
       const spellRules = spellSelectionRulesFor(actor)
       const availableSpells = spellRules ? (rulesetId === DND_2014_RULESET_ID
         ? phbFirstLevelSpells().filter((spell) => spell.classes.includes(classOption.classKey))
-        : combatSpellsFor(actor).filter((spell) => spell.level <= 1)) : []
+        : combatSpellsFor(actor, { rulesetId }).filter((spell) => spell.level <= 1)) : []
       const phbClass = rulesetId === DND_2014_RULESET_ID ? classOptionFor(classOption.classKey) : null
       return {
         id: classOption.classKey,
@@ -594,13 +594,13 @@ export function deriveSpeed(actor, { armorProfiles } = {}) {
   return { base, ...(creationBonus ? { creation_bonus: creationBonus } : {}), penalty, value: Math.max(0, base + creationBonus - penalty) }
 }
 
-function canonicalCharacterChoices(actor) {
+function canonicalCharacterChoices(actor, options = {}) {
   const candidate = { ...actor }
   const subclass = normalizedCombatSubclassFor(candidate)
   if (own(candidate, 'subclass')) candidate.subclass = subclass ?? undefined
   if (own(candidate, 'classSkillProficiencies')) candidate.classSkillProficiencies = normalizedClassSkillProficiencies(candidate)
   if (own(candidate, 'selectedFeatureIds')) candidate.selectedFeatureIds = normalizedSelectedFeatureIds(candidate)
-  const spells = normalizedSpellSelectionsFor(candidate)
+  const spells = normalizedSpellSelectionsFor(candidate, options)
   if (own(candidate, 'knownSpellIds')) candidate.knownSpellIds = spells.knownSpellIds ?? []
   if (own(candidate, 'preparedSpellIds')) candidate.preparedSpellIds = spells.preparedSpellIds ?? []
   return candidate
@@ -613,7 +613,7 @@ export function deriveCharacterSheet(actor, options = {}) {
   const experience = integer(actor?.experience, 'experience', { minimum: 0, maximum: MAX_EXPERIENCE, fallback: 0 })
   const abilities = normalizedAbilityScores(actor?.abilities)
   const proficiencyBonus = proficiencyBonusForLevel(level)
-  const canonical = canonicalCharacterChoices({ ...actor, characterClass, level, abilities })
+  const canonical = canonicalCharacterChoices({ ...actor, characterClass, level, abilities }, options)
   const itemEffects = activeItemEffectTotals(canonical)
   const savingThrowProficiencies = new Set([...savingThrowProficienciesFor(canonical), ...(canonical.creationBenefits?.saving_throw_proficiencies ?? [])])
   // Владения считаются один раз на весь лист, а не восемнадцать. Сравнение при
@@ -703,7 +703,7 @@ export function normalizeCharacterSheet(actor, options = {}) {
     abilities,
     baseSpeed: sheet.speed.base,
     hitPointIncreases: normalizedHitPointIncreases(actor, { level: sheet.level, hitDie: sheet.hit_points.hitDie }),
-  })
+  }, options)
   return {
     actor: canonical,
     sheet,
@@ -772,7 +772,7 @@ function stagedCharacterSetupFor(state, actor) {
  * сервер увидел полный допустимый набор навыков, подкласса, классовых выборов
  * и заклинаний этого уровня.
  */
-export function characterCreationChoicesComplete(actor) {
+export function characterCreationChoicesComplete(actor, options = {}) {
   const abilityChoices = actor?.abilityScoreIncreases && typeof actor.abilityScoreIncreases === 'object' && !Array.isArray(actor.abilityScoreIncreases)
     ? actor.abilityScoreIncreases
     : {}
@@ -804,9 +804,9 @@ export function characterCreationChoicesComplete(actor) {
 
   const spellRules = spellSelectionRulesFor(actor)
   if (!spellRules) return true
-  const selected = normalizedSpellSelectionsFor(actor)
+  const selected = normalizedSpellSelectionsFor(actor, options)
   const known = new Set(selected.knownSpellIds ?? [])
-  const spells = new Map(combatSpellsFor(actor).map((spell) => [spell.id, spell]))
+  const spells = new Map(combatSpellsFor(actor, options).map((spell) => [spell.id, spell]))
   const cantrips = [...known].filter((id) => spells.get(id)?.level === 0).length
   const leveled = [...known].filter((id) => (spells.get(id)?.level ?? 0) > 0).length
   if (cantrips !== spellRules.cantrips) return false
@@ -849,7 +849,7 @@ export function validateLevelUpCommand(command, state, context = {}) {
   if (characterCreationLevelUp && nextLevel > characterCreationTargetLevel(state)) {
     throw new CharacterLifecycleValidationError('Герой уже достиг выбранного стартового уровня', 'CHARACTER_CREATION_LEVEL_REACHED')
   }
-  if (characterCreationLevelUp && !characterCreationChoicesComplete(actor)) {
+  if (characterCreationLevelUp && !characterCreationChoicesComplete(actor, { rulesetId: state?.ruleset_id })) {
     throw new CharacterLifecycleValidationError(
       'Сначала завершите выборы текущего уровня персонажа',
       'CHARACTER_CREATION_CHOICES_REQUIRED',
@@ -1031,7 +1031,7 @@ export function resolveLevelUp(command, state, context = {}) {
   const event = levelUpEvent(validated)
   const stateAfter = applyCharacterLifecycleEvent(state, event)
   const actor = actorFromState(stateAfter, validated.actor_id)
-  return { command: validated, event, state: stateAfter, sheet: deriveCharacterSheet(actor) }
+  return { command: validated, event, state: stateAfter, sheet: deriveCharacterSheet(actor, { rulesetId: stateAfter.ruleset_id }) }
 }
 
 export function isCharacterLifecycleEvent(event) {
@@ -1047,8 +1047,8 @@ export function applyCharacterLifecycleEvent(state, event) {
   if (index < 0) throw new CharacterLifecycleValidationError('Событие LevelUp ссылается на отсутствующего героя', 'ACTOR_NOT_FOUND')
   const actor = next.players[index]
   const payload = event.payload ?? {}
+  const eventRulesetId = String(payload.ruleset_id ?? next.ruleset_id ?? LEGACY_DEFAULT_RULESET_ID)
   if (event.event_type === 'CharacterImported') {
-    const eventRulesetId = String(payload.ruleset_id ?? next.ruleset_id ?? LEGACY_DEFAULT_RULESET_ID)
     if (payload.ruleset_id && next.ruleset_id && eventRulesetId !== String(next.ruleset_id)) {
       throw new CharacterLifecycleValidationError('Событие героя принадлежит другой редакции', 'IMPORT_RULESET_MISMATCH')
     }
@@ -1106,7 +1106,7 @@ export function applyCharacterLifecycleEvent(state, event) {
       })
       updated.initials = updated.character.slice(0, 2).toLocaleUpperCase('ru')
     }
-    const sheet = deriveCharacterSheet(updated)
+    const sheet = deriveCharacterSheet(updated, { rulesetId: eventRulesetId })
     updated.maxHp = sheet.hit_points.value
     updated.hp = wasCharacterSlot
       ? sheet.hit_points.value
@@ -1140,7 +1140,7 @@ export function applyCharacterLifecycleEvent(state, event) {
     if (actor.characterSetupStage !== 'leveling' || levelAfter > targetLevel) {
       throw new CharacterLifecycleValidationError('Событие поэтапного создания героя вышло за пределы стартового уровня', 'CHARACTER_CREATION_LEVEL_INVALID')
     }
-    updated.characterSetupRequired = levelAfter < targetLevel || !characterCreationChoicesComplete(updated)
+    updated.characterSetupRequired = levelAfter < targetLevel || !characterCreationChoicesComplete(updated, { rulesetId: eventRulesetId })
     if (updated.characterSetupRequired) updated.characterSetupStage = 'leveling'
     else delete updated.characterSetupStage
   }
@@ -1327,7 +1327,7 @@ export function parseCharacterImport(raw, options = {}) {
   if (provisional.hitPointIncreases.length > level - 1) {
     throw new CharacterLifecycleValidationError('character.hitPointIncreases длиннее истории уровней', 'IMPORT_INVALID_FIELD')
   }
-  const canonical = canonicalCharacterChoices(provisional)
+  const canonical = canonicalCharacterChoices(provisional, { rulesetId })
   delete canonical.creationBenefits
   if (phb) canonical.phbCreation = phb.value
   if (phb) {
@@ -1478,6 +1478,6 @@ export function parseCharacterImport(raw, options = {}) {
     document,
     creation: phb,
     patch: canonical,
-    sheet: deriveCharacterSheet(withBackgroundBenefits(enriched, rulesetId)),
+    sheet: deriveCharacterSheet(withBackgroundBenefits(enriched, rulesetId), { rulesetId }),
   }
 }

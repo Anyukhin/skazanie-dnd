@@ -3,7 +3,6 @@ import test from 'node:test'
 
 import {
   HEAL_THRESHOLD_RATIO,
-  UNCANNY_DODGE_DAMAGE_PERCENT,
   healingTargetFor,
   planHeroReaction,
   planHeroTurn,
@@ -297,7 +296,9 @@ test('автономный волшебник поднимает «Щит», и 
   const state = reactionBattle()
   const attacked = applyAll(state, resolveCommand(enemyAttack, state, authoritative([14, 4])).events)
   assert.ok(attacked.mechanics.combat.reaction_window.action_ids.includes('cast:shield'))
-  assert.ok(attacked.players[0].hp < 20, 'удар обязан пройти, иначе окно ничего не значит')
+  assert.equal(attacked.mechanics.combat.reaction_window.trigger, 'attack-shield-choice')
+  assert.equal(attacked.players[0].hp, 20, 'до выбора Щита урон ещё не разрешён')
+  assert.equal(attacked.mechanics.combat.reaction_window.damage.applied_amount, undefined)
 
   const plan = planHeroReaction(attacked)
   assert.equal(plan.rule, 'cast:shield')
@@ -368,7 +369,7 @@ test('автономный герой бьёт вдогонку уходящем
   assert.equal(after.mechanics.combat.action_economy.mage.reaction, false)
 })
 
-test('«Невероятное уклонение» тратится на крупный удар и не тратится на царапину', () => {
+test('«Невероятное уклонение» выбирается в pre-damage окне, но legacy-порог сохраняется', () => {
   const rogue = {
     characterClass: 'rogue', role: 'Плут · ур. 5', level: 5, proficiency: 3,
     hp: 40, maxHp: 40, abilities: { str: 10, dex: 16, con: 14, int: 12, wis: 10, cha: 10 },
@@ -379,18 +380,16 @@ test('«Невероятное уклонение» тратится на кру
   const scratch = reactionBattle({ heroOverrides: rogue, enemyOverrides: claw('1d6') })
   const scratched = applyAll(scratch, resolveCommand(enemyAttack, scratch, authoritative([18, 1])).events)
   assert.ok(scratched.mechanics.combat.reaction_window.action_ids.includes('uncanny-dodge'))
-  assert.equal(planHeroReaction(scratched).rule, 'decline-reaction')
+  assert.equal(scratched.mechanics.combat.reaction_window.trigger, 'attack-protective-choice')
+  assert.equal(planHeroReaction(scratched).rule, 'uncanny-dodge')
 
   const heavy = reactionBattle({ heroOverrides: rogue, enemyOverrides: claw('4d6+8') })
   const wounded = applyAll(heavy, resolveCommand(enemyAttack, heavy, authoritative([18, 6, 6, 6, 6])).events)
-  const taken = 40 - wounded.players[0].hp
-  assert.ok(taken * 100 >= 40 * UNCANNY_DODGE_DAMAGE_PERCENT, `удар обязан быть крупным, а снял ${taken}`)
-  const plan = planHeroReaction(wounded)
-  assert.equal(plan.rule, 'uncanny-dodge')
-
-  const dodged = applyAll(wounded, resolveCommand(plan.commands[0], wounded, authoritative()).events)
-  assert.equal(dodged.players[0].hp, 40 - Math.floor(taken / 2))
-  assert.equal(dodged.mechanics.combat.action_economy.mage.reaction, false)
+  assert.equal(wounded.players[0].hp, 40, 'legacy comparison must start from a known pre-damage window')
+  const legacySmall = { ...wounded, mechanics: { ...wounded.mechanics, combat: { ...wounded.mechanics.combat, reaction_window: { ...wounded.mechanics.combat.reaction_window, trigger: 'attack-hit', damage: { applied_amount: 4, temporary_hp_absorbed: 0 } } } } }
+  const legacyHeavy = { ...wounded, mechanics: { ...wounded.mechanics, combat: { ...wounded.mechanics.combat, reaction_window: { ...wounded.mechanics.combat.reaction_window, trigger: 'attack-hit', damage: { applied_amount: 12, temporary_hp_absorbed: 0 } } } } }
+  assert.equal(planHeroReaction(legacySmall).rule, 'decline-reaction')
+  assert.equal(planHeroReaction(legacyHeavy).rule, 'uncanny-dodge')
 })
 
 test('политика детерминирована и не трогает окно, которого нет', () => {

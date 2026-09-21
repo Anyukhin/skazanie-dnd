@@ -123,8 +123,8 @@
     },
     {
       "path": "data/dndsu-spells-0-6.json",
-      "sha256": "dd50c6193710fbf860e4d51b80d1a7da8a2ccf266c6d9f417e71b93a626f8dc0",
-      "size_bytes": 591412,
+      "sha256": "d01da33cc4032c91c6207ec12723e430ba1604073ce2709caeacbfc766aed97c",
+      "size_bytes": 693779,
       "source_id": "dndsu-compatibility-index",
       "rights_status": "review_required"
     },
@@ -144,8 +144,8 @@
     },
     {
       "path": "data/dndsu-spell-mechanics-overrides.json",
-      "sha256": "a6383534b4b05934202425cf1941d92450eac2039af8e800fbd8f065c61b58df",
-      "size_bytes": 182373,
+      "sha256": "b6480b23f6822d8b7ad8a72bda68e3b0c0faaf7e07e756855d0c899c67c237be",
+      "size_bytes": 186477,
       "source_id": "dndsu-compatibility-index",
       "rights_status": "review_required"
     },
@@ -183,16 +183,16 @@
     },
     {
       "path": "data/starter-equipment-dnd-5e-2014.json",
-      "sha256": "599cbbfd5ee14f28f90d915e965af5e921e60701e9868393c94cc7833e1bc7fc",
-      "size_bytes": 45934,
+      "sha256": "d4528b41b22a6c15c7a8c57bd40337c50f3f62d8c3acfb46605a0df405dac4a5",
+      "size_bytes": 44957,
       "source_id": "dndsu-5e14-core",
       "rights_status": "project_license_required",
       "notes": "Server-validated группы поддержанных вариантов стартового снаряжения PHB 2014."
     },
     {
       "path": "data/spell-descriptions-ru.json",
-      "sha256": "e1d7e51c3391203b461ee74e26bb479f0105eb8fa8315dcf679af6703597ca0f",
-      "size_bytes": 186505,
+      "sha256": "a1c707d2615acf5aa74a5fa59406a859c3db2bc17340f4db030ba103200e5356",
+      "size_bytes": 189396,
       "source_id": "dndsu-compatibility-index",
       "rights_status": "project_license_required"
     },

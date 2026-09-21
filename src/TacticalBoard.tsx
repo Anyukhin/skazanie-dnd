@@ -10,6 +10,7 @@ import {
   COMBAT_ANIMATION_QUEUE_LIMIT,
   combatAnimationCuesFromBattleLog,
   combatAnimationCuesFromEvents,
+  attackOutcome, attackVisualStyleForActor, strikeImpactProgress, strikeLaunchProgress, strikeMotionProgress, strikeUsesProjectile,
   type BoardPoint,
   type CombatAnimationCue,
 } from './combat-animation'
@@ -28,6 +29,8 @@ import {
 } from './board-ambient'
 import { LEGACY_CATALOG_REVISION, loadPropModelCatalog, type PropModelCatalog } from './prop-model-catalog'
 import { actorPresentationCenter, boardCameraKey } from './tactical-ui'
+import { revealedAt } from './tactical-map-client'
+import type { CombatAudio } from './combat-audio'
 import './tactical-board.css'
 import './board3d.css'
 
@@ -392,6 +395,7 @@ export type TacticalBoardProps = {
   visualBatch?: CombatVisualBatch | null
   animationActors?: BoardAnimationActor[]
   animationsEnabled?: boolean
+  combatAudio?: CombatAudio
   conditions?: BoardConditionState
   conditionVersion?: number
   onBackgroundActivate?: () => void
@@ -412,11 +416,16 @@ export type TacticalBoardProps = {
   /** В прокручиваемом стенде колесо страницы не должно случайно увеличивать карту. */
   wheelZoomRequiresAltKey?: boolean
   trajectory?: { x1: number; y1: number; x2: number; y2: number } | null
+  /** Наведение на пустую клетку без отдельного DOM-узла, в обоих видах карты. */
+  onCellHover?: (point: BoardPoint | null) => void
+  onCancelAiming?: () => void
+  /** Короткое предупреждение возле прицела, без перекрывающего карту меню. */
+  targetHint?: { point: BoardPoint; text: string; tone: 'warning' | 'blocked' }
 }
 
 function TacticalBoard2D({
   map, columns, rows, irregular, ariaLabel, themeKey, artUrl, cells, cellHints, overlayCells, decoration,
-  effectRenderers, battleLog, visualBatch, animationActors, animationsEnabled, conditions, conditionVersion, onBackgroundActivate,
+  effectRenderers, battleLog, visualBatch, animationActors, animationsEnabled, combatAudio, conditions, conditionVersion, onBackgroundActivate, onCellHover, onCancelAiming, targetHint,
   levelIndex = 0, lighting = true, campaignId = '', artMode = 'backdrop', viewResetKey, wheelZoomRequiresAltKey = false,
 }: TacticalBoardProps) {
   const cameraKey = boardCameraKey(map?.locationId, levelIndex, campaignId)
@@ -630,10 +639,18 @@ function TacticalBoard2D({
   }, [])
 
   const skipAnimations = useCallback(() => {
+    combatAudio?.cancel()
     setAnimationQueue([])
     setActiveAnimation(null)
     clearEffectsCanvas()
+  }, [clearEffectsCanvas, combatAudio])
+  // Выключение визуального движения не является командой «пропустить»:
+  // подтверждённый звук должен доиграть, а очередь — пройти без рисунка.
+  const stopVisualAnimation = useCallback(() => {
+    setActiveAnimation(null)
+    clearEffectsCanvas()
   }, [clearEffectsCanvas])
+  useEffect(() => () => { combatAudio?.cancel() }, [combatAudio])
 
   const enqueueAnimations = useCallback((incoming: readonly CombatAnimationCue[]) => {
     const fresh: CombatAnimationCue[] = []
@@ -644,9 +661,10 @@ function TacticalBoard2D({
     }
     // Помечаем события даже при выключенных эффектах и в фоновой вкладке:
     // после возврата уже подтверждённые ходы не должны проигрываться заново.
-    if (!fresh.length || animationsEnabled === false || (typeof document !== 'undefined' && document.hidden)) return
+    if (!fresh.length || (typeof document !== 'undefined' && document.hidden)) return
+    if (animationsEnabled === false && (!combatAudio || combatAudio.getSettings().muted)) return
     setAnimationQueue((current) => [...current, ...fresh].slice(-COMBAT_ANIMATION_QUEUE_LIMIT))
-  }, [animationsEnabled])
+  }, [animationsEnabled, combatAudio])
 
   const battleLogKey = (battleLog ?? []).map((event) => `${event.id}:${event.damage ?? ''}:${event.hpAfter ?? ''}`).join('|')
   useEffect(() => {
@@ -682,8 +700,8 @@ function TacticalBoard2D({
 
   useEffect(() => {
     if (animationsEnabled !== false) return
-    skipAnimations()
-  }, [animationsEnabled, skipAnimations])
+    stopVisualAnimation()
+  }, [animationsEnabled, stopVisualAnimation])
 
   useEffect(() => {
     if (typeof document === 'undefined') return
@@ -707,11 +725,18 @@ function TacticalBoard2D({
   }, [skipAnimations])
 
   useEffect(() => {
-    if (activeAnimation || !animationQueue.length || animationsEnabled === false) return
+    if (activeAnimation || !animationQueue.length) return
     const [next, ...rest] = animationQueue
+    const audioActor = next.kind === 'strike'
+      ? animationActorsRef.current.find((actor) => actor.id === next.actorId)
+      : undefined
+    combatAudio?.schedule(
+      { ...next, durationMs: next.motion === 'reduced' ? Math.max(120, next.durationMs) : next.durationMs },
+      audioActor ? { actor: audioActor } : undefined,
+    )
     setAnimationQueue(rest)
     setActiveAnimation(next)
-  }, [activeAnimation, animationQueue, animationsEnabled])
+  }, [activeAnimation, animationQueue, combatAudio])
 
   const actorAt = (id: string) => animationActorsRef.current.find((actor) => actor.id === id)
 
@@ -820,7 +845,7 @@ function TacticalBoard2D({
     let cancelled = false
     const startedAt = performance.now()
     let previousFrameAt = startedAt
-    const ghostIds = activeAnimation.kind === 'move' || activeAnimation.kind === 'strike'
+    const ghostIds = animationsEnabled !== false && (activeAnimation.kind === 'move' || activeAnimation.kind === 'strike' || (activeAnimation.kind === 'channel' && activeAnimation.channelType === 'teleport'))
       ? [activeAnimation.actorId]
       : []
     const ghosted = [...(frameRef.current?.querySelectorAll<HTMLElement>('[data-actor-id]') ?? [])]
@@ -838,12 +863,18 @@ function TacticalBoard2D({
       const spellCue = isSpellAnimationCue(activeAnimation)
       const durationMs = spellCue && activeAnimation.motion === 'reduced'
         ? Math.max(REDUCED_MOTION_SPELL_CUE_MS, activeAnimation.durationMs)
-        : Math.max(1, activeAnimation.durationMs)
+        : activeAnimation.motion === 'reduced' ? Math.max(120, activeAnimation.durationMs) : Math.max(1, activeAnimation.durationMs)
       const progress = Math.max(0, Math.min(1, (now - startedAt) / durationMs))
       const eased = 1 - Math.pow(1 - progress, 3)
       const frameDurationMs = Math.max(0, now - previousFrameAt)
       previousFrameAt = now
       context.clearRect(0, 0, canvas.width, canvas.height)
+
+      if (animationsEnabled === false) {
+        if (progress >= 1) setActiveAnimation(null)
+        else frameHandle = requestAnimationFrame(frame)
+        return
+      }
 
       if (spellCue) {
         const budget = spellEffectBudgetRef.current
@@ -858,6 +889,14 @@ function TacticalBoard2D({
           }),
         ])
         budget?.recordFrame(frameDurationMs)
+        if (activeAnimation.kind === 'channel' && activeAnimation.channelType === 'teleport') {
+          const reduced = activeAnimation.motion === 'reduced'
+          const position = reduced || progress >= .6 ? activeAnimation.position : activeAnimation.from
+          if (position && (reduced || progress < .4 || progress >= .6) && revealedAt(scene.map, position.x, position.y)) {
+            const alpha = reduced ? 1 : progress < .4 ? 1 - progress / .4 : (progress - .6) / .4
+            drawActor(context, position, cellSize, activeAnimation.actorId, alpha)
+          }
+        }
       } else if (activeAnimation.kind === 'move') {
         const route = [activeAnimation.from, ...activeAnimation.path]
         const travel = eased * Math.max(1, route.length - 1)
@@ -865,40 +904,138 @@ function TacticalBoard2D({
         const local = Math.min(1, travel - index)
         const from = route[Math.max(0, index)] ?? activeAnimation.from
         const to = route[Math.min(route.length - 1, index + 1)] ?? activeAnimation.to
-        drawActor(context, {
+        const position = {
           x: from.x + (to.x - from.x) * local,
           y: from.y + (to.y - from.y) * local,
-        }, cellSize, activeAnimation.actorId)
+        }
+        if (revealedAt(scene.map, Math.floor(position.x), Math.floor(position.y))) {
+          drawActor(context, position, cellSize, activeAnimation.actorId)
+        }
       } else if (activeAnimation.kind === 'strike') {
         const actor = actorAt(activeAnimation.actorId)
         const target = actorAt(activeAnimation.targetId)
-        if (actor && target) {
-          const dx = target.x - actor.x
-          const dy = target.y - actor.y
+          const from = activeAnimation.from ?? actor
+          const to = activeAnimation.to ?? target
+          if (from && to) {
+          const reduced = activeAnimation.motion === 'reduced'
+          const phase = reduced ? .84 : progress
+            const style = attackVisualStyleForActor(activeAnimation, actor)
+            const weapon = activeAnimation.loadout?.main_hand?.model_key ?? ''
+            const netAttack = String(style) === 'net' || weapon === 'net'
+            const outcome = attackOutcome(activeAnimation)
+          const projectile = strikeUsesProjectile(activeAnimation)
+          const impact = strikeImpactProgress(activeAnimation)
+          const launch = strikeLaunchProgress(activeAnimation)
+          const dx = to.x - from.x
+          const dy = to.y - from.y
           const length = Math.max(1, Math.hypot(dx, dy))
-          const lunge = Math.sin(Math.min(1, progress / .58) * Math.PI) * .34
-          drawActor(context, { x: actor.x + dx / length * lunge, y: actor.y + dy / length * lunge }, cellSize, activeAnimation.actorId)
-          if (progress > .18) {
-            const targetCenter = screenPoint(target, cellSize, activeAnimation.targetId)
+          const motion = strikeMotionProgress(activeAnimation, phase)
+          const lunge = reduced || projectile ? 0 : Math.sin(motion * Math.PI) * (style === 'pierce' ? .4 : .25)
+          const source = screenPoint(from, cellSize, activeAnimation.actorId)
+          const end = screenPoint(to, cellSize, activeAnimation.targetId)
+          const color = outcome === 'critical' ? '#ffd277' : outcome === 'blocked' ? '#a8c6df' : outcome === 'miss' ? '#d7cec2' : '#efad82'
+          context.save()
+          context.beginPath()
+          for (let y = 0; y < scene.map.height; y++) for (let x = 0; x < scene.map.width; x++) {
+            if (revealedAt(scene.map, x, y)) context.rect(x * cellSize, y * cellSize, cellSize, cellSize)
+          }
+          context.clip()
+          drawActor(context, { x: from.x + dx / length * lunge, y: from.y + dy / length * lunge }, cellSize, activeAnimation.actorId)
+          const angle = Math.atan2(end.y - source.y, end.x - source.x)
+          if (projectile && !reduced && phase >= launch && phase < impact) {
+            const travel = (phase - launch) / (impact - launch)
+            const miss = outcome === 'miss' ? cellSize * .4 * travel : 0
             context.save()
-            context.globalAlpha = Math.max(0, 1 - progress) * .9
+            context.translate(source.x + (end.x - source.x) * travel - Math.sin(angle) * miss,
+              source.y + (end.y - source.y) * travel + Math.cos(angle) * miss - ((style === 'thrown' || netAttack) ? Math.sin(travel * Math.PI) * cellSize * .35 : 0))
+            context.rotate(angle + ((style === 'thrown' || netAttack) ? travel * Math.PI * 4 : 0))
+            context.strokeStyle = '#e3d6bd'
+            context.fillStyle = '#c7d6da'
+            context.lineWidth = Math.max(2, cellSize * .045)
+            if (netAttack) {
+              context.strokeStyle = '#e7d8b9'
+              context.beginPath()
+              context.arc(0, 0, cellSize * .12, 0, Math.PI * 2)
+              context.moveTo(-cellSize * .12, 0); context.lineTo(cellSize * .12, 0)
+              context.moveTo(0, -cellSize * .12); context.lineTo(0, cellSize * .12)
+              context.stroke()
+            } else if (style === 'sling' || style === 'firearm' || style === 'wand') {
+              context.fillStyle = style === 'wand' ? '#d9c6ff' : style === 'sling' ? '#c5b398' : '#f5d28e'
+              context.beginPath(); context.arc(0, 0, cellSize * (style === 'wand' ? .11 : .065), 0, Math.PI * 2); context.fill()
+              context.globalAlpha = .55
+              context.beginPath(); context.moveTo(-cellSize * .32, 0); context.lineTo(-cellSize * .1, 0); context.stroke()
+            } else {
+              const shaft = style === 'crossbow' || style === 'dart' ? .17 : style === 'thrown' && /javelin|spear|trident/u.test(weapon) ? .42 : .28
+              context.beginPath(); context.moveTo(-cellSize * shaft, 0); context.lineTo(cellSize * .2, 0); context.stroke()
+              if (style === 'thrown' && weapon.includes('axe')) context.fillRect(cellSize * .08, -cellSize * .16, cellSize * .18, cellSize * .24)
+              else { context.beginPath(); context.moveTo(cellSize * .3, 0); context.lineTo(cellSize * .12, -cellSize * .075); context.lineTo(cellSize * .12, cellSize * .075); context.closePath(); context.fill() }
+            }
+            if (style === 'bow' || style === 'crossbow') {
+              context.beginPath(); context.moveTo(-cellSize * .22, 0); context.lineTo(-cellSize * .31, -cellSize * .06); context.moveTo(-cellSize * .22, 0); context.lineTo(-cellSize * .31, cellSize * .06); context.stroke()
+            }
+            context.restore()
+          } else if (!projectile && !reduced) {
+            context.save()
+            context.translate(end.x, end.y)
+            context.rotate(angle)
+            context.globalAlpha = Math.sin(motion * Math.PI) * .8
+            context.strokeStyle = color
+            context.lineWidth = cellSize * (style === 'bludgeon' || style === 'unarmed' ? .1 : .055)
             context.beginPath()
-            context.arc(targetCenter.x, targetCenter.y, cellSize * (.28 + progress * .42), 0, Math.PI * 2)
-            context.lineWidth = Math.max(3, cellSize * .08)
-            context.strokeStyle = activeAnimation.hit ? '#f4bb72' : '#d7cec2'
-            context.shadowBlur = cellSize * .3
-            context.shadowColor = context.strokeStyle
+            if (style === 'slash') context.arc(0, 0, cellSize * .42, -Math.PI * .85, -Math.PI * .85 + motion * Math.PI * 1.4)
+            else if (style === 'pierce') { context.moveTo(-cellSize * .65, 0); context.lineTo(cellSize * (motion - .5), 0) }
+            else if (style === 'natural') {
+              for (const offset of [-.12, 0, .12]) { context.moveTo(-cellSize * .28, cellSize * (offset - .13)); context.lineTo(cellSize * .15, cellSize * (offset + .13)) }
+            } else context.arc(-cellSize * .18, 0, cellSize * (style === 'unarmed' ? .13 : .23), 0, Math.PI * 2)
             context.stroke()
             context.restore()
-            const label = activeAnimation.hit
-              ? activeAnimation.amount != null && activeAnimation.amount > 0 ? `−${activeAnimation.amount}` : 'ПОПАДАНИЕ'
-              : 'МИМО'
-            drawFloatingText(context, target, cellSize, label, activeAnimation.hit ? '#ef8b78' : '#d7cec2', progress, activeAnimation.targetId)
           }
+          if (phase >= impact) {
+            const hitPhase = (phase - impact) / (1 - impact)
+            if (outcome !== 'miss') {
+              context.strokeStyle = color
+              context.lineWidth = Math.max(2, cellSize * .045)
+              context.globalAlpha = 1 - hitPhase
+              context.beginPath()
+              const rays = outcome === 'critical' ? 8 : 4
+              for (let index = 0; index < rays; index++) {
+                const angle = index * Math.PI * 2 / rays + .3
+                context.moveTo(end.x + Math.cos(angle) * cellSize * .2, end.y + Math.sin(angle) * cellSize * .2)
+                context.lineTo(end.x + Math.cos(angle) * cellSize * (.36 + hitPhase * .25), end.y + Math.sin(angle) * cellSize * (.36 + hitPhase * .25))
+              }
+              context.stroke()
+              context.globalAlpha = 1
+            }
+            // Сеть — короткий подтверждённый акцент попадания. Это не
+            // состояние restrained: рисунок живёт только в strike cue и
+            // исчезает вместе с его hit window.
+            if (netAttack && (outcome === 'hit' || outcome === 'critical')) {
+              const spread = cellSize * (.28 + Math.min(1, hitPhase) * .42)
+              context.save()
+              context.translate(end.x, end.y)
+              context.globalAlpha = Math.max(0, 1 - hitPhase) * .82
+              context.strokeStyle = '#e7d8b9'
+              context.lineWidth = Math.max(1.5, cellSize * .035)
+              context.beginPath()
+              for (let row = -2; row <= 2; row += 1) {
+                const offset = row * spread / 2
+                context.moveTo(-spread, offset)
+                context.lineTo(spread, offset)
+                context.moveTo(offset, -spread)
+                context.lineTo(offset, spread)
+              }
+              context.stroke()
+              context.restore()
+            }
+            const label = outcome === 'blocked' ? 'ПЕРЕХВАЧЕНО' : outcome === 'miss' ? 'МИМО'
+              : `${outcome === 'critical' ? 'КРИТ! ' : ''}${activeAnimation.amount != null && activeAnimation.amount > 0 ? `−${activeAnimation.amount}` : 'ПОПАДАНИЕ'}`
+            drawFloatingText(context, to, cellSize, label, color, Math.max(.12, hitPhase), activeAnimation.targetId)
+          }
+          context.restore()
         }
       } else if (activeAnimation.kind === 'impact') {
         const target = actorAt(activeAnimation.targetId)
-        if (target) {
+        if (target && revealedAt(scene.map, target.x, target.y)) {
           const color = animationColor(activeAnimation)
           const center = screenPoint(target, cellSize, activeAnimation.targetId)
           context.save()
@@ -918,7 +1055,7 @@ function TacticalBoard2D({
         }
       } else if (activeAnimation.kind === 'death') {
         const target = actorAt(activeAnimation.targetId)
-        if (target) {
+        if (target && revealedAt(scene.map, target.x, target.y)) {
           const alpha = Math.max(0, 1 - eased)
           const center = drawActor(context, target, cellSize, activeAnimation.targetId, alpha)
           context.save()
@@ -937,7 +1074,7 @@ function TacticalBoard2D({
         }
       } else if (activeAnimation.kind === 'condition') {
         const target = actorAt(activeAnimation.targetId)
-        if (target) {
+        if (target && revealedAt(scene.map, target.x, target.y)) {
           const center = screenPoint(target, cellSize, activeAnimation.targetId)
           context.save()
           context.globalAlpha = Math.max(0, 1 - Math.max(0, progress - .65) / .35)
@@ -1077,6 +1214,7 @@ function TacticalBoard2D({
     if (key !== hovered.current) {
       hovered.current = key
       setHoverCell(position)
+      onCellHover?.(position)
     }
     if (!drag.current || drag.current.pointerId !== event.pointerId) return
     event.preventDefault()
@@ -1106,6 +1244,7 @@ function TacticalBoard2D({
     if (hovered.current === null) return
     hovered.current = null
     setHoverCell(null)
+    onCellHover?.(null)
   }
 
   // Узел-щуп существует только под указателем и только там, где подсказка есть,
@@ -1164,11 +1303,12 @@ function TacticalBoard2D({
       onPointerUp={stopPan}
       onPointerCancel={stopPan}
       onPointerLeave={leaveBoard}
+      onContextMenu={onCancelAiming ? (event) => { event.preventDefault(); onCancelAiming() } : undefined}
       onWheel={zoomWithWheel}
       onDoubleClick={() => { setPan({ x: 0, y: 0 }); setZoom(1) }}
       onKeyDown={moveFocus}
       onClickCapture={(event) => {
-        if (activeAnimationRef.current) {
+        if (animationsEnabled !== false && activeAnimationRef.current) {
           skipAnimations()
           event.preventDefault()
           event.stopPropagation()
@@ -1199,6 +1339,7 @@ function TacticalBoard2D({
       <div
         ref={frameRef}
         className={`board-frame ${irregular ? 'irregular' : ''} ${levelShift ? `level-change-${levelShift}` : ''}`}
+        data-animation-playing={animationsEnabled !== false && Boolean(activeAnimation || animationQueue.length)}
         style={{ '--board-columns': columns, '--board-rows': rows, width: `calc(var(--cell) * ${columns})`, height: `calc(var(--cell) * ${rows})` } as React.CSSProperties}
       >
         <canvas ref={canvasRef} className="board-canvas" aria-hidden="true" />
@@ -1224,6 +1365,8 @@ function TacticalBoard2D({
                 title={node.title}
                 onPointerEnter={node.onPointerEnter}
                 onPointerLeave={node.onPointerLeave}
+                onFocus={node.onPointerEnter}
+                onBlur={node.onPointerLeave}
                 onClick={(event) => {
                   if (!node.interactive) return
                   event.stopPropagation()
@@ -1234,7 +1377,8 @@ function TacticalBoard2D({
                 onKeyDown={(event) => {
                   if (!node.interactive || (event.key !== 'Enter' && event.key !== ' ')) return
                   event.preventDefault()
-                  node.onActivate?.()
+                  event.stopPropagation()
+                  if (!event.repeat) node.onActivate?.()
                 }}
               >
                 {blockedNow && <i className="cell-block-mark" aria-hidden="true" />}
@@ -1273,7 +1417,11 @@ function TacticalBoard2D({
           ))}
         </div>
         <canvas ref={effectsCanvasRef} className="board-effects-canvas" aria-hidden="true" />
-        {activeAnimation && (
+        {targetHint && <span className={`board-target-hint ${targetHint.tone}`} role="status" style={{
+          left: `calc(var(--cell) * ${targetHint.point.x + .5})`,
+          top: `calc(var(--cell) * ${targetHint.point.y + 1})`,
+        }}>{targetHint.text}</span>}
+        {animationsEnabled !== false && activeAnimation && (
           <button
             type="button"
             className="board-animation-skip"

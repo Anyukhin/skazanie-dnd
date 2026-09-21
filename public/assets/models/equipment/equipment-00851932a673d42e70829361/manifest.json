@@ -1,0 +1,2195 @@
+{
+  "schema": "skazanie-equipment-model-candidate/v1",
+  "version": 1,
+  "build": {
+    "generator": "tools/build-equipment-models.mjs",
+    "generatorVersion": 1,
+    "generatorSha256": "c7e91da7bf6a211a36c9f2e3fafa24599514c3862a786c113e304e029cbc29c3",
+    "threeRevision": "186",
+    "canonicalHumanHeight": 1.4,
+    "catalogEquippableCount": 83,
+    "sourceInputs": [
+      {
+        "path": "server/equipment-visuals.mjs",
+        "sha256": "449d4834e65b19e21c409d6326aa0214e826a254e2dbaf42421f1ca0dc9d4216",
+        "bytes": 17422
+      },
+      {
+        "path": "server/item-catalog.mjs",
+        "sha256": "aa16e84acffdb02ef8ae74a5bd75160c13ee2b57e2cea141f30f47c42a5d79f6",
+        "bytes": 133816
+      },
+      {
+        "path": "tools/build-equipment-models.mjs",
+        "sha256": "c7e91da7bf6a211a36c9f2e3fafa24599514c3862a786c113e304e029cbc29c3",
+        "bytes": 20260
+      },
+      {
+        "path": "tools/equipment-accessory-models.mjs",
+        "sha256": "81a94d0651b2873779897858c50a91e62f1964e221ec4e7c8c04d224ff4e69d9",
+        "bytes": 23460
+      },
+      {
+        "path": "tools/equipment-armor-models.mjs",
+        "sha256": "bd695a365055c4802444a846c5751b9296e570cc21ca2eb4eef2b8e6aeb6cb7f",
+        "bytes": 34282
+      },
+      {
+        "path": "tools/equipment-weapon-models.mjs",
+        "sha256": "b28591dcbc0aeb1a6c7e36713d7a2ac55eb5d67b6bf1356e89a3e259d9a2dd4e",
+        "bytes": 33650
+      }
+    ]
+  },
+  "models": [
+    {
+      "key": "club",
+      "label": "Дубинка",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "club",
+      "handedness": "one-handed",
+      "parts": [
+        "club-handle",
+        "club-grip-binding",
+        "club-head",
+        "club-head-band",
+        "hand-grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/club.glb",
+      "catalogIds": [
+        "srd_5_2_1:club"
+      ],
+      "bytes": 15932,
+      "sha256": "becca558d2974b526ae86c823d76b71e779e82df86debfbd83664faa14eab186"
+    },
+    {
+      "key": "dagger",
+      "label": "Кинжал",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "blade",
+      "handedness": "one-handed",
+      "parts": [
+        "dagger-grip",
+        "dagger-pommel",
+        "dagger-guard",
+        "dagger-blade",
+        "dagger-fuller",
+        "hand-grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/dagger.glb",
+      "catalogIds": [
+        "srd_5_2_1:dagger"
+      ],
+      "bytes": 11744,
+      "sha256": "b870cebf28b10101e926c35e1a515eff4e677056ce7b8fefaa84d12a347de1c4"
+    },
+    {
+      "key": "greatclub",
+      "label": "Большая дубинка",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "club",
+      "handedness": "two-handed",
+      "parts": [
+        "greatclub-shaft",
+        "greatclub-head",
+        "greatclub-head-ridge",
+        "greatclub-neck-band",
+        "hand-grip",
+        "off-hand-grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/greatclub.glb",
+      "catalogIds": [
+        "srd_5_2_1:greatclub"
+      ],
+      "bytes": 16232,
+      "sha256": "c57a5dbe6a5027f34a9685fe10b6046ec12b4cf3ef26433b1ec1d062dcbc84b8"
+    },
+    {
+      "key": "handaxe",
+      "label": "Ручной топор",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "axe",
+      "handedness": "one-handed",
+      "parts": [
+        "handaxe-haft",
+        "handaxe-haft-grip",
+        "handaxe-blade",
+        "handaxe-edge",
+        "hand-grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/handaxe.glb",
+      "catalogIds": [
+        "srd_5_2_1:handaxe"
+      ],
+      "bytes": 14768,
+      "sha256": "b5bb0c54a77005d3c60ef3053cbcb6f9af63bc2e956535dca8c8474fe309bfd8"
+    },
+    {
+      "key": "javelin",
+      "label": "Дротик",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "polearm",
+      "handedness": "one-handed",
+      "parts": [
+        "javelin-shaft",
+        "javelin-head",
+        "javelin-fletching",
+        "hand-grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/javelin.glb",
+      "catalogIds": [
+        "srd_5_2_1:javelin"
+      ],
+      "bytes": 9888,
+      "sha256": "5633074afaeb99d178ac97d43f3bfa5b070d484f1ca927bb500d05a0947c3572"
+    },
+    {
+      "key": "light-hammer",
+      "label": "Лёгкий молот",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "hammer",
+      "handedness": "one-handed",
+      "parts": [
+        "light-hammer-grip",
+        "light-hammer-head",
+        "light-hammer-neck",
+        "light-hammer-face",
+        "hand-grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/light-hammer.glb",
+      "catalogIds": [
+        "srd_5_2_1:light-hammer"
+      ],
+      "bytes": 10400,
+      "sha256": "f9e2848ab7228885be866f03fd37923a0db65addad2486999a7b7dc9bf97c5a6"
+    },
+    {
+      "key": "mace",
+      "label": "Булава",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "mace",
+      "handedness": "one-handed",
+      "parts": [
+        "mace-grip",
+        "mace-collar",
+        "mace-head",
+        "mace-flange",
+        "hand-grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/mace.glb",
+      "catalogIds": [
+        "srd_5_2_1:mace"
+      ],
+      "bytes": 25396,
+      "sha256": "60f4fab254370ee766e8a90fe1c749c1d40cb055b3f7b06bff0c9b3d5d126f96"
+    },
+    {
+      "key": "quarterstaff",
+      "label": "Боевой посох",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "staff",
+      "handedness": "variable",
+      "parts": [
+        "quarterstaff-shaft",
+        "quarterstaff-cap-top",
+        "quarterstaff-cap-bottom",
+        "quarterstaff-grip-wrap",
+        "hand-grip",
+        "off-hand-grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/quarterstaff.glb",
+      "catalogIds": [
+        "srd_5_2_1:arcane-focus-staff",
+        "srd_5_2_1:druidic-focus-wooden-staff",
+        "srd_5_2_1:quarterstaff"
+      ],
+      "bytes": 27340,
+      "sha256": "7ad7bc2b40eb79bdcc0029f2511e41af9dd9f41590b4616e4faae4814397ceb6"
+    },
+    {
+      "key": "sickle",
+      "label": "Серп",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "blade",
+      "handedness": "one-handed",
+      "parts": [
+        "sickle-grip",
+        "sickle-pommel",
+        "sickle-blade",
+        "sickle-spine",
+        "hand-grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/sickle.glb",
+      "catalogIds": [
+        "srd_5_2_1:sickle"
+      ],
+      "bytes": 15312,
+      "sha256": "2b62cbd79a458a4839ae019f58aa2aba265c8bb5fc346f8c9daceda61cdbedeb"
+    },
+    {
+      "key": "spear",
+      "label": "Копьё",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "polearm",
+      "handedness": "variable",
+      "parts": [
+        "spear-shaft",
+        "spear-grip-ring",
+        "spear-head",
+        "spear-head-fuller",
+        "hand-grip",
+        "off-hand-grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/spear.glb",
+      "catalogIds": [
+        "srd_5_2_1:spear"
+      ],
+      "bytes": 14392,
+      "sha256": "9042e0b0136ede38c9c01eb73e83f321d1e4911ddf6fb014f524db90371d5259"
+    },
+    {
+      "key": "dart",
+      "label": "Метательный дротик",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "dart",
+      "handedness": "one-handed",
+      "parts": [
+        "dart-shaft",
+        "dart-tip",
+        "dart-fletching",
+        "hand-grip",
+        "muzzle"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/dart.glb",
+      "catalogIds": [
+        "srd_5_2_1:dart"
+      ],
+      "bytes": 9776,
+      "sha256": "e51a23f4c0cac28b3efda8c62687d04ed1f65484852702389a3562e20750526c"
+    },
+    {
+      "key": "light-crossbow",
+      "label": "Лёгкий арбалет",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "crossbow",
+      "handedness": "two-handed",
+      "parts": [
+        "light-crossbow-stock",
+        "light-crossbow-grip",
+        "light-crossbow-barrel",
+        "light-crossbow-prod-center",
+        "light-crossbow-prod-left",
+        "light-crossbow-prod-right",
+        "light-crossbow-string",
+        "light-crossbow-string-return",
+        "light-crossbow-trigger-guard",
+        "hand-grip",
+        "off-hand-grip",
+        "muzzle"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/light-crossbow.glb",
+      "catalogIds": [
+        "srd_5_2_1:light-crossbow"
+      ],
+      "bytes": 20180,
+      "sha256": "ba2e9467c315ec5d8a3f155760a695820a8ad088787f061c5866c61191c4bbb1"
+    },
+    {
+      "key": "shortbow",
+      "label": "Короткий лук",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "bow",
+      "handedness": "two-handed",
+      "parts": [
+        "shortbow-limb",
+        "shortbow-string",
+        "shortbow-grip-wrap",
+        "shortbow-upper-nock",
+        "shortbow-lower-nock",
+        "hand-grip",
+        "off-hand-grip",
+        "muzzle"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/shortbow.glb",
+      "catalogIds": [
+        "srd_5_2_1:shortbow"
+      ],
+      "bytes": 15408,
+      "sha256": "ad96d3b4e2fda84516bb290f4526dcddedf00db40752bf87f77696800fbbc9a8"
+    },
+    {
+      "key": "sling",
+      "label": "Праща",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "sling",
+      "handedness": "one-handed",
+      "parts": [
+        "sling-cord-left",
+        "sling-cord-right",
+        "sling-pouch",
+        "sling-projectile",
+        "hand-grip",
+        "muzzle"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/sling.glb",
+      "catalogIds": [
+        "srd_5_2_1:sling"
+      ],
+      "bytes": 13604,
+      "sha256": "712d2cf7ba243d496636e2847671b2e6cbb3b104c2219a886e84ef335d67efd1"
+    },
+    {
+      "key": "net",
+      "label": "Сеть",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "net",
+      "handedness": "one-handed",
+      "parts": [
+        "net-handle",
+        "net-handle-loop",
+        "net-mesh-row-1",
+        "net-mesh-row-2",
+        "net-mesh-cord",
+        "net-edge-weight",
+        "hand-grip",
+        "muzzle"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/net.glb",
+      "catalogIds": [],
+      "bytes": 31744,
+      "sha256": "c56f2db4f231c18e6532cdd8d8a4382a3ed73000fc1b41e9dfdb7a94c082e4cf"
+    },
+    {
+      "key": "battleaxe",
+      "label": "Боевой топор",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "axe",
+      "handedness": "variable",
+      "parts": [
+        "battleaxe-haft",
+        "battleaxe-grip-wrap",
+        "battleaxe-blade",
+        "battleaxe-cutting-edge",
+        "hand-grip",
+        "off-hand-grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/battleaxe.glb",
+      "catalogIds": [
+        "srd_5_2_1:battleaxe"
+      ],
+      "bytes": 15228,
+      "sha256": "a1183b5290c6afd9e0a435ae670a6e3fb0247a94e2c9c946f726ff3acc122289"
+    },
+    {
+      "key": "flail",
+      "label": "Кистень",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "flail",
+      "handedness": "one-handed",
+      "parts": [
+        "flail-grip",
+        "flail-pommel",
+        "flail-chain-link",
+        "flail-striker",
+        "flail-striker-rivet",
+        "hand-grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/flail.glb",
+      "catalogIds": [
+        "srd_5_2_1:flail"
+      ],
+      "bytes": 31152,
+      "sha256": "933dc556ff3a5f5062b2c1eb882f8220f63b40aa85f711e5356017ba2e829d30"
+    },
+    {
+      "key": "glaive",
+      "label": "Глефа",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "polearm",
+      "handedness": "two-handed",
+      "parts": [
+        "glaive-pole",
+        "glaive-blade",
+        "glaive-haft-socket",
+        "hand-grip",
+        "off-hand-grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/glaive.glb",
+      "catalogIds": [
+        "srd_5_2_1:glaive"
+      ],
+      "bytes": 8660,
+      "sha256": "9d705f79e286d4156a1c5d57f6158e9768cf8f3994ff89d777c3cf127bd1722e"
+    },
+    {
+      "key": "greataxe",
+      "label": "Секира",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "axe",
+      "handedness": "two-handed",
+      "parts": [
+        "greataxe-haft",
+        "greataxe-grip-wrap",
+        "greataxe-blade",
+        "greataxe-edge",
+        "greataxe-eye",
+        "hand-grip",
+        "off-hand-grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/greataxe.glb",
+      "catalogIds": [
+        "srd_5_2_1:greataxe"
+      ],
+      "bytes": 17532,
+      "sha256": "8518185805cbe6a6339169b6422c8cb0168eca7b921db93d85d831ed69f8fb47"
+    },
+    {
+      "key": "greatsword",
+      "label": "Двуручный меч",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "blade",
+      "handedness": "two-handed",
+      "parts": [
+        "greatsword-grip",
+        "greatsword-pommel",
+        "greatsword-crossguard",
+        "greatsword-blade",
+        "greatsword-fuller",
+        "hand-grip",
+        "off-hand-grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/greatsword.glb",
+      "catalogIds": [
+        "srd_5_2_1:greatsword"
+      ],
+      "bytes": 15524,
+      "sha256": "3737f91b4abd143fb2dbcd87b805261a1a106d259189519f84c19b69333c1c5a"
+    },
+    {
+      "key": "halberd",
+      "label": "Алебарда",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "polearm",
+      "handedness": "two-handed",
+      "parts": [
+        "halberd-pole",
+        "halberd-axe-head",
+        "halberd-top-spike",
+        "halberd-hook",
+        "hand-grip",
+        "off-hand-grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/halberd.glb",
+      "catalogIds": [
+        "srd_5_2_1:halberd"
+      ],
+      "bytes": 10892,
+      "sha256": "ba950e14fb6c28826412068a2d7bd052fd44f47e6015ce54d17e0de651a73bdb"
+    },
+    {
+      "key": "lance",
+      "label": "Пика всадника",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "polearm",
+      "handedness": "two-handed",
+      "parts": [
+        "lance-shaft",
+        "lance-grip-wrap",
+        "lance-head",
+        "lance-butt-cap",
+        "hand-grip",
+        "off-hand-grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/lance.glb",
+      "catalogIds": [
+        "srd_5_2_1:lance"
+      ],
+      "bytes": 15408,
+      "sha256": "65675b0057420618569051bc25c65dd07f940f5df8d61b3e8ee8535330ef56ce"
+    },
+    {
+      "key": "longsword",
+      "label": "Длинный меч",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "variants": [
+        "default",
+        "enchanted",
+        "flaming"
+      ],
+      "kind": "blade",
+      "handedness": "variable",
+      "parts": [
+        "longsword-grip",
+        "longsword-pommel",
+        "longsword-crossguard",
+        "longsword-blade",
+        "longsword-fuller",
+        "hand-grip",
+        "off-hand-grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/longsword.glb",
+      "catalogIds": [
+        "srd_5_2_1:flame-tongue-longsword",
+        "srd_5_2_1:longsword",
+        "srd_5_2_1:longsword-plus-1",
+        "srd_5_2_1:vicious-longsword",
+        "srd_5_2_1:weapon-of-warning-longsword"
+      ],
+      "bytes": 15492,
+      "sha256": "d23d528ee42ced093dbdbae86f365ae85ff9a0b166ce26046871dd163cd7fcb4"
+    },
+    {
+      "key": "maul",
+      "label": "Молот",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "hammer",
+      "handedness": "two-handed",
+      "parts": [
+        "maul-shaft",
+        "maul-head",
+        "maul-head-face-front",
+        "maul-head-band",
+        "hand-grip",
+        "off-hand-grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/maul.glb",
+      "catalogIds": [
+        "srd_5_2_1:maul"
+      ],
+      "bytes": 37232,
+      "sha256": "49e93f6a0ace9194e69c68f3e35c6d9413d9da8d04174ac55678baeba8ea70dc"
+    },
+    {
+      "key": "morningstar",
+      "label": "Моргенштерн",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "mace",
+      "handedness": "one-handed",
+      "parts": [
+        "morningstar-grip",
+        "morningstar-head",
+        "morningstar-spike",
+        "hand-grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/morningstar.glb",
+      "catalogIds": [
+        "srd_5_2_1:morningstar"
+      ],
+      "bytes": 20340,
+      "sha256": "e959a05619b3f73a3528402b88367f3d7568f6ccc4ecc5e90250e4448b353f59"
+    },
+    {
+      "key": "pike",
+      "label": "Длинная пика",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "polearm",
+      "handedness": "two-handed",
+      "parts": [
+        "pike-shaft",
+        "pike-grip-wrap",
+        "pike-head",
+        "pike-butt-cap",
+        "hand-grip",
+        "off-hand-grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/pike.glb",
+      "catalogIds": [
+        "srd_5_2_1:pike"
+      ],
+      "bytes": 15384,
+      "sha256": "6f1fe3ec9c47466af5be8d9b0474a4bce810401fcfceb0900374a2cc7c0b8772"
+    },
+    {
+      "key": "rapier",
+      "label": "Рапира",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "blade",
+      "handedness": "one-handed",
+      "parts": [
+        "rapier-grip",
+        "rapier-pommel",
+        "rapier-guard",
+        "rapier-blade",
+        "rapier-knuckle-bow",
+        "hand-grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/rapier.glb",
+      "catalogIds": [
+        "srd_5_2_1:rapier"
+      ],
+      "bytes": 20276,
+      "sha256": "75b471526cd98ed43cdaf49d9f42aa4b6afdafecba21f48c8ad5520246b17359"
+    },
+    {
+      "key": "scimitar",
+      "label": "Скимитар",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "blade",
+      "handedness": "one-handed",
+      "parts": [
+        "scimitar-grip",
+        "scimitar-guard",
+        "scimitar-blade",
+        "scimitar-spine",
+        "hand-grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/scimitar.glb",
+      "catalogIds": [
+        "srd_5_2_1:scimitar"
+      ],
+      "bytes": 11356,
+      "sha256": "da1cf7e2583a831747f9913eb51cd8b608488dc960e5af0afd9f15a399faedbc"
+    },
+    {
+      "key": "shortsword",
+      "label": "Короткий меч",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "blade",
+      "handedness": "one-handed",
+      "parts": [
+        "shortsword-grip",
+        "shortsword-pommel",
+        "shortsword-guard",
+        "shortsword-blade",
+        "hand-grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/shortsword.glb",
+      "catalogIds": [
+        "srd_5_2_1:shortsword"
+      ],
+      "bytes": 10124,
+      "sha256": "964b27d0643cff994b02eb52572800d1f0e75eccee132f36b4d2f8ac45fbe179"
+    },
+    {
+      "key": "trident",
+      "label": "Трезубец",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "polearm",
+      "handedness": "variable",
+      "parts": [
+        "trident-shaft",
+        "trident-collar",
+        "trident-prong-shaft",
+        "trident-prong",
+        "hand-grip",
+        "off-hand-grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/trident.glb",
+      "catalogIds": [
+        "srd_5_2_1:trident"
+      ],
+      "bytes": 21008,
+      "sha256": "7afd69ad1c7e3f88667ac7d9dbcb7cbcf9975bf4c5da92342117556cf5b11317"
+    },
+    {
+      "key": "warhammer",
+      "label": "Боевой молот",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "hammer",
+      "handedness": "variable",
+      "parts": [
+        "warhammer-grip",
+        "warhammer-head",
+        "warhammer-face",
+        "warhammer-peen",
+        "hand-grip",
+        "off-hand-grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/warhammer.glb",
+      "catalogIds": [
+        "srd_5_2_1:warhammer"
+      ],
+      "bytes": 37292,
+      "sha256": "3d8f3cd7cdebf2c924cc45128f6cfb0a96addd896839e17086173ac608145f1d"
+    },
+    {
+      "key": "war-pick",
+      "label": "Боевой клевец",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "axe",
+      "handedness": "variable",
+      "parts": [
+        "war-pick-haft",
+        "war-pick-head",
+        "war-pick-beak",
+        "war-pick-back",
+        "hand-grip",
+        "off-hand-grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/war-pick.glb",
+      "catalogIds": [
+        "srd_5_2_1:war-pick"
+      ],
+      "bytes": 10088,
+      "sha256": "8426695fcc6ae98e009a3de8946157fbcc526870c3f8e66646a7912ab9d9cc21"
+    },
+    {
+      "key": "whip",
+      "label": "Кнут",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "whip",
+      "handedness": "one-handed",
+      "parts": [
+        "whip-handle",
+        "whip-handle-collar",
+        "whip-coiled-thong",
+        "whip-tip",
+        "hand-grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/whip.glb",
+      "catalogIds": [
+        "srd_5_2_1:whip"
+      ],
+      "bytes": 19024,
+      "sha256": "22f3505a2ec9931223d18c1ca0e93699727c45707a7c06eaba6d02af879ffdb3"
+    },
+    {
+      "key": "blowgun",
+      "label": "Духовая трубка",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "blowgun",
+      "handedness": "one-handed",
+      "parts": [
+        "blowgun-tube",
+        "blowgun-muzzle-ring",
+        "blowgun-mouthpiece",
+        "blowgun-sight",
+        "hand-grip",
+        "muzzle"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/blowgun.glb",
+      "catalogIds": [
+        "srd_5_2_1:blowgun"
+      ],
+      "bytes": 12452,
+      "sha256": "ac027d8ea626ca117c08da3fb8fa4ebc561f5ba7276c0aa408d020861ed54419"
+    },
+    {
+      "key": "hand-crossbow",
+      "label": "Ручной арбалет",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "crossbow",
+      "handedness": "one-handed",
+      "parts": [
+        "hand-crossbow-stock",
+        "hand-crossbow-grip",
+        "hand-crossbow-barrel",
+        "hand-crossbow-prod-center",
+        "hand-crossbow-prod-left",
+        "hand-crossbow-prod-right",
+        "hand-crossbow-string",
+        "hand-crossbow-string-return",
+        "hand-crossbow-trigger-guard",
+        "hand-grip",
+        "muzzle"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/hand-crossbow.glb",
+      "catalogIds": [
+        "srd_5_2_1:hand-crossbow"
+      ],
+      "bytes": 20012,
+      "sha256": "dfbc10a52189a41c2d9bb3a05cedf22d820abb4aa4e226448796c8dc0bbba7ac"
+    },
+    {
+      "key": "heavy-crossbow",
+      "label": "Тяжёлый арбалет",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "crossbow",
+      "handedness": "two-handed",
+      "parts": [
+        "heavy-crossbow-stock",
+        "heavy-crossbow-grip",
+        "heavy-crossbow-barrel",
+        "heavy-crossbow-prod-center",
+        "heavy-crossbow-prod-left",
+        "heavy-crossbow-prod-right",
+        "heavy-crossbow-string",
+        "heavy-crossbow-string-return",
+        "heavy-crossbow-trigger-guard",
+        "hand-grip",
+        "off-hand-grip",
+        "muzzle"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/heavy-crossbow.glb",
+      "catalogIds": [
+        "srd_5_2_1:heavy-crossbow"
+      ],
+      "bytes": 20176,
+      "sha256": "51007ceeb77afaa659d234317d17e54ae8fdd6e5591f6decd5cdb1c90052ec18"
+    },
+    {
+      "key": "longbow",
+      "label": "Длинный лук",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "bow",
+      "handedness": "two-handed",
+      "parts": [
+        "longbow-limb",
+        "longbow-string",
+        "longbow-grip-wrap",
+        "longbow-upper-nock",
+        "longbow-lower-nock",
+        "hand-grip",
+        "off-hand-grip",
+        "muzzle"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/longbow.glb",
+      "catalogIds": [
+        "srd_5_2_1:longbow"
+      ],
+      "bytes": 15396,
+      "sha256": "043e1e9801e13bf9277b3f9759962bbb61033ad5efdecc5c552320b97764cdc5"
+    },
+    {
+      "key": "musket",
+      "label": "Мушкет",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "firearm",
+      "handedness": "two-handed",
+      "parts": [
+        "musket-stock",
+        "musket-barrel",
+        "musket-muzzle-ring",
+        "musket-trigger-guard",
+        "musket-trigger",
+        "musket-sight",
+        "hand-grip",
+        "off-hand-grip",
+        "muzzle"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/musket.glb",
+      "catalogIds": [
+        "srd_5_2_1:musket"
+      ],
+      "bytes": 14176,
+      "sha256": "d5daa74436053b26d12573ae1eb99e4e85381f3a4c41d06cc3043cf4d439b786"
+    },
+    {
+      "key": "pistol",
+      "label": "Пистолет",
+      "category": "weapon",
+      "slot": "main_hand",
+      "variant": "default",
+      "kind": "firearm",
+      "handedness": "one-handed",
+      "parts": [
+        "pistol-stock",
+        "pistol-barrel",
+        "pistol-muzzle-ring",
+        "pistol-trigger-guard",
+        "pistol-trigger",
+        "pistol-sight",
+        "hand-grip",
+        "muzzle"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/pistol.glb",
+      "catalogIds": [
+        "srd_5_2_1:pistol"
+      ],
+      "bytes": 14096,
+      "sha256": "36d56723e5e8c15a35ba879d9cb2766395c929a848c20ad88bcbd25e72287061"
+    },
+    {
+      "key": "armor-padded",
+      "label": "Стёганый доспех",
+      "category": "armor",
+      "slot": "body",
+      "variant": "default",
+      "parts": [
+        "partchest",
+        "partwaist",
+        "partupper-arm-left",
+        "partupper-arm-right",
+        "partforearm-left",
+        "partforearm-right",
+        "partfoot-left",
+        "partfoot-right"
+      ],
+      "coverage": [
+        "chest",
+        "waist",
+        "upper-arm-left",
+        "upper-arm-right",
+        "forearm-left",
+        "forearm-right",
+        "foot-left",
+        "foot-right"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/armor-padded.glb",
+      "catalogIds": [
+        "srd_5_2_1:padded-armor"
+      ],
+      "bytes": 328948,
+      "sha256": "0e6ff5e54fa03e35e89382ce0fbf3716afafd925cb319c671ea3fbf6ac17cd38"
+    },
+    {
+      "key": "armor-leather",
+      "label": "Кожаный доспех",
+      "category": "armor",
+      "slot": "body",
+      "variant": "default",
+      "parts": [
+        "partchest",
+        "partwaist",
+        "partupper-arm-left",
+        "partupper-arm-right",
+        "partforearm-left",
+        "partforearm-right",
+        "partfoot-left",
+        "partfoot-right"
+      ],
+      "coverage": [
+        "chest",
+        "waist",
+        "upper-arm-left",
+        "upper-arm-right",
+        "forearm-left",
+        "forearm-right",
+        "foot-left",
+        "foot-right"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/armor-leather.glb",
+      "catalogIds": [
+        "srd_5_2_1:leather-armor"
+      ],
+      "bytes": 260312,
+      "sha256": "72eca59abd3eac03d4597c60b0469fe4c321c57431ffbee6d3b4154ffced3898"
+    },
+    {
+      "key": "armor-studded",
+      "label": "Клёпаный кожаный доспех",
+      "category": "armor",
+      "slot": "body",
+      "variant": "default",
+      "parts": [
+        "partchest",
+        "partwaist",
+        "partupper-arm-left",
+        "partupper-arm-right",
+        "partforearm-left",
+        "partforearm-right",
+        "partfoot-left",
+        "partfoot-right"
+      ],
+      "coverage": [
+        "chest",
+        "waist",
+        "upper-arm-left",
+        "upper-arm-right",
+        "forearm-left",
+        "forearm-right",
+        "foot-left",
+        "foot-right"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/armor-studded.glb",
+      "catalogIds": [
+        "srd_5_2_1:studded-leather-armor"
+      ],
+      "bytes": 350552,
+      "sha256": "6e1d648a25ac5e340e7de59af2f3b9ba1ac302f9fea80dcef3e2701dbf1464ed"
+    },
+    {
+      "key": "armor-hide",
+      "label": "Шкурный доспех",
+      "category": "armor",
+      "slot": "body",
+      "variant": "default",
+      "parts": [
+        "partchest",
+        "partwaist",
+        "partupper-arm-left",
+        "partupper-arm-right",
+        "partforearm-left",
+        "partforearm-right",
+        "partthigh-left",
+        "partthigh-right",
+        "partshin-left",
+        "partshin-right",
+        "partfoot-left",
+        "partfoot-right"
+      ],
+      "coverage": [
+        "chest",
+        "waist",
+        "upper-arm-left",
+        "upper-arm-right",
+        "forearm-left",
+        "forearm-right",
+        "thigh-left",
+        "thigh-right",
+        "shin-left",
+        "shin-right",
+        "foot-left",
+        "foot-right"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/armor-hide.glb",
+      "catalogIds": [
+        "srd_5_2_1:hide-armor"
+      ],
+      "bytes": 381992,
+      "sha256": "88c1fd8618881cf2578ead2fe6e976a41a9054c3ae8fa0bf7fe47a81df55c5f8"
+    },
+    {
+      "key": "armor-chainshirt",
+      "label": "Кольчужная рубаха",
+      "category": "armor",
+      "slot": "body",
+      "variant": "default",
+      "parts": [
+        "partchest",
+        "partwaist",
+        "partupper-arm-left",
+        "partupper-arm-right",
+        "partforearm-left",
+        "partforearm-right"
+      ],
+      "coverage": [
+        "chest",
+        "waist",
+        "upper-arm-left",
+        "upper-arm-right",
+        "forearm-left",
+        "forearm-right"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/armor-chainshirt.glb",
+      "catalogIds": [
+        "srd_5_2_1:chain-shirt"
+      ],
+      "bytes": 2661440,
+      "sha256": "b4a07cb96874e0c9f11459ffc7c10fcd81b768a977b4bdfc3dc8c51c454b1945"
+    },
+    {
+      "key": "armor-scalemail",
+      "label": "Чешуйчатый доспех",
+      "category": "armor",
+      "slot": "body",
+      "variant": "default",
+      "parts": [
+        "partchest",
+        "partwaist",
+        "partupper-arm-left",
+        "partupper-arm-right",
+        "partforearm-left",
+        "partforearm-right",
+        "partthigh-left",
+        "partthigh-right",
+        "partshin-left",
+        "partshin-right",
+        "partfoot-left",
+        "partfoot-right"
+      ],
+      "coverage": [
+        "chest",
+        "waist",
+        "upper-arm-left",
+        "upper-arm-right",
+        "forearm-left",
+        "forearm-right",
+        "thigh-left",
+        "thigh-right",
+        "shin-left",
+        "shin-right",
+        "foot-left",
+        "foot-right"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/armor-scalemail.glb",
+      "catalogIds": [
+        "srd_5_2_1:scale-mail"
+      ],
+      "bytes": 999692,
+      "sha256": "ec7d94dc50bc504c4760c438e72473f09af4b67f54a8ff91576f97e51c72abc1"
+    },
+    {
+      "key": "armor-breastplate",
+      "label": "Кираса",
+      "category": "armor",
+      "slot": "body",
+      "variant": "default",
+      "parts": [
+        "partchest",
+        "partwaist"
+      ],
+      "coverage": [
+        "chest",
+        "waist"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/armor-breastplate.glb",
+      "catalogIds": [
+        "srd_5_2_1:breastplate"
+      ],
+      "bytes": 58316,
+      "sha256": "b30cbdf9bf8190e9906d3a7b40ba35dad605af9207c1a716116a48d9880250e3"
+    },
+    {
+      "key": "armor-halfplate",
+      "label": "Полулаты",
+      "category": "armor",
+      "slot": "body",
+      "variant": "default",
+      "parts": [
+        "partchest",
+        "partwaist",
+        "partupper-arm-left",
+        "partupper-arm-right",
+        "partforearm-left",
+        "partforearm-right",
+        "partthigh-left",
+        "partthigh-right",
+        "partshin-left",
+        "partshin-right",
+        "partfoot-left",
+        "partfoot-right"
+      ],
+      "coverage": [
+        "chest",
+        "waist",
+        "upper-arm-left",
+        "upper-arm-right",
+        "forearm-left",
+        "forearm-right",
+        "thigh-left",
+        "thigh-right",
+        "shin-left",
+        "shin-right",
+        "foot-left",
+        "foot-right"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/armor-halfplate.glb",
+      "catalogIds": [
+        "srd_5_2_1:half-plate-armor"
+      ],
+      "bytes": 491724,
+      "sha256": "7c6010f5a632c3ab87cb2c1aee787f74914731f6902976dbe67c31bcc783e38a"
+    },
+    {
+      "key": "armor-ringmail",
+      "label": "Кольчатый доспех",
+      "category": "armor",
+      "slot": "body",
+      "variant": "default",
+      "parts": [
+        "partchest",
+        "partwaist",
+        "partupper-arm-left",
+        "partupper-arm-right",
+        "partforearm-left",
+        "partforearm-right",
+        "partthigh-left",
+        "partthigh-right",
+        "partshin-left",
+        "partshin-right",
+        "partfoot-left",
+        "partfoot-right"
+      ],
+      "coverage": [
+        "chest",
+        "waist",
+        "upper-arm-left",
+        "upper-arm-right",
+        "forearm-left",
+        "forearm-right",
+        "thigh-left",
+        "thigh-right",
+        "shin-left",
+        "shin-right",
+        "foot-left",
+        "foot-right"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/armor-ringmail.glb",
+      "catalogIds": [
+        "srd_5_2_1:ring-mail"
+      ],
+      "bytes": 806844,
+      "sha256": "289a7499589c0c1f572b794401e468eb1c79d0e68b27261a3e90e7230086584e"
+    },
+    {
+      "key": "armor-chainmail",
+      "label": "Кольчуга",
+      "category": "armor",
+      "slot": "body",
+      "variant": "default",
+      "variants": [
+        "default",
+        "adamantine"
+      ],
+      "parts": [
+        "partchest",
+        "partwaist",
+        "partupper-arm-left",
+        "partupper-arm-right",
+        "partforearm-left",
+        "partforearm-right",
+        "partthigh-left",
+        "partthigh-right",
+        "partshin-left",
+        "partshin-right",
+        "partfoot-left",
+        "partfoot-right"
+      ],
+      "coverage": [
+        "chest",
+        "waist",
+        "upper-arm-left",
+        "upper-arm-right",
+        "forearm-left",
+        "forearm-right",
+        "thigh-left",
+        "thigh-right",
+        "shin-left",
+        "shin-right",
+        "foot-left",
+        "foot-right"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/armor-chainmail.glb",
+      "catalogIds": [
+        "srd_5_2_1:adamantine-chain-mail",
+        "srd_5_2_1:chain-mail"
+      ],
+      "bytes": 4263208,
+      "sha256": "0aef59a7378631ec2df1209ea3955951cee14c547280c37f2c25f4270f2bcf82"
+    },
+    {
+      "key": "armor-splint",
+      "label": "Ламеллярный доспех",
+      "category": "armor",
+      "slot": "body",
+      "variant": "default",
+      "parts": [
+        "partchest",
+        "partwaist",
+        "partupper-arm-left",
+        "partupper-arm-right",
+        "partforearm-left",
+        "partforearm-right",
+        "partthigh-left",
+        "partthigh-right",
+        "partshin-left",
+        "partshin-right",
+        "partfoot-left",
+        "partfoot-right"
+      ],
+      "coverage": [
+        "chest",
+        "waist",
+        "upper-arm-left",
+        "upper-arm-right",
+        "forearm-left",
+        "forearm-right",
+        "thigh-left",
+        "thigh-right",
+        "shin-left",
+        "shin-right",
+        "foot-left",
+        "foot-right"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/armor-splint.glb",
+      "catalogIds": [
+        "srd_5_2_1:splint-armor"
+      ],
+      "bytes": 624504,
+      "sha256": "514b36a5117d9f2125b2066e8abbec72cb1573f9212877e27af2600d0948b67b"
+    },
+    {
+      "key": "armor-plate",
+      "label": "Латы",
+      "category": "armor",
+      "slot": "body",
+      "variant": "default",
+      "parts": [
+        "partchest",
+        "partwaist",
+        "partupper-arm-left",
+        "partupper-arm-right",
+        "partforearm-left",
+        "partforearm-right",
+        "partthigh-left",
+        "partthigh-right",
+        "partshin-left",
+        "partshin-right",
+        "partfoot-left",
+        "partfoot-right",
+        "parthand-left",
+        "parthand-right",
+        "parthead"
+      ],
+      "coverage": [
+        "chest",
+        "waist",
+        "upper-arm-left",
+        "upper-arm-right",
+        "forearm-left",
+        "forearm-right",
+        "thigh-left",
+        "thigh-right",
+        "shin-left",
+        "shin-right",
+        "foot-left",
+        "foot-right",
+        "hand-left",
+        "hand-right",
+        "head"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/armor-plate.glb",
+      "catalogIds": [
+        "srd_5_2_1:plate-armor"
+      ],
+      "bytes": 647856,
+      "sha256": "b25f769cc3a7899ac33572619aa05bb1239276146896011c0a45c1cad7570d1d"
+    },
+    {
+      "key": "shield",
+      "label": "Щит",
+      "category": "shield",
+      "slot": "off_hand",
+      "variant": "default",
+      "parts": [
+        "shield-face",
+        "shield-rim",
+        "shield-boss",
+        "grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/shield.glb",
+      "catalogIds": [
+        "srd_5_2_1:shield"
+      ],
+      "bytes": 29136,
+      "sha256": "516637a3ecab85a3294068b1d95b8e99bd10816b676630fc22db47c3bd45dfb8"
+    },
+    {
+      "key": "wand",
+      "label": "Жезл волшебных стрел",
+      "category": "accessory",
+      "slot": "main_hand",
+      "variant": "default",
+      "variants": [
+        "default",
+        "enchanted"
+      ],
+      "parts": [
+        "grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/wand.glb",
+      "catalogIds": [
+        "srd_5_2_1:arcane-focus-wand",
+        "srd_5_2_1:druidic-focus-yew-wand",
+        "srd_5_2_1:wand-of-magic-missiles"
+      ],
+      "bytes": 30256,
+      "sha256": "b9734edddf1c47dd348dfe686c6be87df31259849e72ccdaabb7993fa6eb02de"
+    },
+    {
+      "key": "cloak",
+      "label": "Плащ защиты",
+      "category": "accessory",
+      "slot": "cloak",
+      "variant": "enchanted",
+      "parts": [
+        "partback",
+        "partcollar"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/cloak.glb",
+      "catalogIds": [
+        "srd_5_2_1:cloak-of-protection"
+      ],
+      "bytes": 81276,
+      "sha256": "eec03ad2bcf62a49f65f30d07b01de6ce7d86cb2e188864eba9d0208a53d0cfa"
+    },
+    {
+      "key": "brooch",
+      "label": "Брошь защиты",
+      "category": "accessory",
+      "slot": "brooch",
+      "variant": "enchanted",
+      "parts": [
+        "partfront",
+        "partpin"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/brooch.glb",
+      "catalogIds": [
+        "srd_5_2_1:brooch-of-shielding"
+      ],
+      "bytes": 36748,
+      "sha256": "eb19636c6f41c47ee8e0b756d05a9fad5fe3e2c556070871865a91a1c2ec2653"
+    },
+    {
+      "key": "ring",
+      "label": "Кольцо",
+      "category": "accessory",
+      "slot": "ring-protection",
+      "variant": "enchanted",
+      "parts": [
+        "partband",
+        "partstone"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/ring.glb",
+      "catalogIds": [
+        "srd_5_2_1:ring-of-protection"
+      ],
+      "bytes": 27716,
+      "sha256": "4087faec75d33d993cfd76e76c1630824a7558c25dcec25d9da5bf4bccc51dbb"
+    },
+    {
+      "key": "ring",
+      "label": "Кольцо",
+      "category": "accessory",
+      "slot": "ring-fire-resistance",
+      "variant": "enchanted",
+      "parts": [
+        "partband",
+        "partstone"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/ring.glb",
+      "catalogIds": [
+        "srd_5_2_1:ring-of-fire-resistance"
+      ],
+      "bytes": 27716,
+      "sha256": "4087faec75d33d993cfd76e76c1630824a7558c25dcec25d9da5bf4bccc51dbb"
+    },
+    {
+      "key": "arcane-crystal",
+      "label": "Кристалл арканного фокуса",
+      "category": "accessory",
+      "slot": "main_hand",
+      "variant": "default",
+      "parts": [
+        "grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/arcane-crystal.glb",
+      "catalogIds": [
+        "srd_5_2_1:arcane-focus-crystal"
+      ],
+      "bytes": 17028,
+      "sha256": "4cd60a2f38dd5e4e0d47a41ce9ae8ea55e0fdc0fd7e5aa44ef04fed2be17f63b"
+    },
+    {
+      "key": "arcane-orb",
+      "label": "Сфера арканного фокуса",
+      "category": "accessory",
+      "slot": "main_hand",
+      "variant": "default",
+      "parts": [
+        "grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/arcane-orb.glb",
+      "catalogIds": [
+        "srd_5_2_1:arcane-focus-orb"
+      ],
+      "bytes": 20612,
+      "sha256": "77d7e524b9a6a3fc79e92a0bd48509a8178faae3506ceb585920a1fde7dba13c"
+    },
+    {
+      "key": "arcane-rod",
+      "label": "Жезл арканного фокуса",
+      "category": "accessory",
+      "slot": "main_hand",
+      "variant": "default",
+      "parts": [
+        "grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/arcane-rod.glb",
+      "catalogIds": [
+        "srd_5_2_1:arcane-focus-rod"
+      ],
+      "bytes": 29032,
+      "sha256": "d3e88c986507cedd084855e1ba9edfacd2e080f40ab8bf65e45ae80599ea2f97"
+    },
+    {
+      "key": "druidic-mistletoe",
+      "label": "Веточка омелы друидического фокуса",
+      "category": "accessory",
+      "slot": "main_hand",
+      "variant": "default",
+      "parts": [
+        "grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/druidic-mistletoe.glb",
+      "catalogIds": [
+        "srd_5_2_1:druidic-focus-mistletoe"
+      ],
+      "bytes": 31836,
+      "sha256": "ccd79fb1e3111f929648a7ecf0f70dfe331769f831e2572520e5d99f672eea0c"
+    },
+    {
+      "key": "druidic-totem",
+      "label": "Тотем друидического фокуса",
+      "category": "accessory",
+      "slot": "main_hand",
+      "variant": "default",
+      "parts": [
+        "grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/druidic-totem.glb",
+      "catalogIds": [
+        "srd_5_2_1:druidic-focus-totem"
+      ],
+      "bytes": 15648,
+      "sha256": "72f507507bbcc3be6aa9a5118080779f174d07699a3c384e6c93563ac99137be"
+    },
+    {
+      "key": "holy-amulet",
+      "label": "Священный символ",
+      "category": "accessory",
+      "slot": "focus",
+      "variant": "default",
+      "parts": [
+        "partbrooch"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/holy-amulet.glb",
+      "catalogIds": [
+        "srd_5_2_1:holy-symbol-amulet"
+      ],
+      "bytes": 15784,
+      "sha256": "32c18f784125245c6aa5c0a5f731f641f5d2ccf41297e606e02056ae509cef57"
+    },
+    {
+      "key": "holy-emblem",
+      "label": "Эмблема святого символа",
+      "category": "accessory",
+      "slot": "off_hand",
+      "variant": "default",
+      "parts": [
+        "grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/holy-emblem.glb",
+      "catalogIds": [
+        "srd_5_2_1:holy-symbol-emblem"
+      ],
+      "bytes": 19040,
+      "sha256": "f596a277ed993b6145d97726627395a9645ff1c02f19c4737b2ed0dc6b712332"
+    },
+    {
+      "key": "holy-reliquary",
+      "label": "Реликварий святого символа",
+      "category": "accessory",
+      "slot": "main_hand",
+      "variant": "default",
+      "parts": [
+        "grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/holy-reliquary.glb",
+      "catalogIds": [
+        "srd_5_2_1:holy-symbol-reliquary"
+      ],
+      "bytes": 13896,
+      "sha256": "15547dfa338b780560e696427189c9584c7916873f21cbc9147d2e95ac3034ae"
+    },
+    {
+      "key": "bagpipes",
+      "label": "Волынка",
+      "category": "accessory",
+      "slot": "main_hand",
+      "variant": "default",
+      "parts": [
+        "grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/bagpipes.glb",
+      "catalogIds": [
+        "srd_5_2_1:bagpipes"
+      ],
+      "bytes": 17888,
+      "sha256": "1517b06e61220613adf5f00074311855cb3c122265494967a4dfed54a298cf17"
+    },
+    {
+      "key": "drum",
+      "label": "Барабан",
+      "category": "accessory",
+      "slot": "main_hand",
+      "variant": "default",
+      "parts": [
+        "grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/drum.glb",
+      "catalogIds": [
+        "srd_5_2_1:drum"
+      ],
+      "bytes": 20256,
+      "sha256": "1075a454a3a125500474cef30a332adaf3e04e7550567ad7dae4a8a2ca6c0b48"
+    },
+    {
+      "key": "dulcimer",
+      "label": "Цимбалы",
+      "category": "accessory",
+      "slot": "main_hand",
+      "variant": "default",
+      "parts": [
+        "grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/dulcimer.glb",
+      "catalogIds": [
+        "srd_5_2_1:dulcimer"
+      ],
+      "bytes": 13248,
+      "sha256": "aadcf47765f42fd760d1b3b3d92d7e0ad54a8d79800f864119ccec75e5845945"
+    },
+    {
+      "key": "flute",
+      "label": "Флейта",
+      "category": "accessory",
+      "slot": "main_hand",
+      "variant": "default",
+      "parts": [
+        "grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/flute.glb",
+      "catalogIds": [
+        "srd_5_2_1:flute"
+      ],
+      "bytes": 32072,
+      "sha256": "2e40b450ae7df359b3517406695bbc1f19ae51d23c5c111027d1ecec223aff51"
+    },
+    {
+      "key": "lute",
+      "label": "Лютня",
+      "category": "accessory",
+      "slot": "main_hand",
+      "variant": "default",
+      "parts": [
+        "grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/lute.glb",
+      "catalogIds": [
+        "srd_5_2_1:lute"
+      ],
+      "bytes": 20408,
+      "sha256": "bafa6522feeff18e483a839cd20e2a7d7c3e870980de1fa01b5aae940847ff42"
+    },
+    {
+      "key": "lyre",
+      "label": "Лира",
+      "category": "accessory",
+      "slot": "main_hand",
+      "variant": "default",
+      "parts": [
+        "grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/lyre.glb",
+      "catalogIds": [
+        "srd_5_2_1:lyre"
+      ],
+      "bytes": 25160,
+      "sha256": "507a4b7c4b9822b42db33d5f77fb16ff07fdf27788469f21cacb20e789ef67ce"
+    },
+    {
+      "key": "horn",
+      "label": "Рожок",
+      "category": "accessory",
+      "slot": "main_hand",
+      "variant": "default",
+      "parts": [
+        "grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/horn.glb",
+      "catalogIds": [
+        "srd_5_2_1:horn"
+      ],
+      "bytes": 23328,
+      "sha256": "d30ed74496e9882d0ceb45f1b378460463e3ed664bc36d1944ce98630ed1880d"
+    },
+    {
+      "key": "pan-flute",
+      "label": "Свирель",
+      "category": "accessory",
+      "slot": "main_hand",
+      "variant": "default",
+      "parts": [
+        "grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/pan-flute.glb",
+      "catalogIds": [
+        "srd_5_2_1:pan-flute"
+      ],
+      "bytes": 22412,
+      "sha256": "750995d111011d51d36ef1c19815e46366732bcd7821abbeb91d439f966ed7b2"
+    },
+    {
+      "key": "shawm",
+      "label": "Шалмей",
+      "category": "accessory",
+      "slot": "main_hand",
+      "variant": "default",
+      "parts": [
+        "grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/shawm.glb",
+      "catalogIds": [
+        "srd_5_2_1:shawm"
+      ],
+      "bytes": 24676,
+      "sha256": "d561648f71576401c579481cc779fa7073d4f13cc99894cd9b9a9cf9abd9237d"
+    },
+    {
+      "key": "viol",
+      "label": "Виола",
+      "category": "accessory",
+      "slot": "main_hand",
+      "variant": "default",
+      "parts": [
+        "grip"
+      ],
+      "url": "/assets/models/equipment/equipment-00851932a673d42e70829361/viol.glb",
+      "catalogIds": [
+        "srd_5_2_1:viol"
+      ],
+      "bytes": 20408,
+      "sha256": "cede53eb1b4feba740f3b053331591d2ea2fd7932e14e7137fdb93fb2dc73a0e"
+    }
+  ],
+  "release": {
+    "schema": "equipment-release/v1",
+    "id": "equipment-00851932a673d42e70829361",
+    "fingerprint": "00851932a673d42e708293610524214a899fb5becc8ce138d1ab2497bf4f8e12",
+    "files": [
+      {
+        "path": "club.glb",
+        "bytes": 15932,
+        "sha256": "becca558d2974b526ae86c823d76b71e779e82df86debfbd83664faa14eab186"
+      },
+      {
+        "path": "dagger.glb",
+        "bytes": 11744,
+        "sha256": "b870cebf28b10101e926c35e1a515eff4e677056ce7b8fefaa84d12a347de1c4"
+      },
+      {
+        "path": "greatclub.glb",
+        "bytes": 16232,
+        "sha256": "c57a5dbe6a5027f34a9685fe10b6046ec12b4cf3ef26433b1ec1d062dcbc84b8"
+      },
+      {
+        "path": "handaxe.glb",
+        "bytes": 14768,
+        "sha256": "b5bb0c54a77005d3c60ef3053cbcb6f9af63bc2e956535dca8c8474fe309bfd8"
+      },
+      {
+        "path": "javelin.glb",
+        "bytes": 9888,
+        "sha256": "5633074afaeb99d178ac97d43f3bfa5b070d484f1ca927bb500d05a0947c3572"
+      },
+      {
+        "path": "light-hammer.glb",
+        "bytes": 10400,
+        "sha256": "f9e2848ab7228885be866f03fd37923a0db65addad2486999a7b7dc9bf97c5a6"
+      },
+      {
+        "path": "mace.glb",
+        "bytes": 25396,
+        "sha256": "60f4fab254370ee766e8a90fe1c749c1d40cb055b3f7b06bff0c9b3d5d126f96"
+      },
+      {
+        "path": "quarterstaff.glb",
+        "bytes": 27340,
+        "sha256": "7ad7bc2b40eb79bdcc0029f2511e41af9dd9f41590b4616e4faae4814397ceb6"
+      },
+      {
+        "path": "sickle.glb",
+        "bytes": 15312,
+        "sha256": "2b62cbd79a458a4839ae019f58aa2aba265c8bb5fc346f8c9daceda61cdbedeb"
+      },
+      {
+        "path": "spear.glb",
+        "bytes": 14392,
+        "sha256": "9042e0b0136ede38c9c01eb73e83f321d1e4911ddf6fb014f524db90371d5259"
+      },
+      {
+        "path": "dart.glb",
+        "bytes": 9776,
+        "sha256": "e51a23f4c0cac28b3efda8c62687d04ed1f65484852702389a3562e20750526c"
+      },
+      {
+        "path": "light-crossbow.glb",
+        "bytes": 20180,
+        "sha256": "ba2e9467c315ec5d8a3f155760a695820a8ad088787f061c5866c61191c4bbb1"
+      },
+      {
+        "path": "shortbow.glb",
+        "bytes": 15408,
+        "sha256": "ad96d3b4e2fda84516bb290f4526dcddedf00db40752bf87f77696800fbbc9a8"
+      },
+      {
+        "path": "sling.glb",
+        "bytes": 13604,
+        "sha256": "712d2cf7ba243d496636e2847671b2e6cbb3b104c2219a886e84ef335d67efd1"
+      },
+      {
+        "path": "net.glb",
+        "bytes": 31744,
+        "sha256": "c56f2db4f231c18e6532cdd8d8a4382a3ed73000fc1b41e9dfdb7a94c082e4cf"
+      },
+      {
+        "path": "battleaxe.glb",
+        "bytes": 15228,
+        "sha256": "a1183b5290c6afd9e0a435ae670a6e3fb0247a94e2c9c946f726ff3acc122289"
+      },
+      {
+        "path": "flail.glb",
+        "bytes": 31152,
+        "sha256": "933dc556ff3a5f5062b2c1eb882f8220f63b40aa85f711e5356017ba2e829d30"
+      },
+      {
+        "path": "glaive.glb",
+        "bytes": 8660,
+        "sha256": "9d705f79e286d4156a1c5d57f6158e9768cf8f3994ff89d777c3cf127bd1722e"
+      },
+      {
+        "path": "greataxe.glb",
+        "bytes": 17532,
+        "sha256": "8518185805cbe6a6339169b6422c8cb0168eca7b921db93d85d831ed69f8fb47"
+      },
+      {
+        "path": "greatsword.glb",
+        "bytes": 15524,
+        "sha256": "3737f91b4abd143fb2dbcd87b805261a1a106d259189519f84c19b69333c1c5a"
+      },
+      {
+        "path": "halberd.glb",
+        "bytes": 10892,
+        "sha256": "ba950e14fb6c28826412068a2d7bd052fd44f47e6015ce54d17e0de651a73bdb"
+      },
+      {
+        "path": "lance.glb",
+        "bytes": 15408,
+        "sha256": "65675b0057420618569051bc25c65dd07f940f5df8d61b3e8ee8535330ef56ce"
+      },
+      {
+        "path": "longsword.glb",
+        "bytes": 15492,
+        "sha256": "d23d528ee42ced093dbdbae86f365ae85ff9a0b166ce26046871dd163cd7fcb4"
+      },
+      {
+        "path": "maul.glb",
+        "bytes": 37232,
+        "sha256": "49e93f6a0ace9194e69c68f3e35c6d9413d9da8d04174ac55678baeba8ea70dc"
+      },
+      {
+        "path": "morningstar.glb",
+        "bytes": 20340,
+        "sha256": "e959a05619b3f73a3528402b88367f3d7568f6ccc4ecc5e90250e4448b353f59"
+      },
+      {
+        "path": "pike.glb",
+        "bytes": 15384,
+        "sha256": "6f1fe3ec9c47466af5be8d9b0474a4bce810401fcfceb0900374a2cc7c0b8772"
+      },
+      {
+        "path": "rapier.glb",
+        "bytes": 20276,
+        "sha256": "75b471526cd98ed43cdaf49d9f42aa4b6afdafecba21f48c8ad5520246b17359"
+      },
+      {
+        "path": "scimitar.glb",
+        "bytes": 11356,
+        "sha256": "da1cf7e2583a831747f9913eb51cd8b608488dc960e5af0afd9f15a399faedbc"
+      },
+      {
+        "path": "shortsword.glb",
+        "bytes": 10124,
+        "sha256": "964b27d0643cff994b02eb52572800d1f0e75eccee132f36b4d2f8ac45fbe179"
+      },
+      {
+        "path": "trident.glb",
+        "bytes": 21008,
+        "sha256": "7afd69ad1c7e3f88667ac7d9dbcb7cbcf9975bf4c5da92342117556cf5b11317"
+      },
+      {
+        "path": "warhammer.glb",
+        "bytes": 37292,
+        "sha256": "3d8f3cd7cdebf2c924cc45128f6cfb0a96addd896839e17086173ac608145f1d"
+      },
+      {
+        "path": "war-pick.glb",
+        "bytes": 10088,
+        "sha256": "8426695fcc6ae98e009a3de8946157fbcc526870c3f8e66646a7912ab9d9cc21"
+      },
+      {
+        "path": "whip.glb",
+        "bytes": 19024,
+        "sha256": "22f3505a2ec9931223d18c1ca0e93699727c45707a7c06eaba6d02af879ffdb3"
+      },
+      {
+        "path": "blowgun.glb",
+        "bytes": 12452,
+        "sha256": "ac027d8ea626ca117c08da3fb8fa4ebc561f5ba7276c0aa408d020861ed54419"
+      },
+      {
+        "path": "hand-crossbow.glb",
+        "bytes": 20012,
+        "sha256": "dfbc10a52189a41c2d9bb3a05cedf22d820abb4aa4e226448796c8dc0bbba7ac"
+      },
+      {
+        "path": "heavy-crossbow.glb",
+        "bytes": 20176,
+        "sha256": "51007ceeb77afaa659d234317d17e54ae8fdd6e5591f6decd5cdb1c90052ec18"
+      },
+      {
+        "path": "longbow.glb",
+        "bytes": 15396,
+        "sha256": "043e1e9801e13bf9277b3f9759962bbb61033ad5efdecc5c552320b97764cdc5"
+      },
+      {
+        "path": "musket.glb",
+        "bytes": 14176,
+        "sha256": "d5daa74436053b26d12573ae1eb99e4e85381f3a4c41d06cc3043cf4d439b786"
+      },
+      {
+        "path": "pistol.glb",
+        "bytes": 14096,
+        "sha256": "36d56723e5e8c15a35ba879d9cb2766395c929a848c20ad88bcbd25e72287061"
+      },
+      {
+        "path": "armor-padded.glb",
+        "bytes": 328948,
+        "sha256": "0e6ff5e54fa03e35e89382ce0fbf3716afafd925cb319c671ea3fbf6ac17cd38"
+      },
+      {
+        "path": "armor-leather.glb",
+        "bytes": 260312,
+        "sha256": "72eca59abd3eac03d4597c60b0469fe4c321c57431ffbee6d3b4154ffced3898"
+      },
+      {
+        "path": "armor-studded.glb",
+        "bytes": 350552,
+        "sha256": "6e1d648a25ac5e340e7de59af2f3b9ba1ac302f9fea80dcef3e2701dbf1464ed"
+      },
+      {
+        "path": "armor-hide.glb",
+        "bytes": 381992,
+        "sha256": "88c1fd8618881cf2578ead2fe6e976a41a9054c3ae8fa0bf7fe47a81df55c5f8"
+      },
+      {
+        "path": "armor-chainshirt.glb",
+        "bytes": 2661440,
+        "sha256": "b4a07cb96874e0c9f11459ffc7c10fcd81b768a977b4bdfc3dc8c51c454b1945"
+      },
+      {
+        "path": "armor-scalemail.glb",
+        "bytes": 999692,
+        "sha256": "ec7d94dc50bc504c4760c438e72473f09af4b67f54a8ff91576f97e51c72abc1"
+      },
+      {
+        "path": "armor-breastplate.glb",
+        "bytes": 58316,
+        "sha256": "b30cbdf9bf8190e9906d3a7b40ba35dad605af9207c1a716116a48d9880250e3"
+      },
+      {
+        "path": "armor-halfplate.glb",
+        "bytes": 491724,
+        "sha256": "7c6010f5a632c3ab87cb2c1aee787f74914731f6902976dbe67c31bcc783e38a"
+      },
+      {
+        "path": "armor-ringmail.glb",
+        "bytes": 806844,
+        "sha256": "289a7499589c0c1f572b794401e468eb1c79d0e68b27261a3e90e7230086584e"
+      },
+      {
+        "path": "armor-chainmail.glb",
+        "bytes": 4263208,
+        "sha256": "0aef59a7378631ec2df1209ea3955951cee14c547280c37f2c25f4270f2bcf82"
+      },
+      {
+        "path": "armor-splint.glb",
+        "bytes": 624504,
+        "sha256": "514b36a5117d9f2125b2066e8abbec72cb1573f9212877e27af2600d0948b67b"
+      },
+      {
+        "path": "armor-plate.glb",
+        "bytes": 647856,
+        "sha256": "b25f769cc3a7899ac33572619aa05bb1239276146896011c0a45c1cad7570d1d"
+      },
+      {
+        "path": "shield.glb",
+        "bytes": 29136,
+        "sha256": "516637a3ecab85a3294068b1d95b8e99bd10816b676630fc22db47c3bd45dfb8"
+      },
+      {
+        "path": "wand.glb",
+        "bytes": 30256,
+        "sha256": "b9734edddf1c47dd348dfe686c6be87df31259849e72ccdaabb7993fa6eb02de"
+      },
+      {
+        "path": "cloak.glb",
+        "bytes": 81276,
+        "sha256": "eec03ad2bcf62a49f65f30d07b01de6ce7d86cb2e188864eba9d0208a53d0cfa"
+      },
+      {
+        "path": "brooch.glb",
+        "bytes": 36748,
+        "sha256": "eb19636c6f41c47ee8e0b756d05a9fad5fe3e2c556070871865a91a1c2ec2653"
+      },
+      {
+        "path": "ring.glb",
+        "bytes": 27716,
+        "sha256": "4087faec75d33d993cfd76e76c1630824a7558c25dcec25d9da5bf4bccc51dbb"
+      },
+      {
+        "path": "ring.glb",
+        "bytes": 27716,
+        "sha256": "4087faec75d33d993cfd76e76c1630824a7558c25dcec25d9da5bf4bccc51dbb"
+      },
+      {
+        "path": "arcane-crystal.glb",
+        "bytes": 17028,
+        "sha256": "4cd60a2f38dd5e4e0d47a41ce9ae8ea55e0fdc0fd7e5aa44ef04fed2be17f63b"
+      },
+      {
+        "path": "arcane-orb.glb",
+        "bytes": 20612,
+        "sha256": "77d7e524b9a6a3fc79e92a0bd48509a8178faae3506ceb585920a1fde7dba13c"
+      },
+      {
+        "path": "arcane-rod.glb",
+        "bytes": 29032,
+        "sha256": "d3e88c986507cedd084855e1ba9edfacd2e080f40ab8bf65e45ae80599ea2f97"
+      },
+      {
+        "path": "druidic-mistletoe.glb",
+        "bytes": 31836,
+        "sha256": "ccd79fb1e3111f929648a7ecf0f70dfe331769f831e2572520e5d99f672eea0c"
+      },
+      {
+        "path": "druidic-totem.glb",
+        "bytes": 15648,
+        "sha256": "72f507507bbcc3be6aa9a5118080779f174d07699a3c384e6c93563ac99137be"
+      },
+      {
+        "path": "holy-amulet.glb",
+        "bytes": 15784,
+        "sha256": "32c18f784125245c6aa5c0a5f731f641f5d2ccf41297e606e02056ae509cef57"
+      },
+      {
+        "path": "holy-emblem.glb",
+        "bytes": 19040,
+        "sha256": "f596a277ed993b6145d97726627395a9645ff1c02f19c4737b2ed0dc6b712332"
+      },
+      {
+        "path": "holy-reliquary.glb",
+        "bytes": 13896,
+        "sha256": "15547dfa338b780560e696427189c9584c7916873f21cbc9147d2e95ac3034ae"
+      },
+      {
+        "path": "bagpipes.glb",
+        "bytes": 17888,
+        "sha256": "1517b06e61220613adf5f00074311855cb3c122265494967a4dfed54a298cf17"
+      },
+      {
+        "path": "drum.glb",
+        "bytes": 20256,
+        "sha256": "1075a454a3a125500474cef30a332adaf3e04e7550567ad7dae4a8a2ca6c0b48"
+      },
+      {
+        "path": "dulcimer.glb",
+        "bytes": 13248,
+        "sha256": "aadcf47765f42fd760d1b3b3d92d7e0ad54a8d79800f864119ccec75e5845945"
+      },
+      {
+        "path": "flute.glb",
+        "bytes": 32072,
+        "sha256": "2e40b450ae7df359b3517406695bbc1f19ae51d23c5c111027d1ecec223aff51"
+      },
+      {
+        "path": "lute.glb",
+        "bytes": 20408,
+        "sha256": "bafa6522feeff18e483a839cd20e2a7d7c3e870980de1fa01b5aae940847ff42"
+      },
+      {
+        "path": "lyre.glb",
+        "bytes": 25160,
+        "sha256": "507a4b7c4b9822b42db33d5f77fb16ff07fdf27788469f21cacb20e789ef67ce"
+      },
+      {
+        "path": "horn.glb",
+        "bytes": 23328,
+        "sha256": "d30ed74496e9882d0ceb45f1b378460463e3ed664bc36d1944ce98630ed1880d"
+      },
+      {
+        "path": "pan-flute.glb",
+        "bytes": 22412,
+        "sha256": "750995d111011d51d36ef1c19815e46366732bcd7821abbeb91d439f966ed7b2"
+      },
+      {
+        "path": "shawm.glb",
+        "bytes": 24676,
+        "sha256": "d561648f71576401c579481cc779fa7073d4f13cc99894cd9b9a9cf9abd9237d"
+      },
+      {
+        "path": "viol.glb",
+        "bytes": 20408,
+        "sha256": "cede53eb1b4feba740f3b053331591d2ea2fd7932e14e7137fdb93fb2dc73a0e"
+      }
+    ]
+  }
+}
