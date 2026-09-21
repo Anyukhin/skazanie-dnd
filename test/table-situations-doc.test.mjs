@@ -72,7 +72,8 @@ function crossCuttingGap(number) {
 const WORLD_CLOCK_CONSUMERS = Object.freeze([
   {
     title: 'просроченные обещания NPC',
-    code: () => worldTimeBlock().includes('npcPromiseDeadlineEvents(state, elapsedMinutes)'),
+    code: () => worldTimeBlock().includes('npcPromiseDeadlineEvents(sourceState, elapsedMinutes)')
+      && worldTimeBlock().includes('const sourceState = replayEvents(state, events)'),
     markers: ['npcPromiseDeadlineEvents'],
   },
   {
@@ -89,20 +90,31 @@ const WORLD_CLOCK_CONSUMERS = Object.freeze([
   },
   {
     title: 'перезарядка предметов на рассвете',
-    code: () => worldTimeBlock().includes('resolveItemDawnRecharge(state, elapsedMinutes'),
+    code: () => worldTimeBlock().includes('resolveItemDawnRecharge(sourceState, elapsedMinutes'),
     markers: ['server/item-dawn-recharge.mjs'],
   },
   {
     title: 'смена времени суток и погоды',
-    code: () => worldTimeBlock().includes('worldClockEventDrafts(state, elapsedMinutes)')
+    code: () => worldTimeBlock().includes('worldClockEventDrafts(sourceState, elapsedMinutes)')
       && source('server/weather.mjs').includes('export function worldClockEventDrafts'),
     markers: ['worldClockEventDrafts', 'server/weather.mjs'],
   },
   {
     title: 'ход мира за спиной отряда на существенном скачке',
-    code: () => worldTimeBlock().includes('planOffscreenWorldStep(state, { elapsedMinutes })')
+    code: () => worldTimeBlock().includes('planOffscreenWorldStep(sourceState, { elapsedMinutes })')
       && source('server/offscreen-world.mjs').includes('export function planOffscreenWorldStep'),
     markers: ['planOffscreenWorldStep', 'server/offscreen-world.mjs'],
+  },
+  {
+    title: 'доставка и ответ курьерских писем',
+    code: () => worldTimeBlock().includes('planCourierLetterTicks(sourceState, { elapsedMinutes })')
+      && source('server/courier-letters.mjs').includes('export function planCourierLetterTicks'),
+    markers: ['planCourierLetterTicks', 'server/courier-letters.mjs'],
+  },
+  {
+    title: 'истечение временных условий по единым часам',
+    code: () => /case 'TimeAdvanced':[\s\S]{0,2000}expires_at_seconds[\s\S]{0,400}expires_at_minutes/u.test(source('server/rules-engine.mjs')),
+    markers: ['TimeAdvanced', 'expires_at_seconds', 'expires_at_minutes'],
   },
   {
     title: 'пополнение склада торговца',

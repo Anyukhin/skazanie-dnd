@@ -40,6 +40,25 @@ function map(hidden = []) {
 }
 const actors = [{ id: 'mage', x: 1, y: 6 }, { id: 'target', x: 6, y: 6 }]
 
+test('Скороход рисует один подтверждённый cue у всех видимых целей, не подменяет скрытую цель заклинателем', async () => {
+  const { decodeTacticalMap } = await import(pathToFileURL(join(buildDir, 'src/tactical-map-client.mjs')).href)
+  const cue = { id: 'longstrider-cast', kind: 'channel', actorId: 'mage', targetId: 'mage', targetIds: ['mage', 'target', 'missing'], spellId: 'longstrider', school: 'transmutation', channelType: 'cast', durationMs: 400 }
+  const visible = createSpellEffect3D(cue, actors, decodeTacticalMap(map()))
+  assert.ok(visible)
+  assert.equal(visible.group.children.length, 2)
+  visible.update(.6)
+  assert.ok(visible.group.children.every((effect) => effect.visible))
+  visible.dispose()
+  const hidden = createSpellEffect3D(cue, actors, decodeTacticalMap(map([{ x: 6, y: 6 }])))
+  assert.ok(hidden)
+  assert.equal(hidden.group.children.length, 1)
+  hidden.dispose()
+  const neutral = createSpellEffect3D({ ...cue, targetIds: ['npc'] }, [{ id: 'npc', x: 2, y: 2, kind: 'neutral' }], decodeTacticalMap(map()))
+  assert.equal(neutral.group.children.length, 1)
+  neutral.dispose()
+  assert.equal(createSpellEffect3D({ ...cue, targetIds: [] }, actors, decodeTacticalMap(map())), null)
+})
+
 test('3D spell cue рисует fireball/beam/healing и освобождает ресурсы', async () => {
   const board = (await import(pathToFileURL(join(buildDir, 'src/tactical-map-client.mjs')).href)).decodeTacticalMap(map())
   const fireball = createSpellEffect3D({

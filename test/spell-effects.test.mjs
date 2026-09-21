@@ -108,6 +108,35 @@ function recordingContext() {
 
 const actor = (id, x, y) => ({ id, x, y })
 
+test('Скороход сохраняет одинаковый cue для HTTP и SSE и отмечает обе видимые цели в 2D', () => {
+  const event = { event_id: 'cast-longstrider', event_type: 'SpellCast', command_id: 'cast-command', actor_id: 'caster', target_ids: ['caster', 'ally'], payload: { spell_id: 'longstrider', kind: 'buff' } }
+  const live = animation.combatAnimationCuesFromEvents([event,
+    { event_id: 'condition-a', event_type: 'ConditionAdded', actor_id: 'caster', target_ids: ['caster'], payload: { condition: 'longstrider' } },
+    { event_id: 'condition-b', event_type: 'ConditionAdded', actor_id: 'caster', target_ids: ['ally'], payload: { condition: 'longstrider' } },
+  ])
+  const synced = animation.combatAnimationCuesFromBattleLog([{ id: 'cast-longstrider', type: 'spell', actorId: 'caster', targetId: 'caster', targetIds: ['caster', 'ally'], spellId: 'longstrider' }])
+  assert.equal(live.length, 1)
+  assert.equal(synced.length, 1)
+  assert.equal(live[0].id, synced[0].id)
+  assert.deepEqual(effects.spellChannelTargetIds(live[0]), ['caster', 'ally'])
+  assert.deepEqual(effects.spellChannelTargetIds(synced[0]), ['caster', 'ally'])
+  const context = recordingContext()
+  effects.drawSpellEffect(context, scene(), { cue: live[0], progress: .5, actors: [actor('caster', 1, 1), actor('ally', 2, 1)] })
+  assert.equal(context.ops.filter((op) => op.op === 'fillText').length, 2)
+  const hiddenContext = recordingContext()
+  effects.drawSpellEffect(hiddenContext, scene(8, 8, [{ x: 2, y: 1 }]), { cue: live[0], progress: .5, actors: [actor('caster', 1, 1), actor('ally', 2, 1)] })
+  assert.equal(hiddenContext.ops.filter((op) => op.op === 'fillText').length, 1)
+  const neutralCue = { ...live[0], targetIds: ['npc'] }
+  const neutralContext = recordingContext()
+  effects.drawSpellEffect(neutralContext, scene(), { cue: neutralCue, progress: .5, actors: [{ ...actor('npc', 2, 1), kind: 'neutral' }] })
+  assert.equal(neutralContext.ops.filter((op) => op.op === 'fillText').length, 1)
+  const empty = animation.combatAnimationCuesFromBattleLog([{ id: 'empty', type: 'spell', actorId: 'caster', targetIds: [], spellId: 'longstrider' }])[0]
+  assert.deepEqual(effects.spellChannelTargetIds(empty), [], 'фильтрация не подменяет скрытых получателей кастером')
+  const emptyContext = recordingContext()
+  effects.drawSpellEffect(emptyContext, scene(), { cue: empty, progress: .5, actors: [actor('caster', 1, 1)] })
+  assert.equal(emptyContext.ops.filter((op) => op.op === 'fillText').length, 0)
+})
+
 test('2D combat endpoint центрирует large actor и безопасно возвращается к anchor в неполном тумане', () => {
   const actors = [
     { id: 'mage', x: 1, y: 1, footprint: { version: 1, size: 2 } },
@@ -189,8 +218,8 @@ test('семантические семьи покрывают каталог, �
   const schoolFallback = executable.filter((spell) => effects.spellEffectPalette(spell.id).family === 'school').map((spell) => spell.id)
   const unsupported = catalog.filter((spell) => !isExecutable(spell))
   assert.ok(catalog.length > 400)
-  assert.equal(executable.length, 240, 'исполняемый набор должен совпадать с partial/verified override-карточками')
-  assert.equal(unsupported.length, 199, 'heuristic/ruling-only карточки не входят в реализованный набор')
+  assert.equal(executable.length, 241, 'исполняемый набор должен совпадать с partial/verified override-карточками')
+  assert.equal(unsupported.length, 198, 'heuristic/ruling-only карточки не входят в реализованный набор')
   assert.ok(catalog.every((spell) => allowed.has(effects.spellEffectPalette(spell.id).family)))
   assert.deepEqual(schoolFallback, [], 'каждая executable-карточка должна иметь semantic family')
   for (const family of ['fire', 'cold', 'lightning', 'thunder', 'acid', 'poison', 'necrotic', 'radiant', 'force', 'psychic', 'healing', 'protection', 'control', 'teleport', 'summon', 'earth', 'wind', 'water', 'swarm', 'weapon', 'illusion', 'divination', 'light', 'darkness', 'environment', 'enchantment', 'restoration', 'invisibility', 'flight', 'mobility', 'transmutation', 'communication', 'utility']) {

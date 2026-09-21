@@ -192,15 +192,16 @@ test('три заряда создают Magic Missile 3-го круга без 
   const result = useWand(initial, { chargesToSpend: 3, values: [3] })
 
   assert.deepEqual(result.events.map((event) => event.event_type), [
+    'CombatRoundTimeMarked',
     'ItemUsed',
     'SpellCast',
     'DieRolled',
     'DamageApplied',
     'ItemChargesSpent',
   ])
-  const used = result.events[0]
-  const cast = result.events[1]
-  const damage = result.events[3]
+  const used = result.events.find((event) => event.event_type === 'ItemUsed')
+  const cast = result.events.find((event) => event.event_type === 'SpellCast')
+  const damage = result.events.find((event) => event.event_type === 'DamageApplied')
   assert.equal(used.payload.combat_action, null)
   assert.equal(used.payload.declared_combat_action, 'action')
   assert.equal(used.payload.charges_to_spend, 3)
@@ -242,6 +243,7 @@ test('натуральная 1 после последнего заряда ун
   const result = useWand(initial, { values: [2, 1] })
   assert.deepEqual(result.rolls.map((roll) => [roll.expression, roll.total]), [['1d4+1', 3], ['1d20', 1]])
   assert.deepEqual(result.events.map((event) => event.event_type), [
+    'CombatRoundTimeMarked',
     'ItemUsed',
     'SpellCast',
     'DieRolled',

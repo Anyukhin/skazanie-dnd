@@ -685,7 +685,7 @@ function TacticalBoard2D({
       const [actorId, condition] = entry.split('|')
       // Внутренние маркеры ресурсов содержат двоеточие или явный префикс
       // потраченного действия. Это учёт механики, а не видимое состояние.
-      if (!actorId || !condition || condition.includes(':') || condition.startsWith('monster-action-used')) return []
+      if (!actorId || !condition || condition === 'longstrider' || condition.includes(':') || condition.startsWith('monster-action-used')) return []
       return [{
         event_id: `projected-condition:${conditionVersion ?? 0}:${actorId}:${condition}`,
         event_type: 'ConditionAdded',

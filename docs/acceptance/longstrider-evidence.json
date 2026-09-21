@@ -1,0 +1,149 @@
+{
+  "schemaVersion": "spell-evidence/v1",
+  "spellId": "longstrider",
+  "status": "pending",
+  "testedRevision": null,
+  "observedAt": null,
+  "note": "Шаблон до итогового gate. Наличие файлов тестов не является доказательством прогона; ручная приёмка двух игроков в 2D/3D со звуком пока не выполнена.",
+  "dependencyFingerprints": {
+    "data/dndsu-spells-0-6.json": null,
+    "data/dndsu-spell-mechanics-overrides.json": null,
+    "data/rule_packs/dnd_5e_2014/manifest.yaml": null,
+    "package.json": null,
+    "pnpm-lock.yaml": null,
+    "server/combat-spells.mjs": null,
+    "server/rules-engine.mjs": null,
+    "server/event-store.mjs": null,
+    "server/character-progression.mjs": null,
+    "server/character-creation-catalog.mjs": null,
+    "server/character-creation-feats.mjs": null,
+    "server/index.mjs": null,
+    "server/security.mjs": null,
+    "server/viewer-projection.mjs": null,
+    "server/tactical-map.mjs": null,
+    "server/dynamic-map.mjs": null,
+    "server/dice-service.mjs": null,
+    "server/ruleset-config.mjs": null,
+    "server/weather.mjs": null,
+    "server/courier-letters.mjs": null,
+    "server/offscreen-world.mjs": null,
+    "server/item-dawn-recharge.mjs": null,
+    "server/npc-social.mjs": null,
+    "server/npc-turn-scheduler.mjs": null,
+    "server/npc-controller.mjs": null,
+    "server/party-tactics.mjs": null,
+    "server/spell-acceptance-audit.mjs": null,
+    "tools/verify-spell-overrides.mjs": null,
+    "src/App.tsx": null,
+    "src/DungeonMap.tsx": null,
+    "src/TacticalBoard.tsx": null,
+    "src/TacticalBoard3D.tsx": null,
+    "src/types.ts": null,
+    "src/tactical-ui.ts": null,
+    "src/useGameSession.ts": null,
+    "src/styles.css": null,
+    "src/spell-effects.ts": null,
+    "src/board3d-spell-effects.ts": null,
+    "src/combat-animation.ts": null,
+    "src/combat-audio.ts": null,
+    "test/longstrider.test.mjs": null,
+    "test/longstrider-api.test.mjs": null,
+    "test/longstrider-projection.test.mjs": null,
+    "test/world-time-seconds.test.mjs": null,
+    "test/rules-engine.test.mjs": null,
+    "test/spell-acceptance-audit.test.mjs": null,
+    "test/multi-target-spell-ui.test.mjs": null,
+    "test/tactical-ui.test.mjs": null,
+    "test/spell-effects.test.mjs": null,
+    "test/board3d-spell-effects.test.mjs": null,
+    "test/combat-audio.test.mjs": null,
+    "test/npc-turn-scheduler.test.mjs": null,
+    "test/death-saves.test.mjs": null,
+    "test/rest-mechanics.test.mjs": null,
+    "test/item-dawn-recharge.test.mjs": null,
+    "test/group-initiative.test.mjs": null,
+    "test/event-store.test.mjs": null
+  },
+  "runs": [
+    {
+      "id": "final-verify",
+      "kind": "test-run",
+      "status": "pending",
+      "command": "pnpm verify",
+      "receipt": {
+        "reference": "docs/acceptance/longstrider-run-receipt.md",
+        "artifact": null,
+        "sha256": null
+      }
+    },
+    {
+      "id": "focused-longstrider",
+      "kind": "test-run",
+      "status": "pending",
+      "command": "node --test test/longstrider.test.mjs test/longstrider-api.test.mjs test/world-time-seconds.test.mjs",
+      "receipt": {
+        "reference": "docs/acceptance/longstrider-run-receipt.md",
+        "artifact": null,
+        "sha256": null
+      }
+    },
+    {
+      "id": "manual-two-player",
+      "kind": "manual-run",
+      "status": "pending",
+      "command": "Два обычных игрока: получение, применение, отмена и повтор; 2D/3D, анимация и звук после commit.",
+      "receipt": {
+        "reference": "docs/acceptance/longstrider-run-receipt.md",
+        "artifact": null,
+        "sha256": null
+      }
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "source-and-exceptions",
+      "status": "pending",
+      "runIds": []
+    },
+    {
+      "id": "refusal-before-spending",
+      "status": "pending",
+      "runIds": []
+    },
+    {
+      "id": "normal-acquisition-and-cast",
+      "status": "pending",
+      "runIds": []
+    },
+    {
+      "id": "replay-restart-idempotency",
+      "status": "pending",
+      "runIds": []
+    },
+    {
+      "id": "ownership-and-projection",
+      "status": "pending",
+      "runIds": []
+    },
+    {
+      "id": "two-player-2d-3d-av",
+      "status": "pending",
+      "runIds": []
+    },
+    {
+      "id": "speed-and-dash",
+      "status": "pending",
+      "runIds": []
+    },
+    {
+      "id": "touch-and-upcast",
+      "status": "pending",
+      "runIds": []
+    },
+    {
+      "id": "hour-and-sources",
+      "status": "pending",
+      "runIds": []
+    }
+  ]
+}

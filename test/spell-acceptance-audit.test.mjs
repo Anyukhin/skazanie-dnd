@@ -5,10 +5,19 @@ import { join } from 'node:path'
 import test from 'node:test'
 
 import { canonicalCombatSpellFor } from '../server/combat-spells.mjs'
-import { auditSpellAcceptance, readSpellAcceptanceBaseline, SPELL_ACCEPTANCE_DIMENSIONS, validateSpellAcceptanceReport } from '../server/spell-acceptance-audit.mjs'
+import { auditSpellAcceptance, longstriderDependencyFingerprints, LONGSTRIDER_EVIDENCE_DEPENDENCIES, readLongstriderEvidence, readSpellAcceptanceBaseline, spellEvidenceTextSha256, SPELL_ACCEPTANCE_DIMENSIONS, validateSpellAcceptanceReport } from '../server/spell-acceptance-audit.mjs'
 
-const report = auditSpellAcceptance()
+const report = auditSpellAcceptance({ longstriderEvidence: null })
 const issues = (value) => validateSpellAcceptanceReport(value).map((problem) => problem.code)
+
+test('отпечаток доказательства одинаков после Windows autocrlf и Linux checkout, но меняется вместе с содержимым', () => {
+  const unix = 'const speed = 30\nconst bonus = 10\n'
+  const windows = 'const speed = 30\r\nconst bonus = 10\r\n'
+  assert.equal(spellEvidenceTextSha256(unix), spellEvidenceTextSha256(windows))
+  assert.notEqual(spellEvidenceTextSha256(unix), spellEvidenceTextSha256('const speed = 30\nconst bonus = 20\n'))
+  assert.ok(LONGSTRIDER_EVIDENCE_DEPENDENCIES.includes('test/longstrider-projection.test.mjs'))
+  assert.ok(LONGSTRIDER_EVIDENCE_DEPENDENCIES.includes('test/rules-engine.test.mjs'))
+})
 
 test('матрица поимённо покрывает рабочий каталог, сохраняя доступность отдельно от полной приёмки', () => {
   const catalog = JSON.parse(readFileSync(new URL('../data/dndsu-spells-0-6.json', import.meta.url), 'utf8'))
@@ -16,6 +25,8 @@ test('матрица поимённо покрывает рабочий ката
   assert.equal(report.spells.length, 439)
   assert.deepEqual(report.spells.map((spell) => spell.spellId).sort(), catalog.spells.map((spell) => spell.id).sort())
   assert.equal(report.summary.accepted, 0)
+  assert.deepEqual(report.summary.support, { heuristic: 190, partial: 241, 'ruling-only': 8 })
+  assert.equal(report.summary.blocked, 198)
   assert.equal(report.summary.specifications['pilot-draft'], 4)
   assert.equal(report.summary.specifications['inventory-only'], 435)
   for (const card of report.spells) {
@@ -26,6 +37,78 @@ test('матрица поимённо покрывает рабочий ката
     for (const dimension of SPELL_ACCEPTANCE_DIMENSIONS) assert.equal(card.readiness[dimension], 'pending')
     assert.ok(card.scenarios.every((scenario) => scenario.status === 'pending' && scenario.evidence.length === 0))
   }
+})
+
+function currentReceipt() {
+  const card = report.spells.find((spell) => spell.spellId === 'longstrider')
+  return {
+    schemaVersion: 'spell-evidence/v1', spellId: 'longstrider', status: 'recorded',
+    testedRevision: 'a'.repeat(40), observedAt: '2026-09-21T14:00:00.000Z',
+    dependencyFingerprints: longstriderDependencyFingerprints(),
+    runs: [{
+      id: 'final-gate', kind: 'test-run', status: 'passed', command: 'pnpm verify',
+      receipt: { reference: 'docs/acceptance/longstrider-run-receipt.md', artifact: 'external:test-fixture-log', sha256: 'b'.repeat(64) },
+    }],
+    scenarios: card.scenarios.map((scenario) => ({
+      id: scenario.id, status: scenario.dimension === 'presentation' ? 'pending' : 'passed',
+      runIds: scenario.dimension === 'presentation' ? [] : ['final-gate'],
+    })),
+  }
+}
+
+test('только сохранённый актуальный receipt подтверждает отдельные измерения partial-пилота', () => {
+  const evidence = currentReceipt()
+  const actual = auditSpellAcceptance({ longstriderEvidence: evidence })
+  assert.equal(actual.ok, true, JSON.stringify(actual.problems))
+  const card = actual.spells.find((spell) => spell.spellId === 'longstrider')
+  assert.equal(card.availability.supportStatus, 'partial')
+  assert.equal(card.evidenceRecord.status, 'current')
+  assert.equal(card.readiness.rules, 'verified')
+  assert.equal(card.readiness.resilience, 'verified')
+  assert.equal(card.readiness.presentation, 'pending')
+  assert.equal(card.accepted, false)
+  assert.equal(actual.summary.accepted, 0)
+  assert.ok(actual.spells.filter((spell) => spell.spellId !== 'longstrider').every((spell) => spell.scenarios.every((scenario) => scenario.status === 'pending')))
+  assert.notEqual(actual.revision, evidence.testedRevision, 'commit служит происхождением; актуальность зависит от содержимого файлов')
+  assert.equal(readLongstriderEvidence().spellId, 'longstrider')
+})
+
+test('старое доказательство любого обязательного файла или неполный набор зависимостей возвращает сценарии в pending', () => {
+  for (const path of ['server/rules-engine.mjs', 'data/dndsu-spell-mechanics-overrides.json', 'src/DungeonMap.tsx', 'test/longstrider-api.test.mjs', 'server/spell-acceptance-audit.mjs', 'test/spell-acceptance-audit.test.mjs']) {
+    const record = currentReceipt()
+    record.dependencyFingerprints[path] = '0'.repeat(64)
+    const stale = auditSpellAcceptance({ longstriderEvidence: record })
+    assert.equal(stale.ok, true)
+    assert.equal(stale.evidence.longstrider.status, 'stale', path)
+    assert.ok(stale.warnings.length)
+    assert.ok(stale.spells.find((spell) => spell.spellId === 'longstrider').scenarios.every((scenario) => scenario.status === 'pending'))
+    assert.equal(stale.summary.accepted, 0)
+  }
+  const dropped = currentReceipt()
+  delete dropped.dependencyFingerprints['server/rules-engine.mjs']
+  assert.equal(auditSpellAcceptance({ longstriderEvidence: dropped }).evidence.longstrider.status, 'stale')
+  assert.ok(!LONGSTRIDER_EVIDENCE_DEPENDENCIES.some((path) => path.startsWith('docs/') || path === 'README.md'), 'тексты и сам receipt не создают самохеш')
+})
+
+test('имена тестов, pending-запись и декларация passed без receipt не являются пройденным прогоном', () => {
+  const pending = currentReceipt()
+  pending.status = 'pending'
+  assert.equal(auditSpellAcceptance({ longstriderEvidence: pending }).evidence.longstrider.status, 'pending')
+  const missing = currentReceipt()
+  delete missing.runs[0].receipt
+  const noReceipt = auditSpellAcceptance({ longstriderEvidence: missing })
+  assert.equal(noReceipt.ok, false)
+  assert.ok(noReceipt.problems.some((problem) => problem.code === 'INVALID_PERSISTED_EVIDENCE'))
+  const filenameOnly = currentReceipt()
+  filenameOnly.runs[0].command = 'test/longstrider.test.mjs'
+  assert.equal(auditSpellAcceptance({ longstriderEvidence: filenameOnly }).ok, false, 'нет успешного итогового pnpm verify')
+  const missingRun = currentReceipt()
+  missingRun.scenarios[0].runIds = []
+  assert.equal(auditSpellAcceptance({ longstriderEvidence: missingRun }).ok, false)
+  const manual = currentReceipt()
+  const presentation = manual.scenarios.find((scenario) => scenario.id === 'two-player-2d-3d-av')
+  Object.assign(presentation, { status: 'passed', runIds: ['final-gate'] })
+  assert.equal(auditSpellAcceptance({ longstriderEvidence: manual }).ok, false, 'unit/API-run не подменяет ручную приёмку')
 })
 
 test('исходные группы относятся к зафиксированному коммиту, а не к будущему состоянию карточек', () => {

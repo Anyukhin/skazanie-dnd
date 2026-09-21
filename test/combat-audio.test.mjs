@@ -102,6 +102,28 @@ const fireball = {
   shape: 'sphere', sizeFeet: 20, durationMs: 480,
 }
 
+test('повтор HTTP/SSE Скорохода и переподключение не повторяют звук одного накладывания на несколько целей', async () => {
+  const context = new FakeContext()
+  const clock = timers()
+  const audio = createCombatAudio({ muted: false, audioContextFactory: () => context,
+    manifest: { version: 1, clips: { cast: { url: '/sfx/longstrider.ogg' } }, profiles: { 'spell:mobility': { cast: ['cast'] } } },
+    loader: async () => ({ duration: .12 }), setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout })
+  await audio.unlock()
+  const cue = { id: 'committed-longstrider:channel', kind: 'channel', actorId: 'caster', targetId: 'caster', targetIds: ['caster', 'ally'], spellId: 'longstrider', school: 'transmutation', channelType: 'cast', durationMs: 400 }
+  assert.ok(audio.schedule(cue))
+  await clock.flush()
+  await new Promise((resolve) => setImmediate(resolve))
+  const firstCount = context.sources.length
+  assert.ok(firstCount > 0)
+  assert.equal(audio.schedule({ ...cue }), null)
+  audio.setVisible(false)
+  audio.setVisible(true)
+  assert.equal(audio.schedule({ ...cue }), null)
+  await clock.flush()
+  assert.equal(context.sources.length, firstCount)
+  await audio.dispose()
+})
+
 test('профиль боя делит запись по семейству, форме cue и фазе', () => {
   const manifest = {
     version: 1,

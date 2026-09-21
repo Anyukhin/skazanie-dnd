@@ -563,7 +563,7 @@ export default function TacticalBoard3D(props: Props) {
           for (const [id, actor] of actorViews) {
             if (BOARD3D_QUALITY[settings.current.quality].idle || (cue && (
               ('actorId' in cue && cue.actorId === id) || ('targetId' in cue && cue.targetId === id)
-              || ('targetIds' in cue && cue.targetIds.includes(id))
+              || ('targetIds' in cue && cue.targetIds?.includes(id))
             ))) actor.model.update(delta)
           }
         }

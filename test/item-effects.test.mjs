@@ -110,14 +110,16 @@ test('healing potion uses a bonus action, heals a living nearby party target wit
   }, initial, { diceService: dice([2, 4]), context: serverContext })
 
   assert.deepEqual(result.events.map((event) => event.event_type), [
+    'CombatRoundTimeMarked',
     'ItemUsed',
     'DieRolled',
     'HealingApplied',
     'ItemConsumed',
   ])
-  assert.equal(result.events[0].payload.combat_action, 'bonus_action')
-  assert.equal(result.events[1].payload.expression, '2d4+2')
-  assert.equal(result.events[1].payload.total, 8)
+  assert.equal(result.events.find((event) => event.event_type === 'ItemUsed').payload.combat_action, 'bonus_action')
+  const roll = result.events.find((event) => event.event_type === 'DieRolled')
+  assert.equal(roll.payload.expression, '2d4+2')
+  assert.equal(roll.payload.total, 8)
   const after = applyAll(initial, result.events)
   assert.equal(after.players.find((actor) => actor.id === 'ally').hp, 12)
   assert.equal(after.players.find((actor) => actor.id === 'medic').inventory.length, 0)
@@ -152,7 +154,7 @@ test('healing potion uses an action in a D&D 5e 2014 campaign', () => {
     server_authoritative: true,
   }, initial, { diceService: dice([2, 4]), context: serverContext })
 
-  assert.equal(result.events[0].payload.combat_action, 'action')
+  assert.equal(result.events.find((event) => event.event_type === 'ItemUsed').payload.combat_action, 'action')
   const after = applyAll(initial, result.events)
   assert.equal(after.mechanics.combat.action_economy.medic.action, false)
   assert.equal(after.mechanics.combat.action_economy.medic.bonus_action, true)
@@ -198,6 +200,7 @@ test('healer kit stabilizes without a roll, spends one of ten charges and one ac
   }, initial, { diceService: dice([]), context: serverContext })
 
   assert.deepEqual(result.events.map((event) => event.event_type), [
+    'CombatRoundTimeMarked',
     'ItemUsed',
     'HeroStabilized',
     'ItemChargesSpent',

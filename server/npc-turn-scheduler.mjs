@@ -6,6 +6,8 @@ import {
   attackProfileFor,
   coverBetween,
   findActor,
+  effectiveSpeedFeet,
+  movementForActor,
   hasClearTrajectory,
   highGroundBetween,
   incapacitatingConditionFor,
@@ -229,7 +231,7 @@ function adjacentPartyMember(state, enemy) {
 function meleeThreatWithinReach(state, enemy) {
   return livingParty(state).some((member) => {
     const feet = distanceFeetBetweenActors(state, actorId(member), actorId(enemy))
-    const speed = Math.max(0, Number(member.speed) || 30)
+    const speed = effectiveSpeedFeet(state, member, actorId(member))
     return feet <= speed + CELL_FEET
   })
 }
@@ -362,9 +364,7 @@ function affordableRouteTo(state, enemy, cell, budgetFeet) {
 }
 
 function remainingMovementFeet(state, enemy) {
-  const spent = Math.max(0, Number(state.mechanics?.combat?.action_economy?.[actorId(enemy)]?.movement_spent) || 0)
-  const speed = Number(enemy.speed)
-  return Math.max(0, (Number.isFinite(speed) ? speed : 30) - spent)
+  return movementForActor(state, actorId(enemy)).movement_remaining
 }
 
 /**
@@ -591,8 +591,7 @@ function retreatDestination(state, enemy, target, profile) {
   const from = actorPosition(state, actorId(enemy))
   const targetAt = actorPosition(state, actorId(target))
   if (!from || !targetAt) return null
-  const movementSpent = Math.max(0, Number(state.mechanics?.combat?.action_economy?.[actorId(enemy)]?.movement_spent) || 0)
-  const budgetFeet = (Number(enemy.speed) || 30) - movementSpent
+  const budgetFeet = remainingMovementFeet(state, enemy)
   const maximumSteps = Math.max(0, Math.floor(budgetFeet / CELL_FEET))
   if (!maximumSteps) return null
   const { stepCost } = movementStepCostFor(state, actorId(enemy))
@@ -1166,20 +1165,19 @@ export function planNpcTurn(rawState, enemyId) {
     }
   } else if (!candidate.inRange && candidate.path?.length) {
     const rangeCells = Math.max(1, Math.floor((profile?.range_feet ?? CELL_FEET) / CELL_FEET))
-    const speed = Number(enemy.speed)
-    const speedFeet = Number.isFinite(speed) ? speed : 30
+    const speedFeet = effectiveSpeedFeet(state, enemy, enemyId)
     const actionEconomy = state.mechanics?.combat?.action_economy?.[String(enemyId)] ?? {}
-    const movementSpent = Math.max(0, Number(actionEconomy.movement_spent) || 0)
+    const availableFeet = remainingMovementFeet(state, enemy)
     const aggressiveAvailable = hasTrait(enemy, 'aggressive') && actionEconomy.bonus_action !== false
     // Бюджет считается в футах по той же формуле, что и у `MoveActor`: трудная
     // местность и ползание дороже шага. Планировать «по клеткам» значило бы
     // выбрать цель, на которую у существа не хватит скорости, — и весь ход NPC
     // упал бы в SPEED_EXCEEDED уже на собственном плане.
     const approachSteps = Math.max(0, candidate.path.length - rangeCells)
-    const affordable = affordablePathPrefix(state, enemyId, candidate.path, approachSteps, speedFeet - movementSpent)
+    const affordable = affordablePathPrefix(state, enemyId, candidate.path, approachSteps, availableFeet)
     const needsAggressive = aggressiveAvailable && affordable.steps < approachSteps
     const reach = needsAggressive
-      ? affordablePathPrefix(state, enemyId, candidate.path, approachSteps, speedFeet * 2 - movementSpent)
+      ? affordablePathPrefix(state, enemyId, candidate.path, approachSteps, availableFeet + speedFeet)
       : affordable
     if (reach.steps > 0) {
       plannedMovementFeet = reach.costFeet

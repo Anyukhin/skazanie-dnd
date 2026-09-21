@@ -173,7 +173,7 @@ function PlayerCard({ player, selected, turn, accessible, typing, deathSaves, st
         <div className="hp-line"><i style={{ width: `${Math.max(0, player.hp) / Math.max(1, player.maxHp) * 100}%` }} />{status && status.temporaryHp > 0 && <i className="temp" style={{ left: `${Math.min(100, Math.max(0, player.hp) / Math.max(1, player.maxHp) * 100)}%`, width: `${Math.min(100, status.temporaryHp / Math.max(1, player.maxHp) * 100)}%` }} />}<small>{player.hp}/{player.maxHp}{status && status.temporaryHp > 0 && <em>+{status.temporaryHp}</em>} ОЗ</small></div>
         {status && (status.concentration || status.conditions.length > 0) && <div className="player-status-dots" title={heroStatusSummary(status)} aria-label={heroStatusSummary(status)}>
           {status.concentration && <i className="concentration" />}
-          {status.conditions.map((condition) => <i key={condition.id} className={condition.status === 'marker' ? 'marker' : 'condition'} />)}
+          {status.conditions.map((condition) => <i key={condition.instanceKey} className={condition.status === 'marker' ? 'marker' : 'condition'} />)}
         </div>}
         {downed && <div className="downed-line" title={deathSaves ? `Спасброски от смерти: ${deathSaves.successes} успеха, ${deathSaves.failures} провала` : undefined}>
           <HeartCrack size={11} /><span>{downedLabel}</span>
@@ -575,7 +575,7 @@ function PlayerHud({ player, hazards = [], combatActive = false, status, onChara
           когда есть что сказать; пустой строки у здорового героя нет. */}
       {status && (status.concentration || status.conditions.length > 0) && <div className="hud-status" role="group" aria-label="Состояния героя">
         {status.concentration && <span className="hud-chip concentration" title={`Концентрация: ${status.concentration}. Урон требует спасброска Телосложения, иначе заклинание спадёт`}><b>К</b>{status.concentration}</span>}
-        {status.conditions.map((condition) => <span key={condition.id} className={`hud-chip ${condition.status}`} title={`${condition.statusLabel}. ${condition.explanation}${condition.duration ? ` Длительность: ${condition.duration}` : ''}`}>{condition.label}{condition.duration && <small>· {condition.duration}</small>}</span>)}
+        {status.conditions.map((condition) => <span key={condition.instanceKey} className={`hud-chip ${condition.status}`} title={`${condition.statusLabel}. ${condition.explanation}${condition.duration ? ` Длительность: ${condition.duration}` : ''}`}>{condition.label}{condition.duration && <small>· {condition.duration}</small>}</span>)}
       </div>}
     </aside>
   )

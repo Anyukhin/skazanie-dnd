@@ -1071,10 +1071,11 @@ CR, обычным путём урона.
    сорванная отмычка поднимает ступень поступка (B3), — а вот кража опознаётся
    по взятому **на людях**, а не по хозяину вещи: владельца у пропса в движке
    так и нет (B1, B8, пробел 4).
-3. **У времени одиннадцать потребителей, и один из них наконец рисует картину мира.**
-   `elapsed_minutes` — общий счётчик, и висит на нём больше, чем кажется. Внутри
-   `AdvanceTime`
-   (`appendWorldTimeConsequences`, `server/rules-engine.mjs`) — шесть механик:
+3. **У времени тринадцать потребителей, и один из них рисует картину мира.**
+   `elapsed_minutes` и `second_remainder` — единые часы с точностью до 0.001 с;
+   `worldTimeSeconds` вычисляет секунды, не сохраняя второй полный счётчик.
+   Внутри `TimeAdvanced` и `appendWorldTimeConsequences`
+   (`server/rules-engine.mjs`) — восемь механик:
    просроченные обещания NPC переходят в `broken` (`npcPromiseDeadlineEvents`, A8);
    стабилизированный герой поднимается на 1 ОЗ через выпавшие 1к4 часа
    (`StableRecoveryScheduled` → `StableRecoveryProgressed` → `HealingApplied`, F8);
@@ -1083,7 +1084,10 @@ CR, обычным путём урона.
    (`server/item-dawn-recharge.mjs`); время суток и погода объявляют смену
    (`worldClockEventDrafts`, `server/weather.mjs`, D6); мир делает ход за спиной
    отряда на существенном скачке — от восьми часов и не чаще раза в игровые сутки
-   (`planOffscreenWorldStep`, `server/offscreen-world.mjs`, D4 и D5).
+   (`planOffscreenWorldStep`, `server/offscreen-world.mjs`, D4 и D5); курьерские
+   письма доставляются и получают ответ (`planCourierLetterTicks`,
+   `server/courier-letters.mjs`); временные условия истекают по абсолютному
+   `expires_at_seconds`, прежние условия сохраняют `expires_at_minutes`.
    Снаружи движка — ещё пять: склад торговца
    пополняется по минутам мира (`planMerchantEconomyClock`,
    `server/merchant-economy.mjs`; живой контур `runMerchantEconomyClock`,
@@ -1096,6 +1100,14 @@ CR, обычным путём урона.
    `server/free-action-adjudication.mjs`, F9); у памяти мира есть горизонт — запись
    с `recorded_at_minutes` позже запрошенной минуты в выдачу не попадает
    (`worldMemoryForViewer`, `server/world-memory.mjs`).
+
+   Новые события часов версии 2 получают секунды из полного боевого раунда (6 с
+   между TurnEnded и следующим TurnStarted), финального раунда после реального
+   действия по policy `round6-completed-and-final-started` и локального движения
+   вне боя (`movement_cost / current_speed * 6`, с разделением при истечении
+   эффекта). Пустое начало/окончание боя не добавляет времени. Минутные потребители
+   получают только пересечённые целые минуты из того же состояния перед событием;
+   старые журналы и snapshots сохраняют прежнюю минутную семантику.
 
    Пробел закрыт наполовину. Две производных у счётчика теперь есть — время суток
    и погода (`server/weather.mjs`, D6), и обе выводятся из тех же минут, а не

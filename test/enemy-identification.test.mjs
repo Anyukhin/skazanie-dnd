@@ -106,9 +106,9 @@ test('навык и СЛ выбирает серверная таблица по
 test('успешное опознание открывает отряду точные ОЗ и КД именно этого врага', () => {
   const result = identify(campaign())
   const types = result.events.map((event) => event.event_type)
-  assert.deepEqual(types, ['CombatActionUsed', 'AbilityCheckResolved', 'EnemyKnowledgeRevealed'])
+  assert.deepEqual(types, ['CombatRoundTimeMarked', 'CombatActionUsed', 'AbilityCheckResolved', 'EnemyKnowledgeRevealed'])
 
-  const reveal = result.events[2].payload
+  const reveal = result.events.find((event) => event.event_type === 'EnemyKnowledgeRevealed').payload
   assert.equal(reveal.enemy_id, 'wolf')
   assert.equal(reveal.scope, 'party')
   assert.deepEqual(reveal.facts, { health: 'exact', armor_class: 'exact' })
@@ -146,7 +146,7 @@ test('бросок делает сервер: навык, характерист
 
 test('провал тратит действие, но ничего не раскрывает', () => {
   const result = identify(campaign(), { rolls: [2] })
-  assert.deepEqual(result.events.map((event) => event.event_type), ['CombatActionUsed', 'AbilityCheckResolved'])
+  assert.deepEqual(result.events.map((event) => event.event_type), ['CombatRoundTimeMarked', 'CombatActionUsed', 'AbilityCheckResolved'])
   assert.deepEqual(result.state.mechanics.enemy_knowledge, { party: {} })
   assert.equal(result.state.mechanics.combat.action_economy.hero.action, false)
   assert.equal(enemyFor(result.state, 'wolf').healthKnown, 'banded')

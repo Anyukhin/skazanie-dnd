@@ -166,11 +166,12 @@ test('Medicine DC 10 стабилизирует соседнего союзни�
   const result = resolveCommand({ command_type: 'UseCombatAction', actor_id: 'medic', action_id: 'stabilize', target_id: 'fallen', server_authoritative: true }, initial, {
     diceService: dice([4]), context: { serverAuthoritativeCombat: true },
   })
-  assert.deepEqual(result.events.map((event) => event.event_type), ['AbilityCheckResolved', 'HeroStabilized', 'CombatActionUsed'])
-  assert.equal(result.events[0].payload.total, 10)
+  assert.deepEqual(result.events.map((event) => event.event_type), ['CombatRoundTimeMarked', 'AbilityCheckResolved', 'HeroStabilized', 'CombatActionUsed'])
+  assert.equal(result.events.find((event) => event.event_type === 'AbilityCheckResolved').payload.total, 10)
   const after = applyAll(initial, result.events)
   assert.equal(after.mechanics.death.saving_throws.fallen.stable, true)
   assert.equal(after.mechanics.combat.action_economy.medic.action, false)
+  assert.equal(after.mechanics.combat.round_time_pending, true)
 })
 
 test('бой нельзя завершить до стабилизации, а стабильный герой не объявляется погибшим', () => {

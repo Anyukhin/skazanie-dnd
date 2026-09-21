@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { actorFootprintCells, actorPresentationCenter } from './tactical-ui'
 import { terrainHeightAt } from './board3d-terrain'
 import { cellAt, edgeBetween, revealedAt } from './tactical-map-client'
-import { spellBurstCells, spellEffectPalette, spellIdFromEffect, spellVisualProfile, type SpellEffectDetail } from './spell-effects'
+import { spellBurstCells, spellChannelTargetIds, spellEffectPalette, spellIdFromEffect, spellVisualProfile, type SpellEffectDetail } from './spell-effects'
 import { maskSpellAreaCells } from './spell-targeting'
 import type { ActorFootprint, TacticalMap } from './types'
 import type { BoardPoint, CombatAnimationCue, SpellAnimationCue } from './combat-animation'
@@ -1189,6 +1189,17 @@ export function createSpellEffect3D(
   if (cue.kind === 'burst') return createAreaBurst(cue, actors, map)
   if (cue.kind === 'beam') return createBeam(cue, actors, map)
   if (cue.kind === 'aura') return createAura(cue, actors, map)
+  if (cue.kind === 'channel' && cue.spellId === 'longstrider') {
+    const effects = spellChannelTargetIds(cue).flatMap((targetId) => {
+      if (!actorFor(actors, targetId)) return []
+      const effect = createChannel({ ...cue, targetId, position: undefined }, actors, map)
+      return effect ? [effect] : []
+    })
+    if (!effects.length) return null
+    const group = new THREE.Group()
+    effects.forEach((effect) => group.add(effect.group))
+    return { group, update: (progress) => effects.forEach((effect) => effect.update(progress)), dispose: () => { effects.forEach((effect) => effect.dispose()); group.removeFromParent() } }
+  }
   if (cue.kind === 'channel') return createChannel(cue, actors, map)
   return null
 }

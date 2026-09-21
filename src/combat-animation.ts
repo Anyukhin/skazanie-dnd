@@ -179,6 +179,7 @@ export type SpellAnimationCue = CombatAnimationPresentation & SpellAnimationCore
       kind: 'channel'
       actorId: string
       targetId?: string
+      targetIds?: string[]
       from?: BoardPoint
       position?: BoardPoint
       channelType: 'cast' | 'healing' | 'summon' | 'teleport'
@@ -959,6 +960,9 @@ export function combatAnimationCuesFromEvents(
 
     if (event.event_type === 'ConditionAdded') {
       const condition = String(payload.condition ?? '')
+      // У Скорохода один сигнал наложения из SpellCast для всего набора целей.
+      // Состояние живёт в HUD, отдельный звук на каждый ConditionAdded не нужен.
+      if (condition === 'longstrider') continue
       if (!targetId || !condition) continue
       cues.push({
         id: eventId(event),
@@ -1135,6 +1139,7 @@ export function combatAnimationCuesFromBattleLog(
           kind: 'channel',
           actorId: event.actorId,
           targetId: event.targetId,
+          ...(event.spellId === 'longstrider' && Array.isArray(event.targetIds) ? { targetIds: uniqueIds(event.targetIds) } : {}),
           from: teleportMove?.from ?? (teleport ? event.from : undefined),
           position: teleportMove?.to ?? event.to,
           channelType: teleport ? 'teleport' : 'cast',

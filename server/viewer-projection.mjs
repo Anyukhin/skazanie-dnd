@@ -9,7 +9,7 @@ import { sceneObjectLabelFor } from './scene-interactions.mjs'
 import { actorAppearanceFor, normalizeAttackVisual, publicAppearanceRecord } from './actor-appearance.mjs'
 import { reputationTier } from './reputation-policy.mjs'
 import { projectVisibleState } from './security.mjs'
-import { RULE_IDS, hitPointDicePoolForActor, spellComponentAvailabilityFor } from './rules-engine.mjs'
+import { RULE_IDS, hitPointDicePoolForActor, spellComponentAvailabilityFor, movementForActor, effectiveSpeedFeet } from './rules-engine.mjs'
 import {
   MATERIALS,
   SIZE_CLASSES,
@@ -658,7 +658,7 @@ export function publicEnemyFor(enemy = {}, state = {}, actorId = '') {
     ...(exactEnemyFact(knowledge, 'armor_class') || exactEnemyFact(knowledge, 'armor') ? {
       armor: Math.max(0, integer(enemy.armor ?? enemy.armor_class, 10)),
     } : {}),
-    ...(exactEnemyFact(knowledge, 'speed') ? { speed: Math.max(0, integer(enemy.speed, 0)) } : {}),
+    ...(exactEnemyFact(knowledge, 'speed') ? { speed: effectiveSpeedFeet(state, enemy, id) } : {}),
     ...(exactEnemyFact(knowledge, 'stat_block') && enemy.stat_block_id != null ? { stat_block_id: text(enemy.stat_block_id, 120) } : {}),
   }
 }
@@ -720,6 +720,23 @@ function publicRevealedCellKeys(scene) {
 function publicBattleEventFor(entry, state, actorId = '', visibility = {}) {
   if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return entry
   const result = { ...entry }
+  if (Array.isArray(entry.targetIds)) {
+    result.targetIds = entry.targetIds.filter((/** @type {unknown} */ id) => visibility.visibleActorIds?.has(String(id)))
+  }
+  if (entry.spellId === 'longstrider') {
+    const ids = visibility.visibleActorIds ?? new Set()
+    const targets = Array.isArray(entry.targetIds) ? result.targetIds : [entry.targetId].filter((id) => ids.has(String(id)))
+    if (!ids.has(String(entry.actorId)) && !targets.length) return null
+    result.targetIds = targets
+    if (!ids.has(String(entry.actorId))) delete result.actorId
+    if (!ids.has(String(entry.targetId))) {
+      if (targets.length) result.targetId = targets[0]
+      else delete result.targetId
+    }
+    // Касание рисуется у разрешённых существ, координаты скрытой первой
+    // цели или источника не должны пережить фильтрацию списка.
+    for (const key of ['from', 'to', 'area']) delete result[key]
+  }
   const attackVisual = Object.hasOwn(entry, 'attackVisual') || Object.hasOwn(entry, 'attack_visual')
     ? normalizeAttackVisual(entry.attackVisual ?? entry.attack_visual)
     : undefined
@@ -894,17 +911,28 @@ function publicEnemyConditionId(value) {
  * Иначе дозу на конкретном клинке было бы не найти — `weaponCoatingRiderFor`
  * ищет условие ровно по идентификатору оружия.
  *
- * Условия героев не трогаются: своё снаряжение игрок знает и без проекции.
+ * Условия героев не раскрывают снаряжение. У Скорохода дополнительно
+ * скрываются отсутствующие на публичной сцене владельцы и источники.
  *
  * @param {unknown} value
  * @param {Set<string>} enemyIds
+ * @param {Set<string>} visibleActorIds
  * @returns {Record<string, any>}
  */
-function publicConditionsFor(value, enemyIds) {
+function publicConditionsFor(value, enemyIds, visibleActorIds) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
   /** @type {Record<string, any>} */
   const projected = {}
-  for (const [ownerId, conditions] of Object.entries(value)) {
+  for (const [ownerId, storedConditions] of Object.entries(value)) {
+    const conditions = Array.isArray(storedConditions) ? storedConditions.flatMap((condition) => {
+      if (condition?.id !== 'longstrider' && condition?.spell_id !== 'longstrider' && condition !== 'longstrider') return [condition]
+      if (!visibleActorIds.has(ownerId)) return []
+      if (!condition || typeof condition !== 'object') return [condition]
+      const projectedCondition = { ...condition }
+      if (!visibleActorIds.has(String(projectedCondition.source_actor))) delete projectedCondition.source_actor
+      return [projectedCondition]
+    }) : storedConditions
+    if (Array.isArray(storedConditions) && storedConditions.length && !conditions.length) continue
     if (!Array.isArray(conditions)) {
       projected[ownerId] = conditions
       continue
@@ -1530,6 +1558,8 @@ export function campaignStateForViewer(state, user, actorId = '') {
     weather_by_actor: weatherByActorFor(state, { isAdmin: true, actorId: String(actorId ?? '') }),
     mechanics: {
       ...(state.mechanics ?? {}),
+      movement: Object.fromEntries([...(state.players ?? []), ...(state.actors ?? []), ...(state.enemies ?? [])]
+        .map((/** @type {Loose} */ actor) => [String(actor.id), movementForActor(state, String(actor.id))])),
       hit_point_dice: Object.fromEntries((state.players ?? []).map((/** @type {Loose} */ player) => [String(player.id), hitPointDicePoolForActor(state, player.id)])),
     },
   }
@@ -1614,7 +1644,10 @@ export function campaignStateForViewer(state, user, actorId = '') {
       const { enemy_knowledge: _enemyKnowledge, ...publicMechanics } = visible.mechanics
       return {
       ...publicMechanics,
-      ...(visible.mechanics.conditions ? { conditions: publicConditionsFor(visible.mechanics.conditions, enemyIds) } : {}),
+      movement: Object.fromEntries([...(publicState.players ?? []), ...actors]
+        .filter((/** @type {Loose} */ actor) => !enemyIds.has(String(actor.id)))
+        .map((/** @type {Loose} */ actor) => [String(actor.id), movementForActor(state, String(actor.id))])),
+      ...(visible.mechanics.conditions ? { conditions: publicConditionsFor(visible.mechanics.conditions, enemyIds, visibleActorIds) } : {}),
       // Временные ОЗ противника. Событие урона и окно реакции у неопознанного
       // врага закрывают и `temporary_hp_before/after`, и записанное разностью
       // `temporary_hp_absorbed`, — а состояние комнаты везло ту же карту
@@ -1717,7 +1750,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
     merchants,
     enemies,
     mechanics,
-    battleLog: (Array.isArray(visible.battleLog) ? visible.battleLog : []).map((/** @type {Loose} */ entry) => publicBattleEventFor(entry, state, actorId, { visibleActorIds, visibleCellKeys })),
+    battleLog: (Array.isArray(visible.battleLog) ? visible.battleLog : []).map((/** @type {Loose} */ entry) => publicBattleEventFor(entry, state, actorId, { visibleActorIds, visibleCellKeys })).filter(Boolean),
     messages: (Array.isArray(visible.messages) ? visible.messages : []).map(publicCombatMessageFor),
     ...(publicAutonomyFor(state.autonomy) ? { autonomy: publicAutonomyFor(state.autonomy) } : {}),
   }
@@ -1748,6 +1781,17 @@ function eventForViewer(event, user, actorId, state = {}) {
     : {}
   delete payload.knowledge_gate
   delete payload.previous_view
+  if (payload.spell_id === 'longstrider' || payload.condition === 'longstrider') {
+    const visibleActors = projectVisibleState([...(state.players ?? []), ...(state.actors ?? []), ...(state.enemies ?? [])], viewerFor(state, user, actorId), { forNarrator: true }) ?? []
+    const ids = new Set([...visibleActors, ...sceneNpcsForViewer(state)].map((/** @type {Loose} */ actor) => String(actor.id)))
+    const targets = (Array.isArray(visible.target_ids) ? visible.target_ids : [payload.target_id]).filter((/** @type {unknown} */ id) => ids.has(String(id)))
+    if (!targets.length && (visible.event_type !== 'SpellCast' || !ids.has(String(visible.actor_id)))) return null
+    visible.target_ids = targets
+    if (!ids.has(String(visible.actor_id))) delete visible.actor_id
+    if (!ids.has(String(payload.source_actor))) delete payload.source_actor
+    if (!ids.has(String(payload.target_id))) delete payload.target_id
+    for (const key of ['from', 'to', 'origin', 'center']) delete payload[key]
+  }
   if (visible.event_type === 'SpellCast') redactSpellVisualPayload(payload, state)
   if (visible.event_type === 'CampaignStoryCompleted') {
     const knownStory = questStateForViewer(state, viewerFor(state, user, actorId)).campaignConcept?.story_history

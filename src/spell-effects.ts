@@ -1951,6 +1951,11 @@ function drawTeleportPortal(
   }
 }
 
+/** Один подтверждённый cue и звук, но акцент у каждой видимой цели Скорохода. */
+export function spellChannelTargetIds(cue: Extract<SpellAnimationCue, { kind: 'channel' }>): string[] {
+  return [...new Set(cue.spellId === 'longstrider' && Array.isArray(cue.targetIds) ? cue.targetIds : [cue.targetId ?? cue.actorId])]
+}
+
 function drawChannel(
   context: BoardContext2D,
   scene: BoardScene,
@@ -2033,7 +2038,11 @@ export function drawSpellEffect(
   else if (cue.kind === 'burst') drawBurst(context, scene, cue, input, detail)
   else if (cue.kind === 'beam') drawBeam(context, scene, cue, input, detail)
   else if (cue.kind === 'aura') drawAura(context, scene, cue, input, detail)
-  else drawChannel(context, scene, cue, input, detail)
+  else if (cue.spellId === 'longstrider') {
+    for (const targetId of spellChannelTargetIds(cue)) {
+      if (actorPoint(input.actors, targetId)) drawChannel(context, scene, { ...cue, targetId, position: undefined }, input, detail)
+    }
+  } else drawChannel(context, scene, cue, input, detail)
 }
 
 /** Готовая точка подключения к публичному `drawBoardEffects`. */

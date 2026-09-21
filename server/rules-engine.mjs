@@ -927,6 +927,35 @@ function durationInMinutes(amount, unit = 'minute') {
   return Math.max(0, Math.floor(value * multiplier))
 }
 
+// Минутная функция выше остаётся неизменной для старого replay.
+function normalizedClockSeconds(value) {
+  const seconds = Number(value)
+  return Number.isFinite(seconds) ? Math.max(0, Math.round(seconds * 1_000) / 1_000) : 0
+}
+
+function durationInSeconds(amount, unit = 'minute') {
+  const value = Math.max(0, Number(amount) || 0)
+  const normalized = String(unit || 'minute').trim().toLowerCase()
+  const multiplier = ['second', 'seconds', 'second(s)', 'секунда', 'секунды', 'секунд'].includes(normalized)
+    ? 1
+    : ['round', 'rounds', 'round(s)', 'раунд', 'раунда', 'раундов'].includes(normalized)
+      ? 6
+      : ['hour', 'hours', 'hour(s)', 'час', 'часа', 'часов'].includes(normalized)
+        ? 3_600
+        : ['day', 'days', 'day(s)', 'день', 'дня', 'дней'].includes(normalized)
+          ? 86_400 : 60
+  return normalizedClockSeconds(value * multiplier)
+}
+
+// Полные секунды вычисляются, но не хранятся вторыми авторитетными часами.
+export function worldTimeSeconds(state) {
+  const time = state?.mechanics?.world_time ?? {}
+  const minutes = time.elapsed_minutes != null && Number.isSafeInteger(Number(time.elapsed_minutes))
+    ? Math.max(0, Number(time.elapsed_minutes))
+    : durationInMinutes(time.amount, time.unit)
+  return normalizedClockSeconds(minutes * 60 + normalizedClockSeconds(time.second_remainder))
+}
+
 function uniqueStrings(value) {
   return [...new Set(Array.isArray(value) ? value.map(String).map((item) => item.trim()).filter(Boolean) : [])]
 }
@@ -1429,6 +1458,14 @@ export function findActor(state, id) {
   return listActors(state).find((actor) => actorId(actor) === expected) ?? null
 }
 
+// Социальный NPC остаётся в своём реестре: мирное касание не начинает бой
+// и не создаёт второй лист. Его эффект адресуется прежнему устойчивому ID.
+function spellCreatureFor(state, id, spell) {
+  const actor = findActor(state, id)
+  if (actor || spell.id !== 'longstrider') return actor
+  return npcInteractionTargetForViewer(state, id) ? npcCombatActorFor(state, id) : null
+}
+
 /**
  * Что именно можно узнать о враге. Список закрыт: раскрытие обязано быть
  * перечислимым фактом, а не «чем-нибудь ещё».
@@ -1703,7 +1740,12 @@ export function normalizeCampaignState(input = {}) {
   const elapsedMinutes = rawWorldTime.elapsed_minutes != null && Number.isSafeInteger(Number(rawWorldTime.elapsed_minutes))
     ? Math.max(0, Number(rawWorldTime.elapsed_minutes))
     : durationInMinutes(rawWorldTime.amount, rawWorldTime.unit)
-  mechanics.world_time = { amount: elapsedMinutes, unit: 'minute', elapsed_minutes: elapsedMinutes }
+  mechanics.world_time = {
+    amount: elapsedMinutes + Math.floor(normalizedClockSeconds(rawWorldTime.second_remainder) / 60), unit: 'minute',
+    elapsed_minutes: elapsedMinutes + Math.floor(normalizedClockSeconds(rawWorldTime.second_remainder) / 60),
+    // Старый снимок сохраняет прежнюю форму; новый остаток переживает каждый reducer.
+    ...(rawWorldTime.second_remainder != null ? { second_remainder: normalizedClockSeconds(normalizedClockSeconds(rawWorldTime.second_remainder) % 60) } : {}),
+  }
   mechanics.death = {
     campaign_status: state.mechanics?.death?.campaign_status === 'party_defeated' ? 'party_defeated' : 'active',
     heroes: Object.fromEntries(Object.entries(clone(state.mechanics?.death?.heroes ?? {}))
@@ -1740,6 +1782,8 @@ export function normalizeCampaignState(input = {}) {
     .filter(([id, readied]) => id && readied && typeof readied === 'object' && READIED_TRIGGERS[String(readied.trigger)]))
   mechanics.combat.group_initiative = mechanics.combat.group_initiative === true
   mechanics.combat.turn_completed = uniqueStrings(mechanics.combat.turn_completed)
+  if (mechanics.combat.active && mechanics.combat.round_time_pending === true) mechanics.combat.round_time_pending = true
+  else delete mechanics.combat.round_time_pending
   // Перемирие живёт ровно столько, сколько идёт бой: закрытый бой не может
   // остаться «на паузе», а старый снимок про парлей просто ничего не знает.
   mechanics.combat.truce = mechanics.combat.active ? normalizeTruce(mechanics.combat.truce) : null
@@ -3637,7 +3681,7 @@ export function previewApproachAttack(rawState, actorIdValue, targetIdValue) {
   }
   const occupied = occupiedPositions(state, actorIdValue)
   const economy = state.mechanics.combat.action_economy[actorIdValue] ?? {}
-  const budget = effectiveSpeedFeet(state, actor, actorIdValue) + Math.max(0, safeInteger(economy.movement_bonus, 0)) - Math.max(0, safeInteger(economy.movement_spent, 0))
+  const budget = movementForActor(state, actorIdValue).movement_remaining
   const radius = Math.max(1, Math.min(6, Math.floor(Number(profile.range_feet || 5) / 5)))
   const candidates = []
   const attack = { command_type: 'MakeAttack', actor_id: actorIdValue, target_id: targetIdValue, server_authoritative: true }
@@ -4142,7 +4186,7 @@ const SOURCE_SCOPED_BOOLEAN_CONDITIONS = new Set([
 
 function conditionUsesEffectIdentity(condition, payload) {
   if (payload?.effect_id == null) return false
-  return SOURCE_SCOPED_BOOLEAN_CONDITIONS.has(String(condition))
+  return String(condition) === 'longstrider' || SOURCE_SCOPED_BOOLEAN_CONDITIONS.has(String(condition))
     || payload?.repeat_save_timing != null
     || payload?.repeat_save_on_damage === true
     || payload?.escape_check_ability != null
@@ -4214,6 +4258,12 @@ function normalizeCommand(input, state) {
   command.command_id = String(command.command_id ?? command.commandId ?? randomUUID())
   command.actor_id = command.actor_id == null && command.actorId == null ? null : String(command.actor_id ?? command.actorId)
   command.target_id = command.target_id == null && command.targetId == null ? null : String(command.target_id ?? command.targetId)
+  if (command.command_type === 'CastSpell' && String(command.spell_id ?? command.spellId) === 'longstrider') {
+    const targets = command.target_ids ?? command.targetIds
+    if (Array.isArray(targets) && targets.length !== uniqueStrings(targets).length) {
+      throw new RulesValidationError('Выберите каждую цель только один раз', 'INVALID_SPELL_TARGETS')
+    }
+  }
   command.target_ids = uniqueStrings(command.target_ids ?? command.targetIds ?? (command.target_id ? [command.target_id] : []))
   command.source_rule_ids = sourceIdsFor(command, state)
   command.house_rule_id = command.house_rule_id ?? command.houseRuleId ?? null
@@ -6099,7 +6149,9 @@ export function validateCommand(input, rawState, context = {}) {
     if (command.command_type === 'TransferItem'
       && command.recipient_kind === 'npc'
       && String(id) === String(command.recipient_id)) continue
-    if (!findActor(state, id)) throw new RulesValidationError(`Цель ${id} не найдена`, 'TARGET_NOT_FOUND')
+    const target = command.command_type === 'CastSpell' && command.spell_id === 'longstrider'
+      ? spellCreatureFor(state, id, { id: 'longstrider' }) : findActor(state, id)
+    if (!target) throw new RulesValidationError(`Цель ${id} не найдена`, 'TARGET_NOT_FOUND')
   }
   assertActorPermission(command, context, state)
   assertTurn(command, state, context)
@@ -6465,7 +6517,7 @@ export function validateCommand(input, rawState, context = {}) {
     assertMechanicsSupported(spell, 'заклинания')
     assertSpellComponentsAllowed(state, actor, spell, context)
     const resolvedSpellSlot = spell.slotResource && !context.additionalBeam && !context.readiedRelease
-      ? chooseSpellSlot(state, command.actor_id, spell, command.slot_level ?? command.slotLevel)
+      ? chooseSpellSlot(state, command.actor_id, spell, command.slot_level ?? command.slotLevel, command.casting_resource)
       : null
     if (spell.slotResource && !context.additionalBeam && !context.readiedRelease) {
       if (!resolvedSpellSlot) throw new RulesValidationError('Нет доступной ячейки подходящего уровня', 'INSUFFICIENT_RESOURCE')
@@ -6515,25 +6567,26 @@ export function validateCommand(input, rawState, context = {}) {
         : Math.max(1, safeInteger(spell.maxTargets, 1) + Math.max(0, requestedSlotLevel - Math.max(1, spell.level)) * Math.max(0, safeInteger(spell.upcastTargetsPerLevel, 0)))
       if (requestedIds.length > maximumTargets) throw new RulesValidationError('Слишком много целей для этого уровня ячейки', 'TOO_MANY_SPELL_TARGETS')
       for (const requestedId of requestedIds) {
-        const target = findActor(state, requestedId)
+        const target = spellCreatureFor(state, requestedId, spell)
+        const targetState = target && !findActor(state, requestedId) ? npcDamageContext(state, requestedId) : state
         const canAffectDyingHero = Boolean(target && isDyingHero(state, requestedId) && ['healing', 'buff'].includes(spell.kind))
         if (!target || (!isLivingActor(target) && !canAffectDyingHero)) throw new RulesValidationError('Нужна допустимая цель заклинания', 'INVALID_SPELL_TARGET')
         const targetIsHostile = isEnemyActor(state, actorId(target)) !== isEnemyActor(state, command.actor_id)
         if (spell.target === 'enemy' && !targetIsHostile) throw new RulesValidationError('Это заклинание требует противника', 'INVALID_SPELL_TARGET')
         if (spell.target === 'ally' && targetIsHostile) throw new RulesValidationError('Это заклинание требует союзника', 'INVALID_SPELL_TARGET')
         // Мирное по виду заклинание, направленное во врага, — то же нападение.
-        if (!state.mechanics.combat.active && targetIsHostile) {
+        if (!state.mechanics.combat.active && targetIsHostile && spell.requiresCombatAgainstHostile !== false) {
           throw new RulesValidationError('Заклинание против противника требует инициативы: сначала начните бой', 'COMBAT_NOT_ACTIVE')
         }
-        const to = actorPosition(state, actorId(target))
+        const to = actorPosition(targetState, actorId(target))
         if (!to) throw new RulesValidationError('Цель должна находиться на карте', 'MAP_POSITION_REQUIRED')
-        if (tacticalCellMap(state).size > 0 && !actorFootprintVisible(state, requestedId, to)
+        if (tacticalCellMap(state).size > 0 && !actorFootprintVisible(targetState, requestedId, to)
           && !blindTargetAllowed(command, context)) {
           throw new RulesValidationError('Цель находится в нераскрытой части карты', 'TARGET_NOT_VISIBLE')
         }
-        const distance = distanceBetweenActorPositions(state, command.actor_id, from, requestedId, to)
+        const distance = distanceBetweenActorPositions(targetState, command.actor_id, from, requestedId, to)
         if (distance > maximumSpellRange) throw new RulesValidationError('Цель находится вне дальности заклинания', 'TARGET_OUT_OF_RANGE')
-        if (distance > 5) assertClearActorTrajectory(state, command.actor_id, requestedId, from, to, {
+        if (distance > 5 || spell.id === 'longstrider') assertClearActorTrajectory(targetState, command.actor_id, requestedId, from, to, {
           allowHiddenTarget: blindTargetAllowed(command, context),
         })
       }
@@ -8260,8 +8313,22 @@ function reducedReactionDamage(damage, preventedAmount) {
   }
 }
 
-function chooseSpellSlot(state, actorIdValue, spell, requestedLevel) {
+function chooseSpellSlot(state, actorIdValue, spell, requestedLevel, castingResource = null) {
   if (!spell || spell.level === 0 || !spell.slotResource) return null
+  if (castingResource != null) {
+    if (typeof castingResource !== 'string' || !/^[a-z0-9_:-]{1,120}$/u.test(castingResource)) {
+      throw new RulesValidationError('Некорректный источник применения заклинания', 'INVALID_CASTING_RESOURCE')
+    }
+    const resource = castingResource
+    const classLevel = resource.match(/^spell_slots_([1-6])$/u)
+    const classAllowed = [spell.slotResource, spell.fallbackSlotResource].some((value) => /^spell_slots_[1-6]$/u.test(String(value ?? '')))
+    const allowed = classLevel ? classAllowed : resource === spell.slotResource || resource === spell.fallbackSlotResource
+    if (!allowed || !resource) throw new RulesValidationError('Этот источник недоступен для заклинания', 'INVALID_CASTING_RESOURCE')
+    if (classLevel && requestedLevel != null && Number(requestedLevel) !== Number(classLevel[1])) {
+      throw new RulesValidationError('Выбранный источник не совпадает с кругом ячейки', 'INVALID_CASTING_RESOURCE')
+    }
+    return chooseSpellSlot(state, actorIdValue, { ...spell, slotResource: resource, fallbackSlotResource: null }, classLevel ? Number(classLevel[1]) : requestedLevel)
+  }
   const explicitRequest = requestedLevel !== undefined && requestedLevel !== null
   const requested = explicitRequest ? Number(requestedLevel) : null
   const rejectInvalidRequestedLevel = () => {
@@ -8651,7 +8718,7 @@ function longJumpMovementFor(state, actorIdValue, destination, { runningStart = 
   const strengthScore = Math.max(1, safeInteger(actor.abilities?.str, 10))
   const maximumJumpFeet = runningStart ? strengthScore : Math.floor(strengthScore / 2)
   const budget = effectiveSpeedFeet(state, actor, actorIdValue)
-    + Math.max(0, safeInteger(economy.movement_bonus, 0)) - movementSpent
+    + movementBonusFeet(state, actorIdValue) - movementSpent
   const dx = to.x - from.x
   const dy = to.y - from.y
   if ((dx !== 0 && dy !== 0) || (dx === 0 && dy === 0)) {
@@ -8847,7 +8914,7 @@ export function spellTargetsAt(state, command, spell) {
   if (spell.target !== 'point') {
     const requestedIds = command.target_ids?.length ? command.target_ids : [targetFor(command)]
     const maximum = Math.max(1, safeInteger(spell.maxTargets, 1) + Math.max(0, safeInteger(command.slot_level, spell.level) - Math.max(1, safeInteger(spell.level, 1))) * Math.max(0, safeInteger(spell.upcastTargetsPerLevel, 0)))
-    return uniqueStrings(requestedIds).slice(0, maximum).map((id) => findActor(state, id)).filter(Boolean)
+    return uniqueStrings(requestedIds).slice(0, maximum).map((id) => spellCreatureFor(state, id, spell)).filter(Boolean)
   }
   const to = { x: Number(command.to?.x), y: Number(command.to?.y) }
   const radius = Math.max(0, Math.min(600, safeInteger(spell.radius, spell.kind?.startsWith('area-') ? 5 : 0)))
@@ -8924,7 +8991,7 @@ function npcSpellTargetsAt(state, command, spell) {
     && areaTargetHasLineOfEffect(state, command, spell, to, String(npc.id), placement, { footprint: placement.footprint }, (point, origin) => positionInArea(point, origin, radius, spell.areaShape ?? 'sphere', spell.areaSideFeet)))
 }
 
-/** Социальный NPC использует те же спасброски и защиты, что его боевая форма. */
+/** Социальный NPC использует геометрию, спасброски и защиты своей боевой формы. */
 function npcDamageContext(state, npcId) {
   if (findActor(state, npcId)) return state
   const actor = npcCombatActorFor(state, npcId)
@@ -8969,7 +9036,7 @@ function livingPartySize(state) {
 }
 
 function conditionIdsFor(state, id) {
-  return new Set((state.mechanics.conditions[String(id)] ?? []).map((condition) => String(condition?.id ?? condition)))
+  return new Set((state.mechanics?.conditions?.[String(id)] ?? []).map((condition) => String(condition?.id ?? condition)))
 }
 
 function silveryFortuneFor(state, id) {
@@ -9148,13 +9215,10 @@ function conditionArmorClassBonus(state, id) {
   return bonus
 }
 
-/**
- * Walking speed after conditions.  Multipliers apply before flat changes, so a
- * hasted creature that is also slowed by ten feet doubles first and loses the
- * ten afterwards — the order the ruleset uses.
- */
-function effectiveSpeedFeet(state, actor, id) {
+/** Текущая скорость; база и уже оплаченное движение никогда не переписываются. */
+export function effectiveSpeedFeet(state, actor, id) {
   const conditions = conditionIdsFor(state, id)
+  if (speedZeroConditionFor(state, id)) return 0
   let multiplier = 1
   let flat = 0
   for (const condition of conditions) {
@@ -9165,7 +9229,80 @@ function effectiveSpeedFeet(state, actor, id) {
   }
   const base = Math.max(0, safeInteger(actor?.speed, 30))
   const armorPenalty = actor?.speciesBenefits?.mechanics?.ignore_armor_speed_penalty === true ? 0 : armorStrengthSpeedPenalty(actor)
-  return Math.max(0, Math.floor(base * multiplier) + flat - armorPenalty)
+  // Повторные наложения одного заклинания не складываются. Увеличенную
+  // скорость затем удваивает Ускорение или делит Замедление.
+  const longstrider = activeLongstriderConditions(state, id).length > 0 ? 10 : 0
+  return Math.max(0, Math.floor((base + longstrider) * multiplier) + flat - armorPenalty)
+}
+
+function activeLongstriderConditions(state, id) {
+  return (state.mechanics?.conditions?.[id] ?? []).filter((condition) => condition.id === 'longstrider'
+    && Number.isFinite(condition.expires_at_seconds) && condition.expires_at_seconds > worldTimeSeconds(state))
+    .reverse()
+    .sort((left, right) => Number(right.started_at_seconds) - Number(left.started_at_seconds))
+}
+
+/** Старые события Рывка сохраняют плоскую прибавку; новые хранят её источник. */
+function movementBonusFeet(state, id, speed = effectiveSpeedFeet(state, findActor(state, id), id)) {
+  const economy = state.mechanics?.combat?.action_economy?.[id] ?? {}
+  return Math.max(0, safeInteger(economy.movement_bonus, 0) - safeInteger(economy.dash_movement_credit, 0))
+    + Math.max(0, safeInteger(economy.dash_count, 0)) * speed
+}
+
+/** Одна серверная проекция для движения, планировщика и карты игрока. */
+export function movementForActor(state, id) {
+  const actor = findActor(state, id)
+  const currentSpeed = effectiveSpeedFeet(state, actor, id)
+  const combat = state.mechanics?.combat?.active === true
+  const spent = combat ? Math.max(0, safeInteger(state.mechanics.combat.action_economy?.[id]?.movement_spent, 0)) : 0
+  const bonus = combat ? movementBonusFeet(state, id, currentSpeed) : 0
+  const blocked = speedZeroConditionFor(state, id)
+  const effects = activeLongstriderConditions(state, id)
+  const blockedLabel = { grappled: 'захват', restrained: 'опутывание', paralyzed: 'паралич', petrified: 'окаменение',
+    stunned: 'ошеломление', surprised: 'внезапность', unconscious: 'без сознания', 'caltrops-speed-zero': 'калтропы',
+    'exhaustion:5': 'истощение', 'exhaustion:6': 'истощение', 'speed-zero': 'обездвиживание' }[blocked] ?? 'обездвиживание'
+  return {
+    base_speed: Math.max(0, safeInteger(actor?.speed, 30)), current_speed: currentSpeed,
+    movement_spent: spent, movement_bonus: bonus,
+    movement_remaining: blocked ? 0 : Math.max(0, currentSpeed + bonus - spent),
+    blocked_reason: blocked ? `Движение недоступно: ${blockedLabel}` : currentSpeed === 0 ? 'Скорость равна нулю' : null,
+    effects: effects.map((effect, index) => ({
+      effect_id: effect.effect_id, spell_id: 'longstrider', name: 'Скороход', bonus_feet: 10,
+      applied: index === 0 && !blocked,
+      started_at_seconds: effect.started_at_seconds, expires_at_seconds: effect.expires_at_seconds,
+      remaining_seconds: Math.max(0, effect.expires_at_seconds - worldTimeSeconds(state)),
+    })),
+  }
+}
+
+/** Стоимость локального пути во времени; истёкший посреди пути бонус не ускоряет остаток. */
+function explorationMovementDurationSeconds(state, id, costFeet) {
+  let remaining = Math.max(0, Number(costFeet) || 0)
+  let elapsed = 0
+  const start = worldTimeSeconds(state)
+  const actor = findActor(state, id)
+  const conditions = state.mechanics.conditions?.[id] ?? []
+  const deadlines = [...new Set(conditions.flatMap((condition) => {
+    const end = condition.expires_at_seconds ?? (condition.expires_at_minutes == null ? null : condition.expires_at_minutes * 60)
+    return Number.isFinite(end) && end > start ? [Number(end)] : []
+  }))].sort((left, right) => left - right)
+  let current = state
+  for (const deadline of [...deadlines, Number.POSITIVE_INFINITY]) {
+    const speed = effectiveSpeedFeet(current, actor, id)
+    if (speed <= 0) throw new RulesValidationError('Скорость не позволяет завершить путь', 'SPEED_EXCEEDED')
+    const seconds = remaining * 6 / speed
+    const span = deadline - start - elapsed
+    if (seconds <= span) return Math.round((elapsed + seconds) * 1000) / 1000
+    remaining -= span * speed / 6
+    elapsed += span
+    current = { ...state, mechanics: { ...state.mechanics,
+      world_time: { amount: Math.floor(deadline / 60), unit: 'minute', elapsed_minutes: Math.floor(deadline / 60), second_remainder: Math.round((deadline % 60) * 1000) / 1000 },
+      conditions: { ...state.mechanics.conditions, [id]: conditions.filter((condition) =>
+        (condition.expires_at_seconds == null || condition.expires_at_seconds > deadline)
+        && (condition.expires_at_minutes == null || condition.expires_at_minutes * 60 > deadline)) },
+    } }
+  }
+  return elapsed
 }
 
 /**
@@ -10348,14 +10485,44 @@ function pendingExecutionFor(context) {
     ...(context.finalizeFleeActorId ? { finalize_flee_actor_id: String(context.finalizeFleeActorId) } : {}) }
 }
 
+const COMBAT_ROUND_TIME_POLICY = 'round6-completed-and-final-started'
+const COMBAT_ROUND_TIME_COMMANDS = new Set([
+  'MakeAttack', 'MakeAreaAttack', 'CastSpell', 'UseCombatAction', 'UseMonsterAction',
+  'UseLegendaryAction', 'MoveActor', 'ChangeWeapon', 'UseItem', 'ActivateItem', 'EquipItem',
+  'IdentifyEnemy', 'ResolveImprovisedAction', 'CalmBeast', 'FeedBeast', 'ScareWithBeast',
+  'ProposeParley', 'BarricadeDoor', 'ClearDoorBarricade', 'OperateDoor', 'OperateSceneObject',
+])
+
+function withCombatRoundTimeMarker(result, rawState, context) {
+  if (safeInteger(context?.__resolve_depth, 0) > 0 || !COMBAT_ROUND_TIME_COMMANDS.has(result.command.command_type)) return result
+  const combat = rawState?.mechanics?.combat
+  if (!combat?.active || combat.round_time_pending === true) return result
+  const acted = result.events.some((event) => {
+    if (['AttackResolved', 'AreaAttackResolved', 'SpellCast', 'DoorBarricaded', 'DoorBarricadeCleared', 'DoorLockpicked', 'DoorForced', 'DoorBarricadeForced'].includes(event.event_type)) return true
+    if (event.event_type === 'ActorMoved') return Number(event.payload?.distance) > 0
+    if (event.event_type === 'CombatActionUsed') return ['action', 'bonus_action', 'reaction'].includes(event.payload?.action_type) || Number(event.payload?.movement_spent) > 0
+    if (event.event_type === 'EquipmentChanged') return event.payload?.timing === 'action'
+    return ['ItemUsed', 'ItemEquipped', 'ItemUnequipped', 'MagicItemActivationChanged'].includes(event.event_type)
+      && ['action', 'bonus_action', 'reaction', 'object_interaction'].includes(event.payload?.combat_action)
+  })
+  if (!acted) return result
+  const marker = {
+    ...eventFrom({ ...commandWithRules(result.command, RULE_IDS.turns), visibility: 'gm_only' }, 'CombatRoundTimeMarked', {
+      clock_version: 2, policy_id: COMBAT_ROUND_TIME_POLICY, round: safeInteger(combat.round, 1),
+    }, []),
+    event_schema_version: 2,
+  }
+  return { ...result, events: [marker, ...result.events] }
+}
+
 export function resolveCommand(input, rawState, { diceService, context = {} } = {}) {
   try {
-    return resolveCommandInternal(input, rawState, { diceService, context })
+    return withCombatRoundTimeMarker(resolveCommandInternal(input, rawState, { diceService, context }), rawState, context)
   } catch (error) {
     if (isCombatPause(error)) {
       error.windowEvent.payload.pending_execution ??= pendingExecutionFor(context)
       if (safeInteger(context?.__resolve_depth, 0) === 0) {
-        return { command: error.command, events: [...(error.prefixEvents ?? []), error.windowEvent], rolls: error.prefixRolls ?? [] }
+        return withCombatRoundTimeMarker({ command: error.command, events: [...(error.prefixEvents ?? []), error.windowEvent], rolls: error.prefixRolls ?? [] }, rawState, context)
       }
     }
     throw error
@@ -10419,17 +10586,23 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
     }
   }
 
-  const appendTimeAdvance = (sourceCommand, amount, unit, elapsedMinutes) => {
-    events.push(eventFrom(sourceCommand, 'TimeAdvanced', { amount, unit, elapsed_minutes: elapsedMinutes }, []))
-    if (elapsedMinutes <= 0) return
-    // Мировые часы: время суток и погода — производные тех же минут, поэтому
-    // событие нужно только на смену. `state` здесь — состояние **до** команды,
-    // и это и есть «было»: события этого хода применяются вызывающим уже после
-    // возврата, так что второй раз одну и ту же границу пересечь нельзя.
-    for (const draft of worldClockEventDrafts(state, elapsedMinutes)) {
+  const appendTimeAdvance = (sourceCommand, amount, unit, { sourceState = replayEvents(state, events), elapsedSeconds = durationInSeconds(amount, unit), policyId = null } = {}) => {
+    const beforeSeconds = worldTimeSeconds(sourceState)
+    const elapsedMinutes = Math.floor(normalizedClockSeconds(beforeSeconds + elapsedSeconds) / 60) - Math.floor(beforeSeconds / 60)
+    events.push({
+      ...eventFrom(sourceCommand, 'TimeAdvanced', {
+        amount, unit, elapsed_minutes: elapsedMinutes, clock_version: 2, elapsed_seconds: elapsedSeconds,
+        ...(policyId ? { policy_id: policyId } : {}),
+      }, []),
+      event_schema_version: 2,
+    })
+    if (elapsedMinutes <= 0) return elapsedMinutes
+    // Все минутные потребители получают только реально пересечённые границы.
+    // sourceState — состояние перед этим TimeAdvanced, включая прежние события команды.
+    for (const draft of worldClockEventDrafts(sourceState, elapsedMinutes)) {
       events.push(eventFrom({ ...sourceCommand, visibility: draft.visibility }, draft.event_type, draft.payload, []))
     }
-    const recharge = resolveItemDawnRecharge(state, elapsedMinutes, diceService)
+    const recharge = resolveItemDawnRecharge(sourceState, elapsedMinutes, diceService)
     rolls.push(...recharge.rolls)
     if (recharge.payload) {
       events.push({
@@ -10437,19 +10610,20 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         event_schema_version: ITEM_DAWN_RECHARGE_EVENT_SCHEMA_VERSION,
       })
     }
+    return elapsedMinutes
   }
 
-  const appendWorldTimeConsequences = (sourceCommand, amount, unit) => {
-    const elapsedMinutes = durationInMinutes(amount, unit)
-    appendTimeAdvance(sourceCommand, amount, unit, elapsedMinutes)
+  const appendWorldTimeConsequences = (sourceCommand, amount, unit, options = {}) => {
+    const sourceState = replayEvents(state, events)
+    const elapsedMinutes = appendTimeAdvance(sourceCommand, amount, unit, { ...options, sourceState })
     if (elapsedMinutes <= 0) return
-    for (const socialEvent of npcPromiseDeadlineEvents(state, elapsedMinutes)) {
+    for (const socialEvent of npcPromiseDeadlineEvents(sourceState, elapsedMinutes)) {
       events.push(eventFrom({ ...sourceCommand, visibility: socialEvent.visibility }, socialEvent.event_type, socialEvent.payload, socialEvent.target_ids))
     }
-    for (const [heroId, rawTracker] of Object.entries(state.mechanics.death.saving_throws ?? {})) {
-      const tracker = deathSaveTracker(state, heroId)
-      const hero = playerActor(state, heroId)
-      if (!tracker.stable || !hero || actorHp(hero) !== 0 || isDeadHero(state, heroId)) continue
+    for (const [heroId, rawTracker] of Object.entries(sourceState.mechanics.death.saving_throws ?? {})) {
+      const tracker = deathSaveTracker(sourceState, heroId)
+      const hero = playerActor(sourceState, heroId)
+      if (!tracker.stable || !hero || actorHp(hero) !== 0 || isDeadHero(sourceState, heroId)) continue
       let remaining = Math.max(0, safeInteger(rawTracker?.recovery_minutes_remaining, 0))
       if (remaining <= 0) {
         const recoveryRoll = diceService.roll('1d4', 'stable-recovery-hours', heroId, sourceCommand.visibility ?? 'public')
@@ -10477,7 +10651,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         }, [heroId]))
       }
     }
-    for (const [targetIdValue, rest] of Object.entries(state.mechanics.resting ?? {})) {
+    for (const [targetIdValue, rest] of Object.entries(sourceState.mechanics.resting ?? {})) {
       if (rest?.reason !== 'knockout') continue
       const remaining = Math.max(1, safeInteger(rest.recovery_minutes_remaining, 60))
       if (elapsedMinutes >= remaining) {
@@ -10502,7 +10676,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
     // него нет — только существенный скачок (`planOffscreenWorldStep`,
     // `server/offscreen-world.mjs`) и не чаще раза в игровые сутки; на коротком
     // привале модуль молчит по построению.
-    const offscreen = planOffscreenWorldStep(state, { elapsedMinutes })
+    const offscreen = planOffscreenWorldStep(sourceState, { elapsedMinutes })
     for (const draft of offscreen?.drafts ?? []) {
       events.push(eventFrom({ ...sourceCommand, visibility: draft.visibility }, draft.event_type, draft.payload, draft.target_ids ?? []))
     }
@@ -10511,7 +10685,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
     // состояния, поэтому длинный отдых доводит письмо до ответа целиком, а
     // короткий привал не двигает его вовсе (`planCourierLetterTicks`,
     // `server/courier-letters.mjs`).
-    for (const draft of planCourierLetterTicks(state, { elapsedMinutes })) {
+    for (const draft of planCourierLetterTicks(sourceState, { elapsedMinutes })) {
       events.push(eventFrom({ ...sourceCommand, visibility: draft.visibility }, draft.event_type, draft.payload, draft.target_ids ?? []))
     }
   }
@@ -11833,7 +12007,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             if (path.length) {
               events.push(eventFrom(commandWithRules(command, RULE_IDS.turns), 'ActorMoved', {
                 from: pushedFrom, to: path.at(-1), path, distance: path.length * 5,
-                movement_cost: 0, movement_spent: 0, movement_remaining: safeInteger(target?.speed, 30),
+                movement_cost: 0, movement_spent: 0, movement_remaining: effectiveSpeedFeet(state, target, targetId),
                 spend_movement: false, forced_movement: true, spell_id: pendingWeaponHitSpell.id, phase: 'combat',
               }, [targetId]))
               events.push(...areaEntryConsequences(events.reduce(applyGameEvent, state), command, targetId, pushedFrom, path.at(-1), {
@@ -12980,11 +13154,12 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       } else if (action.id === 'stand-up') {
         if (!conditionIdsFor(state, command.actor_id).has('prone')) throw new RulesValidationError('Встать можно только из состояния «сбит с ног»', 'ACTOR_NOT_PRONE')
         const economy = state.mechanics.combat.action_economy[command.actor_id] ?? actionEconomy()
-        const movementCost = Math.ceil(Math.max(0, safeInteger(actor?.speed, 30)) / 2)
-        const available = Math.max(0, safeInteger(actor?.speed, 30) + safeInteger(economy.movement_bonus, 0) - safeInteger(economy.movement_spent, 0))
-        if (available < movementCost) throw new RulesValidationError('Недостаточно оставшейся скорости, чтобы встать', 'SPEED_EXCEEDED')
+        const speed = effectiveSpeedFeet(state, actor, command.actor_id)
+        const movementCost = Math.ceil(speed / 2)
+        const available = movementForActor(state, command.actor_id).movement_remaining
+        if (speed === 0 || available < movementCost) throw new RulesValidationError('Недостаточно оставшейся скорости, чтобы встать', 'SPEED_EXCEEDED')
         events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'prone' }, [command.actor_id]))
-        events.push(actionEvent({ movement_spent: movementCost }))
+        events.push(actionEvent({ movement_spent: movementCost, movement_contract_version: 2 }))
       } else if (action.id === 'break-free') {
         const restrained = (state.mechanics.conditions[command.actor_id] ?? []).find((condition) => String(condition?.id ?? condition) === 'restrained')
         if (!restrained) throw new RulesValidationError('Высвобождаться можно только из удерживающего эффекта', 'ACTOR_NOT_RESTRAINED')
@@ -13039,7 +13214,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         if (action.id === 'expeditious-retreat-dash' && !conditionIdsFor(state, command.actor_id).has('expeditious-retreat')) {
           throw new RulesValidationError('«Стремительный рывок» доступен только пока активно «Поспешное отступление»', 'EXPEDITIOUS_RETREAT_NOT_ACTIVE')
         }
-        events.push(actionEvent({ movement_bonus: Math.max(0, safeInteger(actor?.speed, 30)) }))
+        events.push(actionEvent({ movement_bonus: effectiveSpeedFeet(state, actor, command.actor_id), dash_count: 1, movement_contract_version: 2 }))
       } else if (action.id === 'disengage' || action.id === 'dodge') {
         const condition = action.id === 'dodge' ? 'dodging' : 'disengaged'
         events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition, duration: 'until-next-turn' }, [command.actor_id]))
@@ -13232,7 +13407,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       } else if (action.effect?.kind === 'dash') {
         spendActionResource()
         if (action.effect.addCondition) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: action.effect.addCondition, duration: 'until-next-turn', source_actor: command.actor_id }, [command.actor_id]))
-        events.push(actionEvent({ movement_bonus: Math.floor(Math.max(0, safeInteger(actor?.speed, 30)) * Number(action.effect.multiplier ?? 1)) }))
+        events.push(actionEvent({ movement_bonus: Math.floor(effectiveSpeedFeet(state, actor, command.actor_id) * Number(action.effect.multiplier ?? 1)), dash_count: Math.max(1, safeInteger(action.effect.multiplier, 1)), movement_contract_version: 2 }))
       } else if (action.effect?.kind === 'condition') {
         spendActionResource()
         const effectId = `${action.id}:${command.command_id}`
@@ -13535,7 +13710,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         if (!state.mechanics.combat.active && spell?.actionType === 'long_cast') {
           const minutes = castingTimeMinutes(spell.castingTime)
           if (minutes > 0) {
-            appendTimeAdvance(commandWithRules(command, RULE_IDS.resource), minutes, 'minute', minutes)
+            appendTimeAdvance(commandWithRules(command, RULE_IDS.resource), minutes, 'minute')
           }
         }
         const counterspell = context.readiedRelease || context.additionalBeam ? null : counterspellWindowFor(state, command, spell)
@@ -13673,7 +13848,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           }, [command.actor_id]))
         }
         if (spell.grantsDashOnCast) events.push(eventFrom(commandWithRules(command, RULE_IDS.turns), 'CombatActionUsed', {
-          action_id: `${spell.id}:initial-dash`, name: spell.name, action_type: 'free', movement_bonus: Math.max(0, safeInteger(actor?.speed, 30)),
+          action_id: `${spell.id}:initial-dash`, name: spell.name, action_type: 'free', movement_bonus: effectiveSpeedFeet(state, actor, command.actor_id), dash_count: 1, movement_contract_version: 2,
         }, [command.actor_id]))
         const spellAreaCenter = spell.createsAreaEffect
           ? (spell.areaOrigin === 'self' || spell.target === 'self' ? actorPosition(state, command.actor_id) : command.to)
@@ -14376,7 +14551,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
               if (path.length) {
                 events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ActorMoved', {
                   from: pushedFrom, to: path.at(-1), path, distance: path.length * 5,
-                  movement_cost: 0, movement_spent: 0, movement_remaining: safeInteger(target?.speed, 30),
+                  movement_cost: 0, movement_spent: 0, movement_remaining: effectiveSpeedFeet(state, target, resolvedTargetId),
                   spend_movement: false, forced_movement: true, spell_id: spell.id, phase: 'combat',
                 }, [resolvedTargetId]))
                 // Толчок в стену огня поджигает: принудительное перемещение
@@ -14392,7 +14567,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
                 && !conditionIdsFor(movementState, resolvedTargetId).has('no-reactions')
                 && isLivingActor(findActor(movementState, resolvedTargetId))
               const origin = actorPosition(movementState, command.actor_id)
-              const destination = reactionReady ? farthestSafeDestinationAwayFrom(movementState, resolvedTargetId, origin, safeInteger(target?.speed, 30)) : null
+              const destination = reactionReady ? farthestSafeDestinationAwayFrom(movementState, resolvedTargetId, origin, effectiveSpeedFeet(movementState, target, resolvedTargetId)) : null
               if (destination?.path?.length) {
                 const reactionEvent = eventFrom(commandWithRules({ ...command, actor_id: resolvedTargetId }, RULE_IDS.reaction), 'CombatActionUsed', {
                   action_id: 'dissonant-whispers-movement', name: spell.name, action_type: 'reaction', target_id: command.actor_id,
@@ -14734,14 +14909,18 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
               // `TimeAdvanced`, что гасит антидот.
               const startedAtMinutes = Math.max(0, safeInteger(state.mechanics.world_time?.elapsed_minutes, 0))
               const durationMinutes = Math.max(0, safeInteger(spell.conditionDurationMinutes, 0))
+              const durationSeconds = Math.max(0, safeInteger(spell.conditionDurationSeconds, 0))
+              const startedAtSeconds = worldTimeSeconds(state)
               events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
                 condition,
                 duration: spell.conditionDuration ? String(spell.conditionDuration)
                   : spell.concentration ? 'concentration'
+                    : durationSeconds > 0 ? `seconds:${durationSeconds}`
                     : durationMinutes > 0 ? `minutes:${durationMinutes}`
                       : spell.durationRounds ? `rounds:${spell.durationRounds}` : null,
                 source_actor: command.actor_id, effect_id: effectId, spell_id: spell.id,
                 ...(durationMinutes > 0 ? { started_at_minutes: startedAtMinutes, expires_at_minutes: startedAtMinutes + durationMinutes } : {}),
+                ...(durationSeconds > 0 ? { started_at_seconds: startedAtSeconds, expires_at_seconds: startedAtSeconds + durationSeconds, timing_version: 2 } : {}),
                 ...(spell.temporaryHpAbilityModifier ? { temporary_hp_amount: Math.max(0, spellModifier) } : {}),
               }, [resolvedTargetId]))
               if (condition === 'heroism') events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'frightened', reason: 'fear-immunity', spell_id: spell.id }, [resolvedTargetId]))
@@ -14754,7 +14933,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         } else if (spell.kind === 'teleport') {
           const to = { x: Number(command.to.x), y: Number(command.to.y) }
           const from = actorPosition(state, command.actor_id)
-          events.push(eventFrom(commandWithRules(command, RULE_IDS.turns), 'ActorMoved', { from, to, path: [to], distance: 0, movement_spent: state.mechanics.combat.action_economy[command.actor_id]?.movement_spent ?? 0, movement_remaining: Math.max(0, safeInteger(actor?.speed, 30) - safeInteger(state.mechanics.combat.action_economy[command.actor_id]?.movement_spent, 0)), teleport: true }, [command.actor_id]))
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.turns), 'ActorMoved', { from, to, path: [to], distance: 0, movement_spent: state.mechanics.combat.action_economy[command.actor_id]?.movement_spent ?? 0, movement_remaining: movementForActor(state, command.actor_id).movement_remaining, teleport: true }, [command.actor_id]))
           // Гром остаётся там, откуда ушли: удар считается вокруг **исходной**
           // клетки, а не вокруг точки прибытия. Заклинатель уже исчез, поэтому
           // себя он не задевает.
@@ -14998,7 +15177,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           // взвешенный поиск и который использует NPC-планировщик.
           movementCost = path.reduce((total, step) => total + stepCost(step, map), 0)
           const speed = effectiveSpeedFeet(state, actor, command.actor_id)
-          const movementBonus = Math.max(0, safeInteger(state.mechanics.combat.action_economy[command.actor_id]?.movement_bonus, 0))
+          const movementBonus = movementBonusFeet(state, command.actor_id, speed)
           const aggressiveBonus = command.monster_ability === 'aggressive'
             && context.isNpcScheduler
             && isEnemyActor(state, command.actor_id)
@@ -15076,8 +15255,8 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         }
       }
       if (!isLivingActor(findActor(reactionState, command.actor_id))) break
-      const aggressiveBonus = command.monster_ability === 'aggressive' && context.isNpcScheduler && monsterTraitFor(actor, 'aggressive') ? Math.max(0, safeInteger(actor?.speed, 30)) : 0
-      const speed = effectiveSpeedFeet(state, actor, command.actor_id) + Math.max(0, safeInteger(state.mechanics.combat.action_economy[command.actor_id]?.movement_bonus, 0)) + aggressiveBonus
+      const aggressiveBonus = command.monster_ability === 'aggressive' && context.isNpcScheduler && monsterTraitFor(actor, 'aggressive') ? effectiveSpeedFeet(state, actor, command.actor_id) : 0
+      const speed = effectiveSpeedFeet(state, actor, command.actor_id) + movementBonusFeet(state, command.actor_id) + aggressiveBonus
       events.push(eventFrom(command, 'ActorMoved', {
         from: from ?? command.from ?? null,
         to,
@@ -15196,6 +15375,11 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           action_options: [readiedOptionFor(readyEntry[1], 'Враг подошёл вплотную')],
           damage: null,
         }, [readyEntry[0]]))
+      }
+      if (!state.mechanics.combat.active && movementCost > 0 && !reactionMovement) {
+        appendWorldTimeConsequences(commandWithRules(command, RULE_IDS.turns),
+          explorationMovementDurationSeconds(state, command.actor_id, movementCost), 'second',
+          { policyId: 'local-movement-speed/v1' })
       }
       break
     }
@@ -16017,6 +16201,9 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
     case 'EndCombat': {
       const combat = state.mechanics.combat
       if (!combat.active) throw new RulesValidationError('Бой не начат', 'COMBAT_NOT_ACTIVE')
+      if (combat.round_time_pending === true) {
+        appendWorldTimeConsequences(commandWithRules(command, RULE_IDS.turns), 6, 'second', { elapsedSeconds: 6, policyId: COMBAT_ROUND_TIME_POLICY })
+      }
       events.push(eventFrom(command, 'CombatEnded', { round: combat.round, reason: String(command.reason || 'resolved').slice(0, 120) }, combat.initiative.map((entry) => entry.actor_id)))
       if (['staged', 'active'].includes(String(state.mechanics.encounter?.status ?? ''))) {
         const reason = String(command.reason || 'resolved').slice(0, 120)
@@ -16132,6 +16319,9 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       const nextRound = nextIndex <= combat.active_index ? combat.round + 1 : combat.round
       const nextId = combat.initiative[nextIndex].actor_id
       events.push(eventFrom(command, 'TurnEnded', turnEndPayload, [command.actor_id]))
+      if (nextRound > combat.round) {
+        appendWorldTimeConsequences(commandWithRules(command, RULE_IDS.turns), 6, 'second', { elapsedSeconds: 6, policyId: COMBAT_ROUND_TIME_POLICY })
+      }
       events.push(eventFrom(command, 'TurnStarted', { round: nextRound, active_index: nextIndex }, [nextId]))
       // Заготовка живёт до начала собственного следующего хода: круг замкнулся —
       // несработавшая «Готовность» пропадает вместе с потраченным действием.
@@ -19758,6 +19948,11 @@ function applyGameEventCurrent(rawState, event) {
         ...(payload.save_condition != null ? { save_condition: String(payload.save_condition) } : {}),
         ...(payload.started_at_minutes != null ? { started_at_minutes: Math.max(0, safeInteger(payload.started_at_minutes, 0)) } : {}),
         ...(payload.expires_at_minutes != null ? { expires_at_minutes: Math.max(0, safeInteger(payload.expires_at_minutes, 0)) } : {}),
+        ...(payload.timing_version === 2 ? {
+          timing_version: 2,
+          started_at_seconds: Math.max(0, Math.round(Number(payload.started_at_seconds || 0) * 1000) / 1000),
+          expires_at_seconds: Math.max(0, Math.round(Number(payload.expires_at_seconds || 0) * 1000) / 1000),
+        } : {}),
         effect_id: payload.effect_id ?? null,
         repeat_save_timing: payload.repeat_save_timing ?? null,
         repeat_save_on_damage: payload.repeat_save_on_damage === true,
@@ -20293,14 +20488,21 @@ function applyGameEventCurrent(rawState, event) {
           const resource = payload.action_type === 'bonus_action' ? 'bonus_action' : payload.action_type === 'reaction' ? 'reaction' : payload.action_type === 'free' ? null : 'action'
           if (resource) spendCombatEconomy(state, event.actor_id, resource, { normalActionOnly: payload.normal_action_only === true })
         }
-        if (safeInteger(payload.movement_bonus, 0) > 0) {
+        if (safeInteger(payload.movement_bonus, 0) > 0 || payload.movement_contract_version === 2 && payload.dash_count > 0) {
           const updated = state.mechanics.combat.action_economy[event.actor_id] ?? economy
-          state.mechanics.combat.action_economy[event.actor_id] = { ...updated, movement: true, movement_bonus: Math.max(0, safeInteger(updated.movement_bonus, 0)) + safeInteger(payload.movement_bonus, 0) }
+          state.mechanics.combat.action_economy[event.actor_id] = { ...updated, movement: true, movement_bonus: Math.max(0, safeInteger(updated.movement_bonus, 0)) + safeInteger(payload.movement_bonus, 0),
+            ...(payload.movement_contract_version === 2 ? {
+              dash_count: safeInteger(updated.dash_count, 0) + safeInteger(payload.dash_count, 0),
+              dash_movement_credit: safeInteger(updated.dash_movement_credit, 0) + safeInteger(payload.movement_bonus, 0),
+            } : {}),
+          }
         }
         if (safeInteger(payload.movement_spent, 0) > 0) {
           const updated = state.mechanics.combat.action_economy[event.actor_id] ?? economy
           const spent = Math.max(0, safeInteger(updated.movement_spent, 0) + safeInteger(payload.movement_spent, 0))
-          const total = Math.max(0, safeInteger(findActor(state, event.actor_id)?.speed, 30) + safeInteger(updated.movement_bonus, 0))
+          const total = payload.movement_contract_version === 2
+            ? effectiveSpeedFeet(state, findActor(state, event.actor_id), event.actor_id) + movementBonusFeet(state, event.actor_id)
+            : Math.max(0, safeInteger(findActor(state, event.actor_id)?.speed, 30) + safeInteger(updated.movement_bonus, 0))
           state.mechanics.combat.action_economy[event.actor_id] = { ...updated, movement_spent: spent, movement: spent < total }
         }
       }
@@ -20450,6 +20652,7 @@ function applyGameEventCurrent(rawState, event) {
         round: state.mechanics.combat.round,
         type: 'spell', actorId: event.actor_id, actorKind: combatActorKind(state, event.actor_id),
         targetId: target, spellId: payload.spell_id, spellName: payload.name,
+        ...(payload.spell_id === 'longstrider' ? { targetIds: targets } : {}),
         ...(spellFrom ? { from: spellFrom } : {}),
         ...(spellTo ? { to: spellTo } : {}),
         ...(spellArea ? { area: spellArea } : {}),
@@ -20769,7 +20972,14 @@ function applyGameEventCurrent(rawState, event) {
         type: 'turn-end', actorId: event.actor_id, actorKind: combatActorKind(state, event.actor_id),
       })
       break
+    case 'CombatRoundTimeMarked':
+      if (Number(payload.clock_version) === 2 && payload.policy_id === COMBAT_ROUND_TIME_POLICY
+        && state.mechanics.combat.active && safeInteger(payload.round, -1) === state.mechanics.combat.round) {
+        state.mechanics.combat.round_time_pending = true
+      }
+      break
     case 'TurnStarted':
+      if (safeInteger(payload.round, state.mechanics.combat.round) > state.mechanics.combat.round) delete state.mechanics.combat.round_time_pending
       state.mechanics.combat.round = safeInteger(payload.round, state.mechanics.combat.round)
       state.mechanics.combat.active_index = safeInteger(payload.active_index, state.mechanics.combat.active_index)
       state.mechanics.combat.turn_started_at = event.created_at ?? null
@@ -20923,12 +21133,21 @@ function applyGameEventCurrent(rawState, event) {
       state.social = applyNpcSocialEvent(state.social, event, state)
       break
     case 'TimeAdvanced': {
-      const elapsed = Math.max(0, safeInteger(payload.elapsed_minutes, durationInMinutes(payload.amount, payload.unit)))
-      const total = Math.max(0, safeInteger(state.mechanics.world_time?.elapsed_minutes, 0) + elapsed)
-      state.mechanics.world_time = { amount: total, unit: 'minute', elapsed_minutes: total }
+      const secondsClock = Number(payload.clock_version) === 2
+      const elapsedSeconds = secondsClock
+        ? normalizedClockSeconds(payload.elapsed_seconds)
+        : Math.max(0, safeInteger(payload.elapsed_minutes, durationInMinutes(payload.amount, payload.unit))) * 60
+      const totalSeconds = normalizedClockSeconds(worldTimeSeconds(state) + elapsedSeconds)
+      const totalMinutes = Math.floor(totalSeconds / 60)
+      state.mechanics.world_time = {
+        amount: totalMinutes, unit: 'minute', elapsed_minutes: totalMinutes,
+        ...(secondsClock || state.mechanics.world_time?.second_remainder != null ? { second_remainder: normalizedClockSeconds(totalSeconds % 60) } : {}),
+      }
       for (const [actorIdValue, conditions] of Object.entries(state.mechanics.conditions ?? {})) {
         state.mechanics.conditions[actorIdValue] = (conditions ?? []).filter((condition) => (
-          condition?.expires_at_minutes == null || safeInteger(condition.expires_at_minutes, total) > total
+          condition?.expires_at_seconds != null
+            ? normalizedClockSeconds(condition.expires_at_seconds) > totalSeconds
+            : condition?.expires_at_minutes == null || safeInteger(condition.expires_at_minutes, totalMinutes) > totalMinutes
         ))
       }
       break
@@ -21643,7 +21862,7 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'SwingResolved': return payload.success === true
       ? 'Раскачка на люстре удалась; герой продолжает движение к цели.'
       : 'Герой срывается при попытке ухватиться за люстру и падает ничком у опоры; удар не происходит.'
-    case 'TimeAdvanced': return `Проходит ${payload.amount || 0} ${payload.unit || 'мин.'}`
+    case 'TimeAdvanced': return `Проходит ${payload.amount || 0} ${{ second: 'сек.', minute: 'мин.', hour: 'ч.', day: 'дн.', round: 'раунд.' }[payload.unit] ?? payload.unit ?? 'мин.'}`
     case OFFSCREEN_WORLD_EVENT_TYPE: return `Пока отряда не было: ${(payload.step?.lines ?? []).join(' ') || 'мир сделал свой ход'}`
     case 'TimeOfDayChanged': return `${payload.phase_label || 'Время суток сменилось'} — ${payload.clock || ''}, день ${safeInteger(payload.day, 1)}`.trim()
     case 'WeatherChanged': return `Погода сменилась: ${payload.weather_label || payload.weather_after || 'неизвестно'}${payload.region_name ? ` (${payload.region_name})` : ''}`

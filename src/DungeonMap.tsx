@@ -22,7 +22,7 @@ import {
   Mail, MailOpen, MailX, HandHeart,
 } from 'lucide-react'
 import type { Account, ActorFootprint, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignSummary, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, GuardResolution, LetterAddresseeKind, MapCell, MapFeedback, Merchant, Message, ParleyOutcome, PendingCheck, Player, PlayerRequestKind, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp, TavernDiceApproach } from './types'
-import { combatSpellTargetLimit, spellComponentAvailabilityFor, spellComponentsPresentation, spellSlotAvailabilityFor, toggleCombatSpellTargetIds } from './types'
+import { actorMovementPresentation, combatSpellTargetLimit, movementEffectTimeLabel, spellCastingSourcesFor, spellComponentAvailabilityFor, spellComponentsPresentation, spellSlotAvailabilityFor, toggleCombatSpellTargetIds } from './types'
 import { fetchWithTimeout, getAiHealth } from './ai-client'
 import {
   DAMAGE_TYPE_LABELS, HARMFUL_SPELL_KINDS, HeroFaceInitials, REPUTATION_TIER_LABELS, battleEventText,
@@ -648,7 +648,7 @@ export function TokenConditionIcons({ conditions }: { conditions: PresentedCondi
   return <span className="token-conditions" aria-label="Состояния фишки">
     {ordered.slice(0, 4).map((condition) => (
       <i
-        key={condition.id}
+        key={condition.instanceKey}
         className={condition.status}
         data-condition={condition.id}
         aria-label={condition.label}
@@ -972,7 +972,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   onMove: (actorId: string, x: number, y: number) => Promise<CommandOutcome>
   onAttack: (actorId: string, enemyId: string, itemId?: string, choice?: WeaponAttackChoice) => Promise<CommandOutcome>
   onAreaAttack: (actorId: string, itemId: string, x: number, y: number, note?: string) => Promise<CommandOutcome>
-  onCastSpell: (actorId: string, spellId: string, target: (({ targetId: string } | { targetIds: string[] } | { x: number; y: number }) & { spellOption?: string; slotLevel?: number; knockOut?: boolean; note?: string })) => Promise<CommandOutcome>
+  onCastSpell: (actorId: string, spellId: string, target: (({ targetId: string } | { targetIds: string[] } | { x: number; y: number }) & { spellOption?: string; slotLevel?: number; castingResource?: string; knockOut?: boolean; note?: string })) => Promise<CommandOutcome>
   onUseCombatAction: (actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string, note?: string) => Promise<CommandOutcome>
   onChangeWeapon: (actorId: string, itemId: string) => Promise<CommandOutcome>
   onOperateDoor: (actorId: string, doorId: string, intent: 'open' | 'close' | 'force' | 'lockpick') => Promise<CommandOutcome>
@@ -1145,6 +1145,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const [selectedSpellId, setSelectedSpellId] = useState('')
   const [selectedSpellOption, setSelectedSpellOption] = useState('')
   const [spellSlotLevelChoice, setSpellSlotLevelChoice] = useState<number | null>(null)
+  const [spellCastingSourceChoice, setSpellCastingSourceChoice] = useState<string | null>(null)
   const [spellTargetIds, setSpellTargetIds] = useState<string[]>([])
   const spellCommandInFlight = useRef(false)
   const [selectedCombatActionId, setSelectedCombatActionId] = useState('')
@@ -1229,6 +1230,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     return players.find((player) => player.id === id)?.character
       ?? state.enemies?.find((enemy) => enemy.id === id)?.name
       ?? state.actors?.find((actor) => actor.id === id)?.name
+      ?? sceneNpcs.find((npc) => npc.id === id)?.name
       ?? id
   }
   const npcTacticText = visibleNpcTactic?.tactic
@@ -1539,22 +1541,25 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     ...fallbackSpellResources(activeHero),
     ...((state.mechanics as { resources?: Record<string, Record<string, { current?: number; max?: number }>> } | undefined)?.resources?.[turnActorId] ?? {}),
   }
-  const selectedSpellSlotAvailability = selectedSpell
+  const explicitSpellSource = selectedSpell?.id === 'longstrider'
+  const spellCastingSources = explicitSpellSource ? spellCastingSourcesFor(selectedSpell, activeResources) : []
+  const selectedCastingSource = spellCastingSources.find((source) => source.resource === spellCastingSourceChoice)
+    ?? spellCastingSources.find((source) => source.availability.ready) ?? spellCastingSources[0]
+  const selectedSpellSlotAvailability = selectedCastingSource?.availability ?? (selectedSpell
     ? spellSlotAvailabilityFor(selectedSpell, activeResources)
-    : { resource: null, levels: [], fixedLevel: null, ready: true, usingFallback: false }
+    : { resource: null, levels: [], fixedLevel: null, ready: true, usingFallback: false })
   const availableSpellSlotLevels = selectedSpellSlotAvailability.levels
-  const selectedSpellSlotLevel = spellSlotLevelChoice != null && availableSpellSlotLevels.includes(spellSlotLevelChoice)
+  const selectedSpellSlotLevel = spellSlotLevelChoice != null && (explicitSpellSource || availableSpellSlotLevels.includes(spellSlotLevelChoice))
     ? spellSlotLevelChoice
     : availableSpellSlotLevels[0] ?? null
   const selectedSpellPool = selectedSpellSlotLevel
     ? activeResources[`spell_slots_${selectedSpellSlotLevel}`]
     : selectedSpellSlotAvailability.resource ? activeResources[selectedSpellSlotAvailability.resource] : undefined
-  const spellSlotReady = selectedSpellSlotAvailability.ready
+  const spellSlotReady = selectedSpellSlotAvailability.ready && (!explicitSpellSource || selectedSpellSlotLevel == null || availableSpellSlotLevels.includes(selectedSpellSlotLevel))
   const selectedSpellCastLevel = selectedSpell && selectedSpell.level > 0
     ? selectedSpellSlotAvailability.fixedLevel ?? selectedSpellSlotLevel ?? (Number.isSafeInteger(Number(selectedSpell.slotLevel)) && Number(selectedSpell.slotLevel) >= selectedSpell.level ? Number(selectedSpell.slotLevel) : selectedSpell.level)
     : selectedSpell?.level ?? 0
-  const selectedSpellMaxTargets = combatSpellTargetLimit(selectedSpell)
-    + Math.max(0, selectedSpellCastLevel - Number(selectedSpell?.level ?? 0)) * Math.max(0, Number(selectedSpell?.upcastTargetsPerLevel) || 0)
+  const selectedSpellMaxTargets = combatSpellTargetLimit(selectedSpell, selectedSpellCastLevel)
   const multiTargetSpell = Boolean(combatMode === 'magic' && selectedSpell && selectedSpellMaxTargets > 1 && ['enemy', 'ally', 'creature'].includes(selectedSpell.target))
   const genericProfile = active as (BoardCombatant & { attackRange?: number; rangeFeet?: number; attack_profile?: { kind?: 'melee' | 'ranged'; range_feet?: number; normal_range_feet?: number } }) | undefined
   const baseRangeFeet = Math.max(CELL_FEET, Number(genericProfile?.attack_profile?.range_feet ?? genericProfile?.attackRange ?? genericProfile?.rangeFeet) || CELL_FEET)
@@ -1569,14 +1574,13 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const equippedWeapon = activeHero?.inventory.find((item) => item.type === 'weapon' && item.equipped)
   const needsWeaponChange = Boolean(selectedItem?.type === 'weapon' && !selectedItem.equipped && equippedWeapon && equippedWeapon.id !== selectedItem.id)
   const economy = combat.action_economy?.[turnActorId]
+  const movement = actorMovementPresentation(state.mechanics?.movement?.[turnActorId], active?.speed ?? 0, economy, combatActive)
   const sneakAttackEligible = combatMode === 'weapon'
     && activeHero?.characterClass === 'rogue'
     && selectedItem?.type === 'weapon'
     && (selectedWeaponCatalogCombat?.kind === 'ranged' || selectedWeaponCatalogCombat?.abilities?.includes('dex'))
   const sneakAttackSpent = Boolean(economy?.sneak_attack_turn_key)
-  const authoritativeMovementSpent = economy?.movement_remaining != null
-    ? Math.max(0, (active?.speed ?? 0) - economy.movement_remaining)
-    : economy?.movement_spent ?? (economy?.movement === false ? active?.speed ?? 0 : 0)
+  const authoritativeMovementSpent = movement.spent
   const tacticalState = {
     ...state,
     activePlayerId: turnActorId,
@@ -1592,10 +1596,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   // walk to any revealed cell connected by a legal path.
   const selected = canAct && !tacticalBusy && active ? turnActorId : null
   const tactical = currentTacticalTurn(tacticalState)
-  const movementBonus = Math.max(0, Number(economy?.movement_bonus) || 0)
-  const speedFeet = (active?.speed ?? 0) + movementBonus
-  const remainingFeet = Math.max(0, speedFeet - tactical.movementSpent)
-  const movementAvailable = !combatActive || economy?.movement !== false
+  const speedFeet = movement.budget
+  const remainingFeet = movement.remaining
+  const movementAvailable = movement.available
   const movementPaths = active ? buildMovementPaths(state, active, CELL_FEET, boardMap) : new Map<string, MovementPath>()
   const boardEffectRenderers = useMemo<BoardEffectRenderer[]>(() => {
     const activeEffects = state.mechanics?.active_effects ?? []
@@ -1811,7 +1814,13 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const selectedActionSupport = mechanicsSupportPresentation(selectedCombatAction?.mechanicsSupport, selectedCombatAction?.supportNote)
   const selectedActionEconomyReady = Boolean(selectedCombatAction && !selectedActionSupport.blocked && selectedActionResourceReady && (selectedCombatAction.actionType === 'free' || (selectedCombatAction.actionType === 'bonus_action' ? bonusReady : selectedCombatAction.actionType === 'reaction' ? reactionReady : actionReady)))
   const selectedCommandReady = combatMode === 'magic' ? spellEconomyReady : combatMode === 'action' ? selectedActionEconomyReady : weaponAttackReady
-  const selectedSpellSlotOption = selectedSpellSlotLevel ? { slotLevel: selectedSpellSlotLevel } : {}
+  const selectedSpellSlotOption = {
+    ...(selectedSpellSlotLevel ? { slotLevel: selectedSpellSlotLevel } : {}),
+    ...(explicitSpellSource && selectedCastingSource ? {
+      castingResource: selectedSpellSlotLevel ? `spell_slots_${selectedSpellSlotLevel}` : selectedCastingSource.resource,
+      slotLevel: selectedSpellCastLevel,
+    } : {}),
+  }
   /* Действие на себя цели на карте не требует, поэтому подтверждение выводится
      из самого выбора, а не хранится в `pendingCommand`: команду стирает эффект,
      который срабатывает как раз на смену выбранного заклинания. */
@@ -1925,8 +1934,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     else if (!options.includes(selectedSpellOption as typeof options[number])) setSelectedSpellOption(options[0])
   }, [selectedSpell?.id, selectedSpellOption])
   useEffect(() => {
-    if (spellSlotLevelChoice != null && !availableSpellSlotLevels.includes(spellSlotLevelChoice)) setSpellSlotLevelChoice(null)
-  }, [spellSlotLevelChoice, availableSpellSlotLevels.join('|')])
+    if (!explicitSpellSource && spellSlotLevelChoice != null && !availableSpellSlotLevels.includes(spellSlotLevelChoice)) setSpellSlotLevelChoice(null)
+  }, [explicitSpellSource, spellSlotLevelChoice, availableSpellSlotLevels.join('|')])
   useEffect(() => {
     const defaultMode = weaponModeOptions[0]
     const mode = weaponModeOptions.find((candidate) => candidate.id === attackMode) ?? defaultMode
@@ -1939,6 +1948,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   useEffect(() => {
     setPendingCommand(null)
     setSpellSlotLevelChoice(null)
+    setSpellCastingSourceChoice(null)
     setSpellTargetIds([])
     setPendingMoveKey(null)
     setHoveredMoveKey(null)
@@ -1985,7 +1995,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const confirmSpellTargetSelection = () => {
     if (!multiTargetSpell || !spellTargetIds.length || !selected || !selectedSpell || !spellEconomyReady) return
     const targetIds = [...spellTargetIds]
-    if (autoAttackRoll) {
+    if (autoAttackRoll || explicitSpellSource) {
       void issueSpell({ targetIds, ...(knockOut && knockoutEligible ? { knockOut: true } : {}) })
     } else {
       setPendingCommand({ kind: 'spell-targets', targetIds })
@@ -1998,7 +2008,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const castAtTarget = (targetId: string) => {
     if (!selected || !selectedSpell || !spellEconomyReady) return
     if (multiTargetSpell) return
-    if (autoAttackRoll) void issueSpell({ targetId, ...(knockOut && knockoutEligible ? { knockOut: true } : {}) })
+    if (autoAttackRoll || explicitSpellSource) void issueSpell({ targetId, ...(knockOut && knockoutEligible ? { knockOut: true } : {}) })
     else setPendingCommand({ kind: 'spell-target', targetId })
   }
   const castAtCell = (x: number, y: number) => {
@@ -2314,7 +2324,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     const enemyInWeaponRange = attackDistanceFeet >= CELL_FEET && attackDistanceFeet <= attackRangeFeet && (attackRangeFeet <= CELL_FEET || clearTrajectory)
     const enemyInSpellRange = spellDistanceFeet <= selectedSpellRange && (selectedSpellRange <= CELL_FEET || clearTrajectory)
     const canWeaponTargetEnemy = Boolean(combatActive && selected && combatMode === 'weapon' && weaponAttackReady && enemyInWeaponRange && selectedItem?.combat?.kind !== 'thrown-area' && !needsWeaponChange)
-    const canSpellTargetEnemy = Boolean(combatActive && selected && combatMode === 'magic' && selectedSpell && ['enemy', 'creature'].includes(selectedSpell.target) && spellEconomyReady && enemyInSpellRange)
+    const longstriderTargeting = selectedSpell?.id === 'longstrider' && combatMode === 'magic'
+    const canSpellTargetEnemy = Boolean((combatActive || longstriderTargeting) && selected && combatMode === 'magic' && selectedSpell && ['enemy', 'creature'].includes(selectedSpell.target) && spellEconomyReady && enemyInSpellRange && (!longstriderTargeting || clearTrajectory))
     const selectedActionRange = selectedCombatAction?.requiresWeapon ? attackRangeFeet : Number(selectedCombatAction?.range ?? 0)
     const enemyInActionRange = Boolean(enemy && active && actorDistanceFeet(active, enemy) <= selectedActionRange && (selectedActionRange <= CELL_FEET || clearTrajectory))
     const enemyKnockedOut = Boolean(enemy && state.mechanics?.resting?.[enemy.id]?.reason === 'knockout')
@@ -2339,11 +2350,11 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             ? 'Первая помощь доступна только нокаутированной цели'
             : null
     const enemyTargetCheck = enemy ? evaluateCombatTarget({
-      selected: Boolean(combatActive && selected), economyReady: targetEconomyReady,
+      selected: Boolean((combatActive || longstriderTargeting) && selected), economyReady: targetEconomyReady,
       unavailableReason: targetUnavailableReason,
       targetAlive: enemy.alive, targetTeam: 'enemy', acceptedTarget,
       distanceFeet: attackDistanceFeet, rangeFeet: targetRangeFeet,
-      clearTrajectory: targetRangeFeet <= CELL_FEET || clearTrajectory,
+      clearTrajectory: !longstriderTargeting && targetRangeFeet <= CELL_FEET || clearTrajectory,
       equipmentReady: targetEquipmentReady, resourceReady: targetResourceReady,
       specialBlockReason: targetSpecialBlock,
     }) : null
@@ -2370,7 +2381,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       levelTransitionHint(sceneObject?.transition, knownSceneLevels) ?? ''].filter(Boolean).join(' · ')
     const canMoveHere = reachable.has(cellKey)
     const route = movementPaths.get(cellKey)
-    const moveReason = active ? movementCellReason(state, active, cell, movementLimit, movementPaths) : null
+    const moveReason = movement.blockedReason ?? (active ? movementCellReason(state, active, cell, movementLimit, movementPaths) : null)
     const routeStep = previewRouteSteps.get(cellKey)
     const opportunityRisk = Boolean(canMoveHere && opportunityThreats.some((threat) => actorDistanceFeet(threat, cell) > CELL_FEET))
     const canThrowHere = Boolean(combatActive && selected && combatMode === 'weapon' && actionReady && selectedItem?.combat?.kind === 'thrown-area' && active && actorDistanceFeet(active, cell) <= normalRangeFeet && hasClearBoardTrajectory(state, active, cell) && cell.revealed && cell.type !== 'wall')
@@ -2398,12 +2409,13 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       : Number.POSITIVE_INFINITY
     const canHealActorHere = Boolean(
       actorAtCell
-      && (actorAtCell.kind === 'hero' || actorAtCell.kind === 'summon')
+      && (actorAtCell.kind === 'hero' || actorAtCell.kind === 'summon' || longstriderTargeting && actorAtCell.kind === 'neutral')
       && selected
       && combatMode === 'magic'
       && selectedSpell
       && ['ally', 'creature'].includes(selectedSpell.target)
       && spellEconomyReady
+      && (!longstriderTargeting || Boolean(active && hasClearBoardTrajectory(state, active, actorAtCell)))
       && actorTargetDistance <= selectedSpellRange,
     )
     const multiTargetSelected = Boolean(multiTargetSpell && actorAtCell && selectedSpellTargetSet.has(actorAtCell.id))
@@ -2415,6 +2427,16 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       && (multiTargetSelected || !spellTargetSelectionFull)
       && (multiTargetSelected || !multiTargetSeparationReason),
     )
+    const sceneNpcTargetCheck = sceneNpc && longstriderTargeting ? evaluateCombatTarget({
+      selected: Boolean(selected), economyReady: spellEconomyReady,
+      unavailableReason: targetUnavailableReason, targetAlive: sceneNpc.alive,
+      targetTeam: 'ally', acceptedTarget: 'creature',
+      distanceFeet: actorTargetDistance, rangeFeet: selectedSpellRange,
+      clearTrajectory: Boolean(active && hasClearBoardTrajectory(state, active, sceneNpc)),
+      resourceReady: spellSlotReady,
+    }) : null
+    const sceneNpcTargetReason = multiTargetSelected ? 'Цель выбрана · клик уберёт её'
+      : multiTargetSeparationReason ?? (spellTargetSelectionFull ? `Выбрано максимальное число целей: ${selectedSpellMaxTargets}` : sceneNpcTargetCheck?.reason ?? 'Допустимая цель')
     const canAidActorHere = Boolean(
       actorAtCell
       && (actorAtCell.kind === 'hero' || actorAtCell.kind === 'summon')
@@ -2747,18 +2769,26 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           {actorHasFullArea && <span className="actor-footprint-area" style={actorTokenStyle} aria-hidden="true" />}
           <button
             type="button"
-            className={`map-token neutral-token ${actorHasFullArea ? 'large-actor' : ''} stance-${sceneNpcStance} ${sceneNpc.alive ? '' : 'dead'} ${openTokenLabelId === sceneNpcMenuId ? 'label-open' : ''}`}
+            className={`map-token neutral-token ${actorHasFullArea ? 'large-actor' : ''} stance-${sceneNpcStance} ${sceneNpc.alive ? '' : 'dead'} ${openTokenLabelId === sceneNpcMenuId ? 'label-open' : ''} ${canHealActorHere || multiTargetSelectable ? 'targetable healing-target' : ''} ${multiTargetSelected ? 'multi-target-selected' : ''}`}
             data-actor-id={sceneNpc.id}
             data-token-role="neutral"
             data-footprint-size={actorHasFullArea ? actorLayout?.size : undefined}
             style={actorTokenStyle}
             aria-expanded={openTokenLabelId === sceneNpcMenuId}
-            aria-label={canPointSpellHere ? `Наложить ${selectedSpell?.name} в клетку с ${sceneNpc.name}` : `${sceneNpc.name}, ${sceneNpc.role || 'персонаж'}. Отношение: ${NPC_STANCE_LABELS[sceneNpcStance]}`}
+            aria-label={canPointSpellHere ? `Наложить ${selectedSpell?.name} в клетку с ${sceneNpc.name}` : longstriderTargeting ? `Наложить ${selectedSpell?.name} на ${sceneNpc.name}` : `${sceneNpc.name}, ${sceneNpc.role || 'персонаж'}. Отношение: ${NPC_STANCE_LABELS[sceneNpcStance]}`}
+            aria-disabled={longstriderTargeting ? tacticalBusy || !(multiTargetSpell ? multiTargetSelectable : canHealActorHere) : undefined}
+            title={longstriderTargeting ? sceneNpcTargetReason : undefined}
             onPointerDown={(event) => event.stopPropagation()}
             onPointerUp={(event) => event.stopPropagation()}
+            onKeyDown={(event) => { if (longstriderTargeting && multiTargetSpell && !pendingCommand && event.key === 'Enter') { event.preventDefault(); event.stopPropagation(); confirmSpellTargetSelection() } }}
             onClick={(event) => {
               event.stopPropagation()
               if (pointSpellSelected) { if (canPointSpellHere) castAtCell(cell.x, cell.y); return }
+              if (longstriderTargeting) {
+                if (multiTargetSpell && multiTargetSelectable) toggleSpellTarget(sceneNpc.id, multiTargetSelectable)
+                else if (!multiTargetSpell && canHealActorHere) castAtTarget(sceneNpc.id)
+                return
+              }
               setOpenTokenLabelId((current) => current === sceneNpcMenuId ? null : sceneNpcMenuId)
             }}
           >
@@ -2892,7 +2922,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           const healingDistance = active ? actorDistanceFeet(active, player) : Number.POSITIVE_INFINITY
           // `combatActive` здесь больше нет: вне боя мирное заклинание на союзника
           // разрешено, и решает это `spellEconomyReady`, повторяющий правило движка.
-          const canHeal = Boolean(selected && combatMode === 'magic' && selectedSpell && ['ally', 'creature'].includes(selectedSpell.target) && spellEconomyReady && healingDistance <= selectedSpellRange)
+          const canHeal = Boolean(selected && combatMode === 'magic' && selectedSpell && ['ally', 'creature'].includes(selectedSpell.target) && spellEconomyReady && healingDistance <= selectedSpellRange && (!longstriderTargeting || Boolean(active && hasClearBoardTrajectory(state, active, player))))
           const playerKnockedOut = state.mechanics?.resting?.[player.id]?.reason === 'knockout'
           const canAid = Boolean(combatActive && selected && combatMode === 'action' && selectedCombatAction && ['ally', 'creature'].includes(selectedCombatAction.target) && selectedActionEconomyReady && player.id !== selected && healingDistance <= selectedCombatAction.range && (selectedCombatAction.id !== 'stabilize' || player.hp === 0) && (selectedCombatAction.id !== 'first-aid' || playerKnockedOut))
           const playerCommandAllowed = Boolean(canHeal || canAid || canThrowHere || canPointSpellHere || multiTargetSelectable)
@@ -2906,7 +2936,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             unavailableReason: targetUnavailableReason,
             targetAlive: player.hp > 0 || selectedCombatAction?.id === 'stabilize', targetTeam: 'ally', acceptedTarget,
             distanceFeet: healingDistance, rangeFeet: targetRangeFeet,
-            clearTrajectory: targetRangeFeet <= CELL_FEET || Boolean(active && hasClearBoardTrajectory(state, active, player)),
+            clearTrajectory: !longstriderTargeting && targetRangeFeet <= CELL_FEET || Boolean(active && hasClearBoardTrajectory(state, active, player)),
             resourceReady: targetResourceReady, specialBlockReason: playerSpecialBlock,
           })
           const playerTargetReason = multiTargetSpell && multiTargetSelected
@@ -2943,7 +2973,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
            const healingDistance = active ? actorDistanceFeet(active, summon) : Number.POSITIVE_INFINITY
           // `combatActive` здесь больше нет: вне боя мирное заклинание на союзника
           // разрешено, и решает это `spellEconomyReady`, повторяющий правило движка.
-          const canHeal = Boolean(selected && combatMode === 'magic' && selectedSpell && ['ally', 'creature'].includes(selectedSpell.target) && spellEconomyReady && healingDistance <= selectedSpellRange)
+          const canHeal = Boolean(selected && combatMode === 'magic' && selectedSpell && ['ally', 'creature'].includes(selectedSpell.target) && spellEconomyReady && healingDistance <= selectedSpellRange && (!longstriderTargeting || Boolean(active && hasClearBoardTrajectory(state, active, summon))))
           const summonKnockedOut = state.mechanics?.resting?.[summon.id]?.reason === 'knockout'
           const canAid = Boolean(combatActive && selected && combatMode === 'action' && selectedCombatAction && ['ally', 'creature'].includes(selectedCombatAction.target) && selectedActionEconomyReady && summon.id !== selected && healingDistance <= selectedCombatAction.range && (selectedCombatAction.id !== 'first-aid' || summonKnockedOut))
           const summonCommandAllowed = Boolean(canHeal || canAid || canThrowHere || canPointSpellHere || multiTargetSelectable)
@@ -2952,7 +2982,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             unavailableReason: targetUnavailableReason,
             targetAlive: summon.alive, targetTeam: 'ally', acceptedTarget,
             distanceFeet: healingDistance, rangeFeet: targetRangeFeet,
-            clearTrajectory: targetRangeFeet <= CELL_FEET || Boolean(active && hasClearBoardTrajectory(state, active, summon)),
+            clearTrajectory: !longstriderTargeting && targetRangeFeet <= CELL_FEET || Boolean(active && hasClearBoardTrajectory(state, active, summon)),
             resourceReady: targetResourceReady,
             specialBlockReason: combatMode === 'action' && summon.id === selected ? 'Выберите другого союзника' : null,
           })
@@ -3032,7 +3062,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     const pool = pools.find((candidate) => Number(candidate.current ?? 0) > 0) ?? pools[0]
     const ready = availability.ready
     const actionType = activeConditionIds.has('metamagic-quickened') && spellActionType(spell) === 'action' ? 'bonus_action' : spellActionType(spell)
-    const economyReady = actionType !== 'long_cast' && (actionType === 'bonus_action' ? bonusReady : actionType === 'reaction' ? reactionReady : actionReady)
+    const economyReady = (!combatActive && spell.id === 'longstrider') || actionType !== 'long_cast' && (actionType === 'bonus_action' ? bonusReady : actionType === 'reaction' ? reactionReady : actionReady)
     const componentReason = componentAvailability.blocked
       ? unavailableUiReason(componentAvailability.reason)
       : null
@@ -3416,7 +3446,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         {combatActive && <div className="turn-strip" role="status" aria-live="polite" aria-label={`Раунд ${combat.round ?? 1}, ходит ${activeName}`}>
           <span className="turn-strip-round">Раунд {combat.round ?? 1}</span>
           <span className="turn-strip-actor">ходит <b className={activeHero || activeSummon ? 'ally' : 'enemy'}>{activeName}</b></span>
-          {activeConditions.map((condition) => <span key={condition.id} className={`turn-strip-condition ${condition.status}`} title={`${condition.statusLabel}. ${condition.explanation}${condition.duration ? ` Длительность: ${condition.duration}` : ''}`}><i />{condition.label}</span>)}
+          {activeConditions.map((condition) => <span key={condition.instanceKey} className={`turn-strip-condition ${condition.status}`} title={`${condition.statusLabel}. ${condition.explanation}${condition.duration ? ` Длительность: ${condition.duration}` : ''}`}><i />{condition.label}</span>)}
           <CombatTurnClock clock={state.turn_clock} actorName={actorNameById(state.turn_clock?.actor_ids?.[0])} compact />
         </div>}
         {/* Ходы противников, прошедшие пока игрок ждал, — одной свёрнутой
@@ -4119,10 +4149,18 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                  title={!combatActive ? 'Вне боя действия не расходуются' : `${pip.label}: ${pip.note || (pip.ready ? 'доступно' : 'потрачено')}`}
                ><i className="hero-pip-shape" aria-hidden="true" /><span>{pip.label}</span><b>{!combatActive ? '—' : pip.id === 'action' ? Number(actionReady) + Math.max(0, Number(economy?.extra_actions) || 0) : Number(pip.ready)}</b></button>)}
              </div>
-             <div className="hero-cluster-move ready">
-               <span>Движение</span><span className="hero-cluster-move-bar" aria-hidden="true"><i style={{width:`${combatActive ? Math.round(movementRatio * 100) : 100}%`}} /></span>
-               <b>{combatActive ? `${movementAvailable ? remainingFeet : 0}/${speedFeet} фт` : `${active?.speed ?? 0} фт · свободно`}</b>
+             {state.mechanics?.movement?.[turnActorId] && <div className="hero-cluster-speed" aria-label="Скорость героя">
+               <span>Скорость: <b>{movement.currentSpeed} фт</b> · базовая {movement.baseSpeed} фт</span>
+               {movement.effects.filter((effect) => effect.applied).map((effect) => <span key={effect.effect_id}>{effect.name} {effect.bonus_feet >= 0 ? '+' : ''}{effect.bonus_feet} фт</span>)}
+             </div>}
+             <div className={`hero-cluster-move ${movementAvailable ? 'ready' : 'spent'}`} title={movement.blockedReason ?? undefined}>
+               <span>Движение</span><span className="hero-cluster-move-bar" aria-hidden="true"><i style={{width:`${!movementAvailable ? 0 : combatActive ? Math.round(movementRatio * 100) : 100}%`}} /></span>
+               <b>{movement.blockedReason ? 'Недоступно' : combatActive ? `${movementAvailable ? remainingFeet : 0}/${speedFeet} фт` : `${movement.currentSpeed} фт · свободно`}</b>
              </div>
+             {movement.blockedReason && <p className="hero-cluster-movement-note" role="status">{movement.blockedReason}</p>}
+             {movement.effects.length > 0 && <ul className="hero-cluster-movement-effects" aria-label="Эффекты скорости">
+               {movement.effects.map((effect) => <li key={effect.effect_id}>{effect.name} · ещё {movementEffectTimeLabel(effect.remaining_seconds)}{effect.applied ? '' : ' · бонус не используется'}</li>)}
+             </ul>}
              {combatActive && weaponAttacksUsed > 0 && weaponAttacksLeft > 0 && <small>Атак в действии осталось: {weaponAttacksLeft}</small>}
               {heroResourceRows.length > 0 && <div className="hero-cluster-resources" role="group" aria-label="Ячейки и классовые запасы">
                 {heroResourceRows.some((row) => isSpellSlotPool(row.keys[0])) && <>
@@ -4158,13 +4196,25 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                 {supportMark(selectedSpellSupport.status) ? <i className={`detail-chip mark support-${selectedSpellSupport.status}`} title={`${selectedSpellSupport.label}. ${selectedSpellSupport.explanation}`}>{supportMark(selectedSpellSupport.status)}</i> : null}
               </>} />
               <SpellComponentsLine spell={selectedSpell} />
+              {explicitSpellSource && selectedCastingSource && <label className="spell-slot-picker" aria-label="Источник применения заклинания">
+                <span>Источник</span>
+                <select value={selectedCastingSource.resource} onChange={(event) => {
+                  setSpellCastingSourceChoice(event.target.value)
+                  setSpellSlotLevelChoice(null)
+                  setSpellTargetIds([])
+                  setPendingCommand(null)
+                  setAimCell(null)
+                }}>
+                  {spellCastingSources.map((source) => <option key={source.resource} value={source.resource} disabled={!source.availability.ready}>{source.label}{source.availability.ready ? '' : ' · нет ресурса'}</option>)}
+                </select>
+              </label>}
               {/* Оговорка о полноте механики убрана из колонки: игроку она
                   ничего не даёт, а место занимала больше самого описания. Ярлык
                   статуса рядом остаётся, полный текст живёт в подсказке плитки. */}
               {selectedSpell.spellOptions?.length ? <div className="spell-option-picker" aria-label="Вариант заклинания">
                 {selectedSpell.spellOptions.map((option) => <button key={option} className={selectedSpellOption === option ? 'selected' : ''} onClick={() => setSelectedSpellOption(option)}>{SPELL_OPTION_LABELS[option] ?? option}</button>)}
               </div> : null}
-              {availableSpellSlotLevels.length > 0 && <label className="spell-slot-picker" aria-label="Ячейка заклинания">
+              {(availableSpellSlotLevels.length > 0 || explicitSpellSource && selectedSpellSlotLevel != null) && <label className="spell-slot-picker" aria-label="Ячейка заклинания">
                 <span>Ячейка</span>
                 <select
                   value={String(selectedSpellSlotLevel ?? '')}
@@ -4176,6 +4226,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                     setAimCell(null)
                   }}
                 >
+                  {explicitSpellSource && selectedSpellSlotLevel != null && !availableSpellSlotLevels.includes(selectedSpellSlotLevel) && <option value={selectedSpellSlotLevel} disabled>{selectedSpellSlotLevel} круг · нет ячейки</option>}
                   {availableSpellSlotLevels.map((level) => {
                     const pool = activeResources[`spell_slots_${level}`]
                     return <option key={level} value={level}>{level} круг · {Number(pool?.current ?? 0)}/{Number(pool?.max ?? 0)}</option>

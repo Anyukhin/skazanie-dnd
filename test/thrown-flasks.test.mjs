@@ -127,7 +127,7 @@ test('кислота использует серверную СЛ 8 + Ловко
   // СЛ героя 13. КЗ цели 18 не участвует: результат 10 проваливает спасбросок,
   // затем 4 + 5 = 9 урона кислотой.
   const failed = throwFlask(state, 'acid', [10, 4, 5])
-  assert.deepEqual(typeOf(failed), ['ItemUsed', 'SavingThrowResolved', 'DieRolled', 'DamageApplied', 'ItemConsumed'])
+  assert.deepEqual(typeOf(failed), ['CombatRoundTimeMarked', 'ItemUsed', 'SavingThrowResolved', 'DieRolled', 'DamageApplied', 'ItemConsumed'])
   assert.equal(failed.events.some((event) => event.event_type === 'AttackResolved'), false)
   const save = payloadOf(failed, 'SavingThrowResolved')
   assert.equal(save.ability, 'dex')
@@ -160,7 +160,7 @@ test('назначение броска у склянки героя назыв�
 test('успешный спасбросок отменяет урон, но расходует склянку и атаку', () => {
   const state = campaignState({ inventory: [item(ACID)] })
   const saved = throwFlask(state, 'acid', [15], 'acid-saved')
-  assert.deepEqual(typeOf(saved), ['ItemUsed', 'SavingThrowResolved', 'ItemConsumed'])
+  assert.deepEqual(typeOf(saved), ['CombatRoundTimeMarked', 'ItemUsed', 'SavingThrowResolved', 'ItemConsumed'])
   assert.equal(payloadOf(saved, 'SavingThrowResolved').saved, true)
   const after = saved.events.reduce(applyGameEvent, state)
   assert.equal(after.enemies[0].hp, 30)
@@ -172,14 +172,14 @@ test('святая вода наносит 2к8 только нежити и и�
   for (const creatureType of ['undead', 'fiend']) {
     const state = campaignState({ inventory: [item(HOLY_WATER)], creatureType })
     const failed = throwFlask(state, 'holy-water', [10, 4, 5], `holy-${creatureType}`)
-    assert.deepEqual(typeOf(failed), ['ItemUsed', 'SavingThrowResolved', 'DieRolled', 'DamageApplied', 'ItemConsumed'])
+    assert.deepEqual(typeOf(failed), ['CombatRoundTimeMarked', 'ItemUsed', 'SavingThrowResolved', 'DieRolled', 'DamageApplied', 'ItemConsumed'])
     assert.equal(failed.events.find((event) => event.event_type === 'DieRolled').payload.expression, '2d8')
     assert.equal(payloadOf(failed, 'DamageApplied').applied_amount, 9)
   }
 
   const beast = campaignState({ inventory: [item(HOLY_WATER)], creatureType: 'beast' })
   const ineffective = throwFlask(beast, 'holy-water', [10], 'holy-beast')
-  assert.deepEqual(typeOf(ineffective), ['ItemUsed', 'SavingThrowResolved', 'ItemEffectIneffective', 'ItemConsumed'])
+  assert.deepEqual(typeOf(ineffective), ['CombatRoundTimeMarked', 'ItemUsed', 'SavingThrowResolved', 'ItemEffectIneffective', 'ItemConsumed'])
   assert.equal(payloadOf(ineffective, 'ItemEffectIneffective').reason, 'creature-type')
   assert.match(combatNarration(ineffective.events, beast), /вреда не причиняет/u)
 })
@@ -187,7 +187,7 @@ test('святая вода наносит 2к8 только нежити и и�
 test('алхимический огонь наносит 1к4 сразу и 1к4 в начале каждого хода', () => {
   const state = campaignState({ inventory: [item(ALCHEMISTS_FIRE)] })
   const failed = throwFlask(state, 'alchemists-fire', [10, 3], 'fire-failed')
-  assert.deepEqual(typeOf(failed), ['ItemUsed', 'SavingThrowResolved', 'DieRolled', 'DamageApplied', 'ConditionAdded', 'ItemConsumed'])
+  assert.deepEqual(typeOf(failed), ['CombatRoundTimeMarked', 'ItemUsed', 'SavingThrowResolved', 'DieRolled', 'DamageApplied', 'ConditionAdded', 'ItemConsumed'])
   assert.equal(payloadOf(failed, 'DamageApplied').applied_amount, 3)
   const condition = payloadOf(failed, 'ConditionAdded')
   assert.equal(condition.condition, 'alchemists-fire-flames')
@@ -213,7 +213,7 @@ test('самостоятельное тушение огня гасит его �
   const doused = resolveCommand({
     command_type: 'UseCombatAction', command_id: 'douse', actor_id: 'hero', action_id: 'extinguish-self', server_authoritative: true,
   }, onHero, { diceService: dice(), context: { isAdmin: true, serverAuthoritativeCombat: true } })
-  assert.deepEqual(typeOf(doused), ['ConditionRemoved', 'ConditionAdded', 'CombatActionUsed'])
+  assert.deepEqual(typeOf(doused), ['CombatRoundTimeMarked', 'ConditionRemoved', 'ConditionAdded', 'CombatActionUsed'])
   assert.equal(payloadOf(doused, 'ConditionAdded').condition, 'prone')
   const after = doused.events.reduce(applyGameEvent, onHero)
   assert.equal(after.mechanics.conditions.hero.some((entry) => entry.id === 'alchemists-fire-flames'), false)

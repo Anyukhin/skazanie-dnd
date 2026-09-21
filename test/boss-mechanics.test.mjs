@@ -295,7 +295,8 @@ test('легендарное действие тратится вне своег
   const state = fixture({ boss: { legendary: LEGENDARY } })
   const command = { command_type: 'UseLegendaryAction', actor_id: 'boss', legendary_action_id: 'tail', target_id: 'hero' }
   const result = commit(state, command)
-  assert.deepEqual(eventTypes(result.events).slice(0, 2), ['ConditionAdded', 'LegendaryActionUsed'])
+  assert.deepEqual(eventTypes(result.events).slice(0, 3), ['CombatRoundTimeMarked', 'ConditionAdded', 'LegendaryActionUsed'])
+  assert.equal(result.state.mechanics.combat.round_time_pending, true)
   assert.deepEqual(conditionsOf(result.state, 'boss'), ['legendary-action-used:1:r1i0'])
   assert.ok(eventTypes(result.events).includes('AttackResolved'))
   assert.ok(eventTypes(result.events).includes('DamageApplied'))

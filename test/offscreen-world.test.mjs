@@ -659,7 +659,7 @@ test('рекап «В прошлой серии» подхватывает хо�
 test('ход мира вшит в общий контур мировых минут, а не в отдельный такт', () => {
   const rules = source('server/rules-engine.mjs')
   const block = rules.slice(rules.indexOf('const appendTimeAdvance ='), rules.indexOf('const damageTurnKey ='))
-  assert.match(block, /planOffscreenWorldStep\(state, \{ elapsedMinutes \}\)/u)
+  assert.match(block, /planOffscreenWorldStep\(sourceState, \{ elapsedMinutes \}\)/u)
   // Свой RecordRumor слой не пишет: молву рождает драйвер часов молвы.
   assert.equal(source('server/offscreen-world.mjs').includes("'RecordRumor'"), false)
   // И своих костей у него нет: одинаковый скачок обязан давать одинаковый мир.
