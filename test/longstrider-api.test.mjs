@@ -100,6 +100,21 @@ function wizardDocument(name, knownSpellIds) {
   } }
 }
 
+function fighterDocument(name) {
+  const document = wizardDocument(name, [])
+  const baseScores = { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 }
+  Object.assign(document.character, {
+    characterClass: 'fighter',
+    abilities: Object.fromEntries(Object.entries(baseScores).map(([id, value]) => [id, value + 1])),
+    abilityGeneration: { ...document.character.abilityGeneration, baseScores },
+    starterEquipmentChoices: { armor: ['chain-mail'], 'melee-loadout': ['longsword-shield'],
+      secondary: ['light-crossbow'], pack: ['explorers-pack'] },
+    classSkillProficiencies: ['athletics', 'perception'], selectedFeatureIds: ['fighting-style-defense'],
+    preparedSpellIds: [],
+  })
+  return document
+}
+
 async function normalParty(api) {
   const admin = await api.request('/api/auth/setup-admin', { method: 'POST', body: {
     name: 'Тестовый ведущий', email: 'admin@longstrider.test', password: 'longstrider-admin-password', setupToken: SETUP_TOKEN,
@@ -123,28 +138,39 @@ async function normalParty(api) {
   const wizard = catalog.classes.find((entry) => entry.id === 'wizard')
   const cantrips = wizard.spell_selection.spells.filter((spell) => spell.level === 0).slice(0, 3).map((spell) => spell.id)
   const book = ['longstrider', ...wizard.spell_selection.spells.filter((spell) => spell.level === 1 && spell.id !== 'longstrider').map((spell) => spell.id)]
+  let finalState
   for (const [index, session] of sessions.entries()) {
     const actor_id = `hero-slot-${index + 1}`
     expect(await api.command(session, `import-${index}`, { command_type: 'ImportCharacter', actor_id,
-      document: wizardDocument(`Маг ${index + 1}`, [...cantrips, ...book.slice(0, 6)]) }))
+      document: index === 0 ? wizardDocument('Маг', [...cantrips, ...book.slice(0, 6)]) : fighterDocument('Воин') }))
     for (const expected_level of [1, 2]) {
-      expect(await api.command(session, `level-${index}-${expected_level}`, { command_type: 'LevelUp', actor_id, expected_level }))
+      finalState = expect(await api.command(session, `level-${index}-${expected_level}`, { command_type: 'LevelUp', actor_id, expected_level })).authoritative_state
+      if (index === 1) {
+        if (expected_level === 2) finalState = expect(await api.command(session, 'fighter-subclass', {
+          command_type: 'SetCharacterChoices', actor_id, subclass: 'Чемпион',
+          class_skill_proficiencies: ['athletics', 'perception'], selected_feature_ids: ['fighting-style-defense'],
+        })).authoritative_state
+        continue
+      }
       const choices = expected_level === 1 ? [{ command_type: 'SetCharacterChoices', actor_id,
         subclass: wizard.subclasses[0].name, class_skill_proficiencies: ['investigation', 'religion'], selected_feature_ids: [] }] : []
       const selected = expect(await api.request(`/api/campaigns/${CAMPAIGN}/commands`, { method: 'POST', cookie: session,
         body: { idempotency_key: `spells-${index}-${expected_level}`, commands: [...choices, { command_type: 'SetSpellSelections', actor_id,
           known_spell_ids: [...cantrips, ...book.slice(0, 6 + expected_level * 2)], prepared_spell_ids: ['longstrider'] }] } }))
-      if (expected_level === 2) assert.equal(selected.authoritative_state.players.find((hero) => hero.id === actor_id).characterSetupRequired, false)
+      finalState = selected.authoritative_state
     }
+    const completed = finalState.players.find((hero) => hero.id === actor_id)
+    assert.equal(completed.level, 3)
+    assert.equal(completed.characterSetupRequired, false)
   }
-  return { admin: admin.cookie, owner: sessions[0], guest: sessions[1] }
+  return { admin: admin.cookie, owner: sessions[0], guest: sessions[1], state: finalState }
 }
 
 test('HTTP: два обычных игрока осваивают Скороход, выбирают усиление, повторяют запрос и восстанавливают его после restart', { timeout: runnerTimeout(90_000) }, async (t) => {
   const api = await harness(t)
-  const { admin, owner, guest } = await normalParty(api)
+  const { admin, owner, guest, state: preparedState } = await normalParty(api)
   const room = () => api.request(`/api/rooms/${CAMPAIGN}`, { cookie: owner })
-  let state = expect(await room()).state
+  let state = preparedState
   const caster = state.players.find((hero) => hero.id === 'hero-slot-1')
   const ally = state.players.find((hero) => hero.id === 'hero-slot-2')
   const near = state.scene.cells.find((cell) => Math.max(Math.abs(cell.x - ally.x), Math.abs(cell.y - ally.y)) <= 1

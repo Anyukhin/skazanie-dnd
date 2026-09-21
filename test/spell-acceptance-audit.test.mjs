@@ -50,8 +50,8 @@ function currentReceipt() {
       receipt: { reference: 'docs/acceptance/longstrider-run-receipt.md', artifact: 'external:test-fixture-log', sha256: 'b'.repeat(64) },
     }],
     scenarios: card.scenarios.map((scenario) => ({
-      id: scenario.id, status: scenario.dimension === 'presentation' ? 'pending' : 'passed',
-      runIds: scenario.dimension === 'presentation' ? [] : ['final-gate'],
+      id: scenario.id, status: scenario.dimension === 'presentation' || scenario.id === 'normal-acquisition-and-cast' ? 'pending' : 'passed',
+      runIds: scenario.dimension === 'presentation' || scenario.id === 'normal-acquisition-and-cast' ? [] : ['final-gate'],
     })),
   }
 }
@@ -65,6 +65,7 @@ test('только сохранённый актуальный receipt подт�
   assert.equal(card.evidenceRecord.status, 'current')
   assert.equal(card.readiness.rules, 'verified')
   assert.equal(card.readiness.resilience, 'verified')
+  assert.equal(card.readiness.playerPath, 'pending')
   assert.equal(card.readiness.presentation, 'pending')
   assert.equal(card.accepted, false)
   assert.equal(actual.summary.accepted, 0)
@@ -109,6 +110,9 @@ test('имена тестов, pending-запись и декларация pass
   const presentation = manual.scenarios.find((scenario) => scenario.id === 'two-player-2d-3d-av')
   Object.assign(presentation, { status: 'passed', runIds: ['final-gate'] })
   assert.equal(auditSpellAcceptance({ longstriderEvidence: manual }).ok, false, 'unit/API-run не подменяет ручную приёмку')
+  const onlyHttp = currentReceipt()
+  Object.assign(onlyHttp.scenarios.find((scenario) => scenario.id === 'normal-acquisition-and-cast'), { status: 'passed', runIds: ['final-gate'] })
+  assert.equal(auditSpellAcceptance({ longstriderEvidence: onlyHttp }).ok, false, 'HTTP-run не подтверждает ручной путь основного сайта')
 })
 
 test('исходные группы относятся к зафиксированному коммиту, а не к будущему состоянию карточек', () => {

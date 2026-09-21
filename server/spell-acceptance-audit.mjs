@@ -176,6 +176,7 @@ function inspectLongstriderEvidence(record, fingerprints) {
     const evidenceRuns = scenario.runIds.map((runId) => runs.find((run) => run?.id === runId))
     if (scenario.status === 'passed' && (!evidenceRuns.length || evidenceRuns.some((run) => run?.status !== 'passed'))) problem(`Сценарий ${id} не привязан к успешному прогону.`)
     if (scenario.status === 'passed' && dimension === 'presentation' && !evidenceRuns.some((run) => run?.kind === 'manual-run')) problem('Представление требует ручной приёмки двух игроков; unit/API-проверки её не заменяют.')
+    if (scenario.status === 'passed' && id === 'normal-acquisition-and-cast' && !evidenceRuns.some((run) => run?.kind === 'manual-run')) problem('Основной HTTP/UI-путь требует ручной проверки сайта в дополнение к HTTP-сценарию.')
   }
   return { ...result, status: result.problems.length ? 'invalid' : 'current' }
 }
