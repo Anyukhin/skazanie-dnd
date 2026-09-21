@@ -43,6 +43,22 @@ function mvpCommandTrace(command) {
   return summary
 }
 
+function mvpErrorTrace(error, depth = 0, seen = new Set()) {
+  if (!error || typeof error !== 'object') return null
+  if (seen.has(error)) return { cycle: true }
+  if (depth >= 5) return { truncated: true }
+  seen.add(error)
+  const summary = {}
+  // Только транспортные идентификаторы; message, stack, headers и socket
+  // могут содержать приватный ввод и в диагностическую цепочку не попадают.
+  for (const key of ['name', 'code', 'syscall', 'errno']) {
+    if (typeof error[key] === 'string') summary[key] = error[key].slice(0, 120)
+    else if (Number.isFinite(error[key])) summary[key] = error[key]
+  }
+  if (error.cause != null) summary.cause = mvpErrorTrace(error.cause, depth + 1, seen)
+  return summary
+}
+
 function mvpStateTrace(state) {
   if (!state || typeof state !== 'object') return null
   const combat = state.mechanics?.combat
@@ -78,6 +94,7 @@ function mvpDiagnostics(trace = mvpTrace) {
     : 'running'
   return [
     `[MVP-DIAG] stage=${trace.stage} elapsedMs=${elapsed} last=${request}`,
+    `[MVP-DIAG] transport=${JSON.stringify(trace.lastRequest?.error ?? null)}`,
     `[MVP-DIAG] state=${state} server=${process}`,
     // Сервер использует CryptoDiceRng: seed карты не воспроизводит боевые кости.
     `[MVP-DIAG] world-seed=${redactedMvpTail(JSON.stringify(trace.lastState?.worldSeed ?? null))} dice-seed=unavailable(CryptoDiceRng)`,
@@ -108,6 +125,27 @@ test('MVP diagnostics сохраняет команду, seed карты, ожи
   assert.deepEqual(mvpStateTrace({ agentInteraction: { id: 'vote-1', status: 'open', prompt: 'private-prompt',
     options: [{ id: 'continue', text: 'private-option' }] } }).expectedDecision,
   { kind: 'party-decision', id: 'vote-1', option_ids: ['continue'] })
+})
+
+test('MVP diagnostics сохраняет вложенный транспортный код, ограничивает цепочку и не читает приватные поля', () => {
+  const reset = Object.assign(new Error('private-message'), { code: 'ECONNRESET', syscall: 'read', errno: -4077,
+    headers: { authorization: 'private-header' }, socket: { token: 'private-socket' } })
+  const transport = Object.assign(new Error('private-transport'), { name: 'SocketError', code: 'UND_ERR_SOCKET', cause: reset })
+  const error = new TypeError('private-fetch', { cause: transport })
+  const summary = mvpErrorTrace(error)
+  assert.deepEqual(summary, { name: 'TypeError', cause: { name: 'SocketError', code: 'UND_ERR_SOCKET',
+    cause: { name: 'Error', code: 'ECONNRESET', syscall: 'read', errno: -4077 } } })
+  const diagnostics = mvpDiagnostics({ startedAt: Date.now(), stage: 'transport',
+    lastRequest: { method: 'GET', path: '/room', status: 'TypeError', elapsedMs: 42, error: summary }, logs: () => '',
+  })
+  assert.match(diagnostics, /transport=.*UND_ERR_SOCKET.*ECONNRESET/u)
+  assert.doesNotMatch(diagnostics, /private-|headers|socket|message|stack/u)
+  reset.cause = error
+  assert.deepEqual(mvpErrorTrace(error).cause.cause.cause, { cycle: true })
+  const deep = Array.from({ length: 10 }, () => new Error('private-deep')).reduce((cause, next) => Object.assign(next, { cause }), null)
+  const bounded = JSON.stringify(mvpErrorTrace(deep))
+  assert.equal((bounded.match(/"name"/gu) ?? []).length, 5)
+  assert.match(bounded, /"truncated":true/u)
 })
 
 async function freePort() {
@@ -146,7 +184,11 @@ async function stopServer(child) {
 async function waitForHealth(baseUrl, child, logs) {
   for (let attempt = 0; attempt < 100; attempt += 1) {
     if (child.exitCode != null || child.signalCode != null) throw new Error(`Test server exited: code=${child.exitCode} signal=${child.signalCode}\n${redactedMvpTail(logs())}`)
-    try { const response = await fetch(`${baseUrl}/api/health`); if (response.ok) return }
+    try {
+      const response = await fetch(`${baseUrl}/api/health`, { headers: { Connection: 'close' } })
+      await response.arrayBuffer()
+      if (response.ok) return
+    }
     catch { /* starting */ }
     await new Promise((resolve) => setTimeout(resolve, 50))
   }
@@ -166,6 +208,9 @@ async function request(baseUrl, path, { method = 'GET', cookie = '', body, key =
     const response = await fetch(`${baseUrl}${path}`, {
       method,
       headers: {
+        // Каждый запрос проверяет одно соединение, не заимствуя idle-сокет
+        // предыдущего шага или остановленного тестового процесса.
+        Connection: 'close',
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
         ...(cookie ? { Cookie: cookie } : {}),
         ...(key ? { 'X-Idempotency-Key': key } : {}),
@@ -183,7 +228,8 @@ async function request(baseUrl, path, { method = 'GET', cookie = '', body, key =
     }
     return { response, status: response.status, body: parsed, text }
   } catch (error) {
-    if (mvpTrace) mvpTrace.lastRequest = { method, path, status: error?.name ?? 'error', elapsedMs: Date.now() - startedAt }
+    if (mvpTrace) mvpTrace.lastRequest = { method, path, status: error?.name ?? 'error', elapsedMs: Date.now() - startedAt,
+      error: mvpErrorTrace(error) }
     throw new Error(`MVP HTTP ${method} ${path} failed after ${Date.now() - startedAt}ms: ${error?.name ?? error}\n${mvpDiagnostics()}`, { cause: error })
   } finally {
     clearTimeout(timer)

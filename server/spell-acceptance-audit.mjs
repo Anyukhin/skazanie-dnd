@@ -15,7 +15,7 @@ export const LONGSTRIDER_EVIDENCE_PATH = 'docs/acceptance/longstrider-evidence.j
 export const LONGSTRIDER_EVIDENCE_DEPENDENCIES = Object.freeze([
   CATALOG_PATH, OVERRIDES_PATH, 'data/rule_packs/dnd_5e_2014/manifest.yaml',
   'package.json', 'pnpm-lock.yaml',
-  'server/combat-spells.mjs', 'server/rules-engine.mjs', 'server/event-store.mjs',
+  'server/combat-spells.mjs', 'server/rules-engine.mjs', 'server/event-store.mjs', 'server/campaign-bootstrap.mjs',
   'server/character-progression.mjs', 'server/character-creation-catalog.mjs', 'server/character-creation-feats.mjs',
   'server/index.mjs', 'server/security.mjs', 'server/viewer-projection.mjs',
   'server/tactical-map.mjs', 'server/dynamic-map.mjs', 'server/dice-service.mjs', 'server/ruleset-config.mjs',
@@ -31,7 +31,7 @@ export const LONGSTRIDER_EVIDENCE_DEPENDENCIES = Object.freeze([
   'test/tactical-ui.test.mjs', 'test/spell-effects.test.mjs', 'test/board3d-spell-effects.test.mjs',
   'test/combat-audio.test.mjs', 'test/npc-turn-scheduler.test.mjs',
   'test/death-saves.test.mjs', 'test/rest-mechanics.test.mjs', 'test/item-dawn-recharge.test.mjs',
-  'test/group-initiative.test.mjs', 'test/event-store.test.mjs',
+  'test/group-initiative.test.mjs', 'test/event-store.test.mjs', 'test/campaign-bootstrap.test.mjs', 'test/mvp-player-cycle-api.test.mjs',
 ])
 export const SPELL_ACCEPTANCE_BASELINE = '9277df04985856208f2bfd1590a5916c60b3ef82'
 export const SPELL_ACCEPTANCE_DIMENSIONS = Object.freeze(['rules', 'playerPath', 'resilience', 'permissions', 'presentation'])
