@@ -1,114 +1,133 @@
 {
   "schemaVersion": "spell-evidence/v1",
   "spellId": "longstrider",
-  "status": "pending",
-  "testedRevision": null,
-  "observedAt": null,
+  "status": "recorded",
+  "testedRevision": "8db2bc81d5d073ee488f1be81b333547f72f143d",
+  "observedAt": "2026-09-21T15:09:29.803Z",
   "note": "Шаблон до итогового gate. Наличие файлов тестов не является доказательством прогона; ручная приёмка двух игроков в 2D/3D со звуком пока не выполнена.",
   "dependencyFingerprints": {
-    "data/dndsu-spells-0-6.json": null,
-    "data/dndsu-spell-mechanics-overrides.json": null,
-    "data/rule_packs/dnd_5e_2014/manifest.yaml": null,
-    "package.json": null,
-    "pnpm-lock.yaml": null,
-    "server/combat-spells.mjs": null,
-    "server/rules-engine.mjs": null,
-    "server/event-store.mjs": null,
-    "server/character-progression.mjs": null,
-    "server/character-creation-catalog.mjs": null,
-    "server/character-creation-feats.mjs": null,
-    "server/index.mjs": null,
-    "server/security.mjs": null,
-    "server/viewer-projection.mjs": null,
-    "server/tactical-map.mjs": null,
-    "server/dynamic-map.mjs": null,
-    "server/dice-service.mjs": null,
-    "server/ruleset-config.mjs": null,
-    "server/weather.mjs": null,
-    "server/courier-letters.mjs": null,
-    "server/offscreen-world.mjs": null,
-    "server/item-dawn-recharge.mjs": null,
-    "server/npc-social.mjs": null,
-    "server/npc-turn-scheduler.mjs": null,
-    "server/npc-controller.mjs": null,
-    "server/party-tactics.mjs": null,
-    "server/spell-acceptance-audit.mjs": null,
-    "tools/verify-spell-overrides.mjs": null,
-    "src/App.tsx": null,
-    "src/DungeonMap.tsx": null,
-    "src/TacticalBoard.tsx": null,
-    "src/TacticalBoard3D.tsx": null,
-    "src/types.ts": null,
-    "src/tactical-ui.ts": null,
-    "src/useGameSession.ts": null,
-    "src/styles.css": null,
-    "src/spell-effects.ts": null,
-    "src/board3d-spell-effects.ts": null,
-    "src/combat-animation.ts": null,
-    "src/combat-audio.ts": null,
-    "test/longstrider.test.mjs": null,
-    "test/longstrider-api.test.mjs": null,
-    "test/longstrider-projection.test.mjs": null,
-    "test/world-time-seconds.test.mjs": null,
-    "test/rules-engine.test.mjs": null,
-    "test/spell-acceptance-audit.test.mjs": null,
-    "test/multi-target-spell-ui.test.mjs": null,
-    "test/tactical-ui.test.mjs": null,
-    "test/spell-effects.test.mjs": null,
-    "test/board3d-spell-effects.test.mjs": null,
-    "test/combat-audio.test.mjs": null,
-    "test/npc-turn-scheduler.test.mjs": null,
-    "test/death-saves.test.mjs": null,
-    "test/rest-mechanics.test.mjs": null,
-    "test/item-dawn-recharge.test.mjs": null,
-    "test/group-initiative.test.mjs": null,
-    "test/event-store.test.mjs": null
+    "data/dndsu-spells-0-6.json": "b3de6808b454e48d3411b15126150c11e64827710763949ac09a35585b9932d5",
+    "data/dndsu-spell-mechanics-overrides.json": "ec6bb6d55220d5c6b7f32870d4a4036c8a1d4e327eb7fb9280f2be43d8654c98",
+    "data/rule_packs/dnd_5e_2014/manifest.yaml": "80e2b8ce8c79aed0cecee1b9b8f0938831f4ecb9b6280d1739576a1820c1549b",
+    "package.json": "719a879724eed7dabc838e92e6c18c396ec5d51a8e0498c09302c41c39732e61",
+    "pnpm-lock.yaml": "d36e048d853bf63e2d0aefc3e63dba40dec9e5587bb3257016b0a00b009dee1f",
+    "server/combat-spells.mjs": "d45ac27af4ca51c6f0fef957c0a55493bc7c2701a94deaf9112f2db7e9aa5689",
+    "server/rules-engine.mjs": "59c681defb4f67e579b2efe85db551f98a5160756f1288fd5edb0082eb682eb2",
+    "server/event-store.mjs": "ee67766efdbce5f18af3e3ec3226e67f02c64c187a2077cf87f3d4b084864bec",
+    "server/campaign-bootstrap.mjs": "814d9a1b7345e56dcce87c027c876992c35985d05065eedf7558d3b5e31e926e",
+    "server/character-progression.mjs": "f0db783512e3c645b15af97b1f1f64767d35fe8d009dc4a989acbdf8ff2e20c4",
+    "server/character-creation-catalog.mjs": "aa5a7d011b4ce1e666109f2bab82d48e28b6fd8ea046c0695f006fb4734cd05a",
+    "server/character-creation-feats.mjs": "a65eb50e2a7d271b5c40e7d9f795f3490232e87c38081ded1b737bf89f9f6c68",
+    "server/index.mjs": "e85e81418048a639ff81cef03026e587d68618d699dadc523e1ef5262c1db242",
+    "server/security.mjs": "2a750eaaf13d582c2f22d8ca1dd30ff27256aaeed45646ce5099872c63dde05a",
+    "server/viewer-projection.mjs": "4bb387632e6a2af379366ee17118c7ca92c88bf1d1cbad59374f3d075ed80b1b",
+    "server/tactical-map.mjs": "385272ca1bc02ff3fb2fe75526b34cdc8e43991aa096ce3f80f40fe1aee1b160",
+    "server/dynamic-map.mjs": "f11fd0fc6c3a22967b5e7dec4220eae13f846483d3a6714f877b3a9510e73692",
+    "server/dice-service.mjs": "2d2d407bc7fb9d0d622179dceee467be02a8833bada377dbf405a0978edb466b",
+    "server/ruleset-config.mjs": "acd41638d081a350cfaa5921cd79b96abcadd655f65212f1227491aa1e5ea54d",
+    "server/weather.mjs": "1237dd0c9f80149ef9955109ae82bf59c98dffdf85386029f8fb22d10cfe92c3",
+    "server/courier-letters.mjs": "5d032221749bf9f65fc3c0b6932d3442fe8c014cd2f628b30f065878b7fb6700",
+    "server/offscreen-world.mjs": "60666549e16153431bddfb8f6bc5389c34e2d37c953d49acf8f47619c6c19ea5",
+    "server/item-dawn-recharge.mjs": "07db1244a5a7bdeec87cc260fe5f949478ecc66708469edacdac51b5b07039c0",
+    "server/npc-social.mjs": "663ffa4bfd9509aa57b0ec93a4bc8d9661866ac371d0fd336e92e0582a85b0d0",
+    "server/npc-turn-scheduler.mjs": "1b6a9c1d2dd3d82fa2e8717bae6de5646c7bed54f72eb6f39cda116b8ebd4dac",
+    "server/npc-controller.mjs": "32997a02b03f0d68125642dcf18bb617ae94035c3d3d9486253d9bd8847d0dfa",
+    "server/party-tactics.mjs": "4afae998c5117cc4f0599a1be5929c0fc9dd38678469571ba66735066a527362",
+    "server/spell-acceptance-audit.mjs": "efe45034c94b30b183fdb98cd31fbdd180b600b6e9410551c7284a5cd2895349",
+    "tools/verify-spell-overrides.mjs": "f5ad71b187cc24bf1af542b68c28b89dc3330ee1dfb01876c813787e214f9038",
+    "src/App.tsx": "2199d65b94d4c89e53370c057a3a236acb3f917beae277b4df343209dc4e0e69",
+    "src/DungeonMap.tsx": "da0cd79881faefae9443b064b0908e3ef4260d9ada2d5d2a44397f0d4e0d3ada",
+    "src/TacticalBoard.tsx": "2869120814d6cfc71cdc41439c5535a1929a6005cf968d62d6301e917ed9663c",
+    "src/TacticalBoard3D.tsx": "b655e1dc27ed1b08bd6b35cd5ebd2d02375bf96eb51aa1bb4353ae6706c2b8bd",
+    "src/types.ts": "209293387b14a3a174e99d08ac9a5ebdcac374d392ee2efa64549b063002f6ab",
+    "src/tactical-ui.ts": "b3dd9441b1d891fdc20039d9e4b74b0ccce3916af0e0451fdc433b6239da2b2c",
+    "src/useGameSession.ts": "542d184d9f2ab6af9b02b9519ffd7b776e8e9b6a97d34ea8fe5e606e911bf8a7",
+    "src/styles.css": "3f81c15ef741c7179c444902b6fa0bfefe514807d26374f97149ac95423cddb2",
+    "src/spell-effects.ts": "a61a24916035c4da8bba8cfb067c717096dc683c91542a1b125c055df7a24a90",
+    "src/board3d-spell-effects.ts": "3e7036eb9dc3b204ee92ee34e8f70d6cd80610b6cfd4241a355bbe8bf6e9fa80",
+    "src/combat-animation.ts": "edfec16e9f05260c6ab7998f5a358a920c5d4c78b1a6b66bfef3300191282d19",
+    "src/combat-audio.ts": "0b0512efb5631edde93606c895b6c3e2fdcd3f941107cf329d4f2db98740c8d2",
+    "test/longstrider.test.mjs": "30bd7227660ff423a571ac7f0e860b9a46273e61b16da72e0b4e5c1bc20eecd9",
+    "test/longstrider-api.test.mjs": "bfab4bf33a8f80b17fc0d8eebede39ac14724fbd937104a1785bf94dc6c7e618",
+    "test/longstrider-projection.test.mjs": "e6124e516ca768e35308c3181cd04c0dc0fb9056bbcc3c8de3d8d831f0a02787",
+    "test/world-time-seconds.test.mjs": "0a65658e52115b5a1a94e4843212d672a82c74c86d035fbfb0b6043ee5af9d19",
+    "test/rules-engine.test.mjs": "2705342da70a6459b3c5871bfff71e1f7879da9076ea21a131c77952d43c6823",
+    "test/movement-event-compat.test.mjs": "eee54cec906f5e74810c1af753b4e782c4c6b90ce89788037e123acacbfeddaa",
+    "test/spell-acceptance-audit.test.mjs": "4131497cd4b8f12bfef67d812d01159a6ef4c64f9ef59fc09543421260ce1bf0",
+    "test/multi-target-spell-ui.test.mjs": "30a8f48432c31e3368536595e657e10c914d29756d9722cff66bbb7fd1b5cae3",
+    "test/tactical-ui.test.mjs": "4f891aadb04fd0ac9f2529da660fac5a1a78795bc8855968608c173c581903ee",
+    "test/spell-effects.test.mjs": "3828fb265fdff6141315e9e4ec0c29a867c5db626631c5fe2a458cd77add9915",
+    "test/board3d-spell-effects.test.mjs": "5808d6ce2e9aaf13f65e102dada90aa7b169daff4991660c4c494812bbdd38be",
+    "test/combat-audio.test.mjs": "fc332e1162165ce258a1e4ac1ccd73b36596a43d772d23932eae4f43283c0d24",
+    "test/npc-turn-scheduler.test.mjs": "0a1b8d968aca35797975ee84b8314ba0b9c4829dc7365b80751f635ac45be375",
+    "test/death-saves.test.mjs": "a0cf30081d5afb2f58c44d5ed3d401ca3502317ab7e8b6b1e83ece9f23ebf071",
+    "test/rest-mechanics.test.mjs": "7cc51975fb5f309ca2bf1c0d99fb038994b4767e67c715806ff65b6367259490",
+    "test/item-dawn-recharge.test.mjs": "18002e95743bc6621ff4d014776a03c73c3f8087288b27766284afa9bb166351",
+    "test/group-initiative.test.mjs": "672c2b341abe708e6e9008bfd090fa145f1dee8aa9cf36b7e130d14ef4c58fad",
+    "test/event-store.test.mjs": "adf578a41d4dce5e649bf6290a048fa97c2eb1826171bb553d5bf7d62d3c8c9a",
+    "test/campaign-bootstrap.test.mjs": "7b0a32557beaa42e0b9ac7f249d1a8709ab8b3f9dad69f5e23884e3b87bb9163",
+    "test/mvp-player-cycle-api.test.mjs": "7c0638f4b14cf2908ed1755dc8c2382dbb688521dddeef9f4f3b4f68fd3d8e9b"
   },
   "runs": [
     {
       "id": "final-verify",
       "kind": "test-run",
-      "status": "pending",
+      "status": "passed",
       "command": "pnpm verify",
       "receipt": {
         "reference": "docs/acceptance/longstrider-run-receipt.md",
-        "artifact": null,
-        "sha256": null
+        "artifact": "C:\\Users\\anton\\.codex\\visualizations\\2026\\09\\21\\01a0c406-4a0d-7852-9c57-1b4fe09c82bc\\longstrider\\verify-8db2bc8.log",
+        "sha256": "b14f330f5025db94ccfc4d16577a61b2b5acc5e3fa8b24e698306fe56b824649"
       }
     },
     {
-      "id": "focused-longstrider",
+      "id": "spells-verify",
       "kind": "test-run",
-      "status": "pending",
-      "command": "node --test test/longstrider.test.mjs test/longstrider-api.test.mjs test/world-time-seconds.test.mjs",
+      "status": "passed",
+      "command": "pnpm spells:verify",
       "receipt": {
         "reference": "docs/acceptance/longstrider-run-receipt.md",
-        "artifact": null,
-        "sha256": null
+        "artifact": "C:\\Users\\anton\\.codex\\visualizations\\2026\\09\\21\\01a0c406-4a0d-7852-9c57-1b4fe09c82bc\\longstrider\\spells-verify.log",
+        "sha256": "a259b6104b079f81c7a9bcad27d1a22cc85074f9baecf3486f6487380506f62f"
+      }
+    },
+    {
+      "id": "content-verify",
+      "kind": "test-run",
+      "status": "passed",
+      "command": "pnpm content:verify",
+      "receipt": {
+        "reference": "docs/acceptance/longstrider-run-receipt.md",
+        "artifact": "C:\\Users\\anton\\.codex\\visualizations\\2026\\09\\21\\01a0c406-4a0d-7852-9c57-1b4fe09c82bc\\longstrider\\content-verify.log",
+        "sha256": "d87c8a29f8daf51f574c2758d9d4abc86f23fd444e9744aa1e60a535457f7ac4"
       }
     },
     {
       "id": "manual-two-player",
       "kind": "manual-run",
       "status": "pending",
-      "command": "Два обычных игрока: получение, применение, отмена и повтор; 2D/3D, анимация и звук после commit.",
+      "command": "Два обычных игрока на основном сайте, 2D/3D, анимация и звук после commit; доступный браузер отсутствует.",
       "receipt": {
         "reference": "docs/acceptance/longstrider-run-receipt.md",
-        "artifact": null,
-        "sha256": null
+        "artifact": "C:\\Users\\anton\\.codex\\visualizations\\2026\\09\\21\\01a0c406-4a0d-7852-9c57-1b4fe09c82bc\\longstrider\\browser-unavailable.md",
+        "sha256": "a315033b06f46467712ad2256f98f64dbf28eec0300cd04a6622f5fb2e073a78"
       }
     }
   ],
   "scenarios": [
     {
       "id": "source-and-exceptions",
-      "status": "pending",
-      "runIds": []
+      "status": "passed",
+      "runIds": [
+        "final-verify"
+      ]
     },
     {
       "id": "refusal-before-spending",
-      "status": "pending",
-      "runIds": []
+      "status": "passed",
+      "runIds": [
+        "final-verify"
+      ]
     },
     {
       "id": "normal-acquisition-and-cast",
@@ -117,13 +136,17 @@
     },
     {
       "id": "replay-restart-idempotency",
-      "status": "pending",
-      "runIds": []
+      "status": "passed",
+      "runIds": [
+        "final-verify"
+      ]
     },
     {
       "id": "ownership-and-projection",
-      "status": "pending",
-      "runIds": []
+      "status": "passed",
+      "runIds": [
+        "final-verify"
+      ]
     },
     {
       "id": "two-player-2d-3d-av",
@@ -132,18 +155,24 @@
     },
     {
       "id": "speed-and-dash",
-      "status": "pending",
-      "runIds": []
+      "status": "passed",
+      "runIds": [
+        "final-verify"
+      ]
     },
     {
       "id": "touch-and-upcast",
-      "status": "pending",
-      "runIds": []
+      "status": "passed",
+      "runIds": [
+        "final-verify"
+      ]
     },
     {
       "id": "hour-and-sources",
-      "status": "pending",
-      "runIds": []
+      "status": "passed",
+      "runIds": [
+        "final-verify"
+      ]
     }
   ]
 }
