@@ -38,13 +38,14 @@ async function makeCandidate({ schema = 'environment-candidate/v1' } = {}) {
 
 test('staged renderer serves candidate and atomically saves validated output', async (t) => {
   const { directory, manifest } = await makeCandidate()
-  t.after(() => rm(directory, { recursive: true, force: true }))
   const oldImage = encodePng(imageWithAlpha([[2, 2], [3, 3]]))
   await writeFile(join(directory, 'topdown.png'), oldImage)
   const oldManifest = await readFile(join(directory, 'manifest.json'))
   let saved = null
   const started = await startPropModelAtlas({ directory, port: 0, onSaved: (details) => { saved = details } })
-  t.after(() => started.close())
+  t.after(async () => {
+    try { await started.close() } finally { await rm(directory, { recursive: true, force: true }) }
+  })
 
   const home = await fetch(started.url)
   assert.equal(home.status, 200)
@@ -103,7 +104,6 @@ test('staged renderer serves candidate and atomically saves validated output', a
 
 test('staged renderer принимает четвёртое семейство kenney-dungeon', async (t) => {
   const { directory } = await makeCandidate()
-  t.after(() => rm(directory, { recursive: true, force: true }))
   await mkdir(join(directory, 'kenney-dungeon'))
   await writeFile(join(directory, 'kenney-dungeon', 'stairs.glb'), Buffer.from('stairs'))
   const manifestPath = join(directory, 'manifest.json')
@@ -112,7 +112,9 @@ test('staged renderer принимает четвёртое семейство k
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
 
   const started = await startPropModelAtlas({ directory, port: 0 })
-  t.after(() => started.close())
+  t.after(async () => {
+    try { await started.close() } finally { await rm(directory, { recursive: true, force: true }) }
+  })
   const home = await (await fetch(started.url)).text()
   assert.match(home, /kenney-dungeon\/stairs\.glb/u)
   const model = await fetch(`${started.url}/assets/models/environment/kenney-dungeon/stairs.glb`)
@@ -122,9 +124,10 @@ test('staged renderer принимает четвёртое семейство k
 
 test('renderer не затирает manifest, изменённый после запуска', async (t) => {
   const { directory } = await makeCandidate()
-  t.after(() => rm(directory, { recursive: true, force: true }))
   const started = await startPropModelAtlas({ directory, port: 0 })
-  t.after(() => started.close())
+  t.after(async () => {
+    try { await started.close() } finally { await rm(directory, { recursive: true, force: true }) }
+  })
   const html = await (await fetch(started.url)).text()
   const savePath = html.match(/fetch\('\/save\/([^']+)'/u)?.[1]
   assert.ok(savePath)

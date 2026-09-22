@@ -74,12 +74,13 @@ test('первое снятие ручного оружия в бою беспл
   const initial = battle({ inventory: [item('srd_5_2_1:mace', 'mace', true)] })
   const result = equip(initial, 'unequip-mace', 'mace', false)
 
-  assert.equal(result.events[0].event_type, 'ItemUnequipped')
-  assert.equal(result.events[0].payload.combat_action, 'object_interaction')
+  assert.deepEqual(result.events.map((event) => event.event_type), ['CombatRoundTimeMarked', 'ItemUnequipped'])
+  assert.equal(result.events.find((event) => event.event_type === 'ItemUnequipped').payload.combat_action, 'object_interaction')
   const after = apply(initial, result)
   assert.equal(after.players[0].inventory[0].equipped, false)
   assert.equal(after.mechanics.combat.action_economy.cleric.object_interaction, false)
   assert.equal(after.mechanics.combat.action_economy.cleric.action, true)
+  assert.equal(after.mechanics.combat.round_time_pending, true)
   assert.deepEqual(replayEvents(initial, result.events), after)
 })
 
@@ -91,7 +92,8 @@ test('второе ручное взаимодействие в том же хо
   const first = apply(initial, equip(initial, 'unequip-mace', 'mace', false))
   const secondResult = equip(first, 'equip-reliquary', 'reliquary', true)
 
-  assert.equal(secondResult.events[0].payload.combat_action, 'action')
+  assert.equal(secondResult.events.find((event) => event.event_type === 'ItemEquipped').payload.combat_action, 'action')
+  assert.equal(secondResult.events.some((event) => event.event_type === 'CombatRoundTimeMarked'), false)
   const after = apply(first, secondResult)
   assert.equal(after.players[0].inventory.find((entry) => entry.id === 'reliquary').equipped, true)
   assert.equal(after.mechanics.combat.action_economy.cleric.object_interaction, false)

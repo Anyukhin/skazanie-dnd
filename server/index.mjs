@@ -1234,6 +1234,13 @@ function sanitizePlayerCombatCommand(user, state, input, { skipAttackTargetPolic
       throw commandPolicyError('Нужен непустой список идентификаторов целей заклинания', 'INVALID_SPELL_TARGETS')
     }
     const targets = suppliedTargets == null ? null : [...new Set(suppliedTargets.map((id) => id.trim()))]
+    if (spellId === 'longstrider' && targets && targets.length !== suppliedTargets.length) {
+      throw commandPolicyError('Выберите каждую цель только один раз', 'INVALID_SPELL_TARGETS')
+    }
+    const castingResource = input?.casting_resource
+    if (castingResource != null && (typeof castingResource !== 'string' || !/^[a-z0-9_:-]{1,120}$/u.test(castingResource))) {
+      throw commandPolicyError('Неверный источник применения заклинания', 'INVALID_CASTING_RESOURCE')
+    }
     const spellOption = input?.spell_option ?? input?.spellOption
     if (spellOption != null && (typeof spellOption !== 'string' || spellOption.length > 120)) {
       throw commandPolicyError('Неверный вариант заклинания', 'INVALID_SPELL_OPTION')
@@ -1248,6 +1255,7 @@ function sanitizePlayerCombatCommand(user, state, input, { skipAttackTargetPolic
       ...(targets ? { target_ids: targets } : target ? { target_id: target } : {}),
       ...(spellOption ? { spell_option: spellOption } : {}),
       ...(slotLevel == null ? {} : { slot_level: slotLevel }),
+      ...(castingResource == null ? {} : { casting_resource: castingResource }),
       ...(input?.to ? { to: { x: input.to.x, y: input.to.y } } : {}),
       ...(input?.knock_out === true ? { knock_out: true } : {}),
     }

@@ -280,8 +280,8 @@ test('Flame Tongue activation is versioned, spends the combat Bonus Action and g
     command_type: 'ActivateItem', command_id: 'ignite-flame', actor_id: 'hero', item_id: 'flame', activated: true, request_fingerprint: 'ignite-fingerprint', server_authoritative: true,
   }
   const activated = resolveCommand(activationCommand, initial, { diceService: dice(), context: heroContext })
-  assert.equal(activated.events.length, 1)
-  const event = activated.events[0]
+  assert.deepEqual(activated.events.map((event) => event.event_type), ['CombatRoundTimeMarked', 'MagicItemActivationChanged'])
+  const event = activated.events.find((candidate) => candidate.event_type === 'MagicItemActivationChanged')
   assert.equal(event.event_type, 'MagicItemActivationChanged')
   assert.equal(event.event_schema_version, 1)
   assert.deepEqual(event.payload, {
@@ -297,6 +297,7 @@ test('Flame Tongue activation is versioned, spends the combat Bonus Action and g
   const afterActivation = applyAll(initial, activated.events)
   assert.equal(afterActivation.players[0].inventory[0].activated, true)
   assert.equal(afterActivation.mechanics.combat.action_economy.hero.bonus_action, false)
+  assert.equal(afterActivation.mechanics.combat.round_time_pending, true)
   assert.deepEqual(replayEvents(initial, activated.events), afterActivation)
 
   const strike = attack(afterActivation, 'flame', [15, 5, 6, 4])

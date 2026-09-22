@@ -359,6 +359,22 @@ function startingCells(cells, count, { anchorFeatures = [], map = null } = {}) {
     floors.sort((left, right) => distance(left) - distance(right) || left.x - right.x || left.y - right.y)
   }
   if (floors.length < count) throw new Error('В начальной области недостаточно свободных клеток для всего отряда')
+  if (map) {
+    // Топологическая связность пола не видит мебель: бассейн или сталагмит
+    // могут отрезать карман и даже занять саму точку появления. Выбираем
+    // ближайшую связную область после учёта реквизита, не меняя саму карту.
+    const blockedCells = new Set(map.props.filter((prop) => prop.blocksMove)
+      .flatMap((prop) => prop.footprint ?? []).map((cell) => `${cell.x},${cell.y}`))
+    const checked = new Set()
+    for (const floor of floors) {
+      if (checked.has(`${floor.x},${floor.y}`)) continue
+      const accessible = reachableCells(map, floor.x, floor.y, { throughDoors: false, blockedCells })
+      for (const key of accessible) checked.add(key)
+      const group = floors.filter((cell) => accessible.has(`${cell.x},${cell.y}`))
+      if (group.length >= count && accessible.size > count) return group.slice(0, count)
+    }
+    throw new Error('В начальной области нет связного места для отряда со свободным выходом')
+  }
   return floors.slice(0, count)
 }
 

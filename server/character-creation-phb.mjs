@@ -99,8 +99,8 @@ export function resolvePhbCreation(source) {
   if (classGrants.subclass?.id === 'light') grants.push({ id: 'light', ability: 'wis', uses: 'at-will', source: 'light-domain' })
   const magic = feat?.benefits.spellcasting
   if (magic) {
-    grants.push(...(magic.cantrips ?? []).map((id) => ({ id: phbSpellId(id), ability: magic.ability, uses: 'at-will', source: magic.source })))
-    if (magic.first_level_spell) grants.push({ id: phbSpellId(magic.first_level_spell), ability: magic.ability, uses: 1, source: magic.source })
+    grants.push(...(magic.cantrips ?? []).map((id) => ({ id: phbSpellId(id), ability: magic.ability, uses: 'at-will', source: magic.source, class_key: magic.class_key })))
+    if (magic.first_level_spell) grants.push({ id: phbSpellId(magic.first_level_spell), ability: magic.ability, uses: 1, source: magic.source, class_key: magic.class_key })
   }
   return {
     value: { schema_version: 1, classChoices: classResult.choices, ...(feat ? { feat: { id: feat.feat.id, choices: feat.choices } } : {}), ...(raw.backgroundEquipmentChoices ? { backgroundEquipmentChoices: structuredClone(raw.backgroundEquipmentChoices) } : {}) },

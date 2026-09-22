@@ -96,8 +96,13 @@ test('drinking antitoxin spends a bonus action, consumes one flask and replays i
   const result = drink(initial)
   const after = replayEvents(initial, result.events)
 
-  assert.deepEqual(result.events.map((event) => event.event_type), ['ItemUsed', 'ConditionAdded', 'ItemConsumed'])
-  const applied = result.events[1].payload
+  assert.deepEqual(result.events.map((event) => event.event_type), ['CombatRoundTimeMarked', 'ItemUsed', 'ConditionAdded', 'ItemConsumed'])
+  const marker = result.events[0]
+  assert.equal(marker.event_schema_version, 2)
+  assert.equal(marker.visibility, 'gm_only')
+  assert.deepEqual(marker.payload, { clock_version: 2, policy_id: 'round6-completed-and-final-started', round: 1 })
+  assert.equal(after.mechanics.combat.round_time_pending, true)
+  const applied = result.events.find((event) => event.event_type === 'ConditionAdded').payload
   assert.equal(applied.condition, 'antitoxin')
   assert.equal(applied.save_condition, 'poisoned')
   assert.equal(applied.started_at_minutes, 0)

@@ -2,7 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { CampaignBootstrapper } from '../server/campaign-bootstrap.mjs'
+import { INSPIRATION_REGIONS } from '../server/campaign-inspiration.mjs'
+import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { FakeLLM } from '../server/llm-client.mjs'
+import { normalizeCampaignState, resolveCommand, shortestTacticalPath } from '../server/rules-engine.mjs'
 import { UNTRUSTED_DATA_END, UNTRUSTED_DATA_START } from '../server/security.mjs'
 
 // Сообщение автору кампании собирается через buildDataOnlyContext: полезная
@@ -28,6 +31,33 @@ const hero = {
   maxHp: 12,
   armor: 13,
   online: true,
+}
+
+for (const [index, region] of INSPIRATION_REGIONS.entries()) {
+  test(`старт отряда оставляет исполнимый выход: ${region.label}`, async () => {
+    // PERSIST-API с регионом 5 раньше помещал героя в (0,10), между
+    // cave_pool, stalagmite и стеной. Регион 2 оставляет проход через стул.
+    const diceService = new DiceService({ rng: new SequenceDiceRng([1, index + 1, 1, 1]) })
+    const created = await new CampaignBootstrapper({ diceService }).create({
+      code: 'PERSIST-API', name: 'Постоянный мир', partyName: 'Путники',
+      rulesetId: 'srd_5_2_1', campaignMode: 'persistent',
+      players: [0, 1].map((slot) => ({ ...hero, id: `hero-slot-${slot + 1}`, hp: 12 })),
+    })
+    const state = normalizeCampaignState(created)
+    const first = state.players[0]
+    const context = `region=${index + 1}; seed=${state.worldMap.seed}; actor=(${first.x},${first.y})`
+    const destination = state.scene.cells.find((cell) => {
+      const path = shortestTacticalPath(state, first.id, cell)
+      return path?.length === 1
+    })
+    assert.ok(destination, `первый герой должен иметь свободный соседний шаг: ${context}`)
+    const moved = resolveCommand({ command_type: 'MoveActor', actor_id: first.id,
+      to: { x: destination.x, y: destination.y } }, state, {
+      diceService: new DiceService({ rng: new SequenceDiceRng(Array(30).fill(1)) }),
+      context: { allowedActorIds: [first.id] },
+    })
+    assert.ok(moved.events.some((event) => event.event_type === 'ActorMoved'), context)
+  })
 }
 
 test('новая кампания создаёт чистый самостоятельный контекст без данных затопленного архива', async () => {

@@ -9,7 +9,7 @@ import { SRD_5_2_1_MONSTER_ALLOWLIST } from '../server/encounter-assembler.mjs'
 import { FileEventStore } from '../server/event-store.mjs'
 import { NpcMoraleAgent, commandsForMoraleDecision } from '../server/npc-controller.mjs'
 import { NPC_BEHAVIOR_POLICIES, planNpcTurn, runNpcTurnScheduler } from '../server/npc-turn-scheduler.mjs'
-import { RULE_IDS, RulesEngine, RulesValidationError, applyGameEvent, normalizeCampaignState, resolveCommand, resolveCommands } from '../server/rules-engine.mjs'
+import { RULE_IDS, RulesEngine, RulesValidationError, applyGameEvent, normalizeCampaignState, resolveCommand, resolveCommands, worldTimeSeconds } from '../server/rules-engine.mjs'
 import { DATA_ONLY_INSTRUCTION } from '../server/security.mjs'
 
 function cells(width = 9, height = 3) {
@@ -165,7 +165,7 @@ test('actor can leave unsupported terrain but cannot enter it again', () => {
     command_type: 'MoveActor', actor_id: 'hero', to: { x: 0, y: 0 }, server_authoritative: true,
   }, state, { diceService: dice([]), context: { serverAuthoritativeCombat: true } })
   state = escaped.events.reduce(applyGameEvent, state)
-  assert.equal(escaped.events[0].payload.movement_spent, 5)
+  assert.equal(escaped.events.find((event) => event.event_type === 'ActorMoved')?.payload.movement_spent, 5)
   assert.deepEqual(state.mechanics.positions.hero, { x: 0, y: 0 })
   assert.throws(() => resolveCommand({
     command_type: 'MoveActor', actor_id: 'hero', to: { x: 0, y: 1 }, server_authoritative: true,
@@ -198,8 +198,11 @@ test('NPC scheduler moves, attacks and ends turns until control returns to a liv
   assert.equal(result.state.tacticalTurn.actorId, 'hero')
   assert.equal(result.state.tacticalTurn.movementSpent, 0)
   assert.deepEqual(result.events.filter((event) => event.actor_id === 'wolf').map((event) => event.event_type), [
-    'ActorMoved', 'AttackResolved', 'DieRolled', 'DamageApplied', 'TurnEnded', 'TurnStarted',
+    'CombatRoundTimeMarked', 'ActorMoved', 'AttackResolved', 'DieRolled', 'DamageApplied', 'TurnEnded', 'TimeAdvanced', 'TurnStarted',
   ])
+  assert.equal(result.events.filter((event) => event.event_type === 'TimeAdvanced').length, 1)
+  assert.equal(result.events.find((event) => event.event_type === 'TimeAdvanced')?.payload.elapsed_seconds, 6)
+  assert.equal(worldTimeSeconds(result.state), 6, 'движение, атака и конец хода расходуют один общий раунд')
 })
 
 test('NPC creative controller is called once at the morale threshold and the server applies surrender safely', async (t) => {
@@ -1354,7 +1357,14 @@ test('scheduler keeps initiative running for death saves, ends combat and wakes 
   assert.equal(result.state.players[0].hp, 1)
   assert.equal(result.state.mechanics.death.saving_throws.hero, undefined)
   assert.equal(result.events.filter((event) => event.event_type === 'DeathSavingThrowRolled').length, 3)
-  assert.equal(result.events.filter((event) => event.event_type === 'TimeAdvanced').length, 3)
+  const combatEndIndex = result.events.findIndex((event) => event.event_type === 'CombatEnded')
+  const roundTicks = result.events.slice(0, combatEndIndex).filter((event) => event.event_type === 'TimeAdvanced')
+  const recoveryTicks = result.events.slice(combatEndIndex + 1).filter((event) => event.event_type === 'TimeAdvanced')
+  assert.deepEqual(roundTicks.map((event) => event.payload.elapsed_seconds), [6, 6, 6], 'три раунда спасбросков не ускоряют восстановление на часы')
+  assert.ok(roundTicks.every((event) => event.payload.policy_id === 'round6-completed-and-final-started'))
+  assert.deepEqual(recoveryTicks.map((event) => event.payload.elapsed_minutes), [60, 60, 60], 'три часа восстановления наступают только после конца боя')
+  assert.deepEqual(recoveryTicks.map((event) => event.payload.elapsed_seconds), [3_600, 3_600, 3_600])
+  assert.equal(worldTimeSeconds(result.state), 10_818)
   assert.equal(result.events.some((event) => event.event_type === 'HealingApplied' && event.payload.reason === 'stable-recovery-after-1d4-hours'), true)
   assert.equal(result.events.some((event) => event.event_type === 'HeroDied'), false)
 
@@ -1380,7 +1390,11 @@ test('scheduler does not fast-forward stable recovery while living enemies contr
   })
   assert.equal(result.turns.find((turn) => turn.kind === 'combat-end')?.reason, 'party_incapacitated')
   assert.equal(result.turns.some((turn) => turn.kind === 'stable-recovery'), false)
-  assert.equal(result.events.some((event) => event.event_type === 'TimeAdvanced'), false)
+  const roundTicks = result.events.filter((event) => event.event_type === 'TimeAdvanced')
+  assert.deepEqual(roundTicks.map((event) => event.payload.elapsed_seconds), [6, 6, 6], 'идут только три раунда спасбросков, а не часы отдыха')
+  assert.ok(roundTicks.every((event) => event.payload.elapsed_minutes === 0 && event.payload.policy_id === 'round6-completed-and-final-started'))
+  assert.equal(result.events.some((event) => ['StableRecoveryScheduled', 'StableRecoveryProgressed', 'HealingApplied'].includes(event.event_type)), false)
+  assert.equal(worldTimeSeconds(result.state), 18)
   assert.equal(result.state.players[0].hp, 0)
   assert.deepEqual(result.state.mechanics.death.saving_throws.hero, { successes: 0, failures: 0, stable: true })
 })

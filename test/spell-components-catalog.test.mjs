@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { canonicalCombatSpellFor } from '../server/combat-spells.mjs'
+import { parseComponents } from '../tools/generate-dndsu-spells.mjs'
 
 const catalog = JSON.parse(readFileSync(new URL('../data/dndsu-spells-0-6.json', import.meta.url), 'utf8'))
 
@@ -37,4 +38,20 @@ test('различающиеся source-backed требования не сво�
   assert.equal(spell('create-homunculus').material.unresolved, true)
   assert.equal(spell('warding-bond').material.unresolved, true)
   assert.equal(spell('jims-magic-missile').special[0].kind, 'royalty')
+})
+
+test('три карточки AI сохраняют отдельные авторские отчисления из своих строк источника', () => {
+  const rows = {
+    'jims-magic-missile': 'В, С, А (1 зм)',
+    'jims-glowing-coin': 'С, М (монетка), А (2 зм)',
+    'gift-of-gab': 'В, С, М (А 2 зм)',
+  }
+  for (const [id, source] of Object.entries(rows)) {
+    const spell = catalog.spells.find(entry => entry.id === id)
+    assert.deepEqual(spell.components, parseComponents(source), id)
+    assert.equal(canonicalCombatSpellFor(id).mechanicsSupport, id === 'gift-of-gab' ? 'ruling-only' : 'heuristic', 'исправление импорта не подтверждает механику')
+  }
+  const coin = catalog.spells.find(entry => entry.id === 'jims-glowing-coin').components
+  assert.equal(coin.material.costGp, null, '2 зм — отчисления, а не цена монетки')
+  assert.equal(coin.special[0].description, '2 зм')
 })

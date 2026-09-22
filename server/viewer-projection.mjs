@@ -1,4 +1,5 @@
 // @ts-check
+import { createHash } from 'node:crypto'
 import { encounterDifficultyLabel } from './encounter-assembler.mjs'
 import { merchantTradeAvailabilityFor, publicMerchantFor } from './merchant-economy.mjs'
 import { PRIVATE_ITEM_ORIGIN_KINDS, itemViewerCapabilities } from './item-catalog.mjs'
@@ -9,7 +10,7 @@ import { sceneObjectLabelFor } from './scene-interactions.mjs'
 import { actorAppearanceFor, normalizeAttackVisual, publicAppearanceRecord } from './actor-appearance.mjs'
 import { reputationTier } from './reputation-policy.mjs'
 import { projectVisibleState } from './security.mjs'
-import { RULE_IDS, hitPointDicePoolForActor, spellComponentAvailabilityFor } from './rules-engine.mjs'
+import { RULE_IDS, hitPointDicePoolForActor, spellComponentAvailabilityFor, movementForActor, effectiveSpeedFeet, positionInEffect } from './rules-engine.mjs'
 import {
   MATERIALS,
   SIZE_CLASSES,
@@ -658,7 +659,7 @@ export function publicEnemyFor(enemy = {}, state = {}, actorId = '') {
     ...(exactEnemyFact(knowledge, 'armor_class') || exactEnemyFact(knowledge, 'armor') ? {
       armor: Math.max(0, integer(enemy.armor ?? enemy.armor_class, 10)),
     } : {}),
-    ...(exactEnemyFact(knowledge, 'speed') ? { speed: Math.max(0, integer(enemy.speed, 0)) } : {}),
+    ...(exactEnemyFact(knowledge, 'speed') ? { speed: effectiveSpeedFeet(state, enemy, id) } : {}),
     ...(exactEnemyFact(knowledge, 'stat_block') && enemy.stat_block_id != null ? { stat_block_id: text(enemy.stat_block_id, 120) } : {}),
   }
 }
@@ -688,6 +689,23 @@ const TARGET_ROLL_EVENT_TYPES = new Set([
 
 /** Записи журнала, где бросок принадлежит цели, а не действующему лицу. */
 const TARGET_ROLL_BATTLE_LOG_TYPES = new Set(['spell-save', 'concentration-save'])
+const UNKNOWN_AREA_SPELL_ID = ''
+const PUBLIC_AREA_ID_NAMESPACE = 'skazanie:public-area:v1'
+
+/**
+ * Оригинальный effect_id остаётся только на доверенной стороне. Хеш нужен
+ * постоянный: тот же area при reconnect/remove получает тот же публичный ключ.
+ * @param {unknown} value
+ * @returns {string}
+ */
+function publicAreaId(value) {
+  const source = text(value, 180)
+  const digest = createHash('sha256')
+    .update(PUBLIC_AREA_ID_NAMESPACE + '\0' + source, 'utf8')
+    .digest('hex')
+    .slice(0, 24)
+  return 'area-public-v1:' + digest
+}
 
 /** @param {unknown} value @returns {{x: number, y: number} | null} */
 function publicPoint(value) {
@@ -720,6 +738,25 @@ function publicRevealedCellKeys(scene) {
 function publicBattleEventFor(entry, state, actorId = '', visibility = {}) {
   if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return entry
   const result = { ...entry }
+  if (Array.isArray(entry.targetIds)) {
+    result.targetIds = entry.targetIds.filter((/** @type {unknown} */ id) => visibility.visibleActorIds?.has(String(id)))
+  }
+  if (['longstrider', 'mass-cure-wounds'].includes(entry.spellId)) {
+    const ids = visibility.visibleActorIds ?? new Set()
+    const targets = Array.isArray(entry.targetIds) ? result.targetIds : [entry.targetId].filter((id) => ids.has(String(id)))
+    if (!ids.has(String(entry.actorId)) && !targets.length) return null
+    result.targetIds = targets
+    if (!ids.has(String(entry.actorId))) delete result.actorId
+    if (!ids.has(String(entry.targetId))) {
+      if (targets.length) result.targetId = targets[0]
+      else delete result.targetId
+    }
+    // Касание рисуется у разрешённых существ, координаты скрытой первой
+    // цели или источника не должны пережить фильтрацию списка.
+    if (entry.spellId === 'longstrider') {
+      for (const key of ['from', 'to', 'area']) delete result[key]
+    }
+  }
   const attackVisual = Object.hasOwn(entry, 'attackVisual') || Object.hasOwn(entry, 'attack_visual')
     ? normalizeAttackVisual(entry.attackVisual ?? entry.attack_visual)
     : undefined
@@ -733,6 +770,16 @@ function publicBattleEventFor(entry, state, actorId = '', visibility = {}) {
   if (entry.type === 'attack') delete result.trajectory
   const targetId = text(entry.targetId ?? entry.target_id, 120)
   const actingId = text(entry.actorId ?? entry.actor_id, 120)
+  if (entry.type === 'healing') {
+    const ids = visibility.visibleActorIds ?? new Set()
+    if (!ids.has(targetId)) return null
+    if (!ids.has(actingId)) {
+      delete result.actorId
+      delete result.actor_id
+      delete result.actorKind
+      delete result.from
+    }
+  }
   if (entry.type === 'attack' && (Object.hasOwn(entry, 'from') || Object.hasOwn(entry, 'to'))) {
     const from = publicPoint(entry.from)
     const to = publicPoint(entry.to)
@@ -894,17 +941,28 @@ function publicEnemyConditionId(value) {
  * Иначе дозу на конкретном клинке было бы не найти — `weaponCoatingRiderFor`
  * ищет условие ровно по идентификатору оружия.
  *
- * Условия героев не трогаются: своё снаряжение игрок знает и без проекции.
+ * Условия героев не раскрывают снаряжение. У Скорохода дополнительно
+ * скрываются отсутствующие на публичной сцене владельцы и источники.
  *
  * @param {unknown} value
  * @param {Set<string>} enemyIds
+ * @param {Set<string>} visibleActorIds
  * @returns {Record<string, any>}
  */
-function publicConditionsFor(value, enemyIds) {
+function publicConditionsFor(value, enemyIds, visibleActorIds) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
   /** @type {Record<string, any>} */
   const projected = {}
-  for (const [ownerId, conditions] of Object.entries(value)) {
+  for (const [ownerId, storedConditions] of Object.entries(value)) {
+    const conditions = Array.isArray(storedConditions) ? storedConditions.flatMap((condition) => {
+      if (condition?.id !== 'longstrider' && condition?.spell_id !== 'longstrider' && condition !== 'longstrider') return [condition]
+      if (!visibleActorIds.has(ownerId)) return []
+      if (!condition || typeof condition !== 'object') return [condition]
+      const projectedCondition = { ...condition }
+      if (!visibleActorIds.has(String(projectedCondition.source_actor))) delete projectedCondition.source_actor
+      return [projectedCondition]
+    }) : storedConditions
+    if (Array.isArray(storedConditions) && storedConditions.length && !conditions.length) continue
     if (!Array.isArray(conditions)) {
       projected[ownerId] = conditions
       continue
@@ -954,6 +1012,87 @@ function publicActorKeyedMapFor(value, enemyIds, known) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
   return Object.fromEntries(Object.entries(value)
     .filter(([ownerId]) => !enemyIds.has(String(ownerId)) || known(String(ownerId))))
+}
+
+/**
+ * Очищает одну длительную область. Исходная запись содержит авторитетные
+ * параметры и координаты за туманом; наружу проходит только разрешённая часть.
+ * @param {Loose} state
+ * @param {Loose} effect
+ * @param {Set<string>} visibleCellKeys
+ * @param {Set<string>} visibleActorIds
+ * @returns {Loose | null}
+ */
+function publicActiveEffectFor(state, effect, visibleCellKeys, visibleActorIds) {
+  const id = text(effect.effect_id ?? effect.id, 180)
+  if (!id) return null
+  const center = publicPoint(effect.center)
+  const centerVisible = center != null && visibleCellKeys.has(pointKey(center))
+  const cells = [...visibleCellKeys].map((key) => {
+    const [x, y] = key.split(',').map(Number)
+    return { x, y }
+  }).filter((cell) => positionInEffect(state, cell, effect))
+  const sourceActor = text(effect.source_actor, 120)
+  const sourceVisible = Boolean(sourceActor && visibleActorIds.has(sourceActor))
+  if (!centerVisible && !cells.length && !(effect.follows_source === true && sourceVisible)) return null
+  const publicId = publicAreaId(id)
+  return {
+    id: publicId,
+    effect_id: publicId,
+    spell_id: centerVisible || sourceVisible ? text(effect.spell_id, 120) : UNKNOWN_AREA_SPELL_ID,
+    ...(sourceVisible ? { source_actor: sourceActor } : {}),
+    ...(centerVisible ? { center } : {}),
+    ...(cells.length ? { cells } : {}),
+    ...(effect.difficult_terrain === true ? { difficult_terrain: true } : {}),
+    ...(effect.concentration === true ? { concentration: true } : {}),
+    ...(centerVisible && effect.radius_feet != null ? { radius_feet: Math.max(0, integer(effect.radius_feet, 0)) } : {}),
+    ...(centerVisible && ['sphere', 'cylinder', 'cone', 'cube', 'line'].includes(String(effect.area_shape))
+      ? { area_shape: String(effect.area_shape) } : {}),
+    ...(centerVisible && effect.area_side_feet != null ? { area_side_feet: Math.max(0, integer(effect.area_side_feet, 0)) } : {}),
+  }
+}
+
+/**
+ * @param {Loose} state
+ * @param {unknown} value
+ * @param {Set<string>} visibleCellKeys
+ * @param {Set<string>} visibleActorIds
+ * @returns {Loose[]}
+ */
+function publicActiveEffectsFor(state, value, visibleCellKeys, visibleActorIds) {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return []
+    const publicEffect = publicActiveEffectFor(state, /** @type {Loose} */ (entry), visibleCellKeys, visibleActorIds)
+    return publicEffect ? [publicEffect] : []
+  })
+}
+
+/**
+ * Концентрация нужна игроку для своих и видимых союзных аур. Записи врагов и
+ * нераскрытых NPC нельзя оставлять в карте: один effect_id раскрывает и
+ * заклинание, и сам факт скрытого действующего лица.
+ *
+ * @param {unknown} value
+ * @param {Set<string>} enemyIds
+ * @param {Set<string>} visibleActorIds
+ * @param {unknown} activeEffects
+ * @returns {Record<string, Loose>}
+ */
+function publicConcentrationFor(value, enemyIds, visibleActorIds, activeEffects = []) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  const areaIds = new Map((Array.isArray(activeEffects) ? activeEffects : []).flatMap((effect) => {
+    if (!effect || typeof effect !== 'object' || Array.isArray(effect)) return []
+    const id = text(effect.effect_id ?? effect.id, 180)
+    return id ? [[id, publicAreaId(id)]] : []
+  }))
+  return Object.fromEntries(Object.entries(value)
+    .filter(([ownerId]) => visibleActorIds.has(ownerId) && !enemyIds.has(ownerId))
+    .map(([ownerId, focus]) => {
+      const originalId = text(focus?.effect_id, 180)
+      const effectId = areaIds.get(originalId) ?? originalId
+      return [ownerId, effectId ? { effect_id: effectId } : {}]
+    }))
 }
 
 /**
@@ -1530,6 +1669,8 @@ export function campaignStateForViewer(state, user, actorId = '') {
     weather_by_actor: weatherByActorFor(state, { isAdmin: true, actorId: String(actorId ?? '') }),
     mechanics: {
       ...(state.mechanics ?? {}),
+      movement: Object.fromEntries([...(state.players ?? []), ...(state.actors ?? []), ...(state.enemies ?? [])]
+        .map((/** @type {Loose} */ actor) => [String(actor.id), movementForActor(state, String(actor.id))])),
       hit_point_dice: Object.fromEntries((state.players ?? []).map((/** @type {Loose} */ player) => [String(player.id), hitPointDicePoolForActor(state, player.id)])),
     },
   }
@@ -1611,10 +1752,24 @@ export function campaignStateForViewer(state, user, actorId = '') {
   const enemyIds = new Set((state?.enemies ?? []).map((/** @type {Loose} */ enemy) => text(enemy?.id ?? enemy?.actor_id, 120)))
   const mechanics = visible.mechanics && typeof visible.mechanics === 'object'
     ? (() => {
-      const { enemy_knowledge: _enemyKnowledge, ...publicMechanics } = visible.mechanics
+      const {
+        enemy_knowledge: _enemyKnowledge,
+        active_effects: _activeEffects,
+        concentration: _concentration,
+        ...publicMechanics
+      } = visible.mechanics
       return {
       ...publicMechanics,
-      ...(visible.mechanics.conditions ? { conditions: publicConditionsFor(visible.mechanics.conditions, enemyIds) } : {}),
+      movement: Object.fromEntries([...(publicState.players ?? []), ...actors]
+        .filter((/** @type {Loose} */ actor) => !enemyIds.has(String(actor.id)))
+        .map((/** @type {Loose} */ actor) => [String(actor.id), movementForActor(state, String(actor.id))])),
+      ...(visible.mechanics.conditions ? { conditions: publicConditionsFor(visible.mechanics.conditions, enemyIds, visibleActorIds) } : {}),
+      ...(Object.hasOwn(visible.mechanics, 'active_effects')
+        ? { active_effects: publicActiveEffectsFor(state, visible.mechanics.active_effects, visibleCellKeys, visibleActorIds) }
+        : {}),
+      ...(Object.hasOwn(visible.mechanics, 'concentration')
+        ? { concentration: publicConcentrationFor(visible.mechanics.concentration, enemyIds, visibleActorIds, state.mechanics?.active_effects) }
+        : {}),
       // Временные ОЗ противника. Событие урона и окно реакции у неопознанного
       // врага закрывают и `temporary_hp_before/after`, и записанное разностью
       // `temporary_hp_absorbed`, — а состояние комнаты везло ту же карту
@@ -1717,7 +1872,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
     merchants,
     enemies,
     mechanics,
-    battleLog: (Array.isArray(visible.battleLog) ? visible.battleLog : []).map((/** @type {Loose} */ entry) => publicBattleEventFor(entry, state, actorId, { visibleActorIds, visibleCellKeys })),
+    battleLog: (Array.isArray(visible.battleLog) ? visible.battleLog : []).map((/** @type {Loose} */ entry) => publicBattleEventFor(entry, state, actorId, { visibleActorIds, visibleCellKeys })).filter(Boolean),
     messages: (Array.isArray(visible.messages) ? visible.messages : []).map(publicCombatMessageFor),
     ...(publicAutonomyFor(state.autonomy) ? { autonomy: publicAutonomyFor(state.autonomy) } : {}),
   }
@@ -1748,6 +1903,39 @@ function eventForViewer(event, user, actorId, state = {}) {
     : {}
   delete payload.knowledge_gate
   delete payload.previous_view
+  if (visible.event_type === 'SpellAreaCreated' && payload.effect && typeof payload.effect === 'object') {
+    const allActors = projectVisibleState([...(state.players ?? []), ...(state.actors ?? []), ...(state.enemies ?? [])], viewerFor(state, user, actorId), { forNarrator: true }) ?? []
+    const visibleActorIds = new Set([...allActors, ...sceneNpcsForViewer(state)].map((/** @type {Loose} */ actor) => String(actor.id)))
+    const visibleCellKeys = publicRevealedCellKeys(publicSceneFor(state?.scene))
+    const publicEffect = publicActiveEffectFor(state, /** @type {Loose} */ (payload.effect), visibleCellKeys, visibleActorIds)
+    if (!publicEffect) return null
+    for (const key of Object.keys(payload)) delete payload[key]
+    payload.effect = publicEffect
+    if (!visibleActorIds.has(String(visible.actor_id))) delete visible.actor_id
+    if (Array.isArray(visible.target_ids)) visible.target_ids = visible.target_ids.filter((/** @type {unknown} */ id) => visibleActorIds.has(String(id)))
+  }
+  if (visible.event_type === 'SpellAreaRemoved') {
+    const visibleActors = projectVisibleState([...(state.players ?? []), ...(state.actors ?? []), ...(state.enemies ?? [])], viewerFor(state, user, actorId), { forNarrator: true }) ?? []
+    const visibleActorIds = new Set([...visibleActors, ...sceneNpcsForViewer(state)].map((/** @type {Loose} */ actor) => String(actor.id)))
+    const originalId = text(payload.effect_id, 180)
+    for (const key of Object.keys(payload)) delete payload[key]
+    if (originalId) payload.effect_id = publicAreaId(originalId)
+    if (!visibleActorIds.has(String(visible.actor_id))) delete visible.actor_id
+    if (Array.isArray(visible.target_ids)) visible.target_ids = visible.target_ids.filter((/** @type {unknown} */ id) => visibleActorIds.has(String(id)))
+  }
+  if (['longstrider', 'mass-cure-wounds'].includes(payload.spell_id) || payload.condition === 'longstrider') {
+    const visibleActors = projectVisibleState([...(state.players ?? []), ...(state.actors ?? []), ...(state.enemies ?? [])], viewerFor(state, user, actorId), { forNarrator: true }) ?? []
+    const ids = new Set([...visibleActors, ...sceneNpcsForViewer(state)].map((/** @type {Loose} */ actor) => String(actor.id)))
+    const targets = (Array.isArray(visible.target_ids) ? visible.target_ids : [payload.target_id]).filter((/** @type {unknown} */ id) => ids.has(String(id)))
+    if (!targets.length && (visible.event_type !== 'SpellCast' || !ids.has(String(visible.actor_id)))) return null
+    visible.target_ids = targets
+    if (!ids.has(String(visible.actor_id))) delete visible.actor_id
+    if (!ids.has(String(payload.source_actor))) delete payload.source_actor
+    if (!ids.has(String(payload.target_id))) delete payload.target_id
+    if (payload.spell_id === 'longstrider' || payload.condition === 'longstrider') {
+      for (const key of ['from', 'to', 'origin', 'center']) delete payload[key]
+    }
+  }
   if (visible.event_type === 'SpellCast') redactSpellVisualPayload(payload, state)
   if (visible.event_type === 'CampaignStoryCompleted') {
     const knownStory = questStateForViewer(state, viewerFor(state, user, actorId)).campaignConcept?.story_history

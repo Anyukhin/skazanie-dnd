@@ -429,6 +429,12 @@ test('проверка цели блокирует ошибочную UI-ком�
 })
 
 test('состояния честно помечаются как работающие, частичные или marker-only', () => {
+  const first = tacticalUi.conditionPresentation({ id: 'longstrider', effect_id: 'longstrider-a' })
+  const second = tacticalUi.conditionPresentation({ id: 'longstrider', effect_id: 'longstrider-b' })
+  assert.equal(first.label, 'Скороход')
+  assert.equal(first.status, 'implemented')
+  assert.notEqual(first.instanceKey, second.instanceKey, 'два источника должны иметь разные ключи представления')
+  assert.notEqual(first.instanceKey, tacticalUi.conditionPresentation({ id: 'blessed', effect_id: 'longstrider-a' }).instanceKey, 'разные условия одного инстанса не конфликтуют')
   assert.equal(tacticalUi.conditionPresentation({ id: 'unconscious' }).status, 'implemented')
   assert.equal(tacticalUi.conditionPresentation({ id: 'prone' }).status, 'partial')
   const resistance = tacticalUi.conditionPresentation({ id: 'resistance-d4', duration: 'concentration' })
@@ -506,6 +512,9 @@ test('срок состояния подписан по-русски, а нез�
   )
   // Незнакомый срок теряться не должен: показать сырым честнее, чем скрыть.
   assert.equal(tacticalUi.conditionPresentation({ id: 'bless', duration: 'until-dawn' }).duration, 'until-dawn')
+  assert.equal(tacticalUi.conditionPresentation({ id: 'longstrider', duration: 'seconds:3600' }).duration, '1 ч')
+  assert.equal(tacticalUi.conditionPresentation({ id: 'longstrider', duration: 'seconds:120' }).duration, '2 мин')
+  assert.equal(tacticalUi.conditionPresentation({ id: 'longstrider', duration: 'seconds:6' }).duration, '6 с')
 })
 
 test('клиентская длящаяся point-cube держит явную сторону 20 футов', () => {

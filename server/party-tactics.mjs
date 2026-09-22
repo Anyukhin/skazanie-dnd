@@ -3,6 +3,8 @@ import {
   attackForecast,
   attackProfileFor,
   findActor,
+  effectiveSpeedFeet,
+  movementForActor,
   isLivingActor,
   movementCostOfPath,
   spellDamageEstimate,
@@ -91,7 +93,7 @@ export function healingTargetFor(state, actorIdValue) {
 }
 
 /** Сколько шагов пути герой успевает пройти за ход. */
-function stepsWithinSpeed(actor, path, keepDistanceCells = 0, availableMovementFeet = Number(actor?.speed) || 30) {
+function stepsWithinSpeed(actor, path, keepDistanceCells = 0, availableMovementFeet = 0) {
   const budget = Math.max(0, Math.floor(Math.max(0, availableMovementFeet) / 5))
   const needed = Math.max(0, (path?.length ?? 0) - keepDistanceCells)
   return Math.min(needed, budget)
@@ -101,11 +103,7 @@ function approachCommands(state, actorIdValue, actor, targetId, keepDistanceFeet
   const to = actorPosition(state, targetId)
   const path = shortestTacticalPath(state, actorIdValue, to, { allowOccupiedDestination: true })
   const keepCells = Math.max(0, Math.floor(Number(keepDistanceFeet) / 5))
-  const speed = Math.max(0, Number(actor?.speed) || 30)
-  const economy = state?.mechanics?.combat?.action_economy?.[String(actorIdValue)] ?? {}
-  const availableMovementFeet = speed
-    + Math.max(0, Number(economy.movement_bonus) || 0)
-    - Math.max(0, Number(economy.movement_spent) || 0)
+  const availableMovementFeet = movementForActor(state, actorIdValue).movement_remaining
     - Math.max(0, Number(plannedMovementFeet) || 0)
   const steps = stepsWithinSpeed(actor, path, keepCells, availableMovementFeet)
   if (steps <= 0 || !path?.[steps - 1]) return { commands: [], position: actorPosition(state, actorIdValue) }
@@ -119,13 +117,10 @@ function standUpPlan(state, actorIdValue, actor) {
   const prone = (state?.mechanics?.conditions?.[String(actorIdValue)] ?? [])
     .some((condition) => String(condition?.id ?? condition) === 'prone')
   if (!prone) return { commands: [], movementCost: 0 }
-  const speed = Math.max(0, Number(actor?.speed) || 30)
-  const economy = state?.mechanics?.combat?.action_economy?.[String(actorIdValue)] ?? {}
+  const speed = effectiveSpeedFeet(state, actor, actorIdValue)
   const movementCost = Math.ceil(speed / 2)
-  const available = speed
-    + Math.max(0, Number(economy.movement_bonus) || 0)
-    - Math.max(0, Number(economy.movement_spent) || 0)
-  if (available < movementCost) return { commands: [], movementCost: 0 }
+  const available = movementForActor(state, actorIdValue).movement_remaining
+  if (speed === 0 || available < movementCost) return { commands: [], movementCost: 0 }
   return {
     commands: [{ command_type: 'UseCombatAction', actor_id: actorIdValue, action_id: 'stand-up' }],
     movementCost,
@@ -676,7 +671,7 @@ function movementCandidateFor(state, actorIdValue, targetIdValue, itemId = null)
   }
   if (!path?.length) return null
   const economy = economyFor(validationState, actorIdValue)
-  const budget = Math.max(0, Number(actor.speed) || 30) + Math.max(0, Number(economy.movement_bonus) || 0) - Math.max(0, Number(economy.movement_spent) || 0)
+  const budget = movementForActor(validationState, actorIdValue).movement_remaining
   const protectedMovement = ['disengaged', 'invisible', 'zephyr-strike'].some(id => conditionIdsForTactics(state, actorIdValue).has(id))
   // Дальность скрытого оружия неизвестна. Видимый враг вплотную — достаточный
   // повод остаться в досягаемости, пока не выполнен безопасный Отход.

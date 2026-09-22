@@ -1052,14 +1052,14 @@ export function addSpawnPoint(map, point) {
  * @param {TacticalMap} map
  * @param {number} fromX
  * @param {number} fromY
- * @param {{throughDoors?: boolean}} [options]
+ * @param {{throughDoors?: boolean, blockedCells?: Set<string>}} [options]
  * @returns {Set<string>} ключи вида "x,y"
  */
-export function reachableCells(map, fromX, fromY, { throughDoors = true } = {}) {
+export function reachableCells(map, fromX, fromY, { throughDoors = true, blockedCells = new Set() } = {}) {
   /** @type {Set<string>} */
   const reached = new Set()
   const start = cellAt(map, fromX, fromY)
-  if (!start || !start.passable) return reached
+  if (!start || !start.passable || blockedCells.has(`${fromX},${fromY}`)) return reached
   const doorState = new Map(map.doors.map((door) => [door.id, door.state]))
   /** @type {Array<{x: number, y: number}>} */
   const queue = [{ x: fromX, y: fromY }]
@@ -1070,7 +1070,7 @@ export function reachableCells(map, fromX, fromY, { throughDoors = true } = {}) 
       const nextX = current.x + dx
       const nextY = current.y + dy
       const key = `${nextX},${nextY}`
-      if (reached.has(key)) continue
+      if (reached.has(key) || blockedCells.has(key)) continue
       const next = cellAt(map, nextX, nextY)
       if (!next || !next.passable) continue
       if (edgeBlocksMove(map, current.x, current.y, nextX, nextY, doorState, throughDoors)) continue

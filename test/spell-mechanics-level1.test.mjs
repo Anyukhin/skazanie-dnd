@@ -34,8 +34,8 @@ test('каталог консервативно разделяет partial, heur
   const wizard = stateFor('wizard').players[0]
   const info = spellCatalogInfo()
   assert.equal(info.verifiedMechanics, 0)
-  assert.equal(info.partialMechanics, 240)
-  assert.equal(info.heuristicMechanics, 191)
+  assert.equal(info.partialMechanics, 242)
+  assert.equal(info.heuristicMechanics, 189)
   // Восемь карточек заблокированы **с названной причиной**, а не «пока не
   // размечены»: у падения, полёта и левитации у движка нет высоты, у
   // возрождения — отметки момента смерти, у обнаружения и опознания — скрытого

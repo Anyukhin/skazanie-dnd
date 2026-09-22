@@ -114,7 +114,37 @@ export function descriptionText(html) {
   return plainText(String(html).match(/<div\b[^>]*itemprop=["']description["'][^>]*>([\s\S]*?)<\/div>/iu)?.[1])
 }
 
-const COMPONENT_MARKER = /^(?:\s*)([ВСМАVSMA](?:\s*,\s*[ВСМАVSMA])*)(?:\s*\(([\s\S]*)\))?\s*$/iu
+// Запятые внутри M не разделяют компоненты; скобки могут быть вложенными.
+// Каждый маркер хранит своё пояснение, поэтому M (монетка), А (2 зм)
+// не превращается в один предмет стоимостью 2 зм.
+function componentParts(source) {
+  const parts = []
+  let offset = 0
+  while (offset < source.length) {
+    const marker = source.slice(offset).match(/^\s*([ВСМАVSMA])\s*/iu)
+    if (!marker) return null
+    offset += marker[0].length
+    let description = ''
+    if (source[offset] === '(') {
+      const start = ++offset
+      let depth = 1
+      while (offset < source.length && depth > 0) {
+        if (source[offset] === '(') depth += 1
+        else if (source[offset] === ')') depth -= 1
+        offset += 1
+      }
+      if (depth !== 0) return null
+      description = source.slice(start, offset - 1).trim()
+    }
+    const token = ({ V: 'В', S: 'С', M: 'М', A: 'А' })[marker[1].toUpperCase()] ?? marker[1].toUpperCase()
+    if (parts.some(part => part.token === token) || (description && ['В', 'С'].includes(token))) return null
+    parts.push({ token, description })
+    while (/\s/u.test(source[offset] ?? '') && offset < source.length) offset += 1
+    if (offset === source.length) return parts
+    if (source[offset++] !== ',' || !source.slice(offset).trim()) return null
+  }
+  return null
+}
 const COMPONENT_COST = /(?<![\d])([\d]+(?:[\s,]\d{3})*(?:[.,]\d+)?)\s*(зм|см|мм|золот(?:ых|ые|ой)?(?:\s+монет)?|серебрян(?:ых|ые|ой)?(?:\s+монет)?|gp|sp|cp)(?![\p{L}])/giu
 const COMPONENT_CONSUMED = /(?:расходу[а-яё]*|потребля(?:ется|ются)|поглощ(?:ается|аются)|consum(?:e|ed|es|ing)|destroy(?:ed|s)?\s+by\s+the\s+spell)/iu
 
@@ -166,18 +196,23 @@ function requirementNoteForMaterial(description, costMatches, consumed) {
  */
 export function parseComponents(sourceText) {
   const source = String(sourceText ?? '').trim().replace(/^\*?\s*Компоненты:\s*/iu, '')
-  const match = source.match(COMPONENT_MARKER)
-  if (!match) return null
-  const tokens = match[1].split(',').map((token) => token.trim().toLocaleUpperCase('ru'))
-  const verbal = tokens.includes('В') || tokens.includes('V')
-  const somatic = tokens.includes('С') || tokens.includes('S')
-  const hasMaterial = tokens.includes('М') || tokens.includes('M')
-  if (tokens.includes('А') || tokens.includes('A')) {
-    return { verbal, somatic, material: null, special: [{ kind: 'royalty', description: String(match[2] ?? '').trim() }] }
-  }
-  if (!hasMaterial) return { verbal, somatic, material: null }
+  const parts = componentParts(source)
+  if (!parts) return null
+  const verbal = parts.some(part => part.token === 'В')
+  const somatic = parts.some(part => part.token === 'С')
+  const material = parts.find(part => part.token === 'М')
+  const royalty = parts.find(part => part.token === 'А')
+  // Gift of Gab в закреплённом источнике обозначает отчисления внутри M:
+  // «М (А 2 зм)». Это не цена физического предмета. Признаём только эту
+  // явную форму; обычное слово на букву А остаётся материальным компонентом.
+  const nestedRoyalty = material?.description.match(/^[АA]\s+(\d+(?:[.,]\d+)?\s*(?:зм|gp))$/iu)
+  if (nestedRoyalty && royalty) return null
+  const special = royalty || nestedRoyalty
+    ? { special: [{ kind: 'royalty', description: royalty?.description ?? nestedRoyalty[1].trim() }] }
+    : {}
+  if (!material || nestedRoyalty) return { verbal, somatic, material: null, ...special }
 
-  const description = String(match[2] ?? '').trim()
+  const description = material.description
   const costMatches = [...description.matchAll(COMPONENT_COST)]
   const numericCosts = costMatches
     .map((item) => {
@@ -197,6 +232,7 @@ export function parseComponents(sourceText) {
   return {
     verbal,
     somatic,
+    ...special,
     material: {
       description,
       costGp,

@@ -1318,14 +1318,23 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .server-column .agent-options { grid-template-columns: minmax(0, 1fr); }
 .server-column .agent-options button { align-items: flex-start; flex-direction: column; }
 .server-column .agent-options small { white-space: normal; }
-.server-column .chat-panel:has(.agent-interaction) {
-  grid-template-rows: auto minmax(0, 1fr) 0;
-}
 .server-column .chat-panel:has(.agent-interaction) .chat-interaction-slot {
   min-height: 0;
   max-height: none;
 }
 .server-column .chat-panel:has(.agent-interaction) .messages { overflow: hidden; }
+/* При ширине 1280+ в хронике всегда четыре DOM-слота: заголовок, решение
+   группы, подсказки и сообщения. Раньше `action-hints` попадал в растягиваемую
+   строку, а сообщения становились неявной auto-строкой и накладывались на
+   подсказки. Последняя строка обязана быть лентой и забирать оставшуюся высоту. */
+@media (min-width: 1280px) {
+  .server-column .chat-panel:has(.action-hints) {
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+  }
+  .server-column .chat-panel:has(.agent-interaction):not(:has(.action-hints)) {
+    grid-template-rows: auto auto minmax(0, 1fr) 0;
+  }
+}
 @media (max-width: 760px) { .agent-interaction, .agent-interaction.resolved { grid-template-columns: 1fr; } .agent-interaction { max-height: 210px; overflow-y: auto; } }
 
 .modal-backdrop { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(5,4,3,.76); backdrop-filter: blur(7px); animation: fadeIn .18s; }
@@ -1684,6 +1693,10 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .hero-cluster-move b { flex: 0 0 auto; color: #c9a36f; font: 700 var(--fs-xxs) Manrope, sans-serif; white-space: nowrap; }
 .hero-cluster-move.spent b { color: #8d857b; }
 .hero-cluster-move.spent .hero-cluster-move-bar > i { background: rgba(222,201,171,.18); }
+.hero-cluster-speed { display: flex; flex-wrap: wrap; gap: 2px 8px; color: #b8a58d; font-size: var(--fs-xxs); }
+.hero-cluster-speed b { color: #dec9ab; }
+.hero-cluster-movement-note, .hero-cluster-movement-effects { margin: 0; padding: 0; color: #b8a58d; font-size: var(--fs-xxs); line-height: 1.5; }
+.hero-cluster-movement-effects { list-style: none; }
 /* Запасы одним переносимым потоком: слово «Ячейки» один раз, круги цифрами,
    следом классовые запасы полными именами. Перенос — целыми чипами: рваться
    посреди слова или между именем и пипсами ряду нельзя. */

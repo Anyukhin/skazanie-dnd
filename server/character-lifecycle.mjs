@@ -442,6 +442,8 @@ export function partyPresentationFor(index = 0) {
   }
 }
 
+const UNCLAIMED_CHARACTER_ROLE = 'Герой ещё не создан · ур. 1'
+
 export function createCharacterSlot({ id, index = 0 } = {}) {
   const slotId = cleanIdentifier(id ?? `hero-slot-${index + 1}`, 'character slot id')
   const baseScores = Object.fromEntries(ABILITY_IDS.map((ability, abilityIndex) => [
@@ -452,7 +454,7 @@ export function createCharacterSlot({ id, index = 0 } = {}) {
     id: slotId,
     name: 'Ожидает игрока',
     character: `Место героя ${index + 1}`,
-    role: 'Герой ещё не создан · ур. 1',
+    role: UNCLAIMED_CHARACTER_ROLE,
     characterClass: 'fighter',
     level: 1,
     experience: 0,
@@ -1077,9 +1079,13 @@ export function applyCharacterLifecycleEvent(state, event) {
         traits_supported: false,
       }
     }
+    const importedRole = parsed.patch.role === undefined && actor.role === UNCLAIMED_CHARACTER_ROLE
+      ? `${classOptionFor(parsed.patch.characterClass)?.label ?? parsed.patch.characterClass} · ур. ${parsed.patch.level}`
+      : undefined
     let updated = withBackgroundBenefits({
       ...actor,
       ...parsed.patch,
+      ...(importedRole ? { role: importedRole } : {}),
       ...(parsed.creation ? { creationBenefits: parsed.creation.benefits, creationSkillProficiencies: parsed.creation.additionalSkills, creationSpellGrants: parsed.creation.benefits.spell_grants } : {}),
       id: actor.id,
       inventory: clone(actor.inventory ?? []),

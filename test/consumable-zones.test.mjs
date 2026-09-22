@@ -121,7 +121,7 @@ test('каталог объявляет три расходника исполн
 test('облитая маслом цель получает +5 к следующему огненному урону ровно один раз', () => {
   const state = campaignState({ inventory: [item(OIL)] })
   const hit = useItem(state, { item_id: 'oil-flask', target_id: 'foe' }, [10], 'oil-hit')
-  assert.deepEqual(types(hit), ['ItemUsed', 'SavingThrowResolved', 'ConditionAdded', 'ItemConsumed'])
+  assert.deepEqual(types(hit), ['CombatRoundTimeMarked', 'ItemUsed', 'SavingThrowResolved', 'ConditionAdded', 'ItemConsumed'])
   assert.equal(payload(hit, 'SavingThrowResolved').difficulty, 13)
   assert.equal(payload(hit, 'SavingThrowResolved').saved, false)
   assert.equal(payload(hit, 'ConditionAdded').fire_damage_bonus, 5)
@@ -153,7 +153,7 @@ test('облитая маслом цель получает +5 к следующ
 test('пролитая лужа сама безвредна, но вспыхивает от огня и горит по 5 входящему', () => {
   const state = campaignState({ inventory: [item(OIL)] })
   const spill = useItem(state, { item_id: 'oil-flask', use_mode: 'spill', to: { x: 1, y: 0 } }, [], 'oil-spill')
-  assert.deepEqual(types(spill), ['ItemUsed', 'SpellAreaCreated', 'ItemConsumed'])
+  assert.deepEqual(types(spill), ['CombatRoundTimeMarked', 'ItemUsed', 'SpellAreaCreated', 'ItemConsumed'])
   const slick = payload(spill, 'SpellAreaCreated').effect
   assert.equal(slick.spell_id, 'item:oil-slick')
   assert.deepEqual(slick.cells, [{ x: 1, y: 0 }])
@@ -193,7 +193,7 @@ test('пролитая лужа сама безвредна, но вспыхив
 test('калтропы: спасбросок Ловкости СЛ 15, 1 колющего и нулевая скорость при провале', () => {
   const state = campaignState({ inventory: [item(CALTROPS)], foeAt: { x: 2, y: 0 } })
   const spread = useItem(state, { item_id: 'caltrops', to: { x: 1, y: 0 } }, [], 'caltrops-spread')
-  assert.deepEqual(types(spread), ['ItemUsed', 'SpellAreaCreated', 'ItemConsumed'])
+  assert.deepEqual(types(spread), ['CombatRoundTimeMarked', 'ItemUsed', 'SpellAreaCreated', 'ItemConsumed'])
   const zone = payload(spread, 'SpellAreaCreated').effect
   assert.equal(zone.save_dc, 15)
   assert.equal(zone.save_ability, 'dex')
@@ -230,7 +230,7 @@ test('успешный спасбросок в калтропах не рани�
 test('яд добавляет 1к4 к первому попаданию, тратится и не берёт невосприимчивого', () => {
   const state = campaignState({ inventory: [item(POISON), sword()], foeAt: { x: 1, y: 0 } })
   const coat = useItem(state, { item_id: 'poison-basic', weapon_id: 'sword' }, [], 'coat')
-  assert.deepEqual(types(coat), ['ItemUsed', 'ConditionAdded', 'ItemConsumed'])
+  assert.deepEqual(types(coat), ['CombatRoundTimeMarked', 'ItemUsed', 'ConditionAdded', 'ItemConsumed'])
   assert.equal(payload(coat, 'ConditionAdded').condition, 'weapon-coated:sword')
   assert.equal(payload(coat, 'ConditionAdded').rider_damage, '1d4')
 

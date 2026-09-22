@@ -7044,12 +7044,13 @@
       "components": {
         "verbal": true,
         "somatic": true,
-        "material": {
-          "description": "А 2 зм",
-          "costGp": 2,
-          "consumed": false,
-          "focusSubstitutable": false
-        }
+        "material": null,
+        "special": [
+          {
+            "kind": "royalty",
+            "description": "2 зм"
+          }
+        ]
       }
     },
     {
@@ -7768,11 +7769,17 @@
         "verbal": false,
         "somatic": true,
         "material": {
-          "description": "монетка), А (2 зм",
-          "costGp": 2,
+          "description": "монетка",
+          "costGp": null,
           "consumed": false,
-          "focusSubstitutable": false
-        }
+          "focusSubstitutable": true
+        },
+        "special": [
+          {
+            "kind": "royalty",
+            "description": "2 зм"
+          }
+        ]
       }
     },
     {

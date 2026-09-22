@@ -419,6 +419,8 @@ export type TacticalBoardProps = {
   /** Наведение на пустую клетку без отдельного DOM-узла, в обоих видах карты. */
   onCellHover?: (point: BoardPoint | null) => void
   onCancelAiming?: () => void
+  /** Enter подтверждает уже собранный список целей; пробел продолжает выбор. */
+  onConfirmAiming?: () => void
   /** Короткое предупреждение возле прицела, без перекрывающего карту меню. */
   targetHint?: { point: BoardPoint; text: string; tone: 'warning' | 'blocked' }
 }
@@ -685,7 +687,7 @@ function TacticalBoard2D({
       const [actorId, condition] = entry.split('|')
       // Внутренние маркеры ресурсов содержат двоеточие или явный префикс
       // потраченного действия. Это учёт механики, а не видимое состояние.
-      if (!actorId || !condition || condition.includes(':') || condition.startsWith('monster-action-used')) return []
+      if (!actorId || !condition || condition === 'longstrider' || condition.includes(':') || condition.startsWith('monster-action-used')) return []
       return [{
         event_id: `projected-condition:${conditionVersion ?? 0}:${actorId}:${condition}`,
         event_type: 'ConditionAdded',
@@ -1418,7 +1420,11 @@ function TacticalBoard2D({
         </div>
         <canvas ref={effectsCanvasRef} className="board-effects-canvas" aria-hidden="true" />
         {targetHint && <span className={`board-target-hint ${targetHint.tone}`} role="status" style={{
-          left: `calc(var(--cell) * ${targetHint.point.x + .5})`,
+          // Текстовый прицел не должен уезжать за край доски, когда центр
+          // области выбран у первой или последней клетки. Ширина подсказки
+          // ограничена 220px в tactical-board.css, поэтому оставляем по 110px
+          // запаса с каждой стороны и сохраняем центр в обычном случае.
+          left: `clamp(110px, calc(var(--cell) * ${targetHint.point.x + .5}), calc(100% - 110px))`,
           top: `calc(var(--cell) * ${targetHint.point.y + 1})`,
         }}>{targetHint.text}</span>}
         {animationsEnabled !== false && activeAnimation && (

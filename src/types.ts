@@ -388,6 +388,8 @@ export type CombatSpell = {
   automaticHit?: boolean
   projectileCount?: number
   upcastProjectilesPerLevel?: number
+  /** Точка сначала фиксируется, затем игрок явно выбирает существ внутри области. */
+  selectTargetsInArea?: boolean
   maxTargets?: number
   /** Максимальный разлёт выбранных целей; проверяет сервер, UI только предупреждает. */
   maxTargetSeparationFeet?: number
@@ -561,8 +563,9 @@ export function spellComponentAvailabilityFor(spell?: Pick<CombatSpell, 'compone
 }
 
 /** Лимит целей берётся из server-owned профиля; отсутствие поля означает одну цель. */
-export function combatSpellTargetLimit(spell?: Pick<CombatSpell, 'maxTargets'> | null): number {
+export function combatSpellTargetLimit(spell?: Pick<CombatSpell, 'maxTargets'> & Partial<Pick<CombatSpell, 'level' | 'upcastTargetsPerLevel'>> | null, castLevel?: number): number {
   return Math.max(1, Math.floor(Number(spell?.maxTargets) || 1))
+    + Math.max(0, Math.floor(Number(castLevel) || 0) - Number(spell?.level ?? 0)) * Math.max(0, Number(spell?.upcastTargetsPerLevel) || 0)
 }
 
 /** Обычные ячейки для upcast: специальные ресурсы намеренно не попадают сюда. */
@@ -591,6 +594,23 @@ export type SpellSlotAvailability = {
   ready: boolean
   /** Врождённый ресурс исчерпан, выбран class-slot fallback. */
   usingFallback: boolean
+}
+
+/** Источники уже объявлены серверной карточкой; UI не выдаёт магию из других запасов. */
+export function spellCastingSourcesFor(
+  spell: Pick<CombatSpell, 'level' | 'slotResource' | 'slotLevel' | 'innateSpell' | 'innateCastLevel' | 'fallbackSlotResource'>,
+  resources: Readonly<Record<string, { current?: number }>>,
+) {
+  const sourceIds = [...new Set([spell.slotResource, spell.fallbackSlotResource].filter((value): value is string => Boolean(value)))]
+  return sourceIds.map((resource) => {
+    const ordinary = /^spell_slots_\d+$/u.test(resource)
+    const sourceSpell = { ...spell, slotResource: resource, fallbackSlotResource: undefined, ...(ordinary ? { innateSpell: false, innateCastLevel: undefined } : {}) }
+    return {
+      resource,
+      label: ordinary ? 'Ячейки класса' : resource === 'pact_slots' ? 'Магия договора' : resource === 'mystic_arcanum_6' ? 'Таинственный арканум' : resource.startsWith('species_spell_') ? 'Врождённая магия' : 'Особый ресурс',
+      availability: spellSlotAvailabilityFor(sourceSpell, resources),
+    }
+  })
 }
 
 /**
@@ -1332,6 +1352,8 @@ export type BattleEvent = {
   actorId?: string
   actorKind?: 'player' | 'enemy' | 'summon' | 'system'
   targetId?: string
+  /** Разрешённые проекцией цели одного накладывания; старые строки имеют только targetId. */
+  targetIds?: string[]
   participantIds?: string[]
   reason?: string
   encounterId?: string
@@ -2546,6 +2568,55 @@ export type CombatActionEconomy = {
   sneak_attack_turn_key?: string
 }
 
+/** Готовые серверные значения: клиент не вычисляет бонусы или истечение эффектов. */
+export type ActorMovementProjection = {
+  base_speed: number
+  current_speed: number
+  movement_spent: number
+  movement_bonus: number
+  movement_remaining: number
+  blocked_reason: string | null
+  effects: Array<{
+    effect_id: string
+    spell_id: string
+    name: string
+    bonus_feet: number
+    applied: boolean
+    started_at_seconds: number
+    expires_at_seconds: number
+    remaining_seconds: number
+  }>
+}
+
+/** Совместимость старой проекции; новая всегда имеет приоритет перед actor.speed. */
+export function actorMovementPresentation(
+  projection: ActorMovementProjection | null | undefined,
+  legacySpeed: number,
+  economy: CombatActionEconomy | null | undefined,
+  combatActive: boolean,
+) {
+  const baseSpeed = projection?.base_speed ?? legacySpeed
+  const currentSpeed = projection?.current_speed ?? legacySpeed
+  const bonus = projection?.movement_bonus ?? Math.max(0, Number(economy?.movement_bonus) || 0)
+  const spent = projection?.movement_spent ?? (economy?.movement_remaining != null
+    ? Math.max(0, legacySpeed - economy.movement_remaining)
+    : economy?.movement_spent ?? (economy?.movement === false ? legacySpeed : 0))
+  const remaining = projection?.movement_remaining ?? Math.max(0, currentSpeed + bonus - spent)
+  const blockedReason = projection?.blocked_reason ?? (projection && currentSpeed === 0 ? 'Скорость равна нулю' : null)
+  return {
+    baseSpeed, currentSpeed, spent, remaining, budget: currentSpeed + bonus, blockedReason,
+    available: projection ? !blockedReason && currentSpeed > 0 && (!combatActive || remaining > 0) : !combatActive || economy?.movement !== false,
+    effects: projection?.effects ?? [],
+  }
+}
+
+/** Это форматирование снимка игровых часов, без Date.now и локального таймера. */
+export function movementEffectTimeLabel(remainingSeconds: number): string {
+  const seconds = Math.max(0, Math.floor(remainingSeconds))
+  const minutes = Math.floor(seconds / 60)
+  return minutes > 0 ? `${minutes} мин${seconds % 60 ? ` ${seconds % 60} с` : ''}` : `${seconds} с`
+}
+
 export type CombatReactionWindow = {
   id: string
   trigger: 'attack-hit' | 'attack-missed' | string
@@ -2622,6 +2693,7 @@ export type CombatMechanics = {
 }
 
 export type GameMechanics = Record<string, unknown> & {
+  movement?: Record<string, ActorMovementProjection>
   combat?: CombatMechanics
   campaign_lifecycle?: {
     schema_version: 1

@@ -102,6 +102,28 @@ const fireball = {
   shape: 'sphere', sizeFeet: 20, durationMs: 480,
 }
 
+test('повтор HTTP/SSE Скорохода и переподключение не повторяют звук одного накладывания на несколько целей', async () => {
+  const context = new FakeContext()
+  const clock = timers()
+  const audio = createCombatAudio({ muted: false, audioContextFactory: () => context,
+    manifest: { version: 1, clips: { cast: { url: '/sfx/longstrider.ogg' } }, profiles: { 'spell:mobility': { cast: ['cast'] } } },
+    loader: async () => ({ duration: .12 }), setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout })
+  await audio.unlock()
+  const cue = { id: 'committed-longstrider:channel', kind: 'channel', actorId: 'caster', targetId: 'caster', targetIds: ['caster', 'ally'], spellId: 'longstrider', school: 'transmutation', channelType: 'cast', durationMs: 400 }
+  assert.ok(audio.schedule(cue))
+  await clock.flush()
+  await new Promise((resolve) => setImmediate(resolve))
+  const firstCount = context.sources.length
+  assert.ok(firstCount > 0)
+  assert.equal(audio.schedule({ ...cue }), null)
+  audio.setVisible(false)
+  audio.setVisible(true)
+  assert.equal(audio.schedule({ ...cue }), null)
+  await clock.flush()
+  assert.equal(context.sources.length, firstCount)
+  await audio.dispose()
+})
+
 test('профиль боя делит запись по семейству, форме cue и фазе', () => {
   const manifest = {
     version: 1,
@@ -436,6 +458,116 @@ test('поздний decode после cancel или mute не создаёт и
   audio.setMuted(true)
   resolvers.shift()?.({ duration: 2 })
   await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
+  assert.equal(context.sources.length, 0)
+  await audio.dispose()
+})
+
+test('явные фазы одного cue не блокируют contact, но повтор фазы дедуплицируется', async () => {
+  const context = new FakeContext()
+  const audio = createCombatAudio({
+    muted: false,
+    audioContextFactory: () => context,
+    manifest: {
+      version: 1,
+      clips: { cast: { url: '/sfx/cast.ogg' }, impact: { url: '/sfx/impact.ogg' } },
+      profiles: { 'attack:bow': { cast: ['cast'], impact: ['impact'] } },
+    },
+    loader: async () => ({ duration: .2 }),
+  })
+  const cue = { ...strike, id: 'direct-phase-1' }
+  await audio.unlock()
+  assert.equal(await audio.playCue(cue, 'start'), true)
+  assert.equal(await audio.playCue(cue, 'contact'), true)
+  assert.equal(await audio.playCue(cue, 'contact'), false)
+  assert.equal(context.sources.length, 2)
+  await audio.dispose()
+})
+
+test('cancel, скрытие и schedule не разрешают поздний direct contact', async () => {
+  const context = new FakeContext()
+  const clock = timers()
+  const audio = createCombatAudio({
+    muted: false,
+    audioContextFactory: () => context,
+    manifest: {
+      version: 1,
+      clips: { cast: { url: '/sfx/cast.ogg' }, impact: { url: '/sfx/impact.ogg' } },
+      profiles: { 'attack:bow': { cast: ['cast'], impact: ['impact'] } },
+    },
+    loader: async () => ({ duration: .2 }),
+    setTimeout: clock.setTimeout,
+    clearTimeout: clock.clearTimeout,
+  })
+  await audio.unlock()
+
+  const cancelled = { ...strike, id: 'direct-cancel' }
+  assert.equal(await audio.playCue(cancelled, 'start'), true)
+  audio.cancel()
+  assert.equal(await audio.playCue(cancelled, 'contact'), false)
+
+  const hidden = { ...strike, id: 'direct-hidden' }
+  assert.equal(await audio.playCue(hidden, 'start'), true)
+  audio.setVisible(false)
+  audio.setVisible(true)
+  assert.equal(await audio.playCue(hidden, 'contact'), false)
+
+  const scheduled = { ...strike, id: 'scheduled-direct' }
+  assert.ok(audio.schedule(scheduled))
+  assert.equal(await audio.playCue(scheduled, 'contact'), false)
+  await audio.dispose()
+})
+
+test('Отмена помнит завершённый звук и разрешает новый предпросмотр', async () => {
+  const context = new FakeContext()
+  const audio = createCombatAudio({
+    muted: false,
+    audioContextFactory: () => context,
+    manifest: {
+      version: 1,
+      clips: { cast: { url: '/sfx/cast.ogg' }, impact: { url: '/sfx/impact.ogg' } },
+      profiles: { 'attack:bow': { cast: ['cast'], impact: ['impact'] } },
+    },
+    loader: async () => ({ duration: .2 }),
+  })
+  await audio.unlock()
+  const cue = { ...strike, id: 'direct-ended-cancel' }
+  assert.equal(await audio.playCue(cue, 'start'), true)
+  context.sources[0].listeners.get('ended')?.()
+  audio.cancel(cue.id)
+  assert.equal(await audio.playCue(cue, 'contact'), false)
+  assert.equal(await audio.playCue(cue, 'contact', { preview: true }), true)
+  await audio.dispose()
+})
+
+test('Отмена подавляет звук, пока декодирование ещё ожидается', async () => {
+  const context = new FakeContext()
+  const resolvers = []
+  const audio = createCombatAudio({
+    muted: false,
+    audioContextFactory: () => context,
+    manifest: {
+      version: 1,
+      clips: { cast: { url: '/sfx/cast.ogg' } },
+      profiles: { 'attack:bow': { cast: ['cast'] } },
+    },
+    loader: async () => new Promise((resolve) => resolvers.push(resolve)),
+  })
+  await audio.unlock()
+
+  const explicit = { ...strike, id: 'direct-pending-explicit' }
+  const first = audio.playCue(explicit, 'start')
+  await Promise.resolve(); await Promise.resolve()
+  audio.cancel(explicit.id)
+  resolvers.shift()?.({ duration: .2 })
+  assert.equal(await first, false)
+  assert.equal(context.sources.length, 0)
+
+  const all = { ...strike, id: 'direct-pending-all' }
+  const second = audio.playCue(all, 'start')
+  await Promise.resolve(); await Promise.resolve()
+  audio.cancel()
+  resolvers.shift()?.({ duration: .2 })
+  assert.equal(await second, false)
   assert.equal(context.sources.length, 0)
   await audio.dispose()
 })

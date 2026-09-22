@@ -273,7 +273,9 @@ test('инициатива, порядок хода и экономика дей
 
   const finished = resolveCommand({ command_type: 'EndCombat', actor_id: 'hero', reason: 'противник сдался' }, spent, { diceService: dice([]) })
   const peaceful = finished.events.reduce(applyGameEvent, spent)
-  assert.equal(finished.events[0].event_type, 'CombatEnded')
+  assert.deepEqual(finished.events.map((event) => event.event_type), ['TimeAdvanced', 'CombatEnded'])
+  assert.equal(finished.events[0].payload.elapsed_seconds, 6, 'последний раунд с атакой оплачивается один раз')
+  assert.equal(peaceful.mechanics.world_time.second_remainder, 6)
   assert.equal(peaceful.mechanics.combat.active, false)
   assert.deepEqual(peaceful.mechanics.combat.initiative, [])
 })
@@ -429,7 +431,8 @@ test('Отход отменяет атаку по возможности, а с�
     disengaged,
     { diceService: dice([]), context: { allowedActorIds: ['hero'], serverAuthoritativeCombat: true } },
   )
-  assert.deepEqual(safeMove.events.map((event) => event.event_type), ['ActorMoved'])
+  assert.deepEqual(safeMove.events.map((event) => event.event_type), ['CombatRoundTimeMarked', 'ActorMoved'])
+  assert.equal(safeMove.events.reduce(applyGameEvent, disengaged).mechanics.combat.round_time_pending, true)
 
   const fragile = opportunityState({ heroHp: 3 })
   const interrupted = resolveCommand(

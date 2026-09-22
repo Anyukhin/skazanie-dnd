@@ -97,7 +97,12 @@ test('когда облик кончается, существо возвращ�
   assert.equal(hero.maxHp, 40, 'настоящий максимум вернулся')
   assert.equal(hero.armor, 16)
   assert.equal(hero.speed, 25)
+  assert.equal(hero.attack_profile, undefined, 'у исходного героя не появляется укус зверя')
   assert.equal(after.mechanics.shapes.ally, undefined, 'облик больше не хранится')
+  assert.equal(after.mechanics.concentration.druid, undefined, 'после уничтожения единственной формы концентрация завершена')
+  const ended = hurt.events.find((event) => event.event_type === 'ConcentrationEnded')
+  assert.equal(ended?.payload.effect_id, shaped.mechanics.shapes.ally.effect_id)
+  assert.deepEqual(ended?.target_ids, ['druid'])
 })
 
 test('исход превращения воспроизводится replay-ем', () => {
@@ -110,4 +115,102 @@ test('исход превращения воспроизводится replay-е
     options(dice()),
   )
   assert.deepEqual(replayEvents(state, [...cast.events, ...hurt.events]), replayEvents(shaped, hurt.events))
+})
+
+test('потеря концентрации возвращает цель из формы', () => {
+  const state = shapeField()
+  const cast = polymorph(state)
+  const shaped = replayEvents(state, cast.events)
+  assert.ok(shaped.mechanics.concentration.druid, 'заклинатель концентрируется')
+  const ended = resolveCommand(
+    authoritative({ command_type: 'EndConcentration', actor_id: 'druid', reason: 'failed-save' }),
+    shaped,
+    options(dice()),
+  )
+  const after = replayEvents(shaped, ended.events)
+  const hero = heroOf(after, 'ally')
+  assert.equal(hero.maxHp, 40, 'после окончания концентрации возвращается максимум исходного облика')
+  assert.equal(hero.hp, 9, 'возвращаются исходные хиты')
+  assert.equal(hero.armor, 16, 'возвращается КД исходного облика')
+  assert.equal(hero.speed, 25, 'возвращается скорость исходного облика')
+  assert.equal(hero.attack_profile, undefined, 'у исходного героя не появляется укус зверя')
+  assert.equal(after.mechanics.shapes.ally, undefined, 'форма удаляется')
+})
+
+test('возврат формы сохраняет исходный attack_profile, если он был', () => {
+  const state = shapeField()
+  const originalProfile = { name: 'Меч', damage_expression: '1d8+3', damage_type: 'slashing' }
+  state.players.find((hero) => hero.id === 'ally').attack_profile = originalProfile
+  const shaped = replayEvents(state, polymorph(state).events)
+  const ended = resolveCommand(
+    authoritative({ command_type: 'EndConcentration', actor_id: 'druid', reason: 'failed-save' }),
+    shaped,
+    options(dice()),
+  )
+  const after = replayEvents(shaped, ended.events)
+  assert.deepEqual(heroOf(after, 'ally').attack_profile, originalProfile)
+})
+
+test('ShapeReverted сохраняет исходный attack_profile, если форма уничтожена', () => {
+  const state = shapeField()
+  const originalProfile = { name: 'Меч', damage_expression: '1d8+3', damage_type: 'slashing' }
+  state.players.find((hero) => hero.id === 'ally').attack_profile = originalProfile
+  const shaped = replayEvents(state, polymorph(state).events)
+  const hurt = resolveCommand(
+    authoritative({ command_type: 'ApplyDamage', actor_id: 'ogre', target_id: 'ally', amount: 30, damage_type: 'bludgeoning' }),
+    shaped,
+    options(dice()),
+  )
+  const after = replayEvents(shaped, hurt.events)
+  assert.deepEqual(heroOf(after, 'ally').attack_profile, originalProfile)
+})
+
+test('legacy ShapeChanged без effect_id остаётся replay-совместимым', () => {
+  const state = shapeField()
+  const legacy = {
+    event_type: 'ShapeChanged', actor_id: 'druid', target_ids: ['ally'],
+    payload: {
+      spell_id: 'polymorph',
+      form: { name: 'Старый паук', hp: 26, armor: 14, speed: 30, attack_profile: { name: 'Укус', damage_expression: '1d8+3' } },
+    },
+  }
+  const replayed = replayEvents(state, [legacy])
+  assert.equal(replayed.mechanics.shapes.ally.effect_id, undefined)
+  assert.equal(heroOf(replayed, 'ally').attack_profile.name, 'Укус')
+  assert.deepEqual(replayEvents(state, [legacy]), replayed)
+  const reverted = replayEvents(state, [legacy, {
+    event_type: 'ShapeReverted', actor_id: 'druid', target_ids: ['ally'], payload: { excess_damage: 0 },
+  }])
+  assert.equal(heroOf(reverted, 'ally').hp, 9)
+  assert.equal(heroOf(reverted, 'ally').attack_profile.name, 'Укус', 'исторический контракт не переписывает старый результат replay')
+})
+
+test('уничтожение старой формы не снимает новую концентрацию того же заклинателя', () => {
+  const state = shapeField()
+  const shaped = replayEvents(state, polymorph(state).events)
+  shaped.mechanics.concentration.druid = { effect_id: 'newer-effect' }
+  const hurt = resolveCommand(
+    authoritative({ command_type: 'ApplyDamage', actor_id: 'ogre', target_id: 'ally', amount: 30, damage_type: 'bludgeoning' }),
+    shaped,
+    options(dice()),
+  )
+  const after = replayEvents(shaped, hurt.events)
+  assert.equal(after.mechanics.concentration.druid.effect_id, 'newer-effect')
+  assert.equal(hurt.events.some((event) => event.event_type === 'ConcentrationEnded'), false)
+})
+
+test('уничтожение одной из форм общего эффекта сохраняет вторую и концентрацию', () => {
+  const state = shapeField()
+  const shaped = replayEvents(state, polymorph(state).events)
+  shaped.mechanics.shapes.ogre = structuredClone(shaped.mechanics.shapes.ally)
+  const effectId = shaped.mechanics.concentration.druid.effect_id
+  const hurt = resolveCommand(
+    authoritative({ command_type: 'ApplyDamage', actor_id: 'ogre', target_id: 'ally', amount: 30, damage_type: 'bludgeoning' }),
+    shaped,
+    options(dice()),
+  )
+  const after = replayEvents(shaped, hurt.events)
+  assert.equal(after.mechanics.concentration.druid.effect_id, effectId)
+  assert.ok(after.mechanics.shapes.ogre)
+  assert.equal(after.mechanics.shapes.ally, undefined)
 })

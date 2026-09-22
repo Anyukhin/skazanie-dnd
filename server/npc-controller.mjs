@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import { actorPosition, findActor, isEnemyActor, isLivingActor, shortestTacticalPath } from './rules-engine.mjs'
+import { actorPosition, findActor, isEnemyActor, isLivingActor, shortestTacticalPath, movementForActor } from './rules-engine.mjs'
 import { footprintDistanceFeet } from './actor-footprint.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'
 import { buildDataOnlyContext } from './security.mjs'
@@ -106,8 +106,7 @@ function farthestReachableDestination(state, enemyId) {
   const enemy = findActor(state, enemyId)
   const from = actorPosition(state, enemyId)
   if (!enemy || !from) return null
-  const speed = Number(enemy.speed)
-  const maximumSteps = Math.max(1, Math.floor((Number.isFinite(speed) ? speed : 30) / 5))
+  const maximumSteps = Math.max(0, Math.floor(movementForActor(state, enemyId).movement_remaining / 5))
   const heroes = (state.players ?? []).filter(isLivingActor).map((hero) => ({
     actor: hero,
     at: actorPosition(state, actorId(hero)),

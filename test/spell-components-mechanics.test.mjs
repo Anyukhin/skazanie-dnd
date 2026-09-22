@@ -38,6 +38,16 @@ function cast(state, spellId = 'magic-missile', values = [3], extra = {}) {
 const after = (state, events) => events.reduce(applyGameEvent, state)
 const availability = (state, id) => spellComponentAvailabilityFor(state, state.players[0], combatSpellFor(state.players[0], id, { rulesetId: state.ruleset_id }))
 
+test('отчисления не заменяются кошельком или сумкой компонентов до реализации отдельного платежа', () => {
+  for (const id of ['jims-magic-missile', 'jims-glowing-coin', 'gift-of-gab']) {
+    const state = fixture({ known: [id], inventory: [item('component-pouch')] })
+    const before = structuredClone(state)
+    assert.equal(availability(state, id).code, 'SPELL_SPECIAL_COMPONENT_UNSUPPORTED', id)
+    assert.throws(() => cast(state, id, []), error => error.code === (id === 'gift-of-gab' ? 'RULING_REQUIRED' : 'MECHANICS_NOT_VERIFIED'), id)
+    assert.deepEqual(state, before, 'отказ не тратит ни деньги, ни ячейку, ни действие')
+  }
+})
+
 test('Magic Missile требует V/S, но не требует вещи или оплаты компонента', () => {
   const state = fixture()
   const result = cast(state)
