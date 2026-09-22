@@ -40,6 +40,33 @@ function map(hidden = []) {
 }
 const actors = [{ id: 'mage', x: 1, y: 6 }, { id: 'target', x: 6, y: 6 }]
 
+test('Скороход, Прыжок и Ускорение имеют разные движущиеся объекты в 3D', async () => {
+  const { decodeTacticalMap } = await import(pathToFileURL(join(buildDir, 'src/tactical-map-client.mjs')).href)
+  const board = decodeTacticalMap(map())
+  const signatures = []
+  for (const spellId of ['longstrider', 'jump', 'haste']) {
+    const effect = createSpellEffect3D({ id: spellId, kind: 'channel', actorId: 'mage', targetId: 'mage', targetIds: ['mage'],
+      spellId, school: 'transmutation', channelType: 'cast', durationMs: 500 }, actors, board)
+    assert.ok(effect)
+    const geometryAt = (progress) => {
+      effect.update(progress)
+      const objects = []
+      effect.group.traverse((object) => {
+        if (!object.geometry) return
+        objects.push({ type: object.geometry.type, visible: object.visible, position: object.position.toArray(),
+          vertices: [...(object.geometry.getAttribute('position')?.array ?? [])] })
+      })
+      return JSON.stringify(objects)
+    }
+    const early = geometryAt(.2)
+    const late = geometryAt(.7)
+    assert.notEqual(early, late, `${spellId}: эффект должен двигаться`)
+    signatures.push(late)
+    effect.dispose()
+  }
+  assert.equal(new Set(signatures).size, 3)
+})
+
 test('Скороход рисует один подтверждённый cue у всех видимых целей, не подменяет скрытую цель заклинателем', async () => {
   const { decodeTacticalMap } = await import(pathToFileURL(join(buildDir, 'src/tactical-map-client.mjs')).href)
   const cue = { id: 'longstrider-cast', kind: 'channel', actorId: 'mage', targetId: 'mage', targetIds: ['mage', 'target', 'missing'], spellId: 'longstrider', school: 'transmutation', channelType: 'cast', durationMs: 400 }

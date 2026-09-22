@@ -114,6 +114,17 @@ test('self-линия останавливается перед первой н�
   })), ['2,1', '3,1'])
 })
 
+test('предпросмотр стены чётной длины не добавляет лишние пять футов', () => {
+  for (const lengthFeet of [30, 50, 60]) {
+    const cells = geometry.areaCells({
+      shape: 'line', origin: { x: 2, y: 10 }, target: { x: 10, y: 10 },
+      originMode: 'point', sizeFeet: lengthFeet,
+    })
+    assert.equal(cells.length, lengthFeet / 5)
+    assert.equal(new Set(keys(cells)).size, cells.length)
+  }
+})
+
 test('point-cube трактует размер как половину стороны и даёт ровное число клеток', () => {
   assert.deepEqual(keys(geometry.areaCells({
     shape: 'cube',

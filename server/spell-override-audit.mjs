@@ -144,6 +144,8 @@ export function auditSpellOverrides() {
     // --- формулы обязаны разбираться, иначе карточка падает в бою ---
     for (const [value, label] of [
       [override.damage, 'урон'], [override.healing, 'лечение'],
+      [override.saveDamage, 'урон при успешном спасброске'], [override.bonusDamage, 'дополнительный урон'],
+      [override.delayedDamage, 'отложенный урон'], [override.recurringDamage, 'повторный урон'],
       [override.hitPointPoolDice, 'пул хитов'], [override.temporaryHpDice, 'временные хиты'],
     ]) {
       const problem = diceProblem(value, label, id)

@@ -512,6 +512,9 @@ test('срок состояния подписан по-русски, а нез�
   )
   // Незнакомый срок теряться не должен: показать сырым честнее, чем скрыть.
   assert.equal(tacticalUi.conditionPresentation({ id: 'bless', duration: 'until-dawn' }).duration, 'until-dawn')
+  assert.equal(tacticalUi.conditionPresentation({ id: 'longstrider', duration: 'seconds:3600' }).duration, '1 ч')
+  assert.equal(tacticalUi.conditionPresentation({ id: 'longstrider', duration: 'seconds:120' }).duration, '2 мин')
+  assert.equal(tacticalUi.conditionPresentation({ id: 'longstrider', duration: 'seconds:6' }).duration, '6 с')
 })
 
 test('клиентская длящаяся point-cube держит явную сторону 20 футов', () => {

@@ -64,7 +64,7 @@ export type SpellSoundFamily =
   | 'invisibility' | 'flight' | 'mobility' | 'transmutation' | 'communication'
   | 'earth' | 'wind' | 'water' | 'swarm' | 'weapon' | 'utility' | 'silence'
 
-export type SpellVisualVariant = 'spectral-hand' | 'minor-tricks' | 'borrowed-knowledge' | 'secret-chest' | 'spelljamming-helm' | 'silence' | 'cancellation' | 'soul-transfer'
+export type SpellVisualVariant = 'spectral-hand' | 'minor-tricks' | 'borrowed-knowledge' | 'secret-chest' | 'spelljamming-helm' | 'silence' | 'cancellation' | 'soul-transfer' | 'mobility-trail' | 'mobility-arc' | 'mobility-haste'
 
 export type SpellSchoolStyle = {
   label: string
@@ -447,6 +447,9 @@ const SPELL_VISUAL_VARIANTS: Readonly<Record<string, SpellVisualVariant>> = {
   'dispel-magic': 'cancellation',
   'dispel-evil-and-good': 'cancellation',
   'magic-jar': 'soul-transfer',
+  longstrider: 'mobility-trail',
+  jump: 'mobility-arc',
+  haste: 'mobility-haste',
 }
 
 const SOUND_FAMILY_IDS: Readonly<Record<string, SpellSoundFamily>> = {
@@ -733,6 +736,9 @@ const VARIANT_NOTES: Readonly<Record<SpellVisualVariant, string>> = {
   silence: 'Тишина: глухой сжимающийся контур без взрывного акцента.',
   cancellation: 'Отмена магии: короткий знак прерывания без урона и взрыва.',
   'soul-transfer': 'Перенос души: замкнутый контур связи тела и сосуда.',
+  'mobility-trail': 'Скороход: короткий след шагов у ног.',
+  'mobility-arc': 'Прыжок: читаемая дуга подъёма.',
+  'mobility-haste': 'Ускорение: несколько тактов быстрого шлейфа.',
 }
 
 function spellFamilyNote(spellIdValue: unknown, hints: SpellProfileHints, family: SpellEffectFamily) {
@@ -1362,6 +1368,38 @@ function drawFamilyGlyph(
     context.restore()
     return
   }
+  if (style.visualVariant === 'mobility-trail') {
+    context.globalAlpha = Math.min(1, context.globalAlpha * 1.35)
+    for (let index = 0; index < 4; index += 1) {
+      const offset = (index % 2 ? 1 : -1) * radius * .35
+      const y = center.y + radius * (1.35 - index * .55)
+      context.moveTo(center.x + offset + radius * .23, y)
+      context.arc(center.x + offset, y, radius * .23, 0, Math.PI * 2)
+    }
+    context.stroke()
+    context.restore()
+    return
+  }
+  if (style.visualVariant === 'mobility-arc') {
+    context.arc(center.x, center.y + radius * .42, radius * 1.04, Math.PI * 1.16, Math.PI * 1.84)
+    context.moveTo(center.x + radius * .72, center.y - radius * .18)
+    context.lineTo(center.x + radius * 1.02, center.y - radius * .02)
+    context.lineTo(center.x + radius * .76, center.y + radius * .18)
+    context.stroke()
+    context.restore()
+    return
+  }
+  if (style.visualVariant === 'mobility-haste') {
+    for (let index = 0; index < 3; index += 1) {
+      const y = center.y + (index - 1) * radius * .48
+      const start = center.x - radius * (.92 - index * .12)
+      context.moveTo(start, y)
+      context.lineTo(start + radius * 1.12, y - radius * .16)
+    }
+    context.stroke()
+    context.restore()
+    return
+  }
   context.beginPath()
   if (family === 'fire') {
     context.moveTo(center.x, center.y - radius * 1.5)
@@ -1443,6 +1481,14 @@ function drawFamilyGlyph(
   } else if (family === 'wind' || family === 'water') {
     context.arc(center.x - radius * .25, center.y, radius * .8, Math.PI * .15, Math.PI * 1.35)
     context.arc(center.x + radius * .25, center.y, radius * .8, -Math.PI * .35, Math.PI * .85)
+    context.stroke()
+  } else if (family === 'mobility') {
+    // Ускорение и прыжок читаются как направленное движение, а не как щит.
+    context.moveTo(center.x - radius * 1.05, center.y + radius * .62)
+    context.lineTo(center.x, center.y - radius * .82)
+    context.lineTo(center.x + radius * 1.05, center.y + radius * .62)
+    context.moveTo(center.x, center.y - radius * .82)
+    context.lineTo(center.x, center.y + radius * 1.12)
     context.stroke()
   } else if (family === 'swarm') {
     for (let index = 0; index < 3; index += 1) {

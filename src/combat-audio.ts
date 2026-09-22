@@ -390,6 +390,9 @@ export function createCombatAudio(options: {
   const playedKeys = new Set<string>()
   const pendingKeys = new Set<string>()
   const seenCueIds = new Set<string>()
+  const scheduledCueIds = new Set<string>()
+  const cancelledCueIds = new Set<string>()
+  const directCueIds = new Set<string>()
   const active = new Map<AudioBufferSourceNode, string>()
   const buffers = new Map<string, AudioBuffer>()
   const loading = new Map<string, Promise<AudioBuffer | null>>()
@@ -529,7 +532,7 @@ export function createCombatAudio(options: {
   ) => {
     if (!isAudible(cue)) return false
     const key = `${cue.id}:${phase}`
-    if (dedupe && !options.preview && (seenCueIds.has(cue.id) || playedKeys.has(key) || pendingKeys.has(key))) return false
+    if (dedupe && !options.preview && (scheduledCueIds.has(cue.id) || cancelledCueIds.has(cue.id) || playedKeys.has(key) || pendingKeys.has(key))) return false
     if (dedupe && !options.preview) {
       // Dedupe ограничен последними 2048 подтверждёнными cue: этого хватает
       // для SSE/battle-log окна и не оставляет память расти всю сессию.
@@ -545,6 +548,8 @@ export function createCombatAudio(options: {
 
   const cancel = (id?: string) => {
     const cueIds = new Set<string>()
+    if (id) cueIds.add(id)
+    else for (const cueId of directCueIds) cueIds.add(cueId)
     for (const [scheduleId, entry] of scheduled) {
       if (id && scheduleId !== id && entry.cueId !== id) continue
       cueIds.add(entry.cueId)
@@ -554,9 +559,11 @@ export function createCombatAudio(options: {
     }
     for (const [source, cueId] of active) {
       if (id && cueId !== id && !cueIds.has(cueId)) continue
+      cueIds.add(cueId)
       try { source.stop(context?.currentTime ?? 0) } catch {}
       active.delete(source)
     }
+    for (const cueId of cueIds) remember(cancelledCueIds, cueId)
   }
 
   const setVisibleState = (value: boolean) => {
@@ -610,7 +617,10 @@ export function createCombatAudio(options: {
       // Два источника одной записи (battle event и последующая battle log) —
       // одна реплика. preview имеет отдельный namespace и не блокирует событие.
       if (!cueOptions.preview && seenCueIds.has(cue.id)) return null
-      if (!cueOptions.preview) remember(seenCueIds, cue.id)
+      if (!cueOptions.preview) {
+        remember(seenCueIds, cue.id)
+        remember(scheduledCueIds, cue.id)
+      }
       const id = `combat-audio-${++scheduleSequence}`
       const entry = { cueId: cue.id, timers: new Set<CombatAudioTimer>(), pending: 0, cancelled: false }
       const startedAt = monotonicNowMs()
@@ -645,7 +655,8 @@ export function createCombatAudio(options: {
     playCue(cue, phase, cueOptions = {}) {
       if (phase === undefined) return Promise.resolve(Boolean(this.schedule(cue, cueOptions)))
       if (!this.isUnlocked()) return Promise.resolve(false)
-      return play(cue, phase, cueOptions)
+      if (!cueOptions.preview) remember(directCueIds, cue.id)
+      return play(cue, phase, cueOptions, true, () => cueOptions.preview || !cancelledCueIds.has(cue.id))
     },
     async preload(cues) {
       if (!this.isUnlocked() || disposed) return
@@ -703,6 +714,9 @@ export function createCombatAudio(options: {
       bufferOrder.length = 0
       playedKeys.clear()
       seenCueIds.clear()
+      scheduledCueIds.clear()
+      cancelledCueIds.clear()
+      directCueIds.clear()
     },
   }
 }

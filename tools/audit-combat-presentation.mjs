@@ -533,7 +533,7 @@ async function auditCombatPresentation(options = {}) {
         id,
         level: catalogSpell.level,
         mechanicsSupport: visual?.mechanicsSupport,
-        visualProfile: { family: profile.family, familyNote: profile.familyNote, soundFamily: profile.soundFamily, kind: profile.kind, areaShape: profile.areaShape, sizeFeet: profile.sizeFeet },
+        visualProfile: { family: profile.family, familyNote: profile.familyNote, soundFamily: profile.soundFamily, visualVariant: profile.visualVariant, kind: profile.kind, areaShape: profile.areaShape, areaOrigin: profile.areaOrigin, areaSideFeet: profile.areaSideFeet, sizeFeet: profile.sizeFeet, radiusFeet: profile.radiusFeet, projectileCount: profile.projectileCount, chain: profile.chain, requiresWeaponAttack: profile.requiresWeaponAttack, spreadsAroundCorners: profile.spreadsAroundCorners },
         cue: cue ? { kind: cue.kind, durationMs: cue.durationMs, renderFamily: profile.family } : null,
         sound: { profileKey: expectedProfileKey, intentionalSilence, phases: plan.map((entry) => ({ phase: entry.phase, atMs: entry.atMs, clipIds: entry.clipIds, urls: entry.urls })) },
       }
@@ -628,11 +628,29 @@ async function auditCombatPresentation(options = {}) {
     const integration = [...auditIntegration(root), ...await auditAudioRuntime(audio, manifest)]
     for (const check of integration) if (!check.ok) issues.push(issue(`integration.${check.id}`, `Интеграционная проверка ${check.id} не подтверждена`, { evidence: check.evidence }))
     const supportCounts = Object.fromEntries([...new Set(spellRows.map((row) => row.mechanicsSupport).filter(Boolean))].map((status) => [status, spellRows.filter((row) => row.mechanicsSupport === status).length]))
+    // Совпадение профилей выявляет кандидатов на визуальные дубли, но ни
+    // различие метаданных, ни наличие renderer-а не доказывает качество кадра.
+    const visualGroups = new Map()
+    for (const row of spellRows) {
+      const { familyNote, soundFamily, ...visual } = row.visualProfile
+      const palette = spell.spellEffectPalette(row.id)
+      const signature = JSON.stringify({ ...visual, primary: palette.primary, secondary: palette.secondary, fill: palette.fill, behavior: palette.behavior, cue: row.cue })
+      if (!visualGroups.has(signature)) visualGroups.set(signature, [])
+      visualGroups.get(signature).push(row.id)
+    }
+    const sharedVisualProfiles = [...visualGroups.values()].filter((ids) => ids.length > 1)
+      .sort((left, right) => right.length - left.length || left[0].localeCompare(right[0]))
     const report = {
       version: 1,
       ok: issues.length === 0,
       counts: { spells: spellRows.length, weapons: weaponRows.filter((row) => row.canonical).length, attackModels: weaponRows.length, equipmentModels: equipmentRows.length, actorModels: actorRows.length, audioClips: audioResult.clips.size, unsupportedSpellMechanics: (supportCounts.heuristic ?? 0) + (supportCounts['ruling-only'] ?? 0) },
       mechanicsSupport: supportCounts,
+      presentationReview: {
+        status: 'pending',
+        basis: 'Сравнение настроенных профилей; просмотр 2D/3D, выбор целей и прослушивание этим аудитом не выполняются.',
+        configuredVisualProfiles: visualGroups.size,
+        sharedVisualProfiles,
+      },
       spells: spellRows,
       weapons: weaponRows,
       equipmentModels: equipmentRows,
@@ -655,6 +673,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const output = process.argv.includes('--json') ? JSON.stringify(report, null, 2) : [
       `Combat presentation audit: ${report.ok ? 'PASS' : 'FAIL'}`,
       `spells=${report.counts.spells}, weapons=${report.counts.weapons}, actorModels=${report.counts.actorModels}, audioClips=${report.counts.audioClips}`,
+      `Проверка структуры: ${report.ok ? 'пройдена' : 'ошибки'}; визуальная и звуковая приёмка: pending. Профилей: ${report.presentationReview.configuredVisualProfiles}; групп с общим профилем: ${report.presentationReview.sharedVisualProfiles.length}.`,
       ...report.issues.map((entry) => `- ${entry.code}: ${entry.message}`),
     ].join('\n')
     process.stdout.write(`${output}\n`)

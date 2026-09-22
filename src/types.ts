@@ -388,6 +388,8 @@ export type CombatSpell = {
   automaticHit?: boolean
   projectileCount?: number
   upcastProjectilesPerLevel?: number
+  /** Точка сначала фиксируется, затем игрок явно выбирает существ внутри области. */
+  selectTargetsInArea?: boolean
   maxTargets?: number
   /** Максимальный разлёт выбранных целей; проверяет сервер, UI только предупреждает. */
   maxTargetSeparationFeet?: number

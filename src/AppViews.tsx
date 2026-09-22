@@ -1204,7 +1204,7 @@ export function AdminView({ account, state, onUpdateWorld, onAssembleEncounter, 
 }
 
 export function ToggleRow({ icon, title, description, value, onChange }: { icon: React.ReactNode; title: string; description: string; value: boolean; onChange: () => void }) {
-  return <button className="setting-row" onClick={onChange}><span className="setting-icon">{icon}</span><span><b>{title}</b><small>{description}</small></span><i className={value ? 'on' : ''}><u /></i></button>
+  return <button className="setting-row" onClick={onChange} aria-pressed={value}><span className="setting-icon">{icon}</span><span><b>{title}</b><small>{description}</small></span><i className={value ? 'on' : ''}><u /></i></button>
 }
 
 export function AtmosphereRange({ label, description, value, onChange }: { label: string; description: string; value: number; onChange: (value: number) => void }) {
@@ -1216,9 +1216,10 @@ export function AtmosphereRange({ label, description, value, onChange }: { label
   </label>
 }
 
-export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiError, uiScale, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, atmosphereSettings, combatEffectsVolume, onCombatEffectsVolumeChange, notificationPermission, voiceMode, voiceSupported, actionHintsEnabled, onCampaignAiChange, onCampaignRulesetChange, onUiScaleChange, onAutoAttackRollChange, onScenicBackdropChange, onBoardLightingChange, onCombatAnimationsChange, onAmbientVolumeChange, onAtmosphereMutedChange, onRequestNotifications, onVoiceModeChange, onActionHintsEnabledChange }: {
+export function SettingsView({ health, campaignAi, currentRulesetId, campaignAiBusy, campaignAiError, uiScale, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, atmosphereSettings, combatEffectsVolume, onCombatEffectsVolumeChange, notificationPermission, voiceMode, voiceSupported, actionHintsEnabled, onCampaignAiChange, onCampaignRulesetChange, onUiScaleChange, onAutoAttackRollChange, onScenicBackdropChange, onBoardLightingChange, onCombatAnimationsChange, onAmbientVolumeChange, onAtmosphereMutedChange, onRequestNotifications, onVoiceModeChange, onActionHintsEnabledChange }: {
   health: AiHealth | null
   campaignAi: CampaignAiSettingsResponse | null
+  currentRulesetId?: string | null
   campaignAiBusy: boolean
   campaignAiError: string
   uiScale: number
@@ -1257,6 +1258,12 @@ export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiErr
   }
 
   const hasPreset = UI_SCALE_PRESETS.includes(uiScale)
+  const rulesetId = campaignAi?.ruleset.current.id ?? currentRulesetId ?? health?.rulesetId ?? 'srd_5_2_1'
+  const availableRulesets = campaignAi?.ruleset.available ?? health?.installedRulesets ?? RULESET_FALLBACK
+  const rulesetOptions = availableRulesets.some((profile) => profile.id === rulesetId)
+    ? availableRulesets
+    : [...availableRulesets, ...RULESET_FALLBACK.filter((profile) => profile.id === rulesetId)]
+  const currentRuleset = campaignAi?.ruleset.current ?? rulesetOptions.find((profile) => profile.id === rulesetId)
 
 
   return (
@@ -1268,14 +1275,14 @@ export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiErr
           <label className="ui-scale-setting ruleset-setting">
             <span><b>Правила кампании</b><small>{campaignAi?.ruleset.locked ? 'Редакция зафиксирована после первого игрового события' : 'До первого игрового события владелец может изменить редакцию'}</small></span>
             <select
-              value={campaignAi?.ruleset.current.id ?? health?.rulesetId ?? 'srd_5_2_1'}
+              value={rulesetId}
               disabled={!campaignAi?.ruleset.canChange || campaignAiBusy}
               onChange={(event) => onCampaignRulesetChange(event.currentTarget.value as RulesetProfileDescriptor['id'])}
               aria-label="Правила кампании"
             >
-              {(campaignAi?.ruleset.available ?? health?.installedRulesets ?? RULESET_FALLBACK).map((profile) => <option key={profile.id} value={profile.id}>{profile.label} · {profile.mechanicsStatus === 'partial' ? 'частичное покрытие' : profile.mechanicsStatus}</option>)}
+              {rulesetOptions.map((profile) => <option key={profile.id} value={profile.id}>{profile.label} · {profile.mechanicsStatus === 'partial' ? 'частичное покрытие' : profile.mechanicsStatus}</option>)}
             </select>
-            {campaignAi?.ruleset.current.availability === 'preview' && <small className="secure-note"><Shield size={13} />Редакция 2014 доступна как честно ограниченный preview; текущие ограничения перечислены в выборе мира.</small>}
+            {currentRuleset?.availability === 'preview' && <small className="secure-note"><Shield size={13} />Редакция 2014 доступна как честно ограниченный preview; текущие ограничения перечислены в выборе мира.</small>}
           </label>
           <label className="ui-scale-setting">
             <span><b>Модель для группы</b><small>Выбранная модель применяется к новым ответам этой кампании</small></span>
@@ -1321,7 +1328,7 @@ export function SettingsView({ health, campaignAi, campaignAiBusy, campaignAiErr
           {!campaignAi?.canManage && campaignAi && <p className="secure-note"><Lock size={14} />Изменять общие настройки ИИ может владелец кампании или администратор.</p>}
           {campaignAiError && <p className="admin-error" role="alert">{campaignAiError}</p>}
           <details className="settings-diagnostics"><summary><ShieldCheck size={15} />Диагностика подключения <ChevronDown size={14} /></summary>
-            <div className="provider-info"><span>ПРОВАЙДЕР<strong>{health?.provider ?? 'RouterAI'}</strong></span><span>МОДЕЛЬ<strong>{health?.model ?? 'Проверка подключения…'}</strong></span><span>МЕХАНИКА<strong>Единый серверный движок</strong></span><span>RULESET<strong>{campaignAi?.ruleset.current.label ?? health?.rulesetId ?? 'не выбран'}</strong></span></div>
+            <div className="provider-info"><span>ПРОВАЙДЕР<strong>{health?.provider ?? 'RouterAI'}</strong></span><span>МОДЕЛЬ<strong>{health?.model ?? 'Проверка подключения…'}</strong></span><span>МЕХАНИКА<strong>Единый серверный движок</strong></span><span>RULESET<strong>{currentRuleset?.label ?? health?.rulesetId ?? 'не выбран'}</strong></span></div>
             <div className="tools-list"><small>ДОСТУПНЫЕ ИНСТРУМЕНТЫ</small><div>{(health?.tools ?? ['roll_check', 'reveal_area', 'update_objective', 'spawn_entity', 'grant_item']).map((tool) => <span key={tool}><Check size={11} />{tool}</span>)}</div></div>
             <p className="secure-note"><Shield size={14} />Секреты остаются на сервере и не передаются в браузер.</p>
           </details>

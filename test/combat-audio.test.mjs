@@ -461,3 +461,113 @@ test('поздний decode после cancel или mute не создаёт и
   assert.equal(context.sources.length, 0)
   await audio.dispose()
 })
+
+test('явные фазы одного cue не блокируют contact, но повтор фазы дедуплицируется', async () => {
+  const context = new FakeContext()
+  const audio = createCombatAudio({
+    muted: false,
+    audioContextFactory: () => context,
+    manifest: {
+      version: 1,
+      clips: { cast: { url: '/sfx/cast.ogg' }, impact: { url: '/sfx/impact.ogg' } },
+      profiles: { 'attack:bow': { cast: ['cast'], impact: ['impact'] } },
+    },
+    loader: async () => ({ duration: .2 }),
+  })
+  const cue = { ...strike, id: 'direct-phase-1' }
+  await audio.unlock()
+  assert.equal(await audio.playCue(cue, 'start'), true)
+  assert.equal(await audio.playCue(cue, 'contact'), true)
+  assert.equal(await audio.playCue(cue, 'contact'), false)
+  assert.equal(context.sources.length, 2)
+  await audio.dispose()
+})
+
+test('cancel, скрытие и schedule не разрешают поздний direct contact', async () => {
+  const context = new FakeContext()
+  const clock = timers()
+  const audio = createCombatAudio({
+    muted: false,
+    audioContextFactory: () => context,
+    manifest: {
+      version: 1,
+      clips: { cast: { url: '/sfx/cast.ogg' }, impact: { url: '/sfx/impact.ogg' } },
+      profiles: { 'attack:bow': { cast: ['cast'], impact: ['impact'] } },
+    },
+    loader: async () => ({ duration: .2 }),
+    setTimeout: clock.setTimeout,
+    clearTimeout: clock.clearTimeout,
+  })
+  await audio.unlock()
+
+  const cancelled = { ...strike, id: 'direct-cancel' }
+  assert.equal(await audio.playCue(cancelled, 'start'), true)
+  audio.cancel()
+  assert.equal(await audio.playCue(cancelled, 'contact'), false)
+
+  const hidden = { ...strike, id: 'direct-hidden' }
+  assert.equal(await audio.playCue(hidden, 'start'), true)
+  audio.setVisible(false)
+  audio.setVisible(true)
+  assert.equal(await audio.playCue(hidden, 'contact'), false)
+
+  const scheduled = { ...strike, id: 'scheduled-direct' }
+  assert.ok(audio.schedule(scheduled))
+  assert.equal(await audio.playCue(scheduled, 'contact'), false)
+  await audio.dispose()
+})
+
+test('Отмена помнит завершённый звук и разрешает новый предпросмотр', async () => {
+  const context = new FakeContext()
+  const audio = createCombatAudio({
+    muted: false,
+    audioContextFactory: () => context,
+    manifest: {
+      version: 1,
+      clips: { cast: { url: '/sfx/cast.ogg' }, impact: { url: '/sfx/impact.ogg' } },
+      profiles: { 'attack:bow': { cast: ['cast'], impact: ['impact'] } },
+    },
+    loader: async () => ({ duration: .2 }),
+  })
+  await audio.unlock()
+  const cue = { ...strike, id: 'direct-ended-cancel' }
+  assert.equal(await audio.playCue(cue, 'start'), true)
+  context.sources[0].listeners.get('ended')?.()
+  audio.cancel(cue.id)
+  assert.equal(await audio.playCue(cue, 'contact'), false)
+  assert.equal(await audio.playCue(cue, 'contact', { preview: true }), true)
+  await audio.dispose()
+})
+
+test('Отмена подавляет звук, пока декодирование ещё ожидается', async () => {
+  const context = new FakeContext()
+  const resolvers = []
+  const audio = createCombatAudio({
+    muted: false,
+    audioContextFactory: () => context,
+    manifest: {
+      version: 1,
+      clips: { cast: { url: '/sfx/cast.ogg' } },
+      profiles: { 'attack:bow': { cast: ['cast'] } },
+    },
+    loader: async () => new Promise((resolve) => resolvers.push(resolve)),
+  })
+  await audio.unlock()
+
+  const explicit = { ...strike, id: 'direct-pending-explicit' }
+  const first = audio.playCue(explicit, 'start')
+  await Promise.resolve(); await Promise.resolve()
+  audio.cancel(explicit.id)
+  resolvers.shift()?.({ duration: .2 })
+  assert.equal(await first, false)
+  assert.equal(context.sources.length, 0)
+
+  const all = { ...strike, id: 'direct-pending-all' }
+  const second = audio.playCue(all, 'start')
+  await Promise.resolve(); await Promise.resolve()
+  audio.cancel()
+  resolvers.shift()?.({ duration: .2 })
+  assert.equal(await second, false)
+  assert.equal(context.sources.length, 0)
+  await audio.dispose()
+})

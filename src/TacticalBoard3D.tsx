@@ -911,6 +911,10 @@ export default function TacticalBoard3D(props: Props) {
         event.preventDefault()
         event.stopPropagation()
         if (event.repeat) return
+        if (event.key === 'Enter' && latest.current.onConfirmAiming) {
+          latest.current.onConfirmAiming()
+          return
+        }
         const node = latest.current.cells.find((entry) => `${entry.x},${entry.y}` === hoverKey && entry.interactive)
         const [x, y] = hoverKey.split(',').map(Number)
         const actor = latest.current.animationActors?.find((candidate) => {

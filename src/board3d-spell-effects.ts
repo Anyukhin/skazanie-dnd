@@ -858,10 +858,24 @@ function createChannel(
     ? new THREE.Mesh(track(new THREE.TorusGeometry(.48, .018, 5, detail === 'full' ? 20 : 12)), accentMaterial)
     : null
   if (familyWave) { familyWave.rotation.x = -Math.PI / 2; group.add(familyWave) }
-  const mobilityArc = family === 'mobility'
+  const mobilityArc = family === 'mobility' && variant !== 'mobility-trail' && variant !== 'mobility-haste'
     ? new THREE.Line(track(new THREE.BufferGeometry().setFromPoints([center, center, center])), accentMaterial)
     : null
   if (mobilityArc) group.add(mobilityArc)
+  const mobilityStepMarks = variant === 'mobility-trail'
+    ? Array.from({ length: 4 }, (_, index) => {
+      const mesh = new THREE.Mesh(track(new THREE.TorusGeometry(.14, .024, 5, 10)), variantMaterial!)
+      group.add(mesh)
+      return { mesh, index, phase: index / 4 }
+    })
+    : []
+  const mobilityHasteTrails = variant === 'mobility-haste'
+    ? Array.from({ length: 3 }, () => {
+      const line = new THREE.Line(track(new THREE.BufferGeometry().setFromPoints([center, center, center])), accentMaterial)
+      group.add(line)
+      return line
+    })
+    : []
   const communicationLine = family === 'communication' && source
     ? new THREE.Line(track(new THREE.BufferGeometry().setFromPoints([sourcePoint, sourcePoint, sourcePoint])), accentMaterial)
     : null
@@ -1084,10 +1098,29 @@ function createChannel(
       }
       if (mobilityArc) {
         const base = new THREE.Vector3(center.x, ground + .12, center.z)
-        const left = base.clone().add(new THREE.Vector3(-.35 - lift * .15, .2 + lift * .45, 0))
         const right = base.clone().add(new THREE.Vector3(.35 + lift * .15, .2 + lift * .45, 0))
-        setLinePoints(mobilityArc, base, left, right)
+        const middle = variant === 'mobility-arc'
+          ? base.clone().add(new THREE.Vector3(0, .34 + lift * .55, 0))
+          : base.clone().add(new THREE.Vector3(-.35 - lift * .15, .2 + lift * .45, 0))
+        setLinePoints(mobilityArc, base, middle, right)
         mobilityArc.visible = fade > .02
+      }
+      for (const step of mobilityStepMarks) {
+        const phase = clamp01(progress * 1.35 - step.phase * .42)
+        step.mesh.position.set(center.x + (step.index % 2 ? .18 : -.18), ground + .07, center.z + .5 - step.index * .28 - phase * .16)
+        step.mesh.rotation.x = -Math.PI / 2
+        const stepScale = .8 + phase * .3
+        step.mesh.scale.set(stepScale * .8, stepScale * 1.3, stepScale)
+        step.mesh.visible = phase > .02 && fade > .02
+      }
+      if (mobilityStepMarks.length && variantMaterial) variantMaterial.opacity = fade * .9
+      for (const [index, line] of mobilityHasteTrails.entries()) {
+        const phase = clamp01((progress - index * .08) / .78)
+        const base = new THREE.Vector3(center.x - .18, ground + .12 + index * .08, center.z)
+        const end = base.clone().add(new THREE.Vector3(.48 + phase * .28, .02 + lift * .2, -.12 + index * .12))
+        const middle = base.clone().lerp(end, .5).add(new THREE.Vector3(.12, .04, 0))
+        setLinePoints(line, base, middle, end)
+        line.visible = phase > .02 && phase < 1.02 && fade > .02
       }
       if (communicationLine) {
         const current = new THREE.Vector3().lerpVectors(sourcePoint, center, progress)
@@ -1168,7 +1201,7 @@ function createChannel(
       }
       bodyMaterial.opacity = fade * .24
       accentMaterial.opacity = fade * .8
-      group.visible = ring.visible || Boolean(dome?.visible || portal?.visible || travel?.visible || ghostA?.visible || ghostB?.visible || focusRay?.visible || lightColumn?.visible || morphCube?.visible || morphSphere?.visible || flightRing?.visible || familyWave?.visible || mobilityArc?.visible || communicationLine?.visible || spectralPalm?.visible || spectralCorePalm?.visible || trickParticles.some(({ mesh }) => mesh.visible) || book?.visible || chestBody?.visible || helmRing?.visible || silenceRing?.visible || cancellationRing?.visible || cancellationSplits.some((line) => line.visible) || soulOrb?.visible || soulVessel?.visible || soulLine?.visible || particles.some(({ mesh }) => mesh.visible) || environmentParticles.some(({ mesh }) => mesh.visible))
+      group.visible = ring.visible || Boolean(dome?.visible || portal?.visible || travel?.visible || ghostA?.visible || ghostB?.visible || focusRay?.visible || lightColumn?.visible || morphCube?.visible || morphSphere?.visible || flightRing?.visible || familyWave?.visible || mobilityArc?.visible || mobilityStepMarks.some(({ mesh }) => mesh.visible) || mobilityHasteTrails.some((line) => line.visible) || communicationLine?.visible || spectralPalm?.visible || spectralCorePalm?.visible || trickParticles.some(({ mesh }) => mesh.visible) || book?.visible || chestBody?.visible || helmRing?.visible || silenceRing?.visible || cancellationRing?.visible || cancellationSplits.some((line) => line.visible) || soulOrb?.visible || soulVessel?.visible || soulLine?.visible || particles.some(({ mesh }) => mesh.visible) || environmentParticles.some(({ mesh }) => mesh.visible))
     },
     dispose() {
       group.removeFromParent()

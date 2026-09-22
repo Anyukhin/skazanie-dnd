@@ -831,6 +831,10 @@ async function runMvpScenario(t) {
   }
 
   mvpStage('post-combat transition')
+  // Перемещения и завершённые раунды уже продвинули игровые часы. Длинный
+  // бой может накопить целую минуту; отдых и переход добавляются к ней.
+  const worldSecondsBeforeDowntime = Number(battleState.mechanics.world_time?.elapsed_minutes ?? 0) * 60
+    + Number(battleState.mechanics.world_time?.second_remainder ?? 0)
   const continued = await request(baseUrl, '/api/campaigns/PLAYER-MVP/autonomy/advance', {
     method: 'POST', cookie: ownerCookie, key: 'player-after-combat',
     body: { idempotency_key: 'player-after-combat', player_action: 'Забрать добычу, восстановиться и продолжить путь' },
@@ -875,7 +879,11 @@ async function runMvpScenario(t) {
   // (1d4 часа, не больше четырёх), и только потом отдыхает восемь часов.
   const downtimeMinutes = continued.body.state.autonomy.downtime_history.at(-1)?.duration_minutes
   assert.ok([480, 720].includes(downtimeMinutes), `неожиданная длительность отдыха: ${downtimeMinutes}`)
-  assert.equal(continuedState.mechanics.world_time.elapsed_minutes, downtimeMinutes + completedTravel.duration_minutes)
+  const worldSecondsAfterTravel = Number(continuedState.mechanics.world_time.elapsed_minutes) * 60
+    + Number(continuedState.mechanics.world_time.second_remainder ?? 0)
+  const expectedWorldSeconds = worldSecondsBeforeDowntime + (downtimeMinutes + completedTravel.duration_minutes) * 60
+  assert.ok(Math.abs(worldSecondsAfterTravel - expectedWorldSeconds) < .001,
+    `игровое время: ${worldSecondsAfterTravel} с вместо ${expectedWorldSeconds} с с учётом завершённого боя`)
   assert.ok(
     continuedState.players
       .filter((entry) => continuedState.mechanics.death?.heroes?.[entry.id]?.status !== 'dead')

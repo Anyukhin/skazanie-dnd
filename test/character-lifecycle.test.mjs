@@ -8,6 +8,7 @@ import {
   abilityModifier,
   applyCharacterLifecycleEvent,
   classResourcePlan,
+  characterImportEvent,
   deriveCharacterSheet,
   experienceForLevel,
   levelForExperience,
@@ -18,6 +19,7 @@ import {
   resourcesAfterRest,
   resolveLevelUp,
   validateLevelUpCommand,
+  createCharacterSlot,
 } from '../server/character-lifecycle.mjs'
 import { materializeCatalogItem } from '../server/item-catalog.mjs'
 
@@ -220,6 +222,17 @@ test('strict v1 importer returns only safe canonical sheet fields', () => {
     })),
     (error) => error.code === 'IMPORT_ABILITY_BUDGET_INVALID',
   )
+})
+
+test('импорт заполняет роль пустого слота классом и сохраняет произвольную роль существующего героя', () => {
+  const imported = parseCharacterImport(importDocument({ role: undefined }))
+  const command = { command_type: 'ImportCharacter', actor_id: 'slot', patch: imported.patch }
+  const event = characterImportEvent(command)
+  const emptySlot = { players: [createCharacterSlot({ id: 'slot' })], mechanics: { combat: { active: false } } }
+  const named = { players: [{ ...createCharacterSlot({ id: 'slot' }), role: 'Хранитель маяка' }], mechanics: { combat: { active: false } } }
+
+  assert.equal(applyCharacterLifecycleEvent(emptySlot, event).players[0].role, 'Волшебник · ур. 1')
+  assert.equal(applyCharacterLifecycleEvent(named, event).players[0].role, 'Хранитель маяка')
 })
 
 test('v0 importer migration accepts only documented aliases and rejects conflicts or unknown fields', () => {

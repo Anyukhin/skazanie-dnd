@@ -1318,14 +1318,23 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .server-column .agent-options { grid-template-columns: minmax(0, 1fr); }
 .server-column .agent-options button { align-items: flex-start; flex-direction: column; }
 .server-column .agent-options small { white-space: normal; }
-.server-column .chat-panel:has(.agent-interaction) {
-  grid-template-rows: auto minmax(0, 1fr) 0;
-}
 .server-column .chat-panel:has(.agent-interaction) .chat-interaction-slot {
   min-height: 0;
   max-height: none;
 }
 .server-column .chat-panel:has(.agent-interaction) .messages { overflow: hidden; }
+/* При ширине 1280+ в хронике всегда четыре DOM-слота: заголовок, решение
+   группы, подсказки и сообщения. Раньше `action-hints` попадал в растягиваемую
+   строку, а сообщения становились неявной auto-строкой и накладывались на
+   подсказки. Последняя строка обязана быть лентой и забирать оставшуюся высоту. */
+@media (min-width: 1280px) {
+  .server-column .chat-panel:has(.action-hints) {
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+  }
+  .server-column .chat-panel:has(.agent-interaction):not(:has(.action-hints)) {
+    grid-template-rows: auto auto minmax(0, 1fr) 0;
+  }
+}
 @media (max-width: 760px) { .agent-interaction, .agent-interaction.resolved { grid-template-columns: 1fr; } .agent-interaction { max-height: 210px; overflow-y: auto; } }
 
 .modal-backdrop { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(5,4,3,.76); backdrop-filter: blur(7px); animation: fadeIn .18s; }

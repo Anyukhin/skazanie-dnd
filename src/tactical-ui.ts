@@ -582,6 +582,7 @@ const CONDITION_LABELS: Record<string, string> = {
   bless: 'Благословение',
   'bless-d4': 'Благословение',
   'resistance-d4': 'Бонус спасброска: 1к4',
+  'vitriolic-acid-covered': 'Едкая кислота (Едкий шар)',
   longstrider: 'Скороход',
   /* Малое благословение алтаря или жреца (`server/blessings.mjs`). Имя у него
      своё, отдельное от заклинания «Благословение»: у того кость на каждый
@@ -608,6 +609,7 @@ const IMPLEMENTED_CONDITIONS = new Set([
 const PARTIAL_CONDITIONS = new Set([
   'incapacitated', 'stunned', 'paralyzed', 'petrified', 'restrained', 'grappled', 'prone',
   'invisible', 'dodging', 'helped', 'raging', 'reckless', 'favored-foe', 'hunters-mark',
+  'vitriolic-acid-covered',
 ])
 
 const ELEMENT_DAMAGE_LABELS: Record<string, string> = {
@@ -648,6 +650,13 @@ const CONDITION_DURATION_LABELS: Record<string, string> = {
 }
 
 function conditionDurationLabel(duration: string) {
+  const seconds = /^seconds:(\d+(?:\.\d+)?)$/u.exec(duration)
+  if (seconds) {
+    const amount = Number(seconds[1])
+    if (amount > 0 && amount % 3600 === 0) return `${amount / 3600} ч`
+    if (amount > 0 && amount % 60 === 0) return `${amount / 60} мин`
+    return `${amount} с`
+  }
   return CONDITION_DURATION_LABELS[duration] ?? duration.replace(/^rounds:/, 'раундов: ')
 }
 

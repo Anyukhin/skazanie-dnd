@@ -4191,6 +4191,7 @@ function conditionUsesEffectIdentity(condition, payload) {
     || payload?.repeat_save_on_damage === true
     || payload?.escape_check_ability != null
     || payload?.start_turn_save != null
+    || payload?.spell_id === 'vitriolic-sphere' && payload?.recurring_damage_timing === 'turn-end'
 }
 
 const INCAPACITATING_CONDITIONS = Object.freeze(Object.entries(CONDITION_EFFECTS)
@@ -4258,7 +4259,7 @@ function normalizeCommand(input, state) {
   command.command_id = String(command.command_id ?? command.commandId ?? randomUUID())
   command.actor_id = command.actor_id == null && command.actorId == null ? null : String(command.actor_id ?? command.actorId)
   command.target_id = command.target_id == null && command.targetId == null ? null : String(command.target_id ?? command.targetId)
-  if (command.command_type === 'CastSpell' && String(command.spell_id ?? command.spellId) === 'longstrider') {
+  if (command.command_type === 'CastSpell' && ['longstrider', 'mass-cure-wounds'].includes(String(command.spell_id ?? command.spellId))) {
     const targets = command.target_ids ?? command.targetIds
     if (Array.isArray(targets) && targets.length !== uniqueStrings(targets).length) {
       throw new RulesValidationError('Выберите каждую цель только один раз', 'INVALID_SPELL_TARGETS')
@@ -6557,6 +6558,24 @@ export function validateCommand(input, rawState, context = {}) {
       // клетки и полной площади выше. Остальные teleport-эффекты сохраняют
       // требование видимой точки из своего каталожного описания.
       if (!teleportWithoutSight) assertClearActorToPoint(state, command.actor_id, from, to)
+      if (spell.selectTargetsInArea === true) {
+        const requestedIds = command.target_ids?.length ? uniqueStrings(command.target_ids) : []
+        const maximumTargets = Math.max(1, safeInteger(spell.maxTargets, 1))
+        if (!requestedIds.length) throw new RulesValidationError('Выберите хотя бы одну цель заклинания', 'SPELL_TARGET_REQUIRED')
+        if (requestedIds.length > maximumTargets) throw new RulesValidationError('Слишком много целей для этого уровня ячейки', 'TOO_MANY_SPELL_TARGETS')
+        for (const requestedId of requestedIds) {
+          const target = spellCreatureFor(state, requestedId, spell)
+          const targetState = target && !findActor(state, requestedId) ? npcDamageContext(state, requestedId) : state
+          const canAffectDyingHero = Boolean(target && isDyingHero(state, requestedId) && ['healing', 'buff'].includes(spell.kind))
+          if (!target || (!isLivingActor(target) && !canAffectDyingHero)) throw new RulesValidationError('Нужна допустимая цель заклинания', 'INVALID_SPELL_TARGET')
+          const targetAt = actorPosition(targetState, actorId(target))
+          if (!targetAt) throw new RulesValidationError('Цель должна находиться на карте', 'MAP_POSITION_REQUIRED')
+          const selected = spellTargetsAt(state, { ...command, target_ids: [requestedId] }, spell)
+          if (!selected.some((candidate) => actorId(candidate) === requestedId)) {
+            throw new RulesValidationError('Цель находится вне области заклинания', 'INVALID_SPELL_TARGET')
+          }
+        }
+      }
     } else if (spell.target !== 'self') {
       const requestedIds = command.target_ids?.length ? uniqueStrings(command.target_ids) : [targetFor(command)]
       const requestedSlotLevel = resolvedSpellSlotLevel
@@ -8786,8 +8805,9 @@ function wallCells(state, command, spell) {
   // и заклинатель не оказывается в собственном огне.
   const acrossX = -stepY || 0
   const acrossY = stepX || 0
-  const half = Math.floor(length / 2)
-  for (let offset = -half; offset <= half; offset += 1) {
+  const firstOffset = -Math.floor(length / 2)
+  const lastOffset = firstOffset + length - 1
+  for (let offset = firstOffset; offset <= lastOffset; offset += 1) {
     const point = { x: to.x + acrossX * offset, y: to.y + acrossY * offset }
     if (!isWalkableCell(cells.get(positionKey(point)))) continue
     line.push(point)
@@ -8796,7 +8816,7 @@ function wallCells(state, command, spell) {
 }
 
 /** Is the position inside this lingering effect, wall or otherwise? */
-function positionInEffect(state, position, effect, actor = null) {
+export function positionInEffect(state, position, effect, actor = null) {
   if (!position) return false
   const points = actor ? footprintCellsFor(actor, position) : [position]
   if (Array.isArray(effect?.cells)) return points.some((point) => effect.cells.some((cell) => Number(cell.x) === point.x && Number(cell.y) === point.y))
@@ -8948,12 +8968,19 @@ export function spellTargetsAt(state, command, spell) {
       return Boolean(at && actorFootprintCellsAt(state, actorId(actor), at).some((cell) => wall.has(positionKey(cell))))
     })
   }
-  return listActors(state).filter((actor) => {
+  const candidates = listActors(state).filter((actor) => {
     if (!canBeAffectedByArea(actor)) return false
+    if (spell.selectTargetsInArea === true && command.target_ids?.length && !command.target_ids.includes(actorId(actor))) return false
     const at = actorPosition(state, actorId(actor))
+    if (spell.selectTargetsInArea === true && !command.target_ids?.length && at && !actorFootprintVisible(state, actorId(actor), at)) return false
     return at && actorFootprintCellsAt(state, actorId(actor), at).some((cell) => positionInArea(cell, to, radius, spell.areaShape ?? 'sphere', spell.areaSideFeet))
       && areaTargetHasLineOfEffect(state, command, spell, to, actorId(actor), at, undefined, (point, origin) => positionInArea(point, origin, radius, spell.areaShape ?? 'sphere', spell.areaSideFeet))
   })
+  if (spell.selectTargetsInArea === true && command.target_ids?.length) {
+    const byId = new Map(candidates.map((actor) => [actorId(actor), actor]))
+    return (command.target_ids ?? []).map((id) => byId.get(String(id))).filter(Boolean)
+  }
+  return candidates
 }
 
 function npcSpellTargetsAt(state, command, spell) {
@@ -13329,9 +13356,10 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         const attackerRoll = diceService.rollD20({ modifier: attackerModifier, purpose: 'shove:athletics', actorId: command.actor_id, visibility: command.visibility })
         const defenderRoll = diceService.rollD20({ modifier: defenderModifier, purpose: 'shove:defense', actorId: actionTargetId, visibility: command.visibility })
         rolls.push(attackerRoll, defenderRoll)
-        events.push(eventFrom(command, 'ContestedCheckResolved', { attacker: attackerRoll, defender: defenderRoll, success: attackerRoll.total >= defenderRoll.total }, [actionTargetId]))
-        if (attackerRoll.total >= defenderRoll.total) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: 'prone', duration: 'until-next-turn' }, [actionTargetId]))
-        events.push(actionEvent({ success: attackerRoll.total >= defenderRoll.total }))
+        const success = attackerRoll.total > defenderRoll.total
+        events.push(eventFrom(command, 'ContestedCheckResolved', { attacker: attackerRoll, defender: defenderRoll, success }, [actionTargetId]))
+        if (success) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: 'prone', duration: 'until-next-turn' }, [actionTargetId]))
+        events.push(actionEvent({ success }))
       } else if (action.id === 'second-wind') {
         const expression = diceExpression('1d10', Math.max(1, safeInteger(actor?.level, 1)), 10)
         const healingRoll = diceService.roll(expression, 'second_wind', command.actor_id, command.visibility ?? 'public')
@@ -13389,7 +13417,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           if (conditionIdsFor(state, actorId(candidate)).has(`hunters-mark:${command.actor_id}`)) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: `hunters-mark:${command.actor_id}` }, [actorId(candidate)]))
         }
         events.push(eventFrom(commandWithRules(command, RULE_IDS.concentration), 'ConcentrationStarted', { effect_id: `hunters-mark:${command.command_id}` }, [command.actor_id]))
-        events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: `hunters-mark:${command.actor_id}`, duration: 'concentration', source_actor: command.actor_id }, [actionTargetId]))
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: `hunters-mark:${command.actor_id}`, duration: 'concentration', source_actor: command.actor_id, effect_id: `hunters-mark:${command.command_id}` }, [actionTargetId]))
         events.push(actionEvent())
       } else if (action.id === 'divine-spark') {
         const target = findActor(state, actionTargetId)
@@ -13433,7 +13461,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         const attackerRoll = diceService.rollD20({ modifier: abilityModifier(actor?.abilities?.str) + skillProficiencyBonus(actor, 'athletics', state), purpose: `${action.id}:athletics`, actorId: command.actor_id, visibility: command.visibility })
         const defenderRoll = diceService.rollD20({ modifier: Math.max(abilityModifier(target?.abilities?.str) + skillProficiencyBonus(target, 'athletics', state), abilityModifier(target?.abilities?.dex) + skillProficiencyBonus(target, 'acrobatics', state)), purpose: `${action.id}:defense`, actorId: actionTargetId, visibility: command.visibility })
         rolls.push(attackerRoll, defenderRoll)
-        const success = attackerRoll.total >= defenderRoll.total
+        const success = attackerRoll.total > defenderRoll.total
         events.push(eventFrom(commandWithRules(command, RULE_IDS.abilityCheck), 'ContestedCheckResolved', { attacker: attackerRoll, defender: defenderRoll, success }, [actionTargetId]))
         if (success) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: action.effect.condition, duration: action.effect.condition === 'grappled' ? null : 'until-next-turn', source_actor: command.actor_id }, [actionTargetId]))
         events.push(actionEvent({ success }))
@@ -14394,7 +14422,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             ? affected.filter((candidate) => actorId(candidate) !== command.actor_id && !isEnemyActor(state, actorId(candidate))).slice(0, carefulLimit).map(actorId)
             : [])
           let sharedDamageRoll = null
-          if (damageExpression && (affected.length || npcAffected.length)) {
+          if (damageExpression && (affected.length || npcAffected.length) && !spell.saveDamage) {
             sharedDamageRoll = diceService.roll(damageExpression, `spell_damage:${spell.id}`, command.actor_id, command.visibility ?? 'public')
             rolls.push(sharedDamageRoll)
             events.push(eventFrom(command, 'DieRolled', sharedDamageRoll, []))
@@ -14470,7 +14498,28 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             rolls.push(save)
             events.push(eventFrom(commandWithRules(command, RULE_IDS.savingThrow), 'SpellSavingThrowResolved', { ...save, spell_id: spell.id, ability: saveAbility, difficulty: spellSaveDc, saved, automatic_success: automaticSave, ...(legendaryResistance ? { legendary_resistance: true } : {}), immunity: immuneByType ? creatureTypeFor(target) : immuneByLanguage ? 'language' : spell.deafenedAutoSave === true && targetConditions.has('deafened') ? 'deafened' : null }, [resolvedTargetId]))
             if (legendaryResistance) events.push(...legendaryResistance.events)
-            const damage = sharedDamageRoll ? (saved ? (spell.halfOnSave ? Math.floor(sharedDamageRoll.total / 2) : 0) : sharedDamageRoll.total) : 0
+            if (saved && spell.endsOnSave === true && spell.concentration) {
+              events.push(eventFrom(commandWithRules(command, RULE_IDS.concentration), 'ConcentrationEnded', { reason: 'save-success', effect_id: effectId }, [command.actor_id]))
+            }
+            // Некоторые карточки имеют две разные формулы: при успехе
+            // отдельный бросок меньшего числа костей, при провале полный.
+            // Нельзя бросить 4к8 и разделить итог: это меняет распределение
+            // и ломает upcast. Такие карточки бросают формулу после save.
+            let outcomeDamageRoll = null
+            if (spell.saveDamage) {
+              const outcomeSpell = saved
+                ? { ...spell, damage: spell.saveDamage, upcastDicePerLevel: spell.saveDamageUpcastDicePerLevel }
+                : { ...spell, damage: damageExpression, upcastDicePerLevel: 0 }
+              const outcomeExpression = saved
+                ? scaledSpellDice(outcomeSpell, actor, command.slot_level)
+                : damageExpression
+              outcomeDamageRoll = diceService.roll(String(outcomeExpression), saved ? `spell_save_damage:${spell.id}` : `spell_damage:${spell.id}`, command.actor_id, command.visibility ?? 'public')
+              rolls.push(outcomeDamageRoll)
+              events.push(eventFrom(command, 'DieRolled', { ...outcomeDamageRoll, spell_id: spell.id, saved }, []))
+            }
+            const damage = spell.saveDamage
+              ? (outcomeDamageRoll?.total ?? 0)
+              : sharedDamageRoll ? (saved ? (spell.halfOnSave ? Math.floor(sharedDamageRoll.total / 2) : 0) : sharedDamageRoll.total) : 0
             const bonusDamage = bonusDamageRoll ? (saved ? (spell.halfOnSave ? Math.floor(bonusDamageRoll.total / 2) : 0) : bonusDamageRoll.total) : 0
             if (damage > 0) {
               const payload = prepareElementalReactionDamage(state, resolvedTargetId, resolveDamagePayload(state, resolvedTargetId, damage, damageType), `${command.command_id}:${resolvedTargetId}:${damageType}`)
@@ -14516,14 +14565,24 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
                 continue
               }
               const durationRounds = metamagic.has('metamagic-extended') ? Number(spell.durationRounds ?? 0) * 2 : Number(spell.durationRounds ?? 0)
+              const storedCondition = spell.id === 'vitriolic-sphere' && condition === 'acid-covered'
+                ? 'vitriolic-acid-covered'
+                : condition
               events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
-                condition,
+                condition: storedCondition,
                 duration: spell.concentration ? 'concentration' : durationRounds ? `rounds:${durationRounds}` : 'until-next-turn',
                 source_actor: command.actor_id,
                 effect_id: effectId,
                 ...(spell.repeatSaveAtTurnEnd === true && condition === spell.conditions?.[0] ? { repeat_save_timing: 'turn-end', save_ability: saveAbility, save_dc: spellSaveDc, spell_id: spell.id } : {}),
                 ...(spell.repeatSaveOnDamage === true && condition === spell.conditions?.[0] ? { repeat_save_on_damage: true, damage_save_advantage: spell.damageRepeatSaveAdvantage === true, save_ability: saveAbility, save_dc: spellSaveDc, spell_id: spell.id } : {}),
                 ...(spell.breakOnDamageFromSourceAllies === true ? { break_on_damage_from_source_allies: true } : {}),
+                ...(spell.delayedDamage && condition === spell.conditions?.[0] ? {
+                  recurring_damage: String(spell.delayedDamage),
+                  recurring_damage_type: String(spell.delayedDamageType ?? spell.damageType ?? 'untyped'),
+                  recurring_once: true,
+                  recurring_damage_timing: 'turn-end',
+                  spell_id: spell.id,
+                } : {}),
                 // Урон, который повторяется на самой цели в начале её хода:
                 // движок умел это для клинковых кар, но карточка заклинания
                 // ничего подобного объявить не могла.
@@ -14702,7 +14761,8 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             : spell.addAbilityModifier ? diceExpression(scaledHealing, spellModifier, 4) : scaledHealing
           // Бросок один на всех: «Массовое лечащее слово» возвращает каждому
           // одно и то же число, а не бросает кость на каждого отдельно.
-          const healingRoll = expression ? diceService.roll(expression, `spell_healing:${spell.id}`, command.actor_id, command.visibility ?? 'public') : null
+          const healingTargets = affected.filter((target) => !(spell.immuneCreatureTypes ?? []).includes(creatureTypeFor(target)))
+          const healingRoll = expression && healingTargets.length ? diceService.roll(expression, `spell_healing:${spell.id}`, command.actor_id, command.visibility ?? 'public') : null
           if (healingRoll) {
             rolls.push(healingRoll)
             events.push(eventFrom(command, 'DieRolled', healingRoll, []))
@@ -14710,6 +14770,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           const healedTotal = healingRoll ? healingRoll.total : flatHealing
           for (const target of affected) {
             const resolvedTargetId = actorId(target)
+            if ((spell.immuneCreatureTypes ?? []).includes(creatureTypeFor(target))) continue
             const healing = resolvedHealingRoll(state, resolvedTargetId, expression, healedTotal)
             const before = actorHp(target)
             const after = conditionIdsFor(state, resolvedTargetId).has('healing-blocked') ? before : Math.min(actorMaxHp(target), before + healing.amount)
@@ -14858,6 +14919,8 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
               }
               events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ShapeChanged', {
                 spell_id: spell.id,
+                effect_id: effectId,
+                shape_contract_version: 2,
                 form,
               }, [resolvedTargetId]))
             }
@@ -16292,6 +16355,30 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           }
         }
       }
+      let delayedDamageState = repeatSaveState
+      for (const condition of (state.mechanics.conditions[command.actor_id] ?? []).filter((candidate) => candidate.recurring_damage_timing === 'turn-end')) {
+        const delayedRoll = diceService.roll(String(condition.recurring_damage), `spell_turn_end_damage:${condition.spell_id}`, String(condition.source_actor ?? command.actor_id), command.visibility ?? 'public')
+        rolls.push(delayedRoll)
+        events.push(eventFrom(command, 'DieRolled', { ...delayedRoll, spell_id: condition.spell_id, damage_type: condition.recurring_damage_type }, []))
+        const delayedPayload = resolveDamageWithReactions(delayedDamageState, command.actor_id, delayedRoll.total, String(condition.recurring_damage_type ?? 'untyped'))
+        const delayedEvent = eventFrom(commandWithRules({ ...command, actor_id: String(condition.source_actor ?? command.actor_id) }, RULE_IDS.damage), 'DamageApplied', {
+          ...delayedPayload, spell_id: condition.spell_id, recurring: true, trigger: 'turn-end',
+        }, [command.actor_id])
+        events.push(delayedEvent)
+        delayedDamageState = applyGameEvent(delayedDamageState, delayedEvent)
+        if (delayedPayload.hp_after === 0) {
+          const consequences = zeroHitPointDamageConsequences(delayedDamageState, command, command.actor_id, delayedPayload)
+          events.push(...consequences)
+          delayedDamageState = consequences.reduce(applyGameEvent, delayedDamageState)
+        }
+        if (condition.recurring_once === true) {
+          const spent = eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', {
+            condition: condition.id, ...(condition.effect_id ? { effect_id: condition.effect_id } : {}), spell_id: condition.spell_id, trigger: 'delayed-damage-spent',
+          }, [command.actor_id])
+          events.push(spent)
+          delayedDamageState = applyGameEvent(delayedDamageState, spent)
+        }
+      }
       const commanded = (state.mechanics.conditions[command.actor_id] ?? []).find((condition) => String(condition?.id ?? condition).startsWith('command:'))
       if (commanded) {
         if (String(commanded.id) === 'command:grovel') events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: 'prone', duration: 'until-next-turn', source_actor: commanded.source_actor, effect_id: commanded.effect_id }, [command.actor_id]))
@@ -16359,7 +16446,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       events.push(...areaStartEvents)
       startTurnState = replayEvents(state, events)
       const startingActor = findActor(startTurnState, nextId)
-      for (const condition of [...(startTurnState.mechanics.conditions[nextId] ?? []).filter((candidate) => candidate.recurring_damage)]) {
+      for (const condition of [...(startTurnState.mechanics.conditions[nextId] ?? []).filter((candidate) => candidate.recurring_damage && candidate.recurring_damage_timing !== 'turn-end')]) {
         let effectContinues = true
         if (condition.start_turn_save) {
           const ability = String(condition.start_turn_save)
@@ -19075,6 +19162,32 @@ function removeSummonedActor(state, id) {
   delete state.mechanics.combat.action_economy[expected]
 }
 
+function restoreShape(state, targetIdValue, shape, excessDamage = 0) {
+  if (!shape || typeof shape !== 'object') return
+  const targetId = String(targetIdValue ?? '')
+  const original = shape.original && typeof shape.original === 'object' ? shape.original : {}
+  delete state.mechanics.shapes[targetId]
+  replaceActor(state, targetId, (current) => {
+    const {
+      footprint: _currentFootprint,
+      attack_profile: _currentAttackProfile,
+      ...withoutFormFields
+    } = current
+    return {
+      ...withoutFormFields,
+      // Старые события сохраняют прежний результат replay. Новый контракт
+      // явно удаляет атаку формы, если до превращения своей атаки не было.
+      ...(shape.shape_contract_version !== 2 && current.attack_profile ? { attack_profile: current.attack_profile } : {}),
+      hp: Math.max(0, safeInteger(original.hp, 1) - Math.max(0, safeInteger(excessDamage, 0))),
+      maxHp: Math.max(1, safeInteger(original.maxHp, 1)),
+      armor: Math.max(1, safeInteger(original.armor, 10)),
+      speed: Math.max(0, safeInteger(original.speed, 30)),
+      ...(original.attack_profile ? { attack_profile: clone(original.attack_profile) } : {}),
+      ...(Object.hasOwn(original, 'footprint') ? { footprint: clone(original.footprint) } : {}),
+    }
+  })
+}
+
 /**
  * Снимает только один авторитетный concentration effect и связанные с ним
  * условия/области. Явный старый effect_id не имеет права снимать более новую
@@ -19098,6 +19211,10 @@ function clearConcentrationEffect(state, targetIdValue, requestedEffectId) {
   }
   for (const summon of [...(state.actors ?? [])]) {
     if (isPartySummon(summon) && String(summon.sourceEffectId ?? summon.source_effect_id ?? '') === effectId) removeSummonedActor(state, actorId(summon))
+  }
+  for (const [shapeTarget, shape] of Object.entries(state.mechanics.shapes ?? {})) {
+    if (String(shape?.concentration_actor_id ?? '') !== targetId || String(shape?.effect_id ?? '') !== effectId) continue
+    restoreShape(state, shapeTarget, shape)
   }
   return { effectId, currentCleared: currentMatches }
 }
@@ -19966,6 +20083,7 @@ function applyGameEventCurrent(rawState, event) {
         start_turn_save: payload.start_turn_save ?? null,
         recurring_damage: payload.recurring_damage ?? null,
         recurring_damage_type: payload.recurring_damage_type ?? null,
+        ...(payload.recurring_damage_timing ? { recurring_damage_timing: payload.recurring_damage_timing } : {}),
         // Добавка к следующему попаданию: нанесённый на оружие яд.
         rider_damage: payload.rider_damage ?? null,
         rider_damage_type: payload.rider_damage_type ?? null,
@@ -20525,6 +20643,11 @@ function applyGameEventCurrent(rawState, event) {
       const formFootprint = normalizeFootprintMetadata(form.footprint)
       state.mechanics.shapes[target] = {
         spell_id: payload.spell_id ?? null,
+        ...(payload.shape_contract_version === 2 ? {
+          shape_contract_version: 2,
+          effect_id: payload.effect_id ?? null,
+          concentration_actor_id: event.actor_id ?? null,
+        } : {}),
         form,
         original: {
           hp: actorHp(actor),
@@ -20549,20 +20672,8 @@ function applyGameEventCurrent(rawState, event) {
     case 'ShapeReverted': {
       const shape = state.mechanics.shapes[target]
       if (!shape) break
-      delete state.mechanics.shapes[target]
       const excess = Math.max(0, safeInteger(payload.excess_damage, 0))
-      replaceActor(state, target, (current) => {
-        const { footprint: _currentFootprint, ...withoutFootprint } = current
-        return {
-        ...withoutFootprint,
-        hp: Math.max(0, safeInteger(shape.original.hp, 1) - excess),
-        maxHp: Math.max(1, safeInteger(shape.original.maxHp, 1)),
-        armor: Math.max(1, safeInteger(shape.original.armor, 10)),
-        speed: Math.max(0, safeInteger(shape.original.speed, 30)),
-        ...(shape.original.attack_profile ? { attack_profile: clone(shape.original.attack_profile) } : {}),
-        ...(Object.hasOwn(shape.original, 'footprint') ? { footprint: clone(shape.original.footprint) } : {}),
-      }
-      })
+      restoreShape(state, target, shape, excess)
       break
     }
     case 'SpellAreaCreated': {

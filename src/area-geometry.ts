@@ -113,9 +113,10 @@ function lineCells(
 
   const acrossX = -stepY || 0
   const acrossY = stepX || 0
-  const half = Math.floor(lengthCells / 2)
+  const firstOffset = -Math.floor(lengthCells / 2)
+  const lastOffset = firstOffset + lengthCells - 1
   const result: AreaPoint[] = []
-  for (let offset = -half; offset <= half; offset += 1) {
+  for (let offset = firstOffset; offset <= lastOffset; offset += 1) {
     const point = {
       x: (target?.x ?? origin.x) + acrossX * offset,
       y: (target?.y ?? origin.y) + acrossY * offset,

@@ -33,12 +33,25 @@ test('мастер мира загружает server-owned авторские �
 
 test('настройки читают редакцию кампании, а не выдают global health default за её правила', () => {
   assert.match(views, /campaignAi\?\.ruleset\.current\.id/u)
+  assert.match(views, /currentRulesetId/u)
+  assert.match(views, /const rulesetId = campaignAi\?\.ruleset\.current\.id \?\? currentRulesetId/u)
+  assert.match(views, /RULESET_FALLBACK\.filter\(\(profile\) => profile\.id === rulesetId\)/u)
+  assert.match(app, /currentRulesetId=\{state\.ruleset_id\}/u)
   assert.match(views, /disabled=\{!campaignAi\?\.ruleset\.canChange \|\| campaignAiBusy\}/u)
-  assert.match(views, /campaignAi\?\.ruleset\.current\.label/u)
+  assert.match(views, /currentRuleset\?\.label/u)
   assert.match(app, /idempotency_key: globalThis\.crypto\?\.randomUUID/u)
   assert.match(app, /onCampaignRulesetChange=\{\(rulesetId\)/u)
   assert.match(app, /\[state\.sessionCode, state\.state_version, view\]/u)
   assert.match(views, /campaignAiError && <p className="admin-error" role="alert">/u)
+})
+
+test('переключатели настроек сообщают своё состояние доступным интерфейсам', () => {
+  assert.match(views, /<button className="setting-row" onClick=\{onChange\} aria-pressed=\{value\}/u)
+})
+
+test('карточка подсказок не накладывается на хронику при активном групповом решении', () => {
+  assert.match(styles, /\.server-column \.chat-panel:has\(\.action-hints\)\s*\{\s*grid-template-rows: auto auto auto minmax\(0, 1fr\);/u)
+  assert.match(styles, /\.server-column \.chat-panel:has\(\.agent-interaction\):not\(:has\(\.action-hints\)\)\s*\{\s*grid-template-rows: auto auto minmax\(0, 1fr\) 0;/u)
 })
 
 test('мастер героя загружает отдельный каталог редакции и показывает правила 2014', () => {

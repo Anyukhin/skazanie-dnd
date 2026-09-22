@@ -141,7 +141,7 @@ test('контур объединяет соседние клетки, обре�
 test('прицел применяется кликом по карте без отдельной панели и защищён от повторной отправки', () => {
   const source = readFileSync(new URL('../src/DungeonMap.tsx', import.meta.url), 'utf8')
   assert.doesNotMatch(source, /spell-aim-panel|kind: 'spell-point'/u)
-  assert.match(source, /if \(pointSpellReason\(\{ x, y \}\)\) return\s+void issueSpell\(\{ x, y \}\)/u)
+  assert.match(source, /if \(pointSpellReason\(\{ x, y \}\)\) return[\s\S]*if \(selectTargetsInAreaSpell\) \{[\s\S]*if \(!areaSpellPoint\) \{[\s\S]*setAreaSpellPoint\(\{ x, y \}\)[\s\S]*\}\s+return\s+\}\s+void issueSpell\(\{ x, y \}\)/u)
   const issue = source.slice(source.indexOf('const issueSpell ='), source.indexOf('const castAtTarget ='))
   assert.match(issue, /spellCommandInFlight\.current\) return/u)
   assert.ok(issue.indexOf('spellCommandInFlight.current = true') < issue.indexOf('await onCastSpell'))

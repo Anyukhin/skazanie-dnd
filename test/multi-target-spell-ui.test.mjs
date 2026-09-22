@@ -95,6 +95,35 @@ test('DungeonMap keeps point spells and manual target confirmation paths separat
   assert.match(source, /onCancelAiming=\{spellAiming \? clearPrepared : undefined\}/u)
 })
 
+test('Enter на полотне 3D подтверждает список раньше переключения фишки, пробел сохраняет выбор', () => {
+  const board = readFileSync(new URL('../src/TacticalBoard3D.tsx', import.meta.url), 'utf8')
+  const dungeon = readFileSync(new URL('../src/DungeonMap.tsx', import.meta.url), 'utf8')
+  const keyDown = board.slice(board.indexOf('const keyDown = (event: KeyboardEvent)'))
+  const confirm = keyDown.indexOf("event.key === 'Enter' && latest.current.onConfirmAiming")
+  const activate = keyDown.indexOf('activateActor(')
+  assert.ok(confirm >= 0 && activate > confirm, 'canvas не должен перехватывать Enter как повторный клик по цели')
+  assert.match(keyDown, /onConfirmAiming\(\)\s+return/u)
+  assert.match(dungeon, /onConfirmAiming=\{multiTargetSpell && spellTargetIds\.length > 0 && !pendingCommand \? confirmSpellTargetSelection : undefined\}/u)
+})
+
+test('Mass Cure Wounds fixes the point before selecting explicit area targets', () => {
+  const source = readFileSync(new URL('../src/DungeonMap.tsx', import.meta.url), 'utf8')
+  const session = readFileSync(new URL('../src/useGameSession.ts', import.meta.url), 'utf8')
+  assert.match(source, /selectTargetsInAreaSpell/u)
+  assert.match(source, /areaSpellPoint/u)
+  assert.match(source, /areaTargetSelectionActive[^\n]*\|\|[^\n]*longstriderTargeting/u)
+  assert.match(source, /issueSpell\(\{ \.\.\.areaTarget/u)
+  assert.match(session, /to: \{ x: target\.x, y: target\.y \}, target_ids: \[\.\.\.new Set\(target\.targetIds\)\]/u)
+  assert.match(source, /Enter — подтвердить/u)
+  assert.match(source, /setAreaSpellPoint\(null\)/u)
+  assert.match(source, /<select aria-label="Источник заклинания"/u)
+  assert.match(source, /<select\s+aria-label="Круг ячейки"/u)
+
+  const massCure = { level: 5, maxTargets: 6, upcastHealingDicePerLevel: 1, selectTargetsInArea: true }
+  assert.equal(combatSpellTargetLimit(massCure, 5), 6)
+  assert.equal(combatSpellTargetLimit(massCure, 6), 6, 'upcast does not increase the target count')
+})
+
 test('Скороход усиливает число выбранных целей по серверной карточке, не добавляет дубли и не подбирает их автоматически', () => {
   const spell = { level: 1, maxTargets: 1, upcastTargetsPerLevel: 1 }
   assert.equal(combatSpellTargetLimit(spell, 1), 1)

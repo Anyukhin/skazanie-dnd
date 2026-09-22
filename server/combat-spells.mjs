@@ -252,6 +252,8 @@ export function combatSpellsFor(actor, options = {}) {
         innateSpell: true,
         innateCastLevel,
         spellcastingAbility: String(entry?.ability ?? 'cha'),
+        ...(entry?.class_key ? { innateSpellcastingClass: String(entry.class_key) } : {}),
+        ...(entry?.class_key && profile?.key === String(entry.class_key) ? { spellcastingClass: String(entry.class_key) } : {}),
         slotResource,
         slotLevel: fixedSpellSlotLevelFor(actor, slotProfile) ?? spell.level,
         source: entry.source ?? 'species',

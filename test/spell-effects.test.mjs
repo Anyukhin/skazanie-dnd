@@ -106,6 +106,21 @@ function recordingContext() {
   return context
 }
 
+test('Скороход, Прыжок и Ускорение рисуют разные геометрические знаки в 2D', () => {
+  const signatures = ['longstrider', 'jump', 'haste'].map((spellId) => {
+    const context = recordingContext()
+    effects.drawSpellEffect(context, scene(), {
+      cue: { id: spellId, kind: 'channel', actorId: 'caster', targetId: 'caster', targetIds: ['caster'],
+        spellId, school: 'transmutation', channelType: 'cast', durationMs: 500 },
+      progress: .5, detail: 'full', reducedMotion: false, actors: [actor('caster', 2, 2)],
+    })
+    const geometry = context.ops.filter((operation) => ['arc', 'moveTo', 'lineTo'].includes(operation.op))
+    assert.ok(geometry.length > 0)
+    return JSON.stringify(geometry)
+  })
+  assert.equal(new Set(signatures).size, 3, 'различаются примитивы, а не только подпись заклинания')
+})
+
 const actor = (id, x, y) => ({ id, x, y })
 
 test('Скороход сохраняет одинаковый cue для HTTP и SSE и отмечает обе видимые цели в 2D', () => {
@@ -218,8 +233,8 @@ test('семантические семьи покрывают каталог, �
   const schoolFallback = executable.filter((spell) => effects.spellEffectPalette(spell.id).family === 'school').map((spell) => spell.id)
   const unsupported = catalog.filter((spell) => !isExecutable(spell))
   assert.ok(catalog.length > 400)
-  assert.equal(executable.length, 241, 'исполняемый набор должен совпадать с partial/verified override-карточками')
-  assert.equal(unsupported.length, 198, 'heuristic/ruling-only карточки не входят в реализованный набор')
+  assert.equal(executable.length, 242, 'исполняемый набор должен совпадать с partial/verified override-карточками')
+  assert.equal(unsupported.length, 197, 'heuristic/ruling-only карточки не входят в реализованный набор')
   assert.ok(catalog.every((spell) => allowed.has(effects.spellEffectPalette(spell.id).family)))
   assert.deepEqual(schoolFallback, [], 'каждая executable-карточка должна иметь semantic family')
   for (const family of ['fire', 'cold', 'lightning', 'thunder', 'acid', 'poison', 'necrotic', 'radiant', 'force', 'psychic', 'healing', 'protection', 'control', 'teleport', 'summon', 'earth', 'wind', 'water', 'swarm', 'weapon', 'illusion', 'divination', 'light', 'darkness', 'environment', 'enchantment', 'restoration', 'invisibility', 'flight', 'mobility', 'transmutation', 'communication', 'utility']) {

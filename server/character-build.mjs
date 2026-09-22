@@ -108,10 +108,10 @@ function featSpellGrants(benefits) {
   if (!isRecord(spellcasting)) return []
   const grants = []
   for (const id of Array.isArray(spellcasting.cantrips) ? spellcasting.cantrips : []) {
-    grants.push({ id: String(id), ability: spellcasting.ability, uses: 'at-will', source: spellcasting.source ?? 'level-feat' })
+    grants.push({ id: String(id), ability: spellcasting.ability, uses: 'at-will', source: spellcasting.source ?? 'level-feat', class_key: spellcasting.class_key })
   }
   if (spellcasting.first_level_spell) {
-    grants.push({ id: String(spellcasting.first_level_spell), ability: spellcasting.ability, uses: 1, source: spellcasting.source ?? 'level-feat' })
+    grants.push({ id: String(spellcasting.first_level_spell), ability: spellcasting.ability, uses: 1, source: spellcasting.source ?? 'level-feat', class_key: spellcasting.class_key })
   }
   return grants
 }

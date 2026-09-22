@@ -123,11 +123,20 @@ test('Подчинение зверя не действует на гумано�
   assert.deepEqual(conditionsAdded(human), [])
 })
 
-test('Истощение бьёт сразу и повторяется в начале хода цели', () => {
-  const result = cast(field({ casterClass: 'warlock' }), 'enervation', [4, 4, 4, 4, 2])
+test('Обессиливание при провале наносит начальный урон, но не подменяет действие заклинателя автоматическим recurring', () => {
+  const result = cast(field({ casterClass: 'warlock' }), 'enervation', [2, 4, 4, 4, 4])
+  assert.equal(result.events.find((event) => event.event_type === 'SpellSavingThrowResolved').payload.saved, false)
   assert.equal(damageOf(result).raw_amount, 16)
   assert.equal(damageOf(result).damage_type, 'necrotic')
   const drained = result.events.find((event) => event.event_type === 'ConditionAdded' && event.payload.condition === 'enervated')
-  assert.equal(drained.payload.recurring_damage, '4d8')
-  assert.equal(drained.payload.recurring_damage_type, 'necrotic')
+  assert.ok(drained)
+  assert.equal(drained.payload.recurring_damage, undefined)
+})
+
+test('Обессиливание при успешном спасброске бросает отдельные 2к8 и не накладывает условие', () => {
+  const result = cast(field({ casterClass: 'warlock' }), 'enervation', [20, 4, 4])
+  assert.equal(result.events.find((event) => event.event_type === 'SpellSavingThrowResolved').payload.saved, true)
+  assert.equal(result.rolls.find((roll) => roll.purpose === 'spell_save_damage:enervation').expression, '2d8')
+  assert.equal(damageOf(result).raw_amount, 8)
+  assert.equal(result.events.some((event) => event.event_type === 'ConditionAdded' && event.payload.condition === 'enervated'), false)
 })

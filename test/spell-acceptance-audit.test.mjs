@@ -25,8 +25,8 @@ test('матрица поимённо покрывает рабочий ката
   assert.equal(report.spells.length, 439)
   assert.deepEqual(report.spells.map((spell) => spell.spellId).sort(), catalog.spells.map((spell) => spell.id).sort())
   assert.equal(report.summary.accepted, 0)
-  assert.deepEqual(report.summary.support, { heuristic: 190, partial: 241, 'ruling-only': 8 })
-  assert.equal(report.summary.blocked, 198)
+  assert.deepEqual(report.summary.support, { heuristic: 189, partial: 242, 'ruling-only': 8 })
+  assert.equal(report.summary.blocked, 197)
   assert.equal(report.summary.specifications['pilot-draft'], 4)
   assert.equal(report.summary.specifications['inventory-only'], 435)
   for (const card of report.spells) {
