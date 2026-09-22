@@ -113,6 +113,7 @@ function casterProfile(actor) {
   if (explicit === 'wizard') return { key: 'wizard', ability: 'int', progression: 'full' }
   if (explicit === 'ranger') return { key: 'ranger', ability: 'wis', progression: 'half' }
   if (explicit === 'paladin') return { key: 'paladin', ability: 'cha', progression: 'half' }
+  if (['barbarian', 'fighter', 'monk', 'rogue'].includes(explicit)) return null
   const role = roleText(actor)
   if (/жрец|cleric/u.test(role)) return { key: 'cleric', ability: 'wis', progression: 'full' }
   if (/друид|druid/u.test(role)) return { key: 'druid', ability: 'wis', progression: 'full' }

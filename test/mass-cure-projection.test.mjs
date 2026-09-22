@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { normalizeCampaignState } from '../server/rules-engine.mjs'
+import { normalizeCampaignState, replayEvents } from '../server/rules-engine.mjs'
 import { campaignStateForViewer, mechanicsForViewer } from '../server/viewer-projection.mjs'
 
 const user = { role: 'player', heroIds: ['hero'] }
@@ -40,4 +40,15 @@ test('после reconnect журнал массового лечения не �
   assert.equal(projected.battleLog[0].targetId, 'hero')
   assert.deepEqual(projected.battleLog[0].to, { x: 0, y: 0 })
   assert.doesNotMatch(JSON.stringify(projected.battleLog), /secret-summon/)
+})
+
+test('реальный HealingApplied не оставляет скрытого получателя и его хиты в журнале', () => {
+  const input = replayEvents(state(), [{
+    event_id: 'private-healing', event_type: 'HealingApplied', actor_id: 'hero', target_ids: ['secret-summon'],
+    payload: { spell_id: 'mass-cure-wounds', requested_amount: 18, applied_amount: 15, hp_before: 5, hp_after: 20 },
+  }])
+  assert.ok(input.battleLog.some((entry) => entry.type === 'healing'), 'проверяется производный журнал реального reducer')
+  const view = campaignStateForViewer(input, user, 'hero')
+  assert.equal(view.battleLog.some((entry) => entry.type === 'healing'), false)
+  assert.doesNotMatch(JSON.stringify(view.battleLog), /secret-summon/)
 })

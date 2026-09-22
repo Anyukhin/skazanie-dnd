@@ -7942,10 +7942,22 @@ function zeroHitPointDamageConsequences(state, command, targetIdValue, payload, 
   const shape = state.mechanics.shapes?.[String(targetIdValue)]
   if (shape) {
     const formHpBefore = Math.max(0, safeInteger(payload.hp_before, 0))
-    return [eventFrom(commandWithRules(command, RULE_IDS.zeroHp), 'ShapeReverted', {
+    const events = [eventFrom(commandWithRules(command, RULE_IDS.zeroHp), 'ShapeReverted', {
       reason: 'form-destroyed',
       excess_damage: Math.max(0, safeInteger(payload.applied_amount, 0) - formHpBefore),
     }, [targetIdValue])]
+    const owner = String(shape.concentration_actor_id ?? '')
+    const effectId = String(shape.effect_id ?? '')
+    const anotherShape = Object.entries(state.mechanics.shapes).some(([id, other]) => (
+      id !== String(targetIdValue) && other.effect_id === effectId && other.concentration_actor_id === owner
+    ))
+    if (shape.shape_contract_version === 2 && owner && effectId && !anotherShape
+      && state.mechanics.concentration[owner]?.effect_id === effectId) {
+      events.push(eventFrom(commandWithRules({ ...command, actor_id: owner }, RULE_IDS.concentration), 'ConcentrationEnded', {
+        reason: 'form-destroyed', effect_id: effectId,
+      }, [owner]))
+    }
+    return events
   }
   if (!playerActor(state, targetIdValue)) {
     return [eventFrom(commandWithRules(command, RULE_IDS.zeroHp), 'HitPointsReducedToZero', { condition: 'unconscious' }, [targetIdValue])]

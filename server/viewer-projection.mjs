@@ -770,6 +770,16 @@ function publicBattleEventFor(entry, state, actorId = '', visibility = {}) {
   if (entry.type === 'attack') delete result.trajectory
   const targetId = text(entry.targetId ?? entry.target_id, 120)
   const actingId = text(entry.actorId ?? entry.actor_id, 120)
+  if (entry.type === 'healing') {
+    const ids = visibility.visibleActorIds ?? new Set()
+    if (!ids.has(targetId)) return null
+    if (!ids.has(actingId)) {
+      delete result.actorId
+      delete result.actor_id
+      delete result.actorKind
+      delete result.from
+    }
+  }
   if (entry.type === 'attack' && (Object.hasOwn(entry, 'from') || Object.hasOwn(entry, 'to'))) {
     const from = publicPoint(entry.from)
     const to = publicPoint(entry.to)

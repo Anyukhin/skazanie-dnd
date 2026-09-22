@@ -91,3 +91,21 @@ test('Magic Initiate сохраняет список класса, но фоку
   assert.equal(wizardSpell.spellcastingClass, 'wizard')
   assert.equal(spellComponentAvailabilityFor(wizardState, wizardState.players[0], wizardSpell).available, true)
 })
+
+test('пользовательская подпись роли не даёт воину магический класс или право на фокус', () => {
+  const grants = resolvePhbCreation(magicInitiateDocument()).benefits.spell_grants
+  const state = stateForGrants(grants, 'fighter', [
+    materializeCatalogItem('srd_5_2_1:arcane-focus-wand', { id: 'focus', equipped: true }),
+  ])
+  const actor = state.players[0]
+  actor.role = 'Волшебник · ур. 20'
+  const spell = combatSpellFor(actor, 'minor-illusion', { rulesetId: state.ruleset_id })
+  assert.equal(spell.spellcastingClass, undefined)
+  assert.equal(spellComponentAvailabilityFor(state, actor, spell).available, false)
+  assert.equal(combatSpellFor(actor, 'fire-bolt', { rulesetId: state.ruleset_id }), null)
+})
+
+test('неизвестный исторический класс сохраняет распознавание заклинателя по роли', () => {
+  const actor = { characterClass: 'legacy-role', role: 'Волшебник · ур. 5', level: 5 }
+  assert.ok(combatSpellFor(actor, 'fire-bolt', { rulesetId: 'dnd_5e_2014' }))
+})

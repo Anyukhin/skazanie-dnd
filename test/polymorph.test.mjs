@@ -99,6 +99,10 @@ test('когда облик кончается, существо возвращ�
   assert.equal(hero.speed, 25)
   assert.equal(hero.attack_profile, undefined, 'у исходного героя не появляется укус зверя')
   assert.equal(after.mechanics.shapes.ally, undefined, 'облик больше не хранится')
+  assert.equal(after.mechanics.concentration.druid, undefined, 'после уничтожения единственной формы концентрация завершена')
+  const ended = hurt.events.find((event) => event.event_type === 'ConcentrationEnded')
+  assert.equal(ended?.payload.effect_id, shaped.mechanics.shapes.ally.effect_id)
+  assert.deepEqual(ended?.target_ids, ['druid'])
 })
 
 test('исход превращения воспроизводится replay-ем', () => {
@@ -179,4 +183,34 @@ test('legacy ShapeChanged без effect_id остаётся replay-совмес�
   }])
   assert.equal(heroOf(reverted, 'ally').hp, 9)
   assert.equal(heroOf(reverted, 'ally').attack_profile.name, 'Укус', 'исторический контракт не переписывает старый результат replay')
+})
+
+test('уничтожение старой формы не снимает новую концентрацию того же заклинателя', () => {
+  const state = shapeField()
+  const shaped = replayEvents(state, polymorph(state).events)
+  shaped.mechanics.concentration.druid = { effect_id: 'newer-effect' }
+  const hurt = resolveCommand(
+    authoritative({ command_type: 'ApplyDamage', actor_id: 'ogre', target_id: 'ally', amount: 30, damage_type: 'bludgeoning' }),
+    shaped,
+    options(dice()),
+  )
+  const after = replayEvents(shaped, hurt.events)
+  assert.equal(after.mechanics.concentration.druid.effect_id, 'newer-effect')
+  assert.equal(hurt.events.some((event) => event.event_type === 'ConcentrationEnded'), false)
+})
+
+test('уничтожение одной из форм общего эффекта сохраняет вторую и концентрацию', () => {
+  const state = shapeField()
+  const shaped = replayEvents(state, polymorph(state).events)
+  shaped.mechanics.shapes.ogre = structuredClone(shaped.mechanics.shapes.ally)
+  const effectId = shaped.mechanics.concentration.druid.effect_id
+  const hurt = resolveCommand(
+    authoritative({ command_type: 'ApplyDamage', actor_id: 'ogre', target_id: 'ally', amount: 30, damage_type: 'bludgeoning' }),
+    shaped,
+    options(dice()),
+  )
+  const after = replayEvents(shaped, hurt.events)
+  assert.equal(after.mechanics.concentration.druid.effect_id, effectId)
+  assert.ok(after.mechanics.shapes.ogre)
+  assert.equal(after.mechanics.shapes.ally, undefined)
 })
