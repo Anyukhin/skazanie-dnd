@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Play, RotateCcw, Search, Sparkles, Swords, Volume2, VolumeX } from 'lucide-react'
 import catalogPayload from '../data/dndsu-spells-0-6.json'
 import mechanicsOverrides from '../data/dndsu-spell-mechanics-overrides.json'
@@ -410,6 +410,7 @@ function attackStyle(entry: AttackEntry) {
 }
 
 export function CombatEffectsLab({ combatAudio, soundMuted: soundMutedProp, onSoundMutedChange }: CombatEffectsLabProps = {}) {
+  const stageRef = useRef<HTMLDivElement>(null)
   const [mode, setMode] = useState<PreviewMode>('spells')
   const [query, setQuery] = useState('')
   const [level, setLevel] = useState('all')
@@ -467,6 +468,7 @@ export function CombatEffectsLab({ combatAudio, soundMuted: soundMutedProp, onSo
 
   const play = () => {
     if (!current) return
+    stageRef.current?.scrollIntoView({ block: 'start', behavior: 'instant' })
     setHasPlayed(false)
     setPlaying(true)
     setReplay((value) => value + 1)
@@ -509,7 +511,7 @@ export function CombatEffectsLab({ combatAudio, soundMuted: soundMutedProp, onSo
         </div>
       </aside>
 
-      <div className="combat-effects-lab-stage">
+      <div className="combat-effects-lab-stage" ref={stageRef}>
         <div className="combat-effects-lab-stage-head">
           <div><h3>{current?.type === 'spell' ? current.spell.name : current?.name}</h3><p>{support}</p></div>
           <div className="combat-effects-lab-stage-actions">

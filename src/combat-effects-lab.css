@@ -248,6 +248,9 @@
 
 .combat-effects-lab-stage {
   min-width: 0;
+  height: clamp(320px, calc(100svh - 100px), 860px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
 }
 
 .combat-effects-lab-stage-head {
@@ -304,9 +307,9 @@
 
 .combat-effects-lab-board-shell {
   position: relative;
-  min-height: 490px;
+  min-height: 0;
   overflow: hidden;
-  container-type: inline-size;
+  container-type: size;
   border: 1px solid var(--effects-line);
   background: #12110f;
 }
@@ -317,6 +320,8 @@
 }
 
 .combat-effects-lab-board-shell .board-frame {
+  /* Галерея умещает всю арену по обеим осям, игровая камера не меняется. */
+  --cell: min(calc((100cqw - 24px) / var(--board-columns)), calc((100cqh - 24px) / var(--board-rows)));
   box-shadow: 0 10px 0 #17120d, 0 20px 35px rgba(0, 0, 0, .45);
 }
 
@@ -384,7 +389,6 @@
   .combat-effects-lab-stage-head { display: block; }
   .combat-effects-lab-header-count { margin-top: 10px; text-align: left; }
   .combat-effects-lab-stage-actions { margin-top: 12px; }
-  .combat-effects-lab-board-shell { min-height: 360px; }
   .combat-effects-lab-filters { grid-template-columns: 1fr; }
 }
 
