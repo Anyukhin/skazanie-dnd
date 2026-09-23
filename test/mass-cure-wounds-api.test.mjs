@@ -126,46 +126,76 @@ async function acquireCleric(api, t) {
   assert.ok(cleric)
   const cantripPool = cleric.spell_selection.spells.filter((spell) => spell.level === 0).map((spell) => spell.id)
   const cantripsForLevel = (level) => cantripPool.slice(0, level >= 10 ? 5 : level >= 4 ? 4 : 3)
-  const actorId = 'hero-slot-1'
-  expectStatus(await api.command(playerCookie, 'mass-cure-import', { command_type: 'ImportCharacter', actor_id: actorId, document: clericDocument('Иара') }))
-  let state = expectStatus(await api.request(`/api/rooms/${CAMPAIGN}`, { cookie: playerCookie })).state
-  state = expectStatus(await api.command(playerCookie, 'mass-cure-choices-1', { command_type: 'SetCharacterChoices', actor_id: actorId,
-    subclass: cleric.subclasses[0]?.name ?? '', class_skill_proficiencies: ['insight', 'religion'], selected_feature_ids: [] })).authoritative_state
-  state = expectStatus(await api.command(playerCookie, 'mass-cure-spells-0', { command_type: 'SetSpellSelections', actor_id: actorId,
-    known_spell_ids: cantripsForLevel(1), prepared_spell_ids: ['healing-word'] })).authoritative_state
-  for (let expectedLevel = 1; expectedLevel <= 10; expectedLevel += 1) {
-    state = expectStatus(await api.command(playerCookie, `mass-cure-level-${expectedLevel}`, { command_type: 'LevelUp', actor_id: actorId, expected_level: expectedLevel })).authoritative_state
-    if (expectedLevel === 3 || expectedLevel === 7) {
-      const choices = { command_type: 'SetCharacterChoices', actor_id: actorId,
-        subclass: state.players.find((entry) => entry.id === actorId)?.subclass ?? cleric.subclasses[0]?.name ?? '',
-        class_skill_proficiencies: ['insight', 'religion'], selected_feature_ids: state.players.find((entry) => entry.id === actorId)?.selectedFeatureIds ?? [],
+  const completeCleric = async (cookie, actorId, name, prefix) => {
+    expectStatus(await api.command(cookie, `${prefix}-import`, { command_type: 'ImportCharacter', actor_id: actorId, document: clericDocument(name) }))
+    let state = expectStatus(await api.request(`/api/rooms/${CAMPAIGN}`, { cookie })).state
+    state = expectStatus(await api.command(cookie, `${prefix}-choices-1`, { command_type: 'SetCharacterChoices', actor_id: actorId,
+      subclass: cleric.subclasses[0]?.name ?? '', class_skill_proficiencies: ['insight', 'religion'], selected_feature_ids: [] })).authoritative_state
+    state = expectStatus(await api.command(cookie, `${prefix}-spells-0`, { command_type: 'SetSpellSelections', actor_id: actorId,
+      known_spell_ids: cantripsForLevel(1), prepared_spell_ids: ['healing-word'] })).authoritative_state
+    for (let expectedLevel = 1; expectedLevel <= 10; expectedLevel += 1) {
+      state = expectStatus(await api.command(cookie, `${prefix}-level-${expectedLevel}`, { command_type: 'LevelUp', actor_id: actorId, expected_level: expectedLevel })).authoritative_state
+      if (expectedLevel === 3 || expectedLevel === 7) {
+        const choices = { command_type: 'SetCharacterChoices', actor_id: actorId,
+          subclass: state.players.find((entry) => entry.id === actorId)?.subclass ?? cleric.subclasses[0]?.name ?? '',
+          class_skill_proficiencies: ['insight', 'religion'], selected_feature_ids: state.players.find((entry) => entry.id === actorId)?.selectedFeatureIds ?? [],
+        }
+        choices.ability_score_level = expectedLevel + 1, choices.ability_score_increases = ['wis', 'con']
+        state = expectStatus(await api.command(cookie, `${prefix}-choices-${expectedLevel + 1}`, choices)).authoritative_state
       }
-      choices.ability_score_level = expectedLevel + 1, choices.ability_score_increases = ['wis', 'con']
-      state = expectStatus(await api.command(playerCookie, `mass-cure-choices-${expectedLevel + 1}`, choices)).authoritative_state
+      const prepared = expectedLevel >= 9 ? ['healing-word', 'mass-cure-wounds'] : ['healing-word']
+      // Меняем выбор при появлении заговора и в конце подготовки героя;
+      // одинаковая отправка после каждого уровня не добавляет проверяемого поведения.
+      if ([4, 10, 11].includes(expectedLevel + 1)) {
+        state = expectStatus(await api.command(cookie, `${prefix}-spells-${expectedLevel}`, { command_type: 'SetSpellSelections', actor_id: actorId,
+          known_spell_ids: cantripsForLevel(expectedLevel + 1), prepared_spell_ids: prepared })).authoritative_state
+      }
     }
-    const prepared = expectedLevel >= 9 ? ['healing-word', 'mass-cure-wounds'] : ['healing-word']
-    state = expectStatus(await api.command(playerCookie, `mass-cure-spells-${expectedLevel}`, { command_type: 'SetSpellSelections', actor_id: actorId,
-      known_spell_ids: cantripsForLevel(expectedLevel + 1), prepared_spell_ids: prepared })).authoritative_state
+    const hero = state.players.find((entry) => entry.id === actorId)
+    assert.equal(hero.level, 11)
+    assert.equal(hero.characterSetupRequired, false)
+    assert.ok(hero.preparedSpellIds.includes('mass-cure-wounds'))
+    return state
   }
-  const hero = state.players.find((entry) => entry.id === actorId)
-  assert.equal(hero.level, 11)
-  assert.equal(hero.characterSetupRequired, false)
-  assert.ok(hero.preparedSpellIds.includes('mass-cure-wounds'))
-  return { adminCookie, playerCookie, guestCookie, actorId, state }
+  const actorId = 'hero-slot-1'
+  const secondActorId = 'hero-slot-2'
+  await completeCleric(playerCookie, actorId, 'Иара', 'mass-cure-owner')
+  const state = await completeCleric(guestCookie, secondActorId, 'Бор', 'mass-cure-guest')
+  return { adminCookie, playerCookie, guestCookie, actorId, secondActorId, state }
 }
 
-test('HTTP Mass Cure Wounds проходит acquisition, права, ошибки до оплаты, idempotency и restart', { timeout: runnerTimeout(90_000) }, async (t) => {
+test('HTTP Mass Cure Wounds проходит acquisition двух владельцев, NPC setup, права, idempotency и restart', { timeout: runnerTimeout(90_000) }, async (t) => {
   const api = await harness(t)
-  const { adminCookie, playerCookie, guestCookie, actorId, state: prepared } = await acquireCleric(api, t)
+  const { adminCookie, playerCookie, guestCookie, actorId, secondActorId, state: prepared } = await acquireCleric(api, t)
   const room = () => api.request(`/api/rooms/${CAMPAIGN}`, { cookie: playerCookie })
+  const adminRoom = () => api.request(`/api/rooms/${CAMPAIGN}`, { cookie: adminCookie })
   let state = prepared
   const initialCaster = state.players.find((entry) => entry.id === actorId)
   for (const item of initialCaster.inventory.filter((entry) => entry.equipped === true)) {
     state = expectStatus(await api.command(playerCookie, `mass-cure-unequip-${item.id}`, { command_type: 'EquipItem', actor_id: actorId, item_id: item.id, equipped: false })).authoritative_state
   }
   const caster = state.players.find((entry) => entry.id === actorId)
-  const ally = state.players.find((entry) => entry.id !== actorId)
+  const ally = state.players.find((entry) => entry.id === secondActorId)
   assert.ok(caster && ally)
+  assert.equal(caster.characterSetupRequired, false)
+  assert.equal(ally.characterSetupRequired, false)
+  assert.equal(caster.level, 11)
+  assert.equal(ally.level, 11)
+
+  let wounded = state
+  for (const targetId of [actorId, secondActorId]) {
+    const damage = expectStatus(await api.command(adminCookie, `mass-cure-wound-${targetId}`, {
+      command_type: 'ApplyDamage', actor_id: actorId, target_id: targetId, amount: 5, damage_type: 'force',
+    }))
+    assert.equal(damage.mechanics.filter((event) => event.event_type === 'DamageApplied').length, 1)
+    assert.equal(damage.mechanics.some((event) => event.event_type === 'ActionReadied'), false)
+    wounded = damage.authoritative_state
+  }
+  state = wounded
+  const woundedCaster = state.players.find((entry) => entry.id === actorId)
+  const woundedAlly = state.players.find((entry) => entry.id === secondActorId)
+  assert.ok(woundedCaster.hp < woundedCaster.maxHp)
+  assert.ok(woundedAlly.hp < woundedAlly.maxHp)
   const point = { x: caster.x, y: caster.y }
   assert.ok(cellDistance(ally, point) <= 30)
   const selected = { command_type: 'CastSpell', actor_id: actorId, spell_id: 'mass-cure-wounds',
@@ -186,15 +216,74 @@ test('HTTP Mass Cure Wounds проходит acquisition, права, ошибк
 
   const first = expectStatus(await api.command(playerCookie, 'mass-cure-cast-once', selected))
   assert.equal(first.mechanics.filter((event) => event.event_type === 'ResourceSpent').length, 1)
+  const firstHealing = first.mechanics.filter((event) => event.event_type === 'HealingApplied')
+  assert.equal(firstHealing.length, 2)
+  assert.deepEqual(new Set(firstHealing.map((event) => event.target_ids[0])), new Set([actorId, secondActorId]))
+  assert.ok(firstHealing.every((event) => Number(event.payload.applied_amount) > 0))
+  assert.equal(first.mechanics.filter((event) => event.event_type === 'DieRolled' && event.payload.purpose === 'spell_healing:mass-cure-wounds').length, 1)
   assert.equal(first.authoritative_state.mechanics.resources[actorId].spell_slots_5.current, beforeSlots - 1)
   assert.equal(first.authoritative_state.players.find((entry) => entry.id === actorId).preparedSpellIds.includes('mass-cure-wounds'), true)
   const replay = expectStatus(await api.command(playerCookie, 'mass-cure-cast-once', selected))
   assert.equal(replay.idempotent_replay, true)
   assert.equal(replay.authoritative_state.mechanics.resources[actorId].spell_slots_5.current, beforeSlots - 1)
 
-  const second = expectStatus(await api.command(playerCookie, 'mass-cure-cast-twice', { ...selected, slot_level: 6, casting_resource: 'spell_slots_6' }))
-  assert.equal(second.authoritative_state.mechanics.resources[actorId].spell_slots_5.current, beforeSlots - 1)
-  assert.equal(second.authoritative_state.mechanics.resources[actorId].spell_slots_6.current, beforeSixthSlots - 1)
+  const sceneLocationId = String(state.scene.location_id ?? state.scene.location ?? '')
+  const setupNpc = (state.social?.npcs ?? []).find((npc) => npc.available !== false
+    && npc.visibility !== 'gm_only'
+    && (String(npc.location_id ?? npc.location ?? '') === sceneLocationId || String(npc.location ?? '') === String(state.scene.location ?? '')))
+  assert.ok(setupNpc, 'bootstrap должен дать видимого social NPC для HarmNpc setup')
+  const occupied = new Set(state.players.map((entry) => `${entry.x},${entry.y}`))
+  const npcPlacement = state.npc_world?.placements?.find((entry) => String(entry.npc_id) === String(setupNpc.id)
+    && String(entry.location_id) === sceneLocationId)
+  const npcPoint = npcPlacement && cellDistance(npcPlacement, caster) <= 30
+    ? { x: npcPlacement.x, y: npcPlacement.y }
+    : choosePoint(state, caster, (cell) => cellDistance(caster, cell) <= 30 && !occupied.has(`${cell.x},${cell.y}`))
+  assert.ok(npcPoint)
+  if (!npcPlacement) {
+    state = expectStatus(await api.command(adminCookie, 'mass-cure-place-npc', {
+      command_type: 'PlaceNpc', npc_id: setupNpc.id, location_id: sceneLocationId, to: npcPoint,
+    })).authoritative_state
+  } else if (npcPoint.x !== npcPlacement.x || npcPoint.y !== npcPlacement.y) {
+    state = expectStatus(await api.command(adminCookie, 'mass-cure-move-npc', {
+      command_type: 'MoveNpc', npc_id: setupNpc.id, location_id: sceneLocationId, to: npcPoint,
+    })).authoritative_state
+  }
+  const npcBefore = state.npc_world.vitals[setupNpc.id]
+  const harmedNpc = expectStatus(await api.command(adminCookie, 'mass-cure-harm-npc', {
+    command_type: 'HarmNpc', npc_id: setupNpc.id, amount: 2, damage_type: 'force', trigger: 'acceptance-setup',
+  }))
+  assert.equal(harmedNpc.mechanics.filter((event) => event.event_type === 'NpcHarmed').length, 1)
+  assert.equal(harmedNpc.mechanics.some((event) => event.event_type === 'ActionReadied'), false)
+  state = harmedNpc.authoritative_state
+  const npcWoundedHp = state.npc_world.vitals[setupNpc.id].hp
+  assert.ok(npcWoundedHp < npcBefore.hp)
+  const npcCastPoint = { x: state.npc_world.placements.find((entry) => String(entry.npc_id) === String(setupNpc.id)).x,
+    y: state.npc_world.placements.find((entry) => String(entry.npc_id) === String(setupNpc.id)).y }
+  assert.ok(cellDistance(caster, npcCastPoint) <= 30)
+  const npcBeforeSlots = state.mechanics.resources[actorId].spell_slots_6.current
+  const npcSelected = { command_type: 'CastSpell', actor_id: actorId, spell_id: 'mass-cure-wounds',
+    to: npcCastPoint, target_ids: [setupNpc.id], slot_level: 6, casting_resource: 'spell_slots_6' }
+  const npcCast = expectStatus(await api.command(playerCookie, 'mass-cure-cast-npc', npcSelected))
+  const npcHealing = npcCast.mechanics.filter((event) => event.event_type === 'HealingApplied')
+  assert.equal(npcHealing.length, 1)
+  assert.equal(npcHealing[0].payload.npc_id, setupNpc.id)
+  assert.ok(Number(npcHealing[0].payload.applied_amount) > 0)
+  for (const key of ['hp_before', 'hp_after', 'requested_amount', 'raw_amount', 'amount']) {
+    assert.equal(npcHealing[0].payload[key], undefined, `публичное событие NPC скрывает ${key}`)
+  }
+  assert.equal(npcCast.mechanics.filter((event) => event.event_type === 'DieRolled' && event.payload.purpose === 'spell_healing:mass-cure-wounds').length, 1)
+  assert.equal(npcCast.mechanics.filter((event) => event.event_type === 'ResourceSpent').length, 1)
+  assert.equal(npcCast.authoritative_state.mechanics.resources[actorId].spell_slots_6.current, npcBeforeSlots - 1)
+  const npcReplay = expectStatus(await api.command(playerCookie, 'mass-cure-cast-npc', npcSelected))
+  assert.equal(npcReplay.idempotent_replay, true)
+  assert.equal(npcReplay.authoritative_state.mechanics.resources[actorId].spell_slots_6.current, npcBeforeSlots - 1)
+  const guestView = expectStatus(await api.request(`/api/rooms/${CAMPAIGN}`, { cookie: guestCookie })).state
+  assert.equal(guestView.npc_world, undefined)
+  const npcLog = guestView.battleLog.find((entry) => entry.type === 'healing' && entry.targetId === setupNpc.id)
+  assert.ok(npcLog)
+  assert.equal(npcLog.hpBefore, undefined)
+  assert.equal(npcLog.hpAfter, undefined)
+  assert.equal(npcLog.healing, npcHealing[0].payload.applied_amount)
   const exhausted = await api.command(playerCookie, 'mass-cure-cast-exhausted', selected)
   expectStatus(exhausted, 400)
   assert.equal(exhausted.body.code, 'INSUFFICIENT_RESOURCE')
@@ -202,8 +291,15 @@ test('HTTP Mass Cure Wounds проходит acquisition, права, ошибк
   await api.restart()
   const restored = expectStatus(await room()).state
   assert.equal(restored.players.find((entry) => entry.id === actorId).level, 11)
+  assert.equal(restored.players.find((entry) => entry.id === secondActorId).level, 11)
+  for (const targetId of [actorId, secondActorId]) {
+    assert.equal(restored.players.find((entry) => entry.id === targetId).hp, first.authoritative_state.players.find((entry) => entry.id === targetId).hp)
+  }
   assert.equal(restored.mechanics.resources[actorId].spell_slots_5.current, beforeSlots - 1)
   assert.equal(restored.mechanics.resources[actorId].spell_slots_6.current, beforeSixthSlots - 1)
   assert.equal(restored.mechanics.resources[actorId].spell_slots_5.max, prepared.mechanics.resources[actorId].spell_slots_5.max)
+  const restoredAdmin = expectStatus(await adminRoom()).state
+  assert.ok(restoredAdmin.npc_world.vitals[setupNpc.id].hp > npcWoundedHp)
+  assert.equal(restoredAdmin.npc_world.vitals[setupNpc.id].hp, Math.min(npcBefore.max_hp, npcWoundedHp + npcHealing[0].payload.applied_amount))
   assert.ok(adminCookie)
 })

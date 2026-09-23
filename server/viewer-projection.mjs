@@ -829,6 +829,12 @@ function publicBattleEventFor(entry, state, actorId = '', visibility = {}) {
     }
   }
   const enemyIds = new Set((state?.enemies ?? []).map((enemy) => text(enemy?.id ?? enemy?.actor_id, 120)))
+  const visibleSocialNpcIds = new Set((state?.social?.npcs ?? [])
+    .map((/** @type {Loose} */ npc) => text(npc?.id, 120))
+    .filter((/** @type {string} */ id) => id && visibility.visibleActorIds?.has(id)))
+  if (visibleSocialNpcIds.has(targetId)) {
+    for (const key of ['hpBefore', 'hpAfter', 'maximumHpBefore', 'maximumHpAfter']) delete result[key]
+  }
   if (enemyIds.has(targetId) && !exactEnemyHealthKnown(state, targetId, actorId)) {
     delete result.hpBefore
     delete result.hpAfter
@@ -1935,6 +1941,15 @@ function eventForViewer(event, user, actorId, state = {}) {
     if (payload.spell_id === 'longstrider' || payload.condition === 'longstrider') {
       for (const key of ['from', 'to', 'origin', 'center']) delete payload[key]
     }
+  }
+  // Социальный NPC не отдаёт игроку собственный запас хитов. `NpcHarmed` держит
+  // ту же границу: факт события и подтверждённая величина остаются, числа
+  // до/после, сырой запрос и максимум исчезают из механического события.
+  if (visible.event_type === 'HealingApplied'
+    && Array.isArray(visible.target_ids)
+    && visible.target_ids.some((/** @type {unknown} */ targetId) => (state.social?.npcs ?? [])
+      .some((/** @type {Loose} */ npc) => String(npc?.id ?? '') === String(targetId)))) {
+    for (const key of ['hp', 'max_hp', 'hp_before', 'hp_after', 'maximum_hp', 'maximum_hp_before', 'maximum_hp_after', 'raw_amount', 'requested_amount', 'amount', 'rolled_amount']) delete payload[key]
   }
   if (visible.event_type === 'SpellCast') redactSpellVisualPayload(payload, state)
   if (visible.event_type === 'CampaignStoryCompleted') {

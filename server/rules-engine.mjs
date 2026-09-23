@@ -1462,7 +1462,7 @@ export function findActor(state, id) {
 // и не создаёт второй лист. Его эффект адресуется прежнему устойчивому ID.
 function spellCreatureFor(state, id, spell) {
   const actor = findActor(state, id)
-  if (actor || spell.id !== 'longstrider') return actor
+  if (actor || !['longstrider', 'mass-cure-wounds'].includes(String(spell?.id ?? ''))) return actor
   return npcInteractionTargetForViewer(state, id) ? npcCombatActorFor(state, id) : null
 }
 
@@ -6150,8 +6150,8 @@ export function validateCommand(input, rawState, context = {}) {
     if (command.command_type === 'TransferItem'
       && command.recipient_kind === 'npc'
       && String(id) === String(command.recipient_id)) continue
-    const target = command.command_type === 'CastSpell' && command.spell_id === 'longstrider'
-      ? spellCreatureFor(state, id, { id: 'longstrider' }) : findActor(state, id)
+    const target = command.command_type === 'CastSpell' && ['longstrider', 'mass-cure-wounds'].includes(command.spell_id)
+      ? spellCreatureFor(state, id, { id: command.spell_id }) : findActor(state, id)
     if (!target) throw new RulesValidationError(`Цель ${id} не найдена`, 'TARGET_NOT_FOUND')
   }
   assertActorPermission(command, context, state)
@@ -6571,7 +6571,9 @@ export function validateCommand(input, rawState, context = {}) {
           const targetAt = actorPosition(targetState, actorId(target))
           if (!targetAt) throw new RulesValidationError('Цель должна находиться на карте', 'MAP_POSITION_REQUIRED')
           const selected = spellTargetsAt(state, { ...command, target_ids: [requestedId] }, spell)
-          if (!selected.some((candidate) => actorId(candidate) === requestedId)) {
+          const selectedNpc = npcSpellTargetsAt(state, { ...command, target_ids: [requestedId] }, spell)
+          if (!selected.some((candidate) => actorId(candidate) === requestedId)
+            && !selectedNpc.some(({ npc }) => String(npc.id) === requestedId)) {
             throw new RulesValidationError('Цель находится вне области заклинания', 'INVALID_SPELL_TARGET')
           }
         }
@@ -8996,8 +8998,11 @@ export function spellTargetsAt(state, command, spell) {
 }
 
 function npcSpellTargetsAt(state, command, spell) {
-  if (!['area-save', 'area-damage'].includes(spell.kind)) return []
+  if (!['area-save', 'area-damage'].includes(spell.kind) && spell.selectTargetsInArea !== true) return []
   const candidates = placedSceneNpcTargets(state).filter(({ npc }) => !findActor(state, String(npc.id)))
+  const selectedIds = spell.selectTargetsInArea === true && command.target_ids?.length
+    ? new Set(command.target_ids.map(String)) : null
+  const selected = selectedIds ? candidates.filter(({ npc }) => selectedIds.has(String(npc.id))) : candidates
   if (spell.target === 'self') {
     const center = actorPosition(state, command.actor_id)
     const radius = Math.max(0, safeInteger(spell.radius, 5))
@@ -9010,13 +9015,13 @@ function npcSpellTargetsAt(state, command, spell) {
   const radius = Math.max(0, Math.min(600, safeInteger(spell.radius, 5)))
   if (spell.areaShape === 'cone' && spell.areaOrigin === 'self') {
     const origin = actorPosition(state, command.actor_id)
-    return origin ? candidates.filter(({ npc, placement }) => footprintCellsFor({ footprint: placement }, placement)
+    return origin ? candidates.filter(({ npc, placement }) => footprintCellsFor({ footprint: placement.footprint }, placement)
       .some((cell) => actorFootprintCellsAt(state, command.actor_id, origin).some((source) => positionInCone(cell, source, to, radius)))
       && areaTargetHasLineOfEffect(state, command, spell, to, String(npc.id), placement, { footprint: placement.footprint }, (point, source) => positionInCone(point, source, to, radius))) : []
   }
   if (spell.areaShape === 'cube' && spell.areaOrigin === 'self') {
     const origin = actorPosition(state, command.actor_id)
-    return origin ? candidates.filter(({ npc, placement }) => footprintCellsFor({ footprint: placement }, placement)
+    return origin ? candidates.filter(({ npc, placement }) => footprintCellsFor({ footprint: placement.footprint }, placement)
       .some((cell) => actorFootprintCellsAt(state, command.actor_id, origin).some((source) => positionInDirectedCube(cell, source, to, radius)))
       && areaTargetHasLineOfEffect(state, command, spell, to, String(npc.id), placement, { footprint: placement.footprint }, (point, source) => positionInDirectedCube(point, source, to, radius))) : []
   }
@@ -9025,9 +9030,14 @@ function npcSpellTargetsAt(state, command, spell) {
     return candidates.filter(({ placement }) => footprintCellsFor({ footprint: placement.footprint }, placement)
       .some((cell) => wall.has(positionKey(cell))))
   }
-  return candidates.filter(({ npc, placement }) => footprintCellsFor({ footprint: placement }, placement)
+  const affected = selected.filter(({ npc, placement }) => footprintCellsFor({ footprint: placement.footprint }, placement)
     .some((cell) => positionInArea(cell, to, radius, spell.areaShape ?? 'sphere', spell.areaSideFeet))
     && areaTargetHasLineOfEffect(state, command, spell, to, String(npc.id), placement, { footprint: placement.footprint }, (point, origin) => positionInArea(point, origin, radius, spell.areaShape ?? 'sphere', spell.areaSideFeet)))
+  if (spell.selectTargetsInArea === true && command.target_ids?.length) {
+    const byId = new Map(affected.map((entry) => [String(entry.npc.id), entry]))
+    return command.target_ids.map((id) => byId.get(String(id))).filter(Boolean)
+  }
+  return affected
 }
 
 /** Социальный NPC использует геометрию, спасброски и защиты своей боевой формы. */
@@ -14773,20 +14783,27 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             : spell.addAbilityModifier ? diceExpression(scaledHealing, spellModifier, 4) : scaledHealing
           // Бросок один на всех: «Массовое лечащее слово» возвращает каждому
           // одно и то же число, а не бросает кость на каждого отдельно.
-          const healingTargets = affected.filter((target) => !(spell.immuneCreatureTypes ?? []).includes(creatureTypeFor(target)))
+          const healingEntries = [
+            ...affected.map((target) => ({ target, targetId: actorId(target), npcId: null })),
+            ...npcAffected.map(({ npc }) => ({ target: npcCombatActorFor(state, String(npc.id)), targetId: String(npc.id), npcId: String(npc.id) })),
+          ].filter(({ target }) => target)
+          const healingTargets = healingEntries.filter(({ target }) => !(spell.immuneCreatureTypes ?? []).includes(creatureTypeFor(target)))
           const healingRoll = expression && healingTargets.length ? diceService.roll(expression, `spell_healing:${spell.id}`, command.actor_id, command.visibility ?? 'public') : null
           if (healingRoll) {
             rolls.push(healingRoll)
             events.push(eventFrom(command, 'DieRolled', healingRoll, []))
           }
           const healedTotal = healingRoll ? healingRoll.total : flatHealing
-          for (const target of affected) {
-            const resolvedTargetId = actorId(target)
+          for (const { target, targetId: resolvedTargetId, npcId } of healingEntries) {
             if ((spell.immuneCreatureTypes ?? []).includes(creatureTypeFor(target))) continue
             const healing = resolvedHealingRoll(state, resolvedTargetId, expression, healedTotal)
             const before = actorHp(target)
-            const after = conditionIdsFor(state, resolvedTargetId).has('healing-blocked') ? before : Math.min(actorMaxHp(target), before + healing.amount)
-            events.push(eventFrom(commandWithRules(command, RULE_IDS.healing), 'HealingApplied', { spell_id: spell.id, requested_amount: healing.amount, applied_amount: after - before, hp_before: before, hp_after: after, ...healing }, [resolvedTargetId]))
+            const blocked = conditionIdsFor(state, resolvedTargetId).has('healing-blocked')
+            const after = blocked ? before : Math.min(actorMaxHp(target), before + healing.amount)
+            events.push(eventFrom(commandWithRules(command, RULE_IDS.healing), 'HealingApplied', {
+              spell_id: spell.id, ...(npcId ? { npc_id: npcId } : {}), requested_amount: healing.amount,
+              applied_amount: after - before, hp_before: before, hp_after: after, ...healing,
+            }, [resolvedTargetId]))
             // Лечение, которое заодно снимает состояния: «Полное исцеление»
             // прекращает слепоту и глухоту. Список — тот же, что у усилений,
             // и читается тем же полем, чтобы правило было одно на две ветки.
@@ -19096,20 +19113,35 @@ function replaceActor(state, id, updater) {
   if (Array.isArray(state.enemies)) state.enemies = state.enemies.map((actor) => actorId(actor) === id ? updater(actor) : actor)
 }
 
+function syncNpcWorldVital(state, npcId, { hp, maxHp, fallback } = {}) {
+  const id = String(npcId ?? '')
+  if (!id) return
+  const world = normalizeNpcWorldState(state.npc_world)
+  const before = world.vitals[id] ?? fallback ?? { hp: 0, max_hp: 1, alive: false }
+  const maximum = Math.max(1, safeInteger(maxHp, before.max_hp))
+  const current = Math.min(maximum, Math.max(0, safeInteger(hp, before.hp)))
+  world.vitals[id] = { hp: current, max_hp: maximum, alive: current > 0 }
+  state.npc_world = normalizeNpcWorldState(world)
+}
+
 function syncAuthoredNpcVital(state, targetId, { hp, maxHp } = {}) {
   const enemy = state.enemies.find((candidate) => actorId(candidate) === targetId)
   const npcId = String(enemy?.origin?.npc_id ?? '')
   if (!npcId) return
-  const world = normalizeNpcWorldState(state.npc_world)
-  const before = world.vitals[npcId] ?? {
-    hp: actorHp(enemy),
-    max_hp: actorMaxHp(enemy),
-    alive: isLivingActor(enemy),
-  }
-  const maximum = Math.max(1, safeInteger(maxHp, before.max_hp))
-  const current = Math.min(maximum, Math.max(0, safeInteger(hp, before.hp)))
-  world.vitals[npcId] = { hp: current, max_hp: maximum, alive: current > 0 }
-  state.npc_world = normalizeNpcWorldState(world)
+  syncNpcWorldVital(state, npcId, {
+    hp, maxHp,
+    fallback: { hp: actorHp(enemy), max_hp: actorMaxHp(enemy), alive: isLivingActor(enemy) },
+  })
+}
+
+/** Старый HealingApplied не должен менять vitality обычного социального NPC. */
+function syncSocialNpcVital(state, targetId, { hp, maxHp, npcId = null } = {}) {
+  const id = String(targetId ?? '')
+  if (String(npcId ?? '') !== id) return
+  if (!id || !(state.social?.npcs ?? []).some((npc) => String(npc?.id ?? '') === id)) return
+  const before = npcVitalFor(state, id)
+  if (before.alive === false || before.hp <= 0) return
+  syncNpcWorldVital(state, id, { hp, maxHp, fallback: before })
 }
 
 function refreshPlayerDerivedState(state, actorIds) {
@@ -19863,6 +19895,7 @@ function applyGameEventCurrent(rawState, event) {
         return { ...actor, hp, ...(isEnemyActor(state, target) ? { alive: hp > 0 } : {}) }
       })
       syncAuthoredNpcVital(state, target, { hp: payload.hp_after })
+      syncSocialNpcVital(state, target, { hp: payload.hp_after, maxHp: payload.maximum_hp_after, npcId: payload.npc_id })
       appendBattleLog(state, event, {
         sceneTurn: safeInteger(state.scene?.turn, state.mechanics.combat.round),
         round: state.mechanics.combat.round,
