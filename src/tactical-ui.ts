@@ -147,6 +147,17 @@ export function pointInAreaEffect(effect: AreaEffectWithCells, point: { x: numbe
     return effect.cells.some((cell) => Number(cell.x) === point.x && Number(cell.y) === point.y)
   }
   if (!effect.center) return false
+  if (effect.geometry_version === 'circle-grid-v2'
+    && (effect.area_shape === 'sphere' || effect.area_shape === 'cylinder')) {
+    return areaCells({
+      shape: effect.area_shape,
+      origin: effect.center,
+      target: effect.center,
+      geometryVersion: effect.geometry_version,
+      gridOrigin: effect.grid_origin,
+      sizeFeet: Number(effect.radius_feet) || 0,
+    }).some((cell) => cell.x === point.x && cell.y === point.y)
+  }
   if (String(effect.area_shape ?? '').toLowerCase() === 'cube') {
     const radiusFeet = Math.max(0, Number(effect.radius_feet) || 0)
     if (radiusFeet <= 0) return false
@@ -620,6 +631,22 @@ const ELEMENT_DAMAGE_LABELS: Record<string, string> = {
   thunder: 'грома',
 }
 
+// Эти подписи принадлежат presentation-слою: импортировать JSX-оболочку ради
+// восемнадцати названий нельзя, а английский ключ под фишкой хуже честного
+// короткого русского названия.
+const SKILL_LABELS: Record<string, string> = {
+  acrobatics: 'Акробатика', animal_handling: 'Уход за животными', arcana: 'Магия', athletics: 'Атлетика',
+  deception: 'Обман', history: 'История', insight: 'Проницательность', intimidation: 'Запугивание',
+  investigation: 'Расследование', medicine: 'Медицина', nature: 'Природа', perception: 'Восприятие',
+  performance: 'Выступление', persuasion: 'Убеждение', religion: 'Религия', sleight_of_hand: 'Ловкость рук',
+  stealth: 'Скрытность', survival: 'Выживание',
+}
+
+function skillLabel(value: string) {
+  const key = value.toLocaleLowerCase('en').replace(/-/gu, '_')
+  return SKILL_LABELS[key] ?? humanizeConditionId(value)
+}
+
 function absorbingElementLabel(id: string) {
   const rider = id.startsWith('absorbing-element-rider:')
   const prefix = rider ? 'absorbing-element-rider:' : 'absorbing-element:'
@@ -660,15 +687,49 @@ function conditionDurationLabel(duration: string) {
   return CONDITION_DURATION_LABELS[duration] ?? duration.replace(/^rounds:/, 'раундов: ')
 }
 
+function enabledContractCondition(id: string) {
+  if (id.startsWith('protected-from-energy:')) {
+    const damageType = ELEMENT_DAMAGE_LABELS[id.slice('protected-from-energy:'.length).toLocaleLowerCase('ru')] ?? 'стихии'
+    return {
+      label: `Защита от энергии: ${damageType}`,
+      explanation: `Сопротивление урону ${damageType} действует, пока держится концентрация.`,
+    }
+  }
+  if (id.startsWith('borrowed-knowledge:')) {
+    const skill = skillLabel(id.slice('borrowed-knowledge:'.length))
+    return {
+      label: `Заимствованное знание: ${skill}`,
+      explanation: `Цель временно получает владение навыком «${skill}»; полные ограничения заклинания ещё не отображаются.`,
+    }
+  }
+  if (id.startsWith('skill-empowerment:')) {
+    const skill = skillLabel(id.slice('skill-empowerment:'.length))
+    return {
+      label: `Усиление навыка: ${skill}`,
+      explanation: `Бонус мастерства навыка «${skill}» удвоен на время концентрации.`,
+    }
+  }
+  if (id === 'enervated') return {
+    label: 'Обессиливание',
+    explanation: 'Пока сохраняется связь, заклинатель может действием повторить некротический урон и восстановить половину нанесённого урона в виде хитов.',
+  }
+  if (id === 'shillelagh') return {
+    label: 'Дубинка',
+    explanation: 'Выбранная дубинка или боевой посох становятся магическими: кость урона — к8, вместо Силы можно использовать базовую характеристику заклинаний. Отпущенное оружие теряет эффект.',
+  }
+  return null
+}
+
 export function conditionPresentation(condition: { id: string; duration?: string | null; effect_id?: string | null } | string) {
   const id = String(typeof condition === 'string' ? condition : condition.id)
   const duration = typeof condition === 'string' ? null : condition.duration
   const isAbsorbingElement = id.startsWith('absorbing-element:') || id.startsWith('absorbing-element-rider:')
+  const contract = enabledContractCondition(id)
   const status: ConditionRuleStatus = id.startsWith('resistance-') || isAbsorbingElement || id.startsWith('weapon-coated') || IMPLEMENTED_CONDITIONS.has(id)
     ? 'implemented'
-    : PARTIAL_CONDITIONS.has(id) ? 'partial' : 'marker'
+    : contract || PARTIAL_CONDITIONS.has(id) ? 'partial' : 'marker'
   const statusLabel = status === 'implemented' ? 'эффект работает' : status === 'partial' ? 'эффект частичный' : 'только маркер'
-  const explanation = id === 'resistance-d4'
+  const explanation = contract?.explanation ?? (id === 'resistance-d4'
     ? 'Добавляет 1к4 к одному спасброску — до или после броска.'
     : id.startsWith('absorbing-element-rider:')
       ? `Следующая собственная ближняя атака может израсходовать ${absorbingElementLabel(id).replace('Стихийный заряд: ', 'заряд ')}; заряд действует до конца следующего собственного хода.`
@@ -678,11 +739,11 @@ export function conditionPresentation(condition: { id: string; duration?: string
           ? 'Эффект применяется движком в текущем боевом срезе.'
           : status === 'partial'
             ? 'Часть эффекта применяется, но полные правила состояния ещё не реализованы.'
-            : 'Состояние хранится и отображается, но его отдельные правила пока не применяются.'
+            : 'Состояние хранится и отображается, но его отдельные правила пока не применяются.')
   return {
     id,
     instanceKey: typeof condition === 'string' || !condition.effect_id ? id : `${id}:${condition.effect_id}`,
-    label: CONDITION_LABELS[id]
+    label: CONDITION_LABELS[id] ?? contract?.label
       ?? (id.startsWith('weapon-coated:') ? 'Оружие смазано ядом'
         : isAbsorbingElement ? absorbingElementLabel(id)
           : id.startsWith('resistance-') ? `Бонус спасброска: ${humanizeConditionId(id.slice('resistance-'.length))}`

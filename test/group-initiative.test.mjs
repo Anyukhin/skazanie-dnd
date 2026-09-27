@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
-import { normalizeCampaignState, replayEvents, resolveCommand } from '../server/rules-engine.mjs'
+import { applyGameEvent, normalizeCampaignState, replayEvents, resolveCommand } from '../server/rules-engine.mjs'
 
 function dice(values = []) {
   let id = 0
@@ -106,4 +106,43 @@ test('StartCombat включает режим только по явному ф�
   )
   assert.equal(replayEvents(base, start({}).events).mechanics.combat.group_initiative, false)
   assert.equal(replayEvents(base, start({ group_initiative: true }).events).mechanics.combat.group_initiative, true)
+})
+
+test('StartCombat в versioned group phase выдаёт Haste каждому участнику и Bob тратит extra action', () => {
+  const template = field()
+  const base = normalizeCampaignState({
+    ...template,
+    mechanics: {
+      ...template.mechanics,
+      conditions: { bob: [{ id: 'hasted' }] },
+      combat: { active: false, round: 0, initiative: [], active_index: -1, action_economy: {}, group_initiative: false },
+    },
+  })
+  const started = resolveCommand(authoritative({ command_type: 'StartCombat', actor_id: 'ann', group_initiative: true }), base, options(dice([15, 14, 10, 9])))
+  const state = replayEvents(base, started.events)
+  const ann = state.mechanics.combat.action_economy.ann
+  const bob = state.mechanics.combat.action_economy.bob
+  assert.equal(state.mechanics.combat.group_initiative, true)
+  assert.equal(ann.action_economy_version, 2)
+  assert.equal(bob.action_economy_version, 2)
+  assert.equal(bob.attack_action_kind, 'haste')
+  assert.equal(bob.extra_actions, 1)
+  assert.equal(bob.attack_action_stack[0].kind, 'normal')
+
+  const bobDash = resolveCommand(authoritative({ command_type: 'UseCombatAction', actor_id: 'bob', action_id: 'dash' }), state, options(dice()))
+  const afterDash = replayEvents(state, bobDash.events)
+  assert.equal(afterDash.mechanics.combat.action_economy.bob.attack_action_kind, 'normal')
+  assert.equal(afterDash.mechanics.combat.action_economy.bob.extra_actions, 0)
+  assert.equal(afterDash.mechanics.combat.action_economy.bob.action, true)
+
+  const legacy = normalizeCampaignState({
+    ...template,
+    mechanics: { ...template.mechanics, conditions: { bob: [{ id: 'hasted' }] }, combat: { ...template.mechanics.combat, group_initiative: true } },
+  })
+  const legacyTurn = applyGameEvent(legacy, {
+    event_type: 'TurnStarted', event_id: 'legacy-group-turn', command_id: 'legacy-group-turn', actor_id: 'ann', target_ids: ['ann'],
+    payload: { round: 1, active_index: 0 },
+  })
+  assert.equal(legacyTurn.mechanics.combat.action_economy.bob.action_economy_version, undefined)
+  assert.equal(legacyTurn.mechanics.combat.action_economy.bob.attack_action_kind, undefined)
 })

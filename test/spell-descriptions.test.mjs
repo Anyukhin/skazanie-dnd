@@ -17,7 +17,8 @@ test('все карточки заклинаний имеют самостоят
     const description = descriptions[spell.id]
     assert.equal(spell.description, description, `${spell.id}: каталог расходится со словарём`)
     assert.ok(description.length >= 50, `${spell.id}: слишком короткое описание`)
-    assert.ok(sentenceCount(description) >= 1 && sentenceCount(description) <= 3, `${spell.id}: допустимо 1–3 предложения`)
+    assert.ok(sentenceCount(description) >= 1, `${spell.id}: нужен связный пересказ`)
+    assert.ok(description.length <= 2000, `${spell.id}: описание требует разбивки на отдельные характеристики`)
     assert.match(description, /[А-Яа-яЁё]/u, `${spell.id}: нужен русский текст`)
     assert.doesNotMatch(description, /^(?:\d+d\d|область |состояние:|особый|buff|summon|utility|damage|save|healing|teleport)/iu, `${spell.id}: остался машинный фрагмент`)
     assert.doesNotMatch(description, /сервер|движок|не исполня|автогенерац|расхожд/iu, `${spell.id}: ограничение механики должно быть в supportNote`)

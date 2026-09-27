@@ -113,8 +113,8 @@ test('Ускорение даёт дополнительное действие 
     assert.ok(swing.events.some((event) => event.event_type === 'AttackResolved'), `удар ${index + 1} обязан пройти`)
     current = replayEvents(current, swing.events)
   }
-  assert.equal(current.mechanics.combat.action_economy.fighter.attacks_used, 3)
-  assert.equal(current.mechanics.combat.action_economy.fighter.attacks_allowed, 3, 'два удара действия плюс один от Ускорения')
+  assert.equal(current.mechanics.combat.action_economy.fighter.attacks_used, 2)
+  assert.equal(current.mechanics.combat.action_economy.fighter.attacks_allowed, 2, 'счётчик остаётся локальным для обычной action после отдельного удара Ускорения')
   assert.throws(() => strike(current, [15, 5]), (error) => error.code === 'ACTION_SPENT', 'четвёртый удар недоступен')
 })
 
@@ -156,6 +156,7 @@ test('Замедление режет скорость вдвое, снимае�
   const added = cast.events.find((event) => event.event_type === 'ConditionAdded' && event.payload.condition === 'slowed')
   assert.deepEqual(added.target_ids, ['ogre'])
   assert.equal(added.payload.repeat_save_timing, 'turn-end')
+  assert.equal(added.payload.repeat_save_ends_concentration, false)
 
   const slowed = replayEvents(state, cast.events)
   const attack = resolveCommand(

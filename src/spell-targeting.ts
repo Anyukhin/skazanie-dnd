@@ -1,6 +1,7 @@
 import type { BoardEffectRenderer } from './board-render'
 import type { BoardPoint } from './combat-animation'
-import type { ActorFootprint, TacticalMap } from './types'
+import { circularAreaLineOfEffect } from '../server/circular-area-geometry.mjs'
+import type { ActorFootprint, AreaGeometryVersion, TacticalMap } from './types'
 import { cellAt, edgeBetween, movementStepBlocked, revealedAt } from './tactical-map-client'
 import { actorFootprintCells, actorPresentationSize } from './tactical-ui'
 
@@ -21,6 +22,24 @@ export type SpellLineOfEffectOptions = {
   targetCells?: (cell: BoardPoint) => readonly BoardPoint[]
   spreadsAroundCorners?: boolean
   radiusFeet?: number
+  /** Версионированная область использует общий обход от origin до клетки. */
+  geometryVersion?: AreaGeometryVersion
+  gridOrigin?: BoardPoint
+}
+
+/** Клиентский адаптер общей проверки линии действия от точки области. */
+export function circularGridPointLineOfEffect(
+  map: TacticalMap,
+  origin: BoardPoint,
+  target: BoardPoint,
+  options: { radiusFeet: number; spreadsAroundCorners?: boolean },
+) {
+  return circularAreaLineOfEffect(origin, target, {
+    radiusFeet: Number(options.radiusFeet) || 0,
+    spreadsAroundCorners: options.spreadsAroundCorners === true,
+    isOpenCell: (candidate) => openCell(map, candidate),
+    isBlockedEdge: (from, to) => sightEdgeBlocked(map, from, to),
+  })
 }
 
 function lineCells(from: BoardPoint, to: BoardPoint): BoardPoint[] {
@@ -98,15 +117,27 @@ export function maskSpellAreaCells(
   const targetCells = options.targetCells ?? ((cell: BoardPoint) => [cell])
   const areaKeys = new Set(cells.map(key))
   const spreads = options.spreadsAroundCorners === true
+  const circleGridLoE = options.geometryVersion === 'circle-grid-v2'
+    && options.gridOrigin
+    && Number.isSafeInteger(options.gridOrigin.x)
+    && Number.isSafeInteger(options.gridOrigin.y)
+    ? options.gridOrigin
+    : null
   const result = new Set<string>()
   for (const cell of cells) {
     // Большая цель может занимать соседние клетки, но LoE проверяется только
     // по её части, попавшей в исходную геометрию области. Иначе footprint
     // способен «спасти» клетку, которую сама область не покрывает.
     const targets = targetCells(cell).filter((target) => areaKeys.has(key(target)))
-    if (targets.some((target) => origins.some((origin) => spreads
-      ? canFloodTo(map, origin, target, Number(options.radiusFeet) || 0)
-      : clearStraightLoE(map, origin, target)))) result.add(key(cell))
+    const reaches = circleGridLoE
+      ? targets.some((target) => circularGridPointLineOfEffect(map, circleGridLoE, target, {
+        radiusFeet: Number(options.radiusFeet) || 0,
+        spreadsAroundCorners: spreads,
+      }))
+      : targets.some((target) => origins.some((origin) => spreads
+        ? canFloodTo(map, origin, target, Number(options.radiusFeet) || 0)
+        : clearStraightLoE(map, origin, target)))
+    if (reaches) result.add(key(cell))
   }
   return result
 }
@@ -123,6 +154,7 @@ export type SpellTargetPreview = {
   cells: ReadonlySet<string>
   origin: BoardPoint
   target: BoardPoint
+  targetAnchor?: 'cell-center' | 'grid-intersection'
   color: string
   blocked: boolean
 }
@@ -172,12 +204,13 @@ export function createSpellTargetRenderer(preview: SpellTargetPreview): BoardEff
     context.setLineDash([size * .16, size * .12])
     context.globalAlpha = .8
     context.beginPath()
+    const targetOffset = preview.targetAnchor === 'grid-intersection' ? 0 : .5
     context.moveTo((preview.origin.x + .5) * size, (preview.origin.y + .5) * size)
-    context.lineTo((preview.target.x + .5) * size, (preview.target.y + .5) * size)
+    context.lineTo((preview.target.x + targetOffset) * size, (preview.target.y + targetOffset) * size)
     context.stroke()
     context.setLineDash([])
     context.globalAlpha = 1
-    const tx = (preview.target.x + .5) * size, ty = (preview.target.y + .5) * size
+    const tx = (preview.target.x + targetOffset) * size, ty = (preview.target.y + targetOffset) * size
     context.beginPath()
     context.arc(tx, ty, size * .28, 0, Math.PI * 2)
     context.moveTo(tx - size * .44, ty); context.lineTo(tx + size * .44, ty)

@@ -34,8 +34,8 @@ test('каталог консервативно разделяет partial, heur
   const wizard = stateFor('wizard').players[0]
   const info = spellCatalogInfo()
   assert.equal(info.verifiedMechanics, 0)
-  assert.equal(info.partialMechanics, 242)
-  assert.equal(info.heuristicMechanics, 189)
+  assert.equal(info.partialMechanics, 248)
+  assert.equal(info.heuristicMechanics, 183)
   // Восемь карточек заблокированы **с названной причиной**, а не «пока не
   // размечены»: у падения, полёта и левитации у движка нет высоты, у
   // возрождения — отметки момента смерти, у обнаружения и опознания — скрытого
@@ -279,6 +279,7 @@ test('Вызов страха повторяет спасбросок в кон�
   const frightened = applyAll(fearInitial, fearCast.events)
   const fear = frightened.mechanics.conditions.weak.find((condition) => condition.id === 'frightened')
   assert.equal(fear.repeat_save_timing, 'turn-end')
+  assert.equal(fear.repeat_save_ends_concentration, false)
   frightened.mechanics.combat.active_index = 1
   const repeat = resolveCommand({ command_type: 'EndTurn', actor_id: 'weak', server_authoritative: true }, frightened, { diceService: dice([20]), context: { serverAuthoritativeCombat: true } })
   assert.ok(!applyAll(frightened, repeat.events).mechanics.conditions.weak.some((condition) => condition.id === 'frightened'))

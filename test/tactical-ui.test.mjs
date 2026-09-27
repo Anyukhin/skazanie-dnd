@@ -13,6 +13,7 @@ const buildDir = join(testRoot, 'build')
 const runtimeServerDir = join(testRoot, 'server')
 mkdirSync(buildDir, { recursive: true })
 mkdirSync(runtimeServerDir, { recursive: true })
+copyFileSync(new URL('../server/circular-area-geometry.mjs', import.meta.url), join(runtimeServerDir, 'circular-area-geometry.mjs'))
 copyFileSync(new URL('../server/actor-footprint.mjs', import.meta.url), join(runtimeServerDir, 'actor-footprint.mjs'))
 const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
 const source = fileURLToPath(new URL('../src/tactical-ui.ts', import.meta.url))
@@ -450,6 +451,28 @@ test('состояния честно помечаются как работаю
   assert.match(unknown.explanation, /пока не применяются/)
   assert.equal(unknown.duration, 'раундов: 3')
   assert.equal(tacticalUi.conditionPresentation('disengaged').label, 'Отход')
+})
+
+test('новые spell conditions получают русскую подпись и partial-статус', () => {
+  const protectedEnergy = tacticalUi.conditionPresentation({ id: 'protected-from-energy:fire', duration: 'concentration' })
+  assert.equal(protectedEnergy.label, 'Защита от энергии: огня')
+  assert.equal(protectedEnergy.status, 'partial')
+  assert.match(protectedEnergy.explanation, /Сопротивление урону огня/u)
+
+  const borrowed = tacticalUi.conditionPresentation({ id: 'borrowed-knowledge:athletics', duration: 'seconds:3600' })
+  assert.equal(borrowed.label, 'Заимствованное знание: Атлетика')
+  assert.equal(borrowed.status, 'partial')
+  assert.match(borrowed.explanation, /владение навыком «Атлетика»/u)
+
+  const empowered = tacticalUi.conditionPresentation({ id: 'skill-empowerment:arcana', duration: 'concentration' })
+  assert.equal(empowered.label, 'Усиление навыка: Магия')
+  assert.equal(empowered.status, 'partial')
+  assert.match(empowered.explanation, /Бонус мастерства.*«Магия» удвоен/u)
+
+  assert.equal(tacticalUi.conditionPresentation({ id: 'enervated' }).label, 'Обессиливание')
+  assert.equal(tacticalUi.conditionPresentation({ id: 'enervated' }).status, 'partial')
+  assert.equal(tacticalUi.conditionPresentation({ id: 'shillelagh' }).label, 'Дубинка')
+  assert.equal(tacticalUi.conditionPresentation({ id: 'shillelagh' }).status, 'partial')
 })
 
 test('смазанный клинок читается в обеих формах: и чужой без ключа, и свой с ключом', () => {

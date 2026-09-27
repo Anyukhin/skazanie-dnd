@@ -263,7 +263,17 @@ test('обычный игрок сохраняет смерть NPC, добыч�
     context: { allowedActorIds: [HERO_ID] },
   }).state
   initial.sessionCode = SESSION
-  assert.ok(JSON.stringify(initial).length < 1_000_000, 'fixture должен проходить действующий лимит тела HTTP-запроса')
+  // `combatSpells` — производный серверный профиль: при импорте состояния
+  // Rules Engine восстанавливает его из класса и выбранных id заклинаний.
+  // Подробные описания и источники теперь живут в каталоге, поэтому включать
+  // полный профиль в большой admin fixture означало бы проверять лимит тела
+  // дублированием производных данных. Передаём исходные поля героя,
+  // не меняя проверяемые записи мира и предел размера запроса.
+  initial.players = initial.players.map((player) => {
+    const { combatSpells: _combatSpells, ...withoutDerivedSpells } = player
+    return withoutDerivedSpells
+  })
+  assert.ok(Buffer.byteLength(JSON.stringify(initial), 'utf8') < 1_000_000, 'fixture должен проходить действующий лимит тела HTTP-запроса')
 
   const users = await request(baseUrl, '/api/admin/users', { cookie: adminCookie })
   const ownerId = users.body.users.find((candidate) => candidate.email === 'player@world-data-flow.test').id

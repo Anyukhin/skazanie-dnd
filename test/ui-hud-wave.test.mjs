@@ -5,7 +5,7 @@ import test from 'node:test'
 // Интерфейс разделён по задаче 0: часть экранов вынесена из App.tsx.
 // Сторож читает весь корпус интерфейса, иначе проверка молча перестала бы
 // что-либо охранять после переезда компонента.
-const appSource = ['../src/App.tsx', '../src/AppViews.tsx', '../src/DungeonMap.tsx', '../src/app-shared.tsx']
+const appSource = ['../src/App.tsx', '../src/AppViews.tsx', '../src/DungeonMap.tsx', '../src/Spellbook.tsx', '../src/SpellDetail.tsx', '../src/app-shared.tsx']
   .map((path) => readFileSync(new URL(path, import.meta.url), 'utf8'))
   .join('\n')
 const sessionSource = readFileSync(new URL('../src/useGameSession.ts', import.meta.url), 'utf8')
@@ -58,7 +58,7 @@ test('предпросмотр области использует общий м
   assert.match(appSource, /const previewBlastKeys = useMemo\(\(\) => \{/u)
   assert.match(appSource, /if \(!previewBlastCenter \|\| !active \|\| previewBlastSizeFeet <= 0\) return new Set<string>\(\)/u)
   assert.match(appSource, /const inBlastArea = Boolean\(cell\.revealed && previewBlastKeys\.has\(cellKey\)\)/u)
-  assert.match(appSource, /createSpellTargetRenderer\(\{ cells: previewBlastKeys/u)
+  assert.match(appSource, /createSpellTargetRenderer\(\{\s*cells:\s*previewBlastKeys/u)
   assert.doesNotMatch(appSource, /function boardCellInCone/u)
   assert.doesNotMatch(appSource, /function boardCellInDirectedCube/u)
 })
@@ -459,7 +459,7 @@ test('названия разделов сохранены, подписи к д
   for (const caps of ['ИСТОРИЯ УРОНА', 'ЗАДАЧИ {quests.length}', '<header>РАУНД', 'ПРОТИВНИК', 'МОДИФИКАТОР', '<span>ВЕХИ</span>', 'ТРЕБУЕТСЯ ПРОВЕРКА', 'БЕЗ СОЗНАНИЯ']) {
     assert.equal(appSource.includes(caps), false, `подпись к данным набрана капсом: ${caps}`)
   }
-  for (const kept of ['Хроника', 'ОТРЯД · ', 'ПЕРВЫЕ ШАГИ', 'КНИГА ЗАКЛИНАНИЙ']) {
+  for (const kept of ['Хроника', 'ОТРЯД · ', 'ПЕРВЫЕ ШАГИ', 'Книга заклинаний']) {
     assert.equal(appSource.includes(kept), true, `название раздела потерялось: ${kept}`)
   }
   assert.doesNotMatch(stylesSource, /\.turn-resolution \{[^}]*text-transform: uppercase/u)

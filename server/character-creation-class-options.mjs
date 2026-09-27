@@ -156,6 +156,11 @@ const domainSpells = (spellIds) => ({
   always_prepared: true,
   counts_against_prepared_limit: false,
 })
+const domainSpellsByLevel = (spells) => ({
+  ...Object.fromEntries(Object.entries(spells).map(([level, spellIds]) => [level, [...spellIds]])),
+  always_prepared: true,
+  counts_against_prepared_limit: false,
+})
 
 const classDefinitions = {
   barbarian: {
@@ -355,7 +360,13 @@ const CLERIC_DOMAINS = [
   {
     id: 'tempest', label: 'Домен бури', aliases: ['cleric-domen-buri', 'домен бури'],
     features: [feature('bonus-proficiencies', 'Дополнительные владения', 'Владение боевым оружием и тяжёлыми доспехами.'), feature('wrath-of-the-storm', 'Гнев бури', 'Реакцией нанесите урон молнией или громом существу, которое вас атакует.')],
-    additional_armor_proficiencies: ['heavy'], additional_weapon_proficiencies: ['martial'], domain_spells: domainSpells(['fog_cloud', 'thunderwave']),
+    additional_armor_proficiencies: ['heavy'], additional_weapon_proficiencies: ['martial'], domain_spells: domainSpellsByLevel({
+      1: ['fog_cloud', 'thunderwave'],
+      3: ['gust_of_wind', 'shatter'],
+      5: ['call_lightning', 'sleet_storm'],
+      7: ['control_water', 'ice_storm'],
+      9: ['destructive_wave', 'insect_plague'],
+    }),
   },
   {
     id: 'trickery', label: 'Домен обмана', aliases: ['cleric-domen-obmana', 'домен обмана'],
@@ -690,6 +701,9 @@ function buildBenefits(classKey, choices, subclass) {
   if (subclass?.domain_spells) {
     benefits.domain_spells = structuredClone(subclass.domain_spells)
     benefits.domain_spell_ids = [...(subclass.domain_spells[1] ?? [])]
+    benefits.domain_spell_ids_by_level = Object.fromEntries(Object.entries(subclass.domain_spells)
+      .filter(([level]) => /^\d+$/u.test(level))
+      .map(([level, spellIds]) => [level, [...spellIds]]))
     benefits.domain_spells_always_prepared = true
     benefits.domain_spells_count_against_prepared_limit = false
   }

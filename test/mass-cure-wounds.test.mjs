@@ -67,7 +67,7 @@ function field() {
       actor('dying', 12, 1, 0),
       actor('blocked', 14, 2),
       actor('outside', 20, 1),
-      actor('edge', 19, 1),
+      actor('edge', 18, 1),
       actor('undead', 16, 1, 20, { creature_type: 'undead' }),
       actor('construct', 16, 2, 20, { creature_type: 'construct' }),
     ],
@@ -157,6 +157,14 @@ test('ячейка шестого круга добавляет одну кос�
     ['ally-1', 'ally-2', 'ally-3', 'ally-4', 'edge', 'summon'])
   assert.equal(result.events.filter((event) => event.event_type === 'ResourceSpent').length, 1)
   assert.equal(result.events.find((event) => event.event_type === 'ResourceSpent').payload.resource, 'spell_slots_6')
+})
+
+test('клетка за внешней дугой новой сферы не считается краем старого квадрата', () => {
+  const state = field()
+  state.players.find((entry) => entry.id === 'edge').x = 19
+  state.mechanics.positions.edge.x = 19
+  assert.throws(() => cast(state, ['edge']), { code: 'INVALID_SPELL_TARGET' })
+  assert.equal(state.mechanics.resources.caster.spell_slots_5.current, 2)
 })
 
 test('повторный commit Mass Cure Wounds идемпотентен и replay сохраняет расход и лечение', async (t) => {

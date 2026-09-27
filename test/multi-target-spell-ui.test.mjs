@@ -27,11 +27,34 @@ test('multi-target spell UI uses the server profile limit and toggles without au
   assert.deepEqual(toggleCombatSpellTargetIds([], 'enemy-1', 2, false), [])
 })
 
+test('beam spell target limit follows declared beams and upcast beams', () => {
+  const scorchingRay = { level: 2, beams: 3, upcastBeamsPerLevel: 1 }
+  assert.equal(combatSpellTargetLimit(scorchingRay, 2), 3)
+  assert.equal(combatSpellTargetLimit(scorchingRay, 3), 4)
+  assert.equal(combatSpellTargetLimit(scorchingRay, 5), 6)
+  assert.equal(combatSpellTargetLimit({ level: 1, maxTargets: 2, upcastTargetsPerLevel: 1 }, 3), 4, 'обычные target limits не меняются')
+})
+
+test('beam-scaling cantrip uses caster level and ignores a fabricated slot upcast', () => {
+  const eldritchBlast = { level: 0, beamScaling: true }
+  assert.equal(combatSpellTargetLimit(eldritchBlast, 0, 4), 1)
+  assert.equal(combatSpellTargetLimit(eldritchBlast, 0, 5), 2)
+  assert.equal(combatSpellTargetLimit(eldritchBlast, 0, 10), 2)
+  assert.equal(combatSpellTargetLimit(eldritchBlast, 0, 11), 3)
+  assert.equal(combatSpellTargetLimit(eldritchBlast, 6, 5), 2, 'ячейка не добавляет лучи заговору')
+  assert.equal(combatSpellTargetLimit(eldritchBlast), 1, 'без уровня заклинателя сохраняется безопасный предел')
+})
+
 test('multi-target separation warning follows grid feet and allows one target', () => {
   assert.equal(combatSpellTargetsWithinSeparation([{ x: 1, y: 1 }], 5), true)
   assert.equal(combatSpellTargetsWithinSeparation([{ x: 1, y: 1 }, { x: 2, y: 1 }], 5), true)
   assert.equal(combatSpellTargetsWithinSeparation([{ x: 1, y: 1 }, { x: 3, y: 1 }], 5), false)
   assert.equal(combatSpellTargetsWithinSeparation([{ x: 1, y: 1 }, { x: 3, y: 1 }], 0), true)
+})
+
+test('chain-lightning separation is anchored on the first target', () => {
+  assert.equal(combatSpellTargetsWithinSeparation([{ x: 29, y: 1 }, { x: 23, y: 1 }, { x: 35, y: 1 }], 30, 'primary'), true)
+  assert.equal(combatSpellTargetsWithinSeparation([{ x: 29, y: 1 }, { x: 23, y: 1 }, { x: 36, y: 1 }], 30, 'primary'), false)
 })
 
 test('upcast UI offers only real ordinary spell slots and falls back above an empty base slot', () => {

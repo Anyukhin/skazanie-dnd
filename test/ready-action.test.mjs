@@ -116,29 +116,53 @@ test('заготовка пропадает к началу собственно
   assert.equal(round.mechanics.combat.readied.guard, undefined, 'круг замкнулся — несработавшая заготовка сгорела')
 })
 
-test('заготовленное заклинание тратит ячейку сразу и держится концентрацией', () => {
+test('заготовленное одиночное заклинание тратит ячейку сразу и держится концентрацией', () => {
   const state = normalizeCampaignState({
     ...field(),
     players: [{ ...field().players[0], characterClass: 'wizard', level: 9, abilities: { str: 10, dex: 14, con: 14, int: 18, wis: 12, cha: 10 } }],
-    mechanics: { ...field().mechanics, resources: { guard: { spell_slots_1: { current: 3, max: 3 }, spell_slots_3: { current: 3, max: 3 } } } },
+    mechanics: { ...field().mechanics, resources: { guard: { spell_slots_1: { current: 3, max: 3 } } } },
   })
   const result = resolveCommand(
-    authoritative({ command_type: 'UseCombatAction', actor_id: 'guard', action_id: 'ready-action', readied_trigger: 'enemy-approaches', readied_spell_id: 'fireball' }),
+    authoritative({ command_type: 'UseCombatAction', actor_id: 'guard', action_id: 'ready-action', readied_trigger: 'enemy-approaches', readied_spell_id: 'magic-missile' }),
     state,
     options(dice()),
   )
   const spent = result.events.find((event) => event.event_type === 'ResourceSpent')
-  assert.equal(spent.payload.resource, 'spell_slots_3', 'ячейка уходит в момент заготовки, а не при выпуске')
+  assert.equal(spent.payload.resource, 'spell_slots_1', 'ячейка уходит в момент заготовки, а не при выпуске')
   assert.ok(result.events.some((event) => event.event_type === 'ConcentrationStarted'), 'удержание требует концентрации')
 
   const readied = result.events.find((event) => event.event_type === 'ActionReadied')
   assert.equal(readied.payload.readied_action_id, 'readied-spell')
-  assert.equal(readied.payload.spell_id, 'fireball')
+  assert.equal(readied.payload.spell_id, 'magic-missile')
 
   const after = replayEvents(state, result.events)
-  assert.equal(after.mechanics.combat.readied.guard.spell_id, 'fireball')
-  assert.equal(after.mechanics.resources.guard.spell_slots_3.current, 2)
+  assert.equal(after.mechanics.combat.readied.guard.spell_id, 'magic-missile')
+  assert.equal(after.mechanics.resources.guard.spell_slots_1.current, 2)
   assert.equal(after.mechanics.combat.action_economy.guard.action, false)
+})
+
+test('point-area spells are rejected before ready resource or concentration spend', () => {
+  const makeState = () => {
+    const base = field()
+    return normalizeCampaignState({
+      ...base,
+      players: [{ ...base.players[0], characterClass: 'wizard', level: 9, abilities: { str: 10, dex: 14, con: 14, int: 18, wis: 12, cha: 10 } }],
+      mechanics: { ...base.mechanics, resources: { guard: { spell_slots_2: { current: 3, max: 3 }, spell_slots_3: { current: 3, max: 3 } } } },
+    })
+  }
+  for (const spellId of ['spray-of-cards', 'fireball']) {
+    const state = makeState()
+    assert.throws(() => resolveCommand(
+      authoritative({ command_type: 'UseCombatAction', actor_id: 'guard', action_id: 'ready-action', readied_trigger: 'enemy-approaches', readied_spell_id: spellId }),
+      state,
+      options(dice()),
+    ), (error) => error.code === 'READIED_POINT_SPELL_UNSUPPORTED')
+    assert.equal(state.mechanics.resources.guard.spell_slots_2.current, 3)
+    assert.equal(state.mechanics.resources.guard.spell_slots_3.current, 3)
+    assert.equal(state.mechanics.combat.action_economy.guard.action, true)
+    assert.equal(state.mechanics.combat.readied?.guard, undefined)
+    assert.equal(state.mechanics.concentration?.guard, undefined)
+  }
 })
 
 test('заклинание с временем накладывания «бонусное действие» заготовить нельзя', () => {

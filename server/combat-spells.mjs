@@ -27,7 +27,7 @@ const rulesetIdOf = (options) => String(typeof options === 'string' ? options : 
 const spellForRuleset = (spell, rulesetId) => {
   if (!spell) return spell
   if (rulesetId !== DND_2014_RULESET_ID) {
-    const { components, ...legacy } = spell
+    const { components, areaGeometryVersion, ...legacy } = spell
     return legacy
   }
   if (spell.id !== 'resistance') return spell
@@ -211,18 +211,38 @@ export function spellSelectionRulesFor(actor) {
   }
 }
 
+function domainSpellIdsFor(actor) {
+  const benefits = actor?.creationBenefits ?? {}
+  const normalizeSpellId = (id) => String(id ?? '').replaceAll('_', '-').toLowerCase()
+  const classKey = String(actor?.characterClass ?? actor?.class ?? benefits.class?.class_key ?? '').toLowerCase()
+  const subclassId = String(benefits.class?.subclass?.id ?? actor?.subclassId ?? actor?.subclass ?? '').toLowerCase()
+  const isTempestCleric = classKey === 'cleric' && ['tempest', 'cleric-domen-buri', 'домен бури'].includes(subclassId)
+  const ids = new Set((Array.isArray(benefits.domain_spells) ? benefits.domain_spells : [])
+    .map(normalizeSpellId)
+    .filter((id) => id && (id !== 'destructive-wave' || isTempestCleric)))
+  if (isTempestCleric) for (const [level, spellIds] of Object.entries(benefits.domain_spells_by_level ?? {})) {
+    if (!/^\d+$/u.test(level) || !Array.isArray(spellIds)) continue
+    for (const id of spellIds) {
+      const normalized = normalizeSpellId(id)
+      if (normalized) ids.add(normalized)
+    }
+  }
+  return ids
+}
+
 export function combatSpellsFor(actor, options = {}) {
   const rulesetId = rulesetIdOf(options)
   const profile = casterProfile(actor)
   const level = boundedLevel(actor)
   const classSpells = profile ? (() => {
     const maximum = maximumSpellLevel(profile, level)
+    const domainSpellIds = domainSpellIdsFor(actor)
     const rules = spellSelectionRulesFor(actor)
     const { known, prepared } = boundedSelection(actor, profile, level, rules)
     return SPELLS
-      .filter((spell) => (isClassSpellAvailable(spell, profile.key, actor) || (actor.creationBenefits?.domain_spells ?? []).includes(spell.id)) && (spell.level === 0 || spell.level <= maximum))
+      .filter((spell) => (isClassSpellAvailable(spell, profile.key, actor) || domainSpellIds.has(spell.id)) && (spell.level === 0 || spell.level <= maximum))
       .map((spell) => {
-      const isPrepared = (actor.creationBenefits?.domain_spells ?? []).includes(spell.id) ? true : spell.level === 0 ? (known ? known.has(spell.id) : true)
+      const isPrepared = domainSpellIds.has(spell.id) ? true : spell.level === 0 ? (known ? known.has(spell.id) : true)
         : rules.mode === 'known' ? (known ? known.has(spell.id) : true)
           : rules.mode === 'spellbook' ? (known ? known.has(spell.id) : true) && (prepared ? prepared.has(spell.id) : true)
             : prepared ? prepared.has(spell.id) : true

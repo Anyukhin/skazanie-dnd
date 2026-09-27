@@ -50,6 +50,7 @@ test('признак босса и полосу запаса считает се
   const enemy = campaignStateForViewer(bossState(), { id: 'user-1', role: 'player' }, 'hero').enemies[0]
   assert.equal(enemy.boss, true, 'без серверного признака клиент рамку не нарисует')
   assert.deepEqual(enemy.legendary, { uses: 3, used: 1 }, 'потраченное считается по маркерам, а не по памяти клиента')
+  assert.equal(enemy.spellcasting, undefined, 'закрытый блок магии босса не попадает в проекцию')
 
   // Клиент читает готовое поле и ничего не выводит сам: ни из `legendary` в
   // стат-блоке (его у него нет), ни из состояний (их у него тоже нет).
@@ -57,7 +58,7 @@ test('признак босса и полосу запаса считает се
   assert.match(types, /legendary\?: \{ uses: number; used: number \}/u)
   assert.match(board, /const boss = enemy\?\.boss === true/u)
   assert.doesNotMatch(board, /legendary-action-used/u, 'служебный маркер интерфейсу не принадлежит')
-  assert.doesNotMatch(ui, /spellcasting/u, 'блока заклинаний существа у клиента нет вовсе')
+  assert.doesNotMatch(ui, /[.?]spellcasting\b|\[['"]spellcasting['"]\]/u, 'клиент не читает закрытый блок магии существа')
 })
 
 test('рамка, корона и пипсы стоят в ленте инициативы и на карточке цели', () => {

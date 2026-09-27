@@ -4,9 +4,18 @@
  * предпросмотр до отправки команды и служат общей основой для эффектов.
  */
 
+import {
+  CIRCULAR_AREA_GEOMETRY_VERSION,
+  circularAreaCells,
+  gridOriginForTargetCell,
+} from '../server/circular-area-geometry.mjs'
+
+export { CIRCULAR_AREA_GEOMETRY_VERSION, gridOriginForTargetCell }
+
 export type AreaPoint = { x: number; y: number }
 export type AreaShape = 'sphere' | 'cylinder' | 'cone' | 'cube' | 'line'
 export type AreaBounds = { minX: number; minY: number; maxX: number; maxY: number }
+export type AreaGeometryVersion = 'legacy-grid-v1' | 'circle-grid-v2'
 
 export type AreaGeometry = {
   shape: AreaShape
@@ -24,6 +33,10 @@ export type AreaGeometry = {
   originMode?: 'self' | 'point'
   /** Радиус либо длина/ребро области — в футах, как в серверном профиле. */
   sizeFeet: number
+  /** Версия сеточной семантики; отсутствие поля сохраняет legacy. */
+  geometryVersion?: AreaGeometryVersion
+  /** Явное пересечение сетки для circle-grid-v2. */
+  gridOrigin?: AreaPoint
   /** Явная сторона point-cube; старые профили используют `sizeFeet * 2`. */
   sideFeet?: number
   cellFeet?: number
@@ -136,6 +149,17 @@ export function areaCells(geometry: AreaGeometry): AreaPoint[] {
   const cellFeet = Math.max(1, Number(geometry.cellFeet) || 5)
   const sizeFeet = Math.max(0, Number(geometry.sizeFeet) || 0)
   if (sizeFeet <= 0) return []
+  if (geometry.geometryVersion === CIRCULAR_AREA_GEOMETRY_VERSION
+    && (geometry.shape === 'sphere' || geometry.shape === 'cylinder')) {
+    const gridOrigin = geometry.gridOrigin
+      ?? gridOriginForTargetCell(geometry.target ?? geometry.origin)
+    return circularAreaCells({
+      origin: gridOrigin,
+      radiusFeet: sizeFeet,
+      cellFeet,
+      bounds: geometry.bounds,
+    })
+  }
   const selfCube = geometry.shape === 'cube' && geometry.originMode === 'self'
   const pointCube = geometry.shape === 'cube' && !selfCube
   const cells = pointCube

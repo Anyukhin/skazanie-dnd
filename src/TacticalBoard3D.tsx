@@ -5,7 +5,7 @@ import type { BoardAnimationActor, TacticalBoardProps } from './TacticalBoard'
 import { actorFootprintSize, actorPresentationCenter, actorPresentationSize, boardCameraKey } from './tactical-ui'
 import { cellAt, revealedAt } from './tactical-map-client'
 import { DEFAULT_BOARD_PALETTE, boardPaletteFrom, drawBoardEffects, drawBoardOverlay, type BoardScene } from './board-render'
-import { COMBAT_ANIMATION_QUEUE_LIMIT, combatAnimationCuesFromBattleLog, combatAnimationCuesFromEvents, shouldDeferDefeat, attackOutcome, strikeImpactProgress, strikeMotionProgress, strikeUsesProjectile, type CombatAnimationCue } from './combat-animation'
+import { COMBAT_ANIMATION_QUEUE_LIMIT, combatAnimationCuesFromBattleLog, combatAnimationCuesFromEvents, combatAnimationUsesReducedMotion, shouldDeferDefeat, attackOutcome, strikeImpactProgress, strikeMotionProgress, strikeUsesProjectile, type CombatAnimationCue } from './combat-animation'
 import { createSpellEffectRenderer, isSpellAnimationCue, systemPrefersReducedMotion } from './spell-effects'
 import { createCombatEffect3D } from './board3d-effects'
 import { createSpellEffect3D } from './board3d-spell-effects'
@@ -35,6 +35,17 @@ function hasBoardContent(children: ReactNode): boolean {
     ? hasBoardContent(child.props.children)
     : child !== '')
 }
+
+type TargetPreviewCell = { x: number; y: number; className: string }
+
+/** Только временная область прицеливания; дальность и постоянные эффекты сюда не попадают. */
+export function targetPreviewCells(cells: readonly TargetPreviewCell[]) {
+  return cells.filter((cell) => {
+    const classes = cell.className.split(/\s+/u)
+    return classes.includes('blast-area') && classes.includes('spell-preview-cell')
+  })
+}
+
 type Runtime = {
   sync: () => void
   refresh: () => void
@@ -264,21 +275,50 @@ export default function TacticalBoard3D(props: Props) {
     floating.setAttribute('aria-hidden', 'true')
     element.append(floating)
 
-    const makeLayer = (height: number) => {
+    const makeLayer = (height: number, options: { depthTest?: boolean; renderOrder?: number } = {}) => {
       const canvas = document.createElement('canvas')
       const texture = new THREE.CanvasTexture(canvas)
       texture.colorSpace = THREE.SRGBColorSpace
       texture.minFilter = THREE.LinearFilter
       texture.generateMipmaps = false
-      const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1 })
+      const material = new THREE.MeshBasicMaterial({
+        map: texture,
+        transparent: true,
+        depthWrite: false,
+        depthTest: options.depthTest ?? true,
+        side: options.depthTest === false ? THREE.DoubleSide : THREE.FrontSide,
+        polygonOffset: options.depthTest !== false,
+        polygonOffsetFactor: -1,
+      })
       const mesh = new THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>(new THREE.BufferGeometry(), material)
       mesh.position.y = height
+      mesh.renderOrder = options.renderOrder ?? 0
       scene.add(mesh)
       diagnostics.created += 1
       return { canvas, texture, mesh, geometryKey: '', dispose() { texture.dispose(); material.dispose(); mesh.geometry.dispose() } }
     }
     const overlay = makeLayer(.022)
     const spell = makeLayer(.038)
+    // Прицел — UI-слой: он должен быть виден вокруг и поверх реквизита, а
+    // обычный overlay сохраняет проверку глубины для дальности и зон местности.
+    const targetPreviewGroup = new THREE.Group()
+    targetPreviewGroup.renderOrder = 12
+    scene.add(targetPreviewGroup)
+    let targetPreviewFillGeometry: THREE.PlaneGeometry | null = null
+    let targetPreviewFillMaterial: THREE.MeshBasicMaterial | null = null
+    let targetPreviewEdgeGeometry: THREE.BufferGeometry | null = null
+    let targetPreviewEdgeMaterial: THREE.MeshBasicMaterial | null = null
+    let targetPreviewOutlineGeometry: THREE.BufferGeometry | null = null
+    let targetPreviewOutlineMaterial: THREE.LineBasicMaterial | null = null
+    const clearTargetPreview = () => {
+      targetPreviewGroup.clear()
+      targetPreviewFillGeometry?.dispose(); targetPreviewFillGeometry = null
+      targetPreviewFillMaterial?.dispose(); targetPreviewFillMaterial = null
+      targetPreviewEdgeGeometry?.dispose(); targetPreviewEdgeGeometry = null
+      targetPreviewEdgeMaterial?.dispose(); targetPreviewEdgeMaterial = null
+      targetPreviewOutlineGeometry?.dispose(); targetPreviewOutlineGeometry = null
+      targetPreviewOutlineMaterial?.dispose(); targetPreviewOutlineMaterial = null
+    }
     const disposeActorView = (id: string, view: ActorView) => {
       view.abort.abort()
       view.model.dispose(); view.ring.geometry.dispose(); view.ring.material.dispose(); scene.remove(view.root); actorViews.delete(id)
@@ -332,7 +372,8 @@ export default function TacticalBoard3D(props: Props) {
       }
       const hint = current.targetHint
       if (hint && targetHintElement.current) {
-        const screen = pointOnScreen(new THREE.Vector3(hint.point.x + .5, terrainHeightAt(current.map, hint.point.x, hint.point.y), hint.point.y + .5), width, height)
+        const offset = hint.anchor === 'grid-intersection' ? 0 : .5
+        const screen = pointOnScreen(new THREE.Vector3(hint.point.x + offset, terrainHeightAt(current.map, hint.point.x, hint.point.y), hint.point.y + offset), width, height)
         targetHintElement.current.style.left = `${Math.max(112, Math.min(width - 112, screen.x))}px`
         targetHintElement.current.style.top = `${Math.min(height - 32, screen.y + 22)}px`
         targetHintElement.current.style.visibility = screen.visible ? 'visible' : 'hidden'
@@ -403,6 +444,74 @@ export default function TacticalBoard3D(props: Props) {
       context.restore()
       overlay.texture.needsUpdate = true
     }
+    function paintTargetPreview() {
+      const current = latest.current
+      const map = current.map
+      if (!map) {
+        clearTargetPreview()
+        renderer.domElement.dataset.previewCellCount = '0'
+        return
+      }
+      const cells = targetPreviewCells(current.cells).filter((cell) => revealedAt(map, cell.x, cell.y))
+      renderer.domElement.dataset.previewCellCount = String(cells.length)
+      clearTargetPreview()
+      if (!cells.length) {
+        renderer.domElement.dataset.previewGeometryVertexCount = '0'
+        return
+      }
+      const occupied = new Set(cells.map((cell) => `${cell.x},${cell.y}`))
+      const color = current.targetHint?.tone === 'blocked' ? '#ed7771' : current.targetPreviewColor ?? '#f09a4d'
+      const edgeColor = new THREE.Color(color).offsetHSL(0, 0, .2)
+      targetPreviewFillGeometry = new THREE.PlaneGeometry(1, 1)
+      targetPreviewFillGeometry.rotateX(-Math.PI / 2)
+      targetPreviewFillMaterial = new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: .32,
+        depthTest: false,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        toneMapped: false,
+      })
+      for (const cell of cells) {
+        const fill = new THREE.Mesh(targetPreviewFillGeometry, targetPreviewFillMaterial)
+        fill.position.set(cell.x + .5, terrainHeightAt(map, cell.x, cell.y) + .06, cell.y + .5)
+        fill.renderOrder = 1000
+        targetPreviewGroup.add(fill)
+      }
+      const positions: number[] = [], edgePositions: number[] = [], edgeIndices: number[] = []
+      let edgeVertex = 0
+      const addEdge = (x1: number, z1: number, x2: number, z2: number, y: number) => {
+        positions.push(x1, y, z1, x2, y, z2)
+        const width = .12
+        const length = Math.max(.001, Math.hypot(x2 - x1, z2 - z1))
+        const nx = -(z2 - z1) / length * width / 2, nz = (x2 - x1) / length * width / 2
+        edgePositions.push(x1 + nx, y, z1 + nz, x2 + nx, y, z2 + nz, x2 - nx, y, z2 - nz, x1 - nx, y, z1 - nz)
+        edgeIndices.push(edgeVertex, edgeVertex + 1, edgeVertex + 2, edgeVertex, edgeVertex + 2, edgeVertex + 3)
+        edgeVertex += 4
+      }
+      for (const cell of cells) {
+        const y = terrainHeightAt(map, cell.x, cell.y) + .085
+        if (!occupied.has(`${cell.x},${cell.y - 1}`)) addEdge(cell.x, cell.y, cell.x + 1, cell.y, y)
+        if (!occupied.has(`${cell.x + 1},${cell.y}`)) addEdge(cell.x + 1, cell.y, cell.x + 1, cell.y + 1, y)
+        if (!occupied.has(`${cell.x},${cell.y + 1}`)) addEdge(cell.x + 1, cell.y + 1, cell.x, cell.y + 1, y)
+        if (!occupied.has(`${cell.x - 1},${cell.y}`)) addEdge(cell.x, cell.y + 1, cell.x, cell.y, y)
+      }
+      targetPreviewEdgeGeometry = new THREE.BufferGeometry()
+      targetPreviewEdgeGeometry.setAttribute('position', new THREE.Float32BufferAttribute(edgePositions, 3))
+      targetPreviewEdgeGeometry.setIndex(edgeIndices)
+      targetPreviewEdgeMaterial = new THREE.MeshBasicMaterial({ color: '#271b20', transparent: true, opacity: .9, depthTest: false, depthWrite: false, side: THREE.DoubleSide, toneMapped: false })
+      const edgeMesh = new THREE.Mesh(targetPreviewEdgeGeometry, targetPreviewEdgeMaterial)
+      edgeMesh.renderOrder = 1000
+      targetPreviewGroup.add(edgeMesh)
+      targetPreviewOutlineGeometry = new THREE.BufferGeometry()
+      targetPreviewOutlineGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+      targetPreviewOutlineMaterial = new THREE.LineBasicMaterial({ color: edgeColor, transparent: true, opacity: 1, depthTest: false, depthWrite: false, toneMapped: false })
+      const outline = new THREE.LineSegments(targetPreviewOutlineGeometry, targetPreviewOutlineMaterial)
+      outline.renderOrder = 1001
+      targetPreviewGroup.add(outline)
+      renderer.domElement.dataset.previewGeometryVertexCount = String(positions.length / 3)
+    }
     function invalidate() {
       if (!disposed && !frameId && !document.hidden) frameId = requestAnimationFrame(render)
     }
@@ -445,17 +554,18 @@ export default function TacticalBoard3D(props: Props) {
       const current = latest.current
       if (!active && pending.length && current.map) {
         const cue = cueForQuality(pending.shift()!, settings.current.quality)
+        const cueReducedMotion = combatAnimationUsesReducedMotion(cue)
         const audioActor = cue.kind === 'strike'
           ? current.animationActors?.find((actor) => actor.id === cue.actorId)
           : undefined
         current.combatAudio?.schedule(
-          { ...cue, durationMs: systemPrefersReducedMotion() ? Math.max(120, cue.durationMs) : cue.durationMs },
+          { ...cue, durationMs: cueReducedMotion ? Math.max(120, cue.durationMs) : cue.durationMs },
           audioActor ? { actor: audioActor } : undefined,
         )
         active = {
           cue,
           started: now,
-          effect: current.animationsEnabled === false || systemPrefersReducedMotion() ? null : createSpellEffect3D(cue, current.animationActors ?? [], current.map)
+          effect: current.animationsEnabled === false || cueReducedMotion ? null : createSpellEffect3D(cue, current.animationActors ?? [], current.map)
             ?? createCombatEffect3D(cue, current.animationActors ?? [], current.map),
         }
         if (active.effect) scene.add(active.effect.group)
@@ -466,7 +576,7 @@ export default function TacticalBoard3D(props: Props) {
       }
       if (!active) return
       const { cue } = active
-      const reduced = systemPrefersReducedMotion()
+      const reduced = combatAnimationUsesReducedMotion(cue)
       const progress = Math.min(1, (now - active.started) / (reduced ? 120 : Math.max(1, cue.durationMs)))
       if (current.animationsEnabled === false) {
         active.effect?.dispose()
@@ -556,7 +666,8 @@ export default function TacticalBoard3D(props: Props) {
       const frameStarted = performance.now()
       try {
         const delta = Math.min(.05, (now - previousTime) / 1000 || 0)
-        const motionAllowed = latest.current.animationsEnabled !== false && !systemPrefersReducedMotion()
+        const motionAllowed = latest.current.animationsEnabled !== false
+          && !(active ? combatAnimationUsesReducedMotion(active.cue) : systemPrefersReducedMotion())
         animate(now)
         if (motionAllowed) {
           const cue = latest.current.animationsEnabled === false ? undefined : active?.cue
@@ -666,7 +777,7 @@ export default function TacticalBoard3D(props: Props) {
       if (active && (mapChanged || styleChanged || qualityChanged)) {
         active.effect?.dispose()
         active.cue = cueForQuality(active.cue, qualityKey)
-        active.effect = current.animationsEnabled === false || systemPrefersReducedMotion() ? null : createSpellEffect3D(active.cue, current.animationActors ?? [], map)
+        active.effect = current.animationsEnabled === false || combatAnimationUsesReducedMotion(active.cue) ? null : createSpellEffect3D(active.cue, current.animationActors ?? [], map)
           ?? createCombatEffect3D(active.cue, current.animationActors ?? [], map)
         if (active.effect) scene.add(active.effect.group)
       }
@@ -786,6 +897,7 @@ export default function TacticalBoard3D(props: Props) {
       else if (unseen.length) { pending = [...pending, ...unseen].slice(-COMBAT_ANIMATION_QUEUE_LIMIT); setPlaying(true) }
       deferQueuedDefeats()
       paintOverlay()
+      paintTargetPreview()
       publishDiagnostics(map.catalogRevision ?? LEGACY_CATALOG_REVISION)
       invalidate()
     }
@@ -972,6 +1084,7 @@ export default function TacticalBoard3D(props: Props) {
       active?.effect?.dispose()
       if (terrain) { terrain.dispose(); diagnostics.disposed += 1 }
       for (const [id, view] of actorViews) disposeActorView(id, view)
+      clearTargetPreview()
       diagnostics.disposed += 2
       overlay.dispose(); spell.dispose(); sun.shadow.dispose()
       renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove(); floating.remove()

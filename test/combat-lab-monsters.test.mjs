@@ -124,8 +124,21 @@ test('условное сопротивление элементаля не пр
   const candidate = record('fire-elemental')
   assert.deepEqual(candidate.damage_resistances, [{ types: ['bludgeoning', 'piercing', 'slashing'], condition: 'nonmagical-attacks' }])
   const enemy = enemyFrom2014(candidate, { x: 1, y: 1 })
-  assert.deepEqual(enemy.damage_resistances, [])
+  assert.deepEqual(enemy.damage_resistances, [{ types: ['bludgeoning', 'piercing', 'slashing'], condition: 'nonmagical-attacks' }])
   assert.ok(enemy.limitations.some((text) => text.includes('Защиты с особыми условиями')))
+})
+
+test('условные защиты сохраняются из каталога вместе с qualifier и нормализуются', () => {
+  const candidate = record('imp')
+  const enemy = enemyFrom2014(candidate, { x: 1, y: 1 })
+  assert.deepEqual(enemy.damage_resistances, [
+    'cold',
+    {
+      types: ['bludgeoning', 'piercing', 'slashing'],
+      condition: 'nonmagical-attacks-except-silvered',
+      qualifier: 'except-silvered',
+    },
+  ])
 })
 
 test('mapper сохраняет характеристики и объявляет только оставшиеся ограничения', () => {

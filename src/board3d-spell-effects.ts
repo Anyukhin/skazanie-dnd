@@ -46,6 +46,19 @@ function visualPoint(map: TacticalMap, point: BoardPoint, actor?: SpellEffectAct
   return new THREE.Vector3(center.x, terrainHeightAt(map, point.x, point.y) + height, center.y)
 }
 
+function areaVisualPoint(
+  map: TacticalMap,
+  cue: Extract<SpellAnimationCue, { kind: 'burst' }>,
+  point: BoardPoint,
+  height = .7,
+) {
+  if (cue.geometryVersion === 'circle-grid-v2' && (cue.shape === 'sphere' || cue.shape === 'cylinder')) {
+    const origin = cue.gridOrigin ?? point
+    return new THREE.Vector3(origin.x, terrainHeightAt(map, origin.x, origin.y) + height, origin.y)
+  }
+  return visualPoint(map, point, null, height)
+}
+
 function visible(map: TacticalMap, point: BoardPoint | null | undefined) {
   return Boolean(point && revealedAt(map, Math.floor(point.x), Math.floor(point.y)))
 }
@@ -195,7 +208,7 @@ function createFireball(
     : null
   if (contour) group.add(contour)
   const from = visualPoint(map, origin, sourceActor, .78)
-  const to = visualPoint(map, center, null, .78)
+  const to = areaVisualPoint(map, cue, center, .78)
   const footprintRadius = visibleCells.reduce((maximum, cell) => Math.max(maximum, Math.hypot(cell.x - center.x, cell.y - center.y) + .7), 0)
   const blastRadius = Math.max(1.2, Math.min(5, footprintRadius || (Number(cue.sizeFeet) || 10) / 5))
   const blastAllowed = footprint.present.length > 0 && !footprint.fogged
@@ -369,35 +382,42 @@ function createProjectile(
 function beamPoints(cue: Extract<SpellAnimationCue, { kind: 'beam' }>, actors: readonly SpellEffectActor[]) {
   const source = actorFor(actors, cue.actorId)
   const from = cue.from ?? source
-  if (!from) return [] as Array<{ point: BoardPoint; actor?: SpellEffectActor | null; targetId?: string }>
-  const result: Array<{ point: BoardPoint; actor?: SpellEffectActor | null; targetId?: string }> = [{ point: from, actor: source }]
+  if (!from) return [] as Array<{ point?: BoardPoint; actor?: SpellEffectActor | null; targetId?: string }>
+  const result: Array<{ point?: BoardPoint; actor?: SpellEffectActor | null; targetId?: string }> = [{ point: from, actor: source }]
   if (cue.points?.length) {
-    cue.points.forEach((point, index) => result.push({ point, actor: actorFor(actors, cue.targetIds[index]), targetId: cue.targetIds[index] }))
+    cue.targetIds.forEach((targetId, index) => result.push({ point: cue.points?.[index], actor: actorFor(actors, targetId), targetId }))
   } else {
     cue.targetIds.forEach((id) => {
       const actor = actorFor(actors, id)
-      if (actor) result.push({ point: actor, actor, targetId: id })
+      result.push({ point: actor ?? undefined, actor, targetId: id })
     })
   }
   return result
 }
 
+type BeamPoint = { point?: BoardPoint; actor?: SpellEffectActor | null; targetId?: string }
 type LineSegment = { from: THREE.Vector3; midpoint: THREE.Vector3; to: THREE.Vector3; targetId?: string }
 
 function lineSegments(
-  points: ReadonlyArray<{ point: BoardPoint; actor?: SpellEffectActor | null; targetId?: string }>,
+  points: ReadonlyArray<BeamPoint>,
   map: TacticalMap,
   chain: boolean,
+  branchFromPrimary = false,
+  pronouncedCurve = false,
 ) {
-  return points.slice(0, chain ? points.length : Math.min(points.length, 2) - 1)
-    .map((entry, index): LineSegment | null => {
-      const next = points[index + 1]
-      if (!next || !visible(map, entry.point) || !visible(map, next.point) || !visiblePath(map, entry.point, next.point)) return null
+  const pairs = branchFromPrimary && points.length > 2
+    ? points.slice(1).map((next, index) => ({ entry: index === 0 ? points[0] : points[1], next }))
+    : points.slice(0, chain ? points.length : Math.min(points.length, 2) - 1)
+      .map((entry, index) => ({ entry, next: points[index + 1] }))
+  return pairs
+    .map(({ entry, next }, index): LineSegment | null => {
+      if (!next?.point || !entry?.point || !visible(map, entry.point) || !visible(map, next.point) || !visiblePath(map, entry.point, next.point)) return null
       const from = visualPoint(map, entry.point, entry.actor, .82)
       const to = visualPoint(map, next.point, next.actor, .82)
       const midpoint = from.clone().lerp(to, .5)
-      const lateral = new THREE.Vector3(to.z - from.z, 0, -(to.x - from.x)).normalize().multiplyScalar(.12 + (index % 2) * .05)
+      const lateral = new THREE.Vector3(to.z - from.z, 0, -(to.x - from.x)).normalize().multiplyScalar((pronouncedCurve ? .95 : .12) + (index % 2) * (pronouncedCurve ? .14 : .05))
       midpoint.add(lateral)
+      if (pronouncedCurve) midpoint.y += .3
       return { from, midpoint, to, targetId: next.targetId }
     })
     .filter((segment): segment is LineSegment => Boolean(segment))
@@ -414,6 +434,7 @@ function createLineEffect(
   const group = new THREE.Group()
   const style = styleFor(cue)
   const lightning = String(style.family) === 'lightning'
+  const psychicWhip = style.visualVariant === 'psychic-whip'
   const outerColor = lightning ? '#1b77ba' : style.secondary
   const coreColor = lightning ? '#9ceeff' : style.primary
   const outer = material(new THREE.LineBasicMaterial({ color: outerColor, transparent: true, opacity: lightning ? .22 : .35, blending: THREE.AdditiveBlending, depthWrite: false }))
@@ -424,6 +445,12 @@ function createLineEffect(
   const lightningCoreMaterial = lightning ? material(new THREE.MeshBasicMaterial({ color: '#a9f1ff', transparent: true, opacity: .98, blending: THREE.AdditiveBlending, depthWrite: false })) : null
   const lightningGeometry = lightning ? track(new THREE.CylinderGeometry(.045, .045, 1, 6)) : null
   const lightningBranchGeometry = lightning ? track(new THREE.CylinderGeometry(.025, .025, 1, 5)) : null
+  const whipMaterial = psychicWhip
+    ? material(new THREE.MeshBasicMaterial({ color: style.primary, transparent: true, opacity: .92, blending: THREE.NormalBlending, depthWrite: false }))
+    : null
+  const whipGeometry = psychicWhip
+    ? track(new THREE.CylinderGeometry(.05, .05, 1, detail === 'full' ? 7 : 6))
+    : null
   const lines = segments.map(({ from, midpoint, to, targetId }, segmentIndex) => {
     const line = new THREE.Line(track(new THREE.BufferGeometry().setFromPoints([from, from, from])), core)
     group.add(line)
@@ -450,7 +477,14 @@ function createLineEffect(
         return { branch, branchIndex }
       })
       : []
-    return { line, glow, hit, from, midpoint, to, targetId, jagged, lightningPieces, branches }
+    const whipPieces = psychicWhip
+      ? Array.from({ length: detail === 'full' ? 8 : 6 }, () => {
+        const mesh = new THREE.Mesh(whipGeometry!, whipMaterial!)
+        group.add(mesh)
+        return mesh
+      })
+      : []
+    return { line, glow, hit, from, midpoint, to, targetId, jagged, lightningPieces, branches, whipPieces }
   })
 
   return {
@@ -459,15 +493,32 @@ function createLineEffect(
       const progress = clamp01(progressValue)
       // Короткая подготовка делает луч читаемым как cast → flight → hit.
       const segmentProgress = clamp01((progress - .08) / .84) * lines.length
-      lines.forEach(({ line, glow, hit, from, midpoint, to, targetId, jagged, lightningPieces, branches }, index) => {
+      lines.forEach(({ line, glow, hit, from, midpoint, to, targetId, jagged, lightningPieces, branches, whipPieces }, index) => {
         const local = clamp01(segmentProgress - index)
         const current = local < .5
           ? from.clone().lerp(midpoint, local * 2)
           : midpoint.clone().lerp(to, (local - .5) * 2)
         setLinePoints(line, from, local < .5 ? current : midpoint, current)
         if (glow) setLinePoints(glow, from, local < .5 ? current : midpoint, current)
-        line.visible = local > 0 && visible(map, { x: current.x, y: current.z })
+        line.visible = !psychicWhip && local > 0 && visible(map, { x: current.x, y: current.z })
         if (glow) glow.visible = line.visible
+        if (whipPieces.length) {
+          for (const [pieceIndex, piece] of whipPieces.entries()) {
+            const pieceProgress = clamp01(local * whipPieces.length - pieceIndex)
+            const startT = pieceIndex / whipPieces.length
+            const endT = (pieceIndex + 1) / whipPieces.length
+            const curvePoint = (t: number) => {
+              const inverse = 1 - t
+              return from.clone().multiplyScalar(inverse * inverse)
+                .add(midpoint.clone().multiplyScalar(2 * inverse * t))
+                .add(to.clone().multiplyScalar(t * t))
+            }
+            const pieceStart = curvePoint(startT)
+            const pieceEnd = curvePoint(startT + (endT - startT) * pieceProgress)
+            orientCylinder(piece, pieceStart, pieceEnd)
+            piece.visible = pieceProgress > 0 && visible(map, { x: pieceEnd.x, y: pieceEnd.z })
+          }
+        }
         if (lightningPieces.length) {
           for (const piece of lightningPieces) {
             const pieceProgress = clamp01(local * lightningPieces.length - piece.pieceIndex)
@@ -489,7 +540,7 @@ function createLineEffect(
         hit.scale.setScalar(.55 + Math.sin(Math.PI * clamp01((local - .72) / .28)) * .85)
         hit.visible = local > .72 && local < 1 && !targetOutcomeIsMiss(cue, targetId) && visible(map, { x: to.x, y: to.z })
       })
-      group.visible = lines.some(({ line, hit, lightningPieces, branches }) => line.visible || hit.visible || lightningPieces.some((piece) => piece.outer.visible) || branches.some(({ branch }) => branch.visible))
+      group.visible = lines.some(({ line, hit, lightningPieces, branches, whipPieces }) => line.visible || hit.visible || lightningPieces.some((piece) => piece.outer.visible) || branches.some(({ branch }) => branch.visible) || whipPieces.some((piece) => piece.visible))
     },
     dispose() {
       group.removeFromParent()
@@ -504,7 +555,8 @@ function createBeam(
   actors: readonly SpellEffectActor[],
   map: TacticalMap,
 ): SpellEffect3D | null {
-  return createLineEffect(cue, lineSegments(beamPoints(cue, actors), map, cue.chain), map, detailOf(cue))
+  const pronouncedCurve = spellEffectPalette(cue.spellId, { school: cue.school, damageType: cue.damageType }).visualVariant === 'psychic-whip'
+  return createLineEffect(cue, lineSegments(beamPoints(cue, actors), map, cue.chain, cue.chain && cue.spellId === 'chain-lightning', pronouncedCurve), map, detailOf(cue))
 }
 
 function createBurstLine(
@@ -609,13 +661,19 @@ function createAreaBurst(
     return marker
   })
   const center = cue.center ?? cells[Math.floor(cells.length / 2)]
+  const circleGridCenter = cue.geometryVersion === 'circle-grid-v2'
+    && (cue.shape === 'sphere' || cue.shape === 'cylinder')
+    ? cue.gridOrigin ?? center
+    : center
+  const circleGridOffset = cue.geometryVersion === 'circle-grid-v2'
+    && (cue.shape === 'sphere' || cue.shape === 'cylinder') ? 0 : .5
   const radius = Math.max(.6, Math.min(4, Number(cue.sizeFeet) / 5 || 1))
   const ring = cue.shape === 'sphere' || cue.shape === 'cylinder'
     ? new THREE.Mesh(track(new THREE.TorusGeometry(radius * .55, .025, 6, detail === 'full' ? 24 : 14)), areaMaterial)
     : null
   if (ring) { ring.rotation.x = -Math.PI / 2; group.add(ring) }
-  const baseHeight = center ? terrainHeightAt(map, center.x, center.y) : 0
-  const visibleRadiusCells = center ? visibleRadius(map, center, radius) : radius
+  const baseHeight = circleGridCenter ? terrainHeightAt(map, circleGridCenter.x, circleGridCenter.y) : 0
+  const visibleRadiusCells = circleGridCenter ? visibleRadius(map, circleGridCenter, radius) : radius
 
   return {
     group,
@@ -630,8 +688,8 @@ function createAreaBurst(
         marker.scale.setScalar(.35 + reveal * (.65 + (index % 3) * .08))
         marker.position.y = terrainHeightAt(map, cells[index].x, cells[index].y) + .1 + reveal * .16
       }
-      if (center && ring) {
-        ring.position.set(center.x + .5, baseHeight + .06, center.y + .5)
+      if (circleGridCenter && ring) {
+        ring.position.set(circleGridCenter.x + circleGridOffset, baseHeight + .06, circleGridCenter.y + circleGridOffset)
         ring.scale.setScalar(Math.max(.3, visibleRadiusCells / Math.max(.1, radius)) * (.5 + impact * .5))
         ring.visible = progress > .12 && progress < .96
       }
@@ -791,14 +849,35 @@ function createChannel(
   const group = new THREE.Group()
   const family = String(style.family)
   const variant = style.visualVariant
+  const targetLocalVariant = variant === 'target-light' || variant === 'target-bell' || variant === 'psychic-shard' || variant === 'swarm-target'
+  const mobilityVariant = family === 'mobility'
+    && (variant === 'mobility-trail' || variant === 'mobility-arc' || variant === 'mobility-haste')
   const variantMaterial = variant
-    ? material(new THREE.MeshBasicMaterial({ color: style.secondary, transparent: true, opacity: .75, blending: THREE.AdditiveBlending, depthWrite: false, wireframe: variant === 'silence' }))
+    ? material(new THREE.MeshBasicMaterial({ color: style.secondary, transparent: true, opacity: mobilityVariant ? .94 : .75, blending: mobilityVariant ? THREE.NormalBlending : THREE.AdditiveBlending, depthWrite: false, wireframe: variant === 'silence' }))
     : null
   const bodyMaterial = material(new THREE.MeshBasicMaterial({ color: style.primary, transparent: true, opacity: .28, blending: family === 'darkness' ? THREE.NormalBlending : THREE.AdditiveBlending, depthWrite: false, wireframe: family === 'control' || family === 'darkness' || variant === 'silence' }))
-  const accentMaterial = material(new THREE.MeshBasicMaterial({ color: style.secondary, transparent: true, opacity: .8, blending: THREE.AdditiveBlending, depthWrite: false }))
+  const accentMaterial = material(new THREE.MeshBasicMaterial({ color: style.secondary, transparent: true, opacity: mobilityVariant ? .92 : .8, blending: mobilityVariant ? THREE.NormalBlending : THREE.AdditiveBlending, depthWrite: false }))
+  const targetBodyMaterial = targetLocalVariant
+    ? material(new THREE.MeshBasicMaterial({ color: style.primary, transparent: true, opacity: .6, blending: THREE.NormalBlending, depthWrite: false }))
+    : bodyMaterial
+  const targetAccentMaterial = targetLocalVariant
+    ? material(new THREE.MeshBasicMaterial({ color: style.secondary, transparent: true, opacity: .9, blending: THREE.NormalBlending, depthWrite: false }))
+    : accentMaterial
+  const mobilityShadowMaterial = mobilityVariant
+    ? material(new THREE.LineBasicMaterial({ color: '#271b15', transparent: true, opacity: .9, blending: THREE.NormalBlending, depthWrite: false }))
+    : null
+  const mobilityCoreMaterial = mobilityVariant
+    ? material(new THREE.LineBasicMaterial({ color: style.secondary, transparent: true, opacity: .98, blending: THREE.NormalBlending, depthWrite: false }))
+    : null
+  const mobilityMarkShadowMaterial = mobilityVariant
+    ? material(new THREE.MeshBasicMaterial({ color: '#271b15', transparent: true, opacity: .9, blending: THREE.NormalBlending, depthWrite: false }))
+    : null
+  const mobilityMarkCoreMaterial = mobilityVariant
+    ? material(new THREE.MeshBasicMaterial({ color: style.secondary, transparent: true, opacity: .98, blending: THREE.NormalBlending, depthWrite: false }))
+    : null
   const ground = terrainHeightAt(map, target.x, target.y)
   const center = visualPoint(map, target, cue.position ? null : targetActor, .08)
-  const ring = new THREE.Mesh(track(new THREE.TorusGeometry(.38, .024, 6, detail === 'full' ? 20 : 12)), accentMaterial)
+  const ring = new THREE.Mesh(track(new THREE.TorusGeometry(mobilityVariant ? .68 : .38, mobilityVariant ? .04 : .024, 6, detail === 'full' ? 20 : 12)), accentMaterial)
   ring.rotation.x = -Math.PI / 2
   group.add(ring)
   const shieldLike = variant !== 'cancellation' && variant !== 'soul-transfer'
@@ -815,7 +894,7 @@ function createChannel(
     ? new THREE.Mesh(track(new THREE.TorusGeometry(.48, .035, 6, detail === 'full' ? 20 : 12)), accentMaterial)
     : null
   if (departurePortal) { departurePortal.rotation.y = Math.PI / 2; group.add(departurePortal) }
-  const count = variant === 'silence' || variant === 'cancellation' || variant === 'soul-transfer' ? 0 : detail === 'full' ? 5 : detail === 'reduced' ? 3 : 1
+  const count = targetLocalVariant || variant === 'silence' || variant === 'cancellation' || variant === 'soul-transfer' ? 0 : detail === 'full' ? 5 : detail === 'reduced' ? 3 : 1
   const particles = Array.from({ length: count }, (_, index) => {
     const mesh = new THREE.Mesh(track(new THREE.IcosahedronGeometry(.05, 0)), accentMaterial)
     group.add(mesh)
@@ -858,20 +937,65 @@ function createChannel(
     ? new THREE.Mesh(track(new THREE.TorusGeometry(.48, .018, 5, detail === 'full' ? 20 : 12)), accentMaterial)
     : null
   if (familyWave) { familyWave.rotation.x = -Math.PI / 2; group.add(familyWave) }
+  const targetLight = variant === 'target-light'
+    ? new THREE.Mesh(track(new THREE.ConeGeometry(.28, 1.05, detail === 'full' ? 8 : 6)), targetAccentMaterial)
+    : null
+  if (targetLight) group.add(targetLight)
+  const targetBell = variant === 'target-bell'
+    ? new THREE.Mesh(track(new THREE.CylinderGeometry(.25, .4, .4, detail === 'full' ? 10 : 7)), targetBodyMaterial)
+    : null
+  const targetBellRim = variant === 'target-bell'
+    ? new THREE.Mesh(track(new THREE.TorusGeometry(.4, .035, 6, detail === 'full' ? 16 : 10)), targetAccentMaterial)
+    : null
+  const targetBellGroundRim = variant === 'target-bell'
+    ? new THREE.Mesh(track(new THREE.TorusGeometry(.65, .035, 6, detail === 'full' ? 22 : 14)), targetAccentMaterial)
+    : null
+  if (targetBell) group.add(targetBell)
+  if (targetBellRim) { targetBellRim.rotation.x = -Math.PI / 2; group.add(targetBellRim) }
+  if (targetBellGroundRim) { targetBellGroundRim.rotation.x = -Math.PI / 2; group.add(targetBellGroundRim) }
+  const targetShard = variant === 'psychic-shard'
+    ? new THREE.Mesh(track(new THREE.OctahedronGeometry(.3, 0)), targetAccentMaterial)
+    : null
+  if (targetShard) group.add(targetShard)
+  const targetSwarm = variant === 'swarm-target'
+    ? Array.from({ length: detail === 'full' ? 7 : detail === 'reduced' ? 5 : 3 }, (_, index) => {
+        const mesh = new THREE.Mesh(track(new THREE.IcosahedronGeometry(.09, 0)), targetAccentMaterial)
+        group.add(mesh)
+        return { mesh, angle: index * Math.PI * 2 / (detail === 'full' ? 7 : detail === 'reduced' ? 5 : 3), phase: index / (detail === 'full' ? 7 : detail === 'reduced' ? 5 : 3) }
+      })
+    : []
+  const mobilityArcShadow = mobilityVariant && variant === 'mobility-arc'
+    ? new THREE.Line(track(new THREE.BufferGeometry().setFromPoints([center, center, center])), mobilityShadowMaterial!)
+    : null
+  if (mobilityArcShadow) group.add(mobilityArcShadow)
   const mobilityArc = family === 'mobility' && variant !== 'mobility-trail' && variant !== 'mobility-haste'
-    ? new THREE.Line(track(new THREE.BufferGeometry().setFromPoints([center, center, center])), accentMaterial)
+    ? new THREE.Line(track(new THREE.BufferGeometry().setFromPoints([center, center, center])), mobilityVariant ? mobilityCoreMaterial! : accentMaterial)
     : null
   if (mobilityArc) group.add(mobilityArc)
+  const mobilityStepShadows = variant === 'mobility-trail' && mobilityMarkShadowMaterial
+    ? Array.from({ length: 4 }, () => {
+      const mesh = new THREE.Mesh(track(new THREE.TorusGeometry(.26, .07, 5, 10)), mobilityMarkShadowMaterial)
+      group.add(mesh)
+      return mesh
+    })
+    : []
   const mobilityStepMarks = variant === 'mobility-trail'
     ? Array.from({ length: 4 }, (_, index) => {
-      const mesh = new THREE.Mesh(track(new THREE.TorusGeometry(.14, .024, 5, 10)), variantMaterial!)
+      const mesh = new THREE.Mesh(track(new THREE.TorusGeometry(.2, .04, 5, 10)), mobilityMarkCoreMaterial ?? variantMaterial!)
       group.add(mesh)
       return { mesh, index, phase: index / 4 }
     })
     : []
+  const mobilityHasteShadows = variant === 'mobility-haste' && mobilityShadowMaterial
+    ? Array.from({ length: 3 }, () => {
+      const line = new THREE.Line(track(new THREE.BufferGeometry().setFromPoints([center, center, center])), mobilityShadowMaterial)
+      group.add(line)
+      return line
+    })
+    : []
   const mobilityHasteTrails = variant === 'mobility-haste'
     ? Array.from({ length: 3 }, () => {
-      const line = new THREE.Line(track(new THREE.BufferGeometry().setFromPoints([center, center, center])), accentMaterial)
+      const line = new THREE.Line(track(new THREE.BufferGeometry().setFromPoints([center, center, center])), mobilityCoreMaterial ?? accentMaterial)
       group.add(line)
       return line
     })
@@ -967,7 +1091,7 @@ function createChannel(
   return {
     group,
     update(progressValue) {
-      const progress = clamp01(progressValue)
+      const progress = mobilityVariant && cue.motion === 'reduced' ? .72 : clamp01(progressValue)
       if (isTeleport) {
         const departure = source ? 1 - clamp01(progress / .4) : 0
         const arrival = source ? clamp01((progress - .6) / .4) : 1
@@ -1007,6 +1131,7 @@ function createChannel(
       ring.position.set(center.x, ground + .05, center.z)
       ring.scale.setScalar(.65 + fade * .55)
       ring.visible = fade > .015
+      if (targetLocalVariant) ring.visible = false
       if (variant === 'cancellation' || variant === 'soul-transfer') ring.visible = false
       if (dome) {
         dome.position.set(center.x, ground + .5, center.z)
@@ -1096,32 +1221,91 @@ function createChannel(
         familyWave.scale.setScalar(.65 + fade * .65)
         familyWave.visible = fade > .02
       }
-      if (mobilityArc) {
-        const base = new THREE.Vector3(center.x, ground + .12, center.z)
-        const right = base.clone().add(new THREE.Vector3(.35 + lift * .15, .2 + lift * .45, 0))
-        const middle = variant === 'mobility-arc'
-          ? base.clone().add(new THREE.Vector3(0, .34 + lift * .55, 0))
-          : base.clone().add(new THREE.Vector3(-.35 - lift * .15, .2 + lift * .45, 0))
-        setLinePoints(mobilityArc, base, middle, right)
-        mobilityArc.visible = fade > .02
+      if (targetLight) {
+        targetLight.position.set(center.x, ground + 1.05 + (1 - progress) * .55, center.z)
+        targetLight.rotation.x = Math.PI
+        targetLight.scale.set(.9 + fade * .35, .8 + fade * .5, .9 + fade * .35)
+        targetLight.visible = fade > .02
       }
-      for (const step of mobilityStepMarks) {
+      if (targetBell && targetBellRim) {
+        targetBell.position.set(center.x, ground + 1.38, center.z)
+        targetBellRim.position.set(center.x, ground + 1.18, center.z)
+        if (targetBellGroundRim) targetBellGroundRim.position.set(center.x, ground + .08, center.z)
+        targetBell.scale.setScalar(.85 + fade * .35)
+        targetBellRim.scale.setScalar(.9 + fade * .5)
+        if (targetBellGroundRim) targetBellGroundRim.scale.setScalar(.85 + fade * .3)
+        const bellVisible = fade > .02
+        targetBell.visible = targetBellRim.visible = bellVisible
+        if (targetBellGroundRim) targetBellGroundRim.visible = bellVisible
+      }
+      if (targetShard) {
+        targetShard.position.set(center.x, ground + 1.85 + Math.sin(progress * Math.PI) * .12, center.z)
+        targetShard.rotation.set(progress * 1.8, progress * 2.4, progress * 1.1)
+        targetShard.scale.setScalar(.9 + fade * .6)
+        targetShard.visible = fade > .02
+      }
+      for (const swarm of targetSwarm) {
+        const angle = swarm.angle + progress * Math.PI * 2
+        const radius = .55 + Math.sin(Math.PI * clamp01(progress + swarm.phase)) * .2
+        swarm.mesh.position.set(center.x + Math.cos(angle) * radius, ground + .9 + Math.sin(progress * Math.PI * 2 + swarm.phase * 4) * .2, center.z + Math.sin(angle) * radius)
+        swarm.mesh.scale.setScalar(.9 + fade * .7)
+        swarm.mesh.visible = fade > .02
+      }
+      if (mobilityArc) {
+        if (mobilityArcShadow) {
+          const base = new THREE.Vector3(center.x + .48, ground + .1, center.z + .58)
+          const right = base.clone().add(new THREE.Vector3(1.08, .08, -.12))
+          const middle = base.clone().lerp(right, .5).add(new THREE.Vector3(0, .6 + lift * .2, .05))
+          setLinePoints(mobilityArcShadow, base, middle, right)
+          setLinePoints(mobilityArc, base, middle, right)
+          mobilityArcShadow.visible = mobilityArc.visible = fade > .02
+        } else {
+          const base = new THREE.Vector3(center.x, ground + .12, center.z)
+          const right = base.clone().add(new THREE.Vector3(.35 + lift * .15, .2 + lift * .45, 0))
+          const middle = variant === 'mobility-arc'
+            ? base.clone().add(new THREE.Vector3(0, .34 + lift * .55, 0))
+            : base.clone().add(new THREE.Vector3(-.35 - lift * .15, .2 + lift * .45, 0))
+          setLinePoints(mobilityArc, base, middle, right)
+          mobilityArc.visible = fade > .02
+        }
+      }
+      const mobilityRingScale = mobilityVariant ? .9 + fade * .12 : .65 + fade * .55
+      ring.scale.setScalar(mobilityRingScale)
+      for (const [index, step] of mobilityStepMarks.entries()) {
         const phase = clamp01(progress * 1.35 - step.phase * .42)
-        step.mesh.position.set(center.x + (step.index % 2 ? .18 : -.18), ground + .07, center.z + .5 - step.index * .28 - phase * .16)
+        const row = Math.floor(step.index / 2)
+        const side = step.index % 2 ? 1 : -1
+        step.mesh.position.set(center.x + side * (.52 + phase * .05), ground + .07, center.z + .72 - row * .78 - phase * .12)
         step.mesh.rotation.x = -Math.PI / 2
-        const stepScale = .8 + phase * .3
-        step.mesh.scale.set(stepScale * .8, stepScale * 1.3, stepScale)
+        const stepScale = .9 + phase * .24
+        step.mesh.scale.set(stepScale * .92, stepScale * 1.45, stepScale)
         step.mesh.visible = phase > .02 && fade > .02
+        const shadow = mobilityStepShadows[step.index]
+        if (shadow) {
+          shadow.position.copy(step.mesh.position)
+          shadow.rotation.copy(step.mesh.rotation)
+          shadow.scale.copy(step.mesh.scale)
+          shadow.visible = step.mesh.visible
+        }
       }
       if (mobilityStepMarks.length && variantMaterial) variantMaterial.opacity = fade * .9
       for (const [index, line] of mobilityHasteTrails.entries()) {
         const phase = clamp01((progress - index * .08) / .78)
-        const base = new THREE.Vector3(center.x - .18, ground + .12 + index * .08, center.z)
-        const end = base.clone().add(new THREE.Vector3(.48 + phase * .28, .02 + lift * .2, -.12 + index * .12))
+        const base = new THREE.Vector3(center.x + .42, ground + .12 + index * .08, center.z + .55 + index * .12)
+        const end = base.clone().add(new THREE.Vector3(.98 + phase * .28, .02 + lift * .2, -.12 + index * .12))
         const middle = base.clone().lerp(end, .5).add(new THREE.Vector3(.12, .04, 0))
         setLinePoints(line, base, middle, end)
         line.visible = phase > .02 && phase < 1.02 && fade > .02
+        const shadow = mobilityHasteShadows[index]
+        if (shadow) {
+          setLinePoints(shadow, base, middle, end)
+          shadow.visible = line.visible
+        }
       }
+      if (mobilityShadowMaterial) mobilityShadowMaterial.opacity = fade * .9
+      if (mobilityCoreMaterial) mobilityCoreMaterial.opacity = fade * .98
+      if (mobilityMarkShadowMaterial) mobilityMarkShadowMaterial.opacity = fade * .9
+      if (mobilityMarkCoreMaterial) mobilityMarkCoreMaterial.opacity = fade * .98
       if (communicationLine) {
         const current = new THREE.Vector3().lerpVectors(sourcePoint, center, progress)
         const middle = sourcePoint.clone().lerp(center, .5).add(new THREE.Vector3(0, .18, 0))
@@ -1199,9 +1383,13 @@ function createChannel(
         )
         particle.mesh.visible = phase > 0 && phase < 1 && fade > .02
       }
-      bodyMaterial.opacity = fade * .24
-      accentMaterial.opacity = fade * .8
-      group.visible = ring.visible || Boolean(dome?.visible || portal?.visible || travel?.visible || ghostA?.visible || ghostB?.visible || focusRay?.visible || lightColumn?.visible || morphCube?.visible || morphSphere?.visible || flightRing?.visible || familyWave?.visible || mobilityArc?.visible || mobilityStepMarks.some(({ mesh }) => mesh.visible) || mobilityHasteTrails.some((line) => line.visible) || communicationLine?.visible || spectralPalm?.visible || spectralCorePalm?.visible || trickParticles.some(({ mesh }) => mesh.visible) || book?.visible || chestBody?.visible || helmRing?.visible || silenceRing?.visible || cancellationRing?.visible || cancellationSplits.some((line) => line.visible) || soulOrb?.visible || soulVessel?.visible || soulLine?.visible || particles.some(({ mesh }) => mesh.visible) || environmentParticles.some(({ mesh }) => mesh.visible))
+      bodyMaterial.opacity = targetLocalVariant ? .24 : fade * .24
+      accentMaterial.opacity = targetLocalVariant ? .8 : fade * .8
+      if (targetLocalVariant) {
+        targetBodyMaterial.opacity = fade * .6
+        targetAccentMaterial.opacity = fade * .9
+      }
+      group.visible = ring.visible || Boolean(dome?.visible || portal?.visible || travel?.visible || ghostA?.visible || ghostB?.visible || focusRay?.visible || lightColumn?.visible || morphCube?.visible || morphSphere?.visible || flightRing?.visible || familyWave?.visible || targetLight?.visible || targetBell?.visible || targetBellRim?.visible || targetBellGroundRim?.visible || targetShard?.visible || targetSwarm.some(({ mesh }) => mesh.visible) || mobilityArc?.visible || mobilityArcShadow?.visible || mobilityStepMarks.some(({ mesh }) => mesh.visible) || mobilityStepShadows.some((mesh) => mesh.visible) || mobilityHasteTrails.some((line) => line.visible) || mobilityHasteShadows.some((line) => line.visible) || communicationLine?.visible || spectralPalm?.visible || spectralCorePalm?.visible || trickParticles.some(({ mesh }) => mesh.visible) || book?.visible || chestBody?.visible || helmRing?.visible || silenceRing?.visible || cancellationRing?.visible || cancellationSplits.some((line) => line.visible) || soulOrb?.visible || soulVessel?.visible || soulLine?.visible || particles.some(({ mesh }) => mesh.visible) || environmentParticles.some(({ mesh }) => mesh.visible))
     },
     dispose() {
       group.removeFromParent()

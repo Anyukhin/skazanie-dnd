@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -11,24 +11,28 @@ import { createInteriorModel, disposeInteriorModel, mergeStaticInteriorMeshes } 
 const root = fileURLToPath(new URL('..', import.meta.url))
 mkdirSync(join(root, 'tmp'), { recursive: true })
 const buildDir = mkdtempSync(join(root, 'tmp', 'board3d-batching-'))
+const outputDir = join(buildDir, 'src')
+mkdirSync(outputDir, { recursive: true })
+mkdirSync(join(buildDir, 'server'), { recursive: true })
+copyFileSync(join(root, 'server', 'circular-area-geometry.mjs'), join(buildDir, 'server', 'circular-area-geometry.mjs'))
 const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
 const sources = ['../src/board3d-batching.ts', '../src/board3d-props.ts', '../src/board-render.ts']
   .map((relative) => fileURLToPath(new URL(relative, import.meta.url)))
 const compiled = spawnSync(process.execPath, [
   compiler, '--ignoreConfig', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler',
-  '--lib', 'ES2022,DOM', '--strict', '--skipLibCheck', '--outDir', buildDir, ...sources,
+  '--lib', 'ES2022,DOM', '--strict', '--skipLibCheck', '--rootDir', root, '--outDir', buildDir, ...sources,
 ], { encoding: 'utf8' })
 assert.equal(compiled.status, 0, compiled.stderr || compiled.stdout)
-for (const name of readdirSync(buildDir)) {
-  const path = join(buildDir, name)
+for (const name of readdirSync(outputDir)) {
+  const path = join(outputDir, name)
   if (statSync(path).isDirectory() || !name.endsWith('.js')) continue
   const source = readFileSync(path, 'utf8').replace(/(from\s+["'])(\.\/[^"']+)(["'])/g, '$1$2.mjs$3')
   writeFileSync(path, source)
   renameSync(path, path.replace(/\.js$/u, '.mjs'))
 }
-const batch = await import(pathToFileURL(join(buildDir, 'board3d-batching.mjs')).href)
-const props3d = await import(pathToFileURL(join(buildDir, 'board3d-props.mjs')).href)
-const render = await import(pathToFileURL(join(buildDir, 'board-render.mjs')).href)
+const batch = await import(pathToFileURL(join(outputDir, 'board3d-batching.mjs')).href)
+const props3d = await import(pathToFileURL(join(outputDir, 'board3d-props.mjs')).href)
+const render = await import(pathToFileURL(join(outputDir, 'board-render.mjs')).href)
 const THREE = await import('three')
 process.on('exit', () => rmSync(buildDir, { recursive: true, force: true }))
 

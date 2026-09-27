@@ -1234,7 +1234,7 @@ function sanitizePlayerCombatCommand(user, state, input, { skipAttackTargetPolic
       throw commandPolicyError('Нужен непустой список идентификаторов целей заклинания', 'INVALID_SPELL_TARGETS')
     }
     const targets = suppliedTargets == null ? null : [...new Set(suppliedTargets.map((id) => id.trim()))]
-    if (spellId === 'longstrider' && targets && targets.length !== suppliedTargets.length) {
+    if (['longstrider', 'chain-lightning'].includes(spellId) && targets && targets.length !== suppliedTargets.length) {
       throw commandPolicyError('Выберите каждую цель только один раз', 'INVALID_SPELL_TARGETS')
     }
     const castingResource = input?.casting_resource
@@ -1256,6 +1256,9 @@ function sanitizePlayerCombatCommand(user, state, input, { skipAttackTargetPolic
       ...(spellOption ? { spell_option: spellOption } : {}),
       ...(slotLevel == null ? {} : { slot_level: slotLevel }),
       ...(castingResource == null ? {} : { casting_resource: castingResource }),
+      ...(input?.item_id != null || input?.itemId != null
+        ? { item_id: String(input.item_id ?? input.itemId).trim().slice(0, 120) }
+        : {}),
       ...(input?.to ? { to: { x: input.to.x, y: input.to.y } } : {}),
       ...(input?.knock_out === true ? { knock_out: true } : {}),
     }

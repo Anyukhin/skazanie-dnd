@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -10,24 +10,28 @@ import { publicTacticalMapFor } from '../server/viewer-projection.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const buildDir = mkdtempSync(join(root, 'tmp', 'board3d-scene-test-'))
+const outputDir = join(buildDir, 'src')
+mkdirSync(outputDir, { recursive: true })
+mkdirSync(join(buildDir, 'server'), { recursive: true })
+copyFileSync(join(root, 'server', 'circular-area-geometry.mjs'), join(buildDir, 'server', 'circular-area-geometry.mjs'))
 const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
 const sources = ['../src/board3d-scene.ts', '../src/board-render.ts', '../src/tactical-map-client.ts']
   .map((relative) => fileURLToPath(new URL(relative, import.meta.url)))
 const compiled = spawnSync(process.execPath, [
   compiler, '--ignoreConfig', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler',
-  '--lib', 'ES2022,DOM', '--strict', '--skipLibCheck', '--outDir', buildDir, ...sources,
+  '--lib', 'ES2022,DOM', '--strict', '--skipLibCheck', '--rootDir', root, '--outDir', buildDir, ...sources,
 ], { encoding: 'utf8' })
 assert.equal(compiled.status, 0, compiled.stderr || compiled.stdout)
-for (const name of readdirSync(buildDir)) {
+for (const name of readdirSync(outputDir)) {
   if (!name.endsWith('.js')) continue
-  const source = readFileSync(join(buildDir, name), 'utf8')
+  const source = readFileSync(join(outputDir, name), 'utf8')
     .replace(/(from\s+["'])(\.\/[^"']+)(["'])/g, '$1$2.mjs$3')
-  writeFileSync(join(buildDir, name.replace(/\.js$/, '.mjs')), source)
-  rmSync(join(buildDir, name))
+  writeFileSync(join(outputDir, name.replace(/\.js$/, '.mjs')), source)
+  rmSync(join(outputDir, name))
 }
-const scene3d = await import(pathToFileURL(join(buildDir, 'board3d-scene.mjs')).href)
-const mapClient = await import(pathToFileURL(join(buildDir, 'tactical-map-client.mjs')).href)
-const render = await import(pathToFileURL(join(buildDir, 'board-render.mjs')).href)
+const scene3d = await import(pathToFileURL(join(outputDir, 'board3d-scene.mjs')).href)
+const mapClient = await import(pathToFileURL(join(outputDir, 'tactical-map-client.mjs')).href)
+const render = await import(pathToFileURL(join(outputDir, 'board-render.mjs')).href)
 const THREE = await import('three')
 process.on('exit', () => rmSync(buildDir, { recursive: true, force: true }))
 

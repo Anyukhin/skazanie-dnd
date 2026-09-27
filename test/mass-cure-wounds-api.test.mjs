@@ -199,7 +199,11 @@ test('HTTP Mass Cure Wounds проходит acquisition двух владель
   const point = { x: caster.x, y: caster.y }
   assert.ok(cellDistance(ally, point) <= 30)
   const selected = { command_type: 'CastSpell', actor_id: actorId, spell_id: 'mass-cure-wounds',
-    to: { x: point.x, y: point.y }, target_ids: [actorId, ally.id], slot_level: 5, casting_resource: 'spell_slots_5' }
+    to: { x: point.x, y: point.y }, target_ids: [actorId, ally.id], slot_level: 5, casting_resource: 'spell_slots_5',
+    // Геометрия области берётся из серверного профиля заклинания, а не из
+    // дополнительных полей команды клиента.
+    area_geometry_version: 'legacy-grid-v1', area_grid_origin: { x: point.x + 100, y: point.y + 100 },
+    radius: 600, radius_feet: 600, area_shape: 'cube' }
   const beforeSlots = prepared.mechanics.resources[actorId].spell_slots_5.current
   const beforeSixthSlots = prepared.mechanics.resources[actorId].spell_slots_6.current
 
@@ -221,6 +225,27 @@ test('HTTP Mass Cure Wounds проходит acquisition двух владель
   assert.deepEqual(new Set(firstHealing.map((event) => event.target_ids[0])), new Set([actorId, secondActorId]))
   assert.ok(firstHealing.every((event) => Number(event.payload.applied_amount) > 0))
   assert.equal(first.mechanics.filter((event) => event.event_type === 'DieRolled' && event.payload.purpose === 'spell_healing:mass-cure-wounds').length, 1)
+  const spellCast = first.mechanics.find((event) => event.event_type === 'SpellCast')
+  assert.ok(spellCast)
+  assert.equal(spellCast.payload.area_geometry_version, 'circle-grid-v2')
+  assert.deepEqual(spellCast.payload.area_grid_origin, point)
+  assert.equal(spellCast.payload.radius_feet, 30)
+  assert.equal(spellCast.payload.area_shape, 'sphere')
+  assert.deepEqual(spellCast.payload.to, point)
+  const firstSpellLog = first.authoritative_state.battleLog.find((entry) => entry.type === 'spell'
+    && entry.actorId === actorId && entry.spellId === 'mass-cure-wounds')
+  assert.ok(firstSpellLog)
+  assert.deepEqual(firstSpellLog.to, point)
+  assert.equal(firstSpellLog.area.radiusFeet, 30)
+  assert.equal(firstSpellLog.area.geometryVersion, 'circle-grid-v2')
+  assert.deepEqual(firstSpellLog.area.gridOrigin, point)
+  assert.equal(firstSpellLog.area.shape, 'sphere')
+  const guestAfterCast = expectStatus(await api.request(`/api/rooms/${CAMPAIGN}`, { cookie: guestCookie })).state
+  const guestSpellLog = guestAfterCast.battleLog.find((entry) => entry.type === 'spell'
+    && entry.actorId === actorId && entry.spellId === 'mass-cure-wounds')
+  assert.ok(guestSpellLog)
+  assert.equal(guestSpellLog.area.geometryVersion, 'circle-grid-v2')
+  assert.deepEqual(guestSpellLog.area.gridOrigin, point)
   assert.equal(first.authoritative_state.mechanics.resources[actorId].spell_slots_5.current, beforeSlots - 1)
   assert.equal(first.authoritative_state.players.find((entry) => entry.id === actorId).preparedSpellIds.includes('mass-cure-wounds'), true)
   const replay = expectStatus(await api.command(playerCookie, 'mass-cure-cast-once', selected))
@@ -298,6 +323,13 @@ test('HTTP Mass Cure Wounds проходит acquisition двух владель
   assert.equal(restored.mechanics.resources[actorId].spell_slots_5.current, beforeSlots - 1)
   assert.equal(restored.mechanics.resources[actorId].spell_slots_6.current, beforeSixthSlots - 1)
   assert.equal(restored.mechanics.resources[actorId].spell_slots_5.max, prepared.mechanics.resources[actorId].spell_slots_5.max)
+  const restoredSpellLog = restored.battleLog.find((entry) => entry.type === 'spell'
+    && entry.actorId === actorId && entry.spellId === 'mass-cure-wounds')
+  assert.ok(restoredSpellLog)
+  assert.equal(restoredSpellLog.area.geometryVersion, 'circle-grid-v2')
+  assert.deepEqual(restoredSpellLog.area.gridOrigin, point)
+  assert.equal(restoredSpellLog.area.radiusFeet, 30)
+  assert.equal(restoredSpellLog.area.shape, 'sphere')
   const restoredAdmin = expectStatus(await adminRoom()).state
   assert.ok(restoredAdmin.npc_world.vitals[setupNpc.id].hp > npcWoundedHp)
   assert.equal(restoredAdmin.npc_world.vitals[setupNpc.id].hp, Math.min(npcBefore.max_hp, npcWoundedHp + npcHealing[0].payload.applied_amount))

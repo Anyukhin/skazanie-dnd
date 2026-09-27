@@ -79,6 +79,46 @@ export function spellNameById(id: string | null | undefined): string | null {
   return spell?.name ?? null
 }
 
+export type CatalogCombatSpell = CombatSpell & {
+  school?: string
+  classes?: readonly string[]
+  subclasses?: readonly string[]
+}
+
+/** Полный справочник для чтения; projected-профиль имеет приоритет над локальным override. */
+export function allCatalogCombatSpells(projectedSpells: readonly Partial<CatalogCombatSpell>[] = []): CatalogCombatSpell[] {
+  const projectedById = new Map(projectedSpells.filter((spell) => spell && spell.id).map((spell) => [String(spell.id), spell]))
+  const overrides = mechanicsOverrides.spells as unknown as Record<string, Partial<CatalogCombatSpell>>
+  return (catalogPayload.spells as unknown as CatalogCombatSpell[]).map((catalogSpell) => {
+    const staticOverride = overrides[catalogSpell.id] ?? {}
+    const projected = projectedById.get(catalogSpell.id) ?? {}
+    const mechanicsSupport = projected.mechanicsSupport
+      ?? staticOverride.mechanicsSupport
+      ?? (Object.keys(staticOverride).length ? 'partial' : 'heuristic')
+    const mechanicsAccuracy = projected.mechanicsAccuracy
+      ?? staticOverride.mechanicsAccuracy
+      ?? (Object.keys(staticOverride).length ? 'verified-dndsu' : 'heuristic')
+    const explicitSupportNote = [projected.supportNote, staticOverride.supportNote]
+      .find((note) => typeof note === 'string' && note.trim())
+    const supportNote = explicitSupportNote
+      ?? (mechanicsSupport === 'partial' ? defaultPartialNote : mechanicsSupport === 'ruling-only' ? defaultRulingNote : undefined)
+    const components = projected.components ?? staticOverride.components ?? catalogSpell.components
+    return {
+      ...catalogSpell,
+      ...staticOverride,
+      ...projected,
+      ...(components ? { components } : {}),
+      // Ссылка ведёт на закреплённую карточку источника, даже когда projection
+      // передаёт только runtime-поля и не повторяет её.
+      sourceUrl: catalogSpell.sourceUrl,
+      description: projected.description ?? catalogSpell.description,
+      mechanicsAccuracy,
+      mechanicsSupport,
+      ...(supportNote ? { supportNote } : {}),
+    }
+  })
+}
+
 export function fallbackCombatSpells(player?: Player, rulesetId = 'srd_5_2_1'): CombatSpell[] {
   const profile = caster(player)
   if (!profile) return []
@@ -102,6 +142,7 @@ export function fallbackCombatSpells(player?: Player, rulesetId = 'srd_5_2_1'): 
          наличии предмета. Такое решение приходит только в projection spell. */
       const { componentAvailability: _catalogAvailability, components: catalogComponents, ...catalogSpell } = spell
       const { componentAvailability: _overrideAvailability, components: overrideComponents, ...overrideProfile } = mechanicsOverride ?? {}
+      const { areaGeometryVersion: _areaGeometryVersion, ...legacyOverrideProfile } = overrideProfile
       const components = sourceBackedComponents ? (overrideComponents ?? catalogComponents) : undefined
       const mechanicsSupport = mechanicsOverride?.mechanicsSupport
         ?? (mechanicsOverride ? 'partial' : 'heuristic')
@@ -109,7 +150,7 @@ export function fallbackCombatSpells(player?: Player, rulesetId = 'srd_5_2_1'): 
       const slotLevel = spell.level === 0 ? 0 : profile.progression === 'pact' ? spell.level === 6 ? 6 : pactSlots[level]?.[1] ?? spell.level : spell.level
       return {
         ...catalogSpell,
-        ...overrideProfile,
+        ...(sourceBackedComponents ? overrideProfile : legacyOverrideProfile),
         ...(components ? { components } : {}),
         description: spell.description,
         mechanicsAccuracy: mechanicsOverride?.mechanicsAccuracy ?? (mechanicsOverride ? 'verified-dndsu' : 'heuristic'),

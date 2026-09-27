@@ -38,6 +38,49 @@ test('урон и попадание по врагу не называют ег�
   assert.match(text, /7 урона/, 'нанесённый урон игрок видеть обязан')
 })
 
+test('залп из нескольких лучей называет заклинание один раз и сохраняет все атаки', () => {
+  const spellCast = (commandId, economyConsumed = undefined) => ({
+    ...event('SpellCast', {
+      spell_id: 'scorching-ray',
+      name: 'Палящий луч',
+      ...(economyConsumed === undefined ? {} : { economy_consumed: economyConsumed }),
+    }, ['wolf']),
+    command_id: commandId,
+  })
+  const attack = (commandId) => ({
+    ...event('AttackResolved', { target_id: 'wolf', hit: true, total: 20, armor_class: 10 }, ['wolf']),
+    command_id: commandId,
+  })
+  const text = combatNarration([
+    spellCast('rays'),
+    attack('rays'),
+    spellCast('rays:beam:2', false),
+    attack('rays:beam:2'),
+    spellCast('rays:beam:3', false),
+    attack('rays:beam:3'),
+  ], state)
+  assert.equal((text.match(/творит заклинание «Палящий луч»/gu) ?? []).length, 1)
+  assert.equal((text.match(/атакует Волк/gu) ?? []).length, 3)
+})
+
+test('persisted beam events use canonical event_id while command_id is shared', () => {
+  const cast = (eventId, economyConsumed = undefined) => ({
+    ...event('SpellCast', {
+      spell_id: 'scorching-ray',
+      name: 'Палящий луч',
+      ...(economyConsumed === undefined ? {} : { economy_consumed: economyConsumed }),
+    }, ['wolf']),
+    event_id: eventId,
+    command_id: '367e138e-3230-4a5b-94d6-cf3fec35d7ea',
+  })
+  const text = combatNarration([
+    cast('spell-cast:367e138e-3230-4a5b-94d6-cf3fec35d7ea:1'),
+    cast('spell-cast:367e138e-3230-4a5b-94d6-cf3fec35d7ea:1:beam:2', false),
+    cast('spell-cast:367e138e-3230-4a5b-94d6-cf3fec35d7ea:1:beam:3', false),
+  ], state)
+  assert.equal((text.match(/творит заклинание «Палящий луч»/gu) ?? []).length, 1)
+})
+
 test('по своему герою те же числа показываются', () => {
   const text = combatNarration([
     event('DamageApplied', { target_id: 'hero', applied_amount: 5, hp_before: 24, hp_after: 19 }, ['hero']),

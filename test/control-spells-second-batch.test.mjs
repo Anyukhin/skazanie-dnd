@@ -73,7 +73,7 @@ test('Рассвет оставляет столб, который жжёт и �
   const effect = result.events.find((event) => event.event_type === 'SpellAreaCreated').payload.effect
   assert.equal(effect.damage, '4d10')
   assert.equal(effect.damage_type, 'radiant')
-  assert.equal(effect.trigger_on_enter, true)
+  assert.equal(effect.trigger_on_enter, false)
   assert.equal(effect.trigger_on_turn_end, true)
   assert.equal(damageOf(result).damage_type, 'radiant')
 })

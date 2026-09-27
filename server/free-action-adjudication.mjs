@@ -578,7 +578,7 @@ export function bindFreeActionReadingToState(state = {}, actorId = '', text = ''
   const inventory = Array.isArray(actor?.inventory) ? actor.inventory : []
   const allowedItem = inventory.find((item) => String(item?.id) === reading.item_id) ?? null
   const mentionedItems = allowedItem ? [allowedItem] : inventory.filter((item) => mentionsReference(text, itemReferenceNames(item)))
-  const proficiency = skillProficiencyForActor(actor, reading.skill)
+  const proficiency = skillProficiencyForActor(actor, reading.skill, state)
   const ambiguities = [
     ...(mentionedTargets.length > 1 ? ['target_id'] : []),
     ...(mentionedItems.length > 1 ? ['item_id'] : []),

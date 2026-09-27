@@ -63,6 +63,34 @@ test('ячейка выше второй добавляет по лучу', () =
   assert.equal(replayEvents(state, result.events).mechanics.resources.caster.spell_slots_4.current, 2)
 })
 
+test('Scorching Ray распределяет ordered target_ids по лучам и тратит одну ячейку после replay', () => {
+  const base = field()
+  const state = normalizeCampaignState({
+    ...base,
+    enemies: [...base.enemies, { ...base.enemies[0], id: 'brute-two', name: 'Вторая цель', x: 3, y: 1 }],
+    mechanics: {
+      ...base.mechanics,
+      combat: {
+        ...base.mechanics.combat,
+        initiative: [...base.mechanics.combat.initiative, { actor_id: 'brute-two', total: 7 }],
+        action_economy: { ...base.mechanics.combat.action_economy, 'brute-two': { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 } },
+      },
+    },
+  })
+  const result = resolveCommand(
+    authoritative({ command_type: 'CastSpell', actor_id: 'caster', spell_id: 'scorching-ray', target_id: 'brute', target_ids: ['brute', 'brute-two'] }),
+    state,
+    options(dice([15, 4, 4, 16, 3, 3, 17, 2, 2])),
+  )
+  const attacks = result.events.filter((event) => event.event_type === 'AttackResolved')
+  assert.deepEqual(attacks.map((event) => event.payload.target_id), ['brute', 'brute-two', 'brute'])
+  assert.equal(result.events.filter((event) => event.event_type === 'ResourceSpent').length, 1)
+  const replayed = replayEvents(state, result.events)
+  assert.equal(replayed.mechanics.resources.caster.spell_slots_2.current, 2)
+  assert.equal(replayed.enemies.find((enemy) => enemy.id === 'brute').hp, 78)
+  assert.equal(replayed.enemies.find((enemy) => enemy.id === 'brute-two').hp, 84)
+})
+
 test('Вампирское касание лечит заклинателя на половину нанесённого', () => {
   const result = cast(field({ foeAt: { x: 2, y: 1 } }), 'vampiric-touch', [15, 4, 4, 4])
   const damage = hits(result)[0]

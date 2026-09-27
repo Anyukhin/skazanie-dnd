@@ -93,6 +93,8 @@ export function resolvePhbCreation(source) {
   const chosenLanguages = [...(classResult.choices.knowledge_languages ?? []), ...(feat?.benefits.language_proficiencies ?? [])].map(languageId)
   if (chosenLanguages.some((id) => fixedLanguages.has(id)) || new Set(chosenLanguages).size !== chosenLanguages.length) fail('Выбранный дополнительный язык уже известен: выберите другой')
   const domainSpells = (classGrants.domain_spell_ids ?? []).map(phbSpellId)
+  const domainSpellsByLevel = Object.fromEntries(Object.entries(classGrants.domain_spell_ids_by_level ?? {})
+    .map(([level, ids]) => [level, ids.map(phbSpellId)]))
   const expandedSpells = (classGrants.expanded_spell_list?.[1] ?? []).map(phbSpellId)
   const grants = []
   if (classGrants.extra_druid_cantrip) grants.push({ id: phbSpellId(classGrants.extra_druid_cantrip), ability: 'wis', uses: 'at-will', source: 'nature-domain' })
@@ -115,8 +117,10 @@ export function resolvePhbCreation(source) {
       languages: unique([...fixedLanguages, ...additionalLanguages]),
       language_labels: unique([...fixedLanguages, ...additionalLanguages]).map((id) => ({ common: 'Общий', druidic: 'Друидический', 'thieves-cant': 'Воровской жаргон' }[id] ?? backgroundCatalogFor('dnd_5e_2014').language_options.find((entry) => entry.id === id)?.name ?? id)),
       expertise: classGrants.expertise ?? [],
-      domain_spells: domainSpells, expanded_spells: expandedSpells,
+      domain_spells: domainSpells, domain_spells_by_level: domainSpellsByLevel, expanded_spells: expandedSpells,
       domain_spell_names: domainSpells.map((id) => canonicalCombatSpellFor(id)?.name ?? id),
+      domain_spell_names_by_level: Object.fromEntries(Object.entries(domainSpellsByLevel)
+        .map(([level, ids]) => [level, ids.map((id) => canonicalCombatSpellFor(id)?.name ?? id)])),
       spell_grants: grants, ritual_book: magic?.source === 'ritual-caster' ? magic : null,
       extra_hit_points_per_level: Number(classGrants.max_hit_points_bonus_per_class_level ?? 0) + Number(feat?.benefits.hit_point_maximum_bonus_per_level ?? 0),
       speed_bonus: Number(feat?.benefits.speed_bonus ?? 0),

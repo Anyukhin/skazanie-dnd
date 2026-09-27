@@ -703,6 +703,10 @@ export function npcHarmEventDrafts(state, {
   npcId,
   amount,
   damageType = 'untyped',
+  damageComponents = [],
+  temporaryHpBefore = null,
+  temporaryHpAfter = null,
+  temporaryHpAbsorbed = null,
   sourceEventId = '',
   sourceActorId = '',
   trigger = 'server-collateral',
@@ -713,10 +717,34 @@ export function npcHarmEventDrafts(state, {
   if (!npc || !placement) return []
   const before = npcVitalFor(state, npcId)
   if (!before.alive) return []
-  const applied = Math.max(0, Math.min(before.hp, integer(amount, 0)))
-  if (!applied) return []
+  const components = Array.isArray(damageComponents)
+    ? damageComponents.map((component) => ({
+      damage_type: text(component?.damage_type ?? component?.damageType, 40) || 'untyped',
+      raw_amount: Math.max(0, integer(component?.raw_amount ?? component?.rawAmount ?? component?.amount, 0)),
+      applied_amount: Math.max(0, integer(component?.applied_amount ?? component?.appliedAmount ?? component?.amount, 0)),
+      ...(component?.temporary_hp_absorbed != null || component?.temporaryHpAbsorbed != null
+        ? { temporary_hp_absorbed: Math.max(0, integer(component?.temporary_hp_absorbed ?? component?.temporaryHpAbsorbed, 0)) }
+        : {}),
+    })).filter((component) => component.raw_amount > 0 || component.applied_amount > 0)
+    : []
+  let remainingHp = before.hp
+  const normalizedComponents = components.map((component) => {
+    const applied_amount = Math.max(0, Math.min(remainingHp, component.applied_amount))
+    remainingHp -= applied_amount
+    return { ...component, applied_amount }
+  })
+  const componentRawAmount = normalizedComponents.reduce((total, component) => total + component.raw_amount, 0)
+  const componentAppliedAmount = normalizedComponents.reduce((total, component) => total + component.applied_amount, 0)
+  const applied = normalizedComponents.length ? componentAppliedAmount : Math.max(0, Math.min(before.hp, integer(amount, 0)))
+  const hasTemporaryHp = temporaryHpBefore != null || temporaryHpAfter != null || temporaryHpAbsorbed != null
+  const temporaryBefore = hasTemporaryHp ? Math.max(0, integer(temporaryHpBefore, 0)) : null
+  const temporaryAfter = hasTemporaryHp ? Math.max(0, integer(temporaryHpAfter, temporaryBefore ?? 0)) : null
+  const temporaryAbsorbed = hasTemporaryHp
+    ? Math.max(0, integer(temporaryHpAbsorbed, (temporaryBefore ?? 0) - (temporaryAfter ?? 0)))
+    : 0
+  if (!applied && !temporaryAbsorbed) return []
   const after = { hp: before.hp - applied, max_hp: before.max_hp, alive: before.hp - applied > 0 }
-  const harmEventId = `npc-harmed:${stableId(commandId, npcId, sourceEventId, before.hp, applied)}`
+  const harmEventId = `npc-harmed:${stableId(commandId, npcId, sourceEventId, before.hp, applied, temporaryBefore, temporaryAfter, temporaryAbsorbed)}`
   const deathEventId = `npc-died:${stableId(commandId, npcId, sourceEventId, before.hp, applied)}`
   const events = [{
     event_type: 'NpcHarmed',
@@ -724,9 +752,15 @@ export function npcHarmEventDrafts(state, {
     payload: {
       npc_id: String(npc.id),
       npc_name: text(npc.name, 160),
-      damage_type: text(damageType, 40) || 'untyped',
-      raw_amount: integer(amount, 0),
+      damage_type: normalizedComponents.length > 1 ? 'mixed' : text(normalizedComponents[0]?.damage_type ?? damageType, 40) || 'untyped',
+      raw_amount: normalizedComponents.length ? componentRawAmount : integer(amount, 0),
       applied_amount: applied,
+      ...(normalizedComponents.length > 1 ? { damage_components: normalizedComponents } : {}),
+      ...(hasTemporaryHp ? {
+        temporary_hp_before: temporaryBefore,
+        temporary_hp_after: temporaryAfter,
+        temporary_hp_absorbed: temporaryAbsorbed,
+      } : {}),
       hp_before: before.hp,
       hp_after: after.hp,
       max_hp: before.max_hp,

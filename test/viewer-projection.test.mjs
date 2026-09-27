@@ -717,6 +717,16 @@ test('turn result projection covers authoritative state, mechanics and effects.s
   assert.equal(projected.effects.scene.scene.cells[0].feature, undefined)
 })
 
+test('player projection hides the internal combat instance key', () => {
+  const state = privateState()
+  state.mechanics = {
+    ...(state.mechanics ?? {}),
+    combat: { active: true, combat_instance_id: 'combat-instance:secret', action_economy: {} },
+  }
+  const projected = campaignStateForViewer(state, user, 'hero')
+  assert.equal(projected.mechanics.combat.combat_instance_id, undefined)
+})
+
 test('карта в проекции игрока не выдаёт нераскрытую часть', async () => {
   const { publicSceneFor } = await import('../server/viewer-projection.mjs')
   const { cellAt, deserializeTacticalMap, edgeList, tacticalMapFromLegacyCells, addProp, serializeTacticalMap, setCell, setDoor, setEdge } =
