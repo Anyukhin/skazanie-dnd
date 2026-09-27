@@ -80,16 +80,18 @@ test('заклинание кладёт состояние со своей Сл'
   assert.ok(warded.mechanics.conditions.ally.some((condition) => String(condition.id) === 'sanctuary'))
 })
 
-test('Мысленная темница бьёт и запирает разум', () => {
+test('Мысленная темница наносит урон и опутывает цель', () => {
   const result = resolveCommand(
     authoritative({ command_type: 'CastSpell', actor_id: 'cleric', spell_id: 'mental-prison', target_id: 'brute' }),
     field({ casterClass: 'warlock' }),
-    options(dice([...Array.from({ length: 5 }, () => 6), 2])),
+    options(dice([2, ...Array.from({ length: 5 }, () => 6)])),
   )
   const damage = result.events.find((event) => event.event_type === 'DamageApplied')
   assert.equal(damage.payload.raw_amount, 30)
   assert.equal(damage.payload.damage_type, 'psychic')
-  assert.ok(result.events.some((event) => event.event_type === 'ConditionAdded' && event.payload.condition === 'incapacitated'))
+  assert.equal(result.events.find((event) => event.event_type === 'SpellSavingThrowResolved').payload.saved, false)
+  assert.ok(result.events.some((event) => event.event_type === 'ConditionAdded' && event.payload.condition === 'restrained'))
+  assert.equal(result.events.some((event) => event.event_type === 'ConditionAdded' && event.payload.condition === 'incapacitated'), false)
 })
 
 test('Массовое внушение очаровывает нескольких разом', () => {

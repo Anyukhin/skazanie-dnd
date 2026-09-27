@@ -10,6 +10,7 @@ const repositoryRoot = fileURLToPath(new URL('..', import.meta.url))
 const buildDir = mkdtempSync(join(tmpdir(), 'skazanie-combat-effects-lab-'))
 mkdirSync(join(buildDir, 'server'), { recursive: true })
 symlinkSync(join(repositoryRoot, 'node_modules'), join(buildDir, 'node_modules'), 'junction')
+copyFileSync(join(repositoryRoot, 'server', 'circular-area-geometry.mjs'), join(buildDir, 'server', 'circular-area-geometry.mjs'))
 copyFileSync(join(repositoryRoot, 'server', 'equipment-visuals.mjs'), join(buildDir, 'server', 'equipment-visuals.mjs'))
 copyFileSync(join(repositoryRoot, 'server', 'actor-footprint.mjs'), join(buildDir, 'server', 'actor-footprint.mjs'))
 const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
@@ -103,6 +104,23 @@ test('галерея строит production cue и sound profile для все�
     auditCues(animation.combatAnimationCuesFromEvents(events), spell.id)
     assert.equal(lab.soundFamilyForSpell(spell.id, merged), palette.soundFamily, `${spell.id}: profile sound mapping`)
   }
+})
+
+test('target-local preview cues use the first target actor while genuine area keeps its center', () => {
+  const sacred = spellEntry('sacred-flame')
+  const [sacredCue] = animation.combatAnimationCuesFromEvents(lab.buildPreviewEvents(sacred, 101))
+  assert.equal(sacredCue.kind, 'channel')
+  assert.deepEqual(sacredCue.position, { x: 9, y: 5 }, 'Sacred Flame должна нисходить на enemy, а не в центр сцены')
+
+  const selfBuff = spellEntry('true-strike')
+  const [selfBuffCue] = animation.combatAnimationCuesFromEvents(lab.buildPreviewEvents(selfBuff, 102))
+  assert.equal(selfBuffCue.kind, 'channel')
+  assert.deepEqual(selfBuffCue.position, { x: 3, y: 5 }, 'self/buff preview должен оставаться на caster')
+
+  const fireball = spellEntry('fireball')
+  const [fireballCue] = animation.combatAnimationCuesFromEvents(lab.buildPreviewEvents(fireball, 103))
+  assert.equal(fireballCue.kind, 'burst')
+  assert.deepEqual(fireballCue.center, { x: 8, y: 5 }, 'область должна сохранить собственный центр выбора')
 })
 
 test('галерея оставляет все shared physical attack model keys и 13 стилей в production strike cue', () => {

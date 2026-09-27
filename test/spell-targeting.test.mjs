@@ -10,6 +10,7 @@ import { createTacticalMap, serializeTacticalMap, setCell, setDoor, setEdge } fr
 const temporary = mkdtempSync(join(tmpdir(), 'skazanie-spell-targeting-'))
 mkdirSync(join(temporary, 'src'))
 mkdirSync(join(temporary, 'server'))
+copyFileSync(new URL('../server/circular-area-geometry.mjs', import.meta.url), join(temporary, 'server/circular-area-geometry.mjs'))
 copyFileSync(new URL('../server/actor-footprint.mjs', import.meta.url), join(temporary, 'server/actor-footprint.mjs'))
 process.on('exit', () => rmSync(temporary, { recursive: true, force: true }))
 const modules = ['spell-targeting', 'tactical-ui', 'tactical-map-client', 'area-geometry']
@@ -22,7 +23,7 @@ for (const name of modules) {
   const output = readFileSync(join(temporary, 'src', `${name}.js`), 'utf8')
   writeFileSync(join(temporary, 'src', `${name}.mjs`), output.replace(/from '(\.\/[^']+)'/gu, "from '$1.mjs'"))
 }
-const { maskSpellAreaCells, spellPreviewActors, createSpellTargetRenderer } = await import(pathToFileURL(join(temporary, 'src/spell-targeting.mjs')))
+const { maskSpellAreaCells, spellPreviewActors, createSpellTargetRenderer, circularGridPointLineOfEffect } = await import(pathToFileURL(join(temporary, 'src/spell-targeting.mjs')))
 const { decodeTacticalMap } = await import(pathToFileURL(join(temporary, 'src/tactical-map-client.mjs')))
 
 function fixture() {
@@ -30,6 +31,18 @@ function fixture() {
   setCell(raw, 5, 5, { revealed: false })
   return decodeTacticalMap(JSON.parse(JSON.stringify(serializeTacticalMap(raw))))
 }
+
+test('клиентский луч новой области проверяет стену от пересечения до заклинателя', () => {
+  const raw = createTacticalMap({ width: 7, height: 7, fill: { passable: true, revealed: true } })
+  setCell(raw, 2, 3, { type: 'wall', passable: false })
+  const map = decodeTacticalMap(JSON.parse(JSON.stringify(serializeTacticalMap(raw))))
+  assert.equal(circularGridPointLineOfEffect(map, { x: 4, y: 4 }, { x: 1, y: 3 }, { radiusFeet: 600 }), false)
+  assert.equal(circularGridPointLineOfEffect(map, { x: 4, y: 4 }, { x: 5, y: 4 }, { radiusFeet: 600 }), true)
+  const masked = maskSpellAreaCells(map, [{ x: 1, y: 3 }, { x: 5, y: 4 }], {
+    origins: [{ x: 1, y: 3 }], geometryVersion: 'circle-grid-v2', gridOrigin: { x: 4, y: 4 }, radiusFeet: 30,
+  })
+  assert.deepEqual([...masked], ['5,4'])
+})
 
 test('предпросмотр учитывает союзников и край крупной фигуры, не раскрывая скрытые и выбывшие цели', () => {
   const map = fixture()

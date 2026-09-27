@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { AuthoritativeExecutor } from './authoritative-executor.mjs'
 import { monsterActionAvailable, monsterAttackTargetAllowed, monsterMultiattackSequences, monsterMultiattackSequenceFor } from './monster-actions.mjs'
 import {
@@ -1275,36 +1276,78 @@ function keyPart(value) {
   return String(value ?? '').replace(/[^A-Za-z0-9._-]/g, '-').slice(0, 60) || 'none'
 }
 
-function schedulerKey(campaignId, combat, actorIdValue, suffix = 'turn') {
-  return `npc:${keyPart(campaignId)}:r${combat.round}:i${combat.active_index}:${keyPart(actorIdValue)}:${suffix}`
+function schedulerKey(campaignId, state, actorIdValue, suffix = 'turn', instanceOverride = null) {
+  const combat = state.mechanics.combat
+  const instance = instanceOverride ?? combat.combat_instance_id
+  if (!instance) {
+    return 'npc:' + keyPart(campaignId) + ':r' + combat.round + ':i' + combat.active_index + ':' + keyPart(actorIdValue) + ':' + suffix
+  }
+  const semanticTuple = JSON.stringify([
+    String(campaignId),
+    String(instance),
+    Number.isSafeInteger(Number(combat.round)) ? Number(combat.round) : 0,
+    Number.isSafeInteger(Number(combat.active_index)) ? Number(combat.active_index) : -1,
+    String(actorIdValue ?? ''),
+    String(suffix ?? ''),
+  ])
+  const digest = createHash('sha256').update(semanticTuple).digest('hex')
+  return 'npc:' + keyPart(campaignId) + ':' + digest
 }
 
-async function commitPlan({ campaignId, eventStore, rulesEngine, loaded, commands, key }) {
-  const proposed = commands.map((command, index) => ({
-    ...command,
-    server_authoritative: true,
-    campaign_id: campaignId,
-    command_id: `${key}:${index + 1}`,
-  }))
+function duplicateWithoutProgress(loaded, committed) {
+  return Boolean(committed?.replayed)
+    && Number(committed?.state_version ?? loaded?.state_version ?? 0) <= Number(loaded?.state_version ?? 0)
+}
+
+async function commitPlan({ campaignId, eventStore, rulesEngine, loaded, commands, key, recovery = null }) {
   // Шаг 4 плана `docs/agent-architecture-plan.md`: **объявленное изменение
   // поведения**. Раньше чужой коммит, опередивший планировщик, ронял ход NPC
   // целиком — ошибка 500 и потерянный ход, тогда как тот же конфликт у хода
   // игрока переживался прозрачно. Теперь политика одна для обоих: исполнитель
   // перечитывает состояние и повторяет план.
   //
-  // Ключ по-прежнему собран из позиции в очереди инициативы, поэтому повтор
-  // после падения на середине очереди не создаёт второй ход NPC.
+  // Ключ собран из экземпляра боя и позиции в очереди инициативы, поэтому
+  // повтор после падения на середине очереди не создаёт второй ход NPC и не
+  // сталкивается с прежним боем тех же участников.
   const executor = new AuthoritativeExecutor({ eventStore, rulesEngine })
-  const committed = await executor.executeCommands({
+  const executeAt = (planKey) => executor.executeCommands({
     campaignId,
-    idempotencyKey: key,
-    commands: proposed,
+    idempotencyKey: planKey,
+    commands: commands.map((command, index) => ({
+      ...command,
+      server_authoritative: true,
+      campaign_id: campaignId,
+      command_id: planKey + ':' + (index + 1),
+    })),
     context: { isAdmin: true, isNpcScheduler: true, serverAuthoritativeCombat: true },
   })
+  let usedKey = key
+  let committed = await executeAt(usedKey)
+  // В старых снимках нет маркера боя. При столкновении со старым ключом
+  // один раз восстанавливаем экземпляр из последнего сохранённого начала
+  // боя и повторяем тот же план. Снимки и события при этом не переписываются.
+  if (committed.replayed
+    && recovery && !recovery.state?.mechanics?.combat?.combat_instance_id
+    && Number(committed.state_version ?? 0) < Number(loaded.state_version ?? 0)
+    && typeof eventStore.getEvents === 'function') {
+    const history = await eventStore.getEvents(campaignId, {
+      after_version: Number(committed.state_version ?? 0),
+      up_to_version: Number(loaded.state_version ?? 0),
+    })
+    const started = [...history].reverse().find((event) => event?.event_type === 'CombatStarted' && event?.event_id)
+    if (started) {
+      const recoveryInstance = 'legacy-recovery:' + String(started.event_id) + ':' + String(started.state_version_after)
+      const recoveredKey = schedulerKey(campaignId, recovery.state, recovery.actorId, recovery.suffix, recoveryInstance)
+      if (recoveredKey !== usedKey) {
+        usedKey = recoveredKey
+        committed = await executeAt(usedKey)
+      }
+    }
+  }
   // На повторе ключа плана нет: события берутся из прежнего коммита.
-  const resolved = committed.resolved ?? { commands: proposed, events: committed.events ?? [], rolls: [] }
+  const resolved = committed.resolved ?? { commands, events: committed.events ?? [], rolls: [] }
   if (!resolved.events.length) throw new RulesValidationError('NPC turn produced no events', 'NPC_TURN_EMPTY')
-  return { committed, resolved }
+  return { committed, resolved, replayed: Boolean(committed.replayed), key: usedKey }
 }
 
 /**
@@ -1337,10 +1380,12 @@ export async function runNpcTurnScheduler({
       const lastCombatEnd = [...(state.battleLog ?? [])].reverse().find((entry) => entry?.type === 'combat-end')
       if (!livingParty(state).length && stable.length && lastCombatEnd?.reason === 'enemies_defeated') {
         const key = `npc:${keyPart(campaignId)}:stable-recovery:v${loaded.state_version}`
-        const { committed } = await commitPlan({
+        const plan = await commitPlan({
           campaignId, eventStore, rulesEngine, loaded, key,
           commands: [{ command_type: 'AdvanceTime', amount: 60, unit: 'minute' }],
         })
+        if (duplicateWithoutProgress(loaded, plan.committed)) return { state: loaded.state, state_version: loaded.state_version, turns, events }
+        const { committed } = plan
         events.push(...committed.events)
         turns.push({
           actor_id: stable.map(actorId).join(','),
@@ -1372,15 +1417,19 @@ export async function runNpcTurnScheduler({
       const reason = enemies.length
         ? state.mechanics?.death?.campaign_status === 'party_defeated' ? 'party_defeated' : 'party_incapacitated'
         : 'enemies_defeated'
-      const key = schedulerKey(campaignId, combat, currentId || party[0]?.id || enemies[0]?.id, `end-${reason}`)
+      const key = schedulerKey(campaignId, state, currentId || party[0]?.id || enemies[0]?.id, `end-${reason}`)
       const actor = findActor(state, currentId) ?? party[0] ?? enemies[0]
       if (!actor) throw new RulesValidationError('Combat has no actor that can close it', 'INVALID_COMBAT_STATE')
-      const { committed } = await commitPlan({
+      const plan = await commitPlan({
         campaignId, eventStore, rulesEngine, loaded, key,
         commands: [{ command_type: 'EndCombat', actor_id: actorId(actor), reason }],
+        recovery: { state, actorId: currentId || actorId(actor), suffix: `end-${reason}` },
       })
+      if (duplicateWithoutProgress(loaded, plan.committed)) return { state: loaded.state, state_version: loaded.state_version, turns, events }
+      const { committed } = plan
+      const planKey = plan.key ?? key
       events.push(...committed.events)
-      turns.push({ actor_id: actorId(actor), round: combat.round, active_index: combat.active_index, kind: 'combat-end', reason, idempotency_key: key, state_version: committed.state_version })
+      turns.push({ actor_id: actorId(actor), round: combat.round, active_index: combat.active_index, kind: 'combat-end', reason, idempotency_key: planKey, state_version: committed.state_version })
       loaded = await eventStore.load(campaignId)
       continue
     }
@@ -1403,10 +1452,14 @@ export async function runNpcTurnScheduler({
       .sort((left, right) => left.id.localeCompare(right.id))[0]
       : null
     if (legendaryBoss) {
-      const key = schedulerKey(campaignId, combat, legendaryBoss.id, `legendary-${keyPart(legendaryBoss.command.legendary_action_id)}`)
-      const { committed } = await commitPlan({
+      const key = schedulerKey(campaignId, state, legendaryBoss.id, `legendary-${keyPart(legendaryBoss.command.legendary_action_id)}`)
+      const plan = await commitPlan({
         campaignId, eventStore, rulesEngine, loaded, key, commands: [legendaryBoss.command],
+        recovery: { state, actorId: legendaryBoss.id, suffix: `legendary-${keyPart(legendaryBoss.command.legendary_action_id)}` },
       })
+      if (duplicateWithoutProgress(loaded, plan.committed)) return { state: loaded.state, state_version: loaded.state_version, turns, events }
+      const { committed } = plan
+      const planKey = plan.key ?? key
       events.push(...committed.events)
       turns.push({
         actor_id: legendaryBoss.id,
@@ -1416,7 +1469,7 @@ export async function runNpcTurnScheduler({
         commands: ['UseLegendaryAction'],
         tactic: 'действует вне очереди',
         target_id: legendaryBoss.command.target_id,
-        idempotency_key: key,
+        idempotency_key: planKey,
         state_version: committed.state_version,
       })
       loaded = await eventStore.load(campaignId)
@@ -1447,8 +1500,14 @@ export async function runNpcTurnScheduler({
     const movementPhase = Math.max(0, Number(actionEconomy.movement_spent) || 0)
     const actionSpentPhase = actionEconomy.action === false ? 1 : 0
     const suffix = creativeDecision ? `morale-${creativeDecision.disposition}` : isCombatCapable(state, current) ? `turn-a${attackPhase}-m${movementPhase}-s${actionSpentPhase}` : 'skip'
-    const key = schedulerKey(campaignId, combat, currentId, suffix)
-    const { committed } = await commitPlan({ campaignId, eventStore, rulesEngine, loaded, commands, key })
+    const key = schedulerKey(campaignId, state, currentId, suffix)
+    const plan = await commitPlan({
+      campaignId, eventStore, rulesEngine, loaded, commands, key,
+      recovery: { state, actorId: currentId, suffix },
+    })
+    if (duplicateWithoutProgress(loaded, plan.committed)) return { state: loaded.state, state_version: loaded.state_version, turns, events }
+    const { committed } = plan
+    const planKey = plan.key ?? key
     events.push(...committed.events)
     turns.push({
       actor_id: currentId,
@@ -1464,7 +1523,7 @@ export async function runNpcTurnScheduler({
       ...(creativeDecision ? {
         tactic: creativeDecision.disposition === 'surrender' ? 'слом морали' : 'пытается спастись',
       } : ordinaryTactic ?? {}),
-      idempotency_key: key,
+      idempotency_key: planKey,
       state_version: committed.state_version,
     })
     loaded = await eventStore.load(campaignId)

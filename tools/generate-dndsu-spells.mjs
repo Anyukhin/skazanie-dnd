@@ -7,6 +7,9 @@ const LIST_URL = `${BASE_URL}/piece/spells/index-list/`
 const OUTPUT = resolve('data/dndsu-spells-0-6.json')
 const DESCRIPTION_SOURCE = resolve('data/spell-descriptions-ru.json')
 
+const FNV_OFFSET = 0xcbf29ce484222325n
+const FNV_PRIME = 0x100000001b3n
+
 const CLASS_IDS = Object.freeze({
   12: 'bard',
   13: 'cleric',
@@ -68,6 +71,7 @@ const decodeEntities = (value) => String(value ?? '')
   .replace(/&gt;/giu, '>')
   .replace(/&amp;/giu, '&')
   .replace(/&#(\d+);/gu, (_, code) => String.fromCodePoint(Number(code)))
+  .replace(/&#x([\da-f]+);/giu, (_, code) => String.fromCodePoint(Number.parseInt(code, 16)))
 
 const plainText = (html) => decodeEntities(String(html ?? ''))
   .replace(/<br\s*\/?>/giu, ' ')
@@ -80,6 +84,67 @@ const slugify = (value) => String(value ?? '')
   .normalize('NFKD')
   .replace(/[^a-z0-9]+/gu, '-')
   .replace(/^-+|-+$/gu, '')
+
+/** Хеширует реально полученный HTML; значение не является редакцией правил. */
+export function fnv1a64Hex(value) {
+  let hash = FNV_OFFSET
+  for (const byte of new TextEncoder().encode(String(value ?? ''))) {
+    hash ^= BigInt(byte)
+    hash = BigInt.asUintN(64, hash * FNV_PRIME)
+  }
+  return hash.toString(16).padStart(16, '0')
+}
+
+function stringList(value) {
+  if (!Array.isArray(value)) return []
+  return [...new Set(value.map((entry) => String(entry ?? '').trim()).filter(Boolean))]
+}
+
+/** Читает только явно размеченные source-book поля списка, без догадки по классу. */
+export function sourceBooksFromCard(card) {
+  for (const key of ['sourceBooks', 'source_books', 'filter_source', 'sources']) {
+    const values = stringList(card?.[key])
+    if (values.length) return values
+  }
+  return []
+}
+
+/** Заголовок страницы dnd.su содержит краткую подпись книги после «/». */
+export function sourceBooksFromPage(html) {
+  const title = plainText(String(html).match(/<title\b[^>]*>([\s\S]*?)<\/title>/iu)?.[1])
+  const parts = title.split(/\s+\/\s+/u).map((part) => part.trim()).filter(Boolean)
+  const book = parts.at(-1)
+  if (!book || /^(?:заклинания|официальные|d&d\s*5)$/iu.test(book)) return []
+  return [book]
+}
+
+/** Подклассы из строки карточки; подписи фильтров страницы сюда не попадают. */
+export function subclassesFromPage(html) {
+  return [...new Set(field(html, 'Подклассы').split(/\s*,\s*/u).map((value) => value.trim()).filter(Boolean))]
+}
+
+/** Полный список источника для справочника, независимо от классов игрового движка. */
+export function sourceClassesFromPage(html) {
+  return [...new Set(field(html, 'Классы').split(/\s*,\s*/u)
+    .map((value) => value.trim().replace(/\s*(?:\^\{)?TCE\}?$/u, ' (TCE)')).filter(Boolean))]
+}
+
+/** Метаданные происхождения страницы, которые переживают следующую генерацию. */
+export function sourceMetadataForPage({ card, html, fetchedAt, previous = {}, higherLevels = undefined }) {
+  const sourceBooks = sourceBooksFromCard(card)
+  const pageBooks = sourceBooks.length ? sourceBooks : sourceBooksFromPage(html)
+  const reviewedHigherLevels = higherLevels === undefined ? previous.higherLevels : higherLevels
+  return {
+    ...(pageBooks.length ? { sourceBooks: pageBooks } : previous.sourceBooks?.length ? { sourceBooks: previous.sourceBooks } : {}),
+    subclasses: subclassesFromPage(html),
+    sourceClasses: sourceClassesFromPage(html),
+    sourceFetchedAt: String(fetchedAt),
+    sourceHashFnv1a64: fnv1a64Hex(html),
+    ...(reviewedHigherLevels === null ? { higherLevels: null }
+      : typeof reviewedHigherLevels === 'string' && reviewedHigherLevels.trim()
+        ? { higherLevels: reviewedHigherLevels.trim() } : {}),
+  }
+}
 
 function extractJsonList(html) {
   const match = String(html).match(/window\.LIST\s*=\s*(\{.*?\});<\/script>/su)
@@ -290,7 +355,9 @@ function actionType(card, castingTime) {
 
 export function areaFacts(text) {
   const normalized = String(text).toLocaleLowerCase('ru')
-  const distance = '(\\d+)\\s*(?:-\\s*)?(?:фут|фт)'
+  // Разговорные формы источника: «15-футовый конус», «30 футов» и
+  // «радиусом 20 футов» должны давать одну и ту же структурную величину.
+  const distance = '(\\d+)\\s*(?:-\\s*)?(?:фут|фт)\\p{L}*'
   const between = '[^.!?]{0,40}?'
   const patterns = [
     ['cone', new RegExp(`(?:конус\\p{L}*)${between}${distance}|${distance}${between}(?:конус\\p{L}*)`, 'iu')],
@@ -377,6 +444,10 @@ export function classify(card, facts) {
     durationRounds: durationRounds || null,
     addAbilityModifier: /модификатор[^.!?]{0,40}(базов|характеристик)/u.test(text),
     ...area,
+    // Поля присутствуют у каждой сгенерированной карточки: отсутствие
+    // области — это null, а не разная форма JSON для разных видов заклинаний.
+    areaShape: area.areaShape ?? null,
+    radius: area.radius ?? null,
     actionType: actionType(card, castingTime),
     description: summaryParts.join(' · '),
   }
@@ -414,6 +485,15 @@ async function mapConcurrent(items, concurrency, mapper) {
 async function main() {
   const descriptionPayload = JSON.parse(await readFile(DESCRIPTION_SOURCE, 'utf8'))
   const descriptions = descriptionPayload.descriptions ?? {}
+  const higherLevels = descriptionPayload.higherLevels ?? {}
+  let previousSpells = new Map()
+  try {
+    const previous = JSON.parse(await readFile(OUTPUT, 'utf8'))
+    previousSpells = new Map((previous.spells ?? []).map((spell) => [spell.id, spell]))
+  } catch {
+    // Первый запуск не имеет старого каталога; source metadata появится из
+    // фактически загруженной страницы ниже.
+  }
   const listHtml = await fetchText(LIST_URL)
   const cards = extractJsonList(listHtml).filter((card) => {
     const level = card.level === 'Заговор' ? 0 : Number(card.level)
@@ -430,6 +510,14 @@ async function main() {
     const facts = pageFacts(html)
     const mechanics = classify(card, facts)
     const components = componentsFromPage(html)
+    const previous = previousSpells.get(id) ?? {}
+    const sourceMetadata = sourceMetadataForPage({
+      card,
+      html,
+      fetchedAt: new Date().toISOString(),
+      previous,
+      higherLevels: higherLevels[id],
+    })
     if ((index + 1) % 50 === 0 || index + 1 === cards.length) process.stdout.write(`\r${index + 1}/${cards.length}`)
     return {
       id,
@@ -449,6 +537,7 @@ async function main() {
       components,
       ...mechanics,
       description: descriptions[id],
+      ...sourceMetadata,
     }
   })
 

@@ -379,11 +379,32 @@ test('Адское возмездие срабатывает после полу
   const attack = resolveCommand({ command_type: 'MakeAttack', actor_id: 'goblin', target_id: 'fighter', server_authoritative: true }, normalized, { diceService: dice([18, 6]), context: { serverAuthoritativeCombat: true } })
   const afterAttack = applyAll(normalized, attack.events)
   assert.ok(afterAttack.mechanics.combat.reaction_window.action_ids.includes('cast:hellish-rebuke'))
-  const reaction = resolveCommand({ command_type: 'UseCombatAction', actor_id: 'fighter', action_id: 'cast:hellish-rebuke', server_authoritative: true }, afterAttack, { diceService: dice([1, 7, 8]), context: { serverAuthoritativeCombat: true } })
+  const reaction = resolveCommand({ command_type: 'UseCombatAction', actor_id: 'fighter', action_id: 'cast:hellish-rebuke', server_authoritative: true }, afterAttack, { diceService: dice([1, 7, 8, 8]), context: { serverAuthoritativeCombat: true } })
   const afterReaction = applyAll(afterAttack, reaction.events)
-  assert.equal(afterReaction.enemies[0].hp, 5)
+  assert.equal(reaction.events.find((event) => event.event_type === 'DieRolled' && event.payload.purpose === 'reaction:hellish-rebuke:damage').payload.expression, '3d10')
+  assert.equal(afterReaction.enemies[0].hp, 0)
   assert.equal(afterReaction.mechanics.resources.fighter.pact_slots.current, 1)
   assert.equal(afterReaction.mechanics.combat.action_economy.fighter.reaction, false)
+})
+
+test('Адское возмездие в ячейке первого круга сохраняет базовые 2к10', () => {
+  const initial = combatState()
+  initial.players[0] = {
+    ...initial.players[0],
+    characterClass: 'warlock',
+    role: 'Колдун · ур. 1',
+    level: 1,
+    abilities: { ...initial.players[0].abilities, cha: 16 },
+  }
+  const normalized = normalizeCampaignState(initial)
+  normalized.mechanics.combat.active_index = 1
+  normalized.mechanics.combat.action_economy.goblin = { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 }
+  const attack = resolveCommand({ command_type: 'MakeAttack', actor_id: 'goblin', target_id: 'fighter', server_authoritative: true }, normalized, { diceService: dice([18, 6]), context: { serverAuthoritativeCombat: true } })
+  const afterAttack = applyAll(normalized, attack.events)
+  assert.equal(afterAttack.mechanics.combat.reaction_window.action_options.find((option) => option.id === 'cast:hellish-rebuke')?.slot_level, 1)
+  const reaction = resolveCommand({ command_type: 'UseCombatAction', actor_id: 'fighter', action_id: 'cast:hellish-rebuke', server_authoritative: true }, afterAttack, { diceService: dice([1, 7, 8]), context: { serverAuthoritativeCombat: true } })
+  assert.equal(reaction.events.find((event) => event.event_type === 'DieRolled' && event.payload.purpose === 'reaction:hellish-rebuke:damage').payload.expression, '2d10')
+  assert.equal(applyAll(afterAttack, reaction.events).enemies[0].hp, 5)
 })
 
 test('враг, покидающий досягаемость, открывает окно атаки по возможности', () => {

@@ -13,6 +13,7 @@ import { createTacticalMap, serializeTacticalMap, setCell } from '../server/tact
 const buildDir = mkdtempSync(join(tmpdir(), 'skazanie-spell-effects-'))
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url))
 mkdirSync(join(buildDir, 'server'), { recursive: true })
+copyFileSync(join(repositoryRoot, 'server', 'circular-area-geometry.mjs'), join(buildDir, 'server', 'circular-area-geometry.mjs'))
 copyFileSync(join(repositoryRoot, 'server', 'actor-footprint.mjs'), join(buildDir, 'server', 'actor-footprint.mjs'))
 copyFileSync(join(repositoryRoot, 'server', 'equipment-visuals.mjs'), join(buildDir, 'server', 'equipment-visuals.mjs'))
 const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
@@ -121,7 +122,244 @@ test('Скороход, Прыжок и Ускорение рисуют разн
   assert.equal(new Set(signatures).size, 3, 'различаются примитивы, а не только подпись заклинания')
 })
 
+test('мобильность сохраняет внешний контраст и статичный знак в reduced motion', () => {
+  const palettes = ['longstrider', 'jump', 'haste'].map((spellId) => effects.spellEffectPalette(spellId))
+  assert.equal(new Set(palettes.map((palette) => palette.primary)).size, 3, 'три знака должны различаться цветом')
+  assert.equal(new Set(palettes.map((palette) => palette.visualVariant)).size, 3, 'три знака должны различаться вариантом')
+
+  for (const spellId of ['longstrider', 'jump', 'haste']) {
+    const context = recordingContext()
+    effects.drawSpellEffect(context, scene(), {
+      cue: { id: `reduced-${spellId}`, kind: 'channel', actorId: 'caster', targetId: 'caster', targetIds: ['caster'],
+        spellId, school: 'transmutation', channelType: 'cast', durationMs: 500, motion: 'reduced' },
+      progress: .1, reducedMotion: true, actors: [actor('caster', 2, 2)],
+    })
+    const strokes = context.ops.filter((operation) => operation.op === 'stroke')
+    const lineWidths = context.ops.filter((operation) => operation.op === 'set' && operation.property === 'lineWidth').map((operation) => operation.value)
+    const ringRadii = context.ops.filter((operation) => operation.op === 'arc').map((operation) => operation.radius)
+    assert.ok(strokes.length >= 4, `${spellId}: reduced motion сохраняет читаемый знак`)
+    assert.ok(Math.max(...lineWidths) >= 2.5, `${spellId}: знак не должен становиться тонкой линией`)
+    assert.ok(Math.max(...ringRadii) >= 15, `${spellId}: внешний контур должен переживать обычную камеру`)
+    assert.ok(context.ops.some((operation) => operation.op === 'stroke' && operation.strokeStyle === effects.spellEffectPalette(spellId).secondary),
+      `${spellId}: нужен яркий основной штрих поверх контура`)
+  }
+})
+
+test('generic mobility в 2D сохраняет компактное кольцо и семейный знак', () => {
+  const profile = effects.spellVisualProfile('spider-climb')
+  assert.equal(profile.family, 'mobility')
+  assert.equal(profile.visualVariant, undefined)
+  const context = recordingContext()
+  effects.drawSpellEffect(context, scene(), {
+    cue: { id: 'generic-spider-climb', kind: 'channel', actorId: 'caster', targetId: 'caster', targetIds: ['caster'],
+      spellId: 'spider-climb', school: 'transmutation', channelType: 'cast', durationMs: 500 },
+    progress: .5, actors: [actor('caster', 2, 2)],
+  })
+  const radii = context.ops.filter((operation) => operation.op === 'arc').map((operation) => operation.radius)
+  assert.ok(Math.max(...radii) < 12, 'generic mobility не должна получать большой внешний контур')
+  assert.ok(context.ops.some((operation) => operation.op === 'lineTo'), 'generic mobility сохраняет семейный направленный знак')
+})
+
 const actor = (id, x, y) => ({ id, x, y })
+
+test('продолжение Обессиливания даёт один истощающий луч и сохраняет урон с лечением', () => {
+  const events = [
+    {
+      event_id: 'enervation-repeat-action', event_type: 'CombatActionUsed', command_id: 'enervation-repeat-command',
+      actor_id: 'caster', target_ids: ['target'],
+      payload: { action_id: 'enervation-repeat', spell_id: 'enervation', continuation: true },
+    },
+    {
+      event_id: 'enervation-repeat-action-duplicate', event_type: 'CombatActionUsed', command_id: 'enervation-repeat-command',
+      actor_id: 'caster', target_ids: ['target'],
+      payload: { action_id: 'enervation-repeat', spell_id: 'enervation', continuation: true },
+    },
+    {
+      event_id: 'enervation-repeat-damage', event_type: 'DamageApplied', command_id: 'enervation-repeat-command',
+      actor_id: 'caster', target_ids: ['target'],
+      payload: { spell_id: 'enervation', continuation: true, applied_amount: 12, damage_type: 'necrotic', hp_after: 40 },
+    },
+    {
+      event_id: 'enervation-repeat-healing', event_type: 'HealingApplied', command_id: 'enervation-repeat-command',
+      actor_id: 'caster', target_ids: ['caster'],
+      payload: { spell_id: 'enervation', continuation: true, applied_amount: 6, hp_after: 36 },
+    },
+  ]
+  const cues = animation.combatAnimationCuesFromEvents(events)
+  const beams = cues.filter((cue) => cue.kind === 'beam')
+  assert.equal(beams.length, 1)
+  assert.equal(beams[0].id, 'enervation-repeat-action:enervation-repeat:beam')
+  assert.equal(beams[0].kind, 'beam')
+  assert.equal(beams[0].actorId, 'caster')
+  assert.deepEqual(beams[0].targetIds, ['target'])
+  assert.equal(beams[0].spellId, 'enervation')
+  assert.equal(beams[0].school, 'necromancy')
+  assert.equal(beams[0].chain, false)
+  assert.equal(beams[0].damageType, 'necrotic')
+  assert.ok(cues.some((cue) => cue.kind === 'impact' && cue.targetId === 'target' && cue.amount === 12))
+  const healing = cues.find((cue) => cue.kind === 'channel' && cue.channelType === 'healing')
+  assert.equal(healing?.spellId, 'enervation')
+  const context = recordingContext()
+  effects.drawSpellEffect(context, scene(), { cue: beams[0], progress: 1, actors: [actor('caster', 1, 1), actor('target', 5, 1)] })
+  assert.ok(context.ops.some((operation) => operation.op === 'lineTo'), 'beam cue должен дойти до renderer')
+})
+
+test('первичное Обессиливание тоже получает луч, а не общий channel', () => {
+  const [cue] = animation.combatAnimationCuesFromEvents([{
+    event_id: 'enervation-cast', event_type: 'SpellCast', command_id: 'enervation-cast',
+    actor_id: 'caster', target_ids: ['target'],
+    payload: { spell_id: 'enervation', kind: 'save', damage_type: 'necrotic' },
+  }])
+  assert.equal(cue.kind, 'beam')
+  assert.equal(cue.spellId, 'enervation')
+  assert.equal(cue.chain, false)
+})
+
+test('Огненные лучи и Мистический заряд создают по одному cue на подтверждённый луч без дублей', () => {
+  const events = [
+    {
+      event_id: 'scorching-cast', event_type: 'SpellCast', command_id: 'scorching', actor_id: 'mage', target_ids: ['goblin'],
+      payload: { spell_id: 'scorching-ray', kind: 'attack', damage_type: 'fire' },
+    },
+    {
+      event_id: 'scorching-ray-1', event_type: 'AttackResolved', command_id: 'scorching', actor_id: 'mage', target_ids: ['goblin'],
+      payload: { spell_id: 'scorching-ray', hit: true, target_id: 'goblin', damage_type: 'fire' },
+    },
+    {
+      event_id: 'scorching-ray-1-damage', event_type: 'DamageApplied', command_id: 'scorching', actor_id: 'mage', target_ids: ['goblin'],
+      payload: { spell_id: 'scorching-ray', applied_amount: 8, damage_type: 'fire', hp_after: 22 },
+    },
+    {
+      event_id: 'scorching-ray-2', event_type: 'AttackResolved', command_id: 'scorching:beam:2', actor_id: 'mage', target_ids: ['orc'],
+      payload: { spell_id: 'scorching-ray', hit: true, target_id: 'orc', damage_type: 'fire' },
+    },
+    {
+      event_id: 'scorching-ray-2-damage', event_type: 'DamageApplied', command_id: 'scorching:beam:2', actor_id: 'mage', target_ids: ['orc'],
+      payload: { spell_id: 'scorching-ray', applied_amount: 6, damage_type: 'fire', hp_after: 24 },
+    },
+    {
+      event_id: 'eldritch-cast', event_type: 'SpellCast', command_id: 'eldritch', actor_id: 'warlock', target_ids: ['goblin'],
+      payload: { spell_id: 'eldritch-blast', kind: 'attack', damage_type: 'force' },
+    },
+    {
+      event_id: 'eldritch-ray-1', event_type: 'AttackResolved', command_id: 'eldritch', actor_id: 'warlock', target_ids: ['goblin'],
+      payload: { spell_id: 'eldritch-blast', hit: true, target_id: 'goblin', damage_type: 'force' },
+    },
+    {
+      event_id: 'eldritch-ray-1-damage', event_type: 'DamageApplied', command_id: 'eldritch', actor_id: 'warlock', target_ids: ['goblin'],
+      payload: { spell_id: 'eldritch-blast', applied_amount: 7, damage_type: 'force', hp_after: 15 },
+    },
+    {
+      event_id: 'eldritch-ray-2', event_type: 'AttackResolved', command_id: 'eldritch:beam:2', actor_id: 'warlock', target_ids: ['goblin'],
+      payload: { spell_id: 'eldritch-blast', hit: true, target_id: 'goblin', damage_type: 'force' },
+    },
+    {
+      event_id: 'eldritch-ray-2-damage', event_type: 'DamageApplied', command_id: 'eldritch:beam:2', actor_id: 'warlock', target_ids: ['goblin'],
+      payload: { spell_id: 'eldritch-blast', applied_amount: 5, damage_type: 'force', hp_after: 10 },
+    },
+  ]
+  const cues = animation.combatAnimationCuesFromEvents(events)
+  const beams = cues.filter((cue) => cue.kind === 'beam')
+  assert.equal(beams.length, 4)
+  assert.deepEqual(beams.map((cue) => cue.targetIds), [['goblin'], ['orc'], ['goblin'], ['goblin']])
+  assert.ok(beams.every((cue) => cue.chain === false), 'отдельный луч не должен превращаться в цепь')
+  assert.equal(cues.filter((cue) => cue.kind === 'impact' && cue.tone === 'damage').length, 4)
+})
+
+test('реальный протокол Мистического заряда даёт отдельный cue на каждый луч', () => {
+  const state = normalizeCampaignState({
+    sessionCode: 'SPELL-EFFECTS-BEAMS', partyMemberIds: ['warlock'],
+    players: [{ id: 'warlock', character: 'Кель', characterClass: 'warlock', level: 5, hp: 30, maxHp: 30, armor: 13, speed: 30, proficiency: 3,
+      abilities: { str: 8, dex: 14, con: 14, int: 12, wis: 10, cha: 18 }, inventory: [], x: 1, y: 1 }],
+    enemies: [
+      { id: 'foe', name: 'Первый', hp: 60, maxHp: 60, armor: 10, speed: 30, abilities: { str: 8, dex: 8, con: 8, int: 8, wis: 8, cha: 8 }, x: 5, y: 1, alive: true },
+      { id: 'foe-two', name: 'Второй', hp: 60, maxHp: 60, armor: 10, speed: 30, abilities: { str: 8, dex: 8, con: 8, int: 8, wis: 8, cha: 8 }, x: 5, y: 2, alive: true },
+    ],
+    scene: { turn: 1, cells: Array.from({ length: 100 }, (_, index) => ({ x: index % 10, y: Math.floor(index / 10), type: 'floor', revealed: true })) },
+    mechanics: { combat: { active: true, round: 1, active_index: 0,
+      initiative: [{ actor_id: 'warlock', total: 20 }, { actor_id: 'foe', total: 8 }],
+      action_economy: { warlock: { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 } } } },
+  })
+  const dice = new DiceService({ rng: new SequenceDiceRng([18, 5, 18, 5]), idFactory: (() => { let serial = 0; return () => `visual-beam-${++serial}` })(), now: () => '2026-09-26T12:00:00.000Z' })
+  const result = resolveCommand({ command_type: 'CastSpell', command_id: 'visual-beams', server_authoritative: true,
+    actor_id: 'warlock', spell_id: 'eldritch-blast', target_id: 'foe', target_ids: ['foe', 'foe-two'] }, state,
+  { diceService: dice, context: { serverAuthoritativeCombat: true, isAdmin: true } })
+  const attackEvents = result.events.filter((event) => event.event_type === 'AttackResolved')
+  assert.equal(attackEvents.length, 2)
+  const beams = animation.combatAnimationCuesFromEvents(result.events).filter((cue) => cue.kind === 'beam')
+  assert.equal(beams.length, 2)
+  assert.deepEqual(beams.map((cue) => cue.targetIds), [['foe'], ['foe-two']])
+  const replayed = result.events.reduce(applyGameEvent, state)
+  const battleLogBeams = animation.combatAnimationCuesFromBattleLog(replayed.battleLog).filter((cue) => cue.kind === 'beam')
+  assert.equal(battleLogBeams.length, 2, 'переподключение должно сохранить отдельные лучи')
+})
+
+test('нормализованный stored multi-ray command_id не сливает лучи и не дублирует impacts', () => {
+  const events = [
+    { event_id: 'stored-cast', event_type: 'SpellCast', command_id: 'stored-rays', actor_id: 'warlock', target_ids: ['a'], payload: { spell_id: 'eldritch-blast', kind: 'attack', damage_type: 'force' } },
+    { event_id: 'stored-ray-a', event_type: 'AttackResolved', command_id: 'stored-rays', actor_id: 'warlock', target_ids: ['a'], payload: { spell_id: 'eldritch-blast', hit: true, target_id: 'a', damage_type: 'force' } },
+    { event_id: 'stored-damage-a', event_type: 'DamageApplied', command_id: 'stored-rays', actor_id: 'warlock', target_ids: ['a'], payload: { spell_id: 'eldritch-blast', applied_amount: 4, damage_type: 'force', hp_after: 20 } },
+    { event_id: 'stored-ray-b', event_type: 'AttackResolved', command_id: 'stored-rays', actor_id: 'warlock', target_ids: ['b'], payload: { spell_id: 'eldritch-blast', hit: true, target_id: 'b', damage_type: 'force' } },
+    { event_id: 'stored-damage-b', event_type: 'DamageApplied', command_id: 'stored-rays', actor_id: 'warlock', target_ids: ['b'], payload: { spell_id: 'eldritch-blast', applied_amount: 5, damage_type: 'force', hp_after: 19 } },
+    { event_id: 'stored-ray-a-second', event_type: 'AttackResolved', command_id: 'stored-rays', actor_id: 'warlock', target_ids: ['a'], payload: { spell_id: 'eldritch-blast', hit: true, target_id: 'a', damage_type: 'force' } },
+    { event_id: 'stored-damage-a-second', event_type: 'DamageApplied', command_id: 'stored-rays', actor_id: 'warlock', target_ids: ['a'], payload: { spell_id: 'eldritch-blast', applied_amount: 6, damage_type: 'force', hp_after: 14 } },
+  ]
+  const cues = animation.combatAnimationCuesFromEvents(events)
+  const beams = cues.filter((cue) => cue.kind === 'beam')
+  assert.equal(beams.length, 3)
+  assert.deepEqual(beams.map((cue) => cue.id), ['stored-ray-a:beam', 'stored-ray-b:beam', 'stored-ray-a-second:beam'])
+  assert.equal(cues.filter((cue) => cue.kind === 'impact' && cue.tone === 'damage').length, 3)
+})
+
+test('режим reduced cue определяется общим решением потребителя, а не только системной настройкой', () => {
+  const cue = { id: 'reduced-cue', kind: 'beam', actorId: 'mage', targetIds: ['target'], spellId: 'enervation', school: 'necromancy', chain: false, durationMs: 560, motion: 'reduced' }
+  assert.equal(animation.combatAnimationUsesReducedMotion(cue), true)
+})
+
+test('событие и журнал передают новую геометрию, старый журнал не получает версию из каталога', () => {
+  const [confirmed] = animation.combatAnimationCuesFromEvents([{
+    event_id: 'circle-cast', event_type: 'SpellCast', actor_id: 'mage',
+    payload: { spell_id: 'fireball', from: { x: 1, y: 1 }, to: { x: 4, y: 4 },
+      area_shape: 'sphere', radius_feet: 20, area_geometry_version: 'circle-grid-v2', area_grid_origin: { x: 4, y: 4 } },
+  }])
+  assert.equal(confirmed.geometryVersion, 'circle-grid-v2')
+  assert.deepEqual(confirmed.gridOrigin, { x: 4, y: 4 })
+  const base = { id: 'log-circle', type: 'spell', actorId: 'mage', spellId: 'fireball',
+    from: { x: 1, y: 1 }, to: { x: 4, y: 4 }, area: { x: 4, y: 4, radiusFeet: 20 } }
+  const [legacy] = animation.combatAnimationCuesFromBattleLog([base])
+  assert.equal(legacy.geometryVersion, undefined)
+  const [current] = animation.combatAnimationCuesFromBattleLog([{ ...base,
+    area: { ...base.area, geometryVersion: 'circle-grid-v2', gridOrigin: { x: 4, y: 4 } } }])
+  assert.equal(current.geometryVersion, 'circle-grid-v2')
+  assert.deepEqual(current.gridOrigin, { x: 4, y: 4 })
+})
+
+test('2D-полёт Огненного шара приходит в gridOrigin при отличающемся центре выбора', () => {
+  const context = recordingContext()
+  effects.drawSpellEffect(context, scene(), {
+    cue: {
+      id: 'fireball-offset-grid-origin', kind: 'burst', actorId: 'mage', targetIds: [],
+      spellId: 'fireball', school: 'evocation', origin: { x: 1, y: 1 }, center: { x: 4, y: 4 },
+      gridOrigin: { x: 6, y: 2 }, geometryVersion: 'circle-grid-v2', shape: 'sphere', sizeFeet: 20, durationMs: 1000,
+    },
+    progress: .56, reducedMotion: false, detail: 'full', actors: [actor('mage', 1, 1)],
+  })
+  assert.ok(context.ops.some((operation) => operation.op === 'arc' && operation.x === 144 && operation.y === 48),
+    'плоский снаряд должен прийти в авторитетное пересечение сетки')
+})
+
+test('конец полёта к grid-origin не смещается площадью первой задетой цели', () => {
+  const context = recordingContext()
+  effects.drawSpellEffect(context, scene(), {
+    cue: { id: 'circle-flight', kind: 'projectile', actorId: 'caster', targetIds: ['large'],
+      from: { x: 1, y: 1 }, to: { x: 4, y: 4 }, targetGridOrigin: { x: 4, y: 4 },
+      projectileCount: 1, spellId: 'fireball', school: 'evocation', durationMs: 500 },
+    actors: [actor('caster', 1, 1), { ...actor('large', 4, 4), footprint: { version: 1, size: 2 } }],
+    progress: 1, detail: 'full', reducedMotion: false,
+  })
+  assert.ok(context.ops.some((operation) => operation.op === 'arc' && operation.x === 96 && operation.y === 96),
+    'снаряд прибывает на пересечение4×24, а не в центр большой фигуры')
+})
 
 test('Скороход сохраняет одинаковый cue для HTTP и SSE и отмечает обе видимые цели в 2D', () => {
   const event = { event_id: 'cast-longstrider', event_type: 'SpellCast', command_id: 'cast-command', actor_id: 'caster', target_ids: ['caster', 'ally'], payload: { spell_id: 'longstrider', kind: 'buff' } }
@@ -177,10 +415,58 @@ test('2D combat endpoint центрирует large actor и безопасно 
   assert.equal(partialArc.y, 36, 'неполный footprint не раскрывает вторую строку')
 })
 
+test('2D chain lightning branches every secondary from the primary endpoint', () => {
+  const actors = [
+    actor('mage', 1, 1),
+    actor('primary', 4, 1),
+    actor('secondary-a', 2, 4),
+    actor('secondary-b', 6, 4),
+  ]
+  const cue = {
+    id: 'chain-branch', kind: 'beam', actorId: 'mage', targetIds: ['primary', 'secondary-a', 'secondary-b'],
+    spellId: 'chain-lightning', school: 'evocation', chain: true, durationMs: 480,
+  }
+  const context = recordingContext()
+  effects.drawSpellEffect(context, scene(), { cue, progress: 1, detail: 'minimal', reducedMotion: false, actors })
+  assert.deepEqual(context.ops.filter((operation) => operation.op === 'moveTo'), [
+    { op: 'moveTo', x: 36, y: 36 },
+    { op: 'moveTo', x: 108, y: 36 },
+    { op: 'moveTo', x: 108, y: 36 },
+  ])
+  const ends = context.ops.filter((operation) => operation.op === 'lineTo')
+  assert.ok(ends.some((operation) => operation.x === 108 && operation.y === 36))
+  assert.ok(ends.some((operation) => operation.x === 60 && operation.y === 108))
+  assert.ok(ends.some((operation) => operation.x === 156 && operation.y === 108))
+
+  const genericContext = recordingContext()
+  effects.drawSpellEffect(genericContext, scene(), {
+    cue: { ...cue, id: 'generic-beam', spellId: 'eldritch-blast' },
+    progress: 1, detail: 'minimal', reducedMotion: false, actors,
+  })
+  assert.deepEqual(genericContext.ops.filter((operation) => operation.op === 'moveTo'), [
+    { op: 'moveTo', x: 36, y: 36 },
+    { op: 'moveTo', x: 108, y: 36 },
+    { op: 'moveTo', x: 60, y: 108 },
+  ])
+})
+
+test('2D chain lightning keeps a missing primary as a gap instead of connecting a secondary through it', () => {
+  const context = recordingContext()
+  effects.drawSpellEffect(context, scene(), {
+    cue: {
+      id: 'chain-missing-primary', kind: 'beam', actorId: 'mage',
+      targetIds: ['primary', 'secondary-a', 'secondary-b'], spellId: 'chain-lightning',
+      school: 'evocation', chain: true, durationMs: 480,
+    },
+    progress: 1, detail: 'minimal', reducedMotion: false,
+    actors: [actor('mage', 1, 1), actor('secondary-a', 2, 4), actor('secondary-b', 6, 4)],
+  })
+  assert.equal(context.ops.some((operation) => operation.op === 'lineTo'), false)
+})
 test('каталог выбирает школу, геометрию и характер ключевых заклинаний', () => {
   assert.deepEqual(
     ['magic-missile', 'fire-bolt', 'hail-of-thorns'].map((id) => effects.spellVisualProfile(id).kind),
-    ['projectile', 'projectile', 'projectile'],
+    ['projectile', 'projectile', 'channel'],
   )
   assert.equal(effects.spellVisualProfile('magic-missile').projectileCount, 3)
   assert.equal(effects.spellVisualProfile('magic-missile').school, 'evocation')
@@ -208,6 +494,53 @@ test('геометрия важнее названия: молния остаё�
   assert.equal(effects.spellEffectPalette('healing-word', { kind: 'healing' }).primary, '#75c993')
 })
 
+test('прямые save-уроны получают направленный cue по своей стихии', () => {
+  const expected = {
+    'vicious-mockery': 'channel',
+    infestation: 'channel',
+    'toll-the-dead': 'channel',
+    'mind-sliver': 'channel',
+    'sacred-flame': 'channel',
+    'poison-spray': 'channel',
+    blight: 'channel',
+    'tasha-s-mind-whip': 'beam',
+  }
+  for (const [spellId, kind] of Object.entries(expected)) {
+    assert.equal(effects.spellVisualProfile(spellId).kind, kind, spellId)
+    if (spellId !== 'vicious-mockery' && spellId !== 'poison-spray' && spellId !== 'blight') {
+      assert.ok(effects.spellVisualProfile(spellId).visualVariant, `${spellId}: target-local visual variant`)
+    }
+    const context = recordingContext()
+    const cue = kind === 'beam'
+      ? { id: `direct-${spellId}`, kind, actorId: 'mage', targetIds: ['target'], spellId, school: 'evocation', chain: false, durationMs: 560 }
+      : { id: `direct-${spellId}`, kind, actorId: 'mage', targetId: 'target', spellId, school: 'evocation', channelType: 'cast', durationMs: 520 }
+    effects.drawSpellEffect(context, scene(), { cue, actors: [actor('mage', 1, 1), actor('target', 5, 1)], progress: 1, detail: 'full', reducedMotion: false })
+    assert.ok(context.ops.some((operation) => operation.op === 'lineTo' || operation.op === 'arc'), `${spellId}: направленный рисунок`)
+  }
+})
+
+test('Hail of Thorns сохраняет подготовительный channel и один подтверждённый burst по соседним целям', () => {
+  const cues = animation.combatAnimationCuesFromEvents([
+    {
+      event_id: 'hail-cast', event_type: 'SpellCast', command_id: 'hail-cast', actor_id: 'ranger', target_ids: ['ranger'],
+      payload: { spell_id: 'hail-of-thorns', kind: 'buff', damage_type: 'piercing' },
+    },
+    {
+      event_id: 'hail-burst-a', event_type: 'DamageApplied', command_id: 'hail-attack', actor_id: 'ranger', target_ids: ['target-a'],
+      payload: { spell_id: 'hail-of-thorns', burst: true, applied_amount: 5, damage_type: 'piercing', hp_after: 20 },
+    },
+    {
+      event_id: 'hail-burst-b', event_type: 'DamageApplied', command_id: 'hail-attack', actor_id: 'ranger', target_ids: ['target-b'],
+      payload: { spell_id: 'hail-of-thorns', burst: true, applied_amount: 5, damage_type: 'piercing', hp_after: 20 },
+    },
+  ])
+  assert.equal(cues.filter((cue) => cue.kind === 'channel' && cue.spellId === 'hail-of-thorns').length, 1)
+  const bursts = cues.filter((cue) => cue.kind === 'burst' && cue.spellId === 'hail-of-thorns')
+  assert.equal(bursts.length, 1)
+  assert.deepEqual(bursts[0].targetIds, ['target-a', 'target-b'])
+  assert.equal(cues.filter((cue) => cue.kind === 'impact' && cue.tone === 'damage').length, 2)
+})
+
 test('семантические исключения сохраняют фазу и форму действующего эффекта', () => {
   assert.equal(effects.spellVisualProfile('investiture-of-ice').kind, 'channel')
   assert.equal(effects.spellVisualProfile('investiture-of-ice').family, 'cold')
@@ -233,8 +566,8 @@ test('семантические семьи покрывают каталог, �
   const schoolFallback = executable.filter((spell) => effects.spellEffectPalette(spell.id).family === 'school').map((spell) => spell.id)
   const unsupported = catalog.filter((spell) => !isExecutable(spell))
   assert.ok(catalog.length > 400)
-  assert.equal(executable.length, 242, 'исполняемый набор должен совпадать с partial/verified override-карточками')
-  assert.equal(unsupported.length, 197, 'heuristic/ruling-only карточки не входят в реализованный набор')
+  assert.equal(executable.length, 248, 'исполняемый набор должен совпадать с partial/verified override-карточками')
+  assert.equal(unsupported.length, 191, 'heuristic/ruling-only карточки не входят в реализованный набор')
   assert.ok(catalog.every((spell) => allowed.has(effects.spellEffectPalette(spell.id).family)))
   assert.deepEqual(schoolFallback, [], 'каждая executable-карточка должна иметь semantic family')
   for (const family of ['fire', 'cold', 'lightning', 'thunder', 'acid', 'poison', 'necrotic', 'radiant', 'force', 'psychic', 'healing', 'protection', 'control', 'teleport', 'summon', 'earth', 'wind', 'water', 'swarm', 'weapon', 'illusion', 'divination', 'light', 'darkness', 'environment', 'enchantment', 'restoration', 'invisibility', 'flight', 'mobility', 'transmutation', 'communication', 'utility']) {

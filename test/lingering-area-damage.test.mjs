@@ -151,7 +151,7 @@ test('Стражи веры держатся вокруг заклинателя
   assert.equal(damage.payload.damage_type, 'radiant')
 })
 
-test('Испепеление поджигает цель, и пламя жжёт в начале её хода', () => {
+test('Испепеление поджигает цель, и пламя жжёт после провала save в конце её хода', () => {
   const state = fieldState({ casterClass: 'sorcerer', level: 9 })
   const cast = resolveCommand(
     authoritative({ command_type: 'CastSpell', actor_id: 'druid', spell_id: 'immolation', target_id: 'brute', target_ids: ['brute'] }),
@@ -159,22 +159,25 @@ test('Испепеление поджигает цель, и пламя жжёт
     options(dice([...Array.from({ length: 8 }, () => 4), 3])),
   )
   const burning = cast.events.find((event) => event.event_type === 'ConditionAdded' && event.payload.condition === 'burning')
-  assert.equal(burning.payload.recurring_damage, '3d6')
+  assert.equal(burning.payload.recurring_damage, '4d6')
   assert.equal(burning.payload.recurring_damage_type, 'fire')
   assert.equal(burning.payload.repeat_save_timing, 'turn-end')
+  assert.equal(burning.payload.recurring_damage_timing, 'turn-end')
 
-  // Начало хода горящего: сначала ход заклинателя завершается, очередь доходит
-  // до цели, и пламя срабатывает событием TurnStarted.
+  // Начало хода цели не наносит урон: проверка стоит в конце её хода.
   const burnt = replayEvents(state, cast.events)
-  const passed = resolveCommand(authoritative({ command_type: 'EndTurn', actor_id: 'druid' }), burnt, options(dice([2, 2, 2, 10])))
-  const recurring = passed.events.find((event) => event.event_type === 'DamageApplied' && event.payload.recurring === true)
-  assert.ok(recurring, 'в начале своего хода горящая цель обязана получить урон')
+  const passed = resolveCommand(authoritative({ command_type: 'EndTurn', actor_id: 'druid' }), burnt, options(dice()))
+  assert.equal(passed.events.some((event) => event.event_type === 'DamageApplied' && event.payload.spell_id === 'immolation'), false)
+  const finished = resolveCommand(authoritative({ command_type: 'EndTurn', actor_id: 'brute' }), replayEvents(burnt, passed.events), options(dice([2, 2, 2, 2, 2])))
+  const recurring = finished.events.find((event) => event.event_type === 'DamageApplied' && event.payload.recurring === true)
+  assert.ok(recurring, 'при провале save в конце хода горящая цель обязана получить урон')
   assert.equal(recurring.payload.spell_id, 'immolation')
   assert.equal(recurring.payload.damage_type, 'fire')
-  assert.equal(recurring.payload.raw_amount, 6)
+  assert.equal(recurring.payload.trigger, 'turn-end')
+  assert.equal(recurring.payload.raw_amount, 8)
 })
 
-test('Фантомный убийца повторяет спасбросок в начале хода цели', () => {
+test('Фантомный убийца повторяет спасбросок в конце хода цели', () => {
   const state = fieldState({ casterClass: 'wizard', level: 9 })
   const cast = resolveCommand(
     authoritative({ command_type: 'CastSpell', actor_id: 'druid', spell_id: 'phantasmal-killer', target_id: 'brute', target_ids: ['brute'] }),
@@ -182,18 +185,22 @@ test('Фантомный убийца повторяет спасбросок в
     options(dice([3])),
   )
   const fear = cast.events.find((event) => event.event_type === 'ConditionAdded' && event.payload.condition === 'frightened')
-  assert.equal(fear.payload.start_turn_save, 'wis')
+  assert.equal(fear.payload.repeat_save_timing, 'turn-end')
   assert.equal(fear.payload.recurring_damage, '4d10')
+  assert.equal(fear.payload.recurring_damage_timing, 'turn-end')
 
-  // Провал спасброска в начале хода — видение держится и ранит.
+  // Провал спасброска в конце хода — видение держится и ранит.
   const haunted = replayEvents(state, cast.events)
-  const failed = resolveCommand(authoritative({ command_type: 'EndTurn', actor_id: 'druid' }), haunted, options(dice([2, 5, 5, 5, 5, 10])))
-  assert.equal(failed.events.find((event) => event.event_type === 'SpellSavingThrowResolved' && event.payload.trigger === 'turn-start').payload.saved, false)
+  const passed = resolveCommand(authoritative({ command_type: 'EndTurn', actor_id: 'druid' }), haunted, options(dice()))
+  assert.equal(passed.events.some((event) => event.event_type === 'DamageApplied' && event.payload.spell_id === 'phantasmal-killer'), false)
+  const failed = resolveCommand(authoritative({ command_type: 'EndTurn', actor_id: 'brute' }), replayEvents(haunted, passed.events), options(dice([2, 5, 5, 5, 5])))
+  assert.equal(failed.events.find((event) => event.event_type === 'SpellSavingThrowResolved' && event.payload.trigger === 'turn-end-repeat').payload.saved, false)
   assert.equal(failed.events.find((event) => event.event_type === 'DamageApplied' && event.payload.recurring === true).payload.raw_amount, 20)
 
   // Успех развеивает видение и урона не приносит.
-  const saved = resolveCommand(authoritative({ command_type: 'EndTurn', actor_id: 'druid' }), haunted, options(dice([20, 10])))
-  assert.equal(saved.events.find((event) => event.event_type === 'SpellSavingThrowResolved' && event.payload.trigger === 'turn-start').payload.saved, true)
+  const savedStart = resolveCommand(authoritative({ command_type: 'EndTurn', actor_id: 'druid' }), haunted, options(dice()))
+  const saved = resolveCommand(authoritative({ command_type: 'EndTurn', actor_id: 'brute' }), replayEvents(haunted, savedStart.events), options(dice([20])))
+  assert.equal(saved.events.find((event) => event.event_type === 'SpellSavingThrowResolved' && event.payload.trigger === 'turn-end-repeat').payload.saved, true)
   assert.equal(saved.events.some((event) => event.event_type === 'DamageApplied' && event.payload.recurring === true), false)
 })
 

@@ -120,6 +120,15 @@ function eventsWithoutWorldClock(events) {
   return (events ?? []).filter((event) => !WORLD_CLOCK_EVENT_TYPES.has(event?.event_type))
 }
 
+function isAdditionalBeamSpellCast(event) {
+  return event?.event_type === 'SpellCast'
+    && event?.payload?.economy_consumed === false
+    && (
+      /^spell-cast:.+:beam:\d+$/u.test(String(event?.event_id ?? ''))
+      || /:beam:\d+$/u.test(String(event?.command_id ?? ''))
+    )
+}
+
 /**
  * Текст хода с запасным вариантом. `fallback` — строка или функция, которую
  * зовут лишь тогда, когда боевому рассказчику сказать про сам ход нечего:
@@ -250,7 +259,7 @@ function tacticalNarrationLines(events, state) {
       meaningful.push(`${actor} бросает ${payload.item_name || 'снаряд'} в область радиусом ${Number(payload.radius_feet) || 0} фт.`)
     } else if (event.event_type === 'CombatActionUsed' && payload.monster_action === true) {
       meaningful.push(`${actor} использует приём «${String(payload.name || 'особая атака')}».`)
-    } else if (event.event_type === 'SpellCast') {
+    } else if (event.event_type === 'SpellCast' && !isAdditionalBeamSpellCast(event)) {
       meaningful.push(`${actor} творит заклинание «${payload.name || payload.spell_id || 'магия'}».`)
     } else if (event.event_type === 'SummonedCreatureCreated') {
       meaningful.push(`${actor} призывает ${payload.summon?.name || 'помощника'}; его ход поставлен сразу после хозяина.`)

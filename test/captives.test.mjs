@@ -279,6 +279,42 @@ test('проваленный допрос ничего не раскрывает
   )
 })
 
+test('допрос использует временное владение и удвоение навыка, а после expiry возвращает базовый бонус', () => {
+  const state = withCaptives()
+  const hero = state.players.find((player) => player.id === 'hero')
+  hero.classSkillProficiencies = ['intimidation']
+  const base = interrogate(state, { skill: 'persuasion', roll: 10, commandId: 'cmd-interrogate-skill-base' })
+  const baseEvent = base.events.find((event) => event.event_type === 'CaptiveInterrogated')
+  assert.equal(baseEvent.payload.modifier, 3, 'Харизма героя без владения должна идти без proficiency')
+
+  const buffed = structuredClone(state)
+  buffed.mechanics.conditions.hero = [
+    {
+      id: 'borrowed-knowledge:persuasion', duration: 'minutes:60', source_actor: 'hero',
+      effect_id: 'borrowed-knowledge:test', spell_id: 'borrowed-knowledge', spell_option: 'persuasion',
+      skill_buff_version: 1, timing_version: 2, started_at_seconds: 0, expires_at_seconds: 3_600,
+    },
+    {
+      id: 'skill-empowerment:persuasion', duration: 'concentration', source_actor: 'hero',
+      effect_id: 'skill-empowerment:test', spell_id: 'skill-empowerment', spell_option: 'persuasion',
+      skill_buff_version: 1, timing_version: 2, started_at_seconds: 0, expires_at_seconds: 3_600,
+    },
+  ]
+  buffed.mechanics.concentration.hero = { effect_id: 'skill-empowerment:test' }
+  const empowered = interrogate(buffed, { skill: 'persuasion', roll: 10, commandId: 'cmd-interrogate-skill-empowered' })
+  const empoweredEvent = empowered.events.find((event) => event.event_type === 'CaptiveInterrogated')
+  assert.equal(empoweredEvent.payload.modifier, 7, 'допрос обязан использовать тот же bonus proficiency, что обычная проверка')
+
+  const expired = applyGameEvent(buffed, {
+    event_type: 'TimeAdvanced', event_id: 'time-interrogate-skill-expiry', actor_id: null, target_ids: [],
+    payload: { clock_version: 2, elapsed_seconds: 3_600 },
+  })
+  const afterExpiry = interrogate(expired, { skill: 'persuasion', roll: 10, commandId: 'cmd-interrogate-skill-expired' })
+  const expiredEvent = afterExpiry.events.find((event) => event.event_type === 'CaptiveInterrogated')
+  assert.equal(expiredEvent.payload.modifier, 3, 'после часа допрос должен вернуться к базовому бонусу')
+  assert.equal(expired.mechanics.concentration.hero, undefined)
+})
+
 test('отпущенный помнит пощаду: отношение, стойка и запись в памяти мира', () => {
   const state = withCaptives()
   const captive = captiveOf(state)

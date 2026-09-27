@@ -95,6 +95,7 @@ export function loadPresentationRuntime(root = REPOSITORY_ROOT) {
     copyFileSync(join(root, 'server', name), join(tempRoot, 'server', name))
   }
   copyServerModule('actor-footprint.mjs')
+  copyServerModule('circular-area-geometry.mjs')
   copyServerModule('equipment-visuals.mjs')
 
   const compiler = join(root, 'node_modules', 'typescript', 'bin', 'tsc')

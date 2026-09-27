@@ -2,7 +2,7 @@ import type {
   TacticalCell, TacticalDoorState, TacticalEdge, TacticalEdgeKind, TacticalMap, TacticalMaterial,
   TacticalProp, TacticalSurface,
 } from './types'
-import { areaCells, type AreaShape } from './area-geometry'
+import { areaCells, type AreaGeometryVersion, type AreaPoint, type AreaShape } from './area-geometry'
 import {
   LIGHT_FULL, lightAt, lightGridFor, lightSourceVisibilityFor, lightSourcesOf,
   type LightSource,
@@ -3800,6 +3800,8 @@ export type BoardAreaEffect = {
   radiusFeet?: number
   areaSideFeet?: number
   areaShape?: AreaShape
+  geometryVersion?: AreaGeometryVersion
+  gridOrigin?: AreaPoint
   spellId?: string
   label?: string
   sourceActor?: string
@@ -3817,6 +3819,8 @@ export function boardAreaEffectCells(effect: BoardAreaEffect, map?: TacticalMap)
     shape: effect.areaShape ?? 'sphere',
     origin: effect.center,
     target: effect.center,
+    ...(effect.geometryVersion ? { geometryVersion: effect.geometryVersion } : {}),
+    ...(effect.gridOrigin ? { gridOrigin: effect.gridOrigin } : {}),
     sizeFeet,
     ...(effect.areaSideFeet ? { sideFeet: effect.areaSideFeet } : {}),
     ...(map ? {

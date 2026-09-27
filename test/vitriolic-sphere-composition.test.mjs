@@ -73,9 +73,37 @@ test('Два Варева Таши в разных ячейках не скла�
   const second = resolveCommand(authoritative({ command_type: 'CastSpell', actor_id: 'mage2', spell_id: 'tasha-s-caustic-brew', to: { x: 6, y: 2 }, slot_level: 3, casting_resource: 'spell_slots_3' }), state, options([1, 1, 1], 'tasha-second'))
   state = replayEvents(state, second.events)
   assert.equal((state.mechanics.conditions.foe ?? []).filter((condition) => condition.id === 'acid-covered').length, 1)
-  assert.deepEqual((state.mechanics.conditions.foe ?? []).filter((condition) => condition.id === 'acid-covered').map((condition) => condition.recurring_damage), ['2d4'])
+  assert.deepEqual((state.mechanics.conditions.foe ?? []).filter((condition) => condition.id === 'acid-covered').map((condition) => condition.recurring_damage), ['6d4'])
   assert.equal((state.mechanics.conditions.foe ?? []).filter((condition) => condition.recurring_damage).length, 1)
   // Tasha remains on the legacy marker path. The candidate adds effect identity
   // only to Vitriolic's instantaneous delayed rider, so two Tasha casts still
   // collapse to one existing condition rather than silently stacking.
+})
+
+test('Варево Таши сохраняет уровень ячейки и масштабирует повторный урон при replay', () => {
+  const initial = field()
+  const baseline = resolveCommand(authoritative({
+    command_type: 'CastSpell', actor_id: 'mage', spell_id: 'tasha-s-caustic-brew',
+    to: { x: 6, y: 2 }, slot_level: 1, casting_resource: 'spell_slots_1',
+  }), initial, options([1, 1, 1], 'tasha-baseline'))
+  const baselineCondition = baseline.events.find((event) => event.event_type === 'ConditionAdded' && event.payload.condition === 'acid-covered')
+  assert.equal(baselineCondition.payload.recurring_damage, '2d4')
+  assert.equal(baselineCondition.payload.slot_level, 1)
+
+  const upcast = resolveCommand(authoritative({
+    command_type: 'CastSpell', actor_id: 'mage', spell_id: 'tasha-s-caustic-brew',
+    to: { x: 6, y: 2 }, slot_level: 2, casting_resource: 'spell_slots_2',
+  }), initial, options([1, 1, 1], 'tasha-upcast'))
+  const condition = upcast.events.find((event) => event.event_type === 'ConditionAdded' && event.payload.condition === 'acid-covered')
+  assert.equal(condition.payload.recurring_damage, '4d4')
+  assert.equal(condition.payload.slot_level, 2)
+  const replayed = replayEvents(initial, upcast.events)
+  assert.equal(replayed.mechanics.conditions.foe.find((entry) => entry.id === 'acid-covered').recurring_damage, '4d4')
+
+  const beforeInvalid = structuredClone(initial)
+  assert.throws(() => resolveCommand(authoritative({
+    command_type: 'CastSpell', actor_id: 'mage', spell_id: 'tasha-s-caustic-brew',
+    to: { x: 6, y: 2 }, slot_level: 7,
+  }), initial, options([1, 1, 1], 'tasha-invalid')), (error) => error?.code === 'INVALID_SPELL_SLOT_LEVEL')
+  assert.deepEqual(initial, beforeInvalid)
 })

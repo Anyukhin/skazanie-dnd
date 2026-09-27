@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -51,26 +51,32 @@ const RUNS = 9
  * импорт. Компиляция идёт один раз на файл и в замеры не входит.
  */
 const lightingBuildDir = mkdtempSync(join(tmpdir(), 'skazanie-budget-lighting-'))
+const lightingOutputDir = join(lightingBuildDir, 'src')
+const repositoryRoot = fileURLToPath(new URL('..', import.meta.url))
+mkdirSync(join(lightingBuildDir, 'server'), { recursive: true })
+for (const name of ['circular-area-geometry.mjs', 'actor-footprint.mjs']) {
+  copyFileSync(join(repositoryRoot, 'server', name), join(lightingBuildDir, 'server', name))
+}
 {
   const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
   const sources = ['../src/board-lighting.ts', '../src/board-ambient.ts', '../src/tactical-map-client.ts']
     .map((relative) => fileURLToPath(new URL(relative, import.meta.url)))
   const compiled = spawnSync(process.execPath, [
     compiler, '--ignoreConfig', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler',
-    '--lib', 'ES2022,DOM', '--strict', '--skipLibCheck', '--outDir', lightingBuildDir, ...sources,
+    '--lib', 'ES2022,DOM', '--strict', '--skipLibCheck', '--rootDir', repositoryRoot, '--outDir', lightingBuildDir, ...sources,
   ], { encoding: 'utf8' })
   assert.equal(compiled.status, 0, compiled.stderr || compiled.stdout)
-  for (const name of readdirSync(lightingBuildDir)) {
+  for (const name of readdirSync(lightingOutputDir)) {
     if (!name.endsWith('.js')) continue
-    const source = readFileSync(join(lightingBuildDir, name), 'utf8')
+    const source = readFileSync(join(lightingOutputDir, name), 'utf8')
       .replace(/(from\s+["'])(\.\/[^"']+)(["'])/g, '$1$2.mjs$3')
-    writeFileSync(join(lightingBuildDir, name.replace(/\.js$/, '.mjs')), source)
-    rmSync(join(lightingBuildDir, name))
+    writeFileSync(join(lightingOutputDir, name.replace(/\.js$/, '.mjs')), source)
+    rmSync(join(lightingOutputDir, name))
   }
 }
-const lighting = await import(pathToFileURL(join(lightingBuildDir, 'board-lighting.mjs')).href)
-const ambient = await import(pathToFileURL(join(lightingBuildDir, 'board-ambient.mjs')).href)
-const mapClient = await import(pathToFileURL(join(lightingBuildDir, 'tactical-map-client.mjs')).href)
+const lighting = await import(pathToFileURL(join(lightingOutputDir, 'board-lighting.mjs')).href)
+const ambient = await import(pathToFileURL(join(lightingOutputDir, 'board-ambient.mjs')).href)
+const mapClient = await import(pathToFileURL(join(lightingOutputDir, 'tactical-map-client.mjs')).href)
 process.on('exit', () => rmSync(lightingBuildDir, { recursive: true, force: true }))
 
 /**

@@ -165,7 +165,7 @@ export class Adjudicator {
         const difficulty = difficultyClassFor(difficulty_category)
         const ability = abilityForApproach(intent.approach)
         const skill = skillForApproach(intent.approach)
-        const proficiency = skill ? skillProficiencyForActor(actor, skill) : null
+        const proficiency = skill ? skillProficiencyForActor(actor, skill, state) : null
         return {
           ...base,
           rule_ids: ruleIdsFor([RULE_IDS.abilityCheck]),

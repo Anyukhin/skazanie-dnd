@@ -422,7 +422,14 @@ export type TacticalBoardProps = {
   /** Enter подтверждает уже собранный список целей; пробел продолжает выбор. */
   onConfirmAiming?: () => void
   /** Короткое предупреждение возле прицела, без перекрывающего карту меню. */
-  targetHint?: { point: BoardPoint; text: string; tone: 'warning' | 'blocked' }
+  targetHint?: {
+    point: BoardPoint
+    text: string
+    tone: 'warning' | 'blocked'
+    anchor?: 'cell-center' | 'grid-intersection'
+  }
+  /** Цвет временной области прицеливания в объёмном режиме. */
+  targetPreviewColor?: string
 }
 
 function TacticalBoard2D({
@@ -1424,8 +1431,8 @@ function TacticalBoard2D({
           // области выбран у первой или последней клетки. Ширина подсказки
           // ограничена 220px в tactical-board.css, поэтому оставляем по 110px
           // запаса с каждой стороны и сохраняем центр в обычном случае.
-          left: `clamp(110px, calc(var(--cell) * ${targetHint.point.x + .5}), calc(100% - 110px))`,
-          top: `calc(var(--cell) * ${targetHint.point.y + 1})`,
+          left: `clamp(110px, calc(var(--cell) * ${targetHint.point.x + (targetHint.anchor === 'grid-intersection' ? 0 : .5)}), calc(100% - 110px))`,
+          top: `calc(var(--cell) * ${targetHint.point.y + (targetHint.anchor === 'grid-intersection' ? 0 : 1)})`,
         }}>{targetHint.text}</span>}
         {animationsEnabled !== false && activeAnimation && (
           <button

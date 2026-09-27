@@ -73,6 +73,101 @@ test('NPC behavior dictionary exposes only named data-driven policies', () => {
   })
 })
 
+test('scheduler exits a duplicate commit that makes no state progress', async () => {
+  const state = fixture({ sessionCode: 'NPC-DUPLICATE' })
+  state.state_version = 41
+  state.mechanics.combat.initiative = [{ actor_id: 'wolf', total: 20 }, { actor_id: 'hero', total: 10 }]
+  state.mechanics.combat.active_index = 0
+  state.mechanics.combat.combat_instance_id = 'combat-started:duplicate'
+  let duplicateLookups = 0
+  const eventStore = {
+    async load() {
+      return { state: structuredClone(state), state_version: 41 }
+    },
+    async getByIdempotencyKey() {
+      duplicateLookups += 1
+      return {
+        state_version: 41,
+        events: [{ event_type: 'TurnEnded', actor_id: 'wolf', payload: { round: 1 } }],
+        replayed: true,
+      }
+    },
+  }
+  const result = await runNpcTurnScheduler({
+    campaignId: 'NPC-DUPLICATE',
+    eventStore,
+    rulesEngine: new RulesEngine({ diceService: dice([]) }),
+    maxTurns: 4,
+  })
+  assert.equal(duplicateLookups, 1)
+  assert.equal(result.turns.length, 0)
+  assert.equal(result.state_version, 41)
+})
+
+test('two real combats with the same actors get distinct scheduler keys and replay', async (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'skazanie-npc-combat-instance-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  const campaignId = 'NPC-COMBAT-INSTANCE'
+  const sharedCommandPrefix = 'combat-start-' + 'x'.repeat(110)
+  const initial = fixture({ sessionCode: campaignId })
+  initial.mechanics.combat = {
+    active: false, round: 0, initiative: [], active_index: -1, action_economy: {},
+    reaction_window: null, readied: {}, group_initiative: false, turn_completed: [],
+  }
+  const eventStore = new FileEventStore({ rootDir: root, reducer: applyGameEvent, normalizeState: normalizeCampaignState })
+  await eventStore.initializeCampaign({ campaign_id: campaignId, initial_state: initial })
+  const startCombat = async (key, diceValues) => {
+    const loaded = await eventStore.load(campaignId)
+    const result = resolveCommand({
+      command_type: 'StartCombat', participant_ids: ['hero', 'wolf'], server_authoritative: true, command_id: key,
+    }, loaded.state, { diceService: dice(diceValues), context: { serverAuthoritativeCombat: true, isAdmin: true } })
+    const storedEvents = result.events.map((event) => {
+      if (event.event_type !== 'CombatStarted') return event
+      const { combat_instance_id: _legacyInstance, ...legacyPayload } = event.payload ?? {}
+      return { ...event, payload: legacyPayload }
+    })
+    return eventStore.commit({
+      campaign_id: campaignId,
+      expected_state_version: loaded.state_version,
+      idempotency_key: key,
+      command_id: key,
+      events: storedEvents,
+    })
+  }
+  const firstStart = await startCombat(sharedCommandPrefix + '-first', [8, 16])
+  const firstRun = await runNpcTurnScheduler({
+    campaignId, eventStore, rulesEngine: new RulesEngine({ diceService: boundedDice() }),
+  })
+  const firstNpcKey = firstRun.turns.find((turn) => turn.kind === 'enemy-turn')?.idempotency_key
+  assert.ok(firstNpcKey)
+  assert.ok(firstNpcKey.length <= 180)
+
+  let loaded = await eventStore.load(campaignId)
+  const end = resolveCommand({
+    command_type: 'EndCombat', actor_id: 'hero', reason: 'test-reset', server_authoritative: true, command_id: 'combat-end-first',
+  }, loaded.state, { diceService: dice([]), context: { serverAuthoritativeCombat: true, isAdmin: true } })
+  await eventStore.commit({
+    campaign_id: campaignId,
+    expected_state_version: loaded.state_version,
+    idempotency_key: 'combat-end-first',
+    command_id: 'combat-end-first',
+    events: end.events,
+  })
+  const secondStart = await startCombat(sharedCommandPrefix + '-second', [8, 16])
+  const secondRun = await runNpcTurnScheduler({
+    campaignId, eventStore, rulesEngine: new RulesEngine({ diceService: boundedDice() }),
+  })
+  const secondNpcKey = secondRun.turns.find((turn) => turn.kind === 'enemy-turn')?.idempotency_key
+  assert.ok(secondNpcKey)
+  assert.ok(secondNpcKey.length <= 180)
+  assert.notEqual(firstNpcKey, secondNpcKey)
+  assert.ok(secondStart.state_version > firstStart.state_version)
+  loaded = await eventStore.load(campaignId)
+  const replayed = await eventStore.replay(campaignId)
+  assert.deepEqual(replayed.state, loaded.state)
+  assert.equal(replayed.state_version, loaded.state_version)
+})
+
 test('server-authoritative attack ignores client combat numbers and uses persisted profile', () => {
   const state = fixture()
   state.enemies[0].x = 1
@@ -482,9 +577,7 @@ test('scheduler commits multiattack as replay-safe phases with distinct idempote
     ['EndTurn'],
   ])
   assert.equal(new Set(result.turns.map((turn) => turn.idempotency_key)).size, 3)
-  assert.match(result.turns[0].idempotency_key, /:turn-a0-m0-s0$/)
-  assert.match(result.turns[1].idempotency_key, /:turn-a1-m0-s1$/)
-  assert.match(result.turns[2].idempotency_key, /:turn-a2-m0-s1$/)
+  assert.ok(result.turns.every((turn) => turn.idempotency_key.length <= 200))
   assert.equal(result.events.filter((event) => event.event_type === 'AttackResolved').length, 2)
   assert.equal(result.state.mechanics.combat.action_economy.ghoul.attacks_used, 2)
   assert.equal(result.state.mechanics.combat.action_economy.ghoul.attacks_allowed, 2)
@@ -526,8 +619,7 @@ test('scheduler commits a Sanctuary-blocked multiattack and then ends the turn w
 
   assert.deepEqual(result.turns.map((turn) => turn.commands), [['MakeAttack'], ['EndTurn']])
   assert.equal(new Set(result.turns.map((turn) => turn.idempotency_key)).size, 2)
-  assert.match(result.turns[0].idempotency_key, /:turn-a0-m0-s0$/)
-  assert.match(result.turns[1].idempotency_key, /:turn-a0-m0-s1$/)
+  assert.ok(result.turns.every((turn) => turn.idempotency_key.length <= 200))
   assert.ok(result.events.some((event) => event.event_type === 'SpellSavingThrowResolved'))
   assert.ok(result.events.some((event) => event.event_type === 'CombatActionUsed'))
   assert.equal(result.events.some((event) => event.event_type === 'AttackResolved'), false)

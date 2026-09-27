@@ -13,6 +13,7 @@ const root = fileURLToPath(new URL('..', import.meta.url))
 mkdirSync(join(root, 'tmp'), { recursive: true })
 const buildDir = mkdtempSync(join(root, 'tmp', 'board3d-ui-'))
 mkdirSync(join(buildDir, 'server'), { recursive: true })
+copyFileSync(join(root, 'server', 'circular-area-geometry.mjs'), join(buildDir, 'server', 'circular-area-geometry.mjs'))
 copyFileSync(join(root, 'server', 'actor-footprint.mjs'), join(buildDir, 'server', 'actor-footprint.mjs'))
 copyFileSync(join(root, 'server', 'equipment-visuals.mjs'), join(buildDir, 'server', 'equipment-visuals.mjs'))
 test.after(() => rmSync(buildDir, { recursive: true, force: true }))
@@ -43,7 +44,7 @@ for (const path of emittedFiles(buildDir).filter((candidate) => candidate.endsWi
   rmSync(path)
 }
 
-const { default: TacticalBoard3D } = await import(pathToFileURL(join(buildDir, 'src', 'TacticalBoard3D.mjs')).href)
+const { default: TacticalBoard3D, targetPreviewCells } = await import(pathToFileURL(join(buildDir, 'src', 'TacticalBoard3D.mjs')).href)
 const quality = await import(pathToFileURL(join(buildDir, 'src', 'board3d-quality.mjs')).href)
 
 test('профиль качества сохраняет событие и не повышает уже ограниченную детализацию', () => {
@@ -79,6 +80,15 @@ function renderBoard(cells) {
     animationActors: [], animationsEnabled: false, conditions: {}, onUnavailable: () => {},
   }))
 }
+
+test('3D-прицел выбирает только временные клетки области', () => {
+  const cells = targetPreviewCells([
+    { x: 1, y: 2, className: 'blast-area spell-preview-cell' },
+    { x: 2, y: 2, className: 'blast-area' },
+    { x: 3, y: 2, className: 'spell-preview-cell' },
+  ])
+  assert.deepEqual(cells.map(({ x, y }) => `${x},${y}`), ['1,2'])
+})
 
 test('SSR не создаёт DOM-обёртки для пустых клеток и сохраняет полезные слои', () => {
   const emptyCells = Array.from({ length: 400 }, (_, index) => {

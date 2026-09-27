@@ -106,17 +106,13 @@ test('в бою ритуал недоступен — и ответ о прав�
   )
 })
 
-test('вне боя ритуал упирается уже не в бой, а в неразмеченную карточку', () => {
-  /* Дверь в правилах открыта, но пройти в неё пока нельзя: ни у одного
-     заклинания с длинным накладыванием нет проверенной механики в
-     `data/dndsu-spell-mechanics-overrides.json` — все они `heuristic`.
-     Сторож фиксирует именно это состояние: как только каталог разметят,
-     тест упадёт и его нужно будет заменить на проверку течения времени. */
-  assert.throws(
-    () => cast(camp(), { spell_id: 'prayer-of-healing', target_id: 'fighter' }),
-    (error) => error.code === 'MECHANICS_NOT_VERIFIED',
-    'вне боя ритуал больше не отвергается боем',
-  )
+test('вне боя Prayer of Healing двигает мировые часы и лечит после десяти минут', () => {
+  const state = camp()
+  const result = cast(state, { spell_id: 'prayer-of-healing', target_id: 'fighter' })
+  const after = replayEvents(state, result.events)
+  assert.ok(result.events.some((event) => event.event_type === 'TimeAdvanced' && event.payload.elapsed_minutes === 10))
+  assert.ok(result.events.some((event) => event.event_type === 'HealingApplied' && event.target_ids[0] === 'fighter'))
+  assert.equal(after.mechanics.resources.cleric.spell_slots_2.current, 1, 'ячейка второго круга потрачена')
 })
 
 test('в бою боевое заклинание работает как прежде', () => {

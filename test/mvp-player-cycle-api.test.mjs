@@ -5,12 +5,14 @@ import { createServer as createNetServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { pathToFileURL } from 'node:url'
 
 import { addProp, createTacticalMap, legacyCellsFromTacticalMap, serializeTacticalMap, setCell } from '../server/tactical-map.mjs'
 import { actorPosition, findActor, shortestTacticalPath } from '../server/rules-engine.mjs'
 import { publicSceneFor } from '../server/viewer-projection.mjs'
 
 const MVP_REQUEST_TIMEOUT_MS = 30_000
+const MVP_DICE_PRELOAD = pathToFileURL(join(process.cwd(), 'test', 'fixtures', 'mvp-deterministic-dice.mjs')).href
 let mvpTrace = null
 
 function mvpStage(stage) {
@@ -96,8 +98,9 @@ function mvpDiagnostics(trace = mvpTrace) {
     `[MVP-DIAG] stage=${trace.stage} elapsedMs=${elapsed} last=${request}`,
     `[MVP-DIAG] transport=${JSON.stringify(trace.lastRequest?.error ?? null)}`,
     `[MVP-DIAG] state=${state} server=${process}`,
-    // Сервер использует CryptoDiceRng: seed карты не воспроизводит боевые кости.
-    `[MVP-DIAG] world-seed=${redactedMvpTail(JSON.stringify(trace.lastState?.worldSeed ?? null))} dice-seed=unavailable(CryptoDiceRng)`,
+    // Изолированный положительный MVP запускает сервер с тестовым Dice Service
+    // preload; остальные броски и все правила остаются серверными.
+    `[MVP-DIAG] world-seed=${redactedMvpTail(JSON.stringify(trace.lastState?.worldSeed ?? null))} dice=controlled-positive-fixture`,
     `[MVP-DIAG] command=${redactedMvpTail(JSON.stringify(trace.lastCommand ?? null))}`,
     `[MVP-DIAG] expected=${redactedMvpTail(JSON.stringify(trace.lastState?.expectedDecision ?? null))}`,
     `[MVP-DIAG] server-log-tail:\n${redactedMvpTail(trace.logs?.())}`,
@@ -117,7 +120,7 @@ test('MVP diagnostics сохраняет команду, seed карты, ожи
     childExit: { code: 1, signal: 'SIGTERM' }, logs: () => 'x'.repeat(5_000) + '\nAuthorization: Bearer private-auth',
   })
   assert.match(diagnostics, /v=17/u)
-  assert.match(diagnostics, /world-seed="world-test-seed" dice-seed=unavailable\(CryptoDiceRng\)/u)
+  assert.match(diagnostics, /world-seed="world-test-seed" dice=controlled-positive-fixture/u)
   assert.match(diagnostics, /expected=.*"kind":"reaction".*"action_ids":\["cast:shield"\]/u)
   assert.match(diagnostics, /exit=1 signal=SIGTERM/u)
   assert.match(diagnostics, /POST \/commands pending \d+ms/u)
@@ -158,7 +161,7 @@ async function freePort() {
 }
 
 function startServer(port, storage, appendLog) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
+  const child = spawn(process.execPath, ['--import', MVP_DICE_PRELOAD, 'server/index.mjs'], {
     cwd: process.cwd(),
     env: {
       ...process.env, AGENT_HOST: '127.0.0.1', AGENT_PORT: String(port), DND_STORAGE_DIR: storage,

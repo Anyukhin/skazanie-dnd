@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, renameSync, rmSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, renameSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -7,18 +7,30 @@ import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 
 const buildDir = mkdtempSync(join(tmpdir(), 'skazanie-area-geometry-'))
+mkdirSync(join(buildDir, 'server'), { recursive: true })
+copyFileSync(new URL('../server/circular-area-geometry.mjs', import.meta.url), join(buildDir, 'server/circular-area-geometry.mjs'))
 const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
 const source = fileURLToPath(new URL('../src/area-geometry.ts', import.meta.url))
+const repositoryRoot = fileURLToPath(new URL('..', import.meta.url))
 const compiled = spawnSync(process.execPath, [
   compiler, '--ignoreConfig', '--target', 'ES2022', '--module', 'ESNext',
-  '--moduleResolution', 'Bundler', '--skipLibCheck', '--outDir', buildDir, source,
+  '--moduleResolution', 'Bundler', '--skipLibCheck', '--rootDir', repositoryRoot, '--outDir', buildDir, source,
 ], { encoding: 'utf8' })
 assert.equal(compiled.status, 0, compiled.stderr || compiled.stdout)
-renameSync(join(buildDir, 'area-geometry.js'), join(buildDir, 'area-geometry.mjs'))
-const geometry = await import(pathToFileURL(join(buildDir, 'area-geometry.mjs')).href)
+renameSync(join(buildDir, 'src', 'area-geometry.js'), join(buildDir, 'src', 'area-geometry.mjs'))
+const geometry = await import(pathToFileURL(join(buildDir, 'src', 'area-geometry.mjs')).href)
 process.on('exit', () => rmSync(buildDir, { recursive: true, force: true }))
 
 const keys = (cells) => cells.map((cell) => `${cell.x},${cell.y}`)
+
+test('новый круг и цилиндр используют общий растр, legacy сохраняет квадрат', () => {
+  const base = { origin: { x: 3, y: 3 }, target: { x: 3, y: 3 }, sizeFeet: 5 }
+  const expected = ['2,2', '3,2', '2,3', '3,3']
+  for (const shape of ['sphere', 'cylinder']) {
+    assert.deepEqual(keys(geometry.areaCells({ ...base, shape, geometryVersion: 'circle-grid-v2' })), expected)
+    assert.equal(geometry.areaCells({ ...base, shape }).length, 9)
+  }
+})
 
 test('сфера и цилиндр используют клеточный радиус и обрезаются границами карты', () => {
   const sphere = geometry.areaCells({

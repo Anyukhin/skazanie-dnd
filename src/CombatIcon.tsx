@@ -133,8 +133,18 @@ export function combatIconIndex(id: string, kind: CombatIconKind, hint = '') {
 }
 
 /** Путь к собственному рисунку действия, если он нарисован. */
+const ACTION_ICON_ALIASES: Readonly<Record<string, string>> = Object.freeze({
+  'enervation-repeat': 'enervation',
+})
+
+/** Продолжение заклинания использует его существующий рисунок. */
+export function iconAssetIdFor(id: string) {
+  return ACTION_ICON_ALIASES[id] ?? id
+}
+
 export function ownIconUrl(id: string) {
-  return ACTION_ICON_IDS.has(id) ? `/assets/ui/action-icons/${id}.png` : null
+  const assetId = iconAssetIdFor(id)
+  return ACTION_ICON_IDS.has(assetId) ? `/assets/ui/action-icons/${assetId}.png` : null
 }
 
 // Фоновая картинка грузится, как только элемент попал в дерево отрисовки, —
@@ -203,9 +213,10 @@ export function CombatIcon({ id, kind, hint = '', size, compact = false, priorit
   // Своя картинка, если она есть; иначе прежняя клетка атласа. Набор наполняется
   // постепенно, поэтому запасной вариант обязателен — иначе интерфейс поедет на
   // полпути, когда нарисована половина каталога.
-  const own = ownIconUrl(id)
-  const theme = abilityIconTheme(id, kind, hint)
-  const index = combatIconIndex(id, kind, hint)
+  const assetId = iconAssetIdFor(id)
+  const own = ownIconUrl(assetId)
+  const theme = abilityIconTheme(assetId, kind, hint)
+  const index = combatIconIndex(assetId, kind, hint)
   const column = index % 5
   const row = Math.floor(index / 5)
   const { holder, revealed } = useRevealedIcon(own !== null, priority)

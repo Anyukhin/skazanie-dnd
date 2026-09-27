@@ -1,12 +1,12 @@
 import catalogPayload from '../data/dndsu-spells-0-6.json'
 import mechanicsOverrides from '../data/dndsu-spell-mechanics-overrides.json'
-import { areaCells, type AreaPoint, type AreaShape } from './area-geometry'
+import { areaCells, gridOriginForTargetCell, type AreaPoint, type AreaShape } from './area-geometry'
 import type { BoardContext2D, BoardEffectRenderer, BoardScene } from './board-render'
 import type { BoardPoint, CombatAnimationCue, SpellAnimationCue } from './combat-animation'
 import { revealedAt } from './tactical-map-client'
 import { actorFootprintCells, actorPresentationCenter, areaCellsForActor } from './tactical-ui'
 import { maskSpellAreaCells } from './spell-targeting'
-import type { ActorFootprint, TacticalMap } from './types'
+import type { ActorFootprint, AreaGeometryVersion, TacticalMap } from './types'
 
 export type MagicSchool =
   | 'abjuration'
@@ -64,7 +64,7 @@ export type SpellSoundFamily =
   | 'invisibility' | 'flight' | 'mobility' | 'transmutation' | 'communication'
   | 'earth' | 'wind' | 'water' | 'swarm' | 'weapon' | 'utility' | 'silence'
 
-export type SpellVisualVariant = 'spectral-hand' | 'minor-tricks' | 'borrowed-knowledge' | 'secret-chest' | 'spelljamming-helm' | 'silence' | 'cancellation' | 'soul-transfer' | 'mobility-trail' | 'mobility-arc' | 'mobility-haste'
+export type SpellVisualVariant = 'spectral-hand' | 'minor-tricks' | 'borrowed-knowledge' | 'secret-chest' | 'spelljamming-helm' | 'silence' | 'cancellation' | 'soul-transfer' | 'mobility-trail' | 'mobility-arc' | 'mobility-haste' | 'target-light' | 'target-bell' | 'psychic-shard' | 'psychic-whip' | 'swarm-target'
 
 export type SpellSchoolStyle = {
   label: string
@@ -226,7 +226,6 @@ const PROJECTILE_SPELLS = new Set([
   'chromatic-orb',
   'fire-bolt',
   'guiding-bolt',
-  'hail-of-thorns',
   'ice-knife',
   'magic-missile',
   'melf-s-acid-arrow',
@@ -236,11 +235,13 @@ const PROJECTILE_SPELLS = new Set([
 const BEAM_SPELLS = new Set([
   'chain-lightning',
   'eldritch-blast',
+  'enervation',
   'lightning-lure',
   'ray-of-enfeeblement',
   'disintegrate',
   'scorching-ray',
   'sunbeam',
+  'tasha-s-mind-whip',
   'witch-bolt',
 ])
 
@@ -450,6 +451,11 @@ const SPELL_VISUAL_VARIANTS: Readonly<Record<string, SpellVisualVariant>> = {
   longstrider: 'mobility-trail',
   jump: 'mobility-arc',
   haste: 'mobility-haste',
+  'sacred-flame': 'target-light',
+  'toll-the-dead': 'target-bell',
+  'mind-sliver': 'psychic-shard',
+  'tasha-s-mind-whip': 'psychic-whip',
+  infestation: 'swarm-target',
 }
 
 const SOUND_FAMILY_IDS: Readonly<Record<string, SpellSoundFamily>> = {
@@ -522,6 +528,26 @@ const FAMILY_PALETTE_OVERRIDES: Readonly<Record<Exclude<SpellEffectFamily, 'scho
 }
 
 const SPELL_PALETTE_OVERRIDES: Readonly<Record<string, Partial<SpellEffectPalette>>> = {
+  // Мобильность держит общий стиль школы, но каждому знаку нужен собственный
+  // контраст на деревянной и каменной фактуре обычной камеры.
+  longstrider: {
+    primary: '#3f9b79',
+    secondary: '#d9f5df',
+    fill: 'rgba(39,112,83,.24)',
+    behavior: 'wave',
+  },
+  jump: {
+    primary: '#9e73c6',
+    secondary: '#f0ddff',
+    fill: 'rgba(84,51,118,.24)',
+    behavior: 'morph',
+  },
+  haste: {
+    primary: '#d8843f',
+    secondary: '#ffe0a2',
+    fill: 'rgba(157,75,26,.25)',
+    behavior: 'wave',
+  },
   fireball: {
     primary: '#e85b2f',
     secondary: '#ffd27a',
@@ -739,6 +765,11 @@ const VARIANT_NOTES: Readonly<Record<SpellVisualVariant, string>> = {
   'mobility-trail': 'Скороход: короткий след шагов у ног.',
   'mobility-arc': 'Прыжок: читаемая дуга подъёма.',
   'mobility-haste': 'Ускорение: несколько тактов быстрого шлейфа.',
+  'target-light': 'Священное пламя: нисходящий луч света на выбранную цель.',
+  'target-bell': 'Колокол мёртвых: тёмный звон и пульсирующее кольцо вокруг цели.',
+  'psychic-shard': 'Осколок разума: психический кристалл у цели.',
+  'psychic-whip': 'Психический кнут: изогнутый хлёсткий луч к цели.',
+  'swarm-target': 'Заражение: рой мелких частиц кружит вокруг цели.',
 }
 
 function spellFamilyNote(spellIdValue: unknown, hints: SpellProfileHints, family: SpellEffectFamily) {
@@ -915,6 +946,8 @@ export type PersistentSpellEffect =
       originMode?: 'self' | 'point'
       sizeFeet: number
       areaSideFeet?: number
+      geometryVersion?: AreaGeometryVersion
+      gridOrigin?: BoardPoint
     }
   | {
       id: string
@@ -942,6 +975,8 @@ type ProjectedSpellArea = {
   radius_feet?: number
   area_shape?: string
   area_side_feet?: number
+  geometry_version?: AreaGeometryVersion
+  grid_origin?: BoardPoint
 }
 
 type ProjectedConcentration = Record<string, { effect_id?: string } | undefined>
@@ -995,6 +1030,8 @@ export function persistentSpellEffectsFromProjection(
         originMode: profile.areaOrigin,
         sizeFeet: Math.max(5, Number(effect.radius_feet) || profile.sizeFeet || 5),
         ...(Number(effect.area_side_feet) > 0 || profile.areaSideFeet ? { areaSideFeet: Number(effect.area_side_feet) || profile.areaSideFeet } : {}),
+        ...(effect.geometry_version ? { geometryVersion: effect.geometry_version } : {}),
+        ...(effect.grid_origin ? { gridOrigin: effect.grid_origin } : {}),
       })
     }
   }
@@ -1025,10 +1062,11 @@ function pointCenter(
   cellSize: number,
   scene?: BoardScene,
   actor?: SpellEffectActor | null,
+  gridOrigin?: BoardPoint,
 ) {
-  const center = actor && scene
+  const center = gridOrigin ?? (actor && scene
     ? actorPresentationCenter(scene.map, actor, { x: point.x, y: point.y })
-    : { x: point.x + .5, y: point.y + .5 }
+    : { x: point.x + .5, y: point.y + .5 })
   return { x: center.x * cellSize, y: center.y * cellSize }
 }
 
@@ -1042,9 +1080,10 @@ function trajectoryVisible(
   to: BoardPoint,
   fromActor?: SpellEffectActor | null,
   toActor?: SpellEffectActor | null,
+  targetGridOrigin?: BoardPoint,
 ) {
   const start = pointCenter(from, 1, scene, fromActor)
-  const finish = pointCenter(to, 1, scene, toActor)
+  const finish = pointCenter(to, 1, scene, toActor, targetGridOrigin)
   const steps = Math.max(1, Math.ceil(Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y))))
   for (let index = 0; index <= steps; index += 1) {
     const progress = index / steps
@@ -1140,6 +1179,9 @@ function drawFireballFlight(
     targetIds: cue.targetIds,
     from: cue.origin,
     to: cue.center,
+    ...(cue.geometryVersion === 'circle-grid-v2'
+      ? { targetGridOrigin: cue.gridOrigin ?? cue.center }
+      : {}),
     projectileCount: 1,
     spellId: cue.spellId,
     school: cue.school,
@@ -1158,12 +1200,12 @@ function drawProjectile(
   detail: SpellEffectDetail,
 ) {
   const { from, to, fromActor, toActor } = projectileEndpoints(cue, input.actors)
-  if (!visiblePoint(scene, from) || !visiblePoint(scene, to) || !trajectoryVisible(scene, from, to, fromActor, toActor)) return
+  if (!visiblePoint(scene, from) || !visiblePoint(scene, to) || !trajectoryVisible(scene, from, to, fromActor, toActor, cue.targetGridOrigin)) return
   const style = spellStyle(cue)
   const progress = input.reducedMotion || cue.motion === 'reduced' ? 1 : clamp01(input.progress)
   if (targetOutcomeIsMiss(cue, cue.targetIds[0]) && (detail === 'minimal' || progress >= 1)) return
   const start = pointCenter(from, scene.cellSize, scene, fromActor)
-  const end = pointCenter(to, scene.cellSize, scene, toActor)
+  const end = pointCenter(to, scene.cellSize, scene, toActor, cue.targetGridOrigin)
   if (detail === 'minimal') {
     drawRing(context, end, scene.cellSize * .28, style.primary, .78, Math.max(2, scene.cellSize * .055))
     return
@@ -1254,6 +1296,8 @@ export function spellBurstCells(
     target: center,
     originMode,
     sizeFeet: cue.sizeFeet,
+    ...(cue.geometryVersion ? { geometryVersion: cue.geometryVersion } : {}),
+    ...(cue.gridOrigin ? { gridOrigin: cue.gridOrigin } : {}),
     ...(profile.areaSideFeet ? { sideFeet: profile.areaSideFeet } : {}),
     bounds: { minX: 0, minY: 0, maxX: map.width - 1, maxY: map.height - 1 },
   }
@@ -1265,6 +1309,10 @@ export function spellBurstCells(
     origins,
     spreadsAroundCorners: profile.spreadsAroundCorners === true,
     radiusFeet: cue.sizeFeet,
+    ...(cue.geometryVersion ? { geometryVersion: cue.geometryVersion } : {}),
+    ...(cue.geometryVersion === 'circle-grid-v2'
+      ? { gridOrigin: cue.gridOrigin ?? gridOriginForTargetCell(center) }
+      : {}),
   })
   const lineOfEffectCells = cells.filter((cell) => masked.has(`${cell.x},${cell.y}`))
   return includeHidden ? lineOfEffectCells : lineOfEffectCells.filter(visible)
@@ -1286,9 +1334,14 @@ function drawFamilyGlyph(
   style: SpellEffectStyle,
   detail: SpellEffectDetail,
 ) {
-  const radius = size * (detail === 'full' ? .2 : .15)
   const family = style.family
-  if (detail === 'minimal' || family === 'school' || family === 'cold') return
+  const mobilityVariant = style.visualVariant === 'mobility-trail'
+    || style.visualVariant === 'mobility-arc'
+    || style.visualVariant === 'mobility-haste'
+  const radius = mobilityVariant
+    ? size * (detail === 'minimal' ? .48 : .52)
+    : size * (detail === 'full' ? .2 : .15)
+  if (detail === 'minimal' && !mobilityVariant || family === 'school' || family === 'cold') return
   context.save()
   context.globalAlpha *= detail === 'full' ? .7 : .52
   context.strokeStyle = style.secondary
@@ -1368,35 +1421,54 @@ function drawFamilyGlyph(
     context.restore()
     return
   }
-  if (style.visualVariant === 'mobility-trail') {
-    context.globalAlpha = Math.min(1, context.globalAlpha * 1.35)
-    for (let index = 0; index < 4; index += 1) {
-      const offset = (index % 2 ? 1 : -1) * radius * .35
-      const y = center.y + radius * (1.35 - index * .55)
-      context.moveTo(center.x + offset + radius * .23, y)
-      context.arc(center.x + offset, y, radius * .23, 0, Math.PI * 2)
+  if (mobilityVariant) {
+    // Один тёмный подштрих отделяет знак от миниатюры и фактуры карты; это
+    // контур читаемости, а не общий светящийся ореол.
+    const coreWidth = Math.max(2.5, size * .105)
+    const outlineWidth = coreWidth + Math.max(1.5, size * .045)
+    const baseAlpha = context.globalAlpha
+    const strokeMobility = () => {
+      context.globalAlpha = Math.min(1, baseAlpha * .95)
+      context.strokeStyle = '#271b15'
+      context.lineWidth = outlineWidth
+      context.stroke()
+      context.globalAlpha = baseAlpha
+      context.strokeStyle = style.secondary
+      context.lineWidth = coreWidth
+      context.stroke()
     }
-    context.stroke()
-    context.restore()
-    return
-  }
-  if (style.visualVariant === 'mobility-arc') {
-    context.arc(center.x, center.y + radius * .42, radius * 1.04, Math.PI * 1.16, Math.PI * 1.84)
-    context.moveTo(center.x + radius * .72, center.y - radius * .18)
-    context.lineTo(center.x + radius * 1.02, center.y - radius * .02)
-    context.lineTo(center.x + radius * .76, center.y + radius * .18)
-    context.stroke()
-    context.restore()
-    return
-  }
-  if (style.visualVariant === 'mobility-haste') {
-    for (let index = 0; index < 3; index += 1) {
-      const y = center.y + (index - 1) * radius * .48
-      const start = center.x - radius * (.92 - index * .12)
-      context.moveTo(start, y)
-      context.lineTo(start + radius * 1.12, y - radius * .16)
+    if (style.visualVariant === 'mobility-trail') {
+      const marks = detail === 'minimal' ? 2 : 4
+      for (let index = 0; index < marks; index += 1) {
+        const side = index % 2 ? 1 : -1
+        const row = index < 2 ? -1 : 1
+        const x = center.x + side * radius * .72
+        const y = center.y + row * radius * .65
+        context.moveTo(x - side * radius * .16, y - radius * .1)
+        context.lineTo(x + side * radius * .18, y)
+        context.lineTo(x - side * radius * .16, y + radius * .1)
+      }
+      strokeMobility()
+    } else if (style.visualVariant === 'mobility-arc') {
+      const arcCenterY = center.y + radius * 1.55
+      context.arc(center.x, arcCenterY, radius * .92, Math.PI * 1.22, Math.PI * 1.78)
+      const arrowX = center.x + radius * .55
+      const arrowY = arcCenterY - radius * .72
+      context.moveTo(arrowX - radius * .18, arrowY + radius * .08)
+      context.lineTo(arrowX + radius * .12, arrowY - radius * .12)
+      context.lineTo(arrowX + radius * .02, arrowY + radius * .22)
+      strokeMobility()
+    } else if (style.visualVariant === 'mobility-haste') {
+      const lanes = detail === 'minimal' ? 2 : 3
+      for (let index = 0; index < lanes; index += 1) {
+        const lane = lanes === 3 ? index - 1 : index === 0 ? -.5 : .5
+        const y = center.y + radius * (.9 + lane * .22)
+        const start = center.x - radius * .94
+        context.moveTo(start, y)
+        context.lineTo(start + radius * 1.85, y - radius * .16)
+      }
+      strokeMobility()
     }
-    context.stroke()
     context.restore()
     return
   }
@@ -1829,21 +1901,42 @@ function drawBurst(
   drawBurstMaterial(context, scene, cells, style, detail, progress)
 }
 
-type BeamPoint = { point: BoardPoint; actor?: SpellEffectActor | null }
+type BeamPoint = { point?: BoardPoint; actor?: SpellEffectActor | null; targetId?: string }
 
 function beamPoints(cue: Extract<SpellAnimationCue, { kind: 'beam' }>, actors: readonly SpellEffectActor[]) {
   const result: BeamPoint[] = []
   const originActor = actorPoint(actors, cue.actorId)
   const origin = cue.from ?? originActor
   if (origin) result.push({ point: origin, actor: originActor })
-  if (cue.points?.length) result.push(...cue.points.map((point, index) => ({ point, actor: actorPoint(actors, cue.targetIds[index]) })))
+  if (cue.points?.length) {
+    cue.targetIds.forEach((targetId, index) => result.push({
+      point: cue.points?.[index], actor: actorPoint(actors, targetId), targetId,
+    }))
+  }
   else {
     for (const targetId of cue.targetIds) {
       const target = actorPoint(actors, targetId)
-      if (target && !result.some((entry) => pointKey(entry.point) === pointKey(target))) result.push({ point: target, actor: target })
+      result.push({ point: target ?? undefined, actor: target, targetId })
     }
   }
   return result
+}
+
+function beamSegments(cue: Extract<SpellAnimationCue, { kind: 'beam' }>, points: readonly BeamPoint[]) {
+  if (cue.spellId === 'chain-lightning' && cue.chain && points.length > 2) {
+    const primary = points[1]
+    return points.slice(1).map((to, index) => ({ from: index === 0 ? points[0] : primary, to }))
+  }
+  return points.slice(1).map((to, index) => ({ from: points[index], to }))
+}
+
+function visibleBeamSegment(
+  scene: BoardScene,
+  segment: { from: BeamPoint; to: BeamPoint },
+): segment is { from: BeamPoint & { point: BoardPoint }; to: BeamPoint & { point: BoardPoint } } {
+  return Boolean(segment.from.point && segment.to.point
+    && visiblePoint(scene, segment.from.point)
+    && visiblePoint(scene, segment.to.point))
 }
 
 function drawBeam(
@@ -1853,14 +1946,18 @@ function drawBeam(
   input: SpellEffectRenderInput,
   detail: SpellEffectDetail,
 ) {
-  const points = beamPoints(cue, input.actors).filter((entry) => visiblePoint(scene, entry.point))
-  if (points.length < 2) return
+  const segments = beamSegments(cue, beamPoints(cue, input.actors)).filter((segment) => visibleBeamSegment(scene, segment))
+  if (!segments.length) return
   const style = spellStyle(cue)
   const progress = input.reducedMotion || cue.motion === 'reduced' ? 1 : clamp01(input.progress)
-  const segmentProgress = progress * (points.length - 1)
+  const segmentProgress = progress * segments.length
   const completeSegments = Math.floor(segmentProgress)
   const local = segmentProgress - completeSegments
-  const screen = points.map((entry) => pointCenter(entry.point, scene.cellSize, scene, entry.actor))
+  const screen = segments.map(({ from, to }) => ({
+    from: pointCenter(from.point, scene.cellSize, scene, from.actor),
+    to: pointCenter(to.point, scene.cellSize, scene, to.actor),
+  }))
+  const psychicWhip = style.visualVariant === 'psychic-whip'
   const drawPath = (color: string, width: number, alpha: number) => {
     context.save()
     context.globalAlpha = alpha
@@ -1868,28 +1965,27 @@ function drawBeam(
     context.lineWidth = width
     context.setLineDash(style.family === 'control' ? [Math.max(3, scene.cellSize * .12), Math.max(2, scene.cellSize * .08)] : [])
     context.beginPath()
-    context.moveTo(screen[0].x, screen[0].y)
     for (let index = 0; index < completeSegments; index += 1) {
-      const from = screen[index]
-      const target = screen[index + 1]
+      const { from, to: target } = screen[index]
+      context.moveTo(from.x, from.y)
       if (style.family === 'lightning' || style.family === 'thunder' || style.family === 'psychic') {
         const dx = target.x - from.x
         const dy = target.y - from.y
         const length = Math.max(1, Math.hypot(dx, dy))
-        const kink = (index % 2 ? 1 : -1) * scene.cellSize * .12
+        const kink = (index % 2 ? 1 : -1) * scene.cellSize * (psychicWhip ? .26 : .12)
         context.lineTo((from.x + target.x) / 2 - dy / length * kink, (from.y + target.y) / 2 + dx / length * kink)
       }
       context.lineTo(target.x, target.y)
     }
-    if (completeSegments < screen.length - 1) {
-      const from = screen[completeSegments]
-      const to = screen[completeSegments + 1]
+    if (completeSegments < screen.length) {
+      const { from, to } = screen[completeSegments]
       const current = { x: from.x + (to.x - from.x) * local, y: from.y + (to.y - from.y) * local }
+      context.moveTo(from.x, from.y)
       if (style.family === 'lightning' || style.family === 'thunder' || style.family === 'psychic') {
         const dx = current.x - from.x
         const dy = current.y - from.y
         const length = Math.max(1, Math.hypot(dx, dy))
-        const kink = (completeSegments % 2 ? 1 : -1) * scene.cellSize * .12
+        const kink = (completeSegments % 2 ? 1 : -1) * scene.cellSize * (psychicWhip ? .26 : .12)
         context.lineTo((from.x + current.x) / 2 - dy / length * kink, (from.y + current.y) / 2 + dx / length * kink)
       }
       context.lineTo(current.x, current.y)
@@ -1900,9 +1996,9 @@ function drawBeam(
   if (detail === 'full') drawPath(style.secondary, Math.max(5, scene.cellSize * .14), .28)
   drawPath(style.primary, Math.max(2, scene.cellSize * (detail === 'minimal' ? .045 : .07)), .9)
   if (cue.chain && detail !== 'minimal') {
-    for (let index = 1; index <= Math.min(completeSegments + 1, screen.length - 1); index += 1) {
-      if (targetOutcomeIsMiss(cue, cue.targetIds[index - 1])) continue
-      drawRing(context, screen[index], scene.cellSize * .18, style.secondary, .75, Math.max(1, scene.cellSize * .035))
+    for (let index = 0; index < Math.min(completeSegments + 1, screen.length); index += 1) {
+      if (targetOutcomeIsMiss(cue, segments[index].to.targetId)) continue
+      drawRing(context, screen[index].to, scene.cellSize * .18, style.secondary, .75, Math.max(1, scene.cellSize * .035))
     }
   }
 }
@@ -1997,6 +2093,73 @@ function drawTeleportPortal(
   }
 }
 
+/** Рисует эффект непосредственно на цели, когда заклинание не летит от мага. */
+function drawTargetLocalVariant(
+  context: BoardContext2D,
+  center: { x: number; y: number },
+  cellSize: number,
+  style: SpellEffectStyle,
+  progress: number,
+  detail: SpellEffectDetail,
+) {
+  const variant = style.visualVariant
+  if (!variant || !['target-light', 'target-bell', 'psychic-shard', 'swarm-target'].includes(variant)) return false
+  const pulse = .55 + Math.sin(Math.PI * clamp01(progress)) * .45
+  context.save()
+  context.globalAlpha = Math.max(.62, pulse)
+  context.strokeStyle = style.secondary
+  context.fillStyle = style.primary
+  context.lineWidth = Math.max(2.5, cellSize * .075)
+  if (variant === 'target-light') {
+    const top = center.y - cellSize * (.85 + progress * .28)
+    context.beginPath()
+    context.moveTo(center.x, top)
+    context.lineTo(center.x, center.y - cellSize * .08)
+    context.moveTo(center.x - cellSize * .14, top + cellSize * .18)
+    context.lineTo(center.x, center.y - cellSize * .18)
+    context.moveTo(center.x + cellSize * .14, top + cellSize * .18)
+    context.lineTo(center.x, center.y - cellSize * .18)
+    context.stroke()
+    drawRing(context, center, cellSize * (.2 + pulse * .08), style.secondary, .9, Math.max(1.5, cellSize * .035))
+  } else if (variant === 'target-bell') {
+    const radius = cellSize * (.34 + pulse * .1)
+    context.beginPath()
+    context.arc(center.x, center.y - cellSize * .05, radius, Math.PI, Math.PI * 2)
+    context.lineTo(center.x + radius * .82, center.y + radius * .72)
+    context.lineTo(center.x - radius * .82, center.y + radius * .72)
+    context.closePath()
+    context.stroke()
+    context.beginPath()
+    context.arc(center.x, center.y + radius * .76, radius * .16, 0, Math.PI * 2)
+    context.fill()
+    drawRing(context, center, cellSize * (.5 + pulse * .15), style.primary, .7, Math.max(1.5, cellSize * .04), [Math.max(3, cellSize * .08), Math.max(2, cellSize * .05)])
+  } else if (variant === 'psychic-shard') {
+    const radius = cellSize * (.38 + pulse * .12)
+    context.translate(center.x, center.y - cellSize * .12)
+    context.rotate(-.18 + progress * .35)
+    context.beginPath()
+    context.moveTo(0, -radius * 1.45)
+    context.lineTo(radius * .66, radius * .15)
+    context.lineTo(0, radius * 1.12)
+    context.lineTo(-radius * .66, radius * .15)
+    context.closePath()
+    context.fill()
+    context.stroke()
+  } else {
+    const count = detail === 'full' ? 7 : detail === 'reduced' ? 5 : 3
+    for (let index = 0; index < count; index += 1) {
+      const angle = index * Math.PI * 2 / count + progress * Math.PI * 1.4
+      const radius = cellSize * (.5 + (index % 3) * .12)
+      context.beginPath()
+      context.arc(center.x + Math.cos(angle) * radius, center.y + Math.sin(angle) * radius, Math.max(2.5, cellSize * .07), 0, Math.PI * 2)
+      context.fill()
+    }
+    drawRing(context, center, cellSize * .34, style.secondary, .48, Math.max(1, cellSize * .025))
+  }
+  context.restore()
+  return true
+}
+
 /** Один подтверждённый cue и звук, но акцент у каждой видимой цели Скорохода. */
 export function spellChannelTargetIds(cue: Extract<SpellAnimationCue, { kind: 'channel' }>): string[] {
   return [...new Set(cue.spellId === 'longstrider' && Array.isArray(cue.targetIds) ? cue.targetIds : [cue.targetId ?? cue.actorId])]
@@ -2028,21 +2191,32 @@ function drawChannel(
     drawTeleportPortal(context, center, scene.cellSize, style, arrival, detail)
     return
   }
+  if (drawTargetLocalVariant(context, center, scene.cellSize, style, progress, detail)) return
   const motion = envelope(style, progress)
+  const mobilityVariant = style.family === 'mobility'
+    && (style.visualVariant === 'mobility-trail' || style.visualVariant === 'mobility-arc' || style.visualVariant === 'mobility-haste')
   const radius = scene.cellSize * (
     cue.channelType === 'summon' ? .56 + motion.phase * .12
       : cue.channelType === 'healing' ? .28 + motion.phase * .24
         : .3 + motion.phase * .18
   )
-  drawRing(
-    context,
-    center,
-    radius,
-    cue.channelType === 'healing' ? '#75ad83' : style.primary,
-    Math.max(.28, motion.alpha),
-    Math.max(2, scene.cellSize * .055),
-    cue.channelType === 'summon' && detail !== 'minimal' ? [Math.max(4, scene.cellSize * .13), Math.max(2, scene.cellSize * .07)] : [],
-  )
+  const ringAlpha = Math.max(.28, motion.alpha)
+  if (mobilityVariant) {
+    const mobilityRadius = scene.cellSize * (detail === 'minimal' ? .66 : .72)
+    const coreWidth = Math.max(2.2, scene.cellSize * .07)
+    drawRing(context, center, mobilityRadius, '#271b15', ringAlpha * .95, coreWidth + Math.max(1.5, scene.cellSize * .045))
+    drawRing(context, center, mobilityRadius, style.primary, ringAlpha, coreWidth)
+  } else {
+    drawRing(
+      context,
+      center,
+      radius,
+      cue.channelType === 'healing' ? '#75ad83' : style.primary,
+      ringAlpha,
+      Math.max(2, scene.cellSize * .055),
+      cue.channelType === 'summon' && detail !== 'minimal' ? [Math.max(4, scene.cellSize * .13), Math.max(2, scene.cellSize * .07)] : [],
+    )
+  }
   if (cue.channelType === 'healing') drawHealingRise(context, center, scene.cellSize, style, progress, detail)
   if (style.family === 'teleport' && detail !== 'minimal') {
     drawRing(context, center, radius * 1.45, style.secondary, Math.max(.25, motion.alpha * .7), Math.max(1, scene.cellSize * .03), [Math.max(3, scene.cellSize * .08), Math.max(2, scene.cellSize * .05)])
@@ -2053,7 +2227,7 @@ function drawChannel(
   } else if (style.family === 'summon') {
     drawFamilyGlyph(context, center, scene.cellSize * .7, style, detail)
   } else if (style.family !== 'school' && style.family !== 'healing') {
-    drawFamilyGlyph(context, center, scene.cellSize * .7, style, detail)
+    drawFamilyGlyph(context, center, mobilityVariant ? scene.cellSize * 1.12 : scene.cellSize * .7, style, detail)
   }
   if (detail === 'minimal') return
   context.save()
@@ -2124,6 +2298,8 @@ export function createPersistentSpellEffectsRenderer(
           originMode: effect.originMode,
           sizeFeet: effect.sizeFeet,
           areaSideFeet: effect.areaSideFeet ?? profile.areaSideFeet,
+          geometryVersion: effect.geometryVersion,
+          gridOrigin: effect.gridOrigin,
           durationMs: 1,
           motion: 'reduced',
           detail: options.detail,

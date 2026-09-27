@@ -103,6 +103,33 @@ function imageFor2014(record, index = 0) {
 
 const CLONE = (value) => value == null ? value : structuredClone(value)
 const MIXED_MODE_WEAPONS = new Set(['dagger', 'javelin', 'spear', 'handaxe', 'hand-axe', 'dart', 'net'])
+/**
+ * Статблок 2014 хранит защиты смешанным списком: обычные типы — строки,
+ * условные физические защиты — объектами `{ types, condition, qualifier }`.
+ * Сохраняем обе формы в канонической копии, чтобы encounter runtime не
+ * отбрасывал условие между каталогом и врагом.
+ */
+function normalizedDamageDefenseEntries(value) {
+  return (Array.isArray(value) ? value : []).flatMap((entry) => {
+    if (typeof entry === 'string') {
+      const normalized = entry.normalize('NFKC').trim().toLowerCase()
+      return normalized ? [normalized] : []
+    }
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return []
+    const types = [...new Set((Array.isArray(entry.types) ? entry.types : [])
+      .map((type) => String(type).normalize('NFKC').trim().toLowerCase())
+      .filter(Boolean))]
+    const condition = String(entry.condition ?? '').normalize('NFKC').trim().toLowerCase()
+    if (!types.length || !condition) return []
+    const qualifier = String(entry.qualifier ?? '').normalize('NFKC').trim().toLowerCase()
+    return [{
+      types,
+      condition,
+      ...(qualifier ? { qualifier } : {}),
+    }]
+  })
+}
+
 const SUPPORTED_TRAITS = new Set([
   'pack-tactics',
   'martial-advantage',
@@ -473,6 +500,9 @@ export function enemyFrom2014(record, position, index = 0) {
   const limitations = recordLimitations(record)
   const roles = monsterRolesFor(record)
   const attackModes = monsterAttackModesFor(record)
+  const damageResistances = normalizedDamageDefenseEntries(record.damage_resistances)
+  const damageImmunities = normalizedDamageDefenseEntries(record.damage_immunities)
+  const damageVulnerabilities = normalizedDamageDefenseEntries(record.damage_vulnerabilities)
   const id = `enemy-${slugOf(record)}-${Number(index) + 1}`
   const maxHp = Number(record.hit_points.average)
   const enemy = {
@@ -505,9 +535,9 @@ export function enemyFrom2014(record, position, index = 0) {
     skills: CLONE(record.skills ?? {}),
     senses: CLONE(record.senses ?? {}),
     languages: CLONE(record.languages ?? {}),
-    ...(record.damage_resistances?.length ? { damage_resistances: record.damage_resistances.filter((entry) => typeof entry === 'string') } : {}),
-    ...(record.damage_immunities?.some(entry => typeof entry === 'string') ? { damage_immunities: CLONE(record.damage_immunities.filter(entry => typeof entry === 'string')) } : {}),
-    ...(record.damage_vulnerabilities?.some(entry => typeof entry === 'string') ? { damage_vulnerabilities: CLONE(record.damage_vulnerabilities.filter(entry => typeof entry === 'string')) } : {}),
+    ...(damageResistances.length ? { damage_resistances: damageResistances } : {}),
+    ...(damageImmunities.length ? { damage_immunities: damageImmunities } : {}),
+    ...(damageVulnerabilities.length ? { damage_vulnerabilities: damageVulnerabilities } : {}),
     ...(record.condition_immunities?.length ? { condition_immunities: CLONE(record.condition_immunities) } : {}),
     traits,
     bonus_actions: CLONE(record.bonus_actions ?? []),

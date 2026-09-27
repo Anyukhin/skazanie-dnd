@@ -3,11 +3,16 @@ import test from 'node:test'
 
 import {
   areaFacts,
+  classify,
   componentsFromPage,
   field,
+  fnv1a64Hex,
   numberFromFeet,
+  subclassesFromPage,
+  sourceClassesFromPage,
   parseComponents,
   pageFacts,
+  sourceMetadataForPage,
 } from '../tools/generate-dndsu-spells.mjs'
 import { normalizeSourceSchool } from '../tools/audit-dndsu-spell-sources.mjs'
 
@@ -53,6 +58,68 @@ test('геометрия распознаёт число перед формой
   assert.deepEqual(areaFacts('Цилиндр радиусом 30 футов.'), { areaShape: 'cylinder', radius: 30 })
   assert.equal(numberFromFeet('15-футовый конус'), 0)
   assert.equal(numberFromFeet('60 футов'), 60)
+})
+
+test('генератор выдаёт одинаковую форму area-полей для обычной и площадной карточки', () => {
+  const base = { castingTime: '1 действие', rangeText: '60 футов', duration: 'мгновенная', description: 'Эффект без области.' }
+  const regular = classify({}, base)
+  assert.equal(regular.areaShape, null)
+  assert.equal(regular.radius, null)
+  const area = classify({}, { ...base, description: 'Существа в 15-футовом конусе совершают спасбросок Ловкости.' })
+  assert.equal(area.areaShape, 'cone')
+  assert.equal(area.radius, 15)
+})
+
+test('происхождение и пересказ усиления сохраняются при повторной генерации', () => {
+  const html = '<title>Огненный шар / Заклинания D&D 5 / Player’s Handbook</title><article>source bytes</article>'
+  const first = sourceMetadataForPage({
+    card: {},
+    html,
+    fetchedAt: '2026-09-19T00:00:00.000Z',
+    higherLevels: 'За каждый круг ячейки выше третьего: урон +1к6.',
+  })
+  const rerun = sourceMetadataForPage({
+    card: {},
+    html,
+    fetchedAt: '2026-09-20T00:00:00.000Z',
+    previous: first,
+  })
+  assert.equal(first.sourceHashFnv1a64, fnv1a64Hex(html))
+  assert.equal(rerun.sourceHashFnv1a64, first.sourceHashFnv1a64)
+  assert.deepEqual(rerun.sourceBooks, ['Player’s Handbook'])
+  assert.equal(rerun.higherLevels, 'За каждый круг ячейки выше третьего: урон +1к6.')
+  assert.equal(rerun.sourceFetchedAt, '2026-09-20T00:00:00.000Z')
+})
+
+test('проверенное отсутствие усиления очищает старую формулу и сохраняется при следующей генерации', () => {
+  const args = { card: {}, html: '<title>Карточка заклинания</title>', fetchedAt: '2026-09-26T00:00:00.000Z' }
+  const reviewed = sourceMetadataForPage({ ...args, previous: { higherLevels: 'Ошибочная прибавка урона.' }, higherLevels: null })
+  assert.equal(reviewed.higherLevels, null)
+  assert.equal(sourceMetadataForPage({ ...args, previous: reviewed }).higherLevels, null)
+})
+
+test('подклассы читаются из строки карточки, а фильтр страницы не считается списком', () => {
+  const html = `<select><option>Подкласс</option></select><ul>
+    <li><strong>Подклассы:</strong><a href="/classes/druid">круг дикого огня</a> (друид),
+    <a href="/classes/cleric">домен жизни</a> (жрец), боевой кузнец (изобретатель)</li></ul>`
+  const expected = ['круг дикого огня (друид)', 'домен жизни (жрец)', 'боевой кузнец (изобретатель)']
+  assert.deepEqual(subclassesFromPage(html), expected)
+  const args = { card: {}, fetchedAt: '2026-09-26T00:00:00.000Z' }
+  const first = sourceMetadataForPage({ ...args, html })
+  assert.deepEqual(sourceMetadataForPage({ ...args, html, previous: first }).subclasses, expected)
+  assert.deepEqual(sourceMetadataForPage({ ...args, html: '<select><option>Подкласс</option></select>', previous: first }).subclasses, [])
+})
+
+test('названия подклассов сохраняют скобки и декодируют десятичные и шестнадцатеричные HTML-сущности', () => {
+  const html = '<li><strong>Подклассы:</strong>Клятва &#171;Короны&#187; (паладин), Круг &amp; Пламя (&#x434;руид)</li>'
+  assert.deepEqual(subclassesFromPage(html), ['Клятва «Короны» (паладин)', 'Круг & Пламя (друид)'])
+})
+
+test('справочник сохраняет изобретателя и пометки расширенного списка TCE отдельно от игровых классов', () => {
+  const html = '<li><strong>Классы:</strong>волшебник, изобретатель, бард<sup>TCE</sup>, друид^{TCE}</li>'
+  const expected = ['волшебник', 'изобретатель', 'бард (TCE)', 'друид (TCE)']
+  assert.deepEqual(sourceClassesFromPage(html), expected)
+  assert.deepEqual(sourceMetadataForPage({ card: {}, html, fetchedAt: '2026-09-26T00:00:00.000Z' }).sourceClasses, expected)
 })
 
 test('ритуальная пометка школы нормализуется отдельно от названия школы', () => {

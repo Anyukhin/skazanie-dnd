@@ -810,7 +810,13 @@ function publicBattleEventFor(entry, state, actorId = '', visibility = {}) {
     } else {
       result.to = to
       if (area && visibleCellKeys.has(pointKey(area)) && Number.isFinite(Number(entry.area?.radiusFeet))) {
-        result.area = { ...area, radiusFeet: Math.max(0, integer(entry.area.radiusFeet, 0)) }
+        const gridOrigin = publicPoint(entry.area?.gridOrigin)
+        result.area = { ...area, radiusFeet: Math.max(0, integer(entry.area.radiusFeet, 0)),
+          ...(entry.area?.geometryVersion === 'circle-grid-v2' && gridOrigin && visibleCellKeys.has(pointKey(gridOrigin)) ? {
+            geometryVersion: 'circle-grid-v2', gridOrigin,
+            ...(['sphere', 'cylinder'].includes(entry.area.shape) ? { shape: entry.area.shape } : {}),
+          } : {}),
+        }
       } else delete result.area
     }
   }
@@ -829,6 +835,12 @@ function publicBattleEventFor(entry, state, actorId = '', visibility = {}) {
     }
   }
   const enemyIds = new Set((state?.enemies ?? []).map((enemy) => text(enemy?.id ?? enemy?.actor_id, 120)))
+  const visibleSocialNpcIds = new Set((state?.social?.npcs ?? [])
+    .map((/** @type {Loose} */ npc) => text(npc?.id, 120))
+    .filter((/** @type {string} */ id) => id && visibility.visibleActorIds?.has(id)))
+  if (visibleSocialNpcIds.has(targetId)) {
+    for (const key of ['hpBefore', 'hpAfter', 'maximumHpBefore', 'maximumHpAfter']) delete result[key]
+  }
   if (enemyIds.has(targetId) && !exactEnemyHealthKnown(state, targetId, actorId)) {
     delete result.hpBefore
     delete result.hpAfter
@@ -1028,6 +1040,7 @@ function publicActiveEffectFor(state, effect, visibleCellKeys, visibleActorIds) 
   if (!id) return null
   const center = publicPoint(effect.center)
   const centerVisible = center != null && visibleCellKeys.has(pointKey(center))
+  const gridOrigin = publicPoint(effect.grid_origin)
   const cells = [...visibleCellKeys].map((key) => {
     const [x, y] = key.split(',').map(Number)
     return { x, y }
@@ -1042,6 +1055,8 @@ function publicActiveEffectFor(state, effect, visibleCellKeys, visibleActorIds) 
     spell_id: centerVisible || sourceVisible ? text(effect.spell_id, 120) : UNKNOWN_AREA_SPELL_ID,
     ...(sourceVisible ? { source_actor: sourceActor } : {}),
     ...(centerVisible ? { center } : {}),
+    ...(centerVisible && effect.geometry_version === 'circle-grid-v2' && gridOrigin && visibleCellKeys.has(pointKey(gridOrigin))
+      ? { geometry_version: 'circle-grid-v2', grid_origin: gridOrigin } : {}),
     ...(cells.length ? { cells } : {}),
     ...(effect.difficult_terrain === true ? { difficult_terrain: true } : {}),
     ...(effect.concentration === true ? { concentration: true } : {}),
@@ -1106,11 +1121,12 @@ function publicConcentrationFor(value, enemyIds, visibleActorIds, activeEffects 
 function redactSpellVisualPayload(payload, state) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload
   const visibleCellKeys = publicRevealedCellKeys(publicSceneFor(state?.scene))
-  for (const key of ['from', 'to', 'origin', 'center']) {
+  for (const key of ['from', 'to', 'origin', 'center', 'area_grid_origin']) {
     if (!Object.hasOwn(payload, key)) continue
     const point = publicPoint(payload[key])
     if (!point || !visibleCellKeys.has(pointKey(point))) delete payload[key]
   }
+  if (!payload.area_grid_origin) delete payload.area_geometry_version
   return payload
 }
 
@@ -1506,8 +1522,12 @@ function playerItemsWithCapabilities(players, viewerId = '', rulesetId = '', sta
   return (Array.isArray(players) ? players : []).map((player) => {
     const own = !viewer || String(player?.id ?? '') === viewer
     const publicPlayer = publicActorWithFootprint(player, { hideMasked: false })
+    const visibleCombatActions = !own && Array.isArray(publicPlayer.combatActions)
+      ? publicPlayer.combatActions.filter((action) => String(action?.id ?? '') !== 'enervation-repeat')
+      : publicPlayer.combatActions
     return {
       ...publicPlayer,
+      ...(Array.isArray(visibleCombatActions) ? { combatActions: visibleCombatActions } : {}),
       ...(own && state && rulesetId === 'dnd_5e_2014' && Array.isArray(publicPlayer.combatSpells) ? {
         combatSpells: publicPlayer.combatSpells.map((/** @type {Loose} */ spell) => ({
           ...spell,
@@ -1750,6 +1770,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
   ].filter(Boolean))
   const visibleCellKeys = publicRevealedCellKeys(scene)
   const enemyIds = new Set((state?.enemies ?? []).map((/** @type {Loose} */ enemy) => text(enemy?.id ?? enemy?.actor_id, 120)))
+  const socialNpcIds = new Set((state.social?.npcs ?? []).map((/** @type {Loose} */ npc) => String(npc.id)))
   const mechanics = visible.mechanics && typeof visible.mechanics === 'object'
     ? (() => {
       const {
@@ -1780,7 +1801,8 @@ export function campaignStateForViewer(state, user, actorId = '') {
       ...(visible.mechanics.temporary_hp
         ? {
           temporary_hp: publicActorKeyedMapFor(
-            visible.mechanics.temporary_hp,
+            Object.fromEntries(Object.entries(visible.mechanics.temporary_hp)
+              .filter(([id]) => !socialNpcIds.has(id))),
             enemyIds,
             (/** @type {string} */ id) => exactEnemyHealthKnown(state, id, actorId),
           ),
@@ -1806,7 +1828,37 @@ export function campaignStateForViewer(state, user, actorId = '') {
       encounter: publicEncounterFor(visible.mechanics.encounter),
       ...(visible.mechanics.combat && typeof visible.mechanics.combat === 'object' ? {
         combat: {
-          ...visible.mechanics.combat,
+          ...(() => {
+            const { combat_instance_id: _combatInstanceId, ...publicCombat } = visible.mechanics.combat
+            return publicCombat
+          })(),
+          // Учёт перезарядки содержит внутренние ID вещей. Клиенту нужны
+          // доступные действия, а не бухгалтерия экземпляров оружия врага.
+          action_economy: Object.fromEntries(Object.entries(visible.mechanics.combat.action_economy ?? {})
+            .map(([id, economy]) => {
+              const {
+                loading_weapon_item_ids,
+                loadingWeaponItemIds,
+                attack_action_id,
+                attack_action_stack,
+                ...publicEconomy
+              } = /** @type {Loose} */ (economy ?? {})
+              const publicStack = Array.isArray(attack_action_stack)
+                ? attack_action_stack.map((frame) => {
+                  const {
+                    id: _frameId,
+                    loading_weapon_item_ids: _frameLoadingIds,
+                    loadingWeaponItemIds: _frameLoadingIdsCamel,
+                    ...safeFrame
+                  } = /** @type {Loose} */ (frame ?? {})
+                  return safeFrame
+                })
+                : undefined
+              return [id, {
+                ...publicEconomy,
+                ...(publicStack ? { attack_action_stack: publicStack } : {}),
+              }]
+            })),
           initiative: publicInitiativeFor(visible.mechanics.combat.initiative, state, actorId),
           reaction_window: publicReactionWindowFor(visible.mechanics.combat.reaction_window, state, actorId),
         },
@@ -1903,6 +1955,13 @@ function eventForViewer(event, user, actorId, state = {}) {
     : {}
   delete payload.knowledge_gate
   delete payload.previous_view
+  // Внутренний учёт действий нужен редьюсеру. Производные от команд ID
+  // не должны попадать в события, доступные игроку.
+  for (const key of [
+    'action_economy_version', 'attack_action_resource', 'attack_action_id', 'attack_action_boundary',
+    'attack_action_kind', 'attack_action_limit', 'attack_action_spends_action', 'attack_action_extra_kind',
+    'action_boundary_id', 'action_boundary_kind', 'action_boundary_limit', 'action_boundary_queued',
+  ]) delete payload[key]
   if (visible.event_type === 'SpellAreaCreated' && payload.effect && typeof payload.effect === 'object') {
     const allActors = projectVisibleState([...(state.players ?? []), ...(state.actors ?? []), ...(state.enemies ?? [])], viewerFor(state, user, actorId), { forNarrator: true }) ?? []
     const visibleActorIds = new Set([...allActors, ...sceneNpcsForViewer(state)].map((/** @type {Loose} */ actor) => String(actor.id)))
@@ -1935,6 +1994,15 @@ function eventForViewer(event, user, actorId, state = {}) {
     if (payload.spell_id === 'longstrider' || payload.condition === 'longstrider') {
       for (const key of ['from', 'to', 'origin', 'center']) delete payload[key]
     }
+  }
+  // Социальный NPC не отдаёт игроку собственный запас хитов. `NpcHarmed` держит
+  // ту же границу: факт события и подтверждённая величина остаются, числа
+  // до/после, сырой запрос и максимум исчезают из механического события.
+  if (visible.event_type === 'HealingApplied'
+    && Array.isArray(visible.target_ids)
+    && visible.target_ids.some((/** @type {unknown} */ targetId) => (state.social?.npcs ?? [])
+      .some((/** @type {Loose} */ npc) => String(npc?.id ?? '') === String(targetId)))) {
+    for (const key of ['hp', 'max_hp', 'hp_before', 'hp_after', 'maximum_hp', 'maximum_hp_before', 'maximum_hp_after', 'raw_amount', 'requested_amount', 'amount', 'rolled_amount']) delete payload[key]
   }
   if (visible.event_type === 'SpellCast') redactSpellVisualPayload(payload, state)
   if (visible.event_type === 'CampaignStoryCompleted') {
@@ -2091,7 +2159,12 @@ function eventForViewer(event, user, actorId, state = {}) {
     for (const key of ['succession_id', 'due_at_minutes', 'reason', 'source_event_id']) delete payload[key]
   }
   if (visible.event_type === 'NpcHarmed') {
-    for (const key of ['hp', 'max_hp', 'hp_before', 'hp_after', 'raw_amount']) delete payload[key]
+    for (const key of ['hp', 'max_hp', 'hp_before', 'hp_after', 'raw_amount', 'temporary_hp_before', 'temporary_hp_after', 'temporary_hp_absorbed']) delete payload[key]
+    if (Array.isArray(payload.damage_components)) {
+      for (const component of payload.damage_components) {
+        if (component && typeof component === 'object') delete component.temporary_hp_absorbed
+      }
+    }
   }
   if (visible.event_type === 'NpcSavingThrowResolved') {
     for (const key of ['modifier', 'kept', 'dice', 'roll_id', 'expression']) delete payload[key]

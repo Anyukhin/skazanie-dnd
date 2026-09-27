@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import test from 'node:test'
@@ -11,20 +11,24 @@ import { buildThemedScene } from '../server/scene-themes.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const compiledDir = mkdtempSync(join(root, 'tmp', 'prop-supports-'))
+const outputDir = join(compiledDir, 'src')
+mkdirSync(outputDir, { recursive: true })
+mkdirSync(join(compiledDir, 'server'), { recursive: true })
+copyFileSync(join(root, 'server', 'circular-area-geometry.mjs'), join(compiledDir, 'server', 'circular-area-geometry.mjs'))
 test.after(() => rmSync(compiledDir, { recursive: true, force: true }))
 const compiler = join(root, 'node_modules/typescript/bin/tsc')
 const compile = spawnSync(process.execPath, [compiler, '--ignoreConfig', '--target', 'ES2022', '--module', 'ESNext',
-  '--moduleResolution', 'Bundler', '--lib', 'ES2022,DOM', '--strict', '--skipLibCheck', '--outDir', compiledDir,
+  '--moduleResolution', 'Bundler', '--lib', 'ES2022,DOM', '--strict', '--skipLibCheck', '--rootDir', root, '--outDir', compiledDir,
   join(root, 'src/board3d-scene.ts')], { encoding: 'utf8' })
 assert.equal(compile.status, 0, compile.stderr || compile.stdout)
-for (const name of readdirSync(compiledDir).filter((name) => name.endsWith('.js'))) {
-  const file = join(compiledDir, name)
+for (const name of readdirSync(outputDir).filter((name) => name.endsWith('.js'))) {
+  const file = join(outputDir, name)
   writeFileSync(file.replace(/\.js$/u, '.mjs'), readFileSync(file, 'utf8').replace(/(from\s+["'])(\.\/[^"']+)(["'])/gu, '$1$2.mjs$3'))
   rmSync(file)
 }
-const client = await import(pathToFileURL(join(compiledDir, 'tactical-map-client.mjs')).href)
-const render = await import(pathToFileURL(join(compiledDir, 'board-render.mjs')).href)
-const scene3d = await import(pathToFileURL(join(compiledDir, 'board3d-scene.mjs')).href)
+const client = await import(pathToFileURL(join(outputDir, 'tactical-map-client.mjs')).href)
+const render = await import(pathToFileURL(join(outputDir, 'board-render.mjs')).href)
+const scene3d = await import(pathToFileURL(join(outputDir, 'board3d-scene.mjs')).href)
 
 function fixture() {
   const map = createTacticalMap({ width: 6, height: 6, seed: 'supports', catalogRevision: null })

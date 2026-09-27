@@ -288,7 +288,12 @@ test('слишком большой aggregate отклоняется до пер
 
 test('все producer-path TimeAdvanced используют один resolver перезарядки', () => {
   const source = readFileSync(new URL('../server/rules-engine.mjs', import.meta.url), 'utf8')
-  assert.match(source, /actionType === 'long_cast'[\s\S]{0,350}appendTimeAdvance\(/u)
+  const longCastStart = source.indexOf("if (!state.mechanics.combat.active && spell?.actionType === 'long_cast')")
+  const longCastEnd = source.indexOf('const counterspell =', longCastStart)
+  assert.ok(longCastStart >= 0 && longCastEnd > longCastStart, 'найден обработчик длительного накладывания')
+  // Перед часами теперь снимается прежняя концентрация; длина этого кода
+  // не меняет требование использовать общий producer времени.
+  assert.match(source.slice(longCastStart, longCastEnd), /appendTimeAdvance\(/u)
   assert.match(source, /case 'AdvanceTime'[\s\S]{0,350}appendWorldTimeConsequences\(/u)
   assert.match(source, /if \(definition\.kind === 'campfire'\)[\s\S]{0,1600}appendWorldTimeConsequences\(/u)
   const producers = [...source.matchAll(/eventFrom\([^\n]*'TimeAdvanced'/gu)]

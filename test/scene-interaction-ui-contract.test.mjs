@@ -68,7 +68,7 @@ test('клик выбирает интерактивный prop, а его кн�
   assert.match(boardSource, /hotspot\?: React\.ReactNode/u)
   assert.match(boardSource, /className="board-hotspots"/u)
   assert.match(appSource, /hotspot: !pointSpellSelected && \(doorHotspot \|\| sceneObject\) \? <>\s*\{doorHotspot\}\s*\{sceneObject \? <span/u)
-  assert.match(appSource, /onPropActivate=\{pointSpellSelected \? undefined : onPropActivate\}/u, 'прицеливание не открывает меню предмета вместо выбора клетки')
+  assert.match(appSource, /onPropActivate=\{spellAreaPreviewSelected \? undefined : onPropActivate\}/u, 'прицеливание не открывает меню предмета вместо выбора клетки')
   assert.match(appSource, /className="scene-object-menu"/u)
   assert.match(appSource, /onOperateSceneObject\(selected, sceneObject\.id, intent\)/u)
   assert.doesNotMatch(appSource, /className="scene-object-control/u, 'нижние дублирующие кнопки объекта удалены')

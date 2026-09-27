@@ -305,6 +305,9 @@ export type Currency = {
 
 export type MechanicsSupport = 'verified' | 'partial' | 'heuristic' | 'ruling-only'
 
+/** Версия клеточной семантики круглой области; отсутствие сохраняет legacy. */
+export type AreaGeometryVersion = 'legacy-grid-v1' | 'circle-grid-v2'
+
 export type SpellMaterialComponent = {
   description: string
   costGp: number | null
@@ -371,6 +374,8 @@ export type CombatSpell = {
   areaShape?: 'sphere' | 'cone' | 'line' | 'cube' | 'cylinder'
   /** Для куба сторона в футах; `radius` остаётся радиусом круглых областей. */
   areaSideFeet?: number
+  /** Авторитетная версия геометрии, присланная сервером в профиле заклинания. */
+  areaGeometryVersion?: AreaGeometryVersion
   duration?: string
   durationRounds?: number
   castingTime?: string
@@ -384,6 +389,10 @@ export type CombatSpell = {
   requiresWeaponAttack?: boolean
   weaponCantrip?: 'booming-blade' | 'green-flame-blade'
   beamScaling?: boolean
+  /** Число отдельных лучей; каждый луч выбирает цель в порядке target_ids. */
+  beams?: number
+  /** Дополнительные лучи за уровень ячейки выше базового. */
+  upcastBeamsPerLevel?: number
   damageIfTargetWounded?: string
   automaticHit?: boolean
   projectileCount?: number
@@ -393,6 +402,10 @@ export type CombatSpell = {
   maxTargets?: number
   /** Максимальный разлёт выбранных целей; проверяет сервер, UI только предупреждает. */
   maxTargetSeparationFeet?: number
+  /** Якорь цепи: вторичные цели проверяются относительно первой. */
+  targetSeparationAnchor?: 'primary'
+  /** Сервер отклоняет повторяющуюся цель до нормализации списка. */
+  rejectDuplicateTargetIds?: boolean
   upcastTargetsPerLevel?: number
   armorClassBonus?: number
   armorClassBase?: number
@@ -563,7 +576,20 @@ export function spellComponentAvailabilityFor(spell?: Pick<CombatSpell, 'compone
 }
 
 /** Лимит целей берётся из server-owned профиля; отсутствие поля означает одну цель. */
-export function combatSpellTargetLimit(spell?: Pick<CombatSpell, 'maxTargets'> & Partial<Pick<CombatSpell, 'level' | 'upcastTargetsPerLevel'>> | null, castLevel?: number): number {
+export function combatSpellTargetLimit(
+  spell?: Partial<Pick<CombatSpell, 'maxTargets' | 'level' | 'upcastTargetsPerLevel' | 'beams' | 'upcastBeamsPerLevel' | 'beamScaling'>> | null,
+  castLevel?: number,
+  casterLevel = 1,
+): number {
+  if (spell?.beamScaling === true) {
+    const level = Math.max(1, Math.floor(Number(casterLevel) || 1))
+    return level >= 11 ? 3 : level >= 5 ? 2 : 1
+  }
+  const beams = Math.floor(Number(spell?.beams) || 0)
+  if (beams > 0) {
+    return Math.max(1, beams)
+      + Math.max(0, Math.floor(Number(castLevel) || 0) - Number(spell?.level ?? 0)) * Math.max(0, Number(spell?.upcastBeamsPerLevel) || 0)
+  }
   return Math.max(1, Math.floor(Number(spell?.maxTargets) || 1))
     + Math.max(0, Math.floor(Number(castLevel) || 0) - Number(spell?.level ?? 0)) * Math.max(0, Number(spell?.upcastTargetsPerLevel) || 0)
 }
@@ -665,9 +691,14 @@ export function toggleCombatSpellTargetIds(current: readonly string[], targetId:
 export function combatSpellTargetsWithinSeparation(
   points: ReadonlyArray<{ x: number; y: number }>,
   maximumFeet?: number,
+  anchor: 'primary' | null = null,
 ): boolean {
   const limit = Math.max(0, Number(maximumFeet) || 0)
   if (!limit || points.length < 2) return true
+  if (anchor === 'primary') {
+    const primary = points[0]
+    return points.slice(1).every((point) => Math.max(Math.abs(Number(primary.x) - Number(point.x)), Math.abs(Number(primary.y) - Number(point.y))) * 5 <= limit)
+  }
   for (let first = 0; first < points.length; first += 1) {
     for (let second = first + 1; second < points.length; second += 1) {
       const distance = Math.max(Math.abs(Number(points[first].x) - Number(points[second].x)), Math.abs(Number(points[first].y) - Number(points[second].y))) * 5
@@ -1247,6 +1278,8 @@ export type DndClassKey = 'barbarian' | 'bard' | 'cleric' | 'druid' | 'fighter' 
 export type CombatAction = {
   id: string
   name: string
+  /** Собственная иконка для продолжения уже наложенного заклинания. */
+  iconId?: string
   category: 'common' | 'class'
   target: 'self' | 'ally' | 'enemy' | 'creature'
   actionType: 'action' | 'bonus_action' | 'reaction' | 'free'
@@ -1442,7 +1475,13 @@ export type BattleEvent = {
    */
   remainingCount?: number
   statusAfter?: string
-  area?: { x: number; y: number; radiusFeet: number }
+  area?: {
+    x: number
+    y: number
+    radiusFeet: number
+    geometryVersion?: AreaGeometryVersion
+    gridOrigin?: { x: number; y: number }
+  }
 }
 
 export type Scene = {
@@ -2738,7 +2777,7 @@ export type GameMechanics = Record<string, unknown> & {
   concentration?: Record<string, { effect_id?: string; source_rule_ids?: string[] }>
   /** Временные хиты по участникам; у неопознанного врага ключа нет. */
   temporary_hp?: Record<string, number>
-  conditions?: Record<string, Array<{ id: string; duration?: string | null; source_actor?: string | null; effect_id?: string | null; repeat_save_timing?: 'turn-end' | null; repeat_save_on_damage?: boolean; damage_save_advantage?: boolean; break_on_damage_from_source_allies?: boolean; save_ability?: string | null; save_dc?: number | null; spell_id?: string | null; spell_option?: string | null; last_used_turn?: string | null }>>
+  conditions?: Record<string, Array<{ id: string; duration?: string | null; source_actor?: string | null; source_item_id?: string | null; spellcasting_ability?: string | null; magical_weapon?: boolean; effect_id?: string | null; repeat_save_timing?: 'turn-end' | null; repeat_save_on_damage?: boolean; damage_save_advantage?: boolean; break_on_damage_from_source_allies?: boolean; save_ability?: string | null; save_dc?: number | null; spell_id?: string | null; spell_option?: string | null; last_used_turn?: string | null }>>
   active_effects?: Array<{
     id: string
     effect_id?: string
@@ -2749,6 +2788,8 @@ export type GameMechanics = Record<string, unknown> & {
     radius_feet?: number
     area_side_feet?: number
     area_shape?: string
+    geometry_version?: AreaGeometryVersion
+    grid_origin?: { x: number; y: number }
     difficult_terrain?: boolean
     trigger_on_enter?: boolean
     trigger_on_turn_end?: boolean

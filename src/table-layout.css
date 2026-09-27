@@ -100,10 +100,29 @@
 .dialogue-composer .prepared-chip { flex: 1 0 100%; max-width: 100%; background: #30261a; border-radius: 4px; }
 .dialogue-composer .rail-free-input > button { grid-column: 2; grid-row: 1; width: auto; height: 36px; padding: 0 12px; font: 600 var(--fs-md) Manrope, sans-serif; border-radius: 4px; background: #5f4227; color: #f0d6ae; }
 .dialogue-composer .rail-free-input > button:disabled { opacity: .5; }
-.turn-rail { height:var(--ui-rail-height,auto); min-height: max-content; max-height: none; grid-template-rows: 28px auto; gap: 6px; padding: 8px 20px; background: #18140f; }
+.turn-rail { height:var(--ui-rail-height,auto); min-height: 0; max-height: none; grid-template-rows: 28px auto; gap: 6px; padding: 8px 20px; background: #18140f; }
 .turn-rail .combat-hotbar.tactical-control{grid-template-rows:auto;gap:0}
-.turn-rail > .hotbar-decks { max-width:calc(100% - 302px * var(--ui-readable-scale,1));justify-content: flex-start; gap: 4px; overflow: visible; }
-.hotbar-tabs { display: flex; flex: 0 1 auto; min-width: 0; align-items: center; gap: inherit; overflow-x: auto; scrollbar-width: none; }
+.turn-rail > .hotbar-decks {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 50%);
+  align-items: center;
+  max-width: none;
+  min-width: 0;
+  gap: 4px;
+  overflow: hidden;
+}
+.turn-rail > .hotbar-decks > .hotbar-tabs { grid-column: 1; min-width: 0; }
+.turn-rail > .hotbar-decks > .group-decision-button,
+.turn-rail > .hotbar-decks > .start-combat-button {
+  grid-column: 2;
+  min-width: 0;
+}
+.turn-rail > .hotbar-decks > .hotbar-combat-controls {
+  grid-column: 2;
+  min-width: 0;
+  width: 100%;
+}
+.hotbar-tabs { display: flex; min-width: 0; align-items: center; gap: inherit; overflow-x: auto; scrollbar-width: none; }
 .turn-rail > .hotbar-decks > button { flex-shrink: 0; }
 .turn-rail > .hotbar-decks .hotbar-tabs button { flex: 0 0 auto; }
 .turn-rail > .hotbar-decks button { display: inline-flex; min-width: 28px; width: auto; height: 28px; padding: 0 6px; align-items: center; gap: 4px; border-radius: 4px; }
@@ -111,7 +130,7 @@
 .turn-rail > .hotbar-decks .start-combat-button { border: 1px solid #994e45; background: #572c27; color: #f0b5a9; }
 .turn-rail > .hotbar-decks .start-combat-button:hover:not(:disabled) { border-color: #cd7868; background: #70362e; color: #ffe0d6; }
 .turn-rail > .hotbar-decks .start-combat-button:disabled { opacity: .5; cursor: not-allowed; }
-.turn-rail .hotbar-combat-controls { display: flex; flex: 0 0 auto; gap: 4px; align-items: center; }
+.turn-rail .hotbar-combat-controls { display: flex; max-width: none; min-width: 0; gap: 4px; align-items: center; overflow-x: auto; scrollbar-width: thin; }
 .turn-rail .hotbar-combat-controls button { flex-shrink: 0; white-space: nowrap; color: #d1baa0; border: 1px solid #58442c; background: #261e15; }
 .turn-rail .hotbar-combat-controls button:disabled { opacity: .45; cursor: not-allowed; }
 .turn-rail .hotbar-combat-controls .end-turn-hotbar { background: #73522c; color: #f0d3a2; border-color: #a67b45; }
@@ -125,8 +144,8 @@
 .turn-rail .hotbar-detail .detail-description { font-size: var(--fs-md); line-height: 1.5; }
 .turn-rail .hotbar-detail h3 { font-size: var(--fs-xl); }
 .turn-rail .hotbar-actions-shell{height:auto;min-height:calc(var(--slot) * var(--ui-tile-rows,2) + 18px);align-items:flex-start}
-.turn-rail .hotbar-main{min-height:max-content}
-.turn-rail .player-resource-panel{align-content:start;gap:3px;font:500 var(--fs-sm)/1.35 Manrope,sans-serif}
+.turn-rail .hotbar-main{min-height:0}
+.turn-rail .player-resource-panel{min-height:0;align-content:start;gap:3px;overflow-y:auto;overscroll-behavior:contain;font:500 var(--fs-sm)/1.35 Manrope,sans-serif}
 .player-resource-panel .turn-rail-player-hud>.player-hud{position:static;width:100%;min-width:0;padding:0 0 4px;border:0;border-bottom:1px solid var(--line);border-radius:0;background:none;box-shadow:none;grid-template-rows:auto auto;gap:4px 8px}
 .player-resource-panel .hud-identity{grid-column:1;grid-row:1}
 .player-resource-panel .hud-portrait{width:28px;height:28px;flex-basis:28px}
@@ -216,7 +235,7 @@
   grid-template-rows: auto;
   gap: 8px 12px;
   min-height: 0;
-  align-items: stretch;
+  align-items: start;
 }
 .turn-rail .tile-toolbar { grid-column: 1; grid-row: 1; height: auto; align-self: stretch; align-content: start; }
 .turn-rail .hotbar-actions-shell {
@@ -224,21 +243,21 @@
   grid-row: 1;
   height: auto;
   min-height: 0;
-  align-self: stretch;
+  align-self: start;
   align-items: stretch;
   padding: 0;
   border: 0;
   background: none;
 }
-.turn-rail .hotbar-actions { grid-template-rows: repeat(2, minmax(var(--slot), 1fr)); grid-auto-columns: var(--slot); grid-auto-flow: column; align-content: stretch; }
-.turn-rail .action-tile { width: 100%; min-width: 0; height: 100%; padding: 0; }
+.turn-rail .hotbar-actions { grid-template-rows: repeat(2, var(--slot)); grid-auto-columns: var(--slot); grid-auto-flow: column; align-content: start; }
+.turn-rail .action-tile { width: var(--slot); min-width: 0; height: var(--slot); padding: 0; }
 .turn-rail .hotbar-hero-cluster {
   grid-column: 3;
   grid-row: 1;
   order: initial;
   width: auto;
   max-width: none;
-  margin: -34px 0 0;
+  margin: 0;
   padding: 0 0 0 12px;
   border: 0;
   border-left: 1px solid var(--line);
@@ -305,12 +324,25 @@
 .turn-rail .hero-resource.class-pool { grid-column: 1 / -1; }
 
 @media (min-width: 901px) and (max-width: 1500px) {
-  .turn-rail > .hotbar-decks { max-width: calc(100% - 268px); }
+  .turn-rail > .hotbar-decks { max-width: none; }
   .turn-rail .combat-hotbar { --slot: calc(82px * var(--ui-readable-scale, 1)); }
   .turn-rail .hotbar-main { grid-template-columns: 26px minmax(0, 1fr) 260px; gap: 8px; }
   .turn-rail .hotbar-turn-controls { flex-basis: 44px; width: 44px; min-width: 44px; padding-left: 4px; }
   .turn-rail .hotbar-turn-controls button { justify-content: center; padding: 5px; }
   .turn-rail .hotbar-turn-controls button > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+}
+
+/* На невысоком desktop старый max-content rail съедал всю рабочую высоту:
+   панель растягивалась под ресурсный кластер, а доска оставалась полосой.
+   Сохранённый resize продолжает работать, но большое значение ограничивается
+   оставшимся окном; переполнение живёт внутри rail и панели ресурсов. */
+@media (min-width: 901px) {
+  .turn-rail {
+    --rail-viewport-cap: max(180px, calc(100dvh - var(--status) - 330px));
+    min-height: min(var(--ui-rail-height, var(--rail)), var(--rail-viewport-cap));
+    max-height: min(var(--ui-rail-height, 38vh), var(--rail-viewport-cap));
+    overflow: auto;
+  }
 }
 @media (min-width: 901px) and (max-width: 1800px) {
   .turn-rail > .hotbar-decks .hotbar-tabs button { padding-inline: 4px; }

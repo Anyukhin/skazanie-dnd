@@ -32,10 +32,10 @@ type TacticalCommand =
   | { command_type: 'MoveActor'; actor_id: string; to: { x: number; y: number } }
   | { command_type: 'MakeAttack'; actor_id: string; target_id: string; item_id?: string; attack_mode?: 'melee' | 'ranged' | 'thrown' | 'two-handed'; attack_ability?: 'str' | 'dex'; sneak_attack?: boolean; knock_out?: boolean }
   | { command_type: 'MakeAreaAttack'; actor_id: string; item_id: string; to: { x: number; y: number } }
-  | { command_type: 'CastSpell'; actor_id: string; spell_id: string; target_id: string; spell_option?: string; slot_level?: number; casting_resource?: string; knock_out?: boolean }
-  | { command_type: 'CastSpell'; actor_id: string; spell_id: string; target_ids: string[]; spell_option?: string; slot_level?: number; casting_resource?: string; knock_out?: boolean }
-  | { command_type: 'CastSpell'; actor_id: string; spell_id: string; to: { x: number; y: number }; spell_option?: string; slot_level?: number; casting_resource?: string }
-  | { command_type: 'CastSpell'; actor_id: string; spell_id: string; to: { x: number; y: number }; target_ids: string[]; spell_option?: string; slot_level?: number; casting_resource?: string; knock_out?: boolean }
+  | { command_type: 'CastSpell'; actor_id: string; spell_id: string; target_id: string; item_id?: string; spell_option?: string; slot_level?: number; casting_resource?: string; knock_out?: boolean }
+  | { command_type: 'CastSpell'; actor_id: string; spell_id: string; target_ids: string[]; item_id?: string; spell_option?: string; slot_level?: number; casting_resource?: string; knock_out?: boolean }
+  | { command_type: 'CastSpell'; actor_id: string; spell_id: string; to: { x: number; y: number }; item_id?: string; spell_option?: string; slot_level?: number; casting_resource?: string }
+  | { command_type: 'CastSpell'; actor_id: string; spell_id: string; to: { x: number; y: number }; target_ids: string[]; item_id?: string; spell_option?: string; slot_level?: number; casting_resource?: string; knock_out?: boolean }
   | { command_type: 'UseCombatAction'; actor_id: string; action_id: string; target_id?: string; item_id?: string; beneficiary_id?: string }
   | { command_type: 'ChangeWeapon'; actor_id: string; item_id: string }
   | { command_type: 'OperateDoor'; actor_id: string; door_id: string; intent: 'open' | 'close' | 'force' | 'lockpick' }
@@ -1489,18 +1489,18 @@ export function useGameSession() {
     return executeTacticalCommand({ command_type: 'MakeAreaAttack', actor_id: playerId, item_id: itemId, to: { x, y } }, note ? `${base}. ${note}` : base)
   }, [executeTacticalCommand])
 
-  const castSpell = useCallback((actorId: string, spellId: string, target: ({ targetId: string } | { targetIds: string[] } | { x: number; y: number } | { x: number; y: number; targetIds: string[] }) & { spellOption?: string; slotLevel?: number; castingResource?: string; knockOut?: boolean; note?: string }) => {
+  const castSpell = useCallback((actorId: string, spellId: string, target: ({ targetId: string } | { targetIds: string[] } | { x: number; y: number } | { x: number; y: number; targetIds: string[] }) & { itemId?: string; spellOption?: string; slotLevel?: number; castingResource?: string; knockOut?: boolean; note?: string }) => {
     const slotLevel = {
       ...(Number.isSafeInteger(target.slotLevel) && Number(target.slotLevel) > 0 ? { slot_level: Number(target.slotLevel) } : {}),
       ...(target.castingResource ? { casting_resource: target.castingResource } : {}),
     }
     const command: TacticalCommand = 'targetId' in target
-      ? { command_type: 'CastSpell', actor_id: actorId, spell_id: spellId, target_id: target.targetId, ...slotLevel, ...(target.spellOption ? { spell_option: target.spellOption } : {}), ...(target.knockOut ? { knock_out: true } : {}) }
+      ? { command_type: 'CastSpell', actor_id: actorId, spell_id: spellId, target_id: target.targetId, ...(target.itemId ? { item_id: target.itemId } : {}), ...slotLevel, ...(target.spellOption ? { spell_option: target.spellOption } : {}), ...(target.knockOut ? { knock_out: true } : {}) }
       : 'x' in target && 'targetIds' in target
-        ? { command_type: 'CastSpell', actor_id: actorId, spell_id: spellId, to: { x: target.x, y: target.y }, target_ids: [...new Set(target.targetIds)], ...slotLevel, ...(target.spellOption ? { spell_option: target.spellOption } : {}), ...(target.knockOut ? { knock_out: true } : {}) }
+        ? { command_type: 'CastSpell', actor_id: actorId, spell_id: spellId, to: { x: target.x, y: target.y }, target_ids: [...new Set(target.targetIds)], ...(target.itemId ? { item_id: target.itemId } : {}), ...slotLevel, ...(target.spellOption ? { spell_option: target.spellOption } : {}), ...(target.knockOut ? { knock_out: true } : {}) }
       : 'targetIds' in target
-        ? { command_type: 'CastSpell', actor_id: actorId, spell_id: spellId, target_ids: [...new Set(target.targetIds)], ...slotLevel, ...(target.spellOption ? { spell_option: target.spellOption } : {}), ...(target.knockOut ? { knock_out: true } : {}) }
-        : { command_type: 'CastSpell', actor_id: actorId, spell_id: spellId, to: { x: target.x, y: target.y }, ...slotLevel, ...(target.spellOption ? { spell_option: target.spellOption } : {}) }
+        ? { command_type: 'CastSpell', actor_id: actorId, spell_id: spellId, target_ids: [...new Set(target.targetIds)], ...(target.itemId ? { item_id: target.itemId } : {}), ...slotLevel, ...(target.spellOption ? { spell_option: target.spellOption } : {}), ...(target.knockOut ? { knock_out: true } : {}) }
+        : { command_type: 'CastSpell', actor_id: actorId, spell_id: spellId, to: { x: target.x, y: target.y }, ...(target.itemId ? { item_id: target.itemId } : {}), ...slotLevel, ...(target.spellOption ? { spell_option: target.spellOption } : {}) }
     return executeTacticalCommand(command, target.note ? `Сотворить выбранное заклинание. ${target.note}` : 'Сотворить выбранное заклинание')
   }, [executeTacticalCommand])
 

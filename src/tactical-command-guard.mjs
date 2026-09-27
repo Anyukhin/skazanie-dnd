@@ -14,3 +14,20 @@ export function canIssueUiTacticalCommand(combat, command, currentActorId) {
   if (command.action_id === 'decline-reaction') return true
   return Array.isArray(reactionWindow.action_ids) && reactionWindow.action_ids.includes(command.action_id)
 }
+
+export const ENERVATION_TARGET_REASON = 'Продолжение доступно только для исходной цели'
+
+/**
+ * Продолжение «Обессиливания» получает target_id только из server-owned
+ * action.effect. Остальные действия не получают клиентского ограничения.
+ */
+export function combatActionTargetGuard(action, targetId) {
+  if (String(action?.id ?? '') !== 'enervation-repeat') return { allowed: true, reason: null }
+  const effect = action?.effect
+  if (!effect || typeof effect !== 'object' || Array.isArray(effect)) return { allowed: true, reason: null }
+  const sourceTargetId = effect.target_id
+  if (typeof sourceTargetId !== 'string' || !sourceTargetId) return { allowed: true, reason: null }
+  return String(targetId ?? '') === sourceTargetId
+    ? { allowed: true, reason: null }
+    : { allowed: false, reason: ENERVATION_TARGET_REASON }
+}

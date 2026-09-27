@@ -360,7 +360,7 @@ async function writeCandidate(root, image, text, expectedManifest) {
   const imageTemp = join(root, `.topdown${suffix}.png.tmp`)
   const manifestTemp = join(root, `.manifest${suffix}.json.tmp`)
   const imageBackup = join(root, `.topdown${suffix}.png.bak`)
-  const manifestBackup = join(root, `.manifest${suffix}.json.bak`)
+  const manifestBackup = join(root, `.atlas-manifest-backup${suffix}`)
   let imageBacked = false
   let manifestBacked = false
   let imageMoved = false

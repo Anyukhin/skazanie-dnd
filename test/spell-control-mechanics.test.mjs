@@ -80,6 +80,7 @@ test('гуманоид, провалив спасбросок Мудрости, 
   const added = paralysis(result)
   assert.equal(added.payload.duration, 'concentration')
   assert.equal(added.payload.repeat_save_timing, 'turn-end')
+  assert.equal(added.payload.repeat_save_ends_concentration, false)
   assert.equal(added.payload.save_ability, 'wis')
   assert.equal(added.payload.save_dc, 15)
   assert.ok(result.events.some((event) => event.event_type === 'ConcentrationStarted'))
@@ -106,6 +107,50 @@ test('ячейка третьего круга удерживает вторую
   assert.equal(paralysis(result, 'bandit-two')?.payload.condition, 'paralyzed')
   const spent = result.events.find((event) => event.event_type === 'ResourceSpent')
   assert.equal(spent.payload.resource, 'spell_slots_3')
+})
+
+test('повторный спасбросок одной цели Hold Person не снимает остальных и концентрацию', () => {
+  const initial = controlState()
+  const cast = hold(initial, [1, 1], { slot_level: 3, target_ids: ['bandit', 'bandit-two'] })
+  const held = replayEvents(initial, cast.events)
+  const banditTurn = {
+    ...held,
+    mechanics: {
+      ...held.mechanics,
+      combat: { ...held.mechanics.combat, active_index: 2 },
+    },
+  }
+  const ended = resolveCommand(
+    authoritative({ command_type: 'EndTurn', actor_id: 'bandit' }),
+    banditTurn,
+    options(dice([20])),
+  )
+  const after = replayEvents(banditTurn, ended.events)
+  assert.equal(ended.events.some((event) => event.event_type === 'ConcentrationEnded'), false)
+  assert.equal(after.mechanics.conditions.bandit?.some((condition) => condition.id === 'paralyzed'), false)
+  assert.equal(after.mechanics.conditions['bandit-two']?.some((condition) => condition.id === 'paralyzed'), true)
+  assert.ok(after.mechanics.concentration.cleric)
+
+  const secondTargetTurn = {
+    ...after,
+    mechanics: {
+      ...after.mechanics,
+      combat: {
+        ...after.mechanics.combat,
+        initiative: [...after.mechanics.combat.initiative, { actor_id: 'bandit-two', total: 11 }],
+        active_index: after.mechanics.combat.initiative.length,
+      },
+    },
+  }
+  const finalSave = resolveCommand(
+    authoritative({ command_type: 'EndTurn', actor_id: 'bandit-two' }),
+    secondTargetTurn,
+    options(dice([20])),
+  )
+  const finished = replayEvents(secondTargetTurn, finalSave.events)
+  assert.equal(finalSave.events.some((event) => event.event_type === 'ConcentrationEnded' && event.payload.reason === 'repeat-save'), true)
+  assert.equal(finished.mechanics.concentration.cleric, undefined)
+  assert.equal(finished.mechanics.conditions['bandit-two']?.some((condition) => condition.id === 'paralyzed'), false)
 })
 
 test('удержание превращает следующий ближний удар союзника в критический', () => {
@@ -142,6 +187,7 @@ test('Удержание чудовища держит зверя и не дей
   const added = paralysis(held)
   assert.equal(added.payload.condition, 'paralyzed')
   assert.equal(added.payload.repeat_save_timing, 'turn-end')
+  assert.equal(added.payload.repeat_save_ends_concentration, false)
   assert.equal(held.events.find((event) => event.event_type === 'ResourceSpent').payload.resource, 'spell_slots_5')
 
   const undead = resolveCommand(
@@ -182,6 +228,7 @@ test('Страх в конусе делает цель испуганной и �
   assert.equal(frightened.payload.source_actor, 'bard')
   assert.equal(frightened.payload.duration, 'concentration')
   assert.equal(frightened.payload.repeat_save_timing, 'turn-end')
+  assert.equal(frightened.payload.repeat_save_ends_concentration, false)
 
   const afterFear = replayEvents(state, cast.events)
   const brutesTurn = { ...afterFear, mechanics: { ...afterFear.mechanics, combat: { ...afterFear.mechanics.combat, active_index: 1 } } }

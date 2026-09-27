@@ -1,5 +1,5 @@
 import { normalizePublicLoadout } from '../server/equipment-visuals.mjs'
-import type { BattleEvent, GameEvent, PublicLoadout } from './types'
+import type { AreaGeometryVersion, BattleEvent, GameEvent, PublicLoadout } from './types'
 import { spellEffectPalette, spellIdFromEffect, spellVisualProfile, systemPrefersReducedMotion, type MagicSchool, type SpellEffectDetail, type SpellEffectFamily } from './spell-effects'
 
 export type BoardPoint = { x: number; y: number }
@@ -142,6 +142,7 @@ export type SpellAnimationCue = CombatAnimationPresentation & SpellAnimationCore
       targetIds: string[]
       from?: BoardPoint
       to?: BoardPoint
+      targetGridOrigin?: BoardPoint
       projectileCount: number
       damageType?: string
     }
@@ -156,6 +157,8 @@ export type SpellAnimationCue = CombatAnimationPresentation & SpellAnimationCore
       originMode?: 'self' | 'point'
       sizeFeet: number
       areaSideFeet?: number
+      geometryVersion?: AreaGeometryVersion
+      gridOrigin?: BoardPoint
       damageType?: string
     }
   | {
@@ -339,11 +342,24 @@ export type CombatAnimationOptions = {
   reducedMotion?: boolean
 }
 
+/**
+ * Один и тот же cue может быть упрощён по бюджету очереди ещё до того, как
+ * попадёт в 3D-доску. Поэтому reduced motion определяется не только системной
+ * настройкой, но и авторитетной меткой самого cue.
+ */
+export function combatAnimationUsesReducedMotion(cue: CombatAnimationCue) {
+  return cue.motion === 'reduced' || systemPrefersReducedMotion()
+}
+
 const AREA_SHAPES = new Set(['sphere', 'cylinder', 'cone', 'cube', 'line'])
 
 function areaShape(value: unknown): 'sphere' | 'cylinder' | 'cone' | 'cube' | 'line' | null {
   const shape = String(value ?? '')
   return AREA_SHAPES.has(shape) ? shape as 'sphere' | 'cylinder' | 'cone' | 'cube' | 'line' : null
+}
+
+function areaGeometryVersion(value: unknown): AreaGeometryVersion | undefined {
+  return value === 'legacy-grid-v1' || value === 'circle-grid-v2' ? value : undefined
 }
 
 function points(value: unknown) {
@@ -362,6 +378,8 @@ type SpellCastGeometry = {
   originMode?: 'self' | 'point'
   radiusFeet?: number
   areaSideFeet?: number
+  geometryVersion?: AreaGeometryVersion
+  gridOrigin?: BoardPoint
 }
 
 /**
@@ -378,6 +396,8 @@ function spellCastGeometry(payload: Record<string, unknown>): SpellCastGeometry 
   const originMode = payload.area_origin === 'self' || payload.area_origin === 'point'
     ? payload.area_origin
     : undefined
+  const geometryVersion = areaGeometryVersion(payload.area_geometry_version)
+  const gridOrigin = point(payload.area_grid_origin)
   const radius = Number(payload.radius_feet)
   const areaSideFeet = Number(payload.area_side_feet)
   return {
@@ -388,6 +408,8 @@ function spellCastGeometry(payload: Record<string, unknown>): SpellCastGeometry 
     points: areaPoints,
     ...(shape ? { shape } : {}),
     ...(originMode ? { originMode } : {}),
+    ...(geometryVersion ? { geometryVersion } : {}),
+    ...(gridOrigin ? { gridOrigin } : {}),
     ...(Number.isFinite(radius) && radius > 0 ? { radiusFeet: radius } : {}),
     ...(Number.isFinite(areaSideFeet) && areaSideFeet > 0 ? { areaSideFeet } : {}),
   }
@@ -538,6 +560,8 @@ function spellCueFromCast(event: GameEvent): SpellAnimationCue | null {
       originMode: profile.areaOrigin ?? geometry.originMode,
       sizeFeet: profile.sizeFeet ?? Math.max(5, geometry.radiusFeet ?? 5),
       areaSideFeet: profile.areaSideFeet ?? geometry.areaSideFeet,
+      geometryVersion: geometry.geometryVersion,
+      gridOrigin: geometry.gridOrigin,
       damageType: String(payload.damage_type ?? '') || undefined,
       durationMs: burstDuration(spellId),
     }
@@ -576,6 +600,36 @@ function spellCueFromCast(event: GameEvent): SpellAnimationCue | null {
   }
 }
 
+/**
+ * Повтор «Обессиливания» не выпускает новый SpellCast: сервер записывает
+ * CombatActionUsed, затем DamageApplied и HealingApplied. Для доски этого
+ * достаточно, но сам луч должен появиться один раз на команду продолжения.
+ * Геометрию берём у уже существующего лучевого профиля, а spellId сохраняем
+ * настоящим — палитра и звук остаются обессиливанием.
+ */
+function enervationRepeatCueFromAction(event: GameEvent): SpellAnimationCue | null {
+  const payload = event.payload ?? {}
+  const actionId = String(payload.action_id ?? '')
+  const spellId = String(payload.spell_id ?? '')
+  if (actionId !== 'enervation-repeat' && !(spellId === 'enervation' && payload.continuation === true)) return null
+  const actorId = String(event.actor_id ?? '')
+  const targetIds = uniqueIds(event.target_ids ?? (payload.target_id ? [payload.target_id] : [])).slice(0, 1)
+  if (!actorId || !targetIds.length) return null
+  const beamProfile = spellVisualProfile('ray-of-enfeeblement', { damageType: 'necrotic' })
+  if (beamProfile.kind !== 'beam') return null
+  return {
+    id: eventId(event, 'enervation-repeat:beam'),
+    kind: 'beam',
+    actorId,
+    targetIds,
+    spellId: 'enervation',
+    school: beamProfile.school,
+    chain: false,
+    damageType: 'necrotic',
+    durationMs: BASE_DURATIONS.beam,
+  }
+}
+
 /** Удар из SpellCast рисуется физически только если canonical профиль требует оружие. */
 function spellAttackRequiresWeapon(payload: Record<string, unknown>): boolean {
   const spellId = String(payload.spell_id ?? payload.spellId ?? '')
@@ -585,6 +639,75 @@ function spellAttackRequiresWeapon(payload: Record<string, unknown>): boolean {
     damageType: String(payload.damage_type ?? payload.damageType ?? '') || undefined,
   })
   return payload.requires_weapon_attack === true || profile.requiresWeaponAttack === true
+}
+
+const MULTI_BEAM_SPELLS = new Set(['eldritch-blast', 'scorching-ray'])
+
+/** Дополнительные лучи движка имеют command_id вида `root:beam:2`. */
+function beamCommandRoot(value: unknown) {
+  return String(value ?? '').replace(/:beam:\d+$/u, '')
+}
+
+function beamSpellIdFromAttack(event: GameEvent) {
+  return String(event.payload?.spell_id ?? event.payload?.spellId ?? '')
+}
+
+function beamAttackCueFromEvent(event: GameEvent): SpellAnimationCue | null {
+  const payload = event.payload ?? {}
+  const spellId = beamSpellIdFromAttack(event)
+  const actorId = String(event.actor_id ?? '')
+  const targetIds = uniqueIds(event.target_ids ?? (payload.target_id ? [payload.target_id] : []))
+  if (!actorId || !targetIds.length || !MULTI_BEAM_SPELLS.has(spellId)) return null
+  const profile = spellVisualProfile(spellId, {
+    kind: String(payload.kind ?? 'attack'),
+    damageType: String(payload.damage_type ?? payload.damageType ?? '') || undefined,
+  })
+  if (profile.kind !== 'beam') return null
+  const ends = trajectoryEnds(payload.trajectory)
+  const outcome = attackOutcomeFromPayload(payload)
+  return {
+    id: eventId(event, 'beam'),
+    kind: 'beam',
+    actorId,
+    targetIds,
+    ...(ends ? { from: ends.from, points: [ends.to] } : {}),
+    spellId,
+    school: profile.school,
+    chain: false,
+    damageType: String(payload.damage_type ?? payload.damageType ?? '') || undefined,
+    targetOutcomes: Object.fromEntries(targetIds.map((targetId) => [targetId, outcome])),
+    durationMs: BASE_DURATIONS.beam,
+  }
+}
+
+function battleLogBeamCommandRoot(event: BattleEvent) {
+  const commandId = battleLogCommandId(event)
+  const raw = commandId || String(event.id).replace(/^(?:spell-cast|attack-resolved):/u, '')
+  return beamCommandRoot(raw)
+}
+
+function beamAttackCueFromBattleLog(event: BattleEvent): SpellAnimationCue | null {
+  const spellId = String(event.spellId ?? '')
+  const actorId = String(event.actorId ?? '')
+  const targetIds = uniqueIds(event.targetIds?.length ? event.targetIds : event.targetId ? [event.targetId] : []).slice(0, 1)
+  if (!actorId || !targetIds.length || !MULTI_BEAM_SPELLS.has(spellId)) return null
+  const profile = spellVisualProfile(spellId, { kind: 'attack', damageType: event.damageType })
+  if (profile.kind !== 'beam') return null
+  const outcome = attackOutcomeFromPayload({ hit: event.roll?.hit === true, critical: event.critical === true, blocked: event.blocked === true })
+  return {
+    id: `${event.id}:beam`,
+    kind: 'beam',
+    actorId,
+    targetIds,
+    from: event.from,
+    points: event.to ? [event.to] : undefined,
+    spellId,
+    school: profile.school,
+    chain: false,
+    damageType: event.damageType,
+    targetOutcomes: Object.fromEntries(targetIds.map((targetId) => [targetId, outcome])),
+    durationMs: BASE_DURATIONS.beam,
+  }
 }
 
 /** Thunder Step состоит из портала и подтверждённого громового удара в старой клетке. */
@@ -629,6 +752,8 @@ type BattleLogVisualFields = {
   command_id?: string
   area_shape?: string
   area_origin?: 'self' | 'point'
+  area_geometry_version?: AreaGeometryVersion
+  area_grid_origin?: BoardPoint
 }
 
 function battleLogVisual(event: BattleEvent) {
@@ -655,6 +780,18 @@ function battleLogAreaOrigin(event: BattleEvent) {
   const area = event.area as (BattleEvent['area'] & { originMode?: unknown; area_origin?: unknown }) | undefined
   const origin = value.area_origin ?? area?.area_origin ?? area?.originMode
   return origin === 'self' || origin === 'point' ? origin : undefined
+}
+
+function battleLogAreaGeometryVersion(event: BattleEvent) {
+  const value = battleLogVisual(event)
+  const area = event.area as (BattleEvent['area'] & { geometryVersion?: unknown; geometry_version?: unknown }) | undefined
+  return areaGeometryVersion(value.area_geometry_version ?? area?.geometry_version ?? area?.geometryVersion)
+}
+
+function battleLogAreaGridOrigin(event: BattleEvent) {
+  const value = battleLogVisual(event)
+  const area = event.area as (BattleEvent['area'] & { gridOrigin?: unknown; grid_origin?: unknown }) | undefined
+  return point(value.area_grid_origin ?? area?.grid_origin ?? area?.gridOrigin) ?? undefined
 }
 
 function teleportMoveForBattleLog(
@@ -692,6 +829,9 @@ export function combatAnimationCuesFromEvents(
   const areaCommands = new Set<string>()
   const teleportMovesByCommand = new Map<string, GameEvent>()
   const spellTargetOutcomesByCommand = new Map<string, Record<string, AttackOutcome>>()
+  const enervationRepeatCommands = new Set<string>()
+  const beamAttacksByCommand = new Map<string, GameEvent[]>()
+  const hailBurstByCommand = new Map<string, GameEvent[]>()
   for (const event of events) {
     if (event.event_type === 'DamageApplied') {
       const key = commandKey(event)
@@ -718,13 +858,44 @@ export function combatAnimationCuesFromEvents(
       for (const id of (targetIds.length ? targetIds : fallbackTarget ? [fallbackTarget] : [])) outcomes[id] = attackOutcomeFromPayload(event.payload)
       if (Object.keys(outcomes).length) spellTargetOutcomesByCommand.set(commandId, outcomes)
     }
+    if (event.event_type === 'AttackResolved' && event.command_id && event.payload?.spell_id) {
+      const spellId = beamSpellIdFromAttack(event)
+      if (MULTI_BEAM_SPELLS.has(spellId) && !spellAttackRequiresWeapon(event.payload)) {
+        const root = beamCommandRoot(event.command_id)
+        beamAttacksByCommand.set(root, [...(beamAttacksByCommand.get(root) ?? []), event])
+      }
+    }
+    if (event.event_type === 'DamageApplied' && event.command_id
+      && event.payload?.spell_id === 'hail-of-thorns' && event.payload?.burst === true) {
+      const commandId = String(event.command_id)
+      hailBurstByCommand.set(commandId, [...(hailBurstByCommand.get(commandId) ?? []), event])
+    }
   }
+
+  // Только наличие нескольких подтверждённых атак превращает SpellCast в
+  // набор лучей. Один луч сохраняет старый cue-путь и старые replay.
+  const multiBeamCommands = new Set<string>()
+  for (const [root, attacks] of beamAttacksByCommand) {
+    if (attacks.length > 1 || attacks.some((event) => String(event.command_id).includes(':beam:'))) multiBeamCommands.add(root)
+  }
+  const emittedHailBursts = new Set<string>()
 
   const cues: CombatAnimationCue[] = []
   for (const event of events) {
     const payload = event.payload ?? {}
     const actorId = String(event.actor_id ?? '')
     const targetId = targetIdFor(event)
+    if (event.event_type === 'CombatActionUsed') {
+      const cue = enervationRepeatCueFromAction(event)
+      if (cue) {
+        const commandId = String(event.command_id ?? '')
+        if (!commandId || !enervationRepeatCommands.has(commandId)) {
+          cues.push(cue)
+          if (commandId) enervationRepeatCommands.add(commandId)
+        }
+        continue
+      }
+    }
     const auraSourceId = String(payload.aura_of_protection_source ?? '')
     if (auraSourceId) {
       cues.push({
@@ -783,6 +954,7 @@ export function combatAnimationCuesFromEvents(
     }
 
     if (event.event_type === 'SpellCast') {
+      if (event.command_id && multiBeamCommands.has(beamCommandRoot(event.command_id))) continue
       const cue = spellCueFromCast(event)
       const teleportMove = event.command_id ? teleportMovesByCommand.get(String(event.command_id)) : undefined
       const teleportPayload = teleportMove?.payload ?? {}
@@ -819,6 +991,8 @@ export function combatAnimationCuesFromEvents(
       })
       const center = point(effect.center)
       const exactCells = points(effect.cells)
+      const geometryVersion = areaGeometryVersion(effect.geometry_version)
+      const gridOrigin = point(effect.grid_origin)
       if (actorId && spellId && (center || exactCells.length)) {
         cues.push({
           id: eventId(event, 'burst'),
@@ -833,6 +1007,8 @@ export function combatAnimationCuesFromEvents(
           originMode: profile.areaOrigin,
           sizeFeet: profile.sizeFeet ?? Math.max(5, Number(effect.radius_feet) || 5),
           areaSideFeet: profile.areaSideFeet ?? (Number(effect.area_side_feet) || undefined),
+          geometryVersion,
+          gridOrigin: gridOrigin ?? undefined,
           damageType: String(effect.damage_type ?? '') || undefined,
           durationMs: burstDuration(spellId),
         })
@@ -885,6 +1061,11 @@ export function combatAnimationCuesFromEvents(
       if (!actorId || !targetId) continue
       const spellAttack = String(payload.spell_id ?? '')
       if (spellAttack && !spellAttackRequiresWeapon(payload)) {
+        const root = beamCommandRoot(event.command_id)
+        if (multiBeamCommands.has(root)) {
+          const beam = beamAttackCueFromEvent(event)
+          if (beam) cues.push(beam)
+        }
         if (payload.hit !== true) cues.push({
           id: eventId(event, 'spell-miss'),
           kind: 'impact',
@@ -921,6 +1102,26 @@ export function combatAnimationCuesFromEvents(
 
     if (event.event_type === 'DamageApplied' && event.payload?.spell_id === 'magic-missile' && event.payload?.blocked_by_shield === true) continue
     if (event.event_type === 'DamageApplied' && !consumedDamage.has(event)) {
+      if (event.command_id && event.payload?.spell_id === 'hail-of-thorns' && event.payload?.burst === true
+        && !emittedHailBursts.has(String(event.command_id))) {
+        const burstEvents = hailBurstByCommand.get(String(event.command_id)) ?? [event]
+        const targetIds = uniqueIds(burstEvents.flatMap((entry) => entry.target_ids ?? (entry.payload?.target_id ? [entry.payload.target_id] : [])))
+        const profile = spellVisualProfile('hail-of-thorns', { damageType: 'piercing', kind: 'area-save' })
+        cues.push({
+          id: eventId(event, 'hail-of-thorns:burst'),
+          kind: 'burst',
+          actorId: String(event.actor_id ?? ''),
+          targetIds,
+          spellId: 'hail-of-thorns',
+          school: profile.school,
+          shape: 'sphere',
+          originMode: 'point',
+          sizeFeet: 5,
+          damageType: 'piercing',
+          durationMs: BASE_DURATIONS.burst,
+        })
+        emittedHailBursts.add(String(event.command_id))
+      }
       if (!targetId) continue
       const amount = safeAmount(payload.applied_amount)
       cues.push({
@@ -991,6 +1192,7 @@ export function combatAnimationCuesFromBattleLog(
   const teleportMoveIds = new Set<string>()
   const teleportMoveBySpell = new Map<BattleEvent, BattleEvent>()
   const spellTargetOutcomesByKey = new Map<string, Record<string, AttackOutcome>>()
+  const beamAttacksByCommand = new Map<string, BattleEvent[]>()
   for (let index = 0; index < events.length; index += 1) {
     const event = events[index]
     if (event.spellId === 'magic-missile' && event.targetId && event.blocked === true) {
@@ -1008,6 +1210,10 @@ export function combatAnimationCuesFromBattleLog(
         blocked: (event as BattleEvent & { blocked?: boolean }).blocked === true,
       })
       spellTargetOutcomesByKey.set(key, outcomes)
+      if (MULTI_BEAM_SPELLS.has(String(event.spellId))) {
+        const beamKey = battleLogBeamCommandRoot(event)
+        beamAttacksByCommand.set(beamKey, [...(beamAttacksByCommand.get(beamKey) ?? []), event])
+      }
     }
     if (event.type !== 'spell' || !event.actorId || !event.spellId) continue
     const profile = spellVisualProfile(event.spellId, { damageType: event.damageType })
@@ -1019,6 +1225,8 @@ export function combatAnimationCuesFromBattleLog(
       teleportMoveIds.add(String(move.id))
     }
   }
+  const multiBeamBattleCommands = new Set<string>()
+  for (const [root, attacks] of beamAttacksByCommand) if (attacks.length > 1) multiBeamBattleCommands.add(root)
 
   for (const event of events) {
     if (event.auraSourceId) {
@@ -1068,6 +1276,7 @@ export function combatAnimationCuesFromBattleLog(
     if (event.type === 'spell' && event.actorId && event.spellId) {
       const profile = spellVisualProfile(event.spellId, { damageType: event.damageType })
       const family = spellEffectPalette(event.spellId, { damageType: event.damageType }).family
+      if (profile.kind === 'beam' && multiBeamBattleCommands.has(battleLogBeamCommandRoot(event))) continue
       const targetIds = event.targetId ? [event.targetId] : []
       const targetOutcomes = spellTargetOutcomesByKey.get(battleLogCommandId(event) || `${String(event.actorId)}:${String(event.spellId)}`)
       const spellOutcomeFields = targetOutcomes ? { targetOutcomes } : {}
@@ -1097,6 +1306,8 @@ export function combatAnimationCuesFromBattleLog(
           shape: battleLogAreaShape(event) ?? profile.areaShape ?? 'sphere',
           originMode: battleLogAreaOrigin(event) ?? profile.areaOrigin,
           sizeFeet: event.area?.radiusFeet ?? profile.sizeFeet ?? 5,
+          geometryVersion: battleLogAreaGeometryVersion(event),
+          gridOrigin: battleLogAreaGridOrigin(event),
           damageType: event.damageType,
           spellId: event.spellId,
           school: profile.school,
@@ -1157,6 +1368,10 @@ export function combatAnimationCuesFromBattleLog(
     }
     if (event.type === 'attack' && event.actorId && event.targetId && event.roll) {
       if (event.spellId && !spellAttackRequiresWeapon({ spell_id: event.spellId, kind: 'attack', damage_type: event.damageType })) {
+        if (MULTI_BEAM_SPELLS.has(event.spellId) && multiBeamBattleCommands.has(battleLogBeamCommandRoot(event))) {
+          const beam = beamAttackCueFromBattleLog(event)
+          if (beam) cues.push(beam)
+        }
         if (!event.roll.hit) cues.push({
           id: `${event.id}:spell-miss`,
           kind: 'impact',

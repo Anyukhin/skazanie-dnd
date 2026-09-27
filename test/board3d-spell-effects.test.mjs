@@ -10,6 +10,7 @@ const repositoryRoot = fileURLToPath(new URL('..', import.meta.url))
 mkdirSync(join(repositoryRoot, 'tmp'), { recursive: true })
 const buildDir = mkdtempSync(join(repositoryRoot, 'tmp', 'board3d-spell-effects-'))
 mkdirSync(join(buildDir, 'server'), { recursive: true })
+copyFileSync(join(repositoryRoot, 'server', 'circular-area-geometry.mjs'), join(buildDir, 'server', 'circular-area-geometry.mjs'))
 copyFileSync(join(repositoryRoot, 'server', 'actor-footprint.mjs'), join(buildDir, 'server', 'actor-footprint.mjs'))
 copyFileSync(join(repositoryRoot, 'server', 'equipment-visuals.mjs'), join(buildDir, 'server', 'equipment-visuals.mjs'))
 process.on('exit', () => rmSync(buildDir, { recursive: true, force: true }))
@@ -65,6 +66,85 @@ test('Скороход, Прыжок и Ускорение имеют разны
     effect.dispose()
   }
   assert.equal(new Set(signatures).size, 3)
+})
+
+test('generic mobility spell сохраняет короткую дугу и обычную анимацию', async () => {
+  const { decodeTacticalMap } = await import(pathToFileURL(join(buildDir, 'src/tactical-map-client.mjs')).href)
+  const { spellVisualProfile } = await import(pathToFileURL(join(buildDir, 'src/spell-effects.mjs')).href)
+  assert.equal(spellVisualProfile('spider-climb').family, 'mobility')
+  assert.equal(spellVisualProfile('spider-climb').visualVariant, undefined)
+  const board = decodeTacticalMap(map())
+  const effect = createSpellEffect3D({ id: 'spider-climb', kind: 'channel', actorId: 'mage', targetId: 'target', targetIds: ['target'],
+    spellId: 'spider-climb', school: 'transmutation', channelType: 'cast', durationMs: 500, motion: 'reduced' }, actors, board)
+  assert.ok(effect)
+  const snapshot = (progress) => {
+    effect.update(progress)
+    const objects = []
+    effect.group.traverse((object) => {
+      if (!object.geometry) return
+      objects.push({ type: object.geometry.type, position: object.position.toArray(), vertices: [...(object.geometry.getAttribute('position')?.array ?? [])] })
+    })
+    return objects
+  }
+  const early = snapshot(.2)
+  const late = snapshot(.7)
+  assert.notDeepEqual(early, late, 'generic mobility не должен замерзать вместе с тремя специальными вариантами')
+  const ring = effect.group.children.find((child) => child.geometry?.type === 'TorusGeometry')
+  assert.equal(ring?.geometry.parameters.radius, .38, 'generic mobility сохраняет старый компактный контур')
+  const spans = late.filter((entry) => entry.type === 'BufferGeometry').map((entry) => {
+    const xs = []
+    for (let index = 0; index < entry.vertices.length; index += 3) xs.push(entry.vertices[index])
+    return Math.max(...xs) - Math.min(...xs)
+  })
+  assert.ok(spans.some((span) => span > .8 && span < 1.1), 'generic mobility сохраняет короткую дугу')
+  effect.dispose()
+})
+
+test('мобильность в 3D получает контрастный контур, выносится от фигуры и уважает reduced motion', async () => {
+  const { decodeTacticalMap } = await import(pathToFileURL(join(buildDir, 'src/tactical-map-client.mjs')).href)
+  const board = decodeTacticalMap(map())
+  for (const spellId of ['longstrider', 'jump', 'haste']) {
+    const cue = { id: `mobility-${spellId}`, kind: 'channel', actorId: 'mage', targetId: 'mage', targetIds: ['mage'],
+      spellId, school: 'transmutation', channelType: 'cast', durationMs: 500 }
+    const effect = createSpellEffect3D(cue, actors, board)
+    assert.ok(effect)
+    effect.update(.62)
+    const mobilityObjects = []
+    effect.group.traverse((object) => {
+      if (!object.geometry) return
+      const parameters = object.geometry.parameters ?? {}
+      mobilityObjects.push({ object, type: object.geometry.type, parameters, position: object.position.toArray(),
+        vertices: [...(object.geometry.getAttribute('position')?.array ?? [])] })
+    })
+    const lineObjects = mobilityObjects.filter((entry) => entry.type === 'BufferGeometry' && entry.vertices.length >= 9)
+    const span = lineObjects.reduce((maximum, entry) => {
+      const xs = []
+      for (let index = 0; index < entry.vertices.length; index += 3) xs.push(entry.vertices[index])
+      return Math.max(maximum, Math.max(...xs) - Math.min(...xs))
+    }, 0)
+    assert.ok(span >= 1 || spellId === 'longstrider', `${spellId}: след должен быть видим на обычной камере`)
+    if (spellId === 'longstrider') {
+      assert.ok(mobilityObjects.some((entry) => entry.type === 'TorusGeometry' && entry.parameters.radius >= .2 && entry.parameters.tube >= .04),
+        'Скороход должен иметь крупные толстые следы')
+      const marks = mobilityObjects.filter((entry) => entry.type === 'TorusGeometry' && entry.parameters.radius >= .2)
+      assert.ok(marks.some((entry) => Math.hypot(entry.position[0] - 1.5, entry.position[2] - 6.5) > .5), 'след не должен сидеть на центре фигуры')
+    }
+    effect.dispose()
+
+    const reduced = createSpellEffect3D({ ...cue, id: `${cue.id}-reduced`, motion: 'reduced' }, actors, board)
+    assert.ok(reduced)
+    const signature = (progress) => {
+      reduced.update(progress)
+      const objects = []
+      reduced.group.traverse((object) => {
+        if (!object.geometry) return
+        objects.push({ visible: object.visible, position: object.position.toArray(), vertices: [...(object.geometry.getAttribute('position')?.array ?? [])] })
+      })
+      return JSON.stringify(objects)
+    }
+    assert.equal(signature(.1), signature(.9), `${spellId}: reduced motion должен оставаться статичным`)
+    reduced.dispose()
+  }
 })
 
 test('Скороход рисует один подтверждённый cue у всех видимых целей, не подменяет скрытую цель заклинателем', async () => {
@@ -123,6 +203,132 @@ test('3D spell cue рисует fireball/beam/healing и освобождает 
   healing.dispose()
 })
 
+test('3D-круговой взрыв использует серверный gridOrigin при отличающемся центре выбора', async () => {
+  const { decodeTacticalMap } = await import(pathToFileURL(join(buildDir, 'src/tactical-map-client.mjs')).href)
+  const board = decodeTacticalMap(map())
+  const fireball = createSpellEffect3D({
+    id: 'fireball-grid-origin', kind: 'burst', actorId: 'mage', targetIds: [], spellId: 'fireball', school: 'evocation',
+    center: { x: 6, y: 6 }, gridOrigin: { x: 8, y: 4 }, geometryVersion: 'circle-grid-v2',
+    shape: 'sphere', sizeFeet: 20, durationMs: 1000, detail: 'reduced',
+  }, actors, board)
+  assert.ok(fireball)
+  fireball.update(.8)
+  const ring = fireball.group.children[3]
+  assert.equal(ring.position.x, 8)
+  assert.equal(ring.position.z, 4)
+  fireball.dispose()
+})
+
+test('3D Шипы града рисуют подтверждённый взрыв вокруг цели попадания', async () => {
+  const { decodeTacticalMap } = await import(pathToFileURL(join(buildDir, 'src/tactical-map-client.mjs')).href)
+  const board = decodeTacticalMap(map())
+  const burst = createSpellEffect3D({
+    id: 'hail-of-thorns-burst', kind: 'burst', actorId: 'ranger', targetIds: ['target-a', 'target-b'],
+    spellId: 'hail-of-thorns', school: 'conjuration', shape: 'sphere', originMode: 'point', sizeFeet: 5, durationMs: 480,
+  }, [{ id: 'ranger', x: 1, y: 6 }, { id: 'target-a', x: 6, y: 6 }, { id: 'target-b', x: 6, y: 7 }], board)
+  assert.ok(burst)
+  burst.update(.65)
+  assert.ok(burst.group.children.some((child) => child.visible), 'подтверждённая область должна иметь 3D-рисунок')
+  burst.dispose()
+})
+
+test('3D target-local варианты сохраняют смысловую геометрию вокруг цели', async () => {
+  const { decodeTacticalMap } = await import(pathToFileURL(join(buildDir, 'src/tactical-map-client.mjs')).href)
+  const board = decodeTacticalMap(map())
+  const targetActors = [{ id: 'mage', x: 1, y: 6 }, { id: 'target', x: 6, y: 6 }]
+  for (const spellId of ['sacred-flame', 'toll-the-dead', 'mind-sliver', 'infestation']) {
+    const effect = createSpellEffect3D({
+      id: `target-local-${spellId}`, kind: 'channel', actorId: 'mage', targetId: 'target', spellId,
+      school: 'evocation', channelType: 'cast', durationMs: 480,
+    }, targetActors, board)
+    assert.ok(effect, `${spellId}: target-local effect`)
+    effect.update(.55)
+    assert.ok(effect.group.children.some((child) => child.visible), `${spellId}: visible target-local geometry`)
+    effect.dispose()
+  }
+})
+
+test('3D Психический кнут использует изогнутые mesh-сегменты и освобождает reduced-ресурсы', async () => {
+  const { decodeTacticalMap } = await import(pathToFileURL(join(buildDir, 'src/tactical-map-client.mjs')).href)
+  const board = decodeTacticalMap(map())
+  const actors = [{ id: 'mage', x: 1, y: 6 }, { id: 'target', x: 6, y: 6 }]
+  const full = createSpellEffect3D({
+    id: 'psychic-whip-full', kind: 'beam', actorId: 'mage', targetIds: ['target'], spellId: 'tasha-s-mind-whip',
+    school: 'enchantment', chain: false, durationMs: 560, detail: 'full',
+  }, actors, board)
+  assert.ok(full)
+  const pieces = full.group.children.filter((child) => child.geometry?.type === 'CylinderGeometry')
+  assert.equal(pieces.length, 8)
+  full.update(1)
+  assert.ok(pieces.every((piece) => piece.visible), 'все сегменты кнута должны дойти до цели')
+  assert.ok(pieces[Math.floor(pieces.length / 2)].position.y > pieces[0].position.y + .1, 'середина кнута должна подниматься над прямой')
+  full.dispose()
+
+  const reduced = createSpellEffect3D({
+    id: 'psychic-whip-reduced', kind: 'beam', actorId: 'mage', targetIds: ['target'], spellId: 'tasha-s-mind-whip',
+    school: 'enchantment', chain: false, durationMs: 560, detail: 'reduced', motion: 'reduced',
+  }, actors, board)
+  assert.ok(reduced)
+  const reducedPieces = reduced.group.children.filter((child) => child.geometry?.type === 'CylinderGeometry')
+  assert.equal(reducedPieces.length, 6)
+  const resources = new Set(reduced.group.children.flatMap((child) => [child.geometry, child.material]).filter(Boolean))
+  let disposed = 0
+  resources.forEach((resource) => resource.addEventListener('dispose', () => { disposed += 1 }))
+  reduced.dispose()
+  assert.equal(disposed, resources.size)
+})
+
+test('3D chain lightning branches each secondary from the primary endpoint', async () => {
+  const { decodeTacticalMap } = await import(pathToFileURL(join(buildDir, 'src/tactical-map-client.mjs')).href)
+  const board = decodeTacticalMap(map())
+  const chainActors = [
+    { id: 'mage', x: 1, y: 1 },
+    { id: 'primary', x: 4, y: 1 },
+    { id: 'secondary-a', x: 2, y: 4 },
+    { id: 'secondary-b', x: 6, y: 4 },
+  ]
+  const chain = createSpellEffect3D({
+    id: 'chain-branch', kind: 'beam', actorId: 'mage', targetIds: ['primary', 'secondary-a', 'secondary-b'],
+    spellId: 'chain-lightning', school: 'evocation', chain: true, durationMs: 560, detail: 'minimal',
+  }, chainActors, board)
+  assert.ok(chain)
+  chain.update(1)
+  const lineEndpoints = chain.group.children.filter((child) => child.isLine).map((line) => {
+    const positions = line.geometry.getAttribute('position')
+    return [[positions.getX(0), positions.getZ(0)], [positions.getX(2), positions.getZ(2)]]
+  })
+  assert.deepEqual(lineEndpoints, [
+    [[1.5, 1.5], [4.5, 1.5]],
+    [[4.5, 1.5], [2.5, 4.5]],
+    [[4.5, 1.5], [6.5, 4.5]],
+  ])
+  chain.dispose()
+
+  const generic = createSpellEffect3D({
+    id: 'generic-beam', kind: 'beam', actorId: 'mage', targetIds: ['primary', 'secondary-a', 'secondary-b'],
+    spellId: 'eldritch-blast', school: 'evocation', chain: true, durationMs: 560, detail: 'minimal',
+  }, chainActors, board)
+  assert.ok(generic)
+  generic.update(1)
+  const genericLines = generic.group.children.filter((child) => child.isLine)
+  const genericPositions = genericLines.map((line) => line.geometry.getAttribute('position'))
+  assert.deepEqual(genericPositions.map((positions) => [[positions.getX(0), positions.getZ(0)], [positions.getX(2), positions.getZ(2)]]), [
+    [[1.5, 1.5], [4.5, 1.5]],
+    [[4.5, 1.5], [2.5, 4.5]],
+    [[2.5, 4.5], [6.5, 4.5]],
+  ])
+  generic.dispose()
+})
+
+test('3D chain lightning keeps a missing primary as a gap instead of connecting a secondary through it', async () => {
+  const { decodeTacticalMap } = await import(pathToFileURL(join(buildDir, 'src/tactical-map-client.mjs')).href)
+  const board = decodeTacticalMap(map())
+  const missingPrimary = createSpellEffect3D({
+    id: 'chain-missing-primary', kind: 'beam', actorId: 'mage', targetIds: ['primary', 'secondary-a'],
+    spellId: 'chain-lightning', school: 'evocation', chain: true, durationMs: 560, detail: 'minimal',
+  }, [{ id: 'mage', x: 1, y: 1 }, { id: 'secondary-a', x: 2, y: 4 }], board)
+  assert.equal(missingPrimary, null)
+})
 test('3D spell cue не пересекает туман траекторией или объёмным blast', async () => {
   const { decodeTacticalMap } = await import(pathToFileURL(join(buildDir, 'src/tactical-map-client.mjs')).href)
   const hiddenPath = decodeTacticalMap(map([{ x: 3, y: 6 }]))
