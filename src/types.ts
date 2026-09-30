@@ -385,6 +385,8 @@ export type CombatSpell = {
   sourceUrl?: string
   mechanicsAccuracy?: 'verified-dndsu' | 'heuristic'
   mechanicsSupport?: MechanicsSupport
+  /** Исправления закреплённой редакции; серверный projected-профиль приоритетен. */
+  mechanics2014?: Partial<Omit<CombatSpell, 'mechanics2014'>>
   supportNote?: string
   requiresWeaponAttack?: boolean
   weaponCantrip?: 'booming-blade' | 'green-flame-blade'
@@ -526,15 +528,15 @@ export function spellComponentsPresentation(components?: SpellComponents | null)
   const markerLabels: string[] = []
   if (components.verbal) {
     markers.push('В')
-    markerLabels.push('вербальный')
+    markerLabels.push('магические слова — вербальный компонент')
   }
   if (components.somatic) {
     markers.push('С')
-    markerLabels.push('соматический')
+    markerLabels.push('жесты рукой — соматический компонент')
   }
   if (components.material) {
     markers.push('М')
-    markerLabels.push('материальный')
+    markerLabels.push('необходимые предметы — материальный компонент')
   }
   const specialDescriptions = (components.special ?? [])
     .filter((entry) => entry.kind === 'royalty' && entry.description.trim())
@@ -2777,7 +2779,7 @@ export type GameMechanics = Record<string, unknown> & {
   concentration?: Record<string, { effect_id?: string; source_rule_ids?: string[] }>
   /** Временные хиты по участникам; у неопознанного врага ключа нет. */
   temporary_hp?: Record<string, number>
-  conditions?: Record<string, Array<{ id: string; duration?: string | null; source_actor?: string | null; source_item_id?: string | null; spellcasting_ability?: string | null; magical_weapon?: boolean; effect_id?: string | null; repeat_save_timing?: 'turn-end' | null; repeat_save_on_damage?: boolean; damage_save_advantage?: boolean; break_on_damage_from_source_allies?: boolean; save_ability?: string | null; save_dc?: number | null; spell_id?: string | null; spell_option?: string | null; last_used_turn?: string | null }>>
+  conditions?: Record<string, Array<{ id: string; duration?: string | null; source_actor?: string | null; source_item_id?: string | null; spellcasting_ability?: string | null; magical_weapon?: boolean; effect_id?: string | null; repeat_save_timing?: 'turn-end' | null; repeat_save_on_damage?: boolean; damage_save_advantage?: boolean; break_on_damage_from_source_allies?: boolean; save_ability?: string | null; save_dc?: number | null; spell_id?: string | null; spell_option?: string | null; last_used_turn?: string | null; bonus_enabled?: boolean }>>
   active_effects?: Array<{
     id: string
     effect_id?: string

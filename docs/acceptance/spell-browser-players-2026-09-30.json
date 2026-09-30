@@ -1,0 +1,157 @@
+{
+  "schemaVersion": "spell-player-browser-review/v1",
+  "observedAt": "2026-09-30T10:23:21.482Z",
+  "baselineRevision": "531b3062e44b79cd0242be1bd96d56bd4e2f7d07",
+  "dependencies": {
+    "server/rules-engine.mjs": "a2b59a38a2de4ce512623da205930bb621e278b954bcaaf750c33ab8d1b21f03",
+    "server/combat-spells.mjs": "775d537e214afbdffe5cd3398c75ed146d048fa263a779381e6b03989488499f",
+    "server/viewer-projection.mjs": "adcb29fe6ede720292b9b6fe7a17c93722912dcc20eb34b0c8352f2abb603b3b",
+    "src/DungeonMap.tsx": "70536e41c1d9395d3905f679505a5d49ab8467e1ccf45f7c7d89a677c4833207",
+    "data/dndsu-spells-0-6.json": "eb498145301484f66ac8c53b14aba7687dbdda0921e299db8d7be46856f19c14",
+    "data/dndsu-spell-mechanics-overrides.json": "883723ced69469f4558ddc78f597c68610b027fc49a7ea13e7622bd969bc0f08",
+    "data/spell-descriptions-ru.json": "db85f191da8987c9da089c11699f5bfe5a527d0131f50b50740d4e0b8561cf9d",
+    "eval/spell-runtime-audit.mjs": "802a8adaa0ac209b4d1fed54141d7d32404f33b463d87d7ea627767bb75401c7",
+    "test/spell-catalog-runtime.test.mjs": "b701fce5137d24309ad82d2b79f18c2f3b1362dadffc2fa7b9228405172d1525"
+  },
+  "players": {
+    "schemaVersion": "browser-player-smoke/v1",
+    "observedAt": "2026-09-30T09:59:13.277Z",
+    "campaign": "REVIEW2014",
+    "ruleset": "dnd_5e_2014",
+    "accounts": "two-isolated-browser-contexts",
+    "heroCreation": "cleric-created-through-UI; warlock-created-through-UI-earlier",
+    "mode": "2D",
+    "casting": "Healing Word selected, allied target clicked, confirmed through Send",
+    "caster": {
+      "heroHp": 10,
+      "slot": {
+        "current": 1,
+        "max": 2
+      },
+      "errors": []
+    },
+    "observer": {
+      "heroHp": 10,
+      "healingSeen": true
+    },
+    "responses": [
+      {
+        "url": "/api/campaigns/REVIEW2014/commands",
+        "status": 200
+      }
+    ],
+    "fullSpellAcceptance": false,
+    "audio": "not-verified-by-listening",
+    "additionalCast": {
+      "mode": "3D",
+      "spellId": "armor-of-agathys",
+      "path": "Spell tile, self target, Send",
+      "caster": {
+        "status": 200,
+        "hp": 10,
+        "temporaryHp": 5,
+        "pactSlots": {
+          "current": 0,
+          "max": 1
+        },
+        "agathysSeen": true,
+        "healingSeen": true,
+        "errors": [],
+        "canvas": 1
+      },
+      "observer": {
+        "status": 200,
+        "hp": 10,
+        "temporaryHp": 5,
+        "pactSlots": {
+          "current": 0,
+          "max": 1
+        },
+        "agathysSeen": true,
+        "healingSeen": true,
+        "errors": [],
+        "canvas": 2
+      },
+      "audio": "not-verified-by-listening"
+    }
+  },
+  "reaction": {
+    "observedAt": "2026-09-30T10:17:14.032Z",
+    "fixture": "isolated-admin-import; not normal acquisition proof",
+    "campaign": "REACTIONS2014",
+    "guard": {
+      "blockedReason": "Недоступно для применения: Применяется через окно реакции после подходящего события. Открыто для чтения.",
+      "reader": {
+        "heading": "Щит",
+        "selectionDisabled": true
+      }
+    },
+    "server": {
+      "status": 400,
+      "code": "REACTION_NOT_AVAILABLE",
+      "stateUnchanged": true
+    },
+    "foreignActorRefusal": {
+      "status": 403,
+      "code": "ACTOR_FORBIDDEN",
+      "stateUnchanged": true
+    }
+  },
+  "screenshots": [
+    {
+      "artifact": "external:/workspace/scratch/rules-review-browser-cleric-created.png",
+      "sha256": "1a0348020adb111ff8f06acc54accb43ed0e471e536717281580c1202b6bebb9"
+    },
+    {
+      "artifact": "external:/workspace/scratch/rules-review-browser-healing-2d.png",
+      "sha256": "d31e1f08ac7402d4b27cc8d34d6a9ff4278cfd97cdca968fe657cf5fa60c9461"
+    },
+    {
+      "artifact": "external:/workspace/scratch/rules-review-browser-agathys-3d-wide.png",
+      "sha256": "be5ee1ea889501a6c8f2ba32a4b4150b86f7132e559229dcc4d8b0d7b95f7ab7"
+    },
+    {
+      "artifact": "external:/workspace/scratch/rules-review-browser-observer-3d.png",
+      "sha256": "94f5660159ae61fbadaa05e5ad9a9a9f3df6ac60d7e349b6921198dc7fd841e2"
+    },
+    {
+      "artifact": "external:/workspace/scratch/rules-review-browser-reaction-guard.png",
+      "sha256": "9493e70ec91e01ced33d6d28f945dac18058084cf793981b92dde2621e777d67"
+    },
+    {
+      "artifact": "external:/workspace/scratch/rules-review-browser-all-spells.png",
+      "sha256": "55724719a7e2ef1ac9fc2018193490ac8e914ae0e6e080a24b10957cf83caab9"
+    }
+  ],
+  "storage": "isolated test directory; original saves untouched",
+  "desktopViewport": {
+    "width": 1440,
+    "height": 1000
+  },
+  "fullSpellAcceptance": false,
+  "audio": "not-verified-by-listening",
+  "persistenceAfterRestart": {
+    "status": "passed",
+    "observedAt": "2026-09-30T10:24:42.460Z",
+    "accounts": [
+      {
+        "hp": 10,
+        "temporaryHp": 5,
+        "pactSlots": 0,
+        "clericSlots": 1,
+        "healingSeen": true,
+        "agathysSeen": true,
+        "alerts": []
+      },
+      {
+        "hp": 10,
+        "temporaryHp": 5,
+        "pactSlots": 0,
+        "clericSlots": 1,
+        "healingSeen": true,
+        "agathysSeen": true,
+        "alerts": []
+      }
+    ]
+  }
+}

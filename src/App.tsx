@@ -799,7 +799,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const { confirmPendingAction, cancelPendingAction } = gameSession
   const { advanceAdventure, directorBusy } = gameSession
   const { pendingTacticalCommand, retryPendingTacticalCommand } = gameSession
-  const { state, combatVisualBatch, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, attackNpc, startRest, spendHitPointDie, completeRest, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, changeWeapon, operateDoor, operateSceneObject, captiveAction, lootContainer, beastAction, resolveGuardEncounter, proposeParley, settleParley, openTavernDiceRound, answerTavernDiceRound, leaveTavernDiceRound, orderTavernDrink, sendLetter, receiveNpcBlessing, useLevelTransition, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, attuneItem, activateItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, updatePlayer, updateWorld } = gameSession
+  const { state, combatVisualBatch, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, attackNpc, startRest, spendHitPointDie, completeRest, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, setSpellBonusPreference, changeWeapon, operateDoor, operateSceneObject, captiveAction, lootContainer, beastAction, resolveGuardEncounter, proposeParley, settleParley, openTavernDiceRound, answerTavernDiceRound, leaveTavernDiceRound, orderTavernDrink, sendLetter, receiveNpcBlessing, useLevelTransition, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, attuneItem, activateItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, updatePlayer, updateWorld } = gameSession
   const [checkDiceScene, setCheckDiceScene] = useState<PendingCheckDiceScene | null>(null)
   const checkDiceSceneRef = useRef<PendingCheckDiceScene | null>(null)
   const checkDiceTimerRef = useRef<number | null>(null)
@@ -1728,6 +1728,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onAreaAttack={throwAreaItem}
             onCastSpell={castSpell}
             onUseCombatAction={useCombatAction}
+            onSetSpellBonusPreference={setSpellBonusPreference}
             onChangeWeapon={changeWeapon}
             onOperateDoor={operateDoor}
             onOperateSceneObject={operateSceneObject}

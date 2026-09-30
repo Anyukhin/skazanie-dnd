@@ -10,6 +10,27 @@ const ROOT = fileURLToPath(new URL('../', import.meta.url))
 const CATALOG_PATH = 'data/dndsu-spells-0-6.json'
 const OVERRIDES_PATH = 'data/dndsu-spell-mechanics-overrides.json'
 export const LONGSTRIDER_EVIDENCE_PATH = 'docs/acceptance/longstrider-evidence.json'
+export const BASIC_SPELL_EVIDENCE_PATH = 'docs/acceptance/spell-basic-2014-evidence.json'
+export const BASIC_SPELL_EVIDENCE_DEPENDENCIES = Object.freeze([
+  CATALOG_PATH, OVERRIDES_PATH, 'package.json', 'pnpm-lock.yaml',
+  'data/rule_packs/dnd_5e_2014/manifest.yaml',
+  'server/combat-spells.mjs', 'server/rules-engine.mjs', 'server/event-store.mjs',
+  'server/index.mjs', 'server/security.mjs', 'server/viewer-projection.mjs',
+  'server/character-creation-catalog.mjs', 'server/character-creation-phb.mjs',
+  'server/character-creation-class-options.mjs', 'server/character-progression.mjs',
+  'server/item-catalog.mjs', 'server/dice-service.mjs', 'server/ruleset-config.mjs',
+  'server/tactical-map.mjs', 'server/dynamic-map.mjs', 'server/npc-positioning.mjs',
+  'server/spell-acceptance-audit.mjs', 'server/spell-override-audit.mjs',
+  'src/App.tsx', 'src/DungeonMap.tsx', 'src/SpellDetail.tsx', 'src/Spellbook.tsx',
+  'src/CharacterCreationWizard.tsx', 'src/useGameSession.ts', 'src/types.ts',
+  'src/combat-spells.ts', 'src/spell-targeting.ts', 'src/spell-explanations.ts',
+  'src/TacticalBoard.tsx', 'src/TacticalBoard3D.tsx', 'src/combat-animation.ts',
+  'src/spell-effects.ts', 'src/board3d-spell-effects.ts', 'src/combat-audio.ts',
+  'test/basic-spell-fixture.mjs', 'test/spell-basic-2014.test.mjs',
+  'test/spell-basic-2014-api.test.mjs', 'test/spell-acceptance-audit.test.mjs',
+  'test/rules-dndsu-2014-review.test.mjs', 'test/spell-components-mechanics.test.mjs',
+  'test/spell-basic-2014-acceptance.test.mjs',
+])
 // Явная консервативная граница первого пилота. Это зависимости доказательства,
 // а не второй каталог. Сам receipt и документация в собственный хеш не входят.
 export const LONGSTRIDER_EVIDENCE_DEPENDENCIES = Object.freeze([
@@ -114,6 +135,86 @@ const COMMON_SCENARIOS = [
   ['ownership-and-projection', 'permissions', 'Владение, членство, недоверенные поля и скрытые цели; два игрока видят только разрешённое.'],
   ['two-player-2d-3d-av', 'presentation', 'Ручной основной сценарий с двумя игроками: 2D/3D, отмена, подтверждённый эффект, анимация и звук без раскрытия скрытого.'],
 ]
+
+const BASIC_SCENARIOS = [
+  ['effect-and-exceptions', 'rules', 'Поимённые числовые ожидания, типы целей, иммунитеты, промах/успех, классовые бонусы и особые ограничения карточки.'],
+  ['lifecycle-and-upcast', 'rules', 'Каждая доступная ячейка I–VI, рост заговоров, точное окончание эффекта, концентрация и повторное наложение.'],
+]
+
+export function basicSpellDependencyFingerprints() {
+  return Object.fromEntries(BASIC_SPELL_EVIDENCE_DEPENDENCIES.map(path => [path, spellEvidenceTextSha256(read(path))]))
+}
+
+export function readBasicSpellEvidence() {
+  try { return JSON.parse(read(BASIC_SPELL_EVIDENCE_PATH)) } catch (error) {
+    return error?.code === 'ENOENT' ? null : { status: 'invalid' }
+  }
+}
+
+function inspectBasicSpellEvidence(record, fingerprints, expectedIds) {
+  const result = { reference: BASIC_SPELL_EVIDENCE_PATH, status: 'missing', testedRevision: record?.testedRevision ?? null,
+    dependencyFingerprints: fingerprints, dependencySha256: dependencyDigest(fingerprints), problems: [] }
+  if (record == null) return result
+  const problem = message => result.problems.push(message)
+  if (record.schemaVersion !== 'spell-batch-evidence/v1' || !['pending', 'recorded'].includes(record.status)) {
+    return { ...result, status: 'invalid', problems: ['Нужен spell-batch-evidence/v1 с явным результатом партии.'] }
+  }
+  if (record.status === 'pending') return { ...result, status: 'pending' }
+  if (!isRevision(record.testedRevision) || !Number.isFinite(Date.parse(record.observedAt))) problem('Нужны исходная ревизия рабочего дерева и дата фактической проверки.')
+  const keys = Object.keys(record.dependencyFingerprints ?? {}).sort()
+  if (JSON.stringify(keys) !== JSON.stringify([...BASIC_SPELL_EVIDENCE_DEPENDENCIES].sort())
+    || keys.some(path => !isSha256(record.dependencyFingerprints[path]) || record.dependencyFingerprints[path] !== fingerprints[path])) {
+    return { ...result, status: 'stale', problems: ['Доказательства первой партии устарели: зависимости изменились; требуется повторная проверка.'] }
+  }
+  const runs = Array.isArray(record.runs) ? record.runs : []
+  if (new Set(runs.map(run => run?.id)).size !== runs.length) problem('ID прогонов должны быть уникальны.')
+  for (const run of runs) {
+    if (!run?.id || !['test-run', 'manual-run'].includes(run.kind) || run.status !== 'passed' || !run.command
+      || !/^docs\/acceptance\/[\w.-]+\.md$/u.test(run.receipt?.reference ?? '') || !run.receipt?.artifact || !isSha256(run.receipt?.sha256)) problem('Успешный прогон требует команды, читаемого отчёта и хеша фактического артефакта.')
+  }
+  if (!runs.some(run => run.kind === 'test-run' && run.command === 'pnpm verify' && run.status === 'passed')) problem('Нужен фактически успешный итоговый pnpm verify.')
+  const cards = Array.isArray(record.spells) ? record.spells : []
+  if (JSON.stringify(cards.map(card => card.spellId).sort()) !== JSON.stringify([...expectedIds].sort())) problem('Нужен точный набор проверенных профилей 2014 без удаления и добавления ID.')
+  for (const card of cards) {
+    const raw = JSON.parse(read(CATALOG_PATH)).spells.find(spell => spell.id === card.spellId)
+    if (!raw || card.source?.rulesetId !== 'dnd_5e_2014' || !card.source.publication || !card.source.acceptedRevision
+      || !isSha256(card.source.htmlSha256) || !isSha256(card.source.descriptionSha256)
+      || card.source.cardSha256 !== sha256(JSON.stringify(raw)) || !card.specification?.length
+      || !card.choices?.length || !card.lifecycle?.length) problem(`Нет поимённой сверки и полного паспорта ${card.spellId}.`)
+    const expected = [...COMMON_SCENARIOS, ...BASIC_SCENARIOS]
+    if (!Array.isArray(card.scenarios) || card.scenarios.length !== expected.length || new Set(card.scenarios.map(s => s.id)).size !== expected.length) { problem(`Неполный набор сценариев ${card.spellId}.`); continue }
+    for (const [id, dimension] of expected) {
+      const scenario = card.scenarios.find(s => s.id === id)
+      const evidenceRuns = (scenario?.runIds ?? []).map(runId => runs.find(run => run.id === runId))
+      if (scenario?.status !== 'passed' || !evidenceRuns.length || evidenceRuns.some(run => run?.status !== 'passed')) problem(`Не подтверждён ${card.spellId}/${id}.`)
+      if ((dimension === 'presentation' || id === 'normal-acquisition-and-cast') && !evidenceRuns.some(run => run?.kind === 'manual-run')) problem(`Нужен основной браузерный путь ${card.spellId}/${id}.`)
+    }
+  }
+  return { ...result, status: result.problems.length ? 'invalid' : 'current' }
+}
+
+function applyBasicSpellEvidence(card, record, inspection) {
+  card.evidenceRecord = inspection
+  if (inspection.status !== 'current') return
+  const saved = record.spells.find(entry => entry.spellId === card.spellId)
+  if (!saved) return
+  card.source = { ...card.source, ...saved.source }
+  card.specification = { status: 'reviewed', individuallyReviewed: true, detailedReference: 'docs/spell-basic-2014-2026-09-30.md', requirements: saved.specification }
+  card.choices = { status: 'reviewed', items: saved.choices }
+  card.lifecycle = { status: 'reviewed', stages: saved.lifecycle }
+  card.remaining = []
+  card.dependencies.status = 'verified'
+  card.scenarios = [...COMMON_SCENARIOS, ...BASIC_SCENARIOS].map(([id, dimension, description]) => ({ id, dimension, description, status: 'passed', evidence: saved.scenarios.find(s => s.id === id).runIds.map(runId => {
+    const run = record.runs.find(r => r.id === runId)
+    return { kind: run.kind, reference: run.receipt.reference, observedAt: record.observedAt, testedRevision: record.testedRevision,
+      dependencySha256: inspection.dependencySha256, receiptSha256: run.receipt.sha256, artifact: run.receipt.artifact, command: run.command,
+      recordReference: BASIC_SPELL_EVIDENCE_PATH, scope: 'basic-spell-dependencies/v1' }
+  }) }))
+  card.readiness = Object.fromEntries(SPELL_ACCEPTANCE_DIMENSIONS.map(dimension => [dimension, 'verified']))
+  card.implementation.executionVerified = true
+  card.availability.actorEligibilityChecked = true
+  card.accepted = true
+}
 
 export function spellEvidenceTextSha256(text) {
   // Все зависимости текстовые: Git autocrlf не должен устаревать доказательство.
@@ -288,7 +389,8 @@ export function validateSpellAcceptanceReport(report) {
     if (report.baseline?.status === 'unavailable' && initial !== null) add(id, 'UNPROVEN_BASELINE', 'Без истории нельзя восстановить исходный статус из текущего.')
     if (!/^[a-f0-9]{64}$/u.test(card?.source?.cardSha256 ?? '') || card?.source?.rulesetId !== 'dnd_5e_2014') add(id, 'INVALID_SOURCE', 'Нужны хеш исходной карточки и закреплённый ruleset.')
     if (!['inventory-only', 'pilot-draft', 'reviewed'].includes(card?.specification?.status)) add(id, 'INVALID_SPECIFICATION', 'Неизвестный уровень спецификации.')
-    if (!Array.isArray(card?.remaining) || !card.remaining.length || !Array.isArray(card?.dependencies?.items) || !card.dependencies.items.length) add(id, 'MISSING_REMAINDER', 'Нужны остаток и зависимости, включая ещё не проверенные.')
+    if (!Array.isArray(card?.remaining) || !card.accepted && !card.remaining.length || !Array.isArray(card?.dependencies?.items) || !card.dependencies.items.length) add(id, 'MISSING_REMAINDER', 'Нужны остаток и зависимости, включая ещё не проверенные.')
+    if (card.accepted && (card.remaining.length || card.dependencies.status !== 'verified')) add(id, 'UNRESOLVED_ACCEPTED_CARD', 'Принятая карточка не может иметь незакрытый остаток или непроверенные зависимости.')
     const scenarios = Array.isArray(card?.scenarios) ? card.scenarios : []
     const requiredScenarios = [...COMMON_SCENARIOS, ...(PILOTS[id]?.scenarios ?? [])]
     for (const [requiredId, requiredDimension] of requiredScenarios) {
@@ -309,6 +411,13 @@ export function validateSpellAcceptanceReport(report) {
       if (!Array.isArray(scenario.evidence)) add(id, 'INVALID_EVIDENCE', 'Доказательства должны быть массивом.')
       if (scenario.status === 'passed' && !scenario.evidence?.length) add(id, 'UNPROVEN_SCENARIO', 'Пройденный сценарий требует доказательств.')
       for (const evidence of Array.isArray(scenario.evidence) ? scenario.evidence : []) {
+        const basicDependencyEvidence = evidence?.scope === 'basic-spell-dependencies/v1'
+          && card.evidenceRecord?.status === 'current' && evidence.recordReference === BASIC_SPELL_EVIDENCE_PATH
+          && BASIC_SPELL_EVIDENCE_DEPENDENCIES.every(path => isSha256(card.evidenceRecord.dependencyFingerprints?.[path]))
+          && Object.keys(card.evidenceRecord.dependencyFingerprints ?? {}).length === BASIC_SPELL_EVIDENCE_DEPENDENCIES.length
+          && evidence.dependencySha256 === dependencyDigest(card.evidenceRecord.dependencyFingerprints)
+          && isRevision(evidence.testedRevision) && evidence.testedRevision === card.evidenceRecord.testedRevision
+          && isSha256(evidence.receiptSha256) && evidence.command && evidence.artifact
         const dependencyEvidence = id === 'longstrider' && evidence?.scope === 'longstrider-dependencies/v1'
           && card.evidenceRecord?.status === 'current' && evidence.recordReference === LONGSTRIDER_EVIDENCE_PATH
           && Object.keys(card.evidenceRecord.dependencyFingerprints ?? {}).length === LONGSTRIDER_EVIDENCE_DEPENDENCIES.length
@@ -317,7 +426,7 @@ export function validateSpellAcceptanceReport(report) {
           && isRevision(evidence.testedRevision) && evidence.testedRevision === card.evidenceRecord.testedRevision
           && isSha256(evidence.receiptSha256) && evidence.command && evidence.artifact
         const treeEvidence = report.workingTreeSha256 && evidence?.treeSha256 === report.workingTreeSha256
-        if (!evidence || !['test-run', 'manual-run'].includes(evidence.kind) || !evidence.reference || !Number.isFinite(Date.parse(evidence.observedAt)) || !(dependencyEvidence || treeEvidence)) add(id, 'INVALID_EVIDENCE', 'Нужны вид, ссылка, дата и совпадающий хеш дерева либо актуальный receipt зависимостей longstrider.')
+        if (!evidence || !['test-run', 'manual-run'].includes(evidence.kind) || !evidence.reference || !Number.isFinite(Date.parse(evidence.observedAt)) || !(dependencyEvidence || basicDependencyEvidence || treeEvidence)) add(id, 'INVALID_EVIDENCE', 'Нужны вид, ссылка, дата и совпадающий хеш дерева либо актуальный receipt зависимостей.')
       }
       if (scenario.status === 'passed' && scenario.dimension === 'presentation' && !scenario.evidence?.some((evidence) => evidence?.kind === 'manual-run')) add(id, 'MISSING_MANUAL_EVIDENCE', 'Представление подтверждается ручной приёмкой, не автоматическим тестом.')
     }
@@ -337,7 +446,7 @@ export function validateSpellAcceptanceReport(report) {
 }
 
 /** Read-only проекция единственного рабочего каталога. Проверку игры этот отчёт не заменяет. */
-export function auditSpellAcceptance({ baseline = readSpellAcceptanceBaseline(), longstriderEvidence = readLongstriderEvidence() } = {}) {
+export function auditSpellAcceptance({ baseline = readSpellAcceptanceBaseline(), longstriderEvidence = readLongstriderEvidence(), basicEvidence = readBasicSpellEvidence() } = {}) {
   const catalogText = read(CATALOG_PATH)
   const catalog = JSON.parse(catalogText)
   const fingerprints = Object.fromEntries([
@@ -345,6 +454,8 @@ export function auditSpellAcceptance({ baseline = readSpellAcceptanceBaseline(),
     'data/rule_packs/dnd_5e_2014/manifest.yaml', 'server/spell-acceptance-audit.mjs',
   ].map((path) => [path, sha256(read(path))]))
   const longstriderInspection = inspectLongstriderEvidence(longstriderEvidence, longstriderDependencyFingerprints())
+  const basicIds = catalog.spells.filter(raw => canonicalCombatSpellFor(raw.id, { rulesetId: 'dnd_5e_2014' }).mechanicsSupport === 'verified').map(raw => raw.id)
+  const basicInspection = inspectBasicSpellEvidence(basicEvidence, basicSpellDependencyFingerprints(), basicIds)
   const spells = catalog.spells.map((raw) => {
     const spell = canonicalCombatSpellFor(raw.id, { rulesetId: 'dnd_5e_2014' })
     const pilot = PILOTS[raw.id]
@@ -383,6 +494,7 @@ export function auditSpellAcceptance({ baseline = readSpellAcceptanceBaseline(),
       accepted: false,
     }
     if (raw.id === 'longstrider') applyLongstriderEvidence(card, longstriderEvidence, longstriderInspection)
+    if (basicIds.includes(raw.id)) applyBasicSpellEvidence(card, basicEvidence, basicInspection)
     return card
   })
   const { statuses, ...baselineInfo } = baseline
@@ -402,18 +514,20 @@ export function auditSpellAcceptance({ baseline = readSpellAcceptanceBaseline(),
       components: { material: spells.filter((spell) => spell.componentRequirements?.material).length, unresolvedMaterialIds: unresolvedMaterial.map((entry) => entry.spellId), royaltyIds: royalties.map((entry) => entry.spellId) },
     },
     componentGaps: { unresolvedMaterial, royalties },
-    evidence: { longstrider: {
+    evidence: { basicSpells: { reference: BASIC_SPELL_EVIDENCE_PATH, status: basicInspection.status, dependencySha256: basicInspection.dependencySha256 }, longstrider: {
       reference: LONGSTRIDER_EVIDENCE_PATH, status: longstriderInspection.status,
       testedRevision: longstriderInspection.testedRevision, dependencySha256: longstriderInspection.dependencySha256,
     } },
     warnings: [
       ...(baseline.status === 'unavailable' ? [baseline.reason] : []),
       ...(['stale', 'invalid'].includes(longstriderInspection.status) ? longstriderInspection.problems : []),
+      ...(['stale', 'invalid'].includes(basicInspection.status) ? basicInspection.problems : []),
     ],
     spells,
   }
   const problems = validateSpellAcceptanceReport(report)
   if (longstriderInspection.status === 'invalid') problems.push({ id: 'longstrider', code: 'INVALID_PERSISTED_EVIDENCE', message: longstriderInspection.problems.join(' ') })
+  if (basicInspection.status === 'invalid') problems.push({ id: null, code: 'INVALID_BASIC_SPELL_EVIDENCE', message: basicInspection.problems.join(' ') })
   if (statuses && (Object.keys(statuses).length !== 439 || initialCounts.heuristic !== 191 || initialCounts['ruling-only'] !== 8 || initialCounts.partial !== 240)) {
     problems.push({ id: null, code: 'BASELINE_COUNTS_MISMATCH', message: 'Исходная ревизия не подтверждает группы 191 heuristic, 8 ruling-only, 240 partial.' })
   }

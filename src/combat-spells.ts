@@ -86,11 +86,12 @@ export type CatalogCombatSpell = CombatSpell & {
 }
 
 /** Полный справочник для чтения; projected-профиль имеет приоритет над локальным override. */
-export function allCatalogCombatSpells(projectedSpells: readonly Partial<CatalogCombatSpell>[] = []): CatalogCombatSpell[] {
+export function allCatalogCombatSpells(projectedSpells: readonly Partial<CatalogCombatSpell>[] = [], rulesetId = 'srd_5_2_1'): CatalogCombatSpell[] {
   const projectedById = new Map(projectedSpells.filter((spell) => spell && spell.id).map((spell) => [String(spell.id), spell]))
   const overrides = mechanicsOverrides.spells as unknown as Record<string, Partial<CatalogCombatSpell>>
   return (catalogPayload.spells as unknown as CatalogCombatSpell[]).map((catalogSpell) => {
-    const staticOverride = overrides[catalogSpell.id] ?? {}
+    const baseOverride = overrides[catalogSpell.id] ?? {}
+    const staticOverride = rulesetId === 'dnd_5e_2014' ? { ...baseOverride, ...baseOverride.mechanics2014 } : baseOverride
     const projected = projectedById.get(catalogSpell.id) ?? {}
     const mechanicsSupport = projected.mechanicsSupport
       ?? staticOverride.mechanicsSupport
@@ -136,7 +137,8 @@ export function fallbackCombatSpells(player?: Player, rulesetId = 'srd_5_2_1'): 
         : rules?.mode === 'known' ? (known ? known.has(spell.id) : true)
           : rules?.mode === 'spellbook' ? (known ? known.has(spell.id) : true) && (prepared ? prepared.has(spell.id) : true)
             : prepared ? prepared.has(spell.id) : true
-      const mechanicsOverride = overrides[spell.id]
+      const baseOverride = overrides[spell.id]
+      const mechanicsOverride = baseOverride && sourceBackedComponents ? { ...baseOverride, ...baseOverride.mechanics2014 } : baseOverride
       /* Fallback-каталог может дать описание компонентов, но никогда не
          должен превращать старое клиентское состояние в авторитетный ответ о
          наличии предмета. Такое решение приходит только в projection spell. */

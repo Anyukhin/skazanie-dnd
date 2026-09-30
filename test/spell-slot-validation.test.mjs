@@ -89,8 +89,8 @@ test('pact slot использует круг WARLOCK_PACT, а Mystic Arcanum в
   assert.equal(holdResult.events.find((event) => event.event_type === 'SpellCast')?.payload.slot_level, 3)
   assert.equal(holdResult.events.filter((event) => event.event_type === 'SpellSavingThrowResolved').length, 2)
   assert.equal(fixedSpellSlotLevelFor(warlock.players[0], pactSpell), 3)
-  assert.throws(() => resolveCommand({ command_type: 'CastSpell', actor_id: 'caster', spell_id: 'hex', target_id: 'target', slot_level: 2, server_authoritative: true }, warlock, { diceService: dice(), context: { serverAuthoritativeCombat: true } }), (error) => error.code === 'INVALID_SPELL_SLOT_LEVEL')
-  const pactCast = resolveCommand({ command_type: 'CastSpell', actor_id: 'caster', spell_id: 'hex', target_id: 'target', server_authoritative: true }, warlock, { diceService: dice(), context: { serverAuthoritativeCombat: true } })
+  assert.throws(() => resolveCommand({ command_type: 'CastSpell', actor_id: 'caster', spell_id: 'hex', spell_option: 'str', target_id: 'target', slot_level: 2, server_authoritative: true }, warlock, { diceService: dice(), context: { serverAuthoritativeCombat: true } }), (error) => error.code === 'INVALID_SPELL_SLOT_LEVEL')
+  const pactCast = resolveCommand({ command_type: 'CastSpell', actor_id: 'caster', spell_id: 'hex', spell_option: 'str', target_id: 'target', server_authoritative: true }, warlock, { diceService: dice(), context: { serverAuthoritativeCombat: true } })
   assert.equal(pactCast.events.find((event) => event.event_type === 'SpellCast')?.payload.slot_level, 3)
 
   const arcanum = state({ characterClass: 'warlock', level: 12, known: ['summon-fiend'], resources: { mystic_arcanum_6: { current: 1, max: 1 } } })
