@@ -968,11 +968,13 @@ function publicConditionsFor(value, enemyIds, visibleActorIds) {
   const projected = {}
   for (const [ownerId, storedConditions] of Object.entries(value)) {
     const conditions = Array.isArray(storedConditions) ? storedConditions.flatMap((condition) => {
-      if (condition?.id !== 'longstrider' && condition?.spell_id !== 'longstrider' && condition !== 'longstrider') return [condition]
+      const scopedTrueStrike = condition?.true_strike_version === 1
+      if (!scopedTrueStrike && condition?.id !== 'longstrider' && condition?.spell_id !== 'longstrider' && condition !== 'longstrider') return [condition]
       if (!visibleActorIds.has(ownerId)) return []
       if (!condition || typeof condition !== 'object') return [condition]
       const projectedCondition = { ...condition }
       if (!visibleActorIds.has(String(projectedCondition.source_actor))) delete projectedCondition.source_actor
+      if (scopedTrueStrike && !visibleActorIds.has(String(projectedCondition.target_actor_id))) delete projectedCondition.target_actor_id
       return [projectedCondition]
     }) : storedConditions
     if (Array.isArray(storedConditions) && storedConditions.length && !conditions.length) continue
@@ -2015,7 +2017,7 @@ function eventForViewer(event, user, actorId, state = {}) {
     if (!visibleActorIds.has(String(visible.actor_id))) delete visible.actor_id
     if (Array.isArray(visible.target_ids)) visible.target_ids = visible.target_ids.filter((/** @type {unknown} */ id) => visibleActorIds.has(String(id)))
   }
-  if (['longstrider', 'mass-cure-wounds'].includes(payload.spell_id) || payload.condition === 'longstrider') {
+  if (['longstrider', 'mass-cure-wounds', 'true-strike'].includes(payload.spell_id) || payload.condition === 'longstrider') {
     const visibleActors = projectVisibleState([...(state.players ?? []), ...(state.actors ?? []), ...(state.enemies ?? [])], viewerFor(state, user, actorId), { forNarrator: true }) ?? []
     const ids = new Set([...visibleActors, ...sceneNpcsForViewer(state)].map((/** @type {Loose} */ actor) => String(actor.id)))
     const targets = (Array.isArray(visible.target_ids) ? visible.target_ids : [payload.target_id]).filter((/** @type {unknown} */ id) => ids.has(String(id)))
@@ -2024,6 +2026,7 @@ function eventForViewer(event, user, actorId, state = {}) {
     if (!ids.has(String(visible.actor_id))) delete visible.actor_id
     if (!ids.has(String(payload.source_actor))) delete payload.source_actor
     if (!ids.has(String(payload.target_id))) delete payload.target_id
+    if (payload.true_strike_version === 1 && !ids.has(String(payload.target_actor_id))) delete payload.target_actor_id
     if (payload.spell_id === 'longstrider' || payload.condition === 'longstrider') {
       for (const key of ['from', 'to', 'origin', 'center']) delete payload[key]
     }

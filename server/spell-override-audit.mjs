@@ -64,6 +64,7 @@ const FIELDS_READ_BY_ENGINE = new Set([...ENGINE_SOURCE.matchAll(/\bspell\??\.([
 /** Метаданные карточки: их читают каталог и интерфейс, а не движок правил. */
 const PRESENTATION_FIELDS = new Set([
   'mechanicsSupport', 'mechanicsAccuracy', 'supportNote', 'description', 'name', 'englishName',
+  'mechanics2014',
   'school', 'classes', 'ritual', 'rangeText', 'castingTime', 'duration', 'sourceUrl', 'prepared',
   'damageTypes', 'radius', 'areaShape', 'areaOrigin', 'createsAreaEffect',
 ])
@@ -97,7 +98,9 @@ export function auditSpellOverrides() {
     problems.push({ id, code: 'DUPLICATE_OVERRIDE', message: 'заклинание описано дважды: второе определение молча заменяет первое' })
   }
 
-  for (const [id, override] of entries) {
+  for (const [id, original] of entries) {
+    // Проверяем исполнимые поля обеих редакций тем же аудитом.
+    const override = original?.mechanics2014 ? { ...original, ...original.mechanics2014 } : original
     const base = BASE_SPELLS.get(id)
     if (!base) {
       problems.push({ id, code: 'UNKNOWN_SPELL', message: 'override описывает заклинание, которого нет в каталоге' })

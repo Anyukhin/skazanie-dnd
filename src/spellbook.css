@@ -50,6 +50,12 @@
 .spell-detail-runtime dt { color: #958879; font-size: var(--fs-sm); }
 .spell-detail-runtime dd { margin: 0; color: #e4d7c7; font-size: var(--fs-sm); }
 .spell-detail-description, .spell-detail-upcast { white-space: pre-wrap; }
+.spell-detail-guide { margin-top: 16px; padding: 15px; border: 1px solid rgba(201,149,86,.28); border-radius: 6px; background: rgba(201,149,86,.04); }
+.spell-detail-explanations { display: grid; gap: 12px; margin: 0; }
+.spell-detail-explanations > div { min-width: 0; }
+.spell-detail-explanations dt { margin-bottom: 3px; color: #dec399; font-size: var(--fs-md); font-weight: 600; }
+.spell-detail-explanations dd { margin: 0; color: #d1c7ba; font-size: var(--fs-md); line-height: 1.55; overflow-wrap: anywhere; }
+.spell-detail-terms { margin-top: 14px; padding-top: 15px; border-top: 1px solid rgba(222,201,171,.12); }
 .spell-detail-status { padding: 11px 13px; border: 1px solid rgba(185,106,87,.45); background: rgba(91,49,41,.18); }
 .spell-detail-status p { color: #d8ad9e; }
 .spell-detail-status strong { color: #e5c1b1; }

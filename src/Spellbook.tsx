@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { SpellDetail, spellLevelLabel, type SpellbookSpell } from './SpellDetail'
 import { CombatIcon } from './CombatIcon'
 import './spellbook.css'
 import spellDescriptionCatalog from '../data/spell-descriptions-ru.json'
+import { readableSpellText } from './spell-explanations'
 
 type ReaderDescriptionCatalog = { details?: Record<string, string> }
 const readerDetails = (spellDescriptionCatalog as unknown as ReaderDescriptionCatalog).details ?? {}
@@ -30,6 +31,7 @@ export function Spellbook({ spells, catalogSpells = spells, activeName = 'Гер
   const [level, setLevel] = useState<number | 'all'>('all')
   const [scope, setScope] = useState<'hero' | 'catalog'>('hero')
   const [selectedId, setSelectedId] = useState<string | null>(initialSpellId ?? spells[0]?.id ?? null)
+  const detailPanelRef = useRef<HTMLDivElement>(null)
   const pinned = useMemo(() => new Set(pinnedSpellIds), [pinnedSpellIds])
   const visibleSpells = scope === 'catalog' ? catalogSpells : spells
   const levels = useMemo(() => [...new Set(visibleSpells.map((spell) => spell.level).filter((entry) => Number.isFinite(entry)))].sort((a, b) => a - b), [visibleSpells])
@@ -48,6 +50,7 @@ export function Spellbook({ spells, catalogSpells = spells, activeName = 'Гер
   useEffect(() => {
     if (selectedVisibleId !== selectedId) setSelectedId(selectedVisibleId)
   }, [selectedVisibleId, selectedId])
+  useEffect(() => { detailPanelRef.current?.scrollTo({ top: 0 }) }, [selectedVisibleId])
 
   if (!open) return null
   return <section className="spellbook-catalog" role="dialog" aria-modal="true" aria-label={`Книга заклинаний: ${activeName}`} onPointerDown={(event) => event.stopPropagation()}>
@@ -60,7 +63,7 @@ export function Spellbook({ spells, catalogSpells = spells, activeName = 'Гер
       <nav aria-label="Область каталога"><button type="button" className={scope === 'hero' ? 'active' : ''} aria-pressed={scope === 'hero'} onClick={() => switchScope('hero')}>Героя</button><button type="button" className={scope === 'catalog' ? 'active' : ''} aria-pressed={scope === 'catalog'} onClick={() => switchScope('catalog')}>Весь каталог</button></nav>
       <nav aria-label="Фильтр по кругу">
         <button type="button" className={level === 'all' ? 'active' : ''} onClick={() => setLevel('all')}>Все</button>
-        {levels.map((entry) => <button type="button" key={entry} className={level === entry ? 'active' : ''} onClick={() => setLevel(entry)}>{entry === 0 ? 'З' : entry}</button>)}
+        {levels.map((entry) => <button type="button" key={entry} className={level === entry ? 'active' : ''} onClick={() => setLevel(entry)}>{entry === 0 ? 'Заговоры' : entry}</button>)}
       </nav>
       <span aria-live="polite">{filtered.length} из {visibleSpells.length}</span>
     </div>
@@ -72,7 +75,7 @@ export function Spellbook({ spells, catalogSpells = spells, activeName = 'Гер
           return <article key={spell.id} className={`spellbook-card${active ? ' active' : ''}${blockedReason ? ' blocked' : ''}`}>
             <button type="button" className="spellbook-card-main" onClick={() => setSelectedId(spell.id)} aria-expanded={active}>
               <CombatIcon id={spell.id} kind="spell" hint={`${spell.name} ${spell.school ?? ''} ${spell.damageType ?? ''}`} size={48} priority={active} /><span><strong>{spell.name}</strong><small>{spellLevelLabel(spell.level)} · {spell.school || 'Школа не указана'}</small></span>
-              <p>{spell.description?.trim() || 'Описание отсутствует в каталоге.'}</p>
+              <p>{readableSpellText(spell.description?.trim() || 'Описание отсутствует в каталоге.')}</p>
               {blockedReason && <em role="status">Недоступно для применения: {blockedReason}. Открыто для чтения.</em>}
             </button>
             {onPin && <button type="button" className="spellbook-card-pin" onClick={() => onPin(spell.id)} disabled={isPinDisabled?.(spell) ?? false} aria-pressed={pinned.has(spell.id)}>{pinned.has(spell.id) ? 'Закреплено' : 'Закрепить'}</button>}
@@ -80,7 +83,7 @@ export function Spellbook({ spells, catalogSpells = spells, activeName = 'Гер
         })}
         {!filtered.length && <p className="spellbook-empty">По этому запросу заклинаний нет.</p>}
       </div>
-      <div className="spellbook-catalog-detail">
+      <div className="spellbook-catalog-detail" ref={detailPanelRef}>
         {selected ? <SpellDetail spell={selected} details={readerDetails[selected.id]} onSelect={onSelect} selectionDisabled={isSelectionDisabled?.(selected) ?? false} blockedReason={blockedReasonFor?.(selected)} /> : <p className="spellbook-empty">В каталоге нет карточек.</p>}
       </div>
     </div>

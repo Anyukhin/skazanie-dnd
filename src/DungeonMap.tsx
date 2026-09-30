@@ -990,7 +990,7 @@ export function boardVisualTheme(theme: SceneVisualTheme) {
   return 'map-theme-wild'
 }
 
-export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, canConverse, dialogueBusy, dialogueDraft, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, combatAudio, visualBatch, onStartCombat, onNpcAttack, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, leaveLocationDisabled, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, playerHud, statusContent, children }: {
+export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, canConverse, dialogueBusy, dialogueDraft, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, combatAudio, visualBatch, onStartCombat, onNpcAttack, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onSetSpellBonusPreference, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, leaveLocationDisabled, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, playerHud, statusContent, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -1012,6 +1012,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   onAreaAttack: (actorId: string, itemId: string, x: number, y: number, note?: string) => Promise<CommandOutcome>
   onCastSpell: (actorId: string, spellId: string, target: (({ targetId: string } | { targetIds: string[] } | { x: number; y: number } | { x: number; y: number; targetIds: string[] }) & { itemId?: string; spellOption?: string; slotLevel?: number; castingResource?: string; knockOut?: boolean; note?: string })) => Promise<CommandOutcome>
   onUseCombatAction: (actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string, note?: string) => Promise<CommandOutcome>
+  onSetSpellBonusPreference?: (actorId: string, enabled: boolean) => Promise<CommandOutcome>
   onChangeWeapon: (actorId: string, itemId: string) => Promise<CommandOutcome>
   onOperateDoor: (actorId: string, doorId: string, intent: 'open' | 'close' | 'force' | 'lockpick') => Promise<CommandOutcome>
   onOperateSceneObject: (actorId: string, propId: string, intent: SceneObjectIntent) => Promise<CommandOutcome>
@@ -1583,7 +1584,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const weaponSelectionId = selectedItem?.id ?? BASE_ATTACK_ID
   const projectedSpells = activeHero?.combatSpells ?? []
   const fallbackSpells = fallbackCombatSpells(activeHero, state.ruleset_id)
-  const spellbookSpells = useMemo(() => allCatalogCombatSpells(projectedSpells), [projectedSpells])
+  const spellbookSpells = useMemo(() => allCatalogCombatSpells(projectedSpells, state.ruleset_id), [projectedSpells, state.ruleset_id])
   const fallbackSpellById = new Map(fallbackSpells.map((spell) => [spell.id, spell]))
   const spells = [...new Map([...fallbackSpells, ...projectedSpells].map((spell) => [spell.id, spell])).entries()]
     .map(([id, spell]) => {
@@ -1878,7 +1879,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   /* Вне боя экономики хода нет, а длинное накладывание, наоборот, доступно
      только там: боевая панель его не вмещает. Совпадает с правилом движка —
      `HARMFUL_SPELL_KINDS` и проверка `long_cast` в rules-engine. */
-  const spellEconomyReady = selectedSpellItemReady && !selectedSpellSupport.blocked && !selectedSpellComponentAvailability.blocked && selectedSpell?.prepared !== false && spellSlotReady && (combatActive
+  const spellEconomyReady = selectedSpellItemReady && !selectedSpellSupport.blocked && !selectedSpellComponentAvailability.blocked && selectedSpell?.prepared !== false && spellSlotReady && !(state.ruleset_id === 'dnd_5e_2014' && selectedSpellAction === 'reaction') && (combatActive
     ? selectedSpellAction !== 'long_cast' && (selectedSpellAction === 'bonus_action' ? bonusReady : selectedSpellAction === 'reaction' ? reactionReady : actionReady)
     : Boolean(selectedSpell && castableOutOfCombat(selectedSpell)))
   const selectedActionPool = selectedCombatAction?.resource ? activeResources[selectedCombatAction.resource] : undefined
@@ -2115,6 +2116,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   }
   const selectSpell = (spell: CombatSpell) => {
     if (mechanicsSupportPresentation(spell.mechanicsSupport, spell.supportNote).blocked) return
+    if (state.ruleset_id === 'dnd_5e_2014' && spellActionType(spell) === 'reaction') return
     setSelectedSpellId(spell.id)
     setSelectedSpellOption(spell.spellOptions?.[0] ?? '')
     setCombatMode('magic')
@@ -2499,7 +2501,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       && hasClearBoardTrajectory(state, selectedSpellPrimary, enemy),
     )
     const canWeaponTargetEnemy = Boolean(combatActive && selected && combatMode === 'weapon' && weaponAttackReady && enemyInWeaponRange && selectedItem?.combat?.kind !== 'thrown-area' && !needsWeaponChange)
-    const longstriderTargeting = selectedSpell?.id === 'longstrider' && combatMode === 'magic'
+    const longstriderTargeting = (selectedSpell?.id === 'longstrider' || selectedSpell?.target === 'creature' && selectedSpell.mechanicsSupport === 'verified') && combatMode === 'magic'
     const canSpellTargetEnemy = Boolean(
       (combatActive || longstriderTargeting) && selected && combatMode === 'magic'
       && selectedSpell && ['enemy', 'creature'].includes(selectedSpell.target) && spellEconomyReady
@@ -3263,15 +3265,16 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     const pool = pools.find((candidate) => Number(candidate.current ?? 0) > 0) ?? pools[0]
     const ready = availability.ready
     const actionType = activeConditionIds.has('metamagic-quickened') && spellActionType(spell) === 'action' ? 'bonus_action' : spellActionType(spell)
-    const economyReady = combatActive
+    const reactionOnly = state.ruleset_id === 'dnd_5e_2014' && actionType === 'reaction'
+    const economyReady = !reactionOnly && (combatActive
       ? actionType !== 'long_cast' && (actionType === 'bonus_action' ? bonusReady : actionType === 'reaction' ? reactionReady : actionReady)
-      : castableOutOfCombat(spell)
+      : castableOutOfCombat(spell))
     const componentReason = componentAvailability.blocked
       ? unavailableUiReason(componentAvailability.reason)
       : null
     const tileReason = support.blocked
       ? `${support.label}. ${support.explanation}`
-      : componentReason ?? `${spell.description ?? ''}${spell.concentration ? ' · Концентрация' : ''}`
+      : componentReason ?? (reactionOnly ? 'Применяется через окно реакции после подходящего события' : `${spell.description ?? ''}${spell.concentration ? ' · Концентрация' : ''}`)
     const componentReasonId = `spell-component-availability-${spell.id}`
     deckTiles.push({
       id: spell.id,
@@ -3513,7 +3516,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           const spell = spells.find((entry) => entry.id === catalogSpell.id)
           if (!spell) return true
           const support = mechanicsSupportPresentation(spell.mechanicsSupport, spell.supportNote)
-          return spellComponentAvailabilityFor(spell).blocked || support.blocked || spell.prepared === false || (combatActive && spellActionType(spell) === 'long_cast') || (!combatActive && !castableOutOfCombat(spell))
+          return spellComponentAvailabilityFor(spell).blocked || support.blocked || spell.prepared === false || (state.ruleset_id === 'dnd_5e_2014' && spellActionType(spell) === 'reaction') || (combatActive && spellActionType(spell) === 'long_cast') || (!combatActive && !castableOutOfCombat(spell))
         }}
         blockedReasonFor={(catalogSpell) => {
           const spell = spells.find((entry) => entry.id === catalogSpell.id)
@@ -3523,6 +3526,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           const support = mechanicsSupportPresentation(spell.mechanicsSupport, spell.supportNote)
           if (support.blocked) return support.label + '. ' + support.explanation
           if (spell.prepared === false) return 'Заклинание не изучено или не подготовлено'
+          if (state.ruleset_id === 'dnd_5e_2014' && spellActionType(spell) === 'reaction') return 'Применяется через окно реакции после подходящего события'
           if (combatActive && spellActionType(spell) === 'long_cast') return 'Длительное накладывание доступно только вне боя'
           if (!combatActive && !castableOutOfCombat(spell)) return 'Боевое заклинание требует инициативы: сначала начните бой'
           return null
@@ -3652,6 +3656,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           {activeConditions.map((condition) => <span key={condition.instanceKey} className={`turn-strip-condition ${condition.status}`} title={`${condition.statusLabel}. ${condition.explanation}${condition.duration ? ` Длительность: ${condition.duration}` : ''}`}><i />{condition.label}</span>)}
           <CombatTurnClock clock={state.turn_clock} actorName={actorNameById(state.turn_clock?.actor_ids?.[0])} compact />
         </div>}
+        {activeHero && canAct && activeConditionIds.has('bless-d4') && onSetSpellBonusPreference && <label className="spell-bonus-preference"><input type="checkbox" aria-label="Использовать бонус Благословения" checked={(state.mechanics?.conditions?.[turnActorId] ?? []).some((condition) => condition.id === 'bless-d4' && condition.bonus_enabled !== false)} disabled={tacticalBusy || Boolean(combat.reaction_window)} onChange={(event) => { void onSetSpellBonusPreference(turnActorId, event.target.checked) }} /> Использовать бонус Благословения к атакам и спасброскам</label>}
         {/* Ходы противников, прошедшие пока игрок ждал, — одной свёрнутой
             строкой со счётчиком, а не отдельной панелью: раскрывается по
             нажатию, наведение на строку подсвечивает участников на доске. */}

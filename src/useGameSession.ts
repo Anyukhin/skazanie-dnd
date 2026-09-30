@@ -60,6 +60,7 @@ type TacticalCommand =
   | { command_type: 'TransferItem'; actor_id: string; item_id: string; recipient_id: string; quantity: number }
   | { command_type: 'AttuneItem'; actor_id: string; item_id: string; attuned: boolean }
   | { command_type: 'ActivateItem'; actor_id: string; item_id: string; activated: boolean }
+  | { command_type: 'SetSpellBonusPreference'; actor_id: string; spell_id: 'bless'; enabled: boolean }
   | { command_type: 'InterrogateCaptive'; actor_id: string; captive_id: string; skill: CaptiveInterrogationSkill }
   | { command_type: 'ReleaseCaptive'; actor_id: string; captive_id: string }
   | { command_type: 'HandCaptiveToGuards'; actor_id: string; captive_id: string }
@@ -1974,6 +1975,10 @@ export function useGameSession(options: { accountId?: string } = {}) {
     return executeTacticalCommand({ command_type: 'LevelUp', actor_id: playerId, expected_level: expectedLevel } as TacticalCommand, 'Повысить уровень персонажа')
   }, [executeTacticalCommand])
 
+  const setSpellBonusPreference = useCallback((playerId: string, enabled: boolean) => {
+    return executeTacticalCommand({ command_type: 'SetSpellBonusPreference', actor_id: playerId, spell_id: 'bless', enabled }, enabled ? 'Использовать бонус Благословения' : 'Не использовать бонус Благословения')
+  }, [executeTacticalCommand])
+
   const switchCampaign = useCallback(async (code: string, prefetched?: { version?: number; state?: GameState | null }) => {
     const normalized = code.toUpperCase()
     actionEpoch.current += 1
@@ -2351,6 +2356,7 @@ export function useGameSession(options: { accountId?: string } = {}) {
     throwAreaItem,
     castSpell,
     useCombatAction,
+    setSpellBonusPreference,
     changeWeapon,
     operateDoor,
     operateSceneObject,

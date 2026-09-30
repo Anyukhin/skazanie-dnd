@@ -7,6 +7,35 @@ const SPELL_OVERRIDES = overridePayload.spells ?? {}
 const DEFAULT_PARTIAL_NOTE = 'Сервер исполняет формализованную часть карточки; полный набор исключений и взаимодействий ещё не подтверждён.'
 const DEFAULT_RULING_NOTE = 'Карточка известна каталогу, но для её эффекта ещё нет исполняемого серверного решения.'
 const DND_2014_RULESET_ID = 'dnd_5e_2014'
+export const DND_2014_TIMED_BUFF_EXPIRY_POLICY = 'dnd2014-timed-buff/v1'
+
+// Разбираем только однозначную длительность метаданных источника, не описание
+// эффекта. Особые сроки хода, компоненты и отдельные обработчики остаются явными.
+function timedConditionForDnd2014(spell) {
+  if (!['partial', 'verified'].includes(spell.mechanicsSupport) || !['buff', 'utility', 'save', 'debuff', 'area-save', 'area-damage'].includes(spell.kind) || !spell.conditions?.length
+    || spell.conditionDuration || spell.conditionDurationMinutes || spell.conditionDurationSeconds
+    || spell.createsAreaEffect || spell.temporaryHpAbilityModifier || spell.continuationDurationSeconds
+    || ['sunbeam', 'flesh-to-stone', 'banishment'].includes(spell.id)) return spell
+  const duration = String(spell.duration ?? '').toLocaleLowerCase('ru').trim()
+  const match = duration.match(/^(?:концентрация,\s*вплоть до\s*)?(\d+)\s+(раунд[а-яё]*|минут[а-яё]*|час[а-яё]*|день|дня|дней)$/u)
+  if (!match) return spell
+  const unit = match[2]
+  // Срок «1 раунд» у атаки/помехи обычно задаётся относительно хода источника.
+  if (!['buff', 'utility'].includes(spell.kind) && unit.startsWith('раунд')) return spell
+  const secondsPerUnit = unit.startsWith('раунд') ? 6 : unit.startsWith('минут') ? 60 : unit.startsWith('час') ? 3_600 : 86_400
+  const seconds = Number(match[1]) * secondsPerUnit
+  if (!Number.isSafeInteger(seconds) || seconds <= 0) return spell
+  return {
+    ...spell,
+    conditionDurationSeconds: seconds,
+    conditionExpiryPolicy: DND_2014_TIMED_BUFF_EXPIRY_POLICY,
+    ...(['hex', 'hunter-s-mark'].includes(spell.id) ? {
+      conditionDurationSecondsBySlotLevel: { 3: 28_800, 4: 28_800, 5: 86_400, 6: 86_400 },
+    } : {}),
+    ...(spell.id === 'dominate-beast' ? { conditionDurationSecondsBySlotLevel: { 5: 600, 6: 3_600 } } : {}),
+    ...(spell.id === 'dominate-person' ? { conditionDurationSecondsBySlotLevel: { 6: 600 } } : {}),
+  }
+}
 const SPELLS = Object.freeze(payload.spells.map((spell) => {
   const mechanicsOverride = SPELL_OVERRIDES[spell.id]
   const mechanicsSupport = mechanicsOverride?.mechanicsSupport
@@ -27,10 +56,32 @@ const rulesetIdOf = (options) => String(typeof options === 'string' ? options : 
 const spellForRuleset = (spell, rulesetId) => {
   if (!spell) return spell
   if (rulesetId !== DND_2014_RULESET_ID) {
-    const { components, areaGeometryVersion, ...legacy } = spell
+    const { components, areaGeometryVersion, mechanics2014, ...legacy } = spell
     return legacy
   }
-  if (spell.id !== 'resistance') return spell
+  // Проверенная редакция не меняет профиль другой редакции. Это часть того
+  // же server-owned override, а не отдельный каталог или клиентское решение.
+  if (spell.mechanics2014) spell = { ...spell, ...spell.mechanics2014 }
+  if (spell.id === 'true-strike') return {
+    ...spell,
+    target: 'creature',
+    requiresCombatAgainstHostile: false,
+    conditionDuration: 'source-turns:2',
+    conditionDurationSecondsOutsideCombat: 6,
+    supportNote: 'D&D 2014: выберите видимую цель в 30 футах. Преимущество получает первая атака по этой цели на следующем ходу заклинателя, пока он держит концентрацию.',
+  }
+  if (spell.id === 'blade-ward') return {
+    ...spell,
+    conditionDuration: 'source-turns:2',
+    conditionDurationSecondsOutsideCombat: 6,
+    supportNote: 'D&D 2014: сопротивление дробящему, колющему и рубящему урону атак оружием до конца следующего хода заклинателя.',
+  }
+  if (spell.id === 'hex') return timedConditionForDnd2014({
+    ...spell,
+    spellOptions: ['str', 'dex', 'con', 'int', 'wis', 'cha'],
+    supportNote: 'D&D 2014: выбранная характеристика получает помеху только на проверки; спасброски не меняются. Попадания заклинателя добавляют 1к6 некротического урона. Перенос после падения цели до 0 хитов и взаимодействие со «Снятием проклятия» ещё не исполняются.',
+  })
+  if (spell.id !== 'resistance') return timedConditionForDnd2014(spell)
   return {
     ...spell,
     spellOptions: [],
@@ -509,13 +560,14 @@ export function spellSlotMaximumsFor(actor) {
   return Object.fromEntries((slots ?? []).map((maximum, index) => [`spell_slots_${index + 1}`, maximum]))
 }
 
-export function spellCatalogInfo() {
+export function spellCatalogInfo(options) {
+  const spells = SPELLS.map((spell) => spellForRuleset(spell, rulesetIdOf(options)))
   return {
     count: SPELLS.length, source: payload.source, generatedAt: payload.generatedAt, maximumSpellLevel: 6,
-    verifiedMechanics: SPELLS.filter((spell) => spell.mechanicsSupport === 'verified').length,
-    partialMechanics: SPELLS.filter((spell) => spell.mechanicsSupport === 'partial').length,
-    heuristicMechanics: SPELLS.filter((spell) => spell.mechanicsSupport === 'heuristic').length,
-    rulingOnlyMechanics: SPELLS.filter((spell) => spell.mechanicsSupport === 'ruling-only').length,
+    verifiedMechanics: spells.filter((spell) => spell.mechanicsSupport === 'verified').length,
+    partialMechanics: spells.filter((spell) => spell.mechanicsSupport === 'partial').length,
+    heuristicMechanics: spells.filter((spell) => spell.mechanicsSupport === 'heuristic').length,
+    rulingOnlyMechanics: spells.filter((spell) => spell.mechanicsSupport === 'ruling-only').length,
   }
 }
 

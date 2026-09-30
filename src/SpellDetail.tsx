@@ -3,6 +3,7 @@ import type { SpellComponents } from './types'
 import { CombatIcon } from './CombatIcon'
 import { damageTypeLabel } from './app-shared'
 import { conditionPresentation } from './tactical-ui'
+import { beginnerComponentDetails, beginnerSpellGuide, readableSpellText, spellTextExplanations } from './spell-explanations'
 
 export type SpellbookSpell = {
   id: string
@@ -71,11 +72,9 @@ const CLASS_LABELS: Record<string, string> = {
 
 const ABILITY_LABELS: Record<string, string> = { str: 'Сила', dex: 'Ловкость', con: 'Телосложение', int: 'Интеллект', wis: 'Мудрость', cha: 'Харизма' }
 const TARGET_LABELS: Record<string, string> = { enemy: 'враг', ally: 'союзник', self: 'на себя', point: 'точка', creature: 'существо' }
-const KIND_LABELS: Record<string, string> = { attack: 'атака', save: 'спасбросок', 'area-save': 'область со спасброском', damage: 'урон', 'area-damage': 'область с уроном', healing: 'лечение', summon: 'призыв', buff: 'усиление', debuff: 'ослабление', utility: 'утилита', teleport: 'телепорт' }
+const KIND_LABELS: Record<string, string> = { attack: 'атака', save: 'спасбросок', 'area-save': 'область со спасброском', damage: 'урон', 'area-damage': 'область с уроном', healing: 'лечение', summon: 'призыв', buff: 'усиление', debuff: 'ослабление', utility: 'вспомогательная магия', teleport: 'мгновенное перемещение' }
 const SHAPE_LABELS: Record<string, string> = { sphere: 'сфера', cone: 'конус', line: 'линия', cube: 'куб', cylinder: 'цилиндр' }
 const RUNTIME_CONDITION_LABELS: Record<string, string> = { deafened: 'Оглохший', 'magical-darkness': 'Магическая тьма' }
-
-const trimTerminalPunctuation = (value: string) => value.trim().replace(/[.!?]+$/u, '')
 
 function listValue(value: unknown): string[] {
   if (Array.isArray(value)) return value.map(String).map((item) => item.trim()).filter(Boolean)
@@ -124,28 +123,14 @@ export function sourceUrlForSpell(spell: Pick<SpellbookSpell, 'sourceUrl' | 'sou
 
 export function spellComponentsText(components?: SpellComponents | null) {
   if (!components) return 'Не указаны в каталоге'
-  const markers = [components.verbal ? 'В' : null, components.somatic ? 'С' : null, components.material ? 'М' : null]
+  const markers = [components.verbal ? 'магические слова (В)' : null, components.somatic ? 'жесты рукой (С)' : null, components.material ? 'предметы для магии (М)' : null]
     .filter((marker): marker is string => Boolean(marker))
-  if (components.special?.length) markers.push('А')
+  if (components.special?.length) markers.push('особая плата или требование')
   return markers.length ? markers.join(' · ') : 'Нет компонентов'
 }
 
-function materialDetails(material: NonNullable<SpellComponents['material']>) {
-  const details = [material.description.trim()]
-  if (material.costGp != null) details.push(`${material.costGp} зм`)
-  if (material.consumed) details.push('расходуется')
-  if (material.focusSubstitutable && !material.unresolved) details.push('можно заменить фокусом')
-  if (material.requirementNote) details.push(trimTerminalPunctuation(material.requirementNote))
-  return details.join(' · ')
-}
-
 export function spellComponentDetails(components?: SpellComponents | null): string[] {
-  if (!components) return ['Данные о компонентах отсутствуют в каталоге.']
-  const details = [`Компоненты: ${spellComponentsText(components)}`]
-  if (components.material) details.push(`Материальный компонент: ${materialDetails(components.material)}`)
-  if (components.special?.length) details.push(...components.special.map((item) => `Особое требование: ${item.description}`))
-  if (!components.material && !components.special?.length) details.push('Материальный компонент не требуется.')
-  return details
+  return [`Компоненты: ${spellComponentsText(components)}`, ...beginnerComponentDetails(components)]
 }
 
 export function spellRuntimeDetails(spell: SpellbookSpell): Array<[string, string]> {
@@ -225,7 +210,7 @@ export type SpellDetailProps = {
 
 export function spellDescriptionParagraphs(spell: Pick<SpellbookSpell, 'description'>, details?: string | null): string[] {
   const text = details?.trim() || spell.description?.trim() || 'Описание отсутствует в каталоге.'
-  return text.split(/\r?\n\s*\r?\n/u).map((paragraph) => paragraph.trim()).filter(Boolean)
+  return text.split(/\r?\n\s*\r?\n/u).map((paragraph) => readableSpellText(paragraph.trim())).filter(Boolean)
 }
 
 export function SpellDetail({ spell, details, onClose, onSelect, selectLabel = 'Выбрать заклинание', selectionDisabled = false, blockedReason, children }: SpellDetailProps) {
@@ -242,6 +227,15 @@ export function SpellDetail({ spell, details, onClose, onSelect, selectLabel = '
   const sourceUrl = sourceUrlForSpell(spell)
   const subclasses = listValue(spell.subclasses ?? spell.subclass)
   const runtimeRows = spellRuntimeDetails(spell)
+  const descriptionParagraphs = spellDescriptionParagraphs(spell, details)
+  const componentDetails = spellComponentDetails(spell.components)
+  const beginnerGuide = beginnerSpellGuide(spell)
+  const explanations = spellTextExplanations([
+    ...descriptionParagraphs, upcast ?? '', spell.castingTime ?? '', spell.duration ?? '',
+    spell.rangeText ?? '', ...runtimeRows.map(([, value]) => value), supportNote ?? '',
+    ...beginnerGuide.map(({ text }) => text),
+    componentDetails.some((line) => /фокусировк/iu.test(line)) ? 'магическая фокусировка' : '',
+  ].join(' '))
   const factRows: Array<[string, string]> = [
     ['Уровень', spellLevelLabel(spell.level)],
     ['Школа', spell.school?.trim() || 'Не указана в каталоге'],
@@ -269,29 +263,41 @@ export function SpellDetail({ spell, details, onClose, onSelect, selectLabel = '
     {spell.sourceClasses?.some((label) => label.includes('(TCE)')) && <p>Пометка TCE обозначает расширенный список заклинаний класса из книги Таши.</p>}
     <section className="spell-detail-section" aria-labelledby={`spell-components-${spell.id}`}>
       <h3 id={`spell-components-${spell.id}`}>Компоненты</h3>
-      {spellComponentDetails(spell.components).map((line) => <p key={line}>{line}</p>)}
+      {componentDetails.map((line) => <p key={line}>{line}</p>)}
     </section>
     <section className="spell-detail-section" aria-labelledby={`spell-description-${spell.id}`}>
       <h3 id={`spell-description-${spell.id}`}>Описание</h3>
       <div className="spell-detail-description">
-        {spellDescriptionParagraphs(spell, details).map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
+        {descriptionParagraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
       </div>
     </section>
+    <section className="spell-detail-section spell-detail-guide" aria-labelledby={`spell-guide-${spell.id}`}>
+      <h3 id={`spell-guide-${spell.id}`}>Как применять это заклинание</h3>
+      <dl className="spell-detail-explanations">
+        {beginnerGuide.map(({ label, text }) => <div key={label}><dt>{label}</dt><dd>{text}</dd></div>)}
+      </dl>
+    </section>
+    {explanations.length > 0 && <section className="spell-detail-section spell-detail-terms" aria-labelledby={`spell-terms-${spell.id}`}>
+      <h3 id={`spell-terms-${spell.id}`}>Что означают слова и числа в описании</h3>
+      <dl className="spell-detail-explanations">
+        {explanations.map(({ label, text }) => <div key={label}><dt>{label}</dt><dd>{text}</dd></div>)}
+      </dl>
+    </section>}
     <section className="spell-detail-section" aria-labelledby={`spell-runtime-${spell.id}`}>
       <h3 id={`spell-runtime-${spell.id}`}>Эффект в игре</h3>
       {runtimeUnavailableReason
         ? <p className="spell-detail-runtime-unavailable">{runtimeUnavailableReason}</p>
         : runtimeRows.length
-          ? <dl className="spell-detail-runtime">{runtimeRows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
+          ? <dl className="spell-detail-runtime">{runtimeRows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{readableSpellText(value)}</dd></div>)}</dl>
           : <p>Характеристики эффекта пока не указаны.</p>}
     </section>
     <section className="spell-detail-section" aria-labelledby={`spell-upcast-${spell.id}`}>
       <h3 id={`spell-upcast-${spell.id}`}>Повышение уровня</h3>
       <p className="spell-detail-upcast">{spell.higherLevels === null
         ? spell.level === 0
-          ? 'Заговор не использует ячейки; масштабирование по уровню персонажа указано в описании.'
+          ? 'Заговор не использует ячейки. Если его эффект растёт с уровнем героя, это указано в описании.'
           : 'Усиление ячейкой более высокого круга не предусмотрено.'
-        : upcast || 'Отдельные сведения о повышении уровня отсутствуют в каталоге.'}</p>
+        : upcast ? readableSpellText(upcast) : 'Отдельные сведения о повышении уровня отсутствуют в каталоге.'}</p>
     </section>
     {(availabilityReason || supportNote) && <section className="spell-detail-section spell-detail-status" aria-label="Ограничения применения">
       {availabilityReason && <p role="status"><strong>Сейчас недоступно для применения:</strong> {availabilityReason}</p>}

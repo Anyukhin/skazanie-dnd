@@ -1,0 +1,2865 @@
+{
+  "schemaVersion": "rules-text-review/v1",
+  "observedOn": "2026-09-30",
+  "edition": "D&D 2014 with applicable errata",
+  "scope": "Manual review of all 119 formal rule texts/mechanics. This does not review every class, feat, monster or item catalog entry and does not prove complete runtime implementation.",
+  "summary": {
+    "reviewedEntries": 119,
+    "clarifiedEntries": 9,
+    "runtimeFullyAccepted": 0
+  },
+  "rules": [
+    {
+      "id": "dnd_5e_2014:checks:ability-check",
+      "title": "Проверки характеристик",
+      "repositoryPath": "data/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "e3a759fad5c5a6119248a905617de1a6b2daa0d8667282f65d1bc89593ad985b",
+      "reviewedFields": [
+        "text_ru",
+        "text_en"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "review_incomplete",
+      "references": [
+        {
+          "id": "dndsu-2014-ability-scores",
+          "url": "https://5e14.dnd.su/articles/newbie/468-using-ability-scores/",
+          "rawSha256": "0ecdaeee051748fa0fbb9af46f138194a3f4c48833984fbed6e534804f1fd1ba"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:checks:saving-throw",
+      "title": "Спасброски",
+      "repositoryPath": "data/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "a01fec3f3d8a8d1237adc7b89a749c08226c0d202e419a2792115781c7aa19c0",
+      "reviewedFields": [
+        "text_ru",
+        "text_en"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "review_incomplete",
+      "references": [
+        {
+          "id": "dndsu-2014-ability-scores",
+          "url": "https://5e14.dnd.su/articles/newbie/468-using-ability-scores/",
+          "rawSha256": "0ecdaeee051748fa0fbb9af46f138194a3f4c48833984fbed6e534804f1fd1ba"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:combat:attack-roll",
+      "title": "Броски атаки",
+      "repositoryPath": "data/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "c6ee86a02b65bbe571521653c67de66eeb2f5821ae84b59e5b192fbe1ec27bb7",
+      "reviewedFields": [
+        "text_ru",
+        "text_en"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "review_incomplete",
+      "references": [
+        {
+          "id": "dndsu-2014-main-formulas",
+          "url": "https://5e14.dnd.su/articles/newbie/26-main-formulas/",
+          "rawSha256": "f20cfae00b063a1a90316cb5994fd9dfdc01ee511e0f726155d878c511410953"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:combat:armor-class",
+      "title": "Класс доспеха",
+      "repositoryPath": "data/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "5069da26cbd4ae92ca70d6e0af713de29094f6501d867421aa6679f376d06bf1",
+      "reviewedFields": [
+        "text_ru",
+        "text_en"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "review_incomplete",
+      "references": [
+        {
+          "id": "dndsu-2014-main-formulas",
+          "url": "https://5e14.dnd.su/articles/newbie/26-main-formulas/",
+          "rawSha256": "f20cfae00b063a1a90316cb5994fd9dfdc01ee511e0f726155d878c511410953"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:core:advantage-disadvantage",
+      "title": "Преимущество и помеха",
+      "repositoryPath": "data/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "224e946caf9b51dd4d8bb6897c102bfaa1bce7c44b72ae00e8c51d8cf9749209",
+      "reviewedFields": [
+        "text_ru",
+        "text_en"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "review_incomplete",
+      "references": [
+        {
+          "id": "dndsu-2014-ability-scores",
+          "url": "https://5e14.dnd.su/articles/newbie/468-using-ability-scores/",
+          "rawSha256": "0ecdaeee051748fa0fbb9af46f138194a3f4c48833984fbed6e534804f1fd1ba"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:combat:critical-hit",
+      "title": "Критические попадания и автоматические промахи",
+      "repositoryPath": "data/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "c575888a61912b1440ed09de3a34f9ffc879b2f593fd90d532ea516109f58767",
+      "reviewedFields": [
+        "text_ru",
+        "text_en"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "review_incomplete",
+      "references": [
+        {
+          "id": "dndsu-2014-main-formulas",
+          "url": "https://5e14.dnd.su/articles/newbie/26-main-formulas/",
+          "rawSha256": "f20cfae00b063a1a90316cb5994fd9dfdc01ee511e0f726155d878c511410953"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:combat:damage-modifiers",
+      "title": "Сопротивление, уязвимость и иммунитет к урону",
+      "repositoryPath": "data/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "de212fcdd916e1078be8159dd97900ede304519dcfff4fec5ca2bb633a5215f9",
+      "reviewedFields": [
+        "text_ru",
+        "text_en"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "review_incomplete",
+      "references": [
+        {
+          "id": "dndsu-2014-main-formulas",
+          "url": "https://5e14.dnd.su/articles/newbie/26-main-formulas/",
+          "rawSha256": "f20cfae00b063a1a90316cb5994fd9dfdc01ee511e0f726155d878c511410953"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:combat:damage",
+      "title": "Применение урона",
+      "repositoryPath": "data/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "42c29beb61e5775c702349b4b695d72ad0369c6aaaeee448ba1caf79e7d88bbc",
+      "reviewedFields": [
+        "text_ru",
+        "text_en"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "review_incomplete",
+      "references": [
+        {
+          "id": "dndsu-2014-main-formulas",
+          "url": "https://5e14.dnd.su/articles/newbie/26-main-formulas/",
+          "rawSha256": "f20cfae00b063a1a90316cb5994fd9dfdc01ee511e0f726155d878c511410953"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:combat:healing",
+      "title": "Лечение",
+      "repositoryPath": "data/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "34ba9a0aa5c6bcc6372b7b1315324681cd7e91f1dec4c7b3042149547a83a1e4",
+      "reviewedFields": [
+        "text_ru",
+        "text_en"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "review_incomplete",
+      "references": [
+        {
+          "id": "dndsu-2014-main-formulas",
+          "url": "https://5e14.dnd.su/articles/newbie/26-main-formulas/",
+          "rawSha256": "f20cfae00b063a1a90316cb5994fd9dfdc01ee511e0f726155d878c511410953"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:combat:temporary-hit-points",
+      "title": "Временные хиты",
+      "repositoryPath": "data/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "dfea8f984cb2549b17c5843cd819ee258d8de008db12c8c859293f3823277821",
+      "reviewedFields": [
+        "text_ru",
+        "text_en"
+      ],
+      "textFinding": "clarified_in_this_patch",
+      "runtimeFinding": "review_incomplete",
+      "references": [
+        {
+          "id": "dndsu-2014-main-formulas",
+          "url": "https://5e14.dnd.su/articles/newbie/26-main-formulas/",
+          "rawSha256": "f20cfae00b063a1a90316cb5994fd9dfdc01ee511e0f726155d878c511410953"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:resources:spending",
+      "title": "Расход ограниченных ресурсов",
+      "repositoryPath": "data/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "09d90276e0070759d8fb5df9cbb2c937208b8d42c78e28074368d6ecb4fd5224",
+      "reviewedFields": [
+        "text_ru",
+        "text_en"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "review_incomplete",
+      "references": [
+        {
+          "id": "dndsu-2014-actions",
+          "url": "https://5e14.dnd.su/articles/mechanics/360-actions/",
+          "rawSha256": "e8d664f2e527395e5239e7f577a587fbe509217d4f0b7440a377021b5352c4cd"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:economy:coins",
+      "title": "Стоимость монет",
+      "repositoryPath": "data/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "547d1573d01308dc0fcf3b0c512e228093d4a2db8741a16d3627aed05d9782fd",
+      "reviewedFields": [
+        "text_ru",
+        "text_en"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "review_incomplete",
+      "references": [
+        {
+          "id": "dndsu-2014-main-formulas",
+          "url": "https://5e14.dnd.su/articles/newbie/26-main-formulas/",
+          "rawSha256": "f20cfae00b063a1a90316cb5994fd9dfdc01ee511e0f726155d878c511410953"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:economy:selling-equipment",
+      "title": "Продажа снаряжения",
+      "repositoryPath": "data/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "9b35ae40df611bb834c10c8a7a3778b9f20df496f87ce9d4f5a0f3b457b933b4",
+      "reviewedFields": [
+        "text_ru",
+        "text_en"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "review_incomplete",
+      "references": [
+        {
+          "id": "dndsu-2014-main-formulas",
+          "url": "https://5e14.dnd.su/articles/newbie/26-main-formulas/",
+          "rawSha256": "f20cfae00b063a1a90316cb5994fd9dfdc01ee511e0f726155d878c511410953"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:combat:initiative",
+      "title": "Инициатива",
+      "repositoryPath": "data/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "1af2e9d10e99914a43e5ea5c4390d8f5108709e0981875bd1cb626cd85c5f9cb",
+      "reviewedFields": [
+        "text_ru",
+        "text_en"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "review_incomplete",
+      "references": [
+        {
+          "id": "dndsu-2014-actions",
+          "url": "https://5e14.dnd.su/articles/mechanics/360-actions/",
+          "rawSha256": "e8d664f2e527395e5239e7f577a587fbe509217d4f0b7440a377021b5352c4cd"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:combat:turn-economy",
+      "title": "Действия в ходу",
+      "repositoryPath": "data/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "304e5827c84fa2071aa4017585bb5e2c83ae1ca06ca2266e9272ac150b922b69",
+      "reviewedFields": [
+        "text_ru",
+        "text_en"
+      ],
+      "textFinding": "clarified_in_this_patch",
+      "runtimeFinding": "review_incomplete",
+      "references": [
+        {
+          "id": "dndsu-2014-actions",
+          "url": "https://5e14.dnd.su/articles/mechanics/360-actions/",
+          "rawSha256": "e8d664f2e527395e5239e7f577a587fbe509217d4f0b7440a377021b5352c4cd"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:combat:reaction",
+      "title": "Реакции",
+      "repositoryPath": "data/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "9960f609ac186d32de22dcc039168c2e491cb1acb4f0c9b90d2d9325f0457b6b",
+      "reviewedFields": [
+        "text_ru",
+        "text_en"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "review_incomplete",
+      "references": [
+        {
+          "id": "dndsu-2014-actions",
+          "url": "https://5e14.dnd.su/articles/mechanics/360-actions/",
+          "rawSha256": "e8d664f2e527395e5239e7f577a587fbe509217d4f0b7440a377021b5352c4cd"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:conditions:common",
+      "title": "Состояния",
+      "repositoryPath": "data/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "6c030f7725f2b0bda21194aafe21ce0b6788ed146b6ad7af50692acc4a92a772",
+      "reviewedFields": [
+        "text_ru",
+        "text_en"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "review_incomplete",
+      "references": [
+        {
+          "id": "dndsu-2014-conditions",
+          "url": "https://5e14.dnd.su/articles/mechanics/27-conditions/",
+          "rawSha256": "44dfb4b5e8e368eb88936cd981e5e32dec5dcdd810f969b002ab6787be895fb0"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:spells:concentration",
+      "title": "Концентрация",
+      "repositoryPath": "data/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "c8a22c9e2fa5963223c4496ccfc55a4348015cc0d813c450c6c832f00fda63bc",
+      "reviewedFields": [
+        "text_ru",
+        "text_en"
+      ],
+      "textFinding": "clarified_in_this_patch",
+      "runtimeFinding": "review_incomplete",
+      "references": [
+        {
+          "id": "dndsu-2014-spellcasting",
+          "url": "https://5e14.dnd.su/articles/mechanics/157-spellcasting/",
+          "rawSha256": "77119a5694d2800f57c39ef7e513f03f06f88ba05153b7c9b26ee5e6ef83c2d8"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:combat:zero-hit-points",
+      "title": "Ноль хитов и спасброски от смерти",
+      "repositoryPath": "data/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "d9fdd6f6b84b873b96a34533f7f1162fdf36c888e1389a46583bfb43e88d6d68",
+      "reviewedFields": [
+        "text_ru",
+        "text_en"
+      ],
+      "textFinding": "clarified_in_this_patch",
+      "runtimeFinding": "review_incomplete",
+      "references": [
+        {
+          "id": "dndsu-2014-main-formulas",
+          "url": "https://5e14.dnd.su/articles/newbie/26-main-formulas/",
+          "rawSha256": "f20cfae00b063a1a90316cb5994fd9dfdc01ee511e0f726155d878c511410953"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:combat:surprise",
+      "title": "Внезапность",
+      "repositoryPath": "data/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "1379692f0ca1b3f0a1e0e8264262fce0876964d1b99f809ba757045aeed0552d",
+      "reviewedFields": [
+        "text_ru",
+        "text_en"
+      ],
+      "textFinding": "clarified_in_this_patch",
+      "runtimeFinding": "review_incomplete",
+      "references": [
+        {
+          "id": "dndsu-2014-actions",
+          "url": "https://5e14.dnd.su/articles/mechanics/360-actions/",
+          "rawSha256": "e8d664f2e527395e5239e7f577a587fbe509217d4f0b7440a377021b5352c4cd"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:combat:grapple-shove",
+      "title": "Захват и толчок",
+      "repositoryPath": "data/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "28aced45e06436100bdb0f3e521779d5afb862342c6a3d27946c610cd034d536",
+      "reviewedFields": [
+        "text_ru",
+        "text_en"
+      ],
+      "textFinding": "clarified_in_this_patch",
+      "runtimeFinding": "review_incomplete",
+      "references": [
+        {
+          "id": "dndsu-2014-actions",
+          "url": "https://5e14.dnd.su/articles/mechanics/360-actions/",
+          "rawSha256": "e8d664f2e527395e5239e7f577a587fbe509217d4f0b7440a377021b5352c4cd"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:environment:swimming",
+      "title": "Плавание",
+      "repositoryPath": "data/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "ea5c58757cc1a30d95a457ecbce48fe46d9e4cd3bc7a688b0d9c120ba58d3463",
+      "reviewedFields": [
+        "text_ru",
+        "text_en"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "review_incomplete",
+      "references": [
+        {
+          "id": "dndsu-2014-movement",
+          "url": "https://5e14.dnd.su/articles/mechanics/158-movement-and-position/",
+          "rawSha256": "fbdef8512b35a148f2deabc836525ecd0a84214ddaa00df46ea99192a6834bac"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:environment:suffocation",
+      "title": "Удушье",
+      "repositoryPath": "data/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "e1b14a5b56e66f05ecc1929aa15179ac32e4cb5000f42bd68227c0a70b3fd4d9",
+      "reviewedFields": [
+        "text_ru",
+        "text_en"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "review_incomplete",
+      "references": [
+        {
+          "id": "dndsu-2014-environment",
+          "url": "https://5e14.dnd.su/articles/mechanics/156-environment-and-covers/",
+          "rawSha256": "a5b81bb64f94937591ae191b2e2bd0c5009399e25b3300ae2abfa155f80929cf"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:conditions:exhaustion",
+      "title": "Истощение",
+      "repositoryPath": "data/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "80aca0527b16a8c8fdfc405080aaf8cc0a2fc30840e103a4d0c6785e6fa877b1",
+      "reviewedFields": [
+        "text_ru",
+        "text_en"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "review_incomplete",
+      "references": [
+        {
+          "id": "dndsu-2014-conditions",
+          "url": "https://5e14.dnd.su/articles/mechanics/27-conditions/",
+          "rawSha256": "44dfb4b5e8e368eb88936cd981e5e32dec5dcdd810f969b002ab6787be895fb0"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:rest:long-rest-hit-dice",
+      "title": "Продолжительный отдых и кости хитов",
+      "repositoryPath": "data/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "87ceae29e77cfc2a7d9208968dd407220e2fecc643c242a7f57dd8ab6d2208c5",
+      "reviewedFields": [
+        "text_ru",
+        "text_en"
+      ],
+      "textFinding": "clarified_in_this_patch",
+      "runtimeFinding": "review_incomplete",
+      "references": [
+        {
+          "id": "dndsu-2014-downtime",
+          "url": "https://5e14.dnd.su/articles/mechanics/159-downtime-activities/",
+          "rawSha256": "86d33b5ae544324114377d9ba15de88efb689122364f05ed98d8c54818c81e81"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:spells:bonus-action-limit",
+      "title": "Ограничение заклинания бонусным действием",
+      "repositoryPath": "data/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "193bc65950d003973da71b3ebf255862befde742bc2c4f685c995293bea823f3",
+      "reviewedFields": [
+        "text_ru",
+        "text_en"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "review_incomplete",
+      "references": [
+        {
+          "id": "dndsu-2014-spellcasting",
+          "url": "https://5e14.dnd.su/articles/mechanics/157-spellcasting/",
+          "rawSha256": "77119a5694d2800f57c39ef7e513f03f06f88ba05153b7c9b26ee5e6ef83c2d8"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:classes:fighter-indomitable",
+      "title": "Упорный",
+      "repositoryPath": "data/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "f9d3ba2377bc736683c2525ba93812b2e09ff9dd5dc1197dbbc85a0061165586",
+      "reviewedFields": [
+        "text_ru",
+        "text_en"
+      ],
+      "textFinding": "clarified_in_this_patch",
+      "runtimeFinding": "review_incomplete",
+      "references": [
+        {
+          "id": "dndsu-2014-fighter",
+          "url": "https://5e14.dnd.su/class/91-fighter/",
+          "rawSha256": "920abb0df4f54ff8ce3bec08058c83306d7c513c247411cdf5d9aef398c63340"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:classes:paladin-aura-of-protection",
+      "title": "Аура защиты",
+      "repositoryPath": "data/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "ad31764179f55993860a1abd04ceba71178b7b95d0ec8e718be006f8399491b3",
+      "reviewedFields": [
+        "text_ru",
+        "text_en"
+      ],
+      "textFinding": "clarified_in_this_patch",
+      "runtimeFinding": "review_incomplete",
+      "references": [
+        {
+          "id": "dndsu-2014-paladin",
+          "url": "https://5e14.dnd.su/class/94-paladin/",
+          "rawSha256": "928c3973ca430c5e4c5cb013c0744e1b0be1f75daebd59a9a25122ec44354d8a"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:checks:ability-modifier",
+      "title": "Модификатор характеристики",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "4d2ea0879bd0800fffb346fa39512918611138b571cd702598cafe0bff0a3538",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-ability-scores",
+          "url": "https://5e14.dnd.su/articles/newbie/468-using-ability-scores/",
+          "rawSha256": "0ecdaeee051748fa0fbb9af46f138194a3f4c48833984fbed6e534804f1fd1ba"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:checks:proficiency",
+      "title": "Бонус мастерства",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "eed8bd4f1e1f7b97e868884b59a3e66a3e065d54711cb796c2f9082c255dac99",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-ability-scores",
+          "url": "https://5e14.dnd.su/articles/newbie/468-using-ability-scores/",
+          "rawSha256": "0ecdaeee051748fa0fbb9af46f138194a3f4c48833984fbed6e534804f1fd1ba"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:checks:ability",
+      "title": "Проверка характеристики",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "f45a92816a8540f8cd027ef23b2be82a79e6cdd1f24ed8f3740d38be5f66100d",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-ability-scores",
+          "url": "https://5e14.dnd.su/articles/newbie/468-using-ability-scores/",
+          "rawSha256": "0ecdaeee051748fa0fbb9af46f138194a3f4c48833984fbed6e534804f1fd1ba"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:checks:saving-throw",
+      "title": "Спасбросок",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "96d8504f41be1b5a896f7ee0e6770675f492f4a68d3ed4d381e2b1a0ef63fa34",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-ability-scores",
+          "url": "https://5e14.dnd.su/articles/newbie/468-using-ability-scores/",
+          "rawSha256": "0ecdaeee051748fa0fbb9af46f138194a3f4c48833984fbed6e534804f1fd1ba"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:checks:difficulty",
+      "title": "Типичные сложности",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "e6008366bacc36f330db70781856ef48b5bc1c67a171ab88a55653a5d64f4658",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-ability-scores",
+          "url": "https://5e14.dnd.su/articles/newbie/468-using-ability-scores/",
+          "rawSha256": "0ecdaeee051748fa0fbb9af46f138194a3f4c48833984fbed6e534804f1fd1ba"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:checks:advantage",
+      "title": "Преимущество и помеха",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "80e58db1fcc76836bbe64ac5934153ec8418856887712d0811dbe37e7d97e4c8",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-ability-scores",
+          "url": "https://5e14.dnd.su/articles/newbie/468-using-ability-scores/",
+          "rawSha256": "0ecdaeee051748fa0fbb9af46f138194a3f4c48833984fbed6e534804f1fd1ba"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:checks:passive",
+      "title": "Пассивная проверка",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "e0626b92e2b7f5d64d922cccfd00a51fe8f699933aab3afd35a4ed4de980bd44",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-ability-scores",
+          "url": "https://5e14.dnd.su/articles/newbie/468-using-ability-scores/",
+          "rawSha256": "0ecdaeee051748fa0fbb9af46f138194a3f4c48833984fbed6e534804f1fd1ba"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:checks:contest",
+      "title": "Состязание",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "e511396e2a7ba2412332f6fcd4b60cb4dd68aa45d3df444ce8da5f4916026e76",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-ability-scores",
+          "url": "https://5e14.dnd.su/articles/newbie/468-using-ability-scores/",
+          "rawSha256": "0ecdaeee051748fa0fbb9af46f138194a3f4c48833984fbed6e534804f1fd1ba"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:checks:group",
+      "title": "Групповая проверка",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "8bd6bc1aa354646461486bb0567b2aa75c48ec3488b0fe7ba5c93a2c85c7f825",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-ability-scores",
+          "url": "https://5e14.dnd.su/articles/newbie/468-using-ability-scores/",
+          "rawSha256": "0ecdaeee051748fa0fbb9af46f138194a3f4c48833984fbed6e534804f1fd1ba"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:checks:working-together",
+      "title": "Совместная работа",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "3a84c529be72e5411c60a2de862a37cc604a2d6fe832eebed0b19a4ad8e7229c",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-ability-scores",
+          "url": "https://5e14.dnd.su/articles/newbie/468-using-ability-scores/",
+          "rawSha256": "0ecdaeee051748fa0fbb9af46f138194a3f4c48833984fbed6e534804f1fd1ba"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:combat:initiative",
+      "title": "Инициатива",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "6d0d4f45395667673f66366eab36a4e63036b09dd11b22735f042997f2fb71c8",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:combat:surprise",
+      "title": "Внезапность",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "dd3f90b693de8955cf9ee6f865b3f2c89a4e04560e781506c4d07265c72acc32",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:combat:turn-budget",
+      "title": "Ресурсы хода",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "daed15dfec68861e64f74f13e554756cff7e7cc1f877a79119d1ea5fb4114cd1",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-actions",
+          "url": "https://5e14.dnd.su/articles/mechanics/360-actions/",
+          "rawSha256": "e8d664f2e527395e5239e7f577a587fbe509217d4f0b7440a377021b5352c4cd"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:combat:reaction",
+      "title": "Реакция",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "2891274bc2113b5c677ab1f516b38dae959ddf3598f044ce97fe3b624e97f8ee",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-actions",
+          "url": "https://5e14.dnd.su/articles/mechanics/360-actions/",
+          "rawSha256": "e8d664f2e527395e5239e7f577a587fbe509217d4f0b7440a377021b5352c4cd"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:combat:attack-roll",
+      "title": "Бросок атаки",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "112078cfb36bbb8b94747e6834389985995b490c80c2c932a4c04df48aced06d",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:combat:critical",
+      "title": "Критическое попадание",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "1a98455be9f9bed1e0474193a57e9103a6ea670faa5b2507c4b4e0f539ea4081",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:combat:ranged",
+      "title": "Дальнобойная атака",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "11d2414a0898b53149049962be9832323565721966ff3a533ea33e255dbc61f3",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:combat:unseen",
+      "title": "Невидимые участники атаки",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "df87ce5e4fefb81ea732cfe774f79c83fe2d3332e1a16c830e6801ca9c2629f5",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:combat:attack-action",
+      "title": "Действие Атака",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "026d25f04b23114969f90a179732659f38b54eda3258487093920bbbe1a2ec48",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-actions",
+          "url": "https://5e14.dnd.su/articles/mechanics/360-actions/",
+          "rawSha256": "e8d664f2e527395e5239e7f577a587fbe509217d4f0b7440a377021b5352c4cd"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:combat:opportunity",
+      "title": "Провоцированная атака",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "745ff2f0d846e0a522287d5c73273aa7fa7551614d21760575424d02f88e82b6",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-actions",
+          "url": "https://5e14.dnd.su/articles/mechanics/360-actions/",
+          "rawSha256": "e8d664f2e527395e5239e7f577a587fbe509217d4f0b7440a377021b5352c4cd"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:combat:grapple",
+      "title": "Захват",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "811bbf51f3fadd2537e21c79e032eced1b6e91ffaf903252a23f4d07e7491b87",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-actions",
+          "url": "https://5e14.dnd.su/articles/mechanics/360-actions/",
+          "rawSha256": "e8d664f2e527395e5239e7f577a587fbe509217d4f0b7440a377021b5352c4cd"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:combat:escape-grapple",
+      "title": "Освобождение из захвата",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "0748ef7b1040152702d8a6eed98a01048fb55b12a6d1496bcafae2d13f628769",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-actions",
+          "url": "https://5e14.dnd.su/articles/mechanics/360-actions/",
+          "rawSha256": "e8d664f2e527395e5239e7f577a587fbe509217d4f0b7440a377021b5352c4cd"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:combat:shove",
+      "title": "Толчок",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "f629f5ad5dd690a151d7700230ecbd377f41afedcdb085df415e33fd4a5246aa",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-actions",
+          "url": "https://5e14.dnd.su/articles/mechanics/360-actions/",
+          "rawSha256": "e8d664f2e527395e5239e7f577a587fbe509217d4f0b7440a377021b5352c4cd"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:combat:two-weapon",
+      "title": "Бой двумя оружиями",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "176324fbd2b67f230072dfec15d7a084abc0dda36d94bd46cd5ce4be75527a16",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-actions",
+          "url": "https://5e14.dnd.su/articles/mechanics/360-actions/",
+          "rawSha256": "e8d664f2e527395e5239e7f577a587fbe509217d4f0b7440a377021b5352c4cd"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:combat:dash",
+      "title": "Рывок",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "65290d979eeb908b6477d6ee58b839aa18959da9c368a586073e8d3d94e7eddb",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-actions",
+          "url": "https://5e14.dnd.su/articles/mechanics/360-actions/",
+          "rawSha256": "e8d664f2e527395e5239e7f577a587fbe509217d4f0b7440a377021b5352c4cd"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:combat:disengage",
+      "title": "Отход",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "fc45306d9b8b83dcce30918c09615dbac67193d32e39f7963621724c0d45675e",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-actions",
+          "url": "https://5e14.dnd.su/articles/mechanics/360-actions/",
+          "rawSha256": "e8d664f2e527395e5239e7f577a587fbe509217d4f0b7440a377021b5352c4cd"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:combat:dodge",
+      "title": "Уклонение",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "0e1d935cdda7e35a6f115f6cadadb6cc8cf218a8021068fc0fb475f4ab46e62a",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-actions",
+          "url": "https://5e14.dnd.su/articles/mechanics/360-actions/",
+          "rawSha256": "e8d664f2e527395e5239e7f577a587fbe509217d4f0b7440a377021b5352c4cd"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:combat:help",
+      "title": "Помощь в бою",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "3d99513fd7233f6bc9d0622cc38a01af6cde739c640b664f713ee0009178590e",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-actions",
+          "url": "https://5e14.dnd.su/articles/mechanics/360-actions/",
+          "rawSha256": "e8d664f2e527395e5239e7f577a587fbe509217d4f0b7440a377021b5352c4cd"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:combat:hide",
+      "title": "Засада и скрытность",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "d2bae0b9854bece5d8e04125aa0d703001881cc71218026cd7c1343c77882800",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-actions",
+          "url": "https://5e14.dnd.su/articles/mechanics/360-actions/",
+          "rawSha256": "e8d664f2e527395e5239e7f577a587fbe509217d4f0b7440a377021b5352c4cd"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:combat:ready",
+      "title": "Подготовка действия",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "872d7a7f821d3fea816592873d889fddaa10ea2a8ed9848a8cd596940e467aa8",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-actions",
+          "url": "https://5e14.dnd.su/articles/mechanics/360-actions/",
+          "rawSha256": "e8d664f2e527395e5239e7f577a587fbe509217d4f0b7440a377021b5352c4cd"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:combat:ready-spell",
+      "title": "Подготовка заклинания",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "156295b59ba6d1616269a67787f2ae4ae1e8ee28669c417e8cbb9ce643415e60",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-spellcasting",
+          "url": "https://5e14.dnd.su/articles/mechanics/157-spellcasting/",
+          "rawSha256": "77119a5694d2800f57c39ef7e513f03f06f88ba05153b7c9b26ee5e6ef83c2d8"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:combat:objects",
+      "title": "Предметы в свой ход",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "a15fea98bb9a7dd2ffe1cc77bf3a7434942900efb2eceec8b01866e193ee9b30",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-actions",
+          "url": "https://5e14.dnd.su/articles/mechanics/360-actions/",
+          "rawSha256": "e8d664f2e527395e5239e7f577a587fbe509217d4f0b7440a377021b5352c4cd"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:combat:nonlethal",
+      "title": "Несмертельный удар",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "c69b939a5be16d2e47067a5642fe952db734c67219308470e1ca161fb46ee711",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:damage:apply",
+      "title": "Урон и сопротивления",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "20d11b4ad9e5b802394a4e04442a46952e086f6f81071dc408fbfa0786889ade",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:damage:healing",
+      "title": "Восстановление хитов",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "63e6727a5a88e533cdb0c6b08b8ef348a7b3dd66f2647a0b8910b90cd54483e1",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:damage:temporary-hp",
+      "title": "Временные хиты",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "ab0dae932fdb9756ee9f283779839428fa1e2f78545696b8e195ce4a648222df",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:damage:zero",
+      "title": "Падение до нуля хитов",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "10f7066cdff3d4d8d9604e6d7fe8caf690d131b1740e7889d83a16c0e64e1558",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:damage:death-save",
+      "title": "Спасброски от смерти",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "2068a44f77b9841c864a4037d33eb83e20130e38ef6429898439b68bdbb063bb",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:damage:damage-at-zero",
+      "title": "Урон при нуле хитов",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "09e6874013352bc8c96b2d982e306a627be4d8820b9cf86d3b5e43682b4744d9",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:damage:stabilize",
+      "title": "Стабилизация",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "5afd3ff1e989316be982de0813af323bbc94a3bcce386859f51e28c02fbd876e",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-actions",
+          "url": "https://5e14.dnd.su/articles/mechanics/360-actions/",
+          "rawSha256": "e8d664f2e527395e5239e7f577a587fbe509217d4f0b7440a377021b5352c4cd"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:rest:short",
+      "title": "Короткий отдых",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "e131f7ba31ec78556850f7d483706e6ac3fc39d69259fa92cd0675e600f2984f",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:rest:long",
+      "title": "Продолжительный отдых",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "2fbf4b0515e9b0bc472d33bf1457e54841215cf79d06215af4f5e08b71cbb0c9",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:movement:budget",
+      "title": "Расход перемещения",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "84b7ba29ba4b13f9da0e04576a170c0afee33834f7a900280f4f119e5336ef05",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-movement",
+          "url": "https://5e14.dnd.su/articles/mechanics/158-movement-and-position/",
+          "rawSha256": "fbdef8512b35a148f2deabc836525ecd0a84214ddaa00df46ea99192a6834bac"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:movement:difficult",
+      "title": "Труднопроходимая местность",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "96a6d1ed8271c894b9c528889da565fcd9983c659a5493c8df5abcf62a2d299e",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-movement",
+          "url": "https://5e14.dnd.su/articles/mechanics/158-movement-and-position/",
+          "rawSha256": "fbdef8512b35a148f2deabc836525ecd0a84214ddaa00df46ea99192a6834bac"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:movement:prone",
+      "title": "Лечь, ползти и встать",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "77de9078816236bcad980c3557ac97336ee3ee73c617a1e824b449b20fbece1b",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-movement",
+          "url": "https://5e14.dnd.su/articles/mechanics/158-movement-and-position/",
+          "rawSha256": "fbdef8512b35a148f2deabc836525ecd0a84214ddaa00df46ea99192a6834bac"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:movement:climb-swim",
+      "title": "Лазанье и плавание",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "61a4d159f6b45b4db765a063d1e9c0a5694af92db32c1570ff733aaa3ee39754",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-movement",
+          "url": "https://5e14.dnd.su/articles/mechanics/158-movement-and-position/",
+          "rawSha256": "fbdef8512b35a148f2deabc836525ecd0a84214ddaa00df46ea99192a6834bac"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:movement:jump",
+      "title": "Прыжки",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "df18feb87348f915831f72c4d1e09af39ce5d338b2b093d99ce3919867902458",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-movement",
+          "url": "https://5e14.dnd.su/articles/mechanics/158-movement-and-position/",
+          "rawSha256": "fbdef8512b35a148f2deabc836525ecd0a84214ddaa00df46ea99192a6834bac"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:movement:creature-spaces",
+      "title": "Пространства существ",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "0f036b4a8b280d86097976929a5155fb7694d800af6297127819aa579a6d500e",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-movement",
+          "url": "https://5e14.dnd.su/articles/mechanics/158-movement-and-position/",
+          "rawSha256": "fbdef8512b35a148f2deabc836525ecd0a84214ddaa00df46ea99192a6834bac"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:movement:squeeze",
+      "title": "Протискивание",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "de213a79d078d374bce4d367a431d20aa19792c311cfcace206f6d1c205ad5d4",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-movement",
+          "url": "https://5e14.dnd.su/articles/mechanics/158-movement-and-position/",
+          "rawSha256": "fbdef8512b35a148f2deabc836525ecd0a84214ddaa00df46ea99192a6834bac"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:movement:drag-grappled",
+      "title": "Перетаскивание схваченного",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "fbee3718712a088488e9378af1c5be85803fea729e3676196cfb66aab5f174f0",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-actions",
+          "url": "https://5e14.dnd.su/articles/mechanics/360-actions/",
+          "rawSha256": "e8d664f2e527395e5239e7f577a587fbe509217d4f0b7440a377021b5352c4cd"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:movement:fall",
+      "title": "Падение",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "485612bb1bf584eac0f0d9ef2daa65a0c3cb4d41db3953a9123c2dac184565b8",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-environment",
+          "url": "https://5e14.dnd.su/articles/mechanics/156-environment-and-covers/",
+          "rawSha256": "a5b81bb64f94937591ae191b2e2bd0c5009399e25b3300ae2abfa155f80929cf"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:movement:flight",
+      "title": "Потеря полёта",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "f07cefaced920bad99c5b943b1126f2b1628e8b1f687d2c8a070b4e3b8b8e78b",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-actions",
+          "url": "https://5e14.dnd.su/articles/mechanics/360-actions/",
+          "rawSha256": "e8d664f2e527395e5239e7f577a587fbe509217d4f0b7440a377021b5352c4cd"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:environment:cover",
+      "title": "Укрытия",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "9f1315479971a0e839e24ae9305887b3c5bc89f95653ae2bcfbb30a2099d66e4",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-environment",
+          "url": "https://5e14.dnd.su/articles/mechanics/156-environment-and-covers/",
+          "rawSha256": "a5b81bb64f94937591ae191b2e2bd0c5009399e25b3300ae2abfa155f80929cf"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:environment:light",
+      "title": "Свет и видимость",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "008d692c256364b744fbc13693048ad95c222ee7439483ffb72deb4b2c27d877",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-environment",
+          "url": "https://5e14.dnd.su/articles/mechanics/156-environment-and-covers/",
+          "rawSha256": "a5b81bb64f94937591ae191b2e2bd0c5009399e25b3300ae2abfa155f80929cf"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:environment:darkvision",
+      "title": "Тёмное зрение",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "50ae3619c16ab00c119ce8b535be953bd4921bd529dce31c1c8447f0c1bd336e",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-environment",
+          "url": "https://5e14.dnd.su/articles/mechanics/156-environment-and-covers/",
+          "rawSha256": "a5b81bb64f94937591ae191b2e2bd0c5009399e25b3300ae2abfa155f80929cf"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:environment:suffocation",
+      "title": "Удушение",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "14f82419579bd7af079ff655adfa336b72393d2fc6e4a0eeb1238dd3bba6811f",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-environment",
+          "url": "https://5e14.dnd.su/articles/mechanics/156-environment-and-covers/",
+          "rawSha256": "a5b81bb64f94937591ae191b2e2bd0c5009399e25b3300ae2abfa155f80929cf"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:environment:carrying",
+      "title": "Грузоподъёмность",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "d10fdf4490ae9ae9e339c7306be3c417aa5182e5e194487776148c13f8b5df3a",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-ability-scores",
+          "url": "https://5e14.dnd.su/articles/newbie/468-using-ability-scores/",
+          "rawSha256": "0ecdaeee051748fa0fbb9af46f138194a3f4c48833984fbed6e534804f1fd1ba"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:spells:slots",
+      "title": "Ячейки заклинаний",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "2dab67f11aca0628371a4b10cd9b2772e1d5b9409d334b81e044e7fcd7be662f",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-spellcasting",
+          "url": "https://5e14.dnd.su/articles/mechanics/157-spellcasting/",
+          "rawSha256": "77119a5694d2800f57c39ef7e513f03f06f88ba05153b7c9b26ee5e6ef83c2d8"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:spells:attack-dc",
+      "title": "Атака и сложность заклинания",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "1f4cf66ebf7690b9eab535fee3b8483d53bf4ab272dcfd535f5bb3e09b02dcfc",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-spellcasting",
+          "url": "https://5e14.dnd.su/articles/mechanics/157-spellcasting/",
+          "rawSha256": "77119a5694d2800f57c39ef7e513f03f06f88ba05153b7c9b26ee5e6ef83c2d8"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:spells:bonus-action",
+      "title": "Заклинание бонусным действием",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "5dd61be144c48dc208cdd80e1d1771539e41d63863fbc82b345ced471066d8b9",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-spellcasting",
+          "url": "https://5e14.dnd.su/articles/mechanics/157-spellcasting/",
+          "rawSha256": "77119a5694d2800f57c39ef7e513f03f06f88ba05153b7c9b26ee5e6ef83c2d8"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:spells:components",
+      "title": "Компоненты",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "24578fff40c0e1b200f2931bd3de8d4958749fe64b7af1b41f178d39cd539cea",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-spellcasting",
+          "url": "https://5e14.dnd.su/articles/mechanics/157-spellcasting/",
+          "rawSha256": "77119a5694d2800f57c39ef7e513f03f06f88ba05153b7c9b26ee5e6ef83c2d8"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:spells:ritual",
+      "title": "Ритуал",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "c1ca184c9453479dc11cc2d8e9d6532fb044ed47c123b20a0339fd24a9e6620b",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-spellcasting",
+          "url": "https://5e14.dnd.su/articles/mechanics/157-spellcasting/",
+          "rawSha256": "77119a5694d2800f57c39ef7e513f03f06f88ba05153b7c9b26ee5e6ef83c2d8"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:spells:concentration",
+      "title": "Концентрация",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "74d7652395c2f6353daaf96be2e1e949caa2b24f82612ec9b6eebd2d4b2f4f46",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-spellcasting",
+          "url": "https://5e14.dnd.su/articles/mechanics/157-spellcasting/",
+          "rawSha256": "77119a5694d2800f57c39ef7e513f03f06f88ba05153b7c9b26ee5e6ef83c2d8"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:spells:concentration-damage",
+      "title": "Концентрация при уроне",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "aad9354fbdc2bdd48f67f14b952c7f53ebd127d406720f4698aab599e1808ee8",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-spellcasting",
+          "url": "https://5e14.dnd.su/articles/mechanics/157-spellcasting/",
+          "rawSha256": "77119a5694d2800f57c39ef7e513f03f06f88ba05153b7c9b26ee5e6ef83c2d8"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:spells:long-casting",
+      "title": "Долгое накладывание",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "bcd7afa1a01eb6b0ecef475e2f5a4860bc761f079e89c853dea8b3b2e756ddb6",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-spellcasting",
+          "url": "https://5e14.dnd.su/articles/mechanics/157-spellcasting/",
+          "rawSha256": "77119a5694d2800f57c39ef7e513f03f06f88ba05153b7c9b26ee5e6ef83c2d8"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:spells:targeting",
+      "title": "Цель заклинания",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "e2663e01209c9e599446fa0005245fb7ba77cf4dfc4590efcf6c401af72b4431",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-spellcasting",
+          "url": "https://5e14.dnd.su/articles/mechanics/157-spellcasting/",
+          "rawSha256": "77119a5694d2800f57c39ef7e513f03f06f88ba05153b7c9b26ee5e6ef83c2d8"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:spells:same-effect",
+      "title": "Повтор одинакового заклинания",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "9e1e5fe177b140588b38a7543fe7d998573e45e01befe819326cd25fcd78d080",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-spellcasting",
+          "url": "https://5e14.dnd.su/articles/mechanics/157-spellcasting/",
+          "rawSha256": "77119a5694d2800f57c39ef7e513f03f06f88ba05153b7c9b26ee5e6ef83c2d8"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:condition:blinded",
+      "title": "Ослеплённый",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "88f40ec1ceb1f6d5d92faf897cf91638d1fc1927bd15689417ed6f895cedc3ab",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-conditions",
+          "url": "https://5e14.dnd.su/articles/mechanics/27-conditions/",
+          "rawSha256": "44dfb4b5e8e368eb88936cd981e5e32dec5dcdd810f969b002ab6787be895fb0"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:condition:charmed",
+      "title": "Очарованный",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "ad4aae2393a2b2117cdc4a4681ef79238b448a72a6592edb86c201efb9729178",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-conditions",
+          "url": "https://5e14.dnd.su/articles/mechanics/27-conditions/",
+          "rawSha256": "44dfb4b5e8e368eb88936cd981e5e32dec5dcdd810f969b002ab6787be895fb0"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:condition:deafened",
+      "title": "Оглохший",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "5942c7b57c6719e41f0baf3b2ae03a7e531a38760b673e547bea39fbf6ef74d2",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-conditions",
+          "url": "https://5e14.dnd.su/articles/mechanics/27-conditions/",
+          "rawSha256": "44dfb4b5e8e368eb88936cd981e5e32dec5dcdd810f969b002ab6787be895fb0"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:condition:frightened",
+      "title": "Испуганный",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "a45efa94d4a674acf44825c2cf14c1ee0b2a594dbb126ac286496e3ebbd44cea",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-conditions",
+          "url": "https://5e14.dnd.su/articles/mechanics/27-conditions/",
+          "rawSha256": "44dfb4b5e8e368eb88936cd981e5e32dec5dcdd810f969b002ab6787be895fb0"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:condition:grappled",
+      "title": "Схваченный",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "fda3a0e37092a86e637d6dc851af48a67edba00d3febcea4f93d232bf9ca7cfb",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-conditions",
+          "url": "https://5e14.dnd.su/articles/mechanics/27-conditions/",
+          "rawSha256": "44dfb4b5e8e368eb88936cd981e5e32dec5dcdd810f969b002ab6787be895fb0"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:condition:incapacitated",
+      "title": "Недееспособный",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "ddd97b29e0324c154a84791078e02ddb0fd93805b1afd7d555e4523df1b337dc",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-conditions",
+          "url": "https://5e14.dnd.su/articles/mechanics/27-conditions/",
+          "rawSha256": "44dfb4b5e8e368eb88936cd981e5e32dec5dcdd810f969b002ab6787be895fb0"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:condition:invisible",
+      "title": "Невидимый",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "35a1bb7351fd13f6f60a0c0665cff95eda3da8c6525eb892aecdbc2b6b67f31f",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-conditions",
+          "url": "https://5e14.dnd.su/articles/mechanics/27-conditions/",
+          "rawSha256": "44dfb4b5e8e368eb88936cd981e5e32dec5dcdd810f969b002ab6787be895fb0"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:condition:paralyzed",
+      "title": "Парализованный",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "c2edecfc606afda41ab86360d43752b6ebff2fdc98042ff0d0d0553061531961",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-conditions",
+          "url": "https://5e14.dnd.su/articles/mechanics/27-conditions/",
+          "rawSha256": "44dfb4b5e8e368eb88936cd981e5e32dec5dcdd810f969b002ab6787be895fb0"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:condition:petrified",
+      "title": "Окаменевший",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "6f62111047544f749ac2ec56482e9135c53793d99638cee9be01ccff8fe24e28",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-conditions",
+          "url": "https://5e14.dnd.su/articles/mechanics/27-conditions/",
+          "rawSha256": "44dfb4b5e8e368eb88936cd981e5e32dec5dcdd810f969b002ab6787be895fb0"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:condition:poisoned",
+      "title": "Отравленный",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "deeec0423b36a6203cd110b0c8c63abf49286b23c5cece4838917433cf476611",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-conditions",
+          "url": "https://5e14.dnd.su/articles/mechanics/27-conditions/",
+          "rawSha256": "44dfb4b5e8e368eb88936cd981e5e32dec5dcdd810f969b002ab6787be895fb0"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:condition:prone",
+      "title": "Сбитый с ног",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "1cc36a5edbcf809660bace5accd196cb958528ab4beec729d97150390ac306e8",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-conditions",
+          "url": "https://5e14.dnd.su/articles/mechanics/27-conditions/",
+          "rawSha256": "44dfb4b5e8e368eb88936cd981e5e32dec5dcdd810f969b002ab6787be895fb0"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:condition:restrained",
+      "title": "Опутанный",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "5c04119764ca03edd3f9bd72e8a557bcba93ca77b5f5913c2dadacafe18f0fbe",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-conditions",
+          "url": "https://5e14.dnd.su/articles/mechanics/27-conditions/",
+          "rawSha256": "44dfb4b5e8e368eb88936cd981e5e32dec5dcdd810f969b002ab6787be895fb0"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:condition:stunned",
+      "title": "Ошеломлённый",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "ff850e22661235c183689971c1a7294c2c54dad0a0cfb3121303e180d75adccb",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-conditions",
+          "url": "https://5e14.dnd.su/articles/mechanics/27-conditions/",
+          "rawSha256": "44dfb4b5e8e368eb88936cd981e5e32dec5dcdd810f969b002ab6787be895fb0"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:condition:unconscious",
+      "title": "Бессознательный",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "9b8db90447cb39c8951ddbb1b6f25e5cd1611c8b571fc19f9e708d2b121c3b42",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-conditions",
+          "url": "https://5e14.dnd.su/articles/mechanics/27-conditions/",
+          "rawSha256": "44dfb4b5e8e368eb88936cd981e5e32dec5dcdd810f969b002ab6787be895fb0"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:condition:exhaustion",
+      "title": "Истощение",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "fe2822df86ed4df87ffe779610c03d9e4134a9c8ee9582b8237254d74defc646",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-conditions",
+          "url": "https://5e14.dnd.su/articles/mechanics/27-conditions/",
+          "rawSha256": "44dfb4b5e8e368eb88936cd981e5e32dec5dcdd810f969b002ab6787be895fb0"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:items:attunement",
+      "title": "Настройка на предмет",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "a8e01faed641aaa3650bac0f397d5a8f56eee02f49a6af7d77743a67442a0d2f",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:items:potions",
+      "title": "Использование зелья",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "650e38ed8419809b158597b0267bee20a1a72de5d70c6b08dc7d935f506fef3b",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:items:spellcasting",
+      "title": "Заклинания из предметов",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "63f0ad57376a7b3c06d77e9d96cca2db8c64ea307f20d4a54d3b07802ee671ef",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:items:identification",
+      "title": "Определение свойств",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "89be0466023d48551814d91e408881d83e94de04e63cfc70d35a868ca62f8dc9",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:encounters:thresholds",
+      "title": "Пороги сложности боя",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "f32d90e4eb163461da1489020965f1ff1e6f999c467665a1a9d8df3d5bab2ede",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-encounters",
+          "url": "https://5e14.dnd.su/articles/mechanics/119-combat-encounter-difficulty/",
+          "rawSha256": "12c2a675ee27cf8eb19b317493999dbcde8f2657ce49ac5878fbd142d648aa91"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:encounters:multipliers",
+      "title": "Множители числа противников",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "ef821bddc164057f929aa6cd17519c3ac87af1125522543a574ed75ea2a096d2",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-encounters",
+          "url": "https://5e14.dnd.su/articles/mechanics/119-combat-encounter-difficulty/",
+          "rawSha256": "12c2a675ee27cf8eb19b317493999dbcde8f2657ce49ac5878fbd142d648aa91"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:encounters:party-size",
+      "title": "Поправка на размер группы",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "7a8a71c7a560c24c1c9e6989f59ae54d441c6de7f3f0ce5b81bdaa541971d370",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-encounters",
+          "url": "https://5e14.dnd.su/articles/mechanics/119-combat-encounter-difficulty/",
+          "rawSha256": "12c2a675ee27cf8eb19b317493999dbcde8f2657ce49ac5878fbd142d648aa91"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:encounters:daily-budget",
+      "title": "Бюджет дня приключений",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "dec1c614474670ff08a4d22d18aa6ac99b406aec22a1c6b677a5269e72d2494f",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-encounters",
+          "url": "https://5e14.dnd.su/articles/mechanics/119-combat-encounter-difficulty/",
+          "rawSha256": "12c2a675ee27cf8eb19b317493999dbcde8f2657ce49ac5878fbd142d648aa91"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    },
+    {
+      "id": "dnd_5e_2014:compendium:encounters:waves",
+      "title": "Волны противников",
+      "repositoryPath": "data/compendia/dnd_5e_2014/rule_packs/dnd_5e_2014/rules.jsonl",
+      "localSha256": "3a86c8d6a16329ea34ae17976538e140f584d9aec42aa7ed849fec63b2fddbe4",
+      "reviewedFields": [
+        "text_ru",
+        "text_en",
+        "mechanics"
+      ],
+      "textFinding": "no_conflict_found_in_represented_facts",
+      "runtimeFinding": "data_only_not_integrated",
+      "references": [
+        {
+          "id": "dndsu-2014-encounters",
+          "url": "https://5e14.dnd.su/articles/mechanics/119-combat-encounter-difficulty/",
+          "rawSha256": "12c2a675ee27cf8eb19b317493999dbcde8f2657ce49ac5878fbd142d648aa91"
+        },
+        {
+          "id": "srd51-core-rules",
+          "url": "https://media.dndbeyond.com/compendium-images/srd/5.1/SRD_CC_v5.1.pdf",
+          "rawSha256": "2504d2a0abb0a4d491a939be4f17910a2dde0312570ab8d208080225ccf0a1f0"
+        }
+      ]
+    }
+  ]
+}

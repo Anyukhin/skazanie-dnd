@@ -13,9 +13,9 @@ source_hash: external_sources_not_bundled
 license_id: PROJECT-LICENSE-PENDING
 content_license_id: ORIGINAL-PARAPHRASE
 content_origin: independent_mechanics_paraphrase
-source_revision: 1
-translation_revision: 1
+source_revision: 2
+translation_revision: 2
 translation_is_adaptation: true
 activation_status: preview
 created_at: "2026-08-30T00:00:00Z"
-verified_at: "2026-08-30T00:00:00Z"
+verified_at: "2026-09-30T00:00:00Z"

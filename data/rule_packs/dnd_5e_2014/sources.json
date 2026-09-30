@@ -2,12 +2,21 @@
   "schema_version": 1,
   "ruleset_id": "dnd_5e_2014",
   "content_policy": {
-    "core_allowlist": ["Player's Handbook 2014", "Dungeon Master's Guide 2014", "Monster Manual 2014"],
+    "core_allowlist": [
+      "Player's Handbook 2014",
+      "Dungeon Master's Guide 2014",
+      "Monster Manual 2014"
+    ],
     "supplements": "default_deny_separate_pack",
-    "excluded_by_default": ["Unearthed Arcana", "Homebrew", "Unofficial", "third_party"],
+    "excluded_by_default": [
+      "Unearthed Arcana",
+      "Homebrew",
+      "Unofficial",
+      "third_party"
+    ],
     "bundled_content": "structured mechanical facts and independent short paraphrases only",
     "copyrighted_page_text": "not_bundled",
-    "external_content_hash_status": "unavailable; revision_id identifies the reviewed page snapshot recorded by the audit"
+    "external_content_hash_status": "Observed SHA-256 receipts from 2026-09-30; external HTML is not bundled."
   },
   "sources": [
     {
@@ -16,11 +25,15 @@
       "url": "https://5e14.dnd.su/articles/newbie/468-using-ability-scores/",
       "archive_url": "https://web.archive.org/web/20240726/https://dnd.su/articles/newbie/468-using-ability-scores/",
       "edition_family": "5e_2014",
-      "source_books": ["Player's Handbook 2014"],
-      "revision_id": "dndsu-2014-audit-2024-07-26-ability-scores",
-      "accessed_at": "2026-08-30",
+      "source_books": [
+        "Player's Handbook 2014"
+      ],
+      "revision_id": "sha256:0ecdaeee051748fa0fbb9af46f138194a3f4c48833984fbed6e534804f1fd1ba",
+      "accessed_at": "2026-09-30",
       "rights_status": "review_required",
-      "bundled": false
+      "bundled": false,
+      "observed_url": "https://5e14.dnd.su/articles/newbie/468-using-ability-scores/",
+      "observed_sha256": "0ecdaeee051748fa0fbb9af46f138194a3f4c48833984fbed6e534804f1fd1ba"
     },
     {
       "id": "dndsu-2014-actions",
@@ -28,11 +41,15 @@
       "url": "https://5e14.dnd.su/articles/mechanics/360-actions/",
       "archive_url": "https://web.archive.org/web/20250805/https://dnd.su/articles/mechanics/360-actions/",
       "edition_family": "5e_2014",
-      "source_books": ["Player's Handbook 2014"],
-      "revision_id": "dndsu-2014-audit-2025-08-05-actions",
-      "accessed_at": "2026-08-30",
+      "source_books": [
+        "Player's Handbook 2014"
+      ],
+      "revision_id": "sha256:e8d664f2e527395e5239e7f577a587fbe509217d4f0b7440a377021b5352c4cd",
+      "accessed_at": "2026-09-30",
       "rights_status": "review_required",
-      "bundled": false
+      "bundled": false,
+      "observed_url": "https://5e14.dnd.su/articles/mechanics/360-actions/",
+      "observed_sha256": "e8d664f2e527395e5239e7f577a587fbe509217d4f0b7440a377021b5352c4cd"
     },
     {
       "id": "dndsu-2014-movement",
@@ -40,11 +57,15 @@
       "url": "https://5e14.dnd.su/articles/mechanics/158-movement-and-position/",
       "archive_url": "https://web.archive.org/web/20260518/https://dnd.su/articles/mechanics/158-movement-and-position/",
       "edition_family": "5e_2014",
-      "source_books": ["Player's Handbook 2014"],
-      "revision_id": "dndsu-2014-audit-2026-05-18-movement",
-      "accessed_at": "2026-08-30",
+      "source_books": [
+        "Player's Handbook 2014"
+      ],
+      "revision_id": "sha256:fbdef8512b35a148f2deabc836525ecd0a84214ddaa00df46ea99192a6834bac",
+      "accessed_at": "2026-09-30",
       "rights_status": "review_required",
-      "bundled": false
+      "bundled": false,
+      "observed_url": "https://5e14.dnd.su/articles/mechanics/158-movement-and-position/",
+      "observed_sha256": "fbdef8512b35a148f2deabc836525ecd0a84214ddaa00df46ea99192a6834bac"
     },
     {
       "id": "dndsu-2014-conditions",
@@ -52,11 +73,15 @@
       "url": "https://5e14.dnd.su/articles/mechanics/27-conditions/",
       "archive_url": "https://web.archive.org/web/20250916/https://dnd.su/articles/mechanics/27-conditions/",
       "edition_family": "5e_2014",
-      "source_books": ["Player's Handbook 2014"],
-      "revision_id": "dndsu-2014-audit-2025-09-16-conditions",
-      "accessed_at": "2026-08-30",
+      "source_books": [
+        "Player's Handbook 2014"
+      ],
+      "revision_id": "sha256:44dfb4b5e8e368eb88936cd981e5e32dec5dcdd810f969b002ab6787be895fb0",
+      "accessed_at": "2026-09-30",
       "rights_status": "review_required",
-      "bundled": false
+      "bundled": false,
+      "observed_url": "https://5e14.dnd.su/articles/mechanics/27-conditions/",
+      "observed_sha256": "44dfb4b5e8e368eb88936cd981e5e32dec5dcdd810f969b002ab6787be895fb0"
     },
     {
       "id": "dndsu-2014-environment",
@@ -64,11 +89,16 @@
       "url": "https://5e14.dnd.su/articles/mechanics/156-environment-and-covers/",
       "archive_url": "https://web.archive.org/web/20260706/https://dnd.su/articles/mechanics/156-environment-and-covers/",
       "edition_family": "5e_2014",
-      "source_books": ["Player's Handbook 2014", "Dungeon Master's Guide 2014"],
-      "revision_id": "dndsu-2014-audit-2026-07-06-environment",
-      "accessed_at": "2026-08-30",
+      "source_books": [
+        "Player's Handbook 2014",
+        "Dungeon Master's Guide 2014"
+      ],
+      "revision_id": "sha256:a5b81bb64f94937591ae191b2e2bd0c5009399e25b3300ae2abfa155f80929cf",
+      "accessed_at": "2026-09-30",
       "rights_status": "review_required",
-      "bundled": false
+      "bundled": false,
+      "observed_url": "https://5e14.dnd.su/articles/mechanics/156-environment-and-covers/",
+      "observed_sha256": "a5b81bb64f94937591ae191b2e2bd0c5009399e25b3300ae2abfa155f80929cf"
     },
     {
       "id": "dndsu-2014-spellcasting",
@@ -76,11 +106,15 @@
       "url": "https://5e14.dnd.su/articles/mechanics/157-spellcasting/",
       "archive_url": "https://web.archive.org/web/20260518/https://dnd.su/articles/mechanics/157-spellcasting/",
       "edition_family": "5e_2014",
-      "source_books": ["Player's Handbook 2014"],
-      "revision_id": "dndsu-2014-audit-2026-05-18-spellcasting",
-      "accessed_at": "2026-08-30",
+      "source_books": [
+        "Player's Handbook 2014"
+      ],
+      "revision_id": "sha256:77119a5694d2800f57c39ef7e513f03f06f88ba05153b7c9b26ee5e6ef83c2d8",
+      "accessed_at": "2026-09-30",
       "rights_status": "review_required",
-      "bundled": false
+      "bundled": false,
+      "observed_url": "https://5e14.dnd.su/articles/mechanics/157-spellcasting/",
+      "observed_sha256": "77119a5694d2800f57c39ef7e513f03f06f88ba05153b7c9b26ee5e6ef83c2d8"
     },
     {
       "id": "dndsu-2014-main-formulas",
@@ -88,11 +122,15 @@
       "url": "https://5e14.dnd.su/articles/mechanics/26-main-formulas/",
       "archive_url": "https://web.archive.org/web/20241103/https://dnd.su/articles/mechanics/26-main-formulas/",
       "edition_family": "5e_2014",
-      "source_books": ["Player's Handbook 2014"],
-      "revision_id": "dndsu-2014-audit-2024-11-03-main-formulas",
-      "accessed_at": "2026-08-30",
+      "source_books": [
+        "Player's Handbook 2014"
+      ],
+      "revision_id": "sha256:f20cfae00b063a1a90316cb5994fd9dfdc01ee511e0f726155d878c511410953",
+      "accessed_at": "2026-09-30",
       "rights_status": "review_required",
-      "bundled": false
+      "bundled": false,
+      "observed_url": "https://5e14.dnd.su/articles/newbie/26-main-formulas/",
+      "observed_sha256": "f20cfae00b063a1a90316cb5994fd9dfdc01ee511e0f726155d878c511410953"
     },
     {
       "id": "dndsu-2014-downtime",
@@ -100,33 +138,46 @@
       "url": "https://5e14.dnd.su/articles/mechanics/159-downtime-activities/",
       "archive_url": "https://web.archive.org/web/20260422/https://dnd.su/articles/mechanics/159-downtime-activities/",
       "edition_family": "5e_2014",
-      "source_books": ["Player's Handbook 2014", "Dungeon Master's Guide 2014"],
-      "revision_id": "dndsu-2014-audit-2026-04-22-downtime",
-      "accessed_at": "2026-08-30",
+      "source_books": [
+        "Player's Handbook 2014",
+        "Dungeon Master's Guide 2014"
+      ],
+      "revision_id": "sha256:86d33b5ae544324114377d9ba15de88efb689122364f05ed98d8c54818c81e81",
+      "accessed_at": "2026-09-30",
       "rights_status": "review_required",
-      "bundled": false
+      "bundled": false,
+      "observed_url": "https://5e14.dnd.su/articles/mechanics/159-downtime-activities/",
+      "observed_sha256": "86d33b5ae544324114377d9ba15de88efb689122364f05ed98d8c54818c81e81"
     },
     {
       "id": "dndsu-2014-fighter",
       "title": "Воин",
       "url": "https://5e14.dnd.su/class/91-fighter/",
       "edition_family": "5e_2014",
-      "source_books": ["Player's Handbook 2014"],
-      "revision_id": "dndsu-2014-live-2026-08-30-fighter",
-      "accessed_at": "2026-08-30",
+      "source_books": [
+        "Player's Handbook 2014"
+      ],
+      "revision_id": "sha256:920abb0df4f54ff8ce3bec08058c83306d7c513c247411cdf5d9aef398c63340",
+      "accessed_at": "2026-09-30",
       "rights_status": "review_required",
-      "bundled": false
+      "bundled": false,
+      "observed_url": "https://5e14.dnd.su/class/91-fighter/",
+      "observed_sha256": "920abb0df4f54ff8ce3bec08058c83306d7c513c247411cdf5d9aef398c63340"
     },
     {
       "id": "dndsu-2014-paladin",
       "title": "Паладин",
       "url": "https://5e14.dnd.su/class/94-paladin/",
       "edition_family": "5e_2014",
-      "source_books": ["Player's Handbook 2014"],
-      "revision_id": "dndsu-2014-live-2026-08-30-paladin",
-      "accessed_at": "2026-08-30",
+      "source_books": [
+        "Player's Handbook 2014"
+      ],
+      "revision_id": "sha256:928c3973ca430c5e4c5cb013c0744e1b0be1f75daebd59a9a25122ec44354d8a",
+      "accessed_at": "2026-09-30",
       "rights_status": "review_required",
-      "bundled": false
+      "bundled": false,
+      "observed_url": "https://5e14.dnd.su/class/94-paladin/",
+      "observed_sha256": "928c3973ca430c5e4c5cb013c0744e1b0be1f75daebd59a9a25122ec44354d8a"
     }
   ]
 }

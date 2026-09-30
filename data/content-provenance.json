@@ -74,7 +74,7 @@
     },
     {
       "path": "data/rule_packs/dnd_5e_2014/manifest.yaml",
-      "sha256": "80e2b8ce8c79aed0cecee1b9b8f0938831f4ecb9b6280d1739576a1820c1549b",
+      "sha256": "27f38206e81afa3a914e2c0d4e717f30657cefa4a4b5b5d2928f29e9b1b77d58",
       "size_bytes": 665,
       "source_id": "dndsu-5e14-core",
       "rights_status": "project_license_required"
@@ -95,8 +95,8 @@
     },
     {
       "path": "data/rule_packs/dnd_5e_2014/rules.jsonl",
-      "sha256": "0bdd24c66ae613ae6450227aff4b9943a5a69d8b1a7e47098ad73fd6de847e6d",
-      "size_bytes": 39024,
+      "sha256": "61712de3e41322c6825d9814785b8c0f388698caded4eeb1f24002d02f92b08e",
+      "size_bytes": 42494,
       "source_id": "dndsu-5e14-core",
       "rights_status": "project_license_required"
     },
@@ -109,8 +109,8 @@
     },
     {
       "path": "data/rule_packs/dnd_5e_2014/sources.json",
-      "sha256": "36099e6348e35aaa4fba591c3860ef5122ddf6a00a401b47ce165576034d43ac",
-      "size_bytes": 5813,
+      "sha256": "21751fe411b2acc5b86718acef4e5a0b9543ce4c69d6e9750e6e8de126050293",
+      "size_bytes": 8098,
       "source_id": "dndsu-5e14-core",
       "rights_status": "project_license_required"
     },
@@ -123,8 +123,8 @@
     },
     {
       "path": "data/dndsu-spells-0-6.json",
-      "sha256": "3a74ea2cdadf7d57f1288a486d5941e2cd14bff758a77b1ab32866605c5bc97e",
-      "size_bytes": 903735,
+      "sha256": "eb498145301484f66ac8c53b14aba7687dbdda0921e299db8d7be46856f19c14",
+      "size_bytes": 903963,
       "source_id": "dndsu-compatibility-index",
       "rights_status": "review_required"
     },
@@ -144,8 +144,8 @@
     },
     {
       "path": "data/dndsu-spell-mechanics-overrides.json",
-      "sha256": "bb65f0566eacc3fa2a64315c40db5fab7d108906ace93e140aee8acd82b092db",
-      "size_bytes": 199164,
+      "sha256": "883723ced69469f4558ddc78f597c68610b027fc49a7ea13e7622bd969bc0f08",
+      "size_bytes": 199520,
       "source_id": "dndsu-compatibility-index",
       "rights_status": "review_required"
     },
@@ -191,8 +191,8 @@
     },
     {
       "path": "data/spell-descriptions-ru.json",
-      "sha256": "451acf7e6da98388af218ea5751d37fbdb418fcc0445eb5d0956ff86de51bd5e",
-      "size_bytes": 635614,
+      "sha256": "db85f191da8987c9da089c11699f5bfe5a527d0131f50b50740d4e0b8561cf9d",
+      "size_bytes": 636017,
       "source_id": "dndsu-compatibility-index",
       "rights_status": "project_license_required"
     },
