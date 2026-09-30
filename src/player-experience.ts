@@ -1,6 +1,18 @@
-import type { BattleEvent, GameEvent, GameState, ReputationTier, SceneNpcProjection, SceneNpcStance } from './types'
+import type { AiHealth, BattleEvent, GameEvent, GameState, ReputationTier, SceneNpcProjection, SceneNpcStance } from './types'
 
 export const NEWBIE_GUIDE_DISMISSED_KEY = 'skazanie-newbie-guide-dismissed-v1'
+
+/** Не выдаём резервное описание подтверждённых событий за работающего ИИ-ведущего. */
+export function narratorAvailabilityMessage(health: AiHealth | null, selectedModel?: string) {
+  if (!health) return null
+  if (!health.configured) return 'ИИ-ведущий не настроен. Действия сохраняются, но новые разговоры и история ограничены.'
+  const routes = [...new Set([selectedModel || health.model, ...(health.fallbackModels ?? [])].filter(Boolean))]
+  const unavailable = routes.length > 0 && routes.every((model) => {
+    const status = health.models?.find((entry) => entry.model === model)
+    return status && status.state !== 'ready' && status.failures > 0 && Boolean(status.last_error_code)
+  })
+  return unavailable ? 'ИИ-ведущий временно недоступен. Действия сохраняются; вместо творческих ответов используется резервное описание.' : null
+}
 
 /** Подпись класса всегда показывает текущий серверный уровень, даже у старого листа. */
 export function playerRoleLabel(player: { role: string; level: number }) {

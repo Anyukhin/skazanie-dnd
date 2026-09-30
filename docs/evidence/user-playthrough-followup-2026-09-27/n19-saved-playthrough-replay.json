@@ -1,0 +1,49 @@
+{
+  "source_campaign": "TWO-LANTERNS",
+  "source_version": 224,
+  "source_is_read_only": true,
+  "isolated_storage": "C:\\Users\\anton\\AppData\\Local\\Temp\\skazanie-n19-browser-replay-FmLwx5",
+  "quest_before": {
+    "id": "quest-d3d0b2212ce2",
+    "status": "active",
+    "clock": {
+      "current": 2,
+      "max": 3,
+      "label": "Прогресс расследования",
+      "triggered": false
+    }
+  },
+  "quest_after": {
+    "id": "quest-d3d0b2212ce2",
+    "status": "active",
+    "clock": {
+      "current": 2,
+      "max": 3,
+      "label": "Прогресс расследования",
+      "triggered": false
+    }
+  },
+  "xp_before": [
+    {
+      "name": "Лада",
+      "xp": 25
+    },
+    {
+      "name": "Бор",
+      "xp": 25
+    }
+  ],
+  "xp_after": [
+    {
+      "name": "Лада",
+      "xp": 75
+    },
+    {
+      "name": "Бор",
+      "xp": 75
+    }
+  ],
+  "false_success_events": 0,
+  "campaign_completed_events": 0,
+  "new_events": 20
+}

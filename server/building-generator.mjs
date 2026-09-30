@@ -1,5 +1,5 @@
 // @ts-check
-import { placeProps } from './prop-placement.mjs'
+import { ensurePropAccess, placeProps } from './prop-placement.mjs'
 import {
   SIZE_CLASSES,
   addProp,
@@ -19,9 +19,10 @@ import {
 
 /**
  * Тема «здание с участком» — сцена-эталон из раздела 1
- * `docs/tactical-map-plan.md`: здание из трёх помещений, внешняя территория с
- * деревьями и тропой, мебель, расставленная осмысленно, стены с дверными и
- * оконными проёмами, около 26×26 клеток.
+ * `docs/tactical-map-plan.md`: вариативное здание с функциональными
+ * помещениями, внешняя территория с деревьями и тропой, мебель,
+ * расставленная осмысленно, стены с дверными и оконными проёмами,
+ * около 26×26 клеток.
  *
  * **Про толщину стен.** Стена живёт на ребре (решение Р2), и рендер рисует её
  * именно так. Но правила движения в Rules Engine пока читают проходимость
@@ -30,7 +31,7 @@ import {
  * стены можно будет убрать, а рёбра останутся на месте.
  */
 
-export const BUILDING_GENERATOR = Object.freeze({ id: 'building-with-yard', version: '3' })
+export const BUILDING_GENERATOR = Object.freeze({ id: 'building-with-yard', version: '4' })
 
 /** Генератор authored-крепости: геометрия одна на все столы, seed меняет только отделку. */
 export const ARES_FORTRESS_GENERATOR = Object.freeze({ id: 'ares-fortress', version: '1' })
@@ -40,6 +41,28 @@ export const ARES_FORTRESS_SIZE = Object.freeze({ width: 40, height: 36 })
 
 /** Размер сцены-эталона. */
 export const REFERENCE_SIZE = Object.freeze({ width: 26, height: 26 })
+
+/** @typedef {'dwelling'|'tavern'|'shop'|'manor'} BuildingUse */
+/** @typedef {'temperate'|'arid'|'cold'|'wetland'} BuildingClimate */
+/** @typedef {'wood'|'stone'|'sand'|'metal'|'marble'|'ice'} BuildingArchitecture */
+/** @typedef {object} BuildingDesign
+ * @property {BuildingUse} [building_use]
+ * @property {BuildingClimate} [climate]
+ * @property {BuildingArchitecture} [architecture]
+ * @property {string} [topology]
+ * @property {'sparse'|'mixed'|'dense'} [density]
+ */
+/** @typedef {object} BuildingSceneOptions
+ * @property {string} [seed]
+ * @property {number} [width]
+ * @property {number} [height]
+ * @property {string} [locationId]
+ * @property {string} [theme]
+ * @property {boolean} [withProps]
+ * @property {Array<{offset?: number, label?: string}>} [levels]
+ * @property {BuildingDesign} [design]
+ * @property {'interior'|'exterior'} [entry] где появляется отряд; по умолчанию снаружи
+ */
 
 /**
  * @typedef {object} RoomPlan
@@ -96,179 +119,492 @@ export function edgesAround(map, x, y, kind, options = {}) {
 }
 
 /**
+ * Старые темы получают осмысленный дизайн по умолчанию, чтобы каждый новый
+ * вызов шёл через один вариативный генератор. Сохранённые карты читаются из
+ * данных и сюда не попадают.
+ * @param {unknown} theme
+ * @returns {{building_use: 'dwelling'|'tavern'|'shop'|'manor', climate: 'temperate', architecture: 'wood'}}
+ */
+function defaultBuildingDesignForTheme(theme) {
+  const value = String(theme ?? '').toLocaleLowerCase('ru-RU')
+  const building_use = /shop|market|merchant|store|магазин|рынок/u.test(value)
+    ? 'shop'
+    : /manor|estate|palace|усадь|помест|дворец/u.test(value)
+      ? 'manor'
+      : /house|home|dwelling|cottage|дом|жилищ/u.test(value)
+        ? 'dwelling'
+        : 'tavern'
+  return { building_use, climate: 'temperate', architecture: 'wood' }
+}
+
+/**
  * Собирает карту здания с участком. Детерминирована от `seed`.
  *
- * @param {object} [options]
- * @param {string} [options.seed]
- * @param {number} [options.width]
- * @param {number} [options.height]
- * @param {string} [options.locationId]
- * @param {string} [options.theme]
- * @param {boolean} [options.withProps] расставлять ли предметы
- * @param {Array<{offset?: number, label?: string}>} [options.levels] объявленные этажи локации
+ * @param {BuildingSceneOptions} [options]
  * @returns {import('./tactical-map.mjs').TacticalMap}
  */
-export function generateBuildingScene({
-  seed = 'building',
-  width = REFERENCE_SIZE.width,
-  height = REFERENCE_SIZE.height,
-  locationId = '',
-  theme = 'tavern',
-  withProps = true,
-  levels = [],
+export function generateBuildingScene(options = {}) {
+  return generateDesignedBuildingScene({
+    ...options,
+    design: options.design ?? defaultBuildingDesignForTheme(options.theme),
+  })
+}
+
+/** @type {Set<BuildingUse>} */
+const BUILDING_USES = new Set(['dwelling', 'tavern', 'shop', 'manor'])
+/** @type {Set<BuildingClimate>} */
+const BUILDING_CLIMATES = new Set(['temperate', 'arid', 'cold', 'wetland'])
+/** @type {Set<BuildingArchitecture>} */
+const BUILDING_ARCHITECTURES = new Set(['wood', 'stone', 'sand', 'metal', 'marble', 'ice'])
+/** @type {ReadonlyArray<'wing'|'long-hall'|'courtyard'>} */
+const BUILDING_SCHEMES = Object.freeze(['wing', 'long-hall', 'courtyard'])
+
+/** @param {unknown} value @returns {number} */
+function buildingSeedHash(value) {
+  let hash = 2166136261
+  for (const character of String(value ?? '')) {
+    hash ^= character.codePointAt(0) ?? 0
+    hash = Math.imul(hash, 16777619)
+  }
+  return hash >>> 0
+}
+
+/**
+ * @param {unknown} design
+ * @returns {BuildingDesign & {building_use: BuildingUse, climate: BuildingClimate, architecture: BuildingArchitecture}}
+ */
+function normalizeBuildingDesign(design) {
+  const source = /** @type {Record<string, unknown>} */ (design && typeof design === 'object' ? design : {})
+  /** @param {string} key @param {Set<string>} allowed @param {string} fallback @returns {string} */
+  const pick = (key, allowed, fallback) => allowed.has(String(source[key] ?? '')) ? String(source[key]) : fallback
+  return {
+    building_use: /** @type {'dwelling'|'tavern'|'shop'|'manor'} */ (pick('building_use', BUILDING_USES, 'tavern')),
+    climate: /** @type {'temperate'|'arid'|'cold'|'wetland'} */ (pick('climate', BUILDING_CLIMATES, 'temperate')),
+    architecture: /** @type {'wood'|'stone'|'sand'|'metal'|'marble'|'ice'} */ (pick('architecture', BUILDING_ARCHITECTURES, 'wood')),
+    density: /** @type {'sparse'|'mixed'|'dense'} */ (pick('density', new Set(['sparse', 'mixed', 'dense']), 'mixed')),
+  }
+}
+
+/** @param {number} value @param {number} minimum @param {number} maximum @returns {number} */
+function clampBuilding(value, minimum, maximum) {
+  return Math.max(minimum, Math.min(maximum, value))
+}
+
+/** @param {number} minX @param {number} minY @param {number} maxX @param {number} maxY @param {string} zoneId */
+function designRoom(minX, minY, maxX, maxY, zoneId) {
+  return { zoneId, minX, minY, maxX, maxY }
+}
+
+/** @param {RoomPlan} room @returns {boolean} */
+function designRoomIsUsable(room) {
+  return room.maxX - room.minX >= 2 && room.maxY - room.minY >= 2
+}
+
+/**
+ * @param {{minX: number, minY: number, maxX: number, maxY: number}} interior
+ * @param {'dwelling'|'tavern'|'shop'|'manor'} buildingUse
+ * @param {'wing'|'long-hall'|'courtyard'} scheme
+ * @returns {RoomPlan[]}
+ */
+function designRoomsFor(interior, buildingUse, scheme) {
+  const { minX, minY, maxX, maxY } = interior
+  const width = maxX - minX + 1
+  const height = maxY - minY + 1
+  const extraIds = buildingUse === 'dwelling'
+    ? ['bedroom', 'kitchen', 'store']
+    : buildingUse === 'manor'
+      ? ['salon', 'kitchen', 'store']
+      : buildingUse === 'shop'
+        ? ['store', 'workshop']
+        : ['kitchen', 'store']
+
+  /**
+   * Делит ось на комнаты с одноклеточной стеной между ними. Небольшая карта
+   * может не вместить все крылья; тогда схема сообщает об этом и выбирается
+   * следующая, а не создаёт комнаты размером в одну клетку.
+   * @param {number} start
+   * @param {number} end
+   * @param {number} count
+   * @returns {Array<{min:number,max:number}>|null}
+   */
+  const splitAxis = (start, end, count) => {
+    const span = end - start + 1
+    const gap = count - 1
+    const roomSize = Math.floor((span - gap) / count)
+    if (roomSize < 3) return null
+    const result = []
+    let cursor = start
+    for (let index = 0; index < count; index += 1) {
+      const roomEnd = index === count - 1 ? end : cursor + roomSize - 1
+      result.push({ min: cursor, max: roomEnd })
+      cursor = roomEnd + 2
+    }
+    return result
+  }
+
+  // Боковое крыло: зал занимает основной корпус, а служебные комнаты идут
+  // отдельной вертикальной цепочкой сбоку. Для дома и усадьбы это спальня или
+  // салон плюс кухня и кладовая; для таверны и лавки — их штатные помещения.
+  const sideWidth = Math.max(3, Math.floor(width * 0.42))
+  const sideMinX = maxX - sideWidth + 1
+  const hallMaxX = sideMinX - 2
+  const wingRooms = splitAxis(minY, maxY, extraIds.length)
+  if (scheme === 'wing' && wingRooms && hallMaxX - minX >= 2) {
+    return [
+      designRoom(minX, minY, hallMaxX, maxY, 'hall'),
+      ...wingRooms.map((room, index) => designRoom(sideMinX, room.min, maxX, room.max, extraIds[index])),
+    ]
+  }
+
+  // Длинный зал: зал тянется вдоль всего фасада, а комнаты образуют задний
+  // ряд. Это другая топология, а не перестановка подписей квадрантов.
+  const hallHeight = Math.max(4, Math.floor(height * 0.38))
+  const rearMinY = minY + hallHeight + 1
+  const rearRooms = splitAxis(minX, maxX, extraIds.length)
+  if (scheme === 'long-hall' && rearMinY <= maxY - 2 && rearRooms) {
+    return [
+      designRoom(minX, minY, maxX, rearMinY - 2, 'hall'),
+      ...rearRooms.map((room, index) => designRoom(room.min, rearMinY, room.max, maxY, extraIds[index])),
+    ]
+  }
+
+  // Настоящий внутренний двор: он сам является проходной exterior-зоной, а
+  // зал, два служебных помещения и (у дома/усадьбы) третья комната окружают
+  // его с четырёх сторон через одноклеточные стены и двери.
+  const courtyardWidth = clampBuilding(Math.floor(width * 0.25), 3, 5)
+  const courtyardHeight = clampBuilding(Math.floor(height * 0.28), 3, 5)
+  const horizontalRoomSpan = width - courtyardWidth - 2
+  const hallWidth = Math.floor(horizontalRoomSpan * 0.58)
+  const rightWidth = horizontalRoomSpan - hallWidth
+  const courtyardMinX = minX + hallWidth + 1
+  const courtyardMaxX = courtyardMinX + courtyardWidth - 1
+  const courtyardTop = minY + Math.max(4, Math.floor((height - courtyardHeight - 2) * 0.45))
+  const courtyardMinY = courtyardTop
+  const courtyardMaxY = courtyardMinY + courtyardHeight - 1
+  const topHeight = courtyardMinY - minY - 1
+  const bottomHeight = maxY - courtyardMaxY - 1
+  const topRoom = { min: minY, max: courtyardMinY - 2 }
+  const bottomRoom = { min: courtyardMaxY + 2, max: maxY }
+  const courtyardRooms = [
+    designRoom(minX, minY, courtyardMinX - 2, maxY, 'hall'),
+    designRoom(courtyardMinX, topRoom.min, courtyardMaxX, topRoom.max, extraIds[0]),
+    designRoom(courtyardMinX, bottomRoom.min, courtyardMaxX, bottomRoom.max, extraIds[1]),
+    designRoom(courtyardMinX, courtyardMinY, courtyardMaxX, courtyardMaxY, 'courtyard'),
+  ]
+  if (extraIds.length > 2) courtyardRooms.push(
+    designRoom(courtyardMaxX + 2, courtyardMinY, maxX, courtyardMaxY, extraIds[2]),
+  )
+  const courtyardFits = hallWidth >= 3 && rightWidth >= (extraIds.length > 2 ? 3 : 0)
+    && topHeight >= 3 && bottomHeight >= 3 && courtyardRooms.every(designRoomIsUsable)
+  if (scheme === 'courtyard' && courtyardFits) return courtyardRooms
+
+  // На минимальной карте сохраняем семантические помещения, даже если
+  // выбранная схема не вместилась: длинный зал с доступным числом задних
+  // комнат всё ещё лучше, чем молча потерять назначение здания.
+  const fallbackRooms = splitAxis(minX, maxX, Math.min(extraIds.length, 2))
+  if (fallbackRooms) {
+    const fallbackMinY = minY + Math.max(4, Math.floor(height * 0.42))
+    return [
+      designRoom(minX, minY, maxX, fallbackMinY - 2, 'hall'),
+      ...fallbackRooms.map((room, index) => designRoom(room.min, fallbackMinY, room.max, maxY, extraIds[index])),
+    ].filter(designRoomIsUsable)
+  }
+  return [designRoom(minX, minY, maxX, maxY, 'hall')]
+}
+
+/** @type {Readonly<Record<string, string>>} */
+const DESIGN_ROOM_LABELS = Object.freeze({
+  hall: 'Общий зал', kitchen: 'Кухня', store: 'Кладовая', bedroom: 'Спальня',
+  salon: 'Салон', workshop: 'Мастерская', courtyard: 'Внутренний двор',
+})
+
+/** @param {BuildingArchitecture} architecture @param {string} roomId @param {string} yardMaterial @returns {string} */
+function designMaterialFor(architecture, roomId, yardMaterial) {
+  if (roomId === 'courtyard') return yardMaterial
+  return BUILDING_ARCHITECTURES.has(architecture) ? architecture : 'wood'
+}
+
+/**
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {RoomPlan[]} rooms
+ * @param {string} firstId
+ * @param {string} secondId
+ * @param {string} doorId
+ * @returns {boolean}
+ */
+function connectDesignRooms(map, rooms, firstId, secondId, doorId) {
+  const first = rooms.find((room) => room.zoneId === firstId)
+  const second = rooms.find((room) => room.zoneId === secondId)
+  if (!first || !second) return false
+  const overlapY = Math.min(first.maxY, second.maxY) - Math.max(first.minY, second.minY)
+  if (first.maxX + 2 === second.minX || second.maxX + 2 === first.minX) {
+    const wallX = first.maxX + 2 === second.minX ? first.maxX + 1 : second.maxX + 1
+    const y = Math.floor((Math.max(first.minY, second.minY) + Math.min(first.maxY, second.maxY)) / 2)
+    if (overlapY >= 0) {
+      openDoorway(map, wallX, y, doorId)
+      return true
+    }
+    return false
+  }
+  const overlapX = Math.min(first.maxX, second.maxX) - Math.max(first.minX, second.minX)
+  if (first.maxY + 2 === second.minY || second.maxY + 2 === first.minY) {
+    const wallY = first.maxY + 2 === second.minY ? first.maxY + 1 : second.maxY + 1
+    const x = Math.floor((Math.max(first.minX, second.minX) + Math.min(first.maxX, second.maxX)) / 2)
+    if (overlapX >= 0) {
+      openDoorway(map, x, wallY, doorId)
+      return true
+    }
+  }
+  return false
+}
+
+/** @param {import('./tactical-map.mjs').TacticalMap} map @param {RoomPlan[]} rooms @param {{minX:number,minY:number,maxX:number,maxY:number}} building @param {string} id */
+function openDesignExteriorDoor(map, rooms, building, id) {
+  const room = rooms.find((candidate) => candidate.zoneId === 'hall') ?? rooms[0]
+  if (!room) return Math.floor((building.minX + building.maxX) / 2)
+  if (room.minY === building.minY + 1) {
+    const x = Math.floor((room.minX + room.maxX) / 2)
+    openDoorway(map, x, building.minY, id)
+    return x
+  }
+  if (room.maxY === building.maxY - 1) {
+    const x = Math.floor((room.minX + room.maxX) / 2)
+    openDoorway(map, x, building.maxY, id)
+    return x
+  }
+  if (room.minX === building.minX + 1) {
+    openDoorway(map, building.minX, Math.floor((room.minY + room.maxY) / 2), id)
+    return Math.max(1, building.minX - 1)
+  }
+  openDoorway(map, building.maxX, Math.floor((room.minY + room.maxY) / 2), id)
+  return Math.min(map.width - 2, building.maxX + 1)
+}
+
+/**
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {RoomPlan} hall
+ * @param {{minX:number,minY:number,maxX:number,maxY:number}} building
+ */
+function openDesignWindows(map, hall, building) {
+  const candidates = [
+    [hall.minX + 1, building.minY], [hall.maxX - 1, building.minY],
+    [hall.minX + 1, building.maxY], [hall.maxX - 1, building.maxY],
+    [building.minX, hall.minY + 1], [building.minX, hall.maxY - 1],
+    [building.maxX, hall.minY + 1], [building.maxX, hall.maxY - 1],
+  ]
+  const seen = new Set()
+  for (const [x, y] of candidates) {
+    const key = `${x},${y}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    openWindow(map, x, y)
+  }
+}
+
+/**
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {string} zoneId
+ * @returns {{x: number, y: number}|null}
+ */
+function interiorEntryPoint(map, zoneId) {
+  /** @type {Array<{x: number, y: number}>} */
+  const cells = []
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    const cell = cellAt(map, x, y)
+    if (cell?.passable && cell.zone === zoneId) cells.push({ x, y })
+  }
+  if (!cells.length) return null
+  const centerX = Math.round(cells.reduce((sum, cell) => sum + cell.x, 0) / cells.length)
+  const centerY = Math.round(cells.reduce((sum, cell) => sum + cell.y, 0) / cells.length)
+  cells.sort((left, right) => Math.abs(left.x - centerX) + Math.abs(left.y - centerY)
+    - Math.abs(right.x - centerX) - Math.abs(right.y - centerY)
+    || left.y - right.y || left.x - right.x)
+  return cells[0]
+}
+
+/** @param {import('./tactical-map.mjs').TacticalMap} map @param {string} zoneId */
+function revealDesignZone(map, zoneId) {
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    if (cellAt(map, x, y)?.zone === zoneId) setCell(map, x, y, { revealed: true })
+  }
+}
+
+/** @param {import('./tactical-map.mjs').TacticalMap} map @param {{x:number,y:number}} point @returns {boolean} */
+function reserveDesignSpawn(map, point) {
+  if (cellAt(map, point.x, point.y)?.passable !== true) return false
+  setCell(map, point.x, point.y, { passable: false })
+  return true
+}
+
+/** @param {import('./tactical-map.mjs').TacticalMap} map @param {{x:number,y:number}} point */
+function releaseDesignSpawn(map, point) {
+  setCell(map, point.x, point.y, { passable: true })
+}
+
+/** @param {BuildingDesign & {building_use: BuildingUse, climate: BuildingClimate, architecture: BuildingArchitecture}} design @param {RoomPlan[]} rooms @param {boolean} includeDecorativeTransition */
+function designPropPlans(design, rooms, includeDecorativeTransition = true) {
+  /** @param {string} zoneId @returns {boolean} */
+  const has = (zoneId) => rooms.some((room) => room.zoneId === zoneId)
+  /** @type {Array<{zoneId: string, purpose: string, theme: string, density: number, require: string[], prefer: string[]}>} */
+  const plans = []
+  /** @param {string} zoneId @param {string} purpose @param {string[]} require @param {string[]} prefer @param {string} theme @param {number} density */
+  const add = (zoneId, purpose, require, prefer = [], theme = 'interior', density = 22) => {
+    const factor = design.density === 'sparse' ? 0.65 : design.density === 'dense' ? 1.3 : 1
+    if (has(zoneId)) plans.push({ zoneId, purpose, theme, density: Math.round(density * factor), require, prefer })
+  }
+  if (design.building_use === 'tavern') {
+    const hallRequired = ['bar_counter', 'bar_shelf', 'fireplace', 'table_round', 'table_small', 'table_long', 'chandelier', 'lantern_wall']
+    if (includeDecorativeTransition) hallRequired.push('stairs_up')
+    add('hall', 'hall', hallRequired, ['table_round', 'table_small', 'table_long', 'fireplace', 'bar_counter', 'bar_shelf'], 'interior', 26)
+    add('kitchen', 'kitchen', ['cupboard', 'barrel', 'crate', 'shelf_wall'], ['cupboard', 'barrel', 'crate', 'shelf_wall'], 'interior', 24)
+    add('store', 'store', ['crate_stack', 'barrel_stack', 'sack', 'chest'], ['crate_stack', 'barrel_stack', 'sack', 'chest'], 'interior', 28)
+  } else if (design.building_use === 'shop') {
+    add('hall', 'hall', ['table_long', 'shelf_wall', 'chest', 'lantern_wall'], ['table_small', 'chair', 'shelf_wall', 'counter'], 'interior', 25)
+    add('store', 'store', ['crate_stack', 'barrel_stack', 'sack', 'chest'], ['crate_stack', 'barrel_stack', 'sack', 'chest'], 'interior', 30)
+    add('workshop', 'workshop', ['table_long', 'shelf_wall', 'crate'], ['table_long', 'shelf_wall', 'crate', 'barrel', 'chest'], 'interior', 28)
+  } else if (design.building_use === 'dwelling') {
+    add('hall', 'hall', ['fireplace', 'table_small', 'chair', 'lantern_wall'], ['table_small', 'chair', 'fireplace', 'rug'], 'interior', 23)
+    add('bedroom', 'sleeping', ['bed', 'wardrobe', 'night_table', 'chest'], ['bed', 'wardrobe', 'night_table', 'chest', 'candle'], 'interior', 28)
+    add('kitchen', 'kitchen', ['fireplace', 'cupboard', 'crate'], ['fireplace', 'cupboard', 'cauldron', 'crate', 'shelf_wall'], 'interior', 25)
+    add('store', 'store', ['crate_stack', 'barrel_stack', 'sack', 'chest'], ['crate_stack', 'barrel_stack', 'sack', 'chest'], 'interior', 25)
+  } else {
+    add('hall', 'hall', ['fireplace', 'table_long', 'candelabra', 'chair', 'chandelier'], ['table_long', 'table_small', 'chair', 'candelabra', 'chandelier'], 'interior', 25)
+    add('salon', 'hall', ['table_small', 'chair', 'candelabra'], ['table_small', 'chair', 'candelabra', 'rug'], 'interior', 22)
+    add('kitchen', 'kitchen', ['fireplace', 'cupboard', 'crate'], ['fireplace', 'cupboard', 'cauldron', 'crate', 'shelf_wall'], 'interior', 25)
+    add('store', 'store', ['crate_stack', 'barrel_stack', 'chest'], ['crate_stack', 'barrel_stack', 'sack', 'chest'], 'interior', 28)
+  }
+  add('courtyard', 'courtyard', ['well', 'cart'], ['well', 'cart', 'woodpile', 'bush', 'tree_oak', 'tree_birch'], 'yard', 14)
+  add('yard', 'exterior', [], ['tree_oak', 'tree_birch', 'tree_pine', 'bush', 'boulder', 'woodpile'], 'yard', design.climate === 'arid' ? 7 : 10)
+  return plans
+}
+
+/**
+ * Сидированный путь для каждого вновь создаваемого обычного здания.
+ * `planRooms` выше остаётся узким совместимым ABI для level-generator.
+ *
+ * @param {BuildingSceneOptions} options
+ * @returns {import('./tactical-map.mjs').TacticalMap}
+ */
+function generateDesignedBuildingScene({
+  seed = 'building', width = REFERENCE_SIZE.width, height = REFERENCE_SIZE.height,
+  locationId = '', theme = 'tavern', withProps = true, levels = [], design, entry = 'exterior',
 } = {}) {
-  const safeWidth = Math.max(16, Math.min(SIZE_CLASSES.area.maxWidth, Math.round(width)))
-  const safeHeight = Math.max(16, Math.min(SIZE_CLASSES.area.maxHeight, Math.round(height)))
+  const normalized = normalizeBuildingDesign(design)
+  const courtyardRequested = design?.topology === 'courtyard'
+  // Явный двор должен помещаться вместе с комнатами и стенами. Размер из
+  // заявки модели — ориентир, потеря названного помещения недопустима.
+  const minimumSize = courtyardRequested ? 20 : 16
+  const minimumBuilding = courtyardRequested ? 15 : 12
+  const safeWidth = Math.max(minimumSize, Math.min(SIZE_CLASSES.area.maxWidth, Math.round(width)))
+  const safeHeight = Math.max(minimumSize, Math.min(SIZE_CLASSES.area.maxHeight, Math.round(height)))
+  const scheme = courtyardRequested ? 'courtyard' : BUILDING_SCHEMES[buildingSeedHash(`${seed}:scheme`) % BUILDING_SCHEMES.length]
+  const buildingWidth = Math.max(minimumBuilding, Math.min(safeWidth - 4, Math.round(safeWidth * (0.52 + (buildingSeedHash(`${seed}:width`) % 4) * 0.05))))
+  const buildingHeight = Math.max(minimumBuilding, Math.min(safeHeight - 4, Math.round(safeHeight * (0.52 + (buildingSeedHash(`${seed}:height`) % 4) * 0.05))))
+  const maxMinX = Math.max(2, safeWidth - buildingWidth - 2)
+  const maxMinY = Math.max(2, safeHeight - buildingHeight - 3)
+  const building = {
+    minX: 2 + buildingSeedHash(`${seed}:x`) % Math.max(1, maxMinX - 1),
+    minY: 2 + buildingSeedHash(`${seed}:y`) % Math.max(1, maxMinY - 1),
+    maxX: 0,
+    maxY: 0,
+  }
+  building.maxX = Math.min(safeWidth - 3, building.minX + buildingWidth - 1)
+  building.maxY = Math.min(safeHeight - 3, building.minY + buildingHeight - 1)
+  const interior = { minX: building.minX + 1, minY: building.minY + 1, maxX: building.maxX - 1, maxY: building.maxY - 1 }
+  const rooms = designRoomsFor(interior, normalized.building_use, scheme)
+  const yardMaterial = normalized.climate === 'arid' ? 'sand' : normalized.climate === 'cold' ? 'ice' : 'grass'
+  const yardSurface = normalized.climate === 'wetland' ? 'mud' : normalized.climate === 'cold' ? 'ice' : 'none'
+  const wallMaterial = ['stone', 'marble', 'metal', 'ice'].includes(normalized.architecture) ? normalized.architecture : 'stone'
   const map = createTacticalMap({
-    width: safeWidth,
-    height: safeHeight,
-    locationId,
-    seed: String(seed),
-    generator: { ...BUILDING_GENERATOR },
-    theme,
-    tilesetId: 'building',
+    width: safeWidth, height: safeHeight, locationId, seed: String(seed),
+    generator: { ...BUILDING_GENERATOR }, theme, tilesetId: 'building',
     sizeClass: safeWidth * safeHeight <= SIZE_CLASSES.arena.maxCells ? 'arena' : 'area',
   })
-  addZone(map, { id: 'yard', kind: 'exterior', material: 'grass', lightLevel: 'bright', floorDirection: 'horizontal', label: 'Участок' })
-  addZone(map, { id: 'hall', kind: 'interior', material: 'wood', lightLevel: 'dim', floorDirection: 'horizontal', label: 'Общий зал' })
-  addZone(map, { id: 'kitchen', kind: 'interior', material: 'stone', lightLevel: 'dim', floorDirection: 'vertical', label: 'Кухня' })
-  addZone(map, { id: 'store', kind: 'interior', material: 'wood', lightLevel: 'dark', floorDirection: 'vertical', label: 'Кладовая' })
-  addZone(map, { id: 'walls', kind: 'interior', material: 'stone', lightLevel: 'dark', floorDirection: 'horizontal', label: '' })
-
-  // Вариант тайла — позиционный шум от сида (`floorVariantAt`), а не бросок из
-  // общей последовательности: тон клетки обязан зависеть от её координат, а не
-  // от того, в каком порядке генератор до неё дошёл.
+  addZone(map, { id: 'yard', kind: 'exterior', material: yardMaterial, lightLevel: normalized.climate === 'cold' ? 'dim' : 'bright', floorDirection: 'horizontal', label: 'Участок' })
+  for (const room of rooms) addZone(map, {
+    id: room.zoneId,
+    kind: room.zoneId === 'courtyard' ? 'exterior' : 'interior',
+    material: designMaterialFor(normalized.architecture, room.zoneId, yardMaterial),
+    lightLevel: room.zoneId === 'store' ? 'dark' : 'dim',
+    floorDirection: buildingSeedHash(`${seed}:${room.zoneId}:floor`) % 2 ? 'vertical' : 'horizontal',
+    label: DESIGN_ROOM_LABELS[room.zoneId] ?? room.zoneId,
+  })
+  addZone(map, { id: 'walls', kind: 'interior', material: wallMaterial, lightLevel: 'dark', floorDirection: 'horizontal', label: '' })
   /** @param {number} x @param {number} y */
   const variantAt = (x, y) => floorVariantAt(seed, x, y)
-
-  // --- участок --------------------------------------------------------
-  for (let y = 0; y < safeHeight; y += 1) {
-    for (let x = 0; x < safeWidth; x += 1) {
-      setCell(map, x, y, {
-        passable: true,
-        material: 'grass',
-        zone: 'yard',
-        variant: variantAt(x, y),
-        revealed: false,
-        moveCost: 1,
-      })
-    }
+  for (let y = 0; y < safeHeight; y += 1) for (let x = 0; x < safeWidth; x += 1) {
+    setCell(map, x, y, { passable: true, material: yardMaterial, surface: yardSurface, zone: 'yard', variant: variantAt(x, y), revealed: false, moveCost: normalized.climate === 'wetland' ? 2 : 1 })
   }
-
-  // --- здание ----------------------------------------------------------
-  const building = {
-    minX: Math.max(2, Math.round(safeWidth * 0.22)),
-    minY: Math.max(2, Math.round(safeHeight * 0.18)),
-    maxX: Math.min(safeWidth - 3, Math.round(safeWidth * 0.78)),
-    maxY: Math.min(safeHeight - 4, Math.round(safeHeight * 0.72)),
-  }
-  const interior = { minX: building.minX + 1, minY: building.minY + 1, maxX: building.maxX - 1, maxY: building.maxY - 1 }
-  const { rooms, partitionX, partitionY } = planRooms(interior)
-
   /** @param {number} x @param {number} y */
   const roomAt = (x, y) => rooms.find((room) => x >= room.minX && x <= room.maxX && y >= room.minY && y <= room.maxY)
-  for (let y = building.minY; y <= building.maxY; y += 1) {
-    for (let x = building.minX; x <= building.maxX; x += 1) {
-      const perimeter = x === building.minX || x === building.maxX || y === building.minY || y === building.maxY
-      const partition = x === partitionX || (x > partitionX && y === partitionY)
-      const room = roomAt(x, y)
-      if (perimeter || partition || !room) {
-        setCell(map, x, y, { passable: false, material: 'stone', zone: 'walls', variant: variantAt(x, y) })
-        continue
-      }
-      const zone = map.zones.find((entry) => entry.id === room.zoneId)
-      setCell(map, x, y, {
-        passable: true,
-        material: zone?.material ?? 'wood',
-        zone: room.zoneId,
-        variant: variantAt(x, y),
-      })
+  for (let y = building.minY; y <= building.maxY; y += 1) for (let x = building.minX; x <= building.maxX; x += 1) {
+    const perimeter = x === building.minX || x === building.maxX || y === building.minY || y === building.maxY
+    const room = roomAt(x, y)
+    if (perimeter || !room) {
+      setCell(map, x, y, { passable: false, material: wallMaterial, zone: 'walls', variant: variantAt(x, y) })
+      continue
+    }
+    setCell(map, x, y, { passable: true, material: designMaterialFor(normalized.architecture, room.zoneId, yardMaterial), zone: room.zoneId, variant: variantAt(x, y), surface: room.zoneId === 'courtyard' ? yardSurface : 'none' })
+  }
+  for (let y = building.minY; y <= building.maxY; y += 1) for (let x = building.minX; x <= building.maxX; x += 1) if (!cellAt(map, x, y)?.passable) edgesAround(map, x, y, 'wall')
+  const entranceX = openDesignExteriorDoor(map, rooms, building, 'front-door')
+  const connected = new Set(['hall'])
+  if (rooms.some((room) => room.zoneId === 'courtyard') && connectDesignRooms(map, rooms, 'hall', 'courtyard', 'courtyard-door')) connected.add('courtyard')
+  for (const zoneId of ['kitchen', 'store', 'bedroom', 'salon', 'workshop']) {
+    if (!rooms.some((room) => room.zoneId === zoneId)) continue
+    const doorId = `${zoneId}-door`
+    let linked = false
+    for (const source of [...connected]) {
+      if (!connectDesignRooms(map, rooms, source, zoneId, doorId)) continue
+      connected.add(zoneId)
+      linked = true
+      break
+    }
+    // Соседние корпуса могут примыкать не к залу, а друг к другу. Повторяем
+    // попытку через все уже связанные комнаты, прежде чем оставить крыло без пути.
+    if (!linked) for (const source of rooms.map((room) => room.zoneId).filter((id) => connected.has(id))) {
+      if (!connectDesignRooms(map, rooms, source, zoneId, doorId)) continue
+      connected.add(zoneId)
+      break
     }
   }
-
-  // --- стены на рёбрах --------------------------------------------------
-  for (let y = building.minY; y <= building.maxY; y += 1) {
-    for (let x = building.minX; x <= building.maxX; x += 1) {
-      const own = cellAt(map, x, y)
-      if (own && !own.passable) edgesAround(map, x, y, 'wall')
-    }
-  }
-
-  // --- проёмы ------------------------------------------------------------
-  const hall = rooms[0]
-  const entranceX = Math.round((hall.minX + hall.maxX) / 2)
-  openDoorway(map, entranceX, building.maxY, 'front-door')
-  openDoorway(map, partitionX, Math.round((interior.minY + partitionY) / 2), 'kitchen-door')
-  openDoorway(map, partitionX, Math.round((partitionY + interior.maxY) / 2), 'store-door')
-
-  // Окна: два на северной стене зала, одно на западной. Окно оставляет стену
-  // непроходимой, но перестаёт перекрывать обзор.
-  openWindow(map, Math.round(hall.minX + (hall.maxX - hall.minX) * 0.3), building.minY)
-  openWindow(map, Math.round(hall.minX + (hall.maxX - hall.minX) * 0.7), building.minY)
-  openWindow(map, building.minX, Math.round((interior.minY + interior.maxY) / 2))
-
-  // --- тропа от края карты ко входу ------------------------------------
+  const hall = rooms.find((room) => room.zoneId === 'hall') ?? rooms[0]
+  if (hall) openDesignWindows(map, hall, building)
   for (let y = building.maxY + 1; y < safeHeight; y += 1) {
-    const drift = Math.round(Math.sin((y - building.maxY) * 0.6) * 1.4)
-    for (const x of [entranceX + drift, entranceX + drift + 1]) {
-      if (cellAt(map, x, y)) setCell(map, x, y, { material: 'earth', variant: variantAt(x, y) })
-    }
+    const drift = Math.round(Math.sin((y - building.maxY) * 0.6 + buildingSeedHash(seed) % 5) * 1.4)
+    for (const x of [entranceX + drift, entranceX + drift + 1]) if (cellAt(map, x, y)) setCell(map, x, y, { material: 'earth', surface: 'none', variant: variantAt(x, y) })
   }
-
-  // --- ограда участка ---------------------------------------------------
   const plot = { minX: 1, minY: 1, maxX: safeWidth - 2, maxY: safeHeight - 2 }
   for (let x = plot.minX; x < plot.maxX; x += 1) {
     if (Math.abs(x - entranceX) <= 1) continue
-    railBetween(map, x, plot.maxY, x, plot.maxY + 1)
-    railBetween(map, x, plot.minY - 1, x, plot.minY)
+    railBetween(map, x, plot.maxY, x, plot.maxY + 1); railBetween(map, x, plot.minY - 1, x, plot.minY)
   }
   for (let y = plot.minY; y < plot.maxY; y += 1) {
-    railBetween(map, plot.minX - 1, y, plot.minX, y)
-    railBetween(map, plot.maxX, y, plot.maxX + 1, y)
+    railBetween(map, plot.minX - 1, y, plot.minX, y); railBetween(map, plot.maxX, y, plot.maxX + 1, y)
   }
-
-  // --- точки появления и оверлеи ----------------------------------------
-  map.spawnPoints.push({ id: 'party-entrance', x: entranceX, y: safeHeight - 2, role: 'party' })
-  map.overlays = {
-    compass: true,
-    scaleBar: true,
-    roomLabels: map.zones.filter((zone) => zone.label).map((zone) => ({ zoneId: zone.id, label: zone.label })),
-  }
-
-  // Отряд видит участок и подход к дому; внутренности — нет.
-  for (let y = building.maxY; y < safeHeight; y += 1) {
-    for (let x = 0; x < safeWidth; x += 1) {
-      const cell = cellAt(map, x, y)
-      if (cell) setCell(map, x, y, { revealed: true })
-    }
-  }
-
+  const startsInside = entry === 'interior'
+  const exteriorSpawn = { x: clampBuilding(entranceX, 1, safeWidth - 2), y: safeHeight - 2 }
+  const partySpawn = startsInside ? (interiorEntryPoint(map, 'hall') ?? exteriorSpawn) : exteriorSpawn
+  map.spawnPoints.push({ id: 'party-entrance', ...partySpawn, role: 'party' })
+  map.overlays = { compass: true, scaleBar: true, roomLabels: map.zones.filter((zone) => zone.label).map((zone) => ({ zoneId: zone.id, label: zone.label })) }
+  for (let y = building.maxY; y < safeHeight; y += 1) for (let x = 0; x < safeWidth; x += 1) if (cellAt(map, x, y)) setCell(map, x, y, { revealed: true })
+  if (startsInside) revealDesignZone(map, 'hall')
+  const spawnReserved = startsInside && partySpawn !== exteriorSpawn && reserveDesignSpawn(map, partySpawn)
   if (withProps) {
-    placeProps(map, {
-      seed: `${seed}:props`,
-      maxProps: SIZE_CLASSES[/** @type {keyof typeof SIZE_CLASSES} */ (map.sizeClass)].maxProps,
-      zones: [
-        { zoneId: 'hall', purpose: 'hall', theme: 'interior', density: 22, require: ['bar_counter', 'bar_shelf', 'fireplace', 'table_round', 'table_small', 'table_long', 'stairs_up', 'chandelier', 'lantern_wall'] },
-        { zoneId: 'kitchen', purpose: 'kitchen', theme: 'interior', density: 26, require: ['cupboard', 'barrel', 'crate', 'shelf_wall'] },
-        { zoneId: 'store', purpose: 'store', theme: 'interior', density: 30, require: ['crate_stack', 'barrel_stack', 'sack', 'chest'] },
-        // Двор наполняется крупным и узнаваемым: деревья, кусты, поленница,
-        // телега. Мелочь вроде цветов и колёс приходит только спутником и не
-        // участвует в случайном доборе — иначе двор превращается в россыпь
-        // непонятных значков вместо участка с деревьями.
-        {
-          zoneId: 'yard', purpose: 'exterior',
-          theme: 'yard',
-          density: 10,
-          require: ['tree_oak', 'tree_birch', 'tree_pine', 'well', 'cart', 'woodpile'],
-          prefer: ['tree_oak', 'tree_birch', 'tree_pine', 'tree_dead', 'bush', 'shrub', 'boulder', 'haystack', 'woodpile'],
-        },
-      ],
-    })
+    try {
+      placeProps(map, {
+        seed: `${seed}:props`,
+        maxProps: SIZE_CLASSES[/** @type {keyof typeof SIZE_CLASSES} */ (map.sizeClass)].maxProps,
+        zones: designPropPlans(normalized, rooms, levels.length === 0),
+      })
+    } finally {
+      if (spawnReserved) releaseDesignSpawn(map, partySpawn)
+    }
+  } else if (spawnReserved) {
+    releaseDesignSpawn(map, partySpawn)
   }
-  // Лестница в зале стоит здесь с самого начала, но переходом становится только
-  // когда у локации объявлены этажи (заявка `levels` архитектора). Без заявки
-  // вызов ничего не меняет, и одноэтажная таверна собирается ровно как прежде.
   ensureDeclaredTransitions(map, levels, 'hall')
+  ensurePropAccess(map)
   return map
 }
 
@@ -636,7 +972,7 @@ export function buildAresFortressScene(options = {}) {
  * части сидов она не помещается — `stairs_up` занимает две клетки у стены.
  * Пока лестница была декором, это ничего не значило; с объявленным вторым
  * этажом это дыра: этаж есть, а подняться нечем. Поэтому недостающий крючок
- * ставится явно, по первой свободной клетке зала у стены.
+ * ставится явно, по первой свободной внутренней клетке зала.
  *
  * @param {import('./tactical-map.mjs').TacticalMap} map
  * @param {Array<{offset?: number, label?: string}>} levels
@@ -650,6 +986,7 @@ function ensureDeclaredTransitions(map, levels, zoneId) {
   /** @type {Set<string>} */
   const occupied = new Set()
   for (const prop of map.props) for (const cell of prop.footprint) occupied.add(`${cell.x},${cell.y}`)
+  for (const spawn of map.spawnPoints) occupied.add(`${spawn.x},${spawn.y}`)
   for (const level of declared) {
     const toLevel = Number(level?.offset)
     if (!Number.isSafeInteger(toLevel) || toLevel === map.levelIndex || covered.has(toLevel)) continue
@@ -678,8 +1015,9 @@ function ensureDeclaredTransitions(map, levels, zoneId) {
 }
 
 /**
- * Первая свободная проходимая клетка зоны, у которой есть стена: лестница
- * прижимается к кладке, а не встаёт посреди зала. Обход по y, затем x —
+ * Первая свободная внутренняя клетка зоны. Сначала ищется место без соседней
+ * стены: такой переход остаётся достижимым и после сжатия контура подвала.
+ * Если зал слишком тесен, берётся клетка у кладки. Обход по y, затем x —
  * результат детерминирован.
  *
  * @param {import('./tactical-map.mjs').TacticalMap} map
@@ -690,17 +1028,23 @@ function ensureDeclaredTransitions(map, levels, zoneId) {
 function freeWallCellIn(map, zoneId, occupied) {
   /** @type {{x: number, y: number}|null} */
   let anywhere = null
+  /** @type {{x: number, y: number}|null} */
+  let nearWall = null
   for (let y = 0; y < map.height; y += 1) {
     for (let x = 0; x < map.width; x += 1) {
       const cell = cellAt(map, x, y)
       if (!cell || !cell.passable || cell.zone !== zoneId || occupied.has(`${x},${y}`)) continue
       if (!anywhere) anywhere = { x, y }
-      const nearWall = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+      const touchesWall = [[1, 0], [-1, 0], [0, 1], [0, -1]]
         .some(([dx, dy]) => cellAt(map, x + dx, y + dy)?.passable !== true)
-      if (nearWall) return { x, y }
+      if (touchesWall) {
+        if (!nearWall) nearWall = { x, y }
+        continue
+      }
+      return { x, y }
     }
   }
-  return anywhere
+  return nearWall ?? anywhere
 }
 
 /**
@@ -779,7 +1123,7 @@ function railBetween(map, ax, ay, bx, by) {
  * раздел 10): ослабить необязательные требования, затем упростить планировку,
  * затем отдать минимальную безопасную комнату. Игра не останавливается никогда.
  *
- * @param {{seed?: string, width?: number, height?: number, locationId?: string, theme?: string, withProps?: boolean, levels?: Array<{offset?: number, label?: string}>}} [options]
+ * @param {BuildingSceneOptions} [options]
  * @returns {{map: import('./tactical-map.mjs').TacticalMap, fallback: string, warnings: string[]}}
  */
 export function buildBuildingScene(options = {}) {

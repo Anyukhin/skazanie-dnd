@@ -20,6 +20,7 @@ import {
   serverEncounterLoot,
   serverEncounterMagicLoot,
 } from './loot-tables.mjs'
+import { loadDndsu2014Content } from './dndsu-2014-content.mjs'
 
 export const ENCOUNTER_OUTCOME_PLAN_VERSION = 'skazanie:encounter-outcome-plan:v1'
 export const ENCOUNTER_REWARD_POLICY_ID = 'skazanie:encounter-rewards:v2'
@@ -44,6 +45,16 @@ const THEMES = new Set([
   'wilderness',
   'generic',
 ])
+
+// Награда читает только XP из тех же локальных каталогов, которыми собирается
+// встреча. Боевые статы сюда не переносятся и не становятся вторым источником
+// правил; это только server-owned allowlist для расчёта последствий победы.
+const DND_2014_CONTENT = await loadDndsu2014Content()
+const RULESET_REWARD_CATALOGS = Object.freeze({
+  srd_5_2_1: new Map(Object.entries(SRD_5_2_1_MONSTER_ALLOWLIST)),
+  dnd_5e_2014: new Map(DND_2014_CONTENT.monsters.map((monster) => [String(monster.id), { xp: Number(monster.xp) }])),
+})
+const KNOWN_REWARD_RULESETS = new Set(Object.keys(RULESET_REWARD_CATALOGS))
 
 const clone = (value) => structuredClone(value)
 
@@ -117,6 +128,15 @@ function encounterDescriptorMap(encounter) {
   return result
 }
 
+function rewardCatalogEntryFor(state, statBlockId) {
+  const rulesetId = cleanId(state.ruleset_id ?? state.rulesetId) || 'srd_5_2_1'
+  const prefix = statBlockId.split(':', 1)[0]
+  if (KNOWN_REWARD_RULESETS.has(prefix) && prefix !== rulesetId) {
+    reject(`Stat block ${statBlockId} относится к другой редакции`, 'ENCOUNTER_RULESET_MISMATCH')
+  }
+  return RULESET_REWARD_CATALOGS[rulesetId]?.get(statBlockId) ?? null
+}
+
 function frozenNoRewardPlan(state, encounter, encounterId, outcome) {
   return deepFreeze({
     version: ENCOUNTER_OUTCOME_PLAN_VERSION,
@@ -175,8 +195,9 @@ export function freezeEncounterOutcomePlan(state = {}, requestedOutcome = null) 
     if (!statBlockId || statBlockId !== cleanId(descriptor.stat_block_id)) {
       reject(`Враг ${enemyId} не принадлежит замороженному stat block`, 'ENCOUNTER_ENEMY_FOREIGN')
     }
-    const block = SRD_5_2_1_MONSTER_ALLOWLIST[statBlockId]
-    const authored = block ? null : npcMechanicsFor(state, enemy.origin?.npc_id)
+    const block = rewardCatalogEntryFor(state, statBlockId)
+    const knownCatalogId = [...KNOWN_REWARD_RULESETS].some((rulesetId) => statBlockId.startsWith(`${rulesetId}:`))
+    const authored = block || knownCatalogId ? null : npcMechanicsFor(state, enemy.origin?.npc_id)
     if (!block && (!authored || authored.profile_id !== statBlockId)) {
       reject(`Stat block ${statBlockId} не входит в allowlist`, 'ENCOUNTER_STAT_BLOCK_UNKNOWN')
     }

@@ -1,5 +1,6 @@
 import { NARRATOR_PRIORITY, assertNarratorContract } from './deterministic-narration.mjs'
 import { BLESSING_CONDITION } from './blessings.mjs'
+import { canonicalCombatSpellFor } from './combat-spells.mjs'
 import { sceneInteractionNarration } from './scene-interactions.mjs'
 import { WORLD_CLOCK_EVENT_TYPES, worldClockNarration } from './weather.mjs'
 
@@ -64,8 +65,35 @@ const CONCENTRATION_END_REASON_LABELS = Object.freeze({
   'resistance-used': 'бонус спасброска использован',
 })
 
+const REACTION_ACTION_LABELS = Object.freeze({
+  'opportunity-attack': 'Атака по возможности',
+  'readied-attack': 'Подготовленная атака',
+  'readied-spell': 'Подготовленное заклинание',
+  'cast:shield': 'Щит',
+  'uncanny-dodge': 'Необычное уклонение',
+})
+
 export function damageTypeLabel(damageType) {
   return DAMAGE_TYPE_LABELS[String(damageType ?? '').toLowerCase()] ?? 'Этот урон'
+}
+
+function publicSpellLabel(payload) {
+  const explicit = String(payload?.spell_name ?? payload?.name ?? '').trim()
+  if (explicit && /[А-ЯЁа-яё]/u.test(explicit)) return `«${explicit}»`
+  const catalogName = canonicalCombatSpellFor(payload?.spell_id)?.name
+  return catalogName ? `«${String(catalogName)}»` : 'заклинания'
+}
+
+function reactionActionLabel(payload) {
+  const explicit = [payload?.name, ...(Array.isArray(payload?.action_options) ? payload.action_options.map((option) => option?.name) : [])]
+    .map((value) => String(value ?? '').trim())
+    .find((value) => value && /[А-ЯЁа-яё]/u.test(value))
+  return explicit || REACTION_ACTION_LABELS[String(payload?.action_id ?? '')] || ''
+}
+
+function reactionActionText(payload) {
+  const label = reactionActionLabel(payload)
+  return label ? `реакцию «${label}»` : 'реакцию'
 }
 
 /**
@@ -179,6 +207,16 @@ function tacticalNarrationLines(events, state) {
       meaningful.push(`Бой начался, инициатива определена для ${(event.target_ids ?? []).length} участников.`)
       const surprised = (payload.surprised ?? []).map((id) => tacticalActorName(state, id))
       if (surprised.length) meaningful.push(`Застигнуты врасплох: ${surprised.join(', ')} — первый ход они теряют и не могут использовать реакцию.`)
+    } else if (event.event_type === 'ReactionWindowOpened') {
+      const reactor = tacticalActorName(state, (event.target_ids ?? [])[0] ?? payload.target_id)
+      const source = tacticalActorName(state, payload.source_actor_id ?? event.actor_id)
+      meaningful.push(`${reactor} получает возможность использовать ${reactionActionText(payload)} против ${source}.`)
+    } else if (event.event_type === 'ReactionWindowClosed') {
+      meaningful.push(payload.accepted === true
+        ? `${actor} подтверждает ${reactionActionText(payload)}.`
+        : payload.accepted === false
+          ? `${actor} не использует реакцию.`
+          : `${actor} завершает окно реакции.`)
     } else if (event.event_type === 'SwingResolved') {
       // Раскачка — составной манёвр: проверка уже зафиксирована соседним
       // событием, а это событие сообщает её безопасный для игрока итог. Не
@@ -257,8 +295,19 @@ function tacticalNarrationLines(events, state) {
       meaningful.push(`${target}: «${String(payload.name || payload.action_id || 'особый приём')}» снова наготове.`)
     } else if (event.event_type === 'AreaAttackResolved') {
       meaningful.push(`${actor} бросает ${payload.item_name || 'снаряд'} в область радиусом ${Number(payload.radius_feet) || 0} фт.`)
+    } else if (event.event_type === 'CombatActionUsed' && (payload.action_type === 'reaction' || payload.reaction_window_id)) {
+      meaningful.push(`${actor} использует ${reactionActionText(payload)}.`)
     } else if (event.event_type === 'CombatActionUsed' && payload.monster_action === true) {
       meaningful.push(`${actor} использует приём «${String(payload.name || 'особая атака')}».`)
+    } else if (event.event_type === 'CombatActionUsed') {
+      const label = String(payload.name ?? '').trim()
+      if (label && /[А-ЯЁа-яё]/u.test(label)) meaningful.push(`${actor} использует «${label}».`)
+    } else if (['SavingThrowResolved', 'NpcSavingThrowResolved', 'SpellSavingThrowResolved'].includes(event.event_type)) {
+      const outcome = payload.saved === true ? 'успешно проходит' : payload.saved === false ? 'проваливает' : 'делает'
+      const spell = event.event_type === 'SpellSavingThrowResolved' || event.event_type === 'NpcSavingThrowResolved'
+        ? ` от ${publicSpellLabel(payload)}`
+        : ''
+      meaningful.push(`${target} ${outcome} спасбросок${spell}.`)
     } else if (event.event_type === 'SpellCast' && !isAdditionalBeamSpellCast(event)) {
       meaningful.push(`${actor} творит заклинание «${payload.name || payload.spell_id || 'магия'}».`)
     } else if (event.event_type === 'SummonedCreatureCreated') {
@@ -518,6 +567,7 @@ export const COMBAT_NARRATION_EVENT_TYPES = Object.freeze(new Set([
   'ItemEffectIneffective', 'LegendaryActionUsed', 'LegendaryActionsReset', 'LegendaryResistanceUsed',
   'MonsterAbilityRecharged', 'NpcBlessingGranted',
   'NpcEquipmentSpent', 'NpcItemUsed',
+  'CombatActionUsed', 'NpcSavingThrowResolved', 'ReactionWindowClosed', 'ReactionWindowOpened', 'SavingThrowResolved', 'SpellSavingThrowResolved',
   'DoorLockpicked', 'LockpickNoticed',
   'KnockoutEnded', 'MapLevelChanged', 'ParleyProposed', 'ParleyRejected', 'ParleySettled',
   'ReadiedActionExpired', 'RestCompleted', 'RestStarted', 'ShrinePrayerResolved', 'SpellCast',

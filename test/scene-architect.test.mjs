@@ -58,7 +58,8 @@ test('картограф без модели строит городскую к�
   assert.equal(planned.shopIntent.action, 'create')
   assert.equal(planned.shopIntent.settlement_type, 'city')
   assert.equal(transition.scene.location, 'Город')
-  assert.equal(transition.scene.cells.length, 20 * 20)
+  assert.equal(transition.scene.cells.length, transition.scene.map.width * transition.scene.map.height)
+  assert.ok(transition.scene.map.width >= 26, 'городской переход не должен сжиматься до старого поля 17×11')
   assert.ok(transition.scene.cells.filter((cell) => cell.type === 'door').length >= 4,
     'городская карта обязана содержать двери домов')
   assert.match(transition.adventure.currentHook, /Печать архивариуса/u)
@@ -205,13 +206,21 @@ test('без карты мира уход не вкладывает «Окрес
 test('картограф получает соседей по карте мира в planning brief', async () => {
   const brief = buildDirectorPlanningBrief(brodState)
   assert.deepEqual(brief.known_destinations.map((entry) => entry.name), ['Эствуд', 'Керская пустошь'])
-  assert.deepEqual(Object.keys(brief.known_destinations[0]).sort(), ['danger', 'days', 'kind', 'name', 'visited'])
+  assert.deepEqual(Object.keys(brief.known_destinations[0]).sort(), ['biome', 'danger', 'days', 'kind', 'name', 'visited'])
   let capturedRequest = null
   const architect = new SceneArchitectAgent({ llmClient: { async completeJson(request) { capturedRequest = request; return {} } } })
   await architect.plan({ action: '[РЕШЕНИЕ ГРУППЫ] Покинуть «Тихий Брод»', state: brodState, decision: 'Покинуть «Тихий Брод»', destinationHint: '' })
   const context = untrustedPayload(capturedRequest.messages[1].content, 'scene_planning')
   assert.equal(context.known_destinations[0].name, 'Эствуд')
   assert.match(capturedRequest.messages[0].content, /known_destinations/u)
+
+  const enriched = structuredClone(brodState)
+  enriched.worldMap.locations[1].summary = 'Деревня у судоходной реки.'
+  enriched.worldMap.locations[1].history = 'Здесь стоят старые речные пристани.'
+  const enrichedBrief = buildDirectorPlanningBrief(enriched)
+  assert.equal(enrichedBrief.known_destinations[0].summary, 'Деревня у судоходной реки.')
+  assert.equal(enrichedBrief.known_destinations[0].history, 'Здесь стоят старые речные пристани.')
+  assert.equal(enrichedBrief.known_destinations[0].biome, 'лес')
 })
 
 test('известное назначение и его карта остаются серверными после ответа модели', async () => {
@@ -252,6 +261,52 @@ test('известное назначение и его карта остают�
   })
   assert.equal(abandoned.sceneArgs.objective_status, 'abandoned')
   assert.equal(abandoned.sceneArgs.carry_unresolved, false)
+})
+
+test('известное назначение сохраняет bounded design модели, но канонический тип места сильнее', async () => {
+  const architect = new SceneArchitectAgent({ llmClient: { async completeJson() {
+    return {
+      location: 'Эствуд',
+      map: {
+        layout: 'cavern', scale: 'room', pattern: 'crypt', material: 'earth',
+        width: 48, height: 40, openness: 0.74, water: 0.18, featureCount: 12,
+        design: { topology: 'market', density: 'dense', forged: 'ignored' },
+      },
+    }
+  } } })
+  const planned = await architect.plan({
+    action: '[РЕШЕНИЕ ГРУППЫ] Идём в Эствуд', state: brodState,
+    decision: 'Идём в Эствуд', destinationHint: 'Эствуд', destinationLocationId: 'estwood',
+  })
+
+  assert.equal(planned.sceneArgs.location_id, 'estwood')
+  assert.equal(planned.sceneArgs.map.layout, 'streets')
+  assert.equal(planned.sceneArgs.map.pattern, 'village')
+  assert.ok(planned.sceneArgs.map.width >= 24 && planned.sceneArgs.map.width <= 40)
+  assert.ok(planned.sceneArgs.map.design)
+  assert.equal(Object.hasOwn(planned.sceneArgs.map.design, 'forged'), false)
+  assert.equal(planned.sceneArgs.map.design.density, 'dense')
+})
+
+test('описание порта и речного города влияет на design, а поселения не получают один размер', async () => {
+  const state = structuredClone(brodState)
+  state.worldMap.locations.push(
+    { id: 'port', name: 'Мормар', kind: 'port', x: 650, y: 250, regionId: 'r', summary: 'Портовый город на реке.', history: 'Пристани тянутся вдоль берега.', known: true, visited: false },
+    { id: 'city', name: 'Риверберг', kind: 'city', x: 700, y: 420, regionId: 'r', summary: 'Город у реки.', history: 'Через город проходит судоходная река.', known: true, visited: false },
+  )
+  state.worldMap.routes.push(
+    { id: 'route-port', from: 'tihiy-brod', to: 'port', kind: 'river', distance: 3, danger: 'средняя', discovered: true },
+    { id: 'route-city', from: 'tihiy-brod', to: 'city', kind: 'river', distance: 4, danger: 'средняя', discovered: true },
+  )
+  const architect = new SceneArchitectAgent()
+  const port = await architect.plan({ state, action: 'Идём в Мормар', decision: 'Идём в Мормар', destinationHint: 'Мормар', destinationLocationId: 'port' })
+  const city = await architect.plan({ state, action: 'Идём в Риверберг', decision: 'Идём в Риверберг', destinationHint: 'Риверберг', destinationLocationId: 'city' })
+
+  assert.ok(['harbor', 'river'].includes(port.sceneArgs.map.design?.topology))
+  assert.ok(['harbor', 'river'].includes(city.sceneArgs.map.design?.topology))
+  assert.ok(port.sceneArgs.map.width >= 26)
+  assert.ok(city.sceneArgs.map.width >= 26)
+  assert.notEqual(port.sceneArgs.map.width, 24, 'порт не должен схлопываться в размер деревни')
 })
 
 test('модель не может заменить известного соседа выдуманной промежуточной сценой', async () => {
@@ -436,7 +491,9 @@ test('падение модели уводит Архитектора в ту ж
   assert.deepEqual(failed.sceneArgs, offline.sceneArgs)
   assert.deepEqual(failed.shopIntent, defaultSceneShopIntent(failed.sceneArgs))
   assert.equal(failed.sceneArgs.map.layout, 'streets')
-  assert.equal(createSceneTransition(failed.sceneArgs, archiveState).scene.cells.length, 20 * 20)
+  const failedTransition = createSceneTransition(failed.sceneArgs, archiveState)
+  assert.equal(failedTransition.scene.cells.length, failedTransition.scene.map.width * failedTransition.scene.map.height)
+  assert.ok(failedTransition.scene.map.width >= 26)
 
   // Провайдер может оборвать соединение и не Error-ом. Причина тогда неизвестна,
   // но сцена обязана остаться той же.
@@ -548,7 +605,14 @@ test('масштаб крепости не может быть сжат моде
   const transition = createSceneTransition(planned.sceneArgs, archiveState)
   assert.ok(transition.scene.map.width >= 19 && transition.scene.map.height >= 16,
     'Полная крепость не должна сжиматься до старого комнатного минимума')
-  assert.ok(transition.scene.map.zones.some((zone) => zone.id === 'courtyard'))
+  assert.equal(transition.scene.map.generator.id, 'building-with-yard')
+  assert.equal(transition.scene.map.tilesetId, 'building')
+  assert.ok(transition.scene.map.zones.some((zone) => zone.id === 'hall' && zone.kind === 'interior'),
+    'процедурное здание обязано иметь внутренний зал')
+  assert.ok(transition.scene.map.zones.filter((zone) => zone.kind === 'interior').length >= 3,
+    'крепость должна содержать несколько связанных помещений')
+  assert.ok(transition.scene.map.doors.length >= 2, 'процедурное здание обязано иметь проходы между помещениями')
+  assert.ok(transition.scene.map.props.length > 0, 'процедурное здание обязано иметь реквизит')
   assert.ok(transition.scene.cells.some((cell) => cell.type === 'door'),
     'каменная крепость обязана получить структурированную планировку с проходами')
 })

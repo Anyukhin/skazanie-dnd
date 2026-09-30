@@ -538,6 +538,9 @@ test('срок состояния подписан по-русски, а нез�
   assert.equal(tacticalUi.conditionPresentation({ id: 'longstrider', duration: 'seconds:3600' }).duration, '1 ч')
   assert.equal(tacticalUi.conditionPresentation({ id: 'longstrider', duration: 'seconds:120' }).duration, '2 мин')
   assert.equal(tacticalUi.conditionPresentation({ id: 'longstrider', duration: 'seconds:6' }).duration, '6 с')
+  assert.equal(tacticalUi.conditionPresentation({ id: 'light', duration: 'minutes:60' }).label, 'Свет')
+  assert.equal(tacticalUi.conditionPresentation({ id: 'light', duration: 'minutes:60' }).duration, '1 ч')
+  assert.equal(tacticalUi.conditionPresentation({ id: 'antitoxin', duration: 'minutes:15' }).duration, '15 мин')
 })
 
 test('клиентская длящаяся point-cube держит явную сторону 20 футов', () => {

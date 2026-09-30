@@ -34,6 +34,20 @@ assert.equal(compiled.status, 0, compiled.stderr || compiled.stdout)
 renameSync(join(buildDir, 'player-experience.js'), join(buildDir, 'player-experience.mjs'))
 const experience = await import(pathToFileURL(join(buildDir, 'player-experience.mjs')).href)
 
+test('игрок видит резервный режим только при подтверждённом отказе всей используемой цепочки моделей', () => {
+  const health = { configured: true, model: 'primary', fallbackModels: ['backup'], models: [
+    { model: 'primary', state: 'cooldown', failures: 1, last_error_code: 'LLM_PROVIDER_UNAVAILABLE' },
+    { model: 'backup', state: 'retry-ready', failures: 1, last_error_code: 'LLM_PROVIDER_UNAVAILABLE' },
+    { model: 'selectable', state: 'unknown', failures: 0, last_error_code: null },
+  ] }
+  assert.match(experience.narratorAvailabilityMessage(health), /временно недоступен/u)
+  assert.equal(experience.narratorAvailabilityMessage(health, 'selectable'), null)
+  health.models[1] = { ...health.models[1], state: 'ready', failures: 0, last_error_code: null }
+  assert.equal(experience.narratorAvailabilityMessage(health), null)
+  assert.equal(experience.narratorAvailabilityMessage(null), null)
+  assert.match(experience.narratorAvailabilityMessage({ configured: false }), /не настроен/u)
+})
+
 test('после подготовки подпись первого уровня не скрывает достигнутый седьмой', () => {
   assert.equal(experience.playerRoleLabel({ role: 'Воин · ур. 1', level: 7 }), 'Воин · ур. 7')
   assert.equal(experience.playerRoleLabel({ role: 'Следопыт', level: 3 }), 'Следопыт · ур. 3')
@@ -299,7 +313,8 @@ test('NPC-досье читает viewer-safe разговоры, отношен
   assert.match(appSource, /onNpcAction\(addressed, dossierSceneNpc\.id\)/u)
   assert.match(appSource, /onNpcAction=\{\(text, npcId\) => submitAction\(text, activePlayer\.id, npcId\)\}/u)
   assert.doesNotMatch(appSource, /submitActionWithNpc/u)
-  assert.match(appSource, /Адресат закрепляется отдельно как <code>npc_id<\/code>/u)
+  assert.match(appSource, /const dossierPublicTags = dossierSocialNpc\?\.tags\?\.filter\(\(tag\) => !\/\^faction:\/iu\.test\(String\(tag\)\)\)/u)
+  assert.doesNotMatch(appSource, /Адресат закрепляется отдельно как <code>npc_id<\/code>/u)
   assert.doesNotMatch(appSource, /submitAction\([^)]*npc_id/u)
 })
 

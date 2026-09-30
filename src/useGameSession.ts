@@ -16,6 +16,16 @@ import { playerMessage } from './game-engine'
 import { withLootTakenRecord } from './loot-panel-rules.mjs'
 import { forgetSceneMaps, latestSceneMapHash, resolveSceneMap } from './scene-map-cache'
 import { canIssueUiTacticalCommand } from './tactical-command-guard.mjs'
+import {
+  clearPendingTacticalCommand,
+  isTacticalCommandUnknown,
+  pendingTacticalCommandStorageKey,
+  readPendingTacticalCommand,
+  tacticalCommandRequest,
+  tacticalCommandView,
+  writePendingTacticalCommand,
+} from './tactical-command-recovery.mjs'
+import type { TacticalCommandRecovery } from './tactical-command-recovery.mjs'
 import type { ActionClarification, AgentInteraction, AiTurnResult, BattleEvent, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, GuardResolution, InventoryItem, ItemUseOptions, LetterAddresseeKind, LootContainersProjection, Merchant, MerchantView, Message, ParleyOutcome, Player, PlayerRequestKind, RestCommand, RollResult, SceneObjectIntent, TavernDiceApproach, TwoPhaseCheckCommand } from './types'
 
 const ACTIVE_CAMPAIGN_KEY = 'skazanie-active-campaign-v2'
@@ -154,9 +164,15 @@ type TacticalCommandResult = {
   loot_taken?: BattleEvent
 }
 
+export type PendingTacticalCommand = {
+  campaignId: string
+  message: string
+  kind: 'tactical' | 'rest'
+}
+
 export type CommandOutcome =
   | { ok: true }
-  | { ok: false; error: string; conflict?: boolean }
+  | { ok: false; error: string; conflict?: boolean; uncertain?: boolean }
 
 export type WeaponAttackChoice = {
   attackMode?: 'melee' | 'ranged' | 'thrown' | 'two-handed'
@@ -395,7 +411,8 @@ function mergeAuthoritativeState(current: GameState, result: AiTurnResult | null
   }
 }
 
-export function useGameSession() {
+export function useGameSession(options: { accountId?: string } = {}) {
+  const accountId = String(options.accountId ?? '').trim()
   const [state, setState] = useState<GameState>(loadState)
   const [connectionState, setConnectionState] = useState<ConnectionState>('connecting')
   const [narrationPreview, setNarrationPreview] = useState<NarrationPreview | null>(null)
@@ -415,16 +432,21 @@ export function useGameSession() {
   const [merchantError, setMerchantError] = useState<string | null>(null)
   const [directorBusy, setDirectorBusy] = useState(false)
   const [directorError, setDirectorError] = useState<string | null>(null)
+  const [pendingTacticalCommand, setPendingTacticalCommand] = useState<PendingTacticalCommand | null>(null)
   const [combatVisualBatch, setCombatVisualBatch] = useState<CombatVisualBatch | null>(null)
   const [merchantView, setMerchantView] = useState<MerchantView | null>(null)
   const [merchantNarration, setMerchantNarration] = useState<string | null>(null)
   const stateRef = useRef(state)
+  const accountScopeRef = useRef(accountId)
+  accountScopeRef.current = accountId
+  const tacticalRecoveryByCampaign = useRef<Map<string, TacticalCommandRecovery>>(new Map())
   const channel = useRef<BroadcastChannel | null>(null)
   const roomVersion = useRef(0)
   const busy = useRef(false)
   const directorBusyRef = useRef(false)
-  const directorPendingKeyRef = useRef<string | null>(null)
+  const directorPendingRequestRef = useRef<{ accountId: string; campaignId: string; actorId: string; playerAction: string; interactionId?: string; key: string } | null>(null)
   const tacticalBusyRef = useRef(false)
+  const tacticalRequestEpoch = useRef(0)
   const merchantBusyRef = useRef(false)
   const merchantEpoch = useRef(0)
   const freeRollBusy = useRef(false)
@@ -440,6 +462,47 @@ export function useGameSession() {
     ((command: TacticalCommand, message: string, dice?: { manualRoll?: boolean; roll?: RollResult; idempotencyKey?: string }) => Promise<CommandOutcome>) | null
   >(null)
   const queuedRooms = useRef<Array<{ version: number; state: GameState }>>([])
+  const recoveryStorage = () => {
+    try { return window.sessionStorage } catch { return null }
+  }
+  const pendingRecoveryForCampaign = useCallback((campaignId: string) => {
+    const id = String(campaignId ?? '').toUpperCase()
+    if (!id) return null
+    const cached = tacticalRecoveryByCampaign.current.get(id)
+    if (cached) return cached
+    const key = pendingTacticalCommandStorageKey(accountId, id)
+    const restored = readPendingTacticalCommand(recoveryStorage(), key)
+    if (!restored || restored.campaignId !== id) return null
+    tacticalRecoveryByCampaign.current.set(id, restored)
+    return restored
+  }, [accountId])
+  const rememberPendingTacticalCommand = useCallback((pending: TacticalCommandRecovery, visible = true) => {
+    const normalized = { ...pending, campaignId: String(pending.campaignId).toUpperCase() }
+    const key = pendingTacticalCommandStorageKey(accountId, normalized.campaignId)
+    writePendingTacticalCommand(recoveryStorage(), key, normalized)
+    // Поздний ответ прежнего аккаунта сохраняется только под его ключом.
+    if (accountScopeRef.current !== accountId) return
+    tacticalRecoveryByCampaign.current.set(normalized.campaignId, normalized)
+    if (visible && stateRef.current.sessionCode === normalized.campaignId) setPendingTacticalCommand(tacticalCommandView(normalized))
+  }, [accountId])
+  const forgetPendingTacticalCommand = useCallback((campaignId: string, requestId?: string) => {
+    const id = String(campaignId ?? '').toUpperCase()
+    const key = pendingTacticalCommandStorageKey(accountId, id)
+    const sameAccount = accountScopeRef.current === accountId
+    const pending = sameAccount ? tacticalRecoveryByCampaign.current.get(id) : readPendingTacticalCommand(recoveryStorage(), key)
+    if (!pending || (requestId && pending.requestId !== requestId)) return
+    clearPendingTacticalCommand(recoveryStorage(), key)
+    if (!sameAccount) return
+    tacticalRecoveryByCampaign.current.delete(id)
+    if (stateRef.current.sessionCode === id) setPendingTacticalCommand(null)
+  }, [accountId])
+  useEffect(() => {
+    tacticalRecoveryByCampaign.current.clear()
+    setPendingTacticalCommand(null)
+  }, [accountId])
+  useEffect(() => {
+    setPendingTacticalCommand(tacticalCommandView(pendingRecoveryForCampaign(state.sessionCode)))
+  }, [pendingRecoveryForCampaign, state.sessionCode])
   const persistLocal = useCallback((next: GameState) => {
     localStorage.setItem(ACTIVE_CAMPAIGN_KEY, next.sessionCode)
   }, [])
@@ -1013,6 +1076,10 @@ export function useGameSession() {
     if (!check || check.status !== 'ready' || busy.current) return
     busy.current = true
     const epoch = ++actionEpoch.current
+    const requestAccountId = accountScopeRef.current
+    const requestIsCurrent = () => epoch === actionEpoch.current
+      && accountScopeRef.current === requestAccountId
+      && stateRef.current.sessionCode === state.sessionCode
     const resolutionKey = check.resolutionKey ?? commandId()
     mutate((current) => current.pendingCheck ? { ...current, pendingCheck: { ...current.pendingCheck, resolutionKey, status: check.result ? 'resolving' : 'rolling' } } : current)
 
@@ -1027,6 +1094,7 @@ export function useGameSession() {
       ])
       result = rolled
     } catch (error) {
+      if (!requestIsCurrent()) return
       mutate((current) => current.pendingCheck ? {
         ...current,
         pendingCheck: { ...current.pendingCheck, status: 'ready' },
@@ -1041,7 +1109,7 @@ export function useGameSession() {
       busy.current = false
       return
     }
-    if (epoch !== actionEpoch.current) { busy.current = false; return }
+    if (!requestIsCurrent()) return
 
     mutate((current) => current.pendingCheck ? {
       ...current,
@@ -1059,6 +1127,7 @@ export function useGameSession() {
     if (check.command) {
       const outcome = await tacticalCommandRef.current?.(check.command, check.action, { roll: result, idempotencyKey: resolutionKey })
         ?? { ok: false as const, error: 'Команда доски сейчас недоступна' }
+      if (!requestIsCurrent()) return
       mutate((current) => ({
         ...current,
         isNarrating: false,
@@ -1073,7 +1142,9 @@ export function useGameSession() {
     try {
       aiResult = await narrateWithAgent(state, check.action, player.character, result, resolutionKey, player.id, { clarificationId: check.clarification_id })
     } catch (error) {
+      if (!requestIsCurrent()) return
       const normalized = await normalizeCommandError(error)
+      if (!requestIsCurrent()) return
       const conflict = isStateVersionConflictError(normalized)
       if (conflict) setTacticalError(normalized.message)
       mutate((current) => ({
@@ -1092,7 +1163,7 @@ export function useGameSession() {
       busy.current = false
       return
     }
-    if (epoch !== actionEpoch.current) { busy.current = false; return }
+    if (!requestIsCurrent()) return
     if (aiResult?.room_version) roomVersion.current = latestRoomVersion(roomVersion.current, aiResult.room_version)
     if (aiResult?.mechanics?.length) {
       setCombatVisualBatch({
@@ -1261,7 +1332,7 @@ export function useGameSession() {
     if (interaction.questAbandonment || interaction.questAcceptance) return
     const winner = interaction.options.find((option) => option.id === interaction.resolvedOptionId)
     if (!winner) return
-    void submitAction(`[РЕШЕНИЕ ГРУППЫ] ${interaction.title}: ${winner.label}. ${interaction.resolutionPrompt}`, playerId)
+    void submitAction(`[РЕШЕНИЕ ГРУППЫ] ${winner.label}`, playerId)
   }, [state.agentInteraction, submitAction])
 
   // Возвращает исход, а не только пишет его в tacticalError: вызывающему коду
@@ -1276,33 +1347,53 @@ export function useGameSession() {
      * серверный бросок во второй фазе. Обычные команды доски обходятся без них.
      */
     dice: { manualRoll?: boolean; roll?: RollResult; idempotencyKey?: string } = {},
+    options: { allowUncertainRetry?: boolean } = {},
   ): Promise<CommandOutcome> => {
     if (tacticalBusyRef.current) return { ok: false, error: 'Предыдущая команда ещё выполняется.' }
     const current = stateRef.current
+    const existingPending = pendingRecoveryForCampaign(current.sessionCode)
+    if (existingPending && !options.allowUncertainRetry) {
+      return { ok: false, error: 'Предыдущее действие ещё не подтверждено. Повторите именно его.', uncertain: true }
+    }
+    if (options.allowUncertainRetry && (!existingPending || existingPending.requestId !== dice.idempotencyKey)) {
+      return { ok: false, error: 'Не найдено действие для безопасного повтора.', uncertain: true }
+    }
     const combatActorId = currentCombatActorId(current)
-    if (!canIssueUiTacticalCommand(current.mechanics?.combat, command, combatActorId)) {
+    if (!options.allowUncertainRetry && !canIssueUiTacticalCommand(current.mechanics?.combat, command, combatActorId)) {
       setTacticalError('Сейчас ход другого участника боя.')
       return { ok: false, error: 'Сейчас ход другого участника боя.' }
     }
 
     const requestId = dice.idempotencyKey ?? commandId()
+    const requestEpoch = ++tacticalRequestEpoch.current
+    const requestAccountId = accountScopeRef.current
+    const requestIsCurrent = () => tacticalRequestEpoch.current === requestEpoch
+      && accountScopeRef.current === requestAccountId
+      && stateRef.current.sessionCode === current.sessionCode
+    const pending: TacticalCommandRecovery = {
+      campaignId: current.sessionCode,
+      requestId,
+      kind: 'tactical',
+      command: structuredClone(command) as Record<string, unknown>,
+      message,
+      manualRoll: dice.manualRoll === true,
+      ...(dice.roll?.roll_id ? { rollId: dice.roll.roll_id } : {}),
+    }
+    const request = tacticalCommandRequest(pending)
+    rememberPendingTacticalCommand(pending, false)
     tacticalBusyRef.current = true
     setTacticalBusy(true)
     setTacticalError(null)
     try {
-      const response = await fetchWithTimeout(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/commands`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          command,
-          idempotency_key: requestId,
-          message,
-          ...(dice.manualRoll ? { manual_roll: true } : {}),
-          ...(dice.roll?.roll_id ? { roll: { roll_id: dice.roll.roll_id } } : {}),
-        }),
-      }, 25_000, 'Сервер слишком долго обрабатывает действие. Не повторяйте его сразу: результат мог сохраниться и появиться после синхронизации.')
+      const response = await fetchWithTimeout(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/commands`, request.init, 25_000, 'Сервер слишком долго обрабатывает действие. Не повторяйте его сразу: результат мог сохраниться и появиться после синхронизации.')
       const result = await response.json().catch(() => null) as TacticalCommandResult | null
       if (!response.ok) {
+        if (!requestIsCurrent()) {
+          const staleError = apiRequestError(response, result, `Сервер отклонил команду (${response.status})`)
+          if (isTacticalCommandUnknown(staleError)) rememberPendingTacticalCommand(pending, false)
+          else forgetPendingTacticalCommand(current.sessionCode, requestId)
+          return { ok: false, error: 'Кампания сменилась до ответа команды.' }
+        }
         // Гонка за один кинжал: первый его забрал, второму сервер отказал и
         // приложил к отказу свежий список добычи. Без этой ветки карточка
         // проигравшего показывала бы уже взятую вещь до следующего опроса
@@ -1335,6 +1426,11 @@ export function useGameSession() {
       // (значение по умолчанию) это ровно рабочий путь, а не редкий случай.
       const twoPhase = twoPhaseCheckCommandFor(command)
       if (result?.check && twoPhase) {
+        if (!requestIsCurrent()) {
+          forgetPendingTacticalCommand(current.sessionCode, requestId)
+          return { ok: false, error: 'Кампания сменилась до ответа команды.' }
+        }
+        forgetPendingTacticalCommand(current.sessionCode, requestId)
         mutate((state) => ({
           ...state,
           pendingCheck: {
@@ -1359,8 +1455,16 @@ export function useGameSession() {
         )
         const room = await roomResponse.json().catch(() => null) as { version?: number; state?: GameState | null; error?: string } | null
         if (!roomResponse.ok || !room?.state) throw new Error(room?.error || 'Сервер не вернул итоговое состояние боя')
+        if (!requestIsCurrent()) {
+          forgetPendingTacticalCommand(current.sessionCode, requestId)
+          return { ok: false, error: 'Кампания сменилась до ответа команды.' }
+        }
         authoritative = room.state
         version = room.version ?? version
+      }
+      if (!requestIsCurrent()) {
+        forgetPendingTacticalCommand(current.sessionCode, requestId)
+        return { ok: false, error: 'Кампания сменилась до ответа команды.' }
       }
       if (version != null) roomVersion.current = latestRoomVersion(roomVersion.current, version)
       if (result?.mechanics?.length || result?.npc_turns?.length) {
@@ -1371,53 +1475,127 @@ export function useGameSession() {
         })
       }
       applyRemote(mergeTacticalCommandState(stateRef.current, authoritative, result ?? {}, requestId))
+      forgetPendingTacticalCommand(current.sessionCode, requestId)
       return { ok: true }
     } catch (error) {
       const text = error instanceof Error ? error.message : 'Не удалось выполнить команду на сервере'
+      const uncertain = isTacticalCommandUnknown(error)
+      if (uncertain) rememberPendingTacticalCommand(pending)
+      else forgetPendingTacticalCommand(current.sessionCode, requestId)
+      if (!requestIsCurrent()) return { ok: false, error: 'Кампания сменилась до ответа команды.' }
       setTacticalError(text)
-      return { ok: false, error: text, ...(isStateVersionConflictError(error) ? { conflict: true } : {}) }
+      return { ok: false, error: text, ...(isStateVersionConflictError(error) ? { conflict: true } : {}), ...(uncertain ? { uncertain: true } : {}) }
     } finally {
-      tacticalBusyRef.current = false
-      setTacticalBusy(false)
+      if (tacticalRequestEpoch.current === requestEpoch) {
+        tacticalBusyRef.current = false
+        setTacticalBusy(false)
+      }
     }
-  }, [applyRemote, mutate, responseCommandError])
+  }, [applyRemote, forgetPendingTacticalCommand, mutate, pendingRecoveryForCampaign, rememberPendingTacticalCommand, responseCommandError])
   tacticalCommandRef.current = executeTacticalCommand
 
-  const executeRestCommand = useCallback(async (command: RestCommand, message: string): Promise<CommandOutcome> => {
+  const executeRestCommand = useCallback(async (
+    command: RestCommand,
+    message: string,
+    options: { idempotencyKey?: string; allowUncertainRetry?: boolean } = {},
+  ): Promise<CommandOutcome> => {
     if (tacticalBusyRef.current) return { ok: false, error: 'Предыдущая команда ещё выполняется.' }
     const current = stateRef.current
-    const requestId = commandId()
+    const existingPending = pendingRecoveryForCampaign(current.sessionCode)
+    if (existingPending && !options.allowUncertainRetry) {
+      return { ok: false, error: 'Предыдущее действие ещё не подтверждено. Повторите именно его.', uncertain: true }
+    }
+    if (options.allowUncertainRetry && (!existingPending || existingPending.requestId !== options.idempotencyKey || existingPending.kind !== 'rest')) {
+      return { ok: false, error: 'Не найдено действие для безопасного повтора.', uncertain: true }
+    }
+    const requestId = options.idempotencyKey ?? commandId()
+    const requestEpoch = ++tacticalRequestEpoch.current
+    const requestAccountId = accountScopeRef.current
+    const requestIsCurrent = () => tacticalRequestEpoch.current === requestEpoch
+      && accountScopeRef.current === requestAccountId
+      && stateRef.current.sessionCode === current.sessionCode
+    const commandToSend = options.allowUncertainRetry
+      ? structuredClone(command)
+      : structuredClone({ ...command, expected_state_version: current.state_version ?? 0 })
+    const pending: TacticalCommandRecovery = {
+      campaignId: current.sessionCode,
+      requestId,
+      kind: 'rest',
+      command: commandToSend as Record<string, unknown>,
+      message,
+    }
+    const request = tacticalCommandRequest(pending)
+    rememberPendingTacticalCommand(pending, false)
     tacticalBusyRef.current = true
     setTacticalBusy(true)
     setTacticalError(null)
     try {
-      const response = await fetchWithTimeout(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/commands`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Idempotency-Key': requestId },
-        body: JSON.stringify({
-          command: { ...command, expected_state_version: current.state_version ?? 0 },
-          message,
-        }),
-      }, 25_000, 'Сервер не успел завершить отдых. Не повторяйте команду: результат мог сохраниться.')
+      const response = await fetchWithTimeout(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/commands`, request.init, 25_000, 'Сервер не успел завершить отдых. Не повторяйте команду: результат мог сохраниться.')
       const result = await response.json().catch(() => null) as TacticalCommandResult | null
-      if (!response.ok) throw await responseCommandError(response, result, `Сервер отклонил команду отдыха (${response.status})`)
+      if (!response.ok) {
+        if (!requestIsCurrent()) {
+          const staleError = apiRequestError(response, result, `Сервер отклонил команду отдыха (${response.status})`)
+          if (isTacticalCommandUnknown(staleError)) rememberPendingTacticalCommand(pending, false)
+          else forgetPendingTacticalCommand(current.sessionCode, requestId)
+          return { ok: false, error: 'Кампания сменилась до ответа команды.' }
+        }
+        throw await responseCommandError(response, result, `Сервер отклонил команду отдыха (${response.status})`)
+      }
       if (!result?.authoritative_state) throw new Error(result?.error || 'Сервер не вернул состояние после команды отдыха')
+      if (!requestIsCurrent()) {
+        forgetPendingTacticalCommand(current.sessionCode, requestId)
+        return { ok: false, error: 'Кампания сменилась до ответа команды.' }
+      }
       if (result.room_version != null) roomVersion.current = latestRoomVersion(roomVersion.current, result.room_version)
       applyRemote(mergeTacticalCommandState(stateRef.current, result.authoritative_state, result, requestId))
+      forgetPendingTacticalCommand(current.sessionCode, requestId)
       return { ok: true }
     } catch (error) {
       const text = error instanceof Error ? error.message : 'Не удалось выполнить команду отдыха'
+      const uncertain = isTacticalCommandUnknown(error)
+      if (uncertain) rememberPendingTacticalCommand(pending)
+      else forgetPendingTacticalCommand(current.sessionCode, requestId)
+      if (!requestIsCurrent()) return { ok: false, error: 'Кампания сменилась до ответа команды.' }
       setTacticalError(text)
-      return { ok: false, error: text, ...(isStateVersionConflictError(error) ? { conflict: true } : {}) }
+      return { ok: false, error: text, ...(isStateVersionConflictError(error) ? { conflict: true } : {}), ...(uncertain ? { uncertain: true } : {}) }
     } finally {
-      tacticalBusyRef.current = false
-      setTacticalBusy(false)
+      if (tacticalRequestEpoch.current === requestEpoch) {
+        tacticalBusyRef.current = false
+        setTacticalBusy(false)
+      }
     }
-  }, [applyRemote, responseCommandError])
+  }, [applyRemote, forgetPendingTacticalCommand, pendingRecoveryForCampaign, rememberPendingTacticalCommand, responseCommandError])
+
+  const retryPendingTacticalCommand = useCallback((): Promise<CommandOutcome> => {
+    const pending = pendingRecoveryForCampaign(stateRef.current.sessionCode)
+    if (!pending) return Promise.resolve({ ok: false, error: 'Нет действия, ожидающего подтверждения.', uncertain: true })
+    if (pending.kind === 'rest') {
+      return executeRestCommand(
+        pending.command as unknown as RestCommand,
+        pending.message,
+        { idempotencyKey: pending.requestId, allowUncertainRetry: true },
+      )
+    }
+    return executeTacticalCommand(
+      pending.command as unknown as TacticalCommand,
+      pending.message,
+      {
+        manualRoll: pending.manualRoll,
+        ...(pending.rollId ? { roll: { roll_id: pending.rollId } as RollResult } : {}),
+        idempotencyKey: pending.requestId,
+      },
+      { allowUncertainRetry: true },
+    )
+  }, [executeRestCommand, executeTacticalCommand, pendingRecoveryForCampaign])
 
   const executeCharacterBuild = useCallback(async (commands: CharacterBuildCommand[]) => {
     const current = stateRef.current
     const requestId = commandId()
+    const requestEpoch = tacticalRequestEpoch.current
+    const requestAccountId = accountScopeRef.current
+    const requestIsCurrent = () => tacticalRequestEpoch.current === requestEpoch
+      && accountScopeRef.current === requestAccountId
+      && stateRef.current.sessionCode === current.sessionCode
     setTacticalError(null)
     try {
       const response = await fetch(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/commands`, {
@@ -1432,11 +1610,16 @@ export function useGameSession() {
         }),
       })
       const result = await response.json().catch(() => null) as TacticalCommandResult | null
-      if (!response.ok) throw await responseCommandError(response, result, `Сервер отклонил изменение персонажа (${response.status})`)
+      if (!response.ok) {
+        if (!requestIsCurrent()) return
+        throw await responseCommandError(response, result, `Сервер отклонил изменение персонажа (${response.status})`)
+      }
       if (!result?.authoritative_state) throw new Error('Сервер не вернул состояние после изменения персонажа')
+      if (!requestIsCurrent()) return
       if (result.room_version != null) roomVersion.current = latestRoomVersion(roomVersion.current, result.room_version)
       applyRemote(mergeTacticalCommandState(stateRef.current, result.authoritative_state, result, requestId))
     } catch (error) {
+      if (!requestIsCurrent()) return
       setTacticalError(error instanceof Error ? error.message : 'Не удалось сохранить развитие персонажа')
       throw error
     }
@@ -1793,7 +1976,12 @@ export function useGameSession() {
 
   const switchCampaign = useCallback(async (code: string, prefetched?: { version?: number; state?: GameState | null }) => {
     const normalized = code.toUpperCase()
+    actionEpoch.current += 1
+    busy.current = false
+    tacticalRequestEpoch.current += 1
     merchantEpoch.current += 1
+    tacticalBusyRef.current = false
+    setTacticalBusy(false)
     merchantBusyRef.current = false
     setMerchantBusy(false)
     setTacticalError(null)
@@ -1989,34 +2177,53 @@ export function useGameSession() {
     command_type: 'SetMerchantAvailability', merchant_id: merchantId, available,
   }), [executeMerchantLifecycleCommand])
 
-  const advanceAdventure = useCallback(async () => {
-    if (directorBusyRef.current) return null
+  const advanceAdventure = useCallback(async (
+    playerAction = 'Продолжить приключение',
+    playerId?: string,
+    interactionId?: string,
+  ): Promise<CommandOutcome> => {
+    const current = stateRef.current
+    if (directorBusyRef.current || busy.current || tacticalBusyRef.current || merchantBusyRef.current
+      || current.pendingCheck || current.pendingAction || pendingRecoveryForCampaign(current.sessionCode)) {
+      return { ok: false, error: 'Сначала завершите текущее действие.' }
+    }
+    const actorId = playerId ?? current.activePlayerId
+    const previous = directorPendingRequestRef.current
+    const pending = previous?.campaignId === current.sessionCode && previous.accountId === accountId
+      && previous.actorId === actorId && previous.interactionId === interactionId
+      ? previous
+      : { accountId, campaignId: current.sessionCode, actorId, playerAction, interactionId, key: commandId() }
+    directorPendingRequestRef.current = pending
+    const belongsToCurrentSession = () => stateRef.current.sessionCode === pending.campaignId
+      && accountScopeRef.current === pending.accountId
     directorBusyRef.current = true
     setDirectorBusy(true)
     setDirectorError(null)
     try {
-      const current = stateRef.current
-      const requestId = directorPendingKeyRef.current ?? commandId()
-      const response = await fetch(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/autonomy/advance`, {
+      const response = await fetchWithTimeout(`/api/campaigns/${encodeURIComponent(pending.campaignId)}/autonomy/advance`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Idempotency-Key': requestId },
-        body: JSON.stringify({ idempotency_key: requestId, player_action: 'Продолжить приключение' }),
-      })
+        headers: { 'Content-Type': 'application/json', 'X-Idempotency-Key': pending.key },
+        body: JSON.stringify({
+          idempotency_key: pending.key, player_action: pending.playerAction, actor_id: pending.actorId,
+          ...(pending.interactionId ? { interaction_id: pending.interactionId } : {}),
+        }),
+      }, 25_000, 'Ответ ведущего задержался. Повторите просьбу: сохранённый шаг не выполнится второй раз.')
       const result = await response.json().catch(() => null) as { state?: GameState; state_version?: number; intent?: { type?: string }; error?: string; code?: string } | null
-      if (!response.ok) throw await responseCommandError(response, result, `Director не смог продолжить приключение (${response.status})`)
-      if (!result?.state) throw new Error('Director не вернул состояние кампании')
-      directorPendingKeyRef.current = result.state.agentInteraction?.status === 'open' ? requestId : null
-      applyRemote(result.state)
-      return result.intent ?? null
+      if (!response.ok) throw new ApiRequestError(result?.error || 'Ведущий не смог продолжить приключение', response.status, result?.code)
+      if (!result?.state) throw new Error('Сервер не вернул результат продолжения истории')
+      if (directorPendingRequestRef.current === pending) directorPendingRequestRef.current = null
+      if (belongsToCurrentSession()) applyRemote(result.state)
+      return { ok: true }
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Director временно недоступен'
-      setDirectorError(message)
-      throw error
+      if (!isTacticalCommandUnknown(error) && directorPendingRequestRef.current === pending) directorPendingRequestRef.current = null
+      const message = error instanceof Error ? error.message : 'Ведущий временно недоступен'
+      if (belongsToCurrentSession()) setDirectorError(message)
+      return { ok: false, error: message }
     } finally {
       directorBusyRef.current = false
       setDirectorBusy(false)
     }
-  }, [applyRemote, responseCommandError])
+  }, [accountId, applyRemote, pendingRecoveryForCampaign])
 
   const updatePlayer = useCallback(async (playerId: string, patch: Partial<Player>) => {
     const current = stateRef.current
@@ -2111,6 +2318,8 @@ export function useGameSession() {
     connectionState,
     tacticalBusy,
     tacticalError,
+    pendingTacticalCommand,
+    retryPendingTacticalCommand,
     merchantBusy,
     merchantError,
     directorBusy,

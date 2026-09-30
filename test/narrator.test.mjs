@@ -40,6 +40,37 @@ test('без LLM огненный шар называет подтверждён
   assert.doesNotMatch(text, /SpellCast|spell_slots|fireball|\d/u)
 })
 
+test('резервный рассказ локализует спасбросок и окно реакции', () => {
+  const reactionBrief = buildNarrationBrief({
+    visible_events: [
+      { event_type: 'SpellSavingThrowResolved', actor_id: 'hero', target_ids: ['wolf'], payload: { spell_id: 'sacred-flame', saved: true, total: 21, difficulty: 13 }, visibility: 'party', source_rule_ids: [] },
+      { event_type: 'ReactionWindowOpened', actor_id: 'wolf', target_ids: ['hero'], payload: { source_actor_id: 'wolf', action_ids: ['opportunity-attack'], trigger: 'enemy-left-reach' }, visibility: 'party', source_rule_ids: [] },
+      { event_type: 'ReactionWindowClosed', actor_id: 'hero', target_ids: ['hero'], payload: { accepted: true, action_id: 'opportunity-attack' }, visibility: 'party', source_rule_ids: [] },
+      { event_type: 'CombatActionUsed', actor_id: 'hero', target_ids: ['hero'], payload: { action_type: 'reaction', action_id: 'opportunity-attack', reaction_window_id: 'reaction:opportunity' }, visibility: 'party', source_rule_ids: [] },
+    ],
+    known_environment: {
+      location: 'Рунский склеп',
+      participants: { heroes: [{ id: 'hero', name: 'Лира' }], enemies: [{ id: 'wolf', name: 'Волк' }] },
+    },
+    visible_state_changes: [],
+    permitted_npc_reactions: [],
+  })
+  const text = deterministicNarration(reactionBrief).narration
+  assert.match(text, /Священное пламя|спасбросок от заклинания/u)
+  assert.match(text, /реакци/iu)
+  assert.doesNotMatch(text, /SpellSavingThrowResolved|ReactionWindow|CombatActionUsed|sacred-flame|opportunity-attack|\d/u)
+
+  const unknownReaction = buildNarrationBrief({
+    visible_events: [{ event_type: 'ReactionWindowOpened', actor_id: 'wolf', target_ids: ['hero'], payload: { source_actor_id: 'wolf', action_ids: ['custom-reaction'], trigger: 'spell-cast' }, visibility: 'party', source_rule_ids: [] }],
+    known_environment: { participants: { heroes: [{ id: 'hero', name: 'Лира' }], enemies: [{ id: 'wolf', name: 'Волк' }] } },
+    visible_state_changes: [],
+    permitted_npc_reactions: [],
+  })
+  const unknownText = deterministicNarration(unknownReaction).narration
+  assert.match(unknownText, /получает возможность использовать реакцию против Волк/u)
+  assert.doesNotMatch(unknownText, /Атака по возможности|custom-reaction/u)
+})
+
 test('Narrator не тратит второй вызов на неподтверждённую механику и использует безопасный fallback', async () => {
   const llm = new FakeLLM([
     { content: JSON.stringify({ narration: 'Выпало 20, и герой получает 1000 HP.', suggestions: [] }) },

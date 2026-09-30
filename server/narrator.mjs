@@ -11,6 +11,7 @@ import {
 import { findNarratorCliches } from './narrator-craft-quality.mjs'
 import { promptForModelRole } from './model-style-profiles.mjs'
 import { npcDossiersForNarrator } from './npc-social.mjs'
+import { canonicalCombatSpellFor } from './combat-spells.mjs'
 import { worldClockNarration } from './weather.mjs'
 import { ABILITY_LABELS_RU, SKILL_LABELS_RU } from './free-action-adjudication.mjs'
 
@@ -1445,6 +1446,33 @@ function confirmedOutcome(payload, field = 'success') {
   return null
 }
 
+const REACTION_ACTION_LABELS = Object.freeze({
+  'opportunity-attack': 'Атака по возможности',
+  'readied-attack': 'Подготовленная атака',
+  'readied-spell': 'Подготовленное заклинание',
+  'cast:shield': 'Щит',
+  'uncanny-dodge': 'Необычное уклонение',
+})
+
+function publicSpellLabel(payload) {
+  const explicit = sceneText(payload?.spell_name ?? payload?.name, 120)
+  if (explicit && /[А-ЯЁа-яё]/u.test(explicit)) return `«${explicit}»`
+  const catalogName = canonicalCombatSpellFor(payload?.spell_id)?.name
+  return catalogName ? `«${sceneText(catalogName, 120)}»` : 'заклинания'
+}
+
+function reactionActionLabel(payload) {
+  const explicit = [payload?.name, ...(Array.isArray(payload?.action_options) ? payload.action_options.map((option) => option?.name) : [])]
+    .map((value) => sceneText(value, 120))
+    .find((value) => value && /[А-ЯЁа-яё]/u.test(value))
+  return explicit || REACTION_ACTION_LABELS[String(payload?.action_id ?? '')] || ''
+}
+
+function reactionActionText(payload) {
+  const label = reactionActionLabel(payload)
+  return label ? `реакцию «${label}»` : 'реакцию'
+}
+
 /**
  * Механические числа уже показаны интерфейсом. Запасной рассказчик сохраняет
  * подтверждённый смысл события, но не превращается во второй боевой лог.
@@ -1470,7 +1498,7 @@ function qualitativeEventSummary(event, resolveName) {
     case 'NpcSavingThrowResolved':
     case 'SpellSavingThrowResolved': {
       const outcome = confirmedOutcome(payload, 'saved')
-      return `${target}: спасбросок от ${sceneText(payload.spell_name || 'заклинания', 64)} ${outcome ? `завершился ${outcome}` : 'завершён; его исход пока неизвестен'}`
+      return `${target}: спасбросок от ${publicSpellLabel(payload)} ${outcome ? `завершился ${outcome}` : 'завершён; его исход пока неизвестен'}`
     }
     case 'SpellCast': return `${actor} применяет ${payload.name ? `«${sceneText(payload.name, 120)}»` : 'заклинание'}`
     case 'ConcentrationSavingThrowResolved':
@@ -1534,6 +1562,31 @@ function qualitativeEventSummary(event, resolveName) {
     case 'DirectorIntentOutcomeRecorded':
     case 'CampaignPacingAdvanced':
       return ''
+    case 'PartyDecisionOpened':
+      return `Отряд обсуждает: ${sceneText(payload.interaction?.title || 'следующий шаг', 180)}`
+    case 'PartyVoteCast': return 'Участник отряда проголосовал'
+    case 'PartyDecisionAbstained': return 'Участник отряда воздержался'
+    case 'PartyDecisionResolved': return 'Отряд принял общее решение'
+    case 'PartyDecisionExpired': return 'Время обсуждения истекло; решение определено по правилам отряда'
+    case 'PartyDecisionConsumed': return 'Подтверждённое решение отряда исполнено'
+    case 'ReactionWindowOpened': {
+      const reactor = named((event.target_ids ?? [])[0] ?? payload.target_id, 'Герой')
+      const source = named(payload.source_actor_id ?? event.actor_id, 'противник')
+      return `${reactor} получает возможность использовать ${reactionActionText(payload)} против ${source}`
+    }
+    case 'ReactionWindowClosed':
+      return payload.accepted === true
+        ? `${actor} подтверждает ${reactionActionText(payload)}`
+        : payload.accepted === false
+          ? `${actor} не использует реакцию`
+          : `${actor} завершает окно реакции`
+    case 'CombatActionUsed':
+      return payload.action_type === 'reaction' || payload.reaction_window_id
+        ? `${actor} использует ${reactionActionText(payload)}`
+        : (() => {
+          const label = sceneText(payload.name, 120)
+          return label && /[А-ЯЁа-яё]/u.test(label) ? `${actor} использует «${label}»` : `${actor} использует боевое действие`
+        })()
     case 'TurnStarted':
       return `Начинается ход ${target}`
     case 'NpcRelationshipAdjusted':

@@ -209,6 +209,19 @@ test('закрытый квест не возвращается в intent, ко�
   assert.equal(authorized.intent.quest_id, 'quest:open')
 })
 
+test('настоящая улика остаётся допустимой при заполненных часах и другом открытом поручении', () => {
+  const state = structuredClone(baseState)
+  state.worldMemory.quests = [
+    { id: 'quest:other', title: 'Другое дело', status: 'active', entity_ids: ['other'], clock: { current: 0, max: 3 } },
+    { id: 'quest:proven', title: 'Найти след', status: 'active', entity_ids: ['wardens'], clock: { current: 3, max: 3, triggered: true } },
+  ]
+  state.worldMemory.facts = [{ id: 'fact:trail', predicate: 'discovery', subject_id: 'wardens',
+    source_event_ids: ['event:trail'], status: 'active', visibility: 'party' }]
+  const authorized = authorizeDirectorIntent(state, { type: 'advance_quest_clock', quest_id: 'quest:proven' })
+  assert.equal(authorized.replaced, false)
+  assert.equal(authorized.intent.quest_id, 'quest:proven')
+})
+
 test('отказ в текущей локации даёт нейтральную цель для продолжения', () => {
   const state = structuredClone(baseState)
   const arc = buildCampaignArcPlan('in-place-abandonment')

@@ -5,6 +5,7 @@ import { SIZE_CLASSES, legacyCellsFromTacticalMap, serializeTacticalMap, tactica
 import { sceneInteractionCatalogEntry, sceneInteractionFallbackAssets } from './scene-interactions.mjs'
 import { REFERENCE_SIZE } from './building-generator.mjs'
 import { normalizeDeclaredLevels } from './level-generator.mjs'
+import { sceneMapDesignFor, worldLocationDesignContext } from './scene-map-design.mjs'
 import {
   buildThemedScene,
   isLiveTheme,
@@ -248,23 +249,29 @@ export function rememberCurrentSceneMap(state) {
  * «явная просьба сильнее догадки» сохранён, но выражен иначе: просьба теперь
  * ведёт к теме, а не мимо неё.
  */
-function generateSceneGeometryFor({ theme, danger, location, sceneKind, settlementType = '', worldKind = '', seed, locationId, requestedMap, levels = [] }) {
+function generateSceneGeometryFor({ theme, danger, location, sceneKind, settlementType = '', worldKind = '', seed, locationId, requestedMap, levels = [], description = '', worldDescription = '', biome = '' }) {
   // Опознание живёт в одном месте — `server/scene-themes.mjs`. Название —
   // не единственный признак: вид точки карты мира, тип поселения и заявка
   // картографа весят не меньше, иначе деревня с «бродом» в имени становилась
   // дорогой и ничем не отличалась от дороги, в которую из неё уходили.
   const recognized = resolveSceneTheme({ location, theme, sceneKind, settlementType, worldKind, request: requestedMap })
-  // Готовые комнатные/поселковые темы намеренно не заливают воду: их
-  // генераторы строят мебель и зоны, а не русло. Для неизвестного водоёма
+  const design = sceneMapDesignFor({ location, theme, description, worldDescription, biome,
+    worldKind, settlementType, seed, request: requestedMap })
+  // Поселения строят собственные гавани и речные переправы. Для водоёма
+  // вне поселения
   // оставляем заявку процедурному генератору, который умеет сохранять
   // непроходимую поверхность `water`; authored-вариант с явным theme_id
   // остаётся за своей подготовленной геометрией.
   const explicitTheme = String(requestedMap.theme_id ?? requestedMap.themeId ?? '').trim()
   const waterChance = Number(requestedMap.water)
   const waterBody = /озер|река|водо[её]м|пруд|залив|отмел|переправ|берег/iu.test(`${location} ${theme}`)
-  const waterScene = !explicitTheme && (waterBody || (Number.isFinite(waterChance) && waterChance >= 0.35))
+  const waterScene = recognized.kind === 'open' && design.topology !== 'river' && !explicitTheme
+    && (waterBody || (Number.isFinite(waterChance) && waterChance >= 0.35))
   const matched = !waterScene && isLiveTheme(recognized) ? recognized : null
   if (matched) {
+    const exteriorCue = /снаружи|у входа|перед (?:дом|здани|таверн|трактир|замк|дворц)|у двер(?:и|ей)/iu
+    const startsOutside = exteriorCue.test(`${location} ${theme}`)
+      || /(?:отряд|герои|путники|вы)[^.!?]{0,50}(?:снаружи|у входа|перед (?:дом|здани|таверн|трактир|замк|дворц)|у двер(?:и|ей))/iu.test(description)
     const built = buildThemedScene({
       location,
       theme: text(theme, 60, matched.id),
@@ -275,6 +282,10 @@ function generateSceneGeometryFor({ theme, danger, location, sceneKind, settleme
       width: integer(requestedMap.width, REFERENCE_SIZE.width, 16, SIZE_CLASSES.area.maxWidth),
       height: integer(requestedMap.height, REFERENCE_SIZE.height, 16, SIZE_CLASSES.area.maxHeight),
       levels,
+      design,
+      // Сцена «таверна/галерея» начинается в помещении. Явное прибытие к
+      // фасаду оставляет отряд снаружи; закрытая дверь сохраняет своё значение.
+      entry: startsOutside ? 'exterior' : 'interior',
     })
     built.map.theme = matched.assetTheme ?? matched.id
     return { cells: legacyCellsFromTacticalMap(built.map), map: built.map }
@@ -297,10 +308,11 @@ function generateSceneGeometryFor({ theme, danger, location, sceneKind, settleme
  * @param {object} input
  * @returns {ReturnType<typeof generateDynamicSceneMap>}
  */
-export function generateSceneGeometry({ theme = '', danger = 'средняя', location = '', sceneKind = '', settlementType = '', worldKind = '', seed = 'scene', locationId = '', map = {}, levels = [] } = {}) {
+export function generateSceneGeometry({ theme = '', danger = 'средняя', location = '', sceneKind = '', settlementType = '', worldKind = '', seed = 'scene', locationId = '', map = {}, levels = [], description = '', worldDescription = '', biome = '' } = {}) {
   const requestedMap = map && typeof map === 'object' && !Array.isArray(map) ? map : {}
   return generateSceneGeometryFor({
-    theme, danger, location, sceneKind, settlementType, worldKind, seed, locationId, requestedMap, levels: normalizeDeclaredLevels(levels),
+    theme, danger, location, sceneKind, settlementType, worldKind, seed, locationId, requestedMap,
+    levels: normalizeDeclaredLevels(levels), description, worldDescription, biome,
   })
 }
 
@@ -508,6 +520,7 @@ export function createSceneTransition(input = {}, state = {}) {
   const rememberedTacticalMap = sceneTacticalMapForLocation(state.locationMaps, locationId)
     ?? (sceneLocationId(state) === locationId && previousScene.map ? clone(previousScene.map) : null)
   const requestedMap = input.map && typeof input.map === 'object' && !Array.isArray(input.map) ? input.map : {}
+  const placeContext = worldLocationDesignContext(worldMap, locationId, location)
   const declaredLevels = normalizeDeclaredLevels(input.levels)
   const resolvedTheme = resolveSceneTheme({
     location,
@@ -533,6 +546,10 @@ export function createSceneTransition(input = {}, state = {}) {
     locationId,
     requestedMap,
     levels: declaredLevels,
+    description: [placeContext.description, title, mood, input.arrival].filter((value) => typeof value === 'string').join(' ').slice(0, 2000),
+    biome: placeContext.biome,
+    worldDescription: [state.campaignConcept?.worldSummary, state.campaignConcept?.premise,
+      state.campaignConcept?.setting, state.campaignConcept?.description].filter((value) => typeof value === 'string').join(' ').slice(0, 2400),
   })
   const cells = rememberedMap ?? generated.cells
   const mapTheme = text(resolvedTheme?.assetTheme ?? resolvedTheme?.id, 60)

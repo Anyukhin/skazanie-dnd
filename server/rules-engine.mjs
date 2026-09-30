@@ -8653,6 +8653,12 @@ function attackActionPlan(state, command, context = {}) {
     : null
   const currentLimit = Math.max(1, safeInteger(economy.attack_action_limit, safeInteger(economy.attacks_allowed, normalLimit)))
   const used = Math.max(0, safeInteger(economy.attacks_used, 0))
+  // Общий незатраченный кадр начала хода ещё не выбирает вид действия.
+  // Подтверждённая мультиатака NPC фиксирует свой лимит первым событием;
+  // уже начатый кадр и отдельное действие Ускорения сохраняют прежний лимит.
+  const startsMonsterMultiattack = context.isNpcScheduler === true
+    && command.monster_ability === 'multiattack'
+    && currentKind === 'normal' && used === 0 && economy.action !== false
   if (actionEconomyEventVersion(economy) >= ACTION_ECONOMY_EVENT_VERSION) {
     if (currentId && used > 0 && used < currentLimit) {
       return { resource, boundary: 'continue', kind: currentKind ?? 'normal', id: currentId, limit: currentLimit, spendsAction: false }
@@ -8662,7 +8668,7 @@ function attackActionPlan(state, command, context = {}) {
       boundary: 'start',
       kind: currentKind ?? 'normal',
       id: currentId || `attack-action:${String(command.command_id ?? '')}`,
-      limit: currentId ? currentLimit : normalLimit,
+      limit: currentId && !startsMonsterMultiattack ? currentLimit : normalLimit,
       spendsAction: economy.action !== false,
     }
   }
@@ -10985,7 +10991,9 @@ function sceneAdvancePartyPositions(state, transition) {
     try { map = deserializeTacticalMap(transition.scene.map) } catch { /* Проверим хотя бы производные клетки. */ }
   }
   const cellsByKey = new Map(cells.map((cell) => [positionKey(cell), cell]))
-  const occupied = new Set()
+  // При планировании нового входа реквизит уже является частью карты: его
+  // `blocksMove` нельзя оставить только правилам движения после спавна.
+  const occupied = map ? propMovementPositions(map) : new Set()
   const positions = []
   for (const id of partyIds) {
     const actor = findActor(state, id)
@@ -23745,6 +23753,19 @@ export function resolveCommands(commands, initialState, options) {
     for (const event of result.events) {
       allEvents.push(event)
       state = applyGameEvent(state, event)
+    }
+    const createdMerchantIds = new Set(result.events
+      .filter((event) => event.event_type === 'MerchantCreated')
+      .map((event) => String(event.payload?.merchant_id ?? event.payload?.merchant?.id ?? ''))
+      .filter(Boolean))
+    if (createdMerchantIds.size) {
+      const placementState = normalizeCampaignState(state)
+      const merchantPlacements = planSceneNpcPlacementEvents(placementState)
+        .filter((draft) => draft.event_type === 'NpcPlaced' && createdMerchantIds.has(String(draft.payload?.npc_id ?? '')))
+      for (const placement of npcWorldEventsFrom(result.command, merchantPlacements)) {
+        allEvents.push(placement)
+        state = applyGameEvent(state, placement)
+      }
     }
     allRolls.push(...result.rolls)
     commandIndex += 1

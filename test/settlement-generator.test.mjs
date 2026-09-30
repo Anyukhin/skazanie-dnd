@@ -1,0 +1,127 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+
+import { buildSettlementScene, SETTLEMENT_GENERATOR } from '../server/settlement-generator.mjs'
+import { cellAt, edgeNeighbor, reachableCells, serializeTacticalMap, validateTacticalMap } from '../server/tactical-map.mjs'
+
+const theme = { id: 'settlement', label: 'Поселение', surfaceMaterial: 'grass', streetMaterial: 'earth', houseMaterial: 'wood' }
+const topologies = ['organic', 'linear', 'crossroads', 'market', 'courtyard', 'harbor', 'river', 'terraced', 'gate']
+
+function reachableBuildingZones(map) {
+  const spawn = map.spawnPoints.find((point) => point.role === 'party')
+  const reached = reachableCells(map, spawn.x, spawn.y, { throughDoors: true })
+  return map.zones.filter((zone) => zone.id.startsWith('building-')).filter((zone) => {
+    const interior = []
+    for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+      const cell = cellAt(map, x, y)
+      if (cell?.passable && cell.zone === zone.id) interior.push(`${x},${y}`)
+    }
+    return interior.length > 0 && interior.every((position) => reached.has(position))
+  }).length
+}
+
+test('settlement topologies produce valid reachable v2 maps', () => {
+  for (const topology of topologies) {
+    const built = buildSettlementScene({ seed: `topology-${topology}`, width: 28, height: 28, locationId: topology, theme, design: { topology } })
+    assert.deepEqual(validateTacticalMap(built.map).errors, [], topology)
+    assert.equal(built.map.generator.id, SETTLEMENT_GENERATOR.id)
+    assert.equal(built.map.generator.version, SETTLEMENT_GENERATOR.version)
+    assert.ok(built.map.spawnPoints.some((point) => point.role === 'party'), topology)
+    assert.equal(built.warnings.length, 0, topology)
+    assert.equal(reachableBuildingZones(built.map), built.map.zones.filter((zone) => zone.id.startsWith('building-')).length, topology)
+    const reached = reachableCells(built.map, built.map.spawnPoints[0].x, built.map.spawnPoints[0].y, { throughDoors: true })
+    for (const door of built.map.doors) {
+      const endpoints = [{ x: door.x, y: door.y }, edgeNeighbor(door)]
+      assert.ok(endpoints.some((cell) => reached.has(`${cell.x},${cell.y}`)), `${topology}: дверь ${door.id} отрезана`)
+    }
+  }
+})
+
+test('settlement generation is deterministic and default seeds vary composition', () => {
+  const first = buildSettlementScene({ seed: 'same-settlement', width: 30, height: 30, locationId: 'same', theme, design: {} }).map
+  const second = buildSettlementScene({ seed: 'same-settlement', width: 30, height: 30, locationId: 'same', theme, design: {} }).map
+  assert.deepEqual(serializeTacticalMap(first), serializeTacticalMap(second))
+  const signatures = new Set(Array.from({ length: 12 }, (_, index) => {
+    const map = buildSettlementScene({ seed: `varied-${index}`, width: 28, height: 28, locationId: `varied-${index}`, theme, design: {} }).map
+    const bounds = map.zones.filter((zone) => zone.id.startsWith('building-')).map((zone) => {
+      const cells = []
+      for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) if (cellAt(map, x, y)?.zone === zone.id) cells.push({ x, y })
+      return [Math.min(...cells.map((cell) => cell.x)), Math.min(...cells.map((cell) => cell.y)), Math.max(...cells.map((cell) => cell.x)), Math.max(...cells.map((cell) => cell.y))]
+    })
+    return JSON.stringify({ bounds, doors: map.doors.map((door) => [door.x, door.y]) })
+  }))
+  assert.ok(signatures.size >= 8, `unique compositions: ${signatures.size}`)
+})
+
+test('river and harbor keep water crossing reachable', () => {
+  for (const topology of ['river', 'harbor']) {
+    const map = buildSettlementScene({ seed: `water-${topology}`, width: 30, height: 30, locationId: topology, theme, design: { topology } }).map
+    const water = []
+    for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+      const cell = cellAt(map, x, y)
+      if (cell?.surface === 'water') water.push({ x, y, passable: cell.passable })
+    }
+    assert.ok(water.length > 0, topology)
+    assert.ok(water.some((cell) => [[1, 0], [-1, 0], [0, 1], [0, -1]]
+      .map(([dx, dy]) => cellAt(map, cell.x + dx, cell.y + dy))
+      .some((neighbor) => neighbor?.passable)), `${topology}: нет моста или причала`)
+  }
+})
+
+test('market, courtyard and gate carry their own topology', () => {
+  const market = buildSettlementScene({ seed: 'market-topology', width: 30, height: 30, locationId: 'market', theme, design: { topology: 'market' } }).map
+  const courtyard = buildSettlementScene({ seed: 'courtyard-topology', width: 30, height: 30, locationId: 'courtyard', theme, design: { topology: 'courtyard' } }).map
+  const marketSquare = [...Array.from({ length: market.height }, (_, y) => y).flatMap((y) => Array.from({ length: market.width }, (_, x) => cellAt(market, x, y)))].filter((cell) => cell?.zone === 'square')
+  const courtyardSquare = [...Array.from({ length: courtyard.height }, (_, y) => y).flatMap((y) => Array.from({ length: courtyard.width }, (_, x) => cellAt(courtyard, x, y)))].filter((cell) => cell?.zone === 'square')
+  assert.ok(marketSquare.length >= 40, 'у рынка нет площади')
+  assert.ok(courtyardSquare.length >= 30, 'у двора нет внутреннего двора')
+  assert.notEqual(marketSquare.length, courtyardSquare.length, 'рынок и двор получили одну композицию')
+
+  const gate = buildSettlementScene({ seed: 'gate-topology', width: 30, height: 30, locationId: 'gate', theme, design: { topology: 'gate' } }).map
+  assert.equal(gate.doors.filter((door) => door.id === 'city-gate').length, 1, 'у крепостного входа нет ворот')
+  assert.ok(Object.values(gate.edges).filter((edge) => edge.kind === 'wall').length >= gate.height - 6, 'у ворот нет стены города')
+})
+
+test('перекрёсток имеет две улицы, органическая деревня — связный изгиб без прямого дубля', () => {
+  for (let index = 0; index < 12; index += 1) {
+    const cross = buildSettlementScene({ seed: `streets-${index}`, width: 32, height: 30, theme, design: { topology: 'crossroads' } }).map
+    const centerX = Math.floor(cross.width / 2)
+    assert.ok(Array.from({ length: cross.height }, (_, y) => cellAt(cross, centerX, y)).every((cell) => cell?.zone === 'street' && cell.passable))
+    const organic = buildSettlementScene({ seed: `streets-${index}`, width: 32, height: 30, theme, design: { topology: 'organic' } }).map
+    const rows = Array.from({ length: organic.height }, (_, y) => Array.from({ length: organic.width }, (_, x) => cellAt(organic, x, y)))
+    assert.equal(rows.some((row) => row.every((cell) => cell?.zone === 'street')), false, 'лишняя прямая дорога осталась в органической деревне')
+    const spawn = organic.spawnPoints.find((point) => point.role === 'party')
+    const reached = reachableCells(organic, spawn.x, spawn.y, { throughDoors: true })
+    for (const row of rows) for (const cell of row) if (cell?.zone === 'street') assert.ok(reached.has(`${cell.x},${cell.y}`), 'изгиб улицы отрезан')
+  }
+})
+
+test('organic buildings use real wings and dense gates are not one template', () => {
+  let nonRectangular = 0
+  for (let index = 0; index < 24; index += 1) {
+    const map = buildSettlementScene({ seed: `organic-wing-${index}`, width: 30, height: 30, locationId: 'organic', theme, design: { topology: 'organic', density: 'mixed' } }).map
+    for (const zone of map.zones.filter((entry) => entry.id.startsWith('building-'))) {
+      const cells = []
+      for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+        if (cellAt(map, x, y)?.passable && cellAt(map, x, y)?.zone === zone.id) cells.push({ x, y })
+      }
+      const minX = Math.min(...cells.map((cell) => cell.x))
+      const maxX = Math.max(...cells.map((cell) => cell.x))
+      const minY = Math.min(...cells.map((cell) => cell.y))
+      const maxY = Math.max(...cells.map((cell) => cell.y))
+      if (cells.length < (maxX - minX + 1) * (maxY - minY + 1)) nonRectangular += 1
+    }
+  }
+  assert.ok(nonRectangular > 0, 'органический генератор не создал ни одного выступающего крыла')
+
+  const denseGateShapes = new Set()
+  for (let index = 0; index < 24; index += 1) {
+    const map = buildSettlementScene({ seed: `dense-gate-${index}`, width: 30, height: 30, locationId: 'gate', theme, design: { topology: 'gate', density: 'dense' } }).map
+    denseGateShapes.add(JSON.stringify(map.zones.filter((zone) => zone.id.startsWith('building-')).map((zone) => {
+      const cells = []
+      for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) if (cellAt(map, x, y)?.passable && cellAt(map, x, y)?.zone === zone.id) cells.push({ x, y })
+      return [cells.length, Math.min(...cells.map((cell) => cell.x)), Math.max(...cells.map((cell) => cell.x)), Math.min(...cells.map((cell) => cell.y)), Math.max(...cells.map((cell) => cell.y))]
+    })))
+  }
+  assert.ok(denseGateShapes.size >= 4, `dense gate compositions: ${denseGateShapes.size}`)
+})

@@ -229,8 +229,17 @@ test('повтор незавершённого квеста не требует
   const initial = campaign()
   initial.worldMemory.quests[0].clock = { current: 0, max: 3, label: 'Evidence', triggered: false }
   initial.autonomy = { pacing: { beat: 7, phase: 'escalation', tension: 70 }, director_history: [{ intent: { type: 'continue_exploration' } }] }
-  initial.worldMemory.facts.push({ id: 'progress-one', subject_id: 'old-road', predicate: 'discovery', source_event_ids: ['event-one'], visibility: 'party' })
   const { eventStore, autonomy } = await fixture(t, initial)
+  const progressSource = await autonomy.runCommands('AUTONOMY-30', 'progress-one-source', [{
+    command_type: 'DeclareAction', actor_id: 'hero', action: 'Исследую следы пропавшего журнала',
+  }])
+  const progressSourceId = progressSource.events.find((event) => event.event_type === 'ActionDeclared')?.event_id
+  await autonomy.runCommands('AUTONOMY-30', 'progress-one-fact', [{
+    command_type: 'RecordWorldFact', fact: {
+      id: 'progress-one', subject_id: 'old-road', predicate: 'discovery',
+      summary: 'Отряд нашёл подтверждённый след пропавшего журнала.', visibility: 'party', source_event_ids: [progressSourceId],
+    },
+  }])
   const input = { campaignId: 'AUTONOMY-30', intent: { type: 'advance_quest_clock', quest_id: 'ledger-quest' }, idempotencyKey: 'one-progress' }
   const resolveQuests = autonomy.resolveTriggeredQuests
   autonomy.resolveTriggeredQuests = async () => { throw Error('Прерывание после коммита команды') }
@@ -254,9 +263,18 @@ test('climax resolves a triggered quest and completes the campaign replay-identi
     director_history: [{ intent: { type: 'continue_exploration' } }],
     director_outcomes: [{ state_changed: true, progress_before: 'before', progress_after: 'after' }],
   }
-  initial.worldMemory.facts.push({ id: 'fact-final-progress', predicate: 'discovery', subject_id: 'old-road', source_event_ids: ['event-final-progress'], status: 'active', visibility: 'party' })
   initial.worldMemory.quests[0].entity_ids = ['old-road']
   const { eventStore, autonomy } = await fixture(t, initial)
+  const finalProgressSource = await autonomy.runCommands('AUTONOMY-30', 'final-progress-source', [{
+    command_type: 'DeclareAction', actor_id: 'hero', action: 'Проверяю главный след журнала',
+  }])
+  const finalProgressSourceId = finalProgressSource.events.find((event) => event.event_type === 'ActionDeclared')?.event_id
+  await autonomy.runCommands('AUTONOMY-30', 'final-progress-fact', [{
+    command_type: 'RecordWorldFact', fact: {
+      id: 'fact-final-progress', predicate: 'discovery', subject_id: 'old-road',
+      summary: 'Подтверждён последний след журнала.', visibility: 'party', source_event_ids: [finalProgressSourceId],
+    },
+  }])
 
   const result = await autonomy.runIntent({
     campaignId: 'AUTONOMY-30',
@@ -362,6 +380,19 @@ test('30+ turn campaign completes the autonomous vertical slice and survives rep
     turns.push({ key, intent: intent.type, version: result.state_version })
     return result
   }
+  const recordQuestProgress = async (key, summary) => {
+    const source = await autonomy.runCommands('AUTONOMY-30', `${key}:source`, [{
+      command_type: 'DeclareAction', actor_id: 'hero', action: summary,
+    }])
+    const sourceEventId = source.events.find((event) => event.event_type === 'ActionDeclared')?.event_id
+    assert.ok(sourceEventId, `${key}: source action must commit an event id`)
+    await autonomy.runCommands('AUTONOMY-30', `${key}:fact`, [{
+      command_type: 'RecordWorldFact', fact: {
+        id: `${key}:fact`, subject_id: 'old-road', predicate: 'discovery', summary,
+        visibility: 'party', source_event_ids: [sourceEventId],
+      },
+    }])
+  }
 
   await run({ type: 'continue_exploration' })
   const explorationCheck = await autonomy.runCommands('AUTONOMY-30', 'turn-exploration-check', [{ command_type: 'MakeAbilityCheck', actor_id: 'hero', ability: 'wis', skill: 'perception', difficulty: 12 }])
@@ -376,12 +407,25 @@ test('30+ turn campaign completes the autonomous vertical slice and survives rep
 
   await autonomy.bindPromise('AUTONOMY-30', { promiseId: 'promise-ledger', condition: { event_type: 'QuestClockAdvanced', quest_id: 'ledger-quest' }, idempotencyKey: 'turn-bind-promise' })
   turns.push({ key: 'turn-bind-promise', intent: 'bind-promise', version: (await autonomy.load('AUTONOMY-30')).state_version })
+  await recordQuestProgress('turn-progress-one', 'Отряд нашёл первый подтверждённый след журнала.')
   await run({ type: 'advance_quest_clock', quest_id: 'ledger-quest' })
   await run({ type: 'request_encounter', theme: 'beasts', difficulty: 'easy' })
   const combat = await autonomy.runCombat('AUTONOMY-30', { idempotencyPrefix: 'turn-combat', maxTurns: 120 })
   turns.push(...combat.turns.map((entry, index) => ({ key: `combat-${index + 1}`, intent: 'combat-turn' })))
+  const beforeCompletionEvents = await eventStore.getEvents('AUTONOMY-30')
   const completed = await autonomy.completeEncounter({ campaignId: 'AUTONOMY-30', outcome: 'enemies_defeated', idempotencyKey: 'turn-completion' })
   turns.push({ key: 'turn-completion', intent: 'encounter-completion', version: completed.state_version })
+  const afterUnrelatedFightEvents = await eventStore.getEvents('AUTONOMY-30')
+  const ledgerClockEvents = afterUnrelatedFightEvents.filter((event) => (
+    event.event_type === 'QuestClockAdvanced' && event.payload?.quest_id === 'ledger-quest'
+  ))
+  const ledgerProofEvents = ledgerClockEvents.filter((event) => Array.isArray(event.payload?.proof_fact_ids) && event.payload.proof_fact_ids.length)
+  assert.equal(ledgerProofEvents.length, 1, `unrelated encounter must not add quest proof: ${JSON.stringify(ledgerClockEvents.map((event) => event.payload))}`)
+  for (const event of afterUnrelatedFightEvents.slice(beforeCompletionEvents.length)
+    .filter((entry) => entry.event_type === 'QuestClockAdvanced')) {
+    assert.equal(event.payload?.policy_id, 'skazanie:offscreen-world-v1')
+    assert.equal(event.payload?.proof_fact_ids, undefined)
+  }
   const repeatedCompletion = await autonomy.completeEncounter({ campaignId: 'AUTONOMY-30', outcome: 'enemies_defeated', idempotencyKey: 'different-client-key' })
   assert.equal(repeatedCompletion.duplicate, true)
   assert.deepEqual(repeatedCompletion.reward, completed.reward)
@@ -408,11 +452,14 @@ test('30+ turn campaign completes the autonomous vertical slice and survives rep
   await run({ type: 'end_scene', destination: 'North Gate' }, 'turn-transition')
   await run({ type: 'offer_next_hook', hook: 'Question the gate sentries' })
   while (turns.length < 32) {
-    await run(turns.length % 3 === 0
-      ? { type: 'advance_quest_clock', quest_id: 'ledger-quest' }
-      : turns.length % 3 === 1
-        ? { type: 'continue_exploration' }
-        : { type: 'offer_next_hook', hook: `Follow clue ${turns.length}` })
+    if (turns.length % 3 === 0) {
+      await recordQuestProgress(`turn-progress-${turns.length}`, `Отряд подтверждает следующий след журнала: ${turns.length}.`)
+      await run({ type: 'advance_quest_clock', quest_id: 'ledger-quest' })
+    } else if (turns.length % 3 === 1) {
+      await run({ type: 'continue_exploration' })
+    } else {
+      await run({ type: 'offer_next_hook', hook: `Follow clue ${turns.length}` })
+    }
   }
 
   const loaded = await eventStore.load('AUTONOMY-30')

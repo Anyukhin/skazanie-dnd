@@ -10,6 +10,7 @@ import { sceneObjectLabelFor } from './scene-interactions.mjs'
 import { actorAppearanceFor, normalizeAttackVisual, publicAppearanceRecord } from './actor-appearance.mjs'
 import { reputationTier } from './reputation-policy.mjs'
 import { projectVisibleState } from './security.mjs'
+import { supersededFeatureResourceIdsFor } from './combat-actions.mjs'
 import { RULE_IDS, hitPointDicePoolForActor, spellComponentAvailabilityFor, movementForActor, effectiveSpeedFeet, positionInEffect } from './rules-engine.mjs'
 import {
   MATERIALS,
@@ -1027,6 +1028,27 @@ function publicActorKeyedMapFor(value, enemyIds, known) {
 }
 
 /**
+ * У старых комнат могут сохраниться пулы generated-ресурсов, которые уже
+ * заменены curated-действием. Проекция убирает только этот известный список:
+ * незнакомые ресурсы и внутреннее состояние не переписываются.
+ *
+ * @param {LooseState} state
+ * @param {unknown} value
+ * @returns {Record<string, any>}
+ */
+function publicResourcesFor(state, value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return Object.fromEntries(Object.entries(value).map(([ownerId, pools]) => {
+    if (!pools || typeof pools !== 'object' || Array.isArray(pools)) return [ownerId, pools]
+    const actor = (state.players ?? []).find((/** @type {Loose} */ candidate) => String(candidate?.id ?? '') === String(ownerId))
+    if (!actor) return [ownerId, pools]
+    const superseded = new Set(supersededFeatureResourceIdsFor(actor))
+    if (!superseded.size) return [ownerId, pools]
+    return [ownerId, Object.fromEntries(Object.entries(pools).filter(([resource]) => !superseded.has(resource)))]
+  }))
+}
+
+/**
  * Очищает одну длительную область. Исходная запись содержит авторитетные
  * параметры и координаты за туманом; наружу проходит только разрешённая часть.
  * @param {Loose} state
@@ -1781,6 +1803,9 @@ export function campaignStateForViewer(state, user, actorId = '') {
       } = visible.mechanics
       return {
       ...publicMechanics,
+      ...(Object.hasOwn(publicMechanics, 'resources')
+        ? { resources: publicResourcesFor(state, publicMechanics.resources) }
+        : {}),
       movement: Object.fromEntries([...(publicState.players ?? []), ...actors]
         .filter((/** @type {Loose} */ actor) => !enemyIds.has(String(actor.id)))
         .map((/** @type {Loose} */ actor) => [String(actor.id), movementForActor(state, String(actor.id))])),
@@ -1955,6 +1980,14 @@ function eventForViewer(event, user, actorId, state = {}) {
     : {}
   delete payload.knowledge_gate
   delete payload.previous_view
+  // Улики для одноразового продвижения — внутренняя связь событий, а не
+  // дополнительное раскрытие скрытых фактов игроку.
+  delete payload.proof_fact_ids
+  delete payload.proof_source_event_ids
+  if (payload.quest && typeof payload.quest === 'object' && !Array.isArray(payload.quest)) {
+    const { progress_fact_ids, progress_source_event_ids, ...publicQuest } = payload.quest
+    payload.quest = publicQuest
+  }
   // Внутренний учёт действий нужен редьюсеру. Производные от команд ID
   // не должны попадать в события, доступные игроку.
   for (const key of [

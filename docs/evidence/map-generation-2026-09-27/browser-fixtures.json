@@ -1,0 +1,137 @@
+[
+  {
+    "code": "MAP-CROSS-V2D",
+    "title": "Перекрёсток ткачей",
+    "description": "Две широкие улицы пересекаются между неодинаковыми каменными домами.",
+    "generator": {
+      "id": "settlement-layout",
+      "version": "2"
+    },
+    "size": [
+      36,
+      30
+    ],
+    "interiors": 6,
+    "hash": "a87d1a608ce730627412bba858979a80c354fce848f18495ba5b31e72ed724fe"
+  },
+  {
+    "code": "MAP-HARBOR-A-V2D",
+    "title": "Медная гавань",
+    "description": "Каменный морской порт с причалами, складами и рыночной набережной.",
+    "generator": {
+      "id": "settlement-layout",
+      "version": "2"
+    },
+    "size": [
+      36,
+      30
+    ],
+    "interiors": 7,
+    "hash": "87c05e5081b66e331de3bbd18bea8b830b7dca37db8f5eb4ec5d03c125c21409"
+  },
+  {
+    "code": "MAP-HARBOR-B-V2D",
+    "title": "Гавань солёного ветра",
+    "description": "Другой каменный морской порт: склады и дома вдоль берега.",
+    "generator": {
+      "id": "settlement-layout",
+      "version": "2"
+    },
+    "size": [
+      36,
+      30
+    ],
+    "interiors": 6,
+    "hash": "1404ef3abeee66f12708dd96b103ab4206d2e37b9cf5ac76f825c7049ffcf450"
+  },
+  {
+    "code": "MAP-RIVER-V2D",
+    "title": "Город двух берегов",
+    "description": "Река проходит через город. Два берега соединены каменным мостом.",
+    "generator": {
+      "id": "settlement-layout",
+      "version": "2"
+    },
+    "size": [
+      36,
+      30
+    ],
+    "interiors": 4,
+    "hash": "e1aa8a5965f0e99fd3f1a5ea465463145aee7a4c1759bc07806957c958fdb879"
+  },
+  {
+    "code": "MAP-ARID-V2D",
+    "title": "Красные глины",
+    "description": "Пустынная деревня: разбросанные саманные дома и колодец у дороги.",
+    "generator": {
+      "id": "settlement-layout",
+      "version": "2"
+    },
+    "size": [
+      36,
+      30
+    ],
+    "interiors": 6,
+    "hash": "be0f5f1dc02a708d3052386166158b2ec0524c60f834ee544a726d51a7418d2f"
+  },
+  {
+    "code": "MAP-MARKET-V2D",
+    "title": "Суконная площадь",
+    "description": "Городская рыночная площадь, лавки, торговые ряды и проходы между кварталами.",
+    "generator": {
+      "id": "settlement-layout",
+      "version": "2"
+    },
+    "size": [
+      36,
+      30
+    ],
+    "interiors": 8,
+    "hash": "eaff2007b61919cc7f49c48b91d1946607a88f6d081699afa1f5c21aeb3158a4"
+  },
+  {
+    "code": "MAP-GATE-V2D",
+    "title": "Северные ворота",
+    "description": "Заснеженные городские ворота, крепкая стена и дома стражи у прохода.",
+    "generator": {
+      "id": "settlement-layout",
+      "version": "2"
+    },
+    "size": [
+      36,
+      30
+    ],
+    "interiors": 6,
+    "hash": "631e5ac13df7e3086f43cfbfa9079f78826a88d3c5ec0f8aa3a0ca4dfdbf11d7"
+  },
+  {
+    "code": "MAP-TAVERN-V2D",
+    "title": "Трактир трёх дорог",
+    "description": "Деревянная таверна: общий зал, кухня, кладовая и внутренний двор.",
+    "generator": {
+      "id": "building-with-yard",
+      "version": "4"
+    },
+    "size": [
+      36,
+      30
+    ],
+    "interiors": 4,
+    "hash": "ee732b1fd3228997413d5c8381d7aaab4f075deb9990f23846b8fd086e054c0e"
+  },
+  {
+    "code": "MAP-HOUSE-V2D",
+    "title": "Дом лесничего",
+    "description": "Жилой деревянный дом лесничего со спальней, очагом и хозяйственными комнатами.",
+    "generator": {
+      "id": "building-with-yard",
+      "version": "4"
+    },
+    "size": [
+      36,
+      30
+    ],
+    "interiors": 5,
+    "hash": "3b9cccbc53caf620848b7d4fa8c72ceaaec2b219f23a6f492c6649ef5db83cbb"
+  }
+]

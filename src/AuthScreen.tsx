@@ -18,6 +18,14 @@ export function AuthScreen({ loading, error, setupRequired, onLogin, onRegister,
 
   useEffect(() => { if (setupRequired) setMode('setup') }, [setupRequired])
 
+  if (loading) {
+    return <main className="auth-screen" aria-busy="true" aria-live="polite">
+      <section className="auth-card">
+        <p>Восстанавливаем игровую сессию…</p>
+      </section>
+    </main>
+  }
+
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
     setBusy(true)
@@ -42,7 +50,7 @@ export function AuthScreen({ loading, error, setupRequired, onLogin, onRegister,
         <form onSubmit={submit}>
           <span className="auth-form-eyebrow">{mode === 'login' ? 'ВОЗВРАЩЕНИЕ В КАМПАНИЮ' : mode === 'register' ? 'НОВЫЙ УЧАСТНИК' : 'ПЕРВОНАЧАЛЬНАЯ НАСТРОЙКА'}</span>
           <h2>{mode === 'login' ? 'С возвращением' : mode === 'register' ? 'Присоединиться к отряду' : 'Создать администратора'}</h2>
-          <p>{mode === 'login' ? 'Ваши герои уже ждут продолжения.' : mode === 'register' ? 'После регистрации администратор назначит вам доступных героев.' : 'Это единственная учётная запись с полным доступом к миру, героям и игрокам.'}</p>
+          <p>{mode === 'login' ? 'Ваши герои уже ждут продолжения.' : mode === 'register' ? 'После регистрации вы сможете создать кампанию и своего героя или войти по приглашению владельца.' : 'Это единственная учётная запись с полным доступом к миру, героям и игрокам.'}</p>
           {mode !== 'login' && <label><span>Имя</span><div><UserRound size={16} /><input value={name} onChange={(event) => setName(event.target.value)} required placeholder="Как к вам обращаться" /></div></label>}
           <label><span>Электронная почта</span><div><Mail size={16} /><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required placeholder="player@example.com" autoComplete="email" /></div></label>
           <label><span>Пароль</span><div><KeyRound size={16} /><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={10} placeholder="Минимум 10 символов" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} /></div></label>

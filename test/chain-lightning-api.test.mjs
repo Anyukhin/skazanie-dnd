@@ -116,8 +116,11 @@ function initialState() {
   const cells = Array.from({ length: 40 * 6 }, (_, index) => ({
     x: index % 40, y: Math.floor(index / 40), type: 'floor', revealed: true,
   }))
+  // Цели неподвижны: StartCombat может исполнить ход врага до HTTP-ответа.
+  // Здесь проверяется дальность между исходными primary/near, поэтому
+  // случайная инициатива не должна менять геометрию теста.
   const actor = (id, x, dex = 8, y = 0) => ({
-    id, name: id, hp: 120, maxHp: 120, armor: 10, speed: 30, alive: true,
+    id, name: id, hp: 120, maxHp: 120, armor: 10, speed: 0, alive: true,
     abilities: { str: 10, dex, con: 10, int: 8, wis: 8, cha: 8 }, attackBonus: 0, damageDice: 4, damageBonus: 0, attackRange: 5, x, y,
   })
   return {

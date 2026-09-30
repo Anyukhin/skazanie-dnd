@@ -155,7 +155,7 @@ test('resource plan delegates maxima and recovery to existing spell and class ca
   assert.equal(wizardPlan.maximums.spell_slots_2, 3)
   assert.equal(wizardPlan.maximums.spell_slots_3, 2)
   assert.equal(wizardPlan.maximums.arcane_recovery, 1)
-  assert.equal(wizardPlan.maximums['feature_wizard-magicheskoe-vosstanovlenie'], 1)
+  assert.equal(wizardPlan.maximums['feature_wizard-magicheskoe-vosstanovlenie'], undefined)
   assert.equal(wizardPlan.recovery.spell_slots_1, 'long')
   assert.equal(wizardPlan.recovery.arcane_recovery, 'long')
   const warlockPlan = classResourcePlan(warlock)

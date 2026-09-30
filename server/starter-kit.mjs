@@ -423,7 +423,34 @@ const COMPLETE_DYNAMIC_OPTIONS = Object.freeze(Object.fromEntries(
     .map((kind) => [kind, completeDynamicOptions(kind)]),
 ))
 
-function mergeCompleteClassProfile(profile) {
+function sortedValue(value) {
+  if (Array.isArray(value)) return value.map(sortedValue)
+  if (!value || typeof value !== 'object') return value
+  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, sortedValue(value[key])]))
+}
+
+function effectiveStarterOptionSignature(option) {
+  const stack = (items) => {
+    const byIdentity = new Map()
+    for (const raw of Array.isArray(items) ? items : []) {
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue
+      const { quantity = 1, ...identity } = raw
+      const key = JSON.stringify(sortedValue(identity))
+      byIdentity.set(key, {
+        ...sortedValue(identity),
+        quantity: (byIdentity.get(key)?.quantity ?? 0) + Math.max(1, Number(quantity) || 1),
+      })
+    }
+    return [...byIdentity.values()].sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)))
+  }
+  return JSON.stringify({
+    items: stack(option?.items),
+    narrative_items: stack(option?.narrative_items),
+    owned_assets: stack(option?.owned_assets),
+  })
+}
+
+function mergeCompleteClassProfile(profile, { publicCatalog = false } = {}) {
   const stored = (classicEquipment.complete_classes ?? []).find((entry) => String(entry.class_id) === String(profile?.class_id ?? ''))
   const rules = stored?.dynamic_groups ?? COMPLETE_CLASS_DYNAMIC_GROUPS[profile?.class_id]
   if (!profile || !rules) return profile ? structuredClone(profile) : null
@@ -432,10 +459,18 @@ function mergeCompleteClassProfile(profile) {
     if (!source) return structuredClone(group)
     const additions = COMPLETE_DYNAMIC_OPTIONS[source] ?? []
     const existing = new Set((group.options ?? []).map((option) => String(option.id)))
+    const options = [...(group.options ?? []).filter((option) => option.legacy_only !== true).map((option) => structuredClone(option)), ...additions.filter((option) => !existing.has(String(option.id))).map((option) => structuredClone(option))]
+    const signatures = new Set()
+    const visibleOptions = publicCatalog ? options.filter((option) => {
+      const signature = effectiveStarterOptionSignature(option)
+      if (signatures.has(signature)) return false
+      signatures.add(signature)
+      return true
+    }) : options
     return {
       ...structuredClone(group),
       complete: true,
-      options: [...(group.options ?? []).filter((option) => option.legacy_only !== true).map((option) => structuredClone(option)), ...additions.filter((option) => !existing.has(String(option.id))).map((option) => structuredClone(option))],
+      options: visibleOptions,
     }
   })
   return { ...structuredClone(profile), complete: true, choice_groups: groups }
@@ -447,7 +482,7 @@ export function starterEquipmentCatalogFor(rulesetId = LEGACY_DEFAULT_RULESET_ID
     ...structuredClone(item),
     ...(item.catalog_id ? { name: catalogItem(item.catalog_id)?.name ?? item.catalog_id } : {}),
   })
-  const classes = classicEquipment.classes.map((profile) => (complete ? mergeCompleteClassProfile(profile) : structuredClone(profile)))
+  const classes = classicEquipment.classes.map((profile) => (complete ? mergeCompleteClassProfile(profile, { publicCatalog: true }) : structuredClone(profile)))
   return {
     ...structuredClone(classicEquipment),
     ...(complete ? { complete: true, complete_schema_version: 1 } : {}),

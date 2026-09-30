@@ -2,8 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { generateAresFortressScene, generateBuildingScene } from '../server/building-generator.mjs'
-import { placeProps } from '../server/prop-placement.mjs'
+import { ensurePropAccess, placeProps } from '../server/prop-placement.mjs'
 import {
+  addProp,
+  addSpawnPoint,
   addZone,
   cellAt,
   createTacticalMap,
@@ -14,6 +16,7 @@ import {
   setEdge,
   setDoor,
   validateTacticalMap,
+  reachableCells,
 } from '../server/tactical-map.mjs'
 
 /** Комната с внешним двором: слева здание, справа трава за стеной. */
@@ -57,6 +60,59 @@ function tavernWithDoor() {
   setCell(map, wallColumn, y, { passable: true, material: 'wood', zone: 'hall', revealed: true })
   setEdge(map, wallColumn - 1, y, wallColumn, y, { kind: 'none', blocksMove: false, blocksSight: false, cover: 'none' })
   setDoor(map, { id: 'yard-door', x: wallColumn, y, dir: 'e', state: 'closed' })
+  return map
+}
+
+/** Минимальный межзонный проход, в котором мебель может запереть зал. */
+function gateWithFurnishedHall({ blockedCells = 1 } = {}) {
+  const map = createTacticalMap({ width: 10, height: 7, seed: 'prop-access-gate' })
+  addZone(map, { id: 'yard', kind: 'exterior', material: 'grass', label: 'Подход' })
+  addZone(map, { id: 'hall', kind: 'interior', material: 'stone', label: 'Зал' })
+  for (let y = 0; y < map.height; y += 1) {
+    for (let x = 0; x < map.width; x += 1) {
+      setCell(map, x, y, {
+        passable: false,
+        material: x < 4 ? 'grass' : 'stone',
+        zone: x < 4 ? 'yard' : 'hall',
+        revealed: true,
+      })
+    }
+  }
+  for (let x = 1; x <= 8; x += 1) {
+    setCell(map, x, 3, { passable: true, material: x < 4 ? 'grass' : 'stone', zone: x < 4 ? 'yard' : 'hall', revealed: true })
+  }
+  addSpawnPoint(map, { id: 'party', x: 1, y: 3, role: 'party' })
+  setDoor(map, { id: 'hall-gate', x: 4, y: 3, dir: 'e', state: 'open' })
+  for (let index = 0; index < blockedCells; index += 1) {
+    const x = 5 + index
+    addProp(map, {
+      id: `hall-table-${index}`,
+      assetId: 'table_round',
+      x: x + 0.5,
+      y: 3.5,
+      footprint: [{ x, y: 3 }],
+      blocksMove: true,
+      blocksSight: true,
+    })
+    addProp(map, {
+      id: `hall-mug-${index}`,
+      assetId: 'mug',
+      x: x + 0.5,
+      y: 3.5,
+      footprint: [],
+      mount: { kind: 'surface', propId: `hall-table-${index}` },
+    })
+  }
+  // Предмет вне геометрии прохода остаётся частью карты: repair не должен
+  // превращаться в глобальную чистку blocking-пропов.
+  addProp(map, {
+    id: 'outside-decoration',
+    assetId: 'boulder',
+    x: 0.5,
+    y: 0.5,
+    footprint: [{ x: 0, y: 0 }],
+    blocksMove: true,
+  })
   return map
 }
 
@@ -298,6 +354,36 @@ test('проход к двери остаётся свободным от меб
   }
   const door = map.doors[0]
   assert.ok(reached.has(`${door.x},${door.y}`), 'до порога нельзя пройти')
+})
+
+test('post-prop repair открывает межзонный проход и снимает опоры удалённой мебели', () => {
+  const map = gateWithFurnishedHall()
+  const before = new Set(map.props.map((prop) => prop.id))
+  ensurePropAccess(map)
+
+  assert.equal(map.props.some((prop) => prop.id === 'hall-table-0'), false, 'перегородивший проход стол не снят')
+  assert.equal(map.props.some((prop) => prop.id === 'hall-mug-0'), false, 'утварь сохранилась после удаления своей поверхности')
+  assert.equal(map.props.some((prop) => prop.id === 'outside-decoration'), true, 'repair удалил посторонний проп')
+  assert.equal(map.props.length, before.size - 2, 'repair должен снять только стол и его опору')
+
+  const spawn = map.spawnPoints.find((point) => point.role === 'party')
+  const reached = reachableCells(map, spawn.x, spawn.y, {
+    throughDoors: true,
+    blockedCells: new Set(map.props.flatMap((prop) => prop.blocksMove ? prop.footprint.map((cell) => `${cell.x},${cell.y}`) : [])),
+  })
+  assert.equal(reached.has('6,3'), true, 'изолированный зал не стал доступен после repair')
+  assert.equal(reached.has('4,3'), true, 'порог ворот потерян после repair')
+})
+
+test('post-prop repair детерминированно проходит несколько мебельных клеток', () => {
+  const first = gateWithFurnishedHall({ blockedCells: 2 })
+  const second = gateWithFurnishedHall({ blockedCells: 2 })
+  ensurePropAccess(first)
+  ensurePropAccess(second)
+  assert.deepEqual(first.props, second.props)
+  assert.equal(first.props.some((prop) => prop.id === 'hall-table-0'), false)
+  assert.equal(first.props.some((prop) => prop.id === 'hall-table-1'), false)
+  assert.equal(first.props.some((prop) => prop.id === 'outside-decoration'), true)
 })
 
 test('required предметы общего building не теряются из-за companions', () => {

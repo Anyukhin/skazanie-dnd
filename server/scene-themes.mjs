@@ -4,8 +4,9 @@ import { createHash } from 'node:crypto'
 import { authoredLocationMapFor } from './authored-location-maps.mjs'
 import { buildAresFortressScene, buildBuildingScene } from './building-generator.mjs'
 import { buildSceneFromGraph } from './graph-layout.mjs'
+import { buildSettlementScene } from './settlement-generator.mjs'
 import { addSceneLink, addSceneZone, createSceneGraph } from './scene-graph.mjs'
-import { placeProps } from './prop-placement.mjs'
+import { ensurePropAccess, placeProps } from './prop-placement.mjs'
 import {
   SIZE_CLASSES,
   addSpawnPoint,
@@ -16,7 +17,6 @@ import {
   edgeNeighbor,
   floorVariantAt,
   setCell,
-  setDoor,
   setEdge,
 } from './tactical-map.mjs'
 
@@ -30,7 +30,8 @@ import {
  * - `graph` — сначала граф зон с проверкой ключей, затем подходящая теме
  *   геометрия. Храм и склеп получают помещения, пещера — органическую полость;
  * - `open` — открытая местность без помещений: лес и дорога;
- * - `settlement` — открытая местность с улицей и отдельными домами.
+ * - `settlement` — поселение с семейством улиц, неодинаковыми зданиями и
+ *   местными ориентирами: площадью, воротами, причалами или переправой.
  *
  * Опознание темы идёт по названию локации и по виду сцены. Это единственное
  * место, где такое опознание живёт: раньше оно было размазано регулярками по
@@ -42,17 +43,8 @@ import {
  * явным предохранителем для будущих тем, которые ещё хуже структурированного
  * fallback.
  *
- * Сравнение обеих карт на одном seed, 2026-07-29:
- *
- * | Тема | Тематический генератор | Итог |
- * | --- | --- | --- |
- * | building | дом из трёх помещений, окна, проёмы, двор, 21 предмет | лучше |
- * | temple | четыре палаты с алтарём и колоннами, 25 предметов | лучше |
- * | crypt | четыре палаты, запертая дверь с ключом, 27 предметов | лучше |
- * | forest | поле с опушкой, 22 дерева и куста | лучше |
- * | road | поле с полосой утоптанной земли поперёк карты | лучше |
- * | cave | связная извилистая полость с неровными залами | лучше |
- * | settlement | четыре дома, улица, площадь и проходы к дверям | лучше |
+ * Обычные здания и поселения используют версионированные генераторы;
+ * сохранённые карты не проходят через эту фабрику повторно.
  */
 export const SCENE_THEMES = Object.freeze([
   {
@@ -339,7 +331,7 @@ const WORLD_KIND_THEMES = {
   wilds: 'forest',
   dungeon: 'cave',
   ruin: 'crypt',
-  fortress: 'crypt',
+  fortress: 'building',
 }
 
 /**
@@ -406,11 +398,12 @@ export function resolveSceneTheme({ location = '', theme = '', sceneKind = '', s
   const interiorStructure = /галере|дворец|замок|крепост|цитадел|трон|кабинет|поко[ия]|военн(?:ая|ый).*(?:зал|галере)|архив|библиотек|зал/iu.test(sceneText)
   const interiorLayout = requestedLayout === 'rooms'
     || ['small-room', 'great-hall', 'keep', 'crypt', 'temple'].includes(requestedPattern)
+  if (outdoorStructure && (worldKind === 'fortress' || /крепост|замок|цитадел/iu.test(sceneText))) return themeById('settlement')
   // Название внутренней части места сильнее вида узла карты мира. Слова
   // «двор», «пристань» и «улица» явно оставляют сцену снаружи: «двор замка»
   // не должен внезапно стать комнатой только из-за слова «замок».
   if (!explicitlyNotSettlement && kind !== 'settlement' && !outdoorStructure && (interiorStructure || interiorLayout)) {
-    if (/крепост|замок|цитадел/iu.test(sceneText)) return themeById('authored-palace')
+    if (/крепост|замок|цитадел/iu.test(sceneText)) return themeById('building')
     if (/храм|святилищ|алтар|собор|монастыр/iu.test(sceneText) || requestedPattern === 'temple') return themeById('temple')
     return themeById('building')
   }
@@ -689,7 +682,7 @@ export function layoutOpenTerrain(theme, { seed = 'open', width = 26, height = 2
     height: safeHeight,
     locationId,
     seed: String(seed),
-    generator: { id: `theme-${theme.id}`, version: '1' },
+    generator: { id: `theme-${theme.id}`, version: '2' },
     theme: theme.id,
     sizeClass: safeWidth * safeHeight <= SIZE_CLASSES.arena.maxCells ? 'arena' : 'area',
   })
@@ -703,205 +696,88 @@ export function layoutOpenTerrain(theme, { seed = 'open', width = 26, height = 2
   })
 
   const roadY = Math.floor(safeHeight / 2)
+  const phase = random() * Math.PI * 2
+  const bend = 1 + Math.floor(random() * Math.max(1, safeHeight * 0.09))
+  const shift = Math.round((random() - 0.5) * safeHeight * 0.14)
+  const forkX = Math.floor(safeWidth * (0.3 + random() * 0.4))
+  const fork = theme.road && random() < 0.45
+  /** @param {number} x */
+  const trailY = (x) => clamp(roadY + shift + Math.round(Math.sin(x / Math.max(1, safeWidth - 1) * Math.PI * 2 + phase) * bend), 3, safeHeight - 4)
+  /** @type {Map<string, {x: number, y: number, patch: Partial<import('./tactical-map.mjs').TacticalCell>}>} */
+  const terrainCells = new Map()
   for (let y = 0; y < safeHeight; y += 1) {
     for (let x = 0; x < safeWidth; x += 1) {
       // Дорога вьётся, а не идёт по линейке: прямая полоса читается как шов.
-      const drift = Math.round(Math.sin((x / Math.max(1, safeWidth - 1)) * Math.PI * 2) * Math.max(1, safeHeight * 0.08))
-      const onRoad = theme.road && Math.abs(y - (roadY + drift)) <= 1
-      setCell(map, x, y, {
+      const onRoad = theme.road && (Math.abs(y - trailY(x)) <= 1 || fork && Math.abs(x - forkX) <= 1 && y <= trailY(x))
+      const left = 1 + Math.floor((1 + Math.sin(y * 0.29 + phase)) * 1.2)
+      const right = safeWidth - 2 - Math.floor((1 + Math.cos(y * 0.23 + phase)) * 1.2)
+      const top = 1 + Math.floor((1 + Math.cos(x * 0.25 + phase)) * 1.2)
+      const bottom = safeHeight - 2 - Math.floor((1 + Math.sin(x * 0.31 + phase)) * 1.2)
+      const present = onRoad || x >= left && x <= right && y >= top && y <= bottom
+      if (!present) continue
+      terrainCells.set(`${x},${y}`, { x, y, patch: {
         passable: true,
         material: onRoad ? 'earth' : theme.material,
+        surface: onRoad ? 'none' : theme.surface ?? 'none',
+        moveCost: !onRoad && theme.surface === 'mud' ? 2 : 1,
         zone: 'field',
         variant: floorVariantAt(seed, x, y),
         revealed: true,
-      })
+      } })
     }
   }
-  // Край карты — непроходимая опушка: иначе отряд уходит в пустоту.
-  for (let x = 0; x < safeWidth; x += 1) {
-    for (const y of [0, safeHeight - 1]) {
-      if (theme.road && Math.abs(y - roadY) <= 1) continue
-      setCell(map, x, y, { passable: false, material: theme.material })
+  // У опушки неровный силуэт, но вход всегда связан с широкой центральной
+  // областью. Это граница участка, а не каменная стена посреди леса.
+  const entranceY = trailY(0)
+  for (let x = theme.road ? 0 : 1; x <= Math.min(5, safeWidth - 2); x += 1) {
+    for (let y = entranceY - 1; y <= entranceY + 1; y += 1) {
+      terrainCells.set(`${x},${y}`, { x, y, patch: { passable: true, material: theme.road ? 'earth' : theme.material,
+        surface: 'none', moveCost: 1, zone: 'field', revealed: true } })
     }
   }
-  for (let y = 0; y < safeHeight; y += 1) {
-    for (const x of [0, safeWidth - 1]) {
-      // У дороги края открыты: она обязана вести за пределы карты.
-      if (theme.road) continue
-      setCell(map, x, y, { passable: false, material: theme.material })
+  if (theme.river) {
+    addZone(map, { id: 'water', kind: 'exterior', material: theme.material, lightLevel: 'bright', label: 'Река' })
+    addZone(map, { id: 'crossing', kind: 'exterior', material: theme.bridgeMaterial, lightLevel: 'bright', label: 'Мост' })
+    const riverX = Math.floor(safeWidth * (0.45 + random() * 0.15))
+    for (const cell of terrainCells.values()) if (Math.abs(cell.x - riverX) <= 1) {
+      const bridge = Math.abs(cell.y - trailY(cell.x)) <= 1
+      cell.patch = { ...cell.patch, passable: bridge, surface: bridge ? 'none' : 'water',
+        material: bridge ? theme.bridgeMaterial : theme.material, zone: bridge ? 'crossing' : 'water' }
     }
   }
-  for (let y = 0; y < safeHeight; y += 1) {
-    for (let x = 0; x < safeWidth; x += 1) {
-      const own = cellAt(map, x, y)
-      if (!own || own.passable) continue
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        if (cellAt(map, x + dx, y + dy)?.passable) {
-          setEdge(map, x, y, x + dx, y + dy, { kind: 'wall', blocksMove: true, blocksSight: true, cover: 'three_quarters' })
-        }
-      }
+  // Пересечение двух неровных контуров иногда оставляет отдельную угловую
+  // клетку. В карту попадает только связный участок с входом, включая воду.
+  const queue = [{ x: 1, y: entranceY }]
+  const connected = new Set([`1,${entranceY}`])
+  for (let index = 0; index < queue.length; index += 1) {
+    const point = queue[index]
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const next = { x: point.x + dx, y: point.y + dy }
+      const key = `${next.x},${next.y}`
+      if (!terrainCells.has(key) || connected.has(key)) continue
+      connected.add(key)
+      queue.push(next)
     }
   }
-  map.spawnPoints.push({ id: 'party-entrance', x: 1, y: roadY, role: 'party' })
+  for (const point of queue) {
+    const cell = terrainCells.get(`${point.x},${point.y}`)
+    if (cell) setCell(map, cell.x, cell.y, cell.patch)
+  }
+  map.spawnPoints.push({ id: 'party-entrance', x: 1, y: entranceY, role: 'party' })
   map.overlays = { compass: true, scaleBar: true, roomLabels: [{ zoneId: 'field', label: theme.label }] }
   return map
 }
 
 /**
- * Поселение с улицей и домами. Дом — не картинка под сеткой: это отдельная
- * зона с деревянным полом, непроходимой стеной и дверью. Поэтому геометрия
- * остаётся играбельной без растрового арта и переживает legacy-проекцию.
+ * Узкий фасад для старых вызывающих мест. Формат карты остаётся единым, а
+ * геометрия и идентификаторы принадлежат новому генератору поселений.
  *
  * @param {Record<string, any>} theme
- * @param {{seed?: string, width?: number, height?: number, locationId?: string}} [options]
+ * @param {{seed?: string, width?: number, height?: number, locationId?: string, design?: Record<string, any>}} [options]
  * @returns {import('./tactical-map.mjs').TacticalMap}
  */
-export function layoutSettlement(theme, {
-  seed = 'settlement', width = 26, height = 26, locationId = '',
-} = {}) {
-  const safeWidth = Math.max(20, Math.min(SIZE_CLASSES.area.maxWidth, Math.round(width)))
-  const safeHeight = Math.max(20, Math.min(SIZE_CLASSES.area.maxHeight, Math.round(height)))
-  const random = randomFor(`settlement:${theme.id}:${seed}`)
-  const surfaceMaterial = theme.surfaceMaterial ?? 'grass'
-  const streetMaterial = theme.streetMaterial ?? 'earth'
-  const houseMaterial = theme.houseMaterial ?? 'wood'
-  const map = createTacticalMap({
-    width: safeWidth,
-    height: safeHeight,
-    locationId,
-    seed: String(seed),
-    generator: { id: 'theme-settlement', version: '1' },
-    theme: theme.id,
-    sizeClass: safeWidth * safeHeight <= SIZE_CLASSES.arena.maxCells ? 'arena' : 'area',
-  })
-  addZone(map, { id: 'common', kind: 'exterior', material: surfaceMaterial, lightLevel: 'bright', floorDirection: 'horizontal', label: theme.label || 'Поселение' })
-  addZone(map, { id: 'street', kind: 'exterior', material: streetMaterial, lightLevel: 'bright', floorDirection: 'horizontal', label: 'Главная улица' })
-
-  for (let y = 0; y < safeHeight; y += 1) {
-    for (let x = 0; x < safeWidth; x += 1) {
-      setCell(map, x, y, {
-        passable: true,
-        material: surfaceMaterial,
-        zone: 'common',
-        variant: floorVariantAt(seed, x, y),
-        revealed: true,
-      })
-    }
-  }
-
-  // Геометрия идёт за зерном: улица гуляет на клетку вверх-вниз, переулок
-  // стоит не строго посередине, дома сдвинуты вдоль улицы. Без этого каждое
-  // поселение мира было одной и той же деревней из четырёх домов по углам, и
-  // две соседние деревни на карте мира отличались только травой.
-  const roadShift = Math.floor(random() * 3) - 1
-  const roadPhase = random() * Math.PI * 2
-  /** @param {number} x */
-  const roadYAt = (x) => (
-    Math.floor(safeHeight / 2) + roadShift
-    + Math.round(Math.sin((x / Math.max(1, safeWidth - 1)) * Math.PI * 2 + roadPhase) * Math.max(1, safeHeight * 0.045))
-  )
-  for (let x = 0; x < safeWidth; x += 1) {
-    const roadY = roadYAt(x)
-    for (let dy = -1; dy <= 1; dy += 1) {
-      setCell(map, x, roadY + dy, { passable: true, material: streetMaterial, zone: 'street' })
-    }
-  }
-  // Площадь и поперечный переулок не дают деревне читаться одной полосой.
-  // Переулок гуляет вокруг середины, но не заходит под дома: дом рисуется
-  // после улицы и перекрыл бы её стеной.
-  const houseWidth = clamp(Math.round(safeWidth * 0.24), 5, 7)
-  const houseHeight = clamp(Math.round(safeHeight * 0.22), 5, 6)
-  const crossX = clamp(Math.floor(safeWidth / 2) + Math.floor(random() * 5) - 2, houseWidth + 3, safeWidth - houseWidth - 4)
-  for (let y = 0; y < safeHeight; y += 1) {
-    for (let dx = -1; dx <= 1; dx += 1) {
-      setCell(map, crossX + dx, y, { passable: true, material: streetMaterial, zone: 'street' })
-    }
-  }
-
-  // Дома сдвигаются вдоль карты и на клетку к улице — с той стороны, от которой
-  // улица отошла, иначе стена легла бы на проезжую часть.
-  const leftX = 2 + Math.floor(random() * Math.max(1, Math.min(3, crossX - 1 - (2 + houseWidth))))
-  const rightX = safeWidth - houseWidth - 2 - Math.floor(random() * Math.max(1, Math.min(3, safeWidth - houseWidth - 2 - (crossX + 2))))
-  const topY = 1 + (roadShift >= 0 ? Math.floor(random() * 2) : 0)
-  const bottomY = safeHeight - houseHeight - 1 - (roadShift <= 0 ? Math.floor(random() * 2) : 0)
-  const labels = ['Дом ремесленника', 'Дом травницы', 'Амбар', 'Дом старосты']
-  const firstLabel = Math.floor(random() * labels.length)
-  const houses = [
-    { x: leftX, y: topY, side: 'top', label: labels[firstLabel] },
-    { x: rightX, y: topY, side: 'top', label: labels[(firstLabel + 1) % labels.length] },
-    { x: leftX, y: bottomY, side: 'bottom', label: labels[(firstLabel + 2) % labels.length] },
-    { x: rightX, y: bottomY, side: 'bottom', label: labels[(firstLabel + 3) % labels.length] },
-  ]
-  /** @type {Array<{id: string, x: number, y: number, dir: 's'}>} */
-  const doors = []
-
-  for (let index = 0; index < houses.length; index += 1) {
-    const house = houses[index]
-    const zoneId = `house-${index + 1}`
-    addZone(map, {
-      id: zoneId,
-      kind: 'interior',
-      material: 'wood',
-      lightLevel: 'dim',
-      floorDirection: index % 2 === 0 ? 'horizontal' : 'vertical',
-      label: house.label,
-    })
-    for (let dy = 0; dy < houseHeight; dy += 1) {
-      for (let dx = 0; dx < houseWidth; dx += 1) {
-        const boundary = dx === 0 || dy === 0 || dx === houseWidth - 1 || dy === houseHeight - 1
-        setCell(map, house.x + dx, house.y + dy, boundary
-          ? { passable: false, material: houseMaterial, zone: '' }
-          : { passable: true, material: houseMaterial, zone: zoneId })
-      }
-    }
-
-    const doorX = house.x + Math.floor(houseWidth / 2)
-    const doorY = house.side === 'top' ? house.y + houseHeight - 1 : house.y
-    setCell(map, doorX, doorY, { passable: true, material: houseMaterial, zone: zoneId })
-    doors.push({ id: `house-door-${index + 1}`, x: doorX, y: doorY, dir: 's' })
-
-    // От каждой двери до главной улицы лежит отдельный проход.
-    const streetY = roadYAt(doorX)
-    const fromY = Math.min(doorY, streetY)
-    const toY = Math.max(doorY, streetY)
-    for (let y = fromY; y <= toY; y += 1) {
-      if (y === doorY) continue
-      setCell(map, doorX, y, { passable: true, material: streetMaterial, zone: 'street' })
-    }
-  }
-
-  // Вода — часть нескольких authored стартов, а не случайная заливка. Берём
-  // только общую площадку, чтобы не прорезать дома и улицу: берег остаётся
-  // читаемым и не ломает гарантированный путь от входа.
-  if (theme.waterBand) {
-    for (let y = 0; y < safeHeight; y += 1) {
-      for (let x = 0; x < safeWidth; x += 1) {
-        const onBand = theme.waterBand === 'right' ? x >= safeWidth - 3
-          : theme.waterBand === 'left' ? x <= 2
-            : y <= 2
-        const cell = cellAt(map, x, y)
-        if (!onBand || !cell || cell.zone !== 'common') continue
-        setCell(map, x, y, { passable: false, surface: 'water', material: surfaceMaterial, zone: '' })
-      }
-    }
-  }
-
-  outlineImpassableCells(map)
-  for (const door of doors) {
-    setDoor(map, { ...door, state: 'closed', blocksMove: false, blocksSight: false })
-  }
-  addSpawnPoint(map, { id: 'party-entrance', x: 0, y: roadYAt(0), role: 'party' })
-  map.overlays = {
-    compass: true,
-    scaleBar: true,
-    roomLabels: [
-      { zoneId: 'street', label: 'Главная улица' },
-      ...map.zones
-        .filter((zone) => zone.id.startsWith('house-'))
-        .map((zone) => ({ zoneId: zone.id, label: zone.label })),
-    ],
-  }
-  return map
+export function layoutSettlement(theme, { seed = 'settlement', width = 26, height = 26, locationId = '', design = {} } = {}) {
+  return buildSettlementScene({ seed, width, height, locationId, theme, design }).map
 }
 
 /**
@@ -917,12 +793,14 @@ export function layoutSettlement(theme, {
  * @param {number} [options.height]
  * @param {string} [options.locationId]
  * @param {string} [options.themeId] уже опознанная тема; сильнее названия
+ * @param {Record<string, any>} [options.design] пространственный замысел выбранного места
+ * @param {'interior'|'exterior'} [options.entry] сторона входа в сцену здания
  * @param {Array<{offset?: number, label?: string}>} [options.levels] объявленные этажи локации
  * @returns {{map: import('./tactical-map.mjs').TacticalMap, theme: string, warnings: string[]}}
  */
 export function buildThemedScene({
-  location = '', theme = '', sceneKind = '', seed = 'scene', width = 26, height = 26, locationId = '', themeId = '',
-  levels = [],
+  location = '', theme = '', sceneKind = '', seed = 'scene', width = 26, height = 26, locationId = '', themeId = '', design = {},
+  levels = [], entry = 'exterior',
 } = {}) {
   // Тему могли опознать не по названию, а по узору из заявки картографа. Тогда
   // повторное опознание здесь её потеряет: `themeFor` читает только слова.
@@ -944,7 +822,7 @@ export function buildThemedScene({
     // Объявленные этажи нужны только теме здания: лестницу на этаже входа
     // ставит один `building-generator`, остальные темы крючков не расставляют
     // вовсе, и привязывать им нечего.
-    const built = buildBuildingScene({ seed, width, height, locationId, theme: definition.id, levels })
+    const built = buildBuildingScene({ seed, width, height, locationId, theme: definition.id, levels, design, entry })
     return { map: built.map, theme: definition.id, warnings: built.warnings }
   }
 
@@ -1000,7 +878,8 @@ export function buildThemedScene({
   }
 
   if (definition.kind === 'settlement') {
-    const map = layoutSettlement(definition, { seed, width, height, locationId })
+    const built = buildSettlementScene({ seed, width, height, locationId, theme: definition, design })
+    const map = built.map
     placeProps(map, {
       seed: `${seed}:props`,
       maxProps: SIZE_CLASSES[/** @type {keyof typeof SIZE_CLASSES} */ (map.sizeClass)].maxProps,
@@ -1010,21 +889,47 @@ export function buildThemedScene({
         density: definition.density ?? 10,
         require: definition.require,
         prefer: definition.prefer,
-      }],
+      }, ...map.zones.filter((zone) => zone.kind === 'interior').map((zone) => ({
+        zoneId: zone.id,
+        theme: 'interior',
+        density: 8,
+        require: [design.building_use === 'shop' ? 'crate' : 'table_small'],
+        prefer: design.building_use === 'shop' ? ['crate', 'barrel', 'shelf_wall']
+          : design.building_use === 'tavern' ? ['table_small', 'chair', 'barrel']
+            : ['table_small', 'chair', 'bed', 'fireplace'],
+      }))],
     })
-    return { map, theme: definition.id, warnings: [] }
+    ensurePropAccess(map)
+    return { map, theme: definition.id, warnings: built.warnings }
   }
 
-  const map = layoutOpenTerrain(definition, { seed, width, height, locationId })
+  const arid = design.climate === 'arid'
+  const cold = design.climate === 'cold'
+  const wetland = design.climate === 'wetland'
+  const terrain = {
+    ...definition,
+    river: design.topology === 'river',
+    road: definition.road || design.topology === 'river',
+    bridgeMaterial: ['stone', 'marble', 'metal'].includes(design.architecture) ? design.architecture : 'wood',
+    material: arid ? 'sand' : cold ? 'ice' : wetland ? 'earth' : definition.material,
+    surface: cold ? 'ice' : wetland ? 'mud' : 'none',
+    label: definition.id === 'forest'
+      ? arid ? 'Сухое редколесье' : cold ? 'Заснеженный лес' : wetland ? 'Заболоченная чаща' : definition.label
+      : definition.label,
+    ...(arid ? { require: ['tree_dead', 'boulder'], prefer: ['tree_dead', 'tree_stump', 'boulder', 'bush', 'woodpile'] }
+      : cold ? { require: ['tree_pine', 'tree_spruce', 'fallen_log'], prefer: ['tree_pine', 'tree_spruce', 'tree_dead', 'boulder'] }
+        : wetland ? { require: ['tree_dead', 'fallen_log', 'bush'], prefer: ['tree_dead', 'bush', 'fern', 'fallen_log'] } : {}),
+  }
+  const map = layoutOpenTerrain(terrain, { seed, width, height, locationId })
   placeProps(map, {
     seed: `${seed}:props`,
     maxProps: SIZE_CLASSES[/** @type {keyof typeof SIZE_CLASSES} */ (map.sizeClass)].maxProps,
     zones: [{
       zoneId: 'field',
       theme: definition.id,
-      density: definition.density ?? 10,
-      require: definition.require,
-      prefer: definition.prefer,
+      density: design.density === 'sparse' ? 9 : design.density === 'dense' ? 20 : definition.density ?? 14,
+      require: terrain.require,
+      prefer: terrain.prefer,
     }],
   })
   return { map, theme: definition.id, warnings: [] }

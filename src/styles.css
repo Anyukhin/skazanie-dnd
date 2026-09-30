@@ -158,6 +158,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .collapsed .avatar { width: 36px; height: 36px; }
 
 .game-main { min-width: 0; height: 100vh; display: flex; flex-direction: column; }
+.command-recovery-notice { display: flex; flex: 0 0 auto; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--gold); background: var(--panel); color: var(--gold-bright); }
+.command-recovery-notice p { flex: 1; margin: 0; font-size: var(--fs-sm); line-height: 1.45; }
+.command-recovery-notice button { flex: 0 0 auto; border: 1px solid var(--gold); border-radius: 4px; padding: 8px 12px; background: var(--panel-soft); color: inherit; cursor: pointer; }
+.command-recovery-notice button:disabled { opacity: .6; cursor: wait; }
+@media (max-width: 620px) { .command-recovery-notice { flex-wrap: wrap; padding-left: 52px; } }
 .topbar { position: relative; z-index: 15; flex: 0 0 72px; display: flex; align-items: center; justify-content: space-between; padding: 0 28px; background: rgba(18,16,14,.96); border-bottom: 1px solid var(--line); box-shadow: 0 8px 24px rgba(0,0,0,.2); }
 .campaign-title { min-width: 0; max-width: 300px; display: grid; grid-template-columns: minmax(0, auto) 17px; column-gap: 8px; align-items: center; }
 .campaign-title span { grid-column: 1 / -1; overflow: hidden; color: #716a62; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); font-weight: 700; letter-spacing: .17em; }

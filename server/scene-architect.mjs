@@ -6,6 +6,7 @@ import { authoredLocationMapMetaFor } from './authored-location-maps.mjs'
 import { classifyPartyDecision } from './party-exit-intent.mjs'
 import { normalizeDeclaredLevels } from './level-generator.mjs'
 import { defaultSceneShopIntent, normalizeSceneShopIntent } from './scene-commerce.mjs'
+import { normalizeSceneMapDesign, sceneMapDesignFor } from './scene-map-design.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'
 import { buildDataOnlyContext } from './security.mjs'
 import { SCENE_THEME_IDS } from './scene-themes.mjs'
@@ -20,7 +21,7 @@ import { worldLocationById } from './world-map.mjs'
 export const SCENE_ARCHITECT_AGENT_ID = 'scene_architect'
 export const LEGACY_SCENE_ARCHITECT_AGENT_ID = 'AgentCartographer'
 
-const prompt = readFileSync(fileURLToPath(new URL('../prompts/map_architect/v5.txt', import.meta.url)), 'utf8')
+const prompt = readFileSync(fileURLToPath(new URL('../prompts/map_architect/v6.txt', import.meta.url)), 'utf8')
 
 function clean(value, maximum = 240) {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, maximum)
@@ -31,15 +32,20 @@ function clampInteger(value, fallback, minimum, maximum) {
   return Number.isSafeInteger(number) ? Math.max(minimum, Math.min(maximum, number)) : fallback
 }
 
+function clampDecimal(value, fallback, minimum, maximum) {
+  const number = Number(value)
+  return value == null || !Number.isFinite(number) ? fallback : Math.max(minimum, Math.min(maximum, number))
+}
+
 const MAP_SCALES = new Set(['room', 'site', 'stronghold', 'region'])
 const MAP_PATTERNS = new Set(['small-room', 'great-hall', 'keep', 'courtyard', 'crypt', 'cave-cluster', 'village', 'bridge', 'natural'])
 const MAP_MATERIALS = new Set(['stone', 'wood', 'earth', 'grass', 'sand', 'metal', 'marble', 'ice'])
 
 function scaleDimensions(scale) {
-  if (scale === 'room') return { width: 9, height: 7, minimumWidth: 7, minimumHeight: 7 }
-  if (scale === 'stronghold') return { width: 23, height: 17, minimumWidth: 19, minimumHeight: 13 }
-  if (scale === 'region') return { width: 25, height: 19, minimumWidth: 21, minimumHeight: 15 }
-  return { width: 15, height: 11, minimumWidth: 11, minimumHeight: 9 }
+  if (scale === 'room') return { width: 16, height: 12, minimumWidth: 7, minimumHeight: 7, maximumWidth: 26, maximumHeight: 26 }
+  if (scale === 'stronghold') return { width: 36, height: 28, minimumWidth: 19, minimumHeight: 13, maximumWidth: 48, maximumHeight: 40 }
+  if (scale === 'region') return { width: 40, height: 30, minimumWidth: 21, minimumHeight: 15, maximumWidth: 48, maximumHeight: 40 }
+  return { width: 26, height: 18, minimumWidth: 11, minimumHeight: 9, maximumWidth: 40, maximumHeight: 32 }
 }
 
 /** Builds a data-only, public context for the external Scene Architect. */
@@ -84,6 +90,9 @@ export function buildDirectorPlanningBrief(state = {}) {
       days: entry.days,
       danger: entry.danger,
       visited: entry.visited,
+      ...(entry.summary ? { summary: clean(entry.summary, 320) } : {}),
+      ...(entry.history ? { history: clean(entry.history, 500) } : {}),
+      ...(entry.biome ? { biome: clean(entry.biome, 40) } : {}),
     })),
   }
 }
@@ -131,16 +140,16 @@ function themeFor(destination, action) {
   const value = hasExplicitDestinationKind
     ? destinationValue
     : `${destinationValue} ${String(action ?? '').toLocaleLowerCase('ru')}`
-  if (/крепост|замок|цитадел/u.test(value)) return { theme: 'крепость', layout: 'rooms', scale: 'stronghold', pattern: 'keep', material: 'stone', width: 23, height: 17, openness: 0.62, water: 0.02, featureCount: 10, danger: 'высокая' }
+  if (/крепост|замок|цитадел/u.test(value)) return { theme: 'крепость', layout: 'rooms', scale: 'stronghold', pattern: 'keep', material: 'stone', width: 36, height: 28, openness: 0.62, water: 0.02, featureCount: 10, danger: 'высокая' }
   if (/дом|хижин|комнат|кабинет|небольш.*зал|камор|спальн|таверн/u.test(value)) return { theme: /таверн/u.test(value) ? 'уютная таверна' : 'жилой дом', layout: 'rooms', scale: 'room', pattern: 'small-room', material: 'wood', width: 9, height: 7, openness: 0.82, water: 0, featureCount: 9, danger: 'низкая' }
-  if (/город|деревн|порт|рынок|таверн|улиц/u.test(value)) return { theme: 'городские улицы', layout: 'streets', scale: 'site', pattern: 'village', material: 'stone', width: 17, height: 11, openness: 0.68, water: /порт|канал/u.test(value) ? 0.12 : 0.02, featureCount: 7, danger: 'низкая' }
-  if (/лес|чащ|болот|роща/u.test(value)) return { theme: 'дикая местность', layout: 'winding', scale: 'site', pattern: 'natural', material: 'grass', width: 15, height: 11, openness: 0.62, water: /болот/u.test(value) ? 0.22 : 0.06, featureCount: 10, danger: 'средняя' }
-  if (/мост/u.test(value)) return { theme: 'мост и подступы', layout: 'winding', scale: 'site', pattern: 'bridge', material: 'wood', width: 17, height: 9, openness: 0.7, water: 0.2, featureCount: 5, danger: 'средняя' }
-  if (/тракт|дорог|путь|перевал/u.test(value)) return { theme: 'дорога', layout: 'winding', scale: 'site', pattern: 'natural', material: 'earth', width: 15, height: 9, openness: 0.58, water: 0.03, featureCount: 5, danger: 'средняя' }
-  if (/руин|развал|храм/u.test(value)) return { theme: 'древние руины', layout: 'ruins', scale: 'site', pattern: 'courtyard', material: /храм/u.test(value) ? 'marble' : 'stone', width: 15, height: 11, openness: 0.58, water: 0.05, featureCount: 6, danger: 'средняя' }
-  if (/пещер|подзем|склеп|архив|шахт/u.test(value)) return { theme: /склеп/u.test(value) ? 'древний склеп' : 'подземные пещеры', layout: 'cavern', scale: 'site', pattern: /склеп|архив/u.test(value) ? 'crypt' : 'cave-cluster', material: 'earth', width: 15, height: 11, openness: 0.62, water: 0.08, featureCount: 10, danger: 'средняя' }
-  if (/арен|круг|кольц|башн/u.test(value)) return { theme: 'радиальная локация', layout: 'radial', scale: 'site', pattern: 'great-hall', material: 'stone', width: 15, height: 15, openness: 0.58, water: 0.02, featureCount: 6, danger: 'средняя' }
-  return { theme: 'новая местность', layout: 'open', scale: 'site', pattern: 'natural', material: 'earth', width: 15, height: 11, openness: 0.64, water: 0.05, featureCount: 5, danger: 'средняя' }
+  if (/город|деревн|порт|рынок|таверн|улиц/u.test(value)) return { theme: /порт|гаван|пристан/u.test(value) ? 'портовые улицы' : 'городские улицы', layout: 'streets', scale: 'site', pattern: 'village', material: 'stone', width: 32, height: 24, openness: 0.68, water: /порт|канал|гаван|пристан/u.test(value) ? 0.22 : 0.02, featureCount: 8, danger: 'низкая' }
+  if (/лес|чащ|болот|роща/u.test(value)) return { theme: 'дикая местность', layout: 'winding', scale: 'site', pattern: 'natural', material: 'grass', width: 26, height: 18, openness: 0.62, water: /болот/u.test(value) ? 0.22 : 0.06, featureCount: 10, danger: 'средняя' }
+  if (/мост/u.test(value)) return { theme: 'мост и подступы', layout: 'winding', scale: 'site', pattern: 'bridge', material: 'wood', width: 28, height: 16, openness: 0.7, water: 0.2, featureCount: 5, danger: 'средняя' }
+  if (/тракт|дорог|путь|перевал/u.test(value)) return { theme: 'дорога', layout: 'winding', scale: 'site', pattern: 'natural', material: 'earth', width: 26, height: 16, openness: 0.58, water: 0.03, featureCount: 5, danger: 'средняя' }
+  if (/руин|развал|храм/u.test(value)) return { theme: 'древние руины', layout: 'ruins', scale: 'site', pattern: 'courtyard', material: /храм/u.test(value) ? 'marble' : 'stone', width: 26, height: 18, openness: 0.58, water: 0.05, featureCount: 6, danger: 'средняя' }
+  if (/пещер|подзем|склеп|архив|шахт/u.test(value)) return { theme: /склеп/u.test(value) ? 'древний склеп' : 'подземные пещеры', layout: 'cavern', scale: 'site', pattern: /склеп|архив/u.test(value) ? 'crypt' : 'cave-cluster', material: 'earth', width: 26, height: 18, openness: 0.62, water: 0.08, featureCount: 10, danger: 'средняя' }
+  if (/арен|круг|кольц|башн/u.test(value)) return { theme: 'радиальная локация', layout: 'radial', scale: 'site', pattern: 'great-hall', material: 'stone', width: 26, height: 26, openness: 0.58, water: 0.02, featureCount: 6, danger: 'средняя' }
+  return { theme: 'новая местность', layout: 'open', scale: 'site', pattern: 'natural', material: 'earth', width: 26, height: 18, openness: 0.64, water: 0.05, featureCount: 5, danger: 'средняя' }
 }
 
 /**
@@ -155,18 +164,21 @@ function themeForWorldKind(kind) {
   switch (String(kind ?? '')) {
     case 'capital':
     case 'city':
-    case 'town':
-    case 'village':
+      return { theme: 'городские улицы', layout: 'streets', scale: 'site', pattern: 'village', material: 'stone', width: 36, height: 28, openness: 0.68, water: 0.02, featureCount: 8, danger: 'низкая' }
     case 'port':
-      return { theme: kind === 'village' ? 'деревенские улицы' : 'городские улицы', layout: 'streets', scale: 'site', pattern: 'village', material: 'stone', width: 17, height: 11, openness: 0.68, water: kind === 'port' ? 0.12 : 0.02, featureCount: 7, danger: 'низкая' }
+      return { theme: 'портовые улицы', layout: 'streets', scale: 'site', pattern: 'village', material: 'stone', width: 36, height: 28, openness: 0.68, water: 0.22, featureCount: 8, danger: 'низкая' }
+    case 'town':
+      return { theme: 'городские улицы', layout: 'streets', scale: 'site', pattern: 'village', material: 'stone', width: 30, height: 22, openness: 0.68, water: 0.02, featureCount: 8, danger: 'низкая' }
+    case 'village':
+      return { theme: 'деревенские улицы', layout: 'streets', scale: 'site', pattern: 'village', material: 'stone', width: 24, height: 18, openness: 0.68, water: 0.02, featureCount: 7, danger: 'низкая' }
     case 'wilds':
-      return { theme: 'дикая местность', layout: 'winding', scale: 'site', pattern: 'natural', material: 'grass', width: 15, height: 11, openness: 0.62, water: 0.06, featureCount: 10, danger: 'средняя' }
+      return { theme: 'дикая местность', layout: 'winding', scale: 'site', pattern: 'natural', material: 'grass', width: 26, height: 18, openness: 0.62, water: 0.06, featureCount: 10, danger: 'средняя' }
     case 'fortress':
-      return { theme: 'крепость', layout: 'rooms', scale: 'stronghold', pattern: 'keep', material: 'stone', width: 23, height: 17, openness: 0.62, water: 0.02, featureCount: 10, danger: 'высокая' }
+      return { theme: 'крепость', layout: 'rooms', scale: 'stronghold', pattern: 'keep', material: 'stone', width: 36, height: 28, openness: 0.62, water: 0.02, featureCount: 10, danger: 'высокая' }
     case 'ruin':
-      return { theme: 'древние руины', layout: 'ruins', scale: 'site', pattern: 'courtyard', material: 'stone', width: 15, height: 11, openness: 0.58, water: 0.05, featureCount: 6, danger: 'средняя' }
+      return { theme: 'древние руины', layout: 'ruins', scale: 'site', pattern: 'courtyard', material: 'stone', width: 26, height: 18, openness: 0.58, water: 0.05, featureCount: 6, danger: 'средняя' }
     case 'dungeon':
-      return { theme: 'подземные пещеры', layout: 'cavern', scale: 'site', pattern: 'cave-cluster', material: 'earth', width: 15, height: 11, openness: 0.62, water: 0.08, featureCount: 10, danger: 'средняя' }
+      return { theme: 'подземные пещеры', layout: 'cavern', scale: 'site', pattern: 'cave-cluster', material: 'earth', width: 26, height: 18, openness: 0.62, water: 0.08, featureCount: 10, danger: 'средняя' }
     default:
       return null
   }
@@ -185,21 +197,36 @@ function themeForWorldDescription(destination) {
   if (!destination) return null
   const value = `${destination.name ?? ''} ${destination.summary ?? ''} ${destination.history ?? ''} ${destination.biome ?? ''}`.toLocaleLowerCase('ru')
   if (/озер|водо[её]м|пруд|залив/iu.test(value)) {
-    return { theme: 'озеро и отмели', layout: 'open', scale: 'site', pattern: 'natural', material: 'grass', width: 17, height: 11, openness: 0.55, water: 0.72, featureCount: 8, danger: 'средняя' }
+    return { theme: 'озеро и отмели', layout: 'open', scale: 'site', pattern: 'natural', material: 'grass', width: 32, height: 24, openness: 0.55, water: 0.72, featureCount: 8, danger: 'средняя' }
   }
   if (/река|слияни[ея]\s+рек|берег|отмел|переправ|пристан|гаван|побереж/iu.test(value)) {
-    return { theme: 'берег реки', layout: 'winding', scale: 'site', pattern: 'bridge', material: 'earth', width: 17, height: 11, openness: 0.62, water: 0.42, featureCount: 7, danger: 'средняя' }
+    return { theme: 'берег реки', layout: 'winding', scale: 'site', pattern: 'bridge', material: 'earth', width: 32, height: 22, openness: 0.62, water: 0.42, featureCount: 7, danger: 'средняя' }
   }
   if (/горн|кряж|пик|скал|перевал|ущел/iu.test(value) || destination.biome === 'mountains') {
-    return { theme: 'горный рубеж', layout: 'winding', scale: 'site', pattern: 'bridge', material: 'earth', width: 17, height: 11, openness: 0.55, water: 0.02, featureCount: 7, danger: 'высокая' }
+    return { theme: 'горный рубеж', layout: 'winding', scale: 'site', pattern: 'bridge', material: 'earth', width: 28, height: 22, openness: 0.55, water: 0.02, featureCount: 7, danger: 'высокая' }
   }
   if (/лес|чащ|рощ|дубрав|пущ|wild/iu.test(value) || destination.biome === 'forest') {
-    return { theme: 'лесная окраина', layout: 'open', scale: 'site', pattern: 'natural', material: 'grass', width: 15, height: 11, openness: 0.62, water: 0.04, featureCount: 9, danger: 'средняя' }
+    return { theme: 'лесная окраина', layout: 'open', scale: 'site', pattern: 'natural', material: 'grass', width: 26, height: 18, openness: 0.62, water: 0.04, featureCount: 9, danger: 'средняя' }
   }
   if (/крепост|замок|цитадел|твердын|fortress/iu.test(value) || destination.kind === 'fortress') {
-    return { theme: 'каменная крепость', layout: 'rooms', scale: 'stronghold', pattern: 'keep', material: 'stone', width: 23, height: 17, openness: 0.62, water: 0.02, featureCount: 10, danger: 'высокая' }
+    return { theme: 'каменная крепость', layout: 'rooms', scale: 'stronghold', pattern: 'keep', material: 'stone', width: 36, height: 28, openness: 0.62, water: 0.02, featureCount: 10, danger: 'высокая' }
   }
   return null
+}
+
+function mapDesignFor({ location, theme, knownDestination = null, knownKind = '', requestedMap = {}, state = {} } = {}) {
+  return normalizeSceneMapDesign(sceneMapDesignFor({
+    location,
+    theme,
+    description: [knownDestination?.summary, knownDestination?.history].filter(Boolean).join(' '),
+    worldDescription: [state.campaignConcept?.worldSummary, state.campaignConcept?.premise,
+      state.campaignConcept?.setting, state.campaignConcept?.description].filter((value) => typeof value === 'string').join(' ').slice(0, 2400),
+    worldKind: knownKind,
+    settlementType: ['capital', 'city', 'town', 'village', 'port'].includes(knownKind) ? knownKind : '',
+    biome: knownDestination?.biome,
+    request: requestedMap,
+    seed: `${location}:${theme}:${knownDestination?.id ?? ''}`,
+  }))
 }
 
 /**
@@ -212,12 +239,14 @@ function themeForWorldDescription(destination) {
  * сегменту: многодневные переходы через несколько точек планирует карта мира.
  *
  * @param {Record<string, any>} [state]
- * @returns {Array<{id: string, name: string, kind: string, days: number, danger: string, visited: boolean}>}
+ * @returns {Array<{id: string, name: string, kind: string, days: number, danger: string, visited: boolean, summary?: string, history?: string, biome?: string}>}
  */
 export function knownDestinationsFrom(state = {}) {
   const map = state?.worldMap
   if (!map || typeof map !== 'object' || !Array.isArray(map.locations)) return []
   const byId = new Map(map.locations.filter((location) => location?.id).map((location) => [String(location.id), location]))
+  const regions = new Map((Array.isArray(map.regions) ? map.regions : [])
+    .filter((region) => region?.id).map((region) => [String(region.id), region]))
   const sceneLocation = clean(state?.scene?.location, 120).toLocaleLowerCase('ru')
   const current = byId.get(String(map.currentLocationId ?? ''))
     ?? map.locations.find((location) => clean(location?.name, 120).toLocaleLowerCase('ru') === sceneLocation)
@@ -228,7 +257,9 @@ export function knownDestinationsFrom(state = {}) {
     const otherId = String(route.from) === String(current.id) ? String(route.to)
       : String(route.to) === String(current.id) ? String(route.from) : ''
     const other = otherId ? byId.get(otherId) : null
-    if (!other || other.known === false || reachable.some((entry) => entry.id === other.id)) continue
+    if (!other || other.known === false || other.hidden === true || other.visibility === 'gm_only'
+      || reachable.some((entry) => entry.id === other.id)) continue
+    const region = regions.get(String(other.regionId ?? other.region_id ?? ''))
     reachable.push({
       id: String(other.id),
       name: clean(other.name, 120),
@@ -236,6 +267,9 @@ export function knownDestinationsFrom(state = {}) {
       days: Math.max(1, Number(route.distance) || 1),
       danger: ['низкая', 'средняя', 'высокая'].includes(route.danger) ? route.danger : 'средняя',
       visited: other.visited === true,
+      ...(clean(other.summary, 320) ? { summary: clean(other.summary, 320) } : {}),
+      ...(clean(other.history, 500) ? { history: clean(other.history, 500) } : {}),
+      ...(clean(other.biome ?? region?.biome, 40) ? { biome: clean(other.biome ?? region?.biome, 40) } : {}),
     })
   }
   return reachable
@@ -249,7 +283,8 @@ function knownWorldDestinationByName(state, name) {
   const key = locationKey(name)
   if (!key || !Array.isArray(state?.worldMap?.locations)) return null
   const location = state.worldMap.locations.find((entry) => (
-    entry?.id && entry.known !== false && locationKey(entry.name) === key
+    entry?.id && entry.known !== false && entry.hidden !== true && entry.visibility !== 'gm_only'
+      && locationKey(entry.name) === key
   ))
   if (!location) return null
   const region = Array.isArray(state?.worldMap?.regions)
@@ -261,14 +296,14 @@ function knownWorldDestinationByName(state, name) {
     kind: clean(location.kind, 40) || 'landmark',
     summary: clean(location.summary, 500),
     history: clean(location.history, 700),
-    biome: clean(region?.biome, 40),
+    biome: clean(location.biome ?? region?.biome, 40),
   }
 }
 
 /** Известная точка карты по авторитетному идентификатору. */
 function knownWorldDestinationById(state, locationId) {
   const location = worldLocationById(state?.worldMap, clean(locationId, 120))
-  if (!location?.id || location.known === false) return null
+  if (!location?.id || location.known === false || location.hidden === true || location.visibility === 'gm_only') return null
   const region = Array.isArray(state?.worldMap?.regions)
     ? state.worldMap.regions.find((candidate) => String(candidate?.id ?? '') === String(location.regionId ?? location.region_id ?? ''))
     : null
@@ -278,7 +313,7 @@ function knownWorldDestinationById(state, locationId) {
     kind: clean(location.kind, 40) || 'landmark',
     summary: clean(location.summary, 500),
     history: clean(location.history, 700),
-    biome: clean(region?.biome, 40),
+    biome: clean(location.biome ?? region?.biome, 40),
   }
 }
 
@@ -386,21 +421,29 @@ function fallbackPlan({ action, state, decision, destinationHint, destinationLoc
   // Иначе маршрут «из Тихого Брода в Эствуд» цеплялся за слово «брод» в
   // исходной точке и рисовал мост вместо деревенских улиц.
   const byWorldKind = knownDestination ? themeForWorldKind(knownKind) : null
-  // Узел карты остаётся авторитетом для поселений, лесов и подземелий:
-  // описание деревни может упомянуть лес, но отряд всё равно прибывает на
-  // улицы деревни. Описание уточняет географию только для landmark/fortress,
-  // где `kind` сам по себе не различает озеро, перевал и дворец.
+  // Узел карты остаётся авторитетом для layout поселений, лесов и подземелий:
+  // описание не может превратить деревню в пещеру. Оно всё же передаётся в
+  // bounded map design, чтобы порт, река и характер квартала не схлопывались
+  // в одинаковую процедурную карту.
   const byWorldDescription = knownDestination && ['landmark', 'fortress'].includes(knownKind)
     ? themeForWorldDescription(knownDestination)
     : null
   const map = themeFor(location, hinted && !knownDestination ? action : '')
   const authoredMap = knownDestination?.id ? authoredLocationMapMetaFor(knownDestination.id) : null
   const plannedMapBase = byWorldDescription ?? byWorldKind ?? map
+  const design = mapDesignFor({
+    state,
+    location,
+    theme: plannedMapBase.theme,
+    knownDestination,
+    knownKind,
+    requestedMap: plannedMapBase,
+  })
   // У фиксированной локации тема карты берётся из versioned catalog. Это
   // сохраняет явный authored route даже когда модель предложила свой pattern.
   const plannedMap = authoredMap
-    ? { ...plannedMapBase, theme_id: authoredMap.themeId }
-    : plannedMapBase
+    ? { ...plannedMapBase, ...(design ? { design } : {}), theme_id: authoredMap.themeId }
+    : { ...plannedMapBase, ...(design ? { design } : {}) }
   const streets = plannedMap.layout === 'streets'
   return {
     title: `Глава ${chapter} · ${location}`,
@@ -432,6 +475,7 @@ function fallbackPlan({ action, state, decision, destinationHint, destinationLoc
       openness: plannedMap.openness,
       water: plannedMap.water,
       featureCount: plannedMap.featureCount,
+      ...(plannedMap.design ? { design: plannedMap.design } : {}),
       ...(authoredMap && SCENE_THEME_IDS.has(authoredMap.themeId) ? { theme_id: authoredMap.themeId } : {}),
     },
   }
@@ -444,6 +488,9 @@ function normalizePlan(value, fallback) {
   const danger = new Set(['низкая', 'средняя', 'высокая'])
   const scale = MAP_SCALES.has(mapSource.scale) ? mapSource.scale : fallback.map.scale
   const dimensions = scaleDimensions(scale)
+  const fallbackDesign = normalizeSceneMapDesign(fallback.map?.design)
+  const modelDesign = normalizeSceneMapDesign(mapSource.design)
+  const design = { ...fallbackDesign, ...modelDesign }
   // Этажи необязательны, и их отсутствие — самый частый и совершенно нормальный
   // ответ. Поэтому поле не подставляется из fallback и не появляется в заявке
   // пустым массивом: одноэтажная локация обязана выглядеть ровно так же, как до
@@ -483,11 +530,12 @@ function normalizePlan(value, fallback) {
       scale,
       pattern: MAP_PATTERNS.has(mapSource.pattern) ? mapSource.pattern : fallback.map.pattern,
       material: MAP_MATERIALS.has(mapSource.material) ? mapSource.material : fallback.map.material,
-      width: clampInteger(mapSource.width, dimensions.width, dimensions.minimumWidth, 25),
-      height: clampInteger(mapSource.height, dimensions.height, dimensions.minimumHeight, 19),
-      openness: Math.max(0.35, Math.min(0.85, Number(mapSource.openness) || fallback.map.openness)),
-      water: Math.max(0, Math.min(0.3, Number(mapSource.water) || fallback.map.water)),
+      width: clampInteger(mapSource.width, dimensions.width, dimensions.minimumWidth, dimensions.maximumWidth),
+      height: clampInteger(mapSource.height, dimensions.height, dimensions.minimumHeight, dimensions.maximumHeight),
+      openness: clampDecimal(mapSource.openness, fallback.map.openness, 0.35, 0.85),
+      water: clampDecimal(mapSource.water, fallback.map.water, 0, 0.3),
       featureCount: clampInteger(mapSource.featureCount, fallback.map.featureCount, 2, 12),
+      ...(Object.keys(design).length ? { design } : {}),
     },
   }
 }
@@ -625,11 +673,26 @@ export class SceneArchitectAgent {
         : fallback
       const sceneArgs = constraint.rejected ? fallback : normalizePlan(result, constrainedFallback)
       if (constraint.destination && !constraint.rejected) {
+        const canonicalMap = constrainedFallback.map
+        const modelMap = sceneArgs.map
         sceneArgs.location = constraint.destination.name
         sceneArgs.location_id = constraint.destination.id
         sceneArgs.theme = constrainedFallback.theme
         sceneArgs.danger = constrainedFallback.danger
-        sceneArgs.map = constrainedFallback.map
+        // Топология и физический тип известной точки принадлежат worldMap.
+        // Ограниченные параметры ответа модели сохраняются: так Архитектор
+        // может выбрать плотность, размер и семантический design, не подменяя
+        // порт деревней или склеп улицами.
+        sceneArgs.map = {
+          ...canonicalMap,
+          width: modelMap.width,
+          height: modelMap.height,
+          openness: modelMap.openness,
+          water: modelMap.water,
+          featureCount: modelMap.featureCount,
+          design: mapDesignFor({ state, location: constraint.destination.name, theme: constrainedFallback.theme,
+            knownDestination: constraint.destination, knownKind: constraint.destination.kind, requestedMap: modelMap }),
+        }
       }
       if (constraint.exactLocation && !constraint.rejected) sceneArgs.location = constraint.exactLocation
       return {

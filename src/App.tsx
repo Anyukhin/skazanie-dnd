@@ -27,6 +27,7 @@ import { CharacterCreationWizard } from './CharacterCreationWizard'
 import { DiceTray } from './DiceTray'
 import { DiceRollScene, type DiceRollResult } from './DiceRollScene'
 import { useGameSession, type CommandOutcome, type ConnectionState, type EncounterAssemblyOptions, type ShopAssemblyOptions } from './useGameSession'
+import { isAdventureContinuation, isDirectorPartyDecision, isEncounterRequest } from './director-continuation.mjs'
 import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
 import { atmosphereScreenAttenuation, atmosphereScreenFor } from './atmosphere-screen.mjs'
 import { createScreenMusic, type ScreenMusicPlayer } from './screen-music'
@@ -65,6 +66,7 @@ import {
   NEWBIE_GUIDE_DISMISSED_KEY,
   confirmedLevelUps,
   playerRoleLabel,
+  narratorAvailabilityMessage,
   merchantForSceneNpc,
   battleEventParticipantIds,
   factionDisplayName,
@@ -793,8 +795,10 @@ function pendingCheckKey(check: Pick<PendingCheck, 'check_id' | 'playerId' | 'ac
 }
 
 function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; onAccountRefresh: () => Promise<Account | null>; onLogout: () => void }) {
-  const gameSession = useGameSession()
+  const gameSession = useGameSession({ accountId: account.id })
   const { confirmPendingAction, cancelPendingAction } = gameSession
+  const { advanceAdventure, directorBusy } = gameSession
+  const { pendingTacticalCommand, retryPendingTacticalCommand } = gameSession
   const { state, combatVisualBatch, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, attackNpc, startRest, spendHitPointDie, completeRest, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, changeWeapon, operateDoor, operateSceneObject, captiveAction, lootContainer, beastAction, resolveGuardEncounter, proposeParley, settleParley, openTavernDiceRound, answerTavernDiceRound, leaveTavernDiceRound, orderTavernDrink, sendLetter, receiveNpcBlessing, useLevelTransition, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, attuneItem, activateItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, updatePlayer, updateWorld } = gameSession
   const [checkDiceScene, setCheckDiceScene] = useState<PendingCheckDiceScene | null>(null)
   const checkDiceSceneRef = useRef<PendingCheckDiceScene | null>(null)
@@ -1122,7 +1126,12 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     }
   }, [campaignAi, campaignAiBusy, state.sessionCode])
 
-  useEffect(() => { getAiHealth().then(setAiHealth).catch(() => setAiHealth(null)) }, [])
+  useEffect(() => {
+    if (state.isNarrating || directorBusy) return
+    let active = true
+    void getAiHealth().then((health) => { if (active) setAiHealth(health) }).catch(() => { if (active) setAiHealth(null) })
+    return () => { active = false }
+  }, [state.sessionCode, state.isNarrating, directorBusy, campaignAi?.settings.model])
   useEffect(() => {
     let active = true
     setCharacterCreationCatalog(null)
@@ -1391,6 +1400,8 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   }, [state.sessionCode, state.scene.location_id, state.scene.location])
   const combatUnderway = Boolean(state.mechanics?.combat?.active)
   const travelBlocked = state.isNarrating
+    || directorBusy
+    || Boolean(pendingTacticalCommand)
     || Boolean(activePlayer?.characterSetupRequired)
     || tacticalBusy
     || Boolean(state.pendingCheck || state.pendingAction)
@@ -1494,13 +1505,14 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   // после всех хуков и до первого обращения к activePlayer.
   if (!state.sessionCode || !activePlayer) {
     if (isAdmin && view === 'combat-lab') return <div className="app no-campaign"><main className="game-main"><button className="combat-lab-back" onClick={() => navigate('room')}>Вернуться к кампаниям</button><CombatLabView combatAudio={combatAudio ?? undefined} soundMuted={atmosphereSettings.muted} onSoundMutedChange={changeAtmosphereMuted} /></main></div>
+    const loadingCampaign = state.campaign === 'Загрузка кампании…' && connectionState !== 'offline' && !joinError
     return (
       <div className="app no-campaign">
         <main className="game-main">
-          <div className="campaign-empty-screen">
+          <div className="campaign-empty-screen" aria-busy={loadingCampaign}>
             <ScrollText size={40} />
-            <h1>{joinError ? 'Не удалось занять место героя' : 'Кампания ещё не выбрана'}</h1>
-            <p>{joinError || 'Создайте новый мир — рассказчик придумает его и напишет пролог — либо откройте кампанию, в которую вас пригласили.'}</p>
+            <h1>{loadingCampaign ? 'Загружаем кампанию…' : joinError ? 'Не удалось занять место героя' : 'Кампания ещё не выбрана'}</h1>
+            <p>{loadingCampaign ? 'Восстанавливаем сохранённую сцену и героев.' : joinError || 'Создайте новый мир — рассказчик придумает его и напишет пролог — либо откройте кампанию, в которую вас пригласили.'}</p>
             {joinError && <small className="campaign-join-explanation">Если все герои уже разобраны, попросите владельца создать кампанию с дополнительным местом. Роль наблюдателя не выдаёт скрытых данных и пока не входит в MVP.</small>}
             <button className="primary" onClick={() => setCampaignsOpen(true)}><Plus size={16} />Кампании и группы</button>
             {isAdmin && <button onClick={() => { setCampaignsOpen(false); navigate('combat-lab') }}><Swords size={16} />Боевой стенд</button>}
@@ -1563,7 +1575,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const canControlHero = Boolean(mapHero && partyIdSet.has(mapActorId) && (isAdmin || accessibleHeroIds.includes(mapActorId)))
   const summonControllerIds = mapSummon ? [mapSummon.ownerId, mapSummon.controllerId] : []
   const canControlSummon = Boolean(mapSummon && mapSummon.faction === 'party' && (isAdmin || summonControllerIds.some((id) => accessibleHeroIds.includes(id))))
-  const canAct = !tacticalBusy && !mapHero?.characterSetupRequired && lifecycleStatus === 'active' && !partyDefeated && !deadHeroIds.has(mapActorId) && (canControlHero || canControlSummon)
+  const canAct = !tacticalBusy && !directorBusy && !pendingTacticalCommand && !mapHero?.characterSetupRequired && lifecycleStatus === 'active' && !partyDefeated && !deadHeroIds.has(mapActorId) && (canControlHero || canControlSummon)
   const needsHeroSetup = Boolean(activePlayer.characterSetupRequired)
   const openHeroEditor = (heroId: string, intent: 'sheet' | 'development' | 'levelup' = 'sheet') => {
     if (!accessibleHeroIds.includes(heroId)) return
@@ -1589,6 +1601,16 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const reactionSourceName = reactionSource && 'character' in reactionSource ? reactionSource.character : reactionSource?.name ?? 'Противник'
   const canAnswerReaction = Boolean(reactionWindow && lifecycleStatus === 'active' && (isAdmin || accessibleHeroIds.includes(reactionWindow.actor_id) || accessibleHeroIds.includes(reactionControllerId)))
   const visibleTypingActorIds = (state.presence?.typing_actor_ids ?? []).filter((actorId) => actorId !== activePlayer.id)
+  const narratorAvailability = narratorAvailabilityMessage(aiHealth, campaignAi?.settings.model)
+  const continueSceneInteraction = () => {
+    if (isDirectorPartyDecision(state.agentInteraction)) {
+      if (state.agentInteraction?.status === 'resolved') {
+        void advanceAdventure('Продолжить подтверждённый переход.', activePlayer.id, state.agentInteraction.id)
+      }
+      return
+    }
+    continueAgentInteraction(activePlayer.id)
+  }
 
   return (
     <div className={`app ${sidebarCollapsed ? 'sidebar-is-collapsed' : ''}`} style={{
@@ -1651,6 +1673,14 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
       />
       <main className="game-main">
         <button className="mobile-menu icon-button" onClick={() => setSidebarCollapsed(value => !value)} aria-label={sidebarCollapsed ? 'Открыть меню' : 'Закрыть меню'} aria-expanded={!sidebarCollapsed}><Menu size={20} /></button>
+        {narratorAvailability && <section className="command-recovery-notice" role="status" aria-label="Режим ведущего">
+          <p>{narratorAvailability}</p>
+          <button type="button" onClick={() => navigate('settings')}>Настройки ведущего</button>
+        </section>}
+        {pendingTacticalCommand && <section className="command-recovery-notice" role="status" aria-label="Результат действия неизвестен">
+          <p>Ответ на действие «{pendingTacticalCommand.message}» не получен. Повтор запроса вернёт результат без повторного применения сохранённого действия.</p>
+          <button type="button" disabled={tacticalBusy || directorBusy} onClick={() => { void retryPendingTacticalCommand() }}>{tacticalBusy ? 'Проверяем результат…' : 'Повторить запрос'}</button>
+        </section>}
         {view === 'room' && <div className={`game-area ${combatActive ? 'combat-active' : 'exploration-active'} ${state.isNarrating ? 'is-narrating' : ''} ${needsHeroSetup ? 'needs-hero-setup' : ''}`}>
           {needsHeroSetup && <section className="hero-setup-notice" aria-label="Подготовка героя">
             <div><strong>{activePlayer.characterSetupStage === 'leveling' ? `Подготовьте героя к ${(state.character_start_level ?? 1)}-му уровню` : 'Создайте героя, чтобы начать приключение'}</strong>
@@ -1680,10 +1710,10 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             turnActorId={mapActorId}
             typingActorId={activePlayer.id}
             canConverse={accessibleHeroIds.includes(activePlayer.id)}
-            dialogueBusy={tacticalBusy || merchantBusy}
+            dialogueBusy={tacticalBusy || merchantBusy || directorBusy}
             dialogueDraft={gameSession.dialogueDraft?.actorId === activePlayer.id && gameSession.dialogueDraft.campaignId === state.sessionCode ? gameSession.dialogueDraft : null}
             canAct={canAct && !state.pendingCheck && !state.pendingAction}
-            tacticalBusy={tacticalBusy || Boolean(state.pendingCheck || state.pendingAction)}
+            tacticalBusy={tacticalBusy || directorBusy || Boolean(state.pendingCheck || state.pendingAction)}
             tacticalError={tacticalError}
             autoAttackRoll={autoAttackRoll}
             scenicBackdrop={scenicBackdrop}
@@ -1706,7 +1736,11 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             leaveLocationDisabled={travelBlocked}
             onOpenMerchant={openMerchant}
             onFinishTurn={finishMapTurn}
-            onFreeAction={(text, kind) => submitAction(text, activePlayer.id, undefined, kind)}
+            onFreeAction={(text, kind) => (isAdventureContinuation(text, { requestKind: kind ?? 'action' })
+              || (!combatActive && !(state.enemies ?? []).some((enemy) => enemy.alive !== false)
+                && isEncounterRequest(text, { requestKind: kind ?? 'action' })))
+              ? advanceAdventure(text, activePlayer.id)
+              : submitAction(text, activePlayer.id, undefined, kind)}
             onNpcAction={(text, npcId) => submitAction(text, activePlayer.id, npcId)}
             onCaptiveAction={(captiveId, action, skill) => captiveAction(activePlayer.id, captiveId, action, skill)}
             onLootContainer={(containerId, lines, recipientId) => lootContainer(activePlayer.id, containerId, lines, recipientId)}
@@ -1729,7 +1763,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             playerHud={<PlayerHud player={mapHero ?? activePlayer} combatActive={combatActive} status={heroStatusByHero[(mapHero ?? activePlayer).id]} hazards={((state.mechanics as { hazards?: Record<string, Array<{ id: string; label?: string; severity?: string; description?: string }>> } | undefined)?.hazards?.[(mapHero ?? activePlayer).id] ?? [])} onCharacter={() => openHeroEditor((mapHero ?? activePlayer).id)} onInventory={() => navigate('inventory')} />}
             statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} illustration={sceneIllustration} illustrationKey={sceneLocationKey} locationArtUrl={locationArtUrl} scenicBackdrop={scenicBackdrop} wantedSigns={state.law?.signs ?? []} weather={state.weather_by_actor?.[activePlayer.id] ?? state.weather} />}
           >
-            <ChatPanel messages={state.messages} isNarrating={state.isNarrating} interaction={state.agentInteraction} players={partyPlayers} typingActorIds={visibleTypingActorIds} currentPlayerId={activePlayer.id} canAct={canAct} combatActive={combatActive} suggestedActions={actionHints} sceneKey={`${state.scene.location}|${state.scene.title}`} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={() => continueAgentInteraction(activePlayer.id)} onWhy={() => { void submitAction('/why', activePlayer.id) }} onSpeak={voiceSupported && voiceMode !== 'off' ? (text) => speakNarration(text, narrationVoice) : null} />
+            <ChatPanel messages={state.messages} isNarrating={state.isNarrating} interaction={state.agentInteraction} players={partyPlayers} typingActorIds={visibleTypingActorIds} currentPlayerId={activePlayer.id} canAct={canAct} combatActive={combatActive} suggestedActions={actionHints} sceneKey={`${state.scene.location}|${state.scene.title}`} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={continueSceneInteraction} onWhy={() => { void submitAction('/why', activePlayer.id) }} onSpeak={voiceSupported && voiceMode !== 'off' ? (text) => speakNarration(text, narrationVoice) : null} />
           </DungeonMap>
         </div>}
         {view === 'world-map' && <WorldMapView state={state} busy={travelBlocked} onTravel={(action) => {

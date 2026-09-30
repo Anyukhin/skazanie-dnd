@@ -2271,6 +2271,53 @@ function ownedViewerActorId(state, user, campaignId) {
     .find((id) => state?.players?.some((player) => String(player.id) === id)) ?? ''
 }
 
+function assignedCampaignHeroIds(campaignId, state) {
+  const partyIds = new Set(partyHeroIds(state))
+  const memberships = listCampaignMemberships(campaignId)
+    .filter((membership) => membership?.status !== 'revoked')
+  if (!memberships.length) return []
+  return [...new Set(memberships.flatMap((membership) => membership.heroIds ?? []).map(String))]
+    .filter((heroId) => partyIds.has(heroId))
+}
+
+function assertDirectorAdvanceReady(campaignId, state) {
+  const assigned = new Set(assignedCampaignHeroIds(campaignId, state))
+  if (!assigned.size) return
+  const unfinished = (state.players ?? [])
+    .filter((player) => assigned.has(String(player.id))
+      && (player.characterSetupRequired === true || player.characterSetupStage === 'leveling'))
+  if (!unfinished.length) return
+  const error = new Error('Сначала завершите подготовку всех назначенных героев')
+  error.code = 'CHARACTER_SETUP_REQUIRED'
+  throw error
+}
+
+async function directorResumeKeyForInteraction(campaignId, interactionId) {
+  const id = String(interactionId ?? '').trim()
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/u.test(id)) {
+    throw commandPolicyError('Некорректный идентификатор решения отряда', 'PARTY_DECISION_INVALID')
+  }
+  const events = await eventStore.getEvents(campaignId)
+  const opened = events.findLast((event) => event.event_type === 'PartyDecisionOpened'
+    && String(event.payload?.interaction?.id ?? '') === id)
+  const customKey = String(opened?.idempotency_key ?? '')
+  const suffix = ':custom'
+  if (!opened || !customKey.endsWith(suffix)) {
+    throw commandPolicyError('Это решение не связано с ожидающим ходом Режиссёра', 'DIRECTOR_RESUME_NOT_FOUND')
+  }
+  const intentKey = customKey.slice(0, -suffix.length)
+  if (!intentKey) {
+    throw commandPolicyError('Не найден исходный ход Режиссёра', 'DIRECTOR_RESUME_NOT_FOUND')
+  }
+  const intentCommit = await eventStore.getByIdempotencyKey(campaignId, `${intentKey}:intent`)
+  const intentEvent = intentCommit?.events?.find((event) => event.event_type === 'DirectorIntentRecorded')
+  if (!intentEvent || intentEvent.payload?.intent?.type !== 'end_scene'
+    || Number(intentEvent.state_version_after) >= Number(opened.state_version_after)) {
+    throw commandPolicyError('Решение не подтверждает ожидаемый переход Режиссёра', 'DIRECTOR_RESUME_NOT_FOUND')
+  }
+  return { key: intentKey }
+}
+
 function stateWithLivePresence(state, campaignId) {
   if (!state || typeof state !== 'object') return state
   const connections = streamConnections(campaignId)
@@ -2495,9 +2542,10 @@ async function readBody(req) {
   let raw = ''
   for await (const chunk of req) {
     raw += chunk
-    if (raw.length > 1_000_000) throw new Error('Слишком большой запрос')
+    if (raw.length > 1_000_000) throw commandPolicyError('Слишком большой запрос', 'REQUEST_TOO_LARGE')
   }
-  return JSON.parse(raw || '{}')
+  try { return JSON.parse(raw || '{}') }
+  catch { throw commandPolicyError('Некорректный JSON в запросе', 'INVALID_JSON') }
 }
 
 function executeTool(name, args, effects, state = {}) {
@@ -2924,17 +2972,23 @@ async function settleCombatContinuation(campaignId, { advanceNpc = true } = {}) 
   return run.results?.['combat-continuation'] ?? { turns: [], events: [] }
 }
 
-function persistAuthoritativeProjection(campaignId, engineState, events = [], journalMessage = null, { forceProjectorRefresh = false } = {}) {
+function persistAuthoritativeProjection(campaignId, engineState, events = [], journalMessage = null, { forceProjectorRefresh = false, awaitProjection = false } = {}) {
   const proposedStateVersion = Number(engineState?.state_version ?? -1)
   if (!Number.isSafeInteger(proposedStateVersion)) return null
+  const acknowledge = (version, options = {}) => {
+    const promise = eventStore.acknowledgeProjection(campaignId, version, options)
+    if (awaitProjection) return promise
+    void promise.catch(() => {})
+    return null
+  }
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const room = getRoom(campaignId)
     if (!room.state) return null
     const currentStateVersion = Number(room.state.state_version ?? 0)
     if (proposedStateVersion < currentStateVersion) return room
     if (!forceProjectorRefresh && proposedStateVersion === currentStateVersion && !journalMessage) {
-      void eventStore.acknowledgeProjection(campaignId, proposedStateVersion).catch(() => {})
-      return room
+      const projectionAck = acknowledge(proposedStateVersion)
+      return projectionAck ? { ...room, projectionAck } : room
     }
     // Раньше здесь жили два списка типов событий: `refreshInventory` на
     // одиннадцать `Item*`-типов и `characterBuildChanged` на четыре. Забыть тип
@@ -2991,9 +3045,10 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
     const saved = saveRoom(campaignId, next, room.version)
     if (!saved.conflict) {
       if (compareProjection(engineState, saved.room.state).matched) {
-        void eventStore.acknowledgeProjection(campaignId, proposedStateVersion, {
+        const projectionAck = acknowledge(proposedStateVersion, {
           projectionHash: compareProjection(engineState, saved.room.state).projected_hash,
-        }).catch(() => {})
+        })
+        if (projectionAck) return { ...saved.room, projectionAck }
       }
       return saved.room
     }
@@ -3001,10 +3056,10 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
   const reconciled = getRoom(campaignId)
   if (Number(reconciled.state?.state_version ?? -1) >= proposedStateVersion
     && compareProjection(engineState, reconciled.state).matched) {
-    void eventStore.acknowledgeProjection(campaignId, proposedStateVersion, {
+    const projectionAck = acknowledge(proposedStateVersion, {
       projectionHash: compareProjection(engineState, reconciled.state).projected_hash,
-    }).catch(() => {})
-    return reconciled
+    })
+    return projectionAck ? { ...reconciled, projectionAck } : reconciled
   }
   return null
 }
@@ -4400,7 +4455,15 @@ const server = createServer((req, res) => {
       const room = getRoom(campaignId)
       if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
       if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
-      const key = String(body.idempotency_key ?? req.headers['x-idempotency-key'] ?? '').slice(0, 120)
+      const actorId = String(body.actor_id ?? '').trim()
+      if (actorId && !canUseHero(user, actorId, campaignId)) {
+        return json(res, 403, { error: 'Этот герой не принадлежит вашему аккаунту', code: 'ACTOR_FORBIDDEN' })
+      }
+      const requestedInteractionId = String(body.interaction_id ?? '').trim()
+      const resume = requestedInteractionId
+        ? await directorResumeKeyForInteraction(campaignId, requestedInteractionId)
+        : null
+      const key = String(resume?.key ?? body.idempotency_key ?? req.headers['x-idempotency-key'] ?? '').slice(0, 120)
       if (!key) return json(res, 400, { error: 'Нужен idempotency_key', code: 'IDEMPOTENCY_KEY_REQUIRED' })
       const duplicate = await eventStore.getByIdempotencyKey(campaignId, `${key}:intent`)
       let replayedIntent = null
@@ -4421,6 +4484,18 @@ const server = createServer((req, res) => {
       }
       let loaded = await autonomousCampaign.load(campaignId)
       assertCampaignPlayable(loaded.state)
+      assertDirectorAdvanceReady(campaignId, loaded.state)
+      if (!replayedIntent && loaded.state.agentInteraction?.status === 'open') {
+        throw commandPolicyError('Сначала завершите открытое решение отряда', 'PARTY_DECISION_OPEN')
+      }
+      if (!replayedIntent && loaded.state.agentInteraction?.status === 'resolved') {
+        try {
+          await directorResumeKeyForInteraction(campaignId, loaded.state.agentInteraction.id)
+          throw commandPolicyError('Продолжите уже принятое решение отряда через interaction_id', 'PARTY_DECISION_RESUME_REQUIRED')
+        } catch (error) {
+          if (error?.code !== 'DIRECTOR_RESUME_NOT_FOUND') throw error
+        }
+      }
       const events = []
       let reward = null
       // Завершение встречи — одноразовое последствие, и решает это координатор,
@@ -4472,7 +4547,10 @@ const server = createServer((req, res) => {
         state: viewerStateFor(authoritative.state, user, ownedViewerActorId(authoritative.state, user, campaignId)),
       })
     } catch (error) {
-      return json(res, error?.code === 'DIRECTOR_INTENT_NOT_ALLOWED' || error?.code === 'DIRECTOR_MECHANICS_FORBIDDEN' ? 400 : 409, { error: error instanceof Error ? error.message : 'Director не смог продолжить приключение', code: error?.code })
+      const status = error?.code === 'ACTOR_FORBIDDEN' ? 403
+        : error?.code === 'DIRECTOR_INTENT_NOT_ALLOWED' || error?.code === 'DIRECTOR_MECHANICS_FORBIDDEN' ? 400
+          : 409
+      return json(res, status, { error: error instanceof Error ? error.message : 'Director не смог продолжить приключение', code: error?.code })
     }
   }
   const explanationMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/turns\/([A-Za-z0-9._-]+)\/explanation$/)
@@ -5055,8 +5133,9 @@ const server = createServer((req, res) => {
           turnConsumed: types.has('EndTurn'),
           speaker: creativeMoment ? 'narrator' : 'system',
           author: creativeMoment ? 'Рассказчик' : 'Система боя',
-        } : null)
+        } : null, { awaitProjection: true })
         : null
+      if (projected?.projectionAck) await projected.projectionAck
       const responseState = projected?.state ?? result.authoritative_state
       const merchantCommand = commands.find((command) => PLAYER_MERCHANT_COMMANDS.has(commandType(command)))
       const merchantView = merchantCommand && responseState
@@ -5065,7 +5144,10 @@ const server = createServer((req, res) => {
       const responsePayload = { ...result, authoritative_state: responseState, ...(merchantView ? { merchant_view: merchantView } : {}), room_version: projected?.version ?? room.version }
       return json(res, 200, turnResultForViewer(responsePayload, user, actor))
     } catch (error) {
-      const status = ['STATE_VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT', 'ENCOUNTER_ALREADY_PRESENT', 'ENCOUNTER_DURING_COMBAT'].includes(error?.code) ? 409 : ['ACTOR_FORBIDDEN', 'PLAYER_COMMAND_FORBIDDEN'].includes(error?.code) ? 403 : 400
+      const internal = !error?.code || ['EIO', 'ENOSPC', 'CORRUPT_EVENT_LOG', 'INVALID_STORE_FILE'].includes(error.code)
+      const status = internal ? 500
+        : ['STATE_VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT', 'ENCOUNTER_ALREADY_PRESENT', 'ENCOUNTER_DURING_COMBAT'].includes(error?.code) ? 409
+          : ['ACTOR_FORBIDDEN', 'PLAYER_COMMAND_FORBIDDEN'].includes(error?.code) ? 403 : 400
       // Двое потянулись за одним кинжалом: первый его забрал, второй пришёл к
       // уже пустому месту. Отказа мало — без свежего списка его карточка так и
       // осталась бы с уже взятой вещью, и он бил бы в ту же стену. Список идёт
@@ -5084,8 +5166,8 @@ const server = createServer((req, res) => {
       // «то, что было», и объяснять становилось уже нечего.
       const lootRecord = freshLoot ? lootTakenRecordFor(staleRoomState, lootRequestContainerId) : null
       return json(res, status, {
-        error: error instanceof Error ? error.message : 'Команда отклонена',
-        code: error?.code,
+        error: internal ? 'Внутренняя ошибка сервера. Повторите запрос с тем же ключом.' : error instanceof Error ? error.message : 'Команда отклонена',
+        code: internal ? 'INTERNAL_ERROR' : error?.code,
         ...(freshLoot ? {
           loot_containers: freshLoot,
           ...(lootRecord ? { loot_taken: lootRecord } : {}),

@@ -67,37 +67,37 @@ test('к живой игре отдаются только темы с гото�
   }
 })
 
-test('поселение содержит дома-зоны, двери и непрерывную главную улицу', () => {
+test('поселение содержит разные здания, двери и непрерывную главную улицу', () => {
   const settlement = SCENE_THEMES.find((theme) => theme.id === 'settlement')
   for (const seed of ['village-a', 'village-b']) {
-    const map = layoutSettlement(settlement, { seed, width: 28, height: 24 })
+    const map = layoutSettlement(settlement, { seed, width: 28, height: 24, design: { topology: 'crossroads' } })
     assert.deepEqual(validateTacticalMap(map).errors, [], `${seed}: поселение невалидно`)
-    const houses = map.zones.filter((zone) => zone.id.startsWith('house-'))
-    assert.equal(houses.length, 4, `${seed}: домов ${houses.length}`)
-    assert.equal(map.doors.filter((door) => door.id.startsWith('house-door-')).length, houses.length,
-      `${seed}: не у каждого дома есть дверь`)
+    const buildings = map.zones.filter((zone) => zone.id.startsWith('building-'))
+    assert.ok(buildings.length >= 3, `${seed}: построек ${buildings.length}`)
+    assert.equal(map.doors.filter((door) => door.id.startsWith('building-')).length, buildings.length,
+      `${seed}: не у каждой постройки есть дверь`)
 
     const spawn = map.spawnPoints.find((point) => point.role === 'party')
     const reached = reachableCells(map, spawn.x, spawn.y)
-    for (const house of houses) {
+    for (const building of buildings) {
       const interior = []
       let adjacentWalls = 0
       for (let y = 0; y < map.height; y += 1) {
         for (let x = 0; x < map.width; x += 1) {
           const cell = cellAt(map, x, y)
-          if (cell?.passable && cell.zone === house.id) {
+          if (cell?.passable && cell.zone === building.id) {
             interior.push({ x, y })
             for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
               const neighbor = cellAt(map, x + dx, y + dy)
-              if (neighbor && !neighbor.passable && neighbor.material === 'wood') adjacentWalls += 1
+              if (neighbor && !neighbor.passable && neighbor.material === building.material) adjacentWalls += 1
             }
           }
         }
       }
-      assert.ok(interior.length >= 10, `${seed}/${house.id}: дом не имеет читаемого интерьера`)
-      assert.ok(adjacentWalls >= 6, `${seed}/${house.id}: дом не окружён стенами`)
+      assert.ok(interior.length >= 10, `${seed}/${building.id}: постройка не имеет читаемого интерьера`)
+      assert.ok(adjacentWalls >= 6, `${seed}/${building.id}: постройка не окружена стенами`)
       assert.ok(interior.some((cell) => reached.has(`${cell.x},${cell.y}`)),
-        `${seed}/${house.id}: из улицы нельзя войти в дом`)
+        `${seed}/${building.id}: из улицы нельзя войти в постройку`)
     }
 
     const streetStart = []
@@ -232,7 +232,7 @@ test('постройка и местность в названии сильне�
 test('вид точки карты мира дорисовывает тему, когда название молчит', () => {
   assert.equal(resolveSceneTheme({ location: 'Керская пустошь', worldKind: 'wilds' }).id, 'forest')
   assert.equal(resolveSceneTheme({ location: 'Норская башня', worldKind: 'dungeon' }).id, 'cave')
-  assert.equal(resolveSceneTheme({ location: 'Кальская твердыня', worldKind: 'fortress' }).id, 'crypt')
+  assert.equal(resolveSceneTheme({ location: 'Кальская твердыня', worldKind: 'fortress' }).id, 'building')
   assert.equal(resolveSceneTheme({ location: 'Старое пепелище', worldKind: 'ruin' }).id, 'crypt')
   // Ориентир без вида — прежний fallback по заявке.
   assert.equal(resolveSceneTheme({ location: 'Кальмар', worldKind: 'landmark', request: { layout: 'cavern' } }).id, 'cave')
@@ -355,12 +355,42 @@ test('у дороги полоса утоптанной земли идёт че
   assert.equal(columnsWithEarth.size, map.width, 'дорога обязана пересекать карту целиком')
 })
 
-test('у открытой местности край непроходим, а у дороги открыт по бокам', () => {
+test('опушка имеет отсутствующие клетки по краям, а дорога выходит за границу участка', () => {
   const forest = layoutOpenTerrain(SCENE_THEMES.find((theme) => theme.id === 'forest'), { seed: 'f', width: 20, height: 20 })
-  assert.equal(cellAt(forest, 0, 10)?.passable, false, 'у леса опушка обязана быть непроходима')
+  assert.equal(cellAt(forest, 0, 10), null, 'граница леса — край участка, а не каменная стена')
 
   const road = layoutOpenTerrain(SCENE_THEMES.find((theme) => theme.id === 'road'), { seed: 'r', width: 20, height: 20 })
   let openSide = 0
   for (let y = 0; y < road.height; y += 1) if (cellAt(road, 0, y)?.passable) openSide += 1
   assert.ok(openSide > 0, 'дорога обязана вести за пределы карты')
+})
+
+test('контур опушки и изгиб дороги зависят от seed, вся открытая площадка связна', () => {
+  for (const id of ['forest', 'road']) {
+    const shapes = new Set()
+    for (let index = 0; index < 100; index += 1) {
+      const map = layoutOpenTerrain(SCENE_THEMES.find((theme) => theme.id === id), { seed: `${id}-${index}`, width: 30, height: 30 })
+      const cells = []
+      for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+        const cell = cellAt(map, x, y)
+        if (cell?.passable) cells.push(cell)
+      }
+      const spawn = map.spawnPoints.find((point) => point.role === 'party')
+      assert.equal(reachableCells(map, spawn.x, spawn.y).size, cells.length)
+      assert.ok(cells.length < map.width * map.height * 0.9)
+      shapes.add(JSON.stringify(cells.map(({ x, y, material }) => [x, y, id === 'road' && material === 'earth'])))
+    }
+    assert.ok(shapes.size >= 6, `${id}: только ${shapes.size} контуров на 100 seed`)
+  }
+})
+
+test('климат открытой местности меняет грунт, поверхность и растительность', () => {
+  for (const [climate, material, surface, tree] of [
+    ['arid', 'sand', 'none', 'tree_dead'], ['cold', 'ice', 'ice', 'tree_pine'], ['wetland', 'earth', 'mud', 'tree_dead'],
+  ]) {
+    const map = buildThemedScene({ themeId: 'forest', seed: 'climate-check', width: 30, height: 24, design: { climate } }).map
+    assert.equal(cellAt(map, 15, 12).material, material)
+    assert.equal(cellAt(map, 15, 12).surface, surface)
+    assert.ok(map.props.some((prop) => prop.assetId === tree), `${climate}: нет ${tree}`)
+  }
 })

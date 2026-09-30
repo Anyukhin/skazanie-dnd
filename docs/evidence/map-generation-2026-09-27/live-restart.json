@@ -1,0 +1,51 @@
+{
+  "before": {
+    "location": "Лавка Мартена Рыжего",
+    "mapHash": "12ae0228927e2f0da051d7aaf9a7bca5729afde9668679ebb514915d1f51c3f8",
+    "generator": {
+      "id": "building-with-yard",
+      "version": "4"
+    },
+    "size": [
+      30,
+      22
+    ],
+    "heroes": [
+      {
+        "id": "hero-slot-1",
+        "x": 8,
+        "y": 10
+      },
+      {
+        "id": "hero-slot-2",
+        "x": 9,
+        "y": 8
+      }
+    ]
+  },
+  "after": {
+    "location": "Лавка Мартена Рыжего",
+    "mapHash": "12ae0228927e2f0da051d7aaf9a7bca5729afde9668679ebb514915d1f51c3f8",
+    "generator": {
+      "id": "building-with-yard",
+      "version": "4"
+    },
+    "size": [
+      30,
+      22
+    ],
+    "heroes": [
+      {
+        "id": "hero-slot-1",
+        "x": 8,
+        "y": 10
+      },
+      {
+        "id": "hero-slot-2",
+        "x": 9,
+        "y": 8
+      }
+    ]
+  },
+  "equal": true
+}

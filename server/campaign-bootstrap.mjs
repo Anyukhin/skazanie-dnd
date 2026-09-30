@@ -19,8 +19,9 @@ import { LEGACY_DEFAULT_RULESET_ID, rulesetLock } from './ruleset-config.mjs'
 import { getWorldTemplate, worldTemplateConcept, worldTemplateOpening } from './world-template-catalog.mjs'
 import { normalizeWorldOfficesState } from './world-offices.mjs'
 import { isLiveTheme, resolveSceneTheme, SCENE_THEME_IDS } from './scene-themes.mjs'
+import { normalizeSceneMapDesign, worldLocationDesignContext } from './scene-map-design.mjs'
 
-const prompt = readFileSync(fileURLToPath(new URL('../prompts/campaign_creator/v4.txt', import.meta.url)), 'utf8')
+const prompt = readFileSync(fileURLToPath(new URL('../prompts/campaign_creator/v5.txt', import.meta.url)), 'utf8')
 
 /**
  * Создание кампании — не ход. Оно просит у модели на порядок больше текста
@@ -328,17 +329,20 @@ function normalizeOpening(input, fallback, { authored = false } = {}) {
       objective: clean(scene.objective, 240) || fallback.scene.objective,
       theme: clean(scene.theme, 120) || fallback.scene.theme,
       danger: danger.has(scene.danger) ? scene.danger : fallback.scene.danger,
+      ...(['settlement', 'wilderness', 'dungeon', 'road', 'other'].includes(scene.scene_kind) ? { scene_kind: scene.scene_kind } : {}),
+      ...(['village', 'town', 'city', 'outpost', 'traveling'].includes(scene.settlement_type) ? { settlement_type: scene.settlement_type } : {}),
       map: {
         layout: layouts.has(map.layout) ? map.layout : fallback.scene.map.layout,
         scale,
         pattern: MAP_PATTERNS.has(map.pattern) ? map.pattern : fallback.scene.map.pattern,
         material: MAP_MATERIALS.has(map.material) ? map.material : fallback.scene.map.material,
-        width: integer(map.width, fallback.scene.map.width, scaleMinimum.width, authored ? SIZE_CLASSES.area.maxWidth : 25),
-        height: integer(map.height, fallback.scene.map.height, scaleMinimum.height, authored ? SIZE_CLASSES.area.maxHeight : 19),
+        width: integer(map.width, fallback.scene.map.width, scaleMinimum.width, authored ? SIZE_CLASSES.area.maxWidth : 48),
+        height: integer(map.height, fallback.scene.map.height, scaleMinimum.height, authored ? SIZE_CLASSES.area.maxHeight : 40),
         openness: decimal(map.openness, fallback.scene.map.openness, 0.35, 0.85),
         water: decimal(map.water, fallback.scene.map.water, 0, 0.3),
         featureCount: integer(map.featureCount, fallback.scene.map.featureCount, 2, 12),
         ...(themeId ? { theme_id: themeId } : {}),
+        ...(Object.keys(normalizeSceneMapDesign(map.design)).length ? { design: normalizeSceneMapDesign(map.design) } : {}),
       },
     },
     hook: clean(source.hook, 500) || fallback.hook,
@@ -491,6 +495,9 @@ export class CampaignBootstrapper {
     // их геометрия принадлежит шаблону, а не коду кампании или составу партии.
     // Свободные кампании сохраняют прежний seed и процедурный путь.
     const sceneSeed = worldTemplate ? `authored-scene:${worldTemplate.id}@${worldTemplate.version}` : seed
+    const placeContext = authoredWorldMap
+      ? worldLocationDesignContext(campaignWorldMap, campaignWorldMap.currentLocationId, opening.scene.location)
+      : { description: '', biome: '' }
     const geometry = generateSceneGeometry({
       seed: sceneSeed,
       theme: opening.scene.theme,
@@ -498,6 +505,11 @@ export class CampaignBootstrapper {
       location: opening.scene.location,
       locationId: campaignWorldMap.currentLocationId || opening.scene.location,
       worldKind: startingWorldKind,
+      sceneKind: opening.scene.scene_kind,
+      settlementType: opening.scene.settlement_type,
+      description: [placeContext.description, opening.scene.title, opening.scene.mood, world.startingLocation].filter((value) => typeof value === 'string').join(' ').slice(0, 2000),
+      biome: placeContext.biome,
+      worldDescription: [campaignConcept.worldSummary, campaignConcept.premise, campaignConcept.setting, campaignConcept.description].filter((value) => typeof value === 'string').join(' ').slice(0, 2400),
       map: opening.scene.map,
     })
     const cells = geometry.cells

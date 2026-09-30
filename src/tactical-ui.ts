@@ -590,6 +590,7 @@ const CONDITION_LABELS: Record<string, string> = {
   'death-ward': 'Оберег от смерти',
   'aura-of-life': 'Аура жизни',
   'aura-of-protection': 'Аура защиты',
+  light: 'Свет',
   bless: 'Благословение',
   'bless-d4': 'Благословение',
   'resistance-d4': 'Бонус спасброска: 1к4',
@@ -683,6 +684,12 @@ function conditionDurationLabel(duration: string) {
     if (amount > 0 && amount % 3600 === 0) return `${amount / 3600} ч`
     if (amount > 0 && amount % 60 === 0) return `${amount / 60} мин`
     return `${amount} с`
+  }
+  const minutes = /^minutes:(\d+(?:\.\d+)?)$/u.exec(duration)
+  if (minutes) {
+    const amount = Number(minutes[1])
+    if (amount > 0 && amount % 60 === 0) return `${amount / 60} ч`
+    return `${amount} мин`
   }
   return CONDITION_DURATION_LABELS[duration] ?? duration.replace(/^rounds:/, 'раундов: ')
 }

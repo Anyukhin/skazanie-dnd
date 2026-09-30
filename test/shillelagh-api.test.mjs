@@ -5,10 +5,13 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { pathToFileURL } from 'node:url'
+import { shortestTacticalPath } from '../server/rules-engine.mjs'
 
 const CAMPAIGN = 'SHILLELAGH-API'
 const HERO = 'hero-slot-1'
 const SETUP_TOKEN = 'shillelagh-api-setup'
+const DETERMINISTIC_DICE_PRELOAD = pathToFileURL(join(process.cwd(), 'test', 'fixtures', 'shillelagh-deterministic-dice.mjs')).href
 
 async function freePort() {
   const probe = createNetServer()
@@ -19,7 +22,7 @@ async function freePort() {
 }
 
 async function startServer(port, storage, log) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
+  const child = spawn(process.execPath, ['--import', DETERMINISTIC_DICE_PRELOAD, 'server/index.mjs'], {
     cwd: process.cwd(),
     env: {
       ...process.env,
@@ -71,6 +74,31 @@ function command(baseUrl, cookie, key, value) {
     method: 'POST', cookie, key,
     body: { idempotency_key: key, command: value },
   })
+}
+
+const INCAPACITATING_CONDITIONS = new Set(['incapacitated', 'paralyzed', 'petrified', 'stunned', 'unconscious'])
+
+function assertHeroCanContinue(state) {
+  const hero = state.players?.find((player) => player.id === HERO)
+  const fate = state.mechanics?.death?.heroes?.[HERO]
+  const conditions = state.mechanics?.conditions?.[HERO] ?? []
+  const incapacitated = conditions.some((condition) => INCAPACITATING_CONDITIONS.has(String(condition?.id ?? condition)))
+  assert.ok(hero && hero.alive !== false && Number(hero.hp) > 0 && fate?.status !== 'dead' && !incapacitated,
+    `Герой ${HERO} выбыл или недееспособен; положительная проверка заклинания невозможна`)
+}
+
+function nextMoveToward(state, targetId) {
+  const target = state.mechanics?.positions?.[targetId] ?? state.enemies?.find((enemy) => enemy.id === targetId)
+  assert.ok(target, `Цель ${targetId} должна иметь авторитетную позицию`)
+  const candidates = [[-1, 0], [1, 0], [0, -1], [0, 1]]
+    .map(([dx, dy]) => ({ x: Number(target.x) + dx, y: Number(target.y) + dy }))
+  const paths = candidates
+    .map((destination) => ({ destination, path: shortestTacticalPath(state, HERO, destination) }))
+    .filter((entry) => Array.isArray(entry.path) && entry.path.length > 0)
+    .sort((left, right) => left.path.length - right.path.length)
+  const best = paths[0]
+  assert.ok(best, `До цели ${targetId} нет проходимой клетки для сближения`)
+  return best.path[Math.min(6, best.path.length) - 1]
 }
 
 function druidDocument() {
@@ -212,36 +240,55 @@ test('обычный друид через API получает Shillelagh, де
   assert.ok(enemy)
   let combatState = encounter.authoritative_state
   for (let round = 0; round < 8; round += 1) {
+    assertHeroCanContinue(combatState)
+    let transitions = 0
+    const maxTransitions = Math.max(2, (combatState.mechanics.combat.initiative?.length ?? 0) * 2)
     while (combatState.mechanics.combat.initiative[combatState.mechanics.combat.active_index]?.actor_id !== HERO) {
+      assert.ok(++transitions <= maxTransitions,
+        'За один раунд не удалось дождаться хода героя: очередь инициативы не продвигается')
       const active = combatState.mechanics.combat.initiative[combatState.mechanics.combat.active_index]?.actor_id
       assert.ok(active)
-      combatState = expectStatus(await command(baseUrl, adminCookie, `shillelagh-end-turn-${round}-${active}`, { command_type: 'EndTurn', actor_id: active })).authoritative_state
+      const beforeEndTurnVersion = Number(combatState.state_version)
+      const nextCombatState = expectStatus(await command(
+        baseUrl,
+        adminCookie,
+        `shillelagh-end-turn-${beforeEndTurnVersion}-${round}-${active}`,
+        { command_type: 'EndTurn', actor_id: active },
+      )).authoritative_state
+      assert.ok(Number(nextCombatState.state_version) > beforeEndTurnVersion,
+        `EndTurn должен продвинуть состояние для ${active}: ${nextCombatState.state_version} после ${beforeEndTurnVersion}`)
+      combatState = nextCombatState
+      assertHeroCanContinue(combatState)
     }
     const heroPosition = combatState.mechanics.positions?.[HERO] ?? combatState.players.find((actor) => actor.id === HERO)
     const enemyPosition = combatState.mechanics.positions?.[enemy.id] ?? enemy
     const distance = Math.max(Math.abs(Number(heroPosition.x) - Number(enemyPosition.x)), Math.abs(Number(heroPosition.y) - Number(enemyPosition.y))) * 5
     if (distance <= 5) break
-    const dx = Math.sign(Number(enemyPosition.x) - Number(heroPosition.x))
-    const dy = Math.sign(Number(enemyPosition.y) - Number(heroPosition.y))
-    const destinations = []
-    for (let steps = 6; steps >= 1; steps -= 1) {
-      destinations.push({ x: Number(heroPosition.x) + dx * steps, y: Number(heroPosition.y) + dy * steps })
-      destinations.push({ x: Number(heroPosition.x) + dx * steps, y: Number(heroPosition.y) })
-      destinations.push({ x: Number(heroPosition.x), y: Number(heroPosition.y) + dy * steps })
-    }
-    let moved = null
-    for (const [index, to] of [...new Map(destinations.map((to) => [`${to.x},${to.y}`, to])).values()].entries()) {
-      const candidate = await command(baseUrl, ownerCookie, `shillelagh-approach-${round}-${index}`, { command_type: 'MoveActor', actor_id: HERO, to })
-      if (candidate.status === 200) { moved = candidate; break }
-    }
-    assert.ok(moved, 'друид должен суметь подойти к цели для проверки удара')
-    combatState = moved.body.authoritative_state
+    const to = nextMoveToward(combatState, enemy.id)
+    const beforeMoveVersion = Number(combatState.state_version)
+    combatState = expectStatus(await command(
+      baseUrl,
+      ownerCookie,
+      `shillelagh-approach-${beforeMoveVersion}-${round}`,
+      { command_type: 'MoveActor', actor_id: HERO, to },
+    )).authoritative_state
+    assert.ok(Number(combatState.state_version) > beforeMoveVersion,
+      `Перемещение должно продвинуть состояние: ${combatState.state_version} после ${beforeMoveVersion}`)
     const afterMove = combatState.mechanics.positions?.[HERO] ?? combatState.players.find((actor) => actor.id === HERO)
     const afterDistance = Math.max(Math.abs(Number(afterMove.x) - Number(enemyPosition.x)), Math.abs(Number(afterMove.y) - Number(enemyPosition.y))) * 5
     if (afterDistance > 5) {
-      combatState = expectStatus(await command(baseUrl, ownerCookie, `shillelagh-approach-end-${round}`, { command_type: 'EndTurn', actor_id: HERO })).authoritative_state
+      const beforeEndTurnVersion = Number(combatState.state_version)
+      combatState = expectStatus(await command(
+        baseUrl,
+        ownerCookie,
+        `shillelagh-approach-end-${beforeEndTurnVersion}-${round}`,
+        { command_type: 'EndTurn', actor_id: HERO },
+      )).authoritative_state
+      assert.ok(Number(combatState.state_version) > beforeEndTurnVersion,
+        `EndTurn должен продвинуть состояние для ${HERO}: ${combatState.state_version} после ${beforeEndTurnVersion}`)
     }
   }
+  assertHeroCanContinue(combatState)
   assert.equal(combatState.mechanics.combat.initiative[combatState.mechanics.combat.active_index]?.actor_id, HERO)
   const attack = expectStatus(await command(baseUrl, ownerCookie, 'shillelagh-attack', {
     command_type: 'MakeAttack', actor_id: HERO, target_id: enemy.id, item_id: club.id,

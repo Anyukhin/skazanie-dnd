@@ -2,7 +2,7 @@
 import { createHash } from 'node:crypto'
 
 import { assetById, assetsForTheme } from './asset-registry.mjs'
-import { addProp, cellAt, edgeBetween, edgeNeighbor } from './tactical-map.mjs'
+import { addProp, cellAt, edgeBetween, edgeNeighbor, reachableCells } from './tactical-map.mjs'
 
 /**
  * Расстановка предметов по правилам (`docs/tactical-map-plan.md`, стадия 3).
@@ -287,10 +287,17 @@ function scoreCellForAsset(map, asset, cell, placed, context = {}, random = () =
     const nearestSurface = nearestPlaced(localPlaced, cell, (id) => id.startsWith('table_') || id === 'bar_counter')
     score += nearestSurface == null ? -4 : nearestSurface === 0 ? 12 : nearestSurface <= 1 ? 5 : -nearestSurface
   }
-  // Деревья и кусты только на траве. Это запрет, а не малый вес.
+  // Растительность требует грунта. Сухостой допустим на песке, хвойные — на
+  // снежной поверхности снаружи; каменный или ледяной пол дома не подходит.
   if (asset.id.startsWith('tree_') || asset.id === 'bush' || asset.id === 'shrub') {
-    const material = cellAt(map, cell.x, cell.y)?.material
-    if (material !== 'grass' && material !== 'earth') return Number.NEGATIVE_INFINITY
+    const ground = cellAt(map, cell.x, cell.y)
+    const material = ground?.material
+    const outside = map.zones.some((zone) => zone.id === ground?.zone && zone.kind === 'exterior')
+    const climateGround = outside && (
+      material === 'sand' && ['tree_dead', 'tree_stump'].includes(asset.id)
+      || material === 'ice' && ground?.surface === 'ice' && ['tree_pine', 'tree_spruce', 'tree_dead', 'tree_stump'].includes(asset.id)
+    )
+    if (material !== 'grass' && material !== 'earth' && !climateGround) return Number.NEGATIVE_INFINITY
     score += material === 'grass' ? 8 : 2
     // Деревья не жмутся друг к другу вплотную.
     const nearestTree = nearestPlaced(localPlaced, cell, (id) => id.startsWith('tree_'))
@@ -524,6 +531,233 @@ function passageClearance(map, zoneId, cells) {
     from = target
   }
   return clear
+}
+
+/** Максимум мебельных предметов, которые может снять один repair-pass. */
+const PROP_ACCESS_REPAIR_LIMIT = 8
+
+/**
+ * Соседи клетки в том же порядке, в котором их обходят правила движения.
+ * Порядок является частью детерминизма repair-pass: при равной цене всегда
+ * выбирается один и тот же коридор.
+ */
+const ACCESS_DIRECTIONS = Object.freeze([[1, 0], [0, 1], [-1, 0], [0, -1]])
+
+/**
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @returns {{baseline: Set<string>, targets: Set<string>}|null}
+ */
+function propAccessTargets(map) {
+  const spawn = Array.isArray(map.spawnPoints)
+    ? map.spawnPoints.find((point) => point.role === 'party')
+    : null
+  if (!spawn) return null
+  const baseline = reachableCells(map, spawn.x, spawn.y, { throughDoors: true })
+  if (!baseline.size) return null
+
+  /** @type {Set<string>} */
+  const targets = new Set()
+  const blockers = blockingPropsByCell(map)
+  const zoneKinds = new Map(map.zones.map((zone) => [zone.id, zone.kind]))
+  for (const key of baseline) {
+    const [x, y] = key.split(',').map(Number)
+    // Клетка под мебелью не является целью движения: furniture footprint уже
+    // занимает её по правилам тактики. Пороги и spawn добавляются ниже даже
+    // если их занял проп — это точки, которые repair обязан освободить.
+    if (zoneKinds.get(cellAt(map, x, y)?.zone ?? '') === 'interior' && !blockers.has(key)) targets.add(key)
+  }
+  // Дверной порог и клетка по другую сторону двери — семантические цели.
+  // В отличие от мебели внутри комнаты, их нужно очистить даже когда проп уже
+  // успел занять клетку.
+  for (const door of Array.isArray(map.doors) ? map.doors : []) {
+    for (const endpoint of [{ x: door.x, y: door.y }, edgeNeighbor(door)]) {
+      const key = cellKey(endpoint)
+      const cell = cellAt(map, endpoint.x, endpoint.y)
+      if (baseline.has(key) && cell?.passable) targets.add(key)
+    }
+  }
+  const spawnKey = cellKey(spawn)
+  if (baseline.has(spawnKey)) targets.add(spawnKey)
+  return { baseline, targets }
+}
+
+/**
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @returns {Map<string, number[]>}
+ */
+function blockingPropsByCell(map) {
+  /** @type {Map<string, number[]>} */
+  const byCell = new Map()
+  map.props.forEach((prop, index) => {
+    if (!prop.blocksMove || !Array.isArray(prop.footprint) || !prop.footprint.length) return
+    for (const cell of prop.footprint) {
+      const key = cellKey(cell)
+      const owners = byCell.get(key) ?? []
+      owners.push(index)
+      byCell.set(key, owners)
+    }
+  })
+  return byCell
+}
+
+/**
+ * Находит маршрут до любой цели с минимальным числом клеток, занятых
+ * blocking-пропами. Это один 0–1 BFS после полной расстановки, а не проверка
+ * связности для каждого кандидата мебели.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {Set<string>} baseline
+ * @param {Set<string>} reached
+ * @param {Set<string>} targets
+ * @param {Map<string, number[]>} blockers
+ * @returns {number[]}
+ */
+function accessRepairPath(map, baseline, reached, targets, blockers) {
+  /** @type {Map<string, number>} */
+  const distance = new Map()
+  /** @type {Map<string, string|null>} */
+  const previous = new Map()
+  /** @type {Map<number, string>} */
+  const deque = new Map()
+  let head = 0
+  let tail = 0
+  /** @param {string} key */
+  const pushFront = (key) => deque.set(--head, key)
+  /** @param {string} key */
+  const pushBack = (key) => deque.set(tail++, key)
+  const popFront = () => {
+    const key = deque.get(head)
+    deque.delete(head)
+    head += 1
+    return key
+  }
+
+  for (const key of [...reached].sort(compareCellKeys)) {
+    distance.set(key, 0)
+    previous.set(key, null)
+    pushBack(key)
+  }
+
+  while (head < tail) {
+    const current = popFront()
+    if (current == null) break
+    const [x, y] = current.split(',').map(Number)
+    const currentDistance = distance.get(current) ?? Number.POSITIVE_INFINITY
+    for (const [dx, dy] of ACCESS_DIRECTIONS) {
+      const next = { x: x + dx, y: y + dy }
+      const nextKey = cellKey(next)
+      if (!baseline.has(nextKey)) continue
+      const edge = edgeBetween(map, x, y, next.x, next.y)
+      if (edge && edge.kind !== 'door' && edge.blocksMove) continue
+      const stepCost = blockers.has(nextKey) ? 1 : 0
+      const nextDistance = currentDistance + stepCost
+      if (nextDistance >= (distance.get(nextKey) ?? Number.POSITIVE_INFINITY)) continue
+      distance.set(nextKey, nextDistance)
+      previous.set(nextKey, current)
+      if (stepCost) pushBack(nextKey)
+      else pushFront(nextKey)
+    }
+  }
+
+  let target = null
+  let targetDistance = Number.POSITIVE_INFINITY
+  for (const key of [...targets].sort(compareCellKeys)) {
+    const candidateDistance = distance.get(key)
+    if (candidateDistance == null || candidateDistance <= 0) continue
+    if (candidateDistance < targetDistance) {
+      target = key
+      targetDistance = candidateDistance
+    }
+  }
+  if (!target) return []
+
+  /** @type {number[]} */
+  const pathProps = []
+  const seenProps = new Set()
+  let cursor = target
+  while (cursor) {
+    for (const index of blockers.get(cursor) ?? []) {
+      if (seenProps.has(index)) continue
+      seenProps.add(index)
+      pathProps.push(index)
+    }
+    cursor = previous.get(cursor) ?? ''
+  }
+  pathProps.reverse()
+  return pathProps
+}
+
+/**
+ * Удаляет один blocking-проп и мелкие предметы, подвешенные к его поверхности.
+ * Ссылки на поверхность не должны переживать удаление самой поверхности.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {number} index
+ * @returns {boolean}
+ */
+function removeBlockingProp(map, index) {
+  const removed = map.props[index]
+  if (!removed || !removed.blocksMove) return false
+  const removedIds = new Set([removed.id])
+  const removedProps = new Set([removed])
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const prop of map.props) {
+      if (removedProps.has(prop) || prop.mount?.kind !== 'surface' || !removedIds.has(prop.mount.propId)) continue
+      removedProps.add(prop)
+      removedIds.add(prop.id)
+      changed = true
+    }
+  }
+  map.props = map.props.filter((prop) => !removedProps.has(prop))
+  return true
+}
+
+/**
+ * Восстанавливает доступ к новой карте после расстановки blocking-пропов.
+ * Геометрия и рёбра не меняются: bounded-pass снимает только минимальный
+ * ближайший blocking-проп, если он запер изначально доступную интерьерную
+ * клетку, дверной порог или точку появления.
+ *
+ * Вызывается владельцем генератора после `placeProps`; сохранённые карты и
+ * статическая расстановка этим проходом не затрагиваются.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @returns {import('./tactical-map.mjs').TacticalMap}
+ */
+export function ensurePropAccess(map) {
+  const access = propAccessTargets(map)
+  if (!access) return map
+  for (let repair = 0; repair < PROP_ACCESS_REPAIR_LIMIT; repair += 1) {
+    const blockers = blockingPropsByCell(map)
+    const blockedCells = new Set(blockers.keys())
+    const spawn = map.spawnPoints.find((point) => point.role === 'party')
+    if (!spawn) break
+    const spawnBlockers = blockers.get(cellKey(spawn)) ?? []
+    if (spawnBlockers.length) {
+      if (!removeBlockingProp(map, spawnBlockers[0])) break
+      continue
+    }
+    const reached = reachableCells(map, spawn.x, spawn.y, { throughDoors: true, blockedCells })
+    const pending = new Set([...access.targets].filter((key) => !reached.has(key)))
+    if (!pending.size) break
+    const pathProps = accessRepairPath(map, access.baseline, reached, pending, blockers)
+    if (!pathProps.length) break
+    if (!removeBlockingProp(map, pathProps[0])) break
+  }
+  return map
+}
+
+/**
+ * @param {string} left
+ * @param {string} right
+ * @returns {number}
+ */
+function compareCellKeys(left, right) {
+  const [leftX, leftY] = left.split(',').map(Number)
+  const [rightX, rightY] = right.split(',').map(Number)
+  return leftY - rightY || leftX - rightX
 }
 
 /**

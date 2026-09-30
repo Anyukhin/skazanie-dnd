@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import { createSceneTransition } from '../server/adventure-director.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
+import { addProp, addSpawnPoint, createTacticalMap, legacyCellsFromTacticalMap, serializeTacticalMap, setCell } from '../server/tactical-map.mjs'
 import {
   RulesValidationError,
   applyGameEvent,
@@ -173,6 +174,19 @@ function playableCells() {
   })
 }
 
+function blockingEntranceMap() {
+  const map = createTacticalMap({ width: 7, height: 7, locationId: 'prop-scene', seed: 'prop-scene', theme: 'crypt' })
+  for (let y = 0; y < 7; y += 1) {
+    for (let x = 0; x < 7; x += 1) setCell(map, x, y, { type: 'floor', passable: true, revealed: true, material: 'stone' })
+  }
+  addSpawnPoint(map, { id: 'party-entrance', x: 3, y: 3, role: 'party' })
+  addProp(map, {
+    id: 'blocking-sarcophagus', assetId: 'sarcophagus', x: 3.5, y: 2.5,
+    footprint: [{ x: 3, y: 2 }, { x: 4, y: 2 }], blocksMove: true,
+  })
+  return map
+}
+
 test('AdvanceScene разрешён только admin/director context и не требует actor_id', () => {
   const state = baseState()
   for (const context of [{}, { isAdmin: false }, { isDirector: false }]) {
@@ -254,6 +268,40 @@ test('AdvanceScene детерминированно коммитит канон�
   for (const position of positions) assert.match(String(cells.get(`${position.x},${position.y}`)?.type), /^(?:floor|door)$/u)
   const distances = positions.map((position) => Math.abs(position.x - event.payload.entrance.x) + Math.abs(position.y - event.payload.entrance.y))
   assert.deepEqual(distances, [...distances].sort((left, right) => left - right))
+})
+
+test('новый спавн отряда не ставит героя на blocking prop, а старый SceneAdvanced replay сохраняет позицию', () => {
+  const map = blockingEntranceMap()
+  const serializedMap = serializeTacticalMap(map)
+  const cells = legacyCellsFromTacticalMap(map)
+  const initial = baseState({
+    worldMap: {
+      version: 1, seed: 'scene-engine', name: 'Сцены', width: 100, height: 100, currentLocationId: 'old',
+      regions: [], locations: [{ id: 'prop-scene', name: 'Проповый зал', kind: 'dungeon', x: 1, y: 1, regionId: '' }], routes: [],
+    },
+    locationMaps: { 'prop-scene': { version: 1, cells, map: serializedMap } },
+  })
+  const scene_args = {
+    title: 'Проповый зал', location: 'Проповый зал', location_id: 'prop-scene',
+    mood: 'Тесный зал', objective: 'Пройти дальше', theme: 'склеп', scene_kind: 'dungeon', seed: 'prop-scene',
+  }
+  const result = resolveCommand(advanceCommand({ scene_args }), initial, options({ isDirector: true }))
+  const sceneEvent = result.events.find((event) => event.event_type === 'SceneAdvanced')
+  const propCells = new Set(map.props.filter((prop) => prop.blocksMove).flatMap((prop) => prop.footprint.map((cell) => `${cell.x},${cell.y}`)))
+  assert.equal(sceneEvent.payload.party_positions.length, initial.partyMemberIds.length)
+  for (const position of sceneEvent.payload.party_positions) assert.equal(propCells.has(`${position.x},${position.y}`), false)
+  assert.deepEqual(replayEvents(initial, result.events).mechanics.positions,
+    Object.fromEntries(sceneEvent.payload.party_positions.map(({ actor_id, x, y }) => [actor_id, { x, y }])))
+
+  const legacyEvent = {
+    event_type: 'SceneAdvanced', actor_id: null, target_ids: initial.partyMemberIds, visibility: 'party',
+    payload: {
+      scene: sceneEvent.payload.scene, worldMap: sceneEvent.payload.worldMap, adventure: sceneEvent.payload.adventure,
+      party_positions: initial.partyMemberIds.map((actor_id, index) => ({ actor_id, x: index === 0 ? 3 : index === 1 ? 3 : index + 2, y: index < 2 ? 3 - index : 3 })),
+    },
+  }
+  const legacy = applyGameEvent(initial, legacyEvent)
+  assert.deepEqual({ x: legacy.players.find((player) => player.id === 'hero-b').x, y: legacy.players.find((player) => player.id === 'hero-b').y }, { x: 3, y: 2 })
 })
 
 test('SceneAdvanced reducer очищает старую сцену, размещает отряд и точно replay-ится', () => {

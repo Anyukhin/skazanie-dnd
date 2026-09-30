@@ -1,0 +1,17 @@
+{
+  "maps": 2988,
+  "failures": [],
+  "topologies": [
+    "organic",
+    "linear",
+    "crossroads",
+    "market",
+    "courtyard",
+    "harbor",
+    "river",
+    "terraced",
+    "gate"
+  ],
+  "seedsPerProfile": 100,
+  "buildings": 288
+}

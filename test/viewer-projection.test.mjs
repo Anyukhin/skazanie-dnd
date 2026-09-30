@@ -5,6 +5,55 @@ import { campaignStateForViewer, mechanicsForViewer, publicActorFootprintFor, pu
 
 const user = { role: 'player', heroIds: ['hero'] }
 
+test('служебные доказательства квеста не раскрываются в событиях игрока', () => {
+  const events = [
+    { event_type: 'QuestClockAdvanced', visibility: 'party', payload: {
+      schema_version: 2, quest_id: 'quest', amount: 1, proof_fact_ids: ['SECRET-FACT'], proof_source_event_ids: ['SECRET-EVENT'],
+    } },
+    { event_type: 'QuestUpserted', visibility: 'party', payload: { schema_version: 2, quest: {
+      id: 'quest', title: 'Припасы', progress_fact_ids: ['SECRET-FACT'], progress_source_event_ids: ['SECRET-EVENT'],
+    } } },
+  ]
+  const state = { partyMemberIds: ['hero'], players: [{ id: 'hero' }], scene: { cells: [] } }
+  const publicEvents = mechanicsForViewer(events, user, 'hero', state)
+  assert.equal(publicEvents.length, 2)
+  assert.doesNotMatch(JSON.stringify(publicEvents), /SECRET-/u)
+  assert.equal(publicEvents[0].payload.amount, 1)
+  assert.match(JSON.stringify(events), /SECRET-FACT/u, 'проектор не меняет исходный поток')
+  assert.match(JSON.stringify(mechanicsForViewer(events, { role: 'admin' }, 'hero', state)), /SECRET-FACT/u)
+})
+
+test('player projection removes only superseded class pools and leaves state/unknown pools untouched', () => {
+  const state = {
+    sessionCode: 'RESOURCE-PROJECTION',
+    partyMemberIds: ['barbarian'],
+    players: [{
+      id: 'barbarian', character: 'Краг', role: 'Варвар · ур. 1', characterClass: 'barbarian', level: 1,
+      abilities: { str: 16, dex: 12, con: 16, int: 10, wis: 10, cha: 10 }, inventory: [],
+    }],
+    scene: { title: 'Сцена', location: 'Место', cells: [] },
+    mechanics: {
+      resources: {
+        barbarian: {
+          rage: { current: 2, max: 2 },
+          'feature_barbarian-yarost': { current: 1, max: 1 },
+          custom_resource: { current: 4, max: 4 },
+        },
+      },
+    },
+  }
+  const before = structuredClone(state)
+  const projected = campaignStateForViewer(state, { role: 'player', heroIds: ['barbarian'] }, 'barbarian')
+  assert.deepEqual(projected.mechanics.resources.barbarian, {
+    rage: { current: 2, max: 2 },
+    custom_resource: { current: 4, max: 4 },
+  })
+  assert.deepEqual(state, before, 'projection не должна менять persisted state')
+
+  const admin = campaignStateForViewer(state, { role: 'admin' }, 'barbarian')
+  assert.deepEqual(admin.mechanics.resources.barbarian, state.mechanics.resources.barbarian, 'admin получает legacy state целиком')
+})
+
 function placedNpcState() {
   return {
     sessionCode: 'NPC-PRESENT', activePlayerId: 'hero',

@@ -349,6 +349,22 @@ export function heroResourceShortLabel(key: string): string {
   return heroResourceLabel(key).toLocaleLowerCase('ru')
 }
 
+/**
+ * Ресурсы героя принадлежат серверной проекции целиком. Fallback нужен только
+ * старым снимкам, где карты ресурсов ещё нет; пустая карта — тоже авторитетный
+ * ответ и не должна дополняться клиентским каталогом.
+ */
+function heroResourcesFor(
+  state: GameState,
+  actorId: string,
+  player?: Player | null,
+): Record<string, { current: number; max: number }> {
+  const resources = state.mechanics?.resources
+  if (resources && Object.hasOwn(resources, actorId)) return resources[actorId] ?? {}
+  const fallbackPlayer = player ?? undefined
+  return { ...fallbackCombatResources(fallbackPlayer), ...fallbackSpellResources(fallbackPlayer) }
+}
+
 const SPELL_SLOT_ROMANS = ['I', 'II', 'III', 'IV', 'V', 'VI'] as const
 
 /** Круг ячеек заклинаний — цифра после общего слова «Ячейки», а не имя. */
@@ -1453,6 +1469,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const dossierSocialNpc = dossierSceneNpc
     ? state.social?.npcs?.find((npc) => npc.id === dossierSceneNpc.id) ?? null
     : null
+  const dossierPublicTags = dossierSocialNpc?.tags?.filter((tag) => !/^faction:/iu.test(String(tag))) ?? []
   const dossierMerchant = dossierSceneNpc
     ? merchantForSceneNpc(state, dossierSceneNpc.id)
     : null
@@ -1473,12 +1490,13 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   ))
   const selectedGiftItem = transferableGiftItems.find((item) => item.id === selectedGiftItemId) ?? null
   const selectedGiftAvailable = Math.max(0, Math.floor(Number(selectedGiftItem?.quantity ?? 0)))
+  const dossierWaiting = Boolean(dialogueBusy || narrating)
   const dossierCanTalk = Boolean(
     dossierSceneNpc?.alive
     && dossierSocialNpc?.available !== false
     && !combatActive
     && canAct
-    && !narrating,
+    && !dossierWaiting,
   )
   const dossierCanReceiveGift = Boolean(
     dossierSceneNpc?.alive
@@ -1585,11 +1603,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const selectedSpellRange = spellRange(selectedSpell)
   const activeConditionIds = new Set((state.mechanics?.conditions?.[turnActorId] ?? []).map((condition) => String(condition.id)))
   const selectedSpellAction = activeConditionIds.has('metamagic-quickened') && spellActionType(selectedSpell) === 'action' ? 'bonus_action' : spellActionType(selectedSpell)
-  const activeResources = {
-    ...fallbackCombatResources(activeHero),
-    ...fallbackSpellResources(activeHero),
-    ...((state.mechanics as { resources?: Record<string, Record<string, { current?: number; max?: number }>> } | undefined)?.resources?.[turnActorId] ?? {}),
-  }
+  const activeResources = heroResourcesFor(state, turnActorId, activeHero)
   const explicitSpellSource = selectedSpell?.id === 'longstrider'
   const spellCastingSources = explicitSpellSource ? spellCastingSourcesFor(selectedSpell, activeResources) : []
   const selectedCastingSource = spellCastingSources.find((source) => source.resource === spellCastingSourceChoice)
@@ -3535,7 +3549,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               <header><BookOpen size={14} /><strong>Известно герою</strong><small>просмотр не расходует действие</small></header>
               <p>{dossierSocialNpc?.public_summary || 'Собеседник ещё не раскрыл о себе ничего сверх имени и роли.'}</p>
               {dossierSocialNpc?.voice && <blockquote>Манера речи: {dossierSocialNpc.voice}</blockquote>}
-              {dossierSocialNpc?.tags?.length ? <div>{dossierSocialNpc.tags.map((tag) => <span key={tag}>{tag}</span>)}</div> : null}
+              {dossierPublicTags.length > 0 ? <div>{dossierPublicTags.map((tag) => <span key={tag}>{tag}</span>)}</div> : null}
             </section>
             <section className="npc-conversation-history">
               <header><MessageSquare size={14} /><strong>Прошлые разговоры</strong><small>{dossierConversations.length}</small></header>
@@ -3595,12 +3609,11 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                       value={npcDialogueText}
                       onChange={(event) => setNpcDialogueText(event.target.value)}
                       disabled={!dossierCanTalk}
-                      placeholder={dossierCanTalk ? `Сказать ${dossierSceneNpc.name}…` : combatActive ? 'Разговор недоступен во время боя' : 'Собеседник сейчас недоступен'}
+                      placeholder={dossierWaiting ? 'Ожидаем ответ собеседника…' : dossierCanTalk ? `Сказать ${dossierSceneNpc.name}…` : combatActive ? 'Разговор недоступен во время боя' : 'Собеседник сейчас недоступен'}
                       aria-label={`Реплика для ${dossierSceneNpc.name}`}
                     />
                     <button type="submit" disabled={!dossierCanTalk || !npcDialogueText.trim()}><Send size={15} />Сказать</button>
                   </form>
-                  <small>Адресат закрепляется отдельно как <code>npc_id</code>; полное имя и роль остаются в читаемой реплике.</small>
                 </>}
             {dossierCaptive && npcDossier?.mode !== 'transfer' && <div className="npc-dialog-captive-actions">
               <button
@@ -4200,7 +4213,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                 event.currentTarget.form?.requestSubmit()
               }
             }}
-            placeholder={requestKind === 'question' ? 'Спросите о ситуации или возможном действии' : requestKind === 'discussion' ? 'Предложите план товарищам — герой пока не действует' : preparedLabel ? 'Добавьте слова к действию — или отправьте как есть' : 'Что вы делаете?'}
+            placeholder={requestKind === 'question' ? 'Спросите о ситуации или возможном действии' : requestKind === 'discussion' ? 'Предложите план товарищам — герой пока не действует' : preparedLabel ? 'Добавьте слова к действию — или отправьте как есть' : combatActive ? 'Что вы делаете?' : 'Ваше действие или «продолжим»'}
             aria-label={requestKind === 'question' ? 'Вопрос ведущему' : requestKind === 'discussion' ? 'Обсуждение с отрядом' : 'Действие своими словами'}
             disabled={composerBlocked}
             title={narrating ? 'Рассказчик разрешает предыдущее действие' : combatActive && !canAct ? `Сейчас ходит ${activeName}` : 'Отправить намерение от имени выбранного героя'}

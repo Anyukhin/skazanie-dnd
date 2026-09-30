@@ -12,6 +12,26 @@ import {
 
 const RULESET_ID = 'dnd_5e_2014'
 
+function effectiveOptionSignature(option) {
+  const stack = (items = []) => {
+    const byIdentity = new Map()
+    for (const item of items) {
+      const { quantity = 1, ...identity } = item ?? {}
+      const key = JSON.stringify(identity)
+      byIdentity.set(key, {
+        ...identity,
+        quantity: (byIdentity.get(key)?.quantity ?? 0) + Number(quantity || 1),
+      })
+    }
+    return [...byIdentity.values()].sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)))
+  }
+  return JSON.stringify({
+    items: stack(option.items),
+    narrative_items: stack(option.narrative_items),
+    owned_assets: stack(option.owned_assets),
+  })
+}
+
 test('полный каталог 2014 содержит все 12 классов и 13 предысторий', () => {
   const legacy = starterEquipmentCatalogFor(RULESET_ID)
   const complete = starterEquipmentCatalogFor(RULESET_ID, { complete: true })
@@ -43,6 +63,26 @@ test('старый каталог и policy v2 остаются совмести
   assert.equal(resolveStarterEquipmentChoices('fighter', {
     armor: ['chain-mail'], 'melee-loadout': ['greatsword'], secondary: ['light-crossbow'], pack: ['dungeoneers-pack'],
   }, RULESET_ID, { complete: true }).ok, false)
+})
+
+test('публичный полный каталог не повторяет эффективный комплект, а старые dynamic id остаются валидны', () => {
+  const complete = starterEquipmentCatalogFor(RULESET_ID, { complete: true })
+  for (const entry of complete.classes) {
+    for (const group of entry.choice_groups ?? []) {
+      const signatures = group.options.map(effectiveOptionSignature)
+      assert.equal(new Set(signatures).size, signatures.length, `${entry.class_id}/${group.id}`)
+    }
+  }
+
+  const fighterMelee = complete.classes.find((entry) => entry.class_id === 'fighter').choice_groups.find((group) => group.id === 'melee-loadout')
+  assert.equal(fighterMelee.options.some((option) => option.id === 'martial-and-shield-longsword'), false)
+  assert.equal(fighterMelee.options.some((option) => option.id === 'two-martial-weapons-shortsword-shortsword'), false)
+
+  for (const meleeLoadout of ['martial-and-shield-longsword', 'two-martial-weapons-shortsword-shortsword']) {
+    assert.equal(resolveStarterEquipmentChoices('fighter', {
+      armor: ['chain-mail'], 'melee-loadout': [meleeLoadout], secondary: ['light-crossbow'], pack: ['dungeoneers-pack'],
+    }, RULESET_ID, { complete: true }).ok, true, meleeLoadout)
+  }
 })
 
 test('полный режим принимает динамические варианты оружия и материализует даже сеть', () => {

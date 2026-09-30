@@ -24,7 +24,7 @@ import {
   authorizeDirectorIntent,
   campaignArcPosition,
   completedDowntime,
-  confirmedQuestProgress,
+  questProgressEvidenceFor,
   directorProgressFingerprint,
   pacingForDirectorIntent,
   planServerTravel,
@@ -463,15 +463,22 @@ export class AutonomousCampaignOrchestrator {
 
   async resolveTriggeredQuests(campaignId, idempotencyKey, sourceEvents = []) {
     const loaded = await this.load(campaignId)
+    const requested = new Set(sourceEvents.filter((entry) => entry.event_type === 'QuestClockAdvanced').map((entry) => entry.event_id).filter(Boolean))
+    if (!requested.size) return null
+    const committed = await this.eventStore.getEvents?.(campaignId) ?? []
+    const progressEvents = committed.filter((entry) => requested.has(entry.event_id)
+      && entry.event_type === 'QuestClockAdvanced' && entry.payload?.schema_version === 2
+      && entry.payload.proof_fact_ids?.length > 0)
     const triggered = (loaded.state.worldMemory?.quests ?? [])
       .filter((quest) => quest.status === 'active' && quest.clock?.triggered === true)
     if (!triggered.length) return null
-    const sourceEventIds = sourceEvents
-      .filter((entry) => entry.event_type === 'QuestClockAdvanced')
-      .map((entry) => entry.event_id)
-      .filter(Boolean)
     const commands = []
     for (const quest of triggered) {
+      const validFacts = new Set(questProgressEvidenceFor(loaded.state, quest.id, { includeConsumed: true }).map((fact) => fact.id))
+      const sourceEventIds = progressEvents.filter((entry) => entry.payload.quest_id === quest.id
+        && entry.payload.proof_fact_ids.every((id) => validFacts.has(id) && quest.progress_fact_ids?.includes(id)))
+        .map((entry) => entry.event_id)
+      if (!sourceEventIds.length) continue
       const resolution = questResolutionFor(quest)
       const nextObjective = campaignModeFor(loaded.state) === 'persistent' ? PERSISTENT_WORLD_OBJECTIVE : resolution.nextObjective
       let subject = (loaded.state.worldMemory?.entities ?? []).find((entity) => quest.entity_ids?.includes(entity.id))
@@ -509,7 +516,7 @@ export class AutonomousCampaignOrchestrator {
       // истории. Развязка стороннего поручения не подменяет текущую цель.
       if (campaignModeFor(loaded.state) !== 'persistent') commands.push({ command_type: 'UpdateObjective', objective: nextObjective })
     }
-    return this.runCommands(campaignId, `${idempotencyKey}:quest-resolution`, commands)
+    return commands.length ? this.runCommands(campaignId, `${idempotencyKey}:quest-resolution`, commands) : null
   }
 
   async completeCampaignIfReady(campaignId, idempotencyKey) {
@@ -561,7 +568,7 @@ export class AutonomousCampaignOrchestrator {
     return { ...committed, epilogue_provider: provider }
   }
 
-  async recordIntent(campaignId, intent, idempotencyKey, authorization = null) {
+  async recordIntent(campaignId, intent, idempotencyKey, authorization = null, proofFactIds = []) {
     const loaded = await this.load(campaignId)
     const provenance = {
       source: 'director',
@@ -574,6 +581,7 @@ export class AutonomousCampaignOrchestrator {
       event(`${idempotencyKey}:intent`, 'DirectorIntentRecorded', {
         intent,
         provenance,
+        ...(proofFactIds.length ? { schema_version: 2, proof_fact_ids: clone(proofFactIds) } : {}),
         policy: authorization ? {
           policy: authorization.policy,
           phase: authorization.phase,
@@ -609,7 +617,8 @@ export class AutonomousCampaignOrchestrator {
     }
     const existingIntentCommit = await this.eventStore.getByIdempotencyKey?.(campaignId, `${key}:intent`)
     let loaded = await this.load(campaignId)
-    const existingIntent = existingIntentCommit?.events?.find((entry) => entry.event_type === 'DirectorIntentRecorded')?.payload?.intent
+    const existingIntentRecord = existingIntentCommit?.events?.find((entry) => entry.event_type === 'DirectorIntentRecorded')?.payload
+    const existingIntent = existingIntentRecord?.intent
     const existingOutcomeCommit = await this.eventStore.getByIdempotencyKey?.(campaignId, `${key}:director-outcome`)
     if (existingIntent && existingOutcomeCommit) {
       // После более позднего хода старый повтор уже не может завершать новую арку.
@@ -633,9 +642,25 @@ export class AutonomousCampaignOrchestrator {
     const committedEffect = existingIntent && ['advance_quest_clock', 'resolve_scene'].includes(intent.type)
       ? await this.eventStore.getByIdempotencyKey?.(campaignId, `${key}:${intent.type === 'resolve_scene' ? 'custom' : 'commands'}`)
       : null
-    const recordedProgress = committedEffect?.events?.some(entry => entry.event_type === 'QuestClockAdvanced' && entry.payload?.quest_id === intent.quest_id)
-    if (intent.type === 'advance_quest_clock' && !recordedProgress && !confirmedQuestProgress(loaded.state, intent.quest_id)) {
-      throw new RulesValidationError('Часы цели продвигаются только после нового подтверждённого прогресса', 'DIRECTOR_QUEST_PROGRESS_REQUIRED')
+    const recordedProgress = committedEffect?.events?.find(entry => entry.event_type === 'QuestClockAdvanced' && entry.payload?.quest_id === intent.quest_id)
+    let progressFactIds = recordedProgress?.payload?.proof_fact_ids ?? []
+    if (intent.type === 'advance_quest_clock' && !recordedProgress) {
+      const candidates = questProgressEvidenceFor(loaded.state, intent.quest_id)
+      const frozenIds = existingIntentRecord?.proof_fact_ids
+      const committed = await this.eventStore.getEvents?.(campaignId) ?? []
+      const versions = new Map(committed.map((entry) => [entry.event_id, entry.state_version_after]))
+      const provenFacts = candidates.filter((fact) => committed.some((entry) => entry.event_type === 'WorldFactRecorded'
+          && entry.payload?.fact?.id === fact.id
+          && entry.payload.fact.subject_id === fact.subject_id && entry.payload.fact.predicate === fact.predicate
+          && fact.source_event_ids.every((id) => entry.payload.fact.source_event_ids?.includes(id)
+            && versions.has(id) && Number(versions.get(id)) < Number(entry.state_version_after))))
+      const selected = Array.isArray(frozenIds)
+        ? provenFacts.filter((fact) => frozenIds.includes(fact.id))
+        : provenFacts.slice(0, 1)
+      if (selected.length !== 1 || frozenIds && frozenIds.length !== selected.length) {
+        throw new RulesValidationError('Часы цели продвигаются только после нового подтверждённого прогресса', 'DIRECTOR_QUEST_PROGRESS_REQUIRED')
+      }
+      progressFactIds = selected.map((fact) => fact.id)
     }
     const recordedResolution = committedEffect?.events?.find(entry => entry.event_type === 'SceneResolutionRecorded')
     const resolutionProof = recordedResolution?.payload?.evidence ?? sceneResolutionProof(loaded.state, intent)
@@ -643,7 +668,7 @@ export class AutonomousCampaignOrchestrator {
       throw new RulesValidationError('Развязка сцены требует подтверждённого факта, а не только предложения Директора', 'DIRECTOR_SCENE_RESOLUTION_UNPROVEN')
     }
     const progressBefore = directorProgressFingerprint(loaded.state)
-    await this.recordIntent(campaignId, intent, key, authorization)
+    await this.recordIntent(campaignId, intent, key, authorization, progressFactIds)
     loaded = await this.load(campaignId)
     const commands = []
     const custom = []
@@ -677,7 +702,10 @@ export class AutonomousCampaignOrchestrator {
     }
     if (intent.type === 'advance_quest_clock') {
       const quest = openQuest(loaded.state, intent.quest_id)
-      if (quest) commands.push({ command_type: 'AdvanceQuestClock', quest_id: quest.id, amount: 1 })
+      if (quest) commands.push({
+        command_type: 'AdvanceQuestClock', quest_id: quest.id, amount: 1,
+        ...(progressFactIds.length ? { proof_fact_ids: progressFactIds } : {}),
+      })
       else commands.push({ command_type: 'UpdateObjective', objective: nextHook(loaded.state, 'Найти подтверждённую квестовую зацепку') })
     }
     if (intent.type === 'request_encounter') {
@@ -1900,8 +1928,6 @@ export class AutonomousCampaignOrchestrator {
 
     loaded = await this.load(campaignId)
     const commands = []
-    const quest = openQuest(loaded.state)
-    if (quest) commands.push({ command_type: 'AdvanceQuestClock', quest_id: quest.id, amount: 1 })
     let subject = currentSubject(loaded.state)
     if (!subject) {
       subject = { id: `location-${digest(loaded.state.scene?.location || campaignId)}`, kind: 'location', name: loaded.state.scene?.location || 'Текущая сцена', summary: '', aliases: [], visibility: 'party', tags: [] }
@@ -1919,12 +1945,6 @@ export class AutonomousCampaignOrchestrator {
     commands.push({ command_type: 'UpdateObjective', objective: nextHook(loaded.state) })
     const consequences = await this.runCommands(campaignId, `${baseKey}:consequences`, commands)
     if (!consequences.duplicate) emitted.push(...(consequences.events ?? []))
-    const questResolution = await this.resolveTriggeredQuests(
-      campaignId,
-      baseKey,
-      consequences.events ?? [],
-    )
-    if (questResolution && !questResolution.duplicate) emitted.push(...(questResolution.events ?? []))
 
     if (plan.outcome === 'enemies_defeated') {
       let afterConsequences = await this.load(campaignId)

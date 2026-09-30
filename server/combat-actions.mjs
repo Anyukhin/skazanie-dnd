@@ -213,6 +213,41 @@ export function normalizedCombatSubclassFor(actor) {
   return actorSubclass(actor, classKey)
 }
 
+/**
+ * Каталожная запись может повторять curated-умение PHB по имени. Список
+ * действий уже оставляет curated-запись; ресурсы обязаны принять то же решение,
+ * иначе рядом с настоящим пулом рождается недостижимый `feature_*`.
+ */
+function curatedActionsFor(actor, classKey, subclass) {
+  const curated = classKey
+    ? [
+      ...(CLASS_ACTIONS[classKey] ?? []),
+      ...(classKey === 'fighter' && normalizedName(subclass) === normalizedName('Мастер боевых искусств') ? MANEUVERS : []),
+    ]
+    : []
+  return curated.filter((entry) => isOptionalFeatureSelected(actor, entry.id))
+}
+
+function curatedActionNamesFor(curated) {
+  return new Set(curated.map((entry) => normalizedName(entry.name)))
+}
+
+/**
+ * Каталожные пулы, заменённые реализованными действиями, определяются
+ * той же политикой, что и список `combatActionsFor`.
+ *
+ * @param {any} actor
+ * @returns {string[]}
+ */
+export function supersededFeatureResourceIdsFor(actor) {
+  const classKey = actorClass(actor)
+  const subclass = actorSubclass(actor, classKey)
+  const curatedNames = curatedActionNamesFor(curatedActionsFor(actor, classKey, subclass))
+  return generatedActionsFor(classKey, subclass)
+    .filter((entry) => entry.uses && curatedNames.has(normalizedName(entry.name)))
+    .map((entry) => `feature_${entry.id}`)
+}
+
 export function combatClassCatalogInfo() {
   return {
     rulesProfile: catalogPayload.rulesProfile,
@@ -234,9 +269,8 @@ export function combatActionsFor(actor) {
   const level = Math.max(1, Math.min(12, Number(actor?.level) || 1))
   const classKey = actorClass(actor)
   const subclass = actorSubclass(actor, classKey)
-  const curated = (classKey ? [...(CLASS_ACTIONS[classKey] ?? []), ...(classKey === 'fighter' && normalizedName(subclass) === normalizedName('Мастер боевых искусств') ? MANEUVERS : [])] : [])
-    .filter((entry) => isOptionalFeatureSelected(actor, entry.id))
-  const curatedNames = new Set(curated.map((entry) => normalizedName(entry.name)))
+  const curated = curatedActionsFor(actor, classKey, subclass)
+  const curatedNames = curatedActionNamesFor(curated)
   const generated = classKey ? generatedActionsFor(classKey, subclass).filter((entry) => entry.actionType !== 'free' && isOptionalFeatureSelected(actor, entry.id) && !curatedNames.has(normalizedName(entry.name))) : []
   const classActions = [...curated, ...generated]
   const ancestry = actor?.speciesBenefits?.mechanics?.dragon_ancestry
@@ -287,6 +321,7 @@ export function combatResourceMaximumsFor(actor) {
   const level = Math.max(1, Math.min(12, Number(actor?.level) || 1))
   const classKey = actorClass(actor)
   const subclass = actorSubclass(actor, classKey)
+  const curatedNames = curatedActionNamesFor(curatedActionsFor(actor, classKey, subclass))
   const proficiency = 2 + Math.floor((level - 1) / 4)
   const resources = {}
   if (classKey === 'barbarian') resources.rage = level >= 12 ? 5 : level >= 6 ? 4 : level >= 3 ? 3 : 2
@@ -308,7 +343,7 @@ export function combatResourceMaximumsFor(actor) {
   if (classKey === 'sorcerer' && level >= 2) resources.sorcery_points = level
   if (classKey === 'wizard') resources.arcane_recovery = 1
   for (const entry of generatedActionsFor(classKey, subclass)) {
-    if (!entry.uses || level < entry.minimumLevel) continue
+    if (!entry.uses || level < entry.minimumLevel || curatedNames.has(normalizedName(entry.name))) continue
     const maximum = entry.uses.maximum === 'proficiency' ? proficiency
       : String(entry.uses.maximum).startsWith('ability:')
         ? Math.max(1, Math.floor((Number(actor?.abilities?.[String(entry.uses.maximum).slice(8)]) - 10) / 2))
@@ -333,6 +368,7 @@ export function combatResourceRecoveryFor(actor) {
   const level = Math.max(1, Math.min(12, Number(actor?.level) || 1))
   const classKey = actorClass(actor)
   const subclass = actorSubclass(actor, classKey)
+  const curatedNames = curatedActionNamesFor(curatedActionsFor(actor, classKey, subclass))
   const recovery = {}
   if (classKey === 'barbarian') recovery.rage = 'long'
   if (classKey === 'bard') recovery.bardic_inspiration = level >= 5 ? 'short_or_long' : 'long'
@@ -353,7 +389,7 @@ export function combatResourceRecoveryFor(actor) {
   if (classKey === 'sorcerer' && level >= 2) recovery.sorcery_points = 'long'
   if (classKey === 'wizard') recovery.arcane_recovery = 'long'
   for (const entry of generatedActionsFor(classKey, subclass)) {
-    if (!entry.uses || level < entry.minimumLevel) continue
+    if (!entry.uses || level < entry.minimumLevel || curatedNames.has(normalizedName(entry.name))) continue
     recovery[`feature_${entry.id}`] = entry.uses.recovery === 'short_or_long' ? 'short_or_long' : 'long'
   }
   for (const spell of [...(Array.isArray(actor?.speciesBenefits?.innate_spells) ? actor.speciesBenefits.innate_spells : []), ...(actor?.creationSpellGrants ?? [])]) {

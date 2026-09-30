@@ -1063,8 +1063,20 @@ export function planNpcTurn(rawState, enemyId) {
   const currentEconomy = state.mechanics?.combat?.action_economy?.[String(enemyId)] ?? {}
   const usedBeforePlan = Math.max(0, Number(currentEconomy.attacks_used) || 0)
   const declaredMultiattackCount = multiattackCount(enemy)
+  // При TurnStarted у старого снимка может остаться неиспользованный обычный
+  // кадр с лимитом 1: это общий каркас, созданный до чтения черты существа.
+  // Первый доверенный удар сам уточняет его до лимита multiattack. После уже
+  // начатой атаки и для особого кадра (например, Ускорения) лимит авторитетен:
+  // продолжение сверх него движок закономерно отвергнет как ACTION_SPENT.
+  const frameAttackLimit = Math.max(0, Number(currentEconomy.attack_action_limit) || 0)
+  const frameAttackKind = String(currentEconomy.attack_action_kind ?? 'normal')
+  const frameLimitApplies = frameAttackLimit > 0
+    && (usedBeforePlan > 0 || frameAttackKind !== 'normal')
+  const attacksAllowed = frameLimitApplies
+    ? Math.min(declaredMultiattackCount, frameAttackLimit)
+    : declaredMultiattackCount
   if (currentEconomy.action === false
-    && (usedBeforePlan === 0 || usedBeforePlan >= declaredMultiattackCount)) {
+    && (usedBeforePlan === 0 || usedBeforePlan >= attacksAllowed)) {
     return [{ command_type: 'EndTurn', actor_id: String(enemyId) }]
   }
   const candidate = targetCandidates(state, enemy)[0]
@@ -1228,7 +1240,6 @@ export function planNpcTurn(rawState, enemyId) {
   // первого удара — второе движок проверяет отдельно и отказом.
   const bonusEquipment = bonusActionPlanned ? null : healingSip ?? weaponPoison
   if (bonusEquipment) commands.unshift(bonusEquipment)
-  const attacksAllowed = multiattackCount(enemy)
   if (attackPlanned
     && !bonusEquipment
     && profile.kind === 'melee'

@@ -447,16 +447,40 @@ test('основная история связана по ID и не завис�
   assert.equal(main.state.campaignConcept.story_quest_id, null)
 })
 
-test('автономный шаг закрывает историю при отключённом рассказчике и не назначает новое задание', async (t) => {
-  const rootDir = mkdtempSync(join(tmpdir(), 'skazanie-persistent-director-'))
+test('заполненные часы без улики не закрывают постоянную историю от обычного шага Директора', async (t) => {
+  const rootDir = mkdtempSync(join(tmpdir(), 'skazanie-persistent-unproven-'))
   t.after(() => rmSync(rootDir, { recursive: true, force: true }))
   const store = new FileEventStore({ rootDir, reducer: applyGameEvent, normalizeState: normalizeCampaignState })
   await store.initializeCampaign({ campaign_id: CAMPAIGN_ID, initial_state: persistentCampaign() })
+  const autonomy = new AutonomousCampaignOrchestrator({ eventStore: store, rulesEngine: rulesEngine() })
+  const result = await autonomy.runIntent({ campaignId: CAMPAIGN_ID, idempotencyKey: 'unproven-next-hook',
+    intent: { type: 'offer_next_hook', hook: 'Осмотреть текущую локацию' } })
+  assert.equal(result.state.worldMemory.quests.find((quest) => quest.id === 'quest:main').status, 'active')
+  assert.equal(result.state.campaignConcept.story_sequence ?? 0, 0)
+  assert.equal((await store.getEvents(CAMPAIGN_ID)).some((event) => event.event_type === 'CampaignStoryCompleted'), false)
+})
+
+test('подтверждённый автономный шаг закрывает историю без рассказчика и не назначает новое задание', async (t) => {
+  const rootDir = mkdtempSync(join(tmpdir(), 'skazanie-persistent-director-'))
+  t.after(() => rmSync(rootDir, { recursive: true, force: true }))
+  const store = new FileEventStore({ rootDir, reducer: applyGameEvent, normalizeState: normalizeCampaignState })
+  const initial = persistentCampaign()
+  initial.worldMemory.entities.push({ id: 'artifact', kind: 'item', name: 'Артефакт', summary: '', aliases: [], visibility: 'party', tags: [] })
+  initial.worldMemory.quests.find((quest) => quest.id === 'quest:main').entity_ids = ['artifact']
+  initial.autonomy.pacing = { beat: 2, phase: 'development', tension: 40 }
+  await store.initializeCampaign({ campaign_id: CAMPAIGN_ID, initial_state: initial })
   let calls = 0
   const autonomy = new AutonomousCampaignOrchestrator({ eventStore: store, rulesEngine: rulesEngine(),
     narrator: { render: async () => { calls += 1; throw new Error('LLM отключена') } } })
+  const evidence = await autonomy.runCommands(CAMPAIGN_ID, 'artifact-evidence-source', [{
+    command_type: 'DeclareAction', actor_id: 'hero', action: 'Исследую найденный артефакт',
+  }])
+  await autonomy.runCommands(CAMPAIGN_ID, 'artifact-evidence-fact', [{ command_type: 'RecordWorldFact', fact: {
+    id: 'artifact-found', subject_id: 'artifact', predicate: 'discovery', object: 'Артефакт найден',
+    visibility: 'party', source_event_ids: evidence.events.map((event) => event.event_id),
+  } }])
   const request = { campaignId: CAMPAIGN_ID, idempotencyKey: 'persistent-director-step',
-    intent: { type: 'offer_next_hook', hook: 'Осмотреть текущую локацию' } }
+    intent: { type: 'advance_quest_clock', quest_id: 'quest:main' } }
   const result = await autonomy.runIntent(request)
   assert.equal(calls, 0)
   assert.equal(result.state.campaignConcept.story_sequence, 1)

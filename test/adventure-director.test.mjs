@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { createSceneTransition, generateSceneCells, generateSceneMap } from '../server/adventure-director.mjs'
+import { createSceneTransition, generateSceneCells, generateSceneGeometry, generateSceneMap } from '../server/adventure-director.mjs'
 import { SCENE_THEMES, isLiveTheme } from '../server/scene-themes.mjs'
+import { cellAt, reachableCells, validateTacticalMap } from '../server/tactical-map.mjs'
 
 /** Заявка на карту в том виде, в каком её всегда присылает картограф. */
 function mapRequest(extra = {}) {
@@ -155,8 +156,18 @@ test('неопознанная локация получает связный т
     seed: 'gate:plain', locationId: 'plain', map: mapRequest({ layout: 'open', pattern: 'natural', width: 15, height: 11 }),
   }
   const cells = generateSceneCells(input)
-  assert.equal(cells.length, 16 * 16, 'fallback обязан идти через полноразмерную тематическую карту')
-  assert.ok(cells.some((cell) => cell.type === 'wall'), 'fallback не обозначил границу игровой области')
+  const generated = generateSceneGeometry(input)
+  let presentCells = 0
+  for (let y = 0; y < generated.map.height; y += 1) for (let x = 0; x < generated.map.width; x += 1) {
+    if (cellAt(generated.map, x, y)) presentCells += 1
+  }
+  assert.equal(cells.length, presentCells, 'legacy-клетки должны совпадать с фактическим охватом тактической карты')
+  assert.equal(validateTacticalMap(generated.map).ok, true)
+  const spawn = generated.map.spawnPoints.find((point) => point.role === 'party')
+  assert.ok(spawn, 'fallback обязан иметь вход для отряда')
+  assert.ok(reachableCells(generated.map, spawn.x, spawn.y).size > 0, 'fallback обязан иметь доступную область')
+  assert.ok(cells.some((cell) => typeof cell.edge_mask === 'string' && cell.edge_mask.length > 0),
+    'fallback не обозначил границу игровой области в legacy-проекции')
   assert.ok(cells.some((cell) => cell.feature), 'fallback оставил карту пустой')
   assert.deepEqual(cells, generateSceneCells(input), 'fallback недетерминирован')
 })
@@ -180,15 +191,28 @@ test('органическая пещера и поселение с домам�
   assert.equal(cave.length, 20 * 18, 'пещера обязана прийти из полноразмерной тематической карты')
   assert.ok(cave.some((cell) => cell.feature === 'stalagmite'), 'в пещере нет пещерного реквизита')
 
-  const settlement = generateSceneCells({
+  const settlementInput = {
     theme: 'городские улицы', location: 'Деревня Заречье',
     seed: 'live:settlement', locationId: 'settlement',
     map: mapRequest({ layout: 'streets', pattern: 'village', width: 15, height: 11 }),
-  })
-  assert.equal(settlement.length, 20 * 20, 'поселению нужен размер, в котором помещаются дома и улица')
-  assert.ok(settlement.filter((cell) => cell.type === 'door').length >= 4, 'в legacy-карте не читаются двери домов')
-  assert.ok(settlement.filter((cell) => cell.type === 'wall' && cell.material === 'wood').length >= 40,
-    'в legacy-карте не читаются стены домов')
+  }
+  const settlement = generateSceneCells(settlementInput)
+  const settlementGeometry = generateSceneGeometry(settlementInput)
+  const map = settlementGeometry.map
+  const houses = map.zones.filter((zone) => /^(?:building|house)-/u.test(zone.id))
+  assert.equal(settlement.length, map.width * map.height, 'legacy-клетки должны совпадать с реальными bounds поселения')
+  assert.equal(validateTacticalMap(map).ok, true)
+  assert.ok(map.width >= 20 && map.height >= 20, 'поселению нужен реальный bounds для домов и улицы')
+  assert.ok(houses.length >= 4, 'поселение должно содержать несколько отдельных домов')
+  assert.ok(map.doors.length >= houses.length, 'у каждого дома должен быть структурированный проход')
+  for (const house of houses) {
+    let passableCells = 0
+    for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+      if (cellAt(map, x, y)?.zone === house.id && cellAt(map, x, y)?.passable) passableCells += 1
+    }
+    assert.ok(passableCells > 0, `дом ${house.id} не содержит игрового пола`)
+  }
+  assert.ok(settlement.filter((cell) => cell.type === 'door').length >= houses.length, 'в legacy-карте не читаются двери домов')
 })
 
 test('узор crypt ведёт к склепу, даже когда название о нём молчит', () => {

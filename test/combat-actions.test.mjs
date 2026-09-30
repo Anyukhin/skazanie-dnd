@@ -3,7 +3,7 @@ import test from 'node:test'
 
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { combatActionsFor, combatResourceMaximumsFor, combatResourceRecoveryFor } from '../server/combat-actions.mjs'
-import { applyGameEvent, normalizeCampaignState, resolveCommand } from '../server/rules-engine.mjs'
+import { applyGameEvent, normalizeCampaignState, resolveCommand, resolveCommands } from '../server/rules-engine.mjs'
 import { campaignStateForViewer } from '../server/viewer-projection.mjs'
 
 function dice(values = []) {
@@ -63,6 +63,65 @@ test('нормализация выдаёт воину классовые дей
   assert.ok(ids.includes('trip-attack'))
   assert.deepEqual(state.mechanics.resources.fighter.second_wind, { current: 1, max: 1 })
   assert.deepEqual(state.mechanics.resources.fighter.superiority_dice, { current: 4, max: 4 })
+  assert.equal(state.mechanics.resources.fighter['feature_fighter-vtoroe-dyhanie'], undefined, 'каталожный дубль Второго дыхания не создаёт отдельный запас')
+})
+
+test('варвар первого уровня получает ровно два использования Ярости, тратит rage и восстанавливает его отдыхом', () => {
+  const source = combatState()
+  source.players[0] = {
+    ...source.players[0],
+    character: 'Краг', role: 'Варвар · ур. 1', characterClass: 'barbarian', level: 1,
+    abilities: { str: 16, dex: 12, con: 16, int: 10, wis: 10, cha: 10 },
+  }
+  source.mechanics.resources = {}
+  const state = normalizeCampaignState(source)
+  const rageActions = state.players[0].combatActions.filter((action) => action.id === 'rage')
+  assert.equal(rageActions.length, 1)
+  assert.equal(rageActions[0].resource, 'rage')
+  assert.deepEqual(combatResourceMaximumsFor(state.players[0]), { rage: 2 })
+  assert.deepEqual(combatResourceRecoveryFor(state.players[0]), { rage: 'long' })
+  assert.deepEqual(state.mechanics.resources.fighter, { rage: { current: 2, max: 2 } })
+
+  const spent = resolveCommand({ command_type: 'UseCombatAction', actor_id: 'fighter', action_id: 'rage', server_authoritative: true }, state, { diceService: dice(), context: { serverAuthoritativeCombat: true } })
+  const afterSpend = applyAll(state, spent.events)
+  assert.deepEqual(afterSpend.mechanics.resources.fighter, { rage: { current: 1, max: 2 } })
+
+  // Новый бонусный action frame: второй расход проходит, третий отклоняется
+  // тем же server-owned пулом, а не создаёт третий ресурс.
+  afterSpend.mechanics.combat.action_economy.fighter.bonus_action = true
+  const second = resolveCommand({ command_type: 'UseCombatAction', actor_id: 'fighter', action_id: 'rage', server_authoritative: true }, afterSpend, { diceService: dice(), context: { serverAuthoritativeCombat: true } })
+  const afterSecondSpend = applyAll(afterSpend, second.events)
+  assert.deepEqual(afterSecondSpend.mechanics.resources.fighter, { rage: { current: 0, max: 2 } })
+  afterSecondSpend.mechanics.combat.action_economy.fighter.bonus_action = true
+  assert.throws(
+    () => resolveCommand({ command_type: 'UseCombatAction', actor_id: 'fighter', action_id: 'rage', server_authoritative: true }, afterSecondSpend, { diceService: dice(), context: { serverAuthoritativeCombat: true } }),
+    (error) => error.code === 'INSUFFICIENT_RESOURCE',
+  )
+
+  const resting = structuredClone(afterSecondSpend)
+  resting.mechanics.combat.active = false
+  const restored = resolveCommands([
+    { command_type: 'StartRest', actor_id: 'fighter', kind: 'long' },
+    { command_type: 'AdvanceTime', amount: 480, unit: 'minute' },
+    { command_type: 'CompleteRest', actor_id: 'fighter', kind: 'long' },
+  ], resting, { diceService: dice(), context: { allowedActorIds: ['fighter'] } }).state
+  assert.deepEqual(restored.mechanics.resources.fighter, { rage: { current: 2, max: 2 } })
+})
+
+test('старый persisted feature-пул не заменяет rage и остаётся совместимым без миграции', () => {
+  const source = combatState()
+  source.players[0] = {
+    ...source.players[0],
+    character: 'Краг', role: 'Варвар · ур. 1', characterClass: 'barbarian', level: 1,
+    abilities: { str: 16, dex: 12, con: 16, int: 10, wis: 10, cha: 10 },
+  }
+  source.mechanics.resources = {}
+  const state = normalizeCampaignState(source)
+  state.mechanics.resources.fighter['feature_barbarian-yarost'] = { current: 1, max: 1 }
+  const spent = resolveCommand({ command_type: 'UseCombatAction', actor_id: 'fighter', action_id: 'rage', server_authoritative: true }, state, { diceService: dice(), context: { serverAuthoritativeCombat: true } })
+  const afterSpend = applyAll(state, spent.events)
+  assert.deepEqual(afterSpend.mechanics.resources.fighter.rage, { current: 1, max: 2 })
+  assert.deepEqual(afterSpend.mechanics.resources.fighter['feature_barbarian-yarost'], { current: 1, max: 1 })
 })
 
 test('эвристические и ruling-only действия отклоняются без изменения состояния', () => {

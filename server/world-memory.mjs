@@ -18,6 +18,31 @@ const EPISTEMIC_KINDS = new Set(['belief', 'rumor'])
 const TRUTH_STATUSES = new Set(['unknown', 'confirmed', 'refuted'])
 const SUMMARY_KINDS = new Set(['scene', 'session'])
 const VISIBILITIES = new Set(['public', 'party', 'gm_only'])
+const QUEST_PROGRESS_PREDICATES = new Set(['discovery', 'quest_progress'])
+
+/** Подтверждения относятся к сущности цели; совпадение текста доказательством не является. */
+export function questProgressEvidenceFor(state = {}, questId = '', { includeConsumed = false } = {}) {
+  const quest = (state.worldMemory?.quests ?? []).find((entry) => String(entry.id) === String(questId))
+  if (!quest || quest.status !== 'active') return []
+  const consumed = new Set(quest.progress_fact_ids ?? [])
+  const usedSources = new Set(quest.progress_source_event_ids ?? [])
+  const entityIds = new Set(quest.entity_ids ?? [])
+  const facts = (state.worldMemory?.facts ?? []).filter((fact) => (
+    fact?.id && fact.status !== 'superseded'
+      && QUEST_PROGRESS_PREDICATES.has(fact.predicate)
+      && entityIds.has(fact.subject_id)
+      && Array.isArray(fact.source_event_ids) && fact.source_event_ids.length > 0
+      && (includeConsumed || !consumed.has(fact.id) && fact.source_event_ids.some((id) => !usedSources.has(id)))
+  ))
+  // Старые шаги Директора не хранили IDs улик. Консервативно пропускаем уже
+  // учтённое число фактов, но не смешиваем его с ходом времени и провалами.
+  const legacySteps = includeConsumed ? 0 : (state.autonomy?.director_history ?? []).filter((entry) => {
+    const intent = entry?.intent ?? entry
+    return intent?.type === 'advance_quest_clock' && String(intent.quest_id) === String(questId)
+      && !Array.isArray(entry?.proof_fact_ids)
+  }).length
+  return facts.slice(legacySteps)
+}
 
 export const WORLD_MEMORY_COMMAND_TYPES = new Set([
   'UpsertWorldEntity', 'RecordWorldFact', 'RevealWorldFact', 'RecordKnowledgeRevelation',
@@ -144,6 +169,8 @@ function safeRelationship(value = {}) {
 
 function safeQuest(value = {}) {
   const responsibility = normalizeQuestResponsibility(value.responsibility)
+  const progressFactIds = persistedStrings(value.progress_fact_ids, 120)
+  const progressSourceIds = persistedStrings(value.progress_source_event_ids, 120)
   return {
     id: text(value.id, 120), title: text(value.title, 180), summary: text(value.summary, 1_000),
     status: QUEST_STATUSES.has(value.status) ? value.status : 'active',
@@ -152,6 +179,8 @@ function safeQuest(value = {}) {
     clock: clock(value.clock), recorded_at_minutes: recordedAt(value.recorded_at_minutes),
     ...(value.stay_in_location === true ? { stay_in_location: true } : {}),
     ...(responsibility ? { responsibility, giver_npc_id: text(value.giver_npc_id, 120) || null } : {}),
+    ...(progressFactIds.length ? { progress_fact_ids: progressFactIds } : {}),
+    ...(progressSourceIds.length ? { progress_source_event_ids: progressSourceIds } : {}),
     ...(value.knowledge_history != null ? { knowledge_history: normalizeQuestKnowledgeHistory(value.knowledge_history) } : {}),
   }
 }
@@ -508,17 +537,21 @@ function normalizeQuestInput(input, memory, state = {}) {
     plainObject(value.clock, 'quest.clock')
     assertFields(value.clock, new Set(['current', 'max', 'label']), 'quest.clock')
   }
+  const previous = memory.quests.find((quest) => quest.id === id(value.id, 'quest.id'))
+  const progressFactIds = previous?.progress_fact_ids ?? []
+  const progressSourceIds = previous?.progress_source_event_ids ?? []
   const result = {
     id: id(value.id, 'quest.id'), title: text(value.title, 180), summary: text(value.summary, 1_000),
     status: text(value.status || 'active', 30), visibility: visibility(value.visibility, 'party'),
     entity_ids: strings(value.entity_ids, 120, 30), objectives: strings(value.objectives, 300, 20),
     clock: clock(value.clock), recorded_at_minutes: elapsedMinutes(state),
+    ...(progressFactIds.length ? { progress_fact_ids: progressFactIds } : {}),
+    ...(progressSourceIds.length ? { progress_source_event_ids: progressSourceIds } : {}),
   }
   if (!QUEST_STATUSES.has(result.status)) throw new WorldMemoryValidationError('Неизвестный статус квеста', 'WORLD_QUEST_STATUS_INVALID')
   if (!result.title) throw new WorldMemoryValidationError('У квеста должен быть заголовок', 'WORLD_QUEST_TITLE_REQUIRED')
   if (result.entity_ids.some((entityId) => !memory.entities.some((entity) => entity.id === entityId))) throw new WorldMemoryValidationError('Квест ссылается на неизвестную сущность', 'WORLD_ENTITY_NOT_FOUND')
   // Техническое обновление старого поручения не снимает его зависимость.
-  const previous = memory.quests.find((quest) => quest.id === result.id)
   const responsibility = normalizeQuestResponsibility(value.responsibility ?? previous?.responsibility)
   if (value.responsibility != null && !responsibility) throw new WorldMemoryValidationError('Неизвестная политика ответственности по поручению', 'WORLD_QUEST_RESPONSIBILITY_INVALID')
   if (responsibility) {
@@ -631,6 +664,15 @@ export function validateWorldMemoryCommand(command, state, context = {}) {
     if (['completed', 'failed', 'abandoned'].includes(quest.status)) throw new WorldMemoryValidationError('Часы завершённого квеста нельзя изменять', 'WORLD_QUEST_CLOSED')
     result.amount = integer(command.amount, 1)
     if (result.amount < 1 || result.amount > 20) throw new WorldMemoryValidationError('Шаг часов должен быть от 1 до 20', 'WORLD_QUEST_CLOCK_INVALID')
+    const proofFactIds = strings(command.proof_fact_ids, 120, 30)
+    if (proofFactIds.length) {
+      const candidates = questProgressEvidenceFor({ ...state, worldMemory: memory }, quest.id)
+      const valid = proofFactIds.length === result.amount
+        && proofFactIds.every((factId) => candidates.some((fact) => fact.id === factId))
+      if (!valid) throw new WorldMemoryValidationError('Продвижение квеста требует свежего доказательства этой цели', 'WORLD_QUEST_PROGRESS_PROOF_INVALID')
+      result.proof_fact_ids = proofFactIds
+      result.proof_source_event_ids = [...new Set(candidates.filter((fact) => proofFactIds.includes(fact.id)).flatMap((fact) => fact.source_event_ids))]
+    }
     result.visibility = quest.visibility
   }
   if (command.command_type === 'ResolveQuest') {
@@ -705,7 +747,13 @@ export function worldMemoryEvent(command) {
   if (command.command_type === 'RecordKnowledgeRevelation') return { event_type: 'KnowledgeRevealed', payload: { fact_id: command.fact_id, source_event_ids: clone(command.source_event_ids ?? []) }, target_ids: clone(command.target_ids) }
   if (command.command_type === 'RecordWorldRelationship') return { event_type: 'WorldRelationshipRecorded', payload: { relationship: clone(command.relationship) }, target_ids: [] }
   if (command.command_type === 'UpsertQuest') return { event_type: 'QuestUpserted', payload: { schema_version: 2, quest: clone(command.quest) }, target_ids: [] }
-  if (command.command_type === 'AdvanceQuestClock') return { event_type: 'QuestClockAdvanced', payload: { quest_id: command.quest_id, amount: command.amount }, target_ids: [] }
+  if (command.command_type === 'AdvanceQuestClock') return { event_type: 'QuestClockAdvanced', payload: {
+    quest_id: command.quest_id,
+    amount: command.amount,
+    ...(Array.isArray(command.proof_fact_ids) && command.proof_fact_ids.length
+      ? { schema_version: 2, proof_fact_ids: clone(command.proof_fact_ids), proof_source_event_ids: clone(command.proof_source_event_ids ?? []) }
+      : {}),
+  }, target_ids: [] }
   if (command.command_type === 'ResolveQuest') return { event_type: 'QuestResolved', payload: {
     quest_id: command.quest_id,
     outcome: command.outcome,
@@ -785,7 +833,20 @@ export function applyWorldMemoryEvent(input, event, { prepared = false } = {}) {
     memory.quests = memory.quests.map((quest) => {
       if (quest.id !== payload.quest_id) return quest
       const current = Math.min(quest.clock.max, quest.clock.current + Math.max(1, integer(payload.amount, 1)))
-      return { ...recordQuestKnowledge(quest, event), clock: { ...quest.clock, current, triggered: current >= quest.clock.max } }
+      const progressFactIds = [...new Set([
+        ...(quest.progress_fact_ids ?? []),
+        ...(payload.schema_version === 2 ? persistedStrings(payload.proof_fact_ids, 120) : []),
+      ])]
+      const progressSourceIds = [...new Set([
+        ...(quest.progress_source_event_ids ?? []),
+        ...(payload.schema_version === 2 ? persistedStrings(payload.proof_source_event_ids, 120) : []),
+      ])]
+      return {
+        ...recordQuestKnowledge(quest, event),
+        clock: { ...quest.clock, current, triggered: current >= quest.clock.max },
+        ...(progressFactIds.length ? { progress_fact_ids: progressFactIds } : {}),
+        ...(progressSourceIds.length ? { progress_source_event_ids: progressSourceIds } : {}),
+      }
     })
   }
   if (event.event_type === 'QuestResolved' || event.event_type === 'QuestInvalidated' && [1, 2].includes(payload.schema_version)) {
@@ -894,7 +955,8 @@ export function worldMemoryForViewer(input, viewer = {}) {
   const visibleFactIds = new Set(facts.map((fact) => fact.id))
   const knowledge_revealed = playerKnowledge.filter((entry) => visibleFactIds.has(entry.fact_id))
   return {
-    schema_version: 2, entities: clone(entities), facts: clone(facts), relationships: clone(relationships), quests: clone(quests), threads: clone(threads),
+    schema_version: 2, entities: clone(entities), facts: clone(facts), relationships: clone(relationships),
+    quests: clone(quests.map(({ progress_fact_ids, progress_source_event_ids, ...quest }) => quest)), threads: clone(threads),
     epistemic_claims: clone(epistemic_claims), summaries: clone(summaries), knowledge: playerId ? { [playerId]: [...known].filter((factId) => visibleFactIds.has(factId)) } : {},
     knowledge_revealed: clone(knowledge_revealed), knowledge_ledger: clone(knowledge_revealed),
   }

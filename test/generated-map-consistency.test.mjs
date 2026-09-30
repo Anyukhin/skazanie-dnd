@@ -2,21 +2,36 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { CampaignBootstrapper } from '../server/campaign-bootstrap.mjs'
-import { createSceneTransition, generateSceneCells, rememberCurrentSceneMap } from '../server/adventure-director.mjs'
+import { createSceneTransition, generateSceneCells, generateSceneGeometry, rememberCurrentSceneMap } from '../server/adventure-director.mjs'
 import { FakeLLM } from '../server/llm-client.mjs'
 import { getWorldTemplate } from '../server/world-template-catalog.mjs'
 import { SceneArchitectAgent } from '../server/scene-architect.mjs'
 import { resolveSceneTheme } from '../server/scene-themes.mjs'
-import { serializeTacticalMap, tacticalMapFromLegacyCells } from '../server/tactical-map.mjs'
+import { serializeTacticalMap, tacticalMapFromLegacyCells, validateTacticalMap } from '../server/tactical-map.mjs'
 import { isIndoors, weatherForViewer } from '../server/weather.mjs'
 
 const hero = { id: 'hero-generated-map', character: 'Аудитор', name: 'Игрок', role: 'Воин · ур. 1', species: 'Человек', background: 'Странник', maxHp: 12 }
 const galleryMap = { layout: 'rooms', scale: 'site', pattern: 'great-hall', material: 'stone', width: 17, height: 11, openness: .38, water: 0, featureCount: 6 }
 
-test('capital does not override a generated indoor gallery, while courtyard and quay remain outdoors', () => {
+function assertProceduralBuilding(map) {
+  assert.equal(map.generator.id, 'building-with-yard')
+  assert.equal(map.tilesetId, 'building')
+  assert.equal(validateTacticalMap(map).ok, true)
+  assert.ok(map.width >= 16 && map.height >= 16)
+  assert.ok(map.zones.filter((zone) => zone.kind === 'interior').length >= 3)
+  assert.ok(map.doors.length >= 2)
+  assert.ok(map.spawnPoints.some((point) => point.role === 'party'))
+  assert.ok(map.props.length > 0)
+}
+
+test('capital does not override a procedural indoor gallery, while courtyard and quay remain outdoors', () => {
   assert.equal(resolveSceneTheme({
     location: 'Штормберг', theme: 'военная галерея приморской цитадели', worldKind: 'capital', request: galleryMap,
-  }).id, 'authored-palace')
+  }).id, 'building')
+  assertProceduralBuilding(generateSceneGeometry({
+    location: 'Штормберг', theme: 'военная галерея приморской цитадели', sceneKind: 'building', worldKind: 'capital',
+    seed: 'generated-gallery', locationId: 'generated-gallery', map: galleryMap,
+  }).map)
   assert.equal(resolveSceneTheme({
     location: 'Двор замка Ареса', theme: 'двор замка', worldKind: 'capital',
     request: { layout: 'open', pattern: 'natural', material: 'stone' },
@@ -31,7 +46,12 @@ test('capital does not override a generated indoor gallery, while courtyard and 
   assert.equal(resolveSceneTheme({
     location: 'Замок Ареса', theme: 'каменная крепость', worldKind: 'fortress',
     request: { layout: 'rooms', pattern: 'keep', material: 'stone' },
-  }).id, 'authored-palace')
+  }).id, 'building')
+  assertProceduralBuilding(generateSceneGeometry({
+    location: 'Замок Ареса', theme: 'каменная крепость', sceneKind: 'building', worldKind: 'fortress',
+    seed: 'generic-castle', locationId: 'generic-castle',
+    map: { layout: 'rooms', pattern: 'keep', material: 'stone', width: 36, height: 28 },
+  }).map)
 })
 
 test('generated bootstrap keeps the resolved indoor theme in tactical metadata', async () => {

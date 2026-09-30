@@ -1,9 +1,13 @@
 import { affirmativeActionText, classifyNpcSocialCheck } from './npc-social-check.mjs'
 
+const CORPSE_SEARCH_VERB = '(?<![\\p{L}\\p{M}])(?:обыск\\p{L}*|провер\\p{L}*|осматр\\p{L}*|ищ\\p{L}*)'
+const CORPSE_SEARCH_NOUN = '(?<![\\p{L}\\p{M}])(?:труп(?:а|у|ом|е|ы|ов|ам|ами|ах)?|тел(?:о|а|у|ом|е|ам|ами|ах)?|остан(?:ки|ков|кам|ками|ках)|карман(?:а|у|ом|е|ы|ов|ам|ами|ах)?)(?![\\p{L}\\p{M}])'
+const CORPSE_SEARCH_PATTERN = new RegExp(`(?:${CORPSE_SEARCH_VERB})[^.!?]{0,80}(?:${CORPSE_SEARCH_NOUN})|(?:${CORPSE_SEARCH_NOUN})[^.!?]{0,80}(?:${CORPSE_SEARCH_VERB})`, 'iu')
+
 const FREE_ACTION_PATTERNS = Object.freeze([
   ['physically_impossible', /(взлет\w*|взлета\w*|парю\w*|телепорт\w*|останавлива\w*\s+время|дыш\w*\s+под\s+водой|становлюсь\s+невидим\w*|путешеств\w*\s+во\s+времени|fly\b|teleport\w*|stop\s+time|breathe\s+underwater)/iu],
   ['bounded_scene_action', /(подпира\w*|баррикад\w*|поджига\w*|зажига\w*|зову\w*\s+страж|крич\w*\s+страж|связыва\w*|прячу\w*\s+след\w*|заслоня\w*)/iu],
-  ['corpse_search', /(?:обыск\p{L}*|провер\p{L}*|осматр\p{L}*|ищ\p{L}*)[^.!?]{0,80}(?:труп|тел[оаеу]|останки|карман)|(?:труп|тел[оаеу]|останки|карман)[^.!?]{0,80}(?:обыск\p{L}*|провер\p{L}*|осматр\p{L}*|ищ\p{L}*)/iu],
+  ['corpse_search', CORPSE_SEARCH_PATTERN],
 ])
 
 export const REQUEST_KINDS = Object.freeze(['action', 'question', 'discussion'])

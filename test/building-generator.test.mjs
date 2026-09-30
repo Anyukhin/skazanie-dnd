@@ -9,6 +9,7 @@ import {
   buildBuildingScene,
   generateAresFortressScene,
   generateBuildingScene,
+  planRooms,
   reachabilityIssues,
   safeRoom,
   tacticalFitnessWarnings,
@@ -24,6 +25,14 @@ import {
 
 const scene = () => generateBuildingScene({ seed: 'reference' })
 
+test('плотность обстановки меняет число предметов при той же планировке', () => {
+  const options = { seed: 'density-building', width: 40, height: 36 }
+  const sparse = generateBuildingScene({ ...options, design: { building_use: 'dwelling', density: 'sparse' } })
+  const dense = generateBuildingScene({ ...options, design: { building_use: 'dwelling', density: 'dense' } })
+  assert.deepEqual(sparse.zones, dense.zones)
+  assert.ok(dense.props.length > sparse.props.length, `${sparse.props.length} против ${dense.props.length}`)
+})
+
 test('сцена-эталон имеет размер около 26×26', () => {
   const map = scene()
   assert.equal(map.width, REFERENCE_SIZE.width)
@@ -31,11 +40,51 @@ test('сцена-эталон имеет размер около 26×26', () => 
   assert.equal(map.width * map.height, 676)
 })
 
+test('planRooms без design сохраняет прежнюю трёхкомнатную схему', () => {
+  const plan = planRooms({ minX: 4, minY: 4, maxX: 20, maxY: 20 })
+  assert.deepEqual(plan.rooms.map((room) => room.zoneId), ['hall', 'kitchen', 'store'])
+  assert.equal(plan.partitionX, 14)
+  assert.equal(plan.partitionY, 12)
+})
+
 test('генерация детерминирована от seed', () => {
   const first = JSON.stringify(serializeTacticalMap(generateBuildingScene({ seed: 'same' })))
   const second = JSON.stringify(serializeTacticalMap(generateBuildingScene({ seed: 'same' })))
   assert.equal(first, second)
   assert.notEqual(first, JSON.stringify(serializeTacticalMap(generateBuildingScene({ seed: 'other' }))))
+})
+
+test('обычный вызов выбирает таверну, а тема магазина — магазин', () => {
+  const tavern = generateBuildingScene({ seed: 'theme-default' })
+  const shop = generateBuildingScene({ seed: 'theme-shop', theme: 'market-shop' })
+  const assetsIn = (map, zoneId) => new Set(map.props
+    .filter((prop) => cellAt(map, Math.floor(prop.x), Math.floor(prop.y))?.zone === zoneId)
+    .map((prop) => prop.assetId))
+  assert.equal(assetsIn(tavern, 'hall').has('bar_counter'), true)
+  assert.equal(assetsIn(shop, 'hall').has('bar_counter'), false)
+  assert.equal(assetsIn(shop, 'workshop').has('table_long'), true)
+})
+
+test('entry управляет точкой появления и раскрытием зала, сохраняя реквизит', () => {
+  const exterior = generateBuildingScene({ seed: 'entry-contract' })
+  const interior = generateBuildingScene({ seed: 'entry-contract', entry: 'interior' })
+  const party = (map) => map.spawnPoints.find((point) => point.role === 'party')
+  const revealedIn = (map, zoneId) => {
+    let count = 0
+    for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+      const cell = cellAt(map, x, y)
+      if (cell?.zone === zoneId && cell.revealed) count += 1
+    }
+    return count
+  }
+  const outsideSpawn = party(exterior)
+  const insideSpawn = party(interior)
+  assert.equal(cellAt(exterior, outsideSpawn.x, outsideSpawn.y)?.zone, 'yard')
+  assert.equal(cellAt(interior, insideSpawn.x, insideSpawn.y)?.zone, 'hall')
+  assert.ok(revealedIn(interior, 'hall') > 0)
+  for (const zoneId of ['kitchen', 'store']) assert.equal(revealedIn(interior, zoneId), 0)
+  assert.ok(interior.props.length > 0, 'внутренний вход не должен отключать реквизит')
+  assert.equal(interior.props.some((prop) => prop.footprint.some((cell) => cell.x === insideSpawn.x && cell.y === insideSpawn.y)), false)
 })
 
 test('карта проходит структурную валидацию', () => {
@@ -187,6 +236,102 @@ test('сборка со ступенями отката всегда отдаё�
   assert.ok(['none', 'no_props', 'safe_room'].includes(tiny.fallback))
   assert.deepEqual(validateTacticalMap(tiny.map).errors, [])
   assert.deepEqual(reachabilityIssues(tiny.map), [])
+})
+
+test('design меняет настоящую планировку, размер и мебель по назначению', () => {
+  const dwelling = generateBuildingScene({ seed: 'design-dwelling', design: { building_use: 'dwelling', climate: 'cold', architecture: 'stone' } })
+  const tavern = generateBuildingScene({ seed: 'design-tavern', design: { building_use: 'tavern', climate: 'temperate', architecture: 'wood' } })
+  const shop = generateBuildingScene({ seed: 'design-shop', design: { building_use: 'shop', climate: 'arid', architecture: 'sand' } })
+  const manor = generateBuildingScene({ seed: 'design-manor', design: { building_use: 'manor', climate: 'wetland', architecture: 'marble' } })
+  const assetsIn = (map, zoneId) => new Set(map.props
+    .filter((prop) => cellAt(map, Math.floor(prop.x), Math.floor(prop.y))?.zone === zoneId)
+    .map((prop) => prop.assetId))
+  assert.ok(dwelling.zones.some((zone) => zone.id === 'bedroom'))
+  assert.equal([...assetsIn(dwelling, 'hall')].some((asset) => asset === 'bar_counter' || asset === 'bar_shelf'), false)
+  assert.ok(tavern.zones.some((zone) => zone.id === 'hall') && tavern.zones.some((zone) => zone.id === 'kitchen') && tavern.zones.some((zone) => zone.id === 'store'))
+  assert.ok(assetsIn(tavern, 'hall').has('bar_counter'))
+  assert.ok(shop.zones.some((zone) => zone.id === 'workshop'))
+  assert.ok(assetsIn(shop, 'workshop').has('table_long'))
+  assert.ok(manor.zones.some((zone) => zone.id === 'salon'))
+  assert.equal(cellAt(dwelling, 0, 0)?.material, 'ice')
+  assert.equal(cellAt(shop, 0, 0)?.material, 'sand')
+  assert.notDeepEqual(
+    JSON.stringify(serializeTacticalMap(generateBuildingScene({ seed: 'layout-a', design: { building_use: 'tavern', climate: 'temperate', architecture: 'wood' } }))),
+    JSON.stringify(serializeTacticalMap(generateBuildingScene({ seed: 'layout-b', design: { building_use: 'tavern', climate: 'temperate', architecture: 'wood' } }))),
+  )
+})
+
+test('100 сидов спроектированных зданий валидны, связны и заметно различаются', () => {
+  const uses = ['dwelling', 'tavern', 'shop', 'manor']
+  const climates = ['temperate', 'arid', 'cold', 'wetland']
+  const architectures = ['wood', 'stone', 'sand', 'metal', 'marble', 'ice']
+  const signatures = new Set()
+  for (let index = 0; index < 100; index += 1) {
+    const design = { building_use: uses[index % uses.length], climate: climates[index % climates.length], architecture: architectures[index % architectures.length] }
+    const built = buildBuildingScene({ seed: `design-${index}`, design })
+    assert.equal(built.fallback, 'none', `design-${index}: unexpected fallback`)
+    assert.deepEqual(validateTacticalMap(built.map).errors, [], `design-${index}: invalid map`)
+    assert.deepEqual(reachabilityIssues(built.map), [], `design-${index}: unreachable zone`)
+    signatures.add(JSON.stringify({ width: built.map.width, height: built.map.height, zones: built.map.zones.map((zone) => zone.id), doors: built.map.doors.map((door) => door.id) }))
+  }
+  assert.ok(signatures.size >= 8, `layout diversity too low: ${signatures.size}`)
+})
+
+test('схемы здания меняют геометрию, а двор остаётся exterior и достижимым', () => {
+  const samples = new Map()
+  const boundsFor = (map, zoneId) => {
+    const cells = []
+    for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+      if (cellAt(map, x, y)?.zone === zoneId) cells.push({ x, y })
+    }
+    assert.ok(cells.length, `${zoneId}: зона должна иметь клетки`)
+    return {
+      minX: Math.min(...cells.map((cell) => cell.x)),
+      minY: Math.min(...cells.map((cell) => cell.y)),
+      maxX: Math.max(...cells.map((cell) => cell.x)),
+      maxY: Math.max(...cells.map((cell) => cell.y)),
+    }
+  }
+  const classify = (map) => {
+    if (map.zones.some((zone) => zone.id === 'courtyard')) return 'courtyard'
+    const hall = boundsFor(map, 'hall')
+    return hall.maxX - hall.minX > hall.maxY - hall.minY ? 'long-hall' : 'wing'
+  }
+  for (let index = 0; index < 200 && samples.size < 3; index += 1) {
+    const map = generateBuildingScene({ seed: `geometry-${index}`, design: { building_use: 'dwelling' } })
+    samples.set(classify(map), map)
+  }
+  assert.deepEqual([...samples.keys()].sort(), ['courtyard', 'long-hall', 'wing'])
+  const geometry = new Set([...samples.values()].map((map) => JSON.stringify(boundsFor(map, 'hall'))))
+  assert.equal(geometry.size, 3, 'три схемы должны различаться геометрией зала')
+
+  const courtyard = samples.get('courtyard')
+  assert.ok(courtyard)
+  assert.equal(courtyard.zones.find((zone) => zone.id === 'courtyard')?.kind, 'exterior')
+  const courtyardCells = []
+  for (let y = 0; y < courtyard.height; y += 1) for (let x = 0; x < courtyard.width; x += 1) {
+    if (cellAt(courtyard, x, y)?.zone === 'courtyard') courtyardCells.push({ x, y })
+  }
+  assert.ok(courtyardCells.length >= 9, 'внутренний двор должен быть настоящей площадкой')
+  const spawn = courtyard.spawnPoints.find((point) => point.role === 'party')
+  assert.ok(spawn)
+  const reached = reachableCells(courtyard, spawn.x, spawn.y)
+  assert.ok(courtyardCells.some((cell) => reached.has(`${cell.x},${cell.y}`)), 'во двор должен вести проход')
+})
+
+test('спроектированное здание сохраняет двери и объявленные переходы этажей', () => {
+  const map = generateBuildingScene({
+    seed: 'design-levels',
+    design: { building_use: 'tavern', climate: 'temperate', architecture: 'wood' },
+    levels: [{ offset: 1, label: 'Спальни' }, { offset: -1, label: 'Погреб' }],
+  })
+  assert.ok(map.doors.some((door) => door.id === 'front-door'))
+  assert.ok(map.doors.some((door) => door.id === 'kitchen-door'))
+  assert.ok(map.doors.some((door) => door.id === 'store-door'))
+  assert.ok(map.props.some((prop) => prop.transition?.toLevel === 1))
+  assert.ok(map.props.some((prop) => prop.transition?.toLevel === -1))
+  assert.deepEqual(validateTacticalMap(map).errors, [])
+  assert.deepEqual(reachabilityIssues(map), [])
 })
 
 test('минимальная безопасная комната валидна и связна', () => {

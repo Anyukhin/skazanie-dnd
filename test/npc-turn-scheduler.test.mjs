@@ -757,6 +757,114 @@ test('counted multiattack uses every declared weapon once without inventing an o
   }), (error) => error instanceof RulesValidationError && error.code === 'INVALID_MONSTER_MULTIATTACK')
 })
 
+test('real StartCombat gives a brown bear two attacks and returns control after EndTurn', async (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'skazanie-npc-real-multiattack-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  const campaignId = 'NPC-REAL-MULTIATTACK'
+  const block = SRD_5_2_1_MONSTER_ALLOWLIST['srd_5_2_1:brown-bear']
+  const initial = fixture({ sessionCode: campaignId })
+  initial.enemies = [{
+    id: 'bear', name: block.name, hp: block.hp, maxHp: block.hp, armor: block.armor, speed: block.speed,
+    abilities: block.abilities, traits: block.traits, action_profiles: block.action_profiles,
+    attack_profile: block.action_profiles[0], x: 1, y: 1, alive: true,
+  }]
+  initial.mechanics.positions = { hero: { x: 0, y: 1 }, bear: { x: 1, y: 1 } }
+  initial.mechanics.combat = {
+    active: false, round: 0, initiative: [], active_index: -1, action_economy: {},
+    reaction_window: null, readied: {}, group_initiative: false, turn_completed: [],
+  }
+  const eventStore = new FileEventStore({ rootDir: root, reducer: applyGameEvent, normalizeState: normalizeCampaignState })
+  await eventStore.initializeCampaign({ campaign_id: campaignId, initial_state: initial })
+  const loaded = await eventStore.load(campaignId)
+  const start = resolveCommand({
+    command_type: 'StartCombat', participant_ids: ['hero', 'bear'], server_authoritative: true,
+    command_id: 'real-start-combat',
+  }, loaded.state, { diceService: dice([1, 20]), context: { serverAuthoritativeCombat: true, isAdmin: true } })
+  await eventStore.commit({
+    campaign_id: campaignId, expected_state_version: loaded.state_version,
+    idempotency_key: 'real-start-combat', command_id: 'real-start-combat', events: start.events,
+  })
+  const started = await eventStore.load(campaignId)
+  assert.equal(started.state.mechanics.combat.active, true)
+  assert.equal(started.state.mechanics.combat.initiative[started.state.mechanics.combat.active_index]?.actor_id, 'bear')
+  assert.equal(started.state.mechanics.combat.action_economy.bear.attack_action_limit, 1, 'TurnStarted starts with the generic frame')
+
+  const result = await runNpcTurnScheduler({
+    campaignId, eventStore, rulesEngine: new RulesEngine({ diceService: boundedDice() }),
+  })
+  const bearTurns = result.turns.filter((turn) => turn.actor_id === 'bear' && turn.kind === 'enemy-turn')
+  assert.deepEqual(bearTurns.map((turn) => turn.commands), [['MakeAttack'], ['MakeAttack'], ['EndTurn']])
+  assert.equal(result.state.mechanics.combat.active, true)
+  assert.equal(result.state.mechanics.combat.initiative[result.state.mechanics.combat.active_index]?.actor_id, 'hero')
+  assert.deepEqual(result.state.mechanics.combat.action_economy.bear.multiattack_action_ids, ['claw', 'bite'])
+})
+
+test('already started multiattack with a persisted one-attack frame ends without a forbidden continuation', () => {
+  const block = SRD_5_2_1_MONSTER_ALLOWLIST['srd_5_2_1:brown-bear']
+  const state = fixture()
+  state.enemies = [{
+    id: 'bear', name: block.name, hp: block.hp, maxHp: block.hp, armor: block.armor, speed: block.speed,
+    abilities: block.abilities, traits: block.traits, action_profiles: block.action_profiles,
+    attack_profile: block.action_profiles[0], x: 1, y: 1, alive: true,
+  }]
+  state.mechanics.positions = { hero: { x: 0, y: 1 }, bear: { x: 1, y: 1 } }
+  state.mechanics.encounter = { enemy_ids: ['bear'] }
+  state.mechanics.combat.initiative = [{ actor_id: 'bear', total: 20 }, { actor_id: 'hero', total: 10 }]
+  state.mechanics.combat.active_index = 0
+  state.mechanics.combat.action_economy = {
+    bear: {
+      action: false, bonus_action: true, reaction: true, movement: true,
+      movement_spent: 0, attacks_used: 1, attacks_allowed: 1,
+      action_economy_version: 2,
+      attack_action_id: 'turn-action:legacy:bear:normal',
+      attack_action_kind: 'normal', attack_action_limit: 1, attack_action_stack: [],
+    },
+  }
+
+  const plan = planNpcTurn(state, 'bear')
+  assert.deepEqual(plan, [{ command_type: 'EndTurn', actor_id: 'bear' }])
+  assert.doesNotThrow(() => new RulesEngine({ diceService: boundedDice() }).resolvePlan({ commands: plan }, state, {
+    isAdmin: true,
+    isNpcScheduler: true,
+    serverAuthoritativeCombat: true,
+  }))
+})
+
+test('haste frame remains one attack and is not promoted to a monster multiattack', () => {
+  const block = SRD_5_2_1_MONSTER_ALLOWLIST['srd_5_2_1:brown-bear']
+  const state = fixture()
+  state.enemies = [{
+    id: 'bear', name: block.name, hp: block.hp, maxHp: block.hp, armor: block.armor, speed: block.speed,
+    abilities: block.abilities, traits: block.traits, action_profiles: block.action_profiles,
+    attack_profile: block.action_profiles[0], x: 1, y: 1, alive: true,
+  }]
+  state.mechanics.conditions.bear = [{ id: 'hasted' }]
+  state.mechanics.positions = { hero: { x: 0, y: 1 }, bear: { x: 1, y: 1 } }
+  state.mechanics.encounter = { enemy_ids: ['bear'] }
+  state.mechanics.combat.initiative = [{ actor_id: 'bear', total: 20 }, { actor_id: 'hero', total: 10 }]
+  state.mechanics.combat.active_index = 0
+  state.mechanics.combat.action_economy = {
+    bear: {
+      action: true, bonus_action: true, reaction: true, movement: true,
+      movement_spent: 0, attacks_used: 0, attacks_allowed: 1,
+      action_economy_version: 2,
+      attack_action_id: 'turn-action:haste:bear:haste',
+      attack_action_kind: 'haste', attack_action_limit: 1, attack_action_stack: [],
+    },
+  }
+
+  const plan = planNpcTurn(state, 'bear')
+  assert.equal(plan.filter((command) => command.command_type === 'MakeAttack').length, 1)
+  assert.equal(plan.at(-1)?.command_type, 'EndTurn')
+  const resolved = new RulesEngine({ diceService: boundedDice() }).resolvePlan({ commands: plan }, state, {
+    isAdmin: true,
+    isNpcScheduler: true,
+    serverAuthoritativeCombat: true,
+  })
+  const attack = resolved.events.find((event) => event.event_type === 'AttackResolved')
+  assert.equal(attack?.payload?.attack_action_limit, 1)
+})
+
 test('ordinary on-hit size gate protects creatures larger than the declared maximum', () => {
   const block = SRD_5_2_1_MONSTER_ALLOWLIST['srd_5_2_1:brown-bear']
   const makeState = (size) => {

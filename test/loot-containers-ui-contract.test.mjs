@@ -186,8 +186,10 @@ test('отказ на гонке перерисовывает карточку, 
   // Сервер прикладывает свежий список к отказу (`server/index.mjs`), и клиент
   // обязан его применить: без этой ветки проигравший гонку видел бы уже взятый
   // кинжал до следующего опроса комнаты и бил бы в ту же стену.
-  const refusal = session.slice(session.indexOf('const result = await response.json().catch(() => null) as TacticalCommandResult'))
-    .slice(0, 1_400)
+  const commandStart = session.indexOf('const executeTacticalCommand = useCallback')
+  const checkStart = session.indexOf('const twoPhase = twoPhaseCheckCommandFor(command)', commandStart)
+  assert.ok(commandStart >= 0 && checkStart > commandStart)
+  const refusal = session.slice(commandStart, checkStart)
   assert.match(refusal, /result\?\.loot_containers/u)
   assert.match(refusal, /loot_containers: staleLoot/u)
   // Тем же кадром встаёт и запись летописи: свежий список говорит «тела больше

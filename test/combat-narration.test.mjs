@@ -105,6 +105,45 @@ test('спасбросок концентрации врага не раскры
   assert.match(own, /9 \+ 4 = 13/, 'свой бросок герой видит целиком')
 })
 
+test('спасбросок заклинания сообщает исход без КД и модификатора цели', () => {
+  const saved = combatNarration([
+    event('SpellSavingThrowResolved', { spell_id: 'sacred-flame', total: 21, difficulty: 13, modifier: 2, saved: true }, ['wolf']),
+  ], state)
+  assert.match(saved, /Волк успешно проходит спасбросок от «Священное пламя»/u)
+  assert.doesNotMatch(saved, /21|13|\b2\b|sacred-flame/u)
+
+  const failed = combatNarration([
+    event('SpellSavingThrowResolved', { spell_id: 'sacred-flame', total: 8, difficulty: 13, modifier: 2, saved: false }, ['wolf']),
+  ], state)
+  assert.match(failed, /Волк проваливает спасбросок от «Священное пламя»/u)
+  assert.doesNotMatch(failed, /13|\b2\b|sacred-flame/u)
+})
+
+test('окно реакции и UseCombatAction получают безопасный русский текст', () => {
+  const text = combatNarration([
+    { ...event('ReactionWindowOpened', { source_actor_id: 'wolf', action_ids: ['opportunity-attack'], action_options: [{ id: 'opportunity-attack', name: 'Атака по возможности' }], trigger: 'enemy-left-reach' }, ['hero']), actor_id: 'wolf' },
+    event('ReactionWindowClosed', { accepted: true, action_id: 'opportunity-attack' }, ['hero']),
+    event('CombatActionUsed', { action_type: 'reaction', action_id: 'opportunity-attack', reaction_window_id: 'reaction:opportunity' }, ['hero']),
+  ], state)
+  assert.match(text, /получает возможность использовать реакцию «Атака по возможности»/u)
+  assert.match(text, /подтверждает реакцию «Атака по возможности»/u)
+  assert.match(text, /использует реакцию «Атака по возможности»/u)
+  assert.doesNotMatch(text, /ReactionWindow|CombatActionUsed|opportunity-attack/u)
+
+  const unknown = combatNarration([
+    { ...event('ReactionWindowOpened', { source_actor_id: 'wolf', action_ids: ['custom-reaction'], trigger: 'spell-cast' }, ['hero']), actor_id: 'wolf' },
+    event('ReactionWindowClosed', { accepted: true, action_id: 'custom-reaction' }, ['hero']),
+  ], state)
+  assert.match(unknown, /получает возможность использовать реакцию против Волк/u)
+  assert.doesNotMatch(unknown, /Атака по возможности|custom-reaction/u)
+
+  const named = combatNarration([
+    event('CombatActionUsed', { action_type: 'action', action_id: 'dash', name: 'Рывок' }, ['hero']),
+  ], state)
+  assert.match(named, /Лира использует «Рывок»/u)
+  assert.doesNotMatch(named, /dash/u)
+})
+
 test('причина использования Resistance локализуется в боевой ленте', () => {
   const text = combatNarration([
     event('ConcentrationEnded', { reason: 'resistance-used' }, ['hero']),

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { tacticalCommandRequest } from '../src/tactical-command-recovery.mjs'
 
 import { PARLEY_OUTCOMES, PARLEY_TERMS } from '../server/parley.mjs'
 
@@ -58,8 +59,19 @@ test('клиент называет только подход и исход: С�
 })
 
 test('ручной бросок парлея двухфазный: карточка проверки, затем та же команда с roll_id', () => {
-  assert.match(session, /manual_roll: true/u)
-  assert.match(session, /roll: \{ roll_id: dice\.roll\.roll_id \}/u)
+  assert.match(session, /manualRoll: dice\.manualRoll === true/u)
+  assert.match(session, /rollId: dice\.roll\.roll_id/u)
+  const pending = {
+    campaignId: 'PARLEY', requestId: 'parley-original', message: 'Предложить переговоры',
+    command: { command_type: 'ProposeParley', actor_id: 'hero', skill: 'persuasion' },
+  }
+  const first = tacticalCommandRequest({ ...pending, manualRoll: true }).body
+  assert.equal(first.manual_roll, true)
+  assert.equal(first.roll, undefined)
+  const second = tacticalCommandRequest({ ...pending, rollId: 'server-roll' }).body
+  assert.deepEqual(second.command, first.command)
+  assert.deepEqual(second.roll, { roll_id: 'server-roll' })
+  assert.equal(second.manual_roll, undefined)
   assert.match(session, /check\.command/u)
   // Развилка карточки закреплена **списком** двухфазных команд, а не одним
   // парлеем. Раньше здесь стояло дословное

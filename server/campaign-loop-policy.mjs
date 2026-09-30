@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto'
 
 import { normalizeDirectorIntent } from './autonomous-campaign.mjs'
-import { CLOSED_QUEST_STATUSES, QUEST_ABANDONMENT_NEXT_OBJECTIVE } from './world-memory.mjs'
+import { CLOSED_QUEST_STATUSES, QUEST_ABANDONMENT_NEXT_OBJECTIVE, questProgressEvidenceFor } from './world-memory.mjs'
 import { campaignModeFor, persistentStoryQuest } from './campaign-stories.mjs'
 
-export { QUEST_ABANDONMENT_NEXT_OBJECTIVE }
+export { QUEST_ABANDONMENT_NEXT_OBJECTIVE, questProgressEvidenceFor }
 
 const clean = (value, maximum = 240) => String(value ?? '')
   .normalize('NFKC')
@@ -69,7 +69,7 @@ export function affirmativePlayerAction(value = '', kind = '') {
   const text = clean(value, 500).toLocaleLowerCase('ru')
   if (/(?:не хочу|не ищ|без боя|не вступ|не напада)/u.test(text)) return false
   // Только прямая команда: цитата, условный план и «не атакуем» согласия не дают.
-  if (kind === 'encounter') return /^(?:мы\s+)?(?:ищем бой|хочу бой|начинаем бой|вступаем в бой|атакуем|нападаем|сражаемся)(?=$|[\s,.!?:;])/u.test(text)
+  if (kind === 'encounter') return /^(?:мы\s+)?(?:ищем бой|хочу бой|начать бой|начинаем бой|вступаем в бой|атакуем|нападаем|сражаемся)(?=$|[\s,.!?:;])/u.test(text)
   if (kind === 'transition') return /^(?:перейти|уйти|продолжить (?:путь|подтвержд[ёе]нный переход))(?=$|[\s,.!?:;])/u.test(text)
   return false
 }
@@ -170,16 +170,7 @@ function currentChapterIntents(state = {}) {
 }
 
 export function confirmedQuestProgress(state = {}, questId = '') {
-  const quest = (state.worldMemory?.quests ?? []).find((entry) => String(entry.id) === String(questId))
-  const terms = [quest?.title, ...(quest?.objectives ?? [])]
-    .map((term) => clean(term, 160).toLocaleLowerCase('ru')).filter((term) => term.length >= 4)
-  const evidence = (state.worldMemory?.facts ?? []).filter((fact) => {
-    if (!fact?.source_event_ids?.length) return false
-    if (!['discovery', 'quest_progress', 'quest_outcome', 'scene_change'].includes(String(fact.predicate))) return false
-    const text = clean(`${fact.summary ?? ''} ${fact.object ?? ''}`, 500).toLocaleLowerCase('ru')
-    return (quest?.entity_ids ?? []).includes(fact.subject_id) || terms.some((term) => text.includes(term))
-  })
-  return evidence.length > Number(quest?.clock?.current ?? 0)
+  return questProgressEvidenceFor(state, questId).length > 0
 }
 
 /**
@@ -246,7 +237,9 @@ export function campaignArcPosition(state = {}) {
 }
 
 function firstOpenQuest(state = {}) {
-  return (state.worldMemory?.quests ?? []).find((quest) => quest.status === 'active' && !quest.clock?.triggered) ?? null
+  const active = (state.worldMemory?.quests ?? []).filter((quest) => quest.status === 'active')
+  return active.find((quest) => confirmedQuestProgress(state, quest.id))
+    ?? active.find((quest) => !quest.clock?.triggered) ?? null
 }
 
 function availableIntentTypes(state = {}) {
@@ -375,7 +368,8 @@ export function authorizeDirectorIntent(state = {}, proposedIntent = {}, context
   // делает сам тип advance_quest_clock допустимым: иначе исполнитель заменит
   // цель молча и причина отказа исчезнет из поведения Директора.
   const staleQuestIntent = proposed.type === 'advance_quest_clock'
-    && (!proposedQuest || proposedQuest.status !== 'active' || proposedQuest.clock?.triggered === true)
+    && (!proposedQuest || proposedQuest.status !== 'active'
+      || proposedQuest.clock?.triggered === true && !confirmedQuestProgress(state, proposedQuest.id))
   const accepted = candidates.includes(proposed.type) && !staleQuestIntent
   const replacementType = accepted ? proposed.type : candidates[0] ?? 'continue_exploration'
   let intent = accepted ? proposed : intentForType(replacementType, state, availability.openQuest)

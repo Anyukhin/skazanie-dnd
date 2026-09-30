@@ -168,7 +168,7 @@ test('enforce Director atomically advances scene and assembles a durable catalog
   assert.deepEqual(transitionedTypes, [
     'TimeAdvanced', 'PartyDecisionConsumed', 'SceneAdvanced', 'WeatherChanged',
     'WorldEntityUpserted', 'QuestUpserted', 'QuestUpserted',
-    'WorldFactRecorded', 'WorldFactRecorded', 'NarrativeSummaryRecorded', 'MerchantCreated',
+    'WorldFactRecorded', 'WorldFactRecorded', 'NarrativeSummaryRecorded', 'MerchantCreated', 'NpcPlaced',
   ])
   assert.equal(transitionedTypes.filter((type) => type === 'WeatherChanged').length, 1, 'небо объявляется ровно один раз на переход')
   const sceneEvent = transitioned.body.mechanics.find((event) => event.event_type === 'SceneAdvanced')
@@ -181,6 +181,10 @@ test('enforce Director atomically advances scene and assembles a durable catalog
   assert.equal(sceneEvent.payload.scene.scene_kind, 'settlement')
   assert.equal(sceneEvent.payload.scene.settlement_type, 'city')
   assert.equal(sceneEvent.payload.scene_commerce.outcome, 'created')
+  const merchantPlacement = transitioned.body.mechanics.find((event) => event.event_type === 'NpcPlaced' && event.payload?.npc_id === transitioned.body.authoritative_state.merchants[0].id)
+  assert.ok(merchantPlacement, 'созданная в новой сцене лавка должна получить пост NPC в том же commit')
+  assert.equal(merchantPlacement.payload.location_id, transitioned.body.authoritative_state.scene.location_id)
+  assert.ok(transitioned.body.authoritative_state.scene_npcs?.some((npc) => npc.id === transitioned.body.authoritative_state.merchants[0].id))
   assert.equal(transitioned.body.authoritative_state.scene.location, 'Большой город Норвин')
   assert.equal(transitioned.body.authoritative_state.adventure.chapter, 2)
   assert.equal(transitioned.body.authoritative_state.merchants.length, 1)

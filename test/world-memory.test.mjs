@@ -92,6 +92,48 @@ test('world entities, facts, knowledge, quests and clocks are event sourced and 
   assert.deepEqual(replayEvents(initialState, result.events), result.state)
 })
 
+test('подтверждения прогресса версионированы, не сбрасываются обновлением цели и не попадают игроку', () => {
+  const prepared = runWorldMemoryCommands(campaign(), [
+    { command_type: 'UpsertWorldEntity', entity: { id: 'parcel', kind: 'item', name: 'Припасы', visibility: 'party' } },
+    { command_type: 'UpsertQuest', quest: { id: 'supplies', title: 'Найти припасы', entity_ids: ['parcel'], clock: { current: 0, max: 3 } } },
+    { command_type: 'RecordWorldFact', fact: { id: 'clue', subject_id: 'parcel', predicate: 'discovery', object: 'Найдена улика', visibility: 'party', source_event_ids: ['source-check'] } },
+  ]).state
+  const progressed = runWorldMemoryCommands(prepared, [{ command_type: 'AdvanceQuestClock', quest_id: 'supplies', amount: 1, proof_fact_ids: ['clue'] }])
+  assert.equal(progressed.events[0].payload.schema_version, 2)
+  assert.deepEqual(progressed.events[0].payload.proof_source_event_ids, ['source-check'])
+  const updated = runWorldMemoryCommands(progressed.state, [{ command_type: 'UpsertQuest', quest: {
+    id: 'supplies', title: 'Вернуть найденные припасы', entity_ids: ['parcel'], clock: { current: 1, max: 3 },
+  } }]).state
+  const quest = updated.worldMemory.quests.find((entry) => entry.id === 'supplies')
+  assert.deepEqual(quest.progress_fact_ids, ['clue'])
+  assert.deepEqual(quest.progress_source_event_ids, ['source-check'])
+  const copied = runWorldMemoryCommands(updated, [{ command_type: 'RecordWorldFact', fact: {
+    id: 'clue-copy', subject_id: 'parcel', predicate: 'discovery', object: 'Та же улика другим текстом',
+    visibility: 'party', source_event_ids: ['source-check'],
+  } }]).state
+  assert.throws(() => runWorldMemoryCommands(copied, [{
+    command_type: 'AdvanceQuestClock', quest_id: 'supplies', amount: 1, proof_fact_ids: ['clue-copy'],
+  }]), { code: 'WORLD_QUEST_PROGRESS_PROOF_INVALID' })
+  assert.throws(() => runWorldMemoryCommands(updated, [{ command_type: 'UpsertQuest', quest: {
+    id: 'supplies', title: 'Сброс', progress_fact_ids: [],
+  } }]), /progress_fact_ids/u)
+  const visible = worldMemoryForViewer(updated.worldMemory, { playerId: 'hero', isPartyMember: true })
+  const publicQuest = visible.quests.find((entry) => entry.id === 'supplies')
+  assert.equal(Object.hasOwn(publicQuest, 'progress_fact_ids'), false)
+  assert.equal(Object.hasOwn(publicQuest, 'progress_source_event_ids'), false)
+  assert.deepEqual(quest.progress_fact_ids, ['clue'], 'проекция не меняет источник')
+})
+
+test('старый QuestClockAdvanced не получает новый смысл подтверждения при replay', () => {
+  const memory = buildMemory().state.worldMemory
+  const legacy = applyWorldMemoryEvent(memory, { event_type: 'QuestClockAdvanced', payload: {
+    quest_id: 'quest:find-seal', amount: 1, proof_fact_ids: ['clue'], proof_source_event_ids: ['source-check'],
+  } })
+  const quest = legacy.quests.find((entry) => entry.id === 'quest:find-seal')
+  assert.equal(Object.hasOwn(quest, 'progress_fact_ids'), false)
+  assert.equal(Object.hasOwn(quest, 'progress_source_event_ids'), false)
+})
+
 test('triggered quest clock resolves through a typed event and rejects premature resolution', () => {
   const initialState = campaign()
   assert.throws(
