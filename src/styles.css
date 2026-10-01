@@ -225,8 +225,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .master-menu-list button svg { color: #a77c4b; }
 .top-actions .account-chip > span { min-width: 0; }
 .top-actions .account-chip > span > * { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.newbie-guide-button { width: 34px; height: 34px; flex: 0 0 auto; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 5px; background: rgba(255,255,255,.025); color: #8f867c; cursor: pointer; }
-.newbie-guide-button:hover, .newbie-guide-button[aria-pressed="true"] { border-color: rgba(201,149,85,.35); background: rgba(192,132,66,.1); color: #d7a568; }
 .account-chip { height: 36px; display: flex; align-items: center; gap: 8px; padding-left: 11px; border-left: 1px solid var(--line); }.account-chip > span { display: grid; text-align: right; }.account-chip > span { color: #aaa095; font: var(--fs-md) Spectral, serif; }.account-chip small { color: #68615a; font: var(--fs-sm) Manrope, sans-serif; }.account-chip button { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 5px; background: rgba(255,255,255,.025); color: #786f67; cursor: pointer; }.account-chip button:hover { color: #c98273; background: rgba(147,72,62,.09); }
 .session-code { height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid var(--line); border-radius: 5px; color: #726a62; font-size: var(--fs-sm); letter-spacing: .11em; }
 .session-code i { width: 6px; height: 6px; border-radius: 50%; background: #71a07c; box-shadow: 0 0 0 3px rgba(113,160,124,.12); }
@@ -290,7 +288,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .sidebar-context-action { flex: 1 1 calc(50% - 3px); min-width: 0; justify-content: center; padding-inline: 8px; font-size: var(--fs-sm); }
 .sidebar-master-menu { flex: 1 1 calc(50% - 3px); min-width: 0; }
 .sidebar-master-menu .sidebar-context-action { width: 100%; }
-.sidebar-context .newbie-guide-button { flex: 0 0 34px; }
 .sidebar-account { flex: 1 0 100%; min-width: 0; justify-content: flex-end; padding-left: 0; border-left: 0; border-top: 1px solid var(--line); padding-top: 7px; }
 .sidebar-account > span { min-width: 0; }
 .sidebar-account > span > * { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -789,30 +786,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .campaign-paused-notice p { margin: 2px 0 0; color: #8e8376; font: var(--fs-xs)/1.4 Manrope, sans-serif; }
 .campaign-paused-notice button { min-height: 34px; display: flex; align-items: center; gap: 6px; padding: 0 11px; border: 1px solid rgba(204,151,86,.35); border-radius: 5px; background: rgba(192,132,66,.12); color: #d3a064; cursor: pointer; }
 .campaign-paused-notice button:disabled { opacity: .45; cursor: wait; }
-.newbie-guide { position: absolute; z-index: 62; top: calc(var(--status) + 18px); right: calc(var(--server-column) + 18px); width: min(390px, calc(100% - var(--server-column) - 36px)); padding: 15px; border: 1px solid rgba(204,151,86,.35); border-radius: 9px; background: radial-gradient(circle at 100% 0, rgba(170,112,52,.16), transparent 48%), rgba(18,15,12,.97); box-shadow: 0 22px 60px rgba(0,0,0,.62); backdrop-filter: blur(12px); }
-.newbie-guide header { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 10px; color: #c28e54; }
-.newbie-guide header > span { min-width: 0; display: grid; }
-.newbie-guide header small { color: #8b6843; font: 700 var(--fs-xxs) Manrope, sans-serif; letter-spacing: .13em; }
-.newbie-guide header strong { color: #dfd1bf; font: 600 var(--fs-lg) Spectral, serif; }
-.newbie-guide header button { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 4px; background: transparent; color: #766d63; cursor: pointer; }
-.newbie-guide ul { margin: 13px 0; padding: 11px 11px 11px 29px; border: 1px solid rgba(255,255,255,.06); border-radius: 6px; background: rgba(255,255,255,.025); color: #b6aa9b; font: var(--fs-sm)/1.65 Spectral, serif; }
-.newbie-guide > p { display: flex; align-items: flex-start; gap: 8px; margin: 0; color: #8e8377; font: var(--fs-xs)/1.45 Manrope, sans-serif; }
-.newbie-guide > p svg { flex: 0 0 auto; color: #ad7b47; }
-.newbie-guide > p span { display: grid; }
-.newbie-guide > p b { color: #bbae9e; }
-.newbie-guide footer { display: flex; justify-content: flex-end; margin-top: 13px; }
-.newbie-guide footer button { min-height: 33px; padding: 0 13px; border: 1px solid rgba(204,151,86,.3); border-radius: 5px; background: rgba(192,132,66,.1); color: #c9975d; cursor: pointer; }
-/* Рекап «в прошлой серии»: та же рамка, что у шпаргалки, но у левого края —
-   обе карточки могут висеть одновременно, и перекрывать друг друга им нельзя.
-   Клик по тексту не закрывает: рекап читают, а не пролистывают. */
-.previously-on { position: absolute; z-index: 61; top: calc(var(--status) + 18px); left: 18px; width: min(420px, calc(100% - var(--server-column) - 36px)); padding: 15px; border: 1px solid rgba(204,151,86,.35); border-radius: 9px; background: radial-gradient(circle at 0 0, rgba(170,112,52,.16), transparent 48%), rgba(18,15,12,.97); box-shadow: 0 22px 60px rgba(0,0,0,.62); backdrop-filter: blur(12px); }
-.previously-on header { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 10px; color: #c28e54; }
-.previously-on header > span { min-width: 0; display: grid; }
-.previously-on header small { color: #8b6843; font: 700 var(--fs-xxs) Manrope, sans-serif; letter-spacing: .13em; }
-.previously-on header strong { color: #dfd1bf; font: 600 var(--fs-lg) Spectral, serif; }
-.previously-on header button { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 4px; background: transparent; color: #766d63; cursor: pointer; }
-.previously-on header button:hover { color: #d7a568; }
-.previously-on > p { margin: 13px 0 0; padding: 11px; border: 1px solid rgba(255,255,255,.06); border-radius: 6px; background: rgba(255,255,255,.025); color: #b6aa9b; font: var(--fs-sm)/1.65 Spectral, serif; }
 /* Режим набран как все надписи-заголовки этого интерфейса: прописные, Manrope
    700, разрядка, приглушённое золото — тот же ряд, что «ГЛАВА · СЦЕНА» над ним
    и «ОТРЯД» в меню. Отличие одно: тонкие линии по бокам, как разделитель главы
@@ -2012,7 +1985,6 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 
 @media (max-width: 820px) {
   .pending-check-overlay { top: calc(var(--status) + 8px); right: 8px; left: 8px; width: auto; }
-  .newbie-guide { right: 10px; left: 10px; width: auto; }
   .campaign-paused-notice { right: 10px; left: 10px; width: auto; transform: none; }
   .pending-check-overlay .dice-check { grid-template-columns: minmax(0, 1fr) 150px; }
   .spellbook-panel { width: calc(100vw - 20px); height: calc(100vh - 80px); }

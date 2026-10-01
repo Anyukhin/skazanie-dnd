@@ -5,12 +5,12 @@ import {
   PanelLeftClose, PanelLeftOpen, Pause, Play, Plus, RotateCcw,
   ScrollText, Send, Settings, Shield, Sparkles, Swords, Target, Users, X,
   Check, Compass, SlidersHorizontal, Wifi, WifiOff,
-  Heart, HeartCrack, HelpCircle,
+  Heart, HeartCrack,
   Lock, LockKeyhole, LockOpen, LogOut, ShieldCheck, RefreshCw,
   Bot, PawPrint, Skull, WandSparkles, Globe2, Volume2, VolumeX, Bell, BellOff, ShieldAlert,
   Sun, Cloudy, CloudRain, CloudFog, CloudLightning,
 } from 'lucide-react'
-import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignRecap, CampaignRecapResponse, CampaignSummary, CharacterCreationCatalog, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, MapCell, MapFeedback, Merchant, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp, WeatherConditionId, WeatherProjection } from './types'
+import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignSummary, CharacterCreationCatalog, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, MapCell, MapFeedback, Merchant, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp, WeatherConditionId, WeatherProjection } from './types'
 import { fetchWithTimeout, getAiHealth, getCharacterCreationCatalog } from './ai-client'
 import {
   ABILITY_LABELS, DIFFICULTY_LABELS, ErrorToasts, HeroFaceInitials, PageHeader, SKILL_LABELS, UI_SCALE_MAX, UI_SCALE_MIN,
@@ -63,7 +63,6 @@ import {
   type AtmosphereSettings,
 } from './atmosphere-audio'
 import {
-  NEWBIE_GUIDE_DISMISSED_KEY,
   confirmedLevelUps,
   playerRoleLabel,
   narratorAvailabilityMessage,
@@ -201,7 +200,7 @@ function Sidebar({
   campaignName, partyName, sessionCode, connectionState, pacing, progression, reputationStanding = [],
   canManageLifecycle, lifecycleStatus, lifecycleBusy, onChangeLifecycle, inviteEnabled, onInvite,
   masterMenuOpen, masterMenuRef, campaignControlBusy, arcChainEnabled, persistentCampaign, onToggleMasterMenu,
-  onRunCampaignControl, onOpenNewbieGuide, newbieGuideOpen, accountName, activeHeroName, onLogout,
+  onRunCampaignControl, accountName, activeHeroName, onLogout,
   onOpenCampaigns, onOpenLevelUp,
 }: {
   players: Player[]; selectedPlayerId: string; turnPlayerId: string; accessibleHeroIds: string[]; typingActorIds: string[]; isAdmin: boolean
@@ -213,7 +212,7 @@ function Sidebar({
   canManageLifecycle: boolean; lifecycleStatus: string; lifecycleBusy: boolean; onChangeLifecycle: (action: SidebarLifecycleAction) => void
   inviteEnabled: boolean; onInvite: () => void; masterMenuOpen: boolean; masterMenuRef: React.RefObject<HTMLDivElement | null>
   campaignControlBusy: boolean; arcChainEnabled: boolean; persistentCampaign: boolean; onToggleMasterMenu: () => void
-  onRunCampaignControl: (action: 'rewind_turn' | 'replay_scene') => void; onOpenNewbieGuide: () => void; newbieGuideOpen: boolean
+  onRunCampaignControl: (action: 'rewind_turn' | 'replay_scene') => void
   accountName: string; activeHeroName: string; onLogout: () => void; onOpenCampaigns: () => void; onOpenLevelUp: () => void
 }) {
   return (
@@ -264,7 +263,6 @@ function Sidebar({
               <button type="button" role="menuitem" className="danger" onClick={() => { onToggleMasterMenu(); if (window.confirm('Завершить кампанию и создать эпилог? Это действие необратимо.')) onChangeLifecycle('complete') }} disabled={lifecycleBusy}>Завершить кампанию</button>
             </div>}
           </div>}
-          <button className="newbie-guide-button sidebar-context-action" data-tooltip="Шпаргалка новичка" onClick={onOpenNewbieGuide} aria-label="Открыть шпаргалку новичка" aria-pressed={newbieGuideOpen} title="Шпаргалка новичка"><HelpCircle size={17} /></button>
           <div className="account-chip sidebar-account"><span>{accountName}<small>{activeHeroName}</small></span><button onClick={onLogout} title="Выйти" aria-label="Выйти из аккаунта"><LogOut size={15} /></button></div>
         </div>
       </section>
@@ -300,43 +298,6 @@ function MapSymbol() {
 
 function BackpackIcon() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M7 8V6a5 5 0 0 1 10 0v2M5 9h14l1 12H4L5 9Z"/><path d="M8 13h8v5H8z"/></svg>
-}
-
-const recapDismissedKey = (sessionCode: string) => `skazanie-recap-dismissed-v1:${sessionCode.toUpperCase()}`
-
-function PreviouslyOnCard({ recap, onDismiss }: { recap: CampaignRecap; onDismiss: () => void }) {
-  // Карточка не блокирующая и не модальная: доска под ней остаётся рабочей,
-  // а прочитавший закрывает её крестиком.
-  return <aside className="previously-on" role="note" aria-labelledby="previously-on-title">
-    <header>
-      <ScrollText size={19} />
-      <span><small>ПОСЛЕ ПЕРЕРЫВА</small><strong id="previously-on-title">В прошлой серии…</strong></span>
-      <button type="button" onClick={onDismiss} aria-label="Закрыть напоминание"><X size={16} /></button>
-    </header>
-    <p>{recap.text}</p>
-  </aside>
-}
-
-function NewbieGuide({ onDismiss }: { onDismiss: () => void }) {
-  // Панель висит поверх карты и перехватывает клики по клеткам под собой:
-  // игрок целится в клетку, попадает в шпаргалку — и герой «не реагирует».
-  // Поэтому любой клик по панели закрывает её: прочитал — кликнул — играешь.
-  useDialogEscape(onDismiss)
-  return <aside className="newbie-guide" role="dialog" aria-modal="false" aria-labelledby="newbie-guide-title" onClick={onDismiss}>
-    <header>
-      <HelpCircle size={21} />
-      <span><small>ПЕРВЫЕ ШАГИ</small><strong id="newbie-guide-title">Можно говорить обычными фразами</strong></span>
-      <button type="button" onClick={onDismiss} aria-label="Закрыть шпаргалку"><X size={16} /></button>
-    </header>
-    <ul>
-      <li>«Осматриваю алтарь и ищу следы»</li>
-      <li>«Спрашиваю стражника о закрытых воротах»</li>
-      <li>«Передаю зелье раненому союзнику»</li>
-      <li>«Прячусь за телегой и стреляю»</li>
-    </ul>
-    <p><Target size={15} /><span><b>Кликайте по клеткам, фишкам и предметам:</b> карта покажет доступное действие и цель до отправки.</span></p>
-    <footer><button type="button" onClick={onDismiss}>Понятно</button></footer>
-  </aside>
 }
 
 function CampaignPausedNotice({ canManage, busy, onResume }: { canManage: boolean; busy: boolean; onResume: () => void }) {
@@ -907,7 +868,6 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const [campaignAi, setCampaignAi] = useState<CampaignAiSettingsResponse | null>(null)
   const [campaignAiBusy, setCampaignAiBusy] = useState(false)
   const [campaignAiError, setCampaignAiError] = useState('')
-  const [campaignRecap, setCampaignRecap] = useState<CampaignRecap | null>(null)
   const [editingPlayerId, setEditingPlayerId] = useState<string | null>(null)
   const [editorInitialTab, setEditorInitialTab] = useState<'sheet' | 'story' | 'advancement'>('sheet')
   const [editorRequestLevelUp, setEditorRequestLevelUp] = useState(false)
@@ -920,9 +880,6 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const [campaignControlBusy, setCampaignControlBusy] = useState(false)
   const [lifecycleError, setLifecycleError] = useState<string | null>(null)
   const [reviewedPartyDefeat, setReviewedPartyDefeat] = useState<string | null>(null)
-  const [newbieGuideOpen, setNewbieGuideOpen] = useState(() => (
-    window.localStorage.getItem(NEWBIE_GUIDE_DISMISSED_KEY) !== 'true'
-  ))
   const [levelUpCelebration, setLevelUpCelebration] = useState<ConfirmedLevelUp | null>(null)
   // Смена сцены объявляется плашкой: сервер менял карту молча, и игрок, нажав
   // «покинуть локацию», не понимал, что уже стоит в другом месте.
@@ -1169,23 +1126,6 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
       })
     return () => controller.abort()
   }, [state.sessionCode, state.state_version, view])
-  // Рекап «в прошлой серии». Сервер сам решает, был ли перерыв, и отдаёт
-  // recap: null, если карточку показывать не нужно. Закрытая версия помнится
-  // локально на игрока, чтобы один и тот же текст не встречал его дважды.
-  useEffect(() => {
-    const controller = new AbortController()
-    setCampaignRecap(null)
-    void fetch(`/api/campaigns/${encodeURIComponent(state.sessionCode)}/recap`, { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) return
-        const body = await response.json().catch(() => null) as CampaignRecapResponse | null
-        if (!body?.recap?.text) return
-        if (window.localStorage.getItem(recapDismissedKey(state.sessionCode)) === String(body.recap.version)) return
-        setCampaignRecap(body.recap)
-      })
-      .catch(() => { /* рекап не обязателен: комната открывается без него */ })
-    return () => controller.abort()
-  }, [state.sessionCode])
   useEffect(() => {
     const requestedRoom = requestedRoomAtEntry.current
     const roomLoaded = requestedRoom
@@ -1663,8 +1603,6 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         persistentCampaign={persistentCampaign}
         onToggleMasterMenu={() => setMasterMenuOpen((value) => !value)}
         onRunCampaignControl={(action) => { void runCampaignControl(action) }}
-        onOpenNewbieGuide={() => setNewbieGuideOpen(true)}
-        newbieGuideOpen={newbieGuideOpen}
         accountName={account.name}
         activeHeroName={activePlayer.character}
         onLogout={onLogout}
@@ -1692,14 +1630,6 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             busy={lifecycleBusy}
             onResume={() => { void changeLifecycle('resume') }}
           />}
-          {campaignRecap && <PreviouslyOnCard recap={campaignRecap} onDismiss={() => {
-            window.localStorage.setItem(recapDismissedKey(state.sessionCode), String(campaignRecap.version))
-            setCampaignRecap(null)
-          }} />}
-          {newbieGuideOpen && <NewbieGuide onDismiss={() => {
-            window.localStorage.setItem(NEWBIE_GUIDE_DISMISSED_KEY, 'true')
-            setNewbieGuideOpen(false)
-          }} />}
           {/* Свободный бросок переехал из правой колонки в угол карты: он нужен
               в любой момент, а карточка с подписями занимала место рядом с
               состоянием героя. */}

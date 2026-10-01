@@ -141,14 +141,6 @@ test('пауза видна всем, а resume остаётся owner-only и �
   assert.match(appSource, /canManageLifecycle && lifecycleStatus === 'paused'/u)
 })
 
-test('шпаргалка содержит четыре примера, сохраняет dismiss и всегда открывается повторно', () => {
-  assert.equal((appSource.match(/<li>«/gu) ?? []).length, 4)
-  assert.match(appSource, /Кликайте по клеткам, фишкам и предметам/u)
-  assert.match(appSource, /NEWBIE_GUIDE_DISMISSED_KEY/u)
-  assert.match(appSource, /window\.localStorage\.setItem\(NEWBIE_GUIDE_DISMISSED_KEY, 'true'\)/u)
-  assert.match(appSource, /setNewbieGuideOpen\(true\)/u)
-})
-
 test('экран уровня появляется только после подтверждённого event/state transition и один раз на уровень', () => {
   const hero = { id: 'hero', character: 'Ада', level: 2 }
   assert.deepEqual(experience.confirmedLevelUps({}, [hero], []), [], 'начальная загрузка не празднуется')
