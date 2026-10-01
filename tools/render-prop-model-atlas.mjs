@@ -17,6 +17,8 @@ const THREE_ROOT = resolve(ROOT, 'node_modules/three')
 const ASSET_PREFIX = '/assets/models/environment/'
 const THREE_PREFIX = '/three/'
 const CANDIDATE_SCHEMA = 'environment-candidate/v1'
+/** Совпадает с ENVIRONMENT_MODEL_FAMILIES в src/prop-model-catalog.ts. */
+const MODEL_FAMILIES = Object.freeze(['quaternius', 'kenney', 'kenney-dungeon', 'skazanie', 'quaternius-nature', 'kaykit-dungeon', 'kenney-graveyard'])
 const OUTPUT_IMAGE = 'topdown.png'
 const OUTPUT_MANIFEST = 'manifest.json'
 const TILE = 256
@@ -109,9 +111,9 @@ function modelFilePath(candidate, value) {
   }
   if (pathname.includes('\0')) throw new Error(`Некорректный URL модели: ${value}`)
   const parts = pathname.split(/[\\/]/u)
-  if (parts.length < 2 || !['quaternius', 'kenney', 'kenney-dungeon', 'skazanie'].includes(parts[0])
+  if (parts.length < 2 || !MODEL_FAMILIES.includes(parts[0])
     || parts.some((part) => !part || part === '.' || part === '..')) {
-    throw new Error(`Модель должна лежать в quaternius, kenney, kenney-dungeon или skazanie: ${value}`)
+    throw new Error(`Модель должна лежать в одном из каталогов ${MODEL_FAMILIES.join(', ')}: ${value}`)
   }
   const file = parts.at(-1)
   if (!file || extname(file).toLowerCase() !== '.glb') throw new Error(`Ожидается GLB-модель: ${value}`)

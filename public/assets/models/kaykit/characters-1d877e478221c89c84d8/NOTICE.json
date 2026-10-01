@@ -1,0 +1,1329 @@
+{
+  "release": {
+    "id": "characters-1d877e478221c89c84d8",
+    "glbConcatSha256": "1d877e478221c89c84d83de66aa1471a036169e83a142a063dcff6725f0f03be",
+    "preparedBy": "node tools/import-kaykit-models.mjs --v2"
+  },
+  "license": "CC0-1.0",
+  "attribution": "Kay Lousberg / KayKit — https://kaylousberg.com (необязательна по CC0)",
+  "archives": [
+    {
+      "file": "KayKit_Adventurers_2.0_FREE.zip",
+      "bytes": 13024345,
+      "sha256": "abe48f4763fba0896bab486ee9e6d08ca6b5b3884b9601f235c8847ae94dc479",
+      "source": "https://kaylousberg.itch.io/kaykit-adventurers",
+      "version": "Free 2.0"
+    },
+    {
+      "file": "KayKit_Skeletons_1.1_FREE.zip",
+      "bytes": 8177445,
+      "sha256": "21fbad59ee6cc1d7bed12d0e425acab8ebe564b8620bbc1d017aedb29dd8a3d2",
+      "source": "https://kaylousberg.itch.io/kaykit-skeletons",
+      "version": "Free 1.1"
+    },
+    {
+      "file": "KayKit_Character_Animations_1.1_FREE.zip",
+      "bytes": 14858957,
+      "sha256": "65882f31f905ad2e953819648a59287cdeab8f623908d5ef701971d3758be20f",
+      "source": "https://kaylousberg.itch.io/kaykit-character-animations",
+      "version": "Free 1.1"
+    }
+  ],
+  "licenses": [
+    {
+      "archive": "adventurers",
+      "file": "adventurers-LICENSE.txt",
+      "sha256": "d4adc31660d1db22eb60eba648e01db41577548f6fa1a3576cb4a6283dae0a58"
+    },
+    {
+      "archive": "skeletons",
+      "file": "skeletons-LICENSE.txt",
+      "sha256": "327a1aac6e6ff1259d82d0024cdaf088bcef302f8d7a116b5142538ac2b5cf8d"
+    },
+    {
+      "archive": "animations",
+      "file": "animations-LICENSE.txt",
+      "sha256": "373b159044d1a886ed15f57ca5a7673ba14e2623c460283452705f2056912ed9"
+    }
+  ],
+  "outputs": [
+    {
+      "key": "knight",
+      "file": "knight.glb",
+      "bytes": 600116,
+      "sha256": "5d12e0c008b5c0c1a2820dce009fb42976a5abc292914a0dd7e0338ce8d2cec4",
+      "source": {
+        "archive": "KayKit_Adventurers_2.0_FREE.zip",
+        "path": "KayKit_Adventurers_2.0_FREE/Characters/gltf/Knight.glb",
+        "sha256": "e484370733824a0740683e7f6040aae0d20e5efd4107dde1175d6a2ad7e2f199"
+      },
+      "gear": [
+        {
+          "asset": "sword_1handed",
+          "slot": "handslot.r",
+          "node": "KayKitGear_sword_1handed"
+        },
+        {
+          "asset": "shield_badge_color",
+          "slot": "handslot.l",
+          "node": "KayKitGear_shield_badge_color"
+        }
+      ],
+      "clips": [
+        {
+          "name": "Idle",
+          "source": "Rig_Medium_General/Idle_A",
+          "duration": 1.0667,
+          "channels": 21
+        },
+        {
+          "name": "Walk",
+          "source": "Rig_Medium_MovementBasic/Walking_A",
+          "duration": 1.0667,
+          "channels": 19
+        },
+        {
+          "name": "Run",
+          "source": "Rig_Medium_MovementBasic/Running_A",
+          "duration": 0.8,
+          "channels": 25
+        },
+        {
+          "name": "Attack_Slash",
+          "source": "Rig_Medium_CombatMelee/Melee_1H_Attack_Slice_Diagonal",
+          "duration": 1,
+          "channels": 21,
+          "contact": 0.42,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_Chop",
+          "source": "Rig_Medium_CombatMelee/Melee_1H_Attack_Chop",
+          "duration": 1.0667,
+          "channels": 20,
+          "contact": 0.55,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_Stab",
+          "source": "Rig_Medium_CombatMelee/Melee_1H_Attack_Stab",
+          "duration": 1.6,
+          "channels": 20,
+          "contact": 0.25,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_TwoHanded",
+          "source": "Rig_Medium_CombatMelee/Melee_2H_Attack_Chop",
+          "duration": 1.6333,
+          "channels": 23,
+          "contact": 0.45,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_Unarmed",
+          "source": "Rig_Medium_CombatMelee/Melee_Unarmed_Attack_Punch_A",
+          "duration": 1.1667,
+          "channels": 21,
+          "contact": 0.38,
+          "at": 0.3
+        },
+        {
+          "name": "Ranged_Bow",
+          "source": "Rig_Medium_CombatRanged/Ranged_Bow_Release",
+          "duration": 1.3333,
+          "channels": 23,
+          "contact": 0.05,
+          "at": 0.2
+        },
+        {
+          "name": "Ranged_Crossbow",
+          "source": "Rig_Medium_CombatRanged/Ranged_2H_Shoot",
+          "duration": 1.0667,
+          "channels": 26,
+          "contact": 0.15,
+          "at": 0.2
+        },
+        {
+          "name": "Ranged_Throw",
+          "source": "Rig_Medium_General/Throw",
+          "duration": 1.3667,
+          "channels": 24,
+          "contact": 0.47,
+          "at": 0.2
+        },
+        {
+          "name": "Cast",
+          "source": "Rig_Medium_CombatRanged/Ranged_Magic_Shoot",
+          "duration": 0.9333,
+          "channels": 21
+        },
+        {
+          "name": "Hit",
+          "source": "Rig_Medium_General/Hit_A",
+          "duration": 0.6667,
+          "channels": 18
+        },
+        {
+          "name": "Death",
+          "source": "Rig_Medium_General/Death_A",
+          "duration": 0.8,
+          "channels": 24
+        }
+      ]
+    },
+    {
+      "key": "barbarian",
+      "file": "barbarian.glb",
+      "bytes": 644776,
+      "sha256": "8af186fa1d3479437e3fea313a583921462a62e17ca09ea89b9bdad85e163c31",
+      "source": {
+        "archive": "KayKit_Adventurers_2.0_FREE.zip",
+        "path": "KayKit_Adventurers_2.0_FREE/Characters/gltf/Barbarian.glb",
+        "sha256": "d37824a1d6e8e8af57ef9ae4a87e9271c3986210fbc432fb44670749a577ccac"
+      },
+      "gear": [
+        {
+          "asset": "axe_2handed",
+          "slot": "handslot.r",
+          "node": "KayKitGear_axe_2handed"
+        }
+      ],
+      "clips": [
+        {
+          "name": "Idle",
+          "source": "Rig_Medium_General/Idle_A",
+          "duration": 1.0667,
+          "channels": 21
+        },
+        {
+          "name": "Walk",
+          "source": "Rig_Medium_MovementBasic/Walking_A",
+          "duration": 1.0667,
+          "channels": 19
+        },
+        {
+          "name": "Run",
+          "source": "Rig_Medium_MovementBasic/Running_A",
+          "duration": 0.8,
+          "channels": 25
+        },
+        {
+          "name": "Attack_Slash",
+          "source": "Rig_Medium_CombatMelee/Melee_1H_Attack_Slice_Diagonal",
+          "duration": 1,
+          "channels": 21,
+          "contact": 0.42,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_Chop",
+          "source": "Rig_Medium_CombatMelee/Melee_1H_Attack_Chop",
+          "duration": 1.0667,
+          "channels": 20,
+          "contact": 0.55,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_Stab",
+          "source": "Rig_Medium_CombatMelee/Melee_1H_Attack_Stab",
+          "duration": 1.6,
+          "channels": 20,
+          "contact": 0.25,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_TwoHanded",
+          "source": "Rig_Medium_CombatMelee/Melee_2H_Attack_Chop",
+          "duration": 1.6333,
+          "channels": 23,
+          "contact": 0.45,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_Unarmed",
+          "source": "Rig_Medium_CombatMelee/Melee_Unarmed_Attack_Punch_A",
+          "duration": 1.1667,
+          "channels": 21,
+          "contact": 0.38,
+          "at": 0.3
+        },
+        {
+          "name": "Ranged_Bow",
+          "source": "Rig_Medium_CombatRanged/Ranged_Bow_Release",
+          "duration": 1.3333,
+          "channels": 23,
+          "contact": 0.05,
+          "at": 0.2
+        },
+        {
+          "name": "Ranged_Crossbow",
+          "source": "Rig_Medium_CombatRanged/Ranged_2H_Shoot",
+          "duration": 1.0667,
+          "channels": 26,
+          "contact": 0.15,
+          "at": 0.2
+        },
+        {
+          "name": "Ranged_Throw",
+          "source": "Rig_Medium_General/Throw",
+          "duration": 1.3667,
+          "channels": 24,
+          "contact": 0.47,
+          "at": 0.2
+        },
+        {
+          "name": "Cast",
+          "source": "Rig_Medium_CombatRanged/Ranged_Magic_Shoot",
+          "duration": 0.9333,
+          "channels": 21
+        },
+        {
+          "name": "Hit",
+          "source": "Rig_Medium_General/Hit_A",
+          "duration": 0.6667,
+          "channels": 18
+        },
+        {
+          "name": "Death",
+          "source": "Rig_Medium_General/Death_A",
+          "duration": 0.8,
+          "channels": 24
+        },
+        {
+          "name": "Attack",
+          "alias": "Attack_TwoHanded"
+        }
+      ]
+    },
+    {
+      "key": "mage",
+      "file": "mage.glb",
+      "bytes": 622448,
+      "sha256": "54e496dd97e6a5086b520fa0773f97d1ada7e225a1e3ccd2352a6ec914faf44f",
+      "source": {
+        "archive": "KayKit_Adventurers_2.0_FREE.zip",
+        "path": "KayKit_Adventurers_2.0_FREE/Characters/gltf/Mage.glb",
+        "sha256": "1f7d891bde50b879c70965f155b7b765b166dc3f8518e5abb86c0002f191a26e"
+      },
+      "gear": [
+        {
+          "asset": "staff",
+          "slot": "handslot.r",
+          "node": "KayKitGear_staff"
+        },
+        {
+          "asset": "spellbook_closed",
+          "slot": "handslot.l",
+          "node": "KayKitGear_spellbook_closed"
+        }
+      ],
+      "clips": [
+        {
+          "name": "Idle",
+          "source": "Rig_Medium_General/Idle_A",
+          "duration": 1.0667,
+          "channels": 21
+        },
+        {
+          "name": "Walk",
+          "source": "Rig_Medium_MovementBasic/Walking_A",
+          "duration": 1.0667,
+          "channels": 19
+        },
+        {
+          "name": "Run",
+          "source": "Rig_Medium_MovementBasic/Running_A",
+          "duration": 0.8,
+          "channels": 25
+        },
+        {
+          "name": "Attack_Slash",
+          "source": "Rig_Medium_CombatMelee/Melee_1H_Attack_Slice_Diagonal",
+          "duration": 1,
+          "channels": 21,
+          "contact": 0.42,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_Chop",
+          "source": "Rig_Medium_CombatMelee/Melee_1H_Attack_Chop",
+          "duration": 1.0667,
+          "channels": 20,
+          "contact": 0.55,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_Stab",
+          "source": "Rig_Medium_CombatMelee/Melee_1H_Attack_Stab",
+          "duration": 1.6,
+          "channels": 20,
+          "contact": 0.25,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_TwoHanded",
+          "source": "Rig_Medium_CombatMelee/Melee_2H_Attack_Chop",
+          "duration": 1.6333,
+          "channels": 23,
+          "contact": 0.45,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_Unarmed",
+          "source": "Rig_Medium_CombatMelee/Melee_Unarmed_Attack_Punch_A",
+          "duration": 1.1667,
+          "channels": 21,
+          "contact": 0.38,
+          "at": 0.3
+        },
+        {
+          "name": "Ranged_Bow",
+          "source": "Rig_Medium_CombatRanged/Ranged_Bow_Release",
+          "duration": 1.3333,
+          "channels": 23,
+          "contact": 0.05,
+          "at": 0.2
+        },
+        {
+          "name": "Ranged_Crossbow",
+          "source": "Rig_Medium_CombatRanged/Ranged_2H_Shoot",
+          "duration": 1.0667,
+          "channels": 26,
+          "contact": 0.15,
+          "at": 0.2
+        },
+        {
+          "name": "Ranged_Throw",
+          "source": "Rig_Medium_General/Throw",
+          "duration": 1.3667,
+          "channels": 24,
+          "contact": 0.47,
+          "at": 0.2
+        },
+        {
+          "name": "Cast",
+          "source": "Rig_Medium_CombatRanged/Ranged_Magic_Shoot",
+          "duration": 0.9333,
+          "channels": 21
+        },
+        {
+          "name": "Hit",
+          "source": "Rig_Medium_General/Hit_A",
+          "duration": 0.6667,
+          "channels": 18
+        },
+        {
+          "name": "Death",
+          "source": "Rig_Medium_General/Death_A",
+          "duration": 0.8,
+          "channels": 24
+        },
+        {
+          "name": "Attack",
+          "alias": "Attack_Chop"
+        }
+      ]
+    },
+    {
+      "key": "ranger",
+      "file": "ranger.glb",
+      "bytes": 748116,
+      "sha256": "ff41b60e71b53b2a59e71a1922a5aae2e062a87579311ce255ec9cf9754001d3",
+      "source": {
+        "archive": "KayKit_Adventurers_2.0_FREE.zip",
+        "path": "KayKit_Adventurers_2.0_FREE/Characters/gltf/Ranger.glb",
+        "sha256": "3a0b0166b9d61d58dcaaa739c3cc0538be46e00d2928dd5cb513d9a41770d2e9"
+      },
+      "gear": [
+        {
+          "asset": "bow_withString",
+          "slot": "handslot.l",
+          "node": "KayKitGear_bow_withString"
+        }
+      ],
+      "clips": [
+        {
+          "name": "Idle",
+          "source": "Rig_Medium_General/Idle_A",
+          "duration": 1.0667,
+          "channels": 21
+        },
+        {
+          "name": "Walk",
+          "source": "Rig_Medium_MovementBasic/Walking_A",
+          "duration": 1.0667,
+          "channels": 19
+        },
+        {
+          "name": "Run",
+          "source": "Rig_Medium_MovementBasic/Running_A",
+          "duration": 0.8,
+          "channels": 25
+        },
+        {
+          "name": "Attack_Slash",
+          "source": "Rig_Medium_CombatMelee/Melee_1H_Attack_Slice_Diagonal",
+          "duration": 1,
+          "channels": 21,
+          "contact": 0.42,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_Chop",
+          "source": "Rig_Medium_CombatMelee/Melee_1H_Attack_Chop",
+          "duration": 1.0667,
+          "channels": 20,
+          "contact": 0.55,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_Stab",
+          "source": "Rig_Medium_CombatMelee/Melee_1H_Attack_Stab",
+          "duration": 1.6,
+          "channels": 20,
+          "contact": 0.25,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_TwoHanded",
+          "source": "Rig_Medium_CombatMelee/Melee_2H_Attack_Chop",
+          "duration": 1.6333,
+          "channels": 23,
+          "contact": 0.45,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_Unarmed",
+          "source": "Rig_Medium_CombatMelee/Melee_Unarmed_Attack_Punch_A",
+          "duration": 1.1667,
+          "channels": 21,
+          "contact": 0.38,
+          "at": 0.3
+        },
+        {
+          "name": "Ranged_Bow",
+          "source": "Rig_Medium_CombatRanged/Ranged_Bow_Release",
+          "duration": 1.3333,
+          "channels": 23,
+          "contact": 0.05,
+          "at": 0.2
+        },
+        {
+          "name": "Ranged_Crossbow",
+          "source": "Rig_Medium_CombatRanged/Ranged_2H_Shoot",
+          "duration": 1.0667,
+          "channels": 26,
+          "contact": 0.15,
+          "at": 0.2
+        },
+        {
+          "name": "Ranged_Throw",
+          "source": "Rig_Medium_General/Throw",
+          "duration": 1.3667,
+          "channels": 24,
+          "contact": 0.47,
+          "at": 0.2
+        },
+        {
+          "name": "Cast",
+          "source": "Rig_Medium_CombatRanged/Ranged_Magic_Shoot",
+          "duration": 0.9333,
+          "channels": 21
+        },
+        {
+          "name": "Hit",
+          "source": "Rig_Medium_General/Hit_A",
+          "duration": 0.6667,
+          "channels": 18
+        },
+        {
+          "name": "Death",
+          "source": "Rig_Medium_General/Death_A",
+          "duration": 0.8,
+          "channels": 24
+        }
+      ]
+    },
+    {
+      "key": "rogue",
+      "file": "rogue.glb",
+      "bytes": 661436,
+      "sha256": "0933bed46cf3b4478c1836b6000afe1ccf1b84b8d071e1e9fb990d3dc52b3642",
+      "source": {
+        "archive": "KayKit_Adventurers_2.0_FREE.zip",
+        "path": "KayKit_Adventurers_2.0_FREE/Characters/gltf/Rogue.glb",
+        "sha256": "cae5d9b2f08d53f7b4ab2617d9f42f021c546eb10920455fdcd82a110867fae4"
+      },
+      "gear": [
+        {
+          "asset": "dagger",
+          "slot": "handslot.r",
+          "node": "KayKitGear_dagger_0"
+        },
+        {
+          "asset": "dagger",
+          "slot": "handslot.l",
+          "node": "KayKitGear_dagger_1"
+        }
+      ],
+      "clips": [
+        {
+          "name": "Idle",
+          "source": "Rig_Medium_General/Idle_A",
+          "duration": 1.0667,
+          "channels": 21
+        },
+        {
+          "name": "Walk",
+          "source": "Rig_Medium_MovementBasic/Walking_A",
+          "duration": 1.0667,
+          "channels": 19
+        },
+        {
+          "name": "Run",
+          "source": "Rig_Medium_MovementBasic/Running_A",
+          "duration": 0.8,
+          "channels": 25
+        },
+        {
+          "name": "Attack_Slash",
+          "source": "Rig_Medium_CombatMelee/Melee_1H_Attack_Slice_Diagonal",
+          "duration": 1,
+          "channels": 21,
+          "contact": 0.42,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_Chop",
+          "source": "Rig_Medium_CombatMelee/Melee_1H_Attack_Chop",
+          "duration": 1.0667,
+          "channels": 20,
+          "contact": 0.55,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_Stab",
+          "source": "Rig_Medium_CombatMelee/Melee_1H_Attack_Stab",
+          "duration": 1.6,
+          "channels": 20,
+          "contact": 0.25,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_TwoHanded",
+          "source": "Rig_Medium_CombatMelee/Melee_2H_Attack_Chop",
+          "duration": 1.6333,
+          "channels": 23,
+          "contact": 0.45,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_Unarmed",
+          "source": "Rig_Medium_CombatMelee/Melee_Unarmed_Attack_Punch_A",
+          "duration": 1.1667,
+          "channels": 21,
+          "contact": 0.38,
+          "at": 0.3
+        },
+        {
+          "name": "Ranged_Bow",
+          "source": "Rig_Medium_CombatRanged/Ranged_Bow_Release",
+          "duration": 1.3333,
+          "channels": 23,
+          "contact": 0.05,
+          "at": 0.2
+        },
+        {
+          "name": "Ranged_Crossbow",
+          "source": "Rig_Medium_CombatRanged/Ranged_2H_Shoot",
+          "duration": 1.0667,
+          "channels": 26,
+          "contact": 0.15,
+          "at": 0.2
+        },
+        {
+          "name": "Ranged_Throw",
+          "source": "Rig_Medium_General/Throw",
+          "duration": 1.3667,
+          "channels": 24,
+          "contact": 0.47,
+          "at": 0.2
+        },
+        {
+          "name": "Cast",
+          "source": "Rig_Medium_CombatRanged/Ranged_Magic_Shoot",
+          "duration": 0.9333,
+          "channels": 21
+        },
+        {
+          "name": "Hit",
+          "source": "Rig_Medium_General/Hit_A",
+          "duration": 0.6667,
+          "channels": 18
+        },
+        {
+          "name": "Death",
+          "source": "Rig_Medium_General/Death_A",
+          "duration": 0.8,
+          "channels": 24
+        },
+        {
+          "name": "Attack",
+          "alias": "Attack_Stab"
+        }
+      ]
+    },
+    {
+      "key": "rogue-hooded",
+      "file": "rogue-hooded.glb",
+      "bytes": 633712,
+      "sha256": "5c68464eb100118fe10c6c435b56e0bba941178c913a0a645678826ff2ebb02f",
+      "source": {
+        "archive": "KayKit_Adventurers_2.0_FREE.zip",
+        "path": "KayKit_Adventurers_2.0_FREE/Characters/gltf/Rogue_Hooded.glb",
+        "sha256": "e8f3233c6db190506fbef3ad855683e6cb8bd7350de637d923e14a08aef088dc"
+      },
+      "gear": [
+        {
+          "asset": "dagger",
+          "slot": "handslot.r",
+          "node": "KayKitGear_dagger_0"
+        },
+        {
+          "asset": "dagger",
+          "slot": "handslot.l",
+          "node": "KayKitGear_dagger_1"
+        }
+      ],
+      "clips": [
+        {
+          "name": "Idle",
+          "source": "Rig_Medium_General/Idle_A",
+          "duration": 1.0667,
+          "channels": 21
+        },
+        {
+          "name": "Walk",
+          "source": "Rig_Medium_MovementBasic/Walking_A",
+          "duration": 1.0667,
+          "channels": 19
+        },
+        {
+          "name": "Run",
+          "source": "Rig_Medium_MovementBasic/Running_A",
+          "duration": 0.8,
+          "channels": 25
+        },
+        {
+          "name": "Attack_Slash",
+          "source": "Rig_Medium_CombatMelee/Melee_1H_Attack_Slice_Diagonal",
+          "duration": 1,
+          "channels": 21,
+          "contact": 0.42,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_Chop",
+          "source": "Rig_Medium_CombatMelee/Melee_1H_Attack_Chop",
+          "duration": 1.0667,
+          "channels": 20,
+          "contact": 0.55,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_Stab",
+          "source": "Rig_Medium_CombatMelee/Melee_1H_Attack_Stab",
+          "duration": 1.6,
+          "channels": 20,
+          "contact": 0.25,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_TwoHanded",
+          "source": "Rig_Medium_CombatMelee/Melee_2H_Attack_Chop",
+          "duration": 1.6333,
+          "channels": 23,
+          "contact": 0.45,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_Unarmed",
+          "source": "Rig_Medium_CombatMelee/Melee_Unarmed_Attack_Punch_A",
+          "duration": 1.1667,
+          "channels": 21,
+          "contact": 0.38,
+          "at": 0.3
+        },
+        {
+          "name": "Ranged_Bow",
+          "source": "Rig_Medium_CombatRanged/Ranged_Bow_Release",
+          "duration": 1.3333,
+          "channels": 23,
+          "contact": 0.05,
+          "at": 0.2
+        },
+        {
+          "name": "Ranged_Crossbow",
+          "source": "Rig_Medium_CombatRanged/Ranged_2H_Shoot",
+          "duration": 1.0667,
+          "channels": 26,
+          "contact": 0.15,
+          "at": 0.2
+        },
+        {
+          "name": "Ranged_Throw",
+          "source": "Rig_Medium_General/Throw",
+          "duration": 1.3667,
+          "channels": 24,
+          "contact": 0.47,
+          "at": 0.2
+        },
+        {
+          "name": "Cast",
+          "source": "Rig_Medium_CombatRanged/Ranged_Magic_Shoot",
+          "duration": 0.9333,
+          "channels": 21
+        },
+        {
+          "name": "Hit",
+          "source": "Rig_Medium_General/Hit_A",
+          "duration": 0.6667,
+          "channels": 18
+        },
+        {
+          "name": "Death",
+          "source": "Rig_Medium_General/Death_A",
+          "duration": 0.8,
+          "channels": 24
+        },
+        {
+          "name": "Attack",
+          "alias": "Attack_Stab"
+        }
+      ]
+    },
+    {
+      "key": "skeleton-warrior",
+      "file": "skeleton-warrior.glb",
+      "bytes": 760944,
+      "sha256": "18df91e535a342aa3334d0d70c8bab510dcc6bc430dda262ecbe6aff26888bba",
+      "source": {
+        "archive": "KayKit_Skeletons_1.1_FREE.zip",
+        "path": "KayKit_Skeletons_1.1_FREE/characters/gltf/Skeleton_Warrior.glb",
+        "sha256": "992d5cfd6beb5565c50f742587d492f2a2cfcdfb3ffe4435aa16461c6d0e54be"
+      },
+      "gear": [
+        {
+          "asset": "Skeleton_Axe",
+          "slot": "handslot.r",
+          "node": "KayKitGear_Skeleton_Axe"
+        },
+        {
+          "asset": "Skeleton_Shield_Large_A",
+          "slot": "handslot.l",
+          "node": "KayKitGear_Skeleton_Shield_Large_A"
+        }
+      ],
+      "clips": [
+        {
+          "name": "Idle",
+          "source": "Rig_Medium_Special/Skeletons_Idle",
+          "duration": 4.2667,
+          "channels": 21
+        },
+        {
+          "name": "Walk",
+          "source": "Rig_Medium_Special/Skeletons_Walking",
+          "duration": 1.6,
+          "channels": 23
+        },
+        {
+          "name": "Run",
+          "source": "Rig_Medium_MovementBasic/Running_A",
+          "duration": 0.8,
+          "channels": 25
+        },
+        {
+          "name": "Attack_Slash",
+          "source": "Rig_Medium_CombatMelee/Melee_1H_Attack_Slice_Diagonal",
+          "duration": 1,
+          "channels": 21,
+          "contact": 0.42,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_Chop",
+          "source": "Rig_Medium_CombatMelee/Melee_1H_Attack_Chop",
+          "duration": 1.0667,
+          "channels": 20,
+          "contact": 0.55,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_Stab",
+          "source": "Rig_Medium_CombatMelee/Melee_1H_Attack_Stab",
+          "duration": 1.6,
+          "channels": 20,
+          "contact": 0.25,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_TwoHanded",
+          "source": "Rig_Medium_CombatMelee/Melee_2H_Attack_Chop",
+          "duration": 1.6333,
+          "channels": 23,
+          "contact": 0.45,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_Unarmed",
+          "source": "Rig_Medium_CombatMelee/Melee_Unarmed_Attack_Punch_A",
+          "duration": 1.1667,
+          "channels": 21,
+          "contact": 0.38,
+          "at": 0.3
+        },
+        {
+          "name": "Ranged_Bow",
+          "source": "Rig_Medium_CombatRanged/Ranged_Bow_Release",
+          "duration": 1.3333,
+          "channels": 23,
+          "contact": 0.05,
+          "at": 0.2
+        },
+        {
+          "name": "Ranged_Crossbow",
+          "source": "Rig_Medium_CombatRanged/Ranged_2H_Shoot",
+          "duration": 1.0667,
+          "channels": 26,
+          "contact": 0.15,
+          "at": 0.2
+        },
+        {
+          "name": "Ranged_Throw",
+          "source": "Rig_Medium_General/Throw",
+          "duration": 1.3667,
+          "channels": 24,
+          "contact": 0.47,
+          "at": 0.2
+        },
+        {
+          "name": "Cast",
+          "source": "Rig_Medium_CombatRanged/Ranged_Magic_Shoot",
+          "duration": 0.9333,
+          "channels": 21
+        },
+        {
+          "name": "Hit",
+          "source": "Rig_Medium_General/Hit_A",
+          "duration": 0.6667,
+          "channels": 18
+        },
+        {
+          "name": "Death",
+          "source": "Rig_Medium_Special/Skeletons_Death",
+          "duration": 2,
+          "channels": 25
+        },
+        {
+          "name": "Spawn",
+          "source": "Rig_Medium_Special/Skeletons_Spawn_Ground",
+          "duration": 3.5667,
+          "channels": 29
+        },
+        {
+          "name": "Attack",
+          "alias": "Attack_Chop"
+        }
+      ]
+    },
+    {
+      "key": "skeleton-rogue",
+      "file": "skeleton-rogue.glb",
+      "bytes": 682848,
+      "sha256": "7abf7d853816b4e95abebaf661c05ad8af652cd41a092566bf3c2500903ed196",
+      "source": {
+        "archive": "KayKit_Skeletons_1.1_FREE.zip",
+        "path": "KayKit_Skeletons_1.1_FREE/characters/gltf/Skeleton_Rogue.glb",
+        "sha256": "d5b8f074a78a9972af0966014905ea1df2e71d2c3495d37a211980e6343ee774"
+      },
+      "gear": [
+        {
+          "asset": "Skeleton_Blade",
+          "slot": "handslot.r",
+          "node": "KayKitGear_Skeleton_Blade"
+        }
+      ],
+      "clips": [
+        {
+          "name": "Idle",
+          "source": "Rig_Medium_Special/Skeletons_Idle",
+          "duration": 4.2667,
+          "channels": 21
+        },
+        {
+          "name": "Walk",
+          "source": "Rig_Medium_Special/Skeletons_Walking",
+          "duration": 1.6,
+          "channels": 23
+        },
+        {
+          "name": "Run",
+          "source": "Rig_Medium_MovementBasic/Running_A",
+          "duration": 0.8,
+          "channels": 25
+        },
+        {
+          "name": "Attack_Slash",
+          "source": "Rig_Medium_CombatMelee/Melee_1H_Attack_Slice_Diagonal",
+          "duration": 1,
+          "channels": 21,
+          "contact": 0.42,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_Chop",
+          "source": "Rig_Medium_CombatMelee/Melee_1H_Attack_Chop",
+          "duration": 1.0667,
+          "channels": 20,
+          "contact": 0.55,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_Stab",
+          "source": "Rig_Medium_CombatMelee/Melee_1H_Attack_Stab",
+          "duration": 1.6,
+          "channels": 20,
+          "contact": 0.25,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_TwoHanded",
+          "source": "Rig_Medium_CombatMelee/Melee_2H_Attack_Chop",
+          "duration": 1.6333,
+          "channels": 23,
+          "contact": 0.45,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_Unarmed",
+          "source": "Rig_Medium_CombatMelee/Melee_Unarmed_Attack_Punch_A",
+          "duration": 1.1667,
+          "channels": 21,
+          "contact": 0.38,
+          "at": 0.3
+        },
+        {
+          "name": "Ranged_Bow",
+          "source": "Rig_Medium_CombatRanged/Ranged_Bow_Release",
+          "duration": 1.3333,
+          "channels": 23,
+          "contact": 0.05,
+          "at": 0.2
+        },
+        {
+          "name": "Ranged_Crossbow",
+          "source": "Rig_Medium_CombatRanged/Ranged_2H_Shoot",
+          "duration": 1.0667,
+          "channels": 26,
+          "contact": 0.15,
+          "at": 0.2
+        },
+        {
+          "name": "Ranged_Throw",
+          "source": "Rig_Medium_General/Throw",
+          "duration": 1.3667,
+          "channels": 24,
+          "contact": 0.47,
+          "at": 0.2
+        },
+        {
+          "name": "Cast",
+          "source": "Rig_Medium_CombatRanged/Ranged_Magic_Shoot",
+          "duration": 0.9333,
+          "channels": 21
+        },
+        {
+          "name": "Hit",
+          "source": "Rig_Medium_General/Hit_A",
+          "duration": 0.6667,
+          "channels": 18
+        },
+        {
+          "name": "Death",
+          "source": "Rig_Medium_Special/Skeletons_Death",
+          "duration": 2,
+          "channels": 25
+        },
+        {
+          "name": "Spawn",
+          "source": "Rig_Medium_Special/Skeletons_Spawn_Ground",
+          "duration": 3.5667,
+          "channels": 29
+        }
+      ]
+    },
+    {
+      "key": "skeleton-mage",
+      "file": "skeleton-mage.glb",
+      "bytes": 668736,
+      "sha256": "447e81e0254926821423323ac5f35db076f41a14052bb93938d5080fd63c5afb",
+      "source": {
+        "archive": "KayKit_Skeletons_1.1_FREE.zip",
+        "path": "KayKit_Skeletons_1.1_FREE/characters/gltf/Skeleton_Mage.glb",
+        "sha256": "aee903d0febd151dbc49a4784ad4135862b20c1b025bf433b98a08d52e5f7849"
+      },
+      "gear": [
+        {
+          "asset": "Skeleton_Staff",
+          "slot": "handslot.r",
+          "node": "KayKitGear_Skeleton_Staff"
+        }
+      ],
+      "clips": [
+        {
+          "name": "Idle",
+          "source": "Rig_Medium_Special/Skeletons_Idle",
+          "duration": 4.2667,
+          "channels": 21
+        },
+        {
+          "name": "Walk",
+          "source": "Rig_Medium_Special/Skeletons_Walking",
+          "duration": 1.6,
+          "channels": 23
+        },
+        {
+          "name": "Run",
+          "source": "Rig_Medium_MovementBasic/Running_A",
+          "duration": 0.8,
+          "channels": 25
+        },
+        {
+          "name": "Attack_Slash",
+          "source": "Rig_Medium_CombatMelee/Melee_1H_Attack_Slice_Diagonal",
+          "duration": 1,
+          "channels": 21,
+          "contact": 0.42,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_Chop",
+          "source": "Rig_Medium_CombatMelee/Melee_1H_Attack_Chop",
+          "duration": 1.0667,
+          "channels": 20,
+          "contact": 0.55,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_Stab",
+          "source": "Rig_Medium_CombatMelee/Melee_1H_Attack_Stab",
+          "duration": 1.6,
+          "channels": 20,
+          "contact": 0.25,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_TwoHanded",
+          "source": "Rig_Medium_CombatMelee/Melee_2H_Attack_Chop",
+          "duration": 1.6333,
+          "channels": 23,
+          "contact": 0.45,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_Unarmed",
+          "source": "Rig_Medium_CombatMelee/Melee_Unarmed_Attack_Punch_A",
+          "duration": 1.1667,
+          "channels": 21,
+          "contact": 0.38,
+          "at": 0.3
+        },
+        {
+          "name": "Ranged_Bow",
+          "source": "Rig_Medium_CombatRanged/Ranged_Bow_Release",
+          "duration": 1.3333,
+          "channels": 23,
+          "contact": 0.05,
+          "at": 0.2
+        },
+        {
+          "name": "Ranged_Crossbow",
+          "source": "Rig_Medium_CombatRanged/Ranged_2H_Shoot",
+          "duration": 1.0667,
+          "channels": 26,
+          "contact": 0.15,
+          "at": 0.2
+        },
+        {
+          "name": "Ranged_Throw",
+          "source": "Rig_Medium_General/Throw",
+          "duration": 1.3667,
+          "channels": 24,
+          "contact": 0.47,
+          "at": 0.2
+        },
+        {
+          "name": "Cast",
+          "source": "Rig_Medium_CombatRanged/Ranged_Magic_Shoot",
+          "duration": 0.9333,
+          "channels": 21
+        },
+        {
+          "name": "Hit",
+          "source": "Rig_Medium_General/Hit_A",
+          "duration": 0.6667,
+          "channels": 18
+        },
+        {
+          "name": "Death",
+          "source": "Rig_Medium_Special/Skeletons_Death",
+          "duration": 2,
+          "channels": 25
+        },
+        {
+          "name": "Spawn",
+          "source": "Rig_Medium_Special/Skeletons_Spawn_Ground",
+          "duration": 3.5667,
+          "channels": 29
+        },
+        {
+          "name": "Attack",
+          "alias": "Attack_Chop"
+        }
+      ]
+    },
+    {
+      "key": "skeleton-minion",
+      "file": "skeleton-minion.glb",
+      "bytes": 693024,
+      "sha256": "85a5ff872b6bacbbd0fdde1c6eb583611277d4380eaf690417c6f47b31fe97b4",
+      "source": {
+        "archive": "KayKit_Skeletons_1.1_FREE.zip",
+        "path": "KayKit_Skeletons_1.1_FREE/characters/gltf/Skeleton_Minion.glb",
+        "sha256": "1fadbf1bc66fd7ce008eecd0ffccc8f8089e1c2887813559ca553680a738fece"
+      },
+      "gear": [
+        {
+          "asset": "Skeleton_Blade",
+          "slot": "handslot.r",
+          "node": "KayKitGear_Skeleton_Blade"
+        },
+        {
+          "asset": "Skeleton_Shield_Small_A",
+          "slot": "handslot.l",
+          "node": "KayKitGear_Skeleton_Shield_Small_A"
+        }
+      ],
+      "clips": [
+        {
+          "name": "Idle",
+          "source": "Rig_Medium_Special/Skeletons_Idle",
+          "duration": 4.2667,
+          "channels": 21
+        },
+        {
+          "name": "Walk",
+          "source": "Rig_Medium_Special/Skeletons_Walking",
+          "duration": 1.6,
+          "channels": 23
+        },
+        {
+          "name": "Run",
+          "source": "Rig_Medium_MovementBasic/Running_A",
+          "duration": 0.8,
+          "channels": 25
+        },
+        {
+          "name": "Attack_Slash",
+          "source": "Rig_Medium_CombatMelee/Melee_1H_Attack_Slice_Diagonal",
+          "duration": 1,
+          "channels": 21,
+          "contact": 0.42,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_Chop",
+          "source": "Rig_Medium_CombatMelee/Melee_1H_Attack_Chop",
+          "duration": 1.0667,
+          "channels": 20,
+          "contact": 0.55,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_Stab",
+          "source": "Rig_Medium_CombatMelee/Melee_1H_Attack_Stab",
+          "duration": 1.6,
+          "channels": 20,
+          "contact": 0.25,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_TwoHanded",
+          "source": "Rig_Medium_CombatMelee/Melee_2H_Attack_Chop",
+          "duration": 1.6333,
+          "channels": 23,
+          "contact": 0.45,
+          "at": 0.3
+        },
+        {
+          "name": "Attack_Unarmed",
+          "source": "Rig_Medium_CombatMelee/Melee_Unarmed_Attack_Punch_A",
+          "duration": 1.1667,
+          "channels": 21,
+          "contact": 0.38,
+          "at": 0.3
+        },
+        {
+          "name": "Ranged_Bow",
+          "source": "Rig_Medium_CombatRanged/Ranged_Bow_Release",
+          "duration": 1.3333,
+          "channels": 23,
+          "contact": 0.05,
+          "at": 0.2
+        },
+        {
+          "name": "Ranged_Crossbow",
+          "source": "Rig_Medium_CombatRanged/Ranged_2H_Shoot",
+          "duration": 1.0667,
+          "channels": 26,
+          "contact": 0.15,
+          "at": 0.2
+        },
+        {
+          "name": "Ranged_Throw",
+          "source": "Rig_Medium_General/Throw",
+          "duration": 1.3667,
+          "channels": 24,
+          "contact": 0.47,
+          "at": 0.2
+        },
+        {
+          "name": "Cast",
+          "source": "Rig_Medium_CombatRanged/Ranged_Magic_Shoot",
+          "duration": 0.9333,
+          "channels": 21
+        },
+        {
+          "name": "Hit",
+          "source": "Rig_Medium_General/Hit_A",
+          "duration": 0.6667,
+          "channels": 18
+        },
+        {
+          "name": "Death",
+          "source": "Rig_Medium_Special/Skeletons_Death",
+          "duration": 2,
+          "channels": 25
+        },
+        {
+          "name": "Spawn",
+          "source": "Rig_Medium_Special/Skeletons_Spawn_Ground",
+          "duration": 3.5667,
+          "channels": 29
+        }
+      ]
+    }
+  ]
+}

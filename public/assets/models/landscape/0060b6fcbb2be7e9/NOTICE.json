@@ -1,0 +1,170 @@
+{
+  "schema": "landscape-kit-notice/v1",
+  "revision": "0060b6fcbb2be7e9",
+  "generator": "tools/build-landscape-kit.mjs",
+  "processing": "Текстуры уменьшены до 512 px и встроены в GLB; модели одной группы слиты в один файл, общая текстура хранится один раз; цвета Kenney заменены палитрой местности (metallic 0, roughness 1). Геометрия не изменялась.",
+  "sources": [
+    {
+      "id": "quaternius-stylized-nature-megakit-standard",
+      "author": "Quaternius",
+      "url": "https://quaternius.itch.io/stylized-nature-megakit",
+      "license": "CC0-1.0",
+      "archive": "Stylized_Nature_MegaKit_Standard.zip",
+      "archiveSha256": "298f6732b872e4cf7b30e6e7abf9641c7f6dc6b326df37ac089533ed7e3d58c9",
+      "archiveVerified": true
+    },
+    {
+      "id": "kenney-nature-kit",
+      "author": "Kenney",
+      "url": "https://kenney.nl/assets/nature-kit",
+      "license": "CC0-1.0",
+      "archive": "kenney_nature-kit.zip",
+      "archiveSha256": "fa7974a0d342bfe63c38664ba9f8ec1a4aab8ea25f099bdc56870e33588c4d9d",
+      "archiveVerified": true
+    }
+  ],
+  "inputs": [
+    {
+      "sourceId": "quaternius-stylized-nature-megakit-standard",
+      "path": "Stylized_Nature_MegaKit_Standard/glTF/Grass.png",
+      "sha256": "5d69048193b246a73c996b892607fb36c75d0c60afcb2dab8aa12de3c0b2d9bd",
+      "bytes": 33605
+    },
+    {
+      "sourceId": "quaternius-stylized-nature-megakit-standard",
+      "path": "Stylized_Nature_MegaKit_Standard/glTF/Grass_Common_Tall.bin",
+      "sha256": "d7422b9360dd644f4095ac77a00dfa5d1f1078af71ebf18865a28ef031651379",
+      "bytes": 14076
+    },
+    {
+      "sourceId": "quaternius-stylized-nature-megakit-standard",
+      "path": "Stylized_Nature_MegaKit_Standard/glTF/Grass_Common_Tall.gltf",
+      "sha256": "783466c838163bf7da44e10675ace3851b8c9fb83322387125df7a080b05cd70",
+      "bytes": 2025
+    },
+    {
+      "sourceId": "quaternius-stylized-nature-megakit-standard",
+      "path": "Stylized_Nature_MegaKit_Standard/glTF/Grass_Wispy_Tall.bin",
+      "sha256": "a46e091f39958242a96722ea331efa8d7fb055c6e24d21aea6b0ac091a7b1b66",
+      "bytes": 29492
+    },
+    {
+      "sourceId": "quaternius-stylized-nature-megakit-standard",
+      "path": "Stylized_Nature_MegaKit_Standard/glTF/Grass_Wispy_Tall.gltf",
+      "sha256": "a05e3ac05e43abbdb89c5b61134e367c7d33e285ff8d2a6e0a40180cb335af0b",
+      "bytes": 2023
+    },
+    {
+      "sourceId": "quaternius-stylized-nature-megakit-standard",
+      "path": "Stylized_Nature_MegaKit_Standard/glTF/PathRocks_Diffuse.png",
+      "sha256": "85a04abb2c136fee53b376daf3b7d7f96fdf3966de0258dff6fe2b24da792b23",
+      "bytes": 811732
+    },
+    {
+      "sourceId": "quaternius-stylized-nature-megakit-standard",
+      "path": "Stylized_Nature_MegaKit_Standard/glTF/Pebble_Square_1.bin",
+      "sha256": "dcb3711eff865af8317c9f05ff7280c3187e813350b0f438bd013d70ba08ac59",
+      "bytes": 7536
+    },
+    {
+      "sourceId": "quaternius-stylized-nature-megakit-standard",
+      "path": "Stylized_Nature_MegaKit_Standard/glTF/Pebble_Square_1.gltf",
+      "sha256": "c8a4226bfc4f026a06774afbdefc860633eab2b3fe750f637cab89db9a6cfdef",
+      "bytes": 1850
+    },
+    {
+      "sourceId": "quaternius-stylized-nature-megakit-standard",
+      "path": "Stylized_Nature_MegaKit_Standard/glTF/Pebble_Square_5.bin",
+      "sha256": "0e03ae9fd1967ccdb639edca1bc69a2d19bac4de6d4a21153a3ba625fdcd0749",
+      "bytes": 5424
+    },
+    {
+      "sourceId": "quaternius-stylized-nature-megakit-standard",
+      "path": "Stylized_Nature_MegaKit_Standard/glTF/Pebble_Square_5.gltf",
+      "sha256": "09dc37cdbcf98cca2476e98803f0643bceb5916b76d2c27640920d80bf41a811",
+      "bytes": 1849
+    },
+    {
+      "sourceId": "quaternius-stylized-nature-megakit-standard",
+      "path": "Stylized_Nature_MegaKit_Standard/glTF/Rock_Medium_1.bin",
+      "sha256": "ea79527d4c2b3bdb7a28bf589bf0c1fd96d192a4d0738636753911dd58681e99",
+      "bytes": 13284
+    },
+    {
+      "sourceId": "quaternius-stylized-nature-megakit-standard",
+      "path": "Stylized_Nature_MegaKit_Standard/glTF/Rock_Medium_1.gltf",
+      "sha256": "5d1ab1fa03218f4a908728ed0eabe6486344a7e4f510b0d3d6f837fd1d011bd8",
+      "bytes": 1831
+    },
+    {
+      "sourceId": "quaternius-stylized-nature-megakit-standard",
+      "path": "Stylized_Nature_MegaKit_Standard/glTF/Rock_Medium_2.bin",
+      "sha256": "76b60bf8349f71abdb0ed462b3223d93c2dcabdfb5754bc132e18b021cc6c805",
+      "bytes": 9432
+    },
+    {
+      "sourceId": "quaternius-stylized-nature-megakit-standard",
+      "path": "Stylized_Nature_MegaKit_Standard/glTF/Rock_Medium_2.gltf",
+      "sha256": "fac2d05a05f2d0d2098de59c09b58f42cc875c9caca4fd4c4bd57f3d36e7b12e",
+      "bytes": 1825
+    },
+    {
+      "sourceId": "quaternius-stylized-nature-megakit-standard",
+      "path": "Stylized_Nature_MegaKit_Standard/glTF/Rock_Medium_3.bin",
+      "sha256": "63f94bce2d3fb3fe25b2d6c843a828b1bec76855dbaac93fcf5d43582309caad",
+      "bytes": 20124
+    },
+    {
+      "sourceId": "quaternius-stylized-nature-megakit-standard",
+      "path": "Stylized_Nature_MegaKit_Standard/glTF/Rock_Medium_3.gltf",
+      "sha256": "9a575b911372cf91693aa3a56aea8137ec2251c2b99fb34a31272ee64503047f",
+      "bytes": 1832
+    },
+    {
+      "sourceId": "quaternius-stylized-nature-megakit-standard",
+      "path": "Stylized_Nature_MegaKit_Standard/glTF/Rocks_Diffuse.png",
+      "sha256": "b813696df6081f469a127092eb0ce45cc39d56f3ccc0699152bfcd3804810b48",
+      "bytes": 2517398
+    },
+    {
+      "sourceId": "kenney-nature-kit",
+      "path": "kenney_nature-kit/Models/GLTF format/bridge_wood.glb",
+      "sha256": "3da4c208b0f72b7f2ba42db521b62ec4b0278050c75256a6982c40d21aab5701",
+      "bytes": 15692
+    },
+    {
+      "sourceId": "kenney-nature-kit",
+      "path": "kenney_nature-kit/Models/GLTF format/lily_large.glb",
+      "sha256": "c8f7080df0ae3166e9d33f523b66360c2ac7556dff36cc9c8ee78b6a676c7db2",
+      "bytes": 8044
+    },
+    {
+      "sourceId": "kenney-nature-kit",
+      "path": "kenney_nature-kit/Models/GLTF format/lily_small.glb",
+      "sha256": "38184c9eeb560acabd4d7f1d16852422df056edf0b318c97854c250e048cad3c",
+      "bytes": 5664
+    }
+  ],
+  "files": [
+    {
+      "path": "rocks.glb",
+      "sha256": "6733b7a2baca9e5c680abc6c8cd88ff7170334f571fde3fa4818995658dd3198",
+      "bytes": 387000
+    },
+    {
+      "path": "slabs.glb",
+      "sha256": "b2eb32bbbb8d8eb26b66009f86d07fe3d614fa2dbe61289a3c753fa87014a513",
+      "bytes": 320020
+    },
+    {
+      "path": "water.glb",
+      "sha256": "b98d2157f1c6549c172f9252585c0f66d2cac0bf0006e00040a402f5360ad53d",
+      "bytes": 92624
+    },
+    {
+      "path": "bridge.glb",
+      "sha256": "96ed7743cddd4406a953e9f3929aff16254db6884bfbacd90f36ed13615cc0fd",
+      "bytes": 15764
+    }
+  ]
+}

@@ -90,7 +90,10 @@ test('content integrity gate verifies hashes, references, counts and the complet
   // + 4 файла нейтральных основ и объявленные неизменяемые выпуски экипировки.
   // + 53 записанных боевых звука и их фазовый manifest.
   // + 38 карточек фокусов, инструментов барда и дорогих компонентов.
-  assert.equal(report.integrity.assets, 1791 + declaredEnvironmentReleaseFiles() + declaredEquipmentReleaseFiles())
+  // + 7 файлов набора местности (`models/landscape`: 4 GLB, manifest, NOTICE и
+  //   указатель ревизии) и 14 файлов выпуска фигурок KayKit 2.0
+  //   (`models/kaykit/characters-*`: 10 GLB, 3 лицензии, NOTICE).
+  assert.equal(report.integrity.assets, 1812 + declaredEnvironmentReleaseFiles() + declaredEquipmentReleaseFiles())
   assert.equal(report.integrity.coverage.find((entry) => entry.id === 'feats').coverage, 'missing')
 })
 

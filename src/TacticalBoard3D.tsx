@@ -18,7 +18,7 @@ import { createActorModel, createProceduralActorModel, getModelAssetDiagnostics,
 import { LEGACY_CATALOG_REVISION } from './prop-model-catalog'
 import { mapSignaturesFor } from './board3d-scene-signature'
 import { BOARD3D_QUALITY, board3DQuality, cueForQuality, type Board3DQuality } from './board3d-quality'
-import { BOARD3D_LIGHTING, boardEffectLights, createBoardBackdropTexture, createBoardEnvironment, createBoardRenderPipeline, fitSunShadow } from './board3d-graphics'
+import { BOARD3D_LIGHTING, boardDarkness, lightingForDarkness, boardEffectLights, createBoardBackdropTexture, createBoardEnvironment, createBoardRenderPipeline, fitSunShadow } from './board3d-graphics'
 import type { TacticalMap } from './types'
 
 type Props = TacticalBoardProps & { onUnavailable: (message: string) => void }
@@ -29,7 +29,9 @@ const QUALITY_STORAGE_KEY = 'skazanie-3d-quality'
 const ROOF_STORAGE_KEY = 'skazanie-3d-roofs'
 
 function roofModeValue(value: unknown): Board3DRoofMode {
-  return value === 'full' || value === 'hidden' ? value : 'cutaway'
+  // По умолчанию — без крыши, как в наборных диорамах: каркас среза
+  // перечёркивал зал балками. Выбранный игроком режим сохраняется.
+  return value === 'full' || value === 'cutaway' ? value : 'hidden'
 }
 
 function hasBoardContent(children: ReactNode): boolean {
@@ -161,7 +163,7 @@ export default function TacticalBoard3D(props: Props) {
     try { return board3DQuality(localStorage.getItem(QUALITY_STORAGE_KEY)) } catch { return 'balanced' }
   })
   const [roofMode, setRoofMode] = useState<Board3DRoofMode>(() => {
-    try { return roofModeValue(localStorage.getItem(ROOF_STORAGE_KEY)) } catch { return 'cutaway' }
+    try { return roofModeValue(localStorage.getItem(ROOF_STORAGE_KEY)) } catch { return 'hidden' }
   })
   const settings = useRef({ models, catalog, quality, roofMode })
   settings.current = { models, catalog, quality, roofMode }
@@ -787,6 +789,7 @@ export default function TacticalBoard3D(props: Props) {
         const motionAllowed = latest.current.animationsEnabled !== false
           && !(active ? combatAnimationUsesReducedMotion(active.cue) : systemPrefersReducedMotion())
         animate(now)
+        if (motionAllowed) terrain?.animate(now)
         if (motionAllowed) {
           const cue = latest.current.animationsEnabled === false ? undefined : active?.cue
           for (const [id, actor] of actorViews) {
@@ -830,7 +833,7 @@ export default function TacticalBoard3D(props: Props) {
         // Движение следует частоте экрана без искусственной паузы между кадрами.
         // При reduced motion, выключенных анимациях и скрытой вкладке цикл спит.
         else if (fpsEnabled.current || (motionAllowed && BOARD3D_QUALITY[settings.current.quality].idle
-          && [...actorViews.values()].some((actor) => !actor.defeated && actor.model.source === 'glb' && actor.model.idle))) {
+          && (terrain?.animated || [...actorViews.values()].some((actor) => !actor.defeated && actor.model.source === 'glb' && actor.model.idle)))) {
           invalidate()
         }
       } catch {
@@ -880,7 +883,7 @@ export default function TacticalBoard3D(props: Props) {
         resize()
       }
       renderer.shadowMap.enabled = current.lighting !== false && profile.shadows
-      const style = `${current.lighting}:${current.artUrl}:${current.artMode}:${current.themeKey}:${profile.pointLightShadows}:${pipeline.active}`
+      const style = `${current.lighting}:${current.artUrl}:${current.artMode}:${current.themeKey}:${profile.pointLightShadows}:${pipeline.active}:${profile.detail}`
       const signatures = mapSignaturesFor(map)
       const referenceSame = lastMap === map
       const contentChanged = Boolean(terrainSignature && terrainSignature !== signatures.staticKey)
@@ -903,7 +906,17 @@ export default function TacticalBoard3D(props: Props) {
         const css = getComputedStyle(element)
         palette = boardPaletteFrom((name) => css.getPropertyValue(name))
         if (terrain) { terrain.dispose(); diagnostics.disposed += 1 }
-        terrain = createBoard3DScene(map, { palette, lighting: current.lighting, pointLightShadows: profile.pointLightShadows, roofMode: settings.current.roofMode, artUrl: current.artUrl, artMode: current.artMode, artOverlayOpacity: pipeline.active ? BOARD3D_LIGHTING.linearArtOverlayOpacity : undefined, onReady: invalidate })
+        // Сумрак карты: в подземелье солнце гаснет, огни берут своё.
+        const darkness = current.lighting === false ? 0 : boardDarkness(map, (x, y) => cellAt(map, x, y))
+        const ambience = lightingForDarkness(darkness)
+        sun.intensity = ambience.sun
+        hemisphere.intensity = ambience.hemisphere
+        hemisphere.color.set(ambience.hemisphereSky)
+        scene.environmentIntensity = ambience.environment
+        renderer.toneMappingExposure = ambience.exposure
+        renderer.domElement.dataset.darkness = darkness.toFixed(2)
+        renderer.domElement.dataset.sunIntensity = sun.intensity.toFixed(2)
+        terrain = createBoard3DScene(map, { palette, lighting: current.lighting, pointLightShadows: profile.pointLightShadows, roofMode: settings.current.roofMode, artUrl: current.artUrl, artMode: current.artMode, artOverlayOpacity: pipeline.active ? BOARD3D_LIGHTING.linearArtOverlayOpacity : undefined, landscapeDetail: profile.detail, darkness, onReady: invalidate })
         diagnostics.created += 1
         diagnostics.rebuilds += 1
         diagnostics.rebuildReason = !terrainSignature ? 'initial' : mapChanged ? 'content-changed' : 'style-changed'

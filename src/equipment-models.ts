@@ -22,7 +22,7 @@ import {
   recordModelAssetParse,
   registerCspSafeEmbeddedTextureLoader,
 } from './model-assets'
-import { createEquipmentRig, type EquipmentRig, type EquipmentSide } from './equipment-rig'
+import { createEquipmentRig, kayKitBowSide, type EquipmentRig, type EquipmentSide } from './equipment-rig'
 
 const DEFAULT_MANIFEST_URL = '/assets/models/equipment/manifest.json'
 const EQUIPMENT_MODEL_ROOT = '/assets/models/equipment/'
@@ -469,9 +469,10 @@ function planForLoaded(rig: EquipmentRig, loaded: LoadedModel): MountPlan {
   return { loaded, parts }
 }
 
-function mountPlan(rig: EquipmentRig, plan: MountPlan): void {
+function mountPlan(rig: EquipmentRig, plan: MountPlan, offHandBusy = true): void {
   const { entry, root } = plan.loaded
-  const side = sideForSlot(entry.slot)
+  const slotSide = sideForSlot(entry.slot)
+  const side = slotSide ? kayKitBowSide(rig.family, entry.kind ?? entry.key, slotSide, offHandBusy) : null
   if (side) {
     if (!rig.mountHeld(root, side, { kind: entry.kind ?? entry.key, handedness: entry.handedness })) throw new Error(`Не удалось закрепить ${entry.key} в руке`)
     return
@@ -586,8 +587,9 @@ export function createEquipmentController(root: THREE.Group, options: EquipmentC
     for (;;) {
       rig.clear()
       let broken: { plan: MountPlan; error: unknown } | null = null
+      const offHandBusy = plans.some((plan) => sideForSlot(plan.loaded.entry.slot) === 'left')
       for (const plan of plans) {
-        try { mountPlan(rig, plan) } catch (error) { broken = { plan, error }; break }
+        try { mountPlan(rig, plan, offHandBusy) } catch (error) { broken = { plan, error }; break }
       }
       if (!broken) break
       const failed = broken.plan

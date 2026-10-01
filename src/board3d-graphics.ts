@@ -4,6 +4,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 
 /**
@@ -44,6 +45,71 @@ export function boardEffectLights(value: unknown): BoardEffectLight[] {
     lights.push({ x: x!, y: y!, z: z!, color, intensity: Math.min(8, intensity!), distance: Math.max(.5, Math.min(12, distance!)) })
   }
   return lights
+}
+
+/**
+ * Сумрак карты: средний уровень темноты раскрытых проходимых клеток. В
+ * помещении темнота — 1, сумрак — 0.85, светло — 0.6; снаружи 0.7, 0.35 и 0. Подземелье и склеп освещены факелами и
+ * жаровнями, а не солнцем; открытая местность остаётся дневной.
+ */
+export function boardDarkness(map: { width: number; height: number; zones: ReadonlyArray<{ id: string; kind: string; lightLevel: string }> }, cellAt: (x: number, y: number) => { revealed: boolean; passable: boolean; zone: string } | null): number {
+  // Под крышей солнца нет: помещение темнее открытого места того же уровня.
+  const levels = new Map(map.zones.map((zone) => {
+    const indoor = zone.kind === 'interior'
+    const value = zone.lightLevel === 'dark' ? (indoor ? 1 : .7) : zone.lightLevel === 'dim' ? (indoor ? .85 : .35) : (indoor ? .6 : 0)
+    return [zone.id, value]
+  }))
+  let total = 0, cells = 0
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    const cell = cellAt(x, y)
+    if (!cell?.revealed || !cell.passable) continue
+    total += levels.get(cell.zone) ?? 0
+    cells += 1
+  }
+  return cells ? Math.min(1, total / cells) : 0
+}
+
+/** Свет сцены при данном сумраке: солнце и заливка гаснут, огни берут своё. */
+export function lightingForDarkness(darkness: number) {
+  const d = Math.max(0, Math.min(1, darkness))
+  return {
+    sun: BOARD3D_LIGHTING.sun.intensity * (1 - .94 * d),
+    hemisphere: BOARD3D_LIGHTING.hemisphere.intensity * (1 - .8 * d),
+    hemisphereSky: new THREE.Color(BOARD3D_LIGHTING.hemisphere.sky).lerp(new THREE.Color('#7f8fae'), d).getStyle(),
+    environment: BOARD3D_LIGHTING.environmentIntensity * (1 - .75 * d),
+    exposure: BOARD3D_LIGHTING.exposure * (1 + .12 * d),
+  }
+}
+
+/**
+ * Цветокоррекция диорамы: чуть больше насыщенности и контраста, тёплый сдвиг
+ * и мягкая виньетка. Работает после тонмаппинга, в цветах экрана.
+ */
+export const BOARD3D_GRADE = { saturation: 1.14, contrast: 1.07, warmth: .025, vignette: .32 }
+
+const GradeShader = {
+  name: 'BoardGradeShader',
+  uniforms: {
+    tDiffuse: { value: null as THREE.Texture | null },
+    saturation: { value: BOARD3D_GRADE.saturation },
+    contrast: { value: BOARD3D_GRADE.contrast },
+    warmth: { value: BOARD3D_GRADE.warmth },
+    vignette: { value: BOARD3D_GRADE.vignette },
+  },
+  vertexShader: `varying vec2 vUv;
+void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float saturation; uniform float contrast; uniform float warmth; uniform float vignette;
+varying vec2 vUv;
+void main() {
+  vec4 color = texture2D(tDiffuse, vUv);
+  float luma = dot(color.rgb, vec3(.2126, .7152, .0722));
+  vec3 graded = mix(vec3(luma), color.rgb, saturation);
+  graded = (graded - .5) * contrast + .5;
+  graded.r *= 1. + warmth; graded.b *= 1. - warmth;
+  float edge = smoothstep(.42, .95, distance(vUv, vec2(.5)));
+  graded *= 1. - vignette * edge;
+  gl_FragColor = vec4(clamp(graded, 0., 1.), color.a);
+}`,
 }
 
 export type Board3DPostProcessing = {
@@ -198,6 +264,7 @@ export function createBoardRenderPipeline(renderer: THREE.WebGLRenderer, scene: 
       composer.addPass(bloom)
     }
     composer.addPass(new OutputPass())
+    composer.addPass(new ShaderPass(GradeShader))
   }
 
   return {

@@ -1,0 +1,5 @@
+Stylized Nature MegaKit (Standard) — Quaternius.
+Source: https://quaternius.itch.io/stylized-nature-megakit
+Source archive: Stylized_Nature_MegaKit_Standard.zip; SHA-256: 298f6732b872e4cf7b30e6e7abf9641c7f6dc6b326df37ac089533ed7e3d58c9.
+Selected 28 models; external .bin files and PNG textures were embedded, POSITION bounds were recomputed from vertex data.
+Bush_Common uses Leaves_NormalTree_C.png from the same kit instead of the red Leaves_TwistedTree_C.png.

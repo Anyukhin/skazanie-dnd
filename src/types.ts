@@ -1100,7 +1100,7 @@ export type TacticalCell = {
   surface: TacticalSurface
   hazardId: string | null
   material: TacticalMaterial
-  /** Шаг 5 футов, знаковое. */
+  /** Высота клетки в футах, знаковая. */
   elevation: number
   /** Идентификатор зоны, пустая строка — зоны нет. */
   zone: string
