@@ -675,9 +675,87 @@ export function layoutOrganicCave(theme, {
  * @param {{seed?: string, width?: number, height?: number, locationId?: string}} [options]
  * @returns {import('./tactical-map.mjs').TacticalMap}
  */
+/** Наибольший перепад между проходимыми соседями, в футах: шаг без лазания. */
+export const OPEN_TERRAIN_MAX_STEP_FEET = 3
+
+/**
+ * Рельеф открытой местности: два-три холма с пологими склонами. Высоты — в
+ * футах, как у правил: вершина 10–15 футов даёт возвышенность (от 5 футов),
+ * а соседние проходимые клетки различаются не больше чем на
+ * `OPEN_TERRAIN_MAX_STEP_FEET`, поэтому ни один шаг не требует лазания —
+ * механики лазания и падения в правилах нет. Вход ровный, дорога сглажена,
+ * вода лежит ниже берегов. Скалы кромки поднимаются над соседями: это только
+ * вид, клетки непроходимы.
+ *
+ * @param {Record<string, any>} theme
+ * @param {string|number} seed
+ * @param {Map<string, {x: number, y: number, patch: Record<string, any>}>} terrainCells
+ * @param {{width: number, height: number, entranceY: number, onRoadAt: (x: number, y: number) => boolean}} layout
+ */
+export function applyOpenTerrainRelief(theme, seed, terrainCells, { width, height, entranceY, onRoadAt }) {
+  const random = randomFor(`open-relief:${theme.id}:${seed}`)
+  const hills = []
+  const count = 2 + Math.floor(random() * 2)
+  for (let index = 0; index < count; index += 1) {
+    hills.push({
+      x: Math.floor(width * (0.25 + random() * 0.6)),
+      y: Math.floor(height * (0.15 + random() * 0.7)),
+      radius: 3.5 + random() * 3.5,
+      peak: 10 + Math.floor(random() * 6),
+    })
+  }
+  /** @type {Map<string, number>} */
+  const level = new Map()
+  for (const cell of terrainCells.values()) {
+    let feet = 0
+    for (const hill of hills) {
+      const distance = Math.hypot(cell.x - hill.x, cell.y - hill.y) / hill.radius
+      // Плато с округлым краем: вершина ровная, склон — косинус.
+      if (distance < 1.6) feet = Math.max(feet, hill.peak * (distance < 0.55 ? 1 : 0.5 + 0.5 * Math.cos((distance - 0.55) / 1.05 * Math.PI)))
+    }
+    if (cell.patch.surface === 'water') feet = -2
+    if (onRoadAt(cell.x, cell.y)) feet *= 0.45
+    if (cell.x <= 5 && Math.abs(cell.y - entranceY) <= 2) feet = 0
+    level.set(`${cell.x},${cell.y}`, Math.round(feet))
+  }
+  // Склоны без уступов: проходимые соседи сводятся к перепаду не больше шага.
+  // Понижаются только высокие клетки, поэтому вход и вода остаются на месте.
+  const passable = (cell) => cell.patch.passable !== false && cell.patch.surface !== 'water'
+  for (let pass = 0; pass < 40; pass += 1) {
+    let changed = false
+    for (const cell of terrainCells.values()) {
+      if (!passable(cell) && cell.patch.surface !== 'water') continue
+      const own = level.get(`${cell.x},${cell.y}`) ?? 0
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const neighbor = terrainCells.get(`${cell.x + dx},${cell.y + dy}`)
+        if (!neighbor || !passable(neighbor) && neighbor.patch.surface !== 'water') continue
+        const other = level.get(`${neighbor.x},${neighbor.y}`) ?? 0
+        if (own - other > OPEN_TERRAIN_MAX_STEP_FEET) {
+          level.set(`${cell.x},${cell.y}`, other + OPEN_TERRAIN_MAX_STEP_FEET)
+          changed = true
+          break
+        }
+      }
+    }
+    if (!changed) break
+  }
+  // Скала кромки — выше самого высокого проходимого соседа: край читается
+  // утёсом, а не бордюром.
+  for (const cell of terrainCells.values()) {
+    if (passable(cell) || cell.patch.surface === 'water') continue
+    let top = level.get(`${cell.x},${cell.y}`) ?? 0
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) top = Math.max(top, level.get(`${cell.x + dx},${cell.y + dy}`) ?? 0)
+    level.set(`${cell.x},${cell.y}`, top + 1 + Math.floor(random() * 2))
+  }
+  for (const cell of terrainCells.values()) {
+    const feet = level.get(`${cell.x},${cell.y}`) ?? 0
+    if (feet) cell.patch = { ...cell.patch, elevation: feet }
+  }
+}
+
 /**
  * Версия генератора открытой местности. 3 — петляющая река с каменистыми
- * берегами, скалистая кромка участка и пруд в лесу. Сохранённые карты не
+ * берегами, скалистая кромка участка, пруд в лесу и холмы (высоты в футах). Сохранённые карты не
  * перегенерируются: их версия остаётся прежней.
  */
 export const OPEN_TERRAIN_GENERATOR_VERSION = '3'
@@ -821,6 +899,7 @@ export function layoutOpenTerrain(theme, { seed = 'open', width = 26, height = 2
       queue.push(next)
     }
   }
+  applyOpenTerrainRelief(theme, seed, terrainCells, { width: safeWidth, height: safeHeight, entranceY, onRoadAt })
   // Скалы и вода не должны отрезать часть поляны от входа: недостижимые
   // проходимые клетки становятся камнем, а не ловушкой для отряда.
   const walkable = new Set([`1,${entranceY}`])

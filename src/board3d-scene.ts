@@ -623,13 +623,53 @@ function createGroundGeometry(resources: OwnedResources, map: TacticalMap, palet
   return geometry
 }
 
+/**
+ * Цвет склона по материалу верхней клетки: под травой и землёй — слоистый
+ * грунт, под камнем — порода, под песком — песчаник. Низ склона темнее верха.
+ */
+const SIDE_COLORS: Record<string, [string, string]> = {
+  grass: ['#6b4a2e', '#3c2a1b'], earth: ['#6b4a2e', '#3c2a1b'], sand: ['#a8875c', '#6e5537'],
+  stone: ['#7a746a', '#45413b'], marble: ['#a39d92', '#5e5a53'], wood: ['#6d5238', '#3a2b1e'],
+  metal: ['#6f747a', '#3d4044'], ice: ['#9fb9c4', '#5d7480'],
+}
+
+function terrainSideColor(map: TacticalMap, x: number, z: number, y: number, top: boolean, out: THREE.Color) {
+  // Вершина склона лежит на ребре клетки: верхняя клетка — та из двух, что выше.
+  const candidates = [[Math.floor(x - 1e-3), Math.floor(z - 1e-3)], [Math.floor(x - 1e-3), Math.floor(z + 1e-3)], [Math.floor(x + 1e-3), Math.floor(z - 1e-3)], [Math.floor(x + 1e-3), Math.floor(z + 1e-3)]]
+  let material = 'stone', best = -Infinity
+  for (const [cx, cz] of candidates) {
+    const cell = cellAt(map, cx, cz)
+    if (!cell?.revealed) continue
+    const height = terrainHeightAt(map, cx, cz)
+    if (height > best) { best = height; material = cell.material }
+  }
+  const [light, dark] = SIDE_COLORS[material] ?? SIDE_COLORS.stone
+  // Тонкие полосы слоёв: высота в мире даёт рисунок, общий для соседних граней.
+  const band = .9 + .1 * Math.sin(y * 9.7)
+  return out.set(top ? light : dark).multiplyScalar(band)
+}
+
 function addTerrainSides(resources: OwnedResources, map: TacticalMap, parent: THREE.Group, palette: BoardPalette) {
   const geometry = createTerrainSideGeometry(map)
   if (!geometry.getAttribute('position')?.count) {
     geometry.dispose()
     return
   }
-  const sides = new THREE.Mesh(ownGeometry(resources, geometry), material(resources, palette.wall))
+  const position = geometry.getAttribute('position') as THREE.BufferAttribute
+  const colors = new Float32Array(position.count * 3)
+  const color = new THREE.Color()
+  for (let quad = 0; quad < position.count; quad += 4) {
+    let top = -Infinity
+    for (let index = quad; index < quad + 4; index += 1) top = Math.max(top, position.getY(index))
+    for (let index = quad; index < quad + 4; index += 1) {
+      terrainSideColor(map, position.getX(index), position.getZ(index), position.getY(index), position.getY(index) >= top - 1e-6, color)
+      colors.set([color.r, color.g, color.b], index * 3)
+    }
+  }
+  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+  const sideMaterial = material(resources, '#ffffff', { vertexColors: true, roughness: .95, metalness: 0 })
+  void palette
+  const sides = new THREE.Mesh(ownGeometry(resources, geometry), sideMaterial)
   sides.name = 'terrain-sides'
   sides.castShadow = true
   sides.receiveShadow = true

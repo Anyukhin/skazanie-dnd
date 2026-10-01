@@ -91,7 +91,7 @@ export class TacticalMapError extends Error {
  * @property {string} surface значение из SURFACES
  * @property {string|null} hazardId идентификатор опасности клетки; сам не исполняет механику
  * @property {string} material значение из MATERIALS
- * @property {number} elevation шаг 5 футов
+ * @property {number} elevation высота клетки в футах, знаковая (правила, 3D и 2D читают футы)
  * @property {string} zone id зоны, пустая строка если зоны нет
  * @property {number} variant детерминированный выбор варианта тайла
  * @property {boolean} revealed
