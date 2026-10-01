@@ -95,6 +95,9 @@ function npcFacts(state, profile, message = '') {
     id: String(record.fact.id),
     subject: clean(record.entity?.name, 160),
     summary: clean(record.fact.summary || record.fact.object, 500),
+    // Тайна, которую знает только этот собеседник: её не говорят первому
+    // встречному. Модель видит пометку, запасной ответ такой факт не зачитывает.
+    ...(['public', 'party'].includes(String(record.fact.visibility)) ? {} : { guarded: true }),
   }))
 }
 
@@ -268,7 +271,8 @@ function fallbackDisclosure(profile, facts, claims, checkOutcome = null, memory 
     const remembered = memory.find((entry) => entry.kind === 'conversation' && entry.npc_reply)
     if (remembered) return { reply: `${profile.name} напоминает: «${clean(remembered.npc_reply, 500)}»`, claimIds: [] }
   }
-  if (facts.length) return { reply: `${profile.name} отвечает: «${facts[0].summary}»`, claimIds: [] }
+  const openFact = facts.find((fact) => !fact.guarded)
+  if (openFact) return { reply: `${profile.name} отвечает: «${openFact.summary}»`, claimIds: [] }
   const rumor = claims.find((claim) => claim.kind === 'rumor')
   if (rumor) return { reply: `${profile.name} понижает голос: «${rumor.summary}»`, claimIds: [rumor.id] }
   const belief = claims[0]

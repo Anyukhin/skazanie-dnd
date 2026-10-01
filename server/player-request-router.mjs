@@ -25,7 +25,7 @@ export const PLAYER_REQUEST_ROLES = Object.freeze({
   action_adjudicator: { id: 'action_adjudicator', prompt_id: 'action_adjudicator/v8', purpose: 'Разбор свободного действия: маршрут заявки, цель, средство, применимый навык и цена провала' },
 })
 
-const LORE_REQUEST = /(?:лор|легенд|предани|истори[яию]|что\s+(?:я|мы)\s+зна|кто\s+так|что\s+так|расскажи\s+(?:мне\s+)?(?:о|об|про)|помню\s+ли)/iu
+const LORE_REQUEST = /(?:лор|легенд|предани|истори[яию]|что\s+(?:я|мы)\s+(?:уже\s+|вообще\s+)?зна|кто\s+так|что\s+так|расскажи\s+(?:мне\s+)?(?:о|об|про)|помню\s+ли)/iu
 const DIRECTOR_REQUEST = /(?:покида|уходим|маршрут|куда\s+дальше|голосован|вместе\s+реш|цель\s+достиг|следующ\w*\s+локац|\[РЕШЕНИЕ ГРУППЫ\]|\[ГЛОБАЛЬНАЯ КАРТА\])/iu
 const DIRECTION_REQUEST = /(?:куда\s+(?:нам\s+)?(?:идти|пойти|уходить|направляться|двигаться)(?:\s+дальше|\s+отсюда|\s+по\s+заданию)?|куда\s+по\s+заданию|что\s+делать\s+дальше|^(?:(?:а|и|ну)\s+)*что\s+(?:теперь|дальше)\s*\??$)/iu
 const FATE_REQUEST = /(?:пусть|пускай|давайте|может)\s+(?:решит|определит|бросим)\s+(?:кубик|кость)|кубик\s+судьбы/iu
@@ -393,23 +393,35 @@ export function answerKnownLore(action, state = {}, options = {}) {
       action_kind: 'free',
     }
   }
-  const facts = []
-  for (const fact of worldFacts) {
-    const subject = fact.entity?.name ? `${fact.entity.name}: ` : ''
-    facts.push(subject + String(fact.summary || fact.object || fact.predicate))
+  // Сначала то, что отряд нашёл сам, затем остальное известное — коротко:
+  // ведущий напоминает суть, а не зачитывает пролог целиком.
+  const found = []
+  const known = []
+  // «Что мы уже знаем?» не называет темы: находки отряда перечисляются все,
+  // даже если поиск по словам вопроса ничего не нашёл.
+  const discoveries = (visibleMemory?.facts ?? [])
+    .filter((fact) => fact?.status !== 'superseded' && ['party', 'public'].includes(String(fact?.visibility)))
+    .filter((fact) => fact.predicate === 'discovery')
+  for (const fact of [...discoveries, ...worldFacts]) {
+    const line = asSentence(fact.fact?.summary || fact.summary || fact.object || fact.predicate, 400)
+    if (!line) continue
+    if ((fact.fact?.predicate ?? fact.predicate) === 'discovery') found.push(line)
+    else if ((fact.fact?.predicate ?? fact.predicate) !== 'opening_narration') known.push(line)
   }
-  if (activeQuest?.title) facts.push(`Активное задание «${activeQuest.title}»: ${questObjective || 'цель пока не определена'}`)
-  if (adventure.currentHook) facts.push(String(adventure.currentHook))
-  if (scene.objective) facts.push('Сейчас с этим связана цель: ' + String(scene.objective))
-  const history = Array.isArray(adventure.history) ? adventure.history.slice(-3) : []
-  for (const chapter of history) {
-    if (chapter?.outcome) facts.push(String(chapter.outcome))
-  }
-  const visited = Array.isArray(adventure.visitedLocations) ? adventure.visitedLocations.filter(Boolean).slice(-4) : []
-  if (visited.length) facts.push('Отряд уже бывал здесь: ' + visited.join(', '))
-  const narration = facts.length
-    ? 'Герои уже знают: ' + [...new Set(facts)].join('. ') + '.'
-    : 'Пока ничего подтверждённого об этом не известно. Можно расспросить свидетеля, изучить записи или осмотреть место; вопрос не расходует ход.'
+  const goal = asSentence(scene.objective || questObjective, 240)
+  const history = (Array.isArray(adventure.history) ? adventure.history.slice(-2) : [])
+    .map((chapter) => asSentence(chapter?.outcome, 240)).filter(Boolean)
+  const hook = asSentence(adventure.currentHook, 400)
+  if (hook) known.unshift(hook)
+  const parts = [
+    found.length ? `Вы выяснили: ${[...new Set(found)].slice(0, 4).join(' ')}` : '',
+    known.length ? `Ещё известно: ${[...new Set(known)].slice(0, 2).join(' ')}` : '',
+    history.length ? `Прежде: ${history.join(' ')}` : '',
+    goal ? `Цель: ${goal.charAt(0).toLocaleLowerCase('ru')}${goal.slice(1)}` : '',
+  ].filter(Boolean)
+  const narration = found.length || known.length || history.length
+    ? parts.join(' ')
+    : `Пока ничего подтверждённого об этом не известно — только то, что вы видели сами.${goal ?` Цель: ${goal.charAt(0).toLocaleLowerCase('ru')}${goal.slice(1)}` : ''} Осмотритесь или расспросите местных.`
   return {
     narration,
     effects: { roll: null, reveal: [], spawn: [], objective: null, grantItems: [], scene: null, interaction: null },

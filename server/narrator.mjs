@@ -1853,7 +1853,13 @@ function withoutVisibleNumbers(value) {
 
 function deterministicNarrationCandidate(brief, resolve, variant, arcRecap) {
   const responsePlan = narratorResponsePlan(brief)
-  const outcomeEvents = brief.visible_events.filter(event => !isDeclarationEvent(event))
+  const allOutcomeEvents = brief.visible_events.filter(event => !isDeclarationEvent(event))
+  // Находка говорит сама за себя: ведущий называет найденное, а не «проверка
+  // «Восприятие» завершилась успехом» с описью площади.
+  const discovery = allOutcomeEvents.some(event => event?.event_type === 'WorldFactRecorded')
+  const outcomeEvents = discovery
+    ? allOutcomeEvents.filter(event => !['AbilityCheckResolved', 'DieRolled', 'RollResolved'].includes(event?.event_type))
+    : allOutcomeEvents
   const summaries = [...(outcomeEvents.length ? outcomeEvents : brief.visible_events)]
     // Подтверждённая судьба NPC не должна исчезнуть за расходом ячейки и бросками.
     .sort((left, right) => Number(right.event_type === 'NpcDied') - Number(left.event_type === 'NpcDied'))
@@ -1884,7 +1890,7 @@ function deterministicNarrationCandidate(brief, resolve, variant, arcRecap) {
         ][variant % 4]
   const memorySentence = narrationSentence(memory)
   const dialogueOnly = outcomeEvents.length > 0 && outcomeEvents.every(event => event?.event_type === 'NpcConversationRecorded')
-  return [recap, body, dialogueOnly ? '' : opening, dialogueOnly ? '' : memorySentence].filter(Boolean).join(' ')
+  return [recap, body, dialogueOnly || discovery ? '' : opening, dialogueOnly || discovery ? '' : memorySentence].filter(Boolean).join(' ')
 }
 
 export function deterministicNarration(brief, resolveName, { recentNarrations = [] } = {}) {

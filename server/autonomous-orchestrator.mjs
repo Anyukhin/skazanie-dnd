@@ -1626,6 +1626,22 @@ export class AutonomousCampaignOrchestrator {
           ? [{ command_type: 'AdvanceTime', amount: outcomePolicy.success_minutes, unit: 'minute' }] : []),
       ])
       verifyDuplicate(commit, { requiresRuling: true })
+      // Без броска, но по делу: «изучаю повестку» открывает секрет этой темы
+      // отдельным коммитом после решения — улика ссылается на уже записанное.
+      const rulingEvent = (commit.events ?? []).find((entry) => entry.event_type === 'RulingRecorded')
+      const discovery = !loaded.state.mechanics?.combat?.active && rulingEvent
+        ? freeActionDiscoveryCommands(commit.state ?? loaded.state, {
+          checkEvent: rulingEvent, skill: reading.skill, actionText: text, goalSummary: reading.goal_summary,
+        })
+        : []
+      let discoveryCommit = null
+      if (discovery.length) {
+        try {
+          discoveryCommit = await this.runCommands(campaignId, `${idempotencyKey}:discovery`, discovery)
+        } catch (error) {
+          if (error?.code !== 'STATE_VERSION_CONFLICT') throw error
+        }
+      }
       return {
         context_metadata: actionContextMetadata,
         kind: 'auto_success',
@@ -1634,10 +1650,10 @@ export class AutonomousCampaignOrchestrator {
         narration: 'Это удаётся без броска: для самой попытки нет риска или противодействия.',
         turn_consumed: false,
         admin_commands: 0,
-        state: commit.state ?? loaded.state,
-        state_version: commit.state_version ?? loaded.state_version,
-        events: commit.events ?? [],
-        commands: commit.commands ?? [],
+        state: discoveryCommit?.state ?? commit.state ?? loaded.state,
+        state_version: discoveryCommit?.state_version ?? commit.state_version ?? loaded.state_version,
+        events: [...(commit.events ?? []), ...(discoveryCommit?.events ?? [])],
+        commands: [...(commit.commands ?? []), ...(discoveryCommit?.commands ?? [])],
         rolls: commit.rolls ?? [],
         duplicate: Boolean(commit.duplicate),
       }

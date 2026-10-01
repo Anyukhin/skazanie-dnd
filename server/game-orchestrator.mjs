@@ -894,6 +894,13 @@ function freeActionEffectText(events = [], state = {}) {
       return `${damageTypeLabel(event.payload?.damage_type)}: ${combatNarration([event], state)}`
     }
     if (['HitPointsReducedToZero', 'HeroDied'].includes(event?.event_type)) return combatNarration([event], state)
+    // Найденная улика — это её содержание, а не «изменение записано в память
+    // мира». Факт уже открыт отряду, поэтому его текст и есть ответ ведущего.
+    if (event?.event_type === 'WorldFactRecorded' && event?.payload?.fact?.predicate === 'discovery'
+      && ['party', 'public'].includes(String(event?.payload?.fact?.visibility))) {
+      const summary = String(event.payload.fact.summary ?? '').replace(/\s+/gu, ' ').trim().slice(0, 600)
+      if (summary) return /[.!?…]$/u.test(summary) ? summary : `${summary}.`
+    }
     const label = labels.get(String(event?.event_type ?? ''))
     return label ? `${label[0].toLocaleUpperCase('ru')}${label.slice(1)}.` : null
   }).filter(Boolean))]
@@ -1547,7 +1554,14 @@ export class GameOrchestrator {
         ? groundedNarration
         : freeAction.kind === 'clarification'
           ? 'Опишите действие подробнее, чтобы его можно было разрешить по правилам.'
-          : 'Действие не получило подтверждённого последствия. Уточните, чего герой хочет добиться.'
+          // Исход уже записан событиями: если ни один текст не прошёл guard,
+          // честнее короткое «вышло / не вышло», чем просьба уточнить уже
+          // сыгранное действие.
+          : ['auto_success', 'check_success'].includes(String(freeAction.kind))
+            ? 'Вышло.'
+            : freeAction.kind === 'check_failure'
+              ? 'Не вышло.'
+              : 'Действие не получило подтверждённого последствия. Уточните, чего герой хочет добиться.'
     const acceptedRenderedNarration = !deterministicProvider
       && Boolean(renderedNarration)
       && renderedNarration === preferredNarration

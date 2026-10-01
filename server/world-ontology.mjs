@@ -61,7 +61,7 @@ export const PREDICATES = Object.freeze({
   }),
   discovery: Object.freeze({
     record: 'fact', subject_kinds: ['npc', 'faction', 'location', 'concept'], object: '«clue»',
-    producers: ['world-memory'], consumers: ['world-memory'],
+    producers: ['world-memory'], consumers: ['game-orchestrator', 'player-request-router', 'world-memory'],
     visibility: 'party',
     description_ru: 'Улика свободного действия: успешная познавательная проверка по теме активного поручения. Доказательство для часов поручения.',
   }),
@@ -110,9 +110,15 @@ export const PREDICATES = Object.freeze({
   }),
   opening_narration: Object.freeze({
     record: 'fact', subject_kinds: ['location'], object: 'подтверждённый пролог сцены',
-    producers: ['campaign-bootstrap'], consumers: ['action-adjudicator'],
+    producers: ['campaign-bootstrap'], consumers: ['action-adjudicator', 'player-request-router'],
     visibility: 'party',
     description_ru: 'Абзацы пролога кампании; NPC стартовой локации знают их как свои факты, а судья свободных действий читает их как описание места.',
+  }),
+  gm_secret: Object.freeze({
+    record: 'fact', subject_kinds: ['location'], object: 'JSON { topic, skills, holder }',
+    producers: ['campaign-bootstrap'], consumers: ['world-memory'],
+    visibility: 'gm_only',
+    description_ru: 'Заготовка ведущего: то, что уже правда в первой сцене и скрыто от героев. Удачная проверка подходящего навыка заменяет её фактом отряда discovery; знающий NPC может выдать её в разговоре.',
   }),
   band_camp: Object.freeze({
     record: 'fact', subject_kinds: ['npc'], object: 'id ватаги',

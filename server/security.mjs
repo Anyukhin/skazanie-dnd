@@ -657,7 +657,16 @@ export function verifyNarration(narration, brief, {
     addViolation(violations, 'WORLD_CHANGE_NOT_IN_BRIEF', 'Narrator утверждает изменение мира, запрещённое контрактом этого решения')
   }
 
-  if (ITEM_TRANSFER_PATTERN.test(text) && !evidence.hasItem) {
+  // Найденная улика сама может говорить о вещи, уходе или разговоре («оттуда
+  // недавно забрали предмет», «список прибывающих»): пересказ подтверждённого
+  // факта — не новая передача вещи, не перемещение и не новая реплика.
+  const confirmedFactTexts = (brief?.visible_events ?? [])
+    .filter((event) => event?.event_type === 'WorldFactRecorded')
+    .map((event) => String(event?.payload?.fact?.summary ?? ''))
+  const confirmedFactMentionsItem = confirmedFactTexts.some((summary) => ITEM_TRANSFER_PATTERN.test(summary))
+  const confirmedFactMentionsMovement = confirmedFactTexts.some((summary) => MOVEMENT_ASSERTION_PATTERN.test(summary))
+  const confirmedFactMentionsSpeech = confirmedFactTexts.some((summary) => SOCIAL_ASSERTION_PATTERN.test(summary))
+  if (ITEM_TRANSFER_PATTERN.test(text) && !evidence.hasItem && !confirmedFactMentionsItem) {
     addViolation(violations, 'ITEM_TRANSFER_NOT_IN_BRIEF', 'Narrator объявил переход вещи без подтверждённого события')
   }
 
@@ -672,7 +681,7 @@ export function verifyNarration(narration, brief, {
   if (hasDirectMovementConstraint(brief) && movementAssertion && !evidence.hasMovement) {
     addViolation(violations, 'PLAYER_CONSTRAINT_VIOLATION', 'Narrator нарушил прямое ограничение игрока на перемещение')
   }
-  if (hasFreeActionContext && movementAssertion && !evidence.hasMovement) {
+  if (hasFreeActionContext && movementAssertion && !evidence.hasMovement && !confirmedFactMentionsMovement) {
     addViolation(violations, 'UNCONFIRMED_FREE_ACTION', 'Narrator объявил перемещение или разговор без подтверждённого события')
   }
   const hasSocialAuthority = evidence.hasSocialInteraction || evidence.hasMerchantEvent
@@ -684,7 +693,7 @@ export function verifyNarration(narration, brief, {
   if (positiveOutcomeAssertion(DOOR_OPENING_ASSERTION_PATTERN, text) && !evidence.hasDoorOpening) {
     addViolation(violations, 'WORLD_CHANGE_NOT_IN_BRIEF', 'Рассказчик открыл дверь или сдвинул засов без подтверждённого события')
   }
-  if (hasFreeActionContext && socialAssertion && !hasSocialAuthority && !hasPermittedSocialReaction(brief)) {
+  if (hasFreeActionContext && socialAssertion && !hasSocialAuthority && !hasPermittedSocialReaction(brief) && !confirmedFactMentionsSpeech) {
     addViolation(violations, 'UNCONFIRMED_SOCIAL_ACTION', 'Narrator объявил разговор или реплику NPC без подтверждённого события')
   }
   if (hasFreeActionContext && disclosureAssertion && !evidence.hasDisclosure) {
