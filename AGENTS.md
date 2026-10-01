@@ -20,7 +20,8 @@
   Типы описываются JSDoc-ом (`@typedef`, `@param`, `@returns`) и JSDoc-приведением
   `/** @type {T} */ (expr)` — рантайм при этом не меняется. Если для зелёного
   нужна правка поведения — остановиться и вынести её отдельной задачей.
-  Проверяются: `contracts.mjs`, `dynamic-map.mjs`, `viewer-projection.mjs`.
+  Проверяются 22 файла (на 2026-10-01): список даёт
+  `grep -l '^// @ts-check' server/*.mjs`. `rules-engine.mjs` и `index.mjs` в нём нет.
   Форма тактической клетки (`SceneCell`) объявлена в `server/dynamic-map.mjs`.
 - **`src/` — TypeScript + React + Vite.** Проверяется через `tsc --noEmit -p tsconfig.app.json`.
 - **Тесты — встроенный `node:test`, файлы `test/*.test.mjs`.** Ни Jest, ни
@@ -103,12 +104,12 @@ pnpm backup           # зашифрованная копия storage в ./backu
 
 | Файл | Ответственность |
 | --- | --- |
-| `server/rules-engine.mjs` | вся механика, допустимость, числа. ~11700 строк — точка входа для любого правила |
+| `server/rules-engine.mjs` | вся механика, допустимость, числа. ~24300 строк — точка входа для любого правила |
 | `server/event-store.mjs` | события, commit, replay |
 | `server/dice-service.mjs` | вся случайность; в тестах внедряется детерминированно |
 | `server/roll-registry.mjs` | `roll_id`/`check_id`, срок действия, защита от повторного применения |
 | `server/game-orchestrator.mjs` | оркестрация цикла `/api/narrate` |
-| `server/index.mjs` | HTTP-сервер и маршруты, ~3600 строк |
+| `server/index.mjs` | HTTP-сервер и маршруты, ~5700 строк |
 | `server/store.mjs` | persistence поверх `storage/` |
 | `server/security.mjs` | членство, владелец героя, полномочия |
 | `server/viewer-projection.mjs` | что игрок имеет право видеть |
