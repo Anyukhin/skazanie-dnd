@@ -63,7 +63,9 @@ export type PropModelCatalog = {
 
 const ROOT = '/assets/models/environment/'
 export const LEGACY_CATALOG_REVISION = 'pr79'
-export const ENVIRONMENT_MODEL_FAMILIES = Object.freeze(['quaternius', 'kenney', 'kenney-dungeon', 'skazanie'] as const)
+export const ENVIRONMENT_MODEL_FAMILIES = Object.freeze([
+  'quaternius', 'kenney', 'kenney-dungeon', 'skazanie', 'quaternius-nature', 'kaykit-dungeon', 'kenney-graveyard',
+] as const)
 const KEY = /^[a-z0-9][a-z0-9_-]{0,95}$/
 const LOCAL_FILE = /^\/assets\/models\/environment\/[a-zA-Z0-9_/-]+\.(glb|png)$/
 const MODEL_FILE = /^\/assets\/models\/environment\/[a-zA-Z0-9_/-]+\.glb$/

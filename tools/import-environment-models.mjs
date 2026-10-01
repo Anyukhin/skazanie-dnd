@@ -16,12 +16,15 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } 
 import { decodePng, encodePng } from './png-codec.mjs'
 import { resampleImage } from './build-prop-atlas.mjs'
 import { listAssets } from '../server/asset-registry.mjs'
+import { ENVIRONMENT_PACKS, GRAVEYARD_PALETTE_NOTICE, applyPackPalette, packModelKey, packModelSlug } from './environment-packs.mjs'
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url))
 const QUATERNIUS_DIR = join(ROOT, 'tmp/quaternius-fantasy-props-extracted/Exports/glTF')
 const KENNEY_DIR = join(ROOT, 'tmp/kenney-nature-kit-extracted/Models/GLTF format')
 const QUATERNIUS_ARCHIVE = join(ROOT, 'tmp/fantasy_props_megakitstandard.zip')
 const KENNEY_ARCHIVE = join(ROOT, 'tmp/kenney_nature-kit.zip')
+/** Каталог, куда скачаны и распакованы дополнительные наборы (см. tmp/asset-src/SOURCES.md). */
+const PACKS_ROOT = join(ROOT, 'tmp/asset-src')
 const DUNGEON_FAMILY = 'kenney-dungeon'
 const MAX_TEXTURE_SIDE = 512
 export const REDUCED_BASE_COLOR_SIDE = 256
@@ -31,11 +34,21 @@ export const REDUCED_BASE_COLOR_MODELS = Object.freeze([
   'Stall_Cart_Empty', 'Stall_Empty', 'Bed_Twin1', 'Bed_Twin2',
 ])
 const REDUCED_BASE_COLOR_MODEL_SET = new Set(REDUCED_BASE_COLOR_MODELS)
+/**
+ * Предмет Fantasy Props без assetId генерация не ставит на карту, а 2D-атлас
+ * его кадр не выбирает: он хранится в библиотеке, но не виден игроку. Такие
+ * модели держат BaseColor 256 px и Normal/ORM 128 px — это освобождает место
+ * в бюджете выпуска под варианты, которые действительно попадают на доску.
+ */
+export const UNMAPPED_NORMAL_ORM_SIDE = 128
 export const TEXTURE_POLICY = Object.freeze({
   baseColorMaxSide: MAX_TEXTURE_SIDE,
   normalOrmMaxSide: REDUCED_BASE_COLOR_SIDE,
   reducedBaseColorSide: REDUCED_BASE_COLOR_SIDE,
   reducedBaseColorModels: REDUCED_BASE_COLOR_MODELS,
+  unmappedBaseColorSide: REDUCED_BASE_COLOR_SIDE,
+  unmappedNormalOrmSide: UNMAPPED_NORMAL_ORM_SIDE,
+  packTextureSides: Object.freeze({ nature: 'листва 512, кора и камень 256, нормали 128', kaykit: 512, graveyard: 256 }),
 })
 const MAX_FILE_BYTES = 8_000_000
 const MAX_TOTAL_BYTES = 64 * 1024 * 1024
@@ -96,7 +109,11 @@ export const DUNGEON_SOURCE = Object.freeze({
   archiveSha256: 'dd0aa6776db8912283cdca60161dee6a8839bbda3558eba2ea501419eb5b4623',
 })
 
-/** У выбранных вариантов есть осмысленная связь с каноническим assetId. */
+/**
+ * У выбранных вариантов есть осмысленная связь с каноническим assetId.
+ * Бочки, ящики, сундук, монеты и настенный факел с выпуска selectionVersion 3
+ * берутся из KayKit Dungeon (environment-packs.mjs): тот же стиль, что у фигурок.
+ */
 const ASSET_IDS = {
   Table_Large: ['table_long'],
   Bench: ['bench', 'prayer_bench'],
@@ -104,10 +121,6 @@ const ASSET_IDS = {
   Stool: ['stool'],
   Bed_Twin1: ['bed'],
   Bed_Twin2: ['bed'],
-  Barrel: ['barrel', 'keg'],
-  Barrel_Apples: ['barrel'],
-  Crate_Wooden: ['crate'],
-  Chest_Wood: ['chest'],
   Bag: ['sack'],
   Bucket_Metal: ['bucket'],
   Cabinet: ['cupboard'],
@@ -119,10 +132,8 @@ const ASSET_IDS = {
   Bottle_1: ['bottle'],
   Candle_1: ['candle'],
   Pot_1: ['pot'],
-  Coin_Pile: ['coin_pile'],
   Cauldron: ['cauldron'],
   Chandelier: ['chandelier'],
-  Torch_Metal: ['torch_wall'],
   Lantern_Wall: ['lantern_wall'],
   CandleStick_Triple: ['candelabra'],
   Banner_1: ['banner'],
@@ -136,15 +147,13 @@ const YAW = {
   Bed_Twin2: 90,
 }
 
-/** Выбранные формы Nature Kit: природа плюс точечные staged-представления пропов. */
+/**
+ * Выбранные формы Nature Kit: пни, брёвна, костры, указатель, изгороди, статуи
+ * и сталагмиты. Деревья, кусты, трава, цветы, грибы и камни с selectionVersion 3
+ * берутся из Stylized Nature MegaKit (environment-packs.mjs) — у Kenney для них
+ * остались бы только гранёные заглушки рядом с текстурированными соседями.
+ */
 export const KENNEY_SELECTION = Object.freeze([
-  ['tree_default', 'Природа', 'Лиственное дерево', ['tree_birch'], 0],
-  ['tree_oak', 'Природа', 'Дуб', ['tree_oak'], 0],
-  ['tree_pineDefaultA', 'Природа', 'Сосна', ['tree_pine'], 0],
-  ['tree_pineRoundA', 'Природа', 'Круглая сосна', ['tree_spruce'], 0],
-  ['tree_pineTallA_detailed', 'Природа', 'Высокая сосна', ['tree_pine'], 0],
-  ['tree_simple', 'Природа', 'Молодое дерево', ['tree_birch'], 0],
-  ['tree_default_fall', 'Природа', 'Осеннее дерево', [], 0],
   ['stump_old', 'Природа', 'Старый пень', ['tree_stump'], 0],
   ['stump_roundDetailed', 'Природа', 'Круглый пень', ['tree_stump'], 0],
   ['stump_squareDetailedWide', 'Природа', 'Широкий пень', ['tree_stump'], 0],
@@ -152,22 +161,6 @@ export const KENNEY_SELECTION = Object.freeze([
   ['log_large', 'Природа', 'Большое бревно', ['fallen_log'], 0],
   ['log_stack', 'Природа', 'Стопка брёвен', ['woodpile', 'firewood_stack'], 90],
   ['log_stackLarge', 'Природа', 'Большая стопка брёвен', ['woodpile', 'firewood_stack'], 90],
-  ['rock_smallA', 'Природа', 'Небольшой камень', ['rock_small'], 0],
-  ['rock_smallB', 'Природа', 'Камень округлой формы', ['rock_small'], 0],
-  ['rock_smallFlatA', 'Природа', 'Плоский камень', ['rock_small'], 0],
-  ['rock_largeA', 'Природа', 'Валун', ['boulder'], 0],
-  ['rock_tallA', 'Природа', 'Высокий валун', ['boulder'], 0],
-  ['plant_bush', 'Природа', 'Куст', ['bush'], 0],
-  ['plant_bushDetailed', 'Природа', 'Густой куст', ['bush'], 0],
-  ['plant_bushLarge', 'Природа', 'Большой куст', ['bush'], 0],
-  ['plant_bushSmall', 'Природа', 'Маленький куст', ['shrub'], 0],
-  ['mushroom_red', 'Природа', 'Красный гриб', ['mushroom_cluster'], 0],
-  ['mushroom_redGroup', 'Природа', 'Группа красных грибов', ['mushroom_cluster'], 0],
-  ['mushroom_tanGroup', 'Природа', 'Группа светлых грибов', ['mushroom_cluster'], 0],
-  ['grass', 'Природа', 'Пучок травы', ['grass_tuft'], 0],
-  ['grass_large', 'Природа', 'Высокая трава', ['grass_tuft'], 0],
-  ['flower_redA', 'Природа', 'Красный цветок', ['flowers'], 0],
-  ['flower_yellowA', 'Природа', 'Жёлтый цветок', ['flowers'], 0],
   ['campfire_logs', 'Природа', 'Костёр на брёвнах', ['campfire'], 0],
   ['sign', 'Поселение', 'Указатель', ['signpost'], 0],
   ['fence_simple', 'Поселение', 'Простая изгородь', ['village_fence'], 0],
@@ -178,9 +171,17 @@ export const KENNEY_SELECTION = Object.freeze([
   ['rock_tallC', 'Пещера', 'Остроконечный сталагмит', ['stalagmite'], 0],
   ['rock_tallD', 'Пещера', 'Сталагмит, вариант 2', ['stalagmite'], 0],
   ['rock_tallJ', 'Пещера', 'Сталагмит, вариант 3', ['stalagmite'], 0],
+  ['stump_oldTall', 'Природа', 'Высокий пень', ['tree_stump'], 0],
+  ['campfire_stones', 'Природа', 'Костёр в каменном кольце', ['campfire'], 0],
+  ['statue_columnDamaged', 'Храм', 'Разрушенная колонна-статуя', ['statue'], 0],
+  ['rock_tallE', 'Пещера', 'Сталагмит, вариант 4', ['stalagmite'], 0],
 ])
 
-const KENNEY_CORE_SELECTION_COUNT = 31
+/**
+ * Первые записи выбора существовали ещё до его расширения: палитру можно
+ * применить к старому кандидату, где есть только они.
+ */
+const KENNEY_CORE_SELECTION_COUNT = 8
 
 /** Явно включается только через --dungeon-dir и --dungeon-archive. */
 export const DUNGEON_SELECTION = Object.freeze([
@@ -257,8 +258,8 @@ function sourceRootFor(directory) {
     : resolved
 }
 
-function createInputTracker(family, directory) {
-  return { family, root: sourceRootFor(directory), inputs: new Map() }
+function createInputTracker(family, directory, root = sourceRootFor(directory)) {
+  return { family, root: resolve(root), inputs: new Map() }
 }
 
 function sourceInputPath(file, tracker) {
@@ -503,7 +504,7 @@ function resizedPng(bytes, cacheKey, maxSide) {
   return output
 }
 
-async function imageBytes(image, sourceFile, binary, sourceJson, tracker, { baseColorMaxSide = MAX_TEXTURE_SIDE } = {}) {
+async function imageBytes(image, sourceFile, binary, sourceJson, tracker, { baseColorMaxSide = MAX_TEXTURE_SIDE, normalOrmMaxSide = REDUCED_BASE_COLOR_SIDE } = {}) {
   let bytes
   if (typeof image.uri === 'string') {
     bytes = image.uri.startsWith('data:') ? decodeDataUri(image.uri) : await readExternal(sourceFile, image.uri, tracker)
@@ -517,7 +518,7 @@ async function imageBytes(image, sourceFile, binary, sourceJson, tracker, { base
   const mime = image.mimeType ?? (PNG_SIGNATURE.equals(bytes.subarray(0, 8)) ? 'image/png' : '')
   const imageName = String(image.name ?? image.uri ?? '')
   const maxSide = /(?:normal|orm)/iu.test(imageName)
-    ? REDUCED_BASE_COLOR_SIDE
+    ? normalOrmMaxSide
     : /base[_-]?color/iu.test(imageName) ? baseColorMaxSide : MAX_TEXTURE_SIDE
   return { bytes: mime === 'image/png' ? resizedPng(Buffer.from(bytes), hash(bytes), maxSide) : Buffer.from(bytes), mime }
 }
@@ -539,7 +540,7 @@ function writeGlb(json, binary) {
   return Buffer.concat([header, jsonHeader, paddedJson, binaryHeader, paddedBinary])
 }
 
-export async function convert(sourceFile, outputFile, { tracker, normalizeMaterials = false, baseColorMaxSide = MAX_TEXTURE_SIDE } = {}) {
+export async function convert(sourceFile, outputFile, { tracker, normalizeMaterials = false, baseColorMaxSide = MAX_TEXTURE_SIDE, normalOrmMaxSide = REDUCED_BASE_COLOR_SIDE } = {}) {
   const source = await readSource(sourceFile, tracker)
   const json = structuredClone(source.json)
   if (normalizeMaterials) normalizeKenneyMaterials(json, sourceFile)
@@ -550,7 +551,7 @@ export async function convert(sourceFile, outputFile, { tracker, normalizeMateri
   json.bufferViews = originalViews
   json.buffers = [{ byteLength: 0 }]
   for (const image of json.images ?? []) {
-    const prepared = await imageBytes(image, sourceFile, source.binary, sourceJson, tracker, { baseColorMaxSide })
+    const prepared = await imageBytes(image, sourceFile, source.binary, sourceJson, tracker, { baseColorMaxSide, normalOrmMaxSide })
     const aligned = align4(binaryLength)
     if (aligned > binaryLength) chunks.push(Buffer.alloc(aligned - binaryLength))
     image.bufferView = json.bufferViews.length
@@ -563,6 +564,169 @@ export async function convert(sourceFile, outputFile, { tracker, normalizeMateri
   json.buffers[0].byteLength = binaryLength
   const binary = Buffer.concat(chunks, binaryLength)
   const output = writeGlb(json, binary)
+  if (output.length > MAX_FILE_BYTES) throw new Error(`${outputFile} превышает ${MAX_FILE_BYTES} байт`)
+  await writeFile(outputFile, output)
+  return { bytes: output.length, hash: hash(output), json }
+}
+
+/**
+ * Пересчитывает min/max у POSITION. В части файлов Stylized Nature MegaKit
+ * границы записаны до масштабирования (у папоротника — ±4,5 при реальном
+ * радиусе 1,5), а Three.js берёт габарит из этих чисел и сжимает модель.
+ */
+function refreshPositionBounds(json, binary) {
+  const positions = new Set()
+  for (const mesh of json.meshes ?? []) for (const primitive of mesh.primitives ?? []) {
+    if (Number.isInteger(primitive.attributes?.POSITION)) positions.add(primitive.attributes.POSITION)
+  }
+  for (const index of positions) {
+    const accessor = json.accessors?.[index]
+    if (!accessor || accessor.type !== 'VEC3' || accessor.componentType !== 5126 || accessor.sparse) continue
+    const view = json.bufferViews?.[accessor.bufferView]
+    if (!view) throw new Error(`POSITION без bufferView: accessor ${index}`)
+    const stride = view.byteStride ?? 12
+    const base = (view.byteOffset ?? 0) + (accessor.byteOffset ?? 0)
+    if (base + stride * (accessor.count - 1) + 12 > binary.length) throw new Error(`POSITION выходит за BIN: accessor ${index}`)
+    const min = [Infinity, Infinity, Infinity]
+    const max = [-Infinity, -Infinity, -Infinity]
+    for (let vertex = 0; vertex < accessor.count; vertex += 1) {
+      for (let axis = 0; axis < 3; axis += 1) {
+        const value = binary.readFloatLE(base + vertex * stride + axis * 4)
+        if (value < min[axis]) min[axis] = value
+        if (value > max[axis]) max[axis] = value
+      }
+    }
+    if (accessor.count > 0) { accessor.min = min; accessor.max = max }
+  }
+}
+
+/**
+ * Добавляет к модели геометрию второго файла того же набора как отдельный
+ * узел со смещением. Материалы берутся у основной модели по тому же индексу:
+ * у Graveyard Kit это один общий colormap, поэтому картинка второго файла
+ * не копируется.
+ */
+function mergePart(json, binary, part, translation, file) {
+  const partNodes = part.json.nodes ?? []
+  if (partNodes.length !== 1 || !Number.isInteger(partNodes[0].mesh) || partNodes[0].children?.length
+    || partNodes[0].matrix || partNodes[0].rotation || partNodes[0].scale || partNodes[0].translation) {
+    throw new Error(`Составная модель поддерживает только один узел без преобразования: ${file}`)
+  }
+  const offset = align4(binary.length)
+  const merged = Buffer.concat([binary, Buffer.alloc(offset - binary.length), part.binary])
+  const viewBase = json.bufferViews.length
+  const accessorBase = json.accessors.length
+  const referencedViews = new Set((part.json.accessors ?? []).map((accessor) => accessor.bufferView))
+  const viewMap = new Map()
+  for (const [index, view] of (part.json.bufferViews ?? []).entries()) {
+    if (!referencedViews.has(index)) continue
+    viewMap.set(index, viewBase + viewMap.size)
+    json.bufferViews.push({ ...view, buffer: 0, byteOffset: offset + (view.byteOffset ?? 0) })
+  }
+  for (const accessor of part.json.accessors ?? []) json.accessors.push({ ...accessor, bufferView: viewMap.get(accessor.bufferView) })
+  const mesh = part.json.meshes[partNodes[0].mesh]
+  const primitives = mesh.primitives.map((primitive) => {
+    const material = primitive.material ?? 0
+    if (!json.materials?.[material]) throw new Error(`У основной модели нет материала ${material} для ${file}`)
+    const attributes = Object.fromEntries(Object.entries(primitive.attributes).map(([name, value]) => [name, accessorBase + value]))
+    return { ...primitive, attributes, ...(primitive.indices === undefined ? {} : { indices: accessorBase + primitive.indices }), material }
+  })
+  json.meshes.push({ name: mesh.name ?? partNodes[0].name, primitives })
+  json.nodes.push({ name: partNodes[0].name, mesh: json.meshes.length - 1, translation })
+  const scene = json.scenes?.[json.scene ?? 0]
+  if (!scene) throw new Error(`У составной модели нет сцены: ${file}`)
+  scene.nodes.push(json.nodes.length - 1)
+  return merged
+}
+
+/** Оставляет в BIN только данные accessors: встроенная исходная картинка заменяется подготовленной. */
+function compactGeometry(json, binary) {
+  const used = [...new Set((json.accessors ?? []).map((accessor) => accessor.bufferView).filter(Number.isInteger))].sort((a, b) => a - b)
+  const chunks = []
+  let length = 0
+  const remap = new Map()
+  const views = []
+  for (const index of used) {
+    const view = json.bufferViews[index]
+    const aligned = align4(length)
+    if (aligned > length) chunks.push(Buffer.alloc(aligned - length))
+    const start = view.byteOffset ?? 0
+    if (start + view.byteLength > binary.length) throw new Error(`bufferView ${index} выходит за BIN`)
+    chunks.push(binary.subarray(start, start + view.byteLength))
+    remap.set(index, views.length)
+    views.push({ ...view, buffer: 0, byteOffset: aligned })
+    length = aligned + view.byteLength
+  }
+  for (const accessor of json.accessors ?? []) if (Number.isInteger(accessor.bufferView)) accessor.bufferView = remap.get(accessor.bufferView)
+  json.bufferViews = views
+  return Buffer.concat(chunks, length)
+}
+
+function preparePackPng(bytes, maxSide, palette) {
+  if (!PNG_SIGNATURE.equals(bytes.subarray(0, 8))) throw new Error('Текстура набора должна быть PNG')
+  const key = `${hash(bytes)}:${maxSide}:${palette ?? ''}`
+  const cached = PNG_CACHE.get(key)
+  if (cached) return cached
+  let image = decodePng(bytes)
+  const scale = Math.min(1, maxSide / Math.max(image.width, image.height))
+  if (scale < 1) image = resampleImage(image, Math.max(1, Math.round(image.width * scale)), Math.max(1, Math.round(image.height * scale)))
+  if (palette) image = applyPackPalette(image, palette)
+  const output = scale < 1 || palette ? encodePng(image) : Buffer.from(bytes)
+  PNG_CACHE.set(key, output)
+  return output
+}
+
+/**
+ * Преобразует одну модель дополнительного набора в самодостаточный GLB:
+ * переименование узлов (ось крышки), сборка составной модели, точные границы,
+ * текстуры по политике набора и палитра Сказания для Graveyard Kit.
+ */
+export async function convertPackModel(pack, model, sourceDir, outputFile, { tracker } = {}) {
+  const sourceFile = join(sourceDir, model.file)
+  const source = await readSource(sourceFile, tracker)
+  const json = structuredClone(source.json)
+  let binary = source.binary
+  for (const node of json.nodes ?? []) {
+    const renamed = model.nodeNames?.[node.name]
+    if (renamed) node.name = renamed
+  }
+  const missingNames = Object.keys(model.nodeNames ?? {}).filter((name) => !(source.json.nodes ?? []).some((node) => node.name === name))
+  if (missingNames.length) throw new Error(`В ${model.file} нет узлов ${missingNames.join(', ')}`)
+  for (const part of model.parts ?? []) {
+    const partFile = join(sourceDir, part.file)
+    binary = mergePart(json, binary, await readSource(partFile, tracker), part.translation, partFile)
+  }
+  refreshPositionBounds(json, binary)
+  const originalViews = structuredClone(json.bufferViews ?? [])
+  const geometry = compactGeometry(json, binary)
+  const chunks = [geometry]
+  let binaryLength = geometry.length
+  for (const image of json.images ?? []) {
+    let bytes
+    if (typeof image.uri === 'string') {
+      const decoded = decodeURIComponent(image.uri)
+      const override = model.imageOverrides?.[basename(decoded)]
+      const uri = override ? decoded.slice(0, decoded.length - basename(decoded).length) + override : image.uri
+      bytes = uri.startsWith('data:') ? decodeDataUri(uri) : await readExternal(sourceFile, uri, tracker)
+    } else if (Number.isInteger(image.bufferView)) {
+      const view = originalViews[image.bufferView]
+      if (!view || (view.byteOffset ?? 0) + view.byteLength > binary.length) throw new Error(`Некорректная текстура: ${sourceFile}`)
+      bytes = binary.subarray(view.byteOffset ?? 0, (view.byteOffset ?? 0) + view.byteLength)
+    } else throw new Error(`У изображения нет uri или bufferView: ${sourceFile}`)
+    const prepared = preparePackPng(Buffer.from(bytes), pack.textureSide(String(image.name ?? image.uri ?? '')), pack.palette)
+    const aligned = align4(binaryLength)
+    if (aligned > binaryLength) chunks.push(Buffer.alloc(aligned - binaryLength))
+    image.bufferView = json.bufferViews.length
+    delete image.uri
+    image.mimeType = 'image/png'
+    json.bufferViews.push({ buffer: 0, byteOffset: aligned, byteLength: prepared.length })
+    chunks.push(prepared)
+    binaryLength = aligned + prepared.length
+  }
+  const unusedOverrides = Object.keys(model.imageOverrides ?? {}).filter((name) => !(source.json.images ?? []).some((image) => basename(decodeURIComponent(String(image.uri ?? ''))) === name))
+  if (unusedOverrides.length) throw new Error(`В ${model.file} нет текстур ${unusedOverrides.join(', ')}`)
+  json.buffers = [{ byteLength: binaryLength }]
+  const output = writeGlb(json, Buffer.concat(chunks, binaryLength))
   if (output.length > MAX_FILE_BYTES) throw new Error(`${outputFile} превышает ${MAX_FILE_BYTES} байт`)
   await writeFile(outputFile, output)
   return { bytes: output.length, hash: hash(output), json }
@@ -622,10 +786,28 @@ export async function verifySourceArchives({ quaterniusArchive = QUATERNIUS_ARCH
   ])
 }
 
-function sourceWithArchiveHashes(hashes, dungeonHash) {
+function sourceWithArchiveHashes(hashes, dungeonHash, packs = []) {
   const sources = SOURCES.map((source, index) => ({ ...source, archiveSha256: hashes[index] }))
   if (dungeonHash) sources.push({ ...DUNGEON_SOURCE, archiveSha256: dungeonHash })
+  for (const { pack, archiveHash } of packs) sources.push({ ...pack.source, archiveSha256: archiveHash })
   return sources
+}
+
+/**
+ * Пути дополнительных наборов: явные `packs.<id>.dir/archive`, иначе
+ * `packsRoot` (по умолчанию tmp/asset-src) с раскладкой из environment-packs.mjs.
+ * Наборы обязательны: без них деревья, бочки и могилы выпуска остались бы без моделей.
+ */
+function packLocations(options) {
+  const root = resolve(options.packsRoot ?? PACKS_ROOT)
+  return ENVIRONMENT_PACKS.map((pack) => {
+    const explicit = options.packs?.[pack.id] ?? {}
+    return {
+      pack,
+      directory: requiredPath(explicit.dir ?? join(root, pack.directoryPath), `${pack.id}Dir`),
+      archive: requiredPath(explicit.archive ?? join(root, pack.archivePath), pack.source.archive),
+    }
+  })
 }
 
 async function writeNotice(directory, text) {
@@ -698,8 +880,13 @@ export async function importEnvironmentModels(options = {}) {
   const dungeonHash = dungeonRequested
     ? await verifySourceArchive(requiredPath(options.dungeonArchive, DUNGEON_SOURCE.archive), DUNGEON_SOURCE)
     : undefined
+  const packs = []
+  for (const location of packLocations(options)) {
+    packs.push({ ...location, archiveHash: await verifySourceArchive(location.archive, location.pack.source) })
+  }
   const sourceDirectories = [[qDir, 'Quaternius'], [kDir, 'Kenney']]
   if (dungeonDir) sourceDirectories.push([dungeonDir, 'Kenney Modular Dungeon'])
+  for (const { pack, directory } of packs) sourceDirectories.push([directory, pack.title])
   for (const [directory, label] of sourceDirectories) {
     const info = await lstat(directory).catch((error) => {
       if (error?.code === 'ENOENT') return null
@@ -712,6 +899,7 @@ export async function importEnvironmentModels(options = {}) {
   for (const [source, ids] of Object.entries(ASSET_IDS)) for (const id of ids) if (!available.has(id)) throw new Error(`Неизвестный assetId ${id} у ${source}`)
   for (const [, , , ids] of KENNEY_SELECTION) for (const id of ids) if (!available.has(id)) throw new Error(`Неизвестный assetId ${id} у Kenney`)
   for (const [, , , ids] of DUNGEON_SELECTION) for (const id of ids) if (!available.has(id)) throw new Error(`Неизвестный assetId ${id} у Modular Dungeon`)
+  for (const { pack } of packs) for (const model of pack.selection) for (const id of model.assetIds) if (!available.has(id)) throw new Error(`Неизвестный assetId ${id} у ${pack.title}`)
 
   const qNames = (await readdir(qDir)).filter((name) => name.toLowerCase().endsWith('.gltf')).sort()
   if (qNames.length !== 94) throw new Error(`Ожидалось 94 Quaternius glTF, найдено ${qNames.length}`)
@@ -720,6 +908,12 @@ export async function importEnvironmentModels(options = {}) {
   if (dungeonDir) {
     const dungeonNames = new Set(await readdir(dungeonDir))
     for (const [name] of DUNGEON_SELECTION) if (!dungeonNames.has(`${name}.glb`)) throw new Error(`Не найден Modular Dungeon GLB: ${name}`)
+  }
+  for (const { pack, directory } of packs) {
+    const names = new Set(await readdir(directory))
+    for (const model of pack.selection) for (const file of [model.file, ...(model.parts ?? []).map((part) => part.file)]) {
+      if (!names.has(file)) throw new Error(`Не найден файл ${file} набора ${pack.title}`)
+    }
   }
 
   const qOut = join(candidate, 'quaternius')
@@ -738,9 +932,11 @@ export async function importEnvironmentModels(options = {}) {
     const key = `q-${slug(sourceName)}`
     const fileName = `${slug(sourceName)}.glb`
     const outputFile = join(qOut, fileName)
+    const mapped = (ASSET_IDS[sourceName] ?? []).length > 0
     const result = await convert(join(qDir, name), outputFile, {
       tracker: qInputs,
-      baseColorMaxSide: REDUCED_BASE_COLOR_MODEL_SET.has(sourceName) ? REDUCED_BASE_COLOR_SIDE : MAX_TEXTURE_SIDE,
+      baseColorMaxSide: !mapped || REDUCED_BASE_COLOR_MODEL_SET.has(sourceName) ? REDUCED_BASE_COLOR_SIDE : MAX_TEXTURE_SIDE,
+      normalOrmMaxSide: mapped ? REDUCED_BASE_COLOR_SIDE : UNMAPPED_NORMAL_ORM_SIDE,
     })
     const inspection = await inspectModelFile(outputFile)
     const bytes = inspection.bytes
@@ -772,6 +968,38 @@ export async function importEnvironmentModels(options = {}) {
       models.push({ key, label, category, url: `/assets/models/environment/${DUNGEON_FAMILY}/${fileName}`, assetIds: [...assetIds], yaw })
     }
   }
+  const packInputs = []
+  for (const { pack, directory, archiveHash } of packs) {
+    const out = join(candidate, pack.family)
+    await mkdir(out, { recursive: true })
+    const tracker = createInputTracker(pack.family, directory, resolve(directory, pack.inputRoot))
+    packInputs.push(tracker)
+    for (const model of pack.selection) {
+      const name = packModelSlug(model)
+      const key = packModelKey(pack, model)
+      const fileName = `${name}.glb`
+      const outputFile = join(out, fileName)
+      const result = await convertPackModel(pack, model, directory, outputFile, { tracker })
+      const inspection = await inspectModelFile(outputFile)
+      totalBytes += inspection.bytes
+      built.push({ key, file: outputFile, bytes: result.bytes, source: pack.title, sourceName: model.file })
+      models.push({ key, label: model.label, category: model.category, url: `/assets/models/environment/${pack.family}/${fileName}`, assetIds: [...model.assetIds], yaw: model.yaw ?? 0 })
+    }
+    const licenseFile = resolve(directory, pack.licenseFile)
+    if (!existsSync(licenseFile)) throw new Error(`Не найдена лицензия набора ${pack.title}: ${licenseFile}`)
+    await writeFile(join(out, 'LICENSE.txt'), await readTracked(licenseFile, tracker))
+    const composites = pack.selection.filter((model) => model.parts?.length).length
+    await writeNotice(out, [
+      `${pack.title}.`,
+      `Source: ${pack.source.url}`,
+      `Source archive: ${pack.source.archive}; SHA-256: ${archiveHash}.`,
+      `Selected ${pack.selection.length} models; external .bin files and PNG textures were embedded, POSITION bounds were recomputed from vertex data.`,
+      composites ? `${composites} models are composed from two files of the kit (grave mound and headstone) without changing their geometry.` : '',
+      pack.palette === 'graveyard-muted' ? GRAVEYARD_PALETTE_NOTICE : '',
+      pack.id === 'kaykit' ? 'Chest lids are renamed to hinge-lid so the client can open them; the geometry is unchanged.' : '',
+      pack.id === 'nature' ? 'Bush_Common uses Leaves_NormalTree_C.png from the same kit instead of the red Leaves_TwistedTree_C.png.' : '',
+    ].filter(Boolean).join('\n'))
+  }
   if (totalBytes > MAX_TOTAL_BYTES) throw new Error(`Библиотека превышает бюджет 64 МиБ: ${totalBytes}`)
 
   const kenneyLicenseFile = join(kDir, '..', '..', 'License.txt')
@@ -787,20 +1015,20 @@ export async function importEnvironmentModels(options = {}) {
   }
   const manifest = {
     version: 1,
-    sources: sourceWithArchiveHashes(hashes, dungeonHash),
+    sources: sourceWithArchiveHashes(hashes, dungeonHash, packs),
     models,
     build: {
       schema: 'environment-candidate/v1',
-      importerVersion: 2,
-      normalizationVersion: 1,
-      selectionVersion: 2,
+      importerVersion: 3,
+      normalizationVersion: 2,
+      selectionVersion: 3,
       texturePolicy: TEXTURE_POLICY,
-      sourceInputs: sourceInputRecords([qInputs, kInputs, ...(dungeonInputs ? [dungeonInputs] : [])]),
+      sourceInputs: sourceInputRecords([qInputs, kInputs, ...(dungeonInputs ? [dungeonInputs] : []), ...packInputs]),
     },
   }
   await writeFile(join(candidate, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
   await writeFile(join(qOut, 'LICENSE.txt'), 'Fantasy Props MegaKit Standard — Quaternius\nLicense: CC0 1.0 Universal.\nhttps://creativecommons.org/publicdomain/zero/1.0/\nSource: https://quaternius.com/packs/fantasypropsmegakit.html\n')
-  await writeNotice(qOut, `Fantasy Props MegaKit Standard by Quaternius.\nSource archive: ${SOURCES[0].archive}; SHA-256: ${hashes[0]}.\nGenerated from all 94 glTF files. External .bin files and PNG textures were embedded. BaseColor PNGs are limited to ${MAX_TEXTURE_SIDE} px, except ${REDUCED_BASE_COLOR_MODELS.join(', ')} at ${REDUCED_BASE_COLOR_SIDE} px; Normal/ORM PNGs are limited to ${REDUCED_BASE_COLOR_SIDE} px.`)
+  await writeNotice(qOut, `Fantasy Props MegaKit Standard by Quaternius.\nSource archive: ${SOURCES[0].archive}; SHA-256: ${hashes[0]}.\nGenerated from all 94 glTF files. External .bin files and PNG textures were embedded. BaseColor PNGs are limited to ${MAX_TEXTURE_SIDE} px, except ${REDUCED_BASE_COLOR_MODELS.join(', ')} and every model without a canonical assetId at ${REDUCED_BASE_COLOR_SIDE} px; Normal/ORM PNGs are limited to ${REDUCED_BASE_COLOR_SIDE} px, ${UNMAPPED_NORMAL_ORM_SIDE} px for models without an assetId.`)
   await writeFile(join(kOut, 'LICENSE.txt'), kenneyLicense)
   await writeNotice(kOut, `Nature Kit (2.1) by Kenney.\nSource archive: ${SOURCES[1].archive}; SHA-256: ${hashes[1]}.\nSelected ${KENNEY_SELECTION.length} GLB files from the official GLTF export. No DAE or FBX files are imported.\n${PALETTE_NOTICE}`)
   if (dungeonDir && dungeonInputs) {
@@ -815,6 +1043,7 @@ export async function importEnvironmentModels(options = {}) {
     quaternius: qNames.length,
     kenney: KENNEY_SELECTION.length,
     dungeon: dungeonDir ? DUNGEON_SELECTION.length : 0,
+    packs: Object.fromEntries(packs.map(({ pack }) => [pack.id, pack.selection.length])),
     models: models.length,
     mappedAssetIds: [...new Set(models.flatMap((model) => model.assetIds))].sort(),
     bytes: totalBytes,
@@ -842,6 +1071,7 @@ async function main() {
     kenneyArchive: cliValue(args, '--kenney-archive'),
     dungeonDir: cliValue(args, '--dungeon-dir'),
     dungeonArchive: cliValue(args, '--dungeon-archive'),
+    packsRoot: cliValue(args, '--packs-root'),
   }
   const result = args.includes('--palette-only')
     ? await normalizeKenneyOutput(options)

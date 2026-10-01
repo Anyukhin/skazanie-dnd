@@ -582,3 +582,160 @@ test('«Экономное»: стены без отдельных камней 
   assert.equal(low.group.getObjectByName('wall-masonry'), undefined)
   full.dispose(); low.dispose()
 })
+
+// Набор моделей местности: tools/build-landscape-kit.mjs → public/assets/models/landscape.
+const landscapeAssets = await import(pathToFileURL(join(outputDir, 'landscape-model-assets.mjs')).href)
+const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js')
+const { createHash } = await import('node:crypto')
+const { existsSync, statSync } = await import('node:fs')
+const landscapeRoot = join(root, 'public', 'assets', 'models', 'landscape')
+
+function landscapeManifest() {
+  return landscapeAssets.validateLandscapeManifest(JSON.parse(readFileSync(join(landscapeRoot, 'manifest.json'), 'utf8')))
+}
+
+/** Собирает набор из GLB на диске так же, как клиент: узел по имени, приведение к клетке. */
+async function landscapeKitFromDisk() {
+  const manifest = landscapeManifest()
+  const previousSelf = globalThis.self
+  const previousCreateImageBitmap = globalThis.createImageBitmap
+  // Node не декодирует PNG: геометрии хватает заглушки ImageBitmap.
+  globalThis.self = globalThis
+  globalThis.createImageBitmap = async () => ({ width: 4, height: 4, close() {} })
+  try {
+    const scenes = new Map()
+    const models = []
+    for (const entry of manifest.models) {
+      if (!scenes.has(entry.url)) {
+        const bytes = readFileSync(join(root, 'public', entry.url))
+        const gltf = await new GLTFLoader().parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '')
+        scenes.set(entry.url, gltf.scene)
+      }
+      const node = scenes.get(entry.url).getObjectByName(entry.node)
+      assert.ok(node, `${entry.key}: в ${entry.url} нет узла ${entry.node}`)
+      const normalized = landscapeAssets.normalizeLandscapeNode(node)
+      assert.ok(normalized, `${entry.key}: модель не приводится к клетке`)
+      models.push({ key: entry.key, role: entry.role, parts: normalized.parts, size: normalized.size })
+    }
+    return { revision: manifest.revision, models }
+  } finally {
+    if (previousSelf === undefined) delete globalThis.self
+    else globalThis.self = previousSelf
+    if (previousCreateImageBitmap === undefined) delete globalThis.createImageBitmap
+    else globalThis.createImageBitmap = previousCreateImageBitmap
+  }
+}
+
+test('набор местности: манифест валиден, файлы на месте, хеши и происхождение совпадают', () => {
+  const manifest = landscapeManifest()
+  const directory = join(landscapeRoot, manifest.revision)
+  assert.deepEqual(JSON.parse(readFileSync(join(directory, 'manifest.json'), 'utf8')), JSON.parse(readFileSync(join(landscapeRoot, 'manifest.json'), 'utf8')),
+    'активный манифест совпадает с манифестом неизменяемой ревизии')
+  const roles = new Set(manifest.models.map((entry) => entry.role))
+  for (const role of ['rock', 'cliff', 'lily', 'reed', 'bridge']) assert.ok(roles.has(role), `в наборе есть роль ${role}`)
+  const notice = JSON.parse(readFileSync(join(directory, 'NOTICE.json'), 'utf8'))
+  assert.equal(notice.revision, manifest.revision)
+  assert.ok(notice.sources.every((source) => source.license === 'CC0-1.0' && /^[a-f0-9]{64}$/.test(source.archiveSha256)), 'источники — CC0 с хешем архива')
+  let total = 0
+  for (const url of new Set(manifest.models.map((entry) => entry.url))) {
+    const file = join(root, 'public', url)
+    assert.ok(existsSync(file), `${url} существует`)
+    const bytes = readFileSync(file)
+    total += bytes.length
+    const sha = createHash('sha256').update(bytes).digest('hex')
+    assert.ok(manifest.models.filter((entry) => entry.url === url).every((entry) => entry.sha256 === sha), `${url}: SHA-256 в манифесте совпадает`)
+    assert.ok(notice.files.some((item) => url.endsWith(`/${item.path}`) && item.sha256 === sha && item.bytes === statSync(file).size), `${url}: записан в NOTICE`)
+    const json = JSON.parse(bytes.subarray(20, 20 + bytes.readUInt32LE(12)).toString('utf8'))
+    assert.ok(!JSON.stringify(json).includes('"uri"'), `${url}: без внешних ссылок`)
+  }
+  assert.ok(total <= 4 * 1024 * 1024, `набор не больше 4 МБ (${total})`)
+  assert.throws(() => landscapeAssets.validateLandscapeManifest({ ...manifest, models: [{ ...manifest.models[0], url: '/assets/models/landscape/other/rocks.glb' }] }),
+    'файл вне объявленной ревизии отвергается')
+  assert.throws(() => landscapeAssets.validateLandscapeManifest({ ...manifest, models: [{ ...manifest.models[0], role: 'tree' }] }), 'неизвестная роль отвергается')
+})
+
+test('набор местности: модели приводятся к клетке, вариант выбирается детерминированно', async () => {
+  const kit = await landscapeKitFromDisk()
+  for (const model of kit.models) {
+    assert.ok(Math.abs(Math.max(model.size.x, model.size.z) - 1) < 1e-6, `${model.key}: большая сторона основания — одна клетка`)
+    const bottom = Math.min(...model.parts.map((part) => part.geometry.boundingBox.min.y))
+    assert.ok(Math.abs(bottom) < 1e-6, `${model.key}: низ модели на y = 0`)
+  }
+  assert.equal(landscapeAssets.pickLandscapeVariant([], .3), null)
+  assert.equal(landscapeAssets.pickLandscapeVariant(['a', 'b', 'c'], .99), 'c')
+  assert.equal(landscapeAssets.pickLandscapeVariant(['a', 'b', 'c'], .34), 'b')
+  const rocks = landscape.landscapeRockModels(kit)
+  assert.ok(rocks.boulders.length >= 3 && rocks.slabs.length >= 1 && rocks.cliffs.length >= 2, 'глыбы, плиты и толща различаются по форме и роли')
+})
+
+test('скалы и мост из моделей набора; без набора — процедурный запасной вариант', async () => {
+  const kit = await landscapeKitFromDisk()
+  const cave = terrainMap({ width: 8, height: 7, cell: (x, y) => y === 3 ? { material: 'stone' } : { passable: false, material: 'stone' } })
+  const procedural = landscape.createRockClusters(cave, 'full')
+  assert.equal(procedural.group.userData.rockSource, 'procedural')
+  const modelled = landscape.createRockClusters(cave, 'full', .95, kit)
+  assert.equal(modelled.group.userData.rockSource, 'models')
+  const meshes = objectsNamed(modelled.group, 'landscape-model')
+  assert.ok(meshes.length > 0 && meshes.every((mesh) => mesh.isInstancedMesh && mesh.castShadow), 'камни — InstancedMesh с тенью')
+  const kitGeometries = new Set(kit.models.flatMap((model) => model.parts.map((part) => part.geometry)))
+  assert.ok(meshes.every((mesh) => kitGeometries.has(mesh.geometry)), 'геометрия общая с набором, не копируется на экземпляр')
+  const again = landscape.createRockClusters(cave, 'full', .95, kit)
+  const layout = (group) => objectsNamed(group, 'landscape-model')
+    .map((mesh) => `${mesh.geometry.uuid}:${Array.from(mesh.instanceMatrix.array).map((value) => value.toFixed(5)).join(',')}`).sort().join('|')
+  assert.equal(layout(modelled.group), layout(again.group), 'выбор варианта и поворот детерминированы шумом клетки')
+  // dispose освобождает производные материалы слоя, но не геометрию набора.
+  let disposedGeometry = 0
+  for (const geometry of kitGeometries) geometry.addEventListener('dispose', () => { disposedGeometry += 1 })
+  let disposedMaterials = 0
+  for (const mesh of meshes) mesh.material.addEventListener('dispose', () => { disposedMaterials += 1 })
+  modelled.dispose(); again.dispose(); procedural.dispose()
+  assert.equal(disposedGeometry, 0, 'геометрии набора живут, пока набор взят')
+  assert.ok(disposedMaterials > 0, 'производные материалы слоя освобождены')
+  // Валун кромки и глыба толщи вписаны в одну-две клетки.
+  const edge = landscape.createRockClusters(cave, 'minimal', .95, kit)
+  const position = new THREE.Vector3(), scale = new THREE.Vector3()
+  for (const mesh of objectsNamed(edge.group, 'landscape-model')) {
+    for (let index = 0; index < mesh.count; index += 1) {
+      mesh.getMatrixAt(index, new THREE.Matrix4()).decompose(position, new THREE.Quaternion(), scale)
+      assert.ok(scale.x >= .9 && scale.x <= 2.3, 'валун кромки или глыба толщи вписаны в клетку-две')
+    }
+  }
+  edge.dispose()
+
+  // Мост: река по x=2..4, мост в две строки поперёк — одна секция Kenney на столбец.
+  const river = terrainMap({ width: 7, height: 4, cell: (x, y) => x >= 2 && x <= 4 && !(y === 1 || y === 2) ? { passable: false, surface: 'water' } : x >= 2 && x <= 4 ? { material: 'wood' } : {} })
+  const strips = landscape.bridgeModelStrips(river)
+  assert.deepEqual(strips.map((strip) => [strip.x, strip.y, strip.span, strip.width]), [[2, 1, 'x', 2], [3, 1, 'x', 2], [4, 1, 'x', 2]])
+  const bridge = landscape.createBridgeRails(river, kit)
+  assert.equal(bridge.group.userData.bridgeSource, 'models')
+  assert.ok(objectsNamed(bridge.group, 'landscape-model').reduce((sum, mesh) => sum + mesh.count, 0) > 0)
+  bridge.dispose()
+  // Клетки полосы на разной высоте модель не покрывает: остаются бруски.
+  const uneven = terrainMap({ width: 7, height: 4, cell: (x, y) => x >= 2 && x <= 4 && !(y === 1 || y === 2) ? { passable: false, surface: 'water' } : x >= 2 && x <= 4 ? { material: 'wood', elevation: y === 2 ? 1 : 0 } : {} })
+  assert.deepEqual(landscape.bridgeModelStrips(uneven), [])
+  const fallback = landscape.createBridgeRails(uneven, kit)
+  assert.equal(fallback.group.userData.bridgeSource, 'procedural')
+  fallback.dispose()
+
+  // Кувшинки и тростник: только с набором и не на «Экономном».
+  const pond = terrainMap({ width: 8, height: 8, cell: (x, y) => x >= 2 && x <= 5 && y >= 2 && y <= 5 ? { passable: false, surface: 'water' } : {} })
+  assert.equal(landscape.createWaterPlants(pond, 'full', null), null)
+  assert.equal(landscape.createWaterPlants(pond, 'minimal', kit), null)
+  const plants = landscape.createWaterPlants(pond, 'full', kit)
+  assert.ok(plants && objectsNamed(plants.group, 'landscape-model').every((mesh) => !mesh.castShadow), 'растения у воды не идут в карты теней')
+  const plantLayout = (group) => objectsNamed(group, 'landscape-model').map((mesh) => Array.from(mesh.instanceMatrix.array).join(',')).sort().join('|')
+  const plantsAgain = landscape.createWaterPlants(pond, 'full', kit)
+  assert.equal(plantLayout(plants.group), plantLayout(plantsAgain.group))
+  plants.dispose(); plantsAgain.dispose()
+})
+
+test('сцена без window не ждёт набор местности и рисует процедурные скалы', async () => {
+  assert.equal(await landscapeAssets.acquireLandscapeKit(new AbortController().signal), null, 'в тестах и SSR набор не загружается')
+  const raw = createTacticalMap({ width: 5, height: 4, seed: 'cave-kit', theme: 'cave' })
+  for (let y = 0; y < 4; y += 1) for (let x = 0; x < 5; x += 1) setCell(raw, x, y, { passable: y === 1, material: 'stone', revealed: true })
+  const map = mapClient.decodeTacticalMap(JSON.parse(JSON.stringify(serializeTacticalMap(raw))))
+  assert.equal(landscape.landscapeWantsModels(map), true)
+  const scene = scene3d.createBoard3DScene(map)
+  assert.equal(scene.group.getObjectByName('landscape-rocks').userData.rockSource, 'procedural')
+  scene.dispose()
+})

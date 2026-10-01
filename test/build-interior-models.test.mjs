@@ -7,6 +7,7 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 
 import { inspectModelFile } from '../tools/import-environment-models.mjs'
+import { SUPERSEDED_AUTHORED_KEYS } from '../tools/environment-packs.mjs'
 import { decodePng } from '../tools/png-codec.mjs'
 import {
   addInteriorModelsToCandidate,
@@ -272,7 +273,8 @@ test('добавление в candidate пишет все 42 GLB, provenance ф�
   const before = new Map()
   for (const item of AUTHORED_MODELS) {
     const entry = first.manifest.models.find((model) => model.key === item.key)
-    assert.deepEqual(entry?.assetIds, [item.assetId])
+    // Вытесненные вариантами CC0-наборов модели остаются в библиотеке без привязки.
+    assert.deepEqual(entry?.assetIds, SUPERSEDED_AUTHORED_KEYS.includes(item.key) ? [] : [item.assetId])
     assert.equal(entry?.yaw, item.yaw)
     assert.equal(entry?.url, `${URL_ROOT}skazanie/${item.file}`)
     const path = join(directory, 'skazanie', item.file)

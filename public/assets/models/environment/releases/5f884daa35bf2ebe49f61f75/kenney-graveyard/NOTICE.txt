@@ -1,0 +1,6 @@
+Graveyard Kit (5.0) — Kenney.
+Source: https://kenney.nl/assets/graveyard-kit
+Source archive: kenney_graveyard-kit_5.0.zip; SHA-256: 1a93613f2e5675f3310acf49ec9ef13ae7adeb756ac3b205bfb6cc9311a81062.
+Selected 8 models; external .bin files and PNG textures were embedded, POSITION bounds were recomputed from vertex data.
+4 models are composed from two files of the kit (grave mound and headstone) without changing their geometry.
+Colormap перекрашен для «Сказания»: сиреневый камень — в тёплый серый, мятный металл — в тёмное железо, оранжевое дерево и глина приглушены.

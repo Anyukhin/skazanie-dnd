@@ -2,6 +2,265 @@
   "version": 1,
   "models": [
     {
+      "key": "traveler",
+      "name_ru": "Путник",
+      "profile": "warrior",
+      "actorIds": [],
+      "archetypes": [
+        "monk",
+        "commoner",
+        "peasant",
+        "монах",
+        "путник",
+        "крестьянин"
+      ],
+      "url": "/assets/models/quaternius/traveler-77c0b0bb.glb",
+      "equipmentUrl": "/assets/models/quaternius/equipment-bases-40520897dfea4af085180fc82b0083baa/human-male.glb",
+      "height": 1.25,
+      "rights": {
+        "source": "https://quaternius.com/packs/modularcharacteroutfitsfantasy.html",
+        "license": "CC0-1.0",
+        "attribution": "Quaternius",
+        "notes": "Outfits Standard + голова Base Characters Standard + 6 клипов UAL1 Standard. Происхождение и хеши — quaternius/NOTICE.json."
+      }
+    },
+    {
+      "key": "kaykit-knight",
+      "name_ru": "Рыцарь",
+      "profile": "warrior",
+      "actorIds": [],
+      "archetypes": [
+        "warrior",
+        "fighter",
+        "paladin",
+        "knight",
+        "воин",
+        "боец",
+        "рыцарь",
+        "паладин"
+      ],
+      "url": "/assets/models/kaykit/characters-1d877e478221c89c84d8/knight.glb",
+      "height": 1.34,
+      "outfit": "builtin",
+      "rights": {
+        "source": "https://kaylousberg.itch.io/kaykit-adventurers",
+        "license": "CC0-1.0",
+        "attribution": "Kay Lousberg / KayKit — https://kaylousberg.com",
+        "notes": "KayKit Adventurers 2.0 Free + клипы KayKit Character Animations 1.1 Free. Подготовлено tools/import-kaykit-models.mjs --v2; архивы, хеши и клипы — kaykit/characters-1d877e478221c89c84d8/NOTICE.json."
+      }
+    },
+    {
+      "key": "kaykit-barbarian",
+      "name_ru": "Варвар",
+      "profile": "warrior",
+      "actorIds": [],
+      "archetypes": [
+        "barbarian",
+        "berserker",
+        "варвар",
+        "берсерк"
+      ],
+      "url": "/assets/models/kaykit/characters-1d877e478221c89c84d8/barbarian.glb",
+      "height": 1.34,
+      "outfit": "builtin",
+      "rights": {
+        "source": "https://kaylousberg.itch.io/kaykit-adventurers",
+        "license": "CC0-1.0",
+        "attribution": "Kay Lousberg / KayKit — https://kaylousberg.com",
+        "notes": "KayKit Adventurers 2.0 Free + клипы KayKit Character Animations 1.1 Free. Подготовлено tools/import-kaykit-models.mjs --v2; архивы, хеши и клипы — kaykit/characters-1d877e478221c89c84d8/NOTICE.json."
+      }
+    },
+    {
+      "key": "kaykit-mage",
+      "name_ru": "Волшебница",
+      "profile": "mage",
+      "actorIds": [],
+      "archetypes": [
+        "mage",
+        "wizard",
+        "sorcerer",
+        "warlock",
+        "cleric",
+        "druid",
+        "bard",
+        "маг",
+        "волшебник",
+        "чародей",
+        "колдун",
+        "жрец",
+        "друид",
+        "бард"
+      ],
+      "url": "/assets/models/kaykit/characters-1d877e478221c89c84d8/mage.glb",
+      "height": 1.49,
+      "outfit": "builtin",
+      "rights": {
+        "source": "https://kaylousberg.itch.io/kaykit-adventurers",
+        "license": "CC0-1.0",
+        "attribution": "Kay Lousberg / KayKit — https://kaylousberg.com",
+        "notes": "KayKit Adventurers 2.0 Free + клипы KayKit Character Animations 1.1 Free. Подготовлено tools/import-kaykit-models.mjs --v2; архивы, хеши и клипы — kaykit/characters-1d877e478221c89c84d8/NOTICE.json."
+      }
+    },
+    {
+      "key": "kaykit-rogue",
+      "name_ru": "Плутовка",
+      "profile": "rogue",
+      "actorIds": [],
+      "archetypes": [
+        "rogue",
+        "thief",
+        "scout",
+        "плут",
+        "вор",
+        "разведчик"
+      ],
+      "url": "/assets/models/kaykit/characters-1d877e478221c89c84d8/rogue.glb",
+      "height": 1.22,
+      "outfit": "builtin",
+      "rights": {
+        "source": "https://kaylousberg.itch.io/kaykit-adventurers",
+        "license": "CC0-1.0",
+        "attribution": "Kay Lousberg / KayKit — https://kaylousberg.com",
+        "notes": "KayKit Adventurers 2.0 Free + клипы KayKit Character Animations 1.1 Free. Подготовлено tools/import-kaykit-models.mjs --v2; архивы, хеши и клипы — kaykit/characters-1d877e478221c89c84d8/NOTICE.json."
+      }
+    },
+    {
+      "key": "kaykit-ranger",
+      "name_ru": "Следопыт",
+      "profile": "rogue",
+      "actorIds": [],
+      "archetypes": [
+        "ranger",
+        "archer",
+        "hunter",
+        "следопыт",
+        "лучник",
+        "охотник"
+      ],
+      "url": "/assets/models/kaykit/characters-1d877e478221c89c84d8/ranger.glb",
+      "height": 1.27,
+      "outfit": "builtin",
+      "rights": {
+        "source": "https://kaylousberg.itch.io/kaykit-adventurers",
+        "license": "CC0-1.0",
+        "attribution": "Kay Lousberg / KayKit — https://kaylousberg.com",
+        "notes": "KayKit Adventurers 2.0 Free + клипы KayKit Character Animations 1.1 Free. Подготовлено tools/import-kaykit-models.mjs --v2; архивы, хеши и клипы — kaykit/characters-1d877e478221c89c84d8/NOTICE.json."
+      }
+    },
+    {
+      "key": "kaykit-rogue-hooded",
+      "name_ru": "Плут в капюшоне",
+      "profile": "rogue",
+      "actorIds": [],
+      "archetypes": [
+        "assassin",
+        "ассасин",
+        "убийца"
+      ],
+      "url": "/assets/models/kaykit/characters-1d877e478221c89c84d8/rogue-hooded.glb",
+      "height": 1.22,
+      "outfit": "builtin",
+      "rights": {
+        "source": "https://kaylousberg.itch.io/kaykit-adventurers",
+        "license": "CC0-1.0",
+        "attribution": "Kay Lousberg / KayKit — https://kaylousberg.com",
+        "notes": "KayKit Adventurers 2.0 Free + клипы KayKit Character Animations 1.1 Free. Подготовлено tools/import-kaykit-models.mjs --v2; архивы, хеши и клипы — kaykit/characters-1d877e478221c89c84d8/NOTICE.json."
+      }
+    },
+    {
+      "key": "kaykit-skeleton-warrior",
+      "name_ru": "Скелет-воин",
+      "profile": "skeleton",
+      "actorIds": [],
+      "archetypes": [
+        "skeleton",
+        "undead",
+        "zombie",
+        "warrior",
+        "скелет",
+        "нежить",
+        "воин"
+      ],
+      "url": "/assets/models/kaykit/characters-1d877e478221c89c84d8/skeleton-warrior.glb",
+      "height": 1.45,
+      "outfit": "builtin",
+      "rights": {
+        "source": "https://kaylousberg.itch.io/kaykit-skeletons",
+        "license": "CC0-1.0",
+        "attribution": "Kay Lousberg / KayKit — https://kaylousberg.com",
+        "notes": "KayKit Skeletons 1.1 Free + клипы KayKit Character Animations 1.1 Free. Подготовлено tools/import-kaykit-models.mjs --v2; архивы, хеши и клипы — kaykit/characters-1d877e478221c89c84d8/NOTICE.json."
+      }
+    },
+    {
+      "key": "kaykit-skeleton-rogue",
+      "name_ru": "Скелет-разбойник",
+      "profile": "skeleton",
+      "actorIds": [],
+      "archetypes": [
+        "rogue",
+        "archer",
+        "разбойник",
+        "лучник",
+        "стрелок",
+        "плут"
+      ],
+      "url": "/assets/models/kaykit/characters-1d877e478221c89c84d8/skeleton-rogue.glb",
+      "height": 1.29,
+      "outfit": "builtin",
+      "rights": {
+        "source": "https://kaylousberg.itch.io/kaykit-skeletons",
+        "license": "CC0-1.0",
+        "attribution": "Kay Lousberg / KayKit — https://kaylousberg.com",
+        "notes": "KayKit Skeletons 1.1 Free + клипы KayKit Character Animations 1.1 Free. Подготовлено tools/import-kaykit-models.mjs --v2; архивы, хеши и клипы — kaykit/characters-1d877e478221c89c84d8/NOTICE.json."
+      }
+    },
+    {
+      "key": "kaykit-skeleton-mage",
+      "name_ru": "Скелет-маг",
+      "profile": "skeleton",
+      "actorIds": [],
+      "archetypes": [
+        "mage",
+        "necromancer",
+        "shaman",
+        "маг",
+        "некромант",
+        "колдун",
+        "шаман"
+      ],
+      "url": "/assets/models/kaykit/characters-1d877e478221c89c84d8/skeleton-mage.glb",
+      "height": 1.47,
+      "outfit": "builtin",
+      "rights": {
+        "source": "https://kaylousberg.itch.io/kaykit-skeletons",
+        "license": "CC0-1.0",
+        "attribution": "Kay Lousberg / KayKit — https://kaylousberg.com",
+        "notes": "KayKit Skeletons 1.1 Free + клипы KayKit Character Animations 1.1 Free. Подготовлено tools/import-kaykit-models.mjs --v2; архивы, хеши и клипы — kaykit/characters-1d877e478221c89c84d8/NOTICE.json."
+      }
+    },
+    {
+      "key": "kaykit-skeleton-minion",
+      "name_ru": "Скелет-прислужник",
+      "profile": "skeleton",
+      "actorIds": [],
+      "archetypes": [
+        "minion",
+        "servant",
+        "миньон",
+        "прислужник",
+        "слуга"
+      ],
+      "url": "/assets/models/kaykit/characters-1d877e478221c89c84d8/skeleton-minion.glb",
+      "height": 1.21,
+      "outfit": "builtin",
+      "rights": {
+        "source": "https://kaylousberg.itch.io/kaykit-skeletons",
+        "license": "CC0-1.0",
+        "attribution": "Kay Lousberg / KayKit — https://kaylousberg.com",
+        "notes": "KayKit Skeletons 1.1 Free + клипы KayKit Character Animations 1.1 Free. Подготовлено tools/import-kaykit-models.mjs --v2; архивы, хеши и клипы — kaykit/characters-1d877e478221c89c84d8/NOTICE.json."
+      }
+    },
+    {
       "key": "hooded-mage",
       "name_ru": "Маг в капюшоне",
       "profile": "mage",
@@ -92,30 +351,8 @@
       }
     },
     {
-      "key": "traveler",
-      "name_ru": "Путник",
-      "profile": "warrior",
-      "actorIds": [],
-      "archetypes": [
-        "warrior",
-        "fighter",
-        "barbarian",
-        "paladin",
-        "воин"
-      ],
-      "url": "/assets/models/quaternius/traveler-77c0b0bb.glb",
-      "equipmentUrl": "/assets/models/quaternius/equipment-bases-40520897dfea4af085180fc82b0083baa/human-male.glb",
-      "height": 1.25,
-      "rights": {
-        "source": "https://quaternius.com/packs/modularcharacteroutfitsfantasy.html",
-        "license": "CC0-1.0",
-        "attribution": "Quaternius",
-        "notes": "Outfits Standard + голова Base Characters Standard + 6 клипов UAL1 Standard. Происхождение и хеши — quaternius/NOTICE.json."
-      }
-    },
-    {
       "key": "ranger",
-      "name_ru": "Следопыт",
+      "name_ru": "Следопыт · Quaternius",
       "profile": "rogue",
       "actorIds": [],
       "archetypes": [
@@ -138,7 +375,7 @@
     },
     {
       "key": "warrior",
-      "name_ru": "Рыцарь",
+      "name_ru": "Рыцарь · KayKit 1.0",
       "profile": "warrior",
       "actorIds": [],
       "archetypes": [
@@ -160,7 +397,7 @@
     },
     {
       "key": "mage",
-      "name_ru": "Волшебник",
+      "name_ru": "Волшебник · KayKit 1.0",
       "profile": "mage",
       "actorIds": [],
       "archetypes": [
@@ -186,7 +423,7 @@
     },
     {
       "key": "rogue",
-      "name_ru": "Плут",
+      "name_ru": "Плут · KayKit 1.0",
       "profile": "rogue",
       "actorIds": [],
       "archetypes": [
@@ -227,7 +464,7 @@
     },
     {
       "key": "skeleton",
-      "name_ru": "Скелет-воин",
+      "name_ru": "Скелет-воин · KayKit 1.0",
       "profile": "skeleton",
       "actorIds": [],
       "archetypes": [

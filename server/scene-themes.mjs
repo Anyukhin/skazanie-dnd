@@ -667,14 +667,6 @@ export function layoutOrganicCave(theme, {
   return map
 }
 
-/**
- * Открытая местность: помещений нет, есть проходимая площадка с опушкой по
- * краю. У дороги и поселения через карту идёт полоса утоптанной земли.
- *
- * @param {Record<string, any>} theme
- * @param {{seed?: string, width?: number, height?: number, locationId?: string}} [options]
- * @returns {import('./tactical-map.mjs').TacticalMap}
- */
 /** Наибольший перепад между проходимыми соседями, в футах: шаг без лазания. */
 export const OPEN_TERRAIN_MAX_STEP_FEET = 3
 
@@ -720,6 +712,7 @@ export function applyOpenTerrainRelief(theme, seed, terrainCells, { width, heigh
   }
   // Склоны без уступов: проходимые соседи сводятся к перепаду не больше шага.
   // Понижаются только высокие клетки, поэтому вход и вода остаются на месте.
+  /** @param {{patch: Record<string, any>}} cell */
   const passable = (cell) => cell.patch.passable !== false && cell.patch.surface !== 'water'
   for (let pass = 0; pass < 40; pass += 1) {
     let changed = false
@@ -760,6 +753,14 @@ export function applyOpenTerrainRelief(theme, seed, terrainCells, { width, heigh
  */
 export const OPEN_TERRAIN_GENERATOR_VERSION = '3'
 
+/**
+ * Открытая местность: помещений нет, есть проходимая площадка с опушкой по
+ * краю. У дороги и поселения через карту идёт полоса утоптанной земли.
+ *
+ * @param {Record<string, any>} theme
+ * @param {{seed?: string, width?: number, height?: number, locationId?: string}} [options]
+ * @returns {import('./tactical-map.mjs').TacticalMap}
+ */
 export function layoutOpenTerrain(theme, { seed = 'open', width = 26, height = 26, locationId = '' } = {}) {
   const safeWidth = Math.max(12, Math.min(SIZE_CLASSES.area.maxWidth, Math.round(width)))
   const safeHeight = Math.max(12, Math.min(SIZE_CLASSES.area.maxHeight, Math.round(height)))

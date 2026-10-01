@@ -1,0 +1,6 @@
+Созданы из собственных геометрических рецептов проекта.
+Генератор: 4; SHA-256: aaf8e962deeeda64cac7293cf21254e625eeb35cb04b167a5e72f7a782a33a63.
+Фабрика household: SHA-256: 78e2fb95782785ce2ee32ce0d4a8505132df8f5aafbc4079c60389a770636b7f.
+Фабрика settlement: SHA-256: e3c2b42592510172580bd20e8178c3b1b8a6bd68bd732b752d9eb5c88d7ac0a0.
+Экспорт: Three.js r186, GLTFExporter.
+Модели Quaternius и Kenney не изменяются и сохраняют собственные лицензии.

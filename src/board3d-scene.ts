@@ -25,7 +25,8 @@ import { batchEnvironmentMeshes } from './board3d-batching'
 import { createTerrainSideGeometry, createTerrainSurfaceGeometry, propTerrainHeight, terrainHeightAt } from './board3d-terrain'
 import { createBoard3DRoofs, type Board3DRoofMode } from './board3d-roofs'
 import { createMasonryDressing, masonryStyleFor, MASONRY_COLORS, type MasonryRun } from './board3d-masonry'
-import { createBridgeRails, createGrassTufts, createRockClusters, createTileGroundGeometry, createWaterMaterial, createWaterSurfaceGeometry, isRockCell, type LandscapeDetail } from './board3d-landscape'
+import { createBridgeRails, createGrassTufts, createRockClusters, createTileGroundGeometry, createWaterMaterial, createWaterPlants, createWaterSurfaceGeometry, isRockCell, landscapeWantsModels, type LandscapeDetail, type LandscapeInstances } from './board3d-landscape'
+import { acquireLandscapeKit, type LandscapeKitHandle } from './landscape-model-assets'
 
 /** Высота срезанной стены в мировых единицах клетки. */
 /** Высота стены: выше пояса фигурки, как у наборных диорам, но не закрывает поле при взгляде сверху. */
@@ -964,12 +965,35 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     water.renderOrder = 2
     groundGroup.add(water)
   }
-  const rocks = createRockClusters(map, landscapeDetail, BOARD3D_WALL_HEIGHT)
+  // Скалы, мосты и растения у воды: сначала процедурные; по загрузке набора
+  // моделей пересобираются только эти слои, как предметы по загрузке GLB.
+  let rocks = createRockClusters(map, landscapeDetail, BOARD3D_WALL_HEIGHT)
   if (rocks.group.children.length) group.add(rocks.group)
   const grass = createGrassTufts(map, visiblePropsOnBoard(map), landscapeDetail)
   if (grass) group.add(grass.group)
-  const bridges = createBridgeRails(map)
+  let bridges = createBridgeRails(map)
   if (bridges) group.add(bridges.group)
+  let waterPlants: LandscapeInstances | null = null
+  let landscapeKit: LandscapeKitHandle | null = null
+  const landscapeAbort = new AbortController()
+  if (typeof window !== 'undefined' && landscapeWantsModels(map)) {
+    void acquireLandscapeKit(landscapeAbort.signal).then((kit) => {
+      if (!kit) return
+      if (disposed) { kit.release(); return }
+      landscapeKit = kit
+      const nextRocks = createRockClusters(map, landscapeDetail, BOARD3D_WALL_HEIGHT, kit)
+      rocks.dispose()
+      rocks = nextRocks
+      if (rocks.group.children.length) group.add(rocks.group)
+      const nextBridges = createBridgeRails(map, kit)
+      bridges?.dispose()
+      bridges = nextBridges
+      if (bridges) group.add(bridges.group)
+      waterPlants = createWaterPlants(map, landscapeDetail, kit)
+      if (waterPlants) group.add(waterPlants.group)
+      options.onReady?.()
+    }).catch(() => {})
+  }
 
   const roofs = createBoard3DRoofs(map, palette, { wallHeight: BOARD3D_WALL_HEIGHT, mode: options.roofMode })
   group.add(roofs.group)
@@ -1050,9 +1074,13 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     props.dispose()
     propAssets?.dispose()
     roofs.dispose()
+    landscapeAbort.abort()
     rocks.dispose()
     grass?.dispose()
     bridges?.dispose()
+    waterPlants?.dispose()
+    landscapeKit?.release()
+    landscapeKit = null
     group.clear()
     for (const materialValue of resources.materials) materialValue.dispose()
     for (const geometry of resources.geometries) geometry.dispose()

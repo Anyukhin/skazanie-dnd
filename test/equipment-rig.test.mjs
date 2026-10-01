@@ -18,7 +18,7 @@ const compiled = spawnSync(process.execPath, [
 ], { encoding: 'utf8' })
 assert.equal(compiled.status, 0, compiled.stderr || compiled.stdout)
 renameSync(join(buildDir, 'equipment-rig.js'), join(buildDir, 'equipment-rig.mjs'))
-const { createEquipmentRig } = await import(pathToFileURL(join(buildDir, 'equipment-rig.mjs')).href)
+const { createEquipmentRig, kayKitBowSide } = await import(pathToFileURL(join(buildDir, 'equipment-rig.mjs')).href)
 process.on('exit', () => rmSync(buildDir, { recursive: true, force: true }))
 
 globalThis.self = globalThis
@@ -193,8 +193,15 @@ test('оружие из реального GLB крепится в grip0 с cano
   disposeGraph(staff)
   const bow = (await parseGlb(join(equipmentDir, 'longbow.glb'))).scene
   rig.mountHeld(bow, 'right', { kind: 'bow', handedness: 'two-handed' })
-  const bowSize = finiteGraph(bow).getSize(new THREE.Vector3())
-  assert.ok(bowSize.y > bowSize.z * 2, 'лук должен стоять вертикально, а не лежать в горизонтальной плоскости')
+  // KayKit: клипы Ranged_Bow поднимают руку так, что вертикальной становится
+  // ось Z handslot; лук проекта (концы по +Y) ложится вдоль неё, как
+  // собственный bow KayKit, а не вертикально в позе покоя.
+  const tips = new THREE.Vector3(0, 1, 0).applyQuaternion(bow.quaternion)
+  assert.ok(Math.abs(tips.z) > .7, `лук KayKit должен идти вдоль оси Z handslot: ${tips.toArray()}`)
+  assert.equal(kayKitBowSide('kaykit', 'longbow', 'right', false), 'left', 'лук KayKit уходит в свободную левую ладонь')
+  assert.equal(kayKitBowSide('kaykit', 'longbow', 'right', true), 'right', 'занятая левая рука лук не забирает')
+  assert.equal(kayKitBowSide('kaykit', 'light-crossbow', 'right', false), 'right', 'арбалет остаётся в правой')
+  assert.equal(kayKitBowSide('quaternius', 'longbow', 'right', false), 'right', 'другие rig не меняют сторону')
   rig.clear()
   disposeGraph(bow)
   assert.equal(weapon.parent, null)

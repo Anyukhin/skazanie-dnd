@@ -363,7 +363,7 @@ test('предел высоты: запись манифеста перекры�
 })
 
 test('реальные тонкие GLB библиотеки не вырастают выше предела вида', async () => {
-  const cases = [['sk-household-broom', 'broom'], ['sk-lamp-post', 'lamp_post'], ['k-tree_pine_tall_a_detailed', 'tree_pine'], ['q-bottle_1', 'bottle']]
+  const cases = [['sk-household-broom', 'broom'], ['sk-lamp-post', 'lamp_post'], ['qn-pine_4', 'tree_pine'], ['q-bottle_1', 'bottle']]
   for (const [key, assetId] of cases) {
     const { model, template } = await realTemplate(key)
     assetsModule.bakeSkinnedMeshes(template)

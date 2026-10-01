@@ -3,6 +3,7 @@ import * as THREE from 'three'
 import { cellAt } from './tactical-map-client'
 import { terrainHeightAt } from './board3d-terrain'
 import { createMasonryDressing, masonryStyleFor, MASONRY_COLORS, type MasonryRun } from './board3d-masonry'
+import { landscapeModelsOf, pickLandscapeVariant, type LandscapeKit, type LandscapeModel } from './landscape-model-assets'
 import type { TacticalMap, TacticalProp } from './types'
 
 /**
@@ -313,12 +314,138 @@ function rockPalette(material: string | undefined) {
 }
 
 /**
+ * Тон камня-модели: мшистый — родная фактура Quaternius (лес, луг), голый —
+ * та же фактура, обесцвеченная в шейдере (пещера, песок, гранит). Оттенок
+ * породы задаёт цвет экземпляра поверх.
+ */
+export type RockTone = 'moss' | 'bare'
+const ROCK_TONE_SATURATION: Record<RockTone, number> = { moss: 1, bare: .14 }
+/** Подъём яркости голого камня: обесцвеченный мох темнее серого камня фактуры. */
+const ROCK_TONE_LIFT: Record<RockTone, number> = { moss: 1, bare: 1.45 }
+
+/** Мшистая фактура — на открытых травяных и земляных местах, в пещере — голый камень. */
+export function rockToneFor(map: TacticalMap, material: string | undefined): RockTone {
+  if (String(map.theme ?? '').toLowerCase() === 'cave' || String(map.theme ?? '').toLowerCase() === 'mine') return 'bare'
+  return material === 'grass' || material === 'earth' ? 'moss' : 'bare'
+}
+
+/** Оттенок модели камня: фактура уже светотеневая, поэтому оттенок светлее палитры процедурных валунов. */
+const MODEL_ROCK_TINTS: Record<RockTone, Record<string, THREE.Color[]>> = {
+  moss: {
+    grass: ['#f2f0e6', '#e4e6d6', '#fbf6ea', '#d9dccb'].map((value) => new THREE.Color(value)),
+    earth: ['#e2d6c4', '#d4c8b4', '#ece0cc', '#c8baa4'].map((value) => new THREE.Color(value)),
+  },
+  bare: {
+    stone: ['#d2cabd', '#c4bcae', '#ddd5c7', '#b7afa2'].map((value) => new THREE.Color(value)),
+    sand: ['#f0d6a8', '#e2c696', '#f8e0b4', '#d6b886'].map((value) => new THREE.Color(value)),
+    earth: ['#bda88e', '#ae9a80', '#c8b498', '#a08c74'].map((value) => new THREE.Color(value)),
+    grass: ['#ece0c6', '#ddd0b4', '#f6eacf', '#cfc1a4'].map((value) => new THREE.Color(value)),
+  },
+}
+function modelRockTint(tone: RockTone, material: string | undefined) {
+  const table = MODEL_ROCK_TINTS[tone]
+  return table[material ?? ''] ?? table.stone ?? table.grass
+}
+
+/**
+ * Материал экземпляров камня: копия материала модели (фактура общая, не
+ * копируется) с обесцвечиванием до умножения на цвет экземпляра.
+ */
+export function createRockModelMaterial(source: THREE.Material, tone: RockTone): THREE.Material {
+  const material = source.clone()
+  const saturation = ROCK_TONE_SATURATION[tone]
+  const lift = ROCK_TONE_LIFT[tone]
+  if (saturation < 1 || lift !== 1) {
+    material.onBeforeCompile = (shader) => {
+      shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+        diffuseColor.rgb = mix(vec3(dot(diffuseColor.rgb, vec3(.299, .587, .114))), diffuseColor.rgb, ${saturation.toFixed(3)}) * ${lift.toFixed(3)};`)
+    }
+    material.customProgramCacheKey = () => `landscape-rock-${tone}`
+  }
+  return material
+}
+
+type ModelInstance = { model: LandscapeModel; matrix: THREE.Matrix4; color: THREE.Color | null; tone: RockTone | null }
+
+/** Сторона участка карты, на которые делятся экземпляры моделей местности, в клетках. */
+export const LANDSCAPE_CHUNK = 6
+
+/**
+ * Экземпляры моделей набора: один InstancedMesh на пару (геометрия части,
+ * производный материал). Геометрии принадлежат набору и здесь не
+ * освобождаются; производные материалы — свои, их освобождает `dispose`.
+ */
+function instanceLandscapeModels(group: THREE.Group, instances: readonly ModelInstance[], shadows: { cast: boolean; receive: boolean }) {
+  const materials = new Map<string, THREE.Material>()
+  const batches = new Map<string, { geometry: THREE.BufferGeometry; material: THREE.Material; entries: ModelInstance[] }>()
+  for (const instance of instances) for (const part of instance.model.parts) {
+    const materialKey = `${part.material.uuid}:${instance.tone ?? 'plain'}`
+    let material = materials.get(materialKey)
+    if (!material) {
+      material = instance.tone ? createRockModelMaterial(part.material, instance.tone) : part.material
+      materials.set(materialKey, material)
+    }
+    // Участок карты: у InstancedMesh одна сфера отсечения на все экземпляры, и
+    // без разбиения вся гряда попадала бы в каждую грань кубической тени огня.
+    const chunk = `${Math.floor(instance.matrix.elements[12] / LANDSCAPE_CHUNK)}:${Math.floor(instance.matrix.elements[14] / LANDSCAPE_CHUNK)}`
+    const key = `${part.geometry.uuid}:${materialKey}:${chunk}`
+    const batch = batches.get(key) ?? { geometry: part.geometry, material, entries: [] }
+    batch.entries.push(instance)
+    batches.set(key, batch)
+  }
+  for (const batch of batches.values()) {
+    const mesh = new THREE.InstancedMesh(batch.geometry, batch.material, batch.entries.length)
+    mesh.name = 'landscape-model'
+    batch.entries.forEach((entry, index) => {
+      mesh.setMatrixAt(index, entry.matrix)
+      if (entry.color) mesh.setColorAt(index, entry.color)
+    })
+    mesh.instanceMatrix.needsUpdate = true
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+    mesh.castShadow = shadows.cast
+    mesh.receiveShadow = shadows.receive
+    mesh.computeBoundingSphere()
+    group.add(mesh)
+  }
+  const owned = [...materials.entries()].filter(([key]) => !key.endsWith(':plain')).map(([, material]) => material)
+  return () => owned.forEach((material) => material.dispose())
+}
+
+/** Есть ли на карте что рисовать моделями набора: скала или вода (берег, мост). */
+export function landscapeWantsModels(map: TacticalMap): boolean {
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    if (isWaterCell(map, x, y) || isRockCell(map, x, y)) return true
+  }
+  return false
+}
+
+/** Плоская плита (высота меньше 0,4 стороны) — основание гряды, а не глыба. */
+function isSlab(model: LandscapeModel) {
+  return model.size.y < .4
+}
+
+/** Модели камней набора, если их хватает на скалы; иначе — `null`, процедурный вариант. */
+export function landscapeRockModels(kit: LandscapeKit | null | undefined) {
+  const rocks = landscapeModelsOf(kit, 'rock')
+  const boulders = rocks.filter((model) => !isSlab(model))
+  const slabs = rocks.filter(isSlab)
+  const cliffs = landscapeModelsOf(kit, 'cliff')
+  if (!boulders.length) return null
+  return { boulders, slabs, cliffs: cliffs.length ? cliffs : boulders }
+}
+
+/**
  * Скалы: на каждой непроходимой клетке снаружи — груда из двух-трёх валунов,
  * в помещении — блок кладки. Груды соседних клеток срастаются в гряду.
+ * С набором моделей валуны и толща — текстурированные камни Quaternius; без
+ * него (загрузка, отказ, тесты) — процедурные икосаэдры.
  */
-export function createRockClusters(map: TacticalMap, detail: LandscapeDetail, wallHeight = .68): LandscapeInstances {
+export function createRockClusters(map: TacticalMap, detail: LandscapeDetail, wallHeight = .68, kit: LandscapeKit | null = null): LandscapeInstances {
   const group = new THREE.Group()
   group.name = 'landscape-rocks'
+  const kitRocks = landscapeRockModels(kit)
+  group.userData.rockSource = kitRocks ? 'models' : 'procedural'
+  const modelInstances: ModelInstance[] = []
   const geometries = [0, 1, 2].map((seed) => createBoulderGeometry(seed))
   const material = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: .92, metalness: 0, flatShading: true })
   const blockGeometry = new THREE.BoxGeometry(1, 1, 1)
@@ -364,7 +491,45 @@ export function createRockClusters(map: TacticalMap, detail: LandscapeDetail, wa
     if (!isRockCell(map, x, y)) continue
     const palette = rockPalette(cell.material)
     const pick = (salt: number) => palette[Math.floor(cellNoise(x, y, salt) * palette.length) % palette.length]
-    if (isRockCore(map, x, y) && (cell.material === 'earth' || cell.material === 'stone' || themeSolidKind(map) === 'rock' && map.theme === 'cave')) {
+    const core = isRockCore(map, x, y) && (cell.material === 'earth' || cell.material === 'stone' || themeSolidKind(map) === 'rock' && map.theme === 'cave')
+    if (kitRocks) {
+      const tone = rockToneFor(map, cell.material)
+      const tints = modelRockTint(tone, cell.material)
+      const place = (model: LandscapeModel, salt: number, footprint: number, height: number, offset: number, base: number, tilt: number) => {
+        const n = (value: number) => cellNoise(x, y, salt + value)
+        // Высота задаётся отдельно от ширины, но вытягивание ограничено: камень
+        // остаётся камнем, а не столбом или блином.
+        const stretch = Math.min(1.5, Math.max(.75, height / Math.max(.05, model.size.y * footprint)))
+        object.position.set(x + .5 + (n(1) - .5) * offset * 2, base, y + .5 + (n(2) - .5) * offset * 2)
+        object.rotation.set((n(3) - .5) * tilt, n(4) * Math.PI * 2, (n(5) - .5) * tilt)
+        object.scale.set(footprint, footprint * stretch, footprint * (.88 + n(6) * .24))
+        object.updateMatrix()
+        const tint = tints[Math.floor(n(7) * tints.length) % tints.length]
+        modelInstances.push({ model, matrix: object.matrix.clone(), color: core ? tint.clone().multiplyScalar(.94) : tint, tone })
+      }
+      if (core) {
+        // Толща: тёмное основание закрывает щели, сверху — крупная глыба шире
+        // клетки; соседние глыбы срастаются в сплошной массив.
+        block(x, y, level, .7, pick(42).clone().multiplyScalar(.42), .08)
+        const model = pickLandscapeVariant(kitRocks.cliffs, cellNoise(x, y, 60))!
+        place(model, 61, 1.8 + cellNoise(x, y, 62) * .35, 1.02 + cellNoise(x, y, 63) * .25, .1, level - .1, .1)
+        continue
+      }
+      // Кромка: глыба в клетку и больше, у основания — плита или камень
+      // поменьше, сверху — обломок. Детерминированно по шуму клетки.
+      const n = (salt: number) => cellNoise(x, y, salt)
+      place(pickLandscapeVariant(kitRocks.boulders, n(70))!, 71, 1.2 + n(72) * .3, .9 + n(73) * .4, .08, level - .06, .2)
+      if (perCell > 1) {
+        const slab = kitRocks.slabs.length && n(80) < .5
+        const model = slab ? pickLandscapeVariant(kitRocks.slabs, n(81))! : pickLandscapeVariant(kitRocks.boulders, n(81))!
+        place(model, 82, slab ? 1 + n(83) * .25 : .6 + n(83) * .2, slab ? .3 : .45 + n(84) * .2, .28, level - .03, .25)
+      }
+      if (perCell > 2 && n(90) < .6) {
+        place(pickLandscapeVariant(kitRocks.boulders, n(91))!, 92, .42 + n(93) * .18, .3 + n(94) * .15, .3, level + .25 + n(95) * .2, .5)
+      }
+      continue
+    }
+    if (core) {
       // Толща: блок неровной высоты; соседние блоки разной высоты дают
       // ступенчатую гряду, как у сложенных плиток диорамы.
       // Толща темнее кромки: свет падает на верх массива, и светлый камень
@@ -422,6 +587,7 @@ export function createRockClusters(map: TacticalMap, detail: LandscapeDetail, wa
     mesh.computeBoundingSphere()
     group.add(mesh)
   }
+  const disposeModels = modelInstances.length ? instanceLandscapeModels(group, modelInstances, { cast: true, receive: true }) : null
   return {
     group,
     dispose() {
@@ -432,6 +598,7 @@ export function createRockClusters(map: TacticalMap, detail: LandscapeDetail, wa
       blockGeometry.dispose()
       blockMaterial.dispose()
       masonry?.dispose()
+      disposeModels?.()
     },
   }
 }
@@ -558,7 +725,134 @@ export function bridgeSpan(map: TacticalMap, x: number, y: number): 'x' | 'y' | 
   return null
 }
 
-export function createBridgeRails(map: TacticalMap): LandscapeInstances | null {
+/** Вертикальный масштаб пролёта Kenney: перила поднимаются примерно на треть клетки над настилом. */
+const BRIDGE_MODEL_HEIGHT_SCALE = 1.6
+/** Высота середины настила пролёта Kenney над его основанием, в приведённой модели. */
+const BRIDGE_MODEL_DECK = .2
+
+export type BridgeStrip = { x: number; y: number; span: 'x' | 'y'; width: number; level: number }
+
+/**
+ * Полосы настила поперёк пролёта для моделей моста: для 'x' полоса идёт вдоль
+ * y, для 'y' — вдоль x. Полоса с клетками разной высоты (террасы в футах)
+ * моделью не покрывается: одна секция легла бы над частью настила.
+ */
+export function bridgeModelStrips(map: TacticalMap): BridgeStrip[] {
+  const strips: BridgeStrip[] = []
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    const span = bridgeSpan(map, x, y)
+    if (!span) continue
+    const [ax, ay] = span === 'x' ? [0, 1] : [1, 0]
+    if (bridgeSpan(map, x - ax, y - ay) === span) continue
+    const level = terrainHeightAt(map, x, y)
+    let width = 1
+    let flat = true
+    while (width < BRIDGE_MAX_WIDTH && bridgeSpan(map, x + ax * width, y + ay * width) === span) {
+      if (Math.abs(terrainHeightAt(map, x + ax * width, y + ay * width) - level) > .01) flat = false
+      width += 1
+    }
+    if (flat) strips.push({ x, y, span, width, level })
+  }
+  return strips
+}
+
+/**
+ * Мост из моделей набора: на каждую полосу настила — одна секция Kenney,
+ * растянутая поперёк на всю ширину полосы, поэтому перила стоят только по
+ * внешним краям, а не между полосами. Настил секции утоплен под плитку: по
+ * мосту ходят по той же плитке-настилу, что и в 2D, а модель добавляет
+ * перила, стойки и арку балок над водой.
+ */
+function bridgeModelInstances(strips: readonly BridgeStrip[], model: LandscapeModel): ModelInstance[] {
+  const object = new THREE.Object3D()
+  return strips.map((strip) => {
+    const { x, y, span, width, level } = strip
+    object.position.set(x + (span === 'x' ? .5 : width / 2), level - .006 - BRIDGE_MODEL_DECK * BRIDGE_MODEL_HEIGHT_SCALE, y + (span === 'x' ? width / 2 : .5))
+    object.rotation.set(0, span === 'x' ? 0 : Math.PI / 2, 0)
+    object.scale.set(1 / Math.max(.5, model.size.x), BRIDGE_MODEL_HEIGHT_SCALE, width / Math.max(.5, model.size.z))
+    object.updateMatrix()
+    return { model, matrix: object.matrix.clone(), color: null, tone: null }
+  })
+}
+
+/**
+ * Кувшинки на глади и тростник у берега — только из набора моделей: у
+ * процедурного варианта их нет. Выбор клетки, варианта и поворота —
+ * детерминированно по шуму клетки; на «Экономном» не ставятся.
+ */
+export function createWaterPlants(map: TacticalMap, detail: LandscapeDetail, kit: LandscapeKit | null): LandscapeInstances | null {
+  if (detail === 'minimal' || !kit) return null
+  // В пещере, шахте и постройках у воды нет ни солнца, ни тростника.
+  const theme = String(map.theme ?? '').toLowerCase()
+  if (theme === 'cave' || theme === 'mine' || BUILT_THEMES.has(theme)) return null
+  const lilies = landscapeModelsOf(kit, 'lily')
+  const reeds = landscapeModelsOf(kit, 'reed')
+  if (!lilies.length && !reeds.length) return null
+  const instances: ModelInstance[] = []
+  const object = new THREE.Object3D()
+  const place = (model: LandscapeModel, px: number, base: number, pz: number, footprint: number, height: number, yaw: number) => {
+    object.position.set(px, base, pz)
+    object.rotation.set(0, yaw, 0)
+    object.scale.set(footprint, height / Math.max(.02, model.size.y), footprint)
+    object.updateMatrix()
+    instances.push({ model, matrix: object.matrix.clone(), color: null, tone: null })
+  }
+  const lilyChance = detail === 'full' ? .32 : .2
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    if (!isWaterCell(map, x, y)) continue
+    const n = (salt: number) => cellNoise(x, y, salt)
+    const level = terrainHeightAt(map, x, y)
+    // Берег — ближайшая сторона суши: тростник растёт у неё, из дна.
+    const land = ([[0, -1], [1, 0], [0, 1], [-1, 0]] as const).filter(([dx, dy]) => {
+      const cell = cellAt(map, x + dx, y + dy)
+      return Boolean(cell?.revealed && cell.surface !== 'water' && cell.passable)
+    })
+    if (reeds.length && land.length && n(101) < .5) {
+      const [dx, dy] = land[Math.floor(n(102) * land.length) % land.length]
+      const clumps = detail === 'full' ? 2 : 1
+      for (let index = 0; index < clumps; index += 1) {
+        const m = (salt: number) => cellNoise(x, y, salt + index * 7)
+        const along = (m(103) - .5) * .6
+        place(pickLandscapeVariant(reeds, m(104))!, x + .5 + dx * .3 + (dy ? along : 0), level - WATER_BED_DEPTH, y + .5 + dy * .3 + (dx ? along : 0),
+          .32 + m(105) * .16, .5 + m(106) * .2, m(107) * Math.PI * 2)
+      }
+    }
+    if (lilies.length && n(110) < lilyChance) {
+      const count = 1 + (n(111) < .4 ? 1 : 0)
+      for (let index = 0; index < count; index += 1) {
+        const m = (salt: number) => cellNoise(x, y, salt + index * 5)
+        place(pickLandscapeVariant(lilies, m(112))!, x + .2 + m(113) * .6, level - WATER_SURFACE_DEPTH - .012, y + .2 + m(114) * .6,
+          .26 + m(115) * .14, .03, m(116) * Math.PI * 2)
+      }
+    }
+  }
+  if (!instances.length) return null
+  const group = new THREE.Group()
+  group.name = 'landscape-water-plants'
+  // Мелкие растения не бросают тень: экономия на картах теней.
+  const disposeModels = instanceLandscapeModels(group, instances, { cast: false, receive: true })
+  return {
+    group,
+    dispose() {
+      group.removeFromParent()
+      group.clear()
+      disposeModels()
+    },
+  }
+}
+
+/**
+ * Перила и балки моста. С набором моделей ровные полосы настила получают
+ * секции Kenney, остальные клетки моста — процедурные перила из брусков.
+ */
+export function createBridgeRails(map: TacticalMap, kit: LandscapeKit | null = null): LandscapeInstances | null {
+  const bridgeModels = landscapeModelsOf(kit, 'bridge')
+  const bridgeModel = bridgeModels.find((entry) => entry.key === 'bridge-wood') ?? bridgeModels[0] ?? null
+  const strips = bridgeModel ? bridgeModelStrips(map) : []
+  const covered = new Set<string>()
+  for (const strip of strips) for (let index = 0; index < strip.width; index += 1) {
+    covered.add(strip.span === 'x' ? `${strip.x},${strip.y + index}` : `${strip.x + index},${strip.y}`)
+  }
   const pieces: THREE.Matrix4[] = []
   const object = new THREE.Object3D()
   const box = (x: number, y: number, z: number, sx: number, sy: number, sz: number) => {
@@ -570,7 +864,7 @@ export function createBridgeRails(map: TacticalMap): LandscapeInstances | null {
   }
   for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
     const span = bridgeSpan(map, x, y)
-    if (!span) continue
+    if (!span || covered.has(`${x},${y}`)) continue
     const level = terrainHeightAt(map, x, y)
     // Перила — только по сторонам, обращённым к воде.
     const sides: Array<[number, number]> = span === 'x' ? [[0, -1], [0, 1]] : [[-1, 0], [1, 0]]
@@ -592,18 +886,23 @@ export function createBridgeRails(map: TacticalMap): LandscapeInstances | null {
     if (span === 'x') box(x + .5, level - .1, y + .5, 1, .1, .86)
     else box(x + .5, level - .1, y + .5, .86, .1, 1)
   }
-  if (!pieces.length) return null
+  if (!pieces.length && !strips.length) return null
   const group = new THREE.Group()
   group.name = 'landscape-bridges'
+  group.userData.bridgeSource = strips.length ? 'models' : 'procedural'
   const geometry = new THREE.BoxGeometry(1, 1, 1)
   const material = new THREE.MeshStandardMaterial({ color: '#6b4b30', roughness: .85, metalness: 0 })
-  const mesh = new THREE.InstancedMesh(geometry, material, pieces.length)
-  pieces.forEach((matrix, index) => mesh.setMatrixAt(index, matrix))
-  mesh.instanceMatrix.needsUpdate = true
-  mesh.castShadow = true
-  mesh.receiveShadow = true
-  mesh.computeBoundingSphere()
-  group.add(mesh)
+  if (pieces.length) {
+    const mesh = new THREE.InstancedMesh(geometry, material, pieces.length)
+    pieces.forEach((matrix, index) => mesh.setMatrixAt(index, matrix))
+    mesh.instanceMatrix.needsUpdate = true
+    mesh.castShadow = true
+    mesh.receiveShadow = true
+    mesh.computeBoundingSphere()
+    group.add(mesh)
+  }
+  const disposeModels = bridgeModel && strips.length
+    ? instanceLandscapeModels(group, bridgeModelInstances(strips, bridgeModel), { cast: true, receive: true }) : null
   return {
     group,
     dispose() {
@@ -611,6 +910,7 @@ export function createBridgeRails(map: TacticalMap): LandscapeInstances | null {
       group.clear()
       geometry.dispose()
       material.dispose()
+      disposeModels?.()
     },
   }
 }
