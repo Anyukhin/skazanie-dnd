@@ -69,6 +69,98 @@ function topicStems(value) {
 }
 
 /**
+ * Секреты мастера — скрытые факты кампании (`gm_secret`, видимость gm_only),
+ * которые автор мира заложил при создании: что на самом деле случилось, где
+ * лежит улика, кто лжёт. `object` — JSON `{ topic, skills, holder }`.
+ */
+const GM_SECRET_PREDICATES = new Set(['gm_secret'])
+// «Осматриваюсь», «ищу что-нибудь», «изучаю место» — общий поиск без темы.
+const GENERAL_SEARCH_PATTERN = /(?<![\p{L}\p{M}])(?:осматр\p{L}*|осмотр\p{L}*|огляд\p{L}*|обыскива\p{L}*|ищу|изуча\p{L}*|исследу\p{L}*|разгляд\p{L}*|рассматр\p{L}*|прислуш\p{L}*)(?![\p{L}\p{M}])/iu
+
+const SEARCH_SKILLS = new Set(['perception', 'investigation', 'survival'])
+const SECRET_STOP_STEMS = new Set(['геро', 'чтоб', 'кото', 'этог', 'свой', 'свои', 'своё', 'этот', 'этой', 'есть', 'было', 'была', 'были', 'него', 'тоже', 'лишь', 'пока', 'кто-', 'когд', 'толь', 'сейч', 'здес', 'очен', 'всех', 'весь', 'вижу', 'смот', 'ищу-'])
+
+/**
+ * Основы для сверки заявки с секретом — по четыре буквы: «следы» и «следов»,
+ * «телеги» и «телегой» сходятся, а пятибуквенные основы `topicStems` их
+ * разводили, и поиск следов открывал чужой секрет.
+ */
+function secretStems(value) {
+  return new Set((String(value ?? '').normalize('NFKC').toLocaleLowerCase('ru').replace(/ё/gu, 'е').match(/[\p{L}-]{4,}/gu) ?? [])
+    .map((word) => word.slice(0, 4))
+    .filter((stem) => !SECRET_STOP_STEMS.has(stem)))
+}
+
+export function parseGmSecretObject(value) {
+  try {
+    const parsed = JSON.parse(String(value ?? ''))
+    return {
+      topic: text(parsed?.topic, 200),
+      skills: Array.isArray(parsed?.skills) ? parsed.skills.map((entry) => text(entry, 40).replace(/_/gu, '-')).filter(Boolean) : [],
+      holder: text(parsed?.holder, 120),
+    }
+  } catch {
+    return { topic: '', skills: [], holder: '' }
+  }
+}
+
+/**
+ * Какой секрет открывает удачная проверка. Сначала — тот, о чём герой
+ * спрашивал словами (тема или текст секрета совпали со словами заявки) и чей
+ * навык подходит. Если тема не совпала, но герой просто ищет («осматриваюсь»),
+ * хороший бросок даёт ближайший секрет того же навыка в этой локации — так
+ * живой ведущий награждает внимательность. Секрет заменяется фактом отряда
+ * (`discovery` с `supersedes_fact_id`): тайна становится общим знанием одним
+ * событием, а повтор того же хода не открывает её дважды.
+ */
+function secretRevealCommand(state = {}, { sourceEventId = '', skill = '', actionText = '', topicalOnly = false } = {}) {
+  const memory = state.worldMemory ?? {}
+  const normalizedSkill = String(skill ?? '').replace(/_/gu, '-')
+  const location = text(state.scene?.location, 160).toLocaleLowerCase('ru')
+  const hereIds = new Set((memory.entities ?? [])
+    .filter((entity) => location && text(entity?.name, 160).toLocaleLowerCase('ru') === location)
+    .map((entity) => String(entity.id)))
+  const spoken = secretStems(actionText)
+  const candidates = (memory.facts ?? [])
+    .filter((fact) => fact && GM_SECRET_PREDICATES.has(fact.predicate))
+    .filter((fact) => fact.status === 'active')
+    .map((fact) => ({ fact, meta: parseGmSecretObject(fact.object) }))
+    .map((entry) => {
+      const topic = secretStems(`${entry.meta.topic} ${entry.fact.summary}`)
+      return {
+        ...entry,
+        exact: entry.meta.skills.includes(normalizedSkill),
+        // Искать глазами, руками и по следам — родственные способы: если герой
+        // прямо называет то, где спрятана улика, Внимательность найдёт и следы.
+        related: SEARCH_SKILLS.has(normalizedSkill) && entry.meta.skills.some((skill) => SEARCH_SKILLS.has(skill)),
+        score: [...spoken].filter((stem) => topic.has(stem)).length,
+        here: hereIds.has(String(entry.fact.subject_id)),
+      }
+    })
+    .filter((entry) => entry.exact || entry.related)
+  const topical = candidates.filter((entry) => entry.score > 0)
+    .sort((left, right) => right.score - left.score || Number(right.here) - Number(left.here))[0]
+  const general = !topical && !topicalOnly && GENERAL_SEARCH_PATTERN.test(String(actionText ?? ''))
+    ? candidates.find((entry) => entry.here && entry.exact) ?? null
+    : null
+  const chosen = topical ?? general
+  if (!chosen) return null
+  return {
+    command_type: 'RecordWorldFact',
+    fact: {
+      id: `fact-secret-found-${createHash('sha256').update(`${sourceEventId}\u0000${chosen.fact.id}`).digest('hex').slice(0, 24)}`,
+      subject_id: chosen.fact.subject_id,
+      predicate: 'discovery',
+      object: 'clue',
+      summary: text(chosen.fact.summary, 1_000),
+      visibility: 'party',
+      source_event_ids: [sourceEventId],
+      supersedes_fact_id: chosen.fact.id,
+    },
+  }
+}
+
+/**
  * Улики свободного действия. Успешная проверка познавательного навыка, слова
  * которой совпали с активным поручением, становится фактом `discovery` о
  * сущности этого поручения. Именно такие факты `questProgressEvidenceFor`
@@ -86,8 +178,17 @@ function topicStems(value) {
  */
 export function freeActionDiscoveryCommands(state = {}, { checkEvent = null, skill = '', actionText = '', goalSummary = '', skillLabel = '' } = {}) {
   const sourceEventId = String(checkEvent?.event_id ?? '')
-  if (!sourceEventId || checkEvent?.payload?.success !== true) return []
+  // Успех без броска — решение судьи с outcome success: «изучаю повестку»
+  // без риска живой ведущий не превращает в кубик, а просто говорит, что
+  // герой видит. Такой успех открывает только секрет по теме самой заявки.
+  const unrolled = checkEvent?.event_type === 'RulingRecorded' && checkEvent?.payload?.ruling?.outcome === 'success'
+  if (!sourceEventId || (checkEvent?.payload?.success !== true && !unrolled)) return []
   if (!DISCOVERY_SKILLS.has(String(skill ?? '').replace(/_/gu, '-'))) return []
+  // Секрет мастера важнее безликой «зацепки»: удачный поиск открывает то, что
+  // в мире действительно спрятано, и рассказчик называет найденное словами.
+  const secret = secretRevealCommand(state, { sourceEventId, skill, actionText: `${actionText} ${goalSummary}`, topicalOnly: unrolled })
+  if (secret) return [secret]
+  if (unrolled) return []
   const spoken = topicStems(`${actionText} ${goalSummary}`)
   if (!spoken.size) return []
   const entities = new Set((state.worldMemory?.entities ?? []).map((entity) => String(entity?.id ?? '')))

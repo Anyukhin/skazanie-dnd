@@ -10,8 +10,8 @@ import { buildDataOnlyContext } from './security.mjs'
 import { tavernTableMood } from './tavern-life.mjs'
 import { retrieveWorldMemory } from './world-memory.mjs'
 
-export const NPC_SOCIAL_PROMPT_VERSION = 'npc_controller/social-v5'
-const prompt = readFileSync(fileURLToPath(new URL('../prompts/npc_controller/social_v5.txt', import.meta.url)), 'utf8')
+export const NPC_SOCIAL_PROMPT_VERSION = 'npc_controller/social-v6'
+const prompt = readFileSync(fileURLToPath(new URL('../prompts/npc_controller/social_v6.txt', import.meta.url)), 'utf8')
 const STANCES = new Set(['friendly', 'neutral', 'guarded', 'hostile'])
 const DIRECTIONS = new Set(['npc_to_party', 'party_to_npc'])
 export const NPC_SOCIAL_MEMORY_LIMIT = 8
@@ -95,6 +95,9 @@ function npcFacts(state, profile, message = '') {
     id: String(record.fact.id),
     subject: clean(record.entity?.name, 160),
     summary: clean(record.fact.summary || record.fact.object, 500),
+    // Тайна, которую знает только этот собеседник: её не говорят первому
+    // встречному. Модель видит пометку, запасной ответ такой факт не зачитывает.
+    ...(['public', 'party'].includes(String(record.fact.visibility)) ? {} : { guarded: true }),
   }))
 }
 
@@ -268,7 +271,8 @@ function fallbackDisclosure(profile, facts, claims, checkOutcome = null, memory 
     const remembered = memory.find((entry) => entry.kind === 'conversation' && entry.npc_reply)
     if (remembered) return { reply: `${profile.name} напоминает: «${clean(remembered.npc_reply, 500)}»`, claimIds: [] }
   }
-  if (facts.length) return { reply: `${profile.name} отвечает: «${facts[0].summary}»`, claimIds: [] }
+  const openFact = facts.find((fact) => !fact.guarded)
+  if (openFact) return { reply: `${profile.name} отвечает: «${openFact.summary}»`, claimIds: [] }
   const rumor = claims.find((claim) => claim.kind === 'rumor')
   if (rumor) return { reply: `${profile.name} понижает голос: «${rumor.summary}»`, claimIds: [rumor.id] }
   const belief = claims[0]

@@ -191,7 +191,7 @@ test('после commit рассказчик получает исходное �
 test('реальный deterministic Narrator даёт bounded текст исходной задумки без сырых механических ключей', async () => {
   const { orchestrator, initial } = await fixture({ narrator: new Narrator(), diceValues: [1, 1] })
   const result = await orchestrator.handle(input(initial, 'Подпираю дверь верёвкой', 'narrator-deterministic-free-action'))
-  assert.match(result.narration, /Задумка.*Подпираю дверь верёвкой.*не удалась/u)
+  assert.match(result.narration, /Не вышло: подпираю дверь верёвкой/iu)
   assert.doesNotMatch(result.narration, /athletics|minute|Намерение героя принято|Для действия сохранён/u)
   assert.doesNotMatch(result.narration, /\.\./u)
   assert.ok(result.mechanics.some((event) => event.event_type === 'TimeAdvanced'))

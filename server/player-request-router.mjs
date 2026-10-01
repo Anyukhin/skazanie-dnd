@@ -20,14 +20,14 @@ export const PLAYER_REQUEST_ROLES = Object.freeze({
   worldkeeper: { id: 'worldkeeper', purpose: 'Лор, память мира и знания героя' },
   director: { id: 'director', prompt_id: ['director/v4_story', 'director/v4_chaos'], purpose: 'Темп, развилки, групповые решения и переходы сцен' },
   game_master: { id: 'game_master', purpose: 'Правила, проверки, кубики и игровые инструменты' },
-  narrator: { id: 'narrator', prompt_id: 'narrator/v10', purpose: 'Финальное повествование из подтверждённых результатов' },
+  narrator: { id: 'narrator', prompt_id: 'narrator/v11', purpose: 'Финальное повествование из подтверждённых результатов' },
   map_architect: { id: 'map_architect', prompt_id: 'map_architect/v6', purpose: 'Динамическая архитектура новой локации и игровой карты' },
-  action_adjudicator: { id: 'action_adjudicator', prompt_id: 'action_adjudicator/v7', purpose: 'Разбор свободного действия: маршрут заявки, цель, средство, применимый навык и цена провала' },
+  action_adjudicator: { id: 'action_adjudicator', prompt_id: 'action_adjudicator/v8', purpose: 'Разбор свободного действия: маршрут заявки, цель, средство, применимый навык и цена провала' },
 })
 
-const LORE_REQUEST = /(?:лор|легенд|предани|истори[яию]|что\s+(?:я|мы)\s+зна|кто\s+так|что\s+так|расскажи\s+(?:мне\s+)?(?:о|об|про)|помню\s+ли)/iu
+const LORE_REQUEST = /(?:лор|легенд|предани|истори[яию]|что\s+(?:я|мы)\s+(?:уже\s+|вообще\s+)?зна|кто\s+так|что\s+так|расскажи\s+(?:мне\s+)?(?:о|об|про)|помню\s+ли)/iu
 const DIRECTOR_REQUEST = /(?:покида|уходим|маршрут|куда\s+дальше|голосован|вместе\s+реш|цель\s+достиг|следующ\w*\s+локац|\[РЕШЕНИЕ ГРУППЫ\]|\[ГЛОБАЛЬНАЯ КАРТА\])/iu
-const DIRECTION_REQUEST = /(?:куда\s+(?:нам\s+)?(?:идти|пойти|уходить|направляться|двигаться)(?:\s+дальше|\s+отсюда|\s+по\s+заданию)?|куда\s+по\s+заданию|что\s+делать\s+дальше)/iu
+const DIRECTION_REQUEST = /(?:куда\s+(?:нам\s+)?(?:идти|пойти|уходить|направляться|двигаться)(?:\s+дальше|\s+отсюда|\s+по\s+заданию)?|куда\s+по\s+заданию|что\s+делать\s+дальше|^(?:(?:а|и|ну)\s+)*что\s+(?:теперь|дальше)\s*\??$)/iu
 const FATE_REQUEST = /(?:пусть|пускай|давайте|может)\s+(?:решит|определит|бросим)\s+(?:кубик|кость)|кубик\s+судьбы/iu
 const RULES_REQUEST = /(?:правил|можно\s+ли|провер|брос|куб|атак|урон|заклин|спасброс|инициатив|класс\s+брони)/iu
 // «Рассказываю Марте свою историю» — реплика собеседнику, а не вопрос о лоре,
@@ -36,6 +36,107 @@ const NPC_SPEECH_REQUEST = /(?<![\p{L}\p{M}])(?:спрашиваю|спроси�
 const VISIBLE_SCENE_LIMIT = 8
 
 const visibleText = (value, maximum = 160) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
+/** Законченное предложение без двойной точки: «…у мытни.. В видимой части». */
+const asSentence = (value, maximum = 400) => {
+  const text = visibleText(value, maximum).replace(/[\s.!?…;,:]+$/u, '')
+  return text ? `${text.charAt(0).toLocaleUpperCase('ru')}${text.slice(1)}.` : ''
+}
+
+/**
+ * NPC, которых герой видит в текущей сцене. `scene_npcs` — проекция
+ * присутствующих; профиль из `social.npcs` даёт роль и открытое описание,
+ * только если он открыт отряду и стоит в этом же месте.
+ */
+function presentSceneNpcs(state = {}) {
+  const location = visibleText(state.scene?.location, 160).toLocaleLowerCase('ru')
+  const profiles = (Array.isArray(state.social?.npcs) ? state.social.npcs : [])
+    .filter((npc) => ['party', 'public'].includes(String(npc?.visibility ?? 'party')) && npc?.available !== false)
+  const present = Array.isArray(state.scene_npcs)
+    ? state.scene_npcs.filter((npc) => npc?.alive !== false)
+    : []
+  const byId = new Map(profiles.map((npc) => [String(npc.id), npc]))
+  const fromScene = present.map((npc) => ({ ...byId.get(String(npc.id)), ...npc, public_summary: byId.get(String(npc.id))?.public_summary ?? '' }))
+  const sceneIds = new Set(fromScene.map((npc) => String(npc.id)))
+  const fromProfiles = profiles.filter((npc) => !sceneIds.has(String(npc.id))
+    && location && visibleText(npc.location, 160).toLocaleLowerCase('ru') === location)
+  return [...fromScene, ...fromProfiles].filter((npc) => visibleText(npc?.name, 80))
+}
+
+const RU_WORD_STEM = (word) => String(word ?? '').toLocaleLowerCase('ru').replace(/ё/gu, 'е').slice(0, Math.max(3, Math.min(5, String(word ?? '').length - 1)))
+
+function mentionedNpc(text, npcs) {
+  const words = String(text ?? '').toLocaleLowerCase('ru').replace(/ё/gu, 'е').split(/[^\p{L}-]+/u).filter((word) => word.length >= 3)
+  const scored = npcs.map((npc) => {
+    const parts = visibleText(npc.name, 80).split(/\s+/u).filter((part) => part.length >= 3)
+    const hits = parts.filter((part) => words.some((word) => word.startsWith(RU_WORD_STEM(part)))).length
+    return { npc, hits }
+  }).filter((entry) => entry.hits > 0).sort((left, right) => right.hits - left.hits)
+  return scored[0]?.npc ?? null
+}
+
+const NPC_WHO_QUESTION = /^(?:а\s+|и\s+|ну\s+)?кто\s+(?:так(?:ой|ая|ие)|это|она|он)(?![\p{L}\p{M}])/iu
+const WEATHER_QUESTION = /(?<![\p{L}\p{M}])(?:погод\p{L}*|дожд\p{L}*\s+(?:ли|ещ[её])|небо|ветер|холодно|тепло|жарко)(?![\p{L}\p{M}])/iu
+const TIME_QUESTION = /(?<![\p{L}\p{M}])(?:который\s+час|сколько\s+(?:сейчас\s+)?времени|какое\s+(?:сейчас\s+)?время|время\s+суток|сейчас\s+(?:утро|день|вечер|ночь)|какой\s+(?:сейчас\s+)?день)(?![\p{L}\p{M}])/iu
+const PRESENCE_QUESTION = /^(?:а\s+|и\s+|ну\s+)?(?:есть\s+ли\s+(?:тут|здесь|рядом)?|тут\s+есть|здесь\s+есть|где\s+(?:тут|здесь)\s+(?:можно|есть))\s*(.*)$/iu
+const HYPOTHETICAL_QUESTION = /^(?:а\s+)?(?:что\s+(?:будет|если|случится)|а\s+если|можно\s+ли|могу\s+ли|сможет\s+ли|если\s+я|если\s+мы|получится\s+ли|выйдет\s+ли|как\s+(?:мне|нам)\s+)/iu
+
+/**
+ * Вопрос ведущему за столом, который не является заявкой: погода, час, «кто
+ * это», «есть ли тут стража», «сколько стоит переправа». Живой мастер
+ * отвечает на него сразу и не превращает его в проверку. Отвечаем только тем,
+ * что отряду известно; чего нет в памяти — честно «не знаете» и подсказка,
+ * у кого из присутствующих спросить. Модель не зовётся.
+ *
+ * @param {string} action
+ * @param {Record<string, any>} state
+ * @param {{ actorId?: string, worldClock?: any }} [options]
+ */
+export function answerTableQuestion(action, state = {}, { actorId = '', worldClock = null } = {}) {
+  const text = visibleText(action, 400)
+  if (!text || HYPOTHETICAL_QUESTION.test(text)) return null
+  const reply = (narration, model) => ({
+    narration,
+    effects: { roll: null, reveal: [], spawn: [], objective: null, grantItems: [], scene: null, interaction: null },
+    provider: 'AgentWorldkeeper', model, turn_consumed: false, action_kind: 'free',
+  })
+  const npcs = presentSceneNpcs(state)
+  if (NPC_WHO_QUESTION.test(text)) {
+    const npc = mentionedNpc(text, npcs)
+    if (npc) {
+      const role = visibleText(npc.role, 120)
+      const summary = asSentence(npc.public_summary, 300)
+      return reply([`${visibleText(npc.name, 80)}${role ? ` — ${role.charAt(0).toLocaleLowerCase('ru')}${role.slice(1)}` : ''}.`, summary].filter(Boolean).join(' '), 'npc-public-profile')
+    }
+  }
+  const clock = worldClock
+  if (clock && (TIME_QUESTION.test(text) || WEATHER_QUESTION.test(text))) {
+    const parts = []
+    if (TIME_QUESTION.test(text)) parts.push(`Сейчас ${visibleText(clock.time_of_day_label, 40).toLocaleLowerCase('ru') || 'день'}, около ${visibleText(clock.clock, 10)}.`)
+    if (WEATHER_QUESTION.test(text)) {
+      parts.push(clock.indoors
+        ? `Вы под крышей; снаружи — ${visibleText(clock.weather_label, 60).toLocaleLowerCase('ru')}.`
+        : asSentence(clock.weather_summary || clock.weather_label, 200))
+    }
+    return reply(parts.filter(Boolean).join(' '), 'world-clock')
+  }
+  const presence = PRESENCE_QUESTION.exec(text)
+  const subject = visibleText(presence?.[1] ?? '', 120).replace(/[?!.]+$/u, '')
+  const informed = npcs.filter((npc) => visibleText(npc.role, 120))
+  // Имя в именительном падеже: склонять чужие имена сервер не умеет, а «у
+  // Клара Вельм» режет слух сильнее, чем перечисление.
+  const askWho = informed.length
+    ? ` Знать могут здесь: ${informed.slice(0, 2).map((npc) => `${visibleText(npc.name, 80)} — ${visibleText(npc.role, 80).toLocaleLowerCase('ru')}`).join('; ')}.`
+    : ' Можно осмотреться или расспросить местных.'
+  if (presence && subject) {
+    const mentioned = npcs.find((npc) => RU_WORD_STEM(subject) && visibleText(`${npc.role} ${npc.name}`, 200).toLocaleLowerCase('ru').replace(/ё/gu, 'е').includes(RU_WORD_STEM(subject)))
+    if (mentioned) return reply(`Да: ${visibleText(mentioned.name, 80)} — ${visibleText(mentioned.role, 120).toLocaleLowerCase('ru')}.`, 'visible-scene')
+    return reply(`Пока на глаза не попадается.${askWho}`, 'visible-scene')
+  }
+  if (/\?\s*$/u.test(text) || /^(?:а\s+)?(?:сколько|где|когда|куда|откуда|какой|какая|какое|какие|кто|что|почему|зачем)(?![\p{L}\p{M}])/iu.test(text)) {
+    return reply(`Этого вы пока не знаете.${askWho}`, 'unknown-to-party')
+  }
+  return null
+}
 
 function visibleSceneActorLabels(state = {}) {
   const actors = [
@@ -48,7 +149,7 @@ function visibleSceneActorLabels(state = {}) {
     const name = visibleText(actor?.name ?? actor?.character, 80)
     if (!name) continue
     const role = visibleText(actor?.role, 60)
-    const label = role ? `${name} (${role})` : name
+    const label = role ? `${name} — ${role.charAt(0).toLocaleLowerCase('ru')}${role.slice(1)}` : name
     if (!labels.includes(label)) labels.push(label)
     if (labels.length >= VISIBLE_SCENE_LIMIT) break
   }
@@ -87,14 +188,17 @@ export function answerVisibleScene(action, state = {}) {
   const mood = visibleText(scene.mood, 160)
   const actors = visibleSceneActorLabels(state)
   const props = visibleScenePropLabels(state)
+  // Ответ ведущего, а не опись: место, его настроение, кто рядом и что вокруг.
   const sentences = []
-  if (location) sentences.push(`Сейчас вы здесь: ${location}${!locationOnly && title && title !== location ? `, сцена «${title}»` : ''}.`)
-  else if (title) sentences.push(`Сейчас перед вами сцена «${title}».`)
-  if (!locationOnly) {
-    if (mood) sentences.push(`Обстановка: ${mood}.`)
-    if (actors.length) sentences.push(`В видимой части сцены находятся: ${actors.join(', ')}.`)
-    if (props.length) sentences.push(`Из заметного окружения видно: ${props.join(', ')}.`)
-    if (!actors.length && !props.length) sentences.push('В видимой части сцены пока нет заметных персонажей или реквизита.')
+  if (locationOnly) {
+    if (location) sentences.push(`Сейчас вы здесь: ${location}.`)
+    else if (title) sentences.push(`Сейчас вы здесь: ${title}.`)
+  } else {
+    if (location || title) sentences.push(asSentence(location || title))
+    if (mood) sentences.push(asSentence(mood, 200))
+    if (actors.length) sentences.push(`Рядом ${actors.length === 1 ? 'тот, кого видно сразу' : 'те, кого видно сразу'}: ${actors.join('; ')}.`)
+    if (props.length) sentences.push(`Вокруг: ${props.join(', ')}.`)
+    if (!actors.length && !props.length) sentences.push('Ничего примечательного на виду нет.')
   }
   if (!sentences.length) sentences.push('Текущее место пока не названо.')
   return {
@@ -154,7 +258,7 @@ export function proposeAgentInteraction(action, state = {}) {
     return {
       type: 'roll',
       title: 'Кубик решает путь отряда',
-      description: 'Рассказчик предлагает доверить развилку общему серверному d20. Этот бросок не расходует действие героя.',
+      description: 'Пусть решает кубик: один d20 на весь отряд, 11 и выше — идёте дальше. Ход героя это не тратит.',
       options: ['Отряд идёт дальше', 'Отряд остаётся и ищет другой путь'],
       difficulty: 11,
       resolutionPrompt: 'Продолжи историю по результату общего броска и при уходе открой следующую сцену.',
@@ -221,6 +325,29 @@ export function proposeRoutedTravel(hint, state = {}) {
   }
 }
 
+const OWN_KNOWLEDGE_REQUEST = /(?:что\s+я\s+зна\p{L}*|что\s+я\s+помню|помню\s+ли\s+я)\s+(?:о|об|про)\s+(.+)$/iu
+
+/**
+ * «Что я знаю о пропавшем брате?» — ответ из предыстории самого героя.
+ * Это знание персонажа, которое игрок сам написал; память мира о нём молчит.
+ */
+function heroBackstoryAnswer(action, state = {}, actorId = '') {
+  const match = OWN_KNOWLEDGE_REQUEST.exec(visibleText(action, 400))
+  if (!match) return null
+  const hero = (Array.isArray(state.players) ? state.players : []).find((entry) => String(entry?.id) === String(actorId))
+  const backstory = visibleText(hero?.backstory, 600)
+  if (!hero || !backstory) return null
+  const topic = match[1].toLocaleLowerCase('ru').replace(/ё/gu, 'е').split(/[^\p{L}]+/u).filter((word) => word.length >= 4)
+  const lowered = backstory.toLocaleLowerCase('ru').replace(/ё/gu, 'е')
+  if (!topic.some((word) => lowered.includes(RU_WORD_STEM(word)))) return null
+  const name = visibleText(hero.character || hero.name, 80)
+  return {
+    narration: `${name} знает это по себе: ${backstory.charAt(0).toLocaleLowerCase('ru')}${backstory.slice(1).replace(/[.!?…]+$/u, '')}. Больше ничего наверняка — остальное придётся выяснять здесь.`,
+    effects: { roll: null, reveal: [], spawn: [], objective: null, grantItems: [], scene: null, interaction: null },
+    provider: 'AgentWorldkeeper', model: 'hero-backstory', turn_consumed: false, action_kind: 'free',
+  }
+}
+
 export function answerKnownLore(action, state = {}, options = {}) {
   const visibleScene = answerVisibleScene(action, state)
   if (visibleScene) return visibleScene
@@ -229,6 +356,11 @@ export function answerKnownLore(action, state = {}, options = {}) {
   if (NPC_SPEECH_REQUEST.test(String(action || '').normalize('NFKC'))) return null
   const asksDirection = DIRECTION_REQUEST.test(String(action || '').normalize('NFKC'))
   if (!asksDirection && selectAgentRole(action) !== 'worldkeeper') return null
+  // «Кто такая Клара?» — открытый профиль присутствующего, а не свалка памяти.
+  const whoAnswer = NPC_WHO_QUESTION.test(visibleText(action, 400)) ? answerTableQuestion(action, state) : null
+  if (whoAnswer?.model === 'npc-public-profile') return whoAnswer
+  const backstory = heroBackstoryAnswer(action, state, options.viewer?.playerId ?? options.actorId ?? '')
+  if (backstory) return backstory
   const adventure = state.adventure ?? {}
   const campaignPremise = campaignConceptForAgent(state)
   const scene = state.scene ?? {}
@@ -261,23 +393,35 @@ export function answerKnownLore(action, state = {}, options = {}) {
       action_kind: 'free',
     }
   }
-  const facts = []
-  for (const fact of worldFacts) {
-    const subject = fact.entity?.name ? `${fact.entity.name}: ` : ''
-    facts.push(subject + String(fact.summary || fact.object || fact.predicate))
+  // Сначала то, что отряд нашёл сам, затем остальное известное — коротко:
+  // ведущий напоминает суть, а не зачитывает пролог целиком.
+  const found = []
+  const known = []
+  // «Что мы уже знаем?» не называет темы: находки отряда перечисляются все,
+  // даже если поиск по словам вопроса ничего не нашёл.
+  const discoveries = (visibleMemory?.facts ?? [])
+    .filter((fact) => fact?.status !== 'superseded' && ['party', 'public'].includes(String(fact?.visibility)))
+    .filter((fact) => fact.predicate === 'discovery')
+  for (const fact of [...discoveries, ...worldFacts]) {
+    const line = asSentence(fact.fact?.summary || fact.summary || fact.object || fact.predicate, 400)
+    if (!line) continue
+    if ((fact.fact?.predicate ?? fact.predicate) === 'discovery') found.push(line)
+    else if ((fact.fact?.predicate ?? fact.predicate) !== 'opening_narration') known.push(line)
   }
-  if (activeQuest?.title) facts.push(`Активное задание «${activeQuest.title}»: ${questObjective || 'цель пока не определена'}`)
-  if (adventure.currentHook) facts.push(String(adventure.currentHook))
-  if (scene.objective) facts.push('Сейчас с этим связана цель: ' + String(scene.objective))
-  const history = Array.isArray(adventure.history) ? adventure.history.slice(-3) : []
-  for (const chapter of history) {
-    if (chapter?.outcome) facts.push(String(chapter.outcome))
-  }
-  const visited = Array.isArray(adventure.visitedLocations) ? adventure.visitedLocations.filter(Boolean).slice(-4) : []
-  if (visited.length) facts.push('Отряд уже бывал здесь: ' + visited.join(', '))
-  const narration = facts.length
-    ? 'Герои уже знают: ' + [...new Set(facts)].join('. ') + '.'
-    : 'Пока ничего подтверждённого об этом не известно. Можно расспросить свидетеля, изучить записи или осмотреть место; вопрос не расходует ход.'
+  const goal = asSentence(scene.objective || questObjective, 240)
+  const history = (Array.isArray(adventure.history) ? adventure.history.slice(-2) : [])
+    .map((chapter) => asSentence(chapter?.outcome, 240)).filter(Boolean)
+  const hook = asSentence(adventure.currentHook, 400)
+  if (hook) known.unshift(hook)
+  const parts = [
+    found.length ? `Вы выяснили: ${[...new Set(found)].slice(0, 4).join(' ')}` : '',
+    known.length ? `Ещё известно: ${[...new Set(known)].slice(0, 2).join(' ')}` : '',
+    history.length ? `Прежде: ${history.join(' ')}` : '',
+    goal ? `Цель: ${goal.charAt(0).toLocaleLowerCase('ru')}${goal.slice(1)}` : '',
+  ].filter(Boolean)
+  const narration = found.length || known.length || history.length
+    ? parts.join(' ')
+    : `Пока ничего подтверждённого об этом не известно — только то, что вы видели сами.${goal ?` Цель: ${goal.charAt(0).toLocaleLowerCase('ru')}${goal.slice(1)}` : ''} Осмотритесь или расспросите местных.`
   return {
     narration,
     effects: { roll: null, reveal: [], spawn: [], objective: null, grantItems: [], scene: null, interaction: null },
