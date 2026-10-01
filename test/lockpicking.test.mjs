@@ -410,3 +410,13 @@ test('взлом переживает replay: и состояние двери, 
   assert.equal(replayed.mechanics.scene_interactions['prop-chest'].lockpicked, true)
   assert.equal(deedsOf(replayed).filter((deed) => deed.kind === 'break_in').length, deedsOf(openedChest.state).filter((deed) => deed.kind === 'break_in').length)
 })
+
+// Живой прогон 2026-10-01: «посмотреть, что там творится» содержит подстроку
+// «осмотреть», и фраза о походе в Храм Глубин уезжала движку осмотром
+// ближайшего сундука. Глагол операции обязан начинать слово.
+test('глагол операции с предметом ищется целым словом, а не подстрокой', () => {
+  assert.equal(sceneObjectOperationFromText('Хочу наведаться в Храм Глубин и посмотреть, что там творится'), null)
+  assert.equal(sceneObjectOperationFromText('Перепроверить, все ли на месте'), null)
+  assert.equal(sceneObjectOperationFromText('Хочу осмотреть сундук')?.intent, 'inspect')
+  assert.equal(sceneObjectOperationFromText('Вскрыть замок отмычкой')?.intent, 'lockpick')
+})

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { deterministicNarration } from '../server/narrator.mjs'
+import { actorNameResolver } from '../server/rules-engine.mjs'
 import { buildNarrationBrief, verifyNarration } from '../server/security.mjs'
 
 function brief({ events = [], scene = {}, story = null } = {}) {
@@ -76,6 +77,33 @@ test('запасной текст называет героя по имени, �
   const { narration } = deterministicNarration(fallen)
   assert.match(narration, /Ада/u)
   assert.doesNotMatch(narration, /\bhero\b/u, 'служебный идентификатор не должен доезжать до игрока')
+})
+
+test('шаг Режиссёра «открыть разговор» звучит по-русски и с именем NPC, а не именем события', () => {
+  const opened = buildNarrationBrief({
+    visible_events: [{
+      event_type: 'SocialSceneOpened', actor_id: null, target_ids: ['npc-finn'],
+      payload: { npc_id: 'npc-finn', server_check_required: true }, visibility: 'party', source_rule_ids: [],
+    }],
+    visible_state_changes: [], known_environment: {}, permitted_npc_reactions: [], narration_constraints: [],
+  })
+  const resolver = actorNameResolver({ social: { npcs: [{ id: 'npc-finn', name: 'Старый Финн' }] } })
+  const { narration } = deterministicNarration(opened, resolver)
+  assert.match(narration, /Старый Финн рядом — самое время заговорить/u)
+  assert.doesNotMatch(narration, /SocialSceneOpened|npc-finn/u)
+})
+
+test('событие без русской строки молчит, а не печатает игроку служебное имя', () => {
+  const internal = buildNarrationBrief({
+    visible_events: [
+      { event_type: 'SomeInternalBookkeeping', actor_id: null, target_ids: [], payload: {}, visibility: 'party', source_rule_ids: [] },
+      { event_type: 'WorldEntityUpserted', actor_id: null, target_ids: [], payload: { entity: { id: 'e1', name: 'Причал' } }, visibility: 'party', source_rule_ids: [] },
+    ],
+    visible_state_changes: [], known_environment: {}, permitted_npc_reactions: [], narration_constraints: [],
+  })
+  const { narration } = deterministicNarration(internal)
+  assert.doesNotMatch(narration, /SomeInternalBookkeeping|World entity updated/u)
+  assert.match(narration, /[А-Яа-яЁё]/u, 'ход всё равно получает осмысленную русскую строку')
 })
 
 test('обрамление не нарушает собственный Verifier — иначе отказ модели портил бы трассу', () => {

@@ -10,10 +10,21 @@ export function sceneNarration(events, state) {
   const event = [...(Array.isArray(events) ? events : [])].reverse()
     .find((candidate) => candidate?.event_type === 'SceneAdvanced')
   if (!event) return null
-  const transition = clean(event.payload?.transition, 1_000)
-  const arrival = clean(event.payload?.arrival, 1_000)
+  const transition = sentence(clean(event.payload?.transition, 1_000))
+  const arrival = sentence(clean(event.payload?.arrival, 1_000))
   const commerce = merchantNarration(events, state)
   return [transition, arrival, commerce].filter(Boolean).join('\n\n')
+}
+
+/**
+ * Архитектор пишет `transition` и `arrival` фразами без точки. Хроника
+ * показывает абзацы подряд, и без точки получалось «…до таверны «Морской
+ * Змей» Герои входят…».
+ */
+function sentence(value) {
+  if (!value) return value
+  const core = value.replace(/[»"”')\]]+$/u, '')
+  return /[.!?…]$/u.test(core) ? value : `${value}.`
 }
 
 // Регистрируется первым: смена сцены перекрывает и торговлю, и появление

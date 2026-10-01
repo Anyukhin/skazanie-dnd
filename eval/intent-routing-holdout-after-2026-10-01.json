@@ -1,0 +1,785 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-10-01T16:00:55.677Z",
+  "method": "Детерминированный стек сервера без сети: inferRequestKind → proposeAgentInteraction → answerKnownLore → actionSequence → IntentParser.parse → вход resolveExplorationCommand. Эталонные маршруты — GOLD_ROUTES в eval/intent-routing-eval-2026-10-01.mjs.",
+  "summary": {
+    "cases": 48,
+    "correct": 41,
+    "accuracy": 0.854,
+    "travel_false_positives": 0,
+    "to_adjudicator": 16,
+    "per_route": {
+      "ability_check": {
+        "support": 4,
+        "predicted": 3,
+        "precision": 1,
+        "recall": 0.75
+      },
+      "attack": {
+        "support": 2,
+        "predicted": 2,
+        "precision": 1,
+        "recall": 1
+      },
+      "cast_spell": {
+        "support": 1,
+        "predicted": 1,
+        "precision": 1,
+        "recall": 1
+      },
+      "discussion": {
+        "support": 3,
+        "predicted": 4,
+        "precision": 0.75,
+        "recall": 1
+      },
+      "free_action": {
+        "support": 10,
+        "predicted": 16,
+        "precision": 0.625,
+        "recall": 1
+      },
+      "move_in_scene": {
+        "support": 2,
+        "predicted": 2,
+        "precision": 1,
+        "recall": 1
+      },
+      "question": {
+        "support": 5,
+        "predicted": 4,
+        "precision": 1,
+        "recall": 0.8
+      },
+      "rest": {
+        "support": 2,
+        "predicted": 2,
+        "precision": 1,
+        "recall": 1
+      },
+      "social": {
+        "support": 7,
+        "predicted": 5,
+        "precision": 1,
+        "recall": 0.714
+      },
+      "travel_exit": {
+        "support": 12,
+        "predicted": 9,
+        "precision": 1,
+        "recall": 0.75
+      }
+    },
+    "per_gold_class": {
+      "travel_exit": {
+        "cases": 12,
+        "correct": 9
+      },
+      "move_in_scene": {
+        "cases": 6,
+        "correct": 6
+      },
+      "social_talk": {
+        "cases": 6,
+        "correct": 4
+      },
+      "trade": {
+        "cases": 1,
+        "correct": 1
+      },
+      "ability_check": {
+        "cases": 4,
+        "correct": 3
+      },
+      "attack": {
+        "cases": 2,
+        "correct": 2
+      },
+      "cast_spell": {
+        "cases": 1,
+        "correct": 1
+      },
+      "rest": {
+        "cases": 2,
+        "correct": 2
+      },
+      "ask_gm_question": {
+        "cases": 5,
+        "correct": 4
+      },
+      "ooc_party_chat": {
+        "cases": 3,
+        "correct": 3
+      },
+      "free_action_improv": {
+        "cases": 6,
+        "correct": 6
+      }
+    },
+    "confusion_pairs": {
+      "travel_exit → free_action": 3,
+      "social_talk → free_action": 1,
+      "social_talk → discussion": 1,
+      "ability_check → free_action": 1,
+      "ask_gm_question → free_action": 1
+    }
+  },
+  "failures": [
+    {
+      "id": "h06",
+      "text": "Пойдём уже в Каменный Град, хватит сидеть",
+      "gold": "travel_exit",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "h09",
+      "text": "Хочу дойти до Солеварни",
+      "gold": "travel_exit",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "h10",
+      "text": "Едем на север, к Северному форту",
+      "gold": "travel_exit",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "h22",
+      "text": "Пытаюсь разговорить Финна о его сыне",
+      "gold": "social_talk",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "h23",
+      "text": "Предлагаю Марте серебряную монету за сведения",
+      "gold": "social_talk",
+      "predicted": "discussion",
+      "stage": "inferRequestKind"
+    },
+    {
+      "id": "h26",
+      "text": "Присматриваюсь к посетителям у окна",
+      "gold": "ability_check",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "h39",
+      "text": "Видно ли отсюда маяк?",
+      "gold": "ask_gm_question",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    }
+  ],
+  "results": [
+    {
+      "id": "h01",
+      "text": "Отправимся в Мглистые Топи до заката",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "travel_exit",
+      "correct": true,
+      "stage": "proposeAgentInteraction",
+      "tags": [
+        "1pl"
+      ],
+      "vote_options": [
+        "Уходим из «Таверна «Ржавый Якорь»» и идём в Мглистые Топи до заката",
+        "Уходим в «Мглистые Топи до заката» и бросаем задание «Пропавший сын Финна»",
+        "Остаться и исследовать дальше"
+      ]
+    },
+    {
+      "id": "h02",
+      "text": "Я возвращаюсь в Аквилон за подмогой",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "travel_exit",
+      "correct": true,
+      "stage": "proposeAgentInteraction",
+      "tags": [
+        "1sg",
+        "map-name"
+      ],
+      "vote_options": [
+        "Уходим из «Таверна «Ржавый Якорь»» и идём в Аквилон за подмогой",
+        "Уходим в «Аквилон за подмогой» и бросаем задание «Пропавший сын Финна»",
+        "Остаться и исследовать дальше"
+      ]
+    },
+    {
+      "id": "h03",
+      "text": "Все за мной, идём к Храму Приливов!",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "travel_exit",
+      "correct": true,
+      "stage": "proposeAgentInteraction",
+      "tags": [
+        "inflected",
+        "map-name"
+      ],
+      "vote_options": [
+        "Уходим из «Таверна «Ржавый Якорь»» и идём в Храму Приливов",
+        "Уходим в «Храму Приливов» и бросаем задание «Пропавший сын Финна»",
+        "Остаться и исследовать дальше"
+      ]
+    },
+    {
+      "id": "h04",
+      "text": "Направимся на Плавучий Рынок",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "travel_exit",
+      "correct": true,
+      "stage": "proposeAgentInteraction",
+      "tags": [
+        "map-name"
+      ],
+      "vote_options": [
+        "Уходим из «Таверна «Ржавый Якорь»» и идём в Плавучий Рынок",
+        "Уходим в «Плавучий Рынок» и бросаем задание «Пропавший сын Финна»",
+        "Остаться и исследовать дальше"
+      ]
+    },
+    {
+      "id": "h05",
+      "text": "Покидаем Ржавый Якорь",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "travel_exit",
+      "correct": true,
+      "stage": "proposeAgentInteraction",
+      "tags": [
+        "map-name",
+        "no-preposition"
+      ],
+      "vote_options": [
+        "Покинуть «Таверна «Ржавый Якорь»»",
+        "Уходим отсюда и бросаем задание «Пропавший сын Финна»",
+        "Остаться и исследовать дальше"
+      ]
+    },
+    {
+      "id": "h06",
+      "text": "Пойдём уже в Каменный Град, хватит сидеть",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "map-name"
+      ],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "h07",
+      "text": "Отправляюсь к маяку искать следы сына Финна",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "travel_exit",
+      "correct": true,
+      "stage": "proposeAgentInteraction",
+      "tags": [
+        "purpose"
+      ],
+      "vote_options": [
+        "Уходим из «Таверна «Ржавый Якорь»» и идём в маяку",
+        "Уходим в «маяку» и бросаем задание «Пропавший сын Финна»",
+        "Остаться и исследовать дальше"
+      ]
+    },
+    {
+      "id": "h08",
+      "text": "Собираем вещи и уходим в лес",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "travel_exit",
+      "correct": true,
+      "stage": "proposeAgentInteraction",
+      "tags": [],
+      "vote_options": [
+        "Уходим из «Таверна «Ржавый Якорь»» и идём в лес",
+        "Уходим в «лес» и бросаем задание «Пропавший сын Финна»",
+        "Остаться и исследовать дальше"
+      ]
+    },
+    {
+      "id": "h09",
+      "text": "Хочу дойти до Солеварни",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "infinitive",
+        "map-name"
+      ],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "h10",
+      "text": "Едем на север, к Северному форту",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "inflected"
+      ],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "h11",
+      "text": "Выходим из города через южные ворота",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "travel_exit",
+      "correct": true,
+      "stage": "proposeAgentInteraction",
+      "tags": [],
+      "vote_options": [
+        "Покинуть «Таверна «Ржавый Якорь»»",
+        "Уходим отсюда и бросаем задание «Пропавший сын Финна»",
+        "Остаться и исследовать дальше"
+      ]
+    },
+    {
+      "id": "h12",
+      "text": "Идем в «Морской Змей» пить эль",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "travel_exit",
+      "correct": true,
+      "stage": "proposeAgentInteraction",
+      "tags": [
+        "quotes-guillemets",
+        "purpose"
+      ],
+      "vote_options": [
+        "Уходим из «Таверна «Ржавый Якорь»» и идём в Морской Змей",
+        "Уходим в «Морской Змей» и бросаем задание «Пропавший сын Финна»",
+        "Остаться и исследовать дальше"
+      ]
+    },
+    {
+      "id": "h13",
+      "text": "Пересаживаюсь поближе к Финну",
+      "gold": "move_in_scene",
+      "gold_route": "free_action",
+      "predicted": "free_action",
+      "correct": true,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "h14",
+      "text": "Иду к выходу из зала",
+      "gold": "move_in_scene",
+      "gold_route": "move_in_scene",
+      "predicted": "move_in_scene",
+      "correct": true,
+      "stage": "resolveExplorationCommand",
+      "tags": [],
+      "intent": "explore"
+    },
+    {
+      "id": "h15",
+      "text": "Встаю и иду к барной стойке таверны",
+      "gold": "move_in_scene",
+      "gold_route": "free_action",
+      "predicted": "free_action",
+      "correct": true,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "inside-lookalike"
+      ],
+      "intent": "explore"
+    },
+    {
+      "id": "h16",
+      "text": "Иду к Борису",
+      "gold": "move_in_scene",
+      "gold_route": "move_in_scene",
+      "predicted": "move_in_scene",
+      "correct": true,
+      "stage": "resolveExplorationCommand",
+      "tags": [
+        "npc"
+      ],
+      "intent": "explore"
+    },
+    {
+      "id": "h17",
+      "text": "Иду в другой конец таверны",
+      "gold": "move_in_scene",
+      "gold_route": "free_action",
+      "predicted": "free_action",
+      "correct": true,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "inside-lookalike"
+      ],
+      "intent": "explore"
+    },
+    {
+      "id": "h18",
+      "text": "Поднимаюсь на второй этаж таверны",
+      "gold": "move_in_scene",
+      "gold_route": "free_action",
+      "predicted": "free_action",
+      "correct": true,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "inside-lookalike"
+      ],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "h19",
+      "text": "Спрашиваю Ильсу, сколько стоят сети",
+      "gold": "social_talk",
+      "gold_route": "social",
+      "predicted": "social",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [],
+      "intent": "social"
+    },
+    {
+      "id": "h20",
+      "text": "Марта, налей-ка нам по кружке",
+      "gold": "social_talk",
+      "gold_route": "social",
+      "predicted": "social",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [
+        "direct-address"
+      ],
+      "intent": "social"
+    },
+    {
+      "id": "h21",
+      "text": "Говорю Борису, что мы ищем пропавшего парня",
+      "gold": "social_talk",
+      "gold_route": "social",
+      "predicted": "social",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [],
+      "intent": "social"
+    },
+    {
+      "id": "h22",
+      "text": "Пытаюсь разговорить Финна о его сыне",
+      "gold": "social_talk",
+      "gold_route": "social",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "h23",
+      "text": "Предлагаю Марте серебряную монету за сведения",
+      "gold": "social_talk",
+      "gold_route": "social",
+      "predicted": "discussion",
+      "correct": false,
+      "stage": "inferRequestKind",
+      "tags": [
+        "proposal-lookalike"
+      ]
+    },
+    {
+      "id": "h24",
+      "text": "Угрожаю Ильсе кинжалом, чтобы сказала правду",
+      "gold": "social_talk",
+      "gold_route": "social",
+      "predicted": "social",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [],
+      "intent": "social"
+    },
+    {
+      "id": "h25",
+      "text": "Покупаю у Марты ужин на всех",
+      "gold": "trade",
+      "gold_route": "social",
+      "predicted": "social",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [],
+      "intent": "social"
+    },
+    {
+      "id": "h26",
+      "text": "Присматриваюсь к посетителям у окна",
+      "gold": "ability_check",
+      "gold_route": "ability_check",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "h27",
+      "text": "Осматриваю Финна на предмет ран",
+      "gold": "ability_check",
+      "gold_route": "ability_check",
+      "predicted": "ability_check",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [],
+      "intent": "ability_check"
+    },
+    {
+      "id": "h28",
+      "text": "Тихо крадусь к выходу, чтобы никто не заметил",
+      "gold": "ability_check",
+      "gold_route": "ability_check",
+      "predicted": "ability_check",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [],
+      "intent": "ability_check"
+    },
+    {
+      "id": "h29",
+      "text": "Ищу улики в комнате сына Финна",
+      "gold": "ability_check",
+      "gold_route": "ability_check",
+      "predicted": "ability_check",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [],
+      "intent": "ability_check"
+    },
+    {
+      "id": "h30",
+      "text": "Атакую стражника кинжалом",
+      "gold": "attack",
+      "gold_route": "attack",
+      "predicted": "attack",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [],
+      "intent": "attack"
+    },
+    {
+      "id": "h31",
+      "text": "Стреляю в Бориса из арбалета",
+      "gold": "attack",
+      "gold_route": "attack",
+      "predicted": "attack",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [],
+      "intent": "attack"
+    },
+    {
+      "id": "h32",
+      "text": "Колдую Свет на кружку",
+      "gold": "cast_spell",
+      "gold_route": "cast_spell",
+      "predicted": "cast_spell",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [],
+      "intent": "cast_spell"
+    },
+    {
+      "id": "h33",
+      "text": "Устраиваем долгий отдых в комнате наверху",
+      "gold": "rest",
+      "gold_route": "rest",
+      "predicted": "rest",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [],
+      "intent": "rest"
+    },
+    {
+      "id": "h34",
+      "text": "Короткий отдых",
+      "gold": "rest",
+      "gold_route": "rest",
+      "predicted": "rest",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [
+        "short"
+      ],
+      "intent": "rest"
+    },
+    {
+      "id": "h35",
+      "text": "Что тут вообще происходит?",
+      "gold": "ask_gm_question",
+      "gold_route": "question",
+      "predicted": "question",
+      "correct": true,
+      "stage": "inferRequestKind",
+      "tags": []
+    },
+    {
+      "id": "h36",
+      "text": "Сколько у меня осталось золота?",
+      "gold": "ask_gm_question",
+      "gold_route": "question",
+      "predicted": "question",
+      "correct": true,
+      "stage": "inferRequestKind",
+      "tags": []
+    },
+    {
+      "id": "h37",
+      "text": "Где сейчас Торвальд?",
+      "gold": "ask_gm_question",
+      "gold_route": "question",
+      "predicted": "question",
+      "correct": true,
+      "stage": "inferRequestKind",
+      "tags": []
+    },
+    {
+      "id": "h38",
+      "text": "Как называется этот город?",
+      "gold": "ask_gm_question",
+      "gold_route": "question",
+      "predicted": "question",
+      "correct": true,
+      "stage": "inferRequestKind",
+      "tags": []
+    },
+    {
+      "id": "h39",
+      "text": "Видно ли отсюда маяк?",
+      "gold": "ask_gm_question",
+      "gold_route": "question",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "h40",
+      "text": "Давайте решим, кто будет нести факел",
+      "gold": "ooc_party_chat",
+      "gold_route": "discussion",
+      "predicted": "discussion",
+      "correct": true,
+      "stage": "inferRequestKind",
+      "tags": []
+    },
+    {
+      "id": "h41",
+      "text": "((пойду сделаю чай, без меня не начинайте))",
+      "gold": "ooc_party_chat",
+      "gold_route": "discussion",
+      "predicted": "discussion",
+      "correct": true,
+      "stage": "inferRequestKind",
+      "tags": [
+        "ooc-marker"
+      ]
+    },
+    {
+      "id": "h42",
+      "text": "Ребята, может сначала к Марте?",
+      "gold": "ooc_party_chat",
+      "gold_route": "discussion",
+      "predicted": "discussion",
+      "correct": true,
+      "stage": "inferRequestKind",
+      "tags": [
+        "party-address"
+      ]
+    },
+    {
+      "id": "h43",
+      "text": "Насвистываю мелодию и жду",
+      "gold": "free_action_improv",
+      "gold_route": "free_action",
+      "predicted": "free_action",
+      "correct": true,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "h44",
+      "text": "Бросаю кость собаке под столом",
+      "gold": "free_action_improv",
+      "gold_route": "free_action",
+      "predicted": "free_action",
+      "correct": true,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "h45",
+      "text": "Уходим в глухую оборону",
+      "gold": "free_action_improv",
+      "gold_route": "free_action",
+      "predicted": "free_action",
+      "correct": true,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "travel-lookalike"
+      ],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "h46",
+      "text": "Иду ва-банк и ставлю всё золото",
+      "gold": "free_action_improv",
+      "gold_route": "free_action",
+      "predicted": "free_action",
+      "correct": true,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "travel-lookalike"
+      ],
+      "intent": "explore"
+    },
+    {
+      "id": "h47",
+      "text": "Лезу под стойку за упавшей монетой",
+      "gold": "free_action_improv",
+      "gold_route": "free_action",
+      "predicted": "free_action",
+      "correct": true,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "h48",
+      "text": "Иду на риск и прыгаю через стол",
+      "gold": "free_action_improv",
+      "gold_route": "free_action",
+      "predicted": "free_action",
+      "correct": true,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "travel-lookalike"
+      ],
+      "intent": "explore"
+    }
+  ]
+}

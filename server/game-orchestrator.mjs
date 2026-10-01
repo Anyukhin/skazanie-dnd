@@ -45,8 +45,9 @@ import { campaignStateForViewer, mechanicsForViewer, publicAdventureFor, turnExp
 import { agentContextMetadata, campaignConceptForAgent, sceneContextForAgent } from './agent-context.mjs'
 import { questStateForViewer, knowledgeGateVisible } from './quest-consequences.mjs'
 import { worldClockForAgents } from './weather.mjs'
+import { sceneCanonFor } from './scene-canon.mjs'
 import { buildTurnExplanation } from './trace-store.mjs'
-import { retrieveWorldMemory } from './world-memory.mjs'
+import { freeActionDiscoveryCommands, retrieveWorldMemory } from './world-memory.mjs'
 import { ClarificationRegistry } from './clarification-registry.mjs'
 
 // A JSON request cannot manufacture this identity. Only server-owned world
@@ -1439,6 +1440,7 @@ export class GameOrchestrator {
         // Небо и час — данные, а не право сочинять: Рассказчик получает уже
         // решённые время суток и погоду, чтобы не выдумывать закат в полдень.
         world_clock: worldClockForAgents(state, playerId),
+        scene_canon: sceneCanonFor(state, { playerId: viewer?.playerId ?? playerId, actorId: playerId }),
         world_memory: { facts: narrationWorldFacts(state, viewer, message, publicCommittedEvents) },
         story_context: storyContext,
         social_consequences: narrationSocialConsequences(publicCommittedEvents, state),
@@ -2685,6 +2687,10 @@ export class GameOrchestrator {
       }
     }
 
+    committed = await this.commitCheckDiscovery({
+      campaignId, idempotencyKey, committed, message, rulesContext,
+      checkCommand: planCheckCommand && !socialRequest && planCheckCommand.command_type === 'MakeAbilityCheck' ? planCheckCommand : null,
+    })
     const mainEvents = committed.events ?? engineResult.events
     const committedEvents = [...precedingEvents, ...mainEvents]
     const publicCommittedEvents = mechanicsForViewer(sharedNarrationEvents(committedEvents, committed.state), input.user ?? {}, playerId, committed.state)
@@ -2707,6 +2713,7 @@ export class GameOrchestrator {
         // Небо и час — данные, а не право сочинять: тот же расчёт, что у
         // индикатора в шапке сцены, чтобы текст и картинка не разошлись.
         world_clock: worldClockForAgents(committed.state, playerId),
+        scene_canon: sceneCanonFor(committed.state, { playerId: viewer?.playerId ?? playerId, actorId: playerId }),
         world_memory: {
           facts: narrationWorldFacts(committed.state, viewer, message, publicCommittedEvents),
         },
@@ -2798,6 +2805,60 @@ export class GameOrchestrator {
       this.saveTrace({ turnId, campaignId, idempotencyKey, requestFingerprint, mode, intent, retrievalQueries, retrievedRules, plan, engineResult: { ...engineResult, events: committedEvents }, stateBefore: authoritativeState.state_version, stateAfter: committed.state_version, verification: narration.verification, latency: this.now() - started, narration: { ...narration, visibility: privateSocialNarration ? 'specific_player' : 'party' }, ruling: plan.ruling_draft })
     }
     return response
+  }
+
+  /**
+   * Улика из удачной проверки навыка, распознанной парсером («Осматриваю зал»).
+   *
+   * Тот же источник улик, что у свободного действия
+   * (`freeActionDiscoveryCommands`), но этот путь проверки идёт через
+   * оркестратор, а не через судью свободных действий, и раньше улик не оставлял:
+   * «успех, но новых сведений нет». Факт пишется отдельным коммитом после
+   * проверки — доказательство поручения принимает только источник,
+   * зафиксированный раньше факта. Команды строит сервер из уже записанного
+   * события, поэтому они идут в серверном контексте Режиссёра: память мира
+   * игроку недоступна, и ход игрока своего контекста не меняет. Ключ
+   * `:discovery` делает шаг идемпотентным — повтор хода вернёт ту же улику.
+   * Улика не обязательна для хода: если записать её не вышло, ход остаётся
+   * прежним.
+   */
+  async commitCheckDiscovery({ campaignId, idempotencyKey, committed, message, rulesContext, checkCommand }) {
+    if (!checkCommand || committed?.state?.mechanics?.combat?.active === true) return committed
+    const checkEvent = (committed.events ?? []).find((event) => event.event_type === 'AbilityCheckResolved')
+    if (checkEvent?.payload?.success !== true) return committed
+    const discoveryKey = `${idempotencyKey}:discovery`
+    let discoveryCommit = await this.eventStore.getByIdempotencyKey?.(campaignId, discoveryKey) ?? null
+    let baseState = committed.state
+    let baseVersion = committed.state_version
+    for (let attempt = 0; !discoveryCommit && attempt < 3; attempt += 1) {
+      const skill = String(checkEvent.payload.skill ?? checkCommand.skill ?? '').replace(/_/gu, '-')
+      const commands = freeActionDiscoveryCommands(baseState, {
+        checkEvent, skill, actionText: message, skillLabel: SKILL_LABELS_RU[skill] ?? '',
+      }).map((command, index) => ({ ...command, campaign_id: campaignId, command_id: `${discoveryKey}:${index + 1}` }))
+      if (!commands.length) return committed
+      try {
+        const resolved = this.rulesEngine.resolvePlan({ proposed_commands: commands }, baseState, { ...rulesContext, isDirector: true })
+        discoveryCommit = await this.eventStore.commit({
+          campaign_id: campaignId, expected_state_version: baseVersion,
+          idempotency_key: discoveryKey, command_id: discoveryKey, events: resolved.events,
+        })
+      } catch (error) {
+        if (error?.code !== 'STATE_VERSION_CONFLICT') {
+          console.warn('[Сказание] Улика удачной проверки не записана:', error?.code ?? error?.message)
+          return committed
+        }
+        const latest = await this.eventStore.load(campaignId)
+        baseState = normalizeCampaignState(latest.state)
+        baseVersion = latest.state_version
+      }
+    }
+    if (!discoveryCommit) return committed
+    return {
+      ...committed,
+      state: discoveryCommit.state,
+      state_version: discoveryCommit.state_version,
+      events: [...(committed.events ?? []), ...(discoveryCommit.events ?? [])],
+    }
   }
 
   saveTrace({ turnId, campaignId, idempotencyKey = null, requestFingerprint = null, mode, intent, retrievalQueries, retrievedRules, plan, engineResult = {}, stateBefore, stateAfter, verification = {}, latency, narration = null, ruling = null }) {

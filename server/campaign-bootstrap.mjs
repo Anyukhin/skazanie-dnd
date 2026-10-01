@@ -20,8 +20,9 @@ import { getWorldTemplate, worldTemplateConcept, worldTemplateOpening } from './
 import { normalizeWorldOfficesState } from './world-offices.mjs'
 import { isLiveTheme, resolveSceneTheme, SCENE_THEME_IDS } from './scene-themes.mjs'
 import { normalizeSceneMapDesign, worldLocationDesignContext } from './scene-map-design.mjs'
+import { campaignStartCanon } from './scene-canon.mjs'
 
-const prompt = readFileSync(fileURLToPath(new URL('../prompts/campaign_creator/v5.txt', import.meta.url)), 'utf8')
+const prompt = readFileSync(fileURLToPath(new URL('../prompts/campaign_creator/v6.txt', import.meta.url)), 'utf8')
 
 /**
  * Создание кампании — не ход. Оно просит у модели на порядок больше текста
@@ -420,6 +421,16 @@ export class CampaignBootstrapper {
       ? normalizeOpening(worldTemplateOpening(worldTemplate, { campaignName, partyName: groupName }), fallback, { authored: true })
       : fallback
     let generatedBy = worldTemplate ? 'authored-world-template' : 'local-storyteller'
+    // Сид не зависит от ответа модели и считается до неё: из него же часы
+    // посчитают небо первого утра, и автор кампании должен знать это небо
+    // заранее. Часы — серверные: пролог следует за ними, а не наоборот.
+    const seed = createHash('sha256').update(JSON.stringify({
+      campaignCode,
+      world,
+      worldTemplate: worldTemplate ? `${worldTemplate.id}@${worldTemplate.version}` : '',
+      heroes: heroes.map((hero) => hero.id),
+    })).digest('hex').slice(0, 24)
+    const startCanon = campaignStartCanon(seed)
     if (this.llmClient && !worldTemplate) {
       try {
         const result = await this.llmClient.completeJson({
@@ -434,6 +445,16 @@ export class CampaignBootstrapper {
             { role: 'user', content: buildDataOnlyContext({
               campaign_setup: { campaign: campaignName, party: groupName, party_size: heroes.length, starting_level: campaignStartLevel, world, heroes: heroes.map((hero) => ({ character: hero.character, role: hero.role, species: hero.species, background: hero.background, backstory: hero.backstory, traits: hero.traits, ideals: hero.ideals, bonds: hero.bonds, flaws: hero.flaws })) },
               ...(inspirationPromptSeed(inspiration) ? { inspiration_seed: inspirationPromptSeed(inspiration) } : {}),
+              // Канон первой сцены (campaign_creator/v6): час задан сервером,
+              // небо — климатом края, который автор выберет для старта.
+              starting_world_clock: {
+                day: startCanon.time.day,
+                clock: startCanon.time.clock,
+                time_of_day: startCanon.time.phase,
+                time_of_day_label: startCanon.time.phase_label,
+              },
+              starting_weather_by_biome: Object.fromEntries(Object.entries(startCanon.weather_by_biome)
+                .map(([biome, weather]) => [biome, `${weather.label}. ${weather.summary}`])),
             }) },
           ],
           temperature: 0.8,
@@ -444,12 +465,6 @@ export class CampaignBootstrapper {
         generatedBy = 'ai-storyteller'
       } catch { /* A new campaign must still be playable when the provider is unavailable. */ }
     }
-    const seed = createHash('sha256').update(JSON.stringify({
-      campaignCode,
-      world,
-      worldTemplate: worldTemplate ? `${worldTemplate.id}@${worldTemplate.version}` : '',
-      heroes: heroes.map((hero) => hero.id),
-    })).digest('hex').slice(0, 24)
     const arc = selectedCampaignMode === 'adventure' ? buildCampaignArcPlan(seed) : null
     // Пролог — необязательное украшение: письмо-завязка, которое владелец
     // зачитает перед первым вечером. Отказ летописца кампанию не задерживает.

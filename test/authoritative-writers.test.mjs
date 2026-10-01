@@ -21,8 +21,9 @@ const KNOWN_WRITERS = Object.freeze({
   // боевым путям: по мере шагов 4–5 остальные строки этой таблицы должны
   // обнулиться, а здесь останется одна.
   'authoritative-executor.mjs': 3,
-  // Командные писатели: план → resolvePlan → commit.
-  'game-orchestrator.mjs': 2,
+  // Командные писатели: план → resolvePlan → commit. Третий у оркестратора —
+  // улика удачной проверки (`commitCheckDiscovery`, 2026-10-01).
+  'game-orchestrator.mjs': 3,
   'autonomous-orchestrator.mjs': 3,
   // Переведены на общий исполнитель шагом 4: прямых записей больше нет.
   'npc-turn-scheduler.mjs': 0,

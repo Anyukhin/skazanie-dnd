@@ -1,0 +1,35 @@
+{
+  "_note": "Ручное прочтение всех 40 ответов Рассказчика и 9 прологов (2026-10-01). В narrator перечислены только ответы с противоречием канону; остальные прочитаны и признаны согласными. hard — прямое утверждение вопреки канону; soft — деталь, которая с каноном спорит, но допускает оправдание (роса, тень от луны).",
+  "narrator": [
+    {
+      "scenario": "forest-overcast-morning", "repeat": 2, "condition": "before", "severity": "soft",
+      "fragment": "узкие серые лучи между стволами… холод капель с нижних ветвей",
+      "note": "Канон: пасмурно, сухо. Капли с веток — пересказ якоря «холодные капли с нижних ветвей» из лесной палитры; возможна роса, поэтому soft."
+    }
+  ],
+  "narrator_observations": [
+    "До: модель трижды пересказала якоря, выбранные по названию места без учёта неба (лучи и капли в пасмурном лесу, «пятнистый свет под кронами» в деревне — палитра леса по корню «дерев»).",
+    "После: ответы чаще называют время суток и погоду прямо, иногда дословно повторяя формулировки канона («ночь и кромешная темнота», «под крышей сухо», «у кромки воды влажны доски и камни») — это вопрос стиля, а не фактов.",
+    "До, shipyard-storm-day r2: в текст попали координаты «(1, 1) к (3, 1)» — к канону не относится, отмечено для истории."
+  ],
+  "bootstrap": [
+    { "world": "aquilon", "condition": "before", "time_stated": false, "time_contradiction": false, "weather_contradiction": true, "consistent": false,
+      "note": "Канон: утро, дождь (coast). Пролог: «Туман катится с моря… после наступления тумана» — туман вместо дождя." },
+    { "world": "frontier", "condition": "before", "time_stated": false, "time_contradiction": false, "weather_contradiction": false, "consistent": true,
+      "note": "Канон: утро, ясно (tundra — карта регионов заменена сервером). Пролог не называет ни часа, ни погоды." },
+    { "world": "desert", "condition": "before", "time_stated": true, "time_contradiction": true, "weather_contradiction": true, "consistent": false,
+      "note": "Канон: утро 08:00, пасмурно. Пролог: «К полудню жара уже выжгла тени» — полдень и солнце вместо пасмурного утра." },
+    { "world": "aquilon", "condition": "after_v6_draft", "time_stated": true, "time_contradiction": false, "weather_contradiction": true, "consistent": false,
+      "note": "Канон: туман (регион forest после замены карты регионов). Пролог: дождь по таблице для coast — модель дала два региона, сервер заменил их своими." },
+    { "world": "frontier", "condition": "after_v6_draft", "time_stated": true, "time_contradiction": false, "weather_contradiction": false, "consistent": true,
+      "note": "Канон: утро, ясно (coast). Пролог: «ровно в восемь утра… ясное прибрежное небо»." },
+    { "world": "desert", "condition": "after_v6_draft", "time_stated": true, "time_contradiction": false, "weather_contradiction": true, "consistent": false,
+      "note": "Канон: ясно (plains после замены карты регионов). Пролог: «сухое пасмурное небо» по таблице для desert." },
+    { "world": "aquilon", "condition": "after", "time_stated": true, "time_contradiction": false, "weather_contradiction": false, "consistent": true,
+      "note": "Канон: утро, дождь (coast). Пролог: «Утро первого дня начинается с холодного дождя»." },
+    { "world": "frontier", "condition": "after", "time_stated": true, "time_contradiction": false, "weather_contradiction": false, "consistent": true,
+      "note": "Канон: утро, ясно (coast). Пролог: «Утро в Серой Пристани… стоит чистое небо»." },
+    { "world": "desert", "condition": "after", "time_stated": true, "time_contradiction": false, "weather_contradiction": false, "consistent": true,
+      "note": "Канон: утро, пасмурно (desert). Пролог: «Утренний свет… сухое, затянутое облаками небо»." }
+  ]
+}

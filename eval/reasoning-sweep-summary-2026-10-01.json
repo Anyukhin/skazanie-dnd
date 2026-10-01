@@ -1,0 +1,3518 @@
+{
+  "unaccounted_failed_calls_upper_rub": {
+    "eval/reasoning-sweep-narrator-n1-2026-10-01.json": 0,
+    "eval/reasoning-sweep-narrator-n2-2026-10-01.json": 0.1243,
+    "eval/reasoning-sweep-narrator-n3-2026-10-01.json": 0.5736,
+    "eval/reasoning-sweep-narrator-n4-control-2026-10-01.json": 0,
+    "eval/reasoning-sweep-roles-luna-2026-10-01.json": 0.6066,
+    "eval/reasoning-sweep-roles-lunapro-2026-10-01.json": 0,
+    "eval/reasoning-sweep-roles-glm-2026-10-01.json": 0.0969,
+    "eval/reasoning-sweep-roles-other-2026-10-01.json": 0.9896,
+    "eval/reasoning-sweep-roles-repeat-director-2026-10-01.json": 0,
+    "eval/reasoning-sweep-roles-repeat-npc-2026-10-01.json": 0,
+    "eval/reasoning-sweep-bootstrap-luna-2026-10-01.json": 0.8,
+    "eval/reasoning-sweep-bootstrap-other-2026-10-01.json": 0.7469,
+    "eval/reasoning-sweep-bootstrap-repeat-2026-10-01.json": 0,
+    "eval/reasoning-sweep-bootstrap-deepseek-2026-10-01.json": 0.0483,
+    "total": 3.9862
+  },
+  "created_at": "2026-10-01T14:45:16.893Z",
+  "network_calls": 0,
+  "budgets": {
+    "narrator": {
+      "full_ms": 12000,
+      "primary_ms": 7200
+    },
+    "director": {
+      "full_ms": 12000,
+      "primary_ms": 7200
+    },
+    "adjudicator": {
+      "full_ms": 9000,
+      "primary_ms": 5400
+    },
+    "npc_social": {
+      "full_ms": 20000,
+      "primary_ms": 12000
+    },
+    "bootstrap": {
+      "full_ms": 45000,
+      "primary_ms": 27000
+    }
+  },
+  "catalog": "eval/routerai-catalog-2026-10-01.json",
+  "note": "Пересчёт сохранённых отчётов без запросов к модели. morning — утренний замер (docs/model-benchmark-2026-10-01-gpt-6-luna.md), sweep — перебор уровней reasoning. usage_rub — поле usage.cost ответа RouterAI; catalog_rub — токены × цена снимка каталога без скидки кэша.",
+  "reasoning_probe": [
+    {
+      "model": "openai/gpt-6-luna",
+      "level": "default",
+      "status": 200,
+      "ok": true,
+      "latency_ms": 5795,
+      "prompt_tokens": 159,
+      "completion_tokens": 379,
+      "reasoning_tokens": 360,
+      "finish_reason": "stop",
+      "usage_cost": 0.0223,
+      "answer": {
+        "reachable": true,
+        "squares": 5
+      },
+      "error": null
+    },
+    {
+      "model": "openai/gpt-6-luna",
+      "level": "off",
+      "status": 200,
+      "ok": true,
+      "latency_ms": 1783,
+      "prompt_tokens": 159,
+      "completion_tokens": 17,
+      "reasoning_tokens": 0,
+      "finish_reason": "stop",
+      "usage_cost": 0.0027,
+      "answer": {
+        "reachable": true,
+        "squares": 8
+      },
+      "error": null
+    },
+    {
+      "model": "openai/gpt-6-luna",
+      "level": "minimal",
+      "status": 200,
+      "ok": true,
+      "latency_ms": 8384,
+      "prompt_tokens": 159,
+      "completion_tokens": 423,
+      "reasoning_tokens": 404,
+      "finish_reason": "stop",
+      "usage_cost": 0.0247,
+      "answer": {
+        "reachable": true,
+        "squares": 5
+      },
+      "error": null
+    },
+    {
+      "model": "openai/gpt-6-luna",
+      "level": "low",
+      "status": 200,
+      "ok": true,
+      "latency_ms": 13361,
+      "prompt_tokens": 159,
+      "completion_tokens": 750,
+      "reasoning_tokens": 731,
+      "finish_reason": "stop",
+      "usage_cost": 0.0425,
+      "answer": {
+        "reachable": true,
+        "squares": 6
+      },
+      "error": null
+    },
+    {
+      "model": "openai/gpt-6-luna",
+      "level": "medium",
+      "status": 200,
+      "ok": true,
+      "latency_ms": 8130,
+      "prompt_tokens": 159,
+      "completion_tokens": 609,
+      "reasoning_tokens": 590,
+      "finish_reason": "stop",
+      "usage_cost": 0.0348,
+      "answer": {
+        "reachable": true,
+        "squares": 5
+      },
+      "error": null
+    },
+    {
+      "model": "openai/gpt-6-luna",
+      "level": "high",
+      "status": 200,
+      "ok": true,
+      "latency_ms": 10869,
+      "prompt_tokens": 159,
+      "completion_tokens": 863,
+      "reasoning_tokens": 844,
+      "finish_reason": "stop",
+      "usage_cost": 0.0486,
+      "answer": {
+        "reachable": true,
+        "squares": 5
+      },
+      "error": null
+    },
+    {
+      "model": "openai/gpt-6-luna-pro",
+      "level": "default",
+      "status": 200,
+      "ok": true,
+      "latency_ms": 9155,
+      "prompt_tokens": 2809,
+      "completion_tokens": 1140,
+      "reasoning_tokens": 1085,
+      "finish_reason": "stop",
+      "usage_cost": 0.0924,
+      "answer": {
+        "reachable": true,
+        "squares": 5
+      },
+      "error": null
+    },
+    {
+      "model": "openai/gpt-6-luna-pro",
+      "level": "off",
+      "status": 200,
+      "ok": true,
+      "latency_ms": 2532,
+      "prompt_tokens": 1862,
+      "completion_tokens": 49,
+      "reasoning_tokens": 0,
+      "finish_reason": "stop",
+      "usage_cost": 0.0229,
+      "answer": {
+        "reachable": true,
+        "squares": 6
+      },
+      "error": null
+    },
+    {
+      "model": "openai/gpt-6-luna-pro",
+      "level": "low",
+      "status": 200,
+      "ok": true,
+      "latency_ms": 8716,
+      "prompt_tokens": 2582,
+      "completion_tokens": 781,
+      "reasoning_tokens": 728,
+      "finish_reason": "stop",
+      "usage_cost": 0.0705,
+      "answer": {
+        "reachable": true,
+        "squares": 5
+      },
+      "error": null
+    },
+    {
+      "model": "openai/gpt-6-luna-pro",
+      "level": "medium",
+      "status": 200,
+      "ok": true,
+      "latency_ms": 14855,
+      "prompt_tokens": 2581,
+      "completion_tokens": 930,
+      "reasoning_tokens": 875,
+      "finish_reason": "stop",
+      "usage_cost": 0.0785,
+      "answer": {
+        "reachable": true,
+        "squares": 5
+      },
+      "error": null
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "level": "default",
+      "status": 200,
+      "ok": true,
+      "latency_ms": 49375,
+      "prompt_tokens": 165,
+      "completion_tokens": 1934,
+      "reasoning_tokens": 1755,
+      "finish_reason": "stop",
+      "usage_cost": 0.1185,
+      "answer": null,
+      "error": null
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "level": "off",
+      "status": 200,
+      "ok": true,
+      "latency_ms": 8957,
+      "prompt_tokens": 165,
+      "completion_tokens": 256,
+      "reasoning_tokens": 242,
+      "finish_reason": "stop",
+      "usage_cost": 0.0183,
+      "answer": {
+        "reachable": true,
+        "squares": 5
+      },
+      "error": null
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "level": "minimal",
+      "status": 200,
+      "ok": true,
+      "latency_ms": 15712,
+      "prompt_tokens": 165,
+      "completion_tokens": 506,
+      "reasoning_tokens": 395,
+      "finish_reason": "stop",
+      "usage_cost": 0.0314,
+      "answer": null,
+      "error": null
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "level": "low",
+      "status": 200,
+      "ok": true,
+      "latency_ms": 21165,
+      "prompt_tokens": 165,
+      "completion_tokens": 606,
+      "reasoning_tokens": 588,
+      "finish_reason": "stop",
+      "usage_cost": 0.0373,
+      "answer": {
+        "reachable": true,
+        "squares": 5
+      },
+      "error": null
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "level": "medium",
+      "status": 200,
+      "ok": true,
+      "latency_ms": 13393,
+      "prompt_tokens": 165,
+      "completion_tokens": 436,
+      "reasoning_tokens": 418,
+      "finish_reason": "stop",
+      "usage_cost": 0.029,
+      "answer": {
+        "reachable": true,
+        "squares": 5
+      },
+      "error": null
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "level": "default",
+      "status": 200,
+      "ok": true,
+      "latency_ms": 19775,
+      "prompt_tokens": 243,
+      "completion_tokens": 2000,
+      "reasoning_tokens": 2967,
+      "finish_reason": "length",
+      "usage_cost": 0.3199,
+      "answer": null,
+      "error": null
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "level": "off",
+      "status": 200,
+      "ok": true,
+      "latency_ms": 1929,
+      "prompt_tokens": 187,
+      "completion_tokens": 14,
+      "reasoning_tokens": 0,
+      "finish_reason": "stop",
+      "usage_cost": 0.0024,
+      "answer": {
+        "reachable": false,
+        "squares": -1
+      },
+      "error": null
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "level": "low",
+      "status": 200,
+      "ok": true,
+      "latency_ms": 27080,
+      "prompt_tokens": 164,
+      "completion_tokens": 2000,
+      "reasoning_tokens": 1999,
+      "finish_reason": "length",
+      "usage_cost": 0.0218,
+      "answer": null,
+      "error": null
+    },
+    {
+      "model": "google/gemini-2.5-flash-lite",
+      "level": "default",
+      "status": 200,
+      "ok": true,
+      "latency_ms": 669,
+      "prompt_tokens": 143,
+      "completion_tokens": 11,
+      "reasoning_tokens": null,
+      "finish_reason": "stop",
+      "usage_cost": 0.002,
+      "answer": {
+        "reachable": true,
+        "squares": 7
+      },
+      "error": null
+    },
+    {
+      "model": "google/gemini-2.5-flash-lite",
+      "level": "off",
+      "status": 200,
+      "ok": true,
+      "latency_ms": 586,
+      "prompt_tokens": 143,
+      "completion_tokens": 12,
+      "reasoning_tokens": null,
+      "finish_reason": "stop",
+      "usage_cost": 0.0021,
+      "answer": {
+        "reachable": true,
+        "squares": 10
+      },
+      "error": null
+    },
+    {
+      "model": "google/gemini-2.5-flash-lite",
+      "level": "low",
+      "status": 200,
+      "ok": true,
+      "latency_ms": 4044,
+      "prompt_tokens": 143,
+      "completion_tokens": 701,
+      "reasoning_tokens": 690,
+      "finish_reason": "stop",
+      "usage_cost": 0.032,
+      "answer": {
+        "reachable": true,
+        "squares": 5
+      },
+      "error": null
+    }
+  ],
+  "narrator": [
+    {
+      "key": "deepseek-v4-flash/low",
+      "model": "deepseek/deepseek-v4-flash",
+      "level": "low",
+      "sources": [
+        "eval/reasoning-sweep-narrator-n2-2026-10-01.json (sweep)"
+      ],
+      "calls": 24,
+      "generated": 19,
+      "accepted_by_guard": 14,
+      "truncated_at_max_tokens": 2,
+      "errors": [
+        "forward-hook#1: LLM_RESPONSE_INVALID",
+        "holdout-locked-archive#1: LLM_TIMEOUT",
+        "enemy-survives#1: LLM_RESPONSE_INVALID",
+        "decision-n-minus-2#2: LLM_RESPONSE_INVALID",
+        "permitted-npc-reaction#2: LLM_TIMEOUT"
+      ],
+      "guard_rejections": [
+        "holdout-forge-mark#1: ",
+        "past-meeting#2: ",
+        "holdout-locked-archive#2: ",
+        "holdout-recorded-dialogue#2: ",
+        "declared-not-done#2: "
+      ],
+      "p50_ms": 9841,
+      "p95_ms": 22646,
+      "max_ms": 25784,
+      "within_primary_7200": 5,
+      "within_full_12000": 11,
+      "mean_prompt_tokens": 2354,
+      "mean_completion_tokens": 580,
+      "mean_reasoning_tokens": 513,
+      "usage_rub_per_100_calls": 2.66,
+      "catalog_rub_per_100_calls": 1.84,
+      "spend_usage_rub": 0.5047
+    },
+    {
+      "key": "deepseek-v4-flash/off",
+      "model": "deepseek/deepseek-v4-flash",
+      "level": "off",
+      "sources": [
+        "eval/narrator-comparison-gpt-6-luna-main-2026-10-01.json (morning)"
+      ],
+      "calls": 24,
+      "generated": 23,
+      "accepted_by_guard": 19,
+      "truncated_at_max_tokens": 1,
+      "errors": [
+        "holdout-forge-mark#2: LLM_RESPONSE_INVALID"
+      ],
+      "guard_rejections": [
+        "holdout-recorded-dialogue#1: ",
+        "enemy-survives#1: ",
+        "declared-not-done#1: ",
+        "past-meeting#2: "
+      ],
+      "p50_ms": 1920,
+      "p95_ms": 4114,
+      "max_ms": 15969,
+      "within_primary_7200": 22,
+      "within_full_12000": 22,
+      "mean_prompt_tokens": 2298,
+      "mean_completion_tokens": 82,
+      "mean_reasoning_tokens": 15,
+      "usage_rub_per_100_calls": 2.42,
+      "catalog_rub_per_100_calls": 1.29,
+      "spend_usage_rub": 0.5565
+    },
+    {
+      "key": "gemini-2.5-flash-lite/default",
+      "model": "google/gemini-2.5-flash-lite",
+      "level": "default",
+      "sources": [
+        "eval/reasoning-sweep-narrator-n1-2026-10-01.json (sweep)"
+      ],
+      "calls": 24,
+      "generated": 24,
+      "accepted_by_guard": 24,
+      "truncated_at_max_tokens": 0,
+      "errors": [],
+      "guard_rejections": [],
+      "p50_ms": 745,
+      "p95_ms": 1121,
+      "max_ms": 1177,
+      "within_primary_7200": 24,
+      "within_full_12000": 24,
+      "mean_prompt_tokens": 2113,
+      "mean_completion_tokens": 18,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_100_calls": 2.29,
+      "catalog_rub_per_100_calls": 2.37,
+      "spend_usage_rub": 0.5487
+    },
+    {
+      "key": "gemini-2.5-flash-lite/low",
+      "model": "google/gemini-2.5-flash-lite",
+      "level": "low",
+      "sources": [
+        "eval/reasoning-sweep-narrator-n2-2026-10-01.json (sweep)"
+      ],
+      "calls": 24,
+      "generated": 24,
+      "accepted_by_guard": 24,
+      "truncated_at_max_tokens": 0,
+      "errors": [],
+      "guard_rejections": [],
+      "p50_ms": 3465,
+      "p95_ms": 4280,
+      "max_ms": 4675,
+      "within_primary_7200": 24,
+      "within_full_12000": 24,
+      "mean_prompt_tokens": 2113,
+      "mean_completion_tokens": 727,
+      "mean_reasoning_tokens": 706,
+      "usage_rub_per_100_calls": 5.45,
+      "catalog_rub_per_100_calls": 5.45,
+      "spend_usage_rub": 1.3086
+    },
+    {
+      "key": "glm-5.3-flash/low",
+      "model": "z-ai/glm-5.3-flash",
+      "level": "low",
+      "sources": [
+        "eval/narrator-comparison-gpt-6-luna-main-2026-10-01.json (morning)"
+      ],
+      "calls": 24,
+      "generated": 24,
+      "accepted_by_guard": 20,
+      "truncated_at_max_tokens": 0,
+      "errors": [],
+      "guard_rejections": [
+        "past-meeting#1: ",
+        "enemy-survives#1: ",
+        "past-meeting#2: ",
+        "enemy-survives#2: "
+      ],
+      "p50_ms": 1663,
+      "p95_ms": 2521,
+      "max_ms": 2743,
+      "within_primary_7200": 24,
+      "within_full_12000": 24,
+      "mean_prompt_tokens": 1954,
+      "mean_completion_tokens": 34,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_100_calls": 2.52,
+      "catalog_rub_per_100_calls": 0.59,
+      "spend_usage_rub": 0.6053
+    },
+    {
+      "key": "glm-5.3-flash/low [контроль вечером]",
+      "model": "z-ai/glm-5.3-flash",
+      "level": "low",
+      "sources": [
+        "eval/reasoning-sweep-narrator-n4-control-2026-10-01.json (control)"
+      ],
+      "calls": 24,
+      "generated": 24,
+      "accepted_by_guard": 18,
+      "truncated_at_max_tokens": 0,
+      "errors": [],
+      "guard_rejections": [
+        "past-meeting#1: ",
+        "holdout-committed-ring#1: ",
+        "holdout-recorded-dialogue#1: ",
+        "enemy-survives#1: ",
+        "past-meeting#2: ",
+        "enemy-survives#2: "
+      ],
+      "p50_ms": 2895,
+      "p95_ms": 4474,
+      "max_ms": 4811,
+      "within_primary_7200": 24,
+      "within_full_12000": 24,
+      "mean_prompt_tokens": 1954,
+      "mean_completion_tokens": 34,
+      "mean_reasoning_tokens": 1,
+      "usage_rub_per_100_calls": 2.12,
+      "catalog_rub_per_100_calls": 0.59,
+      "spend_usage_rub": 0.508
+    },
+    {
+      "key": "glm-5.3-flash/medium",
+      "model": "z-ai/glm-5.3-flash",
+      "level": "medium",
+      "sources": [
+        "eval/reasoning-sweep-narrator-n2-2026-10-01.json (sweep)"
+      ],
+      "calls": 24,
+      "generated": 24,
+      "accepted_by_guard": 22,
+      "truncated_at_max_tokens": 0,
+      "errors": [],
+      "guard_rejections": [
+        "enemy-survives#1: ",
+        "enemy-survives#2: "
+      ],
+      "p50_ms": 4390,
+      "p95_ms": 6907,
+      "max_ms": 8444,
+      "within_primary_7200": 23,
+      "within_full_12000": 24,
+      "mean_prompt_tokens": 1954,
+      "mean_completion_tokens": 64,
+      "mean_reasoning_tokens": 25,
+      "usage_rub_per_100_calls": 2.66,
+      "catalog_rub_per_100_calls": 0.7,
+      "spend_usage_rub": 0.6395
+    },
+    {
+      "key": "glm-5.3-flash/minimal",
+      "model": "z-ai/glm-5.3-flash",
+      "level": "minimal",
+      "sources": [
+        "eval/reasoning-sweep-narrator-n1-2026-10-01.json (sweep)"
+      ],
+      "calls": 24,
+      "generated": 24,
+      "accepted_by_guard": 19,
+      "truncated_at_max_tokens": 0,
+      "errors": [],
+      "guard_rejections": [
+        "past-meeting#1: ",
+        "holdout-committed-ring#1: ",
+        "enemy-survives#1: ",
+        "holdout-committed-ring#2: ",
+        "enemy-survives#2: "
+      ],
+      "p50_ms": 3059,
+      "p95_ms": 5233,
+      "max_ms": 6219,
+      "within_primary_7200": 24,
+      "within_full_12000": 24,
+      "mean_prompt_tokens": 1954,
+      "mean_completion_tokens": 35,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_100_calls": 2.23,
+      "catalog_rub_per_100_calls": 0.59,
+      "spend_usage_rub": 0.5348
+    },
+    {
+      "key": "glm-5.3-flash/off",
+      "model": "z-ai/glm-5.3-flash",
+      "level": "off",
+      "sources": [
+        "eval/reasoning-sweep-narrator-n3-2026-10-01.json (sweep)"
+      ],
+      "calls": 24,
+      "generated": 12,
+      "accepted_by_guard": 11,
+      "truncated_at_max_tokens": 0,
+      "errors": [
+        "decision-n-minus-2#1: LLM_PROVIDER_ERROR",
+        "holdout-locked-archive#1: LLM_PROVIDER_ERROR",
+        "holdout-committed-ring#1: LLM_PROVIDER_ERROR",
+        "holdout-recorded-dialogue#1: LLM_PROVIDER_ERROR",
+        "declared-not-done#1: LLM_PROVIDER_ERROR",
+        "untrusted-injection#1: LLM_PROVIDER_ERROR",
+        "permitted-npc-reaction#1: LLM_PROVIDER_ERROR",
+        "decision-n-minus-2#2: LLM_PROVIDER_ERROR",
+        "open-promise#2: LLM_PROVIDER_ERROR",
+        "past-meeting#2: LLM_PROVIDER_ERROR",
+        "enemy-survives#2: LLM_PROVIDER_ERROR",
+        "declared-not-done#2: LLM_PROVIDER_ERROR"
+      ],
+      "guard_rejections": [
+        "enemy-survives#1: "
+      ],
+      "p50_ms": 3182,
+      "p95_ms": 4786,
+      "max_ms": 5351,
+      "within_primary_7200": 12,
+      "within_full_12000": 12,
+      "mean_prompt_tokens": 2001,
+      "mean_completion_tokens": 39,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_100_calls": 1.65,
+      "catalog_rub_per_100_calls": 0.62,
+      "spend_usage_rub": 0.1982
+    },
+    {
+      "key": "gpt-5.6-luna/off",
+      "model": "openai/gpt-5.6-luna",
+      "level": "off",
+      "sources": [
+        "eval/narrator-comparison-gpt-6-luna-main-2026-10-01.json (morning)"
+      ],
+      "calls": 24,
+      "generated": 24,
+      "accepted_by_guard": 24,
+      "truncated_at_max_tokens": 0,
+      "errors": [],
+      "guard_rejections": [],
+      "p50_ms": 1742,
+      "p95_ms": 3412,
+      "max_ms": 4454,
+      "within_primary_7200": 24,
+      "within_full_12000": 24,
+      "mean_prompt_tokens": 1949,
+      "mean_completion_tokens": 30,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_100_calls": 2.25,
+      "catalog_rub_per_100_calls": 4.63,
+      "spend_usage_rub": 0.5403
+    },
+    {
+      "key": "gpt-6-luna-pro/low",
+      "model": "openai/gpt-6-luna-pro",
+      "level": "low",
+      "sources": [
+        "eval/reasoning-sweep-narrator-n2-2026-10-01.json (sweep)"
+      ],
+      "calls": 24,
+      "generated": 24,
+      "accepted_by_guard": 24,
+      "truncated_at_max_tokens": 0,
+      "errors": [],
+      "guard_rejections": [],
+      "p50_ms": 7954,
+      "p95_ms": 9044,
+      "max_ms": 9323,
+      "within_primary_7200": 10,
+      "within_full_12000": 24,
+      "mean_prompt_tokens": 7347,
+      "mean_completion_tokens": 109,
+      "mean_reasoning_tokens": 37,
+      "usage_rub_per_100_calls": 4.5,
+      "catalog_rub_per_100_calls": 8.57,
+      "spend_usage_rub": 1.0802
+    },
+    {
+      "key": "gpt-6-luna-pro/medium",
+      "model": "openai/gpt-6-luna-pro",
+      "level": "medium",
+      "sources": [
+        "eval/reasoning-sweep-narrator-n3-2026-10-01.json (sweep)"
+      ],
+      "calls": 24,
+      "generated": 24,
+      "accepted_by_guard": 24,
+      "truncated_at_max_tokens": 0,
+      "errors": [],
+      "guard_rejections": [],
+      "p50_ms": 9039,
+      "p95_ms": 13689,
+      "max_ms": 14612,
+      "within_primary_7200": 8,
+      "within_full_12000": 22,
+      "mean_prompt_tokens": 7445,
+      "mean_completion_tokens": 291,
+      "mean_reasoning_tokens": 217,
+      "usage_rub_per_100_calls": 6.41,
+      "catalog_rub_per_100_calls": 9.67,
+      "spend_usage_rub": 1.5376
+    },
+    {
+      "key": "gpt-6-luna-pro/off",
+      "model": "openai/gpt-6-luna-pro",
+      "level": "off",
+      "sources": [
+        "eval/reasoning-sweep-narrator-n1-2026-10-01.json (sweep)"
+      ],
+      "calls": 24,
+      "generated": 24,
+      "accepted_by_guard": 23,
+      "truncated_at_max_tokens": 0,
+      "errors": [],
+      "guard_rejections": [
+        "holdout-recorded-dialogue#2: "
+      ],
+      "p50_ms": 2831,
+      "p95_ms": 3173,
+      "max_ms": 3303,
+      "within_primary_7200": 24,
+      "within_full_12000": 24,
+      "mean_prompt_tokens": 7346,
+      "mean_completion_tokens": 73,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_100_calls": 5.07,
+      "catalog_rub_per_100_calls": 8.38,
+      "spend_usage_rub": 1.2168
+    },
+    {
+      "key": "gpt-6-luna/default",
+      "model": "openai/gpt-6-luna",
+      "level": "default",
+      "sources": [
+        "eval/narrator-comparison-gpt-6-luna-default-2026-10-01.json (morning)"
+      ],
+      "calls": 12,
+      "generated": 12,
+      "accepted_by_guard": 12,
+      "truncated_at_max_tokens": 0,
+      "errors": [],
+      "guard_rejections": [],
+      "p50_ms": 2501,
+      "p95_ms": 3324,
+      "max_ms": 3515,
+      "within_primary_7200": 12,
+      "within_full_12000": 12,
+      "mean_prompt_tokens": 1949,
+      "mean_completion_tokens": 70,
+      "mean_reasoning_tokens": 42,
+      "usage_rub_per_100_calls": 2.02,
+      "catalog_rub_per_100_calls": 2.5,
+      "spend_usage_rub": 0.2424
+    },
+    {
+      "key": "gpt-6-luna/high",
+      "model": "openai/gpt-6-luna",
+      "level": "high",
+      "sources": [
+        "eval/reasoning-sweep-narrator-n3-2026-10-01.json (sweep)"
+      ],
+      "calls": 24,
+      "generated": 24,
+      "accepted_by_guard": 24,
+      "truncated_at_max_tokens": 0,
+      "errors": [],
+      "guard_rejections": [],
+      "p50_ms": 2723,
+      "p95_ms": 4009,
+      "max_ms": 4101,
+      "within_primary_7200": 24,
+      "within_full_12000": 24,
+      "mean_prompt_tokens": 1949,
+      "mean_completion_tokens": 110,
+      "mean_reasoning_tokens": 80,
+      "usage_rub_per_100_calls": 1.53,
+      "catalog_rub_per_100_calls": 2.72,
+      "spend_usage_rub": 0.3664
+    },
+    {
+      "key": "gpt-6-luna/low",
+      "model": "openai/gpt-6-luna",
+      "level": "low",
+      "sources": [
+        "eval/narrator-comparison-gpt-6-luna-low-2026-10-01.json (morning)"
+      ],
+      "calls": 24,
+      "generated": 24,
+      "accepted_by_guard": 24,
+      "truncated_at_max_tokens": 0,
+      "errors": [],
+      "guard_rejections": [],
+      "p50_ms": 1640,
+      "p95_ms": 3039,
+      "max_ms": 5742,
+      "within_primary_7200": 24,
+      "within_full_12000": 24,
+      "mean_prompt_tokens": 1949,
+      "mean_completion_tokens": 28,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_100_calls": 1.08,
+      "catalog_rub_per_100_calls": 2.27,
+      "spend_usage_rub": 0.2593
+    },
+    {
+      "key": "gpt-6-luna/medium",
+      "model": "openai/gpt-6-luna",
+      "level": "medium",
+      "sources": [
+        "eval/reasoning-sweep-narrator-n2-2026-10-01.json (sweep)"
+      ],
+      "calls": 24,
+      "generated": 24,
+      "accepted_by_guard": 24,
+      "truncated_at_max_tokens": 0,
+      "errors": [],
+      "guard_rejections": [],
+      "p50_ms": 2046,
+      "p95_ms": 3125,
+      "max_ms": 4103,
+      "within_primary_7200": 24,
+      "within_full_12000": 24,
+      "mean_prompt_tokens": 1949,
+      "mean_completion_tokens": 62,
+      "mean_reasoning_tokens": 33,
+      "usage_rub_per_100_calls": 1.26,
+      "catalog_rub_per_100_calls": 2.45,
+      "spend_usage_rub": 0.3034
+    },
+    {
+      "key": "gpt-6-luna/minimal",
+      "model": "openai/gpt-6-luna",
+      "level": "minimal",
+      "sources": [
+        "eval/reasoning-sweep-narrator-n1-2026-10-01.json (sweep)"
+      ],
+      "calls": 24,
+      "generated": 24,
+      "accepted_by_guard": 24,
+      "truncated_at_max_tokens": 0,
+      "errors": [],
+      "guard_rejections": [],
+      "p50_ms": 1916,
+      "p95_ms": 2403,
+      "max_ms": 3988,
+      "within_primary_7200": 24,
+      "within_full_12000": 24,
+      "mean_prompt_tokens": 1949,
+      "mean_completion_tokens": 29,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_100_calls": 1.08,
+      "catalog_rub_per_100_calls": 2.27,
+      "spend_usage_rub": 0.2599
+    },
+    {
+      "key": "gpt-6-luna/off",
+      "model": "openai/gpt-6-luna",
+      "level": "off",
+      "sources": [
+        "eval/narrator-comparison-gpt-6-luna-main-2026-10-01.json (morning)"
+      ],
+      "calls": 24,
+      "generated": 24,
+      "accepted_by_guard": 24,
+      "truncated_at_max_tokens": 0,
+      "errors": [],
+      "guard_rejections": [],
+      "p50_ms": 1809,
+      "p95_ms": 3794,
+      "max_ms": 9036,
+      "within_primary_7200": 23,
+      "within_full_12000": 24,
+      "mean_prompt_tokens": 1949,
+      "mean_completion_tokens": 29,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_100_calls": 1.09,
+      "catalog_rub_per_100_calls": 2.28,
+      "spend_usage_rub": 0.2605
+    },
+    {
+      "key": "gpt-6-luna/off [контроль вечером]",
+      "model": "openai/gpt-6-luna",
+      "level": "off",
+      "sources": [
+        "eval/reasoning-sweep-narrator-n4-control-2026-10-01.json (control)"
+      ],
+      "calls": 24,
+      "generated": 24,
+      "accepted_by_guard": 24,
+      "truncated_at_max_tokens": 0,
+      "errors": [],
+      "guard_rejections": [],
+      "p50_ms": 1771,
+      "p95_ms": 2554,
+      "max_ms": 3287,
+      "within_primary_7200": 24,
+      "within_full_12000": 24,
+      "mean_prompt_tokens": 1949,
+      "mean_completion_tokens": 28,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_100_calls": 0.37,
+      "catalog_rub_per_100_calls": 2.27,
+      "spend_usage_rub": 0.0883
+    }
+  ],
+  "roles": [
+    {
+      "key": "adjudicator|deepseek-v4-flash/low",
+      "role": "adjudicator",
+      "model": "deepseek/deepseek-v4-flash",
+      "level": "low",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-other-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 0,
+      "valid_within_full_budget": 0,
+      "valid_within_primary_share": 0,
+      "full_budget_ms": 9000,
+      "primary_share_ms": 5400,
+      "p50_ms": 10378,
+      "p95_ms": 38448,
+      "max_ms": 40013,
+      "invalid_reasons": [
+        "adjudicator-1#1: deterministic-default-after-agent-error",
+        "adjudicator-2#1: deterministic-default-after-agent-error",
+        "adjudicator-3#1: deterministic-default-after-agent-error",
+        "adjudicator-1#2: deterministic-default-after-agent-error",
+        "adjudicator-2#2: deterministic-default-after-agent-error",
+        "adjudicator-3#2: deterministic-default-after-agent-error"
+      ],
+      "call_errors": [
+        "LLM_RESPONSE_INVALID @8288ms",
+        "LLM_TIMEOUT @40013ms",
+        "LLM_RESPONSE_INVALID @12402ms",
+        "LLM_RESPONSE_INVALID @33754ms",
+        "LLM_JSON_INVALID @6321ms",
+        "LLM_JSON_INVALID @8353ms"
+      ],
+      "mean_completion_tokens": 0,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_100_calls": null,
+      "catalog_rub_per_100_calls": null,
+      "spend_usage_rub": 0,
+      "effects": []
+    },
+    {
+      "key": "adjudicator|deepseek-v4-flash/off",
+      "role": "adjudicator",
+      "model": "deepseek/deepseek-v4-flash",
+      "level": "off",
+      "variant": "",
+      "sources": [
+        "eval/json-roles-gpt-6-luna-2026-10-01.json (morning)"
+      ],
+      "cases": 6,
+      "valid": 6,
+      "valid_within_full_budget": 5,
+      "valid_within_primary_share": 5,
+      "full_budget_ms": 9000,
+      "primary_share_ms": 5400,
+      "p50_ms": 4860,
+      "p95_ms": 8826,
+      "max_ms": 10061,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 197,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_100_calls": 3.25,
+      "catalog_rub_per_100_calls": 2.51,
+      "spend_usage_rub": 0.1951,
+      "effects": [
+        "adjudicator-1:prone",
+        "adjudicator-2:distract",
+        "adjudicator-3:prone",
+        "adjudicator-1:prone",
+        "adjudicator-2:distract",
+        "adjudicator-3:prone"
+      ]
+    },
+    {
+      "key": "adjudicator|gemini-2.5-flash-lite/default",
+      "role": "adjudicator",
+      "model": "google/gemini-2.5-flash-lite",
+      "level": "default",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-other-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 6,
+      "valid_within_full_budget": 6,
+      "valid_within_primary_share": 6,
+      "full_budget_ms": 9000,
+      "primary_share_ms": 5400,
+      "p50_ms": 1291,
+      "p95_ms": 1607,
+      "max_ms": 1670,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 218,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_100_calls": 4.79,
+      "catalog_rub_per_100_calls": 5.29,
+      "spend_usage_rub": 0.2874,
+      "effects": [
+        "adjudicator-1:prone",
+        "adjudicator-2:distract",
+        "adjudicator-3:prone",
+        "adjudicator-1:prone",
+        "adjudicator-2:distract",
+        "adjudicator-3:prone"
+      ]
+    },
+    {
+      "key": "adjudicator|gemini-2.5-flash-lite/low",
+      "role": "adjudicator",
+      "model": "google/gemini-2.5-flash-lite",
+      "level": "low",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-other-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 0,
+      "valid_within_full_budget": 0,
+      "valid_within_primary_share": 0,
+      "full_budget_ms": 9000,
+      "primary_share_ms": 5400,
+      "p50_ms": 5699,
+      "p95_ms": 6956,
+      "max_ms": 7159,
+      "invalid_reasons": [
+        "adjudicator-1#1: deterministic-default-after-agent-error",
+        "adjudicator-2#1: deterministic-default-after-agent-error",
+        "adjudicator-3#1: deterministic-default-after-agent-error",
+        "adjudicator-1#2: deterministic-default-after-agent-error",
+        "adjudicator-2#2: deterministic-default-after-agent-error",
+        "adjudicator-3#2: deterministic-default-after-agent-error"
+      ],
+      "call_errors": [
+        "LLM_JSON_INVALID @4639ms",
+        "LLM_JSON_INVALID @6347ms",
+        "LLM_JSON_INVALID @6025ms",
+        "LLM_JSON_INVALID @5373ms",
+        "LLM_JSON_INVALID @7159ms",
+        "LLM_JSON_INVALID @3890ms"
+      ],
+      "mean_completion_tokens": 0,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_100_calls": null,
+      "catalog_rub_per_100_calls": null,
+      "spend_usage_rub": 0,
+      "effects": []
+    },
+    {
+      "key": "adjudicator|glm-5.3-flash/low",
+      "role": "adjudicator",
+      "model": "z-ai/glm-5.3-flash",
+      "level": "low",
+      "variant": "",
+      "sources": [
+        "eval/json-roles-gpt-6-luna-2026-10-01.json (morning)",
+        "eval/reasoning-sweep-roles-glm-2026-10-01.json (sweep)"
+      ],
+      "cases": 12,
+      "valid": 12,
+      "valid_within_full_budget": 10,
+      "valid_within_primary_share": 3,
+      "full_budget_ms": 9000,
+      "primary_share_ms": 5400,
+      "p50_ms": 6823,
+      "p95_ms": 9530,
+      "max_ms": 9797,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 206,
+      "mean_reasoning_tokens": 54,
+      "usage_rub_per_100_calls": 6.21,
+      "catalog_rub_per_100_calls": 1.65,
+      "spend_usage_rub": 0.7448,
+      "effects": [
+        "adjudicator-1:prone",
+        "adjudicator-2:distract",
+        "adjudicator-3:prone",
+        "adjudicator-1:prone",
+        "adjudicator-2:distract",
+        "adjudicator-3:prone",
+        "adjudicator-1:restrain",
+        "adjudicator-2:distract",
+        "adjudicator-3:prone",
+        "adjudicator-1:prone",
+        "adjudicator-2:distract",
+        "adjudicator-3:distract"
+      ]
+    },
+    {
+      "key": "adjudicator|glm-5.3-flash/medium",
+      "role": "adjudicator",
+      "model": "z-ai/glm-5.3-flash",
+      "level": "medium",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-glm-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 6,
+      "valid_within_full_budget": 5,
+      "valid_within_primary_share": 1,
+      "full_budget_ms": 9000,
+      "primary_share_ms": 5400,
+      "p50_ms": 7702,
+      "p95_ms": 14508,
+      "max_ms": 16360,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 250,
+      "mean_reasoning_tokens": 90,
+      "usage_rub_per_100_calls": 6.15,
+      "catalog_rub_per_100_calls": 1.81,
+      "spend_usage_rub": 0.369,
+      "effects": [
+        "adjudicator-1:prone",
+        "adjudicator-2:distract",
+        "adjudicator-3:distract",
+        "adjudicator-1:prone",
+        "adjudicator-2:distract",
+        "adjudicator-3:prone"
+      ]
+    },
+    {
+      "key": "adjudicator|glm-5.3-flash/minimal",
+      "role": "adjudicator",
+      "model": "z-ai/glm-5.3-flash",
+      "level": "minimal",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-glm-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 6,
+      "valid_within_full_budget": 6,
+      "valid_within_primary_share": 2,
+      "full_budget_ms": 9000,
+      "primary_share_ms": 5400,
+      "p50_ms": 7067,
+      "p95_ms": 8648,
+      "max_ms": 8959,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 180,
+      "mean_reasoning_tokens": 27,
+      "usage_rub_per_100_calls": 3.15,
+      "catalog_rub_per_100_calls": 1.56,
+      "spend_usage_rub": 0.1887,
+      "effects": [
+        "adjudicator-1:restrain",
+        "adjudicator-2:distract",
+        "adjudicator-3:distract",
+        "adjudicator-1:prone",
+        "adjudicator-2:distract",
+        "adjudicator-3:prone"
+      ]
+    },
+    {
+      "key": "adjudicator|glm-5.3-flash/off",
+      "role": "adjudicator",
+      "model": "z-ai/glm-5.3-flash",
+      "level": "off",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-glm-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 5,
+      "valid_within_full_budget": 5,
+      "valid_within_primary_share": 0,
+      "full_budget_ms": 9000,
+      "primary_share_ms": 5400,
+      "p50_ms": 6199,
+      "p95_ms": 7511,
+      "max_ms": 7665,
+      "invalid_reasons": [
+        "adjudicator-2#1: deterministic-default-after-agent-error"
+      ],
+      "call_errors": [],
+      "mean_completion_tokens": 181,
+      "mean_reasoning_tokens": 26,
+      "usage_rub_per_100_calls": 4.57,
+      "catalog_rub_per_100_calls": 1.56,
+      "spend_usage_rub": 0.2741,
+      "effects": [
+        "adjudicator-1:restrain",
+        "adjudicator-3:prone",
+        "adjudicator-1:restrain",
+        "adjudicator-2:distract",
+        "adjudicator-3:distract"
+      ]
+    },
+    {
+      "key": "adjudicator|gpt-5.6-luna/off",
+      "role": "adjudicator",
+      "model": "openai/gpt-5.6-luna",
+      "level": "off",
+      "variant": "",
+      "sources": [
+        "eval/json-roles-gpt-6-luna-2026-10-01.json (morning)"
+      ],
+      "cases": 6,
+      "valid": 5,
+      "valid_within_full_budget": 5,
+      "valid_within_primary_share": 5,
+      "full_budget_ms": 9000,
+      "primary_share_ms": 5400,
+      "p50_ms": 3301,
+      "p95_ms": 8776,
+      "max_ms": 10135,
+      "invalid_reasons": [
+        "adjudicator-3#2: deterministic-default-after-agent-error"
+      ],
+      "call_errors": [
+        "LLM_PROVIDER_ERROR 503 @10135ms"
+      ],
+      "mean_completion_tokens": 197,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_100_calls": 5.91,
+      "catalog_rub_per_100_calls": 10.74,
+      "spend_usage_rub": 0.2956,
+      "effects": [
+        "adjudicator-1:prone",
+        "adjudicator-2:distract",
+        "adjudicator-3:prone",
+        "adjudicator-1:prone",
+        "adjudicator-2:distract"
+      ]
+    },
+    {
+      "key": "adjudicator|gpt-6-luna-pro/low",
+      "role": "adjudicator",
+      "model": "openai/gpt-6-luna-pro",
+      "level": "low",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-lunapro-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 6,
+      "valid_within_full_budget": 1,
+      "valid_within_primary_share": 0,
+      "full_budget_ms": 9000,
+      "primary_share_ms": 5400,
+      "p50_ms": 10717,
+      "p95_ms": 17940,
+      "max_ms": 18978,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 904,
+      "mean_reasoning_tokens": 484,
+      "usage_rub_per_100_calls": 12.23,
+      "catalog_rub_per_100_calls": 19.58,
+      "spend_usage_rub": 0.7341,
+      "effects": [
+        "adjudicator-1:prone",
+        "adjudicator-2:distract",
+        "adjudicator-3:prone",
+        "adjudicator-1:prone",
+        "adjudicator-2:distract",
+        "adjudicator-3:prone"
+      ]
+    },
+    {
+      "key": "adjudicator|gpt-6-luna-pro/medium",
+      "role": "adjudicator",
+      "model": "openai/gpt-6-luna-pro",
+      "level": "medium",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-lunapro-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 6,
+      "valid_within_full_budget": 0,
+      "valid_within_primary_share": 0,
+      "full_budget_ms": 9000,
+      "primary_share_ms": 5400,
+      "p50_ms": 13695,
+      "p95_ms": 16046,
+      "max_ms": 16179,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 1310,
+      "mean_reasoning_tokens": 952,
+      "usage_rub_per_100_calls": 15.9,
+      "catalog_rub_per_100_calls": 22.2,
+      "spend_usage_rub": 0.9541,
+      "effects": [
+        "adjudicator-1:prone",
+        "adjudicator-2:distract",
+        "adjudicator-3:prone",
+        "adjudicator-1:prone",
+        "adjudicator-2:distract",
+        "adjudicator-3:prone"
+      ]
+    },
+    {
+      "key": "adjudicator|gpt-6-luna-pro/off",
+      "role": "adjudicator",
+      "model": "openai/gpt-6-luna-pro",
+      "level": "off",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-lunapro-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 6,
+      "valid_within_full_budget": 6,
+      "valid_within_primary_share": 6,
+      "full_budget_ms": 9000,
+      "primary_share_ms": 5400,
+      "p50_ms": 4374,
+      "p95_ms": 4493,
+      "max_ms": 4494,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 421,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_100_calls": 9.2,
+      "catalog_rub_per_100_calls": 16.55,
+      "spend_usage_rub": 0.5519,
+      "effects": [
+        "adjudicator-1:prone",
+        "adjudicator-2:distract",
+        "adjudicator-3:distract",
+        "adjudicator-1:prone",
+        "adjudicator-2:distract",
+        "adjudicator-3:distract"
+      ]
+    },
+    {
+      "key": "adjudicator|gpt-6-luna/default",
+      "role": "adjudicator",
+      "model": "openai/gpt-6-luna",
+      "level": "default",
+      "variant": "",
+      "sources": [
+        "eval/json-roles-gpt-6-luna-default-2026-10-01.json (morning)"
+      ],
+      "cases": 3,
+      "valid": 1,
+      "valid_within_full_budget": 1,
+      "valid_within_primary_share": 1,
+      "full_budget_ms": 9000,
+      "primary_share_ms": 5400,
+      "p50_ms": 9099,
+      "p95_ms": 9100,
+      "max_ms": 9100,
+      "invalid_reasons": [
+        "adjudicator-1#1: deterministic-default-after-agent-error",
+        "adjudicator-3#1: deterministic-default-after-agent-error"
+      ],
+      "call_errors": [
+        "LLM_JSON_INVALID @9100ms",
+        "LLM_JSON_INVALID @9099ms"
+      ],
+      "mean_completion_tokens": 410,
+      "mean_reasoning_tokens": 219,
+      "usage_rub_per_100_calls": 3.45,
+      "catalog_rub_per_100_calls": 6.32,
+      "spend_usage_rub": 0.0345,
+      "effects": [
+        "adjudicator-2:distract"
+      ]
+    },
+    {
+      "key": "adjudicator|gpt-6-luna/high",
+      "role": "adjudicator",
+      "model": "openai/gpt-6-luna",
+      "level": "high",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-luna-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 1,
+      "valid_within_full_budget": 1,
+      "valid_within_primary_share": 0,
+      "full_budget_ms": 9000,
+      "primary_share_ms": 5400,
+      "p50_ms": 8584,
+      "p95_ms": 9136,
+      "max_ms": 9208,
+      "invalid_reasons": [
+        "adjudicator-1#1: deterministic-default-after-agent-error",
+        "adjudicator-3#1: deterministic-default-after-agent-error",
+        "adjudicator-1#2: deterministic-default-after-agent-error",
+        "adjudicator-2#2: deterministic-default-after-agent-error",
+        "adjudicator-3#2: deterministic-default-after-agent-error"
+      ],
+      "call_errors": [
+        "LLM_JSON_INVALID @9208ms",
+        "LLM_RESPONSE_INVALID @8360ms",
+        "LLM_RESPONSE_INVALID @8425ms",
+        "LLM_RESPONSE_INVALID @8743ms",
+        "LLM_RESPONSE_INVALID @8918ms"
+      ],
+      "mean_completion_tokens": 556,
+      "mean_reasoning_tokens": 363,
+      "usage_rub_per_100_calls": 4.24,
+      "catalog_rub_per_100_calls": 7.11,
+      "spend_usage_rub": 0.0424,
+      "effects": [
+        "adjudicator-2:distract"
+      ]
+    },
+    {
+      "key": "adjudicator|gpt-6-luna/low",
+      "role": "adjudicator",
+      "model": "openai/gpt-6-luna",
+      "level": "low",
+      "variant": "",
+      "sources": [
+        "eval/json-roles-gpt-6-luna-2026-10-01.json (morning)"
+      ],
+      "cases": 6,
+      "valid": 6,
+      "valid_within_full_budget": 6,
+      "valid_within_primary_share": 3,
+      "full_budget_ms": 9000,
+      "primary_share_ms": 5400,
+      "p50_ms": 5642,
+      "p95_ms": 7712,
+      "max_ms": 7949,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 388,
+      "mean_reasoning_tokens": 187,
+      "usage_rub_per_100_calls": 3.57,
+      "catalog_rub_per_100_calls": 6.19,
+      "spend_usage_rub": 0.2142,
+      "effects": [
+        "adjudicator-1:prone",
+        "adjudicator-2:distract",
+        "adjudicator-3:prone",
+        "adjudicator-1:prone",
+        "adjudicator-2:distract",
+        "adjudicator-3:prone"
+      ]
+    },
+    {
+      "key": "adjudicator|gpt-6-luna/medium",
+      "role": "adjudicator",
+      "model": "openai/gpt-6-luna",
+      "level": "medium",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-luna-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 4,
+      "valid_within_full_budget": 4,
+      "valid_within_primary_share": 0,
+      "full_budget_ms": 9000,
+      "primary_share_ms": 5400,
+      "p50_ms": 8733,
+      "p95_ms": 10960,
+      "max_ms": 11496,
+      "invalid_reasons": [
+        "adjudicator-3#1: deterministic-default-after-agent-error",
+        "adjudicator-3#2: deterministic-default-after-agent-error"
+      ],
+      "call_errors": [
+        "LLM_JSON_INVALID @11496ms",
+        "LLM_RESPONSE_INVALID @9351ms"
+      ],
+      "mean_completion_tokens": 570,
+      "mean_reasoning_tokens": 364,
+      "usage_rub_per_100_calls": 4.88,
+      "catalog_rub_per_100_calls": 7.18,
+      "spend_usage_rub": 0.1952,
+      "effects": [
+        "adjudicator-1:prone",
+        "adjudicator-2:distract",
+        "adjudicator-1:prone",
+        "adjudicator-2:distract"
+      ]
+    },
+    {
+      "key": "adjudicator|gpt-6-luna/minimal",
+      "role": "adjudicator",
+      "model": "openai/gpt-6-luna",
+      "level": "minimal",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-luna-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 6,
+      "valid_within_full_budget": 6,
+      "valid_within_primary_share": 2,
+      "full_budget_ms": 9000,
+      "primary_share_ms": 5400,
+      "p50_ms": 5759,
+      "p95_ms": 6222,
+      "max_ms": 6233,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 359,
+      "mean_reasoning_tokens": 151,
+      "usage_rub_per_100_calls": 3.41,
+      "catalog_rub_per_100_calls": 6.03,
+      "spend_usage_rub": 0.2046,
+      "effects": [
+        "adjudicator-1:prone",
+        "adjudicator-2:distract",
+        "adjudicator-3:prone",
+        "adjudicator-1:prone",
+        "adjudicator-2:distract",
+        "adjudicator-3:prone"
+      ]
+    },
+    {
+      "key": "adjudicator|gpt-6-luna/off",
+      "role": "adjudicator",
+      "model": "openai/gpt-6-luna",
+      "level": "off",
+      "variant": "",
+      "sources": [
+        "eval/json-roles-gpt-6-luna-2026-10-01.json (morning)",
+        "eval/reasoning-sweep-roles-luna-2026-10-01.json (sweep)"
+      ],
+      "cases": 12,
+      "valid": 12,
+      "valid_within_full_budget": 12,
+      "valid_within_primary_share": 12,
+      "full_budget_ms": 9000,
+      "primary_share_ms": 5400,
+      "p50_ms": 3444,
+      "p95_ms": 4488,
+      "max_ms": 4871,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 206,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_100_calls": 2.58,
+      "catalog_rub_per_100_calls": 5.21,
+      "spend_usage_rub": 0.3098,
+      "effects": [
+        "adjudicator-1:prone",
+        "adjudicator-2:distract",
+        "adjudicator-3:distract",
+        "adjudicator-1:prone",
+        "adjudicator-2:distract",
+        "adjudicator-3:distract",
+        "adjudicator-1:prone",
+        "adjudicator-2:distract",
+        "adjudicator-3:prone",
+        "adjudicator-1:prone",
+        "adjudicator-2:distract",
+        "adjudicator-3:distract"
+      ]
+    },
+    {
+      "key": "director|deepseek-v4-flash/low",
+      "role": "director",
+      "model": "deepseek/deepseek-v4-flash",
+      "level": "low",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-other-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 0,
+      "valid_within_full_budget": 0,
+      "valid_within_primary_share": 0,
+      "full_budget_ms": 12000,
+      "primary_share_ms": 7200,
+      "p50_ms": 5505,
+      "p95_ms": 12342,
+      "max_ms": 14579,
+      "invalid_reasons": [
+        "director-1#1: LLM returned an empty assistant response",
+        "director-2#1: LLM returned an empty assistant response",
+        "director-3#1: LLM returned an empty assistant response",
+        "director-1#2: LLM returned an empty assistant response",
+        "director-2#2: LLM returned an empty assistant response",
+        "director-3#2: LLM returned an empty assistant response"
+      ],
+      "call_errors": [
+        "LLM_RESPONSE_INVALID @2091ms",
+        "LLM_RESPONSE_INVALID @5630ms",
+        "LLM_RESPONSE_INVALID @5440ms",
+        "LLM_RESPONSE_INVALID @14579ms",
+        "LLM_RESPONSE_INVALID @5570ms",
+        "LLM_RESPONSE_INVALID @2317ms"
+      ],
+      "mean_completion_tokens": 0,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_100_calls": null,
+      "catalog_rub_per_100_calls": null,
+      "spend_usage_rub": 0,
+      "intents": []
+    },
+    {
+      "key": "director|deepseek-v4-flash/off",
+      "role": "director",
+      "model": "deepseek/deepseek-v4-flash",
+      "level": "off",
+      "variant": "",
+      "sources": [
+        "eval/json-roles-gpt-6-luna-2026-10-01.json (morning)"
+      ],
+      "cases": 6,
+      "valid": 6,
+      "valid_within_full_budget": 6,
+      "valid_within_primary_share": 6,
+      "full_budget_ms": 12000,
+      "primary_share_ms": 7200,
+      "p50_ms": 4115,
+      "p95_ms": 5296,
+      "max_ms": 5565,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 195,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_100_calls": 0.51,
+      "catalog_rub_per_100_calls": 0.79,
+      "spend_usage_rub": 0.0303,
+      "intents": [
+        "director-1:continue_exploration",
+        "director-2:continue_exploration",
+        "director-3:continue_exploration",
+        "director-1:continue_exploration",
+        "director-2:open_social_scene",
+        "director-3:continue_exploration"
+      ]
+    },
+    {
+      "key": "director|gemini-2.5-flash-lite/default",
+      "role": "director",
+      "model": "google/gemini-2.5-flash-lite",
+      "level": "default",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-other-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 5,
+      "valid_within_full_budget": 5,
+      "valid_within_primary_share": 5,
+      "full_budget_ms": 12000,
+      "primary_share_ms": 7200,
+      "p50_ms": 784,
+      "p95_ms": 954,
+      "max_ms": 962,
+      "invalid_reasons": [
+        "director-2#2: Director intent содержит неизвестные поля: director_intent"
+      ],
+      "call_errors": [],
+      "mean_completion_tokens": 41,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_100_calls": 1.26,
+      "catalog_rub_per_100_calls": 1.26,
+      "spend_usage_rub": 0.0758,
+      "intents": [
+        "director-1:continue_exploration",
+        "director-2:continue_exploration",
+        "director-3:continue_exploration",
+        "director-1:continue_exploration",
+        "director-3:continue_exploration"
+      ]
+    },
+    {
+      "key": "director|gemini-2.5-flash-lite/low",
+      "role": "director",
+      "model": "google/gemini-2.5-flash-lite",
+      "level": "low",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-other-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 1,
+      "valid_within_full_budget": 1,
+      "valid_within_primary_share": 1,
+      "full_budget_ms": 12000,
+      "primary_share_ms": 7200,
+      "p50_ms": 5749,
+      "p95_ms": 7987,
+      "max_ms": 8300,
+      "invalid_reasons": [
+        "director-1#1: JSON content: некорректный JSON",
+        "director-3#1: JSON content: некорректный JSON",
+        "director-1#2: JSON content: некорректный JSON",
+        "director-2#2: Director intent содержит неизвестные поля: director_intent",
+        "director-3#2: JSON content: некорректный JSON"
+      ],
+      "call_errors": [
+        "LLM_JSON_INVALID @6205ms",
+        "LLM_JSON_INVALID @4867ms",
+        "LLM_JSON_INVALID @7049ms",
+        "LLM_JSON_INVALID @8300ms"
+      ],
+      "mean_completion_tokens": 389,
+      "mean_reasoning_tokens": 334,
+      "usage_rub_per_100_calls": 2.77,
+      "catalog_rub_per_100_calls": 2.77,
+      "spend_usage_rub": 0.0555,
+      "intents": [
+        "director-2:open_social_scene"
+      ]
+    },
+    {
+      "key": "director|glm-5.3-flash/low",
+      "role": "director",
+      "model": "z-ai/glm-5.3-flash",
+      "level": "low",
+      "variant": "",
+      "sources": [
+        "eval/json-roles-gpt-6-luna-2026-10-01.json (morning)",
+        "eval/reasoning-sweep-roles-glm-2026-10-01.json (sweep)"
+      ],
+      "cases": 12,
+      "valid": 12,
+      "valid_within_full_budget": 12,
+      "valid_within_primary_share": 11,
+      "full_budget_ms": 12000,
+      "primary_share_ms": 7200,
+      "p50_ms": 4220,
+      "p95_ms": 7162,
+      "max_ms": 8037,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 102,
+      "mean_reasoning_tokens": 4,
+      "usage_rub_per_100_calls": 1.78,
+      "catalog_rub_per_100_calls": 0.6,
+      "spend_usage_rub": 0.2137,
+      "intents": [
+        "director-1:continue_exploration",
+        "director-2:continue_exploration",
+        "director-3:open_social_scene",
+        "director-1:continue_exploration",
+        "director-2:open_social_scene",
+        "director-3:open_social_scene",
+        "director-1:continue_exploration",
+        "director-2:open_social_scene",
+        "director-3:continue_exploration",
+        "director-1:continue_exploration",
+        "director-2:open_social_scene",
+        "director-3:open_social_scene"
+      ]
+    },
+    {
+      "key": "director|glm-5.3-flash/medium",
+      "role": "director",
+      "model": "z-ai/glm-5.3-flash",
+      "level": "medium",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-glm-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 6,
+      "valid_within_full_budget": 6,
+      "valid_within_primary_share": 3,
+      "full_budget_ms": 12000,
+      "primary_share_ms": 7200,
+      "p50_ms": 7230,
+      "p95_ms": 9341,
+      "max_ms": 9679,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 163,
+      "mean_reasoning_tokens": 47,
+      "usage_rub_per_100_calls": 2.31,
+      "catalog_rub_per_100_calls": 0.82,
+      "spend_usage_rub": 0.1388,
+      "intents": [
+        "director-1:continue_exploration",
+        "director-2:open_social_scene",
+        "director-3:offer_next_hook",
+        "director-1:continue_exploration",
+        "director-2:open_social_scene",
+        "director-3:open_social_scene"
+      ]
+    },
+    {
+      "key": "director|glm-5.3-flash/minimal",
+      "role": "director",
+      "model": "z-ai/glm-5.3-flash",
+      "level": "minimal",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-glm-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 6,
+      "valid_within_full_budget": 6,
+      "valid_within_primary_share": 6,
+      "full_budget_ms": 12000,
+      "primary_share_ms": 7200,
+      "p50_ms": 5212,
+      "p95_ms": 6261,
+      "max_ms": 6415,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 104,
+      "mean_reasoning_tokens": 4,
+      "usage_rub_per_100_calls": 1.2,
+      "catalog_rub_per_100_calls": 0.61,
+      "spend_usage_rub": 0.0722,
+      "intents": [
+        "director-1:continue_exploration",
+        "director-2:continue_exploration",
+        "director-3:continue_exploration",
+        "director-1:continue_exploration",
+        "director-2:open_social_scene",
+        "director-3:continue_exploration"
+      ]
+    },
+    {
+      "key": "director|glm-5.3-flash/off",
+      "role": "director",
+      "model": "z-ai/glm-5.3-flash",
+      "level": "off",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-glm-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 4,
+      "valid_within_full_budget": 4,
+      "valid_within_primary_share": 4,
+      "full_budget_ms": 12000,
+      "primary_share_ms": 7200,
+      "p50_ms": 4521,
+      "p95_ms": 6730,
+      "max_ms": 7113,
+      "invalid_reasons": [
+        "director-2#2: LLM не вернул assistant message",
+        "director-3#2: LLM не вернул assistant message"
+      ],
+      "call_errors": [
+        "LLM_RESPONSE_INVALID @814ms",
+        "LLM_RESPONSE_INVALID @608ms"
+      ],
+      "mean_completion_tokens": 113,
+      "mean_reasoning_tokens": 2,
+      "usage_rub_per_100_calls": 1.76,
+      "catalog_rub_per_100_calls": 0.64,
+      "spend_usage_rub": 0.0702,
+      "intents": [
+        "director-1:continue_exploration",
+        "director-2:continue_exploration",
+        "director-3:open_social_scene",
+        "director-1:continue_exploration"
+      ]
+    },
+    {
+      "key": "director|gpt-5.6-luna/off",
+      "role": "director",
+      "model": "openai/gpt-5.6-luna",
+      "level": "off",
+      "variant": "",
+      "sources": [
+        "eval/json-roles-gpt-6-luna-2026-10-01.json (morning)"
+      ],
+      "cases": 6,
+      "valid": 6,
+      "valid_within_full_budget": 6,
+      "valid_within_primary_share": 6,
+      "full_budget_ms": 12000,
+      "primary_share_ms": 7200,
+      "p50_ms": 2628,
+      "p95_ms": 2860,
+      "max_ms": 2862,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 92,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_100_calls": 3.25,
+      "catalog_rub_per_100_calls": 3.25,
+      "spend_usage_rub": 0.1949,
+      "intents": [
+        "director-1:continue_exploration",
+        "director-2:open_social_scene",
+        "director-3:open_social_scene",
+        "director-1:continue_exploration",
+        "director-2:open_social_scene",
+        "director-3:open_social_scene"
+      ]
+    },
+    {
+      "key": "director|gpt-6-luna-pro/low",
+      "role": "director",
+      "model": "openai/gpt-6-luna-pro",
+      "level": "low",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-lunapro-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 6,
+      "valid_within_full_budget": 6,
+      "valid_within_primary_share": 1,
+      "full_budget_ms": 12000,
+      "primary_share_ms": 7200,
+      "p50_ms": 10071,
+      "p95_ms": 10577,
+      "max_ms": 10633,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 253,
+      "mean_reasoning_tokens": 114,
+      "usage_rub_per_100_calls": 6.19,
+      "catalog_rub_per_100_calls": 6.19,
+      "spend_usage_rub": 0.3714,
+      "intents": [
+        "director-1:continue_exploration",
+        "director-2:open_social_scene",
+        "director-3:continue_exploration",
+        "director-1:continue_exploration",
+        "director-2:open_social_scene",
+        "director-3:continue_exploration"
+      ]
+    },
+    {
+      "key": "director|gpt-6-luna-pro/medium",
+      "role": "director",
+      "model": "openai/gpt-6-luna-pro",
+      "level": "medium",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-lunapro-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 6,
+      "valid_within_full_budget": 5,
+      "valid_within_primary_share": 2,
+      "full_budget_ms": 12000,
+      "primary_share_ms": 7200,
+      "p50_ms": 8198,
+      "p95_ms": 13560,
+      "max_ms": 14793,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 506,
+      "mean_reasoning_tokens": 367,
+      "usage_rub_per_100_calls": 7.63,
+      "catalog_rub_per_100_calls": 7.63,
+      "spend_usage_rub": 0.4577,
+      "intents": [
+        "director-1:continue_exploration",
+        "director-2:open_social_scene",
+        "director-3:continue_exploration",
+        "director-1:continue_exploration",
+        "director-2:open_social_scene",
+        "director-3:continue_exploration"
+      ]
+    },
+    {
+      "key": "director|gpt-6-luna-pro/off",
+      "role": "director",
+      "model": "openai/gpt-6-luna-pro",
+      "level": "off",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-lunapro-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 6,
+      "valid_within_full_budget": 6,
+      "valid_within_primary_share": 6,
+      "full_budget_ms": 12000,
+      "primary_share_ms": 7200,
+      "p50_ms": 3694,
+      "p95_ms": 4495,
+      "max_ms": 4567,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 174,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_100_calls": 5.69,
+      "catalog_rub_per_100_calls": 5.69,
+      "spend_usage_rub": 0.3412,
+      "intents": [
+        "director-1:continue_exploration",
+        "director-2:open_social_scene",
+        "director-3:continue_exploration",
+        "director-1:continue_exploration",
+        "director-2:open_social_scene",
+        "director-3:open_social_scene"
+      ]
+    },
+    {
+      "key": "director|gpt-6-luna/default",
+      "role": "director",
+      "model": "openai/gpt-6-luna",
+      "level": "default",
+      "variant": "",
+      "sources": [
+        "eval/json-roles-gpt-6-luna-default-2026-10-01.json (morning)"
+      ],
+      "cases": 3,
+      "valid": 3,
+      "valid_within_full_budget": 3,
+      "valid_within_primary_share": 3,
+      "full_budget_ms": 12000,
+      "primary_share_ms": 7200,
+      "p50_ms": 3040,
+      "p95_ms": 5109,
+      "max_ms": 5339,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 142,
+      "mean_reasoning_tokens": 71,
+      "usage_rub_per_100_calls": 1.8,
+      "catalog_rub_per_100_calls": 1.8,
+      "spend_usage_rub": 0.054,
+      "intents": [
+        "director-1:continue_exploration",
+        "director-2:open_social_scene",
+        "director-3:continue_exploration"
+      ]
+    },
+    {
+      "key": "director|gpt-6-luna/high",
+      "role": "director",
+      "model": "openai/gpt-6-luna",
+      "level": "high",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-luna-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 6,
+      "valid_within_full_budget": 6,
+      "valid_within_primary_share": 6,
+      "full_budget_ms": 12000,
+      "primary_share_ms": 7200,
+      "p50_ms": 3654,
+      "p95_ms": 6634,
+      "max_ms": 7197,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 197,
+      "mean_reasoning_tokens": 135,
+      "usage_rub_per_100_calls": 2.1,
+      "catalog_rub_per_100_calls": 2.1,
+      "spend_usage_rub": 0.1259,
+      "intents": [
+        "director-1:continue_exploration",
+        "director-2:open_social_scene",
+        "director-3:open_social_scene",
+        "director-1:continue_exploration",
+        "director-2:open_social_scene",
+        "director-3:continue_exploration"
+      ]
+    },
+    {
+      "key": "director|gpt-6-luna/low",
+      "role": "director",
+      "model": "openai/gpt-6-luna",
+      "level": "low",
+      "variant": "",
+      "sources": [
+        "eval/json-roles-gpt-6-luna-2026-10-01.json (morning)",
+        "eval/reasoning-sweep-roles-repeat-director-2026-10-01.json (sweep)"
+      ],
+      "cases": 12,
+      "valid": 12,
+      "valid_within_full_budget": 12,
+      "valid_within_primary_share": 12,
+      "full_budget_ms": 12000,
+      "primary_share_ms": 7200,
+      "p50_ms": 3285,
+      "p95_ms": 5303,
+      "max_ms": 6521,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 128,
+      "mean_reasoning_tokens": 64,
+      "usage_rub_per_100_calls": 1.72,
+      "catalog_rub_per_100_calls": 1.72,
+      "spend_usage_rub": 0.2066,
+      "intents": [
+        "director-1:continue_exploration",
+        "director-2:open_social_scene",
+        "director-3:continue_exploration",
+        "director-1:continue_exploration",
+        "director-2:open_social_scene",
+        "director-3:continue_exploration",
+        "director-1:continue_exploration",
+        "director-2:open_social_scene",
+        "director-3:continue_exploration",
+        "director-1:continue_exploration",
+        "director-2:open_social_scene",
+        "director-3:continue_exploration"
+      ]
+    },
+    {
+      "key": "director|gpt-6-luna/medium",
+      "role": "director",
+      "model": "openai/gpt-6-luna",
+      "level": "medium",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-luna-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 6,
+      "valid_within_full_budget": 6,
+      "valid_within_primary_share": 6,
+      "full_budget_ms": 12000,
+      "primary_share_ms": 7200,
+      "p50_ms": 2735,
+      "p95_ms": 3898,
+      "max_ms": 4094,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 149,
+      "mean_reasoning_tokens": 82,
+      "usage_rub_per_100_calls": 1.84,
+      "catalog_rub_per_100_calls": 1.84,
+      "spend_usage_rub": 0.1103,
+      "intents": [
+        "director-1:continue_exploration",
+        "director-2:open_social_scene",
+        "director-3:open_social_scene",
+        "director-1:continue_exploration",
+        "director-2:open_social_scene",
+        "director-3:open_social_scene"
+      ]
+    },
+    {
+      "key": "director|gpt-6-luna/minimal",
+      "role": "director",
+      "model": "openai/gpt-6-luna",
+      "level": "minimal",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-luna-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 6,
+      "valid_within_full_budget": 6,
+      "valid_within_primary_share": 6,
+      "full_budget_ms": 12000,
+      "primary_share_ms": 7200,
+      "p50_ms": 3440,
+      "p95_ms": 4380,
+      "max_ms": 4602,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 127,
+      "mean_reasoning_tokens": 63,
+      "usage_rub_per_100_calls": 1.71,
+      "catalog_rub_per_100_calls": 1.71,
+      "spend_usage_rub": 0.1029,
+      "intents": [
+        "director-1:continue_exploration",
+        "director-2:open_social_scene",
+        "director-3:offer_next_hook",
+        "director-1:continue_exploration",
+        "director-2:open_social_scene",
+        "director-3:open_social_scene"
+      ]
+    },
+    {
+      "key": "director|gpt-6-luna/off",
+      "role": "director",
+      "model": "openai/gpt-6-luna",
+      "level": "off",
+      "variant": "",
+      "sources": [
+        "eval/json-roles-gpt-6-luna-2026-10-01.json (morning)",
+        "eval/reasoning-sweep-roles-luna-2026-10-01.json (sweep)"
+      ],
+      "cases": 12,
+      "valid": 12,
+      "valid_within_full_budget": 12,
+      "valid_within_primary_share": 11,
+      "full_budget_ms": 12000,
+      "primary_share_ms": 7200,
+      "p50_ms": 2653,
+      "p95_ms": 5444,
+      "max_ms": 7333,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 77,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_100_calls": 1.44,
+      "catalog_rub_per_100_calls": 1.44,
+      "spend_usage_rub": 0.1734,
+      "intents": [
+        "director-1:continue_exploration",
+        "director-2:open_social_scene",
+        "director-3:open_social_scene",
+        "director-1:continue_exploration",
+        "director-2:open_social_scene",
+        "director-3:open_social_scene",
+        "director-1:continue_exploration",
+        "director-2:open_social_scene",
+        "director-3:continue_exploration",
+        "director-1:continue_exploration",
+        "director-2:open_social_scene",
+        "director-3:continue_exploration"
+      ]
+    },
+    {
+      "key": "npc_social|deepseek-v4-flash/low",
+      "role": "npc_social",
+      "model": "deepseek/deepseek-v4-flash",
+      "level": "low",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-other-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 5,
+      "valid_within_full_budget": 4,
+      "valid_within_primary_share": 4,
+      "full_budget_ms": 20000,
+      "primary_share_ms": 12000,
+      "p50_ms": 5249,
+      "p95_ms": 17281,
+      "max_ms": 20401,
+      "invalid_reasons": [
+        "mira-injection#1: LLM_RESPONSE_INVALID"
+      ],
+      "call_errors": [
+        "LLM_RESPONSE_INVALID @6008ms"
+      ],
+      "mean_completion_tokens": 280,
+      "mean_reasoning_tokens": 201,
+      "usage_rub_per_100_calls": 1.51,
+      "catalog_rub_per_100_calls": 1.1,
+      "spend_usage_rub": 0.0755,
+      "voice_marker": 4,
+      "injection_safe": 6,
+      "mean_reply_chars": 81,
+      "one_liners": 0
+    },
+    {
+      "key": "npc_social|deepseek-v4-flash/off",
+      "role": "npc_social",
+      "model": "deepseek/deepseek-v4-flash",
+      "level": "off",
+      "variant": "",
+      "sources": [
+        "eval/json-roles-gpt-6-luna-2026-10-01.json (morning)"
+      ],
+      "cases": 6,
+      "valid": 4,
+      "valid_within_full_budget": 4,
+      "valid_within_primary_share": 4,
+      "full_budget_ms": 20000,
+      "primary_share_ms": 12000,
+      "p50_ms": 2309,
+      "p95_ms": 3366,
+      "max_ms": 3567,
+      "invalid_reasons": [
+        "mira-question#1: Error",
+        "mira-injection#2: Error"
+      ],
+      "call_errors": [],
+      "mean_completion_tokens": 90,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_100_calls": 1.16,
+      "catalog_rub_per_100_calls": 0.9,
+      "spend_usage_rub": 0.0694,
+      "voice_marker": 4,
+      "injection_safe": 6,
+      "mean_reply_chars": 73,
+      "one_liners": 0
+    },
+    {
+      "key": "npc_social|gemini-2.5-flash-lite/default",
+      "role": "npc_social",
+      "model": "google/gemini-2.5-flash-lite",
+      "level": "default",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-other-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 6,
+      "valid_within_full_budget": 6,
+      "valid_within_primary_share": 6,
+      "full_budget_ms": 20000,
+      "primary_share_ms": 12000,
+      "p50_ms": 942,
+      "p95_ms": 1136,
+      "max_ms": 1151,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 70,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_100_calls": 1.84,
+      "catalog_rub_per_100_calls": 1.84,
+      "spend_usage_rub": 0.1105,
+      "voice_marker": 5,
+      "injection_safe": 6,
+      "mean_reply_chars": 72,
+      "one_liners": 3
+    },
+    {
+      "key": "npc_social|gemini-2.5-flash-lite/low",
+      "role": "npc_social",
+      "model": "google/gemini-2.5-flash-lite",
+      "level": "low",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-other-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 3,
+      "valid_within_full_budget": 3,
+      "valid_within_primary_share": 3,
+      "full_budget_ms": 20000,
+      "primary_share_ms": 12000,
+      "p50_ms": 3733,
+      "p95_ms": 7716,
+      "max_ms": 8448,
+      "invalid_reasons": [
+        "borin-question#1: LLM_JSON_INVALID",
+        "mira-injection#1: LLM_JSON_INVALID",
+        "mira-injection#2: LLM_JSON_INVALID"
+      ],
+      "call_errors": [
+        "LLM_JSON_INVALID @3593ms",
+        "LLM_JSON_INVALID @8448ms",
+        "LLM_JSON_INVALID @5521ms"
+      ],
+      "mean_completion_tokens": 372,
+      "mean_reasoning_tokens": 306,
+      "usage_rub_per_100_calls": 3.14,
+      "catalog_rub_per_100_calls": 3.14,
+      "spend_usage_rub": 0.0943,
+      "voice_marker": 1,
+      "injection_safe": 6,
+      "mean_reply_chars": 58,
+      "one_liners": 1
+    },
+    {
+      "key": "npc_social|glm-5.3-flash/low",
+      "role": "npc_social",
+      "model": "z-ai/glm-5.3-flash",
+      "level": "low",
+      "variant": "",
+      "sources": [
+        "eval/json-roles-gpt-6-luna-2026-10-01.json (morning)",
+        "eval/reasoning-sweep-roles-glm-2026-10-01.json (sweep)"
+      ],
+      "cases": 12,
+      "valid": 12,
+      "valid_within_full_budget": 12,
+      "valid_within_primary_share": 12,
+      "full_budget_ms": 20000,
+      "primary_share_ms": 12000,
+      "p50_ms": 3826,
+      "p95_ms": 8365,
+      "max_ms": 9561,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 96,
+      "mean_reasoning_tokens": 1,
+      "usage_rub_per_100_calls": 1.81,
+      "catalog_rub_per_100_calls": 0.65,
+      "spend_usage_rub": 0.2176,
+      "voice_marker": 12,
+      "injection_safe": 12,
+      "mean_reply_chars": 150,
+      "one_liners": 0
+    },
+    {
+      "key": "npc_social|glm-5.3-flash/medium",
+      "role": "npc_social",
+      "model": "z-ai/glm-5.3-flash",
+      "level": "medium",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-glm-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 6,
+      "valid_within_full_budget": 6,
+      "valid_within_primary_share": 6,
+      "full_budget_ms": 20000,
+      "primary_share_ms": 12000,
+      "p50_ms": 5781,
+      "p95_ms": 7601,
+      "max_ms": 7917,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 124,
+      "mean_reasoning_tokens": 25,
+      "usage_rub_per_100_calls": 2.01,
+      "catalog_rub_per_100_calls": 0.75,
+      "spend_usage_rub": 0.1204,
+      "voice_marker": 6,
+      "injection_safe": 6,
+      "mean_reply_chars": 168,
+      "one_liners": 0
+    },
+    {
+      "key": "npc_social|glm-5.3-flash/minimal",
+      "role": "npc_social",
+      "model": "z-ai/glm-5.3-flash",
+      "level": "minimal",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-glm-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 6,
+      "valid_within_full_budget": 6,
+      "valid_within_primary_share": 6,
+      "full_budget_ms": 20000,
+      "primary_share_ms": 12000,
+      "p50_ms": 4388,
+      "p95_ms": 7080,
+      "max_ms": 7728,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 95,
+      "mean_reasoning_tokens": 1,
+      "usage_rub_per_100_calls": 1.45,
+      "catalog_rub_per_100_calls": 0.65,
+      "spend_usage_rub": 0.0872,
+      "voice_marker": 6,
+      "injection_safe": 6,
+      "mean_reply_chars": 142,
+      "one_liners": 0
+    },
+    {
+      "key": "npc_social|glm-5.3-flash/off",
+      "role": "npc_social",
+      "model": "z-ai/glm-5.3-flash",
+      "level": "off",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-glm-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 4,
+      "valid_within_full_budget": 4,
+      "valid_within_primary_share": 4,
+      "full_budget_ms": 20000,
+      "primary_share_ms": 12000,
+      "p50_ms": 3558,
+      "p95_ms": 5617,
+      "max_ms": 6148,
+      "invalid_reasons": [
+        "borin-question#1: LLM_RESPONSE_INVALID",
+        "mira-injection#1: LLM_RESPONSE_INVALID"
+      ],
+      "call_errors": [
+        "LLM_RESPONSE_INVALID @874ms",
+        "LLM_RESPONSE_INVALID @620ms"
+      ],
+      "mean_completion_tokens": 97,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_100_calls": 1.39,
+      "catalog_rub_per_100_calls": 0.65,
+      "spend_usage_rub": 0.0555,
+      "voice_marker": 4,
+      "injection_safe": 6,
+      "mean_reply_chars": 156,
+      "one_liners": 0
+    },
+    {
+      "key": "npc_social|gpt-5.6-luna/off",
+      "role": "npc_social",
+      "model": "openai/gpt-5.6-luna",
+      "level": "off",
+      "variant": "",
+      "sources": [
+        "eval/json-roles-gpt-6-luna-2026-10-01.json (morning)"
+      ],
+      "cases": 6,
+      "valid": 6,
+      "valid_within_full_budget": 6,
+      "valid_within_primary_share": 6,
+      "full_budget_ms": 20000,
+      "primary_share_ms": 12000,
+      "p50_ms": 3363,
+      "p95_ms": 3977,
+      "max_ms": 4168,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 129,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_100_calls": 3.26,
+      "catalog_rub_per_100_calls": 4.95,
+      "spend_usage_rub": 0.1957,
+      "voice_marker": 6,
+      "injection_safe": 6,
+      "mean_reply_chars": 260,
+      "one_liners": 0
+    },
+    {
+      "key": "npc_social|gpt-6-luna-pro/low",
+      "role": "npc_social",
+      "model": "openai/gpt-6-luna-pro",
+      "level": "low",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-lunapro-2026-10-01.json (sweep)",
+        "eval/reasoning-sweep-roles-repeat-npc-2026-10-01.json (sweep)"
+      ],
+      "cases": 12,
+      "valid": 12,
+      "valid_within_full_budget": 12,
+      "valid_within_primary_share": 10,
+      "full_budget_ms": 20000,
+      "primary_share_ms": 12000,
+      "p50_ms": 9457,
+      "p95_ms": 13319,
+      "max_ms": 14241,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 663,
+      "mean_reasoning_tokens": 397,
+      "usage_rub_per_100_calls": 7.61,
+      "catalog_rub_per_100_calls": 10.55,
+      "spend_usage_rub": 0.9135,
+      "voice_marker": 12,
+      "injection_safe": 12,
+      "mean_reply_chars": 248,
+      "one_liners": 0
+    },
+    {
+      "key": "npc_social|gpt-6-luna-pro/medium",
+      "role": "npc_social",
+      "model": "openai/gpt-6-luna-pro",
+      "level": "medium",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-lunapro-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 6,
+      "valid_within_full_budget": 6,
+      "valid_within_primary_share": 2,
+      "full_budget_ms": 20000,
+      "primary_share_ms": 12000,
+      "p50_ms": 15876,
+      "p95_ms": 17976,
+      "max_ms": 18305,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 1289,
+      "mean_reasoning_tokens": 1025,
+      "usage_rub_per_100_calls": 12.15,
+      "catalog_rub_per_100_calls": 14.28,
+      "spend_usage_rub": 0.7288,
+      "voice_marker": 6,
+      "injection_safe": 6,
+      "mean_reply_chars": 243,
+      "one_liners": 0
+    },
+    {
+      "key": "npc_social|gpt-6-luna-pro/off",
+      "role": "npc_social",
+      "model": "openai/gpt-6-luna-pro",
+      "level": "off",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-lunapro-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 6,
+      "valid_within_full_budget": 6,
+      "valid_within_primary_share": 6,
+      "full_budget_ms": 20000,
+      "primary_share_ms": 12000,
+      "p50_ms": 3897,
+      "p95_ms": 4302,
+      "max_ms": 4321,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 254,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_100_calls": 5.1,
+      "catalog_rub_per_100_calls": 8.04,
+      "spend_usage_rub": 0.3059,
+      "voice_marker": 6,
+      "injection_safe": 6,
+      "mean_reply_chars": 244,
+      "one_liners": 0
+    },
+    {
+      "key": "npc_social|gpt-6-luna-pro/off-no-addendum",
+      "role": "npc_social",
+      "model": "openai/gpt-6-luna-pro",
+      "level": "off",
+      "variant": "-no-addendum",
+      "sources": [
+        "eval/npc-social-gpt-6-luna-addendum-2026-10-01.json (morning)"
+      ],
+      "cases": 6,
+      "valid": 6,
+      "valid_within_full_budget": 6,
+      "valid_within_primary_share": 6,
+      "full_budget_ms": 20000,
+      "primary_share_ms": 12000,
+      "p50_ms": 3617,
+      "p95_ms": 3790,
+      "max_ms": 3835,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 172,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_100_calls": 4.26,
+      "catalog_rub_per_100_calls": 6.74,
+      "spend_usage_rub": 0.2555,
+      "voice_marker": 6,
+      "injection_safe": 6,
+      "mean_reply_chars": 89,
+      "one_liners": 4
+    },
+    {
+      "key": "npc_social|gpt-6-luna/default-no-addendum",
+      "role": "npc_social",
+      "model": "openai/gpt-6-luna",
+      "level": "default",
+      "variant": "-no-addendum",
+      "sources": [
+        "eval/json-roles-gpt-6-luna-default-2026-10-01.json (morning)"
+      ],
+      "cases": 3,
+      "valid": 3,
+      "valid_within_full_budget": 3,
+      "valid_within_primary_share": 3,
+      "full_budget_ms": 20000,
+      "primary_share_ms": 12000,
+      "p50_ms": 2768,
+      "p95_ms": 2861,
+      "max_ms": 2871,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 135,
+      "mean_reasoning_tokens": 57,
+      "usage_rub_per_100_calls": 2.46,
+      "catalog_rub_per_100_calls": 2.11,
+      "spend_usage_rub": 0.0738,
+      "voice_marker": 2,
+      "injection_safe": 3,
+      "mean_reply_chars": 79,
+      "one_liners": 1
+    },
+    {
+      "key": "npc_social|gpt-6-luna/high",
+      "role": "npc_social",
+      "model": "openai/gpt-6-luna",
+      "level": "high",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-luna-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 5,
+      "valid_within_full_budget": 5,
+      "valid_within_primary_share": 5,
+      "full_budget_ms": 20000,
+      "primary_share_ms": 12000,
+      "p50_ms": 10783,
+      "p95_ms": 11442,
+      "max_ms": 11586,
+      "invalid_reasons": [
+        "mira-question#1: LLM_JSON_INVALID"
+      ],
+      "call_errors": [
+        "LLM_JSON_INVALID @11009ms"
+      ],
+      "mean_completion_tokens": 643,
+      "mean_reasoning_tokens": 512,
+      "usage_rub_per_100_calls": 4.41,
+      "catalog_rub_per_100_calls": 5.13,
+      "spend_usage_rub": 0.2205,
+      "voice_marker": 5,
+      "injection_safe": 6,
+      "mean_reply_chars": 265,
+      "one_liners": 0
+    },
+    {
+      "key": "npc_social|gpt-6-luna/low-no-addendum",
+      "role": "npc_social",
+      "model": "openai/gpt-6-luna",
+      "level": "low",
+      "variant": "-no-addendum",
+      "sources": [
+        "eval/json-roles-gpt-6-luna-2026-10-01.json (morning)"
+      ],
+      "cases": 6,
+      "valid": 6,
+      "valid_within_full_budget": 6,
+      "valid_within_primary_share": 6,
+      "full_budget_ms": 20000,
+      "primary_share_ms": 12000,
+      "p50_ms": 2015,
+      "p95_ms": 2565,
+      "max_ms": 2675,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 89,
+      "mean_reasoning_tokens": 10,
+      "usage_rub_per_100_calls": 0.89,
+      "catalog_rub_per_100_calls": 1.86,
+      "spend_usage_rub": 0.0534,
+      "voice_marker": 6,
+      "injection_safe": 6,
+      "mean_reply_chars": 88,
+      "one_liners": 4
+    },
+    {
+      "key": "npc_social|gpt-6-luna/medium",
+      "role": "npc_social",
+      "model": "openai/gpt-6-luna",
+      "level": "medium",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-luna-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 6,
+      "valid_within_full_budget": 6,
+      "valid_within_primary_share": 6,
+      "full_budget_ms": 20000,
+      "primary_share_ms": 12000,
+      "p50_ms": 5581,
+      "p95_ms": 8030,
+      "max_ms": 8207,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 383,
+      "mean_reasoning_tokens": 258,
+      "usage_rub_per_100_calls": 3.18,
+      "catalog_rub_per_100_calls": 3.71,
+      "spend_usage_rub": 0.191,
+      "voice_marker": 6,
+      "injection_safe": 6,
+      "mean_reply_chars": 245,
+      "one_liners": 0
+    },
+    {
+      "key": "npc_social|gpt-6-luna/minimal",
+      "role": "npc_social",
+      "model": "openai/gpt-6-luna",
+      "level": "minimal",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-luna-2026-10-01.json (sweep)",
+        "eval/reasoning-sweep-roles-repeat-npc-2026-10-01.json (sweep)"
+      ],
+      "cases": 12,
+      "valid": 12,
+      "valid_within_full_budget": 12,
+      "valid_within_primary_share": 12,
+      "full_budget_ms": 20000,
+      "primary_share_ms": 12000,
+      "p50_ms": 5006,
+      "p95_ms": 6763,
+      "max_ms": 6862,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 262,
+      "mean_reasoning_tokens": 131,
+      "usage_rub_per_100_calls": 2.06,
+      "catalog_rub_per_100_calls": 3.06,
+      "spend_usage_rub": 0.2471,
+      "voice_marker": 12,
+      "injection_safe": 12,
+      "mean_reply_chars": 269,
+      "one_liners": 0
+    },
+    {
+      "key": "npc_social|gpt-6-luna/off",
+      "role": "npc_social",
+      "model": "openai/gpt-6-luna",
+      "level": "off",
+      "variant": "",
+      "sources": [
+        "eval/reasoning-sweep-roles-luna-2026-10-01.json (sweep)"
+      ],
+      "cases": 6,
+      "valid": 6,
+      "valid_within_full_budget": 6,
+      "valid_within_primary_share": 6,
+      "full_budget_ms": 20000,
+      "primary_share_ms": 12000,
+      "p50_ms": 2857,
+      "p95_ms": 4022,
+      "max_ms": 4363,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 126,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_100_calls": 1.79,
+      "catalog_rub_per_100_calls": 2.32,
+      "spend_usage_rub": 0.1074,
+      "voice_marker": 6,
+      "injection_safe": 6,
+      "mean_reply_chars": 258,
+      "one_liners": 0
+    },
+    {
+      "key": "npc_social|gpt-6-luna/off-no-addendum",
+      "role": "npc_social",
+      "model": "openai/gpt-6-luna",
+      "level": "off",
+      "variant": "-no-addendum",
+      "sources": [
+        "eval/json-roles-gpt-6-luna-2026-10-01.json (morning)"
+      ],
+      "cases": 6,
+      "valid": 6,
+      "valid_within_full_budget": 6,
+      "valid_within_primary_share": 6,
+      "full_budget_ms": 20000,
+      "primary_share_ms": 12000,
+      "p50_ms": 2048,
+      "p95_ms": 2926,
+      "max_ms": 3108,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 75,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_100_calls": 0.81,
+      "catalog_rub_per_100_calls": 1.79,
+      "spend_usage_rub": 0.0489,
+      "voice_marker": 6,
+      "injection_safe": 6,
+      "mean_reply_chars": 77,
+      "one_liners": 4
+    },
+    {
+      "key": "npc_social|gpt-6-luna/off+addendum",
+      "role": "npc_social",
+      "model": "openai/gpt-6-luna",
+      "level": "off",
+      "variant": "+addendum",
+      "sources": [
+        "eval/npc-social-gpt-6-luna-addendum-2026-10-01.json (morning)"
+      ],
+      "cases": 6,
+      "valid": 6,
+      "valid_within_full_budget": 6,
+      "valid_within_primary_share": 6,
+      "full_budget_ms": 20000,
+      "primary_share_ms": 12000,
+      "p50_ms": 3011,
+      "p95_ms": 4133,
+      "max_ms": 4342,
+      "invalid_reasons": [],
+      "call_errors": [],
+      "mean_completion_tokens": 119,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_100_calls": 1.75,
+      "catalog_rub_per_100_calls": 2.28,
+      "spend_usage_rub": 0.1052,
+      "voice_marker": 6,
+      "injection_safe": 6,
+      "mean_reply_chars": 234,
+      "one_liners": 0
+    }
+  ],
+  "bootstrap": [
+    {
+      "key": "deepseek-v4-flash/low",
+      "model": "deepseek/deepseek-v4-flash",
+      "level": "low",
+      "sources": [
+        "eval/reasoning-sweep-bootstrap-other-2026-10-01.json (sweep)"
+      ],
+      "runs": 2,
+      "model_world": 0,
+      "within_27s": 0,
+      "within_45s": 0,
+      "model_latency_ms": [
+        27084,
+        75011
+      ],
+      "errors": [
+        "LLM_RESPONSE_INVALID",
+        "LLM_TIMEOUT"
+      ],
+      "locations": [],
+      "routes": [],
+      "npcs": [],
+      "history_chars": [],
+      "injection_safe": 2,
+      "mean_completion_tokens": 0,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_call": null,
+      "spend_usage_rub": 0
+    },
+    {
+      "key": "deepseek-v4-flash/off",
+      "model": "deepseek/deepseek-v4-flash",
+      "level": "off",
+      "sources": [
+        "eval/campaign-bootstrap-gpt-6-luna-2026-10-01.json (morning)",
+        "eval/reasoning-sweep-bootstrap-deepseek-2026-10-01.json (sweep)"
+      ],
+      "runs": 6,
+      "model_world": 5,
+      "within_27s": 3,
+      "within_45s": 3,
+      "model_latency_ms": [
+        21968,
+        13012,
+        18794,
+        22836,
+        52077,
+        50124
+      ],
+      "errors": [
+        "LLM_JSON_INVALID"
+      ],
+      "locations": [
+        6,
+        4,
+        5,
+        3,
+        2
+      ],
+      "routes": [
+        3,
+        3,
+        4,
+        2,
+        1
+      ],
+      "npcs": [
+        2,
+        2,
+        1,
+        2,
+        2
+      ],
+      "history_chars": [
+        759,
+        1235,
+        708,
+        792,
+        656
+      ],
+      "injection_safe": 6,
+      "mean_completion_tokens": 1897,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_call": 0.1519,
+      "spend_usage_rub": 0.7594
+    },
+    {
+      "key": "gemini-2.5-flash-lite/default",
+      "model": "google/gemini-2.5-flash-lite",
+      "level": "default",
+      "sources": [
+        "eval/campaign-bootstrap-gpt-6-luna-2026-10-01.json (morning)"
+      ],
+      "runs": 2,
+      "model_world": 2,
+      "within_27s": 2,
+      "within_45s": 2,
+      "model_latency_ms": [
+        7072,
+        7663
+      ],
+      "errors": [],
+      "locations": [
+        1,
+        3
+      ],
+      "routes": [
+        1,
+        2
+      ],
+      "npcs": [
+        3,
+        2
+      ],
+      "history_chars": [
+        1266,
+        977
+      ],
+      "injection_safe": 2,
+      "mean_completion_tokens": 1797,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_call": 0.0953,
+      "spend_usage_rub": 0.1906
+    },
+    {
+      "key": "gemini-2.5-flash-lite/low",
+      "model": "google/gemini-2.5-flash-lite",
+      "level": "low",
+      "sources": [
+        "eval/reasoning-sweep-bootstrap-other-2026-10-01.json (sweep)"
+      ],
+      "runs": 2,
+      "model_world": 1,
+      "within_27s": 1,
+      "within_45s": 1,
+      "model_latency_ms": [
+        15405,
+        11369
+      ],
+      "errors": [
+        "LLM_JSON_INVALID"
+      ],
+      "locations": [
+        2
+      ],
+      "routes": [
+        1
+      ],
+      "npcs": [
+        2
+      ],
+      "history_chars": [
+        1226
+      ],
+      "injection_safe": 2,
+      "mean_completion_tokens": 2593,
+      "mean_reasoning_tokens": 779,
+      "usage_rub_per_call": 0.1398,
+      "spend_usage_rub": 0.1398
+    },
+    {
+      "key": "glm-5.3-flash/low",
+      "model": "z-ai/glm-5.3-flash",
+      "level": "low",
+      "sources": [
+        "eval/campaign-bootstrap-gpt-6-luna-2026-10-01.json (morning)"
+      ],
+      "runs": 3,
+      "model_world": 2,
+      "within_27s": 0,
+      "within_45s": 1,
+      "model_latency_ms": [
+        40680,
+        75005,
+        47120
+      ],
+      "errors": [
+        "LLM_TIMEOUT"
+      ],
+      "locations": [
+        6,
+        7
+      ],
+      "routes": [
+        5,
+        7
+      ],
+      "npcs": [
+        3,
+        3
+      ],
+      "history_chars": [
+        1139,
+        990
+      ],
+      "injection_safe": 3,
+      "mean_completion_tokens": 2531,
+      "mean_reasoning_tokens": 26,
+      "usage_rub_per_call": 0.1954,
+      "spend_usage_rub": 0.3909
+    },
+    {
+      "key": "glm-5.3-flash/medium",
+      "model": "z-ai/glm-5.3-flash",
+      "level": "medium",
+      "sources": [
+        "eval/reasoning-sweep-bootstrap-other-2026-10-01.json (sweep)"
+      ],
+      "runs": 2,
+      "model_world": 0,
+      "within_27s": 0,
+      "within_45s": 0,
+      "model_latency_ms": [
+        74380,
+        39029
+      ],
+      "errors": [
+        "LLM_JSON_INVALID",
+        "LLM_JSON_INVALID"
+      ],
+      "locations": [],
+      "routes": [],
+      "npcs": [],
+      "history_chars": [],
+      "injection_safe": 2,
+      "mean_completion_tokens": 0,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_call": null,
+      "spend_usage_rub": 0
+    },
+    {
+      "key": "glm-5.3-flash/minimal",
+      "model": "z-ai/glm-5.3-flash",
+      "level": "minimal",
+      "sources": [
+        "eval/reasoning-sweep-bootstrap-other-2026-10-01.json (sweep)"
+      ],
+      "runs": 2,
+      "model_world": 0,
+      "within_27s": 0,
+      "within_45s": 0,
+      "model_latency_ms": [
+        75006,
+        75012
+      ],
+      "errors": [
+        "LLM_TIMEOUT",
+        "LLM_TIMEOUT"
+      ],
+      "locations": [],
+      "routes": [],
+      "npcs": [],
+      "history_chars": [],
+      "injection_safe": 2,
+      "mean_completion_tokens": 0,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_call": null,
+      "spend_usage_rub": 0
+    },
+    {
+      "key": "glm-5.3-flash/off",
+      "model": "z-ai/glm-5.3-flash",
+      "level": "off",
+      "sources": [
+        "eval/reasoning-sweep-bootstrap-other-2026-10-01.json (sweep)"
+      ],
+      "runs": 2,
+      "model_world": 2,
+      "within_27s": 0,
+      "within_45s": 0,
+      "model_latency_ms": [
+        71931,
+        65395
+      ],
+      "errors": [],
+      "locations": [
+        6,
+        5
+      ],
+      "routes": [
+        5,
+        3
+      ],
+      "npcs": [
+        2,
+        2
+      ],
+      "history_chars": [
+        1231,
+        1241
+      ],
+      "injection_safe": 2,
+      "mean_completion_tokens": 2415,
+      "mean_reasoning_tokens": 22,
+      "usage_rub_per_call": 0.1885,
+      "spend_usage_rub": 0.377
+    },
+    {
+      "key": "gpt-6-luna-pro/low",
+      "model": "openai/gpt-6-luna-pro",
+      "level": "low",
+      "sources": [
+        "eval/reasoning-sweep-bootstrap-luna-2026-10-01.json (sweep)"
+      ],
+      "runs": 2,
+      "model_world": 2,
+      "within_27s": 0,
+      "within_45s": 2,
+      "model_latency_ms": [
+        42423,
+        44965
+      ],
+      "errors": [],
+      "locations": [
+        4,
+        4
+      ],
+      "routes": [
+        4,
+        3
+      ],
+      "npcs": [
+        3,
+        2
+      ],
+      "history_chars": [
+        910,
+        719
+      ],
+      "injection_safe": 2,
+      "mean_completion_tokens": 5552,
+      "mean_reasoning_tokens": 1378,
+      "usage_rub_per_call": 0.4019,
+      "spend_usage_rub": 0.8037
+    },
+    {
+      "key": "gpt-6-luna-pro/off",
+      "model": "openai/gpt-6-luna-pro",
+      "level": "off",
+      "sources": [
+        "eval/reasoning-sweep-bootstrap-luna-2026-10-01.json (sweep)",
+        "eval/reasoning-sweep-bootstrap-repeat-2026-10-01.json (sweep)"
+      ],
+      "runs": 4,
+      "model_world": 4,
+      "within_27s": 3,
+      "within_45s": 4,
+      "model_latency_ms": [
+        23538,
+        23653,
+        27484,
+        23983
+      ],
+      "errors": [],
+      "locations": [
+        4,
+        4,
+        5,
+        3
+      ],
+      "routes": [
+        4,
+        4,
+        4,
+        2
+      ],
+      "npcs": [
+        2,
+        2,
+        2,
+        2
+      ],
+      "history_chars": [
+        1080,
+        954,
+        1101,
+        1037
+      ],
+      "injection_safe": 4,
+      "mean_completion_tokens": 4212,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_call": 0.3286,
+      "spend_usage_rub": 1.3144
+    },
+    {
+      "key": "gpt-6-luna/high",
+      "model": "openai/gpt-6-luna",
+      "level": "high",
+      "sources": [
+        "eval/reasoning-sweep-bootstrap-luna-2026-10-01.json (sweep)"
+      ],
+      "runs": 2,
+      "model_world": 0,
+      "within_27s": 0,
+      "within_45s": 0,
+      "model_latency_ms": [
+        47309,
+        51409
+      ],
+      "errors": [
+        "LLM_RESPONSE_INVALID",
+        "LLM_RESPONSE_INVALID"
+      ],
+      "locations": [],
+      "routes": [],
+      "npcs": [],
+      "history_chars": [],
+      "injection_safe": 2,
+      "mean_completion_tokens": 0,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_call": null,
+      "spend_usage_rub": 0
+    },
+    {
+      "key": "gpt-6-luna/low",
+      "model": "openai/gpt-6-luna",
+      "level": "low",
+      "sources": [
+        "eval/campaign-bootstrap-gpt-6-luna-2026-10-01.json (morning)",
+        "eval/reasoning-sweep-bootstrap-luna-2026-10-01.json (sweep)"
+      ],
+      "runs": 3,
+      "model_world": 3,
+      "within_27s": 1,
+      "within_45s": 3,
+      "model_latency_ms": [
+        28047,
+        21361,
+        27125
+      ],
+      "errors": [],
+      "locations": [
+        4,
+        4,
+        4
+      ],
+      "routes": [
+        3,
+        3,
+        3
+      ],
+      "npcs": [
+        2,
+        2,
+        2
+      ],
+      "history_chars": [
+        937,
+        869,
+        807
+      ],
+      "injection_safe": 3,
+      "mean_completion_tokens": 2353,
+      "mean_reasoning_tokens": 380,
+      "usage_rub_per_call": 0.1505,
+      "spend_usage_rub": 0.4515
+    },
+    {
+      "key": "gpt-6-luna/medium",
+      "model": "openai/gpt-6-luna",
+      "level": "medium",
+      "sources": [
+        "eval/reasoning-sweep-bootstrap-luna-2026-10-01.json (sweep)"
+      ],
+      "runs": 2,
+      "model_world": 0,
+      "within_27s": 0,
+      "within_45s": 0,
+      "model_latency_ms": [
+        35039,
+        38461
+      ],
+      "errors": [
+        "LLM_JSON_INVALID",
+        "LLM_JSON_INVALID"
+      ],
+      "locations": [],
+      "routes": [],
+      "npcs": [],
+      "history_chars": [],
+      "injection_safe": 2,
+      "mean_completion_tokens": 0,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_call": null,
+      "spend_usage_rub": 0
+    },
+    {
+      "key": "gpt-6-luna/minimal",
+      "model": "openai/gpt-6-luna",
+      "level": "minimal",
+      "sources": [
+        "eval/reasoning-sweep-bootstrap-luna-2026-10-01.json (sweep)"
+      ],
+      "runs": 2,
+      "model_world": 2,
+      "within_27s": 1,
+      "within_45s": 2,
+      "model_latency_ms": [
+        26029,
+        27453
+      ],
+      "errors": [],
+      "locations": [
+        4,
+        4
+      ],
+      "routes": [
+        4,
+        3
+      ],
+      "npcs": [
+        2,
+        2
+      ],
+      "history_chars": [
+        883,
+        735
+      ],
+      "injection_safe": 2,
+      "mean_completion_tokens": 2309,
+      "mean_reasoning_tokens": 402,
+      "usage_rub_per_call": 0.1431,
+      "spend_usage_rub": 0.2862
+    },
+    {
+      "key": "gpt-6-luna/off",
+      "model": "openai/gpt-6-luna",
+      "level": "off",
+      "sources": [
+        "eval/campaign-bootstrap-gpt-6-luna-2026-10-01.json (morning)",
+        "eval/reasoning-sweep-bootstrap-repeat-2026-10-01.json (sweep)"
+      ],
+      "runs": 6,
+      "model_world": 6,
+      "within_27s": 6,
+      "within_45s": 6,
+      "model_latency_ms": [
+        17776,
+        16027,
+        20523,
+        21200,
+        21592,
+        23027
+      ],
+      "errors": [],
+      "locations": [
+        3,
+        3,
+        4,
+        4,
+        4,
+        3
+      ],
+      "routes": [
+        2,
+        2,
+        3,
+        3,
+        3,
+        2
+      ],
+      "npcs": [
+        2,
+        2,
+        2,
+        2,
+        1,
+        2
+      ],
+      "history_chars": [
+        605,
+        967,
+        997,
+        727,
+        1145,
+        681
+      ],
+      "injection_safe": 6,
+      "mean_completion_tokens": 1884,
+      "mean_reasoning_tokens": 0,
+      "usage_rub_per_call": 0.105,
+      "spend_usage_rub": 0.6299
+    }
+  ],
+  "sweep_spend_rub": {
+    "eval/reasoning-level-probe-2026-10-01.json": 1.0546,
+    "eval/reasoning-sweep-narrator-n1-2026-10-01.json": 2.5601,
+    "eval/reasoning-sweep-narrator-n2-2026-10-01.json": 3.8364,
+    "eval/reasoning-sweep-narrator-n3-2026-10-01.json": 2.1022,
+    "eval/reasoning-sweep-narrator-n4-control-2026-10-01.json": 0.5964,
+    "eval/reasoning-sweep-roles-luna-2026-10-01.json": 1.6831,
+    "eval/reasoning-sweep-roles-lunapro-2026-10-01.json": 4.9101,
+    "eval/reasoning-sweep-roles-glm-2026-10-01.json": 1.8652,
+    "eval/reasoning-sweep-roles-other-2026-10-01.json": 0.699,
+    "eval/reasoning-sweep-roles-repeat-director-2026-10-01.json": 0.1009,
+    "eval/reasoning-sweep-roles-repeat-npc-2026-10-01.json": 0.5534,
+    "eval/reasoning-sweep-bootstrap-luna-2026-10-01.json": 1.9313,
+    "eval/reasoning-sweep-bootstrap-other-2026-10-01.json": 0.5168,
+    "eval/reasoning-sweep-bootstrap-repeat-2026-10-01.json": 0.951,
+    "eval/reasoning-sweep-bootstrap-deepseek-2026-10-01.json": 0.3905,
+    "total": 23.751
+  }
+}

@@ -554,18 +554,19 @@ test('loaded role prompts are explicitly versioned and treat retrieved/user text
   // narrator перешёл на v5, campaign_creator — на v4, map_architect — на v5
   // (v4 плюс соседи по карте мира как пункты назначения),
   // социальный контроллер — на v3 с границей UNTRUSTED_DATA,
-  // action_adjudicator — на v6 вместе с bounded-полями активности, длительности
-  // и причинной ценой провала (topple_prop и ignite_prop сохраняются), остальные на v1. Режиссёр грузит два промпта —
+  // action_adjudicator — на v7: к bounded-полям активности, длительности и
+  // причинной цене провала v6 добавлен маршрут заявки (check/travel/talk/clarify)
+  // (topple_prop и ignite_prop сохраняются), остальные на v1. Режиссёр грузит два промпта —
   // по одному на режим импровизации кампании, — и оба обязаны держать тот же
   // bounded-intent контракт, что и прежний v1.
   const prompts = [
     ['npc_controller/v1', 'npc_controller/v1'],
     ['npc_controller/social_v5', 'npc_controller/social-v5'],
-    ['narrator/v9', 'narrator/v9'],
+    ['narrator/v10', 'narrator/v10'],
     ['director/v4_story', 'director/v4_story'],
     ['director/v4_chaos', 'director/v4_chaos'],
-    ['action_adjudicator/v6', 'action_adjudicator/v6'],
-    ['campaign_creator/v5', 'campaign_creator/v5'],
+    ['action_adjudicator/v7', 'action_adjudicator/v7'],
+    ['campaign_creator/v6', 'campaign_creator/v6'],
     ['map_architect/v6', 'map_architect/v6'],
     ['recap/v1', 'recap/v1'],
   ]

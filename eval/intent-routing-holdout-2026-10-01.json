@@ -1,0 +1,62 @@
+{
+  "version": "intent-routing-cases/v1",
+  "date": "2026-10-01",
+  "description": "Отложенный контрольный набор: написан после правок детерминированного слоя, но до их прогона на нём, и не использовался для подбора шаблонов. Фикстура та же, что у основного набора.",
+  "cases": [
+    { "id": "h01", "text": "Отправимся в Мглистые Топи до заката", "gold": "travel_exit", "tags": ["1pl"] },
+    { "id": "h02", "text": "Я возвращаюсь в Аквилон за подмогой", "gold": "travel_exit", "tags": ["1sg", "map-name"] },
+    { "id": "h03", "text": "Все за мной, идём к Храму Приливов!", "gold": "travel_exit", "tags": ["inflected", "map-name"] },
+    { "id": "h04", "text": "Направимся на Плавучий Рынок", "gold": "travel_exit", "tags": ["map-name"] },
+    { "id": "h05", "text": "Покидаем Ржавый Якорь", "gold": "travel_exit", "tags": ["map-name", "no-preposition"] },
+    { "id": "h06", "text": "Пойдём уже в Каменный Град, хватит сидеть", "gold": "travel_exit", "tags": ["map-name"] },
+    { "id": "h07", "text": "Отправляюсь к маяку искать следы сына Финна", "gold": "travel_exit", "tags": ["purpose"] },
+    { "id": "h08", "text": "Собираем вещи и уходим в лес", "gold": "travel_exit", "tags": [] },
+    { "id": "h09", "text": "Хочу дойти до Солеварни", "gold": "travel_exit", "tags": ["infinitive", "map-name"] },
+    { "id": "h10", "text": "Едем на север, к Северному форту", "gold": "travel_exit", "tags": ["inflected"] },
+    { "id": "h11", "text": "Выходим из города через южные ворота", "gold": "travel_exit", "tags": [] },
+    { "id": "h12", "text": "Идем в «Морской Змей» пить эль", "gold": "travel_exit", "tags": ["quotes-guillemets", "purpose"] },
+
+    { "id": "h13", "text": "Пересаживаюсь поближе к Финну", "gold": "move_in_scene", "tags": [] },
+    { "id": "h14", "text": "Иду к выходу из зала", "gold": "move_in_scene", "tags": [] },
+    { "id": "h15", "text": "Встаю и иду к барной стойке таверны", "gold": "move_in_scene", "tags": ["inside-lookalike"] },
+    { "id": "h16", "text": "Иду к Борису", "gold": "move_in_scene", "tags": ["npc"] },
+    { "id": "h17", "text": "Иду в другой конец таверны", "gold": "move_in_scene", "tags": ["inside-lookalike"] },
+    { "id": "h18", "text": "Поднимаюсь на второй этаж таверны", "gold": "move_in_scene", "tags": ["inside-lookalike"] },
+
+    { "id": "h19", "text": "Спрашиваю Ильсу, сколько стоят сети", "gold": "social_talk", "tags": [] },
+    { "id": "h20", "text": "Марта, налей-ка нам по кружке", "gold": "social_talk", "tags": ["direct-address"] },
+    { "id": "h21", "text": "Говорю Борису, что мы ищем пропавшего парня", "gold": "social_talk", "tags": [] },
+    { "id": "h22", "text": "Пытаюсь разговорить Финна о его сыне", "gold": "social_talk", "tags": [] },
+    { "id": "h23", "text": "Предлагаю Марте серебряную монету за сведения", "gold": "social_talk", "tags": ["proposal-lookalike"] },
+    { "id": "h24", "text": "Угрожаю Ильсе кинжалом, чтобы сказала правду", "gold": "social_talk", "tags": [] },
+    { "id": "h25", "text": "Покупаю у Марты ужин на всех", "gold": "trade", "tags": [] },
+
+    { "id": "h26", "text": "Присматриваюсь к посетителям у окна", "gold": "ability_check", "tags": [] },
+    { "id": "h27", "text": "Осматриваю Финна на предмет ран", "gold": "ability_check", "tags": [] },
+    { "id": "h28", "text": "Тихо крадусь к выходу, чтобы никто не заметил", "gold": "ability_check", "tags": [] },
+    { "id": "h29", "text": "Ищу улики в комнате сына Финна", "gold": "ability_check", "tags": [] },
+
+    { "id": "h30", "text": "Атакую стражника кинжалом", "gold": "attack", "tags": [] },
+    { "id": "h31", "text": "Стреляю в Бориса из арбалета", "gold": "attack", "tags": [] },
+    { "id": "h32", "text": "Колдую Свет на кружку", "gold": "cast_spell", "tags": [] },
+    { "id": "h33", "text": "Устраиваем долгий отдых в комнате наверху", "gold": "rest", "tags": [] },
+    { "id": "h34", "text": "Короткий отдых", "gold": "rest", "tags": ["short"] },
+
+    { "id": "h35", "text": "Что тут вообще происходит?", "gold": "ask_gm_question", "tags": [] },
+    { "id": "h36", "text": "Сколько у меня осталось золота?", "gold": "ask_gm_question", "tags": [] },
+    { "id": "h37", "text": "Где сейчас Торвальд?", "gold": "ask_gm_question", "tags": [] },
+    { "id": "h38", "text": "Как называется этот город?", "gold": "ask_gm_question", "tags": [] },
+    { "id": "h39", "text": "Видно ли отсюда маяк?", "gold": "ask_gm_question", "tags": [] },
+
+    { "id": "h40", "text": "Давайте решим, кто будет нести факел", "gold": "ooc_party_chat", "tags": [] },
+    { "id": "h41", "text": "((пойду сделаю чай, без меня не начинайте))", "gold": "ooc_party_chat", "tags": ["ooc-marker"] },
+    { "id": "h42", "text": "Ребята, может сначала к Марте?", "gold": "ooc_party_chat", "tags": ["party-address"] },
+
+    { "id": "h43", "text": "Насвистываю мелодию и жду", "gold": "free_action_improv", "tags": [] },
+    { "id": "h44", "text": "Бросаю кость собаке под столом", "gold": "free_action_improv", "tags": [] },
+    { "id": "h45", "text": "Уходим в глухую оборону", "gold": "free_action_improv", "tags": ["travel-lookalike"] },
+    { "id": "h46", "text": "Иду ва-банк и ставлю всё золото", "gold": "free_action_improv", "tags": ["travel-lookalike"] },
+    { "id": "h47", "text": "Лезу под стойку за упавшей монетой", "gold": "free_action_improv", "tags": [] },
+    { "id": "h48", "text": "Иду на риск и прыгаю через стол", "gold": "free_action_improv", "tags": ["travel-lookalike"] }
+  ]
+}

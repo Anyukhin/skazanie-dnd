@@ -1,0 +1,297 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-10-01T14:39:30.795Z",
+  "part": "roles",
+  "profiles": {
+    "gpt-6-luna/low": {
+      "model": "openai/gpt-6-luna",
+      "reasoning": {
+        "effort": "low"
+      }
+    }
+  },
+  "note": "Синтетические состояния, настоящие модули сервера, одиночная модель без каскада. Тайм-аут замера увеличен, чтобы увидеть хвост; соответствие боевым бюджетам считается постфактум.",
+  "calls": [
+    {
+      "role": "director",
+      "profile": "gpt-6-luna/low",
+      "model": "openai/gpt-6-luna",
+      "prompt_alias": null,
+      "requested_at": "2026-10-01T14:39:30.809Z",
+      "production_timeout_ms": 12000,
+      "measure_timeout_ms": 40000,
+      "ok": true,
+      "response_model": "gpt-6-luna",
+      "usage": {
+        "total_tokens": 1062,
+        "prompt_tokens": 947,
+        "prompt_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "completion_tokens": 115,
+        "completion_tokens_details": {
+          "reasoning_tokens": 48
+        },
+        "cost": 0.016532944168000004
+      },
+      "usage_cost": 0.016532944168000004,
+      "catalog_cost_rub": 0.016532944168,
+      "raw_text": "{\"type\":\"continue_exploration\",\"theme\":\"След телеги к сгоревшей мельнице\",\"quest_id\":\"quest-road\",\"destination\":\"Сгоревшая мельница\",\"reason\":\"Отряд добровольно следует по следу телеги в поисках пропавшего каравана.\"}",
+      "json_parsed": true,
+      "latency_ms": 3167,
+      "within_production_timeout": true
+    },
+    {
+      "role": "director",
+      "profile": "gpt-6-luna/low",
+      "model": "openai/gpt-6-luna",
+      "prompt_alias": null,
+      "requested_at": "2026-10-01T14:39:33.983Z",
+      "production_timeout_ms": 12000,
+      "measure_timeout_ms": 40000,
+      "ok": true,
+      "response_model": "gpt-6-luna",
+      "usage": {
+        "total_tokens": 1034,
+        "prompt_tokens": 945,
+        "prompt_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "completion_tokens": 89,
+        "completion_tokens_details": {
+          "reasoning_tokens": 26
+        },
+        "cost": 0.01509907516
+      },
+      "usage_cost": 0.01509907516,
+      "catalog_cost_rub": 0.015099075160000001,
+      "raw_text": "{\"type\":\"open_social_scene\",\"theme\":\"Расспросить проводницу о тех, кто видел пропавший караван\",\"quest_id\":\"quest-road\",\"npc_id\":\"guide\",\"reason\":\"Отряд хочет узнать у Миры, кто ещё видел караван.\"}",
+      "json_parsed": true,
+      "latency_ms": 3281,
+      "within_production_timeout": true
+    },
+    {
+      "role": "director",
+      "profile": "gpt-6-luna/low",
+      "model": "openai/gpt-6-luna",
+      "prompt_alias": null,
+      "requested_at": "2026-10-01T14:39:37.268Z",
+      "production_timeout_ms": 12000,
+      "measure_timeout_ms": 40000,
+      "ok": true,
+      "response_model": "gpt-6-luna",
+      "usage": {
+        "total_tokens": 1125,
+        "prompt_tokens": 946,
+        "prompt_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "completion_tokens": 179,
+        "completion_tokens_details": {
+          "reasoning_tokens": 100
+        },
+        "cost": 0.019998127604
+      },
+      "usage_cost": 0.019998127604,
+      "catalog_cost_rub": 0.019998127604,
+      "raw_text": "{\"type\":\"continue_exploration\",\"theme\":\"Передышка у дороги: отряд обсуждает дальнейшие шаги в поисках пропавшего каравана\",\"quest_id\":\"quest-road\",\"reason\":\"Поддержать выбранную игроками остановку и обсуждение, не продвигая часы и не навязывая следующий шаг.\"}",
+      "json_parsed": true,
+      "latency_ms": 4110,
+      "within_production_timeout": true
+    },
+    {
+      "role": "director",
+      "profile": "gpt-6-luna/low",
+      "model": "openai/gpt-6-luna",
+      "prompt_alias": null,
+      "requested_at": "2026-10-01T14:39:41.383Z",
+      "production_timeout_ms": 12000,
+      "measure_timeout_ms": 40000,
+      "ok": true,
+      "response_model": "gpt-6-luna",
+      "usage": {
+        "total_tokens": 1054,
+        "prompt_tokens": 947,
+        "prompt_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "completion_tokens": 107,
+        "completion_tokens_details": {
+          "reasoning_tokens": 56
+        },
+        "cost": 0.016098438408
+      },
+      "usage_cost": 0.016098438408,
+      "catalog_cost_rub": 0.016098438408,
+      "raw_text": "{\"type\":\"continue_exploration\",\"theme\":\"След телеги под дождём\",\"destination\":\"Сгоревшая мельница\",\"reason\":\"Отряд идёт по следу пропавшего каравана.\"}",
+      "json_parsed": true,
+      "latency_ms": 2750,
+      "within_production_timeout": true
+    },
+    {
+      "role": "director",
+      "profile": "gpt-6-luna/low",
+      "model": "openai/gpt-6-luna",
+      "prompt_alias": null,
+      "requested_at": "2026-10-01T14:39:44.138Z",
+      "production_timeout_ms": 12000,
+      "measure_timeout_ms": 40000,
+      "ok": true,
+      "response_model": "gpt-6-luna",
+      "usage": {
+        "total_tokens": 1033,
+        "prompt_tokens": 945,
+        "prompt_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "completion_tokens": 88,
+        "completion_tokens_details": {
+          "reasoning_tokens": 32
+        },
+        "cost": 0.01504476194
+      },
+      "usage_cost": 0.01504476194,
+      "catalog_cost_rub": 0.015044761940000002,
+      "raw_text": "{\"type\":\"open_social_scene\",\"theme\":\"Расспросить проводницу Миру о тех, кто видел пропавший караван\",\"npc_id\":\"guide\",\"reason\":\"Отряд хочет узнать, кто ещё видел караван.\"}",
+      "json_parsed": true,
+      "latency_ms": 2588,
+      "within_production_timeout": true
+    },
+    {
+      "role": "director",
+      "profile": "gpt-6-luna/low",
+      "model": "openai/gpt-6-luna",
+      "prompt_alias": null,
+      "requested_at": "2026-10-01T14:39:46.731Z",
+      "production_timeout_ms": 12000,
+      "measure_timeout_ms": 40000,
+      "ok": true,
+      "response_model": "gpt-6-luna",
+      "usage": {
+        "total_tokens": 1090,
+        "prompt_tokens": 946,
+        "prompt_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "completion_tokens": 144,
+        "completion_tokens_details": {
+          "reasoning_tokens": 84
+        },
+        "cost": 0.018097164904000002
+      },
+      "usage_cost": 0.018097164904000002,
+      "catalog_cost_rub": 0.018097164904,
+      "raw_text": "{\"type\":\"continue_exploration\",\"theme\":\"Привал у дороги и обсуждение дальнейших действий\",\"reason\":\"Отряд разбивает лагерь и решает, как искать пропавший караван; дождь затрудняет поиск следов.\"}",
+      "json_parsed": true,
+      "latency_ms": 3291,
+      "within_production_timeout": true
+    }
+  ],
+  "cases": [
+    {
+      "repeat": 1,
+      "case_id": "director-1",
+      "role": "director",
+      "profile": "gpt-6-luna/low",
+      "called": true,
+      "valid": true,
+      "intent": {
+        "version": "skazanie:director-intent-v1",
+        "type": "continue_exploration",
+        "reason": "Отряд добровольно следует по следу телеги в поисках пропавшего каравана."
+      },
+      "fallback_reason": null,
+      "latency_ms": 3167,
+      "within_budget": true
+    },
+    {
+      "repeat": 1,
+      "case_id": "director-2",
+      "role": "director",
+      "profile": "gpt-6-luna/low",
+      "called": true,
+      "valid": true,
+      "intent": {
+        "version": "skazanie:director-intent-v1",
+        "type": "open_social_scene",
+        "npc_id": "guide",
+        "reason": "Отряд хочет узнать у Миры, кто ещё видел караван."
+      },
+      "fallback_reason": null,
+      "latency_ms": 3281,
+      "within_budget": true
+    },
+    {
+      "repeat": 1,
+      "case_id": "director-3",
+      "role": "director",
+      "profile": "gpt-6-luna/low",
+      "called": true,
+      "valid": true,
+      "intent": {
+        "version": "skazanie:director-intent-v1",
+        "type": "continue_exploration",
+        "reason": "Поддержать выбранную игроками остановку и обсуждение, не продвигая часы и не навязывая следующий шаг."
+      },
+      "fallback_reason": null,
+      "latency_ms": 4110,
+      "within_budget": true
+    },
+    {
+      "repeat": 2,
+      "case_id": "director-1",
+      "role": "director",
+      "profile": "gpt-6-luna/low",
+      "called": true,
+      "valid": true,
+      "intent": {
+        "version": "skazanie:director-intent-v1",
+        "type": "continue_exploration",
+        "reason": "Отряд идёт по следу пропавшего каравана."
+      },
+      "fallback_reason": null,
+      "latency_ms": 2750,
+      "within_budget": true
+    },
+    {
+      "repeat": 2,
+      "case_id": "director-2",
+      "role": "director",
+      "profile": "gpt-6-luna/low",
+      "called": true,
+      "valid": true,
+      "intent": {
+        "version": "skazanie:director-intent-v1",
+        "type": "open_social_scene",
+        "npc_id": "guide",
+        "reason": "Отряд хочет узнать, кто ещё видел караван."
+      },
+      "fallback_reason": null,
+      "latency_ms": 2588,
+      "within_budget": true
+    },
+    {
+      "repeat": 2,
+      "case_id": "director-3",
+      "role": "director",
+      "profile": "gpt-6-luna/low",
+      "called": true,
+      "valid": true,
+      "intent": {
+        "version": "skazanie:director-intent-v1",
+        "type": "continue_exploration",
+        "reason": "Отряд разбивает лагерь и решает, как искать пропавший караван; дождь затрудняет поиск следов."
+      },
+      "fallback_reason": null,
+      "latency_ms": 3291,
+      "within_budget": true
+    }
+  ],
+  "spent_rub": 0.100870512184
+}

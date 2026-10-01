@@ -42,7 +42,10 @@ import { agentContextMetadata, boundedSelectionMetadata } from './agent-context.
  * ошибке, таймауте или отсутствии ключа предложение молча заменяется
  * детерминированным прочтением, и игра продолжается.
  */
-const prompt = readFileSync(fileURLToPath(new URL('../prompts/action_adjudicator/v6.txt', import.meta.url)), 'utf8')
+const prompt = readFileSync(fileURLToPath(new URL('../prompts/action_adjudicator/v7.txt', import.meta.url)), 'utf8')
+
+/** Версия контракта: она же попадает в метаданные контекста и трассу. */
+export const ACTION_ADJUDICATOR_PROMPT_VERSION = 'action_adjudicator/v7'
 
 const clean = (value, maximum = 240) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
 const list = (value) => Array.isArray(value) ? value : []
@@ -52,7 +55,54 @@ const FREE_ACTION_RESPONSE_FIELDS = new Set([
   'ability', 'skill', 'plausibility', 'risk', 'required_means', 'action_cost',
   'effect', 'effect_target', 'hazard', 'prop_id', 'target_id', 'item_id',
   'proficiency', 'consequence_type',
+  // v7: маршрут заявки. Поле необязательно — его отсутствие значит `check`,
+  // так что ответ в форме v6 остаётся допустимым и судится как раньше.
+  'route', 'destination', 'npc_hint',
 ])
+
+/**
+ * Куда на самом деле ведёт заявка, которую не узнал детерминированный слой.
+ * Модель только называет маршрут; исполняет его сервер, и только через уже
+ * существующие пути: `travel` — карточкой решения отряда, `talk` и `clarify` —
+ * уточнением без коммита (`AutonomousCampaignOrchestrator.handleUnknownAction`).
+ */
+export const FREE_ACTION_ROUTES = Object.freeze(['check', 'travel', 'talk', 'clarify'])
+
+/**
+ * Пункт назначения из ответа модели — только короткий текст без разметки.
+ * Кавычки и скобки снимаются: подпись варианта голосования строит сервер, и
+ * чужая «ёлочка» закрыла бы её не там.
+ *
+ * @param {unknown} value
+ * @returns {string}
+ */
+export function cleanTravelDestination(value) {
+  const text = clean(value, 200)
+    .replace(/[\u0000-\u001f\u007f]/gu, '')
+    .replace(/[«»"“”„[\]{}<>]/gu, '')
+    .replace(/\s+/gu, ' ')
+    .trim()
+  if (text.length > 80 || (text.match(/\p{L}/gu) ?? []).length < 2) return ''
+  return text
+}
+
+/**
+ * Маршрут из ответа модели, сверенный с брифом. Неизвестный маршрут — `check`;
+ * `npc_hint` — только id присутствующего NPC из переданных участников.
+ *
+ * @param {Record<string, unknown>} result
+ * @param {Array<{ id: string, side: string }>} participants
+ * @returns {{ route: string, destination: string, npc_hint: string }}
+ */
+function routeFromResponse(result, participants) {
+  const route = FREE_ACTION_ROUTES.includes(String(result.route ?? '')) ? String(result.route) : 'check'
+  const npcIds = new Set(participants.filter((entry) => entry.side === 'npc').map((entry) => entry.id))
+  return {
+    route,
+    destination: route === 'travel' ? cleanTravelDestination(result.destination) : '',
+    npc_hint: route === 'talk' && npcIds.has(String(result.npc_hint ?? '')) ? String(result.npc_hint) : '',
+  }
+}
 
 const ABILITIES = new Set(['str', 'dex', 'con', 'int', 'wis', 'cha'])
 const ACTION_COSTS = new Set(['action', 'bonus_action', 'free'])
@@ -86,6 +136,12 @@ function structurallyValidFreeActionResponse(value) {
     if (Object.hasOwn(value, key) && typeof value[key] !== 'string') return false
   }
   if (Object.hasOwn(value, 'hazard') && value.hazard !== '' && !ENVIRONMENT_HAZARD_IDS.includes(value.hazard)) return false
+  // Маршрут проверяется так же строго, как остальные перечисления: выдуманное
+  // значение — не повод угадывать, а признак сломанного ответа.
+  if (Object.hasOwn(value, 'route') && !validStringField(value.route, new Set(FREE_ACTION_ROUTES))) return false
+  for (const key of ['destination', 'npc_hint']) {
+    if (Object.hasOwn(value, key) && (typeof value[key] !== 'string' || value[key].length > 300)) return false
+  }
   return true
 }
 
@@ -324,7 +380,7 @@ export function adjudicationBrief(state, actorId, text, dialogue = {}) {
   const participants = participantsBrief(state, actorId)
   const sceneProps = scenePropsBrief(state, actorId)
   return {
-    context_metadata: agentContextMetadata(state, { role: 'action_adjudicator', actorId, contractVersion: 'action_adjudicator/v6' }),
+    context_metadata: agentContextMetadata(state, { role: 'action_adjudicator', actorId, contractVersion: ACTION_ADJUDICATOR_PROMPT_VERSION }),
     player_action: clean(text, 1_000),
     ...(dialogue.recent?.length || dialogue.action ? { dialogue: {
       request_kind: dialogue.request_kind ?? 'action',
@@ -355,9 +411,15 @@ export function adjudicationBrief(state, actorId, text, dialogue = {}) {
 }
 
 export class ActionAdjudicator {
-  constructor({ llmClient = null, timeoutMs = 9_000 } = {}) {
+  /**
+   * `systemPrompt` — подмена текста контракта только для замеров
+   * (`eval/intent-routing-eval-2026-10-01.mjs` сравнивает v6 и v7 на одних
+   * фразах). Сервер её не передаёт и работает с загруженным v7.
+   */
+  constructor({ llmClient = null, timeoutMs = 9_000, systemPrompt = null } = {}) {
     this.llmClient = llmClient
     this.timeoutMs = timeoutMs
+    this.systemPrompt = typeof systemPrompt === 'string' && systemPrompt.trim() ? systemPrompt : prompt
   }
 
   /**
@@ -365,7 +427,7 @@ export class ActionAdjudicator {
    * возврат к детерминированной таблице, а не сломанный ход.
    */
   async read(state, actorId, text, fallbackReading, dialogue = {}) {
-    const contextMetadata = agentContextMetadata(state, { role: 'action_adjudicator', actorId, contractVersion: 'action_adjudicator/v6' })
+    const contextMetadata = agentContextMetadata(state, { role: 'action_adjudicator', actorId, contractVersion: ACTION_ADJUDICATOR_PROMPT_VERSION })
     const harmless = harmlessFreeActionReading(state, actorId, text)
     if (harmless) return { ...bindFreeActionReadingToState(state, actorId, text, harmless), context_metadata: contextMetadata }
     if (!this.llmClient?.completeJson) return { ...bindFreeActionReadingToState(state, actorId, text, fallbackReading), context_metadata: contextMetadata }
@@ -373,7 +435,7 @@ export class ActionAdjudicator {
       const brief = adjudicationBrief(state, actorId, text, dialogue)
       const result = await this.llmClient.completeJson({
         messages: [
-          { role: 'system', content: prompt },
+          { role: 'system', content: this.systemPrompt },
           { role: 'user', content: buildDataOnlyContext({ free_action_brief: brief }) },
         ],
         temperature: 0.2,
@@ -409,7 +471,15 @@ export class ActionAdjudicator {
       const namedProp = propsById.get(reading.prop_id) ?? null
       if (!namedProp || !normalizedPropIntent || !namedProp.verbs.includes(normalizedPropIntent)) reading.prop_id = ''
       if (normalizedPropIntent && !reading.prop_id) reading.effect = 'none'
-      return { ...bindFreeActionReadingToState(state, actorId, text, reading), context_metadata: contextMetadata }
+      // Маршрут добавляется после привязки к состоянию: привязка строит прочтение
+      // проверки и о маршруте не знает. Для `check` поля не добавляются вовсе —
+      // прочтение остаётся тем же, что у v6.
+      const route = routeFromResponse(result, brief.participants)
+      return {
+        ...bindFreeActionReadingToState(state, actorId, text, reading),
+        context_metadata: contextMetadata,
+        ...(route.route !== 'check' ? route : {}),
+      }
     } catch (error) {
       const bound = bindFreeActionReadingToState(state, actorId, text, {
         ...fallbackReading,

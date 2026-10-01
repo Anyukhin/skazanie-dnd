@@ -505,3 +505,56 @@ test('projection outbox survives restart until the compatibility projection ackn
   assert.equal(await reopened.pendingProjection('projection-recovery'), null)
   assert.equal((await reopened.getMetadata('projection-recovery')).projection_checkpoint_version, 1)
 })
+
+// Кэш головы потока (`_cachedHead`, замер 2026-10-01): один HTTP-запрос
+// загружает кампанию несколько раз, и без кэша каждый раз переигрывались
+// события после снимка. Кэш обязан быть невидимым: тот же результат, что у
+// replay, свежесть при чужом коммите и честный replay для аудитов.
+test('голова потока грузится без повторного replay, но остаётся точной и закрытой', async (t) => {
+  const rootDir = mkdtempSync(join(tmpdir(), 'skazanie-event-store-head-'))
+  t.after(() => rmSync(rootDir, { recursive: true, force: true }))
+  let reducerCalls = 0
+  const reducer = (state, event) => {
+    reducerCalls += 1
+    const next = structuredClone(state)
+    if (event.event_type === 'DamageApplied') next.hp = Math.max(0, Number(next.hp || 0) - Number(event.payload.amount || 0))
+    return next
+  }
+  const store = new FileEventStore({ rootDir, reducer, snapshotEvery: 0 })
+  await store.initializeCampaign({ campaign_id: 'head', initial_state: { hp: 20 } })
+  for (const [index, amount] of [3, 4, 5].entries()) {
+    await store.commit({
+      campaign_id: 'head', expected_state_version: index, idempotency_key: `hit-${index}`,
+      events: [{ event_type: 'DamageApplied', payload: { amount } }],
+    })
+  }
+
+  reducerCalls = 0
+  const first = await store.load('head')
+  const second = await store.load('head')
+  assert.equal(reducerCalls, 0, 'голова после commit уже известна — replay не нужен')
+  assert.equal(first.state.hp, 8)
+  assert.deepEqual(second, first)
+
+  // Вызывающий получает собственную копию: правка не портит следующую загрузку.
+  first.state.hp = 999
+  assert.equal((await store.load('head')).state.hp, 8)
+
+  // Честный replay для аудитов кэш обходит и даёт то же состояние.
+  const replayed = await store.replay('head', { use_snapshots: false })
+  assert.ok(reducerCalls >= 3, 'replay без снимков обязан переиграть поток')
+  assert.deepEqual(replayed.state, second.state)
+  reducerCalls = 0
+  assert.equal((await store.load('head', { atVersion: 2 })).state.hp, 13, 'прошлая версия — не голова и не из кэша')
+  assert.equal(reducerCalls, 2)
+
+  // Коммит другого процесса меняет голову: кэш промахивается и видит его.
+  const otherProcess = new FileEventStore({ rootDir, reducer, snapshotEvery: 0 })
+  await otherProcess.commit({
+    campaign_id: 'head', expected_state_version: 3, idempotency_key: 'other-process-hit',
+    events: [{ event_type: 'DamageApplied', payload: { amount: 2 } }],
+  })
+  const fresh = await store.load('head')
+  assert.equal(fresh.state_version, 4)
+  assert.equal(fresh.state.hp, 6)
+})

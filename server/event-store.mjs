@@ -233,6 +233,50 @@ export class FileEventStore {
     // Хранилище карт, адресуемое по содержимому. Необязательно: без него
     // снимок пишется как раньше, целиком.
     this.mapStore = mapStore ?? null
+    // Последнее загруженное состояние каждой кампании. Подробности — у
+    // `_cachedHead`.
+    this._headCache = new Map()
+  }
+
+  /**
+   * Голова потока без повторного replay.
+   *
+   * Замер 2026-10-01 (`test/mass-cure-wounds-api.test.mjs`): 82 % процессора
+   * сервера уходило на `_load`. Один HTTP-запрос загружает кампанию 4–6 раз —
+   * оркестратор, часы торговцев, планировщик NPC, проекция, — и каждый раз
+   * последний снимок нормализуется и поверх него заново проигрываются до
+   * `snapshotEvery` событий, а редьюсер на каждом событии нормализует мир
+   * целиком. На кампании двух героев 11-го уровня это 1–2 с на любую команду.
+   *
+   * Кэш держит приватную копию состояния ровно для одной версии — головы
+   * потока — и узнаёт её по номеру версии И id последнего коммита. Журнал
+   * коммитов по-прежнему перечитывается при каждой загрузке, поэтому коммит
+   * другого процесса (или восстановленный бэкап) меняет ключ, и кэш
+   * промахивается. Нестандартные загрузки — прошлая версия, `fromInitial`,
+   * `useSnapshots: false`, принудительная версия reducer — кэш обходят:
+   * на них держатся replay-аудиты, и они обязаны честно переиграть поток.
+   * Состояние в кэше — результат того же детерминированного replay, поэтому
+   * инвариант «replay даёт то же состояние» не ослабляется; вызывающий
+   * получает собственную копию и не может испортить кэш.
+   */
+  _cachedHead(layout, commits) {
+    const lastCommitId = commits.at(-1)?.commit_id
+    if (!lastCommitId) return null
+    const entry = this._headCache.get(layout.campaignId)
+    if (!entry || entry.lastCommitId !== lastCommitId || entry.version !== commits.at(-1).state_version_after) return null
+    return entry
+  }
+
+  _rememberHead(layout, commits, state, { reducerVersion, eventsApplied }) {
+    const lastCommit = commits.at(-1)
+    if (!lastCommit?.commit_id) return
+    this._headCache.set(layout.campaignId, {
+      lastCommitId: lastCommit.commit_id,
+      version: lastCommit.state_version_after,
+      reducerVersion,
+      eventsApplied,
+      state: structuredClone(state),
+    })
   }
 
   _layout(campaignId) {
@@ -502,6 +546,19 @@ export class FileEventStore {
     if (targetVersion > currentVersion) throw new VersionConflictError(layout.campaignId, targetVersion, currentVersion)
 
     const forcedReducerVersion = reducerVersion == null ? null : safeVersion(reducerVersion, 'reducerVersion')
+    const headLoad = targetVersion === currentVersion && useSnapshots && forcedReducerVersion === null && !fromInitial
+    const cached = headLoad ? this._cachedHead(layout, commits) : null
+    if (cached) {
+      return {
+        campaign_id: layout.campaignId,
+        state_version: targetVersion,
+        current_state_version: currentVersion,
+        state: structuredClone(cached.state),
+        reducer_version: cached.reducerVersion,
+        metadata: this._readMetadata(layout, currentVersion),
+        events_applied: cached.eventsApplied,
+      }
+    }
     const snapshot = fromInitial ? null : this._readSnapshot(layout, targetVersion, useSnapshots)
     let state
     let fromVersion
@@ -523,6 +580,7 @@ export class FileEventStore {
 
     const lastEvent = events.at(-1)
     const finalReducerVersion = forcedReducerVersion ?? (lastEvent ? Number(lastEvent.reducer_version ?? 0) : selectedReducerVersion)
+    if (headLoad) this._rememberHead(layout, commits, state, { reducerVersion: finalReducerVersion, eventsApplied: events.length })
     return {
       campaign_id: layout.campaignId,
       state_version: targetVersion,
@@ -774,10 +832,16 @@ export class FileEventStore {
       this._commitFile(layout, commit)
       // Пакет может перескочить кратную версию: считаем события после последнего
       // пригодного снимка, уже известные загрузке, а не остаток номера версии.
-      if ((force_snapshot ?? forceSnapshot) || (this.snapshotEvery > 0 && current.events_applied + normalizedEvents.length >= this.snapshotEvery)) {
+      const snapshotWritten = (force_snapshot ?? forceSnapshot) || (this.snapshotEvery > 0 && current.events_applied + normalizedEvents.length >= this.snapshotEvery)
+      if (snapshotWritten) {
         this._writeSnapshot(layout, nextState, nextVersion)
       }
       const storedMetadata = this._writeMetadata(layout, current.metadata, metadata, nextVersion)
+      // Новая голова уже посчитана — следующая загрузка не переигрывает её заново.
+      this._rememberHead(layout, [...commits, commit], nextState, {
+        reducerVersion: Number(normalizedEvents.at(-1).reducer_version ?? 0),
+        eventsApplied: snapshotWritten ? 0 : current.events_applied + normalizedEvents.length,
+      })
       return {
         campaign_id: layout.campaignId,
         state_version: nextVersion,
