@@ -209,6 +209,13 @@ export * from './dungeon-map-parts'
 
 const Spellbook = lazy(() => import('./Spellbook').then(({ Spellbook: Component }) => ({ default: Component })))
 
+/** Виды реплики игрока: подпись на переключателе и подсказка. */
+const REQUEST_KIND_OPTIONS: ReadonlyArray<readonly [PlayerRequestKind, string, string]> = [
+  ['action', 'Действие', 'Герой действует: ведущий разрешает намерение'],
+  ['question', 'Вопрос', 'Вопрос ведущему о ситуации — герой не действует'],
+  ['discussion', 'Отряду', 'Обсуждение с отрядом — план без действия героя'],
+]
+
 export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, canConverse, dialogueBusy, dialogueDraft, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, combatAudio, visualBatch, onStartCombat, onNpcAttack, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onSetSpellBonusPreference, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, leaveLocationDisabled, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, playerHud, statusContent, children }: {
   state: GameState
   players: Player[]
@@ -3419,11 +3426,20 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         }}
       >
 
-        <select className="request-kind" aria-label="Тип реплики" value={requestKind} disabled={narrating} onChange={(event) => { setRequestKind(event.target.value as PlayerRequestKind); clearPrepared() }}>
-          <option value="action">Действие</option>
-          <option value="question">Вопрос ведущему</option>
-          <option value="discussion">Обсуждение с отрядом</option>
-        </select>
+        {/* Вид реплики — переключателем под полем, как в прототипе стола: три
+            варианта видны сразу и меняются одним щелчком. */}
+        <div className="request-kind" role="radiogroup" aria-label="Тип реплики">
+          {REQUEST_KIND_OPTIONS.map(([kind, label, title]) => <button
+            type="button"
+            key={kind}
+            role="radio"
+            aria-checked={requestKind === kind}
+            className={requestKind === kind ? 'active' : ''}
+            disabled={narrating}
+            title={title}
+            onClick={() => { setRequestKind(kind); clearPrepared() }}
+          >{label}</button>)}
+        </div>
         <div className="rail-input-shell">
           {preparedLabel && <span className={`prepared-chip ${awaitingTarget ? 'awaiting' : ''}`}><CombatIcon id="prepared-command" kind="roll" hint="выбранное действие" size={15} compact /><b>{preparedLabel}</b><button type="button" onClick={clearPrepared} aria-label="Снять выбранное действие"><X size={12} /></button></span>}
           <textarea
@@ -3456,6 +3472,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           носителя в UI. Ход не расходуется до подтверждённого сервером броска. */}
         {/* Колоды стоят у карты, а выбранная команда подтверждается
           той же формой реплики под хроникой. */}
+        {/* Герой — левой колонкой панели: портрет, ОЗ и состояния рядом с
+            его действиями, как в прототипе стола. */}
+        {playerHud && <div className="turn-rail-hero turn-rail-player-hud">{playerHud}</div>}
         <div className="hotbar-decks">
         <nav className="hotbar-tabs" role="tablist" aria-label="Категории действий">
           {([
@@ -3489,19 +3508,6 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             ><CombatIcon id="propose-parley" kind="action" hint="переговоры перемирие поговорить" size={18} compact /><span>{parleyAttempted ? 'Переговоры (помеха)' : 'Переговоры'}</span></button>}
             {combatActive && knockoutEligible && <button className={`knockout-turn-toggle ${knockOut ? 'active' : ''}`} disabled={tacticalBusy} aria-pressed={knockOut} onClick={() => setKnockOut((current) => !current)} title='При снижении до 0 ОЗ оставить цель с 1 ОЗ без сознания'><CombatIcon id='knockout-toggle' kind='action' hint='несмертельный нокаут пощадить цель' size={18} compact /><span>{knockOut ? 'Нокаут включён' : 'Нокаутировать'}</span></button>}
             {combatActive && selectedItem && needsWeaponChange && <button disabled={!canAct || tacticalBusy || !actionReady} onClick={() => selected && onChangeWeapon(selected, selectedItem.id)}><CombatIcon id={`swap-${selectedItem.id}`} kind="swap" hint={`сменить оружие ${selectedItem.name}`} size={18} compact /><span>Сменить оружие</span></button>}
-            {/* Завершение хода — главное решение этого ряда, и выглядит оно так
-                же: выше соседей, в золоте отправки. Когда тратить больше нечего,
-                рамка мягко пульсирует; при `prefers-reduced-motion` она просто
-                светлее. Подсказка не хвалит кнопку, а перечисляет, что игрок
-                уносит с собой неистраченным. */}
-            {combatActive && <button
-              className={`end-turn-hotbar ${turnFullySpent ? 'exhausted' : ''}`}
-              disabled={!canAct || tacticalBusy}
-              onClick={onFinishTurn}
-              title={turnFullySpent
-                ? 'Ресурсы хода израсходованы. Завершить ход — клавиша «Пробел»'
-                : `Остались: ${unspentTurnResources.join(', ')}. Завершить ход — клавиша «Пробел»`}
-            ><CombatIcon id="end-turn" kind="end-turn" hint="завершить ход" size={18} compact /><span>Завершить ход<kbd>Пробел</kbd></span></button>}
         </div>}
         </div>
       {/* Панель одна на оба режима. Раньше вне боя вместо неё показывалась полоска
@@ -3565,53 +3571,6 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                 : null
             })}
            </div>}
-           </div>
-           <div className="hotbar-hero-cluster player-resource-panel" aria-label={`Ресурсы героя: ${activeName}`}>
-             {playerHud && <div className="turn-rail-player-hud">{playerHud}</div>}
-             <div className="hero-cluster-pips" role="group" aria-label={combatActive ? 'Экономика хода' : 'Экономика хода вне боя не расходуется'}>
-               {heroPips.map((pip) => <button type="button" key={pip.id}
-                 className={`hero-pip ${pip.id} ${combatActive && pip.ready ? 'ready' : 'spent'} ${costFilter === pip.id ? 'filtering' : ''}`}
-                 aria-pressed={costFilter === pip.id} disabled={!combatActive}
-                 onClick={() => setCostFilter((current) => current === pip.id ? null : pip.id)}
-                 title={!combatActive ? 'Вне боя действия не расходуются' : `${pip.label}: ${pip.note || (pip.ready ? 'доступно' : 'потрачено')}`}
-               ><i className="hero-pip-shape" aria-hidden="true" /><span>{pip.label}</span><b>{!combatActive ? '—' : pip.id === 'action' ? Number(actionReady) + Math.max(0, Number(economy?.extra_actions) || 0) : Number(pip.ready)}</b></button>)}
-             </div>
-             {state.mechanics?.movement?.[turnActorId] && <div className="hero-cluster-speed" aria-label="Скорость героя">
-               <span>Скорость: <b>{movement.currentSpeed} фт</b> · базовая {movement.baseSpeed} фт</span>
-               {movement.effects.filter((effect) => effect.applied).map((effect) => <span key={effect.effect_id}>{effect.name} {effect.bonus_feet >= 0 ? '+' : ''}{effect.bonus_feet} фт</span>)}
-             </div>}
-             <div className={`hero-cluster-move ${movementAvailable ? 'ready' : 'spent'}`} title={movement.blockedReason ?? undefined}>
-               <span>Движение</span><span className="hero-cluster-move-bar" aria-hidden="true"><i style={{width:`${!movementAvailable ? 0 : combatActive ? Math.round(movementRatio * 100) : 100}%`}} /></span>
-               <b>{movement.blockedReason ? 'Недоступно' : combatActive ? `${movementAvailable ? remainingFeet : 0}/${speedFeet} фт` : `${movement.currentSpeed} фт · свободно`}</b>
-             </div>
-             {movement.blockedReason && <p className="hero-cluster-movement-note" role="status">{movement.blockedReason}</p>}
-             {movement.effects.length > 0 && <ul className="hero-cluster-movement-effects" aria-label="Эффекты скорости">
-               {movement.effects.map((effect) => <li key={effect.effect_id}>{effect.name} · ещё {movementEffectTimeLabel(effect.remaining_seconds)}{effect.applied ? '' : ' · бонус не используется'}</li>)}
-             </ul>}
-             {combatActive && weaponAttacksUsed > 0 && weaponAttacksLeft > 0 && <small>Атак в действии осталось: {weaponAttacksLeft}</small>}
-              {heroResourceRows.length > 0 && <div className="hero-cluster-resources" role="group" aria-label="Ячейки и классовые запасы">
-                {heroResourceRows.some((row) => isSpellSlotPool(row.keys[0])) && <>
-                  <span className="hero-pools-label">Ячейки</span>
-                  <div className="hero-spell-slot-grid" role="group" aria-label="Ячейки по кругам">
-                    {SPELL_SLOT_ROMANS.map((roman, index) => {
-                      const key = `spell_slots_${index + 1}`
-                      const row = heroResourceRows.find((candidate) => candidate.keys.includes(key))
-                      const current = row?.current ?? 0
-                      const max = row?.max ?? 0
-                      const label = row ? heroResourceTitle(row.keys, current, max) : `Ячейки ${roman} круга: недоступно`
-                      return <span key={key} className={`hero-resource slot ${current > 0 ? 'ready' : 'spent'}${max === 0 ? ' empty' : ''}`} title={label} aria-label={label}>
-                        <em>{roman}</em><i aria-hidden="true">{Array.from({ length: max }, (_, dot) => <u key={dot} className={dot < current ? '' : 'spent'} />)}</i>
-                      </span>
-                    })}
-                  </div>
-                </>}
-                {heroResourceRows.map((row) => !isSpellSlotPool(row.keys[0]) && <span key={row.keys.join('+')}
-                  className={`hero-resource class-pool ${row.current > 0 ? 'ready' : 'spent'}`}
-                  title={heroResourceTitle(row.keys, row.current, row.max)} aria-label={heroResourceTitle(row.keys, row.current, row.max)}
-                ><em>{heroResourceShortLabel(row.keys[0])}</em>{row.max <= 6
-                  ? <i aria-hidden="true">{Array.from({length:row.max}, (_,index) => <u key={index} className={index < row.current ? '' : 'spent'} />)}</i>
-                  : <b>{row.current}/{row.max}</b>}</span>)}
-              </div>}
            </div>
            {(combatActive || (combatMode === 'magic' && selectedSpell)) && <details className="hotbar-detail">
             <summary aria-label="Параметры действия" title="Параметры действия"><SlidersHorizontal size={15} /></summary>
@@ -3706,6 +3665,69 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             жила только под хотбаром и только в комнате, а следующий отказ
             затирал предыдущий. */}
       </section>
+      {/* Правая колонка панели, как в прототипе стола: что осталось на ход,
+          сколько шагов и чем его закончить. */}
+      <aside className="turn-rail-side" aria-label={`Ход героя: ${activeName}`}>
+        <div className="hotbar-hero-cluster player-resource-panel" aria-label={`Ресурсы героя: ${activeName}`}>
+          <div className="hero-cluster-pips" role="group" aria-label={combatActive ? 'Экономика хода' : 'Экономика хода вне боя не расходуется'}>
+            {heroPips.map((pip) => <button type="button" key={pip.id}
+              className={`hero-pip ${pip.id} ${combatActive && pip.ready ? 'ready' : 'spent'} ${costFilter === pip.id ? 'filtering' : ''}`}
+              aria-pressed={costFilter === pip.id} disabled={!combatActive}
+              onClick={() => setCostFilter((current) => current === pip.id ? null : pip.id)}
+              title={!combatActive ? 'Вне боя действия не расходуются' : `${pip.label}: ${pip.note || (pip.ready ? 'доступно' : 'потрачено')}`}
+            ><i className="hero-pip-shape" aria-hidden="true" /><span>{pip.label}</span><b>{!combatActive ? '—' : pip.id === 'action' ? Number(actionReady) + Math.max(0, Number(economy?.extra_actions) || 0) : Number(pip.ready)}</b></button>)}
+          </div>
+          {state.mechanics?.movement?.[turnActorId] && <div className="hero-cluster-speed" aria-label="Скорость героя">
+            <span>Скорость: <b>{movement.currentSpeed} фт</b> · базовая {movement.baseSpeed} фт</span>
+            {movement.effects.filter((effect) => effect.applied).map((effect) => <span key={effect.effect_id}>{effect.name} {effect.bonus_feet >= 0 ? '+' : ''}{effect.bonus_feet} фт</span>)}
+          </div>}
+          <div className={`hero-cluster-move ${movementAvailable ? 'ready' : 'spent'}`} title={movement.blockedReason ?? undefined}>
+            <span>Движение</span><span className="hero-cluster-move-bar" aria-hidden="true"><i style={{width:`${!movementAvailable ? 0 : combatActive ? Math.round(movementRatio * 100) : 100}%`}} /></span>
+            <b>{movement.blockedReason ? 'Недоступно' : combatActive ? `${movementAvailable ? remainingFeet : 0}/${speedFeet} фт` : `${movement.currentSpeed} фт · свободно`}</b>
+          </div>
+          {movement.blockedReason && <p className="hero-cluster-movement-note" role="status">{movement.blockedReason}</p>}
+          {movement.effects.length > 0 && <ul className="hero-cluster-movement-effects" aria-label="Эффекты скорости">
+            {movement.effects.map((effect) => <li key={effect.effect_id}>{effect.name} · ещё {movementEffectTimeLabel(effect.remaining_seconds)}{effect.applied ? '' : ' · бонус не используется'}</li>)}
+          </ul>}
+          {combatActive && weaponAttacksUsed > 0 && weaponAttacksLeft > 0 && <small>Атак в действии осталось: {weaponAttacksLeft}</small>}
+           {heroResourceRows.length > 0 && <div className="hero-cluster-resources" role="group" aria-label="Ячейки и классовые запасы">
+             {heroResourceRows.some((row) => isSpellSlotPool(row.keys[0])) && <>
+               <span className="hero-pools-label">Ячейки</span>
+               <div className="hero-spell-slot-grid" role="group" aria-label="Ячейки по кругам">
+                 {SPELL_SLOT_ROMANS.map((roman, index) => {
+                   const key = `spell_slots_${index + 1}`
+                   const row = heroResourceRows.find((candidate) => candidate.keys.includes(key))
+                   const current = row?.current ?? 0
+                   const max = row?.max ?? 0
+                   const label = row ? heroResourceTitle(row.keys, current, max) : `Ячейки ${roman} круга: недоступно`
+                   return <span key={key} className={`hero-resource slot ${current > 0 ? 'ready' : 'spent'}${max === 0 ? ' empty' : ''}`} title={label} aria-label={label}>
+                     <em>{roman}</em><i aria-hidden="true">{Array.from({ length: max }, (_, dot) => <u key={dot} className={dot < current ? '' : 'spent'} />)}</i>
+                   </span>
+                 })}
+               </div>
+             </>}
+             {heroResourceRows.map((row) => !isSpellSlotPool(row.keys[0]) && <span key={row.keys.join('+')}
+               className={`hero-resource class-pool ${row.current > 0 ? 'ready' : 'spent'}`}
+               title={heroResourceTitle(row.keys, row.current, row.max)} aria-label={heroResourceTitle(row.keys, row.current, row.max)}
+             ><em>{heroResourceShortLabel(row.keys[0])}</em>{row.max <= 6
+               ? <i aria-hidden="true">{Array.from({length:row.max}, (_,index) => <u key={index} className={index < row.current ? '' : 'spent'} />)}</i>
+               : <b>{row.current}/{row.max}</b>}</span>)}
+           </div>}
+        </div>
+        {/* Завершение хода — главное решение этого ряда, и выглядит оно так
+            же: выше соседей, в золоте отправки. Когда тратить больше нечего,
+            рамка мягко пульсирует; при `prefers-reduced-motion` она просто
+            светлее. Подсказка не хвалит кнопку, а перечисляет, что игрок
+            уносит с собой неистраченным. */}
+        {combatActive && <button
+          className={`end-turn-hotbar ${turnFullySpent ? 'exhausted' : ''}`}
+          disabled={!canAct || tacticalBusy}
+          onClick={onFinishTurn}
+          title={turnFullySpent
+            ? 'Ресурсы хода израсходованы. Завершить ход — клавиша «Пробел»'
+            : `Остались: ${unspentTurnResources.join(', ')}. Завершить ход — клавиша «Пробел»`}
+        ><CombatIcon id="end-turn" kind="end-turn" hint="завершить ход" size={18} compact /><span>Завершить ход<kbd>Пробел</kbd></span></button>}
+      </aside>
       </section>
     </>
   )
