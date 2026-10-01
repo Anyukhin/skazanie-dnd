@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
-import { createServer as createNetServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
+import { freePort } from './free-port.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { normalizeCampaignState, resolveCommands } from '../server/rules-engine.mjs'
 import { materializeCatalogItem } from '../server/item-catalog.mjs'
@@ -17,18 +17,6 @@ const SESSION = 'WORLD-DATA-FLOW'
 const SETUP_TOKEN = 'world-data-flow-setup-token'
 const HERO_ID = 'consequence-wizard'
 const NPC_ID = 'astohan-ares'
-
-async function freePort() {
-  const probe = await new Promise((resolve, reject) => {
-    const server = createNetServer()
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', () => resolve(server))
-  })
-  const address = probe.address()
-  const port = typeof address === 'object' && address ? address.port : 0
-  await new Promise((resolve, reject) => probe.close((error) => error ? reject(error) : resolve()))
-  return port
-}
 
 function startServer(port, storage, appendLog) {
   const child = spawn(process.execPath, ['server/index.mjs'], {

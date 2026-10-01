@@ -2,20 +2,9 @@ import assert from 'node:assert/strict'
 import { createServer as createHttpServer } from 'node:http'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
+import { freePort } from './free-port.mjs'
 
 import { createServer as createViteServer } from 'vite'
-
-function freePort() {
-  return new Promise((resolve, reject) => {
-    const probe = createHttpServer()
-    probe.once('error', reject)
-    probe.listen(0, '127.0.0.1', () => {
-      const address = probe.address()
-      const port = typeof address === 'object' && address ? address.port : 0
-      probe.close((error) => error ? reject(error) : resolve(port))
-    })
-  })
-}
 
 function closeServer(server) {
   if (!server) return Promise.resolve()
