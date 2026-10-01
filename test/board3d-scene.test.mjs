@@ -58,6 +58,8 @@ function objectsNamed(root, prefix) {
 
 /** Наибольший подъём верха плитки (`TILE_JITTER` в src/board3d-landscape.ts). */
 const TILE_JITTER = 0.012
+/** Высота дверного полотна: стена 0.95 минус притолока (`board3d-scene.ts`). */
+const DOOR_LEAF_HEIGHT = 0.82
 
 test('3D-сцена создаёт пол только для раскрытых клеток', () => {
   const map = mapOf({ revealed: [{ x: 1, y: 1 }, { x: 2, y: 1 }] })
@@ -116,7 +118,7 @@ test('дверь и предмет получают основание по вы
   const groundTop = ground.geometry.getAttribute('position').getY(0)
   assert.ok(groundTop + 0.4 >= 0 && groundTop + 0.4 <= TILE_JITTER)
   const leaf = objectsNamed(scene.group, 'door-leaf:0,0,e:closed')[0]
-  assert.ok(Math.abs(leaf.position.y - (1 + 0.58 / 2)) < 1e-6, 'дверь стоит на максимуме двух раскрытых сторон ребра')
+  assert.ok(Math.abs(leaf.position.y - (1 + DOOR_LEAF_HEIGHT / 2)) < 1e-6, 'дверь стоит на максимуме двух раскрытых сторон ребра')
   const prop = scene.group.getObjectByName('prop:raised-prop')
   assert.ok(Math.abs(prop.position.y + 0.4) < 1e-6, 'опора следует за видимой клеткой футпринта')
   scene.dispose()
@@ -132,7 +134,7 @@ test('высота скрытого соседа не поднимает вид�
   setDoor(map, { id: 'hidden-high-door', x: 1, y: 0, dir: 'e', state: 'closed' })
   const scene = scene3d.createBoard3DScene(map)
   const leaf = objectsNamed(scene.group, 'door-leaf:1,0,e:closed')[0]
-  assert.ok(Math.abs(leaf.position.y - (0.4 + 0.58 / 2)) < 1e-6, 'туманная клетка не участвует в основании двери')
+  assert.ok(Math.abs(leaf.position.y - (0.4 + DOOR_LEAF_HEIGHT / 2)) < 1e-6, 'туманная клетка не участвует в основании двери')
   const ground = scene.group.getObjectByName('ground-plane')
   assert.equal(ground.geometry.getAttribute('position').count, 12, 'скрытая высокая клетка не появляется на поверхности')
   scene.dispose()
@@ -546,4 +548,37 @@ test('трава только на свободных травяных клет�
     assert.ok(!(Math.floor(position.x) === 0 && Math.floor(position.z) === 0), 'под предметом травы нет')
   }
   full.dispose()
+})
+
+const masonry = await import(pathToFileURL(join(outputDir, 'board3d-masonry.mjs')).href)
+
+test('кладка: камни вразбежку в пределах прогона, плахи у дерева, без теней от камней', () => {
+  const run = { x: 2, z: 3.5, y: 0, length: 1, thickness: 1 / 6, height: .95, alongX: true, color: '#8a8378', seed: 7 }
+  const stone = masonry.createMasonryDressing([{ ...run, style: 'stone' }])
+  const mesh = stone.group.children[0]
+  assert.ok(stone.count >= 10, 'стена в клетку сложена из рядов камней')
+  assert.equal(mesh.castShadow, false, 'тень даёт тело стены, камни в карты теней не идут')
+  const position = new THREE.Vector3(), scale = new THREE.Vector3()
+  for (let index = 0; index < mesh.count; index += 1) {
+    mesh.getMatrixAt(index, new THREE.Matrix4()).decompose(position, new THREE.Quaternion(), scale)
+    assert.ok(position.x - scale.x / 2 >= 1.5 - .03 && position.x + scale.x / 2 <= 2.5 + .03, 'камень не выходит за ребро клетки')
+    assert.ok(position.y > 0 && position.y < .95, 'камень в пределах высоты стены')
+  }
+  const again = masonry.createMasonryDressing([{ ...run, style: 'stone' }])
+  assert.deepEqual(Array.from(again.group.children[0].instanceMatrix.array), Array.from(mesh.instanceMatrix.array), 'рисунок кладки детерминирован')
+  const wood = masonry.createMasonryDressing([{ ...run, style: 'wood' }])
+  assert.equal(wood.group.children[0].name, 'masonry:wood')
+  stone.dispose(); again.dispose(); wood.dispose()
+  assert.equal(masonry.masonryStyleFor('wood'), 'wood')
+  assert.equal(masonry.masonryStyleFor('marble'), 'stone')
+})
+
+test('«Экономное»: стены без отдельных камней кладки', () => {
+  const map = mapOf({ revealed: [{ x: 1, y: 1 }, { x: 2, y: 1 }] })
+  setEdge(map, 1, 1, 2, 1, { kind: 'wall', blocksMove: true, blocksSight: true })
+  const full = scene3d.createBoard3DScene(map, { landscapeDetail: 'full' })
+  const low = scene3d.createBoard3DScene(map, { landscapeDetail: 'minimal' })
+  assert.ok(full.group.getObjectByName('wall-masonry'))
+  assert.equal(low.group.getObjectByName('wall-masonry'), undefined)
+  full.dispose(); low.dispose()
 })

@@ -2,6 +2,7 @@ import * as THREE from 'three'
 
 import { cellAt } from './tactical-map-client'
 import { terrainHeightAt } from './board3d-terrain'
+import { createMasonryDressing, masonryStyleFor, MASONRY_COLORS, type MasonryRun } from './board3d-masonry'
 import type { TacticalMap, TacticalProp } from './types'
 
 /**
@@ -67,12 +68,43 @@ function touchesInterior(map: TacticalMap, x: number, y: number) {
  * порода пещеры; различает их только соседство с помещением.
  */
 export function isMasonryCell(map: TacticalMap, x: number, y: number): boolean {
-  return isSolidCell(map, x, y) && touchesInterior(map, x, y)
+  if (!isSolidCell(map, x, y)) return false
+  const kind = themeSolidKind(map)
+  return kind === 'masonry' || kind === 'mixed' && touchesInterior(map, x, y)
 }
 
 /** Клетка-скала: непроходимая, не вода и не кладка. */
 export function isRockCell(map: TacticalMap, x: number, y: number): boolean {
-  return isSolidCell(map, x, y) && !touchesInterior(map, x, y)
+  if (!isSolidCell(map, x, y)) return false
+  const kind = themeSolidKind(map)
+  return kind === 'rock' || kind === 'mixed' && !touchesInterior(map, x, y)
+}
+
+/** Рукотворные темы: природной породы в них нет, непроходимое — кладка. */
+const BUILT_THEMES = new Set(['building', 'temple', 'crypt', 'palace', 'castle', 'fortress', 'dungeon', 'tower', 'authored-palace', 'interior'])
+/** Природные темы: непроходимое — порода и валуны. */
+const NATURAL_THEMES = new Set(['cave', 'forest', 'road', 'mine', 'wilderness', 'swamp', 'mountain'])
+
+/**
+ * Чем считать непроходимую клетку по теме карты. Поселение и карты без темы
+ * (в том числе импортированные) решают по соседству: стена дома — кладка,
+ * остальное — камень.
+ */
+export function themeSolidKind(map: TacticalMap): 'masonry' | 'rock' | 'mixed' {
+  const theme = String(map.theme ?? '').toLowerCase()
+  if (BUILT_THEMES.has(theme)) return 'masonry'
+  if (NATURAL_THEMES.has(theme)) return 'rock'
+  return 'mixed'
+}
+
+/** Все восемь соседей непроходимы или за краем карты. */
+function isSolidMass(map: TacticalMap, x: number, y: number) {
+  for (let dy = -1; dy <= 1; dy += 1) for (let dx = -1; dx <= 1; dx += 1) {
+    if (!dx && !dy) continue
+    const cell = cellAt(map, x + dx, y + dy)
+    if (cell?.revealed && cell.passable) return false
+  }
+  return true
 }
 
 /**
@@ -122,8 +154,10 @@ export function createTileGroundGeometry(map: TacticalMap): THREE.BufferGeometry
     const tint = 1 - cellNoise(x, y, 7) * .08
     const top = water ? level - WATER_BED_DEPTH : level + tileLift(x, y)
     const border = level - TILE_SEAM_DEPTH
-    const topShade: [number, number, number] = water ? [.42, .5, .48] : [tint, tint, tint]
-    const edgeShade: [number, number, number] = water ? [.6, .62, .55] : [tint * .82, tint * .8, tint * .76]
+    // Трава диорамы сочнее рисунка 2D: зелёный сдвиг верха плитки.
+    const grass = !water && cell.material === 'grass'
+    const topShade: [number, number, number] = water ? [.42, .5, .48] : grass ? [tint * .96, tint * 1.12, tint * .78] : [tint, tint, tint]
+    const edgeShade: [number, number, number] = water ? [.6, .62, .55] : grass ? [tint * .72, tint * .84, tint * .58] : [tint * .82, tint * .8, tint * .76]
     // Отступ верха и высота внешнего края по каждой стороне.
     const neighborWater: Record<Side, boolean> = {
       n: isWaterCell(map, x, y - 1), e: isWaterCell(map, x + 1, y), s: isWaterCell(map, x, y + 1), w: isWaterCell(map, x - 1, y),
@@ -243,13 +277,14 @@ export function createWaterMaterial(color = '#3c9a9a'): THREE.MeshStandardMateri
 
 /** Гранёный валун: икосаэдр со сдвинутыми вершинами, детерминированно по seed. */
 export function createBoulderGeometry(seed: number): THREE.BufferGeometry {
-  const base = new THREE.IcosahedronGeometry(.5, 0)
+  // Икосаэдр второго уровня с сильным разбросом — округлая глыба, а не кристалл.
+  const base = new THREE.IcosahedronGeometry(.5, 1)
   const position = base.getAttribute('position') as THREE.BufferAttribute
   // Совпадающие вершины соседних граней сдвигаются одинаково: валун без щелей.
   const offsets = new Map<string, number>()
   for (let index = 0; index < position.count; index += 1) {
     const key = `${position.getX(index).toFixed(3)}:${position.getY(index).toFixed(3)}:${position.getZ(index).toFixed(3)}`
-    if (!offsets.has(key)) offsets.set(key, .78 + cellNoise(index, seed, 11) * .38)
+    if (!offsets.has(key)) offsets.set(key, .8 + cellNoise(index * 1.7, seed, 11) * .34)
     const scale = offsets.get(key)!
     position.setXYZ(index, position.getX(index) * scale, position.getY(index) * scale * .82, position.getZ(index) * scale)
   }
@@ -267,7 +302,8 @@ const ROCK_PALETTES: Record<string, THREE.Color[]> = {
   stone: ['#7d776d', '#6f695f', '#8a8377', '#625d55'].map((value) => new THREE.Color(value)),
   sand: ['#b39b78', '#a38b69', '#bfa883', '#97815f'].map((value) => new THREE.Color(value)),
   earth: ['#7a6e60', '#6c6154', '#85796a', '#5f554a'].map((value) => new THREE.Color(value)),
-  grass: ['#8a8a74', '#7b7c66', '#97967f', '#6d6e5b'].map((value) => new THREE.Color(value)),
+  // Открытые места: тёплый кремовый песчаник, как у берегов диорамы.
+  grass: ['#c4ad86', '#b49c76', '#d0bb94', '#a58c67'].map((value) => new THREE.Color(value)),
 }
 function rockPalette(material: string | undefined) {
   if (material === 'sand') return ROCK_PALETTES.sand
@@ -275,7 +311,6 @@ function rockPalette(material: string | undefined) {
   if (material === 'grass') return ROCK_PALETTES.grass
   return ROCK_PALETTES.stone
 }
-const MASONRY_COLORS: Record<string, string> = { wood: '#6d5238', stone: '#8d8478', marble: '#b9b2a6', earth: '#8a6f52', sand: '#a8916f' }
 
 /**
  * Скалы: на каждой непроходимой клетке снаружи — груда из двух-трёх валунов,
@@ -290,6 +325,7 @@ export function createRockClusters(map: TacticalMap, detail: LandscapeDetail, wa
   const blockMaterial = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: .9, metalness: 0, flatShading: true })
   const rocks: Array<{ variant: number; matrix: THREE.Matrix4; color: THREE.Color }> = []
   const blocks: Array<{ matrix: THREE.Matrix4; color: THREE.Color }> = []
+  const masonryRuns: MasonryRun[] = []
   const perCell = detail === 'minimal' ? 1 : detail === 'reduced' ? 2 : 3
   const object = new THREE.Object3D()
   const block = (x: number, y: number, base: number, height: number, color: THREE.Color, inset = 0) => {
@@ -303,14 +339,32 @@ export function createRockClusters(map: TacticalMap, detail: LandscapeDetail, wa
     const cell = cellAt(map, x, y)
     if (!cell) continue
     const level = terrainHeightAt(map, x, y)
+    // Глухая толща постройки (вокруг только непроходимое): каменная площадка
+    // из плит со швами — одна плита на клетку вместо десятка камней кладки.
+    if (isMasonryCell(map, x, y) && isSolidMass(map, x, y)) {
+      const base = new THREE.Color(MASONRY_COLORS[cell.material] ?? MASONRY_COLORS.stone)
+      block(x, y, level, wallHeight - .02, base.clone().multiplyScalar(.4))
+      block(x, y, level + wallHeight - .06, .08, base.multiplyScalar(.78 + cellNoise(x, y, 33) * .2), .06)
+      continue
+    }
+    if (isMasonryCell(map, x, y) && detail === 'minimal') {
+      block(x, y, level, wallHeight, new THREE.Color(MASONRY_COLORS[cell.material] ?? MASONRY_COLORS.stone))
+      continue
+    }
     if (isMasonryCell(map, x, y)) {
-      block(x, y, level, wallHeight, new THREE.Color(MASONRY_COLORS[cell.material] ?? MASONRY_COLORS.stone).multiplyScalar(.9 + cellNoise(x, y, 31) * .1))
+      // Тёмное ядро и два ряда кладки крест-накрест: стена-клетка сложена
+      // теми же камнями, что и стены по рёбрам.
+      block(x, y, level, wallHeight - .06, new THREE.Color(masonryStyleFor(cell.material) === 'wood' ? '#2f2219' : '#2b2722'), .1)
+      const color = MASONRY_COLORS[cell.material] ?? MASONRY_COLORS.stone
+      const style = masonryStyleFor(cell.material)
+      masonryRuns.push({ x: x + .5, z: y + .25, y: level, length: 1, thickness: .42, height: wallHeight, alongX: true, style, color, seed: x * 13 + y * 29 })
+      masonryRuns.push({ x: x + .5, z: y + .75, y: level, length: 1, thickness: .42, height: wallHeight, alongX: true, style, color, seed: x * 13 + y * 29 + 5 })
       continue
     }
     if (!isRockCell(map, x, y)) continue
     const palette = rockPalette(cell.material)
     const pick = (salt: number) => palette[Math.floor(cellNoise(x, y, salt) * palette.length) % palette.length]
-    if (isRockCore(map, x, y)) {
+    if (isRockCore(map, x, y) && (cell.material === 'earth' || cell.material === 'stone' || themeSolidKind(map) === 'rock' && map.theme === 'cave')) {
       // Толща: блок неровной высоты; соседние блоки разной высоты дают
       // ступенчатую гряду, как у сложенных плиток диорамы.
       // Толща темнее кромки: свет падает на верх массива, и светлый камень
@@ -329,13 +383,15 @@ export function createRockClusters(map: TacticalMap, detail: LandscapeDetail, wa
       }
       continue
     }
-    // Кромка: крупные валуны, сросшиеся с соседними клетками в гряду.
+    // Кромка: широкая плоская глыба в основании и глыбы поменьше сверху —
+    // слоистая гряда, сросшаяся с соседними клетками.
     for (let index = 0; index < perCell; index += 1) {
       const n = (salt: number) => cellNoise(x, y, salt + index * 13)
-      const size = index === 0 ? 1.15 + n(1) * .3 : .65 + n(1) * .35
-      const tall = index === 0 ? 1.05 + n(2) * .5 : .6 + n(2) * .5
-      const spread = index === 0 ? .08 : .28
-      object.position.set(x + .5 + (n(3) - .5) * spread * 2, level + tall * .3, y + .5 + (n(4) - .5) * spread * 2)
+      const size = index === 0 ? 1.35 + n(1) * .3 : .7 + n(1) * .35
+      const tall = index === 0 ? .7 + n(2) * .25 : .55 + n(2) * .4
+      const spread = index === 0 ? .06 : .26
+      const lift = index === 0 ? tall * .3 : .38 + tall * .22
+      object.position.set(x + .5 + (n(3) - .5) * spread * 2, level + lift, y + .5 + (n(4) - .5) * spread * 2)
       object.rotation.set((n(5) - .5) * .4, n(6) * Math.PI * 2, (n(7) - .5) * .4)
       object.scale.set(size, tall, size * (.85 + n(8) * .3))
       object.updateMatrix()
@@ -354,6 +410,8 @@ export function createRockClusters(map: TacticalMap, detail: LandscapeDetail, wa
     mesh.computeBoundingSphere()
     group.add(mesh)
   })
+  const masonry = masonryRuns.length ? createMasonryDressing(masonryRuns, 'cell-masonry') : null
+  if (masonry) group.add(masonry.group)
   if (blocks.length) {
     const mesh = new THREE.InstancedMesh(blockGeometry, blockMaterial, blocks.length)
     blocks.forEach((entry, index) => { mesh.setMatrixAt(index, entry.matrix); mesh.setColorAt(index, entry.color) })
@@ -373,6 +431,7 @@ export function createRockClusters(map: TacticalMap, detail: LandscapeDetail, wa
       material.dispose()
       blockGeometry.dispose()
       blockMaterial.dispose()
+      masonry?.dispose()
     },
   }
 }

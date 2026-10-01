@@ -103,7 +103,9 @@ export const SCENE_THEMES = Object.freeze([
     live: true,
     material: 'grass',
     match: /лес|чащ|рощ|бор|дубрав|пущ|тайг/iu,
-    density: 16,
+    // Каменная кромка забирает край участка: плотность выше, чтобы чаща
+    // осталась чащей (v3 открытой местности).
+    density: 22,
     require: ['tree_oak', 'tree_spruce', 'tree_birch', 'fallen_log', 'campfire'],
     prefer: ['tree_oak', 'tree_spruce', 'tree_birch', 'tree_pine', 'tree_dead', 'tree_stump', 'bush', 'shrub', 'boulder', 'fern', 'campfire'],
   },
@@ -673,6 +675,13 @@ export function layoutOrganicCave(theme, {
  * @param {{seed?: string, width?: number, height?: number, locationId?: string}} [options]
  * @returns {import('./tactical-map.mjs').TacticalMap}
  */
+/**
+ * Версия генератора открытой местности. 3 — петляющая река с каменистыми
+ * берегами, скалистая кромка участка и пруд в лесу. Сохранённые карты не
+ * перегенерируются: их версия остаётся прежней.
+ */
+export const OPEN_TERRAIN_GENERATOR_VERSION = '3'
+
 export function layoutOpenTerrain(theme, { seed = 'open', width = 26, height = 26, locationId = '' } = {}) {
   const safeWidth = Math.max(12, Math.min(SIZE_CLASSES.area.maxWidth, Math.round(width)))
   const safeHeight = Math.max(12, Math.min(SIZE_CLASSES.area.maxHeight, Math.round(height)))
@@ -682,7 +691,7 @@ export function layoutOpenTerrain(theme, { seed = 'open', width = 26, height = 2
     height: safeHeight,
     locationId,
     seed: String(seed),
-    generator: { id: `theme-${theme.id}`, version: '2' },
+    generator: { id: `theme-${theme.id}`, version: OPEN_TERRAIN_GENERATOR_VERSION },
     theme: theme.id,
     sizeClass: safeWidth * safeHeight <= SIZE_CLASSES.arena.maxCells ? 'arena' : 'area',
   })
@@ -735,14 +744,67 @@ export function layoutOpenTerrain(theme, { seed = 'open', width = 26, height = 2
         surface: 'none', moveCost: 1, zone: 'field', revealed: true } })
     }
   }
+  // Скалистая кромка по контуру участка: край карты читается грядой камня, а
+  // не обрывом плиток в пустоту. Дорогу и вход кромка не перекрывает.
+  /** @param {number} x @param {number} y */
+  const onRoadAt = (x, y) => theme.road && (Math.abs(y - trailY(x)) <= 1 || fork && Math.abs(x - forkX) <= 1 && y <= trailY(x))
+  /** @param {number} x @param {number} y */
+  const nearEntrance = (x, y) => x <= 5 && Math.abs(y - entranceY) <= 2
+  const rimNoise = randomFor(`open-rim:${theme.id}:${seed}`)
+  /** @param {number} x @param {number} y */
+  const isEdge = (x, y) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => !terrainCells.has(`${x + dx},${y + dy}`))
+  const edgeCells = [...terrainCells.values()].filter((cell) => isEdge(cell.x, cell.y))
+  /** @param {{x: number, y: number, patch: Record<string, any>}} cell */
+  const toRock = (cell) => { cell.patch = { ...cell.patch, passable: false, surface: 'none', moveCost: 1 } }
+  for (const cell of edgeCells) {
+    if (onRoadAt(cell.x, cell.y) || nearEntrance(cell.x, cell.y)) continue
+    toRock(cell)
+  }
+  // Второй, неровный слой кромки — гряда, а не ровный бордюр. В лесу он
+  // редкий: опушку держат деревья, и чаща не должна редеть.
+  for (const cell of terrainCells.values()) {
+    if (!cell.patch.passable || onRoadAt(cell.x, cell.y) || nearEntrance(cell.x, cell.y)) continue
+    const besideRim = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => edgeCells.some((edge) => edge.x === cell.x + dx && edge.y === cell.y + dy && !edge.patch.passable))
+    if (besideRim && rimNoise() < (theme.id === 'forest' ? 0.08 : 0.32)) toRock(cell)
+  }
   if (theme.river) {
     addZone(map, { id: 'water', kind: 'exterior', material: theme.material, lightLevel: 'bright', label: 'Река' })
     addZone(map, { id: 'crossing', kind: 'exterior', material: theme.bridgeMaterial, lightLevel: 'bright', label: 'Мост' })
+    // Река петляет: русло смещается по синусоиде и местами разливается шире.
     const riverX = Math.floor(safeWidth * (0.45 + random() * 0.15))
-    for (const cell of terrainCells.values()) if (Math.abs(cell.x - riverX) <= 1) {
+    const meander = 1 + Math.floor(random() * 2)
+    const riverPhase = random() * Math.PI * 2
+    /** @param {number} y */
+    const riverCenter = (y) => riverX + Math.round(Math.sin(y * 0.33 + riverPhase) * meander)
+    /** @param {number} y */
+    const riverHalf = (y) => Math.sin(y * 0.71 + riverPhase * 2) > 0.72 ? 2 : 1
+    for (const cell of terrainCells.values()) {
+      if (Math.abs(cell.x - riverCenter(cell.y)) > riverHalf(cell.y)) continue
       const bridge = Math.abs(cell.y - trailY(cell.x)) <= 1
       cell.patch = { ...cell.patch, passable: bridge, surface: bridge ? 'none' : 'water',
-        material: bridge ? theme.bridgeMaterial : theme.material, zone: bridge ? 'crossing' : 'water' }
+        material: bridge ? theme.bridgeMaterial : theme.material, zone: bridge ? 'crossing' : 'water', moveCost: 1 }
+    }
+    // Каменистые берега: часть клеток у воды — валуны, но не у моста.
+    const bankNoise = randomFor(`open-bank:${theme.id}:${seed}`)
+    for (const cell of terrainCells.values()) {
+      if (!cell.patch.passable || cell.patch.zone === 'crossing' || onRoadAt(cell.x, cell.y) || nearEntrance(cell.x, cell.y)) continue
+      const nearWater = [[1, 0], [-1, 0]].some(([dx]) => terrainCells.get(`${cell.x + dx},${cell.y}`)?.patch.surface === 'water')
+      const nearBridge = [[0, 1], [0, -1], [0, 2], [0, -2]].some(([, dy]) => terrainCells.get(`${cell.x},${cell.y + dy}`)?.patch.zone === 'crossing')
+      if (nearWater && !nearBridge && bankNoise() < 0.38) toRock(cell)
+    }
+  } else if (theme.id === 'forest' && random() < 0.55) {
+    // Пруд на поляне в стороне от тропы и входа: неровное пятно воды.
+    addZone(map, { id: 'water', kind: 'exterior', material: theme.material, lightLevel: 'bright', label: 'Пруд' })
+    const pondX = Math.floor(safeWidth * (0.55 + random() * 0.25))
+    const pondY = trailY(pondX) + (random() < 0.5 ? -1 : 1) * Math.floor(safeHeight * 0.25)
+    const radius = 2 + random() * 1.4
+    for (const cell of terrainCells.values()) {
+      if (!cell.patch.passable || onRoadAt(cell.x, cell.y) || nearEntrance(cell.x, cell.y)) continue
+      const angle = Math.atan2(cell.y - pondY, cell.x - pondX)
+      const reach = radius * (1 + Math.sin(angle * 3 + pondX) * 0.22)
+      if (Math.hypot(cell.x - pondX, cell.y - pondY) <= reach) {
+        cell.patch = { ...cell.patch, passable: false, surface: 'water', zone: 'water', moveCost: 1 }
+      }
     }
   }
   // Пересечение двух неровных контуров иногда оставляет отдельную угловую
@@ -759,9 +821,24 @@ export function layoutOpenTerrain(theme, { seed = 'open', width = 26, height = 2
       queue.push(next)
     }
   }
+  // Скалы и вода не должны отрезать часть поляны от входа: недостижимые
+  // проходимые клетки становятся камнем, а не ловушкой для отряда.
+  const walkable = new Set([`1,${entranceY}`])
+  const walkQueue = [{ x: 1, y: entranceY }]
+  for (let index = 0; index < walkQueue.length; index += 1) {
+    const point = walkQueue[index]
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const key = `${point.x + dx},${point.y + dy}`
+      if (walkable.has(key) || !connected.has(key) || !terrainCells.get(key)?.patch.passable) continue
+      walkable.add(key)
+      walkQueue.push({ x: point.x + dx, y: point.y + dy })
+    }
+  }
   for (const point of queue) {
     const cell = terrainCells.get(`${point.x},${point.y}`)
-    if (cell) setCell(map, cell.x, cell.y, cell.patch)
+    if (!cell) continue
+    if (cell.patch.passable && !walkable.has(`${point.x},${point.y}`)) toRock(cell)
+    setCell(map, cell.x, cell.y, cell.patch)
   }
   map.spawnPoints.push({ id: 'party-entrance', x: 1, y: entranceY, role: 'party' })
   map.overlays = { compass: true, scaleBar: true, roomLabels: [{ zoneId: 'field', label: theme.label }] }

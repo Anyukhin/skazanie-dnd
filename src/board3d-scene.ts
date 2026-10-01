@@ -24,10 +24,12 @@ import { LIGHT_SOURCE_ASSETS, lightSourceAssetId } from './board-lighting'
 import { batchEnvironmentMeshes } from './board3d-batching'
 import { createTerrainSideGeometry, createTerrainSurfaceGeometry, propTerrainHeight, terrainHeightAt } from './board3d-terrain'
 import { createBoard3DRoofs, type Board3DRoofMode } from './board3d-roofs'
+import { createMasonryDressing, masonryStyleFor, MASONRY_COLORS, type MasonryRun } from './board3d-masonry'
 import { createBridgeRails, createGrassTufts, createRockClusters, createTileGroundGeometry, createWaterMaterial, createWaterSurfaceGeometry, isRockCell, type LandscapeDetail } from './board3d-landscape'
 
 /** Высота срезанной стены в мировых единицах клетки. */
-export const BOARD3D_WALL_HEIGHT = 0.68
+/** Высота стены: выше пояса фигурки, как у наборных диорам, но не закрывает поле при взгляде сверху. */
+export const BOARD3D_WALL_HEIGHT = 0.95
 /** Граница стены совпадает с границей клеток, как и в 2D-доске. */
 export const BOARD3D_WALL_THICKNESS = 1 / 6
 /** Небольшая отделка среза стены не меняет её игровую границу. */
@@ -52,6 +54,8 @@ export type Board3DOptions = {
   artOverlayOpacity?: number
   /** Детализация местности: густота травы и валунов, анимация воды. */
   landscapeDetail?: LandscapeDetail
+  /** Сумрак карты 0..1: в подземелье огни ярче, шире и их больше. */
+  darkness?: number
   onReady?: () => void
 }
 
@@ -357,7 +361,9 @@ function edgeFloorHeight(map: TacticalMap, edge: TacticalEdge) {
   return heights.length ? Math.max(...heights) : 0
 }
 
-function addEdgeScene(resources: OwnedResources, map: TacticalMap, parent: THREE.Group, palette: BoardPalette) {
+function addEdgeScene(resources: OwnedResources, map: TacticalMap, parent: THREE.Group, palette: BoardPalette, detail: LandscapeDetail = 'reduced') {
+  // На «Экономном» стена — гладкий блок цвета кладки, без отдельных камней.
+  const dressed = detail !== 'minimal'
   const wallPieces: EdgePiece[] = []
   const lowPieces: EdgePiece[] = []
   const framePieces: EdgePiece[] = []
@@ -365,6 +371,8 @@ function addEdgeScene(resources: OwnedResources, map: TacticalMap, parent: THREE
   const wallBeamPieces: EdgePiece[] = []
   const wallCutPieces: EdgePiece[] = []
   const cornerPostPieces: EdgePiece[] = []
+  // Кладка поверх тела стены: камни или плахи по материалу клетки.
+  const masonryRuns: MasonryRun[] = []
   const doorGroup = new THREE.Group()
   doorGroup.name = 'doors'
   const doorTrimGroup = new THREE.Group()
@@ -425,7 +433,16 @@ function addEdgeScene(resources: OwnedResources, map: TacticalMap, parent: THREE
     })
 
     if (edge.kind === 'wall') {
-      wallPieces.push(piece(BOARD3D_WALL_HEIGHT))
+      const style = masonryStyleFor(side?.material)
+      const body = piece(BOARD3D_WALL_HEIGHT)
+      // Тело стены — тёмный шов между камнями; лицо стены дают камни кладки.
+      if (dressed) body.color = style === 'wood' ? '#2f2219' : '#2b2722'
+      wallPieces.push(body)
+      if (dressed) masonryRuns.push({
+        x: center.x, z: center.z, y: floorY, length: 1, thickness: BOARD3D_WALL_THICKNESS, height: BOARD3D_WALL_HEIGHT,
+        alongX: horizontal, style, color: MASONRY_COLORS[side?.material ?? 'stone'] ?? MASONRY_COLORS.stone,
+        seed: edge.x * 31 + edge.y * 17 + (horizontal ? 7 : 3),
+      })
       const cap = piece(BOARD3D_WALL_CAP_HEIGHT, 1, BOARD3D_WALL_THICKNESS)
       cap.y = floorY + BOARD3D_WALL_HEIGHT + BOARD3D_WALL_CAP_HEIGHT / 2
       cap.color = palette.ledge
@@ -486,7 +503,7 @@ function addEdgeScene(resources: OwnedResources, map: TacticalMap, parent: THREE
     const frameMaterial = material(resources, palette.doorFrame)
     const leafMaterial = material(resources, boardFillColor({ kind: 'door', state }, palette, false))
     const frameWidth = 0.09
-    const leafHeight = 0.58
+    const leafHeight = BOARD3D_WALL_HEIGHT - 0.13
     const baseX = center.x
     const baseZ = center.z
 
@@ -553,6 +570,16 @@ function addEdgeScene(resources: OwnedResources, map: TacticalMap, parent: THREE
   addInstancedPieces(resources, walls, 'wall-segments', wallPieces)
   addInstancedPieces(resources, walls, 'edge-segments', lowPieces)
   addInstancedPieces(resources, walls, 'opening-frames', framePieces)
+
+  if (masonryRuns.length) {
+    const masonry = createMasonryDressing(masonryRuns, 'wall-masonry')
+    for (const child of masonry.group.children) {
+      const instanced = child as THREE.InstancedMesh
+      resources.geometries.add(instanced.geometry)
+      resources.materials.add(instanced.material as THREE.Material)
+    }
+    walls.add(masonry.group)
+  }
 
   const wallCaps = new THREE.Group()
   wallCaps.name = 'wall-caps'
@@ -680,7 +707,7 @@ function paintTerrainCanvas(resources: OwnedResources, map: TacticalMap, palette
   }
 }
 
-function addProps(map: TacticalMap, parent: THREE.Group, lighting: boolean, pointLightShadows: boolean, palette: BoardPalette, assets?: PropModelAssets | null) {
+function addProps(map: TacticalMap, parent: THREE.Group, lighting: boolean, pointLightShadows: boolean, palette: BoardPalette, assets?: PropModelAssets | null, darkness = 0) {
   const library = createEnvironmentModels(palette, assets)
   const propsGroup = new THREE.Group()
   propsGroup.name = 'props'
@@ -706,14 +733,21 @@ function addProps(map: TacticalMap, parent: THREE.Group, lighting: boolean, poin
     }
     propsGroup.add(model)
     const sourceId = lightSourceAssetId(prop.assetId)
-    if (!lighting || !sourceId || lights.length >= 4) continue
+    // Источник света не отбрасывает тень сам: иначе чаша жаровни кладёт под
+    // себя тёмный диск от собственного огня.
+    if (sourceId) model.traverse((object) => { if ((object as THREE.Mesh).isMesh) object.castShadow = false })
+    // В сумраке огней больше и они сильнее: они — главный свет подземелья.
+    if (!lighting || !sourceId || lights.length >= 4 + Math.round(4 * darkness)) continue
     const profile = LIGHT_SOURCE_ASSETS[sourceId]
-    const light = new THREE.PointLight(palette.lightWarm, 1.35, Math.min(8, profile.radius), 2)
+    const light = new THREE.PointLight(palette.lightWarm, 1.35 + 16 * darkness, Math.min(8, profile.radius) * (1 + .7 * darkness), 2)
     light.name = 'fire-light'
     light.position.copy(model.position)
-    light.position.y += (Number(model.userData.lightHeight) || .55) * model.scale.y
-    light.castShadow = pointLightShadows
-    light.shadow.mapSize.set(256, 256)
+    // Огонь чуть выше чаши: иначе сама чаша отбрасывает на пол ломаное кольцо тени.
+    light.position.y += (Number(model.userData.lightHeight) || .55) * model.scale.y + .22
+    light.castShadow = pointLightShadows && lights.length < 4
+    // Край светового пятна мягкий: грубая кубическая карта давала ломаные тени.
+    light.shadow.mapSize.set(512, 512)
+    light.shadow.radius = 4
     light.shadow.camera.near = .1
     light.shadow.camera.far = Math.min(8, profile.radius)
     // Карта 256 на кубе даёт крупный тексель: без смещения стены и пол
@@ -899,8 +933,9 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
 
   const roofs = createBoard3DRoofs(map, palette, { wallHeight: BOARD3D_WALL_HEIGHT, mode: options.roofMode })
   group.add(roofs.group)
-  addEdgeScene(resources, map, group, palette)
-  let props = addProps(map, group, options.lighting !== false, options.pointLightShadows !== false, palette)
+  addEdgeScene(resources, map, group, palette, options.landscapeDetail ?? 'reduced')
+  const darkness = Math.max(0, Math.min(1, options.darkness ?? 0))
+  let props = addProps(map, group, options.lighting !== false, options.pointLightShadows !== false, palette, null, darkness)
   let propAssets: PropModelAssets | null = null
   const propAbort = new AbortController()
   if (typeof window !== 'undefined') {
@@ -908,7 +943,7 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     void loadPropModelAssets(visibleProps, propAbort.signal, map.catalogRevision).then((assets) => {
       if (!assets) return
       if (disposed) { assets.dispose(); return }
-      const replacement = addProps(map, group, options.lighting !== false, options.pointLightShadows !== false, palette, assets)
+      const replacement = addProps(map, group, options.lighting !== false, options.pointLightShadows !== false, palette, assets, darkness)
       props.dispose()
       props = replacement
       propAssets = assets

@@ -63,3 +63,16 @@ test('свет: заливка слабее солнца, подложка не 
 test('без DOM фон-виньетка не создаётся и не ломает сцену', () => {
   assert.equal(graphics.createBoardBackdropTexture(), null)
 })
+
+test('сумрак: подземелье темнее помещения при свете, открытая местность — дневная', () => {
+  const cellsOf = (zone) => (x, y) => ({ revealed: true, passable: true, zone })
+  const map = (kind, lightLevel) => ({ width: 2, height: 2, zones: [{ id: 'z', kind, lightLevel }] })
+  assert.equal(graphics.boardDarkness(map('exterior', 'bright'), cellsOf('z')), 0)
+  assert.equal(graphics.boardDarkness(map('interior', 'dark'), cellsOf('z')), 1)
+  assert.ok(graphics.boardDarkness(map('interior', 'bright'), cellsOf('z')) < graphics.boardDarkness(map('interior', 'dim'), cellsOf('z')))
+  assert.equal(graphics.boardDarkness(map('exterior', 'bright'), () => null), 0, 'пустая карта — без сумрака')
+  const day = graphics.lightingForDarkness(0), night = graphics.lightingForDarkness(1)
+  assert.equal(day.sun, graphics.BOARD3D_LIGHTING.sun.intensity)
+  assert.ok(night.sun < day.sun * .1, 'в подземелье солнце почти гаснет')
+  assert.ok(night.hemisphere < day.hemisphere)
+})
