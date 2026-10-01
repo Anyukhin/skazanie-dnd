@@ -1354,58 +1354,74 @@ async function createGlbModel(input: NormalizedActorModelInput, entry: ActorMode
   const root = new Group()
   root.name = `glb-${entry.key}-${input.id}`
   root.add(gltf.scene)
-  enableActorShadows(root)
-  fitToHeight(root, targetHeight, false)
-  // Запрос может быть отменён уже после parse callback. Не отдаём компоненту
-  // частично готовую сцену и сразу освобождаем поздно пришедший результат.
-  if (options.signal?.aborted) {
-    disposeObject(root)
-    throw options.signal.reason ?? new Error('Загрузка модели отменена')
-  }
-  const kaykitLeft = objectByName(root, 'handslot.l', 'handslotl')
-  const kaykitRight = objectByName(root, 'handslot.r', 'handslotr')
-  const quaterniusLeft = objectByName(root, 'hand_l', 'Fist.L', 'FistL')
-  const quaterniusRight = objectByName(root, 'hand_r', 'Fist.R', 'FistR')
-  const socketKind = kaykitLeft || kaykitRight ? 'kaykit' : entry.profile === 'goblin' || entry.profile === 'skeleton' ? 'native' : quaterniusLeft || quaterniusRight ? 'quaternius' : 'native'
-  const idleClip = gltf.animations?.find((clip) => clipPose(clip) === 'idle')
-  const calibrationMixer = idleClip ? new AnimationMixer(root) : undefined
-  const calibrationAction = calibrationMixer && idleClip ? calibrationMixer.clipAction(idleClip).reset().setLoop(LoopOnce, 1).play() : undefined
-  if (calibrationMixer && calibrationAction) {
-    // Сокеты калибруются по видимой стойке ожидания. Временный mixer полностью
-    // останавливается до создания рабочего, поэтому калибровка не смешивается
-    // с анимациями атаки и заклинания.
-    calibrationAction.paused = true
-    calibrationAction.time = 0
-    calibrationMixer.update(0)
-    root.updateMatrixWorld(true)
-  }
-  const equipmentController = createAccessoryController({
-    root, palette: PALETTES[entry.profile],
-    leftParent: kaykitLeft ?? quaterniusLeft, rightParent: kaykitRight ?? quaterniusRight, socketKind,
-    worldScale: targetHeight / DEFAULT_HEIGHT,
-  })
-  let loadoutController: ReturnType<typeof createEquipmentController>
+  // Всё, что создано после разбора, освобождается при любой ошибке ниже:
+  // иначе геометрии, материалы и текстуры брошенной сцены остались бы в памяти.
+  let equipmentController: AccessoryController | undefined
+  let loadoutController: ReturnType<typeof createEquipmentController> | undefined
+  let mixer: AnimationMixer | undefined
+  let model: ActorModel | undefined
   try {
-    equipmentController.setEquipment(input.appearance?.version === 2 ? 'unarmed' : input.appearance?.equipment)
-    loadoutController = createEquipmentController(root, {
-      height: targetHeight, profile: entry.profile, fetcher: options.fetcher, signal: options.signal,
-      onChange: () => (root as ActorModel).onEquipmentChange?.(),
+    enableActorShadows(root)
+    fitToHeight(root, targetHeight, false)
+    // Запрос может быть отменён уже после parse callback. Не отдаём компоненту
+    // частично готовую сцену и сразу освобождаем поздно пришедший результат.
+    if (options.signal?.aborted) {
+      throw options.signal.reason ?? new Error('Загрузка модели отменена')
+    }
+    const kaykitLeft = objectByName(root, 'handslot.l', 'handslotl')
+    const kaykitRight = objectByName(root, 'handslot.r', 'handslotr')
+    const quaterniusLeft = objectByName(root, 'hand_l', 'Fist.L', 'FistL')
+    const quaterniusRight = objectByName(root, 'hand_r', 'Fist.R', 'FistR')
+    const socketKind = kaykitLeft || kaykitRight ? 'kaykit' : entry.profile === 'goblin' || entry.profile === 'skeleton' ? 'native' : quaterniusLeft || quaterniusRight ? 'quaternius' : 'native'
+    const idleClip = gltf.animations?.find((clip) => clipPose(clip) === 'idle')
+    const calibrationMixer = idleClip ? new AnimationMixer(root) : undefined
+    const calibrationAction = calibrationMixer && idleClip ? calibrationMixer.clipAction(idleClip).reset().setLoop(LoopOnce, 1).play() : undefined
+    if (calibrationMixer && calibrationAction) {
+      // Сокеты калибруются по видимой стойке ожидания. Временный mixer полностью
+      // останавливается до создания рабочего, поэтому калибровка не смешивается
+      // с анимациями атаки и заклинания.
+      calibrationAction.paused = true
+      calibrationAction.time = 0
+      calibrationMixer.update(0)
+      root.updateMatrixWorld(true)
+    }
+    equipmentController = createAccessoryController({
+      root, palette: PALETTES[entry.profile],
+      leftParent: kaykitLeft ?? quaterniusLeft, rightParent: kaykitRight ?? quaterniusRight, socketKind,
+      worldScale: targetHeight / DEFAULT_HEIGHT,
     })
-  } finally {
-    calibrationAction?.stop()
-    calibrationMixer?.uncacheRoot(root)
+    try {
+      equipmentController.setEquipment(input.appearance?.version === 2 ? 'unarmed' : input.appearance?.equipment)
+      loadoutController = createEquipmentController(root, {
+        height: targetHeight, profile: entry.profile, fetcher: options.fetcher, signal: options.signal,
+        onChange: () => (root as ActorModel).onEquipmentChange?.(),
+      })
+    } finally {
+      calibrationAction?.stop()
+      calibrationMixer?.uncacheRoot(root)
+    }
+    mixer = gltf.animations?.length ? new AnimationMixer(root) : undefined
+    const actions = mixer ? new Map<ActorPose, AnimationAction>() : undefined
+    if (mixer && actions) for (const clip of gltf.animations) {
+      const pose = clipPose(clip)
+      if (pose && !actions.has(pose)) actions.set(pose, mixer.clipAction(clip))
+    }
+    const aimPose = createGlbAimPose(root)
+    const attackPose = createGlbAttackPose(root)
+    model = decorateModel(root, input, entry, 'glb', targetHeight, undefined, mixer, actions, equipmentController, aimPose, attackPose, loadoutController)
+    if (calibrationAction) { model.setPose('idle', 0); model.update(.001) }
+    return model
+  } catch (error) {
+    if (model) model.dispose()
+    else {
+      mixer?.stopAllAction()
+      mixer?.uncacheRoot(root)
+      loadoutController?.dispose()
+      equipmentController?.dispose()
+      disposeObject(root)
+    }
+    throw error
   }
-  const mixer = gltf.animations?.length ? new AnimationMixer(root) : undefined
-  const actions = mixer ? new Map<ActorPose, AnimationAction>() : undefined
-  if (mixer && actions) for (const clip of gltf.animations) {
-    const pose = clipPose(clip)
-    if (pose && !actions.has(pose)) actions.set(pose, mixer.clipAction(clip))
-  }
-  const aimPose = createGlbAimPose(root)
-  const attackPose = createGlbAttackPose(root)
-  const model = decorateModel(root, input, entry, 'glb', targetHeight, undefined, mixer, actions, equipmentController, aimPose, attackPose, loadoutController)
-  if (calibrationAction) { model.setPose('idle', 0); model.update(.001) }
-  return model
 }
 
 /** Создаёт фигурку синхронно; удобно для первого кадра и fallback без сети. */
@@ -1414,6 +1430,14 @@ export function createProceduralActorModel(input: ActorModelInput, manifest: Act
   const entry = resolveModelProfile(normalized, manifest)
   const targetHeight = finitePositive(height, entry.height ?? DEFAULT_HEIGHT)
   const built = entry.profile === 'beast' ? buildBeast(normalized) : buildHumanoid(normalized, entry.profile)
+  // Встроенная фигурка собрана лицом в −Z, а доска, GLB-модели и слой
+  // экипировки считают перёд по +Z. Разворачивается только тело: корень
+  // остаётся без поворота, и плащ одежды ложится на спину, а не на грудь.
+  const body = new Group()
+  body.name = 'procedural-body'
+  body.rotation.y = Math.PI
+  body.add(...built.root.children)
+  built.root.add(body)
   const equipmentController = createProceduralEquipment(built.rig, entry.profile, PALETTES[entry.profile], normalized)
   fitToHeight(built.root, targetHeight)
   const model = decorateModel(built.root, normalized, entry, 'procedural', targetHeight, built.rig, undefined, undefined, equipmentController)

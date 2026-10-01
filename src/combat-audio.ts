@@ -1,5 +1,5 @@
 import { attackOutcome, attackVisualStyleForActor, strikeImpactProgress, strikeLaunchProgress, strikeUsesProjectile, type AttackActorVisual, type AttackOutcome, type AttackVisualStyle, type CombatAnimationCue, type SpellAnimationCue } from './combat-animation'
-import { spellEffectPalette, type SpellSoundFamily } from './spell-effects'
+import { spellEffectPalette, type MagicSchool, type SpellSoundFamily } from './spell-effects'
 
 export type CombatAudioPhase = 'start' | 'launch' | 'contact' | 'complete'
 
@@ -35,11 +35,36 @@ export type CombatAudioStructuredManifest = {
 /** Единственный runtime-контракт записанных боевых клипов. */
 export type CombatAudioManifest = CombatAudioStructuredManifest
 
+/**
+ * Положение источника звука на экране: панорама -1 (слева) … 1 (справа) и
+ * множитель громкости 0…1 для далёкого или ушедшего за кадр события. Это
+ * обработка записи, а не синтез: сигнал по-прежнему берётся только из файла.
+ */
+export type CombatAudioSpatial = {
+  pan?: number
+  gain?: number
+}
+
 export type CombatAudioCueOptions = {
   /** Прослушивание в выборе действия не блокирует подтверждённое событие. */
   preview?: boolean
   /** Публичный снимок actor нужен для профиля natural/beast атаки. */
   actor?: AttackActorVisual | null
+  /**
+   * Экранное положение исполнителя (`source`: cast/launch) и цели (`target`:
+   * contact). Без него звук остаётся по центру и без ослабления.
+   */
+  spatial?: {
+    source?: CombatAudioSpatial | null
+    target?: CombatAudioSpatial | null
+  } | null
+}
+
+/** Просьба приглушить атмосферную петлю на время громкого боевого звука. */
+export type CombatAudioDuckRequest = {
+  /** Доля, на которую убирается фон: 0 — не трогать, .5 — вдвое тише. */
+  depth: number
+  holdMs: number
 }
 
 export type CombatAudioLoader = (url: string, context: AudioContext) => Promise<AudioBuffer>
@@ -74,6 +99,39 @@ const PHASE_MIN_WINDOW_MS = 120
 const MAX_AUDIO_TAIL_MS = 1_400
 const FADE_MIN_MS = 20
 const FADE_MAX_MS = 40
+/** Обрезанный окном длинный клип (лечение, щит) уходит мягко, а не щелчком. */
+const TRUNCATED_FADE_MAX_MS = 260
+/** Перехват голоса лимитом полифонии — короткий спад вместо щелчка. */
+const STEAL_FADE_S = .015
+/** Одна запись звучит не больше чем двумя голосами одновременно. */
+export const COMBAT_AUDIO_CLIP_VOICE_LIMIT = 2
+
+/**
+ * Уровни фаз относительно попадания, дБ. Все записи пакета приведены к одной
+ * громкости (-18 LUFS), поэтому иерархию «замах тише удара, крит громче»
+ * задаёт воспроизведение: иначе подготовка заклинания звучит как его взрыв.
+ */
+export const COMBAT_AUDIO_PHASE_LEVEL_DB: Readonly<Record<string, number>> = Object.freeze({
+  cast: -5,
+  launch: -3,
+  impact: 0,
+  critical: 2,
+  blocked: -2,
+  miss: -4,
+  complete: -6,
+})
+/** Подложка крита (`criticalLayer`) — тело удара под основной записью. */
+const CRITICAL_LAYER_LEVEL_DB = -5
+/** Случайный разброс повтора: ±5 % скорости и ±1.5 дБ громкости. */
+export const COMBAT_AUDIO_RATE_SPREAD = .05
+export const COMBAT_AUDIO_GAIN_SPREAD_DB = 1.5
+/** Крит звучит чуть ниже — тяжелее, но в пределах естественного разброса. */
+const CRITICAL_RATE = .97
+/** Панорама не уходит в один канал: в наушниках жёсткий край режет слух. */
+export const COMBAT_AUDIO_MAX_PAN = .7
+const MIN_SPATIAL_GAIN = .5
+/** Насколько убирается атмосфера под громкой фазой. */
+const DUCK_DEPTH: Readonly<Record<string, number>> = Object.freeze({ impact: .35, critical: .5, blocked: .3 })
 
 /**
  * Профили намеренно конечны: десятки карт заклинаний делят записанный звук по
@@ -142,7 +200,23 @@ function cueIsHidden(cue: CombatAnimationCue): boolean {
     || candidate.visibility === 'hidden' || candidate.visibility === 'gm_only'
 }
 
-function spellSoundFamily(cue: SpellAnimationCue): SpellSoundFamily {
+/**
+ * Заклинание без смысловой семьи (неизвестный id, палитра «по школе») раньше
+ * всегда звучало `spell:utility`, а профиль `spell:school` никто не читал.
+ * Теперь школа выбирает ближайший записанный материал.
+ */
+export const COMBAT_AUDIO_SCHOOL_FAMILIES: Readonly<Record<MagicSchool, SpellSoundFamily>> = Object.freeze({
+  abjuration: 'ward',
+  conjuration: 'summon',
+  divination: 'divination',
+  enchantment: 'enchantment',
+  evocation: 'force',
+  illusion: 'illusion',
+  necromancy: 'necrotic',
+  transmutation: 'transmutation',
+})
+
+function spellSoundFamilyCandidates(cue: SpellAnimationCue): string[] {
   const damageType = 'damageType' in cue ? cue.damageType : undefined
   const hints = {
     school: cue.school,
@@ -152,14 +226,15 @@ function spellSoundFamily(cue: SpellAnimationCue): SpellSoundFamily {
   const palette = spellEffectPalette(cue.spellId, {
     ...hints,
   })
-  return palette.soundFamily ?? 'utility'
+  // Известная семья — ровно один профиль: пустая фаза (например, `silence`)
+  // обязана остаться тишиной, а не провалиться в соседний профиль.
+  if (palette.soundFamily) return [`spell:${palette.soundFamily}`]
+  const bySchool = COMBAT_AUDIO_SCHOOL_FAMILIES[cue.school]
+  return [...(bySchool ? [`spell:${bySchool}`] : []), 'spell:school', 'spell:utility']
 }
 
 function profileCandidates(cue: CombatAnimationCue, actor?: AttackActorVisual | null): string[] {
-  if (isSpellCue(cue)) {
-    const family = spellSoundFamily(cue)
-    return [`spell:${family}`]
-  }
+  if (isSpellCue(cue)) return spellSoundFamilyCandidates(cue)
   if (cue.kind === 'strike') return [`attack:${attackVisualStyleForActor(cue, actor)}`]
   if (cue.kind === 'impact') return [`impact:${cue.tone}`, 'impact']
   if (cue.kind === 'death') return ['death']
@@ -176,47 +251,72 @@ function explicitSpellMiss(cue: SpellAnimationCue): boolean | null {
   return null
 }
 
+function spellHasCritical(cue: SpellAnimationCue): boolean {
+  return Object.values(cue.targetOutcomes ?? {}).some((value) => value === 'critical')
+}
+
 function profilePhaseAliases(cue: CombatAnimationCue, phase: CombatAudioPhase): string[] {
   if (cue.kind === 'strike' && phase === 'contact') {
     const outcome = attackOutcome(cue)
     return outcome === 'hit' ? ['impact'] : [outcome, 'impact']
   }
   if (isSpellCue(cue) && phase === 'contact' && explicitSpellMiss(cue) === true) return ['miss']
+  if (isSpellCue(cue) && phase === 'contact' && spellHasCritical(cue)) return ['critical', 'impact']
   if (phase === 'start') return ['cast']
   if (phase === 'contact') return ['impact']
   if (phase === 'complete') return ['complete']
   return ['launch']
 }
 
+function phaseClipIds(profile: Readonly<Record<string, string | readonly string[]>> | undefined, phase: string): string[] {
+  const value = profile?.[phase]
+  return Array.isArray(value) ? value.filter((clipId) => typeof clipId === 'string' && clipId) : typeof value === 'string' && value ? [value] : []
+}
+
 function profileClipIds(
   manifest: CombatAudioManifest,
   keys: readonly string[],
   phases: readonly string[],
-): { key: string; clipIds: string[] } {
+): { key: string; clipIds: string[]; soundPhase: string } {
   for (const key of keys) {
     const profile = manifest.profiles[key]
     if (!profile) continue
     for (const phase of phases) {
-      const value = profile[phase]
-      const clipIds = Array.isArray(value) ? [...value] : value ? [value] : []
-      if (clipIds.length) return { key, clipIds }
+      const clipIds = phaseClipIds(profile, phase)
+      if (clipIds.length) return { key, clipIds, soundPhase: phase }
     }
   }
-  return { key: keys[0] ?? 'combat:unknown', clipIds: [] }
+  return { key: keys[0] ?? 'combat:unknown', clipIds: [], soundPhase: phases[0] ?? 'impact' }
 }
 
 function unique(values: readonly string[]): string[] {
   return [...new Set(values)]
 }
 
+function clipUrl(manifest: CombatAudioManifest, clipId: string): string {
+  const clip = manifest.clips[clipId]
+  if (!clip || typeof clip.url !== 'string') return ''
+  const url = clip.url.trim()
+  if (!url) return ''
+  return url.startsWith('/') || /^https?:\/\//u.test(url) ? url : `/assets/${url.replace(/^assets\//u, '')}`
+}
+
 function profileUrls(manifest: CombatAudioManifest, clipIds: readonly string[]): string[] {
-  return clipIds.flatMap((clipId) => {
-    const clip = manifest.clips[clipId]
-    if (!clip || typeof clip.url !== 'string') return []
-    const url = clip.url.trim()
-    if (!url) return []
-    return [url.startsWith('/') || /^https?:\/\//u.test(url) ? url : `/assets/${url.replace(/^assets\//u, '')}`]
-  })
+  return clipIds.map((clipId) => clipUrl(manifest, clipId)).filter(Boolean)
+}
+
+export type CombatAudioResolvedProfile = CombatAudioProfile & {
+  /**
+   * Задуманный исход фазы (`cast`, `impact`, `critical`, `miss`…). По нему
+   * выбирается уровень: крит без своей записи звучит записью попадания, но
+   * громче.
+   */
+  intent: string
+  /** Фаза manifest, из которой реально взяты клипы. */
+  soundPhase: string
+  /** Подложка крита из `criticalLayer`; пусто — без слоя. */
+  layerClipIds: string[]
+  layerUrls: string[]
 }
 
 export function combatAudioProfile(
@@ -224,16 +324,149 @@ export function combatAudioProfile(
   phase: CombatAudioPhase = 'start',
   manifest: CombatAudioManifest = DEFAULT_COMBAT_AUDIO_MANIFEST,
   options: Pick<CombatAudioCueOptions, 'actor'> = {},
-): CombatAudioProfile {
+): CombatAudioResolvedProfile {
   const candidates = unique(profileCandidates(cue, options.actor))
-  const resolved = profileClipIds(manifest, candidates, profilePhaseAliases(cue, phase))
+  const aliases = profilePhaseAliases(cue, phase)
+  const resolved = profileClipIds(manifest, candidates, aliases)
   const urls = profileUrls(manifest, resolved.clipIds)
+  const intent = aliases[0] ?? resolved.soundPhase
+  const layerClipIds = intent === 'critical' && resolved.clipIds.length
+    ? phaseClipIds(manifest.profiles[resolved.key], 'criticalLayer').filter((clipId) => clipUrl(manifest, clipId))
+    : []
   return {
     key: resolved.key,
     url: urls[0] ?? '',
     candidates: urls,
     clipIds: resolved.clipIds,
+    intent,
+    soundPhase: resolved.soundPhase,
+    layerClipIds,
+    layerUrls: profileUrls(manifest, layerClipIds),
   }
+}
+
+/** Линейный множитель громкости из децибел. */
+export function combatAudioDbToGain(db: number): number {
+  return Number.isFinite(db) ? 10 ** (db / 20) : 1
+}
+
+/** Уровень фазы по её задуманному исходу; неизвестный исход — как попадание. */
+export function combatAudioPhaseGain(intent: string): number {
+  return combatAudioDbToGain(COMBAT_AUDIO_PHASE_LEVEL_DB[intent] ?? 0)
+}
+
+/** FNV-1a: дешёвый устойчивый хеш строки для разброса без Math.random. */
+function hashString(value: string): number {
+  let hash = 0x811c9dc5
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 0x01000193) >>> 0
+  }
+  return hash >>> 0
+}
+
+function unitFromHash(hash: number): number {
+  // Перемешивание битов разводит соседние seed, отличающиеся одной цифрой.
+  let value = hash ^ (hash >>> 16)
+  value = Math.imul(value, 0x45d9f3b) >>> 0
+  value ^= value >>> 16
+  return (value >>> 0) / 0x1_0000_0000
+}
+
+export type CombatAudioVariation = {
+  playbackRate: number
+  gainDb: number
+  gain: number
+}
+
+/**
+ * Разброс одного проигрывания: серия ударов одним клипом не должна звучать
+ * пулемётом. Значение выводится из seed (id реплики, фаза, клип), поэтому
+ * повтор той же реплики звучит так же, а соседние удары — по-разному. Сдвиг
+ * скорости воспроизведения — обработка записи, а не синтез.
+ */
+export function combatAudioVariation(seed: string, intent = 'impact'): CombatAudioVariation {
+  const hash = hashString(String(seed))
+  const rateUnit = unitFromHash(hash)
+  const gainUnit = unitFromHash(hashString(`${seed}#gain`))
+  const spreadRate = 1 + (rateUnit * 2 - 1) * COMBAT_AUDIO_RATE_SPREAD
+  const playbackRate = Math.round(spreadRate * (intent === 'critical' ? CRITICAL_RATE : 1) * 10_000) / 10_000
+  const gainDb = Math.round((gainUnit * 2 - 1) * COMBAT_AUDIO_GAIN_SPREAD_DB * 100) / 100
+  return { playbackRate, gainDb, gain: combatAudioDbToGain(gainDb) }
+}
+
+/**
+ * Порядок вариантов фазы: стартовый клип выбирается по seed и не совпадает с
+ * только что звучавшим, остальные остаются запасными на случай ошибки загрузки.
+ */
+export function combatAudioClipOrder<T>(variants: readonly T[], seed: string, previous?: T): T[] {
+  if (variants.length <= 1) return [...variants]
+  let start = hashString(String(seed)) % variants.length
+  if (previous !== undefined && variants[start] === previous) start = (start + 1) % variants.length
+  return [...variants.slice(start), ...variants.slice(0, start)]
+}
+
+/** Горизонталь экрана → панорама с ограничением, чтобы звук не уходил в одно ухо. */
+export function combatAudioStereoPan(screenX: number, viewportWidth: number): number {
+  const width = Number(viewportWidth)
+  const x = Number(screenX)
+  if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(x)) return 0
+  const normalized = Math.max(0, Math.min(1, x / width)) * 2 - 1
+  return Math.round(normalized * COMBAT_AUDIO_MAX_PAN * 1000) / 1000
+}
+
+/**
+ * Экранная точка события → панорама и ослабление: центр кадра звучит полностью,
+ * край — на ~2 дБ тише, событие за кадром — вдвое тише, но не молчит.
+ */
+export function combatAudioSpatialFromScreen(point: {
+  x: number
+  y: number
+  width: number
+  height: number
+  visible?: boolean
+}): Required<CombatAudioSpatial> {
+  const width = Number(point.width)
+  const height = Number(point.height)
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return { pan: 0, gain: 1 }
+  const x = Number(point.x)
+  const y = Number(point.y)
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return { pan: 0, gain: 1 }
+  const pan = combatAudioStereoPan(x, width)
+  const offscreen = point.visible === false || x < 0 || y < 0 || x > width || y > height
+  if (offscreen) return { pan, gain: MIN_SPATIAL_GAIN }
+  const nx = x / width * 2 - 1
+  const ny = y / height * 2 - 1
+  const distance = Math.min(1, Math.hypot(nx, ny) / Math.SQRT2)
+  return { pan, gain: Math.round((1 - distance * .2) * 1000) / 1000 }
+}
+
+/** cast/launch звучат у исполнителя, contact — у цели (или у исполнителя, если цели нет). */
+export function combatAudioPhaseSpatial(
+  phase: CombatAudioPhase,
+  spatial: CombatAudioCueOptions['spatial'],
+): Required<CombatAudioSpatial> {
+  const chosen = phase === 'contact' || phase === 'complete'
+    ? spatial?.target ?? spatial?.source
+    : spatial?.source ?? spatial?.target
+  const pan = Number(chosen?.pan)
+  const gain = Number(chosen?.gain)
+  return {
+    pan: Number.isFinite(pan) ? Math.max(-1, Math.min(1, pan)) : 0,
+    gain: Number.isFinite(gain) ? Math.max(MIN_SPATIAL_GAIN, Math.min(1, gain)) : 1,
+  }
+}
+
+/** Длина спада в конце голоса: обрезанный окном длинный клип уходит мягче. */
+export function combatAudioFadeMs(playableMs: number, truncated: boolean): number {
+  const playable = Math.max(1, Number(playableMs) || 0)
+  if (truncated) return Math.min(TRUNCATED_FADE_MAX_MS, Math.max(FADE_MIN_MS, playable * .3))
+  return Math.min(FADE_MAX_MS, Math.max(FADE_MIN_MS, playable * .18))
+}
+
+/** Насколько приглушить атмосферу под фазой; 0 — не трогать. */
+export function combatAudioDuckDepth(intent: string): number {
+  return DUCK_DEPTH[intent] ?? 0
 }
 
 export type CombatAudioPlanEntry = {
@@ -244,6 +477,39 @@ export type CombatAudioPlanEntry = {
   profileKey: string
   clipIds: string[]
   urls: string[]
+  /** Задуманный исход фазы — по нему выбирается уровень. */
+  intent: string
+  /** Линейный уровень фазы относительно попадания. */
+  level: number
+  /**
+   * Фаза не звучит, потому что следующая фаза стартует в тот же момент тем же
+   * клипом: у снаряда cast и launch при t=0 иначе дают одну запись дважды.
+   */
+  duplicateOf?: CombatAudioPhase
+}
+
+function sameClipIds(left: readonly string[], right: readonly string[]): boolean {
+  return left.length > 0 && left.length === right.length && left.every((clipId, index) => clipId === right[index])
+}
+
+/**
+ * Фаза, которую поглощает следующая: тот же момент и те же клипы. Две копии
+ * одной записи с разницей в миллисекунды звучат «фланжером» и громче вдвое.
+ */
+export function combatAudioDuplicatePhase(
+  cue: CombatAnimationCue,
+  phase: CombatAudioPhase,
+  manifest: CombatAudioManifest,
+  options: Pick<CombatAudioCueOptions, 'actor'> = {},
+): CombatAudioPhase | undefined {
+  const plan = phasePlan(cue)
+  const index = plan.findIndex((entry) => entry.phase === phase)
+  const current = plan[index]
+  const next = plan[index + 1]
+  if (!current || !next || next.progress !== current.progress) return undefined
+  const currentClips = combatAudioProfile(cue, current.phase, manifest, options).clipIds
+  const nextClips = combatAudioProfile(cue, next.phase, manifest, options).clipIds
+  return sameClipIds(currentClips, nextClips) ? next.phase : undefined
 }
 
 /** План, которым пользуется runtime и которым можно проверить покрытие manifest. */
@@ -255,6 +521,7 @@ export function resolveCombatAudioPlan(
   const plan = phasePlan(cue)
   return plan.map(({ phase, progress }, index) => {
     const profile = combatAudioProfile(cue, phase, manifest, options)
+    const duplicateOf = combatAudioDuplicatePhase(cue, phase, manifest, options)
     return {
       cueId: cue.id,
       phase,
@@ -263,6 +530,9 @@ export function resolveCombatAudioPlan(
       profileKey: profile.key,
       clipIds: profile.clipIds,
       urls: profile.candidates,
+      intent: profile.intent,
+      level: combatAudioPhaseGain(profile.intent),
+      ...(duplicateOf ? { duplicateOf } : {}),
     }
   })
 }
@@ -329,24 +599,44 @@ function monotonicNowMs(): number {
 function configureMasterCompressor(compressor: DynamicsCompressorNode): void {
   // Запас по громкости для одновременных записанных голосов; меняется только
   // master bus, исходные файлы и их высота/скорость не меняются.
+  // Крит со слоем и попадание поверх хвоста каста складываются выше 0 dBFS:
+  // мягкое колено держит обычный удар нетронутым, а сумму — без клиппинга.
   compressor.threshold.value = -12
-  compressor.knee.value = 18
-  compressor.ratio.value = 4
+  compressor.knee.value = 12
+  compressor.ratio.value = 6
   compressor.attack.value = .003
   compressor.release.value = .2
 }
 
-function scheduleVoiceEnvelope(gain: GainNode, source: AudioBufferSourceNode, now: number, durationMs: number): void {
+function scheduleVoiceEnvelope(
+  gain: GainNode,
+  source: AudioBufferSourceNode,
+  now: number,
+  durationMs: number,
+  peak = 1,
+  truncated = false,
+): void {
   const playableMs = Math.max(1, durationMs)
-  const fadeMs = Math.min(FADE_MAX_MS, Math.max(FADE_MIN_MS, playableMs * .18))
+  const fadeMs = combatAudioFadeMs(playableMs, truncated)
   const fadeAt = now + Math.max(0, playableMs - fadeMs) / 1000
   const stopAt = now + playableMs / 1000
   gain.gain.cancelScheduledValues(now)
-  gain.gain.setValueAtTime(1, now)
-  gain.gain.setValueAtTime(1, fadeAt)
+  gain.gain.setValueAtTime(peak, now)
+  gain.gain.setValueAtTime(peak, fadeAt)
   gain.gain.linearRampToValueAtTime(0, stopAt)
   source.start(now)
   source.stop(stopAt)
+}
+
+function setPlaybackRate(source: AudioBufferSourceNode, rate: number): number {
+  const param = (source as AudioBufferSourceNode & { playbackRate?: AudioParam }).playbackRate
+  if (!param || !Number.isFinite(rate) || rate <= 0) return 1
+  try {
+    param.value = rate
+    return rate
+  } catch {
+    return 1
+  }
 }
 
 export function createCombatAudio(options: {
@@ -363,6 +653,11 @@ export function createCombatAudio(options: {
   isCueAudible?: (cue: CombatAnimationCue) => boolean
   setTimeout?: (handler: () => void, delayMs: number) => CombatAudioTimer
   clearTimeout?: (handle: CombatAudioTimer) => void
+  /**
+   * Громкая фаза (попадание, крит, блок) действительно зазвучала: владелец
+   * атмосферы может на это время приглушить петлю. Не вызывается в mute.
+   */
+  onDuck?: (request: CombatAudioDuckRequest) => void
 } = {}): CombatAudio {
   let settings = normalizeCombatAudioSettings({
     ...options.settings,
@@ -393,7 +688,10 @@ export function createCombatAudio(options: {
   const scheduledCueIds = new Set<string>()
   const cancelledCueIds = new Set<string>()
   const directCueIds = new Set<string>()
-  const active = new Map<AudioBufferSourceNode, string>()
+  type ActiveVoice = { cueId: string; url: string; gain: GainNode; nodes: AudioNode[] }
+  const active = new Map<AudioBufferSourceNode, ActiveVoice>()
+  /** Последний звучавший вариант фазы профиля — следующий удар возьмёт другой. */
+  const lastClipByProfile = new Map<string, string>()
   const buffers = new Map<string, AudioBuffer>()
   const loading = new Map<string, Promise<AudioBuffer | null>>()
   const failed = new Set<string>()
@@ -469,6 +767,100 @@ export function createCombatAudio(options: {
   }
 
   type PlaybackTiming = { dueAt: number; windowMs: number }
+  type ClipChoice = { clipId: string; url: string }
+  type LoadedClip = { choice: ClipChoice; buffer: AudioBuffer }
+
+  const loadFirst = async (choices: readonly ClipChoice[]): Promise<LoadedClip | null> => {
+    for (const choice of choices) {
+      const buffer = await load(choice.url)
+      if (buffer) return { choice, buffer }
+    }
+    return null
+  }
+
+  const disconnectVoice = (source: AudioBufferSourceNode, nodes: readonly AudioNode[]) => {
+    try { source.disconnect() } catch {}
+    for (const node of nodes) {
+      try { node.disconnect() } catch {}
+    }
+  }
+
+  /** Лимит полифонии снимает старый голос коротким спадом, а не щелчком. */
+  const releaseVoice = (source: AudioBufferSourceNode, voice: ActiveVoice) => {
+    const at = context?.currentTime ?? 0
+    try {
+      voice.gain.gain.cancelScheduledValues(at)
+      voice.gain.gain.setValueAtTime(voice.gain.gain.value, at)
+      voice.gain.gain.linearRampToValueAtTime(0, at + STEAL_FADE_S)
+    } catch {}
+    try { source.stop(at + STEAL_FADE_S) } catch {}
+    active.delete(source)
+  }
+
+  const makeRoomFor = (url: string) => {
+    const sameClip = [...active].filter(([, voice]) => voice.url === url)
+    const excess = sameClip.length - (COMBAT_AUDIO_CLIP_VOICE_LIMIT - 1)
+    for (const [source, voice] of sameClip.slice(0, Math.max(0, excess))) releaseVoice(source, voice)
+    while (active.size >= COMBAT_AUDIO_VOICE_LIMIT) {
+      const oldest = active.entries().next().value
+      if (!oldest) break
+      releaseVoice(oldest[0], oldest[1])
+    }
+  }
+
+  const startVoice = (
+    cueId: string,
+    loaded: LoadedClip,
+    seed: string,
+    intent: string,
+    level: number,
+    pan: number,
+    windowMs: number,
+    now: number,
+  ): { playableMs: number } | null => {
+    if (!context || !effectsBus) return null
+    const variation = combatAudioVariation(seed, intent)
+    const source = context.createBufferSource()
+    source.buffer = loaded.buffer
+    const rate = setPlaybackRate(source, variation.playbackRate)
+    // Скорость меняет и длительность записи: окно фазы считает уже её.
+    const bufferDurationMs = Number(loaded.buffer.duration) * 1000 / rate
+    const naturalMs = Number.isFinite(bufferDurationMs) && bufferDurationMs > 0 ? bufferDurationMs : windowMs
+    const playableMs = Math.min(windowMs, naturalMs)
+    if (playableMs <= 0) return null
+    makeRoomFor(loaded.choice.url)
+    const gain = context.createGain()
+    const nodes: AudioNode[] = [gain]
+    source.connect(gain)
+    let output: AudioNode = gain
+    if (Math.abs(pan) >= .01 && typeof context.createStereoPanner === 'function') {
+      try {
+        const panner = context.createStereoPanner()
+        panner.pan.value = pan
+        gain.connect(panner)
+        nodes.push(panner)
+        output = panner
+      } catch {
+        output = gain
+      }
+    }
+    output.connect(effectsBus)
+    active.set(source, { cueId, url: loaded.choice.url, gain, nodes })
+    source.addEventListener('ended', () => {
+      active.delete(source)
+      disconnectVoice(source, nodes)
+    }, { once: true })
+    try {
+      // effectsVolume применяется один раз на effectsBus. Gain голоса — уровень
+      // фазы, разброс повтора и ослабление расстояния поверх огибающей.
+      scheduleVoiceEnvelope(gain, source, now, playableMs, Math.max(0, level * variation.gain), naturalMs > windowMs + 1)
+      return { playableMs }
+    } catch {
+      active.delete(source)
+      disconnectVoice(source, nodes)
+      return null
+    }
+  }
 
   const playLoaded = async (
     cue: CombatAnimationCue,
@@ -481,45 +873,48 @@ export function createCombatAudio(options: {
     if (!allowed() || !isAudible(cue) || !context || !effectsBus) return false
     const runtimeManifest = await loadManifest()
     if (!allowed() || !runtimeManifest) return false
+    // Запланированный cast снаряда с тем же клипом, что и launch в ту же
+    // миллисекунду, уступает launch: одна запись не звучит дважды.
+    if (timing && combatAudioDuplicatePhase(cue, phase, runtimeManifest, cueOptions)) return false
     const profile = combatAudioProfile(cue, phase, runtimeManifest, cueOptions)
-    const buffer = await loadProfile(profile)
-    if (!allowed() || !isAudible(cue) || !context || !effectsBus || !buffer) return false
+    const variantKey = `${profile.key}:${profile.soundPhase}`
+    const choices = profile.clipIds
+      .map((clipId) => ({ clipId, url: clipUrl(runtimeManifest, clipId) }))
+      .filter((choice) => choice.url)
+    const previous = choices.find((choice) => choice.clipId === lastClipByProfile.get(variantKey))
+    const ordered = combatAudioClipOrder(choices, `${cue.id}:${phase}`, previous)
+    const layerChoices = profile.layerClipIds
+      .map((clipId) => ({ clipId, url: clipUrl(runtimeManifest, clipId) }))
+      .filter((choice) => choice.url)
+    const [primary, layer] = await Promise.all([
+      loadFirst(ordered),
+      layerChoices.length ? loadFirst(layerChoices) : Promise.resolve(null),
+    ])
+    if (!allowed() || !isAudible(cue) || !context || !effectsBus || !primary) return false
     const remainingWindowMs = timing
       ? timing.dueAt + timing.windowMs - monotonicNowMs()
       : MAX_AUDIO_TAIL_MS
     if (remainingWindowMs <= 0) return false
-    const bufferDurationMs = Number(buffer.duration) * 1000
-    const playableMs = Math.min(remainingWindowMs, Number.isFinite(bufferDurationMs) && bufferDurationMs > 0 ? bufferDurationMs : remainingWindowMs)
-    if (playableMs <= 0) return false
-    const source = context.createBufferSource()
-    const gain = context.createGain()
-    while (active.size >= COMBAT_AUDIO_VOICE_LIMIT) {
-      const oldest = active.keys().next().value
-      if (!oldest) break
-      try { oldest.stop(context.currentTime) } catch {}
-      active.delete(oldest)
+    const spatial = combatAudioPhaseSpatial(phase, cueOptions.spatial)
+    const now = context.currentTime
+    const started = startVoice(
+      cue.id, primary, `${cue.id}:${phase}:${primary.choice.clipId}`, profile.intent,
+      combatAudioPhaseGain(profile.intent) * spatial.gain, spatial.pan, remainingWindowMs, now,
+    )
+    if (!started) return false
+    lastClipByProfile.set(variantKey, primary.choice.clipId)
+    if (layer && layer.choice.url !== primary.choice.url) {
+      startVoice(
+        cue.id, layer, `${cue.id}:${phase}:layer:${layer.choice.clipId}`, profile.intent,
+        combatAudioDbToGain(CRITICAL_LAYER_LEVEL_DB) * spatial.gain, spatial.pan, started.playableMs, now,
+      )
     }
-    source.buffer = buffer
-    // effectsVolume применяется один раз на effectsBus. Gain этого голоса —
-    // только фазовая огибающая, поэтому записи не умножают настройку громкости.
-    gainSet(gain, 1, context.currentTime)
-    source.connect(gain).connect(effectsBus)
-    active.set(source, cue.id)
-    source.addEventListener('ended', () => {
-      active.delete(source)
-      try { source.disconnect() } catch {}
-      try { gain.disconnect() } catch {}
-    }, { once: true })
-    try {
-      scheduleVoiceEnvelope(gain, source, context.currentTime, playableMs)
-      remember(playedKeys, dedupeKey)
-      return true
-    } catch {
-      active.delete(source)
-      try { source.disconnect() } catch {}
-      try { gain.disconnect() } catch {}
-      return false
+    remember(playedKeys, dedupeKey)
+    const duckDepth = combatAudioDuckDepth(profile.intent)
+    if (duckDepth > 0 && options.onDuck) {
+      try { options.onDuck({ depth: duckDepth, holdMs: started.playableMs }) } catch {}
     }
+    return true
   }
 
   const play = async (
@@ -557,7 +952,7 @@ export function createCombatAudio(options: {
       entry.timers.forEach((timer) => clearScheduleTimer(timer))
       scheduled.delete(scheduleId)
     }
-    for (const [source, cueId] of active) {
+    for (const [source, { cueId }] of active) {
       if (id && cueId !== id && !cueIds.has(cueId)) continue
       cueIds.add(cueId)
       try { source.stop(context?.currentTime ?? 0) } catch {}
@@ -667,7 +1062,7 @@ export function createCombatAudio(options: {
         if (!isAudible(cue)) continue
         for (const { phase } of phasePlan(cue)) {
           const profile = combatAudioProfile(cue, phase, runtimeManifest)
-          if (profile.candidates.length) profiles.set(profile.key, profile)
+          if (profile.candidates.length) profiles.set(`${profile.key}:${profile.soundPhase}`, profile)
         }
       }
       await Promise.all([...profiles.values()].slice(0, preloadLimit).map((profile) => loadProfile(profile).then(() => undefined)))

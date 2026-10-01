@@ -1,9 +1,8 @@
 import * as THREE from 'three'
-import { actorFootprintCells, actorPresentationCenter } from './tactical-ui'
+import { actorPresentationCenter, actorPresentationSize } from './tactical-ui'
 import { terrainHeightAt } from './board3d-terrain'
 import { cellAt, edgeBetween, revealedAt } from './tactical-map-client'
-import { spellBurstCells, spellChannelTargetIds, spellEffectPalette, spellIdFromEffect, spellVisualProfile, type SpellEffectDetail } from './spell-effects'
-import { maskSpellAreaCells } from './spell-targeting'
+import { projectileEndpoints, projectileVolley, spellBurstCells, spellChannelTargetIds, spellEffectPalette, spellIdFromEffect, type SpellEffectDetail } from './spell-effects'
 import type { ActorFootprint, TacticalMap } from './types'
 import type { BoardPoint, CombatAnimationCue, SpellAnimationCue } from './combat-animation'
 
@@ -41,9 +40,136 @@ function actorFor(actors: readonly SpellEffectActor[], id: string | undefined) {
   return id ? actors.find((actor) => actor.id === id) ?? null : null
 }
 
+/**
+ * Высота пола под существом. Модель крупного существа стоит на максимуме
+ * рельефа по всей своей площади (как `actorGround` в TacticalBoard3D), и
+ * эффект над ним поднимается от той же высоты, а не от высоты anchor-клетки.
+ */
+export function actorGroundHeight(map: TacticalMap, actor: SpellEffectActor, anchor: BoardPoint = actor) {
+  const side = actorPresentationSize(map, actor, anchor)
+  let height = terrainHeightAt(map, anchor.x, anchor.y)
+  for (let y = 0; y < side; y += 1) for (let x = 0; x < side; x += 1) {
+    height = Math.max(height, terrainHeightAt(map, anchor.x + x, anchor.y + y))
+  }
+  return height
+}
+
 function visualPoint(map: TacticalMap, point: BoardPoint, actor?: SpellEffectActor | null, height = .7) {
   const center = actor ? actorPresentationCenter(map, actor, point) : { x: point.x + .5, y: point.y + .5 }
-  return new THREE.Vector3(center.x, terrainHeightAt(map, point.x, point.y) + height, center.y)
+  const ground = actor ? actorGroundHeight(map, actor, point) : terrainHeightAt(map, point.x, point.y)
+  return new THREE.Vector3(center.x, ground + height, center.y)
+}
+
+// Временные векторы кадра: update() вызывается каждый кадр и не должен
+// плодить мусор. Значения из них сразу копируются в позиции и буферы.
+const scratchA = new THREE.Vector3()
+const scratchB = new THREE.Vector3()
+const scratchC = new THREE.Vector3()
+const scratchD = new THREE.Vector3()
+const scratchE = new THREE.Vector3()
+const UP = new THREE.Vector3(0, 1, 0)
+
+/**
+ * Динамический свет эффекта. Доска держит пул из двух PointLight и каждый
+ * кадр читает `group.userData.lights`: координаты мировые, `distance` — в
+ * клетках. Массив и его элементы создаются один раз; update() только
+ * переписывает поля и длину массива.
+ */
+export type EffectLight = { x: number; y: number; z: number; color: string; intensity: number; distance: number }
+export const EFFECT_LIGHT_LIMIT = 2
+
+export function effectLightRig(group: THREE.Object3D, detail: SpellEffectDetail) {
+  const pool: EffectLight[] = Array.from({ length: EFFECT_LIGHT_LIMIT }, () => ({ x: 0, y: 0, z: 0, color: '#ffffff', intensity: 0, distance: 4 }))
+  const active: EffectLight[] = []
+  group.userData.lights = active
+  // На «Экономном» свет не пересчитывается вовсе: пул доски остаётся тёмным.
+  const enabled = detail !== 'minimal'
+  return {
+    clear() { active.length = 0 },
+    add(point: { x: number; y: number; z: number }, color: string, intensity: number, distance: number) {
+      if (!enabled || active.length >= EFFECT_LIGHT_LIMIT || !(intensity > .03)) return
+      const light = pool[active.length]
+      light.x = point.x; light.y = point.y; light.z = point.z
+      light.color = color
+      light.intensity = Math.min(6, intensity)
+      light.distance = Math.max(3, Math.min(8, distance))
+      active.push(light)
+    },
+  }
+}
+
+const easeOutCubic = (value: number) => 1 - (1 - clamp01(value)) ** 3
+const easeOutQuad = (value: number) => 1 - (1 - clamp01(value)) ** 2
+const smoothstep = (from: number, to: number, value: number) => {
+  const t = clamp01((value - from) / Math.max(1e-6, to - from))
+  return t * t * (3 - 2 * t)
+}
+/** Детерминированный шум: одинаковый рисунок при повторе той же реплики. */
+const noise = (seed: number) => {
+  const value = Math.sin(seed * 12.9898 + 78.233) * 43758.5453
+  return value - Math.floor(value)
+}
+
+/**
+ * Цвет ярче единицы: при включённом тонмаппинге ядро проходит порог bloom
+ * на «Обычном» и «Высоком», а на «Экономном» просто остаётся ярким.
+ */
+function glow(color: THREE.ColorRepresentation, strength: number) {
+  return new THREE.Color(color).multiplyScalar(strength)
+}
+
+function additive(color: THREE.ColorRepresentation, opacity: number, extra: THREE.MeshBasicMaterialParameters = {}) {
+  return new THREE.MeshBasicMaterial({ color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, ...extra })
+}
+
+/**
+ * Открытый цилиндр с основанием на y=0, который гаснет к верху вершинными
+ * цветами. При аддитивном смешивании чёрный край ничего не добавляет, поэтому
+ * столб света растворяется без отдельной прозрачности.
+ */
+function fadeColumnGeometry(radiusBottom: number, radiusTop: number, height: number, segments: number) {
+  const geometry = new THREE.CylinderGeometry(radiusTop, radiusBottom, height, segments, 4, true)
+  geometry.translate(0, height / 2, 0)
+  const positions = geometry.getAttribute('position') as THREE.BufferAttribute
+  const colors = new Float32Array(positions.count * 3)
+  for (let index = 0; index < positions.count; index += 1) {
+    const level = (1 - clamp01(positions.getY(index) / height)) ** 1.5
+    colors[index * 3] = colors[index * 3 + 1] = colors[index * 3 + 2] = level
+  }
+  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+  return geometry
+}
+
+/**
+ * Полусфера с основанием на полу: купол взрыва не уходит под землю. Вершинный
+ * цвет гаснет к макушке — при камере сверху это даёт яркий край и прозрачную
+ * середину, поэтому фигурки внутри области остаются видны.
+ */
+function domeGeometry(segments: number) {
+  const geometry = new THREE.SphereGeometry(1, segments, Math.max(4, Math.floor(segments / 2)), 0, Math.PI * 2, 0, Math.PI / 2)
+  const normals = geometry.getAttribute('normal') as THREE.BufferAttribute
+  const colors = new Float32Array(normals.count * 3)
+  for (let index = 0; index < normals.count; index += 1) {
+    const level = .05 + .95 * (1 - Math.abs(normals.getY(index))) ** 2.2
+    colors[index * 3] = colors[index * 3 + 1] = colors[index * 3 + 2] = level
+  }
+  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+  return geometry
+}
+
+/** Хвост снаряда: открытый конус, широкий у ядра и сходящийся назад. */
+function trailGeometry(segments: number) {
+  return new THREE.ConeGeometry(1, 1, segments, 1, true)
+}
+
+/** Растягивает хвост-конус от головы снаряда к точке позади него. */
+function orientTrail(mesh: THREE.Mesh, head: THREE.Vector3, tail: THREE.Vector3, radius: number) {
+  const direction = scratchE.subVectors(tail, head)
+  const length = direction.length()
+  if (length < .02) { mesh.visible = false; return }
+  mesh.position.copy(head).add(tail).multiplyScalar(.5)
+  mesh.scale.set(radius, length, radius)
+  mesh.quaternion.setFromUnitVectors(UP, direction.multiplyScalar(1 / length))
 }
 
 function areaVisualPoint(
@@ -112,6 +238,34 @@ function visibleRadius(map: TacticalMap, center: BoardPoint, radiusCells: number
   return limit
 }
 
+/**
+ * Полуширина квадратного (чебышёвского) контура, урезанная до первой скрытой
+ * клетки внутри квадрата. Край карты туманом не считается.
+ */
+function visibleSquareHalfWidth(map: TacticalMap, center: { x: number; y: number }, halfWidth: number) {
+  const half = Math.max(.35, Number(halfWidth) || .35)
+  let limit = half
+  for (let y = Math.floor(center.y - half); y < Math.ceil(center.y + half); y += 1) {
+    for (let x = Math.floor(center.x - half); x < Math.ceil(center.x + half); x += 1) {
+      const cell = cellAt(map, x, y)
+      if (!cell || cell.revealed) continue
+      const dx = Math.max(0, x - center.x, center.x - (x + 1))
+      const dy = Math.max(0, y - center.y, center.y - (y + 1))
+      limit = Math.min(limit, Math.max(.35, Math.max(dx, dy)))
+    }
+  }
+  return limit
+}
+
+/** Плоский квадратный контур на полу: RingGeometry с четырьмя сегментами. */
+function squareOutlineGeometry(halfWidth: number, thickness: number) {
+  const inner = Math.max(.001, halfWidth - thickness) * Math.SQRT2
+  const outer = (halfWidth + thickness) * Math.SQRT2
+  const geometry = new THREE.RingGeometry(inner, outer, 4, 1, Math.PI / 4)
+  geometry.userData.halfWidth = halfWidth
+  return geometry
+}
+
 function detailOf(cue: SpellAnimationCue): SpellEffectDetail {
   return cue.detail ?? 'full'
 }
@@ -130,7 +284,6 @@ function setLinePoints(line: THREE.Line, first: THREE.Vector3, second: THREE.Vec
   positions.setXYZ(1, second.x, second.y, second.z)
   if (third) positions.setXYZ(2, third.x, third.y, third.z)
   positions.needsUpdate = true
-  line.geometry.computeBoundingSphere()
 }
 
 function createFireball(
@@ -150,46 +303,58 @@ function createFireball(
 
   const detail = detailOf(cue)
   const footprint = burstFootprint(map, cue, actors)
-  const visibleCells = sampledCells(footprint.visible, detail === 'full' ? 36 : detail === 'reduced' ? 24 : 10)
+  // Выборка ограничивает только тлеющие клетки. Контур строится по всем
+  // видимым клеткам footprint, иначе в нём появляются разрывы.
+  const visibleCells = footprint.visible
+  const emberCells = sampledCells(visibleCells, detail === 'full' ? 22 : detail === 'reduced' ? 14 : 6)
   if (!footprint.present.length || !visibleCells.length) return null
   const { geometries, materials, track, material } = resources()
   const group = new THREE.Group()
+  const lights = effectLightRig(group, detail)
   const style = styleFor(cue)
-  const primary = style.primary
-  const inner = material(new THREE.MeshBasicMaterial({ color: '#ffe0a3', transparent: true, opacity: .98, blending: THREE.AdditiveBlending, depthWrite: false }))
-  const outer = material(new THREE.MeshBasicMaterial({ color: primary, transparent: true, opacity: .62, blending: THREE.AdditiveBlending, depthWrite: false }))
-  const blast = material(new THREE.MeshBasicMaterial({ color: '#ffb25f', transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }))
-  const trailMaterial = material(new THREE.LineBasicMaterial({ color: style.secondary, transparent: true, opacity: .58, blending: THREE.AdditiveBlending, depthWrite: false }))
-  const rayMaterial = material(new THREE.LineBasicMaterial({ color: '#ff8b42', transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }))
-  const cellMaterial = material(new THREE.MeshBasicMaterial({ color: style.primary, transparent: true, opacity: .38, blending: THREE.AdditiveBlending, depthWrite: false }))
+  const segments = detail === 'full' ? 22 : detail === 'reduced' ? 16 : 10
+  // Вложенные аддитивные слои дают градиент без шейдера: короткое горячее
+  // ядро, оранжевое тело и тёмно-красная оболочка, яркая только по краю.
+  const coreMaterial = material(additive(glow('#fff1c9', 3.2), 1))
+  const haloMaterial = material(additive(glow('#ff8a2c', 1.5), .72))
+  const shellMaterial = material(additive(glow('#ff4a18', 1.35), .8, { vertexColors: true }))
+  const flameMaterial = material(additive(glow('#ffa040', 1.05), .38))
+  const flashMaterial = material(additive(glow('#fff0bc', 1.9), .85))
+  const waveMaterial = material(additive(glow('#ffb45c', 1.7), .9))
+  const trailMaterial = material(additive(glow('#ff8c38', 1.3), .62))
+  const emberMaterials = ['#ff5a1a', '#ff7426', '#e8401a'].map((color) => material(additive(glow(color, 1), 0)))
   const contourMaterial = material(new THREE.LineBasicMaterial({ color: style.secondary, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }))
-  const orb = new THREE.Mesh(track(new THREE.SphereGeometry(.17, detail === 'full' ? 12 : 8, 6)), inner)
-  const halo = new THREE.Mesh(track(new THREE.SphereGeometry(.32, detail === 'full' ? 12 : 8, 6)), outer)
-  const explosion = new THREE.Mesh(track(new THREE.SphereGeometry(1, detail === 'full' ? 12 : 8, 6)), blast)
-  const ring = new THREE.Mesh(track(new THREE.TorusGeometry(1, .025, 6, detail === 'full' ? 20 : 12)), blast)
+  const dome = track(domeGeometry(segments))
+  const orb = new THREE.Mesh(track(new THREE.SphereGeometry(.15, detail === 'full' ? 12 : 8, 6)), coreMaterial)
+  const halo = new THREE.Mesh(track(new THREE.SphereGeometry(.3, detail === 'full' ? 12 : 8, 6)), haloMaterial)
+  // Порядок первых четырёх детей — контракт тестов: [ядро, ореол, купол, волна].
+  const explosion = new THREE.Mesh(dome, shellMaterial)
+  const ring = new THREE.Mesh(track(new THREE.TorusGeometry(1, .03, 6, detail === 'full' ? 48 : detail === 'reduced' ? 32 : 20)), waveMaterial)
   ring.rotation.x = -Math.PI / 2
   group.add(orb, halo, explosion, ring)
-
-  const trailPointCount = detail === 'full' ? 7 : detail === 'reduced' ? 4 : 2
-  const trail = new THREE.Line(
-    track(new THREE.BufferGeometry().setFromPoints(Array.from({ length: trailPointCount }, () => new THREE.Vector3()))),
-    trailMaterial,
-  )
+  const flame = detail === 'minimal' ? null : new THREE.Mesh(dome, flameMaterial)
+  const flash = new THREE.Mesh(track(new THREE.SphereGeometry(1, segments, Math.max(4, Math.floor(segments / 2)))), flashMaterial)
+  if (flame) group.add(flame)
+  group.add(flash)
+  const trail = new THREE.Mesh(track(trailGeometry(detail === 'full' ? 10 : 7)), trailMaterial)
   group.add(trail)
 
-  const rayCount = detail === 'full' ? 8 : detail === 'reduced' ? 5 : 3
-  const rays = Array.from({ length: rayCount }, (_, index) => {
-    const line = new THREE.Line(track(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()])), rayMaterial)
-    group.add(line)
-    return { line, angle: index * Math.PI * 2 / rayCount + .18 }
-  })
   const ground = terrainHeightAt(map, center.x, center.y)
-  const fireCellGeometry = track(new THREE.IcosahedronGeometry(.14, 0))
-  const fireCells = visibleCells.map((cell) => {
-    const mesh = new THREE.Mesh(fireCellGeometry, cellMaterial)
-    mesh.position.set(cell.x + .5, terrainHeightAt(map, cell.x, cell.y) + .12, cell.y + .5)
+  const from = visualPoint(map, origin, sourceActor, .78)
+  const to = areaVisualPoint(map, cue, center, .78)
+  const footprintRadius = visibleCells.reduce((maximum, cell) => Math.max(maximum, Math.hypot(cell.x + .5 - to.x, cell.y + .5 - to.z) + .5), 0)
+  const blastRadius = Math.max(1.2, Math.min(5, footprintRadius || (Number(cue.sizeFeet) || 10) / 5))
+  const emberGeometry = track(new THREE.CircleGeometry(.12, detail === 'full' ? 9 : 6))
+  const embers = emberCells.map((cell, index) => {
+    const mesh = new THREE.Mesh(emberGeometry, emberMaterials[index % emberMaterials.length])
+    mesh.rotation.x = -Math.PI / 2
+    // Смещение внутри клетки убирает «сетку горошин»: угли лежат вразброс.
+    const jitterX = (noise(index * 2.7 + 1.3) - .5) * .5, jitterZ = (noise(index * 5.1 + .7) - .5) * .5
+    mesh.position.set(cell.x + .5 + jitterX, terrainHeightAt(map, cell.x, cell.y) + .035, cell.y + .5 + jitterZ)
     group.add(mesh)
-    return mesh
+    // Клетка загорается, когда до неё доходит фронт взрыва.
+    const reach = clamp01(Math.hypot(cell.x + .5 - to.x, cell.y + .5 - to.z) / blastRadius)
+    return { mesh, reach, seed: noise(index + 1) }
   })
   const contourKeys = new Set(visibleCells.map((cell) => `${cell.x},${cell.y}`))
   const contourPoints: THREE.Vector3[] = []
@@ -207,68 +372,82 @@ function createFireball(
     ? new THREE.LineSegments(track(new THREE.BufferGeometry().setFromPoints(contourPoints)), contourMaterial)
     : null
   if (contour) group.add(contour)
-  const from = visualPoint(map, origin, sourceActor, .78)
-  const to = areaVisualPoint(map, cue, center, .78)
-  const footprintRadius = visibleCells.reduce((maximum, cell) => Math.max(maximum, Math.hypot(cell.x - center.x, cell.y - center.y) + .7), 0)
-  const blastRadius = Math.max(1.2, Math.min(5, footprintRadius || (Number(cue.sizeFeet) || 10) / 5))
   const blastAllowed = footprint.present.length > 0 && !footprint.fogged
   // Синхронно с плоским drawBurst: взрыв начинается после прилёта шара.
   const arrival = .56
   const explosionStart = arrival
+  const arcHeight = .42
+  const flightPoint = (travel: number, target: THREE.Vector3) => {
+    target.lerpVectors(from, to, travel)
+    target.y = from.y + (to.y - from.y) * travel + Math.sin(travel * Math.PI) * arcHeight
+    return target
+  }
+  const lightPoint = new THREE.Vector3(to.x, ground + 1.1, to.z)
 
   return {
     group,
     update(progressValue) {
       const progress = clamp01(progressValue)
-      const travel = Math.min(1, progress / arrival)
-      const position = new THREE.Vector3().lerpVectors(from, to, travel)
-      position.y = from.y + (to.y - from.y) * travel + Math.sin(travel * Math.PI) * .42
-      const tail = Math.max(0, travel - (detail === 'full' ? .3 : .2))
-      for (let index = 0; index < trailPointCount; index += 1) {
-        const t = tail + (travel - tail) * index / Math.max(1, trailPointCount - 1)
-        const point = new THREE.Vector3().lerpVectors(from, to, t)
-        point.y = from.y + (to.y - from.y) * t + Math.sin(t * Math.PI) * .42
-        ;(trail.geometry.getAttribute('position') as THREE.BufferAttribute).setXYZ(index, point.x, point.y, point.z)
-      }
-      ;(trail.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true
-      trail.geometry.computeBoundingSphere()
+      lights.clear()
+      // Полёт ускоряется к цели: шар «падает» в точку взрыва.
+      const travel = Math.min(1, (progress / arrival) ** 1.25)
+      const position = flightPoint(travel, scratchA)
+      const pulse = 1 + Math.sin(progress * 60) * .08
       orb.position.copy(position); halo.position.copy(position)
+      orb.scale.setScalar(pulse); halo.scale.setScalar(1 + travel * .25)
       orb.visible = halo.visible = progress < arrival && visible(map, { x: position.x, y: position.z })
       trail.visible = orb.visible
-      trailMaterial.opacity = orb.visible ? .58 : 0
+      if (orb.visible) orientTrail(trail, position, flightPoint(Math.max(0, travel - (detail === 'full' ? .2 : .14)), scratchB), .13 * (1 + travel * .3))
+      if (orb.visible) lights.add(position, '#ff9442', 2.2 + travel * 1.2, 4)
 
-      const explosionProgress = clamp01((progress - explosionStart) / (1 - explosionStart))
-      const burst = Math.sin(explosionProgress * Math.PI)
-      const scale = blastRadius * (.18 + explosionProgress * .92)
-      explosion.position.set(to.x, ground + .42, to.z)
-      explosion.scale.setScalar(scale)
-      explosion.visible = explosionProgress > 0 && blastAllowed && visible(map, center)
-      blast.opacity = burst * .35
-      ring.position.set(to.x, ground + .08, to.z)
-      ring.scale.setScalar(Math.max(.2, blastRadius * (.18 + explosionProgress * .82)))
-      ring.visible = explosion.visible
-      rayMaterial.opacity = burst * .9
-      for (const { line, angle } of rays) {
-        const start = new THREE.Vector3(to.x, ground + .16, to.z)
-        const distance = blastRadius * (.45 + explosionProgress * .9)
-        const end = start.clone().add(new THREE.Vector3(Math.cos(angle) * distance, .18 + explosionProgress * .5, Math.sin(angle) * distance))
-        setLinePoints(line, start, end)
-        line.visible = explosion.visible
+      const e = clamp01((progress - explosionStart) / (1 - explosionStart))
+      const blastVisible = e > 0 && e < 1 && blastAllowed && visible(map, center)
+      // Быстрый ease-out: купол почти сразу занимает область, затем медленно
+      // поднимается и редеет, открывая фигурки внутри.
+      const expand = easeOutCubic(e / .34)
+      explosion.position.set(to.x, ground, to.z)
+      explosion.scale.set(blastRadius * (.25 + .75 * expand), blastRadius * (.1 + .3 * expand) * (1 + e * .4), blastRadius * (.25 + .75 * expand))
+      shellMaterial.opacity = .62 * smoothstep(0, .06, e) * (1 - smoothstep(.25, .72, e))
+      explosion.visible = blastVisible
+      if (flame) {
+        flame.position.copy(explosion.position)
+        flame.scale.set(blastRadius * .55 * (.2 + .8 * expand), blastRadius * .3 * (.2 + .8 * expand), blastRadius * .55 * (.2 + .8 * expand))
+        flameMaterial.opacity = .38 * (1 - smoothstep(.15, .55, e))
+        flame.visible = blastVisible && flameMaterial.opacity > .01
       }
-      const cellPulse = .35 + explosionProgress * .9
-      cellMaterial.opacity = .2 + burst * .5
-      for (const cell of fireCells) {
-        cell.scale.setScalar(cellPulse)
-        cell.visible = explosionProgress > 0 && explosionProgress < 1 && visible(map, { x: cell.position.x, y: cell.position.z })
+      // Горячее ядро: самая яркая и самая короткая часть вспышки.
+      flash.position.set(to.x, ground + .45, to.z)
+      flash.scale.setScalar(Math.max(.05, blastRadius * .24 * (.4 + .6 * easeOutCubic(e / .15))))
+      flashMaterial.opacity = .85 * (1 - smoothstep(.04, .24, e))
+      flash.visible = blastVisible && flashMaterial.opacity > .01
+      // Ударная волна бежит по полу до края области и гаснет.
+      const wave = clamp01(e / .3)
+      ring.position.set(to.x, ground + .08, to.z)
+      ring.scale.setScalar(Math.max(.2, blastRadius * (.15 + .95 * easeOutQuad(wave))))
+      waveMaterial.opacity = .95 * (1 - wave) ** 1.3
+      ring.visible = blastVisible && wave < 1
+      // Тление: клетки вспыхивают по фронту и медленно остывают, мерцая.
+      const smoulder = smoothstep(.12, .35, e) * (1 - smoothstep(.7, 1, e))
+      emberMaterials.forEach((entry, index) => { entry.opacity = .7 * smoulder * (.72 + .28 * Math.sin(e * 34 + index * 2.1)) })
+      for (const ember of embers) {
+        const lit = expand * 1.05 >= ember.reach
+        ember.mesh.scale.setScalar(.7 + .3 * ember.seed + .12 * Math.sin(e * 23 + ember.seed * 6.28))
+        ember.mesh.visible = lit && e > 0 && e < 1 && smoulder > .01 && visible(map, { x: ember.mesh.position.x, y: ember.mesh.position.z })
       }
       if (contour) {
-        const contourProgress = clamp01((explosionProgress - .04) / .96)
+        const contourProgress = clamp01((e - .04) / .5)
         const vertexCount = Math.floor(contourPoints.length * contourProgress / 2) * 2
         contour.geometry.setDrawRange(0, vertexCount)
-        contourMaterial.opacity = burst * .65
-        contour.visible = vertexCount > 1 && explosionProgress < 1 && visibleCells.length > 0
+        contourMaterial.opacity = .7 * smoothstep(0, .1, e) * (1 - smoothstep(.85, 1, e))
+        contour.visible = vertexCount > 1 && e < 1 && visibleCells.length > 0
       }
-      group.visible = visible(map, center) && (orb.visible || explosion.visible || contour?.visible === true || fireCells.some((cell) => cell.visible))
+      if (blastVisible) {
+        // Резкий пик света и затухание до тлеющего отсвета.
+        const peak = smoothstep(0, .05, e) * Math.exp(-e * 7)
+        lights.add(lightPoint, '#ff8a3a', 6 * peak + 1.1 * smoulder, blastRadius * 1.7)
+      }
+      if (progress >= 1) lights.clear()
+      group.visible = visible(map, center) && (orb.visible || explosion.visible || flash.visible || ring.visible || contour?.visible === true || embers.some(({ mesh }) => mesh.visible))
     },
     dispose() {
       group.removeFromParent()
@@ -278,34 +457,67 @@ function createFireball(
   }
 }
 
-type ProjectilePath = { from: THREE.Vector3; to: THREE.Vector3; targetId?: string; phase: number; arrival: number; arc: number }
+type ProjectilePath = { from: THREE.Vector3; to: THREE.Vector3; targetId?: string; phase: number; arrival: number; arc: number; index: number; count: number }
 
 function projectilePaths(
   cue: Extract<SpellAnimationCue, { kind: 'projectile' }>,
   actors: readonly SpellEffectActor[],
   map: TacticalMap,
-  count: number,
+  maximum: number,
 ) {
-  const source = actorFor(actors, cue.actorId)
-  const origin = cue.from ?? source
+  const { from: origin, fromActor: source, targets } = projectileEndpoints(cue, actors)
   if (!origin || !visible(map, origin)) return [] as ProjectilePath[]
-  const targets: Array<SpellEffectActor | null> = cue.targetIds.map((id) => actorFor(actors, id)).filter((actor): actor is SpellEffectActor => Boolean(actor))
-  if (!targets.length && cue.to) targets.push(null)
-  const result: ProjectilePath[] = []
-  for (let index = 0; index < count; index += 1) {
-    const targetActor = targets[index % Math.max(1, targets.length)] ?? null
-    const target = targetActor ?? cue.to
-    if (!target || !visible(map, target) || !visiblePath(map, origin, target)) continue
-    result.push({
-      from: visualPoint(map, origin, source, .78),
-      to: visualPoint(map, target, targetActor, .72),
-      targetId: cue.targetIds[index % Math.max(1, cue.targetIds.length)],
-      phase: .08 + index * .035,
-      arrival: .7 + Math.min(.16, index * .025),
-      arc: .22 + (index % 3) * .06,
-    })
+  // Цель и её id берутся из одной и той же отфильтрованной записи: исход
+  // промаха не может уехать к соседней цели, когда одна из них скрыта.
+  const reachable = targets.filter(({ to }) => visible(map, to) && visiblePath(map, origin, to))
+  if (!reachable.length) return [] as ProjectilePath[]
+  const from = visualPoint(map, origin, source, .78)
+  const ends = reachable.map(({ to, toActor }) => visualPoint(map, to, toActor, .72))
+  const volley = projectileVolley(cue.projectileCount, reachable.length, maximum)
+  return volley.map(({ target }, index): ProjectilePath => ({
+    from,
+    to: ends[target],
+    targetId: reachable[target].targetId,
+    phase: .08 + index * .035,
+    arrival: .7 + Math.min(.16, index * .025),
+    arc: .22 + (index % 3) * .06,
+    index,
+    count: volley.length,
+  }))
+}
+
+type ProjectileLook = {
+  core: THREE.ColorRepresentation
+  halo: THREE.ColorRepresentation
+  trail: THREE.ColorRepresentation
+  impact: THREE.ColorRepresentation
+  light: string
+  flightLight: boolean
+  /** Амплитуда волнистости траектории в клетках: магические стрелы «плывут». */
+  wobble: number
+  /** Разлёт залпа в стороны: дротики расходятся веером и сходятся на цели. */
+  spread: number
+  arc: number
+  trailLength: number
+  size: number
+}
+
+function projectileLook(style: SpellStyle): ProjectileLook {
+  const family = String(style.family)
+  const base: ProjectileLook = {
+    core: glow(style.secondary, 2.4), halo: glow(style.primary, 1.2), trail: glow(style.primary, 1.1), impact: glow(style.secondary, 2),
+    light: style.primary, flightLight: false, wobble: 0, spread: .18, arc: 1, trailLength: .22, size: 1,
   }
-  return result
+  if (family === 'fire') return { ...base, core: glow('#fff0c4', 3.2), halo: glow('#ff7424', 1.6), trail: glow('#ff8a34', 1.3), impact: glow('#ffc36a', 2.6), light: '#ff8a3a', flightLight: true, trailLength: .3, size: 1.1 }
+  if (family === 'cold') return { ...base, core: glow('#f2feff', 3), halo: glow('#78d6f2', 1.3), trail: glow('#a8ecff', 1.2), impact: glow('#e8fbff', 2.4), light: '#9fe2ff', arc: .35, trailLength: .42 }
+  if (family === 'force') return { ...base, core: glow('#f1f2ff', 3), halo: glow('#8e9cff', 1.4), trail: glow('#a5b0ff', 1.2), impact: glow('#b9c2ff', 1.9), light: '#9aa6ff', wobble: .16, spread: .32, trailLength: .26, size: .82 }
+  if (family === 'acid') return { ...base, core: glow('#f2ffb8', 2.2), halo: glow('#9cc43c', 1.2), trail: glow('#b6cf5c', .9), impact: glow('#d8f07a', 2), light: '#b8e05a', arc: 1.7, trailLength: .16 }
+  if (family === 'poison') return { ...base, core: glow('#e4ffcc', 2), halo: glow('#5fae5c', 1.1), trail: glow('#70b86e', .9), impact: glow('#b8e39b', 1.8), light: '#7fd27a', wobble: .08 }
+  if (family === 'necrotic') return { ...base, core: glow('#efe0ff', 1.8), halo: glow('#6d4f93', 1.1), trail: glow('#876b9e', .9), impact: glow('#cdb2ef', 1.8), light: '#8a7dff', wobble: .1 }
+  if (family === 'radiant' || family === 'light') return { ...base, core: glow('#fffbe6', 3.2), halo: glow('#f0c860', 1.5), trail: glow('#ffe39a', 1.2), impact: glow('#fff3bd', 2.8), light: '#ffe2a0', flightLight: true, arc: .5 }
+  if (family === 'lightning') return { ...base, core: glow('#f2fdff', 3.4), halo: glow('#5cc8ff', 1.4), trail: glow('#9be6ff', 1.3), impact: glow('#e9fbff', 2.8), light: '#a8dcff', flightLight: true, arc: .2, wobble: .06, trailLength: .36 }
+  if (family === 'psychic') return { ...base, wobble: .14, spread: .26 }
+  return base
 }
 
 function createProjectile(
@@ -314,62 +526,105 @@ function createProjectile(
   map: TacticalMap,
 ): SpellEffect3D | null {
   const detail = detailOf(cue)
-  const count = detail === 'full' ? Math.min(8, Math.max(1, cue.projectileCount))
-    : detail === 'reduced' ? Math.min(4, Math.max(1, cue.projectileCount)) : 1
-  const paths = projectilePaths(cue, actors, map, count)
+  const paths = projectilePaths(cue, actors, map, detail === 'full' ? 8 : detail === 'reduced' ? 4 : 1)
   if (!paths.length) return null
   const { geometries, materials, track, material } = resources()
   const group = new THREE.Group()
+  const lights = effectLightRig(group, detail)
   const style = styleFor(cue)
-  const orbMaterial = material(new THREE.MeshBasicMaterial({ color: style.primary, transparent: true, opacity: .96, blending: THREE.AdditiveBlending, depthWrite: false }))
-  const trailMaterial = material(new THREE.LineBasicMaterial({ color: style.secondary, transparent: true, opacity: .7, blending: THREE.AdditiveBlending, depthWrite: false }))
-  const impactMaterial = material(new THREE.MeshBasicMaterial({ color: style.secondary, transparent: true, opacity: .8, blending: THREE.AdditiveBlending, depthWrite: false }))
-  const orbGeometry = track(String(style.family) === 'weapon'
+  const look = projectileLook(style)
+  const family = String(style.family)
+  const coreMaterial = material(additive(look.core, 1))
+  const haloMaterial = material(additive(look.halo, .55))
+  const trailMaterial = material(additive(look.trail, .55))
+  const impactMaterial = material(additive(look.impact, .85))
+  const flashMaterial = material(additive(look.impact, .9))
+  const coreGeometry = track(family === 'weapon'
     ? new THREE.BoxGeometry(.28, .08, .08)
-      : String(style.family) === 'earth' ? new THREE.DodecahedronGeometry(.13, 0)
-        : String(style.family) === 'swarm' ? new THREE.IcosahedronGeometry(.13, 0)
-          : new THREE.SphereGeometry(.16, detail === 'full' ? 10 : 7, 5))
-  const impactGeometry = track(new THREE.TorusGeometry(.22, .025, 5, detail === 'full' ? 14 : 9))
-  const trailPointCount = detail === 'full' ? 4 : detail === 'reduced' ? 3 : 2
+      : family === 'earth' ? new THREE.DodecahedronGeometry(.13, 0)
+        : family === 'swarm' ? new THREE.IcosahedronGeometry(.13, 0)
+          : new THREE.SphereGeometry(.1 * look.size, detail === 'full' ? 10 : 7, 5))
+  const haloGeometry = detail === 'minimal' ? null : track(new THREE.SphereGeometry(.21 * look.size, detail === 'full' ? 10 : 7, 5))
+  const tailGeometry = track(trailGeometry(detail === 'full' ? 8 : 6))
+  const impactGeometry = track(new THREE.TorusGeometry(.22, .025, 5, detail === 'full' ? 18 : 10))
+  const flashGeometry = track(new THREE.SphereGeometry(.2, detail === 'full' ? 10 : 7, 5))
   const entries = paths.map((path) => {
     const root = new THREE.Group()
-    const orb = new THREE.Mesh(orbGeometry, orbMaterial)
+    // Порядок важен: ядро — первая сфера корня (её ищут тесты высоты старта).
+    const trail = new THREE.Mesh(tailGeometry, trailMaterial)
+    const orb = new THREE.Mesh(coreGeometry, coreMaterial)
+    const halo = haloGeometry ? new THREE.Mesh(haloGeometry, haloMaterial) : null
     const impact = new THREE.Mesh(impactGeometry, impactMaterial)
     impact.rotation.x = -Math.PI / 2
-    const trail = new THREE.Line(track(new THREE.BufferGeometry().setFromPoints(Array.from({ length: trailPointCount }, () => new THREE.Vector3()))), trailMaterial)
-    root.add(trail, orb, impact)
+    const flash = new THREE.Mesh(flashGeometry, flashMaterial)
+    root.add(trail, orb)
+    if (halo) root.add(halo)
+    root.add(impact, flash)
     group.add(root)
-    return { ...path, root, orb, impact, trail }
+    const miss = targetOutcomeIsMiss(cue, path.targetId)
+    const horizontal = new THREE.Vector3(path.to.x - path.from.x, 0, path.to.z - path.from.z)
+    const direction = horizontal.lengthSq() > 1e-8 ? horizontal.normalize() : new THREE.Vector3(1, 0, 0)
+    const side = new THREE.Vector3(direction.z, 0, -direction.x)
+    const sign = path.index % 2 ? -1 : 1
+    // Промах проходит мимо цели и гаснет за ней: читается без вспышки.
+    const end = miss
+      ? path.to.clone().addScaledVector(direction, 1.15).addScaledVector(side, .55 * sign).add(new THREE.Vector3(0, -.22, 0))
+      : path.to
+    const fan = path.count > 1 ? (path.index - (path.count - 1) / 2) * look.spread : 0
+    return { ...path, root, orb, halo, impact, flash, trail, miss, end, side, fan, seed: noise(path.index + 3) * Math.PI * 2 }
   })
+  type Entry = typeof entries[number]
+  const pathPoint = (entry: Entry, flight: number, target: THREE.Vector3) => {
+    const eased = flight * flight * (3 - 2 * flight)
+    target.lerpVectors(entry.from, entry.end, eased)
+    const bow = Math.sin(flight * Math.PI)
+    target.y += bow * entry.arc * look.arc
+    const sway = entry.fan * bow + (cue.motion === 'reduced' ? 0 : look.wobble * Math.sin(flight * Math.PI * 3 + entry.seed) * bow)
+    target.addScaledVector(entry.side, sway)
+    return target
+  }
 
   return {
     group,
     update(progressValue) {
       const progress = clamp01(progressValue)
+      lights.clear()
+      let flightLight: THREE.Vector3 | null = null
+      let impactLight: THREE.Vector3 | null = null
+      let impactStrength = 0
       for (const entry of entries) {
         const flight = clamp01((progress - entry.phase) / Math.max(.01, entry.arrival - entry.phase))
-        const eased = flight * flight * (3 - 2 * flight)
-        const position = new THREE.Vector3().lerpVectors(entry.from, entry.to, eased)
-        position.y += Math.sin(flight * Math.PI) * entry.arc
+        const position = pathPoint(entry, flight, scratchA)
+        const fadeOut = entry.miss ? 1 - smoothstep(.72, 1, flight) : 1
         entry.orb.position.copy(position)
-        entry.orb.visible = progress >= entry.phase && progress < entry.arrival && visible(map, { x: position.x, y: position.z })
-        const positions = entry.trail.geometry.getAttribute('position') as THREE.BufferAttribute
-        const tail = Math.max(0, flight - (detail === 'full' ? .28 : .18))
-        for (let index = 0; index < trailPointCount; index += 1) {
-          const t = tail + (flight - tail) * index / Math.max(1, trailPointCount - 1)
-          const point = new THREE.Vector3().lerpVectors(entry.from, entry.to, t)
-          point.y += Math.sin(t * Math.PI) * entry.arc
-          positions.setXYZ(index, point.x, point.y, point.z)
+        entry.orb.scale.setScalar(Math.max(.05, fadeOut) * (1 + Math.sin(progress * 50 + entry.seed) * .08))
+        entry.orb.visible = progress >= entry.phase && progress < entry.arrival && fadeOut > .04 && visible(map, { x: position.x, y: position.z })
+        if (entry.halo) {
+          entry.halo.position.copy(position)
+          entry.halo.scale.setScalar(Math.max(.05, fadeOut))
+          entry.halo.visible = entry.orb.visible
         }
-        positions.needsUpdate = true
-        entry.trail.geometry.computeBoundingSphere()
         entry.trail.visible = entry.orb.visible
-        const impact = Math.sin(Math.PI * clamp01((progress - entry.arrival) / .24))
+        if (entry.orb.visible) {
+          const tail = pathPoint(entry, Math.max(0, flight - look.trailLength * (detail === 'minimal' ? .7 : 1)), scratchB)
+          orientTrail(entry.trail, position, tail, .085 * look.size * Math.max(.2, fadeOut))
+          if (look.flightLight && !flightLight) flightLight = scratchC.copy(position)
+        }
+        const hitPhase = clamp01((progress - entry.arrival) / .24)
+        const impact = Math.sin(Math.PI * hitPhase)
+        const landed = progress >= entry.arrival && impact > 0 && !entry.miss && visible(map, { x: entry.to.x, y: entry.to.z })
         entry.impact.position.copy(entry.to)
-        entry.impact.scale.setScalar(.55 + impact * 1.4)
-        entry.impact.visible = progress >= entry.arrival && impact > 0 && !targetOutcomeIsMiss(cue, entry.targetId) && visible(map, { x: entry.to.x, y: entry.to.z })
+        entry.impact.scale.setScalar(.55 + easeOutCubic(hitPhase) * 1.6)
+        entry.impact.visible = landed
+        entry.flash.position.copy(entry.to)
+        entry.flash.scale.setScalar(Math.max(.05, 1.6 * (1 - hitPhase) * (.4 + .6 * easeOutCubic(hitPhase / .25))))
+        entry.flash.visible = landed && hitPhase < .9
+        if (landed && (1 - hitPhase) > impactStrength) { impactStrength = 1 - hitPhase; impactLight = scratchD.copy(entry.to) }
       }
-      group.visible = entries.some(({ orb, trail, impact }) => orb.visible || trail.visible || impact.visible)
+      if (flightLight) lights.add(flightLight, look.light, 2.2, 4)
+      if (impactLight) lights.add(impactLight, look.light, (family === 'necrotic' ? 1.6 : 3.8) * impactStrength ** 1.5, family === 'necrotic' ? 3 : 4.5)
+      if (progress >= 1) lights.clear()
+      group.visible = entries.some(({ orb, trail, impact, flash }) => orb.visible || trail.visible || impact.visible || flash.visible)
     },
     dispose() {
       group.removeFromParent()
@@ -432,36 +687,55 @@ function createLineEffect(
   if (!segments.length) return null
   const { geometries, materials, track, material } = resources()
   const group = new THREE.Group()
+  const lights = effectLightRig(group, detail)
   const style = styleFor(cue)
   const lightning = String(style.family) === 'lightning'
   const psychicWhip = style.visualVariant === 'psychic-whip'
+  const tube = !lightning && !psychicWhip
   const outerColor = lightning ? '#1b77ba' : style.secondary
   const coreColor = lightning ? '#9ceeff' : style.primary
+  const lightColor = lightning ? '#a8dcff' : String(style.family) === 'necrotic' ? '#8a7dff' : style.primary
   const outer = material(new THREE.LineBasicMaterial({ color: outerColor, transparent: true, opacity: lightning ? .22 : .35, blending: THREE.AdditiveBlending, depthWrite: false }))
   const core = material(new THREE.LineBasicMaterial({ color: coreColor, transparent: true, opacity: lightning ? .62 : .95, blending: THREE.AdditiveBlending, depthWrite: false }))
-  const hitMaterial = material(new THREE.MeshBasicMaterial({ color: lightning ? '#d6fbff' : style.secondary, transparent: true, opacity: .72, blending: THREE.AdditiveBlending, depthWrite: false }))
+  const hitMaterial = material(additive(glow(lightning ? '#d6fbff' : style.secondary, 1.8), .8))
   const hitGeometry = track(new THREE.TorusGeometry(.16, .018, 5, detail === 'full' ? 14 : 9))
-  const lightningOuterMaterial = lightning ? material(new THREE.MeshBasicMaterial({ color: '#1b77ba', transparent: true, opacity: .84, blending: THREE.AdditiveBlending, depthWrite: false })) : null
-  const lightningCoreMaterial = lightning ? material(new THREE.MeshBasicMaterial({ color: '#a9f1ff', transparent: true, opacity: .98, blending: THREE.AdditiveBlending, depthWrite: false })) : null
-  const lightningGeometry = lightning ? track(new THREE.CylinderGeometry(.045, .045, 1, 6)) : null
-  const lightningBranchGeometry = lightning ? track(new THREE.CylinderGeometry(.025, .025, 1, 5)) : null
+  const flashMaterial = material(additive(glow(lightning ? '#f2fdff' : style.secondary, 2.6), .9))
+  const flashGeometry = track(new THREE.SphereGeometry(.2, detail === 'full' ? 10 : 7, 5))
+  // Молния: тонкое ядро ярче порога bloom и широкий бледный ореол вокруг.
+  const lightningOuterMaterial = lightning ? material(additive(glow('#3d9dff', 1.1), .34)) : null
+  const lightningCoreMaterial = lightning ? material(additive(glow('#eafcff', 3.4), 1)) : null
+  const lightningGeometry = lightning ? track(new THREE.CylinderGeometry(.03, .03, 1, 6)) : null
+  const lightningBranchGeometry = lightning ? track(new THREE.CylinderGeometry(.018, .018, 1, 5)) : null
+  const tubeCoreMaterial = tube ? material(additive(glow(style.secondary, 2.2), .95)) : null
+  const tubeGlowMaterial = tube && detail !== 'minimal' ? material(additive(glow(style.primary, 1.1), .3)) : null
+  const tubeGeometry = tube ? track(new THREE.CylinderGeometry(.028, .028, 1, 6)) : null
   const whipMaterial = psychicWhip
     ? material(new THREE.MeshBasicMaterial({ color: style.primary, transparent: true, opacity: .92, blending: THREE.NormalBlending, depthWrite: false }))
     : null
   const whipGeometry = psychicWhip
     ? track(new THREE.CylinderGeometry(.05, .05, 1, detail === 'full' ? 7 : 6))
     : null
+  const pieceCount = detail === 'full' ? 6 : detail === 'reduced' ? 4 : 2
+  const rerolls = detail === 'full' ? 7 : detail === 'reduced' ? 5 : 3
   const lines = segments.map(({ from, midpoint, to, targetId }, segmentIndex) => {
+    const miss = targetOutcomeIsMiss(cue, targetId)
+    const horizontal = new THREE.Vector3(to.x - from.x, 0, to.z - from.z)
+    const direction = horizontal.lengthSq() > 1e-8 ? horizontal.clone().normalize() : new THREE.Vector3(1, 0, 0)
+    const side = new THREE.Vector3(direction.z, 0, -direction.x)
+    // Промах уходит мимо фигуры, а не упирается в неё без вспышки.
+    const end = miss ? to.clone().addScaledVector(direction, .9).addScaledVector(side, .5) : to
     const line = new THREE.Line(track(new THREE.BufferGeometry().setFromPoints([from, from, from])), core)
     group.add(line)
-    const glow = detail === 'minimal' ? null : new THREE.Line(track(new THREE.BufferGeometry().setFromPoints([from, from, from])), outer)
-    if (glow) group.add(glow)
+    const glowLine = detail === 'minimal' ? null : new THREE.Line(track(new THREE.BufferGeometry().setFromPoints([from, from, from])), outer)
+    if (glowLine) group.add(glowLine)
     const hit = new THREE.Mesh(hitGeometry, hitMaterial)
     hit.rotation.x = -Math.PI / 2
     hit.position.copy(to)
     group.add(hit)
-    const jagged = lightning ? lightningPath({ from, midpoint, to }, segmentIndex) : []
-    const pieceCount = detail === 'full' ? 4 : detail === 'reduced' ? 3 : 2
+    const flash = new THREE.Mesh(flashGeometry, flashMaterial)
+    flash.position.copy(to)
+    group.add(flash)
+    const jagged = lightning ? Array.from({ length: pieceCount + 1 }, () => new THREE.Vector3()) : []
     const lightningPieces = lightning
       ? Array.from({ length: pieceCount }, (_, pieceIndex) => {
         const outerPiece = new THREE.Mesh(lightningGeometry!, lightningOuterMaterial!)
@@ -474,7 +748,16 @@ function createLineEffect(
       ? Array.from({ length: detail === 'full' ? 2 : 1 }, (_, branchIndex) => {
         const branch = new THREE.Mesh(lightningBranchGeometry!, lightningCoreMaterial!)
         group.add(branch)
-        return { branch, branchIndex }
+        return { branch, branchIndex, anchor: 1, end: new THREE.Vector3() }
+      })
+      : []
+    const tubePieces = tube
+      ? [0, 1].map(() => {
+        const coreTube = new THREE.Mesh(tubeGeometry!, tubeCoreMaterial!)
+        const glowTube = tubeGlowMaterial ? new THREE.Mesh(tubeGeometry!, tubeGlowMaterial) : null
+        group.add(coreTube)
+        if (glowTube) group.add(glowTube)
+        return { core: coreTube, glow: glowTube }
       })
       : []
     const whipPieces = psychicWhip
@@ -484,63 +767,133 @@ function createLineEffect(
         return mesh
       })
       : []
-    return { line, glow, hit, from, midpoint, to, targetId, jagged, lightningPieces, branches, whipPieces }
+    return { line, glow: glowLine, hit, flash, from, midpoint, to, end, miss, side, targetId, jagged, lightningPieces, branches, tubePieces, whipPieces, seed: segmentIndex * 31.7 + 5, bucket: -1 }
   })
+  type LineEntry = typeof lines[number]
+  const boltDirection = new THREE.Vector3()
+  const lightPoint = new THREE.Vector3()
+  /** Новый зигзаг молнии: перерисовывается несколько раз за эффект. */
+  const rollBolt = (entry: LineEntry, bucket: number) => {
+    entry.bucket = bucket
+    const count = entry.jagged.length - 1
+    boltDirection.subVectors(entry.end, entry.from)
+    const length = boltDirection.length()
+    const amplitude = Math.min(.34, .1 + length * .03)
+    for (const [index, point] of entry.jagged.entries()) {
+      point.lerpVectors(entry.from, entry.end, index / count)
+      if (index === 0 || index === count) continue
+      const lateral = (noise(entry.seed + index * 7.13 + bucket * 13.71) - .5) * 2 * amplitude
+      point.addScaledVector(entry.side, lateral)
+      point.y += (noise(entry.seed + index * 3.91 + bucket * 5.37) - .5) * amplitude * .8
+    }
+    for (const branch of entry.branches) {
+      branch.anchor = 1 + Math.floor(noise(entry.seed + branch.branchIndex * 9.1 + bucket * 2.3) * Math.max(1, count - 1))
+      const anchor = entry.jagged[Math.min(count - 1, branch.anchor)]
+      const sideSign = branch.branchIndex % 2 ? -1 : 1
+      branch.end.copy(anchor)
+        .addScaledVector(entry.side, sideSign * (.24 + noise(entry.seed + bucket * 4.1 + branch.branchIndex) * .22))
+        .addScaledVector(boltDirection, .12 / Math.max(.001, length))
+      branch.end.y -= .12 + noise(entry.seed + bucket * 1.7) * .14
+    }
+  }
 
   return {
     group,
     update(progressValue) {
       const progress = clamp01(progressValue)
+      lights.clear()
       // Короткая подготовка делает луч читаемым как cast → flight → hit.
       const segmentProgress = clamp01((progress - .08) / .84) * lines.length
-      lines.forEach(({ line, glow, hit, from, midpoint, to, targetId, jagged, lightningPieces, branches, whipPieces }, index) => {
+      const bucket = Math.min(rerolls - 1, Math.floor(progress * rerolls))
+      const flicker = lightning ? .55 + .45 * noise(bucket * 3.31 + 1) : 1
+      const lightningFade = 1 - smoothstep(.84, 1, progress)
+      if (lightningCoreMaterial && lightningOuterMaterial) {
+        lightningCoreMaterial.opacity = flicker * lightningFade
+        lightningOuterMaterial.opacity = .34 * flicker * lightningFade
+      }
+      let lightAt: THREE.Vector3 | null = null
+      let lightStrength = 0
+      lines.forEach((entry, index) => {
+        const { line, glow: glowLine, hit, flash, from, midpoint, end, jagged, lightningPieces, branches, tubePieces, whipPieces } = entry
         const local = clamp01(segmentProgress - index)
         const current = local < .5
-          ? from.clone().lerp(midpoint, local * 2)
-          : midpoint.clone().lerp(to, (local - .5) * 2)
+          ? scratchA.lerpVectors(from, midpoint, local * 2)
+          : scratchA.lerpVectors(midpoint, end, (local - .5) * 2)
         setLinePoints(line, from, local < .5 ? current : midpoint, current)
-        if (glow) setLinePoints(glow, from, local < .5 ? current : midpoint, current)
-        line.visible = !psychicWhip && local > 0 && visible(map, { x: current.x, y: current.z })
-        if (glow) glow.visible = line.visible
+        if (glowLine) setLinePoints(glowLine, from, local < .5 ? current : midpoint, current)
+        line.visible = !psychicWhip && !lightning && local > 0 && visible(map, { x: current.x, y: current.z })
+        if (glowLine) glowLine.visible = line.visible
+        if (tubePieces.length) {
+          const [first, second] = tubePieces
+          const firstEnd = local < .5 ? current : midpoint
+          orientCylinder(first.core, from, firstEnd)
+          first.core.visible = line.visible
+          orientCylinder(second.core, midpoint, current)
+          second.core.visible = line.visible && local > .5
+          for (const piece of tubePieces) if (piece.glow) {
+            piece.glow.position.copy(piece.core.position)
+            piece.glow.quaternion.copy(piece.core.quaternion)
+            piece.glow.scale.set(3.2, piece.core.scale.y, 3.2)
+            piece.glow.visible = piece.core.visible
+          }
+        }
         if (whipPieces.length) {
           for (const [pieceIndex, piece] of whipPieces.entries()) {
             const pieceProgress = clamp01(local * whipPieces.length - pieceIndex)
             const startT = pieceIndex / whipPieces.length
             const endT = (pieceIndex + 1) / whipPieces.length
-            const curvePoint = (t: number) => {
+            const curvePoint = (t: number, target: THREE.Vector3) => {
               const inverse = 1 - t
-              return from.clone().multiplyScalar(inverse * inverse)
-                .add(midpoint.clone().multiplyScalar(2 * inverse * t))
-                .add(to.clone().multiplyScalar(t * t))
+              return target.copy(from).multiplyScalar(inverse * inverse)
+                .addScaledVector(midpoint, 2 * inverse * t)
+                .addScaledVector(end, t * t)
             }
-            const pieceStart = curvePoint(startT)
-            const pieceEnd = curvePoint(startT + (endT - startT) * pieceProgress)
+            const pieceStart = curvePoint(startT, scratchB)
+            const pieceEnd = curvePoint(startT + (endT - startT) * pieceProgress, scratchC)
             orientCylinder(piece, pieceStart, pieceEnd)
             piece.visible = pieceProgress > 0 && visible(map, { x: pieceEnd.x, y: pieceEnd.z })
           }
         }
+        let struck = local > .72
+        let strike = clamp01((local - .72) / .28)
         if (lightningPieces.length) {
+          if (entry.bucket !== bucket) rollBolt(entry, bucket)
+          // Разряд долетает почти мгновенно, затем держится и мерцает.
+          const reveal = clamp01(local / .22)
+          struck = reveal >= 1
+          strike = clamp01((local - .22) / .4)
           for (const piece of lightningPieces) {
-            const pieceProgress = clamp01(local * lightningPieces.length - piece.pieceIndex)
-            const pieceStart = jagged[Math.min(jagged.length - 2, Math.floor(piece.pieceIndex * (jagged.length - 1) / lightningPieces.length))]
-            const pieceEnd = jagged[Math.min(jagged.length - 1, Math.floor((piece.pieceIndex + 1) * (jagged.length - 1) / lightningPieces.length))]
-            const pieceCurrent = pieceStart.clone().lerp(pieceEnd, pieceProgress)
-            orientCylinder(piece.outer, pieceStart, pieceCurrent)
+            const pieceProgress = clamp01(reveal * lightningPieces.length - piece.pieceIndex)
+            const pieceStart = jagged[piece.pieceIndex]
+            const pieceEnd = jagged[piece.pieceIndex + 1]
+            const pieceCurrent = scratchB.lerpVectors(pieceStart, pieceEnd, pieceProgress)
             orientCylinder(piece.core, pieceStart, pieceCurrent)
-            piece.outer.visible = piece.core.visible = pieceProgress > 0 && visible(map, { x: pieceCurrent.x, y: pieceCurrent.z })
+            orientCylinder(piece.outer, pieceStart, pieceCurrent, 3.4)
+            piece.outer.visible = piece.core.visible = pieceProgress > 0 && lightningFade > .02 && visible(map, { x: pieceCurrent.x, y: pieceCurrent.z })
           }
-          for (const { branch, branchIndex } of branches) {
-            const branchStart = to.clone()
-            const branchEnd = branchStart.clone().add(new THREE.Vector3((branchIndex ? -.16 : .16), .16 + branchIndex * .05, branchIndex ? .12 : -.12))
-            orientCylinder(branch, branchStart, branchEnd)
-            branch.visible = local > .72 && local < 1 && visible(map, { x: to.x, y: to.z })
+          for (const branch of branches) {
+            const anchor = jagged[Math.min(jagged.length - 2, branch.anchor)]
+            orientCylinder(branch.branch, anchor, branch.end)
+            branch.branch.visible = struck && lightningFade > .02 && (bucket + branch.branchIndex) % 2 === 0 && visible(map, { x: branch.end.x, y: branch.end.z })
+          }
+          if (local > 0 && lightningFade > .02) {
+            const strength = flicker * lightningFade
+            if (strength > lightStrength) { lightStrength = strength; lightAt = lightPoint.copy(struck ? entry.end : jagged[Math.min(jagged.length - 1, Math.ceil(reveal * (jagged.length - 1)))]) }
           }
         }
-        hit.position.copy(to)
-        hit.scale.setScalar(.55 + Math.sin(Math.PI * clamp01((local - .72) / .28)) * .85)
-        hit.visible = local > .72 && local < 1 && !targetOutcomeIsMiss(cue, targetId) && visible(map, { x: to.x, y: to.z })
+        const hitVisible = struck && local < 1 && !entry.miss && visible(map, { x: entry.to.x, y: entry.to.z })
+        hit.position.copy(entry.to)
+        hit.scale.setScalar(.55 + Math.sin(Math.PI * strike) * .85)
+        hit.visible = hitVisible || (lightning && struck && !entry.miss && lightningFade > .02 && visible(map, { x: entry.to.x, y: entry.to.z }))
+        flash.position.copy(entry.to)
+        flash.scale.setScalar(Math.max(.05, 1.5 * (1 - strike) * (.45 + .55 * easeOutCubic(strike / .2))))
+        flash.visible = hit.visible && strike < .95
+        if (!lightning && flash.visible && 1 - strike > lightStrength) { lightStrength = 1 - strike; lightAt = lightPoint.copy(entry.to) }
       })
-      group.visible = lines.some(({ line, hit, lightningPieces, branches, whipPieces }) => line.visible || hit.visible || lightningPieces.some((piece) => piece.outer.visible) || branches.some(({ branch }) => branch.visible) || whipPieces.some((piece) => piece.visible))
+      if (lightAt) lights.add(lightAt, lightColor, lightning ? 4.6 * lightStrength : 3 * lightStrength ** 1.5, lightning ? 5 : 4)
+      if (lightning && lightStrength > 0) lights.add(lines[0].from, lightColor, 1.8 * lightStrength, 3.5)
+      if (progress >= 1) lights.clear()
+      group.visible = lines.some(({ line, hit, flash, lightningPieces, branches, tubePieces, whipPieces }) => line.visible || hit.visible || flash.visible || lightningPieces.some((piece) => piece.outer.visible) || branches.some(({ branch }) => branch.visible) || tubePieces.some((piece) => piece.core.visible) || whipPieces.some((piece) => piece.visible))
     },
     dispose() {
       group.removeFromParent()
@@ -566,51 +919,30 @@ function createBurstLine(
 ): SpellEffect3D | null {
   const source = actorFor(actors, cue.actorId)
   const origin = cue.origin ?? source
-  const endpoint = cue.center ?? (cue.cells?.length && origin
-    ? cue.cells.reduce((farthest, point) => Math.hypot(point.x - origin.x, point.y - origin.y) > Math.hypot(farthest.x - origin.x, farthest.y - origin.y) ? point : farthest)
-    : undefined)
-  const fullLineVisible = cue.cells?.length
-    ? true
-    : endpoint && origin
-    ? maskSpellAreaCells(map, [endpoint], {
-        origins: source ? actorFootprintCells(source) : [origin],
-        spreadsAroundCorners: spellVisualProfile(cue.spellId, { areaShape: cue.shape, areaOrigin: cue.originMode, radius: cue.sizeFeet }).spreadsAroundCorners === true,
-        radiusFeet: cue.sizeFeet,
-      }).has(`${endpoint.x},${endpoint.y}`)
-    : false
-  if (!fullLineVisible) return null
-  const cells = burstFootprint(map, cue, actors).visible
-  // Выбранная клетка задаёт направление, но луч продолжается на всю длину.
-  const center = cells.length
-    ? cells.reduce((farthest, point) => {
-      if (!farthest || !origin) return point
-      return Math.hypot(point.x - origin.x, point.y - origin.y) > Math.hypot(farthest.x - origin.x, farthest.y - origin.y) ? point : farthest
-    }, undefined as BoardPoint | undefined)
-    : undefined
-  if (!origin || !center) return null
+  if (!origin) return null
+  // Видимость проверяется по тем же клеткам, что рисуются: луч сервера идёт
+  // по одному из восьми направлений, а не по прямой до кликнутой клетки.
+  const cells = burstCellsWithoutFog(map, cue, actors)
+  const chebyshev = (point: BoardPoint) => Math.max(Math.abs(point.x - origin.x), Math.abs(point.y - origin.y))
+  // Рисуется непрерывный от заклинателя отрезок до первой скрытой клетки.
+  let end: BoardPoint | undefined
+  for (const cell of [...cells].sort((left, right) => chebyshev(left) - chebyshev(right))) {
+    if (!cellAt(map, Math.floor(cell.x), Math.floor(cell.y)) || !revealedAt(map, Math.floor(cell.x), Math.floor(cell.y))) break
+    end = cell
+  }
+  if (!end) return null
   return createLineEffect(cue, lineSegments([
     { point: origin, actor: source },
-    { point: center, actor: null },
+    { point: end, actor: null },
   ], map, false), map, detailOf(cue))
 }
 
-function orientCylinder(mesh: THREE.Mesh, from: THREE.Vector3, to: THREE.Vector3) {
-  const direction = to.clone().sub(from)
+function orientCylinder(mesh: THREE.Mesh, from: THREE.Vector3, to: THREE.Vector3, radius = 1) {
+  const direction = scratchD.subVectors(to, from)
   const length = Math.max(.001, direction.length())
   mesh.position.copy(from).add(to).multiplyScalar(.5)
-  mesh.scale.set(1, length, 1)
-  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize())
-}
-
-function lightningPath(segment: LineSegment, index: number) {
-  const direction = segment.to.clone().sub(segment.from)
-  const normal = new THREE.Vector3(direction.z, 0, -direction.x).normalize()
-  const points = [segment.from.clone()]
-  for (const [step, sign] of [[.22, 1], [.46, -1], [.7, 1]] as const) {
-    points.push(segment.from.clone().lerp(segment.to, step).add(normal.clone().multiplyScalar(sign * (.13 + (index % 2) * .045))).add(new THREE.Vector3(0, (step < .5 ? .08 : -.05) * sign, 0)))
-  }
-  points.push(segment.to.clone())
-  return points
+  mesh.scale.set(radius, length, radius)
+  if (length > .001) mesh.quaternion.setFromUnitVectors(UP, direction.multiplyScalar(1 / length))
 }
 
 function sampledCells(cells: readonly BoardPoint[], maximum: number) {
@@ -649,6 +981,11 @@ function createAreaBurst(
   const { geometries, materials, track, material } = resources()
   const group = new THREE.Group()
   const style = styleFor(cue)
+  const lights = effectLightRig(group, detail)
+  // Стихийная область подсвечивает пол в момент удара; прочие школы — без света.
+  const areaFamily = String(style.family)
+  const areaLight = areaFamily === 'fire' ? '#ff8a3a' : areaFamily === 'lightning' ? '#a8dcff' : areaFamily === 'radiant' ? '#ffe2a0'
+    : areaFamily === 'cold' ? '#bfeeff' : areaFamily === 'thunder' ? '#c9a8ff' : areaFamily === 'necrotic' ? '#8a7dff' : null
   const areaMaterial = material(new THREE.MeshBasicMaterial({ color: style.primary, transparent: true, opacity: .1, blending: THREE.AdditiveBlending, depthWrite: false, wireframe: cue.shape === 'cube' }))
   const geometry = track(areaCellGeometry(cue.shape, detail, String(style.family)))
   const markers = cells.map((cell, index) => {
@@ -661,19 +998,31 @@ function createAreaBurst(
     return marker
   })
   const center = cue.center ?? cells[Math.floor(cells.length / 2)]
-  const circleGridCenter = cue.geometryVersion === 'circle-grid-v2'
-    && (cue.shape === 'sphere' || cue.shape === 'cylinder')
-    ? cue.gridOrigin ?? center
-    : center
-  const circleGridOffset = cue.geometryVersion === 'circle-grid-v2'
-    && (cue.shape === 'sphere' || cue.shape === 'cylinder') ? 0 : .5
-  const radius = Math.max(.6, Math.min(4, Number(cue.sizeFeet) / 5 || 1))
-  const ring = cue.shape === 'sphere' || cue.shape === 'cylinder'
-    ? new THREE.Mesh(track(new THREE.TorusGeometry(radius * .55, .025, 6, detail === 'full' ? 24 : 14)), areaMaterial)
+  // Кольцо повторяет серверную область. circle-grid-v2 — круг радиуса r клеток
+  // с центром на пересечении сетки; старая сфера — чебышёвский квадрат 2r+1
+  // клеток, то есть контур с полушириной r+0.5 вокруг центра клетки.
+  const roundArea = cue.shape === 'sphere' || cue.shape === 'cylinder'
+  const circleGrid = roundArea && cue.geometryVersion === 'circle-grid-v2'
+  const maximumCells = Math.max(4, map.width, map.height)
+  const extent = circleGrid
+    ? Math.max(.6, Math.min(maximumCells, Number(cue.sizeFeet) / 5 || 1))
+    : Math.min(maximumCells, Math.max(0, Math.floor(Number(cue.sizeFeet) / 5) || 0)) + .5
+  const ringCenter = !roundArea || !center ? null
+    : circleGrid ? { x: (cue.gridOrigin ?? center).x, y: (cue.gridOrigin ?? center).y }
+      : { x: center.x + .5, y: center.y + .5 }
+  const ring = ringCenter
+    ? new THREE.Mesh(track(circleGrid
+      ? new THREE.TorusGeometry(extent, .025, 6, Math.min(96, Math.max(detail === 'full' ? 24 : 14, Math.ceil(extent * (detail === 'full' ? 10 : 6)))))
+      : squareOutlineGeometry(extent, .025)), areaMaterial)
     : null
   if (ring) { ring.rotation.x = -Math.PI / 2; group.add(ring) }
-  const baseHeight = circleGridCenter ? terrainHeightAt(map, circleGridCenter.x, circleGridCenter.y) : 0
-  const visibleRadiusCells = circleGridCenter ? visibleRadius(map, circleGridCenter, radius) : radius
+  const baseHeight = ringCenter ? terrainHeightAt(map, ringCenter.x, ringCenter.y) : 0
+  const visibleExtent = !ringCenter ? extent
+    : circleGrid ? visibleRadius(map, ringCenter, extent) : visibleSquareHalfWidth(map, ringCenter, extent)
+  const areaCenter = new THREE.Vector3()
+  for (const cell of cells) areaCenter.add(scratchA.set(cell.x + .5, terrainHeightAt(map, cell.x, cell.y) + 1, cell.y + .5))
+  areaCenter.multiplyScalar(1 / Math.max(1, cells.length))
+  const areaSpan = cells.reduce((maximum, cell) => Math.max(maximum, Math.hypot(cell.x + .5 - areaCenter.x, cell.y + .5 - areaCenter.z)), 0)
 
   return {
     group,
@@ -682,15 +1031,17 @@ function createAreaBurst(
       const reveal = clamp01((progress - .08) / .28)
       const impact = clamp01((progress - .22) / .28)
       const fade = Math.sin(Math.PI * clamp01(progress))
+      lights.clear()
       areaMaterial.opacity = (.12 + impact * .42) * Math.max(.35, fade)
+      if (areaLight && progress < 1) lights.add(areaCenter, areaLight, 3.2 * Math.sin(Math.PI * clamp01((progress - .18) / .7)), areaSpan + 2.5)
       for (const [index, marker] of markers.entries()) {
         marker.visible = progress > .04 && progress < .96
         marker.scale.setScalar(.35 + reveal * (.65 + (index % 3) * .08))
         marker.position.y = terrainHeightAt(map, cells[index].x, cells[index].y) + .1 + reveal * .16
       }
-      if (circleGridCenter && ring) {
-        ring.position.set(circleGridCenter.x + circleGridOffset, baseHeight + .06, circleGridCenter.y + circleGridOffset)
-        ring.scale.setScalar(Math.max(.3, visibleRadiusCells / Math.max(.1, radius)) * (.5 + impact * .5))
+      if (ringCenter && ring) {
+        ring.position.set(ringCenter.x, baseHeight + .06, ringCenter.y)
+        ring.scale.setScalar(Math.max(.1, visibleExtent / Math.max(.1, extent)) * (.5 + impact * .5))
         ring.visible = progress > .12 && progress < .96
       }
       group.visible = markers.some((marker) => marker.visible) || Boolean(ring?.visible)
@@ -709,52 +1060,110 @@ function createAura(
   map: TacticalMap,
 ): SpellEffect3D | null {
   const carrierActor = actorFor(actors, cue.actorId)
-  const center = cue.center ?? carrierActor
-  if (!center || !visible(map, center)) return null
+  const anchor = cue.center ?? carrierActor
+  if (!anchor || !visible(map, anchor)) return null
   const detail = detailOf(cue)
   const style = styleFor(cue)
+  const family = String(style.family)
+  const behavior = style.behavior
   const { geometries, materials, track, material } = resources()
   const group = new THREE.Group()
-  const radius = cue.auraType === 'concentration' ? .48 : Math.max(.65, Number(cue.radiusFeet) / 5 || 1)
-  const visibleArea = visibleRadius(map, center, radius)
-  const bodyMaterial = material(new THREE.MeshBasicMaterial({ color: style.primary, transparent: true, opacity: .22, blending: THREE.AdditiveBlending, depthWrite: false, wireframe: true }))
-  const accentMaterial = material(new THREE.MeshBasicMaterial({ color: style.secondary, transparent: true, opacity: .72, blending: THREE.AdditiveBlending, depthWrite: false }))
-  const dome = new THREE.Mesh(track(new THREE.SphereGeometry(1, detail === 'full' ? 16 : 10, detail === 'full' ? 9 : 6)), bodyMaterial)
+  const lights = effectLightRig(group, detail)
+  // Аура считается от всей площади носителя: сервер меряет чебышёвскую
+  // дистанцию между площадями, поэтому её граница — квадрат с полушириной
+  // r + size/2 вокруг центра площади, а не круг радиуса r от anchor+0.5.
+  const size = carrierActor ? actorPresentationSize(map, carrierActor, anchor) : 1
+  const center = carrierActor ? actorPresentationCenter(map, carrierActor, anchor) : { x: anchor.x + .5, y: anchor.y + .5 }
+  const concentration = cue.auraType === 'concentration'
+  const radius = concentration ? .48 * size : Math.max(.65, Number(cue.radiusFeet) / 5 || 1) + size / 2
+  const visibleArea = concentration ? visibleRadius(map, center, radius) : visibleSquareHalfWidth(map, center, radius)
+  const segments = detail === 'full' ? 16 : 10
+  const bodyMaterial = material(additive(style.primary, .22, { wireframe: true }))
+  const accentMaterial = material(additive(glow(style.secondary, 1.5), .78))
+  const floorMaterial = material(additive(style.primary, .1))
+  const waveMaterial = material(additive(glow(style.secondary, 1.3), .6))
+  // Ограждение — гранёный щит из крупных граней, прочие школы — гладкий купол.
+  const domeGeometry = behavior === 'dome'
+    ? new THREE.SphereGeometry(1, 7, 4)
+    : new THREE.SphereGeometry(1, segments, detail === 'full' ? 9 : 6)
+  const dome = new THREE.Mesh(track(domeGeometry), bodyMaterial)
   dome.scale.set(visibleArea, Math.max(.35, visibleArea * .62), visibleArea)
-  const ring = new THREE.Mesh(track(new THREE.TorusGeometry(visibleArea, .028, 6, detail === 'full' ? 28 : 16)), accentMaterial)
+  const edgeGeometry = track(concentration
+    ? new THREE.TorusGeometry(visibleArea, .028, 6, detail === 'full' ? 28 : 16)
+    : squareOutlineGeometry(visibleArea, .028))
+  const ring = new THREE.Mesh(edgeGeometry, accentMaterial)
   ring.rotation.x = -Math.PI / 2
   group.add(dome, ring)
-  const count = detail === 'full' ? 5 : detail === 'reduced' ? 3 : 1
+  // Заливка пола делает границу читаемой и на пёстрой фактуре.
+  const floor = new THREE.Mesh(track(concentration
+    ? new THREE.CircleGeometry(visibleArea, detail === 'full' ? 28 : 16)
+    : new THREE.PlaneGeometry(visibleArea * 2, visibleArea * 2)), floorMaterial)
+  floor.rotation.x = -Math.PI / 2
+  group.add(floor)
+  // Волна от носителя к краю: аура «включается» и показывает свою площадь.
+  const wave = detail === 'minimal' ? null : new THREE.Mesh(edgeGeometry, waveMaterial)
+  if (wave) { wave.rotation.x = -Math.PI / 2; group.add(wave) }
+  const count = detail === 'full' ? 6 : detail === 'reduced' ? 4 : 2
+  const inward = behavior === 'inward'
+  const runes = behavior === 'focus'
+  // Некромантия: тени тянутся вниз; прорицание: знаки-руны обходят границу;
+  // остальные школы — несколько поднимающихся искр.
+  const shadowMaterial = inward ? material(new THREE.MeshBasicMaterial({ color: new THREE.Color(style.primary).multiplyScalar(.35), transparent: true, opacity: .6, depthWrite: false })) : null
+  const motifGeometry = track(inward
+    ? new THREE.ConeGeometry(.07, .62, 5)
+    : runes ? new THREE.BoxGeometry(.2, .025, .1) : new THREE.IcosahedronGeometry(.05, 0))
   const particles = Array.from({ length: count }, (_, index) => {
-    const mesh = new THREE.Mesh(track(new THREE.IcosahedronGeometry(.045, 0)), accentMaterial)
+    const mesh = new THREE.Mesh(motifGeometry, shadowMaterial ?? accentMaterial)
+    if (inward) mesh.rotation.x = Math.PI
     group.add(mesh)
     return { mesh, angle: index * Math.PI * 2 / count, phase: index / count }
   })
-  const ground = terrainHeightAt(map, center.x, center.y)
+  const ground = carrierActor ? actorGroundHeight(map, carrierActor, anchor) : terrainHeightAt(map, anchor.x, anchor.y)
+  const centerWorld = new THREE.Vector3(center.x, ground, center.y)
+  const lightPoint = new THREE.Vector3(center.x, ground + 1.2, center.y)
+  const lightColor = family === 'radiant' || family === 'light' || family === 'healing' ? '#ffe2a6'
+    : family === 'necrotic' || family === 'darkness' ? '#8a7dff'
+      : family === 'fire' ? '#ff8a3a' : null
+  const still = cue.motion === 'reduced'
 
   return {
     group,
     update(progressValue) {
       const progress = clamp01(progressValue)
+      lights.clear()
       const fade = cue.active === false ? 1 - progress : Math.sin(Math.PI * progress)
-      const pulse = .94 + Math.sin(progress * Math.PI * 2) * .06
-      const centerWorld = new THREE.Vector3(center.x + .5, ground, center.y + .5)
-      dome.position.copy(centerWorld).add(new THREE.Vector3(0, Math.max(.3, visibleArea * .4), 0))
-      ring.position.copy(centerWorld).add(new THREE.Vector3(0, .05, 0))
+      const pulse = still ? 1 : .94 + Math.sin(progress * Math.PI * 2) * .06
+      dome.position.set(centerWorld.x, centerWorld.y + Math.max(.3, visibleArea * .4), centerWorld.z)
+      dome.rotation.y = still ? 0 : progress * .6
+      ring.position.set(centerWorld.x, centerWorld.y + .05, centerWorld.z)
       ring.scale.setScalar(pulse)
-      bodyMaterial.opacity = fade * .22
-      accentMaterial.opacity = fade * .78
+      floor.position.set(centerWorld.x, centerWorld.y + .03, centerWorld.z)
+      // Граница и заливка несут смысл, купол — только намёк на объём.
+      bodyMaterial.opacity = fade * (behavior === 'dome' ? .2 : .07)
+      accentMaterial.opacity = fade * .85
+      floorMaterial.opacity = fade * .09
       dome.visible = fade > .015 && visibleArea > .3
-      ring.visible = dome.visible
-      for (const particle of particles) {
-        const phase = clamp01(progress * 1.2 - particle.phase * .2)
-        particle.mesh.position.set(
-          centerWorld.x + Math.cos(particle.angle + progress * Math.PI * 2) * visibleArea * .86,
-          ground + .08 + phase * Math.max(.22, visibleArea * .72),
-          centerWorld.z + Math.sin(particle.angle + progress * Math.PI * 2) * visibleArea * .86,
-        )
-        particle.mesh.visible = dome.visible && phase > 0 && phase < 1
+      ring.visible = floor.visible = dome.visible
+      if (wave) {
+        const sweep = still ? 1 : clamp01(progress / .45)
+        wave.position.set(centerWorld.x, centerWorld.y + .07, centerWorld.z)
+        wave.scale.setScalar(Math.max(.05, .12 + .88 * easeOutCubic(sweep)))
+        waveMaterial.opacity = .7 * (1 - sweep) * fade
+        wave.visible = dome.visible && sweep < 1
       }
+      const spin = still ? 0 : progress * Math.PI * (runes ? 1 : 2)
+      for (const particle of particles) {
+        const phase = still ? .5 : clamp01(progress * 1.2 - particle.phase * .2)
+        const angle = particle.angle + spin
+        const reach = visibleArea * (inward ? .92 - phase * .18 : .86)
+        const height = inward ? .9 - phase * .75 : runes ? .32 + Math.sin(angle * 2) * .06 : .08 + phase * Math.max(.22, visibleArea * .72)
+        particle.mesh.position.set(centerWorld.x + Math.cos(angle) * reach, ground + height, centerWorld.z + Math.sin(angle) * reach)
+        if (runes) particle.mesh.rotation.y = -angle
+        particle.mesh.visible = dome.visible && (runes || (phase > 0 && phase < 1))
+      }
+      if (shadowMaterial) shadowMaterial.opacity = .6 * fade
+      if (lightColor && dome.visible) lights.add(lightPoint, lightColor, (lightColor === '#8a7dff' ? .9 : 1.5) * fade, Math.max(3, visibleArea + 1.5))
+      if (progress >= 1) lights.clear()
       group.visible = dome.visible || particles.some(({ mesh }) => mesh.visible)
     },
     dispose() {
@@ -776,50 +1185,68 @@ function createHealing(
   const detail = detailOf(cue)
   const { geometries, materials, track, material } = resources()
   const group = new THREE.Group()
+  const lights = effectLightRig(group, detail)
   const style = styleFor(cue)
-  const green = material(new THREE.MeshBasicMaterial({ color: style.primary, transparent: true, opacity: .86, blending: THREE.AdditiveBlending, depthWrite: false }))
-  const glow = material(new THREE.MeshBasicMaterial({ color: style.secondary, transparent: true, opacity: .45, blending: THREE.AdditiveBlending, depthWrite: false }))
-  const lineMaterial = material(new THREE.LineBasicMaterial({ color: style.secondary, transparent: true, opacity: .75, blending: THREE.AdditiveBlending, depthWrite: false }))
-  const ground = terrainHeightAt(map, target.x, target.y)
-  const center = visualPoint(map, target, cue.position ? null : targetActor, .08)
-  const ring = new THREE.Mesh(track(new THREE.TorusGeometry(.34, .02, 6, detail === 'full' ? 18 : 12)), green)
+  const actor = cue.position ? null : targetActor
+  const size = actor ? actorPresentationSize(map, actor, target) : 1
+  const center = visualPoint(map, target, actor, .08)
+  const ground = center.y - .08
+  const segments = detail === 'full' ? 18 : 12
+  const ringMaterial = material(additive(glow(style.primary, 1.6), .9))
+  const columnMaterial = material(additive(glow(style.secondary, 1.3), .6, { vertexColors: true, side: THREE.DoubleSide }))
+  const coreMaterial = material(additive(glow('#fff1c2', 2.2), .8, { vertexColors: true }))
+  const moteMaterial = material(additive(glow('#fff4c8', 2.4), .9))
+  // Кольцо у ног, мягкий столб света и несколько искр, поднимающихся вверх:
+  // лечение читается как «свет приходит к цели», без облака частиц.
+  const ring = new THREE.Mesh(track(new THREE.TorusGeometry(.38 * size, .022, 6, segments)), ringMaterial)
   ring.rotation.x = -Math.PI / 2
   group.add(ring)
-  const column = new THREE.Line(track(new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3(center.x, ground + .08, center.z),
-    new THREE.Vector3(center.x, ground + 1.3, center.z),
-  ])), lineMaterial)
+  const column = new THREE.Mesh(track(fadeColumnGeometry(.4 * size, .3 * size, 1.7 + size * .2, segments)), columnMaterial)
   group.add(column)
+  const core = detail === 'minimal' ? null : new THREE.Mesh(track(fadeColumnGeometry(.1 * size, .05 * size, 2, 8)), coreMaterial)
+  if (core) group.add(core)
   const count = detail === 'full' ? 5 : detail === 'reduced' ? 3 : 2
+  const moteGeometry = track(new THREE.OctahedronGeometry(.05, 0))
   const particles = Array.from({ length: count }, (_, index) => {
-    const mesh = new THREE.Mesh(track(new THREE.IcosahedronGeometry(.055, 0)), glow)
+    const mesh = new THREE.Mesh(moteGeometry, moteMaterial)
     group.add(mesh)
     return { mesh, phase: index / count, angle: index * 2.17 }
   })
+  const lightPoint = new THREE.Vector3(center.x, ground + 1, center.z)
 
   return {
     group,
     update(progressValue) {
       const progress = clamp01(progressValue)
+      lights.clear()
       const fade = Math.sin(progress * Math.PI)
+      const rise = easeOutCubic(progress / .35)
       ring.position.set(center.x, ground + .06, center.z)
-      ring.scale.setScalar(.75 + Math.sin(progress * Math.PI * 2) * .16)
-      green.opacity = fade * .9
-      lineMaterial.opacity = fade * .78
+      ring.scale.setScalar(.7 + easeOutCubic(progress) * .55)
+      ringMaterial.opacity = fade * .9
+      column.position.set(center.x, ground + .02, center.z)
+      column.scale.set(1, Math.max(.05, rise), 1)
+      column.rotation.y = progress * 1.5
+      columnMaterial.opacity = fade * .55
       column.visible = fade > .02
-      const top = ground + .15 + Math.min(1.25, progress * 1.35)
-      for (const particle of particles) {
-        const rise = clamp01(progress * 1.25 - particle.phase * .22)
-        particle.mesh.position.set(
-          center.x + Math.cos(particle.angle + progress * Math.PI * 2) * (.13 + rise * .12),
-          ground + .1 + rise * 1.18,
-          center.z + Math.sin(particle.angle + progress * Math.PI * 2) * (.13 + rise * .12),
-        )
-        particle.mesh.visible = rise > 0 && rise < 1 && fade > .02
+      if (core) {
+        core.position.copy(column.position)
+        core.scale.set(1, Math.max(.05, rise), 1)
+        coreMaterial.opacity = fade * .8
+        core.visible = column.visible
       }
-      ;(column.geometry.getAttribute('position') as THREE.BufferAttribute).setXYZ(1, center.x, top, center.z)
-      ;(column.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true
-      column.geometry.computeBoundingSphere()
+      for (const particle of particles) {
+        const lift = clamp01(progress * 1.25 - particle.phase * .22)
+        particle.mesh.position.set(
+          center.x + Math.cos(particle.angle + progress * Math.PI * 2) * (.16 + lift * .14) * size,
+          ground + .1 + lift * 1.3,
+          center.z + Math.sin(particle.angle + progress * Math.PI * 2) * (.16 + lift * .14) * size,
+        )
+        particle.mesh.scale.setScalar(1 - lift * .5)
+        particle.mesh.visible = lift > 0 && lift < 1 && fade > .02
+      }
+      if (fade > .02) lights.add(lightPoint, '#ffd98a', 2.4 * fade, 3.5)
+      if (progress >= 1) lights.clear()
       group.visible = visible(map, target) && fade > .01
     },
     dispose() {
@@ -882,10 +1309,19 @@ function createChannel(
   group.add(ring)
   const shieldLike = variant !== 'cancellation' && variant !== 'soul-transfer'
     && (style.family === 'protection' || (style.family === 'control' && variant !== 'silence') || style.family === 'darkness')
-  const dome = shieldLike
-    ? new THREE.Mesh(track(new THREE.SphereGeometry(.62, detail === 'full' ? 14 : 9, detail === 'full' ? 8 : 5)), bodyMaterial)
+  // Ограждение — гранёный щит: крупные грани и светящиеся рёбра вместо
+  // гладкого пузыря.
+  const faceted = style.family === 'protection'
+  const domeGeometry = shieldLike
+    ? track(faceted ? new THREE.SphereGeometry(.62, 7, 4) : new THREE.SphereGeometry(.62, detail === 'full' ? 14 : 9, detail === 'full' ? 8 : 5))
     : null
+  const dome = domeGeometry ? new THREE.Mesh(domeGeometry, bodyMaterial) : null
   if (dome) { dome.scale.y = 1.35; group.add(dome) }
+  const facetMaterial = faceted && dome && detail !== 'minimal'
+    ? material(additive(glow(style.secondary, 1.4), .7, { wireframe: true }))
+    : null
+  const facets = facetMaterial ? new THREE.Mesh(domeGeometry!, facetMaterial) : null
+  if (facets) group.add(facets)
   const portal = style.family === 'teleport' || style.family === 'summon'
     ? new THREE.Mesh(track(new THREE.TorusGeometry(.48, .035, 6, detail === 'full' ? 20 : 12)), accentMaterial)
     : null
@@ -1087,15 +1523,84 @@ function createChannel(
   if (soulOrb) group.add(soulOrb)
   if (soulVessel) { soulVessel.rotation.x = -Math.PI / 2; group.add(soulVessel) }
   if (soulLine) group.add(soulLine)
+  const lights = effectLightRig(group, detail)
+  // Столб света: телепорт вспыхивает в точке ухода и прибытия, призыв
+  // «собирает» существо снизу вверх.
+  const columnMaterial = isTeleport || family === 'summon'
+    ? material(additive(glow(style.primary, 1.7), .8, { vertexColors: true, side: THREE.DoubleSide }))
+    : null
+  const columnGeometry = columnMaterial ? track(fadeColumnGeometry(.42, .32, 1.8, detail === 'full' ? 16 : 10)) : null
+  const arrivalColumn = columnGeometry ? new THREE.Mesh(columnGeometry, columnMaterial!) : null
+  const departureColumn = isTeleport && source && columnGeometry ? new THREE.Mesh(columnGeometry, columnMaterial!) : null
+  if (arrivalColumn) group.add(arrivalColumn)
+  if (departureColumn) group.add(departureColumn)
+  // Контроль: путы-кольца сжимаются вокруг фигуры.
+  const bindingRings = family === 'control' && variant !== 'silence'
+    ? Array.from({ length: detail === 'full' ? 3 : detail === 'reduced' ? 2 : 1 }, (_, index) => {
+      const mesh = new THREE.Mesh(track(new THREE.TorusGeometry(.5, .022, 5, detail === 'full' ? 20 : 12)), accentMaterial)
+      group.add(mesh)
+      return { mesh, index }
+    })
+    : []
+  // Некромантия, тьма и яд: тени тянутся вниз, к земле под целью.
+  const inwardMotif = !targetLocalVariant && (family === 'necrotic' || family === 'darkness' || family === 'poison')
+  const shadowMaterial = inwardMotif
+    ? material(new THREE.MeshBasicMaterial({ color: new THREE.Color(style.primary).multiplyScalar(.35), transparent: true, opacity: .6, depthWrite: false }))
+    : null
+  const shadowGeometry = inwardMotif ? track(new THREE.ConeGeometry(.06, .55, 5)) : null
+  const shadowCount = inwardMotif ? detail === 'full' ? 4 : detail === 'reduced' ? 3 : 1 : 0
+  const shadows = Array.from({ length: shadowCount }, (_, index) => {
+    const mesh = new THREE.Mesh(shadowGeometry!, shadowMaterial!)
+    mesh.rotation.x = Math.PI
+    group.add(mesh)
+    return { mesh, angle: index * Math.PI * 2 / shadowCount + .4, phase: index / shadowCount }
+  })
+  // Прорицание: гранёное кольцо-руна медленно поворачивается под целью.
+  const runeHex = family === 'divination'
+    ? new THREE.Mesh(track(new THREE.RingGeometry(.52, .6, 6)), accentMaterial)
+    : null
+  if (runeHex) { runeHex.rotation.x = -Math.PI / 2; group.add(runeHex) }
+  const lightColor = family === 'necrotic' || family === 'darkness' ? '#8a7dff'
+    : family === 'radiant' || family === 'light' ? '#ffe2a0'
+      : family === 'summon' ? style.secondary : null
+  const teleportLight = '#8ff5e8'
+  const lightPoint = new THREE.Vector3(center.x, ground + 1, center.z)
+  const sourceGroundLevel = source ? terrainHeightAt(map, source.x, source.y) : ground
+  const departureLight = new THREE.Vector3(sourcePoint.x, sourceGroundLevel + 1, sourcePoint.z)
 
   return {
     group,
     update(progressValue) {
       const progress = mobilityVariant && cue.motion === 'reduced' ? .72 : clamp01(progressValue)
+      lights.clear()
       if (isTeleport) {
         const departure = source ? 1 - clamp01(progress / .4) : 0
         const arrival = source ? clamp01((progress - .6) / .4) : 1
-        const sourceGround = source ? terrainHeightAt(map, source.x, source.y) : ground
+        const sourceGround = sourceGroundLevel
+        // Уход: столб вспыхивает и схлопывается к моменту исчезновения фигуры;
+        // прибытие: тонкий луч раскрывается и тает.
+        const leave = clamp01(progress / .4)
+        const come = source ? clamp01((progress - .6) / .4) : progress
+        if (departureColumn) {
+          const width = 1 - smoothstep(.55, 1, leave) * .92
+          departureColumn.position.set(sourcePoint.x, sourceGround, sourcePoint.z)
+          departureColumn.scale.set(width, .35 + .65 * easeOutCubic(leave / .5), width)
+          departureColumn.visible = leave < 1
+        }
+        if (arrivalColumn) {
+          const width = .08 + .92 * easeOutCubic(come / .35)
+          arrivalColumn.position.set(center.x, ground, center.z)
+          arrivalColumn.scale.set(width, 1.15 - .25 * come, width)
+          arrivalColumn.visible = (!source || progress >= .6) && come < 1
+        }
+        if (columnMaterial) columnMaterial.opacity = departureColumn?.visible ? .85 : .85 * (1 - smoothstep(.35, 1, come))
+        const leaveFlash = source ? smoothstep(.16, .34, progress) * (1 - smoothstep(.36, .46, progress)) : 0
+        const comeFlash = source
+          ? smoothstep(.58, .63, progress) * (1 - smoothstep(.63, .95, progress))
+          : smoothstep(0, .06, progress) * (1 - smoothstep(.06, .7, progress))
+        lights.add(departureLight, teleportLight, 4 * leaveFlash, 4)
+        lights.add(lightPoint, teleportLight, 4.5 * comeFlash, 4.5)
+        if (progress >= 1) lights.clear()
         ring.position.set(center.x, ground + .05, center.z)
         ring.scale.setScalar(.65 + arrival * .55)
         ring.visible = arrival > .015
@@ -1123,7 +1628,7 @@ function createChannel(
         }
         bodyMaterial.opacity = Math.max(departure, arrival) * .24
         accentMaterial.opacity = Math.max(departure, arrival) * .8
-        group.visible = ring.visible || Boolean(departurePortal?.visible || portal?.visible || particles.some(({ mesh }) => mesh.visible))
+        group.visible = ring.visible || Boolean(departurePortal?.visible || portal?.visible || departureColumn?.visible || arrivalColumn?.visible || particles.some(({ mesh }) => mesh.visible))
         return
       }
       const fade = Math.sin(Math.PI * progress)
@@ -1137,15 +1642,53 @@ function createChannel(
         dome.position.set(center.x, ground + .5, center.z)
         dome.scale.set(.5 + fade * .3, (1.1 + fade * .3), .5 + fade * .3)
         dome.visible = fade > .02
+        if (facets && facetMaterial) {
+          facets.position.copy(dome.position)
+          facets.scale.copy(dome.scale)
+          facets.rotation.y = progress * .8
+          facetMaterial.opacity = fade * .7
+          facets.visible = dome.visible
+        }
       }
+      if (arrivalColumn && columnMaterial) {
+        // Призыв: столб растёт снизу вверх и тает к концу.
+        arrivalColumn.position.set(center.x, ground, center.z)
+        arrivalColumn.scale.set(1, Math.max(.05, easeOutCubic(progress / .45)), 1)
+        columnMaterial.opacity = fade * .7
+        arrivalColumn.visible = fade > .02
+      }
+      for (const { mesh, index } of bindingRings) {
+        const tighten = easeOutCubic(clamp01((progress - index * .08) / .55))
+        mesh.position.set(center.x, ground + .3 + index * .38, center.z)
+        mesh.rotation.set(-Math.PI / 2 + Math.sin(index * 1.7 + progress * 3) * .18, 0, progress * (index % 2 ? -2 : 2))
+        mesh.scale.setScalar(1.55 - .75 * tighten)
+        mesh.visible = fade > .02
+      }
+      for (const shadow of shadows) {
+        const fall = clamp01(progress * 1.3 - shadow.phase * .25)
+        const reach = .5 - fall * .16
+        shadow.mesh.position.set(center.x + Math.cos(shadow.angle) * reach, ground + 1.05 - fall * .8, center.z + Math.sin(shadow.angle) * reach)
+        shadow.mesh.scale.set(1, .6 + fall * .7, 1)
+        shadow.mesh.visible = fall > 0 && fall < 1 && fade > .02
+      }
+      if (shadowMaterial) shadowMaterial.opacity = .6 * fade
+      if (runeHex) {
+        runeHex.position.set(center.x, ground + .07, center.z)
+        runeHex.rotation.z = progress * Math.PI * .6
+        runeHex.scale.setScalar(.8 + fade * .35)
+        runeHex.visible = fade > .02
+      }
+      if (lightColor && fade > .02) lights.add(lightPoint, lightColor, (lightColor === '#8a7dff' ? 1 : 2) * fade, 3.5)
+      if (progress >= 1) lights.clear()
       if (portal) {
         portal.position.set(center.x, ground + .1 + lift * .25, center.z)
         portal.scale.setScalar(.55 + fade * .5)
         portal.visible = fade > .015
       }
       if (travel) {
-        const current = new THREE.Vector3().lerpVectors(sourcePoint, center, progress)
-        const middle = sourcePoint.clone().lerp(center, .5).add(new THREE.Vector3(0, .25, 0))
+        const current = scratchA.lerpVectors(sourcePoint, center, progress)
+        const middle = scratchB.lerpVectors(sourcePoint, center, .5)
+        middle.y += .25
         setLinePoints(travel, sourcePoint, progress < .5 ? current : middle, current)
         travel.visible = progress > .04 && progress < .96
       }
@@ -1155,18 +1698,18 @@ function createChannel(
         cancellationRing.visible = fade > .02 && progress < .92
       }
       if (cancellationSplits.length) {
-        const base = new THREE.Vector3(center.x, ground + .08, center.z)
+        const base = scratchA.set(center.x, ground + .08, center.z)
         const splitPhase = clamp01((progress - .3) / .62)
         const radius = .08 + splitPhase * .48
         for (const [index, line] of cancellationSplits.entries()) {
-          const direction = index === 0 ? new THREE.Vector3(-radius, .08 + splitPhase * .2, 0) : new THREE.Vector3(radius, .08 + splitPhase * .2, 0)
-          setLinePoints(line, base, base.clone().add(direction), base.clone().add(direction.multiplyScalar(1.2)))
+          const direction = scratchD.set(index === 0 ? -radius : radius, .08 + splitPhase * .2, 0)
+          setLinePoints(line, base, scratchB.copy(base).add(direction), scratchC.copy(base).addScaledVector(direction, 1.2))
           line.visible = splitPhase > 0 && splitPhase < 1 && fade > .02
         }
       }
       if (soulOrb && soulVessel) {
         const transfer = clamp01((progress - .08) / .84)
-        const current = new THREE.Vector3().lerpVectors(sourcePoint, center, transfer)
+        const current = scratchA.lerpVectors(sourcePoint, center, transfer)
         soulOrb.position.copy(current)
         soulOrb.scale.setScalar(.7 + Math.sin(Math.PI * transfer) * .55)
         soulOrb.visible = transfer > 0 && transfer < 1 && fade > .02
@@ -1174,7 +1717,8 @@ function createChannel(
         soulVessel.scale.setScalar(.65 + Math.sin(Math.PI * transfer) * .45)
         soulVessel.visible = transfer > .6 && fade > .02
         if (soulLine) {
-          const middle = sourcePoint.clone().lerp(center, .5).add(new THREE.Vector3(0, .22, 0))
+          const middle = scratchB.lerpVectors(sourcePoint, center, .5)
+          middle.y += .22
           setLinePoints(soulLine, sourcePoint, transfer < .5 ? current : middle, current)
           soulLine.visible = transfer > .04 && transfer < .98
         }
@@ -1192,9 +1736,9 @@ function createChannel(
       }
       if (ghostMaterial) ghostMaterial.opacity = family === 'invisibility' ? fade * .18 : fade * .32
       if (focusRay) {
-        const base = new THREE.Vector3(center.x, ground + .08, center.z)
-        const middle = base.clone().add(new THREE.Vector3(0, .45 + lift * .4, 0))
-        const end = base.clone().add(new THREE.Vector3(0, .9 + lift * .7, 0))
+        const base = scratchA.set(center.x, ground + .08, center.z)
+        const middle = scratchB.set(base.x, base.y + .45 + lift * .4, base.z)
+        const end = scratchC.set(base.x, base.y + .9 + lift * .7, base.z)
         setLinePoints(focusRay, base, middle, end)
         focusRay.visible = fade > .02
       }
@@ -1253,18 +1797,20 @@ function createChannel(
       }
       if (mobilityArc) {
         if (mobilityArcShadow) {
-          const base = new THREE.Vector3(center.x + .48, ground + .1, center.z + .58)
-          const right = base.clone().add(new THREE.Vector3(1.08, .08, -.12))
-          const middle = base.clone().lerp(right, .5).add(new THREE.Vector3(0, .6 + lift * .2, .05))
+          const base = scratchA.set(center.x + .48, ground + .1, center.z + .58)
+          const right = scratchB.set(base.x + 1.08, base.y + .08, base.z - .12)
+          const middle = scratchC.lerpVectors(base, right, .5)
+          middle.y += .6 + lift * .2
+          middle.z += .05
           setLinePoints(mobilityArcShadow, base, middle, right)
           setLinePoints(mobilityArc, base, middle, right)
           mobilityArcShadow.visible = mobilityArc.visible = fade > .02
         } else {
-          const base = new THREE.Vector3(center.x, ground + .12, center.z)
-          const right = base.clone().add(new THREE.Vector3(.35 + lift * .15, .2 + lift * .45, 0))
+          const base = scratchA.set(center.x, ground + .12, center.z)
+          const right = scratchB.set(base.x + .35 + lift * .15, base.y + .2 + lift * .45, base.z)
           const middle = variant === 'mobility-arc'
-            ? base.clone().add(new THREE.Vector3(0, .34 + lift * .55, 0))
-            : base.clone().add(new THREE.Vector3(-.35 - lift * .15, .2 + lift * .45, 0))
+            ? scratchC.set(base.x, base.y + .34 + lift * .55, base.z)
+            : scratchC.set(base.x - .35 - lift * .15, base.y + .2 + lift * .45, base.z)
           setLinePoints(mobilityArc, base, middle, right)
           mobilityArc.visible = fade > .02
         }
@@ -1291,9 +1837,11 @@ function createChannel(
       if (mobilityStepMarks.length && variantMaterial) variantMaterial.opacity = fade * .9
       for (const [index, line] of mobilityHasteTrails.entries()) {
         const phase = clamp01((progress - index * .08) / .78)
-        const base = new THREE.Vector3(center.x + .42, ground + .12 + index * .08, center.z + .55 + index * .12)
-        const end = base.clone().add(new THREE.Vector3(.98 + phase * .28, .02 + lift * .2, -.12 + index * .12))
-        const middle = base.clone().lerp(end, .5).add(new THREE.Vector3(.12, .04, 0))
+        const base = scratchA.set(center.x + .42, ground + .12 + index * .08, center.z + .55 + index * .12)
+        const end = scratchB.set(base.x + .98 + phase * .28, base.y + .02 + lift * .2, base.z - .12 + index * .12)
+        const middle = scratchC.lerpVectors(base, end, .5)
+        middle.x += .12
+        middle.y += .04
         setLinePoints(line, base, middle, end)
         line.visible = phase > .02 && phase < 1.02 && fade > .02
         const shadow = mobilityHasteShadows[index]
@@ -1307,8 +1855,9 @@ function createChannel(
       if (mobilityMarkShadowMaterial) mobilityMarkShadowMaterial.opacity = fade * .9
       if (mobilityMarkCoreMaterial) mobilityMarkCoreMaterial.opacity = fade * .98
       if (communicationLine) {
-        const current = new THREE.Vector3().lerpVectors(sourcePoint, center, progress)
-        const middle = sourcePoint.clone().lerp(center, .5).add(new THREE.Vector3(0, .18, 0))
+        const current = scratchA.lerpVectors(sourcePoint, center, progress)
+        const middle = scratchB.lerpVectors(sourcePoint, center, .5)
+        middle.y += .18
         setLinePoints(communicationLine, sourcePoint, progress < .5 ? current : middle, current)
         communicationLine.visible = progress > .06 && progress < .94
       }
@@ -1318,7 +1867,7 @@ function createChannel(
         particle.mesh.visible = phase > 0 && phase < 1 && fade > .02
       }
       if (spectralPalm) {
-        const hand = new THREE.Vector3(center.x + Math.sin(progress * Math.PI * 2) * .18, ground + .5 + lift * .28, center.z)
+        const hand = scratchA.set(center.x + Math.sin(progress * Math.PI * 2) * .18, ground + .5 + lift * .28, center.z)
         spectralPalm.position.copy(hand)
         spectralPalm.scale.set(1.1 + fade * .18, .5 + fade * .1, 1.3 + fade * .18)
         spectralPalm.visible = fade > .02
@@ -1389,7 +1938,7 @@ function createChannel(
         targetBodyMaterial.opacity = fade * .6
         targetAccentMaterial.opacity = fade * .9
       }
-      group.visible = ring.visible || Boolean(dome?.visible || portal?.visible || travel?.visible || ghostA?.visible || ghostB?.visible || focusRay?.visible || lightColumn?.visible || morphCube?.visible || morphSphere?.visible || flightRing?.visible || familyWave?.visible || targetLight?.visible || targetBell?.visible || targetBellRim?.visible || targetBellGroundRim?.visible || targetShard?.visible || targetSwarm.some(({ mesh }) => mesh.visible) || mobilityArc?.visible || mobilityArcShadow?.visible || mobilityStepMarks.some(({ mesh }) => mesh.visible) || mobilityStepShadows.some((mesh) => mesh.visible) || mobilityHasteTrails.some((line) => line.visible) || mobilityHasteShadows.some((line) => line.visible) || communicationLine?.visible || spectralPalm?.visible || spectralCorePalm?.visible || trickParticles.some(({ mesh }) => mesh.visible) || book?.visible || chestBody?.visible || helmRing?.visible || silenceRing?.visible || cancellationRing?.visible || cancellationSplits.some((line) => line.visible) || soulOrb?.visible || soulVessel?.visible || soulLine?.visible || particles.some(({ mesh }) => mesh.visible) || environmentParticles.some(({ mesh }) => mesh.visible))
+      group.visible = ring.visible || Boolean(dome?.visible || arrivalColumn?.visible || bindingRings.some(({ mesh }) => mesh.visible) || shadows.some(({ mesh }) => mesh.visible) || runeHex?.visible || portal?.visible || travel?.visible || ghostA?.visible || ghostB?.visible || focusRay?.visible || lightColumn?.visible || morphCube?.visible || morphSphere?.visible || flightRing?.visible || familyWave?.visible || targetLight?.visible || targetBell?.visible || targetBellRim?.visible || targetBellGroundRim?.visible || targetShard?.visible || targetSwarm.some(({ mesh }) => mesh.visible) || mobilityArc?.visible || mobilityArcShadow?.visible || mobilityStepMarks.some(({ mesh }) => mesh.visible) || mobilityStepShadows.some((mesh) => mesh.visible) || mobilityHasteTrails.some((line) => line.visible) || mobilityHasteShadows.some((line) => line.visible) || communicationLine?.visible || spectralPalm?.visible || spectralCorePalm?.visible || trickParticles.some(({ mesh }) => mesh.visible) || book?.visible || chestBody?.visible || helmRing?.visible || silenceRing?.visible || cancellationRing?.visible || cancellationSplits.some((line) => line.visible) || soulOrb?.visible || soulVessel?.visible || soulLine?.visible || particles.some(({ mesh }) => mesh.visible) || environmentParticles.some(({ mesh }) => mesh.visible))
     },
     dispose() {
       group.removeFromParent()
@@ -1399,8 +1948,28 @@ function createChannel(
   }
 }
 
+/**
+ * Эффекты короткие и меняют геометрию каждый кадр. Отсечение по пирамиде
+ * видимости потребовало бы пересчитывать bounding sphere на каждом кадре, а
+ * эффект и так лежит в кадре доски, поэтому отсечение для него выключено.
+ */
+function withoutFrustumCulling(effect: SpellEffect3D | null) {
+  effect?.group.traverse((object) => { object.frustumCulled = false })
+  // Контракт света общий для всех эффектов: массив есть всегда, даже пустой.
+  if (effect && !Array.isArray(effect.group.userData.lights)) effect.group.userData.lights = []
+  return effect
+}
+
 /** Небольшой объёмный акцент подтверждённого spell-cue поверх 2D-слоя. */
 export function createSpellEffect3D(
+  cue: CombatAnimationCue,
+  actors: readonly SpellEffectActor[],
+  map: TacticalMap,
+): SpellEffect3D | null {
+  return withoutFrustumCulling(createSpellEffect3DUnculled(cue, actors, map))
+}
+
+function createSpellEffect3DUnculled(
   cue: CombatAnimationCue,
   actors: readonly SpellEffectActor[],
   map: TacticalMap,

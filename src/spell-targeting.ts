@@ -73,8 +73,14 @@ function sightEdgeBlocked(map: TacticalMap, from: BoardPoint, to: BoardPoint) {
   })
 }
 
+/**
+ * Прозрачна ли клетка для обзора и заклинания. Вода непроходима, но не
+ * закрывает линию действия — то же правило, что серверный
+ * `isTransparentMapCell` в `server/rules/tactical-geometry.mjs`.
+ */
 function openCell(map: TacticalMap, point: BoardPoint) {
-  return cellAt(map, point.x, point.y)?.passable === true
+  const cell = cellAt(map, point.x, point.y)
+  return Boolean(cell && (cell.passable === true || cell.surface === 'water'))
 }
 
 function clearStraightLoE(map: TacticalMap, origin: BoardPoint, target: BoardPoint) {

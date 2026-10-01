@@ -835,6 +835,24 @@ function publicBattleEventFor(entry, state, actorId = '', visibility = {}) {
       result.to = to
     }
   }
+  // Путь шага раскрывается по тому же правилу, что концы, и целиком: клетка
+  // пути в тумане выдала бы и проходимость скрытой местности, и сам маршрут.
+  // Частичный путь с дырой клиент провёл бы по прямой сквозь стену, поэтому
+  // при любой скрытой клетке путь снимается, а клиент анимирует ход к `to`
+  // так же, как для старых записей без пути.
+  if (entry.type === 'move' && Object.hasOwn(entry, 'path')) {
+    const visibleCellKeys = visibility.visibleCellKeys ?? new Set()
+    const raw = Array.isArray(entry.path) ? entry.path : []
+    const path = raw.map(publicPoint)
+    const last = path.at(-1)
+    if (!result.from || !result.to || !path.length
+      || path.some((point) => !point || !visibleCellKeys.has(pointKey(point)))
+      || !last || pointKey(last) !== pointKey(result.to)) {
+      delete result.path
+    } else {
+      result.path = /** @type {{x: number, y: number}[]} */ (path)
+    }
+  }
   const enemyIds = new Set((state?.enemies ?? []).map((enemy) => text(enemy?.id ?? enemy?.actor_id, 120)))
   const visibleSocialNpcIds = new Set((state?.social?.npcs ?? [])
     .map((/** @type {Loose} */ npc) => text(npc?.id, 120))

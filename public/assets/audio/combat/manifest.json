@@ -417,6 +417,9 @@
       ],
       "impact": [
         "spell-healing-impact"
+      ],
+      "miss": [
+        "attack-miss"
       ]
     },
     "spell:ward": {
@@ -428,6 +431,9 @@
       ],
       "impact": [
         "spell-ward-impact"
+      ],
+      "miss": [
+        "attack-miss"
       ]
     },
     "spell:control": {
@@ -453,6 +459,9 @@
       ],
       "impact": [
         "spell-teleport-in"
+      ],
+      "miss": [
+        "attack-miss"
       ]
     },
     "spell:summon": {
@@ -464,6 +473,9 @@
       ],
       "impact": [
         "spell-summon-impact"
+      ],
+      "miss": [
+        "attack-miss"
       ]
     },
     "spell:environment": {
@@ -475,6 +487,9 @@
       ],
       "impact": [
         "spell-wind-impact"
+      ],
+      "miss": [
+        "attack-miss"
       ]
     },
     "spell:earth": {
@@ -486,6 +501,9 @@
       ],
       "impact": [
         "spell-earth-impact"
+      ],
+      "miss": [
+        "attack-miss"
       ]
     },
     "spell:wind": {
@@ -497,6 +515,9 @@
       ],
       "impact": [
         "spell-wind-impact"
+      ],
+      "miss": [
+        "attack-miss"
       ]
     },
     "spell:water": {
@@ -508,6 +529,9 @@
       ],
       "impact": [
         "spell-water-impact"
+      ],
+      "miss": [
+        "attack-miss"
       ]
     },
     "spell:swarm": {
@@ -519,6 +543,9 @@
       ],
       "impact": [
         "spell-swarm-impact"
+      ],
+      "miss": [
+        "attack-miss"
       ]
     },
     "spell:weapon": {
@@ -558,6 +585,9 @@
       ],
       "impact": [
         "spell-healing-impact"
+      ],
+      "miss": [
+        "attack-miss"
       ]
     },
     "spell:darkness": {
@@ -569,6 +599,9 @@
       ],
       "impact": [
         "spell-necrotic-impact"
+      ],
+      "miss": [
+        "attack-miss"
       ]
     },
     "spell:illusion": {
@@ -580,6 +613,9 @@
       ],
       "impact": [
         "spell-psychic-impact"
+      ],
+      "miss": [
+        "attack-miss"
       ]
     },
     "spell:divination": {
@@ -591,6 +627,9 @@
       ],
       "impact": [
         "spell-psychic-impact"
+      ],
+      "miss": [
+        "attack-miss"
       ]
     },
     "spell:enchantment": {
@@ -602,6 +641,9 @@
       ],
       "impact": [
         "spell-psychic-impact"
+      ],
+      "miss": [
+        "attack-miss"
       ]
     },
     "spell:restoration": {
@@ -613,6 +655,9 @@
       ],
       "impact": [
         "spell-healing-impact"
+      ],
+      "miss": [
+        "attack-miss"
       ]
     },
     "spell:invisibility": {
@@ -624,6 +669,9 @@
       ],
       "impact": [
         "spell-ward-impact"
+      ],
+      "miss": [
+        "attack-miss"
       ]
     },
     "spell:mobility": {
@@ -635,6 +683,9 @@
       ],
       "impact": [
         "spell-teleport-in"
+      ],
+      "miss": [
+        "attack-miss"
       ]
     },
     "spell:flight": {
@@ -646,6 +697,9 @@
       ],
       "impact": [
         "spell-wind-impact"
+      ],
+      "miss": [
+        "attack-miss"
       ]
     },
     "spell:transmutation": {
@@ -657,6 +711,9 @@
       ],
       "impact": [
         "spell-earth-impact"
+      ],
+      "miss": [
+        "attack-miss"
       ]
     },
     "spell:communication": {
@@ -668,6 +725,9 @@
       ],
       "impact": [
         "spell-psychic-impact"
+      ],
+      "miss": [
+        "attack-miss"
       ]
     },
     "spell:school": {
@@ -679,6 +739,9 @@
       ],
       "impact": [
         "spell-psychic-impact"
+      ],
+      "miss": [
+        "attack-miss"
       ]
     },
     "spell:silence": {
@@ -710,6 +773,9 @@
       ],
       "blocked": [
         "attack-blunt-impact"
+      ],
+      "criticalLayer": [
+        "attack-blunt-impact"
       ]
     },
     "attack:pierce": {
@@ -734,6 +800,9 @@
       ],
       "blocked": [
         "attack-blunt-impact"
+      ],
+      "criticalLayer": [
+        "attack-blunt-impact"
       ]
     },
     "attack:bludgeon": {
@@ -755,7 +824,10 @@
         "cast",
         "launch"
       ],
-      "silenceReason": "Замах молчит до подтверждённого контакта"
+      "silenceReason": "Замах молчит до подтверждённого контакта",
+      "criticalLayer": [
+        "attack-unarmed-impact"
+      ]
     },
     "attack:unarmed": {
       "cast": [],
@@ -776,7 +848,10 @@
         "cast",
         "launch"
       ],
-      "silenceReason": "Удар тела звучит только при контакте"
+      "silenceReason": "Удар тела звучит только при контакте",
+      "criticalLayer": [
+        "attack-blunt-impact"
+      ]
     },
     "attack:bow": {
       "cast": [
@@ -793,6 +868,12 @@
       ],
       "critical": [
         "attack-bow-impact"
+      ],
+      "blocked": [
+        "attack-blunt-impact"
+      ],
+      "criticalLayer": [
+        "attack-blunt-impact"
       ]
     },
     "attack:crossbow": {
@@ -812,7 +893,13 @@
       "silentPhases": [
         "cast"
       ],
-      "silenceReason": "Арбалет стреляет только на launch"
+      "silenceReason": "Арбалет стреляет только на launch",
+      "blocked": [
+        "attack-blunt-impact"
+      ],
+      "criticalLayer": [
+        "attack-blunt-impact"
+      ]
     },
     "attack:thrown": {
       "cast": [],
@@ -831,7 +918,13 @@
       "silentPhases": [
         "cast"
       ],
-      "silenceReason": "Метательное оружие выпускается только на launch"
+      "silenceReason": "Метательное оружие выпускается только на launch",
+      "blocked": [
+        "attack-blunt-impact"
+      ],
+      "criticalLayer": [
+        "attack-blunt-impact"
+      ]
     },
     "attack:net": {
       "cast": [],
@@ -867,6 +960,12 @@
       ],
       "critical": [
         "attack-unarmed-impact"
+      ],
+      "blocked": [
+        "attack-blunt-impact"
+      ],
+      "criticalLayer": [
+        "attack-blunt-impact"
       ]
     },
     "attack:dart": {
@@ -886,7 +985,13 @@
       "silentPhases": [
         "cast"
       ],
-      "silenceReason": "Дротик выпускается только на launch"
+      "silenceReason": "Дротик выпускается только на launch",
+      "blocked": [
+        "attack-blunt-impact"
+      ],
+      "criticalLayer": [
+        "attack-blunt-impact"
+      ]
     },
     "attack:sling": {
       "cast": [],
@@ -905,7 +1010,13 @@
       "silentPhases": [
         "cast"
       ],
-      "silenceReason": "Камень покидает пращу только на launch"
+      "silenceReason": "Камень покидает пращу только на launch",
+      "blocked": [
+        "attack-blunt-impact"
+      ],
+      "criticalLayer": [
+        "attack-blunt-impact"
+      ]
     },
     "attack:firearm": {
       "cast": [],
@@ -924,7 +1035,13 @@
       "silentPhases": [
         "cast"
       ],
-      "silenceReason": "Выстрел звучит только на launch"
+      "silenceReason": "Выстрел звучит только на launch",
+      "blocked": [
+        "attack-blunt-impact"
+      ],
+      "criticalLayer": [
+        "attack-blunt-impact"
+      ]
     },
     "attack:wand": {
       "cast": [

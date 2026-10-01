@@ -44,7 +44,7 @@ for (const path of emittedFiles(buildDir).filter((candidate) => candidate.endsWi
   rmSync(path)
 }
 
-const { default: TacticalBoard3D, targetPreviewCells } = await import(pathToFileURL(join(buildDir, 'src', 'TacticalBoard3D.mjs')).href)
+const { default: TacticalBoard3D, targetPreviewCells, moveRoute, queuedStartCell } = await import(pathToFileURL(join(buildDir, 'src', 'TacticalBoard3D.mjs')).href)
 const quality = await import(pathToFileURL(join(buildDir, 'src', 'board3d-quality.mjs')).href)
 
 test('профиль качества сохраняет событие и не повышает уже ограниченную детализацию', () => {
@@ -57,6 +57,13 @@ test('профиль качества сохраняет событие и не 
   assert.equal(quality.cueForQuality(full, 'low').detail, 'minimal')
   assert.equal(full.detail, 'full')
   assert.equal(quality.board3DQuality('corrupt-setting'), 'balanced')
+})
+
+test('профили качества: AO только на высоком, экономное без постобработки и теней', () => {
+  const { high, balanced, low } = quality.BOARD3D_QUALITY
+  assert.deepEqual([high.ambientOcclusion, balanced.ambientOcclusion, low.ambientOcclusion], [true, false, false])
+  assert.deepEqual([high.bloom, balanced.bloom, low.bloom], [true, true, false])
+  assert.equal(low.shadows, false)
 })
 
 function mapForUi(width = 20, height = 20) {
@@ -163,4 +170,27 @@ test('SSR скрывает FPS по умолчанию и уважает сох�
     if (previousStorage === undefined) delete globalThis.localStorage
     else globalThis.localStorage = previousStorage
   }
+})
+
+test('маршрут шага не дублирует конечную клетку и начинается со старта', () => {
+  // Сервер кладёт конечную клетку последней в path, стартовую — нет.
+  assert.deepEqual(moveRoute({ from: { x: 1, y: 1 }, to: { x: 3, y: 1 }, path: [{ x: 2, y: 1 }, { x: 3, y: 1 }] }),
+    [{ x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 1 }])
+  // Старые записи без пути: прямой отрезок без пустого хвоста.
+  assert.deepEqual(moveRoute({ from: { x: 1, y: 1 }, to: { x: 2, y: 1 }, path: [{ x: 2, y: 1 }] }),
+    [{ x: 1, y: 1 }, { x: 2, y: 1 }])
+  // Путь, начатый со стартовой клетки, и путь без конечной не ломают маршрут.
+  assert.deepEqual(moveRoute({ from: { x: 0, y: 0 }, to: { x: 0, y: 2 }, path: [{ x: 0, y: 0 }, { x: 0, y: 1 }] }),
+    [{ x: 0, y: 0 }, { x: 0, y: 1 }, { x: 0, y: 2 }])
+})
+
+test('фигурка с ходом в очереди ждёт на старте, а не в конечной клетке снимка', () => {
+  const strike = { id: 's', kind: 'strike', actorId: 'goblin-1', targetId: 'hero', hit: true, amount: 3, durationMs: 400 }
+  const move = { id: 'm', kind: 'move', actorId: 'goblin-2', from: { x: 4, y: 4 }, to: { x: 6, y: 4 }, path: [{ x: 5, y: 4 }, { x: 6, y: 4 }], durationMs: 300 }
+  const later = { id: 'm2', kind: 'move', actorId: 'goblin-2', from: { x: 6, y: 4 }, to: { x: 7, y: 4 }, path: [{ x: 7, y: 4 }], durationMs: 300 }
+  const blink = { id: 't', kind: 'channel', channelType: 'teleport', actorId: 'mage', from: { x: 1, y: 1 }, position: { x: 8, y: 8 }, spellId: 'misty-step', school: 'conjuration', durationMs: 500 }
+  assert.deepEqual(queuedStartCell('goblin-2', [strike, move, later]), { x: 4, y: 4 })
+  assert.deepEqual(queuedStartCell('mage', [undefined, blink]), { x: 1, y: 1 })
+  assert.equal(queuedStartCell('goblin-1', [strike, move]), null)
+  assert.equal(queuedStartCell('hero', []), null)
 })

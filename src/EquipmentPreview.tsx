@@ -112,9 +112,13 @@ function useEquipmentPreviewRuntime(
   manifest: ActorModelManifest | null,
   setStatus: (status: PreviewStatus) => void,
   onModelReady: () => void,
+  equipmentBase: boolean,
 ) {
   const runtimeRef = useRef<PreviewRuntime | null>(null)
 
+  // equipmentBase выбирает сам GLB основы (у KayKit для appearance v2 — отдельный
+  // файл без встроенной брони), поэтому смена версии внешности пересоздаёт модель,
+  // а не только перевешивает экипировку на прежнюю основу.
   useEffect(() => {
     const element = host.current
     if (!element) return undefined
@@ -308,7 +312,7 @@ function useEquipmentPreviewRuntime(
       element.replaceChildren()
       runtimeRef.current = null
     }
-  }, [host, manifest, modelKey, onModelReady, player.character, player.characterClass, player.color, player.id, player.role])
+  }, [equipmentBase, host, manifest, modelKey, onModelReady, player.character, player.characterClass, player.color, player.id, player.role])
 
   return runtimeRef
 }
@@ -342,7 +346,8 @@ export function EquipmentPreview({ player, campaignId = '', appearance }: { play
   }, [campaignId])
 
   const onModelReady = useCallback(() => setModelRevision((value) => value + 1), [])
-  const runtimeRef = useEquipmentPreviewRuntime(host, player, validModelKey, appearanceRef, manifest, setStatus, onModelReady)
+  const equipmentBase = appearance?.version === 2
+  const runtimeRef = useEquipmentPreviewRuntime(host, player, validModelKey, appearanceRef, manifest, setStatus, onModelReady, equipmentBase)
 
   const appearanceKey = JSON.stringify(appearance ?? null)
   useEffect(() => {

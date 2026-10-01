@@ -490,8 +490,9 @@ import { DEFAULT_RULESET_ID, RulesValidationError, safeInteger, usesDnd2014 } fr
 import { actorHp, actorId, actorPosition, findActor, isEnemyActor, isLivingActor, listActors } from './rules/actors.mjs'
 import {
   actorFootprintCellsAt, actorTrajectoryDetails, coverBetween, creatureSizeRank, footprintPlacementEdgesBlocked,
-  footprintStepBlocked, highGroundBetween, isWalkableCell, lineCells, occupiedPositions, positionKey,
-  propMovementPositions, sceneTacticalMap, sceneTacticalMapCache, shortestTacticalPath, tacticalCellMap, trajectoryDetails,
+  footprintStepBlocked, highGroundBetween, isTransparentCell, isTransparentMapCell, isWalkableCell, lineCells,
+  occupiedPositions, positionKey, propMovementPositions, sceneTacticalMap, sceneTacticalMapCache, shortestTacticalPath,
+  sightEdgeBlocked, tacticalCellMap, trajectoryDetails,
 } from './rules/tactical-geometry.mjs'
 
 // Прежний публичный API движка: эти имена переехали в server/rules/*, а
@@ -976,6 +977,29 @@ export function worldTimeSeconds(state) {
 }
 
 const SUMMON_LIFECYCLE_VERSION = 2
+
+/**
+ * Маркер `ActorMoved`, с которого запись журнала боя `move` несёт путь шага.
+ * Без пути клиенты других игроков анимировали ход по прямой сквозь стены.
+ * Старые события маркера не имеют и проигрываются в прежний журнал без пути:
+ * журнал входит в каноническую проекцию, и снимок, собранный до этой версии,
+ * обязан совпасть с полным replay (`pnpm cutover:audit`).
+ */
+const MOVE_BATTLE_LOG_PATH_VERSION = 1
+
+/** Путь для журнала: только целые клетки, старт не входит, `to` — последняя. */
+function battleLogMovePath(payload) {
+  if (Number(payload?.battle_log_path_version) !== MOVE_BATTLE_LOG_PATH_VERSION) return null
+  if (payload?.teleport === true || !Array.isArray(payload?.path)) return null
+  const path = []
+  for (const point of payload.path) {
+    const x = Number(point?.x)
+    const y = Number(point?.y)
+    if (!Number.isSafeInteger(x) || !Number.isSafeInteger(y)) return null
+    path.push({ x, y })
+  }
+  return path.length ? path : null
+}
 
 function hasSummonLifecycleVersion(value) {
   return Number(value?.summon_lifecycle_version ?? value?.summonLifecycleVersion) === SUMMON_LIFECYCLE_VERSION
@@ -2522,8 +2546,9 @@ function cellsVisibleFrom(map, origin, { radius = DOORWAY_SIGHT_CELLS, openedDoo
       if (edge?.blocksSight === true && !justOpened) continue
       seen.set(key, distance + 1)
       found.push(next)
-      // Стену видно, но сквозь неё не смотрят: дальше обход не идёт.
-      if (cell.passable) queue.push(next)
+      // Стену видно, но сквозь неё не смотрят: дальше обход не идёт. Воду —
+      // смотрят: правило прозрачности то же, что у линии действия.
+      if (isTransparentMapCell(cell)) queue.push(next)
     }
   }
   return found
@@ -6823,6 +6848,10 @@ function eventFrom(command, eventType, payload = {}, targets = command.target_id
     && payload?.summonLifecycleVersion == null
     ? { ...payload, summon_lifecycle_version: SUMMON_LIFECYCLE_VERSION }
     : payload
+  const versionedPayload = eventType === 'ActorMoved' && Array.isArray(payload?.path)
+    && payload?.battle_log_path_version == null
+    ? { ...lifecyclePayload, battle_log_path_version: MOVE_BATTLE_LOG_PATH_VERSION }
+    : lifecyclePayload
   const payloadRuleIds = [
     ...(payload?.resistance_cantrip_reduction || payload?.aura_of_life_source ? [RULE_IDS.resistance] : []),
     ...(payload?.aura_of_protection_source ? [RULE_IDS.auraOfProtection] : []),
@@ -6834,7 +6863,7 @@ function eventFrom(command, eventType, payload = {}, targets = command.target_id
     event_type: eventType,
     actor_id: command.actor_id,
     target_ids: uniqueStrings(targets),
-    payload: clone(lifecyclePayload),
+    payload: clone(versionedPayload),
     source_rule_ids: [...new Set([...command.source_rule_ids, ...payloadRuleIds.map((ruleId) => rulesetRuleId(ruleId, command.ruleset_id))])],
     house_rule_id: command.house_rule_id,
     ruling_id: command.ruling_id,
@@ -8716,8 +8745,8 @@ function circularLineOfEffectFor(state, origin, target, radiusFeet, aroundCorner
   return circularAreaLineOfEffect(origin, target, {
     radiusFeet,
     spreadsAroundCorners: aroundCorners,
-    isOpenCell: (point) => isWalkableCell(cells.get(positionKey(point))),
-    isBlockedEdge: (from, to) => Boolean(map && areaLineEdgeBlocked(map, from, to)),
+    isOpenCell: (point) => isTransparentCell(cells.get(positionKey(point))),
+    isBlockedEdge: (from, to) => sightEdgeBlocked(map, from, to),
   })
 }
 
@@ -8725,8 +8754,10 @@ function circularLineOfEffectFor(state, origin, target, radiusFeet, aroundCorner
  * Проверяет line-of-effect от origin области до клетки существа. Для обычных
  * областей правила 2014 требуют хотя бы одну прямую незакрытую линию. Области
  * с canonical-флагом `spreadsAroundCorners` используют короткий поиск по
- * проходимым клеткам, ограниченный тем же радиусом; закрытая дверь или
- * сплошная стена путь не создают.
+ * прозрачным клеткам, ограниченный тем же радиусом; закрытая дверь или
+ * сплошная стена путь не создают. Прозрачность клетки и кромки — одно правило
+ * на все пути: `isTransparentCell` и `sightEdgeBlocked`
+ * (`server/rules/tactical-geometry.mjs`). Вода не заслоняет область.
  */
 function areaLineOfEffectClear(state, origin, target, spell) {
   if (!origin || !target) return false
@@ -8740,8 +8771,8 @@ function areaLineOfEffectClear(state, origin, target, spell) {
     let previous = origin
     for (const point of lineCells(origin, target)) {
       const cell = cells.get(positionKey(point))
-      if (!cell || String(cell.type) === 'wall') return false
-      if (map && areaLineEdgeBlocked(map, previous, point)) return false
+      if (!isTransparentCell(cell)) return false
+      if (sightEdgeBlocked(map, previous, point)) return false
       previous = point
     }
     return true
@@ -8758,26 +8789,12 @@ function areaLineOfEffectClear(state, origin, target, spell) {
       const key = positionKey(next)
       if (visited.has(key) || !positionInArea(next, origin, radiusFeet, 'sphere')) continue
       const cell = cells.get(key)
-      if (!isWalkableCell(cell) || map && areaLineEdgeBlocked(map, current, next)) continue
+      if (!isTransparentCell(cell) || sightEdgeBlocked(map, current, next)) continue
       visited.add(key)
       queue.push(next)
     }
   }
   return false
-}
-
-function areaLineEdgeBlocked(map, from, to) {
-  const dx = Math.sign(to.x - from.x)
-  const dy = Math.sign(to.y - from.y)
-  const candidates = Math.abs(dx) + Math.abs(dy) === 1
-    ? [[from, to]]
-    : dx && dy
-      ? [[from, { x: from.x + dx, y: from.y }], [from, { x: from.x, y: from.y + dy }]]
-      : []
-  return candidates.some(([start, end]) => {
-    const edge = edgeBetween(map, start.x, start.y, end.x, end.y)
-    return edge?.blocksSight === true || edge?.kind === 'door' && movementStepBlocked(map, start.x, start.y, end.x, end.y)
-  })
 }
 
 function areaTargetHasLineOfEffect(state, command, spell, center, targetId, targetPosition, targetActor = findActor(state, targetId), withinArea = () => true) {
@@ -9003,6 +9020,13 @@ function longJumpMovementFor(state, actorIdValue, destination, { runningStart = 
  * Cells a wall occupies: a straight run from the caster toward the chosen point.
  * A wall is the one area whose shape a centre and a radius cannot express, so
  * it is stored as the explicit list of squares it fills.
+ *
+ * Линия подчиняется тому же правилу линии действия, что и остальные области:
+ * она обрывается на непрозрачной клетке (`isTransparentCell`) и на кромке,
+ * закрывающей обзор, или закрытой двери (`sightEdgeBlocked`). Раньше луч
+ * смотрел только на тип клетки и проходил сквозь тонкую стену и закрытую
+ * дверь, а клиентский прицел (`maskSpellAreaCells`) эти клетки обрезал.
+ * Сохранённые стены не пересчитываются: их клетки лежат в событии.
  */
 function wallCells(state, command, spell) {
   const origin = actorPosition(state, command.actor_id)
@@ -9013,26 +9037,51 @@ function wallCells(state, command, spell) {
   if (!stepX && !stepY) return []
   const length = Math.max(1, Math.floor(Math.max(5, safeInteger(spell.radius, 30)) / 5))
   const cells = tacticalCellMap(state)
+  const map = sceneTacticalMap(state)
+  // Клетка вне карты непрозрачна, поэтому без тактических клеток линия пуста —
+  // как и прежде.
+  const transparent = (point) => isTransparentCell(cells.get(positionKey(point)))
   const line = []
 
   // Луч бьёт из заклинателя в указанную сторону: Молния и Огненная струя.
+  // Вода луч не останавливает: над ней открытое пространство.
   if (spell.areaOrigin === 'self') {
+    let previous = origin
     for (let step = 1; step <= length; step += 1) {
       const point = { x: origin.x + stepX * step, y: origin.y + stepY * step }
-      if (!isWalkableCell(cells.get(positionKey(point)))) break
+      if (!transparent(point) || sightEdgeBlocked(map, previous, point)) break
       line.push(point)
+      previous = point
     }
     return line
   }
 
   // Стена встаёт поперёк направления «заклинатель → выбранная клетка» и
   // центрируется на ней. Так она перекрывает подход, а не тянется вдоль него —
-  // и заклинатель не оказывается в собственном огне.
+  // и заклинатель не оказывается в собственном огне. Из выбранной клетки она
+  // растёт в обе стороны и обрывается на том же препятствии, что и луч:
+  // сквозь стену или закрытую дверь в соседнее помещение не переходит. Клетку
+  // без опоры (вода) стена пропускает, но за ней продолжается — как и прежде.
+  if (!transparent(to)) return []
   const acrossX = -stepY || 0
   const acrossY = stepX || 0
   const firstOffset = -Math.floor(length / 2)
   const lastOffset = firstOffset + length - 1
-  for (let offset = firstOffset; offset <= lastOffset; offset += 1) {
+  let low = 0
+  let high = 0
+  for (let offset = -1; offset >= firstOffset; offset -= 1) {
+    const point = { x: to.x + acrossX * offset, y: to.y + acrossY * offset }
+    const previous = { x: point.x + acrossX, y: point.y + acrossY }
+    if (!transparent(point) || sightEdgeBlocked(map, previous, point)) break
+    low = offset
+  }
+  for (let offset = 1; offset <= lastOffset; offset += 1) {
+    const point = { x: to.x + acrossX * offset, y: to.y + acrossY * offset }
+    const previous = { x: point.x - acrossX, y: point.y - acrossY }
+    if (!transparent(point) || sightEdgeBlocked(map, previous, point)) break
+    high = offset
+  }
+  for (let offset = low; offset <= high; offset += 1) {
     const point = { x: to.x + acrossX * offset, y: to.y + acrossY * offset }
     if (!isWalkableCell(cells.get(positionKey(point)))) continue
     line.push(point)
@@ -22855,6 +22904,7 @@ function applyGameEventCurrent(rawState, event) {
         sceneTurn: safeInteger(state.scene?.turn, state.mechanics.combat.round), round: state.mechanics.combat.round,
         type: 'move', actorId: event.actor_id, actorKind: combatActorKind(state, event.actor_id),
         from: clone(payload.from), to: clone(payload.to), distanceFeet: safeInteger(payload.distance, 0),
+        ...(battleLogMovePath(payload) ? { path: battleLogMovePath(payload) } : {}),
         ...(payload.teleport === true ? { teleport: true } : {}),
       })
       break

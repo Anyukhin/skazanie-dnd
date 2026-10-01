@@ -2,7 +2,7 @@ import * as THREE from 'three'
 
 import { propVisualLayout, resolvePropAssetId, PROP_FOOTPRINT_FILL, type BoardPalette } from './board-render'
 import type { TacticalProp } from './types'
-import { propModelFor } from './prop-model-catalog'
+import { propModelFor, propModelMaxHeight } from './prop-model-catalog'
 import type { PropModelAssets } from './prop-model-assets'
 
 type Layout = ReturnType<typeof propVisualLayout>
@@ -558,7 +558,11 @@ export function createEnvironmentModels(palette: BoardPalette, assets?: PropMode
         model.updateMatrixWorld(true)
         const box = new THREE.Box3().setFromObject(model)
         const size = box.getSize(new THREE.Vector3())
-        const fit = Math.min(layout.width / Math.max(.01, size.x), layout.depth / Math.max(.01, size.z)) * PROP_FOOTPRINT_FILL
+        // Футпринт ограничивает ширину и глубину, предел вида — высоту: тонкая
+        // модель, вписанная в клетку по ширине, иначе вырастала в несколько клеток.
+        const footprintFit = Math.min(layout.width / Math.max(.01, size.x), layout.depth / Math.max(.01, size.z)) * PROP_FOOTPRINT_FILL
+        const maxHeight = propModelMaxHeight(canonical, entry)
+        const fit = maxHeight === null ? footprintFit : Math.min(footprintFit, maxHeight / Math.max(.01, size.y))
         if (group.userData.surfaceHeight !== undefined) {
           const top = model.getObjectByName('surface-top')
           group.userData.surfaceHeight = ((top ? top.getWorldPosition(new THREE.Vector3()).y : box.max.y) - box.min.y) * fit
