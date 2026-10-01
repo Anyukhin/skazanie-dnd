@@ -28,3 +28,5 @@ eval/*
 !eval/combat-lab.mjs
 tools
 test
+local-ca
+compose.override.yaml
