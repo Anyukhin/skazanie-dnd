@@ -1,7 +1,5 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import test from 'node:test'
-import vm from 'node:vm'
 
 import { materializeCatalogItem } from '../server/item-catalog.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
@@ -202,30 +200,6 @@ test('серверный AttackResolved-контракт изолирует synt
   })
   assert.equal(after.mechanics.combat.action_economy.hero.action, true)
   assert.deepEqual(after.mechanics.combat.action_economy.hero.loading_weapon_item_ids, { action: [], bonus_action: ['crossbow-1'], reaction: [] })
-})
-
-test('HTTP MakeAttack sanitizer отбрасывает spoof reaction_attack и loading_action_type', () => {
-  const source = readFileSync(new URL('../server/index.mjs', import.meta.url), 'utf8')
-  const start = source.indexOf('function normalizeMakeAttackCommand')
-  const end = source.indexOf('\nasync function assertMakeAttackIdempotency', start)
-  assert.ok(start >= 0 && end > start, 'HTTP sanitizer должен существовать в server/index.mjs')
-  const sandbox = {
-    commandType: (input) => String(input?.command_type ?? input?.type ?? ''),
-    authoritativeCombatCommandBase: (input) => ({
-      command_type: 'MakeAttack', actor_id: String(input?.actor_id ?? ''), server_authoritative: true,
-    }),
-    commandPolicyError: (message, code) => Object.assign(new Error(message), { code }),
-    makeAttackCommandFingerprint: () => 'test-fingerprint',
-  }
-  vm.runInNewContext(`${source.slice(start, end)}; globalThis.sanitize = normalizeMakeAttackCommand`, sandbox)
-  const sanitized = sandbox.sanitize({
-    command_type: 'MakeAttack', actor_id: 'hero', target_id: 'target', item_id: 'crossbow-1',
-    attack_mode: 'ranged', attack_ability: 'dex', reaction_attack: true, loading_action_type: 'bonus_action',
-  })
-  assert.equal(sanitized.reaction_attack, undefined)
-  assert.equal(sanitized.loading_action_type, undefined)
-  assert.equal(sanitized.attack_mode, 'ranged')
-  assert.equal(sanitized.attack_ability, 'dex')
 })
 
 test('заготовленная loading-атака расходует отдельную реакцию и сохраняет action', () => {

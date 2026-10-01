@@ -73,7 +73,7 @@ const WORLD_CLOCK_CONSUMERS = Object.freeze([
   {
     title: 'просроченные обещания NPC',
     code: () => worldTimeBlock().includes('npcPromiseDeadlineEvents(sourceState, elapsedMinutes)')
-      && worldTimeBlock().includes('const sourceState = replayEvents(state, events)'),
+      && worldTimeBlock().includes('const sourceState = projectEvents(events)'),
     markers: ['npcPromiseDeadlineEvents'],
   },
   {

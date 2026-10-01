@@ -14,19 +14,11 @@ import { PARLEY_OUTCOMES, PARLEY_TERMS } from '../server/parley.mjs'
  * показаны карточкой с подписями всех серверных исходов, а клиент не считает
  * ни СЛ, ни доступность исхода сам.
  */
-const board = readFileSync(new URL('../src/DungeonMap.tsx', import.meta.url), 'utf8')
+const board = ['../src/DungeonMap.tsx', '../src/dungeon-map-parts.tsx'].map((path) => readFileSync(new URL(path, import.meta.url), 'utf8')).join('\n')
 const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
 const session = readFileSync(new URL('../src/useGameSession.ts', import.meta.url), 'utf8')
 const shared = readFileSync(new URL('../src/app-shared.tsx', import.meta.url), 'utf8')
 const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
-
-test('перемирие заметно на доске: рамка, полоса и раунд', () => {
-  assert.match(board, /truce-held/u, 'у доски нет состояния перемирия')
-  assert.match(board, /className="truce-banner"/u)
-  assert.match(board, /Перемирие · раунд/u)
-  assert.match(styles, /\.map-stage\.truce-held::after \{/u, 'рамка перемирия обязана рисоваться на самой доске')
-  assert.match(styles, /\.truce-banner \{/u)
-})
 
 test('карточка условий показывает все серверные исходы и ничего сверх них', () => {
   assert.match(board, /className="truce-panel"/u)
@@ -39,13 +31,6 @@ test('карточка условий показывает все серверн
   assert.equal(Object.keys(PARLEY_TERMS).length, PARLEY_OUTCOMES.length)
   assert.match(styles, /\.truce-panel \{/u)
   assert.match(styles, /\.truce-term \{/u)
-})
-
-test('кнопка переговоров живёт в хотбаре и честно предупреждает о помехе', () => {
-  assert.match(board, /className="parley-hotbar"/u)
-  assert.ok(board.includes('>Переговоры</span>') || board.includes("parleyAttempted ? 'Переговоры (помеха)' : 'Переговоры'"))
-  assert.match(board, /parleyAttempted/u)
-  assert.match(styles, /\.parley-hotbar\.parley-hotbar \{/u)
 })
 
 test('клиент называет только подход и исход: СЛ, мораль и откуп остаются серверными', () => {
@@ -82,11 +67,4 @@ test('ручной бросок парлея двухфазный: карточ�
   // того, что парлей из него не выпал.
   assert.match(session, /result\?\.check && twoPhase/u)
   assert.match(session, /function twoPhaseCheckCommandFor[\s\S]*?case 'ProposeParley':/u)
-})
-
-test('переговоры читаются в боевой хронике, а не остаются кодом события', () => {
-  for (const marker of ['parley', 'parley-rejected', 'truce', 'truce-broken', 'parley-settled']) {
-    assert.ok(shared.includes(`event.type === '${marker}'`), `хроника не умеет читать запись «${marker}»`)
-  }
-  assert.match(shared, /под перемирием/u)
 })

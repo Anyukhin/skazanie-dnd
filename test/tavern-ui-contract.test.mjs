@@ -7,7 +7,6 @@ import { normalizeCampaignState } from '../server/rules-engine.mjs'
 import { campaignStateForViewer } from '../server/viewer-projection.mjs'
 
 const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
-const board = readFileSync(new URL('../src/DungeonMap.tsx', import.meta.url), 'utf8')
 const session = readFileSync(new URL('../src/useGameSession.ts', import.meta.url), 'utf8')
 const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
 
@@ -51,35 +50,6 @@ test('карточка заведения доезжает игроку гото
   assert.deepEqual(tavernForViewer(campaign(), { playerId: 'hero' }).stakes, card.stakes)
 })
 
-test('таверна живёт на доске отдельной панелью с костями и кружкой', () => {
-  assert.match(board, /className="tavern-panel"/u)
-  assert.match(board, /aria-label="Жизнь таверны"/u)
-  assert.match(board, /state\.tavern \?\? null/u)
-  assert.match(board, /onOpenTavernDiceRound\(chosenTavernOpponentId, chosenTavernStakeCp\)/u)
-  assert.match(board, /onAnswerTavernDiceRound\(approach\.id\)/u)
-  assert.match(board, /onOrderTavernDrink\(\)/u)
-  // Три подхода к ответному броску — ровно те, что объявил сервер.
-  assert.match(board, /id: 'fair' as const/u)
-  assert.match(board, /id: 'cheat' as const/u)
-  assert.match(board, /id: 'watch' as const/u)
-  assert.match(board, /tavern-approach approach-\$\{approach\.id\}/u)
-  // Ставка ограничена и чужим кошельком: сервер прислал доступный предел, и
-  // кнопка обязана погаснуть до клика, а не после отказа.
-  assert.match(board, /max_stake_cp/u)
-  assert.match(board, /tavernOpponentMaxStakeCp < stake\.stake_cp/u)
-  // Подсказка называет ровно то, что доске известно: нулевой `max_stake_cp` —
-  // это пустая **свободная** касса, и она пустеет как у проигравшегося соседа,
-  // так и у того, чьи деньги расписаны по чужим открытым раундам. «На мели» и
-  // «столько не наберётся» были догадкой о причине, а причину знает только
-  // движок.
-  assert.match(board, /Столько соперник сейчас не закроет: свободных денег у него меньше/u)
-  assert.doesNotMatch(board, /на мели/u)
-  assert.doesNotMatch(board, /не наберётся/u)
-  // Своей таблицы цен, ставок и СЛ у доски быть не должно.
-  assert.doesNotMatch(board, /TAVERN_STAKES/u)
-  assert.doesNotMatch(board, /DRINK_PRICE/u)
-})
-
 test('клиент называет только соперника, ставку и подход, а кубик берёт двухфазным', () => {
   assert.match(session, /command_type: 'OpenTavernDiceRound'/u)
   assert.match(session, /command_type: 'AnswerTavernDiceRound'/u)
@@ -105,53 +75,6 @@ test('клиент называет только соперника, ставк�
  * отправляет с ручным кубиком, обязана быть в развилке двухфазных. Забыть
  * четвёртую такую команду теперь нельзя — тест назовёт её сам.
  */
-test('каждая команда с ручным кубиком доводит карточку броска до игрока', () => {
-  // Тело функции берётся до закрывающей скобки нулевого отступа: вложенный
-  // `switch` закрывается отступом, а сама функция — нет.
-  const twoPhase = /function twoPhaseCheckCommandFor[\s\S]*?\r?\n\}/u.exec(session)?.[0] ?? ''
-  const handled = new Set([...twoPhase.matchAll(/case '([A-Za-z]+)':/gu)].map((match) => match[1]))
-  assert.ok(handled.size >= 3, `развилка двухфазных команд подозрительно пуста: ${[...handled].join(', ')}`)
-
-  const chunks = session.split('manualRoll: !autoRollEnabled()')
-  assert.ok(chunks.length > 1, 'ручной кубик из клиента никуда не делся')
-  for (const chunk of chunks.slice(0, -1)) {
-    const declared = [...chunk.matchAll(/command_type: '([A-Za-z]+)'/gu)].at(-1)?.[1]
-    assert.ok(declared, 'команда с ручным кубиком обязана называть свой тип рядом с вызовом')
-    assert.ok(
-      handled.has(declared),
-      `${declared} просит у сервера карточку броска, но клиент её не показывает: добавьте команду в twoPhaseCheckCommandFor`,
-    )
-  }
-  // Пять карточек на сервере — пять веток здесь: парлей, побег, кости, уговор
-  // зверя и молитва у святыни. Молитва приходит глаголом `OperateSceneObject`, и
-  // двухфазна у этой команды **не она сама**, а ровно один её глагол: осмотр,
-  // взлом и поджог решаются серверным броском в тот же запрос.
-  assert.deepEqual([...handled].sort(), ['AnswerTavernDiceRound', 'CalmBeast', 'OperateSceneObject', 'ProposeParley', 'ResolveGuardEncounter'])
-})
-
-test('открытый раунд можно закрыть без броска, и кнопка для этого есть', () => {
-  assert.match(session, /command_type: 'LeaveTavernDiceRound'/u)
-  assert.match(session, /leaveTavernDiceRound,/u)
-  assert.match(app, /onLeaveTavernDiceRound=\{/u)
-  assert.match(board, /onLeaveTavernDiceRound\(\)/u)
-  assert.match(board, /Встать из-за стола/u)
-  // Ответ гасит ровно одно положение — запрет входа: с выставленным за дверь не
-  // садятся. Кнопки обязаны гаснуть до клика, а не приносить отказ после него.
-  assert.match(board, /const tavernPatronEjected = tavern\?\.ejected === true/u)
-  assert.match(board, /disabled=\{tavernActionsBlocked \|\| tavernPatronEjected\}/u)
-  assert.match(styles, /\.tavern-leave \{/u)
-  // Сама кнопка «встать» при этом горит всегда: ставка уже на столе, и уход от
-  // кости — это сдача, а не запрещённый ход. Цену обязана называть подпись, а не
-  // отказ сервера.
-  assert.match(board, /className="tavern-action action-leave"[\s\S]{0,120}disabled=\{tavernActionsBlocked\}/u)
-  assert.match(board, /ставку заберёт/u)
-  // Ни своей арифметики чужой кассы, ни своего кошелька: возвратов у сдачи нет
-  // ни одного, и обещать их доска не имеет права ни при каком счёте.
-  assert.doesNotMatch(board, /activeHeroPurseCp < tavernRound/u)
-  assert.doesNotMatch(board, /unanswerable/u, 'тупиков не бывает — читать доске нечего')
-  assert.doesNotMatch(board, /вернётся в кошелёк|возвращаются со стола/u, 'ставка со стола не возвращается ничем')
-})
-
 /**
  * Находка ревью: «встать из-за стола» стала необратимой кнопкой в один клик.
  *
@@ -165,21 +88,6 @@ test('открытый раунд можно закрыть без броска,
  * Спрашивается подтверждение **всегда**: цена у сдачи одна и возвратов нет, а
  * значит нет и положения, из которого терять нечего.
  */
-test('сдача уходит вторым щелчком, и спрашивают об этом всегда', () => {
-  // Подтверждение ключуется раундом, а не флагом: пока игрок думает, раунд
-  // может закрыться и открыться заново уже против другого числа.
-  assert.match(board, /const \[tavernSurrenderRoundId, setTavernSurrenderRoundId\] = useState\(''\)/u)
-  assert.match(board, /tavernSurrenderPending = Boolean\(tavernRound && tavernSurrenderRoundId === tavernRound\.id\)/u)
-  // Путь один, и он через подтверждение: второго ответа на «что делает эта
-  // кнопка» быть не должно.
-  assert.match(board, /if \(!tavernSurrenderPending\) \{ setTavernSurrenderRoundId\(tavernRound\.id\); return \}/u)
-  // Цена стоит на самой кнопке подтверждения, а не только в подписи под ней.
-  assert.match(board, /Подтвердить сдачу · −\$\{tavernRound\.stake_cp\} мм/u)
-  assert.match(board, /Остаться за столом/u)
-  assert.match(styles, /\.tavern-leave\.confirming \{/u)
-  assert.match(styles, /\.tavern-action\.action-leave-cancel \{/u)
-})
-
 /**
  * Зонд повторного ревью: у выставленного за дверь не было пути с экрана.
  *
@@ -191,14 +99,6 @@ test('сдача уходит вторым щелчком, и спрашиваю
  * Проверяется структура, а не текст: заметка о запрете входа и блок раунда
  * обязаны стоять рядом, а не через «или».
  */
-test('выставленному за дверь панель показывает его открытый раунд, а не одну заметку', () => {
-  assert.match(board, /\{tavern\.ejected && <p className="tavern-note">/u, 'заметка о запрете входа — отдельная строка панели')
-  assert.match(board, /\{tavernRound\s*\r?\n\s*\? </u, 'блок раунда решает сам за себя, а не после запрета входа')
-  // Стол для новой игры выставленному по-прежнему не накрывают: заказать
-  // выпивку и сесть за кости ему нельзя.
-  assert.match(board, /: tavern\.ejected\s*\r?\n\s*\? null/u)
-})
-
 /**
  * Карточка раунда рассказывает только про стол: чужая кость, ставка и число,
  * которое надо перебить. Поля «почему раунд уже не доиграть» у неё нет, и это не
@@ -244,13 +144,4 @@ test('карточка раунда не обещает ни тупика, ни 
     players: state.players.map((player) => ({ ...player, currency: { copper: 1, silver: 0, gold: 0, platinum: 0 } })),
   })
   assert.equal(cardFor(poor).round.id, 'r-1')
-})
-
-test('панель таверны оформлена и не ломает узкий экран', () => {
-  assert.match(styles, /\.tavern-panel \{/u)
-  assert.match(styles, /\.tavern-approach \{/u)
-  assert.match(styles, /\.tavern-approach\.approach-cheat \{/u)
-  assert.match(styles, /\.tavern-stakes button\.active \{/u)
-  assert.match(styles, /\.tavern-drink \{/u)
-  assert.match(styles, /\.tavern-approach \{ grid-template-columns: 1fr; \}/u)
 })

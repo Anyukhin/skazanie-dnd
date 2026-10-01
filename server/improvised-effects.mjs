@@ -9,7 +9,7 @@
  * Модуль детерминированный и без обращений к LLM, как `campaign-loop-policy.mjs`.
  */
 
-import { actorPosition } from './rules-engine.mjs'
+import { actorPosition } from './rules/actors.mjs'
 import { footprintDistanceFeet } from './actor-footprint.mjs'
 
 const clean = (value, maximum = 120) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)

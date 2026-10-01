@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import test from 'node:test'
 
 import { assembleEncounter } from '../server/encounter-assembler.mjs'
@@ -193,6 +193,12 @@ test('предел клеток поднят до 10 000 и действует �
 test('scene.cells присваивается ровно в одном месте движка', () => {
   const source = readFileSync(new URL('../server/rules-engine.mjs', import.meta.url), 'utf8')
   const assignments = [...source.matchAll(/state\.scene\.cells\s*=/gu)]
+  // Движок делится на модули `server/rules/*` — запись в клетки оттуда была бы
+  // тем же вторым авторитетным путём, только вне поля зрения этой проверки.
+  const rulesDir = new URL('../server/rules/', import.meta.url)
+  for (const name of readdirSync(rulesDir).filter((entry) => entry.endsWith('.mjs'))) {
+    assert.doesNotMatch(readFileSync(new URL(name, rulesDir), 'utf8'), /scene\.cells\s*=[^=]/u, `server/rules/${name} пишет scene.cells в обход syncSceneCells`)
+  }
   assert.equal(assignments.length, 1, 'массив клеток — производная read-модель; писать в него можно только из syncSceneCells')
   const around = source.slice(Math.max(0, assignments[0].index - 400), assignments[0].index)
   assert.match(around, /function syncSceneCells/u, 'единственная запись обязана находиться внутри syncSceneCells')

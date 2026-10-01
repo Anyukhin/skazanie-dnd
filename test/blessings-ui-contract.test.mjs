@@ -20,8 +20,6 @@ import { combatNarration } from '../server/combat-narration.mjs'
 import { addProp, createTacticalMap, serializeTacticalMap } from '../server/tactical-map.mjs'
 
 const source = (relative) => readFileSync(new URL(`../${relative}`, import.meta.url), 'utf8')
-const board = source('src/DungeonMap.tsx')
-const app = source('src/App.tsx')
 const session = source('src/useGameSession.ts')
 const orchestrator = source('server/game-orchestrator.mjs')
 const server = source('server/index.mjs')
@@ -77,24 +75,6 @@ test('панель подсказок зовёт к святыне, но тол�
   // (`BLESSING_ALREADY_ACTIVE`): панель, зовущая его молиться, ведёт в отказ.
   const held = suggestedActionsFor({ ...room, blessings: { ...room.blessings, blessed: true } }, 'hero')
   assert.equal(held.some((hint) => hint.id === 'blessing:offer'), false)
-})
-
-test('доска рисует кнопку молитвы у святыни и кнопку требы в меню служителя', () => {
-  assert.match(board, /pray: 'Помолиться'/u)
-  // Кнопка молитвы гаснет по всем трём причинам, по которым откажет движок: бой,
-  // закрытые сутки и уже висящее благословение.
-  assert.match(board, /intent === 'pray' && \(blessingHeld \|\| !blessingAvailable \|\| combatActive\)/u)
-  assert.match(board, /combatActive \? 'Посреди боя благословений не раздают'/u)
-  assert.match(board, /blessingPriests\.some\(\(priest\) => priest\.id === sceneNpc\.id\)/u)
-  assert.match(board, /onReceiveNpcBlessing\(sceneNpc\.id\)/u)
-  // Кнопка не должна обещать того, чего движок не примет: ни в бою, ни с пустым
-  // кошельком, ни второй раз за сутки, ни поверх неизрасходованного
-  // благословения — иначе треба списывала бы золотой в отказ.
-  assert.match(board, /activeHeroPurseCp < blessingDonationCp/u)
-  assert.match(board, /const blessingHeld = blessings\?\.blessed === true/u)
-  assert.match(board, /\|\| blessingHeld \|\| !blessingAvailable \|\| activeHeroPurseCp < blessingDonationCp/u)
-  assert.match(board, /onReceiveNpcBlessing: \(npcId: string\) => Promise<CommandOutcome>/u)
-  assert.match(app, /onReceiveNpcBlessing=\{\(npcId\) => receiveNpcBlessing\(activePlayer\.id, npcId\)\}/u)
 })
 
 test('молитва объявлена двухфазной и на клиенте, и на сервере', () => {

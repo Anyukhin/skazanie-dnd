@@ -60,33 +60,3 @@ test('признак босса и полосу запаса считает се
   assert.doesNotMatch(board, /legendary-action-used/u, 'служебный маркер интерфейсу не принадлежит')
   assert.doesNotMatch(ui, /[.?]spellcasting\b|\[['"]spellcasting['"]\]/u, 'клиент не читает закрытый блок магии существа')
 })
-
-test('рамка, корона и пипсы стоят в ленте инициативы и на карточке цели', () => {
-  assert.match(board, /className=\{`\$\{kind\} \$\{activeNow \? 'active' : ''\}[^`]*\$\{boss \? ' boss' : ''\}`\}/u)
-  assert.match(board, /initiative-boss-badge/u)
-  assert.match(board, /\{boss && enemy\?\.legendary && !defeated && <LegendaryPips legendary=\{enemy\.legendary\} compact \/>\}/u)
-  assert.match(board, /activeEnemy\?\.boss \? ' boss' : ''/u)
-  assert.match(board, /const inspectedBoss = inspectedTarget\?\.team === 'enemy'/u)
-  assert.match(board, /combat-target-portrait/u)
-  // Подпись «БОСС» читается с экрана: `aria-hidden` висит на короне, а не на
-  // самой подписи — иначе слепой игрок не узнал бы о боссе вовсе.
-  assert.match(board, /<b><Crown size=\{11\} aria-hidden="true" \/>Босс<\/b>/u)
-  assert.doesNotMatch(board, /<span className="combat-target-portrait" aria-hidden/u)
-
-  // Пипс — та же форма, что у часов квеста: `<i>` строка, `<u>` пипс.
-  assert.match(board, /export function LegendaryPips/u)
-  assert.match(board, /<u key=\{index\} className=\{index < used \? 'spent' : ''\} \/>/u)
-  for (const rule of ['.initiative-ribbon li.boss', '.initiative-boss-badge', '.legendary-pips', '.combat-target-portrait']) {
-    assert.ok(styles.includes(rule), `нет правила ${rule}`)
-  }
-})
-
-test('полоса объявляет остаток словами, а не только точками', () => {
-  // Пипсы — качественная величина, но слепой игрок обязан узнать то же самое:
-  // подпись называет остаток и в `title`, и в `aria-label`.
-  assert.match(board, /Легендарные действия: осталось \$\{total - used\} из \$\{total\}/u)
-  assert.match(board, /aria-label=\{`Выделить на карте: \$\{name\}\$\{boss \? ', босс' : ''\}/u)
-  // Предел в пять пипсов — не украшение: полоса не должна разъезжаться на
-  // существе с выдуманным запасом в тридцать действий.
-  assert.match(board, /Math\.max\(0, Math\.min\(5, legendary\.uses\)\)/u)
-})

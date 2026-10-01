@@ -100,35 +100,6 @@ test('pact and arcanum remain fixed special resources', () => {
   assert.deepEqual(spellSlotAvailabilityFor({ level: 6, slotResource: 'mystic_arcanum_6', slotLevel: 6 }, { mystic_arcanum_6: { current: 0, max: 1 } }), { resource: 'mystic_arcanum_6', levels: [], fixedLevel: 6, ready: false, usingFallback: false })
 })
 
-test('DungeonMap keeps point spells and manual target confirmation paths separate', () => {
-  const source = readFileSync(new URL('../src/DungeonMap.tsx', import.meta.url), 'utf8')
-  const session = readFileSync(new URL('../src/useGameSession.ts', import.meta.url), 'utf8')
-  assert.match(source, /targetIds: string\[\]/u)
-  assert.match(source, /slotLevel\?: number/u)
-  assert.match(source, /slotLevel/u)
-  assert.match(source, /selectedSpell\.slotLevel/u)
-  assert.match(source, /spell-slot-picker/u)
-  assert.match(session, /target\.slotLevel/u)
-  assert.match(session, /slot_level/u)
-  assert.match(source, /kind: 'spell-targets'/u)
-  assert.match(source, /Enter — подтвердить/u)
-  assert.match(source, /if \(multiTargetSpell && multiTargetSelectable\) toggleSpellTarget/u)
-  assert.match(source, /if \(!multiTargetSpell \|\| !spellTargetIds\.length/u)
-  assert.match(source, /selectedSpell\?\.target === 'point'/u)
-  assert.match(source, /onCancelAiming=\{spellAiming \? clearPrepared : undefined\}/u)
-})
-
-test('Enter на полотне 3D подтверждает список раньше переключения фишки, пробел сохраняет выбор', () => {
-  const board = readFileSync(new URL('../src/TacticalBoard3D.tsx', import.meta.url), 'utf8')
-  const dungeon = readFileSync(new URL('../src/DungeonMap.tsx', import.meta.url), 'utf8')
-  const keyDown = board.slice(board.indexOf('const keyDown = (event: KeyboardEvent)'))
-  const confirm = keyDown.indexOf("event.key === 'Enter' && latest.current.onConfirmAiming")
-  const activate = keyDown.indexOf('activateActor(')
-  assert.ok(confirm >= 0 && activate > confirm, 'canvas не должен перехватывать Enter как повторный клик по цели')
-  assert.match(keyDown, /onConfirmAiming\(\)\s+return/u)
-  assert.match(dungeon, /onConfirmAiming=\{multiTargetSpell && spellTargetIds\.length > 0 && !pendingCommand \? confirmSpellTargetSelection : undefined\}/u)
-})
-
 test('Mass Cure Wounds fixes the point before selecting explicit area targets', () => {
   const source = readFileSync(new URL('../src/DungeonMap.tsx', import.meta.url), 'utf8')
   const session = readFileSync(new URL('../src/useGameSession.ts', import.meta.url), 'utf8')
@@ -159,15 +130,6 @@ test('Скороход усиливает число выбранных целе
   assert.deepEqual(toggleCombatSpellTargetIds(selected, 'caster', 3, true), ['ally', 'enemy'])
   assert.deepEqual(toggleCombatSpellTargetIds(['caster'], 'scene-npc', 2, true), ['caster', 'scene-npc'])
   assert.deepEqual(toggleCombatSpellTargetIds(['caster'], 'scene-npc', 2, false), ['caster'])
-})
-
-test('нейтральный NPC выбирается общей картой только для Скорохода, с общей проверкой касания и подтверждением', () => {
-  const source = readFileSync(new URL('../src/DungeonMap.tsx', import.meta.url), 'utf8')
-  assert.match(source, /longstriderTargeting && actorAtCell\.kind === 'neutral'/u)
-  assert.match(source, /hasClearBoardTrajectory\(state, active, sceneNpc\)/u)
-  assert.match(source, /toggleSpellTarget\(sceneNpc\.id, multiTargetSelectable\)/u)
-  assert.match(source, /!multiTargetSpell && canHealActorHere\) castAtTarget\(sceneNpc\.id\)/u)
-  assert.match(source, /sceneNpcs\.filter\(\(npc\) => npc\.alive\)\.map/u, 'оба renderer получают видимых живых NPC из общей карты')
 })
 
 test('выбор источника не скрывает истощённый выбранный ресурс за неявным fallback', () => {

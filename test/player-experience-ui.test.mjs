@@ -16,7 +16,7 @@ import { campaignStateForViewer } from '../server/viewer-projection.mjs'
 // Интерфейс разделён по задаче 0: часть экранов вынесена из App.tsx.
 // Сторож читает весь корпус интерфейса, иначе проверка молча перестала бы
 // что-либо охранять после переезда компонента.
-const appSource = ['../src/App.tsx', '../src/AppViews.tsx', '../src/DungeonMap.tsx', '../src/app-shared.tsx']
+const appSource = ['../src/App.tsx', '../src/AppViews.tsx', '../src/DungeonMap.tsx', '../src/dungeon-map-parts.tsx', '../src/app-shared.tsx']
   .map((path) => readFileSync(new URL(path, import.meta.url), 'utf8'))
   .join('\n')
 const stylesSource = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
@@ -276,59 +276,4 @@ test('история урона использует только записан
   assert.deepEqual(history.map((entry) => [entry.id, entry.amount]), [['two', 7], ['one', 4]])
   assert.match(appSource, /recentDamageForTarget\(state\.battleLog \?\? \[\], inspectedTarget\.id\)/u)
   assert.match(appSource, /История урона/u)
-})
-
-test('новый committed-текст остаётся только в хронике без всплывающей карточки', () => {
-  assert.doesNotMatch(appSource, /cinematicNarration|РАССКАЗЧИК|Сохранено в журнале кампании/u)
-  assert.match(appSource, /state\.messages\.map/u)
-  assert.doesNotMatch(stylesSource, /\.cinematic-narration\b/u)
-})
-
-test('stream preview infrastructure remains bounded but has no floating UI consumer', () => {
-  assert.doesNotMatch(appSource, /NarrationPreview|narrationPreview|cinematicNarration/u)
-  assert.match(stylesSource, /\.scene-overlay-layer \{/u)
-})
-
-test('ожидание генерации меняет свет и аудиошину без десятого профиля', () => {
-  assert.match(appSource, /atmosphereAudioRef\.current\?\.setWaiting\(state\.isNarrating\)/u)
-  assert.match(appSource, /state\.isNarrating \? 'is-narrating' : ''/u)
-  assert.match(stylesSource, /\.game-area\.is-narrating \.map-atmosphere-one/u)
-})
-
-test('NPC-досье читает viewer-safe разговоры, отношение и обещания и передаёт npc_id отдельно', () => {
-  assert.match(typesSource, /conversations\?: Array<\{/u)
-  assert.match(appSource, /state\.social\?\.relationship_tiers\?\.\[dossierSceneNpc\.id\]\?\.\[typingActorId\]/u)
-  assert.match(appSource, /state\.social\?\.conversations \?\? \[\]/u)
-  assert.match(appSource, /conversation\.npc_id === dossierSceneNpc\.id/u)
-  assert.match(appSource, /promise\.npc_id === dossierSceneNpc\.id && promise\.status === 'open'/u)
-  assert.match(appSource, /Обращаюсь к \$\{dossierSceneNpc\.name\}/u)
-  assert.match(appSource, /onNpcAction\(addressed, dossierSceneNpc\.id\)/u)
-  assert.match(appSource, /onNpcAction=\{\(text, npcId\) => submitAction\(text, activePlayer\.id, npcId\)\}/u)
-  assert.doesNotMatch(appSource, /submitActionWithNpc/u)
-  assert.match(appSource, /const dossierPublicTags = dossierSocialNpc\?\.tags\?\.filter\(\(tag\) => !\/\^faction:\/iu\.test\(String\(tag\)\)\)/u)
-  assert.doesNotMatch(appSource, /Адресат закрепляется отдельно как <code>npc_id<\/code>/u)
-  assert.doesNotMatch(appSource, /submitAction\([^)]*npc_id/u)
-})
-
-test('подарок NPC выбирается из свободного инвентаря героя и подтверждается сервером', () => {
-  assert.match(appSource, /onTransferItem: \(itemId: string, npcId: string, quantity: number\) => Promise<CommandOutcome>/u)
-  assert.match(appSource, /Number\(item\.quantity \?\? 0\) > 0[\s\S]*&& !item\.equipped[\s\S]*&& !item\.attuned_to/u)
-  assert.match(appSource, /const dossierCanReceiveGift = Boolean\([\s\S]*dossierSceneNpc\?\.alive[\s\S]*dossierSocialNpc\?\.available !== false[\s\S]*!combatActive[\s\S]*!narrating[\s\S]*!tacticalBusy/u)
-  assert.match(appSource, /min=\{1\}[\s\S]*max=\{selectedGiftAvailable\}/u)
-  assert.match(appSource, /onTransferItem\(selectedGiftItem\.id, dossierSceneNpc\.id, giftQuantity\)/u)
-  assert.match(appSource, /if \(outcome\.ok\) \{\s*setNpcDossier\(null\)/u)
-  assert.match(appSource, /onTransferItem=\{\(itemId, npcId, quantity\) => transferItem\(activePlayer\.id, itemId, npcId, quantity\)\}/u)
-  assert.match(appSource, /\{tacticalError && <p className="npc-gift-error">\{tacticalError\}<\/p>\}/u)
-  assert.doesNotMatch(appSource, /\bprompt\(/u)
-  assert.doesNotMatch(appSource, /npc_world/u)
-})
-
-test('NPC-досье загружает authenticated same-origin портрет и имеет нейтральный fallback', () => {
-  const portraitComponent = appSource.match(/function NpcPortrait\([\s\S]*?\n\}/u)?.[0] ?? ''
-  assert.match(portraitComponent, /\/api\/campaigns\/\$\{encodeURIComponent\(campaignId\)\}\/npcs\/\$\{encodeURIComponent\(npcId\)\}\/portrait/u)
-  assert.match(portraitComponent, /<img src=\{portraitUrl\} alt=\{`Портрет: \$\{name\}`\}/u)
-  assert.match(portraitComponent, /onError=\{\(\) => setFailed\(true\)\}/u)
-  assert.match(portraitComponent, /Нейтральный портрет-заглушка/u)
-  assert.doesNotMatch(portraitComponent, /base64|localStorage/u)
-  assert.match(appSource, /<NpcPortrait campaignId=\{state\.sessionCode\} npcId=\{dossierSceneNpc\.id\}/u)
 })

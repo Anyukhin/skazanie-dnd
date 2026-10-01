@@ -1,23 +1,12 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { createServer as createNetServer } from 'node:net'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { freePort } from './free-port.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
-
-async function freePort() {
-  const probe = createNetServer()
-  await new Promise((resolve, reject) => {
-    probe.once('error', reject)
-    probe.listen(0, '127.0.0.1', resolve)
-  })
-  const port = probe.address().port
-  await new Promise((resolve, reject) => probe.close((error) => error ? reject(error) : resolve()))
-  return port
-}
 
 function startServer({ port, storage, setupToken, appendLog }) {
   const child = spawn(process.execPath, ['server/index.mjs'], {

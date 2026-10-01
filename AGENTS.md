@@ -20,7 +20,8 @@
   Типы описываются JSDoc-ом (`@typedef`, `@param`, `@returns`) и JSDoc-приведением
   `/** @type {T} */ (expr)` — рантайм при этом не меняется. Если для зелёного
   нужна правка поведения — остановиться и вынести её отдельной задачей.
-  Проверяются: `contracts.mjs`, `dynamic-map.mjs`, `viewer-projection.mjs`.
+  Проверяются 24 файла (на 2026-10-01): список даёт
+  `grep -rl '^// @ts-check' server/`. `rules-engine.mjs` и `index.mjs` в нём нет.
   Форма тактической клетки (`SceneCell`) объявлена в `server/dynamic-map.mjs`.
 - **`src/` — TypeScript + React + Vite.** Проверяется через `tsc --noEmit -p tsconfig.app.json`.
 - **Тесты — встроенный `node:test`, файлы `test/*.test.mjs`.** Ни Jest, ни
@@ -97,18 +98,23 @@ pnpm backup           # зашифрованная копия storage в ./backu
 **Каталоги:** `server/` — авторитетная механика, оркестрация, persistence;
 `src/` — интерфейс; `prompts/` — версионированные контракты агентов; `test/` —
 исполняемые проверки; `docs/` — архитектура, покрытие и ограничения;
-`tools/` — аудиты и обслуживание; `server/migrations/` — миграции данных.
+`tools/` — аудиты и обслуживание; `server/migrations/` — миграции данных;
+`server/rules/` — части движка правил, вынесенные из `rules-engine.mjs`
+(`core`, `actors`, `tactical-geometry`; движок реэкспортирует их прежний API);
+`server/routes/` — модули HTTP-маршрутов, вынесенные из `index.mjs`.
+Модули `server/rules/*` не импортируют `rules-engine.mjs`: граф `server/` без
+циклов держит `test/server-import-graph.test.mjs`.
 
 **Ядро (единственные источники истины):**
 
 | Файл | Ответственность |
 | --- | --- |
-| `server/rules-engine.mjs` | вся механика, допустимость, числа. ~11700 строк — точка входа для любого правила |
+| `server/rules-engine.mjs` | вся механика, допустимость, числа. ~24300 строк — точка входа для любого правила |
 | `server/event-store.mjs` | события, commit, replay |
 | `server/dice-service.mjs` | вся случайность; в тестах внедряется детерминированно |
 | `server/roll-registry.mjs` | `roll_id`/`check_id`, срок действия, защита от повторного применения |
 | `server/game-orchestrator.mjs` | оркестрация цикла `/api/narrate` |
-| `server/index.mjs` | HTTP-сервер и маршруты, ~3600 строк |
+| `server/index.mjs` | HTTP-сервер и маршруты, ~5700 строк |
 | `server/store.mjs` | persistence поверх `storage/` |
 | `server/security.mjs` | членство, владелец героя, полномочия |
 | `server/viewer-projection.mjs` | что игрок имеет право видеть |
@@ -202,8 +208,15 @@ commit, механики он не касается.
 Проверено 2026-07-25. До разделения границ не добавлять сюда новую логику;
 расширять существующий модуль или сначала спросить пользователя.
 
-- `adventure-director.mjs` пересекается по назначению с `director-agent.mjs` и
-  `autonomous-orchestrator.mjs`.
+- ~~`adventure-director.mjs` пересекается по назначению с `director-agent.mjs` и
+  `autonomous-orchestrator.mjs`.~~ **Закрыто 2026-10-01 разбором, а не правкой:**
+  пересечения нет, есть неудачное имя. `adventure-director.mjs` — не режиссёр, а
+  слой локаций сцены: память карт (`rememberSceneMap`, `levelKey`), генерация
+  геометрии и `createSceneTransition`. Цепочка режиссёра — `director-agent`
+  (решение модели) → `autonomous-campaign` (контракт намерения) →
+  `autonomous-orchestrator` (исполнение) → `campaign-loop-policy` (запасной путь
+  без модели). Новую логику режиссёра в `adventure-director.mjs` не класть;
+  переименование отложено, пока на модуль опираются параллельные ветки.
 - ~~Трассы хранят `prompt_versions` с ярлыками несуществующих промптов.~~
   **Закрыто 2026-07-31** вместе с версионированием схемы: новые трассы пишутся
   как `turn-trace/v2`, версии берутся из реестра `server/prompt-descriptors.mjs`,
