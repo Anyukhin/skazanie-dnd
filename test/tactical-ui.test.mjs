@@ -711,3 +711,33 @@ test('индикатор этажей строится сверху вниз и 
   ], 0)
   assert.deepEqual(noisy.map((row) => row.label), ['этаж 1', 'Общий зал'], 'дубли и мусор отбрасываются, пустая подпись заменяется номером')
 })
+
+test('линия крупного заклинателя идёт только от anchor — как wallCells сервера', () => {
+  const map = createTacticalMap({ width: 10, height: 6, fill: { passable: true, revealed: true } })
+  const large = { id: 'large', x: 1, y: 1, footprint: { version: 1, size: 2 } }
+  const bounds = { minX: 0, minY: 0, maxX: 9, maxY: 5 }
+  const bolt = tacticalUi.areaCellsForActor({
+    shape: 'line', origin: large, target: { x: 7, y: 1 }, originMode: 'self', sizeFeet: 20, cellFeet: 5, bounds,
+  }, large, map)
+  assert.deepEqual(bolt, [{ x: 2, y: 1 }, { x: 3, y: 1 }, { x: 4, y: 1 }, { x: 5, y: 1 }], 'один луч от (1,1), без второго ряда площади')
+  const diagonal = tacticalUi.areaCellsForActor({
+    shape: 'line', origin: large, target: { x: 7, y: 3 }, originMode: 'self', sizeFeet: 15, cellFeet: 5, bounds,
+  }, large, map)
+  assert.deepEqual(diagonal, [{ x: 2, y: 2 }, { x: 3, y: 3 }, { x: 4, y: 4 }], 'то же из восьми направлений и тот же шаг')
+  const wall = tacticalUi.areaCellsForActor({
+    shape: 'line', origin: large, target: { x: 6, y: 1 }, originMode: 'point', sizeFeet: 15, cellFeet: 5, bounds,
+  }, large, map)
+  assert.deepEqual(wall, [{ x: 6, y: 0 }, { x: 6, y: 1 }, { x: 6, y: 2 }], 'стена одна, поперёк направления от anchor')
+})
+
+test('площадь заклинателя для предпросмотра берётся из geometry.origin, а не из текущей позиции', () => {
+  const map = createTacticalMap({ width: 10, height: 6, fill: { passable: true, revealed: true } })
+  const large = { id: 'large', x: 6, y: 3, footprint: { version: 1, size: 2 } }
+  const cube = tacticalUi.areaCellsForActor({
+    shape: 'cube', origin: { x: 0, y: 1 }, target: { x: 6, y: 1 }, originMode: 'self', sizeFeet: 10,
+    cellFeet: 5, bounds: { minX: 0, minY: 0, maxX: 9, maxY: 5 },
+  }, large, map)
+  assert.ok(cube.length > 0)
+  assert.ok(cube.every((point) => point.x >= 1 && point.x <= 3), 'куб от клетки каста (0,1) и её площади 2×2')
+  assert.ok(cube.some((point) => point.x === 3 && point.y === 1), 'вторая клетка площади в точке каста продлевает куб')
+})

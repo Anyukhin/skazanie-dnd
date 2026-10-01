@@ -1,0 +1,5 @@
+KayKit : Dungeon Remastered (1.0) — Kay Lousberg.
+Source: https://github.com/KayKit-Game-Assets/KayKit-Dungeon-Remastered-1.0
+Source archive: KayKit-Dungeon-Remastered-1.0-b0ca9bd.zip; SHA-256: e96a65ce4040b6b630f04470a60fd523d621c124cfbad062809cf7b94ccf714b.
+Selected 16 models; external .bin files and PNG textures were embedded, POSITION bounds were recomputed from vertex data.
+Chest lids are renamed to hinge-lid so the client can open them; the geometry is unchanged.

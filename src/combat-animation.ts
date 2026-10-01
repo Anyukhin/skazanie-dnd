@@ -512,7 +512,7 @@ function burstDuration(spellId: string) {
   return spellId === 'fireball' ? 1000 : BASE_DURATIONS.burst
 }
 
-function spellCueFromCast(event: GameEvent): SpellAnimationCue | null {
+function spellCueFromCast(event: GameEvent, confirmedProjectileCount?: number): SpellAnimationCue | null {
   const payload = event.payload ?? {}
   const actorId = String(event.actor_id ?? '')
   const spellId = String(payload.spell_id ?? '')
@@ -544,7 +544,9 @@ function spellCueFromCast(event: GameEvent): SpellAnimationCue | null {
       kind: 'projectile',
       from: geometry.from,
       to: geometry.to,
-      projectileCount: profile.projectileCount ?? Math.max(1, targetIds.length),
+      // Сервер кладёт фактическое число снарядов (с учётом ячейки выше) в
+      // DamageApplied того же command_id; профиль каталога — только запасной путь.
+      projectileCount: confirmedProjectileCount ?? profile.projectileCount ?? Math.max(1, targetIds.length),
       damageType: String(payload.damage_type ?? '') || undefined,
       durationMs: BASE_DURATIONS.projectile,
     }
@@ -832,7 +834,13 @@ export function combatAnimationCuesFromEvents(
   const enervationRepeatCommands = new Set<string>()
   const beamAttacksByCommand = new Map<string, GameEvent[]>()
   const hailBurstByCommand = new Map<string, GameEvent[]>()
+  const projectileCountByCommand = new Map<string, number>()
   for (const event of events) {
+    const confirmedProjectiles = Math.floor(Number(event.payload?.projectile_count))
+    if (event.command_id && Number.isFinite(confirmedProjectiles) && confirmedProjectiles > 0) {
+      const commandId = String(event.command_id)
+      projectileCountByCommand.set(commandId, Math.max(projectileCountByCommand.get(commandId) ?? 0, confirmedProjectiles))
+    }
     if (event.event_type === 'DamageApplied') {
       const key = commandKey(event)
       damageByCommand.set(key, [...(damageByCommand.get(key) ?? []), event])
@@ -955,7 +963,7 @@ export function combatAnimationCuesFromEvents(
 
     if (event.event_type === 'SpellCast') {
       if (event.command_id && multiBeamCommands.has(beamCommandRoot(event.command_id))) continue
-      const cue = spellCueFromCast(event)
+      const cue = spellCueFromCast(event, event.command_id ? projectileCountByCommand.get(String(event.command_id)) : undefined)
       const teleportMove = event.command_id ? teleportMovesByCommand.get(String(event.command_id)) : undefined
       const teleportPayload = teleportMove?.payload ?? {}
       const resolvedCue = cue?.kind === 'channel' && cue.channelType === 'teleport'
@@ -1278,6 +1286,9 @@ export function combatAnimationCuesFromBattleLog(
       const family = spellEffectPalette(event.spellId, { damageType: event.damageType }).family
       if (profile.kind === 'beam' && multiBeamBattleCommands.has(battleLogBeamCommandRoot(event))) continue
       const targetIds = event.targetId ? [event.targetId] : []
+      // Снаряд — единственный вид, которому нужны все цели журнала: каждая
+      // получает свой снаряд. Остальные виды сохраняют прежний одноцелевой путь.
+      const projectileTargetIds = uniqueIds(event.targetIds?.length ? event.targetIds : targetIds)
       const targetOutcomes = spellTargetOutcomesByKey.get(battleLogCommandId(event) || `${String(event.actorId)}:${String(event.spellId)}`)
       const spellOutcomeFields = targetOutcomes ? { targetOutcomes } : {}
       if (profile.kind === 'projectile') {
@@ -1285,10 +1296,10 @@ export function combatAnimationCuesFromBattleLog(
           id: `${event.id}:projectile`,
           kind: 'projectile',
           actorId: event.actorId,
-          targetIds,
+          targetIds: projectileTargetIds,
           from: event.from,
           to: event.to,
-          projectileCount: profile.projectileCount ?? 1,
+          projectileCount: profile.projectileCount ?? Math.max(1, projectileTargetIds.length),
           damageType: event.damageType,
           spellId: event.spellId,
           school: profile.school,

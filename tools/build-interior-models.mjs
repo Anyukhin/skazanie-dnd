@@ -13,6 +13,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
 import { validateCandidateOutputDir } from './import-environment-models.mjs'
+import { SUPERSEDED_AUTHORED_KEYS } from './environment-packs.mjs'
 import { encodePng } from './png-codec.mjs'
 import { createExtraModel as createHouseholdModel, EXTRA_MODELS as HOUSEHOLD_MODELS } from './household-prop-models.mjs'
 import { createExtraModel as createSettlementModel, EXTRA_MODELS as SETTLEMENT_MODELS } from './settlement-prop-models.mjs'
@@ -103,6 +104,7 @@ export const AUTHORED_MODELS = Object.freeze([
   ...SETTLEMENT_MODELS,
 ])
 
+const SUPERSEDED_KEYS = new Set(SUPERSEDED_AUTHORED_KEYS)
 const INTERIOR_SPEC_BY_ASSET = new Map(INTERIOR_MODELS.map((item) => [item.assetId, item]))
 const SPEC_BY_ASSET = new Map(AUTHORED_MODELS.map((item) => [item.assetId, item]))
 
@@ -852,7 +854,10 @@ export async function addInteriorModelsToCandidate(directory) {
   const added = []
   for (const { item, bytes } of generated) {
     const url = `${URL_ROOT}${FAMILY}/${item.file}`
-    const expected = { key: item.key, label: item.label, category: item.category, url, assetIds: [item.assetId], yaw: item.yaw }
+    // Вытесненная модель остаётся в библиотеке, но генерация её не выбирает:
+    // вид уже покрыт вариантами CC0-наборов (tools/environment-packs.mjs).
+    const assetIds = SUPERSEDED_KEYS.has(item.key) ? [] : [item.assetId]
+    const expected = { key: item.key, label: item.label, category: item.category, url, assetIds, yaw: item.yaw }
     const existing = models.find((value) => object(value)?.key === item.key)
     if (existing) {
       const value = object(existing)

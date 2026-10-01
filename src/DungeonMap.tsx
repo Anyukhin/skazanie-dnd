@@ -2717,6 +2717,16 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           <span><i className="legend-swatch surface-mud" />Грязь · трудная местность</span>
           <span><i className="legend-swatch surface-rubble" />Щебень · трудная местность</span>
           <span><i className="legend-mark stairs">⇅</i>Лестница или люк · переход между этажами</span>
+          {state.scene.map_source && <span className="map-legend-credit">
+            Карта: {state.scene.map_source.url
+              ? <a href={state.scene.map_source.url} target="_blank" rel="noreferrer">«{state.scene.map_source.title}»</a>
+              : `«${state.scene.map_source.title}»`}
+            {' — '}{state.scene.map_source.author}
+            {state.scene.map_source.site ? `, ${state.scene.map_source.site}` : ''}
+            {state.scene.map_source.license && <>{', '}{state.scene.map_source.license_url
+              ? <a href={state.scene.map_source.license_url} target="_blank" rel="noreferrer">{state.scene.map_source.license}</a>
+              : state.scene.map_source.license}</>}
+          </span>}
         </div>
       </details>
       {spellbookOpen && <Suspense fallback={<section className="spellbook-catalog spellbook-loading" role="dialog" aria-modal="true" aria-label={`Книга заклинаний: ${activeName}`} onPointerDown={(event) => event.stopPropagation()}><p role="status">Открываем книгу заклинаний…</p><button type="button" onClick={() => setSpellbookOpen(false)}>Закрыть</button></section>}><Spellbook

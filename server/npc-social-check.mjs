@@ -31,6 +31,8 @@ export function classifyNpcSocialCheck(message) {
   if (/(\u0437\u0430\u043f\u0443\u0433|\u0443\u0433\u0440\u043e\u0436|\u0448\u0430\u043d\u0442\u0430\u0436|\u043f\u0440\u0438\u043f\u0443\u0433|intimidat|threaten|coerce)/iu.test(text)) return 'intimidation'
   if (/(\u043e\u0431\u043c\u0430\u043d|\u043b\u0433\u0443|\u0441\u043e\u043b\u0433|\u0432\u0440\u0443|\u0431\u043b\u0435\u0444|\u0432\u044b\u0434\u0430\u044e\s+\u0441\u0435\u0431\u044f|deceiv|\blie\b|bluff)/iu.test(text)) return 'deception'
   if (/(\u0443\u0431\u0435\u0436\u0434|\u0443\u0433\u043e\u0432\u0430\u0440|\u0434\u0438\u043f\u043b\u043e\u043c\u0430\u0442|\u0441\u043a\u043b\u043e\u043d\u044f\u044e|\u043f\u0440\u043e\u0448\u0443\s+\u0441\u043e\u0433\u043b\u0430\u0441\u0438\u0442\u044c\u0441\u044f|persuad|convinc|negotiate)/iu.test(text)) return 'persuasion'
+  // Флирт и подкуп — те же попытки расположить к себе: судит Убеждение и решает собеседник.
+  if (/(?<![\p{L}\p{M}])(?:флирт\p{L}*|кокетнича\p{L}*|очаровыва\p{L}*|подкуп\p{L}*|взятк\p{L}*|предлага\p{L}*[^.!?]{0,60}(?:монет|деньг|серебр|золот|плат))/iu.test(text)) return 'persuasion'
   return null
 }
 

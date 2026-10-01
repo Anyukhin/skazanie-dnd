@@ -3,7 +3,7 @@ import { join } from 'node:path'
 
 import { Adjudicator } from './adjudicator.mjs'
 import { ActionAdjudicator } from './action-adjudicator.mjs'
-import { answerKnownLore } from './player-request-router.mjs'
+import { answerKnownLore, answerTableQuestion } from './player-request-router.mjs'
 import { PROMPT_DESCRIPTORS } from './prompt-descriptors.mjs'
 import { TURN_TRACE_SCHEMA_VERSION, isMechanicalTrace } from './trace-store.mjs'
 import { AutonomousCampaignOrchestrator } from './autonomous-orchestrator.mjs'
@@ -37,7 +37,7 @@ import {
   pickpocketDifficultyFor,
 } from './pickpocket.mjs'
 import { actorNameResolver, eventSummary, normalizeCampaignState, previewD20Check, previewTavernDiceRoll, shrinePrayerRefusalFor } from './rules-engine.mjs'
-import { ABILITY_LABELS_RU, SKILL_LABELS_RU, d20CheckLabel, explainActionCheck, hasRecognizedFreeActionApproach } from './free-action-adjudication.mjs'
+import { ABILITY_LABELS_RU, SKILL_LABELS_RU, d20CheckLabel, explainActionCheck, hasRecognizedFreeActionApproach, minutesLabelRu } from './free-action-adjudication.mjs'
 import './scene-narration.mjs'
 import './scene-hazard-narration.mjs'
 import { buildNarrationBrief, projectVisibleState, redactTrace, validateAllowedCommands, verifyNarration } from './security.mjs'
@@ -334,16 +334,29 @@ const NPC_REACTION_LABELS = Object.freeze({
   attentive: 'молча наблюдает за разговором',
   watchful: 'держится настороже',
   cold: 'держится холодно',
+  reacts_to_act: 'отзывается на поступок героя по своему нраву — взглядом, жестом или выражением лица; без слов, согласия и уступок',
 })
 const NPC_REACTION_BY_TIER = Object.freeze({
   trusted: 'welcoming', friendly: 'welcoming', neutral: 'attentive',
   unfriendly: 'watchful', hostile: 'cold',
 })
 
-export function narrationNpcReactions(presentNpcs = [], events = []) {
+export function narrationNpcReactions(presentNpcs = [], events = [], { heroDeed = false, socialTarget = null } = {}) {
   // Насилие в сцене перекрывает отношения: даже дружелюбный NPC сначала
   // реагирует на кровь, а не на давнее знакомство.
   const alarming = (events ?? []).some((event) => /damage|hitpointsreducedtozero|herodied|combatstarted/i.test(String(event.event_type ?? '')))
+  // Герой на глазах у всех спел, станцевал, поцеловал или опрокинулся: живой
+  // стол не остаётся «молча наблюдать за разговором» — люди по-своему
+  // отзываются. Ущерб и отказ от сделки по-прежнему решают события.
+  if (heroDeed && !alarming) {
+    // Тот, кого герой уговаривал, флиртом или иначе, отзывается по броску:
+    // успех располагает, провал — нет. Остальные просто смотрят по-своему.
+    return presentNpcs.slice(0, NPC_REACTION_LIMIT).map((npc) => {
+      const targeted = socialTarget && String(socialTarget.npcId) === String(npc.id) && typeof socialTarget.success === 'boolean'
+      const reaction = targeted ? (socialTarget.success ? 'persuaded' : 'unconvinced') : 'reacts_to_act'
+      return { npc_id: String(npc.id), name: memoryText(npc.name, 120), reaction, description: NPC_REACTION_LABELS[reaction] }
+    })
+  }
   const socialOutcomes = new Map((events ?? [])
     .filter((event) => event.event_type === 'AbilityCheckResolved' && event.payload?.social_check?.npc_id)
     .map((event) => [String(event.payload.social_check.npc_id), event.payload.success === true]))
@@ -861,7 +874,8 @@ function freeActionTimeText(events = []) {
   const unit = String(time?.payload?.unit ?? 'minute').toLowerCase()
   if (unit === 'hour' || unit === 'hours') return `Прошло ${amount} ч.`
   if (unit === 'day' || unit === 'days') return `Прошёл ${amount} день.`
-  return `Прошло ${amount} мин.`
+  // Минута-другая на жест — не новость для стола; время видно на часах.
+  return amount >= 10 ? `На это ушло ${minutesLabelRu(amount)}.` : ''
 }
 
 function freeActionEffectText(events = [], state = {}) {
@@ -880,6 +894,13 @@ function freeActionEffectText(events = [], state = {}) {
       return `${damageTypeLabel(event.payload?.damage_type)}: ${combatNarration([event], state)}`
     }
     if (['HitPointsReducedToZero', 'HeroDied'].includes(event?.event_type)) return combatNarration([event], state)
+    // Найденная улика — это её содержание, а не «изменение записано в память
+    // мира». Факт уже открыт отряду, поэтому его текст и есть ответ ведущего.
+    if (event?.event_type === 'WorldFactRecorded' && event?.payload?.fact?.predicate === 'discovery'
+      && ['party', 'public'].includes(String(event?.payload?.fact?.visibility))) {
+      const summary = String(event.payload.fact.summary ?? '').replace(/\s+/gu, ' ').trim().slice(0, 600)
+      if (summary) return /[.!?…]$/u.test(summary) ? summary : `${summary}.`
+    }
     const label = labels.get(String(event?.event_type ?? ''))
     return label ? `${label[0].toLocaleUpperCase('ru')}${label.slice(1)}.` : null
   }).filter(Boolean))]
@@ -917,15 +938,23 @@ function deterministicFreeActionNarration({ freeAction, message, events, state }
     ].filter(Boolean).join(' ')
   }
   if (!['auto_success', 'check_success', 'check_failure'].includes(kind)) return ''
-  const goal = trimSentenceEnd(freeAction?.reading?.goal_summary || message, 280) || 'задумка героя'
-  const outcome = kind === 'check_failure'
-    ? 'не удалась'
-    : kind === 'auto_success'
-      ? 'удалась без проверки'
-      : 'удалась'
+  // Запасной текст звучит как реплика ведущего: «Вышло: крикнуть
+  // «Пожар!» на весь двор». Прежде это было «Задумка «…» удалась без проверки.
+  // Прошло 1 мин.» — служебный протокол вместо сцены.
+  const rawGoal = trimSentenceEnd(freeAction?.reading?.goal_summary || message, 280)
+  // Строчная буква только у глагола-цели («Подбросить монетку» → «вышло:
+  // подбросить монетку»); имя героя в начале фразы остаётся с заглавной.
+  const goal = rawGoal && /^\p{L}+(?:ть|ться|ти|чь)(?![\p{L}\p{M}])/u.test(rawGoal)
+    ? `${rawGoal.charAt(0).toLocaleLowerCase('ru')}${rawGoal.slice(1)}`
+    : rawGoal
+  const failed = kind === 'check_failure'
   const parts = [freeAction?.reading?.activity_kind === 'stunt'
-    ? `Трюк ${kind === 'check_failure' ? 'не удался' : 'удался'}.`
-    : `Задумка «${goal}» ${outcome}.`]
+    ? (failed ? 'Трюк сорвался.' : 'Трюк удался.')
+    : goal
+      // «Вышло», а не «Получилось»: guard передачи вещей читает «получил…
+      // монетку» как полученный предмет и выбрасывал весь текст.
+      ? `${failed ? 'Не вышло' : 'Вышло'}: ${goal}.`
+      : (failed ? 'Не вышло.' : 'Вышло.')]
   const effects = freeActionEffectText(events, state)
   parts.push(...effects)
   const time = freeActionTimeText(events)
@@ -1445,7 +1474,16 @@ export class GameOrchestrator {
         story_context: storyContext,
         social_consequences: narrationSocialConsequences(publicCommittedEvents, state),
       },
-      permitted_npc_reactions: narrationNpcReactions(storyContext.present_npcs, publicCommittedEvents),
+      permitted_npc_reactions: narrationNpcReactions(storyContext.present_npcs, publicCommittedEvents, {
+        heroDeed: ['auto_success', 'check_success', 'check_failure'].includes(String(freeAction.kind))
+          && !state.mechanics?.combat?.active
+          // Удавшуюся скрытность никто не заметил — реагировать не на что.
+          && !(freeAction.reading?.activity_kind === 'stealth' && freeAction.kind !== 'check_failure'),
+        socialTarget: freeAction.reading?.activity_kind === 'social' && freeAction.reading?.target_id
+          && ['check_success', 'check_failure'].includes(String(freeAction.kind))
+          ? { npcId: freeAction.reading.target_id, success: freeAction.kind === 'check_success' }
+          : null,
+      }),
       narration_constraints: constraints,
       viewer,
     })
@@ -1516,7 +1554,14 @@ export class GameOrchestrator {
         ? groundedNarration
         : freeAction.kind === 'clarification'
           ? 'Опишите действие подробнее, чтобы его можно было разрешить по правилам.'
-          : 'Действие не получило подтверждённого последствия. Уточните, чего герой хочет добиться.'
+          // Исход уже записан событиями: если ни один текст не прошёл guard,
+          // честнее короткое «вышло / не вышло», чем просьба уточнить уже
+          // сыгранное действие.
+          : ['auto_success', 'check_success'].includes(String(freeAction.kind))
+            ? 'Вышло.'
+            : freeAction.kind === 'check_failure'
+              ? 'Не вышло.'
+              : 'Действие не получило подтверждённого последствия. Уточните, чего герой хочет добиться.'
     const acceptedRenderedNarration = !deterministicProvider
       && Boolean(renderedNarration)
       && renderedNarration === preferredNarration
@@ -1635,7 +1680,7 @@ export class GameOrchestrator {
    * слот, продвинуть часы или создать проверку даже посреди боя.
    */
   async nonActionResponse({ campaignId, playerId, requestKind, message, pendingClarification, questionCheckId = '', questionProposalId = '', state, turnId, mode, viewer, idempotencyKey = null, started = null }) {
-    const lore = requestKind === 'question'
+    let lore = requestKind === 'question'
       ? answerKnownLore(message, state, { viewer })
       : null
     let pending = pendingClarification
@@ -1678,6 +1723,27 @@ export class GameOrchestrator {
       }
     }
     const recent = this.clarificationRegistry.recentDialogue({ campaignId, actorId: playerId }).reverse()
+    // Вопрос ведущему о мире — погода, час, «кто это», «сколько стоит» — не
+    // гипотетическое действие: прежде он уходил судье и получал ответ про
+    // «безопасный жест с имеющейся вещью».
+    const tableAnswer = requestKind === 'question' && !lore?.narration && !checkAnswer && !pending
+      ? answerTableQuestion(message, state, {
+        // Здесь `state` — проекция игрока: сида мира в ней нет, и пересчёт
+        // часов дал бы чужое небо («ясно» под дождём). Проекция уже несёт
+        // погоду и час для этого героя — ими и отвечаем.
+        actorId: playerId,
+        worldClock: state.weather?.weather
+          ? {
+              clock: state.weather.clock,
+              time_of_day_label: state.weather.phase_label,
+              weather_label: state.weather.weather_label,
+              weather_summary: state.weather.weather_summary,
+              indoors: state.weather.indoors,
+            }
+          : worldClockForAgents(state, playerId),
+      })
+      : null
+    if (tableAnswer?.narration) lore = tableAnswer
     const discussed = requestKind === 'question' && !lore?.narration && !checkAnswer
       ? await this.actionAdjudicator.discuss(state, playerId, message, {
           action: pending?.action ?? recent.at(-1)?.action ?? '', recent,

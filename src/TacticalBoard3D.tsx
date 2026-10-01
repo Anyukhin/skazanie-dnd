@@ -10,6 +10,7 @@ import { createSpellEffectRenderer, isSpellAnimationCue, systemPrefersReducedMot
 import { createCombatEffect3D } from './board3d-effects'
 import { createSpellEffect3D } from './board3d-spell-effects'
 import { createBoard3DScene, nearestPropPickTarget } from './board3d-scene'
+import { combatAudioSpatialFromScreen } from './combat-audio'
 import type { Board3DRoofMode } from './board3d-roofs'
 import { boardCameraFitZoom, shouldInitialFitBoardCamera } from './board3d-camera'
 import { createTerrainSurfaceGeometry, terrainHeightAt, visibleTerrainHeightRange } from './board3d-terrain'
@@ -17,6 +18,7 @@ import { createActorModel, createProceduralActorModel, getModelAssetDiagnostics,
 import { LEGACY_CATALOG_REVISION } from './prop-model-catalog'
 import { mapSignaturesFor } from './board3d-scene-signature'
 import { BOARD3D_QUALITY, board3DQuality, cueForQuality, type Board3DQuality } from './board3d-quality'
+import { BOARD3D_LIGHTING, boardDarkness, lightingForDarkness, boardEffectLights, createBoardBackdropTexture, createBoardEnvironment, createBoardRenderPipeline, fitSunShadow } from './board3d-graphics'
 import type { TacticalMap } from './types'
 
 type Props = TacticalBoardProps & { onUnavailable: (message: string) => void }
@@ -27,7 +29,9 @@ const QUALITY_STORAGE_KEY = 'skazanie-3d-quality'
 const ROOF_STORAGE_KEY = 'skazanie-3d-roofs'
 
 function roofModeValue(value: unknown): Board3DRoofMode {
-  return value === 'full' || value === 'hidden' ? value : 'cutaway'
+  // По умолчанию — без крыши, как в наборных диорамах: каркас среза
+  // перечёркивал зал балками. Выбранный игроком режим сохраняется.
+  return value === 'full' || value === 'cutaway' ? value : 'hidden'
 }
 
 function hasBoardContent(children: ReactNode): boolean {
@@ -64,11 +68,55 @@ function readModels(key: string): Record<string, string> {
   } catch { return {} }
 }
 
-function poseForCue(cue: CombatAnimationCue): ActorPose {
+/**
+ * Поза исполнителя реплики. `null` — реплика не двигает фигурку: промах
+ * заклинанием, лечение и объявленное состояние («Ярость», «Уклонение») не
+ * должны выглядеть как вздрагивание от удара.
+ */
+function poseForCue(cue: CombatAnimationCue): ActorPose | null {
   if (cue.kind === 'move') return 'walk'
   if (cue.kind === 'strike') return strikeUsesProjectile(cue) ? 'ranged-attack' : 'attack'
   if (cue.kind === 'death') return 'death'
+  if (cue.kind === 'impact') return cue.tone === 'damage' ? 'hit' : null
+  if (cue.kind === 'condition') return null
   return isSpellAnimationCue(cue) ? 'cast' : 'hit'
+}
+
+type MoveCue = Extract<CombatAnimationCue, { kind: 'move' }>
+
+/**
+ * Маршрут анимации шага. Сервер кладёт конечную клетку последней в `path`, а
+ * стартовую не кладёт; повтор `to` давал пустой последний отрезок, и фигурка
+ * приходила раньше и стояла в позе ходьбы. Соседние дубли схлопываются.
+ */
+export function moveRoute(cue: Pick<MoveCue, 'from' | 'to' | 'path'>): Array<{ x: number; y: number }> {
+  const route = [cue.from]
+  for (const step of [...cue.path, cue.to]) {
+    const last = route[route.length - 1]
+    if (last.x !== step.x || last.y !== step.y) route.push(step)
+  }
+  return route
+}
+
+/** Шагов цикла ходьбы на клетку: клип не растягивается на весь путь. */
+const WALK_CYCLES_PER_CELL = .5
+
+/**
+ * Клетка, в которой фигурка должна стоять, пока её ход ещё в очереди. Снимок
+ * уже знает конечную позицию, но показывать её до анимации нельзя: фигурка
+ * сначала стояла бы у цели, а потом «отпрыгивала» к старту и шла заново.
+ */
+export function queuedStartCell(actorId: string, cues: readonly (CombatAnimationCue | undefined)[]): { x: number; y: number } | null {
+  for (const cue of cues) {
+    if (!cue || !('actorId' in cue) || cue.actorId !== actorId) continue
+    if (cue.kind === 'move') return cue.from
+    if (cue.kind === 'channel' && cue.channelType === 'teleport' && cue.from) return cue.from
+  }
+  return null
+}
+
+function shortestAngle(from: number, to: number): number {
+  return Math.atan2(Math.sin(to - from), Math.cos(to - from))
 }
 
 /** Для атаки берётся экипировка на момент события, затем возвращается текущая. */
@@ -115,7 +163,7 @@ export default function TacticalBoard3D(props: Props) {
     try { return board3DQuality(localStorage.getItem(QUALITY_STORAGE_KEY)) } catch { return 'balanced' }
   })
   const [roofMode, setRoofMode] = useState<Board3DRoofMode>(() => {
-    try { return roofModeValue(localStorage.getItem(ROOF_STORAGE_KEY)) } catch { return 'cutaway' }
+    try { return roofModeValue(localStorage.getItem(ROOF_STORAGE_KEY)) } catch { return 'hidden' }
   })
   const settings = useRef({ models, catalog, quality, roofMode })
   settings.current = { models, catalog, quality, roofMode }
@@ -169,7 +217,10 @@ export default function TacticalBoard3D(props: Props) {
     renderer.shadowMap.enabled = true
     renderer.shadowMap.type = THREE.PCFShadowMap
     renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 1.35
+    renderer.toneMappingExposure = BOARD3D_LIGHTING.exposure
+    // Постобработка вызывает render несколько раз за кадр; счётчики draw calls
+    // сбрасывает конвейер в начале кадра, а не каждый проход.
+    renderer.info.autoReset = false
     renderer.domElement.className = 'board3d-canvas'
     const gl = renderer.getContext()
     const debugRenderer = gl.getExtension('WEBGL_debug_renderer_info')
@@ -178,7 +229,16 @@ export default function TacticalBoard3D(props: Props) {
     renderer.domElement.setAttribute('aria-label', 'Поле боя 3D. Стрелки выбирают клетку, Enter подтверждает. Перетаскивание двигает камеру, правая кнопка поворачивает.')
     element.prepend(renderer.domElement)
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color('#191914')
+    const backdrop = createBoardBackdropTexture()
+    scene.background = backdrop ?? new THREE.Color('#191914')
+    const environment = createBoardEnvironment(renderer)
+    if (environment) {
+      scene.environment = environment.texture
+      scene.environmentIntensity = BOARD3D_LIGHTING.environmentIntensity
+    }
+    // Прицел — интерфейс поверх кадра: отдельная сцена не проходит через
+    // тонмаппинг и постобработку.
+    const uiScene = new THREE.Scene()
     const camera = new THREE.OrthographicCamera(-8, 8, 6, -6, .1, 500)
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.mouseButtons.LEFT = THREE.MOUSE.PAN
@@ -193,16 +253,41 @@ export default function TacticalBoard3D(props: Props) {
     controls.enableDamping = false
     const saved = cameras.get(cameraKey)
     let initialCameraFit = Boolean(saved)
-    const hemisphere = new THREE.HemisphereLight('#e7e8de', '#51402b', 2.5)
-    const sun = new THREE.DirectionalLight('#ffe7bd', 3)
+    const hemisphere = new THREE.HemisphereLight(BOARD3D_LIGHTING.hemisphere.sky, BOARD3D_LIGHTING.hemisphere.ground, BOARD3D_LIGHTING.hemisphere.intensity)
+    const sun = new THREE.DirectionalLight(BOARD3D_LIGHTING.sun.color, BOARD3D_LIGHTING.sun.intensity)
     sun.position.set(-8, 18, 8)
     sun.castShadow = true
     sun.shadow.mapSize.set(2048, 2048)
     sun.shadow.camera.left = sun.shadow.camera.bottom = -22
     sun.shadow.camera.right = sun.shadow.camera.top = 22
     sun.shadow.camera.far = 90
-    sun.shadow.normalBias = .025
+    sun.shadow.normalBias = BOARD3D_LIGHTING.sun.normalBias
+    sun.shadow.bias = BOARD3D_LIGHTING.sun.bias
+    // В r186 PCF-тень мягкая по радиусу выборки (диск Фогеля).
+    sun.shadow.radius = BOARD3D_LIGHTING.sun.shadowRadius
     scene.add(hemisphere, sun, sun.target)
+    const pipeline = createBoardRenderPipeline(renderer, scene, uiScene, camera)
+    // Пул огней для вспышек эффектов живёт в сцене всегда: число источников
+    // постоянно, и первая вспышка не пересобирает шейдеры всех материалов.
+    const effectLights = [0, 1].map((index) => {
+      const light = new THREE.PointLight('#ffffff', 0, 6, 2)
+      light.name = `effect-light-${index}`
+      light.castShadow = false
+      scene.add(light)
+      return light
+    })
+    const applyEffectLights = (group?: THREE.Object3D | null) => {
+      const wanted = latest.current.lighting === false || BOARD3D_QUALITY[settings.current.quality].detail === 'minimal'
+        ? [] : boardEffectLights(group?.userData.lights)
+      effectLights.forEach((light, index) => {
+        const next = wanted[index]
+        if (!next) { light.intensity = 0; return }
+        light.position.set(next.x, next.y, next.z)
+        light.color.set(next.color)
+        light.intensity = next.intensity * BOARD3D_LIGHTING.effectLightScale
+        light.distance = next.distance
+      })
+    }
     type ActorView = { root: THREE.Group; model: ActorModel; key: string; defeated: boolean; ring: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>; abort: AbortController }
     const actorViews = new Map<string, ActorView>()
     let terrain: ReturnType<typeof createBoard3DScene> | null = null
@@ -257,6 +342,7 @@ export default function TacticalBoard3D(props: Props) {
       }
     }
     let pending: CombatAnimationCue[] = []
+    let lastAnimateAt = 0
     let active: {
       cue: CombatAnimationCue
       started: number
@@ -303,7 +389,7 @@ export default function TacticalBoard3D(props: Props) {
     // обычный overlay сохраняет проверку глубины для дальности и зон местности.
     const targetPreviewGroup = new THREE.Group()
     targetPreviewGroup.renderOrder = 12
-    scene.add(targetPreviewGroup)
+    uiScene.add(targetPreviewGroup)
     let targetPreviewFillGeometry: THREE.PlaneGeometry | null = null
     let targetPreviewFillMaterial: THREE.MeshBasicMaterial | null = null
     let targetPreviewEdgeGeometry: THREE.BufferGeometry | null = null
@@ -515,13 +601,20 @@ export default function TacticalBoard3D(props: Props) {
     function invalidate() {
       if (!disposed && !frameId && !document.hidden) frameId = requestAnimationFrame(render)
     }
+    /** Ставит фигурку в покое: в клетку снимка или в старт ещё не показанного хода. */
+    function placeActor(actor: BoardAnimationActor, view: ActorView) {
+      const map = latest.current.map
+      const queued = latest.current.animationsEnabled === false ? null : queuedStartCell(actor.id, [active?.cue, ...pending])
+      const anchor = queued ? { ...actor, ...queued } : actor
+      const center = actorPresentationCenter(map, actor, anchor)
+      view.root.position.set(center.x, actorGround(map, actor, anchor), center.y)
+    }
     function restoreActors() {
       labelsDirty = true
       for (const actor of latest.current.animationActors ?? []) {
         const view = actorViews.get(actor.id)
         if (!view) continue
-        const center = actorPresentationCenter(latest.current.map, actor)
-        view.root.position.set(center.x, actorGround(latest.current.map, actor), center.y)
+        placeActor(actor, view)
         view.root.visible = true
         view.model.setAppearance(actor.appearance)
         const deferDeath = latest.current.animationsEnabled !== false && actor.defeated && shouldDeferDefeat(actor.id, active?.cue, pending)
@@ -543,6 +636,7 @@ export default function TacticalBoard3D(props: Props) {
       pending = []
       active?.effect?.dispose()
       active = null
+      applyEffectLights(null)
       spell.canvas.getContext('2d')?.clearRect(0, 0, spell.canvas.width, spell.canvas.height)
       spell.texture.needsUpdate = true
       floating.textContent = ''
@@ -558,9 +652,18 @@ export default function TacticalBoard3D(props: Props) {
         const audioActor = cue.kind === 'strike'
           ? current.animationActors?.find((actor) => actor.id === cue.actorId)
           : undefined
+        // Стерео по месту на экране: подготовка и выпуск звучат у исполнителя,
+        // контакт — у цели; событие за кадром тише.
+        const width = element.clientWidth, height = element.clientHeight
+        const spatialFor = (id?: string) => {
+          const root = id ? actorViews.get(id)?.root : undefined
+          return root ? combatAudioSpatialFromScreen({ ...pointOnScreen(root.position, width, height), width, height }) : undefined
+        }
+        const sourceId = 'actorId' in cue ? cue.actorId : undefined
+        const targetId = 'targetId' in cue && cue.targetId ? cue.targetId : 'targetIds' in cue ? cue.targetIds?.[0] : undefined
         current.combatAudio?.schedule(
           { ...cue, durationMs: cueReducedMotion ? Math.max(120, cue.durationMs) : cue.durationMs },
-          audioActor ? { actor: audioActor } : undefined,
+          { ...(audioActor ? { actor: audioActor } : {}), spatial: { source: spatialFor(sourceId), target: spatialFor(targetId) } },
         )
         active = {
           cue,
@@ -572,24 +675,35 @@ export default function TacticalBoard3D(props: Props) {
         const actorId = 'actorId' in cue ? cue.actorId : 'targetId' in cue ? cue.targetId : ''
         const model = actorViews.get(actorId)?.model
         if (current.animationsEnabled !== false && cue.kind === 'strike' && model) applyStrikeAppearance(model, cue)
-        if (current.animationsEnabled !== false) model?.setPose(poseForCue(cue), 0)
+        const startPose = poseForCue(cue)
+        if (current.animationsEnabled !== false && startPose) model?.setPose(startPose, 0)
+        lastAnimateAt = now
       }
       if (!active) return
       const { cue } = active
       const reduced = combatAnimationUsesReducedMotion(cue)
       const progress = Math.min(1, (now - active.started) / (reduced ? 120 : Math.max(1, cue.durationMs)))
       if (current.animationsEnabled === false) {
-        active.effect?.dispose()
-        active.effect = null
+        // Анимации выключили посреди реплики: без восстановления фигурка
+        // осталась бы замороженной в середине шага или замаха.
+        if (active.effect) { active.effect.dispose(); active.effect = null; restoreActors() }
         floating.textContent = ''
-        if (progress >= 1) { active = null; if (!pending.length) setPlaying(false) }
+        if (progress >= 1) { active = null; restoreActors(); if (!pending.length) setPlaying(false) }
         return
       }
+      const turnStep = 1 - Math.exp(-Math.max(0, now - lastAnimateAt) / 55)
+      lastAnimateAt = now
+      // Поворот догоняет направление по кратчайшей дуге: на углах маршрута
+      // фигурка разворачивается за пару кадров, а не рывком.
+      const face = (root: THREE.Object3D, yaw: number) => { root.rotation.y += shortestAngle(root.rotation.y, yaw) * turnStep }
       const actorAt = (id: string) => current.animationActors?.find((actor) => actor.id === id)
       const view = 'actorId' in cue ? actorViews.get(cue.actorId) : null
+      let walkPhase: number | null = null
       if (!reduced && cue.kind === 'move' && view && current.map) {
-        const route = [cue.from, ...cue.path, cue.to]
+        const route = moveRoute(cue)
+        if (route.length < 2) route.push(route[0])
         const travel = progress * (route.length - 1)
+        walkPhase = (travel * WALK_CYCLES_PER_CELL) % 1
         const index = Math.min(route.length - 2, Math.floor(travel))
         const from = route[index], to = route[index + 1]
         const x = from.x + (to.x - from.x) * (travel - index), y = from.y + (to.y - from.y) * (travel - index)
@@ -600,7 +714,7 @@ export default function TacticalBoard3D(props: Props) {
         const fromHeight = actor ? actorGround(current.map, actor, { ...actor, ...from }) : terrainHeightAt(current.map, from.x, from.y)
         const toHeight = actor ? actorGround(current.map, actor, { ...actor, ...to }) : terrainHeightAt(current.map, to.x, to.y)
         view.root.position.set(center.x, fromHeight + (toHeight - fromHeight) * (travel - index), center.y)
-        if (to.x !== from.x || to.y !== from.y) view.root.rotation.y = Math.atan2(to.x - from.x, to.y - from.y)
+        if (to.x !== from.x || to.y !== from.y) face(view.root, Math.atan2(to.x - from.x, to.y - from.y))
       } else if (cue.kind === 'channel' && cue.channelType === 'teleport' && view && current.map) {
         const position = reduced || progress >= .6 ? cue.position : cue.from
         view.root.visible = Boolean(position && (reduced || progress < .4 || progress >= .6) && revealedAt(current.map, position.x, position.y))
@@ -621,17 +735,18 @@ export default function TacticalBoard3D(props: Props) {
           view.root.visible = Boolean(current.map && revealedAt(current.map, from.x, from.y))
             && (!actor || actorPresentationSize(current.map, actor, from) === actorFootprintSize(actor))
           view.root.position.set(sourceCenter.x + dx / length * lunge, actor ? actorGround(current.map, actor, { ...actor, ...from }) : terrainHeightAt(current.map, from.x, from.y), sourceCenter.y + dy / length * lunge)
-          view.root.rotation.y = Math.atan2(dx, dy)
+          if (dx || dy) face(view.root, Math.atan2(dx, dy))
         }
       }
       const pose = poseForCue(cue)
       const animatedId = 'actorId' in cue ? cue.actorId : 'targetId' in cue ? cue.targetId : ''
-      if (!reduced) actorViews.get(animatedId)?.model.setPose(pose, progress)
+      if (!reduced && pose) actorViews.get(animatedId)?.model.setPose(pose, walkPhase ?? progress)
       if (!reduced && cue.kind === 'strike' && cue.hit && progress >= strikeImpactProgress(cue)) {
         const impact = strikeImpactProgress(cue)
         actorViews.get(cue.targetId)?.model.setPose('hit', Math.min(1, (progress - impact) / (1 - impact)))
       }
       active.effect?.update(progress)
+      applyEffectLights(active.effect?.group)
       const board = boardScene(spell.canvas), context = spell.canvas.getContext('2d')
       if (board && context) {
         context.clearRect(0, 0, spell.canvas.width, spell.canvas.height)
@@ -644,15 +759,20 @@ export default function TacticalBoard3D(props: Props) {
           : cue.kind === 'channel' && cue.amount != null ? `+${cue.amount}` : cue.kind === 'condition' ? cue.label : ''
       floating.textContent = message
       if (resultActor && current.map && revealedAt(current.map, resultActor.x, resultActor.y)) {
-        const center = actorPresentationCenter(current.map, resultActor)
-        const height = actorViews.get(resultActor.id)?.model.modelHeight ?? 1.25
-        const screen = pointOnScreen(new THREE.Vector3(center.x, actorGround(current.map, resultActor) + height + .55 + progress * .5, center.y))
+        // Цифра стоит над тем местом, где фигурка видна сейчас, а не над
+        // клеткой из снимка, куда она ещё только придёт.
+        const resultView = actorViews.get(resultActor.id)
+        const center = resultView ? { x: resultView.root.position.x, y: resultView.root.position.z } : actorPresentationCenter(current.map, resultActor)
+        const ground = resultView ? resultView.root.position.y : actorGround(current.map, resultActor)
+        const height = resultView?.model.modelHeight ?? 1.25
+        const screen = pointOnScreen(new THREE.Vector3(center.x, ground + height + .55 + progress * .5, center.y))
         floating.style.left = `${screen.x}px`; floating.style.top = `${screen.y}px`
         floating.style.opacity = String(Math.min(1, (1 - progress) * 4))
       } else floating.textContent = ''
       if (progress >= 1) {
         active.effect?.dispose()
         active = null
+        applyEffectLights(null)
         restoreActors()
         floating.textContent = ''
         context?.clearRect(0, 0, spell.canvas.width, spell.canvas.height)
@@ -669,6 +789,7 @@ export default function TacticalBoard3D(props: Props) {
         const motionAllowed = latest.current.animationsEnabled !== false
           && !(active ? combatAnimationUsesReducedMotion(active.cue) : systemPrefersReducedMotion())
         animate(now)
+        if (motionAllowed) terrain?.animate(now)
         if (motionAllowed) {
           const cue = latest.current.animationsEnabled === false ? undefined : active?.cue
           for (const [id, actor] of actorViews) {
@@ -682,7 +803,7 @@ export default function TacticalBoard3D(props: Props) {
         previousTime = now
         controls.update()
         if (labelsDirty || active?.cue.kind === 'move' || active?.cue.kind === 'strike') drawLabels()
-        renderer.render(scene, camera)
+        pipeline.render()
         trackPointShadowDisposal()
         renderedFrames += 1
         renderer.domElement.dataset.frames = String(renderedFrames)
@@ -712,7 +833,7 @@ export default function TacticalBoard3D(props: Props) {
         // Движение следует частоте экрана без искусственной паузы между кадрами.
         // При reduced motion, выключенных анимациях и скрытой вкладке цикл спит.
         else if (fpsEnabled.current || (motionAllowed && BOARD3D_QUALITY[settings.current.quality].idle
-          && [...actorViews.values()].some((actor) => !actor.defeated && actor.model.source === 'glb' && actor.model.idle))) {
+          && (terrain?.animated || [...actorViews.values()].some((actor) => !actor.defeated && actor.model.source === 'glb' && actor.model.idle)))) {
           invalidate()
         }
       } catch {
@@ -737,10 +858,6 @@ export default function TacticalBoard3D(props: Props) {
       camera.zoom = boardCameraFitZoom(camera, { minX, minY, maxX, maxY }, element.clientWidth, element.clientHeight, heights)
       camera.updateProjectionMatrix()
       controls.update()
-      sun.position.set(controls.target.x - 8, heights.max + 25, controls.target.z + 8)
-      sun.shadow.camera.far = Math.max(90, heights.max - heights.min + 60)
-      sun.shadow.camera.updateProjectionMatrix()
-      sun.target.position.copy(controls.target)
       invalidate()
     }
     let lastCatalog = settings.current.catalog
@@ -753,8 +870,11 @@ export default function TacticalBoard3D(props: Props) {
       const qualityChanged = lastQuality !== qualityKey
       if (qualityChanged) {
         renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, profile.maxDpr))
+        // Карта теней пересоздаётся под новый размер при следующем кадре.
         sun.shadow.mapSize.set(profile.shadowSize, profile.shadowSize)
-        if (!profile.shadows) { sun.shadow.dispose(); sun.shadow.map = null; sun.shadow.mapPass = null }
+        sun.shadow.dispose(); sun.shadow.map = null; sun.shadow.mapPass = null
+        pipeline.configure({ ambientOcclusion: profile.ambientOcclusion, bloom: profile.bloom })
+        pipeline.refresh()
         lastQuality = qualityKey
         measuredFrames = 0; measuredRenderMs = 0; measuredSince = performance.now()
         renderSamples = []; frameSamples = []; previousTime = 0
@@ -763,7 +883,7 @@ export default function TacticalBoard3D(props: Props) {
         resize()
       }
       renderer.shadowMap.enabled = current.lighting !== false && profile.shadows
-      const style = `${current.lighting}:${current.artUrl}:${current.artMode}:${current.themeKey}:${profile.pointLightShadows}`
+      const style = `${current.lighting}:${current.artUrl}:${current.artMode}:${current.themeKey}:${profile.pointLightShadows}:${pipeline.active}:${profile.detail}`
       const signatures = mapSignaturesFor(map)
       const referenceSame = lastMap === map
       const contentChanged = Boolean(terrainSignature && terrainSignature !== signatures.staticKey)
@@ -786,13 +906,29 @@ export default function TacticalBoard3D(props: Props) {
         const css = getComputedStyle(element)
         palette = boardPaletteFrom((name) => css.getPropertyValue(name))
         if (terrain) { terrain.dispose(); diagnostics.disposed += 1 }
-        terrain = createBoard3DScene(map, { palette, lighting: current.lighting, pointLightShadows: profile.pointLightShadows, roofMode: settings.current.roofMode, artUrl: current.artUrl, artMode: current.artMode, onReady: invalidate })
+        // Сумрак карты: в подземелье солнце гаснет, огни берут своё.
+        const darkness = current.lighting === false ? 0 : boardDarkness(map, (x, y) => cellAt(map, x, y))
+        const ambience = lightingForDarkness(darkness)
+        sun.intensity = ambience.sun
+        hemisphere.intensity = ambience.hemisphere
+        hemisphere.color.set(ambience.hemisphereSky)
+        scene.environmentIntensity = ambience.environment
+        renderer.toneMappingExposure = ambience.exposure
+        renderer.domElement.dataset.darkness = darkness.toFixed(2)
+        renderer.domElement.dataset.sunIntensity = sun.intensity.toFixed(2)
+        terrain = createBoard3DScene(map, { palette, lighting: current.lighting, pointLightShadows: profile.pointLightShadows, roofMode: settings.current.roofMode, artUrl: current.artUrl, artMode: current.artMode, artOverlayOpacity: pipeline.active ? BOARD3D_LIGHTING.linearArtOverlayOpacity : undefined, landscapeDetail: profile.detail, darkness, onReady: invalidate })
         diagnostics.created += 1
         diagnostics.rebuilds += 1
         diagnostics.rebuildReason = !terrainSignature ? 'initial' : mapChanged ? 'content-changed' : 'style-changed'
         diagnostics.syncReason = !terrainSignature ? 'initial' : mapChanged ? 'content-changed' : 'style-changed'
         diagnostics.prepMs = performance.now() - preparedAt
         scene.add(terrain.group)
+        if (mapChanged) {
+          const heights = visibleTerrainHeightRange(map)
+          const bounds = { minX: 0, minZ: 0, maxX: map.width, maxZ: map.height, minY: heights.min, maxY: heights.max + 2 }
+          fitSunShadow(sun, bounds)
+          pipeline.setSceneBounds(bounds)
+        }
         terrainSignature = signatures.staticKey; terrainStyle = style
       } else diagnostics.syncReason = referenceSame ? 'reference-same' : 'content-same'
       terrain?.setRoofMode(settings.current.roofMode)
@@ -854,7 +990,7 @@ export default function TacticalBoard3D(props: Props) {
               } else if (deferDeath) {
                 loaded.setPose('idle', 0)
               } else if (cue && acting) {
-                loaded.setPose(poseForCue(cue), active ? progress : undefined)
+                loaded.setPose(poseForCue(cue) ?? 'idle', active ? progress : undefined)
               } else {
                 loaded.setPose(defeated ? 'death' : 'idle', defeated ? 1 : undefined)
               }
@@ -866,10 +1002,6 @@ export default function TacticalBoard3D(props: Props) {
         }
         if (current.animationsEnabled === false || !(active?.cue.kind === 'strike' && active.cue.actorId === actor.id)) view.model.setAppearance(actor.appearance)
         view.root.visible = true
-        if (current.animationsEnabled === false || !active || !('actorId' in active.cue) || active.cue.actorId !== actor.id) {
-          const center = actorPresentationCenter(map, actor)
-          view.root.position.set(center.x, actorGround(map, actor), center.y)
-        }
         if (actor.defeated || view.defeated !== Boolean(actor.defeated)) {
           view.model.setPose(actor.defeated ? 'death' : 'idle', actor.defeated ? 1 : undefined)
           view.model.update(.001)
@@ -895,6 +1027,13 @@ export default function TacticalBoard3D(props: Props) {
       if (seen.size > 1500) { const recent = [...seen].slice(-750); seen.clear(); recent.forEach((id) => seen.add(id)) }
       if (document.hidden || (current.animationsEnabled === false && (!current.combatAudio || current.combatAudio.getSettings().muted))) skip()
       else if (unseen.length) { pending = [...pending, ...unseen].slice(-COMBAT_ANIMATION_QUEUE_LIMIT); setPlaying(true) }
+      // Позиции ставятся после постановки новых реплик: фигурка, чей ход ещё
+      // в очереди, ждёт на старте, а не в конечной клетке снимка.
+      for (const actor of visibleActors) {
+        const view = actorViews.get(actor.id)
+        const animating = current.animationsEnabled !== false && active && 'actorId' in active.cue && active.cue.actorId === actor.id
+        if (view && !animating) placeActor(actor, view)
+      }
       deferQueuedDefeats()
       paintOverlay()
       paintTargetPreview()
@@ -905,6 +1044,7 @@ export default function TacticalBoard3D(props: Props) {
       labelsDirty = true
       const width = Math.max(1, element.clientWidth), height = Math.max(1, element.clientHeight)
       renderer.setSize(width, height, false)
+      pipeline.setSize(width, height)
       const aspect = width / height
       camera.left = -7 * aspect; camera.right = 7 * aspect; camera.top = 7; camera.bottom = -7
       camera.updateProjectionMatrix()
@@ -1087,6 +1227,7 @@ export default function TacticalBoard3D(props: Props) {
       clearTargetPreview()
       diagnostics.disposed += 2
       overlay.dispose(); spell.dispose(); sun.shadow.dispose()
+      pipeline.dispose(); environment?.dispose(); backdrop?.dispose()
       renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove(); floating.remove()
     }
   }, [cameraKey, props.onUnavailable])

@@ -16,7 +16,7 @@ import { worldClockNarration } from './weather.mjs'
 import { sceneCanonFromEnvironment, sensoryAnchorConflicts } from './scene-canon.mjs'
 import { ABILITY_LABELS_RU, SKILL_LABELS_RU } from './free-action-adjudication.mjs'
 
-export const NARRATOR_PROMPT_VERSION = 'narrator/v10'
+export const NARRATOR_PROMPT_VERSION = 'narrator/v11'
 export const NARRATOR_FEW_SHOT_VERSION = 'narrator-few-shot/v2'
 export const NARRATOR_RECENT_TEXT_LIMIT = 3
 /**
@@ -38,7 +38,7 @@ export const NARRATOR_ARC_RECAP_MEMORY_LIMIT = 128
 export const NARRATOR_STREAM_MAX_BYTES = 12 * 1024
 export const NARRATOR_DEFAULT_TIMEOUT_MS = 12_000
 const NARRATOR_ARC_RECAP_OVERRIDE = Symbol('narrator-arc-recap-override')
-const promptPath = fileURLToPath(new URL('../prompts/narrator/v10.txt', import.meta.url))
+const promptPath = fileURLToPath(new URL('../prompts/narrator/v11.txt', import.meta.url))
 const narratorPrompt = readFileSync(promptPath, 'utf8')
 const fewShotPath = fileURLToPath(new URL('../prompts/narrator/few-shot-v2.json', import.meta.url))
 const fewShotDocument = JSON.parse(readFileSync(fewShotPath, 'utf8'))
@@ -109,6 +109,17 @@ function closestRecentNarration(value, recentNarrations) {
  * дословные фрагменты собственного недавнего текста модели, то есть ровно тот
  * вердикт прошлого хода, который craft-guard записал в трассу.
  */
+const WEATHER_MENTION_PATTERN = /(?<![а-яё])(?:дожд\p{L}*|морос\p{L}*|капл\p{L}*|туч\p{L}*|ливн\p{L}*|снег\p{L}*|метел\p{L}*|туман\p{L}*|гроз\p{L}*|небо|небе|солнц\p{L}*|ветер|ветр\p{L}*|утренн\p{L}*\s+свет)(?![а-яё])/iu
+
+/**
+ * Погода уже звучала в одном из двух последних ответов. Живой ведущий не
+ * повторяет «холодные капли дождя на лице» в каждой реплике: небо он
+ * напоминает при смене сцены или когда оно что-то меняет.
+ */
+export function weatherRecentlyMentioned(recentNarrations) {
+  return boundedRecentNarrations(recentNarrations).slice(-2).some((text) => WEATHER_MENTION_PATTERN.test(String(text ?? '')))
+}
+
 export function recentClicheReminders(recentNarrations) {
   const seen = new Map()
   for (const recent of boundedRecentNarrations(recentNarrations)) {
@@ -188,29 +199,59 @@ function narratorToneTags(brief) {
 // Декларация и число броска не разрешают рассказчику завершить само действие.
 const DECLARATION_EVENTS = new Set(['ActionDeclared', 'RulingRecorded', 'ObjectiveUpdated'])
 
+/**
+ * Судейское решение по свободному действию с итогом — это исход, а не
+ * декларация. «Пою песню» после автоуспеха значит, что герой спел: живой
+ * ведущий не отвечает на это «действие ещё не выполнено». Решение без итога
+ * (ruling-only заклинание, ограниченный следующий шаг) остаётся декларацией.
+ */
+export function freeActionRulingOutcome(event) {
+  if (event?.event_type !== 'RulingRecorded') return null
+  const outcome = event?.payload?.ruling?.outcome
+  return outcome === 'success' || outcome === 'failure' ? outcome : null
+}
+
+function isDeclarationEvent(event) {
+  return DECLARATION_EVENTS.has(event?.event_type) && !freeActionRulingOutcome(event)
+}
+
 export function narratorResponsePlan(brief) {
   const events = Array.isArray(brief?.visible_events) ? brief.visible_events : []
   const hasReactions = (brief?.permitted_npc_reactions ?? []).length > 0
-  const declarationOnly = events.length > 0 && events.every(event => DECLARATION_EVENTS.has(event?.event_type)) && !hasReactions
-  const thinResult = events.length > 0 && events.every(event => DECLARATION_EVENTS.has(event?.event_type)
-    || ['AbilityCheckResolved', 'DieRolled', 'RollResolved', 'DamageApplied', 'HealingApplied'].includes(event?.event_type)
+  const declarationOnly = events.length > 0 && events.every(isDeclarationEvent) && !hasReactions
+  const freeOutcome = events.map(freeActionRulingOutcome).find(Boolean) ?? null
+  const injured = events.some(event => event?.event_type === 'DamageApplied')
+  // Удавшаяся задумка — сама сцена: герою нужно увидеть, как он это сделал и
+  // как на это смотрят вокруг. Сухой одной фразой остаются бросок и травма.
+  // Осмотр показывает очевидное при любом броске: кубик решает только, найдёт
+  // ли герой скрытое. Одной сухой фразой «ничего не разглядел» живой ведущий
+  // на «осматриваюсь» не отвечает.
+  const observation = !injured && events.some(event => event?.event_type === 'AbilityCheckResolved'
+    && ['perception', 'investigation'].includes(String(event?.payload?.skill ?? '')))
+  const livelyOutcome = (freeOutcome === 'success' && !injured) || observation
+  const thinResult = !livelyOutcome && events.length > 0 && events.every(event => DECLARATION_EVENTS.has(event?.event_type)
+    || ['AbilityCheckResolved', 'DieRolled', 'RollResolved', 'DamageApplied', 'HealingApplied', 'TimeAdvanced'].includes(event?.event_type)
     || (['DoorLockpicked', 'DoorForced'].includes(event?.event_type) && event?.payload?.success !== true)
     || (event?.event_type === 'DoorStateChanged' && event?.payload?.state !== 'open')) && !hasReactions
   const moment = narratorMomentFor(brief)
   const speechAct = declarationOnly ? 'acknowledge_intent' : events.length || hasReactions ? 'report_result' : 'describe_scene'
   return {
-    version: 'narrator-response-plan/v1',
+    version: 'narrator-response-plan/v2',
     mode: 'world_narration',
     speech_act: speechAct,
     must_answer: declarationOnly
       ? 'Кратко пояснить, что намерение ещё не стало выполненным действием.'
-      : events.length || hasReactions
-        ? 'Сначала передать исход текущего шага по видимым событиям и разрешённым реакциям.'
-        : 'Кратко описать уже известную обстановку без нового события.',
+      : freeOutcome === 'success'
+        ? 'Показать, как герой делает заявленное в player_intent, и как это выглядит со стороны; новых находок, сведений и согласия NPC не добавлять.'
+        : freeOutcome === 'failure'
+          ? 'Показать, что заявленное в player_intent не получилось, и чем это обернулось по событиям; причину неудачи не выдумывать.'
+          : events.length || hasReactions
+            ? 'Сначала передать исход текущего шага по видимым событиям и разрешённым реакциям.'
+            : 'Кратко описать уже известную обстановку без нового события.',
     include_scene_detail: !thinResult,
-    include_memory: !thinResult,
+    include_memory: !thinResult && !freeOutcome,
     max_questions: 0,
-    soft_sentence_limit: thinResult ? 1 : moment === 'transition' ? 4 : 2,
+    soft_sentence_limit: thinResult ? 1 : moment === 'transition' ? 4 : livelyOutcome ? 3 : 2,
     stop_after: speechAct,
     delivery: thinResult ? 'after_validation' : 'sentence_buffered',
   }
@@ -722,9 +763,14 @@ const NPC_REACTION_MATCHERS = Object.freeze({
   persuaded: /(?:принима[а-яё]*\s+довод|соглаша|убежд)/iu,
   unconvinced: /(?:оста[её]тся\s+при\s+сво[её]м|не\s+соглаша|не\s+убежд|отверга)/iu,
   welcoming: /(?:держится\s+приветлив|приветлив|радуш|доброжел)/iu,
-  attentive: /(?:молча[^.!?]{0,24}(?:наблюда|смотр)|вниматель[^.!?]{0,24}(?:наблюда|смотр|слуша)|наблюда\w*\s+за\s+разговор)/iu,
+  // Следить взглядом — то же внимание, что «молча наблюдает»: прежде «Клара
+  // настороженно следит за ней» отбрасывало весь текст как чужую реакцию.
+  attentive: /(?:молча[^.!?]{0,24}(?:наблюда|смотр)|вниматель[^.!?]{0,24}(?:наблюда|смотр|слуша)|наблюда\w*\s+за\s+разговор|след(?:ит|ят)|смотр(?:ит|ят)|гляд(?:ит|ят)|наблюда(?:ет|ют))/iu,
   watchful: /(?:держится\s+насторож|настороже|насторожен|следит)/iu,
   cold: /(?:держится\s+холодн|холодно|отстран|сухо)/iu,
+  // Реакция на поступок героя: взгляд, жест, выражение лица. Взять, отдать,
+  // открыть, уйти или согласиться она не разрешает.
+  reacts_to_act: /(?:кива|смотр|гляд|переглядыва|улыба|вздыха|отворачива|поворачива|отход|отступа|наблюда|след(?:ит|ят)|молча|вздрог|встревож|поднима|опуска)/iu,
 })
 
 // Это bounded guard для рассинхронизации судьбы NPC: он ловит только прямое
@@ -787,6 +833,53 @@ const PROMISE_GENERIC_ROOT_PREFIXES = [
   'обещ', 'остав', 'принес', 'покаж', 'показ', 'переда', 'получ',
   'исполн', 'выполн', 'сдерж', 'слов', 'открыт', 'прежн',
 ]
+
+// Телесные движения, из которых складывается само заявленное действие:
+// чтобы лизнуть перила, наклоняются; подброшенную монету ловят. Вещь, дверь,
+// уход и новое знание сюда не входят — для них нужны собственные события.
+const DEED_GESTURE_PATTERN = /(?<![а-яё])(?:(?:за|при)крыва(?:ет|ют)\s+глаза|наклоня(?:ется|ются)|склоня(?:ется|ются)|приседа(?:ет|ют)|ловит|ловят|каса(?:ется|ются)|трога(?:ет|ют)|поворачива(?:ется|ются)|отворачива(?:ется|ются)|вста(?:[её]т|ют)|сад(?:ится|ятся)|поднима(?:ет|ют)|опуска(?:ет|ют))(?![а-яё])/iu
+const DEED_FORBIDDEN_PATTERN = /(?<![а-яё])(?:бер[её]т|клад[её]т|доста[её]т|переда[её]т|открыва|закрыва(?!\S*\s+глаза)|отпира|запира|уход|покида|вход|выход|реша|дума|вспомина|провер|сравнива|осматрива|складыва)/iu
+
+/**
+ * Герой только что успешно сделал заявленное свободное действие, и фраза
+ * описывает его тело в этом действии, а не новый поступок.
+ */
+function confirmedHeroDeedGesture(sentence, brief) {
+  const events = brief?.visible_events ?? []
+  const succeeded = events.some((event) => freeActionRulingOutcome(event) === 'success')
+  if (succeeded && DEED_GESTURE_PATTERN.test(sentence) && !DEED_FORBIDDEN_PATTERN.test(sentence)) return true
+  // «Осматриваюсь» → «Бран осматривает двор»: это сам заявленный поступок,
+  // по которому только что прошла проверка, а не новое решение за героя.
+  const checked = events.some((event) => ['AbilityCheckResolved'].includes(event?.event_type)) || succeeded
+  const action = String((brief?.known_environment?.player_intent ?? brief?.player_intent ?? {})?.action ?? '')
+  if (!checked || !action) return false
+  const declared = new Set(action.toLocaleLowerCase('ru').replace(/ё/gu, 'е').split(/[^\p{L}]+/u)
+    .filter((word) => word.length >= 5).map((word) => word.slice(0, 5)))
+  const agency = new RegExp(`(?:${HERO_AGENCY_VERBS})`, 'iu').exec(sentence)?.[0] ?? ''
+  const stem = agency.toLocaleLowerCase('ru').replace(/ё/gu, 'е').split(/\s+/u).pop()?.slice(0, 5) ?? ''
+  return stem.length === 5 && declared.has(stem) && !/(?:бер[её]т|клад[её]т|доста[её]т|переда[её]т)/iu.test(agency)
+}
+
+function firstNameOf(value) {
+  return sceneText(value, 120).split(/\s+/u)[0] ?? ''
+}
+
+/**
+ * Первое слово имени как псевдоним, если оно однозначно в сцене. Рассказчик
+ * пишет «Клара хмурится», а не «Клара Вельм хмурится», и прежде guard считал
+ * это реакцией постороннего персонажа и выбрасывал весь текст.
+ * Возвращает тройки [псевдоним, значение, первое слово].
+ */
+function uniqueFirstNameAliases(names = [], values = names) {
+  const counts = new Map()
+  for (const name of names) {
+    const alias = normalizedActorName(firstNameOf(name))
+    if (alias) counts.set(alias, (counts.get(alias) ?? 0) + 1)
+  }
+  return names.map((name, index) => [normalizedActorName(firstNameOf(name)), values[index], firstNameOf(name), name])
+    .filter(([alias, , , name]) => alias && counts.get(alias) === 1 && alias !== normalizedActorName(name))
+    .map(([alias, value, firstName]) => [alias, value, firstName])
+}
 
 function normalizedActorName(value) {
   return sceneText(value, 120).toLocaleLowerCase('ru').replace(/[«»"'’.,:;!?()[\]{}]/gu, '').trim()
@@ -1170,7 +1263,8 @@ export function verifyNarratorCraft(narration, brief, verification, recentNarrat
     const heroAgency = new RegExp(`(?:${heroNames.map(escapePattern).join('|')})[^.!?]{0,48}(?:${HERO_AGENCY_VERBS})`, 'iu')
     for (const sentence of currentText.split(/[.!?]/u)) {
       if (heroAgency.test(sentence) && !confirmedHeroDoorAction(sentence, brief, story.heroes)
-        && !confirmedHeroDamageAction(sentence, brief, story)) {
+        && !confirmedHeroDamageAction(sentence, brief, story)
+        && !confirmedHeroDeedGesture(sentence, brief)) {
         add('HERO_AGENCY_NOT_IN_BRIEF', 'Рассказчик приписал герою новое действие, мысль или решение', heroAgency.exec(sentence)?.[0])
       }
     }
@@ -1195,11 +1289,19 @@ export function verifyNarratorCraft(narration, brief, verification, recentNarrat
   const permitsByName = new Map(permits
     .map((entry) => [normalizedActorName(entry?.name), entry])
     .filter(([name]) => name))
+  for (const [alias, entry] of uniqueFirstNameAliases(permits.map((entry) => entry?.name), permits)) {
+    if (!permitsByName.has(alias)) permitsByName.set(alias, entry)
+  }
   const npcNames = (Array.isArray(story.present_npcs) ? story.present_npcs : [])
     .map((npc) => npc?.name)
     .filter(Boolean)
   const genericActors = ['стража', 'стражи', 'посетители', 'толпа', 'люди']
-  const currentActors = [...new Set([...npcNames, ...permits.map((entry) => entry?.name), ...genericActors].filter(Boolean))]
+  const currentActors = [...new Set([
+    ...npcNames,
+    ...permits.map((entry) => entry?.name),
+    ...uniqueFirstNameAliases(npcNames).map(([, , firstName]) => firstName),
+    ...genericActors,
+  ].filter(Boolean))]
   for (const actor of currentActors) {
     const permit = permitsByName.get(normalizedActorName(actor))
     if (permit?.reaction) {
@@ -1228,6 +1330,7 @@ export function verifyNarratorCraft(narration, brief, verification, recentNarrat
   const knownActors = new Set([
     ...currentActors.map(normalizedActorName),
     ...heroNames.map(normalizedActorName),
+    ...heroNames.map((name) => normalizedActorName(firstNameOf(name))),
   ])
   const unconfirmedNamedReaction = new RegExp(
     `(?<![\\p{L}\\p{N}_])([А-ЯЁ][а-яё'’\\-]{1,50}(?:\\s+[А-ЯЁ][а-яё'’\\-]{1,50}){0,2})\\s+(?:${NPC_REACTION_MARKERS})`,
@@ -1432,13 +1535,24 @@ function narrationSentence(value) {
   return /[.!?…][»"')\]]*$/u.test(text) ? text : `${text}.`
 }
 
+function wholeClause(text, maximum) {
+  const value = String(text ?? '').trim()
+  if (value.length <= maximum) return value
+  const head = value.slice(0, maximum)
+  const cut = Math.max(head.lastIndexOf(','), head.lastIndexOf(';'), head.lastIndexOf('.'))
+  const clause = cut > maximum / 3 ? head.slice(0, cut) : head.slice(0, Math.max(0, head.lastIndexOf(' ')))
+  return clause.replace(/\s+(?:и|а|но|или|да)$/iu, '').replace(/[\s,;:—-]+$/u, '').trim()
+}
+
 function deterministicFraming(brief, variant = 0) {
   const environment = brief.known_environment ?? {}
   const scene = environment.scene ?? {}
   const story = environment.story_context ?? {}
   const sensoryAnchors = sensoryAnchorsFor(brief)
   const location = sceneText(scene.location || scene.title)
-  const mood = sceneText(scene.mood, 60)
+  // Настроение режется по границе фразы, а не посреди слова: прежде запасной
+  // текст говорил «…деловая суета под навесами и нарастающ.».
+  const mood = wholeClause(sceneText(scene.mood, 400), 90)
   const names = (Array.isArray(story.present_npcs) ? story.present_npcs : [])
     .map((npc) => sceneText(npc?.name, 60)).filter(Boolean).slice(0, 2)
   const opening = []
@@ -1663,7 +1777,9 @@ function qualitativeEventSummary(event, resolveName) {
     case 'QuestClockAdvanced':
       return `Развитие квеста ${sceneText(payload.quest_id || 'отряда', 72)} продвинулось`
     case 'ActionDeclared':
-      return 'Действие пока только намечено'
+      // Заявка сама по себе ничего не завершает, но и не отменяет исход,
+      // который приходит рядом решением судьи (RulingRecorded с outcome).
+      return 'Герой заявляет действие'
     case 'DoorStateChanged':
       return payload.state === 'open' ? 'Дверь открыта' : payload.state === 'closed' ? 'Дверь закрыта' : 'Положение двери изменено'
     case 'DoorLockpicked':
@@ -1676,8 +1792,20 @@ function qualitativeEventSummary(event, resolveName) {
       return sceneText(payload.fact?.summary || payload.fact?.object || 'Отряду открыт новый факт', 600)
     case 'NpcConversationRecorded':
       return `${named(payload.conversation?.npc_id, 'Собеседник')}: «${sceneText(payload.conversation?.npc_reply || 'Ответ сохранён', 500)}»`
-    case 'RulingRecorded':
-      return 'Действие ещё не выполнено'
+    case 'RulingRecorded': {
+      const outcome = freeActionRulingOutcome(event)
+      if (!outcome) return 'Действие ещё не выполнено'
+      const deed = sceneText(payload.ruling?.question, 160).replace(/[.!?…]+$/u, '')
+      // Провал Обмана или Убеждения — не «крик не прозвучал»: слова сказаны,
+      // жест сделан, но на людей они не подействовали.
+      const socialSkill = ['deception', 'persuasion', 'intimidation', 'performance']
+        .includes(String(payload.ruling?.interpretation?.skill ?? '').replace(/-/gu, '_'))
+      return outcome === 'success'
+        ? `${actor} делает задуманное${deed ? `: «${deed}»` : ''}`
+        : socialSkill
+          ? `${actor} делает это, но на окружающих это не действует так, как задумано${deed ? `: «${deed}»` : ''}`
+          : `У ${actor} не выходит задуманное${deed ? `: «${deed}»` : ''}`
+    }
     case 'WorldFactRevealed':
       return 'Отряду становится известно кое-что новое'
     case 'TimeOfDayChanged':
@@ -1725,7 +1853,13 @@ function withoutVisibleNumbers(value) {
 
 function deterministicNarrationCandidate(brief, resolve, variant, arcRecap) {
   const responsePlan = narratorResponsePlan(brief)
-  const outcomeEvents = brief.visible_events.filter(event => !DECLARATION_EVENTS.has(event?.event_type))
+  const allOutcomeEvents = brief.visible_events.filter(event => !isDeclarationEvent(event))
+  // Находка говорит сама за себя: ведущий называет найденное, а не «проверка
+  // «Восприятие» завершилась успехом» с описью площади.
+  const discovery = allOutcomeEvents.some(event => event?.event_type === 'WorldFactRecorded')
+  const outcomeEvents = discovery
+    ? allOutcomeEvents.filter(event => !['AbilityCheckResolved', 'DieRolled', 'RollResolved'].includes(event?.event_type))
+    : allOutcomeEvents
   const summaries = [...(outcomeEvents.length ? outcomeEvents : brief.visible_events)]
     // Подтверждённая судьба NPC не должна исчезнуть за расходом ячейки и бросками.
     .sort((left, right) => Number(right.event_type === 'NpcDied') - Number(left.event_type === 'NpcDied'))
@@ -1756,7 +1890,7 @@ function deterministicNarrationCandidate(brief, resolve, variant, arcRecap) {
         ][variant % 4]
   const memorySentence = narrationSentence(memory)
   const dialogueOnly = outcomeEvents.length > 0 && outcomeEvents.every(event => event?.event_type === 'NpcConversationRecorded')
-  return [recap, body, dialogueOnly ? '' : opening, dialogueOnly ? '' : memorySentence].filter(Boolean).join(' ')
+  return [recap, body, dialogueOnly || discovery ? '' : opening, dialogueOnly || discovery ? '' : memorySentence].filter(Boolean).join(' ')
 }
 
 export function deterministicNarration(brief, resolveName, { recentNarrations = [] } = {}) {
@@ -2061,6 +2195,7 @@ export class Narrator {
               ...(npcDossiers.length ? { npc_dossiers: npcDossiers } : {}),
               ...(arcRecap ? { previous_arc_recap: arcRecap } : {}),
               ...(avoidCliches.length ? { avoid_repeated_phrases: avoidCliches } : {}),
+              ...(weatherRecentlyMentioned(recent) ? { skip_weather: true } : {}),
               ...(priorFeedback.length ? { previous_narration_feedback: priorFeedback } : {}),
             }),
           },

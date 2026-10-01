@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -301,7 +302,9 @@ test('v2 использует нейтральную основу и меняе�
   }
 })
 
-const productionProfiles = ['mage', 'goblin', 'beast', 'skeleton'].map((profile) => manifest.models.find((entry) => entry.profile === profile))
+// Quaternius-набор проверяется по ключам: первыми в профилях mage/skeleton
+// теперь стоят KayKit 2.0 (их проверка — ниже, «KayKit 2.0 …»).
+const productionProfiles = ['hooded-mage', 'goblin-quaternius', 'wolf', 'skeleton-quaternius'].map((key) => manifest.models.find((entry) => entry.key === key))
 
 test('опубликованные Quaternius actor GLB проходят семь поз, rig aliases и fit после idle', async () => {
   const previousSelf = globalThis.self
@@ -976,4 +979,221 @@ test('dispose GLB освобождает boneTexture общего Skeleton ро�
   assert.equal(skeletonDisposals, 1)
   assert.equal(textureDisposals, 1)
   assert.equal(skeleton.boneTexture, null)
+})
+
+test('встроенная фигурка смотрит в +Z, как GLB-модели и поворот на доске', () => {
+  const actor = models.createProceduralActorModel({ id: 'facing', label: 'Воин', kind: 'hero', modelKey: 'warrior' }, manifest)
+  actor.updateMatrixWorld(true)
+  const front = (name) => actor.getObjectByName(name).getWorldPosition(new Vector3()).z
+  // Нагрудник и носки сапог — перёд фигурки; корень модели при этом не повёрнут,
+  // поэтому слой экипировки по-прежнему считает перёд по +Z.
+  assert.ok(front('torso-panel') > 0, 'нагрудник впереди по +Z')
+  assert.ok(front('left-boot') > actor.getObjectByName('left-leg').getWorldPosition(new Vector3()).z, 'носок сапога смотрит вперёд')
+  assert.equal(actor.rotation.y, 0)
+  actor.dispose()
+})
+
+// --- KayKit Adventurers 2.0 / Skeletons 1.1 (tools/import-kaykit-models.mjs --v2) ---
+const kaykit2Entries = manifest.models.filter((entry) => entry.key.startsWith('kaykit-'))
+const kaykit2File = (entry) => join(fileURLToPath(new URL('../public/', import.meta.url)), entry.url.slice(1))
+const KAYKIT2_HERO_CLIPS = ['Idle', 'Walk', 'Run', 'Attack_Slash', 'Attack_Chop', 'Attack_Stab', 'Attack_TwoHanded', 'Attack_Unarmed', 'Ranged_Bow', 'Ranged_Crossbow', 'Ranged_Throw', 'Cast', 'Hit', 'Death']
+
+async function withImageStub(run) {
+  const previousSelf = globalThis.self
+  const previousCreateImageBitmap = globalThis.createImageBitmap
+  globalThis.self = globalThis
+  globalThis.createImageBitmap = async () => ({ width: 4, height: 4, close() {} })
+  try { return await run() } finally {
+    if (previousSelf === undefined) delete globalThis.self; else globalThis.self = previousSelf
+    if (previousCreateImageBitmap === undefined) delete globalThis.createImageBitmap; else globalThis.createImageBitmap = previousCreateImageBitmap
+  }
+}
+
+const publicFetcher = async (url) => {
+  assert.ok(String(url).startsWith('/assets/models/'), String(url))
+  return new Response(readFileSync(new URL(`../public${url}`, import.meta.url)), { status: 200 })
+}
+
+test('клипы KayKit 2.0 распознаются как позы и варианты по оружию', () => {
+  const info = (name) => models.actorClipInfo(name)
+  assert.deepEqual(info('Idle'), { pose: 'idle', style: null })
+  assert.deepEqual(info('Walk'), { pose: 'walk', style: null })
+  assert.deepEqual(info('Run'), { pose: 'walk', style: 'run' })
+  assert.deepEqual(info('Attack'), { pose: 'attack', style: null })
+  for (const [name, style] of [['Attack_Slash', 'slash'], ['Attack_Chop', 'chop'], ['Attack_Stab', 'stab'], ['Attack_TwoHanded', 'twohanded'], ['Attack_Unarmed', 'unarmed']]) {
+    assert.deepEqual(info(name), { pose: 'attack', style }, name)
+  }
+  for (const [name, style] of [['Ranged_Bow', 'bow'], ['Ranged_Crossbow', 'crossbow'], ['Ranged_Throw', 'throw']]) {
+    assert.deepEqual(info(name), { pose: 'ranged-attack', style }, name)
+  }
+  assert.deepEqual(info('Cast'), { pose: 'cast', style: null })
+  assert.deepEqual(info('Hit'), { pose: 'hit', style: null })
+  assert.deepEqual(info('Death'), { pose: 'death', style: null })
+  assert.deepEqual(info('Spawn'), { pose: 'spawn', style: null })
+  // Прежние имена сохраняют разбор: стиль у них не появляется.
+  assert.deepEqual(info('SkeletonArmature|Skeleton_Running'), { pose: 'walk', style: null })
+  assert.deepEqual(info('Sword_Attack'), { pose: 'attack', style: null })
+  assert.deepEqual(info('Spell_Simple_Shoot'), { pose: 'cast', style: null })
+  assert.equal(info('Pistol_Shoot'), null)
+  assert.equal(info('1H_Crossbow_Shoot'), null, 'арбалетный клип без явного стиля не становится выстрелом из лука')
+})
+
+test('KayKit 2.0 GLB самодостаточны, ≤1,5 МБ, совпадают с NOTICE и несут нужные клипы', () => {
+  assert.equal(kaykit2Entries.length, 10)
+  const firstUrl = kaykit2Entries[0].url
+  const releaseDir = join(fileURLToPath(new URL('../public/', import.meta.url)), firstUrl.slice(1, firstUrl.lastIndexOf('/')))
+  const notice = JSON.parse(readFileSync(join(releaseDir, 'NOTICE.json'), 'utf8'))
+  assert.equal(notice.license, 'CC0-1.0')
+  assert.ok(notice.release.id && kaykit2Entries.every((entry) => entry.url.includes(`/${notice.release.id}/`)), 'все записи из одного неизменяемого выпуска')
+  for (const name of ['adventurers-LICENSE.txt', 'skeletons-LICENSE.txt', 'animations-LICENSE.txt']) assert.match(readFileSync(join(releaseDir, name), 'utf8'), /Creative Commons Zero, CC0/u, name)
+  for (const entry of kaykit2Entries) {
+    const bytes = readFileSync(kaykit2File(entry))
+    const output = notice.outputs.find((item) => entry.url.endsWith(`/${item.file}`))
+    assert.ok(output, `${entry.key}: нет в NOTICE`)
+    assert.equal(createHash('sha256').update(bytes).digest('hex'), output.sha256, `${entry.key}: SHA-256 drift`)
+    assert.ok(bytes.length <= 1.5 * 1024 * 1024, `${entry.key}: ${bytes.length} байт больше 1,5 МБ`)
+    assert.equal(entry.rights.license, 'CC0-1.0')
+    assert.equal(entry.outfit, 'builtin')
+    assert.equal(Object.hasOwn(entry, 'equipmentUrl'), false, `${entry.key}: v2 должна рисоваться на самой KayKit-фигурке`)
+    const report = models.validateGlbContainer(bytes)
+    assert.equal(report.hasBinaryChunk, true)
+    assert.ok(report.json.images?.length && report.json.images.every((image) => image.bufferView != null && !image.uri), `${entry.key}: текстуры встроены`)
+    const names = report.json.animations.map((animation) => animation.name)
+    const expected = entry.profile === 'skeleton' ? [...KAYKIT2_HERO_CLIPS, 'Spawn'] : KAYKIT2_HERO_CLIPS
+    for (const clip of expected) assert.ok(names.includes(clip), `${entry.key}: нет клипа ${clip}`)
+    assert.ok(names.length <= expected.length + 1, `${entry.key}: лишние клипы ${names}`)
+    for (const name of names) assert.ok(models.actorClipInfo(name), `${entry.key}: клип ${name} не распознан`)
+    assert.equal(report.json.animations.some((animation) => animation.channels.some((channel) => channel.target.path === 'scale')), false, `${entry.key}: единичный масштаб не переносится`)
+    for (const animation of report.json.animations) for (const sampler of animation.samplers) {
+      const input = report.json.accessors[sampler.input]
+      assert.ok(Array.isArray(input.min) && Array.isArray(input.max), `${entry.key}/${animation.name}: input без min/max`)
+    }
+    const gear = report.json.nodes.filter((node) => node.name.startsWith('KayKitGear_'))
+    assert.ok(gear.length >= 1, `${entry.key}: встроенное снаряжение`)
+    for (const node of gear) {
+      const index = report.json.nodes.indexOf(node)
+      const parent = report.json.nodes.find((candidate) => candidate.children?.includes(index))
+      assert.match(parent?.name ?? '', /^handslot\.[lr]$/u, `${entry.key}: ${node.name} должен висеть на handslot`)
+    }
+  }
+})
+
+test('KayKit 2.0 фигурки стоят на полу, смотрят в +Z и играют все позы', async () => {
+  await withImageStub(async () => {
+    for (const entry of kaykit2Entries) {
+      const bytes = readFileSync(kaykit2File(entry))
+      const actor = await models.createActorModel({ id: entry.key, label: entry.name_ru, kind: entry.profile === 'skeleton' ? 'enemy' : 'hero', modelKey: entry.key }, {
+        manifest, fetcher: async () => new Response(bytes, { status: 200 }),
+      })
+      assert.equal(actor.source, 'glb', `${entry.key}: GLB`)
+      assert.equal(actor.modelHeight, entry.height)
+      const bones = []
+      actor.traverse((object) => { if (object.isBone) bones.push(object) })
+      const signature = () => { actor.updateMatrixWorld(true); return JSON.stringify(bones.map((bone) => [bone.position.toArray(), bone.quaternion.toArray()])) }
+      actor.idle(0); actor.update(.001)
+      // Тело без встроенного оружия: двуручный топор варвара касается пола.
+      const bounds = new Box3()
+      actor.traverse((object) => { if (object.isSkinnedMesh) bounds.union(new Box3().setFromObject(object)) })
+      assert.ok(Math.abs(bounds.min.y) < .02, `${entry.key}: стопы на полу (${bounds.min.y})`)
+      const hips = actor.getObjectByName('hips').getWorldPosition(new Vector3())
+      const toes = actor.getObjectByName('toesl').getWorldPosition(new Vector3())
+      assert.ok(toes.z > hips.z, `${entry.key}: носки смотрят в +Z`)
+      // Без внешности видно встроенное оружие, у внешности v2 — скрыто.
+      const gear = []
+      actor.traverse((object) => { if (object.name.startsWith('KayKitGear_')) gear.push(object) })
+      assert.ok(gear.length && gear.every((object) => object.visible), `${entry.key}: встроенный комплект без внешности`)
+      const poses = ['idle', 'walk', 'attack', 'rangedAttack', 'cast', 'hit', 'death', ...(entry.profile === 'skeleton' ? ['spawn'] : [])]
+      const seen = new Set()
+      for (const pose of poses) {
+        actor[pose](.5); actor.update(.001)
+        seen.add(signature())
+      }
+      assert.equal(seen.size, poses.length, `${entry.key}: каждая поза должна давать свою позу костей`)
+      actor.death(1); actor.update(.001)
+      const deathEnd = signature()
+      actor.update(.5)
+      assert.equal(signature(), deathEnd, `${entry.key}: конец death сохраняется`)
+      actor.setAppearance({ version: 2, profile: entry.profile, equipment: 'unarmed', loadout: {} })
+      assert.ok(gear.every((object) => !object.visible), `${entry.key}: внешность v2 прячет встроенный комплект`)
+      actor.setAppearance(undefined)
+      assert.ok(gear.every((object) => object.visible), `${entry.key}: без внешности комплект возвращается`)
+      actor.dispose()
+      assert.equal(actor.children.length, 0)
+    }
+  })
+})
+
+test('KayKit 2.0 выбирает клип удара и выстрела по снаряжению', async () => {
+  await withImageStub(async () => {
+    const entry = kaykit2Entries.find((item) => item.key === 'kaykit-barbarian')
+    const bytes = readFileSync(kaykit2File(entry))
+    const actor = await models.createActorModel({ id: 'style', label: 'Варвар', kind: 'hero', modelKey: entry.key }, { manifest, fetcher: async () => new Response(bytes, { status: 200 }) })
+    const bones = []
+    actor.traverse((object) => { if (object.isBone) bones.push(object) })
+    const poseWith = (appearanceValue, pose, progress = .3) => {
+      actor.appearance = appearanceValue
+      actor.setPose('idle', 0)
+      actor.setPose(pose, progress)
+      actor.update(.001)
+      actor.updateMatrixWorld(true)
+      return JSON.stringify(bones.map((bone) => bone.quaternion.toArray().map((value) => value.toFixed(5))))
+    }
+    const v2 = (key, equipment = 'unknown') => ({ version: 2, profile: 'warrior', equipment, loadout: key ? { main_hand: { model_key: key } } : {} })
+    const legacy = poseWith(undefined, 'attack')
+    const greatsword = poseWith(v2('greatsword', 'sword'), 'attack')
+    const longsword = poseWith(v2('longsword', 'sword'), 'attack')
+    const rapier = poseWith(v2('rapier'), 'attack')
+    const mace = poseWith(v2('mace'), 'attack')
+    const fists = poseWith(v2(null, 'unarmed'), 'attack')
+    assert.equal(legacy, greatsword, 'встроенный двуручный топор варвара = клип двуручного удара')
+    assert.equal(new Set([greatsword, longsword, rapier, mace, fists]).size, 5, 'двуручный, рубящий, колющий, дробящий и безоружный различаются')
+    const bow = poseWith(v2('longbow', 'bow'), 'ranged-attack', .1)
+    const crossbow = poseWith(v2('light-crossbow'), 'ranged-attack', .1)
+    const thrown = poseWith(v2('javelin'), 'ranged-attack', .1)
+    assert.equal(new Set([bow, crossbow, thrown]).size, 3, 'лук, арбалет и бросок различаются')
+    assert.equal(poseWith(undefined, 'ranged-attack', .1), bow, 'без внешности выстрел по умолчанию — лук, не арбалет')
+    actor.dispose()
+  })
+})
+
+test('KayKit 2.0 под внешностью v2 рисует только вещи в руках поверх вылепленного костюма', async () => {
+  await withImageStub(async () => {
+    const actor = await models.createActorModel({ id: 'outfit', label: 'Рыцарь', kind: 'hero', modelKey: 'kaykit-knight', appearance: {
+      version: 2, profile: 'warrior', equipment: 'sword-shield',
+      loadout: { main_hand: { model_key: 'longsword' }, off_hand: { model_key: 'shield' }, body: { model_key: 'armor-plate' }, cloak: { model_key: 'cloak' } },
+    } }, { manifest, fetcher: publicFetcher })
+    await actor.equipmentReady
+    assert.equal(actor.equipmentStatus, 'ready', String(actor.equipmentError))
+    const mounted = []
+    actor.traverse((object) => { if (/^grip\d/u.test(object.name)) mounted.push(...object.children) })
+    assert.equal(mounted.length, 2, 'меч и щит в руках')
+    let armorParts = 0
+    actor.traverse((object) => { if (/armor-plate|cloak/u.test(object.name)) armorParts += 1 })
+    assert.equal(armorParts, 0, 'доспех и плащ не надеваются поверх костюма KayKit')
+    actor.dispose()
+  })
+})
+
+test('вариант фигурки внутри серверного профиля: класс героя и имя врага', () => {
+  const resolve = (input) => models.resolveModelProfile(input, manifest).key
+  const hero = (archetype, profile) => ({ id: `h-${archetype}`, label: 'Борен', kind: 'hero', archetype, appearance: { version: 2, profile, equipment: 'unknown', loadout: {} } })
+  const enemy = (label, profile) => ({ id: `e-${label}`, label, kind: 'enemy', appearance: { version: 2, profile, equipment: 'unknown', loadout: {} } })
+  assert.equal(resolve(hero('fighter', 'warrior')), 'kaykit-knight')
+  assert.equal(resolve(hero('paladin', 'warrior')), 'kaykit-knight')
+  assert.equal(resolve(hero('barbarian', 'warrior')), 'kaykit-barbarian')
+  assert.equal(resolve(hero('monk', 'warrior')), 'traveler')
+  assert.equal(resolve(hero('wizard', 'mage')), 'kaykit-mage')
+  assert.equal(resolve(hero('cleric', 'mage')), 'kaykit-mage')
+  assert.equal(resolve(hero('rogue', 'rogue')), 'kaykit-rogue')
+  assert.equal(resolve(hero('ranger', 'rogue')), 'kaykit-ranger')
+  assert.equal(resolve(enemy('Скелет', 'skeleton')), 'kaykit-skeleton-warrior')
+  assert.equal(resolve(enemy('Скелет-маг', 'skeleton')), 'kaykit-skeleton-mage')
+  assert.equal(resolve(enemy('Скелет-лучник', 'skeleton')), 'kaykit-skeleton-rogue')
+  assert.equal(resolve(enemy('Скелет-прислужник', 'skeleton')), 'kaykit-skeleton-minion')
+  assert.equal(resolve(enemy('Бандит', 'warrior')), 'traveler', 'обычный гуманоид остаётся путником, а не рыцарем')
+  assert.equal(resolve(enemy('Существо', 'warrior')), 'traveler', 'замаскированный враг не получает вариант')
+  // Класс врага профиль не уточняет: читается только показанное имя.
+  assert.equal(resolve({ ...enemy('Существо', 'warrior'), archetype: 'barbarian' }), 'traveler')
+  // Старые ключи остаются ручным выбором.
+  for (const key of ['warrior', 'mage', 'rogue', 'skeleton', 'traveler', 'ranger', 'hooded-mage']) assert.equal(resolve({ ...hero('fighter', 'warrior'), modelKey: key }), key)
 })

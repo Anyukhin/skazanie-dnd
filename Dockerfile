@@ -18,6 +18,10 @@ COPY --from=build /app/server ./server
 COPY --from=build /app/eval/combat-lab.mjs ./eval/combat-lab.mjs
 COPY --from=build /app/data ./data
 COPY --from=build /app/prompts ./prompts
+# Сервер читает ассеты из public/ (каталог миров, атлас реквизита, манифест
+# окружения), а vite уже скопировал public/ в dist/ — ссылка вместо второй копии.
+RUN ln -s dist public \
+    && node --input-type=module -e "await import('./server/world-template-catalog.mjs')"
 RUN test -s package.json && test -s server/index.mjs \
     && mkdir -p storage/generated/items storage/rooms \
     && chown -R node:node /app

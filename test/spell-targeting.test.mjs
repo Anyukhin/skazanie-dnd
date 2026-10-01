@@ -163,3 +163,14 @@ test('прицел применяется кликом по карте без о
   assert.match(source, /onCancelAiming=\{spellAiming \? clearPrepared : undefined\}/u)
   assert.match(source, /combatMode !== 'magic' && inspectedTarget && inspectedAnchor/u)
 })
+
+test('вода не закрывает линию действия, а стена закрывает — как на сервере', () => {
+  const raw = createTacticalMap({ width: 7, height: 7, fill: { passable: true, revealed: true } })
+  for (let y = 0; y < 7; y += 1) setCell(raw, 3, y, { passable: false, surface: 'water' })
+  const map = decodeTacticalMap(JSON.parse(JSON.stringify(serializeTacticalMap(raw))))
+  assert.deepEqual([...maskSpellAreaCells(map, [{ x: 5, y: 3 }], { origins: [{ x: 1, y: 3 }] })], ['5,3'])
+  const walled = createTacticalMap({ width: 7, height: 7, fill: { passable: true, revealed: true } })
+  for (let y = 0; y < 7; y += 1) setCell(walled, 3, y, { type: 'wall', passable: false })
+  const wallMap = decodeTacticalMap(JSON.parse(JSON.stringify(serializeTacticalMap(walled))))
+  assert.deepEqual([...maskSpellAreaCells(wallMap, [{ x: 5, y: 3 }], { origins: [{ x: 1, y: 3 }] })], [])
+})

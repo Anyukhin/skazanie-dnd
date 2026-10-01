@@ -56,17 +56,30 @@ function objectsNamed(root, prefix) {
   return matches
 }
 
+/** Наибольший подъём верха плитки (`TILE_JITTER` в src/board3d-landscape.ts). */
+const TILE_JITTER = 0.012
+/** Высота дверного полотна: стена 0.95 минус притолока (`board3d-scene.ts`). */
+const DOOR_LEAF_HEIGHT = 0.82
+
 test('3D-сцена создаёт пол только для раскрытых клеток', () => {
   const map = mapOf({ revealed: [{ x: 1, y: 1 }, { x: 2, y: 1 }] })
   const scene = scene3d.createBoard3DScene(map)
   const ground = scene.group.getObjectByName('ground-plane')
-  assert.ok(ground, 'у сцены должен быть плоский грунт')
-  assert.equal(ground.geometry.getAttribute('position').count, 8, 'две раскрытые клетки дают восемь вершин')
-  assert.equal(ground.geometry.getAttribute('position').getY(0), 0, 'пол лежит на Y=0')
-  assert.equal(ground.geometry.getAttribute('position').getX(0), 1, 'X карты сохраняется в мировом X')
-  assert.equal(ground.geometry.getAttribute('position').getZ(0), 1, 'Y карты переводится в мировой Z')
-  assert.ok(Math.abs(ground.geometry.getAttribute('uv').getY(0) - 2 / 3) < 1e-6, 'верх клетки карты использует верх текстуры')
-  assert.ok(Math.abs(ground.geometry.getAttribute('uv').getY(1) - 1 / 3) < 1e-6, 'низ клетки карты продолжает ориентацию overlay')
+  assert.ok(ground, 'у сцены должен быть грунт')
+  const positions = ground.geometry.getAttribute('position')
+  const uvs = ground.geometry.getAttribute('uv')
+  // Плитка: четыре вершины плоского верха и восемь — кольцо фаски до шва.
+  assert.equal(positions.count, 24, 'две раскрытые клетки дают по двенадцать вершин плитки')
+  const top = positions.getY(0)
+  assert.ok(top >= 0 && top <= TILE_JITTER, 'верх плитки лежит на уровне клетки с допуском на подъём')
+  assert.ok(positions.getX(0) > 1 && positions.getX(0) < 1.1, 'X карты сохраняется в мировом X, верх отступает на фаску')
+  assert.ok(positions.getZ(0) > 1 && positions.getZ(0) < 1.1, 'Y карты переводится в мировой Z')
+  for (let index = 0; index < positions.count; index += 1) {
+    assert.ok(Math.abs(uvs.getX(index) - positions.getX(index) / 4) < 1e-6, 'UV по мировому X: рисунок пола ложится непрерывно')
+    assert.ok(Math.abs(uvs.getY(index) - (1 - positions.getZ(index) / 3)) < 1e-6, 'UV по мировому Z сохраняет ориентацию overlay')
+    assert.ok(positions.getX(index) >= 1 - 1e-9 && positions.getX(index) <= 3 + 1e-9, 'скрытые клетки не дают вершин')
+  }
+  assert.ok(Math.min(...Array.from({ length: positions.count }, (_, index) => positions.getY(index))) < 0, 'кромка плитки опущена в шов')
   scene.dispose()
 })
 
@@ -81,7 +94,7 @@ test('поверхность и обрывы используют высоту �
   const ground = scene.group.getObjectByName('ground-plane')
   assert.ok(ground)
   const positions = ground.geometry.getAttribute('position')
-  assert.ok([positions.getY(0), positions.getY(4), positions.getY(8)].every((value, index) => Math.abs(value - [-0.4, 0.6, 0.2][index]) < 1e-6))
+  assert.ok([positions.getY(0), positions.getY(12), positions.getY(24)].every((value, index) => value - [-0.4, 0.6, 0.2][index] >= 0 && value - [-0.4, 0.6, 0.2][index] <= TILE_JITTER))
   const sides = scene.group.getObjectByName('terrain-sides')
   assert.ok(sides, 'между клетками разной высоты нужен вертикальный обрыв')
   const sidePositions = sides.geometry.getAttribute('position')
@@ -102,9 +115,10 @@ test('дверь и предмет получают основание по вы
   addProp(map, { id: 'raised-prop', assetId: 'crate', x: 0.5, y: 0.5, footprint: [{ x: 0, y: 0 }] })
   const scene = scene3d.createBoard3DScene(map)
   const ground = scene.group.getObjectByName('ground-plane')
-  assert.ok(Math.abs(ground.geometry.getAttribute('position').getY(0) + 0.4) < 1e-6)
+  const groundTop = ground.geometry.getAttribute('position').getY(0)
+  assert.ok(groundTop + 0.4 >= 0 && groundTop + 0.4 <= TILE_JITTER)
   const leaf = objectsNamed(scene.group, 'door-leaf:0,0,e:closed')[0]
-  assert.ok(Math.abs(leaf.position.y - (1 + 0.58 / 2)) < 1e-6, 'дверь стоит на максимуме двух раскрытых сторон ребра')
+  assert.ok(Math.abs(leaf.position.y - (1 + DOOR_LEAF_HEIGHT / 2)) < 1e-6, 'дверь стоит на максимуме двух раскрытых сторон ребра')
   const prop = scene.group.getObjectByName('prop:raised-prop')
   assert.ok(Math.abs(prop.position.y + 0.4) < 1e-6, 'опора следует за видимой клеткой футпринта')
   scene.dispose()
@@ -120,9 +134,9 @@ test('высота скрытого соседа не поднимает вид�
   setDoor(map, { id: 'hidden-high-door', x: 1, y: 0, dir: 'e', state: 'closed' })
   const scene = scene3d.createBoard3DScene(map)
   const leaf = objectsNamed(scene.group, 'door-leaf:1,0,e:closed')[0]
-  assert.ok(Math.abs(leaf.position.y - (0.4 + 0.58 / 2)) < 1e-6, 'туманная клетка не участвует в основании двери')
+  assert.ok(Math.abs(leaf.position.y - (0.4 + DOOR_LEAF_HEIGHT / 2)) < 1e-6, 'туманная клетка не участвует в основании двери')
   const ground = scene.group.getObjectByName('ground-plane')
-  assert.equal(ground.geometry.getAttribute('position').count, 4, 'скрытая высокая клетка не появляется на поверхности')
+  assert.equal(ground.geometry.getAttribute('position').count, 12, 'скрытая высокая клетка не появляется на поверхности')
   scene.dispose()
 })
 
@@ -238,6 +252,7 @@ test('pointLightShadows управляет только тенями локал�
     const off = objectsNamed(disabled.group, 'fire-light')[0]
     assert.equal(on.castShadow, true)
     assert.equal(off.castShadow, false)
+    assert.ok(on.shadow.bias < 0 && on.shadow.normalBias > 0, 'тень огня смещена против самозатенения на карте 256')
     assert.equal(enabled.group.getObjectByName('ground-plane').castShadow, false)
     assert.equal(disabled.group.getObjectByName('ground-plane').castShadow, false)
   } finally { enabled.dispose(); disabled.dispose() }
@@ -432,4 +447,295 @@ test('поздняя загрузка artUrl после dispose не вызыв�
   } finally {
     globalThis.document = previousDocument
   }
+})
+
+const landscape = await import(pathToFileURL(join(outputDir, 'board3d-landscape.mjs')).href)
+
+function terrainMap({ width, height, cell }) {
+  const map = createTacticalMap({ width, height, seed: 'landscape-test', theme: 'forest' })
+  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
+    setCell(map, x, y, { passable: true, material: 'grass', revealed: true, ...cell(x, y) })
+  }
+  return mapClient.decodeTacticalMap(JSON.parse(JSON.stringify(serializeTacticalMap(map))))
+}
+
+test('вода: дно опущено, гладь — отдельной прозрачной поверхностью, пена только у берега', () => {
+  const water = { passable: false, surface: 'water' }
+  const map = terrainMap({ width: 5, height: 3, cell: (x) => x >= 1 && x <= 3 ? water : {} })
+  const scene = scene3d.createBoard3DScene(map)
+  const ground = scene.group.getObjectByName('ground-plane')
+  const positions = ground.geometry.getAttribute('position')
+  // Клетка (1,0) — вторая по обходу: двенадцать вершин на плитку.
+  assert.ok(Math.abs(positions.getY(12) + landscape.WATER_BED_DEPTH) < 1e-6, 'дно воды ниже уровня клетки')
+  const surface = scene.group.getObjectByName('water-surface')
+  assert.ok(surface, 'над водой есть гладь')
+  assert.ok(surface.material.transparent, 'гладь полупрозрачна')
+  assert.equal(surface.geometry.getAttribute('position').count, 9 * 4)
+  const shore = surface.geometry.getAttribute('shore')
+  const shoreAt = (cx, cz) => {
+    for (let index = 0; index < shore.count; index += 1) {
+      const p = surface.geometry.getAttribute('position')
+      if (p.getX(index) === cx && p.getZ(index) === cz) return shore.getX(index)
+    }
+    return null
+  }
+  assert.equal(shoreAt(1, 1), 1, 'угол у суши — берег')
+  assert.equal(shoreAt(2, 1), 0, 'середина русла — без пены')
+  assert.equal(scene.animated, true, 'вода рябит, пока доска её рисует')
+  scene.dispose()
+  const calm = scene3d.createBoard3DScene(map, { landscapeDetail: 'minimal' })
+  assert.equal(calm.animated, false, 'на «Экономном» вода стоит')
+  calm.dispose()
+})
+
+test('скала, кладка и стена: порода пещеры — скала, тонкая стена дома — кладка', () => {
+  // Пещера: проход по средней строке, вокруг порода; зоны пещеры — interior.
+  const cave = terrainMap({ width: 6, height: 5, cell: (x, y) => y === 2 ? { material: 'earth' } : { passable: false, material: 'earth' } })
+  assert.equal(landscape.isRockCell(cave, 2, 1), true)
+  assert.equal(landscape.isRockCore(cave, 2, 0), true, 'толща — все соседи камень')
+  assert.equal(landscape.isRockCore(cave, 2, 1), false, 'кромка — рядом проход')
+  // Дом: помещение 1×1, кольцо стен, снаружи улица.
+  const raw = createTacticalMap({ width: 5, height: 5, seed: 'house', theme: 'building' })
+  raw.zones.push({ id: 'home', kind: 'interior', material: 'wood', lightLevel: 'dim', floorDirection: 'horizontal', label: 'Дом' })
+  for (let y = 0; y < 5; y += 1) for (let x = 0; x < 5; x += 1) {
+    const ring = x >= 1 && x <= 3 && y >= 1 && y <= 3 && !(x === 2 && y === 2)
+    setCell(raw, x, y, { passable: !ring, material: 'wood', revealed: true, zone: x === 2 && y === 2 ? 'home' : '' })
+  }
+  const house = mapClient.decodeTacticalMap(JSON.parse(JSON.stringify(serializeTacticalMap(raw))))
+  assert.equal(landscape.isMasonryCell(house, 1, 2), true, 'стена дома — кладка')
+  assert.equal(landscape.isMasonryCell(house, 1, 1), true, 'угол дома касается помещения по диагонали')
+  assert.equal(landscape.isRockCell(house, 1, 2), false)
+  const rocks = landscape.createRockClusters(cave, 'full')
+  assert.ok(rocks.group.children.length > 0)
+  const again = landscape.createRockClusters(cave, 'full')
+  const matrix = (group) => Array.from(group.children[0].instanceMatrix.array).slice(0, 16).join(',')
+  assert.equal(matrix(rocks.group), matrix(again.group), 'раскладка камня детерминирована')
+  rocks.dispose(); again.dispose()
+})
+
+test('стена вдоль скалы не рисуется тонкой стенкой: её роль играет порода', () => {
+  const raw = createTacticalMap({ width: 4, height: 3, seed: 'cave-wall', theme: 'cave' })
+  for (let y = 0; y < 3; y += 1) for (let x = 0; x < 4; x += 1) setCell(raw, x, y, { passable: y === 1, material: 'stone', revealed: true })
+  setEdge(raw, 1, 0, 1, 1, { kind: 'wall', blocksMove: true, blocksSight: true })
+  const map = mapClient.decodeTacticalMap(JSON.parse(JSON.stringify(serializeTacticalMap(raw))))
+  const scene = scene3d.createBoard3DScene(map)
+  const wallInstances = objectsNamed(scene.group, 'wall-segments:').reduce((sum, mesh) => sum + (mesh.count ?? 1), 0)
+  assert.equal(wallInstances, 0)
+  assert.ok(scene.group.getObjectByName('landscape-rocks'))
+  scene.dispose()
+})
+
+test('мост: полоса настила через воду получает перила, берег — нет', () => {
+  // Река по x=2..4, мост в две строки (y=1..2) поперёк неё.
+  const map = terrainMap({ width: 7, height: 4, cell: (x, y) => x >= 2 && x <= 4 && !(y === 1 || y === 2) ? { passable: false, surface: 'water' } : x >= 2 && x <= 4 ? { material: 'wood' } : {} })
+  assert.equal(landscape.bridgeSpan(map, 3, 1), 'x')
+  assert.equal(landscape.bridgeSpan(map, 3, 2), 'x')
+  assert.equal(landscape.bridgeSpan(map, 1, 0), null, 'берег не мост')
+  const rails = landscape.createBridgeRails(map)
+  assert.ok(rails && rails.group.children[0].count > 0)
+  rails.dispose()
+})
+
+test('трава только на свободных травяных клетках и не на «Экономном»', () => {
+  const map = terrainMap({ width: 4, height: 2, cell: (x) => x === 3 ? { material: 'stone' } : {} })
+  assert.equal(landscape.createGrassTufts(map, [], 'minimal'), null)
+  const full = landscape.createGrassTufts(map, [{ x: 0.5, y: 0.5, footprint: [{ x: 0, y: 0 }] }], 'full')
+  const mesh = full.group.children[0]
+  const position = new THREE.Vector3()
+  for (let index = 0; index < mesh.count; index += 1) {
+    mesh.getMatrixAt(index, new THREE.Matrix4()).decompose(position, new THREE.Quaternion(), new THREE.Vector3())
+    assert.ok(Math.floor(position.x) < 3, 'на камне травы нет')
+    assert.ok(!(Math.floor(position.x) === 0 && Math.floor(position.z) === 0), 'под предметом травы нет')
+  }
+  full.dispose()
+})
+
+const masonry = await import(pathToFileURL(join(outputDir, 'board3d-masonry.mjs')).href)
+
+test('кладка: камни вразбежку в пределах прогона, плахи у дерева, без теней от камней', () => {
+  const run = { x: 2, z: 3.5, y: 0, length: 1, thickness: 1 / 6, height: .95, alongX: true, color: '#8a8378', seed: 7 }
+  const stone = masonry.createMasonryDressing([{ ...run, style: 'stone' }])
+  const mesh = stone.group.children[0]
+  assert.ok(stone.count >= 10, 'стена в клетку сложена из рядов камней')
+  assert.equal(mesh.castShadow, false, 'тень даёт тело стены, камни в карты теней не идут')
+  const position = new THREE.Vector3(), scale = new THREE.Vector3()
+  for (let index = 0; index < mesh.count; index += 1) {
+    mesh.getMatrixAt(index, new THREE.Matrix4()).decompose(position, new THREE.Quaternion(), scale)
+    assert.ok(position.x - scale.x / 2 >= 1.5 - .03 && position.x + scale.x / 2 <= 2.5 + .03, 'камень не выходит за ребро клетки')
+    assert.ok(position.y > 0 && position.y < .95, 'камень в пределах высоты стены')
+  }
+  const again = masonry.createMasonryDressing([{ ...run, style: 'stone' }])
+  assert.deepEqual(Array.from(again.group.children[0].instanceMatrix.array), Array.from(mesh.instanceMatrix.array), 'рисунок кладки детерминирован')
+  const wood = masonry.createMasonryDressing([{ ...run, style: 'wood' }])
+  assert.equal(wood.group.children[0].name, 'masonry:wood')
+  stone.dispose(); again.dispose(); wood.dispose()
+  assert.equal(masonry.masonryStyleFor('wood'), 'wood')
+  assert.equal(masonry.masonryStyleFor('marble'), 'stone')
+})
+
+test('«Экономное»: стены без отдельных камней кладки', () => {
+  const map = mapOf({ revealed: [{ x: 1, y: 1 }, { x: 2, y: 1 }] })
+  setEdge(map, 1, 1, 2, 1, { kind: 'wall', blocksMove: true, blocksSight: true })
+  const full = scene3d.createBoard3DScene(map, { landscapeDetail: 'full' })
+  const low = scene3d.createBoard3DScene(map, { landscapeDetail: 'minimal' })
+  assert.ok(full.group.getObjectByName('wall-masonry'))
+  assert.equal(low.group.getObjectByName('wall-masonry'), undefined)
+  full.dispose(); low.dispose()
+})
+
+// Набор моделей местности: tools/build-landscape-kit.mjs → public/assets/models/landscape.
+const landscapeAssets = await import(pathToFileURL(join(outputDir, 'landscape-model-assets.mjs')).href)
+const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js')
+const { createHash } = await import('node:crypto')
+const { existsSync, statSync } = await import('node:fs')
+const landscapeRoot = join(root, 'public', 'assets', 'models', 'landscape')
+
+function landscapeManifest() {
+  return landscapeAssets.validateLandscapeManifest(JSON.parse(readFileSync(join(landscapeRoot, 'manifest.json'), 'utf8')))
+}
+
+/** Собирает набор из GLB на диске так же, как клиент: узел по имени, приведение к клетке. */
+async function landscapeKitFromDisk() {
+  const manifest = landscapeManifest()
+  const previousSelf = globalThis.self
+  const previousCreateImageBitmap = globalThis.createImageBitmap
+  // Node не декодирует PNG: геометрии хватает заглушки ImageBitmap.
+  globalThis.self = globalThis
+  globalThis.createImageBitmap = async () => ({ width: 4, height: 4, close() {} })
+  try {
+    const scenes = new Map()
+    const models = []
+    for (const entry of manifest.models) {
+      if (!scenes.has(entry.url)) {
+        const bytes = readFileSync(join(root, 'public', entry.url))
+        const gltf = await new GLTFLoader().parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '')
+        scenes.set(entry.url, gltf.scene)
+      }
+      const node = scenes.get(entry.url).getObjectByName(entry.node)
+      assert.ok(node, `${entry.key}: в ${entry.url} нет узла ${entry.node}`)
+      const normalized = landscapeAssets.normalizeLandscapeNode(node)
+      assert.ok(normalized, `${entry.key}: модель не приводится к клетке`)
+      models.push({ key: entry.key, role: entry.role, parts: normalized.parts, size: normalized.size })
+    }
+    return { revision: manifest.revision, models }
+  } finally {
+    if (previousSelf === undefined) delete globalThis.self
+    else globalThis.self = previousSelf
+    if (previousCreateImageBitmap === undefined) delete globalThis.createImageBitmap
+    else globalThis.createImageBitmap = previousCreateImageBitmap
+  }
+}
+
+test('набор местности: манифест валиден, файлы на месте, хеши и происхождение совпадают', () => {
+  const manifest = landscapeManifest()
+  const directory = join(landscapeRoot, manifest.revision)
+  assert.deepEqual(JSON.parse(readFileSync(join(directory, 'manifest.json'), 'utf8')), JSON.parse(readFileSync(join(landscapeRoot, 'manifest.json'), 'utf8')),
+    'активный манифест совпадает с манифестом неизменяемой ревизии')
+  const roles = new Set(manifest.models.map((entry) => entry.role))
+  for (const role of ['rock', 'cliff', 'lily', 'reed', 'bridge']) assert.ok(roles.has(role), `в наборе есть роль ${role}`)
+  const notice = JSON.parse(readFileSync(join(directory, 'NOTICE.json'), 'utf8'))
+  assert.equal(notice.revision, manifest.revision)
+  assert.ok(notice.sources.every((source) => source.license === 'CC0-1.0' && /^[a-f0-9]{64}$/.test(source.archiveSha256)), 'источники — CC0 с хешем архива')
+  let total = 0
+  for (const url of new Set(manifest.models.map((entry) => entry.url))) {
+    const file = join(root, 'public', url)
+    assert.ok(existsSync(file), `${url} существует`)
+    const bytes = readFileSync(file)
+    total += bytes.length
+    const sha = createHash('sha256').update(bytes).digest('hex')
+    assert.ok(manifest.models.filter((entry) => entry.url === url).every((entry) => entry.sha256 === sha), `${url}: SHA-256 в манифесте совпадает`)
+    assert.ok(notice.files.some((item) => url.endsWith(`/${item.path}`) && item.sha256 === sha && item.bytes === statSync(file).size), `${url}: записан в NOTICE`)
+    const json = JSON.parse(bytes.subarray(20, 20 + bytes.readUInt32LE(12)).toString('utf8'))
+    assert.ok(!JSON.stringify(json).includes('"uri"'), `${url}: без внешних ссылок`)
+  }
+  assert.ok(total <= 4 * 1024 * 1024, `набор не больше 4 МБ (${total})`)
+  assert.throws(() => landscapeAssets.validateLandscapeManifest({ ...manifest, models: [{ ...manifest.models[0], url: '/assets/models/landscape/other/rocks.glb' }] }),
+    'файл вне объявленной ревизии отвергается')
+  assert.throws(() => landscapeAssets.validateLandscapeManifest({ ...manifest, models: [{ ...manifest.models[0], role: 'tree' }] }), 'неизвестная роль отвергается')
+})
+
+test('набор местности: модели приводятся к клетке, вариант выбирается детерминированно', async () => {
+  const kit = await landscapeKitFromDisk()
+  for (const model of kit.models) {
+    assert.ok(Math.abs(Math.max(model.size.x, model.size.z) - 1) < 1e-6, `${model.key}: большая сторона основания — одна клетка`)
+    const bottom = Math.min(...model.parts.map((part) => part.geometry.boundingBox.min.y))
+    assert.ok(Math.abs(bottom) < 1e-6, `${model.key}: низ модели на y = 0`)
+  }
+  assert.equal(landscapeAssets.pickLandscapeVariant([], .3), null)
+  assert.equal(landscapeAssets.pickLandscapeVariant(['a', 'b', 'c'], .99), 'c')
+  assert.equal(landscapeAssets.pickLandscapeVariant(['a', 'b', 'c'], .34), 'b')
+  const rocks = landscape.landscapeRockModels(kit)
+  assert.ok(rocks.boulders.length >= 3 && rocks.slabs.length >= 1 && rocks.cliffs.length >= 2, 'глыбы, плиты и толща различаются по форме и роли')
+})
+
+test('скалы и мост из моделей набора; без набора — процедурный запасной вариант', async () => {
+  const kit = await landscapeKitFromDisk()
+  const cave = terrainMap({ width: 8, height: 7, cell: (x, y) => y === 3 ? { material: 'stone' } : { passable: false, material: 'stone' } })
+  const procedural = landscape.createRockClusters(cave, 'full')
+  assert.equal(procedural.group.userData.rockSource, 'procedural')
+  const modelled = landscape.createRockClusters(cave, 'full', .95, kit)
+  assert.equal(modelled.group.userData.rockSource, 'models')
+  const meshes = objectsNamed(modelled.group, 'landscape-model')
+  assert.ok(meshes.length > 0 && meshes.every((mesh) => mesh.isInstancedMesh && mesh.castShadow), 'камни — InstancedMesh с тенью')
+  const kitGeometries = new Set(kit.models.flatMap((model) => model.parts.map((part) => part.geometry)))
+  assert.ok(meshes.every((mesh) => kitGeometries.has(mesh.geometry)), 'геометрия общая с набором, не копируется на экземпляр')
+  const again = landscape.createRockClusters(cave, 'full', .95, kit)
+  const layout = (group) => objectsNamed(group, 'landscape-model')
+    .map((mesh) => `${mesh.geometry.uuid}:${Array.from(mesh.instanceMatrix.array).map((value) => value.toFixed(5)).join(',')}`).sort().join('|')
+  assert.equal(layout(modelled.group), layout(again.group), 'выбор варианта и поворот детерминированы шумом клетки')
+  // dispose освобождает производные материалы слоя, но не геометрию набора.
+  let disposedGeometry = 0
+  for (const geometry of kitGeometries) geometry.addEventListener('dispose', () => { disposedGeometry += 1 })
+  let disposedMaterials = 0
+  for (const mesh of meshes) mesh.material.addEventListener('dispose', () => { disposedMaterials += 1 })
+  modelled.dispose(); again.dispose(); procedural.dispose()
+  assert.equal(disposedGeometry, 0, 'геометрии набора живут, пока набор взят')
+  assert.ok(disposedMaterials > 0, 'производные материалы слоя освобождены')
+  // Валун кромки и глыба толщи вписаны в одну-две клетки.
+  const edge = landscape.createRockClusters(cave, 'minimal', .95, kit)
+  const position = new THREE.Vector3(), scale = new THREE.Vector3()
+  for (const mesh of objectsNamed(edge.group, 'landscape-model')) {
+    for (let index = 0; index < mesh.count; index += 1) {
+      mesh.getMatrixAt(index, new THREE.Matrix4()).decompose(position, new THREE.Quaternion(), scale)
+      assert.ok(scale.x >= .9 && scale.x <= 2.3, 'валун кромки или глыба толщи вписаны в клетку-две')
+    }
+  }
+  edge.dispose()
+
+  // Мост: река по x=2..4, мост в две строки поперёк — одна секция Kenney на столбец.
+  const river = terrainMap({ width: 7, height: 4, cell: (x, y) => x >= 2 && x <= 4 && !(y === 1 || y === 2) ? { passable: false, surface: 'water' } : x >= 2 && x <= 4 ? { material: 'wood' } : {} })
+  const strips = landscape.bridgeModelStrips(river)
+  assert.deepEqual(strips.map((strip) => [strip.x, strip.y, strip.span, strip.width]), [[2, 1, 'x', 2], [3, 1, 'x', 2], [4, 1, 'x', 2]])
+  const bridge = landscape.createBridgeRails(river, kit)
+  assert.equal(bridge.group.userData.bridgeSource, 'models')
+  assert.ok(objectsNamed(bridge.group, 'landscape-model').reduce((sum, mesh) => sum + mesh.count, 0) > 0)
+  bridge.dispose()
+  // Клетки полосы на разной высоте модель не покрывает: остаются бруски.
+  const uneven = terrainMap({ width: 7, height: 4, cell: (x, y) => x >= 2 && x <= 4 && !(y === 1 || y === 2) ? { passable: false, surface: 'water' } : x >= 2 && x <= 4 ? { material: 'wood', elevation: y === 2 ? 1 : 0 } : {} })
+  assert.deepEqual(landscape.bridgeModelStrips(uneven), [])
+  const fallback = landscape.createBridgeRails(uneven, kit)
+  assert.equal(fallback.group.userData.bridgeSource, 'procedural')
+  fallback.dispose()
+
+  // Кувшинки и тростник: только с набором и не на «Экономном».
+  const pond = terrainMap({ width: 8, height: 8, cell: (x, y) => x >= 2 && x <= 5 && y >= 2 && y <= 5 ? { passable: false, surface: 'water' } : {} })
+  assert.equal(landscape.createWaterPlants(pond, 'full', null), null)
+  assert.equal(landscape.createWaterPlants(pond, 'minimal', kit), null)
+  const plants = landscape.createWaterPlants(pond, 'full', kit)
+  assert.ok(plants && objectsNamed(plants.group, 'landscape-model').every((mesh) => !mesh.castShadow), 'растения у воды не идут в карты теней')
+  const plantLayout = (group) => objectsNamed(group, 'landscape-model').map((mesh) => Array.from(mesh.instanceMatrix.array).join(',')).sort().join('|')
+  const plantsAgain = landscape.createWaterPlants(pond, 'full', kit)
+  assert.equal(plantLayout(plants.group), plantLayout(plantsAgain.group))
+  plants.dispose(); plantsAgain.dispose()
+})
+
+test('сцена без window не ждёт набор местности и рисует процедурные скалы', async () => {
+  assert.equal(await landscapeAssets.acquireLandscapeKit(new AbortController().signal), null, 'в тестах и SSR набор не загружается')
+  const raw = createTacticalMap({ width: 5, height: 4, seed: 'cave-kit', theme: 'cave' })
+  for (let y = 0; y < 4; y += 1) for (let x = 0; x < 5; x += 1) setCell(raw, x, y, { passable: y === 1, material: 'stone', revealed: true })
+  const map = mapClient.decodeTacticalMap(JSON.parse(JSON.stringify(serializeTacticalMap(raw))))
+  assert.equal(landscape.landscapeWantsModels(map), true)
+  const scene = scene3d.createBoard3DScene(map)
+  assert.equal(scene.group.getObjectByName('landscape-rocks').userData.rockSource, 'procedural')
+  scene.dispose()
 })

@@ -2,6 +2,7 @@ import {
   Box3,
   Bone,
   BufferGeometry,
+  Euler,
   Group,
   Matrix4,
   Mesh,
@@ -525,6 +526,20 @@ function heldOrientation(kindValue: string, side: EquipmentSide, bodyQuaternion:
   return bodyQuaternion.clone().multiply(rotation)
 }
 
+/**
+ * KayKit Rig_Medium: клипы Ranged_Bow собраны под лук в левой ладони с дугой
+ * вдоль оси Z handslot (так лежит и собственный bow KayKit). Рецепт проекта
+ * вытянут по +Y с наклоном плеч, поэтому лук ставится в кадре handslot
+ * (подобрано на стенде: дуга вертикальна в момент выпуска), а не вертикально
+ * в мировой позе ожидания.
+ */
+const KAYKIT_BOW_IN_HANDSLOT = new Quaternion().setFromEuler(new Euler(127 * Math.PI / 180, Math.PI / 2, 0, 'XYZ'))
+
+/** Лук в основной руке у KayKit уходит в левую ладонь, если она свободна. */
+export function kayKitBowSide(family: EquipmentRigFamily, kind: string, side: EquipmentSide, offHandBusy: boolean): EquipmentSide {
+  return family === 'kaykit' && side === 'right' && !offHandBusy && isBow(kind.toLocaleLowerCase('en-US')) ? 'left' : side
+}
+
 function finiteHeight(value: number): number {
   return Number.isFinite(value) && value > 0 ? value : 1.4
 }
@@ -653,9 +668,11 @@ export function createEquipmentRig(root: Group, options: { height: number; profi
     model.removeFromParent()
     model.matrixAutoUpdate = true
     model.position.set(0, 0, 0); model.quaternion.identity(); model.scale.set(1, 1, 1)
-    const desiredWorldOrientation = heldOrientation(typeof heldOptions.kind === 'string' ? heldOptions.kind : '', side, bodyQuaternion)
+    const kind = typeof heldOptions.kind === 'string' ? heldOptions.kind : ''
+    const desiredWorldOrientation = heldOrientation(kind, side, bodyQuaternion)
     const gripWorldOrientation = baseGripQuaternion[side] ?? bodyQuaternion
-    model.quaternion.copy(gripWorldOrientation.clone().invert().multiply(desiredWorldOrientation))
+    if (family === 'kaykit' && isBow(kind.toLocaleLowerCase('en-US'))) model.quaternion.copy(KAYKIT_BOW_IN_HANDSLOT)
+    else model.quaternion.copy(gripWorldOrientation.clone().invert().multiply(desiredWorldOrientation))
     grip.add(model)
     grip.updateMatrixWorld(true)
     const parentScale = grip.getWorldScale(new Vector3())

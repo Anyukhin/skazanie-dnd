@@ -1,0 +1,127 @@
+{
+  "version": 1,
+  "schema": "landscape-kit/v1",
+  "revision": "0060b6fcbb2be7e9",
+  "models": [
+    {
+      "key": "rock-medium-1",
+      "role": "rock",
+      "url": "/assets/models/landscape/0060b6fcbb2be7e9/rocks.glb",
+      "node": "rock-medium-1",
+      "source": "Stylized_Nature_MegaKit_Standard/Rock_Medium_1.gltf",
+      "sourceId": "quaternius-stylized-nature-megakit-standard",
+      "license": "CC0-1.0",
+      "sha256": "6733b7a2baca9e5c680abc6c8cd88ff7170334f571fde3fa4818995658dd3198"
+    },
+    {
+      "key": "rock-medium-2",
+      "role": "rock",
+      "url": "/assets/models/landscape/0060b6fcbb2be7e9/rocks.glb",
+      "node": "rock-medium-2",
+      "source": "Stylized_Nature_MegaKit_Standard/Rock_Medium_2.gltf",
+      "sourceId": "quaternius-stylized-nature-megakit-standard",
+      "license": "CC0-1.0",
+      "sha256": "6733b7a2baca9e5c680abc6c8cd88ff7170334f571fde3fa4818995658dd3198"
+    },
+    {
+      "key": "rock-medium-3",
+      "role": "rock",
+      "url": "/assets/models/landscape/0060b6fcbb2be7e9/rocks.glb",
+      "node": "rock-medium-3",
+      "source": "Stylized_Nature_MegaKit_Standard/Rock_Medium_3.gltf",
+      "sourceId": "quaternius-stylized-nature-megakit-standard",
+      "license": "CC0-1.0",
+      "sha256": "6733b7a2baca9e5c680abc6c8cd88ff7170334f571fde3fa4818995658dd3198"
+    },
+    {
+      "key": "rock-slab-1",
+      "role": "rock",
+      "url": "/assets/models/landscape/0060b6fcbb2be7e9/slabs.glb",
+      "node": "rock-slab-1",
+      "source": "Stylized_Nature_MegaKit_Standard/Pebble_Square_1.gltf",
+      "sourceId": "quaternius-stylized-nature-megakit-standard",
+      "license": "CC0-1.0",
+      "sha256": "b2eb32bbbb8d8eb26b66009f86d07fe3d614fa2dbe61289a3c753fa87014a513"
+    },
+    {
+      "key": "rock-slab-5",
+      "role": "rock",
+      "url": "/assets/models/landscape/0060b6fcbb2be7e9/slabs.glb",
+      "node": "rock-slab-5",
+      "source": "Stylized_Nature_MegaKit_Standard/Pebble_Square_5.gltf",
+      "sourceId": "quaternius-stylized-nature-megakit-standard",
+      "license": "CC0-1.0",
+      "sha256": "b2eb32bbbb8d8eb26b66009f86d07fe3d614fa2dbe61289a3c753fa87014a513"
+    },
+    {
+      "key": "cliff-medium-1",
+      "role": "cliff",
+      "url": "/assets/models/landscape/0060b6fcbb2be7e9/rocks.glb",
+      "node": "rock-medium-1",
+      "source": "Stylized_Nature_MegaKit_Standard/Rock_Medium_1.gltf",
+      "sourceId": "quaternius-stylized-nature-megakit-standard",
+      "license": "CC0-1.0",
+      "sha256": "6733b7a2baca9e5c680abc6c8cd88ff7170334f571fde3fa4818995658dd3198"
+    },
+    {
+      "key": "cliff-medium-3",
+      "role": "cliff",
+      "url": "/assets/models/landscape/0060b6fcbb2be7e9/rocks.glb",
+      "node": "rock-medium-3",
+      "source": "Stylized_Nature_MegaKit_Standard/Rock_Medium_3.gltf",
+      "sourceId": "quaternius-stylized-nature-megakit-standard",
+      "license": "CC0-1.0",
+      "sha256": "6733b7a2baca9e5c680abc6c8cd88ff7170334f571fde3fa4818995658dd3198"
+    },
+    {
+      "key": "lily-large",
+      "role": "lily",
+      "url": "/assets/models/landscape/0060b6fcbb2be7e9/water.glb",
+      "node": "lily-large",
+      "source": "kenney_nature-kit/lily_large.glb",
+      "sourceId": "kenney-nature-kit",
+      "license": "CC0-1.0",
+      "sha256": "b98d2157f1c6549c172f9252585c0f66d2cac0bf0006e00040a402f5360ad53d"
+    },
+    {
+      "key": "lily-small",
+      "role": "lily",
+      "url": "/assets/models/landscape/0060b6fcbb2be7e9/water.glb",
+      "node": "lily-small",
+      "source": "kenney_nature-kit/lily_small.glb",
+      "sourceId": "kenney-nature-kit",
+      "license": "CC0-1.0",
+      "sha256": "b98d2157f1c6549c172f9252585c0f66d2cac0bf0006e00040a402f5360ad53d"
+    },
+    {
+      "key": "reed-wispy",
+      "role": "reed",
+      "url": "/assets/models/landscape/0060b6fcbb2be7e9/water.glb",
+      "node": "reed-wispy",
+      "source": "Stylized_Nature_MegaKit_Standard/Grass_Wispy_Tall.gltf",
+      "sourceId": "quaternius-stylized-nature-megakit-standard",
+      "license": "CC0-1.0",
+      "sha256": "b98d2157f1c6549c172f9252585c0f66d2cac0bf0006e00040a402f5360ad53d"
+    },
+    {
+      "key": "reed-common",
+      "role": "reed",
+      "url": "/assets/models/landscape/0060b6fcbb2be7e9/water.glb",
+      "node": "reed-common",
+      "source": "Stylized_Nature_MegaKit_Standard/Grass_Common_Tall.gltf",
+      "sourceId": "quaternius-stylized-nature-megakit-standard",
+      "license": "CC0-1.0",
+      "sha256": "b98d2157f1c6549c172f9252585c0f66d2cac0bf0006e00040a402f5360ad53d"
+    },
+    {
+      "key": "bridge-wood",
+      "role": "bridge",
+      "url": "/assets/models/landscape/0060b6fcbb2be7e9/bridge.glb",
+      "node": "bridge-wood",
+      "source": "kenney_nature-kit/bridge_wood.glb",
+      "sourceId": "kenney-nature-kit",
+      "license": "CC0-1.0",
+      "sha256": "96ed7743cddd4406a953e9f3929aff16254db6884bfbacd90f36ed13615cc0fd"
+    }
+  ]
+}

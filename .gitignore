@@ -16,3 +16,7 @@ vite.config.d.ts
 # Рабочие каталоги генерации ассетов
 tmp/
 assets-src/
+
+# Локальная настройка Docker под эту машину (например, корневой сертификат антивируса)
+compose.override.yaml
+local-ca/

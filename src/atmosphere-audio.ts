@@ -34,6 +34,12 @@ export type AtmosphereAudio = {
   setWaiting(waiting: boolean): void
   /** Во сколько раз тише звучит фон на текущем экране: 0 — тишина, 1 — игра. */
   setScreenAttenuation(scale: number): void
+  /**
+   * Временно приглушить петлю под громким боевым звуком: `depth` — доля
+   * убираемой громкости (0…0.8), `holdSeconds` — сколько держать. Повторный
+   * вызов продлевает и углубляет приглушение, потом фон плавно возвращается.
+   */
+  duck(depth: number, holdSeconds: number): void
   setAmbientVolume(volume: number): AtmosphereSettings
   setMuted(muted: boolean): AtmosphereSettings
   getSettings(): AtmosphereSettings
@@ -51,6 +57,22 @@ type AmbientLayer = {
  * уровне прежнего гула она превращалась в шорох — отсюда запас.
  */
 const RECORDED_AMBIENCE_LEVEL = 0.55
+
+/** Приглушение под боевым звуком: глубже 0.8 фон пропадает и «дышит». */
+const MAX_DUCK_DEPTH = 0.8
+const MAX_DUCK_HOLD_SECONDS = 4
+const DUCK_ATTACK_SECONDS = 0.04
+const DUCK_RELEASE_SECONDS = 0.35
+
+/**
+ * Множитель фона в момент `at` для приглушения `depth`, держащегося до
+ * `until`. Чистая функция — её проверяет тест без AudioContext.
+ */
+export function atmosphereDuckScale(depth: number, until: number, at: number): number {
+  const value = Number(depth)
+  if (!Number.isFinite(value) || value <= 0 || !(Number(until) > Number(at))) return 1
+  return 1 - Math.min(MAX_DUCK_DEPTH, value)
+}
 
 export function clampAtmosphereVolume(value: unknown, fallback = 0): number {
   const numeric = Number(value)
@@ -144,6 +166,10 @@ export function createAtmosphereAudio(options: {
   // Во сколько раз тише играет фон на текущем экране. Единица — игровая
   // комната; до неё звук приглушён, потому что игрок ещё читает и печатает.
   let screenAttenuation = 1
+  // Приглушение под боевым звуком: глубина и момент AudioContext, до которого
+  // оно держится. Это множитель поверх громкости игрока, как и экран.
+  let duckDepth = 0
+  let duckUntil = 0
   let disposed = false
   const activeSources = new Set<AudioScheduledSourceNode>()
 
@@ -165,6 +191,12 @@ export function createAtmosphereAudio(options: {
     // задаёт уровень, а экран лишь решает, во сколько раз тише сейчас уместно.
     const ambient = settings.muted ? 0 : settings.ambientVolume * (waiting ? 0.62 : 1) * screenAttenuation
     ambientBus.gain.cancelScheduledValues(at)
+    const duckScale = atmosphereDuckScale(duckDepth, duckUntil, at)
+    if (duckScale < 1) {
+      ambientBus.gain.setTargetAtTime(ambient * duckScale, at, Math.min(glideSeconds, DUCK_ATTACK_SECONDS))
+      ambientBus.gain.setTargetAtTime(ambient, duckUntil, DUCK_RELEASE_SECONDS)
+      return
+    }
     ambientBus.gain.setTargetAtTime(ambient, at, glideSeconds)
   }
 
@@ -278,6 +310,18 @@ export function createAtmosphereAudio(options: {
       screenAttenuation = next
       // Плавно: резкий обрыв фона на открытии окна кампаний слышен как сбой.
       updateBus(context?.currentTime ?? 0, 0.35)
+    },
+    duck(depth, holdSeconds) {
+      if (disposed || !context || !ambientBus || settings.muted) return
+      const nextDepth = Math.max(0, Math.min(MAX_DUCK_DEPTH, Number(depth)))
+      const hold = Math.max(0, Math.min(MAX_DUCK_HOLD_SECONDS, Number(holdSeconds)))
+      if (!Number.isFinite(nextDepth) || !Number.isFinite(hold) || nextDepth <= 0 || hold <= 0) return
+      const now = context.currentTime
+      // Истёкшее приглушение не наследуется: новая глубина считается с нуля.
+      if (duckUntil <= now) duckDepth = 0
+      duckDepth = Math.max(duckDepth, nextDepth)
+      duckUntil = Math.max(duckUntil, now + hold)
+      updateBus(now, DUCK_ATTACK_SECONDS)
     },
     setAmbientVolume(volume) {
       settings = { ...settings, ambientVolume: clampAtmosphereVolume(volume, settings.ambientVolume) }

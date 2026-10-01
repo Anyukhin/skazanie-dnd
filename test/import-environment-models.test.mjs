@@ -185,11 +185,18 @@ test('палитра работает только в безопасном ка�
     'plant_bush', 'plant_bushDetailed', 'plant_bushLarge', 'plant_bushSmall', 'mushroom_red', 'mushroom_redGroup',
     'mushroom_tanGroup', 'grass', 'grass_large', 'flower_redA', 'flower_yellowA', 'campfire_logs',
   ]) await writeFile(join(kenney, `${sourceName.replace(/([a-z0-9])([A-Z])/gu, '$1_$2').toLowerCase()}.glb`), bytes)
+  // Старый кандидат из 31 файла остаётся нормализуемым. Деревья, кусты, трава,
+  // цветы, грибы и камни Kenney ушли из выбора (их заменил Stylized Nature
+  // MegaKit), поэтому палитра трогает только файлы, оставшиеся в выборе.
+  const stillSelected = new Set(KENNEY_SELECTION.map(([name]) => name))
+  const unselectedBefore = await readFile(join(kenney, 'tree_default.glb'))
   const first = await normalizeKenneyOutput({ outputDir: candidate })
-  const firstBytes = await readFile(join(kenney, 'tree_default.glb'))
+  const firstBytes = await readFile(join(kenney, 'stump_old.glb'))
   const second = await normalizeKenneyOutput(candidate)
-  const secondBytes = await readFile(join(kenney, 'tree_default.glb'))
-  assert.equal(first.changedFiles, 31)
+  const secondBytes = await readFile(join(kenney, 'stump_old.glb'))
+  assert.equal(first.changedFiles, ['stump_old', 'stump_roundDetailed', 'stump_squareDetailedWide', 'log', 'log_large', 'log_stack', 'log_stackLarge', 'campfire_logs'].filter((name) => stillSelected.has(name)).length)
+  assert.equal(first.changedFiles, 8)
+  assert.deepEqual(await readFile(join(kenney, 'tree_default.glb')), unselectedBefore, 'файл вне выбора не перекрашивается')
   assert.equal(second.changedFiles, 0)
   assert.equal(second.changedMaterials, 0)
   assert.deepEqual(secondBytes, firstBytes)

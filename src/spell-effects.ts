@@ -630,7 +630,10 @@ export function spellVisualProfile(spellIdValue: unknown, hints: SpellProfileHin
     ? normalizeMagicSchool(spell.school)
     : schoolFromDamageType(spell.damageType ?? spell.damageTypes?.[0])
   const radiusFeet = Math.max(0, Number(AURA_SPELLS[spellId] ?? spell.radius) || 0)
-  const projectileCount = Math.max(1, Number(spell.projectileCount ?? spell.beams) || 1)
+  // Число снарядов известно только у заклинаний с явным полем. Без него cue
+  // берёт число целей: «Брызги кислоты» по двум целям — два снаряда, не один.
+  const explicitProjectiles = Math.floor(Number(spell.projectileCount ?? spell.beams))
+  const projectileCount = Number.isFinite(explicitProjectiles) && explicitProjectiles > 0 ? explicitProjectiles : undefined
 
   const spellKind = normalizeId(spell.kind)
   const areaCapable = /^area-/u.test(spellKind)
@@ -663,7 +666,7 @@ export function spellVisualProfile(spellIdValue: unknown, hints: SpellProfileHin
     ...(Number(spell.areaSideFeet) > 0 ? { areaSideFeet: Number(spell.areaSideFeet) } : {}),
     ...(spell.areaShape && radiusFeet > 0 ? { sizeFeet: radiusFeet } : {}),
     ...(kind === 'aura' ? { radiusFeet: radiusFeet || 10 } : {}),
-    ...(kind === 'projectile' ? { projectileCount } : {}),
+    ...(kind === 'projectile' && projectileCount ? { projectileCount } : {}),
     ...(kind === 'beam' ? { chain: spellId === 'chain-lightning' || Number(spell.maxTargets) > 1 } : {}),
   }
 }
@@ -1155,13 +1158,39 @@ function targetOutcomeIsMiss(cue: SpellAnimationCue, targetId: string | undefine
   return outcome === 'miss' || outcome === 'blocked'
 }
 
-function projectileEndpoints(cue: Extract<SpellAnimationCue, { kind: 'projectile' }>, actors: readonly SpellEffectActor[]) {
+type ProjectileEndpoint = { targetId?: string; to: BoardPoint; toActor: SpellEffectActor | null }
+
+/**
+ * Все конечные точки снаряда: по одной на каждую цель cue. Явная точка `to`
+ * относится к первой цели (или к точке без цели) — так её кладёт SpellCast.
+ */
+export function projectileEndpoints(cue: Extract<SpellAnimationCue, { kind: 'projectile' }>, actors: readonly SpellEffectActor[]) {
   const fromActor = actorPoint(actors, cue.actorId)
-  const from = cue.from ?? actorPoint(actors, cue.actorId)
-  const targetId = cue.targetIds[0]
-  const toActor = actorPoint(actors, targetId)
-  const to = cue.to ?? actorPoint(actors, targetId)
-  return { from, to, fromActor, toActor }
+  const from = cue.from ?? fromActor
+  const targets: ProjectileEndpoint[] = cue.targetIds.length
+    ? cue.targetIds.flatMap((targetId, index) => {
+      const toActor = actorPoint(actors, targetId)
+      const to = (index === 0 ? cue.to : undefined) ?? toActor
+      return to ? [{ targetId, to, toActor }] : []
+    })
+    : cue.to ? [{ to: cue.to, toActor: null }] : []
+  return { from, fromActor, targets }
+}
+
+/**
+ * Сколько снарядов рисовать и к какой цели летит каждый. Снаряды раздаются
+ * целям по кругу, и каждая цель получает хотя бы один снаряд: «Брызги
+ * кислоты» по двум целям — это два снаряда, а не один к первой цели.
+ */
+export function projectileVolley(projectileCount: number, targetCount: number, maximum: number) {
+  const targets = Math.max(1, targetCount)
+  const count = Math.max(Math.min(targets, 8), Math.min(Math.max(1, maximum), Math.max(1, Math.floor(Number(projectileCount) || 1))))
+  return Array.from({ length: count }, (_, index) => ({
+    target: index % targets,
+    /** Номер снаряда внутри своей цели — для веера траекторий. */
+    lane: Math.floor(index / targets),
+    lanes: Math.floor(count / targets) + (index % targets < count % targets ? 1 : 0),
+  }))
 }
 
 function drawFireballFlight(
@@ -1176,7 +1205,9 @@ function drawFireballFlight(
     id: `${cue.id}:flight`,
     kind: 'projectile',
     actorId: cue.actorId,
-    targetIds: cue.targetIds,
+    // Шар летит в точку взрыва, а не в каждую цель: цели получают урон областью.
+    // Без подтверждённого центра остаётся прежний ориентир — первая цель.
+    targetIds: cue.center ? [] : cue.targetIds.slice(0, 1),
     from: cue.origin,
     to: cue.center,
     ...(cue.geometryVersion === 'circle-grid-v2'
@@ -1199,25 +1230,34 @@ function drawProjectile(
   input: SpellEffectRenderInput,
   detail: SpellEffectDetail,
 ) {
-  const { from, to, fromActor, toActor } = projectileEndpoints(cue, input.actors)
-  if (!visiblePoint(scene, from) || !visiblePoint(scene, to) || !trajectoryVisible(scene, from, to, fromActor, toActor, cue.targetGridOrigin)) return
+  const { from, fromActor, targets } = projectileEndpoints(cue, input.actors)
+  if (!visiblePoint(scene, from)) return
+  const endpoints = targets.filter(({ to, toActor }) => visiblePoint(scene, to)
+    && trajectoryVisible(scene, from, to, fromActor, toActor, cue.targetGridOrigin))
+  if (!endpoints.length) return
   const style = spellStyle(cue)
   const progress = input.reducedMotion || cue.motion === 'reduced' ? 1 : clamp01(input.progress)
-  if (targetOutcomeIsMiss(cue, cue.targetIds[0]) && (detail === 'minimal' || progress >= 1)) return
   const start = pointCenter(from, scene.cellSize, scene, fromActor)
-  const end = pointCenter(to, scene.cellSize, scene, toActor, cue.targetGridOrigin)
+  const ends = endpoints.map(({ to, toActor, targetId }) => ({
+    end: pointCenter(to, scene.cellSize, scene, toActor, cue.targetGridOrigin),
+    missed: targetOutcomeIsMiss(cue, targetId),
+  }))
   if (detail === 'minimal') {
-    drawRing(context, end, scene.cellSize * .28, style.primary, .78, Math.max(2, scene.cellSize * .055))
+    for (const { end, missed } of ends) {
+      if (!missed) drawRing(context, end, scene.cellSize * .28, style.primary, .78, Math.max(2, scene.cellSize * .055))
+    }
     return
   }
-  const dx = end.x - start.x
-  const dy = end.y - start.y
-  const length = Math.max(1, Math.hypot(dx, dy))
-  const count = Math.min(detail === 'full' ? 5 : 2, Math.max(1, cue.projectileCount))
+  const volley = projectileVolley(cue.projectileCount, ends.length, detail === 'full' ? 5 : 2)
   const steps = detail === 'full' ? 10 : 5
-  for (let projectile = 0; projectile < count; projectile += 1) {
+  for (const [projectile, { target, lane, lanes }] of volley.entries()) {
+    const { end, missed } = ends[target]
+    if (missed && progress >= 1) continue
+    const dx = end.x - start.x
+    const dy = end.y - start.y
+    const length = Math.max(1, Math.hypot(dx, dy))
     const volleyProgress = clamp01(progress - projectile * .035)
-    const spread = (projectile - (count - 1) / 2) * scene.cellSize * .22
+    const spread = (lane - (lanes - 1) / 2) * scene.cellSize * .22
     const control = {
       x: (start.x + end.x) / 2 - dy / length * (Math.min(scene.cellSize * 1.2, length * .16) + spread),
       y: (start.y + end.y) / 2 + dx / length * (Math.min(scene.cellSize * 1.2, length * .16) + spread),
@@ -1301,9 +1341,13 @@ export function spellBurstCells(
     ...(profile.areaSideFeet ? { sideFeet: profile.areaSideFeet } : {}),
     bounds: { minX: 0, minY: 0, maxX: map.width - 1, maxY: map.height - 1 },
   }
-  const cells = actor ? areaCellsForActor(geometry, actor, map) : areaCells(geometry)
+  // Область строится от клетки заклинателя в момент каста (серверный `from`),
+  // а не от его текущей позиции: к началу анимации он мог уже сдвинуться.
+  const caster = actor ? { ...actor, x: origin.x, y: origin.y } : null
+  const cells = caster ? areaCellsForActor(geometry, caster, map) : areaCells(geometry)
+  // Линия сервера (`wallCells`) идёт только от anchor, а не от каждой клетки площади.
   const origins = originMode === 'self'
-    ? actor ? actorFootprintCells(actor) : origin ? [origin] : []
+    ? caster && cue.shape !== 'line' ? actorFootprintCells(caster) : [origin]
     : center ? [center] : []
   const masked = maskSpellAreaCells(map, cells, {
     origins,

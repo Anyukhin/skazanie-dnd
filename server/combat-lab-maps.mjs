@@ -343,11 +343,13 @@ export const COMBAT_LAB_MAPS = deepFreeze([
     theme: 'fortress',
     build: (map) => {
       const terrace = difficultRect(12, 10, 4, 1, 10, 3)
-      for (const point of terrace) setCell(map, point.x, point.y, { elevation: 1, moveCost: 1 })
+      // Терраса на 10 футов выше двора: высоты в картах — в футах, и только
+      // перепад от 5 футов даёт возвышенность по правилам.
+      for (const point of terrace) setCell(map, point.x, point.y, { elevation: 10, moveCost: 1 })
       for (const [x, y] of [[4, 0], [5, 0], [6, 0], [7, 0], [8, 0], [9, 0], [10, 0], [4, 4], [10, 4]]) obstacle(map, x, y)
       difficult(map, difficultRect(12, 10, 4, 5, 10, 5), 'rubble')
       // Лестничный пролёт остаётся проходимым между террасой и нижним двором.
-      for (const x of [5, 6, 7]) setCell(map, x, 4, { passable: true, moveCost: 1, material: 'stone' })
+      for (const x of [5, 6, 7]) setCell(map, x, 4, { passable: true, moveCost: 1, material: 'stone', elevation: 5 })
     },
     partySpawns: TOWER_PARTY,
     enemySpawns: TOWER_ENEMIES,

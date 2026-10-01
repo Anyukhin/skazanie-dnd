@@ -77,6 +77,58 @@ export function isWalkableCell(cell) {
   return ['floor', 'door'].includes(String(cell.type || 'floor').toLowerCase())
 }
 
+/**
+ * Единое правило прозрачности клетки для линии обзора и линии действия.
+ *
+ * Проходимость и прозрачность — разные вопросы. В D&D 5e 2014 линию действия
+ * перекрывает только полное укрытие — сплошное препятствие (PHB, гл. 9
+ * «Укрытие»; гл. 10 «Области действия»: область распространяется по прямым от
+ * точки начала, и клетка без незаслонённой прямой в область не входит). Вода,
+ * яма или иная непроходимая, но открытая местность не заслоняют ни взгляда, ни
+ * заклинания. Поэтому непрозрачны только стена и клетка вне карты; дверь и
+ * тонкая стена живут на рёбрах и проверяются `sightEdgeBlocked`.
+ *
+ * Правило одно для всех серверных путей: атака (`assertClearTrajectory`),
+ * прямая и обходящая углы область, круговая область `circle-grid-v2`, линия и
+ * стена заклинания, раскрытие тумана при шаге и открытии двери.
+ */
+export function isTransparentCell(cell) {
+  if (!cell) return false
+  return String(cell.type ?? 'floor').toLowerCase() !== 'wall'
+}
+
+/**
+ * То же правило для клетки слоя тактической карты. Соответствие типам
+ * `scene.cells` задаёт `legacyCellsFromTacticalMap`: непроходимая клетка с
+ * поверхностью `water` — это `water`, любая другая непроходимая — `wall`.
+ */
+export function isTransparentMapCell(cell) {
+  if (!cell) return false
+  return cell.passable === true || cell.surface === 'water'
+}
+
+/**
+ * Перекрыт ли шаг линии обзора ребром: стеной или иной кромкой с
+ * `blocksSight`, либо закрытой дверью. Диагональный шаг перекрыт, если
+ * перекрыта хотя бы одна из двух ортогональных кромок угла — заклинание не
+ * просачивается в щель между стеной и дверью. Клиентский двойник —
+ * `sightEdgeBlocked` в `src/spell-targeting.ts`.
+ */
+export function sightEdgeBlocked(map, from, to) {
+  if (!map) return false
+  const dx = Math.sign(to.x - from.x)
+  const dy = Math.sign(to.y - from.y)
+  const candidates = Math.abs(dx) + Math.abs(dy) === 1
+    ? [[from, to]]
+    : dx && dy
+      ? [[from, { x: from.x + dx, y: from.y }], [from, { x: from.x, y: from.y + dy }]]
+      : []
+  return candidates.some(([start, end]) => {
+    const edge = edgeBetween(map, start.x, start.y, end.x, end.y)
+    return edge?.blocksSight === true || edge?.kind === 'door' && movementStepBlocked(map, start.x, start.y, end.x, end.y)
+  })
+}
+
 export function occupiedPositions(state, exceptActorId = null) {
   const occupied = new Set()
   for (const actor of listActors(state)) {
@@ -333,7 +385,7 @@ export function assertClearTrajectory(state, from, to) {
   const trajectory = lineCells(from, to)
   const map = sceneTacticalMap(state)
   const endpoint = cells.get(positionKey(to))
-  if (!endpoint || String(endpoint.type) === 'wall') {
+  if (!isTransparentCell(endpoint)) {
     throw new RulesValidationError('Траектория заканчивается за стеной или краем карты', 'TRAJECTORY_BLOCKED')
   }
   if (trajectory.slice(0, -1).some((point, index) => {
@@ -344,7 +396,7 @@ export function assertClearTrajectory(state, from, to) {
       : null
     const blockedDoor = edge?.kind === 'door'
       && movementStepBlocked(map, previous.x, previous.y, point.x, point.y)
-    return !cell || String(cell.type) === 'wall' || blockedDoor || edge?.blocksSight === true
+    return !isTransparentCell(cell) || blockedDoor || edge?.blocksSight === true
   })) {
     throw new RulesValidationError('Траекторию перекрывает стена или граница карты', 'TRAJECTORY_BLOCKED')
   }
@@ -357,7 +409,7 @@ export function trajectoryDetails(state, from, to) {
   const map = sceneTacticalMap(state)
   const trajectory = lineCells(from, to)
   const endpoint = cells.get(positionKey(to))
-  const blocked = !endpoint || String(endpoint.type) === 'wall' || trajectory.slice(0, -1).some((point, index) => {
+  const blocked = !isTransparentCell(endpoint) || trajectory.slice(0, -1).some((point, index) => {
     const cell = cells.get(positionKey(point))
     const previous = index === 0 ? from : trajectory[index - 1]
     const edge = map && Math.abs(previous.x - point.x) + Math.abs(previous.y - point.y) === 1
@@ -365,7 +417,7 @@ export function trajectoryDetails(state, from, to) {
       : null
     const blockedDoor = edge?.kind === 'door'
       && movementStepBlocked(map, previous.x, previous.y, point.x, point.y)
-    return !cell || String(cell.type) === 'wall' || blockedDoor || edge?.blocksSight === true
+    return !isTransparentCell(cell) || blockedDoor || edge?.blocksSight === true
   })
   return { trajectory, blocked }
 }

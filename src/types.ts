@@ -1100,7 +1100,7 @@ export type TacticalCell = {
   surface: TacticalSurface
   hazardId: string | null
   material: TacticalMaterial
-  /** Шаг 5 футов, знаковое. */
+  /** Высота клетки в футах, знаковая. */
   elevation: number
   /** Идентификатор зоны, пустая строка — зоны нет. */
   zone: string
@@ -1524,6 +1524,11 @@ export type Scene = {
   danger?: 'низкая' | 'средняя' | 'высокая'
   scene_kind?: 'settlement' | 'wilderness' | 'dungeon' | 'road' | 'other'
   settlement_type?: 'village' | 'town' | 'city' | 'outpost' | 'traveling' | null
+  /**
+   * Готовая карта из библиотеки: название, автор и лицензия. Атрибуция по
+   * Creative Commons показывается в легенде доски.
+   */
+  map_source?: { title: string; author: string; license: string; url?: string; license_url?: string; site?: string }
 }
 
 export type AdventureState = {

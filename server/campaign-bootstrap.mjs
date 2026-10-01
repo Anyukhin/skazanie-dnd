@@ -2,9 +2,9 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import { generateSceneGeometry } from './adventure-director.mjs'
+import { generateSceneGeometry, levelKey, librarySceneFields, rememberSceneMap } from './adventure-director.mjs'
 import { applyNpcWorldEvent, planSceneNpcPlacementEvents } from './npc-positioning.mjs'
-import { serializeTacticalMap, reachableCells, SIZE_CLASSES } from './tactical-map.mjs'
+import { deserializeTacticalMap, legacyCellsFromTacticalMap, serializeTacticalMap, reachableCells, SIZE_CLASSES } from './tactical-map.mjs'
 import { ECONOMY_POLICY_ID, createStarterMerchant, normalizeMerchants } from './merchant-economy.mjs'
 import { withStarterKit } from './starter-kit.mjs'
 import { MAX_CHARACTER_LEVEL, partyPresentationFor } from './character-lifecycle.mjs'
@@ -22,7 +22,7 @@ import { isLiveTheme, resolveSceneTheme, SCENE_THEME_IDS } from './scene-themes.
 import { normalizeSceneMapDesign, worldLocationDesignContext } from './scene-map-design.mjs'
 import { campaignStartCanon } from './scene-canon.mjs'
 
-const prompt = readFileSync(fileURLToPath(new URL('../prompts/campaign_creator/v6.txt', import.meta.url)), 'utf8')
+const prompt = readFileSync(fileURLToPath(new URL('../prompts/campaign_creator/v7.txt', import.meta.url)), 'utf8')
 
 /**
  * Создание кампании — не ход. Оно просит у модели на порядок больше текста
@@ -348,8 +348,52 @@ function normalizeOpening(input, fallback, { authored = false } = {}) {
     },
     hook: clean(source.hook, 500) || fallback.hook,
     npcs: normalizeOpeningNpcs(source.npcs, fallback.npcs, { authored }),
+    secrets: normalizeOpeningSecrets(source.secrets),
     ...(worldRules ? { worldRules } : {}),
   }
+}
+
+const SECRET_SKILLS = new Set(['investigation', 'perception', 'survival', 'insight', 'history', 'arcana', 'religion', 'nature', 'medicine'])
+
+/**
+ * Заготовки ведущего (campaign_creator/v7): то, что уже правда в первой сцене
+ * и спрятано от героев. Без них удачное расследование возвращало пустую
+ * «зацепку», а собеседникам нечего было открыть, кроме пролога. Модель задаёт
+ * только текст, тему, навыки и знающего NPC; что и когда раскрыть, решает
+ * сервер (`world-memory.mjs`, `freeActionDiscoveryCommands`).
+ */
+function normalizeOpeningSecrets(value) {
+  if (!Array.isArray(value)) return []
+  return value.slice(0, 4).map((entry) => {
+    const source = entry && typeof entry === 'object' && !Array.isArray(entry) ? entry : {}
+    const skills = [...new Set((Array.isArray(source.skills) ? source.skills : [])
+      .map((skill) => clean(skill, 40).toLocaleLowerCase('en').replace(/[\s-]+/gu, '_'))
+      .filter((skill) => SECRET_SKILLS.has(skill)))].slice(0, 3)
+    return {
+      clue: prose(source.clue, 600),
+      topic: clean(source.topic, 160),
+      skills: skills.length ? skills : ['investigation', 'perception'],
+      holder: clean(source.holder, 120),
+    }
+  }).filter((secret) => secret.clue.length >= 12)
+}
+
+/** Скрытые факты из заготовок; id детерминирован от кампании и текста. */
+function openingSecretFacts(opening, locationEntity, campaignCode) {
+  if (!locationEntity?.id) return []
+  return (opening?.secrets ?? []).map((secret, index) => ({
+    id: `fact:secret:${createHash('sha256').update(`gm-secret\0${campaignCode}\0${index}\0${secret.clue}`).digest('hex').slice(0, 24)}`,
+    subject_id: locationEntity.id,
+    predicate: 'gm_secret',
+    object: JSON.stringify({ topic: secret.topic, skills: secret.skills.map((skill) => skill.replace(/_/gu, '-')), holder: secret.holder }),
+    summary: secret.clue,
+    visibility: 'gm_only',
+    source_event_ids: [],
+    source_command_id: `campaign-bootstrap:${campaignCode}`,
+    supersedes_fact_id: '',
+    status: 'active',
+    recorded_at_minutes: 0,
+  }))
 }
 
 function startingCells(cells, count, { anchorFeatures = [], map = null } = {}) {
@@ -526,6 +570,9 @@ export class CampaignBootstrapper {
       biome: placeContext.biome,
       worldDescription: [campaignConcept.worldSummary, campaignConcept.premise, campaignConcept.setting, campaignConcept.description].filter((value) => typeof value === 'string').join(' ').slice(0, 2400),
       map: opening.scene.map,
+      // Авторский мир держит свою стартовую карту одинаковой для всех столов,
+      // поэтому библиотека готовых карт подключается только к свободным мирам.
+      useLibrary: !worldTemplate,
     })
     const cells = geometry.cells
     const positions = startingCells(cells, heroes.length, {
@@ -607,7 +654,6 @@ export class CampaignBootstrapper {
           }
         })
       : []
-    const starterNpcId = openingNpcs[0].id
     // Токены собеседников появляются уже в первой сцене. Раньше расстановка
     // выполнялась только при переходе сцены (`AdvanceScene`), и в свежесозданной
     // кампании названные в прологе NPC существовали лишь в тексте — на поле их
@@ -628,6 +674,14 @@ export class CampaignBootstrapper {
       sceneTacticalMapValue.theme = startingThemeId
     }
     const sceneTacticalMap = serializeTacticalMap(sceneTacticalMapValue)
+    // Стартовая сцена из библиотеки: этажи и источник карты в сцене, верхние и
+    // нижние этажи — сразу в памяти локации, как их кладёт `SceneAdvanced`.
+    const librarySceneExtras = geometry.library ? librarySceneFields(geometry.library) : {}
+    /** @type {{ locationMaps?: Record<string, unknown> }} */
+    const libraryMemory = {}
+    for (const level of geometry.library?.levels ?? []) {
+      rememberSceneMap(libraryMemory, levelKey(startingLocationId, level.index), legacyCellsFromTacticalMap(deserializeTacticalMap(level.map)), level.map)
+    }
     const emptyNpcWorld = {
       schema_version: 3,
       placements: [], vitals: {}, stances: {}, inventories: {},
@@ -637,7 +691,7 @@ export class CampaignBootstrapper {
       ])),
     }
     const placementDraft = {
-      scene: { title: opening.scene.title, location: opening.scene.location, location_id: startingLocationId, mood: opening.scene.mood, objective: opening.scene.objective, turn: 1, cells, map: sceneTacticalMap },
+      scene: { title: opening.scene.title, location: opening.scene.location, location_id: startingLocationId, mood: opening.scene.mood, objective: opening.scene.objective, turn: 1, ...librarySceneExtras, cells, map: sceneTacticalMap },
       social: { npcs: openingNpcs },
       players: positionedHeroes,
       npc_world: emptyNpcWorld,
@@ -668,9 +722,17 @@ export class CampaignBootstrapper {
         || npc.location?.toLocaleLowerCase('ru') === opening.scene.location.toLocaleLowerCase('ru')
       if (sameLocation) npc.known_fact_ids = openingFactIds
     }
+    // Секрет знает только названный хранитель: его он может выдать в
+    // разговоре, остальные собеседники о нём не слышали.
+    const secretFacts = openingSecretFacts(opening, openingLocationEntity, campaignCode)
+    for (const [index, fact] of secretFacts.entries()) {
+      const holder = clean(opening.secrets[index]?.holder, 120).toLocaleLowerCase('ru')
+      const npc = holder ? openingNpcs.find((entry) => clean(entry.name, 120).toLocaleLowerCase('ru') === holder) : null
+      if (npc) npc.known_fact_ids = [...(npc.known_fact_ids ?? []), fact.id]
+    }
     const initialWorldMemory = {
       ...sceneMemory,
-      facts: [...(sceneMemory.facts ?? []), ...openingFacts],
+      facts: [...(sceneMemory.facts ?? []), ...openingFacts, ...secretFacts],
       entities: [...(sceneMemory.entities ?? []), ...factionEntities],
       quests: [...(sceneMemory.quests ?? []), {
         id: starterQuestId,
@@ -696,11 +758,11 @@ export class CampaignBootstrapper {
         npcs: openingNpcs,
         relationships: Object.fromEntries(openingNpcs.map((npc) => [npc.id, Object.fromEntries(positionedHeroes.map((hero) => [hero.id, 0]))])),
         conversations: [],
-        promises: [{
-          id: `promise-${seed.slice(0, 12)}`, npc_id: starterNpcId, hero_id: positionedHeroes[0].id,
-          direction: 'npc_to_party', text: opening.scene.objective, due_hint: 'до следующего продолжительного отдыха',
-          status: 'open', visibility: 'party', source_conversation_id: null, created_at_minutes: 0, deadline_minutes: 1_440,
-        }],
+        // Обещаний на старте нет: их дают в разговоре. Прежде цель отряда
+        // записывалась обещанием стартового NPC, и хранительница карты
+        // говорила «я обещала выяснить, что в этом знаю я» — с формулой срока
+        // «до следующего продолжительного отдыха». Кто дал задание, хранит квест.
+        promises: [],
       },
       state_version: 0,
       ...selectedRuleset,
@@ -713,8 +775,9 @@ export class CampaignBootstrapper {
       activePlayerId: positionedHeroes[0].id,
       tacticalTurn: { sceneTurn: 1, actorId: positionedHeroes[0].id, movementSpent: 0, actionUsed: false },
       isNarrating: false, pendingCheck: null, agentInteraction: null, lastDiceRoll: null,
-      scene: { title: opening.scene.title, location: opening.scene.location, location_id: startingLocationId, mood: opening.scene.mood, objective: opening.scene.objective, turn: 1, cells, map: sceneTacticalMap },
+      scene: { title: opening.scene.title, location: opening.scene.location, location_id: startingLocationId, mood: opening.scene.mood, objective: opening.scene.objective, turn: 1, ...librarySceneExtras, cells, map: sceneTacticalMap },
       npc_world: npcWorld,
+      ...(libraryMemory.locationMaps ? { locationMaps: libraryMemory.locationMaps } : {}),
       adventure: { chapter: 1, currentHook: opening.hook, visitedLocations: [opening.scene.location], unresolvedThreads: [opening.hook], history: [] },
       messages: [{ id: `opening-${seed}`, speaker: 'narrator', author: 'Рассказчик', timestamp: new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' }).format(new Date()), text: opening.openingNarration, turnConsumed: false }],
     }

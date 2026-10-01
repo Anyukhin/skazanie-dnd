@@ -6,7 +6,52 @@ export type PropModelEntry = {
   url: string
   assetIds: string[]
   yaw: number
+  /** Предел высоты модели в клетках до масштаба предмета; перекрывает PROP_MODEL_MAX_HEIGHTS. */
+  maxHeight?: number
   preview?: { x: number; y: number; w: number; h: number }
+}
+
+/**
+ * Предел высоты GLB-модели по каноническому asset id, в клетках до `prop.scale`.
+ * Футпринт задаёт ширину и глубину, но высоту не ограничивает: тонкая модель
+ * (метла, фонарный столб, бутылка), вписанная в клетку по ширине, вырастала
+ * в несколько клеток. Шкала: герой 1.25–1.4, стена 0.68 (BOARD3D_WALL_HEIGHT),
+ * столешница около 0.73. Вида без записи предел не касается (лестницы).
+ */
+export const PROP_MODEL_MAX_HEIGHTS: Readonly<Record<string, number>> = Object.freeze({
+  // Посуда и мелочь — стоят на столах и полках.
+  mug: .3, plate: .1, bowl_stew: .3, bottle: .42, jug: .42, bread_loaf: .25, cheese_wheel: .25,
+  candle: .4, dice_cup: .3, coin_pile: .2, cutting_board: .12, pot: .4, lute: .6,
+  // Бытовые предметы на полу.
+  broom: .9, sack: .6, basket: .5, bucket: .45, offering_bowl: .5, urn: .6, bone_pile: .4,
+  firewood_stack: .5, woodpile: .6, cauldron: .6, keg: .6, crate: .6, chest: .6, barrel: .75,
+  barrel_stack: 1.05, crate_stack: 1,
+  // Мебель.
+  table_round: .8, table_long: .8, table_royal: .85, table_small: .75, bar_counter: .9,
+  bench: .6, prayer_bench: .6, stool: .55, chair: 1, royal_throne: 1.3, night_table: .6,
+  bed: .75, bunk_bed: 1.2, washbasin: .85, cupboard: 1.1, wardrobe: 1.2, bookshelf: 1.2,
+  bar_shelf: 1.2, shelf_wall: .5, fireplace: 1.2, hearth_fire: .7,
+  // Свет и стенные предметы.
+  torch_wall: .9, lantern_wall: .9, candelabra: .9, chandelier: 1, brazier: .9, campfire: .4,
+  banner: 1.2, temple_banner: 1.2, sign_board: 1,
+  // Храм и склеп.
+  altar: .8, sarcophagus: .7, grave: .8, reliquary: .9, crypt_niche: 1.2, pillar: 1.4, statue: 1.8,
+  // Улица и поселение.
+  lamp_post: 2.2, signpost: 1.5, hitching_post: .9, milestone: .7, roadside_shrine: 1.3,
+  water_trough: .6, wagon_wheel: .7, village_fence: .7, well: 1.6, haystack: 1.3, cart: 1.6,
+  market_stall: 2,
+  // Природа.
+  tree_oak: 2.8, tree_birch: 2.8, tree_pine: 3, tree_spruce: 3, tree_dead: 2.4, tree_stump: .4,
+  bush: .8, shrub: .6, grass_tuft: .3, flowers: .35, fern: .4, mushroom_cluster: .35,
+  rock_small: .3, boulder: 1, stalagmite: 1.2, rubble_heap: .5, fallen_log: .5,
+})
+
+const MAX_HEIGHT_LIMIT = 8
+
+/** Предел высоты модели предмета в клетках; `null` — высота не ограничена. */
+export function propModelMaxHeight(assetId: string, entry?: Pick<PropModelEntry, 'maxHeight'> | null): number | null {
+  if (entry?.maxHeight !== undefined) return entry.maxHeight
+  return Object.prototype.hasOwnProperty.call(PROP_MODEL_MAX_HEIGHTS, assetId) ? PROP_MODEL_MAX_HEIGHTS[assetId] : null
 }
 
 export type PropModelCatalog = {
@@ -18,7 +63,9 @@ export type PropModelCatalog = {
 
 const ROOT = '/assets/models/environment/'
 export const LEGACY_CATALOG_REVISION = 'pr79'
-export const ENVIRONMENT_MODEL_FAMILIES = Object.freeze(['quaternius', 'kenney', 'kenney-dungeon', 'skazanie'] as const)
+export const ENVIRONMENT_MODEL_FAMILIES = Object.freeze([
+  'quaternius', 'kenney', 'kenney-dungeon', 'skazanie', 'quaternius-nature', 'kaykit-dungeon', 'kenney-graveyard',
+] as const)
 const KEY = /^[a-z0-9][a-z0-9_-]{0,95}$/
 const LOCAL_FILE = /^\/assets\/models\/environment\/[a-zA-Z0-9_/-]+\.(glb|png)$/
 const MODEL_FILE = /^\/assets\/models\/environment\/[a-zA-Z0-9_/-]+\.glb$/
@@ -62,6 +109,9 @@ export function validatePropModelCatalog(value: unknown, revision?: string): Pro
     keys.add(entry.key)
     const result: PropModelEntry = { key: entry.key, label: entry.label, category: entry.category, url: entry.url,
       assetIds: [...new Set(entry.assetIds as string[])], yaw: typeof entry.yaw === 'number' && Number.isFinite(entry.yaw) ? entry.yaw : 0 }
+    if (typeof entry.maxHeight === 'number' && Number.isFinite(entry.maxHeight) && entry.maxHeight > 0 && entry.maxHeight <= MAX_HEIGHT_LIMIT) {
+      result.maxHeight = entry.maxHeight
+    }
     if (entry.preview && typeof entry.preview === 'object') {
       const p = entry.preview as Record<string, unknown>
       if (['x', 'y', 'w', 'h'].every((k) => typeof p[k] === 'number' && Number.isInteger(p[k]) && Number(p[k]) >= 0 && Number(p[k]) <= 8192)

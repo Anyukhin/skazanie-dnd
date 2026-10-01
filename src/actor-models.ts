@@ -24,7 +24,7 @@ import {
   Vector3,
 } from 'three'
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
-import type { ActorAppearance } from './types'
+import type { ActorAppearance, PublicLoadout } from './types'
 import { normalizePublicLoadout } from '../server/equipment-visuals.mjs'
 import { createEquipmentController, type EquipmentControllerStatus } from './equipment-models'
 import {
@@ -52,7 +52,11 @@ export type { GlbValidation, ModelAssetDiagnostics, SharedModelBufferOptions } f
  * используется для принятия решения о допустимости хода.
  */
 export type ActorKind = 'hero' | 'enemy' | 'summon' | 'neutral'
-export type ActorPose = 'idle' | 'walk' | 'attack' | 'ranged-attack' | 'cast' | 'hit' | 'death'
+/**
+ * `spawn` — появление (у скелетов KayKit 1.1 — подъём из земли). Доска его
+ * пока не вызывает; у модели без такого клипа поза совпадает с idle.
+ */
+export type ActorPose = 'idle' | 'walk' | 'attack' | 'ranged-attack' | 'cast' | 'hit' | 'death' | 'spawn'
 export type ActorModelProfile = 'warrior' | 'mage' | 'rogue' | 'goblin' | 'skeleton' | 'beast'
 export type ActorEquipment = ActorAppearance['equipment']
 
@@ -98,6 +102,12 @@ export type ActorModelManifestEntry = {
   equipmentUrl?: string | null
   /** Высота в клетках; отсутствие значения означает 1.4. */
   height?: number
+  /**
+   * `builtin` — костюм уже вылеплен в модели (KayKit 2.0): слой экипировки v2
+   * рисует только вещи в руках и фокус, без доспеха, плаща и украшений поверх
+   * костюма. По умолчанию (`layered`) рисуется весь публичный комплект.
+   */
+  outfit?: 'builtin' | 'layered'
   rights: ModelRights
 }
 
@@ -147,6 +157,7 @@ export type ActorModel = Group & {
   cast?: (progress?: number) => void
   hit?: (progress?: number) => void
   death?: (progress?: number) => void
+  spawn?: (progress?: number) => void
 }
 
 export type ActorModelOptions = {
@@ -286,6 +297,8 @@ export function validateModelManifest(value: unknown): ActorModelManifest {
     const archetypes = normalizedList(raw.archetypes)
     const height = raw.height == null ? undefined : finitePositive(raw.height, 0)
     if (raw.height != null && (!height || height > 8)) throw new Error(`Высота модели ${key} должна быть в диапазоне 0..8`)
+    if (raw.outfit != null && raw.outfit !== 'builtin' && raw.outfit !== 'layered') throw new Error(`Неизвестный outfit модели ${key}: ${text(raw.outfit)}`)
+    const outfit = raw.outfit === 'builtin' ? 'builtin' as const : undefined
     return {
       key,
       name_ru: text(raw.name_ru) || profileLabels[raw.profile],
@@ -295,6 +308,7 @@ export function validateModelManifest(value: unknown): ActorModelManifest {
       url,
       ...(equipmentUrl ? { equipmentUrl } : {}),
       ...(height ? { height } : {}),
+      ...(outfit ? { outfit } : {}),
       rights: {
         source: text(rights.source), license: text(rights.license),
         ...(text(rights.attribution) ? { attribution: text(rights.attribution) } : {}),
@@ -340,6 +354,23 @@ function fallbackProfile(input: NormalizedActorModelInput): ActorModelProfile {
   return profileFromText(input.archetype ?? '') ?? profileFromText(input.label) ?? (input.kind === 'summon' ? 'beast' : 'warrior')
 }
 
+function refineWithinProfile(entries: ActorModelManifestEntry[], actor: NormalizedActorModelInput): ActorModelManifestEntry | undefined {
+  if (entries.length < 2) return undefined
+  if (actor.kind === 'hero') {
+    // Класс героя виден всем игрокам: первая запись профиля с этим классом.
+    const archetype = slug(actor.archetype ?? '')
+    return archetype ? entries.find((entry) => entry.archetypes?.some((item) => slug(item) === archetype)) : undefined
+  }
+  // Для врагов — только отдельные слова показанного имени: «Скелет-маг»,
+  // но не «Магистр». Слова первой записи профиля описывают сам профиль
+  // («скелет», «воин») и вариант не выбирают: иначе любое имя «Скелет …»
+  // уводило бы к случайной поздней записи с тем же общим словом.
+  const generic = new Set((entries[0].archetypes ?? []).map(slug))
+  const distinctive = new Set(slug(actor.label).split('-').filter((word) => word && !generic.has(word)))
+  if (!distinctive.size) return undefined
+  return entries.slice(1).find((entry) => entry.archetypes?.some((item) => distinctive.has(slug(item))))
+}
+
 /** Возвращает выбранную запись каталога без сетевых запросов. */
 export function resolveModelProfile(input: ActorModelInput, manifest: ActorModelManifest = DEFAULT_ACTOR_MODEL_MANIFEST): ActorModelManifestEntry {
   const actor = normalizeActorInput(input)
@@ -351,7 +382,14 @@ export function resolveModelProfile(input: ActorModelInput, manifest: ActorModel
   // профиль по прежнему идентификатору или классу.
   const serverProfile = actor.appearance?.profile
   if (serverProfile) {
-    const byServerProfile = catalog.models.find((entry) => entry.profile === serverProfile)
+    const sameProfile = catalog.models.filter((entry) => entry.profile === serverProfile)
+    // Внутри профиля, уже разрешённого сервером, выбирается подходящий
+    // вариант по публичным данным: класс героя (виден всем игрокам) или
+    // показанное на доске имя врага («Скелет-маг»). Профиль при этом не
+    // меняется, поэтому замаскированный враг остаётся в своём обобщённом виде.
+    const refined = refineWithinProfile(sameProfile, actor)
+    if (refined) return refined
+    const byServerProfile = sameProfile[0]
     if (byServerProfile) return byServerProfile
     const fallback = DEFAULT_ACTOR_MODEL_MANIFEST.models.find((entry) => entry.profile === serverProfile)
     if (fallback) return fallback
@@ -541,6 +579,26 @@ function glbAttackStyle(appearance: ActorAppearance | undefined): GlbAttackStyle
     || appearance?.equipment === 'dagger') return 'pierce'
   return 'slash'
 }
+
+/** Двуручное ближнее оружие: замах двумя руками вместо одноручного клипа. */
+const TWO_HANDED_MELEE = new Set(['greatclub', 'glaive', 'greataxe', 'greatsword', 'halberd', 'maul'])
+
+/** Стиль клипа удара по снаряжению; без внешности — образ модели по умолчанию. */
+function attackClipStyle(appearance: ActorAppearance | undefined): ActorClipStyle | null {
+  if (!appearance) return null
+  if (TWO_HANDED_MELEE.has(mainHandModelKey(appearance))) return 'twohanded'
+  const style = glbAttackStyle(appearance)
+  return style === 'pierce' ? 'stab' : style === 'bludgeon' ? 'chop' : style === 'unarmed' ? 'unarmed' : style === 'slash' ? 'slash' : null
+}
+
+function rangedClipStyle(appearance: ActorAppearance | undefined): ActorClipStyle | null {
+  if (!appearance) return null
+  const style = glbRangedStyle(appearance)
+  return style === 'thrown' ? 'throw' : style
+}
+
+/** Стиль, который может служить клипом позы по умолчанию (лук, но не арбалет). */
+const DEFAULT_CLIP_STYLE: Partial<Record<ActorPose, ActorClipStyle>> = { attack: 'slash', 'ranged-attack': 'bow' }
 
 function glbRangedStyle(appearance: ActorAppearance | undefined): GlbRangedStyle {
   const key = mainHandModelKey(appearance)
@@ -796,9 +854,19 @@ function accessoryTransform(accessory: Group, kind: 'sword' | 'shield' | 'bow' |
   }
 }
 
+/**
+ * Встроенное снаряжение KayKit 2.0 / Skeletons 1.1: статические меши на
+ * handslot, подготовленные tools/import-kaykit-models.mjs --v2.
+ */
+const KAYKIT_GEAR_PREFIX = 'KayKitGear_'
+
+function isKayKitEquipment(object: Object3D): boolean {
+  return KAYKIT_EQUIPMENT_NAMES.has(object.name) || object.name.startsWith(KAYKIT_GEAR_PREFIX)
+}
+
 function hideKayKitEquipment(root: Group, hidden: Map<Object3D, boolean>, value: boolean): void {
   root.traverse((object) => {
-    if (!KAYKIT_EQUIPMENT_NAMES.has(object.name)) return
+    if (!isKayKitEquipment(object)) return
     if (value) {
       if (!hidden.has(object)) hidden.set(object, object.visible)
       object.visible = false
@@ -1052,9 +1120,28 @@ function buildBeast(input: NormalizedActorModelInput): { root: Group; rig: Rig }
   return { root, rig }
 }
 
+/**
+ * Габарит тела без встроенного снаряжения KayKit 2.0: в позе покоя (T-pose)
+ * двуручный топор или лук торчат из ладони вниз и вбок, и рост фигурки иначе
+ * зависел бы от оружия. У моделей без таких узлов результат прежний.
+ */
+function bodyBounds(root: Group): Box3 {
+  let hasGear = false
+  root.traverse((object) => { if (object.name.startsWith(KAYKIT_GEAR_PREFIX)) hasGear = true })
+  if (!hasGear) return new Box3().setFromObject(root)
+  const result = new Box3()
+  const visit = (object: Object3D) => {
+    if (object.name.startsWith(KAYKIT_GEAR_PREFIX)) return
+    if ((object as Mesh).isMesh) result.union(new Box3().setFromObject(object))
+    else for (const child of object.children) visit(child)
+  }
+  visit(root)
+  return result
+}
+
 function fitToHeight(root: Group, targetHeight: number, centerHorizontal = true): number {
   root.updateMatrixWorld(true)
-  const bounds = new Box3().setFromObject(root)
+  const bounds = bodyBounds(root)
   const currentHeight = bounds.max.y - bounds.min.y
   if (!Number.isFinite(currentHeight) || currentHeight <= .0001) throw new Error('У модели нет положительной высоты')
   const factor = targetHeight / currentHeight
@@ -1071,8 +1158,31 @@ function fitToHeight(root: Group, targetHeight: number, centerHorizontal = true)
   return targetHeight
 }
 
+/**
+ * Варианты позы в подготовленных KayKit 2.0 GLB: `Attack_<стиль>`,
+ * `Ranged_<стиль>`, `Run`. Стиль выбирается по снаряжению на момент удара;
+ * клип без стиля — образ модели по умолчанию.
+ */
+const STYLED_CLIP = /^(attack|ranged)[_-](slash|stab|chop|twohanded|unarmed|bow|crossbow|throw)$/iu
+export type ActorClipStyle = 'slash' | 'stab' | 'chop' | 'twohanded' | 'unarmed' | 'bow' | 'crossbow' | 'throw' | 'run'
+
+/** Поза и стиль клипа по имени; экспортируется для тестов каталога. */
+export function actorClipInfo(name: string): { pose: ActorPose; style: ActorClipStyle | null } | null {
+  const styled = STYLED_CLIP.exec(name.trim())
+  if (styled) {
+    return { pose: styled[1].toLocaleLowerCase('en-US') === 'attack' ? 'attack' : 'ranged-attack', style: styled[2].toLocaleLowerCase('en-US') as ActorClipStyle }
+  }
+  const pose = clipPose({ name } as AnimationClip)
+  if (!pose) return null
+  return { pose, style: pose === 'walk' && /^run$/iu.test(name.trim()) ? 'run' : null }
+}
+
 function clipPose(clip: AnimationClip): ActorPose | null {
   const name = slug(clip.name)
+  const styled = STYLED_CLIP.exec(clip.name.trim())
+  if (styled) return styled[1].toLocaleLowerCase('en-US') === 'attack' ? 'attack' : 'ranged-attack'
+  // Появление: «Spawn» KayKit и `Skeleton_Spawn` Quaternius.
+  if (name.includes('spawn') || name.includes('awaken') || name.includes('resurrect')) return 'spawn'
   // `Idle_HitReact*` — настоящая реакция Quaternius на попадание. Проверяем её до
   // общего idle-маркера, иначе wolf никогда не получает pose `hit`.
   if (name.includes('hit') || name.includes('hurt') || name.includes('damage') || name.includes('react')) return 'hit'
@@ -1248,7 +1358,15 @@ function addProceduralMethods(model: ActorModel, rig: Rig) {
   model.death = (progress = 0) => setPose('death', progress)
 }
 
-function decorateModel(root: Group, input: NormalizedActorModelInput, entry: ActorModelManifestEntry, source: 'glb' | 'procedural', targetHeight: number, rig?: Rig, mixer?: AnimationMixer, actions?: Map<ActorPose, AnimationAction>, equipmentController?: AccessoryController, aimPose?: GlbPoseOverlay, attackPose?: GlbPoseOverlay, loadoutController?: ReturnType<typeof createEquipmentController>): ActorModel {
+/** Слоты, которые остаются видимыми поверх вылепленного костюма модели. */
+const HELD_LOADOUT_SLOTS = ['main_hand', 'off_hand', 'focus'] as const
+
+function visibleLoadout(loadout: PublicLoadout, entry: ActorModelManifestEntry): PublicLoadout {
+  if (entry.outfit !== 'builtin') return loadout
+  return Object.fromEntries(Object.entries(loadout).filter(([slot]) => (HELD_LOADOUT_SLOTS as readonly string[]).includes(slot))) as PublicLoadout
+}
+
+function decorateModel(root: Group, input: NormalizedActorModelInput, entry: ActorModelManifestEntry, source: 'glb' | 'procedural', targetHeight: number, rig?: Rig, mixer?: AnimationMixer, actions?: Map<ActorPose, AnimationAction>, equipmentController?: AccessoryController, aimPose?: GlbPoseOverlay, attackPose?: GlbPoseOverlay, loadoutController?: ReturnType<typeof createEquipmentController>, styledActions?: Map<string, AnimationAction>): ActorModel {
   const model = root as ActorModel
   model.actorId = input.id
   model.actorLabel = input.label
@@ -1273,14 +1391,15 @@ function decorateModel(root: Group, input: NormalizedActorModelInput, entry: Act
     model.appearance = appearance
     model.equipment = appearance?.equipment
     equipmentController?.setEquipment(appearance?.version === 2 ? 'unarmed' : appearance?.equipment)
-    model.equipmentReady = wardrobe.setLoadout(appearance?.version === 2 ? appearance.loadout : {})
+    model.equipmentReady = wardrobe.setLoadout(appearance?.version === 2 ? visibleLoadout(appearance.loadout, entry) : {})
   }
   model.setEquipment = (equipment: ActorEquipment | undefined) => {
     model.setAppearance(equipment === undefined ? undefined : { version: 1, profile: entry.profile, equipment })
   }
   const setGlbPose = (pose: ActorPose, progress?: number) => {
     if (disposed) return
-    const requestedAction = actions?.get(pose)
+    const style = pose === 'attack' ? attackClipStyle(model.appearance) : pose === 'ranged-attack' ? rangedClipStyle(model.appearance) : null
+    const requestedAction = (style ? styledActions?.get(`${pose}:${style}`) : undefined) ?? actions?.get(pose)
     const aimFallback = pose === 'ranged-attack' && Boolean(aimPose?.available)
     const attackFallback = pose === 'attack' && Boolean(attackPose?.available)
     const action = requestedAction ?? (aimFallback || attackFallback ? undefined : actions?.get('idle'))
@@ -1305,8 +1424,10 @@ function decorateModel(root: Group, input: NormalizedActorModelInput, entry: Act
     if (targetTime != null && activeAction === action && action.paused && Math.abs(action.time - targetTime) < 1e-8) return
     if (activeAction !== action) {
       activeAction?.stop()
-      const isDeath = pose === 'death' && requestedAction === action
-      activeAction = action.reset().setLoop(isDeath ? LoopOnce : LoopRepeat, isDeath ? 1 : Infinity).play()
+      // Смерть и появление проигрываются один раз и остаются в конечной позе.
+      const once = (pose === 'death' || pose === 'spawn') && requestedAction === action
+      action.clampWhenFinished = once
+      activeAction = action.reset().setLoop(once ? LoopOnce : LoopRepeat, once ? 1 : Infinity).play()
     }
     if (progress != null) {
       action.paused = true
@@ -1339,7 +1460,7 @@ function decorateModel(root: Group, input: NormalizedActorModelInput, entry: Act
   return model
 }
 
-const ACTOR_POSES: readonly ActorPose[] = ['idle', 'walk', 'attack', 'ranged-attack', 'cast', 'hit', 'death']
+const ACTOR_POSES: readonly ActorPose[] = ['idle', 'walk', 'attack', 'ranged-attack', 'cast', 'hit', 'death', 'spawn']
 
 function parseGltf(loader: GLTFLoader, buffer: ArrayBuffer): Promise<GLTF> {
   return new Promise((resolve, reject) => loader.parse(buffer, MODEL_ROOT, resolve, reject))
@@ -1354,58 +1475,87 @@ async function createGlbModel(input: NormalizedActorModelInput, entry: ActorMode
   const root = new Group()
   root.name = `glb-${entry.key}-${input.id}`
   root.add(gltf.scene)
-  enableActorShadows(root)
-  fitToHeight(root, targetHeight, false)
-  // Запрос может быть отменён уже после parse callback. Не отдаём компоненту
-  // частично готовую сцену и сразу освобождаем поздно пришедший результат.
-  if (options.signal?.aborted) {
-    disposeObject(root)
-    throw options.signal.reason ?? new Error('Загрузка модели отменена')
-  }
-  const kaykitLeft = objectByName(root, 'handslot.l', 'handslotl')
-  const kaykitRight = objectByName(root, 'handslot.r', 'handslotr')
-  const quaterniusLeft = objectByName(root, 'hand_l', 'Fist.L', 'FistL')
-  const quaterniusRight = objectByName(root, 'hand_r', 'Fist.R', 'FistR')
-  const socketKind = kaykitLeft || kaykitRight ? 'kaykit' : entry.profile === 'goblin' || entry.profile === 'skeleton' ? 'native' : quaterniusLeft || quaterniusRight ? 'quaternius' : 'native'
-  const idleClip = gltf.animations?.find((clip) => clipPose(clip) === 'idle')
-  const calibrationMixer = idleClip ? new AnimationMixer(root) : undefined
-  const calibrationAction = calibrationMixer && idleClip ? calibrationMixer.clipAction(idleClip).reset().setLoop(LoopOnce, 1).play() : undefined
-  if (calibrationMixer && calibrationAction) {
-    // Сокеты калибруются по видимой стойке ожидания. Временный mixer полностью
-    // останавливается до создания рабочего, поэтому калибровка не смешивается
-    // с анимациями атаки и заклинания.
-    calibrationAction.paused = true
-    calibrationAction.time = 0
-    calibrationMixer.update(0)
-    root.updateMatrixWorld(true)
-  }
-  const equipmentController = createAccessoryController({
-    root, palette: PALETTES[entry.profile],
-    leftParent: kaykitLeft ?? quaterniusLeft, rightParent: kaykitRight ?? quaterniusRight, socketKind,
-    worldScale: targetHeight / DEFAULT_HEIGHT,
-  })
-  let loadoutController: ReturnType<typeof createEquipmentController>
+  // Всё, что создано после разбора, освобождается при любой ошибке ниже:
+  // иначе геометрии, материалы и текстуры брошенной сцены остались бы в памяти.
+  let equipmentController: AccessoryController | undefined
+  let loadoutController: ReturnType<typeof createEquipmentController> | undefined
+  let mixer: AnimationMixer | undefined
+  let model: ActorModel | undefined
   try {
-    equipmentController.setEquipment(input.appearance?.version === 2 ? 'unarmed' : input.appearance?.equipment)
-    loadoutController = createEquipmentController(root, {
-      height: targetHeight, profile: entry.profile, fetcher: options.fetcher, signal: options.signal,
-      onChange: () => (root as ActorModel).onEquipmentChange?.(),
+    enableActorShadows(root)
+    fitToHeight(root, targetHeight, false)
+    // Запрос может быть отменён уже после parse callback. Не отдаём компоненту
+    // частично готовую сцену и сразу освобождаем поздно пришедший результат.
+    if (options.signal?.aborted) {
+      throw options.signal.reason ?? new Error('Загрузка модели отменена')
+    }
+    const kaykitLeft = objectByName(root, 'handslot.l', 'handslotl')
+    const kaykitRight = objectByName(root, 'handslot.r', 'handslotr')
+    const quaterniusLeft = objectByName(root, 'hand_l', 'Fist.L', 'FistL')
+    const quaterniusRight = objectByName(root, 'hand_r', 'Fist.R', 'FistR')
+    const socketKind = kaykitLeft || kaykitRight ? 'kaykit' : entry.profile === 'goblin' || entry.profile === 'skeleton' ? 'native' : quaterniusLeft || quaterniusRight ? 'quaternius' : 'native'
+    const idleClip = gltf.animations?.find((clip) => clipPose(clip) === 'idle')
+    const calibrationMixer = idleClip ? new AnimationMixer(root) : undefined
+    const calibrationAction = calibrationMixer && idleClip ? calibrationMixer.clipAction(idleClip).reset().setLoop(LoopOnce, 1).play() : undefined
+    if (calibrationMixer && calibrationAction) {
+      // Сокеты калибруются по видимой стойке ожидания. Временный mixer полностью
+      // останавливается до создания рабочего, поэтому калибровка не смешивается
+      // с анимациями атаки и заклинания.
+      calibrationAction.paused = true
+      calibrationAction.time = 0
+      calibrationMixer.update(0)
+      root.updateMatrixWorld(true)
+    }
+    equipmentController = createAccessoryController({
+      root, palette: PALETTES[entry.profile],
+      leftParent: kaykitLeft ?? quaterniusLeft, rightParent: kaykitRight ?? quaterniusRight, socketKind,
+      worldScale: targetHeight / DEFAULT_HEIGHT,
     })
-  } finally {
-    calibrationAction?.stop()
-    calibrationMixer?.uncacheRoot(root)
+    try {
+      equipmentController.setEquipment(input.appearance?.version === 2 ? 'unarmed' : input.appearance?.equipment)
+      loadoutController = createEquipmentController(root, {
+        height: targetHeight, profile: entry.profile, fetcher: options.fetcher, signal: options.signal,
+        onChange: () => (root as ActorModel).onEquipmentChange?.(),
+      })
+    } finally {
+      calibrationAction?.stop()
+      calibrationMixer?.uncacheRoot(root)
+    }
+    mixer = gltf.animations?.length ? new AnimationMixer(root) : undefined
+    const actions = mixer ? new Map<ActorPose, AnimationAction>() : undefined
+    const styledActions = mixer ? new Map<string, AnimationAction>() : undefined
+    if (mixer && actions && styledActions) {
+      const infos = gltf.animations.map((clip) => ({ clip, info: actorClipInfo(clip.name) }))
+      for (const { clip, info } of infos) {
+        if (!info) continue
+        if (info.style) {
+          const key = `${info.pose}:${info.style}`
+          if (!styledActions.has(key)) styledActions.set(key, mixer.clipAction(clip))
+        } else if (!actions.has(info.pose)) actions.set(info.pose, mixer.clipAction(clip))
+      }
+      // Без клипа «по умолчанию» поза берёт безопасный вариант: рубящий удар,
+      // выстрел из лука. Арбалет и бросок не подменяют лук.
+      for (const [pose, style] of Object.entries(DEFAULT_CLIP_STYLE) as Array<[ActorPose, ActorClipStyle]>) {
+        const fallback = styledActions.get(`${pose}:${style}`)
+        if (!actions.has(pose) && fallback) actions.set(pose, fallback)
+      }
+    }
+    const aimPose = createGlbAimPose(root)
+    const attackPose = createGlbAttackPose(root)
+    model = decorateModel(root, input, entry, 'glb', targetHeight, undefined, mixer, actions, equipmentController, aimPose, attackPose, loadoutController, styledActions)
+    if (calibrationAction) { model.setPose('idle', 0); model.update(.001) }
+    return model
+  } catch (error) {
+    if (model) model.dispose()
+    else {
+      mixer?.stopAllAction()
+      mixer?.uncacheRoot(root)
+      loadoutController?.dispose()
+      equipmentController?.dispose()
+      disposeObject(root)
+    }
+    throw error
   }
-  const mixer = gltf.animations?.length ? new AnimationMixer(root) : undefined
-  const actions = mixer ? new Map<ActorPose, AnimationAction>() : undefined
-  if (mixer && actions) for (const clip of gltf.animations) {
-    const pose = clipPose(clip)
-    if (pose && !actions.has(pose)) actions.set(pose, mixer.clipAction(clip))
-  }
-  const aimPose = createGlbAimPose(root)
-  const attackPose = createGlbAttackPose(root)
-  const model = decorateModel(root, input, entry, 'glb', targetHeight, undefined, mixer, actions, equipmentController, aimPose, attackPose, loadoutController)
-  if (calibrationAction) { model.setPose('idle', 0); model.update(.001) }
-  return model
 }
 
 /** Создаёт фигурку синхронно; удобно для первого кадра и fallback без сети. */
@@ -1414,6 +1564,14 @@ export function createProceduralActorModel(input: ActorModelInput, manifest: Act
   const entry = resolveModelProfile(normalized, manifest)
   const targetHeight = finitePositive(height, entry.height ?? DEFAULT_HEIGHT)
   const built = entry.profile === 'beast' ? buildBeast(normalized) : buildHumanoid(normalized, entry.profile)
+  // Встроенная фигурка собрана лицом в −Z, а доска, GLB-модели и слой
+  // экипировки считают перёд по +Z. Разворачивается только тело: корень
+  // остаётся без поворота, и плащ одежды ложится на спину, а не на грудь.
+  const body = new Group()
+  body.name = 'procedural-body'
+  body.rotation.y = Math.PI
+  body.add(...built.root.children)
+  built.root.add(body)
   const equipmentController = createProceduralEquipment(built.rig, entry.profile, PALETTES[entry.profile], normalized)
   fitToHeight(built.root, targetHeight)
   const model = decorateModel(built.root, normalized, entry, 'procedural', targetHeight, built.rig, undefined, undefined, equipmentController)

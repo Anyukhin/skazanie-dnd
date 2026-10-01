@@ -511,6 +511,34 @@ export function publicSceneFor(scene = {}, knownLevels = undefined) {
     ...(scene.danger == null ? {} : { danger: text(scene.danger, 40) }),
     ...(scene.scene_kind == null ? {} : { scene_kind: text(scene.scene_kind, 40) }),
     ...(scene.settlement_type == null ? {} : { settlement_type: text(scene.settlement_type, 40) }),
+    ...(publicMapSourceFor(scene.map_source) ? { map_source: publicMapSourceFor(scene.map_source) } : {}),
+  }
+}
+
+/**
+ * Источник готовой карты сцены: название, автор и лицензия. Атрибуция по
+ * Creative Commons должна быть видна тем, кто играет на карте, поэтому поле
+ * проходит в проекцию игрока. Паспорт места (`layout`) — нет: он перечисляет
+ * и нераскрытые комнаты.
+ * @param {unknown} value
+ */
+function publicMapSourceFor(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const source = /** @type {Loose} */ (value)
+  const title = text(source.title, 160)
+  const author = text(source.author, 120)
+  if (!title && !author) return null
+  const link = (/** @type {unknown} */ raw) => {
+    const href = text(raw, 300)
+    return /^https:\/\/[^\s"'<>]+$/u.test(href) ? href : ''
+  }
+  return {
+    title,
+    author,
+    license: text(source.license, 120),
+    url: link(source.url),
+    license_url: link(source.license_url),
+    site: text(source.site, 80),
   }
 }
 
@@ -833,6 +861,24 @@ function publicBattleEventFor(entry, state, actorId = '', visibility = {}) {
     } else {
       result.from = from
       result.to = to
+    }
+  }
+  // Путь шага раскрывается по тому же правилу, что концы, и целиком: клетка
+  // пути в тумане выдала бы и проходимость скрытой местности, и сам маршрут.
+  // Частичный путь с дырой клиент провёл бы по прямой сквозь стену, поэтому
+  // при любой скрытой клетке путь снимается, а клиент анимирует ход к `to`
+  // так же, как для старых записей без пути.
+  if (entry.type === 'move' && Object.hasOwn(entry, 'path')) {
+    const visibleCellKeys = visibility.visibleCellKeys ?? new Set()
+    const raw = Array.isArray(entry.path) ? entry.path : []
+    const path = raw.map(publicPoint)
+    const last = path.at(-1)
+    if (!result.from || !result.to || !path.length
+      || path.some((point) => !point || !visibleCellKeys.has(pointKey(point)))
+      || !last || pointKey(last) !== pointKey(result.to)) {
+      delete result.path
+    } else {
+      result.path = /** @type {{x: number, y: number}[]} */ (path)
     }
   }
   const enemyIds = new Set((state?.enemies ?? []).map((enemy) => text(enemy?.id ?? enemy?.actor_id, 120)))
@@ -2053,7 +2099,18 @@ function eventForViewer(event, user, actorId, state = {}) {
     if (attackVisual) payload.attack_visual = attackVisual
     else delete payload.attack_visual
   }
+  // Импорт карты несёт все этажи целиком, нераскрытыми, и план переселения,
+  // где видны клетки скрытых жителей. Игроку остаются место и подписи этажей:
+  // саму карту он получит из сцены через обычный обезличивающий проектор.
+  if (visible.event_type === 'LocationMapImported') {
+    const levels = Array.isArray(payload.levels) ? payload.levels : []
+    for (const key of ['levels', 'warnings', 'stats', 'source', 'relocations', 'party_positions']) delete payload[key]
+    payload.levels = levels.map((/** @type {Loose} */ level) => ({ index: Number(level?.index) || 0, label: String(level?.label ?? '').slice(0, 120) }))
+  }
   if (visible.event_type === 'SceneAdvanced') {
+    // Этажи библиотечной карты едут нераскрытыми — игрок увидит этаж, когда
+    // поднимется на него, через проекцию сцены.
+    delete payload.library_levels
     payload.scene = publicSceneFor(payload.scene)
     payload.adventure = publicAdventureFor(payload.adventure)
     payload.worldMap = publicWorldMapFor(payload.worldMap)

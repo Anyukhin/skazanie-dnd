@@ -1045,6 +1045,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .map-legend summary::-webkit-details-marker { display: none; }
 .map-legend summary::after { content: '▾'; margin-left: auto; color: #766b5e; transition: transform .15s ease; }
 .map-legend:not([open]) summary::after { transform: rotate(-90deg); }
+.map-legend-credit { grid-column: 1 / -1; padding-top: 6px; border-top: 1px solid rgba(222,201,171,.1); color: #8d8478; line-height: 1.45; }
+.map-legend-credit a { color: #c79458; }
 .map-legend > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; padding: 0 13px 11px; border-top: 1px solid rgba(222,201,171,.1); }
 /* Нижнюю строку стола в бою занимает остаток хода, и легенда встаёт над ней:
    вместе они шире поля (533 + 473 при ~900 доступных) и наезжали друг на друга. */
