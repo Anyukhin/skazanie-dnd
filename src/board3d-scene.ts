@@ -44,6 +44,11 @@ export type Board3DOptions = {
   roofMode?: Board3DRoofMode
   artUrl?: string | null
   artMode?: 'map' | 'backdrop'
+  /**
+   * Непрозрачность рисунка-подложки. При постобработке смешивание идёт в
+   * линейном пространстве, и та же доля заливает пол заметно сильнее.
+   */
+  artOverlayOpacity?: number
   onReady?: () => void
 }
 
@@ -649,8 +654,12 @@ function paintTerrainCanvas(resources: OwnedResources, map: TacticalMap, palette
     }
     const texture = ownTexture(resources, new THREE.CanvasTexture(canvas))
     texture.colorSpace = THREE.SRGBColorSpace
-    texture.minFilter = THREE.LinearFilter
-    texture.generateMipmaps = false
+    // Камера смотрит на пол под острым углом: без мипмапов и анизотропии
+    // фактура плит и сетка рябят при отдалении. Three ограничит значение
+    // возможностями видеокарты.
+    texture.minFilter = THREE.LinearMipmapLinearFilter
+    texture.generateMipmaps = true
+    texture.anisotropy = 8
     texture.needsUpdate = true
     return texture
   } catch {
@@ -694,6 +703,10 @@ function addProps(map: TacticalMap, parent: THREE.Group, lighting: boolean, poin
     light.shadow.mapSize.set(256, 256)
     light.shadow.camera.near = .1
     light.shadow.camera.far = Math.min(8, profile.radius)
+    // Карта 256 на кубе даёт крупный тексель: без смещения стены и пол
+    // покрываются полосами самозатенения («акне»).
+    light.shadow.bias = -.002
+    light.shadow.normalBias = .03
     lightGroup.add(light)
     lights.push(light)
   }
@@ -873,7 +886,7 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
 
   let authoritativeArtLoaded = false
   const artOverlayMaterial = artMode === 'backdrop'
-    ? material(resources, '#ffffff', { transparent: true, opacity: 0.34, depthWrite: false }) as THREE.MeshStandardMaterial
+    ? material(resources, '#ffffff', { transparent: true, opacity: options.artOverlayOpacity ?? 0.34, depthWrite: false }) as THREE.MeshStandardMaterial
     : null
   if (artUrl) {
     loadArtTexture(resources, artUrl, (texture) => {

@@ -1075,7 +1075,7 @@ test('burst renderer получает клетки из общей areaCells и 
   assert.equal(context.ops.filter((operation) => operation.op === 'save').length, context.ops.filter((operation) => operation.op === 'restore').length)
 })
 
-test('spellBurstCells переиспользует union области крупного заклинателя и умеет вернуть fog footprint', () => {
+test('spellBurstCells ведёт линию крупного заклинателя от anchor, как wallCells сервера, и умеет вернуть fog footprint', () => {
   const board = scene(10, 8)
   setCell(board.map, 3, 1, { revealed: false })
   const cue = {
@@ -1085,7 +1085,9 @@ test('spellBurstCells переиспользует union области круп
   const actors = [{ id: 'mage', x: 1, y: 1, footprint: { version: 1, size: 2 } }]
   const all = effects.spellBurstCells(board.map, cue, actors, { includeHidden: true })
   const visible = effects.spellBurstCells(board.map, cue, actors)
-  assert.ok(all.some((cell) => cell.x === 4 && cell.y === 1), 'вторая клетка footprint должна продлить линию')
+  // Сервер шагает от anchor (1,1): 10 фт — две клетки, (2,1) и (3,1). Клетки
+  // второго ряда площади линию не продлевают и не расширяют.
+  assert.deepEqual(all, [{ x: 2, y: 1 }, { x: 3, y: 1 }])
   assert.ok(all.length > visible.length, 'fog footprint должен быть доступен 3D-проверке, но не 2D рисунку')
   assert.equal(visible.some((cell) => cell.x === 3 && cell.y === 1), false)
 })
@@ -1379,4 +1381,68 @@ test('системная prefers-reduced-motion применяется без о
     if (previous) globalThis.matchMedia = previous
     else delete globalThis.matchMedia
   }
+})
+
+test('реальная Волшебная стрела ячейкой 3-го круга даёт cue с подтверждённым числом дротиков', () => {
+  const cells = Array.from({ length: 12 * 8 }, (_, index) => ({ x: index % 12, y: Math.floor(index / 12), type: 'floor', revealed: true }))
+  const state = normalizeCampaignState({
+    players: [{ id: 'mage', character: 'Маг', role: 'Волшебник', level: 5, hp: 30, maxHp: 30, armor: 12, speed: 30, proficiency: 3, abilities: { int: 18, dex: 12 }, inventory: [], x: 1, y: 2 }],
+    enemies: [{ id: 'goblin', name: 'Гоблин', hp: 40, maxHp: 40, armor: 10, speed: 30, abilities: { dex: 8 }, x: 6, y: 2, alive: true }],
+    scene: { turn: 1, cells },
+    mechanics: {
+      resources: { mage: { spell_slots_3: { current: 2, max: 2 } } },
+      combat: {
+        active: true, round: 1, initiative: [{ actor_id: 'mage', total: 20 }, { actor_id: 'goblin', total: 8 }], active_index: 0,
+        action_economy: {
+          mage: { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 },
+          goblin: { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 },
+        },
+      },
+    },
+  })
+  const dice = new DiceService({ rng: new SequenceDiceRng(Array(30).fill(2)), idFactory: (() => { let id = 0; return () => `mm-upcast-roll-${++id}` })(), now: () => '2026-10-01T12:00:00.000Z' })
+  const result = resolveCommand({
+    command_type: 'CastSpell', command_id: 'engine-mm-upcast', actor_id: 'mage', spell_id: 'magic-missile', slot_level: 3,
+    target_ids: ['goblin'], server_authoritative: true,
+  }, state, { diceService: dice, context: { serverAuthoritativeCombat: true, isAdmin: true } })
+  const damage = result.events.find((entry) => entry.event_type === 'DamageApplied')
+  assert.equal(damage?.payload?.projectile_count, 5, 'сервер считает пять дротиков на ячейке 3-го круга')
+  const projectile = animation.combatAnimationCuesFromEvents(result.events).find((cue) => cue.kind === 'projectile')
+  assert.equal(projectile?.projectileCount, 5, 'cue берёт число дротиков из события, а не тройку из каталога')
+})
+
+test('снаряд без явного числа в каталоге получает по снаряду на цель и рисуется ко всем целям', () => {
+  assert.equal(effects.spellVisualProfile('acid-splash').kind, 'projectile')
+  assert.equal(effects.spellVisualProfile('acid-splash').projectileCount, undefined, 'профиль не выдумывает один снаряд')
+  const [cue] = animation.combatAnimationCuesFromEvents([
+    { event_id: 'cast-acid', command_id: 'acid', event_type: 'SpellCast', actor_id: 'mage', target_ids: ['a', 'b'], payload: { spell_id: 'acid-splash', kind: 'save', damage_type: 'acid' } },
+  ])
+  assert.equal(cue.kind, 'projectile')
+  assert.equal(cue.projectileCount, 2, '«Брызги кислоты» по двум целям — два снаряда')
+  const actors = [actor('mage', 1, 1), actor('a', 5, 1), actor('b', 5, 4)]
+  const context = recordingContext()
+  effects.drawSpellEffect(context, scene(), { cue, actors, progress: 1, detail: 'minimal', reducedMotion: false })
+  const rings = context.ops.filter((operation) => operation.op === 'arc').map((operation) => `${operation.x},${operation.y}`)
+  assert.ok(rings.includes(`${5.5 * 24},${1.5 * 24}`), 'кольцо у первой цели')
+  assert.ok(rings.includes(`${5.5 * 24},${4.5 * 24}`), 'кольцо у второй цели, а не только у targetIds[0]')
+
+  const full = recordingContext()
+  effects.drawSpellEffect(full, scene(), { cue, actors, progress: 1, detail: 'full', reducedMotion: false })
+  const heads = full.ops.filter((operation) => operation.op === 'arc').map((operation) => operation.y)
+  assert.ok(heads.some((y) => Math.abs(y - 1.5 * 24) < 6) && heads.some((y) => Math.abs(y - 4.5 * 24) < 6), 'снаряды долетают до обеих целей')
+})
+
+test('область от заклинателя строится от клетки каста, а не от его текущей позиции', () => {
+  const board = scene(12, 8)
+  const cue = {
+    id: 'cone-from-cast', kind: 'burst', actorId: 'mage', targetIds: [], spellId: 'burning-hands', school: 'evocation',
+    origin: { x: 1, y: 3 }, center: { x: 4, y: 3 }, shape: 'cone', originMode: 'self', sizeFeet: 15, durationMs: 480,
+  }
+  // К началу анимации маг уже ушёл на (8,6).
+  const moved = [actor('mage', 8, 6)]
+  const cells = effects.spellBurstCells(board.map, cue, moved, { includeHidden: true })
+  const expected = effects.spellBurstCells(board.map, cue, [actor('mage', 1, 3)], { includeHidden: true })
+  assert.ok(cells.length > 0)
+  assert.deepEqual(cells, expected)
+  assert.ok(cells.every((cell) => cell.x >= 2 && cell.x <= 4), 'конус идёт от (1,3) на восток')
 })

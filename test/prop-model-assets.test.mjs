@@ -214,3 +214,168 @@ test('готовая библиотека содержит самодостат�
   assert.ok(mapped.size >= 30, 'готовые модели подключены к существующему генератору')
   assert.ok(bytes < 64 * 1024 * 1024, 'модели остаются в бюджете библиотеки 64 МиБ')
 })
+
+const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js')
+const libraryManifest = JSON.parse(readFileSync(join(root, 'public/assets/models/environment/manifest.json'), 'utf8'))
+
+/** Реальный GLB библиотеки, разобранный как в браузере; текстуры в node не нужны. */
+async function realTemplate(key) {
+  const model = libraryManifest.models.find((item) => item.key === key)
+  assert.ok(model, `${key}: есть в манифесте`)
+  const binary = readFileSync(join(root, 'public', model.url))
+  const loader = new GLTFLoader()
+  loader.register(() => ({ name: 'test-no-textures', loadTexture: () => Promise.resolve(new THREE.Texture()) }))
+  const gltf = await loader.parseAsync(binary.buffer.slice(binary.byteOffset, binary.byteOffset + binary.byteLength), '')
+  const template = new THREE.Group()
+  template.add(gltf.scene)
+  return { model, template }
+}
+
+function skinnedCount(rootObject) {
+  let count = 0
+  rootObject.traverse((object) => { if (object.isSkinnedMesh) count += 1 })
+  return count
+}
+
+test('skinned-сундук запекается в статичный меш и стоит в своей клетке, а не в начале карты', async () => {
+  const { template } = await realTemplate('q-chest_wood')
+  assert.equal(skinnedCount(template), 4, 'исходный сундук Quaternius собран из SkinnedMesh')
+  template.updateMatrixWorld(true)
+  const before = new THREE.Box3().setFromObject(template)
+  assert.equal(assetsModule.bakeSkinnedMeshes(template), 4)
+  assert.equal(skinnedCount(template), 0)
+  const after = new THREE.Box3().setFromObject(template)
+  for (const [a, b] of [[before.min, after.min], [before.max, after.max]]) {
+    assert.ok(a.distanceTo(b) < 1e-3, 'поза запечённого сундука совпадает с позой файла')
+  }
+  template.traverse((object) => {
+    if (object.isMesh) assert.equal(object.geometry.getAttribute('skinIndex'), undefined)
+  })
+
+  const catalog = catalogModule.validatePropModelCatalog(validCatalog([entry('q-chest_wood', ['chest'])]))
+  const environment = propsModule.createEnvironmentModels(render.DEFAULT_BOARD_PALETTE, { catalog, models: new Map([['q-chest_wood', template]]) })
+  const chest = environment.create(prop({ id: 'chest-far', assetId: 'chest', x: 10.5, y: 7.5, footprint: [{ x: 10, y: 7 }] }))
+  assert.equal(chest.userData.modelSource, 'glb')
+  const scene = new THREE.Group()
+  scene.add(chest)
+  scene.updateMatrixWorld(true)
+  const bounds = new THREE.Box3().setFromObject(chest)
+  const center = bounds.getCenter(new THREE.Vector3())
+  assert.ok(Math.abs(center.x - 10.5) < .05 && Math.abs(center.z - 7.5) < .05, `сундук в клетке (10, 7), а центр ${center.toArray()}`)
+  assert.ok(bounds.min.y > -1e-3 && bounds.max.y <= catalogModule.PROP_MODEL_MAX_HEIGHTS.chest + 1e-3)
+  scene.add(environment.create(prop({ id: 'chest-near', assetId: 'chest', x: 2.5, y: 3.5, footprint: [{ x: 2, y: 3 }] })))
+  const batched = batchModule.batchEnvironmentMeshes(scene)
+  assert.ok(batched.batches.length > 0 && batched.batches.every((batch) => batch.count === 2), 'запечённые сундуки участвуют в batching')
+  scene.updateMatrixWorld(true)
+  const batchedCenter = new THREE.Box3().setFromObject(scene).getCenter(new THREE.Vector3())
+  assert.ok(Math.abs(batchedCenter.x - 6.5) < .1 && Math.abs(batchedCenter.z - 5.5) < .1, 'после batching сундуки остаются в своих клетках')
+  batched.dispose()
+  environment.dispose()
+  assetsModule.disposePropModelAssets(new Map([['q-chest_wood', template]]))
+})
+
+test('запекание повторяет линейную смесь костей и сохраняет порядок детей', () => {
+  const rootGroup = new THREE.Group()
+  const before = new THREE.Mesh(new THREE.BoxGeometry(.1, .1, .1)); before.name = 'before'
+  const after = new THREE.Mesh(new THREE.BoxGeometry(.1, .1, .1)); after.name = 'after'
+  const bone = new THREE.Bone()
+  bone.position.set(0, 2, 0)
+  const geometry = new THREE.BoxGeometry(1, 1, 1)
+  const count = geometry.getAttribute('position').count
+  geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(new Array(count * 4).fill(0), 4))
+  geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(Array.from({ length: count * 4 }, (_, index) => index % 4 === 0 ? 1 : 0), 4))
+  const skinned = new THREE.SkinnedMesh(geometry, new THREE.MeshStandardMaterial())
+  skinned.name = 'skinned-lid'
+  skinned.position.set(3, 0, 0)
+  rootGroup.add(before, skinned, after, bone)
+  rootGroup.updateMatrixWorld(true)
+  // Поза файла отличается от bind-позы: кость поднята и повёрнута после привязки.
+  skinned.bind(new THREE.Skeleton([bone]), skinned.matrixWorld)
+  bone.position.set(0, 3, 0)
+  bone.rotation.z = Math.PI / 2
+  rootGroup.updateMatrixWorld(true)
+  const expected = new THREE.Vector3().fromBufferAttribute(geometry.getAttribute('position'), 0)
+  skinned.applyBoneTransform(0, expected)
+  const firstNormal = new THREE.Vector3().fromBufferAttribute(geometry.getAttribute('normal'), 0)
+  const expectedNormal = firstNormal.clone().applyAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2)
+  assert.equal(assetsModule.bakeSkinnedMeshes(rootGroup), 1)
+  assert.deepEqual(rootGroup.children.map((child) => child.name), ['before', 'skinned-lid', 'after', ''])
+  const baked = rootGroup.getObjectByName('skinned-lid')
+  assert.notEqual(baked.isSkinnedMesh, true)
+  assert.equal(baked.position.x, 3)
+  const actual = new THREE.Vector3().fromBufferAttribute(baked.geometry.getAttribute('position'), 0)
+  assert.ok(actual.distanceTo(expected) < 1e-6, `${actual.toArray()} ≈ ${expected.toArray()}`)
+  const normal = new THREE.Vector3().fromBufferAttribute(baked.geometry.getAttribute('normal'), 0)
+  assert.ok(normal.distanceTo(expectedNormal) < 1e-6, 'нормаль повёрнута вместе с костью')
+  // Клон запечённого шаблона не ссылается на скелет и остаётся у точки установки.
+  const placed = new THREE.Group(); placed.position.set(10, 0, 7)
+  placed.add(rootGroup.clone(true)); placed.updateMatrixWorld(true)
+  const center = new THREE.Box3().setFromObject(placed.getObjectByName('skinned-lid')).getCenter(new THREE.Vector3())
+  const local = new THREE.Box3().setFromObject(baked).getCenter(new THREE.Vector3())
+  assert.ok(center.distanceTo(local.add(new THREE.Vector3(10, 0, 7))) < 1e-6, 'клон в (10, 0, 7) сдвинут ровно на точку установки')
+})
+
+test('высота GLB ограничена пределом вида, а не только футпринтом', () => {
+  const kinds = [
+    ['broom', [.19, 1.31, .19]], ['lamp_post', [.34, 1.71, .36]], ['tree_pine', [.39, 1.53, .39]],
+    ['bottle', [.11, .36, .11]], ['night_table', [.69, 1.22, .39]], ['lute', [.44, 1.11, .27]],
+  ]
+  const catalog = catalogModule.validatePropModelCatalog(validCatalog(kinds.map(([assetId]) => entry(`m-${assetId}`, [assetId]))))
+  const environment = propsModule.createEnvironmentModels(render.DEFAULT_BOARD_PALETTE, {
+    catalog, models: new Map(kinds.map(([assetId, size]) => [`m-${assetId}`, fakeTemplate(...size)])),
+  })
+  for (const [assetId, size] of kinds) {
+    const model = environment.create(prop({ id: `tall-${assetId}`, assetId, x: 1.5, y: 1.5, footprint: [{ x: 1, y: 1 }] }))
+    model.updateMatrixWorld(true)
+    const bounds = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3())
+    const limit = catalogModule.PROP_MODEL_MAX_HEIGHTS[assetId]
+    assert.ok(Math.abs(bounds.y - limit) < 1e-6, `${assetId}: тонкая модель упирается в предел ${limit}, а высота ${bounds.y.toFixed(2)}`)
+    assert.ok(Math.abs(bounds.x / bounds.y - size[0] / size[1]) < 1e-6, `${assetId}: пропорции модели сохранены`)
+  }
+  assert.ok(catalogModule.PROP_MODEL_MAX_HEIGHTS.broom >= .85 && catalogModule.PROP_MODEL_MAX_HEIGHTS.broom <= .95, 'метла по грудь герою 1.25–1.4')
+  assert.ok(catalogModule.PROP_MODEL_MAX_HEIGHTS.bottle < .73, 'бутылка ниже столешницы')
+  environment.dispose()
+})
+
+test('широкий низкий GLB по-прежнему вписывается по футпринту', () => {
+  const catalog = catalogModule.validatePropModelCatalog(validCatalog([entry('round-table', ['table_round'])]))
+  const environment = propsModule.createEnvironmentModels(render.DEFAULT_BOARD_PALETTE, { catalog, models: new Map([['round-table', fakeTemplate(1.56, .74, 1.56)]]) })
+  const model = environment.create(prop({ id: 'low-table', assetId: 'table_round', x: 1.5, y: 1.5, footprint: [{ x: 1, y: 1 }] }))
+  model.updateMatrixWorld(true)
+  const size = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3())
+  assert.ok(Math.abs(size.x - render.PROP_FOOTPRINT_FILL) < 1e-6, 'ширина задана клеткой')
+  assert.ok(size.y < catalogModule.PROP_MODEL_MAX_HEIGHTS.table_round)
+  environment.dispose()
+})
+
+test('предел высоты: запись манифеста перекрывает таблицу, ключи таблицы — существующие asset id', () => {
+  const catalog = catalogModule.validatePropModelCatalog(validCatalog([{ ...entry('custom-broom', ['broom']), maxHeight: .5 }, { ...entry('bad-limit', ['mug']), maxHeight: -1 }]))
+  assert.equal(catalog.models[0].maxHeight, .5)
+  assert.equal(catalog.models[1].maxHeight, undefined)
+  assert.equal(catalogModule.propModelMaxHeight('broom', catalog.models[0]), .5)
+  assert.equal(catalogModule.propModelMaxHeight('mug', catalog.models[1]), catalogModule.PROP_MODEL_MAX_HEIGHTS.mug)
+  assert.equal(catalogModule.propModelMaxHeight('stairs_up'), null)
+  assert.equal(catalogModule.propModelMaxHeight('toString'), null)
+  for (const [assetId, limit] of Object.entries(catalogModule.PROP_MODEL_MAX_HEIGHTS)) {
+    assert.ok(assetById(assetId), `${assetId}: существующий asset id`)
+    assert.ok(limit > 0 && limit <= 3, `${assetId}: предел ${limit} в разумных границах`)
+  }
+})
+
+test('реальные тонкие GLB библиотеки не вырастают выше предела вида', async () => {
+  const cases = [['sk-household-broom', 'broom'], ['sk-lamp-post', 'lamp_post'], ['k-tree_pine_tall_a_detailed', 'tree_pine'], ['q-bottle_1', 'bottle']]
+  for (const [key, assetId] of cases) {
+    const { model, template } = await realTemplate(key)
+    assetsModule.bakeSkinnedMeshes(template)
+    template.rotation.y = model.yaw * Math.PI / 180
+    template.updateMatrixWorld(true)
+    const catalog = catalogModule.validatePropModelCatalog(validCatalog([entry(key, [assetId])]))
+    const environment = propsModule.createEnvironmentModels(render.DEFAULT_BOARD_PALETTE, { catalog, models: new Map([[key, template]]) })
+    const placed = environment.create(prop({ id: `real-${key}`, assetId, x: 4.5, y: 4.5, footprint: [{ x: 4, y: 4 }] }))
+    placed.updateMatrixWorld(true)
+    const height = new THREE.Box3().setFromObject(placed).getSize(new THREE.Vector3()).y
+    assert.ok(height <= catalogModule.PROP_MODEL_MAX_HEIGHTS[assetId] + 1e-3, `${key}: ${height.toFixed(2)} клетки`)
+    environment.dispose()
+    assetsModule.disposePropModelAssets(new Map([[key, template]]))
+  }
+})

@@ -93,15 +93,24 @@ export function actorDistanceFeet(left: BoardActor, right: BoardActor | ActorFoo
 }
 
 /**
- * Объединяет предпросмотр области для каждой клетки, занятой источником. Это
- * повторяет серверную проверку крупного заклинателя и сворачивает площадь до
- * одной клетки, если туман не позволяет безопасно показать её целиком.
+ * Предпросмотр области от заклинателя по серверной модели. Конус и
+ * направленный куб сервер проверяет от каждой клетки площади крупного
+ * заклинателя (`actorInArea`), поэтому их клетки объединяются. Линию сервер
+ * (`wallCells`) ведёт только от anchor — от верхней левой клетки, теми же
+ * восемью направлениями и тем же шагом, — и предпросмотр делает так же.
+ *
+ * Anchor площади берётся из `geometry.origin`: это клетка каста (серверный
+ * `from` в SpellCast), а не текущая позиция актора, к началу анимации уже
+ * успевшая измениться. Если туман не позволяет показать площадь целиком,
+ * она сворачивается до одной клетки.
  */
 export function areaCellsForActor(geometry: AreaGeometry, actor: BoardActor, map?: TacticalMap | null): AreaPoint[] {
-  const side = actorPresentationSize(map, actor)
+  const anchor = { x: Number(geometry.origin.x), y: Number(geometry.origin.y) }
+  if (geometry.shape === 'line') return areaCells({ ...geometry, origin: anchor })
+  const side = actorPresentationSize(map, actor, anchor)
   const previewActor = side === actorFootprintSize(actor) ? actor : { ...actor, footprint: undefined }
   const unique = new Map<string, AreaPoint>()
-  for (const origin of actorFootprintCells(previewActor)) {
+  for (const origin of actorFootprintCells(previewActor, anchor)) {
     for (const point of areaCells({ ...geometry, origin })) unique.set(`${point.x},${point.y}`, point)
   }
   return [...unique.values()].sort((left, right) => left.y - right.y || left.x - right.x)

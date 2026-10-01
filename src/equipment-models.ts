@@ -68,6 +68,12 @@ export type EquipmentController = {
   readonly loadout: PublicLoadout
   readonly status: EquipmentControllerStatus
   readonly error: Error | null
+  /**
+   * Слоты, модели которых не загрузились или не смонтировались при последнем
+   * применении loadout. Остальные слоты смонтированы; по этому списку владелец
+   * модели может оставить встроенный аксессуар вместо пропавшей экипировки.
+   */
+  readonly failedSlots: readonly EquipmentVisualSlot[]
   readonly rig: EquipmentRig
   setLoadout: (loadout: unknown) => Promise<void>
   dispose: () => void
@@ -76,6 +82,14 @@ export type EquipmentController = {
 type RawRecord = Record<string, unknown>
 type LoadedModel = { entry: EquipmentModelManifestEntry; root: THREE.Group }
 type MountPlan = { loaded: LoadedModel; parts: Array<{ object: THREE.Object3D; key: string }> }
+type SlotFailure = { slot: EquipmentVisualSlot; error: unknown }
+
+function slotFailureError(failures: readonly SlotFailure[]): Error {
+  const reasons = failures.map(({ slot, error }) => `${slot}: ${error instanceof Error ? error.message : String(error)}`)
+  const result = new Error(`Не загрузилась экипировка (${reasons.join('; ')})`)
+  if (failures.length === 1 && failures[0].error instanceof Error) result.cause = failures[0].error
+  return result
+}
 
 const manifestCache = new Map<string, Promise<EquipmentModelManifest>>()
 const fetcherIds = new WeakMap<object, number>()
@@ -493,16 +507,17 @@ export function createEquipmentController(root: THREE.Group, options: EquipmentC
   let generation = 0
   let activeAbort: AbortController | null = null
   let activeRoots = new Set<THREE.Group>()
-  let activePlans: MountPlan[] = []
   let requestedLoadout: PublicLoadout = {}
   let retainedManifest: Promise<EquipmentModelManifest> | null = null
+
+  let failedSlots: readonly EquipmentVisualSlot[] = Object.freeze([])
 
   const notify = () => { try { options?.onChange?.() } catch { /* callback не должен ломать рендер */ } }
   const clearActive = () => {
     rig.clear()
     for (const model of activeRoots) disposeObject(model)
     activeRoots = new Set()
-    activePlans = []
+    failedSlots = Object.freeze([])
   }
 
   const apply = async (requested: PublicLoadout, signal: AbortSignal, id: number): Promise<void> => {
@@ -533,23 +548,21 @@ export function createEquipmentController(root: THREE.Group, options: EquipmentC
     if (id !== generation || disposed) return
     if (signal.aborted) throw signal.reason ?? new Error('Загрузка экипировки отменена')
     const index = entryIndex(manifest)
+    // Отказ одного слота не снимает с героя остальную экипировку: удачные
+    // части монтируются, неудачные слоты перечисляются в ошибке контроллера.
+    const failures: SlotFailure[] = []
     const descriptors = EQUIPMENT_VISUAL_SLOTS.flatMap((slot) => {
       const descriptor = descriptorFor(requested[slot])
       if (!descriptor) return []
       const entry = findEntry(index, slot, descriptor)
-      if (!entry) throw new Error(`В манифесте нет модели ${slot}/${descriptor.model_key}`)
+      if (!entry) { failures.push({ slot, error: new Error(`В манифесте нет модели ${slot}/${descriptor.model_key}`) }); return [] }
       return [{ slot, entry }]
     })
     const settled = await Promise.allSettled(descriptors.map(({ entry }) => loadEquipmentModel(entry, options, signal, loader)))
     const loaded: LoadedModel[] = []
-    let rejection: unknown = null
     for (const [index, result] of settled.entries()) {
       if (result.status === 'fulfilled') loaded.push({ entry: descriptors[index].entry, root: result.value })
-      else if (!rejection) rejection = result.reason
-    }
-    if (rejection) {
-      for (const model of loaded) disposeObject(model.root)
-      throw rejection
+      else failures.push({ slot: descriptors[index].slot, error: result.reason })
     }
     if (id !== generation || disposed) {
       for (const model of loaded) disposeObject(model.root)
@@ -559,38 +572,41 @@ export function createEquipmentController(root: THREE.Group, options: EquipmentC
       for (const model of loaded) disposeObject(model.root)
       throw signal.reason ?? new Error('Загрузка экипировки отменена')
     }
-    let plans: MountPlan[]
-    try {
-      plans = loaded.map((model) => planForLoaded(rig, model))
-    } catch (error) {
-      for (const model of loaded) disposeObject(model.root)
-      throw error
+    let plans: MountPlan[] = []
+    for (const model of loaded) {
+      try { plans.push(planForLoaded(rig, model)) } catch (error) {
+        disposeObject(model.root)
+        failures.push({ slot: model.entry.slot, error })
+      }
     }
     const previousRoots = activeRoots
-    const previousPlans = activePlans
-    rig.clear()
-    try {
-      for (const plan of plans) mountPlan(rig, plan)
-    } catch (error) {
+    // Монтируем всё, что удалось подготовить. Сломавшийся план снимается,
+    // а остальные монтируются заново с чистого rig: частичный монтаж
+    // отказавшей модели не остаётся на скелете.
+    for (;;) {
       rig.clear()
-      try {
-        for (const plan of previousPlans) mountPlan(rig, plan)
-        activeRoots = previousRoots
-        activePlans = previousPlans
-      } catch {
-        for (const model of previousRoots) disposeObject(model)
-        activeRoots = new Set()
-        activePlans = []
+      let broken: { plan: MountPlan; error: unknown } | null = null
+      for (const plan of plans) {
+        try { mountPlan(rig, plan) } catch (error) { broken = { plan, error }; break }
       }
-      for (const model of loaded) disposeObject(model.root)
-      throw error
+      if (!broken) break
+      const failed = broken.plan
+      plans = plans.filter((plan) => plan !== failed)
+      failures.push({ slot: failed.loaded.entry.slot, error: broken.error })
+      rig.clear()
+      disposeObject(failed.loaded.root)
     }
     for (const model of previousRoots) disposeObject(model)
-    activeRoots = new Set(loaded.map((model) => model.root))
-    activePlans = plans
+    activeRoots = new Set(plans.map((plan) => plan.loaded.root))
     currentLoadout = requested
-    status = 'ready'
-    lastError = null
+    failedSlots = Object.freeze(EQUIPMENT_VISUAL_SLOTS.filter((slot) => failures.some((failure) => failure.slot === slot)))
+    if (failures.length) {
+      status = 'error'
+      lastError = slotFailureError(failures)
+    } else {
+      status = 'ready'
+      lastError = null
+    }
     notify()
   }
 
@@ -631,6 +647,8 @@ export function createEquipmentController(root: THREE.Group, options: EquipmentC
         }
         clearActive()
         currentLoadout = requested
+        // Отказ до разбора слотов (манифест, сеть) означает, что не надет ни один.
+        failedSlots = Object.freeze(EQUIPMENT_VISUAL_SLOTS.filter((slot) => descriptorFor(requested[slot])))
         lastError = error instanceof Error ? error : new Error(String(error))
         status = 'error'
         notify()
@@ -648,6 +666,7 @@ export function createEquipmentController(root: THREE.Group, options: EquipmentC
     get loadout() { return currentLoadout },
     get status() { return status },
     get error() { return lastError },
+    get failedSlots() { return failedSlots },
     rig,
     setLoadout,
     dispose: () => {

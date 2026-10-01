@@ -32,7 +32,12 @@ for (const path of emittedFiles(buildDir).filter((candidate) => candidate.endsWi
   writeFileSync(path, rewritten)
   renameSync(path, path.replace(/\.js$/u, '.mjs'))
 }
-const { combatAudioProfile, createCombatAudio, resolveCombatAudioPlan, COMBAT_AUDIO_ATTACK_STYLES, COMBAT_AUDIO_VOICE_LIMIT } = await import(pathToFileURL(join(buildDir, 'src/combat-audio.mjs')).href)
+const {
+  combatAudioProfile, createCombatAudio, resolveCombatAudioPlan, COMBAT_AUDIO_ATTACK_STYLES, COMBAT_AUDIO_VOICE_LIMIT,
+  COMBAT_AUDIO_CLIP_VOICE_LIMIT, COMBAT_AUDIO_FAMILIES, COMBAT_AUDIO_SCHOOL_FAMILIES, COMBAT_AUDIO_RATE_SPREAD, COMBAT_AUDIO_GAIN_SPREAD_DB,
+  COMBAT_AUDIO_MAX_PAN, combatAudioVariation, combatAudioClipOrder, combatAudioStereoPan, combatAudioSpatialFromScreen,
+  combatAudioPhaseSpatial, combatAudioPhaseGain, combatAudioFadeMs, combatAudioDuckDepth, combatAudioDuplicatePhase,
+} = await import(pathToFileURL(join(buildDir, 'src/combat-audio.mjs')).href)
 const { spellVisualAudit } = await import(pathToFileURL(join(buildDir, 'src/spell-effects.mjs')).href)
 
 class FakeParam {
@@ -291,10 +296,13 @@ test('envelope держит голос до fade window и затихает то
   assert.equal(await audio.playCue(strike, 'start'), true)
   const voiceGain = context.gains.at(-1)
   assert.ok(voiceGain)
-  const hold = voiceGain.gain.events.filter((event) => event[0] === 'set' && event[1] === 1)
+  // Пик голоса — уровень фазы cast с разбросом повтора, а не единица.
+  const peak = voiceGain.gain.events.find((event) => event[0] === 'set')?.[1]
+  assert.ok(peak > 0 && peak < 1, `cast должен звучать тише попадания, пик ${peak}`)
+  const hold = voiceGain.gain.events.filter((event) => event[0] === 'set' && event[1] === peak)
   const ramp = voiceGain.gain.events.find((event) => event[0] === 'ramp')
   const stop = context.sources.at(-1)?.stops.at(-1)
-  assert.ok(hold.some((event) => event[2] > 10), 'gain должен оставаться 1 до конца окна')
+  assert.ok(hold.some((event) => event[2] > 10), 'gain должен держать пик до конца окна')
   assert.ok(ramp && ramp[1] === 0 && ramp[2] === stop, 'затухание должно прийтись на последние миллисекунды')
   await audio.dispose()
 })
@@ -414,7 +422,35 @@ test('dispose останавливает проигрываемые источн
   assert.equal(source.stops.at(-1), 10)
 })
 
+// Перехваченный лимитом голос гаснет за 15 мс, а не обрывается в ту же секунду.
+const stolen = (source) => source.stops.some((when) => when < 10.05)
+
 test('voice cap ограничивает одновременно звучащие длинные clips', async () => {
+  const context = new FakeContext()
+  // Десять семейств — десять разных записей: проверяется общий лимит, а не
+  // лимит одной записи.
+  const spells = ['fire-bolt', 'ray-of-frost', 'shocking-grasp', 'thunderwave', 'acid-splash', 'poison-spray', 'chill-touch', 'sacred-flame', 'magic-missile', 'mind-sliver']
+  const families = ['flame', 'frost', 'electric', 'thunder', 'acid', 'poison', 'necrotic', 'radiant', 'force', 'psychic']
+  const audio = createCombatAudio({
+    muted: false,
+    audioContextFactory: () => context,
+    manifest: {
+      version: 1,
+      clips: Object.fromEntries(families.map((family) => [family, { url: `/sfx/${family}.ogg` }])),
+      profiles: Object.fromEntries(families.map((family) => [`spell:${family}`, { cast: [family] }])),
+    },
+    loader: async () => ({ duration: 8 }),
+  })
+  await audio.unlock()
+  await Promise.all(spells.map((spellId, index) => audio.playCue({
+    id: `voice-${index}`, kind: 'channel', actorId: 'mage', spellId, school: 'evocation', channelType: 'cast', durationMs: 400,
+  }, 'start')))
+  assert.equal(context.sources.length, spells.length)
+  assert.equal(context.sources.filter((source) => !stolen(source)).length, COMBAT_AUDIO_VOICE_LIMIT)
+  await audio.dispose()
+})
+
+test('одна запись звучит не больше чем COMBAT_AUDIO_CLIP_VOICE_LIMIT голосами', async () => {
   const context = new FakeContext()
   const audio = createCombatAudio({
     muted: false,
@@ -423,8 +459,12 @@ test('voice cap ограничивает одновременно звучащи
     loader: async () => ({ duration: 8 }),
   })
   await audio.unlock()
-  await Promise.all(Array.from({ length: COMBAT_AUDIO_VOICE_LIMIT + 2 }, (_, index) => audio.playCue({ ...strike, id: `voice-${index}` }, 'start')))
-  assert.equal(context.sources.filter((source) => !source.stops.some((when) => when <= 10)).length, COMBAT_AUDIO_VOICE_LIMIT)
+  for (let index = 0; index < 5; index += 1) await audio.playCue({ ...strike, id: `same-clip-${index}` }, 'start')
+  assert.equal(context.sources.length, 5)
+  assert.equal(context.sources.filter((source) => !stolen(source)).length, COMBAT_AUDIO_CLIP_VOICE_LIMIT)
+  // Снимаются самые старые голоса, а свежий удар звучит.
+  assert.ok(!stolen(context.sources.at(-1)))
+  assert.ok(stolen(context.sources[0]))
   await audio.dispose()
 })
 
@@ -571,4 +611,260 @@ test('Отмена подавляет звук, пока декодирован�
   assert.equal(await second, false)
   assert.equal(context.sources.length, 0)
   await audio.dispose()
+})
+
+// --- Вариации, уровни, панорама и покрытие записями (2026-10-01) ---
+
+class PannerContext extends FakeContext {
+  constructor() { super(); this.panners = [] }
+  createStereoPanner() { const panner = new FakeGain(); panner.pan = new FakeParam(); this.panners.push(panner); return panner }
+}
+
+class RateSource extends FakeSource {
+  constructor() { super(); this.playbackRate = new FakeParam(1) }
+}
+
+class RateContext extends PannerContext {
+  createBufferSource() { const source = new RateSource(); this.sources.push(source); return source }
+}
+
+const voicePeak = (gain) => gain.gain.events.find((event) => event[0] === 'set')?.[1]
+
+test('разброс повтора: скорость ±5 %, громкость ±1.5 дБ, повтор той же реплики стабилен', () => {
+  const rates = new Set()
+  for (let index = 0; index < 40; index += 1) {
+    const variation = combatAudioVariation(`attack-${index}:contact:attack-sword-impact`)
+    assert.ok(Math.abs(variation.playbackRate - 1) <= COMBAT_AUDIO_RATE_SPREAD + 1e-9, `rate ${variation.playbackRate}`)
+    assert.ok(Math.abs(variation.gainDb) <= COMBAT_AUDIO_GAIN_SPREAD_DB + 1e-9, `gain ${variation.gainDb}`)
+    assert.ok(Math.abs(variation.gain - 10 ** (variation.gainDb / 20)) < 1e-9)
+    rates.add(variation.playbackRate)
+  }
+  assert.ok(rates.size >= 30, `серия ударов не должна повторять одну скорость: ${rates.size}`)
+  assert.deepEqual(combatAudioVariation('same:contact:x'), combatAudioVariation('same:contact:x'))
+  // Крит тяжелее того же удара, но не уходит в «замедленную плёнку».
+  const hit = combatAudioVariation('crit-seed', 'impact')
+  const crit = combatAudioVariation('crit-seed', 'critical')
+  assert.ok(crit.playbackRate < hit.playbackRate)
+  assert.ok(crit.playbackRate >= .9)
+})
+
+test('выбор варианта не повторяет только что звучавший и сохраняет запасные', () => {
+  assert.deepEqual(combatAudioClipOrder(['only'], 'seed', 'only'), ['only'])
+  assert.deepEqual(combatAudioClipOrder([], 'seed'), [])
+  for (let index = 0; index < 20; index += 1) {
+    const order = combatAudioClipOrder(['a', 'b', 'c'], `seed-${index}`, 'b')
+    assert.notEqual(order[0], 'b')
+    assert.deepEqual([...order].sort(), ['a', 'b', 'c'])
+  }
+  const starts = new Set(Array.from({ length: 30 }, (_, index) => combatAudioClipOrder(['a', 'b', 'c'], `pick-${index}`)[0]))
+  assert.equal(starts.size, 3, 'разные реплики должны начинать с разных вариантов')
+})
+
+test('панорама и ослабление по положению события на экране', () => {
+  assert.equal(combatAudioStereoPan(0, 1000), -COMBAT_AUDIO_MAX_PAN)
+  assert.equal(combatAudioStereoPan(1000, 1000), COMBAT_AUDIO_MAX_PAN)
+  assert.equal(combatAudioStereoPan(500, 1000), 0)
+  assert.equal(combatAudioStereoPan(-200, 1000), -COMBAT_AUDIO_MAX_PAN, 'за краем панорама не превышает предел')
+  assert.equal(combatAudioStereoPan(Number.NaN, 1000), 0)
+  assert.equal(combatAudioStereoPan(10, 0), 0)
+  assert.deepEqual(combatAudioSpatialFromScreen({ x: 500, y: 400, width: 1000, height: 800 }), { pan: 0, gain: 1 })
+  const corner = combatAudioSpatialFromScreen({ x: 0, y: 0, width: 1000, height: 800 })
+  assert.equal(corner.pan, -COMBAT_AUDIO_MAX_PAN)
+  assert.ok(corner.gain < 1 && corner.gain >= .79, `угол кадра тише центра: ${corner.gain}`)
+  assert.equal(combatAudioSpatialFromScreen({ x: 1200, y: 100, width: 1000, height: 800 }).gain, .5)
+  assert.equal(combatAudioSpatialFromScreen({ x: 500, y: 400, width: 1000, height: 800, visible: false }).gain, .5)
+  const spatial = { source: { pan: -.5, gain: .9 }, target: { pan: .6, gain: .7 } }
+  assert.deepEqual(combatAudioPhaseSpatial('start', spatial), { pan: -.5, gain: .9 })
+  assert.deepEqual(combatAudioPhaseSpatial('launch', spatial), { pan: -.5, gain: .9 })
+  assert.deepEqual(combatAudioPhaseSpatial('contact', spatial), { pan: .6, gain: .7 })
+  assert.deepEqual(combatAudioPhaseSpatial('contact', { source: { pan: .3 } }), { pan: .3, gain: 1 })
+  assert.deepEqual(combatAudioPhaseSpatial('start', undefined), { pan: 0, gain: 1 })
+  assert.deepEqual(combatAudioPhaseSpatial('start', { source: { pan: 9, gain: .01 } }), { pan: 1, gain: .5 })
+})
+
+test('уровни фаз: подготовка тише удара, крит громче, промах тише', () => {
+  assert.ok(combatAudioPhaseGain('cast') < combatAudioPhaseGain('launch'))
+  assert.ok(combatAudioPhaseGain('launch') < combatAudioPhaseGain('impact'))
+  assert.ok(combatAudioPhaseGain('impact') < combatAudioPhaseGain('critical'))
+  assert.ok(combatAudioPhaseGain('miss') < combatAudioPhaseGain('impact'))
+  assert.ok(combatAudioPhaseGain('blocked') < combatAudioPhaseGain('impact'))
+  assert.equal(combatAudioPhaseGain('impact'), 1)
+  assert.ok(combatAudioFadeMs(1400, true) > combatAudioFadeMs(1400, false), 'обрезанный длинный клип уходит мягче')
+  assert.ok(combatAudioFadeMs(1400, false) <= 40)
+  assert.equal(combatAudioDuckDepth('cast'), 0)
+  assert.ok(combatAudioDuckDepth('critical') > combatAudioDuckDepth('impact'))
+  assert.ok(combatAudioDuckDepth('impact') > 0)
+})
+
+test('cast снаряда с тем же клипом, что и launch в ту же миллисекунду, не звучит дважды', async () => {
+  const manifest = {
+    version: 1,
+    clips: { cast: { url: '/sfx/cast.ogg' }, launch: { url: '/sfx/launch.ogg' }, hit: { url: '/sfx/hit.ogg' } },
+    profiles: {
+      'spell:thunder': { cast: ['cast'], launch: ['cast'], impact: ['hit'] },
+      'spell:flame': { cast: ['cast'], launch: ['launch'], impact: ['hit'] },
+    },
+  }
+  const thunder = { id: 'thunder-bolt', kind: 'projectile', actorId: 'mage', targetIds: ['goblin'], spellId: 'thunderwave', school: 'evocation', projectileCount: 1, durationMs: 600 }
+  const flame = { ...thunder, id: 'fire-bolt', spellId: 'fire-bolt' }
+  assert.deepEqual(resolveCombatAudioPlan(thunder, manifest).map((entry) => entry.duplicateOf ?? null), ['launch', null, null])
+  assert.deepEqual(resolveCombatAudioPlan(flame, manifest).map((entry) => entry.duplicateOf ?? null), [null, null, null])
+  assert.equal(combatAudioDuplicatePhase(thunder, 'start', manifest), 'launch')
+  // Ничего не пропало из плана: аудит покрытия видит все три фазы с клипами.
+  assert.ok(resolveCombatAudioPlan(thunder, manifest).every((entry) => entry.clipIds.length))
+
+  const context = new FakeContext()
+  const clock = timers()
+  const audio = createCombatAudio({ muted: false, audioContextFactory: () => context, manifest, loader: async () => ({ duration: .3 }), setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout })
+  await audio.unlock()
+  assert.ok(audio.schedule(thunder))
+  await clock.flush()
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(context.sources.length, 2, 'thunder: launch и contact, без второго cast')
+  clock.queue.length = 0
+  assert.ok(audio.schedule(flame))
+  await clock.flush()
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(context.sources.length, 5, 'flame: разные cast и launch звучат оба')
+  await audio.dispose()
+})
+
+test('крит звучит громче попадания и с подложкой criticalLayer', async () => {
+  const manifest = {
+    version: 1,
+    clips: { hit: { url: '/sfx/hit.ogg' }, body: { url: '/sfx/body.ogg' } },
+    profiles: { 'attack:slash': { impact: ['hit'], critical: ['hit'], criticalLayer: ['body'] } },
+  }
+  const melee = { id: 'melee-hit', kind: 'strike', actorId: 'hero', targetId: 'orc', hit: true, amount: 5, attackKind: 'melee', equipment: 'sword', durationMs: 480 }
+  const critical = { ...melee, id: 'melee-crit', critical: true }
+  const profile = combatAudioProfile(critical, 'contact', manifest)
+  assert.equal(profile.intent, 'critical')
+  assert.deepEqual(profile.layerClipIds, ['body'])
+  assert.deepEqual(combatAudioProfile(melee, 'contact', manifest).layerClipIds, [], 'обычное попадание без подложки')
+
+  const context = new FakeContext()
+  const audio = createCombatAudio({ muted: false, audioContextFactory: () => context, manifest, loader: async () => ({ duration: .3 }) })
+  await audio.unlock()
+  assert.equal(await audio.playCue(melee, 'contact'), true)
+  assert.equal(context.sources.length, 1)
+  const hitPeak = voicePeak(context.gains.at(-1))
+  assert.equal(await audio.playCue(critical, 'contact'), true)
+  assert.equal(context.sources.length, 3, 'крит — основная запись и подложка')
+  const critPeak = voicePeak(context.gains.at(-2))
+  const layerPeak = voicePeak(context.gains.at(-1))
+  const unvaried = (peak, seed, intent) => peak / combatAudioVariation(seed, intent).gain
+  assert.ok(Math.abs(unvaried(hitPeak, 'melee-hit:contact:hit', 'impact') - combatAudioPhaseGain('impact')) < 1e-9)
+  assert.ok(Math.abs(unvaried(critPeak, 'melee-crit:contact:hit', 'critical') - combatAudioPhaseGain('critical')) < 1e-9)
+  assert.ok(layerPeak < critPeak, 'подложка тише основной записи')
+  await audio.dispose()
+})
+
+test('скорость, панорама и ослабление применяются к голосу записи', async () => {
+  const context = new RateContext()
+  const manifest = {
+    version: 1,
+    clips: { cast: { url: '/sfx/cast.ogg' }, hit: { url: '/sfx/hit.ogg' } },
+    profiles: { 'attack:bow': { cast: ['cast'], impact: ['hit'] } },
+  }
+  const audio = createCombatAudio({ muted: false, audioContextFactory: () => context, manifest, loader: async () => ({ duration: .3 }) })
+  await audio.unlock()
+  const spatial = { source: { pan: -.6, gain: 1 }, target: { pan: .4, gain: .5 } }
+  assert.equal(await audio.playCue({ ...strike, id: 'spatial-bow' }, 'start', { spatial }), true)
+  assert.equal(await audio.playCue({ ...strike, id: 'spatial-bow' }, 'contact', { spatial }), true)
+  assert.deepEqual(context.panners.map((panner) => panner.pan.value), [-.6, .4])
+  const [castSource, hitSource] = context.sources
+  assert.equal(castSource.playbackRate.value, combatAudioVariation('spatial-bow:start:cast', 'cast').playbackRate)
+  assert.equal(hitSource.playbackRate.value, combatAudioVariation('spatial-bow:contact:hit', 'impact').playbackRate)
+  const hitPeak = voicePeak(context.gains.at(-1))
+  assert.ok(Math.abs(hitPeak - .5 * combatAudioVariation('spatial-bow:contact:hit', 'impact').gain) < 1e-9, 'далёкая цель тише')
+  // Длительность голоса учитывает скорость воспроизведения.
+  const expectedStop = 10 + .3 / hitSource.playbackRate.value
+  assert.ok(Math.abs(hitSource.stops.at(-1) - expectedStop) < 1e-9)
+  // Без положения звук по центру и без лишнего узла.
+  assert.equal(await audio.playCue({ ...strike, id: 'center-bow' }, 'start'), true)
+  assert.equal(context.panners.length, 2)
+  await audio.dispose()
+})
+
+test('onDuck зовётся только для громких фаз реально зазвучавшего голоса', async () => {
+  const requests = []
+  const manifest = {
+    version: 1,
+    clips: { cast: { url: '/sfx/cast.ogg' }, hit: { url: '/sfx/hit.ogg' } },
+    profiles: { 'attack:bow': { cast: ['cast'], impact: ['hit'], critical: ['hit'] } },
+  }
+  const context = new FakeContext()
+  const audio = createCombatAudio({ muted: false, audioContextFactory: () => context, manifest, loader: async () => ({ duration: .3 }), onDuck: (request) => requests.push(request) })
+  await audio.unlock()
+  await audio.playCue({ ...strike, id: 'duck-1' }, 'start')
+  assert.equal(requests.length, 0, 'натяжение тетивы не приглушает атмосферу')
+  await audio.playCue({ ...strike, id: 'duck-1' }, 'contact')
+  assert.equal(requests.length, 1)
+  assert.equal(requests[0].depth, combatAudioDuckDepth('impact'))
+  assert.ok(requests[0].holdMs > 0 && requests[0].holdMs <= 300 / .9)
+  await audio.playCue({ ...strike, id: 'duck-2', critical: true }, 'contact')
+  assert.equal(requests[1].depth, combatAudioDuckDepth('critical'))
+  audio.setMuted(true)
+  await audio.playCue({ ...strike, id: 'duck-3' }, 'contact')
+  assert.equal(requests.length, 2, 'в mute фон не трогается')
+  await audio.dispose()
+})
+
+test('заклинание без смысловой семьи звучит материалом своей школы', () => {
+  const manifest = JSON.parse(readFileSync(join(repositoryRoot, 'public/assets/audio/combat/manifest.json'), 'utf8'))
+  const unknown = { id: 'homebrew', kind: 'burst', actorId: 'mage', targetIds: [], spellId: 'homebrew-spell-xyz', school: 'necromancy', shape: 'sphere', sizeFeet: 10, durationMs: 480 }
+  assert.equal(combatAudioProfile(unknown, 'contact', manifest).key, 'spell:necrotic')
+  assert.equal(combatAudioProfile({ ...unknown, school: 'evocation' }, 'contact', manifest).key, 'spell:force')
+  for (const [school, family] of Object.entries(COMBAT_AUDIO_SCHOOL_FAMILIES)) {
+    assert.ok(manifest.profiles[`spell:${family}`], `школа ${school} → отсутствующий профиль spell:${family}`)
+  }
+  // Известная семья не проваливается в соседний профиль: silence молчит.
+  const silence = { ...unknown, id: 'silence', spellId: 'silence', school: 'illusion' }
+  assert.deepEqual(combatAudioProfile(silence, 'contact', manifest).clipIds, [])
+})
+
+test('каждая семья и стиль атаки звучат реально существующими файлами', () => {
+  const manifest = JSON.parse(readFileSync(join(repositoryRoot, 'public/assets/audio/combat/manifest.json'), 'utf8'))
+  const fileFor = (clipId) => {
+    const url = manifest.clips[clipId]?.url
+    assert.ok(url, `нет клипа ${clipId}`)
+    const path = join(repositoryRoot, 'public', url.replace(/^\//u, ''))
+    assert.ok(statSync(path).size > 0, `пустой файл ${path}`)
+    return path
+  }
+  const phases = ['cast', 'launch', 'impact', 'miss', 'critical', 'blocked', 'criticalLayer']
+  for (const profile of Object.values(manifest.profiles)) {
+    for (const phase of phases) for (const clipId of [profile[phase] ?? []].flat()) fileFor(clipId)
+  }
+  for (const family of COMBAT_AUDIO_FAMILIES) {
+    const profile = manifest.profiles[`spell:${family}`]
+    assert.ok(profile, `нет профиля spell:${family}`)
+    if (family === 'silence') {
+      assert.deepEqual(profile.silentPhases, ['cast', 'launch', 'impact'])
+      continue
+    }
+    for (const phase of ['cast', 'impact', 'miss']) assert.ok([profile[phase] ?? []].flat().length, `spell:${family} молчит в ${phase}`)
+  }
+  for (const style of COMBAT_AUDIO_ATTACK_STYLES) {
+    const profile = manifest.profiles[`attack:${style}`]
+    for (const phase of ['impact', 'miss', 'critical']) assert.ok([profile[phase] ?? []].flat().length, `attack:${style} молчит в ${phase}`)
+    for (const clipId of [profile.criticalLayer ?? []].flat()) {
+      assert.ok(![profile.critical].flat().includes(clipId), `attack:${style}: подложка крита не должна дублировать основную запись`)
+    }
+  }
+  // Ни один клип manifest не висит без профиля.
+  const used = new Set(Object.values(manifest.profiles).flatMap((profile) => phases.flatMap((phase) => [profile[phase] ?? []].flat())))
+  assert.deepEqual(Object.keys(manifest.clips).filter((clipId) => !used.has(clipId)), [])
+})
+
+test('план реального manifest для каждого заклинания каталога разрешается в файлы', () => {
+  const manifest = JSON.parse(readFileSync(join(repositoryRoot, 'public/assets/audio/combat/manifest.json'), 'utf8'))
+  for (const entry of spellVisualAudit()) {
+    const cue = { id: `audit:${entry.id}`, kind: 'burst', actorId: 'mage', targetIds: ['t'], spellId: entry.id, school: entry.school, shape: 'sphere', sizeFeet: 10, durationMs: 600 }
+    for (const step of resolveCombatAudioPlan(cue, manifest)) {
+      if (entry.soundFamily === 'silence') { assert.deepEqual(step.urls, []); continue }
+      assert.ok(step.urls.length, `${entry.id}/${step.phase} без записи`)
+      for (const url of step.urls) assert.ok(statSync(join(repositoryRoot, 'public', url.replace(/^\//u, ''))).size > 0)
+    }
+  }
 })

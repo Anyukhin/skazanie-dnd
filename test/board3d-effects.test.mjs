@@ -285,3 +285,95 @@ test('объёмный взрыв следует тем же клеткам сф
     effect.dispose()
   }
 })
+
+const STRIKE_PHASES = Array.from({ length: 41 }, (_, index) => index / 40)
+const meleeBase = { kind: 'strike', actorId: 'mage', targetId: 'target', amount: 5, attackKind: 'melee', equipment: 'sword', from: { x: 1, y: 2 }, to: { x: 6, y: 2 }, durationMs: 480 }
+
+test('свет физической атаки: только у крита, не больше двух источников, гаснет к концу и молчит на минимальной детализации', () => {
+  const cases = [
+    ['hit', { hit: true }, false],
+    ['miss', { hit: false }, false],
+    ['blocked', { hit: false, blocked: true }, false],
+    ['critical', { hit: true, critical: true }, true],
+    ['ranged-critical', { hit: true, critical: true, attackKind: 'ranged', equipment: 'bow' }, true],
+  ]
+  for (const detail of ['full', 'reduced', 'minimal']) {
+    for (const [name, patch, expectsLight] of cases) {
+      const effect = createCombatEffect3D({ ...meleeBase, ...patch, id: `light-${name}-${detail}`, detail }, actors, map())
+      const lights = effect.group.userData.lights
+      assert.ok(Array.isArray(lights), `${name}: userData.lights объявлен`)
+      let lit = 0
+      for (const phase of STRIKE_PHASES) {
+        effect.update(phase)
+        assert.equal(effect.group.userData.lights, lights)
+        assert.ok(lights.length <= 2, `${name}: не больше двух источников`)
+        for (const light of lights) {
+          assert.ok(light.intensity > 0 && light.intensity <= 6)
+          assert.ok(light.distance >= 3 && light.distance <= 8)
+          assert.match(light.color, /^#[0-9a-f]{6}$/iu)
+        }
+        if (lights.length) lit += 1
+      }
+      assert.equal(lights.length, 0, `${name}: после progress 1 свет погашен`)
+      assert.equal(lit > 0, expectsLight && detail !== 'minimal', `${name}/${detail}: свет только у крита и не на минимальной детализации`)
+      effect.dispose()
+    }
+  }
+})
+
+test('промах рисует смазанный след рядом с целью без вспышки, попадание — вспышку на цели', () => {
+  const hit = createCombatEffect3D({ ...meleeBase, id: 'outcome-hit', hit: true, detail: 'full' }, actors, map())
+  const miss = createCombatEffect3D({ ...meleeBase, id: 'outcome-miss', hit: false, detail: 'full' }, actors, map())
+  const arcOf = (effect) => effect.group.children.find((child) => child.userData.attackStyle)
+  assert.ok(hit.group.children.some((child) => child.userData.impactFlash), 'попадание вспыхивает на цели')
+  assert.equal(miss.group.children.some((child) => child.userData.impactFlash), false, 'промах без вспышки попадания')
+  const hitArc = arcOf(hit), missArc = arcOf(miss)
+  assert.ok(Math.hypot(hitArc.position.x - 6.5, hitArc.position.z - 2.5) < .05, 'след попадания проходит по цели')
+  assert.ok(Math.hypot(missArc.position.x - 6.5, missArc.position.z - 2.5) > .35, 'след промаха уходит мимо цели')
+  assert.ok(missArc.children.length > hitArc.children.length, 'у промаха есть смазанный двойник следа')
+  hit.dispose(); miss.dispose()
+
+  const critical = createCombatEffect3D({ ...meleeBase, id: 'outcome-critical', hit: true, critical: true, detail: 'full' }, actors, map())
+  const plain = createCombatEffect3D({ ...meleeBase, id: 'outcome-plain', hit: true, detail: 'full' }, actors, map())
+  const radius = (effect) => arcOf(effect).children[0].geometry.parameters.radius
+  assert.ok(radius(critical) > radius(plain), 'крит крупнее обычного удара')
+  critical.dispose(); plain.dispose()
+
+  const blocked = createCombatEffect3D({ ...meleeBase, id: 'outcome-blocked', hit: false, blocked: true, detail: 'full' }, actors, map())
+  const shield = blocked.group.children.find((child) => child.type === 'Group' && child.userData.attackOutcome === 'blocked' && !child.userData.attackStyle)
+  assert.ok(shield, 'блок рисует щит')
+  assert.ok(shield.position.x < 6.5, 'щит стоит между атакующим и целью')
+  blocked.update(.32)
+  assert.ok(shield.visible, 'щит виден в момент удара')
+  blocked.dispose()
+})
+
+test('update() физической атаки не создаёт и не добавляет объектов', () => {
+  const variants = [
+    { ...meleeBase, hit: true, critical: true },
+    { ...meleeBase, hit: false },
+    { ...meleeBase, hit: false, blocked: true },
+    { ...meleeBase, hit: true, equipment: 'staff' },
+    { ...meleeBase, hit: true, equipment: 'dagger' },
+    { ...meleeBase, hit: true, attackKind: 'ranged', equipment: 'bow' },
+    { ...meleeBase, hit: false, attackKind: 'thrown', equipment: 'dagger' },
+    projectile,
+  ]
+  for (const [index, cue] of variants.entries()) {
+    const effect = createCombatEffect3D({ ...cue, id: `alloc-${index}`, detail: 'full' }, actors, map())
+    const snapshot = () => {
+      const objects = []
+      const resources = new Set()
+      effect.group.traverse((object) => { objects.push(object); if (object.geometry) resources.add(object.geometry); if (object.material) resources.add(object.material) })
+      return { objects, resources }
+    }
+    effect.update(0)
+    const before = snapshot()
+    for (const phase of STRIKE_PHASES) effect.update(phase)
+    const after = snapshot()
+    assert.equal(after.objects.length, before.objects.length, `${index}: число объектов`)
+    assert.ok(after.objects.every((object, position) => object === before.objects[position]), `${index}: те же объекты`)
+    assert.deepEqual([...after.resources], [...before.resources], `${index}: те же ресурсы`)
+    effect.dispose()
+  }
+})

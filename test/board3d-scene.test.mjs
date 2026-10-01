@@ -238,6 +238,7 @@ test('pointLightShadows управляет только тенями локал�
     const off = objectsNamed(disabled.group, 'fire-light')[0]
     assert.equal(on.castShadow, true)
     assert.equal(off.castShadow, false)
+    assert.ok(on.shadow.bias < 0 && on.shadow.normalBias > 0, 'тень огня смещена против самозатенения на карте 256')
     assert.equal(enabled.group.getObjectByName('ground-plane').castShadow, false)
     assert.equal(disabled.group.getObjectByName('ground-plane').castShadow, false)
   } finally { enabled.dispose(); disabled.dispose() }

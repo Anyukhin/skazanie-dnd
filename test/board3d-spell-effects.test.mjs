@@ -428,7 +428,11 @@ test('линия не пересекает стену, а крупный зак�
     id: 'wall-line', kind: 'burst', actorId: 'mage', targetIds: [], spellId: 'lightning-bolt', school: 'evocation',
     origin: { x: 1, y: 6 }, center: { x: 8, y: 6 }, shape: 'line', originMode: 'self', sizeFeet: 40, durationMs: 480,
   }, actors, blocked)
-  assert.equal(throughWall, null, 'линия не должна появляться сквозь blocksSight edge')
+  assert.ok(throughWall, 'видимая часть луча до стены остаётся в 3D')
+  throughWall.update(1)
+  const wallLine = throughWall.group.children.find((child) => child.isLine)
+  assert.equal(wallLine.geometry.getAttribute('position').getX(2), 3.5, 'линия обрывается перед blocksSight edge и не проходит сквозь него')
+  throughWall.dispose()
 
   const confirmedThroughWall = createSpellEffect3D({
     id: 'confirmed-wall-line', kind: 'burst', actorId: 'mage', targetIds: [], spellId: 'lightning-bolt', school: 'evocation',
@@ -645,4 +649,305 @@ test('3D gallery sanity проходит все карточки каталог�
   }
   assert.ok(familyCounts.size >= 20, `shared families covered: ${[...familyCounts.keys()].join(', ')}`)
   assert.ok(maximumChildren <= 80, `bounded gallery draw children: ${maximumChildren}`)
+})
+
+function decodedMap(edit = () => {}) {
+  const value = createTacticalMap({ width: 12, height: 12, locationId: 'spell-effects-audit', fill: { passable: true, revealed: true, material: 'stone' } })
+  edit(value)
+  return JSON.parse(JSON.stringify(serializeTacticalMap(value)))
+}
+
+test('контур Огненного шара строится по всем видимым клеткам и остаётся замкнутым на любой детализации', async () => {
+  const { decodeTacticalMap } = await import(pathToFileURL(join(buildDir, 'src/tactical-map-client.mjs')).href)
+  const { spellBurstCells } = await import(pathToFileURL(join(buildDir, 'src/spell-effects.mjs')).href)
+  const board = decodeTacticalMap(map())
+  for (const detail of ['full', 'reduced', 'minimal']) {
+    const cue = {
+      id: `fireball-contour-${detail}`, kind: 'burst', actorId: 'mage', targetIds: [], spellId: 'fireball', school: 'evocation',
+      center: { x: 6, y: 6 }, gridOrigin: { x: 6, y: 6 }, geometryVersion: 'circle-grid-v2', shape: 'sphere', sizeFeet: 20, durationMs: 1000, detail,
+    }
+    const cells = spellBurstCells(board, cue, actors, { includeHidden: true })
+    assert.ok(cells.length > 36, 'площадь 20 фт больше любой выборки искр')
+    const fireball = createSpellEffect3D(cue, actors, board)
+    assert.ok(fireball)
+    const contour = fireball.group.children.find((child) => child.type === 'LineSegments')
+    const positions = contour.geometry.getAttribute('position')
+    const keys = new Set(cells.map(({ x, y }) => `${x},${y}`))
+    const boundaryEdges = cells.reduce((sum, { x, y }) => sum
+      + [[0, -1], [1, 0], [0, 1], [-1, 0]].filter(([dx, dy]) => !keys.has(`${x + dx},${y + dy}`)).length, 0)
+    assert.equal(positions.count / 2, boundaryEdges, `${detail}: каждая граничная грань footprint попадает в контур`)
+    const degree = new Map()
+    for (let index = 0; index < positions.count; index += 1) {
+      const key = `${positions.getX(index)},${positions.getZ(index)}`
+      degree.set(key, (degree.get(key) ?? 0) + 1)
+    }
+    assert.ok([...degree.values()].every((count) => count % 2 === 0), `${detail}: у контура нет оборванных концов`)
+    fireball.dispose()
+  }
+})
+
+test('кольцо области совпадает с серверной площадью: круг на пересечении сетки или квадрат Чебышёва', async () => {
+  const { decodeTacticalMap } = await import(pathToFileURL(join(buildDir, 'src/tactical-map-client.mjs')).href)
+  const board = decodeTacticalMap(map())
+  const ringOf = (effect) => effect.group.children.find((child) => child.geometry?.type === 'TorusGeometry' && child.geometry.parameters.radius > 1
+    || child.geometry?.type === 'RingGeometry')
+  for (const sizeFeet of [20, 30]) {
+    const circle = createSpellEffect3D({
+      id: `circle-ring-${sizeFeet}`, kind: 'burst', actorId: 'mage', targetIds: [], spellId: 'shatter', school: 'evocation',
+      center: { x: 6, y: 6 }, gridOrigin: { x: 6, y: 6 }, geometryVersion: 'circle-grid-v2', shape: 'sphere', sizeFeet, durationMs: 480, detail: 'full',
+    }, actors, board)
+    assert.ok(circle)
+    circle.update(.6)
+    const ring = ringOf(circle)
+    assert.equal(ring.geometry.type, 'TorusGeometry')
+    assert.ok(Math.abs(ring.geometry.parameters.radius * ring.scale.x - sizeFeet / 5) < 1e-9, `${sizeFeet} фт: радиус кольца равен r клеток, без капа 4`)
+    assert.deepEqual([ring.position.x, ring.position.z], [6, 6], 'центр — пересечение сетки gridOrigin')
+    circle.dispose()
+  }
+  const square = createSpellEffect3D({
+    id: 'legacy-square-ring', kind: 'burst', actorId: 'mage', targetIds: [], spellId: 'shatter', school: 'evocation',
+    center: { x: 6, y: 6 }, shape: 'sphere', originMode: 'point', sizeFeet: 10, durationMs: 480, detail: 'full',
+  }, actors, board)
+  assert.ok(square)
+  square.update(.6)
+  const ring = ringOf(square)
+  assert.equal(ring.geometry.type, 'RingGeometry', 'старая сфера — квадрат 2r+1 клеток, а не круг')
+  assert.equal(ring.geometry.parameters.thetaSegments, 4)
+  assert.equal(ring.geometry.userData.halfWidth * ring.scale.x, 2.5, 'полуширина r+0.5 клетки')
+  assert.deepEqual([ring.position.x, ring.position.z], [6.5, 6.5])
+  square.dispose()
+})
+
+test('аура крупного существа — квадрат вокруг центра площади с полушириной r + size/2 на высоте модели', async () => {
+  const { decodeTacticalMap } = await import(pathToFileURL(join(buildDir, 'src/tactical-map-client.mjs')).href)
+  const board = decodeTacticalMap(decodedMap((value) => setCell(value, 4, 4, { elevation: 10 })))
+  const ogre = { id: 'ogre', x: 3, y: 3, footprint: { version: 1, size: 2 } }
+  const aura = createSpellEffect3D({
+    id: 'large-aura', kind: 'aura', actorId: 'ogre', spellId: 'spirit-guardians', school: 'conjuration',
+    radiusFeet: 10, auraType: 'spell', active: true, durationMs: 440, detail: 'reduced',
+  }, [ogre], board)
+  assert.ok(aura)
+  aura.update(.5)
+  const ring = aura.group.children.find((child) => child.geometry?.type === 'RingGeometry')
+  assert.ok(ring, 'граница ауры — квадрат по Чебышёву')
+  assert.equal(ring.geometry.userData.halfWidth, 3, '10 фт + половина площади 2×2')
+  assert.equal(ring.position.x, 4)
+  assert.equal(ring.position.z, 4)
+  assert.ok(Math.abs(ring.position.y - (2 + .05)) < 1e-9, 'аура стоит на максимуме рельефа под площадью, как модель')
+  aura.dispose()
+})
+
+test('3D-Молния видима по клеткам луча, а не по прямой до кликнутой клетки', async () => {
+  const { decodeTacticalMap } = await import(pathToFileURL(join(buildDir, 'src/tactical-map-client.mjs')).href)
+  // Прямая (1,1)→(8,3) задевает стену (5,2), а сервер ведёт луч по диагонали (1,1)→(9,9).
+  const board = decodeTacticalMap(decodedMap((value) => setCell(value, 5, 2, { passable: false })))
+  const bolt = createSpellEffect3D({
+    id: 'diagonal-bolt', kind: 'burst', actorId: 'mage', targetIds: [], spellId: 'lightning-bolt', school: 'evocation',
+    origin: { x: 1, y: 1 }, center: { x: 8, y: 3 }, shape: 'line', originMode: 'self', sizeFeet: 40, durationMs: 480,
+  }, [{ id: 'mage', x: 1, y: 1 }], board)
+  assert.ok(bolt, 'луч по восьми направлениям не должен пропадать из-за прямой до клика')
+  bolt.update(1)
+  const line = bolt.group.children.find((child) => child.isLine)
+  const positions = line.geometry.getAttribute('position')
+  assert.deepEqual([positions.getX(2), positions.getZ(2)], [9.5, 9.5])
+  bolt.dispose()
+})
+
+test('исход промаха берётся у той же цели, к которой летит снаряд', async () => {
+  const { decodeTacticalMap } = await import(pathToFileURL(join(buildDir, 'src/tactical-map-client.mjs')).href)
+  const board = decodeTacticalMap(map())
+  const effect = createSpellEffect3D({
+    id: 'paired-miss', kind: 'projectile', actorId: 'mage', targetIds: ['vanished', 'target'], spellId: 'ray-of-frost', school: 'evocation',
+    projectileCount: 1, durationMs: 520, detail: 'minimal', targetOutcomes: { target: 'miss' },
+  }, actors, board)
+  assert.ok(effect)
+  effect.update(.9)
+  const impacts = []
+  effect.group.traverse((child) => { if (child.geometry?.type === 'TorusGeometry' && child.visible) impacts.push(child) })
+  assert.equal(impacts.length, 0, 'промах цели target не должен рисовать попадание')
+  effect.dispose()
+})
+
+test('снаряды распределяются по всем целям, а Волшебная стрела берёт число дротиков из cue', async () => {
+  const { decodeTacticalMap } = await import(pathToFileURL(join(buildDir, 'src/tactical-map-client.mjs')).href)
+  const board = decodeTacticalMap(map())
+  const twoTargets = [{ id: 'mage', x: 1, y: 6 }, { id: 'a', x: 6, y: 4 }, { id: 'b', x: 6, y: 8 }]
+  const splash = createSpellEffect3D({
+    id: 'acid-splash-two', kind: 'projectile', actorId: 'mage', targetIds: ['a', 'b'], spellId: 'acid-splash', school: 'conjuration',
+    projectileCount: 2, durationMs: 520, detail: 'reduced',
+  }, twoTargets, board)
+  assert.ok(splash)
+  assert.equal(splash.group.children.length, 2)
+  splash.update(.95)
+  const impacts = splash.group.children.map((root) => root.children.find((child) => child.geometry?.type === 'TorusGeometry').position)
+  assert.deepEqual(impacts.map((point) => [point.x, point.z]).sort(), [[6.5, 4.5], [6.5, 8.5]])
+  splash.dispose()
+
+  const missile = createSpellEffect3D({
+    id: 'magic-missile-upcast', kind: 'projectile', actorId: 'mage', targetIds: ['target'], spellId: 'magic-missile', school: 'evocation',
+    projectileCount: 5, durationMs: 520, detail: 'full',
+  }, actors, board)
+  assert.equal(missile.group.children.length, 5, 'ячейка 3-го круга — пять дротиков')
+  missile.dispose()
+})
+
+test('эффект над крупным существом поднимается от максимума рельефа его площади', async () => {
+  const { decodeTacticalMap } = await import(pathToFileURL(join(buildDir, 'src/tactical-map-client.mjs')).href)
+  const board = decodeTacticalMap(decodedMap((value) => setCell(value, 2, 6, { elevation: 10 })))
+  const ogre = { id: 'ogre', x: 1, y: 5, footprint: { version: 1, size: 2 } }
+  const effect = createSpellEffect3D({
+    id: 'ogre-bolt', kind: 'projectile', actorId: 'ogre', targetIds: ['target'], spellId: 'fire-bolt', school: 'evocation',
+    projectileCount: 1, durationMs: 520, detail: 'minimal',
+  }, [ogre, { id: 'target', x: 8, y: 6 }], board)
+  assert.ok(effect)
+  effect.update(.08)
+  const orb = effect.group.children[0].children.find((child) => child.geometry?.type === 'SphereGeometry')
+  assert.ok(Math.abs(orb.position.y - (2 + .78)) < 1e-9, 'старт снаряда — от высоты модели 2×2, а не anchor-клетки')
+  assert.deepEqual([orb.position.x, orb.position.z], [2, 6])
+  effect.dispose()
+})
+
+test('эффекты не пересчитывают bounding sphere каждый кадр и не отсекаются по устаревшей сфере', async () => {
+  const { decodeTacticalMap } = await import(pathToFileURL(join(buildDir, 'src/tactical-map-client.mjs')).href)
+  const THREE = await import('three')
+  const board = decodeTacticalMap(map())
+  const original = THREE.BufferGeometry.prototype.computeBoundingSphere
+  let calls = 0
+  THREE.BufferGeometry.prototype.computeBoundingSphere = function patched(...args) { calls += 1; return original.apply(this, args) }
+  try {
+    for (const cue of [
+      { id: 'cull-fireball', kind: 'burst', actorId: 'mage', targetIds: [], spellId: 'fireball', school: 'evocation', center: { x: 6, y: 6 }, shape: 'sphere', sizeFeet: 20, durationMs: 1000, detail: 'full' },
+      { id: 'cull-missile', kind: 'projectile', actorId: 'mage', targetIds: ['target'], spellId: 'magic-missile', school: 'evocation', projectileCount: 3, durationMs: 520, detail: 'full' },
+      { id: 'cull-chain', kind: 'beam', actorId: 'mage', targetIds: ['target'], spellId: 'chain-lightning', school: 'evocation', chain: false, durationMs: 560, detail: 'full' },
+      { id: 'cull-heal', kind: 'channel', actorId: 'mage', targetId: 'target', spellId: 'healing-word', school: 'evocation', channelType: 'healing', durationMs: 480, detail: 'full' },
+    ]) {
+      const effect = createSpellEffect3D(cue, actors, board)
+      assert.ok(effect, cue.id)
+      effect.group.traverse((object) => assert.equal(object.frustumCulled, false, `${cue.id}: ${object.type}`))
+      calls = 0
+      for (const progress of [.1, .3, .5, .7, .9]) effect.update(progress)
+      assert.equal(calls, 0, `${cue.id}: update() не должен пересчитывать bounding sphere`)
+      effect.dispose()
+    }
+  } finally {
+    THREE.BufferGeometry.prototype.computeBoundingSphere = original
+  }
+})
+
+const LIGHT_CUES = [
+  { id: 'light-fireball', kind: 'burst', actorId: 'mage', targetIds: [], spellId: 'fireball', school: 'evocation', center: { x: 6, y: 6 }, shape: 'sphere', sizeFeet: 20, durationMs: 1000 },
+  { id: 'light-fire-bolt', kind: 'projectile', actorId: 'mage', targetIds: ['target'], spellId: 'fire-bolt', school: 'evocation', projectileCount: 1, durationMs: 520 },
+  { id: 'light-missile', kind: 'projectile', actorId: 'mage', targetIds: ['target'], spellId: 'magic-missile', school: 'evocation', projectileCount: 3, durationMs: 520 },
+  { id: 'light-chain', kind: 'beam', actorId: 'mage', targetIds: ['target'], spellId: 'chain-lightning', school: 'evocation', chain: false, durationMs: 560 },
+  { id: 'light-bolt-line', kind: 'burst', actorId: 'mage', targetIds: [], spellId: 'lightning-bolt', school: 'evocation', origin: { x: 1, y: 6 }, center: { x: 2, y: 6 }, shape: 'line', originMode: 'self', sizeFeet: 40, durationMs: 480 },
+  { id: 'light-heal', kind: 'channel', actorId: 'mage', targetId: 'target', spellId: 'cure-wounds', school: 'evocation', channelType: 'healing', durationMs: 480 },
+  { id: 'light-teleport', kind: 'channel', actorId: 'mage', from: { x: 1, y: 6 }, position: { x: 6, y: 6 }, spellId: 'misty-step', school: 'conjuration', channelType: 'teleport', durationMs: 480 },
+]
+const QUIET_CUES = [
+  { id: 'quiet-aura', kind: 'aura', actorId: 'mage', spellId: 'spirit-guardians', school: 'conjuration', radiusFeet: 15, auraType: 'spell', active: true, durationMs: 440 },
+  { id: 'quiet-shield', kind: 'channel', actorId: 'mage', targetId: 'mage', spellId: 'shield', school: 'abjuration', channelType: 'cast', durationMs: 480 },
+  { id: 'quiet-hold', kind: 'channel', actorId: 'mage', targetId: 'target', spellId: 'hold-person', school: 'enchantment', channelType: 'cast', durationMs: 480 },
+  { id: 'quiet-toll', kind: 'channel', actorId: 'mage', targetId: 'target', spellId: 'toll-the-dead', school: 'necromancy', channelType: 'cast', durationMs: 480 },
+  { id: 'quiet-summon', kind: 'channel', actorId: 'mage', targetId: 'target', spellId: 'summon-beast', school: 'conjuration', channelType: 'summon', durationMs: 480 },
+  { id: 'quiet-whip', kind: 'beam', actorId: 'mage', targetIds: ['target'], spellId: 'tasha-s-mind-whip', school: 'enchantment', chain: false, durationMs: 560 },
+  { id: 'quiet-blast', kind: 'beam', actorId: 'mage', targetIds: ['target'], spellId: 'eldritch-blast', school: 'evocation', chain: false, durationMs: 560, targetOutcomes: { target: 'miss' } },
+  { id: 'quiet-cone', kind: 'burst', actorId: 'mage', targetIds: [], spellId: 'burning-hands', school: 'evocation', center: { x: 4, y: 6 }, shape: 'cone', originMode: 'self', sizeFeet: 15, durationMs: 480 },
+]
+const PHASES = Array.from({ length: 51 }, (_, index) => index / 50)
+
+test('контракт света эффекта: не больше двух источников, гаснет к концу и молчит на минимальной детализации', async () => {
+  const { decodeTacticalMap } = await import(pathToFileURL(join(buildDir, 'src/tactical-map-client.mjs')).href)
+  const board = decodeTacticalMap(map())
+  for (const detail of ['full', 'reduced', 'minimal']) {
+    for (const base of [...LIGHT_CUES, ...QUIET_CUES]) {
+      const cue = { ...base, id: `${base.id}-${detail}`, detail }
+      const effect = createSpellEffect3D(cue, actors, board)
+      assert.ok(effect, cue.id)
+      const lights = effect.group.userData.lights
+      assert.ok(Array.isArray(lights), `${cue.id}: userData.lights объявлен сразу`)
+      const seen = new Set()
+      let lit = 0
+      for (const phase of PHASES) {
+        effect.update(phase)
+        const frame = effect.group.userData.lights
+        assert.equal(frame, lights, `${cue.id}: массив света не пересоздаётся каждый кадр`)
+        assert.ok(frame.length <= 2, `${cue.id}@${phase}: не больше двух источников`)
+        for (const light of frame) {
+          seen.add(light)
+          for (const key of ['x', 'y', 'z', 'intensity', 'distance']) assert.ok(Number.isFinite(light[key]), `${cue.id}: ${key}`)
+          assert.match(light.color, /^#[0-9a-f]{6}$/iu)
+          assert.ok(light.intensity > 0 && light.intensity <= 6, `${cue.id}: яркость ${light.intensity}`)
+          assert.ok(light.distance >= 3 && light.distance <= 8, `${cue.id}: дальность ${light.distance}`)
+        }
+        if (frame.length) lit += 1
+      }
+      assert.equal(effect.group.userData.lights.length, 0, `${cue.id}: после progress 1 свет погашен`)
+      assert.ok(seen.size <= 2, `${cue.id}: источники берутся из постоянного пула`)
+      if (detail === 'minimal') assert.equal(lit, 0, `${cue.id}: на минимальной детализации света нет`)
+      else if (LIGHT_CUES.includes(base)) assert.ok(lit > 0, `${cue.id}: эффект должен подсветить сцену`)
+      effect.dispose()
+    }
+  }
+})
+
+test('update() переиспользует объекты, геометрию и материалы и ничего не добавляет в сцену', async () => {
+  const { decodeTacticalMap } = await import(pathToFileURL(join(buildDir, 'src/tactical-map-client.mjs')).href)
+  const board = decodeTacticalMap(map())
+  const inventory = (effect) => {
+    const objects = []
+    const geometries = new Set()
+    const materials = new Set()
+    effect.group.traverse((object) => {
+      objects.push(object)
+      if (object.geometry) geometries.add(object.geometry)
+      for (const entry of [object.material].flat()) if (entry) materials.add(entry)
+    })
+    return { objects, geometries, materials }
+  }
+  for (const detail of ['full', 'minimal']) {
+    for (const base of [...LIGHT_CUES, ...QUIET_CUES]) {
+      const effect = createSpellEffect3D({ ...base, id: `${base.id}-alloc-${detail}`, detail }, actors, board)
+      assert.ok(effect, base.id)
+      effect.update(0)
+      const before = inventory(effect)
+      for (const phase of PHASES) effect.update(phase)
+      const after = inventory(effect)
+      assert.equal(after.objects.length, before.objects.length, `${base.id}: число объектов не меняется`)
+      assert.ok(after.objects.every((object, index) => object === before.objects[index]), `${base.id}: те же объекты`)
+      assert.deepEqual([...after.geometries], [...before.geometries], `${base.id}: та же геометрия`)
+      assert.deepEqual([...after.materials], [...before.materials], `${base.id}: те же материалы`)
+      effect.dispose()
+    }
+  }
+})
+
+test('огненный шар: купол и вспышка растут быстро, тает к краю, а снаряд промаха гаснет без вспышки', async () => {
+  const { decodeTacticalMap } = await import(pathToFileURL(join(buildDir, 'src/tactical-map-client.mjs')).href)
+  const board = decodeTacticalMap(map())
+  const fireball = createSpellEffect3D({ ...LIGHT_CUES[0], id: 'fireball-shape', detail: 'full' }, actors, board)
+  const dome = fireball.group.children[2]
+  fireball.update(.56 + .44 * .15)
+  const early = dome.scale.x
+  fireball.update(.56 + .44 * .34)
+  const full = dome.scale.x
+  assert.ok(early > full * .7, 'ease-out: за первую треть взрыва купол почти достигает края')
+  assert.ok(dome.scale.y < dome.scale.x * .6, 'купол приплюснут и не закрывает фигурки целиком')
+  assert.ok(dome.material.vertexColors, 'край купола ярче макушки')
+  fireball.dispose()
+
+  const miss = createSpellEffect3D({
+    id: 'bolt-miss-path', kind: 'projectile', actorId: 'mage', targetIds: ['target'], spellId: 'fire-bolt', school: 'evocation',
+    projectileCount: 1, durationMs: 520, detail: 'full', targetOutcomes: { target: 'miss' },
+  }, actors, board)
+  const root = miss.group.children[0]
+  const orb = root.children.find((child) => child.geometry?.type === 'SphereGeometry')
+  miss.update(.6)
+  assert.ok(Math.hypot(orb.position.x - 6.5, orb.position.z - 6.5) > .2, 'промах проходит мимо центра цели')
+  let flashes = 0
+  for (const phase of PHASES) {
+    miss.update(phase)
+    flashes += root.children.filter((child, index) => index > 1 && child.visible && child !== orb && child.geometry?.type === 'SphereGeometry' && child.scale.x > 1).length
+  }
+  assert.equal(flashes, 0, 'у промаха нет вспышки попадания')
+  miss.dispose()
 })

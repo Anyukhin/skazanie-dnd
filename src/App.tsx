@@ -1251,7 +1251,8 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     }
   }, [])
   useEffect(() => {
-    const audio = createCombatAudio({ volume: combatEffectsVolume, muted: atmosphereSettings.muted })
+    // Громкий контакт в бою на миг приглушает атмосферную петлю.
+    const audio = createCombatAudio({ volume: combatEffectsVolume, muted: atmosphereSettings.muted, onDuck: ({ depth, holdMs }) => atmosphereAudioRef.current?.duck(depth, holdMs / 1000) })
     setCombatAudio(audio)
     const unlock = () => { void audio.unlock() }
     window.addEventListener('pointerdown', unlock)

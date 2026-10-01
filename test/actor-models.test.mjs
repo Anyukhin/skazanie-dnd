@@ -977,3 +977,15 @@ test('dispose GLB освобождает boneTexture общего Skeleton ро�
   assert.equal(textureDisposals, 1)
   assert.equal(skeleton.boneTexture, null)
 })
+
+test('встроенная фигурка смотрит в +Z, как GLB-модели и поворот на доске', () => {
+  const actor = models.createProceduralActorModel({ id: 'facing', label: 'Воин', kind: 'hero', modelKey: 'warrior' }, manifest)
+  actor.updateMatrixWorld(true)
+  const front = (name) => actor.getObjectByName(name).getWorldPosition(new Vector3()).z
+  // Нагрудник и носки сапог — перёд фигурки; корень модели при этом не повёрнут,
+  // поэтому слой экипировки по-прежнему считает перёд по +Z.
+  assert.ok(front('torso-panel') > 0, 'нагрудник впереди по +Z')
+  assert.ok(front('left-boot') > actor.getObjectByName('left-leg').getWorldPosition(new Vector3()).z, 'носок сапога смотрит вперёд')
+  assert.equal(actor.rotation.y, 0)
+  actor.dispose()
+})

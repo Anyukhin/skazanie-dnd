@@ -289,6 +289,49 @@ test('ошибка замены очищает старое снаряжение
   controller.dispose()
 })
 
+test('отказ одной модели не снимает остальную экипировку: удачные слоты монтируются, неудачные видны в error', async () => {
+  const fixture = fixtureForTest({ includeBad: true })
+  const actor = baseRig()
+  let changes = 0
+  const controller = models.createEquipmentController(actor, {
+    height: 1.4, profile: 'warrior', fetcher: fixture.fetcher, loader: fixture.loader, onChange: () => { changes += 1 },
+  })
+  await controller.setLoadout({
+    body: { model_key: 'armor-plate' },
+    main_hand: { model_key: 'longsword' },
+    off_hand: { model_key: 'shield' },
+  })
+  assert.equal(controller.status, 'error')
+  assert.match(controller.error?.message ?? '', /off_hand/u)
+  assert.doesNotMatch(controller.error?.message ?? '', /main_hand|body/u)
+  assert.deepEqual([...controller.failedSlots], ['off_hand'])
+  assert.ok(controller.rig.getGrip('right')?.getObjectByName('equipment-main_hand-longsword-default'), 'меч остался в руке')
+  assert.ok(actor.getObjectByName('partchest')?.parent?.isBone, 'доспех остался на скелете')
+  assert.equal(controller.rig.getGrip('left')?.getObjectByName('equipment-off_hand-shield-default') ?? undefined, undefined)
+  assert.equal(changes, 1)
+
+  // Повтор того же loadout после ошибки перезапускает загрузку, а успешная
+  // замена очищает список отказавших слотов.
+  await controller.setLoadout({ main_hand: { model_key: 'longsword' } })
+  assert.equal(controller.status, 'ready')
+  assert.equal(controller.error, null)
+  assert.deepEqual([...controller.failedSlots], [])
+  assert.equal(actor.getObjectByName('partchest'), undefined, 'снятый доспех освобождён')
+  controller.dispose()
+})
+
+test('слот без записи в манифесте не мешает смонтировать остальные', async () => {
+  const fixture = fixtureForTest()
+  const actor = baseRig()
+  const controller = models.createEquipmentController(actor, { height: 1.4, profile: 'warrior', fetcher: fixture.fetcher, loader: fixture.loader })
+  await controller.setLoadout({ main_hand: { model_key: 'longsword' }, off_hand: { model_key: 'shield' } })
+  assert.equal(controller.status, 'error')
+  assert.deepEqual([...controller.failedSlots], ['off_hand'])
+  assert.ok(controller.rig.getGrip('right')?.getObjectByName('equipment-main_hand-longsword-default'))
+  controller.dispose()
+  assert.deepEqual([...controller.failedSlots], [])
+})
+
 test('зверь принимает loadout без manifest и не получает floating weapon', async () => {
   const fixture = fixtureForTest()
   const actor = baseRig()
