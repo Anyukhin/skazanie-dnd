@@ -1,0 +1,819 @@
+{
+  "generated_at": "2026-10-01T15:27:52.855Z",
+  "k": 5,
+  "memory": {
+    "entities": 30,
+    "facts": 44,
+    "relationships": 18,
+    "quests": 5,
+    "threads": 1,
+    "epistemic_claims": 4,
+    "summaries": 1
+  },
+  "totals": {
+    "all": {
+      "cases": 36,
+      "recall_at_5": 0.533,
+      "top1": 0.467,
+      "answered": 1,
+      "no_answer_correct": 0,
+      "leaks": 0
+    },
+    "direct": {
+      "cases": 15,
+      "recall_at_5": 0.933,
+      "top1": 0.8,
+      "answered": 1,
+      "no_answer_correct": null,
+      "leaks": 0
+    },
+    "hop": {
+      "cases": 15,
+      "recall_at_5": 0.133,
+      "top1": 0.133,
+      "answered": 1,
+      "no_answer_correct": null,
+      "leaks": 0
+    },
+    "no_answer": {
+      "cases": 6,
+      "recall_at_5": null,
+      "top1": null,
+      "answered": null,
+      "no_answer_correct": 0,
+      "leaks": 0
+    },
+    "player_only": {
+      "cases": 34,
+      "recall_at_5": 0.518,
+      "top1": 0.464,
+      "answered": 1,
+      "no_answer_correct": 0,
+      "leaks": 0
+    }
+  },
+  "latency": {
+    "fixture": {
+      "mean_ms": 8.565,
+      "p95_ms": 11.81,
+      "samples": 1080
+    },
+    "scaled_x20": {
+      "mean_ms": 179.44,
+      "p95_ms": 316.147,
+      "samples": 1080,
+      "records": 1240
+    }
+  },
+  "cases": [
+    {
+      "id": "d01",
+      "query": "Когда открывается вход в пещеры?",
+      "viewer": "player",
+      "hop": false,
+      "no_answer": false,
+      "gold": [
+        "f-caves-tides"
+      ],
+      "retrieved": [
+        "f-caves-tides",
+        "f-caves-tracks",
+        "rel-crows-caves",
+        "f-map-found"
+      ],
+      "recall_at_5": 1,
+      "top1": true,
+      "no_answer_correct": null,
+      "answered": true,
+      "leaks": []
+    },
+    {
+      "id": "d02",
+      "query": "Сколько стоит комната в таверне?",
+      "viewer": "player",
+      "hop": false,
+      "no_answer": false,
+      "gold": [
+        "f-tavern-prices"
+      ],
+      "retrieved": [
+        "f-tavern-prices",
+        "f-keep-garrison",
+        "summary-session-1",
+        "f-docks-empty",
+        "rel-marta-tavern"
+      ],
+      "recall_at_5": 1,
+      "top1": true,
+      "no_answer_correct": null,
+      "answered": true,
+      "leaks": []
+    },
+    {
+      "id": "d03",
+      "query": "Почему не горит старый маяк?",
+      "viewer": "player",
+      "hop": false,
+      "no_answer": false,
+      "gold": [
+        "f-lighthouse-dark"
+      ],
+      "retrieved": [
+        "f-lighthouse-dark"
+      ],
+      "recall_at_5": 1,
+      "top1": true,
+      "no_answer_correct": null,
+      "answered": true,
+      "leaks": []
+    },
+    {
+      "id": "d04",
+      "query": "Какие симптомы у серой гнили?",
+      "viewer": "player",
+      "hop": false,
+      "no_answer": false,
+      "gold": [
+        "f-plague-symptoms"
+      ],
+      "retrieved": [
+        "quest-plague",
+        "rel-plague-swamp",
+        "claim-vesna-zora",
+        "rel-zora-swamp",
+        "f-swamp-fog"
+      ],
+      "recall_at_5": 0,
+      "top1": false,
+      "no_answer_correct": null,
+      "answered": true,
+      "leaks": []
+    },
+    {
+      "id": "d05",
+      "query": "Что делает амулет прилива?",
+      "viewer": "player",
+      "hop": false,
+      "no_answer": false,
+      "gold": [
+        "f-amulet-power"
+      ],
+      "retrieved": [
+        "rel-amulet-temple",
+        "f-amulet-stolen",
+        "thread-storm",
+        "f-amulet-power",
+        "f-temple-bells"
+      ],
+      "recall_at_5": 1,
+      "top1": false,
+      "no_answer_correct": null,
+      "answered": true,
+      "leaks": []
+    },
+    {
+      "id": "d06",
+      "query": "Какой знак у Братства Ворона?",
+      "viewer": "player",
+      "hop": false,
+      "no_answer": false,
+      "gold": [
+        "f-crows-sign"
+      ],
+      "retrieved": [
+        "f-crows-sign",
+        "rel-crows-caves",
+        "rel-grig-crows",
+        "f-crows-smuggle",
+        "claim-marta-crows"
+      ],
+      "recall_at_5": 1,
+      "top1": true,
+      "no_answer_correct": null,
+      "answered": true,
+      "leaks": []
+    },
+    {
+      "id": "d07",
+      "query": "Сколько копейщиков в гарнизоне крепости?",
+      "viewer": "player",
+      "hop": false,
+      "no_answer": false,
+      "gold": [
+        "f-keep-garrison"
+      ],
+      "retrieved": [
+        "f-keep-garrison",
+        "rel-lord-keep"
+      ],
+      "recall_at_5": 1,
+      "top1": true,
+      "no_answer_correct": null,
+      "answered": true,
+      "leaks": []
+    },
+    {
+      "id": "d08",
+      "query": "Что болтают про контрабандистов?",
+      "viewer": "player",
+      "hop": false,
+      "no_answer": false,
+      "gold": [
+        "claim-marta-crows"
+      ],
+      "retrieved": [
+        "claim-marta-crows",
+        "claim-ilya-storm",
+        "claim-vesna-zora",
+        "f-crows-sign",
+        "f-crows-smuggle"
+      ],
+      "recall_at_5": 1,
+      "top1": true,
+      "no_answer_correct": null,
+      "answered": true,
+      "leaks": []
+    },
+    {
+      "id": "d09",
+      "query": "Когда начинается комендантский час?",
+      "viewer": "player",
+      "hop": false,
+      "no_answer": false,
+      "gold": [
+        "f-harbor-curfew"
+      ],
+      "retrieved": [
+        "f-harbor-curfew",
+        "f-plague-symptoms",
+        "f-watch-patrol"
+      ],
+      "recall_at_5": 1,
+      "top1": true,
+      "no_answer_correct": null,
+      "answered": true,
+      "leaks": []
+    },
+    {
+      "id": "d10",
+      "query": "Сколько обещают за пропавших рыбаков?",
+      "viewer": "player",
+      "hop": false,
+      "no_answer": false,
+      "gold": [
+        "f-guild-reward"
+      ],
+      "retrieved": [
+        "f-guild-reward",
+        "f-guild-strike",
+        "quest-fishers",
+        "rel-tom-guild",
+        "rel-guild-docks"
+      ],
+      "recall_at_5": 1,
+      "top1": true,
+      "no_answer_correct": null,
+      "answered": true,
+      "leaks": []
+    },
+    {
+      "id": "d11",
+      "query": "Кто нашёл карту приливных пещер?",
+      "viewer": "player",
+      "hop": false,
+      "no_answer": false,
+      "gold": [
+        "f-map-found"
+      ],
+      "retrieved": [
+        "f-map-found",
+        "f-caves-tides",
+        "f-caves-tracks",
+        "rel-crows-caves"
+      ],
+      "recall_at_5": 1,
+      "top1": true,
+      "no_answer_correct": null,
+      "answered": true,
+      "leaks": []
+    },
+    {
+      "id": "d12",
+      "query": "Что случилось во время прошлогоднего шторма?",
+      "viewer": "player",
+      "hop": false,
+      "no_answer": false,
+      "gold": [
+        "f-storm-damage"
+      ],
+      "retrieved": [
+        "claim-ilya-storm",
+        "f-storm-damage",
+        "thread-storm",
+        "f-amulet-power",
+        "f-marta-widow"
+      ],
+      "recall_at_5": 1,
+      "top1": false,
+      "no_answer_correct": null,
+      "answered": true,
+      "leaks": []
+    },
+    {
+      "id": "d13",
+      "query": "Режиссёр: что прячут в бухте контрабандистов",
+      "viewer": "gm",
+      "hop": false,
+      "no_answer": false,
+      "gold": [
+        "f-cove-ships"
+      ],
+      "retrieved": [
+        "f-cove-ships",
+        "claim-marta-crows",
+        "f-oleg-bribe",
+        "claim-ilya-storm",
+        "claim-oleg-grig"
+      ],
+      "recall_at_5": 1,
+      "top1": true,
+      "no_answer_correct": null,
+      "answered": true,
+      "leaks": []
+    },
+    {
+      "id": "d14",
+      "query": "Где сейчас лодка Тома Рыбака?",
+      "viewer": "player",
+      "hop": false,
+      "no_answer": false,
+      "gold": [
+        "f-tom-boat"
+      ],
+      "retrieved": [
+        "f-tom-boat",
+        "rel-tom-guild",
+        "quest-fishers",
+        "rel-guild-docks",
+        "f-tom-missing"
+      ],
+      "recall_at_5": 1,
+      "top1": true,
+      "no_answer_correct": null,
+      "answered": true,
+      "leaks": []
+    },
+    {
+      "id": "d15",
+      "query": "Почему Борис Мельник не мелет муку?",
+      "viewer": "player",
+      "hop": false,
+      "no_answer": false,
+      "gold": [
+        "f-boris-flour"
+      ],
+      "retrieved": [
+        "f-boris-flour",
+        "rel-boris-mill"
+      ],
+      "recall_at_5": 1,
+      "top1": true,
+      "no_answer_correct": null,
+      "answered": true,
+      "leaks": []
+    },
+    {
+      "id": "h01",
+      "query": "Чем промышляет Григ Одноглазый?",
+      "viewer": "player",
+      "hop": true,
+      "no_answer": false,
+      "gold": [
+        "f-crows-smuggle"
+      ],
+      "retrieved": [
+        "rel-grig-crows",
+        "f-grig-eye"
+      ],
+      "recall_at_5": 0,
+      "top1": false,
+      "no_answer_correct": null,
+      "answered": true,
+      "leaks": []
+    },
+    {
+      "id": "h02",
+      "query": "Где прячутся дружки Грига?",
+      "viewer": "player",
+      "hop": true,
+      "no_answer": false,
+      "gold": [
+        "rel-crows-caves"
+      ],
+      "retrieved": [
+        "rel-grig-crows",
+        "f-grig-eye"
+      ],
+      "recall_at_5": 0,
+      "top1": false,
+      "no_answer_correct": null,
+      "answered": true,
+      "leaks": []
+    },
+    {
+      "id": "h03",
+      "query": "Что известно о хозяйке «Солёного якоря»?",
+      "viewer": "player",
+      "hop": true,
+      "no_answer": false,
+      "gold": [
+        "f-marta-widow",
+        "f-marta-debt"
+      ],
+      "retrieved": [
+        "claim-ilya-storm",
+        "claim-vesna-zora",
+        "f-tavern-prices",
+        "rel-marta-tavern"
+      ],
+      "recall_at_5": 0,
+      "top1": false,
+      "no_answer_correct": null,
+      "answered": true,
+      "leaks": []
+    },
+    {
+      "id": "h04",
+      "query": "Есть ли новости по делу о пропавших рыбаках?",
+      "viewer": "player",
+      "hop": true,
+      "no_answer": false,
+      "gold": [
+        "quest-fishers",
+        "f-caves-tracks",
+        "f-tom-missing"
+      ],
+      "retrieved": [
+        "f-guild-reward",
+        "f-guild-strike",
+        "quest-fishers",
+        "rel-tom-guild",
+        "rel-guild-docks"
+      ],
+      "recall_at_5": 0.333,
+      "top1": false,
+      "no_answer_correct": null,
+      "answered": true,
+      "leaks": []
+    },
+    {
+      "id": "h05",
+      "query": "Как продвигается поиск лекарства?",
+      "viewer": "player",
+      "hop": true,
+      "no_answer": false,
+      "gold": [
+        "quest-plague",
+        "f-plague-cure",
+        "f-vesna-herbs"
+      ],
+      "retrieved": [
+        "quest-plague"
+      ],
+      "recall_at_5": 0.333,
+      "top1": true,
+      "no_answer_correct": null,
+      "answered": true,
+      "leaks": []
+    },
+    {
+      "id": "h06",
+      "query": "Кто мог утащить реликвию из храма?",
+      "viewer": "player",
+      "hop": true,
+      "no_answer": false,
+      "gold": [
+        "f-amulet-stolen",
+        "f-temple-feather",
+        "f-crows-sign"
+      ],
+      "retrieved": [
+        "rel-amulet-temple",
+        "f-temple-feather",
+        "f-temple-bells",
+        "rel-ilya-temple"
+      ],
+      "recall_at_5": 0.333,
+      "top1": false,
+      "no_answer_correct": null,
+      "answered": true,
+      "leaks": []
+    },
+    {
+      "id": "h07",
+      "query": "Куда отправится Кира Быстрая на этой неделе?",
+      "viewer": "player",
+      "hop": true,
+      "no_answer": false,
+      "gold": [
+        "f-merchants-caravan"
+      ],
+      "retrieved": [
+        "rel-kira-merchants",
+        "f-kira-contract",
+        "f-lord-taxes",
+        "quest-fishers"
+      ],
+      "recall_at_5": 0,
+      "top1": false,
+      "no_answer_correct": null,
+      "answered": true,
+      "leaks": []
+    },
+    {
+      "id": "h08",
+      "query": "Что опасного рядом с жилищем Зоры?",
+      "viewer": "player",
+      "hop": true,
+      "no_answer": false,
+      "gold": [
+        "f-swamp-fog",
+        "rel-plague-swamp"
+      ],
+      "retrieved": [
+        "claim-vesna-zora",
+        "rel-zora-swamp",
+        "rel-vesna-zora",
+        "claim-ilya-storm",
+        "f-zora-price"
+      ],
+      "recall_at_5": 0,
+      "top1": false,
+      "no_answer_correct": null,
+      "answered": true,
+      "leaks": []
+    },
+    {
+      "id": "h09",
+      "query": "Что охраняет брат Илья?",
+      "viewer": "player",
+      "hop": true,
+      "no_answer": false,
+      "gold": [
+        "rel-amulet-temple"
+      ],
+      "retrieved": [
+        "claim-ilya-storm",
+        "rel-ilya-temple",
+        "f-ilya-healer",
+        "claim-vesna-zora"
+      ],
+      "recall_at_5": 0,
+      "top1": false,
+      "no_answer_correct": null,
+      "answered": true,
+      "leaks": []
+    },
+    {
+      "id": "h10",
+      "query": "Что творится вокруг владений Бориса Мельника?",
+      "viewer": "player",
+      "hop": true,
+      "no_answer": false,
+      "gold": [
+        "f-mill-noise"
+      ],
+      "retrieved": [
+        "rel-boris-mill",
+        "f-boris-flour",
+        "claim-ilya-storm",
+        "claim-vesna-zora"
+      ],
+      "recall_at_5": 0,
+      "top1": false,
+      "no_answer_correct": null,
+      "answered": true,
+      "leaks": []
+    },
+    {
+      "id": "h11",
+      "query": "Что происходит там, где базируются артели Тома?",
+      "viewer": "player",
+      "hop": true,
+      "no_answer": false,
+      "gold": [
+        "f-docks-empty"
+      ],
+      "retrieved": [
+        "rel-tom-guild",
+        "f-guild-strike",
+        "f-tom-missing",
+        "claim-ilya-storm",
+        "f-tom-boat"
+      ],
+      "recall_at_5": 0,
+      "top1": false,
+      "no_answer_correct": null,
+      "answered": true,
+      "leaks": []
+    },
+    {
+      "id": "h12",
+      "query": "Чем заняты подчинённые Олега Кривоноса?",
+      "viewer": "player",
+      "hop": true,
+      "no_answer": false,
+      "gold": [
+        "f-watch-patrol"
+      ],
+      "retrieved": [
+        "rel-oleg-watch",
+        "f-oleg-duty"
+      ],
+      "recall_at_5": 0,
+      "top1": false,
+      "no_answer_correct": null,
+      "answered": true,
+      "leaks": []
+    },
+    {
+      "id": "h13",
+      "query": "Что решил тот, кто правит крепостью Вороньего Камня?",
+      "viewer": "player",
+      "hop": true,
+      "no_answer": false,
+      "gold": [
+        "f-lord-taxes"
+      ],
+      "retrieved": [
+        "rel-lord-keep",
+        "f-keep-garrison",
+        "claim-ilya-storm",
+        "claim-vesna-zora"
+      ],
+      "recall_at_5": 0,
+      "top1": false,
+      "no_answer_correct": null,
+      "answered": true,
+      "leaks": []
+    },
+    {
+      "id": "h14",
+      "query": "С кем соперничает лорд Воронов и чем те владеют?",
+      "viewer": "player",
+      "hop": true,
+      "no_answer": false,
+      "gold": [
+        "rel-lord-merchants",
+        "f-merchants-monopoly"
+      ],
+      "retrieved": [
+        "rel-lord-merchants",
+        "rel-lord-keep",
+        "f-lord-taxes",
+        "rel-crows-caves",
+        "rel-grig-crows"
+      ],
+      "recall_at_5": 0.5,
+      "top1": true,
+      "no_answer_correct": null,
+      "answered": true,
+      "leaks": []
+    },
+    {
+      "id": "h15",
+      "query": "Режиссёр: чем занят Шептун",
+      "viewer": "gm",
+      "hop": true,
+      "no_answer": false,
+      "gold": [
+        "f-spy-identity",
+        "f-cult-ritual"
+      ],
+      "retrieved": [
+        "rel-spy-cult",
+        "f-spy-identity"
+      ],
+      "recall_at_5": 0.5,
+      "top1": false,
+      "no_answer_correct": null,
+      "answered": true,
+      "leaks": []
+    },
+    {
+      "id": "n01",
+      "query": "Где купить боевого грифона?",
+      "viewer": "player",
+      "hop": false,
+      "no_answer": true,
+      "gold": [],
+      "retrieved": [
+        "claim-ilya-storm",
+        "claim-marta-crows",
+        "claim-vesna-zora",
+        "f-amulet-power",
+        "f-amulet-stolen"
+      ],
+      "recall_at_5": null,
+      "top1": null,
+      "no_answer_correct": false,
+      "answered": null,
+      "leaks": []
+    },
+    {
+      "id": "n02",
+      "query": "Что известно о драконах в северных горах?",
+      "viewer": "player",
+      "hop": false,
+      "no_answer": true,
+      "gold": [],
+      "retrieved": [
+        "claim-ilya-storm",
+        "claim-vesna-zora"
+      ],
+      "recall_at_5": null,
+      "top1": null,
+      "no_answer_correct": false,
+      "answered": null,
+      "leaks": []
+    },
+    {
+      "id": "n03",
+      "query": "Сколько стоит телепортация к эльфам?",
+      "viewer": "player",
+      "hop": false,
+      "no_answer": true,
+      "gold": [],
+      "retrieved": [
+        "f-keep-garrison",
+        "f-tavern-prices",
+        "f-docks-empty"
+      ],
+      "recall_at_5": null,
+      "top1": null,
+      "no_answer_correct": false,
+      "answered": null,
+      "leaks": []
+    },
+    {
+      "id": "n04",
+      "query": "Кто такой архимаг Белосвет?",
+      "viewer": "player",
+      "hop": false,
+      "no_answer": true,
+      "gold": [],
+      "retrieved": [
+        "claim-ilya-storm",
+        "claim-marta-crows",
+        "claim-vesna-zora",
+        "f-amulet-power",
+        "f-amulet-stolen"
+      ],
+      "recall_at_5": null,
+      "top1": null,
+      "no_answer_correct": false,
+      "answered": null,
+      "leaks": []
+    },
+    {
+      "id": "n05",
+      "query": "Чем закончилась война с орками?",
+      "viewer": "player",
+      "hop": false,
+      "no_answer": true,
+      "gold": [],
+      "retrieved": [
+        "claim-ilya-storm",
+        "claim-marta-crows",
+        "claim-vesna-zora",
+        "f-amulet-power",
+        "f-amulet-stolen"
+      ],
+      "recall_at_5": null,
+      "top1": null,
+      "no_answer_correct": false,
+      "answered": null,
+      "leaks": []
+    },
+    {
+      "id": "n06",
+      "query": "Чем занят Шептун?",
+      "viewer": "player",
+      "hop": false,
+      "no_answer": true,
+      "gold": [],
+      "retrieved": [
+        "claim-ilya-storm",
+        "claim-marta-crows",
+        "claim-vesna-zora",
+        "f-amulet-power",
+        "f-amulet-stolen"
+      ],
+      "recall_at_5": null,
+      "top1": null,
+      "no_answer_correct": false,
+      "answered": null,
+      "leaks": []
+    }
+  ]
+}

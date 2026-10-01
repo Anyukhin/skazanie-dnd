@@ -1,0 +1,1324 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-10-01",
+  "description": "Размеченный набор для проверки противоречий канону сцены (scene-canon/v1). Тексты написаны вручную в стиле Рассказчика; это набор разработки: проверка писалась одновременно с ним. Независимая мера ложных срабатываний — прогон по сохранённым текстам eval/*.json.",
+  "labels": {
+    "contradiction": "текст прямо утверждает текущее время суток, погоду, сухость или небо вопреки канону",
+    "clean": "текст совместим с каноном: речь в кавычках, прошлое, сравнение, отрицание, окно, согласное с каноном небо"
+  },
+  "cases": [
+    {
+      "id": "contra-001",
+      "label": "contradiction",
+      "kind": "time",
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Причал Аквилона"
+      },
+      "text": "Аквилон встречает ночь туманом: над причалом висит сырая мгла, и фонари едва пробивают её."
+    },
+    {
+      "id": "contra-002",
+      "label": "contradiction",
+      "kind": "time",
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Рыночная площадь"
+      },
+      "text": "Ночная тишина лежит над рыночной площадью, лишь где-то скрипит ставня."
+    },
+    {
+      "id": "contra-003",
+      "label": "contradiction",
+      "kind": "time",
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "overcast",
+        "indoors": false,
+        "location": "Склады у гавани"
+      },
+      "text": "Луна выглядывает из-за туч и серебрит крыши складов."
+    },
+    {
+      "id": "contra-004",
+      "label": "contradiction",
+      "kind": "time",
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Северные ворота"
+      },
+      "text": "Под звёздами ворота кажутся выше, чем днём."
+    },
+    {
+      "id": "contra-005",
+      "label": "contradiction",
+      "kind": "time",
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "clear",
+        "indoors": true,
+        "location": "Трактир «Пустой кубок»"
+      },
+      "text": "В трактире темно: глубокая ночь, и только угли в очаге ещё тлеют."
+    },
+    {
+      "id": "contra-006",
+      "label": "contradiction",
+      "kind": "time",
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Старый тракт"
+      },
+      "text": "Звёздное небо раскинулось над трактом, холодное и бездонное."
+    },
+    {
+      "id": "contra-007",
+      "label": "contradiction",
+      "kind": "time",
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "overcast",
+        "indoors": false,
+        "location": "Северные ворота"
+      },
+      "text": "Стемнело, и стражник у ворот поднимает фонарь повыше."
+    },
+    {
+      "id": "contra-008",
+      "label": "contradiction",
+      "kind": "time",
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Мост через овраг"
+      },
+      "text": "В лунном свете мост через овраг выглядит хрупким."
+    },
+    {
+      "id": "contra-009",
+      "label": "contradiction",
+      "kind": "time",
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Часовня на холме"
+      },
+      "text": "Закатное солнце окрашивает стены часовни в медь."
+    },
+    {
+      "id": "contra-010",
+      "label": "contradiction",
+      "kind": "time",
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Деревенский колодец"
+      },
+      "text": "Солнце клонится к закату, и тени у колодца вытягиваются."
+    },
+    {
+      "id": "contra-011",
+      "label": "contradiction",
+      "kind": "time",
+      "canon": {
+        "phase": "evening",
+        "clock": "19:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Дворы у реки"
+      },
+      "text": "Рассветные лучи касаются мокрой черепицы."
+    },
+    {
+      "id": "contra-012",
+      "label": "contradiction",
+      "kind": "time",
+      "canon": {
+        "phase": "evening",
+        "clock": "19:00",
+        "weather": "overcast",
+        "indoors": false,
+        "location": "Переулки Ривермарка"
+      },
+      "text": "Утренняя прохлада ещё держится в переулках."
+    },
+    {
+      "id": "contra-013",
+      "label": "contradiction",
+      "kind": "time",
+      "canon": {
+        "phase": "night",
+        "clock": "01:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Площадь ратуши"
+      },
+      "text": "Солнце стоит высоко, и камни мостовой нагрелись."
+    },
+    {
+      "id": "contra-014",
+      "label": "contradiction",
+      "kind": "time",
+      "canon": {
+        "phase": "night",
+        "clock": "01:00",
+        "weather": "rain",
+        "indoors": false,
+        "location": "Глинистый берег"
+      },
+      "text": "При свете дня следы на глине видны отчётливо."
+    },
+    {
+      "id": "contra-015",
+      "label": "contradiction",
+      "kind": "time",
+      "canon": {
+        "phase": "night",
+        "clock": "01:00",
+        "weather": "clear",
+        "indoors": true,
+        "location": "Комната над конюшней"
+      },
+      "text": "Солнечный луч падает на стол через узкое окно."
+    },
+    {
+      "id": "contra-016",
+      "label": "contradiction",
+      "kind": "time",
+      "canon": {
+        "phase": "night",
+        "clock": "01:00",
+        "weather": "overcast",
+        "indoors": false,
+        "location": "Сторожевая башня"
+      },
+      "text": "Полуденный зной давит на плечи."
+    },
+    {
+      "id": "contra-017",
+      "label": "contradiction",
+      "kind": "time",
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Лагерь у тракта"
+      },
+      "text": "Над лагерем опустилась ночь, и костёр стал единственным светом."
+    },
+    {
+      "id": "contra-018",
+      "label": "contradiction",
+      "kind": "time",
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "fog",
+        "indoors": false,
+        "location": "Причал Аквилона"
+      },
+      "text": "Ночь стоит тихая, туман глушит шаги на причале."
+    },
+    {
+      "id": "contra-019",
+      "label": "contradiction",
+      "kind": "time",
+      "canon": {
+        "phase": "night",
+        "clock": "01:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Площадь ратуши"
+      },
+      "text": "Яркий полдень заливает площадь светом."
+    },
+    {
+      "id": "contra-020",
+      "label": "contradiction",
+      "kind": "time",
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Набережная"
+      },
+      "text": "Темнота вокруг такая, что факелы еле справляются, — ночь в разгаре."
+    },
+    {
+      "id": "contra-021",
+      "label": "contradiction",
+      "kind": "time",
+      "canon": {
+        "phase": "night",
+        "clock": "01:00",
+        "weather": "overcast",
+        "indoors": false,
+        "location": "Колокольня"
+      },
+      "text": "Месяц висит над колокольней."
+    },
+    {
+      "id": "contra-022",
+      "label": "contradiction",
+      "kind": "time",
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Город у моря"
+      },
+      "text": "Город спит под покровом ночи."
+    },
+    {
+      "id": "contra-023",
+      "label": "contradiction",
+      "kind": "time",
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Набережная"
+      },
+      "text": "Фонари ещё горят вдоль набережной, и ночной холод пробирает до костей."
+    },
+    {
+      "id": "contra-024",
+      "label": "contradiction",
+      "kind": "weather",
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Рынок"
+      },
+      "text": "Дождь барабанит по навесу над прилавками."
+    },
+    {
+      "id": "contra-025",
+      "label": "contradiction",
+      "kind": "weather",
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Старый тракт"
+      },
+      "text": "Мелкая морось оседает на плащах героев."
+    },
+    {
+      "id": "contra-026",
+      "label": "contradiction",
+      "kind": "weather",
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "overcast",
+        "indoors": false,
+        "location": "Холмы"
+      },
+      "text": "Где-то над холмами гремит гром, и лошади беспокоятся."
+    },
+    {
+      "id": "contra-027",
+      "label": "contradiction",
+      "kind": "weather",
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Брод"
+      },
+      "text": "Густой туман стелется над рекой, скрывая противоположный берег."
+    },
+    {
+      "id": "contra-028",
+      "label": "contradiction",
+      "kind": "weather",
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "clear",
+        "indoors": true,
+        "location": "Трактир «Пустой кубок»"
+      },
+      "text": "За ставнями шумит ливень, и в трактире пахнет мокрой шерстью."
+    },
+    {
+      "id": "contra-029",
+      "label": "contradiction",
+      "kind": "weather",
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "fog",
+        "indoors": false,
+        "location": "Городская стена"
+      },
+      "text": "Безоблачное небо открывает вид на дальние башни."
+    },
+    {
+      "id": "contra-030",
+      "label": "contradiction",
+      "kind": "weather",
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "rain",
+        "indoors": false,
+        "location": "Двор кузницы"
+      },
+      "text": "Палящее солнце слепит, отражаясь в лужах."
+    },
+    {
+      "id": "contra-031",
+      "label": "contradiction",
+      "kind": "weather",
+      "canon": {
+        "phase": "night",
+        "clock": "01:00",
+        "weather": "storm",
+        "indoors": false,
+        "location": "Пристань"
+      },
+      "text": "Звёздное небо чисто и спокойно над пристанью."
+    },
+    {
+      "id": "contra-032",
+      "label": "contradiction",
+      "kind": "weather",
+      "canon": {
+        "phase": "evening",
+        "clock": "19:00",
+        "weather": "overcast",
+        "indoors": false,
+        "location": "Площадь"
+      },
+      "text": "Ясное небо над площадью наливается вечерней синевой."
+    },
+    {
+      "id": "contra-033",
+      "label": "contradiction",
+      "kind": "weather",
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "rain",
+        "indoors": false,
+        "location": "Двор"
+      },
+      "text": "Вспышка молнии на миг высвечивает весь двор."
+    },
+    {
+      "id": "contra-034",
+      "label": "contradiction",
+      "kind": "weather",
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "fog",
+        "indoors": false,
+        "location": "Причал Аквилона"
+      },
+      "text": "Ливень хлещет по доскам причала."
+    },
+    {
+      "id": "contra-035",
+      "label": "contradiction",
+      "kind": "weather",
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "overcast",
+        "indoors": false,
+        "location": "Гавань"
+      },
+      "text": "Гроза бушует над гаванью, волны бьют в волнорез."
+    },
+    {
+      "id": "contra-036",
+      "label": "contradiction",
+      "kind": "weather",
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "fog",
+        "indoors": false,
+        "location": "Перевал"
+      },
+      "text": "Видно далеко, до самого горизонта, где синеют горы."
+    },
+    {
+      "id": "contra-037",
+      "label": "contradiction",
+      "kind": "weather",
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Улица кожевников"
+      },
+      "text": "Капли стекают с мокрых крыш, а небо всё ещё сочится водой."
+    },
+    {
+      "id": "contra-038",
+      "label": "contradiction",
+      "kind": "surface",
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "fog",
+        "indoors": false,
+        "location": "Причал Аквилона"
+      },
+      "text": "Доски причала покрыты пылью, и под сапогами скрипит сухой песок."
+    },
+    {
+      "id": "contra-039",
+      "label": "contradiction",
+      "kind": "surface",
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "rain",
+        "indoors": false,
+        "location": "Старый тракт"
+      },
+      "text": "Пыль клубится под колёсами телеги."
+    },
+    {
+      "id": "contra-040",
+      "label": "contradiction",
+      "kind": "surface",
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "storm",
+        "indoors": false,
+        "location": "Пустошь"
+      },
+      "text": "Сухая земля трескается под ногами."
+    },
+    {
+      "id": "contra-041",
+      "label": "contradiction",
+      "kind": "surface",
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "fog",
+        "indoors": false,
+        "location": "Старый тракт"
+      },
+      "text": "Дорожная пыль оседает на сапогах."
+    },
+    {
+      "id": "contra-042",
+      "label": "contradiction",
+      "kind": "surface",
+      "canon": {
+        "phase": "evening",
+        "clock": "19:00",
+        "weather": "rain",
+        "indoors": false,
+        "location": "Храм на площади"
+      },
+      "text": "Пыльные ступени ведут к дверям храма."
+    },
+    {
+      "id": "contra-043",
+      "label": "contradiction",
+      "kind": "surface",
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "fog",
+        "indoors": false,
+        "location": "Мостовая"
+      },
+      "text": "Знойный воздух дрожит над мостовой."
+    },
+    {
+      "id": "contra-044",
+      "label": "contradiction",
+      "kind": "surface",
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "rain",
+        "indoors": false,
+        "location": "Мост"
+      },
+      "text": "На перилах лежит толстый слой пыли."
+    },
+    {
+      "id": "contra-045",
+      "label": "contradiction",
+      "kind": "surface",
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "rain",
+        "indoors": false,
+        "location": "Каменоломня"
+      },
+      "text": "Раскалённые камни обжигают ладони."
+    },
+    {
+      "id": "contra-046",
+      "label": "contradiction",
+      "kind": "surface",
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "storm",
+        "indoors": false,
+        "location": "Тракт"
+      },
+      "text": "Ни ветерка, сухой полдень дремлет над трактом."
+    },
+    {
+      "id": "contra-047",
+      "label": "contradiction",
+      "kind": "sky",
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "clear",
+        "indoors": true,
+        "location": "Зал гильдии"
+      },
+      "text": "Над головой раскинулось бледное небо, и в зале гуляет ветер."
+    },
+    {
+      "id": "contra-048",
+      "label": "contradiction",
+      "kind": "sky",
+      "canon": {
+        "phase": "night",
+        "clock": "01:00",
+        "weather": "clear",
+        "indoors": true,
+        "location": "Трактир «Пустой кубок»"
+      },
+      "text": "Отряд сидит у очага, а над головами мерцают звёзды."
+    },
+    {
+      "id": "contra-049",
+      "label": "contradiction",
+      "kind": "sky",
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "rain",
+        "indoors": true,
+        "location": "Трактир «Пустой кубок»"
+      },
+      "text": "Дождь хлещет в лицо, пока герои ждут у стойки."
+    },
+    {
+      "id": "contra-050",
+      "label": "contradiction",
+      "kind": "sky",
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "overcast",
+        "indoors": true,
+        "location": "Зал совета"
+      },
+      "text": "Тучи над головой сгущаются, и в зале темнеет."
+    },
+    {
+      "id": "clean-051",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "fog",
+        "indoors": false,
+        "location": "Причал Аквилона"
+      },
+      "text": "Туман лежит на досках причала, и мокрые канаты пахнут солью."
+    },
+    {
+      "id": "clean-052",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Рыночная площадь"
+      },
+      "text": "Утреннее солнце золотит крыши, на площади уже шумят торговцы."
+    },
+    {
+      "id": "clean-053",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Северные ворота"
+      },
+      "text": "— Ночь будет долгой, — бурчит стражник у ворот."
+    },
+    {
+      "id": "clean-054",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Причал Аквилона"
+      },
+      "text": "Мира говорит: «Прошлой ночью здесь шёл дождь»."
+    },
+    {
+      "id": "clean-055",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Причал Аквилона"
+      },
+      "text": "После ночного дождя доски ещё влажные, но небо чистое."
+    },
+    {
+      "id": "clean-056",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Амбар"
+      },
+      "text": "Прошлой ночью кто-то сорвал замок с амбара; теперь при свете утра видны свежие царапины."
+    },
+    {
+      "id": "clean-057",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "overcast",
+        "indoors": false,
+        "location": "Старый тракт"
+      },
+      "text": "Небо затянуто серой пеленой, но дождя нет."
+    },
+    {
+      "id": "clean-058",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "clear",
+        "indoors": true,
+        "location": "Трактир «Пустой кубок»"
+      },
+      "text": "В трактире тепло, а за окном ясный день."
+    },
+    {
+      "id": "clean-059",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "rain",
+        "indoors": true,
+        "location": "Трактир «Пустой кубок»"
+      },
+      "text": "За окном шумит дождь, и в зале пахнет мокрой шерстью."
+    },
+    {
+      "id": "clean-060",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "night",
+        "clock": "01:00",
+        "weather": "rain",
+        "indoors": false,
+        "location": "Мостовая"
+      },
+      "text": "Дождь хлещет по мостовой, фонари тонут в мокрой темноте."
+    },
+    {
+      "id": "clean-061",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "night",
+        "clock": "01:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Колокольня"
+      },
+      "text": "Луна висит над колокольней, и звёзды мерцают над крышами."
+    },
+    {
+      "id": "clean-062",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "evening",
+        "clock": "19:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Часовня на холме"
+      },
+      "text": "Закатное солнце окрашивает стены часовни в медь."
+    },
+    {
+      "id": "clean-063",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Рынок"
+      },
+      "text": "Тёмный, как ночь, плащ незнакомца не шевелится."
+    },
+    {
+      "id": "clean-064",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Рынок"
+      },
+      "text": "В голове у Рена туман после вчерашней попойки."
+    },
+    {
+      "id": "clean-065",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Старый тракт"
+      },
+      "text": "Туман рассеялся ещё на рассвете, и теперь видно весь тракт."
+    },
+    {
+      "id": "clean-066",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "fog",
+        "indoors": false,
+        "location": "Гавань"
+      },
+      "text": "Сквозь туман проступают мачты, и мокрые доски скользят под ногами."
+    },
+    {
+      "id": "clean-067",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "fog",
+        "indoors": false,
+        "location": "Причал Аквилона"
+      },
+      "text": "Влажная пелена тумана оседает на перилах и глушит шаги."
+    },
+    {
+      "id": "clean-068",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "clear",
+        "indoors": true,
+        "location": "Склеп"
+      },
+      "text": "Под потолком склепа висит пыль, и свеча дрожит."
+    },
+    {
+      "id": "clean-069",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "rain",
+        "indoors": true,
+        "location": "Архив"
+      },
+      "text": "Пыль на полках архива лежит нетронутой, пока снаружи льёт дождь."
+    },
+    {
+      "id": "clean-070",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "night",
+        "clock": "01:00",
+        "weather": "clear",
+        "indoors": true,
+        "location": "Трактир «Пустой кубок»"
+      },
+      "text": "Отряд сидит у очага; за окном мерцают звёзды."
+    },
+    {
+      "id": "clean-071",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "clear",
+        "indoors": true,
+        "location": "Разрушенный зал"
+      },
+      "text": "Сквозь пролом в крыше над головой видно небо."
+    },
+    {
+      "id": "clean-072",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Дом Миры"
+      },
+      "text": "Мира вспоминает ту ночь, когда шторм сорвал крышу с её дома."
+    },
+    {
+      "id": "clean-073",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Глинистый берег"
+      },
+      "text": "Если начнётся дождь, следы на глине пропадут."
+    },
+    {
+      "id": "clean-074",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "evening",
+        "clock": "19:00",
+        "weather": "overcast",
+        "indoors": false,
+        "location": "Площадь"
+      },
+      "text": "Сумерки опускаются на площадь, и в окнах зажигаются огни."
+    },
+    {
+      "id": "clean-075",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Старый тракт"
+      },
+      "text": "Никакого тумана — тракт виден до самых холмов."
+    },
+    {
+      "id": "clean-076",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "night",
+        "clock": "01:00",
+        "weather": "storm",
+        "indoors": false,
+        "location": "Пристань"
+      },
+      "text": "Молния раскалывает небо над пристанью, и гром катится по воде."
+    },
+    {
+      "id": "clean-077",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "rain",
+        "indoors": false,
+        "location": "Мост"
+      },
+      "text": "Мокрые доски моста блестят, дождь стекает с капюшонов."
+    },
+    {
+      "id": "clean-078",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Старый тракт"
+      },
+      "text": "Солнце печёт, над дорогой поднимается пыль."
+    },
+    {
+      "id": "clean-079",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Тракт"
+      },
+      "text": "Сухая земля тракта звенит под копытами."
+    },
+    {
+      "id": "clean-080",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "evening",
+        "clock": "19:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Площадь"
+      },
+      "text": "Звёзды ещё не показались, но небо уже темнеет."
+    },
+    {
+      "id": "clean-081",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "overcast",
+        "indoors": false,
+        "location": "Причал"
+      },
+      "text": "Серое небо висит низко, ветер гонит по причалу запах рыбы."
+    },
+    {
+      "id": "clean-082",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "fog",
+        "indoors": true,
+        "location": "Кузница"
+      },
+      "text": "В кузнице жарко и сухо, хотя снаружи всё затянуто туманом."
+    },
+    {
+      "id": "clean-083",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Северные ворота"
+      },
+      "text": "Стражник предупреждает, что к ночи ворота закроют."
+    },
+    {
+      "id": "clean-084",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "night",
+        "clock": "01:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Сторожевая башня"
+      },
+      "text": "Ночной ветер треплет флаги на башне."
+    },
+    {
+      "id": "clean-085",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "clear",
+        "indoors": true,
+        "location": "Зал ратуши"
+      },
+      "text": "На гобелене в зале вышита звёздная ночь над морем."
+    },
+    {
+      "id": "clean-086",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Холмы"
+      },
+      "text": "Пыльная дорога петляет между холмами."
+    },
+    {
+      "id": "clean-087",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "fog",
+        "indoors": false,
+        "location": "Гавань"
+      },
+      "text": "Дождя нет, но туман такой густой, что мачты едва видны."
+    },
+    {
+      "id": "clean-088",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "night",
+        "clock": "01:00",
+        "weather": "rain",
+        "indoors": false,
+        "location": "Северные ворота"
+      },
+      "text": "Темнота и дождь скрывают следы, только фонарь стражи качается у ворот."
+    },
+    {
+      "id": "clean-089",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Кладбище"
+      },
+      "text": "Говорят, в полнолуние здесь бродит призрак."
+    },
+    {
+      "id": "clean-090",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "overcast",
+        "indoors": false,
+        "location": "Поле"
+      },
+      "text": "Облака плотно затянули небо, свет ровный и серый."
+    },
+    {
+      "id": "clean-091",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "clear",
+        "indoors": true,
+        "location": "Храм"
+      },
+      "text": "В храме прохладно, косые лучи утреннего солнца лежат на плитах."
+    },
+    {
+      "id": "clean-092",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "evening",
+        "clock": "19:00",
+        "weather": "rain",
+        "indoors": false,
+        "location": "Тракт"
+      },
+      "text": "Вечерний дождь превращает тракт в грязное месиво."
+    },
+    {
+      "id": "clean-093",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Северные ворота"
+      },
+      "text": "Ада щурится от яркого солнца, глядя на ворота."
+    },
+    {
+      "id": "clean-094",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "storm",
+        "indoors": false,
+        "location": "Тракт"
+      },
+      "text": "Ветер рвёт плащи, дождь хлещет по лицам, гремит гром."
+    },
+    {
+      "id": "clean-095",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Лагерь"
+      },
+      "text": "Сон Рена был полон лунного света и чужих голосов."
+    },
+    {
+      "id": "clean-096",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Причал"
+      },
+      "text": "У причала сыро: волны лижут сваи, доски тёмные от воды."
+    },
+    {
+      "id": "clean-097",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Казарма"
+      },
+      "text": "Ночная стража сдаёт пост утренней смене."
+    },
+    {
+      "id": "clean-098",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "evening",
+        "clock": "19:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Холмы"
+      },
+      "text": "Солнце садится за холмы, и тени становятся длинными."
+    },
+    {
+      "id": "clean-099",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "morning",
+        "clock": "08:00",
+        "weather": "fog",
+        "indoors": false,
+        "location": "Причал Аквилона"
+      },
+      "text": "Отряд ждёт на причале; канаты тяжёлые от сырости, по воде ползёт серая мгла."
+    },
+    {
+      "id": "clean-100",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "night",
+        "clock": "01:00",
+        "weather": "clear",
+        "indoors": false,
+        "location": "Лагерь"
+      },
+      "text": "Костёр потрескивает, а над лагерем рассыпаны звёзды."
+    },
+    {
+      "id": "clean-101",
+      "label": "clean",
+      "kind": null,
+      "canon": {
+        "phase": "day",
+        "clock": "13:00",
+        "weather": "rain",
+        "indoors": false,
+        "location": "Рынок"
+      },
+      "text": "Торговцы прячут товар под навесы: дождь не стихает с утра."
+    }
+  ]
+}

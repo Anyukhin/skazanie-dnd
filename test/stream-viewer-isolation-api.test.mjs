@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
-import { createServer as createNetServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { freePort } from './free-port.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 /**
@@ -18,14 +18,6 @@ import { runnerTimeout } from './shared-runner-timeout.mjs'
  * Тест поднимает настоящий сервер, подключает двух игроков к SSE, раскрывает
  * факт **одному** и сверяет оба потока.
  */
-
-async function freePort() {
-  const probe = createNetServer()
-  await new Promise((resolve, reject) => { probe.once('error', reject); probe.listen(0, '127.0.0.1', resolve) })
-  const { port } = probe.address()
-  await new Promise((resolve, reject) => probe.close((error) => error ? reject(error) : resolve()))
-  return port
-}
 
 function startServer(port, storage, appendLog) {
   const child = spawn(process.execPath, ['server/index.mjs'], {

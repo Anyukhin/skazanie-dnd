@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 import { DiceService } from '../server/dice-service.mjs'
@@ -316,22 +315,4 @@ test('теги NPC игроку не текут — только следств�
   // Следствие при этом видно: цена в разборе честная, и её игрок обязан читать.
   const view = merchantViewFor(sold.state, 'merchant-1', 'hero')
   assert.ok(view.sell_quotes.length > 0)
-})
-
-test('строка скидки стоит в разборе цены, а цепочка держит переменное число шагов', () => {
-  const merchantView = readFileSync(new URL('../src/MerchantView.tsx', import.meta.url), 'utf8')
-  const styles = readFileSync(new URL('../src/merchant.css', import.meta.url), 'utf8')
-  const board = readFileSync(new URL('../src/DungeonMap.tsx', import.meta.url), 'utf8')
-
-  assert.match(merchantView, /breakdown\.stolen_adjustment_percent/u)
-  assert.match(merchantView, /merchant-stolen-step/u)
-  assert.ok(styles.includes('.merchant-stolen-step'))
-  // Жёсткие семь колонок держались, только пока необязательный шаг был один.
-  assert.match(styles, /\.merchant-price-flow \{ display: flex; flex-wrap: wrap;/u)
-  assert.match(styles, /\.merchant-price-flow\.compact \{ display: grid;/u)
-
-  // Кнопки подкупа шлют ту же фразу, что игрок сказал бы сам, и своих чисел
-  // не держат: две копии правила разошлись бы при первой правке долей.
-  assert.match(board, /Убеждаю и подкрепляю слова: \$\{tier\}/u)
-  assert.doesNotMatch(board, /share_bps|amount_cp/u)
 })

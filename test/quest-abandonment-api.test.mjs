@@ -1,27 +1,15 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
-import { createServer as createNetServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
+import { freePort } from './free-port.mjs'
 import { FileEventStore } from '../server/event-store.mjs'
 import { resolvePartyVote } from '../server/party-decision.mjs'
 import { GAME_STATE_PROJECTOR_VERSION, applyGameEvent, normalizeCampaignState } from '../server/rules-engine.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
-
-async function freePort() {
-  const probe = await new Promise((resolve, reject) => {
-    const server = createNetServer()
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', () => resolve(server))
-  })
-  const address = probe.address()
-  const port = typeof address === 'object' && address ? address.port : 0
-  await new Promise((resolve, reject) => probe.close((error) => error ? reject(error) : resolve()))
-  return port
-}
 
 function startServer(port, storage, appendLog) {
   const child = spawn(process.execPath, ['server/index.mjs'], {

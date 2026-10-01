@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
-import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
+import { freePort } from './free-port.mjs'
 import { movementCostOfPath, shortestTacticalPath } from '../server/rules-engine.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
@@ -54,14 +54,6 @@ function combatMovementTargetForFortyFeet(state, actorId, origin) {
       || Math.abs(left.cell.x - origin.x) + Math.abs(left.cell.y - origin.y)
       - Math.abs(right.cell.x - origin.x) - Math.abs(right.cell.y - origin.y))
     .at(0) ?? null
-}
-
-async function freePort() {
-  const listener = createServer()
-  await new Promise((resolve, reject) => { listener.once('error', reject); listener.listen(0, '127.0.0.1', resolve) })
-  const port = listener.address().port
-  await new Promise((resolve) => listener.close(resolve))
-  return port
 }
 
 async function harness(t) {

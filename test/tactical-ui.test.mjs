@@ -498,7 +498,7 @@ test('смазанный клинок читается в обеих форма�
   // из теста было нечем, и сторожем стояла регулярка по коду — она держала форму
   // записи и молчала бы о любой правке поведения. Осталась ровно одна строка
   // исходником — проводка: доска обязана звать функцию, а не собирать знак сама.
-  const board = readFileSync(new URL('../src/DungeonMap.tsx', import.meta.url), 'utf8')
+  const board = ['../src/DungeonMap.tsx', '../src/dungeon-map-parts.tsx'].map((path) => readFileSync(new URL(path, import.meta.url), 'utf8')).join('\n')
   assert.match(board, /\{tokenConditionGlyph\(condition\.id, condition\.label\)\}/u)
 })
 

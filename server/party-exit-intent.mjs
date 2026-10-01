@@ -33,24 +33,82 @@ const WORLD_MAP_DESTINATION_ID = /^\s*\[ГЛОБАЛЬНАЯ КАРТА\]\s*\[de
  * намеренно не входят: перемещение внутри локации — дело тактической доски и
  * `UseLevelTransition`, а не перехода сцены.
  */
-const PLACE = String.raw`подземель\w*|локац\w*|мест(?:о|а|е|ност\w*)|город\w*|деревн\w*|сел[оа]|пос[ёе]лк\w*|поселени\w*|лес\w*|чащ\w*|рощ\w*|болот\w*|топ[ия]\w*|пустош\w*|пустын\w*|порт\w*|гаван\w*|пристан\w*|замок|замка|крепост\w*|цитадел\w*|форт\w*|застав\w*|лагер\w*|стоянк\w*|храм\w*|святилищ\w*|монастыр\w*|пещер\w*|руин\w*|развалин\w*|архив\w*|склеп\w*|катакомб\w*|шахт\w*|рудник\w*|башн\w*|таверн\w*|трактир\w*|корчм\w*|постоял\w*\s+двор\w*|караван-?сара\w*|усадьб\w*|поместь\w*|особняк\w*|здани\w*|район\w*|улиц\w*|площад\w*|рынок|рынка|тракт\w*|дорог[ауеи]|перевал\w*|ущель\w*|долин\w*|остров\w*|берег\w*|станци\w*|пол[еяю]`
+//
+// Слово места — целое слово с падежным окончанием, а не префикс. Раньше здесь
+// стояло `лес\w*`, а `\w` в JS понимает только латиницу, так что шаблон
+// означал «начинается с „лес“»: «иду к старой лестнице» и «иду к лесничему»
+// становились уходом в лес, а «иду к трактирщице» — уходом в трактир.
+const NOUN_END = String.raw`(?:а|я|о|е|ё|у|ю|ы|и|ь|ой|ей|ою|ею|ом|ем|ём|ам|ям|ами|ями|ах|ях|ов|ев)?`
+const PLACE_STEMS = String.raw`подземель|локаци|местност|мест|город|городк|град|деревн|деревушк|сел|пос[ёе]лк|поселени|лес|чащ|рощ|болот|топ|пустош|пустын|порт|гаван|пристан|замк|крепост|цитадел|форт|застав|лагер|стоянк|храм|святилищ|монастыр|пещер|руин|развалин|архив|склеп|катакомб|шахт|рудник|башн|таверн|трактир|корчм|гостиниц|усадьб|поместь|особняк|здани|район|улиц|площад|рынк|тракт|дорог|перевал|ущель|долин|остров|берег|станци|маяк|мельниц|кладбищ|погост|холм`
+const PLACE_FULL = String.raw`замок|рынок|городок|пос[ёе]лок|постоял(?:ый|ого|ому|ом)\s+двор(?:а|у|е|ом)?|караван-?сара(?:й|я|ю|е|ем)|пол(?:е|я|ю|ям|ях)|гор(?:ы|ам|ах)`
+const PLACE = String.raw`(?<![\p{L}\p{M}])(?:${PLACE_FULL}|(?:${PLACE_STEMS})${NOUN_END})(?![\p{L}\p{M}])`
 
 /** Глаголы, которыми объявляют уход всей группы. */
-const LEAVE = String.raw`покин(?:уть|ем|ём|ут|ь)|уход(?:им|ить|ят|ите)|уйти|уйд(?:ем|ём|ут)|свал(?:им|ить|иваем)|валим|убира(?:емся|ться)|выбра(?:ться|вшись)|выбираемся|выходим|выдвигаемся|отступ(?:аем|ить|им)|сматываемся`
+const LEAVE = String.raw`покин(?:уть|ем|ём|ут|у|ь)|покида(?:ем|ю|ть|ете)|уход(?:им|ить|ят|ите)|уйти|уйд(?:ем|ём|ут|у)|свал(?:им|ить|иваем)|валим|убира(?:емся|ться)|выбра(?:ться|вшись)|выбираемся|выходим|выхожу|вый(?:ти|дем|дём|ду)|выдвигаемся|выдвигаюсь|отступ(?:аем|ить|им)|сматываемся`
 
-/** Глаголы движения, у которых уход опознаётся только по названному месту. */
-const HEAD_TO = String.raw`ид(?:ём|ем|ти)|направля(?:емся|ться)|отправ(?:ляемся|иться|имся)|возвраща(?:емся|ться)|верн(?:ёмся|емся)`
+/**
+ * Реплика из одного глагола ухода: «Уходим.», «Всё, валим!». Места в ней нет, но
+ * и спутать её не с чем — шаг по доске всегда называет, куда.
+ */
+const BARE_LEAVE = /^(?:(?:всё|все|ну|ладно|итак|так|мы|пора|давайте|ребята|я)[,!.]?\s+){0,3}(?:уходим|уйд[её]м|уходить|уйти|валим|сваливаем|сматываемся|выдвигаемся|выходим|покидаем)[.!…]*$/iu
+
+/**
+ * Глаголы движения, у которых уход опознаётся только по названному месту.
+ * Первое лицо единственного числа («иду», «отправляюсь») — то, как обычно
+ * пишет одиночный игрок; без этих форм «Иду в таверну «Морской Змей»» уходила
+ * мимо перехода прямо к судье свободных действий и превращалась в проверку.
+ */
+// «Идём», «едем», «добираемся до…», «держим путь» — тоже движение отряда. Формы
+// перечислены явно: префикс «двига…» поймал бы «двигаю стол».
+const HEAD_TO = String.raw`ид(?:ём|ем|ти|у)|пойти|пойд(?:у|ём|ем)|пошли|направ(?:ля(?:емся|ться|юсь)|имся|люсь|иться)|отправ(?:ляемся|иться|имся|ляюсь|люсь)|возвраща(?:емся|ться|юсь)|верн(?:ёмся|емся|усь|уться)|едем|еду|ехать|по(?:еду|едем|ехали|ехать)|двига(?:емся|юсь|ться)|двин(?:емся|улись|усь|уться)|добира(?:емся|юсь|ться)|добер(?:ёмся|емся|усь)|добраться|держ(?:им|у)\s+путь|плыв(?:ём|ем)|поплыв(?:ём|ем)|бежим|бегу|спеш(?:им|у)`
 
 /** «Уйти отсюда» — место не названо, но названа сама локация как целое. */
 const EXIT_SCOPE = /(?:отсюда|прочь|из\s+эт(?:ого|ой)\s+(?:мест|локац|город|деревн|подземель))/iu
 
 /** «Покинуть подземелье», «уходим из деревни», «покинуть «Караван-сарай»». */
+// До двух определений перед местом: «покидаем старую таверну».
 const LEAVE_TARGET = new RegExp(
-  String.raw`(?:${LEAVE})\s+(?:(?:из|с|от)\s+)?(?:эт(?:о|ого|у|ой|от|им)\s+)?(?:«[^»]{1,120}»|(?:${PLACE}))`,
+  String.raw`(?<![\p{L}\p{M}])(?:${LEAVE})\s+(?:(?:из|с|от)\s+)?(?:эт(?:о|ого|у|ой|от|им)\s+)?(?:«[^»]{1,120}»|(?:[\p{L}-]+\s+){0,2}?(?:${PLACE}))`,
+  'iu',
+)
+
+/** Что покидают, когда предлога нет или место не родовое: «покидаем Аквилон». */
+const LEAVE_OBJECT = new RegExp(
+  String.raw`(?<![\p{L}\p{M}])(?:${LEAVE})\s+(?:(?:из|с|от)\s+)?([^,.;!?—]{1,80}?)(?=\s+(?:и|а|но|чтобы|затем|потом)\s|\s+(?:в|на|к|ко|до)\s|[,.;!?—]|$)`,
   'iu',
 )
 
 const LEAVE_VERB = new RegExp(String.raw`(?:${LEAVE})`, 'iu')
+
+/**
+ * Цель поездки после названия: «в таверну «Морской Змей» расспрашивать…».
+ * Инфинитив обрывает название так же, как союз, — иначе хвост фразы попадал в
+ * пункт назначения и мешал узнать место на карте.
+ *
+ * Существительные на «-ть» инфинитивом не считаются: «в старую крепость»
+ * обрывалось на «старую», и место терялось.
+ */
+const PURPOSE_INFINITIVE = String.raw`(?!(?:${PLACE})|(?:часть|область|волость|пропасть|пасть|сеть|степь|смерть|опасность|радость|ярость|скорость)(?![\p{L}\p{M}]))[\p{L}-]{2,}(?:ть|ться|тись|чь)(?![\p{L}\p{M}])`
+
+/**
+ * Место внутри текущей сцены: «иду в угол таверны» — это шаг по доске, а не
+ * уход из локации, хотя таверна в фразе названа.
+ */
+// Формы перечислены явно, а не префиксом: «стол…» поймал бы «столицу», «зал…» — «залив».
+//
+// Проверяется не только первое слово: «в дальний угол таверны» и «к старой
+// лестнице в подвал» начинаются с определения. Достаточно, чтобы такое слово
+// стояло раньше названного места.
+const INSIDE_SCENE = /(?<![\p{L}\p{M}])(?:угол|угл(?:а|у|ом|е)|сторон(?:а|у|е|ы)|центр(?:а|у|е)?|середин(?:а|у|е|ы)|конец|конц(?:а|у|е)|дверь|двер(?:и|ью)|комнат(?:а|у|е|ы)|зал(?:а|у|е|ом|ы)?|подвал(?:а|у|е)?|погреб(?:а|у|е)?|кухн(?:я|и|ю|е)|стойк(?:а|и|у|е)|стол(?:а|у|е|ом|ы)?|окн(?:а|у|е)|окно|лестниц(?:а|у|е|ы)|коридор(?:а|у|е)?|тень|тен(?:и|ью)|укрыти(?:е|я|ю)|глубь|глубин(?:а|у|е|ы)|камин(?:а|у|е)?|очаг(?:а|у|е)?|этаж(?:а|у|е)?|сво(?:ё|е|ему|ем)\s+мест(?:о|у|е))(?![\p{L}\p{M}])/iu
+
+/**
+ * Человек, к которому идут: «иду к хозяйке таверны» — шаг к собеседнику, а не
+ * уход в таверну. Имена присутствующих NPC добавляет вызывающий.
+ */
+const PERSON_WORD = /(?<![\p{L}\p{M}])(?:хозя(?:ин|ина|ину|ином|йк(?:а|и|е|у|ой))|трактирщи(?:к|ка|ку|ком|ц(?:а|е|у|ей))|корчмар(?:я|ю|ем|ь)?|стражник(?:а|у|ом|ам)?|страж(?:е|у|ам)|торгов(?:ец|ца|цу|цем|к(?:а|е|у|ой))|кузнец(?:а|у|ом)?|жрец(?:а|у|ом)?|жриц(?:а|е|у|ей)|бармен(?:а|у|ом)?|служанк(?:а|е|у|ой)|лесничи(?:й|его|ему|м)|старост(?:а|е|у|ой)|капитан(?:а|у|ом)?|рыбак(?:а|у|ом|ам)?|завсегдата(?:й|ю|ям|ям))(?![\p{L}\p{M}])/iu
+
+/** Кавычки, которыми игрок обрамляет название: «ёлочки», "прямые", “английские”, „немецкие“. */
+const QUOTED = String.raw`«([^»]{1,120})»|"([^"]{1,120})"|“([^”]{1,120})”|„([^“”]{1,120})[“”]`
 
 /**
  * Куда собрались: глагол ухода или движения, предлог и название до ближайшей
@@ -62,8 +120,12 @@ const LEAVE_VERB = new RegExp(String.raw`(?:${LEAVE})`, 'iu')
  * забирал в пункт назначения всю вторую половину фразы вместе с названием
  * задания.
  */
+//
+// Между глаголом и предлогом допускается цель: «иду искать сына Финна в
+// Пепельный Лес». Не больше трёх слов после инфинитива — дальше это уже другое
+// предложение. «До» — для «добираемся до Каменного Града».
 const DESTINATION = new RegExp(
-  String.raw`(?:${LEAVE}|${HEAD_TO})\s+(?:отсюда\s+|из\s+[^,.;!?]{1,80}\s+)?(?:в|на|к|ко)\s+(?:«([^»]{1,120})»|([^,.;!?—]{1,120}?)(?=\s+(?:и|а|но|чтобы|затем|потом|сохранив|бросив|отказавшись|оставив)\s|[,.;!?—]|$))`,
+  String.raw`(?<![\p{L}\p{M}])(?:${LEAVE}|${HEAD_TO})\s+(?:отсюда\s+|из\s+[^,.;!?]{1,80}\s+)?(?:${PURPOSE_INFINITIVE}(?:\s+[^\s,.;!?—]+){0,3}?\s+)?(?:в|во|на|к|ко|до)\s+(?:(?:${QUOTED})|([^,.;!?—]{1,120}?)(?=\s+(?:и|а|но|чтобы|затем|потом|сохранив|бросив|отказавшись|оставив)\s|\s+${PURPOSE_INFINITIVE}|[,.;!?—]|$))`,
   'iu',
 )
 
@@ -72,7 +134,96 @@ const DESTINATION = new RegExp(
  * вхождение, а не начало: «в Пепельный Лес» — уход, «в тень» — нет, и по первому
  * слову их не различить.
  */
-const PLACE_WORD = new RegExp(String.raw`(?:^|\s|-)(?:${PLACE})`, 'iu')
+const PLACE_WORD = new RegExp(PLACE, 'iu')
+const PLACE_WORD_EXACT = new RegExp(String.raw`^(?:${PLACE})$`, 'iu')
+
+/** Хвост, которым русское слово меняется по падежам: «-у/-а», «-ой/-ого», «-й/-я». */
+const CASE_ENDING = /^[аеёиоуыэюяйьмхвг]{0,3}$/u
+
+/**
+ * Одно слово в разных падежах: общая основа и короткие падежные хвосты.
+ * «Норвин» и «Норвель» начинаются одинаково, но хвосты «ин»/«ель» не падежные.
+ * Тот же критерий, что у `scene-architect.mjs` при поиске точки карты: уход
+ * опознаётся по тому же совпадению, по которому потом выбирается место.
+ *
+ * @param {string} left
+ * @param {string} right
+ */
+function sameWordInflected(left, right) {
+  if (left === right) return true
+  let common = 0
+  while (common < left.length && common < right.length && left[common] === right[common]) common += 1
+  if (common < 3 || common < Math.max(left.length, right.length) - 3) return false
+  return CASE_ENDING.test(left.slice(common)) && CASE_ENDING.test(right.slice(common))
+}
+
+/**
+ * Слова названия длиной от трёх букв, без кавычек; `generic` — родовые слова
+ * («таверна», «лес»), которые сами по себе места не называют.
+ *
+ * @param {string} value
+ */
+function nameWords(value) {
+  const words = (compact(value, 160).toLocaleLowerCase('ru').replace(/["'«»„“”`]/gu, ' ').match(/[\p{L}\p{N}-]+/gu) ?? [])
+    .filter((word) => word.length >= 3)
+  return {
+    distinctive: words.filter((word) => !PLACE_WORD_EXACT.test(word)),
+    generic: words.filter((word) => PLACE_WORD_EXACT.test(word)),
+  }
+}
+
+/**
+ * Называет ли фраза одну из известных отряду точек карты: все отличительные
+ * слова названия встретились во фразе в любом падеже, лишних слов не больше
+ * двух, а названный род места («форт», «таверна») не противоречит карте.
+ *
+ * @param {string} phrase
+ * @param {string[]} knownPlaces
+ */
+function namesKnownPlace(phrase, knownPlaces) {
+  if (!phrase || !knownPlaces.length) return false
+  const spoken = nameWords(phrase)
+  if (!spoken.distinctive.length) return false
+  return knownPlaces.some((name) => {
+    const place = nameWords(name)
+    if (!place.distinctive.length || spoken.distinctive.length > place.distinctive.length + 2) return false
+    if (!place.distinctive.every((stem) => spoken.distinctive.some((word) => sameWordInflected(word, stem)))) return false
+    return !spoken.generic.length || !place.generic.length
+      || place.generic.some((kind) => spoken.generic.some((word) => sameWordInflected(word, kind)))
+  })
+}
+
+/**
+ * Позиция первого совпадения или `-1`.
+ *
+ * @param {RegExp} pattern
+ * @param {string} text
+ */
+function firstIndex(pattern, text) {
+  const match = pattern.exec(text)
+  return match ? match.index : -1
+}
+
+/**
+ * Упоминает ли фраза присутствующего собеседника. Сравнение — по словам имени в
+ * любом падеже: «к Марте», «к Старому Финну».
+ *
+ * @param {string} phrase
+ * @param {string[]} presentNames
+ */
+function namesPresentPerson(phrase, presentNames) {
+  // Сравнивается последнее слово имени — собственное: у «Старого Финна» слово
+  // «старый» совпало бы со «старой крепостью».
+  const proper = presentNames
+    .map((name) => (compact(name, 80).toLocaleLowerCase('ru').match(/[\p{L}-]{3,}/gu) ?? []).at(-1))
+    .filter((name) => typeof name === 'string')
+  if (!proper.length) return -1
+  const lower = compact(phrase, 160).toLocaleLowerCase('ru')
+  for (const word of lower.matchAll(/[\p{L}-]{3,}/gu)) {
+    if (proper.some((name) => sameWordInflected(word[0], name))) return word.index ?? -1
+  }
+  return -1
+}
 
 /** Отказ от задания. Держится рядом с уходом: голосуют за это одной карточкой. */
 const ABANDON = /(?:брос(?:аем|ить|им)\s+(?:это\s+)?(?:задани|квест|поручени|дело)|отказ(?:ываемся|аться|ываюсь)\s+от\s+(?:задани|квест|поручени)|заби(?:ваем|вать|ть|л[иа]?)\s+на\s+(?:задани|квест|поручени)|без\s+задани)/iu
@@ -126,17 +277,74 @@ function worldMapDestinationLocationId(text) {
 /**
  * Пункт назначения и признак того, что назван именно он, а не цель внутри сцены.
  *
+ * Место узнаётся тремя способами: кавычки сразу после предлога, родовое слово
+ * места («лес», «таверна») или известная отряду точка карты по имени. Шаг к
+ * углу или к человеку перевешивает место, если назван раньше него: «в дальний
+ * угол таверны», «к хозяйке таверны».
+ *
  * @param {string} text
+ * @param {ExitContext} context
  * @returns {{destination: string, isPlace: boolean}}
  */
-function destinationIn(text) {
+function destinationIn(text, context) {
   const match = DESTINATION.exec(text)
   if (!match) return { destination: '', isPlace: false }
-  const quoted = compact(match[1] ?? '', 120)
-  const phrase = compact(match[2] ?? '', 120)
+  const quoted = compact(match[1] ?? match[2] ?? match[3] ?? match[4] ?? '', 120)
+  const phrase = compact(match[5] ?? '', 120)
   // Название в кавычках после «в» — всегда место: кавычки ставит либо клиент
   // карты мира, либо сам сервер, собирая вариант голосования.
-  return { destination: quoted || phrase, isPlace: Boolean(quoted) || PLACE_WORD.test(phrase) }
+  if (quoted) return { destination: quoted, isPlace: true }
+  const placeAt = firstIndex(PLACE_WORD, phrase)
+  const known = namesKnownPlace(phrase, context.knownPlaces)
+  if (placeAt < 0 && !known) return { destination: phrase, isPlace: false }
+  const anchor = placeAt < 0 ? phrase.length : placeAt
+  const inScene = [
+    firstIndex(INSIDE_SCENE, phrase),
+    firstIndex(PERSON_WORD, phrase),
+    namesPresentPerson(phrase, context.presentNames),
+  ].some((index) => index >= 0 && index < anchor)
+  return { destination: phrase, isPlace: !inScene }
+}
+
+/**
+ * @typedef {{ knownPlaces: string[], presentNames: string[] }} ExitContext
+ */
+
+/**
+ * @param {{ knownPlaces?: unknown, presentNames?: unknown }} [options]
+ * @returns {ExitContext}
+ */
+function exitContext(options = {}) {
+  const names = (/** @type {unknown} */ value) => (Array.isArray(value) ? value : [])
+    .map((entry) => compact(entry, 120)).filter(Boolean).slice(0, 200)
+  return { knownPlaces: names(options.knownPlaces), presentNames: names(options.presentNames) }
+}
+
+/**
+ * Названия точек карты мира, которые отряд знает, и имена тех, кто стоит рядом.
+ * Вызывающий передаёт их в `detectPartyExitRequest`, чтобы «Иду в Каменный
+ * Град» узнавалось без родового слова, а «иду к Марте» не уводило из сцены.
+ * Скрытые и неизвестные точки не попадают: иначе фраза игрока работала бы
+ * оракулом по карте.
+ *
+ * @param {Record<string, any>} [state]
+ * @returns {{ knownPlaces: string[], presentNames: string[] }}
+ */
+export function exitContextFromState(state = {}) {
+  /** @type {Array<Record<string, any>>} */
+  const locations = Array.isArray(state?.worldMap?.locations) ? state.worldMap.locations : []
+  const knownPlaces = locations
+    .filter((entry) => entry?.name && entry.known !== false && entry.hidden !== true && entry.visibility !== 'gm_only')
+    .map((entry) => compact(entry.name, 120))
+  const location = compact(state?.scene?.location, 160).toLocaleLowerCase('ru')
+  const actors = [
+    ...(Array.isArray(state?.scene_npcs) ? state.scene_npcs : []),
+    ...(Array.isArray(state?.social?.npcs) ? state.social.npcs : []),
+    ...(Array.isArray(state?.merchants) ? state.merchants : []),
+  ].filter((actor) => actor?.alive !== false && actor?.available !== false
+    && (!location || !actor?.location || compact(actor.location, 160).toLocaleLowerCase('ru') === location))
+  const presentNames = [...new Set(actors.map((actor) => compact(actor?.name, 80)).filter(Boolean))]
+  return { knownPlaces, presentNames }
 }
 
 /**
@@ -144,12 +352,15 @@ function destinationIn(text) {
  * говорит о чём угодно другом.
  *
  * @param {unknown} action
+ * @param {{ knownPlaces?: unknown, presentNames?: unknown }} [options] названия
+ *   известных точек карты и имена присутствующих — см. `exitContextFromState`
  * @returns {{destination: string, source: 'world-map'|'text', destinationLocationId?: string}|null}
  */
-export function detectPartyExitRequest(action) {
+export function detectPartyExitRequest(action, options = {}) {
   const text = compact(action, 2_000)
   if (!text) return null
-  const heading = destinationIn(text)
+  const context = exitContext(options)
+  const heading = destinationIn(text, context)
   if (WORLD_MAP_MARKER.test(text)) {
     const places = quotedPlaces(text)
     const destinationLocationId = worldMapDestinationLocationId(text)
@@ -161,11 +372,47 @@ export function detectPartyExitRequest(action) {
       ...(destinationLocationId ? { destinationLocationId } : {}),
     }
   }
+  const leftPlace = LEAVE_OBJECT.exec(text)?.[1] ?? ''
   const leaves = LEAVE_TARGET.test(text)
     || heading.isPlace
     || (LEAVE_VERB.test(text) && EXIT_SCOPE.test(text))
+    || BARE_LEAVE.test(text)
+    || namesKnownPlace(leftPlace, context.knownPlaces)
   if (!leaves) return null
   return { destination: heading.destination, source: 'text' }
+}
+
+/**
+ * Годится ли пункт назначения, названный судьёй свободных действий
+ * (`route: travel`), в карточку ухода. Решает тот же словарь, что и для фразы
+ * игрока: родовое слово места или известная точка карты, и не угол, не стойка,
+ * не собеседник. Пустое назначение — «уйти отсюда» без названия — допустимо.
+ *
+ * @param {unknown} destination
+ * @param {{ knownPlaces?: unknown, presentNames?: unknown }} [options]
+ * @returns {boolean}
+ */
+export function travelDestinationIsPlace(destination, options = {}) {
+  const text = compact(destination, 120).replace(/[«»]/gu, '')
+  if (!text) return true
+  return destinationIn(`Отправляемся в ${text}`, exitContext(options)).isPlace
+}
+
+/**
+ * Объявляет ли фраза движение отряда куда-либо — без решения, уход ли это.
+ * Нужна разбору вида реплики: «Давайте пойдём в порт» и «Может, нам вернуться
+ * в Аквилон?» — это заявка, которую дальше рассудит `detectPartyExitRequest` с
+ * картой мира, а не обсуждение за столом. Карты на том шаге ещё нет, поэтому
+ * спрашивается только форма: глагол ухода или движения с предлогом.
+ *
+ * @param {unknown} action
+ * @returns {boolean}
+ */
+export function announcesMovement(action) {
+  const text = compact(action, 2_000)
+  if (!text) return false
+  return DESTINATION.test(text) || LEAVE_TARGET.test(text) || BARE_LEAVE.test(text)
+    || (LEAVE_VERB.test(text) && EXIT_SCOPE.test(text))
 }
 
 /**

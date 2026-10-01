@@ -1,4 +1,5 @@
 import { affirmativeActionText, classifyNpcSocialCheck } from './npc-social-check.mjs'
+import { announcesMovement } from './party-exit-intent.mjs'
 
 const CORPSE_SEARCH_VERB = '(?<![\\p{L}\\p{M}])(?:обыск\\p{L}*|провер\\p{L}*|осматр\\p{L}*|ищ\\p{L}*)'
 const CORPSE_SEARCH_NOUN = '(?<![\\p{L}\\p{M}])(?:труп(?:а|у|ом|е|ы|ов|ам|ами|ах)?|тел(?:о|а|у|ом|е|ам|ами|ах)?|остан(?:ки|ков|кам|ками|ках)|карман(?:а|у|ом|е|ы|ов|ам|ами|ах)?)(?![\\p{L}\\p{M}])'
@@ -21,19 +22,67 @@ export function normalizeRequestKind(value) {
   return REQUEST_KINDS.includes(kind) ? kind : 'action'
 }
 
-const DIRECT_QUESTION_PATTERN = /^(?:а\s+если|что\s+если|можно\s+ли|могу\s+ли|есть\s+ли|как\s+далеко|что\s+будет|почему|зачем|где\s+(?:наход|стоит|леж)|кто\s+так|сколько|как\s+(?:это|мне|нам))(?:\s|$)/iu
+// Хвост `\p{L}*` после основ: прежний шаблон требовал пробел сразу после
+// «где наход», и «Где находится таверна?» вопросом не считалось никогда.
+const DIRECT_QUESTION_PATTERN = /^(?:а\s+если|что\s+если|можно\s+ли|могу\s+ли|есть\s+ли|как\s+далеко|что\s+будет|почему|зачем|где\s+(?:наход|стоит|леж)\p{L}*|кто\s+так|сколько|как\s+(?:это|мне|нам))(?:\s|$)/iu
+/**
+ * Вопрос к ведущему по форме: вопросительное слово в начале и знак вопроса в
+ * конце. Обращение на «ты/вы» — реплика собеседнику, а не ведущему, поэтому
+ * такие фразы остаются заявкой и уходят в разговор с NPC.
+ */
+const INTERROGATIVE_QUESTION_PATTERN = /^(?:какой|какая|какое|какие|каков\p{L}*|когда|сколько|кто|что|где|куда|откуда|почему|зачем|чей|чья|чьё|чьи|как)(?![\p{L}\p{M}])[^?]{0,200}\?+\s*$/iu
+// Вопрос о знаниях героя («что я знаю про…») по-прежнему идёт заявкой: на него
+// без вызова модели отвечает Хранитель мира (`answerKnownLore`) прямо в ходе.
+const KNOWN_LORE_QUESTION_PATTERN = /(?:что\s+(?:я|мы)\s+зна|кто\s+так|что\s+так|помню\s+ли|помним\s+ли)/iu
+const SECOND_PERSON_PATTERN =/(?<![\p{L}\p{M}])(?:ты|вы|тебя|вас|тебе|вам|твой|твоя|твоё|ваш|ваша|ваше)(?![\p{L}\p{M}])/iu
+/** Реплика вне игры: «(ooc) …», «((…))», «// вне игры». */
+const OUT_OF_CHARACTER_PATTERN = /^(?:\(\(|\(\s*(?:ooc|оос|офф|офтоп|вне\s+игры)\s*\)|\/\/|(?:ooc|оос|офф)[:\s]|вне\s+игры[:,\s])/iu
+/**
+ * Обращение к своему отряду: «Ребята, …», «Ты со мной?». Имя героя-соседа без
+ * состояния не отличить от имени NPC, поэтому узнаётся только форма «ты со
+ * мной / вы с нами».
+ */
+const PARTY_ADDRESS_PATTERN = /^(?:ребята|народ|друзья|парни|братцы|команда|отряд)[,!]\s/iu
+const PARTY_COMPANY_QUESTION_PATTERN = /^(?:[\p{L}-]+,\s*)?(?:ты|вы)\s+(?:(?:идёшь|идешь|идёте|идете|пойдёшь|пойдешь|пойдёте|пойдете)\s+)?(?:со\s+мной|с\s+нами)(?:\s+[^?]{0,80})?\?\s*$/iu
 const SCENE_OBSERVATION_PATTERN = /^(?:где\s+(?:я|мы)(?:\s+сейчас)?(?:\s+наход(?:имся|юсь))?(?:\s+сейчас)?|что\s+(?:я\s+)?вижу(?:\s+(?:здесь|вокруг|перед\s+собой))?|что\s+(?:здесь|вокруг)\s+есть|что\s+находится\s+(?:здесь|вокруг|перед\s+собой)|что\s+вокруг\s+(?:меня|нас)|кто\s+(?:здесь|рядом)|опиши\s+(?:сцену|место|обстановку))\s*[?!]?$/iu
-const PARTY_PROPOSAL_PATTERN = /^(?:давайте|предлагаю|может\s+(?:нам|мы)|стоит\s+(?:ли\s+)?нам)(?:\s|$)/iu
+const PARTY_PROPOSAL_PATTERN = /^(?:давайте|предлагаю|может,?\s+(?:нам|мы)|стоит\s+(?:ли\s+)?нам)(?:[\s,]|$)/iu
 const EXPLICIT_NPC_SPEECH_PATTERN = /^(?:спрашиваю|спрашиваем|говорю|говорим|обращаюсь|обращаемся|прошу|просим)(?:\s|$)/iu
+/**
+ * Глаголы разговора в начале реплики: «Разговариваю с Борисом…», «Узнаю у
+ * Марты…», «Здороваюсь с Финном». Без них такие фразы уходили к судье свободных
+ * действий и превращались в проверку Убеждения вместо разговора. Торговля
+ * текстом — тоже разговор с торговцем: механическая покупка идёт карточкой
+ * торговца, а не проверкой навыка.
+ */
+const SPOKEN_OPENING_PATTERN = /^(?:я\s+)?(?:расспрашиваю|расспрашиваем|разговариваю|разговариваем|беседую|беседуем|заговариваю|заговариваем|болтаю|болтаем|узна(?:ю|ём|ем)\s+у|интересу(?:юсь|емся)\s+у|здорова(?:юсь|емся)|приветствую|приветствуем|благодарю|благодарим|рассказываю|рассказываем|торгу(?:юсь|емся)|покупа(?:ю|ем)|прода(?:ю|ём|ем)|куплю|хочу\s+купить)(?![\p{L}\p{M}])/iu
+/**
+ * Удар по неживому — жест, а не атака: «бью кулаком по столу», «рублю верёвку
+ * люстры». Цели для атаки в них нет, и прежде такие фразы упирались в вопрос
+ * «кого атаковать?».
+ */
+const INANIMATE_STRIKE_PATTERN = /(?<![\p{L}\p{M}])(?:бью|ударяю|стучу|колочу)\s+(?:\p{L}+\s+)?по\s+(?:стол\p{L}*|стен\p{L}*|двер\p{L}*|пол[уе]|стойк\p{L}*|бочк\p{L}*|сундук\p{L}*)|(?<![\p{L}\p{M}])(?:рублю|перерубаю|разрубаю)\s+(?:\p{L}+\s+)?(?:верёвк|веревк|канат|цеп|трос)\p{L}*/iu
+/**
+ * Слова обмана и уговора с границами. `classifyNpcSocialCheck` сравнивает
+ * подстроки, и «вручаю» находило в себе «вру», а «долгую» — «лгу»: передача
+ * письма и долгая передышка становились проверкой Обмана.
+ */
+const DECEPTION_WORD_PATTERN = /(?<![\p{L}\p{M}])(?:обман\p{L}*|лгу|лж[её]\p{L}*|солг\p{L}*|вру|врать|навр\p{L}*|совр\p{L}*|блеф\p{L}*|выдаю\s+себя|deceiv\p{L}*|lie|bluff\p{L}*)(?![\p{L}\p{M}])/iu
+const PERSUASION_FALSE_FRIEND_PATTERN = /(?<![\p{L}\p{M}])склоня(?:юсь|емся)(?![\p{L}\p{M}])/iu
 const ACTION_LIKE_GROUP_PATTERN = /(?:покида|покин|уходим|уйти|маршрут|голосован|переговор|перемир|сдавайт)/iu
 const EXPLICIT_CHECK_PATTERN = /(?<![\p{L}\p{M}])(?:проверк[ауи]|спасброс\p{L}*|check|save)(?![\p{L}\p{M}])|проверяю\s+(?:сил|ловк|мудр|интел|харизм|телослож|скрыт|атлет|акробат)/iu
 
 /** Безопасный fallback для клиентов, которые ещё не передают request_kind. */
 export function inferRequestKind(value) {
   const text = normalizedText(value)
-  if (!text || EXPLICIT_NPC_SPEECH_PATTERN.test(text)) return 'action'
+  if (!text || EXPLICIT_NPC_SPEECH_PATTERN.test(text) || SPOKEN_OPENING_PATTERN.test(text)) return 'action'
+  if (OUT_OF_CHARACTER_PATTERN.test(text) || PARTY_COMPANY_QUESTION_PATTERN.test(text)) return 'discussion'
   if (DIRECT_QUESTION_PATTERN.test(text) || SCENE_OBSERVATION_PATTERN.test(text)) return 'question'
-  if (PARTY_PROPOSAL_PATTERN.test(text) && !ACTION_LIKE_GROUP_PATTERN.test(text)) return 'discussion'
+  if (INTERROGATIVE_QUESTION_PATTERN.test(text) && !SECOND_PERSON_PATTERN.test(text)
+    && !KNOWN_LORE_QUESTION_PATTERN.test(text)) return 'question'
+  // Предложение отряду куда-то пойти — заявка: дальше её рассудит карточка ухода
+  // по карте мира. «Давайте пойдём в порт» раньше оставалось болтовнёй за столом.
+  if ((PARTY_PROPOSAL_PATTERN.test(text) || PARTY_ADDRESS_PATTERN.test(text))
+    && !ACTION_LIKE_GROUP_PATTERN.test(text) && !announcesMovement(text)) return 'discussion'
   return 'action'
 }
 
@@ -53,15 +102,24 @@ const INTENT_PATTERNS = [
   ['improvised_action', FREE_ACTION_PATTERNS[0][1]],
   ['improvised_action', FREE_ACTION_PATTERNS[1][1]],
   ['improvised_action', FREE_ACTION_PATTERNS[2][1]],
-  ['ability_check', new RegExp(`${W}(провер|пытаюсь|исслед|осматр|осмотр|крадусь|взлом|убежд|выбираюсь|выплыв|плыву|тону|утоп|check|swim|drown)`, 'iu')],
+  // Внимательность и поиск названы прямо: «прислушиваюсь», «рассматриваю»,
+  // «изучаю руны», «ищу следы». Без них фраза уходила к судье свободных
+  // действий, и ту же проверку назначала модель. Только личные формы:
+  // инфинитив «обыскать/изучить сундук» — команда пропса сцены
+  // (`sceneObjectOperationFromText`), и её ветка стоит на пути свободного
+  // действия; перехватывать её проверкой навыка нельзя. По той же причине
+  // «отдохнуть» не стало отдыхом: «отдохнуть на кровати» — пропс.
+  ['ability_check', new RegExp(`${W}(провер|пытаюсь|исслед|осматр|осмотр|рассматр|разгляд|высматр|прислуш|изуча|обыскива(?:ю|ем)|крадусь|взлом|убежд|выбираюсь|выплыв|плыву|тону|утоп|ищу\\s+(?:\\p{L}+\\s+)?(?:след|улик|тайник|ловушк|подсказ|зацепк)|check|swim|drown)`, 'iu')],
+  // Заклинание — раньше лечения: «накладываю заклинание Лечение ран» — это
+  // заклинание со своим обработчиком, а не лечение без источника.
+  ['cast_spell', new RegExp(`${W}(каст|заклин|сотвор|колду|spell)`, 'iu')],
   ['healing', new RegExp(`${W}(леч|исцел|восстанов\\p{L}*\\s+хит|heal)`, 'iu')],
   ['damage', /(получает?\s+урон|нанести\s+урон|damage)/iu],
-  ['cast_spell', new RegExp(`${W}(каст|заклин|сотвор|spell)`, 'iu')],
   ['start_combat', /(начать\s+бой|инициатив|start\s+combat)/iu],
   ['end_combat', /((законч|заверш|прекрат)\p{L}*\s+бой|бой\s+(окончен|заверш[её]н)|end\s+combat)/iu],
   ['end_turn', /^\s*(заканчиваю\s+ход|конец\s+хода|end\s+turn)\s*[.!]?\s*$/iu],
-  ['rest', new RegExp(`${W}(коротк\\p{L}*\\s+отдых|долг\\p{L}*\\s+отдых|привал|отдых|отдыха|rest)`, 'iu')],
-  ['social', new RegExp(`${W}(говор|убежд|обман|запуг|спраш|переговор)`, 'iu')],
+  ['rest', new RegExp(`${W}(коротк\\p{L}*\\s+отдых|долг\\p{L}*\\s+отдых|привал|отдых|отдыха|отдохн(?:ём|ем|у)(?![\\p{L}\\p{M}])|передохн|передышк|rest)`, 'iu')],
+  ['social', new RegExp(`${W}(говор|убежд|обман|запуг|спраш|расспраш|переговор|разговарива|беседу|заговарива|здорова|приветству|благодар|рассказыва|узна\\p{L}*\\s+у|интересу\\p{L}*\\s+у|торгу(?:юсь|емся|ться)|купить\\s+у|куплю\\s+у|покупа\\p{L}*\\s+у|прода(?:ю|ём|ем|ть))`, 'iu')],
   ['explore', new RegExp(`${W}(осматр|исслед|иду|двига|открыва|ищу|слуша)`, 'iu')],
 ]
 
@@ -263,6 +321,20 @@ const APPROACH_PATTERNS = Object.freeze([
   ['strength', /(?<![\p{L}\p{M}])(плыв|плава|тону|утоп|выламыв|ломаю|сломать|взлома|толка|толкаю|поднима|подним|тащ|оттаск|силой|swim|drown|shove|lift)/iu],
 ])
 
+/**
+ * Социальный навык из `classifyNpcSocialCheck`, перепроверенный по целым
+ * словам там, где подстрока ложно срабатывает.
+ *
+ * @param {string|null} skill
+ * @param {string} text
+ */
+function boundedSocialSkill(skill, text) {
+  if (skill === 'deception' && !DECEPTION_WORD_PATTERN.test(text)) return null
+  if (skill === 'persuasion' && PERSUASION_FALSE_FRIEND_PATTERN.test(text)
+    && !/(?:убежд|уговар|диплом|persuad|convinc|negotiate)/iu.test(text)) return null
+  return skill
+}
+
 function inferApproach(message) {
   return APPROACH_PATTERNS.find(([, pattern]) => pattern.test(message))?.[0] ?? 'unspecified'
 }
@@ -276,16 +348,25 @@ export class IntentParser {
       free_action_kind: null,
     }
     const operativeText = affirmativeActionText(text)
-    const socialSkill = classifyNpcSocialCheck(text)
+    const socialSkill = boundedSocialSkill(classifyNpcSocialCheck(text), text)
     const freeActionKind = classifyFreeActionKind(operativeText)
     const addressedActors = directlyAddressedActors(text, visibleState)
-    const spoken = addressedActors.length > 0 || EXPLICIT_NPC_SPEECH_PATTERN.test(text) || /^расспрашиваю\s/iu.test(text)
+    const spoken = addressedActors.length > 0 || EXPLICIT_NPC_SPEECH_PATTERN.test(text) || SPOKEN_OPENING_PATTERN.test(text)
+    const patternIntent = INTENT_PATTERNS.find(([, pattern]) => pattern.test(operativeText))?.[0] ?? 'improvised_action'
     const detectedIntent = spoken ? 'social'
       : freeActionKind === 'compound_maneuver' ? 'compound_maneuver'
       : freeActionKind === 'compound_ranged_attack' ? 'improvised_action'
       : freeActionKind === 'approach_attack' ? 'approach_attack'
-      : socialSkill ? 'social' : INTENT_PATTERNS.find(([, pattern]) => pattern.test(operativeText))?.[0] ?? 'improvised_action'
-    const approach = socialSkill ?? inferApproach(operativeText)
+      : socialSkill ? 'social'
+      : patternIntent === 'attack' && INANIMATE_STRIKE_PATTERN.test(operativeText) ? 'improvised_action'
+      : patternIntent
+    // «Проверяю, не следят ли за нами»: отрицание в придаточном снимается
+    // вместе с тем словом, по которому узнаётся Внимательность. Для уже
+    // опознанной проверки подход ищется и в полном тексте.
+    const operativeApproach = inferApproach(operativeText)
+    const approach = socialSkill ?? (operativeApproach === 'unspecified' && detectedIntent === 'ability_check'
+      ? inferApproach(text)
+      : operativeApproach)
     // Свободная задумка вроде «пытаюсь поймать шишку ртом» не должна
     // превращаться в проверку Мудрости только из-за глагола «пытаюсь».
     // Явно запрошенная проверка сохраняет обычный маршрут арбитра.

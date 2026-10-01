@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { normalizeDirectorIntent } from './autonomous-campaign.mjs'
+import { DIRECTOR_INTENT_JSON_SCHEMA } from './llm-json-schemas.mjs'
 import { agentContextMetadata, boundedSelectionMetadata, campaignConceptForAgent } from './agent-context.mjs'
 import { currentImprovMode, normalizeImprovMode } from './campaign-ai-context.mjs'
 import {
@@ -294,6 +295,10 @@ export class DirectorAgent {
         ],
         temperature: 0.25,
         maxTokens: 500,
+        // Творческая роль: профиль рассуждений лидера кампании её касается.
+        role: 'director',
+        // Форма ответа на стороне провайдера; normalizeDirectorIntent всё равно проверяет.
+        jsonSchema: DIRECTOR_INTENT_JSON_SCHEMA,
       }, { timeoutMs: 12_000 })
       return { intent: normalizeDirectorIntent(result), trace: { agent: 'DirectorAgent', mode: 'model', improv_mode: improv, prompt_id: directorPrompt.id, context_metadata: contextMetadata, model: this.llmClient.model ?? null } }
     } catch (error) {

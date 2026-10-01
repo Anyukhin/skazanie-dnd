@@ -1,5 +1,6 @@
 import { LLMClient } from './contracts.mjs'
-import { currentCampaignModel } from './campaign-ai-context.mjs'
+import { campaignReasoningFor, currentCampaignModel } from './campaign-ai-context.mjs'
+import { supportsJsonSchema } from './model-style-profiles.mjs'
 
 const DEFAULT_TIMEOUT_MS = 45_000
 const DEFAULT_MAX_TOOL_CALLS = 8
@@ -139,6 +140,24 @@ function toolNames(tools, explicitNames) {
   }
   for (const name of Array.isArray(explicitNames) ? explicitNames : []) names.add(String(name))
   return names
+}
+
+/**
+ * Форма объекта `json_schema` перед отправкой: имя по правилам
+ * OpenAI-совместимого API и объектная схема в корне. Неверная схема не должна
+ * превращать рабочий JSON-запрос в HTTP 400 — тогда клиент остаётся на
+ * `json_object`. Сами схемы ролей лежат в `server/llm-json-schemas.mjs`;
+ * клиент их не импортирует, чтобы не тянуть доменные модули в слой доступа к модели.
+ *
+ * @param {unknown} value
+ * @returns {{ name: string, strict: boolean, schema: object } | null}
+ */
+export function usableJsonSchema(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  if (typeof value.name !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(value.name)) return null
+  const schema = value.schema
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema) || schema.type !== 'object') return null
+  return { name: value.name, strict: value.strict !== false, schema }
 }
 
 function wantsJson(request) {
@@ -436,12 +455,24 @@ export class RouterAIClient extends LLMClient {
       body.tools = request.tools
       body.tool_choice = request.toolChoice ?? request.tool_choice ?? 'auto'
     }
-    const reasoning = request.reasoning && typeof request.reasoning === 'object' ? request.reasoning : this.reasoning
+    // Порядок: явный запрос → профиль лидера кампании для этой модели и роли
+    // (только творческие роли, помеченные `role`) → профиль сервера.
+    const reasoning = request.reasoning && typeof request.reasoning === 'object'
+      ? request.reasoning
+      : campaignReasoningFor(body.model, request.role) ?? this.reasoning
     if (reasoning) body.reasoning = reasoning
+    // Роль может приложить JSON Schema своего ответа (`jsonSchema`). Модели,
+    // у которых маршрут исполняет strict json_schema (`supportsJsonSchema`,
+    // проба 2026-10-01), получают её; остальные — прежний json_object. Схема
+    // не заменяет проверку: ответ всё равно идёт через strictJsonParse и
+    // собственный валидатор роли.
     // У маршрута GLM Flash наблюдались {} в JSON mode. Совместимый вариант
     // без response_format и с явной инструкцией формата проверен 2026-09-08.
     // Строгий parser ответа сохраняется.
-    if (wantsJson(request)) {
+    const jsonSchema = wantsJson(request) ? usableJsonSchema(request.jsonSchema) : null
+    if (jsonSchema && supportsJsonSchema(body.model)) {
+      body.response_format = { type: 'json_schema', json_schema: jsonSchema }
+    } else if (wantsJson(request)) {
       if (body.model !== 'z-ai/glm-5.3-flash') body.response_format = { type: 'json_object' }
       else {
         const directive = 'Верни только полное JSON-значение, соответствующее запрошенной схеме. Без Markdown, кодовых блоков, вступления и пояснений.'

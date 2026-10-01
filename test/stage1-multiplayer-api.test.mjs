@@ -1,22 +1,14 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
-import { createServer as createNetServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
+import { freePort } from './free-port.mjs'
 import { FileEventStore } from '../server/event-store.mjs'
 import { GAME_STATE_PROJECTOR_VERSION, applyGameEvent, normalizeCampaignState } from '../server/rules-engine.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
-
-async function freePort() {
-  const probe = createNetServer()
-  await new Promise((resolve, reject) => { probe.once('error', reject); probe.listen(0, '127.0.0.1', resolve) })
-  const address = probe.address()
-  await new Promise((resolve, reject) => probe.close((error) => error ? reject(error) : resolve()))
-  return address.port
-}
 
 function startServer(port, storage, appendLog) {
   const child = spawn(process.execPath, ['server/index.mjs'], {
@@ -251,7 +243,7 @@ test('этап 1: два игрока получают SSE presence, комми�
     body: { model: selectedModel, narratorStyle: 'formal' },
   })
   assert.equal(savedSettings.status, 200, savedSettings.text)
-  assert.deepEqual(savedSettings.body.settings, { model: selectedModel, narratorStyle: 'formal', improvMode: 'story' })
+  assert.deepEqual(savedSettings.body.settings, { model: selectedModel, narratorStyle: 'formal', improvMode: 'story', reasoningLevel: 'auto' })
   const rejectedModel = await request(baseUrl, '/api/campaigns/STAGE1/settings', {
     method: 'PATCH',
     cookie: ownerCookie,
@@ -335,6 +327,6 @@ test('этап 1: два игрока получают SSE presence, комми�
   assert.deepEqual(recovered.body.state.players.map((player) => player.experience), [10, 10, 10, 10])
   const recoveredSettings = await request(baseUrl, '/api/campaigns/STAGE1/settings', { cookie: ownerCookie })
   assert.equal(recoveredSettings.status, 200, recoveredSettings.text)
-  assert.deepEqual(recoveredSettings.body.settings, { model: selectedModel, narratorStyle: 'formal', improvMode: 'story' })
+  assert.deepEqual(recoveredSettings.body.settings, { model: selectedModel, narratorStyle: 'formal', improvMode: 'story', reasoningLevel: 'auto' })
   assert.equal(await eventStore.pendingProjection('STAGE1'), null)
 })

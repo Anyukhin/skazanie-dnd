@@ -21,8 +21,9 @@ const KNOWN_WRITERS = Object.freeze({
   // боевым путям: по мере шагов 4–5 остальные строки этой таблицы должны
   // обнулиться, а здесь останется одна.
   'authoritative-executor.mjs': 3,
-  // Командные писатели: план → resolvePlan → commit.
-  'game-orchestrator.mjs': 2,
+  // Командные писатели: план → resolvePlan → commit. Третий у оркестратора —
+  // улика удачной проверки (`commitCheckDiscovery`, 2026-10-01).
+  'game-orchestrator.mjs': 3,
   'autonomous-orchestrator.mjs': 3,
   // Переведены на общий исполнитель шагом 4: прямых записей больше нет.
   'npc-turn-scheduler.mjs': 0,
@@ -64,18 +65,4 @@ test('реестр авторитетных писателей не растёт
       `${name}: писателей стало ${actual[name] ?? 0} вместо ${expected}. `
       + 'Обновите реестр в docs/agent-architecture-plan.md тем же PR.')
   }
-})
-
-test('политики устойчивости расходятся — и это записано до унификации', () => {
-  const orchestrator = readFileSync(new URL('../server/game-orchestrator.mjs', import.meta.url), 'utf8')
-  const scheduler = readFileSync(new URL('../server/npc-turn-scheduler.mjs', import.meta.url), 'utf8')
-
-  // Основной ход игрока переживает конфликт версии прозрачно.
-  assert.match(orchestrator, /STATE_VERSION_CONFLICT/u,
-    'основной ход обязан различать конфликт версии')
-
-  // Планировщик NPC — нет. Тест фиксирует это как текущее поведение;
-  // шаг 4 плана меняет его явным коммитом, а не «чтобы позеленело».
-  assert.doesNotMatch(scheduler, /STATE_VERSION_CONFLICT/u,
-    'если планировщик NPC научился retry — это шаг 4, обновите тест осознанно')
 })

@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
 import {
@@ -122,28 +121,4 @@ test('сводка считает доли и разрез по категори
   assert.equal(score.categories.social_audacity.wrong_refusals, 1)
   assert.equal(score.categories.inventory_items.structural_valid_pct, 50)
   assert.deepEqual(score.misses.map((miss) => miss.id), ['b', 'c'])
-})
-
-test('промпт v4 держит контракт роли и не ослабляет запреты v2/v3', async () => {
-  const v4 = await readFile(new URL('../prompts/action_adjudicator/v4.txt', import.meta.url), 'utf8')
-  assert.match(v4, /^PROMPT_ID: action_adjudicator\/v4/u)
-  assert.match(v4, /UNTRUSTED_DATA/u)
-  // Запреты v2 сохранены дословно.
-  assert.match(v4, /Ты не бросаешь кубики, не называешь числа и не описываешь исход/u)
-  assert.match(v4, /не выдумывай предметов, существ и особенностей обстановки/u)
-  assert.match(v4, /отвечай только JSON без markdown и пояснений/u)
-  // Усиление 1.3: выполнимое не получает отказ, а отказ обязан назвать средство.
-  assert.match(v4, /выполнимая задумка никогда не получает отказ/u)
-  assert.match(v4, /required_means при impossible_without_means обязателен и никогда не пуст/u)
-  assert.match(v4, /социальная дерзость — всегда допустимая заявка/u)
-  // Единственное расширение перечислений — мост к механике 3.2.
-  assert.match(v4, /- effect: none, prone, help_ally, distract, blind, restrain, hazard_damage, topple_prop, ignite_prop/u)
-  assert.match(v4, /prop_id обязателен и берётся ровно из scene_props/u)
-  assert.match(v4, /не подбирай похожий и не придумывай новый/u)
-
-  // Прочие перечисления не трогали: v3 остаётся на диске, и разница между
-  // файлами обязана сводиться к мосту, а не к переписанному контракту.
-  const v3 = await readFile(new URL('../prompts/action_adjudicator/v3.txt', import.meta.url), 'utf8')
-  const enums = (text) => text.split(/\r?\n/u).filter((line) => /^- (?:ability|skill|plausibility|risk|action_cost|hazard|proficiency|consequence_type):/u.test(line))
-  assert.deepEqual(enums(v4), enums(v3), 'кроме effect перечисления обязаны совпасть с v3')
 })

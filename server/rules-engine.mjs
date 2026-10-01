@@ -4,7 +4,7 @@ import { withBackgroundBenefits } from './backgrounds.mjs'
 import { PHB_STARTING_WEALTH, startingPurchaseCatalog } from './character-creation-wealth.mjs'
 import { parseDiceExpression } from './dice-service.mjs'
 import { monsterActionAvailable, monsterActionSpentMarker, monsterActionUsageKey, monsterAreaAction, monsterAttackTargetAllowed, monsterOnHitTargetAllowed, monsterRechargeMinimum, monsterMultiattackSequences, monsterMultiattackSequenceFor } from './monster-actions.mjs'
-import { DND_2014_RULESET_ID, INSTALLED_RULESET_IDS, LEGACY_DEFAULT_RULESET_ID, rulesetRuleId } from './ruleset-config.mjs'
+import { DND_2014_RULESET_ID, INSTALLED_RULESET_IDS, rulesetRuleId } from './ruleset-config.mjs'
 import { applyAutonomyEvent, normalizeAutonomyState } from './autonomous-campaign.mjs'
 import {
   createSceneTransition,
@@ -486,9 +486,20 @@ import {
   weatherRangedPenalty,
   worldClockEventDrafts,
 } from './weather.mjs'
+import { DEFAULT_RULESET_ID, RulesValidationError, safeInteger, usesDnd2014 } from './rules/core.mjs'
+import { actorHp, actorId, actorPosition, findActor, isEnemyActor, isLivingActor, listActors } from './rules/actors.mjs'
+import {
+  actorFootprintCellsAt, actorTrajectoryDetails, coverBetween, creatureSizeRank, footprintPlacementEdgesBlocked,
+  footprintStepBlocked, highGroundBetween, isWalkableCell, lineCells, occupiedPositions, positionKey,
+  propMovementPositions, sceneTacticalMap, sceneTacticalMapCache, shortestTacticalPath, tacticalCellMap, trajectoryDetails,
+} from './rules/tactical-geometry.mjs'
 
-export const DEFAULT_RULESET_ID = LEGACY_DEFAULT_RULESET_ID
-const usesDnd2014 = (state) => String(state?.ruleset_id ?? DEFAULT_RULESET_ID) === DND_2014_RULESET_ID
+// Прежний публичный API движка: эти имена переехали в server/rules/*, а
+// импортёры движка продолжают брать их отсюда.
+export { DEFAULT_RULESET_ID, RulesValidationError } from './rules/core.mjs'
+export { actorPosition, findActor, isEnemyActor, isLivingActor, listActors } from './rules/actors.mjs'
+export { coverBetween, hasClearTrajectory, highGroundBetween, shortestTacticalPath } from './rules/tactical-geometry.mjs'
+
 const MAGIC_ITEM_SPELL_IMMUNITY_EVENT_SCHEMA_VERSION = 1
 // Внутренний маркер для атак, которые уже оплачены родительским бонусным
 // действием. Символ и токен не могут приехать в JSON-команде игрока.
@@ -886,14 +897,6 @@ const MERCHANT_STOCK_FIELDS = new Set([
   'stock_id', 'catalog_id', 'quantity', 'name', 'type', 'weight', 'rarity', 'description', 'properties',
 ])
 
-export class RulesValidationError extends Error {
-  constructor(message, code = 'RULES_VALIDATION_FAILED') {
-    super(message)
-    this.name = 'RulesValidationError'
-    this.code = code
-  }
-}
-
 function clone(value) {
   return structuredClone(value)
 }
@@ -914,11 +917,6 @@ function assertMechanicsSupported(subject, label) {
   throw new RulesValidationError(reason
     ? `Для ${label} требуется серверное решение правил: ${reason}`
     : `Для ${label} требуется серверное решение правил`, 'RULING_REQUIRED')
-}
-
-function safeInteger(value, fallback = 0) {
-  const number = Number(value)
-  return Number.isSafeInteger(number) ? number : fallback
 }
 
 /**
@@ -1543,24 +1541,6 @@ function normalizeInventory(input, ownerId) {
   })
 }
 
-function actorId(actor) {
-  return String(actor?.id ?? actor?.actor_id ?? '')
-}
-
-export function listActors(state) {
-  const players = Array.isArray(state?.players) ? state.players : []
-  const actors = Array.isArray(state?.actors) ? state.actors : []
-  const enemies = Array.isArray(state?.enemies) ? state.enemies : []
-  const byId = new Map()
-  for (const actor of [...players, ...actors, ...enemies]) if (actorId(actor)) byId.set(actorId(actor), actor)
-  return [...byId.values()]
-}
-
-export function findActor(state, id) {
-  const expected = String(id ?? '')
-  return listActors(state).find((actor) => actorId(actor) === expected) ?? null
-}
-
 // Социальный NPC остаётся в своём реестре: мирное касание не начинает бой
 // и не создаёт второй лист. Его эффект адресуется прежнему устойчивому ID.
 function spellCreatureFor(state, id, spell) {
@@ -1783,12 +1763,37 @@ function encounterWithoutLoadouts(encounter) {
   return copy
 }
 
+/**
+ * Поля героя, которые нормализация ниже пересчитывает с нуля и безусловно
+ * перезаписывает. Прежние значения ничего не читает, а `combatSpells` —
+ * полная копия каждого доступного заклинания с описанием: у волшебника
+ * 12 уровня это почти девять десятых объёма состояния. Копировать их перед
+ * пересчётом незачем. Значение заменяется на `null`, а не удаляется, чтобы
+ * ключ остался на прежнем месте: порядок ключей входит в JSON и его хеши.
+ */
+const DERIVED_PLAYER_FIELDS = Object.freeze(['combatSpells', 'combatActions', 'characterSheet', 'inventoryLoad'])
+
+function withoutDerivedPlayerFields(players) {
+  if (!Array.isArray(players)) return players
+  return players.map((player) => {
+    if (!player || typeof player !== 'object' || Array.isArray(player)) return player
+    if (!DERIVED_PLAYER_FIELDS.some((field) => Object.hasOwn(player, field))) return player
+    const stripped = { ...player }
+    for (const field of DERIVED_PLAYER_FIELDS) if (Object.hasOwn(stripped, field)) stripped[field] = null
+    return stripped
+  })
+}
+
 export function normalizeCampaignState(input = {}) {
   const source = input && typeof input === 'object' ? input : {}
   // Память ниже полностью пересоздаёт собственный normalizer. Её первая
   // полная копия здесь не нужна; остальные области по-прежнему изолированы.
   const plain = Object.getPrototypeOf(source) === Object.prototype || Object.getPrototypeOf(source) === null
-  const state = clone(plain ? { ...source, worldMemory: undefined } : source)
+  const state = clone(plain ? {
+    ...source,
+    worldMemory: undefined,
+    ...(Object.hasOwn(source, 'players') ? { players: withoutDerivedPlayerFields(source.players) } : {}),
+  } : source)
   // Старые снимки не знают о подготовке героев на повышенный стартовый
   // уровень. Для них сохраняется прежний первый уровень; новое значение
   // ограничивается тем же каталогом, что и обычный LevelUp.
@@ -2057,36 +2062,6 @@ export function abilityModifier(score) {
   return Math.floor((safe - 10) / 2)
 }
 
-export function isEnemyActor(state, id) {
-  const expected = String(id ?? '')
-  return (state?.enemies ?? []).some((enemy) => actorId(enemy) === expected)
-}
-
-export function isLivingActor(actor) {
-  return Boolean(actor) && actorHp(actor) > 0 && actor?.alive !== false
-}
-
-export function actorPosition(state, id) {
-  const actor = findActor(state, id)
-  const stored = state?.mechanics?.positions?.[String(id)]
-  const x = Number(stored?.x ?? actor?.x)
-  const y = Number(stored?.y ?? actor?.y)
-  return Number.isSafeInteger(x) && Number.isSafeInteger(y) ? { x, y } : null
-}
-
-function positionKey(position) {
-  return `${position.x},${position.y}`
-}
-
-/**
- * Служебный адаптер между состоянием и чистой геометрией footprint. Размер
- * читается только из `actor.footprint.version === 1`; старые актёры остаются
- * одной клеткой даже при сохранённом текстовом `size`.
- */
-function actorFootprintCellsAt(state, id, position = actorPosition(state, id)) {
-  return footprintCellsFor(findActor(state, id), position)
-}
-
 function actorFootprintVisible(state, id, position = actorPosition(state, id)) {
   const cells = tacticalCellMap(state)
   if (!cells.size) return true
@@ -2140,39 +2115,6 @@ function stampActorFootprint(actor, authoritativeSize = undefined) {
     ?? actor.creatureSize
     ?? 'medium'
   return { ...withoutFootprint, footprint: footprintMetadataForSize(size) }
-}
-
-/**
- * Карта сцены как объект. Каноническое представление лежит в `scene.map`
- * сериализованным, чтобы переживать clone и снимок состояния без отдельного
- * кода.
- */
-/**
- * Разобранные карты по объекту сериализованной карты.
- *
- * Без кэша reducer разбирал карту заново на каждом событии: replay кампании из
- * 52 событий занимал 261 мс, то есть около 5 мс на событие, и это чувствовалось
- * при открытии кампании. Ключ — сам объект `scene.map`; запись карты создаёт
- * новый объект, поэтому устаревшее значение из кэша прийти не может.
- *
- * @type {WeakMap<object, import('./tactical-map.mjs').TacticalMap>}
- */
-const sceneTacticalMapCache = new WeakMap()
-
-function sceneTacticalMap(state) {
-  const raw = state?.scene?.map
-  if (!raw || typeof raw !== 'object') return null
-  const cached = sceneTacticalMapCache.get(raw)
-  if (cached) return cached
-  try {
-    const map = deserializeTacticalMap(raw)
-    sceneTacticalMapCache.set(raw, map)
-    return map
-  } catch {
-    // Повреждённая карта не должна останавливать игру: сцена продолжит жить на
-    // старых клетках, а следующая нормализация соберёт карту заново.
-    return null
-  }
 }
 
 /**
@@ -2796,66 +2738,6 @@ function revealSceneCells(state, positions) {
   return touched ? writeSceneTacticalMap(state, map) : state
 }
 
-function tacticalCellMap(state) {
-  return new Map((Array.isArray(state?.scene?.cells) ? state.scene.cells : [])
-    .filter((cell) => Number.isSafeInteger(Number(cell?.x)) && Number.isSafeInteger(Number(cell?.y)))
-    .map((cell) => [`${Number(cell.x)},${Number(cell.y)}`, cell]))
-}
-
-function isWalkableCell(cell) {
-  // Нераскрытая клетка проходима: иначе исследование невозможно в принципе.
-  // Прежняя проверка `revealed === false` запирала отряд в том пятне, которое
-  // досталось ему при создании сцены — шагнуть в темноту было нельзя, а
-  // раскрывалась она только шагом в неё же. Стены и вода остаются
-  // непроходимыми независимо от тумана, поэтому сквозь них путь всё равно не
-  // построится, а само содержимое клетки игрок увидит, только дойдя до него.
-  if (!cell) return false
-  return ['floor', 'door'].includes(String(cell.type || 'floor').toLowerCase())
-}
-
-function occupiedPositions(state, exceptActorId = null) {
-  const occupied = new Set()
-  for (const actor of listActors(state)) {
-    if (actorId(actor) === String(exceptActorId ?? '') || !isLivingActor(actor)) continue
-    for (const cell of actorFootprintCellsAt(state, actorId(actor))) occupied.add(positionKey(cell))
-  }
-  // Социальные NPC не входят в listActors, но их сохранённые посты занимают
-  // клетки. Перемещение, принудительное движение и прыжки используют один
-  // набор занятых клеток, чтобы герой не завершал движение поверх NPC.
-  if (state?.npc_world?.placements?.length || state?.scene_npcs?.length) {
-    for (const key of sceneNpcOccupiedCells(state)) occupied.add(key)
-  }
-  return occupied
-}
-
-/** Внутренние рёбра площади тоже должны быть проходимыми для тела. */
-function footprintPlacementEdgesBlocked(map, actor, anchor) {
-  if (!map) return false
-  if (footprintSizeFor(actor) <= 1) return false
-  const cells = footprintCellsFor(actor, anchor)
-  const keys = new Set(cells.map(positionKey))
-  for (const cell of cells) {
-    for (const [dx, dy] of [[1, 0], [0, 1]]) {
-      const next = { x: cell.x + dx, y: cell.y + dy }
-      if (keys.has(positionKey(next)) && movementStepBlocked(map, cell.x, cell.y, next.x, next.y)) return true
-    }
-  }
-  return false
-}
-
-/** Проверяет каждый пересечённый край при сдвиге anchor на одну клетку. */
-function footprintStepBlocked(map, actor, from, to) {
-  if (!map) return false
-  if (footprintSizeFor(actor) <= 1) return movementStepBlocked(map, from.x, from.y, to.x, to.y)
-  if (footprintPlacementEdgesBlocked(map, actor, from) || footprintPlacementEdgesBlocked(map, actor, to)) return true
-  const cells = footprintCellsFor(actor, from)
-  for (const cell of cells) {
-    const next = { x: cell.x + (to.x - from.x), y: cell.y + (to.y - from.y) }
-    if (movementStepBlocked(map, cell.x, cell.y, next.x, next.y)) return true
-  }
-  return false
-}
-
 /** Проверка anchor без учета движения: вся площадь должна иметь пол и рёбра. */
 function actorFootprintFits(state, actorIdValue, anchor, {
   map = sceneTacticalMap(state),
@@ -2873,199 +2755,6 @@ function actorFootprintFits(state, actorIdValue, anchor, {
     if (!allowOccupied && occupied.has(key)) return false
   }
   return true
-}
-
-/**
- * Клетки, занятые server-owned реквизитом. `blocksMove` — часть TacticalProp,
- * поэтому она действует одинаково для игрока, NPC, forced movement и прыжка.
- * Состояние пропса не подменяет этот server-owned флаг: если `blocksMove`
- * установлен, клетка остаётся занятой до явного изменения самого флага в
- * карте.
- */
-function movementBlockedProp(prop) {
-  return prop?.blocksMove === true
-}
-
-/** @param {any} map @returns {Set<string>} */
-function propMovementPositions(map) {
-  const blocked = new Set()
-  for (const prop of map?.props ?? []) {
-    if (!movementBlockedProp(prop)) continue
-    const cells = Array.isArray(prop.footprint) && prop.footprint.length
-      ? prop.footprint
-      : [{ x: Math.floor(Number(prop.x)), y: Math.floor(Number(prop.y)) }]
-    for (const cell of cells) {
-      if (Number.isSafeInteger(Number(cell?.x)) && Number.isSafeInteger(Number(cell?.y))) blocked.add(`${Number(cell.x)},${Number(cell.y)}`)
-    }
-  }
-  return blocked
-}
-
-/**
- * Returns the shortest orthogonal path, excluding the starting square.
- * `stepCost` switches the search to a weighted path without changing the
- * step-count semantics used by NPC planning and other existing callers.
- */
-export function shortestTacticalPath(state, actorIdValue, destination, {
-  allowOccupiedDestination = false,
-  stepCost = null,
-  tacticalMap = undefined,
-} = {}) {
-  const from = actorPosition(state, actorIdValue)
-  const to = { x: Number(destination?.x), y: Number(destination?.y) }
-  if (!from || !Number.isSafeInteger(to.x) || !Number.isSafeInteger(to.y)) return null
-  if (from.x === to.x && from.y === to.y) return []
-  const cells = tacticalCellMap(state)
-  const fromCell = cells.get(positionKey(from))
-  if (!cells.size || !fromCell || fromCell.revealed === false) return null
-  // Decode the map once for both doors and prop occupancy. Props with a
-  // `blocksMove` footprint are obstacles, even when their art is painted into
-  // a full-map background.
-  const map = tacticalMap === undefined ? sceneTacticalMap(state) : tacticalMap
-  const propOccupied = map ? propMovementPositions(map) : new Set()
-  const occupied = occupiedPositions(state, actorIdValue)
-  const hasSceneNpcs = Boolean(state?.npc_world?.placements?.length || state?.scene_npcs?.length)
-  const npcTransit = hasSceneNpcs ? sceneNpcTransitCells(state) : new Set()
-  const npcOccupied = hasSceneNpcs ? sceneNpcOccupiedCells(state) : new Set()
-  const start = positionKey(from)
-  const target = positionKey(to)
-  const mover = findActor(state, actorIdValue)
-  const canMoveThroughLarger = mover?.speciesBenefits?.mechanics?.move_through_larger === true
-  const occupiedActors = canMoveThroughLarger ? new Map() : null
-  if (occupiedActors) {
-    for (const candidate of listActors(state)) {
-      if (actorId(candidate) === String(actorIdValue) || !isLivingActor(candidate)) continue
-      for (const cell of actorFootprintCellsAt(state, actorId(candidate))) {
-        const key = positionKey(cell)
-        const occupants = occupiedActors.get(key) ?? []
-        occupants.push(candidate)
-        occupiedActors.set(key, occupants)
-      }
-    }
-  }
-  const moverFootprintSide = footprintSizeFor(mover)
-  const canPassOccupied = (position) => {
-    if (positionKey(position) === target || !canMoveThroughLarger || !occupiedActors) return false
-    if (moverFootprintSide === 1) {
-      const occupants = occupiedActors.get(positionKey(position)) ?? []
-      return occupants.length > 0 && occupants.every((occupant) => creatureSizeRank(occupant) > creatureSizeRank(mover))
-    }
-    const occupants = new Map()
-    for (const cell of footprintCellsFor(mover, position)) {
-      for (const occupant of occupiedActors.get(positionKey(cell)) ?? []) occupants.set(actorId(occupant), occupant)
-    }
-    return occupants.size > 0 && [...occupants.values()].every((occupant) => creatureSizeRank(occupant) > creatureSizeRank(mover))
-  }
-  // Закрытая и запертая дверь останавливают шаг. Карта может отсутствовать у
-  // состояния, сохранённого до перехода на слои, — тогда путь считается по
-  // клеткам, как раньше.
-  // Weighted search may inspect thousands of candidate steps. Decode the map
-  // once before the loop (or reuse the caller's decoded instance), never from
-  // the per-step cost predicate.
-  const canOccupyAnchor = (position, { allowTarget = false } = {}) => {
-    if (moverFootprintSide === 1) {
-      const key = positionKey(position)
-      if (!isWalkableCell(cells.get(key)) || propOccupied.has(key)) return false
-      if (npcOccupied.has(key) && (key === target || !npcTransit.has(key))) return false
-      if (allowTarget) return true
-      if (key === target && occupied.has(key)) return false
-      return !occupied.has(key) || npcTransit.has(key) || canPassOccupied(position)
-    }
-    const footprint = footprintCellsFor(mover, position)
-    if (!footprint.length) return false
-    if (map && footprintPlacementEdgesBlocked(map, mover, position)) return false
-    const passThroughLarger = canPassOccupied(position)
-    for (const cell of footprint) {
-      const key = positionKey(cell)
-      if (!isWalkableCell(cells.get(key)) || propOccupied.has(key)) return false
-      if (npcOccupied.has(key) && (key === target || !npcTransit.has(key))) return false
-      if (!occupied.has(key)) continue
-      if (npcTransit.has(key)) continue
-      if (allowTarget) continue
-      if (!passThroughLarger) return false
-    }
-    return true
-  }
-  if (!canOccupyAnchor(to, { allowTarget: allowOccupiedDestination })) return null
-  const previous = new Map([[start, null]])
-  if (typeof stepCost !== 'function') {
-    const queue = [start]
-    for (let cursor = 0; cursor < queue.length; cursor += 1) {
-      const current = queue[cursor]
-      if (current === target) break
-      const [x, y] = current.split(',').map(Number)
-      for (const [nextX, nextY] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
-        const next = `${nextX},${nextY}`
-        const nextPosition = { x: nextX, y: nextY }
-        if (previous.has(next) || !canOccupyAnchor(nextPosition, { allowTarget: allowOccupiedDestination && next === target })) continue
-        if (map && (moverFootprintSide > 1
-          ? footprintStepBlocked(map, mover, { x, y }, nextPosition)
-          : movementStepBlocked(map, x, y, nextX, nextY))) continue
-        previous.set(next, current)
-        queue.push(next)
-      }
-    }
-  } else {
-    const costs = new Map([[start, 0]])
-    const frontier = [{ key: start, cost: 0 }]
-    const pushFrontier = (entry) => {
-      frontier.push(entry)
-      let child = frontier.length - 1
-      while (child > 0) {
-        const parent = Math.floor((child - 1) / 2)
-        if (frontier[parent].cost <= frontier[child].cost) break
-        ;[frontier[parent], frontier[child]] = [frontier[child], frontier[parent]]
-        child = parent
-      }
-    }
-    const popFrontier = () => {
-      const first = frontier[0]
-      const last = frontier.pop()
-      if (frontier.length && last) {
-        frontier[0] = last
-        let parent = 0
-        while (true) {
-          const left = parent * 2 + 1
-          const right = left + 1
-          let smallest = parent
-          if (left < frontier.length && frontier[left].cost < frontier[smallest].cost) smallest = left
-          if (right < frontier.length && frontier[right].cost < frontier[smallest].cost) smallest = right
-          if (smallest === parent) break
-          ;[frontier[parent], frontier[smallest]] = [frontier[smallest], frontier[parent]]
-          parent = smallest
-        }
-      }
-      return first
-    }
-
-    while (frontier.length) {
-      const current = popFrontier()
-      if (!current || current.cost !== costs.get(current.key)) continue
-      if (current.key === target) break
-      const [x, y] = current.key.split(',').map(Number)
-      for (const [nextX, nextY] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
-        const next = `${nextX},${nextY}`
-        const nextPosition = { x: nextX, y: nextY }
-        if (!canOccupyAnchor(nextPosition, { allowTarget: allowOccupiedDestination && next === target })) continue
-        if (map && (moverFootprintSide > 1
-          ? footprintStepBlocked(map, mover, { x, y }, nextPosition)
-          : movementStepBlocked(map, x, y, nextX, nextY))) continue
-        const weight = Math.max(1, Number(stepCost({ x: nextX, y: nextY }, map)) || 1)
-        const nextCost = current.cost + weight
-        if (nextCost >= (costs.get(next) ?? Number.POSITIVE_INFINITY)) continue
-        costs.set(next, nextCost)
-        previous.set(next, current.key)
-        pushFrontier({ key: next, cost: nextCost })
-      }
-    }
-  }
-  if (!previous.has(target)) return null
-  const path = []
-  for (let cursor = target; cursor && cursor !== start; cursor = previous.get(cursor)) {
-    const [x, y] = cursor.split(',').map(Number)
-    path.unshift({ x, y })
-  }
-  return path
 }
 
 function creatureTypeFor(actor) {
@@ -3575,79 +3264,6 @@ function armorStrengthSpeedPenalty(actor) {
   return armorRestrictions(actor).some((armor) => strength < safeInteger(armor.strengthRequirement, 0)) ? 10 : 0
 }
 
-function lineCells(from, to) {
-  const result = []
-  let x = from.x; let y = from.y
-  const dx = Math.abs(to.x - x); const sx = x < to.x ? 1 : -1
-  const dy = -Math.abs(to.y - y); const sy = y < to.y ? 1 : -1
-  let error = dx + dy
-  while (x !== to.x || y !== to.y) {
-    const twice = 2 * error
-    if (twice >= dy) { error += dy; x += sx }
-    if (twice <= dx) { error += dx; y += sy }
-    result.push({ x, y })
-  }
-  return result
-}
-
-function assertClearTrajectory(state, from, to) {
-  const cells = tacticalCellMap(state)
-  const trajectory = lineCells(from, to)
-  const map = sceneTacticalMap(state)
-  const endpoint = cells.get(positionKey(to))
-  if (!endpoint || String(endpoint.type) === 'wall') {
-    throw new RulesValidationError('Траектория заканчивается за стеной или краем карты', 'TRAJECTORY_BLOCKED')
-  }
-  if (trajectory.slice(0, -1).some((point, index) => {
-    const cell = cells.get(positionKey(point))
-    const previous = index === 0 ? from : trajectory[index - 1]
-    const edge = map && Math.abs(previous.x - point.x) + Math.abs(previous.y - point.y) === 1
-      ? edgeBetween(map, previous.x, previous.y, point.x, point.y)
-      : null
-    const blockedDoor = edge?.kind === 'door'
-      && movementStepBlocked(map, previous.x, previous.y, point.x, point.y)
-    return !cell || String(cell.type) === 'wall' || blockedDoor || edge?.blocksSight === true
-  })) {
-    throw new RulesValidationError('Траекторию перекрывает стена или граница карты', 'TRAJECTORY_BLOCKED')
-  }
-  return trajectory
-}
-
-/** Подробности одной линии: нужна для выбора свободного края большой цели. */
-function trajectoryDetails(state, from, to) {
-  const cells = tacticalCellMap(state)
-  const map = sceneTacticalMap(state)
-  const trajectory = lineCells(from, to)
-  const endpoint = cells.get(positionKey(to))
-  const blocked = !endpoint || String(endpoint.type) === 'wall' || trajectory.slice(0, -1).some((point, index) => {
-    const cell = cells.get(positionKey(point))
-    const previous = index === 0 ? from : trajectory[index - 1]
-    const edge = map && Math.abs(previous.x - point.x) + Math.abs(previous.y - point.y) === 1
-      ? edgeBetween(map, previous.x, previous.y, point.x, point.y)
-      : null
-    const blockedDoor = edge?.kind === 'door'
-      && movementStepBlocked(map, previous.x, previous.y, point.x, point.y)
-    return !cell || String(cell.type) === 'wall' || blockedDoor || edge?.blocksSight === true
-  })
-  return { trajectory, blocked }
-}
-
-/** Все пары клеток, которыми можно соединить площади двух существ. */
-function actorTrajectoryDetails(state, attackerId, targetId, from, to, { allowHiddenTarget = false } = {}) {
-  const starts = footprintCellsFor(findActor(state, attackerId), from)
-  const ends = footprintCellsFor(findActor(state, targetId), to)
-  const cells = tacticalCellMap(state)
-  const visibleStarts = cells.size ? starts.filter((cell) => cells.get(positionKey(cell))?.revealed === true) : starts
-  const visibleEnds = cells.size ? ends.filter((cell) => cells.get(positionKey(cell))?.revealed === true) : ends
-  const sourceCells = visibleStarts.length ? visibleStarts : allowHiddenTarget ? starts : []
-  const targetCells = visibleEnds.length ? visibleEnds : allowHiddenTarget ? ends : []
-  return sourceCells.flatMap((start) => targetCells.map((end) => ({
-    start,
-    end,
-    ...trajectoryDetails(state, start, end),
-  })))
-}
-
 function hasClearActorTrajectory(state, attackerId, targetId, from, to, options = {}) {
   return actorTrajectoryDetails(state, attackerId, targetId, from, to, options).some((entry) => !entry.blocked)
 }
@@ -3669,103 +3285,6 @@ function assertClearActorToPoint(state, actorId, from, to) {
     .find((entry) => !entry.blocked)
   if (!clear) throw new RulesValidationError('Траекторию перекрывает стена или граница карты', 'TRAJECTORY_BLOCKED')
   return clear.trajectory
-}
-
-/**
- * Server-owned reading of the scenery: which map features are big enough to
- * hide behind, and how much of the target they hide.  The ruleset leaves this
- * to a judgement call, so the judgement is made once, here, instead of being
- * re-invented per spell.  A wall is absent on purpose — it stops the shot
- * outright, which `assertClearTrajectory` already enforces as total cover.
- */
-const TERRAIN_COVER = Object.freeze({
-  pillar: 'three-quarters', statue: 'three-quarters', tree: 'three-quarters',
-  altar: 'half', barrel: 'half', bed: 'half', bookshelf: 'half', bush: 'half',
-  chest: 'half', console: 'half', crate: 'half', fireplace: 'half', grave: 'half',
-  rock: 'half', table: 'half', well: 'half',
-})
-
-const COVER_BONUS = Object.freeze({ none: 0, half: 2, 'three-quarters': 5 })
-
-/** Высота площадки под клеткой в футах; отсутствие поля означает уровень земли. */
-function elevationAt(state, position) {
-  if (!position) return 0
-  const cell = tacticalCellMap(state).get(positionKey(position))
-  return safeInteger(cell?.elevation, 0)
-}
-
-/**
- * Преимущество с возвышенности. Это **не правило SRD** — редакция про высоту
- * молчит, — а тактическое правило в духе Baldur's Gate 3, объявленное здесь
- * явно и целиком для прежнего профиля: стрелок сверху бьёт с преимуществом,
- * снизу — с помехой. В профиле D&D 2014 это домашнее правило не применяется.
- * В ближнем бою высота не считается: на соседней клетке разница в пару футов
- * ничего не решает. Генератор карт расставляет уступы в 5 и 10 футов
- * (`generateDynamicSceneMap`), поэтому правило работает и на сгенерированных
- * картах, а не только на заданных вручную.
- */
-export function highGroundBetween(state, from, to, distanceFeet) {
-  if (usesDnd2014(state)) return 'level'
-  if (distanceFeet == null || distanceFeet <= 5) return 'level'
-  const difference = elevationAt(state, from) - elevationAt(state, to)
-  if (difference >= 5) return 'higher'
-  if (difference <= -5) return 'lower'
-  return 'level'
-}
-
-/**
- * Cover between a shooter and its target: bodies and scenery in the line of
- * fire.  The ruleset takes the best cover available rather than adding them up,
- * so a creature behind a pillar gets three-quarters, not seven.
- */
-export function coverBetween(state, attackerId, targetId, from, to) {
-  const none = { level: 'none', armorClassBonus: 0, blockers: [] }
-  if (!from || !to) return none
-  const distance = footprintDistanceFeet(findActor(state, attackerId), findActor(state, targetId), from, to)
-  if (distance == null || distance <= 5) return none
-  const candidates = actorTrajectoryDetails(state, attackerId, targetId, from, to)
-    .filter((entry) => !entry.blocked)
-    .map((entry) => {
-      const line = entry.trajectory.slice(0, -1)
-      if (!line.length) return { level: 'none', armorClassBonus: 0, blockers: [], scenery: [] }
-      const inLine = new Set(line.map(positionKey))
-      const blockers = listActors(state)
-        .filter((candidate) => {
-          const id = actorId(candidate)
-          if (id === String(attackerId) || id === String(targetId) || !isLivingActor(candidate)) return false
-          return actorFootprintCellsAt(state, id).some((cell) => inLine.has(positionKey(cell)))
-        })
-        .map(actorId)
-      const cells = tacticalCellMap(state)
-      const scenery = line
-        .map((point) => cells.get(positionKey(point)))
-        .filter((cell) => cell && TERRAIN_COVER[String(cell.feature ?? '')])
-      const bestScenery = scenery.some((cell) => TERRAIN_COVER[String(cell.feature)] === 'three-quarters')
-        ? 'three-quarters'
-        : scenery.length ? 'half' : 'none'
-      const level = bestScenery === 'three-quarters' ? 'three-quarters' : blockers.length || bestScenery === 'half' ? 'half' : 'none'
-      return {
-        level,
-        armorClassBonus: COVER_BONUS[level],
-        blockers,
-        scenery: [...new Set(scenery.map((cell) => String(cell.feature)))],
-      }
-    })
-  const best = candidates.sort((left, right) => left.armorClassBonus - right.armorClassBonus)[0]
-  if (!best || best.level === 'none') return none
-  return {
-    level: best.level,
-    armorClassBonus: best.armorClassBonus,
-    blockers: best.blockers,
-    ...(best.scenery.length ? { scenery: best.scenery } : {}),
-  }
-}
-
-export function hasClearTrajectory(state, from, to) {
-  try { assertClearTrajectory(state, from, to); return true } catch (error) {
-    if (error instanceof RulesValidationError && error.code === 'TRAJECTORY_BLOCKED') return false
-    throw error
-  }
 }
 
 /**
@@ -7401,10 +6920,6 @@ function criticalDamageExpression(expression) {
   return `${count}d${parsed.sides}${parsed.modifier > 0 ? `+${parsed.modifier}` : parsed.modifier < 0 ? parsed.modifier : ''}`
 }
 
-function actorHp(actor) {
-  return Math.max(0, safeInteger(actor?.hp, 0))
-}
-
 function actorMaxHp(actor) {
   return Math.max(1, safeInteger(actor?.maxHp ?? actor?.max_hp, 1))
 }
@@ -10006,18 +9521,6 @@ function monsterMultiattackActionIds(actor, fallbackActionId = null, usedActionI
   return actionId ? Array.from({ length: count }, () => actionId) : []
 }
 
-function creatureSizeRank(actor) {
-  const declared = actor?.size ?? actor?.creature_size ?? actor?.creatureSize
-  if (declared == null && footprintSizeFor(actor) > 1) return footprintSizeFor(actor) + 1
-  const raw = String(declared ?? 'medium').toLocaleLowerCase('ru')
-  if (raw.includes('gargantuan') || raw.includes('громад')) return 5
-  if (raw.includes('huge') || raw.includes('огром')) return 4
-  if (raw.includes('large') || raw.includes('больш')) return 3
-  if (raw.includes('small') || raw.includes('мал')) return 1
-  if (raw.includes('tiny') || raw.includes('крош')) return 0
-  return 2
-}
-
 function sizeRankByName(size) {
   return creatureSizeRank({ size })
 }
@@ -11629,6 +11132,8 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
   const diceTranscript = []
   diceService = recordingDiceService(diceService, diceTranscript)
   const state = normalizeCampaignState(rawState)
+  // Промежуточные состояния команды доигрываются инкрементально — см. createCommandProjector.
+  const projectEvents = createCommandProjector(state)
   // Видимый NPC использует ту же ветку заклинания и свой настоящий стат-блок.
   // Прокси живёт только в расчёте: события сохраняют прежний NPC ID, а
   // reducer обновляет npc_world.vitals. Второй постоянный лист не создаётся.
@@ -11692,7 +11197,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
     }
   }
 
-  const appendTimeAdvance = (sourceCommand, amount, unit, { sourceState = replayEvents(state, events), elapsedSeconds = durationInSeconds(amount, unit), policyId = null } = {}) => {
+  const appendTimeAdvance = (sourceCommand, amount, unit, { sourceState = projectEvents(events), elapsedSeconds = durationInSeconds(amount, unit), policyId = null } = {}) => {
     const beforeSeconds = worldTimeSeconds(sourceState)
     const elapsedMinutes = Math.floor(normalizedClockSeconds(beforeSeconds + elapsedSeconds) / 60) - Math.floor(beforeSeconds / 60)
     events.push({
@@ -11726,12 +11231,12 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
   }
 
   const appendWorldTimeConsequences = (sourceCommand, amount, unit, options = {}) => {
-    const sourceState = replayEvents(state, events)
+    const sourceState = projectEvents(events)
     const elapsedMinutes = appendTimeAdvance(sourceCommand, amount, unit, { ...options, sourceState })
     // Концентрация хранится отдельно от 60-секундного срока Обессиливания.
     // TimeAdvanced снимает истёкшее состояние; в той же команде завершаем
     // концентрацию событием, чтобы replay и доступные действия не сохраняли связь.
-    const afterTime = replayEvents(state, events)
+    const afterTime = projectEvents(events)
     for (const casterId of Object.keys(sourceState.mechanics?.concentration ?? {})) {
       const link = enervationLinkFor(sourceState, casterId)
       if (!link) continue
@@ -12991,7 +12496,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           temporary_hp_absorbed: payload.temporary_hp_absorbed,
           source: 'weapon',
         }]
-        let afterDamageState = replayEvents(state, events)
+        let afterDamageState = projectEvents(events)
         for (const { rider, roll } of itemRiderRolls) {
           const riderPayload = applyKnockoutChoice(resolveDamagePayload(afterDamageState, targetId, roll.total, rider.damage_type))
           const riderEvent = eventFrom(commandWithRules(
@@ -13128,7 +12633,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         const extraLevels = Math.max(0, slotLevel - Math.max(1, pendingWeaponHitSpell.level))
         events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: pendingWeaponHitCondition.id, spell_id: pendingWeaponHitSpell.id, trigger: 'weapon-hit' }, [command.actor_id]))
 
-        let hitEffectState = replayEvents(state, events)
+        let hitEffectState = projectEvents(events)
         if (pendingWeaponHit.damage) {
           const baseExpression = scaledDiceExpression(pendingWeaponHit.damage, extraLevels, pendingWeaponHit.upcastDicePerLevel)
           const expression = critical ? criticalDamageExpression(baseExpression) : baseExpression
@@ -13217,7 +12722,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           const burstRoll = diceService.roll(expression, `spell:next-weapon-hit-burst:${pendingWeaponHitSpell.id}`, command.actor_id, command.visibility ?? 'public')
           rolls.push(burstRoll)
           events.push(eventFrom(command, 'DieRolled', { ...burstRoll, spell_id: pendingWeaponHitSpell.id, damage_type: burst.damageType, burst: true }, []))
-          let burstState = replayEvents(state, events)
+          let burstState = projectEvents(events)
           for (const burstTarget of burstTargets) {
             const burstTargetId = actorId(burstTarget)
             const ability = String(burst.saveAbility)
@@ -13260,7 +12765,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           spell_id: 'absorb-elements',
           trigger: 'weapon-hit',
         }, [command.actor_id]))
-        const hitEffectState = replayEvents(state, events)
+        const hitEffectState = projectEvents(events)
         const bonusRoll = diceService.roll(expression, 'spell:absorb-elements:next-melee-hit', command.actor_id, command.visibility ?? 'public')
         rolls.push(bonusRoll)
         events.push(eventFrom(command, 'DieRolled', {
@@ -13296,7 +12801,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             events.push(eventFrom(command, 'DieRolled', collateralRoll, []))
           }
           const amount = collateralRoll?.total ?? Math.max(0, safeInteger(command.damage_amount, 0))
-          events.push(...npcWorldEventsFrom(commandWithRules(command, RULE_IDS.damage), npcHarmEventDrafts(replayEvents(state, events), {
+          events.push(...npcWorldEventsFrom(commandWithRules(command, RULE_IDS.damage), npcHarmEventDrafts(projectEvents(events), {
             npcId: collateral.npc.id,
             amount,
             damageType,
@@ -13372,7 +12877,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         events.push(eventFrom({ ...command, visibility: 'gm_only' }, 'DieRolled', roll, []))
         return { ...component, rolled: Math.max(0, roll.total) }
       })
-      let workingState = replayEvents(state, events)
+      let workingState = projectEvents(events)
       for (const targetId of affectedIds) {
         const target = findActor(workingState, targetId)
         const ability = action.save.ability
@@ -13447,7 +12952,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         const raw = saved && combat.halfOnSave ? Math.floor(damageRoll.total / 2) : saved ? 0 : damageRoll.total
         events.push(eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', { ...resolveDamagePayload(state, targetIdValue, raw, String(combat.damageType || 'fire')), save_total: save.total, save_dc: safeInteger(combat.saveDc, 12), saved }, [targetIdValue]))
       }
-      let npcDamageState = replayEvents(state, events)
+      let npcDamageState = projectEvents(events)
       for (const { npc } of npcAffected) {
         const npcId = String(npc.id)
         const npcContext = npcDamageContext(npcDamageState, npcId)
@@ -16049,7 +15554,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
               }
             }
           }
-          let npcSpellState = replayEvents(state, events)
+          let npcSpellState = projectEvents(events)
           for (const { npc } of npcAffected) {
             if (!sharedDamageRoll && !bonusDamageRoll) continue
             const npcId = String(npc.id)
@@ -16145,7 +15650,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
               events.push(eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', { ...payload, spell_id: spell.id }, [resolvedTargetId]))
               if (payload.hp_after === 0) events.push(...zeroHitPointDamageConsequences(events.slice(0, -1).reduce(applyGameEvent, state), command, resolvedTargetId, payload))
             }
-            let npcSpellState = replayEvents(state, events)
+            let npcSpellState = projectEvents(events)
             for (const { npc } of npcAffected) {
               const npcId = String(npc.id)
               const harmEvents = npcWorldEventsFrom(commandWithRules(command, RULE_IDS.damage), npcHarmEventDrafts(npcSpellState, {
@@ -16555,7 +16060,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           const extraLevels = Math.max(0, slotLevel - Math.max(1, spell.level))
           const summonCount = Math.max(1, Math.min(12,
             safeInteger(spell.summonCount, 1) + extraLevels * Math.max(0, safeInteger(spell.upcastSummonsPerLevel, 0))))
-          const summonStartedAtSeconds = worldTimeSeconds(replayEvents(state, events))
+          const summonStartedAtSeconds = worldTimeSeconds(projectEvents(events))
           // Клетки вокруг выбранной точки: сначала она сама, потом кольца вокруг.
           // Занятые и непроходимые пропускаются, поэтому в тесноте фишек встанет
           // меньше заявленного — и это честнее, чем ставить их друг на друга.
@@ -16626,7 +16131,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         if (spell.kind === 'attack' && hasMultipleBeams(spell) && !context.additionalBeam) {
           const beams = beamCountFor(actor, spell, command.slot_level)
           const requested = uniqueStrings(command.target_ids ?? [])
-          let beamState = replayEvents(state, events)
+          let beamState = projectEvents(events)
           for (let index = 1; index < beams; index += 1) {
             const beamTargetId = String(requested[index] ?? requested[0] ?? targetId)
             if (!isLivingActor(findActor(beamState, beamTargetId))) continue
@@ -16873,7 +16378,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           .filter((cell) => cellAt(scoutedMap, cell.x, cell.y)?.revealed !== true)
         if (scouted.length) events.push(eventFrom(command, 'AreaRevealed', { cells: scouted }, []))
       }
-      const enteredAreaState = replayEvents(state, events)
+      const enteredAreaState = projectEvents(events)
       events.push(...areaEntryConsequences(enteredAreaState, command, command.actor_id, from, to, { diceService, rolls, resolveDamage: resolveDamageWithReactions, rollSavingThrow, saveModifierFor: areaSaveModifierFor }))
       const moverConditions = conditionIdsFor(state, command.actor_id)
       const boomingBlade = (state.mechanics.conditions[command.actor_id] ?? []).find((condition) => String(condition?.id ?? condition).startsWith('booming-blade-move:'))
@@ -17625,7 +17130,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         partySummonsForExpiry(state).filter((summon) => expiredAtTransition.has(actorId(summon))),
         commandWithRules,
       ))
-      const transitionState = expiredAtTransition.size ? replayEvents(state, events) : state
+      const transitionState = expiredAtTransition.size ? projectEvents(events) : state
       const partyPositions = levelArrivalPositions(transitionState, target, arrival)
       events.push(eventFrom(command, 'MapLevelChanged', {
         location_id: locationId,
@@ -17800,7 +17305,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       if (combat.round_time_pending === true) {
         appendWorldTimeConsequences(commandWithRules(command, RULE_IDS.turns), 6, 'second', { elapsedSeconds: 6, policyId: COMBAT_ROUND_TIME_POLICY })
       }
-      const afterEndRound = replayEvents(state, events)
+      const afterEndRound = projectEvents(events)
       const expiredAtEnd = new Set(summonIdsExpiredAt(afterEndRound, worldTimeSeconds(afterEndRound)))
       events.push(...summonExpiryEvents(
         command,
@@ -17975,7 +17480,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           .filter((event) => event.event_type === 'SummonedCreatureDismissed' && event.payload?.reason === 'duration_expired')
           .flatMap((event) => event.target_ids ?? []))
         if (expired.size) {
-          const afterExpiry = replayEvents(state, events)
+          const afterExpiry = projectEvents(events)
           const oldOrder = combat.initiative
           const oldNextIndex = nextIndex
           for (let offset = 0; offset < oldOrder.length; offset += 1) {
@@ -17997,7 +17502,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       if (state.mechanics.combat.readied?.[nextId]) {
         events.push(eventFrom(commandWithRules(command, RULE_IDS.turns), 'ReadiedActionExpired', { reason: 'turn-came-around', trigger: state.mechanics.combat.readied[nextId].trigger }, [nextId]))
       }
-      let startTurnState = replayEvents(state, events)
+      let startTurnState = projectEvents(events)
       const auraSource = activeAuraOfLifeSource(startTurnState, nextId)
       const auraTarget = findActor(startTurnState, nextId)
       if (auraSource && actorHp(auraTarget) === 0 && !isDeadHero(startTurnState, nextId)) {
@@ -18016,7 +17521,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       const deathSave = deathSavingThrowAtTurnStart(startTurnState, command, nextId, diceService)
       events.push(...deathSave.events)
       rolls.push(...deathSave.rolls)
-      startTurnState = replayEvents(state, events)
+      startTurnState = projectEvents(events)
       const areaStartEvents = areaTurnConsequences(startTurnState, command, nextId, {
         diceService,
         rolls,
@@ -18026,7 +17531,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         saveModifierFor: areaSaveModifierFor,
       })
       events.push(...areaStartEvents)
-      startTurnState = replayEvents(state, events)
+      startTurnState = projectEvents(events)
       const startingActor = findActor(startTurnState, nextId)
       for (const condition of [...(startTurnState.mechanics.conditions[nextId] ?? []).filter((candidate) => candidate.recurring_damage && candidate.recurring_damage_timing !== 'turn-end')]) {
         let effectContinues = true
@@ -20107,7 +19612,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       // Рассказчиком новый NPC существовал лишь в тексте: профиль есть,
       // placement нет, и `sceneNpcsForViewer` отбрасывал его из проекции.
       if (command.command_type === 'UpsertNpcSocialProfile' && socialEventsAdded.length) {
-        const withProfile = replayEvents(state, socialEventsAdded)
+        const withProfile = projectEvents(socialEventsAdded)
         events.push(...npcWorldEventsFrom(command, planSceneNpcPlacementEvents(withProfile)))
       }
       break
@@ -20504,7 +20009,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
   // Без failed-save события окно «Несгибаемого» заведомо не появится, поэтому
   // повторно проигрывать карту для проверки реакции не нужно.
   if (resolveDepth === 0 && context.indomitableResume !== true && events.some(failedSavingThrowEvent)) {
-    const opportunityState = replayEvents(state, events)
+    const opportunityState = projectEvents(events)
     const opportunities = indomitableOpportunitiesFor(opportunityState, events, context.indomitable_bypass_actor_ids)
     const opportunity = opportunities[0]
     if (opportunity) {
@@ -20550,7 +20055,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
   if (resolveDepth === 0
     && events.some((event) => event.event_type === 'HeroDied')
     && !events.some((event) => event.event_type === 'CampaignFailed')) {
-    const projected = replayEvents(state, events)
+    const projected = projectEvents(events)
     const newlyDefeated = state.mechanics?.death?.campaign_status !== 'party_defeated'
       && projected.mechanics?.death?.campaign_status === 'party_defeated'
     if (newlyDefeated && projected.mechanics?.campaign_lifecycle?.status === 'active') {
@@ -20577,11 +20082,11 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
     }, [String(context.finalizeFleeActorId)]))
   }
   if (resolveDepth === 0 && resolvedEvents.some((event) => ['DamageApplied', 'ActorMoved'].includes(event.event_type))) {
-    resolvedEvents.push(...npcWorldEventsFrom(command, planAuthoredNpcWorldEvents(state, replayEvents(state, resolvedEvents), resolvedEvents,
+    resolvedEvents.push(...npcWorldEventsFrom(command, planAuthoredNpcWorldEvents(state, projectEvents(resolvedEvents), resolvedEvents,
       { commandId: command.command_id, actorId: command.actor_id })))
   }
   if (resolveDepth === 0 && resolvedEvents.some((event) => ['NpcDied', 'TimeAdvanced'].includes(event.event_type))) {
-    let projected = replayEvents(state, resolvedEvents)
+    let projected = projectEvents(resolvedEvents)
     const append = (drafts) => {
       for (const draft of drafts) {
         const event = { ...eventFrom({ ...command, visibility: draft.visibility }, draft.event_type, draft.payload, draft.target_ids),
@@ -20604,7 +20109,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
   // причин. Глубина ноль обязательна: вложенный resolve вклеивает свои события
   // в этот же поток, и контейнер, созданный внутри него, посчитался бы дважды.
   if (resolveDepth === 0 && lootCommitTouchesContainers(state, resolvedEvents)) {
-    const lootDrafts = planLootContainerDrafts(state, replayEvents(state, resolvedEvents), resolvedEvents)
+    const lootDrafts = planLootContainerDrafts(state, projectEvents(resolvedEvents), resolvedEvents)
     for (const draft of lootDrafts) {
       resolvedEvents.push({
         ...eventFrom({ ...command, visibility: draft.visibility }, draft.event_type, draft.payload, draft.target_ids),
@@ -23970,14 +23475,67 @@ export function applyGameEvent(rawState, event) {
   return withRetentionMode(mode, () => applyGameEventCurrent(rawState, event))
 }
 
+function replayModeFor(stream) {
+  const firstMarker = Number(stream[0]?.reducer_version ?? 0)
+  return retentionContextActive() ? retentionMode()
+    : (firstMarker > 0 && firstMarker < RETENTION_REDUCER_VERSION || firstMarker === 0 && Number.isSafeInteger(stream[0]?.state_version_after)) ? 'legacy' : 'current'
+}
+
 export function replayEvents(initialState, events) {
   const stream = Array.isArray(events) ? events : []
-  const firstMarker = Number(stream[0]?.reducer_version ?? 0)
-  const mode = retentionContextActive() ? retentionMode()
-    : (firstMarker > 0 && firstMarker < RETENTION_REDUCER_VERSION || firstMarker === 0 && Number.isSafeInteger(stream[0]?.state_version_after)) ? 'legacy' : 'current'
+  const mode = replayModeFor(stream)
   let state = withRetentionMode(mode, () => normalizeCampaignState(initialState))
   for (const event of stream) state = applyGameEvent(state, event)
   return state
+}
+
+/**
+ * `replayEvents(state, events)` для одной команды, где `events` только растёт.
+ *
+ * Внутри `resolveCommandInternal` промежуточное состояние нужно десятки раз:
+ * после урона, после конца раунда, перед последствиями. Каждый такой вызов
+ * раньше проигрывал все события команды с нуля, а каждое событие — это полная
+ * нормализация мира, то есть стоимость росла квадратично от длины команды.
+ *
+ * Проектор помнит состояние после всех событий, кроме последнего, и применяет
+ * только новый хвост. Последнее событие применяется всегда заново, поэтому
+ * наружу уходит свежий объект, а запомненное состояние не видит никто и
+ * испортить его нельзя. Префикс сверяется и по ссылке, и по JSON события:
+ * вставка в середину (`events.splice`) или правка уже добавленного события
+ * сбрасывают кэш, и проигрывание идёт с нуля, как раньше. Исходное состояние
+ * команды — её приватная нормализованная копия, и команда его не меняет.
+ */
+function createCommandProjector(initialState) {
+  let cache = null
+  return (events) => {
+    const stream = Array.isArray(events) ? events : []
+    if (!stream.length) return replayEvents(initialState, stream)
+    const mode = replayModeFor(stream)
+    const last = stream.length - 1
+    let applied = 0
+    let state = null
+    const fingerprints = []
+    if (cache && cache.mode === mode && cache.events.length <= last) {
+      while (applied < cache.events.length && stream[applied] === cache.events[applied]) {
+        const fingerprint = JSON.stringify(stream[applied])
+        if (fingerprint !== cache.fingerprints[applied]) break
+        fingerprints.push(fingerprint)
+        applied += 1
+      }
+      if (applied === cache.events.length) state = cache.state
+    }
+    if (!state) {
+      applied = 0
+      fingerprints.length = 0
+      state = withRetentionMode(mode, () => normalizeCampaignState(initialState))
+    }
+    for (let index = applied; index < last; index += 1) {
+      state = applyGameEvent(state, stream[index])
+      fingerprints.push(JSON.stringify(stream[index]))
+    }
+    cache = { mode, events: stream.slice(0, last), fingerprints, state }
+    return applyGameEvent(state, stream[last])
+  }
 }
 
 export function resolveCommands(commands, initialState, options) {
@@ -24036,6 +23594,13 @@ export function actorNameResolver(state) {
     const id = String(actor?.id ?? actor?.actor_id ?? '')
     const name = String(actor?.character || actor?.name || '')
     if (id && name) names.set(id, name)
+  }
+  // Собеседники социальной сцены живут не в `actors`: без них запасной текст
+  // печатал игроку служебный `npc-…` вместо имени.
+  for (const npc of state?.social?.npcs ?? []) {
+    const id = String(npc?.id ?? '')
+    const name = String(npc?.name ?? '')
+    if (id && name && !names.has(id)) names.set(id, name)
   }
   return (id) => names.get(String(id ?? '')) ?? id
 }

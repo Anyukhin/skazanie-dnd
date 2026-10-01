@@ -1,0 +1,1339 @@
+{
+  "created_at": "2026-10-01T13:30:01.563Z",
+  "network_calls": 0,
+  "note": "Пересчёт сохранённых отчётов 2026-10-01 без запросов к модели. usage_cost — поле usage.cost ответа RouterAI (численно совпадает с ₽ каталога у OpenAI-маршрутов; у GLM и DeepSeek выше расчёта по каталогу). catalog_cost — prompt/completion токены × цена снимка каталога без скидки кэша.",
+  "catalog": "eval/routerai-catalog-2026-10-01.json",
+  "pricing_rub_per_token": {
+    "openai/gpt-6-luna": {
+      "prompt": 0.000010862644,
+      "completion": 0.00005431322,
+      "input_cache_read": 0.0000010862644
+    },
+    "openai/gpt-6-luna-pro": {
+      "prompt": 0.000010862644,
+      "completion": 0.00005431322,
+      "input_cache_read": 0.0000010862644
+    },
+    "z-ai/glm-5.3-flash": {
+      "prompt": 0.00000238978168,
+      "completion": 0.0000358467252,
+      "input_cache_read": 0.00000119489084
+    },
+    "openai/gpt-5.6-luna": {
+      "prompt": 0.000021725288,
+      "completion": 0.000130351728,
+      "input_cache_read": 0.0000021725288
+    },
+    "deepseek/deepseek-v4-flash": {
+      "prompt": 0.00000522916819516,
+      "completion": 0.00001045833639032,
+      "input_cache_read": 0.000001045833639032
+    },
+    "google/gemini-2.5-flash-lite": {
+      "prompt": 0.000010862644,
+      "completion": 0.000043450576,
+      "input_cache_read": 0.0000010862644
+    }
+  },
+  "narrator": [
+    {
+      "file": "eval/narrator-comparison-gpt-6-luna-main-2026-10-01.json",
+      "key": "openai/gpt-6-luna|{\"enabled\":false}",
+      "calls": 24,
+      "generated": 24,
+      "accepted_by_guard": 24,
+      "accepted_under_12s": 24,
+      "p50_ms": 1809,
+      "p95_ms": 3794,
+      "max_ms": 9036,
+      "first_verified_p50_ms": 1694,
+      "mean_prompt_tokens": 1949,
+      "mean_completion_tokens": 29,
+      "reasoning_tokens_total": 0,
+      "usage_cost_rub": 0.2605,
+      "catalog_cost_rub_no_cache": 0.5461,
+      "usage_rub_per_100_calls": 1.0853,
+      "catalog_rub_per_100_calls": 2.2754,
+      "errors": [],
+      "guard_rejections": []
+    },
+    {
+      "file": "eval/narrator-comparison-gpt-6-luna-main-2026-10-01.json",
+      "key": "z-ai/glm-5.3-flash|{\"effort\":\"low\"}",
+      "calls": 24,
+      "generated": 24,
+      "accepted_by_guard": 20,
+      "accepted_under_12s": 20,
+      "p50_ms": 1663,
+      "p95_ms": 2521,
+      "max_ms": 2743,
+      "first_verified_p50_ms": 1625,
+      "mean_prompt_tokens": 1954,
+      "mean_completion_tokens": 34,
+      "reasoning_tokens_total": 0,
+      "usage_cost_rub": 0.6053,
+      "catalog_cost_rub_no_cache": 0.1411,
+      "usage_rub_per_100_calls": 2.5221,
+      "catalog_rub_per_100_calls": 0.5879,
+      "errors": [],
+      "guard_rejections": [
+        {
+          "case_id": "past-meeting",
+          "repeat": 1,
+          "codes": [
+            "UNCONFIRMED_SOCIAL_ACTION"
+          ]
+        },
+        {
+          "case_id": "enemy-survives",
+          "repeat": 1,
+          "codes": [
+            "ITEM_TRANSFER_NOT_IN_BRIEF",
+            "NPC_REACTION_NOT_PERMITTED"
+          ]
+        },
+        {
+          "case_id": "past-meeting",
+          "repeat": 2,
+          "codes": [
+            "UNCONFIRMED_SOCIAL_ACTION"
+          ]
+        },
+        {
+          "case_id": "enemy-survives",
+          "repeat": 2,
+          "codes": [
+            "ITEM_TRANSFER_NOT_IN_BRIEF",
+            "NPC_REACTION_NOT_PERMITTED"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "eval/narrator-comparison-gpt-6-luna-main-2026-10-01.json",
+      "key": "openai/gpt-5.6-luna|{\"enabled\":false}",
+      "calls": 24,
+      "generated": 24,
+      "accepted_by_guard": 24,
+      "accepted_under_12s": 24,
+      "p50_ms": 1742,
+      "p95_ms": 3412,
+      "max_ms": 4454,
+      "first_verified_p50_ms": 1748,
+      "mean_prompt_tokens": 1949,
+      "mean_completion_tokens": 30,
+      "reasoning_tokens_total": 0,
+      "usage_cost_rub": 0.5403,
+      "catalog_cost_rub_no_cache": 1.1115,
+      "usage_rub_per_100_calls": 2.2511,
+      "catalog_rub_per_100_calls": 4.6313,
+      "errors": [],
+      "guard_rejections": []
+    },
+    {
+      "file": "eval/narrator-comparison-gpt-6-luna-main-2026-10-01.json",
+      "key": "deepseek/deepseek-v4-flash|{\"enabled\":false}",
+      "calls": 24,
+      "generated": 23,
+      "accepted_by_guard": 19,
+      "accepted_under_12s": 18,
+      "p50_ms": 1920,
+      "p95_ms": 4114,
+      "max_ms": 15969,
+      "first_verified_p50_ms": 1785,
+      "mean_prompt_tokens": 2298,
+      "mean_completion_tokens": 82,
+      "reasoning_tokens_total": 352,
+      "usage_cost_rub": 0.5565,
+      "catalog_cost_rub_no_cache": 0.296,
+      "usage_rub_per_100_calls": 2.3187,
+      "catalog_rub_per_100_calls": 1.2869,
+      "errors": [
+        {
+          "case_id": "holdout-forge-mark",
+          "repeat": 2,
+          "code": "LLM_RESPONSE_INVALID"
+        }
+      ],
+      "guard_rejections": [
+        {
+          "case_id": "holdout-recorded-dialogue",
+          "repeat": 1,
+          "codes": [
+            "NPC_REACTION_MISMATCH"
+          ]
+        },
+        {
+          "case_id": "enemy-survives",
+          "repeat": 1,
+          "codes": [
+            "ITEM_TRANSFER_NOT_IN_BRIEF"
+          ]
+        },
+        {
+          "case_id": "declared-not-done",
+          "repeat": 1,
+          "codes": [
+            "UNCONFIRMED_SOCIAL_ACTION"
+          ]
+        },
+        {
+          "case_id": "past-meeting",
+          "repeat": 2,
+          "codes": [
+            "UNCONFIRMED_SOCIAL_ACTION"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "eval/narrator-comparison-gpt-6-luna-low-2026-10-01.json",
+      "key": "openai/gpt-6-luna|{\"effort\":\"low\"}",
+      "calls": 24,
+      "generated": 24,
+      "accepted_by_guard": 24,
+      "accepted_under_12s": 24,
+      "p50_ms": 1640,
+      "p95_ms": 3039,
+      "max_ms": 5742,
+      "first_verified_p50_ms": 1471,
+      "mean_prompt_tokens": 1949,
+      "mean_completion_tokens": 28,
+      "reasoning_tokens_total": 0,
+      "usage_cost_rub": 0.2593,
+      "catalog_cost_rub_no_cache": 0.5449,
+      "usage_rub_per_100_calls": 1.0805,
+      "catalog_rub_per_100_calls": 2.2706,
+      "errors": [],
+      "guard_rejections": []
+    },
+    {
+      "file": "eval/narrator-comparison-gpt-6-luna-default-2026-10-01.json",
+      "key": "openai/gpt-6-luna|null",
+      "calls": 12,
+      "generated": 12,
+      "accepted_by_guard": 12,
+      "accepted_under_12s": 12,
+      "p50_ms": 2501,
+      "p95_ms": 3324,
+      "max_ms": 3515,
+      "first_verified_p50_ms": 2247,
+      "mean_prompt_tokens": 1949,
+      "mean_completion_tokens": 70,
+      "reasoning_tokens_total": 509,
+      "usage_cost_rub": 0.2424,
+      "catalog_cost_rub_no_cache": 0.2997,
+      "usage_rub_per_100_calls": 2.0201,
+      "catalog_rub_per_100_calls": 2.4976,
+      "errors": [],
+      "guard_rejections": []
+    }
+  ],
+  "craft": {
+    "deepseek-v4-flash-off": {
+      "model": "deepseek/deepseek-v4-flash",
+      "reasoning": "off",
+      "runs": [
+        {
+          "file": "eval/narrator-craft-deepseek-v4-flash-off-2026-10-01-run1.json",
+          "live_calls": 6,
+          "provider_ok": 6,
+          "deterministic_narrator": 1,
+          "ngram_jaccard_pct": 0,
+          "cliches": 0,
+          "memory_recall_pct": 0,
+          "voices_distinct_pct": 100,
+          "voice_lexical_distance_pct": 89.47,
+          "suggestion_specific_pct": 0,
+          "tokens": {
+            "input": 12459,
+            "output": 272
+          },
+          "catalog_cost_rub_no_cache": 0.068,
+          "latency_ms": [
+            2267,
+            1217,
+            2457,
+            2862,
+            1797,
+            1663
+          ]
+        },
+        {
+          "file": "eval/narrator-craft-deepseek-v4-flash-off-2026-10-01-run2.json",
+          "live_calls": 6,
+          "provider_ok": 6,
+          "deterministic_narrator": 1,
+          "ngram_jaccard_pct": 0,
+          "cliches": 0,
+          "memory_recall_pct": 0,
+          "voices_distinct_pct": 100,
+          "voice_lexical_distance_pct": 88.57,
+          "suggestion_specific_pct": 0,
+          "tokens": {
+            "input": 12459,
+            "output": 281
+          },
+          "catalog_cost_rub_no_cache": 0.0681,
+          "latency_ms": [
+            1938,
+            1547,
+            2178,
+            2203,
+            3952,
+            2808
+          ]
+        }
+      ]
+    },
+    "glm-5.3-flash-low": {
+      "model": "z-ai/glm-5.3-flash",
+      "reasoning": "low",
+      "runs": [
+        {
+          "file": "eval/narrator-craft-glm-5.3-flash-low-2026-10-01-run1.json",
+          "live_calls": 6,
+          "provider_ok": 6,
+          "deterministic_narrator": 0,
+          "ngram_jaccard_pct": 0,
+          "cliches": 0,
+          "memory_recall_pct": 0,
+          "voices_distinct_pct": 100,
+          "voice_lexical_distance_pct": 80,
+          "suggestion_specific_pct": 0,
+          "tokens": {
+            "input": 11798,
+            "output": 329
+          },
+          "catalog_cost_rub_no_cache": 0.04,
+          "latency_ms": [
+            4802,
+            2338,
+            2845,
+            2097,
+            4560,
+            3081
+          ]
+        },
+        {
+          "file": "eval/narrator-craft-glm-5.3-flash-low-2026-10-01-run2.json",
+          "live_calls": 6,
+          "provider_ok": 6,
+          "deterministic_narrator": 0,
+          "ngram_jaccard_pct": 0,
+          "cliches": 0,
+          "memory_recall_pct": 0,
+          "voices_distinct_pct": 100,
+          "voice_lexical_distance_pct": 78.13,
+          "suggestion_specific_pct": 0,
+          "tokens": {
+            "input": 11798,
+            "output": 243
+          },
+          "catalog_cost_rub_no_cache": 0.0369,
+          "latency_ms": [
+            1517,
+            2605,
+            1224,
+            2141,
+            4474,
+            1538
+          ]
+        }
+      ]
+    },
+    "gpt-5.6-luna-off": {
+      "model": "openai/gpt-5.6-luna",
+      "reasoning": "off",
+      "runs": [
+        {
+          "file": "eval/narrator-craft-gpt-5.6-luna-off-2026-10-01-run1.json",
+          "live_calls": 6,
+          "provider_ok": 6,
+          "deterministic_narrator": 0,
+          "ngram_jaccard_pct": 1.01,
+          "cliches": 0,
+          "memory_recall_pct": 0,
+          "voices_distinct_pct": 100,
+          "voice_lexical_distance_pct": 85.29,
+          "suggestion_specific_pct": 0,
+          "tokens": {
+            "input": 11845,
+            "output": 399
+          },
+          "catalog_cost_rub_no_cache": 0.3093,
+          "latency_ms": [
+            3851,
+            2294,
+            2051,
+            2738,
+            3142,
+            3192
+          ]
+        },
+        {
+          "file": "eval/narrator-craft-gpt-5.6-luna-off-2026-10-01-run2.json",
+          "live_calls": 6,
+          "provider_ok": 6,
+          "deterministic_narrator": 0,
+          "ngram_jaccard_pct": 0,
+          "cliches": 0,
+          "memory_recall_pct": 0,
+          "voices_distinct_pct": 100,
+          "voice_lexical_distance_pct": 85.71,
+          "suggestion_specific_pct": 0,
+          "tokens": {
+            "input": 11845,
+            "output": 353
+          },
+          "catalog_cost_rub_no_cache": 0.3034,
+          "latency_ms": [
+            2250,
+            2011,
+            1839,
+            1954,
+            3076,
+            2928
+          ]
+        }
+      ]
+    },
+    "gpt-6-luna-low": {
+      "model": "openai/gpt-6-luna",
+      "reasoning": "low",
+      "runs": [
+        {
+          "file": "eval/narrator-craft-gpt-6-luna-low-2026-10-01-run1.json",
+          "live_calls": 6,
+          "provider_ok": 6,
+          "deterministic_narrator": 0,
+          "ngram_jaccard_pct": 0,
+          "cliches": 0,
+          "memory_recall_pct": 0,
+          "voices_distinct_pct": 0,
+          "voice_lexical_distance_pct": 53.85,
+          "suggestion_specific_pct": 0,
+          "tokens": {
+            "input": 10443,
+            "output": 208
+          },
+          "catalog_cost_rub_no_cache": 0.1247,
+          "latency_ms": [
+            1580,
+            3738,
+            1639,
+            1816,
+            1842,
+            1707
+          ]
+        },
+        {
+          "file": "eval/narrator-craft-gpt-6-luna-low-2026-10-01-run2.json",
+          "live_calls": 6,
+          "provider_ok": 6,
+          "deterministic_narrator": 0,
+          "ngram_jaccard_pct": 0,
+          "cliches": 0,
+          "memory_recall_pct": 0,
+          "voices_distinct_pct": 0,
+          "voice_lexical_distance_pct": 41.67,
+          "suggestion_specific_pct": 0,
+          "tokens": {
+            "input": 10443,
+            "output": 210
+          },
+          "catalog_cost_rub_no_cache": 0.1248,
+          "latency_ms": [
+            2150,
+            2000,
+            1737,
+            1405,
+            1788,
+            2325
+          ]
+        }
+      ]
+    },
+    "gpt-6-luna-off": {
+      "model": "openai/gpt-6-luna",
+      "reasoning": "off",
+      "runs": [
+        {
+          "file": "eval/narrator-craft-gpt-6-luna-off-2026-10-01-run1.json",
+          "live_calls": 6,
+          "provider_ok": 6,
+          "deterministic_narrator": 0,
+          "ngram_jaccard_pct": 0,
+          "cliches": 0,
+          "memory_recall_pct": 0,
+          "voices_distinct_pct": 100,
+          "voice_lexical_distance_pct": 69.23,
+          "suggestion_specific_pct": 0,
+          "tokens": {
+            "input": 10443,
+            "output": 216
+          },
+          "catalog_cost_rub_no_cache": 0.1252,
+          "latency_ms": [
+            1693,
+            1710,
+            2406,
+            1881,
+            2504,
+            2357
+          ]
+        },
+        {
+          "file": "eval/narrator-craft-gpt-6-luna-off-2026-10-01-run2.json",
+          "live_calls": 6,
+          "provider_ok": 6,
+          "deterministic_narrator": 0,
+          "ngram_jaccard_pct": 0,
+          "cliches": 0,
+          "memory_recall_pct": 0,
+          "voices_distinct_pct": 0,
+          "voice_lexical_distance_pct": 45.45,
+          "suggestion_specific_pct": 0,
+          "tokens": {
+            "input": 10443,
+            "output": 206
+          },
+          "catalog_cost_rub_no_cache": 0.1246,
+          "latency_ms": [
+            1992,
+            1766,
+            1633,
+            1556,
+            1964,
+            2084
+          ]
+        }
+      ]
+    }
+  },
+  "roles": [
+    {
+      "file": "eval/json-roles-gpt-6-luna-2026-10-01.json",
+      "role": "director",
+      "profile": "gpt-6-luna/off",
+      "cases": 6,
+      "valid": 6,
+      "within_production_timeout": 6,
+      "production_timeout_ms": 12000,
+      "p50_ms": 2771,
+      "p95_ms": 6475,
+      "max_ms": 7333,
+      "mean_completion_tokens": 79,
+      "reasoning_tokens_total": 0,
+      "usage_cost_rub": 0.0872,
+      "catalog_cost_rub_no_cache": 0.0872,
+      "usage_rub_per_100_calls": 1.454,
+      "errors": []
+    },
+    {
+      "file": "eval/json-roles-gpt-6-luna-2026-10-01.json",
+      "role": "director",
+      "profile": "gpt-6-luna/low",
+      "cases": 6,
+      "valid": 6,
+      "within_production_timeout": 6,
+      "production_timeout_ms": 12000,
+      "p50_ms": 3480,
+      "p95_ms": 5968,
+      "max_ms": 6521,
+      "mean_completion_tokens": 135,
+      "reasoning_tokens_total": 424,
+      "usage_cost_rub": 0.1057,
+      "catalog_cost_rub_no_cache": 0.1057,
+      "usage_rub_per_100_calls": 1.7617,
+      "errors": []
+    },
+    {
+      "file": "eval/json-roles-gpt-6-luna-2026-10-01.json",
+      "role": "director",
+      "profile": "glm-5.3-flash/low",
+      "cases": 6,
+      "valid": 6,
+      "within_production_timeout": 6,
+      "production_timeout_ms": 12000,
+      "p50_ms": 2288,
+      "p95_ms": 4303,
+      "max_ms": 4400,
+      "mean_completion_tokens": 97,
+      "reasoning_tokens_total": 30,
+      "usage_cost_rub": 0.1408,
+      "catalog_cost_rub_no_cache": 0.0349,
+      "usage_rub_per_100_calls": 2.3462,
+      "errors": []
+    },
+    {
+      "file": "eval/json-roles-gpt-6-luna-2026-10-01.json",
+      "role": "director",
+      "profile": "gpt-5.6-luna/off",
+      "cases": 6,
+      "valid": 6,
+      "within_production_timeout": 6,
+      "production_timeout_ms": 12000,
+      "p50_ms": 2628,
+      "p95_ms": 2860,
+      "max_ms": 2862,
+      "mean_completion_tokens": 92,
+      "reasoning_tokens_total": 0,
+      "usage_cost_rub": 0.1949,
+      "catalog_cost_rub_no_cache": 0.1949,
+      "usage_rub_per_100_calls": 3.2479,
+      "errors": []
+    },
+    {
+      "file": "eval/json-roles-gpt-6-luna-2026-10-01.json",
+      "role": "director",
+      "profile": "deepseek-v4-flash/off",
+      "cases": 6,
+      "valid": 6,
+      "within_production_timeout": 6,
+      "production_timeout_ms": 12000,
+      "p50_ms": 4115,
+      "p95_ms": 5296,
+      "max_ms": 5565,
+      "mean_completion_tokens": 195,
+      "reasoning_tokens_total": 0,
+      "usage_cost_rub": 0.0303,
+      "catalog_cost_rub_no_cache": 0.0474,
+      "usage_rub_per_100_calls": 0.5052,
+      "errors": []
+    },
+    {
+      "file": "eval/json-roles-gpt-6-luna-2026-10-01.json",
+      "role": "adjudicator",
+      "profile": "gpt-6-luna/off",
+      "cases": 6,
+      "valid": 6,
+      "within_production_timeout": 6,
+      "production_timeout_ms": 9000,
+      "p50_ms": 3683,
+      "p95_ms": 4661,
+      "max_ms": 4871,
+      "mean_completion_tokens": 207,
+      "reasoning_tokens_total": 0,
+      "usage_cost_rub": 0.1552,
+      "catalog_cost_rub_no_cache": 0.3127,
+      "usage_rub_per_100_calls": 2.5873,
+      "errors": []
+    },
+    {
+      "file": "eval/json-roles-gpt-6-luna-2026-10-01.json",
+      "role": "adjudicator",
+      "profile": "gpt-6-luna/low",
+      "cases": 6,
+      "valid": 6,
+      "within_production_timeout": 6,
+      "production_timeout_ms": 9000,
+      "p50_ms": 5642,
+      "p95_ms": 7712,
+      "max_ms": 7949,
+      "mean_completion_tokens": 388,
+      "reasoning_tokens_total": 1120,
+      "usage_cost_rub": 0.2142,
+      "catalog_cost_rub_no_cache": 0.3717,
+      "usage_rub_per_100_calls": 3.5704,
+      "errors": []
+    },
+    {
+      "file": "eval/json-roles-gpt-6-luna-2026-10-01.json",
+      "role": "adjudicator",
+      "profile": "glm-5.3-flash/low",
+      "cases": 6,
+      "valid": 6,
+      "within_production_timeout": 6,
+      "production_timeout_ms": 9000,
+      "p50_ms": 6121,
+      "p95_ms": 7975,
+      "max_ms": 8180,
+      "mean_completion_tokens": 205,
+      "reasoning_tokens_total": 357,
+      "usage_cost_rub": 0.4382,
+      "catalog_cost_rub_no_cache": 0.0989,
+      "usage_rub_per_100_calls": 7.3038,
+      "errors": []
+    },
+    {
+      "file": "eval/json-roles-gpt-6-luna-2026-10-01.json",
+      "role": "adjudicator",
+      "profile": "gpt-5.6-luna/off",
+      "cases": 6,
+      "valid": 5,
+      "within_production_timeout": 5,
+      "production_timeout_ms": 9000,
+      "p50_ms": 3251,
+      "p95_ms": 4430,
+      "max_ms": 4700,
+      "mean_completion_tokens": 164,
+      "reasoning_tokens_total": 0,
+      "usage_cost_rub": 0.2956,
+      "catalog_cost_rub_no_cache": 0.537,
+      "usage_rub_per_100_calls": 4.927,
+      "errors": [
+        "LLM_PROVIDER_ERROR/503"
+      ]
+    },
+    {
+      "file": "eval/json-roles-gpt-6-luna-2026-10-01.json",
+      "role": "adjudicator",
+      "profile": "deepseek-v4-flash/off",
+      "cases": 6,
+      "valid": 6,
+      "within_production_timeout": 5,
+      "production_timeout_ms": 9000,
+      "p50_ms": 4860,
+      "p95_ms": 8826,
+      "max_ms": 10061,
+      "mean_completion_tokens": 197,
+      "reasoning_tokens_total": 0,
+      "usage_cost_rub": 0.1951,
+      "catalog_cost_rub_no_cache": 0.1507,
+      "usage_rub_per_100_calls": 3.2515,
+      "errors": []
+    },
+    {
+      "file": "eval/json-roles-gpt-6-luna-2026-10-01.json",
+      "role": "npc_social",
+      "profile": "gpt-6-luna/off",
+      "cases": 6,
+      "valid": 6,
+      "within_production_timeout": 6,
+      "production_timeout_ms": 20000,
+      "p50_ms": 2048,
+      "p95_ms": 2926,
+      "max_ms": 3108,
+      "mean_completion_tokens": 75,
+      "reasoning_tokens_total": 0,
+      "usage_cost_rub": 0.0489,
+      "catalog_cost_rub_no_cache": 0.1073,
+      "usage_rub_per_100_calls": 0.8143,
+      "errors": [],
+      "voice_marker": 6,
+      "injection_safe": 6,
+      "mean_reply_chars": 77
+    },
+    {
+      "file": "eval/json-roles-gpt-6-luna-2026-10-01.json",
+      "role": "npc_social",
+      "profile": "gpt-6-luna/low",
+      "cases": 6,
+      "valid": 6,
+      "within_production_timeout": 6,
+      "production_timeout_ms": 20000,
+      "p50_ms": 2015,
+      "p95_ms": 2565,
+      "max_ms": 2675,
+      "mean_completion_tokens": 89,
+      "reasoning_tokens_total": 61,
+      "usage_cost_rub": 0.0534,
+      "catalog_cost_rub_no_cache": 0.1119,
+      "usage_rub_per_100_calls": 0.8904,
+      "errors": [],
+      "voice_marker": 6,
+      "injection_safe": 6,
+      "mean_reply_chars": 88
+    },
+    {
+      "file": "eval/json-roles-gpt-6-luna-2026-10-01.json",
+      "role": "npc_social",
+      "profile": "glm-5.3-flash/low",
+      "cases": 6,
+      "valid": 6,
+      "within_production_timeout": 6,
+      "production_timeout_ms": 20000,
+      "p50_ms": 3829,
+      "p95_ms": 8262,
+      "max_ms": 9561,
+      "mean_completion_tokens": 96,
+      "reasoning_tokens_total": 6,
+      "usage_cost_rub": 0.1081,
+      "catalog_cost_rub_no_cache": 0.0391,
+      "usage_rub_per_100_calls": 1.8009,
+      "errors": [],
+      "voice_marker": 6,
+      "injection_safe": 6,
+      "mean_reply_chars": 155
+    },
+    {
+      "file": "eval/json-roles-gpt-6-luna-2026-10-01.json",
+      "role": "npc_social",
+      "profile": "gpt-5.6-luna/off",
+      "cases": 6,
+      "valid": 6,
+      "within_production_timeout": 6,
+      "production_timeout_ms": 20000,
+      "p50_ms": 3363,
+      "p95_ms": 3977,
+      "max_ms": 4168,
+      "mean_completion_tokens": 129,
+      "reasoning_tokens_total": 0,
+      "usage_cost_rub": 0.1957,
+      "catalog_cost_rub_no_cache": 0.2969,
+      "usage_rub_per_100_calls": 3.2619,
+      "errors": [],
+      "voice_marker": 6,
+      "injection_safe": 6,
+      "mean_reply_chars": 260
+    },
+    {
+      "file": "eval/json-roles-gpt-6-luna-2026-10-01.json",
+      "role": "npc_social",
+      "profile": "deepseek-v4-flash/off",
+      "cases": 6,
+      "valid": 4,
+      "within_production_timeout": 6,
+      "production_timeout_ms": 20000,
+      "p50_ms": 2309,
+      "p95_ms": 3366,
+      "max_ms": 3567,
+      "mean_completion_tokens": 90,
+      "reasoning_tokens_total": 0,
+      "usage_cost_rub": 0.0694,
+      "catalog_cost_rub_no_cache": 0.0539,
+      "usage_rub_per_100_calls": 1.1565,
+      "errors": [],
+      "voice_marker": 4,
+      "injection_safe": 6,
+      "mean_reply_chars": 69
+    },
+    {
+      "file": "eval/json-roles-gpt-6-luna-default-2026-10-01.json",
+      "role": "director",
+      "profile": "gpt-6-luna/default",
+      "cases": 3,
+      "valid": 3,
+      "within_production_timeout": 3,
+      "production_timeout_ms": 12000,
+      "p50_ms": 3040,
+      "p95_ms": 5109,
+      "max_ms": 5339,
+      "mean_completion_tokens": 142,
+      "reasoning_tokens_total": 212,
+      "usage_cost_rub": 0.054,
+      "catalog_cost_rub_no_cache": 0.054,
+      "usage_rub_per_100_calls": 1.8007,
+      "errors": []
+    },
+    {
+      "file": "eval/json-roles-gpt-6-luna-default-2026-10-01.json",
+      "role": "adjudicator",
+      "profile": "gpt-6-luna/default",
+      "cases": 3,
+      "valid": 1,
+      "within_production_timeout": 1,
+      "production_timeout_ms": 9000,
+      "p50_ms": 5114,
+      "p95_ms": 5114,
+      "max_ms": 5114,
+      "mean_completion_tokens": 137,
+      "reasoning_tokens_total": 219,
+      "usage_cost_rub": 0.0345,
+      "catalog_cost_rub_no_cache": 0.0632,
+      "usage_rub_per_100_calls": 1.1485,
+      "errors": [
+        "LLM_JSON_INVALID",
+        "LLM_JSON_INVALID"
+      ]
+    },
+    {
+      "file": "eval/json-roles-gpt-6-luna-default-2026-10-01.json",
+      "role": "npc_social",
+      "profile": "gpt-6-luna/default",
+      "cases": 3,
+      "valid": 3,
+      "within_production_timeout": 3,
+      "production_timeout_ms": 20000,
+      "p50_ms": 2768,
+      "p95_ms": 2861,
+      "max_ms": 2871,
+      "mean_completion_tokens": 135,
+      "reasoning_tokens_total": 171,
+      "usage_cost_rub": 0.0738,
+      "catalog_cost_rub_no_cache": 0.0634,
+      "usage_rub_per_100_calls": 2.4596,
+      "errors": [],
+      "voice_marker": 2,
+      "injection_safe": 3,
+      "mean_reply_chars": 79
+    },
+    {
+      "file": "eval/npc-social-gpt-6-luna-addendum-2026-10-01.json",
+      "role": "npc_social",
+      "profile": "gpt-6-luna/off+luna-addendum",
+      "cases": 6,
+      "valid": 6,
+      "within_production_timeout": 6,
+      "production_timeout_ms": 20000,
+      "p50_ms": 3011,
+      "p95_ms": 4133,
+      "max_ms": 4342,
+      "mean_completion_tokens": 119,
+      "reasoning_tokens_total": 0,
+      "usage_cost_rub": 0.1052,
+      "catalog_cost_rub_no_cache": 0.137,
+      "usage_rub_per_100_calls": 1.7528,
+      "errors": [],
+      "voice_marker": 6,
+      "injection_safe": 6,
+      "mean_reply_chars": 234
+    },
+    {
+      "file": "eval/npc-social-gpt-6-luna-addendum-2026-10-01.json",
+      "role": "npc_social",
+      "profile": "gpt-6-luna-pro/off",
+      "cases": 6,
+      "valid": 6,
+      "within_production_timeout": 6,
+      "production_timeout_ms": 20000,
+      "p50_ms": 3617,
+      "p95_ms": 3790,
+      "max_ms": 3835,
+      "mean_completion_tokens": 172,
+      "reasoning_tokens_total": 0,
+      "usage_cost_rub": 0.2555,
+      "catalog_cost_rub_no_cache": 0.4045,
+      "usage_rub_per_100_calls": 4.2586,
+      "errors": [],
+      "voice_marker": 6,
+      "injection_safe": 6,
+      "mean_reply_chars": 89
+    },
+    {
+      "file": "eval/campaign-bootstrap-gpt-6-luna-2026-10-01.json",
+      "role": "bootstrap",
+      "profile": "gpt-6-luna/off",
+      "cases": 3,
+      "valid": 3,
+      "within_production_timeout": 3,
+      "production_timeout_ms": 45000,
+      "p50_ms": 17776,
+      "p95_ms": 20248,
+      "max_ms": 20523,
+      "mean_completion_tokens": 1886,
+      "reasoning_tokens_total": 0,
+      "usage_cost_rub": 0.3153,
+      "catalog_cost_rub_no_cache": 0.386,
+      "usage_rub_per_100_calls": 10.5102,
+      "errors": [],
+      "model_latency_ms": [
+        17776,
+        16027,
+        20523
+      ],
+      "within_27s": 3,
+      "within_45s": 3,
+      "injection_safe": 3,
+      "quality": [
+        {
+          "parsed": true,
+          "top_keys_present": 9,
+          "world_history_chars": 605,
+          "opening_chars": 861,
+          "locations": 3,
+          "regions": 2,
+          "routes": 2,
+          "npcs": 2,
+          "scene_fields": 7,
+          "start_location_on_map": true
+        },
+        {
+          "parsed": true,
+          "top_keys_present": 9,
+          "world_history_chars": 967,
+          "opening_chars": 946,
+          "locations": 3,
+          "regions": 3,
+          "routes": 2,
+          "npcs": 2,
+          "scene_fields": 7,
+          "start_location_on_map": true
+        },
+        {
+          "parsed": true,
+          "top_keys_present": 9,
+          "world_history_chars": 997,
+          "opening_chars": 1010,
+          "locations": 4,
+          "regions": 3,
+          "routes": 3,
+          "npcs": 2,
+          "scene_fields": 7,
+          "start_location_on_map": true
+        }
+      ]
+    },
+    {
+      "file": "eval/campaign-bootstrap-gpt-6-luna-2026-10-01.json",
+      "role": "bootstrap",
+      "profile": "glm-5.3-flash/low",
+      "cases": 3,
+      "valid": 2,
+      "within_production_timeout": 1,
+      "production_timeout_ms": 45000,
+      "p50_ms": 43900,
+      "p95_ms": 46798,
+      "max_ms": 47120,
+      "mean_completion_tokens": 1687,
+      "reasoning_tokens_total": 52,
+      "usage_cost_rub": 0.3909,
+      "catalog_cost_rub_no_cache": 0.1932,
+      "usage_rub_per_100_calls": 13.0291,
+      "errors": [
+        "LLM_TIMEOUT"
+      ],
+      "model_latency_ms": [
+        40680,
+        75005,
+        47120
+      ],
+      "within_27s": 0,
+      "within_45s": 1,
+      "injection_safe": 3,
+      "quality": [
+        {
+          "parsed": true,
+          "top_keys_present": 9,
+          "world_history_chars": 1139,
+          "opening_chars": 1204,
+          "locations": 6,
+          "regions": 3,
+          "routes": 5,
+          "npcs": 3,
+          "scene_fields": 7,
+          "start_location_on_map": true
+        },
+        {
+          "parsed": false
+        },
+        {
+          "parsed": true,
+          "top_keys_present": 9,
+          "world_history_chars": 990,
+          "opening_chars": 1291,
+          "locations": 7,
+          "regions": 3,
+          "routes": 7,
+          "npcs": 3,
+          "scene_fields": 7,
+          "start_location_on_map": true
+        }
+      ]
+    },
+    {
+      "file": "eval/campaign-bootstrap-gpt-6-luna-2026-10-01.json",
+      "role": "bootstrap",
+      "profile": "gpt-6-luna/low",
+      "cases": 2,
+      "valid": 2,
+      "within_production_timeout": 2,
+      "production_timeout_ms": 45000,
+      "p50_ms": 24704,
+      "p95_ms": 27713,
+      "max_ms": 28047,
+      "mean_completion_tokens": 2327,
+      "reasoning_tokens_total": 665,
+      "usage_cost_rub": 0.2881,
+      "catalog_cost_rub_no_cache": 0.3051,
+      "usage_rub_per_100_calls": 14.4056,
+      "errors": [],
+      "model_latency_ms": [
+        28047,
+        21361
+      ],
+      "within_27s": 1,
+      "within_45s": 2,
+      "injection_safe": 2,
+      "quality": [
+        {
+          "parsed": true,
+          "top_keys_present": 9,
+          "world_history_chars": 937,
+          "opening_chars": 1007,
+          "locations": 4,
+          "regions": 2,
+          "routes": 3,
+          "npcs": 2,
+          "scene_fields": 7,
+          "start_location_on_map": true
+        },
+        {
+          "parsed": true,
+          "top_keys_present": 9,
+          "world_history_chars": 869,
+          "opening_chars": 894,
+          "locations": 4,
+          "regions": 2,
+          "routes": 3,
+          "npcs": 2,
+          "scene_fields": 7,
+          "start_location_on_map": true
+        }
+      ]
+    },
+    {
+      "file": "eval/campaign-bootstrap-gpt-6-luna-2026-10-01.json",
+      "role": "bootstrap",
+      "profile": "gemini-2.5-flash-lite/default",
+      "cases": 2,
+      "valid": 2,
+      "within_production_timeout": 2,
+      "production_timeout_ms": 45000,
+      "p50_ms": 7368,
+      "p95_ms": 7633,
+      "max_ms": 7663,
+      "mean_completion_tokens": 1797,
+      "reasoning_tokens_total": 0,
+      "usage_cost_rub": 0.1906,
+      "catalog_cost_rub_no_cache": 0.2105,
+      "usage_rub_per_100_calls": 9.5294,
+      "errors": [],
+      "model_latency_ms": [
+        7072,
+        7663
+      ],
+      "within_27s": 2,
+      "within_45s": 2,
+      "injection_safe": 2,
+      "quality": [
+        {
+          "parsed": true,
+          "top_keys_present": 9,
+          "world_history_chars": 1266,
+          "opening_chars": 1105,
+          "locations": 1,
+          "regions": 1,
+          "routes": 1,
+          "npcs": 3,
+          "scene_fields": 7,
+          "start_location_on_map": true
+        },
+        {
+          "parsed": true,
+          "top_keys_present": 9,
+          "world_history_chars": 977,
+          "opening_chars": 1235,
+          "locations": 3,
+          "regions": 2,
+          "routes": 2,
+          "npcs": 2,
+          "scene_fields": 7,
+          "start_location_on_map": true
+        }
+      ]
+    },
+    {
+      "file": "eval/campaign-bootstrap-gpt-6-luna-2026-10-01.json",
+      "role": "bootstrap",
+      "profile": "deepseek-v4-flash/off",
+      "cases": 2,
+      "valid": 2,
+      "within_production_timeout": 2,
+      "production_timeout_ms": 45000,
+      "p50_ms": 17490,
+      "p95_ms": 21520,
+      "max_ms": 21968,
+      "mean_completion_tokens": 2134,
+      "reasoning_tokens_total": 0,
+      "usage_cost_rub": 0.3689,
+      "catalog_cost_rub_no_cache": 0.0745,
+      "usage_rub_per_100_calls": 18.4451,
+      "errors": [],
+      "model_latency_ms": [
+        21968,
+        13012
+      ],
+      "within_27s": 2,
+      "within_45s": 2,
+      "injection_safe": 2,
+      "quality": [
+        {
+          "parsed": true,
+          "top_keys_present": 9,
+          "world_history_chars": 759,
+          "opening_chars": 1063,
+          "locations": 6,
+          "regions": 3,
+          "routes": 3,
+          "npcs": 2,
+          "scene_fields": 7,
+          "start_location_on_map": true
+        },
+        {
+          "parsed": true,
+          "top_keys_present": 9,
+          "world_history_chars": 1235,
+          "opening_chars": 949,
+          "locations": 4,
+          "regions": 3,
+          "routes": 3,
+          "npcs": 2,
+          "scene_fields": 7,
+          "start_location_on_map": true
+        }
+      ]
+    }
+  ],
+  "json_probe": [
+    {
+      "model": "openai/gpt-6-luna",
+      "id": "json",
+      "reasoning": {
+        "enabled": false
+      },
+      "requested_at": "2026-10-01T13:19:05.776Z",
+      "cost_ceiling_rub": 0.083729259952,
+      "ok": true,
+      "usage": {
+        "total_tokens": 123,
+        "prompt_tokens": 102,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 21,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.002248567308
+      },
+      "response_model": "openai/gpt-6-luna",
+      "catalog_cost_rub": 0.002248567308,
+      "schema_valid": true,
+      "latency_ms": 1604
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "id": "json",
+      "reasoning": {
+        "effort": "low"
+      },
+      "requested_at": "2026-10-01T13:19:07.381Z",
+      "cost_ceiling_rub": 0.047097817349440005,
+      "ok": true,
+      "usage": {
+        "total_tokens": 152,
+        "prompt_tokens": 136,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 16,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0033934899856000005
+      },
+      "response_model": "z-ai/glm-5.3-flash",
+      "catalog_cost_rub": 0.0008985579116800001,
+      "schema_valid": true,
+      "latency_ms": 1741
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "id": "json",
+      "reasoning": {
+        "enabled": false
+      },
+      "requested_at": "2026-10-01T13:19:09.124Z",
+      "cost_ceiling_rub": 0.193528865504,
+      "ok": true,
+      "usage": {
+        "total_tokens": 123,
+        "prompt_tokens": 102,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 21,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0049533656639999995
+      },
+      "response_model": "openai/gpt-5.6-luna",
+      "catalog_cost_rub": 0.004953365664,
+      "schema_valid": true,
+      "latency_ms": 1563
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "id": "json",
+      "reasoning": {
+        "enabled": false
+      },
+      "requested_at": "2026-10-01T13:19:10.688Z",
+      "cost_ceiling_rub": 0.021481422945717282,
+      "ok": true,
+      "usage": {
+        "total_tokens": 124,
+        "prompt_tokens": 102,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 22,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.000766011929592
+      },
+      "response_model": "deepseek/deepseek-v4-flash",
+      "catalog_cost_rub": 0.0007634585564933599,
+      "schema_valid": true,
+      "latency_ms": 10311
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "id": "json-reasoning-off",
+      "reasoning": {
+        "enabled": false
+      },
+      "requested_at": "2026-10-01T13:19:21.000Z",
+      "cost_ceiling_rub": 0.047097817349440005,
+      "ok": true,
+      "usage": {
+        "total_tokens": 152,
+        "prompt_tokens": 136,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "completion_tokens": 16,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "cost": 0.0033934899856000005
+      },
+      "response_model": "z-ai/glm-5.3-flash",
+      "catalog_cost_rub": 0.0008985579116800001,
+      "schema_valid": true,
+      "latency_ms": 1655
+    }
+  ],
+  "spend_rub": {
+    "usage_cost_reported": 6.8885,
+    "craft_eval_catalog_estimate_no_usage_cost": 1.325,
+    "aborted_first_bootstrap_attempt": 0.1423,
+    "smoke_and_catalog_fetch": 0.0026,
+    "note": "Craft-eval не сохраняет usage.cost; оценка по каталогу. Один прерванный GLM-вызов первого запуска bootstrap, тайм-аут GLM bootstrap, ошибка DeepSeek и 503 Luna 5.6 не имеют usage; их возможное списание не включено.",
+    "total_estimate": 8.3584
+  }
+}

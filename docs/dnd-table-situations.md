@@ -246,8 +246,8 @@ NPC говорит только то, что ему разрешено: `known_f
 Видно игроку: глагол «Взломать» кнопкой у двери и у контейнера; без владения
 кнопка **гаснет, а не прячется** и называет серверную причину
 (`lockpicking.blocked_reason` в проекции) — ту же самую, которой движок отвергнет
-команду. Сторож — `test/lockpicking.test.mjs`, разметку держат
-`test/ui-desktop-doors.test.mjs` и `test/scene-interaction-ui-contract.test.mjs`,
+команду. Сторож — `test/lockpicking.test.mjs`, разметку держит
+`test/ui-desktop-doors.test.mjs`,
 описание — `docs/rules-coverage.md`, раздел «Взлом отмычками».
 
 Границы названы честно (`docs/known-limitations.md`): отмычек как предмета в
@@ -942,7 +942,7 @@ CR, обычным путём урона.
 Видно игроку: метка тела на доске, панель обыска с картинкой, редкостью и ценой
 вещи (`src/LootPanel.tsx`) и сводка после победы. Сторожа —
 `test/loot-containers.test.mjs`, `test/loot-containers-api.test.mjs`,
-`test/loot-panel-rules.test.mjs`, `test/loot-containers-ui-contract.test.mjs`;
+`test/loot-panel-rules.test.mjs`;
 описание — `docs/rules-coverage.md`, раздел «Контейнеры добычи и обыск».
 
 Не закрыто: карман противника (`loadout.purse_cp`) в контейнер не переезжает —

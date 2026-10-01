@@ -1,4 +1,5 @@
 import { ALLOWED_COMMAND_TYPES as RULE_ENGINE_COMMAND_TYPES } from './rules-engine.mjs'
+import { SCENE_CANON_CONTRADICTION, sceneCanonContradictions, sceneCanonFromEnvironment } from './scene-canon.mjs'
 
 export const VISIBILITY_LEVELS = Object.freeze(['public', 'party', 'specific_player', 'gm_only', 'npc_private'])
 const VISIBILITY_SET = new Set(VISIBILITY_LEVELS)
@@ -602,6 +603,40 @@ function namedNpcSpeechAssertion(text, brief) {
   return false
 }
 
+/**
+ * Утечка рассуждений модели вместо повествования. Живой замер 2026-10-01
+ * поймал `deepseek/deepseek-v4-flash` на ответе «_plan требует report_result —
+ * начинаю с результата… Итоговый текст: "…" … Ответ готов к отправке», и все
+ * прочие проверки его пропустили: фактов он не выдумывал, он пересказывал
+ * контракт. Признаки берутся из самого контракта, а не из стиля текста:
+ * - идентификаторы в snake_case и с ведущим подчёркиванием (`report_result`,
+ *   `stop_after`, `_plan`) — в русском повествовании им взяться неоткуда;
+ * - служебные имена контракта (`UNTRUSTED_DATA`, `NarrationBrief`);
+ * - реплики черновика в начале предложения («Итоговый текст:», «Ответ готов»,
+ *   «Проверяю стиль»).
+ *
+ * @param {string} text
+ * @returns {string} найденный фрагмент или пустая строка
+ */
+function modelReasoningLeak(narration) {
+  // Ссылка на правило («rule_id: srd_5_2_1:combat:…») законна и проверяется
+  // своим нарушением RULE_ID_NOT_IN_BRIEF — здесь её подчёркивания не в счёт.
+  const text = String(narration ?? '')
+    .replace(/(?:rule[_\s-]?id|правил[оа]\s+id)\s*[:=]?\s*["«]?[A-Za-z0-9_.:-]{3,}/giu, ' ')
+    .replace(/(?<![\p{L}\p{N}_])[a-z][a-z0-9_.-]*:[a-z0-9_.:-]+:[a-z0-9_.:-]+/giu, ' ')
+  const patterns = [
+    /(?<![\p{L}\p{N}_])_[a-z][a-z0-9]+/u,
+    /(?<![\p{L}\p{N}_])[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?![\p{L}\p{N}_])/u,
+    /UNTRUSTED_DATA|NarrationBrief|PROMPT_ID/u,
+    /(?:^|[.!?…»"]\s+|\n\s*)(?:Итоговый|Финальный)\s+(?:текст|ответ)\s*:|(?:^|[.!?…»"]\s+|\n\s*)(?:Ответ\s+готов|Проверяю\s+(?:стиль|ответ|себя)|Черновик(?:\s+ответа)?\s*:)/iu,
+  ]
+  for (const pattern of patterns) {
+    const match = pattern.exec(text)
+    if (match) return match[0].trim().slice(0, 80)
+  }
+  return ''
+}
+
 export function verifyNarration(narration, brief, {
   hiddenValues = [],
   forbiddenHiddenTerms = [],
@@ -718,6 +753,18 @@ export function verifyNarration(narration, brief, {
 
   if (/hidden_information|gm_only|npc_private|секрет\s+ведущего|скрыт\w*\s+(?:характеристик|статистик|информац)/iu.test(text)) {
     addViolation(violations, 'HIDDEN_INFORMATION_DISCLOSED', 'Narrator сослался на закрытую информацию')
+  }
+  // Физический канон сцены — час, небо, крыша, сырость — принадлежит серверу
+  // так же, как HP. Живой замер 2026-10-01: «покрытый пылью» причал в тумане и
+  // ночь в восемь утра. Канон берётся из brief (`scene_canon`, иначе
+  // `world_clock`); без часов проверка молчит, а не угадывает.
+  const sceneCanon = sceneCanonFromEnvironment(brief?.known_environment ?? {})
+  for (const contradiction of sceneCanonContradictions(text, sceneCanon, { events: brief?.visible_events })) {
+    addViolation(violations, SCENE_CANON_CONTRADICTION, contradiction.message, contradiction.match)
+  }
+  const reasoningLeak = modelReasoningLeak(text)
+  if (reasoningLeak) {
+    addViolation(violations, 'MODEL_REASONING_LEAK', 'Вместо текста хода модель вернула свои рассуждения о контракте', reasoningLeak)
   }
   for (const value of [...hiddenValues, ...forbiddenHiddenTerms].flat(Infinity).map(String).map((item) => item.trim()).filter((item) => item.length >= 3)) {
     if (lower.includes(value.toLowerCase())) addViolation(violations, 'HIDDEN_INFORMATION_DISCLOSED', 'Narrator раскрыл запрещённое значение', value)

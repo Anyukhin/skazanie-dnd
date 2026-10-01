@@ -282,10 +282,11 @@ export function knownDestinationsFrom(state = {}) {
 function knownWorldDestinationByName(state, name) {
   const key = locationKey(name)
   if (!key || !Array.isArray(state?.worldMap?.locations)) return null
-  const location = state.worldMap.locations.find((entry) => (
+  const visible = state.worldMap.locations.filter((entry) => (
     entry?.id && entry.known !== false && entry.hidden !== true && entry.visibility !== 'gm_only'
-      && locationKey(entry.name) === key
   ))
+  const location = visible.find((entry) => locationKey(entry.name) === key)
+    ?? inflectedLocationMatch(visible, name)
   if (!location) return null
   const region = Array.isArray(state?.worldMap?.regions)
     ? state.worldMap.regions.find((candidate) => String(candidate?.id ?? '') === String(location.regionId ?? location.region_id ?? ''))
@@ -542,6 +543,74 @@ function normalizePlan(value, fallback) {
 
 function locationKey(value) {
   return clean(value, 120).normalize('NFKC').toLocaleLowerCase('ru')
+}
+
+/**
+ * Отличительные слова названия: без кавычек, предлогов и родовых «город»,
+ * «таверна», «лес». Игрок пишет «в таверну «Морской Змей»», а на карте —
+ * `Таверна "Морской Змей"`: точное сравнение таких строк никогда не совпадёт.
+ */
+function nameWords(value) {
+  return (locationKey(value).replace(/["'«»„“”`]/gu, ' ').match(/[\p{L}\p{N}]+/gu) ?? [])
+    // Предлоги и союзы («в», «и») совпали бы с началом любого слова.
+    .filter((word) => word.length >= 3)
+}
+
+function distinctiveWords(value) {
+  return nameWords(value).filter((word) => !genericDestinationHint(word))
+}
+
+function genericWords(value) {
+  return nameWords(value).filter((word) => genericDestinationHint(word))
+}
+
+/** Хвост, которым русское слово меняется по падежам: «-у/-а», «-ой/-ого», «-й/-я». */
+const CASE_ENDING = /^[аеёиоуыэюяйьмхвг]{0,3}$/u
+
+/**
+ * Одно и то же слово в разных падежах: общая основа и короткие падежные хвосты.
+ * Простого совпадения начала мало — «Норвин» и «Норвель» начинаются одинаково,
+ * но это разные места: хвосты «ин» и «ель» не падежные.
+ */
+function sameWordInflected(left, right) {
+  if (left === right) return true
+  let common = 0
+  while (common < left.length && common < right.length && left[common] === right[common]) common += 1
+  if (common < 3 || common < Math.max(left.length, right.length) - 3) return false
+  return CASE_ENDING.test(left.slice(common)) && CASE_ENDING.test(right.slice(common))
+}
+
+/**
+ * Точка карты, все отличительные слова названия которой встретились во фразе
+ * игрока. Родовые слова не считаются ни с той, ни с другой стороны. Лишние
+ * слова фразы допускаются, но не больше двух: «таверну «Морской Змей»» ещё
+ * про таверну, а длинное предложение с случайным совпадением — уже нет.
+ * Неоднозначность (две точки с одинаково полным совпадением) не решается
+ * угадыванием — возвращается `null`, и дальше работает прежний путь.
+ */
+function inflectedLocationMatch(locations, phrase) {
+  const spoken = distinctiveWords(phrase)
+  if (!spoken.length) return null
+  const spokenKinds = genericWords(phrase)
+  let best = null
+  let bestSize = 0
+  let tie = false
+  for (const entry of locations) {
+    const stems = distinctiveWords(entry?.name)
+    if (!stems.length || spoken.length > stems.length + 2) continue
+    if (!stems.every((stem) => spoken.some((word) => sameWordInflected(word, stem)))) continue
+    // Названный род места обязан совпасть: «большой город Норвин» — не
+    // «Склеп Норвин», хотя собственное имя у них общее.
+    const kinds = genericWords(entry?.name)
+    if (spokenKinds.length && kinds.length
+      && !kinds.some((kind) => spokenKinds.some((word) => sameWordInflected(word, kind)))) continue
+    if (stems.length > bestSize) {
+      best = entry
+      bestSize = stems.length
+      tie = false
+    } else if (stems.length === bestSize) tie = true
+  }
+  return tie ? null : best
 }
 
 function genericDestinationHint(value) {

@@ -1,0 +1,476 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-10-01T14:00:22.871Z",
+  "fixture_clock": "2026-09-16T00:00:00.000Z",
+  "command": [
+    "--endpoint-only",
+    "--endpoint-reps=20",
+    "--output=eval/large-campaign-http-2026-10-01.json"
+  ],
+  "total_elapsed_ms": 105504.72,
+  "environment": {
+    "node": "v24.18.0",
+    "platform": "win32",
+    "arch": "x64",
+    "cpu_count": 20,
+    "no_llm": true,
+    "storage": "temporary"
+  },
+  "fixture": {
+    "counts": {
+      "entities": 600,
+      "facts": 2501,
+      "relationships": 2501,
+      "quests": 400,
+      "threads": 600,
+      "epistemic_claims": 2501,
+      "summaries": 1200,
+      "knowledge_ledger": 6001
+    },
+    "base_tail_events": 10,
+    "state_version_before_benchmark": 10,
+    "state_bytes": 8601236,
+    "source": "eval/world-data-measurements.mjs:measureProductionStorage"
+  },
+  "seed": {
+    "elapsed_ms": 4087.481,
+    "timings": {
+      "initialize_ms": 205.433,
+      "commit_ms": 1148.223,
+      "load_ms": 47.444,
+      "normalize_ms": 38.532,
+      "replay_full_ms": 946.767,
+      "replay_snapshot_ms": 39.87
+    },
+    "retention": {
+      "expected": {
+        "entities": 600,
+        "facts": 2511,
+        "relationships": 2501,
+        "quests": 400,
+        "threads": 600,
+        "epistemic_claims": 2501,
+        "summaries": 1200,
+        "knowledge_ledger": 6001
+      },
+      "actual": {
+        "entities": 600,
+        "facts": 2511,
+        "relationships": 2501,
+        "quests": 400,
+        "threads": 600,
+        "epistemic_claims": 2501,
+        "summaries": 1200,
+        "knowledge_ledger": 6001
+      },
+      "missing": {},
+      "extra": {},
+      "passed": true,
+      "exact": true
+    },
+    "replay_identical": true,
+    "snapshot_replay_identical": true
+  },
+  "cpu_profile": null,
+  "journal_read": null,
+  "cases": [],
+  "endpoint": {
+    "startup_ms": 422.382,
+    "no_llm": true,
+    "reps": 20,
+    "fixture": "minimal HTTP payload for both campaigns; PERF-LARGE expanded by a LegacyStateImported event through FileEventStore and a snapshot with the production projector version before movement",
+    "snapshot_projector_version": 17,
+    "world_size": {
+      "small": {
+        "counts": {
+          "entities": 1,
+          "facts": 0,
+          "relationships": 0,
+          "quests": 0,
+          "threads": 0,
+          "epistemic_claims": 0,
+          "summaries": 0,
+          "knowledge_ledger": 0
+        },
+        "state_bytes": 32449
+      },
+      "expanded": {
+        "counts": {
+          "entities": 601,
+          "facts": 2501,
+          "relationships": 2501,
+          "quests": 400,
+          "threads": 600,
+          "epistemic_claims": 2501,
+          "summaries": 1200,
+          "knowledge_ledger": 6001
+        },
+        "state_bytes": 8625153
+      },
+      "exact": true
+    },
+    "series": {
+      "small": {
+        "summary": {
+          "count": 20,
+          "min_ms": 48.778,
+          "p50_ms": 61.304,
+          "p95_ms": 75.963,
+          "max_ms": 143.326,
+          "mean_ms": 65.409
+        },
+        "measurements": [
+          {
+            "index": 1,
+            "elapsed_ms": 143.326,
+            "response_bytes": 34411,
+            "status": 200,
+            "state_version": 2,
+            "room_version": 2
+          },
+          {
+            "index": 2,
+            "elapsed_ms": 75.963,
+            "response_bytes": 34780,
+            "status": 200,
+            "state_version": 4,
+            "room_version": 3
+          },
+          {
+            "index": 3,
+            "elapsed_ms": 62.927,
+            "response_bytes": 35149,
+            "status": 200,
+            "state_version": 6,
+            "room_version": 4
+          },
+          {
+            "index": 4,
+            "elapsed_ms": 54.791,
+            "response_bytes": 35518,
+            "status": 200,
+            "state_version": 8,
+            "room_version": 5
+          },
+          {
+            "index": 5,
+            "elapsed_ms": 48.778,
+            "response_bytes": 35891,
+            "status": 200,
+            "state_version": 10,
+            "room_version": 6
+          },
+          {
+            "index": 6,
+            "elapsed_ms": 54.789,
+            "response_bytes": 36263,
+            "status": 200,
+            "state_version": 12,
+            "room_version": 7
+          },
+          {
+            "index": 7,
+            "elapsed_ms": 58.551,
+            "response_bytes": 36632,
+            "status": 200,
+            "state_version": 14,
+            "room_version": 8
+          },
+          {
+            "index": 8,
+            "elapsed_ms": 50.27,
+            "response_bytes": 37001,
+            "status": 200,
+            "state_version": 16,
+            "room_version": 9
+          },
+          {
+            "index": 9,
+            "elapsed_ms": 70.751,
+            "response_bytes": 37371,
+            "status": 200,
+            "state_version": 18,
+            "room_version": 10
+          },
+          {
+            "index": 10,
+            "elapsed_ms": 62.571,
+            "response_bytes": 37744,
+            "status": 200,
+            "state_version": 20,
+            "room_version": 11
+          },
+          {
+            "index": 11,
+            "elapsed_ms": 63.593,
+            "response_bytes": 38113,
+            "status": 200,
+            "state_version": 22,
+            "room_version": 12
+          },
+          {
+            "index": 12,
+            "elapsed_ms": 61.304,
+            "response_bytes": 38482,
+            "status": 200,
+            "state_version": 24,
+            "room_version": 13
+          },
+          {
+            "index": 13,
+            "elapsed_ms": 67.501,
+            "response_bytes": 38851,
+            "status": 200,
+            "state_version": 26,
+            "room_version": 14
+          },
+          {
+            "index": 14,
+            "elapsed_ms": 60.634,
+            "response_bytes": 39220,
+            "status": 200,
+            "state_version": 28,
+            "room_version": 15
+          },
+          {
+            "index": 15,
+            "elapsed_ms": 61.201,
+            "response_bytes": 39589,
+            "status": 200,
+            "state_version": 30,
+            "room_version": 16
+          },
+          {
+            "index": 16,
+            "elapsed_ms": 62.83,
+            "response_bytes": 39958,
+            "status": 200,
+            "state_version": 32,
+            "room_version": 17
+          },
+          {
+            "index": 17,
+            "elapsed_ms": 60.754,
+            "response_bytes": 40327,
+            "status": 200,
+            "state_version": 34,
+            "room_version": 18
+          },
+          {
+            "index": 18,
+            "elapsed_ms": 63.833,
+            "response_bytes": 40696,
+            "status": 200,
+            "state_version": 36,
+            "room_version": 19
+          },
+          {
+            "index": 19,
+            "elapsed_ms": 60.915,
+            "response_bytes": 41065,
+            "status": 200,
+            "state_version": 38,
+            "room_version": 20
+          },
+          {
+            "index": 20,
+            "elapsed_ms": 62.904,
+            "response_bytes": 41434,
+            "status": 200,
+            "state_version": 40,
+            "room_version": 21
+          }
+        ],
+        "duplicate": {
+          "elapsed_ms": 30.468,
+          "response_bytes": 41923,
+          "status": 200,
+          "replayed": true
+        }
+      },
+      "expanded": {
+        "summary": {
+          "count": 20,
+          "min_ms": 3205.95,
+          "p50_ms": 3814.268,
+          "p95_ms": 8530.694,
+          "max_ms": 8851.023,
+          "mean_ms": 4437.438
+        },
+        "measurements": [
+          {
+            "index": 1,
+            "elapsed_ms": 3205.95,
+            "response_bytes": 6165035,
+            "status": 200,
+            "state_version": 3,
+            "room_version": 2
+          },
+          {
+            "index": 2,
+            "elapsed_ms": 3646.76,
+            "response_bytes": 6165406,
+            "status": 200,
+            "state_version": 5,
+            "room_version": 3
+          },
+          {
+            "index": 3,
+            "elapsed_ms": 3402.061,
+            "response_bytes": 6165777,
+            "status": 200,
+            "state_version": 7,
+            "room_version": 4
+          },
+          {
+            "index": 4,
+            "elapsed_ms": 3556.814,
+            "response_bytes": 6166148,
+            "status": 200,
+            "state_version": 9,
+            "room_version": 5
+          },
+          {
+            "index": 5,
+            "elapsed_ms": 3545.757,
+            "response_bytes": 6166525,
+            "status": 200,
+            "state_version": 11,
+            "room_version": 6
+          },
+          {
+            "index": 6,
+            "elapsed_ms": 3809.872,
+            "response_bytes": 6166897,
+            "status": 200,
+            "state_version": 13,
+            "room_version": 7
+          },
+          {
+            "index": 7,
+            "elapsed_ms": 3666.21,
+            "response_bytes": 6167268,
+            "status": 200,
+            "state_version": 15,
+            "room_version": 8
+          },
+          {
+            "index": 8,
+            "elapsed_ms": 3910.033,
+            "response_bytes": 6167639,
+            "status": 200,
+            "state_version": 17,
+            "room_version": 9
+          },
+          {
+            "index": 9,
+            "elapsed_ms": 3731.325,
+            "response_bytes": 6168011,
+            "status": 200,
+            "state_version": 19,
+            "room_version": 10
+          },
+          {
+            "index": 10,
+            "elapsed_ms": 3752.528,
+            "response_bytes": 6168386,
+            "status": 200,
+            "state_version": 21,
+            "room_version": 11
+          },
+          {
+            "index": 11,
+            "elapsed_ms": 3814.268,
+            "response_bytes": 6168757,
+            "status": 200,
+            "state_version": 23,
+            "room_version": 12
+          },
+          {
+            "index": 12,
+            "elapsed_ms": 4014.783,
+            "response_bytes": 6169128,
+            "status": 200,
+            "state_version": 25,
+            "room_version": 13
+          },
+          {
+            "index": 13,
+            "elapsed_ms": 4675.22,
+            "response_bytes": 6169499,
+            "status": 200,
+            "state_version": 27,
+            "room_version": 14
+          },
+          {
+            "index": 14,
+            "elapsed_ms": 4042.57,
+            "response_bytes": 6169870,
+            "status": 200,
+            "state_version": 29,
+            "room_version": 15
+          },
+          {
+            "index": 15,
+            "elapsed_ms": 4046.035,
+            "response_bytes": 6170241,
+            "status": 200,
+            "state_version": 31,
+            "room_version": 16
+          },
+          {
+            "index": 16,
+            "elapsed_ms": 3973.68,
+            "response_bytes": 6170612,
+            "status": 200,
+            "state_version": 33,
+            "room_version": 17
+          },
+          {
+            "index": 17,
+            "elapsed_ms": 3854.496,
+            "response_bytes": 6170983,
+            "status": 200,
+            "state_version": 35,
+            "room_version": 18
+          },
+          {
+            "index": 18,
+            "elapsed_ms": 6718.674,
+            "response_bytes": 6171354,
+            "status": 200,
+            "state_version": 37,
+            "room_version": 19
+          },
+          {
+            "index": 19,
+            "elapsed_ms": 8851.023,
+            "response_bytes": 6171725,
+            "status": 200,
+            "state_version": 39,
+            "room_version": 20
+          },
+          {
+            "index": 20,
+            "elapsed_ms": 8530.694,
+            "response_bytes": 6172096,
+            "status": 200,
+            "state_version": 41,
+            "room_version": 21
+          }
+        ],
+        "duplicate": {
+          "elapsed_ms": 4311.206,
+          "response_bytes": 6172585,
+          "status": 200,
+          "replayed": true
+        }
+      }
+    }
+  },
+  "limitations": [
+    "Профиль CPU захватывает один production FileEventStore.commit для 10 событий; sampled self CPU не является wall time.",
+    "Warm означает предварительный load в том же процессе; FileEventStore не имеет общего кэша состояния.",
+    "cases измеряет persistence/reducer без подготовки команды; endpoint отдельно измеряет реальный HTTP без LLM, без подключённого SSE-клиента."
+  ]
+}

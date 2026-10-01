@@ -1,0 +1,1817 @@
+{
+  "description": "Синтетическая память мира портового города и размеченные запросы для оценки поиска по памяти. Игрок — hero-1 (участник отряда); hero-2 лично знает один gm_only-факт; режиссёр — ведущий (isAdmin).",
+  "viewers": {
+    "player": {
+      "playerId": "hero-1",
+      "isPartyMember": true
+    },
+    "gm": {
+      "isAdmin": true
+    }
+  },
+  "memory": {
+    "schema_version": 2,
+    "entities": [
+      {
+        "id": "loc-harbor",
+        "kind": "location",
+        "name": "Серебряная Гавань",
+        "summary": "Портовый город на скалистом берегу.",
+        "aliases": [
+          "Гавань"
+        ],
+        "visibility": "public",
+        "tags": []
+      },
+      {
+        "id": "loc-docks",
+        "kind": "location",
+        "name": "Рыбачьи доки",
+        "summary": "Причалы рыбаков у северного мола.",
+        "aliases": [
+          "доки",
+          "причалы"
+        ],
+        "visibility": "public",
+        "tags": []
+      },
+      {
+        "id": "loc-lighthouse",
+        "kind": "location",
+        "name": "Старый маяк",
+        "summary": "Маяк на мысе за городом.",
+        "aliases": [
+          "маяк"
+        ],
+        "visibility": "public",
+        "tags": []
+      },
+      {
+        "id": "loc-temple",
+        "kind": "location",
+        "name": "Храм Прилива",
+        "summary": "Храм морского божества.",
+        "aliases": [
+          "храм"
+        ],
+        "visibility": "public",
+        "tags": []
+      },
+      {
+        "id": "loc-tavern",
+        "kind": "location",
+        "name": "Таверна «Солёный якорь»",
+        "summary": "Таверна у пристани.",
+        "aliases": [
+          "Солёный якорь"
+        ],
+        "visibility": "public",
+        "tags": []
+      },
+      {
+        "id": "loc-caves",
+        "kind": "location",
+        "name": "Пещеры Шёпота",
+        "summary": "Приливные пещеры под утёсом.",
+        "aliases": [
+          "приливные пещеры"
+        ],
+        "visibility": "party",
+        "tags": []
+      },
+      {
+        "id": "loc-mill",
+        "kind": "location",
+        "name": "Заброшенная мельница",
+        "summary": "Мельница на холме за ручьём.",
+        "aliases": [
+          "мельница"
+        ],
+        "visibility": "party",
+        "tags": []
+      },
+      {
+        "id": "loc-keep",
+        "kind": "location",
+        "name": "Крепость Вороньего Камня",
+        "summary": "Крепость лорда над городом.",
+        "aliases": [
+          "крепость"
+        ],
+        "visibility": "public",
+        "tags": []
+      },
+      {
+        "id": "loc-swamp",
+        "kind": "location",
+        "name": "Гнилая топь",
+        "summary": "Болото к югу от города.",
+        "aliases": [
+          "топь",
+          "болото"
+        ],
+        "visibility": "party",
+        "tags": []
+      },
+      {
+        "id": "loc-cove",
+        "kind": "location",
+        "name": "Бухта контрабандистов",
+        "summary": "Скрытая бухта за мысом.",
+        "aliases": [],
+        "visibility": "gm_only",
+        "tags": []
+      },
+      {
+        "id": "npc-marta",
+        "kind": "npc",
+        "name": "Марта Сетевяз",
+        "summary": "Хозяйка таверны.",
+        "aliases": [
+          "Марта",
+          "трактирщица"
+        ],
+        "visibility": "public",
+        "tags": []
+      },
+      {
+        "id": "npc-oleg",
+        "kind": "npc",
+        "name": "Олег Кривонос",
+        "summary": "Капитан городской стражи.",
+        "aliases": [
+          "Олег",
+          "капитан стражи"
+        ],
+        "visibility": "public",
+        "tags": []
+      },
+      {
+        "id": "npc-ilya",
+        "kind": "npc",
+        "name": "брат Илья",
+        "summary": "Жрец Храма Прилива.",
+        "aliases": [
+          "Илья",
+          "жрец"
+        ],
+        "visibility": "public",
+        "tags": []
+      },
+      {
+        "id": "npc-vesna",
+        "kind": "npc",
+        "name": "Весна",
+        "summary": "Травница с окраины.",
+        "aliases": [
+          "травница"
+        ],
+        "visibility": "public",
+        "tags": []
+      },
+      {
+        "id": "npc-grig",
+        "kind": "npc",
+        "name": "Григ Одноглазый",
+        "summary": "Одноглазый моряк с дурной славой.",
+        "aliases": [
+          "Григ"
+        ],
+        "visibility": "party",
+        "tags": []
+      },
+      {
+        "id": "npc-lord",
+        "kind": "npc",
+        "name": "лорд Аркадий Воронов",
+        "summary": "Владетель города.",
+        "aliases": [
+          "лорд Воронов",
+          "Воронов"
+        ],
+        "visibility": "public",
+        "tags": []
+      },
+      {
+        "id": "npc-zora",
+        "kind": "npc",
+        "name": "Зора",
+        "summary": "Отшельница с болот.",
+        "aliases": [
+          "ведьма топи",
+          "ведьма"
+        ],
+        "visibility": "party",
+        "tags": []
+      },
+      {
+        "id": "npc-tom",
+        "kind": "npc",
+        "name": "Том Рыбак",
+        "summary": "Рыбак из доков.",
+        "aliases": [
+          "Том"
+        ],
+        "visibility": "public",
+        "tags": []
+      },
+      {
+        "id": "npc-spy",
+        "kind": "npc",
+        "name": "Шептун",
+        "summary": "Нищий у ворот.",
+        "aliases": [],
+        "visibility": "gm_only",
+        "tags": []
+      },
+      {
+        "id": "npc-kira",
+        "kind": "npc",
+        "name": "Кира Быстрая",
+        "summary": "Наёмница с двумя саблями.",
+        "aliases": [
+          "Кира"
+        ],
+        "visibility": "party",
+        "tags": []
+      },
+      {
+        "id": "npc-boris",
+        "kind": "npc",
+        "name": "Борис Мельник",
+        "summary": "Хозяин мельницы.",
+        "aliases": [
+          "Борис"
+        ],
+        "visibility": "party",
+        "tags": []
+      },
+      {
+        "id": "fac-guild",
+        "kind": "faction",
+        "name": "Гильдия рыбаков",
+        "summary": "Союз рыбацких артелей.",
+        "aliases": [
+          "гильдия"
+        ],
+        "visibility": "public",
+        "tags": []
+      },
+      {
+        "id": "fac-crows",
+        "kind": "faction",
+        "name": "Братство Ворона",
+        "summary": "Шайка контрабандистов.",
+        "aliases": [
+          "Братство",
+          "контрабандисты"
+        ],
+        "visibility": "party",
+        "tags": []
+      },
+      {
+        "id": "fac-watch",
+        "kind": "faction",
+        "name": "Городская стража",
+        "summary": "Стража Серебряной Гавани.",
+        "aliases": [
+          "стража"
+        ],
+        "visibility": "public",
+        "tags": []
+      },
+      {
+        "id": "fac-cult",
+        "kind": "faction",
+        "name": "Культ Глубин",
+        "summary": "Тайное общество поклонников бездны.",
+        "aliases": [],
+        "visibility": "gm_only",
+        "tags": []
+      },
+      {
+        "id": "fac-merchants",
+        "kind": "faction",
+        "name": "Торговый дом Златовых",
+        "summary": "Богатейшие купцы города.",
+        "aliases": [
+          "Златовы"
+        ],
+        "visibility": "public",
+        "tags": []
+      },
+      {
+        "id": "item-amulet",
+        "kind": "item",
+        "name": "Амулет прилива",
+        "summary": "Реликвия храма.",
+        "aliases": [
+          "амулет"
+        ],
+        "visibility": "party",
+        "tags": []
+      },
+      {
+        "id": "item-map",
+        "kind": "item",
+        "name": "Карта приливных пещер",
+        "summary": "Старая лоцманская карта.",
+        "aliases": [],
+        "visibility": "party",
+        "tags": []
+      },
+      {
+        "id": "event-storm",
+        "kind": "event",
+        "name": "Шторм прошлой осени",
+        "summary": "Буря, разбившая флот.",
+        "aliases": [
+          "шторм"
+        ],
+        "visibility": "public",
+        "tags": []
+      },
+      {
+        "id": "concept-plague",
+        "kind": "concept",
+        "name": "Серая гниль",
+        "summary": "Болезнь, ползущая с болот.",
+        "aliases": [
+          "гниль"
+        ],
+        "visibility": "party",
+        "tags": []
+      }
+    ],
+    "facts": [
+      {
+        "id": "f-harbor-founded",
+        "subject_id": "loc-harbor",
+        "predicate": "lore",
+        "object": "Серебряную Гавань основали китобои триста лет назад; город ж",
+        "summary": "Серебряную Гавань основали китобои триста лет назад; город живёт морем и солью.",
+        "visibility": "public",
+        "source_event_ids": [
+          "event-f-harbor-founded"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 10
+      },
+      {
+        "id": "f-harbor-curfew",
+        "subject_id": "loc-harbor",
+        "predicate": "law",
+        "object": "После заката действует комендантский час, ворота закрывают с",
+        "summary": "После заката действует комендантский час, ворота закрывают с последним колоколом.",
+        "visibility": "public",
+        "source_event_ids": [
+          "event-f-harbor-curfew"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 20
+      },
+      {
+        "id": "f-docks-empty",
+        "subject_id": "loc-docks",
+        "predicate": "observation",
+        "object": "Причалы опустели: половина лодок стоит без хозяев уже вторую",
+        "summary": "Причалы опустели: половина лодок стоит без хозяев уже вторую неделю.",
+        "visibility": "party",
+        "source_event_ids": [
+          "event-f-docks-empty"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 30
+      },
+      {
+        "id": "f-docks-arrived",
+        "subject_id": "loc-docks",
+        "predicate": "party_arrived",
+        "object": "Отряд прибыл на рыбачьи доки на рассвете.",
+        "summary": "Отряд прибыл на рыбачьи доки на рассвете.",
+        "visibility": "party",
+        "source_event_ids": [
+          "event-f-docks-arrived"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 40
+      },
+      {
+        "id": "f-lighthouse-dark",
+        "subject_id": "loc-lighthouse",
+        "predicate": "observation",
+        "object": "Старый маяк не горит с прошлой осени; смотритель уехал и не ",
+        "summary": "Старый маяк не горит с прошлой осени; смотритель уехал и не вернулся.",
+        "visibility": "public",
+        "source_event_ids": [
+          "event-f-lighthouse-dark"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 50
+      },
+      {
+        "id": "f-lighthouse-chants",
+        "subject_id": "loc-lighthouse",
+        "predicate": "secret",
+        "object": "По ночам в подвале маяка поют на языке глубин.",
+        "summary": "По ночам в подвале маяка поют на языке глубин.",
+        "visibility": "gm_only",
+        "source_event_ids": [
+          "event-f-lighthouse-chants"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 60
+      },
+      {
+        "id": "f-temple-bells",
+        "subject_id": "loc-temple",
+        "predicate": "lore",
+        "object": "Колокола храма звонят при каждом приливе.",
+        "summary": "Колокола храма звонят при каждом приливе.",
+        "visibility": "public",
+        "source_event_ids": [
+          "event-f-temple-bells"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 70
+      },
+      {
+        "id": "f-temple-feather",
+        "subject_id": "loc-temple",
+        "predicate": "discovery",
+        "object": "На двери ризницы храма вырезано чёрное перо.",
+        "summary": "На двери ризницы храма вырезано чёрное перо.",
+        "visibility": "party",
+        "source_event_ids": [
+          "event-f-temple-feather"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 80
+      },
+      {
+        "id": "f-tavern-prices",
+        "subject_id": "loc-tavern",
+        "predicate": "trade",
+        "object": "Кружка эля стоит две медные монеты, комната на ночь — серебр",
+        "summary": "Кружка эля стоит две медные монеты, комната на ночь — серебряную.",
+        "visibility": "public",
+        "source_event_ids": [
+          "event-f-tavern-prices"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 90
+      },
+      {
+        "id": "f-caves-tides",
+        "subject_id": "loc-caves",
+        "predicate": "lore",
+        "object": "Вход в пещеры открывается только при отливе, в прилив их зал",
+        "summary": "Вход в пещеры открывается только при отливе, в прилив их заливает целиком.",
+        "visibility": "party",
+        "source_event_ids": [
+          "event-f-caves-tides"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 100
+      },
+      {
+        "id": "f-caves-tracks",
+        "subject_id": "loc-caves",
+        "predicate": "discovery",
+        "object": "У входа найдены следы волочения и обрывок рыбацкой сети.",
+        "summary": "У входа найдены следы волочения и обрывок рыбацкой сети.",
+        "visibility": "party",
+        "source_event_ids": [
+          "event-f-caves-tracks"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 110
+      },
+      {
+        "id": "f-mill-noise",
+        "subject_id": "loc-mill",
+        "predicate": "observation",
+        "object": "С холма по ночам слышен скрип жерновов, хотя зерна там нет.",
+        "summary": "С холма по ночам слышен скрип жерновов, хотя зерна там нет.",
+        "visibility": "party",
+        "source_event_ids": [
+          "event-f-mill-noise"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 120
+      },
+      {
+        "id": "f-keep-garrison",
+        "subject_id": "loc-keep",
+        "predicate": "military",
+        "object": "В крепости стоит гарнизон из сорока копейщиков.",
+        "summary": "В крепости стоит гарнизон из сорока копейщиков.",
+        "visibility": "public",
+        "source_event_ids": [
+          "event-f-keep-garrison"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 130
+      },
+      {
+        "id": "f-swamp-fog",
+        "subject_id": "loc-swamp",
+        "predicate": "observation",
+        "object": "Над трясиной держится зелёный туман, от которого слезятся гл",
+        "summary": "Над трясиной держится зелёный туман, от которого слезятся глаза.",
+        "visibility": "party",
+        "source_event_ids": [
+          "event-f-swamp-fog"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 140
+      },
+      {
+        "id": "f-cove-ships",
+        "subject_id": "loc-cove",
+        "predicate": "secret",
+        "object": "В бухте прячут два быстрых шлюпа без флагов.",
+        "summary": "В бухте прячут два быстрых шлюпа без флагов.",
+        "visibility": "gm_only",
+        "source_event_ids": [
+          "event-f-cove-ships"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 150
+      },
+      {
+        "id": "f-marta-widow",
+        "subject_id": "npc-marta",
+        "predicate": "background",
+        "object": "Овдовела после шторма и с тех пор управляется одна.",
+        "summary": "Овдовела после шторма и с тех пор управляется одна.",
+        "visibility": "public",
+        "source_event_ids": [
+          "event-f-marta-widow"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 160
+      },
+      {
+        "id": "f-marta-debt",
+        "subject_id": "npc-marta",
+        "predicate": "debt",
+        "object": "Задолжала торговому дому Златовых за бочки эля.",
+        "summary": "Задолжала торговому дому Златовых за бочки эля.",
+        "visibility": "party",
+        "source_event_ids": [
+          "event-f-marta-debt"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 170
+      },
+      {
+        "id": "f-oleg-bribe",
+        "subject_id": "npc-oleg",
+        "predicate": "secret",
+        "object": "Берёт взятки с контрабандистов и закрывает глаза на ночные л",
+        "summary": "Берёт взятки с контрабандистов и закрывает глаза на ночные лодки.",
+        "visibility": "gm_only",
+        "source_event_ids": [
+          "event-f-oleg-bribe"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 180
+      },
+      {
+        "id": "f-oleg-duty",
+        "subject_id": "npc-oleg",
+        "predicate": "role",
+        "object": "Командует городской стражей двадцать лет.",
+        "summary": "Командует городской стражей двадцать лет.",
+        "visibility": "public",
+        "source_event_ids": [
+          "event-f-oleg-duty"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 190
+      },
+      {
+        "id": "f-ilya-healer",
+        "subject_id": "npc-ilya",
+        "predicate": "role",
+        "object": "Лечит бедняков бесплатно, но просит молиться приливу.",
+        "summary": "Лечит бедняков бесплатно, но просит молиться приливу.",
+        "visibility": "public",
+        "source_event_ids": [
+          "event-f-ilya-healer"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 200
+      },
+      {
+        "id": "f-vesna-herbs",
+        "subject_id": "npc-vesna",
+        "predicate": "trade",
+        "object": "Собирает болотный мирт и продаёт отвары от лихорадки.",
+        "summary": "Собирает болотный мирт и продаёт отвары от лихорадки.",
+        "visibility": "party",
+        "source_event_ids": [
+          "event-f-vesna-herbs"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 210
+      },
+      {
+        "id": "f-grig-eye",
+        "subject_id": "npc-grig",
+        "predicate": "background",
+        "object": "Потерял глаз в поножовщине на причале.",
+        "summary": "Потерял глаз в поножовщине на причале.",
+        "visibility": "party",
+        "source_event_ids": [
+          "event-f-grig-eye"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 220
+      },
+      {
+        "id": "f-lord-taxes",
+        "subject_id": "npc-lord",
+        "predicate": "decree",
+        "object": "Поднял пошлину на рыбу вдвое этой весной.",
+        "summary": "Поднял пошлину на рыбу вдвое этой весной.",
+        "visibility": "public",
+        "source_event_ids": [
+          "event-f-lord-taxes"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 230
+      },
+      {
+        "id": "f-zora-price",
+        "subject_id": "npc-zora",
+        "predicate": "bargain",
+        "object": "Требует за помощь не золото, а чужое воспоминание.",
+        "summary": "Требует за помощь не золото, а чужое воспоминание.",
+        "visibility": "party",
+        "source_event_ids": [
+          "event-f-zora-price"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 240
+      },
+      {
+        "id": "f-tom-missing",
+        "subject_id": "npc-tom",
+        "predicate": "missing",
+        "object": "Ушёл в море пять дней назад и не вернулся.",
+        "summary": "Ушёл в море пять дней назад и не вернулся.",
+        "visibility": "public",
+        "source_event_ids": [
+          "event-f-tom-missing"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 250
+      },
+      {
+        "id": "f-spy-identity",
+        "subject_id": "npc-spy",
+        "predicate": "secret",
+        "object": "На самом деле это смотритель маяка, переодетый нищим.",
+        "summary": "На самом деле это смотритель маяка, переодетый нищим.",
+        "visibility": "gm_only",
+        "source_event_ids": [
+          "event-f-spy-identity"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 260
+      },
+      {
+        "id": "f-kira-contract",
+        "subject_id": "npc-kira",
+        "predicate": "contract",
+        "object": "Подписала контракт охранять караваны до зимы.",
+        "summary": "Подписала контракт охранять караваны до зимы.",
+        "visibility": "party",
+        "source_event_ids": [
+          "event-f-kira-contract"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 270
+      },
+      {
+        "id": "f-boris-flour",
+        "subject_id": "npc-boris",
+        "predicate": "trade",
+        "object": "Перестал молоть муку и продаёт мешки втридорога.",
+        "summary": "Перестал молоть муку и продаёт мешки втридорога.",
+        "visibility": "party",
+        "source_event_ids": [
+          "event-f-boris-flour"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 280
+      },
+      {
+        "id": "f-guild-strike",
+        "subject_id": "fac-guild",
+        "predicate": "decision",
+        "object": "Артели не выйдут в море, пока не найдут пропавших.",
+        "summary": "Артели не выйдут в море, пока не найдут пропавших.",
+        "visibility": "public",
+        "source_event_ids": [
+          "event-f-guild-strike"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 290
+      },
+      {
+        "id": "f-guild-reward",
+        "subject_id": "fac-guild",
+        "predicate": "reward",
+        "object": "Обещают двадцать золотых за весть о пропавших рыбаках.",
+        "summary": "Обещают двадцать золотых за весть о пропавших рыбаках.",
+        "visibility": "party",
+        "source_event_ids": [
+          "event-f-guild-reward"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 300
+      },
+      {
+        "id": "f-crows-smuggle",
+        "subject_id": "fac-crows",
+        "predicate": "trade",
+        "object": "Возят контрабандное вино мимо таможни по ночам.",
+        "summary": "Возят контрабандное вино мимо таможни по ночам.",
+        "visibility": "party",
+        "source_event_ids": [
+          "event-f-crows-smuggle"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 310
+      },
+      {
+        "id": "f-crows-sign",
+        "subject_id": "fac-crows",
+        "predicate": "symbol",
+        "object": "Их знак — чёрное перо, вырезанное на дверном косяке.",
+        "summary": "Их знак — чёрное перо, вырезанное на дверном косяке.",
+        "visibility": "party",
+        "source_event_ids": [
+          "event-f-crows-sign"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 320
+      },
+      {
+        "id": "f-watch-patrol",
+        "subject_id": "fac-watch",
+        "predicate": "routine",
+        "object": "Патрули обходят набережную каждые два часа.",
+        "summary": "Патрули обходят набережную каждые два часа.",
+        "visibility": "public",
+        "source_event_ids": [
+          "event-f-watch-patrol"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 330
+      },
+      {
+        "id": "f-cult-ritual",
+        "subject_id": "fac-cult",
+        "predicate": "secret",
+        "object": "Готовят обряд пробуждения в новолуние.",
+        "summary": "Готовят обряд пробуждения в новолуние.",
+        "visibility": "gm_only",
+        "source_event_ids": [
+          "event-f-cult-ritual"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 340
+      },
+      {
+        "id": "f-merchants-monopoly",
+        "subject_id": "fac-merchants",
+        "predicate": "trade",
+        "object": "Скупили все склады у пристани.",
+        "summary": "Скупили все склады у пристани.",
+        "visibility": "public",
+        "source_event_ids": [
+          "event-f-merchants-monopoly"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 350
+      },
+      {
+        "id": "f-merchants-caravan",
+        "subject_id": "fac-merchants",
+        "predicate": "plan",
+        "object": "Их караван выходит в столицу через три дня.",
+        "summary": "Их караван выходит в столицу через три дня.",
+        "visibility": "party",
+        "source_event_ids": [
+          "event-f-merchants-caravan"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 360
+      },
+      {
+        "id": "f-amulet-power",
+        "subject_id": "item-amulet",
+        "predicate": "lore",
+        "object": "Усмиряет шторм, если его опустить в морскую воду.",
+        "summary": "Усмиряет шторм, если его опустить в морскую воду.",
+        "visibility": "party",
+        "source_event_ids": [
+          "event-f-amulet-power"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 370
+      },
+      {
+        "id": "f-amulet-stolen",
+        "subject_id": "item-amulet",
+        "predicate": "theft",
+        "object": "Амулет пропал из алтаря в ночь новолуния.",
+        "summary": "Амулет пропал из алтаря в ночь новолуния.",
+        "visibility": "party",
+        "source_event_ids": [
+          "event-f-amulet-stolen"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 380
+      },
+      {
+        "id": "f-map-found",
+        "subject_id": "item-map",
+        "predicate": "discovery",
+        "object": "Карту нашли в сундуке утонувшего лоцмана.",
+        "summary": "Карту нашли в сундуке утонувшего лоцмана.",
+        "visibility": "party",
+        "source_event_ids": [
+          "event-f-map-found"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 390
+      },
+      {
+        "id": "f-storm-damage",
+        "subject_id": "event-storm",
+        "predicate": "history",
+        "object": "Прошлогодний шторм разбил треть лодок и унёс маячного смотри",
+        "summary": "Прошлогодний шторм разбил треть лодок и унёс маячного смотрителя.",
+        "visibility": "public",
+        "source_event_ids": [
+          "event-f-storm-damage"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 400
+      },
+      {
+        "id": "f-plague-symptoms",
+        "subject_id": "concept-plague",
+        "predicate": "symptoms",
+        "object": "Болезнь начинается с пепельных пятен на ладонях.",
+        "summary": "Болезнь начинается с пепельных пятен на ладонях.",
+        "visibility": "party",
+        "source_event_ids": [
+          "event-f-plague-symptoms"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 410
+      },
+      {
+        "id": "f-plague-cure",
+        "subject_id": "concept-plague",
+        "predicate": "cure",
+        "object": "Помогает только отвар из болотного мирта с солью.",
+        "summary": "Помогает только отвар из болотного мирта с солью.",
+        "visibility": "party",
+        "source_event_ids": [
+          "event-f-plague-cure"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 420
+      },
+      {
+        "id": "f-plague-source",
+        "subject_id": "concept-plague",
+        "predicate": "secret",
+        "object": "Заразу насылают через воду городских колодцев.",
+        "summary": "Заразу насылают через воду городских колодцев.",
+        "visibility": "gm_only",
+        "source_event_ids": [
+          "event-f-plague-source"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 430
+      },
+      {
+        "id": "f-tom-boat",
+        "subject_id": "npc-tom",
+        "predicate": "observation",
+        "object": "Его лодку нашли пустой у мыса, вёсла сложены аккуратно.",
+        "summary": "Его лодку нашли пустой у мыса, вёсла сложены аккуратно.",
+        "visibility": "party",
+        "source_event_ids": [
+          "event-f-tom-boat"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 440
+      }
+    ],
+    "relationships": [
+      {
+        "id": "rel-grig-crows",
+        "from_entity_id": "npc-grig",
+        "relation": "member_of",
+        "to_entity_id": "fac-crows",
+        "summary": "Григ — один из своих в Братстве.",
+        "visibility": "party",
+        "source_event_ids": [
+          "event-rel-grig-crows"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 445
+      },
+      {
+        "id": "rel-oleg-watch",
+        "from_entity_id": "npc-oleg",
+        "relation": "leads",
+        "to_entity_id": "fac-watch",
+        "summary": "Олег возглавляет стражу.",
+        "visibility": "public",
+        "source_event_ids": [
+          "event-rel-oleg-watch"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 450
+      },
+      {
+        "id": "rel-tom-guild",
+        "from_entity_id": "npc-tom",
+        "relation": "member_of",
+        "to_entity_id": "fac-guild",
+        "summary": "Том состоит в артели.",
+        "visibility": "public",
+        "source_event_ids": [
+          "event-rel-tom-guild"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 455
+      },
+      {
+        "id": "rel-marta-tavern",
+        "from_entity_id": "npc-marta",
+        "relation": "owns",
+        "to_entity_id": "loc-tavern",
+        "summary": "Марта держит это заведение.",
+        "visibility": "public",
+        "source_event_ids": [
+          "event-rel-marta-tavern"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 460
+      },
+      {
+        "id": "rel-lord-keep",
+        "from_entity_id": "npc-lord",
+        "relation": "rules",
+        "to_entity_id": "loc-keep",
+        "summary": "Лорд правит из крепости.",
+        "visibility": "public",
+        "source_event_ids": [
+          "event-rel-lord-keep"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 465
+      },
+      {
+        "id": "rel-crows-caves",
+        "from_entity_id": "fac-crows",
+        "relation": "hides_in",
+        "to_entity_id": "loc-caves",
+        "summary": "Братство прячет товар под утёсом.",
+        "visibility": "party",
+        "source_event_ids": [
+          "event-rel-crows-caves"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 470
+      },
+      {
+        "id": "rel-zora-swamp",
+        "from_entity_id": "npc-zora",
+        "relation": "lives_in",
+        "to_entity_id": "loc-swamp",
+        "summary": "Зора живёт в хижине среди трясины.",
+        "visibility": "party",
+        "source_event_ids": [
+          "event-rel-zora-swamp"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 475
+      },
+      {
+        "id": "rel-ilya-temple",
+        "from_entity_id": "npc-ilya",
+        "relation": "serves",
+        "to_entity_id": "loc-temple",
+        "summary": "Илья служит в храме.",
+        "visibility": "public",
+        "source_event_ids": [
+          "event-rel-ilya-temple"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 480
+      },
+      {
+        "id": "rel-spy-cult",
+        "from_entity_id": "npc-spy",
+        "relation": "member_of",
+        "to_entity_id": "fac-cult",
+        "summary": "Шептун — глаза культа в городе.",
+        "visibility": "gm_only",
+        "source_event_ids": [
+          "event-rel-spy-cult"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 485
+      },
+      {
+        "id": "rel-cult-lighthouse",
+        "from_entity_id": "fac-cult",
+        "relation": "hides_in",
+        "to_entity_id": "loc-lighthouse",
+        "summary": "Культ собирается под маяком.",
+        "visibility": "gm_only",
+        "source_event_ids": [
+          "event-rel-cult-lighthouse"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 490
+      },
+      {
+        "id": "rel-kira-merchants",
+        "from_entity_id": "npc-kira",
+        "relation": "works_for",
+        "to_entity_id": "fac-merchants",
+        "summary": "Кира служит купцам.",
+        "visibility": "party",
+        "source_event_ids": [
+          "event-rel-kira-merchants"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 495
+      },
+      {
+        "id": "rel-boris-mill",
+        "from_entity_id": "npc-boris",
+        "relation": "owns",
+        "to_entity_id": "loc-mill",
+        "summary": "Борис владеет мельницей.",
+        "visibility": "party",
+        "source_event_ids": [
+          "event-rel-boris-mill"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 500
+      },
+      {
+        "id": "rel-lord-merchants",
+        "from_entity_id": "npc-lord",
+        "relation": "rival_of",
+        "to_entity_id": "fac-merchants",
+        "summary": "Лорд и купцы спорят за пристань.",
+        "visibility": "party",
+        "source_event_ids": [
+          "event-rel-lord-merchants"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 505
+      },
+      {
+        "id": "rel-vesna-zora",
+        "from_entity_id": "npc-vesna",
+        "relation": "knows",
+        "to_entity_id": "npc-zora",
+        "summary": "Весна ходит к Зоре за редкими травами.",
+        "visibility": "party",
+        "source_event_ids": [
+          "event-rel-vesna-zora"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 510
+      },
+      {
+        "id": "rel-amulet-temple",
+        "from_entity_id": "item-amulet",
+        "relation": "kept_in",
+        "to_entity_id": "loc-temple",
+        "summary": "Реликвию хранили на алтаре.",
+        "visibility": "party",
+        "source_event_ids": [
+          "event-rel-amulet-temple"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 515
+      },
+      {
+        "id": "rel-grig-lord",
+        "from_entity_id": "npc-grig",
+        "relation": "secretly_serves",
+        "to_entity_id": "npc-lord",
+        "summary": "Григ тайно доносит лорду.",
+        "visibility": "gm_only",
+        "source_event_ids": [
+          "event-rel-grig-lord"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 520
+      },
+      {
+        "id": "rel-guild-docks",
+        "from_entity_id": "fac-guild",
+        "relation": "based_in",
+        "to_entity_id": "loc-docks",
+        "summary": "Артели держат лодки у северного мола.",
+        "visibility": "public",
+        "source_event_ids": [
+          "event-rel-guild-docks"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 525
+      },
+      {
+        "id": "rel-plague-swamp",
+        "from_entity_id": "concept-plague",
+        "relation": "spreads_from",
+        "to_entity_id": "loc-swamp",
+        "summary": "Болезнь ползёт с юга.",
+        "visibility": "party",
+        "source_event_ids": [
+          "event-rel-plague-swamp"
+        ],
+        "status": "active",
+        "recorded_at_minutes": 530
+      }
+    ],
+    "quests": [
+      {
+        "id": "quest-fishers",
+        "title": "Пропавшие рыбаки",
+        "summary": "Найти рыбаков, не вернувшихся с промысла.",
+        "status": "active",
+        "visibility": "party",
+        "entity_ids": [
+          "npc-tom",
+          "fac-guild",
+          "loc-caves"
+        ],
+        "objectives": [
+          "Выяснить, куда исчезли лодки"
+        ],
+        "clock": {
+          "current": 1,
+          "max": 4,
+          "label": "Расследование"
+        },
+        "recorded_at_minutes": 5
+      },
+      {
+        "id": "quest-plague",
+        "title": "Лекарство от серой гнили",
+        "summary": "Найти средство против болезни.",
+        "status": "active",
+        "visibility": "party",
+        "entity_ids": [
+          "concept-plague",
+          "npc-vesna",
+          "npc-zora"
+        ],
+        "objectives": [
+          "Узнать состав отвара"
+        ],
+        "clock": {
+          "current": 0,
+          "max": 4,
+          "label": "Эпидемия"
+        },
+        "recorded_at_minutes": 6
+      },
+      {
+        "id": "quest-amulet",
+        "title": "Украденная реликвия",
+        "summary": "Вернуть святыню на алтарь.",
+        "status": "active",
+        "visibility": "party",
+        "entity_ids": [
+          "item-amulet",
+          "loc-temple",
+          "fac-crows"
+        ],
+        "objectives": [
+          "Найти вора"
+        ],
+        "clock": {
+          "current": 0,
+          "max": 4,
+          "label": "Шторм близится"
+        },
+        "recorded_at_minutes": 7
+      },
+      {
+        "id": "quest-cult",
+        "title": "Тени над мысом",
+        "summary": "Остановить обряд до новолуния.",
+        "status": "hidden",
+        "visibility": "gm_only",
+        "entity_ids": [
+          "fac-cult",
+          "loc-lighthouse"
+        ],
+        "objectives": [
+          "Сорвать обряд"
+        ],
+        "clock": {
+          "current": 2,
+          "max": 6,
+          "label": "Пробуждение"
+        },
+        "recorded_at_minutes": 8
+      },
+      {
+        "id": "quest-tax",
+        "title": "Пошлина на улов",
+        "summary": "Уговорить владетеля смягчить поборы.",
+        "status": "offered",
+        "visibility": "party",
+        "entity_ids": [
+          "npc-lord",
+          "fac-merchants"
+        ],
+        "objectives": [
+          "Добиться аудиенции"
+        ],
+        "clock": {
+          "current": 0,
+          "max": 4,
+          "label": "Терпение артелей"
+        },
+        "recorded_at_minutes": 9
+      }
+    ],
+    "threads": [
+      {
+        "id": "thread-storm",
+        "title": "Новый шторм",
+        "summary": "Без реликвии осенние бури вернутся.",
+        "status": "active",
+        "visibility": "party",
+        "entity_ids": [
+          "event-storm",
+          "item-amulet"
+        ],
+        "quest_ids": [
+          "quest-amulet"
+        ],
+        "clock": {
+          "current": 1,
+          "max": 6,
+          "label": "Буря"
+        },
+        "source_event_ids": [
+          "event-thread-storm"
+        ],
+        "recorded_at_minutes": 12
+      }
+    ],
+    "epistemic_claims": [
+      {
+        "id": "claim-marta-crows",
+        "kind": "rumor",
+        "holder_entity_id": "npc-marta",
+        "subject_entity_id": "fac-crows",
+        "predicate": "says",
+        "claim": "Говорят, контрабандисты прячут товар под утёсом.",
+        "summary": "Говорят, контрабандисты прячут товар под утёсом.",
+        "visibility": "party",
+        "truth_status": "unknown",
+        "source_event_ids": [
+          "event-claim-marta-crows"
+        ],
+        "recorded_at_minutes": 533
+      },
+      {
+        "id": "claim-oleg-grig",
+        "kind": "belief",
+        "holder_entity_id": "npc-oleg",
+        "subject_entity_id": "npc-grig",
+        "predicate": "says",
+        "claim": "Олег уверен, что Григ доносит лорду.",
+        "summary": "Олег уверен, что Григ доносит лорду.",
+        "visibility": "gm_only",
+        "truth_status": "unknown",
+        "source_event_ids": [
+          "event-claim-oleg-grig"
+        ],
+        "recorded_at_minutes": 536
+      },
+      {
+        "id": "claim-vesna-zora",
+        "kind": "rumor",
+        "holder_entity_id": "npc-vesna",
+        "subject_entity_id": "npc-zora",
+        "predicate": "says",
+        "claim": "Весна шепчет, что Зора знает средство от гнили.",
+        "summary": "Весна шепчет, что Зора знает средство от гнили.",
+        "visibility": "party",
+        "truth_status": "unknown",
+        "source_event_ids": [
+          "event-claim-vesna-zora"
+        ],
+        "recorded_at_minutes": 539
+      },
+      {
+        "id": "claim-ilya-storm",
+        "kind": "rumor",
+        "holder_entity_id": "npc-ilya",
+        "subject_entity_id": "event-storm",
+        "predicate": "says",
+        "claim": "Жрец твердит, что буря была карой за жадность.",
+        "summary": "Жрец твердит, что буря была карой за жадность.",
+        "visibility": "public",
+        "truth_status": "unknown",
+        "source_event_ids": [
+          "event-claim-ilya-storm"
+        ],
+        "recorded_at_minutes": 542
+      }
+    ],
+    "summaries": [
+      {
+        "id": "summary-session-1",
+        "kind": "session",
+        "title": "Первый вечер в Гавани",
+        "summary": "Отряд снял комнату, поговорил с жрецом и взялся искать пропавших.",
+        "visibility": "party",
+        "entity_ids": [
+          "loc-tavern",
+          "npc-ilya"
+        ],
+        "thread_ids": [],
+        "source_event_ids": [
+          "event-summary-1"
+        ],
+        "recorded_at_minutes": 200
+      }
+    ],
+    "knowledge_ledger": [
+      {
+        "id": "knowledge-hero2-oleg",
+        "hero_id": "hero-2",
+        "fact_id": "f-oleg-bribe",
+        "summary": "Подслушал разговор в порту.",
+        "source_event_ids": [
+          "event-k1"
+        ],
+        "revealed_event_id": "event-k1",
+        "source_kind": "knowledge_revealed",
+        "recorded_at_minutes": 150
+      }
+    ]
+  },
+  "cases": [
+    {
+      "id": "d01",
+      "query": "Когда открывается вход в пещеры?",
+      "viewer": "player",
+      "gold": [
+        "f-caves-tides"
+      ],
+      "hop": false,
+      "no_answer": false,
+      "forbidden": [],
+      "note": ""
+    },
+    {
+      "id": "d02",
+      "query": "Сколько стоит комната в таверне?",
+      "viewer": "player",
+      "gold": [
+        "f-tavern-prices"
+      ],
+      "hop": false,
+      "no_answer": false,
+      "forbidden": [],
+      "note": ""
+    },
+    {
+      "id": "d03",
+      "query": "Почему не горит старый маяк?",
+      "viewer": "player",
+      "gold": [
+        "f-lighthouse-dark"
+      ],
+      "hop": false,
+      "no_answer": false,
+      "forbidden": [],
+      "note": ""
+    },
+    {
+      "id": "d04",
+      "query": "Какие симптомы у серой гнили?",
+      "viewer": "player",
+      "gold": [
+        "f-plague-symptoms"
+      ],
+      "hop": false,
+      "no_answer": false,
+      "forbidden": [],
+      "note": ""
+    },
+    {
+      "id": "d05",
+      "query": "Что делает амулет прилива?",
+      "viewer": "player",
+      "gold": [
+        "f-amulet-power"
+      ],
+      "hop": false,
+      "no_answer": false,
+      "forbidden": [],
+      "note": ""
+    },
+    {
+      "id": "d06",
+      "query": "Какой знак у Братства Ворона?",
+      "viewer": "player",
+      "gold": [
+        "f-crows-sign"
+      ],
+      "hop": false,
+      "no_answer": false,
+      "forbidden": [],
+      "note": ""
+    },
+    {
+      "id": "d07",
+      "query": "Сколько копейщиков в гарнизоне крепости?",
+      "viewer": "player",
+      "gold": [
+        "f-keep-garrison"
+      ],
+      "hop": false,
+      "no_answer": false,
+      "forbidden": [],
+      "note": ""
+    },
+    {
+      "id": "d08",
+      "query": "Что болтают про контрабандистов?",
+      "viewer": "player",
+      "gold": [
+        "claim-marta-crows"
+      ],
+      "hop": false,
+      "no_answer": false,
+      "forbidden": [],
+      "note": ""
+    },
+    {
+      "id": "d09",
+      "query": "Когда начинается комендантский час?",
+      "viewer": "player",
+      "gold": [
+        "f-harbor-curfew"
+      ],
+      "hop": false,
+      "no_answer": false,
+      "forbidden": [],
+      "note": ""
+    },
+    {
+      "id": "d10",
+      "query": "Сколько обещают за пропавших рыбаков?",
+      "viewer": "player",
+      "gold": [
+        "f-guild-reward"
+      ],
+      "hop": false,
+      "no_answer": false,
+      "forbidden": [],
+      "note": ""
+    },
+    {
+      "id": "d11",
+      "query": "Кто нашёл карту приливных пещер?",
+      "viewer": "player",
+      "gold": [
+        "f-map-found"
+      ],
+      "hop": false,
+      "no_answer": false,
+      "forbidden": [],
+      "note": ""
+    },
+    {
+      "id": "d12",
+      "query": "Что случилось во время прошлогоднего шторма?",
+      "viewer": "player",
+      "gold": [
+        "f-storm-damage"
+      ],
+      "hop": false,
+      "no_answer": false,
+      "forbidden": [],
+      "note": ""
+    },
+    {
+      "id": "d13",
+      "query": "Режиссёр: что прячут в бухте контрабандистов",
+      "viewer": "gm",
+      "gold": [
+        "f-cove-ships"
+      ],
+      "hop": false,
+      "no_answer": false,
+      "forbidden": [],
+      "note": ""
+    },
+    {
+      "id": "d14",
+      "query": "Где сейчас лодка Тома Рыбака?",
+      "viewer": "player",
+      "gold": [
+        "f-tom-boat"
+      ],
+      "hop": false,
+      "no_answer": false,
+      "forbidden": [],
+      "note": ""
+    },
+    {
+      "id": "d15",
+      "query": "Почему Борис Мельник не мелет муку?",
+      "viewer": "player",
+      "gold": [
+        "f-boris-flour"
+      ],
+      "hop": false,
+      "no_answer": false,
+      "forbidden": [],
+      "note": ""
+    },
+    {
+      "id": "h01",
+      "query": "Чем промышляет Григ Одноглазый?",
+      "viewer": "player",
+      "gold": [
+        "f-crows-smuggle"
+      ],
+      "hop": true,
+      "no_answer": false,
+      "forbidden": [
+        "f-lord-taxes",
+        "rel-lord-keep",
+        "rel-lord-merchants"
+      ],
+      "note": "Григ → Братство (rel-grig-crows); тайная связь с лордом gm_only и не должна вести к фактам лорда"
+    },
+    {
+      "id": "h02",
+      "query": "Где прячутся дружки Грига?",
+      "viewer": "player",
+      "gold": [
+        "rel-crows-caves"
+      ],
+      "hop": true,
+      "no_answer": false,
+      "forbidden": [],
+      "note": "Григ → Братство → отношение hides_in"
+    },
+    {
+      "id": "h03",
+      "query": "Что известно о хозяйке «Солёного якоря»?",
+      "viewer": "player",
+      "gold": [
+        "f-marta-widow",
+        "f-marta-debt"
+      ],
+      "hop": true,
+      "no_answer": false,
+      "forbidden": [],
+      "note": "Таверна → Марта (rel-marta-tavern)"
+    },
+    {
+      "id": "h04",
+      "query": "Есть ли новости по делу о пропавших рыбаках?",
+      "viewer": "player",
+      "gold": [
+        "quest-fishers",
+        "f-caves-tracks",
+        "f-tom-missing"
+      ],
+      "hop": true,
+      "no_answer": false,
+      "forbidden": [],
+      "note": "поручение → его entity_ids"
+    },
+    {
+      "id": "h05",
+      "query": "Как продвигается поиск лекарства?",
+      "viewer": "player",
+      "gold": [
+        "quest-plague",
+        "f-plague-cure",
+        "f-vesna-herbs"
+      ],
+      "hop": true,
+      "no_answer": false,
+      "forbidden": [],
+      "note": "поручение → гниль, Весна, Зора"
+    },
+    {
+      "id": "h06",
+      "query": "Кто мог утащить реликвию из храма?",
+      "viewer": "player",
+      "gold": [
+        "f-amulet-stolen",
+        "f-temple-feather",
+        "f-crows-sign"
+      ],
+      "hop": true,
+      "no_answer": false,
+      "forbidden": [],
+      "note": "поручение «Украденная реликвия» → Братство; знак пера совпадает с находкой в храме"
+    },
+    {
+      "id": "h07",
+      "query": "Куда отправится Кира Быстрая на этой неделе?",
+      "viewer": "player",
+      "gold": [
+        "f-merchants-caravan"
+      ],
+      "hop": true,
+      "no_answer": false,
+      "forbidden": [],
+      "note": "Кира → Златовы (works_for)"
+    },
+    {
+      "id": "h08",
+      "query": "Что опасного рядом с жилищем Зоры?",
+      "viewer": "player",
+      "gold": [
+        "f-swamp-fog",
+        "rel-plague-swamp"
+      ],
+      "hop": true,
+      "no_answer": false,
+      "forbidden": [],
+      "note": "Зора → топь (lives_in)"
+    },
+    {
+      "id": "h09",
+      "query": "Что охраняет брат Илья?",
+      "viewer": "player",
+      "gold": [
+        "rel-amulet-temple"
+      ],
+      "hop": true,
+      "no_answer": false,
+      "forbidden": [],
+      "note": "Илья → храм; отношение амулета к храму"
+    },
+    {
+      "id": "h10",
+      "query": "Что творится вокруг владений Бориса Мельника?",
+      "viewer": "player",
+      "gold": [
+        "f-mill-noise"
+      ],
+      "hop": true,
+      "no_answer": false,
+      "forbidden": [],
+      "note": "Борис → мельница (owns)"
+    },
+    {
+      "id": "h11",
+      "query": "Что происходит там, где базируются артели Тома?",
+      "viewer": "player",
+      "gold": [
+        "f-docks-empty"
+      ],
+      "hop": true,
+      "no_answer": false,
+      "forbidden": [],
+      "note": "Том → гильдия → доки: два шага, ожидаемо трудный"
+    },
+    {
+      "id": "h12",
+      "query": "Чем заняты подчинённые Олега Кривоноса?",
+      "viewer": "player",
+      "gold": [
+        "f-watch-patrol"
+      ],
+      "hop": true,
+      "no_answer": false,
+      "forbidden": [],
+      "note": "Олег → стража (leads)"
+    },
+    {
+      "id": "h13",
+      "query": "Что решил тот, кто правит крепостью Вороньего Камня?",
+      "viewer": "player",
+      "gold": [
+        "f-lord-taxes"
+      ],
+      "hop": true,
+      "no_answer": false,
+      "forbidden": [],
+      "note": "крепость → лорд (rules)"
+    },
+    {
+      "id": "h14",
+      "query": "С кем соперничает лорд Воронов и чем те владеют?",
+      "viewer": "player",
+      "gold": [
+        "rel-lord-merchants",
+        "f-merchants-monopoly"
+      ],
+      "hop": true,
+      "no_answer": false,
+      "forbidden": [],
+      "note": "лорд → Златовы (rival_of)"
+    },
+    {
+      "id": "h15",
+      "query": "Режиссёр: чем занят Шептун",
+      "viewer": "gm",
+      "gold": [
+        "f-spy-identity",
+        "f-cult-ritual"
+      ],
+      "hop": true,
+      "no_answer": false,
+      "forbidden": [],
+      "note": "для ведущего gm_only-ребро Шептун → культ проходимо"
+    },
+    {
+      "id": "n01",
+      "query": "Где купить боевого грифона?",
+      "viewer": "player",
+      "gold": [],
+      "hop": false,
+      "no_answer": true,
+      "forbidden": [],
+      "note": ""
+    },
+    {
+      "id": "n02",
+      "query": "Что известно о драконах в северных горах?",
+      "viewer": "player",
+      "gold": [],
+      "hop": false,
+      "no_answer": true,
+      "forbidden": [],
+      "note": ""
+    },
+    {
+      "id": "n03",
+      "query": "Сколько стоит телепортация к эльфам?",
+      "viewer": "player",
+      "gold": [],
+      "hop": false,
+      "no_answer": true,
+      "forbidden": [],
+      "note": ""
+    },
+    {
+      "id": "n04",
+      "query": "Кто такой архимаг Белосвет?",
+      "viewer": "player",
+      "gold": [],
+      "hop": false,
+      "no_answer": true,
+      "forbidden": [],
+      "note": ""
+    },
+    {
+      "id": "n05",
+      "query": "Чем закончилась война с орками?",
+      "viewer": "player",
+      "gold": [],
+      "hop": false,
+      "no_answer": true,
+      "forbidden": [],
+      "note": ""
+    },
+    {
+      "id": "n06",
+      "query": "Чем занят Шептун?",
+      "viewer": "player",
+      "gold": [],
+      "hop": false,
+      "no_answer": true,
+      "forbidden": [],
+      "note": "Шептун и все факты о нём gm_only: игроку отвечать нечем"
+    }
+  ]
+}

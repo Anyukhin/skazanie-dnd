@@ -34,7 +34,19 @@ test('у моделей горячего пути reasoning ограничен �
   assert.deepEqual(reasoningProfileFor('z-ai/glm-5.3-flash'), { effort: 'low' })
   assert.deepEqual(reasoningProfileFor('meta/muse-spark-1.3'), { effort: 'low' })
   assert.deepEqual(reasoningProfileFor('openai/gpt-5.6-luna'), { enabled: false })
+  assert.deepEqual(reasoningProfileFor('openai/gpt-6-luna'), { enabled: false }, 'иначе рассуждения съедают лимит ответа арбитра')
+  assert.deepEqual(reasoningProfileFor('openai/gpt-6-luna-pro'), { enabled: false })
   assert.equal(reasoningProfileFor('unknown/model'), null)
+})
+
+test('у GPT-6 Luna добавка формы идёт только к репликам NPC, а не к Рассказчику', () => {
+  const client = { model: 'openai/gpt-6-luna' }
+  assert.match(promptForModelRole('база', client, 'npc'), /Однострочный ответ — ошибка/u)
+  assert.equal(promptForModelRole('база', client, 'narrator'), 'база')
+  assert.equal(promptForModelRole('база', client, 'shared'), 'база')
+  // У прежней Luna поведение не меняется: добавка общая для всех ролей.
+  assert.match(promptForModelRole('база', { model: 'openai/gpt-5.6-luna' }, 'npc'), /Однострочный ответ — ошибка/u)
+  assert.equal(promptForModelRole('база', { model: 'z-ai/glm-5.3-flash' }, 'npc'), 'база')
 })
 
 test('строгий контракт GLM применяется только к Рассказчику', () => {

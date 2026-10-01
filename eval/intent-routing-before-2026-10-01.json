@@ -1,0 +1,2295 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-10-01T15:36:08.661Z",
+  "method": "Детерминированный стек сервера без сети: inferRequestKind → proposeAgentInteraction → answerKnownLore → actionSequence → IntentParser.parse → вход resolveExplorationCommand. Эталонные маршруты — GOLD_ROUTES в eval/intent-routing-eval-2026-10-01.mjs.",
+  "summary": {
+    "cases": 136,
+    "correct": 78,
+    "accuracy": 0.574,
+    "travel_false_positives": 6,
+    "to_adjudicator": 66,
+    "per_route": {
+      "ability_check": {
+        "support": 11,
+        "predicted": 4,
+        "precision": 1,
+        "recall": 0.364
+      },
+      "attack": {
+        "support": 5,
+        "predicted": 7,
+        "precision": 0.714,
+        "recall": 1
+      },
+      "cast_spell": {
+        "support": 4,
+        "predicted": 2,
+        "precision": 1,
+        "recall": 0.5
+      },
+      "discussion": {
+        "support": 8,
+        "predicted": 5,
+        "precision": 0.4,
+        "recall": 0.25
+      },
+      "free_action": {
+        "support": 26,
+        "predicted": 66,
+        "precision": 0.348,
+        "recall": 0.885
+      },
+      "move_in_scene": {
+        "support": 10,
+        "predicted": 4,
+        "precision": 1,
+        "recall": 0.4
+      },
+      "multi_step": {
+        "support": 3,
+        "predicted": 3,
+        "precision": 1,
+        "recall": 1
+      },
+      "other_rule": {
+        "support": 0,
+        "predicted": 1,
+        "precision": 0,
+        "recall": null
+      },
+      "question": {
+        "support": 14,
+        "predicted": 12,
+        "precision": 0.917,
+        "recall": 0.786
+      },
+      "rest": {
+        "support": 5,
+        "predicted": 2,
+        "precision": 1,
+        "recall": 0.4
+      },
+      "social": {
+        "support": 21,
+        "predicted": 11,
+        "precision": 0.818,
+        "recall": 0.429
+      },
+      "travel_exit": {
+        "support": 29,
+        "predicted": 19,
+        "precision": 0.684,
+        "recall": 0.448
+      }
+    },
+    "per_gold_class": {
+      "travel_exit": {
+        "cases": 29,
+        "correct": 13
+      },
+      "move_in_scene": {
+        "cases": 18,
+        "correct": 12
+      },
+      "social_talk": {
+        "cases": 17,
+        "correct": 9
+      },
+      "trade": {
+        "cases": 4,
+        "correct": 0
+      },
+      "ability_check": {
+        "cases": 11,
+        "correct": 4
+      },
+      "attack": {
+        "cases": 5,
+        "correct": 5
+      },
+      "cast_spell": {
+        "cases": 4,
+        "correct": 2
+      },
+      "rest": {
+        "cases": 5,
+        "correct": 2
+      },
+      "ask_gm_question": {
+        "cases": 14,
+        "correct": 11
+      },
+      "ooc_party_chat": {
+        "cases": 8,
+        "correct": 2
+      },
+      "free_action_improv": {
+        "cases": 18,
+        "correct": 15
+      },
+      "multi_step": {
+        "cases": 3,
+        "correct": 3
+      }
+    },
+    "confusion_pairs": {
+      "travel_exit → free_action": 13,
+      "social_talk → free_action": 7,
+      "ability_check → free_action": 7,
+      "ooc_party_chat → free_action": 6,
+      "move_in_scene → travel_exit": 6,
+      "trade → free_action": 4,
+      "travel_exit → discussion": 3,
+      "ask_gm_question → free_action": 3,
+      "rest → free_action": 2,
+      "free_action_improv → attack": 2,
+      "social_talk → question": 1,
+      "free_action_improv → social": 1,
+      "cast_spell → free_action": 1,
+      "cast_spell → other_rule": 1,
+      "rest → social": 1
+    }
+  },
+  "failures": [
+    {
+      "id": "t05",
+      "text": "Мы уходим в Каменный Град",
+      "gold": "travel_exit",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "t06",
+      "text": "Иду в Каменный Град",
+      "gold": "travel_exit",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "t07",
+      "text": "Добираемся до Каменного Града",
+      "gold": "travel_exit",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "t08",
+      "text": "Возвращаемся в Аквилон",
+      "gold": "travel_exit",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "t09",
+      "text": "Давайте пойдём в порт",
+      "gold": "travel_exit",
+      "predicted": "discussion",
+      "stage": "inferRequestKind"
+    },
+    {
+      "id": "t10",
+      "text": "Предлагаю отправиться к Маяку Старого Рыбака",
+      "gold": "travel_exit",
+      "predicted": "discussion",
+      "stage": "inferRequestKind"
+    },
+    {
+      "id": "t13",
+      "text": "Выхожу из таверны на улицу",
+      "gold": "travel_exit",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "t15",
+      "text": "Я хочу вернуться в Аквилон",
+      "gold": "travel_exit",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "t16",
+      "text": "Направляюсь в Солеварню узнать про пропавших рабочих",
+      "gold": "travel_exit",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "t17",
+      "text": "Едем в Северный форт",
+      "gold": "travel_exit",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "t18",
+      "text": "Двигаемся к Мглистым Топям",
+      "gold": "travel_exit",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "t21",
+      "text": "Пошли в храм приливов, там спросим жреца",
+      "gold": "travel_exit",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "t23",
+      "text": "Может, нам стоит вернуться в Аквилон?",
+      "gold": "travel_exit",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "t25",
+      "text": "Я иду искать сына Финна в Пепельный Лес",
+      "gold": "travel_exit",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "t26",
+      "text": "Уходим.",
+      "gold": "travel_exit",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "t28",
+      "text": "Ты идёшь со мной в Каменный Град?",
+      "gold": "ooc_party_chat",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "t30",
+      "text": "Предлагаю переночевать здесь и утром отправиться в Пепельный Лес",
+      "gold": "travel_exit",
+      "predicted": "discussion",
+      "stage": "inferRequestKind"
+    },
+    {
+      "id": "m02",
+      "text": "Иду в дальний угол таверны",
+      "gold": "move_in_scene",
+      "predicted": "travel_exit",
+      "stage": "proposeAgentInteraction"
+    },
+    {
+      "id": "m04",
+      "text": "Иду к трактирщице",
+      "gold": "move_in_scene",
+      "predicted": "travel_exit",
+      "stage": "proposeAgentInteraction"
+    },
+    {
+      "id": "m05",
+      "text": "Иду к хозяйке таверны",
+      "gold": "move_in_scene",
+      "predicted": "travel_exit",
+      "stage": "proposeAgentInteraction"
+    },
+    {
+      "id": "m07",
+      "text": "Иду к старой лестнице в подвал",
+      "gold": "move_in_scene",
+      "predicted": "travel_exit",
+      "stage": "proposeAgentInteraction"
+    },
+    {
+      "id": "m09",
+      "text": "Возвращаюсь на своё место у стола",
+      "gold": "move_in_scene",
+      "predicted": "travel_exit",
+      "stage": "proposeAgentInteraction"
+    },
+    {
+      "id": "m13",
+      "text": "Иду к лесничему у камина",
+      "gold": "move_in_scene",
+      "predicted": "travel_exit",
+      "stage": "proposeAgentInteraction"
+    },
+    {
+      "id": "s05",
+      "text": "Узнаю у Марты, не видела ли она сына Финна",
+      "gold": "social_talk",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "s06",
+      "text": "Разговариваю с Борисом о ночных патрулях",
+      "gold": "social_talk",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "s07",
+      "text": "Заговариваю с Ильсой о цене на сети",
+      "gold": "social_talk",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "s08",
+      "text": "Рассказываю Марте свою историю",
+      "gold": "social_talk",
+      "predicted": "question",
+      "stage": "answerKnownLore"
+    },
+    {
+      "id": "s12",
+      "text": "Благодарю Марту и прошу комнату на ночь",
+      "gold": "social_talk",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "s13",
+      "text": "Здороваюсь с Финном",
+      "gold": "social_talk",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "s16",
+      "text": "Беседую с Финном о его сыне",
+      "gold": "social_talk",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "s17",
+      "text": "Вручаю Марте письмо от Финна",
+      "gold": "free_action_improv",
+      "predicted": "social",
+      "stage": "IntentParser"
+    },
+    {
+      "id": "s18",
+      "text": "Интересуюсь у Бориса, кто ещё пропал",
+      "gold": "social_talk",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "r01",
+      "text": "Покупаю у Ильсы моток верёвки",
+      "gold": "trade",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "r02",
+      "text": "Хочу купить у Марты кружку эля",
+      "gold": "trade",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "r03",
+      "text": "Продаю Ильсе шкуру волка",
+      "gold": "trade",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "r04",
+      "text": "Торгуюсь с Ильсой за сети",
+      "gold": "trade",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "c02",
+      "text": "Прислушиваюсь к разговору за соседним столом",
+      "gold": "ability_check",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "c03",
+      "text": "Ищу следы на полу у двери",
+      "gold": "ability_check",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "c07",
+      "text": "Проверяю, не следят ли за нами",
+      "gold": "ability_check",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "c08",
+      "text": "Внимательно рассматриваю карту на стене",
+      "gold": "ability_check",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "c09",
+      "text": "Изучаю странные руны на балке",
+      "gold": "ability_check",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "c11",
+      "text": "Обыскиваю стол хозяйки",
+      "gold": "ability_check",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "c12",
+      "text": "Высматриваю в толпе подозрительных людей",
+      "gold": "ability_check",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "k02",
+      "text": "Колдую Волшебную стрелу в крысу",
+      "gold": "cast_spell",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "k04",
+      "text": "Накладываю на Финна заклинание Лечение ран",
+      "gold": "cast_spell",
+      "predicted": "other_rule",
+      "stage": "IntentParser"
+    },
+    {
+      "id": "z02",
+      "text": "Снимаем комнату и ложимся спать до утра",
+      "gold": "rest",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "z04",
+      "text": "Садимся отдохнуть",
+      "gold": "rest",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "q05",
+      "text": "Где находится таверна «Морской Змей»?",
+      "gold": "ask_gm_question",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "q10",
+      "text": "Какое сейчас время суток?",
+      "gold": "ask_gm_question",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "q13",
+      "text": "Когда закрывается рынок?",
+      "gold": "ask_gm_question",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "o03",
+      "text": "Может, нам сначала поговорить с Финном?",
+      "gold": "ooc_party_chat",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "o04",
+      "text": "(ooc) мне надо отойти на пять минут",
+      "gold": "ooc_party_chat",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "o05",
+      "text": "Ребята, я за то, чтобы сначала выспаться",
+      "gold": "ooc_party_chat",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "o06",
+      "text": "Торвальд, ты со мной?",
+      "gold": "ooc_party_chat",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "o07",
+      "text": "// вне игры: кто ведёт записи?",
+      "gold": "ooc_party_chat",
+      "predicted": "free_action",
+      "stage": "ActionAdjudicator"
+    },
+    {
+      "id": "f15",
+      "text": "Бью кулаком по столу, чтобы все замолчали",
+      "gold": "free_action_improv",
+      "predicted": "attack",
+      "stage": "IntentParser"
+    },
+    {
+      "id": "f16",
+      "text": "Рублю верёвку, на которой висит люстра",
+      "gold": "free_action_improv",
+      "predicted": "attack",
+      "stage": "IntentParser"
+    },
+    {
+      "id": "f17",
+      "text": "Делаем долгую передышку перед дорогой",
+      "gold": "rest",
+      "predicted": "social",
+      "stage": "IntentParser"
+    }
+  ],
+  "results": [
+    {
+      "id": "t01",
+      "text": "Иду в таверну «Морской Змей» расспрашивать о сыне Финна",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "travel_exit",
+      "correct": true,
+      "stage": "proposeAgentInteraction",
+      "tags": [
+        "live-failure",
+        "purpose",
+        "quotes-guillemets",
+        "1sg"
+      ],
+      "vote_options": [
+        "Уходим из «Таверна «Ржавый Якорь»» и идём в таверну «Морской Змей»",
+        "Уходим в «таверну Морской Змей» и бросаем задание «Пропавший сын Финна»",
+        "Остаться и исследовать дальше"
+      ]
+    },
+    {
+      "id": "t02",
+      "text": "Идём в таверну «Морской Змей»",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "travel_exit",
+      "correct": true,
+      "stage": "proposeAgentInteraction",
+      "tags": [
+        "1pl",
+        "quotes-guillemets"
+      ],
+      "vote_options": [
+        "Уходим из «Таверна «Ржавый Якорь»» и идём в таверну «Морской Змей»",
+        "Уходим в «таверну Морской Змей» и бросаем задание «Пропавший сын Финна»",
+        "Остаться и исследовать дальше"
+      ]
+    },
+    {
+      "id": "t03",
+      "text": "Отправляюсь в таверну \"Морской Змей\"",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "travel_exit",
+      "correct": true,
+      "stage": "proposeAgentInteraction",
+      "tags": [
+        "quotes-straight",
+        "1sg"
+      ],
+      "vote_options": [
+        "Уходим из «Таверна «Ржавый Якорь»» и идём в таверну \"Морской Змей\"",
+        "Уходим в «таверну \"Морской Змей\"» и бросаем задание «Пропавший сын Финна»",
+        "Остаться и исследовать дальше"
+      ]
+    },
+    {
+      "id": "t04",
+      "text": "Отправляемся в Пепельный Лес",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "travel_exit",
+      "correct": true,
+      "stage": "proposeAgentInteraction",
+      "tags": [
+        "1pl"
+      ],
+      "vote_options": [
+        "Уходим из «Таверна «Ржавый Якорь»» и идём в Пепельный Лес",
+        "Уходим в «Пепельный Лес» и бросаем задание «Пропавший сын Финна»",
+        "Остаться и исследовать дальше"
+      ]
+    },
+    {
+      "id": "t05",
+      "text": "Мы уходим в Каменный Град",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "1pl",
+        "map-name"
+      ],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "t06",
+      "text": "Иду в Каменный Град",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "1sg",
+        "map-name"
+      ],
+      "intent": "explore"
+    },
+    {
+      "id": "t07",
+      "text": "Добираемся до Каменного Града",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "1pl",
+        "inflected",
+        "map-name"
+      ],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "t08",
+      "text": "Возвращаемся в Аквилон",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "1pl",
+        "map-name"
+      ],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "t09",
+      "text": "Давайте пойдём в порт",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "discussion",
+      "correct": false,
+      "stage": "inferRequestKind",
+      "tags": [
+        "proposal"
+      ]
+    },
+    {
+      "id": "t10",
+      "text": "Предлагаю отправиться к Маяку Старого Рыбака",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "discussion",
+      "correct": false,
+      "stage": "inferRequestKind",
+      "tags": [
+        "proposal",
+        "inflected",
+        "map-name"
+      ]
+    },
+    {
+      "id": "t11",
+      "text": "Пойду на Плавучий Рынок, куплю сетей",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "travel_exit",
+      "correct": true,
+      "stage": "proposeAgentInteraction",
+      "tags": [
+        "1sg",
+        "map-name"
+      ],
+      "vote_options": [
+        "Уходим из «Таверна «Ржавый Якорь»» и идём в Плавучий Рынок",
+        "Уходим в «Плавучий Рынок» и бросаем задание «Пропавший сын Финна»",
+        "Остаться и исследовать дальше"
+      ]
+    },
+    {
+      "id": "t12",
+      "text": "Покидаем таверну и идём к Храму Приливов",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "travel_exit",
+      "correct": true,
+      "stage": "proposeAgentInteraction",
+      "tags": [
+        "1pl",
+        "inflected",
+        "map-name"
+      ],
+      "vote_options": [
+        "Уходим из «Таверна «Ржавый Якорь»» и идём в Храму Приливов",
+        "Уходим в «Храму Приливов» и бросаем задание «Пропавший сын Финна»",
+        "Остаться и исследовать дальше"
+      ]
+    },
+    {
+      "id": "t13",
+      "text": "Выхожу из таверны на улицу",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "1sg"
+      ],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "t14",
+      "text": "Уходим отсюда",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "travel_exit",
+      "correct": true,
+      "stage": "proposeAgentInteraction",
+      "tags": [
+        "1pl"
+      ],
+      "vote_options": [
+        "Покинуть «Таверна «Ржавый Якорь»»",
+        "Уходим отсюда и бросаем задание «Пропавший сын Финна»",
+        "Остаться и исследовать дальше"
+      ]
+    },
+    {
+      "id": "t15",
+      "text": "Я хочу вернуться в Аквилон",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "1sg",
+        "infinitive",
+        "map-name"
+      ],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "t16",
+      "text": "Направляюсь в Солеварню узнать про пропавших рабочих",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "1sg",
+        "purpose",
+        "inflected",
+        "map-name"
+      ],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "t17",
+      "text": "Едем в Северный форт",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "1pl"
+      ],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "t18",
+      "text": "Двигаемся к Мглистым Топям",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "1pl",
+        "inflected"
+      ],
+      "intent": "explore"
+    },
+    {
+      "id": "t19",
+      "text": "Отправляемся в «Морской Змей»",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "travel_exit",
+      "correct": true,
+      "stage": "proposeAgentInteraction",
+      "tags": [
+        "quotes-guillemets",
+        "map-name"
+      ],
+      "vote_options": [
+        "Уходим из «Таверна «Ржавый Якорь»» и идём в Морской Змей",
+        "Уходим в «Морской Змей» и бросаем задание «Пропавший сын Финна»",
+        "Остаться и исследовать дальше"
+      ]
+    },
+    {
+      "id": "t20",
+      "text": "иду в тавернку морской змей",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "travel_exit",
+      "correct": true,
+      "stage": "proposeAgentInteraction",
+      "tags": [
+        "typo",
+        "lowercase",
+        "map-name"
+      ],
+      "vote_options": [
+        "Уходим из «Таверна «Ржавый Якорь»» и идём в тавернку морской змей",
+        "Уходим в «тавернку морской змей» и бросаем задание «Пропавший сын Финна»",
+        "Остаться и исследовать дальше"
+      ]
+    },
+    {
+      "id": "t21",
+      "text": "Пошли в храм приливов, там спросим жреца",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "lowercase",
+        "map-name"
+      ],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "t22",
+      "text": "Выдвигаемся к Северному форту на рассвете",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "travel_exit",
+      "correct": true,
+      "stage": "proposeAgentInteraction",
+      "tags": [
+        "inflected"
+      ],
+      "vote_options": [
+        "Уходим из «Таверна «Ржавый Якорь»» и идём в Северному форту на рассвете",
+        "Уходим в «Северному форту на рассвете» и бросаем задание «Пропавший сын Финна»",
+        "Остаться и исследовать дальше"
+      ]
+    },
+    {
+      "id": "t23",
+      "text": "Может, нам стоит вернуться в Аквилон?",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "proposal",
+        "question-mark",
+        "map-name"
+      ],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "t24",
+      "text": "Сваливаем из Ржавого Якоря в порт",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "travel_exit",
+      "correct": true,
+      "stage": "proposeAgentInteraction",
+      "tags": [
+        "slang"
+      ],
+      "vote_options": [
+        "Уходим из «Таверна «Ржавый Якорь»» и идём в порт",
+        "Уходим в «порт» и бросаем задание «Пропавший сын Финна»",
+        "Остаться и исследовать дальше"
+      ]
+    },
+    {
+      "id": "t25",
+      "text": "Я иду искать сына Финна в Пепельный Лес",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "purpose-before-place"
+      ],
+      "intent": "explore"
+    },
+    {
+      "id": "t26",
+      "text": "Уходим.",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "short"
+      ],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "t27",
+      "text": "идем в лес",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "travel_exit",
+      "correct": true,
+      "stage": "proposeAgentInteraction",
+      "tags": [
+        "lowercase",
+        "no-yo",
+        "short"
+      ],
+      "vote_options": [
+        "Уходим из «Таверна «Ржавый Якорь»» и идём в лес",
+        "Уходим в «лес» и бросаем задание «Пропавший сын Финна»",
+        "Остаться и исследовать дальше"
+      ]
+    },
+    {
+      "id": "t28",
+      "text": "Ты идёшь со мной в Каменный Град?",
+      "gold": "ooc_party_chat",
+      "gold_route": "discussion",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "2sg",
+        "party-question"
+      ],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "t29",
+      "text": "Покидаю город и иду на тракт",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "travel_exit",
+      "correct": true,
+      "stage": "proposeAgentInteraction",
+      "tags": [
+        "1sg"
+      ],
+      "vote_options": [
+        "Уходим из «Таверна «Ржавый Якорь»» и идём в тракт",
+        "Уходим в «тракт» и бросаем задание «Пропавший сын Финна»",
+        "Остаться и исследовать дальше"
+      ]
+    },
+    {
+      "id": "t30",
+      "text": "Предлагаю переночевать здесь и утром отправиться в Пепельный Лес",
+      "gold": "travel_exit",
+      "gold_route": "travel_exit",
+      "predicted": "discussion",
+      "correct": false,
+      "stage": "inferRequestKind",
+      "tags": [
+        "proposal",
+        "sequence"
+      ]
+    },
+    {
+      "id": "m01",
+      "text": "Иду в угол таверны",
+      "gold": "move_in_scene",
+      "gold_route": "free_action",
+      "predicted": "free_action",
+      "correct": true,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "inside-lookalike"
+      ],
+      "intent": "explore"
+    },
+    {
+      "id": "m02",
+      "text": "Иду в дальний угол таверны",
+      "gold": "move_in_scene",
+      "gold_route": "move_in_scene",
+      "predicted": "travel_exit",
+      "correct": false,
+      "stage": "proposeAgentInteraction",
+      "tags": [
+        "inside-lookalike",
+        "adjective"
+      ],
+      "vote_options": [
+        "Уходим из «Таверна «Ржавый Якорь»» и идём в дальний угол таверны",
+        "Уходим в «дальний угол таверны» и бросаем задание «Пропавший сын Финна»",
+        "Остаться и исследовать дальше"
+      ]
+    },
+    {
+      "id": "m03",
+      "text": "Подхожу к стойке трактира",
+      "gold": "move_in_scene",
+      "gold_route": "move_in_scene",
+      "predicted": "move_in_scene",
+      "correct": true,
+      "stage": "resolveExplorationCommand",
+      "tags": [
+        "inside-lookalike"
+      ],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "m04",
+      "text": "Иду к трактирщице",
+      "gold": "move_in_scene",
+      "gold_route": "move_in_scene",
+      "predicted": "travel_exit",
+      "correct": false,
+      "stage": "proposeAgentInteraction",
+      "tags": [
+        "person-lookalike"
+      ],
+      "vote_options": [
+        "Уходим из «Таверна «Ржавый Якорь»» и идём в трактирщице",
+        "Уходим в «трактирщице» и бросаем задание «Пропавший сын Финна»",
+        "Остаться и исследовать дальше"
+      ]
+    },
+    {
+      "id": "m05",
+      "text": "Иду к хозяйке таверны",
+      "gold": "move_in_scene",
+      "gold_route": "move_in_scene",
+      "predicted": "travel_exit",
+      "correct": false,
+      "stage": "proposeAgentInteraction",
+      "tags": [
+        "person-lookalike"
+      ],
+      "vote_options": [
+        "Уходим из «Таверна «Ржавый Якорь»» и идём в хозяйке таверны",
+        "Уходим в «хозяйке таверны» и бросаем задание «Пропавший сын Финна»",
+        "Остаться и исследовать дальше"
+      ]
+    },
+    {
+      "id": "m06",
+      "text": "Подхожу к Старому Финну",
+      "gold": "move_in_scene",
+      "gold_route": "move_in_scene",
+      "predicted": "move_in_scene",
+      "correct": true,
+      "stage": "resolveExplorationCommand",
+      "tags": [
+        "npc"
+      ],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "m07",
+      "text": "Иду к старой лестнице в подвал",
+      "gold": "move_in_scene",
+      "gold_route": "move_in_scene",
+      "predicted": "travel_exit",
+      "correct": false,
+      "stage": "proposeAgentInteraction",
+      "tags": [
+        "inside-lookalike",
+        "substring-trap"
+      ],
+      "vote_options": [
+        "Уходим из «Таверна «Ржавый Якорь»» и идём в старой лестнице в подвал",
+        "Уходим в «старой лестнице в подвал» и бросаем задание «Пропавший сын Финна»",
+        "Остаться и исследовать дальше"
+      ]
+    },
+    {
+      "id": "m08",
+      "text": "Отхожу к окну",
+      "gold": "move_in_scene",
+      "gold_route": "free_action",
+      "predicted": "free_action",
+      "correct": true,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "m09",
+      "text": "Возвращаюсь на своё место у стола",
+      "gold": "move_in_scene",
+      "gold_route": "move_in_scene",
+      "predicted": "travel_exit",
+      "correct": false,
+      "stage": "proposeAgentInteraction",
+      "tags": [
+        "inside-lookalike"
+      ],
+      "vote_options": [
+        "Уходим из «Таверна «Ржавый Якорь»» и идём в своё место у стола",
+        "Уходим в «своё место у стола» и бросаем задание «Пропавший сын Финна»",
+        "Остаться и исследовать дальше"
+      ]
+    },
+    {
+      "id": "m10",
+      "text": "Иду к двери таверны",
+      "gold": "move_in_scene",
+      "gold_route": "move_in_scene",
+      "predicted": "move_in_scene",
+      "correct": true,
+      "stage": "resolveExplorationCommand",
+      "tags": [
+        "inside-lookalike"
+      ],
+      "intent": "explore"
+    },
+    {
+      "id": "m11",
+      "text": "Иду в подвал таверны",
+      "gold": "move_in_scene",
+      "gold_route": "free_action",
+      "predicted": "free_action",
+      "correct": true,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "inside-lookalike"
+      ],
+      "intent": "explore"
+    },
+    {
+      "id": "m12",
+      "text": "Иду на кухню трактира",
+      "gold": "move_in_scene",
+      "gold_route": "free_action",
+      "predicted": "free_action",
+      "correct": true,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "inside-lookalike"
+      ],
+      "intent": "explore"
+    },
+    {
+      "id": "m13",
+      "text": "Иду к лесничему у камина",
+      "gold": "move_in_scene",
+      "gold_route": "move_in_scene",
+      "predicted": "travel_exit",
+      "correct": false,
+      "stage": "proposeAgentInteraction",
+      "tags": [
+        "person-lookalike",
+        "substring-trap"
+      ],
+      "vote_options": [
+        "Уходим из «Таверна «Ржавый Якорь»» и идём в лесничему у камина",
+        "Уходим в «лесничему у камина» и бросаем задание «Пропавший сын Финна»",
+        "Остаться и исследовать дальше"
+      ]
+    },
+    {
+      "id": "m14",
+      "text": "Отступаем к двери",
+      "gold": "move_in_scene",
+      "gold_route": "free_action",
+      "predicted": "free_action",
+      "correct": true,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "1pl"
+      ],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "m15",
+      "text": "Иду в угол таверны и сажусь спиной к стене",
+      "gold": "move_in_scene",
+      "gold_route": "free_action",
+      "predicted": "free_action",
+      "correct": true,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "inside-lookalike"
+      ],
+      "intent": "explore"
+    },
+    {
+      "id": "m16",
+      "text": "Иду в глубь зала",
+      "gold": "move_in_scene",
+      "gold_route": "free_action",
+      "predicted": "free_action",
+      "correct": true,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "inside-lookalike"
+      ],
+      "intent": "explore"
+    },
+    {
+      "id": "m17",
+      "text": "Идём к столу у камина",
+      "gold": "move_in_scene",
+      "gold_route": "free_action",
+      "predicted": "free_action",
+      "correct": true,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "1pl"
+      ],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "m18",
+      "text": "Иду к Марте",
+      "gold": "move_in_scene",
+      "gold_route": "move_in_scene",
+      "predicted": "move_in_scene",
+      "correct": true,
+      "stage": "resolveExplorationCommand",
+      "tags": [
+        "npc"
+      ],
+      "intent": "explore"
+    },
+    {
+      "id": "s01",
+      "text": "Расспрашиваю Марту о сыне Финна",
+      "gold": "social_talk",
+      "gold_route": "social",
+      "predicted": "social",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [],
+      "intent": "social"
+    },
+    {
+      "id": "s02",
+      "text": "Спрашиваю у Финна, когда он последний раз видел сына",
+      "gold": "social_talk",
+      "gold_route": "social",
+      "predicted": "social",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [],
+      "intent": "social"
+    },
+    {
+      "id": "s03",
+      "text": "Финн, где ты последний раз видел сына?",
+      "gold": "social_talk",
+      "gold_route": "social",
+      "predicted": "social",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [
+        "direct-address"
+      ],
+      "intent": "social"
+    },
+    {
+      "id": "s04",
+      "text": "Говорю трактирщице: налей нам эля",
+      "gold": "social_talk",
+      "gold_route": "social",
+      "predicted": "social",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [],
+      "intent": "social"
+    },
+    {
+      "id": "s05",
+      "text": "Узнаю у Марты, не видела ли она сына Финна",
+      "gold": "social_talk",
+      "gold_route": "social",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "s06",
+      "text": "Разговариваю с Борисом о ночных патрулях",
+      "gold": "social_talk",
+      "gold_route": "social",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "s07",
+      "text": "Заговариваю с Ильсой о цене на сети",
+      "gold": "social_talk",
+      "gold_route": "social",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "s08",
+      "text": "Рассказываю Марте свою историю",
+      "gold": "social_talk",
+      "gold_route": "social",
+      "predicted": "question",
+      "correct": false,
+      "stage": "answerKnownLore",
+      "tags": [
+        "lore-lookalike"
+      ]
+    },
+    {
+      "id": "s09",
+      "text": "Убеждаю Бориса пропустить нас в порт ночью",
+      "gold": "social_talk",
+      "gold_route": "social",
+      "predicted": "social",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [
+        "travel-lookalike"
+      ],
+      "intent": "social"
+    },
+    {
+      "id": "s10",
+      "text": "Запугиваю Ильсу, чтобы она сбавила цену",
+      "gold": "social_talk",
+      "gold_route": "social",
+      "predicted": "social",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [],
+      "intent": "social"
+    },
+    {
+      "id": "s11",
+      "text": "Обращаюсь к стражнику: что случилось у причала?",
+      "gold": "social_talk",
+      "gold_route": "social",
+      "predicted": "social",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [
+        "question-mark"
+      ],
+      "intent": "social"
+    },
+    {
+      "id": "s12",
+      "text": "Благодарю Марту и прошу комнату на ночь",
+      "gold": "social_talk",
+      "gold_route": "social",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "s13",
+      "text": "Здороваюсь с Финном",
+      "gold": "social_talk",
+      "gold_route": "social",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "short"
+      ],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "s14",
+      "text": "Спрашиваю у Марты дорогу в Каменный Град",
+      "gold": "social_talk",
+      "gold_route": "social",
+      "predicted": "social",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [
+        "travel-lookalike"
+      ],
+      "intent": "social"
+    },
+    {
+      "id": "s15",
+      "text": "Расспрашиваю трактирщицу, как пройти в Пепельный Лес",
+      "gold": "social_talk",
+      "gold_route": "social",
+      "predicted": "social",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [
+        "travel-lookalike"
+      ],
+      "intent": "social"
+    },
+    {
+      "id": "s16",
+      "text": "Беседую с Финном о его сыне",
+      "gold": "social_talk",
+      "gold_route": "social",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "s17",
+      "text": "Вручаю Марте письмо от Финна",
+      "gold": "free_action_improv",
+      "gold_route": "free_action",
+      "predicted": "social",
+      "correct": false,
+      "stage": "IntentParser",
+      "tags": [
+        "substring-trap"
+      ],
+      "intent": "social"
+    },
+    {
+      "id": "s18",
+      "text": "Интересуюсь у Бориса, кто ещё пропал",
+      "gold": "social_talk",
+      "gold_route": "social",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "r01",
+      "text": "Покупаю у Ильсы моток верёвки",
+      "gold": "trade",
+      "gold_route": "social",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "r02",
+      "text": "Хочу купить у Марты кружку эля",
+      "gold": "trade",
+      "gold_route": "social",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "r03",
+      "text": "Продаю Ильсе шкуру волка",
+      "gold": "trade",
+      "gold_route": "social",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "r04",
+      "text": "Торгуюсь с Ильсой за сети",
+      "gold": "trade",
+      "gold_route": "social",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "c01",
+      "text": "Осматриваю зал таверны и прислушиваюсь к разговорам",
+      "gold": "ability_check",
+      "gold_route": "ability_check",
+      "predicted": "ability_check",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [
+        "live-case"
+      ],
+      "intent": "ability_check"
+    },
+    {
+      "id": "c02",
+      "text": "Прислушиваюсь к разговору за соседним столом",
+      "gold": "ability_check",
+      "gold_route": "ability_check",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "c03",
+      "text": "Ищу следы на полу у двери",
+      "gold": "ability_check",
+      "gold_route": "ability_check",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "explore"
+    },
+    {
+      "id": "c04",
+      "text": "Осматриваю комнату",
+      "gold": "ability_check",
+      "gold_route": "ability_check",
+      "predicted": "ability_check",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [],
+      "intent": "ability_check"
+    },
+    {
+      "id": "c05",
+      "text": "Крадусь к задней двери",
+      "gold": "ability_check",
+      "gold_route": "ability_check",
+      "predicted": "ability_check",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [],
+      "intent": "ability_check"
+    },
+    {
+      "id": "c06",
+      "text": "Взламываю замок сундука",
+      "gold": "free_action_improv",
+      "gold_route": "free_action",
+      "predicted": "free_action",
+      "correct": true,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "scene-prop"
+      ],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "c07",
+      "text": "Проверяю, не следят ли за нами",
+      "gold": "ability_check",
+      "gold_route": "ability_check",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "c08",
+      "text": "Внимательно рассматриваю карту на стене",
+      "gold": "ability_check",
+      "gold_route": "ability_check",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "c09",
+      "text": "Изучаю странные руны на балке",
+      "gold": "ability_check",
+      "gold_route": "ability_check",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "c10",
+      "text": "осмотрюсь",
+      "gold": "ability_check",
+      "gold_route": "ability_check",
+      "predicted": "ability_check",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [
+        "short",
+        "lowercase"
+      ],
+      "intent": "ability_check"
+    },
+    {
+      "id": "c11",
+      "text": "Обыскиваю стол хозяйки",
+      "gold": "ability_check",
+      "gold_route": "ability_check",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "c12",
+      "text": "Высматриваю в толпе подозрительных людей",
+      "gold": "ability_check",
+      "gold_route": "ability_check",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "a01",
+      "text": "Атакую Бориса мечом",
+      "gold": "attack",
+      "gold_route": "attack",
+      "predicted": "attack",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [],
+      "intent": "attack"
+    },
+    {
+      "id": "a02",
+      "text": "Бью стражника кулаком",
+      "gold": "attack",
+      "gold_route": "attack",
+      "predicted": "attack",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [],
+      "intent": "attack"
+    },
+    {
+      "id": "a03",
+      "text": "Стреляю из лука в крысу под столом",
+      "gold": "attack",
+      "gold_route": "attack",
+      "predicted": "attack",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [],
+      "intent": "attack"
+    },
+    {
+      "id": "a04",
+      "text": "Подбегаю к Борису и бью его",
+      "gold": "attack",
+      "gold_route": "attack",
+      "predicted": "attack",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [],
+      "intent": "approach_attack"
+    },
+    {
+      "id": "a05",
+      "text": "атакую",
+      "gold": "attack",
+      "gold_route": "attack",
+      "predicted": "attack",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [
+        "short"
+      ],
+      "intent": "attack"
+    },
+    {
+      "id": "k01",
+      "text": "Читаю заклинание Свет на свой посох",
+      "gold": "cast_spell",
+      "gold_route": "cast_spell",
+      "predicted": "cast_spell",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [],
+      "intent": "cast_spell"
+    },
+    {
+      "id": "k02",
+      "text": "Колдую Волшебную стрелу в крысу",
+      "gold": "cast_spell",
+      "gold_route": "cast_spell",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "k03",
+      "text": "Сотворяю Огненный снаряд",
+      "gold": "cast_spell",
+      "gold_route": "cast_spell",
+      "predicted": "cast_spell",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [],
+      "intent": "cast_spell"
+    },
+    {
+      "id": "k04",
+      "text": "Накладываю на Финна заклинание Лечение ран",
+      "gold": "cast_spell",
+      "gold_route": "cast_spell",
+      "predicted": "other_rule",
+      "correct": false,
+      "stage": "IntentParser",
+      "tags": [
+        "healing-lookalike"
+      ],
+      "intent": "healing"
+    },
+    {
+      "id": "z01",
+      "text": "Устраиваем короткий отдых",
+      "gold": "rest",
+      "gold_route": "rest",
+      "predicted": "rest",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [],
+      "intent": "rest"
+    },
+    {
+      "id": "z02",
+      "text": "Снимаем комнату и ложимся спать до утра",
+      "gold": "rest",
+      "gold_route": "rest",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "z03",
+      "text": "Отдыхаем у камина час",
+      "gold": "rest",
+      "gold_route": "rest",
+      "predicted": "rest",
+      "correct": true,
+      "stage": "IntentParser",
+      "tags": [],
+      "intent": "rest"
+    },
+    {
+      "id": "z04",
+      "text": "Садимся отдохнуть",
+      "gold": "rest",
+      "gold_route": "rest",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "q01",
+      "text": "Где мы сейчас?",
+      "gold": "ask_gm_question",
+      "gold_route": "question",
+      "predicted": "question",
+      "correct": true,
+      "stage": "inferRequestKind",
+      "tags": []
+    },
+    {
+      "id": "q02",
+      "text": "Что я вижу вокруг?",
+      "gold": "ask_gm_question",
+      "gold_route": "question",
+      "predicted": "question",
+      "correct": true,
+      "stage": "inferRequestKind",
+      "tags": []
+    },
+    {
+      "id": "q03",
+      "text": "Кто здесь?",
+      "gold": "ask_gm_question",
+      "gold_route": "question",
+      "predicted": "question",
+      "correct": true,
+      "stage": "inferRequestKind",
+      "tags": [
+        "short"
+      ]
+    },
+    {
+      "id": "q04",
+      "text": "Как далеко до Каменного Града?",
+      "gold": "ask_gm_question",
+      "gold_route": "question",
+      "predicted": "question",
+      "correct": true,
+      "stage": "inferRequestKind",
+      "tags": [
+        "travel-lookalike"
+      ]
+    },
+    {
+      "id": "q05",
+      "text": "Где находится таверна «Морской Змей»?",
+      "gold": "ask_gm_question",
+      "gold_route": "question",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "travel-lookalike"
+      ],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "q06",
+      "text": "Что мы знаем о Храме Приливов?",
+      "gold": "ask_gm_question",
+      "gold_route": "question",
+      "predicted": "question",
+      "correct": true,
+      "stage": "answerKnownLore",
+      "tags": []
+    },
+    {
+      "id": "q07",
+      "text": "Можно ли выбраться через окно?",
+      "gold": "ask_gm_question",
+      "gold_route": "question",
+      "predicted": "question",
+      "correct": true,
+      "stage": "inferRequestKind",
+      "tags": []
+    },
+    {
+      "id": "q08",
+      "text": "Куда нам идти дальше?",
+      "gold": "ask_gm_question",
+      "gold_route": "question",
+      "predicted": "question",
+      "correct": true,
+      "stage": "answerKnownLore",
+      "tags": []
+    },
+    {
+      "id": "q09",
+      "text": "Сколько стоит ночлег?",
+      "gold": "ask_gm_question",
+      "gold_route": "question",
+      "predicted": "question",
+      "correct": true,
+      "stage": "inferRequestKind",
+      "tags": []
+    },
+    {
+      "id": "q10",
+      "text": "Какое сейчас время суток?",
+      "gold": "ask_gm_question",
+      "gold_route": "question",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "q11",
+      "text": "А если я перепрыгну через стойку?",
+      "gold": "ask_gm_question",
+      "gold_route": "question",
+      "predicted": "question",
+      "correct": true,
+      "stage": "inferRequestKind",
+      "tags": []
+    },
+    {
+      "id": "q12",
+      "text": "Есть ли тут чёрный ход?",
+      "gold": "ask_gm_question",
+      "gold_route": "question",
+      "predicted": "question",
+      "correct": true,
+      "stage": "inferRequestKind",
+      "tags": []
+    },
+    {
+      "id": "q13",
+      "text": "Когда закрывается рынок?",
+      "gold": "ask_gm_question",
+      "gold_route": "question",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "q14",
+      "text": "Сколько дней пути до Северного форта?",
+      "gold": "ask_gm_question",
+      "gold_route": "question",
+      "predicted": "question",
+      "correct": true,
+      "stage": "inferRequestKind",
+      "tags": [
+        "travel-lookalike"
+      ]
+    },
+    {
+      "id": "o01",
+      "text": "Давайте сначала поедим, а потом решим",
+      "gold": "ooc_party_chat",
+      "gold_route": "discussion",
+      "predicted": "discussion",
+      "correct": true,
+      "stage": "inferRequestKind",
+      "tags": []
+    },
+    {
+      "id": "o02",
+      "text": "Предлагаю разделиться: я к Марте, ты к Финну",
+      "gold": "ooc_party_chat",
+      "gold_route": "discussion",
+      "predicted": "discussion",
+      "correct": true,
+      "stage": "inferRequestKind",
+      "tags": []
+    },
+    {
+      "id": "o03",
+      "text": "Может, нам сначала поговорить с Финном?",
+      "gold": "ooc_party_chat",
+      "gold_route": "discussion",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "o04",
+      "text": "(ooc) мне надо отойти на пять минут",
+      "gold": "ooc_party_chat",
+      "gold_route": "discussion",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "ooc-marker"
+      ],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "o05",
+      "text": "Ребята, я за то, чтобы сначала выспаться",
+      "gold": "ooc_party_chat",
+      "gold_route": "discussion",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "party-address"
+      ],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "o06",
+      "text": "Торвальд, ты со мной?",
+      "gold": "ooc_party_chat",
+      "gold_route": "discussion",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "party-address",
+        "2sg"
+      ],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "o07",
+      "text": "// вне игры: кто ведёт записи?",
+      "gold": "ooc_party_chat",
+      "gold_route": "discussion",
+      "predicted": "free_action",
+      "correct": false,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "ooc-marker"
+      ],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "f01",
+      "text": "Подбрасываю монету и ловлю её",
+      "gold": "free_action_improv",
+      "gold_route": "free_action",
+      "predicted": "free_action",
+      "correct": true,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "f02",
+      "text": "Завязываю узел на верёвке",
+      "gold": "free_action_improv",
+      "gold_route": "free_action",
+      "predicted": "free_action",
+      "correct": true,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "f03",
+      "text": "Опрокидываю стол, чтобы укрыться",
+      "gold": "free_action_improv",
+      "gold_route": "free_action",
+      "predicted": "free_action",
+      "correct": true,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "f04",
+      "text": "Пытаюсь поймать муху палочками",
+      "gold": "free_action_improv",
+      "gold_route": "free_action",
+      "predicted": "free_action",
+      "correct": true,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "f05",
+      "text": "Залезаю на балку под потолком",
+      "gold": "free_action_improv",
+      "gold_route": "free_action",
+      "predicted": "free_action",
+      "correct": true,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "f06",
+      "text": "Кидаю кружку в стену",
+      "gold": "free_action_improv",
+      "gold_route": "free_action",
+      "predicted": "free_action",
+      "correct": true,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "f07",
+      "text": "Пою похабную песню на всю таверну",
+      "gold": "free_action_improv",
+      "gold_route": "free_action",
+      "predicted": "free_action",
+      "correct": true,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "f08",
+      "text": "Танцую на столе",
+      "gold": "free_action_improv",
+      "gold_route": "free_action",
+      "predicted": "free_action",
+      "correct": true,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "f09",
+      "text": "Прячу кинжал в сапог",
+      "gold": "free_action_improv",
+      "gold_route": "free_action",
+      "predicted": "free_action",
+      "correct": true,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "f10",
+      "text": "Наливаю себе эля из бочки",
+      "gold": "free_action_improv",
+      "gold_route": "free_action",
+      "predicted": "free_action",
+      "correct": true,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "f11",
+      "text": "Взлетаю к потолку",
+      "gold": "free_action_improv",
+      "gold_route": "free_action",
+      "predicted": "free_action",
+      "correct": true,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "f12",
+      "text": "Поджигаю сено у входа",
+      "gold": "free_action_improv",
+      "gold_route": "free_action",
+      "predicted": "free_action",
+      "correct": true,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "f13",
+      "text": "Уходим в тень",
+      "gold": "free_action_improv",
+      "gold_route": "free_action",
+      "predicted": "free_action",
+      "correct": true,
+      "stage": "ActionAdjudicator",
+      "tags": [
+        "travel-lookalike"
+      ],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "f14",
+      "text": "Прячусь под стол",
+      "gold": "free_action_improv",
+      "gold_route": "free_action",
+      "predicted": "free_action",
+      "correct": true,
+      "stage": "ActionAdjudicator",
+      "tags": [],
+      "intent": "improvised_action"
+    },
+    {
+      "id": "f15",
+      "text": "Бью кулаком по столу, чтобы все замолчали",
+      "gold": "free_action_improv",
+      "gold_route": "free_action",
+      "predicted": "attack",
+      "correct": false,
+      "stage": "IntentParser",
+      "tags": [
+        "attack-lookalike"
+      ],
+      "intent": "attack"
+    },
+    {
+      "id": "f16",
+      "text": "Рублю верёвку, на которой висит люстра",
+      "gold": "free_action_improv",
+      "gold_route": "free_action",
+      "predicted": "attack",
+      "correct": false,
+      "stage": "IntentParser",
+      "tags": [
+        "attack-lookalike"
+      ],
+      "intent": "attack"
+    },
+    {
+      "id": "f17",
+      "text": "Делаем долгую передышку перед дорогой",
+      "gold": "rest",
+      "gold_route": "rest",
+      "predicted": "social",
+      "correct": false,
+      "stage": "IntentParser",
+      "tags": [
+        "substring-trap"
+      ],
+      "intent": "social"
+    },
+    {
+      "id": "x01",
+      "text": "Иду к Марте и расспрашиваю её о сыне Финна",
+      "gold": "multi_step",
+      "gold_route": "multi_step",
+      "predicted": "multi_step",
+      "correct": true,
+      "stage": "actionSequence",
+      "tags": []
+    },
+    {
+      "id": "x02",
+      "text": "Сначала осматриваю комнату, затем открываю сундук",
+      "gold": "multi_step",
+      "gold_route": "multi_step",
+      "predicted": "multi_step",
+      "correct": true,
+      "stage": "actionSequence",
+      "tags": []
+    },
+    {
+      "id": "x03",
+      "text": "Подхожу к Финну, потом спрашиваю про сына",
+      "gold": "multi_step",
+      "gold_route": "multi_step",
+      "predicted": "multi_step",
+      "correct": true,
+      "stage": "actionSequence",
+      "tags": []
+    }
+  ]
+}
