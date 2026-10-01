@@ -8,7 +8,7 @@ import {
   Heart, HeartCrack,
   Lock, LockKeyhole, LockOpen, LogOut, ShieldCheck, RefreshCw,
   Bot, PawPrint, Skull, WandSparkles, Globe2, Volume2, VolumeX, Bell, BellOff, ShieldAlert,
-  Sun, Cloudy, CloudRain, CloudFog, CloudLightning,
+  Sun, Cloudy, CloudRain, CloudFog, CloudLightning, Map as MapIcon,
 } from 'lucide-react'
 import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignSummary, CharacterCreationCatalog, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, MapCell, MapFeedback, Merchant, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp, WeatherConditionId, WeatherProjection } from './types'
 import { fetchWithTimeout, getAiHealth, getCharacterCreationCatalog } from './ai-client'
@@ -39,6 +39,7 @@ import { battleRollContext, battleRollPresentation, boardPositionKey, buildMovem
 import { fallbackCombatActions, fallbackCombatResources } from './combat-actions'
 import { fallbackCombatSpells, fallbackSpellResources } from './combat-spells'
 import { CombatLabView } from './CombatLabView'
+import { MapImportModal } from './MapImportModal'
 import { MerchantScreen } from './MerchantView'
 import { CombatIcon } from './CombatIcon'
 import { TacticalBoard, type BoardAnimationActor, type BoardCellHint, type BoardCellNode } from './TacticalBoard'
@@ -200,7 +201,7 @@ function Sidebar({
   campaignName, partyName, sessionCode, connectionState, pacing, progression, reputationStanding = [],
   canManageLifecycle, lifecycleStatus, lifecycleBusy, onChangeLifecycle, inviteEnabled, onInvite,
   masterMenuOpen, masterMenuRef, campaignControlBusy, arcChainEnabled, persistentCampaign, onToggleMasterMenu,
-  onRunCampaignControl, accountName, activeHeroName, onLogout,
+  onRunCampaignControl, onImportMap, accountName, activeHeroName, onLogout,
   onOpenCampaigns, onOpenLevelUp,
 }: {
   players: Player[]; selectedPlayerId: string; turnPlayerId: string; accessibleHeroIds: string[]; typingActorIds: string[]; isAdmin: boolean
@@ -213,6 +214,7 @@ function Sidebar({
   inviteEnabled: boolean; onInvite: () => void; masterMenuOpen: boolean; masterMenuRef: React.RefObject<HTMLDivElement | null>
   campaignControlBusy: boolean; arcChainEnabled: boolean; persistentCampaign: boolean; onToggleMasterMenu: () => void
   onRunCampaignControl: (action: 'rewind_turn' | 'replay_scene') => void
+  onImportMap: () => void
   accountName: string; activeHeroName: string; onLogout: () => void; onOpenCampaigns: () => void; onOpenLevelUp: () => void
 }) {
   return (
@@ -257,6 +259,7 @@ function Sidebar({
               {canManageLifecycle && ['active', 'paused'].includes(lifecycleStatus) && <button type="button" role="menuitem" onClick={() => { onToggleMasterMenu(); onRunCampaignControl('rewind_turn') }} disabled={campaignControlBusy || lifecycleBusy} title="Вернуть состояние к началу последней серверной команды"><RotateCcw size={15} />Откатить ход</button>}
               {canManageLifecycle && ['active', 'paused'].includes(lifecycleStatus) && <button type="button" role="menuitem" onClick={() => { onToggleMasterMenu(); onRunCampaignControl('replay_scene') }} disabled={campaignControlBusy || lifecycleBusy} title="Вернуть состояние к началу текущей сцены"><History size={15} />Переиграть сцену</button>}
               <small>Кампания</small>
+              <button type="button" role="menuitem" onClick={() => { onToggleMasterMenu(); onImportMap() }} disabled={lifecycleBusy} title="Загрузить карту локации из слэба TaleSpire"><MapIcon size={15} />Импорт карты из TaleSpire</button>
               {!persistentCampaign && (arcChainEnabled
                 ? <button type="button" role="menuitem" onClick={() => { onToggleMasterMenu(); onChangeLifecycle('conclude_after_arc') }} disabled={lifecycleBusy} title="Развязка текущей арки закончит кампанию эпилогом">Закончить на этой арке</button>
                 : <button type="button" role="menuitem" onClick={() => { onToggleMasterMenu(); onChangeLifecycle('chain_arcs') }} disabled={lifecycleBusy} title="Развязка арки откроет следующую теми же героями: снаряжение, слава и незакрытые нити переезжают">Играть дальше арками</button>)}
@@ -841,6 +844,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   }, [checkRollBusy, closeCheckDiceScene, state.pendingCheck])
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth <= 920)
   const [inviteOpen, setInviteOpen] = useState(false)
+  const [mapImportOpen, setMapImportOpen] = useState(false)
   // Меню «Мастер» в шапке: закрывается Escape, кликом мимо и после любого выбора.
   const [masterMenuOpen, setMasterMenuOpen] = useState(false)
   const masterMenuRef = useRef<HTMLDivElement>(null)
@@ -1603,6 +1607,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         persistentCampaign={persistentCampaign}
         onToggleMasterMenu={() => setMasterMenuOpen((value) => !value)}
         onRunCampaignControl={(action) => { void runCampaignControl(action) }}
+        onImportMap={() => setMapImportOpen(true)}
         accountName={account.name}
         activeHeroName={activePlayer.character}
         onLogout={onLogout}
@@ -1805,6 +1810,14 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
       ]} />
       {selectedMerchant && <MerchantScreen key={merchantContext + selectedMerchant.id} merchant={selectedMerchant} player={activePlayer} sceneLocation={state.scene.location} stateVersion={state.state_version ?? 0} view={merchantView} narration={merchantNarration} busy={merchantBusy} error={merchantError} onLoad={loadMerchant} onBargain={bargainWithMerchant} onBuy={buyFromMerchant} onSell={sellToMerchant} onAppraise={appraiseWithMerchant} onService={purchaseMerchantService} onClose={() => setMerchantSelection(null)} />}
       {inviteOpen && <InviteModal code={state.sessionCode} onClose={() => setInviteOpen(false)} />}
+      {mapImportOpen && canManageLifecycle && <MapImportModal
+        code={state.sessionCode}
+        locations={state.worldMap?.locations ?? []}
+        currentLocationId={state.scene.location_id ?? state.worldMap?.currentLocationId ?? ''}
+        currentLocationName={state.scene.location ?? ''}
+        onApplied={({ version, state: next }) => switchCampaign(state.sessionCode, { version, state: next })}
+        onClose={() => setMapImportOpen(false)}
+      />}
       {campaignsOpen && <CampaignModal state={state} rulesets={aiHealth?.installedRulesets} onSwitch={switchCampaign} onAccountRefresh={onAccountRefresh} onCreateHero={setCreatingPlayerId} onWizardChange={setWorldWizardOpen} onClose={() => setCampaignsOpen(false)} />}
       {creatingPlayerId && (characterCreationCatalog ?? (state.ruleset_id !== 'dnd_5e_2014' ? aiHealth?.characterCreation : null)) && <CharacterCreationWizard
         key={`${creatingPlayerId}:${state.ruleset_id ?? 'srd_5_2_1'}`}
