@@ -110,9 +110,9 @@ export const PREDICATES = Object.freeze({
   }),
   opening_narration: Object.freeze({
     record: 'fact', subject_kinds: ['location'], object: 'подтверждённый пролог сцены',
-    producers: ['campaign-bootstrap'], consumers: [],
+    producers: ['campaign-bootstrap'], consumers: ['action-adjudicator'],
     visibility: 'party',
-    description_ru: 'Абзацы пролога кампании; NPC стартовой локации знают их как свои факты.',
+    description_ru: 'Абзацы пролога кампании; NPC стартовой локации знают их как свои факты, а судья свободных действий читает их как описание места.',
   }),
   band_camp: Object.freeze({
     record: 'fact', subject_kinds: ['npc'], object: 'id ватаги',

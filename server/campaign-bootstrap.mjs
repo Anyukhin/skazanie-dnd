@@ -607,7 +607,6 @@ export class CampaignBootstrapper {
           }
         })
       : []
-    const starterNpcId = openingNpcs[0].id
     // Токены собеседников появляются уже в первой сцене. Раньше расстановка
     // выполнялась только при переходе сцены (`AdvanceScene`), и в свежесозданной
     // кампании названные в прологе NPC существовали лишь в тексте — на поле их
@@ -696,11 +695,11 @@ export class CampaignBootstrapper {
         npcs: openingNpcs,
         relationships: Object.fromEntries(openingNpcs.map((npc) => [npc.id, Object.fromEntries(positionedHeroes.map((hero) => [hero.id, 0]))])),
         conversations: [],
-        promises: [{
-          id: `promise-${seed.slice(0, 12)}`, npc_id: starterNpcId, hero_id: positionedHeroes[0].id,
-          direction: 'npc_to_party', text: opening.scene.objective, due_hint: 'до следующего продолжительного отдыха',
-          status: 'open', visibility: 'party', source_conversation_id: null, created_at_minutes: 0, deadline_minutes: 1_440,
-        }],
+        // Обещаний на старте нет: их дают в разговоре. Прежде цель отряда
+        // записывалась обещанием стартового NPC, и хранительница карты
+        // говорила «я обещала выяснить, что в этом знаю я» — с формулой срока
+        // «до следующего продолжительного отдыха». Кто дал задание, хранит квест.
+        promises: [],
       },
       state_version: 0,
       ...selectedRuleset,

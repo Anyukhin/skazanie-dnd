@@ -10,8 +10,8 @@ import { buildDataOnlyContext } from './security.mjs'
 import { tavernTableMood } from './tavern-life.mjs'
 import { retrieveWorldMemory } from './world-memory.mjs'
 
-export const NPC_SOCIAL_PROMPT_VERSION = 'npc_controller/social-v5'
-const prompt = readFileSync(fileURLToPath(new URL('../prompts/npc_controller/social_v5.txt', import.meta.url)), 'utf8')
+export const NPC_SOCIAL_PROMPT_VERSION = 'npc_controller/social-v6'
+const prompt = readFileSync(fileURLToPath(new URL('../prompts/npc_controller/social_v6.txt', import.meta.url)), 'utf8')
 const STANCES = new Set(['friendly', 'neutral', 'guarded', 'hostile'])
 const DIRECTIONS = new Set(['npc_to_party', 'party_to_npc'])
 export const NPC_SOCIAL_MEMORY_LIMIT = 8

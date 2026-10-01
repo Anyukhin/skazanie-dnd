@@ -207,12 +207,12 @@ test('сенсорные якоря следуют канону: в тумане
   assert.match(night.light, /лун|звёзд/u)
 })
 
-test('Рассказчик получает канон отдельным блоком narrator/v10', async () => {
+test('Рассказчик получает канон отдельным блоком narrator/v11', async () => {
   const llm = new FakeLLM([{ content: 'Туман лежит на досках причала.' }])
   const narrator = new Narrator({ llmClient: llm, asyncFeedback: false })
   await narrator.render(briefWith({ scene: { location: 'Причал Аквилона' }, world_clock: worldClock({ weather: 'fog' }) }))
   const [request] = llm.requests
-  assert.match(request.messages[0].content, /PROMPT_ID: narrator\/v10/u)
+  assert.match(request.messages[0].content, /PROMPT_ID: narrator\/v11/u)
   assert.match(request.messages[0].content, /scene_canon/u)
   const payload = untrustedPayload(request.messages[1].content, 'scene_canon')
   assert.equal(payload.weather, 'Туман')

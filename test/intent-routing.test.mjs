@@ -220,7 +220,7 @@ test('маршрут travel ничего не коммитит и отдаёт �
   assert.deepEqual(result.mechanics, [])
   assert.equal(result.check, undefined)
   assert.match(result.narration, /Каменный Град/u)
-  assert.match(result.narration, /Пока ничего не выполнено/u)
+  assert.match(result.narration, /голосованием/u)
   assert.equal((await eventStore.load('ROUTING')).state_version, before)
   assert.deepEqual(orchestrator.unknownActionHandler.takeRouteHint('ROUTING', 'route-travel-1'), { route: 'travel', destination: 'Каменный Град', actor_id: 'hero-1' })
   assert.equal(orchestrator.unknownActionHandler.takeRouteHint('ROUTING', 'route-travel-1'), null)
