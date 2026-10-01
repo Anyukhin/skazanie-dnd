@@ -9,17 +9,23 @@ process.stdin.on('data', (chunk) => {
   input += chunk
   if (!/[\r\n]/.test(input)) return
   if (process.stdin.isTTY) process.stdin.setRawMode(false)
-  const { url, key } = JSON.parse(input.trim())
-  const address = new URL(url)
-  if (address.protocol !== 'https:' || !address.hostname.endsWith('.chatgpt.site') ||
-      typeof key !== 'string' || key.length < 16 || /[\r\n\0]/.test(key)) throw new Error('Некорректная конфигурация Sites')
-  let env = readFileSync('.env', 'utf8')
-  for (const [name, value] of [['DND_SITES_URL', address.origin], ['DND_SITES_SERVICE_KEY', key]]) {
-    const line = `${name}=${value}`
-    const pattern = new RegExp(`^${name}=.*$`, 'm')
-    env = pattern.test(env) ? env.replace(pattern, () => line) : `${env.trimEnd()}\n${line}\n`
+  try {
+    const { url, key } = JSON.parse(input.trim())
+    const address = new URL(url)
+    if (address.protocol !== 'https:' || !address.hostname.endsWith('.chatgpt.site') ||
+        typeof key !== 'string' || key.length < 16 || /[\r\n\0]/.test(key)) throw new Error('Некорректная конфигурация Sites')
+    let env = readFileSync('.env', 'utf8')
+    for (const [name, value] of [['DND_SITES_URL', address.origin], ['DND_SITES_SERVICE_KEY', key]]) {
+      const line = `${name}=${value}`
+      const pattern = new RegExp(`^${name}=.*$`, 'm')
+      env = pattern.test(env) ? env.replace(pattern, () => line) : `${env.trimEnd()}\n${line}\n`
+    }
+    writeFileSync('.env', env)
+    console.log('Настройки Sites сохранены; значения скрыты.')
+    process.exit(0)
+  } catch {
+    // Ошибка JSON.parse может содержать введённый ключ, поэтому её не печатаем.
+    console.error('Не удалось сохранить настройки Sites. Проверьте формат ввода и файл .env.')
+    process.exit(1)
   }
-  writeFileSync('.env', env)
-  console.log('Private Sites configuration saved; values hidden.')
-  process.exit(0)
 })
