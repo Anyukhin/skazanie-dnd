@@ -13,9 +13,10 @@ import { promptForModelRole } from './model-style-profiles.mjs'
 import { npcDossiersForNarrator } from './npc-social.mjs'
 import { canonicalCombatSpellFor } from './combat-spells.mjs'
 import { worldClockNarration } from './weather.mjs'
+import { sceneCanonFromEnvironment, sensoryAnchorConflicts } from './scene-canon.mjs'
 import { ABILITY_LABELS_RU, SKILL_LABELS_RU } from './free-action-adjudication.mjs'
 
-export const NARRATOR_PROMPT_VERSION = 'narrator/v9'
+export const NARRATOR_PROMPT_VERSION = 'narrator/v10'
 export const NARRATOR_FEW_SHOT_VERSION = 'narrator-few-shot/v2'
 export const NARRATOR_RECENT_TEXT_LIMIT = 3
 /**
@@ -37,7 +38,7 @@ export const NARRATOR_ARC_RECAP_MEMORY_LIMIT = 128
 export const NARRATOR_STREAM_MAX_BYTES = 12 * 1024
 export const NARRATOR_DEFAULT_TIMEOUT_MS = 12_000
 const NARRATOR_ARC_RECAP_OVERRIDE = Symbol('narrator-arc-recap-override')
-const promptPath = fileURLToPath(new URL('../prompts/narrator/v9.txt', import.meta.url))
+const promptPath = fileURLToPath(new URL('../prompts/narrator/v10.txt', import.meta.url))
 const narratorPrompt = readFileSync(promptPath, 'utf8')
 const fewShotPath = fileURLToPath(new URL('../prompts/narrator/few-shot-v2.json', import.meta.url))
 const fewShotDocument = JSON.parse(readFileSync(fewShotPath, 'utf8'))
@@ -416,22 +417,70 @@ function normalizedSensoryAnchors(value) {
   return Object.values(anchors).filter(Boolean).length >= 3 ? anchors : null
 }
 
+/**
+ * Ощущения, которые задаёт само небо. Палитра места выбирается по названию и
+ * про погоду не знает: живой замер 2026-10-01 получил якорь «пыль на
+ * деревянных перилах» для причала в тумане, и модель честно написала «покрытый
+ * пылью». Под открытым небом свет и касание берутся из канона сцены.
+ */
+function canonSensoryOverrides(canon) {
+  if (!canon || canon.indoors === true) return {}
+  const phase = String(canon.time?.phase ?? '')
+  const weather = String(canon.weather?.id ?? '')
+  const overrides = {}
+  if (phase === 'night') {
+    overrides.light = weather === 'clear' ? 'холодный свет луны и звёзд' : 'редкие огни, тонущие в темноте'
+  } else if (weather === 'fog') {
+    overrides.light = 'серая пелена тумана, глотающая очертания'
+  } else if (weather === 'rain' || weather === 'storm') {
+    overrides.light = 'серый свет под низкими тучами'
+  }
+  if (weather === 'rain') overrides.touch = 'холодные капли дождя на лице'
+  if (weather === 'storm') overrides.touch = 'порывы мокрого ветра'
+  if (weather === 'fog') overrides.touch = 'влажная пелена тумана на коже'
+  return overrides
+}
+
+/** Якорь, противоречащий канону, выпадает из выбора, а не переписывается. */
+function canonCompatible(anchor, canon) {
+  return sensoryAnchorConflicts(anchor, canon).length === 0
+}
+
+function canonAnchorKey(canon) {
+  if (!canon) return ''
+  return [canon.time?.phase, canon.time?.clock, canon.weather?.id, canon.indoors].map((value) => String(value ?? '')).join('|')
+}
+
 export function sensoryAnchorsFor(brief) {
   const scene = brief?.known_environment?.scene ?? {}
+  const canon = sceneCanonFromEnvironment(brief?.known_environment ?? {})
+  const overrides = canonSensoryOverrides(canon)
   const explicit = normalizedSensoryAnchors(scene.sensory_anchors)
-  if (explicit) return explicit
-  const key = sceneText(scene.id || scene.location || scene.title, 240)
-  if (!key) return Object.freeze({})
+  if (explicit) {
+    if (!canon) return explicit
+    return Object.fromEntries(Object.entries(explicit)
+      .map(([slot, anchor]) => [slot, overrides[slot] ?? (canonCompatible(anchor, canon) ? anchor : '')])
+      .filter(([, anchor]) => anchor))
+  }
+  const sceneKey = sceneText(scene.id || scene.location || scene.title, 240)
+  if (!sceneKey) return Object.freeze({})
+  // Без канона ключ прежний: те же сцены дают те же якоря, что и до канона.
+  const key = canon ? `${sceneKey}\0${canonAnchorKey(canon)}` : sceneKey
   const cached = sensoryAnchorCache.get(key)
   if (cached) return cached
   const palette = SENSORY_PALETTES[sensoryPaletteFor(scene)]
-  const seed = stableTextHash(key)
-  const anchors = Object.freeze({
-    smell: palette.smell[seed % palette.smell.length],
-    sound: palette.sound[(seed >>> 5) % palette.sound.length],
-    light: palette.light[(seed >>> 10) % palette.light.length],
-    touch: palette.touch[(seed >>> 15) % palette.touch.length],
-  })
+  const seed = stableTextHash(sceneKey)
+  const pick = (slot, shift) => {
+    if (overrides[slot]) return overrides[slot]
+    const options = palette[slot].filter((anchor) => canonCompatible(anchor, canon))
+    return options.length ? options[(seed >>> shift) % options.length] : ''
+  }
+  const anchors = Object.freeze(Object.fromEntries([
+    ['smell', pick('smell', 0)],
+    ['sound', pick('sound', 5)],
+    ['light', pick('light', 10)],
+    ['touch', pick('touch', 15)],
+  ].filter(([, anchor]) => anchor)))
   sensoryAnchorCache.set(key, anchors)
   while (sensoryAnchorCache.size > 256) sensoryAnchorCache.delete(sensoryAnchorCache.keys().next().value)
   return anchors
@@ -497,9 +546,29 @@ export function narratorMemoryFocus(brief) {
   return decisions[0]?.score >= 1 ? decisions[0] : null
 }
 
+/**
+ * Канон сцены уходит модели отдельным блоком `scene_canon` (narrator/v10):
+ * сводка по-русски и поля, которые сверяет verifier. Внутри narration_brief
+ * его копия не повторяется.
+ */
+function sceneCanonForPrompt(canon) {
+  return {
+    summary: sceneText(canon.summary, 900),
+    time_of_day: sceneText(canon.time?.phase_label, 40),
+    clock: sceneText(canon.time?.clock, 8),
+    weather: sceneText(canon.weather?.label, 40),
+    indoors: canon.indoors === true,
+    light: sceneText(canon.light?.label, 160),
+    surfaces: sceneText(canon.surfaces?.label, 160),
+    water_nearby: canon.surfaces?.water_nearby === true,
+    materials: (Array.isArray(canon.surfaces?.materials) ? canon.surfaces.materials : []).map((value) => sceneText(value, 40)).slice(0, 3),
+    location_kind: sceneText(canon.location?.kind_label, 60),
+  }
+}
+
 function briefForNarratorPrompt(brief) {
   const focus = narratorMemoryFocus(brief)
-  const environment = brief.known_environment ?? {}
+  const { scene_canon: _sceneCanon, ...environment } = brief.known_environment ?? {}
   const story = environment.story_context ?? {}
   const { npc_dossiers: _rawNpcDossiers, ...promptStory } = story
   const viewerHeroes = (Array.isArray(story.heroes) ? story.heroes : []).filter((hero) => hero?.is_viewer)
@@ -1619,9 +1688,27 @@ function qualitativeEventSummary(event, resolveName) {
       // Финальная точка снимается: сводки клеятся через «. », и с ней в
       // середине абзаца получалось «наступил вечер.. Ада поражает орка».
       return worldClockNarration(event).replace(/[.!?]+$/u, '')
+    case 'SocialSceneOpened':
+      return `${named(payload.npc_id || (event?.target_ids ?? [])[0], 'Собеседник')} рядом — самое время заговорить`
     default:
-      return eventSummary(event, resolveName)
+      return playerFacingSummary(eventSummary(event, resolveName), event?.event_type)
   }
+}
+
+/**
+ * Сводка движка для события без собственной строки бывает служебной: имя
+ * события как есть или английский журнал («World entity updated: …»). Игроку
+ * такая строка не нужна — пусть лучше событие промолчит, чем рассказчик
+ * произнесёт `SocialSceneOpened.`.
+ */
+function playerFacingSummary(summary, eventType) {
+  const text = String(summary ?? '').trim()
+  if (!text || text === String(eventType ?? '')) return ''
+  if (!/[А-Яа-яЁё]/u.test(text)) return ''
+  // «World entity updated: Причал» — русское здесь только имя, сама фраза журнальная.
+  const head = text.split(':')[0]
+  if (!/[А-Яа-яЁё]/u.test(head) && /[A-Za-z]+\s+[A-Za-z]+/u.test(head)) return ''
+  return text
 }
 
 function withoutVisibleNumbers(value) {
@@ -1910,6 +1997,7 @@ export class Narrator {
     brief = withArcRecapOverride(brief, arcRecap)
     const responsePlan = narratorResponsePlan(brief)
     const sensoryAnchors = responsePlan.include_scene_detail ? sensoryAnchorsFor(brief) : {}
+    const sceneCanon = sceneCanonFromEnvironment(brief.known_environment ?? {})
     const contentDirectives = narratorContentDirectives(brief)
     const npcDossiers = responsePlan.include_memory ? npcDossiersForNarrator(brief) : []
     const examples = selectNarratorFewShotExamples(brief)
@@ -1962,6 +2050,7 @@ export class Narrator {
             content: buildDataOnlyContext({
               narration_brief: briefForNarratorPrompt(brief),
               response_plan: responsePlan,
+              ...(sceneCanon ? { scene_canon: sceneCanonForPrompt(sceneCanon) } : {}),
               confirmed_event_summaries: (brief.visible_events ?? []).map(event => ({
                 event_type: event.event_type,
                 text: withoutVisibleNumbers(qualitativeEventSummary(event, briefNameResolver(brief))),
@@ -1979,6 +2068,8 @@ export class Narrator {
         ...generation,
         ...(deadlineController ? { timeoutMs: requestedTimeout } : {}),
         signal: deadlineController?.signal,
+        // Творческая роль: профиль рассуждений лидера кампании её касается.
+        role: 'narrator',
       }
       let narration = ''
       try {

@@ -1,0 +1,744 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-10-01T14:18:05.683Z",
+  "endpoint": "https://routerai.ru/api/v1",
+  "messages": [
+    {
+      "role": "system",
+      "content": "Ты проверяешь тактическую геометрию. Верни только JSON-объект {\"reachable\": boolean, \"squares\": integer}."
+    },
+    {
+      "role": "user",
+      "content": "Сетка 5 футов на клетку, диагональ стоит 5 футов. Герой стоит в (2,3), скорость 30 футов. Клетки (3,4), (4,5) и (5,6) — трудная местность (двойная цена). Стена занимает весь столбец x=6, кроме клетки (6,1). Может ли герой за один ход дойти до (7,2)? squares — минимальное число клеток пути с учётом трудной местности, или -1."
+    }
+  ],
+  "probes": [
+    {
+      "model": "openai/gpt-6-luna",
+      "level": "default",
+      "reasoning": null,
+      "requested_at": "2026-10-01T14:18:05.684Z",
+      "status": 200,
+      "ok": true,
+      "response_model": "gpt-6-luna",
+      "content": "{\"reachable\":true,\"squares\":5}",
+      "reasoning_returned_chars": 0,
+      "finish_reason": "stop",
+      "usage": {
+        "total_tokens": 538,
+        "prompt_tokens": 159,
+        "prompt_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "completion_tokens": 379,
+        "completion_tokens_details": {
+          "reasoning_tokens": 360
+        },
+        "cost": 0.022311870776
+      },
+      "reasoning_tokens": 360,
+      "usage_cost": 0.022311870776,
+      "catalog_cost_rub": 0.022311870775999998,
+      "answer": {
+        "reachable": true,
+        "squares": 5
+      },
+      "latency_ms": 5795
+    },
+    {
+      "model": "openai/gpt-6-luna",
+      "level": "off",
+      "reasoning": {
+        "enabled": false
+      },
+      "requested_at": "2026-10-01T14:18:11.481Z",
+      "status": 200,
+      "ok": true,
+      "response_model": "openai/gpt-6-luna",
+      "content": "{\"reachable\":true,\"squares\":8}",
+      "reasoning_returned_chars": 0,
+      "finish_reason": "stop",
+      "usage": {
+        "total_tokens": 176,
+        "prompt_tokens": 159,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 17,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.002650485136
+      },
+      "reasoning_tokens": 0,
+      "usage_cost": 0.002650485136,
+      "catalog_cost_rub": 0.002650485136,
+      "answer": {
+        "reachable": true,
+        "squares": 8
+      },
+      "latency_ms": 1783
+    },
+    {
+      "model": "openai/gpt-6-luna",
+      "level": "minimal",
+      "reasoning": {
+        "effort": "minimal"
+      },
+      "requested_at": "2026-10-01T14:18:13.266Z",
+      "status": 200,
+      "ok": true,
+      "response_model": "openai/gpt-6-luna",
+      "content": "{\"reachable\":true,\"squares\":5}",
+      "reasoning_returned_chars": 1033,
+      "finish_reason": "stop",
+      "usage": {
+        "total_tokens": 582,
+        "prompt_tokens": 159,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 423,
+        "completion_tokens_details": {
+          "reasoning_tokens": 404,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.024701652456
+      },
+      "reasoning_tokens": 404,
+      "usage_cost": 0.024701652456,
+      "catalog_cost_rub": 0.024701652456,
+      "answer": {
+        "reachable": true,
+        "squares": 5
+      },
+      "latency_ms": 8384
+    },
+    {
+      "model": "openai/gpt-6-luna",
+      "level": "low",
+      "reasoning": {
+        "effort": "low"
+      },
+      "requested_at": "2026-10-01T14:18:21.654Z",
+      "status": 200,
+      "ok": true,
+      "response_model": "gpt-6-luna",
+      "content": "{\"reachable\":true,\"squares\":6}",
+      "reasoning_returned_chars": 0,
+      "finish_reason": "stop",
+      "usage": {
+        "total_tokens": 909,
+        "prompt_tokens": 159,
+        "prompt_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "completion_tokens": 750,
+        "completion_tokens_details": {
+          "reasoning_tokens": 731
+        },
+        "cost": 0.042462075396000006
+      },
+      "reasoning_tokens": 731,
+      "usage_cost": 0.042462075396000006,
+      "catalog_cost_rub": 0.042462075396000006,
+      "answer": {
+        "reachable": true,
+        "squares": 6
+      },
+      "latency_ms": 13361
+    },
+    {
+      "model": "openai/gpt-6-luna",
+      "level": "medium",
+      "reasoning": {
+        "effort": "medium"
+      },
+      "requested_at": "2026-10-01T14:18:35.017Z",
+      "status": 200,
+      "ok": true,
+      "response_model": "gpt-6-luna",
+      "content": "{\"reachable\":true,\"squares\":5}",
+      "reasoning_returned_chars": 0,
+      "finish_reason": "stop",
+      "usage": {
+        "total_tokens": 768,
+        "prompt_tokens": 159,
+        "prompt_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "completion_tokens": 609,
+        "completion_tokens_details": {
+          "reasoning_tokens": 590
+        },
+        "cost": 0.034803911376
+      },
+      "reasoning_tokens": 590,
+      "usage_cost": 0.034803911376,
+      "catalog_cost_rub": 0.034803911376,
+      "answer": {
+        "reachable": true,
+        "squares": 5
+      },
+      "latency_ms": 8130
+    },
+    {
+      "model": "openai/gpt-6-luna",
+      "level": "high",
+      "reasoning": {
+        "effort": "high"
+      },
+      "requested_at": "2026-10-01T14:18:43.149Z",
+      "status": 200,
+      "ok": true,
+      "response_model": "gpt-6-luna",
+      "content": "{\"reachable\":true,\"squares\":5}",
+      "reasoning_returned_chars": 0,
+      "finish_reason": "stop",
+      "usage": {
+        "total_tokens": 1022,
+        "prompt_tokens": 159,
+        "prompt_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "completion_tokens": 863,
+        "completion_tokens_details": {
+          "reasoning_tokens": 844
+        },
+        "cost": 0.048599469256
+      },
+      "reasoning_tokens": 844,
+      "usage_cost": 0.048599469256,
+      "catalog_cost_rub": 0.048599469256000005,
+      "answer": {
+        "reachable": true,
+        "squares": 5
+      },
+      "latency_ms": 10869
+    },
+    {
+      "model": "openai/gpt-6-luna-pro",
+      "level": "default",
+      "reasoning": null,
+      "requested_at": "2026-10-01T14:18:54.022Z",
+      "status": 200,
+      "ok": true,
+      "response_model": "openai/gpt-6-luna-pro",
+      "content": "{\"reachable\":true,\"squares\":5}",
+      "reasoning_returned_chars": 488,
+      "finish_reason": "stop",
+      "usage": {
+        "total_tokens": 3949,
+        "prompt_tokens": 2809,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 1140,
+        "completion_tokens_details": {
+          "reasoning_tokens": 1085,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.092430237796
+      },
+      "reasoning_tokens": 1085,
+      "usage_cost": 0.092430237796,
+      "catalog_cost_rub": 0.092430237796,
+      "answer": {
+        "reachable": true,
+        "squares": 5
+      },
+      "latency_ms": 9155
+    },
+    {
+      "model": "openai/gpt-6-luna-pro",
+      "level": "off",
+      "reasoning": {
+        "enabled": false
+      },
+      "requested_at": "2026-10-01T14:19:03.178Z",
+      "status": 200,
+      "ok": true,
+      "response_model": "openai/gpt-6-luna-pro",
+      "content": "{\"reachable\":true,\"squares\":6}",
+      "reasoning_returned_chars": 0,
+      "finish_reason": "stop",
+      "usage": {
+        "total_tokens": 1911,
+        "prompt_tokens": 1862,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 49,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.022887590908
+      },
+      "reasoning_tokens": 0,
+      "usage_cost": 0.022887590908,
+      "catalog_cost_rub": 0.022887590908,
+      "answer": {
+        "reachable": true,
+        "squares": 6
+      },
+      "latency_ms": 2532
+    },
+    {
+      "model": "openai/gpt-6-luna-pro",
+      "level": "low",
+      "reasoning": {
+        "effort": "low"
+      },
+      "requested_at": "2026-10-01T14:19:05.714Z",
+      "status": 200,
+      "ok": true,
+      "response_model": "openai/gpt-6-luna-pro",
+      "content": "{\"reachable\":true,\"squares\":5}",
+      "reasoning_returned_chars": 892,
+      "finish_reason": "stop",
+      "usage": {
+        "total_tokens": 3363,
+        "prompt_tokens": 2582,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 781,
+        "completion_tokens_details": {
+          "reasoning_tokens": 728,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.070465971628
+      },
+      "reasoning_tokens": 728,
+      "usage_cost": 0.070465971628,
+      "catalog_cost_rub": 0.070465971628,
+      "answer": {
+        "reachable": true,
+        "squares": 5
+      },
+      "latency_ms": 8716
+    },
+    {
+      "model": "openai/gpt-6-luna-pro",
+      "level": "medium",
+      "reasoning": {
+        "effort": "medium"
+      },
+      "requested_at": "2026-10-01T14:19:14.431Z",
+      "status": 200,
+      "ok": true,
+      "response_model": "openai/gpt-6-luna-pro",
+      "content": "{\"reachable\":true,\"squares\":5}",
+      "reasoning_returned_chars": 954,
+      "finish_reason": "stop",
+      "usage": {
+        "total_tokens": 3511,
+        "prompt_tokens": 2581,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 930,
+        "completion_tokens_details": {
+          "reasoning_tokens": 875,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.078547778764
+      },
+      "reasoning_tokens": 875,
+      "usage_cost": 0.078547778764,
+      "catalog_cost_rub": 0.078547778764,
+      "answer": {
+        "reachable": true,
+        "squares": 5
+      },
+      "latency_ms": 14855
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "level": "default",
+      "reasoning": null,
+      "requested_at": "2026-10-01T14:19:29.288Z",
+      "status": 200,
+      "ok": true,
+      "response_model": "z-ai/glm-5.3-flash",
+      "content": "{\"reachable\": true, \"squares\": 5}\n\nОбоснование (для проверки, не входит в ответ): столбец x=6 проходится только через (6,1), поэтому путь обязан идти через неё. Маршрут: (2,3)→(3,2)→(4,1)→(5,1)→(6,1)→(7,2) — 5 шагов по 5 футов (диагонали считаются 5 футов) = 25 футов ≤ 30 футов. Клетки трудной местности (3,4), (4,5), (5,6) лежат в стороне (y≥4) и не попадают на оптимальный путь, так что надбавки н",
+      "reasoning_returned_chars": 5292,
+      "finish_reason": "stop",
+      "usage": {
+        "total_tokens": 2099,
+        "prompt_tokens": 165,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "completion_tokens": 1934,
+        "completion_tokens_details": {
+          "reasoning_tokens": 1755
+        },
+        "cost": 0.118503299057
+      },
+      "reasoning_tokens": 1755,
+      "usage_cost": 0.118503299057,
+      "catalog_cost_rub": 0.069721880514,
+      "answer": null,
+      "latency_ms": 49375
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "level": "off",
+      "reasoning": {
+        "enabled": false
+      },
+      "requested_at": "2026-10-01T14:20:18.664Z",
+      "status": 200,
+      "ok": true,
+      "response_model": "z-ai/glm-5.3-flash",
+      "content": "{\"reachable\": true, \"squares\": 5}",
+      "reasoning_returned_chars": 551,
+      "finish_reason": "stop",
+      "usage": {
+        "total_tokens": 421,
+        "prompt_tokens": 165,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "completion_tokens": 256,
+        "completion_tokens_details": {
+          "reasoning_tokens": 242
+        },
+        "cost": 0.018251957581
+      },
+      "reasoning_tokens": 242,
+      "usage_cost": 0.018251957581,
+      "catalog_cost_rub": 0.0095710756284,
+      "answer": {
+        "reachable": true,
+        "squares": 5
+      },
+      "latency_ms": 8957
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "level": "minimal",
+      "reasoning": {
+        "effort": "minimal"
+      },
+      "requested_at": "2026-10-01T14:20:27.623Z",
+      "status": 200,
+      "ok": true,
+      "response_model": "z-ai/glm-5.3-flash",
+      "content": "{\"reachable\": true, \"squares\": 5}\n\nПуть: (2,3)→(3,2)→(4,2)→(5,2)→(6,2)→(7,2) — три диагонали (по 5 футов) и два прямых шага (по 5 футов), итого 25 футов ≤ 30. Трудная местность и стена (x=6, кроме (6,1)) не задеваются.",
+      "reasoning_returned_chars": 1093,
+      "finish_reason": "stop",
+      "usage": {
+        "total_tokens": 671,
+        "prompt_tokens": 165,
+        "prompt_tokens_details": {
+          "cached_tokens": 128
+        },
+        "completion_tokens": 506,
+        "completion_tokens_details": {
+          "reasoning_tokens": 395
+        },
+        "cost": 0.03135274075076
+      },
+      "reasoning_tokens": 395,
+      "usage_cost": 0.03135274075076,
+      "catalog_cost_rub": 0.0185327569284,
+      "answer": null,
+      "latency_ms": 15712
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "level": "low",
+      "reasoning": {
+        "effort": "low"
+      },
+      "requested_at": "2026-10-01T14:20:43.336Z",
+      "status": 200,
+      "ok": true,
+      "response_model": "z-ai/glm-5.3-flash",
+      "content": "```json\n{\"reachable\": true, \"squares\": 5}\n```",
+      "reasoning_returned_chars": 1569,
+      "finish_reason": "stop",
+      "usage": {
+        "total_tokens": 771,
+        "prompt_tokens": 165,
+        "prompt_tokens_details": {
+          "cached_tokens": 128
+        },
+        "completion_tokens": 606,
+        "completion_tokens_details": {
+          "reasoning_tokens": 588
+        },
+        "cost": 0.03732719495076
+      },
+      "reasoning_tokens": 588,
+      "usage_cost": 0.03732719495076,
+      "catalog_cost_rub": 0.0221174294484,
+      "answer": {
+        "reachable": true,
+        "squares": 5
+      },
+      "latency_ms": 21165
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "level": "medium",
+      "reasoning": {
+        "effort": "medium"
+      },
+      "requested_at": "2026-10-01T14:21:04.503Z",
+      "status": 200,
+      "ok": true,
+      "response_model": "z-ai/glm-5.3-flash",
+      "content": "```json\n{\"reachable\": true, \"squares\": 5}\n```",
+      "reasoning_returned_chars": 1291,
+      "finish_reason": "stop",
+      "usage": {
+        "total_tokens": 601,
+        "prompt_tokens": 165,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "completion_tokens": 436,
+        "completion_tokens_details": {
+          "reasoning_tokens": 418
+        },
+        "cost": 0.029005975141
+      },
+      "reasoning_tokens": 418,
+      "usage_cost": 0.029005975141,
+      "catalog_cost_rub": 0.0160234861644,
+      "answer": {
+        "reachable": true,
+        "squares": 5
+      },
+      "latency_ms": 13393
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "level": "default",
+      "reasoning": null,
+      "requested_at": "2026-10-01T14:21:17.897Z",
+      "status": 200,
+      "ok": true,
+      "response_model": "deepseek/deepseek-v4-flash",
+      "content": "",
+      "reasoning_returned_chars": 6740,
+      "finish_reason": "length",
+      "usage": {
+        "total_tokens": 2243,
+        "prompt_tokens": 243,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 2000,
+        "completion_tokens_details": {
+          "reasoning_tokens": 2967,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.319932839823961
+      },
+      "reasoning_tokens": 2967,
+      "usage_cost": 0.319932839823961,
+      "catalog_cost_rub": 0.022187360652063882,
+      "answer": null,
+      "latency_ms": 19775
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "level": "off",
+      "reasoning": {
+        "enabled": false
+      },
+      "requested_at": "2026-10-01T14:21:37.673Z",
+      "status": 200,
+      "ok": true,
+      "response_model": "deepseek/deepseek-v4-flash",
+      "content": "{\"reachable\": false, \"squares\": -1}",
+      "reasoning_returned_chars": 0,
+      "finish_reason": "stop",
+      "usage": {
+        "total_tokens": 201,
+        "prompt_tokens": 187,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 14,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.00244406774339
+      },
+      "reasoning_tokens": 0,
+      "usage_cost": 0.00244406774339,
+      "catalog_cost_rub": 0.0011242711619594,
+      "answer": {
+        "reachable": false,
+        "squares": -1
+      },
+      "latency_ms": 1929
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "level": "low",
+      "reasoning": {
+        "effort": "low"
+      },
+      "requested_at": "2026-10-01T14:21:39.603Z",
+      "status": 200,
+      "ok": true,
+      "response_model": "deepseek/deepseek-v4-flash",
+      "content": "",
+      "reasoning_returned_chars": 6420,
+      "finish_reason": "length",
+      "usage": {
+        "total_tokens": 2164,
+        "prompt_tokens": 164,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 2000,
+        "completion_tokens_details": {
+          "reasoning_tokens": 1999,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.021847079964528
+      },
+      "reasoning_tokens": 1999,
+      "usage_cost": 0.021847079964528,
+      "catalog_cost_rub": 0.021774256364646243,
+      "answer": null,
+      "latency_ms": 27080
+    },
+    {
+      "model": "google/gemini-2.5-flash-lite",
+      "level": "default",
+      "reasoning": null,
+      "requested_at": "2026-10-01T14:22:06.685Z",
+      "status": 200,
+      "ok": true,
+      "response_model": "gemini-2.5-flash-lite",
+      "content": "{\"reachable\": true, \"squares\": 7}",
+      "reasoning_returned_chars": 0,
+      "finish_reason": "stop",
+      "usage": {
+        "total_tokens": 154,
+        "prompt_tokens": 143,
+        "completion_tokens": 11,
+        "cost": 0.0020313144280000002
+      },
+      "reasoning_tokens": null,
+      "usage_cost": 0.0020313144280000002,
+      "catalog_cost_rub": 0.0020313144280000002,
+      "answer": {
+        "reachable": true,
+        "squares": 7
+      },
+      "latency_ms": 669
+    },
+    {
+      "model": "google/gemini-2.5-flash-lite",
+      "level": "off",
+      "reasoning": {
+        "enabled": false
+      },
+      "requested_at": "2026-10-01T14:22:07.355Z",
+      "status": 200,
+      "ok": true,
+      "response_model": "gemini-2.5-flash-lite",
+      "content": "{\"reachable\": true, \"squares\": 10}",
+      "reasoning_returned_chars": 0,
+      "finish_reason": "stop",
+      "usage": {
+        "total_tokens": 155,
+        "prompt_tokens": 143,
+        "completion_tokens": 12,
+        "cost": 0.002074765004
+      },
+      "reasoning_tokens": null,
+      "usage_cost": 0.002074765004,
+      "catalog_cost_rub": 0.002074765004,
+      "answer": {
+        "reachable": true,
+        "squares": 10
+      },
+      "latency_ms": 586
+    },
+    {
+      "model": "google/gemini-2.5-flash-lite",
+      "level": "low",
+      "reasoning": {
+        "effort": "low"
+      },
+      "requested_at": "2026-10-01T14:22:07.942Z",
+      "status": 200,
+      "ok": true,
+      "response_model": "gemini-2.5-flash-lite",
+      "content": "{\"reachable\": true, \"squares\": 5}",
+      "reasoning_returned_chars": 0,
+      "finish_reason": "stop",
+      "usage": {
+        "total_tokens": 844,
+        "prompt_tokens": 143,
+        "completion_tokens": 701,
+        "completion_tokens_details": {
+          "reasoning_tokens": 690
+        },
+        "cost": 0.032012211868000004
+      },
+      "reasoning_tokens": 690,
+      "usage_cost": 0.032012211868000004,
+      "catalog_cost_rub": 0.032012211868000004,
+      "answer": {
+        "reachable": true,
+        "squares": 5
+      },
+      "latency_ms": 4044
+    }
+  ],
+  "spent_rub": 1.054644489804399
+}

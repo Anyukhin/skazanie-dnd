@@ -44,6 +44,81 @@ export function questProgressEvidenceFor(state = {}, questId = '', { includeCons
   return facts.slice(legacySteps)
 }
 
+/**
+ * Навыки, успех которых может что-то открыть. Атлетика или Скрытность — способ
+ * сделать, а не узнать; их успех уликой не становится.
+ */
+const DISCOVERY_SKILLS = new Set(['perception', 'investigation', 'insight', 'survival', 'history', 'arcana', 'religion', 'nature', 'medicine'])
+
+/** Слова, совпадение по которым ещё не говорит, что действие про это дело. */
+const GENERIC_TOPIC_STEMS = new Set([
+  'город', 'начат', 'занят', 'собст', 'делам', 'отряд', 'героя', 'герои', 'место', 'места', 'своих', 'своим',
+  'котор', 'этого', 'чтобы', 'после', 'перед', 'может', 'нужно', 'сцена', 'сцены', 'локац', 'задан', 'поруч',
+  'квест', 'найти', 'узнат', 'добит', 'попыт', 'сдела',
+])
+
+/**
+ * Основы значимых слов: первые пять букв слов длиной от пяти. Падеж у таких
+ * слов меняет хвост, а не начало («рыбаков/рыбаки», «исчезновений/исчезли»
+ * расходятся позже пятой буквы лишь изредка — это сознательный компромисс).
+ */
+function topicStems(value) {
+  return new Set((String(value ?? '').normalize('NFKC').toLocaleLowerCase('ru').match(/[\p{L}]{5,}/gu) ?? [])
+    .map((word) => word.slice(0, 5))
+    .filter((stem) => !GENERIC_TOPIC_STEMS.has(stem)))
+}
+
+/**
+ * Улики свободного действия. Успешная проверка познавательного навыка, слова
+ * которой совпали с активным поручением, становится фактом `discovery` о
+ * сущности этого поручения. Именно такие факты `questProgressEvidenceFor`
+ * принимает как доказательство продвижения: до этого их не создавал ни один
+ * модуль, и поручение могло закрыться только провалом или отказом.
+ *
+ * Возвращаются команды, а не факты: записать их нужно отдельным коммитом после
+ * проверки, потому что доказательство требует, чтобы событие-источник было
+ * зафиксировано строго раньше факта. Id детерминирован от события проверки и
+ * поручения — повтор того же хода не создаёт второй улики.
+ *
+ * @param {Record<string, any>} state
+ * @param {{ checkEvent?: Record<string, any>|null, skill?: string, actionText?: string, goalSummary?: string, skillLabel?: string }} input
+ * @returns {Array<Record<string, any>>}
+ */
+export function freeActionDiscoveryCommands(state = {}, { checkEvent = null, skill = '', actionText = '', goalSummary = '', skillLabel = '' } = {}) {
+  const sourceEventId = String(checkEvent?.event_id ?? '')
+  if (!sourceEventId || checkEvent?.payload?.success !== true) return []
+  if (!DISCOVERY_SKILLS.has(String(skill ?? '').replace(/_/gu, '-'))) return []
+  const spoken = topicStems(`${actionText} ${goalSummary}`)
+  if (!spoken.size) return []
+  const entities = new Set((state.worldMemory?.entities ?? []).map((entity) => String(entity?.id ?? '')))
+  const commands = []
+  for (const quest of state.worldMemory?.quests ?? []) {
+    // Скрытое от отряда поручение не получает улики: её текст ушёл бы игрокам.
+    if (quest?.status !== 'active' || quest.visibility === 'gm_only') continue
+    const topic = topicStems([quest.title, quest.summary, ...(quest.objectives ?? [])].join(' '))
+    if (![...spoken].some((stem) => topic.has(stem))) continue
+    const subjectId = (quest.entity_ids ?? []).map(String).find((entityId) => entities.has(entityId))
+    if (!subjectId) continue
+    const title = text(quest.title, 160).replace(/[.!?…]+$/u, '')
+    const rawGoal = text(goalSummary || actionText, 200).replace(/[.!?…]+$/u, '')
+    const goal = rawGoal.charAt(0).toLocaleLowerCase('ru') + rawGoal.slice(1)
+    commands.push({
+      command_type: 'RecordWorldFact',
+      fact: {
+        id: `fact-discovery-${createHash('sha256').update(`${sourceEventId}\u0000${quest.id}`).digest('hex').slice(0, 24)}`,
+        subject_id: subjectId,
+        predicate: 'discovery',
+        object: 'clue',
+        summary: `Найдена зацепка по делу «${title}»: ${goal ? `${goal} — ` : ''}удачная проверка${skillLabel ? ` «${text(skillLabel, 40)}»` : ''} принесла результат.`,
+        visibility: 'party',
+        source_event_ids: [sourceEventId],
+      },
+    })
+    if (commands.length >= 2) break
+  }
+  return commands
+}
+
 export const WORLD_MEMORY_COMMAND_TYPES = new Set([
   'UpsertWorldEntity', 'RecordWorldFact', 'RevealWorldFact', 'RecordKnowledgeRevelation',
   'RecordWorldRelationship', 'UpsertQuest', 'AdvanceQuestClock', 'ResolveQuest', 'InvalidateQuest',
@@ -962,14 +1037,35 @@ export function worldMemoryForViewer(input, viewer = {}) {
   }
 }
 
+/**
+ * Служебные слова вопроса. Без этого списка «что», «кто», «где» совпадали с
+ * любым текстом, где они встречаются, и вопрос о грифоне находил слух о шторме
+ * только потому, что в обоих есть «что». Список короткий и закрытый: в него
+ * входят местоимения, предлоги, союзы и вопросительные слова, но не имена —
+ * «Том» остаётся именем.
+ */
+const RETRIEVAL_STOP_WORDS = new Set([
+  'что', 'кто', 'где', 'как', 'чем', 'чём', 'это', 'эта', 'эти', 'этот', 'этой', 'этом', 'так', 'там', 'тут', 'для',
+  'при', 'без', 'над', 'под', 'про', 'или', 'его', 'её', 'она', 'они', 'оно', 'ему', 'ней', 'них', 'был', 'была',
+  'были', 'было', 'быть', 'есть', 'уже', 'ещё', 'еще', 'все', 'всё', 'вся', 'всех', 'если', 'когда', 'тот', 'той',
+  'тех', 'чтобы', 'сейчас', 'только', 'может', 'нам', 'вам', 'нас', 'вас', 'мне', 'меня', 'тебя', 'себя', 'свой',
+  'своя', 'свои', 'кого', 'кому', 'чего', 'какой', 'какие', 'какая', 'каков', 'почему', 'зачем', 'сколько', 'куда',
+  'откуда', 'тоже', 'также', 'очень', 'можно', 'нужно', 'надо', 'известно', 'расскажи', 'расскажите', 'сегодня',
+  'теперь', 'the', 'and', 'what', 'who', 'where', 'with', 'for', 'from', 'that', 'this',
+])
+
 function tokenize(value) {
-  return text(value, 8_000).toLocaleLowerCase('ru').split(/[^a-zа-яё0-9]+/iu).filter((token) => token.length >= 3).slice(0, 240)
+  return text(value, 8_000).toLocaleLowerCase('ru').split(/[^a-zа-яё0-9]+/iu)
+    .filter((token) => token.length >= 3 && !RETRIEVAL_STOP_WORDS.has(token)).slice(0, 240)
 }
 
 function stem(token) {
   let value = text(token, 120).toLocaleLowerCase('ru')
-  if (/^[а-яё]+$/u.test(value)) value = value.replace(/(?:иями|ями|ами|ого|ему|ыми|ими|иях|иях|ость|ости|ение|ений|ать|ять|ить|ешь|ете|ают|яют|ого|ему|ами|ях|ах|ов|ев|ий|ый|ая|ое|ие|ам|ом|ую|ы|и|а|я|е|о|у)$/u, '')
-  else value = value.replace(/(?:ization|ations|ation|ments|ment|ingly|ingly|ing|edly|ed|ies|es|s)$/u, '')
+  // Падежные хвосты «-ой/-ей/-ых/-их/-ым/-им/-ью/-ю/-остью» и мягкий знак
+  // срезаются, иначе «серой гнили» и «Серая гниль», «реликвию» и «реликвия»
+  // расходятся по основам.
+  if (/^[а-яё]+$/u.test(value)) value = value.replace(/(?:иями|ями|ами|ого|ему|ыми|ими|иях|остью|остей|ость|ости|ение|ений|ать|ять|ить|ешь|ете|ают|яют|ях|ах|ов|ев|ий|ый|ой|ей|ых|их|ым|им|ью|ая|ое|ие|ам|ом|ую|ь|ю|ы|и|а|я|е|о|у)$/u, '')
+  else value = value.replace(/(?:ization|ations|ation|ments|ment|ingly|ing|edly|ed|ies|es|s)$/u, '')
   return value.length >= 3 ? value : text(token, 120).toLocaleLowerCase('ru')
 }
 
@@ -984,13 +1080,17 @@ const SYNONYM_GROUPS = [
 
 const SYNONYM_INDEX = new Map(SYNONYM_GROUPS.flatMap((group, index) => group.map((word) => [stem(word), index])))
 
-function vector(tokens) {
+/** Основы документа считаются один раз: и для совпадений, и для косинуса. */
+function stemProfile(tokens) {
+  const stems = tokens.map(stem)
   const counts = new Map()
-  for (const token of tokens) {
-    const key = stem(token)
-    counts.set(key, (counts.get(key) ?? 0) + 1)
+  for (const key of stems) counts.set(key, (counts.get(key) ?? 0) + 1)
+  const groups = new Set()
+  for (const key of stems) {
+    const group = SYNONYM_INDEX.get(key)
+    if (group != null) groups.add(group)
   }
-  return counts
+  return { stems, set: new Set(stems), counts, groups }
 }
 
 function vectorCosine(left, right) {
@@ -1003,46 +1103,137 @@ function vectorCosine(left, right) {
   return leftMagnitude && rightMagnitude ? dot / Math.sqrt(leftMagnitude * rightMagnitude) : 0
 }
 
-function semanticScore(queryTokens, documentTokens) {
-  if (!queryTokens.length) return 0
-  const queryStems = queryTokens.map(stem)
-  const documentStems = documentTokens.map(stem)
-  const documentSet = new Set(documentStems)
+/** Лексическая оценка и число точных совпадений основ (для поручений-узлов). */
+function semanticMatch(query, document) {
+  if (!query.stems.length) return { score: 0, exact: 0 }
   let exact = 0
   let synonym = 0
-  for (const queryStem of queryStems) {
-    if (documentSet.has(queryStem)) exact += 1
+  for (const queryStem of query.stems) {
+    if (document.set.has(queryStem)) exact += 1
     const group = SYNONYM_INDEX.get(queryStem)
-    if (group != null && documentStems.some((candidate) => SYNONYM_INDEX.get(candidate) === group)) synonym += 1
+    if (group != null && document.groups.has(group)) synonym += 1
   }
-  return exact * 12 + synonym * 4 + Math.round(vectorCosine(vector(queryTokens), vector(documentTokens)) * 10_000) / 1_000
+  return { score: exact * 12 + synonym * 4 + Math.round(vectorCosine(query.counts, document.counts) * 10_000) / 1_000, exact }
 }
 
 function retrievalRecords(memory) {
   const entities = new Map(memory.entities.map((entity) => [entity.id, entity]))
   const entityName = (entityId) => entities.get(entityId)?.name ?? ''
   return [
-    ...memory.facts.map((fact) => ({ kind: 'fact', id: fact.id, summary: fact.summary || fact.object, source_event_ids: fact.source_event_ids, fact, entity: entities.get(fact.subject_id) ?? null, search: `${entityName(fact.subject_id)} ${(entities.get(fact.subject_id)?.aliases ?? []).join(' ')} ${fact.predicate} ${fact.object} ${fact.summary}` })),
-    ...memory.relationships.map((relationship) => ({ kind: 'relationship', id: relationship.id, summary: relationship.summary, source_event_ids: relationship.source_event_ids, relationship, search: `${entityName(relationship.from_entity_id)} ${relationship.relation} ${entityName(relationship.to_entity_id)} ${relationship.summary}` })),
-    ...memory.quests.map((quest) => ({ kind: 'quest', id: quest.id, summary: quest.summary, source_event_ids: [], quest, search: `${quest.title} ${quest.summary} ${quest.objectives.join(' ')}` })),
-    ...memory.threads.map((thread) => ({ kind: 'thread', id: thread.id, summary: thread.summary, source_event_ids: thread.source_event_ids, thread, search: `${thread.title} ${thread.summary} ${thread.entity_ids.map(entityName).join(' ')}` })),
-    ...memory.epistemic_claims.map((claim) => ({ kind: claim.kind, id: claim.id, summary: claim.summary || claim.claim, source_event_ids: claim.source_event_ids, claim, search: `${entityName(claim.holder_entity_id)} ${entityName(claim.subject_entity_id)} ${claim.predicate} ${claim.claim} ${claim.summary}` })),
-    ...memory.summaries.map((summary) => ({ kind: `${summary.kind}_summary`, id: summary.id, summary: summary.summary, source_event_ids: summary.source_event_ids, narrative_summary: summary, search: `${summary.title} ${summary.summary}` })),
+    ...memory.facts.map((fact) => ({ kind: 'fact', id: fact.id, summary: fact.summary || fact.object, source_event_ids: fact.source_event_ids, fact, entity: entities.get(fact.subject_id) ?? null, anchors: [fact.subject_id], search: `${entityName(fact.subject_id)} ${(entities.get(fact.subject_id)?.aliases ?? []).join(' ')} ${fact.predicate} ${fact.object} ${fact.summary}` })),
+    ...memory.relationships.map((relationship) => ({ kind: 'relationship', id: relationship.id, summary: relationship.summary, source_event_ids: relationship.source_event_ids, relationship, anchors: [relationship.from_entity_id, relationship.to_entity_id], search: `${entityName(relationship.from_entity_id)} ${relationship.relation} ${entityName(relationship.to_entity_id)} ${relationship.summary}` })),
+    ...memory.quests.map((quest) => ({ kind: 'quest', id: quest.id, summary: quest.summary, source_event_ids: [], quest, anchors: quest.entity_ids, hub: true, search: `${quest.title} ${quest.summary} ${quest.objectives.join(' ')}` })),
+    ...memory.threads.map((thread) => ({ kind: 'thread', id: thread.id, summary: thread.summary, source_event_ids: thread.source_event_ids, thread, anchors: thread.entity_ids, hub: true, search: `${thread.title} ${thread.summary} ${thread.entity_ids.map(entityName).join(' ')}` })),
+    ...memory.epistemic_claims.map((claim) => ({ kind: claim.kind, id: claim.id, summary: claim.summary || claim.claim, source_event_ids: claim.source_event_ids, claim, anchors: [claim.holder_entity_id, claim.subject_entity_id].filter(Boolean), search: `${entityName(claim.holder_entity_id)} ${entityName(claim.subject_entity_id)} ${claim.predicate} ${claim.claim} ${claim.summary}` })),
+    ...memory.summaries.map((summary) => ({ kind: `${summary.kind}_summary`, id: summary.id, summary: summary.summary, source_event_ids: summary.source_event_ids, narrative_summary: summary, anchors: summary.entity_ids, search: `${summary.title} ${summary.summary}` })),
   ]
 }
 
+/** Доля силы, которую сущность передаёт соседу на один шаг графа. */
+const NEIGHBOUR_DECAY = 0.5
+
 /**
- * Deterministic, semantic-like retrieval. Visibility and time filtering happen
- * in worldMemoryForViewer before aliases, stems, synonym groups and cosine
- * scoring are evaluated, so ranking cannot become a hidden-fact side channel.
+ * Сущности, названные в вопросе: все основы имени или одного из псевдонимов
+ * нашлись среди основ вопроса. Сила — 12 за каждую основу формы, как у
+ * точного совпадения слова. Частичное совпадение («Кривонос» без псевдонима)
+ * сюда не входит: оно остаётся лексическим совпадением факта.
  */
-export function retrieveWorldMemory(input, viewer = {}, { query = '', limit = 8, asOfMinutes: requestedTime } = {}) {
+function namedEntities(memory, query) {
+  const named = new Map()
+  for (const entity of memory.entities) {
+    let best = 0
+    for (const form of [entity.name, ...(entity.aliases ?? [])]) {
+      const stems = [...new Set(tokenize(form).map(stem))]
+      if (stems.length && stems.every((item) => query.set.has(item))) best = Math.max(best, stems.length * 12)
+    }
+    if (best > 0) named.set(entity.id, best)
+  }
+  return named
+}
+
+/**
+ * Один шаг по графу памяти (распространение активации). Рёбра — только из
+ * уже отфильтрованной для зрителя проекции: активные видимые отношения и общие
+ * видимые поручения и нити (`entity_ids`). Скрытое ребро до этой функции не
+ * доходит, поэтому и переход через него невозможен. Сила сущности:
+ * - названная в вопросе — своя полная сила;
+ * - сосед названной — половина её силы;
+ * - сущность поручения или нити, совпавших с вопросом хотя бы одним словом, —
+ *   половина оценки этого поручения.
+ * Запись получает надбавку, равную наибольшей силе своих сущностей. Поэтому
+ * записи о названной сущности идут первыми, о соседях — следом, а случайное
+ * совпадение одного слова — после них. Дальше одного шага сила не идёт.
+ */
+function neighbourActivation(memory, named, hubs) {
+  const visibleEntities = new Set(memory.entities.map((entity) => entity.id))
+  const activation = new Map()
+  const raise = (entityId, value) => {
+    if (!visibleEntities.has(entityId) || value <= 0) return
+    if (value > (activation.get(entityId) ?? 0)) activation.set(entityId, value)
+  }
+  for (const [entityId, value] of named) raise(entityId, value)
+  if (named.size) {
+    for (const relationship of memory.relationships) {
+      const from = named.get(relationship.from_entity_id)
+      const to = named.get(relationship.to_entity_id)
+      if (from) raise(relationship.to_entity_id, from * NEIGHBOUR_DECAY)
+      if (to) raise(relationship.from_entity_id, to * NEIGHBOUR_DECAY)
+    }
+    for (const group of [...memory.quests, ...memory.threads]) {
+      const strongest = Math.max(0, ...group.entity_ids.map((entityId) => named.get(entityId) ?? 0))
+      if (strongest) for (const entityId of group.entity_ids) raise(entityId, strongest * NEIGHBOUR_DECAY)
+    }
+  }
+  for (const hub of hubs) for (const entityId of hub.anchors) raise(entityId, hub.score * NEIGHBOUR_DECAY)
+  return activation
+}
+
+/**
+ * Deterministic, semantic-like retrieval with one graph hop. Visibility and
+ * time filtering happen in worldMemoryForViewer before aliases, stems, synonym
+ * groups, cosine scoring and neighbour expansion are evaluated, so neither
+ * ranking nor expansion can become a hidden-fact side channel.
+ *
+ * Если ни одна запись не совпала с вопросом ни одним словом, поведение задаёт
+ * `whenUnmatched`:
+ * - `'all'` (по умолчанию, прежний контракт) — первые записи по id. На это
+ *   опирается разговор NPC: на «Что нового?» он получает свои слухи;
+ * - `'none'` — честный пустой ответ «ничего не известно». Его используют
+ *   справочные вызовы Хранителя знаний ниже.
+ * Пустой вопрос в обоих режимах возвращает записи по порядку id.
+ *
+ * `neighbours: false` отключает шаг по графу (для замеров и отладки).
+ */
+export function retrieveWorldMemory(input, viewer = {}, { query = '', limit = 8, asOfMinutes: requestedTime, neighbours = true, whenUnmatched = 'all' } = {}) {
   const memory = worldMemoryForViewer(input, { ...viewer, ...(requestedTime == null ? {} : { asOfMinutes: requestedTime }) })
-  const queryTokens = tokenize(query)
-  const records = retrievalRecords(memory).map((record) => ({ ...record, score: semanticScore(queryTokens, tokenize(record.search)) }))
+  const queryProfile = stemProfile(tokenize(query))
+  const maximum = Math.max(1, Math.min(30, integer(limit, 8)))
+  const strip = ({ search, anchors, hub, lexical, exact, ...record }) => clone(record)
+  const records = retrievalRecords(memory)
+  const unordered = () => records
+    .sort((left, right) => left.id.localeCompare(right.id))
+    .slice(0, maximum)
+    .map((record) => strip({ ...record, score: 0 }))
+  if (!queryProfile.stems.length) return unordered()
+  const scored = records.map((record) => {
+    const match = semanticMatch(queryProfile, stemProfile(tokenize(record.search)))
+    return { ...record, lexical: match.score, exact: match.exact }
+  })
+  if (!scored.some((record) => record.lexical > 0)) return whenUnmatched === 'none' ? [] : unordered()
+  const activation = neighbours
+    ? neighbourActivation(memory, namedEntities(memory, queryProfile), scored
+      .filter((record) => record.hub && record.exact > 0)
+      .map((record) => ({ anchors: record.anchors, score: record.lexical })))
+    : new Map()
+  return scored
+    .map((record) => ({
+      ...record,
+      score: record.lexical + Math.max(0, ...record.anchors.map((entityId) => activation.get(entityId) ?? 0)),
+    }))
+    .filter((record) => record.score > 0)
     .sort((left, right) => right.score - left.score || left.id.localeCompare(right.id))
-  const matched = queryTokens.length && records.some((record) => record.score > 0) ? records.filter((record) => record.score > 0) : records
-  return matched.slice(0, Math.max(1, Math.min(30, integer(limit, 8)))).map(({ search, ...record }) => clone(record))
+    .slice(0, maximum)
+    .map(strip)
 }
 
 /**
@@ -1062,7 +1253,7 @@ export function retrieveKnownWorldMemory(input, { viewer = {}, query = '', limit
     entries.push(entry)
     knownByFact.set(entry.fact_id, entries)
   }
-  return retrieveWorldMemory(memory, { isAdmin: true }, { query, limit, asOfMinutes: atMinutes ?? asOfMinutes })
+  return retrieveWorldMemory(memory, { isAdmin: true }, { query, limit, asOfMinutes: atMinutes ?? asOfMinutes, whenUnmatched: 'none' })
     .filter((entry) => entry.kind === 'fact')
     .map((entry) => ({
       ...clone(entry.fact), entity: clone(entry.entity),
@@ -1076,7 +1267,7 @@ export function retrieveKnownWorldMemory(input, { viewer = {}, query = '', limit
 
 /** Compatibility API used by the deterministic Worldkeeper. */
 export function knownWorldLore(input, query = '', viewer = { isAdmin: true }) {
-  return retrieveWorldMemory(input, viewer, { query, limit: 30 })
+  return retrieveWorldMemory(input, viewer, { query, limit: 30, whenUnmatched: 'none' })
     .filter((entry) => entry.kind === 'fact')
     .map((entry) => ({ ...clone(entry.fact), entity: clone(entry.entity) }))
 }

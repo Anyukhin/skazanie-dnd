@@ -1,0 +1,466 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-10-01T15:44:21.285Z",
+  "model": "openai/gpt-6-luna",
+  "reasoning": {
+    "enabled": false
+  },
+  "variants": [
+    "as-is",
+    "examples-user"
+  ],
+  "passes": 1,
+  "note": "Шесть ходов одной сцены на роль; на каждом ходе варианты раскладки вызываются по очереди. stable-first — перестановка тех же данных в стенде, модули не менялись.",
+  "dynamic_keys": [
+    "context_metadata",
+    "state_version",
+    "turn",
+    "round",
+    "PLAYER_ACTION",
+    "player_action",
+    "player_message",
+    "player_intent",
+    "structured_result",
+    "resolved_check",
+    "dialogue",
+    "RECENT_EVENTS",
+    "RECENT_OUTCOMES",
+    "pacing",
+    "world_clock",
+    "visible_events",
+    "visible_state_changes",
+    "permitted_npc_reactions",
+    "narration_constraints",
+    "recent_conversation",
+    "recent_party_conversation"
+  ],
+  "dynamic_sections": [
+    "response_plan",
+    "confirmed_event_summaries",
+    "avoid_repeated_phrases",
+    "previous_narration_feedback"
+  ],
+  "calls": [
+    {
+      "role": "narrator",
+      "variant": "as-is",
+      "pass": 1,
+      "turn": 0,
+      "system_chars": 5065,
+      "total_chars": 7081,
+      "common_prefix_chars_with_previous": null,
+      "ok": true,
+      "usage": {
+        "total_tokens": 1899,
+        "prompt_tokens": 1883,
+        "prompt_tokens_details": {
+          "cached_tokens": 1880,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 16,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.002943776524
+      },
+      "usage_cost": 0.002943776524,
+      "prompt_tokens": 1883,
+      "cached_tokens": 1880,
+      "completion_tokens": 16,
+      "latency_ms": 1978
+    },
+    {
+      "role": "narrator",
+      "variant": "examples-user",
+      "pass": 1,
+      "turn": 0,
+      "system_chars": 5065,
+      "total_chars": 7081,
+      "common_prefix_chars_with_previous": null,
+      "ok": true,
+      "usage": {
+        "total_tokens": 1899,
+        "prompt_tokens": 1883,
+        "prompt_tokens_details": {
+          "cached_tokens": 1880,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 16,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.002943776524
+      },
+      "usage_cost": 0.002943776524,
+      "prompt_tokens": 1883,
+      "cached_tokens": 1880,
+      "completion_tokens": 16,
+      "latency_ms": 1683
+    },
+    {
+      "role": "narrator",
+      "variant": "as-is",
+      "pass": 1,
+      "turn": 1,
+      "system_chars": 5065,
+      "total_chars": 7089,
+      "common_prefix_chars_with_previous": 5336,
+      "ok": true,
+      "usage": {
+        "total_tokens": 1909,
+        "prompt_tokens": 1884,
+        "prompt_tokens_details": {
+          "cached_tokens": 1881,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 25,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0034336817684
+      },
+      "usage_cost": 0.0034336817684,
+      "prompt_tokens": 1884,
+      "cached_tokens": 1881,
+      "completion_tokens": 25,
+      "latency_ms": 1659
+    },
+    {
+      "role": "narrator",
+      "variant": "examples-user",
+      "pass": 1,
+      "turn": 1,
+      "system_chars": 5065,
+      "total_chars": 7089,
+      "common_prefix_chars_with_previous": 5336,
+      "ok": true,
+      "usage": {
+        "total_tokens": 1903,
+        "prompt_tokens": 1884,
+        "prompt_tokens_details": {
+          "cached_tokens": 1881,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 19,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0031078024484
+      },
+      "usage_cost": 0.0031078024484,
+      "prompt_tokens": 1884,
+      "cached_tokens": 1881,
+      "completion_tokens": 19,
+      "latency_ms": 3032
+    },
+    {
+      "role": "narrator",
+      "variant": "as-is",
+      "pass": 1,
+      "turn": 2,
+      "system_chars": 6096,
+      "total_chars": 8580,
+      "common_prefix_chars_with_previous": 5019,
+      "ok": true,
+      "usage": {
+        "total_tokens": 2373,
+        "prompt_tokens": 2342,
+        "prompt_tokens_details": {
+          "cached_tokens": 2339,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 31,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.004257070183600001
+      },
+      "usage_cost": 0.004257070183600001,
+      "prompt_tokens": 2342,
+      "cached_tokens": 2339,
+      "completion_tokens": 31,
+      "latency_ms": 1867
+    },
+    {
+      "role": "narrator",
+      "variant": "examples-user",
+      "pass": 1,
+      "turn": 2,
+      "system_chars": 5065,
+      "total_chars": 8584,
+      "common_prefix_chars_with_previous": 5078,
+      "ok": true,
+      "usage": {
+        "total_tokens": 2378,
+        "prompt_tokens": 2346,
+        "prompt_tokens_details": {
+          "cached_tokens": 1298,
+          "cache_write_tokens": 1045,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 32,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.017369910888200002
+      },
+      "usage_cost": 0.017369910888200002,
+      "prompt_tokens": 2346,
+      "cached_tokens": 1298,
+      "completion_tokens": 32,
+      "latency_ms": 1888
+    },
+    {
+      "role": "narrator",
+      "variant": "as-is",
+      "pass": 1,
+      "turn": 3,
+      "system_chars": 5065,
+      "total_chars": 7303,
+      "common_prefix_chars_with_previous": 5019,
+      "ok": true,
+      "usage": {
+        "total_tokens": 1969,
+        "prompt_tokens": 1943,
+        "prompt_tokens_details": {
+          "cached_tokens": 1940,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 26,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0035520845880000003
+      },
+      "usage_cost": 0.0035520845880000003,
+      "prompt_tokens": 1943,
+      "cached_tokens": 1940,
+      "completion_tokens": 26,
+      "latency_ms": 1820
+    },
+    {
+      "role": "narrator",
+      "variant": "examples-user",
+      "pass": 1,
+      "turn": 3,
+      "system_chars": 5065,
+      "total_chars": 7303,
+      "common_prefix_chars_with_previous": 5078,
+      "ok": true,
+      "usage": {
+        "total_tokens": 1969,
+        "prompt_tokens": 1943,
+        "prompt_tokens_details": {
+          "cached_tokens": 1940,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 26,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0035520845880000003
+      },
+      "usage_cost": 0.0035520845880000003,
+      "prompt_tokens": 1943,
+      "cached_tokens": 1940,
+      "completion_tokens": 26,
+      "latency_ms": 1965
+    },
+    {
+      "role": "narrator",
+      "variant": "as-is",
+      "pass": 1,
+      "turn": 4,
+      "system_chars": 5065,
+      "total_chars": 7088,
+      "common_prefix_chars_with_previous": 5271,
+      "ok": true,
+      "usage": {
+        "total_tokens": 1903,
+        "prompt_tokens": 1885,
+        "prompt_tokens_details": {
+          "cached_tokens": 1882,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 18,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0030545754928
+      },
+      "usage_cost": 0.0030545754928,
+      "prompt_tokens": 1885,
+      "cached_tokens": 1882,
+      "completion_tokens": 18,
+      "latency_ms": 1532
+    },
+    {
+      "role": "narrator",
+      "variant": "examples-user",
+      "pass": 1,
+      "turn": 4,
+      "system_chars": 5065,
+      "total_chars": 7088,
+      "common_prefix_chars_with_previous": 5271,
+      "ok": true,
+      "usage": {
+        "total_tokens": 1903,
+        "prompt_tokens": 1885,
+        "prompt_tokens_details": {
+          "cached_tokens": 1882,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 18,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0030545754928
+      },
+      "usage_cost": 0.0030545754928,
+      "prompt_tokens": 1885,
+      "cached_tokens": 1882,
+      "completion_tokens": 18,
+      "latency_ms": 1910
+    },
+    {
+      "role": "narrator",
+      "variant": "as-is",
+      "pass": 1,
+      "turn": 5,
+      "system_chars": 6306,
+      "total_chars": 8768,
+      "common_prefix_chars_with_previous": 5019,
+      "ok": true,
+      "usage": {
+        "total_tokens": 2389,
+        "prompt_tokens": 2364,
+        "prompt_tokens_details": {
+          "cached_tokens": 2361,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 25,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0039550886804
+      },
+      "usage_cost": 0.0039550886804,
+      "prompt_tokens": 2364,
+      "cached_tokens": 2361,
+      "completion_tokens": 25,
+      "latency_ms": 2327
+    },
+    {
+      "role": "narrator",
+      "variant": "examples-user",
+      "pass": 1,
+      "turn": 5,
+      "system_chars": 5065,
+      "total_chars": 8772,
+      "common_prefix_chars_with_previous": 5078,
+      "ok": true,
+      "usage": {
+        "total_tokens": 2403,
+        "prompt_tokens": 2368,
+        "prompt_tokens_details": {
+          "cached_tokens": 1298,
+          "cache_write_tokens": 1067,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 35,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0178315732582
+      },
+      "usage_cost": 0.0178315732582,
+      "prompt_tokens": 2368,
+      "cached_tokens": 1298,
+      "completion_tokens": 35,
+      "latency_ms": 2043
+    }
+  ],
+  "summary": {
+    "narrator|as-is": {
+      "role": "narrator",
+      "variant": "as-is",
+      "calls": 6,
+      "prompt_tokens_avg": 2050,
+      "cached_tokens_avg": 2047,
+      "cached_ratio": 0.999,
+      "cached_ratio_new_turns": 0.999,
+      "cached_ratio_exact_repeat": null,
+      "rub_per_100_new_turns": 0.365,
+      "input_rub_per_100_new_turns": 0.229,
+      "common_prefix_share_avg": 0.668,
+      "system_chars": 5065,
+      "rub_per_100_calls": 0.353,
+      "input_rub_per_100_calls": 0.226,
+      "latency_p50_ms": 1820
+    },
+    "narrator|examples-user": {
+      "role": "narrator",
+      "variant": "examples-user",
+      "calls": 6,
+      "prompt_tokens_avg": 2052,
+      "cached_tokens_avg": 1697,
+      "cached_ratio": 0.827,
+      "cached_ratio_new_turns": 0.796,
+      "cached_ratio_exact_repeat": null,
+      "rub_per_100_new_turns": 0.898,
+      "input_rub_per_100_new_turns": 0.642,
+      "common_prefix_share_avg": 0.672,
+      "system_chars": 5065,
+      "rub_per_100_calls": 0.798,
+      "input_rub_per_100_calls": 0.57,
+      "latency_p50_ms": 1910
+    }
+  },
+  "spent_rub": 0.0690560004368
+}

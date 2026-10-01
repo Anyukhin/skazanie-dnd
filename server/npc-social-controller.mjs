@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url'
 
 import { ensureNpcSocialState, npcProfileAtWorldTime, relationshipTier, npcBehaviorPolicy } from './npc-social.mjs'
 import { agentContextMetadata, boundedSelectionMetadata, campaignConceptForAgent, sceneContextForAgent } from './agent-context.mjs'
-import { promptForModel } from './model-style-profiles.mjs'
+import { NPC_SOCIAL_RESPONSE_JSON_SCHEMA } from './llm-json-schemas.mjs'
+import { promptForModelRole } from './model-style-profiles.mjs'
 import { buildDataOnlyContext } from './security.mjs'
 import { tavernTableMood } from './tavern-life.mjs'
 import { retrieveWorldMemory } from './world-memory.mjs'
@@ -374,11 +375,15 @@ export class NpcSocialController {
     try {
       const result = await this.llmClient.completeJson({
         messages: [
-          { role: 'system', content: promptForModel(prompt, this.llmClient) },
+          { role: 'system', content: promptForModelRole(prompt, this.llmClient, 'npc') },
           { role: 'user', content: buildDataOnlyContext({ npc_social_brief: briefFor(state, profile, String(playerId), message, checkOutcome) }) },
         ],
         temperature: 0.7,
         maxTokens: 700,
+        // Творческая роль: профиль рассуждений лидера кампании её касается.
+        role: 'npc',
+        // Форма ответа на стороне провайдера; structurallyValidSocialResponse всё равно проверяет.
+        jsonSchema: NPC_SOCIAL_RESPONSE_JSON_SCHEMA,
       }, { timeoutMs: 20_000 })
       if (!structurallyValidSocialResponse(result)) throw new Error('NPC_SOCIAL_RESPONSE_INVALID_SHAPE')
       return {

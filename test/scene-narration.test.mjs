@@ -26,6 +26,17 @@ test('combined narrator keeps committed arrival and auto-created merchant', () =
   assert.equal(hasSceneEvent(events), true)
 })
 
+test('фразы архитектора без точки не сливаются в одно предложение', () => {
+  const narration = sceneNarration([{
+    event_type: 'SceneAdvanced',
+    payload: {
+      transition: 'Тордин покидает причал и добирается до таверны «Морской Змей»',
+      arrival: 'В таверне пахнет солью и дешёвым элем!',
+    },
+  }], {})
+  assert.equal(narration, 'Тордин покидает причал и добирается до таверны «Морской Змей».\n\nВ таверне пахнет солью и дешёвым элем!')
+})
+
 test('non-scene batch is ignored', () => {
   assert.equal(hasSceneEvent([{ event_type: 'MerchantCreated' }]), false)
   assert.equal(sceneNarration([{ event_type: 'MerchantCreated' }], {}), null)

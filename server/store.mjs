@@ -358,7 +358,7 @@ function campaignSettingsFile(code) {
 }
 
 export function getCampaignAiSettings(code) {
-  const value = readJson(campaignSettingsFile(code), { model: '', narratorStyle: 'neutral', improvMode: 'story' })
+  const value = readJson(campaignSettingsFile(code), { model: '', narratorStyle: 'neutral', improvMode: 'story', reasoningLevel: 'auto' })
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new StorageCorruptionError(campaignSettingsFile(code), new Error('Некорректная структура настроек ИИ'))
   }
@@ -367,6 +367,8 @@ export function getCampaignAiSettings(code) {
     narratorStyle: String(value.narratorStyle ?? 'neutral').trim(),
     // Кампании, созданные до появления режима импровизации, читаются как 'story'.
     improvMode: String(value.improvMode ?? 'story').trim(),
+    // До появления выбора рассуждений кампании жили на профиле сервера — это 'auto'.
+    reasoningLevel: String(value.reasoningLevel ?? 'auto').trim(),
   }
 }
 
@@ -378,6 +380,7 @@ export function saveCampaignAiSettings(code, settings) {
     model: String(settings.model ?? '').trim(),
     narratorStyle: String(settings.narratorStyle ?? 'neutral').trim(),
     improvMode: String(settings.improvMode ?? 'story').trim(),
+    reasoningLevel: String(settings.reasoningLevel ?? 'auto').trim(),
     updatedAt: new Date().toISOString(),
   }
   atomicWrite(campaignSettingsFile(code), value)

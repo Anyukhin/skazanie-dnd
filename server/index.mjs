@@ -34,9 +34,11 @@ import {
 import {
   IMPROV_MODES,
   NARRATOR_STYLES,
+  REASONING_LEVELS,
   currentImprovMode,
   normalizeImprovMode,
   normalizeNarratorStyle,
+  normalizeReasoningLevel,
   runWithCampaignAiSettings,
 } from './campaign-ai-context.mjs'
 import { DiceService } from './dice-service.mjs'
@@ -66,7 +68,13 @@ import {
   rulesetProfile,
 } from './ruleset-config.mjs'
 import { LoreAuthor } from './lore-author.mjs'
-import { reasoningProfileFor } from './model-style-profiles.mjs'
+import {
+  RECOMMENDED_MODEL,
+  SELECTABLE_EXTRA_MODELS,
+  modelOptionFor,
+  reasoningLevelAllowedFor,
+  reasoningProfileFor,
+} from './model-style-profiles.mjs'
 import { PostCommitCoordinator } from './post-commit-coordinator.mjs'
 import {
   AuthoritativeExecutor,
@@ -91,7 +99,7 @@ import { CombatTurnCoordinator, combatTurnClockForState } from './combat-turn-co
 import { FileTraceStore, buildTurnExplanation, isMechanicalTrace } from './trace-store.mjs'
 import { createSceneTransition } from './adventure-director.mjs'
 import { SCENE_ARCHITECT_AGENT_ID, SceneArchitectAgent } from './scene-architect.mjs'
-import { proposeAgentInteraction, resolvePartyDecision } from './player-request-router.mjs'
+import { proposeAgentInteraction, proposeRoutedTravel, resolvePartyDecision } from './player-request-router.mjs'
 import { planHeroCombatCommand } from './party-tactics.mjs'
 import { abandonableQuest, classifyPartyDecision } from './party-exit-intent.mjs'
 import { finishQuestDecision, questDecisionChronicleEntry, requestQuestDecision } from './quest-decisions.mjs'
@@ -184,11 +192,12 @@ const port = Number(process.env.AGENT_PORT || 8787)
 const host = process.env.AGENT_HOST || '0.0.0.0'
 const apiKey = process.env.ROUTERAI_API_KEY || ''
 const baseUrl = (process.env.ROUTERAI_BASE_URL || 'https://routerai.ru/api/v1').replace(/\/$/, '')
-const model = process.env.DND_AI_MODEL || 'z-ai/glm-5.3-flash'
-const fallbackModels = [...new Set(String(process.env.DND_AI_FALLBACK_MODELS || 'google/gemini-2.5-flash-lite,deepseek/deepseek-v4-flash,z-ai/glm-5.2,openai/gpt-4.1-nano')
+// Умолчание — по перебору 2026-10-01 (`docs/model-reasoning-sweep-2026-10-01.md`).
+const model = process.env.DND_AI_MODEL || 'openai/gpt-6-luna'
+const fallbackModels = [...new Set(String(process.env.DND_AI_FALLBACK_MODELS || 'google/gemini-2.5-flash-lite,z-ai/glm-5.3-flash,deepseek/deepseek-v4-flash,openai/gpt-4.1-nano')
   .split(',').map((value) => value.trim()).filter((value) => value && value !== model))].slice(0, 5)
 const automaticAiModels = [model, ...fallbackModels]
-const allowedAiModels = Object.freeze([...new Set([...automaticAiModels, 'meta/muse-spark-1.3'])])
+const allowedAiModels = Object.freeze([...new Set([...automaticAiModels, ...SELECTABLE_EXTRA_MODELS])])
 const maxTokens = Number(process.env.DND_AI_MAX_TOKENS || 1200)
 const modelTimeoutMs = Number(process.env.DND_AI_MODEL_TIMEOUT_MS || 9_000)
 const modelProbeTimeoutMs = Number(process.env.DND_AI_PROBE_TIMEOUT_MS || 15_000)
@@ -4012,6 +4021,32 @@ const server = createServer((req, res) => {
   }
 
   const campaignAiSettingsMatch = parsedUrl.pathname.match(/^\/api\/campaigns\/([A-Za-z0-9-]+)\/settings$/)
+  /**
+   * Общий ответ настроек ИИ для GET и PATCH. Модель, которой больше нет в
+   * серверном списке, показывается как модель сервера; уровень рассуждений,
+   * который новая модель не принимает, — как `auto`.
+   */
+  const campaignAiSettingsPayload = (saved, campaignId, { canManage, rulesetState, rulesetEvents }) => {
+    const selectedModel = allowedAiModels.includes(saved.model) ? saved.model : model
+    const reasoningLevel = normalizeReasoningLevel(saved.reasoningLevel)
+    return {
+      settings: {
+        model: selectedModel,
+        narratorStyle: normalizeNarratorStyle(saved.narratorStyle),
+        improvMode: normalizeImprovMode(saved.improvMode),
+        reasoningLevel: reasoningLevelAllowedFor(selectedModel, reasoningLevel) ? reasoningLevel : 'auto',
+      },
+      availableModels: allowedAiModels,
+      modelOptions: allowedAiModels.map((modelId) => modelOptionFor(modelId, { recommended: RECOMMENDED_MODEL })),
+      reasoningLevels: Object.values(REASONING_LEVELS).map(({ id, label, description }) => ({ id, label, description })),
+      narratorStyles: Object.values(NARRATOR_STYLES).map(({ id, label }) => ({ id, label })),
+      improvModes: Object.values(IMPROV_MODES).map(({ id, label, description }) => ({ id, label, description })),
+      architectGenerationsToday: architectUsage.generationsToday(campaignId),
+      architectAlertThreshold: architectUsage.alertThreshold,
+      canManage,
+      ruleset: campaignRulesetSettings(rulesetState, rulesetEvents, { canManage }),
+    }
+  }
   if (campaignAiSettingsMatch && req.method === 'GET') {
     const user = requireUser(req, res); if (!user) return
     const campaignId = campaignAiSettingsMatch[1].toUpperCase()
@@ -4022,20 +4057,7 @@ const server = createServer((req, res) => {
     const saved = getCampaignAiSettings(campaignId)
     const canManage = user.role === 'admin' || campaignMembershipFor(user.id, campaignId)?.role === 'owner'
     const rulesetEvents = await eventStore.getEvents(campaignId)
-    return json(res, 200, {
-      settings: {
-        model: allowedAiModels.includes(saved.model) ? saved.model : model,
-        narratorStyle: normalizeNarratorStyle(saved.narratorStyle),
-        improvMode: normalizeImprovMode(saved.improvMode),
-      },
-      availableModels: allowedAiModels,
-      narratorStyles: Object.values(NARRATOR_STYLES).map(({ id, label }) => ({ id, label })),
-      improvModes: Object.values(IMPROV_MODES).map(({ id, label, description }) => ({ id, label, description })),
-      architectGenerationsToday: architectUsage.generationsToday(campaignId),
-      architectAlertThreshold: architectUsage.alertThreshold,
-      canManage,
-      ruleset: campaignRulesetSettings(loaded.state, rulesetEvents, { canManage }),
-    })
+    return json(res, 200, campaignAiSettingsPayload(saved, campaignId, { canManage, rulesetState: loaded.state, rulesetEvents }))
   }
   if (campaignAiSettingsMatch && req.method === 'PATCH') {
     const user = requireUser(req, res); if (!user) return
@@ -4063,6 +4085,18 @@ const server = createServer((req, res) => {
       }
       if (!Object.hasOwn(IMPROV_MODES, requestedImprovMode)) {
         return json(res, 400, { error: 'Неизвестный режим импровизации', code: 'IMPROV_MODE_INVALID' })
+      }
+      // Смена модели без явного уровня сбрасывает уровень, который новая модель
+      // не принимает, на `auto` — а не отвергает смену модели.
+      const currentReasoning = normalizeReasoningLevel(current.reasoningLevel)
+      const requestedReasoning = body.reasoningLevel === undefined
+        ? (reasoningLevelAllowedFor(requestedModel, currentReasoning) ? currentReasoning : 'auto')
+        : String(body.reasoningLevel).trim().toLowerCase()
+      if (!Object.hasOwn(REASONING_LEVELS, requestedReasoning)) {
+        return json(res, 400, { error: 'Неизвестный уровень рассуждений', code: 'REASONING_LEVEL_INVALID' })
+      }
+      if (!reasoningLevelAllowedFor(requestedModel, requestedReasoning)) {
+        return json(res, 400, { error: 'Выбранная модель не поддерживает этот уровень рассуждений', code: 'REASONING_LEVEL_NOT_SUPPORTED' })
       }
       let rulesetState = loaded.state
       const requestedRulesetId = body.rulesetId === undefined && body.ruleset_id === undefined
@@ -4101,6 +4135,7 @@ const server = createServer((req, res) => {
         model: requestedModel,
         narratorStyle: requestedStyle,
         improvMode: requestedImprovMode,
+        reasoningLevel: requestedReasoning,
       })
       // Смена режима меняет правила игры за столом, поэтому она не должна
       // случаться молча. Это запись в летопись комнаты, а не событие движка:
@@ -4114,16 +4149,18 @@ const server = createServer((req, res) => {
           text: `Режим импровизации изменён: ${IMPROV_MODES[requestedImprovMode].label} — ${IMPROV_MODES[requestedImprovMode].description}.`,
         }])
       }
-      return json(res, 200, {
-        settings: { model: saved.model, narratorStyle: saved.narratorStyle, improvMode: saved.improvMode },
-        availableModels: allowedAiModels,
-        narratorStyles: Object.values(NARRATOR_STYLES).map(({ id, label }) => ({ id, label })),
-        improvModes: Object.values(IMPROV_MODES).map(({ id, label, description }) => ({ id, label, description })),
-        architectGenerationsToday: architectUsage.generationsToday(campaignId),
-        architectAlertThreshold: architectUsage.alertThreshold,
-        canManage: true,
-        ruleset: campaignRulesetSettings(rulesetState, await eventStore.getEvents(campaignId), { canManage: true }),
-      })
+      const previousModel = allowedAiModels.includes(current.model) ? current.model : model
+      if (requestedModel !== previousModel || requestedReasoning !== currentReasoning) {
+        appendRoomJournal(campaignId, [{
+          id: `ai-model-${campaignId}-${Date.now()}`,
+          speaker: 'system',
+          author: 'Настройки кампании',
+          text: `Ведущий ИИ: ${modelOptionFor(requestedModel).label}, рассуждения — ${REASONING_LEVELS[requestedReasoning].label.toLocaleLowerCase('ru')}.`,
+        }])
+      }
+      return json(res, 200, campaignAiSettingsPayload(saved, campaignId, {
+        canManage: true, rulesetState, rulesetEvents: await eventStore.getEvents(campaignId),
+      }))
     } catch (error) {
       const status = ['CAMPAIGN_RULESET_LOCKED', 'IDEMPOTENCY_CONFLICT', 'STATE_VERSION_CONFLICT'].includes(error?.code) ? 409 : 400
       return json(res, status, { error: error instanceof Error ? error.message : 'Не удалось сохранить настройки ИИ кампании', code: error?.code })
@@ -5494,6 +5531,19 @@ const server = createServer((req, res) => {
             onNarrationStart: startNarration,
             onNarrationProgress: progressNarration,
           })
+          // Судья свободных действий понял заявку как переход (route: travel,
+          // action_adjudicator/v7). Коммита не было; открывается та же карточка
+          // решения отряда, что и у фразы ухода, узнанной по словам. Не вышло
+          // (место не прошло словарь, уже открыто другое решение) — остаётся
+          // ответ судьи с подсказкой, как заявить уход явно.
+          if (result?.free_action_outcome === 'route_travel') {
+            const routedTravel = proposeRoutedTravel(autonomousCampaign.takeRouteHint(campaignId, idempotencyKey), trustedState)
+            if (routedTravel) {
+              const effects = { roll: null, reveal: [], spawn: [], objective: null, grantItems: [], scene: null, interaction: null }
+              executeTool('request_party_decision', routedTravel, effects, trustedState)
+              if (effects.interaction) result = { ...result, narration: effects.interaction.description, effects, provider: 'AgentDirector', model: 'adjudicator-route' }
+            }
+          }
         }
       })
       if (result.idempotent_replay) {

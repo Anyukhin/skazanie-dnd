@@ -1,0 +1,3203 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-10-01T15:57:47.859Z",
+  "method": "Детерминированный прогон без сети. ДО — verifyNarration из git HEAD, ПОСЛЕ — текущий. Brief несёт world_clock в форме оркестратора.",
+  "labeled_set": {
+    "file": "eval/scene-canon-cases-2026-10-01.json",
+    "before_any_violation": {
+      "contradictions": 50,
+      "detected": 0,
+      "recall": 0,
+      "clean": 51,
+      "false_positives": 0,
+      "false_positive_rate": 0,
+      "precision": null,
+      "by_kind": {
+        "time": {
+          "total": 23,
+          "detected": 0
+        },
+        "weather": {
+          "total": 14,
+          "detected": 0
+        },
+        "surface": {
+          "total": 9,
+          "detected": 0
+        },
+        "sky": {
+          "total": 4,
+          "detected": 0
+        }
+      }
+    },
+    "before_scene_canon": {
+      "contradictions": 50,
+      "detected": 0,
+      "recall": 0,
+      "clean": 51,
+      "false_positives": 0,
+      "false_positive_rate": 0,
+      "precision": null,
+      "by_kind": {
+        "time": {
+          "total": 23,
+          "detected": 0
+        },
+        "weather": {
+          "total": 14,
+          "detected": 0
+        },
+        "surface": {
+          "total": 9,
+          "detected": 0
+        },
+        "sky": {
+          "total": 4,
+          "detected": 0
+        }
+      }
+    },
+    "after_any_violation": {
+      "contradictions": 50,
+      "detected": 42,
+      "recall": 0.84,
+      "clean": 51,
+      "false_positives": 0,
+      "false_positive_rate": 0,
+      "precision": 1,
+      "by_kind": {
+        "time": {
+          "total": 23,
+          "detected": 19
+        },
+        "weather": {
+          "total": 14,
+          "detected": 12
+        },
+        "surface": {
+          "total": 9,
+          "detected": 7
+        },
+        "sky": {
+          "total": 4,
+          "detected": 4
+        }
+      }
+    },
+    "after_scene_canon": {
+      "contradictions": 50,
+      "detected": 42,
+      "recall": 0.84,
+      "clean": 51,
+      "false_positives": 0,
+      "false_positive_rate": 0,
+      "precision": 1,
+      "by_kind": {
+        "time": {
+          "total": 23,
+          "detected": 19
+        },
+        "weather": {
+          "total": 14,
+          "detected": 12
+        },
+        "surface": {
+          "total": 9,
+          "detected": 7
+        },
+        "sky": {
+          "total": 4,
+          "detected": 4
+        }
+      }
+    },
+    "missed_after": [
+      {
+        "id": "contra-019",
+        "kind": "time",
+        "text": "Яркий полдень заливает площадь светом."
+      },
+      {
+        "id": "contra-020",
+        "kind": "time",
+        "text": "Темнота вокруг такая, что факелы еле справляются, — ночь в разгаре."
+      },
+      {
+        "id": "contra-021",
+        "kind": "time",
+        "text": "Месяц висит над колокольней."
+      },
+      {
+        "id": "contra-022",
+        "kind": "time",
+        "text": "Город спит под покровом ночи."
+      },
+      {
+        "id": "contra-036",
+        "kind": "weather",
+        "text": "Видно далеко, до самого горизонта, где синеют горы."
+      },
+      {
+        "id": "contra-037",
+        "kind": "weather",
+        "text": "Капли стекают с мокрых крыш, а небо всё ещё сочится водой."
+      },
+      {
+        "id": "contra-045",
+        "kind": "surface",
+        "text": "Раскалённые камни обжигают ладони."
+      },
+      {
+        "id": "contra-046",
+        "kind": "surface",
+        "text": "Ни ветерка, сухой полдень дремлет над трактом."
+      }
+    ],
+    "false_positives_after": [],
+    "rows": [
+      {
+        "id": "contra-001",
+        "label": "contradiction",
+        "kind": "time",
+        "text": "Аквилон встречает ночь туманом: над причалом висит сырая мгла, и фонари едва пробивают её.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "встречает ночь",
+            "туманом"
+          ]
+        }
+      },
+      {
+        "id": "contra-002",
+        "label": "contradiction",
+        "kind": "time",
+        "text": "Ночная тишина лежит над рыночной площадью, лишь где-то скрипит ставня.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "Ночная тишина"
+          ]
+        }
+      },
+      {
+        "id": "contra-003",
+        "label": "contradiction",
+        "kind": "time",
+        "text": "Луна выглядывает из-за туч и серебрит крыши складов.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "Луна выглядывает"
+          ]
+        }
+      },
+      {
+        "id": "contra-004",
+        "label": "contradiction",
+        "kind": "time",
+        "text": "Под звёздами ворота кажутся выше, чем днём.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "Под звёздами"
+          ]
+        }
+      },
+      {
+        "id": "contra-005",
+        "label": "contradiction",
+        "kind": "time",
+        "text": "В трактире темно: глубокая ночь, и только угли в очаге ещё тлеют.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "глубокая ночь"
+          ]
+        }
+      },
+      {
+        "id": "contra-006",
+        "label": "contradiction",
+        "kind": "time",
+        "text": "Звёздное небо раскинулось над трактом, холодное и бездонное.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "Звёздное небо"
+          ]
+        }
+      },
+      {
+        "id": "contra-007",
+        "label": "contradiction",
+        "kind": "time",
+        "text": "Стемнело, и стражник у ворот поднимает фонарь повыше.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "Стемнело"
+          ]
+        }
+      },
+      {
+        "id": "contra-008",
+        "label": "contradiction",
+        "kind": "time",
+        "text": "В лунном свете мост через овраг выглядит хрупким.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "лунном свете"
+          ]
+        }
+      },
+      {
+        "id": "contra-009",
+        "label": "contradiction",
+        "kind": "time",
+        "text": "Закатное солнце окрашивает стены часовни в медь.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "Закатное"
+          ]
+        }
+      },
+      {
+        "id": "contra-010",
+        "label": "contradiction",
+        "kind": "time",
+        "text": "Солнце клонится к закату, и тени у колодца вытягиваются.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "Солнце клонится"
+          ]
+        }
+      },
+      {
+        "id": "contra-011",
+        "label": "contradiction",
+        "kind": "time",
+        "text": "Рассветные лучи касаются мокрой черепицы.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "Рассветные"
+          ]
+        }
+      },
+      {
+        "id": "contra-012",
+        "label": "contradiction",
+        "kind": "time",
+        "text": "Утренняя прохлада ещё держится в переулках.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "Утренняя прохлада"
+          ]
+        }
+      },
+      {
+        "id": "contra-013",
+        "label": "contradiction",
+        "kind": "time",
+        "text": "Солнце стоит высоко, и камни мостовой нагрелись.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "Солнце стоит"
+          ]
+        }
+      },
+      {
+        "id": "contra-014",
+        "label": "contradiction",
+        "kind": "time",
+        "text": "При свете дня следы на глине видны отчётливо.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "При свете дня"
+          ]
+        }
+      },
+      {
+        "id": "contra-015",
+        "label": "contradiction",
+        "kind": "time",
+        "text": "Солнечный луч падает на стол через узкое окно.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "Солнечный луч"
+          ]
+        }
+      },
+      {
+        "id": "contra-016",
+        "label": "contradiction",
+        "kind": "time",
+        "text": "Полуденный зной давит на плечи.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "Полуденный зной"
+          ]
+        }
+      },
+      {
+        "id": "contra-017",
+        "label": "contradiction",
+        "kind": "time",
+        "text": "Над лагерем опустилась ночь, и костёр стал единственным светом.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "опустилась ночь"
+          ]
+        }
+      },
+      {
+        "id": "contra-018",
+        "label": "contradiction",
+        "kind": "time",
+        "text": "Ночь стоит тихая, туман глушит шаги на причале.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "Ночь стоит"
+          ]
+        }
+      },
+      {
+        "id": "contra-019",
+        "label": "contradiction",
+        "kind": "time",
+        "text": "Яркий полдень заливает площадь светом.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "contra-020",
+        "label": "contradiction",
+        "kind": "time",
+        "text": "Темнота вокруг такая, что факелы еле справляются, — ночь в разгаре.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "contra-021",
+        "label": "contradiction",
+        "kind": "time",
+        "text": "Месяц висит над колокольней.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "contra-022",
+        "label": "contradiction",
+        "kind": "time",
+        "text": "Город спит под покровом ночи.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "contra-023",
+        "label": "contradiction",
+        "kind": "time",
+        "text": "Фонари ещё горят вдоль набережной, и ночной холод пробирает до костей.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "ночной холод"
+          ]
+        }
+      },
+      {
+        "id": "contra-024",
+        "label": "contradiction",
+        "kind": "weather",
+        "text": "Дождь барабанит по навесу над прилавками.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "Дождь"
+          ]
+        }
+      },
+      {
+        "id": "contra-025",
+        "label": "contradiction",
+        "kind": "weather",
+        "text": "Мелкая морось оседает на плащах героев.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "морось"
+          ]
+        }
+      },
+      {
+        "id": "contra-026",
+        "label": "contradiction",
+        "kind": "weather",
+        "text": "Где-то над холмами гремит гром, и лошади беспокоятся.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "гром"
+          ]
+        }
+      },
+      {
+        "id": "contra-027",
+        "label": "contradiction",
+        "kind": "weather",
+        "text": "Густой туман стелется над рекой, скрывая противоположный берег.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "туман"
+          ]
+        }
+      },
+      {
+        "id": "contra-028",
+        "label": "contradiction",
+        "kind": "weather",
+        "text": "За ставнями шумит ливень, и в трактире пахнет мокрой шерстью.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "ливень"
+          ]
+        }
+      },
+      {
+        "id": "contra-029",
+        "label": "contradiction",
+        "kind": "weather",
+        "text": "Безоблачное небо открывает вид на дальние башни.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "Безоблачное"
+          ]
+        }
+      },
+      {
+        "id": "contra-030",
+        "label": "contradiction",
+        "kind": "weather",
+        "text": "Палящее солнце слепит, отражаясь в лужах.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "Палящее солнце"
+          ]
+        }
+      },
+      {
+        "id": "contra-031",
+        "label": "contradiction",
+        "kind": "weather",
+        "text": "Звёздное небо чисто и спокойно над пристанью.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "Звёздное небо"
+          ]
+        }
+      },
+      {
+        "id": "contra-032",
+        "label": "contradiction",
+        "kind": "weather",
+        "text": "Ясное небо над площадью наливается вечерней синевой.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "Ясное небо"
+          ]
+        }
+      },
+      {
+        "id": "contra-033",
+        "label": "contradiction",
+        "kind": "weather",
+        "text": "Вспышка молнии на миг высвечивает весь двор.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "молнии"
+          ]
+        }
+      },
+      {
+        "id": "contra-034",
+        "label": "contradiction",
+        "kind": "weather",
+        "text": "Ливень хлещет по доскам причала.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "Ливень"
+          ]
+        }
+      },
+      {
+        "id": "contra-035",
+        "label": "contradiction",
+        "kind": "weather",
+        "text": "Гроза бушует над гаванью, волны бьют в волнорез.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "Гроза"
+          ]
+        }
+      },
+      {
+        "id": "contra-036",
+        "label": "contradiction",
+        "kind": "weather",
+        "text": "Видно далеко, до самого горизонта, где синеют горы.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "contra-037",
+        "label": "contradiction",
+        "kind": "weather",
+        "text": "Капли стекают с мокрых крыш, а небо всё ещё сочится водой.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "contra-038",
+        "label": "contradiction",
+        "kind": "surface",
+        "text": "Доски причала покрыты пылью, и под сапогами скрипит сухой песок.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "покрыты пылью"
+          ]
+        }
+      },
+      {
+        "id": "contra-039",
+        "label": "contradiction",
+        "kind": "surface",
+        "text": "Пыль клубится под колёсами телеги.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "Пыль клубится"
+          ]
+        }
+      },
+      {
+        "id": "contra-040",
+        "label": "contradiction",
+        "kind": "surface",
+        "text": "Сухая земля трескается под ногами.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "Сухая земля"
+          ]
+        }
+      },
+      {
+        "id": "contra-041",
+        "label": "contradiction",
+        "kind": "surface",
+        "text": "Дорожная пыль оседает на сапогах.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "пыль оседает"
+          ]
+        }
+      },
+      {
+        "id": "contra-042",
+        "label": "contradiction",
+        "kind": "surface",
+        "text": "Пыльные ступени ведут к дверям храма.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "Пыльные"
+          ]
+        }
+      },
+      {
+        "id": "contra-043",
+        "label": "contradiction",
+        "kind": "surface",
+        "text": "Знойный воздух дрожит над мостовой.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "Знойный"
+          ]
+        }
+      },
+      {
+        "id": "contra-044",
+        "label": "contradiction",
+        "kind": "surface",
+        "text": "На перилах лежит толстый слой пыли.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "слой пыли"
+          ]
+        }
+      },
+      {
+        "id": "contra-045",
+        "label": "contradiction",
+        "kind": "surface",
+        "text": "Раскалённые камни обжигают ладони.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "contra-046",
+        "label": "contradiction",
+        "kind": "surface",
+        "text": "Ни ветерка, сухой полдень дремлет над трактом.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "contra-047",
+        "label": "contradiction",
+        "kind": "sky",
+        "text": "Над головой раскинулось бледное небо, и в зале гуляет ветер.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "Над головой раскинулось бледное небо"
+          ]
+        }
+      },
+      {
+        "id": "contra-048",
+        "label": "contradiction",
+        "kind": "sky",
+        "text": "Отряд сидит у очага, а над головами мерцают звёзды.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "над головами мерцают звёзды"
+          ]
+        }
+      },
+      {
+        "id": "contra-049",
+        "label": "contradiction",
+        "kind": "sky",
+        "text": "Дождь хлещет в лицо, пока герои ждут у стойки.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "Дождь хлещет в лицо"
+          ]
+        }
+      },
+      {
+        "id": "contra-050",
+        "label": "contradiction",
+        "kind": "sky",
+        "text": "Тучи над головой сгущаются, и в зале темнеет.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": true,
+          "canon": true,
+          "codes": [
+            "SCENE_CANON_CONTRADICTION"
+          ],
+          "matches": [
+            "Тучи над головой"
+          ]
+        }
+      },
+      {
+        "id": "clean-051",
+        "label": "clean",
+        "kind": null,
+        "text": "Туман лежит на досках причала, и мокрые канаты пахнут солью.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-052",
+        "label": "clean",
+        "kind": null,
+        "text": "Утреннее солнце золотит крыши, на площади уже шумят торговцы.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-053",
+        "label": "clean",
+        "kind": null,
+        "text": "— Ночь будет долгой, — бурчит стражник у ворот.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-054",
+        "label": "clean",
+        "kind": null,
+        "text": "Мира говорит: «Прошлой ночью здесь шёл дождь».",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-055",
+        "label": "clean",
+        "kind": null,
+        "text": "После ночного дождя доски ещё влажные, но небо чистое.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-056",
+        "label": "clean",
+        "kind": null,
+        "text": "Прошлой ночью кто-то сорвал замок с амбара; теперь при свете утра видны свежие царапины.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-057",
+        "label": "clean",
+        "kind": null,
+        "text": "Небо затянуто серой пеленой, но дождя нет.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-058",
+        "label": "clean",
+        "kind": null,
+        "text": "В трактире тепло, а за окном ясный день.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-059",
+        "label": "clean",
+        "kind": null,
+        "text": "За окном шумит дождь, и в зале пахнет мокрой шерстью.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-060",
+        "label": "clean",
+        "kind": null,
+        "text": "Дождь хлещет по мостовой, фонари тонут в мокрой темноте.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-061",
+        "label": "clean",
+        "kind": null,
+        "text": "Луна висит над колокольней, и звёзды мерцают над крышами.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-062",
+        "label": "clean",
+        "kind": null,
+        "text": "Закатное солнце окрашивает стены часовни в медь.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-063",
+        "label": "clean",
+        "kind": null,
+        "text": "Тёмный, как ночь, плащ незнакомца не шевелится.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-064",
+        "label": "clean",
+        "kind": null,
+        "text": "В голове у Рена туман после вчерашней попойки.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-065",
+        "label": "clean",
+        "kind": null,
+        "text": "Туман рассеялся ещё на рассвете, и теперь видно весь тракт.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-066",
+        "label": "clean",
+        "kind": null,
+        "text": "Сквозь туман проступают мачты, и мокрые доски скользят под ногами.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-067",
+        "label": "clean",
+        "kind": null,
+        "text": "Влажная пелена тумана оседает на перилах и глушит шаги.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-068",
+        "label": "clean",
+        "kind": null,
+        "text": "Под потолком склепа висит пыль, и свеча дрожит.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-069",
+        "label": "clean",
+        "kind": null,
+        "text": "Пыль на полках архива лежит нетронутой, пока снаружи льёт дождь.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-070",
+        "label": "clean",
+        "kind": null,
+        "text": "Отряд сидит у очага; за окном мерцают звёзды.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-071",
+        "label": "clean",
+        "kind": null,
+        "text": "Сквозь пролом в крыше над головой видно небо.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-072",
+        "label": "clean",
+        "kind": null,
+        "text": "Мира вспоминает ту ночь, когда шторм сорвал крышу с её дома.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-073",
+        "label": "clean",
+        "kind": null,
+        "text": "Если начнётся дождь, следы на глине пропадут.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-074",
+        "label": "clean",
+        "kind": null,
+        "text": "Сумерки опускаются на площадь, и в окнах зажигаются огни.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-075",
+        "label": "clean",
+        "kind": null,
+        "text": "Никакого тумана — тракт виден до самых холмов.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-076",
+        "label": "clean",
+        "kind": null,
+        "text": "Молния раскалывает небо над пристанью, и гром катится по воде.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-077",
+        "label": "clean",
+        "kind": null,
+        "text": "Мокрые доски моста блестят, дождь стекает с капюшонов.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-078",
+        "label": "clean",
+        "kind": null,
+        "text": "Солнце печёт, над дорогой поднимается пыль.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-079",
+        "label": "clean",
+        "kind": null,
+        "text": "Сухая земля тракта звенит под копытами.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-080",
+        "label": "clean",
+        "kind": null,
+        "text": "Звёзды ещё не показались, но небо уже темнеет.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-081",
+        "label": "clean",
+        "kind": null,
+        "text": "Серое небо висит низко, ветер гонит по причалу запах рыбы.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-082",
+        "label": "clean",
+        "kind": null,
+        "text": "В кузнице жарко и сухо, хотя снаружи всё затянуто туманом.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-083",
+        "label": "clean",
+        "kind": null,
+        "text": "Стражник предупреждает, что к ночи ворота закроют.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-084",
+        "label": "clean",
+        "kind": null,
+        "text": "Ночной ветер треплет флаги на башне.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-085",
+        "label": "clean",
+        "kind": null,
+        "text": "На гобелене в зале вышита звёздная ночь над морем.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-086",
+        "label": "clean",
+        "kind": null,
+        "text": "Пыльная дорога петляет между холмами.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-087",
+        "label": "clean",
+        "kind": null,
+        "text": "Дождя нет, но туман такой густой, что мачты едва видны.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-088",
+        "label": "clean",
+        "kind": null,
+        "text": "Темнота и дождь скрывают следы, только фонарь стражи качается у ворот.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-089",
+        "label": "clean",
+        "kind": null,
+        "text": "Говорят, в полнолуние здесь бродит призрак.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-090",
+        "label": "clean",
+        "kind": null,
+        "text": "Облака плотно затянули небо, свет ровный и серый.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-091",
+        "label": "clean",
+        "kind": null,
+        "text": "В храме прохладно, косые лучи утреннего солнца лежат на плитах.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-092",
+        "label": "clean",
+        "kind": null,
+        "text": "Вечерний дождь превращает тракт в грязное месиво.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-093",
+        "label": "clean",
+        "kind": null,
+        "text": "Ада щурится от яркого солнца, глядя на ворота.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-094",
+        "label": "clean",
+        "kind": null,
+        "text": "Ветер рвёт плащи, дождь хлещет по лицам, гремит гром.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-095",
+        "label": "clean",
+        "kind": null,
+        "text": "Сон Рена был полон лунного света и чужих голосов.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-096",
+        "label": "clean",
+        "kind": null,
+        "text": "У причала сыро: волны лижут сваи, доски тёмные от воды.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-097",
+        "label": "clean",
+        "kind": null,
+        "text": "Ночная стража сдаёт пост утренней смене.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-098",
+        "label": "clean",
+        "kind": null,
+        "text": "Солнце садится за холмы, и тени становятся длинными.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-099",
+        "label": "clean",
+        "kind": null,
+        "text": "Отряд ждёт на причале; канаты тяжёлые от сырости, по воде ползёт серая мгла.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-100",
+        "label": "clean",
+        "kind": null,
+        "text": "Костёр потрескивает, а над лагерем рассыпаны звёзды.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      },
+      {
+        "id": "clean-101",
+        "label": "clean",
+        "kind": null,
+        "text": "Торговцы прячут товар под навесы: дождь не стихает с утра.",
+        "before": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        },
+        "after": {
+          "any": false,
+          "canon": false,
+          "codes": [],
+          "matches": []
+        }
+      }
+    ]
+  },
+  "saved_narrations": {
+    "texts": 649,
+    "files": 60,
+    "note": "У сохранённых текстов канона нет. Флаг по сетке показывает, сколько текстов противоречили бы такому канону; «неудовлетворимые» — тексты, которым не подходит ни один из 40 канонов, то есть ошибки сопоставления либо самопротиворечивые тексты.",
+    "before_flags_any_canon": 0,
+    "per_canon": [
+      {
+        "canon": {
+          "phase": "morning",
+          "clock": "08:00",
+          "weather": "clear",
+          "indoors": false
+        },
+        "flagged": 14,
+        "rate": 0.022
+      },
+      {
+        "canon": {
+          "phase": "morning",
+          "clock": "08:00",
+          "weather": "clear",
+          "indoors": true
+        },
+        "flagged": 14,
+        "rate": 0.022
+      },
+      {
+        "canon": {
+          "phase": "morning",
+          "clock": "08:00",
+          "weather": "overcast",
+          "indoors": false
+        },
+        "flagged": 14,
+        "rate": 0.022
+      },
+      {
+        "canon": {
+          "phase": "morning",
+          "clock": "08:00",
+          "weather": "overcast",
+          "indoors": true
+        },
+        "flagged": 14,
+        "rate": 0.022
+      },
+      {
+        "canon": {
+          "phase": "morning",
+          "clock": "08:00",
+          "weather": "rain",
+          "indoors": false
+        },
+        "flagged": 21,
+        "rate": 0.032
+      },
+      {
+        "canon": {
+          "phase": "morning",
+          "clock": "08:00",
+          "weather": "rain",
+          "indoors": true
+        },
+        "flagged": 4,
+        "rate": 0.006
+      },
+      {
+        "canon": {
+          "phase": "morning",
+          "clock": "08:00",
+          "weather": "fog",
+          "indoors": false
+        },
+        "flagged": 21,
+        "rate": 0.032
+      },
+      {
+        "canon": {
+          "phase": "morning",
+          "clock": "08:00",
+          "weather": "fog",
+          "indoors": true
+        },
+        "flagged": 4,
+        "rate": 0.006
+      },
+      {
+        "canon": {
+          "phase": "morning",
+          "clock": "08:00",
+          "weather": "storm",
+          "indoors": false
+        },
+        "flagged": 21,
+        "rate": 0.032
+      },
+      {
+        "canon": {
+          "phase": "morning",
+          "clock": "08:00",
+          "weather": "storm",
+          "indoors": true
+        },
+        "flagged": 4,
+        "rate": 0.006
+      },
+      {
+        "canon": {
+          "phase": "day",
+          "clock": "13:00",
+          "weather": "clear",
+          "indoors": false
+        },
+        "flagged": 10,
+        "rate": 0.015
+      },
+      {
+        "canon": {
+          "phase": "day",
+          "clock": "13:00",
+          "weather": "clear",
+          "indoors": true
+        },
+        "flagged": 10,
+        "rate": 0.015
+      },
+      {
+        "canon": {
+          "phase": "day",
+          "clock": "13:00",
+          "weather": "overcast",
+          "indoors": false
+        },
+        "flagged": 10,
+        "rate": 0.015
+      },
+      {
+        "canon": {
+          "phase": "day",
+          "clock": "13:00",
+          "weather": "overcast",
+          "indoors": true
+        },
+        "flagged": 10,
+        "rate": 0.015
+      },
+      {
+        "canon": {
+          "phase": "day",
+          "clock": "13:00",
+          "weather": "rain",
+          "indoors": false
+        },
+        "flagged": 17,
+        "rate": 0.026
+      },
+      {
+        "canon": {
+          "phase": "day",
+          "clock": "13:00",
+          "weather": "rain",
+          "indoors": true
+        },
+        "flagged": 0,
+        "rate": 0
+      },
+      {
+        "canon": {
+          "phase": "day",
+          "clock": "13:00",
+          "weather": "fog",
+          "indoors": false
+        },
+        "flagged": 17,
+        "rate": 0.026
+      },
+      {
+        "canon": {
+          "phase": "day",
+          "clock": "13:00",
+          "weather": "fog",
+          "indoors": true
+        },
+        "flagged": 0,
+        "rate": 0
+      },
+      {
+        "canon": {
+          "phase": "day",
+          "clock": "13:00",
+          "weather": "storm",
+          "indoors": false
+        },
+        "flagged": 17,
+        "rate": 0.026
+      },
+      {
+        "canon": {
+          "phase": "day",
+          "clock": "13:00",
+          "weather": "storm",
+          "indoors": true
+        },
+        "flagged": 0,
+        "rate": 0
+      },
+      {
+        "canon": {
+          "phase": "evening",
+          "clock": "19:00",
+          "weather": "clear",
+          "indoors": false
+        },
+        "flagged": 12,
+        "rate": 0.018
+      },
+      {
+        "canon": {
+          "phase": "evening",
+          "clock": "19:00",
+          "weather": "clear",
+          "indoors": true
+        },
+        "flagged": 12,
+        "rate": 0.018
+      },
+      {
+        "canon": {
+          "phase": "evening",
+          "clock": "19:00",
+          "weather": "overcast",
+          "indoors": false
+        },
+        "flagged": 12,
+        "rate": 0.018
+      },
+      {
+        "canon": {
+          "phase": "evening",
+          "clock": "19:00",
+          "weather": "overcast",
+          "indoors": true
+        },
+        "flagged": 12,
+        "rate": 0.018
+      },
+      {
+        "canon": {
+          "phase": "evening",
+          "clock": "19:00",
+          "weather": "rain",
+          "indoors": false
+        },
+        "flagged": 17,
+        "rate": 0.026
+      },
+      {
+        "canon": {
+          "phase": "evening",
+          "clock": "19:00",
+          "weather": "rain",
+          "indoors": true
+        },
+        "flagged": 0,
+        "rate": 0
+      },
+      {
+        "canon": {
+          "phase": "evening",
+          "clock": "19:00",
+          "weather": "fog",
+          "indoors": false
+        },
+        "flagged": 17,
+        "rate": 0.026
+      },
+      {
+        "canon": {
+          "phase": "evening",
+          "clock": "19:00",
+          "weather": "fog",
+          "indoors": true
+        },
+        "flagged": 0,
+        "rate": 0
+      },
+      {
+        "canon": {
+          "phase": "evening",
+          "clock": "19:00",
+          "weather": "storm",
+          "indoors": false
+        },
+        "flagged": 17,
+        "rate": 0.026
+      },
+      {
+        "canon": {
+          "phase": "evening",
+          "clock": "19:00",
+          "weather": "storm",
+          "indoors": true
+        },
+        "flagged": 0,
+        "rate": 0
+      },
+      {
+        "canon": {
+          "phase": "night",
+          "clock": "01:00",
+          "weather": "clear",
+          "indoors": false
+        },
+        "flagged": 15,
+        "rate": 0.023
+      },
+      {
+        "canon": {
+          "phase": "night",
+          "clock": "01:00",
+          "weather": "clear",
+          "indoors": true
+        },
+        "flagged": 15,
+        "rate": 0.023
+      },
+      {
+        "canon": {
+          "phase": "night",
+          "clock": "01:00",
+          "weather": "overcast",
+          "indoors": false
+        },
+        "flagged": 15,
+        "rate": 0.023
+      },
+      {
+        "canon": {
+          "phase": "night",
+          "clock": "01:00",
+          "weather": "overcast",
+          "indoors": true
+        },
+        "flagged": 15,
+        "rate": 0.023
+      },
+      {
+        "canon": {
+          "phase": "night",
+          "clock": "01:00",
+          "weather": "rain",
+          "indoors": false
+        },
+        "flagged": 21,
+        "rate": 0.032
+      },
+      {
+        "canon": {
+          "phase": "night",
+          "clock": "01:00",
+          "weather": "rain",
+          "indoors": true
+        },
+        "flagged": 4,
+        "rate": 0.006
+      },
+      {
+        "canon": {
+          "phase": "night",
+          "clock": "01:00",
+          "weather": "fog",
+          "indoors": false
+        },
+        "flagged": 21,
+        "rate": 0.032
+      },
+      {
+        "canon": {
+          "phase": "night",
+          "clock": "01:00",
+          "weather": "fog",
+          "indoors": true
+        },
+        "flagged": 4,
+        "rate": 0.006
+      },
+      {
+        "canon": {
+          "phase": "night",
+          "clock": "01:00",
+          "weather": "storm",
+          "indoors": false
+        },
+        "flagged": 21,
+        "rate": 0.032
+      },
+      {
+        "canon": {
+          "phase": "night",
+          "clock": "01:00",
+          "weather": "storm",
+          "indoors": true
+        },
+        "flagged": 4,
+        "rate": 0.006
+      }
+    ],
+    "unsatisfiable": [],
+    "manual_audit": {
+      "start_morning_clear_outdoors": {
+        "canon": {
+          "phase": "morning",
+          "clock": "08:00",
+          "weather": "clear",
+          "indoors": false
+        },
+        "flagged_texts": 14,
+        "flags": 19,
+        "genuine": 19,
+        "matcher_errors": 0,
+        "unlabeled": 0,
+        "matcher_error_rate_per_text": 0,
+        "items": [
+          {
+            "id": "saved-3c450e6b14",
+            "file": "campaign-bootstrap-gpt-6-luna-2026-10-01.json",
+            "kind": "time_of_day",
+            "match": "Вечерний туман",
+            "sentence": "Вечерний туман съедает огни фонарей, а в таверне «Погребённый якорь» тепло, пахнет мокрой шерстью и пережаренной рыбой.",
+            "genuine": true
+          },
+          {
+            "id": "saved-c80723bad6",
+            "file": "campaign-bootstrap-gpt-6-luna-2026-10-01.json",
+            "kind": "weather",
+            "match": "дождь",
+            "sentence": "В Соляном Пороге дождь барабанит по настилу у старых складов, а солёный ветер гонит по канавам клочья водорослей.",
+            "genuine": true
+          },
+          {
+            "id": "saved-c80723bad6",
+            "file": "campaign-bootstrap-gpt-6-luna-2026-10-01.json",
+            "kind": "weather",
+            "match": "дождь",
+            "sentence": "В Соляном Пороге дождь барабанит по настилу у старых складов, а солёный ветер гонит по канавам клочья водорослей.",
+            "genuine": true
+          },
+          {
+            "id": "saved-cacf86f84a",
+            "file": "reasoning-sweep-bootstrap-luna-2026-10-01.json",
+            "kind": "weather",
+            "match": "Дождь",
+            "sentence": "Дождь барабанит по сваям, и у Ады и Рена есть время расспросить Иару, поговорить с Бреном или разобраться в самой записи.",
+            "genuine": true
+          },
+          {
+            "id": "saved-ba61b942b0",
+            "file": "reasoning-sweep-bootstrap-luna-2026-10-01.json",
+            "kind": "weather",
+            "match": "тумана",
+            "sentence": "Сольный ветер гонит по причалу клочья тумана.",
+            "genuine": true
+          },
+          {
+            "id": "saved-5fff83ecdf",
+            "file": "reasoning-sweep-bootstrap-luna-2026-10-01.json",
+            "kind": "time_of_day",
+            "match": "Сумерки сгущаются",
+            "sentence": "Сумерки сгущаются, а из щелей настила тянет холодной водой.",
+            "genuine": true
+          },
+          {
+            "id": "saved-d9faab8522",
+            "file": "reasoning-sweep-bootstrap-luna-2026-10-01.json",
+            "kind": "weather",
+            "match": "туман",
+            "sentence": "Солёный ветер гонит по пристаням туман, а под сваями размеренно бьётся мутная вода.",
+            "genuine": true
+          },
+          {
+            "id": "saved-7380c32f20",
+            "file": "reasoning-sweep-bootstrap-other-2026-10-01.json",
+            "kind": "time_of_day",
+            "match": "Вечер опускается",
+            "sentence": "Вечер опускается на город, и на мостках у пристани толпа обсуждает одно и то же: третий глашатай за неделю объявляет награду за вести о пропавшем северном караване — и третий раз никто не откликается.",
+            "genuine": true
+          },
+          {
+            "id": "saved-e9ed0134a4",
+            "file": "reasoning-sweep-bootstrap-other-2026-10-01.json",
+            "kind": "time_of_day",
+            "match": "вечерний туман",
+            "sentence": "Костёр у трактирного крыла разгоняет вечерний туман.",
+            "genuine": true
+          },
+          {
+            "id": "saved-ca03f599fe",
+            "file": "structured-outputs-bootstrap-after-2026-10-01.json",
+            "kind": "weather",
+            "match": "туман",
+            "sentence": "На рассвете, когда туман ещё окутывает причалы порта на солёных сваях, отряд получает задание разобраться с исчезновением каравана, пропавшего в северном направлении.",
+            "genuine": true
+          },
+          {
+            "id": "saved-b77414dc2e",
+            "file": "structured-outputs-bootstrap-after-2026-10-01.json",
+            "kind": "weather",
+            "match": "туман",
+            "sentence": "В углу сидит писарь торговой гильдии Илло Карн с непочатой кружкой и мокрым от тумана плащом: он явно кого-то ждёт.",
+            "genuine": true
+          },
+          {
+            "id": "saved-37909ff183",
+            "file": "structured-outputs-bootstrap-after-2026-10-01.json",
+            "kind": "weather",
+            "match": "туманом",
+            "sentence": "Утро пришло в Ветролом не с солнцем, а с пронизывающим туманом, который клубился над солёной водой, окутывая город в призрачную пелену.",
+            "genuine": true
+          },
+          {
+            "id": "saved-37909ff183",
+            "file": "structured-outputs-bootstrap-after-2026-10-01.json",
+            "kind": "weather",
+            "match": "тумана",
+            "sentence": "Ада, твои глаза, привыкшие к просторам, с тревогой всматриваются в даль, пытаясь разглядеть хоть что-то за завесой тумана.",
+            "genuine": true
+          },
+          {
+            "id": "saved-37909ff183",
+            "file": "structured-outputs-bootstrap-after-2026-10-01.json",
+            "kind": "weather",
+            "match": "туман",
+            "sentence": "Утро пришло в Ветролом не с солнцем, а с пронизывающим туманом, который клубился над солёной водой, окутывая город в призрачную пелену.",
+            "genuine": true
+          },
+          {
+            "id": "saved-0705b10ad5",
+            "file": "structured-outputs-bootstrap-after-2026-10-01.json",
+            "kind": "weather",
+            "match": "тумане",
+            "sentence": "Утро в Вермуте приходит в тумане: он стоит над сваями так плотно, что дальше десятка шагов город тонет в серой мгле.",
+            "genuine": true
+          },
+          {
+            "id": "saved-0705b10ad5",
+            "file": "structured-outputs-bootstrap-after-2026-10-01.json",
+            "kind": "weather",
+            "match": "тумана",
+            "sentence": "У дверей их перехватывает дьяк купеческого дома Вроот — Освальд Тарн, мокрый по пояс от тумана.",
+            "genuine": true
+          },
+          {
+            "id": "saved-bed7b04dc8",
+            "file": "structured-outputs-bootstrap-after-2026-10-01.json",
+            "kind": "weather",
+            "match": "Туман",
+            "sentence": "Туман прячет дальние причалы, а дождь, прошедший ночью, оставил на досках мокрые полосы.",
+            "genuine": true
+          },
+          {
+            "id": "saved-b46ffee357",
+            "file": "structured-outputs-bootstrap-before-2026-10-01.json",
+            "kind": "weather",
+            "match": "дождь",
+            "sentence": "В Сольвеже дождь барабанит по крышам и стекает между солёных свай.",
+            "genuine": true
+          },
+          {
+            "id": "saved-b46ffee357",
+            "file": "structured-outputs-bootstrap-before-2026-10-01.json",
+            "kind": "weather",
+            "match": "Дождь",
+            "sentence": "Дождь размывает чернила, и оба ждут, что вы сделаете.",
+            "genuine": true
+          }
+        ]
+      },
+      "night_rain_outdoors": {
+        "canon": {
+          "phase": "night",
+          "clock": "01:00",
+          "weather": "rain",
+          "indoors": false
+        },
+        "flagged_texts": 21,
+        "flags": 22,
+        "genuine": 20,
+        "matcher_errors": 2,
+        "unlabeled": 0,
+        "matcher_error_rate_per_text": 0.003,
+        "items": [
+          {
+            "id": "saved-3c450e6b14",
+            "file": "campaign-bootstrap-gpt-6-luna-2026-10-01.json",
+            "kind": "time_of_day",
+            "match": "Вечерний туман",
+            "sentence": "Вечерний туман съедает огни фонарей, а в таверне «Погребённый якорь» тепло, пахнет мокрой шерстью и пережаренной рыбой.",
+            "genuine": true
+          },
+          {
+            "id": "saved-77894f9190",
+            "file": "narrator-comparison-gpt-6-luna-main-2026-10-01.json",
+            "kind": "surface",
+            "match": "сухая пыль",
+            "sentence": "На обломке клинка различимо клеймо Гильдии речных кузнецов — сухая пыль старого дерева оседает в мягком боковом свете.",
+            "genuine": true
+          },
+          {
+            "id": "saved-6c97833dfe",
+            "file": "narrator-comparison-gpt-6-luna-main-2026-10-01.json",
+            "kind": "surface",
+            "match": "сухая пыль",
+            "sentence": "Тон мрачное камерное фэнтези — подходит сухая пыль и длинные тени.",
+            "genuine": false
+          },
+          {
+            "id": "saved-4291746af2",
+            "file": "narrator-comparison-muse-medium-2026-09-11.json",
+            "kind": "surface",
+            "match": "сухая пыль",
+            "sentence": "Вокруг — сухая пыль старого дерева и длинные неподвижные тени.",
+            "genuine": true
+          },
+          {
+            "id": "saved-ac2b9b0e74",
+            "file": "narrator-craft-glm-5.3-flash-strict-low-run2.json",
+            "kind": "surface",
+            "match": "дорожной пыли",
+            "sentence": "Голоса из соседних дворов звучат вполголоса, в воздухе висит смесь дорожной пыли и горячего железа.",
+            "genuine": true
+          },
+          {
+            "id": "saved-74b26da3d8",
+            "file": "narrator-craft-gpt-5.6-luna-2026-08-30-run2.json",
+            "kind": "surface",
+            "match": "дорожная пыль",
+            "sentence": "В воздухе смешиваются дорожная пыль и горячее железо, а из соседних дворов доносятся приглушённые голоса.",
+            "genuine": true
+          },
+          {
+            "id": "saved-3e21907fed",
+            "file": "narrator-craft-luna-off-tuned1.json",
+            "kind": "surface",
+            "match": "дорожная пыль",
+            "sentence": "В воздухе стоят дорожная пыль и горячее железо, а из соседних дворов доносятся приглушённые голоса; прежнее решение не бросать след теперь связывает каменного льва с пропавшим караваном.",
+            "genuine": true
+          },
+          {
+            "id": "saved-7095833747",
+            "file": "narrator-craft-luna-off-tuned1.json",
+            "kind": "surface",
+            "match": "дорожная пыль",
+            "sentence": "Над крышами стоит бледное небо, в воздухе смешались дорожная пыль и горячее железо, а на деревянных перилах под ладонью оседает сухая пыль.",
+            "genuine": true
+          },
+          {
+            "id": "saved-fd9db0bf78",
+            "file": "narrator-craft-luna-off-tuned2.json",
+            "kind": "surface",
+            "match": "Пыль на",
+            "sentence": "Пыль на деревянных перилах липнет к пальцам, а из соседних дворов доносятся приглушённые голоса; связь с пропавшим караваном становится яснее, но новых сведений пока нет.",
+            "genuine": true
+          },
+          {
+            "id": "saved-dd20c3611d",
+            "file": "narrator-craft-luna-off.json",
+            "kind": "surface",
+            "match": "дорожная пыль",
+            "sentence": "След совпадал; вокруг звучали приглушённые голоса из соседних дворов, а в воздухе смешивались дорожная пыль и горячее железо.",
+            "genuine": true
+          },
+          {
+            "id": "saved-cbc9391347",
+            "file": "narrator-craft-lunapro-final1.json",
+            "kind": "surface",
+            "match": "дорожная пыль",
+            "sentence": "В воздухе смешались дорожная пыль и горячее железо; на деревянных перилах осела сухая пыль.",
+            "genuine": true
+          },
+          {
+            "id": "saved-af530ae2bb",
+            "file": "narrator-craft-lunapro-final2.json",
+            "kind": "surface",
+            "match": "дорожной пыли",
+            "sentence": "Смесь дорожной пыли и горячего железа висит в воздухе, пока след пропавшего каравана остаётся неразорванным.",
+            "genuine": true
+          },
+          {
+            "id": "saved-5fff83ecdf",
+            "file": "reasoning-sweep-bootstrap-luna-2026-10-01.json",
+            "kind": "time_of_day",
+            "match": "Сумерки сгущаются",
+            "sentence": "Сумерки сгущаются, а из щелей настила тянет холодной водой.",
+            "genuine": true
+          },
+          {
+            "id": "saved-b8f4fef325",
+            "file": "reasoning-sweep-bootstrap-luna-2026-10-01.json",
+            "kind": "surface",
+            "match": "покрытый дорожной пылью",
+            "sentence": "Сегодня у Северных ворот Солёных Свай нет ни знакомых возниц, ни обычной вереницы телег: только сырой ветер с берега и один пустой фургон, покрытый дорожной пылью.",
+            "genuine": true
+          },
+          {
+            "id": "saved-7380c32f20",
+            "file": "reasoning-sweep-bootstrap-other-2026-10-01.json",
+            "kind": "time_of_day",
+            "match": "Вечер опускается",
+            "sentence": "Вечер опускается на город, и на мостках у пристани толпа обсуждает одно и то же: третий глашатай за неделю объявляет награду за вести о пропавшем северном караване — и третий раз никто не откликается.",
+            "genuine": true
+          },
+          {
+            "id": "saved-e9ed0134a4",
+            "file": "reasoning-sweep-bootstrap-other-2026-10-01.json",
+            "kind": "time_of_day",
+            "match": "вечерний туман",
+            "sentence": "Костёр у трактирного крыла разгоняет вечерний туман.",
+            "genuine": true
+          },
+          {
+            "id": "saved-bb7c19fbd3",
+            "file": "routerai-benchmark-2026-09-07.json",
+            "kind": "surface",
+            "match": "дорожная пыль",
+            "sentence": "Над воротами висит бледное небо, из соседних дворов доносятся приглушённые голоса, а в воздухе смешиваются дорожная пыль и запах горячего железа.",
+            "genuine": true
+          },
+          {
+            "id": "saved-82c804a2da",
+            "file": "routerai-benchmark-2026-09-07.json",
+            "kind": "surface",
+            "match": "дорожная пыль",
+            "sentence": "В воздухе висит дорожная пыль и запах горячего железа, из соседних дворов доносятся приглушённые голоса.",
+            "genuine": true
+          },
+          {
+            "id": "saved-1b00969342",
+            "file": "routerai-production-profiles-2026-09-08.json",
+            "kind": "surface",
+            "match": "дорожной пыли",
+            "sentence": "У Северных ворот в воздухе висит смесь дорожной пыли и горячего железа, а разговоры вполголоса после тревоги подтверждают: довод о том, что журнал после третьего колокола заполнял сам начальник стражи, принят.",
+            "genuine": true
+          },
+          {
+            "id": "saved-62953b13a5",
+            "file": "routerai-production-profiles-2026-09-08.json",
+            "kind": "surface",
+            "match": "дорожная пыль",
+            "sentence": "У Северных ворот голоса из соседних дворов звучат вполголоса, а в воздухе смешиваются дорожная пыль и горячее железо.",
+            "genuine": true
+          },
+          {
+            "id": "saved-7c3f354638",
+            "file": "routerai-prompt-ablation-2026-09-08.json",
+            "kind": "surface",
+            "match": "пыль под",
+            "sentence": "Ада медленно провела пальцем по холодному железу засова, и пыль под её рукой собралась в тонкую дорожку.",
+            "genuine": false
+          },
+          {
+            "id": "saved-7c3f354638",
+            "file": "routerai-prompt-ablation-2026-09-08.json",
+            "kind": "surface",
+            "match": "дорожной пылью",
+            "sentence": "Рядом пахло дорожной пылью и горячим железом, а с соседних дворов доносились приглушённые голоса.",
+            "genuine": true
+          }
+        ]
+      },
+      "grid_distinct": {
+        "flags": 39,
+        "genuine": 36,
+        "matcher_errors": 3,
+        "unlabeled": 0,
+        "texts_with_matcher_error": 3,
+        "items": [
+          {
+            "key": "saved-3c450e6b14:Вечерний туман",
+            "file": "campaign-bootstrap-gpt-6-luna-2026-10-01.json",
+            "kind": "time_of_day",
+            "match": "Вечерний туман",
+            "genuine": true
+          },
+          {
+            "key": "saved-c80723bad6:дождь",
+            "file": "campaign-bootstrap-gpt-6-luna-2026-10-01.json",
+            "kind": "weather",
+            "match": "дождь",
+            "genuine": true
+          },
+          {
+            "key": "saved-cacf86f84a:Дождь",
+            "file": "reasoning-sweep-bootstrap-luna-2026-10-01.json",
+            "kind": "weather",
+            "match": "Дождь",
+            "genuine": true
+          },
+          {
+            "key": "saved-ba61b942b0:тумана",
+            "file": "reasoning-sweep-bootstrap-luna-2026-10-01.json",
+            "kind": "weather",
+            "match": "тумана",
+            "genuine": true
+          },
+          {
+            "key": "saved-5fff83ecdf:Сумерки сгущаются",
+            "file": "reasoning-sweep-bootstrap-luna-2026-10-01.json",
+            "kind": "time_of_day",
+            "match": "Сумерки сгущаются",
+            "genuine": true
+          },
+          {
+            "key": "saved-d9faab8522:туман",
+            "file": "reasoning-sweep-bootstrap-luna-2026-10-01.json",
+            "kind": "weather",
+            "match": "туман",
+            "genuine": true
+          },
+          {
+            "key": "saved-7380c32f20:Вечер опускается",
+            "file": "reasoning-sweep-bootstrap-other-2026-10-01.json",
+            "kind": "time_of_day",
+            "match": "Вечер опускается",
+            "genuine": true
+          },
+          {
+            "key": "saved-e9ed0134a4:вечерний туман",
+            "file": "reasoning-sweep-bootstrap-other-2026-10-01.json",
+            "kind": "time_of_day",
+            "match": "вечерний туман",
+            "genuine": true
+          },
+          {
+            "key": "saved-ca03f599fe:туман",
+            "file": "structured-outputs-bootstrap-after-2026-10-01.json",
+            "kind": "weather",
+            "match": "туман",
+            "genuine": true
+          },
+          {
+            "key": "saved-b77414dc2e:туман",
+            "file": "structured-outputs-bootstrap-after-2026-10-01.json",
+            "kind": "weather",
+            "match": "туман",
+            "genuine": true
+          },
+          {
+            "key": "saved-37909ff183:туманом",
+            "file": "structured-outputs-bootstrap-after-2026-10-01.json",
+            "kind": "weather",
+            "match": "туманом",
+            "genuine": true
+          },
+          {
+            "key": "saved-37909ff183:тумана",
+            "file": "structured-outputs-bootstrap-after-2026-10-01.json",
+            "kind": "weather",
+            "match": "тумана",
+            "genuine": true
+          },
+          {
+            "key": "saved-37909ff183:туман",
+            "file": "structured-outputs-bootstrap-after-2026-10-01.json",
+            "kind": "weather",
+            "match": "туман",
+            "genuine": true
+          },
+          {
+            "key": "saved-0705b10ad5:тумане",
+            "file": "structured-outputs-bootstrap-after-2026-10-01.json",
+            "kind": "weather",
+            "match": "тумане",
+            "genuine": true
+          },
+          {
+            "key": "saved-0705b10ad5:тумана",
+            "file": "structured-outputs-bootstrap-after-2026-10-01.json",
+            "kind": "weather",
+            "match": "тумана",
+            "genuine": true
+          },
+          {
+            "key": "saved-bed7b04dc8:Туман",
+            "file": "structured-outputs-bootstrap-after-2026-10-01.json",
+            "kind": "weather",
+            "match": "Туман",
+            "genuine": true
+          },
+          {
+            "key": "saved-b46ffee357:дождь",
+            "file": "structured-outputs-bootstrap-before-2026-10-01.json",
+            "kind": "weather",
+            "match": "дождь",
+            "genuine": true
+          },
+          {
+            "key": "saved-b46ffee357:Дождь",
+            "file": "structured-outputs-bootstrap-before-2026-10-01.json",
+            "kind": "weather",
+            "match": "Дождь",
+            "genuine": true
+          },
+          {
+            "key": "saved-77894f9190:сухая пыль",
+            "file": "narrator-comparison-gpt-6-luna-main-2026-10-01.json",
+            "kind": "surface",
+            "match": "сухая пыль",
+            "genuine": true
+          },
+          {
+            "key": "saved-6c97833dfe:сухая пыль",
+            "file": "narrator-comparison-gpt-6-luna-main-2026-10-01.json",
+            "kind": "surface",
+            "match": "сухая пыль",
+            "genuine": false
+          },
+          {
+            "key": "saved-4291746af2:сухая пыль",
+            "file": "narrator-comparison-muse-medium-2026-09-11.json",
+            "kind": "surface",
+            "match": "сухая пыль",
+            "genuine": true
+          },
+          {
+            "key": "saved-ac2b9b0e74:дорожной пыли",
+            "file": "narrator-craft-glm-5.3-flash-strict-low-run2.json",
+            "kind": "surface",
+            "match": "дорожной пыли",
+            "genuine": true
+          },
+          {
+            "key": "saved-74b26da3d8:дорожная пыль",
+            "file": "narrator-craft-gpt-5.6-luna-2026-08-30-run2.json",
+            "kind": "surface",
+            "match": "дорожная пыль",
+            "genuine": true
+          },
+          {
+            "key": "saved-3e21907fed:дорожная пыль",
+            "file": "narrator-craft-luna-off-tuned1.json",
+            "kind": "surface",
+            "match": "дорожная пыль",
+            "genuine": true
+          },
+          {
+            "key": "saved-7095833747:дорожная пыль",
+            "file": "narrator-craft-luna-off-tuned1.json",
+            "kind": "surface",
+            "match": "дорожная пыль",
+            "genuine": true
+          },
+          {
+            "key": "saved-fd9db0bf78:Пыль на",
+            "file": "narrator-craft-luna-off-tuned2.json",
+            "kind": "surface",
+            "match": "Пыль на",
+            "genuine": true
+          },
+          {
+            "key": "saved-dd20c3611d:дорожная пыль",
+            "file": "narrator-craft-luna-off.json",
+            "kind": "surface",
+            "match": "дорожная пыль",
+            "genuine": true
+          },
+          {
+            "key": "saved-cbc9391347:дорожная пыль",
+            "file": "narrator-craft-lunapro-final1.json",
+            "kind": "surface",
+            "match": "дорожная пыль",
+            "genuine": true
+          },
+          {
+            "key": "saved-af530ae2bb:дорожной пыли",
+            "file": "narrator-craft-lunapro-final2.json",
+            "kind": "surface",
+            "match": "дорожной пыли",
+            "genuine": true
+          },
+          {
+            "key": "saved-b8f4fef325:покрытый дорожной пылью",
+            "file": "reasoning-sweep-bootstrap-luna-2026-10-01.json",
+            "kind": "surface",
+            "match": "покрытый дорожной пылью",
+            "genuine": true
+          },
+          {
+            "key": "saved-bb7c19fbd3:дорожная пыль",
+            "file": "routerai-benchmark-2026-09-07.json",
+            "kind": "surface",
+            "match": "дорожная пыль",
+            "genuine": true
+          },
+          {
+            "key": "saved-82c804a2da:дорожная пыль",
+            "file": "routerai-benchmark-2026-09-07.json",
+            "kind": "surface",
+            "match": "дорожная пыль",
+            "genuine": true
+          },
+          {
+            "key": "saved-1b00969342:дорожной пыли",
+            "file": "routerai-production-profiles-2026-09-08.json",
+            "kind": "surface",
+            "match": "дорожной пыли",
+            "genuine": true
+          },
+          {
+            "key": "saved-62953b13a5:дорожная пыль",
+            "file": "routerai-production-profiles-2026-09-08.json",
+            "kind": "surface",
+            "match": "дорожная пыль",
+            "genuine": true
+          },
+          {
+            "key": "saved-7c3f354638:пыль под",
+            "file": "routerai-prompt-ablation-2026-09-08.json",
+            "kind": "surface",
+            "match": "пыль под",
+            "genuine": false
+          },
+          {
+            "key": "saved-7c3f354638:дорожной пылью",
+            "file": "routerai-prompt-ablation-2026-09-08.json",
+            "kind": "surface",
+            "match": "дорожной пылью",
+            "genuine": true
+          },
+          {
+            "key": "saved-3c450e6b14:туман",
+            "file": "campaign-bootstrap-gpt-6-luna-2026-10-01.json",
+            "kind": "weather",
+            "match": "туман",
+            "genuine": true
+          },
+          {
+            "key": "saved-e9ed0134a4:туман",
+            "file": "reasoning-sweep-bootstrap-other-2026-10-01.json",
+            "kind": "weather",
+            "match": "туман",
+            "genuine": true
+          },
+          {
+            "key": "saved-abe6a5eb03:дождь",
+            "file": "narrator-craft-glm-5.3-flash-2026-08-30-run1.json",
+            "kind": "weather",
+            "match": "дождь",
+            "genuine": false
+          }
+        ],
+        "precision": 0.923,
+        "matcher_error_rate_per_text": 0.005
+      }
+    }
+  }
+}

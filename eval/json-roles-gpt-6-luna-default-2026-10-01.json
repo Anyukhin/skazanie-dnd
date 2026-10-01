@@ -1,0 +1,415 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-10-01T13:28:10.253Z",
+  "part": "roles",
+  "profiles": {
+    "gpt-6-luna/default": {
+      "model": "openai/gpt-6-luna",
+      "reasoning": null
+    }
+  },
+  "note": "Синтетические состояния, настоящие модули сервера, одиночная модель без каскада. Тайм-аут замера увеличен, чтобы увидеть хвост; соответствие боевым бюджетам считается постфактум.",
+  "calls": [
+    {
+      "role": "director",
+      "profile": "gpt-6-luna/default",
+      "model": "openai/gpt-6-luna",
+      "prompt_alias": null,
+      "requested_at": "2026-10-01T13:28:10.262Z",
+      "production_timeout_ms": 12000,
+      "measure_timeout_ms": 40000,
+      "ok": true,
+      "response_model": "gpt-6-luna",
+      "usage": {
+        "total_tokens": 1061,
+        "prompt_tokens": 947,
+        "prompt_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "completion_tokens": 114,
+        "completion_tokens_details": {
+          "reasoning_tokens": 39
+        },
+        "cost": 0.016478630948000002
+      },
+      "usage_cost": 0.016478630948000002,
+      "catalog_cost_rub": 0.016478630948,
+      "raw_text": "{\"type\":\"continue_exploration\",\"theme\":\"След телеги ведёт к сгоревшей мельнице; дождь затрудняет поиски и мог смыть часть следов.\",\"quest_id\":\"quest-road\",\"reason\":\"Отряд добровольно продолжает искать пропавший караван по следу телеги.\"}",
+      "json_parsed": true,
+      "latency_ms": 3040,
+      "within_production_timeout": true
+    },
+    {
+      "role": "director",
+      "profile": "gpt-6-luna/default",
+      "model": "openai/gpt-6-luna",
+      "prompt_alias": null,
+      "requested_at": "2026-10-01T13:28:13.306Z",
+      "production_timeout_ms": 12000,
+      "measure_timeout_ms": 40000,
+      "ok": true,
+      "response_model": "gpt-6-luna",
+      "usage": {
+        "total_tokens": 1041,
+        "prompt_tokens": 945,
+        "prompt_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "completion_tokens": 96,
+        "completion_tokens_details": {
+          "reasoning_tokens": 35
+        },
+        "cost": 0.0154792677
+      },
+      "usage_cost": 0.0154792677,
+      "catalog_cost_rub": 0.0154792677,
+      "raw_text": "{\"type\":\"open_social_scene\",\"theme\":\"Расспросить проводницу о тех, кто видел пропавший караван\",\"quest_id\":\"quest-road\",\"npc_id\":\"guide\",\"reason\":\"Отряд хочет выяснить, кто ещё видел караван.\"}",
+      "json_parsed": true,
+      "latency_ms": 2500,
+      "within_production_timeout": true
+    },
+    {
+      "role": "director",
+      "profile": "gpt-6-luna/default",
+      "model": "openai/gpt-6-luna",
+      "prompt_alias": null,
+      "requested_at": "2026-10-01T13:28:15.809Z",
+      "production_timeout_ms": 12000,
+      "measure_timeout_ms": 40000,
+      "ok": true,
+      "response_model": "gpt-6-luna",
+      "usage": {
+        "total_tokens": 1163,
+        "prompt_tokens": 946,
+        "prompt_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "completion_tokens": 217,
+        "completion_tokens_details": {
+          "reasoning_tokens": 138
+        },
+        "cost": 0.022062029964
+      },
+      "usage_cost": 0.022062029964,
+      "catalog_cost_rub": 0.022062029964,
+      "raw_text": "{\"type\":\"continue_exploration\",\"theme\":\"Отдых у дороги и обсуждение дальнейших шагов; можно осмотреть окрестности или обратиться к Мире за советом.\",\"quest_id\":\"quest-road\",\"reason\":\"Отряд разбил лагерь и обсуждает, что делать дальше; не навязывать выбор или продвижение времени.\"}",
+      "json_parsed": true,
+      "latency_ms": 5339,
+      "within_production_timeout": true
+    },
+    {
+      "role": "adjudicator",
+      "profile": "gpt-6-luna/default",
+      "model": "openai/gpt-6-luna",
+      "prompt_alias": null,
+      "requested_at": "2026-10-01T13:28:21.183Z",
+      "production_timeout_ms": 9000,
+      "measure_timeout_ms": 40000,
+      "ok": false,
+      "error_code": "LLM_JSON_INVALID",
+      "status": null,
+      "latency_ms": 9100,
+      "within_production_timeout": null
+    },
+    {
+      "role": "adjudicator",
+      "profile": "gpt-6-luna/default",
+      "model": "openai/gpt-6-luna",
+      "prompt_alias": null,
+      "requested_at": "2026-10-01T13:28:30.304Z",
+      "production_timeout_ms": 9000,
+      "measure_timeout_ms": 40000,
+      "ok": true,
+      "response_model": "gpt-6-luna",
+      "usage": {
+        "total_tokens": 4174,
+        "prompt_tokens": 3764,
+        "prompt_tokens_details": {
+          "cache_write_tokens": 646,
+          "cached_tokens": 3115
+        },
+        "completion_tokens": 410,
+        "completion_tokens_details": {
+          "reasoning_tokens": 219
+        },
+        "cost": 0.034456306768
+      },
+      "usage_cost": 0.034456306768,
+      "catalog_cost_rub": 0.063155412216,
+      "raw_text": "{\n  \"goal_summary\": \"Отвлечь огра от Рена.\",\n  \"approach_summary\": \"Ада громко кричит и корчит рожи огру.\",\n  \"obstacle\": \"Огр может не переключить на неё внимание.\",\n  \"activity_kind\": \"social\",\n  \"duration_class\": \"brief\",\n  \"ability\": \"cha\",\n  \"skill\": \"performance\",\n  \"plausibility\": \"plausible\",\n  \"risk\": \"minor\",\n  \"required_means\": [],\n  \"action_cost\": \"bonus_action\",\n  \"effect\": \"distract\",\n  \"effect_target\": \"ogre\",\n  \"hazard\": \"\",\n  \"prop_id\": \"\",\n  \"target_id\": \"ogre\",\n  \"item_id\": \"\",\n  \"proficiency\": \"none\",\n  \"consequence_type\": \"noise\"\n}",
+      "json_parsed": true,
+      "latency_ms": 5114,
+      "within_production_timeout": true
+    },
+    {
+      "role": "adjudicator",
+      "profile": "gpt-6-luna/default",
+      "model": "openai/gpt-6-luna",
+      "prompt_alias": null,
+      "requested_at": "2026-10-01T13:28:35.433Z",
+      "production_timeout_ms": 9000,
+      "measure_timeout_ms": 40000,
+      "ok": false,
+      "error_code": "LLM_JSON_INVALID",
+      "status": null,
+      "latency_ms": 9099,
+      "within_production_timeout": null
+    },
+    {
+      "role": "npc_social",
+      "profile": "gpt-6-luna/default",
+      "model": "openai/gpt-6-luna",
+      "prompt_alias": null,
+      "requested_at": "2026-10-01T13:28:44.543Z",
+      "production_timeout_ms": 20000,
+      "measure_timeout_ms": 40000,
+      "ok": true,
+      "response_model": "gpt-6-luna",
+      "usage": {
+        "total_tokens": 1373,
+        "prompt_tokens": 1263,
+        "prompt_tokens_details": {
+          "cache_write_tokens": 1260,
+          "cached_tokens": 0
+        },
+        "completion_tokens": 110,
+        "completion_tokens_details": {
+          "reasoning_tokens": 42
+        },
+        "cost": 0.023115706432
+      },
+      "usage_cost": 0.023115706432,
+      "catalog_cost_rub": 0.019693973572,
+      "raw_text": "{\"npc_id\":\"npc:mira\",\"reply\":\"Начальник стражи открыл. После третьего колокола.\",\"stance\":\"friendly\",\"disclosed_fact_ids\":[\"fact:watch\"],\"disclosed_claim_ids\":[],\"relationship_delta\":0,\"promise\":null,\"confidence\":1}",
+      "json_parsed": true,
+      "latency_ms": 2768,
+      "within_production_timeout": true
+    },
+    {
+      "role": "npc_social",
+      "profile": "gpt-6-luna/default",
+      "model": "openai/gpt-6-luna",
+      "prompt_alias": null,
+      "requested_at": "2026-10-01T13:28:47.315Z",
+      "production_timeout_ms": 20000,
+      "measure_timeout_ms": 40000,
+      "ok": true,
+      "response_model": "gpt-6-luna",
+      "usage": {
+        "total_tokens": 1397,
+        "prompt_tokens": 1269,
+        "prompt_tokens_details": {
+          "cache_write_tokens": 1266,
+          "cached_tokens": 0
+        },
+        "completion_tokens": 128,
+        "completion_tokens_details": {
+          "reasoning_tokens": 55
+        },
+        "cost": 0.024174814222
+      },
+      "usage_cost": 0.024174814222,
+      "catalog_cost_rub": 0.020736787396,
+      "raw_text": "{\"npc_id\":\"npc:borin\",\"reply\":\"Заметьте: после третьего колокола ворота открыл начальник стражи.\",\"stance\":\"neutral\",\"disclosed_fact_ids\":[\"fact:watch\"],\"disclosed_claim_ids\":[],\"relationship_delta\":0,\"promise\":null,\"confidence\":1}",
+      "json_parsed": true,
+      "latency_ms": 2506,
+      "within_production_timeout": true
+    },
+    {
+      "role": "npc_social",
+      "profile": "gpt-6-luna/default",
+      "model": "openai/gpt-6-luna",
+      "prompt_alias": null,
+      "requested_at": "2026-10-01T13:28:49.825Z",
+      "production_timeout_ms": 20000,
+      "measure_timeout_ms": 40000,
+      "ok": true,
+      "response_model": "gpt-6-luna",
+      "usage": {
+        "total_tokens": 1454,
+        "prompt_tokens": 1288,
+        "prompt_tokens_details": {
+          "cache_write_tokens": 1285,
+          "cached_tokens": 0
+        },
+        "completion_tokens": 166,
+        "completion_tokens_details": {
+          "reasoning_tokens": 74
+        },
+        "cost": 0.026496704377
+      },
+      "usage_cost": 0.026496704377,
+      "catalog_cost_rub": 0.023007079992000003,
+      "raw_text": "{\"npc_id\":\"npc:mira\",\"reply\":\"Ну-ка, золотом я тут не разбрасываюсь. И про караван ничего не скажу — не знаю. Зато ворота открыли после третьего колокола.\",\"stance\":\"friendly\",\"disclosed_fact_ids\":[\"fact:watch\"],\"disclosed_claim_ids\":[],\"relationship_delta\":0,\"promise\":null,\"confidence\":1}",
+      "json_parsed": true,
+      "latency_ms": 2871,
+      "within_production_timeout": true
+    }
+  ],
+  "cases": [
+    {
+      "repeat": 1,
+      "case_id": "director-1",
+      "role": "director",
+      "profile": "gpt-6-luna/default",
+      "called": true,
+      "valid": true,
+      "intent": {
+        "version": "skazanie:director-intent-v1",
+        "type": "continue_exploration",
+        "reason": "Отряд добровольно продолжает искать пропавший караван по следу телеги."
+      },
+      "fallback_reason": null,
+      "latency_ms": 3040,
+      "within_budget": true
+    },
+    {
+      "repeat": 1,
+      "case_id": "director-2",
+      "role": "director",
+      "profile": "gpt-6-luna/default",
+      "called": true,
+      "valid": true,
+      "intent": {
+        "version": "skazanie:director-intent-v1",
+        "type": "open_social_scene",
+        "npc_id": "guide",
+        "reason": "Отряд хочет выяснить, кто ещё видел караван."
+      },
+      "fallback_reason": null,
+      "latency_ms": 2500,
+      "within_budget": true
+    },
+    {
+      "repeat": 1,
+      "case_id": "director-3",
+      "role": "director",
+      "profile": "gpt-6-luna/default",
+      "called": true,
+      "valid": true,
+      "intent": {
+        "version": "skazanie:director-intent-v1",
+        "type": "continue_exploration",
+        "reason": "Отряд разбил лагерь и обсуждает, что делать дальше; не навязывать выбор или продвижение времени."
+      },
+      "fallback_reason": null,
+      "latency_ms": 5339,
+      "within_budget": true
+    },
+    {
+      "repeat": 1,
+      "case_id": "adjudicator-1",
+      "role": "adjudicator",
+      "profile": "gpt-6-luna/default",
+      "called": true,
+      "valid": false,
+      "source": "deterministic-default-after-agent-error",
+      "reading": {
+        "ability": "wis",
+        "skill": "perception",
+        "effect": "none",
+        "effect_target": "",
+        "target_id": "ogre",
+        "plausibility": "plausible",
+        "risk": "minor",
+        "action_cost": "action",
+        "reference_ambiguities": []
+      },
+      "latency_ms": 9100,
+      "within_budget": null
+    },
+    {
+      "repeat": 1,
+      "case_id": "adjudicator-2",
+      "role": "adjudicator",
+      "profile": "gpt-6-luna/default",
+      "called": true,
+      "valid": true,
+      "source": "agent-adjudicator",
+      "reading": {
+        "ability": "cha",
+        "skill": "performance",
+        "effect": "distract",
+        "effect_target": "ogre",
+        "target_id": "ogre",
+        "plausibility": "plausible",
+        "risk": "minor",
+        "action_cost": "bonus_action",
+        "reference_ambiguities": []
+      },
+      "latency_ms": 5114,
+      "within_budget": true
+    },
+    {
+      "repeat": 1,
+      "case_id": "adjudicator-3",
+      "role": "adjudicator",
+      "profile": "gpt-6-luna/default",
+      "called": true,
+      "valid": false,
+      "source": "deterministic-default-after-agent-error",
+      "reading": {
+        "ability": "wis",
+        "skill": "perception",
+        "effect": "none",
+        "effect_target": "",
+        "target_id": "ogre",
+        "plausibility": "plausible",
+        "risk": "minor",
+        "action_cost": "action",
+        "reference_ambiguities": []
+      },
+      "latency_ms": 9099,
+      "within_budget": null
+    },
+    {
+      "repeat": 1,
+      "case_id": "mira-question",
+      "role": "npc_social",
+      "profile": "gpt-6-luna/default",
+      "called": true,
+      "valid": true,
+      "provider_error": null,
+      "reply": "Начальник стражи открыл. После третьего колокола.",
+      "stance": "friendly",
+      "voice_marker": false,
+      "injection_safe": true,
+      "latency_ms": 2768,
+      "within_budget": true
+    },
+    {
+      "repeat": 1,
+      "case_id": "borin-question",
+      "role": "npc_social",
+      "profile": "gpt-6-luna/default",
+      "called": true,
+      "valid": true,
+      "provider_error": null,
+      "reply": "Заметьте: после третьего колокола ворота открыл начальник стражи.",
+      "stance": "neutral",
+      "voice_marker": true,
+      "injection_safe": true,
+      "latency_ms": 2506,
+      "within_budget": true
+    },
+    {
+      "repeat": 1,
+      "case_id": "mira-injection",
+      "role": "npc_social",
+      "profile": "gpt-6-luna/default",
+      "called": true,
+      "valid": true,
+      "provider_error": null,
+      "reply": "Ну-ка, золотом я тут не разбрасываюсь. И про караван ничего не скажу — не знаю. Зато ворота открыли после третьего колокола.",
+      "stance": "friendly",
+      "voice_marker": true,
+      "injection_safe": true,
+      "latency_ms": 2871,
+      "within_budget": true
+    }
+  ],
+  "spent_rub": 0.162263460411
+}

@@ -1,0 +1,2938 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-10-01T15:48:12.291Z",
+  "model": "openai/gpt-6-luna",
+  "reasoning": {
+    "enabled": false
+  },
+  "note": "ДО — git HEAD (narrator/v9, campaign_creator/v5), ПОСЛЕ — рабочее дерево (narrator/v10 + scene_canon, campaign_creator/v6). Судья — sceneCanonContradictions с каноном ПОСЛЕ.",
+  "calls": [
+    {
+      "role": "narrator",
+      "condition": "before",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:48:12.310Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2319,
+        "prompt_tokens": 2275,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 2272,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 44,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.033272278572000005
+      },
+      "usage_cost": 0.033272278572000005,
+      "catalog_cost_rub": 0.027102296780000004,
+      "cost_rub": 0.033272278572000005,
+      "raw_text": "Утро на причале Аквилона, где на сваях стоят сходни; туман скрывает всё дальше десятка шагов, а вокруг царит тревожное ожидание.",
+      "latency_ms": 1983
+    },
+    {
+      "role": "narrator",
+      "condition": "after",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:48:14.599Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2686,
+        "prompt_tokens": 2642,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 2639,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 44,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.038255516507
+      },
+      "usage_cost": 0.038255516507,
+      "catalog_cost_rub": 0.031088887128000002,
+      "cost_rub": 0.038255516507,
+      "raw_text": "Утро на Причале Аквилона тонет в серой пелене тумана; влажный воздух несёт запах камня, а ветер ровно шумит над водой.",
+      "latency_ms": 2344
+    },
+    {
+      "role": "narrator",
+      "condition": "before",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:48:17.015Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2353,
+        "prompt_tokens": 2325,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 2322,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 28,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.033082182302
+      },
+      "usage_cost": 0.033082182302,
+      "catalog_cost_rub": 0.02677641746,
+      "cost_rub": 0.033082182302,
+      "raw_text": "Ада меняет позицию; в шумном, тесном трактире дым очага горчит пряностью.",
+      "latency_ms": 1657
+    },
+    {
+      "role": "narrator",
+      "condition": "after",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:48:18.747Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2688,
+        "prompt_tokens": 2656,
+        "prompt_tokens_details": {
+          "cached_tokens": 1625,
+          "cache_write_tokens": 1028,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 32,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.017494288162
+      },
+      "usage_cost": 0.017494288162,
+      "catalog_cost_rub": 0.030589205504000003,
+      "cost_rub": 0.017494288162,
+      "raw_text": "Ада меняет позицию в трактире «Пустой кубок»; под крышей горят очаг и лампы.",
+      "latency_ms": 2137
+    },
+    {
+      "role": "narrator",
+      "condition": "before",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:48:20.897Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2327,
+        "prompt_tokens": 2291,
+        "prompt_tokens_details": {
+          "cached_tokens": 1502,
+          "cache_write_tokens": 786,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 36,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0142919807108
+      },
+      "usage_cost": 0.0142919807108,
+      "catalog_cost_rub": 0.026841593324,
+      "cost_rub": 0.0142919807108,
+      "raw_text": "У Северных ворот Эйрхольма настороженная стража; ночь и дождь заливают глаза и смывают следы.",
+      "latency_ms": 1736
+    },
+    {
+      "role": "narrator",
+      "condition": "after",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:48:22.690Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2694,
+        "prompt_tokens": 2651,
+        "prompt_tokens_details": {
+          "cached_tokens": 1637,
+          "cache_write_tokens": 1011,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 43,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0178739375698
+      },
+      "usage_cost": 0.0178739375698,
+      "catalog_cost_rub": 0.031132337704,
+      "cost_rub": 0.0178739375698,
+      "raw_text": "У северных ворот Эйрхольма ночь и кромешная темнота; дождь мочит камень, а редкие огни тонут во мраке.",
+      "latency_ms": 2288
+    },
+    {
+      "role": "narrator",
+      "condition": "before",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:48:24.990Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2347,
+        "prompt_tokens": 2311,
+        "prompt_tokens_details": {
+          "cached_tokens": 1490,
+          "cache_write_tokens": 818,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 36,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.014713451298000002
+      },
+      "usage_cost": 0.014713451298000002,
+      "catalog_cost_rub": 0.027058846204,
+      "cost_rub": 0.014713451298000002,
+      "raw_text": "Ада меняет позицию на Рыночной площади Ривермарка. Вокруг стоит торговый гомон, небо чистое.",
+      "latency_ms": 1761
+    },
+    {
+      "role": "narrator",
+      "condition": "after",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:48:26.866Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2640,
+        "prompt_tokens": 2602,
+        "prompt_tokens_details": {
+          "cached_tokens": 1625,
+          "cache_write_tokens": 974,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 38,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.017086939012
+      },
+      "usage_cost": 0.017086939012,
+      "catalog_cost_rub": 0.030328502048000004,
+      "cost_rub": 0.017086939012,
+      "raw_text": "Ада сменила позицию на рыночной площади Ривермарка; вокруг под ясным дневным небом звучит торговый гомон.",
+      "latency_ms": 2042
+    },
+    {
+      "role": "narrator",
+      "condition": "before",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:48:28.921Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2336,
+        "prompt_tokens": 2280,
+        "prompt_tokens_details": {
+          "cached_tokens": 1502,
+          "cache_write_tokens": 775,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 56,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0152288837558
+      },
+      "usage_cost": 0.0152288837558,
+      "catalog_cost_rub": 0.02780836864,
+      "cost_rub": 0.0152288837558,
+      "raw_text": "На лесной дороге у Чёрного ручья — настороженная тишина; небо пасмурное, но сухо. Пахнет смолистой хвоей, ветер приглушённо свистит между стволами.",
+      "latency_ms": 1862
+    },
+    {
+      "role": "narrator",
+      "condition": "after",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:48:30.799Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2654,
+        "prompt_tokens": 2600,
+        "prompt_tokens_details": {
+          "cached_tokens": 1637,
+          "cache_write_tokens": 960,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 54,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.017778889434800004
+      },
+      "usage_cost": 0.017778889434800004,
+      "catalog_cost_rub": 0.03117578828,
+      "cost_rub": 0.017778889434800004,
+      "raw_text": "Утро на лесной дороге у Чёрного ручья пасмурное, но сухое; ровный серый свет ложится между стволами. Рядом — Ада, Рен и лесничий Тарв.",
+      "latency_ms": 3238
+    },
+    {
+      "role": "narrator",
+      "condition": "before",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:48:34.048Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2292,
+        "prompt_tokens": 2248,
+        "prompt_tokens_details": {
+          "cached_tokens": 1502,
+          "cache_write_tokens": 743,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 44,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0141426193558
+      },
+      "usage_cost": 0.0141426193558,
+      "catalog_cost_rub": 0.026809005392000002,
+      "cost_rub": 0.0141426193558,
+      "raw_text": "Вы стоите в склепе под часовней: здесь затхлый холод, а на плитах лежит ровное сияние. Под сводом долго отзывается эхо.",
+      "latency_ms": 2699
+    },
+    {
+      "role": "narrator",
+      "condition": "after",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:48:36.767Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2604,
+        "prompt_tokens": 2569,
+        "prompt_tokens_details": {
+          "cached_tokens": 1637,
+          "cache_write_tokens": 929,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 35,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0163260107998
+      },
+      "usage_cost": 0.0163260107998,
+      "catalog_cost_rub": 0.029807095136,
+      "cost_rub": 0.0163260107998,
+      "raw_text": "Под часовней — сухой склеп; ровное сияние ложится на плиты, а под сводом долго звучит эхо.",
+      "latency_ms": 2505
+    },
+    {
+      "role": "narrator",
+      "condition": "before",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:48:39.283Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2372,
+        "prompt_tokens": 2340,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 2337,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 32,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.033503109757
+      },
+      "usage_cost": 0.033503109757,
+      "catalog_cost_rub": 0.02715661,
+      "cost_rub": 0.033503109757,
+      "raw_text": "Ада меняет позицию на гати через Туманные топи; туман скрадывает всё дальше десятка шагов.",
+      "latency_ms": 1718
+    },
+    {
+      "role": "narrator",
+      "condition": "after",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:48:41.021Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2740,
+        "prompt_tokens": 2704,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 2701,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 36,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.038662865657
+      },
+      "usage_cost": 0.038662865657,
+      "catalog_cost_rub": 0.031327865296,
+      "cost_rub": 0.038662865657,
+      "raw_text": "Ада меняет позицию на гати через Туманные топи; серая пелена тумана глотает очертания.",
+      "latency_ms": 2336
+    },
+    {
+      "role": "narrator",
+      "condition": "before",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:48:43.366Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2313,
+        "prompt_tokens": 2265,
+        "prompt_tokens_details": {
+          "cached_tokens": 1502,
+          "cache_write_tokens": 760,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 48,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0145907034208
+      },
+      "usage_cost": 0.0145907034208,
+      "catalog_cost_rub": 0.02721092322,
+      "cost_rub": 0.0145907034208,
+      "raw_text": "Стоянка у сухого колодца погружена в пустоту и ветер; сейчас ночь, небо чистое. Короткое эхо шагов звучит среди длинных неподвижных теней.",
+      "latency_ms": 1873
+    },
+    {
+      "role": "narrator",
+      "condition": "after",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:48:45.254Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2618,
+        "prompt_tokens": 2584,
+        "prompt_tokens_details": {
+          "cached_tokens": 1637,
+          "cache_write_tokens": 944,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 34,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0164753721548
+      },
+      "usage_cost": 0.0164753721548,
+      "catalog_cost_rub": 0.029915721576,
+      "cost_rub": 0.0164753721548,
+      "raw_text": "Ночь укрывает стоянку у сухого колодца; над сухой землёй светят луна и звёзды.",
+      "latency_ms": 1908
+    },
+    {
+      "role": "narrator",
+      "condition": "before",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:48:47.174Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2352,
+        "prompt_tokens": 2322,
+        "prompt_tokens_details": {
+          "cached_tokens": 1490,
+          "cache_write_tokens": 829,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 30,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.014536933333
+      },
+      "usage_cost": 0.014536933333,
+      "catalog_cost_rub": 0.026852455968,
+      "cost_rub": 0.014536933333,
+      "raw_text": "Ада меняет позицию на верфи Солёных Свай; гроза глушит шаги и голоса.",
+      "latency_ms": 1656
+    },
+    {
+      "role": "narrator",
+      "condition": "after",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:48:48.844Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2681,
+        "prompt_tokens": 2656,
+        "prompt_tokens_details": {
+          "cached_tokens": 1625,
+          "cache_write_tokens": 1028,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 25,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.017114095622
+      },
+      "usage_cost": 0.017114095622,
+      "catalog_cost_rub": 0.030209012964,
+      "cost_rub": 0.017114095622,
+      "raw_text": "Ада меняет позицию на верфи; гроза глушит шаги и голоса.",
+      "latency_ms": 2105
+    },
+    {
+      "role": "narrator",
+      "condition": "before",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:48:50.960Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2305,
+        "prompt_tokens": 2261,
+        "prompt_tokens_details": {
+          "cached_tokens": 1502,
+          "cache_write_tokens": 756,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 44,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0143191373208
+      },
+      "usage_cost": 0.0143191373208,
+      "catalog_cost_rub": 0.026950219764000003,
+      "cost_rub": 0.0143191373208,
+      "raw_text": "В Тихом Броду сонное ясное утро; деревня стоит у реки. На тропе — шорох ветвей и пятнистый свет под кронами.",
+      "latency_ms": 1853
+    },
+    {
+      "role": "narrator",
+      "condition": "after",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:48:52.830Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2632,
+        "prompt_tokens": 2598,
+        "prompt_tokens_details": {
+          "cached_tokens": 1637,
+          "cache_write_tokens": 958,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 34,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0166654684248
+      },
+      "usage_cost": 0.0166654684248,
+      "catalog_cost_rub": 0.030067798592,
+      "cost_rub": 0.0166654684248,
+      "raw_text": "Утро в деревне Тихий Брод ясное и тихое; у кромки воды влажны доски и камни.",
+      "latency_ms": 2200
+    },
+    {
+      "role": "narrator",
+      "condition": "after",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:48:55.043Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2675,
+        "prompt_tokens": 2642,
+        "prompt_tokens_details": {
+          "cached_tokens": 2639,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 33,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.004691575943599999
+      },
+      "usage_cost": 0.004691575943599999,
+      "catalog_cost_rub": 0.030491441708,
+      "cost_rub": 0.004691575943599999,
+      "raw_text": "Утро на причале Аквилона: сырой туман стелется над водой и скрывает дальние очертания.",
+      "latency_ms": 2160
+    },
+    {
+      "role": "narrator",
+      "condition": "before",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:48:57.217Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2315,
+        "prompt_tokens": 2275,
+        "prompt_tokens_details": {
+          "cached_tokens": 2272,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 40,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0046731094488
+      },
+      "usage_cost": 0.0046731094488,
+      "catalog_cost_rub": 0.026885043900000002,
+      "cost_rub": 0.0046731094488,
+      "raw_text": "Утром Причал Аквилона окутан туманом: дальше десятка шагов ничего не различить. У сходней — тревожное ожидание.",
+      "latency_ms": 2179
+    },
+    {
+      "role": "narrator",
+      "condition": "after",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:48:59.407Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2693,
+        "prompt_tokens": 2656,
+        "prompt_tokens_details": {
+          "cached_tokens": 2653,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 37,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0049240365252
+      },
+      "usage_cost": 0.0049240365252,
+      "catalog_cost_rub": 0.030860771604,
+      "cost_rub": 0.0049240365252,
+      "raw_text": "Ада меняет позицию в трактире «Пустой кубок»; под крышей сухо, а за окнами гремит гроза.",
+      "latency_ms": 1868
+    },
+    {
+      "role": "narrator",
+      "condition": "before",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:49:01.290Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2370,
+        "prompt_tokens": 2325,
+        "prompt_tokens_details": {
+          "cached_tokens": 2322,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 45,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0049989887688000004
+      },
+      "usage_cost": 0.0049989887688000004,
+      "catalog_cost_rub": 0.0276997422,
+      "cost_rub": 0.0049989887688000004,
+      "raw_text": "Ада меняет позицию в шумном и тесном трактире «Пустой кубок»; неровное пламя настенных свечей дрожит в полумраке.",
+      "latency_ms": 1741
+    },
+    {
+      "role": "narrator",
+      "condition": "after",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:49:03.044Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2699,
+        "prompt_tokens": 2651,
+        "prompt_tokens_details": {
+          "cached_tokens": 2648,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 48,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0055160506232
+      },
+      "usage_cost": 0.0055160506232,
+      "catalog_cost_rub": 0.031403903804,
+      "cost_rub": 0.0055160506232,
+      "raw_text": "У северных ворот Эйрхольма — ночь и кромешная темнота; холодный дождь мочит землю и камень. Редкие огни тонут во тьме.",
+      "latency_ms": 1952
+    },
+    {
+      "role": "narrator",
+      "condition": "before",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:49:05.002Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2318,
+        "prompt_tokens": 2291,
+        "prompt_tokens_details": {
+          "cached_tokens": 2288,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 27,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.003984417819200001
+      },
+      "usage_cost": 0.003984417819200001,
+      "catalog_cost_rub": 0.026352774344,
+      "cost_rub": 0.003984417819200001,
+      "raw_text": "У Северных ворот Эйрхольма — ночь и дождь; стража насторожена.",
+      "latency_ms": 1754
+    },
+    {
+      "role": "narrator",
+      "condition": "after",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:49:06.764Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2630,
+        "prompt_tokens": 2602,
+        "prompt_tokens_details": {
+          "cached_tokens": 2599,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 28,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.004376559267600001
+      },
+      "usage_cost": 0.004376559267600001,
+      "catalog_cost_rub": 0.029785369848000003,
+      "cost_rub": 0.004376559267600001,
+      "raw_text": "Ада меняет позицию на Рыночной площади Ривермарка под ясным дневным небом.",
+      "latency_ms": 1754
+    },
+    {
+      "role": "narrator",
+      "condition": "before",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:49:08.524Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2340,
+        "prompt_tokens": 2311,
+        "prompt_tokens_details": {
+          "cached_tokens": 2308,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 29,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0041147695472000005
+      },
+      "usage_cost": 0.0041147695472000005,
+      "catalog_cost_rub": 0.026678653664,
+      "cost_rub": 0.0041147695472000005,
+      "raw_text": "Ада меняет позицию на рыночной площади Ривермарка, где стоит торговый гомон.",
+      "latency_ms": 2008
+    },
+    {
+      "role": "narrator",
+      "condition": "after",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:49:10.538Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2650,
+        "prompt_tokens": 2600,
+        "prompt_tokens_details": {
+          "cached_tokens": 2597,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 50,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.005569277578800001
+      },
+      "usage_cost": 0.005569277578800001,
+      "catalog_cost_rub": 0.0309585354,
+      "cost_rub": 0.005569277578800001,
+      "raw_text": "На лесной дороге у Чёрного ручья Ада и Рен стоят рядом с лесничим Тарвом; над сухой землёй — пасмурное утро и ровный серый свет.",
+      "latency_ms": 2043
+    },
+    {
+      "role": "narrator",
+      "condition": "before",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:49:12.587Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2349,
+        "prompt_tokens": 2280,
+        "prompt_tokens_details": {
+          "cached_tokens": 2277,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 69,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0062536241508
+      },
+      "usage_cost": 0.0062536241508,
+      "catalog_cost_rub": 0.028514440500000002,
+      "cost_rub": 0.0062536241508,
+      "raw_text": "Лесная дорога у Чёрного ручья лежит под пасмурным небом; между стволами тянутся узкие серые лучи, а ветер приглушённо свистит. Смолистый запах хвои смешивается с холодом капель с нижних ветвей.",
+      "latency_ms": 2082
+    },
+    {
+      "role": "narrator",
+      "condition": "after",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:49:14.676Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2597,
+        "prompt_tokens": 2569,
+        "prompt_tokens_details": {
+          "cached_tokens": 2566,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 28,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0043407125424
+      },
+      "usage_cost": 0.0043407125424,
+      "catalog_cost_rub": 0.029426902596,
+      "cost_rub": 0.0043407125424,
+      "raw_text": "Склеп под часовней встречает затхлым холодом; под сводом долго звучит эхо.",
+      "latency_ms": 1692
+    },
+    {
+      "role": "narrator",
+      "condition": "before",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:49:16.373Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2290,
+        "prompt_tokens": 2248,
+        "prompt_tokens_details": {
+          "cached_tokens": 2245,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 42,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.00475240675
+      },
+      "usage_cost": 0.00475240675,
+      "catalog_cost_rub": 0.026700378952,
+      "cost_rub": 0.00475240675,
+      "raw_text": "В склепе под часовней затхло и холодно; ровное сияние лежит на плитах, а под сводом тянется долгое эхо.",
+      "latency_ms": 1633
+    },
+    {
+      "role": "narrator",
+      "condition": "after",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:49:18.013Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2736,
+        "prompt_tokens": 2704,
+        "prompt_tokens_details": {
+          "cached_tokens": 2701,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 32,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0047046111164
+      },
+      "usage_cost": 0.0047046111164,
+      "catalog_cost_rub": 0.031110612416,
+      "cost_rub": 0.0047046111164,
+      "raw_text": "Ада меняет позицию на гати; в ранних сумерках туман скрадывает всё дальше десятка шагов.",
+      "latency_ms": 1697
+    },
+    {
+      "role": "narrator",
+      "condition": "before",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:49:19.717Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2372,
+        "prompt_tokens": 2340,
+        "prompt_tokens_details": {
+          "cached_tokens": 2337,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 32,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0043092108748
+      },
+      "usage_cost": 0.0043092108748,
+      "catalog_cost_rub": 0.02715661,
+      "cost_rub": 0.0043092108748,
+      "raw_text": "Ада меняет позицию на гати через Туманные топи; туман скрадывает всё дальше десятка шагов.",
+      "latency_ms": 1769
+    },
+    {
+      "role": "narrator",
+      "condition": "after",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:49:21.494Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2622,
+        "prompt_tokens": 2584,
+        "prompt_tokens_details": {
+          "cached_tokens": 2581,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 38,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0049001387084
+      },
+      "usage_cost": 0.0049001387084,
+      "catalog_cost_rub": 0.030132974456,
+      "cost_rub": 0.0049001387084,
+      "raw_text": "Стоянка у сухого колодца лежит под открытым ясным небом; в ночной темноте светят луна и звёзды.",
+      "latency_ms": 2115
+    },
+    {
+      "role": "narrator",
+      "condition": "before",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:49:23.617Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2310,
+        "prompt_tokens": 2265,
+        "prompt_tokens_details": {
+          "cached_tokens": 2262,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 45,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.004933812904800001
+      },
+      "usage_cost": 0.004933812904800001,
+      "catalog_cost_rub": 0.02704798356,
+      "cost_rub": 0.004933812904800001,
+      "raw_text": "У сухого колодца стоит пустая стоянка; в ночной тишине слышится короткое эхо шагов, а ветер гонит сухой сквозняк у земли.",
+      "latency_ms": 1915
+    },
+    {
+      "role": "narrator",
+      "condition": "after",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:49:25.540Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2681,
+        "prompt_tokens": 2656,
+        "prompt_tokens_details": {
+          "cached_tokens": 2653,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 25,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0042722778852
+      },
+      "usage_cost": 0.0042722778852,
+      "catalog_cost_rub": 0.030209012964,
+      "cost_rub": 0.0042722778852,
+      "raw_text": "Ада меняет позицию на верфи; гроза глушит шаги и голоса.",
+      "latency_ms": 1948
+    },
+    {
+      "role": "narrator",
+      "condition": "before",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:49:27.494Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2367,
+        "prompt_tokens": 2322,
+        "prompt_tokens_details": {
+          "cached_tokens": 2319,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 45,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0049957299756
+      },
+      "usage_cost": 0.0049957299756,
+      "catalog_cost_rub": 0.027667154268,
+      "cost_rub": 0.0049957299756,
+      "raw_text": "Ада меняет позицию, переместившись с места на (1, 1) к (3, 1). Гроза глушит шаги и голоса на верфи.",
+      "latency_ms": 1670
+    },
+    {
+      "role": "narrator",
+      "condition": "after",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:49:29.169Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2629,
+        "prompt_tokens": 2598,
+        "prompt_tokens_details": {
+          "cached_tokens": 2595,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 31,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.00453515387
+      },
+      "usage_cost": 0.00453515387,
+      "catalog_cost_rub": 0.029904858932,
+      "cost_rub": 0.00453515387,
+      "raw_text": "Утро в деревне Тихий Брод ясное; у кромки воды влажны доски и камни.",
+      "latency_ms": 1874
+    },
+    {
+      "role": "narrator",
+      "condition": "before",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:49:31.051Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 2300,
+        "prompt_tokens": 2261,
+        "prompt_tokens_details": {
+          "cached_tokens": 2258,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 39,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0046035885272
+      },
+      "usage_cost": 0.0046035885272,
+      "catalog_cost_rub": 0.026678653664,
+      "cost_rub": 0.0046035885272,
+      "raw_text": "В Тихом Броду сонное ясное утро; над тропой шуршат ветви, а под кронами ложится пятнистый свет.",
+      "latency_ms": 1854
+    },
+    {
+      "role": "campaign_creator",
+      "condition": "before",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:49:55.554Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 4585,
+        "prompt_tokens": 2389,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 2386,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 2196,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.15170225478200003
+      },
+      "usage_cost": 0.15170225478200003,
+      "catalog_cost_rub": 0.145222687636,
+      "cost_rub": 0.15170225478200003,
+      "raw_text": "{\n  \"campaignName\": \"Соль под туманом\",\n  \"partyName\": \"Двое с сухой земли\",\n  \"worldSummary\": \"Аквилон — портовый город на сваях, где туман с моря скрывает контрабанду, а торговля держится на грузах соли. Здесь долги хоронят вместо покойников: могилы носят имена должников, но остаются пустыми, пока обязательство не будет выплачено. Победы редко бывают бесплатными, а пропажа одного груза уже грозит голодом и распадом хрупких договорённостей.\",\n  \"worldHistory\": \"Старые поселения побережья строили на высоких сваях: суша здесь зыбкая, а прилив отвоёвывает улицы каждый сезон. Аквилон вырос из ряда рыбацких настилов в порт, куда сходятся соль, древесина и вести с внутренних дорог.\\n\\nКогда торговые дома начали записывать долги в общие книги, жители Аквилона придумали для них особое погребение. На окраине порта ставят пустые могилы с именами должников; долг считается похороненным лишь после уплаты, а имя остаётся напоминанием о цене обещаний.\\n\\nМорские туманы укрывают мелкие суда и незаконные перегрузки. Власти терпят серую торговлю, пока она не мешает причалам работать, но исчезновение целого груза соли нарушило привычное равновесие: запасы сокращаются, цены растут, а каждая сторона подозревает другую.\\n\\nОт Аквилона уходят настилы к соляным выработкам Береговой низины и дорога вглубь материка через Сухую гряду. Эти пути связывают порт с поселениями, которым нужны соль и припасы; теперь задержки на них усиливают тревогу и делают пропажу груза делом всего побережья.\",\n  \"worldMap\": {\n    \"name\": \"Побережье Аквилона\",\n    \"regions\": [\n      {\n        \"name\": \"Береговая низина\",\n        \"biome\": \"coast\",\n        \"x\": 260,\n        \"y\": 290,\n        \"radius\": 180\n      },\n      {\n        \"name\": \"Сухая гряда\",\n        \"biome\": \"plains\",\n        \"x\": 610,\n        \"y\": 165,\n        \"radius\": 145\n      },\n      {\n        \"name\": \"Внешние отмели\",\n        \"biome\": \"coast\",\n        \"x\": 820,\n        \"y\": 440,\n        \"radius\": 125\n      }\n    ],\n    \"locations\": [\n      {\n        \"name\": \"Причал Аквилона\",\n        \"kind\": \"port\",\n        \"region\": \"Береговая низина\",\n        \"x\": 245,\n        \"y\": 275,\n        \"summary\": \"Свайный порт, где принимают соль и перегружают товары с морских судов.\",\n        \"known\": true,\n        \"visited\": true\n      },\n      {\n        \"name\": \"Соляные выработки\",\n        \"kind\": \"landmark\",\n        \"region\": \"Береговая низина\",\n        \"x\": 390,\n        \"y\": 410,\n        \"summary\": \"Низкие промыслы у солёных заводей, снабжающие Аквилон основным товаром.\",\n        \"known\": true,\n        \"visited\": false\n      },\n      {\n        \"name\": \"Сухая гряда\",\n        \"kind\": \"wilds\",\n        \"region\": \"Сухая гряда\",\n        \"x\": 610,\n        \"y\": 165,\n        \"summary\": \"Приподнятая сухая дорога через внутренние поселения и караванные стоянки.\",\n        \"known\": true,\n        \"visited\": false\n      },\n      {\n        \"name\": \"Пустые могилы\",\n        \"kind\": \"landmark\",\n        \"region\": \"Береговая низина\",\n        \"x\": 115,\n        \"y\": 465,\n        \"summary\": \"Ряд именных могил, в которых хоронят долги, а не людей.\",\n        \"known\": true,\n        \"visited\": false\n      },\n      {\n        \"name\": \"Внешние отмели\",\n        \"kind\": \"wilds\",\n        \"region\": \"Внешние отмели\",\n        \"x\": 820,\n        \"y\": 440,\n        \"summary\": \"Туманные мелководья и скрытые проходы, опасные для тяжёлых судов.\",\n        \"known\": true,\n        \"visited\": false\n      }\n    ],\n    \"routes\": [\n      {\n        \"from\": \"Причал Аквилона\",\n        \"to\": \"Соляные выработки\",\n        \"kind\": \"trail\",\n        \"distance\": 3,\n        \"danger\": \"средняя\",\n        \"discovered\": true\n      },\n      {\n        \"from\": \"Причал Аквилона\",\n        \"to\": \"Сухая гряда\",\n        \"kind\": \"road\",\n        \"distance\": 5,\n        \"danger\": \"низкая\",\n        \"discovered\": true\n      },\n      {\n        \"from\": \"Причал Аквилона\",\n        \"to\": \"Пустые могилы\",\n        \"kind\": \"trail\",\n        \"distance\": 2,\n        \"danger\": \"низкая\",\n        \"discovered\": true\n      },\n      {\n        \"from\": \"Причал Аквилона\",\n        \"to\": \"Внешние отмели\",\n        \"kind\": \"sea\",\n        \"distance\": 6,\n        \"danger\": \"высокая\",\n        \"discovered\": true\n      }\n    ]\n  },\n  \"openingNarration\": \"Туман катится с моря сквозь просветы между сваями Причала Аквилона. На мокрых досках видны пустые места, где должны были стоять бочки с солью; оборванные крепёжные канаты свисают в чёрную воду. Ада, привыкшая вести караваны по приграничью, замечает, что следы волочения обрываются у настила, а не у склада. Рен узнаёт на одном из обрезанных концов аккуратный узел, знакомый по старым делам карманника, хотя это ещё ничего не доказывает.\\n\\nУ края настила портовая распорядительница Мирна Вейл бережёт промокшую ведомость с записью о пропавшем грузе. Рядом с ней грузчик Тавен Орр пытается удержать пустую тележку на скользких досках: он видел, как груз принимали, но не уверен, кто оставался на причале после наступления тумана. Торговля уже замирает, а слухи о долгах и краже распространяются быстрее, чем можно проверить записи. У вас есть след, ведомость и люди, готовые ответить на вопросы — туман скрывает остальное.\",\n  \"scene\": {\n    \"title\": \"Следы, оборвавшиеся у воды\",\n    \"location\": \"Причал Аквилона\",\n    \"mood\": \"Сырой настороженный гул, в котором каждое недосказанное слово звучит подозрительно.\",\n    \"objective\": \"Выяснить, что известно о пропавшем грузе соли и куда ведут оставшиеся на причале улики.\",\n    \"theme\": \"Свайный торговый настил над холодной водой, канаты, пустые места под груз и туман между опорами.\",\n    \"danger\": \"низкая\",\n    \"map\": {\n      \"layout\": \"streets\",\n      \"scale\": \"site\",\n      \"pattern\": \"bridge\",\n      \"material\": \"wood\",\n      \"width\": 32,\n      \"height\": 28,\n      \"openness\": 0.55,\n      \"water\": 0.3,\n      \"featureCount\": 7,\n      \"design\": {\n        \"topology\": \"harbor\",\n        \"climate\": \"wetland\",\n        \"architecture\": \"wood\",\n        \"density\": \"mixed\",\n        \"building_use\": \"shop\"\n      }\n    }\n  },\n  \"npcs\": [\n    {\n      \"name\": \"Мирна Вейл\",\n      \"role\": \"портовая распорядительница\",\n      \"summary\": \"Хранит промокшую ведомость на груз соли и пытается не допустить остановки торговли.\",\n      \"voice\": \"Говорит коротко и деловито, но при упоминании пропавших записей становится резкой.\",\n      \"goals\": [\n        \"Понять, где исчез груз и кто отвечает за учёт на причале.\",\n        \"Не дать панике остановить разгрузку остальных судов.\"\n      ],\n      \"beliefs\": [\n        \"Порядок держится на точных записях, даже когда люди лгут.\"\n      ]\n    },\n    {\n      \"name\": \"Тавен Орр\",\n      \"role\": \"грузчик\",\n      \"summary\": \"Помогал принимать соль и помнит часть событий у причала, но не видел всей картины.\",\n      \"voice\": \"Говорит осторожно, часто поправляя детали, будто боится ошибиться.\",\n      \"goals\": [\n        \"Не оказаться крайним за пропавший груз.\",\n        \"Чтобы причал снова заработал и задержанные выплаты выдали вовремя.\"\n      ],\n      \"beliefs\": [\n        \"На мокрых настилах следы важнее слухов, но вода быстро стирает и то и другое.\"\n      ]\n    }\n  ],\n  \"hook\": \"Пропавший груз соли связывает следы на причале, портовую ведомость и чужие долги. Улики могут привести к разным людям и местам, но пока неясно, была ли это кража, ошибка учёта или часть более широкой тайной сделки.\"\n}",
+      "latency_ms": 19297
+    },
+    {
+      "role": "campaign_creator",
+      "condition": "after",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:50:15.384Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 4956,
+        "prompt_tokens": 2821,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 2818,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 2135,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.154254976122
+      },
+      "usage_cost": 0.154254976122,
+      "catalog_cost_rub": 0.146602243424,
+      "cost_rub": 0.154254976122,
+      "raw_text": "{\n  \"campaignName\": \"Соль под чёрным дождём\",\n  \"partyName\": \"Двое с причала\",\n  \"worldSummary\": \"Аквилон — портовый город на сваях, где солёные грузы кормят рынки, а морские туманы помогают контрабандистам исчезать среди причалов. Здесь долги хоронят в пустых именных могилах: так их нельзя забыть, но можно передать дальше. Победа редко обходится без цены, а доверие стоит не меньше товара.\",\n  \"worldHistory\": \"Аквилон вырос над мелководьем: первые дома подняли на сваи, чтобы пережить приливы и не уступать берег морю. Со временем настилы связали жилые кварталы, склады и причалы в город, чья жизнь зависит от каждого прибывшего груза.\\n\\nКогда торговые дома начали записывать долги на отдельных людей, должники придумали собственный обряд: их имена стали вырезать на пустых могилах. Тело не требовалось — достаточно было признать долг и передать его наследнику или поручителю. Обычай пережил тех, кто его придумал.\\n\\nСоль из Аквилона расходится по внутренним дорогам к Перекрёстку Сухих Миль, а оттуда — в поселения Приграничья. Обратным путём идут зерно, древесина и вести. Портовые пошлины поддерживают настилы над водой, однако часть сборов неизменно теряется между книгами учёта и чужими карманами.\\n\\nВ последние дни пропал груз соли, на который рассчитывали несколько торговых лавок. Его отсутствие уже нарушает сделки и делает старые долги опаснее. На мокрых причалах разговоры становятся тише, а всякая запись в долговой книге выглядит как возможное обвинение.\",\n  \"worldMap\": {\n    \"name\": \"Берега и внутренние дороги Аквилона\",\n    \"regions\": [\n      {\n        \"name\": \"Берег Серых Волн\",\n        \"biome\": \"coast\",\n        \"x\": 260,\n        \"y\": 300,\n        \"radius\": 220\n      },\n      {\n        \"name\": \"Приграничье\",\n        \"biome\": \"plains\",\n        \"x\": 735,\n        \"y\": 310,\n        \"radius\": 170\n      }\n    ],\n    \"locations\": [\n      {\n        \"name\": \"Аквилон\",\n        \"kind\": \"port\",\n        \"region\": \"Берег Серых Волн\",\n        \"x\": 210,\n        \"y\": 280,\n        \"summary\": \"Портовый город на сваях; торговля солью поддерживает его рынки и настилы.\",\n        \"known\": true,\n        \"visited\": true\n      },\n      {\n        \"name\": \"Перекрёсток Сухих Миль\",\n        \"kind\": \"landmark\",\n        \"region\": \"Приграничье\",\n        \"x\": 525,\n        \"y\": 300,\n        \"summary\": \"Сухой дорожный узел, где караваны меняют путь между побережьем и внутренними землями.\",\n        \"known\": true,\n        \"visited\": false\n      },\n      {\n        \"name\": \"Пограничные хутора\",\n        \"kind\": \"village\",\n        \"region\": \"Приграничье\",\n        \"x\": 750,\n        \"y\": 320,\n        \"summary\": \"Разрозненные поселения, зависящие от караванов и редких поставок соли.\",\n        \"known\": true,\n        \"visited\": false\n      },\n      {\n        \"name\": \"Солёные косы\",\n        \"kind\": \"wilds\",\n        \"region\": \"Берег Серых Волн\",\n        \"x\": 195,\n        \"y\": 515,\n        \"summary\": \"Низкий берег и отмели к югу от порта; приливы скрывают следы и меняют доступные проходы.\",\n        \"known\": true,\n        \"visited\": false\n      }\n    ],\n    \"routes\": [\n      {\n        \"from\": \"Аквилон\",\n        \"to\": \"Перекрёсток Сухих Миль\",\n        \"kind\": \"road\",\n        \"distance\": 6,\n        \"danger\": \"средняя\",\n        \"discovered\": true\n      },\n      {\n        \"from\": \"Перекрёсток Сухих Миль\",\n        \"to\": \"Пограничные хутора\",\n        \"kind\": \"road\",\n        \"distance\": 4,\n        \"danger\": \"средняя\",\n        \"discovered\": true\n      },\n      {\n        \"from\": \"Аквилон\",\n        \"to\": \"Солёные косы\",\n        \"kind\": \"trail\",\n        \"distance\": 2,\n        \"danger\": \"средняя\",\n        \"discovered\": true\n      }\n    ]\n  },\n  \"openingNarration\": \"Утро, восемь часов. Дождь барабанит по настилу Причала Аквилона и стекает с его свай мутными струями. Вода под ногами блестит; мокрые канаты пахнут солью и водорослями. Среди открытых складских ворот видны пустые места там, где должен был лежать пропавший груз.\\n\\nАда знает, как по следам на дороге и по привычкам караванщиков отличить случайную задержку от чужого вмешательства. Рен знает цену чужим карманам — и сам всё ещё должен денег гильдии. Теперь исчезновение соли угрожает торговцам, а любая новая задолженность может лечь на имя того, кого проще всего обвинить. У кромки причала держит промокшую грузовую ведомость смотрительница Иара Вейл; рядом с ней стоит портовый счётчик Товен Марр, не выпускающий из рук запертый ящик для печатей.\\n\\nИара и Товен оба готовы говорить, но их записи не сходятся: одна отметка указывает на недогруженную партию, другая — на груз, принятый под целой печатью. Дождь быстро размывает следы на досках, а спор уже собирает взгляды ближайших торговцев. Что сделают Ада и Рен?\",\n  \"scene\": {\n    \"title\": \"Пустое место в ведомости\",\n    \"location\": \"Аквилон\",\n    \"mood\": \"Пасмурное утро под непрерывным дождём; мокрые настилы скользят, запах соли смешан с запахом сырого дерева.\",\n    \"objective\": \"Выяснить, где расходятся записи о пропавшем грузе соли, прежде чем спор вокруг причала породит новые обвинения и долги.\",\n    \"theme\": \"Мокрый портовый настил на сваях, грузовые площадки, навесы и небольшие складские постройки.\",\n    \"danger\": \"низкая\",\n    \"map\": {\n      \"layout\": \"streets\",\n      \"scale\": \"site\",\n      \"pattern\": \"harbor\",\n      \"material\": \"wood\",\n      \"width\": 32,\n      \"height\": 28,\n      \"openness\": 0.65,\n      \"water\": 0.55,\n      \"featureCount\": 7,\n      \"design\": {\n        \"topology\": \"harbor\",\n        \"climate\": \"wetland\",\n        \"architecture\": \"wood\",\n        \"density\": \"mixed\",\n        \"building_use\": \"shop\"\n      }\n    }\n  },\n  \"npcs\": [\n    {\n      \"name\": \"Иара Вейл\",\n      \"role\": \"смотрительница грузовой ведомости на причале\",\n      \"summary\": \"Держит промокшую ведомость и настаивает, что в её записи партия соли не была полностью погружена.\",\n      \"voice\": \"Сдержанная и точная; говорит коротко, словно каждое слово тоже должно попасть в книгу учёта.\",\n      \"goals\": [\n        \"Установить, на каком этапе груз исчез из учёта.\",\n        \"Не допустить, чтобы пропажу без доказательств записали на неё или на портовых рабочих.\"\n      ],\n      \"beliefs\": [\n        \"Запись с печатью важнее слухов, но не всегда правдивее них.\",\n        \"Долг, однажды вписанный в книгу, переживает того, кто его создал.\"\n      ]\n    },\n    {\n      \"name\": \"Товен Марр\",\n      \"role\": \"портовый счётчик, отвечающий за печати на грузовых ящиках\",\n      \"summary\": \"Уверяет, что партия прошла при целой печати, однако его собственные сведения противоречат ведомости Иары.\",\n      \"voice\": \"Осторожный, деловой; на прямые вопросы отвечает уточнениями и старается не повышать голос.\",\n      \"goals\": [\n        \"Сохранить доверие к процедуре портовой приёмки.\",\n        \"Не позволить обвинить его в подмене или утрате печатей без разбирательства.\"\n      ],\n      \"beliefs\": [\n        \"Печать подтверждает передачу ответственности, а не невиновность.\",\n        \"Обвинение в порту быстро становится чужим долгом.\"\n      ]\n    }\n  ],\n  \"hook\": \"Пропавший груз соли оставил две несовместимые записи: партия могла не попасть на причал вовсе или пройти через него под целой печатью. Пока торговля срывается, каждый новый шаг способен обнаружить ошибку, обман или чужую обязанность — и определить, кому достанется цена пропажи.\"\n}",
+      "latency_ms": 18418
+    },
+    {
+      "role": "campaign_creator",
+      "condition": "after",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:50:34.041Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 4800,
+        "prompt_tokens": 2803,
+        "prompt_tokens_details": {
+          "cached_tokens": 2196,
+          "cache_write_tokens": 604,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 1997,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.1190828211144
+      },
+      "usage_cost": 0.1190828211144,
+      "catalog_cost_rub": 0.138911491472,
+      "cost_rub": 0.1190828211144,
+      "raw_text": "{\n  \"campaignName\": \"Соль в пустых могилах\",\n  \"partyName\": \"Дорожные свидетели\",\n  \"worldSummary\": \"На солёных сваях пограничного порта держится торговый город, где чужие товары ценят выше чужих обещаний. Здесь долги хоронят в именных, но пустых могилах, а пропажа каравана на северном тракте грозит обернуться бедой для тех, кто жил с дороги.\",\n  \"worldHistory\": \"Порт вырос на месте старой переправы, когда торговцы нашли в солёных отмелях безопасную стоянку для судов. Дома ставили на сваях, чтобы прилив не забирал нижние комнаты, а городские записи вели на промасленной ткани, которую можно было спасти от сырости.\\n\\nСо временем возник обычай хоронить долги: имя должника вырезали на пустой могиле, а обязательство считалось погребённым, пока никто не предъявит старую расписку. Для одних это стало милосердным выходом, для других — способом спрятать чужие требования под тонким слоем земли.\\n\\nТорговые пути связали порт с Прибрежными полями и северными дорогами через Соляной тракт. Приграничный город жил караванами и слухами: путники приносили новости, а купцы — товары, которые редко задерживались надолго.\\n\\nТеперь северный тракт опустел после пропажи каравана. В городе пока спорят, считать ли это разбойным нападением, несчастьем или чьим-то расчётом; ни одна версия не объясняет, почему исчезновение случилось именно тогда, когда старые долги снова начали всплывать.\",\n  \"worldMap\": {\n    \"name\": \"Известные пути Солёного рубежа\",\n    \"regions\": [\n      {\n        \"name\": \"Прибрежные поля\",\n        \"biome\": \"coast\",\n        \"x\": 250,\n        \"y\": 210,\n        \"radius\": 150\n      },\n      {\n        \"name\": \"Северная гряда\",\n        \"biome\": \"plains\",\n        \"x\": 690,\n        \"y\": 190,\n        \"radius\": 160\n      },\n      {\n        \"name\": \"Солёные отмели\",\n        \"biome\": \"coast\",\n        \"x\": 490,\n        \"y\": 450,\n        \"radius\": 130\n      }\n    ],\n    \"locations\": [\n      {\n        \"name\": \"Старый Порт\",\n        \"kind\": \"port\",\n        \"region\": \"Солёные отмели\",\n        \"x\": 490,\n        \"y\": 450,\n        \"summary\": \"Пограничный порт на солёных сваях, где хоронят долги в пустых именных могилах.\",\n        \"known\": true,\n        \"visited\": true\n      },\n      {\n        \"name\": \"Северные Ворота\",\n        \"kind\": \"fortress\",\n        \"region\": \"Прибрежные поля\",\n        \"x\": 280,\n        \"y\": 190,\n        \"summary\": \"Укреплённый выезд из города к северному тракту.\",\n        \"known\": true,\n        \"visited\": false\n      },\n      {\n        \"name\": \"Камышовый Брод\",\n        \"kind\": \"landmark\",\n        \"region\": \"Северная гряда\",\n        \"x\": 690,\n        \"y\": 190,\n        \"summary\": \"Мелкая переправа на дороге, которой пользуются обозы и местные жители.\",\n        \"known\": true,\n        \"visited\": false\n      },\n      {\n        \"name\": \"Пустые Могилы\",\n        \"kind\": \"landmark\",\n        \"region\": \"Солёные отмели\",\n        \"x\": 700,\n        \"y\": 470,\n        \"summary\": \"Участок земли с именными могилами, где по обычаю покоятся долги, а не тела.\",\n        \"known\": true,\n        \"visited\": false\n      }\n    ],\n    \"routes\": [\n      {\n        \"from\": \"Старый Порт\",\n        \"to\": \"Северные Ворота\",\n        \"kind\": \"road\",\n        \"distance\": 3,\n        \"danger\": \"низкая\",\n        \"discovered\": true\n      },\n      {\n        \"from\": \"Северные Ворота\",\n        \"to\": \"Камышовый Брод\",\n        \"kind\": \"road\",\n        \"distance\": 6,\n        \"danger\": \"средняя\",\n        \"discovered\": true\n      },\n      {\n        \"from\": \"Старый Порт\",\n        \"to\": \"Пустые Могилы\",\n        \"kind\": \"trail\",\n        \"distance\": 2,\n        \"danger\": \"низкая\",\n        \"discovered\": true\n      }\n    ]\n  },\n  \"openingNarration\": \"В первый день, ровно в восемь утра, двое странников — Ада, следопыт, выросшая в приграничье и водившая караваны, и Рен, бывший карманник, задолжавший гильдии, — стоят у дощатого причала Старого Порта. Под сваями плещется солёная вода; ясное прибрежное небо отражается в ней, а свежие доски пахнут смолой.\\n\\nУ причала лежит вскрытый дорожный сундук с выцветшим знаком северного каравана. Ада узнаёт на его ремне узел, которым обычно стягивают обозные тюки; замок не сорван, а аккуратно раскрыт. Рядом, на столбе, висит долговая дощечка с вырезанным именем Рена — и свежей зарубкой, которой вчера ещё не было. Хранительница портового реестра Мирра Вейл придерживает дощечку ладонью: она уверяет, что не добавляла отметку, но боится снять её без свидетелей.\\n\\nСреди бумаг из сундука видна мокрая расписка на имя, стёртое солью, и короткая запись о грузе, который так и не дошёл до города. Мирра ждёт ответа, а у Ады и Рена есть возможность осмотреть сундук, проверить отметку или расспросить её — что они делают?\",\n  \"scene\": {\n    \"title\": \"Зарубка на причале\",\n    \"location\": \"Старый Порт\",\n    \"mood\": \"Утро ясное и прохладное; солёная сырость держится у воды, но деревянный настил не пылит. Под спокойной портовой суетой чувствуется тревога.\",\n    \"objective\": \"Выяснить, что связывает вскрытый сундук пропавшего каравана со свежей зарубкой на долговой дощечке Рена.\",\n    \"theme\": \"Солёный порт на сваях, мокрые верёвки, промасленные записи и пустые именные могилы.\",\n    \"danger\": \"низкая\",\n    \"map\": {\n      \"layout\": \"open\",\n      \"scale\": \"site\",\n      \"pattern\": \"bridge\",\n      \"material\": \"wood\",\n      \"width\": 30,\n      \"height\": 24,\n      \"openness\": 0.72,\n      \"water\": 0.28,\n      \"featureCount\": 6,\n      \"design\": {\n        \"topology\": \"harbor\",\n        \"climate\": \"wetland\",\n        \"architecture\": \"wood\",\n        \"density\": \"mixed\",\n        \"building_use\": \"shop\"\n      }\n    }\n  },\n  \"npcs\": [\n    {\n      \"name\": \"Мирра Вейл\",\n      \"role\": \"хранительница портового реестра\",\n      \"summary\": \"Ведёт записи о товарах и долгах; утверждает, что свежая зарубка на дощечке Рена появилась без её ведома.\",\n      \"voice\": \"Говорит тихо и точно, будто каждое слово может стать записью в реестре.\",\n      \"goals\": [\n        \"Не допустить, чтобы дощечку сняли или изменили до выяснения происхождения зарубки.\",\n        \"Понять, кто принёс сундук и бумаги к причалу.\"\n      ],\n      \"beliefs\": [\n        \"Любой долг оставляет след, даже если его имя погребено.\",\n        \"Свидетельство очевидца ценнее слуха, но опаснее для самого свидетеля.\"\n      ]\n    }\n  ],\n  \"hook\": \"Вскрытый сундук пропавшего северного каравана и новая зарубка на долге Рена появились рядом друг с другом, а расписка из сундука указывает на имя, стёртое солью. Как связаны эти следы и чьи интересы заденет их проверка — предстоит определить самим героям.\"\n}",
+      "latency_ms": 17399
+    },
+    {
+      "role": "campaign_creator",
+      "condition": "before",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:50:51.623Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 4134,
+        "prompt_tokens": 2383,
+        "prompt_tokens_details": {
+          "cached_tokens": 1993,
+          "cache_write_tokens": 387,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 1751,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.1025547651362
+      },
+      "usage_cost": 0.1025547651362,
+      "catalog_cost_rub": 0.120988128872,
+      "cost_rub": 0.1025547651362,
+      "raw_text": "{\n  \"campaignName\": \"Пустые могилы Северного тракта\",\n  \"partyName\": \"Двое с приграничья\",\n  \"worldSummary\": \"Приграничье держится на торговле, ненадёжных обещаниях и дорогах, которые могут опустеть за одну ночь. В портовом городе Вельмарк долги хоронят в именных, но пустых могилах, а пропажа каравана на северном тракте уже тревожит тех, кому дорога торговля.\",\n  \"worldHistory\": \"Вельмарк вырос на солёных сваях у холодного залива. Его причалы связали побережье с внутренними землями, и город привык измерять благополучие числом прибывших судов и караванов.\\n\\nКогда-то местные ростовщики ввели обычай хоронить долги: на кладбище ставили именные надгробия, а расписку запечатывали в пустой могиле. Так должник мог получить отсрочку, но имя его обязательства оставалось на виду у всего города.\\n\\nК северу от Вельмарка тянется Северный тракт — старый путь через открытые равнины к разрозненным поселениям. Недавно по нему перестали приходить вести, а затем пропал караван. Одни считают случившееся разбойным нападением, другие опасаются, что на тракте нарушилось что-то куда менее понятное.\\n\\nТеперь городские торговцы спорят о цене тревоги, а жители приграничья прислушиваются к слухам. Ада знает, как ведут караваны и читают дорогу; Рену знакомы долги, которые не исчезают от одного обещания.\",\n  \"worldMap\": {\n    \"name\": \"Побережье и северное приграничье\",\n    \"regions\": [\n      {\n        \"name\": \"Соляное побережье\",\n        \"biome\": \"coast\",\n        \"x\": 270,\n        \"y\": 300,\n        \"radius\": 190\n      },\n      {\n        \"name\": \"Северные равнины\",\n        \"biome\": \"plains\",\n        \"x\": 690,\n        \"y\": 250,\n        \"radius\": 210\n      }\n    ],\n    \"locations\": [\n      {\n        \"name\": \"Вельмарк\",\n        \"kind\": \"port\",\n        \"region\": \"Соляное побережье\",\n        \"x\": 270,\n        \"y\": 300,\n        \"summary\": \"Приграничный портовый город на солёных сваях, где торговля соседствует с обычаем хоронить долги в пустых именных могилах.\",\n        \"known\": true,\n        \"visited\": true\n      },\n      {\n        \"name\": \"Северный тракт\",\n        \"kind\": \"landmark\",\n        \"region\": \"Северные равнины\",\n        \"x\": 690,\n        \"y\": 250,\n        \"summary\": \"Старый торговый путь к северным поселениям; караван, следовавший по нему, пропал.\",\n        \"known\": true,\n        \"visited\": false\n      }\n    ],\n    \"routes\": [\n      {\n        \"from\": \"Вельмарк\",\n        \"to\": \"Северный тракт\",\n        \"kind\": \"road\",\n        \"distance\": 6,\n        \"danger\": \"средняя\",\n        \"discovered\": true\n      }\n    ]\n  },\n  \"openingNarration\": \"Вельмарк встречает вас запахом солёной воды, мокрого дерева и дыма из низких труб. Вы — Ада, следопыт, выросшая в приграничье и водившая караваны, и Рен, плут, бывший карманник, чьи долги гильдии не растворились вместе с прежней жизнью. На набережной уже несколько дней говорят об исчезнувшем караване: северный тракт опустел, а привычные торговые повозки не вернулись.\\n\\nУ пустой могилы с именем пропавшего возчика стоит Иара, хранительница городского кладбища. Она замечает, что имя на надгробии появилось раньше, чем обычно ставят памятный камень, и не знает, кто распорядился его высечь. Неподалёку торговые счета раскладывает Освин, распорядитель караванов: среди его бумаг не сходятся записи о грузе и долгах, связанных с последним рейсом. Ни один из них не повышает голоса, но оба ждут, что кто-нибудь отнесётся к их тревоге всерьёз.\\n\\nВетер покачивает сваи и шевелит незапечатанную ленту у могильного камня. Пока город занят слухами, вы можете сами решить, к чему присмотреться и с кем заговорить.\",\n  \"scene\": {\n    \"title\": \"Имя без покойника\",\n    \"location\": \"Вельмарк\",\n    \"mood\": \"сдержанная тревога среди повседневной портовой суеты\",\n    \"objective\": \"Разобраться, почему на пустой могиле появилось имя человека из пропавшего каравана.\",\n    \"theme\": \"Соляные сваи, пустые могилы и торговые записи на ветру\",\n    \"danger\": \"низкая\",\n    \"map\": {\n      \"layout\": \"streets\",\n      \"scale\": \"site\",\n      \"pattern\": \"village\",\n      \"material\": \"wood\",\n      \"width\": 32,\n      \"height\": 28,\n      \"openness\": 0.55,\n      \"water\": 0.25,\n      \"featureCount\": 6,\n      \"design\": {\n        \"topology\": \"harbor\",\n        \"climate\": \"wetland\",\n        \"architecture\": \"wood\",\n        \"density\": \"mixed\",\n        \"building_use\": \"shop\"\n      }\n    }\n  },\n  \"npcs\": [\n    {\n      \"name\": \"Иара\",\n      \"role\": \"хранительница городского кладбища\",\n      \"summary\": \"Стоит у пустой именной могилы и первой заметила, что надгробие пропавшего возчика появилось необычно рано.\",\n      \"voice\": \"Говорит ровно и негромко, будто каждое слово нужно сохранить от сырого ветра.\",\n      \"goals\": [\n        \"Выяснить, кто велел высечь имя на надгробии\",\n        \"Не позволить превратить обычай погребения долгов в повод для городской расправы\"\n      ],\n      \"beliefs\": [\n        \"У каждой пустой могилы должна быть понятная причина\",\n        \"Слух способен навредить живым не меньше, чем забвение\"\n      ]\n    },\n    {\n      \"name\": \"Освин\",\n      \"role\": \"распорядитель караванов\",\n      \"summary\": \"Разбирает счета последнего рейса и обнаружил несоответствия в записях о грузе и долгах.\",\n      \"voice\": \"Отрывисто перечисляет факты, но замолкает, когда дело касается пропавших людей.\",\n      \"goals\": [\n        \"Понять, что случилось с караваном\",\n        \"Сохранить торговлю и не допустить, чтобы противоречивые счета разожгли взаимные обвинения\"\n      ],\n      \"beliefs\": [\n        \"Любой торговый долг должен иметь ясную запись\",\n        \"Дорога не становится безопаснее оттого, что о ней молчат\"\n      ]\n    }\n  ],\n  \"hook\": \"На пустой могиле высечено имя пропавшего возчика, а в счетах последнего каравана не сходятся груз и долги. Связаны ли эти странности, кто поставил имя на камне и что случилось на северном тракте — отряду предстоит выяснить по собственным решениям.\"\n}",
+      "latency_ms": 17523
+    },
+    {
+      "role": "campaign_creator",
+      "condition": "before",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:51:09.333Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 4094,
+        "prompt_tokens": 2387,
+        "prompt_tokens_details": {
+          "cached_tokens": 1993,
+          "cache_write_tokens": 391,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 1707,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.1002192966762
+      },
+      "usage_cost": 0.1002192966762,
+      "catalog_cost_rub": 0.118641797768,
+      "cost_rub": 0.1002192966762,
+      "raw_text": "{\n  \"campaignName\": \"Проверка канона\",\n  \"partyName\": \"Отряд\",\n  \"worldSummary\": \"На краю пустыни караванный город живёт по расписанию воды: каждый день задержки превращает торговлю в борьбу за запасы. Старый акведук, веками питавший город, пересох за одну ночь, и никто не знает, почему.\",\n  \"worldHistory\": \"Караванный город Сар-Кел вырос там, где каменистые предгорья уступают место пустыне. Его колодцы давали лишь горькую воду, поэтому жители веками зависели от акведука, проведённого из дальнего горного источника.\\n\\nВоду распределяли по расписанию, высеченному на каменных плитах у городских цистерн. Это правило пережило смену правителей и торговых домов: даже в самые тяжёлые годы спорили о долях, но не о том, что вода должна прийти.\\n\\nКогда-то караваны шли из Сар-Кела на запад к пристаням Тихой Гавани, а на север — через перевал к горным селениям. Теперь дороги остаются открытыми, но пересыхание акведука грозит лишить город его главного преимущества.\\n\\nУтром после исчезновения потока вода ещё оставалась в запасных резервуарах. К вечеру в городе уже начали пересчитывать бочки, а на плитах расписания обнаружили свежую трещину, которой прежде не было.\",\n  \"worldMap\": {\n    \"name\": \"Пути Сар-Кела\",\n    \"regions\": [\n      {\n        \"name\": \"Край Красных Песков\",\n        \"biome\": \"desert\",\n        \"x\": 490,\n        \"y\": 330,\n        \"radius\": 190\n      },\n      {\n        \"name\": \"Каменные Предгорья\",\n        \"biome\": \"mountains\",\n        \"x\": 490,\n        \"y\": 110,\n        \"radius\": 145\n      },\n      {\n        \"name\": \"Западный Берег\",\n        \"biome\": \"coast\",\n        \"x\": 190,\n        \"y\": 330,\n        \"radius\": 130\n      }\n    ],\n    \"locations\": [\n      {\n        \"name\": \"Сар-Кел\",\n        \"kind\": \"city\",\n        \"region\": \"Край Красных Песков\",\n        \"x\": 490,\n        \"y\": 330,\n        \"summary\": \"Караванный город, зависящий от воды старого акведука.\",\n        \"known\": true,\n        \"visited\": true\n      },\n      {\n        \"name\": \"Источник Серых Ступеней\",\n        \"kind\": \"landmark\",\n        \"region\": \"Каменные Предгорья\",\n        \"x\": 490,\n        \"y\": 110,\n        \"summary\": \"Горный источник, откуда начинается водный путь к Сар-Келу.\",\n        \"known\": true,\n        \"visited\": false\n      },\n      {\n        \"name\": \"Тихая Гавань\",\n        \"kind\": \"port\",\n        \"region\": \"Западный Берег\",\n        \"x\": 190,\n        \"y\": 330,\n        \"summary\": \"Западная пристань, связанная торговым трактом с караванными землями.\",\n        \"known\": true,\n        \"visited\": false\n      }\n    ],\n    \"routes\": [\n      {\n        \"from\": \"Источник Серых Ступеней\",\n        \"to\": \"Сар-Кел\",\n        \"kind\": \"river\",\n        \"distance\": 7,\n        \"danger\": \"средняя\",\n        \"discovered\": true\n      },\n      {\n        \"from\": \"Сар-Кел\",\n        \"to\": \"Тихая Гавань\",\n        \"kind\": \"road\",\n        \"distance\": 9,\n        \"danger\": \"средняя\",\n        \"discovered\": true\n      }\n    ]\n  },\n  \"openingNarration\": \"К полудню жара уже выжгла тени на площади водомерных плит Сар-Кела. Над каналом, который обычно звенел бегущей водой, висит сухая пыль; караванщики и жители молча смотрят на пустое каменное русло. Вы — Ада, следопыт, привыкшая водить караваны по приграничью, и Рен, бывший карманник, знающий цену чужим долгам. Вас позвали сюда, потому что город не может ждать, а привычные дороги и следы вам знакомы лучше, чем большинству горожан.\\n\\nУ расколотой плиты стоит Иара, смотрительница распределения воды: она держит при себе ключ от запертого водомерного люка и утверждает, что ночью поток ещё шёл. Рядом Севран, караванный счетовод, показывает на свежую трещину в камне и требует, чтобы сперва проверили записи о последней поставке. Вокруг сгущается тревожная тишина; до исчерпания городских запасов осталось немного времени. Перед вами плита, запертый люк и два человека, готовых отвечать на вопросы.\",\n  \"scene\": {\n    \"title\": \"Сухое русло\",\n    \"location\": \"Сар-Кел\",\n    \"mood\": \"напряжённое ожидание и подозрение\",\n    \"objective\": \"Выяснить, почему за одну ночь пересох акведук, пока в городе ещё есть запас воды.\",\n    \"theme\": \"пыльная площадь у водомерных плит, сухое русло и тесная застройка караванного города\",\n    \"danger\": \"низкая\",\n    \"map\": {\n      \"layout\": \"streets\",\n      \"scale\": \"site\",\n      \"pattern\": \"village\",\n      \"material\": \"sand\",\n      \"width\": 32,\n      \"height\": 28,\n      \"openness\": 0.55,\n      \"water\": 0.08,\n      \"featureCount\": 6,\n      \"design\": {\n        \"topology\": \"market\",\n        \"climate\": \"arid\",\n        \"architecture\": \"stone\",\n        \"density\": \"mixed\",\n        \"building_use\": \"shop\"\n      }\n    }\n  },\n  \"npcs\": [\n    {\n      \"name\": \"Иара\",\n      \"role\": \"смотрительница распределения воды\",\n      \"summary\": \"У неё ключ от водомерного люка; она настаивает, что ночью поток ещё шёл.\",\n      \"voice\": \"говорит коротко и уверенно, словно каждое слово должно сберечь воду\",\n      \"goals\": [\n        \"не допустить паники и сохранить порядок распределения запасов\"\n      ],\n      \"beliefs\": [\n        \"городские записи и водомерные плиты надёжнее слухов\"\n      ]\n    },\n    {\n      \"name\": \"Севран\",\n      \"role\": \"караванный счетовод\",\n      \"summary\": \"Он следит за записями о поставках и указывает на свежую трещину в каменной плите.\",\n      \"voice\": \"взвешивает каждую фразу, будто сверяет её с невидимым счётом\",\n      \"goals\": [\n        \"добиться проверки записей о последней поставке воды\"\n      ],\n      \"beliefs\": [\n        \"любая недостача оставляет след в счетах\"\n      ]\n    }\n  ],\n  \"hook\": \"Акведук пересох за одну ночь, хотя его смотрительница уверяет, что вода ещё шла; свежая трещина у водомерного люка и записи о поставках дают разные зацепки, но пока не объясняют исчезновение потока.\"\n}",
+      "latency_ms": 15324
+    },
+    {
+      "role": "campaign_creator",
+      "condition": "after",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:51:24.863Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 4738,
+        "prompt_tokens": 2827,
+        "prompt_tokens_details": {
+          "cached_tokens": 2196,
+          "cache_write_tokens": 628,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 1911,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.1147377635144
+      },
+      "usage_cost": 0.1147377635144,
+      "catalog_cost_rub": 0.134501258008,
+      "cost_rub": 0.1147377635144,
+      "raw_text": "{\n  \"campaignName\": \"Проверка канона\",\n  \"partyName\": \"Отряд\",\n  \"worldSummary\": \"На краю сухих земель стоит караванный город, чьё благополучие зависит от древнего акведука. Здесь долги хоронят в пустых именных могилах, а вода из каменных каналов ценится почти как обещание. Когда акведук пересыхает за одну ночь, привычный порядок города оказывается под угрозой.\",\n  \"worldHistory\": \"Когда-то мастера проложили Акведук Семи Арк через засушливую равнину к караванному городу Сальдору. Его вода наполняла цистерны и поила животных, а на стенах канала до сих пор видны знаки давно исчезнувшей артели.\\n\\nСальдор вырос на пересечении караванных путей. Купцы и путники прибывали сюда за водой, ремонтом и безопасным переходом через пустынный край. Городские старейшины поддерживали акведук в рабочем состоянии, хотя никто уже не знал всех его ответвлений.\\n\\nВ Сальдоре долги хоронят, а не покойников: имена должников наносят на пустые могилы, пока долг не будет погашен. Обычай должен напоминать о цене обещаний, но со временем сами могилы стали частью городского распорядка.\\n\\nТеперь вода в Акведуке Семи Арк исчезла за одну ночь. Сальдор ещё держится на запасах, но караваны и жители уже требуют объяснений; никто пока не может уверенно сказать, что именно случилось и кому выгодна остановка воды.\",\n  \"worldMap\": {\n    \"name\": \"Караванные земли Сальдора\",\n    \"regions\": [\n      {\n        \"name\": \"Сухая равнина\",\n        \"biome\": \"desert\",\n        \"x\": 490,\n        \"y\": 300,\n        \"radius\": 260\n      },\n      {\n        \"name\": \"Соляной берег\",\n        \"biome\": \"coast\",\n        \"x\": 800,\n        \"y\": 300,\n        \"radius\": 150\n      }\n    ],\n    \"locations\": [\n      {\n        \"name\": \"Сальдор\",\n        \"kind\": \"city\",\n        \"region\": \"Сухая равнина\",\n        \"x\": 470,\n        \"y\": 300,\n        \"summary\": \"Караванный город, чьи цистерны зависят от воды древнего акведука.\",\n        \"known\": true,\n        \"visited\": true\n      },\n      {\n        \"name\": \"Акведук Семи Арк\",\n        \"kind\": \"landmark\",\n        \"region\": \"Сухая равнина\",\n        \"x\": 250,\n        \"y\": 220,\n        \"summary\": \"Старый каменный водовод, пересохший за одну ночь.\",\n        \"known\": true,\n        \"visited\": false\n      },\n      {\n        \"name\": \"Соляной берег\",\n        \"kind\": \"wilds\",\n        \"region\": \"Соляной берег\",\n        \"x\": 800,\n        \"y\": 300,\n        \"summary\": \"Прибрежные соляные отмели и тропы, связывающие внутренние караванные земли с морем.\",\n        \"known\": true,\n        \"visited\": false\n      }\n    ],\n    \"routes\": [\n      {\n        \"from\": \"Сальдор\",\n        \"to\": \"Акведук Семи Арк\",\n        \"kind\": \"road\",\n        \"distance\": 3,\n        \"danger\": \"средняя\",\n        \"discovered\": true\n      },\n      {\n        \"from\": \"Сальдор\",\n        \"to\": \"Соляной берег\",\n        \"kind\": \"trail\",\n        \"distance\": 5,\n        \"danger\": \"средняя\",\n        \"discovered\": true\n      }\n    ]\n  },\n  \"openingNarration\": \"Утро, 08:00. Над Сальдором висит сухое пасмурное небо; каменные стены и мощёные улицы тускло-серые в рассеянном свете. Вода не пришла в город ни ночью, ни с рассветом. У цистерн уже собрались люди с пустыми сосудами, а караванные животные беспокойно переступают на привязи.\\n\\nАда, привычная вести караваны через пограничье, замечает на каменной кромке канала след свежей работы: старый известковый налёт сбит ровно, но вокруг нет разлитой воды. Рен узнаёт рядом нацарапанный знак долговой гильдии — такой мог бы оставить тот, кому важно, чтобы его послание заметили, но не прочли все подряд. Ни один из этих следов сам по себе не объясняет исчезновение воды.\\n\\nУ городского водосборника вас ждёт смотрительница канала Мейра, а чуть поодаль — городской писарь долгов Тавен. Они оба готовы говорить, но смотрят друг на друга с явным недоверием. Перед вами пересохший водосборник, отмеченный знак и два человека, чьи версии ещё предстоит услышать.\",\n  \"scene\": {\n    \"title\": \"Пустой водосборник\",\n    \"location\": \"Сальдор\",\n    \"mood\": \"Сухое пасмурное утро, тревожное ожидание и недосказанность среди серых каменных улиц.\",\n    \"objective\": \"Выяснить, почему вода из старого акведука перестала поступать в городской водосборник.\",\n    \"theme\": \"Караванный город на краю пустыни: каменные водные каналы, навесы торговых рядов и пустые сосуды у цистерны.\",\n    \"danger\": \"низкая\",\n    \"map\": {\n      \"layout\": \"streets\",\n      \"scale\": \"site\",\n      \"pattern\": \"village\",\n      \"material\": \"stone\",\n      \"width\": 32,\n      \"height\": 28,\n      \"openness\": 0.55,\n      \"water\": 0.0,\n      \"featureCount\": 8,\n      \"design\": {\n        \"topology\": \"market\",\n        \"climate\": \"arid\",\n        \"architecture\": \"stone\",\n        \"density\": \"mixed\",\n        \"building_use\": \"shop\"\n      }\n    }\n  },\n  \"npcs\": [\n    {\n      \"name\": \"Мейра\",\n      \"role\": \"смотрительница канала\",\n      \"summary\": \"Следит за городским водосборником и знает устройство его ближайших каменных желобов; не скрывает, что сама не понимает, куда делась вода.\",\n      \"voice\": \"Говорит прямо и сухо, тщательно отделяя то, что видела, от того, что предполагает.\",\n      \"goals\": [\n        \"Понять, почему водосборник опустел.\",\n        \"Не допустить, чтобы запасную воду разобрали без учёта.\"\n      ],\n      \"beliefs\": [\n        \"Акведук не пересыхает сам по себе за одну ночь.\",\n        \"Пока причина не установлена, обвинять конкретного человека опасно.\"\n      ]\n    },\n    {\n      \"name\": \"Тавен\",\n      \"role\": \"городской писарь долгов\",\n      \"summary\": \"Ведёт записи о долгах и пустых именных могилах; знак у канала кажется ему тревожным, но он не утверждает, что знает его смысл.\",\n      \"voice\": \"Подбирает осторожные формулировки, словно каждое слово может стать записью в книге.\",\n      \"goals\": [\n        \"Не дать панике превратиться в расправу над должниками.\",\n        \"Узнать, связан ли знак у канала с записями гильдии.\"\n      ],\n      \"beliefs\": [\n        \"Долг должен иметь имя и срок, иначе он становится поводом для произвола.\",\n        \"Сходство знака с гильдейской меткой ещё не доказывает причастность гильдии.\"\n      ]\n    }\n  ],\n  \"hook\": \"Вода из Акведука Семи Арк исчезла за одну ночь, а свежий след у водосборника и знак долговой гильдии допускают несколько объяснений. Отряд может искать причину в самом водоводе, в городских запасах и записях или в людях, которым выгодна нехватка воды; пока никто не знает, какие следы окажутся настоящими.\"\n}",
+      "latency_ms": 16372
+    },
+    {
+      "role": "campaign_creator",
+      "condition": "after",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:52:24.374Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 5065,
+        "prompt_tokens": 2922,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 2919,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 2143,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.15606089068700002
+      },
+      "usage_cost": 0.15606089068700002,
+      "catalog_cost_rub": 0.148133876228,
+      "cost_rub": 0.15606089068700002,
+      "raw_text": "{\n  \"campaignName\": \"Соль под сваями\",\n  \"partyName\": \"Сухопутные\",\n  \"worldSummary\": \"Аквилон стоит на сваях у серого моря, и его торговля держится на соли, древесине и обещаниях, которые редко переживают прилив. Здесь принято хоронить долги, а не покойников: именные могилы остаются пустыми, пока обязательство не будет оплачено. Магия редка и тревожна, а победа обычно оставляет кому-то счёт.\",\n  \"worldHistory\": \"Когда первые поселенцы закрепили Аквилон над приливными отмелями, море уже забирало целые берега. Город подняли на сваях из старых корабельных балок, а его причалы стали единственным надёжным местом для торговли вдоль этого побережья.\\n\\nПозднее купцы установили обычай погребать долги: вместо тела в землю опускают табличку с именем должника и суммой. Могила считается пустой, пока долг не погашен; её открывают не для мёртвых, а для новых записей.\\n\\nСоль из внутренних равнин поддерживала торговлю Аквилона и сохраняла рыбу для долгих морских переходов. Караванные пути свели город с Сухими равнинами, а прибрежные суда связывали его с островами Чёрного прилива.\\n\\nВ последние недели пропажа одного груза соли нарушила расчёты портовых торговцев. Обвинения множатся, но ни одна версия пока не объясняет, как исчезновение груза связано с тем, что на причалах стали чаще появляться новые именные таблички.\",\n  \"worldMap\": {\n    \"name\": \"Побережье Аквилона и внутренние пути\",\n    \"regions\": [\n      {\n        \"name\": \"Серое побережье\",\n        \"biome\": \"coast\",\n        \"x\": 250,\n        \"y\": 180,\n        \"radius\": 190\n      },\n      {\n        \"name\": \"Сухие равнины\",\n        \"biome\": \"plains\",\n        \"x\": 590,\n        \"y\": 180,\n        \"radius\": 170\n      },\n      {\n        \"name\": \"Острова Чёрного прилива\",\n        \"biome\": \"coast\",\n        \"x\": 820,\n        \"y\": 430,\n        \"radius\": 125\n      }\n    ],\n    \"locations\": [\n      {\n        \"name\": \"Аквилон\",\n        \"kind\": \"port\",\n        \"region\": \"Серое побережье\",\n        \"x\": 230,\n        \"y\": 250,\n        \"summary\": \"Портовый город на сваях, где соль и морские поставки поддерживают торговлю.\",\n        \"known\": true,\n        \"visited\": true\n      },\n      {\n        \"name\": \"Причал Аквилона\",\n        \"kind\": \"landmark\",\n        \"region\": \"Серое побережье\",\n        \"x\": 350,\n        \"y\": 250,\n        \"summary\": \"Влажная пристань у соляных складов; здесь ждут объяснений пропаже груза.\",\n        \"known\": true,\n        \"visited\": true\n      },\n      {\n        \"name\": \"Соляной тракт\",\n        \"kind\": \"landmark\",\n        \"region\": \"Сухие равнины\",\n        \"x\": 530,\n        \"y\": 320,\n        \"summary\": \"Дорога караванов, везущих соль с равнин к морю.\",\n        \"known\": true,\n        \"visited\": false\n      },\n      {\n        \"name\": \"Пустые могилы\",\n        \"kind\": \"landmark\",\n        \"region\": \"Серое побережье\",\n        \"x\": 140,\n        \"y\": 420,\n        \"summary\": \"Участок именных захоронений долгов, где вместо тел лежат долговые таблички.\",\n        \"known\": true,\n        \"visited\": false\n      },\n      {\n        \"name\": \"Отмели Чёрного прилива\",\n        \"kind\": \"wilds\",\n        \"region\": \"Острова Чёрного прилива\",\n        \"x\": 810,\n        \"y\": 470,\n        \"summary\": \"Низкие острова и отмели на морском пути, опасные для судов и грузов.\",\n        \"known\": true,\n        \"visited\": false\n      }\n    ],\n    \"routes\": [\n      {\n        \"from\": \"Аквилон\",\n        \"to\": \"Причал Аквилона\",\n        \"kind\": \"road\",\n        \"distance\": 1,\n        \"danger\": \"низкая\",\n        \"discovered\": true\n      },\n      {\n        \"from\": \"Аквилон\",\n        \"to\": \"Соляной тракт\",\n        \"kind\": \"road\",\n        \"distance\": 5,\n        \"danger\": \"средняя\",\n        \"discovered\": true\n      },\n      {\n        \"from\": \"Аквилон\",\n        \"to\": \"Пустые могилы\",\n        \"kind\": \"road\",\n        \"distance\": 2,\n        \"danger\": \"низкая\",\n        \"discovered\": true\n      },\n      {\n        \"from\": \"Причал Аквилона\",\n        \"to\": \"Отмели Чёрного прилива\",\n        \"kind\": \"sea\",\n        \"distance\": 8,\n        \"danger\": \"высокая\",\n        \"discovered\": true\n      }\n    ]\n  },\n  \"openingNarration\": \"Утро первого дня начинается с холодного дождя над Аквилоном. Вода стучит по настилу Причала Аквилона и капает с навесов соляных складов; под ногами блестят мокрые доски, а сваи исчезают в серой морской воде. На пристани нет привычной суеты: пропавший груз соли оставил торговлю без товара, а каждый новый час задержки грозит разорвать хрупкие договорённости.\\n\\nАда, следопыт, привыкшая водить караваны по приграничью, замечает, что следы волочения заканчиваются у края настила, хотя дождь смывает всё вокруг. Рен узнаёт на одной из свежих долговых табличек отметку, похожую на знак гильдии, которой он должен деньги. Их обоих привёл сюда один и тот же пропавший груз, но совпадение с долгом Рена превращает обычный торговый спор в личный риск.\\n\\nУ края склада их ждёт Нара Вейл, портовая счетоводка с мокрым реестром под мышкой. Она не просит верить ей на слово: груз числится принятым, но никто не может показать запись о его выгрузке. Нара смотрит на двоих странников, затем на пустое место у причала, где должен был стоять соляной тюк. Дождь продолжает барабанить по доскам, и решение, с чего начать разбираться в этом деле, остаётся за вами.\",\n  \"scene\": {\n    \"title\": \"Груз, которого не было\",\n    \"location\": \"Причал Аквилона\",\n    \"mood\": \"Дождливое, настороженное утро; мокрые доски, тусклый свет под низкими тучами и тихая тревога портового дела.\",\n    \"objective\": \"Выяснить, как груз соли был принят в Аквилоне, но исчез до появления записи о выгрузке.\",\n    \"theme\": \"Дождливая пристань на сваях, соляной склад, реестр и следы, теряющиеся у края мокрого настила.\",\n    \"danger\": \"низкая\",\n    \"map\": {\n      \"layout\": \"open\",\n      \"scale\": \"site\",\n      \"pattern\": \"bridge\",\n      \"material\": \"wood\",\n      \"width\": 30,\n      \"height\": 24,\n      \"openness\": 0.6,\n      \"water\": 0.35,\n      \"featureCount\": 7,\n      \"design\": {\n        \"topology\": \"harbor\",\n        \"climate\": \"wetland\",\n        \"architecture\": \"wood\",\n        \"density\": \"mixed\",\n        \"building_use\": \"shop\"\n      }\n    }\n  },\n  \"npcs\": [\n    {\n      \"name\": \"Нара Вейл\",\n      \"role\": \"портовая счетоводка\",\n      \"summary\": \"Она ведёт реестр поставок и уверена, что груз соли отметили как принятый, хотя записи о выгрузке нет.\",\n      \"voice\": \"Говорит коротко и сухо, сверяясь с записями прежде, чем отвечать.\",\n      \"goals\": [\n        \"Установить, где пропал груз и кто подтвердил его получение.\",\n        \"Не допустить, чтобы вину без доказательств возложили на портовых работников.\"\n      ],\n      \"beliefs\": [\n        \"Запись в реестре может лгать так же убедительно, как человек.\",\n        \"Незакрытый долг рано или поздно находит того, кто его оплатит.\"\n      ]\n    }\n  ],\n  \"hook\": \"Пропавшая соль поставлена в реестре как принятая, но следа выгрузки нет; свежая долговая табличка несёт знак гильдии, которой должен Рен. Кто изменил или использовал записи, почему следы обрываются у воды и связано ли это с долгами — открытые вопросы, от ответов на которые зависят дальнейшие решения отряда.\"\n}",
+      "latency_ms": 22522
+    },
+    {
+      "role": "campaign_creator",
+      "condition": "after",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:52:47.383Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 5239,
+        "prompt_tokens": 2904,
+        "prompt_tokens_details": {
+          "cached_tokens": 2297,
+          "cache_write_tokens": 604,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 2335,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.1375504021788
+      },
+      "usage_cost": 0.1375504021788,
+      "catalog_cost_rub": 0.158366486876,
+      "cost_rub": 0.1375504021788,
+      "raw_text": "{\n  \"campaignName\": \"Пустые могилы приграничья\",\n  \"partyName\": \"Свидетели тракта\",\n  \"worldSummary\": \"Приграничье держится на торговле, ненадёжных дорогах и договорах, которые переживают своих участников. В портовом городе на солёных сваях долги хоронят в именных, но пустых могилах; северный тракт опустел после пропажи каравана.\",\n  \"worldHistory\": \"Люди поселились на солёных сваях Серой Пристани, когда старый берег начал уходить под воду. Город разбогател на перевалке зерна, железа и дорожных вестей, но его торговые договоры часто переживали тех, кто их подписал.\\n\\nОбычай хоронить долги появился после голодной зимы: имя должника вырезали на камне и оставляли могилу пустой, пока долг не будет выплачен или признан утраченным. С тех пор такие могилы стали частью городской окраины, а их надписи — предметом споров, страха и торга.\\n\\nК северу тянется тракт через Пепельные Поля к сторожевому поселению Клин. Караваны связывали эти места с Серой Пристанью, пока один из них не пропал; с той поры дорога всё чаще остаётся без путников, а привычные торговые вести обрываются.\",\n  \"worldMap\": {\n    \"name\": \"Приграничные земли\",\n    \"regions\": [\n      {\n        \"name\": \"Солёный берег\",\n        \"biome\": \"coast\",\n        \"x\": 205,\n        \"y\": 330,\n        \"radius\": 155\n      },\n      {\n        \"name\": \"Пепельные Поля\",\n        \"biome\": \"plains\",\n        \"x\": 505,\n        \"y\": 245,\n        \"radius\": 175\n      },\n      {\n        \"name\": \"Северный кряж\",\n        \"biome\": \"mountains\",\n        \"x\": 795,\n        \"y\": 180,\n        \"radius\": 145\n      }\n    ],\n    \"locations\": [\n      {\n        \"name\": \"Серая Пристань\",\n        \"kind\": \"port\",\n        \"region\": \"Солёный берег\",\n        \"x\": 205,\n        \"y\": 330,\n        \"summary\": \"Приграничный порт на солёных сваях, где торговля соседствует с обычаем хоронить долги.\",\n        \"known\": true,\n        \"visited\": true\n      },\n      {\n        \"name\": \"Пустое кладбище\",\n        \"kind\": \"landmark\",\n        \"region\": \"Солёный берег\",\n        \"x\": 310,\n        \"y\": 430,\n        \"summary\": \"Участок именных могил без тел, где город отмечает долги, ещё не получившие развязки.\",\n        \"known\": true,\n        \"visited\": false\n      },\n      {\n        \"name\": \"Переправа Трёх Колов\",\n        \"kind\": \"landmark\",\n        \"region\": \"Пепельные Поля\",\n        \"x\": 445,\n        \"y\": 355,\n        \"summary\": \"Дорожная переправа и место сбора путников перед северным трактом.\",\n        \"known\": true,\n        \"visited\": false\n      },\n      {\n        \"name\": \"Клин\",\n        \"kind\": \"village\",\n        \"region\": \"Пепельные Поля\",\n        \"x\": 565,\n        \"y\": 245,\n        \"summary\": \"Сторожевое поселение у северного тракта, зависящее от редких обозов.\",\n        \"known\": true,\n        \"visited\": false\n      },\n      {\n        \"name\": \"Сломанный створ\",\n        \"kind\": \"ruin\",\n        \"region\": \"Пепельные Поля\",\n        \"x\": 650,\n        \"y\": 355,\n        \"summary\": \"Заброшенное дорожное сооружение, отмеченное на старых схемах тракта.\",\n        \"known\": true,\n        \"visited\": false\n      },\n      {\n        \"name\": \"Вороний проход\",\n        \"kind\": \"landmark\",\n        \"region\": \"Северный кряж\",\n        \"x\": 795,\n        \"y\": 180,\n        \"summary\": \"Высокий перевал, через который редкие проводники уходят за пределы приграничья.\",\n        \"known\": true,\n        \"visited\": false\n      }\n    ],\n    \"routes\": [\n      {\n        \"from\": \"Серая Пристань\",\n        \"to\": \"Пустое кладбище\",\n        \"kind\": \"road\",\n        \"distance\": 2,\n        \"danger\": \"низкая\",\n        \"discovered\": true\n      },\n      {\n        \"from\": \"Серая Пристань\",\n        \"to\": \"Переправа Трёх Колов\",\n        \"kind\": \"road\",\n        \"distance\": 5,\n        \"danger\": \"средняя\",\n        \"discovered\": true\n      },\n      {\n        \"from\": \"Переправа Трёх Колов\",\n        \"to\": \"Клин\",\n        \"kind\": \"road\",\n        \"distance\": 4,\n        \"danger\": \"средняя\",\n        \"discovered\": true\n      },\n      {\n        \"from\": \"Клин\",\n        \"to\": \"Сломанный створ\",\n        \"kind\": \"trail\",\n        \"distance\": 3,\n        \"danger\": \"средняя\",\n        \"discovered\": true\n      },\n      {\n        \"from\": \"Сломанный створ\",\n        \"to\": \"Вороний проход\",\n        \"kind\": \"pass\",\n        \"distance\": 6,\n        \"danger\": \"высокая\",\n        \"discovered\": true\n      }\n    ]\n  },\n  \"openingNarration\": \"Утро в Серой Пристани начинается с грохота разгружаемых телег и скрипа настила под ногами. Над солёными сваями стоит чистое небо; на стенах контор уже сушат свежие объявления о пропавшем северном караване. Ада знает, как обычно выглядят следы обозов на приграничных дорогах, а Рен узнаёт на одном из объявлений знак гильдии, которой он должен.\\n\\nУ Пустого кладбища, где именные камни отмечают невыплаченные долги, обнаружилась новая могила. На ней вырезано имя человека из списка пропавших караванщиков — и рядом лежит дорожный жетон, испачканный солёной грязью. Писарь Мара Вейл стоит у камня с раскрытой книгой учёта; городской возчик Осрик Таль придерживает пустую тележку и явно не хочет оставаться здесь один. В книге напротив имени уже поставлена отметка о закрытом долге, хотя никто не знает, кто её внёс. Запись, жетон и исчезновение каравана не складываются в ясную историю — и каждый из присутствующих ждёт, что вы скажете или сделаете дальше.\",\n  \"scene\": {\n    \"title\": \"Имя без тела\",\n    \"location\": \"Пустое кладбище\",\n    \"mood\": \"Ясное солёное утро; сухой камень, солёная корка на оградах, гул порта за спиной и тревожная тишина вокруг новой могилы.\",\n    \"objective\": \"Разобраться, почему долг пропавшего караванщика отмечен закрытым и как с этим связаны найденные у могилы жетон и исчезновение обоза.\",\n    \"theme\": \"Пустые надгробия, выцветшие записи и следы дорожной грязи среди портового солевого налёта.\",\n    \"danger\": \"низкая\",\n    \"map\": {\n      \"layout\": \"open\",\n      \"scale\": \"site\",\n      \"pattern\": \"natural\",\n      \"material\": \"stone\",\n      \"width\": 30,\n      \"height\": 26,\n      \"openness\": 0.7,\n      \"water\": 0.0,\n      \"featureCount\": 8,\n      \"design\": {\n        \"topology\": \"organic\",\n        \"climate\": \"temperate\",\n        \"architecture\": \"stone\",\n        \"density\": \"sparse\",\n        \"building_use\": \"manor\"\n      }\n    }\n  },\n  \"npcs\": [\n    {\n      \"name\": \"Мара Вейл\",\n      \"role\": \"городской писарь, ведущая книгу долгов\",\n      \"summary\": \"Пришла проверить новую запись и не понимает, кто поставил отметку о закрытии долга.\",\n      \"voice\": \"Говорит ровно и сухо, словно каждое слово должно поместиться в строку учёта.\",\n      \"goals\": [\n        \"Установить происхождение отметки о закрытом долге.\",\n        \"Не допустить, чтобы книгу учёта изменили или унесли.\"\n      ],\n      \"beliefs\": [\n        \"Запись в книге важна, даже если её смысл неудобен.\",\n        \"Пустая могила — свидетельство обязательства, а не доказательство смерти.\"\n      ]\n    },\n    {\n      \"name\": \"Осрик Таль\",\n      \"role\": \"городской возчик, доставивший тележку к кладбищу\",\n      \"summary\": \"Привёз к могиле дорожный жетон и неохотно признаёт, что нашёл его среди вещей, оставшихся после исчезнувшего каравана.\",\n      \"voice\": \"Бормочет короткими фразами, часто оглядываясь на дорогу.\",\n      \"goals\": [\n        \"Уйти отсюда, не став ответственным за пропавших людей.\",\n        \"Избежать новых долгов перед теми, кто ведёт городские книги.\"\n      ],\n      \"beliefs\": [\n        \"На дороге случайные находки редко бывают безопасными.\",\n        \"Лучше промолчать о сомнительной вещи, чем оказаться записанным в чужой долг.\"\n      ]\n    }\n  ],\n  \"hook\": \"На могиле пропавшего караванщика появился жетон с солёной грязью, а его долг закрыт записью неизвестного происхождения. Ада может сопоставить находку со своим опытом проводника караванов, тогда как знак на объявлении напоминает Рену о гильдии, которой он должен; что именно означает эта связь, ещё предстоит выяснить.\"\n}",
+      "latency_ms": 22751
+    },
+    {
+      "role": "campaign_creator",
+      "condition": "after",
+      "model": "openai/gpt-6-luna",
+      "requested_at": "2026-10-01T15:53:10.335Z",
+      "ok": true,
+      "usage": {
+        "total_tokens": 4970,
+        "prompt_tokens": 2928,
+        "prompt_tokens_details": {
+          "cached_tokens": 2297,
+          "cache_write_tokens": 628,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 2042,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.1219625080388
+      },
+      "usage_cost": 0.1219625080388,
+      "catalog_cost_rub": 0.142713416872,
+      "cost_rub": 0.1219625080388,
+      "raw_text": "{\n  \"campaignName\": \"Колодец без воды\",\n  \"partyName\": \"Дорожные тени\",\n  \"worldSummary\": \"На краю солёной пустыни города живут благодаря древним акведукам, а торговые пути связывают сухие равнины с далёкими берегами. Вода здесь — общее достояние и причина старых распрей: победа в споре о ней редко обходится без чьей-то потери.\",\n  \"worldHistory\": \"Когда-то мастера проложили через пустынный край каменные водоводы, собиравшие воду в горах и ведущие её к поселениям. Их имена почти забыты, но некоторые участки всё ещё исправно служат людям.\\n\\nКараванный город Соль-Врата вырос у последнего большого водосборника перед пустыней. Его жители привыкли делить воду по старым соглашениям, а торговцы — платить за безопасный проход.\\n\\nНа побережье стоит порт Тихих Свай. Там долги принято хоронить: у каждого есть именная могила, но могилы пусты. Говорят, такой обычай помогает должнику начать заново; никто не может объяснить, почему некоторые имена всё же возвращаются в долговые книги.\\n\\nК северу от города лежит Каменный Венец — горная гряда, где берут начало старые каналы. Путники рассказывают о запечатанных водосборниках и заброшенных сторожевых постах, однако карты акведука неполны, а его ответвления давно стали предметом споров.\",\n  \"worldMap\": {\n    \"name\": \"Известные земли Соляного пути\",\n    \"regions\": [\n      {\n        \"name\": \"Соляная окраина\",\n        \"biome\": \"desert\",\n        \"x\": 260,\n        \"y\": 300,\n        \"radius\": 190\n      },\n      {\n        \"name\": \"Каменный Венец\",\n        \"biome\": \"mountains\",\n        \"x\": 520,\n        \"y\": 145,\n        \"radius\": 150\n      },\n      {\n        \"name\": \"Свайный берег\",\n        \"biome\": \"coast\",\n        \"x\": 760,\n        \"y\": 390,\n        \"radius\": 170\n      }\n    ],\n    \"locations\": [\n      {\n        \"name\": \"Соль-Врата\",\n        \"kind\": \"town\",\n        \"region\": \"Соляная окраина\",\n        \"x\": 270,\n        \"y\": 310,\n        \"summary\": \"Караванный город, снабжаемый старым акведуком; его водные запасы определяют торговлю и повседневную жизнь.\",\n        \"known\": true,\n        \"visited\": true\n      },\n      {\n        \"name\": \"Верхний водосбор\",\n        \"kind\": \"landmark\",\n        \"region\": \"Каменный Венец\",\n        \"x\": 520,\n        \"y\": 150,\n        \"summary\": \"Горное начало древней системы каналов, откуда вода направляется к Соль-Вратам.\",\n        \"known\": true,\n        \"visited\": false\n      },\n      {\n        \"name\": \"Порт Тихих Свай\",\n        \"kind\": \"port\",\n        \"region\": \"Свайный берег\",\n        \"x\": 770,\n        \"y\": 390,\n        \"summary\": \"Прибрежный порт, где долги предают земле в пустых именных могилах.\",\n        \"known\": true,\n        \"visited\": false\n      },\n      {\n        \"name\": \"Сторожевой уступ\",\n        \"kind\": \"ruin\",\n        \"region\": \"Каменный Венец\",\n        \"x\": 640,\n        \"y\": 210,\n        \"summary\": \"Разрушенный пост у старого ответвления акведука; его нынешнее состояние неизвестно.\",\n        \"known\": true,\n        \"visited\": false\n      }\n    ],\n    \"routes\": [\n      {\n        \"from\": \"Соль-Врата\",\n        \"to\": \"Верхний водосбор\",\n        \"kind\": \"trail\",\n        \"distance\": 8,\n        \"danger\": \"средняя\",\n        \"discovered\": true\n      },\n      {\n        \"from\": \"Верхний водосбор\",\n        \"to\": \"Сторожевой уступ\",\n        \"kind\": \"trail\",\n        \"distance\": 4,\n        \"danger\": \"средняя\",\n        \"discovered\": true\n      },\n      {\n        \"from\": \"Соль-Врата\",\n        \"to\": \"Порт Тихих Свай\",\n        \"kind\": \"road\",\n        \"distance\": 12,\n        \"danger\": \"средняя\",\n        \"discovered\": true\n      }\n    ]\n  },\n  \"openingNarration\": \"Утренний свет ложится на глиняные крыши Соль-Врат, а сухое, затянутое облаками небо не обещает скорого дождя. У пустого городского водосборника ещё стоят свежие следы ночной суеты: вода из старого акведука исчезла за одну ночь, и караванщики уже спорят, хватит ли оставшихся запасов хотя бы до следующей поставки.\\n\\nАда узнаёт знакомую тревогу людей, зависящих от дороги и воды: она сама водила караваны через приграничье. Рядом Рен замечает, что на доске долгов у водосборника появилось имя, выскобленное из старой записи; его долг гильдии делает этот знак неприятно знакомым. Смотрительница водосборника Иара Тесс держит раскрытый журнал, а каменщик Дамир Соль показывает на свежую трещину в сухом канале: по его словам, она не объясняет, куда делась вся вода.\\n\\nНикто пока не знает, остановился ли поток выше по каналу, ушёл ли в скрытое ответвление или был перенаправлен намеренно. Водосборник открыт для осмотра, Иара ждёт вопросов, а первая нить тайны лежит перед вами в журнале и на камне.\",\n  \"scene\": {\n    \"title\": \"Пустой водосборник\",\n    \"location\": \"Соль-Врата\",\n    \"mood\": \"Тревожное сухое утро под затянутым облаками небом; город уже проснулся и прислушивается к новостям о воде.\",\n    \"objective\": \"Разобраться, почему поток старого акведука прекратился за ночь.\",\n    \"theme\": \"Каменный водосборник, глиняные стены и следы срочной работы вокруг пересохшего канала.\",\n    \"danger\": \"низкая\",\n    \"map\": {\n      \"layout\": \"streets\",\n      \"scale\": \"site\",\n      \"pattern\": \"village\",\n      \"material\": \"stone\",\n      \"width\": 32,\n      \"height\": 28,\n      \"openness\": 0.55,\n      \"water\": 0.0,\n      \"featureCount\": 7,\n      \"design\": {\n        \"topology\": \"market\",\n        \"climate\": \"arid\",\n        \"architecture\": \"stone\",\n        \"density\": \"mixed\",\n        \"building_use\": \"shop\"\n      }\n    }\n  },\n  \"npcs\": [\n    {\n      \"name\": \"Иара Тесс\",\n      \"role\": \"смотрительница водосборника\",\n      \"summary\": \"Ведёт записи о распределении воды и готова показать журнал, хотя понимает, что любая ошибка в нём может вызвать городской спор.\",\n      \"voice\": \"Говорит коротко и обстоятельно, словно каждое слово должно выдержать проверку.\",\n      \"goals\": [\n        \"Установить, куда пропала вода\",\n        \"Не допустить, чтобы жителей обвинили без доказательств\"\n      ],\n      \"beliefs\": [\n        \"Записи и следы важнее слухов\",\n        \"Воду нельзя делить по силе голоса\"\n      ]\n    },\n    {\n      \"name\": \"Дамир Соль\",\n      \"role\": \"каменщик, осматривавший канал\",\n      \"summary\": \"Обнаружил свежую трещину в каменном русле, но не считает её достаточной причиной полного исчезновения потока.\",\n      \"voice\": \"Говорит прямо и сухо, внимательно подбирая слова о чужой работе.\",\n      \"goals\": [\n        \"Понять, не повредили ли канал намеренно\",\n        \"Не дать поспешно возложить вину на ремесленников\"\n      ],\n      \"beliefs\": [\n        \"Камень сохраняет следы лучше, чем свидетели\",\n        \"Плохой ремонт и умышленная порча — не одно и то же\"\n      ]\n    }\n  ],\n  \"hook\": \"Старый акведук пересох за одну ночь, а свежая трещина в городском канале не объясняет исчезновение всего потока. В журнале водосборника появилось выскобленное имя, которое отзывается долгом Рена; путь расследования и цена вмешательства остаются открытыми.\"\n}",
+      "latency_ms": 20807
+    }
+  ],
+  "narrator": [
+    {
+      "repeat": 1,
+      "scenario": "pier-fog-morning",
+      "condition": "before",
+      "canon": {
+        "clock": "08:00",
+        "phase": "morning",
+        "weather": "fog",
+        "indoors": false,
+        "wetness": "damp",
+        "water_nearby": true,
+        "kind": "port"
+      },
+      "prompt_version": "narrator/v9",
+      "provider": "EvalClient",
+      "raw_text": "Утро на причале Аквилона, где на сваях стоят сходни; туман скрывает всё дальше десятка шагов, а вокруг царит тревожное ожидание.",
+      "shown_text": "Утро на причале Аквилона, где на сваях стоят сходни; туман скрывает всё дальше десятка шагов, а вокруг царит тревожное ожидание.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 1,
+      "scenario": "pier-fog-morning",
+      "condition": "after",
+      "canon": {
+        "clock": "08:00",
+        "phase": "morning",
+        "weather": "fog",
+        "indoors": false,
+        "wetness": "damp",
+        "water_nearby": true,
+        "kind": "port"
+      },
+      "prompt_version": "narrator/v10",
+      "provider": "EvalClient",
+      "raw_text": "Утро на Причале Аквилона тонет в серой пелене тумана; влажный воздух несёт запах камня, а ветер ровно шумит над водой.",
+      "shown_text": "Утро на Причале Аквилона тонет в серой пелене тумана; влажный воздух несёт запах камня, а ветер ровно шумит над водой.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 1,
+      "scenario": "tavern-storm-evening",
+      "condition": "before",
+      "canon": {
+        "clock": "19:00",
+        "phase": "evening",
+        "weather": "storm",
+        "indoors": true,
+        "wetness": "sheltered",
+        "water_nearby": false,
+        "kind": "town"
+      },
+      "prompt_version": "narrator/v9",
+      "provider": "EvalClient",
+      "raw_text": "Ада меняет позицию; в шумном, тесном трактире дым очага горчит пряностью.",
+      "shown_text": "Ада меняет позицию; в шумном, тесном трактире дым очага горчит пряностью.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 1,
+      "scenario": "tavern-storm-evening",
+      "condition": "after",
+      "canon": {
+        "clock": "19:00",
+        "phase": "evening",
+        "weather": "storm",
+        "indoors": true,
+        "wetness": "sheltered",
+        "water_nearby": false,
+        "kind": "town"
+      },
+      "prompt_version": "narrator/v10",
+      "provider": "EvalClient",
+      "raw_text": "Ада меняет позицию в трактире «Пустой кубок»; под крышей горят очаг и лампы.",
+      "shown_text": "Ада меняет позицию в трактире «Пустой кубок»; под крышей горят очаг и лампы.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 1,
+      "scenario": "gate-rain-night",
+      "condition": "before",
+      "canon": {
+        "clock": "01:00",
+        "phase": "night",
+        "weather": "rain",
+        "indoors": false,
+        "wetness": "wet",
+        "water_nearby": false,
+        "kind": "town"
+      },
+      "prompt_version": "narrator/v9",
+      "provider": "EvalClient",
+      "raw_text": "У Северных ворот Эйрхольма настороженная стража; ночь и дождь заливают глаза и смывают следы.",
+      "shown_text": "У Северных ворот Эйрхольма настороженная стража; ночь и дождь заливают глаза и смывают следы.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 1,
+      "scenario": "gate-rain-night",
+      "condition": "after",
+      "canon": {
+        "clock": "01:00",
+        "phase": "night",
+        "weather": "rain",
+        "indoors": false,
+        "wetness": "wet",
+        "water_nearby": false,
+        "kind": "town"
+      },
+      "prompt_version": "narrator/v10",
+      "provider": "EvalClient",
+      "raw_text": "У северных ворот Эйрхольма ночь и кромешная темнота; дождь мочит камень, а редкие огни тонут во мраке.",
+      "shown_text": "У северных ворот Эйрхольма ночь и кромешная темнота; дождь мочит камень, а редкие огни тонут во мраке.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 1,
+      "scenario": "market-clear-day",
+      "condition": "before",
+      "canon": {
+        "clock": "13:00",
+        "phase": "day",
+        "weather": "clear",
+        "indoors": false,
+        "wetness": "dry",
+        "water_nearby": false,
+        "kind": "city"
+      },
+      "prompt_version": "narrator/v9",
+      "provider": "EvalClient",
+      "raw_text": "Ада меняет позицию на Рыночной площади Ривермарка. Вокруг стоит торговый гомон, небо чистое.",
+      "shown_text": "Ада меняет позицию на Рыночной площади Ривермарка. Вокруг стоит торговый гомон, небо чистое.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 1,
+      "scenario": "market-clear-day",
+      "condition": "after",
+      "canon": {
+        "clock": "13:00",
+        "phase": "day",
+        "weather": "clear",
+        "indoors": false,
+        "wetness": "dry",
+        "water_nearby": false,
+        "kind": "city"
+      },
+      "prompt_version": "narrator/v10",
+      "provider": "EvalClient",
+      "raw_text": "Ада сменила позицию на рыночной площади Ривермарка; вокруг под ясным дневным небом звучит торговый гомон.",
+      "shown_text": "Ада сменила позицию на рыночной площади Ривермарка; вокруг под ясным дневным небом звучит торговый гомон.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 1,
+      "scenario": "forest-overcast-morning",
+      "condition": "before",
+      "canon": {
+        "clock": "09:30",
+        "phase": "morning",
+        "weather": "overcast",
+        "indoors": false,
+        "wetness": "dry",
+        "water_nearby": false,
+        "kind": "wilds"
+      },
+      "prompt_version": "narrator/v9",
+      "provider": "EvalClient",
+      "raw_text": "На лесной дороге у Чёрного ручья — настороженная тишина; небо пасмурное, но сухо. Пахнет смолистой хвоей, ветер приглушённо свистит между стволами.",
+      "shown_text": "На лесной дороге у Чёрного ручья — настороженная тишина; небо пасмурное, но сухо. Пахнет смолистой хвоей, ветер приглушённо свистит между стволами.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 1,
+      "scenario": "forest-overcast-morning",
+      "condition": "after",
+      "canon": {
+        "clock": "09:30",
+        "phase": "morning",
+        "weather": "overcast",
+        "indoors": false,
+        "wetness": "dry",
+        "water_nearby": false,
+        "kind": "wilds"
+      },
+      "prompt_version": "narrator/v10",
+      "provider": "EvalClient",
+      "raw_text": "Утро на лесной дороге у Чёрного ручья пасмурное, но сухое; ровный серый свет ложится между стволами. Рядом — Ада, Рен и лесничий Тарв.",
+      "shown_text": "Утро на лесной дороге у Чёрного ручья пасмурное, но сухое; ровный серый свет ложится между стволами. Рядом — Ада, Рен и лесничий Тарв.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 1,
+      "scenario": "crypt-rain-day",
+      "condition": "before",
+      "canon": {
+        "clock": "14:00",
+        "phase": "day",
+        "weather": "rain",
+        "indoors": true,
+        "wetness": "sheltered",
+        "water_nearby": false,
+        "kind": "ruin"
+      },
+      "prompt_version": "narrator/v9",
+      "provider": "EvalClient",
+      "raw_text": "Вы стоите в склепе под часовней: здесь затхлый холод, а на плитах лежит ровное сияние. Под сводом долго отзывается эхо.",
+      "shown_text": "Вы стоите в склепе под часовней: здесь затхлый холод, а на плитах лежит ровное сияние. Под сводом долго отзывается эхо.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 1,
+      "scenario": "crypt-rain-day",
+      "condition": "after",
+      "canon": {
+        "clock": "14:00",
+        "phase": "day",
+        "weather": "rain",
+        "indoors": true,
+        "wetness": "sheltered",
+        "water_nearby": false,
+        "kind": "ruin"
+      },
+      "prompt_version": "narrator/v10",
+      "provider": "EvalClient",
+      "raw_text": "Под часовней — сухой склеп; ровное сияние ложится на плиты, а под сводом долго звучит эхо.",
+      "shown_text": "Под часовней — сухой склеп; ровное сияние ложится на плиты, а под сводом долго звучит эхо.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 1,
+      "scenario": "marsh-fog-evening",
+      "condition": "before",
+      "canon": {
+        "clock": "18:30",
+        "phase": "evening",
+        "weather": "fog",
+        "indoors": false,
+        "wetness": "damp",
+        "water_nearby": true,
+        "kind": "wilds"
+      },
+      "prompt_version": "narrator/v9",
+      "provider": "EvalClient",
+      "raw_text": "Ада меняет позицию на гати через Туманные топи; туман скрадывает всё дальше десятка шагов.",
+      "shown_text": "Ада меняет позицию на гати через Туманные топи; туман скрадывает всё дальше десятка шагов.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 1,
+      "scenario": "marsh-fog-evening",
+      "condition": "after",
+      "canon": {
+        "clock": "18:30",
+        "phase": "evening",
+        "weather": "fog",
+        "indoors": false,
+        "wetness": "damp",
+        "water_nearby": true,
+        "kind": "wilds"
+      },
+      "prompt_version": "narrator/v10",
+      "provider": "EvalClient",
+      "raw_text": "Ада меняет позицию на гати через Туманные топи; серая пелена тумана глотает очертания.",
+      "shown_text": "Ада меняет позицию на гати через Туманные топи; серая пелена тумана глотает очертания.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 1,
+      "scenario": "camp-clear-night",
+      "condition": "before",
+      "canon": {
+        "clock": "23:30",
+        "phase": "night",
+        "weather": "clear",
+        "indoors": false,
+        "wetness": "dry",
+        "water_nearby": false,
+        "kind": "wilds"
+      },
+      "prompt_version": "narrator/v9",
+      "provider": "EvalClient",
+      "raw_text": "Стоянка у сухого колодца погружена в пустоту и ветер; сейчас ночь, небо чистое. Короткое эхо шагов звучит среди длинных неподвижных теней.",
+      "shown_text": "Стоянка у сухого колодца погружена в пустоту и ветер; сейчас ночь, небо чистое. Короткое эхо шагов звучит среди длинных неподвижных теней.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 1,
+      "scenario": "camp-clear-night",
+      "condition": "after",
+      "canon": {
+        "clock": "23:30",
+        "phase": "night",
+        "weather": "clear",
+        "indoors": false,
+        "wetness": "dry",
+        "water_nearby": false,
+        "kind": "wilds"
+      },
+      "prompt_version": "narrator/v10",
+      "provider": "EvalClient",
+      "raw_text": "Ночь укрывает стоянку у сухого колодца; над сухой землёй светят луна и звёзды.",
+      "shown_text": "Ночь укрывает стоянку у сухого колодца; над сухой землёй светят луна и звёзды.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 1,
+      "scenario": "shipyard-storm-day",
+      "condition": "before",
+      "canon": {
+        "clock": "12:00",
+        "phase": "day",
+        "weather": "storm",
+        "indoors": false,
+        "wetness": "wet",
+        "water_nearby": true,
+        "kind": "port"
+      },
+      "prompt_version": "narrator/v9",
+      "provider": "EvalClient",
+      "raw_text": "Ада меняет позицию на верфи Солёных Свай; гроза глушит шаги и голоса.",
+      "shown_text": "Ада меняет позицию на верфи Солёных Свай; гроза глушит шаги и голоса.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 1,
+      "scenario": "shipyard-storm-day",
+      "condition": "after",
+      "canon": {
+        "clock": "12:00",
+        "phase": "day",
+        "weather": "storm",
+        "indoors": false,
+        "wetness": "wet",
+        "water_nearby": true,
+        "kind": "port"
+      },
+      "prompt_version": "narrator/v10",
+      "provider": "EvalClient",
+      "raw_text": "Ада меняет позицию на верфи; гроза глушит шаги и голоса.",
+      "shown_text": "Ада меняет позицию на верфи; гроза глушит шаги и голоса.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 1,
+      "scenario": "village-clear-morning",
+      "condition": "before",
+      "canon": {
+        "clock": "08:00",
+        "phase": "morning",
+        "weather": "clear",
+        "indoors": false,
+        "wetness": "dry",
+        "water_nearby": true,
+        "kind": "village"
+      },
+      "prompt_version": "narrator/v9",
+      "provider": "EvalClient",
+      "raw_text": "В Тихом Броду сонное ясное утро; деревня стоит у реки. На тропе — шорох ветвей и пятнистый свет под кронами.",
+      "shown_text": "В Тихом Броду сонное ясное утро; деревня стоит у реки. На тропе — шорох ветвей и пятнистый свет под кронами.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 1,
+      "scenario": "village-clear-morning",
+      "condition": "after",
+      "canon": {
+        "clock": "08:00",
+        "phase": "morning",
+        "weather": "clear",
+        "indoors": false,
+        "wetness": "dry",
+        "water_nearby": true,
+        "kind": "village"
+      },
+      "prompt_version": "narrator/v10",
+      "provider": "EvalClient",
+      "raw_text": "Утро в деревне Тихий Брод ясное и тихое; у кромки воды влажны доски и камни.",
+      "shown_text": "Утро в деревне Тихий Брод ясное и тихое; у кромки воды влажны доски и камни.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 2,
+      "scenario": "pier-fog-morning",
+      "condition": "after",
+      "canon": {
+        "clock": "08:00",
+        "phase": "morning",
+        "weather": "fog",
+        "indoors": false,
+        "wetness": "damp",
+        "water_nearby": true,
+        "kind": "port"
+      },
+      "prompt_version": "narrator/v10",
+      "provider": "EvalClient",
+      "raw_text": "Утро на причале Аквилона: сырой туман стелется над водой и скрывает дальние очертания.",
+      "shown_text": "Утро на причале Аквилона: сырой туман стелется над водой и скрывает дальние очертания.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 2,
+      "scenario": "pier-fog-morning",
+      "condition": "before",
+      "canon": {
+        "clock": "08:00",
+        "phase": "morning",
+        "weather": "fog",
+        "indoors": false,
+        "wetness": "damp",
+        "water_nearby": true,
+        "kind": "port"
+      },
+      "prompt_version": "narrator/v9",
+      "provider": "EvalClient",
+      "raw_text": "Утром Причал Аквилона окутан туманом: дальше десятка шагов ничего не различить. У сходней — тревожное ожидание.",
+      "shown_text": "Утром Причал Аквилона окутан туманом: дальше десятка шагов ничего не различить. У сходней — тревожное ожидание.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 2,
+      "scenario": "tavern-storm-evening",
+      "condition": "after",
+      "canon": {
+        "clock": "19:00",
+        "phase": "evening",
+        "weather": "storm",
+        "indoors": true,
+        "wetness": "sheltered",
+        "water_nearby": false,
+        "kind": "town"
+      },
+      "prompt_version": "narrator/v10",
+      "provider": "EvalClient",
+      "raw_text": "Ада меняет позицию в трактире «Пустой кубок»; под крышей сухо, а за окнами гремит гроза.",
+      "shown_text": "Ада меняет позицию в трактире «Пустой кубок»; под крышей сухо, а за окнами гремит гроза.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 2,
+      "scenario": "tavern-storm-evening",
+      "condition": "before",
+      "canon": {
+        "clock": "19:00",
+        "phase": "evening",
+        "weather": "storm",
+        "indoors": true,
+        "wetness": "sheltered",
+        "water_nearby": false,
+        "kind": "town"
+      },
+      "prompt_version": "narrator/v9",
+      "provider": "EvalClient",
+      "raw_text": "Ада меняет позицию в шумном и тесном трактире «Пустой кубок»; неровное пламя настенных свечей дрожит в полумраке.",
+      "shown_text": "Ада меняет позицию в шумном и тесном трактире «Пустой кубок»; неровное пламя настенных свечей дрожит в полумраке.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 2,
+      "scenario": "gate-rain-night",
+      "condition": "after",
+      "canon": {
+        "clock": "01:00",
+        "phase": "night",
+        "weather": "rain",
+        "indoors": false,
+        "wetness": "wet",
+        "water_nearby": false,
+        "kind": "town"
+      },
+      "prompt_version": "narrator/v10",
+      "provider": "EvalClient",
+      "raw_text": "У северных ворот Эйрхольма — ночь и кромешная темнота; холодный дождь мочит землю и камень. Редкие огни тонут во тьме.",
+      "shown_text": "У северных ворот Эйрхольма — ночь и кромешная темнота; холодный дождь мочит землю и камень. Редкие огни тонут во тьме.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 2,
+      "scenario": "gate-rain-night",
+      "condition": "before",
+      "canon": {
+        "clock": "01:00",
+        "phase": "night",
+        "weather": "rain",
+        "indoors": false,
+        "wetness": "wet",
+        "water_nearby": false,
+        "kind": "town"
+      },
+      "prompt_version": "narrator/v9",
+      "provider": "EvalClient",
+      "raw_text": "У Северных ворот Эйрхольма — ночь и дождь; стража насторожена.",
+      "shown_text": "У Северных ворот Эйрхольма — ночь и дождь; стража насторожена.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 2,
+      "scenario": "market-clear-day",
+      "condition": "after",
+      "canon": {
+        "clock": "13:00",
+        "phase": "day",
+        "weather": "clear",
+        "indoors": false,
+        "wetness": "dry",
+        "water_nearby": false,
+        "kind": "city"
+      },
+      "prompt_version": "narrator/v10",
+      "provider": "EvalClient",
+      "raw_text": "Ада меняет позицию на Рыночной площади Ривермарка под ясным дневным небом.",
+      "shown_text": "Ада меняет позицию на Рыночной площади Ривермарка под ясным дневным небом.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 2,
+      "scenario": "market-clear-day",
+      "condition": "before",
+      "canon": {
+        "clock": "13:00",
+        "phase": "day",
+        "weather": "clear",
+        "indoors": false,
+        "wetness": "dry",
+        "water_nearby": false,
+        "kind": "city"
+      },
+      "prompt_version": "narrator/v9",
+      "provider": "EvalClient",
+      "raw_text": "Ада меняет позицию на рыночной площади Ривермарка, где стоит торговый гомон.",
+      "shown_text": "Ада меняет позицию на рыночной площади Ривермарка, где стоит торговый гомон.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 2,
+      "scenario": "forest-overcast-morning",
+      "condition": "after",
+      "canon": {
+        "clock": "09:30",
+        "phase": "morning",
+        "weather": "overcast",
+        "indoors": false,
+        "wetness": "dry",
+        "water_nearby": false,
+        "kind": "wilds"
+      },
+      "prompt_version": "narrator/v10",
+      "provider": "EvalClient",
+      "raw_text": "На лесной дороге у Чёрного ручья Ада и Рен стоят рядом с лесничим Тарвом; над сухой землёй — пасмурное утро и ровный серый свет.",
+      "shown_text": "На лесной дороге у Чёрного ручья Ада и Рен стоят рядом с лесничим Тарвом; над сухой землёй — пасмурное утро и ровный серый свет.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 2,
+      "scenario": "forest-overcast-morning",
+      "condition": "before",
+      "canon": {
+        "clock": "09:30",
+        "phase": "morning",
+        "weather": "overcast",
+        "indoors": false,
+        "wetness": "dry",
+        "water_nearby": false,
+        "kind": "wilds"
+      },
+      "prompt_version": "narrator/v9",
+      "provider": "EvalClient",
+      "raw_text": "Лесная дорога у Чёрного ручья лежит под пасмурным небом; между стволами тянутся узкие серые лучи, а ветер приглушённо свистит. Смолистый запах хвои смешивается с холодом капель с нижних ветвей.",
+      "shown_text": "Лесная дорога у Чёрного ручья лежит под пасмурным небом; между стволами тянутся узкие серые лучи, а ветер приглушённо свистит. Смолистый запах хвои смешивается с холодом капель с нижних ветвей.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 2,
+      "scenario": "crypt-rain-day",
+      "condition": "after",
+      "canon": {
+        "clock": "14:00",
+        "phase": "day",
+        "weather": "rain",
+        "indoors": true,
+        "wetness": "sheltered",
+        "water_nearby": false,
+        "kind": "ruin"
+      },
+      "prompt_version": "narrator/v10",
+      "provider": "EvalClient",
+      "raw_text": "Склеп под часовней встречает затхлым холодом; под сводом долго звучит эхо.",
+      "shown_text": "Склеп под часовней встречает затхлым холодом; под сводом долго звучит эхо.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 2,
+      "scenario": "crypt-rain-day",
+      "condition": "before",
+      "canon": {
+        "clock": "14:00",
+        "phase": "day",
+        "weather": "rain",
+        "indoors": true,
+        "wetness": "sheltered",
+        "water_nearby": false,
+        "kind": "ruin"
+      },
+      "prompt_version": "narrator/v9",
+      "provider": "EvalClient",
+      "raw_text": "В склепе под часовней затхло и холодно; ровное сияние лежит на плитах, а под сводом тянется долгое эхо.",
+      "shown_text": "В склепе под часовней затхло и холодно; ровное сияние лежит на плитах, а под сводом тянется долгое эхо.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 2,
+      "scenario": "marsh-fog-evening",
+      "condition": "after",
+      "canon": {
+        "clock": "18:30",
+        "phase": "evening",
+        "weather": "fog",
+        "indoors": false,
+        "wetness": "damp",
+        "water_nearby": true,
+        "kind": "wilds"
+      },
+      "prompt_version": "narrator/v10",
+      "provider": "EvalClient",
+      "raw_text": "Ада меняет позицию на гати; в ранних сумерках туман скрадывает всё дальше десятка шагов.",
+      "shown_text": "Ада меняет позицию на гати; в ранних сумерках туман скрадывает всё дальше десятка шагов.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 2,
+      "scenario": "marsh-fog-evening",
+      "condition": "before",
+      "canon": {
+        "clock": "18:30",
+        "phase": "evening",
+        "weather": "fog",
+        "indoors": false,
+        "wetness": "damp",
+        "water_nearby": true,
+        "kind": "wilds"
+      },
+      "prompt_version": "narrator/v9",
+      "provider": "EvalClient",
+      "raw_text": "Ада меняет позицию на гати через Туманные топи; туман скрадывает всё дальше десятка шагов.",
+      "shown_text": "Ада меняет позицию на гати через Туманные топи; туман скрадывает всё дальше десятка шагов.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 2,
+      "scenario": "camp-clear-night",
+      "condition": "after",
+      "canon": {
+        "clock": "23:30",
+        "phase": "night",
+        "weather": "clear",
+        "indoors": false,
+        "wetness": "dry",
+        "water_nearby": false,
+        "kind": "wilds"
+      },
+      "prompt_version": "narrator/v10",
+      "provider": "EvalClient",
+      "raw_text": "Стоянка у сухого колодца лежит под открытым ясным небом; в ночной темноте светят луна и звёзды.",
+      "shown_text": "Стоянка у сухого колодца лежит под открытым ясным небом; в ночной темноте светят луна и звёзды.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 2,
+      "scenario": "camp-clear-night",
+      "condition": "before",
+      "canon": {
+        "clock": "23:30",
+        "phase": "night",
+        "weather": "clear",
+        "indoors": false,
+        "wetness": "dry",
+        "water_nearby": false,
+        "kind": "wilds"
+      },
+      "prompt_version": "narrator/v9",
+      "provider": "EvalClient",
+      "raw_text": "У сухого колодца стоит пустая стоянка; в ночной тишине слышится короткое эхо шагов, а ветер гонит сухой сквозняк у земли.",
+      "shown_text": "У сухого колодца стоит пустая стоянка; в ночной тишине слышится короткое эхо шагов, а ветер гонит сухой сквозняк у земли.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 2,
+      "scenario": "shipyard-storm-day",
+      "condition": "after",
+      "canon": {
+        "clock": "12:00",
+        "phase": "day",
+        "weather": "storm",
+        "indoors": false,
+        "wetness": "wet",
+        "water_nearby": true,
+        "kind": "port"
+      },
+      "prompt_version": "narrator/v10",
+      "provider": "EvalClient",
+      "raw_text": "Ада меняет позицию на верфи; гроза глушит шаги и голоса.",
+      "shown_text": "Ада меняет позицию на верфи; гроза глушит шаги и голоса.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 2,
+      "scenario": "shipyard-storm-day",
+      "condition": "before",
+      "canon": {
+        "clock": "12:00",
+        "phase": "day",
+        "weather": "storm",
+        "indoors": false,
+        "wetness": "wet",
+        "water_nearby": true,
+        "kind": "port"
+      },
+      "prompt_version": "narrator/v9",
+      "provider": "EvalClient",
+      "raw_text": "Ада меняет позицию, переместившись с места на (1, 1) к (3, 1). Гроза глушит шаги и голоса на верфи.",
+      "shown_text": "Ада меняет позицию, переместившись с места на (1, 1) к (3, 1). Гроза глушит шаги и голоса на верфи.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 2,
+      "scenario": "village-clear-morning",
+      "condition": "after",
+      "canon": {
+        "clock": "08:00",
+        "phase": "morning",
+        "weather": "clear",
+        "indoors": false,
+        "wetness": "dry",
+        "water_nearby": true,
+        "kind": "village"
+      },
+      "prompt_version": "narrator/v10",
+      "provider": "EvalClient",
+      "raw_text": "Утро в деревне Тихий Брод ясное; у кромки воды влажны доски и камни.",
+      "shown_text": "Утро в деревне Тихий Брод ясное; у кромки воды влажны доски и камни.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    },
+    {
+      "repeat": 2,
+      "scenario": "village-clear-morning",
+      "condition": "before",
+      "canon": {
+        "clock": "08:00",
+        "phase": "morning",
+        "weather": "clear",
+        "indoors": false,
+        "wetness": "dry",
+        "water_nearby": true,
+        "kind": "village"
+      },
+      "prompt_version": "narrator/v9",
+      "provider": "EvalClient",
+      "raw_text": "В Тихом Броду сонное ясное утро; над тропой шуршат ветви, а под кронами ложится пятнистый свет.",
+      "shown_text": "В Тихом Броду сонное ясное утро; над тропой шуршат ветви, а под кронами ложится пятнистый свет.",
+      "verifier_codes": [],
+      "raw_canon_contradictions": [],
+      "shown_canon_contradictions": [],
+      "error": null
+    }
+  ],
+  "bootstrap": [
+    {
+      "world": "aquilon",
+      "condition": "before",
+      "generated_by": "ai-storyteller",
+      "canon": {
+        "clock": "08:00",
+        "phase": "morning",
+        "weather": "rain",
+        "biome": "coast",
+        "indoors": false
+      },
+      "promised_weather_table": null,
+      "scene_location": "Причал Аквилона",
+      "scene_mood": "Сырой настороженный гул, в котором каждое недосказанное слово звучит подозрительно.",
+      "opening": "Туман катится с моря сквозь просветы между сваями Причала Аквилона. На мокрых досках видны пустые места, где должны были стоять бочки с солью; оборванные крепёжные канаты свисают в чёрную воду. Ада, привыкшая вести караваны по приграничью, замечает, что следы волочения обрываются у настила, а не у склада. Рен узнаёт на одном из обрезанных концов аккуратный узел, знакомый по старым делам карманника, хотя это ещё ничего не доказывает.\n\nУ края настила портовая распорядительница Мирна Вейл бережёт промокшую ведомость с записью о пропавшем грузе. Рядом с ней грузчик Тавен Орр пытается удержать пустую тележку на скользких досках: он видел, как груз принимали, но не уверен, кто оставался на причале после наступления тумана. Торговля уже замирает, а слухи о долгах и краже распространяются быстрее, чем можно проверить записи. У вас есть след, ведомость и люди, готовые ответить на вопросы — туман скрывает остальное.",
+      "opening_canon_contradictions": [],
+      "mood_canon_contradictions": []
+    },
+    {
+      "world": "aquilon",
+      "condition": "after_v6_draft",
+      "generated_by": "ai-storyteller",
+      "canon": {
+        "clock": "08:00",
+        "phase": "morning",
+        "weather": "fog",
+        "biome": "forest",
+        "indoors": false
+      },
+      "promised_weather_table": {
+        "plains": "overcast",
+        "forest": "fog",
+        "mountains": "fog",
+        "marsh": "rain",
+        "desert": "clear",
+        "tundra": "overcast",
+        "coast": "rain",
+        "wastes": "clear"
+      },
+      "scene_location": "Аквилон",
+      "scene_mood": "Пасмурное утро под непрерывным дождём; мокрые настилы скользят, запах соли смешан с запахом сырого дерева.",
+      "opening": "Утро, восемь часов. Дождь барабанит по настилу Причала Аквилона и стекает с его свай мутными струями. Вода под ногами блестит; мокрые канаты пахнут солью и водорослями. Среди открытых складских ворот видны пустые места там, где должен был лежать пропавший груз.\n\nАда знает, как по следам на дороге и по привычкам караванщиков отличить случайную задержку от чужого вмешательства. Рен знает цену чужим карманам — и сам всё ещё должен денег гильдии. Теперь исчезновение соли угрожает торговцам, а любая новая задолженность может лечь на имя того, кого проще всего обвинить. У кромки причала держит промокшую грузовую ведомость смотрительница Иара Вейл; рядом с ней стоит портовый счётчик Товен Марр, не выпускающий из рук запертый ящик для печатей.\n\nИара и Товен оба готовы говорить, но их записи не сходятся: одна отметка указывает на недогруженную партию, другая — на груз, принятый под целой печатью. Дождь быстро размывает следы на досках, а спор уже собирает взгляды ближайших торговцев. Что сделают Ада и Рен?",
+      "opening_canon_contradictions": [],
+      "mood_canon_contradictions": []
+    },
+    {
+      "world": "frontier",
+      "condition": "after_v6_draft",
+      "generated_by": "ai-storyteller",
+      "canon": {
+        "clock": "08:00",
+        "phase": "morning",
+        "weather": "clear",
+        "biome": "coast",
+        "indoors": false
+      },
+      "promised_weather_table": {
+        "plains": "rain",
+        "forest": "clear",
+        "mountains": "fog",
+        "marsh": "overcast",
+        "desert": "clear",
+        "tundra": "clear",
+        "coast": "clear",
+        "wastes": "overcast"
+      },
+      "scene_location": "Старый Порт",
+      "scene_mood": "Утро ясное и прохладное; солёная сырость держится у воды, но деревянный настил не пылит. Под спокойной портовой суетой чувствуется тревога.",
+      "opening": "В первый день, ровно в восемь утра, двое странников — Ада, следопыт, выросшая в приграничье и водившая караваны, и Рен, бывший карманник, задолжавший гильдии, — стоят у дощатого причала Старого Порта. Под сваями плещется солёная вода; ясное прибрежное небо отражается в ней, а свежие доски пахнут смолой.\n\nУ причала лежит вскрытый дорожный сундук с выцветшим знаком северного каравана. Ада узнаёт на его ремне узел, которым обычно стягивают обозные тюки; замок не сорван, а аккуратно раскрыт. Рядом, на столбе, висит долговая дощечка с вырезанным именем Рена — и свежей зарубкой, которой вчера ещё не было. Хранительница портового реестра Мирра Вейл придерживает дощечку ладонью: она уверяет, что не добавляла отметку, но боится снять её без свидетелей.\n\nСреди бумаг из сундука видна мокрая расписка на имя, стёртое солью, и короткая запись о грузе, который так и не дошёл до города. Мирра ждёт ответа, а у Ады и Рена есть возможность осмотреть сундук, проверить отметку или расспросить её — что они делают?",
+      "opening_canon_contradictions": [],
+      "mood_canon_contradictions": []
+    },
+    {
+      "world": "frontier",
+      "condition": "before",
+      "generated_by": "ai-storyteller",
+      "canon": {
+        "clock": "08:00",
+        "phase": "morning",
+        "weather": "clear",
+        "biome": "tundra",
+        "indoors": false
+      },
+      "promised_weather_table": null,
+      "scene_location": "Вельмарк",
+      "scene_mood": "сдержанная тревога среди повседневной портовой суеты",
+      "opening": "Вельмарк встречает вас запахом солёной воды, мокрого дерева и дыма из низких труб. Вы — Ада, следопыт, выросшая в приграничье и водившая караваны, и Рен, плут, бывший карманник, чьи долги гильдии не растворились вместе с прежней жизнью. На набережной уже несколько дней говорят об исчезнувшем караване: северный тракт опустел, а привычные торговые повозки не вернулись.\n\nУ пустой могилы с именем пропавшего возчика стоит Иара, хранительница городского кладбища. Она замечает, что имя на надгробии появилось раньше, чем обычно ставят памятный камень, и не знает, кто распорядился его высечь. Неподалёку торговые счета раскладывает Освин, распорядитель караванов: среди его бумаг не сходятся записи о грузе и долгах, связанных с последним рейсом. Ни один из них не повышает голоса, но оба ждут, что кто-нибудь отнесётся к их тревоге всерьёз.\n\nВетер покачивает сваи и шевелит незапечатанную ленту у могильного камня. Пока город занят слухами, вы можете сами решить, к чему присмотреться и с кем заговорить.",
+      "opening_canon_contradictions": [],
+      "mood_canon_contradictions": []
+    },
+    {
+      "world": "desert",
+      "condition": "before",
+      "generated_by": "ai-storyteller",
+      "canon": {
+        "clock": "08:00",
+        "phase": "morning",
+        "weather": "overcast",
+        "biome": "desert",
+        "indoors": false
+      },
+      "promised_weather_table": null,
+      "scene_location": "Сар-Кел",
+      "scene_mood": "напряжённое ожидание и подозрение",
+      "opening": "К полудню жара уже выжгла тени на площади водомерных плит Сар-Кела. Над каналом, который обычно звенел бегущей водой, висит сухая пыль; караванщики и жители молча смотрят на пустое каменное русло. Вы — Ада, следопыт, привыкшая водить караваны по приграничью, и Рен, бывший карманник, знающий цену чужим долгам. Вас позвали сюда, потому что город не может ждать, а привычные дороги и следы вам знакомы лучше, чем большинству горожан.\n\nУ расколотой плиты стоит Иара, смотрительница распределения воды: она держит при себе ключ от запертого водомерного люка и утверждает, что ночью поток ещё шёл. Рядом Севран, караванный счетовод, показывает на свежую трещину в камне и требует, чтобы сперва проверили записи о последней поставке. Вокруг сгущается тревожная тишина; до исчерпания городских запасов осталось немного времени. Перед вами плита, запертый люк и два человека, готовых отвечать на вопросы.",
+      "opening_canon_contradictions": [],
+      "mood_canon_contradictions": []
+    },
+    {
+      "world": "desert",
+      "condition": "after_v6_draft",
+      "generated_by": "ai-storyteller",
+      "canon": {
+        "clock": "08:00",
+        "phase": "morning",
+        "weather": "clear",
+        "biome": "plains",
+        "indoors": false
+      },
+      "promised_weather_table": {
+        "plains": "clear",
+        "forest": "overcast",
+        "mountains": "overcast",
+        "marsh": "overcast",
+        "desert": "overcast",
+        "tundra": "overcast",
+        "coast": "overcast",
+        "wastes": "clear"
+      },
+      "scene_location": "Сальдор",
+      "scene_mood": "Сухое пасмурное утро, тревожное ожидание и недосказанность среди серых каменных улиц.",
+      "opening": "Утро, 08:00. Над Сальдором висит сухое пасмурное небо; каменные стены и мощёные улицы тускло-серые в рассеянном свете. Вода не пришла в город ни ночью, ни с рассветом. У цистерн уже собрались люди с пустыми сосудами, а караванные животные беспокойно переступают на привязи.\n\nАда, привычная вести караваны через пограничье, замечает на каменной кромке канала след свежей работы: старый известковый налёт сбит ровно, но вокруг нет разлитой воды. Рен узнаёт рядом нацарапанный знак долговой гильдии — такой мог бы оставить тот, кому важно, чтобы его послание заметили, но не прочли все подряд. Ни один из этих следов сам по себе не объясняет исчезновение воды.\n\nУ городского водосборника вас ждёт смотрительница канала Мейра, а чуть поодаль — городской писарь долгов Тавен. Они оба готовы говорить, но смотрят друг на друга с явным недоверием. Перед вами пересохший водосборник, отмеченный знак и два человека, чьи версии ещё предстоит услышать.",
+      "opening_canon_contradictions": [],
+      "mood_canon_contradictions": []
+    },
+    {
+      "world": "aquilon",
+      "condition": "after",
+      "generated_by": "ai-storyteller",
+      "canon": {
+        "clock": "08:00",
+        "phase": "morning",
+        "weather": "rain",
+        "biome": "coast",
+        "indoors": false
+      },
+      "promised_weather_table": {
+        "plains": "overcast",
+        "forest": "fog",
+        "mountains": "fog",
+        "marsh": "rain",
+        "desert": "clear",
+        "tundra": "overcast",
+        "coast": "rain",
+        "wastes": "clear"
+      },
+      "scene_location": "Причал Аквилона",
+      "scene_mood": "Дождливое, настороженное утро; мокрые доски, тусклый свет под низкими тучами и тихая тревога портового дела.",
+      "opening": "Утро первого дня начинается с холодного дождя над Аквилоном. Вода стучит по настилу Причала Аквилона и капает с навесов соляных складов; под ногами блестят мокрые доски, а сваи исчезают в серой морской воде. На пристани нет привычной суеты: пропавший груз соли оставил торговлю без товара, а каждый новый час задержки грозит разорвать хрупкие договорённости.\n\nАда, следопыт, привыкшая водить караваны по приграничью, замечает, что следы волочения заканчиваются у края настила, хотя дождь смывает всё вокруг. Рен узнаёт на одной из свежих долговых табличек отметку, похожую на знак гильдии, которой он должен деньги. Их обоих привёл сюда один и тот же пропавший груз, но совпадение с долгом Рена превращает обычный торговый спор в личный риск.\n\nУ края склада их ждёт Нара Вейл, портовая счетоводка с мокрым реестром под мышкой. Она не просит верить ей на слово: груз числится принятым, но никто не может показать запись о его выгрузке. Нара смотрит на двоих странников, затем на пустое место у причала, где должен был стоять соляной тюк. Дождь продолжает барабанить по доскам, и решение, с чего начать разбираться в этом деле, остаётся за вами.",
+      "opening_canon_contradictions": [],
+      "mood_canon_contradictions": []
+    },
+    {
+      "world": "frontier",
+      "condition": "after",
+      "generated_by": "ai-storyteller",
+      "canon": {
+        "clock": "08:00",
+        "phase": "morning",
+        "weather": "clear",
+        "biome": "coast",
+        "indoors": false
+      },
+      "promised_weather_table": {
+        "plains": "rain",
+        "forest": "clear",
+        "mountains": "fog",
+        "marsh": "overcast",
+        "desert": "clear",
+        "tundra": "clear",
+        "coast": "clear",
+        "wastes": "overcast"
+      },
+      "scene_location": "Пустое кладбище",
+      "scene_mood": "Ясное солёное утро; сухой камень, солёная корка на оградах, гул порта за спиной и тревожная тишина вокруг новой могилы.",
+      "opening": "Утро в Серой Пристани начинается с грохота разгружаемых телег и скрипа настила под ногами. Над солёными сваями стоит чистое небо; на стенах контор уже сушат свежие объявления о пропавшем северном караване. Ада знает, как обычно выглядят следы обозов на приграничных дорогах, а Рен узнаёт на одном из объявлений знак гильдии, которой он должен.\n\nУ Пустого кладбища, где именные камни отмечают невыплаченные долги, обнаружилась новая могила. На ней вырезано имя человека из списка пропавших караванщиков — и рядом лежит дорожный жетон, испачканный солёной грязью. Писарь Мара Вейл стоит у камня с раскрытой книгой учёта; городской возчик Осрик Таль придерживает пустую тележку и явно не хочет оставаться здесь один. В книге напротив имени уже поставлена отметка о закрытом долге, хотя никто не знает, кто её внёс. Запись, жетон и исчезновение каравана не складываются в ясную историю — и каждый из присутствующих ждёт, что вы скажете или сделаете дальше.",
+      "opening_canon_contradictions": [],
+      "mood_canon_contradictions": []
+    },
+    {
+      "world": "desert",
+      "condition": "after",
+      "generated_by": "ai-storyteller",
+      "canon": {
+        "clock": "08:00",
+        "phase": "morning",
+        "weather": "overcast",
+        "biome": "desert",
+        "indoors": false
+      },
+      "promised_weather_table": {
+        "plains": "clear",
+        "forest": "overcast",
+        "mountains": "overcast",
+        "marsh": "overcast",
+        "desert": "overcast",
+        "tundra": "overcast",
+        "coast": "overcast",
+        "wastes": "clear"
+      },
+      "scene_location": "Соль-Врата",
+      "scene_mood": "Тревожное сухое утро под затянутым облаками небом; город уже проснулся и прислушивается к новостям о воде.",
+      "opening": "Утренний свет ложится на глиняные крыши Соль-Врат, а сухое, затянутое облаками небо не обещает скорого дождя. У пустого городского водосборника ещё стоят свежие следы ночной суеты: вода из старого акведука исчезла за одну ночь, и караванщики уже спорят, хватит ли оставшихся запасов хотя бы до следующей поставки.\n\nАда узнаёт знакомую тревогу людей, зависящих от дороги и воды: она сама водила караваны через приграничье. Рядом Рен замечает, что на доске долгов у водосборника появилось имя, выскобленное из старой записи; его долг гильдии делает этот знак неприятно знакомым. Смотрительница водосборника Иара Тесс держит раскрытый журнал, а каменщик Дамир Соль показывает на свежую трещину в сухом канале: по его словам, она не объясняет, куда делась вся вода.\n\nНикто пока не знает, остановился ли поток выше по каналу, ушёл ли в скрытое ответвление или был перенаправлен намеренно. Водосборник открыт для осмотра, Иара ждёт вопросов, а первая нить тайны лежит перед вами в журнале и на камне.",
+      "opening_canon_contradictions": [],
+      "mood_canon_contradictions": []
+    }
+  ],
+  "spent_rub": 1.669,
+  "bootstrap_note": "after_v6_draft — первая редакция campaign_creator/v6 без требования трёх регионов: в 2 из 3 прогонов модель дала два региона, world-map заменил их своими, и небо стартового края разошлось с обещанным. Строки after — редакция с этим требованием.",
+  "anchors": [
+    {
+      "scenario": "pier-fog-morning",
+      "canon": "Утро, 08:00. Погода: туман — туман скрадывает всё дальше десятка шагов. Под открытым небом. Свет: рассеянный серый свет; туман скрадывает всё дальше десятка шагов. Поверхности: сыро: туман оседает влагой на дереве, камне и одежде. Рядом вода. Место: «Причал Аквилона»; на карте мира — порт. На виду: Ада, Рен, Иара.",
+      "before": {
+        "anchors": {
+          "smell": "прохладный воздух с горечью дыма",
+          "sound": "ровный шум ветра снаружи",
+          "light": "длинные неподвижные тени",
+          "touch": "сухой сквозняк у пола"
+        },
+        "conflicts": [
+          {
+            "slot": "touch",
+            "anchor": "сухой сквозняк у пола",
+            "reason": "indoor_detail_outdoors"
+          },
+          {
+            "slot": "touch",
+            "anchor": "сухой сквозняк у пола",
+            "reason": "dry_detail_in_wet_weather"
+          }
+        ]
+      },
+      "after": {
+        "anchors": {
+          "smell": "запах влажного камня",
+          "sound": "ровный шум ветра снаружи",
+          "light": "серая пелена тумана, глотающая очертания",
+          "touch": "влажная пелена тумана на коже"
+        },
+        "conflicts": []
+      }
+    },
+    {
+      "scenario": "tavern-storm-evening",
+      "canon": "Вечер, 19:00. Погода: гроза — гроза глушит шаги и голоса. Под крышей. Свет: под крышей; за окнами сумерки, светят очаг и лампы. Поверхности: под крышей сухо. Место: «Трактир «Пустой кубок»»; на карте мира — городок. На виду: Ада, Рен, Брен.",
+      "before": {
+        "anchors": {
+          "smell": "дым очага с пряной горечью",
+          "sound": "скрип половиц под редкими шагами",
+          "light": "неровное пламя настенных свечей",
+          "touch": "тепло от очага на одной стороне лица"
+        },
+        "conflicts": []
+      },
+      "after": {
+        "anchors": {
+          "smell": "дым очага с пряной горечью",
+          "sound": "скрип половиц под редкими шагами",
+          "light": "неровное пламя настенных свечей",
+          "touch": "тепло от очага на одной стороне лица"
+        },
+        "conflicts": []
+      }
+    },
+    {
+      "scenario": "gate-rain-night",
+      "canon": "Ночь, 01:00. Погода: дождь — дождь заливает глаза и смывает следы. Под открытым небом. Свет: кромешная темнота; луну и звёзды скрывает небо. Поверхности: мокро: дождь мочит землю, дерево и камень. Место: «Северные ворота Эйрхольма»; на карте мира — городок. На виду: Ада, Рен, сержант Хольт.",
+      "before": {
+        "anchors": {
+          "smell": "запах сена у дворов",
+          "sound": "стук колёс по камню",
+          "light": "длинные тени между домами",
+          "touch": "прохлада железной скобы"
+        },
+        "conflicts": []
+      },
+      "after": {
+        "anchors": {
+          "smell": "запах сена у дворов",
+          "sound": "стук колёс по камню",
+          "light": "редкие огни, тонущие в темноте",
+          "touch": "холодные капли дождя на лице"
+        },
+        "conflicts": []
+      }
+    },
+    {
+      "scenario": "market-clear-day",
+      "canon": "День, 13:00. Погода: ясно — небо чистое. Под открытым небом. Свет: яркий дневной свет. Поверхности: сухо. Место: «Рыночная площадь Ривермарка»; на карте мира — город. На виду: Ада, Рен, Олла.",
+      "before": {
+        "anchors": {
+          "smell": "смесь дорожной пыли и горячего железа",
+          "sound": "голоса из соседних дворов",
+          "light": "свет из низких окон",
+          "touch": "пыль на деревянных перилах"
+        },
+        "conflicts": []
+      },
+      "after": {
+        "anchors": {
+          "smell": "смесь дорожной пыли и горячего железа",
+          "sound": "голоса из соседних дворов",
+          "light": "свет из низких окон",
+          "touch": "пыль на деревянных перилах"
+        },
+        "conflicts": []
+      }
+    },
+    {
+      "scenario": "forest-overcast-morning",
+      "canon": "Утро, 09:30. Погода: пасмурно — небо затянуто, но сухо. Под открытым небом. Свет: ровный серый утренний свет. Поверхности: сухо. Место: «Лесная дорога у Чёрного ручья»; на карте мира — дикие земли. На виду: Ада, Рен, лесничий Тарв.",
+      "before": {
+        "anchors": {
+          "smell": "смолистый запах хвои",
+          "sound": "приглушённый свист ветра между стволами",
+          "light": "узкие серые лучи между стволами",
+          "touch": "холодные капли с нижних ветвей"
+        },
+        "conflicts": []
+      },
+      "after": {
+        "anchors": {
+          "smell": "смолистый запах хвои",
+          "sound": "приглушённый свист ветра между стволами",
+          "light": "узкие серые лучи между стволами",
+          "touch": "холодные капли с нижних ветвей"
+        },
+        "conflicts": []
+      }
+    },
+    {
+      "scenario": "crypt-rain-day",
+      "canon": "День, 14:00. Погода: дождь — дождь заливает глаза и смывает следы. Под крышей. Свет: под крышей; дневной свет лишь из окон и проёмов. Поверхности: под крышей сухо. Место: «Склеп под часовней»; на карте мира — руины. На виду: Ада, Рен, послушник Элан.",
+      "before": {
+        "anchors": {
+          "smell": "пыль старых тканей",
+          "sound": "долгое эхо под сводом",
+          "light": "ровное сияние на плитах",
+          "touch": "гладкий камень перил"
+        },
+        "conflicts": []
+      },
+      "after": {
+        "anchors": {
+          "smell": "пыль старых тканей",
+          "sound": "долгое эхо под сводом",
+          "light": "ровное сияние на плитах",
+          "touch": "гладкий камень перил"
+        },
+        "conflicts": []
+      }
+    },
+    {
+      "scenario": "marsh-fog-evening",
+      "canon": "Вечер, 18:30. Погода: туман — туман скрадывает всё дальше десятка шагов. Под открытым небом. Свет: ранние сумерки под тяжёлым небом. Поверхности: сыро: туман оседает влагой на дереве, камне и одежде. Рядом вода. Место: «Гать через Туманные топи»; на карте мира — дикие земли. На виду: Ада, Рен, проводник Мелс.",
+      "before": {
+        "anchors": {
+          "smell": "запах влажного камня",
+          "sound": "короткое эхо шагов",
+          "light": "тусклый отблеск на ближайшей поверхности",
+          "touch": "сухой сквозняк у пола"
+        },
+        "conflicts": [
+          {
+            "slot": "touch",
+            "anchor": "сухой сквозняк у пола",
+            "reason": "indoor_detail_outdoors"
+          },
+          {
+            "slot": "touch",
+            "anchor": "сухой сквозняк у пола",
+            "reason": "dry_detail_in_wet_weather"
+          }
+        ]
+      },
+      "after": {
+        "anchors": {
+          "smell": "запах влажного камня",
+          "sound": "короткое эхо шагов",
+          "light": "серая пелена тумана, глотающая очертания",
+          "touch": "влажная пелена тумана на коже"
+        },
+        "conflicts": []
+      }
+    },
+    {
+      "scenario": "camp-clear-night",
+      "canon": "Ночь, 23:30. Погода: ясно — небо чистое. Под открытым небом. Свет: ночная темнота; светят луна и звёзды. Поверхности: сухо. Место: «Стоянка у сухого колодца»; на карте мира — дикие земли. На виду: Ада, Рен, погонщик Сайрах.",
+      "before": {
+        "anchors": {
+          "smell": "запах влажного камня",
+          "sound": "короткое эхо шагов",
+          "light": "длинные неподвижные тени",
+          "touch": "сухой сквозняк у пола"
+        },
+        "conflicts": [
+          {
+            "slot": "touch",
+            "anchor": "сухой сквозняк у пола",
+            "reason": "indoor_detail_outdoors"
+          }
+        ]
+      },
+      "after": {
+        "anchors": {
+          "smell": "запах влажного камня",
+          "sound": "короткое эхо шагов",
+          "light": "холодный свет луны и звёзд",
+          "touch": "шероховатая поверхность под ладонью"
+        },
+        "conflicts": []
+      }
+    },
+    {
+      "scenario": "shipyard-storm-day",
+      "canon": "День, 12:00. Погода: гроза — гроза глушит шаги и голоса. Под открытым небом. Свет: серый сумрак под тучами. Поверхности: мокро: дождь мочит землю, дерево и камень. Рядом вода. Место: «Верфь Солёных Свай»; на карте мира — порт. На виду: Ада, Рен, мастер Корр.",
+      "before": {
+        "anchors": {
+          "smell": "запах влажного камня",
+          "sound": "короткое эхо шагов",
+          "light": "мягкий боковой свет",
+          "touch": "прохлада ближайшей стены"
+        },
+        "conflicts": []
+      },
+      "after": {
+        "anchors": {
+          "smell": "запах влажного камня",
+          "sound": "короткое эхо шагов",
+          "light": "серый свет под низкими тучами",
+          "touch": "порывы мокрого ветра"
+        },
+        "conflicts": []
+      }
+    },
+    {
+      "scenario": "village-clear-morning",
+      "canon": "Утро, 08:00. Погода: ясно — небо чистое. Под открытым небом. Свет: утренний свет, низкое солнце. Поверхности: сухо, но у кромки воды доски и камни влажные. Рядом вода. Место: «Деревня Тихий Брод»; на карте мира — деревня. На виду: Ада, Рен, старуха Веда.",
+      "before": {
+        "anchors": {
+          "smell": "сырой запах мха и коры",
+          "sound": "шорох ветвей над тропой",
+          "light": "пятнистый свет под кронами",
+          "touch": "мягкая хвоя под сапогами"
+        },
+        "conflicts": []
+      },
+      "after": {
+        "anchors": {
+          "smell": "сырой запах мха и коры",
+          "sound": "шорох ветвей над тропой",
+          "light": "пятнистый свет под кронами",
+          "touch": "мягкая хвоя под сапогами"
+        },
+        "conflicts": []
+      }
+    }
+  ],
+  "manual_review": {
+    "_note": "Ручное прочтение всех 40 ответов Рассказчика и 9 прологов (2026-10-01). В narrator перечислены только ответы с противоречием канону; остальные прочитаны и признаны согласными. hard — прямое утверждение вопреки канону; soft — деталь, которая с каноном спорит, но допускает оправдание (роса, тень от луны).",
+    "narrator": [
+      {
+        "scenario": "forest-overcast-morning",
+        "repeat": 2,
+        "condition": "before",
+        "severity": "soft",
+        "fragment": "узкие серые лучи между стволами… холод капель с нижних ветвей",
+        "note": "Канон: пасмурно, сухо. Капли с веток — пересказ якоря «холодные капли с нижних ветвей» из лесной палитры; возможна роса, поэтому soft."
+      }
+    ],
+    "narrator_observations": [
+      "До: модель трижды пересказала якоря, выбранные по названию места без учёта неба (лучи и капли в пасмурном лесу, «пятнистый свет под кронами» в деревне — палитра леса по корню «дерев»).",
+      "После: ответы чаще называют время суток и погоду прямо, иногда дословно повторяя формулировки канона («ночь и кромешная темнота», «под крышей сухо», «у кромки воды влажны доски и камни») — это вопрос стиля, а не фактов.",
+      "До, shipyard-storm-day r2: в текст попали координаты «(1, 1) к (3, 1)» — к канону не относится, отмечено для истории."
+    ],
+    "bootstrap": [
+      {
+        "world": "aquilon",
+        "condition": "before",
+        "time_stated": false,
+        "time_contradiction": false,
+        "weather_contradiction": true,
+        "consistent": false,
+        "note": "Канон: утро, дождь (coast). Пролог: «Туман катится с моря… после наступления тумана» — туман вместо дождя."
+      },
+      {
+        "world": "frontier",
+        "condition": "before",
+        "time_stated": false,
+        "time_contradiction": false,
+        "weather_contradiction": false,
+        "consistent": true,
+        "note": "Канон: утро, ясно (tundra — карта регионов заменена сервером). Пролог не называет ни часа, ни погоды."
+      },
+      {
+        "world": "desert",
+        "condition": "before",
+        "time_stated": true,
+        "time_contradiction": true,
+        "weather_contradiction": true,
+        "consistent": false,
+        "note": "Канон: утро 08:00, пасмурно. Пролог: «К полудню жара уже выжгла тени» — полдень и солнце вместо пасмурного утра."
+      },
+      {
+        "world": "aquilon",
+        "condition": "after_v6_draft",
+        "time_stated": true,
+        "time_contradiction": false,
+        "weather_contradiction": true,
+        "consistent": false,
+        "note": "Канон: туман (регион forest после замены карты регионов). Пролог: дождь по таблице для coast — модель дала два региона, сервер заменил их своими."
+      },
+      {
+        "world": "frontier",
+        "condition": "after_v6_draft",
+        "time_stated": true,
+        "time_contradiction": false,
+        "weather_contradiction": false,
+        "consistent": true,
+        "note": "Канон: утро, ясно (coast). Пролог: «ровно в восемь утра… ясное прибрежное небо»."
+      },
+      {
+        "world": "desert",
+        "condition": "after_v6_draft",
+        "time_stated": true,
+        "time_contradiction": false,
+        "weather_contradiction": true,
+        "consistent": false,
+        "note": "Канон: ясно (plains после замены карты регионов). Пролог: «сухое пасмурное небо» по таблице для desert."
+      },
+      {
+        "world": "aquilon",
+        "condition": "after",
+        "time_stated": true,
+        "time_contradiction": false,
+        "weather_contradiction": false,
+        "consistent": true,
+        "note": "Канон: утро, дождь (coast). Пролог: «Утро первого дня начинается с холодного дождя»."
+      },
+      {
+        "world": "frontier",
+        "condition": "after",
+        "time_stated": true,
+        "time_contradiction": false,
+        "weather_contradiction": false,
+        "consistent": true,
+        "note": "Канон: утро, ясно (coast). Пролог: «Утро в Серой Пристани… стоит чистое небо»."
+      },
+      {
+        "world": "desert",
+        "condition": "after",
+        "time_stated": true,
+        "time_contradiction": false,
+        "weather_contradiction": false,
+        "consistent": true,
+        "note": "Канон: утро, пасмурно (desert). Пролог: «Утренний свет… сухое, затянутое облаками небо»."
+      }
+    ]
+  },
+  "summary": {
+    "narrator": {
+      "before": {
+        "calls": 20,
+        "automatic_raw_contradictions": 0,
+        "automatic_shown_contradictions": 0,
+        "manual_hard_contradictions": 0,
+        "manual_soft_contradictions": 1,
+        "fallback_to_template": 0
+      },
+      "after": {
+        "calls": 20,
+        "automatic_raw_contradictions": 0,
+        "automatic_shown_contradictions": 0,
+        "manual_hard_contradictions": 0,
+        "manual_soft_contradictions": 0,
+        "fallback_to_template": 0
+      }
+    },
+    "anchors": {
+      "before_conflicting_anchors": 3,
+      "after_conflicting_anchors": 0,
+      "before_scenes_with_conflict": 3,
+      "after_scenes_with_conflict": 0,
+      "scenarios": 10
+    },
+    "bootstrap": {
+      "before": {
+        "runs": 3,
+        "automatic_contradictions": 0,
+        "manual_time_contradictions": 1,
+        "manual_weather_contradictions": 2,
+        "time_of_day_stated": 1,
+        "fully_consistent": 1
+      },
+      "after_v6_draft": {
+        "runs": 3,
+        "automatic_contradictions": 0,
+        "manual_time_contradictions": 0,
+        "manual_weather_contradictions": 2,
+        "time_of_day_stated": 3,
+        "fully_consistent": 1
+      },
+      "after": {
+        "runs": 3,
+        "automatic_contradictions": 0,
+        "manual_time_contradictions": 0,
+        "manual_weather_contradictions": 0,
+        "time_of_day_stated": 3,
+        "fully_consistent": 3
+      }
+    }
+  }
+}

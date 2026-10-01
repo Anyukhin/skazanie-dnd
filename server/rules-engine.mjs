@@ -23595,6 +23595,13 @@ export function actorNameResolver(state) {
     const name = String(actor?.character || actor?.name || '')
     if (id && name) names.set(id, name)
   }
+  // Собеседники социальной сцены живут не в `actors`: без них запасной текст
+  // печатал игроку служебный `npc-…` вместо имени.
+  for (const npc of state?.social?.npcs ?? []) {
+    const id = String(npc?.id ?? '')
+    const name = String(npc?.name ?? '')
+    if (id && name && !names.has(id)) names.set(id, name)
+  }
   return (id) => names.get(String(id ?? '')) ?? id
 }
 

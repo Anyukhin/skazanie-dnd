@@ -2959,15 +2959,28 @@ export type CampaignRecapResponse = {
   reason?: string
 }
 
+export type ReasoningLevelId = 'auto' | 'off' | 'minimal' | 'low' | 'medium' | 'high'
+
 export type CampaignAiSettings = {
   model: string
   narratorStyle: 'neutral' | 'formal' | 'ironic'
   improvMode: 'chaos' | 'story'
+  reasoningLevel: ReasoningLevelId
+}
+
+export type CampaignAiModelOption = {
+  id: string
+  label: string
+  description: string
+  reasoningLevels: ReasoningLevelId[]
+  recommended: boolean
 }
 
 export type CampaignAiSettingsResponse = {
   settings: CampaignAiSettings
   availableModels: string[]
+  modelOptions?: CampaignAiModelOption[]
+  reasoningLevels?: Array<{ id: ReasoningLevelId; label: string; description: string }>
   narratorStyles: Array<{ id: CampaignAiSettings['narratorStyle']; label: string }>
   improvModes: Array<{ id: CampaignAiSettings['improvMode']; label: string; description: string }>
   architectGenerationsToday: number

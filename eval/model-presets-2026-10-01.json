@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-10-01",
+  "source": "docs/model-reasoning-sweep-2026-10-01.md; цифры — eval/reasoning-sweep-summary-2026-10-01.json",
+  "note": "Пресеты — спецификация, а не действующая настройка. Сейчас сервер берёт reasoning по модели (reasoningProfileFor), а не по роли, и выбора пресета игроком нет. Пресет luna-off воспроизводится одной сменой .env: DND_AI_MODEL=openai/gpt-6-luna. Значения reasoning относятся только к основной модели пресета: резервные модели должны сохранять свой профиль (DeepSeek — { enabled: false }, Gemini — без поля, GLM — { effort: low }), иначе каскад сломается. Выборка маленькая: 24 вызова Рассказчика, 6–12 на JSON-роль, 2–6 созданий кампании на профиль.",
+  "recommended": "luna-off",
+  "presets": [
+    {
+      "id": "luna-off",
+      "rank": 1,
+      "label": "Сбалансированно (рекомендуется)",
+      "description": "GPT-6 Luna без размышлений: быстрее всех укладывается в бюджеты ходов, не выдумывает факты и дешевле всех по фактическому счёту RouterAI.",
+      "model": "openai/gpt-6-luna",
+      "fallback_models": ["google/gemini-2.5-flash-lite", "z-ai/glm-5.3-flash", "deepseek/deepseek-v4-flash", "openai/gpt-4.1-nano"],
+      "reasoning": {
+        "narrator": { "enabled": false },
+        "adjudicator": { "enabled": false },
+        "director": { "enabled": false },
+        "npc": { "enabled": false },
+        "campaign": { "enabled": false }
+      },
+      "all_hard_constraints_passed": true,
+      "evidence": {
+        "narrator": { "accepted_by_guard": "48/48", "without_invented_facts": "48/48", "p50_ms": "1771–1809", "p95_ms": "2554–3794", "within_primary_share_7200ms": "47/48" },
+        "director": { "valid": "12/12", "p50_ms": 2653, "p95_ms": 5444 },
+        "adjudicator": { "valid": "12/12", "p50_ms": 3444, "p95_ms": 4488, "within_primary_share_5400ms": "12/12" },
+        "npc": { "valid": "6/6", "p50_ms": 2857, "p95_ms": 4022, "invented_facts": "0/6", "one_liners": "0/6", "note": "с Luna-добавкой формы, которая в коде включена только для роли NPC" },
+        "campaign": { "worlds": "6/6", "within_27s": "6/6", "model_latency_s": "16,0–23,0", "locations": "3–4", "routes": "2–3", "rub_per_creation_usage_cost": 0.105 },
+        "rub_per_100_turns_usage_cost": "2,3–3,0",
+        "rub_per_100_turns_catalog_no_cache": 5.3
+      }
+    },
+    {
+      "id": "luna-thoughtful",
+      "rank": 2,
+      "label": "Вдумчивее, чуть медленнее",
+      "description": "Та же Luna, но Режиссёр и NPC коротко размышляют перед ответом; арбитр, Рассказчик и создание мира остаются без размышлений. Выигрыша в точности замер не показал — это выбор для тех, кто готов подождать на секунду-две дольше.",
+      "model": "openai/gpt-6-luna",
+      "fallback_models": ["google/gemini-2.5-flash-lite", "z-ai/glm-5.3-flash", "deepseek/deepseek-v4-flash", "openai/gpt-4.1-nano"],
+      "reasoning": {
+        "narrator": { "enabled": false },
+        "adjudicator": { "enabled": false },
+        "director": { "effort": "low" },
+        "npc": { "effort": "minimal" },
+        "campaign": { "enabled": false }
+      },
+      "all_hard_constraints_passed": true,
+      "evidence": {
+        "director": { "valid": "12/12", "p50_ms": 3285, "p95_ms": 5303, "within_primary_share_7200ms": "12/12" },
+        "npc": { "valid": "12/12", "p50_ms": 5006, "p95_ms": 6763, "invented_facts": "1/12 (Мира: «именно он распорядился открыть проход»)", "one_liners": "0/12" },
+        "narrator_adjudicator_campaign": "как у luna-off",
+        "rub_per_100_turns_usage_cost": "2,5–3,2",
+        "rub_per_100_turns_catalog_no_cache": 5.6
+      }
+    },
+    {
+      "id": "luna-deep",
+      "rank": 3,
+      "label": "Глубже думает, медленнее NPC",
+      "description": "Luna с наибольшими уровнями размышлений, которые ещё укладываются в бюджеты: Рассказчик и Режиссёр — high, NPC — medium. Арбитр и создание мира без размышлений: на высоких уровнях они ломаются. Ответ NPC — до 8 секунд.",
+      "model": "openai/gpt-6-luna",
+      "fallback_models": ["google/gemini-2.5-flash-lite", "z-ai/glm-5.3-flash", "deepseek/deepseek-v4-flash", "openai/gpt-4.1-nano"],
+      "reasoning": {
+        "narrator": { "effort": "high" },
+        "adjudicator": { "enabled": false },
+        "director": { "effort": "high" },
+        "npc": { "effort": "medium" },
+        "campaign": { "enabled": false }
+      },
+      "all_hard_constraints_passed": true,
+      "evidence": {
+        "narrator": { "accepted_by_guard": "24/24", "without_invented_facts": "24/24", "p50_ms": 2723, "p95_ms": 4009, "mean_reasoning_tokens": 80 },
+        "director": { "valid": "6/6", "p50_ms": 3654, "p95_ms": 6634, "within_primary_share_7200ms": "6/6" },
+        "npc": { "valid": "6/6", "p50_ms": 5581, "p95_ms": 8030, "invented_facts": "0/6", "one_liners": "0/6" },
+        "adjudicator_campaign": "как у luna-off",
+        "rub_per_100_turns_usage_cost": 4.2,
+        "rub_per_100_turns_catalog_no_cache": 6.4
+      }
+    },
+    {
+      "id": "luna-pro-off",
+      "rank": 4,
+      "label": "Богаче мир, медленнее и дороже (условно)",
+      "description": "GPT-6 Luna Pro без размышлений: на карте нового мира чуть больше мест и дорог, текст тот же, но каждый ход примерно на секунду медленнее и в 3–5 раз дороже. Условно: в 1 из 4 замеров мир писался 27,5 с, и в игре его дописала бы резервная модель.",
+      "model": "openai/gpt-6-luna-pro",
+      "fallback_models": ["openai/gpt-6-luna", "google/gemini-2.5-flash-lite", "z-ai/glm-5.3-flash", "deepseek/deepseek-v4-flash"],
+      "reasoning": {
+        "narrator": { "enabled": false },
+        "adjudicator": { "enabled": false },
+        "director": { "enabled": false },
+        "npc": { "enabled": false },
+        "campaign": { "enabled": false }
+      },
+      "all_hard_constraints_passed": false,
+      "failed_constraint": "campaign: 3/4 созданий в 27 с (27,5 с в одном прогоне)",
+      "evidence": {
+        "narrator": { "accepted_by_guard": "23/24", "without_invented_facts": "24/24", "p50_ms": 2831, "p95_ms": 3173, "mean_prompt_tokens": 7346, "note": "скрытая надбавка к входу ≈ 5,4 тыс. токенов на вызов" },
+        "director": { "valid": "6/6", "p50_ms": 3694, "p95_ms": 4495 },
+        "adjudicator": { "valid": "6/6", "p50_ms": 4374, "p95_ms": 4493, "within_primary_share_5400ms": "6/6" },
+        "npc": { "valid": "6/6", "p50_ms": 3897, "p95_ms": 4302, "invented_facts": "0/6", "one_liners": "0/6" },
+        "campaign": { "worlds": "4/4", "within_27s": "3/4", "model_latency_s": "23,5–27,5", "locations": "3–5", "routes": "2–4", "rub_per_creation_usage_cost": 0.329 },
+        "rub_per_100_turns_usage_cost": 11.7,
+        "rub_per_100_turns_catalog_no_cache": 18.5
+      }
+    }
+  ],
+  "excluded": [
+    { "combo": "z-ai/glm-5.3-flash (off|minimal|low|medium)", "reason": "Рассказчик: guard принял 11–22 из 24, без выдумки 15/24; создание мира не успевает в 27 с ни на одном уровне; { enabled: false } не выключает размышления и даёт быстрые ошибки маршрута" },
+    { "combo": "google/gemini-2.5-flash-lite (default)", "reason": "Режиссёр 5/6 (лишняя обёртка JSON), английский в reason, реплики NPC односложны (3/6), одна выдуманная NPC-обещалка, мир из 1 места в одном прогоне. Самая быстрая; годится как первый резерв" },
+    { "combo": "google/gemini-2.5-flash-lite (low)", "reason": "Размышления съедают лимит ответа: JSON-роли 0–3 из 6 валидных" },
+    { "combo": "deepseek/deepseek-v4-flash (off|low)", "reason": "off: Рассказчик без выдумки 15/23, NPC 4/6, создание мира 3/6 в 27 с; low: effort не соблюдается, размышления до потолка токенов, JSON-роли 0/6, 5 утечек рассуждений в текст (guard их теперь отклоняет)" },
+    { "combo": "openai/gpt-6-luna (medium|high|default) для арбитра и создания мира", "reason": "Размышления исчерпывают maxTokens 700/3200: арбитр 4/6 (medium), 1/6 (high), 1/3 (default); мир 0/2 на medium и high" },
+    { "combo": "openai/gpt-6-luna-pro (low|medium)", "reason": "Арбитр p95 17,9–16,0 с при бюджете 9 с; создание мира 42–45 с" }
+  ]
+}

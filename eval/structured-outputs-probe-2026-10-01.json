@@ -1,0 +1,1165 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-10-01T15:19:35.138Z",
+  "endpoint": "https://routerai.ru/api/v1",
+  "note": "control — json_object при промпте с чужими ключами; schema — тот же промпт со strict json_schema; schema_union — nullable вложенный объект.",
+  "schemas": {
+    "strict": {
+      "name": "probe_verdict",
+      "strict": true,
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "verdict",
+          "count"
+        ],
+        "properties": {
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "ясно",
+              "пасмурно",
+              "гроза"
+            ]
+          },
+          "count": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "union": {
+      "name": "probe_union",
+      "strict": true,
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "reply",
+          "stance",
+          "promise"
+        ],
+        "properties": {
+          "reply": {
+            "type": "string"
+          },
+          "stance": {
+            "type": "string",
+            "enum": [
+              "friendly",
+              "neutral",
+              "guarded",
+              "hostile"
+            ]
+          },
+          "promise": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "required": [
+              "direction",
+              "text",
+              "due_hint"
+            ],
+            "properties": {
+              "direction": {
+                "type": "string",
+                "enum": [
+                  "npc_to_party",
+                  "party_to_npc"
+                ]
+              },
+              "text": {
+                "type": "string"
+              },
+              "due_hint": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "probes": [
+    {
+      "model": "openai/gpt-6-luna",
+      "probe": "control",
+      "reasoning": {
+        "enabled": false
+      },
+      "status": 200,
+      "ok": true,
+      "response_model": "openai/gpt-6-luna",
+      "finish_reason": "stop",
+      "content": "{\"colour\":\"свинцово-серый\",\"mood\":\"тревожное затишье\",\"poem\":\"Над северным трактом тучи темнеют стеной,\\nИ ветер замирает пред грозой.\"}",
+      "usage": {
+        "total_tokens": 122,
+        "prompt_tokens": 63,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 59,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0038888265520000006
+      },
+      "usage_cost": 0.0038888265520000006,
+      "catalog_cost_rub": 0.003888826552,
+      "json_parsed": true,
+      "keys": [
+        "colour",
+        "mood",
+        "poem"
+      ],
+      "conforms_to_schema": false,
+      "latency_ms": 3120
+    },
+    {
+      "model": "openai/gpt-6-luna",
+      "probe": "schema",
+      "reasoning": {
+        "enabled": false
+      },
+      "status": 200,
+      "ok": true,
+      "response_model": "openai/gpt-6-luna",
+      "finish_reason": "stop",
+      "content": "{\"count\":0,\"verdict\":\"гроза\"}",
+      "usage": {
+        "total_tokens": 173,
+        "prompt_tokens": 152,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 21,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.002791699508
+      },
+      "usage_cost": 0.002791699508,
+      "catalog_cost_rub": 0.002791699508,
+      "json_parsed": true,
+      "keys": [
+        "count",
+        "verdict"
+      ],
+      "conforms_to_schema": true,
+      "latency_ms": 1861
+    },
+    {
+      "model": "openai/gpt-6-luna",
+      "probe": "schema_union",
+      "reasoning": {
+        "enabled": false
+      },
+      "status": 200,
+      "ok": true,
+      "response_model": "openai/gpt-6-luna",
+      "finish_reason": "stop",
+      "content": "{\"promise\":null,\"reply\":\"Можно, но оплату за ночлег нужно внести сейчас. Если у вас пока нет денег, увы, поселить вас не могу.\",\"stance\":\"neutral\"}",
+      "usage": {
+        "total_tokens": 189,
+        "prompt_tokens": 141,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 48,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.004138667364
+      },
+      "usage_cost": 0.004138667364,
+      "catalog_cost_rub": 0.004138667364000001,
+      "json_parsed": true,
+      "keys": [
+        "promise",
+        "reply",
+        "stance"
+      ],
+      "conforms_to_schema": true,
+      "latency_ms": 2175
+    },
+    {
+      "model": "google/gemini-2.5-flash-lite",
+      "probe": "control",
+      "reasoning": null,
+      "status": 200,
+      "ok": true,
+      "response_model": "gemini-2.5-flash-lite",
+      "finish_reason": "stop",
+      "content": "{\n  \"colour\": \"темно-серый\",\n  \"mood\": \"тревожный\",\n  \"poem\": \"Небо хмурится, гроза близка,\\nВетер шепчет о грядущих грозах.\"\n}",
+      "usage": {
+        "total_tokens": 102,
+        "prompt_tokens": 46,
+        "completion_tokens": 56,
+        "cost": 0.00293291388
+      },
+      "usage_cost": 0.00293291388,
+      "catalog_cost_rub": 0.0029329138800000005,
+      "json_parsed": true,
+      "keys": [
+        "colour",
+        "mood",
+        "poem"
+      ],
+      "conforms_to_schema": false,
+      "latency_ms": 794
+    },
+    {
+      "model": "google/gemini-2.5-flash-lite",
+      "probe": "schema",
+      "reasoning": null,
+      "status": 200,
+      "ok": true,
+      "response_model": "gemini-2.5-flash-lite",
+      "finish_reason": "stop",
+      "content": "{\n  \"verdict\": \"гроза\",\n  \"count\": 1\n}",
+      "usage": {
+        "total_tokens": 66,
+        "prompt_tokens": 46,
+        "completion_tokens": 20,
+        "cost": 0.001368693144
+      },
+      "usage_cost": 0.001368693144,
+      "catalog_cost_rub": 0.0013686931440000001,
+      "json_parsed": true,
+      "keys": [
+        "verdict",
+        "count"
+      ],
+      "conforms_to_schema": true,
+      "latency_ms": 550
+    },
+    {
+      "model": "google/gemini-2.5-flash-lite",
+      "probe": "schema_union",
+      "reasoning": null,
+      "status": 200,
+      "ok": true,
+      "response_model": "gemini-2.5-flash-lite",
+      "finish_reason": "stop",
+      "content": "{\n  \"reply\": \"Конечно, путник. Комната найдется. Утром расплатишься.\",\n  \"stance\": \"friendly\",\n  \"promise\": {\n    \"direction\": \"npc_to_party\",\n    \"text\": \"Комната найдется.\",\n    \"due_hint\": \"Утром расплатишься.\"\n  }\n}",
+      "usage": {
+        "total_tokens": 131,
+        "prompt_tokens": 45,
+        "completion_tokens": 86,
+        "cost": 0.004225568516
+      },
+      "usage_cost": 0.004225568516,
+      "catalog_cost_rub": 0.004225568516,
+      "json_parsed": true,
+      "keys": [
+        "reply",
+        "stance",
+        "promise"
+      ],
+      "conforms_to_schema": true,
+      "latency_ms": 848
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "probe": "control",
+      "reasoning": {
+        "effort": "low"
+      },
+      "status": 200,
+      "ok": true,
+      "response_model": "z-ai/glm-5.3-flash",
+      "finish_reason": "stop",
+      "content": "{\"colour\": \"свинцово-серый с фиолетовыми прожилками\", \"mood\": \"тревожное ожидание, тяжёлая тишина перед бурей\", \"poem\": \"Над трактом небо свинцом налилось,\\nИ ветер замер — гроза подошла вплотную.\"}",
+      "usage": {
+        "total_tokens": 148,
+        "prompt_tokens": 67,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 81,
+        "completion_tokens_details": {
+          "reasoning_tokens": 4,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0060401731962
+      },
+      "usage_cost": 0.0060401731962,
+      "catalog_cost_rub": 0.00306370011376,
+      "json_parsed": true,
+      "keys": [
+        "colour",
+        "mood",
+        "poem"
+      ],
+      "conforms_to_schema": false,
+      "latency_ms": 1611
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "probe": "schema",
+      "reasoning": {
+        "effort": "low"
+      },
+      "status": 200,
+      "ok": true,
+      "response_model": "z-ai/glm-5.3-flash",
+      "finish_reason": "stop",
+      "content": "{\"verdict\":\"гроза\",\"count\":1}",
+      "usage": {
+        "total_tokens": 299,
+        "prompt_tokens": 192,
+        "prompt_tokens_details": {
+          "cached_tokens": 64
+        },
+        "completion_tokens": 107,
+        "completion_tokens_details": {
+          "reasoning_tokens": 89
+        },
+        "cost": 0.00891627544808
+      },
+      "usage_cost": 0.00891627544808,
+      "catalog_cost_rub": 0.00429443767896,
+      "json_parsed": true,
+      "keys": [
+        "verdict",
+        "count"
+      ],
+      "conforms_to_schema": true,
+      "latency_ms": 6276
+    },
+    {
+      "model": "z-ai/glm-5.3-flash",
+      "probe": "schema_union",
+      "reasoning": {
+        "effort": "low"
+      },
+      "status": 200,
+      "ok": true,
+      "response_model": "z-ai/glm-5.3-flash",
+      "finish_reason": "stop",
+      "content": "{\"reply\":\"Переночевать можно, сена на полу хватит. Только утром монеты мне в руку, а не «потом, потом», — у меня и без вас должников хватает.\",\"stance\":\"neutral\",\"promise\":{\"direction\":\"party_to_npc\",\"due_hint\":\"утром при расплате\",\"text\":\"Гость обещает заплатить за ночлег утром.\"}}",
+      "usage": {
+        "total_tokens": 320,
+        "prompt_tokens": 235,
+        "prompt_tokens_details": {
+          "cached_tokens": 64
+        },
+        "completion_tokens": 85,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "cost": 0.00837260011588
+      },
+      "usage_cost": 0.00837260011588,
+      "catalog_cost_rub": 0.0036085703368000004,
+      "json_parsed": true,
+      "keys": [
+        "reply",
+        "stance",
+        "promise"
+      ],
+      "conforms_to_schema": true,
+      "latency_ms": 6239
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "probe": "control",
+      "reasoning": {
+        "enabled": false
+      },
+      "status": 200,
+      "ok": true,
+      "response_model": "deepseek/deepseek-v4-flash",
+      "finish_reason": "stop",
+      "content": "{\n  \"colour\": \"свинцово-серый с фиолетовыми прожилками\",\n  \"mood\": \"тревожное, затаившееся\",\n  \"poem\": \"Тучи ползут, как уставшие звери, \\nВетер затих — и природа в печали.\"\n}",
+      "usage": {
+        "total_tokens": 139,
+        "prompt_tokens": 60,
+        "prompt_tokens_details": {
+          "cached_tokens": 60,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 79,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.0123733662143
+      },
+      "usage_cost": 0.0123733662143,
+      "catalog_cost_rub": 0.00113995866654488,
+      "json_parsed": true,
+      "keys": [
+        "colour",
+        "mood",
+        "poem"
+      ],
+      "conforms_to_schema": false,
+      "latency_ms": 3155
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "probe": "schema",
+      "reasoning": {
+        "enabled": false
+      },
+      "status": 200,
+      "ok": true,
+      "response_model": "deepseek/deepseek-v4-flash",
+      "finish_reason": "stop",
+      "content": "{\n  \"count\": 1,\n  \"verdict\": \"пасмурно\"\n}",
+      "usage": {
+        "total_tokens": 85,
+        "prompt_tokens": 60,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 25,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.00057713227572
+      },
+      "usage_cost": 0.00057713227572,
+      "catalog_cost_rub": 0.0005752085014676,
+      "json_parsed": true,
+      "keys": [
+        "count",
+        "verdict"
+      ],
+      "conforms_to_schema": true,
+      "latency_ms": 3044
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "probe": "schema_union",
+      "reasoning": {
+        "enabled": false
+      },
+      "status": 200,
+      "ok": true,
+      "response_model": "deepseek/deepseek-v4-flash",
+      "finish_reason": "stop",
+      "content": "{\n  \"reply\": \"Конечно, путник. Места в общем зале найдутся. Утром и рассчитаемся.\",\n  \"stance\": \"friendly\",\n  \"promise\": {\n    \"direction\": \"party_to_npc\",\n    \"text\": \"Заплачу утром за ночлег.\",\n    \"due_hint\": \"утром\"\n  }\n}",
+      "usage": {
+        "total_tokens": 416,
+        "prompt_tokens": 329,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 87,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.00263027160216548
+      },
+      "usage_cost": 0.00263027160216548,
+      "catalog_cost_rub": 0.00263027160216548,
+      "json_parsed": true,
+      "keys": [
+        "reply",
+        "stance",
+        "promise"
+      ],
+      "conforms_to_schema": true,
+      "latency_ms": 2056
+    },
+    {
+      "model": "openai/gpt-4.1-nano",
+      "probe": "control",
+      "reasoning": null,
+      "status": 200,
+      "ok": true,
+      "response_model": "gpt-4.1-nano-2025-04-14",
+      "finish_reason": "stop",
+      "content": "{\"colour\": \"тёмно-серое с оттенками серого и синего\", \"mood\": \"напряжённое и предвещающее бурю\", \"poem\": \"Небо гнетущее, тучи нависли, / Ветер шепчет, гроза близко.\"}",
+      "usage": {
+        "total_tokens": 134,
+        "prompt_tokens": 64,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens": 70,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "cost": 0.0037367495360000006
+      },
+      "usage_cost": 0.0037367495360000006,
+      "catalog_cost_rub": 0.003736749536,
+      "json_parsed": true,
+      "keys": [
+        "colour",
+        "mood",
+        "poem"
+      ],
+      "conforms_to_schema": false,
+      "latency_ms": 2356
+    },
+    {
+      "model": "openai/gpt-4.1-nano",
+      "probe": "schema",
+      "reasoning": null,
+      "status": 200,
+      "ok": true,
+      "response_model": "gpt-4.1-nano-2025-04-14",
+      "finish_reason": "stop",
+      "content": "{\"count\":2,\"verdict\":\"гроза\"}",
+      "usage": {
+        "total_tokens": 171,
+        "prompt_tokens": 159,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens": 12,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "cost": 0.002248567308
+      },
+      "usage_cost": 0.002248567308,
+      "catalog_cost_rub": 0.002248567308,
+      "json_parsed": true,
+      "keys": [
+        "count",
+        "verdict"
+      ],
+      "conforms_to_schema": true,
+      "latency_ms": 1204
+    },
+    {
+      "model": "openai/gpt-4.1-nano",
+      "probe": "schema_union",
+      "reasoning": null,
+      "status": 200,
+      "ok": true,
+      "response_model": "gpt-4.1-nano-2025-04-14",
+      "finish_reason": "stop",
+      "content": "{\"promise\":{\"direction\":\"party_to_npc\",\"due_hint\":\"завтра утром\",\"text\":\"Я запишу ваше имя и номер комнаты.\"},\"reply\":\"Конечно, вы можете переночевать у нас. Добро пожаловать!\",\"stance\":\"friendly\"}",
+      "usage": {
+        "total_tokens": 201,
+        "prompt_tokens": 146,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens": 55,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "cost": 0.003975727704
+      },
+      "usage_cost": 0.003975727704,
+      "catalog_cost_rub": 0.003975727704,
+      "json_parsed": true,
+      "keys": [
+        "promise",
+        "reply",
+        "stance"
+      ],
+      "conforms_to_schema": true,
+      "latency_ms": 1129
+    },
+    {
+      "model": "openai/gpt-6-luna-pro",
+      "probe": "control",
+      "reasoning": {
+        "enabled": false
+      },
+      "status": 200,
+      "ok": true,
+      "response_model": "openai/gpt-6-luna-pro",
+      "finish_reason": "stop",
+      "content": "{\"colour\":\"свинцово-серый\",\"mood\":\"тревожный\",\"poem\":\"Над северным трактом тучи смыкают края,\\nИ гром уже дышит за дальним хребтом.\"}",
+      "usage": {
+        "total_tokens": 1809,
+        "prompt_tokens": 1667,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 142,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.025820504788
+      },
+      "usage_cost": 0.025820504788,
+      "catalog_cost_rub": 0.025820504788000003,
+      "json_parsed": true,
+      "keys": [
+        "colour",
+        "mood",
+        "poem"
+      ],
+      "conforms_to_schema": false,
+      "latency_ms": 3475
+    },
+    {
+      "model": "openai/gpt-6-luna-pro",
+      "probe": "schema",
+      "reasoning": {
+        "enabled": false
+      },
+      "status": 200,
+      "ok": true,
+      "response_model": "openai/gpt-6-luna-pro",
+      "finish_reason": "stop",
+      "content": "{\"count\":0,\"verdict\":\"гроза\"}",
+      "usage": {
+        "total_tokens": 1810,
+        "prompt_tokens": 1754,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 56,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.022094617896
+      },
+      "usage_cost": 0.022094617896,
+      "catalog_cost_rub": 0.022094617896,
+      "json_parsed": true,
+      "keys": [
+        "count",
+        "verdict"
+      ],
+      "conforms_to_schema": true,
+      "latency_ms": 2845
+    },
+    {
+      "model": "openai/gpt-6-luna-pro",
+      "probe": "schema_union",
+      "reasoning": {
+        "enabled": false
+      },
+      "status": 200,
+      "ok": true,
+      "response_model": "openai/gpt-6-luna-pro",
+      "finish_reason": "stop",
+      "content": "{\"promise\":{\"direction\":\"party_to_npc\",\"due_hint\":\"утром\",\"text\":\"заплатить за ночлег\"},\"reply\":\"Можно, устраивайтесь. Заплатите утром.\",\"stance\":\"friendly\"}",
+      "usage": {
+        "total_tokens": 1916,
+        "prompt_tokens": 1793,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 123,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.026157246752
+      },
+      "usage_cost": 0.026157246752,
+      "catalog_cost_rub": 0.026157246752000003,
+      "json_parsed": true,
+      "keys": [
+        "promise",
+        "reply",
+        "stance"
+      ],
+      "conforms_to_schema": true,
+      "latency_ms": 4784
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "probe": "control",
+      "reasoning": {
+        "enabled": false
+      },
+      "status": 200,
+      "ok": true,
+      "response_model": "openai/gpt-5.6-luna",
+      "finish_reason": "stop",
+      "content": "{\"colour\":\"свинцово-серый\",\"mood\":\"тревожное ожидание\",\"poem\":\"Над северным трактом тучи сомкнулись стеной,\\nИ гром затаился за дальней сосной.\"}",
+      "usage": {
+        "total_tokens": 121,
+        "prompt_tokens": 63,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 58,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.008929093368000001
+      },
+      "usage_cost": 0.008929093368000001,
+      "catalog_cost_rub": 0.008929093368000001,
+      "json_parsed": true,
+      "keys": [
+        "colour",
+        "mood",
+        "poem"
+      ],
+      "conforms_to_schema": false,
+      "latency_ms": 2217
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "probe": "schema",
+      "reasoning": {
+        "enabled": false
+      },
+      "status": 200,
+      "ok": true,
+      "response_model": "openai/gpt-5.6-luna",
+      "finish_reason": "stop",
+      "content": "{\"count\":0,\"verdict\":\"гроза\"}",
+      "usage": {
+        "total_tokens": 173,
+        "prompt_tokens": 152,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 21,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.006039630064
+      },
+      "usage_cost": 0.006039630064,
+      "catalog_cost_rub": 0.0060396300640000004,
+      "json_parsed": true,
+      "keys": [
+        "count",
+        "verdict"
+      ],
+      "conforms_to_schema": true,
+      "latency_ms": 2212
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "probe": "schema_union",
+      "reasoning": {
+        "enabled": false
+      },
+      "status": 200,
+      "ok": true,
+      "response_model": "openai/gpt-5.6-luna",
+      "finish_reason": "stop",
+      "content": "{\"promise\":{\"direction\":\"party_to_npc\",\"due_hint\":\"утром\",\"text\":\"Гость обещает заплатить за ночлег утром.\"},\"reply\":\"Можно, но утром сначала внесите плату за ночлег, прежде чем покинете трактир.\",\"stance\":\"guarded\"}",
+      "usage": {
+        "total_tokens": 208,
+        "prompt_tokens": 141,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 67,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.011796831384
+      },
+      "usage_cost": 0.011796831384,
+      "catalog_cost_rub": 0.011796831384000001,
+      "json_parsed": true,
+      "keys": [
+        "promise",
+        "reply",
+        "stance"
+      ],
+      "conforms_to_schema": true,
+      "latency_ms": 2235
+    },
+    {
+      "model": "z-ai/glm-5.2",
+      "probe": "control",
+      "reasoning": {
+        "enabled": false
+      },
+      "status": 200,
+      "ok": true,
+      "response_model": "z-ai/glm-5.2",
+      "finish_reason": "stop",
+      "content": "{\"colour\":\"свинцово-серый с фиолетовыми прожилками\",\"mood\":\"тревожное ожидание\",\"poem\":\"Небо давит свинцом на усталый тракт,\\nМолния шепчет: гроза на подходе.\"}",
+      "usage": {
+        "total_tokens": 179,
+        "prompt_tokens": 128,
+        "prompt_tokens_details": {
+          "cached_tokens": 64
+        },
+        "completion_tokens": 51,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "text_tokens": 51
+        },
+        "cost": 0.0359162461216
+      },
+      "usage_cost": 0.0359162461216,
+      "catalog_cost_rub": 0.004428004749584,
+      "json_parsed": true,
+      "keys": [
+        "colour",
+        "mood",
+        "poem"
+      ],
+      "conforms_to_schema": false,
+      "latency_ms": 5139
+    },
+    {
+      "model": "z-ai/glm-5.2",
+      "probe": "schema",
+      "reasoning": {
+        "enabled": false
+      },
+      "status": 200,
+      "ok": true,
+      "response_model": "z-ai/glm-5.2",
+      "finish_reason": "stop",
+      "content": "{\"count\":12,\"verdict\":\"гроза\"}",
+      "usage": {
+        "total_tokens": 268,
+        "prompt_tokens": 254,
+        "prompt_tokens_details": {
+          "cached_tokens": 64
+        },
+        "completion_tokens": 14,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "text_tokens": 14
+        },
+        "cost": 0.0373935657056
+      },
+      "usage_cost": 0.0373935657056,
+      "catalog_cost_rub": 0.0045772140275679996,
+      "json_parsed": true,
+      "keys": [
+        "count",
+        "verdict"
+      ],
+      "conforms_to_schema": true,
+      "latency_ms": 9014
+    },
+    {
+      "model": "z-ai/glm-5.2",
+      "probe": "schema_union",
+      "reasoning": {
+        "enabled": false
+      },
+      "status": 200,
+      "ok": true,
+      "response_model": "z-ai/glm-5.2",
+      "finish_reason": "stop",
+      "content": "{\"promise\":{\"direction\": \"party_to_npc\", \"due_hint\": \"на следующее утро\", \"text\": \"Оплатить ночлег утром\"},\"reply\":\"Конечно, комната наверху свободна. Расположитесь, а утром рассчитаетесь — постой стоит пять медяков.\",\"stance\":\"friendly\"}",
+      "usage": {
+        "total_tokens": 389,
+        "prompt_tokens": 321,
+        "prompt_tokens_details": {
+          "cached_tokens": 64
+        },
+        "completion_tokens": 68,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "text_tokens": 68
+        },
+        "cost": 0.0733923679216
+      },
+      "usage_cost": 0.0733923679216,
+      "catalog_cost_rub": 0.008213093051383999,
+      "json_parsed": true,
+      "keys": [
+        "promise",
+        "reply",
+        "stance"
+      ],
+      "conforms_to_schema": true,
+      "latency_ms": 8702
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "probe": "control",
+      "reasoning": {
+        "effort": "low"
+      },
+      "status": 200,
+      "ok": true,
+      "response_model": "meta/muse-spark-1.3",
+      "finish_reason": "length",
+      "content": "{\"",
+      "usage": {
+        "total_tokens": 490,
+        "prompt_tokens": 69,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 421,
+        "completion_tokens_details": {
+          "reasoning_tokens": 390,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.20372888822
+      },
+      "usage_cost": 0.20372888822,
+      "catalog_cost_rub": 0.20372888822000002,
+      "json_parsed": false,
+      "keys": null,
+      "conforms_to_schema": false,
+      "latency_ms": 10021
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "probe": "schema",
+      "reasoning": {
+        "effort": "low"
+      },
+      "status": 200,
+      "ok": true,
+      "response_model": "meta/muse-spark-1.3",
+      "finish_reason": "length",
+      "content": "",
+      "usage": {
+        "total_tokens": 521,
+        "prompt_tokens": 121,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 400,
+        "completion_tokens_details": {
+          "reasoning_tokens": 397,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.20109469705
+      },
+      "usage_cost": 0.20109469705,
+      "catalog_cost_rub": 0.20109469705,
+      "json_parsed": false,
+      "keys": null,
+      "conforms_to_schema": false,
+      "latency_ms": 6775
+    },
+    {
+      "model": "meta/muse-spark-1.3",
+      "probe": "schema_union",
+      "reasoning": {
+        "effort": "low"
+      },
+      "status": 200,
+      "ok": true,
+      "response_model": "meta/muse-spark-1.3",
+      "finish_reason": "length",
+      "content": "",
+      "usage": {
+        "total_tokens": 576,
+        "prompt_tokens": 176,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "completion_tokens": 400,
+        "completion_tokens_details": {
+          "reasoning_tokens": 397,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        },
+        "cost": 0.2085627648
+      },
+      "usage_cost": 0.2085627648,
+      "catalog_cost_rub": 0.2085627648,
+      "json_parsed": false,
+      "keys": null,
+      "conforms_to_schema": false,
+      "latency_ms": 13902
+    }
+  ],
+  "summary": {
+    "openai/gpt-6-luna": {
+      "verdict": "enforced",
+      "control_keys": [
+        "colour",
+        "mood",
+        "poem"
+      ],
+      "schema_keys": [
+        "count",
+        "verdict"
+      ],
+      "union_conforms": true
+    },
+    "google/gemini-2.5-flash-lite": {
+      "verdict": "enforced",
+      "control_keys": [
+        "colour",
+        "mood",
+        "poem"
+      ],
+      "schema_keys": [
+        "verdict",
+        "count"
+      ],
+      "union_conforms": true
+    },
+    "z-ai/glm-5.3-flash": {
+      "verdict": "enforced",
+      "control_keys": [
+        "colour",
+        "mood",
+        "poem"
+      ],
+      "schema_keys": [
+        "verdict",
+        "count"
+      ],
+      "union_conforms": true
+    },
+    "deepseek/deepseek-v4-flash": {
+      "verdict": "enforced",
+      "control_keys": [
+        "colour",
+        "mood",
+        "poem"
+      ],
+      "schema_keys": [
+        "count",
+        "verdict"
+      ],
+      "union_conforms": true
+    },
+    "openai/gpt-4.1-nano": {
+      "verdict": "enforced",
+      "control_keys": [
+        "colour",
+        "mood",
+        "poem"
+      ],
+      "schema_keys": [
+        "count",
+        "verdict"
+      ],
+      "union_conforms": true
+    },
+    "openai/gpt-6-luna-pro": {
+      "verdict": "enforced",
+      "control_keys": [
+        "colour",
+        "mood",
+        "poem"
+      ],
+      "schema_keys": [
+        "count",
+        "verdict"
+      ],
+      "union_conforms": true
+    },
+    "openai/gpt-5.6-luna": {
+      "verdict": "enforced",
+      "control_keys": [
+        "colour",
+        "mood",
+        "poem"
+      ],
+      "schema_keys": [
+        "count",
+        "verdict"
+      ],
+      "union_conforms": true
+    },
+    "z-ai/glm-5.2": {
+      "verdict": "enforced",
+      "control_keys": [
+        "colour",
+        "mood",
+        "poem"
+      ],
+      "schema_keys": [
+        "count",
+        "verdict"
+      ],
+      "union_conforms": true
+    },
+    "meta/muse-spark-1.3": {
+      "verdict": "inconclusive-truncated-by-reasoning",
+      "control_keys": null,
+      "schema_keys": null,
+      "union_conforms": false
+    }
+  },
+  "spent_rub": 0.9291436864351456
+}

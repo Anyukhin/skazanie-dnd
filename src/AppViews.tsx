@@ -17,9 +17,9 @@ import { campaignClockLabel, localizedQuestClockLabel } from './desktop-ui.mjs'
 import type { AtmosphereSettings } from './atmosphere-audio'
 import type {
   Account, AgentInteraction, AiHealth, AssetPreparationReport, BeastChronicleCard,
-  CampaignAiSettings, CampaignAiSettingsResponse,
+  CampaignAiModelOption, CampaignAiSettings, CampaignAiSettingsResponse,
   CampaignMode, CampaignStory, CampaignSummary, EncounterProposal, GameState, LetterChronicleCard, Merchant, Message,
-  OffscreenChronicleCard, Player, RulesetProfileDescriptor,
+  OffscreenChronicleCard, Player, ReasoningLevelId, RulesetProfileDescriptor,
 } from './types'
 import { useGameSession, type EncounterAssemblyOptions, type ShopAssemblyOptions } from './useGameSession'
 
@@ -37,6 +37,11 @@ import { useGameSession, type EncounterAssemblyOptions, type ShopAssemblyOptions
 const IMPROV_MODE_FALLBACK: CampaignAiSettingsResponse['improvModes'] = [
   { id: 'story', label: 'Сюжет', description: 'свобода в сценах, но главная линия в приоритете' },
   { id: 'chaos', label: 'Хаос', description: 'можно всё, мир подстраивается под выбор отряда' },
+]
+
+// Уровни рассуждений тоже приходят с сервера; запасной список — только «Авто».
+const REASONING_LEVEL_FALLBACK: NonNullable<CampaignAiSettingsResponse['reasoningLevels']> = [
+  { id: 'auto', label: 'Авто', description: 'проверенный замером профиль для выбранной модели' },
 ]
 
 const RULESET_FALLBACK: RulesetProfileDescriptor[] = [
@@ -1264,6 +1269,15 @@ export function SettingsView({ health, campaignAi, currentRulesetId, campaignAiB
     ? availableRulesets
     : [...availableRulesets, ...RULESET_FALLBACK.filter((profile) => profile.id === rulesetId)]
   const currentRuleset = campaignAi?.ruleset.current ?? rulesetOptions.find((profile) => profile.id === rulesetId)
+  const selectedModelId = campaignAi?.settings.model ?? health?.model ?? ''
+  // Старый сервер присылает только ID моделей — тогда показываем их как есть.
+  const modelOptions: CampaignAiModelOption[] = campaignAi?.modelOptions
+    ?? (campaignAi?.availableModels ?? [health?.model].filter((value): value is string => Boolean(value)))
+      .map((id) => ({ id, label: id, description: '', reasoningLevels: ['auto'], recommended: false }))
+  const selectedModelOption = modelOptions.find((option) => option.id === selectedModelId)
+  const allReasoningLevels = campaignAi?.reasoningLevels ?? REASONING_LEVEL_FALLBACK
+  const reasoningOptions = allReasoningLevels.filter((level) => (selectedModelOption?.reasoningLevels ?? ['auto']).includes(level.id))
+  const selectedReasoning = allReasoningLevels.find((level) => level.id === (campaignAi?.settings.reasoningLevel ?? 'auto'))
 
 
   return (
@@ -1285,15 +1299,34 @@ export function SettingsView({ health, campaignAi, currentRulesetId, campaignAiB
             {currentRuleset?.availability === 'preview' && <small className="secure-note"><Shield size={13} />Редакция 2014 доступна как честно ограниченный preview; текущие ограничения перечислены в выборе мира.</small>}
           </label>
           <label className="ui-scale-setting">
-            <span><b>Модель для группы</b><small>Выбранная модель применяется к новым ответам этой кампании</small></span>
+            <span><b>Модель для группы</b><small>{selectedModelOption?.description ? `${selectedModelOption.label}: ${selectedModelOption.description}` : 'Выбранная модель применяется к новым ответам этой кампании'}</small></span>
             <select
-              value={campaignAi?.settings.model ?? health?.model ?? ''}
+              value={selectedModelId}
               disabled={!campaignAi?.canManage || campaignAiBusy}
-              onChange={(event) => onCampaignAiChange({ model: event.currentTarget.value })}
+              onChange={(event) => {
+                const nextModel = event.currentTarget.value
+                const nextOption = modelOptions.find((option) => option.id === nextModel)
+                const level = campaignAi?.settings.reasoningLevel ?? 'auto'
+                // Уровень, который новая модель не принимает, сбрасывается на «Авто»
+                // вместе со сменой модели, а не ломает сохранение.
+                onCampaignAiChange({ model: nextModel, reasoningLevel: nextOption?.reasoningLevels.includes(level) ? level : 'auto' })
+              }}
               aria-label="Модель ИИ для группы"
             >
-              {(campaignAi?.availableModels ?? [health?.model].filter((value): value is string => Boolean(value))).map((modelId) => <option key={modelId} value={modelId}>{modelId}</option>)}
+              {modelOptions.map((option) => <option key={option.id} value={option.id}>{option.label}{option.recommended ? ' · рекомендуется' : ''}</option>)}
             </select>
+          </label>
+          <label className="ui-scale-setting">
+            <span><b>Рассуждения модели</b><small>{selectedReasoning ? `${selectedReasoning.label} — ${selectedReasoning.description}` : 'Сколько модель думает перед ответом'}</small></span>
+            <select
+              value={campaignAi?.settings.reasoningLevel ?? 'auto'}
+              disabled={!campaignAi?.canManage || campaignAiBusy || reasoningOptions.length < 2}
+              onChange={(event) => onCampaignAiChange({ reasoningLevel: event.currentTarget.value as ReasoningLevelId })}
+              aria-label="Уровень рассуждений модели"
+            >
+              {reasoningOptions.map((level) => <option key={level.id} value={level.id}>{level.label}</option>)}
+            </select>
+            {reasoningOptions.length < 2 && campaignAi && <small className="secure-note">У этой модели один проверенный профиль рассуждений.</small>}
           </label>
           <label className="ui-scale-setting">
             <span><b>Стиль рассказчика</b><small>Интонация применяется ко всем новым художественным ответам этой кампании</small></span>

@@ -1,5 +1,5 @@
 import { interpretResolvedPartyDecision } from './scene-architect.mjs'
-import { abandonableQuest, detectPartyExitRequest } from './party-exit-intent.mjs'
+import { abandonableQuest, detectPartyExitRequest, exitContextFromState, travelDestinationIsPlace } from './party-exit-intent.mjs'
 import { knownWorldLore, retrieveKnownWorldMemory, worldMemoryForViewer } from './world-memory.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'
 import { isSceneObservationRequest } from './intent-parser.mjs'
@@ -20,9 +20,9 @@ export const PLAYER_REQUEST_ROLES = Object.freeze({
   worldkeeper: { id: 'worldkeeper', purpose: 'Лор, память мира и знания героя' },
   director: { id: 'director', prompt_id: ['director/v4_story', 'director/v4_chaos'], purpose: 'Темп, развилки, групповые решения и переходы сцен' },
   game_master: { id: 'game_master', purpose: 'Правила, проверки, кубики и игровые инструменты' },
-  narrator: { id: 'narrator', prompt_id: 'narrator/v9', purpose: 'Финальное повествование из подтверждённых результатов' },
+  narrator: { id: 'narrator', prompt_id: 'narrator/v10', purpose: 'Финальное повествование из подтверждённых результатов' },
   map_architect: { id: 'map_architect', prompt_id: 'map_architect/v6', purpose: 'Динамическая архитектура новой локации и игровой карты' },
-  action_adjudicator: { id: 'action_adjudicator', prompt_id: 'action_adjudicator/v6', purpose: 'Разбор свободного действия: цель, средство, применимый навык и цена провала' },
+  action_adjudicator: { id: 'action_adjudicator', prompt_id: 'action_adjudicator/v7', purpose: 'Разбор свободного действия: маршрут заявки, цель, средство, применимый навык и цена провала' },
 })
 
 const LORE_REQUEST = /(?:лор|легенд|предани|истори[яию]|что\s+(?:я|мы)\s+зна|кто\s+так|что\s+так|расскажи\s+(?:мне\s+)?(?:о|об|про)|помню\s+ли)/iu
@@ -30,7 +30,9 @@ const DIRECTOR_REQUEST = /(?:покида|уходим|маршрут|куда\s
 const DIRECTION_REQUEST = /(?:куда\s+(?:нам\s+)?(?:идти|пойти|уходить|направляться|двигаться)(?:\s+дальше|\s+отсюда|\s+по\s+заданию)?|куда\s+по\s+заданию|что\s+делать\s+дальше)/iu
 const FATE_REQUEST = /(?:пусть|пускай|давайте|может)\s+(?:решит|определит|бросим)\s+(?:кубик|кость)|кубик\s+судьбы/iu
 const RULES_REQUEST = /(?:правил|можно\s+ли|провер|брос|куб|атак|урон|заклин|спасброс|инициатив|класс\s+брони)/iu
-const NPC_SPEECH_REQUEST = /(?<![\p{L}\p{M}])(?:спрашиваю|спросим|расспрашиваю|расспросим|говорю|говорим|обращаюсь|обращаемся|прошу|просим)(?![\p{L}\p{M}])/iu
+// «Рассказываю Марте свою историю» — реплика собеседнику, а не вопрос о лоре,
+// хотя слово «история» в ней есть.
+const NPC_SPEECH_REQUEST = /(?<![\p{L}\p{M}])(?:спрашиваю|спросим|расспрашиваю|расспросим|говорю|говорим|обращаюсь|обращаемся|прошу|просим|рассказываю|рассказываем|разговариваю|беседую|узнаю\s+у|интересуюсь\s+у)(?![\p{L}\p{M}])/iu
 const VISIBLE_SCENE_LIMIT = 8
 
 const visibleText = (value, maximum = 160) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
@@ -164,7 +166,11 @@ export function proposeAgentInteraction(action, state = {}) {
   const accompanied = /^(?:иду|следую|отправляюсь)\s+(?:рядом\s+с|вместе\s+с|за)\s+/iu.test(text)
     && !/не\s+(?:покида|уход|выход)/iu.test(text)
   const destination = accompanied ? /(?:\sк|\sв|\sна)\s+([^,.;!?]+?)(?=\s+(?:и|чтобы|затем)\s|[,.!?;]|$)/iu.exec(text)?.[1] : ''
-  const exit = detectPartyExitRequest(text) ?? (destination ? detectPartyExitRequest(`Отправиться к ${destination}`) : null)
+  // Известные точки карты и имена присутствующих: «Иду в Каменный Град» — уход
+  // без родового слова, «иду к Марте» — шаг к собеседнику, а не из сцены.
+  const exitContext = exitContextFromState(state)
+  const exit = detectPartyExitRequest(text, exitContext)
+    ?? (destination ? detectPartyExitRequest(`Отправиться к ${destination}`, exitContext) : null)
   if (exit) {
     const destination = exit.destination
     const knownFrom = String(state.scene?.location || state.scene?.title || '').replace(/\s+/gu, ' ').trim().slice(0, 120)
@@ -189,6 +195,30 @@ export function proposeAgentInteraction(action, state = {}) {
     }
   }
   return null
+}
+
+/**
+ * Карточка ухода по маршруту, который назвал судья свободных действий
+ * (`route: travel`, контракт action_adjudicator/v7). Модель здесь только
+ * подсказала, что заявка — переход; пункт назначения проверяется тем же
+ * словарём мест, что и фраза игрока, а карточка — та же, что у узнанной по
+ * словам фразы ухода. Отличие одно: и за столом из одного героя открывается
+ * голосование, а не мгновенный переход, — решение, понятое моделью, игрок
+ * подтверждает сам.
+ *
+ * @param {{ route?: string, destination?: string }|null} hint
+ * @param {Record<string, any>} [state]
+ */
+export function proposeRoutedTravel(hint, state = {}) {
+  if (hint?.route !== 'travel' || state.agentInteraction) return null
+  const destination = String(hint.destination ?? '').replace(/[«»]/gu, '').replace(/\s+/gu, ' ').trim().slice(0, 80)
+  if (!travelDestinationIsPlace(destination, exitContextFromState(state))) return null
+  const card = proposeAgentInteraction(destination ? `Отправляемся в «${destination}»` : 'Уходим отсюда', state)
+  if (card?.type !== 'vote') return null
+  return {
+    ...card,
+    description: 'Ведущий понял заявку как переход в другое место. Маршрут меняет судьбу всей группы, поэтому его подтверждают голосованием — даже за столом из одного героя.',
+  }
 }
 
 export function answerKnownLore(action, state = {}, options = {}) {

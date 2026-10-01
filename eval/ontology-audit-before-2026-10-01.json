@@ -1,0 +1,570 @@
+{
+  "generated_at": "2026-10-01T15:22:47.620Z",
+  "scope": "server/*.mjs",
+  "files_scanned": 161,
+  "scan_ms": 1203.5,
+  "summary": {
+    "predicates_seen": 28,
+    "predicates_produced": 27,
+    "predicates_consumed": 7,
+    "relations_seen": 0,
+    "consumed_but_never_produced": 1,
+    "produced_but_never_consumed": 21,
+    "dynamic_produced_sites": 12,
+    "dynamic_consumed_sites": 3
+  },
+  "gaps": {
+    "consumed_but_never_produced": {
+      "predicates": [
+        "quest_progress"
+      ],
+      "relations": []
+    },
+    "produced_but_never_consumed": {
+      "predicates": [
+        "band_cache",
+        "band_camp",
+        "band_paid",
+        "band_reinforcements",
+        "blessed_at_shrine",
+        "blessed_by_priest",
+        "courier_letter_answered",
+        "courier_letter_delivered",
+        "courier_letter_unanswered",
+        "encounter_outcome",
+        "faction_offscreen_move:",
+        "handed_to_watch",
+        "opening_narration",
+        "parley_oath",
+        "party_arrived",
+        "party_deed",
+        "party_deed:",
+        "party_traveled_to",
+        "quest_deadline_missed",
+        "quest_outcome",
+        "spared_by_party"
+      ],
+      "relations": []
+    }
+  },
+  "registry_check": null,
+  "head_world_memory_variant": {
+    "note": "server/world-memory.mjs взят из HEAD (до freeActionDiscoveryCommands), остальные модули — из рабочего дерева",
+    "summary": {
+      "predicates_seen": 28,
+      "predicates_produced": 26,
+      "predicates_consumed": 7,
+      "relations_seen": 0,
+      "consumed_but_never_produced": 2,
+      "produced_but_never_consumed": 21,
+      "dynamic_produced_sites": 12,
+      "dynamic_consumed_sites": 3
+    },
+    "consumed_but_never_produced": {
+      "predicates": [
+        "discovery",
+        "quest_progress"
+      ],
+      "relations": []
+    }
+  },
+  "predicates": {
+    "band_cache": {
+      "family": false,
+      "record": [
+        "fact"
+      ],
+      "producers": [
+        "captives"
+      ],
+      "consumers": [],
+      "sites": [
+        "W server/captives.mjs:307"
+      ]
+    },
+    "band_camp": {
+      "family": false,
+      "record": [
+        "fact"
+      ],
+      "producers": [
+        "captives"
+      ],
+      "consumers": [],
+      "sites": [
+        "W server/captives.mjs:295"
+      ]
+    },
+    "band_paid": {
+      "family": false,
+      "record": [
+        "fact"
+      ],
+      "producers": [
+        "captives"
+      ],
+      "consumers": [],
+      "sites": [
+        "W server/captives.mjs:299"
+      ]
+    },
+    "band_reinforcements": {
+      "family": false,
+      "record": [
+        "fact"
+      ],
+      "producers": [
+        "captives"
+      ],
+      "consumers": [],
+      "sites": [
+        "W server/captives.mjs:303"
+      ]
+    },
+    "blessed_at_shrine": {
+      "family": false,
+      "record": [
+        "fact"
+      ],
+      "producers": [
+        "rules-engine"
+      ],
+      "consumers": [],
+      "sites": [
+        "W server/rules-engine.mjs:10997"
+      ]
+    },
+    "blessed_by_priest": {
+      "family": false,
+      "record": [
+        "fact"
+      ],
+      "producers": [
+        "rules-engine"
+      ],
+      "consumers": [],
+      "sites": [
+        "W server/rules-engine.mjs:10997"
+      ]
+    },
+    "courier_letter_answered": {
+      "family": false,
+      "record": [
+        "fact"
+      ],
+      "producers": [
+        "courier-letters"
+      ],
+      "consumers": [],
+      "sites": [
+        "W server/courier-letters.mjs:1102"
+      ]
+    },
+    "courier_letter_delivered": {
+      "family": false,
+      "record": [
+        "fact"
+      ],
+      "producers": [
+        "courier-letters"
+      ],
+      "consumers": [],
+      "sites": [
+        "W server/courier-letters.mjs:1032"
+      ]
+    },
+    "courier_letter_unanswered": {
+      "family": false,
+      "record": [
+        "fact"
+      ],
+      "producers": [
+        "courier-letters"
+      ],
+      "consumers": [],
+      "sites": [
+        "W server/courier-letters.mjs:1071"
+      ]
+    },
+    "died": {
+      "family": false,
+      "record": [
+        "fact"
+      ],
+      "producers": [
+        "npc-positioning"
+      ],
+      "consumers": [
+        "game-orchestrator",
+        "npc-positioning",
+        "quest-consequences"
+      ],
+      "sites": [
+        "R server/game-orchestrator.mjs:304",
+        "W server/npc-positioning.mjs:834",
+        "R server/npc-positioning.mjs:893",
+        "R server/quest-consequences.mjs:7",
+        "R server/quest-consequences.mjs:163"
+      ]
+    },
+    "discovery": {
+      "family": false,
+      "record": [
+        "fact"
+      ],
+      "producers": [
+        "world-memory"
+      ],
+      "consumers": [
+        "world-memory"
+      ],
+      "sites": [
+        "W server/world-memory.mjs:110",
+        "R server/world-memory.mjs:32"
+      ]
+    },
+    "encounter_outcome": {
+      "family": false,
+      "record": [
+        "fact"
+      ],
+      "producers": [
+        "autonomous-orchestrator"
+      ],
+      "consumers": [],
+      "sites": [
+        "W server/autonomous-orchestrator.mjs:1956"
+      ]
+    },
+    "faction_offscreen_move:": {
+      "family": true,
+      "record": [
+        "fact"
+      ],
+      "producers": [
+        "offscreen-world"
+      ],
+      "consumers": [],
+      "sites": [
+        "W server/offscreen-world.mjs:648"
+      ]
+    },
+    "handed_to_watch": {
+      "family": false,
+      "record": [
+        "fact"
+      ],
+      "producers": [
+        "rules-engine"
+      ],
+      "consumers": [],
+      "sites": [
+        "W server/rules-engine.mjs:18622"
+      ]
+    },
+    "npc_schedule": {
+      "family": false,
+      "record": [
+        "fact"
+      ],
+      "producers": [
+        "autonomous-orchestrator"
+      ],
+      "consumers": [
+        "autonomous-orchestrator"
+      ],
+      "sites": [
+        "W server/autonomous-orchestrator.mjs:2085",
+        "R server/autonomous-orchestrator.mjs:2100"
+      ]
+    },
+    "npc_scheduled_action_executed": {
+      "family": false,
+      "record": [
+        "fact"
+      ],
+      "producers": [
+        "autonomous-orchestrator"
+      ],
+      "consumers": [
+        "autonomous-orchestrator"
+      ],
+      "sites": [
+        "W server/autonomous-orchestrator.mjs:2113",
+        "R server/autonomous-orchestrator.mjs:2101"
+      ]
+    },
+    "opening_narration": {
+      "family": false,
+      "record": [
+        "fact"
+      ],
+      "producers": [
+        "campaign-bootstrap"
+      ],
+      "consumers": [],
+      "sites": [
+        "W server/campaign-bootstrap.mjs:68"
+      ]
+    },
+    "parley_oath": {
+      "family": false,
+      "record": [
+        "fact"
+      ],
+      "producers": [
+        "rules-engine"
+      ],
+      "consumers": [],
+      "sites": [
+        "W server/rules-engine.mjs:19074"
+      ]
+    },
+    "party_arrived": {
+      "family": false,
+      "record": [
+        "fact"
+      ],
+      "producers": [
+        "scene-memory"
+      ],
+      "consumers": [],
+      "sites": [
+        "W server/scene-memory.mjs:151"
+      ]
+    },
+    "party_deed": {
+      "family": false,
+      "record": [
+        "fact"
+      ],
+      "producers": [
+        "world-deeds"
+      ],
+      "consumers": [],
+      "sites": [
+        "W server/world-deeds.mjs:826"
+      ]
+    },
+    "party_deed:": {
+      "family": true,
+      "record": [
+        "claim"
+      ],
+      "producers": [
+        "world-deeds"
+      ],
+      "consumers": [],
+      "sites": [
+        "W server/world-deeds.mjs:850"
+      ]
+    },
+    "party_traveled_to": {
+      "family": false,
+      "record": [
+        "fact"
+      ],
+      "producers": [
+        "scene-memory"
+      ],
+      "consumers": [],
+      "sites": [
+        "W server/scene-memory.mjs:139"
+      ]
+    },
+    "promise_condition": {
+      "family": false,
+      "record": [
+        "fact"
+      ],
+      "producers": [
+        "autonomous-orchestrator"
+      ],
+      "consumers": [
+        "autonomous-orchestrator"
+      ],
+      "sites": [
+        "W server/autonomous-orchestrator.mjs:2151",
+        "R server/autonomous-orchestrator.mjs:2160"
+      ]
+    },
+    "quest_deadline_missed": {
+      "family": false,
+      "record": [
+        "fact"
+      ],
+      "producers": [
+        "offscreen-world"
+      ],
+      "consumers": [],
+      "sites": [
+        "W server/offscreen-world.mjs:566"
+      ]
+    },
+    "quest_outcome": {
+      "family": false,
+      "record": [
+        "fact"
+      ],
+      "producers": [
+        "autonomous-orchestrator"
+      ],
+      "consumers": [],
+      "sites": [
+        "W server/autonomous-orchestrator.mjs:511"
+      ]
+    },
+    "quest_progress": {
+      "family": false,
+      "record": [],
+      "producers": [],
+      "consumers": [
+        "world-memory"
+      ],
+      "sites": [
+        "R server/world-memory.mjs:32"
+      ]
+    },
+    "scene_change": {
+      "family": false,
+      "record": [
+        "fact"
+      ],
+      "producers": [
+        "autonomous-orchestrator"
+      ],
+      "consumers": [
+        "scene-summary"
+      ],
+      "sites": [
+        "W server/autonomous-orchestrator.mjs:246",
+        "R server/scene-summary.mjs:60"
+      ]
+    },
+    "spared_by_party": {
+      "family": false,
+      "record": [
+        "fact"
+      ],
+      "producers": [
+        "rules-engine"
+      ],
+      "consumers": [],
+      "sites": [
+        "W server/rules-engine.mjs:18566"
+      ]
+    }
+  },
+  "relations": {},
+  "dynamic": {
+    "produced": [
+      {
+        "file": "campaign-lifecycle",
+        "line": 103,
+        "expression": "clean(fact?.predicate",
+        "kind": "passthrough",
+        "at": "server/campaign-lifecycle.mjs:103"
+      },
+      {
+        "file": "campaign-lifecycle",
+        "line": 450,
+        "expression": "fact.predicate",
+        "kind": "passthrough",
+        "at": "server/campaign-lifecycle.mjs:450"
+      },
+      {
+        "file": "captives",
+        "line": 345,
+        "expression": "template.predicate",
+        "kind": "passthrough",
+        "at": "server/captives.mjs:345"
+      },
+      {
+        "file": "courier-letters",
+        "line": 841,
+        "expression": "predicate",
+        "kind": "passthrough",
+        "at": "server/courier-letters.mjs:841"
+      },
+      {
+        "file": "game-orchestrator",
+        "line": 126,
+        "expression": "memoryText(record.fact?.predicate",
+        "kind": "passthrough",
+        "at": "server/game-orchestrator.mjs:126"
+      },
+      {
+        "file": "offscreen-world",
+        "line": 484,
+        "expression": "predicate",
+        "kind": "passthrough",
+        "at": "server/offscreen-world.mjs:484"
+      },
+      {
+        "file": "world-memory",
+        "line": 224,
+        "expression": "text(value.predicate",
+        "kind": "passthrough",
+        "at": "server/world-memory.mjs:224"
+      },
+      {
+        "file": "world-memory",
+        "line": 235,
+        "expression": "text(value.relation",
+        "kind": "passthrough",
+        "at": "server/world-memory.mjs:235"
+      },
+      {
+        "file": "world-memory",
+        "line": 278,
+        "expression": "text(value.predicate",
+        "kind": "passthrough",
+        "at": "server/world-memory.mjs:278"
+      },
+      {
+        "file": "world-memory",
+        "line": 578,
+        "expression": "text(value.predicate",
+        "kind": "passthrough",
+        "at": "server/world-memory.mjs:578"
+      },
+      {
+        "file": "world-memory",
+        "line": 596,
+        "expression": "text(value.relation",
+        "kind": "passthrough",
+        "at": "server/world-memory.mjs:596"
+      },
+      {
+        "file": "world-memory",
+        "line": 669,
+        "expression": "text(value.predicate",
+        "kind": "passthrough",
+        "at": "server/world-memory.mjs:669"
+      }
+    ],
+    "consumed": [
+      {
+        "file": "autonomous-orchestrator",
+        "line": 656,
+        "expression": "&& entry.payload.fact.subject_id === fact.subject_id && entry.payload.fact.predicate === fact.predicate",
+        "kind": "dynamic",
+        "at": "server/autonomous-orchestrator.mjs:656"
+      },
+      {
+        "file": "quest-consequences",
+        "line": 14,
+        "expression": "fact_ids: (state.worldMemory?.facts ?? []).filter((fact) => (!requiredFact || fact.subject_id === requiredFact.subject_id && fact.predicate === requiredFact.pre",
+        "kind": "dynamic",
+        "at": "server/quest-consequences.mjs:14"
+      },
+      {
+        "file": "quest-consequences",
+        "line": 31,
+        "expression": "if (gate.required_fact && (fact.subject_id !== gate.required_fact.subject_id || fact.predicate !== gate.required_fact.predicate)) continue",
+        "kind": "dynamic",
+        "at": "server/quest-consequences.mjs:31"
+      }
+    ]
+  }
+}

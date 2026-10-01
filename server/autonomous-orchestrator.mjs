@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { campaignModeFor, PERSISTENT_WORLD_OBJECTIVE } from './campaign-stories.mjs'
 
-import { revealedPropPredicate } from './action-adjudicator.mjs'
+import { ACTION_ADJUDICATOR_PROMPT_VERSION, revealedPropPredicate } from './action-adjudicator.mjs'
 import { normalizeDirectorIntent, SCENE_RESOLUTION_EVENT_SCHEMA_VERSION, serverReputationDelta } from './autonomous-campaign.mjs'
 import {
   ENCOUNTER_COINS_POLICY_ID,
@@ -70,9 +70,11 @@ import {
   resolvePickpocket,
   resolveHazardContact,
   situationFingerprint,
+  SKILL_LABELS_RU,
   stakesFor,
   verifyMeans,
 } from './free-action-adjudication.mjs'
+import { freeActionDiscoveryCommands } from './world-memory.mjs'
 import { planImprovisedEffect, resolveActionCost, scenePropIntentFor } from './improvised-effects.mjs'
 import { npcProfileAtWorldTime } from './npc-social.mjs'
 import { sceneHazardNarration } from './scene-hazard-narration.mjs'
@@ -697,7 +699,9 @@ export class AutonomousCampaignOrchestrator {
           server_check_required: true,
           provenance: { source: 'director', intent_type: intent.type },
         }, [npc.id]))
-        commands.push({ command_type: 'UpdateObjective', objective: `Поговорить с ${npc.name}` })
+        // Имя стоит в именительном падеже: склонять произвольные имена NPC
+        // («с Старый Финн») движок не умеет, а эта формулировка его не требует.
+        commands.push({ command_type: 'UpdateObjective', objective: `Узнать, что скажет ${npc.name}` })
       } else commands.push({ command_type: 'UpdateObjective', objective: nextHook(loaded.state, 'Найти доступного очевидца') })
     }
     if (intent.type === 'advance_quest_clock') {
@@ -831,6 +835,84 @@ export class AutonomousCampaignOrchestrator {
     return { intent, authorization, results, state: loaded.state, state_version: loaded.state_version, admin_commands: 0 }
   }
 
+  /**
+   * Ответ без коммита на маршрут, который назвал судья (`route` из
+   * action_adjudicator/v7). `null` — заявку судят как обычную попытку.
+   *
+   * - `travel` — `kind: 'route_travel'`: подсказка о пункте назначения
+   *   откладывается до `takeRouteHint`, и `/api/narrate` открывает ту же
+   *   карточку решения отряда, что и узнанная по словам фраза ухода. Сам
+   *   переход здесь не исполняется: модель не решает судьбу отряда.
+   * - `talk` и `clarify` — уточнение: игроку предлагают обратиться к
+   *   собеседнику прямо или описать действие. Проверка не назначается.
+   *
+   * В бою переход и разговор не предлагаются — у боя свои пути (отступление,
+   * переговоры). Ответ игрока на уточнение («…Уточнение игрока: да») маршрут не
+   * повторяет, иначе короткий ответ возвращал бы тот же вопрос по кругу.
+   */
+  routedFreeAction({ loaded, actorId, text, reading, idempotencyKey, campaignId }) {
+    const route = String(reading?.route ?? 'check')
+    if (route === 'check' || /Уточнение игрока:/u.test(text)) return null
+    const inCombat = Boolean(loaded.state.mechanics?.combat?.active)
+    if (inCombat && route !== 'clarify') return null
+    const unchanged = {
+      turn_consumed: false, admin_commands: 0, state: loaded.state, state_version: loaded.state_version,
+      events: [], commands: [], rolls: [], duplicate: false, route_hint: { route },
+    }
+    if (route === 'travel') {
+      const destination = clean(reading.destination, 80)
+      this.rememberRouteHint(campaignId, idempotencyKey, { route, destination, actor_id: actorId })
+      const phrase = destination ? `Отправляемся в «${destination}»` : 'Уходим отсюда'
+      return {
+        ...unchanged,
+        kind: 'route_travel',
+        route_hint: { route, destination },
+        narration: `Похоже, это заявка на переход${destination ? ` в «${destination}»` : ' в другое место'}, а не проверка навыка. Путь отряд выбирает вместе: напишите «${phrase}», и откроется решение группы. Пока ничего не выполнено.`,
+      }
+    }
+    if (route === 'talk') {
+      const npc = (loaded.state.social?.npcs ?? []).find((entry) => String(entry?.id) === String(reading.npc_hint ?? ''))
+      const name = clean(npc?.name, 80)
+      return {
+        ...unchanged,
+        kind: 'clarification',
+        route_hint: { route, npc_hint: name ? String(npc.id) : '' },
+        narration: name
+          ? `Похоже, это реплика для собеседника (${name}), а не проверка навыка. Скажите это прямо, начав с обращения: «${name}, …» — тогда ответит сам собеседник. Пока ничего не выполнено.`
+          : 'Похоже, это реплика для собеседника, а не проверка навыка. Назовите, к кому обращается герой, и скажите это прямо: «Имя, …». Пока ничего не выполнено.',
+      }
+    }
+    return {
+      ...unchanged,
+      kind: 'clarification',
+      narration: 'Не вполне понятно, что делает герой. Опишите действие: что именно он делает, с кем или с чем и какого результата хочет добиться. Если это вопрос к ведущему или реплика для отряда, отметьте её как вопрос или обсуждение. Пока ничего не выполнено.',
+    }
+  }
+
+  /**
+   * Подсказка маршрута живёт только до ответа на тот же запрос: это не
+   * состояние игры, а передача из судьи в `/api/narrate` в пределах одного
+   * хода. Карта ограничена по размеру и сроку, повтор запроса пересчитает её.
+   */
+  rememberRouteHint(campaignId, idempotencyKey, hint) {
+    if (!(this.routeHints instanceof Map)) this.routeHints = new Map()
+    const key = `${campaignId}\u0000${idempotencyKey}`
+    this.routeHints.delete(key)
+    this.routeHints.set(key, { ...hint, expires_at: Date.now() + 120_000 })
+    while (this.routeHints.size > 200) this.routeHints.delete(this.routeHints.keys().next().value)
+  }
+
+  /** Забирает подсказку маршрута запроса; повторно её не отдаёт. */
+  takeRouteHint(campaignId, idempotencyKey) {
+    if (!(this.routeHints instanceof Map)) return null
+    const key = `${campaignId}\u0000${idempotencyKey}`
+    const hint = this.routeHints.get(key) ?? null
+    this.routeHints.delete(key)
+    if (!hint || hint.expires_at < Date.now()) return null
+    const { expires_at: _expiresAt, ...rest } = hint
+    return rest
+  }
+
   async handleUnknownAction({ campaignId, action, idempotencyKey, playerId = '', intent = null, manualRoll = false, verifiedRoll = null, confirmedAction = false }) {
     const text = clean(action, 1_000)
     const previousCommit = await this.eventStore.getByIdempotencyKey?.(campaignId, idempotencyKey)
@@ -840,7 +922,7 @@ export class AutonomousCampaignOrchestrator {
       ? await this.eventStore.load(campaignId, { atVersion: previousCommit.events[0].state_version_before })
       : await this.load(campaignId)
     const actorId = clean(playerId, 120)
-    const actionContextMetadata = agentContextMetadata(loaded.state, { role: 'action_adjudicator', actorId, contractVersion: 'action_adjudicator/v6' })
+    const actionContextMetadata = agentContextMetadata(loaded.state, { role: 'action_adjudicator', actorId, contractVersion: ACTION_ADJUDICATOR_PROMPT_VERSION })
     const declaration = declaredActionCommand(actorId, text)
     let actionStateVersion = loaded.state_version
     const run = async (commands) => {
@@ -1118,6 +1200,17 @@ export class AutonomousCampaignOrchestrator {
         duplicate: false,
       }
     }
+    // Маршрут заявки (контракт action_adjudicator/v7). Судья мог понять, что это
+    // вовсе не попытка с проверкой: переход в другое место, разговор или фраза,
+    // которую надо переспросить. Здесь ничего не коммитится — ответ уходит
+    // без событий, а переход отряда открывает уже существующая карточка решения
+    // группы (`server/index.mjs`, по `takeRouteHint`).
+    // Повтор уже исполненной заявки маршрут не пересчитывает: исход записан, и
+    // другой ответ модели не должен подменить его уточнением.
+    const routed = storedReading || harmlessReading || previousCommit?.events?.length ? null : this.routedFreeAction({
+      loaded, actorId, text, reading: proposedReading, idempotencyKey, campaignId,
+    })
+    if (routed) return { context_metadata: actionContextMetadata, ...routed }
     const reading = bindFreeActionReadingToState(loaded.state, actorId, text, proposedReading, { preserveActionProfile: Boolean(storedReading) })
     if (reading.reference_ambiguities.length) {
       return {
@@ -1684,6 +1777,19 @@ export class AutonomousCampaignOrchestrator {
     if (!succeeded && !inCombat && consequence.advances_quest_clock) {
       const quest = openQuest(loaded.state)
       if (quest) followUp.push({ command_type: 'AdvanceQuestClock', quest_id: quest.id, amount: 1 })
+    }
+    // Удачный осмотр по делу отряда оставляет улику. Часы она не двигает сама:
+    // это решает Режиссёр (`advance_quest_clock`), а улика лишь даёт ему право.
+    // Факт едет в коммите последствий, после проверки, — доказательство
+    // принимает только источник, зафиксированный раньше факта.
+    if (succeeded && !inCombat) {
+      followUp.push(...freeActionDiscoveryCommands(checkCommit.state ?? loaded.state, {
+        checkEvent,
+        skill: reading.skill,
+        actionText: text,
+        goalSummary: reading.goal_summary,
+        skillLabel: SKILL_LABELS_RU[String(reading.skill ?? '').replace(/_/gu, '-')] ?? '',
+      }))
     }
     let consequenceCommit = null
     for (let attemptIndex = 0; attemptIndex < 3; attemptIndex += 1) {

@@ -642,7 +642,7 @@ async function main() {
     ...(endpoint ? { endpoint } : {}),
     limitations: [
       'Профиль CPU захватывает один production FileEventStore.commit для 10 событий; sampled self CPU не является wall time.',
-      'Warm означает предварительный load в том же процессе; FileEventStore не имеет общего кэша состояния.',
+      'Warm означает предварительный load в том же процессе; с 2026-10-01 FileEventStore держит в памяти голову потока каждой кампании (версия + id последнего коммита), поэтому warm-загрузка головы не переигрывает события.',
       'cases измеряет persistence/reducer без подготовки команды; endpoint отдельно измеряет реальный HTTP без LLM, без подключённого SSE-клиента.',
     ],
   }
