@@ -42,10 +42,10 @@ import { agentContextMetadata, boundedSelectionMetadata } from './agent-context.
  * ошибке, таймауте или отсутствии ключа предложение молча заменяется
  * детерминированным прочтением, и игра продолжается.
  */
-const prompt = readFileSync(fileURLToPath(new URL('../prompts/action_adjudicator/v7.txt', import.meta.url)), 'utf8')
+const prompt = readFileSync(fileURLToPath(new URL('../prompts/action_adjudicator/v8.txt', import.meta.url)), 'utf8')
 
 /** Версия контракта: она же попадает в метаданные контекста и трассу. */
-export const ACTION_ADJUDICATOR_PROMPT_VERSION = 'action_adjudicator/v7'
+export const ACTION_ADJUDICATOR_PROMPT_VERSION = 'action_adjudicator/v8'
 
 const clean = (value, maximum = 240) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
 const list = (value) => Array.isArray(value) ? value : []
@@ -376,6 +376,27 @@ function directContactQuestion(state, actorId, text) {
   }
 }
 
+/**
+ * Подтверждённое описание текущего места: пролог кампании о нём и текст
+ * прибытия. Без него судья видел только название и настроение сцены и на
+ * «лижу перила моста» отвечал, что моста в сцене нет, хотя отряд стоит у
+ * переправы. Берутся только общие для отряда факты — секреты сюда не попадают.
+ */
+export function knownSceneDescription(state = {}) {
+  const scene = state?.scene ?? {}
+  const location = clean(scene.location, 120).toLocaleLowerCase('ru')
+  const memory = state?.worldMemory ?? {}
+  const locationIds = new Set((Array.isArray(memory.entities) ? memory.entities : [])
+    .filter((entity) => location && clean(entity?.name, 120).toLocaleLowerCase('ru') === location)
+    .map((entity) => String(entity.id)))
+  const opening = (Array.isArray(memory.facts) ? memory.facts : [])
+    .filter((fact) => fact?.predicate === 'opening_narration' && fact?.visibility === 'party'
+      && (fact?.status ?? 'active') === 'active' && locationIds.has(String(fact?.subject_id)))
+    .map((fact) => clean(fact.summary, 1_000))
+  const arrival = [scene.arrival, scene.transition].map((value) => clean(value, 600))
+  return clean([...opening, ...arrival].filter(Boolean).join(' '), 1_800)
+}
+
 export function adjudicationBrief(state, actorId, text, dialogue = {}) {
   const participants = participantsBrief(state, actorId)
   const sceneProps = scenePropsBrief(state, actorId)
@@ -393,6 +414,7 @@ export function adjudicationBrief(state, actorId, text, dialogue = {}) {
       location: clean(state?.scene?.location, 120),
       mood: clean(state?.scene?.mood, 160),
       objective: clean(state?.scene?.objective, 160),
+      known_description: knownSceneDescription(state),
     },
     participants: participants.items,
     scene_props: sceneProps.items,
@@ -513,7 +535,7 @@ export class ActionAdjudicator {
     const fallback = interpretFreeAction(question)
     const reading = await this.read(state, actorId, question, fallback, { action, recent, request_kind: 'question' })
     const means = verifyMeans(state, actorId, reading.required_means)
-    if (!means.satisfied) return { narration: `Для этого способа пока не подтверждены средства: ${means.missing.join(', ')}. Можно выбрать имеющуюся вещь или описать другой способ. Вопрос ничего не расходует.`, reading }
+    if (!means.satisfied) return { narration: `Для этого понадобится ${means.missing.join(', ')} — а этого у героя под рукой нет. Найдёте — можно будет пробовать.`, reading }
     const resolution = contextualResolutionFor(state, actorId, reading, question)
     if (resolution.mode === 'counter_offer') return { narration: 'Обычной проверки здесь недостаточно: назовите заклинание, предмет или способность, которые дают нужную возможность. После этого можно обсудить безопасный способ.', reading }
     const uncertain = String(reading.source).startsWith('deterministic-default') && !hasRecognizedFreeActionApproach(question)
@@ -522,10 +544,22 @@ export class ActionAdjudicator {
       return { narration: `Чтобы оценить этот вариант, уточним, чем герой действует и какой результат ему нужен.${action ? ` Сохраняю исходную заявку: «${clean(action, 300)}».` : ''}${props ? ` Из доступной обстановки можно использовать: ${props}.` : ''} Вопрос ничего не расходует.`, reading }
     }
     const label = d20CheckLabel({ kind: 'check', ability: reading.ability, skill: reading.skill })
+    // «Что будет, если подожгу стог?» — вопрос о последствиях, а не о кубике.
+    // Огонь и обвал исполняет команда предмета сцены; здесь только честно
+    // говорим, что она проверит и чем это грозит.
+    const prop = reading.prop_id ? scenePropsBrief(state, actorId).items.find(entry => entry.id === reading.prop_id) : null
+    if (prop && reading.effect === 'ignite_prop') return {
+      narration: `«${clean(prop.name, 80)}» займётся огнём, и пламя станет опасно всем, кто окажется рядом. Поджечь можно вплотную и только если есть чем — огонь, факел или огниво. Заявите это действием, и вы увидите условия до того, как что-то случится.`,
+      reading,
+    }
+    if (prop && reading.effect === 'topple_prop') return {
+      narration: `«${clean(prop.name, 80)}» можно опрокинуть — понадобится сила, а всё, что окажется под ним, пострадает. Заявите это действием, и вы увидите условия до того, как что-то случится.`,
+      reading,
+    }
     return {
       narration: resolution.mode === 'auto_success'
-        ? 'Если речь только о безопасном жесте с имеющейся вещью, он удаётся без броска. Если вы хотите изменить обстановку или повлиять на кого-то, назовите эту цель отдельно.'
-        : `${explainActionCheck(reading)} Предварительно подходит ${label}. До действия проверим цель, средства и условия; затем вы увидите ставку и сможете согласиться или изменить способ.`,
+        ? 'Броска это не потребует — скажите, что делаете, и посмотрим, как отзовётся мир.'
+        : `${explainActionCheck(reading)} Скорее всего, понадобится ${label}. Заявите действие — и до броска вы увидите сложность и чем грозит провал; передумать можно и тогда.`,
       reading,
     }
   }

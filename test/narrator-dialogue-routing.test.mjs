@@ -256,7 +256,7 @@ test('ответ Хранителя говорит простым языком �
   const known = answerKnownLore('Что я знаю про архивариуса?', {
     adventure: { currentHook: 'Печать открывает путь к забытому королю' },
   })
-  assert.match(known.narration, /Герои уже знают:/u)
+  assert.match(known.narration, /Ещё известно: Печать открывает путь/u)
   assert.doesNotMatch(known.narration, /Скрытых сведений сверх этой памяти/u)
 
   const unknown = answerKnownLore('Что я знаю про архивариуса?', {})

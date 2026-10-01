@@ -59,6 +59,7 @@ import {
   damageTypeLabelRu,
   FREE_ACTION_RESOLUTION_POLICY_VERSION,
   freeActionResolutionPolicy,
+  freeActionSuccessPromise,
   hasRecognizedFreeActionApproach,
   interpretFreeAction,
   harmlessFreeActionReading,
@@ -124,6 +125,12 @@ function event(commandId, type, payload = {}, targets = [], visibility = 'party'
     visibility,
   }
 }
+/** Имя героя для реплики ведущего; служебный id игроку не показывается. */
+function heroNameForText(state, actorId) {
+  const hero = (state?.players ?? []).find((entry) => String(entry?.id) === String(actorId))
+  return clean(hero?.character || hero?.name, 80) || 'герой'
+}
+
 function openQuest(state, requestedId = '') {
   return (state.worldMemory?.quests ?? []).find((quest) => quest.id === requestedId && quest.status === 'active')
     ?? (state.worldMemory?.quests ?? []).find((quest) => quest.status === 'active' && !quest.clock?.triggered)
@@ -860,14 +867,18 @@ export class AutonomousCampaignOrchestrator {
       events: [], commands: [], rolls: [], duplicate: false, route_hint: { route },
     }
     if (route === 'travel') {
-      const destination = clean(reading.destination, 80)
+      // «Другой город», «куда-нибудь», «подальше» — не название места.
+      const named = clean(reading.destination, 80)
+      const destination = /^(?:в\s+)?(?:друг\p{L}*\s+\p{L}+|куда[-\s]?(?:нибудь|угодно|то)|подальше|прочь|отсюда|в\s+путь|дальше)$/iu.test(named) ? '' : named
       this.rememberRouteHint(campaignId, idempotencyKey, { route, destination, actor_id: actorId })
       const phrase = destination ? `Отправляемся в «${destination}»` : 'Уходим отсюда'
       return {
         ...unchanged,
         kind: 'route_travel',
         route_hint: { route, destination },
-        narration: `Похоже, это заявка на переход${destination ? ` в «${destination}»` : ' в другое место'}, а не проверка навыка. Путь отряд выбирает вместе: напишите «${phrase}», и откроется решение группы. Пока ничего не выполнено.`,
+        narration: destination
+          ? `«${destination}»? Дорогу отряд выбирает вместе: напишите «${phrase}», и все решат голосованием.`
+          : 'Куда именно? Назовите место — дорогу отряд выбирает вместе.',
       }
     }
     if (route === 'talk') {
@@ -878,14 +889,14 @@ export class AutonomousCampaignOrchestrator {
         kind: 'clarification',
         route_hint: { route, npc_hint: name ? String(npc.id) : '' },
         narration: name
-          ? `Похоже, это реплика для собеседника (${name}), а не проверка навыка. Скажите это прямо, начав с обращения: «${name}, …» — тогда ответит сам собеседник. Пока ничего не выполнено.`
-          : 'Похоже, это реплика для собеседника, а не проверка навыка. Назовите, к кому обращается герой, и скажите это прямо: «Имя, …». Пока ничего не выполнено.',
+          ? `Это разговор — скажите прямо, от лица героя: «${name}, …», и вам ответят.`
+          : 'Это разговор — назовите, к кому обращается герой, и скажите прямо: «Имя, …».',
       }
     }
     return {
       ...unchanged,
       kind: 'clarification',
-      narration: 'Не вполне понятно, что делает герой. Опишите действие: что именно он делает, с кем или с чем и какого результата хочет добиться. Если это вопрос к ведущему или реплика для отряда, отметьте её как вопрос или обсуждение. Пока ничего не выполнено.',
+      narration: `Не совсем понял, что делает ${heroNameForText(loaded.state, actorId)}. Опишите действие: что, с чем или с кем и чего хотите добиться. Если это вопрос ко мне или реплика для отряда — так и скажите.`,
     }
   }
 
@@ -1307,8 +1318,8 @@ export class AutonomousCampaignOrchestrator {
         context_metadata: actionContextMetadata,
         kind: 'counter_offer',
         narration: hazardMeans.missing.length
-          ? `Для этого способа не хватает подтверждённых средств: ${hazardMeans.missing.join(', ')}. Можно выбрать имеющуюся вещь или описать другой подход.`
-          : 'Обычной проверки здесь недостаточно. Назовите способность, заклинание или предмет, которые позволяют выполнить этот способ, либо предложите другой подход.',
+          ? `Так не выйдет — не хватает главного: ${hazardMeans.missing.join(', ')}. ${heroNameForText(loaded.state, actorId)} таким не располагает. Попробуйте иначе — тем, что есть под рукой.`
+          : 'Одной сноровкой тут не обойтись. Если у героя есть подходящее заклинание, умение или предмет — назовите его или предложите другой способ.',
         turn_consumed: false,
         admin_commands: 0,
         state: commit.state ?? loaded.state,
@@ -1420,7 +1431,22 @@ export class AutonomousCampaignOrchestrator {
       }
     }
     if (pickpocket?.status === 'command') {
-      const commit = await run([declaration, pickpocket.command])
+      let commit
+      try {
+        commit = await run([declaration, pickpocket.command])
+      } catch (error) {
+        // Отказ правила — реплика ведущего («до кармана надо дойти»), а не
+        // HTTP-ошибка: игрок видит её в чате и может подойти ближе.
+        if (!['PICKPOCKET_OUT_OF_REACH', 'PICKPOCKET_POCKET_EMPTY', 'NPC_NOT_PRESENT'].includes(error?.code)) throw error
+        return {
+          context_metadata: actionContextMetadata,
+          kind: 'clarification',
+          narration: `${String(error.message ?? '').replace(/[.!]*$/u, '')}.`,
+          turn_consumed: false, admin_commands: 0,
+          state: loaded.state, state_version: loaded.state_version,
+          events: [], commands: [], rolls: [], duplicate: false,
+        }
+      }
       verifyDuplicate(commit)
       return {
         context_metadata: actionContextMetadata,
@@ -1537,9 +1563,10 @@ export class AutonomousCampaignOrchestrator {
       return {
         context_metadata: actionContextMetadata,
         kind: 'counter_offer',
+        // «Нет, но…» голосом ведущего: чего не хватает и что можно сделать.
         narration: means.missing.length
-          ? `Для этого способа не хватает подтверждённых средств: ${means.missing.join(', ')}. Можно выбрать имеющуюся вещь или описать другой подход к препятствию «${reading.obstacle}».`
-          : `Обычной проверки здесь недостаточно. Назовите способность, заклинание или предмет, которые позволяют преодолеть препятствие «${reading.obstacle}», либо предложите другой способ.`,
+          ? `Так не выйдет — не хватает главного: ${means.missing.join(', ')}. ${heroNameForText(loaded.state, actorId)} таким не располагает. Попробуйте иначе — тем, что есть под рукой.`
+          : `Одной сноровкой тут не обойтись. Если у героя есть подходящее заклинание, умение или предмет — назовите его или предложите другой способ.`,
         turn_consumed: false,
         admin_commands: 0,
         state: commit.state ?? loaded.state,
@@ -1599,6 +1626,22 @@ export class AutonomousCampaignOrchestrator {
           ? [{ command_type: 'AdvanceTime', amount: outcomePolicy.success_minutes, unit: 'minute' }] : []),
       ])
       verifyDuplicate(commit, { requiresRuling: true })
+      // Без броска, но по делу: «изучаю повестку» открывает секрет этой темы
+      // отдельным коммитом после решения — улика ссылается на уже записанное.
+      const rulingEvent = (commit.events ?? []).find((entry) => entry.event_type === 'RulingRecorded')
+      const discovery = !loaded.state.mechanics?.combat?.active && rulingEvent
+        ? freeActionDiscoveryCommands(commit.state ?? loaded.state, {
+          checkEvent: rulingEvent, skill: reading.skill, actionText: text, goalSummary: reading.goal_summary,
+        })
+        : []
+      let discoveryCommit = null
+      if (discovery.length) {
+        try {
+          discoveryCommit = await this.runCommands(campaignId, `${idempotencyKey}:discovery`, discovery)
+        } catch (error) {
+          if (error?.code !== 'STATE_VERSION_CONFLICT') throw error
+        }
+      }
       return {
         context_metadata: actionContextMetadata,
         kind: 'auto_success',
@@ -1607,10 +1650,10 @@ export class AutonomousCampaignOrchestrator {
         narration: 'Это удаётся без броска: для самой попытки нет риска или противодействия.',
         turn_consumed: false,
         admin_commands: 0,
-        state: commit.state ?? loaded.state,
-        state_version: commit.state_version ?? loaded.state_version,
-        events: commit.events ?? [],
-        commands: commit.commands ?? [],
+        state: discoveryCommit?.state ?? commit.state ?? loaded.state,
+        state_version: discoveryCommit?.state_version ?? commit.state_version ?? loaded.state_version,
+        events: [...(commit.events ?? []), ...(discoveryCommit?.events ?? [])],
+        commands: [...(commit.commands ?? []), ...(discoveryCommit?.commands ?? [])],
         rolls: commit.rolls ?? [],
         duplicate: Boolean(commit.duplicate),
       }
@@ -1673,11 +1716,11 @@ export class AutonomousCampaignOrchestrator {
       cost: inCombat ? actionCost.slot || 'свободное взаимодействие' : outcomePolicy.cost,
       on_success: inCombat ? effectPreview.effect.id === 'none' ? 'Попытка будет отмечена в истории без механического эффекта.' : effectPreview.summary
         : reading.activity_kind === 'stunt'
-          ? 'Трюк удаётся. Герой остаётся на своей клетке.'
-          : 'Задумка отмечается в истории и цели сцены. Перемещение, урон и предметы этой проверкой не создаются.',
+          ? 'Трюк удаётся; герой остаётся на месте.'
+          : freeActionSuccessPromise(reading),
       on_failure: inCombat
         ? `${actionCost.cost === 'free' ? 'Задумка не удастся; действие и бонусное действие сохранятся.' : `Задумка не удастся; ${actionCost.slot} будет потрачено.`}${failure.damage_expression ? ` ${failure.summary}` : ''}`
-        : `${failure.summary}${failure.minutes > 0 ? ` Пройдёт ${failure.minutes} минут.` : ''}`,
+        : failure.summary,
     }
     if (stakes) stakes.on_failure = proposal.on_failure
     // Согласование рискованной импровизации обязательно даже с автоброском:
@@ -1714,7 +1757,7 @@ export class AutonomousCampaignOrchestrator {
         check: { ...check, sides: 20, skill: preview.skill, proposal },
         reading,
         stakes,
-        narration: `Предлагаю проверку: ${check.label}, СЛ ${check.difficulty}. Цена: ${proposal.cost}. При успехе: ${proposal.on_success} При провале: ${proposal.on_failure} Подтвердите предложение или откажитесь от попытки.`,
+        narration: `Это бросок: ${check.label}, СЛ ${check.difficulty}. ${proposal.on_success} ${proposal.on_failure} Бросаете или попробуете иначе?`,
         turn_consumed: false,
         admin_commands: 0,
         state: loaded.state,

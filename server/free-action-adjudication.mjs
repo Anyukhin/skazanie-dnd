@@ -521,6 +521,9 @@ function actionTargets(state, actorId) {
  * связывает их с текущим состоянием, выводит отсутствующие ссылки из текста и
  * всегда перезаписывает уровень владения значением из листа героя.
  */
+const AFFECTION_GESTURE_PATTERN = /(?<![\p{L}\p{M}])(?:целу\p{L}*|поцел\p{L}*|чмока\p{L}*|обнима\p{L}*|обним\p{L}*|пожима\p{L}*\s+(?:\p{L}+\s+)?рук\p{L}*|глажу|глади\p{L}*|похлопыва\p{L}*|кланя\p{L}*|подмигива\p{L}*)(?![\p{L}\p{M}])/iu
+const SOCIAL_AIM_PATTERN = /(?<![\p{L}\p{M}])(?:чтобы|убеди|уговор|обман|отвлеч|выкра|стащ|незамет)/iu
+
 export function bindFreeActionReadingToState(state = {}, actorId = '', text = '', input = {}, { preserveActionProfile = false } = {}) {
   const reading = normalizeFreeActionReading(input, text)
   if (!preserveActionProfile) {
@@ -536,6 +539,20 @@ export function bindFreeActionReadingToState(state = {}, actorId = '', text = ''
       // Поле hazard от модели не создаёт опасность без причинной связи в тексте.
       reading.hazard = ''
     }
+    // Поцелуй, объятие, рукопожатие — жест, а не трюк. Модель изредка читает
+    // «целую её в щёку» как акробатику с травмой при провале; без цели
+    // уговорить или обмануть такой жест проходит без броска, а отклик —
+    // дело собеседника.
+    if (AFFECTION_GESTURE_PATTERN.test(text) && !SOCIAL_AIM_PATTERN.test(text)
+      && ['acrobatics', 'athletics'].includes(reading.skill) && !reading.hazard && reading.effect === 'none') {
+      reading.activity_kind = 'routine'
+      reading.plausibility = 'trivial'
+      reading.risk = 'none'
+      reading.consequence_type = 'time'
+      reading.duration_class = 'instant'
+      reading.skill = 'performance'
+      reading.ability = 'cha'
+    }
     const social = ['animal-handling', 'deception', 'intimidation', 'performance', 'persuasion'].includes(reading.skill)
     const physical = ['acrobatics', 'athletics'].includes(reading.skill)
     const routine = (reading.activity_kind === 'routine' || reading.source.startsWith('deterministic-trivial')
@@ -549,7 +566,11 @@ export function bindFreeActionReadingToState(state = {}, actorId = '', text = ''
           : social ? 'social'
             : ['athletics', 'sleight-of-hand', 'medicine'].includes(reading.skill) ? 'environmental' : 'knowledge'
     if (reading.activity_kind === 'stunt') {
-      if (reading.plausibility !== 'impossible_without_means') reading.plausibility = 'strenuous'
+      // Трюк не бывает рутиной: ошибочное trivial поднимается до strenuous.
+      // Но обычное plausible (колесо, кувырок на ровном) остаётся обычным —
+      // прежде любой трюк становился СЛ 20, и колесо во дворе судилось как
+      // бег по перилам над рекой.
+      if (reading.plausibility === 'trivial') reading.plausibility = 'strenuous'
       if (reading.risk === 'none') reading.risk = 'minor'
       reading.consequence_type = 'injury'
       reading.duration_class = 'instant'
@@ -626,7 +647,10 @@ export function contextualResolutionFor(state = {}, actorId = '', reading = {}, 
     index += 1
     factors.push('combat_pressure')
   }
-  const environmentalPressure = `${text} ${state?.scene?.mood ?? ''}`
+  // Прямая речь героя — не обстановка: «кричу «Пожар!»» не делает двор
+  // горящим и не поднимает сложность. Слова в кавычках из текста убираются.
+  const narratedText = String(text ?? '').replace(/«[^»]*»|"[^"]*"|“[^”]*”|„[^“”]*[“”]/gu, ' ')
+  const environmentalPressure = `${narratedText} ${state?.scene?.mood ?? ''}`
   if (/(шторм|бур[яе]|пожар|обвал|скольз|темнот|дым|хаос|движущ)/iu.test(environmentalPressure)) {
     index += 1
     factors.push('environmental_pressure')
@@ -796,7 +820,7 @@ export function resolveExplorationCommand(state, actorId, text) {
   }
   routes.sort((a, b) => a.path.length - b.path.length || a.to.y - b.to.y || a.to.x - b.to.x)
   if (!routes.length) return { status: 'clarification', narration: 'Свободного раскрытого пути к собеседнику нет. Можно выбрать другой маршрут на карте или обратиться с места.' }
-  return { status: 'command', command: { command_type: 'MoveActor', actor_id: String(actorId), to: routes[0].to, server_authoritative: true }, narration: `Вы подходите к собеседнику: ${target.character ?? target.name}.` }
+  return { status: 'command', command: { command_type: 'MoveActor', actor_id: String(actorId), to: routes[0].to, server_authoritative: true }, narration: `${clean(findActor(state, actorId)?.character ?? findActor(state, actorId)?.name, 80) || 'Герой'} подходит ближе — ${target.character ?? target.name} теперь рядом.` }
 }
 
 /**
@@ -1185,12 +1209,39 @@ const DAMAGE_TYPE_LABELS_RU = Object.freeze({
 export function damageTypeLabelRu(value = '') {
   return DAMAGE_TYPE_LABELS_RU[String(value ?? '').toLocaleLowerCase('en')] ?? 'неуточнённого'
 }
+// Цена провала словами ведущего за столом: что случится, а не служебная
+// категория. Читается в карточке броска до согласия игрока.
 const CAUSAL_FAILURE_SUMMARIES = Object.freeze({
-  time: 'Попытка не дала результата. Потрачено только время самой попытки.',
-  noise: 'Тихо выполнить задуманное не получилось; попытка сопровождается шумом.',
-  exposure: 'Незаметно выполнить задуманное не получилось.',
-  lost_opportunity: 'Этот подход не сработал. Нужен другой способ добиться цели.',
+  time: 'Не выйдет — только время потратите.',
+  noise: 'Не выйдет, и поднимется шум.',
+  exposure: 'Не выйдет, и это заметят.',
+  lost_opportunity: 'Не выйдет, и второй раз этот способ уже не сработает.',
 })
+
+const DISCOVERY_STYLE_SKILLS = new Set(['investigation', 'perception', 'insight', 'history', 'arcana', 'nature', 'religion', 'survival', 'medicine'])
+
+/**
+ * Что обещает успех вне боя. Карточка не сулит находку, которой может не
+ * оказаться: проверка знания или поиска честно говорит «узнаете то, что здесь
+ * можно узнать», а не «найдёте улику».
+ */
+export function freeActionSuccessPromise(reading = {}) {
+  const goal = clean(reading.goal_summary, 160).replace(/[.!?…]+$/u, '')
+  const lowered = goal ? goal.charAt(0).toLocaleLowerCase('ru') + goal.slice(1) : ''
+  if (reading.activity_kind === 'knowledge' || DISCOVERY_STYLE_SKILLS.has(String(reading.skill ?? '').replace(/-/gu, '_'))) {
+    return 'Выйдет — герой заметит или вспомнит то, что здесь можно узнать.'
+  }
+  return lowered ? `Выйдет — ${lowered}.` : 'Выйдет — задуманное получится.'
+}
+
+/** «1 минута», «2 минуты», «5 минут» — карточка броска говорит по-русски. */
+export function minutesLabelRu(value) {
+  const count = Math.abs(Math.trunc(Number(value) || 0))
+  const lastTwo = count % 100
+  const last = count % 10
+  const word = lastTwo >= 11 && lastTwo <= 14 ? 'минут' : last === 1 ? 'минута' : last >= 2 && last <= 4 ? 'минуты' : 'минут'
+  return `${count} ${word}`
+}
 
 /** Версионированная серверная цена одной попытки, общая для preview и commit. */
 export function freeActionResolutionPolicy(reading = {}) {
@@ -1214,12 +1265,12 @@ export function freeActionResolutionPolicy(reading = {}) {
   return {
     version: reading.policy_version,
     success_minutes: minutes,
-    cost: minutes ? `время попытки: ${minutes} мин` : 'несколько секунд',
+    cost: minutes ? `займёт ${minutesLabelRu(minutes)}` : 'несколько секунд',
     failure: {
       risk: reading.risk, consequence_type: type, minutes, advances_quest_clock: false,
       ...(expression ? { damage_expression: expression, damage_type: damageType } : {}),
       summary: expression
-        ? `Неудачное движение приводит к травме: ${expression} ${damageTypeLabelRu(damageType)} урона самому герою.`
+        ? `Не выйдет — герой пострадает: ${expression} ${damageTypeLabelRu(damageType)} урона.`
         : CAUSAL_FAILURE_SUMMARIES[type],
     },
   }

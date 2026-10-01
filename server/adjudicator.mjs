@@ -24,7 +24,7 @@ function attackProfile(actor) {
 }
 
 function abilityForApproach(approach) {
-  return ({ strength: 'str', stealth: 'dex', arcana: 'int', perception: 'wis', persuasion: 'cha', intimidation: 'cha' })[approach] ?? 'wis'
+  return ({ strength: 'str', stealth: 'dex', arcana: 'int', investigation: 'int', perception: 'wis', survival: 'wis', persuasion: 'cha', intimidation: 'cha' })[approach] ?? 'wis'
 }
 
 function skillForApproach(approach) {
@@ -36,6 +36,7 @@ function skillForApproach(approach) {
     persuasion: 'persuasion',
     intimidation: 'intimidation',
     investigation: 'investigation',
+    survival: 'survival',
   })[String(approach ?? '')] ?? ''
 }
 

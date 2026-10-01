@@ -665,9 +665,9 @@ test('ручной бросок: сервер объявляет проверк�
   assert.equal(invited.check.difficulty, 15)
   assert.equal(invited.check.ability, 'str')
   assert.match(invited.check.label, /Сила/u)
-  assert.match(invited.narration, /Подтвердите предложение/u)
-  assert.equal(invited.check.proposal.cost, 'время попытки: 5 мин')
-  assert.match(invited.check.proposal.on_failure, /5 минут/u)
+  assert.match(invited.narration, /Бросаете или попробуете иначе/u)
+  assert.equal(invited.check.proposal.cost, 'займёт 5 минут')
+  assert.match(invited.check.proposal.on_failure, /время/u)
   assert.deepEqual(invited.mechanics, [])
   assert.equal((await eventStore.load('FREE-ACTION')).state_version, 0)
 
