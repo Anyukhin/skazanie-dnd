@@ -72,7 +72,9 @@ test('content integrity gate verifies hashes, references, counts and the complet
   // вместе с осознанным пополнением набора.
   // + 12 рисованных эмблем классов (`public/assets/ui/class-icons/*.webp`).
   // + 6 переиспользуемых фонов способностей (`public/assets/ui/action-backgrounds/*.webp`).
-  // + 8 файлов гарнитур интерфейса (`public/assets/fonts/*.woff2`, см. docs/fonts.md).
+  // + 22 файла гарнитур интерфейса (`public/assets/fonts/*.woff2`, см. docs/fonts.md):
+  // Alegreya с курсивом, Alegreya Sans, Alegreya Sans SC и Cormorant SC вместо
+  // прежних восьми файлов Manrope и Spectral.
   // + 7 авторских глобальных карт: три исходных фона v1, три атласных v2
   // и авторская карта Асстоханских равнин
   // (`public/assets/maps/world/skazanie/*.webp`).
@@ -88,7 +90,7 @@ test('content integrity gate verifies hashes, references, counts and the complet
   // + 4 файла нейтральных основ и объявленные неизменяемые выпуски экипировки.
   // + 53 записанных боевых звука и их фазовый manifest.
   // + 38 карточек фокусов, инструментов барда и дорогих компонентов.
-  assert.equal(report.integrity.assets, 1777 + declaredEnvironmentReleaseFiles() + declaredEquipmentReleaseFiles())
+  assert.equal(report.integrity.assets, 1791 + declaredEnvironmentReleaseFiles() + declaredEquipmentReleaseFiles())
   assert.equal(report.integrity.coverage.find((entry) => entry.id === 'feats').coverage, 'missing')
 })
 

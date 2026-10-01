@@ -10,7 +10,7 @@
 .sidebar-context { padding: 14px 12px; }
 .sidebar-context-actions { gap: 5px; }
 .nav-item { color: #b4aa9c; }
-.nav-item.active { background: #2a2218; box-shadow: inset 2px 0 var(--gold); }
+.nav-item.active { background: var(--acc-soft); color: var(--acc2); box-shadow: none; }
 .section-label { color: #a69a8b; letter-spacing: .04em; }
 .player-card { gap: 8px; }
 .player-name-row + span { color: #ad9f8d; }
@@ -30,7 +30,7 @@
 .hero-setup-notice > div { min-width: 0; }
 .hero-setup-notice strong { color: #eed4a7; font-size: var(--fs-2xl); }
 .hero-setup-notice p { margin: 5px 0 0; color: #c5b9a8; font-size: var(--fs-md); }
-.hero-setup-notice button { flex-shrink: 0; min-height: 44px; padding: 10px 20px; border: 1px solid #be955f; border-radius: 6px; background: #c59b63; color: #17130e; font: 700 var(--fs-md) Manrope, sans-serif; cursor: pointer; }
+.hero-setup-notice button { flex-shrink: 0; min-height: 44px; padding: 10px 20px; border: 1px solid #be955f; border-radius: 6px; background: #c59b63; color: #17130e; font: 700 var(--fs-md) var(--f-ui); cursor: pointer; }
 .hero-setup-notice button:disabled { opacity: .65; cursor: default; }
 
 .status-bar { gap: 20px; padding: 0 24px; }
@@ -74,17 +74,17 @@
 /* Карточка героя живёт у нижней панели действий: портрет и ОЗ остаются рядом
    с авторитетными пипсами экономики и ячейками, которые рисует hotbar. */
 .turn-rail-player-hud { flex: 0 0 auto; min-width: 0; }
-.turn-rail-player-hud > .player-hud { width: min(320px, 42vw); min-width: 250px; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto auto; gap: 6px 10px; align-items: center; padding: 7px 9px; border: 1px solid rgba(211,184,149,.2); border-radius: 7px; background: linear-gradient(160deg, rgba(39,29,21,.96), rgba(17,14,12,.96)); box-shadow: 0 8px 22px rgba(0,0,0,.3); }
+.turn-rail-player-hud > .player-hud { width: min(320px, 42vw); min-width: 250px; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto auto; gap: 6px 10px; align-items: center; padding: 7px 9px; border: 1px solid rgba(211,184,149,.2); border-radius: 7px; background: rgba(28,22,16,0.96); box-shadow: 0 8px 22px rgba(0,0,0,.3); }
 .turn-rail-player-hud .hud-identity { grid-column: 1 / -1; min-width: 0; display: flex; align-items: center; gap: 8px; }
 .turn-rail-player-hud .hud-identity > span:last-child { min-width: 0; display: grid; gap: 1px; }
-.turn-rail-player-hud .hud-identity strong { overflow: hidden; color: #e6d5bd; font: 700 var(--fs-md) Spectral, serif; text-overflow: ellipsis; white-space: nowrap; }
-.turn-rail-player-hud .hud-identity small { overflow: hidden; color: #9e8d78; font: 600 var(--fs-xxs) Manrope, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
-.turn-rail-player-hud .hud-portrait { width: 34px; height: 34px; flex: 0 0 auto; display: grid; place-items: center; overflow: hidden; border: 1px solid rgba(214,161,96,.62); border-radius: 50%; background: radial-gradient(circle at 50% 22%, rgba(128,91,53,.32), rgba(17,15,13,.95) 72%); background-size: 200% 200%; background-repeat: no-repeat; color: #e2b879; }
+.turn-rail-player-hud .hud-identity strong { overflow: hidden; color: #e6d5bd; font: 700 var(--fs-md) var(--f-serif); text-overflow: ellipsis; white-space: nowrap; }
+.turn-rail-player-hud .hud-identity small { overflow: hidden; color: #9e8d78; font: 600 var(--fs-xxs) var(--f-ui); text-overflow: ellipsis; white-space: nowrap; }
+.turn-rail-player-hud .hud-portrait { width: 34px; height: 34px; flex: 0 0 auto; display: grid; place-items: center; overflow: hidden; border: 1px solid rgba(214,161,96,.62); border-radius: 50%; background: rgba(45,34,23,0.64); background-size: 200% 200%; background-repeat: no-repeat; color: #e2b879; }
 .turn-rail-player-hud .hud-health { grid-column: 1 / -1; min-width: 0; display: grid; gap: 3px; }
 .turn-rail-player-hud .hud-health-label { display: flex; align-items: center; gap: 5px; color: #d96f62; }
-.turn-rail-player-hud .hud-health-label b { color: #eadac7; font: 700 var(--fs-sm) Manrope, sans-serif; }
+.turn-rail-player-hud .hud-health-label b { color: #eadac7; font: 700 var(--fs-sm) var(--f-ui); }
 .turn-rail-player-hud .hud-health-bar { display: block; height: 6px; overflow: hidden; border-radius: 4px; background: rgba(255,255,255,.1); }
-.turn-rail-player-hud .hud-health-bar i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #a8443e, #d77a59); }
+.turn-rail-player-hud .hud-health-bar i { display: block; height: 100%; border-radius: inherit; background: #c05f4c; }
 .turn-rail-player-hud .hud-vitals { grid-column: 1; min-width: 0; gap: 9px; }
 .turn-rail-player-hud .hud-vitals b { font-size: var(--fs-sm); }
 .turn-rail-player-hud .hud-actions { grid-column: 2; justify-self: end; }
@@ -95,10 +95,10 @@
 .dialogue-composer .rail-free-input { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
 .dialogue-composer .request-kind { grid-column: 1; grid-row: 1; width: fit-content; max-width: 100%; height: 36px; padding: 0 8px; border-radius: 4px; background: #211c16; font-size: var(--fs-md); }
 .dialogue-composer .rail-input-shell { grid-column: 1 / -1; grid-row: 2; display: flex; flex-wrap: wrap; height: auto; min-height: 86px; padding: 10px 8px 10px 12px; border-radius: 6px; background: #100e0c; align-items: flex-end; }
-.dialogue-composer textarea { flex: 1 1 0; min-width: 0; width: 100%; min-height: 64px; max-height: 160px; resize: vertical; border: 0; outline: none; background: transparent; color: #ece0ce; font: var(--fs-lg)/1.5 Manrope, sans-serif; }
+.dialogue-composer textarea { flex: 1 1 0; min-width: 0; width: 100%; min-height: 64px; max-height: 160px; resize: vertical; border: 0; outline: none; background: transparent; color: #ece0ce; font: var(--fs-lg)/1.5 var(--f-ui); }
 .dialogue-composer textarea::placeholder { color: #a79883; }
 .dialogue-composer .prepared-chip { flex: 1 0 100%; max-width: 100%; background: #30261a; border-radius: 4px; }
-.dialogue-composer .rail-free-input > button { grid-column: 2; grid-row: 1; width: auto; height: 36px; padding: 0 12px; font: 600 var(--fs-md) Manrope, sans-serif; border-radius: 4px; background: #5f4227; color: #f0d6ae; }
+.dialogue-composer .rail-free-input > button { grid-column: 2; grid-row: 1; width: auto; height: 36px; padding: 0 12px; font: 600 var(--fs-md) var(--f-ui); border-radius: 6px; background: var(--acc); color: var(--acc-ink); }
 .dialogue-composer .rail-free-input > button:disabled { opacity: .5; }
 .turn-rail { height:var(--ui-rail-height,auto); min-height: 0; max-height: none; grid-template-rows: 28px auto; gap: 6px; padding: 8px 20px; background: #18140f; }
 .turn-rail .combat-hotbar.tactical-control{grid-template-rows:auto;gap:0}
@@ -125,16 +125,19 @@
 .hotbar-tabs { display: flex; min-width: 0; align-items: center; gap: inherit; overflow-x: auto; scrollbar-width: none; }
 .turn-rail > .hotbar-decks > button { flex-shrink: 0; }
 .turn-rail > .hotbar-decks .hotbar-tabs button { flex: 0 0 auto; }
-.turn-rail > .hotbar-decks button { display: inline-flex; min-width: 28px; width: auto; height: 28px; padding: 0 6px; align-items: center; gap: 4px; border-radius: 4px; }
+.turn-rail > .hotbar-decks button { display: inline-flex; min-width: 28px; width: auto; height: 28px; padding: 0 8px; align-items: center; gap: 4px; border-radius: 6px; }
 .turn-rail > .hotbar-decks button span { display: inline; font-size: var(--fs-sm); }
 .turn-rail > .hotbar-decks .start-combat-button { border: 1px solid #994e45; background: #572c27; color: #f0b5a9; }
 .turn-rail > .hotbar-decks .start-combat-button:hover:not(:disabled) { border-color: #cd7868; background: #70362e; color: #ffe0d6; }
 .turn-rail > .hotbar-decks .start-combat-button:disabled { opacity: .5; cursor: not-allowed; }
 .turn-rail .hotbar-combat-controls { display: flex; max-width: none; min-width: 0; gap: 4px; align-items: center; overflow-x: auto; scrollbar-width: thin; }
-.turn-rail .hotbar-combat-controls button { flex-shrink: 0; white-space: nowrap; color: #d1baa0; border: 1px solid #58442c; background: #261e15; }
+.turn-rail .hotbar-combat-controls button { flex-shrink: 0; white-space: nowrap; color: var(--text2); border: 1px solid var(--line2); background: transparent; }
+.turn-rail .hotbar-combat-controls button:hover:not(:disabled) { border-color: var(--acc-line); color: var(--text); }
 .turn-rail .hotbar-combat-controls button:disabled { opacity: .45; cursor: not-allowed; }
-.turn-rail .hotbar-combat-controls .end-turn-hotbar { background: #73522c; color: #f0d3a2; border-color: #a67b45; }
-.turn-rail .hotbar-combat-controls .knockout-turn-toggle.active { background: #49331c; border-color: #c49a63; color: #f0d3a2; }
+/* «Завершить ход» — контурная кнопка в акценте: заметная, но не залитая. */
+.turn-rail .hotbar-combat-controls .end-turn-hotbar { background: transparent; color: var(--acc2); border: 1.5px solid var(--acc2); }
+.turn-rail .hotbar-combat-controls .end-turn-hotbar:hover:not(:disabled) { background: var(--acc-soft); color: var(--acc2); border-color: var(--acc2); }
+.turn-rail .hotbar-combat-controls .knockout-turn-toggle.active { background: var(--acc-soft); border-color: var(--acc-line); color: var(--acc2); }
 .turn-rail .hotbar-combat-controls kbd { display: none; }
 .turn-rail .hotbar-main { grid-template-columns: 34px minmax(0, 1fr) minmax(220px, 34%); gap: 12px; }
 .turn-rail .hotbar-actions-shell { padding: 6px 10px; height: min(calc(var(--slot) * var(--ui-tile-rows, 2) + 18px), 100%); border: 0; background: none; }
@@ -145,7 +148,7 @@
 .turn-rail .hotbar-detail h3 { font-size: var(--fs-xl); }
 .turn-rail .hotbar-actions-shell{height:auto;min-height:calc(var(--slot) * var(--ui-tile-rows,2) + 18px);align-items:flex-start}
 .turn-rail .hotbar-main{min-height:0}
-.turn-rail .player-resource-panel{min-height:0;align-content:start;gap:3px;overflow-y:auto;overscroll-behavior:contain;font:500 var(--fs-sm)/1.35 Manrope,sans-serif}
+.turn-rail .player-resource-panel{min-height:0;align-content:start;gap:3px;overflow-y:auto;overscroll-behavior:contain;font:500 var(--fs-sm)/1.35 var(--f-ui)}
 .player-resource-panel .turn-rail-player-hud>.player-hud{position:static;width:100%;min-width:0;padding:0 0 4px;border:0;border-bottom:1px solid var(--line);border-radius:0;background:none;box-shadow:none;grid-template-rows:auto auto;gap:4px 8px}
 .player-resource-panel .hud-identity{grid-column:1;grid-row:1}
 .player-resource-panel .hud-portrait{width:28px;height:28px;flex-basis:28px}
@@ -182,7 +185,7 @@
 .character-stats span b { font-size: var(--fs-2xl); }
 .character-stats small { display: block; margin-top: 5px; color: #ae9f8c; font-size: var(--fs-sm); }
 .character-statuses { position: absolute; top: 12px; left: 12px; right: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.character-statuses > span, .character-statuses > em { position: static; display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; border-radius: 4px; background: #17140ee8; color: #d3c1a7; font: 500 var(--fs-sm) Manrope, sans-serif; }
+.character-statuses > span, .character-statuses > em { position: static; display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; border-radius: 4px; background: #17140ee8; color: #d3c1a7; font: 500 var(--fs-sm) var(--f-ui); }
 .character-statuses > span.online { color: #b3d2bd; }
 .character-creation-wizard .creation-roll { border-color: var(--line); background: #211d17; color: #cbbba5; }
 
@@ -313,7 +316,7 @@
 .turn-rail .hero-spell-slot-grid .hero-resource em {
   flex: 0 0 22px;
   color: #d8bb8d;
-  font: 500 var(--fs-sm) Spectral, serif;
+  font: 500 var(--fs-sm) var(--f-serif);
   font-style: normal;
   text-align: center;
 }

@@ -32,7 +32,7 @@
 .combat-lab-observer-header h1 {
   margin: 0 0 6px;
   color: #e7ddd0;
-  font-family: Spectral, Georgia, serif;
+  font-family: var(--f-serif);
   font-size: clamp(25px, 3vw, 34px);
   font-weight: 600;
   line-height: 1.1;
@@ -197,7 +197,7 @@
 .combat-lab-observer-loading h2 {
   margin: 0 0 8px;
   color: #e2d6c8;
-  font-family: Spectral, Georgia, serif;
+  font-family: var(--f-serif);
   font-size: var(--fs-2xl);
   font-weight: 600;
 }
@@ -225,7 +225,7 @@
 .combat-lab-observer-battle-heading h2 {
   margin: 0;
   color: #e7ddd0;
-  font-family: Spectral, Georgia, serif;
+  font-family: var(--f-serif);
   font-size: var(--fs-2xl);
   font-weight: 600;
 }
@@ -424,7 +424,7 @@
   border: 1px solid rgba(222, 201, 171, .3);
   background: #2a3b2c;
   color: #d7e5d8;
-  font-family: Spectral, Georgia, serif;
+  font-family: var(--f-serif);
   font-weight: 600;
 }
 
@@ -661,7 +661,7 @@
 .combat-lab-observer-journal-heading h2 {
   margin: 0;
   color: #e3d8ca;
-  font-family: Spectral, Georgia, serif;
+  font-family: var(--f-serif);
   font-size: var(--fs-2xl);
   font-weight: 600;
 }

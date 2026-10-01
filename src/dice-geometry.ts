@@ -83,7 +83,7 @@ export function drawDie(ctx: CanvasRenderingContext2D, mesh: DieMesh, angle: num
     const label = sides === 100 ? (tens ? String((number % 10) * 10).padStart(2,'0') : String(number % 10)) : String(number)
     ctx.save()
     ctx.transform((rx-px)/(size*.1), (ry-py)/(size*.1), (px-ux)/(size*.1), (py-uy)/(size*.1), px, py)
-    ctx.font = `600 ${size * (sides === 6 ? .55 : .36)}px Spectral, Georgia, serif`
+    ctx.font = `600 ${size * (sides === 6 ? .55 : .36)}px Alegreya, Georgia, serif`
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     ctx.fillStyle = '#f5dfae'
