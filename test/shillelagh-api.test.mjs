@@ -1,25 +1,17 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { createServer as createNetServer } from 'node:net'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { pathToFileURL } from 'node:url'
+import { freePort } from './free-port.mjs'
 import { shortestTacticalPath } from '../server/rules-engine.mjs'
 
 const CAMPAIGN = 'SHILLELAGH-API'
 const HERO = 'hero-slot-1'
 const SETUP_TOKEN = 'shillelagh-api-setup'
 const DETERMINISTIC_DICE_PRELOAD = pathToFileURL(join(process.cwd(), 'test', 'fixtures', 'shillelagh-deterministic-dice.mjs')).href
-
-async function freePort() {
-  const probe = createNetServer()
-  await new Promise((resolve, reject) => { probe.once('error', reject); probe.listen(0, '127.0.0.1', resolve) })
-  const address = probe.address()
-  await new Promise((resolve) => probe.close(resolve))
-  return address.port
-}
 
 async function startServer(port, storage, log) {
   const child = spawn(process.execPath, ['--import', DETERMINISTIC_DICE_PRELOAD, 'server/index.mjs'], {

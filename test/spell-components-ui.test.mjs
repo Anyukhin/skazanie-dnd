@@ -87,7 +87,7 @@ test('клиент блокирует заклинание только при �
 })
 
 test('компоненты встроены в существующие карточки и не создают кнопку «Применить»', () => {
-  const dungeonMap = readFileSync(new URL('../src/DungeonMap.tsx', import.meta.url), 'utf8')
+  const dungeonMap = ['../src/DungeonMap.tsx', '../src/dungeon-map-parts.tsx'].map((path) => readFileSync(new URL(path, import.meta.url), 'utf8')).join('\n')
   const spellbook = readFileSync(new URL('../src/Spellbook.tsx', import.meta.url), 'utf8')
   const detail = readFileSync(new URL('../src/SpellDetail.tsx', import.meta.url), 'utf8')
   const combatSpells = readFileSync(new URL('../src/combat-spells.ts', import.meta.url), 'utf8')

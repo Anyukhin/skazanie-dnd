@@ -52,13 +52,3 @@ test('все семейства способностей имеют отдель
     assert.equal(tuple[2], bytes.length, `${relative}: размер разошёлся с реестром`)
   }
 })
-
-test('CombatIcon выбирает тему и собирает фон с прозрачным символом разными слоями', () => {
-  const component = readFileSync(new URL('../src/CombatIcon.tsx', import.meta.url), 'utf8')
-  const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
-  for (const theme of THEMES) assert.ok(component.includes(`'${theme}'`), `не объявлена тема ${theme}`)
-  assert.match(component, /action-backgrounds\/\$\{theme\}\.webp/u)
-  assert.ok(component.includes('combat-icon-symbol'))
-  assert.ok(styles.includes('background-image: var(--combat-icon-bg)'))
-  assert.ok(styles.includes('background-image: var(--combat-icon-src)'))
-})

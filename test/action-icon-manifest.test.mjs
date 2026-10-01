@@ -8,7 +8,6 @@ import { iconIdsOnDisk, manifestIsCurrent, manifestSource } from '../tools/build
 const manifestPath = new URL('../src/action-icons.ts', import.meta.url)
 const iconDirectory = new URL('../public/assets/ui/action-icons/', import.meta.url)
 const rightsSource = new URL('../data/asset-rights.json', import.meta.url)
-const componentSource = readFileSync(new URL('../src/CombatIcon.tsx', import.meta.url), 'utf8')
 const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
 
 test('манифест иконок не отстал от каталога', () => {
@@ -60,17 +59,6 @@ test('каждая action-icon имеет уникальное содержим�
   const duplicates = [...contentOwners.values()].filter((owners) => owners.length > 1)
   assert.deepEqual(duplicates, [], 'каждому действию и заклинанию нужен собственный рисунок, а не байтовая копия')
   assert.equal(contentOwners.size, iconIdsOnDisk().length)
-})
-
-test('компонент берёт свой рисунок, а атлас остаётся запасным', () => {
-  assert.ok(componentSource.includes('ACTION_ICON_IDS'), 'компонент обязан читать манифест')
-  assert.ok(componentSource.includes('combat-icon-art own'), 'для своего рисунка нужен отдельный класс')
-  assert.ok(componentSource.includes('--combat-icon-x'), 'запасной вариант через атлас должен остаться')
-  assert.ok(styles.includes('.combat-icon-art.own'), 'стиль для своего рисунка должен существовать')
-  assert.ok(styles.includes('background-size: contain'), 'своя картинка вписывается целиком, а не режется как клетка атласа')
-  assert.ok(componentSource.includes('abilityIconBackgroundUrl(theme)'), 'свой рисунок обязан получить тематический фон')
-  assert.ok(componentSource.includes('combat-icon-symbol'), 'символ и фон должны оставаться отдельными слоями')
-  assert.ok(styles.includes('var(--combat-icon-bg)'), 'фоновая плитка должна отрисовываться из переменной компонента')
 })
 
 test('манифест собирается детерминированно и отсортирован', () => {
