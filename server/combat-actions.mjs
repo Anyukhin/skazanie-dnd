@@ -6,7 +6,19 @@ const GENERATED_CLASSES = new Map(catalogPayload.classes.map((entry) => [entry.c
 
 const clone = (value) => structuredClone(value)
 const roleText = (actor) => `${actor?.role ?? ''} ${actor?.class ?? ''} ${actor?.characterClass ?? ''}`.toLowerCase()
-const normalizedName = (value) => String(value ?? '').toLowerCase().replace(/ё/gu, 'е').replace(/[^a-zа-я0-9]+/giu, ' ').trim()
+// Названия действий нормализуются для каждого героя на каждом событии, а их
+// набор конечен — каталог классов. Чистая функция строки запоминается.
+const NORMALIZED_NAMES = new Map()
+const normalizedName = (value) => {
+  const source = String(value ?? '')
+  let result = NORMALIZED_NAMES.get(source)
+  if (result === undefined) {
+    result = source.toLowerCase().replace(/ё/gu, 'е').replace(/[^a-zа-я0-9]+/giu, ' ').trim()
+    if (NORMALIZED_NAMES.size >= 10_000) NORMALIZED_NAMES.clear()
+    NORMALIZED_NAMES.set(source, result)
+  }
+  return result
+}
 
 const CLASS_URL = Object.freeze({
   barbarian: 'https://www.dnd.su/class/87-barbarian/', bard: 'https://www.dnd.su/class/88-bard/', cleric: 'https://www.dnd.su/class/89-cleric/',

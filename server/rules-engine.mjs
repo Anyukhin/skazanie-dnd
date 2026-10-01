@@ -11654,6 +11654,8 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
   const diceTranscript = []
   diceService = recordingDiceService(diceService, diceTranscript)
   const state = normalizeCampaignState(rawState)
+  // Промежуточные состояния команды доигрываются инкрементально — см. createCommandProjector.
+  const projectEvents = createCommandProjector(state)
   // Видимый NPC использует ту же ветку заклинания и свой настоящий стат-блок.
   // Прокси живёт только в расчёте: события сохраняют прежний NPC ID, а
   // reducer обновляет npc_world.vitals. Второй постоянный лист не создаётся.
@@ -11717,7 +11719,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
     }
   }
 
-  const appendTimeAdvance = (sourceCommand, amount, unit, { sourceState = replayEvents(state, events), elapsedSeconds = durationInSeconds(amount, unit), policyId = null } = {}) => {
+  const appendTimeAdvance = (sourceCommand, amount, unit, { sourceState = projectEvents(events), elapsedSeconds = durationInSeconds(amount, unit), policyId = null } = {}) => {
     const beforeSeconds = worldTimeSeconds(sourceState)
     const elapsedMinutes = Math.floor(normalizedClockSeconds(beforeSeconds + elapsedSeconds) / 60) - Math.floor(beforeSeconds / 60)
     events.push({
@@ -11751,12 +11753,12 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
   }
 
   const appendWorldTimeConsequences = (sourceCommand, amount, unit, options = {}) => {
-    const sourceState = replayEvents(state, events)
+    const sourceState = projectEvents(events)
     const elapsedMinutes = appendTimeAdvance(sourceCommand, amount, unit, { ...options, sourceState })
     // Концентрация хранится отдельно от 60-секундного срока Обессиливания.
     // TimeAdvanced снимает истёкшее состояние; в той же команде завершаем
     // концентрацию событием, чтобы replay и доступные действия не сохраняли связь.
-    const afterTime = replayEvents(state, events)
+    const afterTime = projectEvents(events)
     for (const casterId of Object.keys(sourceState.mechanics?.concentration ?? {})) {
       const link = enervationLinkFor(sourceState, casterId)
       if (!link) continue
@@ -13016,7 +13018,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           temporary_hp_absorbed: payload.temporary_hp_absorbed,
           source: 'weapon',
         }]
-        let afterDamageState = replayEvents(state, events)
+        let afterDamageState = projectEvents(events)
         for (const { rider, roll } of itemRiderRolls) {
           const riderPayload = applyKnockoutChoice(resolveDamagePayload(afterDamageState, targetId, roll.total, rider.damage_type))
           const riderEvent = eventFrom(commandWithRules(
@@ -13153,7 +13155,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         const extraLevels = Math.max(0, slotLevel - Math.max(1, pendingWeaponHitSpell.level))
         events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: pendingWeaponHitCondition.id, spell_id: pendingWeaponHitSpell.id, trigger: 'weapon-hit' }, [command.actor_id]))
 
-        let hitEffectState = replayEvents(state, events)
+        let hitEffectState = projectEvents(events)
         if (pendingWeaponHit.damage) {
           const baseExpression = scaledDiceExpression(pendingWeaponHit.damage, extraLevels, pendingWeaponHit.upcastDicePerLevel)
           const expression = critical ? criticalDamageExpression(baseExpression) : baseExpression
@@ -13242,7 +13244,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           const burstRoll = diceService.roll(expression, `spell:next-weapon-hit-burst:${pendingWeaponHitSpell.id}`, command.actor_id, command.visibility ?? 'public')
           rolls.push(burstRoll)
           events.push(eventFrom(command, 'DieRolled', { ...burstRoll, spell_id: pendingWeaponHitSpell.id, damage_type: burst.damageType, burst: true }, []))
-          let burstState = replayEvents(state, events)
+          let burstState = projectEvents(events)
           for (const burstTarget of burstTargets) {
             const burstTargetId = actorId(burstTarget)
             const ability = String(burst.saveAbility)
@@ -13285,7 +13287,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           spell_id: 'absorb-elements',
           trigger: 'weapon-hit',
         }, [command.actor_id]))
-        const hitEffectState = replayEvents(state, events)
+        const hitEffectState = projectEvents(events)
         const bonusRoll = diceService.roll(expression, 'spell:absorb-elements:next-melee-hit', command.actor_id, command.visibility ?? 'public')
         rolls.push(bonusRoll)
         events.push(eventFrom(command, 'DieRolled', {
@@ -13321,7 +13323,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             events.push(eventFrom(command, 'DieRolled', collateralRoll, []))
           }
           const amount = collateralRoll?.total ?? Math.max(0, safeInteger(command.damage_amount, 0))
-          events.push(...npcWorldEventsFrom(commandWithRules(command, RULE_IDS.damage), npcHarmEventDrafts(replayEvents(state, events), {
+          events.push(...npcWorldEventsFrom(commandWithRules(command, RULE_IDS.damage), npcHarmEventDrafts(projectEvents(events), {
             npcId: collateral.npc.id,
             amount,
             damageType,
@@ -13397,7 +13399,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         events.push(eventFrom({ ...command, visibility: 'gm_only' }, 'DieRolled', roll, []))
         return { ...component, rolled: Math.max(0, roll.total) }
       })
-      let workingState = replayEvents(state, events)
+      let workingState = projectEvents(events)
       for (const targetId of affectedIds) {
         const target = findActor(workingState, targetId)
         const ability = action.save.ability
@@ -13472,7 +13474,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         const raw = saved && combat.halfOnSave ? Math.floor(damageRoll.total / 2) : saved ? 0 : damageRoll.total
         events.push(eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', { ...resolveDamagePayload(state, targetIdValue, raw, String(combat.damageType || 'fire')), save_total: save.total, save_dc: safeInteger(combat.saveDc, 12), saved }, [targetIdValue]))
       }
-      let npcDamageState = replayEvents(state, events)
+      let npcDamageState = projectEvents(events)
       for (const { npc } of npcAffected) {
         const npcId = String(npc.id)
         const npcContext = npcDamageContext(npcDamageState, npcId)
@@ -16074,7 +16076,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
               }
             }
           }
-          let npcSpellState = replayEvents(state, events)
+          let npcSpellState = projectEvents(events)
           for (const { npc } of npcAffected) {
             if (!sharedDamageRoll && !bonusDamageRoll) continue
             const npcId = String(npc.id)
@@ -16170,7 +16172,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
               events.push(eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', { ...payload, spell_id: spell.id }, [resolvedTargetId]))
               if (payload.hp_after === 0) events.push(...zeroHitPointDamageConsequences(events.slice(0, -1).reduce(applyGameEvent, state), command, resolvedTargetId, payload))
             }
-            let npcSpellState = replayEvents(state, events)
+            let npcSpellState = projectEvents(events)
             for (const { npc } of npcAffected) {
               const npcId = String(npc.id)
               const harmEvents = npcWorldEventsFrom(commandWithRules(command, RULE_IDS.damage), npcHarmEventDrafts(npcSpellState, {
@@ -16580,7 +16582,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           const extraLevels = Math.max(0, slotLevel - Math.max(1, spell.level))
           const summonCount = Math.max(1, Math.min(12,
             safeInteger(spell.summonCount, 1) + extraLevels * Math.max(0, safeInteger(spell.upcastSummonsPerLevel, 0))))
-          const summonStartedAtSeconds = worldTimeSeconds(replayEvents(state, events))
+          const summonStartedAtSeconds = worldTimeSeconds(projectEvents(events))
           // Клетки вокруг выбранной точки: сначала она сама, потом кольца вокруг.
           // Занятые и непроходимые пропускаются, поэтому в тесноте фишек встанет
           // меньше заявленного — и это честнее, чем ставить их друг на друга.
@@ -16651,7 +16653,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         if (spell.kind === 'attack' && hasMultipleBeams(spell) && !context.additionalBeam) {
           const beams = beamCountFor(actor, spell, command.slot_level)
           const requested = uniqueStrings(command.target_ids ?? [])
-          let beamState = replayEvents(state, events)
+          let beamState = projectEvents(events)
           for (let index = 1; index < beams; index += 1) {
             const beamTargetId = String(requested[index] ?? requested[0] ?? targetId)
             if (!isLivingActor(findActor(beamState, beamTargetId))) continue
@@ -16898,7 +16900,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           .filter((cell) => cellAt(scoutedMap, cell.x, cell.y)?.revealed !== true)
         if (scouted.length) events.push(eventFrom(command, 'AreaRevealed', { cells: scouted }, []))
       }
-      const enteredAreaState = replayEvents(state, events)
+      const enteredAreaState = projectEvents(events)
       events.push(...areaEntryConsequences(enteredAreaState, command, command.actor_id, from, to, { diceService, rolls, resolveDamage: resolveDamageWithReactions, rollSavingThrow, saveModifierFor: areaSaveModifierFor }))
       const moverConditions = conditionIdsFor(state, command.actor_id)
       const boomingBlade = (state.mechanics.conditions[command.actor_id] ?? []).find((condition) => String(condition?.id ?? condition).startsWith('booming-blade-move:'))
@@ -17650,7 +17652,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         partySummonsForExpiry(state).filter((summon) => expiredAtTransition.has(actorId(summon))),
         commandWithRules,
       ))
-      const transitionState = expiredAtTransition.size ? replayEvents(state, events) : state
+      const transitionState = expiredAtTransition.size ? projectEvents(events) : state
       const partyPositions = levelArrivalPositions(transitionState, target, arrival)
       events.push(eventFrom(command, 'MapLevelChanged', {
         location_id: locationId,
@@ -17825,7 +17827,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       if (combat.round_time_pending === true) {
         appendWorldTimeConsequences(commandWithRules(command, RULE_IDS.turns), 6, 'second', { elapsedSeconds: 6, policyId: COMBAT_ROUND_TIME_POLICY })
       }
-      const afterEndRound = replayEvents(state, events)
+      const afterEndRound = projectEvents(events)
       const expiredAtEnd = new Set(summonIdsExpiredAt(afterEndRound, worldTimeSeconds(afterEndRound)))
       events.push(...summonExpiryEvents(
         command,
@@ -18000,7 +18002,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           .filter((event) => event.event_type === 'SummonedCreatureDismissed' && event.payload?.reason === 'duration_expired')
           .flatMap((event) => event.target_ids ?? []))
         if (expired.size) {
-          const afterExpiry = replayEvents(state, events)
+          const afterExpiry = projectEvents(events)
           const oldOrder = combat.initiative
           const oldNextIndex = nextIndex
           for (let offset = 0; offset < oldOrder.length; offset += 1) {
@@ -18022,7 +18024,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       if (state.mechanics.combat.readied?.[nextId]) {
         events.push(eventFrom(commandWithRules(command, RULE_IDS.turns), 'ReadiedActionExpired', { reason: 'turn-came-around', trigger: state.mechanics.combat.readied[nextId].trigger }, [nextId]))
       }
-      let startTurnState = replayEvents(state, events)
+      let startTurnState = projectEvents(events)
       const auraSource = activeAuraOfLifeSource(startTurnState, nextId)
       const auraTarget = findActor(startTurnState, nextId)
       if (auraSource && actorHp(auraTarget) === 0 && !isDeadHero(startTurnState, nextId)) {
@@ -18041,7 +18043,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       const deathSave = deathSavingThrowAtTurnStart(startTurnState, command, nextId, diceService)
       events.push(...deathSave.events)
       rolls.push(...deathSave.rolls)
-      startTurnState = replayEvents(state, events)
+      startTurnState = projectEvents(events)
       const areaStartEvents = areaTurnConsequences(startTurnState, command, nextId, {
         diceService,
         rolls,
@@ -18051,7 +18053,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         saveModifierFor: areaSaveModifierFor,
       })
       events.push(...areaStartEvents)
-      startTurnState = replayEvents(state, events)
+      startTurnState = projectEvents(events)
       const startingActor = findActor(startTurnState, nextId)
       for (const condition of [...(startTurnState.mechanics.conditions[nextId] ?? []).filter((candidate) => candidate.recurring_damage && candidate.recurring_damage_timing !== 'turn-end')]) {
         let effectContinues = true
@@ -20132,7 +20134,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       // Рассказчиком новый NPC существовал лишь в тексте: профиль есть,
       // placement нет, и `sceneNpcsForViewer` отбрасывал его из проекции.
       if (command.command_type === 'UpsertNpcSocialProfile' && socialEventsAdded.length) {
-        const withProfile = replayEvents(state, socialEventsAdded)
+        const withProfile = projectEvents(socialEventsAdded)
         events.push(...npcWorldEventsFrom(command, planSceneNpcPlacementEvents(withProfile)))
       }
       break
@@ -20529,7 +20531,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
   // Без failed-save события окно «Несгибаемого» заведомо не появится, поэтому
   // повторно проигрывать карту для проверки реакции не нужно.
   if (resolveDepth === 0 && context.indomitableResume !== true && events.some(failedSavingThrowEvent)) {
-    const opportunityState = replayEvents(state, events)
+    const opportunityState = projectEvents(events)
     const opportunities = indomitableOpportunitiesFor(opportunityState, events, context.indomitable_bypass_actor_ids)
     const opportunity = opportunities[0]
     if (opportunity) {
@@ -20575,7 +20577,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
   if (resolveDepth === 0
     && events.some((event) => event.event_type === 'HeroDied')
     && !events.some((event) => event.event_type === 'CampaignFailed')) {
-    const projected = replayEvents(state, events)
+    const projected = projectEvents(events)
     const newlyDefeated = state.mechanics?.death?.campaign_status !== 'party_defeated'
       && projected.mechanics?.death?.campaign_status === 'party_defeated'
     if (newlyDefeated && projected.mechanics?.campaign_lifecycle?.status === 'active') {
@@ -20602,11 +20604,11 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
     }, [String(context.finalizeFleeActorId)]))
   }
   if (resolveDepth === 0 && resolvedEvents.some((event) => ['DamageApplied', 'ActorMoved'].includes(event.event_type))) {
-    resolvedEvents.push(...npcWorldEventsFrom(command, planAuthoredNpcWorldEvents(state, replayEvents(state, resolvedEvents), resolvedEvents,
+    resolvedEvents.push(...npcWorldEventsFrom(command, planAuthoredNpcWorldEvents(state, projectEvents(resolvedEvents), resolvedEvents,
       { commandId: command.command_id, actorId: command.actor_id })))
   }
   if (resolveDepth === 0 && resolvedEvents.some((event) => ['NpcDied', 'TimeAdvanced'].includes(event.event_type))) {
-    let projected = replayEvents(state, resolvedEvents)
+    let projected = projectEvents(resolvedEvents)
     const append = (drafts) => {
       for (const draft of drafts) {
         const event = { ...eventFrom({ ...command, visibility: draft.visibility }, draft.event_type, draft.payload, draft.target_ids),
@@ -20629,7 +20631,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
   // причин. Глубина ноль обязательна: вложенный resolve вклеивает свои события
   // в этот же поток, и контейнер, созданный внутри него, посчитался бы дважды.
   if (resolveDepth === 0 && lootCommitTouchesContainers(state, resolvedEvents)) {
-    const lootDrafts = planLootContainerDrafts(state, replayEvents(state, resolvedEvents), resolvedEvents)
+    const lootDrafts = planLootContainerDrafts(state, projectEvents(resolvedEvents), resolvedEvents)
     for (const draft of lootDrafts) {
       resolvedEvents.push({
         ...eventFrom({ ...command, visibility: draft.visibility }, draft.event_type, draft.payload, draft.target_ids),
@@ -23995,14 +23997,67 @@ export function applyGameEvent(rawState, event) {
   return withRetentionMode(mode, () => applyGameEventCurrent(rawState, event))
 }
 
+function replayModeFor(stream) {
+  const firstMarker = Number(stream[0]?.reducer_version ?? 0)
+  return retentionContextActive() ? retentionMode()
+    : (firstMarker > 0 && firstMarker < RETENTION_REDUCER_VERSION || firstMarker === 0 && Number.isSafeInteger(stream[0]?.state_version_after)) ? 'legacy' : 'current'
+}
+
 export function replayEvents(initialState, events) {
   const stream = Array.isArray(events) ? events : []
-  const firstMarker = Number(stream[0]?.reducer_version ?? 0)
-  const mode = retentionContextActive() ? retentionMode()
-    : (firstMarker > 0 && firstMarker < RETENTION_REDUCER_VERSION || firstMarker === 0 && Number.isSafeInteger(stream[0]?.state_version_after)) ? 'legacy' : 'current'
+  const mode = replayModeFor(stream)
   let state = withRetentionMode(mode, () => normalizeCampaignState(initialState))
   for (const event of stream) state = applyGameEvent(state, event)
   return state
+}
+
+/**
+ * `replayEvents(state, events)` для одной команды, где `events` только растёт.
+ *
+ * Внутри `resolveCommandInternal` промежуточное состояние нужно десятки раз:
+ * после урона, после конца раунда, перед последствиями. Каждый такой вызов
+ * раньше проигрывал все события команды с нуля, а каждое событие — это полная
+ * нормализация мира, то есть стоимость росла квадратично от длины команды.
+ *
+ * Проектор помнит состояние после всех событий, кроме последнего, и применяет
+ * только новый хвост. Последнее событие применяется всегда заново, поэтому
+ * наружу уходит свежий объект, а запомненное состояние не видит никто и
+ * испортить его нельзя. Префикс сверяется и по ссылке, и по JSON события:
+ * вставка в середину (`events.splice`) или правка уже добавленного события
+ * сбрасывают кэш, и проигрывание идёт с нуля, как раньше. Исходное состояние
+ * команды — её приватная нормализованная копия, и команда его не меняет.
+ */
+function createCommandProjector(initialState) {
+  let cache = null
+  return (events) => {
+    const stream = Array.isArray(events) ? events : []
+    if (!stream.length) return replayEvents(initialState, stream)
+    const mode = replayModeFor(stream)
+    const last = stream.length - 1
+    let applied = 0
+    let state = null
+    const fingerprints = []
+    if (cache && cache.mode === mode && cache.events.length <= last) {
+      while (applied < cache.events.length && stream[applied] === cache.events[applied]) {
+        const fingerprint = JSON.stringify(stream[applied])
+        if (fingerprint !== cache.fingerprints[applied]) break
+        fingerprints.push(fingerprint)
+        applied += 1
+      }
+      if (applied === cache.events.length) state = cache.state
+    }
+    if (!state) {
+      applied = 0
+      fingerprints.length = 0
+      state = withRetentionMode(mode, () => normalizeCampaignState(initialState))
+    }
+    for (let index = applied; index < last; index += 1) {
+      state = applyGameEvent(state, stream[index])
+      fingerprints.push(JSON.stringify(stream[index]))
+    }
+    cache = { mode, events: stream.slice(0, last), fingerprints, state }
+    return applyGameEvent(state, stream[last])
+  }
 }
 
 export function resolveCommands(commands, initialState, options) {
