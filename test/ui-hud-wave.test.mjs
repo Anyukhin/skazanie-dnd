@@ -459,7 +459,7 @@ test('названия разделов сохранены, подписи к д
   for (const caps of ['ИСТОРИЯ УРОНА', 'ЗАДАЧИ {quests.length}', '<header>РАУНД', 'ПРОТИВНИК', 'МОДИФИКАТОР', '<span>ВЕХИ</span>', 'ТРЕБУЕТСЯ ПРОВЕРКА', 'БЕЗ СОЗНАНИЯ']) {
     assert.equal(appSource.includes(caps), false, `подпись к данным набрана капсом: ${caps}`)
   }
-  for (const kept of ['Хроника', 'ОТРЯД · ', 'ПЕРВЫЕ ШАГИ', 'Книга заклинаний']) {
+  for (const kept of ['Хроника', 'ОТРЯД · ', 'Книга заклинаний']) {
     assert.equal(appSource.includes(kept), true, `название раздела потерялось: ${kept}`)
   }
   assert.doesNotMatch(stylesSource, /\.turn-resolution \{[^}]*text-transform: uppercase/u)

@@ -27,9 +27,8 @@ export const BASIC_SPELL_EVIDENCE_DEPENDENCIES = Object.freeze([
   'src/TacticalBoard.tsx', 'src/TacticalBoard3D.tsx', 'src/combat-animation.ts',
   'src/spell-effects.ts', 'src/board3d-spell-effects.ts', 'src/combat-audio.ts',
   'test/basic-spell-fixture.mjs', 'test/spell-basic-2014.test.mjs',
-  'test/spell-basic-2014-api.test.mjs', 'test/spell-acceptance-audit.test.mjs',
+  'test/spell-acceptance-audit.test.mjs',
   'test/rules-dndsu-2014-review.test.mjs', 'test/spell-components-mechanics.test.mjs',
-  'test/spell-basic-2014-acceptance.test.mjs',
 ])
 // Явная консервативная граница первого пилота. Это зависимости доказательства,
 // а не второй каталог. Сам receipt и документация в собственный хеш не входят.
