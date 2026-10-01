@@ -93,6 +93,32 @@ const spellForRuleset = (spell, rulesetId) => {
     supportNote: 'Вариант D&D 2014: концентрация до 1 минуты; цель сама выбирает один спасбросок для бонуса 1к4.',
   }
 }
+
+function deepFreeze(value) {
+  if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value
+  for (const nested of Object.values(value)) deepFreeze(nested)
+  return Object.freeze(value)
+}
+
+/**
+ * Карточка заклинания в редакции кампании зависит только от пары
+ * «заклинание + редакция», а `combatSpellsFor` строится на каждом событии
+ * для каждого заклинателя — сотни карточек с описаниями. Поэтому редакция
+ * считается один раз, а глубокая копия заменена глубокой заморозкой: верхний
+ * уровень карточки героя по-прежнему свой, а попытка поменять вложенное поле
+ * общего шаблона падает TypeError, а не портит каталог молча.
+ */
+const RULESET_SPELL_TEMPLATES = new Map()
+
+function rulesetSpellTemplate(spell, rulesetId) {
+  const key = `${rulesetId}\u0000${spell.id}`
+  let template = RULESET_SPELL_TEMPLATES.get(key)
+  if (!template) {
+    template = deepFreeze(clone(spellForRuleset(spell, rulesetId)))
+    RULESET_SPELL_TEMPLATES.set(key, template)
+  }
+  return template
+}
 const roleText = (actor) => `${actor?.role ?? ''} ${actor?.class ?? ''} ${actor?.characterClass ?? ''}`.toLocaleLowerCase('ru')
 
 const FULL_CASTER_SLOTS = Object.freeze([
@@ -300,7 +326,7 @@ export function combatSpellsFor(actor, options = {}) {
       const slotResource = slotResourceForProfile(profile, spell)
       const slotProfile = { ...spell, slotResource }
       return {
-        ...clone(spellForRuleset(spell, rulesetId)),
+        ...rulesetSpellTemplate(spell, rulesetId),
         slotResource,
         slotLevel: fixedSpellSlotLevelFor(actor, slotProfile) ?? spell.level,
         spellcastingAbility: profile.ability,
@@ -319,7 +345,7 @@ export function combatSpellsFor(actor, options = {}) {
       const slotResource = limited ? `species_spell_${spell.id}` : null
       const slotProfile = { ...spell, slotResource, innateCastLevel }
       return {
-        ...clone(spellForRuleset(spell, rulesetId)),
+        ...rulesetSpellTemplate(spell, rulesetId),
         prepared: true,
         innateSpell: true,
         innateCastLevel,

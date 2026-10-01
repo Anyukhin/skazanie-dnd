@@ -1783,12 +1783,37 @@ function encounterWithoutLoadouts(encounter) {
   return copy
 }
 
+/**
+ * Поля героя, которые нормализация ниже пересчитывает с нуля и безусловно
+ * перезаписывает. Прежние значения ничего не читает, а `combatSpells` —
+ * полная копия каждого доступного заклинания с описанием: у волшебника
+ * 12 уровня это почти девять десятых объёма состояния. Копировать их перед
+ * пересчётом незачем. Значение заменяется на `null`, а не удаляется, чтобы
+ * ключ остался на прежнем месте: порядок ключей входит в JSON и его хеши.
+ */
+const DERIVED_PLAYER_FIELDS = Object.freeze(['combatSpells', 'combatActions', 'characterSheet', 'inventoryLoad'])
+
+function withoutDerivedPlayerFields(players) {
+  if (!Array.isArray(players)) return players
+  return players.map((player) => {
+    if (!player || typeof player !== 'object' || Array.isArray(player)) return player
+    if (!DERIVED_PLAYER_FIELDS.some((field) => Object.hasOwn(player, field))) return player
+    const stripped = { ...player }
+    for (const field of DERIVED_PLAYER_FIELDS) if (Object.hasOwn(stripped, field)) stripped[field] = null
+    return stripped
+  })
+}
+
 export function normalizeCampaignState(input = {}) {
   const source = input && typeof input === 'object' ? input : {}
   // Память ниже полностью пересоздаёт собственный normalizer. Её первая
   // полная копия здесь не нужна; остальные области по-прежнему изолированы.
   const plain = Object.getPrototypeOf(source) === Object.prototype || Object.getPrototypeOf(source) === null
-  const state = clone(plain ? { ...source, worldMemory: undefined } : source)
+  const state = clone(plain ? {
+    ...source,
+    worldMemory: undefined,
+    ...(Object.hasOwn(source, 'players') ? { players: withoutDerivedPlayerFields(source.players) } : {}),
+  } : source)
   // Старые снимки не знают о подготовке героев на повышенный стартовый
   // уровень. Для них сохраняется прежний первый уровень; новое значение
   // ограничивается тем же каталогом, что и обычный LevelUp.
