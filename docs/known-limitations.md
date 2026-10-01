@@ -335,7 +335,7 @@ Sites передаёт существующую игру через беспла
 Проверки: `test/spell-targeting.test.mjs`, `test/area-geometry.test.mjs`,
 `test/spell-effects.test.mjs`, `test/spell-cast-visual-point.test.mjs`,
 `test/board3d-spell-effects.test.mjs`, `test/board3d-effects.test.mjs`,
-`test/actor-models.test.mjs`, `test/spell-effects-ui-integration.test.mjs`.
+`test/actor-models.test.mjs`.
 
 Аудиопрофили используют 53 записанных OGG-файла с отдельными sound families для
 стихий, utility-вариантов и боевых сигналов. Синтеза Web Audio нет: доступны общий

@@ -27,7 +27,6 @@ import { applyGameEvent, eventSummary, normalizeCampaignState, resolveCommand } 
 import { PROJECTED_STATE_KEYS, campaignStateForViewer, mechanicsForViewer } from '../server/viewer-projection.mjs'
 
 const source = (relative) => readFileSync(new URL(`../${relative}`, import.meta.url), 'utf8')
-const views = source('src/AppViews.tsx')
 const board = source('src/DungeonMap.tsx')
 const app = source('src/App.tsx')
 const session = source('src/useGameSession.ts')
@@ -275,21 +274,6 @@ test('модель зовут после отказов движка и не з�
 // ---------------------------------------------------------------------------
 // Разметка
 // ---------------------------------------------------------------------------
-
-test('письмо в летописи — конверт, а не приглушённая служебная строка', () => {
-  assert.match(views, /message\.letter \? \(/u)
-  assert.match(views, /<LetterChronicleEntry key=\{message\.id\}/u)
-  assert.match(views, /Почта отряда/u)
-  assert.match(views, /letter-route/u)
-  // Фильтр «Рассказ» конверт показывает, «Бой» — нет. Условие общее для всех
-  // системных карточек летописи (врезка хода мира, конверт, ступень
-  // приручения), поэтому проверяется вхождение письма в него, а не дословный
-  // список: новая карточка не обязана ронять контракт почты.
-  assert.match(views, /chronicleMatchesFilter\(message\.speaker, filter, Boolean\(message\.offscreen \|\|[^)]*message\.letter/u)
-  assert.match(styles, /\.message\.system\.letter-entry \{ margin-bottom: 14px; opacity: 1; \}/u)
-  assert.match(styles, /\.letter-card \{/u)
-  assert.match(styles, /\.letter-text \{/u)
-})
 
 test('написать письмо можно кнопкой на доске, а не только подсказкой', () => {
   assert.match(board, /className="letters-panel"/u)

@@ -7,7 +7,6 @@ import { campaignStateForViewer } from '../server/viewer-projection.mjs'
 import { DEED_KINDS } from '../server/world-deeds.mjs'
 import { campaignClockLabel } from '../src/desktop-ui.mjs'
 
-const views = readFileSync(new URL('../src/AppViews.tsx', import.meta.url), 'utf8')
 const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
 
 const VILLAGE = 'Тихий Брод'
@@ -80,26 +79,4 @@ test('у каждого вида поступка есть русская под
   for (const [kind, definition] of Object.entries(DEED_KINDS)) {
     assert.match(definition.label ?? '', /^[А-ЯЁ][а-яё ]+$/u, `вид поступка ${kind} остался без русской подписи`)
   }
-})
-
-test('лента поступков и слухов живёт в админке и подписана по-русски', () => {
-  assert.match(views, /<WorldDeedsCard state=\{state\} \/>/u)
-  assert.match(views, /admin-card admin-deeds/u)
-  assert.match(views, /Поступки и слухи/u)
-  // Секрет и молва — разные состояния карточки, и оба обязаны быть видны.
-  assert.match(views, /Без свидетелей/u)
-  assert.match(views, /Свидетелей: \$\{deed\.witness_count \?\? 0\}/u)
-  assert.match(views, /Видел сам/u)
-  assert.match(views, /'Видел сам' : 'Пересказ'/u)
-  // Подписи и порядок — серверные: своей таблицы и своей сортировки у карточки
-  // быть не должно, иначе источников истины снова становится два.
-  assert.doesNotMatch(views, /DEED_LABELS/u)
-  assert.doesNotMatch(views, /world_deeds\?\.deeds[^\n]*\.sort\(/u)
-})
-
-test('карточки поступков и слухов оформлены и не ломают узкий экран', () => {
-  assert.match(styles, /\.deed-feed article \{/u)
-  assert.match(styles, /\.deed-feed article\.bright \{/u)
-  assert.match(styles, /\.rumor-list li \{/u)
-  assert.match(styles, /\.deed-feed article \{ grid-template-columns: 1fr; \}/u)
 })

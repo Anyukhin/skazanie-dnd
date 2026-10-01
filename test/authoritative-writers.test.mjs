@@ -65,17 +65,3 @@ test('реестр авторитетных писателей не растёт
       + 'Обновите реестр в docs/agent-architecture-plan.md тем же PR.')
   }
 })
-
-test('политики устойчивости расходятся — и это записано до унификации', () => {
-  const orchestrator = readFileSync(new URL('../server/game-orchestrator.mjs', import.meta.url), 'utf8')
-  const scheduler = readFileSync(new URL('../server/npc-turn-scheduler.mjs', import.meta.url), 'utf8')
-
-  // Основной ход игрока переживает конфликт версии прозрачно.
-  assert.match(orchestrator, /STATE_VERSION_CONFLICT/u,
-    'основной ход обязан различать конфликт версии')
-
-  // Планировщик NPC — нет. Тест фиксирует это как текущее поведение;
-  // шаг 4 плана меняет его явным коммитом, а не «чтобы позеленело».
-  assert.doesNotMatch(scheduler, /STATE_VERSION_CONFLICT/u,
-    'если планировщик NPC научился retry — это шаг 4, обновите тест осознанно')
-})

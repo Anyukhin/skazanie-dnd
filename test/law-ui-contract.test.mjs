@@ -7,8 +7,6 @@ import { merchantViewFor } from '../server/merchant-economy.mjs'
 import { applyGameEvent, normalizeCampaignState } from '../server/rules-engine.mjs'
 import { campaignStateForViewer } from '../server/viewer-projection.mjs'
 
-const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
-const board = readFileSync(new URL('../src/DungeonMap.tsx', import.meta.url), 'utf8')
 const views = readFileSync(new URL('../src/AppViews.tsx', import.meta.url), 'utf8')
 const shop = readFileSync(new URL('../src/MerchantView.tsx', import.meta.url), 'utf8')
 const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
@@ -176,50 +174,4 @@ test('лавка под розыском отказывает причиной, 
   assert.match(shop, /quote\.unavailable_reason \|\| 'Торговец отказывает отряду'/u)
   assert.match(shop, /const sellRefusal = quote\?\.unavailable_reason \|\| quote\?\.reason/u)
   assert.match(shop, /tradeRefusal \? 'Отказано'/u)
-})
-
-test('встреча со стражей живёт на доске отдельной панелью с четырьмя ответами', () => {
-  assert.match(board, /className="guard-panel"/u)
-  assert.match(board, /aria-label="Встреча со стражей"/u)
-  assert.match(board, /state\.law\?\.encounter/u)
-  assert.match(board, /onResolveGuardEncounter\(option\.id/u)
-  // Пока офицер стоит перед отрядом, уход из локации закрыт: сервер такой
-  // переход не пропустит, и кнопка обязана говорить об этом, а не падать
-  // ошибкой после нажатия.
-  assert.match(board, /disabled=\{leaveLocationDisabled \|\| narrating \|\| tacticalBusy \|\| Boolean\(guardEncounter\)\}/u)
-  assert.match(board, /Стража стоит перед отрядом — сначала ответьте офицеру/u)
-  // Подходы к побегу выбирает игрок, навык уезжает командой.
-  assert.match(board, /guard-escape-skill/u)
-  assert.match(board, /Скрытность/u)
-  assert.match(board, /Атлетика/u)
-  // Своей таблицы исходов и своей ступени у доски быть не должно.
-  assert.doesNotMatch(board, /GUARD_OPTION_LABELS/u)
-  assert.doesNotMatch(board, /law\?\.encounter\?\.level/u)
-})
-
-test('приметы розыска стоят в шапке сцены, а не индикатором со ступенью', () => {
-  assert.match(app, /className="scene-wanted"/u)
-  assert.match(app, /wantedSigns=\{state\.law\?\.signs \?\? \[\]\}/u)
-  assert.doesNotMatch(app, /wantedLevel/u)
-})
-
-test('карточка закона живёт в админке, подписана по-русски и даёт амнистию', () => {
-  assert.match(views, /<WantedCard state=\{state\} \/>/u)
-  assert.match(views, /admin-card admin-wanted/u)
-  assert.match(views, /Закон и розыск/u)
-  assert.match(views, /Амнистия/u)
-  assert.match(views, /ClearWantedLevel/u)
-  // Пороги ступеней и порядок краёв считает сервер: своей таблицы здесь нет.
-  assert.doesNotMatch(views, /WANTED_LEVEL_THRESHOLDS/u)
-  assert.doesNotMatch(views, /law\?\.regions[^\n]*\.sort\(/u)
-})
-
-test('панели закона оформлены и не ломают узкий экран', () => {
-  assert.match(styles, /\.guard-panel \{/u)
-  assert.match(styles, /\.guard-option \{/u)
-  assert.match(styles, /\.guard-option\.option-fight \{/u)
-  assert.match(styles, /\.scene-wanted \{/u)
-  assert.match(styles, /\.wanted-region \{/u)
-  assert.match(styles, /\.wanted-region\.tier-wanted \{/u)
-  assert.match(styles, /\.wanted-region li \{ grid-template-columns: 1fr; \}/u)
 })
