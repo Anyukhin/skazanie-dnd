@@ -20,7 +20,7 @@
   Типы описываются JSDoc-ом (`@typedef`, `@param`, `@returns`) и JSDoc-приведением
   `/** @type {T} */ (expr)` — рантайм при этом не меняется. Если для зелёного
   нужна правка поведения — остановиться и вынести её отдельной задачей.
-  Проверяются 24 файла (на 2026-10-01): список даёт
+  Проверяются 29 файлов (на 2026-10-02): список даёт
   `grep -rl '^// @ts-check' server/`. `rules-engine.mjs` и `index.mjs` в нём нет.
   Форма тактической клетки (`SceneCell`) объявлена в `server/dynamic-map.mjs`.
 - **`src/` — TypeScript + React + Vite.** Проверяется через `tsc --noEmit -p tsconfig.app.json`.
@@ -63,6 +63,8 @@ pnpm props:atlas      # пересборка растрового атласа �
 pnpm props:rights     # хеши атласа в data/asset-rights.json (иначе content:verify падает на дрейфе)
 pnpm terrain:tiles    # пересборка фактур пола, поверхностей и стен из assets-src/floor-wall-stamps:
                       # сшивает края, уменьшает, пишет палитровым PNG. Затем pnpm terrain:rights
+pnpm talespire:assets # таблица ассетов TaleSpire для импорта карт (data/talespire-assets-v1.json)
+                      # из установленной игры; путь — --dir или TALESPIRE_DIR. Только роли и габариты
 pnpm migrate:dry-run  # прогон миграций без записи
 pnpm backup           # зашифрованная копия storage в ./backups/skazanie-<дата>.skzbackup;
                       # каталог источника — DND_STORAGE_DIR, иначе ./storage. Нужен ключ
@@ -152,8 +154,15 @@ pnpm backup           # зашифрованная копия storage в ./backu
 `projection-integrity.mjs`, `npc-turn-scheduler.mjs`, `campaign-loop-policy.mjs`,
 `world-deeds.mjs`, `captives.mjs`, `parley.mjs`, `law-and-order.mjs`,
 `weather.mjs`, `offscreen-world.mjs`, `loot-containers.mjs`, `tavern-life.mjs`,
-`courier-letters.mjs`.
+`courier-letters.mjs`, `talespire-slab.mjs`, `talespire-import.mjs`, `map-library.mjs`.
 Не описывать их как «агентов».
+
+**Готовые карты (TaleSpire):** `talespire-slab.mjs` разбирает строку слэба,
+`talespire-import.mjs` проецирует её на этажи тактической карты, делит этажи на
+комнаты и считает паспорт места, `map-library.mjs` хранит библиотеку в
+`<storage>/map-library` и подбирает постройку под новую локацию внутри
+`generateSceneGeometryFor` (`adventure-director.mjs`). Команда ведущего —
+`ImportLocationMap` в Rules Engine, маршрут — `server/routes/map-import-routes.mjs`.
 
 `server/player-request-router.mjs` объявляет роли маршрутизации ввода игрока (`PLAYER_REQUEST_ROLES`). `prompt_id` там стоит
 только у ролей, которые действительно исполняет модель, и **не читается ни одним

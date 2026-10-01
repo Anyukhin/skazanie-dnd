@@ -1,0 +1,27 @@
+/* Окно импорта карты из TaleSpire: широкий модал с предпросмотром этажей. */
+.modal.map-import-modal { width: min(1080px, 100%); max-height: calc(100vh - 40px); overflow-y: auto; text-align: left; }
+.modal.map-import-modal .modal-icon { margin-left: 0; }
+.modal.map-import-modal p { max-width: none; margin-left: 0; }
+.map-import-field { display: grid; gap: 6px; margin-bottom: 12px; color: #a99c8b; font-size: var(--fs-sm); }
+.map-import-field select,
+.map-import-field textarea { width: 100%; padding: 8px 10px; border: 1px solid rgba(213,176,128,.18); border-radius: 5px; background: rgba(5,4,3,.35); color: #e2d8ca; font-size: var(--fs-sm); }
+.map-import-field textarea { resize: vertical; min-height: 84px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; word-break: break-all; }
+.map-import-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 4px 0 8px; }
+.map-import-actions button { height: 36px; padding: 0 14px; border: 1px solid rgba(204,151,86,.3); border-radius: 4px; background: rgba(180,120,55,.1); color: #c79458; font-size: var(--fs-md); cursor: pointer; }
+.map-import-actions button.primary { background: rgba(198,140,72,.28); color: #f0dcc0; }
+.map-import-actions button:disabled { opacity: .5; cursor: default; }
+.map-import-done { color: #9fc48a !important; }
+.map-import-levels { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
+.map-import-levels button { padding: 5px 11px; border: 1px solid rgba(213,176,128,.18); border-radius: 999px; background: transparent; color: #b7afa4; font-size: var(--fs-sm); cursor: pointer; }
+.map-import-levels button.active { border-color: rgba(211,158,92,.6); background: rgba(198,140,72,.18); color: #f0dcc0; }
+.map-import-preview { height: min(54vh, 560px); border: 1px solid rgba(213,176,128,.12); border-radius: 6px; overflow: hidden; background: #100f0d; }
+.map-import-preview .combat-lab-board { height: 100%; display: flex; flex-direction: column; margin: 0; }
+.map-import-preview .combat-lab-board-controls { padding: 6px 10px 0; margin: 0; font-size: var(--fs-xs); color: #8d8478; }
+.map-import-preview .combat-lab-board-controls button { padding: 4px 8px; border: 1px solid rgba(213,176,128,.18); border-radius: 4px; background: transparent; color: #b7afa4; font-size: var(--fs-xs); cursor: pointer; }
+.map-import-preview .combat-lab-board-viewport { flex: 1; min-height: 0; overflow: hidden; }
+.map-import-stats,
+.map-import-warnings { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 12px 0 0; padding: 0; list-style: none; color: #a99c8b; font-size: var(--fs-sm); }
+.map-import-stats b { color: #e2d8ca; }
+.map-import-warnings { display: block; color: #c9a26b; }
+.map-import-warnings li::before { content: '! '; }
+@media (max-width: 640px) { .modal.map-import-modal { padding: 26px 16px 20px; } .map-import-preview { height: 46vh; } }

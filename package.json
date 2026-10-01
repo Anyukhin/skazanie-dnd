@@ -45,7 +45,8 @@
     "enemies:portrait": "node tools/generate-enemy-portrait.mjs",
     "enemies:rights": "node tools/register-asset-rights.mjs --all-under enemies",
     "terrain:tiles": "node tools/build-terrain-tiles.mjs",
-    "terrain:rights": "node tools/register-asset-rights.mjs --all-under maps/terrain"
+    "terrain:rights": "node tools/register-asset-rights.mjs --all-under maps/terrain",
+    "talespire:assets": "node tools/build-talespire-asset-table.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^6.0.3",

@@ -2,9 +2,9 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import { generateSceneGeometry } from './adventure-director.mjs'
+import { generateSceneGeometry, levelKey, librarySceneFields, rememberSceneMap } from './adventure-director.mjs'
 import { applyNpcWorldEvent, planSceneNpcPlacementEvents } from './npc-positioning.mjs'
-import { serializeTacticalMap, reachableCells, SIZE_CLASSES } from './tactical-map.mjs'
+import { deserializeTacticalMap, legacyCellsFromTacticalMap, serializeTacticalMap, reachableCells, SIZE_CLASSES } from './tactical-map.mjs'
 import { ECONOMY_POLICY_ID, createStarterMerchant, normalizeMerchants } from './merchant-economy.mjs'
 import { withStarterKit } from './starter-kit.mjs'
 import { MAX_CHARACTER_LEVEL, partyPresentationFor } from './character-lifecycle.mjs'
@@ -570,6 +570,9 @@ export class CampaignBootstrapper {
       biome: placeContext.biome,
       worldDescription: [campaignConcept.worldSummary, campaignConcept.premise, campaignConcept.setting, campaignConcept.description].filter((value) => typeof value === 'string').join(' ').slice(0, 2400),
       map: opening.scene.map,
+      // Авторский мир держит свою стартовую карту одинаковой для всех столов,
+      // поэтому библиотека готовых карт подключается только к свободным мирам.
+      useLibrary: !worldTemplate,
     })
     const cells = geometry.cells
     const positions = startingCells(cells, heroes.length, {
@@ -671,6 +674,14 @@ export class CampaignBootstrapper {
       sceneTacticalMapValue.theme = startingThemeId
     }
     const sceneTacticalMap = serializeTacticalMap(sceneTacticalMapValue)
+    // Стартовая сцена из библиотеки: этажи и источник карты в сцене, верхние и
+    // нижние этажи — сразу в памяти локации, как их кладёт `SceneAdvanced`.
+    const librarySceneExtras = geometry.library ? librarySceneFields(geometry.library) : {}
+    /** @type {{ locationMaps?: Record<string, unknown> }} */
+    const libraryMemory = {}
+    for (const level of geometry.library?.levels ?? []) {
+      rememberSceneMap(libraryMemory, levelKey(startingLocationId, level.index), legacyCellsFromTacticalMap(deserializeTacticalMap(level.map)), level.map)
+    }
     const emptyNpcWorld = {
       schema_version: 3,
       placements: [], vitals: {}, stances: {}, inventories: {},
@@ -680,7 +691,7 @@ export class CampaignBootstrapper {
       ])),
     }
     const placementDraft = {
-      scene: { title: opening.scene.title, location: opening.scene.location, location_id: startingLocationId, mood: opening.scene.mood, objective: opening.scene.objective, turn: 1, cells, map: sceneTacticalMap },
+      scene: { title: opening.scene.title, location: opening.scene.location, location_id: startingLocationId, mood: opening.scene.mood, objective: opening.scene.objective, turn: 1, ...librarySceneExtras, cells, map: sceneTacticalMap },
       social: { npcs: openingNpcs },
       players: positionedHeroes,
       npc_world: emptyNpcWorld,
@@ -764,8 +775,9 @@ export class CampaignBootstrapper {
       activePlayerId: positionedHeroes[0].id,
       tacticalTurn: { sceneTurn: 1, actorId: positionedHeroes[0].id, movementSpent: 0, actionUsed: false },
       isNarrating: false, pendingCheck: null, agentInteraction: null, lastDiceRoll: null,
-      scene: { title: opening.scene.title, location: opening.scene.location, location_id: startingLocationId, mood: opening.scene.mood, objective: opening.scene.objective, turn: 1, cells, map: sceneTacticalMap },
+      scene: { title: opening.scene.title, location: opening.scene.location, location_id: startingLocationId, mood: opening.scene.mood, objective: opening.scene.objective, turn: 1, ...librarySceneExtras, cells, map: sceneTacticalMap },
       npc_world: npcWorld,
+      ...(libraryMemory.locationMaps ? { locationMaps: libraryMemory.locationMaps } : {}),
       adventure: { chapter: 1, currentHook: opening.hook, visitedLocations: [opening.scene.location], unresolvedThreads: [opening.hook], history: [] },
       messages: [{ id: `opening-${seed}`, speaker: 'narrator', author: 'Рассказчик', timestamp: new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' }).format(new Date()), text: opening.openingNarration, turnConsumed: false }],
     }

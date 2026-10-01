@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto'
 import { generateDynamicSceneMap } from './dynamic-map.mjs'
 import { reconcileWorldMap, worldLocationById } from './world-map.mjs'
-import { SIZE_CLASSES, legacyCellsFromTacticalMap, serializeTacticalMap, tacticalMapFromLegacyCells } from './tactical-map.mjs'
+import { SIZE_CLASSES, deserializeTacticalMap, legacyCellsFromTacticalMap, serializeTacticalMap, tacticalMapFromLegacyCells } from './tactical-map.mjs'
+import { authoredLocationMapMetaFor } from './authored-location-maps.mjs'
+import { LIBRARY_SEED_PREFIX, activeMapLibrary, libraryIdsInUse, libraryRequestFor } from './map-library.mjs'
 import { sceneInteractionCatalogEntry, sceneInteractionFallbackAssets } from './scene-interactions.mjs'
 import { REFERENCE_SIZE } from './building-generator.mjs'
 import { normalizeDeclaredLevels } from './level-generator.mjs'
@@ -249,7 +251,7 @@ export function rememberCurrentSceneMap(state) {
  * «явная просьба сильнее догадки» сохранён, но выражен иначе: просьба теперь
  * ведёт к теме, а не мимо неё.
  */
-function generateSceneGeometryFor({ theme, danger, location, sceneKind, settlementType = '', worldKind = '', seed, locationId, requestedMap, levels = [], description = '', worldDescription = '', biome = '' }) {
+function generateSceneGeometryFor({ theme, danger, location, sceneKind, settlementType = '', worldKind = '', seed, locationId, requestedMap, levels = [], description = '', worldDescription = '', biome = '', useLibrary = true, usedLibraryIds = [] }) {
   // Опознание живёт в одном месте — `server/scene-themes.mjs`. Название —
   // не единственный признак: вид точки карты мира, тип поселения и заявка
   // картографа весят не меньше, иначе деревня с «бродом» в имени становилась
@@ -268,6 +270,20 @@ function generateSceneGeometryFor({ theme, danger, location, sceneKind, settleme
   const waterScene = recognized.kind === 'open' && design.topology !== 'river' && !explicitTheme
     && (waterBody || (Number.isFinite(waterChance) && waterChance >= 0.35))
   const matched = !waterScene && isLiveTheme(recognized) ? recognized : null
+  // Библиотека готовых карт встаёт после авторского каталога и до процедурного
+  // генератора: авторская карта места важнее, а подходящая готовая постройка
+  // лучше сгенерированной. Явный `theme_id` архитектора — просьба о конкретной
+  // подготовленной геометрии, и библиотека её не перебивает.
+  const library = matched && useLibrary && !explicitTheme && !String(matched.id).startsWith('authored-')
+    && !authoredLocationMapMetaFor(locationId) ? activeMapLibrary() : null
+  if (library) {
+    const picked = library.pick(libraryRequestFor({
+      themeId: matched.id, buildingUse: design.building_use, topology: design.topology, climate: design.climate,
+      worldKind, levels, width: Number(requestedMap.width) || REFERENCE_SIZE.width, height: Number(requestedMap.height) || REFERENCE_SIZE.height,
+      place: `${location} ${theme}`, world: worldDescription,
+    }), { seed, usedIds: usedLibraryIds })
+    if (picked) return librarySceneGeometry(picked, { locationId, theme: matched.assetTheme ?? matched.id })
+  }
   if (matched) {
     const exteriorCue = /снаружи|у входа|перед (?:дом|здани|таверн|трактир|замк|дворц)|у двер(?:и|ей)/iu
     const startsOutside = exteriorCue.test(`${location} ${theme}`)
@@ -301,6 +317,59 @@ function generateSceneGeometryFor({ theme, danger, location, sceneKind, settleme
 }
 
 /**
+ * Сцена из библиотечной карты: этаж входа — карта сцены, остальные этажи едут
+ * рядом и ложатся в память локации. Каждый этаж помечается сидом
+ * `library:<id>:<этаж>`, по нему кампания узнаёт уже использованные карты.
+ *
+ * @param {{ entry: import('./map-library.mjs').LibraryEntry, levels: Array<{ index: number, label: string, map: Record<string, unknown> }> }} picked
+ * @param {{ locationId: string, theme: string }} options
+ */
+function librarySceneGeometry({ entry, levels }, { locationId, theme }) {
+  const maps = levels.map((level) => {
+    const map = deserializeTacticalMap(clone(level.map))
+    map.locationId = publicText(locationId, 120)
+    map.seed = `${LIBRARY_SEED_PREFIX}${entry.id}:${Number(level.index) || 0}`
+    map.theme = text(theme, 60)
+    return { index: Number(level.index) || 0, label: text(level.label, 120), map }
+  })
+  const ground = maps.find((level) => level.index === 0)?.map ?? maps[0].map
+  return {
+    cells: legacyCellsFromTacticalMap(ground),
+    map: ground,
+    library: {
+      entry,
+      levels: maps.filter((level) => level.index !== 0)
+        .map((level) => ({ index: level.index, label: level.label, map: serializeTacticalMap(level.map) })),
+    },
+  }
+}
+
+/**
+ * Поля сцены, которые приносит библиотечная карта: этажи (подписи — те же,
+ * что у карт), источник с автором и лицензией для атрибуции и паспорт места
+ * словами — его читает Рассказчик, чтобы описание совпадало с картой.
+ *
+ * @param {{ entry: import('./map-library.mjs').LibraryEntry, levels: Array<{ index: number, label: string }> }} library
+ */
+export function librarySceneFields(library) {
+  const { entry } = library
+  return {
+    ...(library.levels.length ? { levels: library.levels.map((level) => ({ offset: level.index, hint: '', label: level.label })) } : {}),
+    map_source: {
+      kind: 'map-library',
+      id: entry.id,
+      title: text(entry.title, 160),
+      author: text(entry.source?.author, 120),
+      url: text(entry.source?.url, 300),
+      license: text(entry.source?.license, 120),
+      license_url: text(entry.source?.license_url, 300),
+      site: text(entry.source?.site, 80),
+    },
+    layout: text(entry.passport?.summary, 400),
+  }
+}
+
+/**
  * Тот же выбор генератора для тех, кто собирает сцену вне перехода Режиссёра —
  * прежде всего для первой сцены кампании. Пока эта развилка жила только внутри
  * перехода, стартовая сцена не могла получить тему ни при каких словах.
@@ -308,11 +377,11 @@ function generateSceneGeometryFor({ theme, danger, location, sceneKind, settleme
  * @param {object} input
  * @returns {ReturnType<typeof generateDynamicSceneMap>}
  */
-export function generateSceneGeometry({ theme = '', danger = 'средняя', location = '', sceneKind = '', settlementType = '', worldKind = '', seed = 'scene', locationId = '', map = {}, levels = [], description = '', worldDescription = '', biome = '' } = {}) {
+export function generateSceneGeometry({ theme = '', danger = 'средняя', location = '', sceneKind = '', settlementType = '', worldKind = '', seed = 'scene', locationId = '', map = {}, levels = [], description = '', worldDescription = '', biome = '', useLibrary = true } = {}) {
   const requestedMap = map && typeof map === 'object' && !Array.isArray(map) ? map : {}
   return generateSceneGeometryFor({
     theme, danger, location, sceneKind, settlementType, worldKind, seed, locationId, requestedMap,
-    levels: normalizeDeclaredLevels(levels), description, worldDescription, biome,
+    levels: normalizeDeclaredLevels(levels), description, worldDescription, biome, useLibrary,
   })
 }
 
@@ -550,7 +619,9 @@ export function createSceneTransition(input = {}, state = {}) {
     biome: placeContext.biome,
     worldDescription: [state.campaignConcept?.worldSummary, state.campaignConcept?.premise,
       state.campaignConcept?.setting, state.campaignConcept?.description].filter((value) => typeof value === 'string').join(' ').slice(0, 2400),
+    usedLibraryIds: [...libraryIdsInUse(state.locationMaps)],
   })
+  const library = generated?.library ?? null
   const cells = rememberedMap ?? generated.cells
   const mapTheme = text(resolvedTheme?.assetTheme ?? resolvedTheme?.id, 60)
   const tacticalMap = rememberedTacticalMap ?? generated?.map ?? tacticalMapFromLegacyCells(cells, {
@@ -578,6 +649,9 @@ export function createSceneTransition(input = {}, state = {}) {
     // перехода на этапе L3. Одноэтажная локация поля не получает вовсе, поэтому
     // сохранённые кампании и старые события читаются как раньше.
     ...(declaredLevels.length ? { levels: declaredLevels } : {}),
+    // Библиотечная карта приносит свои этажи: заявка архитектора на этажи
+    // уступает фактической постройке, иначе подписи разошлись бы с картой.
+    ...(library ? librarySceneFields(library) : {}),
     cells,
     map: serializedMap,
   }
@@ -599,6 +673,7 @@ export function createSceneTransition(input = {}, state = {}) {
     },
     transition,
     arrival,
+    ...(library?.levels.length ? { library_levels: library.levels } : {}),
     // Старый переход без заявки сохраняет совместимую точку (1,4). Для
     // заявленной карты вход выводится из её размеров, чтобы широкий берег или
     // озеро не получили недостижимую старую координату.

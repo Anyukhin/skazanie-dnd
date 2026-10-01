@@ -84,7 +84,7 @@ function unavailableSpatialContext() {
 /** Видимая обстановка у действующего лица, без скрытых комнат и бинарных слоёв карты. */
 export function sceneContextForAgent(state = {}, actorId = '') {
   const scene = state.scene ?? {}
-  const context = Object.fromEntries(['title', 'location', 'mood', 'objective', 'theme', 'scene_kind'].map((key) => [key, clean(scene[key], 300)]))
+  const context = Object.fromEntries(['title', 'location', 'mood', 'objective', 'theme', 'scene_kind', 'layout'].map((key) => [key, clean(scene[key], key === 'layout' ? 400 : 300)]).filter(([key, value]) => key !== 'layout' || value))
   const metadata = agentContextMetadata(state, { role: 'scene_context', actorId, contractVersion: 'scene-context/v2' })
   if (!scene.map || typeof scene.map !== 'object') return { ...context, context_metadata: metadata, spatial_context: unavailableSpatialContext() }
   let map

@@ -181,6 +181,8 @@ import {
 } from './location-illustrations.mjs'
 import { CombatLabError, CombatLabRuns } from './combat-lab.mjs'
 import { createCombatLabRoutes } from './routes/combat-lab-routes.mjs'
+import { createMapImportRoutes } from './routes/map-import-routes.mjs'
+import { MapLibrary, setActiveMapLibrary } from './map-library.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const dist = join(root, 'dist')
@@ -313,6 +315,14 @@ const handleCombatLabRoute = createCombatLabRoutes({ combatLabRuns, CombatLabErr
  * исполнитель, а разрешает их явная таблица и неподделываемая capability.
  */
 const authoritativeExecutor = new AuthoritativeExecutor({ eventStore, rulesEngine })
+// Библиотека готовых карт (`<storage>/map-library`). Пустая библиотека ничего
+// не меняет: генератор сцены спрашивает её и уходит к процедурной карте.
+// DND_MAP_LIBRARY=off выключает подбор целиком.
+setActiveMapLibrary(String(process.env.DND_MAP_LIBRARY ?? '').toLowerCase() === 'off' ? null : new MapLibrary(storageDir))
+const handleMapImportRoute = createMapImportRoutes({
+  requireUser, getRoom, campaignMembershipFor, readBody, json, eventStore, authoritativeExecutor,
+  persistAuthoritativeProjection, campaignHeroIds, viewerStateFor,
+})
 
 /**
  * Шаг 7 плана `docs/agent-architecture-plan.md`, первое подключение.
@@ -3416,6 +3426,7 @@ const server = createServer((req, res) => {
     return json(res, 200, { usage: usageLedger.report(), architect: architectUsage.report(), models: llmClient.health() })
   }
   if (await handleCombatLabRoute(req, res, requestPath)) return
+  if (await handleMapImportRoute(req, res, requestPath)) return
   if (req.url === '/api/speech/status' && req.method === 'GET') {
     const user = requireUser(req, res); if (!user) return
     return json(res, 200, { available: await speechInputAvailable(), maxSeconds: 60 })
