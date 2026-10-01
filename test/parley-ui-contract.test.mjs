@@ -14,7 +14,7 @@ import { PARLEY_OUTCOMES, PARLEY_TERMS } from '../server/parley.mjs'
  * показаны карточкой с подписями всех серверных исходов, а клиент не считает
  * ни СЛ, ни доступность исхода сам.
  */
-const board = readFileSync(new URL('../src/DungeonMap.tsx', import.meta.url), 'utf8')
+const board = ['../src/DungeonMap.tsx', '../src/dungeon-map-parts.tsx'].map((path) => readFileSync(new URL(path, import.meta.url), 'utf8')).join('\n')
 const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
 const session = readFileSync(new URL('../src/useGameSession.ts', import.meta.url), 'utf8')
 const shared = readFileSync(new URL('../src/app-shared.tsx', import.meta.url), 'utf8')

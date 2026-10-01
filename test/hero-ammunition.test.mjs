@@ -201,7 +201,7 @@ test('проекция сама считает боеприпасы: у пачк
 })
 
 test('хотбар считает боеприпасы серверными числами и объясняет пустой колчан', () => {
-  const board = readFileSync(new URL('../src/DungeonMap.tsx', import.meta.url), 'utf8')
+  const board = ['../src/DungeonMap.tsx', '../src/dungeon-map-parts.tsx'].map((path) => readFileSync(new URL(path, import.meta.url), 'utf8')).join('\n')
   // Счётчик обязан идти от проекции: своя таблица «лук → стрелы» в браузере
   // разошлась бы с серверным отказом ровно в тот момент, когда это важно.
   assert.match(board, /item\.capabilities\?\.ammunition/u)
