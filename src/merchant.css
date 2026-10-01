@@ -1,4 +1,4 @@
-.merchant-page { background: radial-gradient(circle at 12% 8%, rgba(139, 91, 42, .13), transparent 32%), radial-gradient(circle at 88% 28%, rgba(70, 103, 77, .07), transparent 28%), #100f0d; }
+.merchant-page { background: #100f0d; }
 
 /* Лавка открывается поверх комнаты, а не вместо неё: карта, история, отряд и
    положение камеры остаются на месте, и «вернуться из торговли» не нужно —
@@ -17,14 +17,14 @@
 .merchant-close { position: absolute; z-index: 3; top: 12px; right: 12px; width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 4px; background: rgba(8, 7, 6, .72); color: #93887d; cursor: pointer; }
 .merchant-close:hover { border-color: rgba(211, 153, 86, .4); color: #d0a36c; }
 .merchant-page-head { max-width: 1280px; min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 12px; }
-.merchant-page-head h1 { min-width: 0; overflow: hidden; margin: 0; color: #e1d6c8; font: 600 clamp(21px, 2.3vw, 28px) Spectral, serif; text-overflow: ellipsis; white-space: nowrap; }
+.merchant-page-head h1 { min-width: 0; overflow: hidden; margin: 0; color: #e1d6c8; font: 700 clamp(21px, 2.3vw, 28px) var(--f-display); text-overflow: ellipsis; white-space: nowrap; }
 .merchant-location { max-width: 340px; display: flex; align-items: center; gap: 9px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 6px; color: #a27748; background: rgba(255,255,255,.015); }
 .merchant-location > span { min-width: 0; display: grid; }
 .merchant-location small { color: #625a52; font-size: var(--fs-xxs); letter-spacing: .11em; }
-.merchant-location b { overflow: hidden; color: #ada195; font: 600 var(--fs-xs) Spectral, serif; text-overflow: ellipsis; white-space: nowrap; }
+.merchant-location b { overflow: hidden; color: #ada195; font: 600 var(--fs-xs) var(--f-serif); text-overflow: ellipsis; white-space: nowrap; }
 .merchant-mode-warning, .merchant-error { max-width: 1280px; display: flex; align-items: center; gap: 11px; margin-bottom: 13px; padding: 11px 13px; border: 1px solid rgba(181, 127, 64, .19); border-radius: 6px; background: rgba(151, 96, 38, .07); color: #bc8950; }
 .merchant-mode-warning > div { display: grid; gap: 2px; }
-.merchant-mode-warning b { color: #c7a277; font: 600 var(--fs-xxs) Spectral, serif; }
+.merchant-mode-warning b { color: #c7a277; font: 600 var(--fs-xxs) var(--f-serif); }
 .merchant-mode-warning p { margin: 0; color: #74675a; font-size: var(--fs-xs); }
 .merchant-error { border-color: rgba(175, 76, 65, .22); background: rgba(135, 52, 44, .08); color: #b9786e; font-size: var(--fs-xs); }
 .merchant-error span { flex: 1; }
@@ -32,40 +32,40 @@
 .merchant-layout { max-width: 1280px; display: grid; grid-template-columns: minmax(250px, .62fr) minmax(520px, 1.65fr); gap: 14px; align-items: start; }
 .merchant-profile, .merchant-market { min-width: 0; border: 1px solid var(--line); border-radius: 9px; background: rgba(25, 22, 19, .9); box-shadow: 0 16px 42px rgba(0,0,0,.17); }
 .merchant-profile { position: sticky; top: 0; padding: 22px; text-align: center; }
-.merchant-avatar { position: relative; width: 92px; height: 92px; display: grid; place-items: center; margin: 0 auto 12px; overflow: hidden; border: 1px solid rgba(207, 157, 96, .3); border-radius: 50%; background: radial-gradient(circle at 40% 35%, #5b4128, #241b14 67%); box-shadow: inset 0 0 0 5px rgba(10,8,7,.28), 0 12px 28px rgba(0,0,0,.28); color: #e0b77e; font: 600 var(--fs-3xl) Spectral, serif; }
+.merchant-avatar { position: relative; width: 92px; height: 92px; display: grid; place-items: center; margin: 0 auto 12px; overflow: hidden; border: 1px solid rgba(207, 157, 96, .3); border-radius: 50%; background: #402e1e; box-shadow: inset 0 0 0 5px rgba(10,8,7,.28), 0 12px 28px rgba(0,0,0,.28); color: #e0b77e; font: 700 var(--fs-3xl) var(--f-display); }
 .merchant-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .merchant-avatar i { position: absolute; right: 5px; bottom: 8px; width: 13px; height: 13px; border: 3px solid #241d17; border-radius: 50%; background: #729678; }
 .merchant-status { display: inline-flex; align-items: center; gap: 5px; color: #79937b; font-size: var(--fs-xxs); font-weight: 700; letter-spacing: .09em; }
 .merchant-status.unavailable { color: #9b6d62; }
-.merchant-profile h2 { margin: 6px 0 1px; color: #d9ccbd; font: 600 var(--fs-3xl) Spectral, serif; }
+.merchant-profile h2 { margin: 6px 0 1px; color: #d9ccbd; font: 700 var(--fs-3xl) var(--f-display); }
 .merchant-profile > small { color: #9c7448; font-size: var(--fs-xs); }
-.merchant-profile > p { margin: 12px 0 15px; color: #746d65; font: var(--fs-xs)/1.55 Spectral, serif; }
-.merchant-profile blockquote { position: relative; margin: 0; padding: 13px 13px 13px 34px; border: 1px solid rgba(204, 153, 90, .13); border-radius: 6px; background: rgba(154, 99, 42, .05); color: #9d8b77; font: italic var(--fs-xs)/1.5 Spectral, serif; text-align: left; }
+.merchant-profile > p { margin: 12px 0 15px; color: #746d65; font: var(--fs-xs)/1.55 var(--f-serif); }
+.merchant-profile blockquote { position: relative; margin: 0; padding: 13px 13px 13px 34px; border: 1px solid rgba(204, 153, 90, .13); border-radius: 6px; background: rgba(154, 99, 42, .05); color: #9d8b77; font: italic var(--fs-xs)/1.5 var(--f-serif); text-align: left; }
 .merchant-profile blockquote svg { position: absolute; left: 11px; top: 14px; color: #9c7142; }
 .merchant-policy { display: flex; align-items: flex-start; gap: 9px; margin-top: 13px; padding: 12px; border-radius: 6px; background: rgba(0,0,0,.14); color: #9b764e; text-align: left; }
 .merchant-policy > span { display: grid; min-width: 0; }
-.merchant-policy b { color: #a99b8c; font: 600 var(--fs-xs) Spectral, serif; }
+.merchant-policy b { color: #a99b8c; font: 600 var(--fs-xs) var(--f-serif); }
 .merchant-policy p { margin: 3px 0 7px; color: #686159; font-size: var(--fs-xxs); line-height: 1.5; }
 .merchant-policy small { overflow: hidden; color: #765b3e; font-size: var(--fs-xxs); letter-spacing: .08em; text-overflow: ellipsis; }
-.merchant-bargain { width: 100%; height: 39px; display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 12px; border: 1px solid rgba(204, 153, 89, .3); border-radius: 5px; background: linear-gradient(145deg, rgba(135, 88, 43, .2), rgba(83, 55, 31, .12)); color: #cc985c; font-size: var(--fs-xs); font-weight: 700; cursor: pointer; }
+.merchant-bargain { width: 100%; height: 39px; display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 12px; border: 1px solid rgba(204, 153, 89, .3); border-radius: 5px; background: rgba(116,76,38,0.16); color: #cc985c; font-size: var(--fs-xs); font-weight: 700; cursor: pointer; }
 .merchant-bargain:hover:not(:disabled), .merchant-item-actions > button:hover:not(:disabled) { filter: brightness(1.15); }
 .merchant-bargain:disabled, .merchant-item-actions > button:disabled, .merchant-wallet button:disabled { opacity: .4; cursor: not-allowed; }
 .merchant-bargain-result { display: grid; gap: 2px; margin-top: 8px; padding: 9px; border: 1px solid rgba(105, 150, 108, .17); border-radius: 5px; background: rgba(71, 109, 74, .07); color: #779479; text-align: left; }
 .merchant-bargain-result.failure { border-color: rgba(161, 91, 73, .16); background: rgba(120, 60, 49, .06); color: #9b6d62; }
-.merchant-bargain-result b { font: 600 var(--fs-xs) Spectral, serif; }
+.merchant-bargain-result b { font: 600 var(--fs-xs) var(--f-serif); }
 .merchant-bargain-result span { color: #726b63; font-size: var(--fs-xxs); }
 .merchant-market { overflow: hidden; }
 .merchant-wallet { min-height: 69px; display: flex; align-items: center; gap: 15px; padding: 11px 14px; border-bottom: 1px solid var(--line); background: rgba(0,0,0,.1); }
 .merchant-wallet > div:first-child { display: flex; align-items: center; gap: 9px; color: #af7e47; }
 .merchant-wallet > div:first-child span { display: grid; }
 .merchant-wallet small { color: #665e56; font-size: var(--fs-xxs); letter-spacing: .08em; }
-.merchant-wallet > div:first-child b { color: #c2b4a4; font: 600 var(--fs-xs) Spectral, serif; }
+.merchant-wallet > div:first-child b { color: #c2b4a4; font: 600 var(--fs-xs) var(--f-serif); }
 .merchant-purse { display: flex; align-items: center; gap: 8px; padding-left: 14px; border-left: 1px solid var(--line); color: #7d966f; }
 .merchant-purse span { display: grid; }
-.merchant-purse b { color: #a9b89e; font: 600 var(--fs-xxs) Spectral, serif; }
+.merchant-purse b { color: #a9b89e; font: 600 var(--fs-xxs) var(--f-serif); }
 .merchant-coins { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 .merchant-coins span { min-width: 43px; display: grid; justify-items: center; padding: 6px 7px; border: 1px solid rgba(255,255,255,.045); border-radius: 4px; background: rgba(255,255,255,.016); }
-.merchant-coins b { color: #a99d90; font: 600 var(--fs-xxs) Spectral, serif; }
+.merchant-coins b { color: #a99d90; font: 600 var(--fs-xxs) var(--f-serif); }
 .merchant-wallet button { height: 31px; display: flex; align-items: center; gap: 6px; padding: 0 9px; border: 1px solid var(--line); border-radius: 4px; background: transparent; color: #80766c; font-size: var(--fs-xxs); cursor: pointer; }
 .merchant-tabs { display: flex; border-bottom: 1px solid var(--line); }
 .merchant-tabs button { height: 45px; display: flex; align-items: center; gap: 7px; padding: 0 18px; border: 0; border-right: 1px solid var(--line); background: transparent; color: #736b63; font-size: var(--fs-xs); cursor: pointer; }
@@ -80,8 +80,8 @@
 .merchant-item-art.neutral { border-style: dashed; }
 .merchant-item-title > span { min-width: 0; }
 .merchant-item-title small { display: block; overflow: hidden; color: #625b54; font-size: var(--fs-xxs); letter-spacing: .06em; text-overflow: ellipsis; white-space: nowrap; }
-.merchant-item-title h3 { margin: 2px 0; color: #c9bcad; font: 600 var(--fs-md) Spectral, serif; }
-.merchant-item-title p { margin: 0; color: #706860; font: var(--fs-xs)/1.4 Spectral, serif; }
+.merchant-item-title h3 { margin: 2px 0; color: #c9bcad; font: 600 var(--fs-md) var(--f-serif); }
+.merchant-item-title p { margin: 0; color: #706860; font: var(--fs-xs)/1.4 var(--f-serif); }
 .merchant-item-title em { padding: 4px 6px; border-radius: 3px; background: rgba(84, 119, 87, .07); color: #748976; font-size: var(--fs-xxs); font-style: normal; white-space: nowrap; }
 .merchant-quote { padding: 0 13px 11px; }
 .merchant-server-badge { width: max-content; display: flex; align-items: center; gap: 5px; margin-bottom: 7px; color: #709375; font-size: var(--fs-xxs); font-weight: 700; letter-spacing: .08em; }
@@ -96,7 +96,7 @@
 .merchant-price-flow > i { flex: 0 0 auto; }
 .merchant-price-flow > span { min-width: 0; display: grid; align-content: center; gap: 2px; padding: 7px 8px; border-radius: 4px; background: rgba(255,255,255,.02); }
 .merchant-price-flow small { overflow: hidden; color: #5d5650; font-size: var(--fs-xxs); letter-spacing: .07em; text-overflow: ellipsis; white-space: nowrap; }
-.merchant-price-flow b { color: #9e9285; font: 600 var(--fs-xs) Spectral, serif; }
+.merchant-price-flow b { color: #9e9285; font: 600 var(--fs-xs) var(--f-serif); }
 .merchant-price-flow > i { align-self: center; color: #4f4841; font-size: var(--fs-xxs); font-style: normal; }
 .merchant-price-flow .merchant-final-price { background: rgba(161, 108, 49, .08); }
 .merchant-price-flow .merchant-stolen-step { background: rgba(127, 42, 35, .12); }
@@ -108,7 +108,7 @@
 .merchant-price-flow.compact p { align-self: center; margin: 0; color: #625b54; font-size: var(--fs-xxs); }
 .merchant-transaction-total { display: flex; align-items: center; justify-content: flex-end; gap: 13px; margin-top: 8px; padding: 9px 10px; border: 1px solid rgba(201, 149, 85, .12); border-radius: 4px; background: rgba(152, 96, 40, .045); }
 .merchant-transaction-total > span { margin-right: auto; color: #735a40; font-size: var(--fs-xxs); font-weight: 700; letter-spacing: .09em; }
-.merchant-transaction-total b { display: flex; align-items: baseline; gap: 7px; color: #7f7469; font: 600 var(--fs-xs) Spectral, serif; }
+.merchant-transaction-total b { display: flex; align-items: baseline; gap: 7px; color: #7f7469; font: 600 var(--fs-xs) var(--f-serif); }
 /* Множитель `.8em` уводил знак умножения на 9.6px мимо шкалы; `small` рядом
    ужимался браузерным умолчанием до 10px. Оба переведены на шкалу. */
 .merchant-transaction-total b i { color: #65594d; font-size: var(--fs-xxs); font-style: normal; }
@@ -128,11 +128,11 @@
 .merchant-refusal { margin: -3px 13px 10px; color: #9b6a61; font-size: var(--fs-xxs); }
 .merchant-appraisal-note { display: flex; align-items: flex-start; gap: 9px; margin: 0 13px 11px; padding: 10px; border: 1px solid rgba(124, 151, 105, .17); border-radius: 5px; background: rgba(86, 117, 72, .06); color: #829b73; }
 .merchant-appraisal-note span { display: grid; gap: 2px; }
-.merchant-appraisal-note b { color: #a8b89c; font: 600 var(--fs-xs) Spectral, serif; }
+.merchant-appraisal-note b { color: #a8b89c; font: 600 var(--fs-xs) var(--f-serif); }
 .merchant-appraisal-note small, .merchant-appraisal-hint { color: #6f7868; font-size: var(--fs-xxs); line-height: 1.45; }
 .merchant-appraisal-hint { margin-right: auto; }
 .merchant-loading, .merchant-list-empty, .merchant-filter-empty { display: grid; place-items: center; align-content: center; gap: 7px; min-height: 260px; padding: 35px; color: #80664a; text-align: center; }
-.merchant-loading b, .merchant-list-empty b { color: #a4988b; font: 600 var(--fs-sm) Spectral, serif; }
+.merchant-loading b, .merchant-list-empty b { color: #a4988b; font: 600 var(--fs-sm) var(--f-serif); }
 .merchant-loading span, .merchant-list-empty span { color: #625b54; font-size: var(--fs-xs); }
 
 @media (max-width: 1100px) {
@@ -173,7 +173,7 @@
 .merchant-filter-bar { display: grid; grid-template-columns: minmax(170px, .8fr) minmax(0, 1.6fr) auto; align-items: center; gap: 9px; padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,.045); background: rgba(0,0,0,.08); }
 .merchant-search { position: relative; min-width: 0; display: flex; align-items: center; color: #8b704f; }
 .merchant-search > svg { position: absolute; left: 10px; pointer-events: none; }
-.merchant-search input { width: 100%; height: 34px; padding: 0 34px 0 32px; border: 1px solid var(--line); border-radius: 5px; outline: none; background: rgba(0,0,0,.2); color: #c4b7a8; font: var(--fs-xs) Manrope, sans-serif; }
+.merchant-search input { width: 100%; height: 34px; padding: 0 34px 0 32px; border: 1px solid var(--line); border-radius: 5px; outline: none; background: rgba(0,0,0,.2); color: #c4b7a8; font: var(--fs-xs) var(--f-ui); }
 .merchant-search input::placeholder { color: #665d54; }
 .merchant-search input:focus { border-color: rgba(203,151,88,.46); }
 .merchant-search-clear { position: absolute; right: 5px; width: 25px; height: 25px; display: grid; place-items: center; border: 0; border-radius: 4px; background: transparent; color: #77695c; cursor: pointer; }
@@ -186,7 +186,7 @@
 .merchant-categories button.active b { color: #bc8954; }
 .merchant-filter-count { color: #625b54; font-size: var(--fs-xxs); white-space: nowrap; }
 .merchant-filter-empty { min-height: 220px; padding: 28px 20px; color: #735d45; }
-.merchant-filter-empty b { color: #b4a293; font: 600 var(--fs-md) Spectral, serif; }
+.merchant-filter-empty b { color: #b4a293; font: 600 var(--fs-md) var(--f-serif); }
 .merchant-filter-empty span { color: #716960; font-size: var(--fs-xs); }
 .merchant-filter-empty button { min-height: 31px; margin-top: 5px; padding: 0 10px; border: 1px solid rgba(203,151,88,.28); border-radius: 4px; background: transparent; color: #b98a57; font-size: var(--fs-xs); cursor: pointer; }
 .merchant-filter-empty button:hover { border-color: rgba(203,151,88,.52); background: rgba(171,112,52,.08); }
@@ -200,7 +200,7 @@
 .merchant-quote-summary > span { display: grid; gap: 2px; padding: 7px 9px; border: 1px solid rgba(201,149,85,.12); border-radius: 4px; background: rgba(152,96,40,.045); }
 .merchant-quote-summary > span:last-child { text-align: right; }
 .merchant-quote-summary small { color: #735a40; font-size: var(--fs-xxs); font-weight: 700; letter-spacing: .07em; }
-.merchant-quote-summary strong { color: #d2a265; font: 600 var(--fs-sm) Spectral, serif; }
+.merchant-quote-summary strong { color: #d2a265; font: 600 var(--fs-sm) var(--f-serif); }
 .merchant-quote-summary > span:first-child strong { color: #b9aa9a; }
 .merchant-price-details { margin-top: 7px; }
 .merchant-price-details summary { width: max-content; padding: 2px 0; color: #896d4c; font-size: var(--fs-xxs); cursor: pointer; }

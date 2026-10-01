@@ -3727,7 +3727,7 @@ export function drawCellFeatures(context: BoardContext2D, scene: BoardScene, til
         context.lineTo(left + size * .38, top + size * .24)
         context.stroke()
         if (size >= 22) {
-          context.font = `700 ${Math.max(7, Math.min(10, size / 4.4))}px Manrope, sans-serif`
+          context.font = `700 ${Math.max(7, Math.min(10, size / 4.4))}px 'Alegreya Sans', sans-serif`
           context.textAlign = 'left'
           context.textBaseline = 'top'
           context.fillText(`${cell.elevation > 0 ? '+' : ''}${cell.elevation} фт`, left + size * .08, top + size * .3, size * .82)
@@ -3744,7 +3744,7 @@ export function drawCellFeatures(context: BoardContext2D, scene: BoardScene, til
       context.setLineDash([])
       if (size >= 24 && firstHazards.get(cell.hazardId) === `${x},${y}`) {
         context.fillStyle = visual.stroke
-        context.font = `700 ${Math.max(7, Math.min(11, size / 4))}px Manrope, sans-serif`
+        context.font = `700 ${Math.max(7, Math.min(11, size / 4))}px 'Alegreya Sans', sans-serif`
         context.textAlign = 'center'
         context.textBaseline = 'middle'
         context.fillText(visual.label.toLocaleUpperCase('ru'), left + size / 2, top + size / 2, size * 0.88)
@@ -3945,12 +3945,12 @@ export function drawLingeringSpellEffects(
     const x = (anchor.x + .5) * size
     const y = (anchor.y + .5) * size
     context.fillStyle = visual.stroke
-    context.font = `800 ${Math.max(7, Math.min(11, size / 4.2))}px Manrope, sans-serif`
+    context.font = `800 ${Math.max(7, Math.min(11, size / 4.2))}px 'Alegreya Sans', sans-serif`
     context.textAlign = 'center'
     context.textBaseline = 'middle'
     context.fillText(heading, x, y - (owner ? size * .1 : 0), size * 1.8)
     if (owner) {
-      context.font = `600 ${Math.max(6, Math.min(9, size / 5))}px Manrope, sans-serif`
+      context.font = `600 ${Math.max(6, Math.min(9, size / 5))}px 'Alegreya Sans', sans-serif`
       context.fillText(`Источник: ${owner}`, x, y + size * .15, size * 1.8)
     }
   }
@@ -4082,7 +4082,7 @@ function drawCompass(context: BoardContext2D, scene: BoardScene) {
   context.closePath()
   context.stroke()
   context.fillStyle = '#30271d'
-  context.font = `700 ${Math.max(8, radius * 0.72)}px Spectral, serif`
+  context.font = `700 ${Math.max(8, radius * 0.72)}px Alegreya, Georgia, serif`
   context.textAlign = 'center'
   context.textBaseline = 'bottom'
   context.fillText('С', centerX, centerY - radius * 1.02)
@@ -4108,7 +4108,7 @@ function drawScaleBar(context: BoardContext2D, scene: BoardScene) {
   context.lineWidth = Math.max(1, size / 28)
   context.strokeRect(left, top, barWidth, barHeight)
   context.fillStyle = '#30271d'
-  context.font = `700 ${Math.max(7, Math.min(12, size * 0.25))}px Manrope, sans-serif`
+  context.font = `700 ${Math.max(7, Math.min(12, size * 0.25))}px 'Alegreya Sans', sans-serif`
   context.textAlign = 'left'
   context.textBaseline = 'bottom'
   context.fillText(`${cells * 5} футов`, left, top - Math.max(2, size * 0.08))
@@ -4119,7 +4119,7 @@ function drawRoomLabels(context: BoardContext2D, scene: BoardScene) {
   const size = scene.cellSize
   const fontSize = Math.max(8, Math.min(18, size * 0.36))
   context.save()
-  context.font = `600 ${fontSize}px Spectral, serif`
+  context.font = `600 ${fontSize}px Alegreya, Georgia, serif`
   context.textAlign = 'center'
   context.textBaseline = 'middle'
   for (const entry of revealedRoomLabelPlacements(scene.map)) {
@@ -4202,7 +4202,7 @@ function drawZoneLabels(context: BoardContext2D, scene: BoardScene) {
   const size = scene.cellSize
   const fontSize = Math.max(7, Math.min(13, size * 0.62))
   context.save()
-  context.font = `600 ${fontSize}px Spectral, serif`
+  context.font = `600 ${fontSize}px Alegreya, Georgia, serif`
   context.textAlign = 'center'
   context.textBaseline = 'middle'
   for (const entry of revealedZoneLabelPlacements(scene.map)) {

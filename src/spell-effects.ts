@@ -2030,7 +2030,7 @@ function drawAura(
     context.save()
     context.globalAlpha = cue.active === false ? Math.max(0, 1 - progress) : .9
     context.fillStyle = style.secondary
-    context.font = `800 ${Math.max(10, Math.round(scene.cellSize * .2))}px Manrope, sans-serif`
+    context.font = `800 ${Math.max(10, Math.round(scene.cellSize * .2))}px 'Alegreya Sans', sans-serif`
     context.textAlign = 'center'
     context.textBaseline = 'middle'
     context.fillText('К', center.x, center.y - scene.cellSize * .42)
@@ -2233,7 +2233,7 @@ function drawChannel(
   context.save()
   context.globalAlpha = Math.max(.35, motion.alpha)
   context.fillStyle = cue.channelType === 'healing' ? '#a8d2a5' : style.secondary
-  context.font = `900 ${Math.max(12, Math.round(scene.cellSize * .25))}px Manrope, sans-serif`
+  context.font = `900 ${Math.max(12, Math.round(scene.cellSize * .25))}px 'Alegreya Sans', sans-serif`
   context.textAlign = 'center'
   context.textBaseline = 'middle'
   // Величины может не быть вовсе: у неопознанного противника сервер её не

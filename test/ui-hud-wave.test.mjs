@@ -258,13 +258,13 @@ test('стоимость плитки читается фигурой, а «За
   // Фигура добавлена одним правилом на все плитки; слово осталось в разметке.
   assert.match(stylesSource, /\.action-cost::before \{ content: ''/u)
   assert.match(stylesSource, /\.action-cost\.bonus_action::before \{ clip-path: polygon/u)
-  assert.match(stylesSource, /\.action-cost\.reaction::before \{ clip-path: polygon/u)
+  assert.match(stylesSource, /\.action-cost\.reaction::before \{ clip-path: circle/u)
   assert.match(stylesSource, /\.action-cost\.movement::before \{ clip-path: polygon/u)
   assert.match(stylesSource, /\.action-cost\.free::before \{ background: transparent; box-shadow: inset/u)
   assert.match(stylesSource, /\.combat-hotbar \.action-tile \.action-cost::before \{ position: absolute/u)
   assert.match(appSource, /<i className="action-cost action">действие<\/i>/u, 'слово стоимости остаётся для скринридера')
-  // Кнопка конца хода — золотая, выше соседей и с честной подсказкой.
-  assert.match(stylesSource, /\.combat-hotbar \.hotbar-turn-controls \.end-turn-hotbar \{[^}]*min-height: 46px;[^}]*justify-self: end;/u)
+  // Кнопка конца хода — контурная в акценте, выше соседей и с честной подсказкой.
+  assert.match(stylesSource, /\.combat-hotbar \.hotbar-turn-controls \.end-turn-hotbar \{[^}]*min-height: 46px;[^}]*justify-self: end;[^}]*border: 1\.5px solid var\(--acc2\);[^}]*background: transparent;/u)
   assert.match(appSource, /className=\{`end-turn-hotbar \$\{turnFullySpent \? 'exhausted' : ''\}`\}/u)
   assert.match(appSource, /`Остались: \$\{unspentTurnResources\.join\(', '\)\}\. Завершить ход/u)
   assert.match(appSource, /const turnFullySpent = combatActive && unspentTurnResources\.length === 0/u)

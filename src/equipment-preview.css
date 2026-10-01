@@ -78,7 +78,7 @@
 
 .equipment-preview-heading strong {
   color: #d6c2a7;
-  font: 600 var(--fs-xl) Spectral, Georgia, serif;
+  font: 600 var(--fs-xl) var(--f-serif);
 }
 
 .equipment-preview-heading span {
@@ -106,7 +106,7 @@
   background: #1b1713;
   color: #d0b997;
   color-scheme: dark;
-  font: var(--fs-sm) Manrope, sans-serif;
+  font: var(--fs-sm) var(--f-ui);
 }
 
 .equipment-preview-reset {

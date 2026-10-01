@@ -77,7 +77,7 @@
   border-radius: 4px;
   background: rgba(169, 103, 43, .1);
   color: #d4a467;
-  font: 600 var(--fs-xs) Manrope, sans-serif;
+  font: 600 var(--fs-xs) var(--f-ui);
   cursor: pointer;
 }
 
@@ -120,7 +120,7 @@
   align-items: center;
   gap: 7px;
   color: #b18b60;
-  font: 600 var(--fs-xs) Spectral, serif;
+  font: 600 var(--fs-xs) var(--f-serif);
   cursor: pointer;
   list-style: none;
 }
@@ -137,7 +137,7 @@
   content: '+';
   margin-left: auto;
   color: #8a6b48;
-  font: 600 var(--fs-lg) Manrope, sans-serif;
+  font: 600 var(--fs-lg) var(--f-ui);
 }
 
 .world-map-location-inspector .location-history[open] summary::after,
@@ -152,7 +152,7 @@
   margin: 9px 0 0;
   overflow: visible;
   color: #958a7d;
-  font: var(--fs-xs)/1.55 Spectral, serif;
+  font: var(--fs-xs)/1.55 var(--f-serif);
   white-space: pre-line;
 }
 
@@ -162,7 +162,7 @@
   margin: 9px 0 0;
   padding-left: 17px;
   color: #958a7d;
-  font: var(--fs-xs)/1.5 Spectral, serif;
+  font: var(--fs-xs)/1.5 var(--f-serif);
 }
 
 .world-map-location-inspector .route-legend {

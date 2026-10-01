@@ -34,7 +34,7 @@
 .combat-effects-lab-stage-head h3 {
   margin: 0;
   color: #e7ddd0;
-  font-family: Spectral, Georgia, serif;
+  font-family: var(--f-serif);
   font-weight: 600;
 }
 
@@ -358,7 +358,7 @@
   border-radius: 50%;
   background: #3f644b;
   color: #f5e9d7;
-  font-family: Spectral, Georgia, serif;
+  font-family: var(--f-serif);
   font-size: clamp(11px, calc(var(--cell) * .24), 18px);
 }
 

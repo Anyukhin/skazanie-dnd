@@ -812,7 +812,7 @@ function TacticalBoard2D({
     const initials = String(actor?.label ?? '').trim().split(/\s+/u).slice(0, 2).map((word) => word[0]).join('').toLocaleUpperCase('ru')
     if (initials) {
       context.fillStyle = '#17120e'
-      context.font = `800 ${Math.max(10, Math.round(cellSize * .2))}px Manrope, sans-serif`
+      context.font = `800 ${Math.max(10, Math.round(cellSize * .2))}px 'Alegreya Sans', sans-serif`
       context.textAlign = 'center'
       context.textBaseline = 'middle'
       context.fillText(initials, center.x, center.y + 1)
@@ -836,7 +836,7 @@ function TacticalBoard2D({
     context.fillStyle = color
     context.strokeStyle = 'rgba(18, 12, 9, .95)'
     context.lineWidth = Math.max(3, cellSize * .07)
-    context.font = `900 ${Math.max(13, Math.round(cellSize * .27))}px Manrope, sans-serif`
+    context.font = `900 ${Math.max(13, Math.round(cellSize * .27))}px 'Alegreya Sans', sans-serif`
     context.textAlign = 'center'
     context.textBaseline = 'middle'
     const y = center.y - cellSize * (.25 + progress * .48)

@@ -71,11 +71,11 @@
 .dice-tray__die-shell { fill: url(#dice-tray-gold); stroke: #f0c98f; stroke-width: 1.35; stroke-linejoin: round; }
 .dice-tray__die-face { fill: rgba(63, 36, 20, .42); stroke: rgba(255, 226, 181, .58); stroke-width: 1; }
 .dice-tray__die-lines { fill: none; stroke: rgba(255, 226, 181, .38); stroke-width: .9; stroke-linejoin: round; }
-.dice-tray__polyhedron text { fill: #fff0d4; paint-order: stroke; stroke: rgba(44, 23, 12, .72); stroke-width: 3px; font: 700 var(--fs-4xl) Spectral, Georgia, serif; }
+.dice-tray__polyhedron text { fill: #fff0d4; paint-order: stroke; stroke: rgba(44, 23, 12, .72); stroke-width: 3px; font: 700 var(--fs-4xl) var(--f-serif); }
 
 .dice-tray__copy { min-width: 0; display: grid; align-content: center; }
 .dice-tray__copy > small { display: flex; align-items: center; gap: 5px; color: #a97a45; font-size: var(--fs-xxs); font-weight: 700; letter-spacing: .12em; }
-.dice-tray__copy > strong { margin-top: 4px; color: #dfd2c0; font: 600 var(--fs-lg) Spectral, Georgia, serif; }
+.dice-tray__copy > strong { margin-top: 4px; color: #dfd2c0; font: 600 var(--fs-lg) var(--f-serif); }
 .dice-tray__copy > span { min-height: 15px; display: flex; align-items: center; gap: 4px; margin-top: 3px; overflow: hidden; color: #746b62; font-size: var(--fs-xxs); line-height: 1.35; text-overflow: ellipsis; }
 .dice-tray__copy .dice-tray__error { color: #bd786d; }
 .dice-tray--error { border-color: rgba(190, 90, 77, .3); }
@@ -154,34 +154,34 @@
 .dice-tray--compact { position: absolute; z-index: 14; top: calc(var(--status, 60px) + 18px); right: calc(var(--server-column, 320px) + 22px); width: auto; padding: 0; border: 0; background: none; box-shadow: none; }
 .dice-tray--compact .dice-tray__chip { display: flex; align-items: center; gap: 8px; height: 42px; padding: 0 12px 0 8px; border: 1px solid rgba(222,201,171,.16); border-radius: 8px; background: rgba(15,13,11,.86); color: #c6b9a6; cursor: pointer; }
 .dice-tray--compact .dice-tray__chip:hover { border-color: rgba(214,161,96,.45); color: #e2b87c; }
-.dice-tray--compact .dice-tray__chip b { font: 700 var(--fs-sm) Manrope, sans-serif; letter-spacing: .04em; }
+.dice-tray--compact .dice-tray__chip b { font: 700 var(--fs-sm) var(--f-ui); letter-spacing: .04em; }
 .dice-tray--compact .dice-tray__die { width: 28px; height: 28px; display: grid; place-items: center; }
 .dice-tray--compact .dice-tray__die svg { width: 28px; height: 28px; }
 .dice-tray--compact.dice-tray--rolling .dice-tray__die { animation: dice-tray-compact-spin .72s linear infinite; }
 @keyframes dice-tray-compact-spin { to { transform: rotate(360deg); } }
 .dice-tray__backdrop { position: fixed; inset: 0; z-index: 1; }
 .dice-tray__menu { position: absolute; z-index: 2; top: calc(100% + 8px); right: 0; min-width: 190px; display: grid; gap: 8px; padding: 12px; border: 1px solid rgba(222,201,171,.18); border-radius: 9px; background: rgba(17,15,13,.97); box-shadow: 0 18px 44px rgba(0,0,0,.55); }
-.dice-tray__menu small { color: #856944; font: 700 var(--fs-xxs) Manrope, sans-serif; letter-spacing: .14em; }
+.dice-tray__menu small { color: #856944; font: 700 var(--fs-xxs) var(--f-ui); letter-spacing: .14em; }
 .dice-tray__menu > div { display: flex; flex-wrap: wrap; gap: 6px; }
-.dice-tray__menu button { min-width: 46px; height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: rgba(255,255,255,.02); color: #b3a894; font: 600 var(--fs-sm) Manrope, sans-serif; cursor: pointer; }
+.dice-tray__menu button { min-width: 46px; height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: rgba(255,255,255,.02); color: #b3a894; font: 600 var(--fs-sm) var(--f-ui); cursor: pointer; }
 .dice-tray__menu button:hover { border-color: rgba(211,160,97,.45); background: rgba(192,132,66,.14); color: #e2b87c; }
 .dice-tray__menu button.active { border-color: rgba(214,161,96,.5); color: #e2b87c; }
-.dice-tray__menu em { color: #756e67; font: var(--fs-xs) Manrope, sans-serif; font-style: normal; }
+.dice-tray__menu em { color: #756e67; font: var(--fs-xs) var(--f-ui); font-style: normal; }
 
 /* Бросок вынесен в верхний слой: масштаб и transform карты его не затрагивают. */
 .dice-cinematic { position: fixed; inset: 0; width: min(680px, 100vw); max-width: 100vw; max-height: 100dvh; margin: auto; padding: 36px 28px 30px; overflow: auto; border: 0; background: transparent; color: #efdfc3; text-align: center; }
 .dice-cinematic::backdrop { background: rgba(5, 7, 9, .87); }
 .dice-cinematic__close { position: absolute; top: 12px; right: 16px; display: grid; place-items: center; width: 44px; height: 44px; border: 0; background: transparent; color: #b9aa91; cursor: pointer; }
-.dice-cinematic__heading h2 { margin: 0; color: #efdfc3; font: 500 clamp(26px, 4vw, 38px) Spectral, Georgia, serif; }
-.dice-cinematic__heading p { margin: 8px 0 0; min-height: 24px; color: #b9aa91; font: 14px Manrope, sans-serif; }
+.dice-cinematic__heading h2 { margin: 0; color: #efdfc3; font: 700 clamp(26px, 4vw, 38px) var(--f-display); }
+.dice-cinematic__heading p { margin: 8px 0 0; min-height: 24px; color: #b9aa91; font: 14px var(--f-ui); }
 .dice-cinematic__stage { position: relative; width: min(100%, calc((100dvh - 340px) * 1.5)); min-width: 150px; margin-inline: auto; aspect-ratio: 3 / 2; }
 .dice-cinematic__stage canvas { position: relative; display: block; width: 100%; height: 100%; }
 .dice-cinematic__circle { position: absolute; left: 50%; top: 50%; width: 60%; aspect-ratio: 1; border: 1px solid #b48b4540; border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 0 10px #b48b4509, inset 0 0 50px #b48b4508; }
 .dice-cinematic__circle::after { content: ''; position: absolute; inset: 12px; border: 1px solid #b48b4526; transform: rotate(45deg); }
 .dice-cinematic__outcome { min-height: 90px; }
-.dice-cinematic__outcome p { margin: 0 0 4px; font: 500 clamp(28px, 5vw, 42px) Spectral, Georgia, serif; color: #f5dfae; }
-.dice-cinematic__outcome span { color: #b9aa91; font: 13px Manrope, sans-serif; }
-.dice-cinematic__continue { min-width: 190px; min-height: 44px; margin-top: 18px; padding: 10px 22px; border: 1px solid #a5814f; border-radius: 3px; color: #ecd3a5; background: #211c16; font: 14px Manrope, sans-serif; cursor: pointer; }
+.dice-cinematic__outcome p { margin: 0 0 4px; font: 500 clamp(28px, 5vw, 42px) var(--f-serif); color: #f5dfae; }
+.dice-cinematic__outcome span { color: #b9aa91; font: 13px var(--f-ui); }
+.dice-cinematic__continue { min-width: 190px; min-height: 44px; margin-top: 18px; padding: 10px 22px; border: 1px solid #a5814f; border-radius: 3px; color: #ecd3a5; background: #211c16; font: 14px var(--f-ui); cursor: pointer; }
 .dice-cinematic button:hover { color: #fff0d4; border-color: #efd09a; }
 .dice-cinematic button:focus-visible, .dice-tray button:focus-visible { outline: 2px solid #efd09a; outline-offset: 4px; }
 .dice-cinematic--result .dice-cinematic__outcome { animation: diceResultReveal .65s ease-out both; }
