@@ -366,7 +366,15 @@ export class IntentParser {
     const freeActionKind = classifyFreeActionKind(operativeText)
     const addressedActors = directlyAddressedActors(text, visibleState)
     const spoken = addressedActors.length > 0 || EXPLICIT_NPC_SPEECH_PATTERN.test(text) || SPOKEN_OPENING_PATTERN.test(text)
-    const patternIntent = INTENT_PATTERNS.find(([, pattern]) => pattern.test(operativeText))?.[0] ?? 'improvised_action'
+    // Цель в придаточном («…, чтобы осмотреть двор сверху») — не само
+    // действие: «забираюсь на крышу, чтобы осмотреться» — это лазание, и
+    // судить его должна Атлетика, а не Внимательность.
+    const mainClause = operativeText.split(/,?\s+(?:чтобы|дабы)\s+/u)[0]
+    const rawPatternIntent = INTENT_PATTERNS.find(([, pattern]) => pattern.test(operativeText))?.[0] ?? 'improvised_action'
+    const checkPattern = INTENT_PATTERNS.find(([name]) => name === 'ability_check')?.[1]
+    const patternIntent = rawPatternIntent === 'ability_check' && mainClause !== operativeText && checkPattern && !checkPattern.test(mainClause)
+      ? 'improvised_action'
+      : rawPatternIntent
     const detectedIntent = spoken ? 'social'
       : freeActionKind === 'compound_maneuver' ? 'compound_maneuver'
       : freeActionKind === 'compound_ranged_attack' ? 'improvised_action'
@@ -377,7 +385,7 @@ export class IntentParser {
     // «Проверяю, не следят ли за нами»: отрицание в придаточном снимается
     // вместе с тем словом, по которому узнаётся Внимательность. Для уже
     // опознанной проверки подход ищется и в полном тексте.
-    const operativeApproach = inferApproach(operativeText)
+    const operativeApproach = inferApproach(mainClause)
     const approach = socialSkill ?? (operativeApproach === 'unspecified' && detectedIntent === 'ability_check'
       ? inferApproach(text)
       : operativeApproach)

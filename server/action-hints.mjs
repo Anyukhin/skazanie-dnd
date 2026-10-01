@@ -327,7 +327,9 @@ function npcHints(room) {
     .map((npc) => {
       const name = text(npc?.name, 60)
       if (!name) return null
-      const role = text(npc?.role, 40)
+      // Роль режется по слову: прежде подсказка обрывалась «…карты и служа)».
+      const fullRole = text(npc?.role, 200)
+      const role = fullRole.length <= 40 ? fullRole : `${fullRole.slice(0, 40).replace(/\s+\S*$/u, '').replace(/[\s,;:—-]+(?:и|а|но)?$/u, '')}…`
       return {
         id: `npc:${text(npc?.id, 80)}`,
         priority: HINT_PRIORITY.npc,
