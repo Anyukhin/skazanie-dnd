@@ -24,6 +24,7 @@ import { LIGHT_SOURCE_ASSETS, lightSourceAssetId } from './board-lighting'
 import { batchEnvironmentMeshes } from './board3d-batching'
 import { createTerrainSideGeometry, createTerrainSurfaceGeometry, propTerrainHeight, terrainHeightAt } from './board3d-terrain'
 import { createBoard3DRoofs, type Board3DRoofMode } from './board3d-roofs'
+import { createBridgeRails, createGrassTufts, createRockClusters, createTileGroundGeometry, createWaterMaterial, createWaterSurfaceGeometry, isRockCell, type LandscapeDetail } from './board3d-landscape'
 
 /** Высота срезанной стены в мировых единицах клетки. */
 export const BOARD3D_WALL_HEIGHT = 0.68
@@ -49,6 +50,8 @@ export type Board3DOptions = {
    * линейном пространстве, и та же доля заливает пол заметно сильнее.
    */
   artOverlayOpacity?: number
+  /** Детализация местности: густота травы и валунов, анимация воды. */
+  landscapeDetail?: LandscapeDetail
   onReady?: () => void
 }
 
@@ -367,7 +370,13 @@ function addEdgeScene(resources: OwnedResources, map: TacticalMap, parent: THREE
   const doorTrimGroup = new THREE.Group()
   doorTrimGroup.name = 'door-trims'
 
-  const visibleWallEdges = edgeList(map).filter((edge) => edge.kind === 'wall' && edgeVisible(map, edge))
+  // Стена вдоль скалы не рисуется: объём породы сам закрывает проход, а
+  // тонкая стенка поверх валунов читалась бы забором посреди пещеры.
+  const againstRock = (edge: TacticalEdge) => {
+    const neighbor = edgeNeighbor(edge)
+    return isRockCell(map, edge.x, edge.y) || isRockCell(map, neighbor.x, neighbor.y)
+  }
+  const visibleWallEdges = edgeList(map).filter((edge) => edge.kind === 'wall' && edgeVisible(map, edge) && !againstRock(edge))
   const endpoints = new Map<string, { x: number; z: number; count: number; directions: Set<TacticalEdge['dir']>; floorY: number }>()
   for (const edge of visibleWallEdges) {
     const floorY = edgeFloorHeight(map, edge)
@@ -398,6 +407,7 @@ function addEdgeScene(resources: OwnedResources, map: TacticalMap, parent: THREE
 
   for (const edge of edgeList(map)) {
     if (!edgeVisible(map, edge) || edge.kind === 'none') continue
+    if (edge.kind === 'wall' && againstRock(edge)) continue
     const neighbor = edgeNeighbor(edge)
     const side = edgeSideCell(map, edge)
     const center = edgeCenter(edge)
@@ -565,21 +575,24 @@ function addEdgeScene(resources: OwnedResources, map: TacticalMap, parent: THREE
   if (doorGroup.children.length) parent.add(doorGroup)
 }
 
-function createGroundGeometry(resources: OwnedResources, map: TacticalMap, palette: BoardPalette) {
-  const colors: number[] = []
-  for (let y = 0; y < map.height; y += 1) {
-    for (let x = 0; x < map.width; x += 1) {
-      if (!revealedAt(map, x, y)) continue
-      const cell = cellAt(map, x, y)
+/**
+ * Пол плитками: у каждой клетки фаска и шов, у воды — опущенное дно. Цвет
+ * вершин несёт затенение шва и дна; без canvas-фактуры (SSR, тесты) он
+ * дополнительно окрашивается цветом клетки, как прежний плоский пол.
+ */
+function createGroundGeometry(resources: OwnedResources, map: TacticalMap, palette: BoardPalette, withCellColors: boolean) {
+  const geometry = ownGeometry(resources, createTileGroundGeometry(map))
+  if (withCellColors) {
+    const position = geometry.getAttribute('position') as THREE.BufferAttribute
+    const color = geometry.getAttribute('color') as THREE.BufferAttribute
+    const tint = new THREE.Color()
+    for (let index = 0; index < position.count; index += 1) {
+      const cell = cellAt(map, Math.min(map.width - 1, Math.floor(position.getX(index) - 1e-4)), Math.min(map.height - 1, Math.floor(position.getZ(index) - 1e-4)))
       if (!cell) continue
-      const color = new THREE.Color(cellColor(cell, palette))
-      for (let vertex = 0; vertex < 4; vertex += 1) colors.push(color.r, color.g, color.b)
+      tint.set(cellColor(cell, palette))
+      color.setXYZ(index, color.getX(index) * tint.r, color.getY(index) * tint.g, color.getZ(index) * tint.b)
     }
   }
-  const geometry = ownGeometry(resources, createTerrainSurfaceGeometry(map))
-  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
-  geometry.computeVertexNormals()
-  geometry.computeBoundingSphere()
   return geometry
 }
 
@@ -850,12 +863,11 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
   const groundGroup = new THREE.Group()
   groundGroup.name = 'ground'
   group.add(groundGroup)
-  const groundGeometry = createGroundGeometry(resources, map, palette)
-  const groundMaterial = material(resources, '#ffffff', { vertexColors: true, roughness: 0.94, metalness: 0 }) as THREE.MeshStandardMaterial
   const groundTexture = createGroundCanvasTexture(resources, map, palette)
+  const groundGeometry = createGroundGeometry(resources, map, palette, !groundTexture)
+  const groundMaterial = material(resources, '#ffffff', { vertexColors: true, roughness: 0.94, metalness: 0 }) as THREE.MeshStandardMaterial
   if (groundTexture) {
     groundMaterial.map = groundTexture
-    groundMaterial.vertexColors = false
     groundMaterial.needsUpdate = true
   }
   const ground = new THREE.Mesh(groundGeometry, groundMaterial)
@@ -864,6 +876,26 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
   ground.castShadow = false
   groundGroup.add(ground)
   addTerrainSides(resources, map, groundGroup, palette)
+
+  // Местность: вода над дном, скалы на непроходимых клетках, трава.
+  const landscapeDetail = options.landscapeDetail ?? 'reduced'
+  const waterGeometry = createWaterSurfaceGeometry(map)
+  const waterMaterial = waterGeometry ? createWaterMaterial() : null
+  if (waterGeometry && waterMaterial) {
+    ownGeometry(resources, waterGeometry)
+    resources.materials.add(waterMaterial)
+    const water = new THREE.Mesh(waterGeometry, waterMaterial)
+    water.name = 'water-surface'
+    water.receiveShadow = true
+    water.renderOrder = 2
+    groundGroup.add(water)
+  }
+  const rocks = createRockClusters(map, landscapeDetail, BOARD3D_WALL_HEIGHT)
+  if (rocks.group.children.length) group.add(rocks.group)
+  const grass = createGrassTufts(map, visiblePropsOnBoard(map), landscapeDetail)
+  if (grass) group.add(grass.group)
+  const bridges = createBridgeRails(map)
+  if (bridges) group.add(bridges.group)
 
   const roofs = createBoard3DRoofs(map, palette, { wallHeight: BOARD3D_WALL_HEIGHT, mode: options.roofMode })
   group.add(roofs.group)
@@ -911,7 +943,6 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
           groundMaterial.map.dispose()
         }
         groundMaterial.map = texture
-        groundMaterial.vertexColors = false
         groundMaterial.needsUpdate = true
       }
     }, callReady, () => disposed)
@@ -932,7 +963,6 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
       groundMaterial.map.dispose()
     }
     groundMaterial.map = texture
-    groundMaterial.vertexColors = false
     groundMaterial.needsUpdate = true
     if (!disposed) options.onReady?.()
   }, () => disposed)
@@ -945,6 +975,9 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     props.dispose()
     propAssets?.dispose()
     roofs.dispose()
+    rocks.dispose()
+    grass?.dispose()
+    bridges?.dispose()
     group.clear()
     for (const materialValue of resources.materials) materialValue.dispose()
     for (const geometry of resources.geometries) geometry.dispose()
@@ -956,6 +989,11 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
 
   return {
     group,
+    /** Вода рябит, пока доска её рисует; на «Экономном» стоит. */
+    animated: Boolean(waterMaterial) && landscapeDetail !== 'minimal',
+    animate(nowMs: number) {
+      if (waterMaterial && landscapeDetail !== 'minimal') waterMaterial.userData.time.value = nowMs / 1000
+    },
     getPropPickTargets: () => disposed ? [] : props.pickTargets,
     setRoofMode: (mode: Board3DRoofMode) => roofs.setMode(mode),
     getRoofMode: () => roofs.getMode(),

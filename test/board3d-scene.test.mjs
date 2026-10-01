@@ -56,17 +56,28 @@ function objectsNamed(root, prefix) {
   return matches
 }
 
+/** Наибольший подъём верха плитки (`TILE_JITTER` в src/board3d-landscape.ts). */
+const TILE_JITTER = 0.012
+
 test('3D-сцена создаёт пол только для раскрытых клеток', () => {
   const map = mapOf({ revealed: [{ x: 1, y: 1 }, { x: 2, y: 1 }] })
   const scene = scene3d.createBoard3DScene(map)
   const ground = scene.group.getObjectByName('ground-plane')
-  assert.ok(ground, 'у сцены должен быть плоский грунт')
-  assert.equal(ground.geometry.getAttribute('position').count, 8, 'две раскрытые клетки дают восемь вершин')
-  assert.equal(ground.geometry.getAttribute('position').getY(0), 0, 'пол лежит на Y=0')
-  assert.equal(ground.geometry.getAttribute('position').getX(0), 1, 'X карты сохраняется в мировом X')
-  assert.equal(ground.geometry.getAttribute('position').getZ(0), 1, 'Y карты переводится в мировой Z')
-  assert.ok(Math.abs(ground.geometry.getAttribute('uv').getY(0) - 2 / 3) < 1e-6, 'верх клетки карты использует верх текстуры')
-  assert.ok(Math.abs(ground.geometry.getAttribute('uv').getY(1) - 1 / 3) < 1e-6, 'низ клетки карты продолжает ориентацию overlay')
+  assert.ok(ground, 'у сцены должен быть грунт')
+  const positions = ground.geometry.getAttribute('position')
+  const uvs = ground.geometry.getAttribute('uv')
+  // Плитка: четыре вершины плоского верха и восемь — кольцо фаски до шва.
+  assert.equal(positions.count, 24, 'две раскрытые клетки дают по двенадцать вершин плитки')
+  const top = positions.getY(0)
+  assert.ok(top >= 0 && top <= TILE_JITTER, 'верх плитки лежит на уровне клетки с допуском на подъём')
+  assert.ok(positions.getX(0) > 1 && positions.getX(0) < 1.1, 'X карты сохраняется в мировом X, верх отступает на фаску')
+  assert.ok(positions.getZ(0) > 1 && positions.getZ(0) < 1.1, 'Y карты переводится в мировой Z')
+  for (let index = 0; index < positions.count; index += 1) {
+    assert.ok(Math.abs(uvs.getX(index) - positions.getX(index) / 4) < 1e-6, 'UV по мировому X: рисунок пола ложится непрерывно')
+    assert.ok(Math.abs(uvs.getY(index) - (1 - positions.getZ(index) / 3)) < 1e-6, 'UV по мировому Z сохраняет ориентацию overlay')
+    assert.ok(positions.getX(index) >= 1 - 1e-9 && positions.getX(index) <= 3 + 1e-9, 'скрытые клетки не дают вершин')
+  }
+  assert.ok(Math.min(...Array.from({ length: positions.count }, (_, index) => positions.getY(index))) < 0, 'кромка плитки опущена в шов')
   scene.dispose()
 })
 
@@ -81,7 +92,7 @@ test('поверхность и обрывы используют высоту �
   const ground = scene.group.getObjectByName('ground-plane')
   assert.ok(ground)
   const positions = ground.geometry.getAttribute('position')
-  assert.ok([positions.getY(0), positions.getY(4), positions.getY(8)].every((value, index) => Math.abs(value - [-0.4, 0.6, 0.2][index]) < 1e-6))
+  assert.ok([positions.getY(0), positions.getY(12), positions.getY(24)].every((value, index) => value - [-0.4, 0.6, 0.2][index] >= 0 && value - [-0.4, 0.6, 0.2][index] <= TILE_JITTER))
   const sides = scene.group.getObjectByName('terrain-sides')
   assert.ok(sides, 'между клетками разной высоты нужен вертикальный обрыв')
   const sidePositions = sides.geometry.getAttribute('position')
@@ -102,7 +113,8 @@ test('дверь и предмет получают основание по вы
   addProp(map, { id: 'raised-prop', assetId: 'crate', x: 0.5, y: 0.5, footprint: [{ x: 0, y: 0 }] })
   const scene = scene3d.createBoard3DScene(map)
   const ground = scene.group.getObjectByName('ground-plane')
-  assert.ok(Math.abs(ground.geometry.getAttribute('position').getY(0) + 0.4) < 1e-6)
+  const groundTop = ground.geometry.getAttribute('position').getY(0)
+  assert.ok(groundTop + 0.4 >= 0 && groundTop + 0.4 <= TILE_JITTER)
   const leaf = objectsNamed(scene.group, 'door-leaf:0,0,e:closed')[0]
   assert.ok(Math.abs(leaf.position.y - (1 + 0.58 / 2)) < 1e-6, 'дверь стоит на максимуме двух раскрытых сторон ребра')
   const prop = scene.group.getObjectByName('prop:raised-prop')
@@ -122,7 +134,7 @@ test('высота скрытого соседа не поднимает вид�
   const leaf = objectsNamed(scene.group, 'door-leaf:1,0,e:closed')[0]
   assert.ok(Math.abs(leaf.position.y - (0.4 + 0.58 / 2)) < 1e-6, 'туманная клетка не участвует в основании двери')
   const ground = scene.group.getObjectByName('ground-plane')
-  assert.equal(ground.geometry.getAttribute('position').count, 4, 'скрытая высокая клетка не появляется на поверхности')
+  assert.equal(ground.geometry.getAttribute('position').count, 12, 'скрытая высокая клетка не появляется на поверхности')
   scene.dispose()
 })
 
@@ -433,4 +445,105 @@ test('поздняя загрузка artUrl после dispose не вызыв�
   } finally {
     globalThis.document = previousDocument
   }
+})
+
+const landscape = await import(pathToFileURL(join(outputDir, 'board3d-landscape.mjs')).href)
+
+function terrainMap({ width, height, cell }) {
+  const map = createTacticalMap({ width, height, seed: 'landscape-test', theme: 'forest' })
+  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
+    setCell(map, x, y, { passable: true, material: 'grass', revealed: true, ...cell(x, y) })
+  }
+  return mapClient.decodeTacticalMap(JSON.parse(JSON.stringify(serializeTacticalMap(map))))
+}
+
+test('вода: дно опущено, гладь — отдельной прозрачной поверхностью, пена только у берега', () => {
+  const water = { passable: false, surface: 'water' }
+  const map = terrainMap({ width: 5, height: 3, cell: (x) => x >= 1 && x <= 3 ? water : {} })
+  const scene = scene3d.createBoard3DScene(map)
+  const ground = scene.group.getObjectByName('ground-plane')
+  const positions = ground.geometry.getAttribute('position')
+  // Клетка (1,0) — вторая по обходу: двенадцать вершин на плитку.
+  assert.ok(Math.abs(positions.getY(12) + landscape.WATER_BED_DEPTH) < 1e-6, 'дно воды ниже уровня клетки')
+  const surface = scene.group.getObjectByName('water-surface')
+  assert.ok(surface, 'над водой есть гладь')
+  assert.ok(surface.material.transparent, 'гладь полупрозрачна')
+  assert.equal(surface.geometry.getAttribute('position').count, 9 * 4)
+  const shore = surface.geometry.getAttribute('shore')
+  const shoreAt = (cx, cz) => {
+    for (let index = 0; index < shore.count; index += 1) {
+      const p = surface.geometry.getAttribute('position')
+      if (p.getX(index) === cx && p.getZ(index) === cz) return shore.getX(index)
+    }
+    return null
+  }
+  assert.equal(shoreAt(1, 1), 1, 'угол у суши — берег')
+  assert.equal(shoreAt(2, 1), 0, 'середина русла — без пены')
+  assert.equal(scene.animated, true, 'вода рябит, пока доска её рисует')
+  scene.dispose()
+  const calm = scene3d.createBoard3DScene(map, { landscapeDetail: 'minimal' })
+  assert.equal(calm.animated, false, 'на «Экономном» вода стоит')
+  calm.dispose()
+})
+
+test('скала, кладка и стена: порода пещеры — скала, тонкая стена дома — кладка', () => {
+  // Пещера: проход по средней строке, вокруг порода; зоны пещеры — interior.
+  const cave = terrainMap({ width: 6, height: 5, cell: (x, y) => y === 2 ? { material: 'earth' } : { passable: false, material: 'earth' } })
+  assert.equal(landscape.isRockCell(cave, 2, 1), true)
+  assert.equal(landscape.isRockCore(cave, 2, 0), true, 'толща — все соседи камень')
+  assert.equal(landscape.isRockCore(cave, 2, 1), false, 'кромка — рядом проход')
+  // Дом: помещение 1×1, кольцо стен, снаружи улица.
+  const raw = createTacticalMap({ width: 5, height: 5, seed: 'house', theme: 'building' })
+  raw.zones.push({ id: 'home', kind: 'interior', material: 'wood', lightLevel: 'dim', floorDirection: 'horizontal', label: 'Дом' })
+  for (let y = 0; y < 5; y += 1) for (let x = 0; x < 5; x += 1) {
+    const ring = x >= 1 && x <= 3 && y >= 1 && y <= 3 && !(x === 2 && y === 2)
+    setCell(raw, x, y, { passable: !ring, material: 'wood', revealed: true, zone: x === 2 && y === 2 ? 'home' : '' })
+  }
+  const house = mapClient.decodeTacticalMap(JSON.parse(JSON.stringify(serializeTacticalMap(raw))))
+  assert.equal(landscape.isMasonryCell(house, 1, 2), true, 'стена дома — кладка')
+  assert.equal(landscape.isMasonryCell(house, 1, 1), true, 'угол дома касается помещения по диагонали')
+  assert.equal(landscape.isRockCell(house, 1, 2), false)
+  const rocks = landscape.createRockClusters(cave, 'full')
+  assert.ok(rocks.group.children.length > 0)
+  const again = landscape.createRockClusters(cave, 'full')
+  const matrix = (group) => Array.from(group.children[0].instanceMatrix.array).slice(0, 16).join(',')
+  assert.equal(matrix(rocks.group), matrix(again.group), 'раскладка камня детерминирована')
+  rocks.dispose(); again.dispose()
+})
+
+test('стена вдоль скалы не рисуется тонкой стенкой: её роль играет порода', () => {
+  const raw = createTacticalMap({ width: 4, height: 3, seed: 'cave-wall', theme: 'cave' })
+  for (let y = 0; y < 3; y += 1) for (let x = 0; x < 4; x += 1) setCell(raw, x, y, { passable: y === 1, material: 'stone', revealed: true })
+  setEdge(raw, 1, 0, 1, 1, { kind: 'wall', blocksMove: true, blocksSight: true })
+  const map = mapClient.decodeTacticalMap(JSON.parse(JSON.stringify(serializeTacticalMap(raw))))
+  const scene = scene3d.createBoard3DScene(map)
+  const wallInstances = objectsNamed(scene.group, 'wall-segments:').reduce((sum, mesh) => sum + (mesh.count ?? 1), 0)
+  assert.equal(wallInstances, 0)
+  assert.ok(scene.group.getObjectByName('landscape-rocks'))
+  scene.dispose()
+})
+
+test('мост: полоса настила через воду получает перила, берег — нет', () => {
+  // Река по x=2..4, мост в две строки (y=1..2) поперёк неё.
+  const map = terrainMap({ width: 7, height: 4, cell: (x, y) => x >= 2 && x <= 4 && !(y === 1 || y === 2) ? { passable: false, surface: 'water' } : x >= 2 && x <= 4 ? { material: 'wood' } : {} })
+  assert.equal(landscape.bridgeSpan(map, 3, 1), 'x')
+  assert.equal(landscape.bridgeSpan(map, 3, 2), 'x')
+  assert.equal(landscape.bridgeSpan(map, 1, 0), null, 'берег не мост')
+  const rails = landscape.createBridgeRails(map)
+  assert.ok(rails && rails.group.children[0].count > 0)
+  rails.dispose()
+})
+
+test('трава только на свободных травяных клетках и не на «Экономном»', () => {
+  const map = terrainMap({ width: 4, height: 2, cell: (x) => x === 3 ? { material: 'stone' } : {} })
+  assert.equal(landscape.createGrassTufts(map, [], 'minimal'), null)
+  const full = landscape.createGrassTufts(map, [{ x: 0.5, y: 0.5, footprint: [{ x: 0, y: 0 }] }], 'full')
+  const mesh = full.group.children[0]
+  const position = new THREE.Vector3()
+  for (let index = 0; index < mesh.count; index += 1) {
+    mesh.getMatrixAt(index, new THREE.Matrix4()).decompose(position, new THREE.Quaternion(), new THREE.Vector3())
+    assert.ok(Math.floor(position.x) < 3, 'на камне травы нет')
+    assert.ok(!(Math.floor(position.x) === 0 && Math.floor(position.z) === 0), 'под предметом травы нет')
+  }
+  full.dispose()
 })
