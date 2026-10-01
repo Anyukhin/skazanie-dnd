@@ -1,0 +1,139 @@
+/* Раскладка по прототипу «Игровой стол Сказания» (claude.ai, 2026-10-01).
+   Слева узкая колонка разделов, сверху шапка в 64 px, в центре поле, под ним
+   панель героя, справа хроника во всю высоту. Отряд и порядок инициативы —
+   плашками поверх поля. Файл подключается последним и перекрывает только
+   раскладку; цвета берутся из токенов `styles.css`. */
+
+.app {
+  --rail-w: 84px;
+  --status: 64px;
+  --rail-bg: #13100d;
+  --float: color-mix(in srgb, #16120e 92%, transparent);
+  grid-template-columns: var(--rail-w) minmax(0, 1fr);
+}
+
+/* ---- колонка разделов ---- */
+.app-rail { position: relative; z-index: 30; min-width: 0; height: 100vh; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 16px 0 14px; background: var(--rail-bg); box-shadow: inset -1px 0 0 var(--line); }
+.rail-logo { display: grid; place-items: center; width: 44px; height: 44px; margin-bottom: 12px; padding: 0; border: 0; background: none; cursor: pointer; }
+.rail-logo-mark { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 5px; background: var(--acc); color: var(--acc-ink); transform: rotate(45deg); transition: background .15s; }
+.rail-logo-mark svg { transform: rotate(-45deg); }
+.rail-logo:hover .rail-logo-mark { background: var(--acc2); }
+.rail-navs { display: flex; flex: 1; flex-direction: column; align-items: center; gap: 4px; width: 100%; min-height: 0; }
+.rail-item { display: flex; flex-direction: column; align-items: center; gap: 4px; width: calc(100% - 16px); padding: 9px 2px 7px; border: 0; border-radius: 8px; background: transparent; color: var(--text2); font: 500 var(--fs-xs) var(--f-label); letter-spacing: .02em; cursor: pointer; white-space: nowrap; transition: background .12s, color .12s; }
+.rail-item span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.rail-item svg { width: 22px; height: 22px; flex: none; }
+.rail-item:hover { color: var(--text); background: var(--raise); }
+.rail-item.active, .rail-item.open { background: var(--acc-soft); color: var(--acc2); }
+.rail-grow { flex: 1; }
+.rail-master-menu { display: flex; justify-content: center; width: 100%; }
+.rail-master-menu .master-menu-list { left: calc(100% - 4px); right: auto; top: auto; bottom: 0; }
+.rail-account { color: var(--muted); }
+
+/* ---- шапка комнаты ---- */
+.status-bar { gap: 14px; padding: 0 16px 0 24px; background: var(--rail-bg); }
+.status-bar > .scene-header { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: 12px; padding-block: 0; }
+.status-bar > .scene-header .scene-illustration { display: none; }
+.scene-title { min-width: 0; flex: 0 1 auto; }
+.scene-title > span { display: block; color: var(--text2); font: 600 var(--fs-xs) var(--f-ui); letter-spacing: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.scene-title h1 { margin: 0; font-size: 25px; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.scene-title > p { display: none; }
+.status-bar .scene-header > .objective { height: 30px; min-height: 0; max-width: 340px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border: 1px solid var(--line2); border-radius: 6px; background: var(--raise); color: var(--text2); }
+.status-bar .scene-header > .objective small { display: none; }
+.status-bar .scene-header > .objective strong { font: 500 var(--fs-sm) var(--f-ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.status-bar .scene-header > .objective.expanded { position: absolute; z-index: 40; top: 12px; height: auto; max-width: 480px; padding: 10px 14px; box-shadow: 0 12px 32px rgba(0,0,0,.5); }
+.status-bar .scene-header > .objective.expanded strong { white-space: normal; }
+.room-header-bar { display: flex; flex: 1 1 auto; align-items: center; gap: 10px; min-width: 0; }
+.room-header-spacer { flex: 1 1 0; min-width: 0; }
+.header-chip { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border: 1px solid var(--line2); border-radius: 6px; background: var(--raise); color: var(--text2); font: 500 var(--fs-sm) var(--f-ui); white-space: nowrap; flex: none; }
+.header-chip b { color: var(--text); font-weight: 700; }
+.header-chip.fight { border-color: color-mix(in srgb, #d8695c 55%, transparent); background: color-mix(in srgb, #d8695c 16%, var(--raise)); color: color-mix(in srgb, #d8695c 72%, var(--text)); }
+button.header-chip { cursor: pointer; }
+button.header-chip.earned { border-color: var(--acc-line); color: var(--acc2); }
+.header-campaign { display: grid; grid-template-columns: auto 14px; grid-template-rows: auto auto; column-gap: 6px; align-items: center; max-width: 260px; padding: 2px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--text); text-align: right; cursor: pointer; }
+.header-campaign:hover { background: var(--raise); }
+.header-campaign small { grid-column: 1; color: var(--muted); font: 600 var(--fs-xxs) var(--f-ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.header-campaign strong { grid-column: 1; font: 600 var(--fs-sm) var(--f-ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.header-campaign svg { grid-column: 2; grid-row: 1 / span 2; color: var(--muted); }
+.header-icon { display: grid; place-items: center; width: 36px; height: 36px; flex: none; padding: 0; border: 1px solid var(--line2); border-radius: 50%; background: var(--raise); color: var(--text); cursor: pointer; }
+.header-icon:hover:not(:disabled) { border-color: var(--acc-line); background: color-mix(in srgb, var(--acc) 9%, var(--raise)); }
+.header-icon:disabled { opacity: .45; cursor: default; }
+
+/* Порядок инициативы — плашкой поверх поля по центру, как в прототипе. Его
+   держатель — шапка, но позиционируется он от всей комнаты, поэтому обрезка
+   шапки на него не действует. Вне боя режим сцены уже назван в шапке. */
+.status-bar > .initiative-ribbon.exploration { display: none; }
+.status-bar > .initiative-ribbon.combat { position: absolute; z-index: 16; top: calc(var(--status) + 10px); left: calc((100% - var(--server-column)) / 2); transform: translateX(-50%); max-width: calc(100% - var(--server-column) - 460px); padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--float); }
+
+/* ---- отряд поверх поля ---- */
+.party-overlay { grid-area: board; z-index: 15; align-self: start; justify-self: start; display: flex; flex-direction: column; gap: 6px; width: 210px; margin: 60px 0 0 12px; pointer-events: none; }
+.party-overlay .player-card { pointer-events: auto; min-height: 0; grid-template-columns: 34px minmax(0, 1fr) 20px; gap: 8px; padding: 6px 8px 6px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--float); }
+.party-overlay .player-card.active { border-color: var(--acc-line); }
+.party-overlay .player-card .avatar { width: 34px; height: 34px; }
+.party-overlay .player-name-row strong { font-size: var(--fs-sm); }
+.party-overlay .player-meta > span { display: none; }
+.party-overlay .armor-badge { transform: scale(.85); }
+
+/* ---- шапка: без карточки вокруг названия, подпись короче ---- */
+.status-bar > .scene-header { border: 0; border-radius: 0; background: none; box-shadow: none; }
+
+/* ---- панель героя: герой | лоток действий | ход ---- */
+.turn-rail {
+  --hero-w: 262px;
+  --side-w: calc(220px * var(--ui-readable-scale, 1));
+  grid-template-columns: var(--hero-w) minmax(0, 1fr) var(--side-w);
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas: 'hero decks side' 'hero main side';
+  gap: 8px 14px;
+  padding: 14px 14px 12px;
+  background: var(--rail-bg);
+  border-top: 0;
+  box-shadow: inset 0 1px 0 var(--line);
+}
+.turn-rail > .turn-rail-hero { grid-area: hero; min-width: 0; min-height: 0; }
+.turn-rail > .hotbar-decks { grid-area: decks; padding: 8px 12px 0; border: 1px solid var(--line); border-bottom: 0; border-radius: 10px 10px 0 0; background: var(--well); }
+.turn-rail > .combat-hotbar { grid-area: main; min-height: 0; padding: 4px 12px 10px; border: 1px solid var(--line); border-top: 0; border-radius: 0 0 10px 10px; background: var(--well); }
+.turn-rail .hotbar-main { grid-template-columns: 28px minmax(0, 1fr); }
+.turn-rail > .turn-rail-side { grid-area: side; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; overscroll-behavior: contain; }
+.turn-rail-side .hotbar-hero-cluster { display: flex; flex-direction: column; gap: 10px; width: auto; max-width: none; padding: 0; border: 0; }
+
+/* Ресурсы хода — три «камня» с подписью под ними. */
+.turn-rail-side .hero-cluster-pips { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; }
+.turn-rail-side .hero-pip { display: flex !important; flex-direction: column; align-items: center; gap: 6px !important; padding: 2px 0 !important; color: var(--text2) !important; font: 500 var(--fs-sm) var(--f-label) !important; }
+.turn-rail-side .hero-pip b { display: none; }
+.turn-rail-side .hero-pip.spent { color: var(--spent) !important; }
+.turn-rail-side .hero-pip .hero-pip-shape { transform: scale(1.5); margin: 4px 0 2px; }
+.turn-rail-side .hero-cluster-move { display: grid; grid-template-columns: 1fr auto; row-gap: 5px; font: 600 var(--fs-xs) var(--f-ui); color: var(--text2); }
+.turn-rail-side .hero-cluster-move b { color: var(--text); font-variant-numeric: tabular-nums; }
+.turn-rail-side .hero-cluster-move-bar { grid-column: 1 / -1; grid-row: 2; }
+.turn-rail-side .hero-cluster-speed { font-size: var(--fs-xs); color: var(--muted); }
+.turn-rail-side .end-turn-hotbar { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 46px; margin-top: auto; border: 1.5px solid var(--acc2); border-radius: 6px; background: transparent; color: var(--acc2); font: 600 var(--fs-md) var(--f-ui); cursor: pointer; flex: none; }
+.turn-rail-side .end-turn-hotbar:hover:not(:disabled) { background: var(--acc-soft); }
+.turn-rail-side .end-turn-hotbar:disabled { border-color: var(--line2); color: var(--muted); cursor: default; }
+.turn-rail-side .end-turn-hotbar span { display: flex; flex-direction: column; align-items: center; line-height: 1.15; }
+.turn-rail-side .end-turn-hotbar kbd { display: block; font: 500 var(--fs-xxs) var(--f-ui); color: var(--muted); }
+
+/* Герой: крупный портрет, имя заголовочным шрифтом, полоса ОЗ под ним. */
+.turn-rail > .turn-rail-hero > .player-hud { position: static; width: 100%; min-width: 0; height: 100%; display: grid; grid-template-columns: 84px minmax(0, 1fr) auto; grid-template-rows: auto auto auto auto 1fr; gap: 6px 12px; align-items: start; padding: 4px 0 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
+.turn-rail-hero .hud-identity { display: contents; }
+.turn-rail-hero .hud-portrait { grid-column: 1; grid-row: 1 / span 4; width: 84px; height: 84px; flex-basis: 84px; border: 0; box-shadow: 0 0 0 1.5px var(--acc2), 0 0 0 4px var(--rail-bg), 0 0 0 5px var(--line2); }
+.turn-rail-hero .hud-identity > span:not(.hud-portrait) { grid-column: 2; grid-row: 1; display: flex; flex-direction: column; min-width: 0; }
+.turn-rail-hero .hud-identity strong { font: 700 20px/1.1 var(--f-display); letter-spacing: .03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.turn-rail-hero .hud-identity small { margin-top: 2px; color: var(--text2); font: 500 var(--fs-xs) var(--f-ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.turn-rail-hero .hud-actions { grid-column: 3; grid-row: 1; display: flex; gap: 4px; }
+.turn-rail-hero .hud-health { grid-column: 2 / -1; grid-row: 2; }
+.turn-rail-hero .hud-vitals { grid-column: 2 / -1; grid-row: 3; justify-self: start; }
+.turn-rail-hero .hud-status { grid-column: 1 / -1; grid-row: 5; align-self: start; }
+.turn-rail-side .hero-cluster-move-bar { display: block; flex: none; width: 100%; height: 6px; border-radius: 3px; background: var(--line2); }
+
+/* ---- хроника и ввод ---- */
+.chronicle-filters { gap: 0; padding: 2px; border: 1px solid var(--line); border-radius: 8px; background: var(--well); }
+.chronicle-filters button { min-height: 28px; padding: 0 11px; border: 0; border-radius: 6px; color: var(--text2); font: 600 var(--fs-sm) var(--f-ui); }
+.chronicle-filters button.active { border: 0; background: var(--acc-soft); color: var(--acc2); }
+.dialogue-composer .rail-free-input { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; gap: 8px; }
+.dialogue-composer .rail-input-shell { grid-column: 1 / -1; grid-row: 1; border: 1px solid var(--line2); border-radius: 8px; background: var(--well); }
+.dialogue-composer .rail-input-shell:focus-within { border-color: var(--acc2); }
+.dialogue-composer .request-kind { grid-column: 1; grid-row: 2; display: inline-flex; width: fit-content; height: auto; padding: 2px; border: 1px solid var(--line); border-radius: 8px; background: var(--well); }
+.dialogue-composer .request-kind button { height: 28px; padding: 0 11px; border: 0; border-radius: 6px; background: transparent; color: var(--text2); font: 600 var(--fs-sm) var(--f-ui); cursor: pointer; white-space: nowrap; }
+.dialogue-composer .request-kind button.active { background: var(--acc-soft); color: var(--acc2); }
+.dialogue-composer .request-kind button:disabled { opacity: .5; cursor: default; }
+.dialogue-composer .rail-free-input > button[type="submit"] { grid-column: 2; grid-row: 2; height: 36px; }

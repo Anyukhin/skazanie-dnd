@@ -195,104 +195,116 @@ type SidebarPacing = { phase: string; label: string; tension: number; title: str
 type SidebarProgression = { milestonesSinceLevel: number; milestonesPerLevel: number; levelUpAvailable: boolean }
 type SidebarReputation = { label: string; known: boolean }
 
+/**
+ * Узкая колонка разделов, как в прототипе стола: значок и короткая подпись.
+ * Отряд переехал на поле, состояние кампании — в шапку комнаты; здесь
+ * остаются только переходы, инструменты мастера, настройки и выход.
+ */
 function Sidebar({
-  players, selectedPlayerId, turnPlayerId, accessibleHeroIds, typingActorIds, isAdmin,
-  deathSavesByHero, statusByHero, onSelect, collapsed, onToggle, view, onNavigate,
-  campaignName, partyName, sessionCode, connectionState, pacing, progression, reputationStanding = [],
-  canManageLifecycle, lifecycleStatus, lifecycleBusy, onChangeLifecycle, inviteEnabled, onInvite,
+  isAdmin, collapsed, view, onNavigate,
+  canManageLifecycle, lifecycleStatus, lifecycleBusy, onChangeLifecycle,
   masterMenuOpen, masterMenuRef, campaignControlBusy, arcChainEnabled, persistentCampaign, onToggleMasterMenu,
-  onRunCampaignControl, onImportMap, accountName, activeHeroName, onLogout,
-  onOpenCampaigns, onOpenLevelUp,
+  onRunCampaignControl, onImportMap, accountName, activeHeroName, onLogout, onOpenCampaigns,
 }: {
-  players: Player[]; selectedPlayerId: string; turnPlayerId: string; accessibleHeroIds: string[]; typingActorIds: string[]; isAdmin: boolean
-  deathSavesByHero?: Record<string, { successes: number; failures: number; stable: boolean }>
-  statusByHero?: Record<string, HeroStatus>
-  onSelect: (id: string) => void; collapsed: boolean; onToggle: () => void; view: View; onNavigate: (view: View) => void
-  campaignName: string; partyName: string; sessionCode: string; connectionState: ConnectionState; pacing?: SidebarPacing | null
-  progression?: SidebarProgression | null; reputationStanding: SidebarReputation[]
+  isAdmin: boolean; collapsed: boolean; view: View; onNavigate: (view: View) => void
   canManageLifecycle: boolean; lifecycleStatus: string; lifecycleBusy: boolean; onChangeLifecycle: (action: SidebarLifecycleAction) => void
-  inviteEnabled: boolean; onInvite: () => void; masterMenuOpen: boolean; masterMenuRef: React.RefObject<HTMLDivElement | null>
+  masterMenuOpen: boolean; masterMenuRef: React.RefObject<HTMLDivElement | null>
   campaignControlBusy: boolean; arcChainEnabled: boolean; persistentCampaign: boolean; onToggleMasterMenu: () => void
   onRunCampaignControl: (action: 'rewind_turn' | 'replay_scene') => void
   onImportMap: () => void
-  accountName: string; activeHeroName: string; onLogout: () => void; onOpenCampaigns: () => void; onOpenLevelUp: () => void
+  accountName: string; activeHeroName: string; onLogout: () => void; onOpenCampaigns: () => void
 }) {
+  const item = (target: View, label: string, title: string, icon: React.ReactNode) => <button
+    type="button"
+    className={`rail-item ${view === target ? 'active' : ''}`}
+    aria-current={view === target ? 'page' : undefined}
+    aria-label={title}
+    title={title}
+    onClick={() => onNavigate(target)}
+  >{icon}<span>{label}</span></button>
   return (
-    <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
-      <div className="sidebar-top">
-        <Logo />
-        <button
-          className="icon-button collapse-button"
-          onClick={onToggle}
-          aria-label={collapsed ? 'Развернуть меню' : 'Свернуть меню'}
-          aria-expanded={!collapsed}
-          title={collapsed ? 'Развернуть меню' : 'Свернуть меню'}
-        >
-          {collapsed ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}
-        </button>
-      </div>
-      <section className="sidebar-context" aria-label="Состояние кампании">
-        <button className="campaign-title sidebar-campaign" data-tooltip="Переключить кампанию" onClick={onOpenCampaigns} title="Переключить кампанию или группу">
-          <Dices className="sidebar-campaign-icon" size={18} />
-          <span><small>КАМПАНИЯ · {partyName}</small><strong>{campaignName}</strong></span>
-          <ChevronDown size={15} />
-        </button>
-        <div className="sidebar-context-row">
-          <div className="session-code" title={`Код комнаты: ${sessionCode}`}><i /><span>КОМНАТА</span><b>{sessionCode}</b></div>
-          <ConnectionIndicator status={connectionState} />
-        </div>
-        {(pacing || progression || reputationStanding.length > 0) && <div className="sidebar-statuses">
-          {pacing && <div className={`director-status ${pacing.phase}`} data-tooltip={pacing.label} title={pacing.title}><Sparkles size={13} /><span>{pacing.label}</span><b>{pacing.tension}</b></div>}
-          {progression && progression.milestonesSinceLevel > 0 && (progression.levelUpAvailable
-            ? <button className="progression-status earned" data-tooltip="Уровень готов" onClick={onOpenLevelUp} title="Отряд заслужил уровень. Откройте лист героя, чтобы выбрать умения."><Sparkles size={13} /><span>Уровень готов</span></button>
-            : <div className="progression-status" data-tooltip="Вехи" title={`Вех до нового уровня: ${progression.milestonesSinceLevel} из ${progression.milestonesPerLevel}`}><Sparkles size={13} /><span>Вехи</span><b>{progression.milestonesSinceLevel}/{progression.milestonesPerLevel}</b></div>)}
-          {reputationStanding.length > 0 && <div className="reputation-status" data-tooltip="Слава" title={reputationStanding.map((entry) => entry.label).join('; ')}><Shield size={13} /><span>Слава</span><b>{reputationStanding.filter((entry) => entry.known).length || '—'}</b></div>}
-        </div>}
-        <div className="sidebar-context-actions">
-          {canManageLifecycle && lifecycleStatus === 'active' && <button className="invite-button sidebar-context-action" data-tooltip="Пауза" onClick={() => onChangeLifecycle('pause')} disabled={lifecycleBusy} title="Поставить кампанию на паузу"><Pause size={15} /><span>Пауза</span></button>}
-          {canManageLifecycle && lifecycleStatus === 'paused' && <button className="invite-button sidebar-context-action" data-tooltip="Продолжить" onClick={() => onChangeLifecycle('resume')} disabled={lifecycleBusy} title="Продолжить кампанию"><Play size={15} /><span>Продолжить</span></button>}
-          {inviteEnabled && <button className="invite-button sidebar-context-action" data-tooltip="Пригласить" onClick={onInvite} title="Пригласить игрока в комнату"><Users size={17} /><span>Пригласить</span></button>}
-          {canManageLifecycle && ['active', 'paused'].includes(lifecycleStatus) && <div className="master-menu sidebar-master-menu" ref={masterMenuRef}>
-            <button type="button" className={`invite-button master-menu-button sidebar-context-action ${masterMenuOpen ? 'open' : ''}`} data-tooltip="Мастер" aria-haspopup="menu" aria-expanded={masterMenuOpen} onClick={onToggleMasterMenu} title="Инструменты мастера"><Crown size={15} /><span>Мастер</span><ChevronDown size={14} /></button>
-            {masterMenuOpen && <div className="master-menu-list" role="menu" aria-label="Инструменты мастера">
-              <small>Ход</small>
-              {canManageLifecycle && ['active', 'paused'].includes(lifecycleStatus) && <button type="button" role="menuitem" onClick={() => { onToggleMasterMenu(); onRunCampaignControl('rewind_turn') }} disabled={campaignControlBusy || lifecycleBusy} title="Вернуть состояние к началу последней серверной команды"><RotateCcw size={15} />Откатить ход</button>}
-              {canManageLifecycle && ['active', 'paused'].includes(lifecycleStatus) && <button type="button" role="menuitem" onClick={() => { onToggleMasterMenu(); onRunCampaignControl('replay_scene') }} disabled={campaignControlBusy || lifecycleBusy} title="Вернуть состояние к началу текущей сцены"><History size={15} />Переиграть сцену</button>}
-              <small>Кампания</small>
-              <button type="button" role="menuitem" onClick={() => { onToggleMasterMenu(); onImportMap() }} disabled={lifecycleBusy} title="Загрузить карту локации из слэба TaleSpire"><MapIcon size={15} />Импорт карты из TaleSpire</button>
-              {!persistentCampaign && (arcChainEnabled
-                ? <button type="button" role="menuitem" onClick={() => { onToggleMasterMenu(); onChangeLifecycle('conclude_after_arc') }} disabled={lifecycleBusy} title="Развязка текущей арки закончит кампанию эпилогом">Закончить на этой арке</button>
-                : <button type="button" role="menuitem" onClick={() => { onToggleMasterMenu(); onChangeLifecycle('chain_arcs') }} disabled={lifecycleBusy} title="Развязка арки откроет следующую теми же героями: снаряжение, слава и незакрытые нити переезжают">Играть дальше арками</button>)}
-              <button type="button" role="menuitem" className="danger" onClick={() => { onToggleMasterMenu(); if (window.confirm('Завершить кампанию и создать эпилог? Это действие необратимо.')) onChangeLifecycle('complete') }} disabled={lifecycleBusy}>Завершить кампанию</button>
-            </div>}
+    <nav className={`app-rail ${collapsed ? 'collapsed' : ''}`} aria-label="Разделы">
+      <button type="button" className="rail-logo" onClick={onOpenCampaigns} title="Кампании и группы" aria-label="Сказание: кампании и группы"><span className="rail-logo-mark" aria-hidden="true"><Dices size={18} /></span></button>
+      <div className="rail-navs">
+        {item('room', 'Игра', 'Игровая комната', <MapSymbol />)}
+        {item('world-map', 'Мир', 'Глобальная карта', <Globe2 size={22} strokeWidth={1.6} />)}
+        {item('journal', 'Журнал', 'Журнал кампании', <ScrollText size={22} strokeWidth={1.6} />)}
+        {item('characters', 'Отряд', 'Персонажи', <BookOpen size={22} strokeWidth={1.6} />)}
+        {item('inventory', 'Вещи', 'Инвентарь', <BackpackIcon />)}
+        {/* Пункта «Торговец» здесь нет: торговля открывается кнопкой в шапке
+            сцены, когда торговец рядом, и называет его по имени. */}
+        {isAdmin && item('admin', 'Админ', 'Управление миром', <ShieldCheck size={22} strokeWidth={1.6} />)}
+        {isAdmin && item('combat-lab', 'Стенд', 'Открыть боевой стенд', <Swords size={22} strokeWidth={1.6} />)}
+        <div className="rail-grow" />
+        {canManageLifecycle && ['active', 'paused'].includes(lifecycleStatus) && <div className="master-menu rail-master-menu" ref={masterMenuRef}>
+          <button type="button" className={`rail-item master-menu-button ${masterMenuOpen ? 'open' : ''}`} aria-haspopup="menu" aria-expanded={masterMenuOpen} onClick={onToggleMasterMenu} title="Инструменты мастера"><Crown size={22} strokeWidth={1.6} /><span>Мастер</span></button>
+          {masterMenuOpen && <div className="master-menu-list" role="menu" aria-label="Инструменты мастера">
+            <small>Ход</small>
+            {canManageLifecycle && ['active', 'paused'].includes(lifecycleStatus) && <button type="button" role="menuitem" onClick={() => { onToggleMasterMenu(); onRunCampaignControl('rewind_turn') }} disabled={campaignControlBusy || lifecycleBusy} title="Вернуть состояние к началу последней серверной команды"><RotateCcw size={15} />Откатить ход</button>}
+            {canManageLifecycle && ['active', 'paused'].includes(lifecycleStatus) && <button type="button" role="menuitem" onClick={() => { onToggleMasterMenu(); onRunCampaignControl('replay_scene') }} disabled={campaignControlBusy || lifecycleBusy} title="Вернуть состояние к началу текущей сцены"><History size={15} />Переиграть сцену</button>}
+            <small>Кампания</small>
+            <button type="button" role="menuitem" onClick={() => { onToggleMasterMenu(); onImportMap() }} disabled={lifecycleBusy} title="Загрузить карту локации из слэба TaleSpire"><MapIcon size={15} />Импорт карты из TaleSpire</button>
+            {!persistentCampaign && (arcChainEnabled
+              ? <button type="button" role="menuitem" onClick={() => { onToggleMasterMenu(); onChangeLifecycle('conclude_after_arc') }} disabled={lifecycleBusy} title="Развязка текущей арки закончит кампанию эпилогом">Закончить на этой арке</button>
+              : <button type="button" role="menuitem" onClick={() => { onToggleMasterMenu(); onChangeLifecycle('chain_arcs') }} disabled={lifecycleBusy} title="Развязка арки откроет следующую теми же героями: снаряжение, слава и незакрытые нити переезжают">Играть дальше арками</button>)}
+            <button type="button" role="menuitem" className="danger" onClick={() => { onToggleMasterMenu(); if (window.confirm('Завершить кампанию и создать эпилог? Это действие необратимо.')) onChangeLifecycle('complete') }} disabled={lifecycleBusy}>Завершить кампанию</button>
           </div>}
-          <div className="account-chip sidebar-account"><span>{accountName}<small>{activeHeroName}</small></span><button onClick={onLogout} title="Выйти" aria-label="Выйти из аккаунта"><LogOut size={15} /></button></div>
-        </div>
-      </section>
-      <nav className="main-nav">
-        <button className={`nav-item ${view === 'room' ? 'active' : ''}`} data-tooltip="Игровая комната" aria-label="Игровая комната" onClick={() => onNavigate('room')}><MapSymbol /><span>Игровая комната</span></button>
-        <button className={`nav-item ${view === 'world-map' ? 'active' : ''}`} data-tooltip="Глобальная карта" aria-label="Глобальная карта" onClick={() => onNavigate('world-map')}><Globe2 size={18} /><span>Глобальная карта</span></button>
-        <button className={`nav-item ${view === 'journal' ? 'active' : ''}`} data-tooltip="Журнал кампании" aria-label="Журнал кампании" onClick={() => onNavigate('journal')}><ScrollText size={18} /><span>Журнал кампании</span></button>
-        <button className={`nav-item ${view === 'characters' ? 'active' : ''}`} data-tooltip="Персонажи" aria-label="Персонажи" onClick={() => onNavigate('characters')}><BookOpen size={18} /><span>Персонажи</span></button>
-        <button className={`nav-item ${view === 'inventory' ? 'active' : ''}`} data-tooltip="Инвентарь" aria-label="Инвентарь" onClick={() => onNavigate('inventory')}><BackpackIcon /><span>Инвентарь</span></button>
-        {/* Пункта «Торговец» здесь больше нет: торговля открывается кнопкой в
-            заголовке сцены, которая появляется, только когда торговец рядом, и
-            называет его по имени. Постоянный пункт меню вёл в то же окно и в
-            большинстве локаций горел «недоступен». */}
-        {isAdmin && <button className={`nav-item ${view === 'admin' ? 'active' : ''}`} data-tooltip="Управление миром" aria-label="Управление миром" onClick={() => onNavigate('admin')}><ShieldCheck size={18} /><span>Управление миром</span></button>}
-        {isAdmin && <button className={`nav-item ${view === 'combat-lab' ? 'active' : ''}`} data-tooltip="Боевой стенд" aria-label="Открыть боевой стенд" onClick={() => onNavigate('combat-lab')}><Swords size={18} /><span>Боевой стенд</span></button>}
-      </nav>
-      <div className="sidebar-section">
-        <div className="section-label"><span>ОТРЯД · {players.filter(p => p.online).length} В СЕТИ{players.some((p) => p.hp <= 0) ? ` · ${players.filter((p) => p.hp <= 0).length} ПАЛИ` : ''}</span></div>
-        <div className="players-list">
-          {players.map((player) => <PlayerCard key={player.id} player={player} selected={player.id === selectedPlayerId} turn={player.id === turnPlayerId} accessible={accessibleHeroIds.includes(player.id)} typing={typingActorIds.includes(player.id)} deathSaves={deathSavesByHero?.[player.id]} status={statusByHero?.[player.id]} onClick={() => onSelect(player.id)} />)}
-        </div>
+        </div>}
+        {item('settings', 'Опции', 'Настройки', <Settings size={22} strokeWidth={1.6} />)}
+        <button type="button" className="rail-item rail-account" onClick={onLogout} title={`${accountName} · ${activeHeroName}. Выйти из аккаунта`} aria-label={`Выйти из аккаунта ${accountName}`}><LogOut size={20} strokeWidth={1.6} /><span>Выйти</span></button>
       </div>
-      <div className="sidebar-bottom">
-        <button className={`nav-item ${view === 'settings' ? 'active' : ''}`} data-tooltip="Настройки" aria-label="Настройки" onClick={() => onNavigate('settings')}><Settings size={18} /><span>Настройки</span></button>
-      </div>
-    </aside>
+    </nav>
   )
+}
+
+/**
+ * Отряд поверх поля, как в прототипе: портрет, имя и полоса ОЗ. Карточка
+ * выбирает героя, от чьего имени действует игрок, — так же, как прежний
+ * список в боковой панели.
+ */
+function PartyOverlay({ players, selectedPlayerId, turnPlayerId, accessibleHeroIds, typingActorIds, deathSavesByHero, statusByHero, onSelect }: {
+  players: Player[]; selectedPlayerId: string; turnPlayerId: string; accessibleHeroIds: string[]; typingActorIds: string[]
+  deathSavesByHero?: Record<string, { successes: number; failures: number; stable: boolean }>
+  statusByHero?: Record<string, HeroStatus>
+  onSelect: (id: string) => void
+}) {
+  const fallen = players.filter((player) => player.hp <= 0).length
+  return <section className="party-overlay" aria-label={`Отряд: ${players.filter((player) => player.online).length} в сети${fallen ? `, ${fallen} пали` : ''}`}>
+    {players.map((player) => <PlayerCard key={player.id} player={player} selected={player.id === selectedPlayerId} turn={player.id === turnPlayerId} accessible={accessibleHeroIds.includes(player.id)} typing={typingActorIds.includes(player.id)} deathSaves={deathSavesByHero?.[player.id]} status={statusByHero?.[player.id]} onClick={() => onSelect(player.id)} />)}
+  </section>
+}
+
+/**
+ * Правая часть шапки комнаты: режим сцены, темп и слава, кампания, связь,
+ * пауза и приглашение. Раньше всё это жило в широкой боковой панели.
+ */
+function RoomHeaderBar({
+  campaignName, partyName, sessionCode, connectionState, pacing, progression, reputationStanding,
+  combatActive, round, canManageLifecycle, lifecycleStatus, lifecycleBusy, onChangeLifecycle, inviteEnabled, onInvite,
+  onOpenCampaigns, onOpenLevelUp,
+}: {
+  campaignName: string; partyName: string; sessionCode: string; connectionState: ConnectionState
+  pacing?: SidebarPacing | null; progression?: SidebarProgression | null; reputationStanding: SidebarReputation[]
+  combatActive: boolean; round: number
+  canManageLifecycle: boolean; lifecycleStatus: string; lifecycleBusy: boolean; onChangeLifecycle: (action: SidebarLifecycleAction) => void
+  inviteEnabled: boolean; onInvite: () => void; onOpenCampaigns: () => void; onOpenLevelUp: () => void
+}) {
+  return <div className="room-header-bar">
+    <span className={`header-chip mode ${combatActive ? 'fight' : ''}`}>{combatActive ? <><Swords size={14} />Бой · раунд {round}</> : <><Compass size={14} />Свободная сцена</>}</span>
+    {pacing && <span className={`header-chip director-status ${pacing.phase}`} title={pacing.title}><Sparkles size={13} />{pacing.label}<b>{pacing.tension}</b></span>}
+    {progression && progression.milestonesSinceLevel > 0 && (progression.levelUpAvailable
+      ? <button type="button" className="header-chip progression-status earned" onClick={onOpenLevelUp} title="Отряд заслужил уровень. Откройте лист героя, чтобы выбрать умения."><Sparkles size={13} />Уровень готов</button>
+      : <span className="header-chip progression-status" title={`Вех до нового уровня: ${progression.milestonesSinceLevel} из ${progression.milestonesPerLevel}`}><Sparkles size={13} />Вехи<b>{progression.milestonesSinceLevel}/{progression.milestonesPerLevel}</b></span>)}
+    {reputationStanding.length > 0 && <span className="header-chip reputation-status" title={reputationStanding.map((entry) => entry.label).join('; ')}><Shield size={13} />Слава<b>{reputationStanding.filter((entry) => entry.known).length || '—'}</b></span>}
+    <span className="room-header-spacer" />
+    <button type="button" className="header-campaign" onClick={onOpenCampaigns} title={`Кампания «${campaignName}», группа «${partyName}», комната ${sessionCode}. Переключить кампанию`}>
+      <small>{partyName || 'Отряд'} · {sessionCode}</small><strong>{campaignName}</strong><ChevronDown size={14} />
+    </button>
+    <ConnectionIndicator status={connectionState} />
+    {canManageLifecycle && lifecycleStatus === 'active' && <button type="button" className="header-icon" onClick={() => onChangeLifecycle('pause')} disabled={lifecycleBusy} title="Поставить кампанию на паузу" aria-label="Поставить кампанию на паузу"><Pause size={17} /></button>}
+    {canManageLifecycle && lifecycleStatus === 'paused' && <button type="button" className="header-icon" onClick={() => onChangeLifecycle('resume')} disabled={lifecycleBusy} title="Продолжить кампанию" aria-label="Продолжить кампанию"><Play size={17} /></button>}
+    {inviteEnabled && <button type="button" className="header-icon" onClick={onInvite} title="Пригласить игрока в комнату" aria-label="Пригласить игрока"><Users size={17} /></button>}
+  </div>
 }
 
 function MapSymbol() {
@@ -440,7 +452,7 @@ function SceneHeader({ title, location, objective, turn, chapter, illustration, 
           не добавляла ни тем, ни другим. */}
       {/* `turn` — номер сцены, а не ход отряда: он растёт только при переходе
           Директора. Подпись «ХОД» читалась как замерший счётчик действий. */}
-      <div className="scene-title"><span>Глава {chapter} · сцена {turn}</span><h1>{title}</h1><p><Target size={13} />{location}</p></div>
+      <div className="scene-title"><span>Глава {chapter} · сцена {turn} · {location}</span><h1>{title}</h1><p><Target size={13} />{location}</p></div>
       {/* Время суток и погода стоят рядом с названием места: это часть ответа
           на вопрос «где мы», а не отдельная панель. */}
       <SceneWeather weather={weather} />
@@ -1557,50 +1569,52 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     continueAgentInteraction(activePlayer.id)
   }
 
+  const roomHeaderBar = <RoomHeaderBar
+    campaignName={state.campaign}
+    partyName={state.partyName ?? ''}
+    sessionCode={state.sessionCode ?? ''}
+    connectionState={connectionState}
+    pacing={pacing && pacing.beat > 0 ? {
+      phase: pacing.phase,
+      label: pacingLabels[pacing.phase],
+      tension: pacing.tension,
+      title: lastTravel ? `Последний путь: ${lastTravel.from} → ${lastTravel.to}, ${lastTravel.duration_minutes} мин., риск ${lastTravel.risk_score}` : 'Серверный темп автономной кампании',
+    } : null}
+    progression={progression ? {
+      milestonesSinceLevel: progression.milestones_since_level,
+      milestonesPerLevel: progression.milestones_per_level,
+      levelUpAvailable: progression.level_up_available,
+    } : null}
+    reputationStanding={reputationStanding.map((entry) => ({
+      label: `${entry.faction_id} — ${REPUTATION_TIER_LABELS[entry.tier]}`,
+      known: entry.tier !== 'unknown',
+    }))}
+    combatActive={combatActive}
+    round={state.mechanics?.combat?.round ?? 1}
+    canManageLifecycle={canManageLifecycle}
+    lifecycleStatus={lifecycleStatus}
+    lifecycleBusy={lifecycleBusy}
+    onChangeLifecycle={(action) => { void changeLifecycle(action) }}
+    inviteEnabled={canManageLifecycle && lifecycleStatus === 'active'}
+    onInvite={() => setInviteOpen(true)}
+    onOpenCampaigns={() => setCampaignsOpen(true)}
+    onOpenLevelUp={() => openHeroEditor(ownedHeroIds[0] ?? accessibleHeroIds[0] ?? activePlayer.id, 'levelup')}
+  />
+
   return (
     <div className={`app ${sidebarCollapsed ? 'sidebar-is-collapsed' : ''}`} style={{
       '--ui-sidebar-width': `${Math.round(256 + Math.max(0, uiScale - 100) * .4)}px`,
       '--ui-hud-width': `${Math.round(246 + Math.max(0, uiScale - 100) * .25)}px`,
     } as React.CSSProperties}>
       <Sidebar
-        players={partyPlayers}
-        selectedPlayerId={activePlayer.id}
-        turnPlayerId={turnActorId}
-        accessibleHeroIds={accessibleHeroIds}
-        typingActorIds={visibleTypingActorIds}
         isAdmin={isAdmin}
-        deathSavesByHero={state.mechanics?.death?.saving_throws}
-        statusByHero={heroStatusByHero}
-        onSelect={setSelectedHeroId}
         collapsed={sidebarCollapsed}
-        onToggle={() => setSidebarCollapsed(value => !value)}
         view={view}
         onNavigate={navigate}
-        campaignName={state.campaign}
-        partyName={state.partyName ?? ''}
-        sessionCode={state.sessionCode ?? ''}
-        connectionState={connectionState}
-        pacing={pacing && pacing.beat > 0 ? {
-          phase: pacing.phase,
-          label: pacingLabels[pacing.phase],
-          tension: pacing.tension,
-          title: lastTravel ? `Последний путь: ${lastTravel.from} → ${lastTravel.to}, ${lastTravel.duration_minutes} мин., риск ${lastTravel.risk_score}` : 'Серверный темп автономной кампании',
-        } : null}
-        progression={progression ? {
-          milestonesSinceLevel: progression.milestones_since_level,
-          milestonesPerLevel: progression.milestones_per_level,
-          levelUpAvailable: progression.level_up_available,
-        } : null}
-        reputationStanding={reputationStanding.map((entry) => ({
-          label: `${entry.faction_id} — ${REPUTATION_TIER_LABELS[entry.tier]}`,
-          known: entry.tier !== 'unknown',
-        }))}
         canManageLifecycle={canManageLifecycle}
         lifecycleStatus={lifecycleStatus}
         lifecycleBusy={lifecycleBusy}
         onChangeLifecycle={(action) => { void changeLifecycle(action) }}
-        inviteEnabled={canManageLifecycle && lifecycleStatus === 'active'}
-        onInvite={() => setInviteOpen(true)}
         masterMenuOpen={masterMenuOpen}
         masterMenuRef={masterMenuRef}
         campaignControlBusy={campaignControlBusy}
@@ -1613,7 +1627,6 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         activeHeroName={activePlayer.character}
         onLogout={onLogout}
         onOpenCampaigns={() => setCampaignsOpen(true)}
-        onOpenLevelUp={() => openHeroEditor(ownedHeroIds[0] ?? accessibleHeroIds[0] ?? activePlayer.id, 'levelup')}
       />
       <main className="game-main">
         <button className="mobile-menu icon-button" onClick={() => setSidebarCollapsed(value => !value)} aria-label={sidebarCollapsed ? 'Открыть меню' : 'Закрыть меню'} aria-expanded={!sidebarCollapsed}><Menu size={20} /></button>
@@ -1639,6 +1652,16 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           {/* Свободный бросок переехал из правой колонки в угол карты: он нужен
               в любой момент, а карточка с подписями занимала место рядом с
               состоянием героя. */}
+          <PartyOverlay
+            players={partyPlayers}
+            selectedPlayerId={activePlayer.id}
+            turnPlayerId={turnActorId}
+            accessibleHeroIds={accessibleHeroIds}
+            typingActorIds={visibleTypingActorIds}
+            deathSavesByHero={state.mechanics?.death?.saving_throws}
+            statusByHero={heroStatusByHero}
+            onSelect={setSelectedHeroId}
+          />
           <DiceTray key={state.sessionCode} compact latestRoll={state.lastDiceRoll} onRoll={(sides) => rollFreeDie(activePlayer.id, sides)} />
           <DungeonMap
             state={state}
@@ -1698,7 +1721,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onTypingChange={updateTypingPresence}
             narrating={state.isNarrating}
             playerHud={<PlayerHud player={mapHero ?? activePlayer} combatActive={combatActive} status={heroStatusByHero[(mapHero ?? activePlayer).id]} hazards={((state.mechanics as { hazards?: Record<string, Array<{ id: string; label?: string; severity?: string; description?: string }>> } | undefined)?.hazards?.[(mapHero ?? activePlayer).id] ?? [])} onCharacter={() => openHeroEditor((mapHero ?? activePlayer).id)} onInventory={() => navigate('inventory')} />}
-            statusContent={<SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} illustration={sceneIllustration} illustrationKey={sceneLocationKey} locationArtUrl={locationArtUrl} scenicBackdrop={scenicBackdrop} wantedSigns={state.law?.signs ?? []} weather={state.weather_by_actor?.[activePlayer.id] ?? state.weather} />}
+            statusContent={<><SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} illustration={sceneIllustration} illustrationKey={sceneLocationKey} locationArtUrl={locationArtUrl} scenicBackdrop={scenicBackdrop} wantedSigns={state.law?.signs ?? []} weather={state.weather_by_actor?.[activePlayer.id] ?? state.weather} />{roomHeaderBar}</>}
           >
             <ChatPanel messages={state.messages} isNarrating={state.isNarrating} interaction={state.agentInteraction} players={partyPlayers} typingActorIds={visibleTypingActorIds} currentPlayerId={activePlayer.id} canAct={canAct} combatActive={combatActive} suggestedActions={actionHints} sceneKey={`${state.scene.location}|${state.scene.title}`} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={continueSceneInteraction} onWhy={() => { void submitAction('/why', activePlayer.id) }} onSpeak={voiceSupported && voiceMode !== 'off' ? (text) => speakNarration(text, narrationVoice) : null} />
           </DungeonMap>

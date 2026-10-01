@@ -43,7 +43,13 @@ test('решение группы находится рядом с катего�
   assert.match(header, /Решение группы/)
   assert.match(header, /showStartCombat && <button[^>]*className="start-combat-button"[^>]*onClick=\{onStartCombat\}/)
   assert.match(header, /className="hotbar-combat-controls"/)
-  assert.match(header, /onClick=\{onFinishTurn\}/)
+  // Завершение хода живёт в правой колонке панели — рядом с ресурсами хода,
+  // как в прототипе стола, а не в ряду колод.
+  assert.doesNotMatch(header, /onClick=\{onFinishTurn\}/)
+  const side = source.slice(source.indexOf('<aside className="turn-rail-side"'), source.indexOf('</aside>', source.indexOf('<aside className="turn-rail-side"')))
+  assert.match(side, /className=\{`end-turn-hotbar/)
+  assert.match(side, /onClick=\{onFinishTurn\}/)
+  assert.match(side, /className="hero-cluster-pips"/)
   assert.match(header, /onProposeParley\('persuasion'\)/)
   assert.match(source, /doorsAtHand\.some\(\(door\) => door\.state === 'locked'\) && <div className="hotbar-turn-controls">/)
   assert.doesNotMatch(source, /selectedSceneObjectVerbs\.map/u, 'действия объекта переехали в контекстное меню карты')
