@@ -15,7 +15,8 @@ const options = (diceService) => ({ diceService, context: { serverAuthoritativeC
 
 const FAMILY = [
   { id: 'summon-undead', casterClass: 'wizard', level: 9, slot: 'spell_slots_3', damageType: 'necrotic' },
-  { id: 'summon-fey', casterClass: 'druid', level: 9, slot: 'spell_slots_3', damageType: 'psychic' },
+  // Короткий меч духа феи колет; добавочная кость силового урона не моделируется.
+  { id: 'summon-fey', casterClass: 'druid', level: 9, slot: 'spell_slots_3', damageType: 'piercing' },
   { id: 'summon-shadowspawn', casterClass: 'warlock', level: 9, slot: 'pact_slots', damageType: 'cold' },
   { id: 'summon-aberration', casterClass: 'wizard', level: 9, slot: 'spell_slots_4', damageType: 'psychic' },
   { id: 'summon-construct', casterClass: 'wizard', level: 9, slot: 'spell_slots_4', damageType: 'bludgeoning' },

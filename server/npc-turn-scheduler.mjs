@@ -1098,7 +1098,8 @@ export function planNpcTurn(rawState, enemyId) {
   const frameAttackKind = String(currentEconomy.attack_action_kind ?? 'normal')
   const frameLimitApplies = frameAttackLimit > 0
     && (usedBeforePlan > 0 || frameAttackKind !== 'normal')
-  const attacksAllowed = frameLimitApplies
+  // Замедленное существо бьёт один раз за ход — так же, как отклонит движок.
+  const attacksAllowed = conditionIds(state, enemyId).has('slowed') ? 1 : frameLimitApplies
     ? Math.min(declaredMultiattackCount, frameAttackLimit)
     : declaredMultiattackCount
   if (currentEconomy.action === false

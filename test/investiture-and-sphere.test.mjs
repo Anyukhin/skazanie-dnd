@@ -94,15 +94,25 @@ test('Облачение льдом покрывает землю наледью
   assert.equal(effect.damage, null, 'сама наледь урона не наносит')
 })
 
-test('Облачение ветром даёт помеху атакующим', () => {
-  const state = field({ casterClass: 'druid' })
+test('Облачение ветром даёт помеху дальнобойным атакам оружием, но не ближним', () => {
+  const state = field({ casterClass: 'druid', foeAt: { x: 8, y: 2 } })
   const windy = replayEvents(state, cast(state, 'investiture-of-wind', [], { target_id: 'mage' }).events)
-  const swing = resolveCommand(
-    authoritative({ command_type: 'MakeAttack', actor_id: 'brute', target_id: 'mage', item_id: 'sword' }),
-    brutesTurn(windy),
+  const archer = structuredClone(brutesTurn(windy))
+  archer.enemies[0].inventory = [{ id: 'bow', catalog_id: 'srd_5_2_1:longbow', name: 'Длинный лук', type: 'weapon', quantity: 1, equipped: true }]
+  const shot = resolveCommand(
+    authoritative({ command_type: 'MakeAttack', actor_id: 'brute', target_id: 'mage', item_id: 'bow' }),
+    archer,
     options(dice([18, 3, 5])),
   )
-  assert.equal(swing.rolls.find((roll) => roll.purpose === 'attack').mode, 'disadvantage')
+  assert.equal(shot.rolls.find((roll) => roll.purpose === 'attack').mode, 'disadvantage')
+  const melee = structuredClone(brutesTurn(windy))
+  melee.mechanics.positions.brute = { x: 2, y: 2 }
+  const swing = resolveCommand(
+    authoritative({ command_type: 'MakeAttack', actor_id: 'brute', target_id: 'mage', item_id: 'sword' }),
+    melee,
+    options(dice([18, 3, 5])),
+  )
+  assert.equal(swing.rolls.find((roll) => roll.purpose === 'attack').mode, 'normal')
 })
 
 test('Рука Бигби бьёт атакой заклинания', () => {
