@@ -1036,7 +1036,9 @@ export class AutonomousCampaignOrchestrator {
         return { ...unchanged, kind: 'counter_offer', narration: exploration.confirmation, confirmation_required: true }
       }
       try {
-        const commit = await run([declaration, exploration.command])
+        // Подход к лестнице и подъём — два шага одного коммита: переход
+        // проверяет расстояние по уже сдвинутому герою.
+        const commit = await run([declaration, ...(exploration.commands ?? [exploration.command])])
         verifyDuplicate(commit)
         const door = (commit.events ?? []).find(event => event.event_type === 'DoorStateChanged')
         const forced = (commit.events ?? []).find(event => ['DoorForced', 'DoorLockpicked', 'DoorBarricadeForced'].includes(event.event_type))
