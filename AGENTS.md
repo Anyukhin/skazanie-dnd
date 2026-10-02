@@ -20,7 +20,7 @@
   Типы описываются JSDoc-ом (`@typedef`, `@param`, `@returns`) и JSDoc-приведением
   `/** @type {T} */ (expr)` — рантайм при этом не меняется. Если для зелёного
   нужна правка поведения — остановиться и вынести её отдельной задачей.
-  Проверяются 29 файлов (на 2026-10-02): список даёт
+  Проверяются 35 файлов (на 2026-10-02): список даёт
   `grep -rl '^// @ts-check' server/`. `rules-engine.mjs` и `index.mjs` в нём нет.
   Форма тактической клетки (`SceneCell`) объявлена в `server/dynamic-map.mjs`.
 - **`src/` — TypeScript + React + Vite.** Проверяется через `tsc --noEmit -p tsconfig.app.json`.
@@ -157,7 +157,8 @@ pnpm backup           # зашифрованная копия storage в ./backu
 `projection-integrity.mjs`, `npc-turn-scheduler.mjs`, `campaign-loop-policy.mjs`,
 `world-deeds.mjs`, `captives.mjs`, `parley.mjs`, `law-and-order.mjs`, `scene-requirements.mjs`, `map-quality.mjs`,
 `weather.mjs`, `offscreen-world.mjs`, `loot-containers.mjs`, `tavern-life.mjs`,
-`courier-letters.mjs`, `talespire-slab.mjs`, `talespire-import.mjs`, `map-library.mjs`.
+`courier-letters.mjs`, `talespire-slab.mjs`, `talespire-import.mjs`, `map-library.mjs`,
+`thin-walls.mjs`, `room-floors.mjs`, `detail-props.mjs`, `scene-features.mjs`.
 Не описывать их как «агентов».
 
 **Готовые карты (TaleSpire):** `talespire-slab.mjs` разбирает строку слэба,
