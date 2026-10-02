@@ -36,7 +36,7 @@ import { createCombatAudio, DEFAULT_COMBAT_AUDIO_SETTINGS, normalizeCombatAudioS
 import { normalizeVoiceMode, pickNarrationVoice, shouldAutoSpeak, type NarrationVoiceMode } from './narration-tts.mjs'
 import { cancelNarration, observeVoices, russianVoiceAvailable, speakNarration } from './narration-speech'
 import { CELL_FEET, currentTacticalTurn, mapGridDimensions } from './tactical-engine'
-import { battleRollContext, battleRollPresentation, boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, mechanicsSupportPresentation, movementCellReason, movementCostLabel, turnClockPresentation, type MovementPath } from './tactical-ui'
+import { battleRollContext, battleRollPresentation, boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, mechanicsSupportPresentation, movementCellReason, movementCostLabel, reactionSlotChoices, turnClockPresentation, type MovementPath } from './tactical-ui'
 import { fallbackCombatActions, fallbackCombatResources } from './combat-actions'
 import { fallbackCombatSpells, fallbackSpellResources } from './combat-spells'
 import { CombatLabView } from './CombatLabView'
@@ -622,7 +622,7 @@ function WaitingForHero({ account, onRefresh, onLogout }: { account: Account; on
   return <main className="waiting-screen"><div className="waiting-card"><div className="modal-icon"><Shield size={23} /></div><span className="eyebrow">АККАУНТ СОЗДАН</span><h1>Ожидаем назначения героя</h1><p>{account.name}, администратор ещё не открыл вам доступ к персонажу. После назначения здесь автоматически появятся лист героя, предметы и игровая комната.</p><button onClick={async () => { setChecking(true); await onRefresh(); setChecking(false) }}><RefreshCw className={checking ? 'spinning' : ''} size={16} />{checking ? 'Проверяем…' : 'Проверить доступ'}</button><button className="waiting-logout" onClick={onLogout}>Выйти из аккаунта</button></div></main>
 }
 
-function ReactionPrompt({ actorName, sourceName, window, clock, busy, beneficiaries, onChoose, onDecline }: { actorName: string; sourceName: string; window: CombatReactionWindow; clock?: GameState['turn_clock']; busy: boolean; beneficiaries: Array<{ id: string; name: string }>; onChoose: (actionId: string, beneficiaryId?: string) => void; onDecline: () => void }) {
+function ReactionPrompt({ actorName, sourceName, window, clock, busy, beneficiaries, slotLevels = [], onChoose, onDecline }: { actorName: string; sourceName: string; window: CombatReactionWindow; clock?: GameState['turn_clock']; busy: boolean; beneficiaries: Array<{ id: string; name: string }>; slotLevels?: number[]; onChoose: (actionId: string, beneficiaryId?: string, slotLevel?: number) => void; onDecline: () => void }) {
   const hit = ['attack-hit', 'spell-attack-hit'].includes(window.trigger)
   const protectiveAttack = ['attack-shield-choice', 'attack-protective-choice'].includes(window.trigger)
   const magicMissile = ['magic-missile-targeted', 'magic-missile-shield-choice'].includes(window.trigger)
@@ -640,6 +640,7 @@ function ReactionPrompt({ actorName, sourceName, window, clock, busy, beneficiar
     ? `${actorName} проваливает спасбросок: d20 ${window.trigger_roll?.kept ?? '—'} ${(window.trigger_roll?.modifier ?? 0) >= 0 ? '+' : ''}${window.trigger_roll?.modifier ?? 0} = ${window.trigger_roll?.total ?? '—'} против СЛ ${window.trigger_roll?.difficulty ?? '—'}.`
     : ''
   const [beneficiaryId, setBeneficiaryId] = useState(beneficiaries[0]?.id ?? window.actor_id)
+  const [chosenSlots, setChosenSlots] = useState<Record<string, number>>({})
   const needsBeneficiary = window.action_options.some((option) => option.requires_beneficiary)
   /* Окно реакции — плашкой над панелью героя, как в макете стола, а не
      модалкой на весь экран: поле остаётся видно, и понятно, что происходит.
@@ -652,7 +653,14 @@ function ReactionPrompt({ actorName, sourceName, window, clock, busy, beneficiar
     <header><div><RefreshCw size={21} /><span><small>{savingThrowBonus ? 'БОНУС СПАСБРОСКА' : failedSave ? 'ПРОВАЛЕННЫЙ СПАСБРОСОК' : 'ПРЕРЫВАЮЩАЯ РЕАКЦИЯ'}</small><strong>{savingThrowBonus ? `${actorName}, добавить бонус?` : failedSave ? `${actorName}, использовать особенность?` : `${actorName}, реагировать?`}</strong></span></div><em>{savingThrowBonus ? 'Сопротивление' : failedSave ? 'Спасбросок' : elementalDamage ? elementalDamageLabel || 'Стихийный урон' : spellCast || magicMissile ? 'Заклинание' : opportunity ? 'Движение' : hit || protectiveAttack ? 'Попадание' : 'Промах'}</em></header>
     <p>{savingThrowBonus ? savingThrowBonusText : failedSave ? failedSaveText : elementalDamage ? `${actorName} может защититься от стихийного урона. Последствия будут определены после выбора реакции.` : magicMissile ? `${sourceName} направляет «Волшебную стрелу» на героя. Щит может полностью остановить её урон.` : protectiveAttack ? `${sourceName} попадает по герою. Можно защититься до применения урона.` : spellCast ? `${sourceName} начинает накладывать «${window.pending_spell?.name ?? 'заклинание'}»${window.pending_spell?.slot_level ? ` ячейкой ${window.pending_spell.slot_level} уровня` : ''}.` : opportunity ? `${sourceName} покидает досягаемость героя.` : hit ? `${sourceName} попадает по герою${window.damage?.applied_amount ? ` и наносит ${window.damage.applied_amount} урона` : ''}.` : `${sourceName} промахивается в ближнем бою.`} {savingThrowBonus ? 'Выберите, использовать ли бонус сейчас.' : failedSave ? 'Выберите «Несгибаемый» или оставьте исходный провал.' : 'Выберите одну доступную реакцию или продолжите бой без неё.'}</p>
     {needsBeneficiary && <label className="reaction-beneficiary"><span>Преимущество получит</span><select value={beneficiaryId} disabled={busy} onChange={(event) => setBeneficiaryId(event.target.value)}>{beneficiaries.map((beneficiary) => <option key={beneficiary.id} value={beneficiary.id}>{beneficiary.name}</option>)}</select></label>}
-    <div className="reaction-options">{window.action_options.map((option) => <button key={option.id} disabled={busy || (option.requires_beneficiary && !beneficiaryId)} onClick={() => onChoose(option.id, option.requires_beneficiary ? beneficiaryId : undefined)}><i><CombatIcon id={option.id} kind={option.id.startsWith('cast:') ? 'spell' : 'reaction'} hint={`${option.name} ${option.description}`} size={35} /></i><span><strong>{option.name}</strong><small>{option.description}</small></span>{option.resource && <em>{option.cost ?? 1}</em>}</button>)}</div>
+    <div className="reaction-options">{window.action_options.map((option) => {
+      const slotChoices = reactionSlotChoices(option, slotLevels)
+      const chosenSlot = chosenSlots[option.id] ?? option.slot_level
+      return <div key={option.id} className="reaction-option">
+        <button disabled={busy || (option.requires_beneficiary && !beneficiaryId)} onClick={() => onChoose(option.id, option.requires_beneficiary ? beneficiaryId : undefined, slotChoices.length > 1 && chosenSlot !== option.slot_level ? chosenSlot : undefined)}><i><CombatIcon id={option.id} kind={option.id.startsWith('cast:') ? 'spell' : 'reaction'} hint={`${option.name} ${option.description}`} size={35} /></i><span><strong>{option.name}</strong><small>{option.description}</small></span>{option.resource && <em>{option.cost ?? 1}</em>}</button>
+        {slotChoices.length > 1 && <label className="reaction-slot"><span>Ячейка</span><select value={chosenSlot} disabled={busy} onChange={(event) => setChosenSlots((current) => ({ ...current, [option.id]: Number(event.target.value) }))}>{slotChoices.map((level) => <option key={level} value={level}>{level}-й круг</option>)}</select></label>}
+      </div>
+    })}</div>
     {!savingThrowBonus && <footer><button disabled={busy} onClick={onDecline}>{busy ? 'Применяем…' : failedSave ? 'Оставить провал' : 'Не реагировать'}</button><span>{failedSave ? 'Несгибаемый не расходует реакцию и восстанавливается после продолжительного отдыха.' : 'Реакция восстановится в начале следующего хода героя.'}</span></footer>}
     {savingThrowBonus && <footer><span>Этот выбор не расходует реакцию.</span></footer>}
   </section></div>
@@ -1558,6 +1566,14 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const reactionBeneficiaries = [...state.players, ...(state.actors ?? []).filter((actor) => actor.faction === 'party')]
     .filter((actor) => ('alive' in actor ? actor.alive !== false : actor.hp > 0))
     .map((actor) => ({ id: actor.id, name: 'character' in actor ? actor.character : actor.name }))
+  // Круги, где у отвечающего героя осталась ячейка: из них выбирается усиление.
+  const reactionSlotLevels = reactionWindow
+    ? Object.entries(state.mechanics?.resources?.[reactionWindow.actor_id] ?? {})
+      .map(([resource, pool]) => ({ level: Number(/^spell_slots_(\d)$/u.exec(resource)?.[1] ?? 0), current: Number(pool?.current ?? 0) }))
+      .filter((entry) => entry.level > 0 && entry.current > 0)
+      .map((entry) => entry.level)
+      .sort((left, right) => left - right)
+    : []
   const reactionControllerId = reactionActor && 'ownerId' in reactionActor ? String(reactionActor.ownerId ?? reactionActor.controllerId ?? '') : ''
   const reactionActorName = reactionActor && 'character' in reactionActor ? reactionActor.character : reactionActor?.name ?? 'Герой'
   const reactionSourceName = reactionSource && 'character' in reactionSource ? reactionSource.character : reactionSource?.name ?? 'Противник'
@@ -1893,7 +1909,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           return player ? levelUpCharacter(player.id, player.level) : Promise.resolve({ ok: false, error: 'Герой не найден' })
         }}
       />}
-      {reactionWindow && canAnswerReaction && <ReactionPrompt actorName={String(reactionActorName)} sourceName={String(reactionSourceName)} window={reactionWindow} clock={state.turn_clock} busy={tacticalBusy} beneficiaries={reactionBeneficiaries} onChoose={(actionId, beneficiaryId) => useCombatAction(reactionWindow.actor_id, actionId, reactionWindow.source_actor_id, undefined, beneficiaryId)} onDecline={() => useCombatAction(reactionWindow.actor_id, 'decline-reaction')} />}
+      {reactionWindow && canAnswerReaction && <ReactionPrompt actorName={String(reactionActorName)} sourceName={String(reactionSourceName)} window={reactionWindow} clock={state.turn_clock} busy={tacticalBusy} beneficiaries={reactionBeneficiaries} slotLevels={reactionSlotLevels} onChoose={(actionId, beneficiaryId, slotLevel) => useCombatAction(reactionWindow.actor_id, actionId, reactionWindow.source_actor_id, undefined, beneficiaryId, undefined, slotLevel)} onDecline={() => useCombatAction(reactionWindow.actor_id, 'decline-reaction')} />}
       {!campaignsOpen && showDeathScreen && <DeathScreen heroes={fallenHeroes} partyDefeated={partyDefeated} busy={tacticalBusy} error={tacticalError} canResolve={(heroId) => isAdmin || accessibleHeroIds.includes(heroId)} onResolve={(heroId, resolution, replacementName) => { if (resolution === 'replace') setReplacementEditorId(heroId); resolveHeroDeath(heroId, resolution, replacementName) }} onContinueToEpilogue={() => setReviewedPartyDefeat(state.sessionCode)} />}
       {!campaignsOpen && showConclusion && <CampaignConclusionScreen status={lifecycleStatus as 'completed' | 'failed' | 'archived'} epilogue={lifecycle?.epilogue} busy={lifecycleBusy} canManage={canManageLifecycle} onArchive={() => { void changeLifecycle('archive') }} onChooseCampaign={() => setCampaignsOpen(true)} />}
       {!campaignsOpen && !showDeathScreen && !showConclusion && levelUpCelebration && !(editingPlayerId === levelUpCelebration.playerId) && <LevelUpScreen

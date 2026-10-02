@@ -59,7 +59,7 @@ test('Сфера Отилюка обездвиживает и отсекает �
   assert.equal(damage.applied_amount, 0)
 })
 
-test('Облачение пламенем даёт сопротивление и жжёт стоящих рядом', () => {
+test('Облачение пламенем даёт невосприимчивость к огню и жжёт стоящих рядом', () => {
   const state = field({ casterClass: 'druid' })
   const burning = replayEvents(state, cast(state, 'investiture-of-flame', [], { target_id: 'mage' }).events)
   const effect = burning.mechanics.active_effects.find((candidate) => candidate.spell_id === 'investiture-of-flame')
@@ -67,15 +67,22 @@ test('Облачение пламенем даёт сопротивление и
   assert.equal(effect.follows_source, true, 'область едет вместе с ним')
   assert.equal(effect.damage, '1d10')
 
-  // Сопротивление огню: та же кость урона режется вдвое.
+  // Невосприимчивость к огню и сопротивление холоду.
   const scorch = resolveCommand(
     authoritative({ command_type: 'ApplyDamage', actor_id: 'mage', target_id: 'mage', amount: 20, damage_type: 'fire' }),
+    burning,
+    options(dice([18])),
+  )
+  assert.equal(damages(scorch)[0].immune, true)
+  assert.equal(damages(scorch)[0].applied_amount, 0)
+  const chill = resolveCommand(
+    authoritative({ command_type: 'ApplyDamage', actor_id: 'mage', target_id: 'mage', amount: 20, damage_type: 'cold' }),
     burning,
     // Урон по концентрирующемуся тянет за собой проверку концентрации.
     options(dice([18])),
   )
-  assert.equal(damages(scorch)[0].resistant, true)
-  assert.equal(damages(scorch)[0].applied_amount, 10)
+  assert.equal(damages(chill)[0].resistant, true)
+  assert.equal(damages(chill)[0].applied_amount, 10)
 })
 
 test('Облачение льдом покрывает землю наледью', () => {
@@ -87,15 +94,25 @@ test('Облачение льдом покрывает землю наледью
   assert.equal(effect.damage, null, 'сама наледь урона не наносит')
 })
 
-test('Облачение ветром даёт помеху атакующим', () => {
-  const state = field({ casterClass: 'druid' })
+test('Облачение ветром даёт помеху дальнобойным атакам оружием, но не ближним', () => {
+  const state = field({ casterClass: 'druid', foeAt: { x: 8, y: 2 } })
   const windy = replayEvents(state, cast(state, 'investiture-of-wind', [], { target_id: 'mage' }).events)
-  const swing = resolveCommand(
-    authoritative({ command_type: 'MakeAttack', actor_id: 'brute', target_id: 'mage', item_id: 'sword' }),
-    brutesTurn(windy),
+  const archer = structuredClone(brutesTurn(windy))
+  archer.enemies[0].inventory = [{ id: 'bow', catalog_id: 'srd_5_2_1:longbow', name: 'Длинный лук', type: 'weapon', quantity: 1, equipped: true }]
+  const shot = resolveCommand(
+    authoritative({ command_type: 'MakeAttack', actor_id: 'brute', target_id: 'mage', item_id: 'bow' }),
+    archer,
     options(dice([18, 3, 5])),
   )
-  assert.equal(swing.rolls.find((roll) => roll.purpose === 'attack').mode, 'disadvantage')
+  assert.equal(shot.rolls.find((roll) => roll.purpose === 'attack').mode, 'disadvantage')
+  const melee = structuredClone(brutesTurn(windy))
+  melee.mechanics.positions.brute = { x: 2, y: 2 }
+  const swing = resolveCommand(
+    authoritative({ command_type: 'MakeAttack', actor_id: 'brute', target_id: 'mage', item_id: 'sword' }),
+    melee,
+    options(dice([18, 3, 5])),
+  )
+  assert.equal(swing.rolls.find((roll) => roll.purpose === 'attack').mode, 'normal')
 })
 
 test('Рука Бигби бьёт атакой заклинания', () => {

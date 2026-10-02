@@ -302,6 +302,18 @@ export function weaponDamageRidersForItem(actor, itemId, { selectedCountsAsEquip
     }))
 }
 
+/**
+ * Бонус надетых щитов (и прочих надбавок снаряжения поверх доспеха). Нужен
+ * формулам КД без доспеха вроде «Доспехов мага»: щит к ним прибавляется.
+ */
+export function equippedShieldBonus(actor) {
+  let bonus = 0
+  for (const item of actor?.inventory ?? []) {
+    if (item?.equipped) bonus += Number(profileFor(item).armor_bonus) || 0
+  }
+  return bonus
+}
+
 export function derivedEquipmentArmorClass(actor, { includeItemEffects = true } = {}) {
   const dexterity = Math.floor(((Number(actor?.abilities?.dex) || 10) - 10) / 2)
   let body = null

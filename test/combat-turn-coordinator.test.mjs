@@ -674,3 +674,129 @@ test('окно реакции продлевает ход считанное ч�
   })
   assert.equal(nextTurn.mechanics.combat.turn_reaction_extensions ?? 0, 0)
 })
+
+test('ход героя без хозяина завершается по короткому сроку, а занятый — по обычному', async (t) => {
+  const startedMs = Date.parse('2026-07-30T12:00:00.000Z')
+  for (const [campaignId, unclaimed, expectedDelay] of [['SEAT-FREE', true, 3_000], ['SEAT-TAKEN', false, 120_000]]) {
+    const state = fixture()
+    const store = testStore(t, state, () => new Date(startedMs))
+    await recordTurnStart(store, campaignId, state, 'hero')
+    const asked = []
+    const scheduled = []
+    const coordinator = new CombatTurnCoordinator({
+      eventStore: store,
+      rulesEngine: engine(),
+      timeoutMs: 120_000,
+      now: () => startedMs,
+      runNpcTurns: async () => ({ events: [] }),
+      isSeatUnclaimed: (id, _state, actorIds) => { asked.push([id, actorIds]); return unclaimed },
+      setTimer: (_callback, delay) => { scheduled.push(delay); return { delay } },
+      clearTimer: () => {},
+    })
+    t.after(() => coordinator.close())
+    await coordinator.settleNow(campaignId)
+    assert.deepEqual(asked.at(-1), [campaignId, ['hero']])
+    assert.equal(scheduled.at(-1), expectedDelay, campaignId)
+    assert.equal(coordinator.clockFor(campaignId).duration_ms, expectedDelay)
+  }
+
+  // По истечении короткого срока сервер сам завершает ход и передаёт очередь.
+  const state = fixture()
+  const store = testStore(t, state, () => new Date(startedMs))
+  await recordTurnStart(store, 'SEAT-SKIP', state, 'hero')
+  const coordinator = new CombatTurnCoordinator({
+    eventStore: store,
+    rulesEngine: engine(),
+    timeoutMs: 120_000,
+    now: () => startedMs + 3_001,
+    runNpcTurns: async () => ({ events: [] }),
+    isSeatUnclaimed: () => true,
+    setTimer: (_callback, delay) => ({ delay }),
+    clearTimer: () => {},
+  })
+  t.after(() => coordinator.close())
+  await coordinator.settleNow('SEAT-SKIP')
+  const loaded = await store.load('SEAT-SKIP')
+  assert.equal(loaded.state.mechanics.combat.initiative[loaded.state.mechanics.combat.active_index].actor_id, 'wolf')
+})
+
+test('истёкшее окно реакции недособранного героя отклоняется, а не останавливает бой', async (t) => {
+  let storeClockMs = Date.parse('2026-07-30T12:00:00.000Z')
+  const state = fixture({ activeActor: 'wolf' })
+  state.players[0].characterSetupRequired = true
+  const store = testStore(t, state, () => new Date(storeClockMs))
+  await recordTurnStart(store, 'SETUP-REACTION', state, 'wolf')
+  await store.commit({
+    campaign_id: 'SETUP-REACTION',
+    expected_state_version: 1,
+    idempotency_key: 'open:SETUP-REACTION',
+    command_id: 'open:SETUP-REACTION',
+    events: [{
+      event_type: 'ReactionWindowOpened',
+      actor_id: 'wolf',
+      target_ids: ['hero'],
+      payload: { id: 'opportunity:wolf:hero:setup', trigger: 'enemy-left-reach', actor_id: 'hero', source_actor_id: 'wolf', target_id: 'hero', action_ids: ['opportunity-attack'] },
+      source_rule_ids: ['srd_5_2_1:combat/reactions'],
+      visibility: 'public',
+    }],
+  })
+  storeClockMs += 30_000
+  const errors = []
+  const coordinator = new CombatTurnCoordinator({
+    eventStore: store,
+    rulesEngine: engine(),
+    timeoutMs: 20_000,
+    now: () => storeClockMs,
+    runNpcTurns: async () => ({ events: [] }),
+    onError: (error) => errors.push(error),
+  })
+  t.after(() => coordinator.close())
+
+  await coordinator.settleNow('SETUP-REACTION')
+
+  assert.deepEqual(errors.map((error) => error?.code), [])
+  const events = await store.getEvents('SETUP-REACTION')
+  assert.ok(events.some((event) => event.event_type === 'ReactionWindowClosed' && event.payload.auto_declined === true))
+  assert.equal((await store.load('SETUP-REACTION')).state.mechanics.combat.reaction_window, null)
+})
+
+test('павший герой на недособранном месте не останавливает бой: планировщик пропускает его ход', async (t) => {
+  const startedMs = Date.parse('2026-07-30T12:00:00.000Z')
+  const downed = (draft) => {
+    draft.players[0].characterSetupRequired = true
+    draft.players[0].hp = 0
+    draft.mechanics.conditions.hero = [{ id: 'unconscious', duration: null }]
+    // Стабилизирован: спасброски от смерти не бросаются, костей стенд не даёт.
+    draft.mechanics.death = { ...(draft.mechanics.death ?? {}), saving_throws: { hero: { successes: 0, failures: 0, stable: true } } }
+  }
+  // Рядом живой герой: павшего пропускают, очередь идёт дальше.
+  const shared = fixture()
+  downed(shared)
+  shared.players.push({ ...shared.players[0], id: 'mage', character: 'Мира', hp: 20, characterSetupRequired: false })
+  shared.partyMemberIds.push('mage')
+  shared.mechanics.conditions.mage = []
+  shared.mechanics.combat.initiative.push({ actor_id: 'mage', total: 5 })
+  shared.mechanics.combat.action_economy.mage = { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 }
+  // Павший — единственный: бой заканчивается, а не повторяет отказ.
+  const alone = fixture()
+  downed(alone)
+  for (const [campaignId, state, expected] of [['SETUP-DOWNED', shared, 'TurnEnded'], ['SETUP-ALONE', alone, 'CombatEnded']]) {
+    const store = testStore(t, state, () => new Date(startedMs))
+    await recordTurnStart(store, campaignId, state, 'hero')
+    const errors = []
+    const coordinator = new CombatTurnCoordinator({
+      eventStore: store,
+      rulesEngine: engine(),
+      timeoutMs: 120_000,
+      now: () => startedMs,
+      setTimer: (_callback, delay) => ({ delay }),
+      clearTimer: () => {},
+      onError: (error) => errors.push(error),
+    })
+    t.after(() => coordinator.close())
+    await coordinator.settleNow(campaignId)
+    assert.deepEqual(errors.map((error) => error?.code), [], campaignId)
+    const events = await store.getEvents(campaignId)
+    assert.ok(events.some((event) => event.event_type === expected), `${campaignId}: ${expected}`)
+  }
+})

@@ -585,7 +585,7 @@ export function combatSpellTargetLimit(
 ): number {
   if (spell?.beamScaling === true) {
     const level = Math.max(1, Math.floor(Number(casterLevel) || 1))
-    return level >= 11 ? 3 : level >= 5 ? 2 : 1
+    return level >= 17 ? 4 : level >= 11 ? 3 : level >= 5 ? 2 : 1
   }
   const beams = Math.floor(Number(spell?.beams) || 0)
   if (beams > 0) {

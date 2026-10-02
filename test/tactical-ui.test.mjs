@@ -533,6 +533,11 @@ test('срок состояния подписан по-русски, а нез�
     tacticalUi.conditionPresentation({ id: 'disengaged', duration: 'until-next-turn' }).duration,
     'до начала следующего хода',
   )
+  // Сроки «до хода заклинателя» отсчитываются по источнику, а не по цели.
+  assert.equal(tacticalUi.conditionPresentation({ id: 'speed-reduced-10', duration: 'until-source-next-turn' }).duration, 'до начала следующего хода источника')
+  assert.equal(tacticalUi.conditionPresentation({ id: 'guiding-bolt-advantage', duration: 'source-turns:2' }).duration, 'до конца следующего хода источника')
+  assert.equal(tacticalUi.conditionPresentation({ id: 'guiding-bolt-advantage', duration: 'source-turns:1' }).duration, 'до конца хода источника')
+  assert.equal(tacticalUi.conditionPresentation({ id: 'disadvantage-next-attack', duration: 'until-own-turn-end' }).duration, 'до конца своего хода')
   // Незнакомый срок теряться не должен: показать сырым честнее, чем скрыть.
   assert.equal(tacticalUi.conditionPresentation({ id: 'bless', duration: 'until-dawn' }).duration, 'until-dawn')
   assert.equal(tacticalUi.conditionPresentation({ id: 'longstrider', duration: 'seconds:3600' }).duration, '1 ч')
@@ -740,4 +745,12 @@ test('площадь заклинателя для предпросмотра б
   assert.ok(cube.length > 0)
   assert.ok(cube.every((point) => point.x >= 1 && point.x <= 3), 'куб от клетки каста (0,1) и её площади 2×2')
   assert.ok(cube.some((point) => point.x === 3 && point.y === 1), 'вторая клетка площади в точке каста продлевает куб')
+})
+
+test('реакция-заклинание предлагает усиление только кругами с оставшейся ячейкой', () => {
+  const absorb = { id: 'cast:absorb-elements', slot_level: 1 }
+  assert.deepEqual(tacticalUi.reactionSlotChoices(absorb, [1, 3, 5]), [1, 3, 5])
+  assert.deepEqual(tacticalUi.reactionSlotChoices({ ...absorb, slot_level: 3 }, [1, 3]), [3], 'ниже предложенной — нельзя')
+  assert.deepEqual(tacticalUi.reactionSlotChoices({ id: 'opportunity-attack' }, [1, 2]), [], 'не заклинание — без выбора')
+  assert.deepEqual(tacticalUi.reactionSlotChoices({ id: 'cast:shield', slot_level: 1 }, []), [1])
 })

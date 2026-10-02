@@ -941,6 +941,9 @@ export function levelUpEvent(command) {
       hit_point_policy: command.hit_point_policy,
       max_hp_before: command.max_hp_before,
       max_hp_after: command.max_hp_after,
+      // Версия 1: прибавка максимума ресурса (новые ячейки) сразу доступна.
+      // Старые события без поля переигрываются по прежнему правилу.
+      resource_grant_version: 1,
     },
   }
 }

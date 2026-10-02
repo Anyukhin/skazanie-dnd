@@ -123,8 +123,8 @@
     },
     {
       "path": "data/dndsu-spells-0-6.json",
-      "sha256": "eb498145301484f66ac8c53b14aba7687dbdda0921e299db8d7be46856f19c14",
-      "size_bytes": 903963,
+      "sha256": "e11e9515ba699c9d8f5ebb66555cafbc0538460eb2c8857d764be4ce52c2884d",
+      "size_bytes": 904178,
       "source_id": "dndsu-compatibility-index",
       "rights_status": "review_required"
     },
@@ -144,8 +144,8 @@
     },
     {
       "path": "data/dndsu-spell-mechanics-overrides.json",
-      "sha256": "6132c6de4a2cb77c0dd386d0117ad26e73dca0441e46b4fe4cd1d73570ecc8f6",
-      "size_bytes": 227061,
+      "sha256": "4927bc86c56ca43f29e360ea84e2c5bee255b3ee99414df9d773fc0c3d2e413e",
+      "size_bytes": 269149,
       "source_id": "dndsu-compatibility-index",
       "rights_status": "review_required"
     },
@@ -191,8 +191,8 @@
     },
     {
       "path": "data/spell-descriptions-ru.json",
-      "sha256": "db85f191da8987c9da089c11699f5bfe5a527d0131f50b50740d4e0b8561cf9d",
-      "size_bytes": 636017,
+      "sha256": "7ea2c682c4ccf74aef4fba96fb3c4a0c84111e9cf68120e627070ab584ea9cc2",
+      "size_bytes": 636203,
       "source_id": "dndsu-compatibility-index",
       "rights_status": "project_license_required"
     },

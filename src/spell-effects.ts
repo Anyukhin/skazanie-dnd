@@ -168,6 +168,8 @@ type CatalogSpell = {
   mechanicsSupport?: 'verified' | 'partial' | 'heuristic' | 'ruling-only'
   createsAreaEffect?: unknown
   requiresWeaponAttack?: boolean
+  attackKind?: string
+  range?: number
 }
 
 type SpellProfileHints = Partial<CatalogSpell> & {
@@ -298,6 +300,13 @@ const SPELL_FAMILY_IDS: Readonly<Record<string, SpellEffectFamily>> = {
   'mordenkainen-s-private-sanctum': 'protection',
   forbiddance: 'protection',
   'wither-and-bloom': 'necrotic',
+  // Удары-заготовки и метки — не защита: шипы бьют, метка указывает цель,
+  // лозы опутывают. Вода и яд — свой материал, а не общий «контроль».
+  'hail-of-thorns': 'weapon',
+  'hunter-s-mark': 'divination',
+  'ensnaring-strike': 'control',
+  'tidal-wave': 'water',
+  'stinking-cloud': 'poison',
   'silent-image': 'illusion',
   'major-image': 'illusion',
   'programmed-illusion': 'illusion',
@@ -645,6 +654,10 @@ export function spellVisualProfile(spellIdValue: unknown, hints: SpellProfileHin
   else if (CHANNEL_POINT_SPELLS.has(spellId)) kind = 'channel'
   else if (PROTECTION_AREA_SPELLS.has(spellId) || areaCapable) kind = 'burst'
   else if (BEAM_SPELLS.has(spellId) || /beam|bolt-chain|lightning-lure/u.test(spellId)) kind = 'beam'
+  // Касание и рукопашная атака заклинанием ничего не выпускают: эффект
+  // вспыхивает на цели, а не летит к ней снарядом.
+  else if (spellKind === 'attack' && !PROJECTILE_SPELLS.has(spellId)
+    && (normalizeId(spell.attackKind) === 'melee' || (Number(spell.range) > 0 && Number(spell.range) <= 5))) kind = 'channel'
   else if (PROJECTILE_SPELLS.has(spellId) || spellKind === 'attack' || spellKind === 'damage') kind = 'projectile'
   else if (spellKind === 'summon' || spellKind === 'healing' || spellKind === 'buff' || spellKind === 'teleport') kind = 'channel'
 

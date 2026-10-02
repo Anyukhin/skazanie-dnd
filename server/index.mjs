@@ -389,6 +389,14 @@ const combatTurnCoordinator = new CombatTurnCoordinator({
   rulesEngine,
   npcController,
   timeoutMs: combatTurnTimeoutMs,
+  // Героя без хозяина некому вести: в кампании с участниками его ход
+  // завершается по короткому сроку, а не стоит две минуты.
+  isSeatUnclaimed: (campaignId, state, actorIds) => {
+    if (!campaignHasMemberships(campaignId)) return false
+    const assigned = new Set(assignedCampaignHeroIds(campaignId, state))
+    const heroes = new Set(partyHeroIds(state).map(String))
+    return actorIds.every((actorId) => heroes.has(String(actorId)) && !assigned.has(String(actorId)))
+  },
   onCommitted: ({ campaignId, state, events }) => {
     persistAuthoritativeProjection(campaignId, state, events)
   },
@@ -5682,6 +5690,12 @@ const server = createServer((req, res) => {
 })
 
 await reconcileAllCampaignProjections()
+// Простаивающее соединение держим дольше клиентского keep-alive (у fetch/undici
+// это 4–5 секунд, у обратных прокси — до минуты). При стандартных 5 секундах
+// сервер под нагрузкой закрывал сокет ровно тогда, когда клиент отправлял по
+// нему следующий запрос, и тот падал с ECONNRESET.
+server.keepAliveTimeout = 65_000
+server.headersTimeout = 66_000
 server.listen(port, host, () => {
   console.log(`[Сказание] Сервер: http://${host}:${port} · ${apiKey ? `${model} + ${fallbackModels.length} fallback models` : 'демо-режим'}`)
   // После рестарта активной кампании NPC может потребовать заметного CPU ещё до
