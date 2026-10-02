@@ -140,3 +140,31 @@ test('импорт акторов даёт воспроизводимые сам
     dispose(secondGltf.scene)
   }
 })
+
+const HAIR_DIR = join(SOURCE_ROOT, 'extracted', 'Universal-Base-Characters-Standard', 'Universal Base Characters[Standard]', 'Hairstyles', 'Rigged to Head Bone', 'glTF (Godot -Unreal)')
+const HEROES_READY = SOURCE_READY && [
+  join(BASE_DIR, 'Superhero_Female_FullBody.gltf'),
+  join(OUTFIT_DIR, 'Female_Peasant.gltf'),
+  join(OUTFIT_DIR, 'Female_Ranger.gltf'),
+  join(HAIR_DIR, 'Hair_Long.gltf'),
+  join(HAIR_DIR, 'Hair_Beard.gltf'),
+].every((file) => existsSync(file))
+
+test('сборка героев из архивов совпадает байт в байт с опубликованным выпуском', { skip: !HEROES_READY, timeout: 180_000 }, async (t) => {
+  const { importQuaterniusHeroes } = await import('../tools/import-quaternius-actors.mjs')
+  const out = await mkdtemp(join(TMP_ROOT, 'quaternius-heroes-test-'))
+  t.after(() => rm(out, { recursive: true, force: true }))
+  const result = await importQuaterniusHeroes({ out, baseDir: BASE_DIR, outfitDir: OUTFIT_DIR, ualFile: UAL_FILE, hairDir: HAIR_DIR,
+    baseArchive: join(SOURCE_ROOT, 'Universal-Base-Characters-Standard.zip'),
+    outfitArchive: join(SOURCE_ROOT, 'Modular-Character-Outfits-Fantasy-Standard.zip'),
+    animationArchive: join(SOURCE_ROOT, 'Universal-Animation-Library-Standard.zip') })
+  const releaseDir = join(ROOT, 'public', 'assets', 'models', 'quaternius', result.notice.immutableRelease.id)
+  const published = JSON.parse(await readFile(join(releaseDir, 'NOTICE.json'), 'utf8'))
+  assert.deepEqual(result.notice, published, 'NOTICE выпуска воспроизводится')
+  for (const profile of result.profiles) {
+    assert.deepEqual(await readFile(join(out, profile.file)), await readFile(join(releaseDir, profile.file)), `${profile.key}: GLB воспроизводится`)
+    assert.ok(profile.bytes <= 3 * 1024 * 1024, `${profile.key}: ${profile.bytes} байт`)
+    assert.deepEqual(profile.animations, CLIPS)
+  }
+  assert.ok(published.build.sourceInputs.every((input) => !/^[A-Za-z]:|\\/u.test(input.path) && /^[a-f0-9]{64}$/u.test(input.sha256)))
+})

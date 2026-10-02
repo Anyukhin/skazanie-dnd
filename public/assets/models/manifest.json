@@ -2,8 +2,154 @@
   "version": 1,
   "models": [
     {
+      "key": "hero-male",
+      "name_ru": "Человек",
+      "profile": "warrior",
+      "actorIds": [],
+      "archetypes": [
+        "warrior",
+        "fighter",
+        "paladin",
+        "knight",
+        "barbarian",
+        "berserker",
+        "monk",
+        "commoner",
+        "peasant",
+        "воин",
+        "боец",
+        "рыцарь",
+        "паладин",
+        "варвар",
+        "берсерк",
+        "монах",
+        "путник",
+        "крестьянин"
+      ],
+      "url": "/assets/models/quaternius/heroes-d7ecad9ee5bd5e3f1283/hero-male.glb",
+      "equipmentUrl": "/assets/models/quaternius/heroes-d7ecad9ee5bd5e3f1283/hero-male.glb",
+      "height": 1.3,
+      "rights": {
+        "source": "https://quaternius.com/packs/modularcharacteroutfitsfantasy.html",
+        "license": "CC0-1.0",
+        "attribution": "Quaternius",
+        "notes": "Мужская основа под надетые вещи: одежда Peasant, короткая стрижка и борода. Outfits Standard + голова и причёски Universal Base Characters Standard + 6 клипов UAL1 Standard. Сборка: tools/import-quaternius-actors.mjs --heroes; происхождение и SHA-256 — quaternius/heroes-d7ecad9ee5bd5e3f1283/NOTICE.json."
+      }
+    },
+    {
+      "key": "hero-female",
+      "name_ru": "Человек · женщина",
+      "profile": "warrior",
+      "actorIds": [],
+      "archetypes": [],
+      "url": "/assets/models/quaternius/heroes-d7ecad9ee5bd5e3f1283/hero-female.glb",
+      "equipmentUrl": "/assets/models/quaternius/heroes-d7ecad9ee5bd5e3f1283/hero-female.glb",
+      "height": 1.3,
+      "rights": {
+        "source": "https://quaternius.com/packs/modularcharacteroutfitsfantasy.html",
+        "license": "CC0-1.0",
+        "attribution": "Quaternius",
+        "notes": "Женская основа под надетые вещи: одежда Peasant, длинные волосы. Только ручной выбор. Outfits Standard + голова и причёски Universal Base Characters Standard + 6 клипов UAL1 Standard. Сборка: tools/import-quaternius-actors.mjs --heroes; происхождение и SHA-256 — quaternius/heroes-d7ecad9ee5bd5e3f1283/NOTICE.json."
+      }
+    },
+    {
+      "key": "mage-male",
+      "name_ru": "Маг",
+      "profile": "mage",
+      "actorIds": [],
+      "archetypes": [
+        "mage",
+        "wizard",
+        "sorcerer",
+        "warlock",
+        "cleric",
+        "druid",
+        "bard",
+        "маг",
+        "волшебник",
+        "чародей",
+        "колдун",
+        "жрец",
+        "друид",
+        "бард"
+      ],
+      "url": "/assets/models/quaternius/heroes-d7ecad9ee5bd5e3f1283/mage-male.glb",
+      "height": 1.3,
+      "outfit": "builtin",
+      "rights": {
+        "source": "https://quaternius.com/packs/modularcharacteroutfitsfantasy.html",
+        "license": "CC0-1.0",
+        "attribution": "Quaternius",
+        "notes": "Мужчина в капюшоне: ткань Ranger перекрашена в сине-фиолетовый, седая борода, без наплечника. Outfits Standard + голова и причёски Universal Base Characters Standard + 6 клипов UAL1 Standard. Сборка: tools/import-quaternius-actors.mjs --heroes; происхождение и SHA-256 — quaternius/heroes-d7ecad9ee5bd5e3f1283/NOTICE.json."
+      }
+    },
+    {
+      "key": "mage-female",
+      "name_ru": "Маг · женщина",
+      "profile": "mage",
+      "actorIds": [],
+      "archetypes": [],
+      "url": "/assets/models/quaternius/heroes-d7ecad9ee5bd5e3f1283/mage-female.glb",
+      "height": 1.3,
+      "outfit": "builtin",
+      "rights": {
+        "source": "https://quaternius.com/packs/modularcharacteroutfitsfantasy.html",
+        "license": "CC0-1.0",
+        "attribution": "Quaternius",
+        "notes": "Женщина в капюшоне: ткань Ranger перекрашена в сине-фиолетовый, без наплечников. Только ручной выбор. Outfits Standard + голова и причёски Universal Base Characters Standard + 6 клипов UAL1 Standard. Сборка: tools/import-quaternius-actors.mjs --heroes; происхождение и SHA-256 — quaternius/heroes-d7ecad9ee5bd5e3f1283/NOTICE.json."
+      }
+    },
+    {
+      "key": "ranger-male",
+      "name_ru": "Следопыт",
+      "profile": "rogue",
+      "actorIds": [],
+      "archetypes": [
+        "rogue",
+        "ranger",
+        "scout",
+        "thief",
+        "archer",
+        "hunter",
+        "assassin",
+        "плут",
+        "следопыт",
+        "разведчик",
+        "вор",
+        "лучник",
+        "охотник",
+        "ассасин",
+        "убийца"
+      ],
+      "url": "/assets/models/quaternius/heroes-d7ecad9ee5bd5e3f1283/ranger-male.glb",
+      "height": 1.3,
+      "outfit": "builtin",
+      "rights": {
+        "source": "https://quaternius.com/packs/modularcharacteroutfitsfantasy.html",
+        "license": "CC0-1.0",
+        "attribution": "Quaternius",
+        "notes": "Мужчина в зелёном капюшоне Ranger с бородой. Outfits Standard + голова и причёски Universal Base Characters Standard + 6 клипов UAL1 Standard. Сборка: tools/import-quaternius-actors.mjs --heroes; происхождение и SHA-256 — quaternius/heroes-d7ecad9ee5bd5e3f1283/NOTICE.json."
+      }
+    },
+    {
+      "key": "ranger-female",
+      "name_ru": "Следопыт · женщина",
+      "profile": "rogue",
+      "actorIds": [],
+      "archetypes": [],
+      "url": "/assets/models/quaternius/heroes-d7ecad9ee5bd5e3f1283/ranger-female.glb",
+      "height": 1.3,
+      "outfit": "builtin",
+      "rights": {
+        "source": "https://quaternius.com/packs/modularcharacteroutfitsfantasy.html",
+        "license": "CC0-1.0",
+        "attribution": "Quaternius",
+        "notes": "Женщина в одежде Ranger без капюшона, причёска с пучками. Только ручной выбор. Outfits Standard + голова и причёски Universal Base Characters Standard + 6 клипов UAL1 Standard. Сборка: tools/import-quaternius-actors.mjs --heroes; происхождение и SHA-256 — quaternius/heroes-d7ecad9ee5bd5e3f1283/NOTICE.json."
+      }
+    },
+    {
       "key": "traveler",
-      "name_ru": "Путник",
+      "name_ru": "Путник · прежний, без причёски",
       "profile": "warrior",
       "actorIds": [],
       "archetypes": [
@@ -22,7 +168,8 @@
         "license": "CC0-1.0",
         "attribution": "Quaternius",
         "notes": "Outfits Standard + голова Base Characters Standard + 6 клипов UAL1 Standard. Происхождение и хеши — quaternius/NOTICE.json."
-      }
+      },
+      "auto": false
     },
     {
       "key": "kaykit-knight",
@@ -47,7 +194,8 @@
         "license": "CC0-1.0",
         "attribution": "Kay Lousberg / KayKit — https://kaylousberg.com",
         "notes": "KayKit Adventurers 2.0 Free + клипы KayKit Character Animations 1.1 Free. Подготовлено tools/import-kaykit-models.mjs --v2; архивы, хеши и клипы — kaykit/characters-1d877e478221c89c84d8/NOTICE.json."
-      }
+      },
+      "auto": false
     },
     {
       "key": "kaykit-barbarian",
@@ -68,7 +216,8 @@
         "license": "CC0-1.0",
         "attribution": "Kay Lousberg / KayKit — https://kaylousberg.com",
         "notes": "KayKit Adventurers 2.0 Free + клипы KayKit Character Animations 1.1 Free. Подготовлено tools/import-kaykit-models.mjs --v2; архивы, хеши и клипы — kaykit/characters-1d877e478221c89c84d8/NOTICE.json."
-      }
+      },
+      "auto": false
     },
     {
       "key": "kaykit-mage",
@@ -99,7 +248,8 @@
         "license": "CC0-1.0",
         "attribution": "Kay Lousberg / KayKit — https://kaylousberg.com",
         "notes": "KayKit Adventurers 2.0 Free + клипы KayKit Character Animations 1.1 Free. Подготовлено tools/import-kaykit-models.mjs --v2; архивы, хеши и клипы — kaykit/characters-1d877e478221c89c84d8/NOTICE.json."
-      }
+      },
+      "auto": false
     },
     {
       "key": "kaykit-rogue",
@@ -122,7 +272,8 @@
         "license": "CC0-1.0",
         "attribution": "Kay Lousberg / KayKit — https://kaylousberg.com",
         "notes": "KayKit Adventurers 2.0 Free + клипы KayKit Character Animations 1.1 Free. Подготовлено tools/import-kaykit-models.mjs --v2; архивы, хеши и клипы — kaykit/characters-1d877e478221c89c84d8/NOTICE.json."
-      }
+      },
+      "auto": false
     },
     {
       "key": "kaykit-ranger",
@@ -145,7 +296,8 @@
         "license": "CC0-1.0",
         "attribution": "Kay Lousberg / KayKit — https://kaylousberg.com",
         "notes": "KayKit Adventurers 2.0 Free + клипы KayKit Character Animations 1.1 Free. Подготовлено tools/import-kaykit-models.mjs --v2; архивы, хеши и клипы — kaykit/characters-1d877e478221c89c84d8/NOTICE.json."
-      }
+      },
+      "auto": false
     },
     {
       "key": "kaykit-rogue-hooded",
@@ -165,6 +317,28 @@
         "license": "CC0-1.0",
         "attribution": "Kay Lousberg / KayKit — https://kaylousberg.com",
         "notes": "KayKit Adventurers 2.0 Free + клипы KayKit Character Animations 1.1 Free. Подготовлено tools/import-kaykit-models.mjs --v2; архивы, хеши и клипы — kaykit/characters-1d877e478221c89c84d8/NOTICE.json."
+      },
+      "auto": false
+    },
+    {
+      "key": "skeleton-quaternius",
+      "name_ru": "Скелет",
+      "profile": "skeleton",
+      "actorIds": [],
+      "archetypes": [
+        "skeleton",
+        "undead",
+        "zombie",
+        "скелет",
+        "нежить"
+      ],
+      "url": "/assets/models/quaternius/actors-b892de8fd4f015796032/skeleton.glb",
+      "height": 1.25,
+      "rights": {
+        "source": "https://quaternius.itch.io/lowpoly-animated-monsters",
+        "license": "CC0-1.0",
+        "attribution": "Quaternius",
+        "notes": "Подготовлено tools/build-character-models.mjs. Исходники, хеши и лицензии: /assets/models/quaternius/actors-b892de8fd4f015796032/NOTICE.json."
       }
     },
     {
@@ -189,7 +363,8 @@
         "license": "CC0-1.0",
         "attribution": "Kay Lousberg / KayKit — https://kaylousberg.com",
         "notes": "KayKit Skeletons 1.1 Free + клипы KayKit Character Animations 1.1 Free. Подготовлено tools/import-kaykit-models.mjs --v2; архивы, хеши и клипы — kaykit/characters-1d877e478221c89c84d8/NOTICE.json."
-      }
+      },
+      "auto": false
     },
     {
       "key": "kaykit-skeleton-rogue",
@@ -212,7 +387,8 @@
         "license": "CC0-1.0",
         "attribution": "Kay Lousberg / KayKit — https://kaylousberg.com",
         "notes": "KayKit Skeletons 1.1 Free + клипы KayKit Character Animations 1.1 Free. Подготовлено tools/import-kaykit-models.mjs --v2; архивы, хеши и клипы — kaykit/characters-1d877e478221c89c84d8/NOTICE.json."
-      }
+      },
+      "auto": false
     },
     {
       "key": "kaykit-skeleton-mage",
@@ -236,7 +412,8 @@
         "license": "CC0-1.0",
         "attribution": "Kay Lousberg / KayKit — https://kaylousberg.com",
         "notes": "KayKit Skeletons 1.1 Free + клипы KayKit Character Animations 1.1 Free. Подготовлено tools/import-kaykit-models.mjs --v2; архивы, хеши и клипы — kaykit/characters-1d877e478221c89c84d8/NOTICE.json."
-      }
+      },
+      "auto": false
     },
     {
       "key": "kaykit-skeleton-minion",
@@ -258,11 +435,12 @@
         "license": "CC0-1.0",
         "attribution": "Kay Lousberg / KayKit — https://kaylousberg.com",
         "notes": "KayKit Skeletons 1.1 Free + клипы KayKit Character Animations 1.1 Free. Подготовлено tools/import-kaykit-models.mjs --v2; архивы, хеши и клипы — kaykit/characters-1d877e478221c89c84d8/NOTICE.json."
-      }
+      },
+      "auto": false
     },
     {
       "key": "hooded-mage",
-      "name_ru": "Маг в капюшоне",
+      "name_ru": "Маг в капюшоне · прежний",
       "profile": "mage",
       "actorIds": [],
       "archetypes": [
@@ -284,7 +462,8 @@
         "license": "CC0-1.0",
         "attribution": "Quaternius",
         "notes": "Подготовлено tools/build-character-models.mjs. Исходники, хеши и лицензии: /assets/models/quaternius/actors-b892de8fd4f015796032/NOTICE.json."
-      }
+      },
+      "auto": false
     },
     {
       "key": "wolf",
@@ -330,29 +509,8 @@
       }
     },
     {
-      "key": "skeleton-quaternius",
-      "name_ru": "Скелет",
-      "profile": "skeleton",
-      "actorIds": [],
-      "archetypes": [
-        "skeleton",
-        "undead",
-        "zombie",
-        "скелет",
-        "нежить"
-      ],
-      "url": "/assets/models/quaternius/actors-b892de8fd4f015796032/skeleton.glb",
-      "height": 1.25,
-      "rights": {
-        "source": "https://quaternius.itch.io/lowpoly-animated-monsters",
-        "license": "CC0-1.0",
-        "attribution": "Quaternius",
-        "notes": "Подготовлено tools/build-character-models.mjs. Исходники, хеши и лицензии: /assets/models/quaternius/actors-b892de8fd4f015796032/NOTICE.json."
-      }
-    },
-    {
       "key": "ranger",
-      "name_ru": "Следопыт · Quaternius",
+      "name_ru": "Следопыт · прежний, без бороды",
       "profile": "rogue",
       "actorIds": [],
       "archetypes": [
@@ -371,7 +529,8 @@
         "license": "CC0-1.0",
         "attribution": "Quaternius",
         "notes": "Outfits Standard + голова Base Characters Standard + 6 клипов UAL1 Standard. Происхождение и хеши — quaternius/NOTICE.json."
-      }
+      },
+      "auto": false
     },
     {
       "key": "warrior",
@@ -393,7 +552,8 @@
         "license": "CC0-1.0",
         "attribution": "Kay Lousberg / KayKit — https://kaylousberg.com",
         "notes": "Подготовлено tools/import-kaykit-models.mjs: шесть клипов, один комплект аксессуаров, встроенные текстуры."
-      }
+      },
+      "auto": false
     },
     {
       "key": "mage",
@@ -419,7 +579,8 @@
         "license": "CC0-1.0",
         "attribution": "Kay Lousberg / KayKit — https://kaylousberg.com",
         "notes": "Подготовлено tools/import-kaykit-models.mjs: шесть клипов, один комплект аксессуаров, встроенные текстуры."
-      }
+      },
+      "auto": false
     },
     {
       "key": "rogue",
@@ -442,7 +603,8 @@
         "license": "CC0-1.0",
         "attribution": "Kay Lousberg / KayKit — https://kaylousberg.com",
         "notes": "Подготовлено tools/import-kaykit-models.mjs: шесть клипов, один комплект аксессуаров, встроенные текстуры."
-      }
+      },
+      "auto": false
     },
     {
       "key": "goblin",
@@ -482,7 +644,8 @@
         "license": "CC0-1.0",
         "attribution": "Kay Lousberg / KayKit — https://kaylousberg.com",
         "notes": "Подготовлено tools/import-kaykit-models.mjs: шесть клипов, один комплект аксессуаров, встроенные текстуры."
-      }
+      },
+      "auto": false
     },
     {
       "key": "beast",
@@ -509,7 +672,7 @@
     },
     {
       "key": "human-female",
-      "name_ru": "Человек · женская основа",
+      "name_ru": "Человек · прежняя женская основа",
       "profile": "warrior",
       "actorIds": [],
       "archetypes": [],
@@ -521,7 +684,8 @@
         "license": "CC0-1.0",
         "attribution": "Quaternius",
         "notes": "Нейтральная female Peasant-основа для gear layer; provenance и SHA-256: equipment-bases-40520897dfea4af085180fc82b0083baa/NOTICE.json. Не участвует в автоматическом выборе archetype."
-      }
+      },
+      "auto": false
     }
   ]
 }

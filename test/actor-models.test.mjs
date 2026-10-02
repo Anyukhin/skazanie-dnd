@@ -1178,22 +1178,142 @@ test('вариант фигурки внутри серверного профи
   const resolve = (input) => models.resolveModelProfile(input, manifest).key
   const hero = (archetype, profile) => ({ id: `h-${archetype}`, label: 'Борен', kind: 'hero', archetype, appearance: { version: 2, profile, equipment: 'unknown', loadout: {} } })
   const enemy = (label, profile) => ({ id: `e-${label}`, label, kind: 'enemy', appearance: { version: 2, profile, equipment: 'unknown', loadout: {} } })
-  assert.equal(resolve(hero('fighter', 'warrior')), 'kaykit-knight')
-  assert.equal(resolve(hero('paladin', 'warrior')), 'kaykit-knight')
-  assert.equal(resolve(hero('barbarian', 'warrior')), 'kaykit-barbarian')
-  assert.equal(resolve(hero('monk', 'warrior')), 'traveler')
-  assert.equal(resolve(hero('wizard', 'mage')), 'kaykit-mage')
-  assert.equal(resolve(hero('cleric', 'mage')), 'kaykit-mage')
-  assert.equal(resolve(hero('rogue', 'rogue')), 'kaykit-rogue')
-  assert.equal(resolve(hero('ranger', 'rogue')), 'kaykit-ranger')
-  assert.equal(resolve(enemy('Скелет', 'skeleton')), 'kaykit-skeleton-warrior')
-  assert.equal(resolve(enemy('Скелет-маг', 'skeleton')), 'kaykit-skeleton-mage')
-  assert.equal(resolve(enemy('Скелет-лучник', 'skeleton')), 'kaykit-skeleton-rogue')
-  assert.equal(resolve(enemy('Скелет-прислужник', 'skeleton')), 'kaykit-skeleton-minion')
-  assert.equal(resolve(enemy('Бандит', 'warrior')), 'traveler', 'обычный гуманоид остаётся путником, а не рыцарем')
-  assert.equal(resolve(enemy('Существо', 'warrior')), 'traveler', 'замаскированный враг не получает вариант')
+  // С 2 октября 2026 автоподбор ведёт к героям реалистичных пропорций:
+  // воинские классы — основа под надетые вещи, заклинатели — маг, плут и
+  // следопыт — следопыт. Пола в данных персонажа нет, поэтому по умолчанию
+  // мужской вариант; женский выбирается в меню «Фигурки».
+  for (const archetype of ['fighter', 'paladin', 'barbarian', 'monk']) assert.equal(resolve(hero(archetype, 'warrior')), 'hero-male', archetype)
+  for (const archetype of ['wizard', 'sorcerer', 'warlock', 'cleric', 'druid', 'bard']) assert.equal(resolve(hero(archetype, 'mage')), 'mage-male', archetype)
+  for (const archetype of ['rogue', 'ranger']) assert.equal(resolve(hero(archetype, 'rogue')), 'ranger-male', archetype)
+  // Без серверной внешности (старый формат) — по точному классу.
+  assert.equal(resolve({ id: 'legacy', label: 'Борен', kind: 'hero', archetype: 'fighter' }), 'hero-male')
+  assert.equal(resolve({ id: 'legacy', label: 'Мирра', kind: 'hero', archetype: 'druid' }), 'mage-male')
+  // Скелет — Quaternius с человеческими пропорциями, без чиби-вариантов по имени.
+  for (const label of ['Скелет', 'Скелет-маг', 'Скелет-лучник', 'Скелет-прислужник']) assert.equal(resolve(enemy(label, 'skeleton')), 'skeleton-quaternius', label)
+  assert.equal(resolve(enemy('Гоблин', 'goblin')), 'goblin-quaternius')
+  assert.equal(resolve(enemy('Бандит', 'warrior')), 'hero-male', 'обычный гуманоид получает нейтральную основу')
+  assert.equal(resolve(enemy('Существо', 'warrior')), 'hero-male', 'замаскированный враг не получает вариант')
   // Класс врага профиль не уточняет: читается только показанное имя.
-  assert.equal(resolve({ ...enemy('Существо', 'warrior'), archetype: 'barbarian' }), 'traveler')
-  // Старые ключи остаются ручным выбором.
-  for (const key of ['warrior', 'mage', 'rogue', 'skeleton', 'traveler', 'ranger', 'hooded-mage']) assert.equal(resolve({ ...hero('fighter', 'warrior'), modelKey: key }), key)
+  assert.equal(resolve({ ...enemy('Существо', 'warrior'), archetype: 'barbarian' }), 'hero-male')
+  // Ни один автоматический путь не возвращает записи с auto=false.
+  const manual = new Set(manifest.models.filter((entry) => entry.auto === false).map((entry) => entry.key))
+  for (const key of manifest.models.map((entry) => entry.key)) if (key.startsWith('kaykit-')) assert.ok(manual.has(key), `${key}: KayKit только ручным выбором`)
+  for (const profile of ['warrior', 'mage', 'rogue', 'skeleton', 'goblin', 'beast']) {
+    for (const archetype of manifest.models.flatMap((entry) => entry.archetypes ?? [])) {
+      assert.equal(manual.has(resolve(hero(archetype, profile))), false, `${profile}/${archetype}`)
+      assert.equal(manual.has(resolve({ id: 'x', label: archetype, kind: 'enemy', archetype })), false, `enemy ${archetype}`)
+    }
+  }
+  // Старые и KayKit-ключи, сохранённые в браузере игрока, продолжают открываться.
+  for (const key of ['warrior', 'mage', 'rogue', 'skeleton', 'traveler', 'ranger', 'hooded-mage', 'human-female', ...manifest.models.filter((entry) => entry.key.startsWith('kaykit-')).map((entry) => entry.key)]) {
+    assert.equal(resolve({ ...hero('fighter', 'warrior'), modelKey: key }), key)
+  }
+  for (const key of ['hero-female', 'mage-female', 'ranger-female']) assert.equal(resolve({ ...hero('fighter', 'warrior'), modelKey: key }), key)
+})
+
+test('поле auto каталога проверяется и не мешает явному выбору', () => {
+  const catalog = (auto) => ({ version: 1, models: [
+    { key: 'old', profile: 'warrior', archetypes: ['fighter'], auto, rights: { source: 'test', license: 'original' } },
+    { key: 'new', profile: 'warrior', archetypes: ['fighter'], rights: { source: 'test', license: 'original' } },
+  ] })
+  assert.throws(() => models.validateModelManifest(catalog('no')), /auto/u)
+  assert.equal(models.validateModelManifest(catalog(false)).models[0].auto, false)
+  assert.equal(Object.hasOwn(models.validateModelManifest(catalog(true)).models[0], 'auto'), false)
+  assert.equal(models.resolveModelProfile({ id: 'a', label: 'A', kind: 'hero', archetype: 'fighter' }, catalog(false)).key, 'new')
+  assert.equal(models.resolveModelProfile({ id: 'a', label: 'A', kind: 'hero', archetype: 'fighter' }, catalog(true)).key, 'old')
+  assert.equal(models.resolveModelProfile({ id: 'a', label: 'A', kind: 'hero', modelKey: 'old' }, catalog(false)).key, 'old')
+  // Профиль без автоматических записей уходит во встроенную фигурку, а не в ручную.
+  const onlyManual = { version: 1, models: [{ key: 'old', profile: 'mage', auto: false, rights: { source: 'test', license: 'original' } }] }
+  const resolved = models.resolveModelProfile({ id: 'a', label: 'A', kind: 'hero', appearance: { version: 2, profile: 'mage', equipment: 'unknown', loadout: {} } }, onlyManual)
+  assert.equal(resolved.url, null)
+  assert.equal(resolved.profile, 'mage')
+})
+
+// --- Герои реалистичных пропорций (tools/import-quaternius-actors.mjs --heroes) ---
+const HERO_KEYS = ['hero-male', 'hero-female', 'mage-male', 'mage-female', 'ranger-male', 'ranger-female']
+const HERO_CLIPS = ['Idle_Loop', 'Walk_Loop', 'Sword_Attack', 'Spell_Simple_Shoot', 'Hit_Chest', 'Death01']
+const heroEntries = HERO_KEYS.map((key) => manifest.models.find((entry) => entry.key === key))
+const heroFile = (url) => join(fileURLToPath(new URL('../public/', import.meta.url)), url.slice(1))
+
+test('герои Quaternius: один неизменяемый выпуск, ≤3 МиБ, причёски, клипы и NOTICE', () => {
+  assert.ok(heroEntries.every(Boolean), 'все шесть героев в каталоге')
+  const first = heroEntries[0].url
+  const releaseDir = heroFile(first.slice(0, first.lastIndexOf('/')))
+  const notice = JSON.parse(readFileSync(join(releaseDir, 'NOTICE.json'), 'utf8'))
+  assert.equal(notice.schema, 'skazanie-quaternius-heroes/v1')
+  assert.ok(notice.sources.length === 3 && notice.sources.every((source) => source.license === 'CC0-1.0' && source.author === 'Quaternius'))
+  assert.match(readFileSync(join(releaseDir, 'LICENSE.txt'), 'utf8'), /CC0-1\.0/u)
+  const concat = createHash('sha256').update(Buffer.concat(notice.immutableRelease.files.map((file) => readFileSync(join(releaseDir, file))))).digest('hex')
+  assert.equal(concat, notice.immutableRelease.glbConcatSha256)
+  assert.ok(first.includes(`/${notice.immutableRelease.id}/`) && notice.immutableRelease.id === `heroes-${concat.slice(0, 20)}`)
+  for (const entry of heroEntries) {
+    assert.ok(entry.url.includes(`/${notice.immutableRelease.id}/`), `${entry.key}: из того же выпуска`)
+    assert.notEqual(entry.auto, false, `${entry.key}: участвует в автоподборе или ручном выборе без флага`)
+    assert.equal(entry.rights.license, 'CC0-1.0')
+    assert.equal(entry.height, 1.3)
+    const bytes = readFileSync(heroFile(entry.url))
+    const profile = notice.profiles.find((item) => entry.url.endsWith(`/${item.file}`))
+    assert.ok(profile, `${entry.key}: нет в NOTICE`)
+    assert.equal(createHash('sha256').update(bytes).digest('hex'), profile.sha256, `${entry.key}: SHA-256 drift`)
+    assert.ok(bytes.length <= 3 * 1024 * 1024, `${entry.key}: ${bytes.length} байт больше 3 МиБ`)
+    if (entry.key.startsWith('hero-')) assert.equal(entry.equipmentUrl, entry.url, `${entry.key}: сама является основой под вещи`)
+    else {
+      assert.equal(entry.outfit, 'builtin', `${entry.key}: костюм вылеплен`)
+      assert.equal(Object.hasOwn(entry, 'equipmentUrl'), false, `${entry.key}: v2 рисуется на самой фигуре`)
+    }
+    const report = models.validateGlbContainer(bytes)
+    const { json } = report
+    assert.deepEqual(json.animations.map((animation) => animation.name), HERO_CLIPS)
+    for (const name of HERO_CLIPS) assert.ok(models.actorClipInfo(name), `${entry.key}: клип ${name} не распознан`)
+    for (const animation of json.animations) for (const sampler of animation.samplers) {
+      const input = json.accessors[sampler.input]
+      assert.ok(Array.isArray(input.min) && Array.isArray(input.max), `${entry.key}/${animation.name}: input без min/max`)
+    }
+    assert.ok(json.images.every((image) => image.bufferView != null && !image.uri), `${entry.key}: текстуры встроены`)
+    assert.deepEqual(json.extensionsRequired ?? [], ['KHR_mesh_quantization'])
+    const meshNames = json.nodes.filter((node) => Number.isInteger(node.mesh)).map((node) => node.name)
+    for (const name of ['Head_Face', 'Head_Eyes', 'Head_Eyebrows']) assert.ok(meshNames.includes(name), `${entry.key}: ${name}`)
+    assert.deepEqual(meshNames.filter((name) => name.startsWith('Hair_')), profile.hair, `${entry.key}: причёска как в NOTICE`)
+    // Текстуры волос в наборе серые — без оттенка брови и волосы белые.
+    const hairMaterials = json.materials.filter((material) => /^MI_Hair_\d+$/u.test(material.name))
+    assert.ok(hairMaterials.length >= 1)
+    for (const material of hairMaterials) assert.ok(material.pbrMetallicRoughness.baseColorFactor.slice(0, 3).every((value) => value < .8), `${entry.key}: ${material.name} без оттенка`)
+    assert.ok(json.meshes.every((mesh) => mesh.primitives.every((primitive) => !Object.keys(primitive.attributes).some((name) => /^COLOR_|^TEXCOORD_[1-9]/u.test(name)))), `${entry.key}: лишние атрибуты`)
+    for (const bone of ['root', 'Head', 'hand_l', 'hand_r']) assert.ok(json.nodes.some((node) => node.name === bone), `${entry.key}: кость ${bone}`)
+  }
+  assert.ok(heroEntries.filter((entry) => entry.key.endsWith('-female')).every((entry) => !(entry.archetypes ?? []).length), 'женские варианты — только ручной выбор')
+})
+
+test('герои Quaternius стоят на полу, смотрят в +Z, держат сокеты и играют все позы', async () => {
+  await withImageStub(async () => {
+    for (const entry of heroEntries) {
+      const bytes = readFileSync(heroFile(entry.url))
+      const actor = await models.createActorModel({ id: entry.key, label: entry.name_ru, kind: 'hero', modelKey: entry.key }, {
+        manifest, fetcher: async () => new Response(bytes, { status: 200 }),
+      })
+      assert.equal(actor.source, 'glb', `${entry.key}: GLB`)
+      assert.equal(actor.modelHeight, entry.height)
+      const bones = []
+      actor.traverse((object) => { if (object.isBone) bones.push(object) })
+      assert.equal(bones.length, 65, `${entry.key}: 65 костей`)
+      const signature = () => { actor.updateMatrixWorld(true); return JSON.stringify(bones.map((bone) => [bone.position.toArray(), bone.quaternion.toArray()])) }
+      actor.idle(0); actor.update(.001)
+      const bounds = new Box3()
+      actor.traverse((object) => { if (object.isSkinnedMesh) bounds.union(new Box3().setFromObject(object)) })
+      assert.ok(Math.abs(bounds.min.y) < .03, `${entry.key}: стопы на полу (${bounds.min.y})`)
+      assert.ok(bounds.max.y > entry.height * .9 && bounds.max.y < entry.height * 1.08, `${entry.key}: рост ${bounds.max.y}`)
+      const pelvis = actor.getObjectByName('pelvis').getWorldPosition(new Vector3())
+      const toes = actor.getObjectByName('ball_l').getWorldPosition(new Vector3())
+      assert.ok(toes.z > pelvis.z, `${entry.key}: носки смотрят в +Z`)
+      assert.ok(actor.getObjectByName('hand_l') && actor.getObjectByName('hand_r'), `${entry.key}: сокеты рук`)
+      const seen = new Set()
+      for (const pose of ['idle', 'walk', 'attack', 'cast', 'hit', 'death']) {
+        actor[pose](.5); actor.update(.001)
+        seen.add(signature())
+      }
+      assert.equal(seen.size, 6, `${entry.key}: каждая поза даёт свою позу костей`)
+      actor.dispose()
+      assert.equal(actor.children.length, 0)
+    }
+  })
 })

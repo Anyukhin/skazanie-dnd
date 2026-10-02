@@ -314,7 +314,7 @@ function rgbFromHsl(hue, saturation, lightness) {
   return [huePart(p, q, hue + 1 / 3), huePart(p, q, hue), huePart(p, q, hue - 1 / 3)]
 }
 
-function mageBlueVioletTexture(image) {
+export function mageBlueVioletTexture(image) {
   const data = new Uint8Array(image.data)
   let beforeGreen = 0
   let afterGreen = 0
