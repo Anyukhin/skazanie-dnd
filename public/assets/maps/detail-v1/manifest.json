@@ -1,0 +1,2742 @@
+{
+  "version": "skazanie:map-detail-v1",
+  "package": "maps/detail-v1",
+  "tileSide": 512,
+  "cellsPerTile": 8,
+  "textures": {
+    "floor-planks-dark": {
+      "key": "floor-planks-dark",
+      "file": "floor-planks-dark.png",
+      "type": "floor",
+      "sourceHash": "25f519c21602b6aeb2f263beb146c0ad5a5b352ae5fef3f359c417504ed5c6f1",
+      "promptHash": "3746288010172ce705016a78d0b035ee5114df70d2709f9f47feed452dfc068d",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "path": "textures/floor-planks-dark.png",
+      "tileSide": 512,
+      "cellsPerTile": 8
+    },
+    "floor-parquet": {
+      "key": "floor-parquet",
+      "file": "floor-parquet.png",
+      "type": "floor",
+      "sourceHash": "f7a691a6a67809edab02bcd41c3b69e9beb7c36cce25adaa34176d82697bc149",
+      "promptHash": "4f2c6d24c039c45390858c1389334335249caafd74a3aa3360ebab7e08824c1e",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "path": "textures/floor-parquet.png",
+      "tileSide": 512,
+      "cellsPerTile": 8
+    },
+    "floor-flagstone": {
+      "key": "floor-flagstone",
+      "file": "floor-flagstone.png",
+      "type": "floor",
+      "sourceHash": "63269211591ca69dfb41154c62e901fea09abacd5013a918426ee6696cb7f882",
+      "promptHash": "21edf60bf3aee5f3082ff4441774ca33e83b6562dac1c16af1b22ab862936de4",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "path": "textures/floor-flagstone.png",
+      "tileSide": 512,
+      "cellsPerTile": 8
+    },
+    "floor-checker": {
+      "key": "floor-checker",
+      "file": "floor-checker.png",
+      "type": "floor",
+      "sourceHash": "b438946fffcb6bb1e3e93cd86fdc0e086b6f339f3604f8be9be93ef42950f6a1",
+      "promptHash": "e35d63f5710c68d702cf9d3eb2e99be535b2ca0013defd9e0a4d8fb940173d9d",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "path": "textures/floor-checker.png",
+      "tileSide": 512,
+      "cellsPerTile": 8
+    },
+    "floor-dungeon": {
+      "key": "floor-dungeon",
+      "file": "floor-dungeon.png",
+      "type": "floor",
+      "sourceHash": "bdf624c8b2a51730a8bd85e64bead998464d4582d95d28f1193a7a63aca6ff49",
+      "promptHash": "59833f4f4733004b2974e900b1e3e98b32d68fcd13981fef010f266de5cfe7a4",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "path": "textures/floor-dungeon.png",
+      "tileSide": 512,
+      "cellsPerTile": 8
+    },
+    "floor-straw": {
+      "key": "floor-straw",
+      "file": "floor-straw.png",
+      "type": "floor",
+      "sourceHash": "86736a6af79a40920febd7069059314ed2c91e2c5687b19c1924c2725910611c",
+      "promptHash": "2f8d75cfa7ca52a73c16acdd5b0c1e694ce51348ade05267e09be7d7661be2f7",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "path": "textures/floor-straw.png",
+      "tileSide": 512,
+      "cellsPerTile": 8
+    },
+    "floor-cobble": {
+      "key": "floor-cobble",
+      "file": "floor-cobble.png",
+      "type": "floor",
+      "sourceHash": "c64966d3d1ee41b7a9a79f87fdcdaf29b570e3058101541669285671a588dc6b",
+      "promptHash": "e09fe47d2fb73c58c18f46ba7a63f14b829686f34cab4b8dd041059f90006dc9",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "path": "textures/floor-cobble.png",
+      "tileSide": 512,
+      "cellsPerTile": 8
+    },
+    "floor-cave": {
+      "key": "floor-cave",
+      "file": "floor-cave.png",
+      "type": "floor",
+      "sourceHash": "d2ef8e3e21046ef9b78ccfcf71c9ff07d68d36d6fba549339702a053fb33a992",
+      "promptHash": "db305022a1081acd36f6f60eb241ed4e287b5166ebed339092dc1c4d0b7e59ab",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "path": "textures/floor-cave.png",
+      "tileSide": 512,
+      "cellsPerTile": 8
+    },
+    "floor-gravel": {
+      "key": "floor-gravel",
+      "file": "floor-gravel.png",
+      "type": "floor",
+      "sourceHash": "50710ccafbf41ecc5c525853025f7b9014e421947269ac9f3c1696ea9c0cac36",
+      "promptHash": "c5bf151c3a1630f3a43cf484f1f73625a2f1ac13d74a12010ec8bb58988026c1",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "path": "textures/floor-gravel.png",
+      "tileSide": 512,
+      "cellsPerTile": 8
+    },
+    "floor-dock": {
+      "key": "floor-dock",
+      "file": "floor-dock.png",
+      "type": "floor",
+      "sourceHash": "5da486c83d2d8b0838388260431b33da0c36363e624d4d490bc3780a9525c3d2",
+      "promptHash": "970ce33b69e02ab052c2e5bbc6f9b64fa792a90a2dc6f6b2043f1c1b4a41d81b",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "path": "textures/floor-dock.png",
+      "tileSide": 512,
+      "cellsPerTile": 8
+    },
+    "floor-snow": {
+      "key": "floor-snow",
+      "file": "floor-snow.png",
+      "type": "floor",
+      "sourceHash": "f213437baa8e00028e175fd6cbc1b8891a33c5de18acb832f386419a9e2b6874",
+      "promptHash": "52876d716f7a8d198c3f1331283dfdb1cb1cd7ad0510183aa454213073628a5b",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "path": "textures/floor-snow.png",
+      "tileSide": 512,
+      "cellsPerTile": 8
+    },
+    "floor-mosaic": {
+      "key": "floor-mosaic",
+      "file": "floor-mosaic.png",
+      "type": "floor",
+      "sourceHash": "7ca1101128a9c8e317e71a86ce61f943f1d34ad06274869e38d5be70ee7ad583",
+      "promptHash": "37e473b79849ba3509d4051beb99141d22d607a87e3d33d4c0ab35ceec3f6655",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "path": "textures/floor-mosaic.png",
+      "tileSide": 512,
+      "cellsPerTile": 8
+    },
+    "wall-brick": {
+      "key": "wall-brick",
+      "file": "wall-brick.png",
+      "type": "wall",
+      "sourceHash": "c0ac6da1344d572ad567cb43232a94733d9c4cce08752c14c3c572d02f6a2be9",
+      "promptHash": "bd0168be2d1a6d275a4970e516d6051e97459bcc86207fc68a5839b09f726a73",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "path": "textures/wall-brick.png",
+      "tileSide": 512,
+      "cellsPerTile": 8
+    },
+    "wall-fortress": {
+      "key": "wall-fortress",
+      "file": "wall-fortress.png",
+      "type": "wall",
+      "sourceHash": "a28bb79a3575587c259d9ed497c59c724fac0748818ba7cd78993108c05e6517",
+      "promptHash": "2586fa46d828f3645d679af7cb024577fcd2a7f002cff7eb84b3bd517446410d",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "path": "textures/wall-fortress.png",
+      "tileSide": 512,
+      "cellsPerTile": 8
+    },
+    "wall-palisade": {
+      "key": "wall-palisade",
+      "file": "wall-palisade.png",
+      "type": "wall",
+      "sourceHash": "c14f792a88f9607e5ddd1be738c87b7e1e3a807f4555d55a92e8dcda0fa8e98e",
+      "promptHash": "1351fafa5bd95cf908ecf9ddf19021ebff71284f59ee4cf7f50b18f19c6b3732",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "path": "textures/wall-palisade.png",
+      "tileSide": 512,
+      "cellsPerTile": 8
+    },
+    "wall-fachwerk": {
+      "key": "wall-fachwerk",
+      "file": "wall-fachwerk.png",
+      "type": "wall",
+      "sourceHash": "23c379b361517394497d241acb1cb5a02830b1643c8457141497c877b34be08f",
+      "promptHash": "874b1b6b9dbb38d3948ada8582e0678da3be41dd23546f1e6e26f9f1a34464b0",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "path": "textures/wall-fachwerk.png",
+      "tileSide": 512,
+      "cellsPerTile": 8
+    },
+    "surface-river": {
+      "key": "surface-river",
+      "file": "surface-river.png",
+      "type": "surface",
+      "sourceHash": "0ad06ddd79d6826736904d3da8d3ef50be3bf4873daf65eb843204cd142c5dd6",
+      "promptHash": "ee5535b1e4db7c9e56fa27440903df12f2da173d29bf2acc836a87d9729d48f0",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "path": "textures/surface-river.png",
+      "tileSide": 512,
+      "cellsPerTile": 8
+    },
+    "surface-shallows": {
+      "key": "surface-shallows",
+      "file": "surface-shallows.png",
+      "type": "surface",
+      "sourceHash": "8aa0e54e12033d3bb33c83e9ad95368ca26bb6b77e6be83791123054dd8692d8",
+      "promptHash": "df3089fe12606c918cdadc976629c91b39a306e6de4443408d7dc7e34d34695c",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "path": "textures/surface-shallows.png",
+      "tileSide": 512,
+      "cellsPerTile": 8
+    },
+    "wall-embankment": {
+      "key": "wall-embankment",
+      "file": "wall-embankment.png",
+      "type": "wall",
+      "sourceHash": "6fd10f79e7c2fda083bf4769b06df3c036b3f36d52024738cd15466c002b8f65",
+      "promptHash": "409f3aabead1fae461739800a3c115dba6914a1e70b61b3f574b8c3e1b070523",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "path": "textures/wall-embankment.png",
+      "tileSide": 512,
+      "cellsPerTile": 8
+    }
+  },
+  "atlas": {
+    "image": "prop-atlas.png",
+    "metadata": "prop-atlas.json",
+    "width": 2048,
+    "height": 1465,
+    "frameCount": 135
+  },
+  "sheets": {
+    "sheet-24-wall-joints.png": {
+      "key": "sheet-24-wall-joints",
+      "file": "sheet-24-wall-joints.png",
+      "type": "sheet",
+      "sourceHash": "d482469d847a7a444875b30a56351f7c69b51fc626019e8e519b0c75f268d58d",
+      "promptHash": "b588ae60a054e46b3f28a911ce181d3e4ea6efafc17502e8f16486bf071fb011",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-25-rugs.png": {
+      "key": "sheet-25-rugs",
+      "file": "sheet-25-rugs.png",
+      "type": "sheet",
+      "sourceHash": "160e3f63a756ca7524f27ee583a35f6ffc6b4e31fb8a3b63a08a21c3ca199370",
+      "promptHash": "231db3f34d461adc21aa4f8030bb5bcfd377585bc31cdbf607261d364612cf24",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-26-floor-marks.png": {
+      "key": "sheet-26-floor-marks",
+      "file": "sheet-26-floor-marks.png",
+      "type": "sheet",
+      "sourceHash": "37d4f81a9c8073e975578aa15899b265d570ada4259c7f4f087d550852982100",
+      "promptHash": "898c3ca786abf2e6549ca4d0fa302c4a90d8091578f5021b4bcbaa66837d6919",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-27-forge.png": {
+      "key": "sheet-27-forge",
+      "file": "sheet-27-forge.png",
+      "type": "sheet",
+      "sourceHash": "d87ea91e5174121010c7d6b9fd4a368566dafda0e1ef88633b940556b2d299ea",
+      "promptHash": "e0a6a85ebacf4afe8144e6a1cf4c2d84fdb0df98063fbe03023c8664fdc54664",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-28-mill-farm.png": {
+      "key": "sheet-28-mill-farm",
+      "file": "sheet-28-mill-farm.png",
+      "type": "sheet",
+      "sourceHash": "791d324ac325fe11fd2acc08c9f0db731e7f9743a91a794f2a926a26a84b5581",
+      "promptHash": "a73db3c84e13c51e765e9b37d53b5e7e62761bb2be5a7edfd40b2b1feceeaa5b",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-29-bedroom.png": {
+      "key": "sheet-29-bedroom",
+      "file": "sheet-29-bedroom.png",
+      "type": "sheet",
+      "sourceHash": "ac7d67e3c3529422905b159e95485d2e0fd5fb8e407683b5b5439f100adb7308",
+      "promptHash": "477fbc8935c43c5d840f33c8df5f2bc073f365de8d0775cfbbdf7717985b781e",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-30-kitchen.png": {
+      "key": "sheet-30-kitchen",
+      "file": "sheet-30-kitchen.png",
+      "type": "sheet",
+      "sourceHash": "56663f20b458fa3dbdf2eeb1a9576c72dec2535dbb637255bbc74f00626ad06b",
+      "promptHash": "a8ddd316b1f098ba811701423f851e493405aae98d8a7bbdc29e6dd5b3396ef9",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-31-shop.png": {
+      "key": "sheet-31-shop",
+      "file": "sheet-31-shop.png",
+      "type": "sheet",
+      "sourceHash": "cdec46fd3eeac1ac68dd1ae34db04242d63ba692331145aa76849cf6a2a691e4",
+      "promptHash": "dc9218692a80c6384ea254fe482e9e8e96f8cfa04b4d6b8870567831a04c9a6e",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-32-study.png": {
+      "key": "sheet-32-study",
+      "file": "sheet-32-study.png",
+      "type": "sheet",
+      "sourceHash": "8d00a945ebcc1b3cdd4536c1f3f65d4d0a514e99d3fd6ed73f9171a9e13d0716",
+      "promptHash": "bcd7cfd54ffadaa54e4af8d6dea08eb3fde90a6d09dd90fae19b4cab152297ad",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-33-town.png": {
+      "key": "sheet-33-town",
+      "file": "sheet-33-town.png",
+      "type": "sheet",
+      "sourceHash": "389494926e592067719e079d98530af5d4aa3e8bc6b8db999eaab51e791a5855",
+      "promptHash": "e4af0fb855d0d3b853e23a94e8cfde11508f87c138d0d83081394b1a860997cc",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-34-river.png": {
+      "key": "sheet-34-river",
+      "file": "sheet-34-river.png",
+      "type": "sheet",
+      "sourceHash": "59f484fafbb97bf307d1941cf6467b0bd556173cfa4731d9e377a1de7c0de191",
+      "promptHash": "ad010f79f926be0be397ab54e12ea0fd4126628058f3ca64b76691195e594728",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-35-cliffs.png": {
+      "key": "sheet-35-cliffs",
+      "file": "sheet-35-cliffs.png",
+      "type": "sheet",
+      "sourceHash": "946018263d595c247238eefc3e238273d3921fdbc4eb5b2720e425d3004e031d",
+      "promptHash": "a23146e1eb6a3f9c227ab0f0dd9744e1b2d88b330ff28e7a9b1fd41c9fd6e1e5",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-36-fortress.png": {
+      "key": "sheet-36-fortress",
+      "file": "sheet-36-fortress.png",
+      "type": "sheet",
+      "sourceHash": "195c3e999fb35cef734c5012fac95b351bf9cc3ac713ad662dd6a82d4e54e006",
+      "promptHash": "25bf2eaeb45b655ea660d82d5a0c399f07b452d3144d6798decb58dadf0eb756",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-37-dungeon.png": {
+      "key": "sheet-37-dungeon",
+      "file": "sheet-37-dungeon.png",
+      "type": "sheet",
+      "sourceHash": "d3d65334eb8416d2723166aa1307604be442cb08ea23ffb5f135543a1d11646f",
+      "promptHash": "d5617965dcc3040762ce1e556c1af8faff725c5e875d538500f0907301c17d88",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-38-shrine.png": {
+      "key": "sheet-38-shrine",
+      "file": "sheet-38-shrine.png",
+      "type": "sheet",
+      "sourceHash": "96565daaece5267770a17177afef4e7c2c20affe7c235014166dbc048f917669",
+      "promptHash": "2a889b513e92141258ccce1319c52233a729966a565a5a13ae3ce83c6b60d6fc",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    }
+  },
+  "models": [
+    {
+      "id": "forge",
+      "description": "Blacksmith forge: square brick hearth with glowing coals in a shallow pit, leather bellows on one side, small chimney hood",
+      "dimensions": [
+        3,
+        3,
+        1.8
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 2
+      },
+      "file": "models/forge.glb",
+      "triangles": 656,
+      "textureSize": [
+        3,
+        3
+      ],
+      "sha256": "9a097dcd1e51100191f1d3e0242c0234d70bfe9952575659fde9172bb9d8054f",
+      "bytes": 64512,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 0,
+        "y": 0,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "quench_tub",
+      "description": "Wooden quenching barrel cut in half, dark water inside, iron tongs resting on the rim",
+      "dimensions": [
+        1,
+        1,
+        0.7
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/quench_tub.glb",
+      "triangles": 552,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "60a42f410f086012c98cab320e17f5274783f1ee71d24342d6a17de42c1f5a59",
+      "bytes": 54460,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 256,
+        "y": 0,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "coal_pile",
+      "description": "Low heap of black charcoal lumps with a small shovel stuck in it",
+      "dimensions": [
+        1.2,
+        1.2,
+        0.4
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/coal_pile.glb",
+      "triangles": 644,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "b884ee79ba5b1ce26ac838afc3a638f31c09a2f5921db59d71403b6d3439a8d6",
+      "bytes": 63384,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 512,
+        "y": 0,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "sawhorse",
+      "description": "Wooden sawhorse with a half-sawn log lying across it",
+      "dimensions": [
+        2.5,
+        0.8,
+        0.9
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "file": "models/sawhorse.glb",
+      "triangles": 212,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "0e41974f1911ef0f04eb02648c0e77dc7d745d03ad0c33188b07a048e8c94823",
+      "bytes": 21844,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 768,
+        "y": 0,
+        "w": 246,
+        "h": 80
+      }
+    },
+    {
+      "id": "lumber_pile",
+      "description": "Neat stack of sawn wooden planks on two logs",
+      "dimensions": [
+        2.8,
+        1.2,
+        0.8
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "file": "models/lumber_pile.glb",
+      "triangles": 164,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "96c77f97a22807343c292a4fad3e7d9e9ae1e98b1256e12ba6849be3fe246960",
+      "bytes": 17264,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 1024,
+        "y": 0,
+        "w": 246,
+        "h": 106
+      }
+    },
+    {
+      "id": "millstone",
+      "description": "Pair of round millstones on a low wooden platform, upper stone with central hole, wooden hopper above",
+      "dimensions": [
+        2.8,
+        2.8,
+        1.6
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 2
+      },
+      "file": "models/millstone.glb",
+      "triangles": 336,
+      "textureSize": [
+        3,
+        3
+      ],
+      "sha256": "72a9ab35319851f38a83b6dac951d147e251a9288d46f1d9033472b17fe097aa",
+      "bytes": 33840,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 1280,
+        "y": 0,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "water_wheel",
+      "description": "Wooden water wheel with paddles and iron hub, axle sticking out on one side",
+      "dimensions": [
+        1.2,
+        4,
+        4
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 3
+      },
+      "file": "models/water_wheel.glb",
+      "triangles": 344,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "1fb259a061817688a3620a69616b7efbd3ca088a0b5bba0f227c6d4a3d0d9468",
+      "bytes": 34504,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 1536,
+        "y": 0,
+        "w": 74,
+        "h": 246
+      }
+    },
+    {
+      "id": "flour_bin",
+      "description": "Wooden flour bin with hinged lid open, white flour inside",
+      "dimensions": [
+        1.2,
+        1,
+        0.9
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/flour_bin.glb",
+      "triangles": 80,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "7a166cd2e0d2ea9a0a9ed90881aff94ff3216a7f572d9c193e2d795a0cff2753",
+      "bytes": 9168,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 1792,
+        "y": 0,
+        "w": 246,
+        "h": 206
+      }
+    },
+    {
+      "id": "hay_bales",
+      "description": "Two rectangular hay bales tied with twine, side by side",
+      "dimensions": [
+        2.6,
+        1.2,
+        0.7
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "file": "models/hay_bales.glb",
+      "triangles": 72,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "6edbe522c4c93e038227370ff4dd5d0a50507c58ddbda657243b0d96aaa005a3",
+      "bytes": 8428,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 0,
+        "y": 256,
+        "w": 246,
+        "h": 114
+      }
+    },
+    {
+      "id": "chicken_coop",
+      "description": "Small wooden chicken coop on stilts with sloped plank roof and a ramp",
+      "dimensions": [
+        2.8,
+        1.4,
+        1.5
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "file": "models/chicken_coop.glb",
+      "triangles": 176,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "d4ff07586f2260aeab9f287ecc58049b7907a77769e03944f5d5e79c922e4a62",
+      "bytes": 18404,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 256,
+        "y": 256,
+        "w": 246,
+        "h": 124
+      }
+    },
+    {
+      "id": "garden_bed",
+      "description": "Raised vegetable bed with wooden border, rows of cabbages and carrot tops",
+      "dimensions": [
+        2.8,
+        1.3,
+        0.5
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "file": "models/garden_bed.glb",
+      "triangles": 1060,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "b0502f7da79faa0a0a755b251f36e4b1c37642991b771f1f0c8a7d08c04767e4",
+      "bytes": 103276,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 512,
+        "y": 256,
+        "w": 246,
+        "h": 116
+      }
+    },
+    {
+      "id": "scarecrow",
+      "description": "Scarecrow on a wooden pole, arms spread on a crossbar, ragged shirt, straw hat",
+      "dimensions": [
+        1.4,
+        0.5,
+        2.2
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/scarecrow.glb",
+      "triangles": 320,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "6901ff9fd9a5c49670b155edc715782f5fa6fdf143c8f0c11127d1455b38f814",
+      "bytes": 32212,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 768,
+        "y": 256,
+        "w": 246,
+        "h": 88
+      }
+    },
+    {
+      "id": "fence_gate",
+      "description": "Rustic wooden rail fence gate between two posts, gate slightly open",
+      "dimensions": [
+        1.5,
+        0.3,
+        1.2
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/fence_gate.glb",
+      "triangles": 108,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "4bc4341a0dc16f2d4f9f69b216e164eae0a9caf29095679fe7c580fcbc0f268a",
+      "bytes": 11864,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 1024,
+        "y": 256,
+        "w": 246,
+        "h": 50
+      }
+    },
+    {
+      "id": "double_bed",
+      "description": "Medieval double bed with carved wooden headboard, two pillows, dark red blanket",
+      "dimensions": [
+        2.8,
+        2.8,
+        1.2
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 2
+      },
+      "file": "models/double_bed.glb",
+      "triangles": 280,
+      "textureSize": [
+        3,
+        3
+      ],
+      "sha256": "74acbb25d81f39b6204a6da2e45ea80b5fad1073da90284d735e112a1cedb911",
+      "bytes": 28460,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 1280,
+        "y": 256,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "dresser",
+      "description": "Wooden chest of drawers with three drawers and brass handles, small box on top",
+      "dimensions": [
+        2.4,
+        0.9,
+        1.1
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "file": "models/dresser.glb",
+      "triangles": 444,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "2ce32abfaacb38e3bcd93c914b7d4e890fd20966afa416dca02ce1a16c551e9b",
+      "bytes": 44148,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 1536,
+        "y": 256,
+        "w": 246,
+        "h": 93
+      }
+    },
+    {
+      "id": "writing_desk",
+      "description": "Wooden writing desk with inkwell, quill and stack of papers",
+      "dimensions": [
+        2.4,
+        1.1,
+        0.8
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "file": "models/writing_desk.glb",
+      "triangles": 264,
+      "textureSize": [
+        3,
+        3
+      ],
+      "sha256": "d0396aa4f35d44c8c51f832c09446955be86b7f115e66e9aab9daabe2e1754b8",
+      "bytes": 26924,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 1792,
+        "y": 256,
+        "w": 246,
+        "h": 114
+      }
+    },
+    {
+      "id": "armchair",
+      "description": "High-backed upholstered armchair, green fabric, wooden legs",
+      "dimensions": [
+        1,
+        1,
+        1.2
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/armchair.glb",
+      "triangles": 108,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "093d6d621cb5314e59bc02213b6e231d3738f9c539c8343cd6fc678d4ef0ba79",
+      "bytes": 11824,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 0,
+        "y": 512,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "folding_screen",
+      "description": "Three-panel folding privacy screen with painted wooden panels, zigzag shape",
+      "dimensions": [
+        2.6,
+        0.6,
+        1.8
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "file": "models/folding_screen.glb",
+      "triangles": 280,
+      "textureSize": [
+        3,
+        3
+      ],
+      "sha256": "c71f6349ca422aedef9619a15d9b7f3d48c915a95b67cb0b5fa0c72c7a86fde8",
+      "bytes": 28476,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 256,
+        "y": 512,
+        "w": 246,
+        "h": 58
+      }
+    },
+    {
+      "id": "bathtub",
+      "description": "Wooden bathtub with iron bands on short legs, water inside",
+      "dimensions": [
+        2.2,
+        1.1,
+        0.8
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "file": "models/bathtub.glb",
+      "triangles": 492,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "f615cf8a8535b6d0278c78fa2c1cf75ff3030a6d8edaaabaa447ed20fdcda5ed",
+      "bytes": 48752,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 512,
+        "y": 512,
+        "w": 246,
+        "h": 124
+      }
+    },
+    {
+      "id": "cradle",
+      "description": "Wooden baby cradle on curved rockers with a small blanket",
+      "dimensions": [
+        1,
+        0.7,
+        0.8
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/cradle.glb",
+      "triangles": 504,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "171def18d29457e4356f882331f1e97969711b912005fdb11d5228acb6047e79",
+      "bytes": 49876,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 768,
+        "y": 512,
+        "w": 246,
+        "h": 174
+      }
+    },
+    {
+      "id": "standing_mirror",
+      "description": "Tall standing mirror in carved wooden frame on a stand",
+      "dimensions": [
+        0.8,
+        0.5,
+        1.8
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/standing_mirror.glb",
+      "triangles": 308,
+      "textureSize": [
+        3,
+        3
+      ],
+      "sha256": "1bd19ba18e8501b363ee5aaee1f008d28127c533d077f5e8dfa7d9bf3df840bf",
+      "bytes": 31136,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 1024,
+        "y": 512,
+        "w": 246,
+        "h": 154
+      }
+    },
+    {
+      "id": "coat_rack",
+      "description": "Wooden coat stand with a cloak and a hat hanging",
+      "dimensions": [
+        0.6,
+        0.6,
+        1.8
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/coat_rack.glb",
+      "triangles": 524,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "87ffa8a9fae0f4c53bee1b70e5969ebc0d0cdcbcf855095359c45e28d11c0c87",
+      "bytes": 51836,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 1280,
+        "y": 512,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "kitchen_stove",
+      "description": "Brick kitchen stove with cast-iron cooktop and two pots on it",
+      "dimensions": [
+        2.6,
+        1.1,
+        1.1
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "file": "models/kitchen_stove.glb",
+      "triangles": 820,
+      "textureSize": [
+        3,
+        3
+      ],
+      "sha256": "0757942ad6cdbb15da3e81a8f3b38573af74e755fe6d2c6698bc74ac3a393eec",
+      "bytes": 80316,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 1536,
+        "y": 512,
+        "w": 246,
+        "h": 104
+      }
+    },
+    {
+      "id": "bread_oven",
+      "description": "Domed stone bread oven with arched opening and wooden peel leaning on it",
+      "dimensions": [
+        2.8,
+        2.8,
+        1.8
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 2
+      },
+      "file": "models/bread_oven.glb",
+      "triangles": 592,
+      "textureSize": [
+        3,
+        3
+      ],
+      "sha256": "6182bc60c4849a0b180e1ea9a7f28a0cbec607bf8c3d6ad5e4c6176be365729d",
+      "bytes": 58420,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 1792,
+        "y": 512,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "washtub",
+      "description": "Wooden washtub with soapy water and a few plates",
+      "dimensions": [
+        1,
+        1,
+        0.6
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/washtub.glb",
+      "triangles": 756,
+      "textureSize": [
+        3,
+        3
+      ],
+      "sha256": "9133df3a4f380fc9248fa37514d52640aeb26cea5d14496bb668db144ca2f50e",
+      "bytes": 74120,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 0,
+        "y": 768,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "butcher_block",
+      "description": "Thick wooden butcher block on legs with a cleaver stuck in it",
+      "dimensions": [
+        0.9,
+        0.9,
+        0.9
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/butcher_block.glb",
+      "triangles": 288,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "c32b9f6ae83252100963e507b4af465c7565db7a3b2708b03207decd9f0546e2",
+      "bytes": 29184,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 256,
+        "y": 768,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "hanging_pots",
+      "description": "Wall-mounted iron rack with hanging copper pots and pans",
+      "dimensions": [
+        2.6,
+        0.3,
+        1.2
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "file": "models/hanging_pots.glb",
+      "triangles": 968,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "64bb03b2768c4a862c7cd8d13605d22d3425b105aada51bffc3cd9d8373d9d2d",
+      "bytes": 94484,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 512,
+        "y": 768,
+        "w": 246,
+        "h": 30
+      }
+    },
+    {
+      "id": "shop_counter",
+      "description": "Long dark wooden shop counter with brass scales and a few goods on top",
+      "dimensions": [
+        4.2,
+        1,
+        1
+      ],
+      "footprint": {
+        "w": 3,
+        "h": 1
+      },
+      "file": "models/shop_counter.glb",
+      "triangles": 800,
+      "textureSize": [
+        3,
+        3
+      ],
+      "sha256": "b9b792d107b39ce382bb1e7dd90e2f1fd7c61019fcdff5316715ad7b53229345",
+      "bytes": 78344,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 768,
+        "y": 768,
+        "w": 246,
+        "h": 60
+      }
+    },
+    {
+      "id": "cloth_bolts",
+      "description": "Wooden stand holding rolls of colorful cloth upright",
+      "dimensions": [
+        1.1,
+        1.1,
+        1.4
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/cloth_bolts.glb",
+      "triangles": 756,
+      "textureSize": [
+        3,
+        3
+      ],
+      "sha256": "0462dfd2587e92e12f60c1e192260dd6b6e6b80aac089bd5444e9be9cd5fa2b5",
+      "bytes": 74180,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 1024,
+        "y": 768,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "market_awning",
+      "description": "Market canopy: striped cloth sheet stretched on four wooden poles, slight sag",
+      "dimensions": [
+        4.4,
+        2.8,
+        2.4
+      ],
+      "footprint": {
+        "w": 3,
+        "h": 2
+      },
+      "file": "models/market_awning.glb",
+      "triangles": 284,
+      "textureSize": [
+        3,
+        3
+      ],
+      "sha256": "74eff4df376075e860b8ac477de0bb689c007272e827d74af1f63489fd6d5301",
+      "bytes": 28848,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 1280,
+        "y": 768,
+        "w": 246,
+        "h": 158
+      }
+    },
+    {
+      "id": "notice_board",
+      "description": "Wooden notice board on two posts with blank pinned papers, small roof",
+      "dimensions": [
+        1.4,
+        0.3,
+        2
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/notice_board.glb",
+      "triangles": 408,
+      "textureSize": [
+        3,
+        3
+      ],
+      "sha256": "05892a3a29e5489b06038ce574b139fabf5f13a3eee92afec010e7c891dfd5b4",
+      "bytes": 40740,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 1536,
+        "y": 768,
+        "w": 246,
+        "h": 54
+      }
+    },
+    {
+      "id": "scales_table",
+      "description": "Small wooden table with brass balance scales and weights",
+      "dimensions": [
+        1,
+        0.8,
+        1
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/scales_table.glb",
+      "triangles": 760,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "7782adcdfe00c330b16e2c081c109696f82e86cd24594376d6bb286722d661b6",
+      "bytes": 74448,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 1792,
+        "y": 768,
+        "w": 246,
+        "h": 198
+      }
+    },
+    {
+      "id": "globe",
+      "description": "Antique globe on a wooden stand with brass meridian ring",
+      "dimensions": [
+        0.8,
+        0.8,
+        1.1
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/globe.glb",
+      "triangles": 452,
+      "textureSize": [
+        3,
+        3
+      ],
+      "sha256": "78ec37e07ffbb9c604aa5e0478e24220db134f084a24165f247a82030ac54b49",
+      "bytes": 44968,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 0,
+        "y": 1024,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "scroll_rack",
+      "description": "Wall shelf with diamond-shaped cubbies holding rolled scrolls",
+      "dimensions": [
+        2.6,
+        0.4,
+        1.6
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "file": "models/scroll_rack.glb",
+      "triangles": 684,
+      "textureSize": [
+        3,
+        3
+      ],
+      "sha256": "c97279d945b02f870c274f233a6d42105bde1bc434a736b78581229b7bf80037",
+      "bytes": 67252,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 256,
+        "y": 1024,
+        "w": 246,
+        "h": 38
+      }
+    },
+    {
+      "id": "reading_nook",
+      "description": "Armchair with a small side table stacked with books and a candle",
+      "dimensions": [
+        2.4,
+        1.2,
+        1.2
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "file": "models/reading_nook.glb",
+      "triangles": 496,
+      "textureSize": [
+        3,
+        3
+      ],
+      "sha256": "6e5df9c0ae2212fc45eee8f54f91631a6539a1d3221601f1f71be5274fd029e3",
+      "bytes": 49232,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 512,
+        "y": 1024,
+        "w": 246,
+        "h": 124
+      }
+    },
+    {
+      "id": "candle_desk",
+      "description": "Clerk's desk with candlestick and piles of books",
+      "dimensions": [
+        2.4,
+        1,
+        1
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "file": "models/candle_desk.glb",
+      "triangles": 404,
+      "textureSize": [
+        3,
+        3
+      ],
+      "sha256": "513c5dcc069905b93cbb46cd6ec49a19cd01c97a9d69214477174cd97790e547",
+      "bytes": 40348,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 768,
+        "y": 1024,
+        "w": 246,
+        "h": 104
+      }
+    },
+    {
+      "id": "telescope",
+      "description": "Brass telescope on a wooden tripod",
+      "dimensions": [
+        0.9,
+        0.9,
+        1.6
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/telescope.glb",
+      "triangles": 360,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "29cb510ab54ec4551049faca685ab049a3b80715b9ef561490fdedc72ff1e670",
+      "bytes": 36088,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 1024,
+        "y": 1024,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "fountain",
+      "description": "Round stone fountain: wide basin with water, central pedestal with small bowl spilling water",
+      "dimensions": [
+        4.4,
+        4.4,
+        2.2
+      ],
+      "footprint": {
+        "w": 3,
+        "h": 3
+      },
+      "file": "models/fountain.glb",
+      "triangles": 652,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "fbae643f923e8d4ccff059e52ebb5d3210988e3fb38cb58c9787889a205f0c71",
+      "bytes": 64112,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 1280,
+        "y": 1024,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "statue_plinth",
+      "description": "Stone statue of an armored warrior on a square plinth",
+      "dimensions": [
+        2.8,
+        2.8,
+        3.2
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 2
+      },
+      "file": "models/statue_plinth.glb",
+      "triangles": 808,
+      "textureSize": [
+        3,
+        3
+      ],
+      "sha256": "2dc5f1624067b7df7b4421f3d7bda1eba9ce62865f0de0984e8c8809cb255b3e",
+      "bytes": 79164,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 1536,
+        "y": 1024,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "flower_bed",
+      "description": "Low stone planter box with colorful flowers",
+      "dimensions": [
+        2.8,
+        1.2,
+        0.6
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "file": "models/flower_bed.glb",
+      "triangles": 960,
+      "textureSize": [
+        3,
+        3
+      ],
+      "sha256": "df01bc8858eb8ff9687b1974cbfa0212102e887217e932ce3a066c2ed5392f91",
+      "bytes": 93764,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 1792,
+        "y": 1024,
+        "w": 246,
+        "h": 106
+      }
+    },
+    {
+      "id": "pillory",
+      "description": "Wooden pillory stocks on a small platform",
+      "dimensions": [
+        2.6,
+        1.2,
+        1.8
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "file": "models/pillory.glb",
+      "triangles": 216,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "3d698b482841eb30befb69fb389fdb866543ea563d876dcb91affb71d866d195",
+      "bytes": 22252,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 0,
+        "y": 1280,
+        "w": 246,
+        "h": 114
+      }
+    },
+    {
+      "id": "town_well",
+      "description": "Stone well with tiled roof on four wooden posts, rope and bucket",
+      "dimensions": [
+        2.8,
+        2.8,
+        2.6
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 2
+      },
+      "file": "models/town_well.glb",
+      "triangles": 700,
+      "textureSize": [
+        3,
+        3
+      ],
+      "sha256": "1c4057d65848e2c643b15cbe455b2dffeff6dc65fde7b066117b323ecd98c38d",
+      "bytes": 68804,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 256,
+        "y": 1280,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "street_planter",
+      "description": "Wooden tub with a small round tree",
+      "dimensions": [
+        1,
+        1,
+        1.6
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/street_planter.glb",
+      "triangles": 532,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "962b3ac8570289858dbe605aabc41f9e5362bdec7eb71f861a2fa98ceb25a612",
+      "bytes": 52548,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 512,
+        "y": 1280,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "sign_post_city",
+      "description": "Wooden signpost with three blank arrow boards",
+      "dimensions": [
+        0.8,
+        0.8,
+        2.2
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/sign_post_city.glb",
+      "triangles": 96,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "99037042b2cabae3a6b2296e6e4b53bdf5a4085ac53a5ff5406e4238fe9ec46c",
+      "bytes": 10744,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 768,
+        "y": 1280,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "rowboat",
+      "description": "Small wooden rowboat with two oars resting inside",
+      "dimensions": [
+        1.4,
+        4,
+        0.7
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 3
+      },
+      "file": "models/rowboat.glb",
+      "triangles": 308,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "95ec206ddf7b9301b4f9eb54c8164e6213a08331f866979f71855e6cfa12ac22",
+      "bytes": 31052,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 1024,
+        "y": 1280,
+        "w": 86,
+        "h": 246
+      }
+    },
+    {
+      "id": "punt",
+      "description": "Flat-bottomed wooden punt boat with a long pole",
+      "dimensions": [
+        1.3,
+        4.2,
+        0.5
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 3
+      },
+      "file": "models/punt.glb",
+      "triangles": 212,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "10dfa5d8be329a5631bcb0a6d6dcbace3a46b248172c497573799e728a7a727e",
+      "bytes": 21848,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 1280,
+        "y": 1280,
+        "w": 76,
+        "h": 246
+      }
+    },
+    {
+      "id": "mooring_post",
+      "description": "Wooden mooring post with coiled rope",
+      "dimensions": [
+        0.6,
+        0.6,
+        1
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/mooring_post.glb",
+      "triangles": 440,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "f0d747e2f364b753686f2ec8aa2df7e0b191e98d64a4482bfc5fae36bb5d316c",
+      "bytes": 43760,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 1536,
+        "y": 1280,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "fish_rack",
+      "description": "Wooden drying rack with fish hanging from poles",
+      "dimensions": [
+        2.6,
+        0.8,
+        1.6
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "file": "models/fish_rack.glb",
+      "triangles": 1152,
+      "textureSize": [
+        3,
+        3
+      ],
+      "sha256": "8913f7d5764a625a78e762d5a987ee7af4ab2b4ff80df8813a25ca892f0be58b",
+      "bytes": 112176,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 1792,
+        "y": 1280,
+        "w": 246,
+        "h": 76
+      }
+    },
+    {
+      "id": "fishing_nets",
+      "description": "Fishing net stretched between wooden stakes",
+      "dimensions": [
+        2.8,
+        0.4,
+        1.4
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "file": "models/fishing_nets.glb",
+      "triangles": 736,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "b3c16621afc7eb0abaa6f723ca14f7af2bc7b4db3e2c76824777866763a9a349",
+      "bytes": 72188,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 0,
+        "y": 1536,
+        "w": 246,
+        "h": 36
+      }
+    },
+    {
+      "id": "stone_steps",
+      "description": "Short flight of stone steps going down, three wide steps",
+      "dimensions": [
+        2.8,
+        1.4,
+        0.8
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "file": "models/stone_steps.glb",
+      "triangles": 324,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "47570dfd4ba101d760d90b26db5f1f67277eb35ae962a89583f753606bfe8c66",
+      "bytes": 32628,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 256,
+        "y": 1536,
+        "w": 246,
+        "h": 124
+      }
+    },
+    {
+      "id": "root_tangle",
+      "description": "Twisted tree roots arching out of the ground",
+      "dimensions": [
+        2.8,
+        1.2,
+        0.8
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "file": "models/root_tangle.glb",
+      "triangles": 516,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "f8d7f59d1d01fff6afc2d23286640349eaf8510e2dd113415354410df0ef66bb",
+      "bytes": 51100,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 512,
+        "y": 1536,
+        "w": 246,
+        "h": 106
+      }
+    },
+    {
+      "id": "armor_stand",
+      "description": "Wooden armor stand with chainmail shirt and helmet",
+      "dimensions": [
+        1,
+        0.7,
+        1.8
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/armor_stand.glb",
+      "triangles": 956,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "b04d3a697742427a154d645ac0cbcf4521441486eccaf2540f3236063fe6c1e8",
+      "bytes": 93276,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 768,
+        "y": 1536,
+        "w": 246,
+        "h": 173
+      }
+    },
+    {
+      "id": "archery_target",
+      "description": "Round straw archery target on a wooden tripod with arrows stuck in it",
+      "dimensions": [
+        1.2,
+        0.8,
+        1.6
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/archery_target.glb",
+      "triangles": 520,
+      "textureSize": [
+        3,
+        3
+      ],
+      "sha256": "d78b83e9051a88db19a93fcd7cf7984d28e5f786a6709b2016dd5a10a15eec58",
+      "bytes": 51524,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 1024,
+        "y": 1536,
+        "w": 246,
+        "h": 164
+      }
+    },
+    {
+      "id": "straw_bed",
+      "description": "Pile of straw bedding with a torn grey blanket",
+      "dimensions": [
+        1.2,
+        2.4,
+        0.3
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 2
+      },
+      "file": "models/straw_bed.glb",
+      "triangles": 436,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "a2705261c441fc57b5814dc4045f333c14034af189a9e02aa76e504f34f72148",
+      "bytes": 43420,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 1280,
+        "y": 1536,
+        "w": 124,
+        "h": 246
+      }
+    },
+    {
+      "id": "wall_chains",
+      "description": "Iron shackles and chains hanging from a wall plate",
+      "dimensions": [
+        1,
+        0.3,
+        1.6
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/wall_chains.glb",
+      "triangles": 1788,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "85b2874c04be9ed0210569b2c55fcf09579b3809e786c6502030da00f2f8fcfb",
+      "bytes": 173152,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 1536,
+        "y": 1536,
+        "w": 246,
+        "h": 74
+      }
+    },
+    {
+      "id": "stocks",
+      "description": "Wooden stocks for hands and feet on a low platform",
+      "dimensions": [
+        2.6,
+        1.2,
+        1
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "file": "models/stocks.glb",
+      "triangles": 1084,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "d7fe05c54966da3ee0f2c141187e0f5fa4f5ebcf9e41b1b58e7258b832ae60cd",
+      "bytes": 105572,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 1792,
+        "y": 1536,
+        "w": 246,
+        "h": 114
+      }
+    },
+    {
+      "id": "torture_rack",
+      "description": "Wooden torture rack table with winch and ropes, empty",
+      "dimensions": [
+        2.8,
+        1.2,
+        1
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "file": "models/torture_rack.glb",
+      "triangles": 444,
+      "textureSize": [
+        3,
+        3
+      ],
+      "sha256": "a2fea70dfb0e051d5372ade056c0c0cbe796bf8923cf3aa7862c579c6228ba9a",
+      "bytes": 44196,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 0,
+        "y": 1792,
+        "w": 246,
+        "h": 106
+      }
+    },
+    {
+      "id": "jailer_desk",
+      "description": "Small rough desk with a ring of keys and a closed logbook",
+      "dimensions": [
+        1.2,
+        0.8,
+        0.9
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/jailer_desk.glb",
+      "triangles": 432,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "ae74c662bbb23ca46337de6247aeb85f550c1e583f16eb545654f7edc9afff94",
+      "bytes": 43004,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 256,
+        "y": 1792,
+        "w": 246,
+        "h": 164
+      }
+    },
+    {
+      "id": "idol",
+      "description": "Stone idol of a seated deity on a round pedestal, hands folded, simple face",
+      "dimensions": [
+        2.8,
+        2.8,
+        3
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 2
+      },
+      "file": "models/idol.glb",
+      "triangles": 856,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "eb8e0f9f58f5c04975e1c8d5a6aac8412908a5761e6172c6c5ef635a358bfa04",
+      "bytes": 83672,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 512,
+        "y": 1792,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "font_basin",
+      "description": "Stone font basin on a pedestal with water",
+      "dimensions": [
+        1,
+        1,
+        1.1
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/font_basin.glb",
+      "triangles": 304,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "dc8a5e4420492b0256214b4e9399fc4bcd347edf72d13b14bd8cf6501c59a51d",
+      "bytes": 30648,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 768,
+        "y": 1792,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "incense_burner",
+      "description": "Bronze incense burner on a tripod with a thin smoke wisp",
+      "dimensions": [
+        0.8,
+        0.8,
+        1.2
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/incense_burner.glb",
+      "triangles": 392,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "dd8be94f72c25f0ba773e3b55ef525bc534fc1ceb403edb3e3ccb9506b0e2e88",
+      "bytes": 39168,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 1024,
+        "y": 1792,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "bell_frame",
+      "description": "Bronze bell hanging in a wooden frame",
+      "dimensions": [
+        2.6,
+        1.2,
+        2.6
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "file": "models/bell_frame.glb",
+      "triangles": 888,
+      "textureSize": [
+        3,
+        3
+      ],
+      "sha256": "18b3ee889445e0707e703ff824dd66aec8cb252fcfb81297220e8d542763b249",
+      "bytes": 86836,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 1280,
+        "y": 1792,
+        "w": 246,
+        "h": 114
+      }
+    },
+    {
+      "id": "holy_pool",
+      "description": "Square stone pool with low rim and dark water",
+      "dimensions": [
+        2.8,
+        2.8,
+        0.4
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 2
+      },
+      "file": "models/holy_pool.glb",
+      "triangles": 264,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "cbd1952e1aa2d609baf254973e6e7497144eecb8397a6a38cdcc9fa1bb136a79",
+      "bytes": 26860,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 1536,
+        "y": 1792,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "kneeling_cushions",
+      "description": "Three cushions for kneeling in a row, faded red cloth",
+      "dimensions": [
+        2.8,
+        1,
+        0.3
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "file": "models/kneeling_cushions.glb",
+      "triangles": 600,
+      "textureSize": [
+        2,
+        2
+      ],
+      "sha256": "244fe604fcbeb647a2ced05d440d30528cd843534521326897d64c14e2fdfb21",
+      "bytes": 59148,
+      "method": "authored-low-poly",
+      "preview": {
+        "x": 1792,
+        "y": 1792,
+        "w": 246,
+        "h": 88
+      }
+    }
+  ],
+  "schema": "map-detail-assets/v1",
+  "status": "prepared",
+  "counts": {
+    "sourceRasters": 34,
+    "textures": 19,
+    "sheets": 15,
+    "stamps": 135,
+    "models": 64
+  },
+  "promptSpec": "docs/map-detail-assets-spec-v1.json",
+  "provenance": {
+    "rasterMethod": "OpenAI built-in image_gen",
+    "modelMethod": "original procedural low-poly, Three.js GLTFExporter",
+    "thirdPartyModelsIncluded": false,
+    "requestedByOwner": "2026-10-02",
+    "sourcePrompts": "docs/map-detail-assets-prompts.md",
+    "generators": [
+      {
+        "file": "tools/build-map-detail-models.mjs",
+        "sha256": "00969b8673cfe392352e2fbccce0389d03c135066ad28419ec09452a9ca0a09c",
+        "bytes": 7947
+      },
+      {
+        "file": "tools/map-detail-model-helpers.mjs",
+        "sha256": "75e8647c093220ef557a2861fa6a2377cc3410976d2576cfa9599300e755ebb6",
+        "bytes": 3184
+      },
+      {
+        "file": "tools/map-detail-models-workshop.mjs",
+        "sha256": "9ffa17b7734b71dd7d5e113c48ebdbdc5382a81f169da0540536ed35b72fe9c3",
+        "bytes": 15277
+      },
+      {
+        "file": "tools/map-detail-models-household.mjs",
+        "sha256": "f320eb756393bfbbb57db5a43dac6e917547157ddebac64a446478294311854d",
+        "bytes": 12896
+      },
+      {
+        "file": "tools/map-detail-models-town.mjs",
+        "sha256": "57222a063da192c789ada20abc55d2723fe9800ebb20a098d58ac25eda5b33e7",
+        "bytes": 17930
+      },
+      {
+        "file": "tools/map-detail-models-dungeon.mjs",
+        "sha256": "572a69a56b619b29a8288c0c5314e20dc3811d01fc304a0a03a6f33e43befd92",
+        "bytes": 12292
+      },
+      {
+        "file": "tools/build-map-detail-assets.mjs",
+        "sha256": "ba09da4ad9a9d56ec6c8cff99df48cb7d72cdf17849f6f76d1126d8b5ed4528c",
+        "bytes": 4902
+      },
+      {
+        "file": "tools/build-map-detail-rasters.mjs",
+        "sha256": "ce7afe65a395d59789c8cb545ad7e180c924e35e51a69813ac003629c4bafc11",
+        "bytes": 22236
+      }
+    ]
+  },
+  "previews": {
+    "raster": "raster-preview.png",
+    "models": "model-preview.png"
+  },
+  "files": [
+    {
+      "file": "model-preview.png",
+      "sha256": "f6174724f23cbc06c3c59692753e5ff4957490fa2e8779a12e67c57f8f9bfff6",
+      "bytes": 516160
+    },
+    {
+      "file": "models/archery_target.glb",
+      "sha256": "d78b83e9051a88db19a93fcd7cf7984d28e5f786a6709b2016dd5a10a15eec58",
+      "bytes": 51524
+    },
+    {
+      "file": "models/armchair.glb",
+      "sha256": "093d6d621cb5314e59bc02213b6e231d3738f9c539c8343cd6fc678d4ef0ba79",
+      "bytes": 11824
+    },
+    {
+      "file": "models/armor_stand.glb",
+      "sha256": "b04d3a697742427a154d645ac0cbcf4521441486eccaf2540f3236063fe6c1e8",
+      "bytes": 93276
+    },
+    {
+      "file": "models/bathtub.glb",
+      "sha256": "f615cf8a8535b6d0278c78fa2c1cf75ff3030a6d8edaaabaa447ed20fdcda5ed",
+      "bytes": 48752
+    },
+    {
+      "file": "models/bell_frame.glb",
+      "sha256": "18b3ee889445e0707e703ff824dd66aec8cb252fcfb81297220e8d542763b249",
+      "bytes": 86836
+    },
+    {
+      "file": "models/bread_oven.glb",
+      "sha256": "6182bc60c4849a0b180e1ea9a7f28a0cbec607bf8c3d6ad5e4c6176be365729d",
+      "bytes": 58420
+    },
+    {
+      "file": "models/butcher_block.glb",
+      "sha256": "c32b9f6ae83252100963e507b4af465c7565db7a3b2708b03207decd9f0546e2",
+      "bytes": 29184
+    },
+    {
+      "file": "models/candle_desk.glb",
+      "sha256": "513c5dcc069905b93cbb46cd6ec49a19cd01c97a9d69214477174cd97790e547",
+      "bytes": 40348
+    },
+    {
+      "file": "models/chicken_coop.glb",
+      "sha256": "d4ff07586f2260aeab9f287ecc58049b7907a77769e03944f5d5e79c922e4a62",
+      "bytes": 18404
+    },
+    {
+      "file": "models/cloth_bolts.glb",
+      "sha256": "0462dfd2587e92e12f60c1e192260dd6b6e6b80aac089bd5444e9be9cd5fa2b5",
+      "bytes": 74180
+    },
+    {
+      "file": "models/coal_pile.glb",
+      "sha256": "b884ee79ba5b1ce26ac838afc3a638f31c09a2f5921db59d71403b6d3439a8d6",
+      "bytes": 63384
+    },
+    {
+      "file": "models/coat_rack.glb",
+      "sha256": "87ffa8a9fae0f4c53bee1b70e5969ebc0d0cdcbcf855095359c45e28d11c0c87",
+      "bytes": 51836
+    },
+    {
+      "file": "models/cradle.glb",
+      "sha256": "171def18d29457e4356f882331f1e97969711b912005fdb11d5228acb6047e79",
+      "bytes": 49876
+    },
+    {
+      "file": "models/double_bed.glb",
+      "sha256": "74acbb25d81f39b6204a6da2e45ea80b5fad1073da90284d735e112a1cedb911",
+      "bytes": 28460
+    },
+    {
+      "file": "models/dresser.glb",
+      "sha256": "2ce32abfaacb38e3bcd93c914b7d4e890fd20966afa416dca02ce1a16c551e9b",
+      "bytes": 44148
+    },
+    {
+      "file": "models/fence_gate.glb",
+      "sha256": "4bc4341a0dc16f2d4f9f69b216e164eae0a9caf29095679fe7c580fcbc0f268a",
+      "bytes": 11864
+    },
+    {
+      "file": "models/fish_rack.glb",
+      "sha256": "8913f7d5764a625a78e762d5a987ee7af4ab2b4ff80df8813a25ca892f0be58b",
+      "bytes": 112176
+    },
+    {
+      "file": "models/fishing_nets.glb",
+      "sha256": "b3c16621afc7eb0abaa6f723ca14f7af2bc7b4db3e2c76824777866763a9a349",
+      "bytes": 72188
+    },
+    {
+      "file": "models/flour_bin.glb",
+      "sha256": "7a166cd2e0d2ea9a0a9ed90881aff94ff3216a7f572d9c193e2d795a0cff2753",
+      "bytes": 9168
+    },
+    {
+      "file": "models/flower_bed.glb",
+      "sha256": "df01bc8858eb8ff9687b1974cbfa0212102e887217e932ce3a066c2ed5392f91",
+      "bytes": 93764
+    },
+    {
+      "file": "models/folding_screen.glb",
+      "sha256": "c71f6349ca422aedef9619a15d9b7f3d48c915a95b67cb0b5fa0c72c7a86fde8",
+      "bytes": 28476
+    },
+    {
+      "file": "models/font_basin.glb",
+      "sha256": "dc8a5e4420492b0256214b4e9399fc4bcd347edf72d13b14bd8cf6501c59a51d",
+      "bytes": 30648
+    },
+    {
+      "file": "models/forge.glb",
+      "sha256": "9a097dcd1e51100191f1d3e0242c0234d70bfe9952575659fde9172bb9d8054f",
+      "bytes": 64512
+    },
+    {
+      "file": "models/fountain.glb",
+      "sha256": "fbae643f923e8d4ccff059e52ebb5d3210988e3fb38cb58c9787889a205f0c71",
+      "bytes": 64112
+    },
+    {
+      "file": "models/garden_bed.glb",
+      "sha256": "b0502f7da79faa0a0a755b251f36e4b1c37642991b771f1f0c8a7d08c04767e4",
+      "bytes": 103276
+    },
+    {
+      "file": "models/globe.glb",
+      "sha256": "78ec37e07ffbb9c604aa5e0478e24220db134f084a24165f247a82030ac54b49",
+      "bytes": 44968
+    },
+    {
+      "file": "models/hanging_pots.glb",
+      "sha256": "64bb03b2768c4a862c7cd8d13605d22d3425b105aada51bffc3cd9d8373d9d2d",
+      "bytes": 94484
+    },
+    {
+      "file": "models/hay_bales.glb",
+      "sha256": "6edbe522c4c93e038227370ff4dd5d0a50507c58ddbda657243b0d96aaa005a3",
+      "bytes": 8428
+    },
+    {
+      "file": "models/holy_pool.glb",
+      "sha256": "cbd1952e1aa2d609baf254973e6e7497144eecb8397a6a38cdcc9fa1bb136a79",
+      "bytes": 26860
+    },
+    {
+      "file": "models/idol.glb",
+      "sha256": "eb8e0f9f58f5c04975e1c8d5a6aac8412908a5761e6172c6c5ef635a358bfa04",
+      "bytes": 83672
+    },
+    {
+      "file": "models/incense_burner.glb",
+      "sha256": "dd8be94f72c25f0ba773e3b55ef525bc534fc1ceb403edb3e3ccb9506b0e2e88",
+      "bytes": 39168
+    },
+    {
+      "file": "models/jailer_desk.glb",
+      "sha256": "ae74c662bbb23ca46337de6247aeb85f550c1e583f16eb545654f7edc9afff94",
+      "bytes": 43004
+    },
+    {
+      "file": "models/kitchen_stove.glb",
+      "sha256": "0757942ad6cdbb15da3e81a8f3b38573af74e755fe6d2c6698bc74ac3a393eec",
+      "bytes": 80316
+    },
+    {
+      "file": "models/kneeling_cushions.glb",
+      "sha256": "244fe604fcbeb647a2ced05d440d30528cd843534521326897d64c14e2fdfb21",
+      "bytes": 59148
+    },
+    {
+      "file": "models/lumber_pile.glb",
+      "sha256": "96c77f97a22807343c292a4fad3e7d9e9ae1e98b1256e12ba6849be3fe246960",
+      "bytes": 17264
+    },
+    {
+      "file": "models/market_awning.glb",
+      "sha256": "74eff4df376075e860b8ac477de0bb689c007272e827d74af1f63489fd6d5301",
+      "bytes": 28848
+    },
+    {
+      "file": "models/millstone.glb",
+      "sha256": "72a9ab35319851f38a83b6dac951d147e251a9288d46f1d9033472b17fe097aa",
+      "bytes": 33840
+    },
+    {
+      "file": "models/mooring_post.glb",
+      "sha256": "f0d747e2f364b753686f2ec8aa2df7e0b191e98d64a4482bfc5fae36bb5d316c",
+      "bytes": 43760
+    },
+    {
+      "file": "models/notice_board.glb",
+      "sha256": "05892a3a29e5489b06038ce574b139fabf5f13a3eee92afec010e7c891dfd5b4",
+      "bytes": 40740
+    },
+    {
+      "file": "models/pillory.glb",
+      "sha256": "3d698b482841eb30befb69fb389fdb866543ea563d876dcb91affb71d866d195",
+      "bytes": 22252
+    },
+    {
+      "file": "models/punt.glb",
+      "sha256": "10dfa5d8be329a5631bcb0a6d6dcbace3a46b248172c497573799e728a7a727e",
+      "bytes": 21848
+    },
+    {
+      "file": "models/quench_tub.glb",
+      "sha256": "60a42f410f086012c98cab320e17f5274783f1ee71d24342d6a17de42c1f5a59",
+      "bytes": 54460
+    },
+    {
+      "file": "models/reading_nook.glb",
+      "sha256": "6e5df9c0ae2212fc45eee8f54f91631a6539a1d3221601f1f71be5274fd029e3",
+      "bytes": 49232
+    },
+    {
+      "file": "models/root_tangle.glb",
+      "sha256": "f8d7f59d1d01fff6afc2d23286640349eaf8510e2dd113415354410df0ef66bb",
+      "bytes": 51100
+    },
+    {
+      "file": "models/rowboat.glb",
+      "sha256": "95ec206ddf7b9301b4f9eb54c8164e6213a08331f866979f71855e6cfa12ac22",
+      "bytes": 31052
+    },
+    {
+      "file": "models/sawhorse.glb",
+      "sha256": "0e41974f1911ef0f04eb02648c0e77dc7d745d03ad0c33188b07a048e8c94823",
+      "bytes": 21844
+    },
+    {
+      "file": "models/scales_table.glb",
+      "sha256": "7782adcdfe00c330b16e2c081c109696f82e86cd24594376d6bb286722d661b6",
+      "bytes": 74448
+    },
+    {
+      "file": "models/scarecrow.glb",
+      "sha256": "6901ff9fd9a5c49670b155edc715782f5fa6fdf143c8f0c11127d1455b38f814",
+      "bytes": 32212
+    },
+    {
+      "file": "models/scroll_rack.glb",
+      "sha256": "c97279d945b02f870c274f233a6d42105bde1bc434a736b78581229b7bf80037",
+      "bytes": 67252
+    },
+    {
+      "file": "models/shop_counter.glb",
+      "sha256": "b9b792d107b39ce382bb1e7dd90e2f1fd7c61019fcdff5316715ad7b53229345",
+      "bytes": 78344
+    },
+    {
+      "file": "models/sign_post_city.glb",
+      "sha256": "99037042b2cabae3a6b2296e6e4b53bdf5a4085ac53a5ff5406e4238fe9ec46c",
+      "bytes": 10744
+    },
+    {
+      "file": "models/standing_mirror.glb",
+      "sha256": "1bd19ba18e8501b363ee5aaee1f008d28127c533d077f5e8dfa7d9bf3df840bf",
+      "bytes": 31136
+    },
+    {
+      "file": "models/statue_plinth.glb",
+      "sha256": "2dc5f1624067b7df7b4421f3d7bda1eba9ce62865f0de0984e8c8809cb255b3e",
+      "bytes": 79164
+    },
+    {
+      "file": "models/stocks.glb",
+      "sha256": "d7fe05c54966da3ee0f2c141187e0f5fa4f5ebcf9e41b1b58e7258b832ae60cd",
+      "bytes": 105572
+    },
+    {
+      "file": "models/stone_steps.glb",
+      "sha256": "47570dfd4ba101d760d90b26db5f1f67277eb35ae962a89583f753606bfe8c66",
+      "bytes": 32628
+    },
+    {
+      "file": "models/straw_bed.glb",
+      "sha256": "a2705261c441fc57b5814dc4045f333c14034af189a9e02aa76e504f34f72148",
+      "bytes": 43420
+    },
+    {
+      "file": "models/street_planter.glb",
+      "sha256": "962b3ac8570289858dbe605aabc41f9e5362bdec7eb71f861a2fa98ceb25a612",
+      "bytes": 52548
+    },
+    {
+      "file": "models/telescope.glb",
+      "sha256": "29cb510ab54ec4551049faca685ab049a3b80715b9ef561490fdedc72ff1e670",
+      "bytes": 36088
+    },
+    {
+      "file": "models/torture_rack.glb",
+      "sha256": "a2fea70dfb0e051d5372ade056c0c0cbe796bf8923cf3aa7862c579c6228ba9a",
+      "bytes": 44196
+    },
+    {
+      "file": "models/town_well.glb",
+      "sha256": "1c4057d65848e2c643b15cbe455b2dffeff6dc65fde7b066117b323ecd98c38d",
+      "bytes": 68804
+    },
+    {
+      "file": "models/wall_chains.glb",
+      "sha256": "85b2874c04be9ed0210569b2c55fcf09579b3809e786c6502030da00f2f8fcfb",
+      "bytes": 173152
+    },
+    {
+      "file": "models/washtub.glb",
+      "sha256": "9133df3a4f380fc9248fa37514d52640aeb26cea5d14496bb668db144ca2f50e",
+      "bytes": 74120
+    },
+    {
+      "file": "models/water_wheel.glb",
+      "sha256": "1fb259a061817688a3620a69616b7efbd3ca088a0b5bba0f227c6d4a3d0d9468",
+      "bytes": 34504
+    },
+    {
+      "file": "models/writing_desk.glb",
+      "sha256": "d0396aa4f35d44c8c51f832c09446955be86b7f115e66e9aab9daabe2e1754b8",
+      "bytes": 26924
+    },
+    {
+      "file": "prop-atlas.json",
+      "sha256": "1b92cf1df2c0b776289dcde2aa26aada132b7b1acb364f82f2d2a6cb3ba09289",
+      "bytes": 58706
+    },
+    {
+      "file": "prop-atlas.png",
+      "sha256": "a9576efba6dcbb5d5bb470487297e50067a21115f98aba1125af26c86d48c4f0",
+      "bytes": 5864068
+    },
+    {
+      "file": "raster-preview.png",
+      "sha256": "db48d8130d262fdb4aff3759d2033e6f1eb488683ee4b12b30e0cb4c797fcfba",
+      "bytes": 3296011
+    },
+    {
+      "file": "textures/floor-cave.png",
+      "sha256": "20e91526ea2f1fb696c320929fa4f5f14cc25c5d83b733a124e0ac467f89b164",
+      "bytes": 238862
+    },
+    {
+      "file": "textures/floor-checker.png",
+      "sha256": "059cce7e2bf8a9bceb869b463dfe8883f29d2d4b91fdf947a1fab9586f46a7c6",
+      "bytes": 187154
+    },
+    {
+      "file": "textures/floor-cobble.png",
+      "sha256": "8826a2f32a51701f83aca2dcfe62060e81fbdb6a4d2c55fe573adcb6ee3becf3",
+      "bytes": 238251
+    },
+    {
+      "file": "textures/floor-dock.png",
+      "sha256": "369e5539b9228a30d849169160d239129ab5e4d483101ea5504f6905ae3083d1",
+      "bytes": 206512
+    },
+    {
+      "file": "textures/floor-dungeon.png",
+      "sha256": "afc77c330698d948ab4cdc10533f0fceb8f2919524109e3e933f212c6dda3e2d",
+      "bytes": 237222
+    },
+    {
+      "file": "textures/floor-flagstone.png",
+      "sha256": "f66038bb403d600a30a059673bd780452a423183c2da3c2061c2aceba852ed5f",
+      "bytes": 227727
+    },
+    {
+      "file": "textures/floor-gravel.png",
+      "sha256": "ca3b91a7094b3bda390baf6460b16d690539b8feaf38807b7c1a1d3a86a98ef1",
+      "bytes": 250721
+    },
+    {
+      "file": "textures/floor-mosaic.png",
+      "sha256": "564164e478ca74ef3a035126ac90fde5d55c66fc3e7581d63b9d1d25090f1a9f",
+      "bytes": 190514
+    },
+    {
+      "file": "textures/floor-parquet.png",
+      "sha256": "3dff5d813ff4aa4a9d6ee4db2fe60480926a1d898ee7e6e3460d9eaa058850df",
+      "bytes": 233523
+    },
+    {
+      "file": "textures/floor-planks-dark.png",
+      "sha256": "5a4cbbe4c4d001ede35b0bc80c1d37ac637e96eb74be4f8a6fb71fef662f5ef0",
+      "bytes": 201087
+    },
+    {
+      "file": "textures/floor-snow.png",
+      "sha256": "29e55871ed6e6613696325a0acaabc00462b197e465cdbbe59671adb91209656",
+      "bytes": 214093
+    },
+    {
+      "file": "textures/floor-straw.png",
+      "sha256": "9d592117af40580250215812e9181e89d31088680f6e51e836db13314995cb10",
+      "bytes": 248659
+    },
+    {
+      "file": "textures/surface-river.png",
+      "sha256": "7e70f7597061529cfe3697f3ea0973cbbdeecb8f00c4538390ad69a963869b65",
+      "bytes": 194604
+    },
+    {
+      "file": "textures/surface-shallows.png",
+      "sha256": "c9ddae738a14eecc22b87a43faa5dae6b6cb80499cfa431dcd7766cf198a0f0e",
+      "bytes": 240586
+    },
+    {
+      "file": "textures/wall-brick.png",
+      "sha256": "e6e02d9d43e9631d49944361b897393dcff3ca29cedb63ede677842310cc532e",
+      "bytes": 214143
+    },
+    {
+      "file": "textures/wall-embankment.png",
+      "sha256": "a5e91ccea27a0359e1e7fc8323fe0d5cea55027f606381dd2b4610197b8dc3a6",
+      "bytes": 239119
+    },
+    {
+      "file": "textures/wall-fachwerk.png",
+      "sha256": "117519b620f9140500ed225c08c26088ed114661f590b9eac8957cd41c1135e4",
+      "bytes": 187139
+    },
+    {
+      "file": "textures/wall-fortress.png",
+      "sha256": "bf5d97200af03a937aba5595ee754b9924c3f56d929265bef8231d4dd2685edc",
+      "bytes": 248157
+    },
+    {
+      "file": "textures/wall-palisade.png",
+      "sha256": "4170de6a2b41da8c3d3960e34b3c9fb2c6788a911c4ab9a4d2a37751217c17a8",
+      "bytes": 223528
+    }
+  ]
+}
