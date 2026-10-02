@@ -380,6 +380,21 @@ export function lineCells(from, to) {
   return result
 }
 
+/**
+ * Последний шаг линии — в клетку цели. Клетку цели проверяют отдельно, а
+ * кромку перед ней — здесь: соседа за тонкой стеной не бьют ни выстрелом,
+ * ни клинком.
+ *
+ * @param {Record<string, any>|null} map
+ * @param {{x: number, y: number}} from
+ * @param {Array<{x: number, y: number}>} trajectory
+ */
+function finalStepBlocked(map, from, trajectory) {
+  if (!map || !trajectory.length) return false
+  const previous = trajectory.length > 1 ? trajectory[trajectory.length - 2] : from
+  return sightEdgeBlocked(map, previous, trajectory[trajectory.length - 1])
+}
+
 export function assertClearTrajectory(state, from, to) {
   const cells = tacticalCellMap(state)
   const trajectory = lineCells(from, to)
@@ -391,13 +406,11 @@ export function assertClearTrajectory(state, from, to) {
   if (trajectory.slice(0, -1).some((point, index) => {
     const cell = cells.get(positionKey(point))
     const previous = index === 0 ? from : trajectory[index - 1]
-    const edge = map && Math.abs(previous.x - point.x) + Math.abs(previous.y - point.y) === 1
-      ? edgeBetween(map, previous.x, previous.y, point.x, point.y)
-      : null
-    const blockedDoor = edge?.kind === 'door'
-      && movementStepBlocked(map, previous.x, previous.y, point.x, point.y)
-    return !isTransparentCell(cell) || blockedDoor || edge?.blocksSight === true
-  })) {
+    // Диагональный шаг проверяет обе кромки угла, как и линия заклинания:
+    // тонкую стену на ребре (`server/thin-walls.mjs`) иначе прошивал бы
+    // выстрел наискось.
+    return !isTransparentCell(cell) || sightEdgeBlocked(map, previous, point)
+  }) || finalStepBlocked(map, from, trajectory)) {
     throw new RulesValidationError('Траекторию перекрывает стена или граница карты', 'TRAJECTORY_BLOCKED')
   }
   return trajectory
@@ -412,13 +425,11 @@ export function trajectoryDetails(state, from, to) {
   const blocked = !isTransparentCell(endpoint) || trajectory.slice(0, -1).some((point, index) => {
     const cell = cells.get(positionKey(point))
     const previous = index === 0 ? from : trajectory[index - 1]
-    const edge = map && Math.abs(previous.x - point.x) + Math.abs(previous.y - point.y) === 1
-      ? edgeBetween(map, previous.x, previous.y, point.x, point.y)
-      : null
-    const blockedDoor = edge?.kind === 'door'
-      && movementStepBlocked(map, previous.x, previous.y, point.x, point.y)
-    return !isTransparentCell(cell) || blockedDoor || edge?.blocksSight === true
-  })
+    // Диагональный шаг проверяет обе кромки угла, как и линия заклинания:
+    // тонкую стену на ребре (`server/thin-walls.mjs`) иначе прошивал бы
+    // выстрел наискось.
+    return !isTransparentCell(cell) || sightEdgeBlocked(map, previous, point)
+  }) || finalStepBlocked(map, from, trajectory)
   return { trajectory, blocked }
 }
 

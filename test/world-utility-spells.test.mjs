@@ -114,7 +114,9 @@ function vault({ witnesses = false, doorState = 'locked' } = {}) {
     }
   }
   addProp(map, { id: 'prop-chest', assetId: 'chest', x: 2.5, y: 1.5, footprint: [{ x: 2, y: 1 }], interactive: true })
-  setDoor(map, { id: 'door-vault', x: 3, y: 1, dir: 'e', state: doorState, lockDc: 15, blocksMove: true, blocksSight: true })
+  // Распахнутая створка, как и после OperateDoor, ребро не держит.
+  const shut = doorState !== 'open'
+  setDoor(map, { id: 'door-vault', x: 3, y: 1, dir: 'e', state: doorState, lockDc: 15, blocksMove: shut, blocksSight: shut })
   return normalizeCampaignState({
     sessionCode: 'KNOCK-1',
     campaign_id: 'utility-1',
@@ -178,7 +180,10 @@ test('стук Открывания зовёт свидетелей самой �
 })
 
 test('Открывание отказывается там, где замка нет, и там, куда не дотянуться', () => {
-  rejects(vault({ doorState: 'closed' }), { command_type: 'CastSpell', actor_id: 'caster', spell_id: 'knock', to: { x: 4, y: 1 } }, 'NO_LOCK_TO_OPEN')
+  // Дверь распахнута: клетка за ней видна, а замка нет. За закрытой створкой
+  // клетку не видно вовсе — туда не дотягивается и линия действия.
+  rejects(vault({ doorState: 'open' }), { command_type: 'CastSpell', actor_id: 'caster', spell_id: 'knock', to: { x: 4, y: 1 } }, 'NO_LOCK_TO_OPEN')
+  rejects(vault({ doorState: 'closed' }), { command_type: 'CastSpell', actor_id: 'caster', spell_id: 'knock', to: { x: 4, y: 1 } }, 'TRAJECTORY_BLOCKED')
   // Шестьдесят футов — двенадцать клеток; карта хранилища меньше, поэтому
   // дальность проверяется на ровном поле.
   const wizard = field({ characterClass: 'wizard', level: 5, combat: false })

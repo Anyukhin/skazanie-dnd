@@ -1696,9 +1696,53 @@ export function validateTacticalMap(map) {
  * @property {string} [edge_mask]
  * @property {string} [feature]
  * @property {number} [elevation] высота площадки в футах; отсутствие означает уровень земли
+ * @property {string} [walls] тонкие стены на восточном и южном рёбрах клетки
+ *   ('e', 's', 'es'): стена между двумя проходимыми клетками клеткой не
+ *   выражается, и без поля круг через старые клетки её терял
+ * @property {string} [windows] окна на тех же рёбрах
+ * @property {string} [door_dir] ребро двери ('e' | 's'), когда по обе стороны
+ *   проходимые клетки и сторону не угадать по стене
  */
 
 const LEGACY_WALKABLE = Object.freeze(['floor', 'door'])
+
+/**
+ * Сторона двери, которую выбирает пересборка из старых клеток без подсказки:
+ * восточное ребро, если за ним не проходимо или нет южного стенного соседа.
+ *
+ * @param {TacticalMap} map
+ * @param {number} x
+ * @param {number} y
+ * @returns {EdgeDirection}
+ */
+function legacyDoorGuess(map, x, y) {
+  const east = cellAt(map, x + 1, y)
+  const south = cellAt(map, x, y + 1)
+  if ((!east || east.passable) && (!south || !south.passable)) return 's'
+  return 'e'
+}
+
+/**
+ * Рёбра-стены и окна на восточной и южной сторонах клетки между двумя
+ * проходимыми клетками — то, что тонкая стена (`server/thin-walls.mjs`) кладёт
+ * на ребро вместо клетки.
+ *
+ * @param {TacticalMap} map
+ * @param {number} x
+ * @param {number} y
+ * @param {string} kind
+ * @returns {string}
+ */
+function thinEdgeSides(map, x, y, kind) {
+  const own = cellAt(map, x, y)
+  if (!own?.passable) return ''
+  let sides = ''
+  for (const [label, nx, ny] of /** @type {Array<[string, number, number]>} */ ([['e', x + 1, y], ['s', x, y + 1]])) {
+    if (!cellAt(map, nx, ny)?.passable) continue
+    if (edgeBetween(map, x, y, nx, ny)?.kind === kind) sides += label
+  }
+  return sides
+}
 
 /**
  * Превращает старый разреженный массив клеток в карту. Правила ровно те, что в
@@ -1787,6 +1831,20 @@ export function tacticalMapFromLegacyCells(cells, options = {}) {
     }
   }
 
+  // Тонкие стены и окна между проходимыми клетками (`walls`, `windows`).
+  for (const cell of source) {
+    const x = Number(cell.x)
+    const y = Number(cell.y)
+    for (const [field, kind] of /** @type {Array<['walls'|'windows', string]>} */ ([['walls', 'wall'], ['windows', 'window']])) {
+      const sides = typeof cell[field] === 'string' ? cell[field] : ''
+      for (const side of sides) {
+        const [nx, ny] = side === 'e' ? [x + 1, y] : side === 's' ? [x, y + 1] : [Number.NaN, Number.NaN]
+        if (!cellAt(map, nx, ny)) continue
+        setEdge(map, x, y, nx, ny, { kind, blocksMove: true, blocksSight: kind === 'wall', cover: 'three_quarters' })
+      }
+    }
+  }
+
   // Двери: старая дверь — это проходимая клетка. Чтобы обратное преобразование
   // однозначно её узнало, дверь ставится на ребро, ВЛАДЕЛЬЦЕМ которого является
   // сама клетка-дверь ('e' или 's'). Предпочитается сторона, за которой стена.
@@ -1799,7 +1857,8 @@ export function tacticalMapFromLegacyCells(cells, options = {}) {
     const south = cellAt(map, x, y + 1)
     /** @type {EdgeDirection} */
     let dir = 'e'
-    if (!east || east.passable) {
+    if (cell.door_dir === 'e' || cell.door_dir === 's') dir = cell.door_dir
+    else if (!east || east.passable) {
       if (!south || !south.passable) dir = 's'
     }
     const neighbor = dir === 'e' ? east : south
@@ -1910,6 +1969,16 @@ export function legacyCellsFromTacticalMap(map) {
       const prop = propByCell.get(key)
       if (prop) legacy.feature = prop.assetId
       if (shape.has('edge_mask')) legacy.edge_mask = legacyEdgeMask(map, x, y)
+      // Тонкие стены и окна между проходимыми клетками — только когда они
+      // есть: карта со стенами-клетками сохраняет прежнюю форму байт в байт.
+      const walls = thinEdgeSides(map, x, y, 'wall')
+      if (walls) legacy.walls = walls
+      const windows = thinEdgeSides(map, x, y, 'window')
+      if (windows) legacy.windows = windows
+      // Сторона двери — только когда пересборка угадала бы её неверно: у
+      // старых карт угадывание верное, и их клетки остаются прежними.
+      const door = doorCells.has(key) ? map.doors.find((entry) => entry.x === x && entry.y === y) : null
+      if (door && door.dir !== legacyDoorGuess(map, x, y)) legacy.door_dir = door.dir
       result.push(legacy)
     }
   }

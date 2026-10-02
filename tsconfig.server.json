@@ -28,6 +28,7 @@
     "server/location-illustrations.mjs",
     "server/map-library.mjs",
     "server/map-quality.mjs",
+    "server/thin-walls.mjs",
     "server/map-store.mjs",
     "server/npc-portraits.mjs",
     "server/prop-placement.mjs",

@@ -99,7 +99,8 @@ test('неф храма делится колоннадой, алтарь сто
     const altars = map.props.filter((prop) => prop.assetId === 'altar').map(zoneOf)
     assert.ok(altars.length >= 1 && altars.every((label) => label === 'Алтарная'), `${seed}: алтари в ${altars}`)
     // Колоннада бывает в нескольких залах (просторный зал получает опоры
-    // ради укрытий); в каждом зале колонны стоят двумя ровными рядами.
+    // ради укрытий); в каждом зале колонны стоят ровными рядами: двумя, а в
+    // нефе шире 15 клеток — ещё и средними, не больше четырёх.
     const colonnades = new Map()
     for (const prop of map.props.filter((entry) => entry.id.startsWith('colonnade-'))) {
       const hall = prop.id.replace(/-\d+$/u, '')
@@ -108,7 +109,7 @@ test('неф храма делится колоннадой, алтарь сто
     for (const [hall, colonnade] of colonnades) {
       const lines = new Set(colonnade.map((prop) => `${Math.floor(prop.x)}`))
       const rows = new Set(colonnade.map((prop) => `${Math.floor(prop.y)}`))
-      assert.ok(Math.min(lines.size, rows.size) <= 2, `${seed}/${hall}: колонны не в два ряда`)
+      assert.ok(Math.min(lines.size, rows.size) <= 4, `${seed}/${hall}: колонны не рядами`)
     }
     assert.ok(map.props.filter((prop) => prop.assetId === 'statue').length <= 5, `${seed}: статуй больше пяти`)
   }
@@ -166,10 +167,17 @@ test('проверка ловит предмет за краем карты', ()
   assert.ok(codes(map).includes('PROP_OUT_OF_BOUNDS'))
 })
 
-/** Есть ли внутри рамки стен клетки двора — форма корпуса не прямоугольник. */
+/**
+ * Есть ли внутри рамки корпуса клетки двора — форма не прямоугольник. Корпус —
+ * клетки кладки и помещений: тонкие стены оставляют от кладки лишь углы.
+ */
 function shapedOutline(map) {
+  const interior = new Set(map.zones.filter((zone) => zone.kind === 'interior').map((zone) => zone.id))
   const walls = []
-  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) if (cellAt(map, x, y)?.zone === 'walls') walls.push({ x, y })
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    const zone = cellAt(map, x, y)?.zone
+    if (zone === 'walls' || interior.has(zone)) walls.push({ x, y })
+  }
   const minX = Math.min(...walls.map((cell) => cell.x))
   const maxX = Math.max(...walls.map((cell) => cell.x))
   const minY = Math.min(...walls.map((cell) => cell.y))

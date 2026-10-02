@@ -111,6 +111,12 @@ function normalizedSceneCells(value) {
     if (Number.isSafeInteger(Number(raw.variant))) cell.variant = Math.max(0, Math.min(5, Number(raw.variant)))
     if (MAP_PATTERNS.has(String(raw.pattern))) cell.pattern = String(raw.pattern)
     if (typeof raw.edge_mask === 'string' && /^[nesw]{0,4}$/u.test(raw.edge_mask)) cell.edge_mask = raw.edge_mask
+    // Тонкие стены, окна и сторона двери (`legacyCellsFromTacticalMap`): без
+    // них запомненная локация вернулась бы домом без перегородок.
+    for (const field of ['walls', 'windows']) {
+      if (typeof raw[field] === 'string' && /^(?:e|s|es)$/u.test(raw[field])) cell[field] = raw[field]
+    }
+    if (raw.door_dir === 'e' || raw.door_dir === 's') cell.door_dir = raw.door_dir
     return [cell]
   })
 }

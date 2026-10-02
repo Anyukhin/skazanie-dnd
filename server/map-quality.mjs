@@ -29,8 +29,9 @@ import { cellAt, edgeBetween, edgeList, edgeNeighbor, reachableCells } from './t
  * @property {string} [detail]
  */
 
-/** Постройка от этой площади (клеток пола) обязана делиться на комнаты. */
-export const MULTI_ROOM_MIN_CELLS = 40
+/** Постройка от этой площади (клеток пола) обязана делиться на комнаты. Изба
+ * 7×6 с тонкими стенами — 42 клетки в одну комнату, и это нормальное жильё. */
+export const MULTI_ROOM_MIN_CELLS = 48
 
 /** Доля клеток просторного зала (от сотни клеток), где есть укрытие рядом. */
 const HALL_COVER_SHARE = 0.3
@@ -311,8 +312,10 @@ export function richnessReport(map) {
   let largestCluster = 0
   for (const [assetId, indices] of byAsset) {
     if (indices.length < 3) continue
-    // Связность по соседству футпринтов, в том числе по диагонали.
-    const near = (/** @type {number} */ a, /** @type {number} */ b) => cellsOf(placed[a]).some((/** @type {any} */ left) => cellsOf(placed[b])
+    // Связность по соседству футпринтов, в том числе по диагонали. Соседи по
+    // разные стороны тонкой стены — это две комнаты, а не одна куча.
+    const zoneOf = (/** @type {number} */ index) => cellAt(map, Math.floor(placed[index].x), Math.floor(placed[index].y))?.zone
+    const near = (/** @type {number} */ a, /** @type {number} */ b) => zoneOf(a) === zoneOf(b) && cellsOf(placed[a]).some((/** @type {any} */ left) => cellsOf(placed[b])
       .some((/** @type {any} */ right) => Math.max(Math.abs(left.x - right.x), Math.abs(left.y - right.y)) <= 1))
     const seen = new Set()
     for (const start of indices) {
@@ -380,6 +383,15 @@ export function playabilityReport(map, blockingAt) {
     }
     if (spawnRoom < 6) problems.push({ code: 'SPAWN_CRAMPED', detail: `${spawnRoom} кл.` })
   }
+  // Стена рядом — глухая клетка или ребро-стена: после тонких стен
+  // (`server/thin-walls.mjs`) кладка живёт на рёбрах, и клетка у стены
+  // соседей-стен не имеет.
+  const wallBeside = (/** @type {number} */ x, /** @type {number} */ y) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => {
+    const neighbor = cellAt(map, x + dx, y + dy)
+    if (neighbor && !neighbor.passable) return true
+    const edge = neighbor ? edgeBetween(map, x, y, x + dx, y + dy) : null
+    return Boolean(edge && edge.kind !== 'door' && edge.blocksMove)
+  })
   // Укрытие на открытом месте: рядом предмет с укрытием или глухая клетка.
   /** @type {Set<string>} */
   const coverAt = new Set()
@@ -393,10 +405,7 @@ export function playabilityReport(map, blockingAt) {
   for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
     if (!free(x, y) || zoneKind.get(cellAt(map, x, y)?.zone ?? '') === 'interior') continue
     open += 1
-    const wallNear = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => {
-      const neighbor = cellAt(map, x + dx, y + dy)
-      return neighbor && !neighbor.passable
-    })
+    const wallNear = wallBeside(x, y)
     if (coverAt.has(`${x},${y}`) || wallNear) covered += 1
   }
   const coverShare = open ? covered / open : 1
@@ -410,10 +419,7 @@ export function playabilityReport(map, blockingAt) {
     if (!free(x, y) || zoneKind.get(zone) !== 'interior') continue
     const hall = halls.get(zone) ?? { cells: 0, covered: 0 }
     hall.cells += 1
-    const wallNear = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => {
-      const neighbor = cellAt(map, x + dx, y + dy)
-      return neighbor && !neighbor.passable
-    })
+    const wallNear = wallBeside(x, y)
     if (coverAt.has(`${x},${y}`) || wallNear) hall.covered += 1
     halls.set(zone, hall)
   }

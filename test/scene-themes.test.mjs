@@ -17,7 +17,7 @@ import {
 } from '../server/scene-themes.mjs'
 import { validateSceneGraph } from '../server/scene-graph.mjs'
 import { assetsForTheme } from '../server/asset-registry.mjs'
-import { cellAt, edgeList, edgeNeighbor, reachableCells, serializeTacticalMap, setEdge, validateTacticalMap } from '../server/tactical-map.mjs'
+import { cellAt, edgeBetween, edgeList, edgeNeighbor, reachableCells, serializeTacticalMap, setEdge, validateTacticalMap } from '../server/tactical-map.mjs'
 
 const THEMES = ['building', 'temple', 'crypt', 'dungeon', 'cave', 'forest', 'road', 'graveyard', 'settlement']
 
@@ -94,6 +94,9 @@ test('поселение содержит разные здания, двери 
             for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
               const neighbor = cellAt(map, x + dx, y + dy)
               if (neighbor && !neighbor.passable && neighbor.material === building.material) adjacentWalls += 1
+              // Тонкая стена (`server/thin-walls.mjs`) лежит на ребре клетки пола.
+              const edge = neighbor?.passable ? edgeBetween(map, x, y, x + dx, y + dy) : null
+              if (edge && edge.kind !== 'door' && edge.blocksMove) adjacentWalls += 1
             }
           }
         }

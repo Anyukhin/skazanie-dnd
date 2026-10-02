@@ -39,6 +39,8 @@ type RoofRect = {
   maxX: number
   maxY: number
   sides: Set<RoofSide>
+  /** Стороны, где за ребром лежит кольцо кладки: крыша накрывает и его. */
+  ring: Set<RoofSide>
   baseY: number
 }
 
@@ -303,21 +305,35 @@ function sideForEdge(edge: ReturnType<typeof edgeList>[number], rect: RoofRect, 
   return line <= rect.minY ? 'north' : line >= rect.maxY + 1 ? 'south' : null
 }
 
+/**
+ * Что лежит за ребром снаружи прямоугольника: `ring` — непроходимая кладка
+ * старой толстой стены, `thin` — тонкая наружная стена на ребре, за которой
+ * двор или улица, `null` — перегородка между двумя комнатами.
+ */
+function outerWallKind(map: TacticalMap, edge: ReturnType<typeof edgeList>[number], rect: RoofRect): 'ring' | 'thin' | null {
+  const owner = cellAt(map, edge.x, edge.y)
+  const neighbor = edgeNeighbor(edge)
+  const other = cellAt(map, neighbor.x, neighbor.y)
+  const outside = isInsideRect(owner, rect) ? other : owner
+  if (outside?.passable !== true) return 'ring'
+  const zone = map.zones.find((entry) => entry.id === outside.zone)
+  return zone?.kind === 'interior' ? null : 'thin'
+}
+
 function structuralSides(map: TacticalMap, rect: RoofRect) {
   const sides = new Set<RoofSide>()
+  const ring = new Set<RoofSide>()
   for (const edge of edgeList(map)) {
     const side = sideForEdge(edge, rect, map)
     if (!side || !(revealedAt(map, edge.x, edge.y) || revealedAt(map, edgeNeighbor(edge).x, edgeNeighbor(edge).y))) continue
-    const owner = cellAt(map, edge.x, edge.y)
-    const neighbor = edgeNeighbor(edge)
-    const other = cellAt(map, neighbor.x, neighbor.y)
-    const outside = isInsideRect(owner, rect) ? other : owner
-    // Сдвигаем карниз на кольцо непроходимых стен; грань между двумя
-    // проходимыми зонами остаётся общей перегородкой без наружного выноса.
-    if (outside?.passable === true) continue
+    // Карниз выносится на кольцо непроходимых стен; тонкая наружная стена
+    // даёт карниз без выноса, а перегородка между комнатами — ничего.
+    const kind = outerWallKind(map, edge, rect)
+    if (!kind) continue
     sides.add(side)
+    if (kind === 'ring') ring.add(side)
   }
-  return sides
+  return { sides, ring }
 }
 
 function edgeBaseY(map: TacticalMap, edge: ReturnType<typeof edgeList>[number]) {
@@ -336,11 +352,7 @@ function structuralEdges(map: TacticalMap, rect: RoofRect) {
     const side = sideForEdge(edge, rect, map)
     if (!side || seen.has(`${edge.x},${edge.y},${edge.dir}`)) continue
     if (!(revealedAt(map, edge.x, edge.y) || revealedAt(map, edgeNeighbor(edge).x, edgeNeighbor(edge).y))) continue
-    const owner = cellAt(map, edge.x, edge.y)
-    const neighbor = edgeNeighbor(edge)
-    const other = cellAt(map, neighbor.x, neighbor.y)
-    const outside = isInsideRect(owner, rect) ? other : owner
-    if (outside?.passable === true) continue
+    if (!outerWallKind(map, edge, rect)) continue
     seen.add(`${edge.x},${edge.y},${edge.dir}`)
     result.push(edge)
   }
@@ -350,10 +362,10 @@ function structuralEdges(map: TacticalMap, rect: RoofRect) {
 /** Крыша закрывает наружное кольцо стен, но не протекает в соседнюю комнату. */
 function roofBounds(rect: RoofRect) {
   return {
-    minX: rect.minX - (rect.sides.has('west') ? 1 : 0),
-    minY: rect.minY - (rect.sides.has('north') ? 1 : 0),
-    maxX: rect.maxX + (rect.sides.has('east') ? 1 : 0),
-    maxY: rect.maxY + (rect.sides.has('south') ? 1 : 0),
+    minX: rect.minX - (rect.ring.has('west') ? 1 : 0),
+    minY: rect.minY - (rect.ring.has('north') ? 1 : 0),
+    maxX: rect.maxX + (rect.ring.has('east') ? 1 : 0),
+    maxY: rect.maxY + (rect.ring.has('south') ? 1 : 0),
   }
 }
 
@@ -534,9 +546,12 @@ function buildRoofRects(map: TacticalMap) {
         maxX: rect.maxX,
         maxY: rect.maxY,
         sides: new Set(),
+        ring: new Set(),
         baseY: Math.max(...rect.cells.map((cell) => terrainHeightAt(map, cell.x, cell.y))),
       }
-      candidate.sides = structuralSides(map, candidate)
+      const outline = structuralSides(map, candidate)
+      candidate.sides = outline.sides
+      candidate.ring = outline.ring
       // Без канонического рёберного контура это просто открытая площадка, а
       // не здание. Так крыша не появляется на случайном прямоугольнике пола.
       if (candidate.sides.size) result.push(candidate)

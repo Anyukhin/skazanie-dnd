@@ -18,6 +18,7 @@ import {
   cellAt,
   edgeList,
   legacyCellsFromTacticalMap,
+  movementStepBlocked,
   reachableCells,
   serializeTacticalMap,
   validateTacticalMap,
@@ -150,19 +151,26 @@ test('двери стоят на рёбрах, а окна не пропуска
   }
 })
 
-test('стены здания выражены и клетками, и рёбрами', () => {
+test('стены здания — тонкие рёбра, и сквозь них не пройти и не увидеть', () => {
   const map = scene()
   const walls = edgeList(map).filter((edge) => edge.kind === 'wall')
   assert.ok(walls.length > 30, `рёбер-стен всего ${walls.length}`)
 
-  // Пока правила движения читают клетку, стена обязана быть непроходимой и как
-  // клетка — иначе герой пройдёт сквозь неё.
-  for (const edge of walls.slice(0, 20)) {
+  // Стена лежит на ребре между двумя клетками пола (server/thin-walls.mjs):
+  // клетка остаётся полом, а шаг и взгляд через ребро закрыты.
+  let thin = 0
+  for (const edge of walls) {
     const owner = cellAt(map, edge.x, edge.y)
-    const neighbor = edge.dir === 'e' ? cellAt(map, edge.x + 1, edge.y) : cellAt(map, edge.x, edge.y + 1)
+    const nx = edge.dir === 'e' ? edge.x + 1 : edge.x
+    const ny = edge.dir === 'e' ? edge.y : edge.y + 1
+    const neighbor = cellAt(map, nx, ny)
     assert.ok(owner && neighbor, 'ребро между существующими клетками')
-    assert.ok(!owner.passable || !neighbor.passable, 'стена обязана отделять непроходимую клетку')
+    assert.equal(edge.blocksMove && edge.blocksSight, true, 'стена держит и шаг, и взгляд')
+    if (!owner.passable || !neighbor.passable) continue
+    thin += 1
+    assert.equal(movementStepBlocked(map, edge.x, edge.y, nx, ny), true, 'сквозь тонкую стену не пройти')
   }
+  assert.ok(thin > 20, `тонких стен всего ${thin}`)
 })
 
 test('ограда участка имеет проход у тропы', () => {
@@ -215,7 +223,7 @@ test('карта совместима со старым представлени
   const map = scene()
   const cells = legacyCellsFromTacticalMap(map)
   assert.equal(cells.length, map.width * map.height)
-  assert.ok(cells.some((cell) => cell.type === 'wall'), 'стены обязаны читаться старым кодом')
+  assert.ok(cells.some((cell) => cell.type === 'wall' || cell.walls), 'стены обязаны читаться старым кодом')
   assert.ok(cells.some((cell) => cell.type === 'door'), 'двери обязаны читаться старым кодом')
   assert.ok(cells.some((cell) => cell.feature), 'предметы обязаны читаться старым кодом')
 })

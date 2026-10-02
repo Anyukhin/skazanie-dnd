@@ -1,6 +1,7 @@
 // @ts-check
 import { auditTacticalMap } from './map-quality.mjs'
-import { ensurePropAccess, placeProps } from './prop-placement.mjs'
+import { thinWalls } from './thin-walls.mjs'
+import { ensurePropAccess, placeColonnade, placeProps } from './prop-placement.mjs'
 import {
   SIZE_CLASSES,
   addProp,
@@ -978,6 +979,9 @@ function designedBuildingAttempt({
   } else {
     openShapedBackDoorAndWindows(map, rooms)
   }
+  // Стены — на рёбрах клеток: дом получает пол на месте кладки, а
+  // перегородка не съедает ряд клеток (`server/thin-walls.mjs`).
+  thinWalls(map)
   for (let y = pathStartY; y < safeHeight; y += 1) {
     const drift = y - pathStartY < 2 ? 0 : Math.round(Math.sin((y - building.maxY) * 0.6 + buildingSeedHash(seed) % 5) * 1.4)
     for (const x of [entranceX + drift, entranceX + drift + 1]) if (cellAt(map, x, y)) setCell(map, x, y, { material: 'earth', surface: 'none', variant: variantAt(x, y) })
@@ -1000,11 +1004,28 @@ function designedBuildingAttempt({
   const partySpawn = startsInside ? (interiorEntryPoint(map, 'hall') ?? exteriorSpawn) : exteriorSpawn
   map.spawnPoints.push({ id: 'party-entrance', ...partySpawn, role: 'party' })
   map.overlays = { compass: true, scaleBar: true, roomLabels: map.zones.filter((zone) => zone.label).map((zone) => ({ zoneId: zone.id, label: zone.label })) }
-  for (let y = building.maxY; y < safeHeight; y += 1) for (let x = 0; x < safeWidth; x += 1) if (cellAt(map, x, y)) setCell(map, x, y, { revealed: true })
+  // Южный ряд стены после тонких стен стал полом комнат: их не раскрываем,
+  // иначе с порога видно кусок кухни сквозь закрытую стену.
+  const interiorZones = new Set(map.zones.filter((zone) => zone.kind === 'interior').map((zone) => zone.id))
+  for (let y = building.maxY; y < safeHeight; y += 1) for (let x = 0; x < safeWidth; x += 1) {
+    const cell = cellAt(map, x, y)
+    if (cell && !interiorZones.has(cell.zone)) setCell(map, x, y, { revealed: true })
+  }
   if (startsInside) revealDesignZone(map, 'hall')
   const spawnReserved = startsInside && partySpawn !== exteriorSpawn && reserveDesignSpawn(map, partySpawn)
   if (withProps) {
     try {
+      // Большой зал держит крышу на опорах: без них в зале на сотни клеток
+      // посредине голое поле, где от лучника не укрыться.
+      for (const zone of map.zones) {
+        if (zone.kind !== 'interior') continue
+        let cells = 0
+        for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+          const cell = cellAt(map, x, y)
+          if (cell?.passable && cell.zone === zone.id) cells += 1
+        }
+        if (cells >= ROOF_POST_HALL_CELLS) placeColonnade(map, { zoneId: zone.id, assetId: 'pillar', idPrefix: 'roof-post' })
+      }
       placeProps(map, {
         seed: `${seed}:props`,
         maxProps: SIZE_CLASSES[/** @type {keyof typeof SIZE_CLASSES} */ (map.sizeClass)].maxProps,
@@ -1020,6 +1041,9 @@ function designedBuildingAttempt({
   ensurePropAccess(map)
   return map
 }
+
+/** С какой площади помещение здания получает опоры под крышу. */
+const ROOF_POST_HALL_CELLS = 240
 
 /**
  * Ручей у постройки: две клетки воды вдоль восточного или западного края

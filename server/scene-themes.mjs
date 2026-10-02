@@ -5,6 +5,7 @@ import { authoredLocationMapFor } from './authored-location-maps.mjs'
 import { buildAresFortressScene, buildBuildingScene, ensureDeclaredTransitions } from './building-generator.mjs'
 import { buildSceneFromGraph } from './graph-layout.mjs'
 import { LARGE_HOUSE_FLOOR, buildSettlementScene } from './settlement-generator.mjs'
+import { thinWalls } from './thin-walls.mjs'
 import { addSceneLink, addSceneZone, createSceneGraph } from './scene-graph.mjs'
 import { assetById } from './asset-registry.mjs'
 import { ensurePropAccess, placeColonnade, placeProps } from './prop-placement.mjs'
@@ -1387,6 +1388,8 @@ export function buildThemedScene({
       const cellsZone = built.map.zones.find((zone) => zone.label === 'Камеры')
       if (cellsZone) partitionPrisonCells(built.map, cellsZone.id)
     }
+    // Стены залов — на рёбрах клеток; край карты остаётся скалой.
+    thinWalls(built.map)
     const labelled = built.map.zones.filter((zone) => zone.label)
     const plans = Array.isArray(definition.propPlans) ? definition.propPlans : []
     // Колоннада ставится до общей расстановки: она задаёт структуру зала, а

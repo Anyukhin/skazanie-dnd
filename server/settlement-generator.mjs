@@ -12,6 +12,7 @@ import {
   setDoor,
   setEdge,
 } from './tactical-map.mjs'
+import { thinWalls } from './thin-walls.mjs'
 
 /**
  * Поселение — отдельный генератор геометрии, а не вариант раскраски четырёх
@@ -1119,6 +1120,8 @@ function buildSettlementOnce({ seed = 'settlement', width = 30, height = 30, loc
   setCell(map, spawn.x, spawn.y, { passable: true, surface: 'none', material: materialsForMap.street, zone: 'street', revealed: true })
   addSpawnPoint(map, { id: 'party-entrance', ...spawn, role: 'party' })
   ensureBuildingReachability(map, spawn)
+  // Стены домов — на рёбрах клеток (`server/thin-walls.mjs`).
+  thinWalls(map)
   map.overlays = {
     compass: true, scaleBar: true,
     roomLabels: map.zones.filter((zone) => zone.label).map((zone) => ({ zoneId: zone.id, label: zone.label })),

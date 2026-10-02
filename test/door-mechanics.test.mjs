@@ -35,7 +35,8 @@ function reachableThroughDoorsNow(map, fromX, fromY) {
       const nextY = current.y + dy
       const key = `${nextX},${nextY}`
       if (seen.has(key) || cellAt(map, nextX, nextY)?.passable !== true) continue
-      if (doorBlocksStep(map, current.x, current.y, nextX, nextY)) continue
+      // Стена на ребре (тонкая стена) и закрытая дверь перекрывают шаг одинаково.
+      if (movementStepBlocked(map, current.x, current.y, nextX, nextY)) continue
       seen.add(key)
       queue.push({ x: nextX, y: nextY })
     }

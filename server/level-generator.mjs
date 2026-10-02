@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { edgesAround, openDoorway, openWindow, planRooms } from './building-generator.mjs'
 import { placeProps } from './prop-placement.mjs'
 import { SCENE_THEMES, layoutOrganicCave } from './scene-themes.mjs'
+import { thinWalls } from './thin-walls.mjs'
 import {
   MAX_LEVEL_OFFSET,
   SIZE_CLASSES,
@@ -11,6 +12,7 @@ import {
   addZone,
   cellAt,
   createTacticalMap,
+  edgeBetween,
   floorVariantAt,
   reachableCells,
   setCell,
@@ -324,6 +326,9 @@ function enclosureAround(map, arrival) {
           const nextY = current.y + dy
           const key = `${nextX},${nextY}`
           if (regionOf.has(key) || !walkable(nextX, nextY)) continue
+          // Тонкая стена на ребре делит помещения так же, как клетка-стена.
+          const between = edgeBetween(map, current.x, current.y, nextX, nextY)
+          if (between && between.kind !== 'door' && between.blocksMove) continue
           regionOf.set(key, id)
           region.cells.push(key)
           queue.push({ x: nextX, y: nextY })
@@ -573,6 +578,7 @@ function buildUpperLevel({ baseMap, locationId, index, fromLevel, seed, label, a
     const map = paintUpperLevel({
       baseMap, locationId, index, seed, label, arrival, outline, interior, partitioned,
     })
+    thinWalls(map)
     const transitionPropId = placePairedTransition(map, {
       arrival,
       assetId: 'stairs_down',

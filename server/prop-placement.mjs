@@ -496,6 +496,10 @@ function doorwayApproaches(map, zoneId, allowed) {
     const [x, y] = candidate.split(',').map(Number)
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
       const neighbor = cellAt(map, x + dx, y + dy)
+      // Сосед за тонкой стеной — не проём: через ребро-стену не пройти, и
+      // вдоль всей стены комнаты мебели иначе не было бы места.
+      const edge = neighbor ? edgeBetween(map, x, y, x + dx, y + dy) : null
+      if (edge && edge.kind !== 'door' && edge.blocksMove) continue
       if (neighbor?.passable && neighbor.zone !== zoneId) {
         found.set(candidate, { x, y })
         break
@@ -822,9 +826,12 @@ function removeBlockingProp(map, index) {
  * @returns {import('./tactical-map.mjs').TacticalMap}
  */
 export function ensurePropAccess(map) {
-  const access = propAccessTargets(map)
-  if (!access) return map
   for (let repair = 0; repair < PROP_ACCESS_REPAIR_LIMIT; repair += 1) {
+    // Цели пересчитываются на каждом шаге: снятый предмет освобождает клетки
+    // под собой, и они тоже обязаны быть досягаемы — иначе за соседним ящиком
+    // остаётся закуток, которого при первом подсчёте ещё не было.
+    const access = propAccessTargets(map)
+    if (!access) break
     const blockers = blockingPropsByCell(map)
     const blockedCells = new Set(blockers.keys())
     const spawn = map.spawnPoints.find((point) => point.role === 'party')
@@ -1196,7 +1203,7 @@ function doorThresholds(map) {
 
 /**
  * Колоннада: два ровных ряда опор вдоль длинной оси зала, на шаг от стен и
- * через клетку друг от друга. Случайная расстановка давала «лес» колонн
+ * через клетку друг от друга; в нефе шире 15 клеток — и средние ряды. Случайная расстановка давала «лес» колонн
  * посреди нефа; настоящий неф делится колоннами на центральный проход и
  * боковые нефы, и за колонной можно укрыться.
  *
@@ -1228,7 +1235,15 @@ export function placeColonnade(map, { zoneId, assetId = 'pillar', idPrefix = 'co
   // Ряды — на шаг от длинных стен; в широком зале — на два, чтобы боковые
   // нефы были проходимы для двоих.
   const inset = breadth >= 9 ? 2 : 1
-  const rows = [(horizontal ? minY : minX) + inset, (horizontal ? maxY : maxX) - inset]
+  const first = (horizontal ? minY : minX) + inset
+  const last = (horizontal ? maxY : maxX) - inset
+  const rows = [first, last]
+  // Широкий неф (от 15 клеток) делится ещё рядами: между двумя крайними рядами
+  // посредине зала иначе остаётся голое поле шириной в десяток клеток.
+  if (breadth >= 15) {
+    const inner = Math.ceil((last - first) / 7) - 1
+    for (let index = 1; index <= inner; index += 1) rows.push(Math.round(first + (last - first) * index / (inner + 1)))
+  }
   let placed = 0
   for (const row of rows) {
     for (let along = (horizontal ? minX : minY) + 1; along <= (horizontal ? maxX : maxY) - 1; along += 2) {
