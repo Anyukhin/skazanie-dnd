@@ -133,7 +133,8 @@ test('от точки появления снаружи есть путь в к�
 
 test('двери стоят на рёбрах, а окна не пропускают, но не слепят', () => {
   const map = scene()
-  assert.equal(map.doors.length, 3, 'вход плюс две внутренние двери')
+  assert.equal(map.doors.length, 4, 'вход, задняя дверь кухни и две внутренние двери')
+  assert.ok(map.doors.some((door) => door.id === 'back-door'), 'у кухни есть своя дверь во двор')
   for (const door of map.doors) {
     const edge = map.edges[`${door.x},${door.y},${door.dir}`]
     assert.ok(edge, `у двери ${door.id} нет ребра`)

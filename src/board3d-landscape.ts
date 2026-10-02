@@ -200,6 +200,34 @@ export function createTileGroundGeometry(map: TacticalMap): THREE.BufferGeometry
 }
 
 /**
+ * Туман войны в 3D: тёмная плита над каждой существующей, но ещё не
+ * раскрытой клеткой. Прежде у нераскрытой области не было никакой
+ * геометрии, и сквозь неё просвечивал фон сцены — комната, где отряд ещё
+ * не был, выглядела чёрной дырой в столе. Плита не выдаёт планировку: она
+ * ровная, без стен, предметов и высот, как непрозрачный туман на 2D-доске.
+ */
+export function createFogCapGeometry(map: TacticalMap): THREE.BufferGeometry | null {
+  const positions: number[] = []
+  const indices: number[] = []
+  let vertex = 0
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    const cell = cellAt(map, x, y)
+    if (!cell || cell.revealed) continue
+    positions.push(x, 0, y, x, 0, y + 1, x + 1, 0, y + 1, x + 1, 0, y)
+    indices.push(vertex, vertex + 1, vertex + 2, vertex, vertex + 2, vertex + 3)
+    vertex += 4
+  }
+  if (!vertex) return null
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geometry.setIndex(vertex > 65535 ? new THREE.Uint32BufferAttribute(indices, 1) : new THREE.Uint16BufferAttribute(indices, 1))
+  geometry.computeVertexNormals()
+  geometry.computeBoundingBox()
+  geometry.computeBoundingSphere()
+  return geometry
+}
+
+/**
  * Поверхность воды: квад над каждой клеткой воды и признак берега в вершине
  * (1 — вершина касается суши). Шейдер рисует по нему пену, а рябь — от
  * мировых координат и времени.

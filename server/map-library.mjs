@@ -12,8 +12,11 @@
  * здания, климат, вид точки карты мира, объявленные этажи) в требования, а
  * `chooseLibraryMap` отбирает подходящие записи: вид места обязан совпасть,
  * климат не должен спорить, уже использованная в кампании карта не повторяется.
- * Из лучших выбор детерминирован по сиду места. Ничего не подошло — работает
- * обычный генератор: подгонять историю под чужую карту нельзя.
+ * Уличной сцене нужна площадь не меньше порога её вида места. Обещанные
+ * сценой объекты (`server/scene-requirements.mjs`) сверяются с предметами
+ * карты, и каждый недостающий стоит очков. Карта ниже `MIN_LIBRARY_SCORE`
+ * не берётся. Из лучших выбор детерминирован по сиду места. Ничего не
+ * подошло — работает обычный генератор: подгонять историю под чужую карту нельзя.
  *
  * Библиотека не участвует в replay: выбранная карта едет в событии
  * `SceneAdvanced` целиком, и повтор журнала её уже не спрашивает.
@@ -21,6 +24,10 @@
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+
+import { normalizeSceneRequirements, requirementsCoverage } from './scene-requirements.mjs'
+import { auditTacticalMap } from './map-quality.mjs'
+import { deserializeTacticalMap } from './tactical-map.mjs'
 
 export const MAP_LIBRARY_DIR = 'map-library'
 export const MAP_LIBRARY_SCHEMA_VERSION = 1
@@ -62,7 +69,10 @@ const TALESTAVERN_KINDS = Object.freeze({
   fortress: 'fortress', gatehouse: 'fortress', tower: 'fortress', castle: 'fortress',
   palace: 'manor',
   home: 'house', 'single-structure': 'house',
-  village: 'village', 'multiple-structures': 'village', farm: 'village', city: 'village',
+  // `farm` деревней не делает: под ним на TalesTavern и одинокий дом, и
+  // хмелевое поле. Ферма с несколькими постройками помечена ещё и
+  // `multiple-structures` — деревней её сделает этот тег.
+  village: 'village', 'multiple-structures': 'village', city: 'village',
   camp: 'camp',
   ruins: 'ruins',
   nature: 'wilds', area: 'wilds', wilderness: 'wilds', woodland: 'wilds', jungle: 'wilds', swamp: 'wilds', mountain: 'wilds',
@@ -129,10 +139,13 @@ export function climateFor(terrains, passport) {
  * `place` — название и тема места, `world` — описание мира: по ним видно
  * корабль и научно-фантастический мир, которых нет среди тем генератора.
  *
- * @param {{ themeId: string, buildingUse?: string, topology?: string, climate?: string, worldKind?: string, levels?: Array<{ offset: number }>, width?: number, height?: number, place?: string, world?: string }} input
- * @returns {{ placeKinds: PlaceKind[], exterior: boolean, climate: string, genre: 'scifi'|'fantasy', wantsCellar: boolean, wantsUpstairs: boolean, area: number }}
+ * `requirements` — обязательные объекты сцены (`server/scene-requirements.mjs`):
+ * что текст сцены уже пообещал увидеть на карте.
+ *
+ * @param {{ themeId: string, buildingUse?: string, topology?: string, climate?: string, worldKind?: string, levels?: Array<{ offset: number }>, width?: number, height?: number, place?: string, world?: string, requirements?: unknown }} input
+ * @returns {{ placeKinds: PlaceKind[], exterior: boolean, climate: string, genre: 'scifi'|'fantasy', wantsCellar: boolean, wantsUpstairs: boolean, area: number, requirements: Array<{ id: string, count: number }> }}
  */
-export function libraryRequestFor({ themeId, buildingUse = '', topology = '', climate = '', worldKind = '', levels = [], width = 26, height = 22, place = '', world = '' }) {
+export function libraryRequestFor({ themeId, buildingUse = '', topology = '', climate = '', worldKind = '', levels = [], width = 26, height = 22, place = '', world = '', requirements = [] }) {
   /** @type {PlaceKind[]} */
   let placeKinds = []
   let exterior = false
@@ -164,7 +177,54 @@ export function libraryRequestFor({ themeId, buildingUse = '', topology = '', cl
     wantsCellar: levels.some((level) => Number(level.offset) < 0),
     wantsUpstairs: levels.some((level) => Number(level.offset) > 0),
     area: Math.max(256, width * height),
+    requirements: normalizeSceneRequirements(requirements),
   }
+}
+
+/**
+ * Нижний порог очков. Совпавший основной вид места даёт 10; карта ниже
+ * порога хуже процедурной, и сцену строит генератор. Прежде порога не было:
+ * побеждала любая карта, у которой совпал хотя бы вид места, — так деревня
+ * с навесом и настилами получила одинокий дом 16×16.
+ */
+export const MIN_LIBRARY_SCORE = 7
+
+/** Сколько очков снимает каждый обещанный сценой объект, которого на карте нет. */
+const MISSING_REQUIREMENT_PENALTY = 3
+
+/**
+ * Наименьшая площадь этажа входа для уличной сцены, в клетках по 5 футов.
+ * Деревня 80×80 футов — это двор одного дома, а не деревня.
+ * @type {Partial<Record<PlaceKind, number>>}
+ */
+const MIN_EXTERIOR_CELLS = Object.freeze({ village: 400, docks: 300, fortress: 300, wilds: 200, bridge: 120 })
+
+/**
+ * Площадь этажа входа: у паспорта `floor_cells` — сумма всех этажей, и
+ * трёхэтажная башня по ней выглядела бы площадью.
+ * @param {LibraryEntry} entry
+ */
+function groundCells(entry) {
+  const passport = /** @type {Record<string, any>} */ (entry.passport ?? {})
+  const levels = Array.isArray(passport.levels) ? passport.levels : []
+  const ground = levels.find((/** @type {any} */ level) => Number(level?.index) === 0) ?? levels[0]
+  const cells = Number(ground?.cells)
+  if (Number.isFinite(cells) && cells > 0) return cells
+  const box = (Number(passport.width) || 0) * (Number(passport.height) || 0)
+  return box > 0 ? Math.min(box, Number(passport.floor_cells) || box) : Math.max(1, Number(passport.floor_cells) || 1)
+}
+
+/**
+ * Виды места записи по нынешнему словарю. Сохранённый `place_kinds`
+ * посчитан словарём на день импорта, а слаги автора лежат рядом — так
+ * исправление словаря (ферма больше не деревня) доходит до уже собранной
+ * библиотеки без пересборки.
+ * @param {LibraryEntry} entry
+ * @returns {PlaceKind[]}
+ */
+export function libraryPlaceKinds(entry) {
+  if (!Array.isArray(entry.types)) return entry.place_kinds ?? []
+  return placeKindsFor(entry.types, Array.isArray(entry.terrains) ? entry.terrains : [], entry.passport, entry.title)
 }
 
 /** Признаки паспорта, которые подтверждают вид места. */
@@ -200,9 +260,10 @@ export function chooseLibraryMap(entries, request, { seed, usedIds = [] }) {
   const used = new Set(usedIds)
   /** @type {Array<{ entry: LibraryEntry, score: number }>} */
   const scored = []
+  const requirements = request.requirements ?? []
   for (const entry of entries) {
     if (used.has(entry.id)) continue
-    const kinds = new Set(entry.place_kinds)
+    const kinds = new Set(libraryPlaceKinds(entry))
     const primary = request.placeKinds.findIndex((kind) => kinds.has(kind))
     if (primary < 0) continue
     // Климат не должен спорить: пустынная таверна не встаёт в тундре, а
@@ -216,6 +277,12 @@ export function chooseLibraryMap(entries, request, { seed, usedIds = [] }) {
     // Улица, поле и деревня — сцены под открытым небом: отряд не должен
     // начинать их в кладовой чужой постройки.
     if (request.exterior && share > 0.45) continue
+    // Площадь уличной сцены проверяется по совпавшему виду места и по заявке:
+    // карта меньше половины заказанной площади — не та сцена.
+    if (request.exterior) {
+      const minimum = Math.max(MIN_EXTERIOR_CELLS[request.placeKinds[primary]] ?? 0, Math.floor(request.area / 2))
+      if (groundCells(entry) < minimum) continue
+    }
     let score = 10 - primary * 2
     // Карта своего климата лучше нейтральной: пустынный трактир в пустыне.
     if (request.climate && entry.climate === request.climate) score += 3
@@ -226,6 +293,13 @@ export function chooseLibraryMap(entries, request, { seed, usedIds = [] }) {
     const area = Math.max(1, Number(entry.passport.floor_cells) || 1)
     score -= Math.min(3, Math.abs(Math.log2(area / request.area)))
     score += Math.min(2, Math.log10(1 + (Number(entry.source.downloads) || 0)) / 2)
+    // Обещанное сценой сверяется с предметами карты: навес, которого нет,
+    // не появится оттого, что карта популярна.
+    if (requirements.length) {
+      const { met, missing } = requirementsCoverage(requirements, /** @type {Record<string, number>} */ (entry.passport.props ?? {}))
+      score += met.length - missing.length * MISSING_REQUIREMENT_PENALTY
+    }
+    if (score < MIN_LIBRARY_SCORE) continue
     scored.push({ entry, score })
   }
   if (!scored.length) return null
@@ -275,6 +349,19 @@ function writeJsonAtomic(file, value) {
   rmSync(temporary, { force: true })
 }
 
+/** Сколько кандидатов перебирает подбор, прежде чем уступить генератору. */
+const LIBRARY_PICK_ATTEMPTS = 6
+
+/**
+ * Изъяны библиотечной карты, с которыми сцену не начать. Остальные замечания
+ * проверки (одна большая комната, нет окон, повтор предметов) — дело вкуса
+ * автора постройки, их библиотека терпит.
+ */
+const LIBRARY_BLOCKING_PROBLEMS = new Set([
+  'NO_PARTY_SPAWN', 'PARTY_SPAWN_BLOCKED', 'UNREACHABLE_FLOOR', 'PROP_OUT_OF_BOUNDS',
+  'PROP_ON_SOLID_CELL', 'DOOR_TO_NOWHERE', 'BUILDING_WITHOUT_EXIT',
+])
+
 export class MapLibrary {
   /** @param {string} storageDir корень хранилища (`DND_STORAGE_DIR`) */
   constructor(storageDir) {
@@ -282,6 +369,8 @@ export class MapLibrary {
     this.indexFile = join(this.dir, 'index.json')
     /** @type {{ mtime: number, entries: LibraryEntry[] }|null} */
     this.cache = null
+    /** @type {{ mtime: number, results: Map<string, boolean> }|null} */
+    this.audits = null
   }
 
   /** @returns {LibraryEntry[]} */
@@ -329,10 +418,41 @@ export class MapLibrary {
    * @param {{ seed: string, usedIds?: Iterable<string> }} options
    */
   pick(request, options) {
-    const entry = chooseLibraryMap(this.entries(), request, options)
-    if (!entry) return null
-    const levels = this.levels(entry.id)
-    return levels?.some((level) => Number(level.index) === 0) ? { entry, levels } : null
+    const rejected = new Set(options.usedIds ?? [])
+    // Неиграбельная карта отбрасывается, и выбор идёт к следующей: отряд не
+    // должен начинать сцену в замурованной комнате или видеть дверь в стену.
+    for (let attempt = 0; attempt < LIBRARY_PICK_ATTEMPTS; attempt += 1) {
+      const entry = chooseLibraryMap(this.entries(), request, { ...options, usedIds: rejected })
+      if (!entry) return null
+      const levels = this.levels(entry.id)
+      const ground = levels?.find((level) => Number(level.index) === 0)
+      if (ground && this.playable(entry.id, ground.map)) return { entry, levels: /** @type {NonNullable<typeof levels>} */ (levels) }
+      rejected.add(entry.id)
+    }
+    return null
+  }
+
+  /**
+   * Проходит ли этаж входа проверку играбельности. Результат запоминается
+   * до смены индекса библиотеки: проверка большой карты — десятки
+   * миллисекунд, а подбор идёт на каждой новой локации.
+   * @param {string} id
+   * @param {Record<string, unknown>} map
+   */
+  playable(id, map) {
+    const mtime = this.cache?.mtime ?? 0
+    if (this.audits?.mtime !== mtime) this.audits = { mtime, results: new Map() }
+    const known = this.audits.results.get(id)
+    if (known !== undefined) return known
+    let ok = false
+    try {
+      const report = auditTacticalMap(deserializeTacticalMap(structuredClone(map)))
+      ok = !report.problems.some((problem) => LIBRARY_BLOCKING_PROBLEMS.has(problem.code))
+    } catch {
+      ok = false
+    }
+    this.audits.results.set(id, ok)
+    return ok
   }
 }
 

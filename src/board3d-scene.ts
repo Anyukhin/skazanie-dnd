@@ -25,7 +25,7 @@ import { batchEnvironmentMeshes } from './board3d-batching'
 import { createTerrainSideGeometry, createTerrainSurfaceGeometry, propTerrainHeight, terrainHeightAt } from './board3d-terrain'
 import { createBoard3DRoofs, type Board3DRoofMode } from './board3d-roofs'
 import { createMasonryDressing, masonryStyleFor, MASONRY_COLORS, type MasonryRun } from './board3d-masonry'
-import { createBridgeRails, createGrassTufts, createRockClusters, createTileGroundGeometry, createWaterMaterial, createWaterPlants, createWaterSurfaceGeometry, isRockCell, landscapeWantsModels, type LandscapeDetail, type LandscapeInstances } from './board3d-landscape'
+import { createBridgeRails, createFogCapGeometry, createGrassTufts, createRockClusters, createTileGroundGeometry, createWaterMaterial, createWaterPlants, createWaterSurfaceGeometry, isRockCell, landscapeWantsModels, type LandscapeDetail, type LandscapeInstances } from './board3d-landscape'
 import { acquireLandscapeKit, type LandscapeKitHandle } from './landscape-model-assets'
 
 /** Высота срезанной стены в мировых единицах клетки. */
@@ -951,6 +951,14 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
   ground.castShadow = false
   groundGroup.add(ground)
   addTerrainSides(resources, map, groundGroup, palette)
+  const fogGeometry = createFogCapGeometry(map)
+  if (fogGeometry) {
+    ownGeometry(resources, fogGeometry)
+    const fog = new THREE.Mesh(fogGeometry, material(resources, '#27221c', { roughness: 1, metalness: 0 }))
+    fog.name = 'fog-cap'
+    fog.receiveShadow = false
+    groundGroup.add(fog)
+  }
 
   // Местность: вода над дном, скалы на непроходимых клетках, трава.
   const landscapeDetail = options.landscapeDetail ?? 'reduced'
