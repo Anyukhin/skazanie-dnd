@@ -9275,6 +9275,15 @@ function areaCasterSideIds(state, casterId) {
     .map(actorId)])
 }
 
+/**
+ * Отложенный урон растёт с ячейкой только там, где это объявлено отдельно:
+ * у Мельфовой стрелы растут обе части, у Едкого шара — только начальная.
+ */
+function delayedSpellDamageExpression(spell, slotLevelValue) {
+  const extra = Math.max(0, safeInteger(slotLevelValue, spell.level) - spell.level)
+  return scaledDiceExpression(String(spell.delayedDamage), extra, safeInteger(spell.delayedDamageUpcastDicePerLevel, 0))
+}
+
 /** Существа, которых заклинатель назначил незатронутыми («Духовные стражи»). */
 function areaEffectSparesActor(effect, actorIdValue) {
   return Array.isArray(effect?.unaffected_actor_ids) && effect.unaffected_actor_ids.map(String).includes(String(actorIdValue))
@@ -14972,7 +14981,13 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
               // труднопроходимость и спасбросок, и облако кинжалов невыразимо.
               damage: areaEffectDamage,
               // Обратный знак того же поля: область бывает и лечащей.
-              healing: spell.createsAreaEffect.healing ?? null,
+              healing: spell.createsAreaEffect.healing
+                ? scaledDiceExpression(
+                  String(spell.createsAreaEffect.healing),
+                  Math.max(0, safeInteger(command.slot_level, spell.level) - spell.level),
+                  safeInteger(spell.createsAreaEffect.upcastHealingDicePerLevel, 0),
+                )
+                : null,
               damage_type: spell.createsAreaEffect.damageType ?? spell.damageType ?? null,
               half_on_save: spell.createsAreaEffect.halfOnSave === true,
               follows_source: spell.createsAreaEffect.followsSource === true,
@@ -15387,7 +15402,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
                 // Отложенный урон: кислота продолжает разъедать цель и срабатывает
                 // один раз в начале её следующего хода.
                 ...(spell.delayedDamage ? {
-                  recurring_damage: String(spell.delayedDamage),
+                  recurring_damage: delayedSpellDamageExpression(spell, command.slot_level),
                   recurring_damage_type: String(spell.delayedDamageType ?? spell.damageType ?? 'untyped'),
                   recurring_once: true,
                   spell_id: spell.id,
@@ -15609,10 +15624,12 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
               rolls.push(outcomeDamageRoll)
               events.push(eventFrom(command, 'DieRolled', { ...outcomeDamageRoll, spell_id: spell.id, saved }, []))
             }
-            const damage = spell.saveDamage
+            // Невосприимчивый по типу («не действует на нежить») не получает и
+            // половины: автоматический успех здесь — отсутствие эффекта.
+            const damage = immuneByType ? 0 : spell.saveDamage
               ? (outcomeDamageRoll?.total ?? 0)
               : sharedDamageRoll ? (saved ? (spell.halfOnSave ? Math.floor(sharedDamageRoll.total / 2) : 0) : sharedDamageRoll.total) : 0
-            const bonusDamage = bonusDamageRoll ? (saved ? (spell.halfOnSave ? Math.floor(bonusDamageRoll.total / 2) : 0) : bonusDamageRoll.total) : 0
+            const bonusDamage = immuneByType ? 0 : bonusDamageRoll ? (saved ? (spell.halfOnSave ? Math.floor(bonusDamageRoll.total / 2) : 0) : bonusDamageRoll.total) : 0
             const elementalReactionKey = spell.bonusDamage
               ? `${command.command_id}:${resolvedTargetId}:spell-area:${spell.id}`
               : `${command.command_id}:${resolvedTargetId}:${damageType}`
@@ -15735,7 +15752,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
                 ...(spell.repeatSaveOnDamage === true && condition === spell.conditions?.[0] ? { repeat_save_on_damage: true, damage_save_advantage: spell.damageRepeatSaveAdvantage === true, save_ability: saveAbility, save_dc: spellSaveDc, spell_id: spell.id } : {}),
                 ...(spell.breakOnDamageFromSourceAllies === true ? { break_on_damage_from_source_allies: true } : {}),
                 ...(spell.delayedDamage && condition === spell.conditions?.[0] ? {
-                  recurring_damage: String(spell.delayedDamage),
+                  recurring_damage: delayedSpellDamageExpression(spell, command.slot_level),
                   recurring_damage_type: String(spell.delayedDamageType ?? spell.damageType ?? 'untyped'),
                   recurring_once: true,
                   recurring_damage_timing: 'turn-end',
@@ -16302,13 +16319,18 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         } else if (spell.kind === 'summon') {
           const to = { x: Number(command.to.x), y: Number(command.to.y) }
           const safeCommandId = String(command.command_id).replace(/[^A-Za-z0-9._-]/gu, '-').slice(0, 60)
+          const slotLevel = Math.max(spell.level, safeInteger(command.slot_level, spell.level))
+          // Обобщённый блок духа TCE растёт с ячейкой, как обещает карточка:
+          // в 2014 он считается от круга ячейки, в прежней редакции — от круга
+          // заклинания, чтобы не менять уже сыгранные кампании.
+          const statLevel = Math.max(1, usesDnd2014(state) ? slotLevel : spell.level)
           const definition = spell.summon ?? {
             name: spell.name,
-            hp: 10 + Math.max(1, spell.level) * 5 + Math.max(1, safeInteger(actor?.level, 1)),
-            armor: 11 + Math.ceil(Math.max(1, spell.level) / 2),
+            hp: 10 + statLevel * 5 + Math.max(1, safeInteger(actor?.level, 1)),
+            armor: 11 + Math.ceil(statLevel / 2),
             speed: 30,
             attackName: 'Магическая атака',
-            damage: `${Math.max(1, Math.ceil(Math.max(1, spell.level) / 2))}d8+${Math.max(0, spellModifier)}`,
+            damage: `${Math.max(1, Math.ceil(statLevel / 2))}d8+${Math.max(0, spellModifier)}`,
             damageType,
             range: 5,
           }
@@ -16316,11 +16338,26 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           // приводит стаю, Оживление предметов поднимает десяток. Число растёт с
           // уровнем ячейки, но каждая фишка — самостоятельное существо со своими
           // хитами, ходом и целью, а не «один призыв с умноженным уроном».
-          const slotLevel = Math.max(spell.level, safeInteger(command.slot_level, spell.level))
+          // Множитель по ячейке — правило 2014 «вдвое больше существ на ячейке N».
           const extraLevels = Math.max(0, slotLevel - Math.max(1, spell.level))
-          const summonCount = Math.max(1, Math.min(12,
-            safeInteger(spell.summonCount, 1) + extraLevels * Math.max(0, safeInteger(spell.upcastSummonsPerLevel, 0))))
+          const countMultiplier = Math.max(1, safeInteger(Object.entries(spell.summonCountMultiplierBySlotLevel ?? {})
+            .filter(([level]) => slotLevel >= safeInteger(level, Number.MAX_SAFE_INTEGER))
+            .sort(([left], [right]) => safeInteger(right, 0) - safeInteger(left, 0))[0]?.[1], 1))
+          const summonCount = Math.max(1, Math.min(16,
+            (safeInteger(spell.summonCount, 1) + extraLevels * Math.max(0, safeInteger(spell.upcastSummonsPerLevel, 0))) * countMultiplier))
           const summonStartedAtSeconds = worldTimeSeconds(projectEvents(events))
+          // «Духовное оружие»: модификатор базовой характеристики и +1к8 за
+          // каждые два круга ячейки сверх второго — по полям блока призыва.
+          const summonDamageExpression = (() => {
+            const expression = String(definition.damage)
+            const every = Math.max(0, safeInteger(definition.upcastDiceEveryLevels, 0))
+            if (definition.addSpellcastingModifier !== true && every === 0) return expression
+            let parsed
+            try { parsed = parseDiceExpression(expression) } catch { return expression }
+            const count = parsed.count + (every > 0 ? Math.floor(extraLevels / every) : 0)
+            const modifier = parsed.modifier + (definition.addSpellcastingModifier === true ? spellModifier : 0)
+            return `${count}d${parsed.sides}${modifier > 0 ? `+${modifier}` : modifier < 0 ? modifier : ''}`
+          })()
           // Клетки вокруг выбранной точки: сначала она сама, потом кольца вокруг.
           // Занятые и непроходимые пропускаются, поэтому в тесноте фишек встанет
           // меньше заявленного — и это честнее, чем ставить их друг на друга.
@@ -16372,7 +16409,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
               attack_profile: {
                 name: definition.attackName,
                 attack_modifier: spellAttackModifier,
-                damage_expression: definition.damage,
+                damage_expression: summonDamageExpression,
                 damage_type: definition.damageType,
                 range_feet: definition.range,
               },
