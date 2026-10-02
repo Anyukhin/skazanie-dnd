@@ -94,7 +94,7 @@ const UPCAST_FIELDS = Object.freeze([
   'summonCountMultiplierBySlotLevel', 'upcastBeamsPerLevel', 'upcastProjectilesPerLevel', 'hitPointPoolUpcastDice',
   'saveDamageUpcastDicePerLevel', 'temporaryHpPerSlotLevel', 'temporaryHpPerUpcastLevel', 'hitPointMaximumBonusPerSlotLevel',
   'meleeRetaliationDamagePerSlotLevel', 'delayedDamageUpcastDicePerLevel', 'conditionDurationSecondsBySlotLevel',
-  'upcastDiceEveryLevels',
+  'upcastDiceEveryLevels', 'conditionsBySlotLevel',
 ])
 
 /** Усиление, которое исполняет обработчик, а не поле профиля, — с причиной. */

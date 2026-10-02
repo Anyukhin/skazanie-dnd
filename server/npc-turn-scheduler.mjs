@@ -1086,6 +1086,11 @@ export function planNpcTurn(rawState, enemyId) {
     const remaining = movementForActor(state, enemyId).movement_remaining
     if (speed > 0 && remaining >= Math.ceil(speed / 2) && npcCommandValid(state, standUp)) return [standUp]
   }
+  // Пляшущее существо («Неудержимая пляска Отто») тратит действие на попытку
+  // совладать с собой: бить с помехой, стоя на месте, ему всё равно хуже.
+  const regainControl = { command_type: 'UseCombatAction', actor_id: String(enemyId), action_id: 'steady-nerves' }
+  if ((state.mechanics?.conditions?.[String(enemyId)] ?? []).some((condition) => condition?.action_save_ability)
+    && npcCommandValid(state, regainControl)) return [regainControl, { command_type: 'EndTurn', actor_id: String(enemyId) }]
   const currentEconomy = state.mechanics?.combat?.action_economy?.[String(enemyId)] ?? {}
   const usedBeforePlan = Math.max(0, Number(currentEconomy.attacks_used) || 0)
   const declaredMultiattackCount = multiattackCount(enemy)

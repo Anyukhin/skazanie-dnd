@@ -122,7 +122,6 @@ test('Духовное оружие добавляет модификатор и
 test('Аудит перечисляет только известные пробелы усиления', () => {
   // Новое заклинание с обещанием усиления без поля попадёт сюда и уронит тест:
   // либо задать поле, либо осознанно объявить причину в аудите.
-  assert.deepEqual(auditSpellOverrides().upcastGaps.map((gap) => gap.id).sort(), [
-    'absorb-elements', 'ashardalon-s-stride', 'elemental-weapon', 'spirit-shroud',
-  ])
+  // Поглощение стихий: ячейку реакции выбирает окно, а оно пока берёт низшую.
+  assert.deepEqual(auditSpellOverrides().upcastGaps.map((gap) => gap.id).sort(), ['absorb-elements'])
 })
