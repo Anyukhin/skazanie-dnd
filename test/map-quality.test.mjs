@@ -4,7 +4,7 @@ import test from 'node:test'
 import { generateSceneGeometry } from '../server/adventure-director.mjs'
 import { MAP_PREVIEW_PRESETS, auditTacticalMap } from '../server/map-quality.mjs'
 import { requirementsCoverage, sceneRequirementsFromText } from '../server/scene-requirements.mjs'
-import { addProp, addSpawnPoint, addZone, cellAt, createTacticalMap, edgeList, setCell, setDoor, setEdge } from '../server/tactical-map.mjs'
+import { addProp, addSpawnPoint, addZone, cellAt, createTacticalMap, edgeList, edgeNeighbor, setCell, setDoor, setEdge } from '../server/tactical-map.mjs'
 
 /**
  * Качество сгенерированных карт для игры за столом: у дома есть дверь и
@@ -99,7 +99,8 @@ test('неф храма делится колоннадой, алтарь сто
     const altars = map.props.filter((prop) => prop.assetId === 'altar').map(zoneOf)
     assert.ok(altars.length >= 1 && altars.every((label) => label === 'Алтарная'), `${seed}: алтари в ${altars}`)
     // Колоннада бывает в нескольких залах (просторный зал получает опоры
-    // ради укрытий); в каждом зале колонны стоят двумя ровными рядами.
+    // ради укрытий); в каждом зале колонны стоят ровными рядами: двумя, а в
+    // нефе шире 15 клеток — ещё и средними, не больше четырёх.
     const colonnades = new Map()
     for (const prop of map.props.filter((entry) => entry.id.startsWith('colonnade-'))) {
       const hall = prop.id.replace(/-\d+$/u, '')
@@ -108,7 +109,7 @@ test('неф храма делится колоннадой, алтарь сто
     for (const [hall, colonnade] of colonnades) {
       const lines = new Set(colonnade.map((prop) => `${Math.floor(prop.x)}`))
       const rows = new Set(colonnade.map((prop) => `${Math.floor(prop.y)}`))
-      assert.ok(Math.min(lines.size, rows.size) <= 2, `${seed}/${hall}: колонны не в два ряда`)
+      assert.ok(Math.min(lines.size, rows.size) <= 4, `${seed}/${hall}: колонны не рядами`)
     }
     assert.ok(map.props.filter((prop) => prop.assetId === 'statue').length <= 5, `${seed}: статуй больше пяти`)
   }
@@ -166,10 +167,17 @@ test('проверка ловит предмет за краем карты', ()
   assert.ok(codes(map).includes('PROP_OUT_OF_BOUNDS'))
 })
 
-/** Есть ли внутри рамки стен клетки двора — форма корпуса не прямоугольник. */
+/**
+ * Есть ли внутри рамки корпуса клетки двора — форма не прямоугольник. Корпус —
+ * клетки кладки и помещений: тонкие стены оставляют от кладки лишь углы.
+ */
 function shapedOutline(map) {
+  const interior = new Set(map.zones.filter((zone) => zone.kind === 'interior').map((zone) => zone.id))
   const walls = []
-  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) if (cellAt(map, x, y)?.zone === 'walls') walls.push({ x, y })
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    const zone = cellAt(map, x, y)?.zone
+    if (zone === 'walls' || interior.has(zone)) walls.push({ x, y })
+  }
   const minX = Math.min(...walls.map((cell) => cell.x))
   const maxX = Math.max(...walls.map((cell) => cell.x))
   const minY = Math.min(...walls.map((cell) => cell.y))
@@ -240,7 +248,7 @@ function place(location, theme, extra = {}) {
 test('места узнаются по главному слову названия и строятся по назначению', () => {
   const smithy = place('Кузница Борга', 'кузница')
   assert.equal(smithy.map.generator.id, 'building-with-yard', 'кузница — здание, а не лес')
-  assert.ok(smithy.labels.includes('Кузня') && smithy.assets.has('fireplace'), 'в кузне нет горна')
+  assert.ok(smithy.labels.includes('Кузня') && smithy.assets.has('forge') && smithy.assets.has('anvil'), 'в кузне нет горна и наковальни')
   const barracks = place('Казарма городской стражи', 'казарма')
   assert.equal(barracks.map.generator.id, 'building-with-yard', '«городской» не делает казарму городом')
   assert.ok(barracks.labels.includes('Спальня стражи') && barracks.assets.has('bunk_bed'))
@@ -279,7 +287,8 @@ test('город — двенадцать и больше домов вдоль 
     assert.ok(houses.length >= 12, `${seed}: в городе ${houses.length} домов`)
     assert.ok(map.zones.some((zone) => zone.id === 'square' && zone.label === 'Торговая площадь'))
     const square = map.props.filter((prop) => cellAt(map, Math.floor(prop.x), Math.floor(prop.y))?.zone === 'square').map((prop) => prop.assetId)
-    assert.ok(square.includes('well') && square.includes('market_stall'), `${seed}: на площади нет колодца и прилавков`)
+    // Вода на площади города — фонтан, в деревне и на рынке — колодец.
+    assert.ok((square.includes('fountain') || square.includes('well')) && square.includes('market_stall'), `${seed}: на площади нет воды и прилавков`)
   }
   // Деревня — не хутор: улица с переулками и второй ряд дворов дают
   // девять-двенадцать домов на 40×34; хутор остаётся редким.
@@ -356,4 +365,19 @@ test('голый просторный зал — замечание: укрыт�
     addProp(map, { id: `pillar-${index}`, assetId: 'pillar', x: x + 0.5, y: y + 0.5, rotation: 0, scale: 1, footprint: [{ x, y }], zOrder: 0, blocksMove: true, blocksSight: true, cover: 'three_quarters', destructible: false, hp: 0, interactive: false })
   }
   assert.ok(!auditTacticalMap(map).warnings.some((warning) => warning.code === 'HALL_NO_COVER'))
+})
+
+test('шкаф перед окном — ошибка проверки, а генератор окна не заслоняет', () => {
+  const map = sampleHouse()
+  const window = edgeList(map).find((edge) => edge.kind === 'window')
+  assert.ok(window, 'в образце нет окна')
+  const inside = [{ x: window.x, y: window.y }, edgeNeighbor(window)].find((point) => cellAt(map, point.x, point.y)?.passable)
+  map.props.push({ id: 'blind', assetId: 'wardrobe', x: inside.x + 0.5, y: inside.y + 0.5, rotation: 0, scale: 1, footprint: [inside], zOrder: 0, blocksMove: true, blocksSight: true, cover: 'three_quarters', destructible: false, hp: 0, interactive: false, state: 'intact', interaction: null, transition: null })
+  assert.ok(codes(map).includes('PROP_BLOCKS_WINDOW'))
+  for (const seed of SEEDS) {
+    for (const [location, theme] of [['Дом мельника', 'жилой дом'], ['Таверна «Рыжий рог»', 'таверна'], ['Усадьба Вельских', 'усадьба']]) {
+      const { map: built } = generateSceneGeometry({ location, theme, seed: `window:${seed}`, useLibrary: false })
+      assert.deepEqual(auditTacticalMap(built).problems.filter((problem) => problem.code === 'PROP_BLOCKS_WINDOW'), [], `${location}/${seed}`)
+    }
+  }
 })

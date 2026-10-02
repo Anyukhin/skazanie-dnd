@@ -1,3 +1,5 @@
+import { detailPropModelUrl } from './detail-props'
+
 /** Общий выбор модели для 3D-предмета и его изображения сверху. */
 export type PropModelEntry = {
   key: string
@@ -136,10 +138,19 @@ export function validatePropModelCatalog(value: unknown, revision?: string): Pro
 
 export function propModelFor(catalog: PropModelCatalog | null | undefined, assetId: string, propId: string): PropModelEntry | null {
   const choices = catalog?.models.filter((entry) => entry.assetIds.includes(assetId)) ?? []
-  if (!choices.length) return null
+  // Вид, которого нет в выпуске окружения, но есть в наборе детализации:
+  // его авторская модель лежит в `detail-v1/models`. Выпуск сильнее набора,
+  // а прежние виды набором не перекрываются вовсе.
+  if (!choices.length) return catalog ? detailModelEntry(assetId) : null
   let seed = 2166136261
   for (const char of propId) seed = Math.imul(seed ^ char.charCodeAt(0), 16777619) >>> 0
   return choices[seed % choices.length]
+}
+
+/** Запись каталога для GLB набора детализации. */
+function detailModelEntry(assetId: string): PropModelEntry | null {
+  const url = detailPropModelUrl(assetId)
+  return url ? { key: `detail-v1-${assetId}`, label: assetId, category: 'detail-v1', url, assetIds: [assetId], yaw: 0 } : null
 }
 
 const catalogs = new Map<string, { promise: Promise<PropModelCatalog | null>; settled: boolean }>()

@@ -82,6 +82,35 @@ export const TERRAIN_SOURCES = Object.freeze([
 ])
 
 /**
+ * Готовые фактуры набора детализации (`public/assets/maps/detail-v1`). Они
+ * уже бесшовные и того же масштаба — восемь клеток на плитку 512, — поэтому
+ * не пересобираются, а только объявляются в манифесте. Ключ пола — рисунок
+ * помещения (`zone.floor`, `FLOOR_STYLES` сервера), ключ стены — вид
+ * кладки (`zone.wall`, `WALL_STYLES`). Права и хеши — в паспорте набора.
+ */
+export const DETAIL_TERRAIN = Object.freeze([
+  { slot: 'floors', key: 'planks-dark', path: 'maps/detail-v1/textures/floor-planks-dark.png' },
+  { slot: 'floors', key: 'parquet', path: 'maps/detail-v1/textures/floor-parquet.png' },
+  { slot: 'floors', key: 'flagstone', path: 'maps/detail-v1/textures/floor-flagstone.png' },
+  { slot: 'floors', key: 'checker', path: 'maps/detail-v1/textures/floor-checker.png' },
+  { slot: 'floors', key: 'dungeon', path: 'maps/detail-v1/textures/floor-dungeon.png' },
+  { slot: 'floors', key: 'mosaic', path: 'maps/detail-v1/textures/floor-mosaic.png' },
+  { slot: 'floors', key: 'cobble', path: 'maps/detail-v1/textures/floor-cobble.png' },
+  { slot: 'floors', key: 'straw', path: 'maps/detail-v1/textures/floor-straw.png' },
+  { slot: 'floors', key: 'dock', path: 'maps/detail-v1/textures/floor-dock.png' },
+  { slot: 'floors', key: 'gravel', path: 'maps/detail-v1/textures/floor-gravel.png' },
+  { slot: 'floors', key: 'cave', path: 'maps/detail-v1/textures/floor-cave.png' },
+  { slot: 'floors', key: 'snow', path: 'maps/detail-v1/textures/floor-snow.png' },
+  { slot: 'surfaces', key: 'river', path: 'maps/detail-v1/textures/surface-river.png' },
+  { slot: 'surfaces', key: 'shallows', path: 'maps/detail-v1/textures/surface-shallows.png' },
+  { slot: 'walls', key: 'brick', path: 'maps/detail-v1/textures/wall-brick.png' },
+  { slot: 'walls', key: 'fachwerk', path: 'maps/detail-v1/textures/wall-fachwerk.png' },
+  { slot: 'walls', key: 'fortress', path: 'maps/detail-v1/textures/wall-fortress.png' },
+  { slot: 'walls', key: 'palisade', path: 'maps/detail-v1/textures/wall-palisade.png' },
+  { slot: 'walls', key: 'embankment', path: 'maps/detail-v1/textures/wall-embankment.png' },
+])
+
+/**
  * @typedef {import('./png-codec.mjs').PngImage} PngImage
  */
 
@@ -187,6 +216,8 @@ export function buildTerrainTiles(options = {}) {
     files.push({ path, bytes: encodeIndexedPng(tile, { colors: options.colors ?? 256 }) })
     manifest[source.slot][source.key] = path
   }
+
+  for (const detail of DETAIL_TERRAIN) manifest[detail.slot][detail.key] = detail.path
 
   return {
     files,

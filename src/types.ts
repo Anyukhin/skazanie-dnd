@@ -1185,6 +1185,10 @@ export type TacticalZone = {
   /** Направление непрерывного рисунка настила внутри зоны. */
   floorDirection: TacticalFloorDirection
   label: string
+  /** Рисунок пола помещения (`FLOOR_STYLES` сервера); только для отрисовки. */
+  floor?: string
+  /** Вид кладки стен помещения (`WALL_STYLES` сервера); только для отрисовки. */
+  wall?: string
 }
 
 export type TacticalSpawnPoint = { id: string; x: number; y: number; role: TacticalSpawnRole }

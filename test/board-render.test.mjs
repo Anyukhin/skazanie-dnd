@@ -623,6 +623,31 @@ test('стена берёт фактуру кладки, а не пола', () =
   assert.deepEqual(keys.walls, ['stone'], 'непроходимой клетке нужна фактура кладки')
 })
 
+test('пол помещения рисуется по рисунку зоны, а тонкая стена — материалом и кладкой постройки', () => {
+  // Каменная кухня в срубе (`server/room-floors.mjs`): пол каменный с
+  // рисунком плит, а стена между кухней и горницей — бревенчатая, фахверк.
+  const map = createTacticalMap({ width: 2, height: 1, fill: { passable: true, revealed: true, material: 'wood' } })
+  addZone(map, { id: 'hall', kind: 'interior', material: 'wood', floor: 'planks-dark', wall: 'fachwerk' })
+  addZone(map, { id: 'kitchen', kind: 'interior', material: 'wood', floor: 'flagstone', wall: 'fachwerk' })
+  setCell(map, 0, 0, { zone: 'hall' })
+  setCell(map, 1, 0, { zone: 'kitchen', material: 'stone' })
+  setEdge(map, 0, 0, 1, 0, { kind: 'wall', blocksMove: true, blocksSight: true })
+  const clientMap = decoded(map)
+  assert.equal(clientMap.zones.find((zone) => zone.id === 'kitchen')?.floor, 'flagstone', 'клиент потерял рисунок пола')
+  const keys = render.terrainKeysFor(clientMap)
+  assert.deepEqual(keys.floors, ['flagstone', 'planks-dark', 'stone', 'wood'])
+  assert.ok(keys.walls.includes('fachwerk'), 'кладка постройки не запрошена')
+  const side = render.wallSideCell(clientMap, client.cellAt(clientMap, 0, 0), client.cellAt(clientMap, 1, 0))
+  assert.equal(side.material, 'wood', 'стену каменной кухни выложило бы камнем')
+  assert.equal(render.wallTextureKeyForSide(clientMap, side), 'fachwerk')
+  // Карта без рисунков просит прежний набор — сохранённые карты не меняются.
+  const plain = createTacticalMap({ width: 1, height: 1, fill: { passable: true, revealed: true, material: 'wood' } })
+  addZone(plain, { id: 'hall', kind: 'interior', material: 'wood' })
+  setCell(plain, 0, 0, { zone: 'hall' })
+  assert.deepEqual(render.terrainKeysFor(decoded(plain)).floors, ['wood'])
+  assert.equal('floor' in serializeTacticalMap(plain).zones[0], false)
+})
+
 test('карте запрашиваются только те фактуры, которые на ней есть', () => {
   const map = createTacticalMap({ width: 4, height: 4, fill: { passable: true, revealed: true, material: 'grass' } })
   setCell(map, 1, 1, { material: 'wood' })

@@ -832,7 +832,9 @@ const SCENE_KEYS = new Set(['cells'])
 // `occupied` появился в M0: раньше занятость клетки существом выражалась
 // записью сущности в `feature`, а после разделения слоёв её нужно передавать
 // явно, иначе двух противников можно поставить в одну клетку.
-const CELL_KEYS = new Set(['x', 'y', 'type', 'revealed', 'feature', 'occupied'])
+const CELL_KEYS = new Set(['x', 'y', 'type', 'revealed', 'feature', 'occupied', 'walls'])
+/** Тонкие стены на восточном и южном рёбрах клетки (`legacyCellsFromTacticalMap`). */
+const CELL_WALLS = /^(?:e|s|es)$/u
 const PARTY_MEMBER_KEYS = new Set(['id', 'level', 'x', 'y'])
 const CELL_TYPES = new Set(['wall', 'floor', 'water', 'door'])
 // Общие server-owned предметы карты — препятствия, а не клиентская механика.
@@ -922,6 +924,9 @@ function validateScene(input) {
     if (entry.occupied != null && typeof entry.occupied !== 'boolean') {
       throw new EncounterAssemblyError('cell.occupied должен быть boolean', 'INVALID_SCENE_CELL_OCCUPANCY')
     }
+    if (entry.walls != null && (typeof entry.walls !== 'string' || !CELL_WALLS.test(entry.walls))) {
+      throw new EncounterAssemblyError('cell.walls должен быть e, s или es', 'INVALID_SCENE_CELL_WALLS')
+    }
     const key = `${x},${y}`
     if (seen.has(key)) throw new EncounterAssemblyError('Координаты клеток не должны повторяться', 'DUPLICATE_SCENE_CELL')
     seen.add(key)
@@ -932,6 +937,7 @@ function validateScene(input) {
       revealed: entry.revealed,
       ...(entry.feature == null ? {} : { feature: entry.feature }),
       ...(entry.occupied === true ? { occupied: true } : {}),
+      ...(entry.walls ? { walls: entry.walls } : {}),
     }
   })
   cells.sort((left, right) => left.y - right.y || left.x - right.x)
@@ -1029,6 +1035,26 @@ function spawnBounds(cells, party) {
   return computeCombatBounds(extent, party)
 }
 
+/**
+ * Стоит ли тонкая стена между соседними клетками. Стена записана у западной
+ * или северной клетки пары: восточное ребро — `e`, южное — `s`.
+ *
+ * @param {Map<string, {walls?: string}>} cellsByKey
+ * @param {{x: number, y: number}} a
+ * @param {{x: number, y: number}} b
+ */
+function thinWallBetween(cellsByKey, a, b) {
+  if (a.y === b.y && Math.abs(a.x - b.x) === 1) {
+    const west = a.x < b.x ? a : b
+    return Boolean(cellsByKey.get(`${west.x},${west.y}`)?.walls?.includes('e'))
+  }
+  if (a.x === b.x && Math.abs(a.y - b.y) === 1) {
+    const north = a.y < b.y ? a : b
+    return Boolean(cellsByKey.get(`${north.x},${north.y}`)?.walls?.includes('s'))
+  }
+  return false
+}
+
 function safePlacementCells(cells, party, bounds = null) {
   const occupied = new Set(party.map(positionKey))
   const walkable = new Map(cells
@@ -1043,7 +1069,8 @@ function safePlacementCells(cells, party, bounds = null) {
     reachable.add(key)
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
       const neighbor = walkable.get(`${current.x + dx},${current.y + dy}`)
-      if (neighbor && !reachable.has(positionKey(neighbor))) queue.push(neighbor)
+      // Сквозь тонкую стену враг к отряду не пройдёт — эта клетка не «рядом».
+      if (neighbor && !reachable.has(positionKey(neighbor)) && !thinWallBetween(walkable, current, neighbor)) queue.push(neighbor)
     }
   }
   return cells.filter((cell) => (
@@ -1104,6 +1131,11 @@ function placementKeysFor(actor, position) {
 
 function placementFits(cellsByKey, actor, position, occupied) {
   const keys = placementKeysFor(actor, position)
+  // Крупное существо не стоит поперёк тонкой стены: площадь — одна комната.
+  const footprint = footprintCellsFor(actor, position)
+  const inside = new Set(keys)
+  if (footprint.some((cell) => [[1, 0], [0, 1]].some(([dx, dy]) => inside.has(`${cell.x + dx},${cell.y + dy}`)
+    && thinWallBetween(cellsByKey, cell, { x: cell.x + dx, y: cell.y + dy })))) return false
   return keys.length > 0 && keys.every((key) => {
     const cell = cellsByKey.get(key)
     return Boolean(cell)

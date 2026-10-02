@@ -128,7 +128,12 @@ test('переход в известную деревню рисует улиц�
   }, state)
   assert.equal(transition.scene.location_id, 'estwood')
   assert.ok(transition.scene.cells.filter((cell) => cell.type === 'door').length >= 4, 'у домов деревни нет дверей — нарисовано поле')
-  assert.ok(transition.scene.cells.filter((cell) => cell.type === 'wall' && cell.material === 'wood').length >= 40, 'в деревне нет стен домов')
+  // Стена дома — либо клетка кладки, либо тонкая стена на ребре клетки пола
+  // (`walls`: «e», «s» или «es»): считается каждое ребро.
+  const houseWalls = transition.scene.cells.reduce((sum, cell) => sum
+    + (cell.type === 'wall' && cell.material === 'wood' ? 1 : 0)
+    + (typeof cell.walls === 'string' ? cell.walls.length : 0), 0)
+  assert.ok(houseWalls >= 40, `в деревне нет стен домов: ${houseWalls}`)
   // Место, которого на карте ещё не было, вид с карты не получает: запасная
   // карта ставит «город» вслепую, и по нему рисовать улицы нельзя.
   const unknown = createSceneTransition({
@@ -188,7 +193,8 @@ test('органическая пещера и поселение с домам�
     seed: 'live:cave', locationId: 'cave',
     map: mapRequest({ layout: 'cavern', pattern: 'cave-cluster', width: 20, height: 18 }),
   })
-  assert.equal(cave.length, 20 * 18, 'пещера обязана прийти из полноразмерной тематической карты')
+  // Просьба 20×18 меньше наименьшей пещеры (`THEME_MIN_SIZE`) и растёт до 22×20.
+  assert.equal(cave.length, 22 * 20, 'пещера обязана прийти из полноразмерной тематической карты')
   assert.ok(cave.some((cell) => cell.feature === 'stalagmite'), 'в пещере нет пещерного реквизита')
 
   const settlementInput = {

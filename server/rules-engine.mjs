@@ -32,6 +32,7 @@ import {
 } from './combat-bounds.mjs'
 import {
   DOOR_STATES,
+  MATERIALS as TACTICAL_MATERIALS,
   addProp as addTacticalProp,
   attachLevelTransitions,
   cellAt,
@@ -2215,10 +2216,50 @@ function reconcileSceneTacticalMap(state) {
   let map = sceneTacticalMap(state)
   if (!map) return rebuildSceneTacticalMap(state)
   const cells = Array.isArray(state.scene.cells) ? state.scene.cells : []
-  if (cells.length && legacyCellsDiverged(cells, legacyCellsFromTacticalMap(map))) {
-    map = rebuildSceneTacticalMap(state) ?? map
+  const derived = cells.length ? legacyCellsFromTacticalMap(map) : []
+  if (cells.length && legacyCellsDiverged(cells, derived)) {
+    // Та же сетка и те же предметы — расхождение только в раскрытии,
+    // проходимости или материале клеток: оно накладывается на карту, а рёбра,
+    // зоны и тонкие стены (`server/thin-walls.mjs`), которых старые клетки
+    // не выражают, остаются. Полная пересборка — для настоящего старого
+    // входа другой формы.
+    if (sameLegacyGrid(cells, derived)) {
+      mergeLegacyCells(map, cells)
+      state.scene.map = serializeTacticalMap(map)
+    } else {
+      map = rebuildSceneTacticalMap(state) ?? map
+    }
   }
   return map
+}
+
+/** Та же сетка клеток и те же предметы на них. */
+function sameLegacyGrid(actual, derived) {
+  if (actual.length !== derived.length) return false
+  for (let index = 0; index < actual.length; index += 1) {
+    const left = actual[index]
+    const right = derived[index]
+    if (Number(left?.x) !== right.x || Number(left?.y) !== right.y) return false
+    if ((left?.feature ?? null) !== (right.feature ?? null)) return false
+  }
+  return true
+}
+
+/** Раскрытие, проходимость и материал из старых клеток — поверх карты. */
+function mergeLegacyCells(map, cells) {
+  for (const legacy of cells) {
+    const x = Number(legacy?.x)
+    const y = Number(legacy?.y)
+    const cell = cellAt(map, x, y)
+    if (!cell) continue
+    const type = String(legacy?.type ?? 'floor')
+    const passable = type === 'floor' || type === 'door'
+    setTacticalCell(map, x, y, {
+      revealed: legacy?.revealed === true,
+      ...(passable !== cell.passable ? { passable, surface: type === 'water' ? 'water' : 'none' } : {}),
+      ...(legacy?.material != null && TACTICAL_MATERIALS.includes(String(legacy.material)) ? { material: String(legacy.material) } : {}),
+    })
+  }
 }
 
 /** Сравнение без сериализации: массивы клеток длинные, а вызывается это часто. */
@@ -5417,6 +5458,9 @@ function assembleEncounterFromState(state, command) {
     revealed: cell?.revealed === true,
     ...(cell?.feature == null ? {} : { feature: String(cell.feature) }),
     ...(creatureCells.has(`${Number(cell?.x)},${Number(cell?.y)}`) || blockedProps.has(`${Number(cell?.x)},${Number(cell?.y)}`) ? { occupied: true } : {}),
+    // Тонкие стены сборщик видит по клеткам: иначе крупное существо встаёт
+    // поперёк перегородки, и проверка ниже отклоняет всю встречу.
+    ...(typeof cell?.walls === 'string' && /^(?:e|s|es)$/u.test(cell.walls) ? { walls: cell.walls } : {}),
   }))
   return validateEncounterPlacements(assembleEncounter({
     ruleset_id: state.ruleset_id,

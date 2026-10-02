@@ -18,6 +18,7 @@ import {
   cellAt,
   edgeList,
   legacyCellsFromTacticalMap,
+  movementStepBlocked,
   reachableCells,
   serializeTacticalMap,
   validateTacticalMap,
@@ -150,19 +151,26 @@ test('двери стоят на рёбрах, а окна не пропуска
   }
 })
 
-test('стены здания выражены и клетками, и рёбрами', () => {
+test('стены здания — тонкие рёбра, и сквозь них не пройти и не увидеть', () => {
   const map = scene()
   const walls = edgeList(map).filter((edge) => edge.kind === 'wall')
   assert.ok(walls.length > 30, `рёбер-стен всего ${walls.length}`)
 
-  // Пока правила движения читают клетку, стена обязана быть непроходимой и как
-  // клетка — иначе герой пройдёт сквозь неё.
-  for (const edge of walls.slice(0, 20)) {
+  // Стена лежит на ребре между двумя клетками пола (server/thin-walls.mjs):
+  // клетка остаётся полом, а шаг и взгляд через ребро закрыты.
+  let thin = 0
+  for (const edge of walls) {
     const owner = cellAt(map, edge.x, edge.y)
-    const neighbor = edge.dir === 'e' ? cellAt(map, edge.x + 1, edge.y) : cellAt(map, edge.x, edge.y + 1)
+    const nx = edge.dir === 'e' ? edge.x + 1 : edge.x
+    const ny = edge.dir === 'e' ? edge.y : edge.y + 1
+    const neighbor = cellAt(map, nx, ny)
     assert.ok(owner && neighbor, 'ребро между существующими клетками')
-    assert.ok(!owner.passable || !neighbor.passable, 'стена обязана отделять непроходимую клетку')
+    assert.equal(edge.blocksMove && edge.blocksSight, true, 'стена держит и шаг, и взгляд')
+    if (!owner.passable || !neighbor.passable) continue
+    thin += 1
+    assert.equal(movementStepBlocked(map, edge.x, edge.y, nx, ny), true, 'сквозь тонкую стену не пройти')
   }
+  assert.ok(thin > 20, `тонких стен всего ${thin}`)
 })
 
 test('ограда участка имеет проход у тропы', () => {
@@ -215,7 +223,7 @@ test('карта совместима со старым представлени
   const map = scene()
   const cells = legacyCellsFromTacticalMap(map)
   assert.equal(cells.length, map.width * map.height)
-  assert.ok(cells.some((cell) => cell.type === 'wall'), 'стены обязаны читаться старым кодом')
+  assert.ok(cells.some((cell) => cell.type === 'wall' || cell.walls), 'стены обязаны читаться старым кодом')
   assert.ok(cells.some((cell) => cell.type === 'door'), 'двери обязаны читаться старым кодом')
   assert.ok(cells.some((cell) => cell.feature), 'предметы обязаны читаться старым кодом')
 })
@@ -234,7 +242,7 @@ test('сборка со ступенями отката всегда отдаё�
 
   // Слишком тесная сцена: генератор обязан не упасть, а откатиться.
   const tiny = buildBuildingScene({ seed: 'tiny', width: 16, height: 16 })
-  assert.ok(['none', 'no_props', 'safe_room'].includes(tiny.fallback))
+  assert.ok(['none', 'rect', 'no_props', 'safe_room'].includes(tiny.fallback), tiny.fallback)
   assert.deepEqual(validateTacticalMap(tiny.map).errors, [])
   assert.deepEqual(reachabilityIssues(tiny.map), [])
 })
@@ -267,15 +275,27 @@ test('100 сидов спроектированных зданий валидн�
   const climates = ['temperate', 'arid', 'cold', 'wetland']
   const architectures = ['wood', 'stone', 'sand', 'metal', 'marble', 'ice']
   const signatures = new Set()
+  let shaped = 0
   for (let index = 0; index < 100; index += 1) {
     const design = { building_use: uses[index % uses.length], climate: climates[index % climates.length], architecture: architectures[index % architectures.length] }
     const built = buildBuildingScene({ seed: `design-${index}`, design })
-    assert.equal(built.fallback, 'none', `design-${index}: unexpected fallback`)
+    // Фигурный корпус, срезавший комнату целиком, уступает прямоугольнику:
+    // потерять кухню хуже, чем потерять Г-образность.
+    assert.ok(['none', 'rect'].includes(built.fallback), `design-${index}: unexpected fallback ${built.fallback}`)
+    if (built.fallback === 'none') shaped += 1
+    const filled = new Set()
+    for (let y = 0; y < built.map.height; y += 1) for (let x = 0; x < built.map.width; x += 1) {
+      const cell = cellAt(built.map, x, y)
+      if (cell?.passable) filled.add(cell.zone)
+    }
+    const empty = built.map.zones.filter((zone) => zone.kind === 'interior' && zone.id !== 'walls' && !filled.has(zone.id)).map((zone) => zone.id)
+    assert.deepEqual(empty, [], `design-${index}: помещения без пола`)
     assert.deepEqual(validateTacticalMap(built.map).errors, [], `design-${index}: invalid map`)
     assert.deepEqual(reachabilityIssues(built.map), [], `design-${index}: unreachable zone`)
     signatures.add(JSON.stringify({ width: built.map.width, height: built.map.height, zones: built.map.zones.map((zone) => zone.id), doors: built.map.doors.map((door) => door.id) }))
   }
   assert.ok(signatures.size >= 8, `layout diversity too low: ${signatures.size}`)
+  assert.ok(shaped >= 80, `первая попытка удалась лишь ${shaped} раз из 100`)
 })
 
 test('схемы здания меняют геометрию, а двор остаётся exterior и достижимым', () => {
@@ -390,7 +410,7 @@ test('крепость наполнена по назначению зон, а �
     ['barracks', ['bunk_bed', 'chest']],
     ['stables', ['haystack', 'water_trough', 'hitching_post']],
     ['storehouse', ['crate_stack', 'barrel_stack', 'chest']],
-    ['workshop', ['table_long', 'crate', 'barrel', 'firewood_stack']],
+    ['workshop', ['workbench', 'crate', 'barrel', 'firewood_stack']],
     ['courtyard', ['well', 'water_trough', 'woodpile']],
   ]) {
     const assets = propsIn(zone)
@@ -422,5 +442,25 @@ test('двор имеет травяные и земляные карманы, �
   const centerX = Math.floor((2 + map.width - 3) / 2)
   for (let y = 14; y <= 25; y += 1) {
     assert.equal(cellAt(map, centerX, y)?.material, 'stone', `главная дорожка прервана в ${centerX},${y}`)
+  }
+})
+
+test('коридорная планировка: зал по фасаду, коридор и отдельные комнаты с дверью в коридор', () => {
+  for (const [use, expected] of [['dwelling', /^bedroom/u], ['tavern', /^guest-/u], ['manor', /^(?:salon|study)$/u]]) {
+    const built = buildBuildingScene({ seed: `corridor-${use}`, width: 44, height: 40, design: { building_use: use, scheme: 'corridor', shape: 'rect' } })
+    const map = built.map
+    assert.equal(built.fallback, 'none', `${use}: откат`)
+    assert.ok(map.zones.some((zone) => zone.id === 'corridor' && zone.label === 'Коридор'), `${use}: нет коридора`)
+    const rooms = map.zones.filter((zone) => zone.kind === 'interior' && !['hall', 'corridor', 'walls'].includes(zone.id))
+    assert.ok(rooms.length >= 3, `${use}: за коридором ${rooms.length} комнат`)
+    assert.ok(rooms.some((zone) => expected.test(zone.id)), `${use}: нет ${expected}`)
+    // Каждая комната за коридором входит через коридор, а не через зал.
+    for (const room of rooms) {
+      const door = map.doors.find((entry) => entry.id === `${room.id}-door`)
+      assert.ok(door, `${use}/${room.id}: нет двери`)
+      const sides = [cellAt(map, door.x, door.y), cellAt(map, door.dir === 'e' ? door.x + 1 : door.x, door.dir === 's' ? door.y + 1 : door.y)].map((cell) => cell?.zone)
+      assert.ok(sides.includes('corridor') && sides.includes(room.id), `${use}/${room.id}: дверь ведёт в ${sides}`)
+    }
+    assert.deepEqual(reachabilityIssues(map), [], `${use}: недоступные помещения`)
   }
 })

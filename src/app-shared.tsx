@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { CircleAlert, X } from 'lucide-react'
-import type { CombatMechanics, GameState, Player, ReputationTier, SummonedCreature } from './types'
+import type { CombatMechanics, GameState, Player, ReputationTier, SummonedCreature, TacticalMap } from './types'
+import { sceneTacticalMap, sightEdgeBlocked } from './tactical-map-client'
 export { canonicalLocationKey, locationsMatch } from './player-experience'
 
 
@@ -487,8 +488,23 @@ export const clampUiScale = (value: number) => Math.min(UI_SCALE_MAX, Math.max(U
  * школ, причина блокировки траектории и текущее состояние боя.
  */
 export type BoardCombatant = Player | SummonedCreature
+/** Раскодированная карта сцены на каждую её версию: линия огня проверяется на каждом враге. */
+const boardMaps = new WeakMap<object, TacticalMap | null>()
+
+function boardMapFor(state: GameState): TacticalMap | null {
+  const key = (state.scene?.map ?? null) as object | null
+  if (!key || typeof key !== 'object') return null
+  if (!boardMaps.has(key)) boardMaps.set(key, sceneTacticalMap(state.scene))
+  return boardMaps.get(key) ?? null
+}
+
 export function boardTrajectoryBlockReason(state: GameState, from: { x: number; y: number }, to: { x: number; y: number }) {
   const cells = new Map(state.scene.cells.map((cell) => [`${cell.x},${cell.y}`, cell]))
+  // Стена на ребре клетки (`server/thin-walls.mjs`) и закрытая дверь режут
+  // линию так же, как на сервере (`sightEdgeBlocked` в tactical-geometry):
+  // по обеим кромкам диагонального шага и на последнем шаге — в клетку цели.
+  const map = boardMapFor(state)
+  let previous = { x: from.x, y: from.y }
   let x = from.x
   let y = from.y
   const dx = Math.abs(to.x - x)
@@ -500,6 +516,8 @@ export function boardTrajectoryBlockReason(state: GameState, from: { x: number; 
     const twice = 2 * error
     if (twice >= dy) { error += dy; x += sx }
     if (twice <= dx) { error += dx; y += sy }
+    if (map && sightEdgeBlocked(map, previous, { x, y })) return `Линию огня перекрывает стена у клетки ${x + 1}:${y + 1}`
+    previous = { x, y }
     if (x === to.x && y === to.y) return null
     const cell = cells.get(`${x},${y}`)
     if (!cell) return `Траектория выходит за край карты у клетки ${x + 1}:${y + 1}`

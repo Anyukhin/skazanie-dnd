@@ -1,6 +1,6 @@
 import type {
   TacticalCell, TacticalDoorState, TacticalEdge, TacticalEdgeKind, TacticalMap, TacticalMaterial,
-  TacticalProp, TacticalSurface,
+  TacticalProp, TacticalSurface, TacticalZone,
 } from './types'
 import { areaCells, type AreaGeometryVersion, type AreaPoint, type AreaShape } from './area-geometry'
 import {
@@ -8,6 +8,7 @@ import {
   type LightSource,
 } from './board-lighting'
 import { LEGACY_CATALOG_REVISION, propModelFor, type PropModelCatalog } from './prop-model-catalog'
+import { detailPropAlias } from './detail-props'
 import { cellAt, cellIndex, doorStates, edgeBetween, edgeList, edgeNeighbor, passableAt, revealedAt } from './tactical-map-client'
 
 /**
@@ -248,6 +249,36 @@ const MATERIAL_COLORS: Record<TacticalMaterial, string> = {
 /** Материалы, из которых строят стены: остальные — покрытие пола. */
 const BUILT_MATERIALS = new Set<TacticalMaterial>(['stone', 'wood', 'marble', 'metal'])
 
+/** Индекс зон карты по id: клетка помнит только id своей зоны. */
+const zoneIndexes = new WeakMap<TacticalMap, Map<string, TacticalZone>>()
+
+export function zoneOfCell(map: TacticalMap, cell: TacticalCell | null | undefined): TacticalZone | undefined {
+  if (!cell?.zone) return undefined
+  let index = zoneIndexes.get(map)
+  if (!index || index.size !== map.zones.length) {
+    index = new Map(map.zones.map((zone) => [zone.id, zone]))
+    zoneIndexes.set(map, index)
+  }
+  return index.get(cell.zone)
+}
+
+/**
+ * Клетка, по которой красится стена на ребре. Пол помещения бывает не из того
+ * материала, что стены (`server/room-floors.mjs`: каменная кухня в срубе), а
+ * кладка тонкой стены живёт только в материале зоны. Поэтому сперва — клетка
+ * кладки, затем материал помещения, и лишь потом прежний выбор по клеткам.
+ */
+export function wallSideCell(map: TacticalMap, owner: TacticalCell | null, neighbor: TacticalCell | null): TacticalCell | null {
+  for (const cell of [owner, neighbor]) {
+    if (cell && !cell.passable && BUILT_MATERIALS.has(cell.material)) return cell
+  }
+  for (const cell of [owner, neighbor]) {
+    const zone = cell?.passable ? zoneOfCell(map, cell) : undefined
+    if (cell && zone?.kind === 'interior' && BUILT_MATERIALS.has(zone.material)) return { ...cell, material: zone.material }
+  }
+  return [owner, neighbor].find((cell) => cell && BUILT_MATERIALS.has(cell.material)) ?? owner ?? neighbor
+}
+
 /**
  * Смещение тона по варианту тайла (`docs/multilevel-map-plan.md`, 7.2).
  * Генераторы раскидывают вариант позиционным шумом (`floorVariantAt` в
@@ -346,6 +377,8 @@ export type BoardScene = {
   artMode?: 'backdrop' | 'map'
   /** Растровые штампы предметов. Их отсутствие — штатный путь Р6: рисуется вектор. */
   propAtlas?: PropAtlas | null
+  /** Штампы набора детализации; спрашиваются, когда в основном атласе кадра нет. */
+  detailAtlas?: PropAtlas | null
   /** Preview-атлас моделей окружения; при отсутствии кадра используется propAtlas. */
   modelPropAtlas?: { catalog: PropModelCatalog; texture: BoardTexture; key: string } | null
   /** Подписывать ли высоту поверх клетки; у объёмного пола высота уже видна геометрией. */
@@ -394,6 +427,14 @@ export function wallTextureKeyFor(material: TacticalMaterial): string {
   return 'cave'
 }
 
+/**
+ * Фактура стены с учётом вида кладки помещения (`zone.wall`): фахверк
+ * городского трактира или крепостная кладка. Без вида — по материалу.
+ */
+export function wallTextureKeyForSide(map: TacticalMap, side: TacticalCell | null | undefined): string {
+  return zoneOfCell(map, side)?.wall ?? wallTextureKeyFor(side?.material ?? 'stone')
+}
+
 /** Кадр спрайта в атласе: окно в пикселях исходного изображения. */
 export type PropFrame = { x: number; y: number; w: number; h: number }
 
@@ -427,17 +468,32 @@ export function terrainKeysFor(map: TacticalMap): { floors: string[]; surfaces: 
     for (let x = 0; x < map.width; x += 1) {
       const cell = cellAt(map, x, y)
       if (!cell) continue
-      if (cell.passable) floors.add(cell.material)
-      else walls.add(wallTextureKeyFor(cell.material))
-      if (cell.surface !== 'none') surfaces.add(cell.surface)
+      if (cell.passable) {
+        floors.add(cell.material)
+        // Рисунок пола помещения грузится рядом с материалом: пока его нет,
+        // клетка рисуется по материалу.
+        const style = zoneOfCell(map, cell)?.floor
+        if (style) floors.add(style)
+      } else walls.add(wallTextureKeyFor(cell.material))
+      if (cell.surface !== 'none') {
+        surfaces.add(cell.surface)
+        // Вода реки рисуется струями своей зоны (`zone.floor`: river).
+        const style = cell.surface === 'water' ? zoneOfCell(map, cell)?.floor : undefined
+        if (style) surfaces.add(style)
+      }
     }
   }
   // Стена живёт на ребре (Р2), и её кладка берётся с той стороны, где
   // постройка. Такой клетки может не быть среди непроходимых вовсе.
   for (const edge of edgeList(map)) {
     if (edge.kind === 'none') continue
-    const cell = cellAt(map, edge.x, edge.y)
-    if (cell) walls.add(wallTextureKeyFor(cell.material))
+    const neighbor = edgeNeighbor(edge)
+    const cell = wallSideCell(map, cellAt(map, edge.x, edge.y), cellAt(map, neighbor.x, neighbor.y))
+    if (cell) {
+      walls.add(wallTextureKeyFor(cell.material))
+      const style = zoneOfCell(map, cell)?.wall
+      if (style) walls.add(style)
+    }
   }
   // Лёд как поверхность рисуется ледяным полом — фактуру надо запросить.
   if (surfaces.has('ice')) floors.add('ice')
@@ -510,7 +566,7 @@ export function tileRevealSignature(map: TacticalMap, tile: BoardTile) {
 export function tileKey(scene: BoardScene, tile: BoardTile) {
   const art = scene.art ? `${scene.artKey ?? 'art'}:${scene.artMode ?? 'backdrop'}` : ''
   const textures = texturesAvailableIn(scene) ? 't' : 'f'
-  const stamps = scene.propAtlas?.key ?? ''
+  const stamps = `${scene.propAtlas?.key ?? ''}${scene.detailAtlas ? `+${scene.detailAtlas.key}` : ''}`
   const modelCatalogRevision = scene.map.catalogRevision ?? LEGACY_CATALOG_REVISION
   const modelStamps = scene.modelPropAtlas?.key ?? ''
   const tiles = scene.terrain?.key ?? ''
@@ -611,10 +667,11 @@ const SURFACE_TEXTURE_ALPHA: Record<TacticalSurface, number> = {
   none: 0, water: 0.92, ice: 0.72, oil: 0.85, mud: 0.94, rubble: 0.94,
 }
 
-/** Фактура поверхности. У льда своей нет — берётся ледяной пол. */
-function surfaceTextureFor(terrain: TerrainTiles, surface: TacticalSurface): BoardTexture | undefined {
+/** Фактура поверхности. У льда своей нет — берётся ледяной пол; вода реки — струи зоны. */
+function surfaceTextureFor(terrain: TerrainTiles, surface: TacticalSurface, style?: string): BoardTexture | undefined {
   if (surface === 'none') return undefined
-  return terrain.surfaces.get(surface) ?? (surface === 'ice' ? terrain.floors.get('ice') : undefined)
+  const styled = surface === 'water' && style ? terrain.surfaces.get(style) : undefined
+  return styled ?? terrain.surfaces.get(surface) ?? (surface === 'ice' ? terrain.floors.get('ice') : undefined)
 }
 
 function drawSurfaceTexture(
@@ -623,7 +680,7 @@ function drawSurfaceTexture(
 ) {
   const terrain = scene.terrain
   if (!terrain || cell.surface === 'none') return
-  const texture = surfaceTextureFor(terrain, cell.surface)
+  const texture = surfaceTextureFor(terrain, cell.surface, scene.map ? zoneOfCell(scene.map, cell)?.floor : undefined)
   if (!texture) return
   context.save()
   context.globalAlpha = SURFACE_TEXTURE_ALPHA[cell.surface]
@@ -636,7 +693,8 @@ function terrainTextureFor(scene: BoardScene, cell: TacticalCell): BoardTexture 
   const terrain = scene.terrain
   if (!terrain) return undefined
   if (!cell.passable) return terrain.walls.get(wallTextureKeyFor(cell.material)) ?? terrain.floors.get(cell.material)
-  return terrain.floors.get(cell.material)
+  const style = scene.map ? zoneOfCell(scene.map, cell)?.floor : undefined
+  return (style ? terrain.floors.get(style) : undefined) ?? terrain.floors.get(cell.material)
 }
 
 function drawTexture(context: BoardContext2D, texture: BoardTexture, variant: number, alpha: number, left: number, top: number, size: number) {
@@ -1174,12 +1232,13 @@ export function drawEdgeSegments(context: BoardContext2D, scene: BoardScene, til
       for (const cell of [owner, neighbor]) if (cell?.passable) drawRestoredFloor(context, scene, cell, frame)
     }
     // Материал стены берётся с той стороны, где действительно есть кладка.
-    const side = [owner, neighbor].find((cell) => cell && BUILT_MATERIALS.has(cell.material)) ?? owner ?? neighbor
+    const side = wallSideCell(scene.map, owner, neighbor)
     const geometry = edgeGeometry(edge, frame)
     if (edge.kind === 'wall') {
       context.fillStyle = boardFillColor({ kind: 'wall', cell: side }, scene.palette, available)
       context.fillRect(geometry.left, geometry.top, geometry.width, geometry.height)
-      const masonry = scene.terrain?.walls.get(wallTextureKeyFor(side?.material ?? 'stone'))
+      const masonry = scene.terrain?.walls.get(wallTextureKeyForSide(scene.map, side))
+        ?? scene.terrain?.walls.get(wallTextureKeyFor(side?.material ?? 'stone'))
       if (masonry && scene.terrain) {
         drawTerrainRect(
           context, masonry, terrainCellsPerTileFor(side?.material ?? 'stone', scene.terrain.cellsPerTile),
@@ -3249,7 +3308,10 @@ export function resolvePropAssetId(assetId: string): string {
 }
 
 export function propDrawingFor(assetId: string): PropDrawing {
-  return PROP_LIBRARY[resolvePropAssetId(assetId)] ?? DEFAULT_PROP_DRAWING
+  const id = resolvePropAssetId(assetId)
+  // Предмет набора детализации без своего вектора рисуется прежним двойником.
+  const alias = detailPropAlias(id)
+  return PROP_LIBRARY[id] ?? (alias ? PROP_LIBRARY[alias] : undefined) ?? DEFAULT_PROP_DRAWING
 }
 
 /** Есть ли у идентификатора собственный рисунок, а не запасной кружок. */
@@ -3443,9 +3505,12 @@ export function drawProps(context: BoardContext2D, scene: BoardScene, tile: Boar
     const modelPreview = detailed ? modelEntry?.preview : undefined
     // Штамп берётся только на полной детализации: ниже её предмет занимает
     // считаные пиксели, и силуэт заливкой там и дешевле, и разборчивее.
-    const stamp = level === 'full' || ART_ONLY_PROP_ASSETS.has(prop.assetId) || (scene.map.generator.id === 'ares-fortress' && level === 'simple')
-      ? scene.propAtlas?.frames[prop.assetId]
-      : undefined
+    const stamped = level === 'full' || ART_ONLY_PROP_ASSETS.has(prop.assetId) || (scene.map.generator.id === 'ares-fortress' && level === 'simple')
+    // Кадр ищется в основном атласе, затем в наборе детализации.
+    const stampAtlas = !stamped ? null
+      : scene.propAtlas?.frames[prop.assetId] ? scene.propAtlas
+        : scene.detailAtlas?.frames[prop.assetId] ? scene.detailAtlas : null
+    const stamp = stampAtlas?.frames[prop.assetId]
     context.save()
     context.translate((placement.x - frame.minX) * frame.size, (placement.y - frame.minY) * frame.size)
     if (prop.rotation || painted) context.rotate(((prop.rotation + (painted ? 90 : 0)) * Math.PI) / 180)
@@ -3453,7 +3518,7 @@ export function drawProps(context: BoardContext2D, scene: BoardScene, tile: Boar
     // поддельный контекст тестов не обязан хранить стек состояний.
     if (drawing.flat) context.globalAlpha = PROP_DECAL_ALPHA
     if (modelPreview && scene.modelPropAtlas) drawStamp(context, placement.box, scene.modelPropAtlas.texture, modelPreview)
-    else if (stamp && scene.propAtlas) drawStamp(context, placement.box, scene.propAtlas.texture, stamp)
+    else if (stamp && stampAtlas) drawStamp(context, placement.box, stampAtlas.texture, stamp)
     else if (level === 'full') drawing.paint(context, placement.box, scene.palette)
     else if (level === 'simple') drawSilhouette(context, placement.box, scene.palette, drawing)
     else drawMark(context, placement.box, scene.palette, drawing)
