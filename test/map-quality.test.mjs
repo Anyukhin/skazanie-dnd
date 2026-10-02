@@ -287,7 +287,8 @@ test('город — двенадцать и больше домов вдоль 
     assert.ok(houses.length >= 12, `${seed}: в городе ${houses.length} домов`)
     assert.ok(map.zones.some((zone) => zone.id === 'square' && zone.label === 'Торговая площадь'))
     const square = map.props.filter((prop) => cellAt(map, Math.floor(prop.x), Math.floor(prop.y))?.zone === 'square').map((prop) => prop.assetId)
-    assert.ok(square.includes('well') && square.includes('market_stall'), `${seed}: на площади нет колодца и прилавков`)
+    // Вода на площади города — фонтан, в деревне и на рынке — колодец.
+    assert.ok((square.includes('fountain') || square.includes('well')) && square.includes('market_stall'), `${seed}: на площади нет воды и прилавков`)
   }
   // Деревня — не хутор: улица с переулками и второй ряд дворов дают
   // девять-двенадцать домов на 40×34; хутор остаётся редким.

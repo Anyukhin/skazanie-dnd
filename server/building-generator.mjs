@@ -865,12 +865,12 @@ function designPropPlans(design, rooms, includeDecorativeTransition = true) {
     add('bedroom', 'bedroom', ['bed', 'chest'], ['bed', 'chest', 'night_table'], 'interior', 24)
   } else if (design.building_use === 'barracks') {
     // Казарма: караульная со столом и лавками, спальня рядами нар, оружейная.
-    add('hall', 'gallery', ['table_long', 'bench', 'chest', 'torch_wall'], ['table_long', 'bench', 'chair', 'banner', 'barrel'], 'interior', 24)
+    add('hall', 'guardroom', ['table_long', 'bench', 'chest', 'torch_wall'], ['table_long', 'bench', 'chair', 'banner', 'barrel'], 'interior', 24)
     add('barracks', 'barracks', ['bunk_bed', 'bunk_bed', 'chest'], ['bunk_bed', 'chest', 'washbasin'], 'interior', 30)
     add('armory', 'store', ['chest', 'crate_stack', 'barrel'], ['chest', 'crate', 'barrel', 'shelf_wall'], 'interior', 28)
   } else if (design.building_use === 'mill') {
     // Мельница: мешки муки и зерна, бочки, ящики; жильё мельника сзади.
-    add('hall', 'store', ['sack', 'sack', 'crate_stack', 'barrel'], ['sack', 'crate', 'barrel', 'barrel_stack', 'basket'], 'interior', 26)
+    add('hall', 'mill', ['sack', 'sack', 'barrel'], ['sack', 'crate', 'barrel', 'barrel_stack', 'basket'], 'interior', 26)
     add('store', 'store', ['sack', 'crate_stack'], ['sack', 'crate', 'barrel'], 'interior', 26)
     add('bedroom', 'bedroom', ['bed', 'chest'], ['bed', 'chest', 'table_small', 'chair'], 'interior', 24)
   } else if (design.building_use === 'dwelling') {

@@ -45,6 +45,13 @@ const SEMANTIC_PROFILES = Object.freeze({
     caps: { bunk_bed: 8, bed: 8, table_long: 0, bench: 0, chair: 0, armor_stand: 2, weapon_rack_wall: 2 },
     arrangement: 'rows',
   },
+  mill: {
+    require: ['millstone', 'flour_bin', 'grain_sacks'],
+    prefer: ['grain_sacks', 'flour_bin', 'flour_spill', 'sack', 'crate_stack', 'barrel', 'basket'],
+    themes: ['farm', 'shop'],
+    caps: { millstone: 1, flour_bin: 2, shop_counter: 0, display_shelf: 0, scales_table: 0 },
+    arrangement: 'stalls',
+  },
   // Кузня: горн у стены, рядом наковальня, бочка для закалки и уголь;
   // верстак и стойка инструмента — по стенам.
   forge: {
@@ -57,7 +64,7 @@ const SEMANTIC_PROFILES = Object.freeze({
   // Камеры темницы: соломенный тюфяк, ведро в углу, цепи на стене.
   cells: {
     require: ['straw_bed', 'cell_bucket'],
-    prefer: ['straw_bed', 'cell_bucket', 'wall_chains', 'straw_mat', 'straw_scatter', 'bone_heap', 'floor_crack'],
+    prefer: ['straw_bed', 'cell_bucket', 'wall_chains', 'straw_mat', 'straw_scatter', 'bone_heap', 'floor_crack', 'drain_grate'],
     themes: ['prison'],
     caps: { straw_bed: 8, iron_cage: 1, torture_rack: 0, jailer_desk: 0, bed: 0, bunk_bed: 0 },
     arrangement: 'stalls',
@@ -65,9 +72,9 @@ const SEMANTIC_PROFILES = Object.freeze({
   // Караульная: стол тюремщика, оружие на стене, жаровня и сундучки.
   guardroom: {
     require: ['jailer_desk', 'weapon_rack_wall', 'guard_brazier'],
-    prefer: ['footlocker', 'strongbox', 'chair', 'stool', 'table_small', 'barrel', 'water_barrel', 'map_table'],
+    prefer: ['footlocker', 'strongbox', 'chair', 'stool', 'table_small', 'barrel', 'water_barrel', 'map_table', 'war_table', 'ammo_crates', 'training_dummy', 'archery_target', 'armor_stand'],
     themes: ['prison', 'barracks'],
-    caps: { jailer_desk: 1, guard_brazier: 2, map_table: 1, weapon_rack_wall: 2 },
+    caps: { jailer_desk: 1, guard_brazier: 2, map_table: 1, war_table: 1, weapon_rack_wall: 2, training_dummy: 1, archery_target: 1, armor_stand: 2 },
     arrangement: 'gathered',
   },
   // Пыточная: дыба посредине, клетка в углу, цепи и жаровня.
@@ -125,7 +132,7 @@ const SEMANTIC_PROFILES = Object.freeze({
   // двухъярусные койки.
   bedroom: {
     require: ['bed', 'chest'],
-    prefer: ['bed', 'wardrobe', 'night_table', 'chest', 'rug', 'washbasin', 'candle', 'dresser', 'coat_rack', 'standing_mirror', 'rug_blue', 'bear_pelt', 'armchair'],
+    prefer: ['bed', 'wardrobe', 'night_table', 'chest', 'rug', 'washbasin', 'candle', 'dresser', 'coat_rack', 'standing_mirror', 'rug_blue', 'bear_pelt', 'armchair', 'hide_rug', 'folding_screen', 'cradle'],
     themes: ['bedroom'],
     caps: { bed: 2, bunk_bed: 0, wardrobe: 1, chest: 1, washbasin: 1, rug: 1, table_long: 0, bench: 0, dresser: 1, standing_mirror: 1, coat_rack: 1, double_bed: 1, bathtub: 1, cradle: 1 },
     arrangement: 'gathered',
@@ -149,7 +156,7 @@ const SEMANTIC_PROFILES = Object.freeze({
   },
   store: {
     require: ['crate_stack', 'barrel_stack'],
-    prefer: ['crate_stack', 'barrel_stack', 'crate', 'barrel', 'sack', 'chest', 'shelf_wall', 'grain_sacks', 'spice_crates', 'goods_baskets'],
+    prefer: ['crate_stack', 'barrel_stack', 'crate', 'barrel', 'sack', 'chest', 'shelf_wall', 'grain_sacks', 'spice_crates', 'goods_baskets', 'crate_stack_goods'],
     themes: ['shop'],
     caps: { shop_counter: 0, display_shelf: 0, scales_table: 0, cloth_bolts: 0, pottery_stand: 0 },
     arrangement: 'stalls',
@@ -176,7 +183,7 @@ const SEMANTIC_PROFILES = Object.freeze({
   },
   exterior: {
     require: [],
-    prefer: ['tree_oak', 'tree_birch', 'tree_pine', 'bush', 'shrub', 'rock_small', 'boulder', 'mossy_rock', 'dead_bramble', 'root_tangle', 'leaf_litter'],
+    prefer: ['tree_oak', 'tree_birch', 'tree_pine', 'bush', 'shrub', 'rock_small', 'boulder', 'mossy_rock', 'dead_bramble', 'root_tangle', 'leaf_litter', 'rock_cluster', 'pebbles'],
     arrangement: 'gathered',
   },
 })
@@ -213,6 +220,7 @@ const PURPOSE_ALIASES = Object.freeze({
   study: 'study',
   library: 'study',
   shop: 'shop',
+  mill: 'mill',
   courtyard: 'courtyard',
   yard: 'courtyard',
   exterior: 'exterior',

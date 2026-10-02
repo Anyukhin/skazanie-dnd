@@ -1532,11 +1532,12 @@ export function buildThemedScene({
       // Городская площадь: доска объявлений, навесы торговцев, тележка с
       // фруктами, клумбы; в городе — фонтан или постамент с памятником.
       extraThemes: ['street'],
-      require: urban || market ? ['well', 'market_stall', 'market_stall', 'market_stall', 'lamp_post', 'notice_board'] : ['well', 'lamp_post'],
+      require: urban ? ['fountain', 'market_stall', 'market_stall', 'market_stall', 'lamp_post', 'notice_board']
+        : market ? ['well', 'market_stall', 'market_stall', 'market_stall', 'lamp_post', 'notice_board'] : ['well', 'lamp_post'],
       prefer: urban
         ? ['market_stall', 'market_awning', 'fruit_cart', 'lamp_post', 'notice_board', 'statue_plinth', 'street_planter', 'goods_baskets', 'pottery_stand', 'pillory', 'signpost', 'hitching_post']
         : ['market_stall', 'lamp_post', 'cart', 'water_trough', 'signpost', 'hitching_post', 'notice_board', 'flower_bed'],
-      caps: { notice_board: 1, market_awning: 2, fruit_cart: 1, statue_plinth: 1, pillory: 1, stocks: 0, fountain: 1, town_well: 0, street_planter: 4, goods_baskets: 3, pottery_stand: 2, crate_stack_goods: 1, flower_bed: 2, rain_barrel: 0, well: 1, market_stall: urban ? 6 : 3, lamp_post: 4, cart: 1, water_trough: 1, signpost: 1, hitching_post: 2, tree_oak: 0, tree_pine: 0, tree_birch: 0, tree_dead: 0, tree_spruce: 0, tree_stump: 0, bush: 0, shrub: 0, haystack: 0, woodpile: 0, campfire: 0, village_fence: 0, fallen_log: 0, fern: 0, rock_small: 0, boulder: 0, milestone: 0, roadside_shrine: 0, path_stone: 0, grass_tuft: 0, flowers: 0, wagon_wheel: 0 },
+      caps: { notice_board: 1, market_awning: 2, fruit_cart: 1, statue_plinth: 1, pillory: 1, stocks: 0, fountain: 1, town_well: 0, street_planter: 4, goods_baskets: 3, pottery_stand: 2, crate_stack_goods: 1, flower_bed: 2, rain_barrel: 0, well: urban ? 0 : 1, market_stall: urban ? 6 : 3, lamp_post: 4, cart: 1, water_trough: 1, signpost: 1, hitching_post: 2, tree_oak: 0, tree_pine: 0, tree_birch: 0, tree_dead: 0, tree_spruce: 0, tree_stump: 0, bush: 0, shrub: 0, haystack: 0, woodpile: 0, campfire: 0, village_fence: 0, fallen_log: 0, fern: 0, rock_small: 0, boulder: 0, milestone: 0, roadside_shrine: 0, path_stone: 0, grass_tuft: 0, flowers: 0, wagon_wheel: 0 },
     }] : []
     // Фонари вдоль городских улиц — редко, по краю, чтобы не мешать проходу.
     const streetPlan = urban ? [{
@@ -1598,10 +1599,14 @@ export function buildThemedScene({
         density: definition.density ?? 10,
         require: streetRequire,
         // Дворы между домами: в городе — клумбы и бочки, в деревне — огород,
-        // курятник, тюки сена и пугало (`farm` из набора детализации).
-        extraThemes: ['farm'],
-        prefer: urban ? ['tree_oak', 'tree_birch', 'bush', 'woodpile', 'flowers', 'village_fence', 'rock_small', 'shrub', 'flower_bed', 'rain_barrel']
-          : market ? definition.prefer : ['tree_birch', 'tree_oak', 'bush', 'woodpile', 'haystack', 'water_trough', 'village_fence', 'cart', 'flowers', 'garden_bed', 'chicken_coop', 'hay_bales', 'scarecrow', 'rain_barrel'],
+        // курятник, тюки сена и пугало (`farm` из набора детализации). У
+        // воды — сети, сушилка для рыбы, причальные тумбы и лодка на берегу.
+        extraThemes: design.topology === 'river' || design.topology === 'harbor' ? ['farm', 'harbor'] : ['farm'],
+        prefer: [
+          ...(urban ? ['tree_oak', 'tree_birch', 'bush', 'woodpile', 'flowers', 'village_fence', 'rock_small', 'shrub', 'flower_bed', 'rain_barrel']
+            : market ? definition.prefer : ['tree_birch', 'tree_oak', 'bush', 'woodpile', 'haystack', 'water_trough', 'village_fence', 'cart', 'flowers', 'garden_bed', 'chicken_coop', 'hay_bales', 'scarecrow', 'rain_barrel']),
+          ...(design.topology === 'river' || design.topology === 'harbor' ? ['fish_rack', 'fishing_nets', 'mooring_post', 'rowboat'] : []),
+        ],
         caps: hasSquare && !urban ? { ...streetCaps, well: 0 } : urban ? { ...streetCaps, well: 0, market_stall: 0, haystack: 0, cart: 1, wagon_wheel: 1, campfire: 0, village_fence: 8, woodpile: 6 } : streetCaps,
       }, ...squarePlan, ...streetPlan, ...map.zones.filter((zone) => zone.kind === 'interior').map((zone) => ({
         zoneId: zone.id,
