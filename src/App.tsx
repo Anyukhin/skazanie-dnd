@@ -19,7 +19,8 @@ import {
 } from './app-shared'
 import type { BoardCombatant } from './app-shared'
 import { AdminView, AgentInteractionCard, CampaignModal, ChatPanel, JournalView, SettingsView } from './AppViews'
-import { DungeonMap, heroStatusFor, heroStatusSummary, type HeroStatus } from './DungeonMap'
+import { CombatTurnClock, DungeonMap, heroStatusFor, heroStatusSummary, type HeroStatus } from './DungeonMap'
+import { RailGrip, useBoardFrame } from './hud-parts'
 import { useAuth } from './auth-client'
 import { AuthScreen } from './AuthScreen'
 import { CharacterEditor, InventoryView } from './InventoryViews'
@@ -52,6 +53,8 @@ import {
 } from './spell-effects'
 import { doorsReachableFrom, sceneTacticalMap } from './tactical-map-client'
 import { WorldMapView } from './WorldMapView'
+import { PartyPage } from './PartyPage'
+import { MobileTabBar, type MobilePane } from './MobileTabBar'
 import { LeaveLocationPicker, SceneTransitionBanner, sceneTransitionNotice, type SceneTransitionNotice } from './SceneTransitionOverlay'
 import { doorDirectionFromActor, doorOverlayCells, localizedQuestClockLabel, selectedAttackForecast, shouldAutoOpenCampaignModal } from './desktop-ui.mjs'
 import { boardMapArtForTheme, resolveSceneTheme, sceneIllustrationForTheme, type SceneArt, type SceneVisualTheme } from './scene-art'
@@ -253,6 +256,7 @@ function Sidebar({
         {item('settings', 'Опции', 'Настройки', <Settings size={22} strokeWidth={1.6} />)}
         <button type="button" className="rail-item rail-account" onClick={onLogout} title={`${accountName} · ${activeHeroName}. Выйти из аккаунта`} aria-label={`Выйти из аккаунта ${accountName}`}><LogOut size={20} strokeWidth={1.6} /><span>Выйти</span></button>
       </div>
+      <RailGrip />
     </nav>
   )
 }
@@ -528,19 +532,32 @@ function PlayerHud({ player, hazards = [], combatActive = false, status, onChara
   const hazardLabel = hazards.map((hazard) => hazard.label || hazard.id).join(', ')
   const hp = Math.max(0, Number(player.hp) || 0)
   const maxHp = Math.max(1, Number(player.maxHp) || 1)
-  const hpRatio = Math.max(0, Math.min(1, hp / maxHp))
+  const temporaryHp = Math.max(0, status?.temporaryHp ?? 0)
+  // Шкала растягивается на временные хиты: полный герой с щитом хитов
+  // показывает и полную полосу, и голубой хвост за ней.
+  const barScale = Math.max(maxHp, hp + temporaryHp)
+  const barPercent = (value: number) => Math.round(Math.max(0, Math.min(1, value / barScale)) * 1000) / 10
   return (
     <aside className="player-hud" aria-label={`${player.character}: здоровье ${hp} из ${maxHp}, класс доспеха ${player.armor}, скорость ${player.speed} футов`}>
       <div className="hud-identity">
-        <span className="hud-portrait" data-face={heroFaceMode(player)} style={heroFaceStyle(player)}>{!hasHeroPortrait(player) && <HeroFaceInitials hero={player} />}</span>
+        {/* Портрет с гербовым щитом КД и печатью уровня, как в макете стола. */}
+        <span className="hud-portrait-frame">
+          <span className={`hud-portrait${hp <= 0 ? ' down' : ''}`} data-face={heroFaceMode(player)} style={heroFaceStyle(player)}>{!hasHeroPortrait(player) && <HeroFaceInitials hero={player} />}</span>
+          <span className="hud-ac-badge" title={`Класс доспеха ${player.armor}`} aria-label={`Класс доспеха ${player.armor}`}><svg viewBox="0 0 34 38" aria-hidden="true"><path d="M17 2 4 7v10c0 8.5 5.6 14.6 13 18.5C24.4 31.6 30 25.5 30 17V7z" /></svg><b>{player.armor}</b></span>
+          <span className="hud-level-badge" title={`Уровень ${player.level}`} aria-label={`Уровень ${player.level}`}>{player.level}</span>
+        </span>
         <span><strong>{player.character}</strong><small>{playerRoleLabel(player)}</small></span>
       </div>
+      {/* Полоса здоровья с хвостом временных хитов: они уходят первыми и
+          не лечатся, поэтому цвет у них свой (`--bonus`), а не продолжение красного. */}
       <div className="hud-health" title={`Здоровье: ${hp} из ${maxHp}${status && status.temporaryHp > 0 ? ` · временные хиты ${status.temporaryHp}` : ''}`}>
-        <div className="hud-health-label"><Heart size={14} /><b>{hp}/{maxHp}</b>{status && status.temporaryHp > 0 && <em className="hud-temp">+{status.temporaryHp}</em>}</div>
-        <span className="hud-health-bar" aria-hidden="true"><i style={{ width: `${Math.round(hpRatio * 100)}%` }} /></span>
+        <span className="hud-health-bar" role="meter" aria-label="Здоровье" aria-valuemin={0} aria-valuemax={maxHp} aria-valuenow={hp}>
+          <i style={{ width: `${barPercent(hp)}%` }} />
+          {temporaryHp > 0 && <i className="temp" style={{ left: `${barPercent(hp)}%`, width: `${barPercent(temporaryHp)}%` }} />}
+          <b><Heart size={11} aria-hidden="true" />{hp <= 0 ? 'без сознания' : `${hp}${temporaryHp > 0 ? ` + ${temporaryHp}` : ''} / ${maxHp}`}</b>
+        </span>
       </div>
       <div className="hud-vitals">
-        <span title="Класс доспеха (КД)" aria-label={`Класс доспеха ${player.armor}`}><Shield size={14} /><b>{player.armor}</b></span>
         {!combatActive && <span title="Скорость" aria-label={`Скорость ${player.speed} футов`}><Footprints size={14} /><b>{player.speed}</b><small>фт</small></span>}
         {hazards.length > 0 && <em className="hud-hazard" title={`Активная опасность: ${hazardLabel}`}><Flame size={13} />{hazardLabel}</em>}
       </div>
@@ -600,35 +617,12 @@ function InviteModal({ code, onClose }: { code: string; onClose: () => void }) {
   )
 }
 
-function CharactersView({ players, selectedId, turnId, combatActive, accessibleHeroIds, onSelect, onEdit }: { players: Player[]; selectedId: string; turnId: string; combatActive: boolean; accessibleHeroIds: string[]; onSelect: (id: string) => void; onEdit: (id: string) => void }) {
-  const active = players.find((player) => player.id === selectedId) ?? players[0]
-  const canEdit = accessibleHeroIds.includes(active.id)
-  return (
-    <section className="section-page characters-page">
-      <PageHeader eyebrow="ВАШ ОТРЯД" title="Персонажи" description="Герои кампании, их состояние и положение в текущей сцене." />
-      <div className="character-actions-bar"><span>Выбран: <b>{active.character}</b></span><button disabled={!canEdit} onClick={() => onEdit(active.id)}>{canEdit ? <PencilIcon /> : <LockKeyhole size={14} />}{canEdit ? active.characterSetupRequired ? 'Продолжить создание героя' : 'Открыть и редактировать лист' : 'Нет доступа к герою'}</button></div>
-      <div className={`character-grid ${players.length === 1 ? 'single-hero' : ''}`}>
-        {players.map((player) => (
-          <button key={player.id} disabled={!accessibleHeroIds.includes(player.id)} className={`character-sheet ${selectedId === player.id ? 'active' : ''} ${accessibleHeroIds.includes(player.id) ? '' : 'locked'}`} onClick={() => onSelect(player.id)}>
-            <div className="character-art" data-face={heroFaceMode(player)} style={heroFaceStyle(player)}>{!hasHeroPortrait(player) && <HeroFaceInitials hero={player} />}<div className="character-statuses"><span className={player.online ? 'online' : ''}>{player.online ? 'В сети' : 'Не в сети'}</span>{combatActive && turnId === player.id && <em><Crown size={13} />Сейчас ходит</em>}</div></div>
-            <div className="character-info"><small>{player.name} играет за</small><h2>{player.character}</h2><p>{playerRoleLabel(player)}</p>
-              <div className="character-stats"><span><b>{player.hp}</b> / {player.maxHp}<small>Здоровье</small></span><span><b>{player.armor}</b><small>Класс доспеха</small></span><span><b>{player.speed} фт</b><small>Скорость</small></span></div>
-            </div>
-          </button>
-        ))}
-      </div>
-    </section>
-  )
-}
-
-function PencilIcon() { return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9"><path d="m15 5 4 4L8 20H4v-4L15 5Z"/><path d="m13 7 4 4"/></svg> }
-
 function WaitingForHero({ account, onRefresh, onLogout }: { account: Account; onRefresh: () => Promise<Account | null>; onLogout: () => void }) {
   const [checking, setChecking] = useState(false)
   return <main className="waiting-screen"><div className="waiting-card"><div className="modal-icon"><Shield size={23} /></div><span className="eyebrow">АККАУНТ СОЗДАН</span><h1>Ожидаем назначения героя</h1><p>{account.name}, администратор ещё не открыл вам доступ к персонажу. После назначения здесь автоматически появятся лист героя, предметы и игровая комната.</p><button onClick={async () => { setChecking(true); await onRefresh(); setChecking(false) }}><RefreshCw className={checking ? 'spinning' : ''} size={16} />{checking ? 'Проверяем…' : 'Проверить доступ'}</button><button className="waiting-logout" onClick={onLogout}>Выйти из аккаунта</button></div></main>
 }
 
-function ReactionPrompt({ actorName, sourceName, window, busy, beneficiaries, onChoose, onDecline }: { actorName: string; sourceName: string; window: CombatReactionWindow; busy: boolean; beneficiaries: Array<{ id: string; name: string }>; onChoose: (actionId: string, beneficiaryId?: string) => void; onDecline: () => void }) {
+function ReactionPrompt({ actorName, sourceName, window, clock, busy, beneficiaries, onChoose, onDecline }: { actorName: string; sourceName: string; window: CombatReactionWindow; clock?: GameState['turn_clock']; busy: boolean; beneficiaries: Array<{ id: string; name: string }>; onChoose: (actionId: string, beneficiaryId?: string) => void; onDecline: () => void }) {
   const hit = ['attack-hit', 'spell-attack-hit'].includes(window.trigger)
   const protectiveAttack = ['attack-shield-choice', 'attack-protective-choice'].includes(window.trigger)
   const magicMissile = ['magic-missile-targeted', 'magic-missile-shield-choice'].includes(window.trigger)
@@ -647,7 +641,14 @@ function ReactionPrompt({ actorName, sourceName, window, busy, beneficiaries, on
     : ''
   const [beneficiaryId, setBeneficiaryId] = useState(beneficiaries[0]?.id ?? window.actor_id)
   const needsBeneficiary = window.action_options.some((option) => option.requires_beneficiary)
-  return <div className="reaction-backdrop"><section className="reaction-prompt" role="dialog" aria-modal="true" aria-label={savingThrowBonus ? 'Выбор бонуса спасброска' : 'Выбор реакции'}>
+  /* Окно реакции — плашкой над панелью героя, как в макете стола, а не
+     модалкой на весь экран: поле остаётся видно, и понятно, что происходит.
+     Часы — тот же серверный дедлайн `turn_clock`, по истечении которого
+     сервер сам отказывается от реакции. */
+  const reactionClock = clock && clock.reaction_window_id === window.id ? clock : null
+  const boardFrame = useBoardFrame()
+  return <div className="reaction-backdrop hud-react-layer" style={boardFrame ? { left: boardFrame.left, width: boardFrame.width, right: 'auto', bottom: boardFrame.bottom + 12 } : undefined}><section className="reaction-prompt" role="alertdialog" aria-label={savingThrowBonus ? 'Выбор бонуса спасброска' : 'Выбор реакции'}>
+    {reactionClock && <CombatTurnClock clock={reactionClock} actorName={actorName} compact />}
     <header><div><RefreshCw size={21} /><span><small>{savingThrowBonus ? 'БОНУС СПАСБРОСКА' : failedSave ? 'ПРОВАЛЕННЫЙ СПАСБРОСОК' : 'ПРЕРЫВАЮЩАЯ РЕАКЦИЯ'}</small><strong>{savingThrowBonus ? `${actorName}, добавить бонус?` : failedSave ? `${actorName}, использовать особенность?` : `${actorName}, реагировать?`}</strong></span></div><em>{savingThrowBonus ? 'Сопротивление' : failedSave ? 'Спасбросок' : elementalDamage ? elementalDamageLabel || 'Стихийный урон' : spellCast || magicMissile ? 'Заклинание' : opportunity ? 'Движение' : hit || protectiveAttack ? 'Попадание' : 'Промах'}</em></header>
     <p>{savingThrowBonus ? savingThrowBonusText : failedSave ? failedSaveText : elementalDamage ? `${actorName} может защититься от стихийного урона. Последствия будут определены после выбора реакции.` : magicMissile ? `${sourceName} направляет «Волшебную стрелу» на героя. Щит может полностью остановить её урон.` : protectiveAttack ? `${sourceName} попадает по герою. Можно защититься до применения урона.` : spellCast ? `${sourceName} начинает накладывать «${window.pending_spell?.name ?? 'заклинание'}»${window.pending_spell?.slot_level ? ` ячейкой ${window.pending_spell.slot_level} уровня` : ''}.` : opportunity ? `${sourceName} покидает досягаемость героя.` : hit ? `${sourceName} попадает по герою${window.damage?.applied_amount ? ` и наносит ${window.damage.applied_amount} урона` : ''}.` : `${sourceName} промахивается в ближнем бою.`} {savingThrowBonus ? 'Выберите, использовать ли бонус сейчас.' : failedSave ? 'Выберите «Несгибаемый» или оставьте исходный провал.' : 'Выберите одну доступную реакцию или продолжите бой без неё.'}</p>
     {needsBeneficiary && <label className="reaction-beneficiary"><span>Преимущество получит</span><select value={beneficiaryId} disabled={busy} onChange={(event) => setBeneficiaryId(event.target.value)}>{beneficiaries.map((beneficiary) => <option key={beneficiary.id} value={beneficiary.id}>{beneficiary.name}</option>)}</select></label>}
@@ -856,6 +857,9 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   }, [checkRollBusy, closeCheckDiceScene, state.pendingCheck])
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth <= 920)
   const [inviteOpen, setInviteOpen] = useState(false)
+  // Половина комнаты на телефоне: карта с панелью хода или хроника с вводом.
+  // На широком экране не значит ничего — там обе половины видны сразу.
+  const [mobilePane, setMobilePane] = useState<MobilePane>('scene')
   const [mapImportOpen, setMapImportOpen] = useState(false)
   // Меню «Мастер» в шапке: закрывается Escape, кликом мимо и после любого выбора.
   const [masterMenuOpen, setMasterMenuOpen] = useState(false)
@@ -1412,7 +1416,8 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     else url.searchParams.delete('combatLab')
     window.history.replaceState(null, '', url)
     setView(next)
-    if (window.innerWidth <= 680) setSidebarCollapsed(true)
+    // Шторка разделов на телефоне (≤ 760px, `mockup-pages.css`) закрывается переходом.
+    if (window.innerWidth <= 760) setSidebarCollapsed(true)
   }
   // Лавка не меняет раздел: она ложится поверх того, что игрок и так смотрит.
   // Узкое меню при этом сворачивается — иначе на телефоне оно перекроет окно.
@@ -1602,7 +1607,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   />
 
   return (
-    <div className={`app ${sidebarCollapsed ? 'sidebar-is-collapsed' : ''}`} style={{
+    <div className={`app ${sidebarCollapsed ? 'sidebar-is-collapsed' : ''} mobile-pane-${mobilePane}`} style={{
       '--ui-sidebar-width': `${Math.round(256 + Math.max(0, uiScale - 100) * .4)}px`,
       '--ui-hud-width': `${Math.round(246 + Math.max(0, uiScale - 100) * .25)}px`,
     } as React.CSSProperties}>
@@ -1741,7 +1746,11 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
               if (opened) navigate('room')
             })
           }} />}
-        {view === 'characters' && <CharactersView players={partyPlayers} selectedId={activePlayer.id} turnId={turnActorId} combatActive={combatActive} accessibleHeroIds={accessibleHeroIds} onSelect={setSelectedHeroId} onEdit={openHeroEditor} />}
+        {view === 'characters' && <PartyPage state={state} players={partyPlayers} selectedId={activePlayer.id} turnId={turnActorId} combatActive={combatActive} accessibleHeroIds={accessibleHeroIds} ownedHeroIds={ownedHeroIds} statusByHero={heroStatusByHero}
+          canInvite={canManageLifecycle && lifecycleStatus === 'active'} canAct={canAct}
+          onInvite={() => setInviteOpen(true)} onSelect={setSelectedHeroId} onEdit={openHeroEditor}
+          onOpenInventory={() => navigate('inventory')} onOpenJournal={() => navigate('journal')} onOpenRoom={() => navigate('room')}
+          onStartRest={(kind) => startRest(activePlayer.id, kind)} />}
         {view === 'inventory' && <InventoryView
           onCreateHero={accessibleHeroIds.includes(activePlayer.id) ? () => openHeroEditor(activePlayer.id) : undefined}
           player={activePlayer}
@@ -1766,6 +1775,10 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         {view === 'admin' && isAdmin && <AdminView account={account} state={state} onUpdateWorld={updateWorld} onAssembleEncounter={assembleEncounter} onAssembleMerchant={assembleMerchant} onMoveMerchant={moveMerchant} onSetMerchantAvailability={setMerchantAvailability} />}
         {view === 'combat-lab' && isAdmin && <CombatLabView combatAudio={combatAudio ?? undefined} soundMuted={atmosphereSettings.muted} onSoundMutedChange={changeAtmosphereMuted} />}
       </main>
+      <MobileTabBar view={view} pane={mobilePane} messageCount={state.messages.length}
+        onScene={() => { setMobilePane('scene'); if (view !== 'room') navigate('room') }}
+        onChronicle={() => { setMobilePane('chronicle'); if (view !== 'room') navigate('room') }}
+        onNavigate={navigate} />
       {/* Рассказчик и требование броска стоят поверх ЛЮБОГО раздела, а не
           только комнаты: игрок, ушедший в инвентарь или журнал, до этого не
           видел ни стрима, ни карточки «Ожидающая проверка» — и узнавал о своём
@@ -1880,7 +1893,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           return player ? levelUpCharacter(player.id, player.level) : Promise.resolve({ ok: false, error: 'Герой не найден' })
         }}
       />}
-      {reactionWindow && canAnswerReaction && <ReactionPrompt actorName={String(reactionActorName)} sourceName={String(reactionSourceName)} window={reactionWindow} busy={tacticalBusy} beneficiaries={reactionBeneficiaries} onChoose={(actionId, beneficiaryId) => useCombatAction(reactionWindow.actor_id, actionId, reactionWindow.source_actor_id, undefined, beneficiaryId)} onDecline={() => useCombatAction(reactionWindow.actor_id, 'decline-reaction')} />}
+      {reactionWindow && canAnswerReaction && <ReactionPrompt actorName={String(reactionActorName)} sourceName={String(reactionSourceName)} window={reactionWindow} clock={state.turn_clock} busy={tacticalBusy} beneficiaries={reactionBeneficiaries} onChoose={(actionId, beneficiaryId) => useCombatAction(reactionWindow.actor_id, actionId, reactionWindow.source_actor_id, undefined, beneficiaryId)} onDecline={() => useCombatAction(reactionWindow.actor_id, 'decline-reaction')} />}
       {!campaignsOpen && showDeathScreen && <DeathScreen heroes={fallenHeroes} partyDefeated={partyDefeated} busy={tacticalBusy} error={tacticalError} canResolve={(heroId) => isAdmin || accessibleHeroIds.includes(heroId)} onResolve={(heroId, resolution, replacementName) => { if (resolution === 'replace') setReplacementEditorId(heroId); resolveHeroDeath(heroId, resolution, replacementName) }} onContinueToEpilogue={() => setReviewedPartyDefeat(state.sessionCode)} />}
       {!campaignsOpen && showConclusion && <CampaignConclusionScreen status={lifecycleStatus as 'completed' | 'failed' | 'archived'} epilogue={lifecycle?.epilogue} busy={lifecycleBusy} canManage={canManageLifecycle} onArchive={() => { void changeLifecycle('archive') }} onChooseCampaign={() => setCampaignsOpen(true)} />}
       {!campaignsOpen && !showDeathScreen && !showConclusion && levelUpCelebration && !(editingPlayerId === levelUpCelebration.playerId) && <LevelUpScreen

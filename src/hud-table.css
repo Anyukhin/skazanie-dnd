@@ -1,0 +1,199 @@
+/* Игровой стол и боевой HUD по макетам «Игровой стол» и «Редизайн · бой»
+   (claude.ai, 2026-10-01). Только раскладка и вид: данные и команды —
+   в `hud-parts.tsx`, `DungeonMap.tsx` и `App.tsx`. Цвета — токены палитры
+   (`hud-palette.css`), поэтому всё ниже перекрашивается вместе с ней. */
+
+/* ---------------- ручки ширины колонок ---------------- */
+
+.column-grip { position: absolute; z-index: 40; top: 0; bottom: 0; width: 12px; padding: 0; border: 0; background: none; cursor: col-resize; touch-action: none; }
+.column-grip::after { content: ''; position: absolute; top: 0; bottom: 0; left: 5px; width: 2px; background: transparent; transition: background .15s; }
+.column-grip:hover::after, .column-grip:focus-visible::after, .column-grip.on::after { background: var(--acc2); }
+.column-grip:focus-visible { outline: none; }
+.column-grip > i { position: absolute; top: 50%; left: 1px; width: 10px; height: 36px; margin-top: -18px; border: 1px solid var(--line2); border-radius: 5px; background: var(--raise); opacity: 0; transition: opacity .15s; }
+.column-grip:hover > i, .column-grip:focus-visible > i, .column-grip.on > i { opacity: 1; }
+.rail-grip { right: -6px; }
+.server-column > .server-resize.column-grip { left: -6px; width: 12px; cursor: col-resize; }
+.server-column > .server-resize.column-grip::after { top: 0; bottom: 0; left: 5px; width: 2px; height: auto; border-radius: 0; background: transparent; transform: none; }
+.server-column > .server-resize.column-grip:hover::after,
+.server-column > .server-resize.column-grip:focus-visible::after { background: var(--acc2); }
+body.is-resizing-columns { cursor: col-resize; user-select: none; }
+body.is-resizing-columns .map-stage { pointer-events: none; }
+
+/* Широкое меню (от 150 px): значок и подпись в строку, как `.rail.wide` макета. */
+:root[data-rail="wide"] .app-rail { align-items: stretch; padding-inline: 10px; }
+:root[data-rail="wide"] .app-rail .rail-navs { align-items: stretch; }
+:root[data-rail="wide"] .app-rail .rail-item { flex-direction: row; justify-content: flex-start; gap: 12px; width: 100%; padding: 10px 12px; font-size: var(--fs-md); }
+:root[data-rail="wide"] .app-rail .rail-item svg { width: 20px; height: 20px; }
+:root[data-rail="wide"] .app-rail .rail-logo { align-self: flex-start; margin-left: 4px; }
+@media (max-width: 1099px) { .column-grip { display: none; } }
+
+/* ---------------- поле: камера и мини-карта ---------------- */
+
+/* Переключатель 2D/3D — той же плашкой, что и камера, в цветах палитры. */
+.board-view-controls { border-color: var(--line2); border-radius: 8px; background: var(--float); }
+.board-view-controls button { border-radius: 6px; background: transparent; color: var(--text2); }
+.board-view-controls button:hover { background: var(--acc-soft); color: var(--text); }
+.board-view-controls button[aria-pressed="true"] { background: var(--acc-soft); color: var(--acc2); }
+.board-camera-controls { position: absolute; z-index: 30; top: 12px; left: 104px; display: flex; gap: 2px; padding: 3px; border: 1px solid var(--line2); border-radius: 8px; background: var(--float); }
+.board-camera-controls button { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--text2); cursor: pointer; }
+.board-camera-controls button:hover { background: var(--acc-soft); color: var(--acc2); }
+.board-camera-controls button[aria-pressed="true"] { color: var(--acc2); }
+.board-camera-controls button:focus-visible { outline: 2px solid var(--acc2); outline-offset: 1px; }
+.board-minimap { position: absolute; z-index: 29; top: 74px; right: 18px; padding: 3px; border-radius: 8px; background: var(--float); box-shadow: 0 0 0 1px var(--line2), var(--shadow); }
+.board-minimap canvas { display: block; border-radius: 5px; cursor: pointer; }
+.board-minimap-probe { position: absolute; width: 0; height: 0; overflow: hidden; }
+@container (max-width: 620px) { .board-minimap { display: none; } }
+@media (max-width: 1099px) { .board-minimap { display: none; } }
+
+/* ---------------- очередь инициативы: здоровье ---------------- */
+
+.initiative-health { position: absolute; z-index: 2; left: 50%; bottom: 3px; width: 62%; height: 4px; overflow: hidden; border-radius: 2px; background: var(--hp-bg); box-shadow: 0 0 0 1px color-mix(in srgb, var(--well) 70%, transparent); transform: translateX(-50%); pointer-events: none; }
+.initiative-health > u { display: block; height: 100%; background: var(--hp); text-decoration: none; }
+.initiative-ribbon li.active .initiative-health, .initiative-ribbon li.next .initiative-health { bottom: 12px; }
+
+/* ---------------- лоток: вкладки, ячейки, сетка ---------------- */
+
+/* Вкладки — первой строкой во всю ширину лотка; под ними ячейки заклинаний
+   слева и переключатели хода справа. Раньше переговоры и нокаут делили строку
+   с вкладками и обрезали «Заклинания» до «Кл». */
+.turn-rail > .hotbar-decks { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto; row-gap: 4px; }
+.turn-rail > .hotbar-decks > .hotbar-tabs { grid-column: 1 / -1; grid-row: 1; }
+.turn-rail > .hotbar-decks > .hud-slotbar { grid-column: 1; grid-row: 2; }
+.turn-rail > .hotbar-decks > .group-decision-button,
+.turn-rail > .hotbar-decks > .start-combat-button,
+.turn-rail > .hotbar-decks > .hotbar-combat-controls { grid-column: 2; grid-row: 2; justify-self: end; width: auto; }
+.hotbar-tabs button .hotbar-tab-count { margin-left: 2px; color: var(--muted); font: 700 var(--fs-xxs) var(--f-ui); font-variant-numeric: tabular-nums; }
+.hotbar-tabs button.active .hotbar-tab-count { color: var(--text2); }
+
+.hud-slotbar { display: flex; align-items: center; gap: 4px; min-width: 0; min-height: 24px; overflow: hidden; }
+.hud-slot { display: inline-flex; align-items: center; gap: 3px; height: 22px; padding: 0 6px; border: 0; border-radius: 3px; background: transparent; color: var(--text); font: 700 var(--fs-xs) var(--f-label); letter-spacing: .02em; white-space: nowrap; flex: none; }
+button.hud-slot { cursor: pointer; }
+button.hud-slot:hover { background: var(--acc-soft); }
+button.hud-slot[aria-pressed="true"] { background: var(--acc-soft); color: var(--acc2); box-shadow: inset 0 -2px 0 var(--acc2); }
+.hud-slot > i { width: 8px; height: 8px; margin: 0 1px; transform: rotate(45deg); background: var(--bonus); }
+.hud-slot > i.off { background: transparent; box-shadow: inset 0 0 0 1px var(--spent); }
+.hud-slot > em { display: none; color: var(--bonus); font: 700 var(--fs-xs) var(--f-ui); font-style: normal; }
+.hud-slotbar.compact .hud-slot > i { display: none; }
+.hud-slotbar.compact .hud-slot > em { display: inline; }
+.hud-slotbar.compact .hud-slot { padding: 0 5px; }
+.hud-slot.pact { color: var(--text2); }
+.hud-slot.concentration { margin-left: auto; color: var(--bonus); font-family: var(--f-ui); font-weight: 600; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 0; }
+
+/* Плитки идут строками, как в макете: два ряда, пустые гнёзда до края лотка. */
+.turn-rail .hotbar-actions { grid-template-columns: repeat(var(--tile-cols, 7), var(--slot)); grid-template-rows: repeat(2, var(--slot)); grid-auto-flow: row; grid-auto-columns: var(--slot); gap: 6px; }
+.action-tile-empty { width: var(--slot); height: var(--slot); border-radius: 6px; box-shadow: inset 0 0 0 1px var(--line); opacity: .6; pointer-events: none; }
+
+/* «Не убивать» — переключатель с бегунком, как `.tgl` макета. */
+.turn-rail .hotbar-combat-controls .hud-toggle { display: inline-flex; align-items: center; gap: 6px; border-color: transparent; background: transparent; color: var(--text2); }
+.hud-toggle > i { position: relative; width: 26px; height: 14px; flex: none; border-radius: 7px; background: var(--well); box-shadow: inset 0 0 0 1px var(--line2); }
+.hud-toggle > i::after { content: ''; position: absolute; left: 2px; top: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--muted); transition: left .15s; }
+.hud-toggle[aria-pressed="true"] { color: var(--acc2); }
+.turn-rail .hotbar-combat-controls .hud-toggle.active { border-color: transparent; background: transparent; }
+.hud-toggle[aria-pressed="true"] > i { background: var(--acc-soft); box-shadow: inset 0 0 0 1px var(--acc-line); }
+.hud-toggle[aria-pressed="true"] > i::after { left: 14px; background: var(--acc2); }
+
+/* ---------------- всплывающие окна лотка ---------------- */
+
+.hud-tip, .hud-upcast { position: fixed; z-index: 160; padding: 12px 14px; border: 1px solid var(--line2); border-radius: 10px; background: var(--pop); color: var(--text); box-shadow: var(--shadow); }
+.hud-tip { width: 280px; pointer-events: none; }
+.hud-tip-head { display: flex; align-items: center; gap: 8px; }
+.hud-tip h3, .hud-upcast h3 { margin: 0; font: 700 19px/1.15 var(--f-display); letter-spacing: .03em; }
+.hud-tip-cost { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--acc2); font: 600 var(--fs-xs) var(--f-ui); white-space: nowrap; }
+.hud-tip-cost > i { width: 9px; height: 9px; transform: rotate(45deg); background: var(--acc2); }
+.hud-tip-cost.bonus_action { color: var(--bonus); }
+.hud-tip-cost.bonus_action > i { transform: none; width: 11px; height: 10px; background: var(--bonus); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.hud-tip-cost.reaction { color: var(--react); }
+.hud-tip-cost.reaction > i { transform: none; border-radius: 50%; background: var(--react); }
+.hud-tip-cost.free, .hud-tip-cost.movement, .hud-tip-cost.long_cast { color: var(--text2); }
+.hud-tip-cost.free > i, .hud-tip-cost.movement > i, .hud-tip-cost.long_cast > i { background: var(--text2); }
+.hud-tip p { margin: 6px 0 0; color: var(--text2); font: 500 var(--fs-sm)/1.5 var(--f-ui); }
+.hud-tip p.hud-tip-meta { color: var(--muted); font-size: var(--fs-xs); }
+
+.hud-upcast { width: 300px; }
+.hud-upcast p { margin: 4px 0 0; color: var(--text2); font: 500 var(--fs-xs)/1.45 var(--f-ui); }
+.hud-upcast-list { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.hud-upcast-list button { display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 8px; height: 34px; padding: 0 10px; border: 1px solid var(--line2); border-radius: 4px; background: var(--raise); color: var(--text); font: 600 var(--fs-sm) var(--f-ui); text-align: left; cursor: pointer; }
+.hud-upcast-list button:hover:not(:disabled), .hud-upcast-list button:focus-visible, .hud-upcast-list button[aria-pressed="true"] { border-color: var(--acc2); background: var(--acc-soft); }
+.hud-upcast-list button:disabled { opacity: .45; cursor: not-allowed; }
+.hud-upcast-list button b { color: var(--bonus); font: 700 var(--fs-sm) var(--f-label); }
+.hud-upcast-list button span:last-child { color: var(--text2); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+
+/* ---------------- герой: портрет, КД, уровень, здоровье ---------------- */
+
+.turn-rail-hero .hud-portrait-frame { position: relative; grid-column: 1; grid-row: 1 / span 4; width: 84px; height: 84px; }
+.turn-rail-hero .hud-portrait-frame > .hud-portrait { display: block; width: 84px; height: 84px; }
+.hud-portrait.down { filter: grayscale(1) brightness(.6); }
+.hud-ac-badge { position: absolute; left: -10px; top: -8px; width: 34px; height: 38px; display: grid; place-items: center; }
+.hud-ac-badge svg { position: absolute; inset: 0; width: 34px; height: 38px; fill: var(--well); stroke: var(--acc2); stroke-width: 1.6; }
+.hud-ac-badge b { position: relative; top: -2px; color: var(--text); font: 700 14px var(--f-ui); font-variant-numeric: tabular-nums; }
+.hud-level-badge { position: absolute; left: 50%; bottom: -7px; width: 24px; height: 24px; margin-left: -12px; display: grid; place-items: center; border-radius: 50%; background: var(--acc); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), inset 0 -1px 0 rgba(0, 0, 0, .3), 0 0 0 2px var(--rail-bg); color: var(--acc-ink); font: 700 13px var(--f-ui); }
+
+.turn-rail-player-hud .hud-health-bar { position: relative; display: block; height: 16px; overflow: hidden; border-radius: 4px; background: var(--hp-bg); }
+.turn-rail-player-hud .hud-health-bar > i { position: absolute; left: 0; top: 0; bottom: 0; display: block; height: auto; border-radius: 4px; background: var(--hp); transition: width .35s; }
+.turn-rail-player-hud .hud-health-bar > i.temp { border-radius: 0 4px 4px 0; background: var(--bonus); }
+.turn-rail-player-hud .hud-health-bar > b { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 4px; color: #fff; font: 700 var(--fs-xxs)/1 var(--f-ui); font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px rgba(0, 0, 0, .7); }
+@media (prefers-reduced-motion: reduce) { .turn-rail-player-hud .hud-health-bar > i { transition: none; } }
+
+/* Подсветка названия сцены нужна была поверх иллюстрации; в шапке стола
+   иллюстрации нет, а на светлой палитре тень читалась грязным пятном. */
+.status-bar > .scene-header .scene-title { text-shadow: none; }
+
+/* Упавший герой в рамке отряда: подпись и счёт спасбросков одной строкой. */
+.party-overlay .downed-line { display: flex; align-items: center; gap: 4px; margin-top: 3px; color: var(--bad-text); font: 600 var(--fs-xxs) var(--f-ui); white-space: nowrap; }
+.party-overlay .downed-line em { margin-left: auto; color: var(--text2); font-style: normal; font-variant-numeric: tabular-nums; }
+
+/* Вне боя камни хода не расходуются — вместо них справка героя. */
+.game-area.exploration-active .turn-rail-side .hero-cluster-pips { display: none; }
+.hud-infob { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--well); color: var(--text2); font: 600 var(--fs-xs) var(--f-ui); }
+.hud-infob > div { display: flex; justify-content: space-between; gap: 8px; }
+.hud-infob dt { margin: 0; }
+.hud-infob dd { margin: 0; color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* ---------------- спасброски от смерти ---------------- */
+
+.hud-death-saves { display: flex; flex-direction: column; gap: 8px; }
+.hud-ds-title { color: var(--text2); font: 700 var(--fs-sm) var(--f-label); letter-spacing: .05em; }
+.hud-ds-row { display: flex; align-items: center; gap: 8px; color: var(--text2); font: 600 var(--fs-sm) var(--f-ui); }
+.hud-ds-row > span { width: 62px; }
+.hud-ds-row > i { width: 16px; height: 16px; transform: rotate(45deg); background: var(--well); box-shadow: inset 0 0 0 1px var(--line2); }
+.hud-ds-row.ok > i.on { background: var(--ally); box-shadow: none; }
+.hud-ds-row.no > i.on { background: var(--enemy); box-shadow: none; }
+.hud-ds-note { margin: 0; color: var(--muted); font: 500 var(--fs-xs)/1.45 var(--f-ui); }
+
+/* ---------------- окно реакции над панелью героя ---------------- */
+
+.reaction-backdrop.hud-react-layer { position: fixed; inset: auto 0 calc(var(--ui-rail-height, 214px) + 12px) var(--rail-w, 84px); right: var(--server-column, 380px); z-index: 140; display: flex; justify-content: center; padding: 0 12px; background: none; backdrop-filter: none; pointer-events: none; }
+.hud-react-layer > .reaction-prompt { position: relative; width: min(520px, 100%); max-height: min(70vh, 560px); overflow: auto; border: 1px solid var(--acc2); border-radius: 10px; background: var(--pop); box-shadow: var(--shadow); pointer-events: auto; }
+.hud-react-layer > .reaction-prompt > header { padding: 12px 14px; }
+.hud-react-layer > .reaction-prompt > header strong { font-size: var(--fs-2xl); }
+.hud-react-layer > .reaction-prompt > p { padding: 10px 16px 4px; font-size: var(--fs-md); }
+.hud-react-layer .reaction-options { gap: 6px; padding: 8px 14px 12px; }
+.hud-react-layer .reaction-options > button { grid-template-columns: 40px minmax(0, 1fr) auto; gap: 10px; padding: 8px 10px; }
+.hud-react-layer .reaction-options > button > i { width: 38px; height: 38px; }
+.hud-react-layer .reaction-options strong { font-size: var(--fs-lg); }
+.hud-react-layer .reaction-options small { font-size: var(--fs-xs); }
+.hud-react-layer > .reaction-prompt > .combat-turn-clock { position: absolute; top: 12px; right: 14px; z-index: 1; }
+.hud-react-layer > .reaction-prompt > .combat-turn-clock ~ header > em { margin-right: 64px; }
+@media (max-width: 1099px) { .reaction-backdrop.hud-react-layer { inset: auto 0 12px 0; } }
+
+/* ---------------- настройки: палитры ---------------- */
+
+.settings-palette-card { grid-column: 1 / -1; }
+.palette-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 12px 0 4px; }
+.palette-card { display: flex; flex-direction: column; gap: 6px; padding: 8px 8px 10px; border: 1px solid var(--line2); border-radius: 8px; background: var(--raise); color: var(--text); text-align: left; cursor: pointer; }
+.palette-card:hover { border-color: var(--acc-line); }
+.palette-card[aria-checked="true"] { border-color: var(--acc2); background: var(--acc-soft); }
+.palette-card:focus-visible { outline: 2px solid var(--acc2); outline-offset: 2px; }
+.palette-preview { display: flex; flex-direction: column; height: 72px; overflow: hidden; border-radius: 4px; }
+.palette-preview-title { display: block; height: 18px; padding: 3px 7px; font: 700 12px var(--f-display); }
+.palette-preview-row { display: flex; gap: 6px; align-items: center; padding: 9px 7px 6px; }
+.palette-preview-row > span { display: block; flex: none; }
+.palette-preview-line { display: block; width: 58%; height: 4px; margin: 2px 7px; opacity: .55; }
+.palette-card b { font: 700 18px/1.1 var(--f-display); }
+.palette-card small { color: var(--text2); font: 500 var(--fs-xs)/1.35 var(--f-ui); }
+.palette-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 12px; margin-top: 10px; border-top: 1px solid var(--line); }
+.palette-actions small { flex: 1 1 220px; color: var(--muted); font: 500 var(--fs-xs)/1.4 var(--f-ui); }
+.palette-actions button { height: 36px; padding: 0 13px; border: 1px solid var(--line2); border-radius: 6px; background: var(--raise); color: var(--text); font: 600 var(--fs-sm) var(--f-ui); cursor: pointer; }
+.palette-actions button:hover { border-color: var(--acc-line); }
+.palette-reset-note { margin: 8px 0 0; color: var(--ok-text); font: 500 var(--fs-xs) var(--f-ui); }
+@media (max-width: 1099px) { .palette-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

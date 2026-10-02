@@ -36,11 +36,14 @@ type PreviewRuntime = {
 type PreviewStatus = 'loading' | 'ready' | 'fallback' | 'error' | 'equipment-error' | 'unavailable'
 
 const MODEL_STORAGE_PREFIX = 'skazanie-3d-models:'
-const DEFAULT_MODEL_KEY = 'traveler'
-const FALLBACK_CHOICES = [
-  { key: 'traveler', label: 'Мужская основа' },
-  { key: 'human-female', label: 'Женская основа' },
-]
+/**
+ * Пустой ключ — «по персонажу»: каталог сам выбирает фигуру по классу героя,
+ * как на доске. Прежде здесь по умолчанию стоял путник, и примерка показывала
+ * не ту фигуру, что видят игроки.
+ */
+const DEFAULT_MODEL_KEY = ''
+const AUTO_CHOICE = { key: DEFAULT_MODEL_KEY, label: 'По персонажу' }
+const FALLBACK_CHOICES = [AUTO_CHOICE]
 
 function readStoredModel(storageKey: string, actorId: string): string {
   try {
@@ -59,12 +62,6 @@ function writeStoredModel(storageKey: string, actorId: string, modelKey: string)
   } catch {
     // Недоступное хранилище не должно ломать примерку в текущем окне.
   }
-}
-
-function modelLabel(key: string, fallback: string) {
-  if (key === 'traveler') return 'Мужская основа'
-  if (key === 'human-female') return 'Женская основа'
-  return fallback
 }
 
 function previewModelInput(player: Player, modelKey: string, appearance?: ActorAppearance) {
@@ -99,9 +96,8 @@ function unknownLoadoutItem(item: InventoryItem, loadout: PublicLoadout) {
 function modelChoices(manifest: ActorModelManifest | null) {
   if (!manifest) return FALLBACK_CHOICES
   const choices = availableActorModels(manifest)
-    .map((choice) => ({ key: choice.key, label: modelLabel(choice.key, choice.label) }))
-  const known = new Set(choices.map((choice) => choice.key))
-  return [...FALLBACK_CHOICES.filter((choice) => !known.has(choice.key)), ...choices]
+    .map((choice) => ({ key: choice.key, label: choice.label }))
+  return [AUTO_CHOICE, ...choices]
 }
 
 function useEquipmentPreviewRuntime(

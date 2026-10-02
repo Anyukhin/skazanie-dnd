@@ -43,3 +43,14 @@ test('глобальная карта отображает настоящую п
   assert.doesNotMatch(markup, /private-world-seed|NaN/u)
   assert.equal(renderToStaticMarkup(createElement(WorldMapView, { state, busy: false, onTravel() {} })), markup, 'декоративная карта стабильна при повторном открытии')
 })
+
+test('боковая панель карты перечисляет известные места словами, а легенда — их виды', () => {
+  const worldMap = publicWorldMapFor(createCampaignWorldMap({ seed: 'places-list', campaignName: 'Проверка карты', startingLocation: 'Норвин' }))
+  const state = { campaign: 'Проверка карты', scene: { location: 'Норвин' }, worldMap }
+  const markup = renderToStaticMarkup(createElement(WorldMapView, { state, busy: false, onTravel() {} }))
+  assert.match(markup, /Известные места/u)
+  assert.match(markup, /отряд здесь/u, 'текущая точка отряда отмечена в списке')
+  for (const label of ['Отряд', 'Посещено', 'Известно', 'Дорога', 'Маршрут']) assert.match(markup, new RegExp(label, 'u'))
+  const known = worldMap.locations.filter((location) => location.known || location.visited || location.id === worldMap.currentLocationId)
+  assert.equal((markup.match(/class="place-marker"/gu) ?? []).length, known.length, 'в списке ровно известные места')
+})

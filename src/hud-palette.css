@@ -1,0 +1,61 @@
+/* Палитры интерфейса по макету «Игровой стол» (claude.ai, 2026-10-01).
+   Палитра выбирается в настройках (`data-pal` на корне, src/ui-palette.ts) и
+   задаёт только основные цвета; остальные оттенки выводятся из них через
+   color-mix, поэтому все восемь палитр получают одинаковые рамки и метки.
+   «Таверна» — палитра по умолчанию, её значения совпадают с прежними цветами
+   сайта: без выбора интерфейс выглядит как раньше. */
+
+:root {
+  --rail-bg: #13100d;
+  --frame: #4a3a28;
+  --hp: #b8483d;
+  --ally: #7fb38a;
+  --enemy: #d8695c;
+  --npc: #7fb3a6;
+  --rage: #e39a5a;
+  --map-bg: #1d2117;
+  --hp-ink: #fff8ef;
+  --float: color-mix(in srgb, var(--rail-bg) 92%, transparent);
+  --chip: color-mix(in srgb, var(--raise) 82%, var(--bg));
+  --pop: color-mix(in srgb, var(--raise) 88%, var(--bg));
+  --frame2: color-mix(in srgb, var(--frame) 70%, var(--bg));
+  --hp-bg: color-mix(in srgb, var(--hp) 22%, var(--well));
+  --hp-line: color-mix(in srgb, var(--hp) 45%, var(--frame));
+  --ok-bg: color-mix(in srgb, var(--ally) 16%, var(--raise));
+  --ok-line: color-mix(in srgb, var(--ally) 55%, transparent);
+  --ok-text: color-mix(in srgb, var(--ally) 70%, var(--text));
+  --bad-bg: color-mix(in srgb, var(--enemy) 16%, var(--raise));
+  --bad-text: color-mix(in srgb, var(--enemy) 72%, var(--text));
+  --npc-bg: color-mix(in srgb, var(--npc) 10%, var(--raise));
+  --npc-line: color-mix(in srgb, var(--npc) 38%, transparent);
+  --npc-text: color-mix(in srgb, var(--npc) 72%, var(--text));
+  --shadow: 0 12px 32px rgba(0, 0, 0, .5);
+  --scroll-thumb: color-mix(in srgb, var(--frame) 80%, var(--acc));
+}
+
+/* Оттенки, которые на сайте были своими числами, а не токенами, для каждой
+   палитры выводятся из её основы: тень панели — между фоном и поверхностью,
+   потраченный ресурс — приглушённый текст на фоне. */
+:root[data-pal] {
+  --panel-soft: color-mix(in srgb, var(--raise) 55%, var(--panel));
+  --ink: color-mix(in srgb, var(--bg) 60%, var(--panel));
+  --spent: color-mix(in srgb, var(--muted) 50%, var(--bg));
+}
+:root[data-pal="tavern"] {
+  --panel-soft: #1d1a17;
+  --ink: #12110f;
+  --spent: #4d463e;
+}
+
+:root[data-pal="espresso"] { --bg: #120e0b; --rail-bg: #16110d; --panel: #140f0c; --raise: #251d17; --well: #0e0a08; --text: #e9dfcf; --text2: #b3a592; --muted: #9a8c79; --acc: #a8854c; --acc2: #d2b27a; --acc-ink: #1b130a; --frame: #4b3b2c; --hp: #a24c3e; --ally: #86a77c; --enemy: #c9654f; --npc: #8fae9f; --map-bg: #1c1a14; }
+:root[data-pal="moss"] { --bg: #0e110d; --rail-bg: #121610; --panel: #10130e; --raise: #1b2019; --well: #0a0d09; --text: #e4e2d4; --text2: #aeb09c; --muted: #868a76; --acc: #b08a52; --acc2: #d6b57e; --acc-ink: #17130a; --frame: #39412f; --hp: #a5493b; --ally: #8fb07a; --enemy: #cf6a52; --npc: #7fb0b0; --map-bg: #172014; }
+:root[data-pal="graphite"] { --bg: #121212; --rail-bg: #161616; --panel: #141414; --raise: #1f1e1d; --well: #0d0d0d; --text: #e8e4df; --text2: #b0aaa3; --muted: #88837d; --acc: #b8714a; --acc2: #dc9a6e; --acc-ink: #1a0f08; --frame: #3d3a37; --hp: #b04a3e; --ally: #86b08c; --enemy: #d9684f; --npc: #86a9b0; --map-bg: #1a1b18; }
+:root[data-pal="ink"] { --bg: #0d1017; --rail-bg: #10141c; --panel: #0f121a; --raise: #181d28; --well: #0a0d13; --text: #e6e1d6; --text2: #aaaab0; --muted: #838695; --acc: #b8954f; --acc2: #dcc083; --acc-ink: #14100a; --frame: #2f374a; --hp: #a84a44; --ally: #86b08c; --enemy: #d4705f; --npc: #8fb0c9; --map-bg: #141a22; }
+:root[data-pal="wine"] { --bg: #140c0d; --rail-bg: #180f10; --panel: #160d0e; --raise: #251618; --well: #0f0909; --text: #eadcd2; --text2: #b8a69e; --muted: #918079; --acc: #b08d58; --acc2: #d6b680; --acc-ink: #1a100a; --frame: #4a2a2e; --hp: #b24a42; --ally: #8fb08a; --enemy: #d9775a; --npc: #a5a8c9; --map-bg: #1c1614; }
+:root[data-pal="ash"] { --bg: #111214; --rail-bg: #141518; --panel: #121316; --raise: #1d1f22; --well: #0c0d0f; --text: #e6e7e9; --text2: #a9adb3; --muted: #81868d; --acc: #9da4ad; --acc2: #cfd5dc; --acc-ink: #121417; --frame: #363a40; --hp: #a34a46; --ally: #86b09a; --enemy: #d06a5c; --npc: #a3b4c9; --map-bg: #17191a; }
+:root[data-pal="parchment"] { color-scheme: light; --bg: #e9e1d0; --rail-bg: #e2d8c3; --panel: #f2ecdf; --raise: #f7f2e7; --well: #e4dac6; --text: #2b241b; --text2: #4d4031; --muted: #5f5141; --acc: #7a5a2e; --acc2: #6a4c24; --acc-ink: #fbf5e9; --frame: #b9a37e; --hp: #a5473a; --ally: #4f7a45; --enemy: #a8402f; --npc: #2f6f68; --map-bg: #d9cfb8; --bonus: #3c5fa8; --react: #7a4fa8; --rage: #8f4c16; --hp-ink: #fff; --shadow: 0 10px 26px rgba(74, 52, 30, .22); }
+
+html { scrollbar-color: var(--scroll-thumb) var(--panel); }
+::-webkit-scrollbar-track { background: var(--panel); }
+::-webkit-scrollbar-thumb { border-color: var(--panel); background: var(--scroll-thumb); }
+.app { background: var(--bg); }

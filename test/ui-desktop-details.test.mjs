@@ -26,11 +26,12 @@ test('a requested room suppresses only the automatic campaign picker', () => {
 
 test('desktop hero cards show server speed, while the objective remains fully expandable', async () => {
   const [appSource, styles] = await Promise.all([
-    Promise.all(['../src/App.tsx', '../src/AppViews.tsx', '../src/DungeonMap.tsx', '../src/app-shared.tsx']
+    Promise.all(['../src/App.tsx', '../src/AppViews.tsx', '../src/DungeonMap.tsx', '../src/app-shared.tsx', '../src/PartyPage.tsx']
       .map((path) => readFile(new URL(path, import.meta.url), 'utf8'))).then((parts) => parts.join('\n')),
     readFile(new URL('../src/styles.css', import.meta.url), 'utf8'),
   ])
-  assert.match(appSource, /player\.speed\} фт<\/b><small>Скорость/)
+  // Карточка героя в разделе «Отряд» (`PartyPage.tsx`) — скорость с сервера, не координаты.
+  assert.match(appSource, /<dt>Скорость<\/dt><dd>\{player\.speed\} фт<\/dd>/)
   assert.doesNotMatch(appSource, /player\.x\}:\{player\.y/)
   assert.match(appSource, /className=\{`objective \$\{objectiveExpanded \? 'expanded' : ''\}`\}/)
   assert.match(appSource, /aria-expanded=\{objectiveExpanded\}/)

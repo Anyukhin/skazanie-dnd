@@ -1,74 +1,74 @@
-.spellbook-catalog { position: fixed; z-index: 70; inset: 50% auto auto 50%; width: min(1500px, calc(100vw - 48px)); height: min(900px, calc(100vh - 48px)); transform: translate(-50%, -50%); display: grid; grid-template-rows: auto auto minmax(0, 1fr); overflow: hidden; border: 1px solid rgba(201,149,86,.42); border-radius: 8px; background: #141210; color: #ded8ce; box-shadow: 0 4px 8px rgba(0,0,0,.45); }
-.spellbook-catalog-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 20px; border-bottom: 1px solid rgba(222,201,171,.12); background: #191613; }
-.spellbook-catalog-header h1 { margin: 0; color: #e2b879; font: 700 var(--fs-3xl) var(--f-display); }
-.spellbook-catalog-header p { margin: 3px 0 0; color: #988d80; font-size: var(--fs-sm); }
-.spellbook-catalog-header button, .spellbook-card-pin, .spell-detail-close, .spell-detail-footer button { border: 1px solid rgba(222,201,171,.2); border-radius: 6px; background: transparent; color: #c9b79f; cursor: pointer; }
+.spellbook-catalog { position: fixed; z-index: 70; inset: 50% auto auto 50%; width: min(1500px, calc(100vw - 48px)); height: min(900px, calc(100vh - 48px)); transform: translate(-50%, -50%); display: grid; grid-template-rows: auto auto minmax(0, 1fr); overflow: hidden; border: 1px solid color-mix(in srgb, var(--text2) 2.1%, var(--acc) 39.9%); border-radius: 8px; background: color-mix(in srgb, var(--well) 25%, var(--panel)); color: color-mix(in srgb, var(--well) 5%, var(--text)); box-shadow: 0 4px 8px rgba(0,0,0,.45); }
+.spellbook-catalog-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 20px; border-bottom: 1px solid color-mix(in srgb, var(--text) 7.8%, var(--acc) 4.2%); background: color-mix(in srgb, var(--well) 80%, var(--spent)); }
+.spellbook-catalog-header h1 { margin: 0; color: color-mix(in srgb, var(--acc) 20%, var(--acc2)); font: 700 var(--fs-3xl) var(--f-display); }
+.spellbook-catalog-header p { margin: 3px 0 0; color: color-mix(in srgb, var(--muted) 80%, var(--text2)); font-size: var(--fs-sm); }
+.spellbook-catalog-header button, .spellbook-card-pin, .spell-detail-close, .spell-detail-footer button { border: 1px solid color-mix(in srgb, var(--text) 13%, var(--acc) 7%); border-radius: 6px; background: transparent; color: #c9b79f; cursor: pointer; }
 .spellbook-catalog-header button { padding: 8px 11px; }
-.spellbook-catalog-tools { display: flex; align-items: end; gap: 12px; padding: 10px 16px; border-bottom: 1px solid rgba(222,201,171,.12); }
-.spellbook-catalog-tools label { display: grid; gap: 4px; flex: 1; min-width: 190px; color: #93877a; font-size: var(--fs-xs); }
-.spellbook-catalog-tools input { width: 100%; min-height: 38px; border: 1px solid rgba(222,201,171,.2); border-radius: 5px; padding: 0 10px; background: #0e0d0c; color: #e7ded2; }
+.spellbook-catalog-tools { display: flex; align-items: end; gap: 12px; padding: 10px 16px; border-bottom: 1px solid color-mix(in srgb, var(--text) 7.8%, var(--acc) 4.2%); }
+.spellbook-catalog-tools label { display: grid; gap: 4px; flex: 1; min-width: 190px; color: color-mix(in srgb, var(--muted) 95%, var(--acc2)); font-size: var(--fs-xs); }
+.spellbook-catalog-tools input { width: 100%; min-height: 38px; border: 1px solid color-mix(in srgb, var(--text) 13%, var(--acc) 7%); border-radius: 5px; padding: 0 10px; background: color-mix(in srgb, var(--well) 70%, var(--panel)); color: color-mix(in srgb, var(--muted) 5%, var(--text)); }
 .spellbook-catalog-tools nav { display: flex; flex-wrap: wrap; gap: 4px; }
-.spellbook-catalog-tools nav button { min-width: 37px; min-height: 38px; border: 1px solid rgba(222,201,171,.16); border-radius: 5px; background: #181411; color: #a99b8a; cursor: pointer; }
-.spellbook-catalog-tools nav button.active { border-color: rgba(201,149,86,.72); color: #f0c989; }
-.spellbook-catalog-tools > span { padding-bottom: 10px; color: #928678; font-size: var(--fs-sm); white-space: nowrap; }
+.spellbook-catalog-tools nav button { min-width: 37px; min-height: 38px; border: 1px solid color-mix(in srgb, var(--text) 10.4%, var(--acc) 5.6%); border-radius: 5px; background: var(--panel); color: color-mix(in srgb, var(--frame) 15%, var(--text2)); cursor: pointer; }
+.spellbook-catalog-tools nav button.active { border-color: color-mix(in srgb, var(--text2) 3.6%, var(--acc) 68.4%); color: #f0c989; }
+.spellbook-catalog-tools > span { padding-bottom: 10px; color: color-mix(in srgb, var(--muted) 95%, var(--acc2)); font-size: var(--fs-sm); white-space: nowrap; }
 .spellbook-catalog-body { display: grid; grid-template-columns: minmax(320px, .8fr) minmax(430px, 1.2fr); min-height: 0; }
-.spellbook-catalog-list { min-width: 0; overflow: auto; border-right: 1px solid rgba(222,201,171,.12); }
-.spellbook-card { border-bottom: 1px solid rgba(222,201,171,.1); background: #141210; }
-.spellbook-card.active { background: #211b16; box-shadow: inset 3px 0 #c99556; }
+.spellbook-catalog-list { min-width: 0; overflow: auto; border-right: 1px solid color-mix(in srgb, var(--text) 7.8%, var(--acc) 4.2%); }
+.spellbook-card { border-bottom: 1px solid color-mix(in srgb, var(--text) 6.5%, var(--acc) 3.5%); background: color-mix(in srgb, var(--well) 25%, var(--panel)); }
+.spellbook-card.active { background: color-mix(in srgb, var(--raise) 95%, var(--frame)); box-shadow: inset 3px 0 color-mix(in srgb, var(--text2) 5%, var(--acc)); }
 .spellbook-card.blocked { border-left: 3px solid #9d6255; }
 .spellbook-card-main { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 10px; width: 100%; padding: 14px 16px 10px; border: 0; background: transparent; color: inherit; cursor: pointer; text-align: left; }
 .spellbook-card-main:focus-visible { outline-offset: -2px; }
 .spellbook-card-main > span:not(.combat-icon) { display: grid; gap: 3px; }
 .spellbook-card-main > p, .spellbook-card-main > em { grid-column: 1 / -1; }
-.spellbook-card-main strong { color: #e3c9a7; font: 600 var(--fs-xl) var(--f-serif); }
-.spellbook-card-main small { color: #9e9181; font-size: var(--fs-sm); }
-.spellbook-card-main p { margin: 8px 0 0; color: #c7bcaf; font: 400 var(--fs-md)/1.5 var(--f-serif); white-space: normal; overflow: visible; }
+.spellbook-card-main strong { color: color-mix(in srgb, var(--text) 65%, var(--acc)); font: 600 var(--fs-xl) var(--f-serif); }
+.spellbook-card-main small { color: color-mix(in srgb, var(--frame) 25%, var(--text2)); font-size: var(--fs-sm); }
+.spellbook-card-main p { margin: 8px 0 0; color: color-mix(in srgb, var(--muted) 40%, var(--text)); font: 400 var(--fs-md)/1.5 var(--f-serif); white-space: normal; overflow: visible; }
 .spellbook-card-main em { display: block; margin-top: 8px; color: #d99b87; font-size: var(--fs-xs); font-style: normal; line-height: 1.4; }
-.spellbook-card-pin { margin: 0 16px 12px; padding: 5px 8px; color: #a89a88; font-size: var(--fs-xs); }
+.spellbook-card-pin { margin: 0 16px 12px; padding: 5px 8px; color: color-mix(in srgb, var(--frame) 15%, var(--text2)); font-size: var(--fs-xs); }
 .spellbook-card-pin[aria-pressed="true"] { border-color: rgba(112,185,148,.6); color: #a9d0b8; }
 .spellbook-card-pin:disabled { cursor: not-allowed; opacity: .45; }
-.spellbook-catalog-detail { min-width: 0; min-height: 0; overflow: auto; background: #171411; }
+.spellbook-catalog-detail { min-width: 0; min-height: 0; overflow: auto; background: var(--panel); }
 .spell-detail { min-height: 100%; padding: 22px 26px 26px; }
-.spell-detail-header { display: flex; align-items: start; justify-content: space-between; gap: 16px; padding-bottom: 16px; border-bottom: 1px solid rgba(222,201,171,.12); }
+.spell-detail-header { display: flex; align-items: start; justify-content: space-between; gap: 16px; padding-bottom: 16px; border-bottom: 1px solid color-mix(in srgb, var(--text) 7.8%, var(--acc) 4.2%); }
 .spell-detail-header > .combat-icon { flex: 0 0 auto; }
 .spell-detail-header > div { flex: 1; min-width: 0; }
-.spell-detail-header h2 { margin: 0; color: #ecd6b8; font: 700 var(--fs-4xl) var(--f-display); }
-.spell-detail-header p { margin: 4px 0 0; color: #a29484; font-size: var(--fs-sm); }
-.spell-detail-close { padding: 6px 9px; color: #b9a895; }
+.spell-detail-header h2 { margin: 0; color: color-mix(in srgb, var(--text) 65%, var(--acc2)); font: 700 var(--fs-4xl) var(--f-display); }
+.spell-detail-header p { margin: 4px 0 0; color: color-mix(in srgb, var(--frame) 20%, var(--text2)); font-size: var(--fs-sm); }
+.spell-detail-close { padding: 6px 9px; color: color-mix(in srgb, var(--text2) 85%, var(--acc)); }
 .spell-detail-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 20px; margin: 0; padding: 16px 0 6px; }
-.spell-detail-facts > div { display: grid; grid-template-columns: minmax(120px, .7fr) minmax(0, 1fr); gap: 10px; padding: 7px 0; border-bottom: 1px solid rgba(222,201,171,.08); }
-.spell-detail-facts dt { color: #958879; font-size: var(--fs-sm); }
-.spell-detail-facts dd { margin: 0; color: #e4d7c7; font-size: var(--fs-sm); text-align: right; }
+.spell-detail-facts > div { display: grid; grid-template-columns: minmax(120px, .7fr) minmax(0, 1fr); gap: 10px; padding: 7px 0; border-bottom: 1px solid color-mix(in srgb, var(--text) 5.2%, var(--acc) 2.8%); }
+.spell-detail-facts dt { color: color-mix(in srgb, var(--muted) 95%, var(--acc2)); font-size: var(--fs-sm); }
+.spell-detail-facts dd { margin: 0; color: color-mix(in srgb, var(--text2) 20%, var(--text)); font-size: var(--fs-sm); text-align: right; }
 .spell-detail-facts > .spell-detail-fact-wide { grid-column: 1 / -1; grid-template-columns: 120px minmax(0, 1fr); }
 .spell-detail-fact-wide dd { text-align: left; }
 .spell-detail-section { padding-top: 17px; }
-.spell-detail-section h3 { margin: 0 0 7px; color: #dbb47c; font: 600 var(--fs-xl) var(--f-serif); }
-.spell-detail-section p { margin: 4px 0; color: #d1c7ba; font-size: var(--fs-md); line-height: 1.55; }
-.spell-detail-runtime-unavailable { color: #d8ad9e !important; }
+.spell-detail-section h3 { margin: 0 0 7px; color: color-mix(in srgb, var(--well) 5%, var(--acc2)); font: 600 var(--fs-xl) var(--f-serif); }
+.spell-detail-section p { margin: 4px 0; color: color-mix(in srgb, var(--muted) 30%, var(--text)); font-size: var(--fs-md); line-height: 1.55; }
+.spell-detail-runtime-unavailable { color: color-mix(in srgb, var(--text) 65%, var(--hp)) !important; }
 .spell-detail-runtime { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 18px; margin: 0; }
-.spell-detail-runtime > div { display: grid; grid-template-columns: minmax(95px, .7fr) minmax(0, 1fr); gap: 10px; padding: 6px 0; border-bottom: 1px solid rgba(222,201,171,.08); }
-.spell-detail-runtime dt { color: #958879; font-size: var(--fs-sm); }
-.spell-detail-runtime dd { margin: 0; color: #e4d7c7; font-size: var(--fs-sm); }
+.spell-detail-runtime > div { display: grid; grid-template-columns: minmax(95px, .7fr) minmax(0, 1fr); gap: 10px; padding: 6px 0; border-bottom: 1px solid color-mix(in srgb, var(--text) 5.2%, var(--acc) 2.8%); }
+.spell-detail-runtime dt { color: color-mix(in srgb, var(--muted) 95%, var(--acc2)); font-size: var(--fs-sm); }
+.spell-detail-runtime dd { margin: 0; color: color-mix(in srgb, var(--text2) 20%, var(--text)); font-size: var(--fs-sm); }
 .spell-detail-description, .spell-detail-upcast { white-space: pre-wrap; }
-.spell-detail-guide { margin-top: 16px; padding: 15px; border: 1px solid rgba(201,149,86,.28); border-radius: 6px; background: rgba(201,149,86,.04); }
+.spell-detail-guide { margin-top: 16px; padding: 15px; border: 1px solid color-mix(in srgb, var(--text2) 1.4%, var(--acc) 26.6%); border-radius: 6px; background: color-mix(in srgb, var(--text2) 0.2%, var(--acc) 3.8%); }
 .spell-detail-explanations { display: grid; gap: 12px; margin: 0; }
 .spell-detail-explanations > div { min-width: 0; }
-.spell-detail-explanations dt { margin-bottom: 3px; color: #dec399; font-size: var(--fs-md); font-weight: 600; }
-.spell-detail-explanations dd { margin: 0; color: #d1c7ba; font-size: var(--fs-md); line-height: 1.55; overflow-wrap: anywhere; }
-.spell-detail-terms { margin-top: 14px; padding-top: 15px; border-top: 1px solid rgba(222,201,171,.12); }
-.spell-detail-status { padding: 11px 13px; border: 1px solid rgba(185,106,87,.45); background: rgba(91,49,41,.18); }
-.spell-detail-status p { color: #d8ad9e; }
-.spell-detail-status strong { color: #e5c1b1; }
+.spell-detail-explanations dt { margin-bottom: 3px; color: color-mix(in srgb, var(--text) 55%, var(--acc)); font-size: var(--fs-md); font-weight: 600; }
+.spell-detail-explanations dd { margin: 0; color: color-mix(in srgb, var(--muted) 30%, var(--text)); font-size: var(--fs-md); line-height: 1.55; overflow-wrap: anywhere; }
+.spell-detail-terms { margin-top: 14px; padding-top: 15px; border-top: 1px solid color-mix(in srgb, var(--text) 7.8%, var(--acc) 4.2%); }
+.spell-detail-status { padding: 11px 13px; border: 1px solid color-mix(in srgb, var(--text2) 13.5%, var(--hp) 31.5%); background: color-mix(in srgb, var(--well) 10.8%, var(--enemy) 7.2%); }
+.spell-detail-status p { color: color-mix(in srgb, var(--text) 65%, var(--hp)); }
+.spell-detail-status strong { color: color-mix(in srgb, var(--text) 70%, var(--enemy)); }
 .spell-detail-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 22px; }
-.spell-detail-footer a, .spell-detail-footer span { color: #d6ae70; font-size: var(--fs-sm); }
+.spell-detail-footer a, .spell-detail-footer span { color: color-mix(in srgb, var(--text) 25%, var(--acc)); font-size: var(--fs-sm); }
 .spell-detail-footer button { padding: 8px 11px; }
 .spell-detail-footer button:disabled { cursor: not-allowed; opacity: .55; }
-.spellbook-empty { padding: 20px; color: #9d9183; font-size: var(--fs-md); }
+.spellbook-empty { padding: 20px; color: color-mix(in srgb, var(--frame) 25%, var(--text2)); font-size: var(--fs-md); }
 
 @media (max-width: 960px) {
   .spellbook-catalog { width: calc(100vw - 20px); height: calc(100vh - 20px); }
   .spellbook-catalog-body { grid-template-columns: 1fr; grid-template-rows: minmax(150px, 1fr) minmax(0, 1fr); }
-  .spellbook-catalog-list { border-right: 0; border-bottom: 1px solid rgba(222,201,171,.12); }
+  .spellbook-catalog-list { border-right: 0; border-bottom: 1px solid color-mix(in srgb, var(--text) 7.8%, var(--acc) 4.2%); }
 }
 
 @media (max-width: 620px) {

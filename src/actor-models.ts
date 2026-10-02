@@ -108,6 +108,13 @@ export type ActorModelManifestEntry = {
    * костюма. По умолчанию (`layered`) рисуется весь публичный комплект.
    */
   outfit?: 'builtin' | 'layered'
+  /**
+   * `false` — запись доступна только явным выбором (`modelKey`, меню «Фигурки»,
+   * сохранённый выбор игрока), но не автоподбором по профилю и классу. Так
+   * прежние стили (KayKit, лысые фигуры Quaternius) продолжают открываться по
+   * своим ключам и не возвращаются на доску сами.
+   */
+  auto?: boolean
   rights: ModelRights
 }
 
@@ -299,6 +306,7 @@ export function validateModelManifest(value: unknown): ActorModelManifest {
     if (raw.height != null && (!height || height > 8)) throw new Error(`Высота модели ${key} должна быть в диапазоне 0..8`)
     if (raw.outfit != null && raw.outfit !== 'builtin' && raw.outfit !== 'layered') throw new Error(`Неизвестный outfit модели ${key}: ${text(raw.outfit)}`)
     const outfit = raw.outfit === 'builtin' ? 'builtin' as const : undefined
+    if (raw.auto != null && typeof raw.auto !== 'boolean') throw new Error(`Поле auto модели ${key} должно быть логическим`)
     return {
       key,
       name_ru: text(raw.name_ru) || profileLabels[raw.profile],
@@ -309,6 +317,7 @@ export function validateModelManifest(value: unknown): ActorModelManifest {
       ...(equipmentUrl ? { equipmentUrl } : {}),
       ...(height ? { height } : {}),
       ...(outfit ? { outfit } : {}),
+      ...(raw.auto === false ? { auto: false } : {}),
       rights: {
         source: text(rights.source), license: text(rights.license),
         ...(text(rights.attribution) ? { attribution: text(rights.attribution) } : {}),
@@ -377,12 +386,14 @@ export function resolveModelProfile(input: ActorModelInput, manifest: ActorModel
   const catalog = validateModelManifest(manifest)
   const explicit = actor.modelKey ? catalog.models.find((entry) => entry.key === actor.modelKey) : undefined
   if (explicit) return explicit
+  // Дальше — только автоподбор: записи с auto=false открываются лишь по ключу.
+  const automatic = catalog.models.filter((entry) => entry.auto !== false)
   // Серверная внешность уже прошла проверку прав. Она должна предшествовать
   // actorIds/archetype: иначе локальный каталог может раскрыть замаскированный
   // профиль по прежнему идентификатору или классу.
   const serverProfile = actor.appearance?.profile
   if (serverProfile) {
-    const sameProfile = catalog.models.filter((entry) => entry.profile === serverProfile)
+    const sameProfile = automatic.filter((entry) => entry.profile === serverProfile)
     // Внутри профиля, уже разрешённого сервером, выбирается подходящий
     // вариант по публичным данным: класс героя (виден всем игрокам) или
     // показанное на доске имя врага («Скелет-маг»). Профиль при этом не
@@ -400,14 +411,14 @@ export function resolveModelProfile(input: ActorModelInput, manifest: ActorModel
   // Сначала точное значение из каталога: запись `humanoid` или конкретный
   // класс должна иметь приоритет над fuzzy-профилем из более ранней строки.
   const byExactArchetype = requestedArchetype
-    ? catalog.models.find((entry) => entry.archetypes?.some((item) => slug(item) === requestedArchetype))
+    ? automatic.find((entry) => entry.archetypes?.some((item) => slug(item) === requestedArchetype))
     : undefined
   if (byExactArchetype) return byExactArchetype
   const requestedProfile = profileFromText(actor.archetype ?? '')
-  const byProfile = requestedProfile ? catalog.models.find((entry) => entry.profile === requestedProfile) : undefined
+  const byProfile = requestedProfile ? automatic.find((entry) => entry.profile === requestedProfile) : undefined
   if (byProfile) return byProfile
   const profile = fallbackProfile(actor)
-  return catalog.models.find((entry) => entry.profile === profile) ?? DEFAULT_ACTOR_MODEL_MANIFEST.models.find((entry) => entry.profile === profile)!
+  return automatic.find((entry) => entry.profile === profile) ?? DEFAULT_ACTOR_MODEL_MANIFEST.models.find((entry) => entry.profile === profile)!
 }
 
 /** Данные для select/дисклозера в браузере; состояние выбора может жить в localStorage. */

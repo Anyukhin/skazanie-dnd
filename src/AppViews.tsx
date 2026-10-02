@@ -7,6 +7,8 @@ import {
 } from 'lucide-react'
 
 import { fetchWithTimeout } from './ai-client'
+import { SERVER_WIDTH_KEY } from './dungeon-map-parts'
+import { PaletteSettingsCard } from './hud-parts'
 import {
   ABILITY_LABELS, DIFFICULTY_LABELS, PageHeader, SKILL_LABELS, UI_SCALE_MAX, UI_SCALE_MIN,
   UI_SCALE_PRESETS, battleEventText, clampUiScale, locationsMatch, useDialogEscape,
@@ -1424,6 +1426,7 @@ export function SettingsView({ health, campaignAi, currentRulesetId, campaignAiB
           <ToggleRow icon={<Dices size={17} />} title="Автобросок кубика" description="Выключено — игра предлагает бросок: проверки ждут вашего d20, атака по клику требует подтверждения. Включено — сервер бросает сразу" value={autoAttackRoll} onChange={() => onAutoAttackRollChange(!autoAttackRoll)} />
           <ToggleRow icon={<Swords size={17} />} title="Боевые анимации" description="Движение, удары и состояния проигрываются поверх доски; клик пропускает текущую очередь" value={combatAnimations} onChange={() => onCombatAnimationsChange(!combatAnimations)} />
         </div>
+        <PaletteSettingsCard serverWidthKey={SERVER_WIDTH_KEY} />
       </div>
     </section>
   )
