@@ -31,6 +31,8 @@ import { LEGACY_CATALOG_REVISION, loadPropModelCatalog, type PropModelCatalog } 
 import { actorPresentationCenter, boardCameraKey } from './tactical-ui'
 import { revealedAt } from './tactical-map-client'
 import type { CombatAudio } from './combat-audio'
+import { BoardMiniMap, useMinimapPreference } from './hud-parts'
+import { Crosshair, Map as MapIcon } from 'lucide-react'
 import './tactical-board.css'
 import './board3d.css'
 
@@ -60,15 +62,26 @@ export function TacticalBoard(props: TacticalBoardProps) {
     setView('2d')
     try { localStorage.setItem(BOARD_VIEW_KEY, '2d') } catch { /* Настройка необязательна. */ }
   }, [])
+  // Мини-карта и кнопка «К герою» принадлежат зрителю, как и вид: команды
+  // они не отправляют, только двигают камеру своего поля.
+  const [minimapVisible, toggleMinimap] = useMinimapPreference()
+  const [focusRequest, setFocusRequest] = useState<{ x: number; y: number; nonce: number } | null>(null)
+  const focusCell = useCallback((x: number, y: number) => setFocusRequest((current) => ({ x, y, nonce: (current?.nonce ?? 0) + 1 })), [])
+  const focusActor = props.focusActorId ? props.animationActors?.find((actor) => actor.id === props.focusActorId) : undefined
   return <>
     <div className="board-view-controls" role="group" aria-label="Вид карты">
       <button type="button" aria-pressed={view === '2d'} onClick={() => changeView('2d')}>2D</button>
       <button type="button" aria-pressed={view === '3d'} onClick={() => changeView('3d')}>3D</button>
     </div>
+    {props.map && <div className="board-camera-controls" role="group" aria-label="Камера поля">
+      <button type="button" aria-pressed={minimapVisible} onClick={toggleMinimap} aria-label="Мини-карта" title={minimapVisible ? 'Скрыть мини-карту' : 'Показать мини-карту'}><MapIcon size={17} strokeWidth={1.7} /></button>
+      {focusActor && <button type="button" onClick={() => focusCell(focusActor.x, focusActor.y)} aria-label="Камера к герою" title={`К герою: ${focusActor.label}`}><Crosshair size={17} strokeWidth={1.7} /></button>}
+    </div>}
+    {props.map && minimapVisible && <BoardMiniMap map={props.map} actors={props.animationActors ?? []} focusActorId={props.focusActorId} onPick={focusCell} />}
     {error && <p className="board-view-error" role="status">{error} Включён вид 2D.</p>}
     {view === '3d'
-      ? <Board3DErrorBoundary onError={fallback}><Suspense fallback={<div className="board3d-loading" role="status">Загрузка 3D-карты…</div>}><TacticalBoard3D {...props} onUnavailable={fallback} /></Suspense></Board3DErrorBoundary>
-      : <TacticalBoard2D {...props} />}
+      ? <Board3DErrorBoundary onError={fallback}><Suspense fallback={<div className="board3d-loading" role="status">Загрузка 3D-карты…</div>}><TacticalBoard3D {...props} focusRequest={focusRequest} onUnavailable={fallback} /></Suspense></Board3DErrorBoundary>
+      : <TacticalBoard2D {...props} focusRequest={focusRequest} />}
   </>
 }
 
@@ -413,6 +426,10 @@ export type TacticalBoardProps = {
   lighting?: boolean
   /** Внешняя кнопка «Вся карта»; обычная карта сохраняет камеру без этого ключа. */
   viewResetKey?: string | number
+  /** Просьба мини-карты поставить клетку в центр поля; `nonce` различает повторные клики. */
+  focusRequest?: { x: number; y: number; nonce: number } | null
+  /** Герой зрителя: его фишка выделена на мини-карте, к нему ведёт кнопка «К герою». */
+  focusActorId?: string
   /** В прокручиваемом стенде колесо страницы не должно случайно увеличивать карту. */
   wheelZoomRequiresAltKey?: boolean
   trajectory?: { x1: number; y1: number; x2: number; y2: number } | null
@@ -435,7 +452,7 @@ export type TacticalBoardProps = {
 function TacticalBoard2D({
   map, columns, rows, irregular, ariaLabel, themeKey, artUrl, cells, cellHints, overlayCells, decoration,
   effectRenderers, battleLog, visualBatch, animationActors, animationsEnabled, combatAudio, conditions, conditionVersion, onBackgroundActivate, onCellHover, onCancelAiming, targetHint,
-  levelIndex = 0, lighting = true, campaignId = '', artMode = 'backdrop', viewResetKey, wheelZoomRequiresAltKey = false,
+  levelIndex = 0, lighting = true, campaignId = '', artMode = 'backdrop', viewResetKey, wheelZoomRequiresAltKey = false, focusRequest,
 }: TacticalBoardProps) {
   const cameraKey = boardCameraKey(map?.locationId, levelIndex, campaignId)
   const [zoom, setZoom] = useState(() => cameraByLocation.get(cameraKey)?.zoom ?? 1)
@@ -1198,6 +1215,24 @@ function TacticalBoard2D({
     if (x < 0 || y < 0 || x >= columns || y >= rows) return null
     return { x, y }
   }, [columns, rows])
+
+  // Мини-карта просит поставить клетку в центр поля. Сдвиг считается по
+  // текущему положению рамки на экране: перенос в translate() идёт в
+  // экранных пикселях, поэтому масштаб в расчёт не входит.
+  useEffect(() => {
+    if (!focusRequest) return
+    const frame = frameRef.current
+    const viewport = frame?.closest('.map-scroll')?.parentElement
+    if (!frame || !viewport) return
+    const rect = frame.getBoundingClientRect()
+    const view = viewport.getBoundingClientRect()
+    if (!rect.width || !rect.height || !view.width || !view.height) return
+    const cellX = rect.left + (focusRequest.x + .5) * rect.width / Math.max(1, columns)
+    const cellY = rect.top + (focusRequest.y + .5) * rect.height / Math.max(1, rows)
+    const dx = view.left + view.width / 2 - cellX
+    const dy = view.top + view.height / 2 - cellY
+    setPan((current) => ({ x: Math.round(current.x + dx), y: Math.round(current.y + dy) }))
+  }, [focusRequest])
 
   const activeByKey = useMemo(() => {
     const index = new Map<string, BoardCellNode>()

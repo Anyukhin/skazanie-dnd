@@ -4,11 +4,11 @@
   top: 88px;
   right: 286px;
   width: 246px;
-  border: 1px solid rgba(221, 178, 121, .2);
+  border: 1px solid color-mix(in srgb, var(--well) 1%, var(--acc2) 19%);
   border-radius: 7px;
   background:
     radial-gradient(circle at 18% 20%, rgba(213, 150, 76, .14), transparent 46%),
-    linear-gradient(145deg, rgba(29, 24, 19, .94), rgba(14, 12, 10, .92));
+    linear-gradient(145deg, color-mix(in srgb, var(--well) 9.4%, var(--raise) 84.6%), color-mix(in srgb, var(--bg) 92%, transparent));
   box-shadow: 0 16px 42px rgba(0, 0, 0, .46), inset 0 1px rgba(255, 255, 255, .035);
   backdrop-filter: blur(13px);
 }
@@ -74,11 +74,11 @@
 .dice-tray__polyhedron text { fill: #fff0d4; paint-order: stroke; stroke: rgba(44, 23, 12, .72); stroke-width: 3px; font: 700 var(--fs-4xl) var(--f-serif); }
 
 .dice-tray__copy { min-width: 0; display: grid; align-content: center; }
-.dice-tray__copy > small { display: flex; align-items: center; gap: 5px; color: #a97a45; font-size: var(--fs-xxs); font-weight: 700; letter-spacing: .12em; }
-.dice-tray__copy > strong { margin-top: 4px; color: #dfd2c0; font: 600 var(--fs-lg) var(--f-serif); }
-.dice-tray__copy > span { min-height: 15px; display: flex; align-items: center; gap: 4px; margin-top: 3px; overflow: hidden; color: #746b62; font-size: var(--fs-xxs); line-height: 1.35; text-overflow: ellipsis; }
-.dice-tray__copy .dice-tray__error { color: #bd786d; }
-.dice-tray--error { border-color: rgba(190, 90, 77, .3); }
+.dice-tray__copy > small { display: flex; align-items: center; gap: 5px; color: color-mix(in srgb, var(--panel) 20%, var(--acc)); font-size: var(--fs-xxs); font-weight: 700; letter-spacing: .12em; }
+.dice-tray__copy > strong { margin-top: 4px; color: color-mix(in srgb, var(--frame) 10%, var(--text)); font: 600 var(--fs-lg) var(--f-serif); }
+.dice-tray__copy > span { min-height: 15px; display: flex; align-items: center; gap: 4px; margin-top: 3px; overflow: hidden; color: color-mix(in srgb, var(--well) 20%, var(--muted)); font-size: var(--fs-xxs); line-height: 1.35; text-overflow: ellipsis; }
+.dice-tray__copy .dice-tray__error { color: color-mix(in srgb, var(--text2) 50%, var(--hp)); }
+.dice-tray--error { border-color: color-mix(in srgb, var(--text) 3%, var(--hp) 27%); }
 
 .dice-tray__sr-status {
   position: absolute;
@@ -152,36 +152,36 @@
    плашкой слева и надписью режима по центру. Список костей открывается вниз,
    как обычное меню, и закрывается щелчком мимо. */
 .dice-tray--compact { position: absolute; z-index: 14; top: calc(var(--status, 60px) + 18px); right: calc(var(--server-column, 320px) + 22px); width: auto; padding: 0; border: 0; background: none; box-shadow: none; }
-.dice-tray--compact .dice-tray__chip { display: flex; align-items: center; gap: 8px; height: 42px; padding: 0 12px 0 8px; border: 1px solid rgba(222,201,171,.16); border-radius: 8px; background: rgba(15,13,11,.86); color: #c6b9a6; cursor: pointer; }
-.dice-tray--compact .dice-tray__chip:hover { border-color: rgba(214,161,96,.45); color: #e2b87c; }
+.dice-tray--compact .dice-tray__chip { display: flex; align-items: center; gap: 8px; height: 42px; padding: 0 12px 0 8px; border: 1px solid color-mix(in srgb, var(--text) 10.4%, var(--acc) 5.6%); border-radius: 8px; background: color-mix(in srgb, var(--bg) 86%, transparent); color: color-mix(in srgb, var(--frame) 25%, var(--text)); cursor: pointer; }
+.dice-tray--compact .dice-tray__chip:hover { border-color: color-mix(in srgb, var(--acc) 29.3%, var(--acc2) 15.8%); color: color-mix(in srgb, var(--frame) 5%, var(--acc2)); }
 .dice-tray--compact .dice-tray__chip b { font: 700 var(--fs-sm) var(--f-ui); letter-spacing: .04em; }
 .dice-tray--compact .dice-tray__die { width: 28px; height: 28px; display: grid; place-items: center; }
 .dice-tray--compact .dice-tray__die svg { width: 28px; height: 28px; }
 .dice-tray--compact.dice-tray--rolling .dice-tray__die { animation: dice-tray-compact-spin .72s linear infinite; }
 @keyframes dice-tray-compact-spin { to { transform: rotate(360deg); } }
 .dice-tray__backdrop { position: fixed; inset: 0; z-index: 1; }
-.dice-tray__menu { position: absolute; z-index: 2; top: calc(100% + 8px); right: 0; min-width: 190px; display: grid; gap: 8px; padding: 12px; border: 1px solid rgba(222,201,171,.18); border-radius: 9px; background: rgba(17,15,13,.97); box-shadow: 0 18px 44px rgba(0,0,0,.55); }
-.dice-tray__menu small { color: #856944; font: 700 var(--fs-xxs) var(--f-ui); letter-spacing: .14em; }
+.dice-tray__menu { position: absolute; z-index: 2; top: calc(100% + 8px); right: 0; min-width: 190px; display: grid; gap: 8px; padding: 12px; border: 1px solid color-mix(in srgb, var(--text) 11.7%, var(--acc) 6.3%); border-radius: 9px; background: color-mix(in srgb, var(--well) 48.5%, var(--panel) 48.5%); box-shadow: 0 18px 44px rgba(0,0,0,.55); }
+.dice-tray__menu small { color: color-mix(in srgb, var(--spent) 55%, var(--acc)); font: 700 var(--fs-xxs) var(--f-ui); letter-spacing: .14em; }
 .dice-tray__menu > div { display: flex; flex-wrap: wrap; gap: 6px; }
-.dice-tray__menu button { min-width: 46px; height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: rgba(255,255,255,.02); color: #b3a894; font: 600 var(--fs-sm) var(--f-ui); cursor: pointer; }
-.dice-tray__menu button:hover { border-color: rgba(211,160,97,.45); background: rgba(192,132,66,.14); color: #e2b87c; }
-.dice-tray__menu button.active { border-color: rgba(214,161,96,.5); color: #e2b87c; }
-.dice-tray__menu em { color: #756e67; font: var(--fs-xs) var(--f-ui); font-style: normal; }
+.dice-tray__menu button { min-width: 46px; height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: rgba(255,255,255,.02); color: color-mix(in srgb, var(--frame) 35%, var(--text)); font: 600 var(--fs-sm) var(--f-ui); cursor: pointer; }
+.dice-tray__menu button:hover { border-color: color-mix(in srgb, var(--acc) 31.5%, var(--acc2) 13.5%); background: rgba(192,132,66,.14); color: color-mix(in srgb, var(--frame) 5%, var(--acc2)); }
+.dice-tray__menu button.active { border-color: color-mix(in srgb, var(--acc) 32.5%, var(--acc2) 17.5%); color: color-mix(in srgb, var(--frame) 5%, var(--acc2)); }
+.dice-tray__menu em { color: color-mix(in srgb, var(--rail-bg) 55%, var(--text)); font: var(--fs-xs) var(--f-ui); font-style: normal; }
 
 /* Бросок вынесен в верхний слой: масштаб и transform карты его не затрагивают. */
-.dice-cinematic { position: fixed; inset: 0; width: min(680px, 100vw); max-width: 100vw; max-height: 100dvh; margin: auto; padding: 36px 28px 30px; overflow: auto; border: 0; background: transparent; color: #efdfc3; text-align: center; }
+.dice-cinematic { position: fixed; inset: 0; width: min(680px, 100vw); max-width: 100vw; max-height: 100dvh; margin: auto; padding: 36px 28px 30px; overflow: auto; border: 0; background: transparent; color: color-mix(in srgb, var(--text) 80%, var(--acc2)); text-align: center; }
 .dice-cinematic::backdrop { background: rgba(5, 7, 9, .87); }
-.dice-cinematic__close { position: absolute; top: 12px; right: 16px; display: grid; place-items: center; width: 44px; height: 44px; border: 0; background: transparent; color: #b9aa91; cursor: pointer; }
-.dice-cinematic__heading h2 { margin: 0; color: #efdfc3; font: 700 clamp(26px, 4vw, 38px) var(--f-display); }
-.dice-cinematic__heading p { margin: 8px 0 0; min-height: 24px; color: #b9aa91; font: 14px var(--f-ui); }
+.dice-cinematic__close { position: absolute; top: 12px; right: 16px; display: grid; place-items: center; width: 44px; height: 44px; border: 0; background: transparent; color: color-mix(in srgb, var(--text2) 85%, var(--acc)); cursor: pointer; }
+.dice-cinematic__heading h2 { margin: 0; color: color-mix(in srgb, var(--text) 80%, var(--acc2)); font: 700 clamp(26px, 4vw, 38px) var(--f-display); }
+.dice-cinematic__heading p { margin: 8px 0 0; min-height: 24px; color: color-mix(in srgb, var(--text2) 85%, var(--acc)); font: 14px var(--f-ui); }
 .dice-cinematic__stage { position: relative; width: min(100%, calc((100dvh - 340px) * 1.5)); min-width: 150px; margin-inline: auto; aspect-ratio: 3 / 2; }
 .dice-cinematic__stage canvas { position: relative; display: block; width: 100%; height: 100%; }
-.dice-cinematic__circle { position: absolute; left: 50%; top: 50%; width: 60%; aspect-ratio: 1; border: 1px solid #b48b4540; border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 0 10px #b48b4509, inset 0 0 50px #b48b4508; }
-.dice-cinematic__circle::after { content: ''; position: absolute; inset: 12px; border: 1px solid #b48b4526; transform: rotate(45deg); }
+.dice-cinematic__circle { position: absolute; left: 50%; top: 50%; width: 60%; aspect-ratio: 1; border: 1px solid color-mix(in srgb, var(--well) 2.5%, var(--acc) 22.6%); border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 0 10px color-mix(in srgb, var(--well) 0.4%, var(--acc) 3.2%), inset 0 0 50px color-mix(in srgb, var(--well) 0.3%, var(--acc) 2.8%); }
+.dice-cinematic__circle::after { content: ''; position: absolute; inset: 12px; border: 1px solid color-mix(in srgb, var(--well) 1.5%, var(--acc) 13.4%); transform: rotate(45deg); }
 .dice-cinematic__outcome { min-height: 90px; }
 .dice-cinematic__outcome p { margin: 0 0 4px; font: 500 clamp(28px, 5vw, 42px) var(--f-serif); color: #f5dfae; }
-.dice-cinematic__outcome span { color: #b9aa91; font: 13px var(--f-ui); }
-.dice-cinematic__continue { min-width: 190px; min-height: 44px; margin-top: 18px; padding: 10px 22px; border: 1px solid #a5814f; border-radius: 3px; color: #ecd3a5; background: #211c16; font: 14px var(--f-ui); cursor: pointer; }
+.dice-cinematic__outcome span { color: color-mix(in srgb, var(--text2) 85%, var(--acc)); font: 13px var(--f-ui); }
+.dice-cinematic__continue { min-width: 190px; min-height: 44px; margin-top: 18px; padding: 10px 22px; border: 1px solid color-mix(in srgb, var(--spent) 30%, var(--acc)); border-radius: 3px; color: color-mix(in srgb, var(--text) 45%, var(--acc2)); background: color-mix(in srgb, var(--panel) 80%, var(--frame)); font: 14px var(--f-ui); cursor: pointer; }
 .dice-cinematic button:hover { color: #fff0d4; border-color: #efd09a; }
 .dice-cinematic button:focus-visible, .dice-tray button:focus-visible { outline: 2px solid #efd09a; outline-offset: 4px; }
 .dice-cinematic--result .dice-cinematic__outcome { animation: diceResultReveal .65s ease-out both; }
