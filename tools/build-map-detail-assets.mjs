@@ -14,16 +14,19 @@ const hash = bytes => createHash('sha256').update(bytes).digest('hex')
 
 export async function buildMapDetailAssets({ specFile, sourceDir, outputDir, modelPreviewDir }) {
   const spec = JSON.parse(await readFile(specFile, 'utf8'))
-  if (spec.models?.length !== 64 || new Set(spec.models.map(model => model.id)).size !== 64) throw new Error('Нужны 64 уникальные модели заказа')
+  if (spec.models?.length !== spec.counts?.models || new Set(spec.models.map(model => model.id)).size !== spec.counts.models) throw new Error('Состав моделей должен совпадать с заказом и не содержать повторов')
   const raster = buildMapDetailRasters({ spec, sourceDir, outputDir })
   const models = await buildMapDetailModels({ models: spec.models, outputDir })
   const atlas = decodePng(await readFile(join(outputDir, 'prop-atlas.png')))
   await writeFile(join(outputDir, 'raster-preview.png'), encodePng(previewSheet(atlas, raster.atlasManifest)))
+  const expansionFrames = Object.fromEntries(spec.rasters.filter(item => spec.previewSheets?.includes(item.file)).flatMap(item => item.ids.map(id => [id, raster.atlasManifest.frames[id]])))
+  const hasExpansionPreview = Object.keys(expansionFrames).length > 0
+  if (hasExpansionPreview) await writeFile(join(outputDir, 'expansion-preview.png'), encodePng(previewSheet(atlas, { frames: expansionFrames })))
   const modelRecords = models.map(model => ({ ...spec.models.find(item => item.id === model.id), ...model }))
   if (modelPreviewDir) {
     const previews = JSON.parse(await readFile(join(modelPreviewDir, 'manifest.json'), 'utf8'))
     const image = decodePng(await readFile(join(modelPreviewDir, 'topdown.png')))
-    if (previews.models.length !== models.length || image.width !== 2048 || image.height !== 2048) throw new Error('Предпросмотр должен содержать все 64 модели')
+    if (previews.models.length !== models.length || image.width !== 2048 || image.height !== Math.ceil(models.length / 8) * 256) throw new Error('Предпросмотр должен содержать все модели заказа')
     for (const model of modelRecords) {
       const entry = previews.models.find(item => item.key === model.id)
       if (!entry?.preview) throw new Error(`Нет предпросмотра модели: ${model.id}`)
@@ -54,18 +57,20 @@ export async function buildMapDetailAssets({ specFile, sourceDir, outputDir, mod
     ...raster.manifest,
     schema: 'map-detail-assets/v1',
     status: 'prepared',
-    counts: { sourceRasters: 34, textures: 19, sheets: 15, stamps: 135, models: 64 },
+    counts: raster.manifest.counts,
     promptSpec: 'docs/map-detail-assets-spec-v1.json',
     provenance: {
       rasterMethod: 'OpenAI built-in image_gen',
-      modelMethod: 'original procedural low-poly, Three.js GLTFExporter',
+      modelMethod: 'original detailed geometry, UV and PBR, Three.js GLTFExporter',
+      modelTriangleBudget: 50000,
+      materialSources: models[0]?.materialSources ?? [],
       thirdPartyModelsIncluded: false,
       requestedByOwner: '2026-10-02',
       sourcePrompts: 'docs/map-detail-assets-prompts.md',
       generators: sources,
     },
     models: modelRecords,
-    previews: { raster: 'raster-preview.png', ...(modelPreviewDir ? { models: 'model-preview.png' } : {}) },
+    previews: { raster: 'raster-preview.png', ...(modelPreviewDir ? { models: 'model-preview.png' } : {}), ...(hasExpansionPreview ? { expansion: 'expansion-preview.png' } : {}) },
     files,
   }
   await writeFile(join(outputDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)

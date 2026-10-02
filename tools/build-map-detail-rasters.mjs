@@ -25,9 +25,6 @@ export const CELLS_PER_TILE = 8
 export const CELL_PIXELS = 96
 export const ATLAS_WIDTH = 2048
 export const MAX_ATLAS_SIDE = 4095
-export const EXPECTED_TEXTURES = 19
-export const EXPECTED_SHEETS = 15
-export const EXPECTED_FRAMES = 135
 
 /** @typedef {import('./png-codec.mjs').PngImage} PngImage */
 /** @typedef {{x: number, y: number, w: number, h: number}} Box */
@@ -167,10 +164,12 @@ function normalizeFootprints(entry, ids, label) {
 
 /**
  * @param {unknown} specValue
- * @returns {{rasters: NormalizedRaster[], models: Array<Record<string, unknown>>}}
+ * @returns {{rasters: NormalizedRaster[], models: Array<Record<string, unknown>>, counts: Record<string, number>}}
  */
 function normalizeSpec(specValue) {
   const spec = record(specValue, 'spec')
+  const declared = record(spec.counts, 'spec.counts')
+  const counts = Object.fromEntries(['sourceRasters', 'textures', 'sheets', 'stamps', 'models'].map(key => [key, positiveInteger(declared[key], `spec.counts.${key}`)]))
   const rawRasters = array(spec.rasters, 'spec.rasters')
   /** @type {NormalizedRaster[]} */
   const rasters = []
@@ -203,9 +202,10 @@ function normalizeSpec(specValue) {
 
   const textureCount = rasters.filter((item) => item.type !== 'sheet').length
   const sheetCount = rasters.filter((item) => item.type === 'sheet').length
-  if (textureCount !== EXPECTED_TEXTURES) throw new Error(`spec.rasters: нужно ${EXPECTED_TEXTURES} фактур, получено ${textureCount}`)
-  if (sheetCount !== EXPECTED_SHEETS) throw new Error(`spec.rasters: нужно ${EXPECTED_SHEETS} листов, получено ${sheetCount}`)
-  if (ids.size !== EXPECTED_FRAMES) throw new Error(`spec.rasters: нужно ${EXPECTED_FRAMES} уникальных ID, получено ${ids.size}`)
+  if (rasters.length !== counts.sourceRasters) throw new Error(`spec.rasters: нужно ${counts.sourceRasters} исходников, получено ${rasters.length}`)
+  if (textureCount !== counts.textures) throw new Error(`spec.rasters: нужно ${counts.textures} фактур, получено ${textureCount}`)
+  if (sheetCount !== counts.sheets) throw new Error(`spec.rasters: нужно ${counts.sheets} листов, получено ${sheetCount}`)
+  if (ids.size !== counts.stamps) throw new Error(`spec.rasters: нужно ${counts.stamps} уникальных ID, получено ${ids.size}`)
 
   const modelsValue = spec.models === undefined ? [] : array(spec.models, 'spec.models')
   const modelIds = new Set()
@@ -233,7 +233,8 @@ function normalizeSpec(specValue) {
     }
     return { ...model, id, dimensions, footprint }
   })
-  return { rasters, models }
+  if (models.length !== counts.models) throw new Error(`spec.models: нужно ${counts.models} моделей, получено ${models.length}`)
+  return { rasters, models, counts }
 }
 
 /**
@@ -453,7 +454,7 @@ export function buildMapDetailRasters(options) {
     }
   }
 
-  if (sprites.length !== EXPECTED_FRAMES) throw new Error(`Атлас: собрано ${sprites.length} кадров, ожидалось ${EXPECTED_FRAMES}`)
+  if (sprites.length !== normalized.counts.stamps) throw new Error(`Атлас: собрано ${sprites.length} кадров, ожидалось ${normalized.counts.stamps}`)
   const packed = packSprites(sprites.map(({ id, image }) => ({ id, image })))
   validatePackedFrames(packed)
   const atlasPath = 'prop-atlas.png'
@@ -496,7 +497,8 @@ export function buildMapDetailRasters(options) {
     tileSide: TILE_SIDE,
     cellsPerTile: CELLS_PER_TILE,
     textures,
-    atlas: { image: atlasPath, metadata: atlasManifestPath, width: packed.width, height: packed.height, frameCount: EXPECTED_FRAMES },
+    atlas: { image: atlasPath, metadata: atlasManifestPath, width: packed.width, height: packed.height, frameCount: normalized.counts.stamps },
+    counts: normalized.counts,
     sheets,
     models,
   }
