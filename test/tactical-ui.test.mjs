@@ -746,3 +746,11 @@ test('площадь заклинателя для предпросмотра б
   assert.ok(cube.every((point) => point.x >= 1 && point.x <= 3), 'куб от клетки каста (0,1) и её площади 2×2')
   assert.ok(cube.some((point) => point.x === 3 && point.y === 1), 'вторая клетка площади в точке каста продлевает куб')
 })
+
+test('реакция-заклинание предлагает усиление только кругами с оставшейся ячейкой', () => {
+  const absorb = { id: 'cast:absorb-elements', slot_level: 1 }
+  assert.deepEqual(tacticalUi.reactionSlotChoices(absorb, [1, 3, 5]), [1, 3, 5])
+  assert.deepEqual(tacticalUi.reactionSlotChoices({ ...absorb, slot_level: 3 }, [1, 3]), [3], 'ниже предложенной — нельзя')
+  assert.deepEqual(tacticalUi.reactionSlotChoices({ id: 'opportunity-attack' }, [1, 2]), [], 'не заклинание — без выбора')
+  assert.deepEqual(tacticalUi.reactionSlotChoices({ id: 'cast:shield', slot_level: 1 }, []), [1])
+})

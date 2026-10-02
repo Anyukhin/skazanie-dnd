@@ -24,6 +24,7 @@ import {
   validateCommand,
 } from './rules-engine.mjs'
 import {
+  isHostileSummon,
   isPartySummon,
   isUntargetableSummon,
   monsterCombatSpellFor,
@@ -109,7 +110,23 @@ function livingEnemies(state) {
   const encounterIds = new Set(Array.isArray(state.mechanics?.encounter?.enemy_ids)
     ? state.mechanics.encounter.enemy_ids.map(String)
     : [])
-  return state.enemies.filter((enemy) => isCombatCapable(state, enemy) && (!encounterIds.size || encounterIds.has(actorId(enemy))))
+  // Враждебный призыв в состав встречи не входит, но пока он жив, бой не
+  // окончен: демоны продолжают бить всех вокруг.
+  return state.enemies.filter((enemy) => isCombatCapable(state, enemy)
+    && (!encounterIds.size || encounterIds.has(actorId(enemy)) || isHostileSummon(enemy)))
+}
+
+/**
+ * Кого существо готово бить. Обычный противник — отряд и враждебных всем
+ * демонов; демон — любого живого не-демона, свои ли это или чужие.
+ */
+function attackableTargetsFor(state, enemy) {
+  if (enemy?.hostile_to_all === true) {
+    const ownEffect = String(enemy.sourceEffectId ?? enemy.source_effect_id ?? '')
+    return [...livingParty(state), ...livingEnemies(state).filter((other) => actorId(other) !== actorId(enemy)
+      && !(isHostileSummon(other) && String(other.sourceEffectId ?? other.source_effect_id ?? '') === ownEffect))]
+  }
+  return [...livingParty(state), ...livingEnemies(state).filter((other) => isHostileSummon(other))]
 }
 
 function gridDistance(left, right) {
@@ -519,7 +536,8 @@ function targetCandidates(state, enemy) {
   const enemyAt = actorPosition(state, actorId(enemy))
   const profiles = actionProfiles(state, enemy)
   const candidates = []
-  for (const target of livingParty(state)) {
+  const hostileToAll = enemy?.hostile_to_all === true
+  for (const target of attackableTargetsFor(state, enemy)) {
     const targetAt = actorPosition(state, actorId(target))
     const path = shortestTacticalPath(state, actorId(enemy), targetAt, { allowOccupiedDestination: true })
     const pathDistance = path ? path.length : gridDistance({ state, id: actorId(enemy) }, { state, id: actorId(target) })
@@ -554,7 +572,8 @@ function targetCandidates(state, enemy) {
         && distanceFeet >= CELL_FEET && distanceFeet <= profile.range_feet
         && !hasClearActorTrajectory(state, actorId(enemy), actorId(target), enemyAt, targetAt)
       const relentlessPursuit = hasTrait(enemy, NPC_BEHAVIOR_POLICIES.relentlessPursuit)
-      const score = Number(inRange && !blockedShot) * 1_000 + Number(Boolean(path)) * 400 + Math.min(300, damage * 12)
+      // Демон не выбирает — он бьёт ближайшего.
+      const score = hostileToAll ? Number(inRange && !blockedShot) * 1_000 + Number(Boolean(path)) * 400 - pathDistance * 50 : Number(inRange && !blockedShot) * 1_000 + Number(Boolean(path)) * 400 + Math.min(300, damage * 12)
         + (relentlessPursuit
           ? Math.max(0, 800 - pathDistance * 80)
           : damage >= targetHp ? 260 : Math.round((1 - targetHp / Math.max(targetHp, Number(target.maxHp) || targetHp)) * 100))

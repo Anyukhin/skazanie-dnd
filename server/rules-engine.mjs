@@ -372,6 +372,7 @@ import {
   combatSpellFor,
   combatSpellsFor,
   fixedSpellSlotLevelFor,
+  isHostileSummon,
   isPartySummon,
   isUntargetableSummon,
   monsterCombatSpellFor,
@@ -1010,7 +1011,9 @@ function hasSummonLifecycleVersion(value) {
 }
 
 function partySummonsForExpiry(state) {
-  const active = (state?.actors ?? []).filter((actor) => isPartySummon(actor))
+  // Враждебные призывы живут среди противников, но кончаются так же: со
+  // сроком заклинания и с концентрацией призвавшего.
+  const active = [...(state?.actors ?? []).filter((actor) => isPartySummon(actor)), ...(state?.enemies ?? []).filter((actor) => isHostileSummon(actor))]
   const stashed = Object.values(state?.levelEntities && typeof state.levelEntities === 'object' ? state.levelEntities : {})
     .flatMap((stash) => Array.isArray(stash?.summons) ? stash.summons : [])
   const unique = new Map()
@@ -6045,12 +6048,15 @@ export function validateCommand(input, rawState, context = {}) {
   // отклоняет за него окно реакции: иначе «Несгибаемый» незанятого воина
   // навсегда останавливал бой на отказе `CHARACTER_SETUP_REQUIRED`.
   const serverTimeoutMaySkipSetupActor = setupActor?.characterSetupRequired
-    && (command.command_type === 'EndTurn'
+    && (['EndTurn', 'EndCombat'].includes(command.command_type)
       || command.command_type === 'UseCombatAction' && command.action_id === 'decline-reaction')
     && command.server_authoritative === true
-    && command.auto_skip_reason === 'turn-timeout'
     && context.isAdmin === true
     && context.serverAuthoritativeCombat === true
+    // Тайм-аут хода либо планировщик, пропускающий ход павшего героя:
+    // иначе бой вставал на недособранном месте с 0 хитов.
+    && (command.auto_skip_reason === 'turn-timeout'
+      || ['EndTurn', 'EndCombat'].includes(command.command_type) && context.isNpcScheduler === true)
   const stagedSetupCommand = setupActor?.characterSetupRequired
     && setupActor?.characterSetupStage === 'leveling'
     && ['SetCharacterChoices', 'SetSpellSelections', 'LevelUp'].includes(command.command_type)
@@ -6820,7 +6826,12 @@ export function validateCommand(input, rawState, context = {}) {
     }
     const reactionSpellId = String(command.action_id).startsWith('cast:') ? String(command.action_id).slice(5) : ''
     const reactionSpell = reactionSpellId ? combatSpellFor(actor, reactionSpellId, { rulesetId: state.ruleset_id }) : null
-    const reactionOption = reactionWindow?.action_options?.find((candidate) => candidate.id === command.action_id)
+    const offeredReactionOption = reactionWindow?.action_options?.find((candidate) => candidate.id === command.action_id)
+    // Реакцию-заклинание можно усилить: окно предлагает низшую доступную
+    // ячейку, а игрок вправе выбрать старшую, если она у него есть.
+    const reactionOption = reactionSpell && offeredReactionOption && command.slot_level != null
+      ? reactionSlotChoice(state, command.actor_id, reactionSpell, offeredReactionOption, command.slot_level)
+      : offeredReactionOption
     const resistanceChoiceAction = reactionWindow?.trigger === 'saving-throw-bonus-choice'
       && (reactionWindow.action_ids ?? []).includes(command.action_id)
       ? {
@@ -9459,6 +9470,24 @@ function isActiveTurnActor(state, actorIdValue) {
 
 /** Типы урона, которые заклинатель может выбрать для добавочной кости оружия. */
 const TYPED_RIDER_DAMAGE_TYPES = new Set(['acid', 'cold', 'fire', 'lightning', 'thunder', 'radiant', 'necrotic'])
+
+/**
+ * Выбранная игроком ячейка реакции-заклинания. Она не ниже предложенной
+ * окном, существует у героя и не пуста; ячейки договора колдуна одного круга,
+ * поэтому выбирать там нечего.
+ */
+function reactionSlotChoice(state, actorIdValue, spell, offered, requestedLevel) {
+  const level = safeInteger(requestedLevel, 0)
+  const offeredLevel = Math.max(safeInteger(spell.level, 1), safeInteger(offered?.slot_level, spell.level))
+  if (level === offeredLevel) return offered
+  if (level < offeredLevel || level > 9) {
+    throw new RulesValidationError('Ячейку реакции можно выбрать только не ниже предложенной', 'INVALID_SPELL_SLOT_LEVEL')
+  }
+  const resource = `spell_slots_${level}`
+  const pool = resourcePool(state, String(actorIdValue), resource)
+  if (!pool || pool.current < 1) throw new RulesValidationError('Нет свободной ячейки этого круга', 'INSUFFICIENT_RESOURCE')
+  return { ...offered, resource, slot_level: level }
+}
 
 /**
  * Режим заклинания, меняющий сам профиль: «Преобразование камня» превращает
@@ -16840,7 +16869,18 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           // в 2014 он считается от круга ячейки, в прежней редакции — от круга
           // заклинания, чтобы не менять уже сыгранные кампании.
           const statLevel = Math.max(1, usesDnd2014(state) ? slotLevel : spell.level)
-          const definition = spell.summon ?? {
+          // Состав призыва по броску («Призыв низших демонов» 2014: к6 решает,
+          // двое ли это демонов ПО 1, четверо ПО 1/2 или восьмеро ПО 1/4).
+          const summonTable = Array.isArray(spell.summonByRoll?.entries) && spell.summonByRoll.entries.length ? spell.summonByRoll : null
+          const summonTableRoll = summonTable ? diceService.roll(String(summonTable.die ?? '1d6'), `summon_count:${spell.id}`, command.actor_id, command.visibility ?? 'public') : null
+          if (summonTableRoll) {
+            rolls.push(summonTableRoll)
+            events.push(eventFrom(command, 'DieRolled', { ...summonTableRoll, spell_id: spell.id, summon_table: true }, []))
+          }
+          const summonTableEntry = summonTableRoll
+            ? summonTable.entries.find((entry) => summonTableRoll.total >= safeInteger(entry.min, 1) && summonTableRoll.total <= safeInteger(entry.max, 6)) ?? summonTable.entries.at(-1)
+            : null
+          const definition = summonTableEntry?.summon ?? spell.summon ?? {
             name: spell.name,
             hp: 10 + statLevel * 5 + Math.max(1, safeInteger(actor?.level, 1)),
             armor: 11 + Math.ceil(statLevel / 2),
@@ -16860,7 +16900,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             .filter(([level]) => slotLevel >= safeInteger(level, Number.MAX_SAFE_INTEGER))
             .sort(([left], [right]) => safeInteger(right, 0) - safeInteger(left, 0))[0]?.[1], 1))
           const summonCount = Math.max(1, Math.min(16,
-            (safeInteger(spell.summonCount, 1) + extraLevels * Math.max(0, safeInteger(spell.upcastSummonsPerLevel, 0))) * countMultiplier))
+            (safeInteger(summonTableEntry?.count ?? spell.summonCount, 1) + extraLevels * Math.max(0, safeInteger(spell.upcastSummonsPerLevel, 0))) * countMultiplier))
           const summonStartedAtSeconds = worldTimeSeconds(projectEvents(events))
           // «Духовное оружие»: модификатор базовой характеристики и +1к8 за
           // каждые два круга ячейки сверх второго — по полям блока призыва.
@@ -16899,18 +16939,32 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
               }
             }
           }
+          // Враждебный призыв («Призыв низших демонов» 2014) не слушается
+          // заклинателя: ходит группой в своей инициативе, которую бросает сервер.
+          const hostileSummon = definition.hostile === true
+          const hostileDexterity = abilityModifier(definition.abilities?.dex)
+          const hostileInitiative = hostileSummon && state.mechanics.combat.active && placed.length
+            ? diceService.rollD20({ modifier: hostileDexterity, purpose: `summon_initiative:${spell.id}`, actorId: command.actor_id, visibility: command.visibility ?? 'public' })
+            : null
+          if (hostileInitiative) {
+            rolls.push(hostileInitiative)
+            events.push(eventFrom(commandWithRules(command, RULE_IDS.initiative), 'DieRolled', { ...hostileInitiative, spell_id: spell.id, summon_initiative: true }, []))
+          }
           for (const [index, spot] of placed.entries()) {
             const summonId = `summon-${command.actor_id}-${safeCommandId}${placed.length > 1 ? `-${index + 1}` : ''}`.slice(0, 120)
             const summon = {
               id: summonId,
-              name: `${definition.name}${placed.length > 1 ? ` ${index + 1}` : ''} · ${actor.character ?? actor.name ?? command.actor_id}`.slice(0, 120),
+              name: hostileSummon
+                ? `${definition.name}${placed.length > 1 ? ` ${index + 1}` : ''}`.slice(0, 120)
+                : `${definition.name}${placed.length > 1 ? ` ${index + 1}` : ''} · ${actor.character ?? actor.name ?? command.actor_id}`.slice(0, 120),
               kind: 'summon',
-              faction: 'party',
+              faction: hostileSummon ? 'hostile' : 'party',
               ownerId: command.actor_id,
-              controllerId: command.actor_id,
+              ...(hostileSummon ? { hostile_to_all: true, creature_type: String(definition.creatureType ?? 'fiend') } : { controllerId: command.actor_id }),
+              ...(definition.abilities && typeof definition.abilities === 'object' ? { abilities: clone(definition.abilities) } : {}),
               sourceSpellId: spell.id,
               sourceEffectId: effectId,
-              turnRule: 'after-owner',
+              turnRule: hostileSummon ? 'own-initiative' : 'after-owner',
               summon_lifecycle_version: SUMMON_LIFECYCLE_VERSION,
               ...(spell.durationRounds
                 ? { expires_at_seconds: summonStartedAtSeconds + Math.max(1, safeInteger(spell.durationRounds, 1)) * 6 }
@@ -16924,7 +16978,8 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
               alive: true,
               attack_profile: {
                 name: definition.attackName,
-                attack_modifier: spellAttackModifier,
+                // Враждебный демон бьёт своим бонусом, а не бонусом заклинателя.
+                attack_modifier: definition.attackBonus != null ? safeInteger(definition.attackBonus, 0) : spellAttackModifier,
                 damage_expression: summonDamageExpression,
                 damage_type: definition.damageType,
                 range_feet: definition.range,
@@ -16933,7 +16988,8 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
               ...(definition.untargetable === true ? { untargetable: true } : {}),
             }
             events.push(eventFrom(commandWithRules(command, RULE_IDS.initiative), 'SummonedCreatureCreated', {
-              summon, turn_rule: 'after-owner', summon_index: index + 1, summon_count: placed.length,
+              summon, turn_rule: hostileSummon ? 'own-initiative' : 'after-owner', summon_index: index + 1, summon_count: placed.length,
+              ...(hostileInitiative ? { initiative_total: hostileInitiative.total, initiative_modifier: hostileDexterity } : {}),
               summon_lifecycle_version: SUMMON_LIFECYCLE_VERSION,
             }, [summonId]))
           }
@@ -21423,6 +21479,9 @@ function removeSummonedActor(state, id, { cleanupMode = false } = {}) {
     if (state.mechanics.combat.active_index >= initiative.length) state.mechanics.combat.active_index = initiative.length ? initiative.length - 1 : -1
   }
   state.actors = (state.actors ?? []).filter((actor) => actorId(actor) !== expected)
+  if ((state.enemies ?? []).some((enemy) => actorId(enemy) === expected && isHostileSummon(enemy))) {
+    state.enemies = state.enemies.filter((enemy) => actorId(enemy) !== expected)
+  }
   delete state.mechanics.positions[expected]
   delete state.mechanics.combat.action_economy[expected]
   if (!cleanupEnabled) return
@@ -21502,9 +21561,9 @@ function clearConcentrationEffect(state, targetIdValue, requestedEffectId, { cle
     state.mechanics.conditions[actorIdValue] = (conditions ?? []).filter((condition) => String(condition.effect_id ?? '') !== effectId)
   }
   const cleanupEnabled = cleanupMode === true
-  const summons = cleanupEnabled ? partySummonsForExpiry(state) : [...(state.actors ?? [])]
+  const summons = cleanupEnabled ? partySummonsForExpiry(state) : [...(state.actors ?? []), ...(state.enemies ?? []).filter((enemy) => isHostileSummon(enemy))]
   for (const summon of summons) {
-    if (isPartySummon(summon) && String(summon.sourceEffectId ?? summon.source_effect_id ?? '') === effectId) {
+    if ((isPartySummon(summon) || isHostileSummon(summon)) && String(summon.sourceEffectId ?? summon.source_effect_id ?? '') === effectId) {
       removeSummonedActor(state, actorId(summon), { cleanupMode: cleanupEnabled })
     }
   }
@@ -23460,6 +23519,23 @@ function applyGameEventCurrent(rawState, event) {
         delete summon.expiresAtSeconds
       }
       if (!actorId(summon) || findActor(state, actorId(summon))) break
+      if (isHostileSummon(summon)) {
+        // Враждебный призыв встаёт к противникам и в свою групповую инициативу:
+        // после всех, кто бросил больше, и перед теми, кто бросил меньше.
+        state.enemies = [...(state.enemies ?? []), { ...summon, alive: true }]
+        state.mechanics.positions[actorId(summon)] = { x: safeInteger(summon.x, 0), y: safeInteger(summon.y, 0) }
+        if (state.mechanics.combat.active) {
+          const initiative = state.mechanics.combat.initiative
+          const total = safeInteger(payload.initiative_total, 0)
+          let insertAt = initiative.findIndex((entry) => safeInteger(entry.total, 0) < total)
+          if (insertAt < 0) insertAt = initiative.length
+          initiative.splice(insertAt, 0, { actor_id: actorId(summon), total, modifier: safeInteger(payload.initiative_modifier, 0) })
+          if (insertAt <= state.mechanics.combat.active_index) state.mechanics.combat.active_index += 1
+          state.mechanics.combat.action_economy[actorId(summon)] = actionEconomy()
+        }
+        appendBattleLog(state, event, { sceneTurn: safeInteger(state.scene?.turn, state.mechanics.combat.round), round: state.mechanics.combat.round, type: 'summon', actorId: event.actor_id, actorKind: combatActorKind(state, event.actor_id), targetId: actorId(summon), spellId: summon.sourceSpellId, spellName: summon.name })
+        break
+      }
       state.actors = [...(state.actors ?? []), summon]
       state.mechanics.positions[actorId(summon)] = { x: safeInteger(summon.x, 0), y: safeInteger(summon.y, 0) }
       if (state.mechanics.combat.active) {

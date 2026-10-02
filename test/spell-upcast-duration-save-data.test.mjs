@@ -64,8 +64,9 @@ test('Духи TCE растут с ячейкой, а число призван�
   assert.equal(summons(cast('animate-objects', { slot_level: 6, to: { x: 10, y: 10 } }).events).length, 12)
   assert.equal(summons(cast('conjure-animals', { slot_level: 5, to: { x: 10, y: 10 } }).events).length, 16)
   assert.equal(summons(cast('conjure-woodland-beings', { slot_level: 6, to: { x: 10, y: 10 } }).events).length, 16)
-  assert.equal(summons(cast('summon-lesser-demons', { slot_level: 3, to: { x: 10, y: 10 } }).events).length, 4)
-  assert.equal(summons(cast('summon-lesser-demons', { slot_level: 6, to: { x: 10, y: 10 } }).events).length, 8)
+  // Максимальная к6 — восьмеро демонов ПО 1/4, на ячейке 6-го круга вдвое больше.
+  assert.equal(summons(cast('summon-lesser-demons', { slot_level: 3, to: { x: 10, y: 10 } }).events).length, 8)
+  assert.equal(summons(cast('summon-lesser-demons', { slot_level: 6, to: { x: 10, y: 10 } }).events).length, 16)
 })
 
 test('Срок призыва и длящейся области соответствует карточке', () => {
@@ -122,6 +123,5 @@ test('Духовное оружие добавляет модификатор и
 test('Аудит перечисляет только известные пробелы усиления', () => {
   // Новое заклинание с обещанием усиления без поля попадёт сюда и уронит тест:
   // либо задать поле, либо осознанно объявить причину в аудите.
-  // Поглощение стихий: ячейку реакции выбирает окно, а оно пока берёт низшую.
-  assert.deepEqual(auditSpellOverrides().upcastGaps.map((gap) => gap.id).sort(), ['absorb-elements'])
+  assert.deepEqual(auditSpellOverrides().upcastGaps.map((gap) => gap.id).sort(), [])
 })

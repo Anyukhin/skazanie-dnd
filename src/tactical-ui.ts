@@ -907,3 +907,14 @@ export function levelIndicatorRows(levels: readonly SceneLevel[] | undefined, cu
   const rows = [...byIndex.values()].sort((left, right) => right.index - left.index)
   return rows.length > 1 ? rows : []
 }
+
+/**
+ * Круги ячеек, которыми можно усилить реакцию-заклинание: не ниже предложенной
+ * окном и только те, где у героя осталась ячейка. Ячейки договора сюда не
+ * входят — их круг один.
+ */
+export function reactionSlotChoices(option: { id: string; slot_level?: number }, slotLevels: readonly number[]) {
+  if (!option.id.startsWith('cast:') || !option.slot_level) return []
+  const offered = Number(option.slot_level)
+  return [offered, ...slotLevels.filter((level) => level > offered)].filter((level, index, list) => list.indexOf(level) === index)
+}

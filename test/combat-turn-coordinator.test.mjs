@@ -759,3 +759,44 @@ test('истёкшее окно реакции недособранного ге
   assert.ok(events.some((event) => event.event_type === 'ReactionWindowClosed' && event.payload.auto_declined === true))
   assert.equal((await store.load('SETUP-REACTION')).state.mechanics.combat.reaction_window, null)
 })
+
+test('павший герой на недособранном месте не останавливает бой: планировщик пропускает его ход', async (t) => {
+  const startedMs = Date.parse('2026-07-30T12:00:00.000Z')
+  const downed = (draft) => {
+    draft.players[0].characterSetupRequired = true
+    draft.players[0].hp = 0
+    draft.mechanics.conditions.hero = [{ id: 'unconscious', duration: null }]
+    // Стабилизирован: спасброски от смерти не бросаются, костей стенд не даёт.
+    draft.mechanics.death = { ...(draft.mechanics.death ?? {}), saving_throws: { hero: { successes: 0, failures: 0, stable: true } } }
+  }
+  // Рядом живой герой: павшего пропускают, очередь идёт дальше.
+  const shared = fixture()
+  downed(shared)
+  shared.players.push({ ...shared.players[0], id: 'mage', character: 'Мира', hp: 20, characterSetupRequired: false })
+  shared.partyMemberIds.push('mage')
+  shared.mechanics.conditions.mage = []
+  shared.mechanics.combat.initiative.push({ actor_id: 'mage', total: 5 })
+  shared.mechanics.combat.action_economy.mage = { action: true, bonus_action: true, reaction: true, movement: true, movement_spent: 0 }
+  // Павший — единственный: бой заканчивается, а не повторяет отказ.
+  const alone = fixture()
+  downed(alone)
+  for (const [campaignId, state, expected] of [['SETUP-DOWNED', shared, 'TurnEnded'], ['SETUP-ALONE', alone, 'CombatEnded']]) {
+    const store = testStore(t, state, () => new Date(startedMs))
+    await recordTurnStart(store, campaignId, state, 'hero')
+    const errors = []
+    const coordinator = new CombatTurnCoordinator({
+      eventStore: store,
+      rulesEngine: engine(),
+      timeoutMs: 120_000,
+      now: () => startedMs,
+      setTimer: (_callback, delay) => ({ delay }),
+      clearTimer: () => {},
+      onError: (error) => errors.push(error),
+    })
+    t.after(() => coordinator.close())
+    await coordinator.settleNow(campaignId)
+    assert.deepEqual(errors.map((error) => error?.code), [], campaignId)
+    const events = await store.getEvents(campaignId)
+    assert.ok(events.some((event) => event.event_type === expected), `${campaignId}: ${expected}`)
+  }
+})
