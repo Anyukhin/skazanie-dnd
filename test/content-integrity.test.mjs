@@ -95,7 +95,9 @@ test('content integrity gate verifies hashes, references, counts and the complet
   //   (`models/kaykit/characters-*`: 10 GLB, 3 лицензии, NOTICE).
   // + 8 файлов выпуска героев реалистичных пропорций
   //   (`models/quaternius/heroes-*`: 6 GLB, LICENSE, NOTICE).
-  assert.equal(report.integrity.assets, 1820 + declaredEnvironmentReleaseFiles() + declaredEquipmentReleaseFiles())
+  // + 88 файлов подготовленного набора детализации (`maps/detail-v1`):
+  //   64 GLB, 19 фактур, PNG/JSON атласа, manifest и два предпросмотра.
+  assert.equal(report.integrity.assets, 1908 + declaredEnvironmentReleaseFiles() + declaredEquipmentReleaseFiles())
   assert.equal(report.integrity.coverage.find((entry) => entry.id === 'feats').coverage, 'missing')
 })
 
