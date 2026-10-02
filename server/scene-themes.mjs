@@ -1216,7 +1216,7 @@ export function layoutOpenTerrain(theme, { seed = 'open', width = 26, height = 2
       terrainCells.delete(`${cell.x},${cell.y}`)
     }
   } else if (theme.river) {
-    addZone(map, { id: 'water', kind: 'exterior', material: theme.material, lightLevel: 'bright', label: 'Река' })
+    addZone(map, { id: 'water', kind: 'exterior', material: theme.material, lightLevel: 'bright', label: 'Река', floor: 'river' })
     addZone(map, { id: 'crossing', kind: 'exterior', material: theme.bridgeMaterial, lightLevel: 'bright', label: 'Мост' })
     // Река петляет: русло смещается по синусоиде и местами разливается шире.
     const riverX = Math.floor(safeWidth * (0.45 + random() * 0.15))

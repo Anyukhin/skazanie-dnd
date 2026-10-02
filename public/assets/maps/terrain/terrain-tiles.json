@@ -28,7 +28,9 @@
     "water": "maps/terrain/surface-water.png",
     "mud": "maps/terrain/surface-mud.png",
     "oil": "maps/terrain/surface-oil.png",
-    "rubble": "maps/terrain/surface-rubble.png"
+    "rubble": "maps/terrain/surface-rubble.png",
+    "river": "maps/detail-v1/textures/surface-river.png",
+    "shallows": "maps/detail-v1/textures/surface-shallows.png"
   },
   "walls": {
     "stone": "maps/terrain/wall-stone.png",

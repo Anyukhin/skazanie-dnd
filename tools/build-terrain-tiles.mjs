@@ -101,6 +101,8 @@ export const DETAIL_TERRAIN = Object.freeze([
   { slot: 'floors', key: 'gravel', path: 'maps/detail-v1/textures/floor-gravel.png' },
   { slot: 'floors', key: 'cave', path: 'maps/detail-v1/textures/floor-cave.png' },
   { slot: 'floors', key: 'snow', path: 'maps/detail-v1/textures/floor-snow.png' },
+  { slot: 'surfaces', key: 'river', path: 'maps/detail-v1/textures/surface-river.png' },
+  { slot: 'surfaces', key: 'shallows', path: 'maps/detail-v1/textures/surface-shallows.png' },
   { slot: 'walls', key: 'brick', path: 'maps/detail-v1/textures/wall-brick.png' },
   { slot: 'walls', key: 'fachwerk', path: 'maps/detail-v1/textures/wall-fachwerk.png' },
   { slot: 'walls', key: 'fortress', path: 'maps/detail-v1/textures/wall-fortress.png' },

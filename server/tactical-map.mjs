@@ -36,8 +36,9 @@ export const SPAWN_ROLES = Object.freeze(['party', 'enemy', 'neutral'])
  * Рисунок пола помещения поверх материала клетки (`zone.floor`). Правила его
  * не читают — это только фактура набора `public/assets/maps/detail-v1`.
  * Поле необязательное: карта без него рисуется по материалу, как прежде.
+ * У зоны воды это рисунок воды: `river` — струи реки, `shallows` — мелководье.
  */
-export const FLOOR_STYLES = Object.freeze(['planks-dark', 'parquet', 'flagstone', 'checker', 'dungeon', 'mosaic', 'cobble', 'straw', 'dock', 'gravel', 'cave', 'snow'])
+export const FLOOR_STYLES = Object.freeze(['planks-dark', 'parquet', 'flagstone', 'checker', 'dungeon', 'mosaic', 'cobble', 'straw', 'dock', 'gravel', 'cave', 'snow', 'river', 'shallows'])
 /** Вид кладки стен помещения (`zone.wall`); как и пол, только для отрисовки. */
 export const WALL_STYLES = Object.freeze(['brick', 'fachwerk', 'fortress', 'palisade', 'embankment'])
 

@@ -125,3 +125,30 @@ test('organic buildings use real wings and dense gates are not one template', ()
   }
   assert.ok(denseGateShapes.size >= 4, `dense gate compositions: ${denseGateShapes.size}`)
 })
+
+test('деревенская река петляет и выходит к песчаному берегу, городской канал одет в набережную', async () => {
+  const { edgeBetween } = await import('../server/tactical-map.mjs')
+  for (const seed of ['bend-a', 'bend-b']) {
+    const { map } = buildSettlementScene({ seed, width: 44, height: 38, theme: 'деревня у реки', design: { topology: 'river', scale: 'village' } })
+    const water = map.zones.find((zone) => zone.id === 'water')
+    assert.equal(water?.floor, 'river', `${seed}: у реки нет фактуры струй`)
+    // Верхний край русла по столбцам: у петляющей реки он не один.
+    const tops = new Set()
+    let sand = 0
+    for (let x = 0; x < map.width; x += 1) {
+      for (let y = 0; y < map.height; y += 1) {
+        const cell = cellAt(map, x, y)
+        if (cell?.surface === 'water' && cell.zone === 'water') { tops.add(y); break }
+      }
+      for (let y = 0; y < map.height; y += 1) if (cellAt(map, x, y)?.passable && cellAt(map, x, y)?.material === 'sand') sand += 1
+    }
+    assert.ok(tops.size >= 3, `${seed}: река прямая, верх русла на ${[...tops]}`)
+    assert.ok(sand >= map.width, `${seed}: песчаного берега ${sand} клеток`)
+  }
+  const { map: town } = buildSettlementScene({ seed: 'canal', width: 48, height: 44, theme: 'город у реки', design: { topology: 'river', scale: 'town' } })
+  let quay = 0
+  for (let y = 0; y < town.height; y += 1) for (let x = 0; x < town.width; x += 1) {
+    if (edgeBetween(town, x, y, x, y + 1)?.kind === 'ledge') quay += 1
+  }
+  assert.ok(quay >= town.width, `набережной ${quay} рёбер`)
+})

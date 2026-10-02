@@ -472,7 +472,12 @@ export function terrainKeysFor(map: TacticalMap): { floors: string[]; surfaces: 
         const style = zoneOfCell(map, cell)?.floor
         if (style) floors.add(style)
       } else walls.add(wallTextureKeyFor(cell.material))
-      if (cell.surface !== 'none') surfaces.add(cell.surface)
+      if (cell.surface !== 'none') {
+        surfaces.add(cell.surface)
+        // Вода реки рисуется струями своей зоны (`zone.floor`: river).
+        const style = cell.surface === 'water' ? zoneOfCell(map, cell)?.floor : undefined
+        if (style) surfaces.add(style)
+      }
     }
   }
   // Стена живёт на ребре (Р2), и её кладка берётся с той стороны, где
@@ -659,10 +664,11 @@ const SURFACE_TEXTURE_ALPHA: Record<TacticalSurface, number> = {
   none: 0, water: 0.92, ice: 0.72, oil: 0.85, mud: 0.94, rubble: 0.94,
 }
 
-/** Фактура поверхности. У льда своей нет — берётся ледяной пол. */
-function surfaceTextureFor(terrain: TerrainTiles, surface: TacticalSurface): BoardTexture | undefined {
+/** Фактура поверхности. У льда своей нет — берётся ледяной пол; вода реки — струи зоны. */
+function surfaceTextureFor(terrain: TerrainTiles, surface: TacticalSurface, style?: string): BoardTexture | undefined {
   if (surface === 'none') return undefined
-  return terrain.surfaces.get(surface) ?? (surface === 'ice' ? terrain.floors.get('ice') : undefined)
+  const styled = surface === 'water' && style ? terrain.surfaces.get(style) : undefined
+  return styled ?? terrain.surfaces.get(surface) ?? (surface === 'ice' ? terrain.floors.get('ice') : undefined)
 }
 
 function drawSurfaceTexture(
@@ -671,7 +677,7 @@ function drawSurfaceTexture(
 ) {
   const terrain = scene.terrain
   if (!terrain || cell.surface === 'none') return
-  const texture = surfaceTextureFor(terrain, cell.surface)
+  const texture = surfaceTextureFor(terrain, cell.surface, scene.map ? zoneOfCell(scene.map, cell)?.floor : undefined)
   if (!texture) return
   context.save()
   context.globalAlpha = SURFACE_TEXTURE_ALPHA[cell.surface]

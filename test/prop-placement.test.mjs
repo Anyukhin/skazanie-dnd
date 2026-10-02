@@ -408,3 +408,19 @@ test('required сундук склада переживает bounded packing re
     assert.equal(assets.has('chest'), true, `${seed}: пропал обязательный сундук`)
   }
 })
+
+test('деревья и кусты под открытым небом держат радиус пуассоновского диска', async () => {
+  const { generateSceneGeometry } = await import('../server/adventure-director.mjs')
+  const radius = { tree_oak: 2.3, tree_pine: 2.3, tree_birch: 1.8, tree_dead: 1.8, bush: 1.2, shrub: 1.2, rock_small: 1.2, boulder: 1.5, tree_stump: 1.2 }
+  for (const seed of ['a', 'b']) {
+    const { map } = generateSceneGeometry({ location: 'Тёмный лес', theme: 'лес', seed: `poisson:${seed}`, useLibrary: false })
+    const nature = map.props.filter((prop) => radius[prop.assetId])
+    assert.ok(nature.length >= 40, `${seed}: лес поредел до ${nature.length}`)
+    for (let i = 0; i < nature.length; i += 1) for (let j = i + 1; j < nature.length; j += 1) {
+      const [a, b] = [nature[i], nature[j]]
+      const reach = Math.max(radius[a.assetId], radius[b.assetId])
+      const distance = Math.hypot(Math.floor(a.x) - Math.floor(b.x), Math.floor(a.y) - Math.floor(b.y))
+      assert.ok(distance >= reach, `${seed}: ${a.assetId} и ${b.assetId} в ${distance.toFixed(2)} клетках`)
+    }
+  }
+})

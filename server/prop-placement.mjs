@@ -343,8 +343,33 @@ function scoreCellForAsset(map, asset, cell, placed, context = {}, random = () =
     const nearestTree = nearestPlaced(localPlaced, cell, (id) => id.startsWith('tree_'))
     if (nearestTree != null && nearestTree <= 1) score -= 12
   }
+  // Пуассоновский диск для природы под открытым небом: дерево, куст и камень
+  // не встают ближе своего радиуса к другой такой же природе. Случайная
+  // россыпь давала комья и пустоши, а сетка кандидатов — ряды; диск даёт
+  // ровную, но не регулярную рассадку, как в настоящем подлеске.
+  const radius = SCATTER_RADIUS[asset.id]
+  if (radius && map.zones.some((zone) => zone.id === context.zoneId && zone.kind === 'exterior')) {
+    for (const record of localPlaced) {
+      const other = SCATTER_RADIUS[record.assetId]
+      if (!other) continue
+      const reach = Math.max(radius, other)
+      if ((record.x - cell.x) ** 2 + (record.y - cell.y) ** 2 < reach * reach) return Number.NEGATIVE_INFINITY
+    }
+  }
   return score
 }
+
+/**
+ * Радиус пуассоновского диска в клетках для природной россыпи. Пара берёт
+ * больший из двух радиусов: крона дуба держит куст дальше, чем куст куст.
+ * Дерево 2×2 стоит якорем в левой верхней клетке, поэтому его радиус с запасом.
+ *
+ * @type {Readonly<Record<string, number>>}
+ */
+const SCATTER_RADIUS = Object.freeze({
+  tree_oak: 2.3, tree_pine: 2.3, tree_birch: 1.8, tree_dead: 1.8,
+  bush: 1.2, shrub: 1.2, rock_small: 1.2, boulder: 1.5, tree_stump: 1.2,
+})
 
 /**
  * @param {Array<{assetId: string, x: number, y: number}>} placed
