@@ -15210,7 +15210,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             }
             if (spell.weaponCantrip === 'booming-blade') {
               const moveDice = cantripLevel >= 11 ? 3 : cantripLevel >= 5 ? 2 : 1
-              events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: `booming-blade-move:${moveDice}d8`, duration: 'until-next-turn', source_actor: command.actor_id, effect_id: effectId }, [resolvedTargetId]))
+              events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: `booming-blade-move:${moveDice}d8`, duration: usesDnd2014(state) ? 'until-source-next-turn' : 'until-next-turn', source_actor: command.actor_id, effect_id: effectId }, [resolvedTargetId]))
             }
             if (spell.weaponCantrip === 'green-flame-blade') {
               const targetAt = actorPosition(state, resolvedTargetId)
@@ -15253,7 +15253,10 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             for (const condition of spell.conditions ?? []) {
               events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
                 condition,
-                duration: spell.durationRounds ? `rounds:${spell.durationRounds}` : 'until-next-turn',
+                // Явный срок профиля важнее раундов: «до следующего хода
+                // заклинателя» не равно «до начала хода цели».
+                duration: spell.conditionDuration ? String(spell.conditionDuration)
+                  : spell.durationRounds ? `rounds:${spell.durationRounds}` : 'until-next-turn',
                 source_actor: command.actor_id,
                 effect_id: effectId,
                 ...(spell.repeatSaveAtTurnEnd === true ? {
@@ -17587,7 +17590,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       }
       const commanded = (state.mechanics.conditions[command.actor_id] ?? []).find((condition) => String(condition?.id ?? condition).startsWith('command:'))
       if (commanded) {
-        if (String(commanded.id) === 'command:grovel') events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: 'prone', duration: 'until-next-turn', source_actor: commanded.source_actor, effect_id: commanded.effect_id }, [command.actor_id]))
+        if (String(commanded.id) === 'command:grovel') events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: 'prone', duration: usesDnd2014(state) ? null : 'until-next-turn', source_actor: commanded.source_actor, effect_id: commanded.effect_id }, [command.actor_id]))
         events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: commanded.id }, [command.actor_id]))
       }
       for (const [duelTargetId, conditions] of Object.entries(state.mechanics.conditions)) {

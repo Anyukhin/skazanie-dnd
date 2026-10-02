@@ -681,6 +681,9 @@ const CONDITION_DURATION_LABELS: Record<string, string> = {
   'until-short-rest': 'до короткого отдыха',
   'until-next-turn': 'до начала следующего хода',
   'until-next-own-turn-end': 'до конца следующего собственного хода',
+  'until-own-turn-start': 'до начала своего хода',
+  'until-own-turn-end': 'до конца своего хода',
+  'until-source-next-turn': 'до начала следующего хода источника',
   'until-removed': 'до снятия состояния',
   // Срок «пока держится концентрация» движок пишет одним словом.
   concentration: 'пока держится концентрация',
@@ -700,6 +703,10 @@ function conditionDurationLabel(duration: string) {
     if (amount > 0 && amount % 60 === 0) return `${amount / 60} ч`
     return `${amount} мин`
   }
+  // Срок, отсчитываемый концами ходов источника: `source-turns:2` наложен в
+  // его ход и держится до конца следующего, `source-turns:1` — до конца этого.
+  const sourceTurns = /^source-turns:(\d+)$/u.exec(duration)
+  if (sourceTurns) return Number(sourceTurns[1]) > 1 ? 'до конца следующего хода источника' : 'до конца хода источника'
   return CONDITION_DURATION_LABELS[duration] ?? duration.replace(/^rounds:/, 'раундов: ')
 }
 

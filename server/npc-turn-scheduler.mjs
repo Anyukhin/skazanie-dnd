@@ -1052,6 +1052,20 @@ function monsterAreaPlanFor(state, enemy, candidate) {
   return best ? { command_type: 'UseMonsterAction', actor_id: id, action_id: best.actionId, to: best.to } : null
 }
 
+function npcCommandValid(state, command) {
+  try {
+    validateCommand({ ...command, server_authoritative: true }, state, {
+      serverAuthoritativeCombat: true,
+      isNpcScheduler: true,
+      allowedActorIds: [String(command.actor_id)],
+    })
+    return true
+  } catch (error) {
+    if (error instanceof RulesValidationError) return false
+    throw error
+  }
+}
+
 export function planNpcTurn(rawState, enemyId) {
   const state = normalizeCampaignState(rawState)
   const enemy = findActor(state, enemyId)
@@ -1060,6 +1074,17 @@ export function planNpcTurn(rawState, enemyId) {
   // initiative, but the Rules Engine refuses every command except ending the
   // turn — so the scheduler must not propose one.
   if (incapacitatingConditionFor(state, enemyId)) return [{ command_type: 'EndTurn', actor_id: String(enemyId) }]
+  // «Сбит с ног» без срока (редакция 2014) сам не проходит: существо встаёт,
+  // тратя половину скорости. Остаток хода планировщик соберёт следующим
+  // проходом, уже от состояния с потраченным движением.
+  const standUp = { command_type: 'UseCombatAction', actor_id: String(enemyId), action_id: 'stand-up' }
+  if ((state.mechanics?.conditions?.[String(enemyId)] ?? []).some((condition) => String(condition?.id ?? condition) === 'prone')) {
+    // Та же цена, что берёт Rules Engine: половина текущей скорости. Если её не
+    // хватает, существо действует лёжа, а не упирается в отказ движка.
+    const speed = effectiveSpeedFeet(state, enemy, enemyId)
+    const remaining = movementForActor(state, enemyId).movement_remaining
+    if (speed > 0 && remaining >= Math.ceil(speed / 2) && npcCommandValid(state, standUp)) return [standUp]
+  }
   const currentEconomy = state.mechanics?.combat?.action_economy?.[String(enemyId)] ?? {}
   const usedBeforePlan = Math.max(0, Number(currentEconomy.attacks_used) || 0)
   const declaredMultiattackCount = multiattackCount(enemy)

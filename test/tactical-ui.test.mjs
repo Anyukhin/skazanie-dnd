@@ -533,6 +533,11 @@ test('срок состояния подписан по-русски, а нез�
     tacticalUi.conditionPresentation({ id: 'disengaged', duration: 'until-next-turn' }).duration,
     'до начала следующего хода',
   )
+  // Сроки «до хода заклинателя» отсчитываются по источнику, а не по цели.
+  assert.equal(tacticalUi.conditionPresentation({ id: 'speed-reduced-10', duration: 'until-source-next-turn' }).duration, 'до начала следующего хода источника')
+  assert.equal(tacticalUi.conditionPresentation({ id: 'guiding-bolt-advantage', duration: 'source-turns:2' }).duration, 'до конца следующего хода источника')
+  assert.equal(tacticalUi.conditionPresentation({ id: 'guiding-bolt-advantage', duration: 'source-turns:1' }).duration, 'до конца хода источника')
+  assert.equal(tacticalUi.conditionPresentation({ id: 'disadvantage-next-attack', duration: 'until-own-turn-end' }).duration, 'до конца своего хода')
   // Незнакомый срок теряться не должен: показать сырым честнее, чем скрыть.
   assert.equal(tacticalUi.conditionPresentation({ id: 'bless', duration: 'until-dawn' }).duration, 'until-dawn')
   assert.equal(tacticalUi.conditionPresentation({ id: 'longstrider', duration: 'seconds:3600' }).duration, '1 ч')
