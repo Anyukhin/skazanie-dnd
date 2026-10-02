@@ -30,7 +30,11 @@ test('публичный пролог становится знанием пар
   assert.ok(facts.length > 0, 'пролог должен попасть в память мира')
   assert.ok(facts.every((fact) => fact.subject_id === location.id && fact.visibility === 'party'))
   assert.ok(facts.some((fact) => /Саргат/u.test(fact.summary) && /три донесения/u.test(fact.summary)))
-  assert.deepEqual(ares.known_fact_ids, facts.map((fact) => fact.id))
+  // Сверх пролога Арес хранит свою заготовку ведущего — клятву похода против
+  // Вулканиса (`opening.secrets`, хранитель «Король Арес»).
+  const aresSecrets = state.worldMemory.facts.filter((fact) => fact.predicate === 'gm_secret' && /Арес отводит взгляд/u.test(fact.summary))
+  assert.equal(aresSecrets.length, 1)
+  assert.deepEqual(ares.known_fact_ids, [...facts.map((fact) => fact.id), ...aresSecrets.map((fact) => fact.id)])
 
   let request = null
   await new NpcSocialController({

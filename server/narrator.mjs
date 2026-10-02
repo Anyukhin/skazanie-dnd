@@ -235,12 +235,18 @@ export function narratorResponsePlan(brief) {
     || (event?.event_type === 'DoorStateChanged' && event?.payload?.state !== 'open')) && !hasReactions
   const moment = narratorMomentFor(brief)
   const speechAct = declarationOnly ? 'acknowledge_intent' : events.length || hasReactions ? 'report_result' : 'describe_scene'
+  // Находка, записанная сервером, — и есть результат удачного поиска. Прежняя
+  // формулировка для успеха запрещала «новые находки» без исключения, и
+  // модель отвечала «новой зацепки нет» поверх подтверждённой улики.
+  const discovered = events.some(event => event?.event_type === 'WorldFactRecorded' && event?.payload?.fact?.predicate === 'discovery')
   return {
     version: 'narrator-response-plan/v2',
     mode: 'world_narration',
     speech_act: speechAct,
     must_answer: declarationOnly
       ? 'Кратко пояснить, что намерение ещё не стало выполненным действием.'
+      : discovered
+        ? 'Показать, как герой делает заявленное в player_intent, и прямо назвать находку из события WorldFactRecorded (predicate discovery) — её смысл, своими словами; сверх неё находок, сведений и согласия NPC не добавлять.'
       : freeOutcome === 'success'
         ? 'Показать, как герой делает заявленное в player_intent, и как это выглядит со стороны; новых находок, сведений и согласия NPC не добавлять.'
         : freeOutcome === 'failure'

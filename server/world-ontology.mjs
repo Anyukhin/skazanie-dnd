@@ -61,9 +61,9 @@ export const PREDICATES = Object.freeze({
   }),
   discovery: Object.freeze({
     record: 'fact', subject_kinds: ['npc', 'faction', 'location', 'concept'], object: '«clue»',
-    producers: ['world-memory'], consumers: ['game-orchestrator', 'player-request-router', 'world-memory'],
+    producers: ['world-memory'], consumers: ['game-orchestrator', 'narrator', 'player-request-router', 'world-memory'],
     visibility: 'party',
-    description_ru: 'Улика свободного действия: успешная познавательная проверка по теме активного поручения. Доказательство для часов поручения.',
+    description_ru: 'Находка свободного действия: открытая заготовка ведущего, знающий собеседник или улика по теме активного поручения. Рассказчик обязан её назвать; для часов поручения — доказательство.',
   }),
   quest_progress: Object.freeze({
     record: 'fact', subject_kinds: ['npc', 'faction', 'location', 'concept'], object: 'что именно продвинуло дело',
