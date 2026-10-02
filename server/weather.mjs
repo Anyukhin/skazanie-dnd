@@ -150,10 +150,10 @@ export const DEFAULT_BIOME = 'plains'
  * поэтому наборы живут здесь. Само же опознание темы берётся из каталога
  * (`matchTheme`): второй разбор названия локации разошёлся бы с генератором.
  */
-export const INDOOR_SCENE_THEMES = Object.freeze(new Set(['building', 'temple', 'crypt', 'cave']))
+export const INDOOR_SCENE_THEMES = Object.freeze(new Set(['building', 'temple', 'crypt', 'cave', 'dungeon']))
 
-/** Темы под открытым небом. Поселение — улица, а не дом: крыши над отрядом нет. */
-export const OUTDOOR_SCENE_THEMES = Object.freeze(new Set(['forest', 'road', 'settlement']))
+/** Темы под открытым небом. Поселение — улица, а не дом: крыши над отрядом нет. Кладбище — тоже. */
+export const OUTDOOR_SCENE_THEMES = Object.freeze(new Set(['forest', 'road', 'settlement', 'graveyard']))
 
 /**
  * Виды сцены, которые считаются помещением, когда тема карты ещё не известна

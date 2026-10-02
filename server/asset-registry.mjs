@@ -68,9 +68,11 @@ const YARD = Object.freeze(['building', 'tavern', 'house', 'yard', 'exterior'])
  * те же деревья, и рисовать их дважды незачем.
  */
 const TEMPLE = Object.freeze(['temple'])
-const CRYPT = Object.freeze(['crypt'])
+// Подземелье и кладбище берут склеповые предметы (кости, надгробия,
+// жаровни), а кладбище — ещё и уличную растительность.
+const CRYPT = Object.freeze(['crypt', 'dungeon', 'graveyard'])
 const CAVE = Object.freeze(['cave'])
-const WILD = Object.freeze(['forest', 'road', 'settlement', 'exterior'])
+const WILD = Object.freeze(['forest', 'road', 'settlement', 'exterior', 'graveyard'])
 
 /**
  * Короткая запись: всё, что не указано, берёт значения по умолчанию.

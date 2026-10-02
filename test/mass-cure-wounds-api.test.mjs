@@ -251,9 +251,18 @@ test('HTTP Mass Cure Wounds проходит acquisition двух владель
   const occupied = new Set(state.players.map((entry) => `${entry.x},${entry.y}`))
   const npcPlacement = state.npc_world?.placements?.find((entry) => String(entry.npc_id) === String(setupNpc.id)
     && String(entry.location_id) === sceneLocationId)
-  const npcPoint = npcPlacement && cellDistance(npcPlacement, caster) <= 30
+  // Нужна не только дальность, но и линия действия: NPC в доме за глухой
+  // стеной лечению недоступен по правилам. Поэтому NPC остаётся на месте
+  // лишь в том же ряду, что и заклинатель, без стен между ними; иначе ведущий
+  // переставляет его на свободную клетку этого ряда.
+  const openRow = (cell) => cell.y === caster.y && state.scene.cells
+    .filter((other) => other.y === caster.y && other.x >= Math.min(caster.x, cell.x) && other.x <= Math.max(caster.x, cell.x))
+    .every((other) => other.type !== 'wall')
+  const npcPoint = npcPlacement && cellDistance(npcPlacement, caster) <= 30 && openRow(npcPlacement)
     ? { x: npcPlacement.x, y: npcPlacement.y }
-    : choosePoint(state, caster, (cell) => cellDistance(caster, cell) <= 30 && !occupied.has(`${cell.x},${cell.y}`))
+    : choosePoint(state, caster, (cell) => cellDistance(caster, cell) <= 30 && cellDistance(caster, cell) > 0
+      && openRow(cell) && !occupied.has(`${cell.x},${cell.y}`))
+      ?? choosePoint(state, caster, (cell) => cellDistance(caster, cell) <= 30 && !occupied.has(`${cell.x},${cell.y}`))
   assert.ok(npcPoint)
   if (!npcPlacement) {
     state = expectStatus(await api.command(adminCookie, 'mass-cure-place-npc', {

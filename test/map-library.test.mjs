@@ -8,10 +8,12 @@ import { levelKey } from '../server/adventure-director.mjs'
 import { generateBuildingScene } from '../server/building-generator.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import {
+  MIN_LIBRARY_SCORE,
   MapLibrary,
   chooseLibraryMap,
   climateFor,
   libraryIdsInUse,
+  libraryPlaceKinds,
   libraryRequestFor,
   placeKindsFor,
   setActiveMapLibrary,
@@ -68,9 +70,9 @@ test('подбор: вид места обязателен, климат не с
   const entries = [
     entryFor('tavern-a'),
     entryFor('tavern-desert', { climate: 'arid' }),
-    entryFor('cave-a', { place_kinds: ['cave'] }),
+    entryFor('cave-a', { place_kinds: ['cave'], types: ['caves'] }),
     entryFor('tavern-scifi', { passport: { features: ['common_room'], interior_share: 0.8, floor_cells: 500, material: 'metal', summary: '', genre: 'scifi' } }),
-    entryFor('glade', { place_kinds: ['wilds'], passport: { features: ['exterior'], interior_share: 0.05, floor_cells: 600, material: 'grass', summary: '' } }),
+    entryFor('glade', { place_kinds: ['wilds'], types: ['nature'], passport: { features: ['exterior'], interior_share: 0.05, floor_cells: 600, material: 'grass', summary: '' } }),
   ]
   const tavern = libraryRequestFor({ themeId: 'building', buildingUse: 'tavern' })
   assert.equal(chooseLibraryMap(entries, tavern, { seed: 'a' })?.id, 'tavern-a', 'пустынная таверна в умеренном мире не встаёт')
@@ -178,4 +180,93 @@ test('без подключённой библиотеки генератор р
   const event = result.events.find((candidate) => candidate.event_type === 'SceneAdvanced')
   assert.equal(event.payload.scene.map_source, undefined)
   assert.equal(event.payload.library_levels, undefined)
+})
+
+/** Уличная постройка: площадь этажа входа задаётся паспортом. */
+function yardEntry(id, { cells = 600, props = {}, types = ['village'], placeKinds = ['village'], features = ['exterior', 'street'] } = {}) {
+  const side = Math.round(Math.sqrt(cells))
+  return entryFor(id, {
+    place_kinds: placeKinds,
+    types,
+    passport: { features, interior_share: 0.2, floor_cells: cells, width: side, height: side, levels: [{ index: 0, label: 'Земля', cells, rooms: [] }], material: 'earth', summary: 'Открытая местность.', props },
+  })
+}
+
+test('ферма деревней не считается, даже если библиотеку собрали прежним словарём', () => {
+  // Живая кампания 2026-10-02: «Japanese Farmhouse» 16×16 попала в деревни
+  // только по тегу автора farm. Сохранённый place_kinds — ещё старый.
+  const farmhouse = yardEntry('japanese-farmhouse', { cells: 256, types: ['farm', 'home'], features: ['bedrooms', 'camp', 'exterior'] })
+  assert.deepEqual(farmhouse.place_kinds, ['village'], 'в индексе запись лежит деревней')
+  assert.deepEqual(libraryPlaceKinds(farmhouse), ['house'], 'нынешний словарь видит дом')
+  assert.equal(chooseLibraryMap([farmhouse], libraryRequestFor({ themeId: 'settlement' }), { seed: 'a' }), null)
+  assert.deepEqual(placeKindsFor(['farm', 'multiple-structures'], [], { features: [], interior_share: 0.1 }), ['village'],
+    'хутор из нескольких построек деревней остаётся — по своему второму тегу')
+})
+
+test('уличной сцене нужна площадь её вида места: двор 16×16 — не деревня', () => {
+  const village = libraryRequestFor({ themeId: 'settlement' })
+  assert.equal(chooseLibraryMap([yardEntry('yard', { cells: 256 })], village, { seed: 'a' }), null, '80×80 футов — двор одного дома')
+  assert.equal(chooseLibraryMap([yardEntry('hamlet', { cells: 600 })], village, { seed: 'a' })?.id, 'hamlet')
+  // Заказанная площадь тоже держит планку: деревня 40×30 не встаёт на 20×20.
+  assert.equal(chooseLibraryMap([yardEntry('hamlet', { cells: 420 })], libraryRequestFor({ themeId: 'settlement', width: 40, height: 30 }), { seed: 'a' }), null)
+  // Помещение по-прежнему мерится мягко: маленькая таверна остаётся таверной.
+  assert.equal(chooseLibraryMap([entryFor('tiny-inn', { passport: { ...entryFor('x').passport, floor_cells: 120 } })], libraryRequestFor({ themeId: 'building', buildingUse: 'tavern' }), { seed: 'a' })?.id, 'tiny-inn')
+})
+
+test('обещанные сценой объекты сверяются с предметами карты, порог отсекает слабое совпадение', () => {
+  const plain = yardEntry('plain-village', { props: { haystack: 2 } })
+  const withWell = yardEntry('well-village', { props: { well: 1, campfire: 1 } })
+  const request = (requirements) => libraryRequestFor({ themeId: 'settlement', requirements })
+  assert.ok(MIN_LIBRARY_SCORE > 0)
+  // Ничего не обещано — выбор прежний.
+  assert.ok(['plain-village', 'well-village'].includes(chooseLibraryMap([plain, withWell], request([]), { seed: 'a' })?.id))
+  // Обещан колодец: карта с колодцем выигрывает у карты без него при любом сиде.
+  for (const seed of ['a', 'b', 'c', 'd']) {
+    assert.equal(chooseLibraryMap([plain, withWell], request([{ id: 'well', count: 1 }]), { seed })?.id, 'well-village')
+  }
+  // Живая сцена: навес, ящик, три настила, камни на порогах. Ни одна карта
+  // этого не держит — строит генератор.
+  const village = [{ id: 'shelter', count: 1 }, { id: 'crate', count: 1 }, { id: 'platform', count: 3 }, { id: 'threshold_stone', count: 1 }]
+  assert.equal(chooseLibraryMap([plain, withWell], request(village), { seed: 'a' }), null)
+  // Количество сверяется: два колодца на карте с одним — недостача.
+  assert.equal(chooseLibraryMap([withWell], request([{ id: 'well', count: 2 }, { id: 'campfire', count: 2 }]), { seed: 'a' }), null)
+  // Незнакомые виды и мусор в заявке не участвуют.
+  assert.deepEqual(request([{ id: 'dragon', count: 1 }, { id: 'well', count: 99 }, null]).requirements, [{ id: 'well', count: 6 }])
+})
+
+test('деревня с обещанным навесом строится генератором, список объектов едет в сцене и переживает replay', (t) => {
+  const storage = mkdtempSync(join(tmpdir(), 'skazanie-map-library-village-'))
+  t.after(() => {
+    setActiveMapLibrary(null)
+    rmSync(storage, { recursive: true, force: true })
+  })
+  const library = new MapLibrary(storage)
+  const imported = importTaleSpireSlab(HOUSE_SLAB, { locationId: 'tt-hamlet' })
+  library.put(yardEntry('tt-hamlet', { cells: 600, props: { haystack: 2 } }), imported.levels)
+  setActiveMapLibrary(library)
+  const dice = new DiceService({ rng: new SequenceDiceRng([]), idFactory: () => 'roll', now: () => '2026-10-02T00:00:00.000Z' })
+  const advance = (commandId, arrival) => resolveCommand({
+    command_type: 'AdvanceScene',
+    command_id: commandId,
+    scene_args: { title: 'Кленовка', location: 'Деревня Кленовка', theme: 'деревня', settlement_type: 'village', objective: 'Найти старосту', arrival },
+  }, tavernState(), { diceService: dice, context: { isAdmin: true } }).events.find((event) => event.event_type === 'SceneAdvanced')
+
+  // Контроль: та же деревня без обещаний берёт карту из библиотеки.
+  const plain = advance('plain', 'Отряд входит в тихую деревню.')
+  assert.equal(plain.payload.scene.map_source?.id, 'tt-hamlet')
+  assert.equal(plain.payload.scene.map_requirements, undefined, 'сцена без обещаний поля не получает')
+
+  const promised = advance('promised', 'Посреди деревни — общий навес, под ним ящик с документами; к реке ведут три настила.')
+  assert.equal(promised.payload.scene.map_source, undefined, 'обещанного навеса на библиотечной карте нет')
+  assert.deepEqual(promised.payload.scene.map_requirements, {
+    version: 'scene-requirements/v1',
+    items: [{ id: 'shelter', count: 1 }, { id: 'crate', count: 1 }, { id: 'platform', count: 3 }],
+  })
+  const initial = tavernState()
+  const after = applyGameEvent(initial, promised)
+  assert.deepEqual(after.scene.map_requirements, promised.payload.scene.map_requirements)
+  assert.deepEqual(replayEvents(initial, [promised]).scene.map_requirements, promised.payload.scene.map_requirements)
+  assert.deepEqual(normalizeCampaignState(after).scene.map_requirements, promised.payload.scene.map_requirements, 'нормализация состояния поле не теряет')
+  const view = campaignStateForViewer(after, { id: 'player', role: 'player' }, 'hero-a')
+  assert.equal(view.scene.map_requirements, undefined, 'служебный список карты игроку не отдаётся')
 })

@@ -19,9 +19,9 @@ import { validateSceneGraph } from '../server/scene-graph.mjs'
 import { assetsForTheme } from '../server/asset-registry.mjs'
 import { cellAt, edgeList, edgeNeighbor, reachableCells, serializeTacticalMap, setEdge, validateTacticalMap } from '../server/tactical-map.mjs'
 
-const THEMES = ['building', 'temple', 'crypt', 'cave', 'forest', 'road', 'settlement']
+const THEMES = ['building', 'temple', 'crypt', 'dungeon', 'cave', 'forest', 'road', 'graveyard', 'settlement']
 
-test('план требует шесть тем сверх здания — все объявлены', () => {
+test('план требует восемь тем сверх здания — все объявлены', () => {
   assert.deepEqual(SCENE_THEMES.map((theme) => theme.id).sort(), [...THEMES].sort())
   for (const theme of SCENE_THEMES) {
     assert.ok(['building', 'graph', 'open', 'settlement'].includes(theme.kind), `${theme.id}: неизвестный способ сборки`)
@@ -72,10 +72,14 @@ test('поселение содержит разные здания, двери 
   for (const seed of ['village-a', 'village-b']) {
     const map = layoutSettlement(settlement, { seed, width: 28, height: 24, design: { topology: 'crossroads' } })
     assert.deepEqual(validateTacticalMap(map).errors, [], `${seed}: поселение невалидно`)
-    const buildings = map.zones.filter((zone) => zone.id.startsWith('building-'))
+    // Задняя комната дома (`building-N-back`) — часть той же постройки.
+    const buildings = map.zones.filter((zone) => /^building-\d+$/u.test(zone.id))
     assert.ok(buildings.length >= 3, `${seed}: построек ${buildings.length}`)
-    assert.equal(map.doors.filter((door) => door.id.startsWith('building-')).length, buildings.length,
+    assert.equal(map.doors.filter((door) => /^building-\d+-door$/u.test(door.id)).length, buildings.length,
       `${seed}: не у каждой постройки есть дверь`)
+    for (const back of map.zones.filter((zone) => zone.id.endsWith('-back'))) {
+      assert.ok(map.doors.some((door) => door.id === `${back.id}-door`), `${seed}/${back.id}: в заднюю комнату нет двери`)
+    }
 
     const spawn = map.spawnPoints.find((point) => point.role === 'party')
     const reached = reachableCells(map, spawn.x, spawn.y)
@@ -125,9 +129,15 @@ test('поселение содержит разные здания, двери 
 
   const built = buildThemedScene({ location: 'Деревня Заречье', seed: 'village-props', width: 28, height: 24 }).map
   const assets = new Set(built.props.map((prop) => prop.assetId))
-  for (const asset of ['market_stall', 'well', 'cart']) {
+  for (const asset of ['well', 'cart']) {
     assert.ok(assets.has(asset), `в поселении нет ${asset}`)
   }
+  // Улица деревни — не склад: телег и колёс по паре, колодец один.
+  const count = (/** @type {any} */ map, /** @type {string} */ id) => map.props.filter((/** @type {any} */ prop) => prop.assetId === id).length
+  assert.ok(count(built, 'cart') <= 2 && count(built, 'wagon_wheel') <= 2 && count(built, 'well') === 1 && count(built, 'campfire') <= 1)
+  // Прилавки — у рыночной площади.
+  const market = buildThemedScene({ location: 'Деревня Заречье', seed: 'village-props', width: 28, height: 24, design: { topology: 'market' } }).map
+  assert.ok(count(market, 'market_stall') >= 2, 'на рыночной площади меньше двух прилавков')
 })
 
 test('пещера — одна связная органическая полость, а не прямоугольные палаты', () => {
@@ -231,7 +241,9 @@ test('постройка и местность в названии сильне�
 
 test('вид точки карты мира дорисовывает тему, когда название молчит', () => {
   assert.equal(resolveSceneTheme({ location: 'Керская пустошь', worldKind: 'wilds' }).id, 'forest')
-  assert.equal(resolveSceneTheme({ location: 'Норская башня', worldKind: 'dungeon' }).id, 'cave')
+  // «Башня» в названии — постройка; карта мира дорисовывает только молчащее имя.
+  assert.equal(resolveSceneTheme({ location: 'Норский провал', worldKind: 'dungeon' }).id, 'cave')
+  assert.equal(resolveSceneTheme({ location: 'Норская башня', worldKind: 'dungeon' }).id, 'building')
   assert.equal(resolveSceneTheme({ location: 'Кальская твердыня', worldKind: 'fortress' }).id, 'building')
   assert.equal(resolveSceneTheme({ location: 'Старое пепелище', worldKind: 'ruin' }).id, 'crypt')
   // Ориентир без вида — прежний fallback по заявке.

@@ -3290,13 +3290,15 @@ function propSpanInCells(prop: TacticalProp, drawing: PropDrawing) {
 
 /** Центр и радиус охвата рисунка в клетках — для отбора предметов по тайлам. */
 function propReach(prop: TacticalProp) {
-  const span = propSpanInCells(prop, propDrawingFor(prop.assetId))
-  const scale = prop.scale > 0 ? prop.scale : 1
+  // Охват считается от той же точки, где рисунок окажется: настенный факел
+  // и знамя сдвинуты к стене на 0.4 клетки. Без сдвига предмет у границы
+  // тайла не попадал в соседний тайл, и половина рисунка обрезалась швом.
+  const layout = propVisualLayout(prop)
   return {
-    x: span.centerX,
-    y: span.centerY,
+    x: layout.x,
+    y: layout.y,
     // Половина диагонали: она накрывает габарит при любом угле поворота.
-    radius: (Math.hypot(span.w, span.h) / 2) * PROP_FOOTPRINT_FILL * scale,
+    radius: (Math.hypot(layout.width, layout.depth) / 2) * PROP_FOOTPRINT_FILL * layout.scale,
   }
 }
 
@@ -3374,10 +3376,25 @@ function drawSilhouette(context: BoardContext2D, box: PropBox, palette: BoardPal
  * и совпадает с пропорцией рисунка не всегда.
  */
 function drawStamp(context: BoardContext2D, box: PropBox, texture: BoardTexture, frame: PropFrame) {
-  const fit = Math.min((box.hw * 2) / frame.w, (box.hh * 2) / frame.h)
+  // Рисунок, вытянутый поперёк габарита (ковёр нарисован стоя, а лежит
+  // поперёк комнаты), разворачивается на четверть оборота: иначе он
+  // вписывался узкой полосой и занимал треть своего места.
+  const boxLandscape = box.hw > box.hh * 1.15
+  const boxPortrait = box.hh > box.hw * 1.15
+  const turn = (boxLandscape && frame.h > frame.w * 1.15) || (boxPortrait && frame.w > frame.h * 1.15)
+  const frameW = turn ? frame.h : frame.w
+  const frameH = turn ? frame.w : frame.h
+  const fit = Math.min((box.hw * 2) / frameW, (box.hh * 2) / frameH)
   const width = frame.w * fit
   const height = frame.h * fit
+  if (!turn) {
+    context.drawImage(texture.image, frame.x, frame.y, frame.w, frame.h, -width / 2, -height / 2, width, height)
+    return
+  }
+  context.save()
+  context.rotate(Math.PI / 2)
   context.drawImage(texture.image, frame.x, frame.y, frame.w, frame.h, -width / 2, -height / 2, width, height)
+  context.restore()
 }
 
 /**
@@ -4028,11 +4045,15 @@ export function revealedRoomLabelPlacements(map: TacticalMap): RoomLabelPlacemen
   // ширина × высота × число комнат на каждый вызов.
   const wanted = new Map(map.overlays.roomLabels.map((entry) => [entry.zoneId, entry.label]))
   const bounds = new Map<string, ZoneBounds>()
+  const zoneCells = new Map<string, Array<{ x: number; y: number }>>()
   if (wanted.size) {
     for (let y = 0; y < map.height; y += 1) {
       for (let x = 0; x < map.width; x += 1) {
         const cell = cellAt(map, x, y)
         if (!cell?.revealed || !wanted.has(cell.zone)) continue
+        const list = zoneCells.get(cell.zone)
+        if (list) list.push({ x, y })
+        else zoneCells.set(cell.zone, [{ x, y }])
         const own = bounds.get(cell.zone)
         if (!own) bounds.set(cell.zone, { minX: x, minY: y, maxX: x, maxY: y, revealedCells: 1 })
         else {
@@ -4049,16 +4070,42 @@ export function revealedRoomLabelPlacements(map: TacticalMap): RoomLabelPlacemen
   for (const entry of map.overlays.roomLabels) {
     const own = bounds.get(entry.zoneId)
     if (!own || !entry.label.trim()) continue
+    const anchor = labelAnchor(map, entry.zoneId, own, zoneCells.get(entry.zoneId) ?? [])
     placements.push({
       zoneId: entry.zoneId,
       label: entry.label,
-      x: (own.minX + own.maxX + 1) / 2,
-      y: (own.minY + own.maxY + 1) / 2,
+      x: anchor.x,
+      y: anchor.y,
       revealedCells: own.revealedCells,
     })
   }
   roomLabelCache.set(map, placements)
   return placements
+}
+
+/**
+ * Точка подписи зоны. Центр рамки годится для прямоугольной комнаты, но у
+ * двора-кольца вокруг дома он падает на сам дом: «Участок» печатался поверх
+ * кладовой. Если центр не принадлежит зоне, подпись встаёт на ближайшую к
+ * нему клетку зоны — сначала среди клеток, со всех сторон окружённых своей
+ * зоной, чтобы надпись не липла к стене.
+ */
+function labelAnchor(map: TacticalMap, zoneId: string, own: ZoneBounds, cells: Array<{ x: number; y: number }>) {
+  const centerX = (own.minX + own.maxX + 1) / 2
+  const centerY = (own.minY + own.maxY + 1) / 2
+  if (cellAt(map, Math.floor(centerX), Math.floor(centerY))?.zone === zoneId || !cells.length) return { x: centerX, y: centerY }
+  const inZone = (x: number, y: number) => cellAt(map, x, y)?.zone === zoneId
+  const open = cells.filter((cell) => inZone(cell.x + 1, cell.y) && inZone(cell.x - 1, cell.y) && inZone(cell.x, cell.y + 1) && inZone(cell.x, cell.y - 1))
+  let best = (open.length ? open : cells)[0]
+  let bestDistance = Number.POSITIVE_INFINITY
+  for (const cell of open.length ? open : cells) {
+    const distance = Math.hypot(cell.x + 0.5 - centerX, cell.y + 0.5 - centerY)
+    if (distance < bestDistance) {
+      best = cell
+      bestDistance = distance
+    }
+  }
+  return { x: best.x + 0.5, y: best.y + 0.5 }
 }
 
 function drawCompass(context: BoardContext2D, scene: BoardScene) {

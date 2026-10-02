@@ -6,17 +6,21 @@ import { buildAresFortressScene, buildBuildingScene } from './building-generator
 import { buildSceneFromGraph } from './graph-layout.mjs'
 import { buildSettlementScene } from './settlement-generator.mjs'
 import { addSceneLink, addSceneZone, createSceneGraph } from './scene-graph.mjs'
-import { ensurePropAccess, placeProps } from './prop-placement.mjs'
+import { assetById } from './asset-registry.mjs'
+import { ensurePropAccess, placeColonnade, placeProps } from './prop-placement.mjs'
 import {
   SIZE_CLASSES,
+  addProp,
   addSpawnPoint,
   addZone,
   cellAt,
   createTacticalMap,
+  edgeBetween,
   edgeList,
   edgeNeighbor,
   floorVariantAt,
   setCell,
+  setDoor,
   setEdge,
 } from './tactical-map.mjs'
 
@@ -39,6 +43,31 @@ import {
  */
 
 /**
+ * Склеп и храм берут подсвечники, сундуки и ковры из интерьера, но не
+ * мебель жилья: ни кроватей, ни стойки, ни бочек в нефе.
+ */
+const DWELLING_FURNITURE_OFF = Object.freeze({
+  bed: 0, bunk_bed: 0, bar_counter: 0, bar_shelf: 0, table_round: 0, table_long: 0, table_small: 0, chair: 0, stool: 0, bench: 0,
+  barrel: 0, barrel_stack: 0, keg: 0, crate: 0, crate_stack: 0, sack: 0, basket: 0, bucket: 0, cupboard: 0, wardrobe: 0, broom: 0,
+  fireplace: 0, hearth_fire: 0, cauldron: 0, firewood_stack: 0, mug: 0, plate: 0, bowl_stew: 0, bottle: 0, jug: 0, bread_loaf: 0,
+  cheese_wheel: 0, dice_cup: 0, lute: 0, cutting_board: 0, pot: 0, night_table: 0, washbasin: 0, sign_board: 0, floor_stain: 0,
+  stairs_up: 0, stairs_down: 0, trapdoor: 0, lantern_wall: 0, bookshelf: 0, shelf_wall: 0,
+})
+const TEMPLE_INTERIOR_CAPS = DWELLING_FURNITURE_OFF
+/** Подземелью мебель нужна по делу: стол стражи, нары, бочки — не кровать и не люстра. */
+const DUNGEON_INTERIOR_CAPS = Object.freeze({
+  bed: 0, bar_counter: 0, bar_shelf: 0, table_round: 0, table_royal: 0, royal_throne: 0, chandelier: 0, candelabra: 0, rug: 0, cupboard: 0, wardrobe: 0,
+  night_table: 0, washbasin: 0, lute: 0, dice_cup: 1, mug: 2, plate: 1, bowl_stew: 1, bread_loaf: 1, cheese_wheel: 0, bottle: 1, jug: 1, cutting_board: 0,
+  fireplace: 0, hearth_fire: 0, firewood_stack: 0, broom: 0, stairs_up: 0, stairs_down: 0, trapdoor: 0, sign_board: 0, lantern_wall: 0, bookshelf: 0, shelf_wall: 0,
+  banner: 0, floor_stain: 1, basket: 0, keg: 0, pot: 0,
+})
+const CRYPT_INTERIOR_CAPS = Object.freeze({ ...DWELLING_FURNITURE_OFF, chandelier: 0, rug: 0 })
+/** Лагерь берёт из интерьера ящики, мешки и сундук, но не мебель дома. */
+const CAMP_INTERIOR_OFF = Object.freeze({ ...DWELLING_FURNITURE_OFF, crate: 3, sack: 3, barrel: 2, chandelier: 0, candelabra: 0, rug: 0, chest: 1, torch_wall: 0, banner: 0, candle: 0, coin_pile: 1 })
+/** Из пещерной темы склеп берёт только завалы, кости и паутину. */
+const CRYPT_CAVE_CAPS = Object.freeze({ stalagmite: 0, cave_pool: 0, mushroom_cluster: 0, ore_vein: 0 })
+
+/**
  * `live` — отдаётся ли тема живой игре. Сейчас готовы все семь; флаг остаётся
  * явным предохранителем для будущих тем, которые ещё хуже структурированного
  * fallback.
@@ -57,7 +86,10 @@ export const SCENE_THEMES = Object.freeze([
     // Караван-сарай, подворье и ночлежка — те же постоялые дворы: здание с
     // двором, ровно то, что строит генератор. «Караван» без дефисной части не
     // берём: торговый караван в пути — это не постройка.
-    match: /таверн|трактир|постоял|корчм|харчевн|гостиниц|караван-сара|подворь|ночлежк|особняк|терем|(?<![а-яё])дом(?![а-яё])|(?<![а-яё])изб[аеуы](?![а-яё])|хижин|усадьб|поместь|лавк/iu,
+    // Кузница, мельница, башня, казарма, склад — тоже постройки с двором.
+    // Прежде они не узнавались: кузница становилась лесом с прудом, башня и
+    // мельница — дорогой, казарма городской стражи — целым городом.
+    match: /таверн|трактир|постоял|корчм|харчевн|гостиниц|караван-сара|подворь|ночлежк|особняк|терем|(?<![а-яё])дом(?![а-яё])|(?<![а-яё])изб[аеуы](?![а-яё])|хижин|усадьб|поместь|лавк|кузн|кузниц|мельниц|(?<![а-яё])башн|казарм|караульн|(?<![а-яё])склад|амбар|конюшн|сторожк|библиотек|лаборатори|мастерск|пекарн|аптек|ратуш|кабак/iu,
   },
   {
     id: 'temple',
@@ -70,6 +102,15 @@ export const SCENE_THEMES = Object.freeze([
     density: 14,
     require: ['altar', 'pillar', 'statue', 'brazier'],
     prefer: ['pillar', 'statue', 'brazier', 'prayer_bench', 'reliquary', 'mosaic', 'temple_banner'],
+    // У каждого помещения храма своё назначение. Без плана все четыре
+    // получали один список «алтарь, колонна, статуя, жаровня»: алтарь стоял в
+    // притворе, а тринадцать статуй — где придётся.
+    propPlans: [
+      { density: 8, extraThemes: ['interior'], require: ['statue', 'brazier'], prefer: ['mosaic', 'temple_banner', 'offering_bowl', 'candelabra', 'rug'], caps: { altar: 0, statue: 2, pillar: 2, prayer_bench: 0, reliquary: 0, candelabra: 2, rug: 1, brazier: 2, offering_bowl: 2, ...TEMPLE_INTERIOR_CAPS } },
+      { density: 10, colonnade: true, extraThemes: ['interior'], require: ['prayer_bench', 'prayer_bench', 'brazier'], prefer: ['prayer_bench', 'temple_banner', 'mosaic', 'brazier', 'chandelier', 'candelabra'], caps: { altar: 0, statue: 1, pillar: 0, reliquary: 0, brazier: 4, chandelier: 2, candelabra: 2, offering_bowl: 2, ...TEMPLE_INTERIOR_CAPS } },
+      { density: 14, require: ['altar', 'reliquary', 'brazier', 'statue'], prefer: ['offering_bowl', 'temple_banner', 'mosaic', 'statue', 'reliquary'], caps: { altar: 1, reliquary: 2, statue: 2, pillar: 2, prayer_bench: 2, brazier: 2, offering_bowl: 3 } },
+      { density: 18, theme: 'interior', purpose: 'store', require: ['chest', 'wardrobe', 'shelf_wall'], prefer: ['chest', 'shelf_wall', 'candle', 'table_small', 'bookshelf'], caps: { bed: 0, bunk_bed: 0, barrel_stack: 0, crate_stack: 1 } },
+    ],
   },
   {
     id: 'crypt',
@@ -82,7 +123,39 @@ export const SCENE_THEMES = Object.freeze([
     density: 16,
     require: ['sarcophagus', 'grave', 'urn', 'brazier'],
     prefer: ['grave', 'urn', 'crypt_niche', 'bone_pile', 'cobweb', 'statue'],
+    // Склеп тоже разный по помещениям: у входа — стражи и свет, в галерее —
+    // ниши вдоль стен, в погребальной — саркофаг, в тайнике — урны и кости.
+    propPlans: [
+      { density: 8, extraThemes: ['interior'], require: ['statue', 'brazier'], prefer: ['cobweb', 'urn', 'statue', 'candelabra', 'banner'], caps: { sarcophagus: 0, grave: 0, statue: 2, candelabra: 1, urn: 2, cobweb: 3, candle: 2, ...CRYPT_INTERIOR_CAPS } },
+      { density: 14, extraThemes: ['interior', 'cave'], require: ['crypt_niche', 'crypt_niche', 'urn'], prefer: ['crypt_niche', 'urn', 'cobweb', 'bone_pile', 'rubble_heap', 'candle', 'torch_wall'], caps: { sarcophagus: 0, statue: 0, rubble_heap: 2, urn: 4, cobweb: 3, candle: 2, ...CRYPT_INTERIOR_CAPS, ...CRYPT_CAVE_CAPS } },
+      { density: 16, extraThemes: ['interior'], require: ['sarcophagus', 'brazier', 'brazier'], prefer: ['grave', 'urn', 'crypt_niche', 'cobweb', 'candelabra', 'offering_bowl'], caps: { sarcophagus: 2, statue: 2, candelabra: 2, urn: 3, grave: 4, cobweb: 3, candle: 2, ...CRYPT_INTERIOR_CAPS } },
+      { density: 20, extraThemes: ['interior', 'cave'], require: ['urn', 'bone_pile', 'chest'], prefer: ['urn', 'bone_pile', 'cobweb', 'crypt_niche', 'chest', 'coin_pile', 'rubble_heap'], caps: { sarcophagus: 1, chest: 2, coin_pile: 2, urn: 6, cobweb: 3, candle: 2, ...CRYPT_INTERIOR_CAPS, ...CRYPT_CAVE_CAPS } },
+    ],
     locked: true,
+  },
+  {
+    id: 'dungeon',
+    label: 'Подземелье',
+    kind: 'graph',
+    live: true,
+    material: 'stone',
+    // Доска и погода видят подземелье как склеп: каменные своды, без неба.
+    assetTheme: 'crypt',
+    match: /подземель|темниц|тюрьм|каземат|застенк|узилищ/iu,
+    zones: ['Караульная', 'Коридор', 'Камеры', 'Пыточная', 'Склад'],
+    density: 14,
+    locked: true,
+    require: ['brazier', 'bone_pile', 'cobweb'],
+    prefer: ['bone_pile', 'cobweb', 'brazier', 'urn', 'statue'],
+    // Тюрьма под замком: стража у входа, коридор с факелами, камеры с
+    // нарами и костями, пыточная, склад конфиската.
+    propPlans: [
+      { density: 14, extraThemes: ['interior'], require: ['table_small', 'chair', 'chest', 'torch_wall'], prefer: ['barrel', 'crate', 'bench', 'chair', 'torch_wall'], caps: { ...DUNGEON_INTERIOR_CAPS, torch_wall: 2, table_small: 1, chest: 1, barrel: 2, crate: 2, bench: 1, chair: 2, sarcophagus: 0, crypt_niche: 0, grave: 0, urn: 0, altar: 0 } },
+      { density: 8, extraThemes: ['interior', 'cave'], require: ['torch_wall', 'cobweb'], prefer: ['torch_wall', 'cobweb', 'rubble_heap', 'bone_pile'], caps: { ...DUNGEON_INTERIOR_CAPS, torch_wall: 4, rubble_heap: 2, bone_pile: 2, stalagmite: 0, cave_pool: 0, mushroom_cluster: 0, ore_vein: 0, sarcophagus: 0, crypt_niche: 0, grave: 0, urn: 0, altar: 0, statue: 0 } },
+      { density: 16, extraThemes: ['interior'], require: ['bunk_bed', 'bone_pile', 'bucket'], prefer: ['bunk_bed', 'bone_pile', 'cobweb', 'sack', 'bucket'], caps: { ...DUNGEON_INTERIOR_CAPS, torch_wall: 1, bunk_bed: 3, bucket: 2, sack: 2, sarcophagus: 0, crypt_niche: 0, grave: 0, urn: 0, altar: 0, statue: 0 } },
+      { density: 14, extraThemes: ['interior'], require: ['brazier', 'table_long', 'chest'], prefer: ['cauldron', 'bone_pile', 'brazier', 'chest', 'cobweb'], caps: { ...DUNGEON_INTERIOR_CAPS, torch_wall: 2, table_long: 1, cauldron: 1, chest: 1, brazier: 2, sarcophagus: 0, crypt_niche: 0, grave: 0, urn: 0, altar: 0, statue: 0 } },
+      { density: 22, theme: 'interior', purpose: 'store', require: ['crate_stack', 'chest'], prefer: ['crate', 'barrel', 'sack', 'chest', 'crate_stack'], caps: { bed: 0, bunk_bed: 0, table_long: 0, table_round: 0, bar_counter: 0, chandelier: 0, rug: 0, fireplace: 0 } },
+    ],
   },
   {
     id: 'cave',
@@ -90,11 +163,18 @@ export const SCENE_THEMES = Object.freeze([
     kind: 'graph',
     live: true,
     material: 'earth',
-    match: /пещер|грот|каверн|штольн|шахт|подземель|нора/iu,
+    match: /пещер|грот|каверн|штольн|шахт|рудник|логов|(?<![а-яё])нор[аеуы](?![а-яё])/iu,
     zones: ['Устье', 'Штрек', 'Зал', 'Тупик'],
     density: 18,
     require: ['stalagmite', 'cave_pool', 'rubble_heap'],
     prefer: ['stalagmite', 'rubble_heap', 'mushroom_cluster', 'bone_pile', 'ore_vein', 'cobweb'],
+    // Устье ещё видит свет: валуны, папоротник, корни. Ход — порода и руда.
+    // Дальний зал — логово: кости, лужа, костровище и чужая добыча.
+    propPlans: [
+      { density: 12, extraThemes: ['forest'], require: ['boulder', 'rubble_heap'], prefer: ['boulder', 'rock_small', 'fern', 'bush', 'stalagmite', 'rubble_heap'], caps: { tree_oak: 0, tree_pine: 0, tree_birch: 0, tree_spruce: 0, tree_dead: 0, cart: 0, well: 0, haystack: 0, signpost: 0, milestone: 0, lamp_post: 0, roadside_shrine: 0, hitching_post: 0, water_trough: 0, wagon_wheel: 0, flowers: 0, woodpile: 0, path_stone: 0, campfire: 0, grass_tuft: 1 } },
+      { density: 16, extraThemes: ['forest'], require: ['stalagmite', 'ore_vein'], prefer: ['stalagmite', 'ore_vein', 'rubble_heap', 'mushroom_cluster', 'rock_small', 'boulder', 'cobweb'], caps: { tree_oak: 0, tree_pine: 0, tree_birch: 0, tree_spruce: 0, tree_dead: 0, cart: 0, well: 0, haystack: 0, signpost: 0, milestone: 0, lamp_post: 0, roadside_shrine: 0, hitching_post: 0, water_trough: 0, wagon_wheel: 0, flowers: 0, woodpile: 0, path_stone: 0, campfire: 0, grass_tuft: 0, fern: 0, bush: 0, shrub: 0, fallen_log: 0, tree_stump: 0 } },
+      { density: 16, extraThemes: ['interior', 'forest'], require: ['cave_pool', 'bone_pile', 'campfire', 'chest'], prefer: ['bone_pile', 'mushroom_cluster', 'stalagmite', 'sack', 'crate', 'barrel', 'cobweb', 'rubble_heap'], caps: { tree_oak: 0, tree_pine: 0, tree_birch: 0, tree_spruce: 0, tree_dead: 0, cart: 0, well: 0, haystack: 0, signpost: 0, milestone: 0, lamp_post: 0, roadside_shrine: 0, hitching_post: 0, water_trough: 0, wagon_wheel: 0, flowers: 0, woodpile: 0, path_stone: 0, campfire: 1, chest: 1, crate: 2, barrel: 1, sack: 2, grass_tuft: 0, fern: 0, bush: 0, shrub: 0, fallen_log: 0, tree_stump: 0 } },
+    ],
   },
   {
     id: 'forest',
@@ -102,7 +182,9 @@ export const SCENE_THEMES = Object.freeze([
     kind: 'open',
     live: true,
     material: 'grass',
-    match: /лес|чащ|рощ|бор|дубрав|пущ|тайг/iu,
+    // Существительные, а не прилагательные: «Лесная хижина» — хижина, а
+    // «Хутор у леса» — хутор. «Бор» с границей слова, иначе «собор» — лес.
+    match: /(?<![а-яё])(?:лес(?:а|у|ом|е|ов|ами|ах)?|чащ[аиуеё]\p{L}*|рощ[аиуеё]\p{L}*|бор(?:а|у|ом|е|ы)?|дубрав\p{L}*|пущ[аиуеё]\p{L}*|тайг\p{L}*|опушк\p{L}*|оазис\p{L}*|поляна|поляне|поляну|лагер\p{L}*|стоянк\p{L}*|бивак\p{L}*)(?![а-яё])/iu,
     // Каменная кромка забирает край участка: плотность выше, чтобы чаща
     // осталась чащей (v3 открытой местности).
     density: 22,
@@ -125,12 +207,27 @@ export const SCENE_THEMES = Object.freeze([
     road: true,
   },
   {
+    id: 'graveyard',
+    label: 'Кладбище',
+    kind: 'open',
+    live: true,
+    material: 'grass',
+    assetTheme: 'forest',
+    match: /кладбищ|погост|могильник|некропол/iu,
+    density: 10,
+    require: ['tree_dead', 'roadside_shrine', 'statue'],
+    prefer: ['tree_dead', 'bush', 'statue', 'rock_small', 'flowers', 'tree_oak', 'urn'],
+    graves: true,
+    flat: true,
+  },
+  {
     id: 'settlement',
     label: 'Поселение',
     kind: 'settlement',
     live: true,
     material: 'earth',
-    match: /деревн|поселен|село|посад|хутор|город|слобод|рынок|площад/iu,
+    // «Город» — существительное: «казарма городской стражи» — казарма.
+    match: /деревн|поселен|(?<![а-яё])сел[оаеу](?![а-яё])|посад|хутор|(?<![а-яё])город(?:а|у|ом|е|ов)?(?![а-яё])|столиц|слобод|рынок|площад/iu,
     density: 14,
     require: ['market_stall', 'well', 'cart', 'village_fence'],
     // Одноклеточный `campfire` сохраняется и в legacy-клетках под известным
@@ -237,11 +334,21 @@ export function themeFor(input = {}) {
 export function matchTheme({ location = '', theme = '', sceneKind = '' } = {}) {
   const haystack = `${location} ${theme}`
   const wilderness = String(sceneKind) === 'wilderness'
+  // Главное слово названия стоит первым: «Хутор у леса» — хутор, «Мост через
+  // ущелье» — мост, «Казарма городской стражи» — казарма. Побеждает тема,
+  // чьё слово встретилось раньше; при равенстве — порядок списка.
+  /** @type {typeof SCENE_THEMES[number]|null} */
+  let best = null
+  let bestIndex = Number.POSITIVE_INFINITY
   for (const candidate of SCENE_THEMES) {
     if (wilderness && candidate.kind === 'building') continue
-    if (candidate.match.test(haystack)) return candidate
+    const found = candidate.match.exec(haystack)
+    if (found && found.index < bestIndex) {
+      best = candidate
+      bestIndex = found.index
+    }
   }
-  return null
+  return best
 }
 
 /**
@@ -320,7 +427,7 @@ export function isLiveTheme(theme) {
 }
 
 /** Темы, которые называют постройку или подземелье, а не открытую местность. */
-const STRUCTURE_THEMES = new Set(['building', 'temple', 'crypt', 'cave'])
+const STRUCTURE_THEMES = new Set(['building', 'temple', 'crypt', 'cave', 'dungeon'])
 
 /** Виды точек карты мира, которые означают поселение. */
 const SETTLEMENT_WORLD_KINDS = new Set(['capital', 'city', 'town', 'village', 'port'])
@@ -546,7 +653,7 @@ export function layoutOrganicCave(theme, {
     height: safeHeight,
     locationId,
     seed: String(seed),
-    generator: { id: 'theme-cave-organic', version: '1' },
+    generator: { id: 'theme-cave-organic', version: '2' },
     theme: theme.id,
     sizeClass: safeWidth * safeHeight <= SIZE_CLASSES.arena.maxCells ? 'arena' : 'area',
   })
@@ -584,28 +691,36 @@ export function layoutOrganicCave(theme, {
    * @param {number} cx
    * @param {number} cy
    * @param {number} radius
+   * @param {boolean} [toEdge] вырубать ли до самого края карты — только устье
    */
-  const carveDisc = (cx, cy, radius) => {
+  const carveDisc = (cx, cy, radius, toEdge = false) => {
     const reach = Math.ceil(radius + 0.5)
     for (let dy = -reach; dy <= reach; dy += 1) {
       for (let dx = -reach; dx <= reach; dx += 1) {
         const x = Math.round(cx + dx)
         const y = Math.round(cy + dy)
         const raggedRadius = radius + random() * 0.9 - 0.45
-        if (x < 0 || y < 1 || x >= safeWidth || y >= safeHeight - 1) continue
+        // Залы и ходы не доходят до края: ход, упёртый в край карты, обрывается
+        // в никуда. Край открыт только у устья, откуда пришёл отряд.
+        if (x < (toEdge ? 0 : 1) || y < 1 || x >= safeWidth - 1 || y >= safeHeight - 1) continue
         if (Math.hypot(dx, dy) <= raggedRadius) floor.add(`${x},${y}`)
       }
     }
   }
 
   const count = graph.zones.length
-  const verticalRoom = Math.max(2, Math.min(5, Math.floor(safeHeight * 0.2)))
+  // Залы гуляют по высоте шире, чтобы пещера занимала карту, а не узкую
+  // полосу посередине сплошной скалы.
+  const verticalRoom = Math.max(2, Math.min(7, Math.floor(safeHeight * 0.26)))
   /** @type {Array<{x: number, y: number}>} */
   const centers = []
+  // Фаза волны — своя у каждой пещеры. Без неё при трёх залах синус брался в
+  // точках 0, π и 2π, и все залы ложились на среднюю линию одной полосой.
+  const phase = Math.PI * (0.35 + random() * 0.5) * (random() < 0.5 ? 1 : -1)
   for (let index = 0; index < count; index += 1) {
     const progress = count <= 1 ? 0 : index / (count - 1)
-    const x = Math.round(2 + progress * (safeWidth - 5))
-    const wave = Math.sin(progress * Math.PI * 2 + random() * 0.8) * verticalRoom
+    const x = Math.round(3 + progress * (safeWidth - 7))
+    const wave = Math.sin(progress * Math.PI * 2 + phase + random() * 0.8) * verticalRoom
     const y = clamp(Math.round(safeHeight / 2 + wave + (random() - 0.5) * 3), 3, safeHeight - 4)
     centers.push({ x, y })
     const chamberRadius = clamp(Math.min(safeWidth, safeHeight) * (0.115 + random() * 0.035), 2.5, 5)
@@ -635,7 +750,7 @@ export function layoutOrganicCave(theme, {
 
   // Устье до края карты — настоящий вход, а не точка появления внутри скалы.
   const entranceY = centers[0]?.y ?? Math.floor(safeHeight / 2)
-  for (let x = 0; x <= (centers[0]?.x ?? 2); x += 1) carveDisc(x, entranceY, 1.35)
+  for (let x = 0; x <= (centers[0]?.x ?? 2); x += 1) carveDisc(x, entranceY, 1.35, true)
 
   for (const key of floor) {
     const [x, y] = key.split(',').map(Number)
@@ -665,6 +780,194 @@ export function layoutOrganicCave(theme, {
     roomLabels: graph.zones.map((zone) => ({ zoneId: zone.id, label: zone.label })),
   }
   return map
+}
+
+/**
+ * Петли по длине пути (приём генератора Brogue): стена между двумя
+ * помещениями получает дверь, если обойти её сейчас можно только в
+ * десять клеток и больше. Линейная цепочка комнат превращается в
+ * кольцо — у отряда появляются отступление и обход с фланга, у врага —
+ * засада с двух сторон (Jaquays, «несколько путей к цели»).
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {{exclude?: string[], limit?: number, minDetour?: number}} [options]
+ * @returns {number} сколько проходов прорублено
+ */
+export function addShortcutLoops(map, { exclude = [], limit = 2, minDetour = 10 } = {}) {
+  const blocked = new Set(exclude)
+  const zoneOf = (/** @type {number} */ x, /** @type {number} */ y) => cellAt(map, x, y)?.zone ?? ''
+  /** @param {{x: number, y: number}} from @param {{x: number, y: number}} to */
+  const distance = (from, to) => {
+    const seen = new Set([`${from.x},${from.y}`])
+    let frontier = [from]
+    for (let steps = 0; steps <= minDetour && frontier.length; steps += 1) {
+      /** @type {Array<{x: number, y: number}>} */
+      const next = []
+      for (const point of frontier) {
+        if (point.x === to.x && point.y === to.y) return steps
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = point.x + dx
+          const ny = point.y + dy
+          const key = `${nx},${ny}`
+          if (seen.has(key) || !cellAt(map, nx, ny)?.passable) continue
+          const edge = edgeBetween(map, point.x, point.y, nx, ny)
+          if (edge && edge.kind !== 'door' && edge.blocksMove) continue
+          seen.add(key)
+          next.push({ x: nx, y: ny })
+        }
+      }
+      frontier = next
+    }
+    return Number.POSITIVE_INFINITY
+  }
+  /** @type {Array<{x: number, y: number, a: {x: number, y: number}, b: {x: number, y: number}, pair: string}>} */
+  const candidates = []
+  for (let y = 1; y < map.height - 1; y += 1) for (let x = 1; x < map.width - 1; x += 1) {
+    const own = cellAt(map, x, y)
+    if (!own || own.passable) continue
+    for (const [dx, dy] of [[1, 0], [0, 1]]) {
+      const a = { x: x - dx, y: y - dy }
+      const b = { x: x + dx, y: y + dy }
+      const zoneA = zoneOf(a.x, a.y)
+      const zoneB = zoneOf(b.x, b.y)
+      if (!cellAt(map, a.x, a.y)?.passable || !cellAt(map, b.x, b.y)?.passable) continue
+      if (!zoneA || !zoneB || zoneA === zoneB || blocked.has(zoneA) || blocked.has(zoneB)) continue
+      candidates.push({ x, y, a, b, pair: [zoneA, zoneB].sort().join('|') })
+    }
+  }
+  let opened = 0
+  const usedPairs = new Set()
+  // Середина общей стены лучше её края: порядок — по удалённости от углов.
+  for (const candidate of candidates) {
+    if (opened >= limit) break
+    if (usedPairs.has(candidate.pair)) continue
+    if (distance(candidate.a, candidate.b) <= minDetour) continue
+    const sameWall = candidates.filter((other) => other.pair === candidate.pair)
+    const middle = sameWall[Math.floor(sameWall.length / 2)]
+    if (distance(middle.a, middle.b) <= minDetour) continue
+    setCell(map, middle.x, middle.y, { passable: true, zone: '' })
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      if (cellAt(map, middle.x + dx, middle.y + dy)?.passable) setEdge(map, middle.x, middle.y, middle.x + dx, middle.y + dy, { kind: 'none' })
+    }
+    const dirX = middle.b.x - middle.x
+    const edge = dirX ? { x: middle.x, y: middle.y, dir: /** @type {'e'} */ ('e') } : { x: middle.x, y: middle.y, dir: /** @type {'s'} */ ('s') }
+    setDoor(map, { id: `loop-door-${opened + 1}`, ...edge, state: 'closed', blocksMove: false, blocksSight: false })
+    usedPairs.add(candidate.pair)
+    opened += 1
+  }
+  return opened
+}
+
+/**
+ * Тюремные камеры: вдоль длинной оси зала идёт коридор в клетку, по обе
+ * стороны (в узком зале — по одну) — камеры шириной в три клетки,
+ * разделённые стенами; у каждой камеры дверь в коридор. Зал уже пяти
+ * клеток или короче восьми не делится.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {string} zoneId
+ */
+function partitionPrisonCells(map, zoneId) {
+  /** @type {Array<{x: number, y: number}>} */
+  const cells = []
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) if (cellAt(map, x, y)?.zone === zoneId && cellAt(map, x, y)?.passable) cells.push({ x, y })
+  if (!cells.length) return
+  const minX = Math.min(...cells.map((cell) => cell.x))
+  const maxX = Math.max(...cells.map((cell) => cell.x))
+  const minY = Math.min(...cells.map((cell) => cell.y))
+  const maxY = Math.max(...cells.map((cell) => cell.y))
+  const horizontal = maxX - minX >= maxY - minY
+  const length = (horizontal ? maxX - minX : maxY - minY) + 1
+  const breadth = (horizontal ? maxY - minY : maxX - minX) + 1
+  if (breadth < 5 || length < 8) return
+  // Широкий зал — коридор посередине и камеры с двух сторон; узкий (5–6) —
+  // коридор вдоль одной стены и камеры вдоль другой.
+  const twoSided = breadth >= 7
+  // Оси: along — вдоль коридора, across — поперёк.
+  const at = (/** @type {number} */ along, /** @type {number} */ across) => horizontal ? { x: along, y: across } : { x: across, y: along }
+  const alongMin = horizontal ? minX : minY
+  const alongMax = horizontal ? maxX : maxY
+  const acrossMin = horizontal ? minY : minX
+  const acrossMax = horizontal ? maxY : maxX
+  const corridor = twoSided ? Math.floor((acrossMin + acrossMax) / 2) : acrossMin
+  const sides = twoSided ? [-1, 1] : [1]
+  // Клетки дверных проёмов в другие зоны не застраиваются: вход в зал
+  // остаётся входом, даже если он не на коридоре.
+  const doorway = (/** @type {{x: number, y: number}} */ point) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => {
+    const near = cellAt(map, point.x + dx, point.y + dy)
+    return near?.passable && near.zone !== zoneId
+  })
+  const wall = (/** @type {{x: number, y: number}} */ point) => {
+    if (cellAt(map, point.x, point.y)?.zone !== zoneId || doorway(point)) return false
+    setCell(map, point.x, point.y, { passable: false, zone: '' })
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      if (cellAt(map, point.x + dx, point.y + dy)?.passable) setEdge(map, point.x, point.y, point.x + dx, point.y + dy, { kind: 'wall', blocksMove: true, blocksSight: true, cover: 'three_quarters' })
+    }
+    return true
+  }
+  // Стены вдоль коридора по обе стороны.
+  for (let along = alongMin; along <= alongMax; along += 1) for (const side of sides) wall(at(along, corridor + side))
+  // Перегородки между камерами через три клетки.
+  for (let along = alongMin + 3; along < alongMax - 1; along += 4) {
+    for (let across = acrossMin; across <= acrossMax; across += 1) {
+      const cellSide = across < corridor - 1 ? -1 : across > corridor + 1 ? 1 : 0
+      if (cellSide && sides.includes(cellSide)) wall(at(along, across))
+    }
+  }
+  // Дверь каждой камеры — в середине её отрезка, на ребре к коридору.
+  let index = 0
+  for (let start = alongMin; start <= alongMax; start += 4) {
+    const middle = Math.min(alongMax, start + 1)
+    for (const side of sides) {
+      const opening = at(middle, corridor + side)
+      const inside = at(middle, corridor + side * 2)
+      const hall = at(middle, corridor)
+      if (!cellAt(map, inside.x, inside.y)?.passable || !cellAt(map, hall.x, hall.y)?.passable) continue
+      setCell(map, opening.x, opening.y, { passable: true, zone: zoneId })
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const near = cellAt(map, opening.x + dx, opening.y + dy)
+        if (near?.passable) setEdge(map, opening.x, opening.y, opening.x + dx, opening.y + dy, { kind: 'none' })
+      }
+      const edge = horizontal
+        ? { x: opening.x, y: Math.min(opening.y, hall.y), dir: /** @type {'s'} */ ('s') }
+        : { x: Math.min(opening.x, hall.x), y: opening.y, dir: /** @type {'e'} */ ('e') }
+      index += 1
+      setDoor(map, { id: `cell-door-${index}`, ...edge, state: 'closed', blocksMove: false, blocksSight: false })
+    }
+  }
+}
+
+/**
+ * Ряды могил кладбища: надгробие 2×1, ряд через клетку, между надгробиями
+ * — проход. Ряды стоят посреди участка, не у входа и не на тропе.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {string} seed
+ */
+function placeGraveRows(map, seed) {
+  const asset = assetById('grave')
+  if (!asset) return
+  const random = randomFor(`graves:${seed}`)
+  const entrance = map.spawnPoints.find((point) => point.role === 'party')
+  const free = (/** @type {number} */ x, /** @type {number} */ y) => {
+    const cell = cellAt(map, x, y)
+    if (!cell?.passable || cell.surface === 'water' || cell.material === 'earth' || cell.zone !== 'field') return false
+    if (entrance && Math.abs(x - entrance.x) <= 6 && Math.abs(y - entrance.y) <= 3) return false
+    return [[1, 0], [-1, 0], [0, 1], [0, -1]].every(([dx, dy]) => cellAt(map, x + dx, y + dy)?.passable)
+  }
+  let placed = 0
+  const offsetX = Math.floor(random() * 2)
+  for (let y = 4; y < map.height - 4; y += 3) {
+    for (let x = 6 + offsetX; x < map.width - 5; x += 3) {
+      if (!free(x, y) || !free(x + 1, y) || random() < 0.18) continue
+      placed += 1
+      addProp(map, {
+        id: `grave-row-${placed}`, assetId: asset.id, x: x + 1, y: y + 0.5, rotation: 0, scale: 1,
+        footprint: [{ x, y }, { x: x + 1, y }], zOrder: 0, blocksMove: asset.blocksMove, blocksSight: asset.blocksSight,
+        cover: asset.cover, destructible: asset.destructible, hp: asset.hp, interactive: asset.interactive,
+      })
+    }
+  }
 }
 
 /** Наибольший перепад между проходимыми соседями, в футах: шаг без лазания. */
@@ -846,7 +1149,23 @@ export function layoutOpenTerrain(theme, { seed = 'open', width = 26, height = 2
     const besideRim = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => edgeCells.some((edge) => edge.x === cell.x + dx && edge.y === cell.y + dy && !edge.patch.passable))
     if (besideRim && rimNoise() < (theme.id === 'forest' ? 0.08 : 0.32)) toRock(cell)
   }
-  if (theme.river) {
+  if (theme.chasm) {
+    // Пропасть — разрыв в земле: клеток там нет вовсе, и доска рисует
+    // темноту. Через неё по дороге перекинут мост.
+    addZone(map, { id: 'crossing', kind: 'exterior', material: theme.bridgeMaterial, lightLevel: 'bright', label: 'Мост' })
+    const chasmX = Math.floor(safeWidth * (0.45 + random() * 0.15))
+    const chasmPhase = random() * Math.PI * 2
+    /** @param {number} y */
+    const chasmCenter = (y) => chasmX + Math.round(Math.sin(y * 0.29 + chasmPhase) * 1.4)
+    for (const cell of [...terrainCells.values()]) {
+      if (Math.abs(cell.x - chasmCenter(cell.y)) > 1) continue
+      if (onRoadAt(cell.x, cell.y)) {
+        cell.patch = { ...cell.patch, passable: true, surface: 'none', material: theme.bridgeMaterial, zone: 'crossing', moveCost: 1 }
+        continue
+      }
+      terrainCells.delete(`${cell.x},${cell.y}`)
+    }
+  } else if (theme.river) {
     addZone(map, { id: 'water', kind: 'exterior', material: theme.material, lightLevel: 'bright', label: 'Река' })
     addZone(map, { id: 'crossing', kind: 'exterior', material: theme.bridgeMaterial, lightLevel: 'bright', label: 'Мост' })
     // Река петляет: русло смещается по синусоиде и местами разливается шире.
@@ -871,7 +1190,7 @@ export function layoutOpenTerrain(theme, { seed = 'open', width = 26, height = 2
       const nearBridge = [[0, 1], [0, -1], [0, 2], [0, -2]].some(([, dy]) => terrainCells.get(`${cell.x},${cell.y + dy}`)?.patch.zone === 'crossing')
       if (nearWater && !nearBridge && bankNoise() < 0.38) toRock(cell)
     }
-  } else if (theme.id === 'forest' && random() < 0.55) {
+  } else if (theme.pond || (theme.id === 'forest' && random() < 0.55)) {
     // Пруд на поляне в стороне от тропы и входа: неровное пятно воды.
     addZone(map, { id: 'water', kind: 'exterior', material: theme.material, lightLevel: 'bright', label: 'Пруд' })
     const pondX = Math.floor(safeWidth * (0.55 + random() * 0.25))
@@ -900,7 +1219,8 @@ export function layoutOpenTerrain(theme, { seed = 'open', width = 26, height = 2
       queue.push(next)
     }
   }
-  applyOpenTerrainRelief(theme, seed, terrainCells, { width: safeWidth, height: safeHeight, entranceY, onRoadAt })
+  // Кладбище — ровный погост: надгробия на ступенях холма выглядят съехавшими.
+  if (!theme.flat) applyOpenTerrainRelief(theme, seed, terrainCells, { width: safeWidth, height: safeHeight, entranceY, onRoadAt })
   // Скалы и вода не должны отрезать часть поляны от входа: недостижимые
   // проходимые клетки становятся камнем, а не ловушкой для отряда.
   const walkable = new Set([`1,${entranceY}`])
@@ -989,14 +1309,29 @@ export function buildThemedScene({
       placeProps(map, {
         seed: `${seed}:props`,
         maxProps: SIZE_CLASSES[/** @type {keyof typeof SIZE_CLASSES} */ (map.sizeClass)].maxProps,
-        zones: map.zones.map((zone) => ({
-          zoneId: zone.id,
-          theme: definition.id,
-          density: definition.density ?? 12,
-          require: definition.require,
-          prefer: definition.prefer,
-        })),
+        zones: map.zones.map((zone, index) => {
+          const plans = Array.isArray(definition.propPlans) ? definition.propPlans : []
+          const base = plans.length ? plans[Math.min(index, plans.length - 1)] : {}
+          // Логово с сокровищами получает в дальнем зале золото, шахта — руду
+          // и вагонетку в штреке: слова места меняют обстановку, не форму.
+          const text = `${location} ${theme}`.toLocaleLowerCase('ru')
+          const last = index >= Math.min(map.zones.length, plans.length) - 1
+          const hoard = /золот|сокровищ|(?<![а-яё])клад(?![а-яё])|дракон/u.test(text) && last
+          const mine = /шахт|рудник|штольн|забой/u.test(text) && index === 1
+          const plan = hoard ? { ...base, require: [...(base.require ?? []), 'coin_pile', 'coin_pile', 'chest'], caps: { ...(base.caps ?? {}), coin_pile: 4, chest: 2 } }
+            : mine ? { ...base, require: [...(base.require ?? []), 'ore_vein', 'cart'], caps: { ...(base.caps ?? {}), cart: 1, ore_vein: 4 } }
+              : base
+          return {
+            ...plan,
+            zoneId: zone.id,
+            theme: definition.id,
+            density: plan.density ?? definition.density ?? 12,
+            require: plan.require ?? definition.require,
+            prefer: plan.prefer ?? definition.prefer,
+          }
+        }),
       })
+      ensurePropAccess(map)
       return { map, theme: definition.id, warnings: [] }
     }
     const graph = sceneGraphForTheme(definition, seed)
@@ -1006,8 +1341,25 @@ export function buildThemedScene({
     // Каменная тема получает узкие проёмы в кладке: склеп перегорожен
     // решётками, храм смотрит наружу щелями под сводом. Это те же стены —
     // пройти сквозь них нельзя, но видно и укрытие слабее.
+    // Петли по образцу Brogue: цепочка помещений получает обходной путь.
+    // Запертая цель в петлю не входит — иначе ключ теряет смысл.
+    addShortcutLoops(built.map, { exclude: definition.locked ? [graph.goalZoneId] : [], limit: 2 })
     if (definition.id === 'crypt') pierceWalls(built.map, { kind: 'grate', stride: 13, limit: 3 })
     if (definition.id === 'temple') pierceWalls(built.map, { kind: 'loophole', stride: 11, limit: 4 })
+    // Камеры тюрьмы — ряд клеток вдоль коридора, а не пустой зал.
+    if (definition.id === 'dungeon') {
+      const cellsZone = built.map.zones.find((zone) => zone.label === 'Камеры')
+      if (cellsZone) partitionPrisonCells(built.map, cellsZone.id)
+    }
+    const labelled = built.map.zones.filter((zone) => zone.label)
+    const plans = Array.isArray(definition.propPlans) ? definition.propPlans : []
+    // Колоннада ставится до общей расстановки: она задаёт структуру зала, а
+    // скамьи и жаровни потом встают между колонн, а не наоборот.
+    labelled.forEach((zone, index) => {
+      if (plans.length && plans[index % plans.length]?.colonnade) {
+        placeColonnade(built.map, { zoneId: zone.id, assetId: 'pillar' })
+      }
+    })
     const map = placeProps(built.map, {
       seed: `${seed}:props`,
       maxProps: SIZE_CLASSES[/** @type {keyof typeof SIZE_CLASSES} */ (built.map.sizeClass)].maxProps,
@@ -1027,6 +1379,7 @@ export function buildThemedScene({
           }
         }),
     })
+    ensurePropAccess(map)
     return {
       map,
       theme: definition.id,
@@ -1037,6 +1390,64 @@ export function buildThemedScene({
   if (definition.kind === 'settlement') {
     const built = buildSettlementScene({ seed, width, height, locationId, theme: definition, design })
     const map = built.map
+    // Улица деревни — не склад реквизита: прежде на четыре дома приходилось
+    // по восемь телег с колёсами, пять прилавков и три костра. Прилавки —
+    // у рыночной площади, у остальных поселений один-два; телег и колёс — по
+    // паре, колодец и костёр — по одному.
+    const market = design.topology === 'market'
+    const urban = design.scale === 'town' || design.scale === 'city'
+    const streetCaps = {
+      market_stall: market ? 6 : 1, cart: 2, wagon_wheel: 2, campfire: 1, well: 1, haystack: 2,
+      woodpile: 3, village_fence: 6, water_trough: 1, hitching_post: 2, signpost: 1, roadside_shrine: 1,
+      // Зелень разная: кустов, цветов и камней — не больше дюжины каждого.
+      bush: 12, shrub: 8, flowers: 10, rock_small: 8, grass_tuft: 6,
+    }
+    // В городе колодец и прилавки стоят на площади, а дворы за домами —
+    // сады и огороды: деревья, кусты, поленницы, без сена и прилавков.
+    // Колодец один: если есть площадь, он стоит на ней, а не на улице.
+    const hasSquare = map.zones.some((zone) => zone.id === 'square')
+    const streetRequire = urban ? ['tree_oak', 'woodpile'] : market ? ['market_stall', 'market_stall'] : hasSquare ? ['cart', 'village_fence'] : ['well', 'cart', 'village_fence']
+    const squarePlan = hasSquare ? [{
+      zoneId: 'square',
+      theme: definition.assetTheme ?? definition.id,
+      density: urban ? 9 : 7,
+      require: urban || market ? ['well', 'market_stall', 'market_stall', 'market_stall', 'lamp_post'] : ['well', 'lamp_post'],
+      prefer: ['market_stall', 'lamp_post', 'cart', 'water_trough', 'signpost', 'hitching_post'],
+      caps: { well: 1, market_stall: urban ? 6 : 3, lamp_post: 4, cart: 1, water_trough: 1, signpost: 1, hitching_post: 2, tree_oak: 0, tree_pine: 0, tree_birch: 0, tree_dead: 0, tree_spruce: 0, tree_stump: 0, bush: 0, shrub: 0, haystack: 0, woodpile: 0, campfire: 0, village_fence: 0, fallen_log: 0, fern: 0, rock_small: 0, boulder: 0, milestone: 0, roadside_shrine: 0, path_stone: 0, grass_tuft: 0, flowers: 0, wagon_wheel: 0 },
+    }] : []
+    // Фонари вдоль городских улиц — редко, по краю, чтобы не мешать проходу.
+    const streetPlan = urban ? [{
+      zoneId: 'street',
+      theme: definition.assetTheme ?? definition.id,
+      density: 1.2,
+      require: ['lamp_post', 'signpost'],
+      prefer: ['lamp_post', 'hitching_post', 'water_trough'],
+      caps: { lamp_post: 8, signpost: 2, hitching_post: 2, water_trough: 2, cart: 0, well: 0, market_stall: 0, haystack: 0, woodpile: 0, campfire: 0, village_fence: 0, tree_oak: 0, tree_pine: 0, tree_birch: 0, tree_dead: 0, tree_spruce: 0, tree_stump: 0, bush: 0, shrub: 0, fallen_log: 0, fern: 0, rock_small: 0, boulder: 0, milestone: 0, roadside_shrine: 0, path_stone: 0, grass_tuft: 0, flowers: 0, wagon_wheel: 0 },
+    }] : []
+    /**
+     * Обстановка дома по комнате: передняя — жилая (очаг, стол, стулья) или
+     * торговая (прилавок-стол, полки), задняя — спальня, кладовая или кухня.
+     * @param {{id: string}} zone
+     */
+    const housePlan = (zone) => {
+      const back = zone.id.endsWith('-back')
+      const use = built.uses?.[zone.id.replace(/-back$/u, '')] ?? design.building_use
+      // Амбар: сено, поилка, мешки и бочки, телега под крышей.
+      if (use === 'barn') return { purpose: 'stable', extraThemes: ['yard'], require: ['haystack', 'water_trough', 'sack'], prefer: ['haystack', 'sack', 'barrel', 'hitching_post', 'crate', 'woodpile'], caps: { haystack: 2, water_trough: 1, cart: 1, tree_oak: 0, tree_pine: 0, tree_birch: 0, tree_dead: 0, tree_stump: 0, bush: 0, shrub: 0, grass_tuft: 0, flowers: 0, rock_small: 0, boulder: 0, well: 0, lamp_post: 0, signpost: 0, path_stone: 0, campfire: 0 } }
+      if (use === 'workshop') return back
+        ? { purpose: 'store', require: ['crate_stack', 'barrel'], prefer: ['crate', 'barrel', 'sack', 'chest'] }
+        : { purpose: 'workshop', require: ['table_long', 'shelf_wall', 'firewood_stack'], prefer: ['shelf_wall', 'crate', 'barrel', 'chest', 'bucket', 'broom'] }
+      if (use === 'shop') return back
+        ? { purpose: 'store', require: ['crate_stack', 'barrel'], prefer: ['crate', 'barrel', 'sack', 'chest'] }
+        : { purpose: 'workshop', require: ['table_small', 'shelf_wall'], prefer: ['shelf_wall', 'crate', 'barrel', 'chest', 'chair'] }
+      if (use === 'tavern') return back
+        ? { purpose: 'kitchen', require: ['fireplace', 'cupboard'], prefer: ['barrel', 'crate', 'cupboard'] }
+        : { purpose: 'gallery', require: ['table_small', 'table_small', 'barrel'], prefer: ['table_small', 'chair', 'stool', 'barrel'] }
+      if (back) return { purpose: 'bedroom', require: ['bed', 'chest'], prefer: ['bed', 'chest', 'night_table', 'wardrobe'] }
+      // Однокомнатный дом держит всё в одной комнате: и очаг, и кровать.
+      const single = !map.zones.some((other) => other.id === `${zone.id}-back`)
+      return { purpose: 'living', require: single ? ['fireplace', 'table_small', 'bed'] : ['fireplace', 'table_small'], prefer: ['chair', 'cupboard', 'barrel', 'basket'] }
+    }
     placeProps(map, {
       seed: `${seed}:props`,
       maxProps: SIZE_CLASSES[/** @type {keyof typeof SIZE_CLASSES} */ (map.sizeClass)].maxProps,
@@ -1044,16 +1455,15 @@ export function buildThemedScene({
         zoneId: 'common',
         theme: definition.assetTheme ?? definition.id,
         density: definition.density ?? 10,
-        require: definition.require,
-        prefer: definition.prefer,
-      }, ...map.zones.filter((zone) => zone.kind === 'interior').map((zone) => ({
+        require: streetRequire,
+        prefer: urban ? ['tree_oak', 'tree_birch', 'bush', 'woodpile', 'flowers', 'village_fence', 'rock_small', 'shrub']
+          : market ? definition.prefer : ['tree_birch', 'tree_oak', 'bush', 'woodpile', 'haystack', 'water_trough', 'village_fence', 'cart', 'flowers'],
+        caps: hasSquare && !urban ? { ...streetCaps, well: 0 } : urban ? { ...streetCaps, well: 0, market_stall: 0, haystack: 0, cart: 1, wagon_wheel: 1, campfire: 0, village_fence: 8, woodpile: 6 } : streetCaps,
+      }, ...squarePlan, ...streetPlan, ...map.zones.filter((zone) => zone.kind === 'interior').map((zone) => ({
         zoneId: zone.id,
         theme: 'interior',
-        density: 8,
-        require: [design.building_use === 'shop' ? 'crate' : 'table_small'],
-        prefer: design.building_use === 'shop' ? ['crate', 'barrel', 'shelf_wall']
-          : design.building_use === 'tavern' ? ['table_small', 'chair', 'barrel']
-            : ['table_small', 'chair', 'bed', 'fireplace'],
+        density: 30,
+        ...housePlan(zone),
       }))],
     })
     ensurePropAccess(map)
@@ -1063,21 +1473,39 @@ export function buildThemedScene({
   const arid = design.climate === 'arid'
   const cold = design.climate === 'cold'
   const wetland = design.climate === 'wetland'
+  const placeText = `${location} ${theme}`.toLocaleLowerCase('ru')
+  const chasmScene = /ущель|пропаст|обрыв|расщелин|разлом|бездн/u.test(placeText)
+  const bridgeScene = /(?<![а-яё])мост|переправ|(?<![а-яё])брод/u.test(placeText)
+  const pondScene = /оазис|пруд|озер|озёр|родник|источник/u.test(placeText)
+  const campScene = /лагер|стоянк|бивак|привал|разбойн|бандит/u.test(placeText)
   const terrain = {
     ...definition,
-    river: design.topology === 'river',
-    road: definition.road || design.topology === 'river',
+    // Мост, брод и переправа — через реку; ущелье и пропасть — через провал.
+    // Прежде «мост через ущелье» был обычной дорогой без моста и обрыва.
+    chasm: chasmScene,
+    river: !chasmScene && (design.topology === 'river' || bridgeScene),
+    pond: pondScene,
+    road: definition.road || design.topology === 'river' || bridgeScene || chasmScene,
     bridgeMaterial: ['stone', 'marble', 'metal'].includes(design.architecture) ? design.architecture : 'wood',
     material: arid ? 'sand' : cold ? 'ice' : wetland ? 'earth' : definition.material,
     surface: cold ? 'ice' : wetland ? 'mud' : 'none',
     label: definition.id === 'forest'
-      ? arid ? 'Сухое редколесье' : cold ? 'Заснеженный лес' : wetland ? 'Заболоченная чаща' : definition.label
+      ? arid && pondScene ? 'Оазис' : arid ? 'Сухое редколесье' : cold ? 'Заснеженный лес' : wetland ? 'Заболоченная чаща' : definition.label
       : definition.label,
-    ...(arid ? { require: ['tree_dead', 'boulder'], prefer: ['tree_dead', 'tree_stump', 'boulder', 'bush', 'woodpile'] }
+    // Оазис в пустыне — зелень вокруг воды; без воды — сухостой и валуны.
+    ...(arid && pondScene ? { require: ['bush', 'shrub', 'tree_dead'], prefer: ['bush', 'shrub', 'grass_tuft', 'flowers', 'fern', 'boulder', 'tree_dead'] }
+      : arid ? { require: ['tree_dead', 'boulder'], prefer: ['tree_dead', 'tree_stump', 'boulder', 'bush', 'woodpile'] }
       : cold ? { require: ['tree_pine', 'tree_spruce', 'fallen_log'], prefer: ['tree_pine', 'tree_spruce', 'tree_dead', 'boulder'] }
         : wetland ? { require: ['tree_dead', 'fallen_log', 'bush'], prefer: ['tree_dead', 'bush', 'fern', 'fallen_log'] } : {}),
   }
   const map = layoutOpenTerrain(terrain, { seed, width, height, locationId })
+  if (definition.graves) placeGraveRows(map, seed)
+  // Дикая местность — не склад реквизита: костёр один (в лагере — два),
+  // телега и колесо — от силы по одному, колодца и прилавков в лесу нет.
+  const wildCaps = { campfire: campScene ? 2 : 1, cart: 1, wagon_wheel: 1, well: 0, haystack: 0, hitching_post: 0, water_trough: 0, lamp_post: 0, market_stall: 0, village_fence: 0, signpost: 1, roadside_shrine: definition.graves ? 2 : 1, milestone: 2, woodpile: 2 }
+  const camp = campScene
+    ? { extraThemes: ['interior'], require: [...(terrain.require ?? []), 'campfire', 'crate', 'sack', 'chest', 'woodpile'], prefer: [...(terrain.prefer ?? []), 'crate', 'sack', 'barrel'], caps: { ...wildCaps, ...CAMP_INTERIOR_OFF } }
+    : {}
   placeProps(map, {
     seed: `${seed}:props`,
     maxProps: SIZE_CLASSES[/** @type {keyof typeof SIZE_CLASSES} */ (map.sizeClass)].maxProps,
@@ -1087,7 +1515,10 @@ export function buildThemedScene({
       density: design.density === 'sparse' ? 9 : design.density === 'dense' ? 20 : definition.density ?? 14,
       require: terrain.require,
       prefer: terrain.prefer,
+      caps: arid && pondScene ? { ...wildCaps, boulder: 5, tree_dead: 4, tree_stump: 2 } : definition.graves ? { ...wildCaps, grave: 4, sarcophagus: 0, crypt_niche: 0, urn: 2, altar: 0, brazier: 0, cobweb: 0, bone_pile: 1 } : wildCaps,
+      ...camp,
     }],
   })
+  ensurePropAccess(map)
   return { map, theme: definition.id, warnings: [] }
 }
