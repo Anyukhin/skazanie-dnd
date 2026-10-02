@@ -2884,6 +2884,53 @@ function forcedPushPath(state, moverId, origin, distanceFeet) {
   return path
 }
 
+/**
+ * Притягивание по прямой к источнику («Терновый кнут», «Лассо молнии»): шаг за
+ * шагом по большей оси, пока не упрёмся в препятствие или не окажемся рядом.
+ */
+function forcedPullPath(state, moverId, origin, distanceFeet) {
+  const from = actorPosition(state, moverId)
+  if (!from || !origin) return []
+  const cells = tacticalCellMap(state)
+  const map = sceneTacticalMap(state)
+  const propOccupied = map ? propMovementPositions(map) : new Set()
+  const occupied = occupiedPositions(state, moverId)
+  const path = []
+  let cursor = from
+  for (let index = 0; index < Math.floor(Math.max(0, Number(distanceFeet) || 0) / 5); index += 1) {
+    const dx = origin.x - cursor.x
+    const dy = origin.y - cursor.y
+    if (Math.max(Math.abs(dx), Math.abs(dy)) <= 1) break
+    const next = Math.abs(dx) >= Math.abs(dy)
+      ? { x: cursor.x + Math.sign(dx), y: cursor.y }
+      : { x: cursor.x, y: cursor.y + Math.sign(dy) }
+    if (!actorFootprintFits(state, moverId, next, { map, cells, occupied, propOccupied })) break
+    if (map && footprintStepBlocked(map, findActor(state, moverId), cursor, next)) break
+    path.push(next)
+    cursor = next
+  }
+  return path
+}
+
+/** Случайный шаг «Нашествия»: к4 — север, юг, восток, запад; занятая клетка — без шага. */
+function forcedRandomStepPath(state, moverId, directionRoll) {
+  const from = actorPosition(state, moverId)
+  if (!from) return []
+  const step = [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: 1, y: 0 }, { x: -1, y: 0 }][Math.max(1, Math.min(4, safeInteger(directionRoll, 1))) - 1]
+  const next = { x: from.x + step.x, y: from.y + step.y }
+  const cells = tacticalCellMap(state)
+  const map = sceneTacticalMap(state)
+  const propOccupied = map ? propMovementPositions(map) : new Set()
+  if (!actorFootprintFits(state, moverId, next, { map, cells, occupied: occupiedPositions(state, moverId), propOccupied })) return []
+  if (map && footprintStepBlocked(map, findActor(state, moverId), from, next)) return []
+  return [next]
+}
+
+/** Размер цели допускает принудительное перемещение заклинанием. */
+function forcedMovementSizeAllowed(spell, target) {
+  return !spell.forcedMovementMaxSize || creatureSizeRank(target) <= sizeRankByName(spell.forcedMovementMaxSize)
+}
+
 function farthestSafeDestinationAwayFrom(state, moverId, origin, distanceFeet) {
   const from = actorPosition(state, moverId)
   if (!from || !origin) return null
@@ -6612,6 +6659,14 @@ export function validateCommand(input, rawState, context = {}) {
         const targetIsHostile = isEnemyActor(state, actorId(target)) !== isEnemyActor(state, command.actor_id)
         if (spell.target === 'enemy' && !targetIsHostile) throw new RulesValidationError('Это заклинание требует противника', 'INVALID_SPELL_TARGET')
         if (spell.target === 'ally' && targetIsHostile) throw new RulesValidationError('Это заклинание требует союзника', 'INVALID_SPELL_TARGET')
+        // «Уход за умирающим» действует только на живое существо с 0 хитов,
+        // которое ещё совершает спасброски от смерти.
+        if (spell.stabilizesDying === true && !isUnstableDyingHero(state, actorId(target))) {
+          throw new RulesValidationError('Заклинание стабилизирует только существо с 0 хитов, которое ещё совершает спасброски от смерти', 'STABILIZATION_NOT_REQUIRED')
+        }
+        if (spell.stabilizesDying === true && (spell.immuneCreatureTypes ?? []).includes(creatureTypeFor(target))) {
+          throw new RulesValidationError('Заклинание не действует на этот тип существ', 'INVALID_SPELL_TARGET')
+        }
         // Мирное по виду заклинание, направленное во врага, — то же нападение.
         if (!state.mechanics.combat.active && targetIsHostile && spell.requiresCombatAgainstHostile !== false) {
           throw new RulesValidationError('Заклинание против противника требует инициативы: сначала начните бой', 'COMBAT_NOT_ACTIVE')
@@ -8735,6 +8790,10 @@ function chooseSpellSlot(state, actorIdValue, spell, requestedLevel, castingReso
   return null
 }
 
+function spellAttackDamageModifier(spell, actor) {
+  return abilityModifier(actor?.abilities?.[spell.spellcastingAbility || 'int'])
+}
+
 function scaledSpellDice(spell, actor, slotLevel) {
   if (!spell?.damage) return null
   let parsed
@@ -8744,7 +8803,7 @@ function scaledSpellDice(spell, actor, slotLevel) {
   // Заговор с ростом числа лучей усиливается лучами, а не костями: иначе
   // Мистический заряд на 11-м уровне бил бы тремя лучами по 3к10 вместо трёх
   // отдельных 1к10.
-  if (spell.level === 0 && spell.beamScaling !== true) {
+  if (spell.level === 0 && spell.beamScaling !== true && spell.cantripDamageScaling !== false) {
     const level = Math.max(1, safeInteger(spell.monsterSpell?.casterLevel ?? actor?.level, 1))
     count += level >= 5 ? 1 : 0
     count += level >= 11 ? 1 : 0
@@ -12608,7 +12667,17 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           events.push(eventFrom(command, 'DieRolled', { ...roll, condition: die.condition, sign: die.sign }, []))
           enchantmentDamage += roll.total * die.sign
         }
-        let raw = (damageRoll?.total ?? Math.max(0, safeInteger(command.damage_amount, 0))) + (sneakAttackRoll?.total ?? 0) + (markRoll?.total ?? 0) + (hexRoll?.total ?? 0) + (divineFavorRoll?.total ?? 0) + (savageAttackRoll?.total ?? 0) + rageBonus + enchantmentDamage
+        // В 2014 кости Сглаза и Божественного благоволения — свой тип урона
+        // (некротический и излучение): сопротивление оружию их не режет, а
+        // невосприимчивость к ним считается отдельно. Они приходят отдельным
+        // DamageApplied ниже. Прежняя редакция складывает их с оружием.
+        const typedSpellRiders = usesDnd2014(state)
+          ? [[hexRoll, 'necrotic', 'hex'], [divineFavorRoll, 'radiant', 'divine-favor']]
+            .filter(([roll]) => roll && roll.total > 0)
+            .map(([roll, type, spellId]) => ({ roll, type, spellId }))
+          : []
+        const foldedSpellRiderDamage = typedSpellRiders.length ? 0 : (hexRoll?.total ?? 0) + (divineFavorRoll?.total ?? 0)
+        let raw = (damageRoll?.total ?? Math.max(0, safeInteger(command.damage_amount, 0))) + (sneakAttackRoll?.total ?? 0) + (markRoll?.total ?? 0) + foldedSpellRiderDamage + (savageAttackRoll?.total ?? 0) + rageBonus + enchantmentDamage
         // Ослабление режет удар вдвое — но только тот, что считается от нужной
         // характеристики. Делится весь сложенный урон, включая метки и порчу.
         const enfeeblingCondition = [...actorConditions].find((condition) => CONDITION_EFFECTS[condition]?.halvesWeaponDamageForAbility
@@ -12782,6 +12851,27 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             item_id: rider.item_id,
             catalog_id: rider.catalog_id,
             effect_id: rider.effect_id,
+          })
+        }
+        for (const rider of typedSpellRiders) {
+          if (finalPayload.hp_after <= 0) break
+          const riderPayload = applyKnockoutChoice(resolveDamagePayload(afterDamageState, targetId, rider.roll.total, rider.type))
+          const riderEvent = eventFrom(commandWithRules(
+            attackCommand,
+            RULE_IDS.damage,
+            riderPayload.immune || riderPayload.resistant || riderPayload.vulnerable ? RULE_IDS.resistance : null,
+            riderPayload.temporary_hp_absorbed ? RULE_IDS.temporaryHp : null,
+          ), 'DamageApplied', { ...riderPayload, spell_id: rider.spellId, spell_damage_rider: true }, [targetId])
+          events.push(riderEvent)
+          afterDamageState = applyGameEvent(afterDamageState, riderEvent)
+          finalPayload = riderPayload
+          damageComponents.push({
+            damage_type: riderPayload.damage_type,
+            raw_amount: riderPayload.raw_amount,
+            applied_amount: riderPayload.applied_amount,
+            temporary_hp_absorbed: riderPayload.temporary_hp_absorbed,
+            source: 'spell',
+            spell_id: rider.spellId,
           })
         }
         // Доза расходуется первым же попаданием, которое нанесло урон.
@@ -14852,6 +14942,11 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           && safeInteger(actor.level, 1) >= 8 && /свет|знан|упоко|магии/iu.test(String(normalizedCombatSubclassFor(actor) ?? '')) && damageExpression) {
           damageExpression = diceExpression(damageExpression, abilityModifier(actor.abilities?.wis), 8)
         }
+        // Атака заклинанием с модификатором базовой характеристики в уроне
+        // («Волшебный камень»): прибавка постоянная и на критическом не удваивается.
+        if (spell.kind === 'attack' && spell.damageAddsSpellcastingModifier === true && damageExpression) {
+          damageExpression = diceExpression(damageExpression, spellAttackDamageModifier(spell, actor), 6)
+        }
         const metamagic = conditionIdsFor(state, command.actor_id)
         const allowedTransmutedTypes = new Set(['acid', 'cold', 'fire', 'lightning', 'poison', 'thunder'])
         const requestedTransmutedType = String(command.transmuted_damage_type ?? '')
@@ -15370,6 +15465,25 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
                 if (firePayload.hp_after === 0) events.push(...zeroHitPointDamageConsequences(events.slice(0, -1).reduce(applyGameEvent, state), command, actorId(secondTarget), firePayload))
               }
             }
+            // Притягивание при попадании: «Терновый кнут» тянет цель к себе.
+            if (spell.pullFeet > 0) {
+              const pullState = events.reduce(applyGameEvent, state)
+              const pulled = findActor(pullState, resolvedTargetId)
+              if (isLivingActor(pulled) && forcedMovementSizeAllowed(spell, pulled)) {
+                const pulledFrom = actorPosition(pullState, resolvedTargetId)
+                const path = forcedPullPath(pullState, resolvedTargetId, actorPosition(pullState, command.actor_id), spell.pullFeet)
+                if (path.length) {
+                  events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ActorMoved', {
+                    from: pulledFrom, to: path.at(-1), path, distance: path.length * 5,
+                    movement_cost: 0, movement_spent: 0, movement_remaining: effectiveSpeedFeet(pullState, pulled, resolvedTargetId),
+                    spend_movement: false, forced_movement: true, pulled: true, spell_id: spell.id, phase: 'combat',
+                  }, [resolvedTargetId]))
+                  events.push(...areaEntryConsequences(events.reduce(applyGameEvent, state), command, resolvedTargetId, pulledFrom, path.at(-1), {
+                    diceService, rolls, resolveDamage: resolveDamageWithReactions, rollSavingThrow, saveModifierFor: areaSaveModifierFor, trigger: 'forced-entry',
+                  }))
+                }
+              }
+            }
             if (spell.onHitSaveAbility) {
               const ability = String(spell.onHitSaveAbility)
               const savingTarget = findActor(events.reduce(applyGameEvent, state), resolvedTargetId)
@@ -15608,6 +15722,28 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             if (saved && spell.endsOnSave === true && spell.concentration) {
               events.push(eventFrom(commandWithRules(command, RULE_IDS.concentration), 'ConcentrationEnded', { reason: 'save-success', effect_id: effectId }, [command.actor_id]))
             }
+            // «Лассо молнии»: сначала притягивание, урон — только если цель
+            // после него оказалась в пределах объявленного расстояния.
+            if (!saved && spell.pullFeet > 0) {
+              const pullState = events.reduce(applyGameEvent, state)
+              const pulled = findActor(pullState, resolvedTargetId)
+              if (isLivingActor(pulled) && forcedMovementSizeAllowed(spell, pulled)) {
+                const pulledFrom = actorPosition(pullState, resolvedTargetId)
+                const path = forcedPullPath(pullState, resolvedTargetId, actorPosition(pullState, command.actor_id), spell.pullFeet)
+                if (path.length) {
+                  events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ActorMoved', {
+                    from: pulledFrom, to: path.at(-1), path, distance: path.length * 5,
+                    movement_cost: 0, movement_spent: 0, movement_remaining: effectiveSpeedFeet(pullState, pulled, resolvedTargetId),
+                    spend_movement: false, forced_movement: true, pulled: true, spell_id: spell.id, phase: 'combat',
+                  }, [resolvedTargetId]))
+                  events.push(...areaEntryConsequences(events.reduce(applyGameEvent, state), command, resolvedTargetId, pulledFrom, path.at(-1), {
+                    diceService, rolls, resolveDamage: resolveDamageWithReactions, rollSavingThrow, saveModifierFor: areaSaveModifierFor, trigger: 'forced-entry',
+                  }))
+                }
+              }
+            }
+            const outOfReachAfterPull = spell.damageOnlyWithinFeet > 0
+              && distanceBetweenActors(events.reduce(applyGameEvent, state), command.actor_id, resolvedTargetId) > safeInteger(spell.damageOnlyWithinFeet, 5)
             // Некоторые карточки имеют две разные формулы: при успехе
             // отдельный бросок меньшего числа костей, при провале полный.
             // Нельзя бросить 4к8 и разделить итог: это меняет распределение
@@ -15626,7 +15762,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             }
             // Невосприимчивый по типу («не действует на нежить») не получает и
             // половины: автоматический успех здесь — отсутствие эффекта.
-            const damage = immuneByType ? 0 : spell.saveDamage
+            const damage = immuneByType || outOfReachAfterPull ? 0 : spell.saveDamage
               ? (outcomeDamageRoll?.total ?? 0)
               : sharedDamageRoll ? (saved ? (spell.halfOnSave ? Math.floor(sharedDamageRoll.total / 2) : 0) : sharedDamageRoll.total) : 0
             const bonusDamage = immuneByType ? 0 : bonusDamageRoll ? (saved ? (spell.halfOnSave ? Math.floor(bonusDamageRoll.total / 2) : 0) : bonusDamageRoll.total) : 0
@@ -15780,7 +15916,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
                 spell_option: String(command.spell_option),
               }, [resolvedTargetId]))
             }
-            if (!saved && spell.pushFeet > 0) {
+            if (!saved && spell.pushFeet > 0 && forcedMovementSizeAllowed(spell, target)) {
               const origin = actorPosition(state, command.actor_id)
               const pushedFrom = actorPosition(state, resolvedTargetId)
               const path = forcedPushPath(state, resolvedTargetId, origin, spell.pushFeet)
@@ -15795,6 +15931,29 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
                 events.push(...areaEntryConsequences(events.reduce(applyGameEvent, state), command, resolvedTargetId, pushedFrom, path.at(-1), {
                   diceService, rolls, resolveDamage: resolveDamageWithReactions, rollSavingThrow, saveModifierFor: areaSaveModifierFor, trigger: 'forced-entry',
                 }))
+              }
+            }
+            // «Нашествие»: шаг на 5 футов в случайную сторону, если скорость
+            // это позволяет. Сторону выбирает серверная к4.
+            if (!saved && spell.randomMoveFeet > 0) {
+              const movementState = events.reduce(applyGameEvent, state)
+              const mover = findActor(movementState, resolvedTargetId)
+              if (isLivingActor(mover) && effectiveSpeedFeet(movementState, mover, resolvedTargetId) >= 5) {
+                const direction = diceService.roll('1d4', `spell_random_move:${spell.id}`, command.actor_id, command.visibility ?? 'public')
+                rolls.push(direction)
+                events.push(eventFrom(command, 'DieRolled', { ...direction, spell_id: spell.id }, []))
+                const movedFrom = actorPosition(movementState, resolvedTargetId)
+                const path = forcedRandomStepPath(movementState, resolvedTargetId, direction.total)
+                if (path.length) {
+                  events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ActorMoved', {
+                    from: movedFrom, to: path.at(-1), path, distance: 5,
+                    movement_cost: 0, movement_spent: 0, movement_remaining: effectiveSpeedFeet(movementState, mover, resolvedTargetId),
+                    spend_movement: false, forced_movement: true, spell_id: spell.id, phase: 'combat',
+                  }, [resolvedTargetId]))
+                  events.push(...areaEntryConsequences(events.reduce(applyGameEvent, state), command, resolvedTargetId, movedFrom, path.at(-1), {
+                    diceService, rolls, resolveDamage: resolveDamageWithReactions, rollSavingThrow, saveModifierFor: areaSaveModifierFor, trigger: 'forced-entry',
+                  }))
+                }
               }
             }
             if (!saved && spell.reactionMoveAway === true) {
@@ -16166,6 +16325,16 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           for (const target of targets) {
             const resolvedTargetId = actorId(target)
             const slotLevel = Math.max(spell.level, safeInteger(command.slot_level, spell.level))
+            // Стабилизация — то же событие, что у проверки Медицины и набора
+            // лекаря: счётчик спасбросков от смерти сбрасывается, никакой метки.
+            if (spell.stabilizesDying === true) {
+              events.push(eventFrom(commandWithRules(command, RULE_IDS.zeroHp), 'HeroStabilized', {
+                hero_name: String(playerActor(state, resolvedTargetId)?.character ?? playerActor(state, resolvedTargetId)?.name ?? resolvedTargetId),
+                method: 'spare-the-dying',
+                spell_id: spell.id,
+              }, [resolvedTargetId]))
+              continue
+            }
             let offeredTemporaryHp = 0
             if (spell.temporaryHpDice) {
               const temporaryRoll = diceService.roll(String(spell.temporaryHpDice), `spell_temporary_hp:${spell.id}`, command.actor_id, command.visibility ?? 'public')

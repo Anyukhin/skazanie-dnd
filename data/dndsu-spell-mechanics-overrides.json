@@ -265,7 +265,12 @@
       "conditions": [
         "pushed-5"
       ],
-      "description": "Спасбросок Силы; толкает существо на 5 футов от заклинателя."
+      "description": "Спасбросок Силы; толкает существо на 5 футов от заклинателя.",
+      "mechanics2014": {
+        "conditions": [],
+        "pushFeet": 5,
+        "forcedMovementMaxSize": "medium"
+      }
     },
     "infestation": {
       "kind": "save",
@@ -279,7 +284,11 @@
       "conditions": [
         "forced-random-move-5"
       ],
-      "description": "Спасбросок Телосложения; урон ядом и случайное перемещение на 5 футов."
+      "description": "Спасбросок Телосложения; урон ядом и случайное перемещение на 5 футов.",
+      "mechanics2014": {
+        "conditions": [],
+        "randomMoveFeet": 5
+      }
     },
     "lightning-lure": {
       "kind": "save",
@@ -294,7 +303,12 @@
       "conditions": [
         "pulled-10"
       ],
-      "description": "Спасбросок Силы; притягивает цель на 10 футов и наносит урон электричеством, если она оказывается рядом."
+      "description": "Спасбросок Силы; притягивает цель на 10 футов и наносит урон электричеством, если она оказывается рядом.",
+      "mechanics2014": {
+        "conditions": [],
+        "pullFeet": 10,
+        "damageOnlyWithinFeet": 5
+      }
     },
     "magic-stone": {
       "kind": "buff",
@@ -303,7 +317,23 @@
         "magic-stone"
       ],
       "durationRounds": 10,
-      "description": "Зачаровывает до трёх камней; ими можно совершать дальнобойные атаки заклинанием с уроном 1к6 + модификатор базовой характеристики."
+      "description": "Зачаровывает до трёх камней; ими можно совершать дальнобойные атаки заклинанием с уроном 1к6 + модификатор базовой характеристики.",
+      "mechanics2014": {
+        "kind": "attack",
+        "target": "enemy",
+        "range": 60,
+        "actionType": "action",
+        "damage": "1d6",
+        "damageType": "bludgeoning",
+        "damageTypes": [
+          "bludgeoning"
+        ],
+        "conditions": [],
+        "durationRounds": null,
+        "supportNote": "D&D 2014: каждое применение — бросок одного камня действием: дальнобойная атака заклинанием на 60 футов, 1к6 + модификатор базовой характеристики дробящего урона. Зачарование трёх камней бонусным действием, передача камней союзникам и бросок пращой не ведутся.",
+        "cantripDamageScaling": false,
+        "damageAddsSpellcastingModifier": true
+      }
     },
     "mind-sliver": {
       "kind": "save",
@@ -458,7 +488,15 @@
       "conditions": [
         "stabilized"
       ],
-      "description": "Стабилизирует живое существо с 0 хитов."
+      "description": "Стабилизирует живое существо с 0 хитов.",
+      "mechanics2014": {
+        "conditions": [],
+        "stabilizesDying": true,
+        "immuneCreatureTypes": [
+          "undead",
+          "construct"
+        ]
+      }
     },
     "sword-burst": {
       "kind": "area-save",
@@ -487,7 +525,12 @@
       "conditions": [
         "pulled-10"
       ],
-      "description": "Рукопашная атака заклинанием с дистанцией 30 футов; колющий урон и возможность притянуть цель на 10 футов."
+      "description": "Рукопашная атака заклинанием с дистанцией 30 футов; колющий урон и возможность притянуть цель на 10 футов.",
+      "mechanics2014": {
+        "conditions": [],
+        "pullFeet": 10,
+        "forcedMovementMaxSize": "large"
+      }
     },
     "thunderclap": {
       "kind": "area-save",

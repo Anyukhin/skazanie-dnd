@@ -632,6 +632,28 @@ function enervationRepeatCueFromAction(event: GameEvent): SpellAnimationCue | nu
   }
 }
 
+/**
+ * Заклинание-реакция («Щит», «Контрзаклинание», «Адское возмездие») не пишет
+ * SpellCast: сервер фиксирует CombatActionUsed с `spell_id`. Реплика строится
+ * тем же профилем, что и обычный каст. Защитное заклинание рисуется на самом
+ * заклинателе, остальные — от него к тому, на кого направлена реакция.
+ */
+function reactionSpellCueFromAction(event: GameEvent): SpellAnimationCue | null {
+  const payload = event.payload ?? {}
+  if (payload.category !== 'spell' || payload.action_type !== 'reaction') return null
+  const spellId = String(payload.spell_id ?? '')
+  const actorId = String(event.actor_id ?? '')
+  if (!spellId || !actorId) return null
+  // «Контрзаклинание» тоже из семьи защиты, но его знак отмены летит к
+  // прерванному заклинателю.
+  const selfCast = spellEffectPalette(spellId).family === 'protection' && spellVisualProfile(spellId).visualVariant !== 'cancellation'
+  return spellCueFromCast({
+    ...event,
+    target_ids: selfCast ? [actorId] : uniqueIds(event.target_ids),
+    payload: { spell_id: spellId, ...(payload.damage_type ? { damage_type: payload.damage_type } : {}) },
+  })
+}
+
 /** Удар из SpellCast рисуется физически только если canonical профиль требует оружие. */
 function spellAttackRequiresWeapon(payload: Record<string, unknown>): boolean {
   const spellId = String(payload.spell_id ?? payload.spellId ?? '')
@@ -853,7 +875,9 @@ export function combatAnimationCuesFromEvents(
         if (Object.keys(outcomes).length) spellTargetOutcomesByCommand.set(commandId, outcomes)
       }
     }
-    if (event.event_type === 'SpellCast' && event.command_id) spellCastByCommand.set(String(event.command_id), event)
+    // Прерванное Контрзаклинанием заклинание пишет SpellCast с `countered`:
+    // его эффекта не было, и рисовать его как сработавшее нельзя.
+    if (event.event_type === 'SpellCast' && event.command_id && event.payload?.countered !== true) spellCastByCommand.set(String(event.command_id), event)
     if (event.event_type === 'SpellAreaCreated' && event.command_id) areaCommands.add(String(event.command_id))
     if (event.event_type === 'ActorMoved' && event.command_id && event.payload?.teleport === true) {
       teleportMovesByCommand.set(String(event.command_id), event)
@@ -903,6 +927,8 @@ export function combatAnimationCuesFromEvents(
         }
         continue
       }
+      const reactionCue = event.command_id && spellCastByCommand.has(String(event.command_id)) ? null : reactionSpellCueFromAction(event)
+      if (reactionCue) cues.push(reactionCue)
     }
     const auraSourceId = String(payload.aura_of_protection_source ?? '')
     if (auraSourceId) {
@@ -962,6 +988,7 @@ export function combatAnimationCuesFromEvents(
     }
 
     if (event.event_type === 'SpellCast') {
+      if (payload.countered === true) continue
       if (event.command_id && multiBeamCommands.has(beamCommandRoot(event.command_id))) continue
       const cue = spellCueFromCast(event, event.command_id ? projectileCountByCommand.get(String(event.command_id)) : undefined)
       const teleportMove = event.command_id ? teleportMovesByCommand.get(String(event.command_id)) : undefined

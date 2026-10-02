@@ -47,6 +47,12 @@ export function spellRuntimeFixture(id) {
       combat: { active: profile.actionType !== 'long_cast', round: 1, active_index: 0,
         initiative: [{ actor_id: 'caster', total: 20 }, { actor_id: 'enemy', total: 10 }, { actor_id: 'ally', total: 5 }],
         action_economy: { caster: economy(), enemy: economy(), ally: economy() } } } })
+  // Стабилизация действует только на умирающего: союзник стенда лежит с 0 хитов.
+  if (profile.stabilizesDying === true) {
+    state.players[1].hp = 0
+    state.mechanics.death.saving_throws.ally = { successes: 0, failures: 1, stable: false }
+    state.mechanics.conditions.ally = [{ id: 'unconscious', duration: null }]
+  }
   const runtime = combatSpellFor(state.players[0], id, { rulesetId: state.ruleset_id })
   assert.ok(runtime, `Нет источника заклинания в стенде: ${id}`)
   const command = { command_type: 'CastSpell', command_id: `audit:${id}`, actor_id: 'caster', spell_id: id, server_authoritative: true }

@@ -1446,3 +1446,35 @@ test('область от заклинателя строится от клет�
   assert.deepEqual(cells, expected)
   assert.ok(cells.every((cell) => cell.x >= 2 && cell.x <= 4), 'конус идёт от (1,3) на восток')
 })
+
+test('заклинание-реакция получает свою реплику каста: защитное — на себе, остальные — к цели', () => {
+  const reaction = (spellId, targetId) => ({
+    event_id: `reaction-${spellId}`, event_type: 'CombatActionUsed', command_id: `cmd-${spellId}`, actor_id: 'wizard', target_ids: [targetId],
+    payload: { action_id: `cast:${spellId}`, category: 'spell', action_type: 'reaction', spell_id: spellId },
+  })
+  const [shield] = animation.combatAnimationCuesFromEvents([reaction('shield', 'orc')])
+  assert.equal(shield.kind, 'channel')
+  assert.equal(shield.spellId, 'shield')
+  assert.deepEqual(shield.targetIds, ['wizard'], 'Щит рисуется на заклинателе, а не на атакующем')
+  const [rebuke] = animation.combatAnimationCuesFromEvents([reaction('hellish-rebuke', 'orc')])
+  assert.equal(rebuke.spellId, 'hellish-rebuke')
+  assert.deepEqual(rebuke.targetIds, ['orc'])
+  // Обычное действие без заклинания реплики каста не порождает.
+  assert.deepEqual(animation.combatAnimationCuesFromEvents([{ ...reaction('shield', 'orc'), payload: { action_id: 'dodge', category: 'common', action_type: 'action' } }]), [])
+})
+
+test('Контрзаклинание рисуется знаком отмены, а прерванное заклинание не изображается сработавшим', () => {
+  const cues = animation.combatAnimationCuesFromEvents([
+    { event_id: 'countered', event_type: 'SpellCast', command_id: 'reaction', actor_id: 'goblin', target_ids: ['fighter'],
+      payload: { spell_id: 'chromatic-orb', kind: 'attack', countered: true } },
+    { event_id: 'countered-marker', event_type: 'SpellCountered', command_id: 'reaction', actor_id: 'fighter', target_ids: ['goblin'],
+      payload: { spell_id: 'chromatic-orb', spell_level: 1, counterspell_level: 3 } },
+    { event_id: 'counter', event_type: 'CombatActionUsed', command_id: 'reaction', actor_id: 'fighter', target_ids: ['goblin'],
+      payload: { action_id: 'cast:counterspell', category: 'spell', action_type: 'reaction', spell_id: 'counterspell' } },
+  ])
+  assert.equal(cues.some((cue) => cue.spellId === 'chromatic-orb'), false, 'прерванный шарик не летит')
+  const counter = cues.find((cue) => cue.spellId === 'counterspell')
+  assert.equal(counter?.kind, 'channel')
+  assert.deepEqual(counter.targetIds, ['goblin'])
+  assert.equal(effects.spellEffectPalette('counterspell').visualVariant, 'cancellation')
+})
