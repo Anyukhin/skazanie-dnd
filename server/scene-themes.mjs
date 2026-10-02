@@ -194,10 +194,12 @@ export const SCENE_THEMES = Object.freeze([
     // «Хутор у леса» — хутор. «Бор» с границей слова, иначе «собор» — лес.
     match: /(?<![а-яё])(?:лес(?:а|у|ом|е|ов|ами|ах)?|чащ[аиуеё]\p{L}*|рощ[аиуеё]\p{L}*|бор(?:а|у|ом|е|ы)?|дубрав\p{L}*|пущ[аиуеё]\p{L}*|тайг\p{L}*|опушк\p{L}*|оазис\p{L}*|поляна|поляне|поляну|лагер\p{L}*|стоянк\p{L}*|бивак\p{L}*)(?![а-яё])/iu,
     // Каменная кромка забирает край участка: плотность выше, чтобы чаща
-    // осталась чащей (v3 открытой местности).
-    density: 22,
+    // осталась чащей (v3 открытой местности). Пуассоновский диск держит
+    // деревья врозь, и промежутки занимает подлесок: мшистые камни, бурелом,
+    // корни и опавшая листва из набора детализации.
+    density: 24,
     require: ['tree_oak', 'tree_spruce', 'tree_birch', 'fallen_log', 'campfire'],
-    prefer: ['tree_oak', 'tree_spruce', 'tree_birch', 'tree_pine', 'tree_dead', 'tree_stump', 'bush', 'shrub', 'boulder', 'fern', 'campfire'],
+    prefer: ['tree_oak', 'tree_spruce', 'tree_birch', 'tree_pine', 'tree_dead', 'tree_stump', 'bush', 'shrub', 'boulder', 'fern', 'campfire', 'mossy_rock', 'dead_bramble', 'root_tangle', 'leaf_litter'],
   },
   {
     id: 'road',
