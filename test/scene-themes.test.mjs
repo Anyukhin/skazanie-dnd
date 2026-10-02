@@ -245,6 +245,10 @@ test('вид точки карты мира дорисовывает тему, �
   assert.equal(resolveSceneTheme({ location: 'Норский провал', worldKind: 'dungeon' }).id, 'cave')
   assert.equal(resolveSceneTheme({ location: 'Норская башня', worldKind: 'dungeon' }).id, 'building')
   assert.equal(resolveSceneTheme({ location: 'Кальская твердыня', worldKind: 'fortress' }).id, 'building')
+  // Живая кампания 2026-10-02: подземная сцена в замке барона встречала отряд
+  // погребальной залой склепа. Под замком — темница.
+  assert.equal(resolveSceneTheme({ location: 'Замок барона', theme: 'каменная крепость', worldKind: 'fortress', sceneKind: 'dungeon', request: { pattern: 'crypt' } }).id, 'dungeon')
+  assert.equal(resolveSceneTheme({ location: 'Кальская твердыня', worldKind: 'fortress', sceneKind: 'dungeon' }).id, 'dungeon')
   assert.equal(resolveSceneTheme({ location: 'Старое пепелище', worldKind: 'ruin' }).id, 'crypt')
   // Ориентир без вида — прежний fallback по заявке.
   assert.equal(resolveSceneTheme({ location: 'Кальмар', worldKind: 'landmark', request: { layout: 'cavern' } }).id, 'cave')

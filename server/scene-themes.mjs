@@ -524,6 +524,10 @@ export function resolveSceneTheme({ location = '', theme = '', sceneKind = '', s
   if (settlementSignal && (!byName || byName.id === 'road')) return themeById('settlement')
   if (byName) return byName
   const byWorld = WORLD_KIND_THEMES[String(worldKind ?? '').toLocaleLowerCase('en')] ?? ''
+  // Подземная сцена в замке или крепости — темница под ним: караульная,
+  // коридор, камеры. Прежде она падала в склеп, и «Замок барона» встречал
+  // отряд погребальной залой.
+  if (kind === 'dungeon' && (String(worldKind ?? '').toLocaleLowerCase('en') === 'fortress' || /крепост|замок|замк|цитадел|бастион/iu.test(sceneText))) return themeById('dungeon')
   // Вид сцены, объявленный явно, спорит с картой мира — и выигрывает: подземелье
   // посреди пустоши остаётся подземельем. Карта мира дорисовывает только то,
   // чему сцена не противоречит.

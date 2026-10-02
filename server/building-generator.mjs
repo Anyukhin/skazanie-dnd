@@ -1052,7 +1052,7 @@ function paintBuildingStream(map, building, entranceX, seed) {
     for (let x = from; x <= to; x += 1) {
       const cell = cellAt(map, x, y)
       if (!cell || cell.zone !== 'yard') continue
-      setCell(map, x, y, { passable: false, surface: 'water', material: 'stone', zone: 'stream', revealed: true })
+      setCell(map, x, y, { passable: false, surface: 'water', material: 'stone', zone: 'stream' })
     }
   }
   for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
