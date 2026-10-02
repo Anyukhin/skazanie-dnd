@@ -1,0 +1,271 @@
+/* Страницы по макету «Сказание — редизайн интерфейса» (2026-10-01): «Отряд»,
+   «Карта мира» и раскладка телефона. Файл подключается после
+   `prototype-layout.css` и не трогает стол на широком экране: всё мобильное
+   живёт под `@media (max-width: 760px)`.
+
+   Шрифты — сайта (Alegreya / Cormorant), не макета. Цвета — токены
+   `styles.css`; новые оттенки, которых там нет, объявлены ниже переменными,
+   чтобы палитра менялась в одном месте. */
+
+:root {
+  --hp: #c9584c;
+  --hp-track: #3a1d19;
+  --hp-temp: #8fb8d8;
+  --ok: #7fb38a;
+  --ok-soft: color-mix(in srgb, var(--ok) 14%, var(--raise));
+  --ok-line: color-mix(in srgb, var(--ok) 45%, transparent);
+  --rage: #eda46a;
+  --page-card: var(--panel);
+  --page-well: var(--panel-soft);
+  --route-selected: #a63e2e;
+  --mobile-tabbar: 64px;
+}
+
+/* ================= Отряд ================= */
+
+.party-page { display: flex; flex-direction: column; gap: 24px; }
+.party-page-header { display: flex; align-items: flex-end; gap: 16px; }
+.party-page-header > div { flex: 1; min-width: 0; }
+.party-eyebrow { color: var(--acc); font: 700 var(--fs-xxs) var(--f-label); letter-spacing: .12em; text-transform: uppercase; }
+.party-page-header h1 { margin: 4px 0 6px; color: var(--text); font: 700 clamp(30px, 2.6vw, 40px)/1.1 var(--f-display); }
+.party-page-header p { margin: 0; color: var(--text2); font: 500 var(--fs-md) var(--f-ui); }
+
+.party-button,
+.party-hero-actions button,
+.party-rest-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 0 14px; border: 1px solid var(--line2); border-radius: 8px; background: var(--raise); color: var(--text); font: 600 var(--fs-md) var(--f-ui); white-space: nowrap; cursor: pointer; }
+.party-button:hover:not(:disabled),
+.party-hero-actions button:hover:not(:disabled),
+.party-rest-actions button:hover:not(:disabled) { border-color: var(--acc-line); }
+.party-button.primary,
+.party-hero-actions button.primary { border-color: var(--acc); background: var(--acc); color: var(--acc-ink); }
+.party-hero-actions button.quiet { background: transparent; color: var(--text2); }
+.party-rest-actions button:disabled { opacity: .5; cursor: default; }
+.party-link { padding: 0; border: 0; background: none; color: var(--acc2); font: 600 var(--fs-sm) var(--f-ui); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+
+.party-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 20px; align-items: stretch; }
+
+.party-hero-card { display: flex; flex-direction: column; gap: 16px; min-width: 0; padding: 20px; border: 1px solid var(--line); border-radius: 14px; background: var(--page-card); }
+.party-hero-card.selected { border-color: var(--acc-line); }
+.party-hero-card.downed { border-color: color-mix(in srgb, var(--hp) 45%, transparent); }
+.party-hero-head { display: flex; align-items: center; gap: 14px; }
+.party-hero-head > div { flex: 1; min-width: 0; }
+.party-hero-face { position: relative; flex: none; width: 84px; height: 84px; border: 1px solid var(--acc-line); border-radius: 14px; background-color: var(--raise); background-size: 200% 200%; background-repeat: no-repeat; font-size: 30px; }
+.party-hero-card.downed .party-hero-face { filter: grayscale(.8) brightness(.7); }
+.party-hero-head h2 { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--text); font: 700 var(--fs-4xl)/1.1 var(--f-display); }
+.party-hero-head h2 svg { color: var(--acc2); flex: none; }
+.party-hero-head p { margin: 2px 0 8px; color: var(--text2); font: 500 var(--fs-md) var(--f-ui); }
+.party-presence { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; height: 26px; padding: 0 10px; overflow: hidden; border: 1px solid var(--line2); border-radius: 999px; background: var(--raise); color: var(--muted); font: 600 var(--fs-xs) var(--f-ui); white-space: nowrap; text-overflow: ellipsis; }
+.party-presence i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--spent); }
+.party-presence.online { border-color: var(--ok-line); background: var(--ok-soft); color: color-mix(in srgb, var(--ok) 60%, var(--text)); }
+.party-presence.online i { background: var(--ok); }
+
+.party-hp > div:first-child { display: flex; justify-content: space-between; margin-bottom: 6px; font: 600 var(--fs-sm) var(--f-ui); }
+.party-hp > div:first-child span { color: var(--text2); }
+.party-hp em { color: var(--hp-temp); font-style: normal; }
+.party-hp-track { position: relative; height: 8px; overflow: hidden; border-radius: 4px; background: var(--hp-track); }
+.party-hp-track i { position: absolute; top: 0; bottom: 0; left: 0; background: var(--hp); }
+.party-hp-track i.temp { background: var(--hp-temp); }
+.party-downed { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; color: color-mix(in srgb, var(--hp) 70%, var(--text)); font: 600 var(--fs-sm) var(--f-ui); }
+.party-downed em { margin-left: auto; color: var(--text2); font-style: normal; }
+
+.party-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(70px, 1fr)); gap: 8px; margin: 0; }
+.party-stats > div { min-width: 0; padding: 8px 10px; border-radius: 8px; background: var(--page-well); }
+.party-stats dd { margin: 0; color: var(--text); font: 700 var(--fs-2xl) var(--f-serif); white-space: nowrap; }
+.party-stats dt { order: 2; color: var(--text2); font: 500 var(--fs-xs) var(--f-ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.party-stats > div { display: flex; flex-direction: column-reverse; }
+
+.party-abilities { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; margin: 0; }
+.party-abilities > div { display: flex; flex-direction: column; align-items: center; padding: 8px 0 6px; border: 1px solid var(--line); border-radius: 8px; }
+.party-abilities dt { color: var(--text2); font: 700 var(--fs-xxs) var(--f-label); letter-spacing: .06em; }
+.party-abilities dd { margin: 0; color: var(--text); font: 700 var(--fs-2xl)/1.2 var(--f-serif); }
+.party-abilities small { color: var(--muted); font: 500 var(--fs-xs) var(--f-ui); }
+
+.party-resources { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; font: 500 var(--fs-md) var(--f-ui); }
+.party-resources li { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.party-resources li > span { flex: 1; min-width: 0; overflow: hidden; color: var(--text2); white-space: nowrap; text-overflow: ellipsis; }
+.party-resources li > b { min-width: 36px; color: var(--text); text-align: right; }
+.party-resources li > b.party-conditions { min-width: 0; max-width: 60%; overflow: hidden; font-weight: 600; text-align: right; white-space: nowrap; text-overflow: ellipsis; }
+.party-resources li > em { color: var(--muted); font-style: normal; }
+.party-pips { display: inline-flex; gap: 4px; }
+.party-pips i { width: 12px; height: 12px; border-radius: 50%; background: var(--rage); }
+.party-pips i.slot { background: var(--bonus); }
+.party-pips i.die { background: var(--text2); }
+.party-pips i.spent { background: transparent; box-shadow: inset 0 0 0 1.5px var(--spent); }
+
+.party-hero-actions { display: flex; gap: 8px; margin-top: auto; }
+.party-hero-actions button { flex: 1; }
+.party-hero-actions button.quiet { flex: 0 0 auto; }
+.party-locked { display: flex; align-items: center; gap: 6px; color: var(--muted); font: 500 var(--fs-sm) var(--f-ui); }
+
+/* Приглашение — полосой во всю ширину сетки: сколько бы героев ни было,
+   оно не выдаёт себя за ещё одно кресло. */
+.party-invite-card { grid-column: 1 / -1; display: flex; align-items: center; gap: 18px; padding: 16px 22px; border: 1.5px dashed var(--line2); border-radius: 14px; }
+.party-invite-card > div { flex: 1; min-width: 0; }
+.party-invite-face { flex: none; display: grid; place-items: center; width: 56px; height: 56px; border: 1.5px dashed var(--line2); border-radius: 12px; color: var(--text2); }
+.party-invite-card h2 { margin: 0 0 2px; color: var(--text); font: 700 var(--fs-3xl) var(--f-display); }
+.party-invite-card p { max-width: 640px; margin: 0; color: var(--text2); font: 500 var(--fs-md)/1.5 var(--f-ui); }
+
+.party-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+.party-summary-card { display: flex; align-items: flex-start; gap: 14px; min-width: 0; padding: 14px 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--page-card); }
+.party-summary-card > svg { flex: none; margin-top: 2px; color: var(--acc2); }
+.party-summary-card > div { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.party-summary-card strong { color: var(--text); font: 700 var(--fs-2xl) var(--f-serif); }
+.party-summary-card p { margin: 0; color: var(--text2); font: 500 var(--fs-sm)/1.45 var(--f-ui); }
+.party-summary-card ul { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; font: 500 var(--fs-sm) var(--f-ui); }
+.party-summary-card li { display: flex; gap: 8px; min-width: 0; }
+.party-summary-card li span { color: var(--text2); }
+.party-summary-card li b { margin-left: auto; color: var(--text); font-weight: 600; white-space: nowrap; }
+.party-summary-card .party-link { align-self: flex-start; }
+.party-rest-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.party-rest-actions button { min-height: 34px; padding: 0 12px; font-size: var(--fs-sm); }
+
+@media (max-width: 1100px) {
+  .party-summary { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ================= Карта мира ================= */
+
+.world-map-eyebrow { display: block; color: var(--acc) !important; font: 700 var(--fs-xxs) var(--f-label) !important; letter-spacing: .12em !important; text-transform: uppercase; }
+.world-map-stats span { height: 28px; border-color: var(--line2); border-radius: 999px; background: var(--raise); color: var(--text2); font: 600 var(--fs-xs) var(--f-ui); }
+
+.world-map-aside { display: flex; flex-direction: column; gap: 16px; min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.world-map-aside > .world-map-inspector.world-map-location-inspector { flex: none; overflow: visible; border: 1px solid var(--acc-line); border-radius: 14px; background: var(--page-card); }
+.world-map-places { display: flex; flex-direction: column; min-height: 0; padding: 14px 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--page-card); }
+.world-map-places h3 { margin: 0 0 4px; color: var(--text2); font: 700 var(--fs-xxs) var(--f-label); letter-spacing: .12em; text-transform: uppercase; }
+.world-map-places ul { margin: 0; padding: 0; list-style: none; }
+.world-map-places li + li { border-top: 1px solid var(--line); }
+.world-map-places li button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 4px; border: 0; background: none; color: var(--text); text-align: left; cursor: pointer; }
+.world-map-places li button:hover strong { color: var(--acc2); }
+.world-map-places li button > span { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.world-map-places strong { overflow: hidden; font: 700 var(--fs-md) var(--f-ui); white-space: nowrap; text-overflow: ellipsis; }
+.world-map-places small { color: var(--muted); font: 500 var(--fs-xs) var(--f-ui); }
+.world-map-places em { flex: none; height: 24px; padding: 0 10px; border: 1px solid var(--line2); border-radius: 999px; background: var(--raise); color: var(--text2); font: 600 var(--fs-xxs)/22px var(--f-ui); font-style: normal; }
+.world-map-places .place-marker { flex: none; width: 12px; height: 12px; box-sizing: border-box; border: 3px solid var(--text2); border-radius: 50%; }
+.world-map-places .visited .place-marker { background: var(--text2); }
+.world-map-places .selected .place-marker { border-color: var(--acc2); }
+.world-map-places .selected strong { color: var(--acc2); }
+.world-map-places .current .place-marker { border: 0; background: var(--hp); }
+.world-map-places .current em { border-color: color-mix(in srgb, var(--hp) 45%, transparent); color: color-mix(in srgb, var(--hp) 55%, var(--text)); }
+.world-map-places .world-lore,
+.world-map-places .route-legend { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+
+/* Метки легенды: «известно» — кольцо без заливки, как у непосещённой точки;
+   «маршрут» — линия выбранного пути (`.world-route.selected`). */
+.world-map-legend .legend-known { border-width: 2px; background: transparent; }
+.world-map-legend .legend-route { width: 18px; height: 0; border: 0; border-top: 4px solid var(--route-selected); border-radius: 0; }
+
+/* ================= Телефон ================= */
+
+.mobile-tabbar { display: none; }
+
+@media (max-width: 760px) {
+  body { overflow: hidden; }
+  .app, .app.sidebar-is-collapsed { display: block; height: 100dvh; min-height: 0; --shell-left: 0px; --shell-top: 0px; }
+  .game-main { position: relative; height: calc(100dvh - var(--mobile-tabbar)); overflow: hidden; }
+
+  /* Нижняя панель вкладок. */
+  .mobile-tabbar { position: fixed; z-index: 45; left: 0; right: 0; bottom: 0; height: var(--mobile-tabbar); display: flex; border-top: 1px solid var(--line); background: var(--rail-bg, var(--ink)); }
+  .mobile-tab { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 0; border: 0; background: none; color: var(--text2); font: 600 var(--fs-xxs) var(--f-ui); cursor: pointer; }
+  .mobile-tab.active { color: var(--acc2); }
+  .mobile-tab b { position: absolute; top: 8px; left: calc(50% + 8px); min-width: 18px; height: 18px; padding: 0 4px; box-sizing: border-box; border-radius: 9px; background: var(--acc); color: var(--acc-ink); font: 700 11px/18px var(--f-ui); text-align: center; }
+
+  /* Рельса разделов — шторкой по кнопке меню: журнал, настройки, мастер, выход. */
+  .app-rail { position: fixed; z-index: 50; top: 0; bottom: var(--mobile-tabbar); left: 0; width: var(--rail-w, 84px); height: auto; overflow-y: auto; transform: translateX(0); transition: transform .2s ease; box-shadow: 16px 0 40px rgba(0, 0, 0, .45); }
+  .app-rail.collapsed { transform: translateX(-100%); box-shadow: none; }
+  .mobile-menu { position: fixed; z-index: 55; top: 8px; left: 10px; width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 1px solid var(--line2); border-radius: 10px; background: var(--raise); color: var(--text); }
+  .mobile-menu[aria-expanded='true'] { left: calc(var(--rail-w, 84px) + 10px); }
+
+  /* Разделы под кнопкой меню начинаются ниже неё. */
+  .game-main > .section-page,
+  .game-main > .world-map-page { height: 100%; box-sizing: border-box; padding: 64px 16px 24px; overflow-y: auto; }
+  /* Над плашкой ведущего кнопка меню уже стоит на ней самой — отступ не нужен. */
+  .game-main > .command-recovery-notice ~ .section-page,
+  .game-main > .command-recovery-notice ~ .world-map-page { padding-top: 20px; }
+  .command-recovery-notice { min-height: 60px; gap: 8px; padding: 8px 12px 8px 64px; font-size: var(--fs-xxs); line-height: 1.3; }
+  .command-recovery-notice p { margin: 0; font-size: inherit; line-height: inherit; }
+  .command-recovery-notice button { min-height: 32px; padding: 0 10px; font-size: var(--fs-xs); }
+
+  /* --- комната: две половины --- */
+  .game-area, .game-area.needs-hero-setup { height: 100%; min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(0, 1fr); overflow: hidden; }
+  .mobile-pane-scene .game-area { grid-template-rows: 60px minmax(200px, 42dvh) minmax(0, 1fr); grid-template-areas: 'status' 'board' 'rail'; }
+  .mobile-pane-scene .game-area.needs-hero-setup { grid-template-rows: 60px auto minmax(180px, 36dvh) minmax(0, 1fr); grid-template-areas: 'status' 'setup' 'board' 'rail'; }
+  .mobile-pane-scene .game-area > .server-column,
+  .mobile-pane-scene .game-area > .dialogue-composer { display: none; }
+  .mobile-pane-chronicle .game-area,
+  .mobile-pane-chronicle .game-area.needs-hero-setup { grid-template-rows: 60px minmax(0, 1fr) auto; grid-template-areas: 'status' 'server' 'compose'; }
+  .mobile-pane-chronicle .game-area > :is(.map-stage, .turn-rail, .party-overlay, .dice-tray--compact, .hero-setup-notice, .campaign-paused-notice) { display: none; }
+
+  /* Шапка: меню, название сцены, подпись — и ничего больше. Приглашение и
+     пауза живут в разделе «Отряд» и в меню мастера. */
+  .status-bar { height: 60px; flex-wrap: nowrap; gap: 8px; padding: 0 12px 0 64px; overflow: hidden; }
+  .status-bar > .scene-header, .status-bar > .scene-header.has-illustration { flex: 1 1 auto; width: auto; flex-basis: auto; min-width: 0; padding: 0; }
+  .status-bar .scene-header > :not(.scene-title) { display: none; }
+  .status-bar .scene-title h1 { font-size: var(--fs-2xl); }
+  .room-header-bar { flex: 0 0 auto; }
+  .room-header-bar > :not(.connection-status) { display: none; }
+  .status-bar > .initiative-ribbon.exploration { display: none; }
+  /* Порядок ходов — полосой над картой правее переключателя 2D/3D; имя
+     ходящего и так подписано у его портрета «Сейчас». В хронике его заменяет
+     полоска хода колонки (`turn-strip`). */
+  .status-bar > .initiative-ribbon.combat { top: calc(60px + 8px); left: 96px; right: 8px; max-width: none; transform: none; overflow-x: auto; }
+  .status-bar > .initiative-ribbon.combat > .initiative-active-chip { display: none; }
+  .mobile-pane-chronicle .status-bar > .initiative-ribbon.combat { display: none; }
+
+  /* Карта: отряд поверх поля прячется — героя выбирают в «Отряде». */
+  .party-overlay { display: none; }
+  .map-stage { min-height: 0; }
+
+  /* Панель хода: карточка героя, колоды и одна строка плиток. */
+  .turn-rail, .game-area.exploration-active .turn-rail {
+    --slot: 58px;
+    min-height: 0; max-height: none; height: auto;
+    display: flex; flex-direction: column;
+    gap: 10px; padding: 12px 14px 14px; overflow-y: auto; overscroll-behavior: contain;
+  }
+  /* Сетка стола здесь не годится: в строках высотой «по остатку» карточка
+     героя и колоды сжимались до обрезков. Колонка с прокруткой честнее. */
+  .turn-rail > * { flex: none; min-height: auto; }
+  .turn-rail > .turn-rail-hero { order: 1; }
+  .turn-rail > .hotbar-decks { order: 2; }
+  .turn-rail > .combat-hotbar { order: 3; }
+  .turn-rail > .turn-rail-side { order: 4; }
+  .turn-rail > .rail-resize { display: none; }
+  .turn-rail > .turn-rail-hero > .player-hud { grid-template-columns: 46px minmax(0, 1fr) auto; grid-template-rows: auto auto auto; gap: 4px 12px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--page-card); }
+  .turn-rail-hero .hud-portrait { grid-row: 1 / span 3; width: 46px; height: 46px; flex-basis: 46px; border-radius: 12px; box-shadow: 0 0 0 1px var(--acc-line); }
+  .turn-rail-hero .hud-identity strong { font-size: var(--fs-xl); }
+  .turn-rail-hero .hud-status { grid-row: 4; }
+  /* Старое правило узкого экрана (`styles.css`, ≤ 680px) сдвигало панель
+     действий на 112px — наследие плавающей панели поверх карты. */
+  .turn-rail > .combat-hotbar { --slot: 58px; top: auto; left: auto; right: auto; width: auto; max-height: none; }
+  .turn-rail > .hotbar-decks { display: flex; flex-wrap: wrap; gap: 6px; }
+  .turn-rail > .hotbar-decks .hotbar-tabs { flex: 1 1 100%; min-width: 0; overflow-x: auto; }
+  .turn-rail > .hotbar-decks .hotbar-tabs button { flex: none; }
+  .turn-rail .hotbar-main { grid-template-columns: minmax(0, 1fr); }
+  .turn-rail .tile-toolbar { display: none; }
+  /* Параметры выбранного действия: кнопка — строкой под плитками, раскрытая
+     карточка — листом над нижней панелью, а не всплывашкой у левого края. */
+  .turn-rail .hotbar-detail { position: static; grid-column: 1; grid-row: 2; }
+  .turn-rail .hotbar-detail-content { position: fixed; z-index: 46; left: 12px; right: 12px; bottom: calc(var(--mobile-tabbar) + 12px); width: auto; max-height: 50dvh; }
+  .turn-rail .hotbar-actions-shell { grid-column: 1; }
+  .turn-rail .hotbar-actions { grid-template-rows: var(--slot); overflow-x: auto; overscroll-behavior-x: contain; }
+  .turn-rail > .hotbar-decks { overflow-x: auto; }
+  .turn-rail > .turn-rail-side { overflow: visible; }
+
+  /* Хроника на всю высоту, ввод — под ней. */
+  .server-column { border-left: 0; padding: 10px 16px; }
+  .server-column > .server-resize { display: none; }
+  .server-column .chat-panel { position: static; height: auto; min-height: 0; flex: 1; }
+  .game-area > .dialogue-composer { padding: 10px 16px 12px; border-left: 0; }
+
+  /* Разделы. */
+  .party-page-header { flex-wrap: wrap; }
+  .party-grid { grid-template-columns: minmax(0, 1fr); }
+  .party-hero-card { padding: 16px; }
+  .party-invite-card { flex-wrap: wrap; }
+  .party-abilities dd { font-size: var(--fs-xl); }
+  .world-map-aside { overflow: visible; }
+  /* В колонке на телефоне карта сжималась по высоте до полоски: страница
+     задаёт высоту, а элементы флекса по умолчанию уступают её. */
+  .world-map-layout > * { flex: none; }
+  .world-map-legend { left: 8px; bottom: 8px; gap: 8px; padding: 4px 7px; }
+}

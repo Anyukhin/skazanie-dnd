@@ -52,6 +52,8 @@ import {
 } from './spell-effects'
 import { doorsReachableFrom, sceneTacticalMap } from './tactical-map-client'
 import { WorldMapView } from './WorldMapView'
+import { PartyPage } from './PartyPage'
+import { MobileTabBar, type MobilePane } from './MobileTabBar'
 import { LeaveLocationPicker, SceneTransitionBanner, sceneTransitionNotice, type SceneTransitionNotice } from './SceneTransitionOverlay'
 import { doorDirectionFromActor, doorOverlayCells, localizedQuestClockLabel, selectedAttackForecast, shouldAutoOpenCampaignModal } from './desktop-ui.mjs'
 import { boardMapArtForTheme, resolveSceneTheme, sceneIllustrationForTheme, type SceneArt, type SceneVisualTheme } from './scene-art'
@@ -600,29 +602,6 @@ function InviteModal({ code, onClose }: { code: string; onClose: () => void }) {
   )
 }
 
-function CharactersView({ players, selectedId, turnId, combatActive, accessibleHeroIds, onSelect, onEdit }: { players: Player[]; selectedId: string; turnId: string; combatActive: boolean; accessibleHeroIds: string[]; onSelect: (id: string) => void; onEdit: (id: string) => void }) {
-  const active = players.find((player) => player.id === selectedId) ?? players[0]
-  const canEdit = accessibleHeroIds.includes(active.id)
-  return (
-    <section className="section-page characters-page">
-      <PageHeader eyebrow="ВАШ ОТРЯД" title="Персонажи" description="Герои кампании, их состояние и положение в текущей сцене." />
-      <div className="character-actions-bar"><span>Выбран: <b>{active.character}</b></span><button disabled={!canEdit} onClick={() => onEdit(active.id)}>{canEdit ? <PencilIcon /> : <LockKeyhole size={14} />}{canEdit ? active.characterSetupRequired ? 'Продолжить создание героя' : 'Открыть и редактировать лист' : 'Нет доступа к герою'}</button></div>
-      <div className={`character-grid ${players.length === 1 ? 'single-hero' : ''}`}>
-        {players.map((player) => (
-          <button key={player.id} disabled={!accessibleHeroIds.includes(player.id)} className={`character-sheet ${selectedId === player.id ? 'active' : ''} ${accessibleHeroIds.includes(player.id) ? '' : 'locked'}`} onClick={() => onSelect(player.id)}>
-            <div className="character-art" data-face={heroFaceMode(player)} style={heroFaceStyle(player)}>{!hasHeroPortrait(player) && <HeroFaceInitials hero={player} />}<div className="character-statuses"><span className={player.online ? 'online' : ''}>{player.online ? 'В сети' : 'Не в сети'}</span>{combatActive && turnId === player.id && <em><Crown size={13} />Сейчас ходит</em>}</div></div>
-            <div className="character-info"><small>{player.name} играет за</small><h2>{player.character}</h2><p>{playerRoleLabel(player)}</p>
-              <div className="character-stats"><span><b>{player.hp}</b> / {player.maxHp}<small>Здоровье</small></span><span><b>{player.armor}</b><small>Класс доспеха</small></span><span><b>{player.speed} фт</b><small>Скорость</small></span></div>
-            </div>
-          </button>
-        ))}
-      </div>
-    </section>
-  )
-}
-
-function PencilIcon() { return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9"><path d="m15 5 4 4L8 20H4v-4L15 5Z"/><path d="m13 7 4 4"/></svg> }
-
 function WaitingForHero({ account, onRefresh, onLogout }: { account: Account; onRefresh: () => Promise<Account | null>; onLogout: () => void }) {
   const [checking, setChecking] = useState(false)
   return <main className="waiting-screen"><div className="waiting-card"><div className="modal-icon"><Shield size={23} /></div><span className="eyebrow">АККАУНТ СОЗДАН</span><h1>Ожидаем назначения героя</h1><p>{account.name}, администратор ещё не открыл вам доступ к персонажу. После назначения здесь автоматически появятся лист героя, предметы и игровая комната.</p><button onClick={async () => { setChecking(true); await onRefresh(); setChecking(false) }}><RefreshCw className={checking ? 'spinning' : ''} size={16} />{checking ? 'Проверяем…' : 'Проверить доступ'}</button><button className="waiting-logout" onClick={onLogout}>Выйти из аккаунта</button></div></main>
@@ -856,6 +835,9 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   }, [checkRollBusy, closeCheckDiceScene, state.pendingCheck])
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth <= 920)
   const [inviteOpen, setInviteOpen] = useState(false)
+  // Половина комнаты на телефоне: карта с панелью хода или хроника с вводом.
+  // На широком экране не значит ничего — там обе половины видны сразу.
+  const [mobilePane, setMobilePane] = useState<MobilePane>('scene')
   const [mapImportOpen, setMapImportOpen] = useState(false)
   // Меню «Мастер» в шапке: закрывается Escape, кликом мимо и после любого выбора.
   const [masterMenuOpen, setMasterMenuOpen] = useState(false)
@@ -1412,7 +1394,8 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     else url.searchParams.delete('combatLab')
     window.history.replaceState(null, '', url)
     setView(next)
-    if (window.innerWidth <= 680) setSidebarCollapsed(true)
+    // Шторка разделов на телефоне (≤ 760px, `mockup-pages.css`) закрывается переходом.
+    if (window.innerWidth <= 760) setSidebarCollapsed(true)
   }
   // Лавка не меняет раздел: она ложится поверх того, что игрок и так смотрит.
   // Узкое меню при этом сворачивается — иначе на телефоне оно перекроет окно.
@@ -1602,7 +1585,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   />
 
   return (
-    <div className={`app ${sidebarCollapsed ? 'sidebar-is-collapsed' : ''}`} style={{
+    <div className={`app ${sidebarCollapsed ? 'sidebar-is-collapsed' : ''} mobile-pane-${mobilePane}`} style={{
       '--ui-sidebar-width': `${Math.round(256 + Math.max(0, uiScale - 100) * .4)}px`,
       '--ui-hud-width': `${Math.round(246 + Math.max(0, uiScale - 100) * .25)}px`,
     } as React.CSSProperties}>
@@ -1741,7 +1724,11 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
               if (opened) navigate('room')
             })
           }} />}
-        {view === 'characters' && <CharactersView players={partyPlayers} selectedId={activePlayer.id} turnId={turnActorId} combatActive={combatActive} accessibleHeroIds={accessibleHeroIds} onSelect={setSelectedHeroId} onEdit={openHeroEditor} />}
+        {view === 'characters' && <PartyPage state={state} players={partyPlayers} selectedId={activePlayer.id} turnId={turnActorId} combatActive={combatActive} accessibleHeroIds={accessibleHeroIds} ownedHeroIds={ownedHeroIds} statusByHero={heroStatusByHero}
+          canInvite={canManageLifecycle && lifecycleStatus === 'active'} canAct={canAct}
+          onInvite={() => setInviteOpen(true)} onSelect={setSelectedHeroId} onEdit={openHeroEditor}
+          onOpenInventory={() => navigate('inventory')} onOpenJournal={() => navigate('journal')} onOpenRoom={() => navigate('room')}
+          onStartRest={(kind) => startRest(activePlayer.id, kind)} />}
         {view === 'inventory' && <InventoryView
           onCreateHero={accessibleHeroIds.includes(activePlayer.id) ? () => openHeroEditor(activePlayer.id) : undefined}
           player={activePlayer}
@@ -1766,6 +1753,10 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         {view === 'admin' && isAdmin && <AdminView account={account} state={state} onUpdateWorld={updateWorld} onAssembleEncounter={assembleEncounter} onAssembleMerchant={assembleMerchant} onMoveMerchant={moveMerchant} onSetMerchantAvailability={setMerchantAvailability} />}
         {view === 'combat-lab' && isAdmin && <CombatLabView combatAudio={combatAudio ?? undefined} soundMuted={atmosphereSettings.muted} onSoundMutedChange={changeAtmosphereMuted} />}
       </main>
+      <MobileTabBar view={view} pane={mobilePane} messageCount={state.messages.length}
+        onScene={() => { setMobilePane('scene'); if (view !== 'room') navigate('room') }}
+        onChronicle={() => { setMobilePane('chronicle'); if (view !== 'room') navigate('room') }}
+        onNavigate={navigate} />
       {/* Рассказчик и требование броска стоят поверх ЛЮБОГО раздела, а не
           только комнаты: игрок, ушедший в инвентарь или журнал, до этого не
           видел ни стрима, ни карточки «Ожидающая проверка» — и узнавал о своём

@@ -8,6 +8,7 @@ import './campaign-pages.css'
 import './world-map-layout.css'
 import './table-layout.css'
 import './prototype-layout.css'
+import './mockup-pages.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
