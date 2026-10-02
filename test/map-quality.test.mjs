@@ -4,7 +4,7 @@ import test from 'node:test'
 import { generateSceneGeometry } from '../server/adventure-director.mjs'
 import { MAP_PREVIEW_PRESETS, auditTacticalMap } from '../server/map-quality.mjs'
 import { requirementsCoverage, sceneRequirementsFromText } from '../server/scene-requirements.mjs'
-import { addProp, addSpawnPoint, addZone, cellAt, createTacticalMap, edgeList, setCell, setDoor, setEdge } from '../server/tactical-map.mjs'
+import { addProp, addSpawnPoint, addZone, cellAt, createTacticalMap, edgeList, edgeNeighbor, setCell, setDoor, setEdge } from '../server/tactical-map.mjs'
 
 /**
  * Качество сгенерированных карт для игры за столом: у дома есть дверь и
@@ -248,7 +248,7 @@ function place(location, theme, extra = {}) {
 test('места узнаются по главному слову названия и строятся по назначению', () => {
   const smithy = place('Кузница Борга', 'кузница')
   assert.equal(smithy.map.generator.id, 'building-with-yard', 'кузница — здание, а не лес')
-  assert.ok(smithy.labels.includes('Кузня') && smithy.assets.has('fireplace'), 'в кузне нет горна')
+  assert.ok(smithy.labels.includes('Кузня') && smithy.assets.has('forge') && smithy.assets.has('anvil'), 'в кузне нет горна и наковальни')
   const barracks = place('Казарма городской стражи', 'казарма')
   assert.equal(barracks.map.generator.id, 'building-with-yard', '«городской» не делает казарму городом')
   assert.ok(barracks.labels.includes('Спальня стражи') && barracks.assets.has('bunk_bed'))
@@ -364,4 +364,19 @@ test('голый просторный зал — замечание: укрыт�
     addProp(map, { id: `pillar-${index}`, assetId: 'pillar', x: x + 0.5, y: y + 0.5, rotation: 0, scale: 1, footprint: [{ x, y }], zOrder: 0, blocksMove: true, blocksSight: true, cover: 'three_quarters', destructible: false, hp: 0, interactive: false })
   }
   assert.ok(!auditTacticalMap(map).warnings.some((warning) => warning.code === 'HALL_NO_COVER'))
+})
+
+test('шкаф перед окном — ошибка проверки, а генератор окна не заслоняет', () => {
+  const map = sampleHouse()
+  const window = edgeList(map).find((edge) => edge.kind === 'window')
+  assert.ok(window, 'в образце нет окна')
+  const inside = [{ x: window.x, y: window.y }, edgeNeighbor(window)].find((point) => cellAt(map, point.x, point.y)?.passable)
+  map.props.push({ id: 'blind', assetId: 'wardrobe', x: inside.x + 0.5, y: inside.y + 0.5, rotation: 0, scale: 1, footprint: [inside], zOrder: 0, blocksMove: true, blocksSight: true, cover: 'three_quarters', destructible: false, hp: 0, interactive: false, state: 'intact', interaction: null, transition: null })
+  assert.ok(codes(map).includes('PROP_BLOCKS_WINDOW'))
+  for (const seed of SEEDS) {
+    for (const [location, theme] of [['Дом мельника', 'жилой дом'], ['Таверна «Рыжий рог»', 'таверна'], ['Усадьба Вельских', 'усадьба']]) {
+      const { map: built } = generateSceneGeometry({ location, theme, seed: `window:${seed}`, useLibrary: false })
+      assert.deepEqual(auditTacticalMap(built).problems.filter((problem) => problem.code === 'PROP_BLOCKS_WINDOW'), [], `${location}/${seed}`)
+    }
+  }
 })

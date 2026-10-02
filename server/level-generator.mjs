@@ -591,15 +591,23 @@ function buildUpperLevel({ baseMap, locationId, index, fromLevel, seed, label, a
     placeProps(map, {
       seed: `${seed}:props`,
       maxProps: SIZE_CLASSES[/** @type {keyof typeof SIZE_CLASSES} */ (map.sizeClass)].maxProps,
+      // Каждая комната этажа — по своему шаблону: спальня, кабинет и
+      // площадка у лестницы. Этаж без перегородок — одна спальня, как прежде.
       zones: map.zones
         .filter((zone) => zone.label)
-        .map((zone) => ({
-          zoneId: zone.id,
-          theme: 'interior',
-          density: 18,
-          require: ['bed', 'wardrobe', 'night_table', 'chest'],
-          prefer: ['bed', 'night_table', 'washbasin', 'wardrobe', 'cupboard', 'chest', 'table_small', 'chair', 'candle', 'rug'],
-        })),
+        .map((zone) => {
+          const base = { zoneId: zone.id, theme: 'interior', density: 18 }
+          if (zone.id === 'study') return { ...base, purpose: 'study', require: ['chair'], prefer: ['bookshelf', 'chest', 'candle', 'rug'] }
+          if (zone.id === 'landing' && partitioned) {
+            return { ...base, density: 10, require: ['chest'], prefer: ['chest', 'rug', 'candle', 'table_small', 'chair', 'coat_rack'], extraThemes: ['bedroom'], caps: { bed: 0, wardrobe: 1, coat_rack: 1 } }
+          }
+          return {
+            ...base,
+            purpose: 'bedroom',
+            require: ['bed', 'wardrobe', 'night_table', 'chest'],
+            prefer: ['bed', 'night_table', 'washbasin', 'wardrobe', 'cupboard', 'chest', 'table_small', 'chair', 'candle', 'rug'],
+          }
+        }),
     })
     const errors = levelInvariantErrors(map, arrival)
     if (!errors.length) {

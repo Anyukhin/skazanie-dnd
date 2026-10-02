@@ -8,6 +8,7 @@ import {
   type LightSource,
 } from './board-lighting'
 import { LEGACY_CATALOG_REVISION, propModelFor, type PropModelCatalog } from './prop-model-catalog'
+import { detailPropAlias } from './detail-props'
 import { cellAt, cellIndex, doorStates, edgeBetween, edgeList, edgeNeighbor, passableAt, revealedAt } from './tactical-map-client'
 
 /**
@@ -376,6 +377,8 @@ export type BoardScene = {
   artMode?: 'backdrop' | 'map'
   /** Растровые штампы предметов. Их отсутствие — штатный путь Р6: рисуется вектор. */
   propAtlas?: PropAtlas | null
+  /** Штампы набора детализации; спрашиваются, когда в основном атласе кадра нет. */
+  detailAtlas?: PropAtlas | null
   /** Preview-атлас моделей окружения; при отсутствии кадра используется propAtlas. */
   modelPropAtlas?: { catalog: PropModelCatalog; texture: BoardTexture; key: string } | null
   /** Подписывать ли высоту поверх клетки; у объёмного пола высота уже видна геометрией. */
@@ -563,7 +566,7 @@ export function tileRevealSignature(map: TacticalMap, tile: BoardTile) {
 export function tileKey(scene: BoardScene, tile: BoardTile) {
   const art = scene.art ? `${scene.artKey ?? 'art'}:${scene.artMode ?? 'backdrop'}` : ''
   const textures = texturesAvailableIn(scene) ? 't' : 'f'
-  const stamps = scene.propAtlas?.key ?? ''
+  const stamps = `${scene.propAtlas?.key ?? ''}${scene.detailAtlas ? `+${scene.detailAtlas.key}` : ''}`
   const modelCatalogRevision = scene.map.catalogRevision ?? LEGACY_CATALOG_REVISION
   const modelStamps = scene.modelPropAtlas?.key ?? ''
   const tiles = scene.terrain?.key ?? ''
@@ -3305,7 +3308,10 @@ export function resolvePropAssetId(assetId: string): string {
 }
 
 export function propDrawingFor(assetId: string): PropDrawing {
-  return PROP_LIBRARY[resolvePropAssetId(assetId)] ?? DEFAULT_PROP_DRAWING
+  const id = resolvePropAssetId(assetId)
+  // Предмет набора детализации без своего вектора рисуется прежним двойником.
+  const alias = detailPropAlias(id)
+  return PROP_LIBRARY[id] ?? (alias ? PROP_LIBRARY[alias] : undefined) ?? DEFAULT_PROP_DRAWING
 }
 
 /** Есть ли у идентификатора собственный рисунок, а не запасной кружок. */
@@ -3499,9 +3505,12 @@ export function drawProps(context: BoardContext2D, scene: BoardScene, tile: Boar
     const modelPreview = detailed ? modelEntry?.preview : undefined
     // Штамп берётся только на полной детализации: ниже её предмет занимает
     // считаные пиксели, и силуэт заливкой там и дешевле, и разборчивее.
-    const stamp = level === 'full' || ART_ONLY_PROP_ASSETS.has(prop.assetId) || (scene.map.generator.id === 'ares-fortress' && level === 'simple')
-      ? scene.propAtlas?.frames[prop.assetId]
-      : undefined
+    const stamped = level === 'full' || ART_ONLY_PROP_ASSETS.has(prop.assetId) || (scene.map.generator.id === 'ares-fortress' && level === 'simple')
+    // Кадр ищется в основном атласе, затем в наборе детализации.
+    const stampAtlas = !stamped ? null
+      : scene.propAtlas?.frames[prop.assetId] ? scene.propAtlas
+        : scene.detailAtlas?.frames[prop.assetId] ? scene.detailAtlas : null
+    const stamp = stampAtlas?.frames[prop.assetId]
     context.save()
     context.translate((placement.x - frame.minX) * frame.size, (placement.y - frame.minY) * frame.size)
     if (prop.rotation || painted) context.rotate(((prop.rotation + (painted ? 90 : 0)) * Math.PI) / 180)
@@ -3509,7 +3518,7 @@ export function drawProps(context: BoardContext2D, scene: BoardScene, tile: Boar
     // поддельный контекст тестов не обязан хранить стек состояний.
     if (drawing.flat) context.globalAlpha = PROP_DECAL_ALPHA
     if (modelPreview && scene.modelPropAtlas) drawStamp(context, placement.box, scene.modelPropAtlas.texture, modelPreview)
-    else if (stamp && scene.propAtlas) drawStamp(context, placement.box, scene.propAtlas.texture, stamp)
+    else if (stamp && stampAtlas) drawStamp(context, placement.box, stampAtlas.texture, stamp)
     else if (level === 'full') drawing.paint(context, placement.box, scene.palette)
     else if (level === 'simple') drawSilhouette(context, placement.box, scene.palette, drawing)
     else drawMark(context, placement.box, scene.palette, drawing)

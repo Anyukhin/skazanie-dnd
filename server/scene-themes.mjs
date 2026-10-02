@@ -108,9 +108,12 @@ export const SCENE_THEMES = Object.freeze([
     // получали один список «алтарь, колонна, статуя, жаровня»: алтарь стоял в
     // притворе, а тринадцать статуй — где придётся.
     propPlans: [
-      { density: 8, extraThemes: ['interior'], require: ['statue', 'brazier'], prefer: ['mosaic', 'temple_banner', 'offering_bowl', 'candelabra', 'rug'], caps: { altar: 0, statue: 2, pillar: 2, prayer_bench: 0, reliquary: 0, candelabra: 2, rug: 1, brazier: 2, offering_bowl: 2, ...TEMPLE_INTERIOR_CAPS } },
-      { density: 10, colonnade: true, extraThemes: ['interior'], require: ['prayer_bench', 'prayer_bench', 'brazier'], prefer: ['prayer_bench', 'temple_banner', 'mosaic', 'brazier', 'chandelier', 'candelabra'], caps: { altar: 0, statue: 1, pillar: 0, reliquary: 0, brazier: 4, chandelier: 2, candelabra: 2, offering_bowl: 2, ...TEMPLE_INTERIOR_CAPS } },
-      { density: 14, require: ['altar', 'reliquary', 'brazier', 'statue'], prefer: ['offering_bowl', 'temple_banner', 'mosaic', 'statue', 'reliquary'], caps: { altar: 1, reliquary: 2, statue: 2, pillar: 2, prayer_bench: 2, brazier: 2, offering_bowl: 3 } },
+      // Притвор: купель со святой водой у входа и колокол.
+      { density: 8, extraThemes: ['interior'], require: ['statue', 'brazier', 'font_basin'], prefer: ['mosaic', 'temple_banner', 'offering_bowl', 'candelabra', 'rug', 'bell_frame', 'statue_plinth'], caps: { altar: 0, statue: 2, pillar: 2, prayer_bench: 0, reliquary: 0, candelabra: 2, rug: 1, brazier: 2, offering_bowl: 2, font_basin: 1, bell_frame: 1, idol: 0, holy_pool: 0, kneeling_cushions: 0, ...TEMPLE_INTERIOR_CAPS } },
+      // Неф — шаблон `nave`: скамьи рядами, кафедра, дорожка к алтарной.
+      { density: 10, colonnade: true, purpose: 'nave', extraThemes: ['interior'], require: ['prayer_bench', 'prayer_bench', 'brazier'], prefer: ['prayer_bench', 'temple_banner', 'mosaic', 'brazier', 'chandelier', 'candelabra'], caps: { altar: 0, statue: 1, pillar: 0, reliquary: 0, brazier: 4, chandelier: 2, candelabra: 2, offering_bowl: 2, idol: 0, holy_pool: 0, ...TEMPLE_INTERIOR_CAPS } },
+      // Алтарная — шаблон `altar`: алтарь, курильница, подушки и свечи вокруг.
+      { density: 14, purpose: 'altar', require: ['altar', 'reliquary', 'brazier', 'statue'], prefer: ['offering_bowl', 'temple_banner', 'mosaic', 'statue', 'reliquary'], caps: { altar: 1, reliquary: 2, statue: 2, pillar: 2, prayer_bench: 2, brazier: 2, offering_bowl: 3 } },
       { density: 18, theme: 'interior', purpose: 'store', require: ['chest', 'wardrobe', 'shelf_wall'], prefer: ['chest', 'shelf_wall', 'candle', 'table_small', 'bookshelf'], caps: { bed: 0, bunk_bed: 0, barrel_stack: 0, crate_stack: 1 } },
     ],
   },
@@ -152,10 +155,13 @@ export const SCENE_THEMES = Object.freeze([
     // Тюрьма под замком: стража у входа, коридор с факелами, камеры с
     // нарами и костями, пыточная, склад конфиската.
     propPlans: [
-      { density: 14, extraThemes: ['interior'], require: ['table_small', 'chair', 'chest', 'torch_wall'], prefer: ['barrel', 'crate', 'bench', 'chair', 'torch_wall'], caps: { ...DUNGEON_INTERIOR_CAPS, torch_wall: 2, table_small: 1, chest: 1, barrel: 2, crate: 2, bench: 1, chair: 2, sarcophagus: 0, crypt_niche: 0, grave: 0, urn: 0, altar: 0 } },
+      // Караульная — шаблон `guardroom`: стол тюремщика, оружие, жаровня.
+      { density: 14, purpose: 'guardroom', extraThemes: ['interior'], require: ['chair', 'chest', 'torch_wall'], prefer: ['barrel', 'crate', 'bench', 'chair', 'torch_wall'], caps: { ...DUNGEON_INTERIOR_CAPS, torch_wall: 2, table_small: 1, chest: 1, barrel: 2, crate: 2, bench: 1, chair: 2, sarcophagus: 0, crypt_niche: 0, grave: 0, urn: 0, altar: 0 } },
       { density: 8, extraThemes: ['interior', 'cave'], require: ['torch_wall', 'cobweb'], prefer: ['torch_wall', 'cobweb', 'rubble_heap', 'bone_pile'], caps: { ...DUNGEON_INTERIOR_CAPS, torch_wall: 4, rubble_heap: 2, bone_pile: 2, stalagmite: 0, cave_pool: 0, mushroom_cluster: 0, ore_vein: 0, sarcophagus: 0, crypt_niche: 0, grave: 0, urn: 0, altar: 0, statue: 0 } },
-      { density: 16, extraThemes: ['interior'], require: ['bunk_bed', 'bone_pile', 'bucket'], prefer: ['bunk_bed', 'bone_pile', 'cobweb', 'sack', 'bucket'], caps: { ...DUNGEON_INTERIOR_CAPS, torch_wall: 1, bunk_bed: 3, bucket: 2, sack: 2, sarcophagus: 0, crypt_niche: 0, grave: 0, urn: 0, altar: 0, statue: 0 } },
-      { density: 14, extraThemes: ['interior'], require: ['brazier', 'table_long', 'chest'], prefer: ['cauldron', 'bone_pile', 'brazier', 'chest', 'cobweb'], caps: { ...DUNGEON_INTERIOR_CAPS, torch_wall: 2, table_long: 1, cauldron: 1, chest: 1, brazier: 2, sarcophagus: 0, crypt_niche: 0, grave: 0, urn: 0, altar: 0, statue: 0 } },
+      // Камеры — шаблон `cells`: тюфяк на соломе, ведро в углу, цепи.
+      { density: 16, purpose: 'cells', extraThemes: ['interior'], require: ['bone_pile', 'cobweb'], prefer: ['bone_pile', 'cobweb', 'sack'], caps: { ...DUNGEON_INTERIOR_CAPS, torch_wall: 1, bunk_bed: 0, bucket: 0, sack: 2, sarcophagus: 0, crypt_niche: 0, grave: 0, urn: 0, altar: 0, statue: 0 } },
+      // Пыточная — шаблон `torture`: дыба посредине, клетка, цепи, жаровня.
+      { density: 14, purpose: 'torture', extraThemes: ['interior'], require: ['brazier', 'chest'], prefer: ['cauldron', 'bone_pile', 'brazier', 'chest', 'cobweb'], caps: { ...DUNGEON_INTERIOR_CAPS, torch_wall: 2, table_long: 0, cauldron: 1, chest: 1, brazier: 2, sarcophagus: 0, crypt_niche: 0, grave: 0, urn: 0, altar: 0, statue: 0 } },
       { density: 22, theme: 'interior', purpose: 'store', require: ['crate_stack', 'chest'], prefer: ['crate', 'barrel', 'sack', 'chest', 'crate_stack'], caps: { bed: 0, bunk_bed: 0, table_long: 0, table_round: 0, bar_counter: 0, chandelier: 0, rug: 0, fireplace: 0 } },
     ],
   },
@@ -1495,18 +1501,25 @@ export function buildThemedScene({
       zoneId: 'square',
       theme: definition.assetTheme ?? definition.id,
       density: urban ? 9 : 7,
-      require: urban || market ? ['well', 'market_stall', 'market_stall', 'market_stall', 'lamp_post'] : ['well', 'lamp_post'],
-      prefer: ['market_stall', 'lamp_post', 'cart', 'water_trough', 'signpost', 'hitching_post'],
-      caps: { well: 1, market_stall: urban ? 6 : 3, lamp_post: 4, cart: 1, water_trough: 1, signpost: 1, hitching_post: 2, tree_oak: 0, tree_pine: 0, tree_birch: 0, tree_dead: 0, tree_spruce: 0, tree_stump: 0, bush: 0, shrub: 0, haystack: 0, woodpile: 0, campfire: 0, village_fence: 0, fallen_log: 0, fern: 0, rock_small: 0, boulder: 0, milestone: 0, roadside_shrine: 0, path_stone: 0, grass_tuft: 0, flowers: 0, wagon_wheel: 0 },
+      // Городская площадь: доска объявлений, навесы торговцев, тележка с
+      // фруктами, клумбы; в городе — фонтан или постамент с памятником.
+      extraThemes: ['street'],
+      require: urban || market ? ['well', 'market_stall', 'market_stall', 'market_stall', 'lamp_post', 'notice_board'] : ['well', 'lamp_post'],
+      prefer: urban
+        ? ['market_stall', 'market_awning', 'fruit_cart', 'lamp_post', 'notice_board', 'statue_plinth', 'street_planter', 'goods_baskets', 'pottery_stand', 'pillory', 'signpost', 'hitching_post']
+        : ['market_stall', 'lamp_post', 'cart', 'water_trough', 'signpost', 'hitching_post', 'notice_board', 'flower_bed'],
+      caps: { notice_board: 1, market_awning: 2, fruit_cart: 1, statue_plinth: 1, pillory: 1, stocks: 0, fountain: 1, town_well: 0, street_planter: 4, goods_baskets: 3, pottery_stand: 2, crate_stack_goods: 1, flower_bed: 2, rain_barrel: 0, well: 1, market_stall: urban ? 6 : 3, lamp_post: 4, cart: 1, water_trough: 1, signpost: 1, hitching_post: 2, tree_oak: 0, tree_pine: 0, tree_birch: 0, tree_dead: 0, tree_spruce: 0, tree_stump: 0, bush: 0, shrub: 0, haystack: 0, woodpile: 0, campfire: 0, village_fence: 0, fallen_log: 0, fern: 0, rock_small: 0, boulder: 0, milestone: 0, roadside_shrine: 0, path_stone: 0, grass_tuft: 0, flowers: 0, wagon_wheel: 0 },
     }] : []
     // Фонари вдоль городских улиц — редко, по краю, чтобы не мешать проходу.
     const streetPlan = urban ? [{
       zoneId: 'street',
       theme: definition.assetTheme ?? definition.id,
       density: 1.2,
-      require: ['lamp_post', 'signpost'],
-      prefer: ['lamp_post', 'hitching_post', 'water_trough'],
-      caps: { lamp_post: 8, signpost: 2, hitching_post: 2, water_trough: 2, cart: 0, well: 0, market_stall: 0, haystack: 0, woodpile: 0, campfire: 0, village_fence: 0, tree_oak: 0, tree_pine: 0, tree_birch: 0, tree_dead: 0, tree_spruce: 0, tree_stump: 0, bush: 0, shrub: 0, fallen_log: 0, fern: 0, rock_small: 0, boulder: 0, milestone: 0, roadside_shrine: 0, path_stone: 0, grass_tuft: 0, flowers: 0, wagon_wheel: 0 },
+      // Указатель на перекрёстке, кадки с деревцами и бочки под водостоком.
+      extraThemes: ['street'],
+      require: ['lamp_post', 'signpost', 'sign_post_city'],
+      prefer: ['lamp_post', 'hitching_post', 'water_trough', 'street_planter', 'rain_barrel'],
+      caps: { sign_post_city: 2, street_planter: 4, rain_barrel: 3, notice_board: 0, fountain: 0, town_well: 0, market_awning: 0, fruit_cart: 0, pillory: 0, stocks: 0, statue_plinth: 0, flower_bed: 0, goods_baskets: 0, pottery_stand: 0, crate_stack_goods: 0, lamp_post: 8, signpost: 2, hitching_post: 2, water_trough: 2, cart: 0, well: 0, market_stall: 0, haystack: 0, woodpile: 0, campfire: 0, village_fence: 0, tree_oak: 0, tree_pine: 0, tree_birch: 0, tree_dead: 0, tree_spruce: 0, tree_stump: 0, bush: 0, shrub: 0, fallen_log: 0, fern: 0, rock_small: 0, boulder: 0, milestone: 0, roadside_shrine: 0, path_stone: 0, grass_tuft: 0, flowers: 0, wagon_wheel: 0 },
     }] : []
     /**
      * Обстановка дома по комнате: передняя — жилая (очаг, стол, стулья) или
@@ -1521,7 +1534,8 @@ export function buildThemedScene({
       // Третья комната крупного дома: кладовая у жилья, таверны и амбара,
       // мастерская у лавки, спальня у усадьбы и мастерской.
       if (side) {
-        if (use === 'shop') return { purpose: 'workshop', require: ['table_long', 'shelf_wall'], prefer: ['shelf_wall', 'crate', 'barrel', 'chest', 'bucket'] }
+        if (use === 'shop') return { purpose: 'workshop', require: ['shelf_wall'], prefer: ['shelf_wall', 'crate', 'barrel', 'chest', 'bucket'] }
+        if (use === 'manor') return { purpose: 'bedroom', require: ['bed', 'chest'], prefer: ['bed', 'chest', 'night_table', 'wardrobe', 'rug', 'double_bed', 'bathtub'] }
         if (use === 'manor' || use === 'workshop') return { purpose: 'bedroom', require: ['bed', 'chest'], prefer: ['bed', 'chest', 'night_table', 'wardrobe', 'rug'] }
         return { purpose: 'store', require: ['crate_stack', 'barrel'], prefer: ['crate', 'barrel', 'sack', 'chest', 'shelf_wall'] }
       }
@@ -1534,10 +1548,14 @@ export function buildThemedScene({
         : { purpose: 'workshop', require: ['table_long', 'shelf_wall', 'firewood_stack'], prefer: ['shelf_wall', 'crate', 'barrel', 'chest', 'bucket', 'broom'] }
       if (use === 'shop') return back
         ? { purpose: 'store', require: ['crate_stack', 'barrel'], prefer: ['crate', 'barrel', 'sack', 'chest'] }
-        : { purpose: 'workshop', require: ['table_small', 'shelf_wall'], prefer: ['shelf_wall', 'crate', 'barrel', 'chest', 'chair'] }
+        : { purpose: 'shop', require: ['chest'], prefer: ['shelf_wall', 'crate', 'barrel', 'chest', 'chair'] }
       if (use === 'tavern') return back
-        ? { purpose: 'kitchen', require: ['fireplace', 'cupboard'], prefer: ['barrel', 'crate', 'cupboard'] }
+        ? { purpose: 'kitchen', require: ['cupboard'], prefer: ['barrel', 'crate', 'cupboard'] }
         : { purpose: 'gallery', require: ['table_small', 'table_small', 'barrel'], prefer: ['table_small', 'chair', 'stool', 'barrel'] }
+      // Кабинет усадьбы и её зал — шаблоны `study` и `dining`.
+      if (use === 'manor') return back
+        ? { purpose: 'study', require: ['chair'], prefer: ['bookshelf', 'chest', 'candle', 'rug'] }
+        : { purpose: 'dining', require: ['fireplace'], prefer: ['candelabra', 'cupboard', 'banner'] }
       if (back) return { purpose: 'bedroom', require: ['bed', 'chest'], prefer: ['bed', 'chest', 'night_table', 'wardrobe'] }
       // Однокомнатный дом держит всё в одной комнате: и очаг, и кровать.
       const single = !map.zones.some((other) => other.id === `${zone.id}-back`)
@@ -1551,8 +1569,11 @@ export function buildThemedScene({
         theme: definition.assetTheme ?? definition.id,
         density: definition.density ?? 10,
         require: streetRequire,
-        prefer: urban ? ['tree_oak', 'tree_birch', 'bush', 'woodpile', 'flowers', 'village_fence', 'rock_small', 'shrub']
-          : market ? definition.prefer : ['tree_birch', 'tree_oak', 'bush', 'woodpile', 'haystack', 'water_trough', 'village_fence', 'cart', 'flowers'],
+        // Дворы между домами: в городе — клумбы и бочки, в деревне — огород,
+        // курятник, тюки сена и пугало (`farm` из набора детализации).
+        extraThemes: ['farm'],
+        prefer: urban ? ['tree_oak', 'tree_birch', 'bush', 'woodpile', 'flowers', 'village_fence', 'rock_small', 'shrub', 'flower_bed', 'rain_barrel']
+          : market ? definition.prefer : ['tree_birch', 'tree_oak', 'bush', 'woodpile', 'haystack', 'water_trough', 'village_fence', 'cart', 'flowers', 'garden_bed', 'chicken_coop', 'hay_bales', 'scarecrow', 'rain_barrel'],
         caps: hasSquare && !urban ? { ...streetCaps, well: 0 } : urban ? { ...streetCaps, well: 0, market_stall: 0, haystack: 0, cart: 1, wagon_wheel: 1, campfire: 0, village_fence: 8, woodpile: 6 } : streetCaps,
       }, ...squarePlan, ...streetPlan, ...map.zones.filter((zone) => zone.kind === 'interior').map((zone) => ({
         zoneId: zone.id,

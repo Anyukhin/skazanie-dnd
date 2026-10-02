@@ -145,6 +145,11 @@ export function auditTacticalMap(map) {
         continue
       }
       if (!prop.transition && !prop.mount && !cell.passable && prop.blocksMove) add('PROP_ON_SOLID_CELL', `${prop.assetId}@${point.x},${point.y}`)
+      // Высокая мебель перед окном заслоняет и свет, и обзор наружу.
+      if (!prop.transition && !prop.mount && prop.blocksSight && [[1, 0], [-1, 0], [0, 1], [0, -1]]
+        .some(([dx, dy]) => edgeBetween(map, point.x, point.y, point.x + dx, point.y + dy)?.kind === 'window')) {
+        add('PROP_BLOCKS_WINDOW', `${prop.assetId}@${point.x},${point.y}`)
+      }
       if (prop.blocksMove && !prop.mount) {
         const key = `${point.x},${point.y}`
         if (blockingAt.has(key)) add('PROPS_OVERLAP', `${blockingAt.get(key)}+${prop.assetId}@${key}`)

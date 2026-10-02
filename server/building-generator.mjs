@@ -783,12 +783,14 @@ function designPropPlans(design, rooms, includeDecorativeTransition = true) {
     add('kitchen', 'kitchen', ['cupboard', 'barrel', 'crate', 'shelf_wall'], ['cupboard', 'barrel', 'crate', 'shelf_wall'], 'interior', 24)
     add('store', 'store', ['crate_stack', 'barrel_stack', 'sack', 'chest'], ['crate_stack', 'barrel_stack', 'sack', 'chest'], 'interior', 28)
   } else if (design.building_use === 'shop') {
-    add('hall', 'hall', ['table_long', 'shelf_wall', 'chest', 'lantern_wall'], ['table_small', 'chair', 'shelf_wall', 'counter'], 'interior', 25)
+    // Торговый зал — шаблон `shop`: прилавок, витрины, весы.
+    add('hall', 'shop', ['chest', 'lantern_wall'], ['table_small', 'chair', 'shelf_wall'], 'interior', 25)
     add('store', 'store', ['crate_stack', 'barrel_stack', 'sack', 'chest'], ['crate_stack', 'barrel_stack', 'sack', 'chest'], 'interior', 30)
     add('workshop', 'workshop', ['table_long', 'shelf_wall', 'crate'], ['table_long', 'shelf_wall', 'crate', 'barrel', 'chest'], 'interior', 28)
   } else if (design.building_use === 'smithy') {
     // Кузня: горн (очаг), стол-верстак, котёл для закалки, дрова и бочка воды.
-    add('hall', 'workshop', ['fireplace', 'table_long', 'cauldron', 'firewood_stack', 'barrel'], ['bucket', 'crate', 'shelf_wall', 'firewood_stack', 'chest'], 'interior', 26)
+    // Шаблон `forge`: горн, наковальня, бочка для закалки, уголь.
+    add('hall', 'forge', ['firewood_stack', 'barrel'], ['bucket', 'crate', 'shelf_wall', 'firewood_stack', 'chest'], 'interior', 26)
     add('store', 'store', ['crate_stack', 'barrel', 'chest'], ['crate_stack', 'barrel', 'sack', 'crate'], 'interior', 26)
     add('bedroom', 'bedroom', ['bed', 'chest'], ['bed', 'chest', 'night_table'], 'interior', 24)
   } else if (design.building_use === 'barracks') {
@@ -807,7 +809,8 @@ function designPropPlans(design, rooms, includeDecorativeTransition = true) {
     add('kitchen', 'kitchen', ['fireplace', 'cupboard', 'crate'], ['fireplace', 'cupboard', 'cauldron', 'crate', 'shelf_wall'], 'interior', 25)
     add('store', 'store', ['crate_stack', 'barrel_stack', 'sack', 'chest'], ['crate_stack', 'barrel_stack', 'sack', 'chest'], 'interior', 25)
   } else {
-    add('hall', 'hall', ['fireplace', 'table_long', 'candelabra', 'chair', 'chandelier'], ['table_long', 'table_small', 'chair', 'candelabra', 'chandelier'], 'interior', 25)
+    // Парадный зал усадьбы — шаблон `dining`: стол посредине, стулья, люстра.
+    add('hall', 'dining', ['fireplace', 'candelabra'], ['table_small', 'chair', 'candelabra', 'chandelier'], 'interior', 25)
     add('salon', 'hall', ['table_small', 'chair', 'candelabra'], ['table_small', 'chair', 'candelabra', 'rug'], 'interior', 22)
     add('kitchen', 'kitchen', ['fireplace', 'cupboard', 'crate'], ['fireplace', 'cupboard', 'cauldron', 'crate', 'shelf_wall'], 'interior', 25)
     add('store', 'store', ['crate_stack', 'barrel_stack', 'chest'], ['crate_stack', 'barrel_stack', 'sack', 'chest'], 'interior', 28)
@@ -1186,7 +1189,7 @@ function placeAresFortressProps(seed, map) {
       },
       {
         zoneId: 'workshop', purpose: 'workshop', theme: 'building', density: 32,
-        // `workshop` уже добавляет стол и полку через semantic_props; здесь
+        // `workshop` уже добавляет верстак и стойку инструмента; здесь
         // закрепляем снабжение и топливо, чтобы мастерская не стала вторым
         // залом даже при малом бюджете зоны.
         require: ['crate', 'barrel', 'firewood_stack'],

@@ -398,7 +398,7 @@ test('крепость наполнена по назначению зон, а �
     ['barracks', ['bunk_bed', 'chest']],
     ['stables', ['haystack', 'water_trough', 'hitching_post']],
     ['storehouse', ['crate_stack', 'barrel_stack', 'chest']],
-    ['workshop', ['table_long', 'crate', 'barrel', 'firewood_stack']],
+    ['workshop', ['workbench', 'crate', 'barrel', 'firewood_stack']],
     ['courtyard', ['well', 'water_trough', 'woodpile']],
   ]) {
     const assets = propsIn(zone)

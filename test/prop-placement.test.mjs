@@ -263,7 +263,7 @@ test('назначение галереи собирает столовую гр
 
 test('назначения кухни и склада выбирают рабочие группы комнаты', () => {
   for (const [purpose, expected] of [
-    ['kitchen', ['fireplace', 'cupboard']],
+    ['kitchen', ['kitchen_stove', 'prep_table', 'pantry_shelf']],
     ['store', ['crate_stack', 'barrel_stack']],
   ]) {
     const map = placeProps(tavernWithYard({ width: 20, height: 14 }), {

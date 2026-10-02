@@ -22,7 +22,12 @@ export const PROP_PLACEMENT_VERSION = 'skazanie:prop-placement-v3'
  * `purpose` живёт только в заявке на расстановку, а на карту попадают обычные
  * props. Если назначение неизвестно, сохраняется прежняя расстановка по теме.
  *
- * @type {Record<string, {require: string[], prefer: string[], caps?: Record<string, number>, arrangement?: 'rows'|'gathered'|'stalls'}>}
+ * `themes` — назначения из набора детализации (`server/detail-props.mjs`),
+ * которые профиль открывает зоне: кузня видит горн и наковальню, а трактир их
+ * не видит. Это и есть шаблоны помещений: набор предметов с центром
+ * (`SET_ANCHORS`), вокруг которого остальное собирается.
+ *
+ * @type {Record<string, {require: string[], prefer: string[], themes?: string[], caps?: Record<string, number>, arrangement?: 'rows'|'gathered'|'stalls'}>}
  */
 const SEMANTIC_PROFILES = Object.freeze({
   // «Галерея» — общий/военный зал: поверхности для карт, места вокруг них и
@@ -35,17 +40,94 @@ const SEMANTIC_PROFILES = Object.freeze({
   },
   barracks: {
     require: ['bunk_bed', 'bunk_bed', 'bunk_bed', 'bunk_bed'],
-    prefer: ['bunk_bed', 'bed', 'night_table', 'chest', 'wardrobe', 'washbasin'],
-    caps: { bunk_bed: 8, bed: 8, table_long: 0, bench: 0, chair: 0 },
+    prefer: ['bunk_bed', 'bed', 'night_table', 'chest', 'wardrobe', 'washbasin', 'footlocker', 'armor_stand', 'weapon_rack_wall', 'wolf_pelt', 'straw_mat'],
+    themes: ['barracks'],
+    caps: { bunk_bed: 8, bed: 8, table_long: 0, bench: 0, chair: 0, armor_stand: 2, weapon_rack_wall: 2 },
     arrangement: 'rows',
+  },
+  // Кузня: горн у стены, рядом наковальня, бочка для закалки и уголь;
+  // верстак и стойка инструмента — по стенам.
+  forge: {
+    require: ['forge', 'anvil', 'quench_tub', 'coal_pile'],
+    prefer: ['tool_rack', 'workbench', 'grindstone', 'firewood_stack', 'barrel', 'crate', 'scorch_mark'],
+    themes: ['forge', 'workshop'],
+    caps: { forge: 1, anvil: 1, quench_tub: 1, coal_pile: 2, workbench: 1, grindstone: 1, fireplace: 0, bed: 0 },
+    arrangement: 'gathered',
+  },
+  // Камеры темницы: соломенный тюфяк, ведро в углу, цепи на стене.
+  cells: {
+    require: ['straw_bed', 'cell_bucket'],
+    prefer: ['straw_bed', 'cell_bucket', 'wall_chains', 'straw_mat', 'straw_scatter', 'bone_heap', 'floor_crack'],
+    themes: ['prison'],
+    caps: { straw_bed: 8, iron_cage: 1, torture_rack: 0, jailer_desk: 0, bed: 0, bunk_bed: 0 },
+    arrangement: 'stalls',
+  },
+  // Караульная: стол тюремщика, оружие на стене, жаровня и сундучки.
+  guardroom: {
+    require: ['jailer_desk', 'weapon_rack_wall', 'guard_brazier'],
+    prefer: ['footlocker', 'strongbox', 'chair', 'stool', 'table_small', 'barrel', 'water_barrel', 'map_table'],
+    themes: ['prison', 'barracks'],
+    caps: { jailer_desk: 1, guard_brazier: 2, map_table: 1, weapon_rack_wall: 2 },
+    arrangement: 'gathered',
+  },
+  // Пыточная: дыба посредине, клетка в углу, цепи и жаровня.
+  torture: {
+    require: ['torture_rack', 'iron_cage', 'wall_chains'],
+    prefer: ['guard_brazier', 'wall_chains', 'scorch_mark', 'bone_heap', 'stocks', 'bucket'],
+    themes: ['prison'],
+    caps: { torture_rack: 1, iron_cage: 2, stocks: 1 },
+    arrangement: 'gathered',
+  },
+  // Алтарная: алтарь у стены, курильница и подушки для коленопреклонения
+  // перед ним, стойка свечей и стол приношений рядом.
+  altar: {
+    require: ['altar', 'incense_burner', 'kneeling_cushions', 'candle_rack'],
+    prefer: ['offering_table', 'font_basin', 'holy_pool', 'idol', 'statue', 'prayer_rug', 'temple_banner', 'brazier'],
+    themes: ['temple'],
+    caps: { altar: 1, idol: 1, holy_pool: 1, kneeling_cushions: 3, candle_rack: 2, offering_table: 1, font_basin: 1 },
+    arrangement: 'gathered',
+  },
+  // Неф: скамьи рядами, дорожка-ковёр, кафедра и чаша у входа.
+  nave: {
+    require: ['prayer_bench', 'prayer_bench', 'temple_lectern'],
+    prefer: ['prayer_bench', 'kneeling_cushions', 'candle_rack', 'rug_runner', 'font_basin', 'temple_banner', 'brazier'],
+    themes: ['temple'],
+    caps: { temple_lectern: 1, font_basin: 1, rug_runner: 1, altar: 0 },
+    arrangement: 'rows',
+  },
+  // Обеденный зал усадьбы: длинный стол посредине, стулья вдоль, люстра
+  // над ним, ковёр под ним, горка с посудой у стены.
+  dining: {
+    require: ['table_long', 'chair', 'chair', 'chandelier'],
+    prefer: ['chair', 'candelabra', 'rug_red_large', 'cupboard', 'fireplace', 'bear_pelt', 'wine_stain', 'banner'],
+    themes: ['hall'],
+    caps: { table_long: 2, chandelier: 2, fireplace: 1, rug_red_large: 1, bench: 0 },
+    arrangement: 'gathered',
+  },
+  // Кабинет: письменный стол, высокие шкафы, глобус и кресло для чтения.
+  study: {
+    require: ['writing_desk', 'bookcase_tall', 'armchair'],
+    prefer: ['globe', 'scroll_rack', 'candle_desk', 'reading_nook', 'map_table', 'telescope', 'rug_round', 'paper_scatter', 'strongbox', 'book_lectern'],
+    themes: ['study', 'bedroom'],
+    caps: { writing_desk: 1, globe: 1, telescope: 1, map_table: 1, bed: 0, bunk_bed: 0 },
+    arrangement: 'gathered',
+  },
+  // Торговый зал лавки: прилавок, витрины по стенам, весы и товар.
+  shop: {
+    require: ['shop_counter', 'display_shelf'],
+    prefer: ['display_shelf', 'scales_table', 'cloth_bolts', 'goods_baskets', 'pottery_stand', 'spice_crates', 'grain_sacks', 'crate', 'barrel'],
+    themes: ['shop'],
+    caps: { shop_counter: 1, scales_table: 1, display_shelf: 3, bar_counter: 0 },
+    arrangement: 'gathered',
   },
   // Спальня дома — не казарма: одна-две кровати у стены, сундук, шкаф и
   // тумбочка. Прежде спальня шла профилем казармы и получала по три
   // двухъярусные койки.
   bedroom: {
     require: ['bed', 'chest'],
-    prefer: ['bed', 'wardrobe', 'night_table', 'chest', 'rug', 'washbasin', 'candle'],
-    caps: { bed: 2, bunk_bed: 0, wardrobe: 1, chest: 1, washbasin: 1, rug: 1, table_long: 0, bench: 0 },
+    prefer: ['bed', 'wardrobe', 'night_table', 'chest', 'rug', 'washbasin', 'candle', 'dresser', 'coat_rack', 'standing_mirror', 'rug_blue', 'bear_pelt', 'armchair'],
+    themes: ['bedroom'],
+    caps: { bed: 2, bunk_bed: 0, wardrobe: 1, chest: 1, washbasin: 1, rug: 1, table_long: 0, bench: 0, dresser: 1, standing_mirror: 1, coat_rack: 1, double_bed: 1, bathtub: 1, cradle: 1 },
     arrangement: 'gathered',
   },
   // Горница жилого дома: очаг, один стол со стульями, посудный шкаф. Не
@@ -56,14 +138,20 @@ const SEMANTIC_PROFILES = Object.freeze({
     caps: { table_long: 0, table_round: 1, table_small: 1, bench: 1, fireplace: 1, cupboard: 1, rug: 1, bar_counter: 0, bar_shelf: 0 },
     arrangement: 'gathered',
   },
+  // Кухня: плита и хлебная печь у стены, разделочный стол посредине,
+  // кастрюли на стене, полки с припасами.
   kitchen: {
-    require: ['fireplace', 'cupboard'],
-    prefer: ['fireplace', 'cupboard', 'cauldron', 'barrel', 'crate', 'shelf_wall', 'cutting_board', 'pot', 'bucket'],
+    require: ['kitchen_stove', 'prep_table', 'pantry_shelf'],
+    prefer: ['cupboard', 'butcher_block', 'hanging_pots', 'bread_oven', 'spice_crates', 'washtub', 'water_barrel', 'cauldron', 'barrel', 'cutting_board', 'pot', 'flour_spill'],
+    themes: ['kitchen'],
+    caps: { kitchen_stove: 1, bread_oven: 1, prep_table: 1, butcher_block: 1, hanging_pots: 2 },
     arrangement: 'gathered',
   },
   store: {
     require: ['crate_stack', 'barrel_stack'],
-    prefer: ['crate_stack', 'barrel_stack', 'crate', 'barrel', 'sack', 'chest', 'shelf_wall'],
+    prefer: ['crate_stack', 'barrel_stack', 'crate', 'barrel', 'sack', 'chest', 'shelf_wall', 'grain_sacks', 'spice_crates', 'goods_baskets'],
+    themes: ['shop'],
+    caps: { shop_counter: 0, display_shelf: 0, scales_table: 0, cloth_bolts: 0, pottery_stand: 0 },
     arrangement: 'stalls',
   },
   stable: {
@@ -73,19 +161,22 @@ const SEMANTIC_PROFILES = Object.freeze({
     arrangement: 'stalls',
   },
   workshop: {
-    require: ['table_long', 'shelf_wall'],
-    prefer: ['table_long', 'shelf_wall', 'crate', 'barrel', 'chest', 'firewood_stack', 'candle'],
+    require: ['workbench', 'tool_rack'],
+    prefer: ['table_long', 'shelf_wall', 'crate', 'barrel', 'chest', 'firewood_stack', 'candle', 'sawhorse', 'lumber_pile', 'grindstone', 'sawdust'],
+    themes: ['workshop'],
+    caps: { workbench: 2, sawhorse: 1, grindstone: 1, table_long: 1 },
     arrangement: 'gathered',
   },
   courtyard: {
     require: ['well', 'cart'],
-    prefer: ['well', 'cart', 'hitching_post', 'water_trough', 'woodpile', 'haystack', 'tree_oak', 'tree_birch', 'bush'],
+    prefer: ['well', 'cart', 'hitching_post', 'water_trough', 'woodpile', 'haystack', 'tree_oak', 'tree_birch', 'bush', 'rain_barrel', 'hay_bales', 'flower_bed'],
+    themes: ['farm'],
     caps: { well: 1, cart: 2, water_trough: 1, haystack: 1, hitching_post: 4, woodpile: 1, campfire: 1 },
     arrangement: 'gathered',
   },
   exterior: {
     require: [],
-    prefer: ['tree_oak', 'tree_birch', 'tree_pine', 'bush', 'shrub', 'rock_small', 'boulder'],
+    prefer: ['tree_oak', 'tree_birch', 'tree_pine', 'bush', 'shrub', 'rock_small', 'boulder', 'mossy_rock', 'dead_bramble', 'root_tangle', 'leaf_litter'],
     arrangement: 'gathered',
   },
 })
@@ -109,6 +200,19 @@ const PURPOSE_ALIASES = Object.freeze({
   stable: 'stable',
   stables: 'stable',
   workshop: 'workshop',
+  forge: 'forge',
+  smithy: 'forge',
+  cells: 'cells',
+  prison: 'cells',
+  guardroom: 'guardroom',
+  torture: 'torture',
+  altar: 'altar',
+  sanctum: 'altar',
+  nave: 'nave',
+  dining: 'dining',
+  study: 'study',
+  library: 'study',
+  shop: 'shop',
   courtyard: 'courtyard',
   yard: 'courtyard',
   exterior: 'exterior',
@@ -127,7 +231,7 @@ const TAG_PURPOSES = Object.freeze({
   cooking: 'kitchen', hearth: 'kitchen', food: 'kitchen',
   storage: 'store', supplies: 'store', crates: 'store', barrels: 'store',
   horses: 'stable', animals: 'stable', fodder: 'stable',
-  forge: 'workshop', tools: 'workshop', craft: 'workshop',
+  forge: 'forge', tools: 'workshop', craft: 'workshop',
   courtyard: 'courtyard', yard: 'courtyard', outside: 'exterior',
 })
 
@@ -151,6 +255,22 @@ const COMPANIONS = Object.freeze({
   // занимала амбар раньше, и стогу 2×2 не оставалось места.
   haystack: [['sack', 1]],
   tree_oak: [['bush', 1]],
+})
+
+/**
+ * Центры шаблонов помещений: к чему тянется предмет набора. Центр ставится
+ * первым (он крупнее и обязателен), остальное собирается вокруг.
+ *
+ * @type {Readonly<Record<string, string[]>>}
+ */
+const SET_ANCHORS = Object.freeze({
+  anvil: ['forge'], quench_tub: ['forge', 'anvil'], coal_pile: ['forge'], grindstone: ['anvil', 'workbench'],
+  butcher_block: ['kitchen_stove', 'prep_table'], hanging_pots: ['kitchen_stove'], washtub: ['prep_table'],
+  incense_burner: ['altar', 'idol'], kneeling_cushions: ['altar', 'idol', 'temple_lectern'], candle_rack: ['altar', 'idol'],
+  offering_table: ['altar', 'idol'], font_basin: ['prayer_bench', 'temple_lectern'],
+  iron_cage: ['torture_rack'], guard_brazier: ['jailer_desk', 'torture_rack'], strongbox: ['jailer_desk', 'writing_desk'],
+  scales_table: ['shop_counter'], armchair: ['writing_desk', 'reading_nook', 'fireplace'], globe: ['writing_desk'],
+  chandelier: ['table_long'], candelabra: ['table_long', 'altar'],
 })
 
 /** Четыре стороны в порядке n, e, s, w. Поворот 0° смотрит на север. */
@@ -189,6 +309,17 @@ function wallSidesAt(map, x, y) {
     const neighbor = cellAt(map, x + side.dx, y + side.dy)
     return !neighbor || !neighbor.passable
   })
+}
+
+/**
+ * Есть ли у клетки окно на одном из четырёх рёбер.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {number} x
+ * @param {number} y
+ */
+function windowBeside(map, x, y) {
+  return SIDES.some((side) => edgeBetween(map, x, y, x + side.dx, y + side.dy)?.kind === 'window')
 }
 
 /**
@@ -275,6 +406,11 @@ function scoreCellForAsset(map, asset, cell, placed, context = {}, random = () =
     ? placed.filter((record) => record.zoneId === context.zoneId)
     : placed)
 
+  // Шкаф, стеллаж и штабель не заслоняют окно: свет и обзор из окна — то,
+  // ради чего его прорубили. Низкая мебель — кровать, стол, сундук — под
+  // окном стоит, как и в жизни.
+  if (asset.blocksSight && windowBeside(map, cell.x, cell.y)) return Number.NEGATIVE_INFINITY
+
   if (asset.anchor === 'wall') score += walls * 6
   else if (asset.anchor === 'corner') score += walls >= 2 ? 14 : walls * 2
   else score -= walls * 1.5
@@ -290,6 +426,14 @@ function scoreCellForAsset(map, asset, cell, placed, context = {}, random = () =
     if (same === 2) score -= 6
   }
 
+  // Шаблон помещения: предмет набора тянется к своему центру — наковальня и
+  // бочка к горну, курильница и подушки к алтарю, колода к плите. Без
+  // центра поблизости предмет стоит где угодно, но с заметным штрафом.
+  const anchors = SET_ANCHORS[asset.id]
+  if (anchors) {
+    const nearest = nearestPlaced(localPlaced, cell, (id) => anchors.includes(id))
+    if (nearest != null) score += nearest <= 1 ? 14 : nearest === 2 ? 8 : nearest <= 4 ? 2 : -nearest
+  }
   // Стул тянется к столу — правило, ради которого расстановка вообще перестаёт
   // выглядеть случайной.
   if (asset.id === 'chair' || asset.id === 'stool' || asset.id === 'bench') {
@@ -464,7 +608,7 @@ function normalizedPurpose(value) {
  * имеет приоритет; первым безопасным запасным вариантом служит известный тег.
  *
  * @param {{purpose?: unknown, tags?: unknown}} plan
- * @returns {{purpose: string, require: string[], prefer: string[], caps?: Record<string, number>, arrangement?: 'rows'|'gathered'|'stalls'}|null}
+ * @returns {{purpose: string, require: string[], prefer: string[], themes?: string[], caps?: Record<string, number>, arrangement?: 'rows'|'gathered'|'stalls'}|null}
  */
 function semanticProfileFor(plan) {
   const explicit = normalizedPurpose(plan?.purpose)
@@ -946,7 +1090,7 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
     // Комната может брать предметы из нескольких тем: склеп — подсвечник и
     // сундук из интерьера, пещера-логово — ящики и костёр. Основная тема
     // первой, повторы отброшены.
-    const catalogue = [...new Map([plan.theme, ...(plan.extraThemes ?? [])]
+    const catalogue = [...new Map([plan.theme, ...(plan.extraThemes ?? []), ...(semantic?.themes ?? [])]
       .flatMap((theme) => assetsForTheme(theme)).map((record) => [record.id, record])).values()]
     if (!catalogue.length) continue
 
@@ -1108,6 +1252,8 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
         const rotation = rotationFor(map, asset, candidate.cell, placed, plan.zoneId, random)
         const blocked = new Set([...occupied, ...keepClear, ...thresholds])
         const footprint = fittingFootprint(map, blocked, candidate.cell, asset.baseFootprint, rotation)
+        // Вторая клетка шкафа тоже не встаёт перед окном.
+        if (footprint && asset.blocksSight && footprint.some((point) => windowBeside(map, point.x, point.y))) continue
         if (footprint) {
           chosen = { cell: candidate.cell, rotation, footprint }
           break
@@ -1121,6 +1267,8 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
           const rotation = rotationFor(map, asset, candidate.cell, placed, plan.zoneId, random)
           const blocked = new Set([...occupied, ...keepClear, ...thresholds])
           const footprint = fittingFootprint(map, blocked, candidate.cell, asset.baseFootprint, rotation)
+          // Вторая клетка шкафа тоже не встаёт перед окном.
+          if (footprint && asset.blocksSight && footprint.some((point) => windowBeside(map, point.x, point.y))) continue
           if (footprint) {
             chosen = { cell: candidate.cell, rotation, footprint }
             break
