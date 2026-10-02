@@ -7314,11 +7314,19 @@ function areaEntryConsequences(state, command, movedId, from, to, { diceService,
   const events = []
   let workingState = state
   for (const effect of (state.mechanics.active_effects ?? []).filter((candidate) => candidate.trigger_on_enter === true
+    && !areaEffectSparesActor(candidate, movedId)
     && positionInEffect(state, to, candidate, moved)
     && !positionInEffect(state, from, candidate, moved))) {
     if (!isLivingActor(findActor(workingState, movedId)) && !isDyingHero(workingState, movedId)) break
     const effectId = String(effect.effect_id ?? effect.id ?? '')
-    if (effectId && !(workingState.mechanics.active_effects ?? []).some((candidate) => String(candidate.effect_id ?? candidate.id ?? '') === effectId)) continue
+    const liveEffect = (workingState.mechanics.active_effects ?? []).find((candidate) => String(candidate.effect_id ?? candidate.id ?? '') === effectId)
+    if (effectId && !liveEffect) continue
+    if (areaEffectTriggeredThisTurn(workingState, liveEffect ?? effect, movedId) || areaEffectAlreadyHolds(workingState, effect, movedId)) continue
+    const entryMark = areaTriggerMarkEvent(workingState, command, effect, movedId, trigger)
+    if (entryMark) {
+      events.push(entryMark)
+      workingState = applyGameEvent(workingState, entryMark)
+    }
     // Не всякая длящаяся область даёт спасбросок: облако кинжалов режет
     // всякого, кто в него вошёл, без всякой проверки.
     const movedActor = findActor(workingState, movedId) ?? moved
@@ -7362,9 +7370,13 @@ function areaEntryConsequences(state, command, movedId, from, to, { diceService,
       workingState = applyGameEvent(workingState, healingEvent)
     }
     if (!saved && effect.condition) {
-      const conditionEvent = eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: String(effect.condition), duration: 'until-next-turn', source_actor: effect.source_actor, effect_id: effect.effect_id }, [movedId])
-      events.push(conditionEvent)
-      workingState = applyGameEvent(workingState, conditionEvent)
+      const conditionEvents = String(effect.condition) === EXHAUSTION_LADDER
+        ? exhaustionStepUpEvents(workingState, command, movedId, { sourceActor: effect.source_actor, effectId: effect.effect_id, spellId: effect.spell_id, trigger })
+        : [eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: String(effect.condition), duration: effect.condition_duration ?? 'until-next-turn', source_actor: effect.source_actor, effect_id: effect.effect_id }, [movedId])]
+      for (const conditionEvent of conditionEvents) {
+        events.push(conditionEvent)
+        workingState = applyGameEvent(workingState, conditionEvent)
+      }
     }
   }
   return events
@@ -7395,13 +7407,33 @@ function areaTurnConsequences(state, command, actorIdValue, {
   const events = []
   let workingState = state
   for (const effect of (state.mechanics.active_effects ?? []).filter((candidate) => candidate?.[triggerField] === true
+    && !areaEffectSparesActor(candidate, actorIdValueString)
     && areaEffectAffectsActor(workingState, position, candidate, actor))) {
     // Эффекты выбираются из исходного состояния одним проходом, но предыдущая
     // область могла убить цель или удалить её. Живой герой на 0 ОЗ продолжает
     // получать последствия урона; окончательная смерть прекращает обработку.
     if (!isLivingActor(findActor(workingState, actorIdValueString)) && !isDyingHero(workingState, actorIdValueString)) break
     const effectId = String(effect.effect_id ?? effect.id ?? '')
-    if (effectId && !(workingState.mechanics.active_effects ?? []).some((candidate) => String(candidate.effect_id ?? candidate.id ?? '') === effectId)) continue
+    const liveEffect = (workingState.mechanics.active_effects ?? []).find((candidate) => String(candidate.effect_id ?? candidate.id ?? '') === effectId)
+    if (effectId && !liveEffect) continue
+    // Конец хода — отдельный момент правила и отметкой входа не гасится.
+    if (trigger === 'turn-start') {
+      if (areaEffectTriggeredThisTurn(workingState, liveEffect ?? effect, actorIdValueString)) continue
+      const startMark = areaTriggerMarkEvent(workingState, command, effect, actorIdValueString, trigger)
+      if (startMark) {
+        events.push(startMark)
+        workingState = applyGameEvent(workingState, startMark)
+      }
+      // Уже удерживаемый этой областью не спасается заново: он просто
+      // получает её урон в начале своего хода.
+      if (areaEffectAlreadyHolds(workingState, effect, actorIdValueString)) {
+        for (const damageEvent of lingeringAreaDamage(workingState, command, effect, actorIdValueString, { saved: false, diceService, rolls, trigger, resolveDamage })) {
+          events.push(damageEvent)
+          workingState = applyGameEvent(workingState, damageEvent)
+        }
+        continue
+      }
+    }
     const effectActor = findActor(workingState, actorIdValueString) ?? actor
     const ability = effect.save_ability ? String(effect.save_ability) : null
     const automatic = areaEffectAutomaticSave(workingState, actorIdValueString, effect)
@@ -7481,16 +7513,20 @@ function areaTurnConsequences(state, command, actorIdValue, {
         events.push(actionEvent)
         workingState = applyGameEvent(workingState, actionEvent)
       } else if (effect.condition) {
-        const conditionEvent = eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
-          condition: String(effect.condition),
-          duration: effect.condition_duration ?? 'until-next-turn',
-          source_actor: effect.source_actor,
-          effect_id: effect.effect_id,
-          spell_id: effect.spell_id,
-          trigger,
-        }, [actorIdValueString])
-        events.push(conditionEvent)
-        workingState = applyGameEvent(workingState, conditionEvent)
+        const conditionEvents = String(effect.condition) === EXHAUSTION_LADDER
+          ? exhaustionStepUpEvents(workingState, command, actorIdValueString, { sourceActor: effect.source_actor, effectId: effect.effect_id, spellId: effect.spell_id, trigger })
+          : [eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
+            condition: String(effect.condition),
+            duration: effect.condition_duration ?? 'until-next-turn',
+            source_actor: effect.source_actor,
+            effect_id: effect.effect_id,
+            spell_id: effect.spell_id,
+            trigger,
+          }, [actorIdValueString])]
+        for (const conditionEvent of conditionEvents) {
+          events.push(conditionEvent)
+          workingState = applyGameEvent(workingState, conditionEvent)
+        }
       }
     }
     if (trigger === 'turn-start' && effect.concentration_save_on_turn_start === true) {
@@ -9205,6 +9241,56 @@ function areaEffectAffectsActor(state, position, effect, actor) {
   return footprintCellsFor(actor, position).every((point) => positionInEffect(state, point, effect))
 }
 
+/**
+ * Правило 2014 «когда существо впервые за ход входит в область или начинает
+ * в ней ход»: вход и начало хода делят одну отметку на ход, поэтому выйти и
+ * снова войти в тот же ход нельзя, а вход и начало хода не бьют дважды.
+ * Ключ — событие начала текущего хода; вне боя ходов нет и предела тоже.
+ */
+function areaTriggerTurnKey(state) {
+  const combat = state.mechanics?.combat
+  if (!combat?.active) return null
+  return String(combat.turn_started_event_id ?? `${safeInteger(combat.round, 1)}:${safeInteger(combat.active_index, 0)}`)
+}
+
+function areaEffectTriggeredThisTurn(state, effect, actorIdValue) {
+  if (effect?.once_per_turn !== true) return false
+  const key = areaTriggerTurnKey(state)
+  return key != null && String(effect.triggered_turns?.[String(actorIdValue)] ?? '') === key
+}
+
+/** Служебная отметка срабатывания. Игроку она не видна: это учёт движка. */
+function areaTriggerMarkEvent(state, command, effect, actorIdValue, trigger) {
+  const key = areaTriggerTurnKey(state)
+  if (effect?.once_per_turn !== true || key == null) return null
+  return eventFrom({ ...commandWithRules(command, RULE_IDS.conditions), visibility: 'gm_only' }, 'SpellAreaTriggered', {
+    effect_id: String(effect.effect_id ?? effect.id ?? ''), turn_key: key, trigger,
+  }, [String(actorIdValue)])
+}
+
+function areaCasterSideIds(state, casterId) {
+  const casterIsEnemy = isEnemyActor(state, casterId)
+  return uniqueStrings([String(casterId), ...listActors(state)
+    .filter((candidate) => isEnemyActor(state, actorId(candidate)) === casterIsEnemy)
+    .map(actorId)])
+}
+
+/** Существа, которых заклинатель назначил незатронутыми («Духовные стражи»). */
+function areaEffectSparesActor(effect, actorIdValue) {
+  return Array.isArray(effect?.unaffected_actor_ids) && effect.unaffected_actor_ids.map(String).includes(String(actorIdValue))
+}
+
+/**
+ * Уже удерживаемый этой же областью не проверяется снова: «Эвардовы щупальца»
+ * бьют опутанного своим повторяющимся уроном, а не новым спасброском.
+ */
+function areaEffectAlreadyHolds(state, effect, actorIdValue) {
+  if (effect?.skip_already_affected !== true || !effect?.condition) return false
+  const effectId = String(effect.effect_id ?? effect.id ?? '')
+  return (state.mechanics.conditions?.[String(actorIdValue)] ?? [])
+    .some((condition) => condition?.id === String(effect.condition) && String(condition.effect_id ?? '') === effectId)
+}
+
 function actorDoesNotNeedBreathing(actor) {
   const mechanics = actor?.speciesBenefits?.mechanics ?? actor?.mechanics ?? {}
   const traits = actor?.traits ?? actor?.special_traits ?? actor?.specialTraits ?? {}
@@ -10046,6 +10132,30 @@ function exhaustionStepDownEvents(state, command, targetIdValue, spellId = null)
     ...(spellId ? { spell_id: spellId } : {}),
   }, [targetIdValue]))
   return events
+}
+
+/**
+ * Подъём истощения на одну ступень — зеркало `exhaustionStepDownEvents`.
+ * Длящаяся область («Болезненное сияние») повышает ступень при каждом своём
+ * срабатывании тем же способом, что и сотворение заклинания.
+ */
+function exhaustionStepUpEvents(state, command, targetIdValue, { sourceActor, effectId, spellId, trigger } = {}) {
+  const level = exhaustionLevelOf(state, targetIdValue)
+  if (level >= 6) return []
+  return [
+    ...(level > 0 ? [eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', {
+      condition: `exhaustion:${level}`, ...(spellId ? { spell_id: spellId } : {}),
+    }, [targetIdValue])] : []),
+    eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
+      condition: `exhaustion:${level + 1}`,
+      exhaustion_level: level + 1,
+      duration: 'until-removed',
+      ...(sourceActor ? { source_actor: sourceActor } : {}),
+      ...(effectId ? { effect_id: effectId } : {}),
+      ...(spellId ? { spell_id: spellId } : {}),
+      ...(trigger ? { trigger } : {}),
+    }, [targetIdValue]),
+  ]
 }
 
 /**
@@ -14718,9 +14828,13 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             }, [actorId(summon)]))
           }
         }
-        const affected = spellTargetsAt(state, command, spell)
+        // Длящаяся область без эффекта при появлении (2014: «впервые за ход
+        // входит или начинает ход») сотворением никого не задевает: её первое
+        // срабатывание — вход или начало хода через общие обработчики области.
+        const zoneOnlyCast = spell.createsAreaEffect?.resolveOnCast === false
+        const affected = zoneOnlyCast ? [] : spellTargetsAt(state, command, spell)
         const affectedIds = affected.map(actorId)
-        const npcAffected = npcSpellTargetsAt(state, command, spell)
+        const npcAffected = zoneOnlyCast ? [] : npcSpellTargetsAt(state, command, spell)
         const allAffectedIds = [...affectedIds, ...npcAffected.map(({ npc }) => String(npc.id))]
         const woundedTarget = affected[0] && actorHp(affected[0]) < actorMaxHp(affected[0])
         const baseDamageExpression = woundedTarget && spell.damageIfTargetWounded ? spell.damageIfTargetWounded : spell.damage
@@ -14870,6 +14984,11 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
               // Стена задаётся явным списком клеток: ни центр, ни радиус её
               // форму не описывают.
               ...(spell.areaShape === 'line' ? { cells: clone(wallCells(state, command, spell)) } : {}),
+              ...(spell.createsAreaEffect.oncePerTurn === true ? { once_per_turn: true } : {}),
+              ...(spell.createsAreaEffect.skipAlreadyAffected === true ? { skip_already_affected: true } : {}),
+              // Незатронутых заклинатель назначает при сотворении: его сторона
+              // боя на этот момент. Призванные позже союзники в список не входят.
+              ...(spell.createsAreaEffect.sparesAllies === true ? { unaffected_actor_ids: areaCasterSideIds(state, command.actor_id) } : {}),
               concentration: Boolean(spell.concentration),
               expires_round: spell.createsAreaEffect.permanent === true
                 ? Number.MAX_SAFE_INTEGER
@@ -22595,6 +22714,15 @@ function applyGameEventCurrent(rawState, event) {
     case 'SpellAreaCreated': {
       const effect = payload.effect && typeof payload.effect === 'object' ? clone(payload.effect) : null
       if (effect?.id) state.mechanics.active_effects = [...(state.mechanics.active_effects ?? []).filter((candidate) => String(candidate.id) !== String(effect.id)), effect]
+      break
+    }
+    case 'SpellAreaTriggered': {
+      const triggeredId = String(payload.effect_id ?? '')
+      const triggeredActor = String(target ?? '')
+      if (triggeredId && triggeredActor) state.mechanics.active_effects = (state.mechanics.active_effects ?? []).map((effect) => (
+        String(effect.effect_id ?? effect.id ?? '') === triggeredId
+          ? { ...effect, triggered_turns: { ...(effect.triggered_turns ?? {}), [triggeredActor]: String(payload.turn_key ?? '') } }
+          : effect))
       break
     }
     case 'SpellAreaRemoved': {
