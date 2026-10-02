@@ -2,9 +2,9 @@
 import { createHash } from 'node:crypto'
 
 import { authoredLocationMapFor } from './authored-location-maps.mjs'
-import { buildAresFortressScene, buildBuildingScene } from './building-generator.mjs'
+import { buildAresFortressScene, buildBuildingScene, ensureDeclaredTransitions } from './building-generator.mjs'
 import { buildSceneFromGraph } from './graph-layout.mjs'
-import { buildSettlementScene } from './settlement-generator.mjs'
+import { LARGE_HOUSE_FLOOR, buildSettlementScene } from './settlement-generator.mjs'
 import { addSceneLink, addSceneZone, createSceneGraph } from './scene-graph.mjs'
 import { assetById } from './asset-registry.mjs'
 import { ensurePropAccess, placeColonnade, placeProps } from './prop-placement.mjs'
@@ -1294,7 +1294,8 @@ export function layoutSettlement(theme, { seed = 'settlement', width = 26, heigh
  * @param {Record<string, any>} [options.design] пространственный замысел выбранного места
  * @param {'interior'|'exterior'} [options.entry] сторона входа в сцену здания
  * @param {Array<{offset?: number, label?: string}>} [options.levels] объявленные этажи локации
- * @returns {{map: import('./tactical-map.mjs').TacticalMap, theme: string, warnings: string[]}}
+ * @returns {{map: import('./tactical-map.mjs').TacticalMap, theme: string, warnings: string[], levels?: Array<{offset: number, hint: string, label: string}>}}
+ *   `levels` — этажи, которые объявил сам генератор (двухэтажная постройка поселения)
  */
 export function buildThemedScene({
   location = '', theme = '', sceneKind = '', seed = 'scene', width = 26, height = 26, locationId = '', themeId = '', design = {},
@@ -1471,11 +1472,22 @@ export function buildThemedScene({
      * Обстановка дома по комнате: передняя — жилая (очаг, стол, стулья) или
      * торговая (прилавок-стол, полки), задняя — спальня, кладовая или кухня.
      * @param {{id: string}} zone
+     * @returns {Omit<import('./prop-placement.mjs').ZonePlacementPlan, 'zoneId' | 'theme' | 'density'>}
      */
     const housePlan = (zone) => {
       const back = zone.id.endsWith('-back')
-      const use = built.uses?.[zone.id.replace(/-back$/u, '')] ?? design.building_use
+      const side = zone.id.endsWith('-side')
+      const use = built.uses?.[zone.id.replace(/-(?:back|side)$/u, '')] ?? design.building_use
+      // Третья комната крупного дома: кладовая у жилья, таверны и амбара,
+      // мастерская у лавки, спальня у усадьбы и мастерской.
+      if (side) {
+        if (use === 'shop') return { purpose: 'workshop', require: ['table_long', 'shelf_wall'], prefer: ['shelf_wall', 'crate', 'barrel', 'chest', 'bucket'] }
+        if (use === 'manor' || use === 'workshop') return { purpose: 'bedroom', require: ['bed', 'chest'], prefer: ['bed', 'chest', 'night_table', 'wardrobe', 'rug'] }
+        return { purpose: 'store', require: ['crate_stack', 'barrel'], prefer: ['crate', 'barrel', 'sack', 'chest', 'shelf_wall'] }
+      }
       // Амбар: сено, поилка, мешки и бочки, телега под крышей.
+      // Сеновал крупного амбара — сено и мешки; стойла — спереди.
+      if (use === 'barn' && back) return { purpose: 'store', extraThemes: ['yard'], require: ['haystack', 'sack'], prefer: ['haystack', 'sack', 'crate', 'woodpile'], caps: { haystack: 3, tree_oak: 0, tree_pine: 0, tree_birch: 0, tree_dead: 0, tree_stump: 0, bush: 0, shrub: 0, grass_tuft: 0, flowers: 0, rock_small: 0, boulder: 0, well: 0, lamp_post: 0, signpost: 0, path_stone: 0, campfire: 0, cart: 0 } }
       if (use === 'barn') return { purpose: 'stable', extraThemes: ['yard'], require: ['haystack', 'water_trough', 'sack'], prefer: ['haystack', 'sack', 'barrel', 'hitching_post', 'crate', 'woodpile'], caps: { haystack: 2, water_trough: 1, cart: 1, tree_oak: 0, tree_pine: 0, tree_birch: 0, tree_dead: 0, tree_stump: 0, bush: 0, shrub: 0, grass_tuft: 0, flowers: 0, rock_small: 0, boulder: 0, well: 0, lamp_post: 0, signpost: 0, path_stone: 0, campfire: 0 } }
       if (use === 'workshop') return back
         ? { purpose: 'store', require: ['crate_stack', 'barrel'], prefer: ['crate', 'barrel', 'sack', 'chest'] }
@@ -1509,8 +1521,39 @@ export function buildThemedScene({
         ...housePlan(zone),
       }))],
     })
+    // Двухэтажная постройка поселения — одна: таверна, усадьба или лавка с
+    // полом от LARGE_HOUSE_FLOOR клеток. Модель этажей держит один второй
+    // этаж на локацию, и две лестницы привели бы на один и тот же этаж из
+    // разных домов. Этаж объявляется в сцене, лестница привязана к нему;
+    // заявка архитектора на этажи сильнее и ведёт туда же.
+    const floorOf = (/** @type {string} */ zoneId) => {
+      let cells = 0
+      for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+        const cell = cellAt(map, x, y)
+        if (cell?.passable && (cell.zone === zoneId || cell.zone === `${zoneId}-back` || cell.zone === `${zoneId}-side`)) cells += 1
+      }
+      return cells
+    }
+    const rank = { tavern: 0, manor: 1, shop: 2 }
+    const storeyed = Object.entries(built.uses ?? {})
+      .filter(([, use]) => use in rank)
+      .map(([zoneId, use]) => ({ zoneId, use, floor: floorOf(zoneId) }))
+      .filter((entry) => entry.floor >= LARGE_HOUSE_FLOOR)
+      .sort((left, right) => rank[/** @type {keyof typeof rank} */ (left.use)] - rank[/** @type {keyof typeof rank} */ (right.use)] || right.floor - left.floor || left.zoneId.localeCompare(right.zoneId))[0]
+    /** @type {Array<{offset: number, hint: string, label: string}>} */
+    let sceneLevels = []
+    if (storeyed) {
+      const house = map.zones.find((zone) => zone.id === storeyed.zoneId)?.label ?? 'дом'
+      const declared = (Array.isArray(levels) ? levels : []).filter((level) => Number(level?.offset) === 1 || Number(level?.offset) === -1)
+      sceneLevels = declared.length
+        ? declared.map((level) => ({ offset: Number(level.offset), hint: String(/** @type {any} */ (level)?.hint ?? ''), label: String(level?.label ?? '') }))
+        : [{ offset: 1, hint: `верхний этаж: ${house}`, label: 'Второй этаж' }]
+      ensureDeclaredTransitions(map, sceneLevels.map((level) => ({ ...level, label: `${level.label || (level.offset > 0 ? 'Второй этаж' : 'Погреб')} — ${house}` })), storeyed.zoneId)
+      // Лестница не встала — этажа нет.
+      if (!map.props.some((prop) => prop.transition)) sceneLevels = []
+    }
     ensurePropAccess(map)
-    return { map, theme: definition.id, warnings: built.warnings }
+    return { map, theme: definition.id, warnings: built.warnings, ...(sceneLevels.length ? { levels: sceneLevels } : {}) }
   }
 
   const arid = design.climate === 'arid'

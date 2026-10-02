@@ -104,7 +104,8 @@ function labelFor(design, index) {
     tavern: ['Таверна', 'Постоялый двор', 'Питейный дом', 'Гостевой двор'],
     shop: ['Лавка', 'Склад', 'Торговый дом', 'Мастерская'],
     manor: ['Усадьба', 'Дом старосты', 'Резиденция', 'Контора'],
-    barn: ['Амбар', 'Конюшня', 'Сеновал', 'Сарай'],
+    // «Сеновал» — задняя комната крупного амбара, а не имя постройки.
+    barn: ['Амбар', 'Конюшня', 'Скотный двор', 'Сарай'],
     workshop: ['Мастерская', 'Столярня', 'Красильня', 'Гончарня'],
   }
   const list = labels[design.building_use] ?? labels.dwelling
@@ -139,6 +140,15 @@ function settlementUses(specs, design) {
   for (const use of wanted) if (urban || !plan.includes(use)) plan.push(use)
   const special = Math.min(plan.length, Math.floor(specs.length * (urban ? 0.45 : 0.5)))
   for (let rank = 0; rank < special; rank += 1) uses[order[rank].index] = plan[rank]
+  // Амбару нужен пол хотя бы на 28 клеток: в избу 4×5 стог с проходом не
+  // встаёт, и «амбар» выходил пустой коробкой. Тесный амбар меняется местами
+  // с самым просторным жильём, а если такого нет — остаётся жильём.
+  const floor = (/** @type {number} */ index) => Math.max(0, specs[index].w - 2) * Math.max(0, specs[index].h - 2)
+  const barn = uses.findIndex((use) => use === 'barn')
+  if (barn >= 0 && floor(barn) < 28) {
+    const roomy = order.map((entry) => entry.index).find((index) => uses[index] === 'dwelling' && floor(index) >= 28)
+    if (roomy !== undefined) { uses[roomy] = 'barn'; uses[barn] = 'dwelling' } else uses[barn] = 'dwelling'
+  }
   return uses
 }
 
@@ -326,8 +336,10 @@ function addBuilding(map, spec, index, design, occupied) {
   setCell(map, door.x, door.y, { passable: true, material: design.architecture, zone: zoneId, revealed: true })
   const edge = edgeFor(door, outside)
   setDoor(map, { id: `${zoneId}-door`, ...edge, state: 'open', blocksMove: false, blocksSight: false })
-  // Амбар — одно большое помещение под сено и скот, без перегородки.
-  if (!spec.extension && design.building_use !== 'barn') partitionHouse(map, spec, zoneId, index, design, door)
+  // Небольшой амбар — одно помещение под сено и скот; крупный делится на
+  // конюшню и сеновал, иначе это пустой зал на сорок клеток.
+  const largeBarn = design.building_use === 'barn' && (spec.w - 2) * (spec.h - 2) >= LARGE_HOUSE_FLOOR
+  if (!spec.extension && (design.building_use !== 'barn' || largeBarn)) partitionHouse(map, spec, zoneId, index, design, door)
   openHouseWindows(map, footprint, footprintKeys, door)
   for (const cell of footprint) {
     occupied.add(key(cell.x, cell.y))
@@ -422,7 +434,16 @@ function ensureBuildingReachability(map, spawn) {
 }
 
 /** Вторая комната дома по назначению здания. */
-const BACK_ROOM_LABELS = Object.freeze({ dwelling: 'Спальня', tavern: 'Кухня', shop: 'Кладовая', manor: 'Кабинет', workshop: 'Кладовая' })
+const BACK_ROOM_LABELS = Object.freeze({ dwelling: 'Спальня', tavern: 'Кухня', shop: 'Кладовая', manor: 'Кабинет', workshop: 'Кладовая', barn: 'Сеновал' })
+
+/** Третья комната крупного дома — за второй перегородкой в задней части. */
+const SIDE_ROOM_LABELS = Object.freeze({ dwelling: 'Кладовая', tavern: 'Кладовая', shop: 'Мастерская', manor: 'Спальня', workshop: 'Спальня', barn: 'Кладовая' })
+
+/**
+ * С какой площади пола (клеток внутри стен) дом считается крупным: такой дом
+ * делится на три комнаты, а не на две.
+ */
+export const LARGE_HOUSE_FLOOR = 35
 
 /**
  * Перегородка с дверью: дом делится на жилую комнату у входа и заднюю
@@ -481,19 +502,48 @@ function partitionHouse(map, spec, zoneId, index, design, frontDoor) {
       setEdge(map, cell.x, cell.y, cell.x + dx, cell.y + dy, { kind: 'wall', blocksMove: true, blocksSight: true, cover: 'three_quarters' })
     }
   }
-  // Проём — в середине перегородки; клетка проёма принадлежит задней комнате,
-  // а полотно двери стоит на ребре к передней.
-  const doorway = wall[Math.floor(wall.length / 2)]
-  setCell(map, doorway.x, doorway.y, { passable: true, material: design.architecture, zone: backZone })
-  const toFront = vertical
-    ? { x: doorway.x + (entryNearStart ? -1 : 1), y: doorway.y }
-    : { x: doorway.x, y: doorway.y + (entryNearStart ? -1 : 1) }
-  const toBack = vertical
-    ? { x: doorway.x + (entryNearStart ? 1 : -1), y: doorway.y }
-    : { x: doorway.x, y: doorway.y + (entryNearStart ? 1 : -1) }
-  setEdge(map, doorway.x, doorway.y, toBack.x, toBack.y, { kind: 'none' })
-  setEdge(map, doorway.x, doorway.y, toFront.x, toFront.y, { kind: 'none' })
-  setDoor(map, { id: `${backZone}-door`, ...edgeFor(doorway, toFront), state: 'closed', blocksMove: false, blocksSight: false })
+  // Крупный дом: задняя часть делится ещё раз поперёк, и у каждой из двух
+  // задних комнат своя дверь в переднюю. Дом на тридцать с лишним клеток
+  // пола с одной перегородкой — два зала, а не жильё.
+  const alongOf = (/** @type {{x: number, y: number}} */ cell) => (vertical ? cell.y - inner.minY : cell.x - inner.minX)
+  const backDepth = entryNearStart ? end - wallAt : wallAt - start
+  const split = width * height >= LARGE_HOUSE_FLOOR && wall.length >= 7 && backDepth >= 3
+  const middle = Math.floor(wall.length / 2)
+  /** @type {Array<{cell: {x: number, y: number}, zone: string}>} */
+  const doorways = []
+  if (split) {
+    const sideZone = `${zoneId}-side`
+    addZone(map, { id: sideZone, kind: 'interior', material: design.architecture, lightLevel: 'dim', floorDirection: vertical ? 'horizontal' : 'vertical', label: SIDE_ROOM_LABELS[design.building_use] ?? 'Комната' })
+    for (let y = inner.minY; y <= inner.maxY; y += 1) for (let x = inner.minX; x <= inner.maxX; x += 1) {
+      if (isBack(x, y) && alongOf({ x, y }) > middle) setCell(map, x, y, { zone: sideZone })
+    }
+    for (let y = inner.minY; y <= inner.maxY; y += 1) for (let x = inner.minX; x <= inner.maxX; x += 1) {
+      if (!isBack(x, y) || alongOf({ x, y }) !== middle) continue
+      setCell(map, x, y, { passable: false, material: design.architecture, zone: '' })
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        if (!cellAt(map, x + dx, y + dy)?.passable) continue
+        setEdge(map, x, y, x + dx, y + dy, { kind: 'wall', blocksMove: true, blocksSight: true, cover: 'three_quarters' })
+      }
+    }
+    doorways.push({ cell: wall[Math.floor(middle / 2)], zone: backZone })
+    doorways.push({ cell: wall[middle + 1 + Math.floor((wall.length - middle - 1) / 2)], zone: sideZone })
+  } else {
+    doorways.push({ cell: wall[middle], zone: backZone })
+  }
+  // Клетка проёма принадлежит задней комнате, а полотно двери стоит на
+  // ребре к передней.
+  for (const { cell: doorway, zone } of doorways) {
+    setCell(map, doorway.x, doorway.y, { passable: true, material: design.architecture, zone })
+    const toFront = vertical
+      ? { x: doorway.x + (entryNearStart ? -1 : 1), y: doorway.y }
+      : { x: doorway.x, y: doorway.y + (entryNearStart ? -1 : 1) }
+    const toBack = vertical
+      ? { x: doorway.x + (entryNearStart ? 1 : -1), y: doorway.y }
+      : { x: doorway.x, y: doorway.y + (entryNearStart ? 1 : -1) }
+    setEdge(map, doorway.x, doorway.y, toBack.x, toBack.y, { kind: 'none' })
+    setEdge(map, doorway.x, doorway.y, toFront.x, toFront.y, { kind: 'none' })
+    setDoor(map, { id: `${zone}-door`, ...edgeFor(doorway, toFront), state: 'closed', blocksMove: false, blocksSight: false })
+  }
 }
 
 /**
@@ -565,8 +615,12 @@ function frontageSpecs(map, random, target) {
     if (specs.length >= target) break
     // Дом деревни просторнее городского: в нём перегородка и спальня,
     // а в амбар встаёт стог.
-    const w = 7 + Math.floor(random() * 3)
-    const h = 5 + Math.floor(random() * 2)
+    // Первые три двора и затем каждый пятый — крупные: постоялый двор, лавка
+    // с жильём, амбар, дом старосты — 35–48 клеток пола; остальные — изба
+    // на 15–28. Без гарантии раскладка из одних изб выигрывала по числу.
+    const large = specs.filter((spec) => spec.w * spec.h >= 63).length < 3 || random() < 0.2
+    const w = large ? 9 + Math.floor(random() * 2) : 7 + Math.floor(random() * 3)
+    const h = large ? 7 + Math.floor(random() * 2) : 5 + Math.floor(random() * 2)
     // Дом стоит в клетке от улицы и смотрит на неё дверью.
     let spec
     if (front.dy === -1) {
@@ -680,7 +734,7 @@ function paintVillageLanes(map, random, material) {
 }
 
 /** Наименьший размер карты поселения по масштабу. */
-const SETTLEMENT_MIN_SIZE = Object.freeze({ village: { width: 40, height: 34 }, town: { width: 48, height: 44 }, city: { width: 56, height: 52 } })
+const SETTLEMENT_MIN_SIZE = Object.freeze({ village: { width: 44, height: 38 }, town: { width: 48, height: 44 }, city: { width: 56, height: 52 } })
 
 /**
  * Город: сетка улиц, площадь в центре, кварталы с домами вдоль улиц.
@@ -772,11 +826,40 @@ function townSpecs(map, design, random, materialsForMap) {
   const specs = []
   const occupied = new Set()
   const isStreet = (/** @type {number} */ x, /** @type {number} */ y) => ['street', 'square'].includes(cellAt(map, x, y)?.zone ?? '')
+  // Крупные дома: часть кварталов целиком отдаётся одному-двум домам на
+  // всю глубину квартала — постоялый двор, дом купца, гильдия. Прежде все
+  // дома города были 5–7 на 5–6 клеток, с полом в 9–20 клеток.
+  const blocks = rows.flatMap((row) => columns.map((column) => ({ row, column })))
+    .filter(({ row, column }) => column.to - column.from + 1 >= 5 && row.to - row.from + 1 >= 8)
+  const deepCount = Math.max(2, Math.round(blocks.length * 0.15))
+  const deepBlocks = new Set(shuffled(blocks.map((_, index) => index), random).slice(0, deepCount).map((index) => `${blocks[index].row.from}:${blocks[index].column.from}`))
   for (const row of rows) {
     for (const column of columns) {
       const blockH = row.to - row.from + 1
       const blockW = column.to - column.from + 1
       if (blockW < 5 || blockH < 5) continue
+      if (deepBlocks.has(`${row.from}:${column.from}`)) {
+        // Дверь — к улице сверху, если она есть, иначе снизу.
+        const streetAbove = isStreet(column.from + 1, row.from - 1)
+        // Глубина 9–10 клеток: за домом остаётся двор, а пол — 40–70 клеток.
+        const h = Math.min(blockH, 9 + Math.floor(random() * 2))
+        const y = streetAbove ? row.from : row.to - h + 1
+        let x = column.from
+        while (x <= column.to - 7) {
+          const remaining = column.to - x + 1
+          let w = 8 + Math.floor(random() * 3)
+          if (remaining - w - 1 < 7) w = Math.min(remaining, 11)
+          const spec = makeSpec(x, y, w, h)
+          spec.doorX = x + Math.floor(w / 2)
+          spec.doorY = streetAbove ? y : y + h - 1
+          if (canPlace(spec, occupied, map)) {
+            specs.push(spec)
+            reserveSpec(occupied, spec)
+          }
+          x += w + 1
+        }
+        continue
+      }
       // Два ряда, если квартал глубже одиннадцати клеток, иначе один —
       // к той улице, что есть (сверху важнее: так дома смотрят на главную).
       const streetAbove = isStreet(column.from + 1, row.from - 1)
@@ -797,6 +880,7 @@ function townSpecs(map, design, random, materialsForMap) {
           const remaining = column.to - x + 1
           // Узкие городские дома, два-три в ряд: остаток короче пяти клеток
           // достаётся последнему дому, а не пустует.
+          // Ширина от узкого дома в пять клеток до широкого в девять.
           let w = 5 + Math.floor(random() * 3)
           if (remaining - w - 1 < 5) w = Math.min(remaining, 9)
           if (w < 5) break
@@ -997,17 +1081,25 @@ function buildSettlementOnce({ seed = 'settlement', width = 30, height = 30, loc
   // прежнего набора, переулки стираются, чтобы не резать его дома.
   const lanes = villageStreet && chosen.density !== 'sparse' ? paintVillageLanes(map, random, materialsForMap.street) : []
   // Укладка вдоль улиц зависит от того, с какой стороны начать: из шести
-  // порядков берётся тот, что поставил больше дворов.
+  // порядков берётся самый застроенный. Крупный двор весит как полтора
+  // обычных — иначе выигрывала бы раскладка из одних изб.
+  const weight = (/** @type {Array<ReturnType<typeof makeSpec>>} */ list) => list.reduce((sum, spec) => sum + (spec.w * spec.h >= 63 ? 1.6 : 1), 0)
   const alongStreet = villageStreet
     ? Array.from({ length: 6 }, (_, attempt) => frontageSpecs(map, randomFor(`settlement-frontage:${seed}:${attempt}`), villageTarget))
-      .reduce((best, next) => (next.length > best.length ? next : best), [])
+      .reduce((best, next) => (weight(next) > weight(best) ? next : best), [])
     : []
   if (alongStreet.length) alongStreet.push(...backRowSpecs(map, alongStreet, random, villageTarget))
-  if (alongStreet.length < legacy.length) for (const { x, y, before } of lanes) setCell(map, x, y, before)
-  const specs = urban && planner === 'street' ? townSpecs(map, chosen, random, materialsForMap) : alongStreet.length >= legacy.length && alongStreet.length ? alongStreet : legacy
+  // Улица выигрывает и при чуть меньшем числе дворов: у неё дома смотрят
+  // дверью на улицу и бывают крупными, у прежнего подбора — россыпь
+  // одинаковых коробок. Прежний набор остаётся, только если улица дала
+  // заметно меньше.
+  const streetWins = alongStreet.length > 0 && (alongStreet.length >= legacy.length || alongStreet.length >= Math.min(8, legacy.length - 1))
+  if (!streetWins) for (const { x, y, before } of lanes) setCell(map, x, y, before)
+  const specs = urban && planner === 'street' ? townSpecs(map, chosen, random, materialsForMap) : streetWins ? alongStreet : legacy
   // Город не бывает меньше дюжины дворов: если кварталы встали тесно,
   // добор идёт вторым рядом в глубине кварталов.
-  if (urban && planner === 'street' && specs.length < 12) specs.push(...backRowSpecs(map, specs, random, 12))
+  const urbanTarget = chosen.scale === 'city' ? 18 : 14
+  if (urban && planner === 'street' && specs.length < urbanTarget) specs.push(...backRowSpecs(map, specs, random, urbanTarget))
   const uses = settlementUses(specs, chosen)
   /** @type {Record<string, string>} */
   const buildingUses = {}

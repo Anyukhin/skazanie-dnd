@@ -312,7 +312,8 @@ function generateSceneGeometryFor({ theme, danger, location, sceneKind, settleme
       .map((item) => ({ assets: requirementAssets(item.id), count: item.count }))
       .filter((item) => item.assets.length)
     if (promised.length && placeRequiredProps(built.map, promised, { seed: `${seed}:scene-requirements` })) ensurePropAccess(built.map)
-    return { cells: legacyCellsFromTacticalMap(built.map), map: built.map }
+    // Этажи, которые объявил сам генератор: двухэтажная таверна поселения.
+    return { cells: legacyCellsFromTacticalMap(built.map), map: built.map, ...(built.levels?.length ? { levels: normalizeDeclaredLevels(built.levels) } : {}) }
   }
   // Сейчас сюда не попадает ни одна сцена: `fallbackThemeFor` всегда возвращает
   // тему, а `live` стоит у всех семи. Ветка остаётся предохранителем на случай
@@ -636,6 +637,9 @@ export function createSceneTransition(input = {}, state = {}) {
     requirements: mapRequirements?.items ?? [],
   })
   const library = generated?.library ?? null
+  // Заявка архитектора на этажи сильнее; без неё сцена получает этажи,
+  // которые поставил генератор (лестница в таверне поселения).
+  const sceneLevels = declaredLevels.length ? declaredLevels : (generated?.levels ?? [])
   const cells = rememberedMap ?? generated.cells
   const mapTheme = text(resolvedTheme?.assetTheme ?? resolvedTheme?.id, 60)
   const tacticalMap = rememberedTacticalMap ?? generated?.map ?? tacticalMapFromLegacyCells(cells, {
@@ -662,7 +666,7 @@ export function createSceneTransition(input = {}, state = {}) {
     // другое — этажи, на которых партия уже побывала, и пополняется механикой
     // перехода на этапе L3. Одноэтажная локация поля не получает вовсе, поэтому
     // сохранённые кампании и старые события читаются как раньше.
-    ...(declaredLevels.length ? { levels: declaredLevels } : {}),
+    ...(sceneLevels.length ? { levels: sceneLevels } : {}),
     // Библиотечная карта приносит свои этажи: заявка архитектора на этажи
     // уступает фактической постройке, иначе подписи разошлись бы с картой.
     ...(library ? librarySceneFields(library) : {}),

@@ -1434,7 +1434,7 @@ export function buildAresFortressScene(options = {}) {
  * @param {Array<{offset?: number, label?: string}>} levels
  * @param {string} zoneId зона, в которой ищется место под лестницу
  */
-function ensureDeclaredTransitions(map, levels, zoneId) {
+export function ensureDeclaredTransitions(map, levels, zoneId) {
   const declared = Array.isArray(levels) ? levels : []
   if (!declared.length) return
   const attached = attachLevelTransitions(map, declared)

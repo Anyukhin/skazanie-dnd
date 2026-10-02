@@ -209,9 +209,11 @@ test('деревня — не ряд одинаковых жилищ: есть �
     const labels = map.zones.map((zone) => zone.label)
     assert.ok(labels.some((label) => /Таверна|Постоялый|Питейный|Гостевой/u.test(label)), `${seed}: в деревне нет таверны: ${labels}`)
     assert.ok(labels.some((label) => /Лавка|Склад|Торговый|Мастерская/u.test(label)), `${seed}: в деревне нет лавки`)
-    for (const zone of map.zones.filter((entry) => /Амбар|Конюшня|Сеновал|Сарай/u.test(entry.label))) {
+    // Крупный амбар поделён на стойла и сеновал: сено ищется во всей
+    // постройке, а не в каждой её комнате.
+    for (const zone of map.zones.filter((entry) => /^building-\d+$/u.test(entry.id) && /Амбар|Конюшня|Скотный|Сарай/u.test(entry.label))) {
       barns += 1
-      const inside = map.props.filter((prop) => cellAt(map, Math.floor(prop.x), Math.floor(prop.y))?.zone === zone.id).map((prop) => prop.assetId)
+      const inside = map.props.filter((prop) => (cellAt(map, Math.floor(prop.x), Math.floor(prop.y))?.zone ?? '').replace(/-(?:back|side)$/u, '') === zone.id).map((prop) => prop.assetId)
       assert.ok(inside.includes('haystack'), `${seed}: в амбаре нет сена`)
     }
   }

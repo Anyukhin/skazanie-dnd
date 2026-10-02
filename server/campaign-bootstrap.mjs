@@ -699,7 +699,7 @@ export class CampaignBootstrapper {
       ])),
     }
     const placementDraft = {
-      scene: { title: opening.scene.title, location: opening.scene.location, location_id: startingLocationId, mood: opening.scene.mood, objective: opening.scene.objective, turn: 1, ...librarySceneExtras, ...(mapRequirements ? { map_requirements: mapRequirements } : {}), cells, map: sceneTacticalMap },
+      scene: { title: opening.scene.title, location: opening.scene.location, location_id: startingLocationId, mood: opening.scene.mood, objective: opening.scene.objective, turn: 1, ...(geometry.levels?.length ? { levels: geometry.levels } : {}), ...librarySceneExtras, ...(mapRequirements ? { map_requirements: mapRequirements } : {}), cells, map: sceneTacticalMap },
       social: { npcs: openingNpcs },
       players: positionedHeroes,
       npc_world: emptyNpcWorld,
@@ -783,7 +783,7 @@ export class CampaignBootstrapper {
       activePlayerId: positionedHeroes[0].id,
       tacticalTurn: { sceneTurn: 1, actorId: positionedHeroes[0].id, movementSpent: 0, actionUsed: false },
       isNarrating: false, pendingCheck: null, agentInteraction: null, lastDiceRoll: null,
-      scene: { title: opening.scene.title, location: opening.scene.location, location_id: startingLocationId, mood: opening.scene.mood, objective: opening.scene.objective, turn: 1, ...librarySceneExtras, ...(mapRequirements ? { map_requirements: mapRequirements } : {}), cells, map: sceneTacticalMap },
+      scene: { title: opening.scene.title, location: opening.scene.location, location_id: startingLocationId, mood: opening.scene.mood, objective: opening.scene.objective, turn: 1, ...(geometry.levels?.length ? { levels: geometry.levels } : {}), ...librarySceneExtras, ...(mapRequirements ? { map_requirements: mapRequirements } : {}), cells, map: sceneTacticalMap },
       npc_world: npcWorld,
       ...(libraryMemory.locationMaps ? { locationMaps: libraryMemory.locationMaps } : {}),
       adventure: { chapter: 1, currentHook: opening.hook, visitedLocations: [opening.scene.location], unresolvedThreads: [opening.hook], history: [] },

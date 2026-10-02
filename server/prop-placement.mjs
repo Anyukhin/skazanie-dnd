@@ -894,6 +894,10 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
     zoneId: cellAt(map, Math.floor(prop.x), Math.floor(prop.y))?.zone,
   }))
   let counter = map.props.length
+  // Порог любой двери и клетка за ним по прямой закрыты для мебели всех зон:
+  // двухклеточный прилавок площади или крона дуба во дворе иначе выступали
+  // на подход к двери соседнего дома — резерв зоны их не видел.
+  const thresholds = doorThresholds(map)
 
   for (const plan of zones ?? []) {
     const cells = zoneCells(map, plan.zoneId)
@@ -1052,7 +1056,7 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
       const sameAsset = localPlaced.filter((record) => record.assetId === asset.id)
       for (let position = offset; position < cells.length; position += stride) {
         const cell = cells[position]
-        if (occupied.has(`${cell.x},${cell.y}`) || keepClear.has(`${cell.x},${cell.y}`)) continue
+        if (occupied.has(`${cell.x},${cell.y}`) || keepClear.has(`${cell.x},${cell.y}`) || thresholds.has(`${cell.x},${cell.y}`)) continue
         const score = scoreCellForAsset(map, asset, cell, placed, {
           zoneId: plan.zoneId,
           arrangement: semantic?.arrangement,
@@ -1070,7 +1074,7 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
       const candidateLimit = required ? REQUIRED_PLACEMENT_ATTEMPTS : PLACEMENT_ATTEMPTS
       for (const candidate of candidates.slice(0, candidateLimit)) {
         const rotation = rotationFor(map, asset, candidate.cell, placed, plan.zoneId, random)
-        const blocked = new Set([...occupied, ...keepClear])
+        const blocked = new Set([...occupied, ...keepClear, ...thresholds])
         const footprint = fittingFootprint(map, blocked, candidate.cell, asset.baseFootprint, rotation)
         if (footprint) {
           chosen = { cell: candidate.cell, rotation, footprint }
@@ -1083,7 +1087,7 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
       if (!chosen && required) {
         for (const candidate of candidates.slice(candidateLimit, candidateLimit + REQUIRED_RETRY_ATTEMPTS)) {
           const rotation = rotationFor(map, asset, candidate.cell, placed, plan.zoneId, random)
-          const blocked = new Set([...occupied, ...keepClear])
+          const blocked = new Set([...occupied, ...keepClear, ...thresholds])
           const footprint = fittingFootprint(map, blocked, candidate.cell, asset.baseFootprint, rotation)
           if (footprint) {
             chosen = { cell: candidate.cell, rotation, footprint }
@@ -1169,6 +1173,25 @@ export function placeRequiredProps(map, wanted, { seed }) {
     }
   }
   return added
+}
+
+/**
+ * Клетки у дверей, которые не занимает мебель: обе стороны полотна и по
+ * клетке за каждой стороной по прямой — тот же подход, что проверяет
+ * `auditTacticalMap`.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @returns {Set<string>}
+ */
+function doorThresholds(map) {
+  /** @type {Set<string>} */
+  const cells = new Set()
+  for (const door of Array.isArray(map.doors) ? map.doors : []) {
+    const next = edgeNeighbor(door)
+    const step = { x: next.x - door.x, y: next.y - door.y }
+    for (const point of [{ x: door.x, y: door.y }, next, { x: door.x - step.x, y: door.y - step.y }, { x: next.x + step.x, y: next.y + step.y }]) cells.add(`${point.x},${point.y}`)
+  }
+  return cells
 }
 
 /**

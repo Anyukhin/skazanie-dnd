@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { levelKey } from '../server/adventure-director.mjs'
+import { generateSceneGeometry, levelKey } from '../server/adventure-director.mjs'
 import { generateBuildingScene } from '../server/building-generator.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { normalizeDeclaredLevels } from '../server/level-generator.mjs'
@@ -402,4 +402,40 @@ test('игрок видит этаж и список известных этаж
   assert.equal(projected.levelEntities, undefined, 'стэш жителей игроку не принадлежит')
   assert.equal(projected.locationMaps, undefined, 'карты неактивных этажей игроку не проецируются')
   assert.equal(Object.hasOwn(projected.scene, 'levels_declared'), false)
+})
+
+test('в городе на второй этаж ведёт лестница таверны, и этаж стоит над ней, а не над всем городом', () => {
+  const geometry = generateSceneGeometry({ location: 'Город Вельдбург', theme: 'город', settlementType: 'town', seed: 'storeyed-town', locationId: 'loc-town', useLibrary: false })
+  const map = geometry.map
+  const stairs = map.props.filter((prop) => prop.transition)
+  assert.equal(stairs.length, 1, 'двухэтажная постройка в поселении одна')
+  assert.equal(geometry.levels?.[0]?.offset, 1, 'этаж объявлен в сцене')
+  const house = (cellAt(map, Math.floor(stairs[0].x), Math.floor(stairs[0].y))?.zone ?? '').replace(/-(?:back|side)$/u, '')
+  const anchor = { x: Math.floor(stairs[0].x), y: Math.floor(stairs[0].y) }
+  const spots = []
+  for (let radius = 1; spots.length < PARTY.length && radius <= 4; radius += 1) {
+    for (let dy = -radius; dy <= radius; dy += 1) for (let dx = -radius; dx <= radius; dx += 1) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) !== radius) continue
+      if (cellAt(map, anchor.x + dx, anchor.y + dy)?.passable && spots.length < PARTY.length) spots.push({ x: anchor.x + dx, y: anchor.y + dy })
+    }
+  }
+  const state = normalizeCampaignState({
+    sessionCode: 'TOWN', state_version: 0, engine_mode: 'enforce', activePlayerId: PARTY[0], partyMemberIds: [...PARTY],
+    players: PARTY.map((id, index) => ({ id, character: `Герой ${index + 1}`, hp: 10, maxHp: 10, level: 1, inventory: [], ...spots[index] })),
+    worldMap: { seed: 'town-seed', currentLocationId: 'loc-town', locations: [{ id: 'loc-town', name: 'Город Вельдбург', kind: 'town' }] },
+    scene: { title: 'Вельдбург', location: 'Город Вельдбург', location_id: 'loc-town', objective: 'Осмотреться', turn: 1, levels: geometry.levels, map: serializeTacticalMap(map), cells: legacyCellsFromTacticalMap(map) },
+  })
+  const result = climb(state)
+  const changed = result.events.find((event) => event.event_type === 'MapLevelChanged')
+  assert.ok(changed?.payload.map, 'этаж построен и едет в событии')
+  const upper = deserializeTacticalMap(changed.payload.map)
+  // Каждая клетка пола второго этажа стоит над таверной или её стеной, а не
+  // над улицей и чужими домами.
+  for (let y = 0; y < upper.height; y += 1) for (let x = 0; x < upper.width; x += 1) {
+    if (!cellAt(upper, x, y)?.passable) continue
+    const below = cellAt(map, x, y)
+    assert.ok(below && (!below.passable || below.zone.startsWith(house)), `${x},${y}: пол второго этажа над ${below?.zone}`)
+  }
+  const after = applyAll(state, result.events)
+  assert.equal(replayEvents(state, result.events).scene.map.levelIndex, after.scene.map.levelIndex, 'replay даёт тот же этаж')
 })
