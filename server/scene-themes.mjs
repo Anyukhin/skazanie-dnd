@@ -7,6 +7,7 @@ import { buildSceneFromGraph } from './graph-layout.mjs'
 import { LARGE_HOUSE_FLOOR, buildSettlementScene } from './settlement-generator.mjs'
 import { thinWalls } from './thin-walls.mjs'
 import { applyRoomFloors } from './room-floors.mjs'
+import { deepestRoom, raiseDais } from './scene-features.mjs'
 import { addSceneLink, addSceneZone, createSceneGraph } from './scene-graph.mjs'
 import { assetById } from './asset-registry.mjs'
 import { ensurePropAccess, placeColonnade, placeProps } from './prop-placement.mjs'
@@ -824,11 +825,14 @@ const SPACIOUS_HALL_CELLS = 100
  * с тем же замком и тем же ключом (`locks`): у сокровищницы может быть два
  * входа, но оба под ключ, иначе ключ теряет смысл.
  *
+ * `only` — прорубать только стены этого помещения (второй вход в дальнюю
+ * комнату); `idPrefix` — имя дверей.
+ *
  * @param {import('./tactical-map.mjs').TacticalMap} map
- * @param {{exclude?: string[], limit?: number, minDetour?: number, locks?: Record<string, {lockDc?: number, keyItemId?: string|null}>}} [options]
+ * @param {{exclude?: string[], limit?: number, minDetour?: number, locks?: Record<string, {lockDc?: number, keyItemId?: string|null}>, only?: string, idPrefix?: string}} [options]
  * @returns {number} сколько проходов прорублено
  */
-export function addShortcutLoops(map, { exclude = [], limit = 2, minDetour = 10, locks = {} } = {}) {
+export function addShortcutLoops(map, { exclude = [], limit = 2, minDetour = 10, locks = {}, only = '', idPrefix = 'loop-door' } = {}) {
   const blocked = new Set(exclude)
   const zoneOf = (/** @type {number} */ x, /** @type {number} */ y) => cellAt(map, x, y)?.zone ?? ''
   /** @param {{x: number, y: number}} from @param {{x: number, y: number}} to */
@@ -875,6 +879,7 @@ export function addShortcutLoops(map, { exclude = [], limit = 2, minDetour = 10,
         const zoneB = zoneOf(b.x, b.y)
         if (!cellAt(map, a.x, a.y)?.passable || !cellAt(map, b.x, b.y)?.passable) continue
         if (!zoneA || !zoneB || zoneA === zoneB || blocked.has(zoneA) || blocked.has(zoneB)) continue
+        if (only && zoneA !== only && zoneB !== only) continue
         candidates.push({ x, y, a, b, pair: `${[zoneA, zoneB].sort().join('|')}#${thickness}`, wall })
       }
     }
@@ -899,8 +904,8 @@ export function addShortcutLoops(map, { exclude = [], limit = 2, minDetour = 10,
     const edge = middle.b.x !== last.x ? { x: last.x, y: last.y, dir: /** @type {'e'} */ ('e') } : { x: last.x, y: last.y, dir: /** @type {'s'} */ ('s') }
     const lock = rooms.split('|').map((zoneId) => locks[zoneId]).find(Boolean)
     setDoor(map, lock
-      ? { id: `loop-door-${opened + 1}`, ...edge, state: 'locked', ...(lock.lockDc ? { lockDc: lock.lockDc } : {}), ...(lock.keyItemId ? { keyItemId: lock.keyItemId } : {}) }
-      : { id: `loop-door-${opened + 1}`, ...edge, state: 'closed', blocksMove: false, blocksSight: false })
+      ? { id: `${idPrefix}-${opened + 1}`, ...edge, state: 'locked', ...(lock.lockDc ? { lockDc: lock.lockDc } : {}), ...(lock.keyItemId ? { keyItemId: lock.keyItemId } : {}) }
+      : { id: `${idPrefix}-${opened + 1}`, ...edge, state: 'closed', blocksMove: false, blocksSight: false })
     usedPairs.add(rooms)
     opened += 1
   }
@@ -1420,6 +1425,22 @@ export function buildThemedScene({
     })
     if (definition.id === 'crypt') pierceWalls(built.map, { kind: 'grate', stride: 13, limit: 3 })
     if (definition.id === 'temple') pierceWalls(built.map, { kind: 'loophole', stride: 11, limit: 4 })
+    // Второй вход в самое дальнее помещение (Жакейс): если в него ведёт одна
+    // дверь, общая стена с соседом прорубается ещё раз — короче петли, но
+    // всё ещё обходом. Цель за ключом получает второй вход под тот же ключ.
+    if (definition.id === 'dungeon' || definition.id === 'crypt') {
+      const deepest = deepestRoom(built.map)
+      if (deepest && deepest.doors < 2) {
+        addShortcutLoops(built.map, {
+          only: deepest.zoneId,
+          minDetour: 6,
+          limit: 1,
+          idPrefix: 'second-entrance',
+          locks: goalDoor ? { [graph.goalZoneId]: { lockDc: goalDoor.lockDc, keyItemId: goalDoor.keyItemId } } : {},
+          exclude: definition.locked && !goalDoor ? [graph.goalZoneId] : [],
+        })
+      }
+    }
     // Стены залов — на рёбрах клеток; край карты остаётся скалой.
     thinWalls(built.map)
     // Камеры тюрьмы — ряд клеток вдоль коридора, а не пустой зал. Их стены
@@ -1427,6 +1448,11 @@ export function buildThemedScene({
     if (definition.id === 'dungeon') {
       const cellsZone = built.map.zones.find((zone) => zone.label === 'Камеры')
       if (cellsZone) partitionPrisonCells(built.map, cellsZone.id)
+    }
+    // Помост у дальней стены алтарной и погребальной: алтарь и саркофаг выше
+    // пола, а стрелок на помосте получает высоту.
+    for (const zone of built.map.zones) {
+      if (zone.label === 'Алтарная' || zone.label === 'Погребальная') raiseDais(built.map, zone.id)
     }
     // Пол по назначению: неф храма в мозаике, камеры на соломе, склеп и
     // подземелье в истёртой кладке (`server/room-floors.mjs`).

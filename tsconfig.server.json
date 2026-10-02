@@ -31,6 +31,7 @@
     "server/thin-walls.mjs",
     "server/room-floors.mjs",
     "server/detail-props.mjs",
+    "server/scene-features.mjs",
     "server/map-store.mjs",
     "server/npc-portraits.mjs",
     "server/prop-placement.mjs",

@@ -2,6 +2,7 @@
 import { auditTacticalMap } from './map-quality.mjs'
 import { thinWalls } from './thin-walls.mjs'
 import { applyRoomFloors, buildingWallStyleFor } from './room-floors.mjs'
+import { raiseDais } from './scene-features.mjs'
 import { ensurePropAccess, placeColonnade, placeProps } from './prop-placement.mjs'
 import {
   SIZE_CLASSES,
@@ -1079,6 +1080,8 @@ function designedBuildingAttempt({
     use: normalized.building_use, architecture: normalized.architecture,
     wall: buildingWallStyleFor({ use: normalized.building_use, architecture: normalized.architecture, urban: true }),
   })
+  // Парадный зал усадьбы — с помостом для высокого стола у дальней стены.
+  if (normalized.building_use === 'manor') raiseDais(map, 'hall')
   for (let y = pathStartY; y < safeHeight; y += 1) {
     const drift = y - pathStartY < 2 ? 0 : Math.round(Math.sin((y - building.maxY) * 0.6 + buildingSeedHash(seed) % 5) * 1.4)
     for (const x of [entranceX + drift, entranceX + drift + 1]) if (cellAt(map, x, y)) setCell(map, x, y, { material: 'earth', surface: 'none', variant: variantAt(x, y) })

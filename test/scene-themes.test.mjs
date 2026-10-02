@@ -500,3 +500,46 @@ test('карта места не меньше наименьшей для его
   assert.equal(hall.width, 34)
   assert.equal(hall.height, 30)
 })
+
+test('алтарная стоит на помосте в пять футов: уступ по кромке и ступени посредине', () => {
+  for (const seed of ['dais-a', 'dais-b', 'dais-c']) {
+    const map = buildThemedScene({ themeId: 'temple', location: 'Храм', seed, width: 30, height: 30 }).map
+    const altarRoom = map.zones.find((zone) => zone.label === 'Алтарная')
+    const raised = []
+    for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+      const cell = cellAt(map, x, y)
+      if (cell?.passable && cell.zone === altarRoom.id && cell.elevation === 5) raised.push({ x, y })
+    }
+    assert.ok(raised.length >= 6, `${seed}: помост из ${raised.length} клеток`)
+    // Кромка помоста — уступ, но в середине — ступени без уступа.
+    let ledges = 0
+    let steps = 0
+    for (const cell of raised) for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const near = cellAt(map, cell.x + dx, cell.y + dy)
+      if (!near?.passable || near.zone !== altarRoom.id || near.elevation === 5) continue
+      if (edgeBetween(map, cell.x, cell.y, cell.x + dx, cell.y + dy)?.kind === 'ledge') ledges += 1
+      else steps += 1
+    }
+    assert.ok(ledges > 0 && steps > 0, `${seed}: уступов ${ledges}, ступеней ${steps}`)
+    const spawn = map.spawnPoints.find((point) => point.role === 'party')
+    const reached = reachableCells(map, spawn.x, spawn.y, { throughDoors: true })
+    assert.ok(raised.every((cell) => reached.has(`${cell.x},${cell.y}`)), `${seed}: на помост не подняться`)
+  }
+})
+
+test('в дальнее помещение подземелья ведёт второй вход, а цель за ключом — под тот же ключ', () => {
+  let second = 0
+  for (const seed of ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']) {
+    const map = buildThemedScene({ themeId: 'dungeon', location: 'Темница', seed, width: 30, height: 30 }).map
+    const doors = map.doors.filter((door) => door.id.startsWith('second-entrance-'))
+    if (!doors.length) continue
+    second += 1
+    for (const door of doors) {
+      const zones = [cellAt(map, door.x, door.y)?.zone, cellAt(map, door.dir === 'e' ? door.x + 1 : door.x, door.dir === 's' ? door.y + 1 : door.y)?.zone]
+      const goal = map.doors.find((other) => other !== door && other.state === 'locked' && other.keyItemId
+        && [cellAt(map, other.x, other.y)?.zone, cellAt(map, other.dir === 'e' ? other.x + 1 : other.x, other.dir === 's' ? other.y + 1 : other.y)?.zone].some((zone) => zones.includes(zone)))
+      if (goal && door.state === 'locked') assert.equal(door.keyItemId, goal.keyItemId, `${seed}: второй вход в цель под чужой ключ`)
+    }
+  }
+  assert.ok(second >= 2, `второй вход появился лишь на ${second} сидах из 8`)
+})
