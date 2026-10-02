@@ -521,7 +521,8 @@ function spellCueFromCast(event: GameEvent, confirmedProjectileCount?: number): 
   const profileHints = {
     school: String(payload.school ?? ''),
     kind: String(payload.kind ?? ''),
-    damageType: String(payload.damage_type ?? ''),
+    // Холодный Огненный щит — лёд, а не пламя: сторона заклинания задаёт материал.
+    damageType: spellId === 'fire-shield' && payload.spell_option === 'chill' ? 'cold' : String(payload.damage_type ?? ''),
     radius: geometry.radiusFeet,
     areaSideFeet: geometry.areaSideFeet,
     areaShape: geometry.shape,
@@ -537,6 +538,10 @@ function spellCueFromCast(event: GameEvent, confirmedProjectileCount?: number): 
     targetIds,
     spellId,
     school: profile.school,
+    // Выбранная стихия («Стихийное оружие», холодный «Огненный щит») меняет
+    // материал эффекта; реплика несёт его явно, иначе отрисовка взяла бы
+    // стихию из каталога.
+    ...(family !== spellEffectPalette(spellId).family ? { visualFamily: family } : {}),
   }
   if (profile.kind === 'projectile') {
     return {

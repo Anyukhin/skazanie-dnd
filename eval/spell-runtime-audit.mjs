@@ -80,7 +80,9 @@ export function spellRuntimeFixture(id) {
       action_ids: [command.action_id], action_options: [{ id: command.action_id, resource: runtime.slotResource, slot_level: runtime.slotLevel ?? profile.level }],
       trigger_roll: { kept: 18, total: 22, modifier: 4, armor_class: 14, hit: true, critical: false },
       damage: { applied_amount: 8, raw_amount: 8, damage_type: id === 'absorb-elements' ? 'fire' : 'slashing', hp_before: 100, hp_after: 92 },
-      pending_command: { command_type: 'CastSpell', command_id: 'incoming-spell', actor_id: 'enemy', spell_id: 'fireball', slot_level: 3, to: { x: 2, y: 2 }, server_authoritative: true },
+      // Окно Контрзаклинания держит прерываемое заклинание под своим ключом —
+      // ровно тем, который читает движок; остальные окна — общей командой.
+      [id === 'counterspell' ? 'pending_spell_command' : 'pending_command']: { command_type: 'CastSpell', command_id: 'incoming-spell', actor_id: 'enemy', spell_id: 'fireball', slot_level: 3, to: { x: 2, y: 2 }, server_authoritative: true },
       spell_level: 3, spell_id: 'fireball',
     }
   }

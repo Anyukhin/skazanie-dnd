@@ -1478,3 +1478,23 @@ test('Контрзаклинание рисуется знаком отмены,
   assert.deepEqual(counter.targetIds, ['goblin'])
   assert.equal(effects.spellEffectPalette('counterspell').visualVariant, 'cancellation')
 })
+
+test('касание и рукопашная атака заклинанием вспыхивают на цели, а не летят снарядом', () => {
+  for (const spellId of ['shocking-grasp', 'inflict-wounds', 'primal-savagery', 'vampiric-touch', 'contagion', 'booming-blade']) {
+    assert.equal(effects.spellVisualProfile(spellId).kind, 'channel', spellId)
+  }
+  assert.equal(effects.spellVisualProfile('fire-bolt').kind, 'projectile', 'дальнобойная атака по-прежнему летит')
+  const [touch] = animation.combatAnimationCuesFromEvents([{ event_id: 'grasp', event_type: 'SpellCast', command_id: 'grasp', actor_id: 'mage', target_ids: ['goblin'],
+    payload: { spell_id: 'shocking-grasp', kind: 'attack', damage_type: 'lightning' } }])
+  assert.equal(touch.kind, 'channel')
+  assert.equal(touch.targetId, 'goblin')
+})
+
+test('семьи визуала: колючки, метка, лозы, вода, яд и холодный щит', () => {
+  const expected = { 'hail-of-thorns': 'weapon', 'hunter-s-mark': 'divination', 'ensnaring-strike': 'control', 'tidal-wave': 'water', 'stinking-cloud': 'poison' }
+  for (const [spellId, family] of Object.entries(expected)) assert.equal(effects.spellEffectPalette(spellId).family, family, spellId)
+  const [chill] = animation.combatAnimationCuesFromEvents([{ event_id: 'shield', event_type: 'SpellCast', command_id: 'shield', actor_id: 'mage', target_ids: ['mage'],
+    payload: { spell_id: 'fire-shield', kind: 'buff', damage_type: 'fire', spell_option: 'chill' } }])
+  assert.equal(chill.visualFamily, 'cold')
+  assert.equal(effects.spellEffectPalette('elemental-weapon', { damageType: 'thunder' }).family, 'thunder', 'стихия оружия берётся из выбранного типа')
+})

@@ -389,6 +389,14 @@ const combatTurnCoordinator = new CombatTurnCoordinator({
   rulesEngine,
   npcController,
   timeoutMs: combatTurnTimeoutMs,
+  // Героя без хозяина некому вести: в кампании с участниками его ход
+  // завершается по короткому сроку, а не стоит две минуты.
+  isSeatUnclaimed: (campaignId, state, actorIds) => {
+    if (!campaignHasMemberships(campaignId)) return false
+    const assigned = new Set(assignedCampaignHeroIds(campaignId, state))
+    const heroes = new Set(partyHeroIds(state).map(String))
+    return actorIds.every((actorId) => heroes.has(String(actorId)) && !assigned.has(String(actorId)))
+  },
   onCommitted: ({ campaignId, state, events }) => {
     persistAuthoritativeProjection(campaignId, state, events)
   },

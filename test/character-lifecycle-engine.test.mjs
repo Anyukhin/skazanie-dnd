@@ -50,6 +50,26 @@ test('Rules Engine resolves LevelUp as one replayable event and expands server-o
   assert.deepEqual(replayEvents(initial, result.events), result.state)
 })
 
+test('ячейка, полученная с уровнем, доступна сразу; старое событие без версии — по прежнему правилу', () => {
+  const initial = campaign(wizard())
+  // Волшебник 4-го уровня потратил все ячейки 1-го круга (их четыре).
+  initial.mechanics.resources.wizard = { ...initial.mechanics.resources.wizard, spell_slots_1: { current: 0, max: 4 }, spell_slots_2: { current: 1, max: 3 } }
+  const result = resolveCommands([{ command_type: 'LevelUp', actor_id: 'wizard', expected_level: 4 }], initial, { diceService, context: { allowedActorIds: ['wizard'] } })
+  const pools = result.state.mechanics.resources.wizard
+  assert.deepEqual(pools.spell_slots_1, { current: 0, max: 4 }, 'максимум не вырос — ничего не прибавилось')
+  assert.deepEqual(pools.spell_slots_2, { current: 1, max: 3 })
+  assert.deepEqual(pools.spell_slots_3, { current: 2, max: 2 }, 'новые ячейки 3-го круга доступны сразу')
+  assert.deepEqual(replayEvents(initial, result.events), result.state)
+
+  const fourth = campaign(wizard({ level: 3, experience: 2_700, hitPointIncreases: [4, 4] }))
+  fourth.mechanics.resources.wizard = { ...fourth.mechanics.resources.wizard, spell_slots_2: { current: 0, max: 2 } }
+  const grown = resolveCommands([{ command_type: 'LevelUp', actor_id: 'wizard', expected_level: 3 }], fourth, { diceService, context: { allowedActorIds: ['wizard'] } })
+  assert.deepEqual(grown.state.mechanics.resources.wizard.spell_slots_2, { current: 1, max: 3 }, 'третья ячейка 2-го круга прибавилась к пустому запасу')
+
+  const legacyEvents = grown.events.map((event) => ({ ...event, payload: { ...event.payload, resource_grant_version: undefined } }))
+  assert.deepEqual(replayEvents(fourth, legacyEvents).mechanics.resources.wizard.spell_slots_2, { current: 0, max: 3 }, 'старое событие не переписывается')
+})
+
 test('versioned ImportCharacter cannot forge inventory, money, HP, AC or proficiency and replays exactly', () => {
   const initial = campaign(wizard({
     level: 1,

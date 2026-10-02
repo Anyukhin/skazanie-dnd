@@ -6041,8 +6041,12 @@ export function validateCommand(input, rawState, context = {}) {
     }
   }
   const setupActor = state.players.find((actor) => actorId(actor) === String(command.actor_id ?? ''))
+  // Сервер по истечении срока завершает ход недособранного героя и так же
+  // отклоняет за него окно реакции: иначе «Несгибаемый» незанятого воина
+  // навсегда останавливал бой на отказе `CHARACTER_SETUP_REQUIRED`.
   const serverTimeoutMaySkipSetupActor = setupActor?.characterSetupRequired
-    && command.command_type === 'EndTurn'
+    && (command.command_type === 'EndTurn'
+      || command.command_type === 'UseCombatAction' && command.action_id === 'decline-reaction')
     && command.server_authoritative === true
     && command.auto_skip_reason === 'turn-timeout'
     && context.isAdmin === true
@@ -9123,8 +9127,20 @@ function difficultTerrainLookupFor(state) {
   const otherCells = new Set()
   const webAreas = []
   const otherAreas = []
+  // Местность тяжелее обычной («Песчаная стена»: фут за три) — свой множитель.
+  const heavyCells = new Map()
+  const heavyAreas = []
   for (const effect of state.mechanics.active_effects ?? []) {
     if (effect?.difficult_terrain !== true) continue
+    const multiplier = Math.max(2, Math.min(4, safeInteger(effect.movement_cost_multiplier, 2)))
+    if (multiplier > 2) {
+      if (Array.isArray(effect.cells)) {
+        for (const cell of effect.cells) {
+          const key = `${Number(cell?.x)},${Number(cell?.y)}`
+          heavyCells.set(key, Math.max(heavyCells.get(key) ?? 2, multiplier))
+        }
+      } else heavyAreas.push({ effect, multiplier })
+    }
     // `web-walker` относится только к паутине. Идентификатор заклинания —
     // авторитетный признак причины местности; имя/id эффекта не угадываем.
     const web = String(effect.spell_id ?? '').toLowerCase() === 'web'
@@ -9140,7 +9156,19 @@ function difficultTerrainLookupFor(state) {
       areas.push(effect)
     }
   }
-  return { webCells, otherCells, webAreas, otherAreas }
+  return { webCells, otherCells, webAreas, otherAreas, heavyCells, heavyAreas }
+}
+
+/** Наибольший множитель цены шага среди тяжёлых областей в клетке (2 — обычная труднопроходимость). */
+function heavyTerrainMultiplierAt(state, position, lookup, actor = null) {
+  if (!lookup?.heavyCells?.size && !lookup?.heavyAreas?.length) return 2
+  const points = actor ? footprintCellsFor(actor, position) : [position]
+  let multiplier = 2
+  for (const point of points.length ? points : [position]) multiplier = Math.max(multiplier, lookup.heavyCells.get(positionKey(point)) ?? 2)
+  for (const { effect, multiplier: areaMultiplier } of lookup.heavyAreas) {
+    if (areaMultiplier > multiplier && positionInEffect(state, position, effect, actor)) multiplier = areaMultiplier
+  }
+  return multiplier
 }
 
 /** Причины труднопроходимости клетки: паутина отдельно, всё остальное вместе. */
@@ -9196,7 +9224,7 @@ export function movementStepCostFor(state, actorIdValue, { tacticalMap } = {}) {
     return terrain.other || (terrain.web && !webWalker)
   }
   const stepCost = (step, pathMap = map) => 5
-    + (chargesDifficultAt(step, pathMap) ? 5 : 0)
+    + (chargesDifficultAt(step, pathMap) ? 5 * (heavyTerrainMultiplierAt(state, step, difficultTerrain, moverFootprintSide > 1 ? mover : null) - 1) : 0)
     + (crawling ? 5 : 0)
   return { map, stepCost, difficultAt, chargesDifficultAt, ignoresTerrain, webWalker, crawling }
 }
@@ -9416,6 +9444,21 @@ function areaCasterSideIds(state, casterId) {
     .filter((candidate) => isEnemyActor(state, actorId(candidate)) === casterIsEnemy)
     .map(actorId)])
 }
+
+/** Надет ли металлический доспех: кольчуга, чешуя, кираса, полулаты, латы и их родня. */
+const METAL_ARMOR_PATTERN = /(?:chain|scale-mail|breastplate|half-plate|ring-mail|splint|(?:^|[:-])plate(?:-armor)?$)/u
+function wearsMetalArmor(actor) {
+  return (actor?.inventory ?? []).some((item) => item?.equipped === true && METAL_ARMOR_PATTERN.test(String(item.catalog_id ?? item.catalogId ?? '').toLowerCase()))
+}
+
+/** Чей сейчас ход в бою (без учёта общей инициативы группы). */
+function isActiveTurnActor(state, actorIdValue) {
+  const combat = state.mechanics?.combat
+  return Boolean(combat?.active) && String(combat.initiative?.[combat.active_index]?.actor_id ?? '') === String(actorIdValue)
+}
+
+/** Типы урона, которые заклинатель может выбрать для добавочной кости оружия. */
+const TYPED_RIDER_DAMAGE_TYPES = new Set(['acid', 'cold', 'fire', 'lightning', 'thunder', 'radiant', 'necrotic'])
 
 /**
  * Режим заклинания, меняющий сам профиль: «Преобразование камня» превращает
@@ -9967,7 +10010,7 @@ function completedStraightCharge(state, actorIdValue, targetIdValue, minimumDist
 function beamCountFor(actor, spell, slotLevel = null) {
   if (spell?.beamScaling === true) {
     const level = Math.max(1, safeInteger(spell.monsterSpell?.casterLevel ?? actor?.level, 1))
-    return level >= 11 ? 3 : level >= 5 ? 2 : 1
+    return level >= 17 ? 4 : level >= 11 ? 3 : level >= 5 ? 2 : 1
   }
   const declared = safeInteger(spell?.beams, 0)
   if (declared <= 0) return 1
@@ -12817,11 +12860,18 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         // Лишние кости от зачарований. Как и у Божественного благоволения, на
         // критическом попадании кость удваивается, а тип берётся от оружия.
         let enchantmentDamage = conditionNumericBonus(state, command.actor_id, 'weaponDamageBonus')
+        // Кость с выбранной стихией («Стихийное оружие», «Покров духа» 2014)
+        // приходит своим типом урона, как Сглаз, а не типом оружия.
+        const typedConditionRiders = []
         for (const die of conditionWeaponDamageDice(state, command.actor_id, distanceFeet)) {
           const roll = diceService.roll(critical ? criticalDamageExpression(die.expression) : die.expression, `condition_damage:${die.condition}`, command.actor_id, command.visibility ?? 'public')
           rolls.push(roll)
           events.push(eventFrom(command, 'DieRolled', { ...roll, condition: die.condition, sign: die.sign }, []))
-          enchantmentDamage += roll.total * die.sign
+          const record = (state.mechanics.conditions[command.actor_id] ?? []).find((condition) => condition?.id === die.condition)
+          const chosenType = usesDnd2014(state) && die.sign > 0 && TYPED_RIDER_DAMAGE_TYPES.has(String(record?.spell_option ?? ''))
+            ? String(record.spell_option) : null
+          if (chosenType) typedConditionRiders.push({ roll, type: chosenType, spellId: String(record.spell_id ?? die.condition) })
+          else enchantmentDamage += roll.total * die.sign
         }
         // В 2014 кости Сглаза и Божественного благоволения — свой тип урона
         // (некротический и излучение): сопротивление оружию их не режет, а
@@ -12831,6 +12881,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           ? [[hexRoll, 'necrotic', 'hex'], [divineFavorRoll, 'radiant', 'divine-favor']]
             .filter(([roll]) => roll && roll.total > 0)
             .map(([roll, type, spellId]) => ({ roll, type, spellId }))
+            .concat(typedConditionRiders.filter((rider) => rider.roll.total > 0))
           : []
         const foldedSpellRiderDamage = typedSpellRiders.length ? 0 : (hexRoll?.total ?? 0) + (divineFavorRoll?.total ?? 0)
         let raw = (damageRoll?.total ?? Math.max(0, safeInteger(command.damage_amount, 0))) + (sneakAttackRoll?.total ?? 0) + (markRoll?.total ?? 0) + foldedSpellRiderDamage + (savageAttackRoll?.total ?? 0) + rageBonus + enchantmentDamage
@@ -15188,7 +15239,10 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           concentration: Boolean(spell.concentration),
           source_url: spell.sourceUrl,
           spell_option: command.spell_option ?? null,
-          damage_type: damageType,
+          // Заклинание без урона («Шквал») не объявляет тип урона: запасной
+          // «силовой» раньше попадал в событие и красил его как удар силой.
+          damage_type: spell.damage == null && spell.damageType == null && !spell.damageTypes?.length && !spell.bonusDamage
+            && !spell.createsAreaEffect?.damage && !spell.nextWeaponHit?.damage && !spell.summon?.damage && !selectedDamageType ? null : damageType,
           ...(spell.id === SHILLELAGH_CONDITION ? {
             item_id: shillelaghItem?.id ?? null,
             item_instance_id: shillelaghItemId,
@@ -15264,6 +15318,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
               area_shape: spell.areaShape ?? 'sphere',
               ...(spell.areaSideFeet != null ? { area_side_feet: Math.max(0, safeInteger(spell.areaSideFeet, 0)) } : {}),
               difficult_terrain: spell.createsAreaEffect.difficultTerrain === true,
+              ...(safeInteger(spell.createsAreaEffect.movementCostMultiplier, 0) > 2 ? { movement_cost_multiplier: safeInteger(spell.createsAreaEffect.movementCostMultiplier, 0) } : {}),
               trigger_on_enter: spell.createsAreaEffect.triggerOnEnter === true,
               trigger_on_turn_start: spell.createsAreaEffect.triggerOnTurnStart === true,
               trigger_on_turn_end: spell.createsAreaEffect.triggerOnTurnEnd === true,
@@ -15491,7 +15546,9 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           const spellHighGround = highGroundBetween(state, actorPosition(state, command.actor_id), actorPosition(state, resolvedTargetId), distanceBetweenActors(state, command.actor_id, resolvedTargetId))
           const spellConditionAdvantage = spellConditionModifiers.advantage.length > 0 || spellHighGround === 'higher'
           const spellConditionDisadvantage = spellConditionModifiers.disadvantage.length > 0 || spellHighGround === 'lower'
-          const attack = rollD20WithSpeciesLuck(state, diceService, command.actor_id, { modifier: effectiveAttackModifier, purpose: `spell_attack:${spell.id}`, actorId: command.actor_id, advantage: metamagic.has('metamagic-seeking') || trueStrike || silveryFortune || guidingBoltAdvantage || faerieFireAdvantage || spellConditionAdvantage, disadvantage: attackDisadvantage || spellConditionDisadvantage, visibility: command.visibility })
+          // «Электрошок»: по цели в металлическом доспехе атака с преимуществом.
+          const metalArmorAdvantage = spell.advantageVsMetalArmor === true && wearsMetalArmor(findActor(state, resolvedTargetId))
+          const attack = rollD20WithSpeciesLuck(state, diceService, command.actor_id, { modifier: effectiveAttackModifier, purpose: `spell_attack:${spell.id}`, actorId: command.actor_id, advantage: metamagic.has('metamagic-seeking') || trueStrike || silveryFortune || guidingBoltAdvantage || faerieFireAdvantage || spellConditionAdvantage || metalArmorAdvantage, disadvantage: attackDisadvantage || spellConditionDisadvantage, visibility: command.visibility })
            let hit = attack.kept === 20 || (attack.kept !== 1 && attack.total >= armorClass)
            rolls.push(attack)
            const critical = attack.kept === 20 || (hit && spellConditionModifiers.automaticCritical)
@@ -15906,7 +15963,10 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             ?? spell.bonusDamageType
             ?? 'untyped')
           if (spell.bonusDamage && (affected.length || npcAffected.length)) {
-            bonusDamageRoll = diceService.roll(String(spell.bonusDamage), `spell_damage:${spell.id}:${bonusDamageType}`, command.actor_id, command.visibility ?? 'public')
+            // Вторая половина урона растёт ячейкой, только если так выбрано
+            // («Небесный огонь» 2014: усиление огнём или излучением).
+            const bonusDamageExpression = scaledDiceExpression(String(spell.bonusDamage), Math.max(0, safeInteger(command.slot_level, spell.level) - spell.level), safeInteger(spell.bonusDamageUpcastDicePerLevel, 0))
+            bonusDamageRoll = diceService.roll(bonusDamageExpression, `spell_damage:${spell.id}:${bonusDamageType}`, command.actor_id, command.visibility ?? 'public')
             rolls.push(bonusDamageRoll)
             events.push(eventFrom(command, 'DieRolled', bonusDamageRoll, []))
           }
@@ -16172,6 +16232,9 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
                   recurring_damage_type: String(spell.delayedDamageType ?? spell.damageType ?? 'untyped'),
                   recurring_once: true,
                   recurring_damage_timing: 'turn-end',
+                  // Кислота на самом заклинателе жжёт в конце его **следующего**
+                  // хода, а не того, в котором он бросил шар.
+                  ...(isActiveTurnActor(state, resolvedTargetId) && areaTriggerTurnKey(state) != null ? { recurring_skip_turn_key: areaTriggerTurnKey(state) } : {}),
                   spell_id: spell.id,
                 } : {}),
                 // Урон, который повторяется на самой цели в начале её хода:
@@ -16625,7 +16688,9 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
               offeredTemporaryHp = temporaryRoll.total + Math.max(0, slotLevel - spell.level) * Math.max(0, safeInteger(spell.temporaryHpPerUpcastLevel, 0))
             } else if (spell.temporaryHp) {
               offeredTemporaryHp = Math.max(0, safeInteger(spell.temporaryHp, 0) + Math.max(0, slotLevel - spell.level) * Math.max(0, safeInteger(spell.temporaryHpPerSlotLevel, 0)))
-            } else if (spell.temporaryHpAbilityModifier) {
+            } else if (spell.temporaryHpAbilityModifier && spell.temporaryHpOnCast !== false) {
+              // «Героизм» 2014 даёт временные хиты в начале каждого хода цели,
+              // а не при сотворении: профиль редакции выключает выдачу здесь.
               offeredTemporaryHp = Math.max(0, spellModifier)
             }
             if (offeredTemporaryHp > 0) {
@@ -16708,7 +16773,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
                     : durationMinutes > 0 ? `minutes:${durationMinutes}`
                       : spell.durationRounds ? `rounds:${spell.durationRounds}` : null,
                 source_actor: command.actor_id, effect_id: effectId, spell_id: spell.id,
-                ...(usesDnd2014(state) && spell.id === 'hex' ? { spell_option: String(command.spell_option) } : {}),
+                ...(usesDnd2014(state) && (spell.id === 'hex' || spell.storesSpellOption === true && command.spell_option) ? { spell_option: String(command.spell_option) } : {}),
                 ...(scopedTrueStrike ? {
                   true_strike_version: 1,
                   target_actor_id: actorId(affected[0]),
@@ -18209,7 +18274,8 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         }
       }
       let delayedDamageState = repeatSaveState
-      for (const condition of (repeatSaveState.mechanics.conditions[command.actor_id] ?? []).filter((candidate) => candidate.recurring_damage_timing === 'turn-end')) {
+      for (const condition of (repeatSaveState.mechanics.conditions[command.actor_id] ?? []).filter((candidate) => candidate.recurring_damage_timing === 'turn-end'
+        && !(candidate.recurring_skip_turn_key != null && String(candidate.recurring_skip_turn_key) === String(areaTriggerTurnKey(repeatSaveState))))) {
         const delayedRoll = diceService.roll(String(condition.recurring_damage), `spell_turn_end_damage:${condition.spell_id}`, String(condition.source_actor ?? command.actor_id), command.visibility ?? 'public')
         rolls.push(delayedRoll)
         events.push(eventFrom(command, 'DieRolled', { ...delayedRoll, spell_id: condition.spell_id, damage_type: condition.recurring_damage_type }, []))
@@ -22546,6 +22612,7 @@ function applyGameEventCurrent(rawState, event) {
         recurring_damage: payload.recurring_damage ?? null,
         recurring_damage_type: payload.recurring_damage_type ?? null,
         ...(payload.recurring_damage_timing ? { recurring_damage_timing: payload.recurring_damage_timing } : {}),
+        ...(payload.recurring_skip_turn_key != null ? { recurring_skip_turn_key: String(payload.recurring_skip_turn_key) } : {}),
         // Добавка к следующему попаданию: нанесённый на оружие яд.
         rider_damage: payload.rider_damage ?? null,
         rider_damage_type: payload.rider_damage_type ?? null,
@@ -24238,10 +24305,15 @@ function applyGameEventCurrent(rawState, event) {
         leveledActor = state.players.find((actor) => actorId(actor) === String(target))
         const plan = classResourcePlan(leveledActor)
         const resources = state.mechanics.resources[target] ?? {}
+        // Ячейка, полученная с уровнем, доступна сразу: прибавка максимума
+        // прибавляется и к текущему запасу. Без версии — прежнее правило.
+        const grantsGrowth = safeInteger(payload.resource_grant_version, 0) >= 1
         state.mechanics.resources[target] = Object.fromEntries(Object.entries(plan.maximums).map(([resource, maximum]) => [
           resource,
           {
-            current: Math.max(0, Math.min(maximum, safeInteger(resources[resource]?.current, maximum))),
+            current: Math.max(0, Math.min(maximum, grantsGrowth && resources[resource]
+              ? safeInteger(resources[resource].current, 0) + Math.max(0, maximum - safeInteger(resources[resource].max, maximum))
+              : safeInteger(resources[resource]?.current, maximum))),
             max: maximum,
           },
         ]))
